@@ -34,7 +34,10 @@ How to read this:
 | **City of Austin Open Data** | CCTV camera catalog + frames | City of Austin Open Data Terms of Use | "City of Austin, TX — data.austintexas.gov" |
 | **Caltrans (cwwp2.dot.ca.gov)** | CCTV camera catalogs + frames, California districts | Public Caltrans traffic camera data | "Caltrans — cwwp2.dot.ca.gov" (courtesy) |
 | **TfL Open Data (JamCams)** | CCTV camera catalog + frames, London | [TfL Open Data terms](https://tfl.gov.uk/info-for/open-data-users/) — attribution REQUIRED | "Powered by TfL Open Data. Contains OS data © Crown copyright and database rights" |
-| **GBFS (Lyft / BCycle)** | Bikeshare availability | Per-feed (attribution-only) | Credit the operator (e.g. Austin BCycle) + its `license_url` |
+| **GBFS (Lyft / BCycle)** | Bikeshare availability, US systems | Per-feed (attribution-only) | Credit the operator (e.g. Austin BCycle) + its `license_url` |
+| **GBFS (Vélib' Métropole)** | Bikeshare availability, Paris | **ODbL 1.0** — attribution required, share-alike on derived databases | "Vélib' Métropole — Smovengo / Syndicat Autolib' Vélib' Métropole (ODbL)"; the feed itself declares no `license_url` |
+| **GBFS (JCDecaux Cyclocity)** | Bikeshare availability, Lyon (Vélo'v) and Toulouse (vélôToulouse) | [Licence Ouverte / Open Licence](https://developer.jcdecaux.com/files/Open-Licence-fr.pdf), declared in each feed's `license_url` | "Vélo'v / vélôToulouse — JCDecaux (Licence Ouverte)" |
+| **GBFS (Bordeaux Métropole)** | Bikeshare availability, Bordeaux (Le Vélo par TBM) | Licence Ouverte (per the transport.data.gouv.fr dataset record) | "Le Vélo par TBM — Bordeaux Métropole (Licence Ouverte)"; the public open-data `apiKey` in the feed URL is published in the MobilityData GBFS registry, not a private credential |
 | **Radio Browser** | Geolocated internet-radio station directory and station-level tags | Public-domain directory data under PDDL 1.0; individual broadcaster stream terms apply | "Radio Browser" plus a link to the selected broadcaster |
 | **Re:Earth Terrain** (Mapterhorn) | Terrain (keyless globe stacks — OSM etc. — + `/api/terrain/heights` ellipsoidal-height lookups) | Terrain mesh: CC BY 4.0; geoid: EGM2008 (NGA, public domain) | "Terrain (keyless globe stacks): Re:Earth Terrain / Mapterhorn (CC BY 4.0) / EGM2008 (NGA)" |
 
