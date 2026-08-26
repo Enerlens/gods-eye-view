@@ -67,6 +67,11 @@ import {
   PAN_MAX_FEEDS_PER_REQUEST,
   PAN_MAX_VEHICLES,
 } from './src/data/panFeeds.js';
+import {
+  filterFreshObservations,
+  parseNdbcLatestObservations,
+  summarizeObservations,
+} from './src/data/ndbcObservations.js';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { defineConfig, loadEnv } from 'vite';
@@ -2195,6 +2200,173 @@ function firmsProxy() {
         } catch (err) {
           console.warn('[firms-proxy] error:', err?.message || err);
           sendJson(500, { error: 'firms proxy error' });
+        }
+      });
+    },
+  };
+}
+
+/**
+ * NOAA NDBC marine-buoy proxy with a memory + disk cache.
+ * Upstream: https://www.ndbc.noaa.gov/data/latest_obs/latest_obs.txt
+ *
+ * One ~106 KB text file carries the latest observation from every reporting
+ * station in the network (892 stations measured 2026-08-26), so unlike the
+ * viewport-bounded proxies this one needs no bounding box: a single upstream
+ * fetch serves the whole globe. Keyless — NDBC publishes without credentials.
+ *
+ * Courtesy, not quota, sets the cadence. NDBC stations report every 10–60
+ * minutes and the observed spread of stamps in one file was 0.2–3.0 h
+ * (median 0.8 h), so a 10-minute TTL already outpaces the data: polling
+ * faster re-downloads bytes that cannot have changed. Disk cache survives
+ * dev-server restarts, single-flight collapses concurrent refreshes, and a
+ * failed upstream serves the last good report rather than an empty ocean.
+ *
+ * Routes:
+ *   GET /api/ndbc        → {fetchedAt, stale, ttlMs, count, coverage, stations}
+ *   GET /api/ndbc/status → {lastFetch, count, stale, ttlMs}
+ *
+ * @returns {import('vite').Plugin}
+ */
+function ndbcProxy() {
+  const TTL_MS = 10 * 60_000;
+  const UPSTREAM = 'https://www.ndbc.noaa.gov/data/latest_obs/latest_obs.txt';
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_PATH = path.join(CACHE_DIR, 'ndbc.json');
+  /** Observations older than this are dropped before they ever reach a client. */
+  const MAX_AGE_MS = 12 * 3600_000;
+  /**
+   * Response-body ceiling. The real report is ~106 KB; 8 MB is a runaway
+   * guard, not a size expectation.
+   */
+  const MAX_BYTES = 8 * 1024 * 1024;
+
+  /** @type {?{at:number, stations:Array<object>, coverage:object}} */
+  let mem = null;
+  let diskChecked = false;
+  /** @type {?Promise<?{at:number, stations:Array<object>, coverage:object}>} single-flight refresh */
+  let inflight = null;
+
+  async function readDiskOnce() {
+    if (diskChecked) return;
+    diskChecked = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
+      if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.stations)) {
+        mem = parsed;
+      }
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(CACHE_PATH, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn('[ndbc-proxy] cache write failed:', err?.message || err);
+    }
+  }
+
+  /**
+   * Fetch and parse the report.
+   * Throws on HTTP error, oversized body, or a body that is not an NDBC
+   * report — NDBC serves outage notices as HTML, which must never be cached
+   * as "zero stations reporting".
+   */
+  async function refreshUpstream() {
+    const now = Date.now();
+    const res = await fetch(UPSTREAM, {
+      signal: AbortSignal.timeout(30_000),
+      headers: { Accept: 'text/plain' },
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const declared = Number(res.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > MAX_BYTES) {
+      throw new Error(`oversized body (${declared} bytes)`);
+    }
+    const text = await res.text();
+    if (text.length > MAX_BYTES) throw new Error('oversized body');
+
+    const parsed = parseNdbcLatestObservations(text);
+    if (parsed === null) throw new Error('upstream body is not an NDBC report');
+
+    const stations = filterFreshObservations(parsed, now, MAX_AGE_MS);
+    // A report that parsed but retained nothing is an upstream fault, not a
+    // quiet ocean: every station in the network would have to fall silent at
+    // once. Throwing here keeps the last good report in play.
+    if (!stations.length) throw new Error('report retained no fresh stations');
+
+    return { at: now, stations, coverage: summarizeObservations(stations) };
+  }
+
+  function buildPayload(entry, stale) {
+    return {
+      fetchedAt: entry.at,
+      stale,
+      ttlMs: TTL_MS,
+      count: entry.stations.length,
+      coverage: entry.coverage ?? summarizeObservations(entry.stations),
+      source: 'NOAA NDBC',
+      stations: entry.stations,
+    };
+  }
+
+  return {
+    name: 'gev-ndbc-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/ndbc', async (req, res) => {
+        const sendJson = (status, obj) => {
+          if (res.headersSent) return;
+          res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify(obj));
+        };
+        try {
+          const subPath = String(req.url || '').split('?')[0];
+          await readDiskOnce();
+
+          if (subPath === '/status') {
+            sendJson(200, {
+              lastFetch: mem ? mem.at : null,
+              count: mem ? mem.stations.length : null,
+              stale: mem ? Date.now() - mem.at >= TTL_MS : false,
+              ttlMs: TTL_MS,
+            });
+            return;
+          }
+
+          const entry = mem;
+          if (entry && Date.now() - entry.at < TTL_MS) {
+            sendJson(200, buildPayload(entry, false));
+            return;
+          }
+          // Capture the promise locally BEFORE awaiting: .finally() nulls
+          // `inflight` the moment it settles, so a later reader would
+          // otherwise await a field that is already gone.
+          if (!inflight) {
+            inflight = refreshUpstream()
+              .then(async (fresh) => {
+                mem = fresh;
+                await writeDisk(fresh);
+                return fresh;
+              })
+              .catch((err) => {
+                console.warn(`[ndbc-proxy] refresh failed (${err?.message || err}) — serving cache if any`);
+                return null;
+              })
+              .finally(() => { inflight = null; });
+          }
+          const fresh = await inflight;
+          if (fresh) {
+            sendJson(200, buildPayload(fresh, false));
+          } else if (entry) {
+            sendJson(200, buildPayload(entry, true)); // upstream down — stale beats empty
+          } else {
+            sendJson(502, { error: 'NDBC fetch failed and no cache available' });
+          }
+        } catch (err) {
+          console.warn('[ndbc-proxy] error:', err?.message || err);
+          sendJson(500, { error: 'ndbc proxy error' });
         }
       });
     },
@@ -7133,7 +7305,7 @@ const GEV_REALTIME_TOOLS = [
         layerId: {
           type: 'string',
           description:
-            'Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS); ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; bikes/bike share → bikeshare; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio.',
+            'Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS); ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; ports/harbors/seaports → local-ports; buoys/sea state/wave height → marine-buoys; bikes/bike share → bikeshare; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio.',
           enum: [
             'flights',
             'military',
@@ -7147,8 +7319,10 @@ const GEV_REALTIME_TOOLS = [
             'ais-live-vessels',
             'local-datacenters',
             'local-dams',
+            'local-ports',
             'telegeography-submarine-cables',
             'local-firms',
+            'marine-buoys',
           ],
         },
         enabled: { type: 'boolean' },
@@ -7178,8 +7352,10 @@ const GEV_REALTIME_TOOLS = [
             'ais-live-vessels',
             'local-datacenters',
             'local-dams',
+            'local-ports',
             'telegeography-submarine-cables',
             'local-firms',
+            'marine-buoys',
           ],
           description: 'Optional layer row to scroll into view and highlight.',
         },
@@ -7280,6 +7456,7 @@ const GEV_REALTIME_TOOLS = [
           enum: [
             'local-datacenters',
             'local-dams',
+            'local-ports',
             'telegeography-submarine-cables',
             'local-firms',
           ],
@@ -8840,6 +9017,7 @@ export default defineConfig(({ mode }) => {
       firmsProxy(),
       vigicruesProxy(),
       meteoFranceVigilanceProxy(),
+      ndbcProxy(),
       rocketLaunchesProxy(),
       terrainHeightsProxy(),
       adsbdbProxy(),

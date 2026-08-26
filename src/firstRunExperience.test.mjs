@@ -653,10 +653,17 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   const end = src.indexOf('\n];\n', start);
   const block = src.slice(start, end + 4);
 
-  assert.equal(block.length, 31104, 'tool schema byte length drifted from the frozen baseline');
+  // Baseline re-frozen when the maritime layers landed: `local-ports` (NGA
+  // World Port Index) and `marine-buoys` (NOAA NDBC) were added to the layer
+  // enums, which is a real schema edit and does bust the Realtime session
+  // cache. That is the cost of shipping a voice-reachable layer, and it is
+  // exactly what this guard exists to make visible. What it still forbids is
+  // the thing it was written for: a FIRST-RUN MISSION quietly growing the
+  // schema instead of riding the tools that already exist.
+  assert.equal(block.length, 31323, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '3ace199727934e851902e4899c423d549d34d3f53469dcb56f07fc070d3f9d66',
+    '8c359b1e4e12bdb71ed4c959c12988293cba67748b6d59cbe60fed66ae2769da',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 

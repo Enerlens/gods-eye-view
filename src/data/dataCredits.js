@@ -67,6 +67,13 @@ export const DATA_CREDITS = [
     html: 'Earthquakes: Data courtesy of the U.S. Geological Survey',
   },
   {
+    key: 'ndbc',
+    html:
+      'Marine buoy observations: NOAA National Data Buoy Center ' +
+      '(<a href="https://www.ndbc.noaa.gov" target="_blank" rel="noopener">ndbc.noaa.gov</a>) ' +
+      '— U.S. public domain',
+  },
+  {
     key: 'overpass',
     html:
       'Road geometry (traffic): ' +
@@ -212,6 +219,13 @@ export const DATA_CREDITS = [
       'Dams: ' +
       '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
       '(ODbL 1.0) + Open Infrastructure Map',
+  },
+  {
+    key: 'ports',
+    html:
+      'Ports: NGA World Port Index (Pub. 150) — ' +
+      '<a href="https://msi.nga.mil/Publications/WPI" target="_blank" rel="noopener">msi.nga.mil</a> ' +
+      '— U.S. public domain. Harbour depths are WPI range bins, not surveyed soundings.',
   },
   {
     key: 'firms',

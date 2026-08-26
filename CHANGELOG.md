@@ -3,7 +3,7 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
-## [Unreleased] — 2026-08-24
+## [Unreleased] — 2026-08-26
 
 ### Added
 
@@ -30,6 +30,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   (`node scripts/build-pan-gtfs-rt-index.mjs` rebuilds it), so a cold start
   costs no probe sweep. Attribution to transport.data.gouv.fr and each
   publishing transport authority is registered in the Data attribution popover.
+- Added a **Ports** layer: the NGA **World Port Index** (Pub. 150), 2,951 ports
+  worldwide, bundled and keyless. Each port carries its country, region,
+  UN/LOCODE, harbour size and type, shelter rating and water body. The
+  publication is a U.S. Government work and therefore public domain, so unlike
+  the TeleGeography cables it carries no commercial-use carve-out. Two traps in
+  the source are handled rather than passed through: harbour depths are WPI
+  *range bins*, not surveyed soundings, so they render as `~11 m channel
+  (approx.)` and must not be used for navigation; and the size code `V` means
+  *very small*, not "very large" — inverting that scale would promote three
+  thousand fishing harbours to container terminals. Fields that are "unknown"
+  for ~99% of rows (port security, VTS, TSS) and the max-vessel dimensions
+  (present for 3% of rows, with impossible values) are dropped rather than
+  rendered as data.
+- Added a **Marine Buoys** layer: live sea state from the NOAA **National Data
+  Buoy Center**, keyless, through the new `/api/ndbc` proxy (10-minute cache,
+  disk-backed, serve-stale). One upstream fetch covers the globe. Buoys are
+  colored on the WMO sea-state ladder by significant wave height, with period,
+  direction, sea temperature and wind on the card. **The network is sparse and
+  the layer shows it instead of papering over it:** only about a fifth of
+  reporting stations carry a wave sensor, and one that does not renders neutral
+  grey with the line omitted — never as a calm sea. A genuine `0.0 m` reading
+  stays visually distinct from an absent one, and the control chip carries the
+  measured/total split. Observations older than 12 hours are dropped, and an
+  upstream outage notice is rejected rather than cached as an empty ocean.
 - Added an opt-in **OpenStreetMap mapped-camera** source
   (`CCTV_OSM_CAMERAS_ENABLED=1`): publicly mapped surveillance-camera positions
   are loaded for the viewport you are looking at — plus a snapped margin, so

@@ -90,6 +90,23 @@ export function localInfrastructureOverlayCopy(properties, layerId) {
     if (river && river.toLocaleLowerCase() !== title.toLocaleLowerCase()) {
       details.push(clampCardLine(river));
     }
+  } else if (layerId === 'local-ports') {
+    // Harbor size and type come pre-decoded from the build script; a port
+    // whose WPI row coded them 'U' simply has no line here.
+    const shape = [props.harborSize, props.harborType]
+      .map(cleanLabel)
+      .filter(Boolean)
+      .join(' · ');
+    if (shape) details.push(clampCardLine(shape));
+
+    // WPI depths are binned range codes, not surveyed soundings, so the line
+    // reads "~11 m channel" — never "11 m channel". See the note in
+    // scripts/build-nga-ports.mjs before tightening this wording.
+    const depths = props.approxDepthM || {};
+    const channel = Number(depths.channel);
+    if (Number.isFinite(channel)) {
+      details.push(clampCardLine(`~${channel} m channel (approx.)`));
+    }
   }
 
   return { title, details };
@@ -842,6 +859,14 @@ function labelPriorityFromProperties(props, layerId) {
   if (props.output || tags['plant:output:electricity']) score += 120;
   if (layerId === 'local-dams') score += 80;
   if (layerId === 'local-datacenters') score += 60;
+  // Large harbours outrank very small ones when the label grid is crowded.
+  if (layerId === 'local-ports') {
+    score += 70;
+    const size = String(props.harborSize || '').toLowerCase();
+    if (size === 'large') score += 240;
+    else if (size === 'medium') score += 160;
+    else if (size === 'small') score += 80;
+  }
   return score;
 }
 
@@ -888,5 +913,6 @@ function clampCardLine(value) {
 function layerTitle(layerId) {
   if (layerId === 'local-datacenters') return 'Datacenter';
   if (layerId === 'local-dams') return 'Dam';
+  if (layerId === 'local-ports') return 'Port';
   return 'Feature';
 }
