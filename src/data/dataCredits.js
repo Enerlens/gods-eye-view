@@ -139,6 +139,16 @@ export const DATA_CREDITS = [
     html: 'Bikeshare availability: GBFS operator feeds (e.g. Austin BCycle)',
   },
   {
+    key: 'pan-transit',
+    html:
+      'Live French transit vehicles: GTFS-Realtime feeds published on the ' +
+      '<a href="https://transport.data.gouv.fr" target="_blank" rel="noopener">Point d’Accès National (transport.data.gouv.fr)</a> — ' +
+      'per-network licences, mostly ' +
+      '<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a> ' +
+      'and <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL 1.0</a>, ' +
+      '© each transport authority / operator',
+  },
+  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +

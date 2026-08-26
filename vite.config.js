@@ -19,6 +19,7 @@
  *  13. Weather effects — camera-local Open-Meteo observations without news/geocoding overhead
  *  14. Rocket launches — recent Launch Library 2 mission metadata
  *  15. Radio Browser — public-domain station directory and click counting
+ *  16. transport.data.gouv.fr — French GTFS-RT live vehicle positions (PAN)
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -50,6 +51,20 @@ import {
   isOverBudget as isTomTomOverBudget,
 } from './src/data/tomtomTiles.js';
 import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
+import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
+import {
+  boxContains,
+  mergeObservedBounds,
+  padTransitBox,
+  selectFeedsForBox,
+  snapTransitBox,
+  transitBoxKey,
+  validTransitBox,
+  PAN_DATASETS_URL,
+  PAN_MAX_BOX_DEG,
+  PAN_MAX_FEEDS_PER_REQUEST,
+  PAN_MAX_VEHICLES,
+} from './src/data/panFeeds.js';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { defineConfig, loadEnv } from 'vite';
@@ -3357,6 +3372,403 @@ function gbfsProxy() {
           res.end(JSON.stringify({ error: 'GBFS proxy error' }));
         }
       });
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// transport.data.gouv.fr — French GTFS-Realtime vehicle positions
+// ---------------------------------------------------------------------------
+/**
+ * Shipped feed index (see `scripts/build-pan-gtfs-rt-index.mjs`). Read once per
+ * server, never sent to the browser whole — the client asks for a viewport.
+ */
+const PAN_INDEX_PATH = path.join(process.cwd(), 'config', 'pan_gtfs_rt_feeds.json');
+/** Footprints learned at runtime, merged over the shipped ones on next boot. */
+const PAN_BOUNDS_PATH = path.join(process.cwd(), '.gev-cache', 'pan-transit-bounds.json');
+/**
+ * Per-feed body cache. French GTFS-RT feeds republish every 10–60 s, so a
+ * shorter TTL would just re-download the same bytes; this is also the shared
+ * floor that keeps two overlapping viewports from double-polling a network.
+ */
+const PAN_FEED_CACHE_MS = 12_000;
+/** Per-viewport answer cache; below the client's own poll interval. */
+const PAN_VIEWPORT_CACHE_MS = 8_000;
+/** A dead feed is not retried on every poll. */
+const PAN_FEED_BACKOFF_MS = 90_000;
+/** Last-good positions are served this long after a refresh starts failing. */
+const PAN_FEED_STALE_MS = 90_000;
+const PAN_FEED_TIMEOUT_MS = 9_000;
+const PAN_FEED_MAX_BYTES = 8 * 1024 * 1024;
+/** Margin kept around the viewport so vehicles enter from off-screen. */
+const PAN_VIEWPORT_PAD_DEG = 0.06;
+/** How often learned footprints are flushed to disk. */
+const PAN_BOUNDS_FLUSH_MS = 30_000;
+const PAN_USER_AGENT = 'gods-eye-view/0.1 (+https://github.com/bilawalsidhu/gods-eye-view; transport.data.gouv.fr GTFS-RT client)';
+
+/** @type {?{feeds: Array<Object>, generatedAt: string, source: string}} */
+let _panIndex = null;
+let _panIndexPromise = null;
+/** feedId -> {at:number, vehicles:Array, error:?string, failedAt:?number} */
+const _panFeedCache = new Map();
+const _panFeedInFlight = new Map();
+/** viewport key -> {at:number, payload:object} */
+const _panViewportCache = new Map();
+const _panViewportInFlight = new Map();
+let _panBoundsDirty = false;
+let _panBoundsFlushedAt = 0;
+let _panRotation = 0;
+const _panRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 90, globalMax: 240 });
+
+/** Cap on cached viewport answers (each is a few hundred KB at worst). */
+const PAN_VIEWPORT_CACHE_MAX = 24;
+
+function trimPanViewportCache() {
+  while (_panViewportCache.size > PAN_VIEWPORT_CACHE_MAX) {
+    const oldest = _panViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _panViewportCache.delete(oldest);
+  }
+}
+
+/**
+ * Load the shipped index once and fold in any footprints learned on earlier
+ * runs. A missing/corrupt bounds file is not an error — it only costs the
+ * server the chance to skip a few feeds until it re-learns them.
+ */
+async function loadPanIndex() {
+  if (_panIndex) return _panIndex;
+  if (_panIndexPromise) return _panIndexPromise;
+  _panIndexPromise = (async () => {
+    const raw = JSON.parse(await fsp.readFile(PAN_INDEX_PATH, 'utf8'));
+    const feeds = Array.isArray(raw?.feeds) ? raw.feeds : [];
+    let learned = {};
+    try {
+      const disk = JSON.parse(await fsp.readFile(PAN_BOUNDS_PATH, 'utf8'));
+      if (disk && typeof disk.bounds === 'object') learned = disk.bounds;
+    } catch { /* first run, or a partial write we simply ignore */ }
+    for (const feed of feeds) {
+      const merged = mergeObservedBounds(feed.bbox, learned[feed.id]);
+      if (merged) feed.bbox = merged;
+    }
+    _panIndex = { ...raw, feeds };
+    console.log(
+      `[PAN Transit] ${feeds.length} GTFS-RT vehicle-position feeds `
+      + `(${feeds.filter((feed) => feed.bbox).length} with a footprint), index built ${raw?.generatedAt || 'unknown'}`,
+    );
+    return _panIndex;
+  })().catch((error) => {
+    _panIndexPromise = null;
+    throw error;
+  });
+  return _panIndexPromise;
+}
+
+/** Persist learned footprints, at most once per PAN_BOUNDS_FLUSH_MS. */
+async function flushPanBounds(force = false) {
+  if (!_panBoundsDirty || !_panIndex) return;
+  const now = Date.now();
+  if (!force && now - _panBoundsFlushedAt < PAN_BOUNDS_FLUSH_MS) return;
+  _panBoundsDirty = false;
+  _panBoundsFlushedAt = now;
+  const bounds = {};
+  for (const feed of _panIndex.feeds) {
+    if (feed.bbox) bounds[feed.id] = feed.bbox;
+  }
+  const temp = `${PAN_BOUNDS_PATH}.${process.pid}.tmp`;
+  try {
+    await fsp.mkdir(path.dirname(PAN_BOUNDS_PATH), { recursive: true });
+    await fsp.writeFile(temp, JSON.stringify({ updatedAt: new Date(now).toISOString(), bounds }));
+    await fsp.rename(temp, PAN_BOUNDS_PATH);
+  } catch (error) {
+    console.warn('[PAN Transit] bounds cache write failed:', error?.message || error);
+    await fsp.rm(temp, { force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Fetch and decode ONE feed, with a shared body cache, a failure backoff and a
+ * bounded serve-stale window.
+ *
+ * @param {Object} feed Index entry.
+ * @returns {Promise<{vehicles: Array<Object>, at: number, error: ?string, stale: boolean}>}
+ */
+async function panFeedVehicles(feed) {
+  const now = Date.now();
+  const cached = _panFeedCache.get(feed.id);
+  if (cached && now - cached.at <= PAN_FEED_CACHE_MS) {
+    return { vehicles: cached.vehicles, at: cached.at, error: cached.error, stale: false };
+  }
+  // A feed that just failed is left alone; its last-good fixes keep serving
+  // until they age out, then it reports empty with the reason attached.
+  if (cached?.failedAt && now - cached.failedAt < PAN_FEED_BACKOFF_MS) {
+    const stale = now - cached.at <= PAN_FEED_STALE_MS;
+    return {
+      vehicles: stale ? cached.vehicles : [],
+      at: cached.at,
+      error: cached.error,
+      stale: stale && cached.vehicles.length > 0,
+    };
+  }
+
+  const request = coalesceProxyRequest(_panFeedInFlight, feed.id, async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PAN_FEED_TIMEOUT_MS);
+    try {
+      const response = await fetch(feed.url, {
+        headers: {
+          Accept: 'application/x-protobuf,application/octet-stream;q=0.9,*/*;q=0.8',
+          'User-Agent': PAN_USER_AGENT,
+        },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const declared = Number(response.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > PAN_FEED_MAX_BYTES) {
+        throw new Error('feed body too large');
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > PAN_FEED_MAX_BYTES) throw new Error('feed body too large');
+      const { vehicles } = vehiclePositionsFromBytes(bytes, { feedId: feed.id });
+      // Learn the footprint from what actually arrived. Bounds only grow, and
+      // junk fixes are fenced out before they can widen a city into a country.
+      const observed = boundsOfVehicles(vehicles, { rejectOutliers: true });
+      const merged = mergeObservedBounds(feed.bbox, observed);
+      if (merged && JSON.stringify(merged) !== JSON.stringify(feed.bbox)) {
+        feed.bbox = merged;
+        _panBoundsDirty = true;
+      }
+      const entry = { at: Date.now(), vehicles, error: null, failedAt: null };
+      _panFeedCache.set(feed.id, entry);
+      return { vehicles: entry.vehicles, at: entry.at, error: null, stale: false };
+    } catch (error) {
+      const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
+      const previous = _panFeedCache.get(feed.id);
+      const keepStale = previous && Date.now() - previous.at <= PAN_FEED_STALE_MS;
+      const entry = {
+        at: keepStale ? previous.at : Date.now(),
+        vehicles: keepStale ? previous.vehicles : [],
+        error: message,
+        failedAt: Date.now(),
+      };
+      _panFeedCache.set(feed.id, entry);
+      return {
+        vehicles: entry.vehicles,
+        at: entry.at,
+        error: message,
+        stale: keepStale && entry.vehicles.length > 0,
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+  return request.promise;
+}
+
+/** Trim a decoded record to the fields the layer renders, dropping empties. */
+function panWireVehicle(vehicle, feed) {
+  const wire = {
+    id: vehicle.id,
+    feed: feed.id,
+    lat: Number(vehicle.lat.toFixed(5)),
+    lon: Number(vehicle.lon.toFixed(5)),
+    mode: feed.modes?.[0] || 'urban',
+  };
+  if (vehicle.bearing !== null) wire.bearing = Number(vehicle.bearing.toFixed(1));
+  if (vehicle.speedMps !== null) wire.speedMps = Number(vehicle.speedMps.toFixed(2));
+  if (vehicle.route) wire.route = vehicle.route;
+  if (vehicle.label) wire.label = vehicle.label;
+  if (vehicle.status) wire.status = vehicle.status;
+  if (vehicle.occupancy) wire.occupancy = vehicle.occupancy;
+  if (vehicle.timestampMs) wire.timestampMs = vehicle.timestampMs;
+  return wire;
+}
+
+/** Build one viewport answer: select feeds, fetch them, clip, cap. */
+async function refreshPanViewport(box, key) {
+  const index = await loadPanIndex();
+  const rotation = _panRotation++;
+  const selection = selectFeedsForBox(index.feeds, box, { rotation });
+  const clip = padTransitBox(box, PAN_VIEWPORT_PAD_DEG);
+
+  const results = await Promise.all(selection.selected.map(async (feed) => {
+    const outcome = await panFeedVehicles(feed);
+    const vehicles = [];
+    for (const vehicle of outcome.vehicles) {
+      if (!boxContains(clip, vehicle.lat, vehicle.lon)) continue;
+      vehicles.push(panWireVehicle(vehicle, feed));
+    }
+    return { feed, outcome, vehicles };
+  }));
+
+  const vehicles = [];
+  const feeds = [];
+  let vehiclesTruncated = false;
+  for (const { feed, outcome, vehicles: inBox } of results) {
+    for (const vehicle of inBox) {
+      if (vehicles.length >= PAN_MAX_VEHICLES) { vehiclesTruncated = true; break; }
+      vehicles.push(vehicle);
+    }
+    feeds.push({
+      id: feed.id,
+      network: feed.network,
+      area: feed.area,
+      modes: feed.modes,
+      licence: feed.licenceLabel,
+      publisher: feed.publisher,
+      pageUrl: feed.pageUrl,
+      datasetUrl: feed.datasetUrl,
+      inView: inBox.length,
+      reported: outcome.vehicles.length,
+      retrievedAt: outcome.at ? new Date(outcome.at).toISOString() : null,
+      stale: outcome.stale || false,
+      error: outcome.error || null,
+    });
+  }
+
+  const failed = feeds.filter((feed) => feed.error).length;
+  const payload = {
+    status: failed && failed === feeds.length && feeds.length > 0 ? 'degraded' : 'ready',
+    retrievedAt: new Date().toISOString(),
+    box,
+    vehicles,
+    feeds,
+    feedsMatched: selection.matched,
+    feedsFetched: feeds.length,
+    feedsFailed: failed,
+    // Honest truncation flags: more feeds intersect this viewport than were
+    // polled, or the vehicle cap cut the answer.
+    feedsTruncated: selection.truncated,
+    vehiclesTruncated,
+    indexGeneratedAt: index.generatedAt || null,
+  };
+
+  _panViewportCache.set(key, { at: Date.now(), payload });
+  trimPanViewportCache();
+  void flushPanBounds();
+  return payload;
+}
+
+/**
+ * Vite plugin: viewport-bounded French real-time transit proxy.
+ *
+ *   GET /api/transit-fr/feeds                          — index summary
+ *   GET /api/transit-fr/vehicles?south&west&north&east — live positions in box
+ *
+ * The browser never talks to transport.data.gouv.fr directly, for three
+ * reasons: the feeds are Protocol Buffers (decoded here, so the client bundle
+ * gains no protobuf dependency), most publishers send no CORS header, and one
+ * viewport can touch a dozen networks whose bodies are worth sharing across
+ * clients and across overlapping viewports rather than re-fetching per tab.
+ *
+ * Every feed is public and keyless under Licence Ouverte 2.0 or ODbL 1.0, as
+ * declared per dataset in the catalog and carried through to the client.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function panTransitProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/transit-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_panRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      let index;
+      try {
+        index = await loadPanIndex();
+      } catch (error) {
+        console.warn('[PAN Transit] feed index unavailable:', error?.message || error);
+        json(503, {
+          error: 'French transit feed index is missing — run `node scripts/build-pan-gtfs-rt-index.mjs`',
+          missingIndex: true,
+        });
+        return;
+      }
+
+      if (route === '/feeds') {
+        const licences = {};
+        for (const feed of index.feeds) {
+          const label = feed.licenceLabel || 'Licence non précisée';
+          licences[label] = (licences[label] || 0) + 1;
+        }
+        json(200, {
+          source: index.source || PAN_DATASETS_URL,
+          generatedAt: index.generatedAt || null,
+          feedCount: index.feeds.length,
+          feedsWithBounds: index.feeds.filter((feed) => feed.bbox).length,
+          licences,
+          maxBoxDeg: PAN_MAX_BOX_DEG,
+          maxFeedsPerRequest: PAN_MAX_FEEDS_PER_REQUEST,
+        }, { 'Cache-Control': 'public, max-age=300' });
+        return;
+      }
+
+      if (route !== '/vehicles') {
+        json(404, { error: 'Unknown transit endpoint' });
+        return;
+      }
+
+      const requested = validTransitBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      });
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${PAN_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: PAN_MAX_BOX_DEG,
+        });
+        return;
+      }
+
+      // Query the SNAPPED box so neighbouring viewports share one cache entry;
+      // the snap only ever grows, so a hit always covers what was asked for.
+      const box = snapTransitBox(requested);
+      const key = transitBoxKey(box);
+      const now = Date.now();
+      const cached = _panViewportCache.get(key);
+      if (cached && now - cached.at <= PAN_VIEWPORT_CACHE_MS) {
+        json(200, { ...cached.payload, status: 'cached' }, { 'X-Transit-FR': 'HIT' });
+        return;
+      }
+
+      const request = coalesceProxyRequest(_panViewportInFlight, key, () => refreshPanViewport(box, key));
+      try {
+        const payload = await request.promise;
+        json(200, payload, { 'X-Transit-FR': request.shared ? 'INFLIGHT' : 'MISS' });
+      } catch (error) {
+        console.warn('[PAN Transit] viewport unavailable:', error?.message || error);
+        if (cached) {
+          json(200, { ...cached.payload, status: 'stale' }, { 'X-Transit-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'Live French transit positions are temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'pan-transit-proxy',
+    configureServer(server) {
+      install(server.middlewares);
+      server.httpServer?.on('close', () => { void flushPanBounds(true); });
+    },
+    configurePreviewServer(server) {
+      install(server.middlewares);
     },
   };
 }
@@ -8062,6 +8474,7 @@ export default defineConfig(({ mode }) => {
       cctvProxy(),
       radioBrowserProxy(),
       gbfsProxy(),
+      panTransitProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),

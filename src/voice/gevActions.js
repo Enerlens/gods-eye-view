@@ -162,6 +162,13 @@ const LAYER_ALIASES = new Map([
   ['radio stations', 'radio'],
   ['bikeshare', 'bikeshare'],
   ['bikes', 'bikeshare'],
+  ['transit', 'transit-fr'],
+  ['buses', 'transit-fr'],
+  ['busses', 'transit-fr'],
+  ['trams', 'transit-fr'],
+  ['french transit', 'transit-fr'],
+  ['public transport', 'transit-fr'],
+  ['public transit', 'transit-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -3269,6 +3276,7 @@ function layerTitle(layerId) {
   if (layerId === 'local-dams') return 'Dam';
   if (layerId === 'telegeography-submarine-cables') return 'Submarine Cable';
   if (layerId === 'local-firms') return 'Active Fire';
+  if (layerId === 'transit-fr') return 'Transit Vehicle';
   return layerId || 'Entity';
 }
 
