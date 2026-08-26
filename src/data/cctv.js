@@ -99,6 +99,13 @@ import {
   onFocusTargetAppear,
 } from './focusDeemphasis.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
+import { OSM_CAMERA_CREDIT, registerDynamicCredit } from './dataCredits.js';
+import {
+  osmCameraBoxKey,
+  snapOsmCameraBox,
+  OSM_CAMERA_MAX_BOX_DEG,
+  OSM_CAMERA_SOURCE_KIND,
+} from './osmCameras.js';
 
 // ---------------------------------------------------------------------------
 // API endpoints
@@ -342,6 +349,53 @@ let _mapStackListener = null;
 // pass (removed in destroy). Event-driven only — never a per-frame loop, so
 // the zero-steady-state-work invariant holds.
 let _horizonCullListener = null;
+
+// ---------------------------------------------------------------------------
+// OSM mapped cameras — viewport-loaded cohort (opt-in, /api/osm-cameras)
+// ---------------------------------------------------------------------------
+/** Endpoint for viewport-bounded OSM camera POSITIONS (no feeds). */
+const OSM_CAMERA_ENDPOINT = '/api/osm-cameras';
+/**
+ * Hard ceiling on OSM cameras held in the catalog at once. The catalog also
+ * carries the feed-bearing packs, so this bounds what an hour of panning across
+ * a country can add: past the cap the farthest-out cameras are evicted.
+ */
+const OSM_CAMERA_COHORT_MAX = 120;
+/** Debounce after the camera settles before asking for a box (matches the mapped-installation layer). */
+const OSM_CAMERA_DEBOUNCE_MS = 500;
+/** Client-side ceiling on one box request (the proxy's own budget plus slack). */
+const OSM_CAMERA_REQUEST_TIMEOUT_MS = 25_000;
+/**
+ * Cool-off after a failed box. Without it, a failing upstream turns every
+ * camera settle into another 4-mirror attempt — exactly the pattern that earns
+ * a rate ban, and it cannot help: a mirror that just 502'd will not have
+ * recovered one pan later. The next settle after the cool-off retries normally.
+ */
+const OSM_CAMERA_FAILURE_BACKOFF_MS = 60_000;
+/**
+ * Bounded wait for the ellipsoidal ground priors of a newly merged box. Much
+ * tighter than init's 8 s race: this runs while the operator is looking at the
+ * view, so cameras appear on the prior-less fallback height and
+ * applyLateGroundPriors corrects the geometry when the batch lands.
+ */
+const OSM_CAMERA_PRIOR_WAIT_MS = 1_500;
+/**
+ * Eviction grace, in settle passes and wall time. A camera that leaves the view
+ * lingers instead of being torn down immediately, so panning back a street does
+ * not rebuild its billboard and geometry.
+ */
+const OSM_CAMERA_GRACE_PASSES = 3;
+const OSM_CAMERA_GRACE_MS = 60_000;
+/** Null until the first response tells us; false once the server says it is off. */
+let _osmCameraSourceEnabled = null;
+let _osmCameraTimer = 0;
+let _osmCameraInFlight = false;
+let _osmCameraLastKey = '';
+let _osmCameraGrace = new Map();
+let _osmCameraStatus = 'idle';
+let _osmCameraRetryAfter = 0;
+let _osmCameraSaturated = false;
+let _osmCameraCreditRegistered = false;
 // Ambient card tier state (2026-07-29 design). The card set is rebuilt only
 // on moveEnd/enable/activation (refreshAmbientCards); frame slots are STABLE
 // objects shared with the overlay host so landed frames appear without an
@@ -595,6 +649,16 @@ function safeNumber(value, fallback = NaN) {
  * @param {string} id
  * @returns {number} Heading in degrees [0, 360).
  */
+function hueIndexFromId(id) {
+  const text = String(id || '');
+  let acc = 2166136261 >>> 0; // FNV offset basis
+  for (let i = 0; i < text.length; i++) {
+    acc ^= text.charCodeAt(i);
+    acc = Math.imul(acc, 16777619);
+  }
+  return (acc >>> 0) % 360;
+}
+
 function headingFromId(id) {
   const text = String(id || '');
   let acc = 0;
@@ -3979,6 +4043,344 @@ export function _extractPickedCameraIdForTest(picked) {
 }
 
 /**
+ * Current view rectangle in degrees, or null when it is unusable for a bounded
+ * request (no rectangle, cross-dateline, or wider than the source allows).
+ *
+ * @returns {?{south:number, west:number, north:number, east:number}}
+ */
+function cctvViewportBox() {
+  const rectangle = _viewer?.camera?.computeViewRectangle(_viewer.scene.globe.ellipsoid);
+  if (!rectangle) return null;
+  const south = Cesium.Math.toDegrees(rectangle.south);
+  const north = Cesium.Math.toDegrees(rectangle.north);
+  const west = Cesium.Math.toDegrees(rectangle.west);
+  const east = Cesium.Math.toDegrees(rectangle.east);
+  if (!Number.isFinite(south + north + west + east)) return null;
+  if (east <= west || south >= north) return null;
+  if (north - south > OSM_CAMERA_MAX_BOX_DEG || east - west > OSM_CAMERA_MAX_BOX_DEG) return null;
+  return { south, west, north, east };
+}
+
+/** Great-circle distance (m) from the viewer to a camera, for eviction ranking. */
+function cameraDistanceFromViewer(record) {
+  const position = record?.position;
+  const eye = _viewer?.camera?.positionWC;
+  if (!position || !eye) return Number.POSITIVE_INFINITY;
+  return Cesium.Cartesian3.distance(eye, position);
+}
+
+/**
+ * Merges one viewport's worth of OSM camera positions into the live catalog.
+ *
+ * Only the cameras the operator is actually looking at (plus the proxy's
+ * outward-snapped margin) are ever held: the response is merged, the resulting
+ * OSM cohort is capped at OSM_CAMERA_COHORT_MAX nearest-first, and cameras that
+ * stay out of view are evicted through the same grace planner the ambient cards
+ * use — so panning back a street re-uses records instead of rebuilding them.
+ *
+ * Fails soft in every direction: a disabled server (503 `disabled`) latches the
+ * source off for the session, any other failure leaves the current cohort alone.
+ *
+ * @returns {Promise<void>}
+ */
+async function loadOsmCamerasForViewport() {
+  if (_osmCameraSourceEnabled === false || _osmCameraInFlight || !_enabled || !_viewer || !_billboards) return;
+  // Cooling off after a failed box: don't add load to an upstream that is down.
+  if (Date.now() < _osmCameraRetryAfter) return;
+  const box = cctvViewportBox();
+  if (!box) return;
+  // The proxy answers the OUTWARD-SNAPPED box, so a move that stays inside the
+  // same grid cell would get a byte-identical answer: don't ask for it at all.
+  const boxKey = osmCameraBoxKey(snapOsmCameraBox(box));
+  if (boxKey === _osmCameraLastKey) {
+    evictOsmCameraCohort(box);
+    return;
+  }
+
+  const params = new URLSearchParams({
+    south: box.south.toFixed(5),
+    west: box.west.toFixed(5),
+    north: box.north.toFixed(5),
+    east: box.east.toFixed(5),
+  });
+  _osmCameraInFlight = true;
+  try {
+    // The proxy bounds itself; this is the belt-and-braces client bound so a
+    // wedged request can never pin the in-flight latch for the session.
+    const response = await fetch(`${OSM_CAMERA_ENDPOINT}?${params}`, {
+      signal: AbortSignal.timeout(OSM_CAMERA_REQUEST_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => null);
+      if (response.status === 503 && body?.disabled) {
+        // Opt-in source is off on this server — stop asking for the session.
+        _osmCameraSourceEnabled = false;
+        _osmCameraStatus = 'disabled';
+        return;
+      }
+      _osmCameraStatus = 'unavailable';
+      _osmCameraRetryAfter = Date.now() + OSM_CAMERA_FAILURE_BACKOFF_MS;
+      return;
+    }
+    const payload = await response.json();
+    const rows = Array.isArray(payload?.cameras) ? payload.cameras : [];
+    // Only a SUCCESSFUL box is remembered — a failed one must be retried.
+    _osmCameraLastKey = boxKey;
+    _osmCameraRetryAfter = 0;
+    _osmCameraSourceEnabled = true;
+    _osmCameraStatus = payload?.status === 'stale' ? 'stale' : 'ready';
+    _osmCameraSaturated = !!payload?.saturated;
+
+    // A destroy()/init() cycle may have landed while this was in flight.
+    if (!_viewer || !_billboards) return;
+
+    const fresh = buildCatalogFromSources(rows.filter((row) => !_recordById.has(row?.id)));
+    if (fresh.length) {
+      for (const camera of fresh) prepareCameraForCatalog(camera);
+      // Same bounded race as init: a warm proxy answers in milliseconds, a cold
+      // one loses and applyLateGroundPriors fixes the geometry after the fact.
+      const priorsPromise = resolveGroundPriors(fresh);
+      const priors = await Promise.race([
+        priorsPromise,
+        new Promise((resolve) => setTimeout(() => resolve(null), OSM_CAMERA_PRIOR_WAIT_MS)),
+      ]);
+      if (!_viewer || !_billboards) return;
+      const added = [];
+      for (let i = 0; i < fresh.length; i++) {
+        const camera = fresh[i];
+        if (_recordById.has(camera.id)) continue;
+        added.push(createCameraRecord(camera, {
+          // Hue identity from the id, not catalog position: viewport cameras
+          // arrive in a different order every session, and a positional index
+          // would repaint every neighbour's viewshed as the cohort churns.
+          hueIndex: hueIndexFromId(camera.id),
+          groundPrior: priors?.[i] || null,
+        }));
+      }
+      if (!priors && added.length) {
+        priorsPromise.then((late) => {
+          if (late) applyLateGroundPriors(added, late);
+        }).catch(() => {});
+      }
+      if (added.length && !_osmCameraCreditRegistered) {
+        // ODbL attribution, registered only once the source actually put
+        // cameras on the globe — the always-on DATA_CREDITS list would
+        // otherwise credit data nobody enabled.
+        registerDynamicCredit(_viewer, OSM_CAMERA_CREDIT);
+        _osmCameraCreditRegistered = true;
+      }
+    }
+
+    evictOsmCameraCohort(box);
+    _count = _records.length;
+    refreshHorizonCulling();
+    refreshAmbientCards();
+    notifyListeners();
+  } catch (error) {
+    // Never swallow this silently: an internal fault here would otherwise be
+    // reported to the operator as an upstream outage (it was, during the
+    // 2026-08-26 build — a missing helper read as "Overpass unavailable").
+    console.warn('[Data:CCTV] OSM mapped-camera merge failed:', error?.message || error);
+    _osmCameraStatus = 'unavailable';
+    _osmCameraRetryAfter = Date.now() + OSM_CAMERA_FAILURE_BACKOFF_MS;
+  } finally {
+    _osmCameraInFlight = false;
+  }
+}
+
+/**
+ * Keeps the OSM cohort bounded: cameras inside the current box are selected
+ * nearest-first up to the cap, everything else ages out through the shared
+ * eviction-grace planner. The active camera is never evicted, and neither is a
+ * camera the operator has calibrated (their saved pose is the reason to keep it).
+ *
+ * @param {{south:number, west:number, north:number, east:number}} box - Current view box.
+ */
+function evictOsmCameraCohort(box) {
+  const cohort = _records.filter((record) => record.camera?.sourceKind === OSM_CAMERA_SOURCE_KIND);
+  if (!cohort.length) return;
+
+  const inView = cohort
+    .filter((record) => {
+      const { lat, lon } = record.camera;
+      return lat >= box.south && lat <= box.north && lon >= box.west && lon <= box.east;
+    })
+    .map((record) => ({ record, distance: cameraDistanceFromViewer(record) }))
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, OSM_CAMERA_COHORT_MAX)
+    .map((entry) => entry.record.camera.id);
+
+  const pinned = new Set(cohort
+    .filter((record) => record.camera.id === _activeCameraId || _calibrationById.has(record.camera.id))
+    .map((record) => record.camera.id));
+
+  const plan = applyEvictionGrace({
+    selectedIds: [...new Set([...inView, ...pinned])],
+    builtIds: cohort.map((record) => record.camera.id),
+    graceState: _osmCameraGrace,
+    nowMs: Date.now(),
+    cardLimit: OSM_CAMERA_COHORT_MAX,
+    gracePasses: OSM_CAMERA_GRACE_PASSES,
+    graceMs: OSM_CAMERA_GRACE_MS,
+  });
+  _osmCameraGrace = plan.graceState;
+  for (const id of plan.evictIds) {
+    if (pinned.has(id)) continue;
+    releaseCameraRecord(_recordById.get(id));
+  }
+}
+
+/**
+ * Debounced viewport request, armed on camera settle. Nothing is fetched while
+ * the camera is still moving, and an unchanged view is not re-asked.
+ */
+function scheduleOsmCameraLoad() {
+  if (_osmCameraSourceEnabled === false || !_enabled) return;
+  if (_osmCameraTimer) clearTimeout(_osmCameraTimer);
+  _osmCameraTimer = setTimeout(() => {
+    _osmCameraTimer = 0;
+    loadOsmCamerasForViewport();
+  }, OSM_CAMERA_DEBOUNCE_MS);
+}
+
+/**
+ * Restores saved calibration and derives the effective pose for one camera.
+ *
+ * Split from record creation on purpose: `ensureCameraPose` moves `lat`/`lon`
+ * by the calibration offsets, so it MUST run before the ellipsoidal ground
+ * priors are resolved for those coordinates.
+ *
+ * @param {Object} camera - Catalog camera.
+ * @returns {Object} The same camera, prepared.
+ */
+function prepareCameraForCatalog(camera) {
+  const savedEntry = _calibrationById.get(camera.id);
+  if (savedEntry) {
+    camera.calibration = normalizeCalibration(savedEntry.values);
+    camera.calSource = savedEntry.source;
+  }
+  ensureCameraPose(camera);
+  return camera;
+}
+
+/**
+ * Creates the billboard + record for one prepared camera and registers it in
+ * the live catalog. Shared by init (whole catalog) and the viewport-loaded OSM
+ * cohort (a handful at a time), so both paths produce identical records.
+ *
+ * @param {Object} camera - Camera prepared by prepareCameraForCatalog.
+ * @param {Object} [options]
+ * @param {number} [options.hueIndex] - Viewshed color identity index.
+ * @param {?{ellipsoid:number, source:string}} [options.groundPrior] - Re:Earth prior.
+ * @returns {Object} The created record.
+ */
+function createCameraRecord(camera, { hueIndex = 0, groundPrior = null } = {}) {
+  // Cheap first-pass altitude from the ellipsoidal prior (catalog value only as
+  // the pre-prior fallback) — the staggered geometry queue refines with sampled
+  // tile heights after enable so this path never raycasts the scene.
+  const priorGround = Number.isFinite(groundPrior?.ellipsoid)
+    ? groundPrior.ellipsoid
+    : (Number(camera.groundElevationM) || 0);
+  camera.absoluteHeightM = priorGround + camera.mountHeightM;
+  const position = Cesium.Cartesian3.fromDegrees(camera.lon, camera.lat, camera.absoluteHeightM);
+  const billboard = _billboards.add({
+    id: camera.id,
+    image: CAMERA_ICON,
+    position,
+    color: IDLE_CAMERA_COLOR,
+    width: 24,
+    height: 24,
+    // Field-test fix (2026-07-06): always-on-top. The old finite value
+    // (1800 m) re-engaged the depth test at far zoom, where the COARSE
+    // far-LOD Google-3D mesh sits above the true ground and swallowed
+    // ground-anchored icons ("submerged" pills over SF). Far-side-of-globe
+    // icons are handled by refreshHorizonCulling() (the flights-layer
+    // EllipsoidalOccluder pattern), not by the depth test.
+    disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    scaleByDistance: new Cesium.NearFarScalar(350, 1.25, 4_000_000, 0.42),
+  });
+
+  const record = {
+    camera,
+    position,
+    billboard,
+    coverageEntities: [],
+    projection: null,
+    // Task 5 (height-datum fix): regime-aware ground resolution state.
+    //   groundPrior     — { ellipsoid, source } from the Re:Earth batch
+    //     (null until a late batch lands). The prior applies in EVERY
+    //     regime and is the terrain-globe resolution outright.
+    //   groundResolved  — PER-REGIME one-shot latch (regime key →
+    //     boolean): true once this record's resolution completed for that
+    //     regime; such records are excluded from the completion pass so
+    //     their geometry freezes. Re-armed only on a genuine pose change,
+    //     explicit user select/move, or a surface-regime change — never
+    //     on the 10s timer.
+    //   groundSamples   — PER-REGIME resolved ground (regime key →
+    //     metres): the accepted one-shot scene sample in google-3d, the
+    //     mirrored prior in terrain-globe. Kept across re-arms as the
+    //     "has ever resolved" memory for the B9c mid-stream guard.
+    //   frustumPositions — cached Cartesians for pure recomputes (so
+    //     plane placement never re-derives geometry it already has).
+    groundPrior,
+    groundResolved: {},
+    groundSamples: {},
+    frustumGeometry: null,
+    frustumPositions: null,
+    // §9.1 activation obstruction probe result: effective-range clamp so
+    // the far-cap plane never clips into the tiles. Null = unclamped.
+    // Reset + re-probed on every activation; cleared when the user takes
+    // the range slider (slider overrides the clamp).
+    probeClampRangeM: null,
+    // Viewshed (design §3a/§3b): per-camera color identity + the volume
+    // primitive handle (exists only in viewshed mode for the visible set).
+    viewshedColors: viewshedColors(cameraHue(hueIndex)),
+    viewshedPrimitive: null,
+    viewshedActiveTint: false,
+  };
+  _records.push(record);
+  _recordById.set(camera.id, record);
+  return record;
+}
+
+/**
+ * Tears one record out of the live catalog: scene resources first, then every
+ * id-keyed side table. Used by the viewport cohort's eviction — the layer is
+ * otherwise built once and destroyed whole.
+ *
+ * @param {Object} record - Record to release.
+ */
+function releaseCameraRecord(record) {
+  if (!record) return;
+  const cameraId = record.camera?.id;
+  if (!cameraId || _recordById.get(cameraId) !== record) return;
+  // Never yank the scene out from under an active projection.
+  if (_activeCameraId === cameraId) deactivateActiveCamera();
+
+  if (_viewer && record.coverageEntities?.length) {
+    for (const entity of record.coverageEntities) _viewer.entities.remove(entity);
+    const owned = new Set(record.coverageEntities);
+    _coverageEntities = _coverageEntities.filter((entity) => !owned.has(entity));
+  }
+  record.coverageEntities = [];
+  destroyViewshedVolume(record);
+  if (_billboards && record.billboard && !_billboards.isDestroyed?.()) {
+    _billboards.remove(record.billboard);
+  }
+  record.billboard = null;
+
+  _recordById.delete(cameraId);
+  const index = _records.indexOf(record);
+  if (index >= 0) _records.splice(index, 1);
+  _healthById.delete(cameraId);
+  _cardIds.delete(cameraId);
+  _cardFrameSlots.delete(cameraId);
+  _cardGraceState.delete(cameraId);
+  _osmCameraGrace.delete(cameraId);
+  _count = _records.length;
+}
+
+/**
  * Removes all coverage entities and projection runtimes from the scene.
  */
 function destroyCoverageEntities() {
@@ -4004,6 +4406,16 @@ function clearRuntimeState() {
   // Idempotent — also covers a re-init without a prior destroy().
   teardownAmbientCards();
   clearProjectionOverlay();
+  if (_osmCameraTimer) {
+    clearTimeout(_osmCameraTimer);
+    _osmCameraTimer = 0;
+  }
+  _osmCameraGrace = new Map();
+  _osmCameraLastKey = '';
+  _osmCameraStatus = 'idle';
+  _osmCameraRetryAfter = 0;
+  _osmCameraSaturated = false;
+  _osmCameraCreditRegistered = false;
   _records = [];
   _recordById = new Map();
   _healthById = new Map();
@@ -4231,14 +4643,7 @@ const cctvLayer = {
       catalog.map((camera) => camera.id).sort().map((id, index) => [id, index])
     );
 
-    for (const camera of catalog) {
-      const savedEntry = _calibrationById.get(camera.id);
-      if (savedEntry) {
-        camera.calibration = normalizeCalibration(savedEntry.values);
-        camera.calSource = savedEntry.source;
-      }
-      ensureCameraPose(camera);
-    }
+    for (const camera of catalog) prepareCameraForCatalog(camera);
 
     // Task 5 (height-datum fix): batch ALL camera coords through the Re:Earth
     // ellipsoidal ground-prior resolver (network-cached — NOT a scene query;
@@ -4255,76 +4660,13 @@ const cctvLayer = {
 
     for (let i = 0; i < catalog.length; i++) {
       const camera = catalog[i];
-      // Ellipsoidal ground prior (or null while the batch is still in
-      // flight). Geometry falls back to the catalog value only until the
-      // batch lands.
-      const groundPrior = priors?.[i] || null;
-      // Cheap first-pass altitude from the ellipsoidal prior (catalog value
-      // only as the pre-prior fallback) — the staggered geometry queue
-      // refines with sampled tile heights after enable so the init path
-      // never raycasts the scene once per camera.
-      const priorGround = Number.isFinite(groundPrior?.ellipsoid)
-        ? groundPrior.ellipsoid
-        : (Number(camera.groundElevationM) || 0);
-      camera.absoluteHeightM = priorGround + camera.mountHeightM;
-      const position = Cesium.Cartesian3.fromDegrees(camera.lon, camera.lat, camera.absoluteHeightM);
-      const billboard = _billboards.add({
-        id: camera.id,
-        image: CAMERA_ICON,
-        position,
-        color: IDLE_CAMERA_COLOR,
-        width: 24,
-        height: 24,
-        // Field-test fix (2026-07-06): always-on-top. The old finite value
-        // (1800 m) re-engaged the depth test at far zoom, where the COARSE
-        // far-LOD Google-3D mesh sits above the true ground and swallowed
-        // ground-anchored icons ("submerged" pills over SF). Far-side-of-globe
-        // icons are handled by refreshHorizonCulling() (the flights-layer
-        // EllipsoidalOccluder pattern), not by the depth test.
-        disableDepthTestDistance: Number.POSITIVE_INFINITY,
-        scaleByDistance: new Cesium.NearFarScalar(350, 1.25, 4_000_000, 0.42),
+      createCameraRecord(camera, {
+        hueIndex: hueIndexById.get(camera.id) ?? 0,
+        // Ellipsoidal ground prior (or null while the batch is still in
+        // flight). Geometry falls back to the catalog value only until the
+        // batch lands.
+        groundPrior: priors?.[i] || null,
       });
-
-      const record = {
-        camera,
-        position,
-        billboard,
-        coverageEntities: [],
-        projection: null,
-        // Task 5 (height-datum fix): regime-aware ground resolution state.
-        //   groundPrior     — { ellipsoid, source } from the Re:Earth batch
-        //     (null until a late batch lands). The prior applies in EVERY
-        //     regime and is the terrain-globe resolution outright.
-        //   groundResolved  — PER-REGIME one-shot latch (regime key →
-        //     boolean): true once this record's resolution completed for that
-        //     regime; such records are excluded from the completion pass so
-        //     their geometry freezes. Re-armed only on a genuine pose change,
-        //     explicit user select/move, or a surface-regime change — never
-        //     on the 10s timer.
-        //   groundSamples   — PER-REGIME resolved ground (regime key →
-        //     metres): the accepted one-shot scene sample in google-3d, the
-        //     mirrored prior in terrain-globe. Kept across re-arms as the
-        //     "has ever resolved" memory for the B9c mid-stream guard.
-        //   frustumPositions — cached Cartesians for pure recomputes (so
-        //     plane placement never re-derives geometry it already has).
-        groundPrior,
-        groundResolved: {},
-        groundSamples: {},
-        frustumGeometry: null,
-        frustumPositions: null,
-        // §9.1 activation obstruction probe result: effective-range clamp so
-        // the far-cap plane never clips into the tiles. Null = unclamped.
-        // Reset + re-probed on every activation; cleared when the user takes
-        // the range slider (slider overrides the clamp).
-        probeClampRangeM: null,
-        // Viewshed (design §3a/§3b): per-camera color identity + the volume
-        // primitive handle (exists only in viewshed mode for the visible set).
-        viewshedColors: viewshedColors(cameraHue(hueIndexById.get(camera.id) ?? 0)),
-        viewshedPrimitive: null,
-        viewshedActiveTint: false,
-      };
-      _records.push(record);
-      _recordById.set(camera.id, record);
     }
 
     _count = _records.length;
@@ -4366,6 +4708,9 @@ const cctvLayer = {
         _cameraMoving = false;
         refreshHorizonCulling();
         refreshAmbientCards();
+        // Viewport-loaded OSM camera positions ride the same settle event:
+        // debounced, never per frame, and a no-op while the layer is disabled.
+        scheduleOsmCameraLoad();
       };
       _viewer.camera.moveEnd.addEventListener(_horizonCullListener);
     }
@@ -4436,6 +4781,9 @@ const cctvLayer = {
   enable() {
     _enabled = true;
     _lastUpdate = Date.now();
+    // Fill the view the operator is already looking at; every later refresh
+    // rides camera settle.
+    scheduleOsmCameraLoad();
     // Pick-ownership (H2): camera billboards use the camera id directly;
     // coverage polyline entities use `cctv-<cameraId>-<role>` entity ids.
     registerPickOwner('cctv', (pickedId) => {
@@ -4739,6 +5087,10 @@ const cctvLayer = {
    * @returns {{ count: number, lastUpdate: number|null, error: string|null, loading: boolean, loadingLoaded: number, loadingTotal: number }}
    */
   getStats() {
+    const osmCount = _records.reduce(
+      (total, record) => total + (record.camera?.sourceKind === OSM_CAMERA_SOURCE_KIND ? 1 : 0),
+      0,
+    );
     return {
       count: _count,
       lastUpdate: _lastUpdate,
@@ -4746,6 +5098,12 @@ const cctvLayer = {
       loading: _geoLoading,
       loadingLoaded: Math.min(_geoLoadDone, _geoLoadTotal),
       loadingTotal: _geoLoadTotal,
+      // Viewport-loaded OSM mapped positions, reported separately from the
+      // feed-bearing catalog: `saturated` means this view holds more mapped
+      // cameras than the proxy returned, so the count is a floor, not a total.
+      osmMappedCount: osmCount,
+      osmMappedStatus: _osmCameraStatus,
+      osmMappedSaturated: _osmCameraSaturated,
     };
   },
 

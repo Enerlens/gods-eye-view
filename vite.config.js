@@ -14,6 +14,7 @@
  *   9. TomTom   — live traffic-flow vector tiles (budget-governed, keyless-degradable)
  *  10. NASA FIRMS — live active-fire detections (VIIRS ×3, trailing 24 h)
  *  11. Military-installation context — bounded, cached OpenStreetMap features
+ *  11b. OSM mapped cameras — viewport-bounded, cached camera positions (opt-in)
  *  12. Regional briefing — cached place, weather, and recent location-matched news
  *  13. Weather effects — camera-local Open-Meteo observations without news/geocoding overhead
  *  14. Rocket launches — recent Launch Library 2 mission metadata
@@ -33,6 +34,15 @@ import { Readable } from 'node:stream';
 import https from 'node:https';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { directionToHeading } from './src/data/directionText.js';
+import {
+  osmCameraBboxQuery,
+  osmCameraBoxKey,
+  osmCameraFromElement,
+  snapOsmCameraBox,
+  validOsmCameraBox,
+  OSM_CAMERA_MAX_BOX_DEG,
+  OSM_CAMERA_QUERY_CAP,
+} from './src/data/osmCameras.js';
 import {
   isValidTileCoord as isValidTomTomTile,
   utcDayKey as tomtomUtcDayKey,
@@ -4139,6 +4149,301 @@ async function loadTflSourcesFromOpenData() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// OSM mapped cameras — opt-in, viewport-bounded OpenStreetMap camera positions
+// ---------------------------------------------------------------------------
+/** Memory-cache TTL for one snapped viewport box. */
+const OSM_CAMERA_CACHE_MS = 5 * 60_000;
+/** In-memory cache ceiling (boxes), evicted oldest-first. */
+const OSM_CAMERA_MAX_CACHE = 120;
+/** Disk-cache directory for mapped camera boxes. */
+const OSM_CAMERA_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'osm-cameras');
+/**
+ * Disk TTL (7 days). Mapped camera nodes change on a survey timescale, not a
+ * session one, and the in-memory tier dies with the dev server — the same
+ * reasoning the mapped-installation proxy applies, so re-visiting a city next
+ * week costs the public Overpass mirrors nothing.
+ */
+const OSM_CAMERA_DISK_TTL_MS = 7 * 86_400_000;
+/** Bump when the cached row shape changes so old entries are ignored, not misread. */
+const OSM_CAMERA_CACHE_VERSION = 'v1';
+/** Read cap for one box probe (400 tagged nodes is far under this). */
+const OSM_CAMERA_MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
+/**
+ * Wall-clock budget for one box refresh, shared by all mirror attempts. Sized
+ * so the documented 5-20 s cold latency of the community fallback mirror still
+ * fits after the faster mirrors have had their turn.
+ */
+const OSM_CAMERA_REFRESH_BUDGET_MS = 20_000;
+/**
+ * Floor on one mirror attempt's share of that budget.
+ *
+ * Field-observed 2026-08-26, twice. First: with a whole-budget timeout, one
+ * mirror that accepts the connection and then stalls consumed the entire
+ * window, and the healthy fallback below it never got a turn — while the
+ * refused mirrors above it had failed in milliseconds. Each attempt now gets a
+ * fair share of what is LEFT, so fast failures hand their unused time forward.
+ * Then: an even split across four mirrors gave the PRIMARY one only 5 s and cut
+ * it off mid-answer, while the two that were going to fail returned 502 in
+ * about a second. This floor is sized to a realistic Overpass latency for a
+ * street-scale box (measured 1-3 s warm, ~8 s under load), so a mirror that is
+ * genuinely working is not aborted to preserve a turn for one that is not. The
+ * overall deadline still caps the request.
+ */
+const OSM_CAMERA_MIN_ATTEMPT_MS = 8_000;
+const _osmCameraCache = new Map();
+const _osmCameraInFlight = new Map();
+const _osmCameraRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 40, globalMax: 120 });
+
+/** Whether the opt-in OSM mapped-camera source is enabled for this server. */
+function osmCamerasEnabled() {
+  return String(process.env.CCTV_OSM_CAMERAS_ENABLED || '').trim() === '1';
+}
+
+/** Cache key -> stable disk-cache file path. */
+function osmCameraDiskPath(cacheKey) {
+  return path.join(OSM_CAMERA_DISK_DIR, `${createHash('sha1').update(cacheKey).digest('hex')}.json`);
+}
+
+/**
+ * Read a disk-cached box at ANY age. Freshness is the caller's decision: an
+ * expired box is still the right answer while Overpass is down (serve-stale
+ * beats an empty viewport).
+ *
+ * @param {string} cacheKey
+ * @returns {Promise<?{cachedAt:number, payload:object}>}
+ */
+async function readOsmCameraDisk(cacheKey) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(osmCameraDiskPath(cacheKey), 'utf8'));
+    if (!Number.isFinite(entry?.cachedAt) || !Array.isArray(entry?.payload?.cameras)) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist one box ATOMICALLY (temp sibling + rename), so a crash mid-write
+ * leaves the previous entry — and serve-stale — intact.
+ *
+ * @param {string} cacheKey
+ * @param {{cachedAt:number, payload:object}} entry
+ * @returns {Promise<boolean>}
+ */
+async function writeOsmCameraDisk(cacheKey, entry) {
+  const target = osmCameraDiskPath(cacheKey);
+  const temp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    await fsp.mkdir(OSM_CAMERA_DISK_DIR, { recursive: true });
+    await fsp.writeFile(temp, JSON.stringify(entry));
+    await fsp.rename(temp, target);
+    return true;
+  } catch (error) {
+    console.warn('[OSM Cameras] disk cache write failed:', error?.message || error);
+    await fsp.rm(temp, { force: true }).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * One bounded Overpass probe: try mirrors in order until one answers or the
+ * deadline passes, ABORTING each attempt rather than letting a slow or wedged
+ * mirror hold the request open. Rate-limited, runtime-error, and non-JSON
+ * (HTML/XML error page) responses fall through to the next mirror.
+ *
+ * @param {string} ql - Overpass QL for one box.
+ * @param {number} deadline - Epoch-ms after which no further attempt starts.
+ * @returns {Promise<Array<object>>} Raw Overpass elements.
+ */
+async function fetchOsmCameraElements(ql, deadline) {
+  // Per-mirror outcomes, aggregated into the thrown error. Keeping only the
+  // LAST failure made an outage unreadable: "aborted due to timeout" said
+  // nothing about whether the mirrors above it were rate-limited, refused, or
+  // simply never tried because the budget ran out.
+  const outcomes = [];
+  for (let index = 0; index < OVERPASS_UPSTREAMS.length; index++) {
+    const endpoint = OVERPASS_UPSTREAMS[index];
+    const host = new URL(endpoint).host;
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    const attemptMs = Math.max(
+      OSM_CAMERA_MIN_ATTEMPT_MS,
+      Math.floor(remainingMs / (OVERPASS_UPSTREAMS.length - index)),
+    );
+    try {
+      const upstream = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'gods-eye-view-cctv-proxy/1.0',
+        },
+        body: `data=${encodeURIComponent(ql)}`,
+        signal: AbortSignal.timeout(Math.min(remainingMs, attemptMs)),
+      });
+      const body = await readResponseTextCapped(upstream, OSM_CAMERA_MAX_RESPONSE_BYTES);
+      const rateLimited = overpassLooksRateLimited(body);
+      if (upstream.status >= 400 || rateLimited || overpassLooksRuntimeError(body)) {
+        const why = rateLimited ? 'rate limited' : `HTTP ${upstream.status}`;
+        outcomes.push(`${host}: ${why}`);
+        continue;
+      }
+      const elements = JSON.parse(body)?.elements;
+      if (!Array.isArray(elements)) {
+        outcomes.push(`${host}: no element list`);
+        continue;
+      }
+      return elements;
+    } catch (error) {
+      const reason = /timeout|abort/i.test(String(error?.message)) ? `timed out after ${attemptMs} ms` : (error?.message || 'failed');
+      outcomes.push(`${host}: ${reason}`);
+    }
+  }
+  const skipped = OVERPASS_UPSTREAMS.length - outcomes.length;
+  throw new Error(
+    `no Overpass mirror answered inside the request budget — ${outcomes.join('; ')}`
+    + (skipped > 0 ? `; ${skipped} not tried (budget spent)` : ''),
+  );
+}
+
+function trimOsmCameraCache() {
+  while (_osmCameraCache.size > OSM_CAMERA_MAX_CACHE) {
+    const oldest = _osmCameraCache.keys().next().value;
+    if (oldest === undefined) break;
+    _osmCameraCache.delete(oldest);
+  }
+}
+
+/**
+ * Vite plugin: viewport-bounded OpenStreetMap mapped-camera proxy.
+ *
+ *   GET /api/osm-cameras?south&west&north&east — camera POSITIONS in that box
+ *
+ * OPT-IN (`CCTV_OSM_CAMERAS_ENABLED=1`) and off by default, because OSM maps
+ * camera positions and never their imagery: every row is served with no
+ * upstream URL, so each frame request falls through to a billable Street View
+ * still or the synthetic `NO UPSTREAM CONFIGURED` placeholder.
+ *
+ * Like the mapped-installation proxy, this deliberately does not expose
+ * arbitrary Overpass QL to the browser: it answers one allow-listed tag query
+ * inside a box no wider than OSM_CAMERA_MAX_BOX_DEG, snapped OUTWARD onto a
+ * shared grid so neighbouring viewports share one cache entry (and a cached
+ * answer always covers more than was asked for). Disabled installs answer 503
+ * with `disabled: true` so the client stops asking instead of retrying.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function osmCamerasProxy() {
+  async function refresh(box, key) {
+    const ql = osmCameraBboxQuery(box, { elementCap: OSM_CAMERA_QUERY_CAP });
+    const elements = await fetchOsmCameraElements(ql, Date.now() + OSM_CAMERA_REFRESH_BUDGET_MS);
+    const cameras = [];
+    for (const element of elements) {
+      const camera = osmCameraFromElement(element, { fallbackHeading: fallbackHeadingFromId });
+      if (camera) cameras.push(camera);
+    }
+    const payload = {
+      cameras,
+      // Honest truncation flag: Overpass cut the result, so the box holds more
+      // cameras than were served. The client shows the count it actually has.
+      saturated: elements.length >= OSM_CAMERA_QUERY_CAP,
+      elementCap: OSM_CAMERA_QUERY_CAP,
+      retrievedAt: new Date().toISOString(),
+      status: 'ready',
+    };
+    const entry = { cachedAt: Date.now(), payload };
+    _osmCameraCache.set(key, entry);
+    trimOsmCameraCache();
+    writeOsmCameraDisk(key, entry);
+    return payload;
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/osm-cameras', async (req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        return;
+      }
+      if (!osmCamerasEnabled()) {
+        res.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: 'OSM mapped cameras are disabled', disabled: true }));
+        return;
+      }
+      if (!_osmCameraRateLimiter(clientKey(req))) {
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '5' });
+        res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+        return;
+      }
+      const url = new URL(req.url, 'http://localhost');
+      const requested = validOsmCameraBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      });
+      if (!requested) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `A non-dateline bbox no larger than ${OSM_CAMERA_MAX_BOX_DEG} degrees is required` }));
+        return;
+      }
+      // Query the SNAPPED box, not the raw viewport: neighbouring views share
+      // one cache entry, and an outward snap always covers what was asked for.
+      const box = snapOsmCameraBox(requested);
+      const key = `${OSM_CAMERA_CACHE_VERSION}|${osmCameraBoxKey(box)}`;
+      const now = Date.now();
+      const cached = _osmCameraCache.get(key);
+      if (cached && now - cached.cachedAt <= OSM_CAMERA_CACHE_MS) {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', 'X-OSM-Cameras': 'HIT' });
+        res.end(JSON.stringify({ ...cached.payload, status: 'cached' }));
+        return;
+      }
+      if (!_osmCameraInFlight.has(key)) {
+        const disk = await readOsmCameraDisk(key);
+        if (disk && now - disk.cachedAt <= OSM_CAMERA_DISK_TTL_MS) {
+          _osmCameraCache.set(key, disk);
+          trimOsmCameraCache();
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', 'X-OSM-Cameras': 'DISK' });
+          res.end(JSON.stringify({ ...disk.payload, status: 'cached' }));
+          return;
+        }
+      }
+      const request = coalesceProxyRequest(_osmCameraInFlight, key, () => refresh(box, key));
+      try {
+        const payload = await request.promise;
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=60',
+          'X-OSM-Cameras': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+        res.end(JSON.stringify(payload));
+      } catch (error) {
+        // Overpass is down: last-good positions at ANY age beat an empty
+        // viewport (the same serve-stale rule the Overpass proxy applies).
+        const stale = await readOsmCameraDisk(key);
+        if (stale) {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-OSM-Cameras': 'STALE-DISK' });
+          res.end(JSON.stringify({ ...stale.payload, status: 'stale' }));
+          return;
+        }
+        console.warn('[OSM Cameras] box unavailable:', error?.message || error);
+        res.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: 'Mapped camera positions are temporarily unavailable' }));
+      }
+    });
+  }
+
+  return {
+    name: 'osm-cameras-proxy',
+    configureServer(server) {
+      install(server.middlewares);
+    },
+    configurePreviewServer(server) {
+      install(server.middlewares);
+    },
+  };
+}
+
 /**
  * Hand-derived compass headings for the Grand Lyon cameras, keyed by
  * maintenance code. Degrees clockwise from true north.
@@ -4486,6 +4791,10 @@ async function refreshCctvSources() {
     fromTfl = tflResult.status === 'fulfilled' ? tflResult.value : [];
     fromLyon = lyonResult.status === 'fulfilled' ? lyonResult.value : [];
   }
+
+  // OSM mapped cameras are deliberately NOT in this catalog: they carry no
+  // frames, and they are loaded per viewport through /api/osm-cameras and merged
+  // into the live layer, so this stays the set of packs that do carry frames.
   // Live sources first so file/env overrides win on duplicate IDs (Map last-write).
   const merged = [...fromAustin, ...fromCaltrans, ...fromTfl, ...fromLyon, ...fromFile, ...fromEnv];
 
@@ -7747,6 +8056,7 @@ export default defineConfig(({ mode }) => {
       adsbdbProxy(),
       overpassProxy(),
       militaryInstallationsProxy(),
+      osmCamerasProxy(),
       regionalBriefProxy(),
       weatherEffectsProxy(),
       cctvProxy(),

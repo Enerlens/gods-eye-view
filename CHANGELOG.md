@@ -7,6 +7,15 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- Added an opt-in **OpenStreetMap mapped-camera** source
+  (`CCTV_OSM_CAMERAS_ENABLED=1`): publicly mapped surveillance-camera positions
+  are loaded for the viewport you are looking at — plus a snapped margin, so
+  panning re-uses the cached answer — and merged into the CCTV layer, anywhere
+  in the world OSM has them. OSM maps where a camera is, never what it sees, so
+  these cameras carry no feed and show a labeled Street View or
+  `NO UPSTREAM CONFIGURED` frame, with tag-derived poses (bearing, tilt, mount
+  height) marked `RAW PRIOR` and © OpenStreetMap contributors (ODbL)
+  attribution registered the moment positions appear on the globe.
 - Added the Métropole de Lyon "Caméras Web Criter" pack to the CCTV layer: the
   city's public traffic cameras, keyless, with their frames served live from the
   Grand Lyon open-data host. Cameras whose frames stop refreshing drop out of the
