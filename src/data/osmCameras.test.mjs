@@ -122,10 +122,17 @@ test('pose optics and mount height come from tags, with typed priors', () => {
   assert.equal(dome.fovDeg, 90);
   const panning = osmCameraPose({ 'camera:type': 'panning' });
   assert.ok(panning.rangeM >= 220, 'range never drops under the client range floor');
+  // Literal values, not a comparison against the implementation's own output:
+  // an untyped camera must land on the fixed-camera prior, and that prior must
+  // stay at the documented 48 deg / 220 m.
+  assert.deepEqual(
+    { fovDeg: osmCameraPose({ 'camera:type': 'fixed' }).fovDeg, rangeM: osmCameraPose({ 'camera:type': 'fixed' }).rangeM },
+    { fovDeg: 48, rangeM: 220 },
+  );
   const untyped = osmCameraPose({});
   assert.deepEqual(
     { fovDeg: untyped.fovDeg, rangeM: untyped.rangeM },
-    { fovDeg: osmCameraPose({ 'camera:type': 'fixed' }).fovDeg, rangeM: osmCameraPose({ 'camera:type': 'fixed' }).rangeM },
+    { fovDeg: 48, rangeM: 220 },
     'an untyped camera uses the fixed-camera prior',
   );
 
