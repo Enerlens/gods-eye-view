@@ -6205,6 +6205,141 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   flex-shrink: 0;
 }
 
+/* The preview is a control once a frame has settled: it opens the
+   full-resolution viewer. Cardless/empty state stays inert. */
+.cctv-frame-wrap.has-frame {
+  cursor: zoom-in;
+}
+
+.cctv-frame-wrap:focus-visible {
+  outline: 1px solid rgba(120, 232, 255, 0.85);
+  outline-offset: 2px;
+}
+
+.cctv-frame-expand-hint {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(120, 232, 255, 0.34);
+  background: rgba(4, 10, 15, 0.72);
+  color: #9cefff;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.14em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.cctv-frame-wrap.has-frame:hover .cctv-frame-expand-hint,
+.cctv-frame-wrap.has-frame:focus-visible .cctv-frame-expand-hint {
+  opacity: 1;
+}
+
+/* ── CCTV full-resolution viewer ──────────────────────────────────────────
+   Sits above every panel (95) and below the clean-view exit (300). The
+   backdrop is deliberately OPAQUE, not translucent: with no globe showing
+   through there is no Google Maps content to attribute while it is open, so
+   the on-globe credit line's keep-out rules are untouched by this overlay. */
+.cctv-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  background: #02050a;
+}
+
+.cctv-lightbox[hidden] {
+  display: none;
+}
+
+.cctv-lightbox-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(120, 232, 255, 0.16);
+  background: linear-gradient(180deg, rgba(9, 17, 24, 0.96), rgba(4, 8, 12, 0.96));
+}
+
+.cctv-lightbox-title {
+  color: #d8ffff;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cctv-lightbox-meta {
+  flex: 1;
+  min-width: 0;
+  color: #7fd4e8;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cctv-lightbox-close {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 232, 255, 0.34);
+  background: rgba(6, 14, 20, 0.9);
+  color: #9cefff;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  cursor: pointer;
+}
+
+.cctv-lightbox-close:hover,
+.cctv-lightbox-close:focus-visible {
+  border-color: rgba(120, 232, 255, 0.7);
+  background: rgba(12, 28, 38, 0.95);
+}
+
+.cctv-lightbox-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  cursor: zoom-out;
+}
+
+/* The panel's own #cctv-frame is moved in here, so these rules must override
+   the panel geometry it carries (fixed 16:9 box, width:100%, height:auto).
+   That override needs an ID: `.cctv-lightbox-stage > img` is specificity
+   (0,1,1) and silently LOST to `#cctv-frame` at (1,0,0), which left every
+   enlarged frame boxed at 16:9 — a 1920x1440 camera was letterboxed inside a
+   ratio it does not have. Selecting through the stage's own id makes this
+   (1,0,1), which wins.
+
+   object-fit: contain on a 100%/100% box then scales the frame to the stage in
+   BOTH directions while keeping its real aspect. A 300x200 camera is upscaled
+   and soft — which is why the bar always prints the native pixel size beside
+   it, rather than letting a stretched frame imply more detail than the
+   publisher sent. */
+#cctv-lightbox-stage > img {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  aspect-ratio: auto;
+  object-fit: contain;
+  cursor: default;
+}
+
 /* Lightweight loading shimmer while the active frame is fetching */
 .cctv-frame-wrap::after {
   content: '';

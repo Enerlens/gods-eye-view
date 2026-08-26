@@ -2348,6 +2348,12 @@ export class StyleManager {
     this._cctvFrameWrap = document.getElementById('cctv-frame-wrap');
     this._cctvFrameRequestToken = 0;
     this._cctvFramePreloader = null;
+    this._cctvLightbox = document.getElementById('cctv-lightbox');
+    this._cctvLightboxStage = document.getElementById('cctv-lightbox-stage');
+    this._cctvLightboxTitle = document.getElementById('cctv-lightbox-title');
+    this._cctvLightboxMeta = document.getElementById('cctv-lightbox-meta');
+    this._cctvLightboxCloseBtn = document.getElementById('cctv-lightbox-close');
+    this._cctvLightboxKeyHandler = null;
     this._cctvSourceBadge = document.getElementById('cctv-source-badge');
     this._cctvMeta = document.getElementById('cctv-meta');
     this._cctvSummary = document.getElementById('cctv-summary');
@@ -4135,11 +4141,23 @@ export class StyleManager {
       try { return active.matches(':focus-visible'); } catch { return true; }
     };
 
+    /**
+     * A satellite is a full-screen surface opened FROM this panel that lives
+     * outside its DOM — today, the CCTV full-resolution viewer. It necessarily
+     * takes focus and covers the pointer, which reads to the auto-disclosure as
+     * "the user left the panel". Collapsing then means closing the viewer
+     * reveals a collapsed panel and a preview that has lost its layout.
+     */
+    const satelliteOpen = () => Boolean(
+      document.querySelector(`[data-panel-satellite="${panelId}"]:not([hidden])`)
+    );
+
     const scheduleClose = () => {
       clearClose();
       closeTimer = window.setTimeout(() => {
         closeTimer = null;
         if (panelEl.matches(':hover') || keyboardFocusInside()) return;
+        if (satelliteOpen()) return;
         if (panelEl.classList.contains('dock-pinned')) return;
         if (panelEl.classList.contains('collapsed')) return;
         this.setPanelCollapsed(panelId, true);
@@ -6111,6 +6129,8 @@ export class StyleManager {
   _initCctvPanel() {
     if (!this._cctvPanel) return;
 
+    this._initCctvLightbox();
+
     this._cctvEnableBtn?.addEventListener('click', async () => {
       await this._toggleCctvEnabled();
     });
@@ -6222,6 +6242,127 @@ export class StyleManager {
   }
 
   /**
+   * Wires the full-resolution viewer.
+   *
+   * The panel preview is capped at the 360px right-rail width, while most
+   * public cameras in the catalog publish 1920x1080 — the thumbnail throws away
+   * roughly five sixths of the width the publisher actually sent. Clicking it
+   * (or pressing Enter/Space on it) MOVES that decoded element into the
+   * full-screen stage and back again on close, so enlarging costs no network at
+   * all and the frame keeps refreshing on the camera's own cadence. Pointing a
+   * second <img> at the same URL would refetch: /api/cctv/frame is no-store.
+   *
+   * @returns {void}
+   */
+  _initCctvLightbox() {
+    if (!this._cctvLightbox || !this._cctvFrameWrap) return;
+
+    const open = () => this._openCctvLightbox();
+    this._cctvFrameWrap.addEventListener('click', open);
+    this._cctvFrameWrap.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+      event.preventDefault();
+      open();
+    });
+
+    // The relocated frame keeps decoding new refreshes while it is enlarged, so
+    // the caption re-reads its size on every settle.
+    this._cctvFrame?.addEventListener('load', () => this._syncCctvLightboxCaption());
+    this._cctvLightboxCloseBtn?.addEventListener('click', () => this._closeCctvLightbox());
+    // Clicking the empty stage around the frame dismisses; clicking the frame
+    // itself does not, so a mis-aimed click never closes what you came to read.
+    this._cctvLightboxStage?.addEventListener('click', (event) => {
+      if (event.target === this._cctvFrame) return;
+      this._closeCctvLightbox();
+    });
+
+    // Capture phase: while the viewer is up it is modal, so the global
+    // single-key hotkeys (style digits, H for HUD, O for orbit …) must not fire
+    // against a globe nobody can see. Tab still reaches the browser so focus
+    // can cycle between the close button and the dialog.
+    this._cctvLightboxKeyHandler = (event) => {
+      if (this._cctvLightbox?.hidden) return;
+      if (event.key === 'Tab') return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        this._closeCctvLightbox();
+      }
+      event.stopPropagation();
+    };
+    document.addEventListener('keydown', this._cctvLightboxKeyHandler, true);
+  }
+
+  /**
+   * Opens the full-resolution viewer on the frame currently in the preview.
+   * A preview with no settled frame is inert — there is nothing to enlarge.
+   * @returns {void}
+   */
+  _openCctvLightbox() {
+    if (!this._cctvLightbox || !this._cctvLightboxStage || !this._cctvFrame) return;
+    if (!this._cctvFrameWrap?.classList.contains('has-frame')) return;
+
+    this._cctvLightboxReturnFocus = document.activeElement;
+    // Relocate the decoded element rather than pointing a second <img> at the
+    // same URL: /api/cctv/frame is Cache-Control: no-store, so a second element
+    // means a second upstream fetch per refresh. Moving it costs no network,
+    // no memory, and cannot drift out of sync with the panel.
+    this._cctvLightboxStage.appendChild(this._cctvFrame);
+    this._cctvLightbox.hidden = false;
+    this._syncCctvLightboxCaption();
+    this._cctvLightboxCloseBtn?.focus?.({ preventScroll: true });
+  }
+
+  /**
+   * Closes the viewer and hands focus back to whatever opened it.
+   * @returns {void}
+   */
+  _closeCctvLightbox() {
+    if (!this._cctvLightbox || this._cctvLightbox.hidden) return;
+    this._cctvLightbox.hidden = true;
+    // Put the frame back at the top of the preview wrap, ahead of the EXPAND
+    // hint, so the panel is exactly as it was before the viewer opened.
+    if (this._cctvFrame && this._cctvFrameWrap) {
+      this._cctvFrameWrap.insertBefore(this._cctvFrame, this._cctvFrameWrap.firstChild);
+    }
+    const target = this._cctvLightboxReturnFocus;
+    this._cctvLightboxReturnFocus = null;
+    if (target && typeof target.focus === 'function' && document.contains(target)) {
+      target.focus({ preventScroll: true });
+    } else {
+      this._cctvFrameWrap?.focus?.({ preventScroll: true });
+    }
+  }
+
+  /**
+   * Labels the viewer with the camera and the frame's TRUE pixel size.
+   *
+   * The stage scales the frame in both directions, so a 320x240 camera fills
+   * the screen just as a 1920x1080 one does. Printing the native size is what
+   * keeps an upscaled, soft frame from implying detail the publisher never
+   * sent — the same source-honesty rule the panel badges follow.
+   *
+   * @returns {void}
+   */
+  _syncCctvLightboxCaption() {
+    if (!this._cctvLightbox || this._cctvLightbox.hidden) return;
+    const camera = this._cctvState?.activeCamera || null;
+    if (this._cctvLightboxTitle) {
+      this._cctvLightboxTitle.textContent = camera?.name || 'CCTV';
+    }
+    if (!this._cctvLightboxMeta) return;
+
+    const img = this._cctvFrame;
+    const w = img?.naturalWidth || 0;
+    const h = img?.naturalHeight || 0;
+    const parts = [];
+    if (camera?.city) parts.push(camera.city);
+    if (camera?.provider) parts.push(camera.provider);
+    parts.push(w && h ? `${w}x${h}` : 'RESOLVING');
+    if (camera?.sourceMessage) parts.push(camera.sourceMessage);
+    this._cctvLightboxMeta.textContent = parts.join(' \u00b7 ');
+  }
+
+  /**
    * Clears the preview and invalidates any in-flight preload.
    * @returns {void}
    */
@@ -6237,6 +6378,7 @@ export class StyleManager {
       this._cctvFrame.dataset.error = '';
     }
     this._cctvFrameWrap?.classList.remove('loading', 'has-frame');
+    this._closeCctvLightbox();
   }
 
   /**
@@ -6316,6 +6458,10 @@ export class StyleManager {
     this._cctvFrame.src = src;
     this._cctvFrame.classList.add('active');
     this._cctvFrameWrap?.classList.add('has-frame');
+    // When the viewer is open this element IS the enlarged frame (it was moved
+    // there), so a settle updates both surfaces at once — one fetch, one
+    // cadence, no chance of the two showing different pictures.
+    this._syncCctvLightboxCaption();
     syncBadge();
   }
 
