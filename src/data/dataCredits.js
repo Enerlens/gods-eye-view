@@ -136,7 +136,13 @@ export const DATA_CREDITS = [
   },
   {
     key: 'gbfs',
-    html: 'Bikeshare availability: GBFS operator feeds (e.g. Austin BCycle)',
+    html:
+      'Bikeshare availability: GBFS operator feeds (e.g. Austin BCycle). ' +
+      'France — Vélib\' Métropole (Smovengo / Syndicat Autolib\' Vélib\' Métropole, ' +
+      '<a href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">ODbL</a>); ' +
+      'Vélo\'v and vélôToulouse (JCDecaux, ' +
+      '<a href="https://developer.jcdecaux.com/files/Open-Licence-fr.pdf" target="_blank" rel="noopener">Licence Ouverte</a>); ' +
+      'Le Vélo par TBM (Bordeaux Métropole, Licence Ouverte)',
   },
   {
     key: 'radio-browser',

@@ -389,6 +389,52 @@ const RAW_GBFS_CITY_REGISTRY = [
     centerLon: -119.6982,
     systemId: 'bcycle_santabarbara',
   }),
+  // --- France ---
+  // GBFS 2.x endpoints are preferred wherever an operator serves both, since
+  // the 3.0 payload shape differs (localized name arrays, num_vehicles_available).
+  // Bordeaux publishes 3.0 only; the parsers above read both shapes.
+  {
+    id: 'paris-velib',
+    city: 'Paris, FR',
+    centerLat: 48.8566,
+    centerLon: 2.3522,
+    loadRadiusKm: 90,
+    stationInformationUrl: 'https://velib-metropole-opendata.smovengo.cloud/opendata/Velib_Metropole/station_information.json',
+    stationStatusUrl: 'https://velib-metropole-opendata.smovengo.cloud/opendata/Velib_Metropole/station_status.json',
+    provider: "Vélib' Métropole",
+  },
+  {
+    id: 'lyon-velov',
+    city: 'Lyon, FR',
+    centerLat: 45.7640,
+    centerLon: 4.8357,
+    loadRadiusKm: 70,
+    stationInformationUrl: 'https://api.cyclocity.fr/contracts/lyon/gbfs/v2/station_information.json',
+    stationStatusUrl: 'https://api.cyclocity.fr/contracts/lyon/gbfs/v2/station_status.json',
+    provider: "Vélo'v",
+  },
+  {
+    id: 'toulouse-velo',
+    city: 'Toulouse, FR',
+    centerLat: 43.6047,
+    centerLon: 1.4442,
+    loadRadiusKm: 70,
+    stationInformationUrl: 'https://api.cyclocity.fr/contracts/toulouse/gbfs/v2/station_information.json',
+    stationStatusUrl: 'https://api.cyclocity.fr/contracts/toulouse/gbfs/v2/station_status.json',
+    provider: 'VélÔToulouse',
+  },
+  {
+    // The apiKey below is the public open-data key Bordeaux Métropole publishes
+    // in the MobilityData GBFS registry, not a private credential.
+    id: 'bordeaux-tbm',
+    city: 'Bordeaux, FR',
+    centerLat: 44.8378,
+    centerLon: -0.5792,
+    loadRadiusKm: 70,
+    stationInformationUrl: 'https://bdx.mecatran.com/utw/ws/gbfs/bordeaux/v3/station_information.json?apiKey=opendata-bordeaux-metropole-flux-gtfs-rt',
+    stationStatusUrl: 'https://bdx.mecatran.com/utw/ws/gbfs/bordeaux/v3/station_status.json?apiKey=opendata-bordeaux-metropole-flux-gtfs-rt',
+    provider: 'Le Vélo (TBM)',
+  },
 ];
 
 /**
@@ -701,6 +747,25 @@ function extractStationsArray(payload) {
 }
 
 /**
+ * Resolve a GBFS station name across spec versions.
+ *
+ * GBFS 2.x ships `name` as a plain string. GBFS 3.0 replaced it with an array
+ * of localized objects (`[{ text, language }]`), so a bare String() coercion
+ * would render "[object Object]" for every 3.0 feed. Prefers a French entry
+ * when a feed carries several languages, then falls back to the first.
+ * @param {unknown} value - Raw `name` or `short_name` field.
+ * @returns {string} Display name, or '' when unusable.
+ */
+function gbfsLocalizedName(value) {
+  if (typeof value === 'string') return value.trim();
+  if (Array.isArray(value)) {
+    const preferred = value.find((entry) => entry?.language === 'fr') || value[0];
+    return String(preferred?.text || '').trim();
+  }
+  return '';
+}
+
+/**
  * Parse a GBFS station_information payload into a Map of station metadata.
  * Handles field-name variations across different GBFS providers
  * (station_id vs id, lat vs latitude, etc.). Stations with missing or
@@ -721,7 +786,7 @@ function parseStationInformation(payload) {
 
     stationMap.set(stationId, {
       stationId,
-      name: String(raw?.name || raw?.short_name || '').trim(),
+      name: gbfsLocalizedName(raw?.name) || gbfsLocalizedName(raw?.short_name),
       lat,
       lon,
       capacity: toNonNegativeInteger(raw?.capacity),
@@ -748,7 +813,8 @@ function parseStationStatus(payload) {
     const stationId = String(raw?.station_id ?? raw?.id ?? '').trim();
     if (!stationId) continue;
 
-    const bikes = toNonNegativeInteger(raw?.num_bikes_available);
+    // GBFS 3.0 renamed num_bikes_available to num_vehicles_available.
+    const bikes = toNonNegativeInteger(raw?.num_bikes_available ?? raw?.num_vehicles_available);
     const docks = toNonNegativeInteger(raw?.num_docks_available);
     statusMap.set(stationId, {
       stationId,
@@ -1671,6 +1737,16 @@ export function _selectBikeshareStationForTest(key) {
 export function _clearBikeshareSelectionForTest() {
   _clearSelection();
   _overlayHost = DEFAULT_OVERLAY_HOST;
+}
+
+/** Parse a raw station_information payload in feed-shape tests. */
+export function _parseStationInformationForTest(payload) {
+  return parseStationInformation(payload);
+}
+
+/** Parse a raw station_status payload in feed-shape tests. */
+export function _parseStationStatusForTest(payload) {
+  return parseStationStatus(payload);
 }
 
 export default bikeshareLayer;

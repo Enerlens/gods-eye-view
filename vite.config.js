@@ -1284,6 +1284,10 @@ const GBFS_ALLOWED_HOSTS = new Set([
   'austin.publicbikesystem.net',
   'hon.publicbikesystem.net',
   'chat.publicbikesystem.net',
+  // France
+  'velib-metropole-opendata.smovengo.cloud',
+  'api.cyclocity.fr',
+  'bdx.mecatran.com',
 ]);
 
 // ---------------------------------------------------------------------------
