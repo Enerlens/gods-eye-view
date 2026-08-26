@@ -168,7 +168,7 @@ const CREDIT_EXPECTATIONS = {
   earthquakes: /Geological Survey|USGS/i,
   'rocket-launches': /Launch Library|LL2/i,
   traffic: /TomTom|OpenStreetMap/i,
-  cctv: /Austin|Caltrans|Transport for London|TfL/i,
+  cctv: /Austin|Caltrans|Transport for London|TfL|M\u00e9tropole de Lyon/i,
   radio: /Radio Browser/i,
   bikeshare: /GBFS|bikeshare/i,
   'ais-live-vessels': /AISStream/i,

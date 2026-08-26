@@ -477,6 +477,25 @@
   </div>
   <button id="clean-view-exit" title="Return UI controls">EXIT CLEAN VIEW</button>
 
+  <!-- CCTV full-resolution viewer. Opened from the panel preview, which is capped
+       at the 360px rail width while most public cameras publish 1920x1080. The
+       backdrop is fully opaque: no Google Maps content is on screen while it is
+       up, so the on-globe credit line has nothing to attribute underneath it. -->
+  <div id="cctv-lightbox" class="cctv-lightbox" role="dialog" aria-modal="true"
+       aria-labelledby="cctv-lightbox-title" data-panel-satellite="cctv-panel" hidden>
+    <div class="cctv-lightbox-bar">
+      <span id="cctv-lightbox-title" class="cctv-lightbox-title">CCTV</span>
+      <span id="cctv-lightbox-meta" class="cctv-lightbox-meta" role="status" aria-live="polite"></span>
+      <button id="cctv-lightbox-close" class="cctv-lightbox-close" aria-label="Close full-resolution view (Escape)">ESC ✕</button>
+    </div>
+    <!-- No <img> here on purpose. Opening MOVES the panel's own #cctv-frame
+         element into this stage and closing puts it back: a DOM move never
+         re-fetches, while a second <img> pointed at the same URL would, because
+         /api/cctv/frame is Cache-Control: no-store. That would cost one extra
+         upstream request per refresh on a publisher we deliberately poll less. -->
+    <div id="cctv-lightbox-stage" class="cctv-lightbox-stage"></div>
+  </div>
+
   <!-- Unified bottom command dock: locations, voice (injected at runtime), visual presets -->
   <div id="command-dock" aria-label="Navigation, voice, and visual preset controls">
   <!-- Control panel -->
@@ -596,8 +615,10 @@
         <span class="panel-divider"></span>
         <button class="panel-collapse-btn" data-collapse-target="cctv-panel" title="Collapse panel">+</button>
       </div>
-      <div id="cctv-frame-wrap" class="cctv-frame-wrap">
+      <div id="cctv-frame-wrap" class="cctv-frame-wrap" role="button" tabindex="0"
+           aria-label="Open the camera frame at full resolution" title="Click to view at full resolution">
         <img id="cctv-frame" alt="CCTV feed frame" />
+        <span class="cctv-frame-expand-hint" aria-hidden="true">EXPAND</span>
       </div>
       <div id="cctv-source-badge" role="status" aria-live="polite">SOURCE · UNKNOWN</div>
       <div id="cctv-meta">Enable CCTV to load camera intersections</div>

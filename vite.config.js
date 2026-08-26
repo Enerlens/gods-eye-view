@@ -3440,7 +3440,66 @@ const TFL_JAMCAM_URL = 'https://api.tfl.gov.uk/Place/Type/JamCam';
 const TFL_IMAGE_ORIGIN = 'https://s3-eu-west-1.amazonaws.com/jamcams.tfl.gov.uk/';
 const DEFAULT_TFL_MAX_SOURCES = 250;
 const LONDON_CENTER = { lat: 51.5074, lon: -0.1278 };
-/** Camera CATALOGS change rarely; 15 min keeps multi-megabyte upstream list refetches (Austin rows.json + 4 Caltrans districts + TfL) infrequent. Frames are fetched per-request and are unaffected. */
+/**
+ * Métropole de Lyon "Caméras Web Criter": one keyless JSON list endpoint on the
+ * Grand Lyon open-data portal. Each row carries the camera's WGS-84 position and
+ * the URL of its still frame, which the Criter traffic-control system re-extracts
+ * from the live video roughly once a minute (the same frames Onlymoov publishes).
+ */
+const GRANDLYON_CCTV_URL = 'https://data.grandlyon.com/fr/datapusher/ws/rdata/pvo_patrimoine_voirie.pvocameracriter/all.json?maxfeatures=-1&start=1';
+/** Official frame origin — the catalog's own `url` field must live under it. */
+const GRANDLYON_IMAGE_ORIGIN = 'https://download.data.grandlyon.com/files/rdata/pvo_patrimoine_voirie.pvocameracriter/';
+/** Headroom over the ~15 rows the Métropole publishes today. */
+const DEFAULT_LYON_MAX_SOURCES = 60;
+const LYON_CENTER = { lat: 45.7578, lon: 4.8320 }; // Place Bellecour
+/**
+ * The catalog has no in-service flag — only `last_update`, stamped each time
+ * Criter refreshes the frame. A row that has not moved in half a day is a dead
+ * camera whose frame URL would resolve to a frozen (or missing) image, so it is
+ * dropped the same way Austin drops non-`TURNED_ON` and Caltrans drops
+ * `inService !== true`. Half a day clears a night of darkness or maintenance.
+ */
+const GRANDLYON_MAX_FRAME_AGE_MS = 12 * 60 * 60 * 1000;
+/**
+ * How often Criter actually republishes a frame. Measured 2026-08-26 by hashing
+ * one camera's JPEG every 20 s for three minutes: three distinct images, 62 s
+ * apart. Served to the client as `upstreamCadenceMs` so the active-camera poll
+ * matches the publisher instead of re-fetching the same picture five times out
+ * of six (the same waste the 2026-07-30 field note recorded for London/Austin).
+ */
+const GRANDLYON_UPSTREAM_CADENCE_MS = 60 * 1000;
+/**
+ * SHA-256 of the "Image indisponible" graphic the Métropole serves in place of
+ * a frame when a Criter camera is down (a 300x200, 22,966-byte drawing of
+ * traffic cones). Verified byte-identical across repeated fetches on
+ * 2026-08-26, on CWL7033.
+ *
+ * It has to be caught by CONTENT, because none of the usual signals work: the
+ * catalog has no in-service flag, the row's `last_update` keeps advancing every
+ * minute while the placeholder is being served, and the response is a perfectly
+ * valid HTTP 200 image. Without this the panel would report SNAPSHOT · OK over
+ * a picture of road cones.
+ *
+ * Fails OPEN: if the Métropole ever redraws the graphic this stops matching and
+ * the frame is served unchanged — never the reverse.
+ */
+/**
+ * How far back from the end to look for the JPEG EOI marker.
+ *
+ * Bounded at both ends on purpose. Too small and a camera that appends
+ * trailing metadata after EOI is condemned as truncated — a false positive
+ * sends a healthy camera to Street View forever, which is the expensive
+ * mistake. Too large (scanning the whole file) and an EXIF thumbnail's OWN
+ * end-of-image marker, which sits near the start of the file, would be
+ * mistaken for the real one and a genuinely truncated frame would pass. These
+ * frames run 64 KB to 600 KB, so 4 KB clears any realistic trailer while
+ * staying far from the thumbnail.
+ */
+const JPEG_EOI_SCAN_BYTES = 4096;
+const CCTV_PLACEHOLDER_FRAME_SHA256 = Object.freeze([
+  '8be14bdafb0b8b688651206d02fad0656c0be2095c0e18c36945f74a8f598bdd',
+]);
+/** Camera CATALOGS change rarely; 15 min keeps multi-megabyte upstream list refetches (Austin rows.json + 4 Caltrans districts + TfL + Grand Lyon) infrequent. Frames are fetched per-request and are unaffected. */
 const CCTV_SOURCE_CACHE_MS = 15 * 60 * 1000;
 /** Per-provider catalog-fetch timeout. Bounds the worst-case refresh so one
  * stalled upstream can't leave getCctvSources (and thus every CCTV route)
@@ -3716,6 +3775,21 @@ function extractAustinHeading(record) {
 function isLikelyAustinCoordinate(lat, lon) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
   return lat >= 30.02 && lat <= 30.58 && lon >= -98.12 && lon <= -97.40;
+}
+
+/**
+ * Bounding-box sanity check: is this coordinate plausibly inside the Métropole
+ * de Lyon? Generous enough to cover all 59 communes (Givors in the south to
+ * Neuville in the north), tight enough to reject a swapped lat/lon pair or a
+ * null-island row.
+ *
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {boolean}
+ */
+function isLikelyLyonCoordinate(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return false;
+  return lat >= 45.55 && lat <= 46.00 && lon >= 4.55 && lon <= 5.20;
 }
 
 /**
@@ -4066,9 +4140,256 @@ async function loadTflSourcesFromOpenData() {
 }
 
 /**
+ * Hand-derived compass headings for the Grand Lyon cameras, keyed by
+ * maintenance code. Degrees clockwise from true north.
+ *
+ * WHY THIS EXISTS: the catalog publishes no bearing. Its `observation` field
+ * names a DESTINATION ("Direction : Porte de Gerland"), not a facing, so every
+ * Lyon camera would otherwise take the id-hash fallback and point somewhere
+ * arbitrary — which makes the 3D monitor plane and the FOCUS flight land on
+ * geometry the frame does not show.
+ *
+ * HOW EACH VALUE WAS DERIVED (2026-08-26), in two independent halves:
+ *   1. ANGLE — the azimuth of the carriageway under the camera, computed from
+ *      OpenStreetMap way geometry inside a 200 m box around the published
+ *      position (`.context/road-bearings.mjs`). A camera over a road looks
+ *      along it, which pins the heading to two candidates 180° apart.
+ *   2. SIGN — which of the two. The destination in `observation` was geocoded
+ *      and the camera→destination bearing computed; where that was ambiguous
+ *      or the geocoder resolved the wrong place, the published frame itself
+ *      decided, using landmarks (the Part-Dieu skyline, the Tassin clock) and
+ *      solar shadow direction for the capture time.
+ *
+ * These are careful human estimates from public geometry and imagery, NOT
+ * surveyed values and NOT published by the Métropole. They are served as
+ * `poseSource: 'curated'` so the panel badge reads CAL · CURATED rather than
+ * claiming a measurement, and the gizmo still overrides them. The two marked
+ * "weak" below are junction cameras whose road axis and destination bearing
+ * disagree by more than 30°; they are still far better than a hash, but they
+ * are the first ones worth dragging.
+ *
+ * A camera absent from this table keeps the id-hash fallback and stays
+ * low-confidence — see CWL7033, which publishes a placeholder graphic instead
+ * of a frame, so there is nothing to calibrate against.
+ */
+const GRANDLYON_CURATED_HEADINGS = Object.freeze({
+  // Pont Clemenceau, looking east across the Saône toward the Croix-Rousse
+  // tunnel portal. Road axis 90/100°, tunnel bearing 97°.
+  CWL9018: 98,
+  // A6/A7 at the Fourvière tunnel, toward Perrache. Axis 144/324°, Perrache 133°.
+  // NOTE: this one is a high hillside panorama, not a pole over a lane — the
+  // frame looks down on the tunnel mouth and across the Saône to the Presqu'île.
+  // The heading is right, but the shared 10 m / 210 m pose prior is far too
+  // short and low for it, so its monitor plane stops short of the motorway.
+  // Height and range are the things to drag on this camera, not the bearing.
+  CWL5801: 144,
+  // Cours Albert Thomas eastbound toward Grange Blanche. Axis 115/295°,
+  // Grange Blanche 116° — the closest agreement in the set.
+  CWL3005: 115,
+  // Boulevard Stalingrad northbound toward Caluire (336°). Two axes run through
+  // this junction: the boulevard the camera actually sits on (184/4°, a 70 m
+  // segment at 0 m) and the adjacent Voie Nouvelle Stalingrad-Vitton (168/348°).
+  // The boulevard wins on the cap-lands-on-the-road check below: 4 m against
+  // 54 m for 348°.
+  CWL6165: 4,
+  // Avenue de Böhlen westbound toward Carré de Soie. Axis 255/75°, La Soie 257°.
+  CWVV011: 255,
+  // Boulevard Pinel eastbound toward the A43. Axis 102/282°; the A43 leaves
+  // Lyon east, and this is the eastbound twin of CW2L8114 at the same junction.
+  CW1L8114: 102,
+  // Same junction, westbound toward Lyon centre. Axis 115/295°, Bellecour 305°.
+  // The frame shows the T2/T6 tram alignment running away toward the centre.
+  CW2L8114: 295,
+  // WEAK. Avenue du Général de Gaulle at the Bd des Droits de l'Homme junction.
+  // Road axis 116/296°, but Eurexpo geocodes to 79° — a 37° disagreement that
+  // the roundabout geometry does not resolve. Axis taken, sign from Eurexpo.
+  CWBR044: 116,
+  // Pont Poincaré looking south toward Villeurbanne. The bridge deck runs
+  // 184/4° and the Part-Dieu towers — visible in the frame — bear 184-189° from
+  // here, so both agree on 184°. (An earlier 172°, read off the towers sitting
+  // right of frame centre, put the monitor plane 29 m off the deck; the deck
+  // axis puts it 5 m on.)
+  CW3CL005: 184,
+  // WEAK. Boulevard de l'Université toward Porte des Alpes. Longest nearby
+  // segment axis 139/319°, Porte des Alpes 107° — 32° apart.
+  CWBR043: 139,
+  // Bonnevay slip road at Croix-Luizet toward Porte de La Doua. Axis 241/61°,
+  // La Doua 252°.
+  CWVL802: 241,
+  // Place Vauboin (the Tassin clock) toward Porte de Valvert. Road axis 40/220°.
+  // Nominatim resolves "Valvert" to a street WEST of Tassin, which would give
+  // 279° and contradict the road; the A6 access of that name is NORTH-EAST at
+  // ~32°, and the shadow direction in the frame (sun ~118°, shadows falling to
+  // frame-left) independently puts the camera in the 40-66° band.
+  CWTA006: 40,
+  // Pont de la Mulatière southbound toward the M7. Axis 167/347°,
+  // Pierre-Bénite 167° — exact agreement.
+  CWML005: 167,
+  // A6 north of the Fourvière tunnel toward Paris. Axis 313/133°, Écully 305°.
+  // The frame shows the tunnel portal behind-left and the motorway running away
+  // to the north-west.
+  CWL9801: 313,
+});
+
+/**
+ * Convert one Grand Lyon "Caméras Web Criter" catalog row into a normalized CCTV
+ * source, or null when the row is unusable.
+ *
+ * Rejects rows without a maintenance code (the stable per-camera key, and the
+ * basename of the frame URL), without finite coordinates inside the Métropole,
+ * with a frame URL off the official open-data origin (defense in depth: the
+ * proxy only ever fetches catalog URLs, and this pins the catalog to the
+ * published host), or whose frame stopped refreshing (see
+ * GRANDLYON_MAX_FRAME_AGE_MS).
+ *
+ * The catalog's `observation` field reads "Direction : Porte de Gerland" — a
+ * destination place name, not a compass bearing — so there is no heading signal
+ * to read anywhere in the row. Two outcomes follow:
+ *
+ *   - A camera listed in GRANDLYON_CURATED_HEADINGS takes that hand-derived
+ *     bearing, is flagged `poseSource: 'curated'` so the panel badge says so,
+ *     and earns the tighter high-confidence pose personality (the same one
+ *     Austin and Caltrans give a row that publishes a real direction field).
+ *   - Any other camera falls back to the id-hash heading and the wide
+ *     low-confidence personality, exactly like a headingless Austin row or any
+ *     TfL JamCam.
+ *
+ * Either way the pose is a PRIOR, not a measurement: the client's one-shot
+ * ground snap and the calibration gizmo still own the truth.
+ *
+ * @param {object} record - One entry from the catalog's `values` array.
+ * @param {number} [nowMs=Date.now()] - Clock seam for the staleness check.
+ * @returns {object|null} Normalized camera source, or null if rejected.
+ */
+export function normalizeGrandLyonCamera(record, nowMs = Date.now()) {
+  if (!record || typeof record !== 'object') return null;
+
+  const code = String(record.numeromaintenance || '').trim();
+  if (!code) return null;
+  const cameraId = `lyon-${code.toLowerCase()}`;
+
+  const lat = toFiniteNumber(record.lat);
+  const lon = toFiniteNumber(record.lon);
+  if (!isLikelyLyonCoordinate(lat, lon)) return null;
+
+  const imageUrl = String(record.url || '');
+  if (!imageUrl.startsWith(GRANDLYON_IMAGE_ORIGIN)) return null; // official-origin pin
+
+  // Fail open on a missing or unparseable stamp — a schema change upstream must
+  // not blank the whole pack. Drop only a stamp that reads cleanly AND is stale.
+  const stampedAt = Date.parse(String(record.last_update || '').replace(' ', 'T'));
+  if (Number.isFinite(stampedAt) && nowMs - stampedAt > GRANDLYON_MAX_FRAME_AGE_MS) return null;
+
+  // `libellelong` is where the camera stands ("Pont Clemenceau"); `nom` is what
+  // it looks toward ("Tunnel Croix Rousse"). Show both when they differ.
+  const site = String(record.libellelong || '').trim();
+  const facing = String(record.nom || '').trim();
+  const name = site && facing && site !== facing
+    ? `${site} (dir. ${facing})`
+    : (site || facing || `Caméra Criter ${code}`);
+
+  const curatedHeading = GRANDLYON_CURATED_HEADINGS[code.toUpperCase()];
+  const hasHeading = Number.isFinite(curatedHeading);
+
+  return {
+    id: cameraId,
+    name,
+    city: 'Lyon',
+    cityId: 'lyon',
+    provider: 'Métropole de Lyon (Criter)',
+    lat,
+    lon,
+    headingDeg: hasHeading ? curatedHeading : fallbackHeadingFromId(cameraId),
+    headingConfidence: hasHeading ? 'high' : 'low',
+    // The same two pose personalities Austin and Caltrans use: a known facing
+    // earns a narrower, longer, more steeply pitched frustum; a fabricated one
+    // stays wide and short so it claims less ground than it can support.
+    pitchDeg: hasHeading ? -24 : -18,
+    fovDeg: hasHeading ? 56 : 44,
+    rangeM: hasHeading ? 210 : 145,
+    mountHeightM: hasHeading ? 10 : 8,
+    groundElevationM: 170, // Rhône/Saône plain prior; the one-shot snap corrects.
+    feedType: 'image',
+    url: imageUrl,
+    snapshotUrl: imageUrl,
+    sourceKind: 'grandlyon-open-data',
+    upstreamCadenceMs: GRANDLYON_UPSTREAM_CADENCE_MS,
+    poseSource: hasHeading ? 'curated' : undefined,
+    license: 'Licence Ouverte / Open Licence 2.0 — Métropole de Lyon',
+  };
+}
+
+/**
+ * Fetch the Métropole de Lyon "Caméras Web Criter" catalog (Lyon). Keyless: one
+ * JSON list endpoint on the Grand Lyon open-data portal — no token, no quota —
+ * and the frames sit on the same public host. Every rejection rule lives in
+ * normalizeGrandLyonCamera; survivors are deduplicated by maintenance code and
+ * distance-prioritized around Place Bellecour, so a lowered CCTV_LYON_MAX_SOURCES
+ * keeps the city core rather than an arbitrary slice.
+ *
+ * Attribution: "Métropole de Lyon", Licence Ouverte / Open Licence 2.0
+ * (registered in src/data/dataCredits.js).
+ *
+ * @param {object} [options]
+ * @param {typeof fetch} [options.fetchImpl] - Injectable fetch for tests.
+ * @param {number} [options.nowMs] - Clock seam, threaded into the row staleness check.
+ * @returns {Promise<Array<object>>} Normalized camera source objects.
+ */
+export async function loadLyonSourcesFromOpenData({ fetchImpl = fetch, nowMs = null } = {}) {
+  try {
+    const resp = await fetchImpl(GRANDLYON_CCTV_URL, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(CCTV_SOURCE_FETCH_TIMEOUT_MS),
+    });
+    if (!resp.ok) {
+      console.warn('[CCTV] Grand Lyon camera download failed:', resp.status);
+      return [];
+    }
+    const payload = await resp.json();
+    const rows = Array.isArray(payload?.values) ? payload.values : [];
+    if (!rows.length) return [];
+
+    const clock = Number.isFinite(nowMs) ? nowMs : Date.now();
+    const cameras = [];
+    for (const row of rows) {
+      const camera = normalizeGrandLyonCamera(row, clock);
+      if (camera) cameras.push(camera);
+    }
+    const unique = Array.from(new Map(cameras.map((camera) => [camera.id, camera])).values());
+
+    const maxRaw = Number(process.env.CCTV_LYON_MAX_SOURCES || DEFAULT_LYON_MAX_SOURCES);
+    const maxCount = Number.isFinite(maxRaw)
+      ? Math.max(8, Math.min(300, Math.floor(maxRaw)))
+      : DEFAULT_LYON_MAX_SOURCES;
+    const prioritized = prioritizeSources(unique, maxCount, [LYON_CENTER]);
+    console.log(`[CCTV] Loaded Grand Lyon camera sources: ${unique.length} live (using nearest ${prioritized.length})`);
+    return prioritized;
+  } catch (error) {
+    console.warn('[CCTV] Grand Lyon camera download error:', error?.message || error);
+    return [];
+  }
+}
+
+/** Upstream cadences outside 1 s..5 min are treated as unset. */
+const MIN_UPSTREAM_CADENCE_MS = 1_000;
+const MAX_UPSTREAM_CADENCE_MS = 5 * 60 * 1000;
+
+/**
+ * Clamp a declared upstream frame cadence, or return null when absent/invalid.
+ *
+ * @param {*} value
+ * @returns {number|null}
+ */
+function boundedUpstreamCadenceMs(value) {
+  const ms = toFiniteNumber(value, NaN);
+  if (!Number.isFinite(ms) || ms < MIN_UPSTREAM_CADENCE_MS) return null;
+  return Math.min(MAX_UPSTREAM_CADENCE_MS, Math.round(ms));
+}
+
+/**
  * Normalize a raw CCTV source item into a canonical shape with safe defaults.
  *
- * @param {object} item - Raw source from file, env, or Austin Open Data.
+ * @param {object} item - Raw source from file, env, or a live open-data pack.
  * @returns {object} Normalized source with all expected fields populated.
  */
 function normalizeSourceItem(item) {
@@ -4092,11 +4413,16 @@ function normalizeSourceItem(item) {
     snapshotUrl: typeof item.snapshotUrl === 'string' ? item.snapshotUrl : '',
     license: String(item.license || item.licenseNote || ''),
     sourceKind: String(item.sourceKind || item.kind || 'configured'),
-    // Optional CAL badge input (cctv-v2 design §3b/§9.2, additive-only per the
-    // global constraints — nothing else in this file changes): hand-authored
-    // file/env catalog entries may declare poseSource:'curated' so the panel
-    // badge can distinguish them from raw automated priors (e.g. Austin Open
-    // Data, which never sets this field). Passed through as-is to the client.
+    // How often the PUBLISHER produces a new frame (not how often the client
+    // polls). Absent for packs whose cadence has not been measured; bounded so
+    // a bad catalog value cannot stall a feed for minutes. Consumers derive
+    // their own poll rate from it — see activeFrameRefreshMs in cctv.js.
+    upstreamCadenceMs: boundedUpstreamCadenceMs(item.upstreamCadenceMs),
+    // Optional CAL badge input (cctv-v2 design §3b/§9.2): a source may declare
+    // poseSource:'curated' so the panel badge can distinguish a hand-authored
+    // pose from a raw automated prior (Austin Open Data never sets this field).
+    // Hand-authored file/env entries use it, and so does the Grand Lyon pack for
+    // the cameras in GRANDLYON_CURATED_HEADINGS. Passed through as-is.
     poseSource: item.poseSource === 'curated' ? 'curated' : undefined,
   };
 }
@@ -4104,8 +4430,8 @@ function normalizeSourceItem(item) {
 /**
  * Assemble and cache the merged CCTV source list.
  *
- * Merges sources from three origins (Austin Open Data, local file,
- * env variable), deduplicates by ID, applies the global max cap, and
+ * Merges the live open-data packs (Austin, Caltrans, TfL, Grand Lyon) with the
+ * local file and env packs, deduplicates by ID, applies the global max cap, and
  * caches for CCTV_SOURCE_CACHE_MS.
  *
  * @returns {Promise<Array<object>>} Deduplicated, capped source list.
@@ -4136,27 +4462,32 @@ async function refreshCctvSources() {
 
   const forceAustin = String(process.env.CCTV_FORCE_AUSTIN || '').trim() === '1';
   const preferAustin = String(process.env.CCTV_PREFER_AUSTIN || '1').trim() !== '0';
-  // Live open-data packs (Austin + Caltrans + TfL) load unless a file/env pack
-  // is configured and live packs aren't forced — same gate that governed the
-  // Austin-only fetch, now governing all three. Each pack fails independently.
+  // Live open-data packs (Austin + Caltrans + TfL + Grand Lyon) load unless a
+  // file/env pack is configured and live packs aren't forced — same gate that
+  // governed the Austin-only fetch, now governing all four. Each pack fails
+  // independently.
   const needsLiveSources = forceAustin || ((fromFile.length + fromEnv.length) === 0 && preferAustin);
   const tflEnabled = String(process.env.CCTV_TFL_ENABLED || '1').trim() !== '0';
+  const lyonEnabled = String(process.env.CCTV_LYON_ENABLED || '1').trim() !== '0';
 
   let fromAustin = [];
   let fromCaltrans = [];
   let fromTfl = [];
+  let fromLyon = [];
   if (needsLiveSources) {
-    const [austinResult, caltransResult, tflResult] = await Promise.allSettled([
+    const [austinResult, caltransResult, tflResult, lyonResult] = await Promise.allSettled([
       loadAustinSourcesFromOpenData(),
       loadCaltransSourcesFromOpenData(),
       tflEnabled ? loadTflSourcesFromOpenData() : Promise.resolve([]),
+      lyonEnabled ? loadLyonSourcesFromOpenData() : Promise.resolve([]),
     ]);
     fromAustin = austinResult.status === 'fulfilled' ? austinResult.value : [];
     fromCaltrans = caltransResult.status === 'fulfilled' ? caltransResult.value : [];
     fromTfl = tflResult.status === 'fulfilled' ? tflResult.value : [];
+    fromLyon = lyonResult.status === 'fulfilled' ? lyonResult.value : [];
   }
   // Live sources first so file/env overrides win on duplicate IDs (Map last-write).
-  const merged = [...fromAustin, ...fromCaltrans, ...fromTfl, ...fromFile, ...fromEnv];
+  const merged = [...fromAustin, ...fromCaltrans, ...fromTfl, ...fromLyon, ...fromFile, ...fromEnv];
 
   // Deduplicate by camera ID (last-write wins because of Map.set)
   const byId = new Map();
@@ -4371,6 +4702,54 @@ async function proxyMediaResponse(res, upstream, { sourceHeader = 'upstream' } =
  * @param {number} [options.timeoutMs=CCTV_FRAME_FETCH_TIMEOUT_MS] - Abort timeout.
  * @returns {Promise<{ok:true,body:Buffer,contentType:string}|null>}
  */
+/**
+ * Is this JPEG body cut off before the end of its scan data?
+ *
+ * Nothing in the response says so: a valid HTTP 200, no Content-Length to fall
+ * short of (the host answers chunked), no error status, and the SOF header
+ * still declares the full frame size. The browser decodes the rows it received
+ * and leaves the rest transparent — which is how a 1920x1440 camera renders as
+ * a thin strip of sky.
+ *
+ * Measured on CWL5801, the largest frame in the Grand Lyon pack: 12 fetches
+ * 7 s apart, 0 complete. The byte count was STABLE within each publication
+ * minute (141,620 B five times, then 306,600 B seven times) and changed only
+ * when a new frame was published, so this is not a read-while-write race that a
+ * retry would win — the file the Métropole publishes for that camera is itself
+ * incomplete, every cycle. libjpeg rejects it outright: "premature end of JPEG
+ * image". Hence: no retry, straight to the fallback chain.
+ *
+ * The test is the JPEG end-of-image marker, scanned across the tail of the file
+ * (see JPEG_EOI_SCAN_BYTES) so a camera that appends trailing metadata is not
+ * called truncated. Anything that is not a JPEG is left alone — this fails OPEN
+ * in every direction.
+ *
+ * @param {Buffer|Uint8Array|null} body
+ * @returns {boolean}
+ */
+export function isTruncatedJpegFrame(body) {
+  if (!body || body.length < 4) return false;
+  if (body[0] !== 0xFF || body[1] !== 0xD8) return false; // not a JPEG: not our call
+  const from = Math.max(2, body.length - JPEG_EOI_SCAN_BYTES);
+  for (let i = body.length - 2; i >= from; i -= 1) {
+    if (body[i] === 0xFF && body[i + 1] === 0xD9) return false;
+  }
+  return true;
+}
+
+/**
+ * Is this frame body a known provider "camera unavailable" placeholder rather
+ * than a real capture?
+ *
+ * @param {Buffer|Uint8Array|null} body
+ * @returns {boolean}
+ */
+export function isPlaceholderCctvFrame(body) {
+  if (!body || !body.length) return false;
+  const digest = createHash('sha256').update(body).digest('hex');
+  return CCTV_PLACEHOLDER_FRAME_SHA256.includes(digest);
+}
+
 export async function fetchCctvImageFromUpstream(url, {
   fetchImpl = fetch,
   timeoutMs = CCTV_FRAME_FETCH_TIMEOUT_MS,
@@ -4516,6 +4895,7 @@ function cctvProxy() {
                 groundElevationM: source.groundElevationM,
                 feedType: normalizeFeedType(source.feedType),
                 sourceKind: source.sourceKind || (source.url ? 'configured' : 'fallback'),
+                upstreamCadenceMs: source.upstreamCadenceMs,
                 poseSource: source.poseSource,
                 license: source.license,
               })),
@@ -4633,7 +5013,24 @@ function cctvProxy() {
             source?.snapshotUrl
             || (!isVideoFeedType(normalizeFeedType(source?.feedType)) ? source?.url : '');
 
-          const upstreamImage = await fetchCctvImageFromUpstream(upstreamCandidate);
+          const fetched = await fetchCctvImageFromUpstream(upstreamCandidate);
+          // A placeholder is a valid 200 image of "no camera here". Treating it
+          // as a failed fetch drops it into the same Street View / synthetic
+          // chain a timeout uses, and keeps the health line honest.
+          // Two ways a 200 OK can still not be a frame: the provider's "camera
+          // unavailable" graphic, and a JPEG published incomplete. Both are
+          // treated as a failed fetch so they drop into the same Street View /
+          // synthetic chain a timeout uses.
+          const servedPlaceholder = fetched?.ok && isPlaceholderCctvFrame(fetched.body);
+          const servedTruncated = fetched?.ok && !servedPlaceholder && isTruncatedJpegFrame(fetched.body);
+          const upstreamImage = (servedPlaceholder || servedTruncated) ? null : fetched;
+          // Carried into whichever fallback answers, so the panel says WHY the
+          // real frame is missing instead of just naming its replacement.
+          const placeholderNote = servedPlaceholder
+            ? ' — provider is serving an "image unavailable" placeholder'
+            : servedTruncated
+              ? ' — provider frame is incomplete (JPEG ends before its scan data)'
+              : '';
           if (upstreamImage?.ok) {
             setHealth(cameraId, {
               status: 'ok',
@@ -4656,7 +5053,7 @@ function cctvProxy() {
               status: 'degraded',
               sourceKind: 'streetview',
               label: 'Google Street View',
-              message: 'Fallback Street View frame',
+              message: `Fallback Street View frame${placeholderNote}`,
             });
             res.writeHead(200, {
               'Content-Type': sv.contentType,
@@ -4678,7 +5075,7 @@ function cctvProxy() {
             status: 'degraded',
             sourceKind: 'synthetic',
             label: source?.provider || 'Synthetic fallback',
-            message: source?.url ? 'Upstream unavailable' : 'No source configured',
+            message: (source?.url ? 'Upstream unavailable' : 'No source configured') + placeholderNote,
           });
 
           res.writeHead(200, {
