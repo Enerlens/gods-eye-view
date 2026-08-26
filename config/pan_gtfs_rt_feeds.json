@@ -1,0 +1,4726 @@
+{
+  "source": "https://transport.data.gouv.fr/api/datasets",
+  "generatedAt": "2026-08-26T17:35:46.269Z",
+  "generator": "scripts/build-pan-gtfs-rt-index.mjs",
+  "note": "bbox values are OBSERVED vehicle bounds at probe time, not published coverage areas",
+  "datasetCount": 781,
+  "feedCount": 151,
+  "feedsWithBounds": 125,
+  "feeds": [
+    {
+      "id": "pan-10231",
+      "resourceId": 10231,
+      "datagouvId": "372463bd-d7b4-4668-a9b5-bd71a28f389d",
+      "network": "Navette Aéroport de Bordeaux",
+      "title": "Navette Aéroport de Bordeaux",
+      "publisher": "Zenbus",
+      "area": "Bordeaux · Mérignac",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/372463bd-d7b4-4668-a9b5-bd71a28f389d",
+      "pageUrl": "https://transport.data.gouv.fr/resources/10231",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-bordeaux-navettes-aeroport-30-direct-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 44.8211,
+        "west": -0.6965,
+        "north": 44.8308,
+        "east": -0.5412
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 336,
+        "vehicles": 2,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-12600",
+      "resourceId": 12600,
+      "datagouvId": "47aa1c93-4868-47da-ae43-e2fcbce3575f",
+      "network": "BUSS",
+      "title": "Réseau urbain Buss",
+      "publisher": "Zenbus",
+      "area": "CA \"Saintes - Grandes Rives - L'Agglo\"",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/47aa1c93-4868-47da-ae43-e2fcbce3575f",
+      "pageUrl": "https://transport.data.gouv.fr/resources/12600",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-buss-saintes-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 45.7329,
+        "west": -0.6762,
+        "north": 45.7483,
+        "east": -0.6302
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 378,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-12609",
+      "resourceId": 12609,
+      "datagouvId": "6a1ef3cc-13cc-4770-a347-f183dc6accd6",
+      "network": "May'Bus",
+      "title": "Réseau urbain May'bus",
+      "publisher": "Zenbus",
+      "area": "Mayenne",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/6a1ef3cc-13cc-4770-a347-f183dc6accd6",
+      "pageUrl": "https://transport.data.gouv.fr/resources/12609",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-maybus-mayenne-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 48.3106,
+        "west": -0.643,
+        "north": 48.3106,
+        "east": -0.643
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 425,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-12617",
+      "resourceId": 12617,
+      "datagouvId": "136b953f-2b70-4c01-85ef-eb71169d0656",
+      "network": "Valmobus",
+      "title": "Navettes saisonnières Valmobus",
+      "publisher": "Zenbus",
+      "area": "Les Avanchers-Valmorel",
+      "modes": [
+        "seasonal"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/136b953f-2b70-4c01-85ef-eb71169d0656",
+      "pageUrl": "https://transport.data.gouv.fr/resources/12617",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-de-la-station-de-ski-valmorel-gtfs-gtfs-rt",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 776,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-15449",
+      "resourceId": 15449,
+      "datagouvId": "0e17b681-e017-46e2-a792-b3b6ead2c06c",
+      "network": "Lunéo Lunéville",
+      "title": "Réseau urbain Lunéo",
+      "publisher": "Lulu en Bus (Ex. Lunéo)",
+      "area": "CC du Territoire de Lunéville à Baccarat",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/0e17b681-e017-46e2-a792-b3b6ead2c06c",
+      "pageUrl": "https://transport.data.gouv.fr/resources/15449",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-lulu-en-bus-ex-luneo-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 48.586,
+        "west": 6.4934,
+        "north": 48.6022,
+        "east": 6.5112
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 461,
+        "vehicles": 2,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-25678",
+      "resourceId": 25678,
+      "datagouvId": "0057d63f-cf69-4d67-8c44-3c546ec7d403",
+      "network": "LE BUS FIGEAC",
+      "title": "Réseau urbain Figeac - Le Bus",
+      "publisher": "Zenbus",
+      "area": "Figeac",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/0057d63f-cf69-4d67-8c44-3c546ec7d403",
+      "pageUrl": "https://transport.data.gouv.fr/resources/25678",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-du-reseau-figeac-le-bus-gtfs",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 374,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-34266",
+      "resourceId": 34266,
+      "datagouvId": "afee6b6e-2c3f-4317-9d0a-d70540acf8d8",
+      "network": "La navette",
+      "title": "Réseau urbain La Navette Oloron Sainte-Marie",
+      "publisher": "Zenbus",
+      "area": "Oloron-Sainte-Marie",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/afee6b6e-2c3f-4317-9d0a-d70540acf8d8",
+      "pageUrl": "https://transport.data.gouv.fr/resources/34266",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-oloron-sainte-marie-la-navette-gtfs-gtfs-rt",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 355,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-36515",
+      "resourceId": 36515,
+      "datagouvId": "c0a17be1-e89a-48a3-aca1-d8eb8e89a55e",
+      "network": "Car Jaune",
+      "title": "Réseau interurbain Cars Jaunes",
+      "publisher": "Région Réunion",
+      "area": "La Réunion",
+      "modes": [
+        "intercity"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/c0a17be1-e89a-48a3-aca1-d8eb8e89a55e",
+      "pageUrl": "https://transport.data.gouv.fr/resources/36515",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-au-format-gtfs-et-horaires-temps-reel-au-format-gtfs-rt-du-reseau-car-jaune-a-la-reunion",
+      "bbox": {
+        "south": -21.2919,
+        "west": 55.2499,
+        "north": -20.8742,
+        "east": 55.4465
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 2422,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-38878",
+      "resourceId": 38878,
+      "datagouvId": "dd56dfc5-85b6-43f9-8b1b-8eebd4cb2c2e",
+      "network": "BREVIBUS",
+      "title": "Réseau urbain Brévibus",
+      "publisher": "Transdev • Pays de la Loire",
+      "area": "CC du Sud Estuaire",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/dd56dfc5-85b6-43f9-8b1b-8eebd4cb2c2e",
+      "pageUrl": "https://transport.data.gouv.fr/resources/38878",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-brevibus",
+      "bbox": {
+        "south": 47.248,
+        "west": -2.1623,
+        "north": 47.248,
+        "east": -2.1623
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 446,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-40392",
+      "resourceId": 40392,
+      "datagouvId": "8bd532f4-8813-4313-be7c-304b8f8f47a7",
+      "network": "NOSBUS",
+      "title": "Réseau urbain Nosbus",
+      "publisher": "Transdev • Centre-Val de Loire",
+      "area": "Nogent-le-Rotrou",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/8bd532f4-8813-4313-be7c-304b8f8f47a7",
+      "pageUrl": "https://transport.data.gouv.fr/resources/40392",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-nosbus",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 3259,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-40623",
+      "resourceId": 40623,
+      "datagouvId": "7dab24f0-3114-49b9-827d-376d10a4b193",
+      "network": "Cap'bus",
+      "title": "Réseau urbain Cap’Bus",
+      "publisher": "Communauté d'Agglomération Hérault Méditerranée",
+      "area": "CA Hérault-Méditerranée",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/7dab24f0-3114-49b9-827d-376d10a4b193",
+      "pageUrl": "https://transport.data.gouv.fr/resources/40623",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-capbus",
+      "bbox": {
+        "south": 43.2739,
+        "west": 3.4136,
+        "north": 43.4051,
+        "east": 3.5174
+      },
+      "vehicleSample": 11,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 91,
+        "vehicles": 11,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-52582",
+      "resourceId": 52582,
+      "datagouvId": "0fbf9dc8-d2db-405d-ade4-fdd04a6f8272",
+      "network": "Réso",
+      "title": "Réseau urbain Réso",
+      "publisher": "Transdev • Pays de la Loire",
+      "area": "CC du Pays Sabolien",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/0fbf9dc8-d2db-405d-ade4-fdd04a6f8272",
+      "pageUrl": "https://transport.data.gouv.fr/resources/52582",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-reso",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 145,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-52918",
+      "resourceId": 52918,
+      "datagouvId": "4e87a135-b46e-46b3-8aaa-0233ec3c242a",
+      "network": "L'va",
+      "title": "Réseau urbain L'va",
+      "publisher": "Vienne Condrieu Agglomération",
+      "area": "CA Vienne Condrieu",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/4e87a135-b46e-46b3-8aaa-0233ec3c242a",
+      "pageUrl": "https://transport.data.gouv.fr/resources/52918",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-lva",
+      "bbox": {
+        "south": 45.5032,
+        "west": 4.7711,
+        "north": 45.591,
+        "east": 4.9183
+      },
+      "vehicleSample": 14,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 225,
+        "vehicles": 14,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-67153",
+      "resourceId": 67153,
+      "datagouvId": "ea44be8d-36ef-4aac-b56f-98b78eb54382",
+      "network": "REZO'BUS",
+      "title": "Réseau urbain REZO'BUS",
+      "publisher": "Transdev • Normandie",
+      "area": "CA Caux Seine Agglo",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/ea44be8d-36ef-4aac-b56f-98b78eb54382",
+      "pageUrl": "https://transport.data.gouv.fr/resources/67153",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-caux-seine-mobilite-rezobus",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 827,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-67732",
+      "resourceId": 67732,
+      "datagouvId": "316d0325-ae84-4869-ae28-44ab108d836e",
+      "network": "Divia",
+      "title": "Réseau urbain DiviaMobilités",
+      "publisher": "DiviaMobilités",
+      "area": "Dijon Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/divia-dijon-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/67732",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-diviamobilites",
+      "bbox": {
+        "south": 47.2593,
+        "west": 4.9838,
+        "north": 47.3652,
+        "east": 5.1274
+      },
+      "vehicleSample": 92,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 91,
+        "vehicles": 92,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-74509",
+      "resourceId": 74509,
+      "datagouvId": "d5d43e1e-af62-4811-8a4e-ca14ad4209c8",
+      "network": "Bibus",
+      "title": "Réseau urbain Bibus",
+      "publisher": "Brest métropole",
+      "area": "Brest Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/bibus-brest-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/74509",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-des-bus-et-tramways-circulant-sur-le-territoire-de-brest-metropole",
+      "bbox": {
+        "south": 48.3604,
+        "west": -4.6168,
+        "north": 48.4531,
+        "east": -4.3679
+      },
+      "vehicleSample": 79,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 121,
+        "vehicles": 79,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-78388",
+      "resourceId": 78388,
+      "datagouvId": "8b8b8c8b-58a7-4c9e-97da-8c21d10ecb54",
+      "network": "Navettes hivernales de l'Alpe d'Huez",
+      "title": "Navettes hivernales de l'Alpe d'Huez",
+      "publisher": "Zenbus",
+      "area": "Huez",
+      "modes": [
+        "seasonal"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/8b8b8c8b-58a7-4c9e-97da-8c21d10ecb54",
+      "pageUrl": "https://transport.data.gouv.fr/resources/78388",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-des-navettes-hivernales-de-lalpe-dhuez-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 45.0891,
+        "west": 6.0726,
+        "north": 45.092,
+        "east": 6.0727
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 90,
+        "vehicles": 2,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-79015",
+      "resourceId": 79015,
+      "datagouvId": "ae8b5fd2-283a-462c-aa34-27e02f6fc4a5",
+      "network": "RITMO",
+      "title": "Réseau urbain Ritmo",
+      "publisher": "Zenbus",
+      "area": "CA de Haguenau",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/ae8b5fd2-283a-462c-aa34-27e02f6fc4a5",
+      "pageUrl": "https://transport.data.gouv.fr/resources/79015",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-ritmo-haguenau-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 48.7428,
+        "west": 7.6132,
+        "north": 48.8331,
+        "east": 7.857
+      },
+      "vehicleSample": 14,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 94,
+        "vehicles": 14,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-79036",
+      "resourceId": 79036,
+      "datagouvId": "120182b0-e338-4917-b2bb-ee37b60de1ba",
+      "network": "RUBAN",
+      "title": "Réseau urbain Ruban",
+      "publisher": "Communauté d'agglomération Porte de l'Isère",
+      "area": "CA Porte de l'Isère (CAPI)",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/120182b0-e338-4917-b2bb-ee37b60de1ba",
+      "pageUrl": "https://transport.data.gouv.fr/resources/79036",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-ruban",
+      "bbox": {
+        "south": 45.5827,
+        "west": 5.0956,
+        "north": 45.6379,
+        "east": 5.3186
+      },
+      "vehicleSample": 10,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 134,
+        "vehicles": 10,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-79742",
+      "resourceId": 79742,
+      "datagouvId": "01d092c6-e937-48df-87f9-4433824ef89c",
+      "network": "Le SURF",
+      "title": "Réseau urbain SURF",
+      "publisher": "Transdev Fougères • SURF",
+      "area": "CA Fougères Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/surf-fougeres-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/79742",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-surf",
+      "bbox": {
+        "south": 48.3533,
+        "west": -1.1987,
+        "north": 48.3537,
+        "east": -1.1984
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-79746",
+      "resourceId": 79746,
+      "datagouvId": "e8f0a224-df21-4468-8238-694ebef449c7",
+      "network": "Guingamp-Paimpol Mobilité",
+      "title": "Réseau urbain et scolaire Guingamp-Paimpol Mobilité",
+      "publisher": "Armor Argoat Mobilité • Guingamp-Paimpol Mobilité",
+      "area": "CA Guingamp-Paimpol Agglomération de l'Armor à l'Argoat",
+      "modes": [
+        "urban",
+        "school"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/axeo-guingamp-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/79746",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-scolaire-guingamp-paimpol-mobilite",
+      "bbox": {
+        "south": 48.8171,
+        "west": -3.019,
+        "north": 48.8171,
+        "east": -3.019
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-79830",
+      "resourceId": 79830,
+      "datagouvId": "c94af528-293f-406f-a96f-bf847bcb252a",
+      "network": "Cap Cotentin",
+      "title": "Réseau urbain Cap Cotentin",
+      "publisher": "Communauté d'agglomération Le Cotentin",
+      "area": "CA du Cotentin",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/c94af528-293f-406f-a96f-bf847bcb252a",
+      "pageUrl": "https://transport.data.gouv.fr/resources/79830",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-en-temps-reel-des-bus-et-autocars-circulant-sur-le-reseau-cap-cotentin",
+      "bbox": {
+        "south": 49.459,
+        "west": -1.8443,
+        "north": 49.6933,
+        "east": -1.427
+      },
+      "vehicleSample": 33,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 969,
+        "vehicles": 33,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-79993",
+      "resourceId": 79993,
+      "datagouvId": "1bffdcb5-1839-4725-90da-ca69d1ee05e6",
+      "network": "SARLAT BUS",
+      "title": "Réseau urbain Sarlat Bus",
+      "publisher": "Zenbus",
+      "area": "Sarlat-la-Canéda",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/1bffdcb5-1839-4725-90da-ca69d1ee05e6",
+      "pageUrl": "https://transport.data.gouv.fr/resources/79993",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-sarlatbus-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 44.8874,
+        "west": 1.2158,
+        "north": 44.8874,
+        "east": 1.2158
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 95,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-80184",
+      "resourceId": 80184,
+      "datagouvId": "d6eff218-aba3-4dfd-8a56-b2abf50a3b6e",
+      "network": "Palm Bus",
+      "title": "Réseau urbain Palmbus",
+      "publisher": "Palmbus",
+      "area": "CA Cannes Pays de Lérins",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/palmbus-cannes-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/80184",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-gtfs-gtfs-rt-du-reseau-palmbus-cannes-pays-de-lerins",
+      "bbox": {
+        "south": 43.5047,
+        "west": 6.9317,
+        "north": 43.6236,
+        "east": 7.048
+      },
+      "vehicleSample": 82,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 22,
+        "vehicles": 82,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-80381",
+      "resourceId": 80381,
+      "datagouvId": "68fc6b99-b51c-4a3c-9740-2edbc4a705bf",
+      "network": "MOVE",
+      "title": "Réseau urbain Move",
+      "publisher": "Alliance Atlantique",
+      "area": "CA Territoires Vendômois",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/68fc6b99-b51c-4a3c-9740-2edbc4a705bf",
+      "pageUrl": "https://transport.data.gouv.fr/resources/80381",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-move-vendome",
+      "bbox": {
+        "south": 47.7818,
+        "west": 1.0215,
+        "north": 47.8221,
+        "east": 1.0716
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 78,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-80382",
+      "resourceId": 80382,
+      "datagouvId": "e3f2ac4c-758b-4dbd-9854-aa4d95c27d16",
+      "network": "Réseau urbain Gratibus",
+      "title": "Réseau urbain Gratibus",
+      "publisher": "Alliance Atlantique",
+      "area": "CC de l'Ile de Noirmoutier",
+      "modes": [
+        "seasonal",
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/e3f2ac4c-758b-4dbd-9854-aa4d95c27d16",
+      "pageUrl": "https://transport.data.gouv.fr/resources/80382",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/noirmoutier-gratibus-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 46.953,
+        "west": -2.2498,
+        "north": 47.0004,
+        "east": -2.1864
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 65,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-80662",
+      "resourceId": 80662,
+      "datagouvId": "4f839128-41d0-44ff-9bfd-2db51eefc432",
+      "network": "ALTERNEO",
+      "title": "Réseau urbain Alternéo",
+      "publisher": "ALTERNEO",
+      "area": "CA CIVIS (Communauté Intercommunale des Villes Solidaires)",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/alterneo-civis-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/80662",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-du-reseau-alterneo",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-80699",
+      "resourceId": 80699,
+      "datagouvId": "02c21efd-d73c-43b5-b653-dc1048e0da94",
+      "network": "Fil Bleu",
+      "title": "Réseau urbain et périurbain Fil Bleu",
+      "publisher": "Tours Métropole Val de Loire",
+      "area": "Tours Métropole Val de Loire",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/02c21efd-d73c-43b5-b653-dc1048e0da94",
+      "pageUrl": "https://transport.data.gouv.fr/resources/80699",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/fil-bleu-syndicat-des-mobilites-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 47.3241,
+        "west": 0.5378,
+        "north": 47.4758,
+        "east": 0.8461
+      },
+      "vehicleSample": 111,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 228,
+        "vehicles": 111,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-80710",
+      "resourceId": 80710,
+      "datagouvId": "cf5a9115-a448-4c92-b02f-a105c5a42af6",
+      "network": "AMETIS",
+      "title": "Réseau urbain Ametis",
+      "publisher": "Ametis",
+      "area": "CA Amiens Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/ametis-amiens-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/80710",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/ametis",
+      "bbox": {
+        "south": 49.8178,
+        "west": 2.229,
+        "north": 49.9705,
+        "east": 2.3829
+      },
+      "vehicleSample": 53,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 25,
+        "vehicles": 53,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-80723",
+      "resourceId": 80723,
+      "datagouvId": "b78c6d8a-3145-4deb-b68a-9b6fc9af7a89",
+      "network": "Aléop Pays de la Loire",
+      "title": "Réseau interurbain Aléop - Pays de la Loire",
+      "publisher": "Région des Pays de la Loire",
+      "area": "Pays de la Loire",
+      "modes": [
+        "intercity"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/aleop-pdl-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/80723",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/arrets-horaires-et-circuits-des-lignes-de-transports-aleop-1",
+      "bbox": {
+        "south": 46.1711,
+        "west": -2.2127,
+        "north": 48.2865,
+        "east": 0.7328
+      },
+      "vehicleSample": 89,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 22,
+        "vehicles": 89,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-80732",
+      "resourceId": 80732,
+      "datagouvId": "ee857dd3-ef88-4d71-ba0a-31ac996a2ba2",
+      "network": "TANGO",
+      "title": "Réseau urbain Tango",
+      "publisher": "Tango",
+      "area": "CA de Nîmes Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/ee857dd3-ef88-4d71-ba0a-31ac996a2ba2",
+      "pageUrl": "https://transport.data.gouv.fr/resources/80732",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-tango-de-nimes-metropole-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 43.7662,
+        "west": 4.2263,
+        "north": 43.8661,
+        "east": 4.4467
+      },
+      "vehicleSample": 60,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 181,
+        "vehicles": 60,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-80939",
+      "resourceId": 80939,
+      "datagouvId": "476d53cd-374b-41b7-b11a-a158cc9abfaa",
+      "network": "Réseau urbain Illygo",
+      "title": "Réseau urbain Illygo",
+      "publisher": "Transdev • Pays de la Loire",
+      "area": "CC Le Gesnois Bilurien · CC Maine Coeur de Sarthe · CC Orée de Bercé - Belinois · CC de la Champagne Conlinoise et du Pays de Sillé · CC du Sud Est Manceau · CC du Val de Sarthe",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/476d53cd-374b-41b7-b11a-a158cc9abfaa",
+      "pageUrl": "https://transport.data.gouv.fr/resources/80939",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-illygo",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 136,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81017",
+      "resourceId": 81017,
+      "datagouvId": "af576ebf-d3a4-4a0f-b692-8ee580cb1877",
+      "network": "TOUT'ENBUS",
+      "title": "Réseau urbain Tout'enbus",
+      "publisher": "Tout'enbus",
+      "area": "CC du Bassin d'Aubenas",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/af576ebf-d3a4-4a0f-b692-8ee580cb1877",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81017",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel",
+      "bbox": {
+        "south": 44.5975,
+        "west": 4.3676,
+        "north": 44.6476,
+        "east": 4.4048
+      },
+      "vehicleSample": 4,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 1372,
+        "vehicles": 4,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81036",
+      "resourceId": 81036,
+      "datagouvId": "87ccbc7d-8793-4c56-8352-822bc40c9dcb",
+      "network": "TOHM",
+      "title": "Réseau urbain TOHM",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CC des Pays d'Oise et d'Halatte",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/87ccbc7d-8793-4c56-8352-822bc40c9dcb",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81036",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-tohm-communaute-de-communes-des-pays-doise-et-dhalatte",
+      "bbox": {
+        "south": 49.294,
+        "west": 2.5206,
+        "north": 49.3333,
+        "east": 2.6403
+      },
+      "vehicleSample": 6,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 222,
+        "vehicles": 6,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81044",
+      "resourceId": 81044,
+      "datagouvId": "34d40ea1-4514-4280-9d9b-ad94e9991a3d",
+      "network": "DUC (Desserte Urbaine Cantilienne)",
+      "title": "Réseau urbain et interurbain Aire’MOB",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CC de l'Aire Cantilienne",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/34d40ea1-4514-4280-9d9b-ad94e9991a3d",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81044",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-airemob-communaute-de-communes-de-laire-cantilienne",
+      "bbox": {
+        "south": 49.0858,
+        "west": 2.4097,
+        "north": 49.1911,
+        "east": 2.5434
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 174,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81060",
+      "resourceId": 81060,
+      "datagouvId": "a01c7604-5363-4ac1-83bc-b20acb1d9f86",
+      "network": "Cypré",
+      "title": "Réseau urbain Mobi",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CC du Pays de Valois",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/a01c7604-5363-4ac1-83bc-b20acb1d9f86",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81060",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-mobi-communaute-de-communes-du-pays-de-valois",
+      "bbox": {
+        "south": 49.2233,
+        "west": 2.8846,
+        "north": 49.2346,
+        "east": 2.898
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 178,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81122",
+      "resourceId": 81122,
+      "datagouvId": "973e9d73-3ab8-4e47-9516-cb06b25737d8",
+      "network": "Axo",
+      "title": "Réseau urbain AXO",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CA Creil Sud Oise",
+      "modes": [
+        "urban",
+        "zonal_drt"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/973e9d73-3ab8-4e47-9516-cb06b25737d8",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81122",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-axo-communaute-dagglomeration-creil-sud-oise",
+      "bbox": {
+        "south": 49.2156,
+        "west": 2.4192,
+        "north": 49.2838,
+        "east": 2.4874
+      },
+      "vehicleSample": 21,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 192,
+        "vehicles": 21,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81126",
+      "resourceId": 81126,
+      "datagouvId": "5b42006f-d97b-4f58-9edd-82fd9022efff",
+      "network": "COROLIS",
+      "title": "Réseau urbain Corolis",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CA du Beauvaisis",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/5b42006f-d97b-4f58-9edd-82fd9022efff",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81126",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-corolis-urbain-communaute-dagglomeration-du-beauvaisis",
+      "bbox": {
+        "south": 49.4098,
+        "west": 2.07,
+        "north": 49.4511,
+        "east": 2.1137
+      },
+      "vehicleSample": 19,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 188,
+        "vehicles": 19,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81134",
+      "resourceId": 81134,
+      "datagouvId": "8c90057e-c516-494b-9e08-67c6841876fe",
+      "network": "TIC (Transports Intercommunaux Compiégnois)",
+      "title": "Réseau urbain TIC",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CA de la Région de Compiègne et de la Basse Automne",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/8c90057e-c516-494b-9e08-67c6841876fe",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81134",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-tic-urbain-communaute-dagglomeration-de-la-region-de-compiegne-et-de-la-basse-automne",
+      "bbox": {
+        "south": 49.3863,
+        "west": 2.7942,
+        "north": 49.4264,
+        "east": 2.8283
+      },
+      "vehicleSample": 11,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 77,
+        "vehicles": 11,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81140",
+      "resourceId": 81140,
+      "datagouvId": "052ae731-ee66-45c0-97f4-bdd29f93cead",
+      "network": "COROLIS",
+      "title": "Réseau interurbain et TAD zonal Corolis",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CA du Beauvaisis",
+      "modes": [
+        "urban",
+        "zonal_drt",
+        "intercity"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/052ae731-ee66-45c0-97f4-bdd29f93cead",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81140",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-corolis-interurbain-communaute-dagglomeration-du-beauvaisis",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 85,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81150",
+      "resourceId": 81150,
+      "datagouvId": "e6917aac-3de0-456f-8296-385ab4954c9b",
+      "network": "TIC (Transports Intercommunaux Compiégnois)",
+      "title": "Réseau interurbain TIC",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CA de la Région de Compiègne et de la Basse Automne",
+      "modes": [
+        "intercity"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/e6917aac-3de0-456f-8296-385ab4954c9b",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81150",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-tic-interurbain-communaute-dagglomeration-de-la-region-de-compiegne-et-de-la-basse-automne",
+      "bbox": {
+        "south": 49.3109,
+        "west": 2.6832,
+        "north": 49.3109,
+        "east": 2.6832
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 76,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-8118",
+      "resourceId": 8118,
+      "datagouvId": "ee7325a5-172f-430e-afe7-4072e0cf1321",
+      "network": "Alliance",
+      "title": "Réseau urbain Alliance",
+      "publisher": "Zenbus",
+      "area": "CA Grand Auch Coeur de Gascogne",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/ee7325a5-172f-430e-afe7-4072e0cf1321",
+      "pageUrl": "https://transport.data.gouv.fr/resources/8118",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-alliance-auch-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 43.636,
+        "west": 0.5853,
+        "north": 43.6676,
+        "east": 0.6005
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 90,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81256",
+      "resourceId": 81256,
+      "datagouvId": "365ca136-0b94-4c28-9931-a812e792e108",
+      "network": "PondiBUS",
+      "title": "Réseau urbain PondiBUS",
+      "publisher": "Transdev • Bretagne",
+      "area": "CC Pontivy Communauté",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/365ca136-0b94-4c28-9931-a812e792e108",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81256",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-pondibus",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 76,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81290",
+      "resourceId": 81290,
+      "datagouvId": "02aa9bcf-a2ce-4d41-93d3-3c3a0aa68719",
+      "network": "SNgo!",
+      "title": "Navette estivale SNGO! Giverny Vernon - Gare SNCF",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "Giverny · Vernon",
+      "modes": [
+        "seasonal"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/giverny-vernon-gtfs-rt",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81290",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/giverny-vernon-gare-sncf",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 22,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81300",
+      "resourceId": 81300,
+      "datagouvId": "64511de6-ed7b-4494-b049-49bf83772f1f",
+      "network": "Le bus",
+      "title": "Réseau urbain Le Bus",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CC du Clermontois",
+      "modes": [
+        "urban",
+        "zonal_drt"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/64511de6-ed7b-4494-b049-49bf83772f1f",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81300",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-le-bus-communaute-de-communes-du-clermontois",
+      "bbox": {
+        "south": 49.3116,
+        "west": 2.3243,
+        "north": 49.3949,
+        "east": 2.425
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 85,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81306",
+      "resourceId": 81306,
+      "datagouvId": "189e343b-e3e4-4098-9652-49ef01612924",
+      "network": "Lib'bus",
+      "title": "Réseau urbain Lib'Bus",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CC du Pays Noyonnais",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/189e343b-e3e4-4098-9652-49ef01612924",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81306",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-libbus-communaute-de-communes-du-pays-noyonnais",
+      "bbox": {
+        "south": 49.5812,
+        "west": 3.0119,
+        "north": 49.5812,
+        "east": 3.0119
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 77,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81312",
+      "resourceId": 81312,
+      "datagouvId": "f360bd88-af15-4fa0-87f2-b83f9b1e5ffc",
+      "network": "Pass Thelle Bus",
+      "title": "Réseau urbain PassThelle Bus",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CC Thelloise",
+      "modes": [
+        "urban",
+        "zonal_drt"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/f360bd88-af15-4fa0-87f2-b83f9b1e5ffc",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81312",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-pass-thelle-bus-communaute-de-communes-thelloise",
+      "bbox": {
+        "south": 49.1797,
+        "west": 2.2801,
+        "north": 49.1797,
+        "east": 2.2801
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 79,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81324",
+      "resourceId": 81324,
+      "datagouvId": "52f94449-5af7-4553-bcc6-44fc417ebdd2",
+      "network": "Sablons bus",
+      "title": "Réseau urbain Sablons Bus",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CC des Sablons",
+      "modes": [
+        "urban",
+        "zonal_drt"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/52f94449-5af7-4553-bcc6-44fc417ebdd2",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81324",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-sablons-bus-communaute-de-communes-des-sablons",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 83,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81335",
+      "resourceId": 81335,
+      "datagouvId": "58d0ab00-400b-4215-a61b-42ee9755d0e0",
+      "network": "Moova",
+      "title": "Réseau urbain moova",
+      "publisher": "Réseau moova - Communauté d'Agglomération de Vesoul",
+      "area": "CA de Vesoul",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/moova-vesoul-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81335",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-du-reseau-moova-communaute-dagglomeration-de-vesoul-gtfs",
+      "bbox": {
+        "south": 47.6204,
+        "west": 6.1606,
+        "north": 47.636,
+        "east": 6.165
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 2,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81341",
+      "resourceId": 81341,
+      "datagouvId": "75c3a092-11e5-4625-a785-9a57b56dc5a7",
+      "network": "TGD - Transport du Grand Dole",
+      "title": "Réseau urbain Grandole Mobilités",
+      "publisher": "Communauté d'Agglomération du Grand Dole",
+      "area": "CA du Grand Dole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/tgd-dole-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81341",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-du-grand-dole",
+      "bbox": {
+        "south": 47.0778,
+        "west": 5.4654,
+        "north": 47.081,
+        "east": 5.4694
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 2,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81420",
+      "resourceId": 81420,
+      "datagouvId": "c5d3f48b-6ccc-49a0-88a8-9341a065932f",
+      "network": "ZEST",
+      "title": "Réseau urbain Zest",
+      "publisher": "Keolis Menton Riviera",
+      "area": "CA de la Riviera Française",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/zest-menton-riviera-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81420",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-reseau-zest",
+      "bbox": {
+        "south": 43.7377,
+        "west": 7.4032,
+        "north": 43.9439,
+        "east": 7.5167
+      },
+      "vehicleSample": 18,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 18,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81512",
+      "resourceId": 81512,
+      "datagouvId": "2eb85c28-124a-4155-a39d-a874916494f2",
+      "network": "Le Met'",
+      "title": "Réseau urbain Le Met'",
+      "publisher": "Eurométropole de Metz",
+      "area": "Metz Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/lemet-metz-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81512",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/fichiers-gtfs-eurometropole-de-metz",
+      "bbox": {
+        "south": 49.0579,
+        "west": 6.0497,
+        "north": 49.2036,
+        "east": 6.2747
+      },
+      "vehicleSample": 78,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 73,
+        "vehicles": 78,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81543",
+      "resourceId": 81543,
+      "datagouvId": "98230d13-cccb-4c27-b0bc-d1b9341ca77b",
+      "network": "TCAT",
+      "title": "Réseau urbain TCAT",
+      "publisher": "TCAT - Transports en Commun de l'Agglomération Troyenne",
+      "area": "CA Troyes Champagne Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/98230d13-cccb-4c27-b0bc-d1b9341ca77b",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81543",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-tcat-troyes-champagne-metropole-1",
+      "bbox": {
+        "south": 48.2334,
+        "west": 4.0075,
+        "north": 48.3381,
+        "east": 4.1363
+      },
+      "vehicleSample": 35,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 102,
+        "vehicles": 35,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81579",
+      "resourceId": 81579,
+      "datagouvId": "b4b32f6f-26c8-4f4e-8253-5ce4d0462392",
+      "network": "Sète Agglopôle Mobilité",
+      "title": "Réseau urbain Sète Agglopole Mobilité",
+      "publisher": "Sète Agglopole Méditerranée",
+      "area": "CA Sète Agglopôle Méditerranée",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/b4b32f6f-26c8-4f4e-8253-5ce4d0462392",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81579",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-bus-sete-agglopole-mobilite",
+      "bbox": {
+        "south": 43.311,
+        "west": 3.5325,
+        "north": 43.5737,
+        "east": 3.8665
+      },
+      "vehicleSample": 55,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 217,
+        "vehicles": 55,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81626",
+      "resourceId": 81626,
+      "datagouvId": "11f653e9-0d6a-4e87-8cda-3069b3c6b441",
+      "network": "L'Agglo en bus",
+      "title": "Réseau urbain L'Agglo en Bus",
+      "publisher": "Communauté d'Agglomération Gap-Tallard-Durance",
+      "area": "CA Gap-Tallard-Durance",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/11f653e9-0d6a-4e87-8cda-3069b3c6b441",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81626",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reels-du-reseau-de-transports-lagglo-en-bus-communaute-dagglomeration-gap-tallard-durance",
+      "bbox": {
+        "south": 44.5383,
+        "west": 6.0517,
+        "north": 44.5596,
+        "east": 6.0844
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 899,
+        "vehicles": 2,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81697",
+      "resourceId": 81697,
+      "datagouvId": "622b4abe-e029-4a6b-bd59-ef849e9b005f",
+      "network": "I'Bus",
+      "title": "Réseau urbain l'Bus",
+      "publisher": "Intercom Bernay Terres de Normandie",
+      "area": "CC Intercom Bernay Terres de Normandie",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/622b4abe-e029-4a6b-bd59-ef849e9b005f",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81697",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-transport-urbain-de-bernay",
+      "bbox": {
+        "south": 49.0867,
+        "west": 0.5949,
+        "north": 49.0867,
+        "east": 0.5949
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 160,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81698",
+      "resourceId": 81698,
+      "datagouvId": "bbc60d61-bf8f-40ec-9e3b-9c040cc2b06e",
+      "network": "Cherpa",
+      "title": "Réseau urbain Cherpa",
+      "publisher": "Agglo Pays d'Issoire",
+      "area": "CA Agglo Pays d'Issoire",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/bbc60d61-bf8f-40ec-9e3b-9c040cc2b06e",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81698",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/cherpa-horaires-lignes-regulieres",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 108,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81755",
+      "resourceId": 81755,
+      "datagouvId": "c44bc589-b954-4a8c-918d-bc555938b6ea",
+      "network": "TaM",
+      "title": "Réseau urbain TaM",
+      "publisher": "Montpellier Méditerranée Métropole",
+      "area": "Montpellier Méditerranée Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/c44bc589-b954-4a8c-918d-bc555938b6ea",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81755",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-tam-en-temps-reel-gtfs-rt-urbain-et-suburbain",
+      "bbox": {
+        "south": 43.5707,
+        "west": 3.81,
+        "north": 43.6545,
+        "east": 3.9368
+      },
+      "vehicleSample": 99,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 259,
+        "vehicles": 99,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81786",
+      "resourceId": 81786,
+      "datagouvId": "83582223-990a-452d-ba3d-49f2977d0292",
+      "network": "Irigo",
+      "title": "Réseau urbain Irigo",
+      "publisher": "Angers Loire Métropole",
+      "area": "CU Angers Loire Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/83582223-990a-452d-ba3d-49f2977d0292",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81786",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/angers-loire-metropole-reseau-irigo-gtfs-gtfs-rt-siri",
+      "bbox": {
+        "south": 47.3436,
+        "west": -0.751,
+        "north": 47.6117,
+        "east": -0.3413
+      },
+      "vehicleSample": 116,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 187,
+        "vehicles": 116,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81808",
+      "resourceId": 81808,
+      "datagouvId": "a792a365-b5bc-48b8-81eb-512e8e83af08",
+      "network": "A Berlina",
+      "title": "Réseau urbain A Citadina",
+      "publisher": "Communauté de Communes du Sud Corse",
+      "area": "CC du Sud Corse",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/a792a365-b5bc-48b8-81eb-512e8e83af08",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81808",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-a-citadina-porto-vecchio-horaires-theoriques-et-temps-reel",
+      "bbox": {
+        "south": 41.5927,
+        "west": 9.2827,
+        "north": 41.5927,
+        "east": 9.2827
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 106,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81908",
+      "resourceId": 81908,
+      "datagouvId": "f32c61d5-30b7-4e06-a05e-a2fc934ba7d9",
+      "network": "TEDBUS",
+      "title": "Réseau urbain TEDbus",
+      "publisher": "Dracénie Provence Verdon agglomération",
+      "area": "CA Dracénie Provence Verdon Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/f32c61d5-30b7-4e06-a05e-a2fc934ba7d9",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81908",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-tedbus-lignes-regulieres-dracenie-provence-verdon-agglomeration",
+      "bbox": {
+        "south": 43.4626,
+        "west": 6.4567,
+        "north": 43.5346,
+        "east": 6.4873
+      },
+      "vehicleSample": 4,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 71,
+        "vehicles": 4,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81925",
+      "resourceId": 81925,
+      "datagouvId": "40630cb6-0c20-4989-ac2a-4d573fbe032b",
+      "network": "Transp'Or",
+      "title": "Réseau urbain Transp’Or",
+      "publisher": "Transp'Or - Pays de l'Or Agglomération",
+      "area": "CA du Pays de l'Or",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/transpor-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81925",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-transport-en-commun-du-reseau-transpor-gtfs",
+      "bbox": {
+        "south": 43.5291,
+        "west": 3.9224,
+        "north": 43.6159,
+        "east": 4.0624
+      },
+      "vehicleSample": 9,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 9,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81953",
+      "resourceId": 81953,
+      "datagouvId": "37b144db-2013-49ff-9a24-b8396f19655d",
+      "network": "Tempobus",
+      "title": "Réseau urbain Tempo Bus",
+      "publisher": "Tempo Bus",
+      "area": "CA Agglomération d'Agen",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/37b144db-2013-49ff-9a24-b8396f19655d",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81953",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/agen-gtfs-urbain",
+      "bbox": {
+        "south": 44.1823,
+        "west": 0.601,
+        "north": 44.2009,
+        "east": 0.6285
+      },
+      "vehicleSample": 6,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 586,
+        "vehicles": 6,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81967",
+      "resourceId": 81967,
+      "datagouvId": "146fe36f-16c5-44bc-ac1a-06c0fedcc4dd",
+      "network": "CaRsud",
+      "title": "Réseau urbain CarSud",
+      "publisher": "Réseau CARSUD",
+      "area": "CA du Sud",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/146fe36f-16c5-44bc-ac1a-06c0fedcc4dd",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81967",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/referentiel-topologique-reseau-carsud",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 191,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81988",
+      "resourceId": 81988,
+      "datagouvId": "2fcc6653-b7d4-4e48-bb3b-f51884357698",
+      "network": "TGL",
+      "title": "Réseau urbain TGL",
+      "publisher": "Transport du Grand Longwy",
+      "area": "CA Grand Longwy Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/tgl-longwy-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81988",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-du-reseau-tgl",
+      "bbox": {
+        "south": 49.4559,
+        "west": 5.7683,
+        "north": 49.5189,
+        "east": 5.8693
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-81998",
+      "resourceId": 81998,
+      "datagouvId": "38611abb-fb76-4072-8be9-514fdbc4b13a",
+      "network": "TLP Mobilités",
+      "title": "Réseau urbain TLP",
+      "publisher": "TLP Mobilités",
+      "area": "CA Tarbes-Lourdes-Pyrénées",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/38611abb-fb76-4072-8be9-514fdbc4b13a",
+      "pageUrl": "https://transport.data.gouv.fr/resources/81998",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-du-reseau-tarbes-lourdes-tlp-mobilites-gtfs",
+      "bbox": {
+        "south": 43.0966,
+        "west": -0.0551,
+        "north": 43.2405,
+        "east": 0.0912
+      },
+      "vehicleSample": 17,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 97,
+        "vehicles": 17,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-8202",
+      "resourceId": 8202,
+      "datagouvId": "7dd97f96-2fb2-4647-8498-ef234ed0faaa",
+      "network": "Titus",
+      "title": "Réseau urbain Titus",
+      "publisher": "Zenbus",
+      "area": "Rosny-sous-Bois",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/7dd97f96-2fb2-4647-8498-ef234ed0faaa",
+      "pageUrl": "https://transport.data.gouv.fr/resources/8202",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-titus-rosny-sous-bois-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 48.862,
+        "west": 2.4599,
+        "north": 48.8797,
+        "east": 2.4923
+      },
+      "vehicleSample": 4,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 85,
+        "vehicles": 4,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82095",
+      "resourceId": 82095,
+      "datagouvId": "a8bb3b4d-6f99-4ebe-b04e-4960f77f6626",
+      "network": "Kicéo",
+      "title": "Réseau urbain Kicéo",
+      "publisher": "Transdev GMVA Mobilités • Kicéo",
+      "area": "CA Golfe du Morbihan - Vannes Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/kiceo-vannes-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82095",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-kiceo",
+      "bbox": {
+        "south": 47.4899,
+        "west": -2.865,
+        "north": 47.6903,
+        "east": -2.7042
+      },
+      "vehicleSample": 33,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 33,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82142",
+      "resourceId": 82142,
+      "datagouvId": "2e3358a1-e8fc-4622-81d5-6b8f92556f20",
+      "network": "Astrobus",
+      "title": "Réseau urbain Astrobus",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CA Lisieux Normandie",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/astrobus-lisieux-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82142",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/astrobus-lisieux-normandie",
+      "bbox": {
+        "south": 48.9315,
+        "west": 0.1958,
+        "north": 49.1671,
+        "east": 0.5454
+      },
+      "vehicleSample": 7,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 7,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82163",
+      "resourceId": 82163,
+      "datagouvId": "61707a60-705f-4163-af5f-a95b6c20e5a2",
+      "network": "STAR",
+      "title": "Réseau urbain STAR",
+      "publisher": "STAR",
+      "area": "Rennes Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/star-rennes-integration-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82163",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/versions-des-horaires-theoriques-des-lignes-de-bus-et-de-metro-du-reseau-star-dans-les-formats-gtfs-et-netex-ainsi-que-les-urls-dacces-au-gtfs-rt-1",
+      "bbox": {
+        "south": 47.9747,
+        "west": -1.8671,
+        "north": 48.2218,
+        "east": -1.5118
+      },
+      "vehicleSample": 142,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 142,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82186",
+      "resourceId": 82186,
+      "datagouvId": "14eac1a9-ea0e-4e08-8bae-aee9a78964d3",
+      "network": "Le Vib'",
+      "title": "Réseau urbain Le Vib'",
+      "publisher": "Transdev Vierzon Mobilités • Le Vib",
+      "area": "CC Vierzon-Sologne-Berry",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/le-vib-vierzon-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82186",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-le-vib",
+      "bbox": {
+        "south": 47.2214,
+        "west": 2.0625,
+        "north": 47.2248,
+        "east": 2.0663
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 19,
+        "vehicles": 2,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82278",
+      "resourceId": 82278,
+      "datagouvId": "a6086d6b-049b-4fe8-b52a-4bdcf863db83",
+      "network": "Imag’in",
+      "title": "Réseau urbain SITAC",
+      "publisher": "Syndicat Intercommunal des Transports urbains de l’Agglomération du Calaisis",
+      "area": "CA Grand Calais Terres et Mers · Guînes",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/a6086d6b-049b-4fe8-b52a-4bdcf863db83",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82278",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-aux-formats-gtfs-et-gtfs-rt-du-reseau-sitac",
+      "bbox": {
+        "south": 50.8945,
+        "west": 1.7217,
+        "north": 50.965,
+        "east": 1.9646
+      },
+      "vehicleSample": 31,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 128,
+        "vehicles": 31,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82296",
+      "resourceId": 82296,
+      "datagouvId": "12ade1e9-3608-4861-a024-0744641a3cff",
+      "network": "Agrégat des réseaux urbains et interurbains de Normandie",
+      "title": "Agrégat des réseaux urbains et interurbains de Normandie",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "Normandie",
+      "modes": [
+        "urban",
+        "intercity"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/atoumod-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82296",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/base-de-donnees-multimodale-des-reseaux-de-transport-public-normands",
+      "bbox": {
+        "south": 48.814,
+        "west": -1.8449,
+        "north": 49.9265,
+        "east": 1.4895
+      },
+      "vehicleSample": 211,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 58,
+        "vehicles": 211,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82474",
+      "resourceId": 82474,
+      "datagouvId": "9fe8291c-2fb2-4f89-b578-282ba05dd999",
+      "network": "RESEAU MISTRAL",
+      "title": "Réseau urbain Mistral",
+      "publisher": "Métropole Toulon Provence Méditerranée",
+      "area": "Métropole Toulon-Provence-Méditerranée",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/9fe8291c-2fb2-4f89-b578-282ba05dd999",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82474",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-urbain-de-la-metropole-toulon-provence-mediterranee",
+      "bbox": {
+        "south": 43.0283,
+        "west": 5.8046,
+        "north": 43.1598,
+        "east": 6.1867
+      },
+      "vehicleSample": 148,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 210,
+        "vehicles": 148,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82549",
+      "resourceId": 82549,
+      "datagouvId": "eff8bfff-3d8d-4264-b443-f8aab1d94909",
+      "network": "Némus",
+      "title": "Réseau urbain Nemus",
+      "publisher": "NEMUS (Réseau de transports de Flers Agglo)",
+      "area": "CA Flers Agglo",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/eff8bfff-3d8d-4264-b443-f8aab1d94909",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82549",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-du-reseau-urbain-de-flers-agglo-au-format-gtfs",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 303,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82578",
+      "resourceId": 82578,
+      "datagouvId": "469abed6-3c6c-42e6-9040-ec12457da4ba",
+      "network": "RLVmobilités",
+      "title": "Réseau urbain RLV Mobilités",
+      "publisher": "Keolis RIOM",
+      "area": "CA Riom Limagne et Volcans",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/riom-rlv-mobilites-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82578",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-rlv-mobilites",
+      "bbox": {
+        "south": 45.8839,
+        "west": 3.0739,
+        "north": 45.919,
+        "east": 3.1166
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 19,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82596",
+      "resourceId": 82596,
+      "datagouvId": "b2bccdd8-ac63-4092-bed5-9431fb38bb5b",
+      "network": "Distribus",
+      "title": "Réseau urbain Distribus",
+      "publisher": "Transdev • Bretagne",
+      "area": "CA Lamballe Terre et Mer",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/b2bccdd8-ac63-4092-bed5-9431fb38bb5b",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82596",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-distribus",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 95,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82620",
+      "resourceId": 82620,
+      "datagouvId": "ab934941-2bd2-49e2-a83c-0dcddf95b1b9",
+      "network": "Réseau urbain Pybus",
+      "title": "Réseau urbain Pybus",
+      "publisher": "Alliance Atlantique",
+      "area": "Parthenay",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/ab934941-2bd2-49e2-a83c-0dcddf95b1b9",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82620",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-pybus-le-reseau-urbain-de-parthenay",
+      "bbox": {
+        "south": 46.953,
+        "west": -2.2498,
+        "north": 47.0004,
+        "east": -2.1864
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 298,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82630",
+      "resourceId": 82630,
+      "datagouvId": "46ef54cc-7e76-4dc6-8808-772f14721d1b",
+      "network": "Moca",
+      "title": "Réseau urbain MOCA",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CC Caux - Austreberthe",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82630",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/moca-communaute-de-communes-caux-austreberthe",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82632",
+      "resourceId": 82632,
+      "datagouvId": "fb43ebd3-3c20-43e7-9285-a1a06e8427d0",
+      "network": "Moca",
+      "title": "Réseau urbain MOCA",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CC Caux - Austreberthe",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82632",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/moca-communaute-de-communes-caux-austreberthe",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82677",
+      "resourceId": 82677,
+      "datagouvId": "f5127667-1005-4515-b8d9-a2169ee83097",
+      "network": "Astuce",
+      "title": "Réseau urbain Astuce",
+      "publisher": "Métropole Rouen Normandie",
+      "area": "Métropole Rouen Normandie",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/f5127667-1005-4515-b8d9-a2169ee83097",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82677",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-temps-reel-du-reseau-astuce-metropole-rouen-normandie",
+      "bbox": {
+        "south": 49.3283,
+        "west": 1.0157,
+        "north": 49.5312,
+        "east": 1.1625
+      },
+      "vehicleSample": 140,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 206,
+        "vehicles": 140,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82713",
+      "resourceId": 82713,
+      "datagouvId": "ca497c6b-7a13-4495-8fd2-82ce5e053520",
+      "network": "HOBus",
+      "title": "Réseau urbain Hobus",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CC du Pays de Honfleur-Beuzeville",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/hobus-honfleur-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82713",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/hobus-honfleur",
+      "bbox": {
+        "south": 49.418,
+        "west": 0.2398,
+        "north": 49.418,
+        "east": 0.2398
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 23,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82719",
+      "resourceId": 82719,
+      "datagouvId": "4e5581ba-b3ab-498b-8ad0-b1d3f5621c59",
+      "network": "Forbus Intercity",
+      "title": "Réseau urbain Forbus",
+      "publisher": "Fluo Grand Est",
+      "area": "CA de Forbach Porte de France",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/fluo-forbus-forbach-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82719",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/fr-200052264-t0007-0000-1",
+      "bbox": {
+        "south": 49.1186,
+        "west": 6.8751,
+        "north": 49.2378,
+        "east": 6.991
+      },
+      "vehicleSample": 15,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 15,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82723",
+      "resourceId": 82723,
+      "datagouvId": "b77b1155-675d-4a7f-99ba-f5070b761f46",
+      "network": "En bus NEVA",
+      "title": "Réseau urbain Néva",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CC de Granville, Terre et Mer",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/neva-granville-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82723",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/neva-granville-terre-et-mer",
+      "bbox": {
+        "south": 48.8164,
+        "west": -1.5806,
+        "north": 48.8532,
+        "east": -1.5529
+      },
+      "vehicleSample": 7,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 7,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82731",
+      "resourceId": 82731,
+      "datagouvId": "19e6e50b-a075-47a9-98fa-5dbd7a96e7d2",
+      "network": "Transurbain",
+      "title": "Réseau urbain Transurbain",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CA Evreux Portes de Normandie",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/transurbain-evreux-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82731",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/transurbain-evreux-portes-de-normandie",
+      "bbox": {
+        "south": 48.973,
+        "west": 1.0869,
+        "north": 49.0462,
+        "east": 1.18
+      },
+      "vehicleSample": 13,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 95,
+        "vehicles": 13,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82783",
+      "resourceId": 82783,
+      "datagouvId": "ed8b8b27-96bd-4e46-b6c7-56b27fd0eb14",
+      "network": "beemob",
+      "title": "Réseau urbain beeMob",
+      "publisher": "Réseau beeMob - Transports en commun de l'Agglomération Béziers Méditerranée",
+      "area": "CA de Béziers-Méditerranée",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/ed8b8b27-96bd-4e46-b6c7-56b27fd0eb14",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82783",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-de-transports-beemob-beziers-mediterranee",
+      "bbox": {
+        "south": 43.2301,
+        "west": 3.2037,
+        "north": 43.3628,
+        "east": 3.3041
+      },
+      "vehicleSample": 35,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 355,
+        "vehicles": 35,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82875",
+      "resourceId": 82875,
+      "datagouvId": "807dd36f-5813-487a-b410-20032bfbe3ad",
+      "network": "Réseau urbain Le TACO",
+      "title": "Réseau urbain Le TACO",
+      "publisher": "Transdev Var",
+      "area": "CC Coeur du Var",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/807dd36f-5813-487a-b410-20032bfbe3ad",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82875",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/le-taco-1",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 593,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82889",
+      "resourceId": 82889,
+      "datagouvId": "af4db0ee-fae6-4d71-a40d-70fd1d6f2a07",
+      "network": "SETRAM",
+      "title": "Réseau urbain SETRAM",
+      "publisher": "SETRAM",
+      "area": "CU Le Mans Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/setram-lemans-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82889",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-du-reseau-des-transports-bus-et-tramway-setram-circulant-sur-le-territoire-le-mans-metropole",
+      "bbox": {
+        "south": 47.9071,
+        "west": 0.1301,
+        "north": 48.0736,
+        "east": 0.3451
+      },
+      "vehicleSample": 61,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 24,
+        "vehicles": 61,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82896",
+      "resourceId": 82896,
+      "datagouvId": "b12cc05c-940d-4f43-b607-163f4632814e",
+      "network": "Lia",
+      "title": "Réseau urbain LiA",
+      "publisher": "Réseau de transport en commun Le Havre Seine Métropole LiA",
+      "area": "CU Le Havre Seine Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/b12cc05c-940d-4f43-b607-163f4632814e",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82896",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-en-commun-lia-gtfs-siri",
+      "bbox": {
+        "south": 49.4789,
+        "west": 0.074,
+        "north": 49.6201,
+        "east": 0.3357
+      },
+      "vehicleSample": 99,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 68,
+        "vehicles": 99,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-82909",
+      "resourceId": 82909,
+      "datagouvId": "b55d287b-140d-4148-aff9-2664503fdd21",
+      "network": "La Navette",
+      "title": "Navette de la CC Sel et Vermois",
+      "publisher": "Fluo Grand Est",
+      "area": "CC des Pays du Sel et du Vermois",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/fluo-sel-et-vermois-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/82909",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-de-la-communaute-de-communes-des-pays-du-sel-et-du-vermois",
+      "bbox": {
+        "south": 48.6053,
+        "west": 6.2804,
+        "north": 48.6201,
+        "east": 6.3508
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 39,
+        "vehicles": 2,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83026",
+      "resourceId": 83026,
+      "datagouvId": "df0af5aa-7f1d-43b3-aa90-39469f8cc65e",
+      "network": "TBM - Transports Bordeaux Métropole",
+      "title": "Réseau urbain et scolaire TBM",
+      "publisher": "Bordeaux Métropole",
+      "area": "Bordeaux Métropole",
+      "modes": [
+        "urban",
+        "school"
+      ],
+      "licence": "fr-lo",
+      "licenceLabel": "Licence Ouverte 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/df0af5aa-7f1d-43b3-aa90-39469f8cc65e",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83026",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offres-de-services-bus-tram-et-scolaire-au-format-gtfs-netex-gtfs-rt-siri-lite",
+      "bbox": {
+        "south": 44.7549,
+        "west": -0.7882,
+        "north": 44.9653,
+        "east": -0.4624
+      },
+      "vehicleSample": 321,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 177,
+        "vehicles": 321,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83078",
+      "resourceId": 83078,
+      "datagouvId": "59181d06-f4a9-4474-b7b8-2b6d47913245",
+      "network": "SNgo!",
+      "title": "Réseau urbain SNgo!",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CA Seine Normandie Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/sngo-vernon-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83078",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/sngo-vernon-les-andelys-seine-normandie-agglo",
+      "bbox": {
+        "south": 49.0899,
+        "west": 1.472,
+        "north": 49.091,
+        "east": 1.4793
+      },
+      "vehicleSample": 4,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 4,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83079",
+      "resourceId": 83079,
+      "datagouvId": "8e45727d-487f-4a14-823b-d906d6ebaa43",
+      "network": "Envia",
+      "title": "Réseau urbain Envia",
+      "publisher": "ENVIA",
+      "area": "CA d'Arles-Crau-Camargue-Montagnette",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/8e45727d-487f-4a14-823b-d906d6ebaa43",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83079",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-temps-reels-reseau-envia",
+      "bbox": {
+        "south": 43.4815,
+        "west": 4.4048,
+        "north": 43.7087,
+        "east": 4.7174
+      },
+      "vehicleSample": 6,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 321,
+        "vehicles": 6,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83118",
+      "resourceId": 83118,
+      "datagouvId": "0a9db2cd-ab29-4b1e-9217-62436ef3c580",
+      "network": "VRD Mobilités - CITEA",
+      "title": "Réseau urbain Citéa",
+      "publisher": "Valence Romans Mobilités",
+      "area": "CA Valence Romans Agglo",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/citea-valence-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83118",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/ce-jeu-de-donnees-contient-la-liste-des-arrets-des-horaires-et-des-parcours-theoriques-du-reseau-de-transport-urbain-et-interurbain-de-vrm",
+      "bbox": {
+        "south": 44.8528,
+        "west": 4.7409,
+        "north": 45.0511,
+        "east": 5.0845
+      },
+      "vehicleSample": 49,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 49,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83139",
+      "resourceId": 83139,
+      "datagouvId": "4019efb6-8cb9-41f2-b172-c7d3b084a959",
+      "network": "Côte&Bus",
+      "title": "Réseau urbain Côte&Bus",
+      "publisher": "Communauté d'Agglomération Beaune Côte et Sud",
+      "area": "CA Beaune, Côte et Sud - Communauté Beaune-Chagny-Nolay",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/beaune-cote-et-bus-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83139",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-de-la-c-a-beaune-cote-sud-gtfs",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83150",
+      "resourceId": 83150,
+      "datagouvId": "4ee665e5-8997-4fc6-bf58-4706f6dc5c6b",
+      "network": "Vikibus",
+      "title": "Réseau urbain Vikibus",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CC Yvetot Normandie",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/vikibus-yvetot-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83150",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/vikibus-yvetot-normandie",
+      "bbox": {
+        "south": 49.6219,
+        "west": 0.7531,
+        "north": 49.6219,
+        "east": 0.7531
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83190",
+      "resourceId": 83190,
+      "datagouvId": "82608db8-ab62-48d8-83de-decaed8828b3",
+      "network": "SITRAVEL",
+      "title": "Navette estivale CVL Mobilité",
+      "publisher": "Communauté de Communes Chinon Vienne et Loire",
+      "area": "Chinon",
+      "modes": [
+        "seasonal"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/82608db8-ab62-48d8-83de-decaed8828b3",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83190",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-cvlmobilite-plan-de-transport-theorique-la-navette-lete-a-chinon-format-gtfs",
+      "bbox": {
+        "south": 47.1633,
+        "west": 0.2483,
+        "north": 47.1633,
+        "east": 0.2483
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 2537,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83192",
+      "resourceId": 83192,
+      "datagouvId": "8d37ead3-7887-438b-9b0b-e2675d0e3f2c",
+      "network": "SITRAVEL",
+      "title": "Réseau urbain CVL Mobilité",
+      "publisher": "Communauté de Communes Chinon Vienne et Loire",
+      "area": "CC Chinon, Vienne et Loire",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/8d37ead3-7887-438b-9b0b-e2675d0e3f2c",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83192",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-cvlmobilite-plan-de-transport-theorique-ligne-a-format-gtfs",
+      "bbox": {
+        "south": 47.2088,
+        "west": 0.1611,
+        "north": 47.2326,
+        "east": 0.1827
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 274,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83201",
+      "resourceId": 83201,
+      "datagouvId": "131da43c-d324-4f98-8481-0c7b20327df1",
+      "network": "Réseau urbain Hop Bus",
+      "title": "Réseau urbain Hop Bus",
+      "publisher": "Coeur de Flandre Agglo",
+      "area": "CA Coeur de Flandre",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/131da43c-d324-4f98-8481-0c7b20327df1",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83201",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/hop-bus-le-reseau-100-gratuit-du-coeur-de-flandre",
+      "bbox": {
+        "south": 50.6963,
+        "west": 2.5183,
+        "north": 50.754,
+        "east": 2.8347
+      },
+      "vehicleSample": 9,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 55,
+        "vehicles": 9,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83285",
+      "resourceId": 83285,
+      "datagouvId": "72540edd-25f2-4b50-8e9e-e4c55f916018",
+      "network": "Semo Bus",
+      "title": "Réseau urbain et scolaire SEMO",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CA Seine-Eure",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/seine-eure-semo-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83285",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/semo-val-de-reuil-louviers-seine-eure-agglo",
+      "bbox": {
+        "south": 49.2084,
+        "west": 1.0411,
+        "north": 49.3031,
+        "east": 1.2243
+      },
+      "vehicleSample": 12,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 12,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83297",
+      "resourceId": 83297,
+      "datagouvId": "0da9db94-d181-47b7-ae6f-cafe68014c4f",
+      "network": "Astuce",
+      "title": "Réseau urbain Astuce",
+      "publisher": "Métropole Rouen Normandie",
+      "area": "Métropole Rouen Normandie",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/0da9db94-d181-47b7-ae6f-cafe68014c4f",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83297",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-temps-reel-du-reseau-astuce-metropole-rouen-normandie",
+      "bbox": {
+        "south": 49.3283,
+        "west": 1.0157,
+        "north": 49.5281,
+        "east": 1.1762
+      },
+      "vehicleSample": 166,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 160,
+        "vehicles": 166,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83298",
+      "resourceId": 83298,
+      "datagouvId": "e28a981d-7f5f-4bd8-a4c1-e74a822f13f8",
+      "network": "Astuce",
+      "title": "Réseau urbain Astuce",
+      "publisher": "Métropole Rouen Normandie",
+      "area": "Métropole Rouen Normandie",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/e28a981d-7f5f-4bd8-a4c1-e74a822f13f8",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83298",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-temps-reel-du-reseau-astuce-metropole-rouen-normandie",
+      "bbox": {
+        "south": 49.4403,
+        "west": 0.8953,
+        "north": 49.4862,
+        "east": 1.0887
+      },
+      "vehicleSample": 4,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 153,
+        "vehicles": 4,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83319",
+      "resourceId": 83319,
+      "datagouvId": "5f571595-aef1-480f-acde-b9315d9f5f3b",
+      "network": "Nice Lignes d'Azur",
+      "title": "Réseau urbain Lignes d'Azur",
+      "publisher": "Métropole Nice Côte d'Azur",
+      "area": "Métropole Nice Côte d'Azur",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/5f571595-aef1-480f-acde-b9315d9f5f3b",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83319",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-dynamiques-du-reseau-de-transport-lignes-dazur",
+      "bbox": {
+        "south": 43.6591,
+        "west": 7.0879,
+        "north": 43.8212,
+        "east": 7.3811
+      },
+      "vehicleSample": 165,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 66,
+        "vehicles": 165,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83331",
+      "resourceId": 83331,
+      "datagouvId": "5a854ccb-ef82-4b04-8a35-a26c89bd69d6",
+      "network": "Ales'y",
+      "title": "Réseau urbain Alesy",
+      "publisher": "Syndicat Mixte du Bassin d'Alès - Réseau Ales'Y",
+      "area": "CA Alès Agglomération · Allègre-les-Fumades · Bessèges · Bouquet · Cardet · Gagnières · Lédignan · Meyrannes · Molières-sur-Cèze · Navacelles · Robiac-Rochessadoule · Saint-Ambroix · Saint-Dézéry",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/5a854ccb-ef82-4b04-8a35-a26c89bd69d6",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83331",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-des-lignes-urbaines-et-interurbaines-sur-le-reseau-alesy-gtfs",
+      "bbox": {
+        "south": 44.0807,
+        "west": 3.9834,
+        "north": 44.1382,
+        "east": 4.1092
+      },
+      "vehicleSample": 9,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 328,
+        "vehicles": 9,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83365",
+      "resourceId": 83365,
+      "datagouvId": "db7ab07b-daf3-4423-9884-d8d5c659dd13",
+      "network": "Réseau urbain Glazgo",
+      "title": "Réseau urbain Glazgo",
+      "publisher": "Auray Quiberon Terre Atlantique",
+      "area": "CC Auray Quiberon Terre Atlantique",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/db7ab07b-daf3-4423-9884-d8d5c659dd13",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83365",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-glazgo",
+      "bbox": {
+        "south": 47.4861,
+        "west": -3.1481,
+        "north": 47.6709,
+        "east": -2.9925
+      },
+      "vehicleSample": 10,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 201,
+        "vehicles": 10,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83386",
+      "resourceId": 83386,
+      "datagouvId": "16f3e3ea-8527-4a6a-a37e-2b7eb312da51",
+      "network": "Agglo'bus",
+      "title": "Réseau urbain Agglobus",
+      "publisher": "Communauté d’Agglomération du Centre Littoral de Guyane",
+      "area": "CA du Centre Littoral",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/16f3e3ea-8527-4a6a-a37e-2b7eb312da51",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83386",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/agence-agglobus",
+      "bbox": {
+        "south": 4.8304,
+        "west": -52.5174,
+        "north": 4.9474,
+        "east": -52.2737
+      },
+      "vehicleSample": 29,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 432,
+        "vehicles": 29,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83392",
+      "resourceId": 83392,
+      "datagouvId": "1f0f0b14-da49-43da-94c6-3c59df2a925a",
+      "network": "Deep Mob",
+      "title": "Réseau urbain DeepMob",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CA de la Région Dieppoise",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/deepmob-dieppe-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83392",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/deepmob-dieppe-maritime",
+      "bbox": {
+        "south": 49.9056,
+        "west": 1.0779,
+        "north": 49.922,
+        "east": 1.0997
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83395",
+      "resourceId": 83395,
+      "datagouvId": "cc043d19-1258-433c-9d55-5c62fef2d038",
+      "network": "CmonBus",
+      "title": "Réseau urbain Cmonbus",
+      "publisher": "CA Luberon Monts de Vaucluse",
+      "area": "CA Luberon Monts de Vaucluse",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/cc043d19-1258-433c-9d55-5c62fef2d038",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83395",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-reseau-cmonbus",
+      "bbox": {
+        "south": 43.8201,
+        "west": 5.0262,
+        "north": 43.8529,
+        "east": 5.0815
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 120,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83414",
+      "resourceId": 83414,
+      "datagouvId": "7c58df8c-4c5b-4e2a-ad07-635345745db5",
+      "network": "AZALYS",
+      "title": "Réseau urbain Azalys",
+      "publisher": "JVMALIN",
+      "area": "CA de Blois ''Agglopolys''",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/7c58df8c-4c5b-4e2a-ad07-635345745db5",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83414",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/agglopolys-offre-theorique-mobilite-reseau-urbain-azalys-de-blois",
+      "bbox": {
+        "south": 47.5673,
+        "west": 1.2996,
+        "north": 47.6152,
+        "east": 1.3664
+      },
+      "vehicleSample": 12,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 204,
+        "vehicles": 12,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83468",
+      "resourceId": 83468,
+      "datagouvId": "252fd29f-4a13-4e38-9e9e-6d3c09e9bb5a",
+      "network": "Réseau urbain Pays des Ecrins",
+      "title": "Réseau urbain Pays des Ecrins",
+      "publisher": "Communauté de Communes du Pays des Écrins",
+      "area": "CC du Pays des Ecrins",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/252fd29f-4a13-4e38-9e9e-6d3c09e9bb5a",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83468",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/transports-en-commun-pays-des-ecrins",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 158,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83523",
+      "resourceId": 83523,
+      "datagouvId": "fd40ae51-b748-4065-a341-24e888919b11",
+      "network": "Ficibus",
+      "title": "Réseau urbain Ficibus",
+      "publisher": "Syndicat mixte Atoumod",
+      "area": "CA Fécamp Caux Littoral Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/fd40ae51-b748-4065-a341-24e888919b11",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83523",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/ficibus-fecamp-caux-littoral",
+      "bbox": {
+        "south": 49.7466,
+        "west": 0.375,
+        "north": 49.759,
+        "east": 0.3987
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 65,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83538",
+      "resourceId": 83538,
+      "datagouvId": "11cfb66c-bcf1-4990-9137-4a070ad71765",
+      "network": "MONTELIBUS",
+      "title": "Réseau urbain Montelibus",
+      "publisher": "Montélibus",
+      "area": "CA Montélimar Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/montelibus-montelimar-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83538",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-montelibus",
+      "bbox": {
+        "south": 44.5243,
+        "west": 4.6046,
+        "north": 44.7197,
+        "east": 4.8202
+      },
+      "vehicleSample": 10,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 10,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83628",
+      "resourceId": 83628,
+      "datagouvId": "a93d2e49-c4c3-4f8c-8e03-ce346c2d53b2",
+      "network": "TIGNES",
+      "title": "Navettes saisonnières Tignes",
+      "publisher": "Communauté de Communes Haute-Tarentaise",
+      "area": "Tignes",
+      "modes": [
+        "seasonal"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/a93d2e49-c4c3-4f8c-8e03-ce346c2d53b2",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83628",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/navettes-tignes",
+      "bbox": {
+        "south": 45.4696,
+        "west": 6.9073,
+        "north": 45.501,
+        "east": 6.925
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 86,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83630",
+      "resourceId": 83630,
+      "datagouvId": "28c1bf4a-90d8-4360-baf3-ceaea2a1941f",
+      "network": "Navettes saisonnières Val d'Isère",
+      "title": "Navettes saisonnières Val d'Isère",
+      "publisher": "Communauté de Communes Haute-Tarentaise",
+      "area": "Val-d'Isère",
+      "modes": [
+        "seasonal"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/28c1bf4a-90d8-4360-baf3-ceaea2a1941f",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83630",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/navettes-val-disere",
+      "bbox": {
+        "south": 45.4456,
+        "west": 6.9227,
+        "north": 45.501,
+        "east": 6.9798
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 91,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83714",
+      "resourceId": 83714,
+      "datagouvId": "a28be19e-9e65-43a8-859b-72dc0101074e",
+      "network": "Fluo Grand Est",
+      "title": "Réseau interurbain Fluo Grand-Est - Haut-Rhin (68)",
+      "publisher": "Fluo Grand Est",
+      "area": "Haut-Rhin",
+      "modes": [
+        "intercity"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/fluo-haut-rhin-68-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83714",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-fluo-grand-est-haut-rhin-68",
+      "bbox": {
+        "south": 47.5358,
+        "west": 6.9437,
+        "north": 48.134,
+        "east": 7.5901
+      },
+      "vehicleSample": 26,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 26,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83743",
+      "resourceId": 83743,
+      "datagouvId": "1fc16ad0-4aef-402d-9faa-da04ddd61fd2",
+      "network": "Citibus",
+      "title": "Réseau urbain Citibus",
+      "publisher": "Le Grand Narbonne Communauté d'Agglomération",
+      "area": "CA Le Grand Narbonne",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/1fc16ad0-4aef-402d-9faa-da04ddd61fd2",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83743",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-communaute-dagglomeration-le-grand-narbonne",
+      "bbox": {
+        "south": 43.0113,
+        "west": 2.9629,
+        "north": 43.2362,
+        "east": 3.1333
+      },
+      "vehicleSample": 32,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 275,
+        "vehicles": 32,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83748",
+      "resourceId": 83748,
+      "datagouvId": "6b7622db-c941-4d85-9856-c0315ddb78e1",
+      "network": "Qub",
+      "title": "Réseau urbain Qub",
+      "publisher": "Quimper Bretagne Occidentale",
+      "area": "CA Quimper Bretagne Occidentale",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/6b7622db-c941-4d85-9856-c0315ddb78e1",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83748",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-du-reseau-de-transports-qub-transports-urbains-de-quimper-bretagne-occidentale",
+      "bbox": {
+        "south": 47.931,
+        "west": -4.1526,
+        "north": 48.1014,
+        "east": -3.9872
+      },
+      "vehicleSample": 23,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 295,
+        "vehicles": 23,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83764",
+      "resourceId": 83764,
+      "datagouvId": "0c2a92f4-4d1a-4df8-b012-0781f3c90ac4",
+      "network": "Lila presqu'ile",
+      "title": "Réseau urbain et scolaire Lila Presqu'ile",
+      "publisher": "Transdev CapAtlantique Mobilités • Lila Presqu'île",
+      "area": "CA de la Presqu'île de Guérande Atlantique (Cap Atlantique)",
+      "modes": [
+        "urban",
+        "school"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83764",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-scolaire-lila-presquile",
+      "bbox": {
+        "south": 47.2602,
+        "west": -2.4683,
+        "north": 47.4149,
+        "east": -2.2638
+      },
+      "vehicleSample": 11,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 11,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83766",
+      "resourceId": 83766,
+      "datagouvId": "fe7d4eb6-87a8-40d7-9f21-dcec6e709fa6",
+      "network": "Lila presqu'ile",
+      "title": "Réseau urbain et scolaire Lila Presqu'ile",
+      "publisher": "Transdev CapAtlantique Mobilités • Lila Presqu'île",
+      "area": "CA de la Presqu'île de Guérande Atlantique (Cap Atlantique)",
+      "modes": [
+        "urban",
+        "school"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83766",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-scolaire-lila-presquile",
+      "bbox": {
+        "south": 47.2602,
+        "west": -2.4683,
+        "north": 47.4149,
+        "east": -2.2638
+      },
+      "vehicleSample": 11,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 22,
+        "vehicles": 11,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83780",
+      "resourceId": 83780,
+      "datagouvId": "f8bbdcd9-0a6c-4786-ab15-08b70cad47c7",
+      "network": "TaM",
+      "title": "Réseau urbain TaM",
+      "publisher": "Montpellier Méditerranée Métropole",
+      "area": "Montpellier Méditerranée Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/f8bbdcd9-0a6c-4786-ab15-08b70cad47c7",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83780",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-tam-en-temps-reel-gtfs-rt-urbain-et-suburbain",
+      "bbox": {
+        "south": 43.5373,
+        "west": 3.7024,
+        "north": 43.6736,
+        "east": 4.0057
+      },
+      "vehicleSample": 24,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 201,
+        "vehicles": 24,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83796",
+      "resourceId": 83796,
+      "datagouvId": "82da1b06-3337-44ca-9146-d70537231a11",
+      "network": "MAT (Malo Agglo Transport)",
+      "title": "Réseau urbain MAT",
+      "publisher": "Transdev SMA Mobilités • MAT",
+      "area": "CA du Pays de Saint Malo Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/mat-st-malo-gtfs-rt",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83796",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-mat",
+      "bbox": {
+        "south": 48.6143,
+        "west": -2.0216,
+        "north": 48.6803,
+        "east": -1.8499
+      },
+      "vehicleSample": 15,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 15,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83840",
+      "resourceId": 83840,
+      "datagouvId": "7c1a4aee-6445-4a2e-90aa-250ade5b9e80",
+      "network": "ALÉO",
+      "title": "Réseau urbain Aléo",
+      "publisher": "ALEO",
+      "area": "CA Moulins Communauté",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/7c1a4aee-6445-4a2e-90aa-250ade5b9e80",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83840",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-du-reseau-de-transport-aleo",
+      "bbox": {
+        "south": 46.5483,
+        "west": 3.3232,
+        "north": 46.5901,
+        "east": 3.349
+      },
+      "vehicleSample": 7,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 68,
+        "vehicles": 7,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83843",
+      "resourceId": 83843,
+      "datagouvId": "7504584f-36c0-473e-9cdb-e481aa12d9df",
+      "network": "Rubis",
+      "title": "Réseau urbain Rubis",
+      "publisher": "Grand Bourg Agglomération",
+      "area": "CA du Bassin de Bourg-en-Bresse",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/rubis-bourg-en-bresse-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83843",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/rubis-grand-bourg-mobilites-offre-de-transport-theorique-et-temps-reel",
+      "bbox": {
+        "south": 46.1754,
+        "west": 5.1962,
+        "north": 46.232,
+        "east": 5.3299
+      },
+      "vehicleSample": 16,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 44,
+        "vehicles": 16,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83851",
+      "resourceId": 83851,
+      "datagouvId": "7e4b9d82-0863-4eaa-8051-a1dcf5e086f5",
+      "network": "Filibus",
+      "title": "Réseau urbain Filibus",
+      "publisher": "Filibus - Chartres Métropole Transports",
+      "area": "CA Chartres Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/7e4b9d82-0863-4eaa-8051-a1dcf5e086f5",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83851",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/filibus-urbain",
+      "bbox": {
+        "south": 48.424,
+        "west": 1.4434,
+        "north": 48.4763,
+        "east": 1.5208
+      },
+      "vehicleSample": 27,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 163,
+        "vehicles": 27,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83855",
+      "resourceId": 83855,
+      "datagouvId": "5511d6c1-1454-4045-a2f5-1223f22d7530",
+      "network": "Réseau urbain Olé",
+      "title": "Réseau urbain Olé",
+      "publisher": "Communauté d'Agglomération Lunel Agglo",
+      "area": "CA Lunel Agglo",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/5511d6c1-1454-4045-a2f5-1223f22d7530",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83855",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-ole-lunel-agglo-gtfs-et-gtfs-rt",
+      "bbox": {
+        "south": 43.6791,
+        "west": 4.0825,
+        "north": 43.7574,
+        "east": 4.1294
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 300,
+        "vehicles": 2,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83857",
+      "resourceId": 83857,
+      "datagouvId": "39f7ea92-6ad5-4a02-ad14-4019ce4a8ecb",
+      "network": "DK'BUS",
+      "title": "Réseau urbain DK'BUS",
+      "publisher": "Communauté Urbaine de Dunkerque / Réseau Dk Bus",
+      "area": "CU de Dunkerque",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/39f7ea92-6ad5-4a02-ad14-4019ce4a8ecb",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83857",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transports-reseau-dk-bus-de-la-communaute-urbaine-de-dunkerque-gtfs",
+      "bbox": {
+        "south": 50.9678,
+        "west": 2.1071,
+        "north": 51.0754,
+        "east": 2.5142
+      },
+      "vehicleSample": 76,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 107,
+        "vehicles": 76,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83860",
+      "resourceId": 83860,
+      "datagouvId": "60dde12f-09d6-49ec-86c5-300a59119488",
+      "network": "Réseau urbain Papillon",
+      "title": "Réseau urbain Papillon",
+      "publisher": "Communauté de Communes Cœur de Loire",
+      "area": "CC Coeur de Loire",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/60dde12f-09d6-49ec-86c5-300a59119488",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83860",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-du-reseau-de-bus-papillon-a-cosne-cours-sur-loire",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 703,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83868",
+      "resourceId": 83868,
+      "datagouvId": "cf98048e-7419-46ec-a1e3-36a34e1e11a9",
+      "network": "LINEAD",
+      "title": "Réseau urbain Linead",
+      "publisher": "JVMALIN",
+      "area": "CA Agglo du Pays de Dreux",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/cf98048e-7419-46ec-a1e3-36a34e1e11a9",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83868",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/dreux-offre-theorique-mobilite-reseau-urbain",
+      "bbox": {
+        "south": 48.7194,
+        "west": 1.366,
+        "north": 48.7394,
+        "east": 1.3922
+      },
+      "vehicleSample": 4,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 73,
+        "vehicles": 4,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83889",
+      "resourceId": 83889,
+      "datagouvId": "22237a4e-7c42-4d95-a192-d7ebd6ec6357",
+      "network": "J'ybus",
+      "title": "Réseau urbain Jybus",
+      "publisher": "J'ybus",
+      "area": "CC Rumilly Terre de Savoie",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/jybus-rumilly-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83889",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transports-jybus-a-rumilly",
+      "bbox": {
+        "south": 45.8612,
+        "west": 5.9466,
+        "north": 45.8806,
+        "east": 6.0463
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 20,
+        "vehicles": 3,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83924",
+      "resourceId": 83924,
+      "datagouvId": "abe147f7-a064-43fe-be9e-6f35f5a9597f",
+      "network": "Réseau urbain et TAD zonal Libellule",
+      "title": "Réseau urbain et TAD zonal Libellule",
+      "publisher": "Oise Mobilité - Syndicat mixte des transports collectifs de l'Oise",
+      "area": "CC du Liancourtois",
+      "modes": [
+        "urban",
+        "zonal_drt"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/abe147f7-a064-43fe-be9e-6f35f5a9597f",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83924",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-le-libellule-communaute-du-liancourtois-la-vallee-doree",
+      "bbox": {
+        "south": 49.3148,
+        "west": 2.4709,
+        "north": 49.3148,
+        "east": 2.4709
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 74,
+        "vehicles": 1,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-83928",
+      "resourceId": 83928,
+      "datagouvId": "e7bb7c29-4af1-4823-b3db-d20092e65966",
+      "network": "Mouvéo",
+      "title": "Réseau urbain Mouvéo",
+      "publisher": "Communauté d'Agglomération du Pays de Saint-Omer",
+      "area": "CA du Pays de Saint-Omer",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/mouveo-saint-omer-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/83928",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/transports-en-commun-audomarois-1",
+      "bbox": {
+        "south": 50.5745,
+        "west": 2.0705,
+        "north": 50.8701,
+        "east": 2.3965
+      },
+      "vehicleSample": 11,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 107,
+        "vehicles": 11,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84015",
+      "resourceId": 84015,
+      "datagouvId": "e888855d-3c33-4f24-a55d-5953dfb59b14",
+      "network": "Maélis",
+      "title": "Réseau urbain Maelis",
+      "publisher": "Montluçon Communauté",
+      "area": "CA Montluçon Communauté",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/maelis-montlucon-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84015",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-reel-du-reseau-maelis-montlucon-communaute-gtfs",
+      "bbox": {
+        "south": 46.3352,
+        "west": 2.5745,
+        "north": 46.3506,
+        "east": 2.6108
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84017",
+      "resourceId": 84017,
+      "datagouvId": "24e2ecf9-82a3-4bfc-bf86-db6ec81c480f",
+      "network": "Agglobus Cavem",
+      "title": "Réseau urbain Le Bus",
+      "publisher": "Estérel Côte d'Azur Agglomération",
+      "area": "CA Estérel Côte d'Azur Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/24e2ecf9-82a3-4bfc-bf86-db6ec81c480f",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84017",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-transport-urbain-le-bus",
+      "bbox": {
+        "south": 43.4153,
+        "west": 6.637,
+        "north": 43.4891,
+        "east": 6.8567
+      },
+      "vehicleSample": 22,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 259,
+        "vehicles": 22,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84038",
+      "resourceId": 84038,
+      "datagouvId": "d499d5a2-8bba-4862-847a-0423f7d8cf23",
+      "network": "Lia",
+      "title": "Réseau urbain LiA",
+      "publisher": "Réseau de transport en commun Le Havre Seine Métropole LiA",
+      "area": "CU Le Havre Seine Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/d499d5a2-8bba-4862-847a-0423f7d8cf23",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84038",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-en-commun-lia-gtfs-siri",
+      "bbox": {
+        "south": 49.479,
+        "west": 0.074,
+        "north": 49.6913,
+        "east": 0.3357
+      },
+      "vehicleSample": 78,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 221,
+        "vehicles": 78,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84047",
+      "resourceId": 84047,
+      "datagouvId": "62df8056-9653-4844-a667-a2e1f9b07ce9",
+      "network": "Kicéo",
+      "title": "Réseau urbain Kicéo",
+      "publisher": "Transdev GMVA Mobilités • Kicéo",
+      "area": "CA Golfe du Morbihan - Vannes Agglomération",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/kiceo-vannes-gtfs-rt",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84047",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-kiceo",
+      "bbox": {
+        "south": 47.4899,
+        "west": -2.865,
+        "north": 47.6903,
+        "east": -2.7042
+      },
+      "vehicleSample": 33,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 33,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84050",
+      "resourceId": 84050,
+      "datagouvId": "c4563dcc-f547-489a-b63a-efb4dbb37262",
+      "network": "TADAO",
+      "title": "Réseau urbain TADAO",
+      "publisher": "TADAO",
+      "area": "CA de Lens - Liévin",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/c4563dcc-f547-489a-b63a-efb4dbb37262",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84050",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-tadao",
+      "bbox": {
+        "south": 50.3883,
+        "west": 2.4516,
+        "north": 50.5584,
+        "east": 3.0397
+      },
+      "vehicleSample": 128,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 158,
+        "vehicles": 128,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84054",
+      "resourceId": 84054,
+      "datagouvId": "cb5c99a8-d0e1-4436-88f0-3097b79d5e63",
+      "network": "Rémi - Réseau de Mobilité Interurbaine CVDL",
+      "title": "Réseau interurbain Rémi",
+      "publisher": "JVMALIN",
+      "area": "Centre-Val de Loire",
+      "modes": [
+        "intercity"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/cb5c99a8-d0e1-4436-88f0-3097b79d5e63",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84054",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/remi-offre-theorique-mobilite-reseau-interurbain-regional",
+      "bbox": {
+        "south": 47.7114,
+        "west": 0.8315,
+        "north": 48.8597,
+        "east": 1.956
+      },
+      "vehicleSample": 20,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 320,
+        "vehicles": 20,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84058",
+      "resourceId": 84058,
+      "datagouvId": "74235bed-95fc-4fa8-ab25-bab7e3c6a6f1",
+      "network": "Orizo",
+      "title": "Réseau urbain Orizo",
+      "publisher": "Grand Avignon",
+      "area": "CA du Grand Avignon (COGA)",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/74235bed-95fc-4fa8-ab25-bab7e3c6a6f1",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84058",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-orizo-grand-avignon",
+      "bbox": {
+        "south": 43.8853,
+        "west": 4.7084,
+        "north": 43.9907,
+        "east": 4.9656
+      },
+      "vehicleSample": 82,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 248,
+        "vehicles": 82,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84067",
+      "resourceId": 84067,
+      "datagouvId": "c447183d-c831-42f6-b85f-5789978398d8",
+      "network": "CHAMONIX MOBILITE",
+      "title": "Réseau urbain Chamonix",
+      "publisher": "Transdev Chamonix",
+      "area": "CC de la Vallée de Chamonix-Mont-Blanc",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/c447183d-c831-42f6-b85f-5789978398d8",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84067",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-reseau-chamonix-mobilite",
+      "bbox": {
+        "south": 45.8897,
+        "west": 6.7892,
+        "north": 45.9823,
+        "east": 6.926
+      },
+      "vehicleSample": 10,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 446,
+        "vehicles": 10,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84069",
+      "resourceId": 84069,
+      "datagouvId": "c854a422-f68a-469b-af72-b35c2d4dc84c",
+      "network": "Réseau urbain U Vagabondu",
+      "title": "Réseau urbain U Vagabondu",
+      "publisher": "Régie de transport Communauté de communes Spelunca-Liamone",
+      "area": "CC Spelunca-Liamone",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/c854a422-f68a-469b-af72-b35c2d4dc84c",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84069",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/u-vagabondu",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 151,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84080",
+      "resourceId": 84080,
+      "datagouvId": "092ad091-b0c1-4094-9897-198a3c78faa7",
+      "network": "SudLib",
+      "title": "Réseau urbain de la zone Sud (CAESM)",
+      "publisher": "Martinique Transport",
+      "area": "CA de l'Espace Sud de la Martinique",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/092ad091-b0c1-4094-9897-198a3c78faa7",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84080",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-urbain-de-la-zone-sud",
+      "bbox": {
+        "south": 14.4322,
+        "west": -61.0168,
+        "north": 14.6388,
+        "east": -60.8351
+      },
+      "vehicleSample": 51,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 185,
+        "vehicles": 51,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84081",
+      "resourceId": 84081,
+      "datagouvId": "6cfa1c1c-43ef-4b55-9cae-b106180eefdb",
+      "network": "MOZAIK",
+      "title": "Réseau urbain de la zone Centre (CACEM)",
+      "publisher": "Martinique Transport",
+      "area": "CA du Centre de la Martinique",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/6cfa1c1c-43ef-4b55-9cae-b106180eefdb",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84081",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-urbain-de-la-zone-centre",
+      "bbox": {
+        "south": 14.5958,
+        "west": -61.1036,
+        "north": 14.6795,
+        "east": -60.9839
+      },
+      "vehicleSample": 33,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 497,
+        "vehicles": 33,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84086",
+      "resourceId": 84086,
+      "datagouvId": "639b6c0b-a621-4a5d-8d27-06e2cc3a060d",
+      "network": "Réseau Nord",
+      "title": "Réseau urbain de la zone Nord (CAP NORD)",
+      "publisher": "Martinique Transport",
+      "area": "CA du Pays Nord Martinique",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/639b6c0b-a621-4a5d-8d27-06e2cc3a060d",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84086",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-urbain-de-la-zone-nord-cap-nord",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 1392,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84088",
+      "resourceId": 84088,
+      "datagouvId": "eb530fc3-b08f-42a2-a669-0eeeeecee32d",
+      "network": "Réseau urbain LISATIS",
+      "title": "Réseau urbain LISATIS",
+      "publisher": "SPL D'UN POINT A L'AUTRE",
+      "area": "Lavaur",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/eb530fc3-b08f-42a2-a669-0eeeeecee32d",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84088",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-urbain-lisatis",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 81,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84094",
+      "resourceId": 84094,
+      "datagouvId": "3a40f4e7-3068-43d2-9cd1-7b33cb0c2fe5",
+      "network": "liO",
+      "title": "Réseau interurbain liO Occitanie",
+      "publisher": "Région Occitanie / Pyrénées Méditerranée",
+      "area": "Occitanie",
+      "modes": [
+        "intercity"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/3a40f4e7-3068-43d2-9cd1-7b33cb0c2fe5",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84094",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-lio-occitanie",
+      "bbox": {
+        "south": 42.4076,
+        "west": -0.3596,
+        "north": 44.838,
+        "east": 4.8036
+      },
+      "vehicleSample": 128,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 311,
+        "vehicles": 128,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84122",
+      "resourceId": 84122,
+      "datagouvId": "74975bc9-525c-4ecd-b6cb-d1ca08863ba8",
+      "network": "TRANSVILLES",
+      "title": "Réseau urbain Transvilles",
+      "publisher": "Syndicat Intercommunal de Mobilité et d'Organisation Urbaine du Valenciennois",
+      "area": "CA Valenciennes Métropole · CA de la Porte du Hainaut",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/74975bc9-525c-4ecd-b6cb-d1ca08863ba8",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84122",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/simouv-horaires-theoriques-format-gtfs-et-temps-reel-format-siri-transvilles-valenciennes",
+      "bbox": {
+        "south": 50.3174,
+        "west": 3.3637,
+        "north": 50.4776,
+        "east": 3.6648
+      },
+      "vehicleSample": 81,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 86,
+        "vehicles": 81,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84125",
+      "resourceId": 84125,
+      "datagouvId": "78b3c0a0-6e4f-443d-88f1-325e534f67e6",
+      "network": "TANGO",
+      "title": "Réseau urbain Tango",
+      "publisher": "Tango",
+      "area": "CA de Nîmes Métropole",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/78b3c0a0-6e4f-443d-88f1-325e534f67e6",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84125",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-tango-de-nimes-metropole-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 43.7662,
+        "west": 4.2263,
+        "north": 43.8661,
+        "east": 4.4467
+      },
+      "vehicleSample": 60,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 69,
+        "vehicles": 60,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84138",
+      "resourceId": 84138,
+      "datagouvId": "bb007d9a-970d-4243-a0c3-6369147ba2fc",
+      "network": "Mobivie",
+      "title": "Réseau urbain Mobivie",
+      "publisher": "VICHY COMMUNAUTE",
+      "area": "CA Vichy Communauté",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/mobivie-vichy-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84138",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/mobivie-reseau-urbain-vichy-communaute",
+      "bbox": {
+        "south": 46.1185,
+        "west": 3.4081,
+        "north": 46.1278,
+        "east": 3.4298
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 21,
+        "vehicles": 5,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-84157",
+      "resourceId": 84157,
+      "datagouvId": "56915775-4572-4570-9f3b-55e5261ca4e0",
+      "network": "RTCA",
+      "title": "Réseau urbain RTCA",
+      "publisher": "Carcassonne Agglo",
+      "area": "CA Carcassonne Agglo",
+      "modes": [
+        "urban"
+      ],
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "url": "https://proxy.transport.data.gouv.fr/resource/rtca-carcassonne-gtfs-rt-vehicle-position",
+      "pageUrl": "https://transport.data.gouv.fr/resources/84157",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-rtca",
+      "bbox": {
+        "south": 43.2032,
+        "west": 2.3106,
+        "north": 43.2358,
+        "east": 2.4225
+      },
+      "vehicleSample": 10,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 23,
+        "vehicles": 10,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-8488",
+      "resourceId": 8488,
+      "datagouvId": "9b9013ec-4cbb-4f18-b44a-1e94088320a8",
+      "network": "TUM - Transports Urbain Mendois",
+      "title": "Réseau urbain TUM",
+      "publisher": "Zenbus",
+      "area": "Mende",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/9b9013ec-4cbb-4f18-b44a-1e94088320a8",
+      "pageUrl": "https://transport.data.gouv.fr/resources/8488",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-transports-urbains-mendois-mende-gtfs-gtfs-rt",
+      "bbox": null,
+      "vehicleSample": 0,
+      "observedAt": null,
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 85,
+        "vehicles": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "pan-8598",
+      "resourceId": 8598,
+      "datagouvId": "89a81efd-a8f4-4558-9988-9e7c56ab15fe",
+      "network": "Réseau urbain RespiRé",
+      "title": "Réseau urbain RespiRé",
+      "publisher": "Zenbus",
+      "area": "CC de l'Ile de Ré",
+      "modes": [
+        "urban"
+      ],
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "url": "https://www.data.gouv.fr/api/1/datasets/r/89a81efd-a8f4-4558-9988-9e7c56ab15fe",
+      "pageUrl": "https://transport.data.gouv.fr/resources/8598",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-respire-ile-de-re-gtfs-gtfs-rt",
+      "bbox": {
+        "south": 46.1536,
+        "west": -1.5551,
+        "north": 46.2406,
+        "east": -1.2144
+      },
+      "vehicleSample": 11,
+      "observedAt": "2026-08-26T17:35:12.482Z",
+      "lastProbe": {
+        "at": "2026-08-26T17:35:12.482Z",
+        "ok": true,
+        "ms": 92,
+        "vehicles": 11,
+        "error": null
+      }
+    }
+  ]
+}

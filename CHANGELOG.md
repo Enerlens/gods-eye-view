@@ -7,6 +7,29 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- Added the **Transit FR** layer — the first thing on this globe that moves on
+  the ground. Live GTFS-Realtime vehicle positions from the French Point d'Accès
+  National (`transport.data.gouv.fr`): buses, trams, metros and interurban
+  coaches across ~150 networks, keyless, under per-feed Licence Ouverte 2.0 /
+  ODbL 1.0. Vehicles are loaded for the viewport you are looking at (never
+  nationally), colour-coded by the network's declared service class with a live
+  legend, and clicking one raises its line, speed, bearing, stop status,
+  occupancy and the age of the operator's own last fix. Glyphs **glide between
+  two consecutive reported fixes** rather than jumping, so the scene renders up
+  to one poll interval behind live and never extrapolates past what a feed
+  actually said; a vehicle reporting no bearing is drawn as a disc, not a
+  chevron pointing somewhere plausible. Above ~300 km the layer fetches nothing
+  and says so.
+- Coverage is honest about its own gaps: France's largest networks —
+  Île-de-France, Lyon, Marseille, Strasbourg, Lille — publish no live vehicle
+  positions at all (their SIRI feeds carry next-departure and disruption data,
+  not coordinates), so a camera over central Paris reads "no PAN feed covers
+  this view" instead of an empty map.
+  Feed footprints are OBSERVED — the catalog publishes coverage as a name and
+  never as geometry — and shipped in `config/pan_gtfs_rt_feeds.json`
+  (`node scripts/build-pan-gtfs-rt-index.mjs` rebuilds it), so a cold start
+  costs no probe sweep. Attribution to transport.data.gouv.fr and each
+  publishing transport authority is registered in the Data attribution popover.
 - Added an opt-in **OpenStreetMap mapped-camera** source
   (`CCTV_OSM_CAMERAS_ENABLED=1`): publicly mapped surveillance-camera positions
   are loaded for the viewport you are looking at — plus a snapped margin, so
