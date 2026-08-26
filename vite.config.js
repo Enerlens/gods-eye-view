@@ -40,6 +40,8 @@ import {
   isOverBudget as isTomTomOverBudget,
 } from './src/data/tomtomTiles.js';
 import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
+import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
+import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { defineConfig, loadEnv } from 'vite';
@@ -2164,6 +2166,375 @@ function firmsProxy() {
         } catch (err) {
           console.warn('[firms-proxy] error:', err?.message || err);
           sendJson(500, { error: 'firms proxy error' });
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Vigicrues river-flood vigilance proxy with a memory + disk cache.
+ * Upstream: https://www.vigicrues.gouv.fr/services/InfoVigiCru.geojson
+ *
+ * The upstream body is 2,245,691 bytes, served with NO gzip (the origin
+ * ignores `Accept-Encoding`) and NO ETag or Last-Modified, so a conditional
+ * GET is impossible and every poll would be a full 2.2 MB transfer. The map
+ * itself changes twice a day (10:00 and 16:00 Paris, published ~5 min early),
+ * more often during an episode. Polling that directly from the browser at any
+ * useful cadence is indefensible, so this proxy splits the feed along its
+ * real seam:
+ *
+ *   GET /api/vigicrues           → {fetchedAt, stale, ttlMs, updateTime,
+ *                                   reference, geometryVersion, levels}
+ *                                  ~10 KB: one integer per reach.
+ *   GET /api/vigicrues/geometry  → {geometryVersion, reaches:[{id,name,parts}]}
+ *                                  ~1.6 MB, fetched ONCE per session.
+ *   GET /api/vigicrues/status    → {lastFetch, count, stale, ttlMs}
+ *
+ * The geometry is effectively static — the SCHAPI redraws reaches rarely — so
+ * the client caches it against `geometryVersion` and re-fetches only when that
+ * hash moves. Keyless: no credential is involved anywhere in this path.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function vigicruesProxy() {
+  const TTL_MS = 10 * 60_000;
+  const UPSTREAM = 'https://www.vigicrues.gouv.fr/services/InfoVigiCru.geojson';
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_PATH = path.join(CACHE_DIR, 'vigicrues.json');
+
+  /** @type {?{at:number, updateTime:?string, reference:?string, geometryVersion:string, levels:object, reaches:Array<object>}} */
+  let mem = null;
+  let diskChecked = false;
+  /** @type {?Promise<?object>} single-flight refresh */
+  let inflight = null;
+
+  /**
+   * Project the upstream FeatureCollection and stamp the fetch time.
+   * The projection itself lives in `src/data/vigicruesFeed.js` so it can be
+   * unit-tested against a real captured response — same split as firmsCsv.
+   * @param {object} geojson
+   * @returns {object}
+   */
+  function project(geojson) {
+    return { at: Date.now(), ...projectVigicruesFeed(geojson) };
+  }
+
+  async function readDiskOnce() {
+    if (diskChecked) return;
+    diskChecked = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
+      if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.reaches)) mem = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(CACHE_PATH, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[vigicrues-proxy] cache write failed (${err?.message || err})`);
+    }
+  }
+
+  async function refreshUpstream() {
+    const response = await fetch(UPSTREAM, { signal: AbortSignal.timeout(30_000) });
+    if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+    const geojson = await response.json();
+    if (!Array.isArray(geojson?.features)) throw new Error('upstream returned no features');
+    return project(geojson);
+  }
+
+  return {
+    name: 'vigicrues-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/vigicrues', async (req, res) => {
+        const sendJson = (status, obj, cacheControl = 'no-store') => {
+          if (res.headersSent) return;
+          res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': cacheControl });
+          res.end(JSON.stringify(obj));
+        };
+        try {
+          const subPath = String(req.url || '').split('?')[0];
+          await readDiskOnce();
+
+          const entry = mem;
+          const fresh = entry && Date.now() - entry.at < TTL_MS;
+          let current = fresh ? entry : null;
+          if (!current) {
+            // Stale or missing → refresh, single-flight (concurrent requests
+            // share one upstream pass). Capture the promise BEFORE awaiting:
+            // .finally() nulls `inflight` the moment it settles.
+            if (!inflight) {
+              inflight = refreshUpstream()
+                .then(async (next) => {
+                  mem = next;
+                  await writeDisk(next);
+                  return next;
+                })
+                .catch((err) => {
+                  console.warn(`[vigicrues-proxy] refresh failed (${err?.message || err}) — serving cache if any`);
+                  return null;
+                })
+                .finally(() => { inflight = null; });
+            }
+            current = await inflight;
+          }
+          const served = current || entry;
+          const stale = !current && Boolean(entry);
+
+          if (subPath === '/status') {
+            sendJson(200, {
+              lastFetch: served ? served.at : null,
+              count: served ? served.reaches.length : null,
+              stale,
+              ttlMs: TTL_MS,
+            });
+            return;
+          }
+          if (!served) {
+            sendJson(502, { error: 'vigicrues fetch failed and no cache available' });
+            return;
+          }
+          if (subPath === '/geometry') {
+            sendJson(200, {
+              geometryVersion: served.geometryVersion,
+              reaches: served.reaches.map(({ id, name, updatedAt, parts }) => ({ id, name, updatedAt, parts })),
+            });
+            return;
+          }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: TTL_MS,
+            updateTime: served.updateTime,
+            reference: served.reference,
+            geometryVersion: served.geometryVersion,
+            levels: served.levels,
+          });
+        } catch (err) {
+          console.warn('[vigicrues-proxy] error:', err?.message || err);
+          sendJson(500, { error: 'vigicrues proxy error' });
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Météo-France Vigilance proxy with a memory + disk cache.
+ *
+ * TWO upstreams, and the KEYLESS one is the default — which is the inverse of
+ * what the API portal suggests:
+ *
+ *  1. `files.data.gouv.fr/meteofrance/data/vigilance/metropole/YYYY/MM/DD/HHMMSS/
+ *     CDP_CARTE_EXTERNE.json` — Météo-France's own real-time mirror on
+ *     data.gouv.fr, under Licence Ouverte 2.0, needing no credential at all. A
+ *     run generated at 04:00:28Z carried `Last-Modified: 04:00:48 GMT`: a
+ *     20-second publication lag, not an archive. There is no `latest` symlink,
+ *     so the newest run is discovered by listing the day directory — 686 bytes
+ *     of HTML — and taking the highest `HHMMSS` name. (Do NOT use
+ *     `vigilance-hexagone-tree.json` for this: it is 959 KB.)
+ *     It sends no CORS header, which is the only reason this proxy must exist.
+ *  2. `public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours`
+ *     when `METEOFRANCE_API_KEY` is set. Same product, contracted 99.9%
+ *     availability, 60 req/min. Sent as an `apikey:` header — the portal's
+ *     OAuth2 dance is not needed, and the key stays server-side either way.
+ *
+ * The upstream JSON is 219 KB and is served without gzip. The client needs
+ * about 6 KB of it, so this proxy projects the product down to one colour per
+ * département per échéance.
+ *
+ * Routes:
+ *   GET /api/vigilance        → {fetchedAt, stale, ttlMs, source, updateTime,
+ *                                reference, national, periods:{J,J1}}
+ *   GET /api/vigilance/status → {source, hasKey, lastFetch, stale, ttlMs}
+ *
+ * @returns {import('vite').Plugin}
+ */
+function meteoFranceVigilanceProxy() {
+  // 12 polls/hour is 0.3% of the authenticated 60 req/min budget and bounds
+  // staleness to 5 minutes, which comfortably catches even the 38-runs-a-day
+  // crisis pattern observed on 2026-01-08.
+  const TTL_MS = 5 * 60_000;
+  const MIRROR_BASE = 'https://files.data.gouv.fr/meteofrance/data/vigilance/metropole';
+  const API_URL = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours';
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_PATH = path.join(CACHE_DIR, 'meteofrance-vigilance.json');
+
+  /** @type {?{at:number, source:string, updateTime:?string, reference:?string, national:?number, periods:object}} */
+  let mem = null;
+  let diskChecked = false;
+  /** @type {?Promise<?object>} */
+  let inflight = null;
+
+  const apiKey = () => String(process.env.METEOFRANCE_API_KEY || '').trim();
+
+  /**
+   * Project the CDP_CARTE_EXTERNE product and stamp the fetch time.
+   * The projection itself lives in `src/data/meteoFranceVigilanceFeed.js` so
+   * it can be unit-tested against a real captured payload.
+   * @param {object} payload
+   * @param {string} source
+   * @returns {object}
+   */
+  function project(payload, source) {
+    return { at: Date.now(), ...projectVigilanceProduct(payload, source) };
+  }
+
+  /** UTC day path segment, e.g. "2026/08/26". The archive is keyed by UTC. */
+  function dayPath(date) {
+    const yyyy = date.getUTCFullYear();
+    const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(date.getUTCDate()).padStart(2, '0');
+    return `${yyyy}/${mm}/${dd}`;
+  }
+
+  /**
+   * Newest run directory for a UTC day, or null when the day has none yet.
+   * The index is 686 bytes of nginx-style HTML; the run names are the only
+   * six-digit tokens in it.
+   * @param {Date} date
+   * @returns {Promise<?string>}
+   */
+  async function latestRun(date) {
+    const response = await fetch(`${MIRROR_BASE}/${dayPath(date)}/`, {
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return null;
+    const html = await response.text();
+    const runs = [...html.matchAll(/\b(\d{6})\b/g)].map((match) => match[1]);
+    if (!runs.length) return null;
+    return runs.sort().at(-1);
+  }
+
+  async function refreshFromMirror() {
+    const now = new Date();
+    // Just after 00:00 UTC today's directory may not exist yet, and the newest
+    // bulletin is still filed under yesterday.
+    for (const offsetDays of [0, 1]) {
+      const day = new Date(now.getTime() - offsetDays * 86400_000);
+      const run = await latestRun(day);
+      if (!run) continue;
+      const response = await fetch(`${MIRROR_BASE}/${dayPath(day)}/${run}/CDP_CARTE_EXTERNE.json`, {
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!response.ok) continue;
+      const payload = await response.json();
+      if (!payload?.product) continue;
+      return project(payload, 'data.gouv.fr mirror');
+    }
+    throw new Error('no vigilance run found in the last two UTC days');
+  }
+
+  async function refreshFromApi(key) {
+    const response = await fetch(API_URL, {
+      headers: { apikey: key, Accept: 'application/json' },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+    const payload = await response.json();
+    if (!payload?.product) throw new Error('upstream returned no product');
+    return project(payload, 'public-api.meteofrance.fr');
+  }
+
+  /**
+   * The authenticated API is the preferred source when a key is configured,
+   * but a key problem must not take the layer down when a licence-clean
+   * keyless mirror of the same product is one request away.
+   */
+  async function refreshUpstream() {
+    const key = apiKey();
+    if (key) {
+      try {
+        return await refreshFromApi(key);
+      } catch (err) {
+        console.warn(`[vigilance-proxy] keyed fetch failed (${err?.message || err}) — falling back to the data.gouv.fr mirror`);
+      }
+    }
+    return refreshFromMirror();
+  }
+
+  async function readDiskOnce() {
+    if (diskChecked) return;
+    diskChecked = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
+      if (Number.isFinite(parsed?.at) && parsed?.periods) mem = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(CACHE_PATH, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[vigilance-proxy] cache write failed (${err?.message || err})`);
+    }
+  }
+
+  return {
+    name: 'meteofrance-vigilance-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/vigilance', async (req, res) => {
+        const sendJson = (status, obj) => {
+          if (res.headersSent) return;
+          res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify(obj));
+        };
+        try {
+          const subPath = String(req.url || '').split('?')[0];
+          await readDiskOnce();
+
+          const entry = mem;
+          let current = entry && Date.now() - entry.at < TTL_MS ? entry : null;
+          if (!current) {
+            if (!inflight) {
+              inflight = refreshUpstream()
+                .then(async (next) => {
+                  mem = next;
+                  await writeDisk(next);
+                  return next;
+                })
+                .catch((err) => {
+                  console.warn(`[vigilance-proxy] refresh failed (${err?.message || err}) — serving cache if any`);
+                  return null;
+                })
+                .finally(() => { inflight = null; });
+            }
+            current = await inflight;
+          }
+          const served = current || entry;
+          const stale = !current && Boolean(entry);
+
+          if (subPath === '/status') {
+            sendJson(200, {
+              hasKey: Boolean(apiKey()),
+              source: served ? served.source : null,
+              lastFetch: served ? served.at : null,
+              stale,
+              ttlMs: TTL_MS,
+            });
+            return;
+          }
+          if (!served) {
+            sendJson(502, { error: 'vigilance fetch failed and no cache available' });
+            return;
+          }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: TTL_MS,
+            source: served.source,
+            updateTime: served.updateTime,
+            reference: served.reference,
+            national: served.national,
+            periods: served.periods,
+          });
+        } catch (err) {
+          console.warn('[vigilance-proxy] error:', err?.message || err);
+          sendJson(500, { error: 'vigilance proxy error' });
         }
       });
     },
@@ -7345,6 +7716,8 @@ export default defineConfig(({ mode }) => {
       celestrakProxy(),
       tomtomProxy(),
       firmsProxy(),
+      vigicruesProxy(),
+      meteoFranceVigilanceProxy(),
       rocketLaunchesProxy(),
       terrainHeightsProxy(),
       adsbdbProxy(),
