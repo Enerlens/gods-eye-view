@@ -13,7 +13,9 @@ HOST="${HOST:-localhost}"
 # districts 4,7,11,3 = SF/LA/San Diego/Sacramento (~1,860 live upstream),
 # TfL London JamCams (~870 live upstream). Caps keep the densest cores per
 # pack; override per-run for lighter/heavier loads. Kill switches:
-# CCTV_CALTRANS_DISTRICTS='' and CCTV_TFL_ENABLED=0.
+# CCTV_CALTRANS_DISTRICTS='' and CCTV_TFL_ENABLED=0. OSM mapped camera
+# POSITIONS (viewport-loaded, no feeds) are opt-in and inherited from the
+# environment or .env: CCTV_OSM_CAMERAS_ENABLED=1 — see .env.example.
 CCTV_AUSTIN_MAX_SOURCES="${CCTV_AUSTIN_MAX_SOURCES:-250}"
 # Use `-` not `:-` so an explicit empty string (the documented kill switch)
 # is preserved rather than replaced by the default. Still set-u-safe when unset.

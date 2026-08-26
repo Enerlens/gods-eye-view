@@ -192,6 +192,20 @@ export const TOMTOM_CREDIT = {
     '<a href="https://www.tomtom.com" target="_blank" rel="noopener">TomTom</a>',
 };
 
+/**
+ * Registered the first time the opt-in OSM mapped-camera source
+ * (`CCTV_OSM_CAMERAS_ENABLED=1`) actually puts camera positions on the globe.
+ * Deliberately dynamic: the source is off by default and viewport-loaded, so an
+ * always-on ODbL notice would credit data that is not on screen.
+ */
+export const OSM_CAMERA_CREDIT = {
+  key: 'osm-cameras',
+  html:
+    'Mapped camera positions: ' +
+    '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
+    '(ODbL 1.0; positions only — no live feed)',
+};
+
 /** Registered when the first Natural Earth region outline resolves (public
  * domain — no attribution required; credited as a courtesy). */
 export const NATURAL_EARTH_CREDIT = {

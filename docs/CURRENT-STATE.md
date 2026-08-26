@@ -1599,7 +1599,7 @@ its criteria cannot be silently ignored.
 | Satellites | CelesTrak | `src/data/satellites.js` | `/api/celestrak` | 120s |
 | Space Missions (30d) | Launch Library 2 + CelesTrak | `src/data/rocketLaunches.js` | `/api/launches` + `/api/celestrak/active` | 5 min |
 | Traffic | OSM Overpass (+ optional TomTom live flow) | `src/data/traffic.js` | `/api/overpass` + `/api/tomtom` | viewport-driven |
-| CCTV | Austin + Caltrans (CA) + TfL London Open Data + Street View fallback | `src/data/cctv.js` | `/api/cctv` | 10s (active) |
+| CCTV | Austin + Caltrans (CA) + TfL London Open Data (+ opt-in viewport-loaded OSM mapped positions) + Street View fallback | `src/data/cctv.js` | `/api/cctv` + `/api/osm-cameras` | 10s (active) |
 | Radio | Radio Browser (public-domain station directory) | `src/data/radio.js` | `/api/radio/stations`, `/api/radio/click/:uuid` | 45 min directory refresh |
 | Bikeshare 🚲 | GBFS (Lyft + BCycle) | `src/data/bikeshare.js` | `/api/gbfs` | 60s |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
@@ -1949,6 +1949,48 @@ silently demoting every later lookup for the session.
   1,003 rows). City packs (2026-07-04): Caltrans (districts 4/7/11/3 — SF, LA, San Diego,
   Sacramento; cap 300) and TfL London JamCams (cap 250) join Austin (cap 250) as keyless default
   sources — ~800 cameras total, all RAW PRIOR poses, stills-first.
+- **OSM mapped cameras — viewport-loaded** (2026-08-26): an OPT-IN
+  (`CCTV_OSM_CAMERAS_ENABLED=1`, off by default) source of publicly mapped OpenStreetMap
+  surveillance-camera POSITIONS (`man_made=surveillance`, `surveillance=public|outdoor|traffic`),
+  merged into the live CCTV catalog for the viewport in front of the operator — worldwide, with no
+  country list and no bundled snapshot. OSM maps where a camera is, never what it sees, so every
+  row is registered with NO upstream URL and resolves through the existing frame chain — Street
+  View still (`SRC STREETVIEW`, health `degraded`) or the synthetic `NO UPSTREAM CONFIGURED`
+  placeholder. That billable fallback is why it is opt-in rather than a fourth default pack.
+  Pose uses mapped values where OSM has them and priors where it does not: bearing from
+  `camera:direction` (high confidence; `direction` or a multi-value `camera:direction` → medium,
+  otherwise an id-hash fallback at low), tilt from `camera:angle` (the wiki's tilt-from-horizon,
+  clamped to the client's pitch range) falling back to a mount-height step, mount height from
+  `height`/`camera:mount`, and cone width from `camera:fov` when present — which is almost never
+  (~61 uses worldwide), so width normally comes from the `camera:type` prior. Everything unmapped
+  stays a modeled prior, so cameras remain RAW PRIOR until calibrated.
+  **Server** (`osmCamerasProxy`, `/api/osm-cameras?south&west&north&east`): one allow-listed tag
+  query per box, refused above 2° or across the dateline, snapped OUTWARD onto a 0.02° grid
+  (~2.2 km) so neighbouring viewports share one cache entry and a cached answer always covers more
+  than was asked for, `out body` capped at 400 with an honest `saturated` flag, 5-min memory cache +
+  in-flight coalescing + 7-day disk cache (`.gev-cache/osm-cameras/`) with serve-stale at any age,
+  rate-limited, and a 20 s budget in which each Overpass mirror gets a fair share of the REMAINING
+  time, floored at 8 s (both numbers are field-observed 2026-08-26: a whole-budget timeout let one
+  stalled mirror consume the window before the healthy fallback was ever tried, and an even
+  four-way split then cut the PRIMARY mirror off mid-answer while the two that were going to fail
+  returned 502 in a second). A failed box throws with EVERY mirror's outcome named, so an outage is
+  readable in one line instead of reporting only the last error. A disabled install answers 503
+  `disabled` so the client stops asking for the session.
+  **Client** (`cctv.js`): requests ride the existing camera-settle listener with a 500 ms debounce,
+  never per frame; a move that stays inside the same snapped grid cell is not re-asked at all; new
+  rows go through the same `prepareCameraForCatalog` → ground-prior batch → `createCameraRecord`
+  path as the startup catalog (bounded at 1.5 s instead of init's 8 s, with `applyLateGroundPriors`
+  correcting geometry afterwards); the cohort is capped at 120 and evicted through the shared
+  `applyEvictionGrace` planner (3 settle passes / 60 s) so panning back a street re-uses records
+  instead of rebuilding them. The active camera and any camera the operator has calibrated are
+  never evicted. A failed box arms a 60 s cool-off before any new request: without it a down
+  upstream turns every camera settle into another four-mirror attempt, which is how a client earns
+  a rate ban and cannot help anyway. Viewshed hue identity for these comes from an id hash, not
+  catalog position, so a churning cohort never repaints its neighbours. `getStats()` reports `osmMappedCount`,
+  `osmMappedStatus`, and `osmMappedSaturated` separately from the feed-bearing catalog count.
+  Mapping logic lives in `src/data/osmCameras.js` (pure, unit-tested).
+  Scope reality check (Overpass count, 2026-08-26): OSM maps 76,162 `man_made=surveillance` nodes
+  in France and 563,156 worldwide — none of which are downloaded up front.
 - **CCTV v3 UX — viewshed + calibration gizmo** (built 2026-07-05 and field
   validated 2026-07-21): the COVERAGE toggle is a
   tri-state cycle `OFF → ON → VIEWSHED`; viewshed mode renders each visible camera's frustum
