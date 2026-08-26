@@ -145,6 +145,36 @@ export const DATA_CREDITS = [
       'Le Vélo par TBM (Bordeaux Métropole, Licence Ouverte)',
   },
   {
+    key: 'vigicrues',
+    html:
+      'River-flood vigilance (France): ' +
+      '<a href="https://www.vigicrues.gouv.fr/" target="_blank" rel="noopener">Vigicrues</a> — ' +
+      'SCHAPI (Service central d\'hydrom&eacute;t&eacute;orologie et d\'appui &agrave; la pr&eacute;vision ' +
+      'des inondations), Minist&egrave;re de la Transition &eacute;cologique ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The bulletin\'s own publication time is reported by the layer as its data timestamp.',
+  },
+  {
+    key: 'hubeau-hydrometrie',
+    html:
+      'River gauge stations and observations (France): ' +
+      '<a href="https://hubeau.eaufrance.fr/page/api-hydrometrie" target="_blank" rel="noopener">Hub\'Eau — API Hydrom&eacute;trie</a>, ' +
+      'data from the PHyC platform operated by Service Central Vigicrues (SCV, ex-SCHAPI); ' +
+      'measurements produced by the DREALs and other operators ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte</a>). ' +
+      'Raw, unvalidated readings, published without any availability guarantee — not a flood-warning service.',
+  },
+  {
+    key: 'meteofrance-vigilance',
+    html:
+      'Weather vigilance (France): ' +
+      '<a href="https://vigilance.meteofrance.fr/" target="_blank" rel="noopener">M&eacute;t&eacute;o-France — Vigilance m&eacute;t&eacute;orologique</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
+      'via the data.gouv.fr mirror unless an API key is configured. ' +
+      'D&eacute;partement boundaries: IGN — ADMIN EXPRESS COG (&eacute;dition 2018), ' +
+      'via <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a> (G. David), Licence Ouverte.',
+  },
+  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +

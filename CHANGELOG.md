@@ -34,6 +34,21 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   monitor plane now lands a median 6 m from the carriageway the camera watches,
   against 30 m for the hash it replaces. One camera keeps the fallback because it
   publishes a placeholder image, not a frame.
+- Added three French national alert layers, all keyless: **Vigicrues** (337
+  monitored river reaches coloured by the state's 4-level flood vigilance),
+  **Hub'Eau Gauges** (the live river-sensor mesh beneath it, up to ~4,000
+  stations sized by discharge) and **Météo-France Vigilance** (the 4-colour
+  départemental weather warning across 9 phenomena). All three are Licence
+  Ouverte.
+- Added the `/api/vigicrues` and `/api/vigilance` dev-server proxies. Vigicrues
+  publishes 2.2 MB with no gzip, no ETag and no Last-Modified against a map
+  that changes twice a day, so the proxy splits it into a geometry document
+  fetched once per session and a ~3 KB level document that is polled. The
+  vigilance proxy prefers Météo-France's own keyless data.gouv.fr mirror and
+  uses the authenticated API only when `METEOFRANCE_API_KEY` is set.
+- Bundled the 96 metropolitan French département polygons (IGN ADMIN EXPRESS
+  via france-geojson, Licence Ouverte) — the vigilance product carries colours
+  but no geometry.
 - Added honest aircraft identity narration: callsign, operator, registration,
   type, and route come only from selected-contact context, and missing operator,
   route, or type enrichment is named explicitly.
