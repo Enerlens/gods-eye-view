@@ -124,6 +124,8 @@ const MAX_AUTO_HOP_SEC = 90;
 const HEALTH_SYNC_INTERVAL_MS = 7000;
 const ACTIVE_FRAME_REFRESH_MS = 10000;
 const IDLE_FRAME_REFRESH_MS = 60000;
+/** Ceiling on a source-declared cadence, so a bad catalog value can't freeze a feed. */
+const MAX_UPSTREAM_CADENCE_MS = 5 * 60 * 1000;
 const PROJECTION_ACTIVE_REFRESH_MS = 10000;
 const PROJECTION_IDLE_REFRESH_MS = 60000;
 const PROJECTION_CANVAS_WIDTH = 1920;
@@ -1232,6 +1234,7 @@ function buildCatalogFromSources(rawSources) {
       absoluteHeightM: groundElevationM + mountHeightM,
       pitchDeg,
       license: String(source.license || source.licenseNote || ''),
+      upstreamCadenceMs: safeNumber(source.upstreamCadenceMs, NaN),
       poseSource,
     };
     ensureCameraPose(camera);
@@ -1529,6 +1532,31 @@ function refreshProjectionTextures(record) {
   runtime.lastTextureSwapAt = now;
   runtime.lastSwappedCanvasStamp = runtime.canvasStamp;
   runtime.planeMaterial.image = buffer;
+}
+
+/**
+ * Returns the poll cadence for a camera's frame, respecting how often the
+ * PUBLISHER actually republishes.
+ *
+ * The product floor stays the baseline (10 s active / 60 s idle): a source that
+ * republishes faster is never polled harder than the product allows. A source
+ * that republishes SLOWER raises the floor to its own cadence — polling a
+ * once-a-minute feed every 10 seconds spends five requests out of six on a
+ * picture the client already has, and re-decodes it each time (the waste behind
+ * the 2026-07-30 field note on the projection plane's white flash).
+ *
+ * `upstreamCadenceMs` is measured per pack and served by the proxy; packs that
+ * do not declare one keep the product baseline unchanged.
+ *
+ * @param {Object} camera - Camera record.
+ * @param {boolean} isActive - Whether this is the active camera.
+ * @returns {number} Refresh interval in ms.
+ */
+export function frameRefreshMsFor(camera, isActive) {
+  const baseline = isActive ? ACTIVE_FRAME_REFRESH_MS : IDLE_FRAME_REFRESH_MS;
+  const upstream = safeNumber(camera?.upstreamCadenceMs, NaN);
+  if (!Number.isFinite(upstream) || upstream <= 0) return baseline;
+  return Math.max(baseline, Math.min(MAX_UPSTREAM_CADENCE_MS, upstream));
 }
 
 /**
@@ -1877,9 +1905,12 @@ function refreshProjectionImage(record, force = false) {
   // clears this latch so the next normal tick can refresh.
   if (runtime.imageLoading) return;
   const now = Date.now();
-  const refreshMs = record.camera.id === _activeCameraId
-    ? PROJECTION_ACTIVE_REFRESH_MS
-    : PROJECTION_IDLE_REFRESH_MS;
+  const isActive = record.camera.id === _activeCameraId;
+  const baseline = isActive ? PROJECTION_ACTIVE_REFRESH_MS : PROJECTION_IDLE_REFRESH_MS;
+  const upstream = safeNumber(record.camera?.upstreamCadenceMs, NaN);
+  const refreshMs = Number.isFinite(upstream) && upstream > 0
+    ? Math.max(baseline, Math.min(MAX_UPSTREAM_CADENCE_MS, upstream))
+    : baseline;
   if (!force && now - runtime.lastImageRefreshAt < refreshMs) return;
   runtime.lastImageRefreshAt = now;
 
@@ -3451,7 +3482,7 @@ function getPublicCameraState(record, activeId = null) {
   const camera = record.camera;
   const health = _healthById.get(camera.id) || null;
   const isActive = camera.id === resolvedActiveId;
-  const refreshMs = isActive ? ACTIVE_FRAME_REFRESH_MS : IDLE_FRAME_REFRESH_MS;
+  const refreshMs = frameRefreshMsFor(camera, isActive);
   return {
     id: camera.id,
     name: camera.name,

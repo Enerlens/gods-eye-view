@@ -16,6 +16,24 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `NO UPSTREAM CONFIGURED` frame, with tag-derived poses (bearing, tilt, mount
   height) marked `RAW PRIOR` and © OpenStreetMap contributors (ODbL)
   attribution registered the moment positions appear on the globe.
+- Added the Métropole de Lyon "Caméras Web Criter" pack to the CCTV layer: the
+  city's public traffic cameras, keyless, with their frames served live from the
+  Grand Lyon open-data host. Cameras whose frames stop refreshing drop out of the
+  catalog. Attribution to the Métropole de Lyon (Licence Ouverte 2.0) is
+  registered in the Data attribution popover; `CCTV_LYON_ENABLED=0` disables the
+  pack.
+- Clicking the CCTV panel preview (or pressing Enter on it) now opens the frame
+  full-screen at the publisher's own resolution — most public cameras publish
+  1920x1080 into a 360px rail. Escape or the close button returns. The bar prints
+  the frame's true pixel size, so an upscaled low-resolution camera never implies
+  detail it does not have. Enlarging costs no extra request: the decoded frame is
+  moved, not re-fetched.
+- Lyon camera headings are now hand-derived from OpenStreetMap road geometry plus
+  the published frames, and served as `CAL · CURATED`, instead of the arbitrary
+  id-hash fallback the catalog's missing bearing would otherwise force. The 3D
+  monitor plane now lands a median 6 m from the carriageway the camera watches,
+  against 30 m for the hash it replaces. One camera keeps the fallback because it
+  publishes a placeholder image, not a frame.
 - Added honest aircraft identity narration: callsign, operator, registration,
   type, and route come only from selected-contact context, and missing operator,
   route, or type enrichment is named explicitly.
@@ -36,9 +54,25 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   operator/capacity/river metadata, counts, and ODbL terms are unchanged.
 - Public documentation and the L9 release matrix no longer reference non-public
   planning material or repository history.
+- Camera frames are now polled at the publisher's own cadence where it is known.
+  The Grand Lyon feed republishes once a minute, so the active-camera poll drops
+  from every 10 s to every 60 s — five of every six requests were re-fetching a
+  picture the client already had. Packs that do not declare a cadence are
+  unchanged.
+- A provider "image unavailable" placeholder is no longer reported as a healthy
+  snapshot. It is recognised by content hash, routed into the existing Street
+  View / synthetic fallback chain, and named in the health line.
+- An incomplete camera frame — a JPEG that ends before its scan data, which a
+  browser paints as a thin strip of the top of the image — is likewise no longer
+  reported as a healthy snapshot. It takes the same fallback chain, and the
+  health line says the frame was incomplete.
 
 ### Fixed
 
+- The full-resolution CCTV viewer no longer boxes every frame at 16:9. Its
+  geometry rule was losing on CSS specificity to the panel's own `#cctv-frame`
+  rule, so a camera with a different aspect ratio was letterboxed inside a shape
+  it does not have.
 - A missing optional FIRMS key no longer turns the complete Environmental
   mission into `LOAD FAILED`. The FIRMS row still reports `KEY REQUIRED`, while
   earthquakes continue to load. Real lifecycle and fetch failures retain

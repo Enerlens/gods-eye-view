@@ -128,6 +128,13 @@ export const DATA_CREDITS = [
       'Contains OS data © Crown copyright and database rights.',
   },
   {
+    key: 'grandlyon-cctv',
+    html:
+      'CCTV cameras &amp; frames (Lyon): Métropole de Lyon — ' +
+      '<a href="https://data.grandlyon.com" target="_blank" rel="noopener">data.grandlyon.com</a> ' +
+      '(<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte / Open Licence 2.0</a>)',
+  },
+  {
     key: 'gbfs',
     html: 'Bikeshare availability: GBFS operator feeds (e.g. Austin BCycle)',
   },

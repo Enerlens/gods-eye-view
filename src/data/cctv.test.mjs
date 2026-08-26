@@ -31,6 +31,7 @@ import cctvLayer, {
   bindCctvWorldClickGesture,
   clearProbeClampOnDeactivation,
   computeFrustumGeometry,
+  frameRefreshMsFor,
   cctvCycleIndex,
   cctvEmptyClickDeselects,
   cctvRecordNeedsActivation,
@@ -1282,4 +1283,39 @@ test('frameSignatureFromPixels: empty or junk input yields null (always redraw)'
   assert.equal(frameSignatureFromPixels(null), null);
   assert.equal(frameSignatureFromPixels(undefined), null);
   assert.equal(frameSignatureFromPixels({}), null);
+});
+
+// ── Source-aware frame cadence ───────────────────────────────────────────────
+//
+// A pack may declare how often its PUBLISHER republishes (`upstreamCadenceMs`,
+// measured server-side). Polling faster than that spends requests re-fetching a
+// picture the client already has; polling slower than the product baseline
+// would make a live feed feel stale. The policy takes the max of the two.
+
+test('frameRefreshMsFor: a pack with no declared cadence keeps the product baseline', () => {
+  assert.equal(frameRefreshMsFor({}, true), 10_000);
+  assert.equal(frameRefreshMsFor({}, false), 60_000);
+  assert.equal(frameRefreshMsFor(null, true), 10_000);
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: null }, true), 10_000);
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 'soon' }, true), 10_000);
+});
+
+test('frameRefreshMsFor: a once-a-minute publisher slows the active poll to match', () => {
+  // Grand Lyon / Criter: measured 62 s between distinct frames. At the 10 s
+  // baseline, five of every six active requests returned a duplicate.
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 60_000 }, true), 60_000);
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 60_000 }, false), 60_000);
+});
+
+test('frameRefreshMsFor: a fast publisher never polls harder than the product allows', () => {
+  // The baseline is a product floor, not a target to beat.
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 1_000 }, true), 10_000);
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 30_000 }, true), 30_000);
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 30_000 }, false), 60_000);
+});
+
+test('frameRefreshMsFor: an absurd declared cadence cannot freeze a feed', () => {
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 86_400_000 }, true), 5 * 60_000);
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: -5 }, true), 10_000);
+  assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 0 }, true), 10_000);
 });

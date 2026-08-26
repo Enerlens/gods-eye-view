@@ -1599,7 +1599,7 @@ its criteria cannot be silently ignored.
 | Satellites | CelesTrak | `src/data/satellites.js` | `/api/celestrak` | 120s |
 | Space Missions (30d) | Launch Library 2 + CelesTrak | `src/data/rocketLaunches.js` | `/api/launches` + `/api/celestrak/active` | 5 min |
 | Traffic | OSM Overpass (+ optional TomTom live flow) | `src/data/traffic.js` | `/api/overpass` + `/api/tomtom` | viewport-driven |
-| CCTV | Austin + Caltrans (CA) + TfL London Open Data (+ opt-in viewport-loaded OSM mapped positions) + Street View fallback | `src/data/cctv.js` | `/api/cctv` + `/api/osm-cameras` | 10s (active) |
+| CCTV | Austin + Caltrans (CA) + TfL London + Métropole de Lyon Open Data (+ opt-in viewport-loaded OSM mapped positions) + Street View fallback | `src/data/cctv.js` | `/api/cctv` + `/api/osm-cameras` | 10s (active) |
 | Radio | Radio Browser (public-domain station directory) | `src/data/radio.js` | `/api/radio/stations`, `/api/radio/click/:uuid` | 45 min directory refresh |
 | Bikeshare 🚲 | GBFS (Lyft + BCycle) | `src/data/bikeshare.js` | `/api/gbfs` | 60s |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
@@ -1948,7 +1948,15 @@ silently demoting every later lookup for the session.
   default 36 → 250, hard bound 300), filtered to `camera_status === TURNED_ON` (~815 live of
   1,003 rows). City packs (2026-07-04): Caltrans (districts 4/7/11/3 — SF, LA, San Diego,
   Sacramento; cap 300) and TfL London JamCams (cap 250) join Austin (cap 250) as keyless default
-  sources — ~800 cameras total, all RAW PRIOR poses, stills-first.
+  sources — ~800 cameras total, all RAW PRIOR poses, stills-first. The Métropole de Lyon
+  "Caméras Web Criter" pack (2026-08-26; keyless `data.grandlyon.com` catalog, cap 60,
+  `CCTV_LYON_ENABLED=0` disables) adds the ~15 published Lyon traffic cameras: frames from
+  the Métropole's own host, kept only while their `last_update` stamp keeps moving (the
+  catalog's only decommissioned-camera signal). The catalog names a destination rather than
+  a bearing, so 14 of the 15 carry a **CURATED** heading hand-derived from OSM road geometry
+  plus the published frames (`GRANDLYON_CURATED_HEADINGS`), not a RAW PRIOR hash; the
+  monitor-plane cap lands a median 6 m from the watched carriageway against 30 m for the
+  hash. The fifteenth publishes an "image unavailable" placeholder and keeps the hash.
 - **OSM mapped cameras — viewport-loaded** (2026-08-26): an OPT-IN
   (`CCTV_OSM_CAMERAS_ENABLED=1`, off by default) source of publicly mapped OpenStreetMap
   surveillance-camera POSITIONS (`man_made=surveillance`, `surveillance=public|outdoor|traffic`),
@@ -1991,6 +1999,35 @@ silently demoting every later lookup for the session.
   Mapping logic lives in `src/data/osmCameras.js` (pure, unit-tested).
   Scope reality check (Overpass count, 2026-08-26): OSM maps 76,162 `man_made=surveillance` nodes
   in France and 563,156 worldwide — none of which are downloaded up front.
+- **Source-aware frame cadence** (2026-08-26): a pack may declare how often its PUBLISHER
+  republishes (`upstreamCadenceMs`, measured server-side and served on `/api/cctv/sources`).
+  `frameRefreshMsFor` takes the max of that and the product baseline, so a once-a-minute feed
+  (Grand Lyon, measured 62 s between distinct frames) is polled at 60 s instead of 10 s while
+  packs that declare nothing are untouched. Bounded at 5 min so a bad catalog value cannot
+  freeze a feed.
+- **Provider placeholder detection** (2026-08-26): the Métropole serves a fixed traffic-cone
+  graphic as a valid 200 JPEG when a camera is down, while the row's `last_update` keeps
+  advancing — no status field, freshness check, or HTTP code catches it. `isPlaceholderCctvFrame`
+  fingerprints it by SHA-256 and the frame route treats it as a failed fetch, so it falls into
+  the existing Street View / synthetic chain and the health line names the placeholder instead
+  of reporting `SNAPSHOT · OK`. Fails open on any unrecognised body.
+- **Incomplete-frame detection** (2026-08-26): `isTruncatedJpegFrame` rejects a JPEG whose
+  end-of-image marker is missing from the tail of the body. Grand Lyon's `CWL5801` publishes
+  one every cycle (12/12 fetches incomplete, byte count stable within each publication minute,
+  so no retry can win it); a browser paints the decoded rows and leaves the rest transparent,
+  rendering the camera as a strip of sky. Same fallback chain, reason on the health line. The
+  tail window clears trailing metadata without mistaking an EXIF thumbnail's own marker for the
+  frame's, and non-JPEG bodies are never judged.
+- **CCTV full-resolution viewer** (2026-08-26): the panel preview is a `role="button"` control
+  (pointer + Enter/Space); activating it MOVES `#cctv-frame` into `#cctv-lightbox-stage` and
+  back on close. A DOM move never re-fetches — a second `<img>` on the same URL would, because
+  `/api/cctv/frame` is `Cache-Control: no-store`. The backdrop is fully opaque so no
+  unattributed Google Maps content sits beneath it, the dialog swallows the global single-key
+  hotkeys while up (Tab excepted), and the bar prints the frame's `naturalWidth`x`naturalHeight`
+  so an upscaled 320x240 camera never implies 1080p detail. `#cctv-lightbox` carries
+  `data-panel-satellite="cctv-panel"`, which suppresses the panel's pointerleave/focusout
+  auto-collapse while the viewer is open. Regression surface:
+  `src/cctvLightboxMarkup.test.mjs`.
 - **CCTV v3 UX — viewshed + calibration gizmo** (built 2026-07-05 and field
   validated 2026-07-21): the COVERAGE toggle is a
   tri-state cycle `OFF → ON → VIEWSHED`; viewshed mode renders each visible camera's frustum
@@ -2023,7 +2060,7 @@ silently demoting every later lookup for the session.
   2026-08-02): the LOD-selected nearby static cameras (20/28/40 by zoom,
   `cctvLod.js`) get **screen-space thumbnail cards** through the shared world-overlay host
   showing paced static frames — reselection on `camera.moveEnd` only, at most one frame fetch
-  per second layer-wide, per-source cadences (Austin 5 min, TfL/Caltrans 3 min). Zero-flicker:
+  per second layer-wide, per-source cadences (Austin 5 min, TfL/Caltrans/Lyon 3 min). Zero-flicker:
   a card renders nothing until its first frame, a drawn frame persists through failed fetches,
   and eviction grace (2-pass/5 s) stops budget-edge churn. Camera icons stay visible at every
   zoom. Eligible candidates are filtered to in-view stills with valid IDs,

@@ -30,6 +30,10 @@ const PROVIDER_STATIC_REFRESH_MS = Object.freeze({
   'austin transportation & public works': 5 * 60 * 1000,
   'transport for london': 3 * 60 * 1000,
   caltrans: 3 * 60 * 1000,
+  // Criter re-extracts each still from the live video about once a minute;
+  // 3 min stays well inside that without polling the Métropole's host harder
+  // than TfL or Caltrans.
+  'métropole de lyon (criter)': 3 * 60 * 1000,
 });
 
 /**
