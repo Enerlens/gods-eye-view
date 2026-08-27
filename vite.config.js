@@ -20,6 +20,7 @@
  *  14. Rocket launches — recent Launch Library 2 mission metadata
  *  15. Radio Browser — public-domain station directory and click counting
  *  16. transport.data.gouv.fr — French GTFS-RT live vehicle positions (PAN)
+ *  17. transport.data.gouv.fr — French shared mobility (GBFS: bikes, scooters, cars)
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -54,6 +55,23 @@ import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
 import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
 import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
+import { boundsOfPoints } from './src/data/viewportBox.js';
+import {
+  gbfsBoxKey,
+  gbfsBoxContains,
+  mergeGbfsBounds,
+  padGbfsBox,
+  parseGbfsStationStatus,
+  parseGbfsStations,
+  parseGbfsVehicles,
+  selectSystemsForBox,
+  snapGbfsBox,
+  systemDrawsStations,
+  validGbfsBox,
+  vehicleKindLookup,
+  GBFS_MAX_BOX_DEG,
+  GBFS_MAX_OBJECTS,
+} from './src/data/gbfsFeeds.js';
 import {
   boxContains,
   mergeObservedBounds,
@@ -4313,6 +4331,474 @@ function panTransitProxy() {
     configureServer(server) {
       install(server.middlewares);
       server.httpServer?.on('close', () => { void flushPanBounds(true); });
+    },
+    configurePreviewServer(server) {
+      install(server.middlewares);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// transport.data.gouv.fr — French shared mobility (GBFS)
+// ---------------------------------------------------------------------------
+/** Shipped system index (see `scripts/build-gbfs-fr-index.mjs`). */
+const GBFS_FR_INDEX_PATH = path.join(process.cwd(), 'config', 'gbfs_fr_systems.json');
+/** Footprints learned at runtime, merged over the shipped ones on next boot. */
+const GBFS_FR_BOUNDS_PATH = path.join(process.cwd(), '.gev-cache', 'gbfs-fr-bounds.json');
+/**
+ * Per-feed body cache. GBFS declares its own `ttl`, but the spec's own ceiling
+ * for a near-realtime endpoint is 5 minutes and several French systems sit at
+ * 8-15 minutes anyway, so a 30 s floor costs freshness nobody actually has.
+ */
+const GBFS_FR_STATUS_CACHE_MS = 30_000;
+/** Station POSITIONS barely move; their availability is what changes. */
+const GBFS_FR_INFO_CACHE_MS = 6 * 60 * 60 * 1000;
+const GBFS_FR_VIEWPORT_CACHE_MS = 15_000;
+const GBFS_FR_BACKOFF_MS = 120_000;
+const GBFS_FR_STALE_MS = 10 * 60 * 1000;
+const GBFS_FR_TIMEOUT_MS = 10_000;
+const GBFS_FR_MAX_BYTES = 24 * 1024 * 1024;
+const GBFS_FR_VIEWPORT_PAD_DEG = 0.03;
+const GBFS_FR_BOUNDS_FLUSH_MS = 60_000;
+const GBFS_FR_USER_AGENT = 'gods-eye-view/0.1 (+https://github.com/bilawalsidhu/gods-eye-view; transport.data.gouv.fr GBFS client)';
+const GBFS_FR_VIEWPORT_CACHE_MAX = 24;
+
+let _gbfsFrIndex = null;
+let _gbfsFrIndexPromise = null;
+/** feed url -> {at:number, value:*, failedAt:?number, error:?string} */
+const _gbfsFrFeedCache = new Map();
+const _gbfsFrFeedInFlight = new Map();
+const _gbfsFrViewportCache = new Map();
+const _gbfsFrViewportInFlight = new Map();
+let _gbfsFrBoundsDirty = false;
+let _gbfsFrBoundsFlushedAt = 0;
+const _gbfsFrRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 90, globalMax: 240 });
+
+function trimGbfsFrViewportCache() {
+  while (_gbfsFrViewportCache.size > GBFS_FR_VIEWPORT_CACHE_MAX) {
+    const oldest = _gbfsFrViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _gbfsFrViewportCache.delete(oldest);
+  }
+}
+
+/** Load the shipped index once and fold in footprints learned on earlier runs. */
+async function loadGbfsFrIndex() {
+  if (_gbfsFrIndex) return _gbfsFrIndex;
+  if (_gbfsFrIndexPromise) return _gbfsFrIndexPromise;
+  _gbfsFrIndexPromise = (async () => {
+    const raw = JSON.parse(await fsp.readFile(GBFS_FR_INDEX_PATH, 'utf8'));
+    const systems = Array.isArray(raw?.systems) ? raw.systems : [];
+    let learned = {};
+    try {
+      const disk = JSON.parse(await fsp.readFile(GBFS_FR_BOUNDS_PATH, 'utf8'));
+      if (disk && typeof disk.bounds === 'object') learned = disk.bounds;
+    } catch { /* first run */ }
+    for (const system of systems) {
+      const merged = mergeGbfsBounds(system.bbox, learned[system.id]);
+      if (merged) system.bbox = merged;
+    }
+    _gbfsFrIndex = { ...raw, systems };
+    const live = systems.filter((s) => !s.redundant && !s.probeError);
+    console.log(
+      `[GBFS FR] ${raw.catalogResourceCount ?? systems.length} catalog resources → ${live.length} distinct systems `
+      + `(${systems.filter((s) => s.redundant).length} redundant, ${systems.filter((s) => s.probeError).length} unreachable), `
+      + `index built ${raw?.generatedAt || 'unknown'}`,
+    );
+    return _gbfsFrIndex;
+  })().catch((error) => {
+    _gbfsFrIndexPromise = null;
+    throw error;
+  });
+  return _gbfsFrIndexPromise;
+}
+
+async function flushGbfsFrBounds(force = false) {
+  if (!_gbfsFrBoundsDirty || !_gbfsFrIndex) return;
+  const now = Date.now();
+  if (!force && now - _gbfsFrBoundsFlushedAt < GBFS_FR_BOUNDS_FLUSH_MS) return;
+  _gbfsFrBoundsDirty = false;
+  _gbfsFrBoundsFlushedAt = now;
+  const bounds = {};
+  for (const system of _gbfsFrIndex.systems) if (system.bbox) bounds[system.id] = system.bbox;
+  const temp = `${GBFS_FR_BOUNDS_PATH}.${process.pid}.tmp`;
+  try {
+    await fsp.mkdir(path.dirname(GBFS_FR_BOUNDS_PATH), { recursive: true });
+    await fsp.writeFile(temp, JSON.stringify({ updatedAt: new Date(now).toISOString(), bounds }));
+    await fsp.rename(temp, GBFS_FR_BOUNDS_PATH);
+  } catch (error) {
+    console.warn('[GBFS FR] bounds cache write failed:', error?.message || error);
+    await fsp.rm(temp, { force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Fetch and parse ONE GBFS feed file, with a shared cache, a failure backoff
+ * and a bounded serve-stale window.
+ *
+ * @param {string} url Resolved feed URL.
+ * @param {number} ttlMs How long a good answer stays fresh.
+ * @param {(payload:*) => *} parse Pure parser applied to the JSON body.
+ */
+async function gbfsFrFeed(url, ttlMs, parse) {
+  if (!url) return { value: null, at: 0, error: null, stale: false };
+  const now = Date.now();
+  const cached = _gbfsFrFeedCache.get(url);
+  if (cached && !cached.error && now - cached.at <= ttlMs) {
+    return { value: cached.value, at: cached.at, error: null, stale: false };
+  }
+  if (cached?.failedAt && now - cached.failedAt < GBFS_FR_BACKOFF_MS) {
+    const stale = cached.value !== null && now - cached.at <= GBFS_FR_STALE_MS;
+    return { value: stale ? cached.value : null, at: cached.at, error: cached.error, stale };
+  }
+
+  const request = coalesceProxyRequest(_gbfsFrFeedInFlight, url, async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), GBFS_FR_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json', 'User-Agent': GBFS_FR_USER_AGENT },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const declared = Number(response.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > GBFS_FR_MAX_BYTES) throw new Error('feed body too large');
+      const value = parse(await readResponseJsonCapped(response, GBFS_FR_MAX_BYTES));
+      const entry = { at: Date.now(), value, error: null, failedAt: null };
+      _gbfsFrFeedCache.set(url, entry);
+      return { value, at: entry.at, error: null, stale: false };
+    } catch (error) {
+      const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
+      const previous = _gbfsFrFeedCache.get(url);
+      const keepStale = previous?.value !== undefined && previous?.value !== null
+        && Date.now() - previous.at <= GBFS_FR_STALE_MS;
+      const entry = {
+        at: keepStale ? previous.at : Date.now(),
+        value: keepStale ? previous.value : null,
+        error: message,
+        failedAt: Date.now(),
+      };
+      _gbfsFrFeedCache.set(url, entry);
+      return { value: entry.value, at: entry.at, error: message, stale: keepStale };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+  return request.promise;
+}
+
+/**
+ * How far outside its OWN observed footprint a system may still place an
+ * object, in degrees (~55 km). A real network expanding into the next town
+ * stays inside this; a Villefranche-sur-Saône scooter reported over Nantes,
+ * 450 km away, does not.
+ */
+const GBFS_FR_FOOTPRINT_SLACK_DEG = 0.5;
+
+/** Intersection of two boxes, or null when they are disjoint. */
+function intersectBoxes(a, b) {
+  if (!a || !b) return a || b || null;
+  const box = {
+    south: Math.max(a.south, b.south),
+    west: Math.max(a.west, b.west),
+    north: Math.min(a.north, b.north),
+    east: Math.min(a.east, b.east),
+  };
+  return (box.south < box.north && box.west < box.east) ? box : null;
+}
+
+/** Read one system and return the objects it reports inside `clip`. */
+async function gbfsFrSystemObjects(system, clip) {
+  const feeds = system.feeds || {};
+  // Clip to the viewport AND to where this system has actually been observed
+  // to operate. Without the second bound, one junk fix per feed lands a stray
+  // dot in whatever city the operator does not serve.
+  const scoped = system.bbox
+    ? intersectBoxes(clip, padGbfsBox(system.bbox, GBFS_FR_FOOTPRINT_SLACK_DEG))
+    : clip;
+  const [info, status, fleet, types] = await Promise.all([
+    gbfsFrFeed(feeds.station_information, GBFS_FR_INFO_CACHE_MS, parseGbfsStations),
+    gbfsFrFeed(feeds.station_status, GBFS_FR_STATUS_CACHE_MS, parseGbfsStationStatus),
+    gbfsFrFeed(feeds.vehicle_status, GBFS_FR_STATUS_CACHE_MS, (payload) => payload),
+    gbfsFrFeed(feeds.vehicle_types, GBFS_FR_INFO_CACHE_MS, vehicleKindLookup),
+  ]);
+
+  const kinds = types.value || {};
+  const stations = [];
+  const observed = [];
+  // A system whose "stations" are municipal bays every operator republishes,
+  // or a whole-city sentinel row, contributes its FLEET and not its stations —
+  // otherwise Paris gets three near-identical dots on every bay in the city.
+  const drawStations = system.drawStations !== undefined
+    ? system.drawStations === true
+    : systemDrawsStations(system);
+  for (const station of info.value || []) {
+    observed.push(station);
+    if (!drawStations) continue;
+    if (!scoped || !gbfsBoxContains(scoped, station.lat, station.lon)) continue;
+    const availability = status.value?.get(station.id) || null;
+    stations.push({
+      id: `${system.id}:${station.id}`,
+      system: system.id,
+      lat: Number(station.lat.toFixed(5)),
+      lon: Number(station.lon.toFixed(5)),
+      name: station.name || null,
+      available: availability?.available ?? null,
+      docks: availability?.docks ?? null,
+      capacity: station.capacity ?? null,
+      renting: availability ? availability.renting : null,
+      byKind: availability?.byKind && Object.keys(availability.byKind).length ? availability.byKind : null,
+    });
+  }
+
+  const vehicles = [];
+  for (const vehicle of parseGbfsVehicles(fleet.value, kinds)) {
+    observed.push(vehicle);
+    if (!scoped || !gbfsBoxContains(scoped, vehicle.lat, vehicle.lon)) continue;
+    vehicles.push({
+      id: vehicle.id ? `${system.id}:${vehicle.id}` : null,
+      system: system.id,
+      lat: Number(vehicle.lat.toFixed(5)),
+      lon: Number(vehicle.lon.toFixed(5)),
+      kind: vehicle.kind,
+      rangeMeters: vehicle.rangeMeters,
+      lastReported: vehicle.lastReported,
+    });
+  }
+
+  // Learn the footprint from what actually arrived; bounds only grow, and the
+  // junk fixes are fenced out first so one of them cannot permanently widen a
+  // city system into a national one.
+  const merged = mergeGbfsBounds(system.bbox, boundsOfPoints(observed, { rejectOutliers: true }));
+  if (merged && JSON.stringify(merged) !== JSON.stringify(system.bbox)) {
+    system.bbox = merged;
+    _gbfsFrBoundsDirty = true;
+  }
+
+  const errors = [info.error, status.error, fleet.error].filter(Boolean);
+  const stationsSuppressed = drawStations ? 0 : (info.value?.length || 0);
+  const timestamps = [info.at, status.at, fleet.at].filter((value) => value > 0);
+  return {
+    stations,
+    vehicles,
+    stationsSuppressed,
+    stale: info.stale || status.stale || fleet.stale,
+    error: errors[0] || null,
+    retrievedAt: timestamps.length ? new Date(Math.min(...timestamps)).toISOString() : null,
+  };
+}
+
+/** Build one viewport answer: select systems, read them, clip, cap. */
+async function refreshGbfsFrViewport(box, key) {
+  const index = await loadGbfsFrIndex();
+  const selection = selectSystemsForBox(index.systems, box);
+  const clip = padGbfsBox(box, GBFS_FR_VIEWPORT_PAD_DEG);
+
+  const results = await Promise.all(selection.selected.map(async (system) => ({
+    system,
+    outcome: await gbfsFrSystemObjects(system, clip),
+  })));
+
+  const stations = [];
+  const vehicles = [];
+  const systems = [];
+  let truncated = false;
+  // Fair share, not first-come-first-served: Lime alone reports ~6,000
+  // vehicles over Paris, and a sequential fill would spend the whole budget on
+  // whichever system happened to rank first, leaving the other operators with
+  // nothing and the map looking like a monopoly. Systems under their share
+  // hand the remainder back, so the cap is never wasted.
+  const shares = new Map();
+  let remaining = GBFS_MAX_OBJECTS;
+  let claimants = results.length;
+  for (const { system, outcome } of [...results].sort(
+    (a, b) => (a.outcome.stations.length + a.outcome.vehicles.length)
+      - (b.outcome.stations.length + b.outcome.vehicles.length),
+  )) {
+    const wanted = outcome.stations.length + outcome.vehicles.length;
+    const share = Math.min(wanted, Math.floor(remaining / Math.max(1, claimants)));
+    shares.set(system.id, share);
+    remaining -= share;
+    claimants -= 1;
+  }
+
+  for (const { system, outcome } of results) {
+    let budget = shares.get(system.id) ?? 0;
+    const room = () => budget > 0;
+    for (const station of outcome.stations) {
+      if (!room()) { truncated = true; break; }
+      stations.push(station);
+      budget -= 1;
+    }
+    for (const vehicle of outcome.vehicles) {
+      if (!room()) { truncated = true; break; }
+      vehicles.push(vehicle);
+      budget -= 1;
+    }
+    systems.push({
+      id: system.id,
+      name: system.name,
+      area: system.area,
+      kind: system.kind,
+      licence: system.licenceLabel,
+      publisher: system.publisher,
+      pageUrl: system.pageUrl,
+      datasetUrl: system.datasetUrl,
+      stationsInView: outcome.stations.length,
+      vehiclesInView: outcome.vehicles.length,
+      // Honest about what this system contributes and what it withholds.
+      stationsSuppressed: outcome.stationsSuppressed,
+      retrievedAt: outcome.retrievedAt,
+      stale: outcome.stale,
+      error: outcome.error,
+    });
+  }
+
+  const failed = systems.filter((s) => s.error).length;
+  const payload = {
+    status: failed && failed === systems.length && systems.length > 0 ? 'degraded' : 'ready',
+    retrievedAt: new Date().toISOString(),
+    box,
+    stations,
+    vehicles,
+    systems,
+    systemsMatched: selection.matched,
+    systemsFetched: systems.length,
+    systemsFailed: failed,
+    systemsTruncated: selection.truncated,
+    objectsTruncated: truncated,
+    // Provenance for the "why is my city not doubled" question.
+    redundantSystems: index.redundantCount ?? 0,
+    indexGeneratedAt: index.generatedAt || null,
+  };
+
+  _gbfsFrViewportCache.set(key, { at: Date.now(), payload });
+  trimGbfsFrViewportCache();
+  void flushGbfsFrBounds();
+  return payload;
+}
+
+/**
+ * Vite plugin: viewport-bounded French shared-mobility proxy.
+ *
+ *   GET /api/shared-mobility-fr/systems             — index summary
+ *   GET /api/shared-mobility-fr/objects?south&…     — stations + vehicles in box
+ *
+ * Separate from the older `/api/gbfs` proxy on purpose. That one answers a
+ * fixed registry of `station_*.json` URLs on an allow-list of eight hosts,
+ * which is the right shape for the layer it serves and the wrong shape here:
+ * 150 of the 172 French catalog entries point at a `gbfs.json` auto-discovery
+ * document, on ~30 different publisher hosts, and half the objects are
+ * free-floating vehicles with no station at all. Rather than loosen the older
+ * proxy's allow-list into something that no longer bounds anything, this one
+ * derives its allow-list FROM the shipped index — a host is reachable only
+ * because a probe already resolved a feed there.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function gbfsFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/shared-mobility-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_gbfsFrRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      let index;
+      try {
+        index = await loadGbfsFrIndex();
+      } catch (error) {
+        console.warn('[GBFS FR] system index unavailable:', error?.message || error);
+        json(503, {
+          error: 'French shared-mobility index is missing — run `node scripts/build-gbfs-fr-index.mjs`',
+          missingIndex: true,
+        });
+        return;
+      }
+
+      if (route === '/systems') {
+        const live = index.systems.filter((s) => !s.redundant && !s.probeError);
+        const licences = {};
+        const kinds = {};
+        for (const system of live) {
+          const label = system.licenceLabel || 'Licence non précisée';
+          licences[label] = (licences[label] || 0) + 1;
+          kinds[system.kind || 'unknown'] = (kinds[system.kind || 'unknown'] || 0) + 1;
+        }
+        json(200, {
+          source: index.source || PAN_DATASETS_URL,
+          generatedAt: index.generatedAt || null,
+          catalogResourceCount: index.catalogResourceCount ?? index.systems.length,
+          distinctSystemCount: live.length,
+          redundantCount: index.systems.filter((s) => s.redundant).length,
+          unreachableCount: index.systems.filter((s) => s.probeError).length,
+          licences,
+          kinds,
+          maxBoxDeg: GBFS_MAX_BOX_DEG,
+        }, { 'Cache-Control': 'public, max-age=300' });
+        return;
+      }
+
+      if (route !== '/objects') {
+        json(404, { error: 'Unknown shared-mobility endpoint' });
+        return;
+      }
+
+      const requested = validGbfsBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      });
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${GBFS_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: GBFS_MAX_BOX_DEG,
+        });
+        return;
+      }
+
+      const box = snapGbfsBox(requested);
+      const key = gbfsBoxKey(box);
+      const now = Date.now();
+      const cached = _gbfsFrViewportCache.get(key);
+      if (cached && now - cached.at <= GBFS_FR_VIEWPORT_CACHE_MS) {
+        json(200, { ...cached.payload, status: 'cached' }, { 'X-Shared-Mobility-FR': 'HIT' });
+        return;
+      }
+
+      const request = coalesceProxyRequest(_gbfsFrViewportInFlight, key, () => refreshGbfsFrViewport(box, key));
+      try {
+        const payload = await request.promise;
+        json(200, payload, { 'X-Shared-Mobility-FR': request.shared ? 'INFLIGHT' : 'MISS' });
+      } catch (error) {
+        console.warn('[GBFS FR] viewport unavailable:', error?.message || error);
+        if (cached) {
+          json(200, { ...cached.payload, status: 'stale' }, { 'X-Shared-Mobility-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French shared-mobility data is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'gbfs-france-proxy',
+    configureServer(server) {
+      install(server.middlewares);
+      server.httpServer?.on('close', () => { void flushGbfsFrBounds(true); });
     },
     configurePreviewServer(server) {
       install(server.middlewares);
@@ -9030,6 +9516,7 @@ export default defineConfig(({ mode }) => {
       radioBrowserProxy(),
       gbfsProxy(),
       panTransitProxy(),
+      gbfsFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),

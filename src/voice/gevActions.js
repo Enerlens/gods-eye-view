@@ -169,6 +169,12 @@ const LAYER_ALIASES = new Map([
   ['french transit', 'transit-fr'],
   ['public transport', 'transit-fr'],
   ['public transit', 'transit-fr'],
+  ['shared mobility', 'shared-mobility-fr'],
+  ['scooters', 'shared-mobility-fr'],
+  ['e-scooters', 'shared-mobility-fr'],
+  ['shared bikes', 'shared-mobility-fr'],
+  ['car sharing', 'shared-mobility-fr'],
+  ['carsharing', 'shared-mobility-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -3286,6 +3292,7 @@ function layerTitle(layerId) {
   if (layerId === 'telegeography-submarine-cables') return 'Submarine Cable';
   if (layerId === 'local-firms') return 'Active Fire';
   if (layerId === 'transit-fr') return 'Transit Vehicle';
+  if (layerId === 'shared-mobility-fr') return 'Shared Vehicle';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
   return layerId || 'Entity';
