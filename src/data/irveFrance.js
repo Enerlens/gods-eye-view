@@ -15,23 +15,32 @@
  * map lie. It draws what is installed, and the card says when the operator
  * last said so.
  *
- * ── Two regimes, because 40 000 sites is not a national picture ─────────────
- * 231 079 charge points sit on 39 859 distinct coordinates. Drawn as dots at
+ * ── Three regimes, because 40 000 sites is not a national picture ───────────
+ * 231 079 charge points sit on 39 579 distinct coordinates. Drawn as dots at
  * national altitude that is a solid smear over France that says nothing; drawn
  * only when you are over a city, the country-scale question cannot be asked at
- * all. So the layer answers at the scale you are looking at, and the altitude
- * gate switches between two ways of saying the same thing:
+ * all. So the layer answers at the scale you are looking at:
  *
- *   above ~45 km — **the 96 départements**, filled by how many charge points
- *                  each one holds, in six quantile bins, with the leaders
- *                  labelled. 18 KB, one national answer, no clutter.
- *   below ~45 km — **one dot per site**, coloured by the highest power band
- *                  installed there and sized by how many charge points.
+ *   whole country in view — **the 96 départements**, filled by how many charge
+ *       (span ≥ 9°)         points each holds, in six quantile bins, with the
+ *                           leaders labelled. 18 KB, no clutter.
+ *   part of the country   — **the maillage**: real site positions, thinned by
+ *       (9° … 0.35°)        a geographic grid so every occupied cell keeps its
+ *                           largest site before any cell gets a second dot.
+ *                           1 100–2 200 dots, densifying as you close in.
+ *   one city              — **every site**, with its operators, connectors,
+ *       (below ~45 km)      access conditions and freshness.
  *
- * The two never draw at once, and each has its own legend, so a colour can
- * never be read against the wrong scale. The choropleth reuses the bundled
- * IGN département polygons and the clamp-to-ground technique that
- * `meteoFranceVigilance.js` and `franceEnergy.js` already paint on.
+ * The three never draw at once and each has its own legend, so a colour can
+ * never be read against the wrong scale. The choropleth reuses the bundled IGN
+ * département polygons and the clamp-to-ground technique that
+ * `meteoFranceVigilance.js` and `franceEnergy.js` already paint on; the
+ * maillage's thinning is `cctvLod.js`'s ambient-ring distribution transposed
+ * from screen space to geographic space (see `irveMesh.js`).
+ *
+ * A thinned map that does not say it is thinned is a map claiming France has
+ * 1 100 charge points, so the middle regime always prints how many sites it
+ * drew against how many are in view.
  *
  * WHAT IS DRAWN PER DOT. One dot per SITE — per coordinate, not per station.
  * That is forced by the data rather than chosen: Q-Park's Grande Arche car
@@ -70,6 +79,14 @@ import {
   IRVE_CONNECTOR_LABELS,
   IRVE_MAX_BOX_DEG,
 } from './irveFeed.js';
+import {
+  meshSiteId,
+  selectIrveMesh,
+  MESH_BAND,
+  MESH_LAT,
+  MESH_LON,
+  MESH_PDC,
+} from './irveMesh.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const IRVE_FR_LAYER_ID = 'irve-fr';
@@ -104,6 +121,28 @@ const DEPARTEMENTS_URL = new URL(
 const SITE_ALTITUDE_M = 45_000;
 const SITE_ENTER_ALTITUDE_M = SITE_ALTITUDE_M - 3_000;
 const SITE_EXIT_ALTITUDE_M = SITE_ALTITUDE_M + 3_000;
+/**
+ * View LATITUDE span (degrees) at or above which the choropleth answers.
+ *
+ * Metropolitan France is 9.8° tall, so a view this wide vertically is one
+ * that still holds the whole territory — exactly the condition under which a
+ * per-département fill is the right answer and individual positions are not.
+ * Below it the country is already cropped, and the question turns from "which
+ * parts of France" into "where, actually". Measured on the app's own camera:
+ * 9.53° at 1 400 km, 6.72° at 1 000 km.
+ *
+ * Latitude rather than the larger of the two spans, because on a 16:10
+ * viewport the longitude span is ~2.4× the latitude one and is therefore
+ * mostly a statement about the window's shape (24.42° against 9.53° at
+ * 1 400 km). Using it would keep the choropleth up long after France had been
+ * cropped top and bottom.
+ *
+ * The exit threshold is lower than the entry one on purpose: without the gap
+ * a camera resting near the boundary would swap the entire map back and forth
+ * on sub-pixel drift.
+ */
+const NATIONAL_ENTER_SPAN_DEG = 9.5;
+const NATIONAL_EXIT_SPAN_DEG = 8;
 /** Debounce (ms) on camera-driven viewport reloads. */
 const CAMERA_DEBOUNCE_MS = 450;
 /**
@@ -115,7 +154,7 @@ const POLL_INTERVAL_MS = 30 * 60_000;
 const REQUEST_TIMEOUT_MS = 45_000;
 /** The national sweep is a bigger job than one viewport; it gets its own budget. */
 const NATIONAL_TIMEOUT_MS = 120_000;
-/** Hard cap on rendered sites, independent of what the proxy returns. */
+/** Hard cap on rendered sites, independent of what the proxy or the mesh returns. */
 const MAX_RENDERED_SITES = 4_000;
 /** Metres above the resolved ground floor a dot sits. */
 const POINT_LIFT_M = 2.5;
@@ -159,6 +198,13 @@ const OUTLINE_COLOR = Cesium.Color.BLACK.withAlpha(0.35);
 const SITE_POINT_MIN_PX = 5;
 const SITE_POINT_MAX_PX = 14;
 const SELECTED_POINT_PX = 17;
+/**
+ * Mesh dots are smaller and flatter than exact sites. They stand for a
+ * sampled network rather than a counted inventory, and a mesh dot the size of
+ * a site dot would invite the eye to read one as the other.
+ */
+const MESH_POINT_MIN_PX = 3.4;
+const MESH_POINT_MAX_PX = 9;
 
 /** One-line explanations behind each power swatch. */
 const BAND_BLURBS = Object.freeze({
@@ -234,8 +280,14 @@ let _status = 'idle';
 let _count = 0;
 let _lastUpdate = null;
 let _lastBox = null;
-/** `'sites'` below the altitude gate, `'national'` above it. */
+/** `'national'` (choropleth), `'mesh'` (thinned positions) or `'sites'` (all). */
 let _regime = 'national';
+/** National mesh tuples, fetched once per session. */
+let _mesh = null;
+let _meshPromise = null;
+let _meshError = null;
+/** Last mesh pick, for the panel line and the legend. */
+let _meshPick = null;
 /** Last viewport summary from the proxy, for the panel row and the analyst. */
 let _summary = null;
 
@@ -345,23 +397,91 @@ export function cameraIrveBox(viewer) {
   return { south, west, north, east };
 }
 
+/**
+ * View box for the mesh regime — the camera rectangle, padded.
+ *
+ * No ceiling here, unlike `cameraIrveBox`: the mesh is picked from a set the
+ * client already holds, so a wide view costs nothing upstream. The padding
+ * means a dot does not pop into existence exactly at the screen edge as you
+ * pan, which is what makes the thinning read as a map rather than a redraw.
+ *
+ * @param {Cesium.Viewer} viewer
+ * @returns {?{south:number, west:number, north:number, east:number}}
+ */
+export function cameraMeshBox(viewer, padFraction = 0.12) {
+  const rectangle = viewer?.camera?.computeViewRectangle?.();
+  if (!rectangle) return null;
+  const south = Cesium.Math.toDegrees(rectangle.south);
+  const north = Cesium.Math.toDegrees(rectangle.north);
+  const west = Cesium.Math.toDegrees(rectangle.west);
+  const east = Cesium.Math.toDegrees(rectangle.east);
+  if (![south, west, north, east].every(Number.isFinite)) return null;
+  if (west >= east || south >= north) return null;
+  const padLat = (north - south) * padFraction;
+  const padLon = (east - west) * padFraction;
+  return {
+    south: Math.max(-90, south - padLat),
+    north: Math.min(90, north + padLat),
+    west: Math.max(-180, west - padLon),
+    east: Math.min(180, east + padLon),
+  };
+}
+
 function cameraAltitudeM(viewer) {
   const carto = viewer?.camera?.positionCartographic;
   return Number.isFinite(carto?.height) ? carto.height : Infinity;
 }
 
 /**
- * Which regime the camera is in, with hysteresis so a hover exactly on the
- * boundary does not flip the whole map back and forth.
+ * A view rectangle's two spans, in degrees. Infinite when the camera is past
+ * the limb and Cesium can give no rectangle at all — the most zoomed-out
+ * state there is.
  * @param {Cesium.Viewer} viewer
- * @returns {'sites'|'national'}
+ * @returns {{lat:number, max:number}}
+ */
+export function viewSpanDeg(viewer) {
+  const rectangle = viewer?.camera?.computeViewRectangle?.();
+  if (!rectangle) return { lat: Infinity, max: Infinity };
+  const lat = Cesium.Math.toDegrees(rectangle.north - rectangle.south);
+  const lon = Cesium.Math.toDegrees(rectangle.east - rectangle.west);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return { lat: Infinity, max: Infinity };
+  return { lat, max: Math.max(lat, lon) };
+}
+
+/**
+ * Which regime the camera is in, with hysteresis at both boundaries so a
+ * camera resting on one does not flip the whole map back and forth.
+ *
+ * A camera with no view rectangle is looking past the limb at the whole
+ * globe, which is the most zoomed-out state there is — the choropleth, not a
+ * fallback.
+ *
+ * @param {Cesium.Viewer} viewer
+ * @returns {'national'|'mesh'|'sites'}
  */
 function updateRegime(viewer) {
+  const span = viewSpanDeg(viewer);
   const altitude = cameraAltitudeM(viewer);
+
+  if (_regime === 'national') {
+    if (span.lat >= NATIONAL_EXIT_SPAN_DEG) return _regime;
+  } else if (span.lat >= NATIONAL_ENTER_SPAN_DEG) {
+    _regime = 'national';
+    return _regime;
+  }
+
+  // Below the national threshold the choice is between every site and a
+  // thinned sample, and it is the PROXY's box ceiling that decides — the
+  // exact regime exists only where a viewport query is answerable at all.
+  // That ceiling bites before the altitude gate does (0.35° of longitude is
+  // reached around 25 km, not 45 km), which is the correct order: a request
+  // the proxy would refuse must never be issued.
   if (_regime === 'sites') {
-    if (altitude > SITE_EXIT_ALTITUDE_M) _regime = 'national';
-  } else if (altitude < SITE_ENTER_ALTITUDE_M) {
+    if (altitude > SITE_EXIT_ALTITUDE_M || span.max > IRVE_MAX_BOX_DEG) _regime = 'mesh';
+  } else if (altitude < SITE_ENTER_ALTITUDE_M && span.max <= IRVE_MAX_BOX_DEG) {
     _regime = 'sites';
+  } else {
+    _regime = 'mesh';
   }
   return _regime;
 }
@@ -440,6 +560,29 @@ export function buildIrveSelectionLabel(record) {
 }
 
 /**
+ * Card copy for a site picked out of the maillage.
+ *
+ * The national sweep carries five columns, so this card knows the position,
+ * the count and the top power band and NOTHING else. It says so rather than
+ * printing an empty operator line, and points at the zoom level where the
+ * rest exists.
+ *
+ * @param {Object} record
+ * @returns {string}
+ */
+export function buildIrveMeshLabel(record) {
+  const site = record?.site || {};
+  const pdc = Number(site.pdcDistinct) || 0;
+  return [
+    'Station de recharge',
+    `🔌 ${fr(pdc)} point${pdc === 1 ? '' : 's'} de charge`,
+    `⚡ ${irveBandLabel(site.topBand)}`,
+    'Zoomez pour l\u2019opérateur, les prises et les conditions d\u2019accès',
+    'Capacité installée — ce fichier ne publie pas la disponibilité',
+  ].join('\n');
+}
+
+/**
  * Build the card copy for a selected département.
  *
  * The density line is not decoration: the fill encodes an absolute count, and
@@ -504,7 +647,10 @@ function selectedOverlayEntry(id, position, copy) {
 export function createIrveSelectedOverlayEntry(record) {
   const position = record?.position;
   if (!record?.id || !position) return null;
-  return selectedOverlayEntry(record.id, position, buildIrveSelectionLabel(record));
+  const copy = record.mesh
+    ? buildIrveMeshLabel(record)
+    : buildIrveSelectionLabel(record);
+  return selectedOverlayEntry(record.id, position, copy);
 }
 
 /**
@@ -877,6 +1023,119 @@ async function loadNational({ force = false } = {}) {
   governorRequestRender('irve-fr-national');
 }
 
+// --- Mesh regime ------------------------------------------------------------
+
+/** Pixel size for a mesh dot — smaller than an exact site, and flatter. */
+export function irveMeshPointSize(pdc) {
+  const count = Number(pdc);
+  if (!Number.isFinite(count) || count <= 0) return MESH_POINT_MIN_PX;
+  return Math.min(MESH_POINT_MAX_PX, MESH_POINT_MIN_PX + Math.sqrt(Math.min(count, 200)) * 0.42);
+}
+
+/** Fetch the national point set once per session; the proxy caches it for a day. */
+async function ensureMesh() {
+  if (_mesh) return _mesh;
+  if (_meshPromise) return _meshPromise;
+  _meshPromise = (async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), NATIONAL_TIMEOUT_MS);
+    try {
+      const response = await fetch('/api/irve-fr/mesh', { signal: controller.signal });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      if (!Array.isArray(payload?.sites)) throw new Error('malformed mesh');
+      _mesh = payload;
+      _meshError = null;
+      return payload;
+    } finally {
+      clearTimeout(timer);
+      _meshPromise = null;
+    }
+  })().catch((error) => {
+    if (error?.name !== 'AbortError') {
+      console.warn('[Data:IRVE-FR] national mesh failed:', error?.message || error);
+      _meshError = error?.message || 'national mesh unavailable';
+    }
+    return null;
+  });
+  return _meshPromise;
+}
+
+/**
+ * Draw a thinned selection of real site positions for the current view.
+ *
+ * Re-picked on every camera settle rather than cached: the pick is a function
+ * of the box, and re-running it over 39 579 tuples costs a few milliseconds
+ * against a round trip that would cost a few hundred.
+ */
+function reconcileMesh(box) {
+  const pick = selectIrveMesh(_mesh?.sites, { box });
+  _meshPick = pick;
+
+  clearSelection();
+  _points.removeAll();
+  _records.clear();
+
+  for (const site of pick.picked) {
+    if (_records.size >= MAX_RENDERED_SITES) break;
+    const lat = site[MESH_LAT];
+    const lon = site[MESH_LON];
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const id = meshSiteId(site);
+    if (_records.has(id)) continue;
+    const band = IRVE_BAND_KEYS[site[MESH_BAND]] || 'inconnue';
+    const color = irveBandColor(band);
+    const size = irveMeshPointSize(site[MESH_PDC]);
+    // No ground warm-up here: at these altitudes a metre of vertical error is
+    // invisible, and 2 200 terrain lookups per pan would not be.
+    const position = Cesium.Cartesian3.fromDegrees(lon, lat, POINT_LIFT_M);
+    const point = _points.add({
+      id,
+      position,
+      color: Cesium.Color.fromCssColorString(color),
+      pixelSize: size,
+      outlineColor: OUTLINE_COLOR,
+      outlineWidth: 1,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+    });
+    _records.set(id, {
+      id,
+      // A mesh record carries only what the national sweep knows. The flag is
+      // what lets the card say so instead of implying the rest is absent.
+      mesh: true,
+      site: { id, lat, lon, pdcDistinct: site[MESH_PDC], pdcPublished: site[MESH_PDC], topBand: band },
+      point,
+      position,
+      baseColor: color,
+      baseSize: size,
+    });
+  }
+  _count = _records.size;
+  governorRequestRender('irve-fr-mesh');
+}
+
+/** Enter (or refresh) the mesh regime. */
+async function loadMesh(box) {
+  hideDepartements();
+  _nationalPainted = false;
+  dropDepartementSelection();
+  _summary = null;
+  _error = null;
+  _loading = !_mesh;
+  const generation = ++_requestGeneration;
+  await ensureMesh();
+  if (generation !== _requestGeneration || !_enabled || _regime !== 'mesh') return;
+  _loading = false;
+  if (!_mesh) {
+    _error = _meshError || 'national mesh unavailable';
+    _status = 'error';
+    return;
+  }
+  reconcileMesh(box);
+  _lastUpdate = Number(_mesh.fetchedAt) || Date.now();
+  _status = _count > 0 ? 'ready' : 'empty';
+}
+
 // --- Site regime ------------------------------------------------------------
 
 /** Replace the rendered set with a viewport answer. */
@@ -921,29 +1180,39 @@ function clearSites() {
   _records.clear();
   _count = 0;
   _summary = null;
+  _meshPick = null;
 }
 
 async function loadViewport({ force = false } = {}) {
   if (!_enabled || !_viewer) return;
 
-  if (updateRegime(_viewer) === 'national') {
+  const regime = updateRegime(_viewer);
+  if (regime === 'national') {
     _lastBox = null;
+    _meshPick = null;
     await loadNational({ force });
+    return;
+  }
+
+  if (regime === 'mesh') {
+    _lastBox = null;
+    await loadMesh(cameraMeshBox(_viewer));
     return;
   }
 
   const box = cameraIrveBox(_viewer);
   if (!box) {
     // Inside the altitude gate but looking at more than the proxy will answer
-    // — an oblique horizon shot. The national picture is the honest fallback,
-    // not an empty map.
-    _regime = 'national';
-    await loadNational({ force });
+    // — an oblique horizon shot. The maillage is the honest fallback, not an
+    // empty map.
+    _regime = 'mesh';
+    await loadMesh(cameraMeshBox(_viewer));
     return;
   }
 
   hideDepartements();
   _nationalPainted = false;
+  _meshPick = null;
   dropDepartementSelection();
 
   const key = [box.south, box.west, box.north, box.east].map((v) => v.toFixed(3)).join(',');
@@ -1050,7 +1319,21 @@ export function buildIrveLoadingLabel({
   count = _count,
   summary = _summary,
   national = _national,
+  meshPick = _meshPick,
 } = {}) {
+  if (regime === 'mesh') {
+    if (loading) return 'reading the national maillage...';
+    if (status === 'error') return '';
+    if (!meshPick) return '';
+    if (!meshPick.inBox) return 'no charge point published in view';
+    // Naming both numbers is the whole contract of this regime: a thinned map
+    // that does not say it is thinned claims France has 1 100 charge points.
+    const parts = meshPick.thinned
+      ? [`${fr(meshPick.picked.length)} of ${fr(meshPick.inBox)} sites — sampled maillage`]
+      : [`${fr(meshPick.inBox)} sites — all of them`];
+    parts.push('zoom in for detail');
+    return parts.join(' · ');
+  }
   if (regime === 'national') {
     if (loading) return 'reading the national register...';
     if (status === 'error') return '';
@@ -1104,6 +1387,7 @@ const irveFranceLayer = {
     _summary = null;
     _regime = 'national';
     _nationalPainted = false;
+    _meshPick = null;
     _lastBox = null;
     _classificationType = irveClassificationTypeForScene(viewer?.scene);
     if (typeof window !== 'undefined' && !_mapStackListener) {
@@ -1147,6 +1431,7 @@ const irveFranceLayer = {
     _requestGeneration += 1;
     _regime = 'national';
     _nationalPainted = false;
+    _meshPick = null;
     clearTimeout(_cameraDebounceTimer);
     _cameraDebounceTimer = null;
     _inFlight?.abort?.();
@@ -1209,6 +1494,19 @@ const irveFranceLayer = {
     return _summary ? { ..._summary } : null;
   },
 
+  /** What the maillage drew, and out of how many. */
+  getMeshSummary() {
+    if (!_meshPick) return null;
+    return {
+      shown: _meshPick.picked.length,
+      inBox: _meshPick.inBox,
+      budget: _meshPick.budget,
+      cells: _meshPick.cells,
+      thinned: _meshPick.thinned,
+      nationalSites: _mesh?.siteCount ?? null,
+    };
+  },
+
   /** National rollup, for the analyst and for tests. */
   getNationalSummary() {
     if (!_national) return null;
@@ -1243,19 +1541,32 @@ const irveFranceLayer = {
     }
     const tally = new Map();
     for (const record of _records.values()) {
+      if (record.mesh) {
+        // A mesh record knows one band, not a split — so the maillage legend
+        // counts SITES by their top band, and says so in the blurb. Counting
+        // them as charge points would silently understate every big car park.
+        const band = record.site?.topBand;
+        if (band) tally.set(band, (tally.get(band) || 0) + 1);
+        continue;
+      }
       const bands = record.site?.bands || {};
       for (const band of IRVE_BAND_KEYS) {
         const count = Number(bands[band]) || 0;
         if (count > 0) tally.set(band, (tally.get(band) || 0) + count);
       }
     }
+    const meshRegime = _regime === 'mesh';
     const legend = IRVE_BAND_KEYS
       .filter((band) => tally.get(band) > 0)
       .map((band) => ({
         label: irveBandLabel(band),
         color: irveBandColor(band),
         count: tally.get(band),
-        blurb: BAND_BLURBS[band],
+        blurb: meshRegime
+          // Naming the sample is the point: this mix is what the thinning
+          // drew, close to the real one but not it. See `irveMesh.js`.
+          ? `${BAND_BLURBS[band]} Counted as SITES over the sampled maillage — a sample of the mix in view, not the national figure.`
+          : BAND_BLURBS[band],
       }));
     return { chips: [], legend };
   },
@@ -1301,7 +1612,10 @@ const irveFranceLayer = {
 /** Seed rendered records so selection/card/legend paths run without WebGL. */
 export function _setIrveStateForTest({
   viewer, records, overlayHost, summary, status, count, regime, national, depEntities, depMeta,
+  mesh, meshPick,
 } = {}) {
+  _mesh = mesh || null;
+  _meshPick = meshPick || null;
   _viewer = viewer || null;
   _records = new Map((records || []).map((record) => [record.id, record]));
   _selectedId = null;
@@ -1332,6 +1646,8 @@ export function _clearIrveSelectionForTest() {
   _overlayHost = DEFAULT_OVERLAY_HOST;
   _national = null;
   _nationalPainted = false;
+  _mesh = null;
+  _meshPick = null;
   _depEntities = new Map();
   _depMeta = new Map();
   _regime = 'sites';

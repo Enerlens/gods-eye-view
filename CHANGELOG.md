@@ -53,6 +53,26 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   drawn once per operator. Every verdict is recorded in
   `config/gbfs_fr_systems.json` rather than silently applied.
 
+- **Bornes IRVE** gained its middle regime — the *maillage*. The layer now
+  answers at three scales instead of two: the 96 départements while the whole
+  country is in view, real site positions thinned onto a 30 × 20 grid once
+  France is cropped, and every site with full detail over a city. Only one is
+  ever drawn, and each carries its own legend.
+- The thinning is spatial, not by rank: every occupied grid cell gets a dot
+  before any cell gets a second, so the Massif Central stays visible as sparse
+  rather than vanishing. Taking the biggest N instead would have collapsed
+  France to a dozen conurbations.
+- And each cell is represented by its most common band rather than its biggest
+  site. Picking the largest drew **46.2% of the dots as high-power DC when
+  12.2% of the sites in view were** — the biggest site in a rural cell is the
+  motorway bank — which made the map say France runs on 300 kW chargers when
+  it runs on 22 kW ones. The modal rule brings that to 8.7% against 12.2%
+  true. The residual (`normale` at ~46% against 36%) is stated in the legend
+  rather than hidden.
+- The national point set is served once (`/api/irve-fr/mesh`, 39 579 tuples,
+  0.9 MB, cached a day) and picked in the client, so panning the maillage
+  costs no round trip.
+
 - Added the **Bornes IRVE** layer — every public EV charge point France has
   declared, keyless. The *fichier consolidé des bornes de recharge pour
   véhicules électriques* is assembled daily by transport.data.gouv.fr from the

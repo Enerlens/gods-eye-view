@@ -22,7 +22,8 @@
  *  16. transport.data.gouv.fr — French GTFS-RT live vehicle positions (PAN)
  *  17. transport.data.gouv.fr — French shared mobility (GBFS: bikes, scooters, cars)
  *  18. ODRÉ éCO2mix — French live electricity mix, national + 12 regions
- *  19. transport.data.gouv.fr / ODRÉ — French EV charge points (IRVE, per viewport)
+ *  19. transport.data.gouv.fr / ODRÉ — French EV charge points (IRVE): per viewport,
+ *      per département, and the thinned national mesh between the two
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -71,6 +72,7 @@ import {
 import {
   irveBboxWhere,
   projectIrveSites,
+  IRVE_BAND_KEYS,
   IRVE_BOX_STEP_DEG,
   IRVE_DATASET,
   IRVE_GROUP_FIELDS,
@@ -3113,7 +3115,7 @@ const IRVE_NATIONAL_CACHE_PATH = path.join(IRVE_DISK_DIR, 'departements.json');
  * invisible until tomorrow — and the version that caught this was a coastal
  * snap that the served payload silently did not have.
  */
-const IRVE_NATIONAL_CACHE_VERSION = 2;
+const IRVE_NATIONAL_CACHE_VERSION = 3;
 
 /** @type {?{at:number, payload:object}} */
 let _irveNational = null;
@@ -3208,13 +3210,28 @@ async function refreshIrveNational() {
       + `${swept.stalled.length ? `, ${swept.stalled.length} stripe(s) still at the limit` : ''}`,
     );
   }
+  // The two documents are cached together because one sweep builds both, and
+  // served apart because they are read at different moments and at wildly
+  // different sizes: the rollup is 18 KB and arrives with the layer, the mesh
+  // is ~0.9 MB and is only fetched if the operator zooms past the choropleth.
+  const { mesh, ...rollup } = projected;
   return {
-    ...projected,
-    stalledStripes: swept.stalled.length,
-    upstreamCalls: swept.calls,
-    sweptInMs: Date.now() - started,
-    dataset: IRVE_DATASET,
-    source: IRVE_SOURCE,
+    rollup: {
+      ...rollup,
+      stalledStripes: swept.stalled.length,
+      upstreamCalls: swept.calls,
+      sweptInMs: Date.now() - started,
+      dataset: IRVE_DATASET,
+      source: IRVE_SOURCE,
+    },
+    mesh: {
+      sites: mesh,
+      siteCount: mesh.length,
+      pdc: rollup.pdcAssigned,
+      bands: IRVE_BAND_KEYS,
+      dataset: IRVE_DATASET,
+      source: IRVE_SOURCE,
+    },
   };
 }
 
@@ -3226,7 +3243,8 @@ async function readIrveNationalDisk() {
     const entry = JSON.parse(await fsp.readFile(IRVE_NATIONAL_CACHE_PATH, 'utf8'));
     if (entry?.version === IRVE_NATIONAL_CACHE_VERSION
       && Number.isFinite(entry.at)
-      && Array.isArray(entry.payload?.departements)) {
+      && Array.isArray(entry.payload?.rollup?.departements)
+      && Array.isArray(entry.payload?.mesh?.sites)) {
       _irveNational = entry;
     }
   } catch { /* no disk cache yet */ }
@@ -3288,7 +3306,12 @@ function irveFranceProxy() {
           ttlMs: IRVE_TTL_MS,
           maxBoxDeg: IRVE_MAX_BOX_DEG,
           national: _irveNational
-            ? { at: _irveNational.at, painted: _irveNational.payload.painted, pdc: _irveNational.payload.pdcAssigned }
+            ? {
+              at: _irveNational.at,
+              painted: _irveNational.payload.rollup.painted,
+              pdc: _irveNational.payload.rollup.pdcAssigned,
+              meshSites: _irveNational.payload.mesh.siteCount,
+            }
             : null,
           nationalTtlMs: IRVE_NATIONAL_TTL_MS,
         }, { 'Cache-Control': 'public, max-age=60' });
@@ -3298,7 +3321,7 @@ function irveFranceProxy() {
         await readIrveNationalDisk();
         const now = Date.now();
         if (_irveNational && now - _irveNational.at <= IRVE_NATIONAL_TTL_MS) {
-          json(200, { ..._irveNational.payload, fetchedAt: _irveNational.at, stale: false }, { 'X-IRVE-FR': 'HIT' });
+          json(200, { ..._irveNational.payload.rollup, fetchedAt: _irveNational.at, stale: false }, { 'X-IRVE-FR': 'HIT' });
           return;
         }
         if (!_irveNationalInFlight) {
@@ -3313,13 +3336,49 @@ function irveFranceProxy() {
         }
         try {
           const entry = await _irveNationalInFlight;
-          json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-IRVE-FR': 'MISS' });
+          json(200, { ...entry.payload.rollup, fetchedAt: entry.at, stale: false }, { 'X-IRVE-FR': 'MISS' });
         } catch (error) {
           console.warn('[IRVE Proxy] national rollup unavailable:', error?.message || error);
           // A rollup a week old is still a true picture of a register that is
           // rebuilt daily — serving it beats blanking the national view.
           if (_irveNational) {
-            json(200, { ..._irveNational.payload, fetchedAt: _irveNational.at, stale: true }, { 'X-IRVE-FR': 'STALE' });
+            json(200, { ..._irveNational.payload.rollup, fetchedAt: _irveNational.at, stale: true }, { 'X-IRVE-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'French charge-point register is temporarily unavailable' });
+        }
+        return;
+      }
+      if (route === '/mesh') {
+        // The whole national point set, once. It is served entire and thinned
+        // in the CLIENT (`irveMesh.js`) rather than per request, because the
+        // thinning is a function of the viewport and a round trip on every
+        // pan would make the middle regime feel worse than either of the two
+        // it sits between. ~0.9 MB, cached for a day, fetched at most once a
+        // session — and only if the operator leaves the choropleth.
+        await readIrveNationalDisk();
+        const now = Date.now();
+        if (_irveNational && now - _irveNational.at <= IRVE_NATIONAL_TTL_MS) {
+          json(200, { ..._irveNational.payload.mesh, fetchedAt: _irveNational.at, stale: false }, { 'X-IRVE-FR': 'HIT' });
+          return;
+        }
+        if (!_irveNationalInFlight) {
+          _irveNationalInFlight = refreshIrveNational()
+            .then((payload) => {
+              const entry = { version: IRVE_NATIONAL_CACHE_VERSION, at: Date.now(), payload };
+              _irveNational = entry;
+              writeIrveNationalDisk(entry);
+              return entry;
+            })
+            .finally(() => { _irveNationalInFlight = null; });
+        }
+        try {
+          const entry = await _irveNationalInFlight;
+          json(200, { ...entry.payload.mesh, fetchedAt: entry.at, stale: false }, { 'X-IRVE-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[IRVE Proxy] national mesh unavailable:', error?.message || error);
+          if (_irveNational) {
+            json(200, { ..._irveNational.payload.mesh, fetchedAt: _irveNational.at, stale: true }, { 'X-IRVE-FR': 'STALE' });
             return;
           }
           json(503, { error: 'French charge-point register is temporarily unavailable' });

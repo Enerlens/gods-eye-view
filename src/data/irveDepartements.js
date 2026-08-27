@@ -67,10 +67,22 @@
  */
 import {
   IRVE_BAND_KEYS,
+  IRVE_SITE_DECIMALS,
   irveCoordinateVerdict,
   irvePowerBand,
   irveSiteKey,
 } from './irveFeed.js';
+
+/**
+ * Band key → the small integer the mesh tuple carries. The middle regime
+ * ships 39 859 sites in one document, and `"accelere"` costs ten bytes where
+ * `2` costs one.
+ */
+const BAND_INDEX = Object.freeze(Object.fromEntries(
+  IRVE_BAND_KEYS.map((band, index) => [band, index]),
+));
+/** Index of the out-of-envelope band, which is never a site's "top" band. */
+const UNKNOWN_BAND_INDEX = IRVE_BAND_KEYS.length - 1;
 
 /**
  * Group key for the national sweep — deliberately five columns and not the
@@ -435,6 +447,8 @@ export function projectIrveDepartements({
   const tally = new Map();
   /** Coordinate → département, so a 224-charge-point car park is located once. */
   const located = new Map();
+  /** Coordinate → `[lat, lon, pdc, band]`, the middle regime's point set. */
+  const meshBySite = new Map();
 
   let pdcSwept = 0;
   let pdcWithheld = 0;
@@ -484,9 +498,25 @@ export function projectIrveDepartements({
       };
       tally.set(code, entry);
     }
+    const band = irvePowerBand(row.puissance_nominale);
     entry.pdc += count;
     entry.sites.add(key);
-    entry.bands[irvePowerBand(row.puissance_nominale)] += count;
+    entry.bands[band] += count;
+
+    // The same pass also builds the middle regime's point set. It is free
+    // here — every site is already visited — and it is the ONLY place it can
+    // be built without a second national sweep.
+    let site = meshBySite.get(key);
+    if (!site) {
+      site = [Number(lat.toFixed(IRVE_SITE_DECIMALS)), Number(lon.toFixed(IRVE_SITE_DECIMALS)), 0, -1];
+      meshBySite.set(key, site);
+    }
+    site[2] += count;
+    const bandIndex = BAND_INDEX[band];
+    // `inconnue` never becomes a site's top band: a car park whose only
+    // readable reading is 7 kW is a 7 kW site even when the row beside it
+    // publishes 7 360. Same rule as the per-viewport projection.
+    if (bandIndex !== UNKNOWN_BAND_INDEX && bandIndex > site[3]) site[3] = bandIndex;
   }
 
   const thresholds = irveCountBins(
@@ -519,8 +549,17 @@ export function projectIrveDepartements({
     ? NaN
     : Number(totalCount);
 
+  // A site with no readable power at all keeps the out-of-envelope band
+  // rather than the -1 sentinel, so the client never has to know about it.
+  const mesh = [...meshBySite.values()];
+  for (const site of mesh) {
+    if (site[3] < 0) site[3] = UNKNOWN_BAND_INDEX;
+  }
+  mesh.sort((a, b) => b[2] - a[2] || a[0] - b[0] || a[1] - b[1]);
+
   return {
     departements,
+    mesh,
     thresholds,
     binCount: Math.max(2, Math.floor(binCount)),
     painted: departements.filter((entry) => entry.pdc > 0).length,
@@ -537,7 +576,11 @@ export function projectIrveDepartements({
     // the map did rather than something the file said.
     pdcSnapped,
     pdcTotal: Number.isFinite(expected) ? expected : null,
-    siteCount: located.size,
+    // Sites actually counted into a département — NOT `located.size`, which
+    // also counts the overseas and foreign coordinates the sweep resolved to
+    // nothing. The two differ by ~280, and reporting the larger one would
+    // claim the map draws sites it does not.
+    siteCount: mesh.length,
     truncated: Number.isFinite(expected) && expected > 0 && pdcSwept < expected,
   };
 }
