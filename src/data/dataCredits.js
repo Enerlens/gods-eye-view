@@ -193,6 +193,18 @@ export const DATA_CREDITS = [
       'via <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a> (G. David), Licence Ouverte.',
   },
   {
+    key: 'odre-gas-fr',
+    html:
+      'French gas system: transmission traces &copy; ' +
+      '<a href="https://odre.opendatasoft.com/explore/dataset/trace-du-reseau-grt-250/" target="_blank" rel="noopener">NaTran (ex-GRTgaz)</a> ' +
+      'and <a href="https://odre.opendatasoft.com/explore/dataset/terega-trace-du-reseau/" target="_blank" rel="noopener">Ter&eacute;ga</a>, ' +
+      'gas-fired power stations and renewable-methane injection points via ' +
+      '<a href="https://odre.opendatasoft.com/explore/dataset/points-dinjection-de-biomethane-en-france/" target="_blank" rel="noopener">ODR&Eacute; — Open Data R&eacute;seaux &Eacute;nergies</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'Both traces are published deliberately simplified, to about 250 m, and are drawn as published &mdash; ' +
+      'they are not a pipeline location. Power-station figures are installed capacity by annual edition, not live output.',
+  },
+  {
     key: 'pan-transit',
     html:
       'Live French transit vehicles: GTFS-Realtime feeds published on the ' +

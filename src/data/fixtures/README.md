@@ -39,3 +39,24 @@
   regionally — and an export hour whose commercial balances (−2 893 MW) do not
   sum to its physical one (−3 633 MW), which is the point. Licence Ouverte 2.0,
   RTE via ODRÉ.
+
+- `gas-fr-network-sample.json` — 5 NaTran and 4 Teréga rows of the two ODRÉ
+  transmission traces, captured 2026-08-27 through the same `exports/json`
+  endpoint the proxy uses, kept as raw rows so the projection under test reads
+  exactly what the proxy reads. Every trap in it is real and is the point: two
+  Moselle segments that share an endpoint exactly (so chaining is provable), a
+  3.5 mm "line" published to 15 decimals, a row with no département at all, and
+  from Teréga a `geo_shape: null` row that still carries a `geo_point_2d`, a
+  `MultiLineString` in a file that is otherwise all `LineString`, and a Béarn
+  line whose third ordinate reaches −705.5 m. Licence Ouverte 2.0, NaTran and
+  Teréga via ODRÉ.
+
+- `gas-fr-sites-sample.json` — all 7 annual editions of 2 of the 14 centralised
+  gas-fired power stations, and 10 renewable-methane injection points, captured
+  2026-08-27. Landivisiau is in there because it is `En projet` in the 2019 and
+  2020 editions and `En service` from 2021: it is the row that proves "take the
+  first row per site" is a coin flip. The injection slice holds all 3 closed
+  sites from a file titled *en service* (each with `site_ouvert: "False"`, the
+  string JavaScript coerces to `true`), the one site that publishes no
+  coordinates, both network tiers, and both spellings of the planned-increase
+  flag. Licence Ouverte 2.0, NaTran / Teréga via ODRÉ.
