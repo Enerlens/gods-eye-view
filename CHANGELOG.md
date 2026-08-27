@@ -7,6 +7,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- Added the **Mix élec** layer — France's live electricity mix, keyless. RTE's
+  éCO2mix, republished by **ODRÉ** under Licence Ouverte 2.0 and refreshed every
+  15 minutes, answers the question a national consumption gauge never can:
+  *which regions power France, and which draw on it.* The 12 métropolitaines are
+  painted by their own consumption-minus-generation balance — teal where a
+  region produces a surplus, amber where it runs a deficit, opacity ramped by
+  how large that imbalance is against the region's own load — so Auvergne-Rhône-
+  Alpes and Normandie exporting hard while Île-de-France imports nearly its
+  whole load is legible at a glance. The five commercial border balances are
+  drawn as raised arcs whose arrow points the way the power travels, with the
+  direction repeated in words on the label; a border at 0 MW is drawn as no arc
+  at all. National load, gCO₂/kWh, low-carbon share and the net export figure
+  are reported on the layer's row.
+- The layer is built around what this dataset does and does not say. `ech_comm_*`
+  is a **commercial nomination between market areas, not a cable**, so the arcs
+  are anchored on country reference points rather than interconnection sites,
+  and Allemagne + Belgique — published as one field — stays one arc labelled
+  with both. The commercial balances do **not** sum to the physical one
+  (measured: −2 893 against −3 633 MW), so both are reported, separately named.
+  éCO2mix régional covers 12 regions: **Corse runs on its own system and is
+  absent upstream**, so it is never painted rather than inheriting a neighbour's
+  colour. RTE publishes no regional carbon content, so none is drawn.
+  Attribution to éCO2mix / RTE via ODRÉ, with the dataset's own 15-minute
+  timestamp, is registered in the Data attribution popover.
 - Added the **Transit FR** layer — the first thing on this globe that moves on
   the ground. Live GTFS-Realtime vehicle positions from the French Point d'Accès
   National (`transport.data.gouv.fr`): buses, trams, metros and interurban
