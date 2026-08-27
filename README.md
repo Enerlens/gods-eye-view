@@ -168,7 +168,7 @@ Twenty-eight tools, four jobs — the commands below come straight from the prod
 
 ## 🛰️ What's on the Globe
 
-Fourteen live layers. **Eleven of them need nothing at all** — no key, no account, no signup. (🟢 nothing · 🟡 free key · 🔴 metered.)
+Eighteen live layers. **Fifteen of them need nothing at all** — no key, no account, no signup. (🟢 nothing · 🟡 free key · 🔴 metered.)
 
 | Layer | What you get | Source | Auth |
 |-------|--------------|--------|------|
@@ -178,6 +178,7 @@ Fourteen live layers. **Eleven of them need nothing at all** — no key, no acco
 | 🚢 **Live Vessels** | Thousands of ships worldwide | AISStream | 🟡 |
 | 🛰️ **Satellites** | A roughly 840-object core catalog, color-coded by class with a live legend — the **DENSE** chip drops in the whole Starlink shell | CelesTrak | 🟢 |
 | 🌍 **Earthquakes** | Global seismic activity, last 24h | USGS | 🟢 |
+| ⬡ **Marine Buoys** | Live sea state from the NOAA buoy network — wave height, period, sea temperature and wind, colored on the WMO sea-state ladder. Coverage is sparse and labeled that way: only about a fifth of reporting stations carry a wave sensor, and one without one renders neutral rather than calm | NOAA NDBC | 🟢 |
 | 🚗 **Traffic** | Live congestion driving per-vehicle flow at street level — dive below ~8 km and the dots color to real jams. Keyless it's an approximate simulation | TomTom + OSM | 🟢 (🟡 TomTom makes it real — get one) |
 | 📹 **CCTV Mesh** | ~815 public cameras projected *into* the 3D space — Austin · California (Caltrans) · London (TfL) · Lyon (Métropole de Lyon). Positions are published; poses are estimated priors **you calibrate by dragging a gizmo on the camera itself**. Opt-in `CCTV_OSM_CAMERAS_ENABLED=1` adds OpenStreetMap's mapped camera *positions* for whatever you are looking at (viewport-loaded, worldwide) — no feed, shown as a labeled Street View or placeholder frame | City APIs · OSM | 🟢 |
 | 📻 **Radio** | Geolocated world radio with an **analog tuner** — drag the needle across up to 750 stations and the globe flies to each broadcaster | Radio Browser / broadcasters | 🟢 |
@@ -185,13 +186,16 @@ Fourteen live layers. **Eleven of them need nothing at all** — no key, no acco
 | 🚌 **Transit FR** | The first thing on this globe that moves *on the ground*: live buses, trams and coaches across ~150 French networks, gliding between real fixes with line, speed, occupancy and stop status. Loaded for the viewport you are looking at | transport.data.gouv.fr (GTFS-RT) | 🟢 |
 | 🔥 **Active Fires** | Live NASA FIRMS detections, trailing 24h | NASA FIRMS | 🟡 |
 | 🚀 **Space Missions** | Rolling 30-day launches with payload, stage, and recovery detail | Launch Library 2 | 🟢 (🟡 optional token raises the allowance) |
+| ≋ **Vigicrues** 🇫🇷 | France's official river-flood vigilance map — 337 monitored reaches, coloured green→red by the state's own 24 h risk reading. Calm days are green; it lights up in an episode | Vigicrues (SCHAPI) | 🟢 |
+| ◉ **Hub'Eau Gauges** 🇫🇷 | The live river-sensor mesh under Vigicrues — up to ~4,000 gauging stations, sized by discharge, with the raw number on the label | Hub'Eau / Eaufrance | 🟢 |
+| ⚠ **Vigilance MF** 🇫🇷 | The 4-colour départemental weather warning every French forecast leads with — 9 phenomena, only the raised départements painted | Météo-France | 🟢 (🟡 optional key swaps the mirror for the contracted API) |
 | 🎖️ **Mapped Installations** | Viewport-bounded military-site context from community mapping — incomplete by nature, and labeled that way | OpenStreetMap | 🟢 |
 
 ![A reconstructed Falcon 9 ascent climbing and curving into its projected orbit](docs/media/08-falcon9-replay.gif)
 
 *The Space Missions layer replaying a Falcon 9 ascent — labeled `RECONSTRUCTED ESTIMATE`, scrubbable 0.25×–4×.*
 
-**Also on the globe:** neighborhood overlays · an optional cockpit WX cloud effect. **Bundled static infrastructure:** Datacenters (4,351), Dams (704), and Submarine Cables (712).
+**Also on the globe:** neighborhood overlays · an optional cockpit WX cloud effect. **Bundled static infrastructure:** Datacenters (4,351), Dams (704), Submarine Cables (712), Ports (2,951 — NGA World Port Index, US public domain), and the 96 French département polygons the Vigilance layer colours.
 
 ![Diving into the Bahamas and revealing labeled submarine cable routes beneath the globe](docs/media/09-undersea-cables.gif)
 
@@ -315,7 +319,7 @@ Honest numbers, roughly, as of mid-2026 — always check the provider pricing pa
 
 | | Cost reality |
 |---|---|
-| **🟢 Most layers** | **$0, no signup.** OpenSky anon, USGS, CelesTrak, adsb.lol, city CCTV, Radio Browser, GBFS, transport.data.gouv.fr, Launch Library 2, bundled datasets. |
+| **🟢 Most layers** | **$0, no signup.** OpenSky anon, USGS, CelesTrak, adsb.lol, city CCTV, Radio Browser, GBFS, transport.data.gouv.fr, Launch Library 2, Vigicrues, Hub'Eau, Météo-France Vigilance, NOAA NDBC, bundled datasets. |
 | **🟡 Optional developer access** | AISStream, FIRMS, TomTom, Cesium ion, and authenticated OpenSky may offer no-cost access, but limits and permitted uses differ. Cesium ion and OpenSky in particular have plan or use restrictions; verify the current provider terms for your deployment. |
 | **🔴 Google 3D tiles** | Map Tiles usage is billed by session, with current prices and free-usage caps varying by billing region. Check Google's pricing page, restrict the key, set quotas, and configure a budget alert before sustained use. |
 | **🔴 OpenAI voice** | Realtime audio is usage-metered and the total depends on the selected model, conversation length, and audio volume. The app shows a live session estimate, warns at $2, and applies a **$5 in-app session cap**; provider-side usage limits remain the billing backstop. |

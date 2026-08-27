@@ -67,6 +67,13 @@ export const DATA_CREDITS = [
     html: 'Earthquakes: Data courtesy of the U.S. Geological Survey',
   },
   {
+    key: 'ndbc',
+    html:
+      'Marine buoy observations: NOAA National Data Buoy Center ' +
+      '(<a href="https://www.ndbc.noaa.gov" target="_blank" rel="noopener">ndbc.noaa.gov</a>) ' +
+      '— U.S. public domain',
+  },
+  {
     key: 'overpass',
     html:
       'Road geometry (traffic): ' +
@@ -136,7 +143,53 @@ export const DATA_CREDITS = [
   },
   {
     key: 'gbfs',
-    html: 'Bikeshare availability: GBFS operator feeds (e.g. Austin BCycle)',
+    html:
+      'Bikeshare availability: GBFS operator feeds (e.g. Austin BCycle). ' +
+      'France — Vélib\' Métropole (Smovengo / Syndicat Autolib\' Vélib\' Métropole, ' +
+      '<a href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">ODbL</a>); ' +
+      'Vélo\'v and vélôToulouse (JCDecaux, ' +
+      '<a href="https://developer.jcdecaux.com/files/Open-Licence-fr.pdf" target="_blank" rel="noopener">Licence Ouverte</a>); ' +
+      'Le Vélo par TBM (Bordeaux Métropole, Licence Ouverte)',
+  },
+  {
+    key: 'vigicrues',
+    html:
+      'River-flood vigilance (France): ' +
+      '<a href="https://www.vigicrues.gouv.fr/" target="_blank" rel="noopener">Vigicrues</a> — ' +
+      'SCHAPI (Service central d\'hydrom&eacute;t&eacute;orologie et d\'appui &agrave; la pr&eacute;vision ' +
+      'des inondations), Minist&egrave;re de la Transition &eacute;cologique ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The bulletin\'s own publication time is reported by the layer as its data timestamp.',
+  },
+  {
+    key: 'hubeau-hydrometrie',
+    html:
+      'River gauge stations and observations (France): ' +
+      '<a href="https://hubeau.eaufrance.fr/page/api-hydrometrie" target="_blank" rel="noopener">Hub\'Eau — API Hydrom&eacute;trie</a>, ' +
+      'data from the PHyC platform operated by Service Central Vigicrues (SCV, ex-SCHAPI); ' +
+      'measurements produced by the DREALs and other operators ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte</a>). ' +
+      'Raw, unvalidated readings, published without any availability guarantee — not a flood-warning service.',
+  },
+  {
+    key: 'meteofrance-vigilance',
+    html:
+      'Weather vigilance (France): ' +
+      '<a href="https://vigilance.meteofrance.fr/" target="_blank" rel="noopener">M&eacute;t&eacute;o-France — Vigilance m&eacute;t&eacute;orologique</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
+      'via the data.gouv.fr mirror unless an API key is configured. ' +
+      'D&eacute;partement boundaries: IGN — ADMIN EXPRESS COG (&eacute;dition 2018), ' +
+      'via <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a> (G. David), Licence Ouverte.',
+  },
+  {
+    key: 'pan-transit',
+    html:
+      'Live French transit vehicles: GTFS-Realtime feeds published on the ' +
+      '<a href="https://transport.data.gouv.fr" target="_blank" rel="noopener">Point d’Accès National (transport.data.gouv.fr)</a> — ' +
+      'per-network licences, mostly ' +
+      '<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a> ' +
+      'and <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL 1.0</a>, ' +
+      '© each transport authority / operator',
   },
   {
     key: 'pan-transit',
@@ -176,6 +229,13 @@ export const DATA_CREDITS = [
       'Dams: ' +
       '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
       '(ODbL 1.0) + Open Infrastructure Map',
+  },
+  {
+    key: 'ports',
+    html:
+      'Ports: NGA World Port Index (Pub. 150) — ' +
+      '<a href="https://msi.nga.mil/Publications/WPI" target="_blank" rel="noopener">msi.nga.mil</a> ' +
+      '— U.S. public domain. Harbour depths are WPI range bins, not surveyed soundings.',
   },
   {
     key: 'firms',

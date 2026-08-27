@@ -1,0 +1,134 @@
+{
+ "type": "FeatureCollection",
+ "name": "template-vigicrues-v1.1-WGS84.geojson",
+ "RefInfoVigiCru": "25082026_16",
+ "DtHrInfoVigiCru": "2026-08-25T13:55:59+00:00",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "CdTCC": "TCC22",
+    "id": "764",
+    "CdEntCru": "CO1",
+    "typentcru": "8",
+    "lbentcru": "Golo aval",
+    "acroentcru": "CO1",
+    "cddient_1": "FRL",
+    "dhcentcru": "2020/09/15 09:00:00.000",
+    "dhmentcru": "2020/09/15 09:00:00.000",
+    "stentcru": "Validé",
+    "cdensup_1": "26",
+    "typensup_1": "5",
+    "cdint": "1522",
+    "NivInfViCr": 1
+   },
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       9.19525,
+       42.48275
+      ],
+      [
+       9.20008,
+       42.48174
+      ],
+      [
+       9.20385,
+       42.47591
+      ],
+      [
+       9.20752,
+       42.47439
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "CdTCC": "TCC4",
+    "id": "588",
+    "CdEntCru": "NO50",
+    "typentcru": "8",
+    "lbentcru": "Eure moyenne et aval",
+    "acroentcru": "NO50",
+    "cddient_1": "EU31",
+    "dhcentcru": "2017/02/28 15:00:00.000",
+    "dhmentcru": "2025/10/21 15:00:00.000",
+    "stentcru": "Validé",
+    "cdensup_1": "4",
+    "typensup_1": "5",
+    "cdint": "1518",
+    "NivInfViCr": 1
+   },
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       1.5855,
+       48.56872
+      ],
+      [
+       1.58604,
+       48.5708
+      ],
+      [
+       1.58374,
+       48.57635
+      ],
+      [
+       1.58519,
+       48.57739
+      ]
+     ]
+    ]
+   }
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "CdTCC": "TCC9",
+    "id": "715",
+    "CdEntCru": "ML101",
+    "typentcru": "8",
+    "lbentcru": "Loir vendômois",
+    "acroentcru": "ML101",
+    "cddient_1": "FRG",
+    "dhcentcru": "2020/12/17 15:00:00.000",
+    "dhmentcru": "2020/12/17 15:00:00.000",
+    "stentcru": "Validé",
+    "cdensup_1": "9",
+    "typensup_1": "5",
+    "cdint": "1527",
+    "NivInfViCr": 1
+   },
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       1.24796,
+       47.97857
+      ],
+      [
+       1.25719,
+       47.97475
+      ],
+      [
+       1.26065,
+       47.96965
+      ],
+      [
+       1.25652,
+       47.96188
+      ]
+     ]
+    ]
+   }
+  }
+ ]
+}

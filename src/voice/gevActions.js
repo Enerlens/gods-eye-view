@@ -183,6 +183,15 @@ const LAYER_ALIASES = new Map([
   ['firms', 'local-firms'],
   ['fires', 'local-firms'],
   ['active fires', 'local-firms'],
+  ['ports', 'local-ports'],
+  ['harbors', 'local-ports'],
+  ['harbours', 'local-ports'],
+  ['seaports', 'local-ports'],
+  ['buoys', 'marine-buoys'],
+  ['marine buoys', 'marine-buoys'],
+  ['ndbc', 'marine-buoys'],
+  ['sea state', 'marine-buoys'],
+  ['wave height', 'marine-buoys'],
 ]);
 
 const CITY_ALIASES = new Map([
@@ -3277,6 +3286,8 @@ function layerTitle(layerId) {
   if (layerId === 'telegeography-submarine-cables') return 'Submarine Cable';
   if (layerId === 'local-firms') return 'Active Fire';
   if (layerId === 'transit-fr') return 'Transit Vehicle';
+  if (layerId === 'local-ports') return 'Port';
+  if (layerId === 'marine-buoys') return 'Marine Buoy';
   return layerId || 'Entity';
 }
 

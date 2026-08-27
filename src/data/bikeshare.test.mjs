@@ -4,6 +4,8 @@ import * as Cesium from 'cesium';
 import {
   BIKESHARE_SELECTED_OVERLAY_SOURCE_OPTIONS,
   _clearBikeshareSelectionForTest,
+  _parseStationInformationForTest,
+  _parseStationStatusForTest,
   _selectBikeshareStationForTest,
   _setBikeshareSelectionStateForTest,
   createBikeshareSelectedOverlayEntry,
@@ -76,4 +78,55 @@ test('real station select/clear path publishes one card and creates no native la
   } finally {
     _clearBikeshareSelectionForTest();
   }
+});
+
+// The French operators added alongside the US systems do not all speak the same
+// GBFS dialect: Vélib' still serves a 1.x-era payload, JCDecaux Cyclocity serves
+// 2.3, and Bordeaux Métropole serves 3.0 only. Each shape below is copied from a
+// live response, because 3.0's two renames fail silently — a localized name array
+// stringifies to "[object Object]" and a missing num_bikes_available reads as a
+// station with no bikes rather than as a parse error.
+test('station_information parses 1.x, 2.x and 3.0 name shapes', () => {
+  const info = _parseStationInformationForTest({
+    data: {
+      stations: [
+        // Vélib' Métropole: numeric station_id, plain-string name.
+        { station_id: 213688169, name: 'Benjamin Godard - Victor Hugo', lat: 48.865983, lon: 2.275725, capacity: 35 },
+        // Vélo'v (GBFS 2.3): string station_id, plain-string name.
+        { station_id: '1024', name: 'ROUVILLE', lat: 45.769684, lon: 4.824607, capacity: 17 },
+        // Le Vélo par TBM (GBFS 3.0): name is an array of localized objects.
+        { station_id: '1', name: [{ text: 'Meriadeck', language: 'fr' }], lat: 44.83803, lon: -0.58437, capacity: 41 },
+        // Multilingual 3.0 feed — the French entry wins over feed order.
+        { station_id: '2', name: [{ text: 'Town Hall', language: 'en' }, { text: 'Hôtel de Ville', language: 'fr' }], lat: 44.8, lon: -0.6 },
+      ],
+    },
+  });
+
+  assert.equal(info.get('213688169').name, 'Benjamin Godard - Victor Hugo');
+  assert.equal(info.get('1024').name, 'ROUVILLE');
+  assert.equal(info.get('1').name, 'Meriadeck');
+  assert.equal(info.get('2').name, 'Hôtel de Ville');
+  assert.equal(info.get('213688169').capacity, 35);
+  assert.equal(info.get('1024').lat, 45.769684);
+});
+
+test('station_status reads both num_bikes_available and the 3.0 rename', () => {
+  const status = _parseStationStatusForTest({
+    data: {
+      stations: [
+        // Vélib': availability integers plus 0/1 booleans.
+        { station_id: 213688169, num_bikes_available: 10, num_docks_available: 25, is_installed: 1, is_renting: 1 },
+        // Vélo'v (2.3): real booleans.
+        { station_id: '1024', num_bikes_available: 11, num_docks_available: 6, is_installed: true },
+        // Le Vélo par TBM (3.0): num_bikes_available is gone.
+        { station_id: '1', num_vehicles_available: 2, num_docks_available: 39, is_installed: true },
+      ],
+    },
+  });
+
+  assert.equal(status.get('213688169').bikesAvailable, 10);
+  assert.equal(status.get('213688169').isInstalled, true);
+  assert.equal(status.get('1024').bikesAvailable, 11);
+  assert.equal(status.get('1').bikesAvailable, 2, '3.0 feeds must not read as empty stations');
+  assert.equal(status.get('1').docksAvailable, 39);
 });

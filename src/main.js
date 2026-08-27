@@ -5,6 +5,9 @@ import { DataLayerManager } from './data/manager.js';
 import flightsLayer from './data/flights.js';
 import militaryFlightsLayer from './data/militaryFlights.js';
 import earthquakesLayer from './data/earthquakes.js';
+import vigicruesLayer from './data/vigicrues.js';
+import hubeauHydrometryLayer from './data/hubeauHydrometry.js';
+import meteoFranceVigilanceLayer from './data/meteoFranceVigilance.js';
 import satellitesLayer from './data/satellites.js';
 import rocketLaunchesLayer from './data/rocketLaunches.js';
 import trafficLayer from './data/traffic.js';
@@ -15,6 +18,7 @@ import transitFranceLayer from './data/transitFrance.js';
 import aisLiveVesselsLayer from './data/aisLiveVessels.js';
 import militaryInstallationsLayer from './data/militaryInstallations.js';
 import militaryAwarenessLayer from './data/militaryAwareness.js';
+import marineBuoysLayer from './data/marineBuoys.js';
 import localDataLayers from './data/localLayers.js';
 import { LAYER_STATE_REGISTRY } from './data/layerState.js';
 import { registerDataCredits } from './data/dataCredits.js';
@@ -214,6 +218,9 @@ async function init() {
     dataManager.register(flightsLayer);
     dataManager.register(militaryFlightsLayer);
     dataManager.register(earthquakesLayer);
+    dataManager.register(vigicruesLayer);
+    dataManager.register(hubeauHydrometryLayer);
+    dataManager.register(meteoFranceVigilanceLayer);
     dataManager.register(satellitesLayer);
     dataManager.register(rocketLaunchesLayer);
     rocketLaunchesLayer.attachDataManager(dataManager);
@@ -225,6 +232,7 @@ async function init() {
     dataManager.register(aisLiveVesselsLayer);
     dataManager.register(militaryInstallationsLayer);
     dataManager.register(militaryAwarenessLayer);
+    dataManager.register(marineBuoysLayer);
     militaryAwarenessLayer.attachDataManager(dataManager);
     for (const layer of localDataLayers) {
       dataManager.register(layer);
