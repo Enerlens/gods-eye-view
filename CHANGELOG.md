@@ -7,6 +7,29 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Shared mobility now says what an object is and who runs it, at the same
+  time.** Two independent facts get two independent channels. **Shape** answers
+  *what*: a bike, an e-bike, a kick scooter, a moped, a shared car and an
+  unknown form factor each draw their own silhouette, so a Paris street stops
+  being one undifferentiated cloud of dots. **Colour** answers *who*: every
+  operator has its own hue, held nationwide — Lime is the same green in Lille
+  as in Marseille, and Vélib', Voi, Dott, Pony, Bird, Citiz, Clem', YEGO,
+  Cityscoot, Tier and Leo&Go are pinned so that no two of them can ever
+  collide. The row legend now carries both keys: the silhouettes actually
+  drawn, then the operators actually in view, named and counted.
+- A **station keeps its fill for availability** — the one reading a person acts
+  on — and wears its operator on the RING instead. The Bikeshare layer does the
+  same, from the same registry, so over Paris a Vélib' dock and a Dott dock are
+  tellable apart even though two different layers draw them. Bikeshare station
+  dots grew from 4–12 px to 7–14 px so the ring cannot eat the fill.
+- No French GBFS feed publishes a brand colour, and the layer does not pretend
+  otherwise: the ~15 operators that run several French systems are pinned by
+  hand, and every other network's hue is derived from its published title and
+  labelled as derived in the legend tooltip. Two municipal networks can land on
+  the same hue; the legend names them, and the names are what settle it. A
+  selected vehicle's card now leads with its operator ("Lime E-bike"), and the
+  detection readout says "PONY SCOOTER" rather than just "SCOOTER".
+
 - Added the **Shared Mobility FR** layer — every French shared vehicle the
   Bikeshare layer does not already draw. From the same national access point as
   the transit layer, but its GBFS half: ~40,600 free-floating bikes, e-bikes,

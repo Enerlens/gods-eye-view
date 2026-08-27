@@ -10,29 +10,56 @@ export const SPRITE_LAYER_ORDER = Object.freeze([
   'flights',
 ]);
 
-/** @type {Map<string, Object>} */
+/**
+ * One layer may own SEVERAL collections — the French shared-mobility layer
+ * draws station dots from a `PointPrimitiveCollection` and vehicle glyphs from
+ * a `BillboardCollection`, and both have to land in this layer's slot rather
+ * than one of them sinking under every other layer. Registration order within
+ * a layer is its own bottom-to-top order.
+ * @type {Map<string, Array<Object>>}
+ */
 const _collections = new Map();
 
 /**
- * Register the current primitive collection for a sprite layer.
+ * Register a primitive collection for a sprite layer.
+ * Registering twice is idempotent; registering a second, distinct collection
+ * stacks it above the first.
  * @param {string} layerId - Stable sprite-order layer key.
  * @param {Object} collection - Cesium billboard/point primitive collection.
  * @returns {void}
  */
 export function registerSpriteCollection(layerId, collection) {
   if (!layerId || !collection) return;
-  _collections.set(layerId, collection);
+  const registered = _collections.get(layerId);
+  if (!registered) {
+    _collections.set(layerId, [collection]);
+    return;
+  }
+  // Drop collections a re-init already destroyed, so a layer that rebuilds its
+  // collection does not accumulate dead entries across enable cycles.
+  const live = registered.filter((entry) => entry !== collection && !entry.isDestroyed?.());
+  live.push(collection);
+  _collections.set(layerId, live);
 }
 
 /**
  * Remove a registered collection (primarily useful to lifecycle tests).
  * @param {string} layerId - Stable sprite-order layer key.
- * @param {Object} [collection] - Optional identity guard against stale teardown.
+ * @param {Object} [collection] - Optional identity guard against stale teardown;
+ *   omitted, every collection registered for the layer is dropped.
  * @returns {void}
  */
 export function unregisterSpriteCollection(layerId, collection) {
-  if (collection && _collections.get(layerId) !== collection) return;
-  _collections.delete(layerId);
+  if (!collection) {
+    _collections.delete(layerId);
+    return;
+  }
+  const registered = _collections.get(layerId);
+  if (!registered) return;
+  const remaining = registered.filter((entry) => entry !== collection);
+  if (remaining.length === registered.length) return; // identity guard: not ours
+  if (remaining.length) _collections.set(layerId, remaining);
+  else _collections.delete(layerId);
 }
 
 /**
@@ -49,10 +76,11 @@ export function restoreSpriteOrder(viewer) {
   if (!primitives || scene.isDestroyed?.() || primitives.isDestroyed?.()) return;
 
   for (const layerId of SPRITE_LAYER_ORDER) {
-    const collection = _collections.get(layerId);
-    if (!collection || collection.isDestroyed?.()) continue;
-    if (primitives.contains?.(collection) === false) continue;
-    primitives.raiseToTop(collection);
+    for (const collection of _collections.get(layerId) || []) {
+      if (collection.isDestroyed?.()) continue;
+      if (primitives.contains?.(collection) === false) continue;
+      primitives.raiseToTop(collection);
+    }
   }
 }
 

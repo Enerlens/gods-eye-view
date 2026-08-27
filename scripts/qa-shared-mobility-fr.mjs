@@ -8,11 +8,16 @@
  *
  *   i.   the altitude gate does not fetch — a regional view issues NO request
  *        and reports zoom-in guidance rather than an empty map
- *   ii.  a city view draws one point per object, and a station with NO
+ *   ii.  a city view draws one object per object, and a station with NO
  *        availability data is coloured neutral rather than empty
  *   iii. the row legend counts what is on screen, by kind, omitting zeroes
  *   iv.  the layer reports the shared municipal bays it merged out, instead of
  *        silently drawing three dots on every bay in the city
+ *   v.   SHAPE says what an object is — each vehicle kind reaches the scene as
+ *        its own glyph, and no two kinds share one
+ *   vi.  COLOUR says who runs it — a vehicle is drawn in its operator's hue and
+ *        a station is RINGED in it while its fill stays spent on availability,
+ *        so two operators in one street are tellable apart
  *
  * Run: node scripts/qa-shared-mobility-fr.mjs --url http://localhost:4173
  */
@@ -59,6 +64,12 @@ const FLOAT_SYSTEM = {
   // The number this harness exists to keep visible.
   stationsSuppressed: 2480, retrievedAt: new Date().toISOString(), stale: false, error: null,
 };
+/** A second operator in the same street — the case the colour channel exists for. */
+const FLOAT_SYSTEM_B = {
+  id: 'gbfs-float-b', name: 'Lime Nantes', area: 'Nantes Métropole', kind: 'free-floating',
+  licence: 'Licence Ouverte 2.0', publisher: 'Lime', pageUrl: null, datasetUrl: null,
+  stationsSuppressed: 0, retrievedAt: new Date().toISOString(), stale: false, error: null,
+};
 
 function objectsPayload() {
   const now = Math.floor(Date.now() / 1000);
@@ -82,9 +93,14 @@ function objectsPayload() {
   const vehicles = [];
   const kinds = ['ebike', 'scooter', 'bike', 'moped'];
   for (let i = 0; i < 20; i++) {
+    // Operator alternates every FOUR vehicles while kind cycles every one, so
+    // each operator runs all four kinds. The two channels have to be readable
+    // at once, and a fixture that correlated them would let either channel
+    // pass on the other's evidence.
+    const system = Math.floor(i / kinds.length) % 2 === 0 ? FLOAT_SYSTEM : FLOAT_SYSTEM_B;
     vehicles.push({
-      id: `gbfs-float:${i}`,
-      system: FLOAT_SYSTEM.id,
+      id: `${system.id}:${i}`,
+      system: system.id,
       lat: Number((CITY.lat + 0.004 + Math.floor(i / 5) * 0.005).toFixed(5)),
       lon: Number((CITY.lon + 0.004 + (i % 5) * 0.006).toFixed(5)),
       kind: kinds[i % kinds.length],
@@ -100,10 +116,11 @@ function objectsPayload() {
     vehicles,
     systems: [
       { ...DOCK_SYSTEM, stationsInView: stations.length, vehiclesInView: 0 },
-      { ...FLOAT_SYSTEM, stationsInView: 0, vehiclesInView: vehicles.length },
+      { ...FLOAT_SYSTEM, stationsInView: 0, vehiclesInView: vehicles.filter((v) => v.system === FLOAT_SYSTEM.id).length },
+      { ...FLOAT_SYSTEM_B, stationsInView: 0, vehiclesInView: vehicles.filter((v) => v.system === FLOAT_SYSTEM_B.id).length },
     ],
-    systemsMatched: 2,
-    systemsFetched: 2,
+    systemsMatched: 3,
+    systemsFetched: 3,
     systemsFailed: 0,
     systemsTruncated: false,
     objectsTruncated: false,
@@ -156,12 +173,45 @@ async function setView(page, lon, lat, height) {
 
 function probe(page) {
   return page.evaluate(() => {
-    const module = window.__godsEyeView.dataManager.layers.get('shared-mobility-fr').module;
+    const gev = window.__godsEyeView;
+    const module = gev.dataManager.layers.get('shared-mobility-fr').module;
+
+    // Read what actually reached the SCENE, not what the layer says it drew.
+    // The collections are found by the id of the objects inside them, so this
+    // cannot accidentally sample another layer's sprites.
+    const scan = (prefix) => {
+      const primitives = gev.viewer.scene.primitives;
+      for (let i = 0; i < primitives.length; i++) {
+        const collection = primitives.get(i);
+        if (typeof collection?.get !== 'function' || !collection.length) continue;
+        const first = collection.get(0);
+        if (typeof first?.id !== 'string' || !first.id.startsWith(prefix)) continue;
+        const drawn = [];
+        for (let n = 0; n < collection.length; n++) {
+          const item = collection.get(n);
+          drawn.push({
+            id: item.id,
+            image: item.image || null,
+            color: item.color?.toCssHexString?.() || null,
+            outline: item.outlineColor?.toCssHexString?.() || null,
+          });
+        }
+        return drawn;
+      }
+      return [];
+    };
+
     return {
       stats: module.getStats(),
       systems: module.getSystemSummaries(),
       legend: module.getRowControls().legend.map((item) => [item.label, item.count]),
+      legendRows: module.getRowControls().legend.map((item) => ({
+        label: item.label, color: item.color, glyph: item.glyph || null,
+      })),
+      detections: module.getDetectableObjects({ maxCount: 100000 }).map((entry) => entry.id),
       rendered: module.getDetectableObjects({ maxCount: 100000 }).length,
+      glyphs: scan('gbfs-float'),
+      dots: scan('gbfs-dock'),
     };
   });
 }
@@ -254,6 +304,53 @@ async function main() {
     check('the layer reports the shared bays it did not draw', suppressed === 2480, `${suppressed}`);
     check('and says so in the control row',
       /shared bays merged out/.test(loaded.stats.loadingLabel || ''), loaded.stats.loadingLabel);
+
+    // ── v. SHAPE says what an object is ────────────────────────────────────
+    console.log('[qa] v. shape channel');
+    const byKind = new Map();
+    for (const glyph of loaded.glyphs) byKind.set(glyph.image, (byKind.get(glyph.image) || 0) + 1);
+    check('every vehicle reaches the scene as a glyph, not a dot',
+      loaded.glyphs.length === 20 && loaded.glyphs.every((glyph) => typeof glyph.image === 'string'
+        && glyph.image.startsWith('data:image/svg+xml')),
+      `${loaded.glyphs.length} glyph(s)`);
+    check('the four kinds in view draw four DIFFERENT silhouettes',
+      byKind.size === 4, `${byKind.size} distinct image(s)`);
+    check('and five of each, so no kind borrowed another\'s shape',
+      [...byKind.values()].every((count) => count === 5), JSON.stringify([...byKind.values()]));
+    const kindRows = loaded.legendRows.filter((row) => row.glyph);
+    check('the legend shows the same silhouettes it draws',
+      kindRows.length === 5 && new Set(kindRows.map((row) => row.glyph)).size === 5,
+      `${kindRows.length} shape row(s)`);
+
+    // ── vi. COLOUR says who runs it ────────────────────────────────────────
+    console.log('[qa] vi. operator channel');
+    const hueById = new Map(loaded.glyphs.map((glyph) => [glyph.id, glyph.color]));
+    const pony = [...hueById].filter(([id]) => id.startsWith('gbfs-float:')).map(([, hue]) => hue);
+    const lime = [...hueById].filter(([id]) => id.startsWith('gbfs-float-b:')).map(([, hue]) => hue);
+    check('every vehicle of one operator is drawn in one hue',
+      new Set(pony).size === 1 && new Set(lime).size === 1,
+      `${new Set(pony).size} / ${new Set(lime).size}`);
+    check('and the two operators in the same street are NOT the same hue',
+      pony[0] !== lime[0], `${pony[0]} vs ${lime[0]}`);
+    const ponyShapes = new Set(loaded.glyphs.filter((glyph) => glyph.id.startsWith('gbfs-float:'))
+      .map((glyph) => glyph.image));
+    check('the two channels are independent — one operator, four silhouettes, one hue',
+      ponyShapes.size === 4 && new Set(pony).size === 1,
+      `${ponyShapes.size} shape(s), ${new Set(pony).size} hue(s)`);
+    const stationHues = new Set(loaded.dots.map((dot) => dot.outline));
+    check('a station is RINGED in its operator hue',
+      loaded.dots.length === 12 && stationHues.size === 1 && stationHues.has([...stationHues][0]),
+      JSON.stringify([...stationHues]));
+    check('while its FILL still answers availability, not ownership',
+      new Set(loaded.dots.map((dot) => dot.color)).size >= 3,
+      JSON.stringify([...new Set(loaded.dots.map((dot) => dot.color))]));
+    check('the legend names every operator in view',
+      ['Naolib', 'Pony', 'Lime'].every((name) => loaded.legendRows.some((row) => row.label === name)),
+      JSON.stringify(loaded.legendRows.map((row) => row.label)));
+    check('and the detection readout says whose vehicle it is',
+      loaded.detections.some((id) => id.startsWith('LIME ')) && loaded.detections.some((id) => id.startsWith('PONY ')),
+      loaded.detections.slice(0, 4).join(' | '));
+    await shoot(page, '03-channels.png');
 
     const relevant = consoleErrors.filter((entry) => !/favicon|Failed to load resource/i.test(entry));
     check('no console errors from the layer',

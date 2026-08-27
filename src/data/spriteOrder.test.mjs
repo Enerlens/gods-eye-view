@@ -99,6 +99,58 @@ test('restoreSpriteOrder never raises a registered collection absent from scene 
   unregisterSpriteCollection('flights', flights);
 });
 
+test('a layer with two collections keeps both inside its own slot, in registration order', () => {
+  // The French shared-mobility layer draws station dots from a point
+  // collection and vehicle glyphs from a billboard collection. Registering
+  // only one of them would leave the other wherever the scene happened to put
+  // it — under CCTV, under FIRMS, under a layer it should sit above.
+  const dots = makeCollection('shared-dots');
+  const glyphs = makeCollection('shared-glyphs');
+  const flights = makeCollection('flights');
+  const cctv = makeCollection('cctv');
+  registerSpriteCollection('cctv', cctv);
+  registerSpriteCollection('shared-mobility-fr', dots);
+  registerSpriteCollection('shared-mobility-fr', glyphs);
+  registerSpriteCollection('flights', flights);
+  const primitives = makePrimitives([flights, glyphs, cctv, dots]);
+
+  restoreSpriteOrder({ scene: { primitives } });
+
+  assert.deepEqual(primitives.items.map((item) => item.id),
+    ['cctv', 'shared-dots', 'shared-glyphs', 'flights'],
+    'glyphs paint over the dock dots, and both sit above CCTV and below flights');
+
+  // Unregistering one collection leaves the other registered — a layer that
+  // tears down half of itself must not lose the other half's ordering.
+  unregisterSpriteCollection('shared-mobility-fr', glyphs);
+  primitives.calls.length = 0;
+  restoreSpriteOrder({ scene: { primitives } });
+  assert.deepEqual(primitives.calls, ['cctv', 'shared-dots', 'flights']);
+
+  // And an identity guard still refuses a stale teardown.
+  unregisterSpriteCollection('shared-mobility-fr', glyphs);
+  primitives.calls.length = 0;
+  restoreSpriteOrder({ scene: { primitives } });
+  assert.deepEqual(primitives.calls, ['cctv', 'shared-dots', 'flights']);
+
+  unregisterSpriteCollection('shared-mobility-fr');
+  unregisterSpriteCollection('cctv', cctv);
+  unregisterSpriteCollection('flights', flights);
+});
+
+test('re-registering after a rebuild drops the destroyed collection instead of stacking it', () => {
+  const stale = makeCollection('stale', true);
+  const fresh = makeCollection('fresh');
+  registerSpriteCollection('bikeshare', stale);
+  registerSpriteCollection('bikeshare', fresh);
+  const primitives = makePrimitives([fresh]);
+
+  restoreSpriteOrder({ scene: { primitives } });
+
+  assert.deepEqual(primitives.calls, ['fresh']);
+  unregisterSpriteCollection('bikeshare');
+});
+
 test('flights, AIS, and FIRMS enable paths are wired through the shared sprite restorer', () => {
   const viewer = { id: 'viewer' };
   const calls = [];

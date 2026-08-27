@@ -14,6 +14,7 @@ import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
+import { mobilityOperatorColor } from './mobilityOperators.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -49,10 +50,14 @@ const CITY_RANGE_BASE_KM = 100;
 const STATUS_POLL_MS = 60000;
 
 // --- Point rendering constants ---
-/** Minimum rendered point size in pixels. */
-const POINT_SIZE_MIN = 4;
+/** Minimum rendered point size in pixels. Sized so the operator ring below
+ *  leaves a readable availability core: a 4 px dot minus a 2 px ring is a
+ *  ring. */
+const POINT_SIZE_MIN = 7;
 /** Maximum rendered point size in pixels. */
-const POINT_SIZE_MAX = 12;
+const POINT_SIZE_MAX = 14;
+/** Operator ring width, in pixels. Cesium draws the outline INSIDE pixelSize. */
+const POINT_RING_PX = 2;
 /** Fallback station capacity when real data is unavailable. */
 const DEFAULT_CAPACITY = 15;
 /** Vertical offset (m) above terrain for station points. */
@@ -529,6 +534,30 @@ const GBFS_CITY_REGISTRY = (() => {
 
 /** Lookup map from city id to its normalized registry entry. */
 const CITY_BY_ID = new Map(GBFS_CITY_REGISTRY.map((entry) => [entry.id, entry]));
+
+/**
+ * Operator ring colour per city, resolved once at module load.
+ *
+ * A station dot's FILL says how full it is, which is the reading someone acts
+ * on and must not be spent on anything else. So the operator gets the RING —
+ * the same hue the French shared-mobility layer paints its vehicles, from the
+ * same registry, because over Paris both layers are on screen at once and a
+ * Vélib' dock has to be tellable from a Dott one.
+ * @type {Map<string, Cesium.Color>}
+ */
+const CITY_RING_COLOR = new Map(GBFS_CITY_REGISTRY.map((entry) => [
+  entry.id,
+  Cesium.Color.fromCssColorString(mobilityOperatorColor(entry.provider)),
+]));
+
+/**
+ * Operator ring colour for a city id.
+ * @param {string} cityId Registry city id.
+ * @returns {Cesium.Color}
+ */
+function cityRingColor(cityId) {
+  return CITY_RING_COLOR.get(cityId) || COLOR_OUTLINE;
+}
 
 // ---------------------------------------------------------------------------
 // Module-level mutable state
@@ -1268,8 +1297,8 @@ function ensureCityPoints(cityId, stationMap) {
       position,
       pixelSize: capacityToPixelSize(station.capacity),
       color: COLOR_NEUTRAL,
-      outlineColor: COLOR_OUTLINE,
-      outlineWidth: 1,
+      outlineColor: cityRingColor(cityId),
+      outlineWidth: POINT_RING_PX,
       scaleByDistance: new Cesium.NearFarScalar(200, 1.35, 130000, 0.4),
       translucencyByDistance: new Cesium.NearFarScalar(200, 1.0, 180000, 0.15),
       disableDepthTestDistance: 2500,

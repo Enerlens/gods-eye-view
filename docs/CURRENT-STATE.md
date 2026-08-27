@@ -948,6 +948,10 @@ This is the current runtime/source-of-truth snapshot for the project.
 > - **Deterministic sprite stacking:** contact collections reassert the stable
 >   bottom-to-top order CCTV, FIRMS, bikeshare, Shared Mobility FR, Transit FR, AIS,
 >   military, then civilian
+>   — Shared Mobility FR occupies its slot with TWO collections (station dots
+>   below, vehicle glyphs above), registered in that order, so a parked scooter
+>   paints over the dock it sits next to without either escaping the layer's
+>   slot.
 >   flights after every relevant layer init/enable and immediately after FIRMS
 >   lazily registers its detection sprites. Always-visible contact
 >   depth settings are unchanged. Cesium OIT weighted blending may soften strict
@@ -1604,7 +1608,7 @@ its criteria cannot be silently ignored.
 | Radio | Radio Browser (public-domain station directory) | `src/data/radio.js` | `/api/radio/stations`, `/api/radio/click/:uuid` | 45 min directory refresh |
 | Bikeshare 🚲 | GBFS (Lyft + BCycle) | `src/data/bikeshare.js` | `/api/gbfs` | 60s |
 | Transit FR 🚌 | transport.data.gouv.fr GTFS-Realtime vehicle positions (~150 French networks; observed footprints in `config/pan_gtfs_rt_feeds.json`) | `src/data/transitFrance.js` | `/api/transit-fr/vehicles`, `/api/transit-fr/feeds` | 15s, viewport-driven below ~300 km |
-| Shared Mobility FR 🛴 | transport.data.gouv.fr GBFS (135 distinct systems after de-duplication; observed footprints in `config/gbfs_fr_systems.json`) | `src/data/sharedMobilityFrance.js` | `/api/shared-mobility-fr/objects`, `/api/shared-mobility-fr/systems` | 60s, viewport-driven below ~80 km |
+| Shared Mobility FR 🛴 | transport.data.gouv.fr GBFS (135 distinct systems after de-duplication; observed footprints in `config/gbfs_fr_systems.json`; per-kind silhouettes in `src/data/sharedMobilityIcons.js`, per-operator hues in `src/data/mobilityOperators.js`) | `src/data/sharedMobilityFrance.js` | `/api/shared-mobility-fr/objects`, `/api/shared-mobility-fr/systems` | 60s, viewport-driven below ~80 km |
 | Mix élec 🇫🇷 ⚡ | éCO2mix national + 12 régions (RTE, via ODRÉ) — région balances painted on département geometry, five commercial border flows as arcs | `src/data/franceEnergy.js` | `/api/energy-fr` | 3 min (proxy TTL 4 min; product steps every 15 min) |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
 | Dams ▰ | OpenInfraMap/OSM extract (bundled) | `src/data/localLayers.js` | — | static |

@@ -2167,8 +2167,19 @@ export class DataLayerManager {
       entry.className = 'data-toggle-legend-item';
       if (item.blurb) entry.title = item.blurb;
       const swatch = document.createElement('span');
-      swatch.className = 'data-toggle-legend-swatch';
+      // A layer whose map channel is SHAPE, not hue, may hand the legend the
+      // very glyph it draws. Masking keeps the swatch the exact declared
+      // colour — the mask only decides which of its pixels survive — so the
+      // "the swatch IS the datum" rule holds for both kinds of entry.
+      swatch.className = item.glyph
+        ? 'data-toggle-legend-swatch has-glyph'
+        : 'data-toggle-legend-swatch';
       swatch.style.background = item.color;
+      if (item.glyph) {
+        const mask = `url("${item.glyph}")`;
+        swatch.style.webkitMaskImage = mask;
+        swatch.style.maskImage = mask;
+      }
       const text = document.createElement('span');
       text.textContent = `${item.label} ${this._formatCount(item.count)}`;
       entry.append(swatch, text);
