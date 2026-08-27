@@ -43,6 +43,7 @@
     "qa:transit-fr": "node scripts/qa-transit-fr.mjs",
     "qa:energy-fr": "node scripts/qa-energy-fr.mjs",
     "qa:shared-mobility-fr": "node scripts/qa-shared-mobility-fr.mjs",
+    "qa:irve-fr": "node scripts/qa-irve-fr.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
     "shared-mobility:index": "node scripts/build-gbfs-fr-index.mjs"
   },

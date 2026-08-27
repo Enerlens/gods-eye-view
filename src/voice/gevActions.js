@@ -175,6 +175,14 @@ const LAYER_ALIASES = new Map([
   ['shared bikes', 'shared-mobility-fr'],
   ['car sharing', 'shared-mobility-fr'],
   ['carsharing', 'shared-mobility-fr'],
+  ['charge points', 'irve-fr'],
+  ['charging points', 'irve-fr'],
+  ['charging stations', 'irve-fr'],
+  ['chargers', 'irve-fr'],
+  ['ev chargers', 'irve-fr'],
+  ['ev charging', 'irve-fr'],
+  ['irve', 'irve-fr'],
+  ['bornes', 'irve-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -3293,6 +3301,7 @@ function layerTitle(layerId) {
   if (layerId === 'local-firms') return 'Active Fire';
   if (layerId === 'transit-fr') return 'Transit Vehicle';
   if (layerId === 'shared-mobility-fr') return 'Shared Vehicle';
+  if (layerId === 'irve-fr') return 'Charge Point';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
   return layerId || 'Entity';

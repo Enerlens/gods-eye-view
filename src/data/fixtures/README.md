@@ -39,3 +39,17 @@
   regionally — and an export hour whose commercial balances (−2 893 MW) do not
   sum to its physical one (−3 633 MW), which is the point. Licence Ouverte 2.0,
   RTE via ODRÉ.
+
+- `irve-bornes-grouped-sample.json` — 31 grouped rows of ODRÉ's `bornes-irve`,
+  captured 2026-08-27 through the same `group_by` the proxy uses, holding 311
+  real points de charge across 12 coordinates. Kept as the raw Opendatasoft
+  envelope (`{total_count, results}`) so the projection under test reads exactly
+  what the proxy reads. Every trap in it is real and is the point: Q-Park's
+  Grande Arche car park (224 charge points on one coordinate), the same Belib'
+  and ENGIE Vianeo sites published twice under a second operator name, a
+  Brétigny-sur-Orge site published at six decimals by one feed and seven by
+  another, `puissance_nominale` of 7 360 in a kilowatt column, a 0 kW row at
+  exactly (0, 0), a QOVOLTIS site whose verified commune is Le Porge but whose
+  coordinate is south of Madagascar, Mac-Roman mojibake in `condition_acces`,
+  and four spellings of a boolean in one file. Licence Ouverte 2.0,
+  transport.data.gouv.fr via ODRÉ.
