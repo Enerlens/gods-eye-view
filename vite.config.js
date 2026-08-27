@@ -21,6 +21,7 @@
  *  15. Radio Browser — public-domain station directory and click counting
  *  16. transport.data.gouv.fr — French GTFS-RT live vehicle positions (PAN)
  *  17. transport.data.gouv.fr — French shared mobility (GBFS: bikes, scooters, cars)
+ *  18. ODRÉ éCO2mix — French live electricity mix, national + 12 regions
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -54,6 +55,7 @@ import {
 import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
 import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
+import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints } from './src/data/viewportBox.js';
 import {
@@ -2757,6 +2759,196 @@ function meteoFranceVigilanceProxy() {
         }
       });
     },
+  };
+}
+
+/**
+ * éCO2mix proxy (France's live electricity mix) with a memory + disk cache.
+ *
+ * ONE keyless upstream, and deliberately not the obvious one: RTE's own
+ * `data.rte-france.com` API carries the same figures but requires an OAuth2
+ * client-credentials account, while **ODRÉ** (Open Data Réseaux Énergies,
+ * operated by RTE with GRTgaz and Teréga) republishes them on an Opendatasoft
+ * instance with no credential at all, under Licence Ouverte 2.0. A layer that
+ * works on `git clone` beats a layer that works after a registration form.
+ *
+ * Two datasets are fetched in PARALLEL and cached as one document:
+ *   `eco2mix-national-tr`  — France hors Corse, 15-minute cadence
+ *   `eco2mix-regional-tr`  — the 12 metropolitan regions, same cadence
+ *
+ * They are fetched with `Promise.allSettled`, not `Promise.all`: a regional
+ * outage must not blank the national gauge, and vice versa. A half-failed
+ * refresh is merged over the previous cache rather than replacing it, so the
+ * surviving half keeps its last known good value instead of going null.
+ *
+ * MEASURED 2026-08-27: national 200 in 0.30 s / ~1 KB for limit=1; regional
+ * 200 in 0.23 s; all 12 regions shared one `date_heure`; the newest measured
+ * point was 07:45Z against a 07:53Z wall clock — an ~8 minute publication lag.
+ *
+ * WHY A PROXY when Opendatasoft does send CORS headers and a direct browser
+ * fetch works: the anonymous ODRÉ quota is per-IP, so N open tabs would each
+ * bill their own calls; the raw pair is ~25 KB against the ~4 KB the globe
+ * needs; and `ORDER BY date_heure DESC` alone returns tomorrow's all-null
+ * forecast padding, a trap best absorbed once, server-side, under test.
+ *
+ * Routes:
+ *   GET /api/energy-fr        → {fetchedAt, stale, ttlMs, source, national, regions}
+ *   GET /api/energy-fr/status → {source, lastFetch, stale, ttlMs, regionCount}
+ *
+ * @returns {import('vite').Plugin}
+ */
+function eco2mixProxy() {
+  // The product publishes every 15 minutes with an ~8 minute lag, so a 4-minute
+  // cache bounds staleness well inside one step while costing 720 upstream
+  // calls a day — a rounding error against the anonymous Opendatasoft quota.
+  const TTL_MS = 4 * 60_000;
+  const BASE = 'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets';
+  // `consommation IS NOT NULL` is the forecast-padding filter (see
+  // `eco2mixFeed.js`, trap 1). The row limits are deliberately > 1: they cover
+  // a late republication without a second round trip, and `projectNational` /
+  // `projectRegional` pick the newest measured row themselves.
+  const NATIONAL_URL = `${BASE}/eco2mix-national-tr/records`
+    + '?limit=3&order_by=date_heure%20desc&where=consommation%20IS%20NOT%20NULL';
+  // 36 rows = three 15-minute steps × 12 regions, so every region still resolves
+  // when one of them lags a step or two behind the others.
+  const REGIONAL_URL = `${BASE}/eco2mix-regional-tr/records`
+    + '?limit=36&order_by=date_heure%20desc&where=consommation%20IS%20NOT%20NULL';
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_PATH = path.join(CACHE_DIR, 'eco2mix.json');
+  const SOURCE = 'ODRÉ (odre.opendatasoft.com)';
+
+  /** @type {?{at:number, source:string, national:?object, regions:Array<object>, regionCount:number}} */
+  let mem = null;
+  let diskChecked = false;
+  /** @type {?Promise<?object>} */
+  let inflight = null;
+
+  async function fetchJson(url) {
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+    const payload = await response.json();
+    if (!Array.isArray(payload?.results)) throw new Error('upstream returned no results array');
+    return payload;
+  }
+
+  /**
+   * Refresh both halves, keeping whichever succeeded.
+   * @param {?object} previous Last good document, merged under a partial refresh.
+   */
+  async function refreshUpstream(previous) {
+    const [national, regional] = await Promise.allSettled([
+      fetchJson(NATIONAL_URL),
+      fetchJson(REGIONAL_URL),
+    ]);
+    for (const [label, settled] of [['national', national], ['regional', regional]]) {
+      if (settled.status === 'rejected') {
+        console.warn(`[eco2mix-proxy] ${label} fetch failed (${settled.reason?.message || settled.reason})`);
+      }
+    }
+    if (national.status === 'rejected' && regional.status === 'rejected') {
+      throw new Error('both éCO2mix datasets are unavailable');
+    }
+    const projected = projectEco2mix({
+      national: national.status === 'fulfilled' ? national.value : null,
+      regional: regional.status === 'fulfilled' ? regional.value : null,
+    }, SOURCE);
+    return {
+      at: Date.now(),
+      source: projected.source,
+      // Merge, don't replace: the half that failed keeps its last good value
+      // rather than reporting null, which would read as "France stopped".
+      national: projected.national || previous?.national || null,
+      regions: projected.regions.length ? projected.regions : (previous?.regions || []),
+      regionCount: projected.regions.length || previous?.regionCount || 0,
+    };
+  }
+
+  async function readDiskOnce() {
+    if (diskChecked) return;
+    diskChecked = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
+      if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.regions)) mem = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(CACHE_PATH, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[eco2mix-proxy] cache write failed (${err?.message || err})`);
+    }
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/energy-fr', async (req, res) => {
+      const sendJson = (status, obj) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(obj));
+      };
+      try {
+        const subPath = String(req.url || '').split('?')[0];
+        await readDiskOnce();
+
+        const entry = mem;
+        let current = entry && Date.now() - entry.at < TTL_MS ? entry : null;
+        if (!current) {
+          if (!inflight) {
+            inflight = refreshUpstream(entry)
+              .then(async (next) => {
+                mem = next;
+                await writeDisk(next);
+                return next;
+              })
+              .catch((err) => {
+                console.warn(`[eco2mix-proxy] refresh failed (${err?.message || err}) — serving cache if any`);
+                return null;
+              })
+              .finally(() => { inflight = null; });
+          }
+          current = await inflight;
+        }
+        const served = current || entry;
+        const stale = !current && Boolean(entry);
+
+        if (subPath === '/status') {
+          sendJson(200, {
+            source: served ? served.source : null,
+            lastFetch: served ? served.at : null,
+            regionCount: served ? served.regionCount : 0,
+            stale,
+            ttlMs: TTL_MS,
+          });
+          return;
+        }
+        if (!served) {
+          sendJson(502, { error: 'éCO2mix fetch failed and no cache available' });
+          return;
+        }
+        sendJson(200, {
+          fetchedAt: served.at,
+          stale,
+          ttlMs: TTL_MS,
+          source: served.source,
+          national: served.national,
+          regions: served.regions,
+        });
+      } catch (err) {
+        console.warn('[eco2mix-proxy] error:', err?.message || err);
+        sendJson(500, { error: 'éCO2mix proxy error' });
+      }
+    });
+  }
+
+  return {
+    name: 'eco2mix-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
   };
 }
 
@@ -9503,6 +9695,7 @@ export default defineConfig(({ mode }) => {
       firmsProxy(),
       vigicruesProxy(),
       meteoFranceVigilanceProxy(),
+      eco2mixProxy(),
       ndbcProxy(),
       rocketLaunchesProxy(),
       terrainHeightsProxy(),

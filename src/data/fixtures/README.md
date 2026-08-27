@@ -28,3 +28,14 @@
   and Corsica) across both échéances. Keeps the product's real type
   inconsistencies — a string `global_max_color_id` beside integer colour
   fields — which is the point. Licence Ouverte 2.0, Météo-France.
+
+- `eco2mix-national-tr-sample.json` / `eco2mix-regional-tr-sample.json` — the
+  newest three national rows and 24 regional rows of ODRÉ's `eco2mix-*-tr`
+  datasets, captured 2026-08-27 at 07:45Z through the same
+  `where=consommation IS NOT NULL` filter the proxy uses. Kept as the raw
+  Opendatasoft envelope (`{total_count, results}`) so the projection under test
+  reads exactly what the proxy reads. They preserve the product's real type
+  inconsistency — `pompage` is an integer nationally and the string `"0"`
+  regionally — and an export hour whose commercial balances (−2 893 MW) do not
+  sum to its physical one (−3 633 MW), which is the point. Licence Ouverte 2.0,
+  RTE via ODRÉ.

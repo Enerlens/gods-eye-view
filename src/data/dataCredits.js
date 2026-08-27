@@ -182,6 +182,17 @@ export const DATA_CREDITS = [
       'via <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a> (G. David), Licence Ouverte.',
   },
   {
+    key: 'odre-eco2mix',
+    html:
+      'Live French electricity mix (&eacute;CO2mix, national + 12 r&eacute;gions): ' +
+      '<a href="https://odre.opendatasoft.com/explore/dataset/eco2mix-national-tr/" target="_blank" rel="noopener">ODR&Eacute; — Open Data R&eacute;seaux &Eacute;nergies</a>, ' +
+      'produced by RTE ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The dataset&rsquo;s own 15-minute timestamp is reported by the layer as its data timestamp. ' +
+      'R&eacute;gion fills are drawn on d&eacute;partement boundaries: IGN — ADMIN EXPRESS COG (&eacute;dition 2018), ' +
+      'via <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a> (G. David), Licence Ouverte.',
+  },
+  {
     key: 'pan-transit',
     html:
       'Live French transit vehicles: GTFS-Realtime feeds published on the ' +
