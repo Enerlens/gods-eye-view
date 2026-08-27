@@ -1,0 +1,493 @@
+{
+ "plants": [
+  {
+   "annee_de_reference": "2025",
+   "site": "Landivisiau",
+   "statut": "En service",
+   "puissance_installee_mw": 422.0,
+   "longitude_site": -4.0667,
+   "latitude_site": 48.5167,
+   "operateur": "Total",
+   "date_de_mise_en_service": "2022",
+   "point_geo": {
+    "lon": -4.0667,
+    "lat": 48.5167
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2024",
+   "site": "Landivisiau",
+   "statut": "En service",
+   "puissance_installee_mw": 422.0,
+   "longitude_site": -4.0667,
+   "latitude_site": 48.5167,
+   "operateur": "Total",
+   "date_de_mise_en_service": "2022",
+   "point_geo": {
+    "lon": -4.0667,
+    "lat": 48.5167
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2023",
+   "site": "Landivisiau",
+   "statut": "En service",
+   "puissance_installee_mw": 422.0,
+   "longitude_site": -4.0667,
+   "latitude_site": 48.5167,
+   "operateur": "Total",
+   "date_de_mise_en_service": "2022",
+   "point_geo": {
+    "lon": -4.0667,
+    "lat": 48.5167
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2022",
+   "site": "Landivisiau",
+   "statut": "En service",
+   "puissance_installee_mw": 422.0,
+   "longitude_site": -4.0667,
+   "latitude_site": 48.5167,
+   "operateur": "Total",
+   "date_de_mise_en_service": "2022",
+   "point_geo": {
+    "lon": -4.0667,
+    "lat": 48.5167
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2021",
+   "site": "Landivisiau",
+   "statut": "En service",
+   "puissance_installee_mw": 422.0,
+   "longitude_site": -4.0667,
+   "latitude_site": 48.5167,
+   "operateur": "Total",
+   "date_de_mise_en_service": null,
+   "point_geo": {
+    "lon": -4.0667,
+    "lat": 48.5167
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2020",
+   "site": "Landivisiau",
+   "statut": "En projet",
+   "puissance_installee_mw": 422.0,
+   "longitude_site": -4.0667,
+   "latitude_site": 48.5167,
+   "operateur": "Total",
+   "date_de_mise_en_service": null,
+   "point_geo": {
+    "lon": -4.0667,
+    "lat": 48.5167
+   },
+   "status": "Planned"
+  },
+  {
+   "annee_de_reference": "2019",
+   "site": "Landivisiau",
+   "statut": "En projet",
+   "puissance_installee_mw": 422.0,
+   "longitude_site": -4.0667,
+   "latitude_site": 48.5167,
+   "operateur": "Total",
+   "date_de_mise_en_service": null,
+   "point_geo": {
+    "lon": -4.0667,
+    "lat": 48.5167
+   },
+   "status": "Planned"
+  },
+  {
+   "annee_de_reference": "2025",
+   "site": "Martigues",
+   "statut": "En service",
+   "puissance_installee_mw": 930.0,
+   "longitude_site": 5.021728,
+   "latitude_site": 43.359135,
+   "operateur": "EDF",
+   "date_de_mise_en_service": "2012",
+   "point_geo": {
+    "lon": 5.021728,
+    "lat": 43.359135
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2024",
+   "site": "Martigues",
+   "statut": "En service",
+   "puissance_installee_mw": 930.0,
+   "longitude_site": 5.021728,
+   "latitude_site": 43.359135,
+   "operateur": "EDF",
+   "date_de_mise_en_service": "2012",
+   "point_geo": {
+    "lon": 5.021728,
+    "lat": 43.359135
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2023",
+   "site": "Martigues",
+   "statut": "En service",
+   "puissance_installee_mw": 930.0,
+   "longitude_site": 5.021728,
+   "latitude_site": 43.359135,
+   "operateur": "EDF",
+   "date_de_mise_en_service": "2012",
+   "point_geo": {
+    "lon": 5.021728,
+    "lat": 43.359135
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2022",
+   "site": "Martigues",
+   "statut": "En service",
+   "puissance_installee_mw": 930.0,
+   "longitude_site": 5.021728,
+   "latitude_site": 43.359135,
+   "operateur": "EDF",
+   "date_de_mise_en_service": "2012",
+   "point_geo": {
+    "lon": 5.021728,
+    "lat": 43.359135
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2021",
+   "site": "Martigues",
+   "statut": "En service",
+   "puissance_installee_mw": 930.0,
+   "longitude_site": 5.021728,
+   "latitude_site": 43.359135,
+   "operateur": "EDF",
+   "date_de_mise_en_service": "2012",
+   "point_geo": {
+    "lon": 5.021728,
+    "lat": 43.359135
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2020",
+   "site": "Martigues",
+   "statut": "En service",
+   "puissance_installee_mw": 930.0,
+   "longitude_site": 5.021728,
+   "latitude_site": 43.359135,
+   "operateur": "EDF",
+   "date_de_mise_en_service": "2012",
+   "point_geo": {
+    "lon": 5.021728,
+    "lat": 43.359135
+   },
+   "status": "In service"
+  },
+  {
+   "annee_de_reference": "2019",
+   "site": "Martigues",
+   "statut": "En service",
+   "puissance_installee_mw": 930.0,
+   "longitude_site": 5.021728,
+   "latitude_site": 43.359135,
+   "operateur": "EDF",
+   "date_de_mise_en_service": "2012",
+   "point_geo": {
+    "lon": 5.021728,
+    "lat": 43.359135
+   },
+   "status": "In service"
+  }
+ ],
+ "injections": [
+  {
+   "annee_mes": 2015,
+   "nom_du_projet": "CEN - Saint Pourçain",
+   "site": "Agricole autonome",
+   "commune": "Saint-Pourçain-sur-Sioule",
+   "code_commune": "03254",
+   "current_code": "03254",
+   "coordonnees": {
+    "lon": 3.305875448,
+    "lat": 46.304647129
+   },
+   "code_epci": "200071389",
+   "nom_epci": "Communauté de communes Saint-Pourçain Sioule Limagne",
+   "departement": "Allier",
+   "region": "Auvergne-Rhône-Alpes",
+   "date_de_mes": "2015-07-23",
+   "grx_demandeur": "GRDF",
+   "type_de_reseau": "Distribution",
+   "capacite_de_production_gwh_an": 0.0,
+   "gestionnaire_de_registre": "NaTran",
+   "ndeg_de_pitd_pitp": "GD0413",
+   "code_dep": "03",
+   "augmentation_prevue": "Aucune augmentation supplémentaire prévue",
+   "id_unique_projet": 31,
+   "date_de_fermeture_du_site": "2022-07-02",
+   "site_ouvert": "False",
+   "procede": "Méthanisation"
+  },
+  {
+   "annee_mes": 2021,
+   "nom_du_projet": "Biogaz Basse Ariège",
+   "site": "Agricole autonome",
+   "commune": "Montaut",
+   "code_commune": "09199",
+   "current_code": "09199",
+   "coordonnees": {
+    "lon": 1.656258425,
+    "lat": 43.186501584
+   },
+   "code_epci": "200066231",
+   "nom_epci": "Communauté de communes des Portes d'Ariège Pyrénées",
+   "departement": "Ariège",
+   "region": "Occitanie",
+   "date_de_mes": "2021-06-29",
+   "grx_demandeur": "Teréga",
+   "type_de_reseau": "Transport",
+   "capacite_de_production_gwh_an": 0.0,
+   "gestionnaire_de_registre": "TEREGA",
+   "ndeg_de_pitd_pitp": "PITPE-0003",
+   "code_dep": "09",
+   "augmentation_prevue": "Aucune augmentation supplémentaire prévue",
+   "id_unique_projet": 202,
+   "date_de_fermeture_du_site": "2025-01-09",
+   "site_ouvert": "False",
+   "procede": "Méthanisation"
+  },
+  {
+   "annee_mes": 2023,
+   "nom_du_projet": "ENERGIES SUD AVEYRON",
+   "site": "Agricole autonome",
+   "commune": "Saint-Rome-de-Tarn",
+   "code_commune": "12244",
+   "current_code": "12244",
+   "coordonnees": {
+    "lon": 2.890547168,
+    "lat": 44.032416184
+   },
+   "code_epci": "241200914",
+   "nom_epci": "Communauté de communes de la Muse et des Raspes du Tarn",
+   "departement": "Aveyron",
+   "region": "Occitanie",
+   "date_de_mes": "2023-07-01",
+   "grx_demandeur": "Teréga",
+   "type_de_reseau": "Transport",
+   "capacite_de_production_gwh_an": 0.0,
+   "gestionnaire_de_registre": "TEREGA",
+   "ndeg_de_pitd_pitp": "PITPE-0009",
+   "code_dep": "12",
+   "augmentation_prevue": "Aucune augmentation supplémentaire prévue",
+   "id_unique_projet": 764,
+   "date_de_fermeture_du_site": "2025-01-09",
+   "site_ouvert": "False",
+   "procede": "Méthanisation"
+  },
+  {
+   "annee_mes": 2019,
+   "nom_du_projet": "STEP DE SORMIOU - MARSEILLE -13",
+   "site": "Station d'épuration",
+   "commune": null,
+   "code_commune": null,
+   "current_code": "13209",
+   "coordonnees": null,
+   "code_epci": null,
+   "nom_epci": null,
+   "departement": null,
+   "region": null,
+   "date_de_mes": "2019-01-29",
+   "grx_demandeur": "GRDF",
+   "type_de_reseau": "Distribution",
+   "capacite_de_production_gwh_an": 34.8582,
+   "gestionnaire_de_registre": "NaTran",
+   "ndeg_de_pitd_pitp": "GD0906",
+   "code_dep": null,
+   "augmentation_prevue": "Aucune augmentation supplémentaire prévue",
+   "id_unique_projet": 104,
+   "date_de_fermeture_du_site": null,
+   "site_ouvert": "True",
+   "procede": "Méthanisation"
+  },
+  {
+   "annee_mes": 2022,
+   "nom_du_projet": "BIOBEARN",
+   "site": "Agricole territorial",
+   "commune": "Mourenx",
+   "code_commune": "64410",
+   "current_code": "64410",
+   "coordonnees": {
+    "lon": -0.617089025,
+    "lat": 43.374038956
+   },
+   "code_epci": "200039204",
+   "nom_epci": "Communauté de communes de Lacq-Orthez",
+   "departement": "Pyrénées-Atlantiques",
+   "region": "Nouvelle-Aquitaine",
+   "date_de_mes": "2022-09-01",
+   "grx_demandeur": "Teréga",
+   "type_de_reseau": "Transport",
+   "capacite_de_production_gwh_an": 250.264,
+   "gestionnaire_de_registre": "TEREGA",
+   "ndeg_de_pitd_pitp": "PITPE-0007",
+   "code_dep": "64",
+   "augmentation_prevue": "Aucune augmentation supplémentaire prévue",
+   "id_unique_projet": 550,
+   "date_de_fermeture_du_site": null,
+   "site_ouvert": "True",
+   "procede": "Méthanisation"
+  },
+  {
+   "annee_mes": 2024,
+   "nom_du_projet": "BIONORROIS",
+   "site": "Industriel territorial",
+   "commune": "Fontaine-le-Dun",
+   "code_commune": "76272",
+   "current_code": "76272",
+   "coordonnees": {
+    "lon": 0.8453407,
+    "lat": 49.813867628
+   },
+   "code_epci": "200069839",
+   "nom_epci": "Communauté de communes de la Côte d'Albâtre",
+   "departement": "Seine-Maritime",
+   "region": "Normandie",
+   "date_de_mes": "2024-12-20",
+   "grx_demandeur": "NaTran",
+   "type_de_reseau": "Transport",
+   "capacite_de_production_gwh_an": 250.264,
+   "gestionnaire_de_registre": "NaTran",
+   "ndeg_de_pitd_pitp": "IR0194",
+   "code_dep": "76",
+   "augmentation_prevue": "Aucune augmentation supplémentaire prévue",
+   "id_unique_projet": 888,
+   "date_de_fermeture_du_site": null,
+   "site_ouvert": "True",
+   "procede": "Méthanisation"
+  },
+  {
+   "annee_mes": 2024,
+   "nom_du_projet": "EST - SECALIA (ex Dijon Céréales) - Ste Colombes sur seine",
+   "site": "Industriel territorial",
+   "commune": "Cérilly",
+   "code_commune": "21125",
+   "current_code": "21125",
+   "coordonnees": {
+    "lon": 4.489563791,
+    "lat": 47.856047438
+   },
+   "code_epci": "242101434",
+   "nom_epci": "Communauté de communes du Pays Châtillonnais",
+   "departement": "Côte-d'Or",
+   "region": "Bourgogne-Franche-Comté",
+   "date_de_mes": "2024-07-30",
+   "grx_demandeur": "GRDF",
+   "type_de_reseau": "Distribution",
+   "capacite_de_production_gwh_an": 268.14,
+   "gestionnaire_de_registre": "NaTran",
+   "ndeg_de_pitd_pitp": "GD0177",
+   "code_dep": "21",
+   "augmentation_prevue": "Aucune augmentation supplémentaire prévue",
+   "id_unique_projet": 492,
+   "date_de_fermeture_du_site": null,
+   "site_ouvert": "True",
+   "procede": "Méthanisation"
+  },
+  {
+   "annee_mes": 2022,
+   "nom_du_projet": "IDF - Claye Souilly - Claye Injection",
+   "site": "ISDND",
+   "commune": "Claye-Souilly",
+   "code_commune": "77118",
+   "current_code": "77118",
+   "coordonnees": {
+    "lon": 2.675081746,
+    "lat": 48.942940838
+   },
+   "code_epci": "200055655",
+   "nom_epci": "Communauté d'agglomération Roissy Pays de France",
+   "departement": "Seine-et-Marne",
+   "region": "Île-de-France",
+   "date_de_mes": "2022-03-09",
+   "grx_demandeur": "GRDF",
+   "type_de_reseau": "Distribution",
+   "capacite_de_production_gwh_an": 122.8975,
+   "gestionnaire_de_registre": "NaTran",
+   "ndeg_de_pitd_pitp": "GD1057",
+   "code_dep": "77",
+   "augmentation_prevue": "Aucune augmentation supplémentaire prévue",
+   "id_unique_projet": 546,
+   "date_de_fermeture_du_site": null,
+   "site_ouvert": "True",
+   "procede": "Méthanisation"
+  },
+  {
+   "annee_mes": 2025,
+   "nom_du_projet": "METHANATION - ENOSIS - Projet DENOBIO",
+   "site": "Agricole autonome",
+   "commune": "Lesquielles-Saint-Germain",
+   "code_commune": "02422",
+   "current_code": "02422",
+   "coordonnees": {
+    "lon": 3.6283017,
+    "lat": 49.931707094
+   },
+   "code_epci": "200071983",
+   "nom_epci": "Communauté de communes Thiérache Sambre et Oise",
+   "departement": "Aisne",
+   "region": "Hauts-de-France",
+   "date_de_mes": "2025-07-02",
+   "grx_demandeur": "GRDF",
+   "type_de_reseau": "Distribution",
+   "capacite_de_production_gwh_an": 4.469,
+   "gestionnaire_de_registre": "NaTran",
+   "ndeg_de_pitd_pitp": "GD1025",
+   "code_dep": "02",
+   "augmentation_prevue": "Aucune augmentation supplémentaire prévue",
+   "id_unique_projet": 1349,
+   "date_de_fermeture_du_site": null,
+   "site_ouvert": "True",
+   "procede": "Power-to-méthane"
+  },
+  {
+   "annee_mes": 2013,
+   "nom_du_projet": "IDF - Bioenergie de la brie",
+   "site": "Agricole autonome",
+   "commune": "Chaumes-en-Brie",
+   "code_commune": "77107",
+   "current_code": "77107",
+   "coordonnees": {
+    "lon": 2.845179792,
+    "lat": 48.667432866
+   },
+   "code_epci": "200070779",
+   "nom_epci": "Communauté de communes Brie des Rivières et Châteaux",
+   "departement": "Seine-et-Marne",
+   "region": "Île-de-France",
+   "date_de_mes": "2013-07-31",
+   "grx_demandeur": "GRDF",
+   "type_de_reseau": "Distribution",
+   "capacite_de_production_gwh_an": 13.8539,
+   "gestionnaire_de_registre": "NaTran",
+   "ndeg_de_pitd_pitp": "GD1057",
+   "code_dep": "77",
+   "augmentation_prevue": "Augmentation supplémentaire prévue",
+   "id_unique_projet": 107,
+   "date_de_fermeture_du_site": null,
+   "site_ouvert": "True",
+   "procede": "Méthanisation"
+  }
+ ]
+}

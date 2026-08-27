@@ -1,0 +1,281 @@
+{
+ "natran": [
+  {
+   "geo_shape": {
+    "type": "Feature",
+    "geometry": {
+     "coordinates": [
+      [
+       6.709455104380279,
+       49.12010707497516
+      ],
+      [
+       6.709651381441076,
+       49.120164879717315
+      ]
+     ],
+     "type": "LineString"
+    },
+    "properties": {}
+   },
+   "geo_point_2d": {
+    "lon": 6.709553242910678,
+    "lat": 49.12013597734624
+   },
+   "object_id": 3792,
+   "nom_region": "Grand Est",
+   "departement": "Moselle"
+  },
+  {
+   "geo_shape": {
+    "type": "Feature",
+    "geometry": {
+     "coordinates": [
+      [
+       6.709651381441076,
+       49.120164879717315
+      ],
+      [
+       6.709758065285327,
+       49.12037711424818
+      ]
+     ],
+     "type": "LineString"
+    },
+    "properties": {}
+   },
+   "geo_point_2d": {
+    "lon": 6.709704723363202,
+    "lat": 49.12027099698275
+   },
+   "object_id": 78,
+   "nom_region": "Grand Est",
+   "departement": "Moselle"
+  },
+  {
+   "geo_shape": {
+    "type": "Feature",
+    "geometry": {
+     "coordinates": [
+      [
+       2.023742485452698,
+       45.402068570924165
+      ],
+      [
+       2.025095831854677,
+       45.404065913493454
+      ],
+      [
+       2.028132693329134,
+       45.40626674241341
+      ],
+      [
+       2.034399004458497,
+       45.41546040201413
+      ],
+      [
+       2.03991312982069,
+       45.41772185653358
+      ],
+      [
+       2.080516202597813,
+       45.44257216405717
+      ]
+     ],
+     "type": "LineString"
+    },
+    "properties": {}
+   },
+   "geo_point_2d": {
+    "lon": 2.0507317670811167,
+    "lat": 45.42373424894631
+   },
+   "object_id": 33,
+   "nom_region": "Nouvelle-Aquitaine",
+   "departement": "Corrèze"
+  },
+  {
+   "geo_shape": {
+    "type": "Feature",
+    "geometry": {
+     "coordinates": [
+      [
+       2.291834052488874,
+       49.938168455360085
+      ],
+      [
+       2.291830551680732,
+       49.93817198343346
+      ]
+     ],
+     "type": "LineString"
+    },
+    "properties": {}
+   },
+   "geo_point_2d": {
+    "lon": 2.2918323020848033,
+    "lat": 49.938170219396774
+   },
+   "object_id": 232,
+   "nom_region": "Hauts-de-France",
+   "departement": "Somme"
+  },
+  {
+   "geo_shape": {
+    "type": "Feature",
+    "geometry": {
+     "coordinates": [
+      [
+       5.759988222410013,
+       49.558321382757406
+      ],
+      [
+       5.759478940962196,
+       49.558955162007194
+      ]
+     ],
+     "type": "LineString"
+    },
+    "properties": {}
+   },
+   "geo_point_2d": {
+    "lon": 5.759733581686104,
+    "lat": 49.5586382723823
+   },
+   "object_id": 3882,
+   "nom_region": null,
+   "departement": null
+  }
+ ],
+ "terega": [
+  {
+   "region": "Occitanie",
+   "code_de_la_region": 76,
+   "nom_du_departement": "Hautes-Pyrénées",
+   "code_du_departement": 65,
+   "geo_point_2d": {
+    "lon": 0.008788065393684546,
+    "lat": 43.18000060207648
+   },
+   "geo_shape": null
+  },
+  {
+   "region": "Nouvelle-Aquitaine",
+   "code_de_la_region": 75,
+   "nom_du_departement": "Pyrénées-Atlantiques",
+   "code_du_departement": 64,
+   "geo_point_2d": {
+    "lon": -0.6507604169954523,
+    "lat": 43.42063625143514
+   },
+   "geo_shape": {
+    "type": "Feature",
+    "geometry": {
+     "coordinates": [
+      [
+       [
+        -0.645921682828826,
+        43.41065810175981,
+        89.89895058330148
+       ],
+       [
+        -0.645277536409037,
+        43.41470428809164,
+        87.67605057358742
+       ]
+      ],
+      [
+       [
+        -0.645277536409037,
+        43.41470428809164,
+        87.67605057358742
+       ],
+       [
+        -0.645277536409037,
+        43.414704288091635,
+        88.40135057363659
+       ]
+      ],
+      [
+       [
+        -0.645277536409037,
+        43.414704288091635,
+        88.40135057363659
+       ],
+       [
+        -0.6583581868214,
+        43.4298281821024,
+        85.61895054578781
+       ]
+      ]
+     ],
+     "type": "MultiLineString"
+    },
+    "properties": {}
+   }
+  },
+  {
+   "region": "Nouvelle-Aquitaine",
+   "code_de_la_region": 75,
+   "nom_du_departement": "Pyrénées-Atlantiques",
+   "code_du_departement": 64,
+   "geo_point_2d": {
+    "lon": -0.4941092794358689,
+    "lat": 43.15540268074545
+   },
+   "geo_shape": {
+    "type": "Feature",
+    "geometry": {
+     "coordinates": [
+      [
+       -0.494212401256559,
+       43.15523390047483,
+       -4.8951245844e-05
+      ],
+      [
+       -0.494006157615179,
+       43.15557146101607,
+       -705.5200489480048
+      ]
+     ],
+     "type": "LineString"
+    },
+    "properties": {}
+   }
+  },
+  {
+   "region": "Occitanie",
+   "code_de_la_region": 76,
+   "nom_du_departement": "Tarn-et-Garonne",
+   "code_du_departement": 82,
+   "geo_point_2d": {
+    "lon": 1.291686853810191,
+    "lat": 43.92873819724853
+   },
+   "geo_shape": {
+    "type": "Feature",
+    "geometry": {
+     "coordinates": [
+      [
+       1.267418691195056,
+       43.90222888248177,
+       116.80994968488812
+      ],
+      [
+       1.293866696738037,
+       43.910083184427236,
+       130.2489496693015
+      ],
+      [
+       1.299869950412431,
+       43.968582472192885,
+       101.5059495633468
+      ]
+     ],
+     "type": "LineString"
+    },
+    "properties": {}
+   }
+  }
+ ]
+}
