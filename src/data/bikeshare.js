@@ -494,6 +494,27 @@ function normalizeRegistryEntry(entry) {
  * Throws if any entry fails validation or has a duplicate id.
  * @type {Object[]}
  */
+/**
+ * Station-feed URLs this layer already serves, exposed so a second shared-
+ * mobility source can prove it is not about to draw the same system twice.
+ *
+ * Deliberately derived from the live registry rather than hand-listed: a city
+ * added here must show up in the redundancy check without anyone remembering
+ * to update a parallel list.
+ *
+ * @returns {Array<{id: string, city: string, provider: string,
+ *   stationInformationUrl: string, stationStatusUrl: string}>}
+ */
+export function bikeshareCoveredSystems() {
+  return GBFS_CITY_REGISTRY.map((entry) => ({
+    id: entry.id,
+    city: entry.city,
+    provider: entry.provider,
+    stationInformationUrl: entry.stationInformationUrl,
+    stationStatusUrl: entry.stationStatusUrl,
+  }));
+}
+
 const GBFS_CITY_REGISTRY = (() => {
   const seen = new Set();
   return RAW_GBFS_CITY_REGISTRY.map((entry) => {

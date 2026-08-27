@@ -24,6 +24,7 @@
  * `node --test`.
  */
 import { PbfReader } from 'pbf';
+import { boundsOfPoints } from './viewportBox.js';
 
 /** Largest surface speed accepted from a feed, m/s (~324 km/h — TGV headroom). */
 export const MAX_PLAUSIBLE_SPEED_MPS = 90;
@@ -285,106 +286,26 @@ export function vehiclePositionsFromBytes(bytes, context = {}) {
 }
 
 /**
- * Linear-interpolated quantile of a pre-sorted numeric array.
- * @param {number[]} sorted Ascending values (non-empty).
- * @param {number} p Quantile in [0, 1].
- * @returns {number}
- */
-function quantile(sorted, p) {
-  if (sorted.length === 1) return sorted[0];
-  const position = (sorted.length - 1) * p;
-  const lower = Math.floor(position);
-  const upper = Math.ceil(position);
-  if (lower === upper) return sorted[lower];
-  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
-}
-
-/** Default Tukey multiplier for the far-out fence used by observed bounds. */
-export const BOUNDS_FENCE_K = 3;
-/**
- * Floor on the fence half-width, in degrees (~22 km). A compact urban network
- * has a near-zero interquartile range, and a pure IQR fence would then reject
- * its own outer suburbs as outliers.
- */
-export const BOUNDS_MIN_FENCE_DEG = 0.2;
-/** Below this many fixes there is no distribution to reason about — keep all. */
-export const BOUNDS_MIN_SAMPLES = 8;
-
-/**
- * Axis-aligned bounds of a vehicle set, rounded to ~10 m.
+ * Axis-aligned bounds of a vehicle set, with the junk-fix fence described in
+ * `viewportBox.boundsOfPoints`.
  *
  * This is how a feed's footprint is learned: the PAN catalog publishes a
  * coverage NAME ("epci: Bordeaux Métropole"), never a bbox, so the only
  * non-inventive way to know where a feed's buses actually are is to look at
- * where they are.
- *
- * `rejectOutliers` matters for exactly that use. Real feeds emit occasional
- * junk fixes — three Normandy networks on one platform each reported a vehicle
- * at 27.14 N, 3.40 W (the Algerian Sahara) during the 2026-08-26 index build —
- * and one such fix inflates a 40 km city box into a 2500 km one, which then
- * matches every viewport in western Europe. The filter is a Tukey far-out
- * fence per axis with a floor, so a genuinely spread-out interurban network
- * (liO covers 5 degrees of Occitanie) keeps its real extent. It is off by
- * default: measuring a footprint wants it, drawing what a feed said does not.
+ * where they are — with outliers fenced out, because three Normandy networks
+ * on one platform each reported a vehicle at 27.14 N, 3.40 W (the Algerian
+ * Sahara) during the 2026-08-26 index build.
  *
  * @param {Array<{lat: number, lon: number}>} vehicles
- * @param {Object} [options]
- * @param {boolean} [options.rejectOutliers=false] Apply the fence.
- * @param {number} [options.fenceK]
- * @param {number} [options.minFenceDeg]
- * @param {number} [options.minSamples]
+ * @param {Object} [options] Forwarded to `boundsOfPoints`.
  * @returns {?{south: number, west: number, north: number, east: number}}
  */
 export function boundsOfVehicles(vehicles, options = {}) {
-  const {
-    rejectOutliers = false,
-    fenceK = BOUNDS_FENCE_K,
-    minFenceDeg = BOUNDS_MIN_FENCE_DEG,
-    minSamples = BOUNDS_MIN_SAMPLES,
-  } = options;
-
-  const lats = [];
-  const lons = [];
-  for (const vehicle of vehicles || []) {
-    const lat = Number(vehicle?.lat);
-    const lon = Number(vehicle?.lon);
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    lats.push(lat);
-    lons.push(lon);
-  }
-  if (!lats.length) return null;
-
-  let keep = null;
-  if (rejectOutliers && lats.length >= minSamples) {
-    const fence = (values) => {
-      const sorted = [...values].sort((a, b) => a - b);
-      const q1 = quantile(sorted, 0.25);
-      const q3 = quantile(sorted, 0.75);
-      const span = Math.max(fenceK * (q3 - q1), minFenceDeg);
-      return { low: q1 - span, high: q3 + span };
-    };
-    const latFence = fence(lats);
-    const lonFence = fence(lons);
-    keep = [];
-    for (let i = 0; i < lats.length; i++) {
-      if (lats[i] < latFence.low || lats[i] > latFence.high) continue;
-      if (lons[i] < lonFence.low || lons[i] > lonFence.high) continue;
-      keep.push(i);
-    }
-    if (!keep.length) keep = null;
-  }
-
-  const indices = keep || lats.map((_, i) => i);
-  let south = Infinity;
-  let west = Infinity;
-  let north = -Infinity;
-  let east = -Infinity;
-  for (const i of indices) {
-    if (lats[i] < south) south = lats[i];
-    if (lats[i] > north) north = lats[i];
-    if (lons[i] < west) west = lons[i];
-    if (lons[i] > east) east = lons[i];
-  }
-  const round = (value) => Number(value.toFixed(4));
-  return { south: round(south), west: round(west), north: round(north), east: round(east) };
+  return boundsOfPoints(vehicles, options);
 }
+
+export {
+  BOUNDS_FENCE_K,
+  BOUNDS_MIN_FENCE_DEG,
+  BOUNDS_MIN_SAMPLES,
+} from './viewportBox.js';

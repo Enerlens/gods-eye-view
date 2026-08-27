@@ -7,6 +7,29 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- Added the **Shared Mobility FR** layer — every French shared vehicle the
+  Bikeshare layer does not already draw. From the same national access point as
+  the transit layer, but its GBFS half: ~40,600 free-floating bikes, e-bikes,
+  scooters and mopeds plus ~15,500 operator dock stations, across 135 systems,
+  keyless, under per-operator Licence Ouverte 2.0 / ODbL 1.0. Loaded per
+  viewport, coloured by vehicle kind with a live legend, and clicking one gives
+  its battery range, its operator, and the age of that vehicle's own last
+  report rather than the age of the poll.
+- It is an inventory, not a track, and says so: GBFS never publishes a vehicle
+  during a rental, so a vehicle being ridden is invisible and nothing is
+  interpolated between two sightings. Freshness is uneven across operators
+  (Lime ~50 s, Dott a median 8 minutes with a long tail) and is shown per
+  object.
+- Three redundancies are resolved before anything is drawn, each measured
+  rather than assumed: the catalog's 165 resources collapse to 135 distinct
+  systems (identity is the set of places a system reports, which catches
+  Vélo'v published from two different domains where a URL comparison cannot);
+  the four systems already in Bikeshare are excluded against that layer's live
+  registry; and the 32,783 municipal parking-bay rows that free-floating
+  operators republish as their own "stations" are merged out instead of being
+  drawn once per operator. Every verdict is recorded in
+  `config/gbfs_fr_systems.json` rather than silently applied.
+
 - Added the **Transit FR** layer — the first thing on this globe that moves on
   the ground. Live GTFS-Realtime vehicle positions from the French Point d'Accès
   National (`transport.data.gouv.fr`): buses, trams, metros and interurban
@@ -131,6 +154,10 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- The Data attribution popover listed the French transit source twice: a
+  three-way merge of two branches that had each added it once left the entry
+  duplicated verbatim. Credits are now registered by key, so that class of
+  merge accident cannot reach the popover again.
 - The full-resolution CCTV viewer no longer boxes every frame at 16:9. Its
   geometry rule was losing on CSS specificity to the panel's own `#cctv-frame`
   rule, so a camera with a different aspect ratio was letterboxed inside a shape

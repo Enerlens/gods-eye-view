@@ -70,6 +70,7 @@ import radioLayer, {
 } from './data/radio.js';
 import bikeshareLayer from './data/bikeshare.js';
 import transitFranceLayer from './data/transitFrance.js';
+import sharedMobilityFranceLayer from './data/sharedMobilityFrance.js';
 import aisLiveVesselsLayer from './data/aisLiveVessels.js';
 import militaryAwarenessLayer from './data/militaryAwareness.js';
 import militaryInstallationsLayer from './data/militaryInstallations.js';
@@ -2613,7 +2614,7 @@ export class StyleManager {
 
     // Initialize detection overlay BEFORE style stages so the composite
     // stage is first in the post-process pipeline
-    initDetection(viewer, [trafficLayer, flightsLayer, militaryFlightsLayer, satellitesLayer, cctvLayer, bikeshareLayer, transitFranceLayer, aisLiveVesselsLayer], (modeLabel) => {
+    initDetection(viewer, [trafficLayer, flightsLayer, militaryFlightsLayer, satellitesLayer, cctvLayer, bikeshareLayer, transitFranceLayer, sharedMobilityFranceLayer, aisLiveVesselsLayer], (modeLabel) => {
       this._updateDetectionButton(modeLabel);
     });
     initTrackedReadout(viewer);

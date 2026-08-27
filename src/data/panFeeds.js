@@ -23,8 +23,21 @@
  * is at least as large as the box, and off-peak probes see less of it.
  *
  * Dependency-free and side-effect-free (same shape as `osmCameras.js`) so the
- * selection rules are unit-testable without a Vite server.
+ * selection rules are unit-testable without a Vite server. The box geometry
+ * itself lives in `viewportBox.js`, shared with the French shared-mobility
+ * source, which asks the same question of a different catalog.
  */
+import {
+  boxArea,
+  boxContains as boxContainsPoint,
+  boxKey,
+  boxOverlapArea as overlapArea,
+  boxesIntersect as boxesOverlap,
+  mergeBounds,
+  padBox,
+  snapBoxOutward,
+  validBox,
+} from './viewportBox.js';
 
 /** Catalog endpoint. Public, keyless, no rate limit published. */
 export const PAN_DATASETS_URL = 'https://transport.data.gouv.fr/api/datasets';
@@ -224,83 +237,49 @@ export function vehiclePositionFeedsFromCatalog(datasets) {
   return feeds;
 }
 
-// --- Viewport geometry ------------------------------------------------------
+// --- Viewport geometry -----------------------------------------------------
+// Thin, named wrappers over the shared box helpers. The names stay
+// transit-flavoured because the CEILINGS are this source's own policy; the
+// arithmetic is not, and lives in `viewportBox.js`.
 
-/**
- * Validate a request box: finite, ordered, non-dateline, no wider than
- * {@link PAN_MAX_BOX_DEG} on either axis.
- * @param {{south:*, west:*, north:*, east:*}} box
- * @returns {?{south:number, west:number, north:number, east:number}}
- */
+/** Validate a request box against this source's {@link PAN_MAX_BOX_DEG} ceiling. */
 export function validTransitBox(box) {
-  const south = Number(box?.south);
-  const west = Number(box?.west);
-  const north = Number(box?.north);
-  const east = Number(box?.east);
-  if (![south, west, north, east].every(Number.isFinite)) return null;
-  if (south < -90 || north > 90 || west < -180 || east > 180) return null;
-  if (south >= north || west >= east) return null;
-  if (north - south > PAN_MAX_BOX_DEG || east - west > PAN_MAX_BOX_DEG) return null;
-  return { south, west, north, east };
+  return validBox(box, PAN_MAX_BOX_DEG);
 }
 
-/**
- * Snap a request box OUTWARD onto the shared cache grid, so panning a few
- * streets re-uses the cached answer and a cached answer always covers at least
- * what was asked for. Mirrors `snapOsmCameraBox`, at a coarser step.
- * @param {{south:number, west:number, north:number, east:number}} box
- * @param {number} [stepDeg]
- * @returns {{south:number, west:number, north:number, east:number}}
- */
+/** Snap a request box outward onto this source's cache grid. */
 export function snapTransitBox(box, stepDeg = PAN_BOX_STEP_DEG) {
-  const snap = (value, grow) => {
-    const cells = Number((value / stepDeg).toFixed(9));
-    return Number(((grow > 0 ? Math.ceil(cells) : Math.floor(cells)) * stepDeg).toFixed(6));
-  };
-  return {
-    south: Math.max(-90, snap(box.south, -1)),
-    west: Math.max(-180, snap(box.west, -1)),
-    north: Math.min(90, snap(box.north, 1)),
-    east: Math.min(180, snap(box.east, 1)),
-  };
+  return snapBoxOutward(box, stepDeg);
 }
 
 /** Stable cache key for a snapped box. */
 export function transitBoxKey(box, decimals = 3) {
-  return [box.south, box.west, box.north, box.east]
-    .map((value) => Number(value).toFixed(decimals))
-    .join(',');
+  return boxKey(box, decimals);
 }
 
 /** Grow a box by a margin in degrees, clamped to the globe. */
 export function padTransitBox(box, marginDeg) {
-  const margin = Number(marginDeg) || 0;
-  return {
-    south: Math.max(-90, box.south - margin),
-    west: Math.max(-180, box.west - margin),
-    north: Math.min(90, box.north + margin),
-    east: Math.min(180, box.east + margin),
-  };
+  return padBox(box, marginDeg);
 }
 
 /** Whether two axis-aligned boxes share any area (edge contact counts). */
 export function boxesIntersect(a, b) {
-  if (!a || !b) return false;
-  return a.south <= b.north && a.north >= b.south && a.west <= b.east && a.east >= b.west;
+  return boxesOverlap(a, b);
 }
 
 /** Whether a point falls inside a box. */
 export function boxContains(box, lat, lon) {
-  if (!box) return false;
-  return lat >= box.south && lat <= box.north && lon >= box.west && lon <= box.east;
+  return boxContainsPoint(box, lat, lon);
 }
 
 /** Degree-squared area of the intersection of two boxes (0 when disjoint). */
 export function boxOverlapArea(a, b) {
-  if (!boxesIntersect(a, b)) return 0;
-  const lat = Math.min(a.north, b.north) - Math.max(a.south, b.south);
-  const lon = Math.min(a.east, b.east) - Math.max(a.west, b.west);
-  return Math.max(0, lat) * Math.max(0, lon);
+  return overlapArea(a, b);
+}
+
+/** Bounds only ever grow — see {@link mergeBounds}. */
+export function mergeObservedBounds(current, observed) {
+  return mergeBounds(current, observed);
 }
 
 /**
@@ -356,10 +335,7 @@ export function selectFeedsForBox(feeds, box, options = {}) {
     }
     const overlap = boxOverlapArea(feed.bbox, box);
     if (overlap <= 0) continue;
-    const footprint = Math.max(
-      1e-9,
-      (feed.bbox.north - feed.bbox.south) * (feed.bbox.east - feed.bbox.west),
-    );
+    const footprint = Math.max(1e-9, boxArea(feed.bbox));
     scored.push({ feed, covered: Math.min(1, overlap / footprint) });
   }
 
@@ -387,27 +363,5 @@ export function selectFeedsForBox(feeds, box, options = {}) {
     unknown: unknownTaken,
     truncated: scored.length > maxFeeds,
     nearKnownCoverage,
-  };
-}
-
-/**
- * Merge freshly observed bounds into a feed's stored footprint.
- *
- * Bounds only ever GROW: a rush-hour probe sees more of a network than a
- * Sunday-night one, and shrinking the box on a quiet sample would make the
- * feed drop out of viewports it genuinely serves.
- *
- * @param {?{south:number, west:number, north:number, east:number}} current
- * @param {?{south:number, west:number, north:number, east:number}} observed
- * @returns {?{south:number, west:number, north:number, east:number}}
- */
-export function mergeObservedBounds(current, observed) {
-  if (!observed) return current || null;
-  if (!current) return { ...observed };
-  return {
-    south: Math.min(current.south, observed.south),
-    west: Math.min(current.west, observed.west),
-    north: Math.max(current.north, observed.north),
-    east: Math.max(current.east, observed.east),
   };
 }

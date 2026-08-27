@@ -15,6 +15,7 @@ import cctvLayer from './data/cctv.js';
 import radioLayer from './data/radio.js';
 import bikeshareLayer from './data/bikeshare.js';
 import transitFranceLayer from './data/transitFrance.js';
+import sharedMobilityFranceLayer from './data/sharedMobilityFrance.js';
 import aisLiveVesselsLayer from './data/aisLiveVessels.js';
 import militaryInstallationsLayer from './data/militaryInstallations.js';
 import militaryAwarenessLayer from './data/militaryAwareness.js';
@@ -229,6 +230,7 @@ async function init() {
     dataManager.register(radioLayer);
     dataManager.register(bikeshareLayer);
     dataManager.register(transitFranceLayer);
+    dataManager.register(sharedMobilityFranceLayer);
     dataManager.register(aisLiveVesselsLayer);
     dataManager.register(militaryInstallationsLayer);
     dataManager.register(militaryAwarenessLayer);

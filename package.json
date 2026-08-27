@@ -41,7 +41,9 @@
     "test:track": "node scripts/track-regression.mjs",
     "qa:map-source-tray": "node scripts/qa-map-source-tray.mjs",
     "qa:transit-fr": "node scripts/qa-transit-fr.mjs",
-    "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs"
+    "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
+    "qa:shared-mobility-fr": "node scripts/qa-shared-mobility-fr.mjs",
+    "shared-mobility:index": "node scripts/build-gbfs-fr-index.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",
