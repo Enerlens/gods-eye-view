@@ -203,14 +203,14 @@ export const DATA_CREDITS = [
       '© each transport authority / operator',
   },
   {
-    key: 'pan-transit',
+    key: 'pan-shared-mobility',
     html:
-      'Live French transit vehicles: GTFS-Realtime feeds published on the ' +
+      'Shared vehicles in France (bikes, scooters, mopeds, car-sharing): GBFS feeds published on the ' +
       '<a href="https://transport.data.gouv.fr" target="_blank" rel="noopener">Point d’Accès National (transport.data.gouv.fr)</a> — ' +
-      'per-network licences, mostly ' +
+      'per-operator licences, mostly ' +
       '<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a> ' +
       'and <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL 1.0</a>, ' +
-      '© each transport authority / operator',
+      '© each operator / mobility authority',
   },
   {
     key: 'radio-browser',
@@ -337,7 +337,14 @@ export function registerDataCredits(viewer) {
   if (!creditDisplay || typeof creditDisplay.addStaticCredit !== 'function') {
     return;
   }
-  for (const { html } of DATA_CREDITS) {
+  // Keyed, not just iterated: a three-way merge of two branches that each
+  // added the same source once left `pan-transit` in this list twice, and the
+  // popover showed the same attribution line twice. Registering by key makes
+  // that class of merge accident invisible to the reader instead of visible.
+  const seen = new Set();
+  for (const { key, html } of DATA_CREDITS) {
+    if (seen.has(key)) continue;
+    seen.add(key);
     // showOnScreen=false → lives in the expandable "Data attribution" popover,
     // not the on-globe credit line.
     creditDisplay.addStaticCredit(new Cesium.Credit(html, false));
