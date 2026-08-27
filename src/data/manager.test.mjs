@@ -2832,6 +2832,51 @@ function makeRowControlLayer() {
   };
 }
 
+test('a legend entry that declares a glyph is masked to that shape, keeping its exact colour', async () => {
+  // Some layers spend HUE on one fact and SHAPE on another — the French
+  // shared-mobility layer paints the operator and draws the vehicle kind. Its
+  // key only works if the row can show both, and the swatch has to stay the
+  // exact declared colour: masking decides which pixels survive, never which
+  // colour they are.
+  const originalDocument = globalThis.document;
+  globalThis.document = { createElement: makeControlElement };
+  const mgr = new DataLayerManager({});
+  const layer = makeRowControlLayer();
+  layer.module.getRowControls = () => ({
+    chips: [],
+    legend: [
+      { label: 'Scooter', color: '#cbd5e1', glyph: 'data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=', count: 4 },
+      { label: 'Lime', color: '#b6f03c', count: 3 },
+    ],
+  });
+  mgr.register(layer.module);
+  const container = makeControlElement();
+
+  try {
+    mgr.buildTogglePanel(container);
+    assert.equal(await mgr.setEnabled('satellites', true), true);
+    mgr._refreshTogglePanel();
+
+    const row = container.querySelector('[data-layer-id="satellites"]');
+    const controls = row.querySelector('.data-toggle-controls');
+    const swatches = collectByClass(controls, 'data-toggle-legend-swatch');
+    assert.equal(swatches.length, 2);
+    assert.deepEqual(swatches.map((swatch) => swatch.style.background), ['#cbd5e1', '#b6f03c'],
+      'a masked swatch is still painted the exact declared colour');
+    assert.match(swatches[0].className, /has-glyph/);
+    assert.equal(swatches[0].style.maskImage, 'url("data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=")');
+    assert.equal(swatches[0].style.webkitMaskImage, swatches[0].style.maskImage,
+      'Safari and Chromium both need the mask');
+    // An entry with no glyph stays the plain dot it always was.
+    assert.equal(swatches[1].className, 'data-toggle-legend-swatch');
+    assert.equal(swatches[1].style.maskImage, undefined);
+  } finally {
+    await mgr.destroyAll();
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+  }
+});
+
 test('a layer that declares row controls renders its chips and color legend', async () => {
   const originalDocument = globalThis.document;
   globalThis.document = { createElement: makeControlElement };

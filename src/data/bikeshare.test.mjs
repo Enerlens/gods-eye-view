@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 import {
+  bikeshareCoveredSystems,
   BIKESHARE_SELECTED_OVERLAY_SOURCE_OPTIONS,
   _clearBikeshareSelectionForTest,
   _parseStationInformationForTest,
@@ -10,6 +12,7 @@ import {
   _setBikeshareSelectionStateForTest,
   createBikeshareSelectedOverlayEntry,
 } from './bikeshare.js';
+import { mobilityOperatorColor } from './mobilityOperators.js';
 
 function makeRecord() {
   return {
@@ -129,4 +132,35 @@ test('station_status reads both num_bikes_available and the 3.0 rename', () => {
   assert.equal(status.get('1024').bikesAvailable, 11);
   assert.equal(status.get('1').bikesAvailable, 2, '3.0 feeds must not read as empty stations');
   assert.equal(status.get('1').docksAvailable, 39);
+});
+
+test('a station dot spends its FILL on availability and its RING on the operator', () => {
+  // Both readings have to survive at once. The fill is the number a person
+  // acts on — how full is it — and it must not be spent on anything else; the
+  // operator therefore rides the ring, which is also how the French
+  // shared-mobility layer draws its docks, so a Vélib' bay and a Dott bay in
+  // the same Paris street are tellable apart.
+  const source = readFileSync(new URL('./bikeshare.js', import.meta.url), 'utf8');
+  assert.match(source, /outlineColor: cityRingColor\(cityId\)/,
+    'the ring is resolved per city, not left a generic black hairline');
+  assert.match(source, /outlineWidth: POINT_RING_PX/);
+});
+
+test('every covered system resolves to an operator colour, and the four French ones differ', () => {
+  const systems = bikeshareCoveredSystems();
+  const colors = systems.map((system) => mobilityOperatorColor(system.provider));
+  assert.ok(colors.every((color) => /^#[0-9a-f]{6}$/.test(color)), 'no system falls through uncoloured');
+
+  const french = ["Vélib' Métropole", "Vélo'v", 'VélÔToulouse', 'Le Vélo (TBM)'];
+  for (const provider of french) {
+    assert.ok(systems.some((system) => system.provider === provider), `${provider} is no longer covered`);
+  }
+  assert.equal(new Set(french.map(mobilityOperatorColor)).size, 4,
+    'the four French networks must not collapse to one hue');
+  // And none of them is the same hue as the free-floating operators drawn by
+  // the other layer over the same cities.
+  const floating = ['Lime Paris', 'Dott Paris', 'Voi Paris'].map(mobilityOperatorColor);
+  for (const color of french.map(mobilityOperatorColor)) {
+    assert.ok(!floating.includes(color), `${color} collides with a free-floating operator`);
+  }
 });

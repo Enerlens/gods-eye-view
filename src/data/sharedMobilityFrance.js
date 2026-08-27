@@ -42,6 +42,8 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { GBFS_MAX_BOX_DEG, VEHICLE_KIND_LABELS } from './gbfsFeeds.js';
+import { mobilityOperatorShortLabel, resolveMobilityOperator } from './mobilityOperators.js';
+import { sharedMobilityGlyph, sharedMobilityGlyphKind } from './sharedMobilityIcons.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const SHARED_MOBILITY_FR_LAYER_ID = 'shared-mobility-fr';
@@ -78,27 +80,42 @@ const MAX_RENDERED_OBJECTS = 6_000;
 const POINT_LIFT_M = 2.5;
 
 // --- Presentation -----------------------------------------------------------
-const VEHICLE_POINT_PX = 6;
-const STATION_POINT_MIN_PX = 5;
-const STATION_POINT_MAX_PX = 13;
-const SELECTED_POINT_PX = 16;
-
+//
+// TWO CHANNELS, TWO QUESTIONS. A viewport over Paris holds Lime, Dott and Voi
+// in the same streets, publishing bikes, e-bikes, scooters and mopeds side by
+// side. Those are independent facts, so they get independent channels:
+//
+//   SHAPE  — WHAT it is.  A vehicle wears its own silhouette
+//            (`sharedMobilityIcons.js`); a station is a dot, because a place
+//            is not a vehicle and should not be drawn as one.
+//   COLOUR — WHO runs it. The operator's hue (`mobilityOperators.js`) is the
+//            body of a vehicle and the RING of a station.
+//
+// A station keeps its FILL for availability, which is the reading someone acts
+// on and which no vehicle has: how full it is. So the ring, not the fill,
+// carries the operator there — the alternative was to spend the fill on the
+// operator and lose the only actionable number the layer publishes.
+/** Vehicle glyph footprint, in CSS px at the near end of the distance ramp. */
+const VEHICLE_GLYPH_PX = 17;
+/** Glyph scale ramp: recognisable up close, a coloured speck at gate altitude. */
+const VEHICLE_GLYPH_SCALE = Object.freeze({ near: 500, nearValue: 1.15, far: 45_000, farValue: 0.4 });
+const STATION_POINT_MIN_PX = 7;
+const STATION_POINT_MAX_PX = 15;
+/** Operator ring on a station dot. Two pixels is the thinnest that reads. */
+const STATION_RING_PX = 2;
+const SELECTED_POINT_PX = 18;
+const SELECTED_GLYPH_PX = 24;
+/** Legend glyph raster — small, and never tinted by an operator. */
+const LEGEND_GLYPH_PX = 32;
 /**
- * Per-kind tint. Deliberately a cool/green family so shared mobility reads as
- * a different class from the warm amber of live transit vehicles, which can be
- * on screen at the same time in the same street.
+ * Legend tint for the SHAPE half of the key. Neutral on purpose: those rows
+ * answer "what", and painting them a hue would claim an operator they do not
+ * stand for.
  */
-const KIND_COLORS = Object.freeze({
-  bike: '#5bd6a0',
-  ebike: '#31c7e8',
-  scooter: '#a78bfa',
-  moped: '#f472b6',
-  car: '#facc15',
-  other: '#94a3b8',
-  station: '#38bdf8',
-});
+const KIND_LEGEND_TINT = '#cbd5e1';
+/** Operators listed by name in the row legend before the tail is summarised. */
+const MAX_OPERATOR_LEGEND_ROWS = 6;
 const SELECTED_COLOR = '#00ffff';
-const OUTLINE_COLOR = Cesium.Color.BLACK.withAlpha(0.3);
 
 /** Station fill-rate palette, matching the bikeshare layer's reading. */
 const STATION_FULL = '#00ff88';
@@ -116,7 +133,10 @@ let _overlayHost = DEFAULT_OVERLAY_HOST;
 
 // --- Runtime state ----------------------------------------------------------
 let _viewer = null;
+/** Station dots: fill = availability, ring = operator. */
 let _points = null;
+/** Vehicle glyphs: silhouette = kind, tint = operator. */
+let _billboards = null;
 let _records = new Map();
 let _enabled = false;
 let _clickHandler = null;
@@ -137,9 +157,22 @@ let _truncated = false;
 let _altitudeGateOpen = false;
 let _lastBox = null;
 
-/** Colour for a vehicle kind. */
-export function vehicleKindColor(kind) {
-  return KIND_COLORS[kind] || KIND_COLORS.other;
+/**
+ * The operator behind a render record.
+ *
+ * Derived from the system title rather than stored on the wire object: the
+ * proxy already sends one `systems` row per feed and duplicating the operator
+ * onto every one of 6,000 vehicles would be the same string 6,000 times.
+ * @param {Object} record Render record.
+ * @returns {{id:string, label:string, color:string, curated:boolean}}
+ */
+export function sharedMobilityOperator(record) {
+  return record?.operator || resolveMobilityOperator(record?.system?.name);
+}
+
+/** The single primitive a record draws — a glyph for a vehicle, a dot for a station. */
+function recordPrimitive(record) {
+  return record?.billboard || record?.point || null;
 }
 
 /** Display label for a vehicle kind. */
@@ -255,7 +288,11 @@ export function buildSharedMobilitySelectionLabel(record, nowMs = Date.now()) {
     }
     if (object.renting === false) details.push('⚠️ Not renting');
   } else {
-    title = vehicleKindLabel(object.kind);
+    // "Lime E-bike", not "E-bike": the operator is half of what the glyph on
+    // screen is saying, and the card is where that colour gets a name.
+    const operator = sharedMobilityOperator(record);
+    const kind = vehicleKindLabel(object.kind);
+    title = operator.id === 'unknown' ? kind : `${operator.label} ${kind}`;
     if (Number.isFinite(object.rangeMeters)) {
       details.push(`🔋 ${(object.rangeMeters / 1000).toFixed(1)} km range`);
     }
@@ -309,8 +346,15 @@ export function createSharedMobilitySelectedOverlayEntry(record, nowMs = Date.no
 }
 
 function restoreRecordStyle(record) {
+  const color = Cesium.Color.fromCssColorString(record?.baseColor || SELECTED_COLOR);
+  if (record?.billboard) {
+    record.billboard.color = color;
+    record.billboard.width = record.baseSize;
+    record.billboard.height = record.baseSize;
+    return;
+  }
   if (!record?.point) return;
-  record.point.color = Cesium.Color.fromCssColorString(record.baseColor);
+  record.point.color = color;
   record.point.pixelSize = record.baseSize;
 }
 
@@ -327,8 +371,15 @@ function selectObject(id) {
   const record = _records.get(id);
   if (!record || !_viewer) return;
   _selectedId = id;
-  if (record.point) {
-    record.point.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
+  const selected = Cesium.Color.fromCssColorString(SELECTED_COLOR);
+  if (record.billboard) {
+    record.billboard.color = selected;
+    record.billboard.width = SELECTED_GLYPH_PX;
+    record.billboard.height = SELECTED_GLYPH_PX;
+  } else if (record.point) {
+    // The ring is left alone: losing the operator colour at the moment someone
+    // asks "whose is this?" would be exactly backwards.
+    record.point.color = selected;
     record.point.pixelSize = SELECTED_POINT_PX;
   }
   const entry = createSharedMobilitySelectedOverlayEntry(record);
@@ -381,8 +432,9 @@ function onPreRender() {
   if (!camera) return;
   const occluder = horizonOccluder(camera);
   for (const record of _records.values()) {
-    if (!record.point) continue;
-    record.point.show = occluder.isPointVisible(record.position);
+    const primitive = recordPrimitive(record);
+    if (!primitive) continue;
+    primitive.show = occluder.isPointVisible(record.position);
   }
 }
 
@@ -394,16 +446,29 @@ function reconcile(payload) {
 
   clearSelection();
   _points.removeAll();
+  _billboards.removeAll();
   _records.clear();
 
   let rendered = 0;
   const positions = [];
+  // One resolve per system, not per object: a Paris viewport holds ~6,000
+  // vehicles across a handful of operators.
+  const operatorsBySystem = new Map();
+  const operatorFor = (systemId) => {
+    let operator = operatorsBySystem.get(systemId);
+    if (!operator) {
+      operator = resolveMobilityOperator(systemsById.get(systemId)?.name);
+      operatorsBySystem.set(systemId, operator);
+    }
+    return operator;
+  };
 
   for (const station of stations) {
     if (rendered >= MAX_RENDERED_OBJECTS) break;
     const id = station.id;
     if (!id || _records.has(id)) continue;
     const position = objectPosition(station);
+    const operator = operatorFor(station.system);
     const color = stationColor(station);
     const size = stationPointSize(station);
     const point = _points.add({
@@ -411,14 +476,15 @@ function reconcile(payload) {
       position,
       color: Cesium.Color.fromCssColorString(color),
       pixelSize: size,
-      outlineColor: OUTLINE_COLOR,
-      outlineWidth: 1,
+      // Fill answers "how full", ring answers "whose".
+      outlineColor: Cesium.Color.fromCssColorString(operator.color),
+      outlineWidth: STATION_RING_PX,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
       translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 90_000, 0.35),
     });
     _records.set(id, {
       id, type: 'station', object: station, system: systemsById.get(station.system) || {},
-      point, position, baseColor: color, baseSize: size,
+      operator, point, position, baseColor: color, baseSize: size,
     });
     positions.push(station);
     rendered += 1;
@@ -429,20 +495,27 @@ function reconcile(payload) {
     const id = vehicle.id || `${vehicle.system}:${vehicle.lat},${vehicle.lon}`;
     if (_records.has(id)) continue;
     const position = objectPosition(vehicle);
-    const color = vehicleKindColor(vehicle.kind);
-    const point = _points.add({
+    const operator = operatorFor(vehicle.system);
+    const billboard = _billboards.add({
       id,
       position,
-      color: Cesium.Color.fromCssColorString(color),
-      pixelSize: VEHICLE_POINT_PX,
-      outlineColor: OUTLINE_COLOR,
-      outlineWidth: 1,
+      image: sharedMobilityGlyph(vehicle.kind),
+      width: VEHICLE_GLYPH_PX,
+      height: VEHICLE_GLYPH_PX,
+      color: Cesium.Color.fromCssColorString(operator.color),
+      // A glyph big enough to read at street level is a blanket over a whole
+      // city, so it rides a distance ramp down to roughly the speck the layer
+      // drew before it had shapes.
+      scaleByDistance: new Cesium.NearFarScalar(
+        VEHICLE_GLYPH_SCALE.near, VEHICLE_GLYPH_SCALE.nearValue,
+        VEHICLE_GLYPH_SCALE.far, VEHICLE_GLYPH_SCALE.farValue,
+      ),
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
       translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 90_000, 0.3),
     });
     _records.set(id, {
       id, type: 'vehicle', object: vehicle, system: systemsById.get(vehicle.system) || {},
-      point, position, baseColor: color, baseSize: VEHICLE_POINT_PX,
+      operator, billboard, position, baseColor: operator.color, baseSize: VEHICLE_GLYPH_PX,
     });
     positions.push(vehicle);
     rendered += 1;
@@ -456,6 +529,7 @@ function reconcile(payload) {
 function clearFleet() {
   clearSelection();
   if (_points) _points.removeAll();
+  if (_billboards) _billboards.removeAll();
   _records.clear();
   _count = 0;
 }
@@ -540,10 +614,10 @@ function onCameraChanged() {
 
 /** Deterministic subsample of rendered objects for the detection overlay. */
 function collectDetectableObjects(options = {}) {
-  if (!_enabled || !_points?.show || !_records.size) return [];
+  if (!_enabled || !(_points?.show || _billboards?.show) || !_records.size) return [];
   const records = [];
   for (const record of _records.values()) {
-    if (!record.point?.show && record.id !== _selectedId) continue;
+    if (!recordPrimitive(record)?.show && record.id !== _selectedId) continue;
     records.push(record);
   }
   if (!records.length) return [];
@@ -563,7 +637,8 @@ function collectDetectableObjects(options = {}) {
       sourceId: record.id,
       id: record.type === 'station'
         ? (record.object.name || 'STATION').slice(0, 22)
-        : vehicleKindLabel(record.object.kind).toUpperCase(),
+        : `${mobilityOperatorShortLabel(record.system?.name, 10)} ${vehicleKindLabel(record.object.kind)}`
+          .toUpperCase().slice(0, 22),
       type: 'VEH',
       skipLabel: record.id === _selectedId,
     });
@@ -604,7 +679,13 @@ const sharedMobilityFranceLayer = {
     _points = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
     _points.show = false;
     viewer.scene.primitives.add(_points);
+    _billboards = new Cesium.BillboardCollection({ scene: viewer.scene });
+    _billboards.show = false;
+    viewer.scene.primitives.add(_billboards);
+    // Registered in this order so a vehicle glyph paints OVER the dock dot it
+    // is parked next to, and both stay inside this layer's sprite slot.
     registerSpriteCollection(SHARED_MOBILITY_FR_LAYER_ID, _points);
+    registerSpriteCollection(SHARED_MOBILITY_FR_LAYER_ID, _billboards);
 
     _enabled = false;
     _records = new Map();
@@ -628,6 +709,7 @@ const sharedMobilityFranceLayer = {
     _enabled = true;
     _error = null;
     _points.show = true;
+    _billboards.show = true;
     _overlayHost.setVisible(SHARED_MOBILITY_FR_OVERLAY_SOURCE_ID, true);
     installClickHandler(viewer);
     registerPickOwner(SHARED_MOBILITY_FR_LAYER_ID, (pickedId) => _records.has(pickedId));
@@ -673,6 +755,7 @@ const sharedMobilityFranceLayer = {
     }
 
     _points.show = false;
+    _billboards.show = false;
     _loading = false;
     _status = 'idle';
     _systems = [];
@@ -708,28 +791,67 @@ const sharedMobilityFranceLayer = {
   },
 
   /**
-   * Colour legend for the control-panel row: what is on screen right now, by
-   * vehicle kind, plus stations as their own entry. Kinds with nothing in view
-   * are omitted rather than listed as zero.
+   * The key to both channels, for the control-panel row.
+   *
+   * Two groups, because the map is saying two things at once:
+   *
+   *   SHAPE rows — what is on screen, by kind, each showing its own silhouette
+   *     in a neutral tint. Kinds with nothing in view are omitted rather than
+   *     listed as zero.
+   *   COLOUR rows — the operators in view, each in the hue it is drawn in.
+   *     This is the half a colour cannot explain by itself, and it is also the
+   *     answer to two municipal networks that happen to hash to one hue: the
+   *     names are the authority, the hue only groups.
+   *
    * @returns {{ chips: Array<object>, legend: Array<object> }}
    */
   getRowControls() {
-    const tally = new Map();
+    const kinds = new Map();
+    const operators = new Map();
     for (const record of _records.values()) {
-      const key = record.type === 'station' ? 'station' : (record.object?.kind || 'other');
-      tally.set(key, (tally.get(key) || 0) + 1);
+      const kind = record.type === 'station' ? 'station' : (record.object?.kind || 'other');
+      kinds.set(kind, (kinds.get(kind) || 0) + 1);
+      const operator = sharedMobilityOperator(record);
+      const seen = operators.get(operator.id);
+      if (seen) seen.count += 1;
+      else operators.set(operator.id, { operator, count: 1 });
     }
-    const legend = [...tally.entries()]
+
+    const shapes = [...kinds.entries()]
       .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([key, count]) => ({
-        label: key === 'station' ? 'Stations' : vehicleKindLabel(key),
-        color: key === 'station' ? KIND_COLORS.station : vehicleKindColor(key),
+      .map(([kind, count]) => ({
+        label: kind === 'station' ? 'Stations' : vehicleKindLabel(kind),
+        color: KIND_LEGEND_TINT,
+        // The legend swatch IS the map glyph, at legend size.
+        glyph: sharedMobilityGlyph(kind === 'station' ? 'station' : sharedMobilityGlyphKind(kind), LEGEND_GLYPH_PX),
         count,
-        blurb: key === 'station'
-          ? 'Operator-owned docks. Municipal bays that every operator republishes are merged out.'
+        blurb: kind === 'station'
+          ? 'Operator-owned docks — filled by availability, ringed by operator. Municipal bays that every operator republishes are merged out.'
           : 'Parked and available — GBFS never publishes a vehicle during a rental.',
       }));
-    return { chips: [], legend };
+
+    const ranked = [...operators.values()]
+      .sort((a, b) => b.count - a.count || a.operator.label.localeCompare(b.operator.label));
+    const listed = ranked.slice(0, MAX_OPERATOR_LEGEND_ROWS).map(({ operator, count }) => ({
+      label: operator.label,
+      color: operator.color,
+      count,
+      blurb: operator.curated
+        ? `${operator.label} — one hue nationwide, so this operator reads the same in every city.`
+        : `${operator.label} — hue derived from the published title; no French feed publishes a brand colour.`,
+    }));
+    // Never silently truncate: say how many operators the row is not naming.
+    const hidden = ranked.slice(MAX_OPERATOR_LEGEND_ROWS);
+    if (hidden.length) {
+      listed.push({
+        label: `+${hidden.length} operators`,
+        color: KIND_LEGEND_TINT,
+        count: hidden.reduce((sum, entry) => sum + entry.count, 0),
+        blurb: `Also in view: ${hidden.map((entry) => entry.operator.label).join(', ')}.`,
+      });
+    }
+
+    return { chips: [], legend: [...shapes, ...listed] };
   },
 
   destroy(viewer) {
@@ -752,6 +874,11 @@ const sharedMobilityFranceLayer = {
       unregisterSpriteCollection(SHARED_MOBILITY_FR_LAYER_ID, _points);
       viewer.scene.primitives.remove(_points);
       _points = null;
+    }
+    if (_billboards) {
+      unregisterSpriteCollection(SHARED_MOBILITY_FR_LAYER_ID, _billboards);
+      viewer.scene.primitives.remove(_billboards);
+      _billboards = null;
     }
     _records.clear();
     _viewer = null;
