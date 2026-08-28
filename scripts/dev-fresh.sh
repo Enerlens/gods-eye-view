@@ -273,6 +273,10 @@ case "${HOST}" in
     ;;
 esac
 echo "Google Maps key source: ${GOOGLE_MAPS_API_KEY_SOURCE}"
+# The first-run mission card returns every fresh browser session by design, so
+# it lands on top of QA. `?welcome=0` is the app's own suppression switch —
+# same thing scripts/lib/qa-first-run.mjs does for the headless harnesses.
+echo "QA URL (skips the welcome card): http://localhost:${PORT}/?welcome=0"
 echo "Tip: after server starts, hard refresh browser (Cmd+Shift+R)."
 echo "If panels are still missing, run this once in browser console:"
 echo "localStorage.removeItem('godsEyeView.v6.panelPos.cctv-panel'); location.reload();"

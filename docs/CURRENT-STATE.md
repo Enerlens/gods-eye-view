@@ -946,7 +946,7 @@ This is the current runtime/source-of-truth snapshot for the project.
 >   still releases tracking in place. The 200 px feel needs close-range field
 >   verification; fleet model sizing remains unchanged.
 > - **Deterministic sprite stacking:** contact collections reassert the stable
->   bottom-to-top order CCTV, FIRMS, Réseau gaz, bikeshare, Shared Mobility FR, Transit FR, AIS,
+>   bottom-to-top order CCTV, FIRMS, Réseau gaz, Power Grid, bikeshare, Shared Mobility FR, Transit FR, AIS,
 >   military, then civilian
 >   — Shared Mobility FR occupies its slot with TWO collections (station dots
 >   below, vehicle glyphs above), registered in that order, so a parked scooter
@@ -1612,6 +1612,7 @@ its criteria cannot be silently ignored.
 | Mix élec 🇫🇷 ⚡ | éCO2mix national + 12 régions (RTE, via ODRÉ) — région balances painted on département geometry, five commercial border flows as arcs | `src/data/franceEnergy.js` | `/api/energy-fr` | 3 min (proxy TTL 4 min; product steps every 15 min) |
 | Réseau gaz 🇫🇷 ⬡ | NaTran + Teréga transmission traces (36,106 km, clamped ground polylines), 14 gas-fired power stations, 850 renewable-methane injection points (ODRÉ) | `src/data/gasFrance.js`, `src/data/gasFranceFeed.js` | `/api/gas-fr/network`, `/api/gas-fr/sites`, `/api/gas-fr/status` | 30 min (proxy TTL 7 d for the traces, 12 h for the registers; both are quasi-static) |
 | Centrales EDF 🇫🇷 ◈ | EDF Open Data — 3 datasets (nuclear 56 reactors → 18 sites, hydraulic 51 plants, thermal 19 units → 10 sites), 79 site discs sized by installed capacity | `src/data/edfPowerPlants.js` | `/api/edf-plants` | 30 min (proxy TTL 24 h; the files are republished annually) |
+| Power Grid ⌁ | OpenStreetMap `power=line`/`cable`/`substation`/`tower` at ≥ 50 kV, per viewport (batched `GroundPolylinePrimitive` strokes by voltage band, dashed underground) | `src/data/powerGrid.js`, `src/data/powerGridFeed.js` | `/api/power-grid` | viewport-driven (500 ms debounce, ≤ 0.8° box, pylons ≤ 0.25°) + 20 min idle; proxy TTL 10 min memory / 7 d disk; while failing, auto-retry 20 s → 240 s backoff |
 | Groupes de prod 🇫🇷 ☢ | RTE `actual_generations_per_unit` (171 units ≥ 100 MW, hourly) joined by EIC code to ODRÉ's *Registre national des installations de production et de stockage d'électricité*, shipped as a file (positions anchored on EDF Open Data, then OpenStreetMap, then commune centres); 108 stations drawn as a capacity ring plus an output disc | `src/data/rteGeneration.js`, `src/data/rteGenerationFeed.js`, `src/data/local_data/rte_production_units/units.json` | `/api/rte-generation`, `/api/rte-generation/status` | 3 min (proxy TTL 5 min; resource publishes hourly). Needs `RTE_CLIENT_ID`/`RTE_CLIENT_SECRET` for output; the fleet draws keyless |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
 | Dams ▰ | OpenInfraMap/OSM extract (bundled) | `src/data/localLayers.js` | — | static |
@@ -2656,6 +2657,13 @@ Replay transport uses one Play/Pause toggle plus Cancel. During ascent only the 
 - `tools/pano-pinhole.mjs`: equirectangular-to-pinhole reprojection.
 - `tools/sat-ortho.mjs`: Map Tiles ortho stitch and centered crop with georef corners.
 - `scripts/track-regression.mjs`: headless real-app regression harness for aircraft tracking/model/detection invariants (`npm run test:track`).
+- `scripts/lib/qa-first-run.mjs`: the QA fleet's first-run suppression. Every
+  `qa-*.mjs` opens its page with `newQaPage(browser)`, which writes the app's own
+  per-session dismissal before any page script runs, so the mission card never
+  paints over a harness's clicks, pixels, or focus. `npm test` audits the fleet
+  for it (`src/qaFirstRunSuppression.test.mjs`) — a new harness that forgets goes
+  red with the fix in the message. `qa-firstrun.mjs` is the single exemption:
+  the card is what it tests. By hand, `?welcome=0` on the app URL does the same.
 - `scripts/qa-map-source-tray.mjs`: browser proof for the four-source Map Source
   tray — presentation, keyboard disclosure, responsive bounds, unpinned
   auto-dismiss, ACQUIRING status, and retired/unknown stack-id restore

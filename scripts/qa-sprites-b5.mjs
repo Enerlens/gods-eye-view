@@ -32,6 +32,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import { classifyAircraft, CLASS_SCALE_2D, CLASS_SCALE_3D, CLASS_MODEL_REAL } from '../src/data/aircraftClass.js';
 // Hangar fleet (2026-08-16): real per-class GLBs render at scale 1; military
 // heavies (airliner/quadjet/glider) render airplane.glb at 1 x class; only
@@ -185,7 +186,7 @@ async function main() {
   const consoleErrors = [];
   const httpErrors = [];
   try {
-    const page = await browser.newPage();
+    const page = await newQaPage(browser);
     await page.setViewport({ width: 1280, height: 800 });
     page.on('console', (msg) => {
       if (msg.type() === 'error') {

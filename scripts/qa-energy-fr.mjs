@@ -27,6 +27,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import { projectEco2mix } from '../src/data/eco2mixFeed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -206,7 +207,7 @@ async function main() {
   });
 
   try {
-    const page = await browser.newPage();
+    const page = await newQaPage(browser);
     const consoleErrors = [];
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());

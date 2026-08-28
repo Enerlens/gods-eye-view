@@ -118,6 +118,57 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   tests; `npm run qa:edf-plants` is the browser proof. Attribution registered
   in the Data attribution popover and DATA_SOURCES.md.
 
+- Added the **Power Grid** layer — the wires themselves, from OpenStreetMap,
+  keyless, loaded for the viewport you are looking at. The Mix élec and Réseau
+  gaz layers came from ODRÉ; the electricity network's own geometry is the one
+  part RTE publishes nothing for, so this is community mapping and the layer
+  says so everywhere it can.
+  - **Routes by voltage band** — a 400 kV backbone stroke is thicker and hotter
+    than a 63 kV one, and the four bands (≥ 300 / 180–299 / 100–179 / 50–99 kV)
+    are generic rather than French, so the same palette reads correctly on the
+    British 400/275/132 and German 380/220/110 grids. Verified live against
+    central London.
+  - **The substations they land in**, sized by the same band, named on the globe
+    when OSM names them — "Poste électrique de Villejust", 400/225/90 kV, RTE —
+    and captioned with what OSM calls them: a poste source, a traction feed, or
+    a role it never stated.
+  - **The pylons**, but only below 0.25° of view, where a pylon is a thing
+    rather than a dot. There are 11,670 of them in a 1.2° × 1.6° box; at that
+    range they cost more bandwidth than the entire network they carry.
+  - **Underground cable is dashed.** In Île-de-France a quarter of the mapped
+    high-voltage network is `power=cable`, and drawing it like an overhead line
+    would claim pylons that are not there.
+
+- Four things the Power Grid layer refuses to do, each stated on screen:
+  - **Draw a line at conductor height.** The wire hangs tens of metres up and
+    OSM records that for a minority of pylons and for no line at all, so every
+    route is a ground-clamped stroke of the mapped ROUTE — and every legend row
+    says so, rather than lifting the network to a plausible-looking catenary.
+  - **Guess a voltage.** Voltage is the filter because voltage is the evidence:
+    a feature OSM has not given one is absent, not demoted. That filter is also
+    what turns 619 raw "substations" in one Paris viewport — 404 of them
+    street-corner cabinets and cadastre-imported building footprints — into the
+    209 real high-voltage yards worth drawing.
+  - **Call a stroke a line.** OSM splits one named liaison across dozens of
+    ways, so the readout reports both: 1,386 strokes for 304 mapped routes, over
+    Île-de-France.
+  - **Imply a truncated view is a complete one.** Each class has its own element
+    cap and reports its own truncation, and the readout says which one was cut
+    and to zoom in. Above 0.8° of view the layer asks for nothing at all and
+    says "zoom in" instead of drawing a partial grid that looks whole.
+
+- Six upstream traps absorbed server-side and pinned against a captured Overpass
+  response: **one shared element cap starves whatever Overpass emits last** (899
+  pylons erased every line and substation in a Paris box, so each class now gets
+  its own bounded output); `voltage` arrives as a `;` list carrying junk
+  (`225000;0`, `225000;225000;225000;63000`) that `Number()` turns into NaN;
+  `power=line` is not a synonym for high voltage (one is tagged 400 **volts**);
+  RTE's own 225 kV yards are tagged `substation=industrial`, so the subtype is a
+  caption and never a filter; a multipolygon substation carries no `lat`/`lon`
+  at all, only a computed centre; and `power=cable` is the same network
+  underground.
+
+
 - **Shared mobility now says what an object is and who runs it, at the same
   time.** Two independent facts get two independent channels. **Shape** answers
   *what*: a bike, an e-bike, a kick scooter, a moped, a shared car and an
@@ -334,6 +385,16 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   records and third-party-license boundaries in `docs/media/README.md`.
 - Added regression coverage for aircraft identity narration and optional-key
   loading feedback.
+- Added `scripts/lib/qa-first-run.mjs`: the QA fleet's shared handling of the
+  first-run mission card. Every headless harness is a fresh browser session, so
+  the card — which returns every fresh session by design — used to land on top
+  of each new dataset's QA run, swallowing the clicks and pixels the harness was
+  measuring, and each harness solved it again, differently. All 40 harnesses
+  that drive the app now open their page with `newQaPage(browser)`, and
+  `npm test` audits the fleet for it (`src/qaFirstRunSuppression.test.mjs`) so a
+  new harness cannot forget. `scripts/qa-firstrun.mjs` is the one exemption —
+  the card is what it tests. For QA by hand, `?welcome=0` on the app URL does
+  the same thing, and `dev-fresh.sh` now prints that URL on startup.
 
 ### Changed
 

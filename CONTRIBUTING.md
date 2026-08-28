@@ -36,6 +36,32 @@ The highest-leverage places to jump in:
 - **Secrets stay server-side.** Anything needing a private key goes through a Vite proxy in `vite.config.js`. The browser only ever sees the Google Maps key (which you restrict) and ephemeral tokens.
 - `docs/CURRENT-STATE.md` is the authoritative runtime reference — read it first.
 
+## QA harnesses (and the welcome card)
+
+Every headless harness is a *fresh browser session*, and the first-run mission
+card ([`src/firstRunExperience.js`](src/firstRunExperience.js)) returns on every
+fresh session by design. Left alone it sits over the globe and swallows the
+clicks, pixels, and focus a harness is trying to measure — the failure usually
+looks like a broken layer, not like a modal.
+
+So: **open the page with `newQaPage(browser)`**, never `browser.newPage()`.
+
+```js
+import { newQaPage } from './lib/qa-first-run.mjs';   // scripts/lib/qa-first-run.mjs
+
+const page = await newQaPage(browser);                 // card already handled
+```
+
+`npm test` enforces this: [`src/qaFirstRunSuppression.test.mjs`](src/qaFirstRunSuppression.test.mjs)
+audits every `scripts/qa-*.mjs` that navigates and fails with the fix in the
+message. `firstRunLauncherSuppressed(page)` is there if a harness wants to
+*prove* the card is out of its shot; `scripts/qa-firstrun.mjs` is the one
+exemption, because the card is its subject.
+
+**Testing by hand in a real browser?** Open
+`http://localhost:4173/?welcome=0` — same suppression, nothing to click away.
+(`?welcome=1` forces the card back when you do want to see it.)
+
 ## Coding style
 
 - ES modules, **2-space indent, single quotes, semicolons.**

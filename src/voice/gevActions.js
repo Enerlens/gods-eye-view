@@ -185,6 +185,16 @@ const LAYER_ALIASES = new Map([
   ['terega', 'gas-fr'],
   ['biomethane', 'gas-fr'],
   ['biogas', 'gas-fr'],
+  ['power grid', 'power-grid'],
+  ['power lines', 'power-grid'],
+  ['power line', 'power-grid'],
+  ['electricity grid', 'power-grid'],
+  ['electric grid', 'power-grid'],
+  ['transmission lines', 'power-grid'],
+  ['high voltage', 'power-grid'],
+  ['pylons', 'power-grid'],
+  ['substations', 'power-grid'],
+  ['rte', 'power-grid'],
   ['rte', 'rte-generation'],
   ['reactors', 'rte-generation'],
   ['reactor', 'rte-generation'],
@@ -3318,6 +3328,7 @@ function layerTitle(layerId) {
   if (layerId === 'transit-fr') return 'Transit Vehicle';
   if (layerId === 'shared-mobility-fr') return 'Shared Vehicle';
   if (layerId === 'gas-fr') return 'Gas Site';
+  if (layerId === 'power-grid') return 'Grid Node';
   if (layerId === 'rte-generation') return 'Power Station';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'marine-buoys') return 'Marine Buoy';

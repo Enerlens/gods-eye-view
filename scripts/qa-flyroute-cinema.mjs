@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import sharp from 'sharp';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -75,7 +76,7 @@ const browser = await puppeteer.launch({
   ],
   protocolTimeout: 240000,
 });
-const page = await browser.newPage();
+const page = await newQaPage(browser);
 await page.setViewport({ width: 1500, height: 950 });
 page.on('pageerror', (e) => console.log(`  [page error] ${String(e).slice(0, 160)}`));
 

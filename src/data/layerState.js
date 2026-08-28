@@ -297,6 +297,15 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'military', token: 'm', disposition: 'enabled+mirrored-options', optionOwner: 'flights' }),
   Object.freeze({ id: 'military-awareness', token: 'g', disposition: 'enabled-only' }),
   Object.freeze({ id: 'military-installations', token: 'i', disposition: 'enabled-only' }),
+  // A DIGIT, following `gas-fr` above, and for the same reason twice over:
+  // every letter of "power"/"grid" is taken (p by transit-fr, g by
+  // military-awareness, r by radio, i by military-installations, d by
+  // datacenters), `z` is the canonical UNKNOWN token two existing tests assert
+  // on, and `l` — the last free letter when this layer was written — was
+  // claimed by `edf-power-plants` before this branch merged. A share link that
+  // silently enabled the wrong layer is exactly what the duplicate-token
+  // assertion in this file exists to prevent.
+  Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
   // A DIGIT, because the letters ran out: a–y are all taken (every letter of

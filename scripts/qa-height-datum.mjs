@@ -86,6 +86,7 @@
  */
 
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -265,7 +266,7 @@ async function main() {
   let exitCode = 0;
 
   try {
-    const page = await browser.newPage();
+    const page = await newQaPage(browser);
     await page.setViewport({ width: 1280, height: 800 });
     page.on('console', (msg) => {
       if (msg.type() === 'error') {

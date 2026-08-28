@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const argv = process.argv.slice(2);
 const getOpt = (name, fallback = null) => {
@@ -650,7 +651,7 @@ async function main() {
       `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
     ],
   });
-  const page = await browser.newPage();
+  const page = await newQaPage(browser);
   await page.setViewport(VIEWPORT);
   const consoleMessages = [];
   page.on('console', (message) => {

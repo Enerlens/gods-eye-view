@@ -168,7 +168,7 @@ Twenty-eight tools, four jobs — the commands below come straight from the prod
 
 ## 🛰️ What's on the Globe
 
-Twenty-three live layers. **Nineteen of them need nothing at all** — no key, no account, no signup, and the newest one draws its whole subject without one too. (🟢 nothing · 🟡 free key · 🔴 metered.)
+Twenty-four live layers. **Twenty of them need nothing at all** — no key, no account, no signup, and the newest one draws its whole subject without one too. (🟢 nothing · 🟡 free key · 🔴 metered.)
 
 | Layer | What you get | Source | Auth |
 |-------|--------------|--------|------|
@@ -194,6 +194,7 @@ Twenty-three live layers. **Nineteen of them need nothing at all** — no key, n
 | ⬡ **Réseau gaz** 🇫🇷 | The French gas system as three things at once: **36,106 km** of high-pressure transmission trace clamped to the ground — NaTran (ex-GRTgaz) in violet, Teréga in orchid, never merged — plus the **850 renewable-methane injection points** feeding it and the **14 gas-fired power stations** burning out of it, into the `gaz` filière of the Mix élec layer above. Both traces are the operators' own, simplified to about 250 m, and are drawn exactly as published | NaTran / Teréga / ODRÉ | 🟢 |
 | ◈ **Centrales EDF** 🇫🇷 | Where French electricity is physically made: EDF's own 79 generating sites — 18 nuclear (61 370 MW), 51 hydraulic (13 779 MW) and 10 fossil-fired (4 945 MW) — each a disc whose **area** is its installed capacity, labelled with what it actually is: `GRAVELINES · 5 460 MW · 6 × REP 900`, `GRAND-MAISON · 1 714 MW · Pompage mixte`. EDF's fleet rather than France's, and dated per file rather than pretending to one snapshot | EDF Open Data | 🟢 |
 | ☢ **Groupes de prod** 🇫🇷 | France's power stations, **unit by unit**, at the output RTE last published for each one — 57 reactors, 6 pumped-storage machines, 44 thermal groups, 171 units and 93.5 GW in all. Each station is a ring sized by its nameplate, filled by what it is producing: a **crisp empty ring is a reactor in outage**, a faint one is a station RTE said nothing about, and a **magenta disc is a machine consuming the grid** to fill its upper lake. Click one and the card lists its groups with a day of hourly history each. Draws the whole fleet with no key at all — the key only adds the megawatts | RTE · ODRÉ · EDF · OpenStreetMap | 🟡 (🟢 without the key: installed capacity only) |
+| ⌁ **Power Grid** | The wires themselves — the high-voltage network as OpenStreetMap has mapped it, loaded for the viewport you are looking at. Routes coloured by voltage band (**400 kV** backbone down to **63 kV**), the **substations** they land in sized by the same band, and, once you are close enough for a pylon to be a thing rather than a dot, the **pylons** holding them up. Underground cable is dashed, because it has no pylons. This is the one part of the grid RTE publishes no geometry for, so it is volunteer mapping — and only what OSM has given a voltage of 50 kV or more | OpenStreetMap (Overpass) | 🟢 |
 | 🎖️ **Mapped Installations** | Viewport-bounded military-site context from community mapping — incomplete by nature, and labeled that way | OpenStreetMap | 🟢 |
 
 ![A reconstructed Falcon 9 ascent climbing and curving into its projected orbit](docs/media/08-falcon9-replay.gif)
