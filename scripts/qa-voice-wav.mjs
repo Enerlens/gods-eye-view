@@ -9,6 +9,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const appUrl = process.argv[2] || 'http://localhost:4189';
@@ -47,7 +48,7 @@ const browser = await puppeteer.launch({
 try {
   const context = browser.defaultBrowserContext();
   await context.overridePermissions(appOrigin, ['microphone']);
-  const page = await browser.newPage();
+  const page = await newQaPage(browser);
   await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 
   const consoleErrors = [];

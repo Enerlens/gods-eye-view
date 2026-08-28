@@ -82,6 +82,19 @@
   au **31/12/2025** while the other two are au **31/12/2023**, so the three
   files are three vintages. Licence Ouverte 2.0, EDF SA.
 
+- `power-grid-osm-sample.json` — a real Overpass answer for the Saclay plateau
+  (48.66,2.12 → 48.76,2.26), captured 2026-08-27, trimmed to one way per
+  distinct `power`/`voltage` combination plus every substation in the box and a
+  spread of pylons. It is kept as a raw Overpass response so the projection
+  under test reads exactly what the proxy reads. Every oddity in it is real and
+  is the point: the `voltage` tag arrives as a `;` list carrying junk
+  (`225000;0`, `63000;0`, `225000;225000;225000;63000`, `400000;225000;90000`),
+  RTE's own 225 kV Villeras yard is tagged `substation=industrial` and its 90 kV
+  Provence yard carries no `substation` tag at all, an Enedis yard is literally
+  named "Poste source Enedis", an SNCF `traction` substation steps 225 kV to
+  25 kV, and the Haute-Borne yard is a **multipolygon relation with no `lat`/`lon`
+  of its own** — only Overpass's computed `center`. © OpenStreetMap
+  contributors, ODbL 1.0.
 - `rte-registre-units-sample.json` — 16 real rows of ODRÉ's *Registre national
   des installations de production et de stockage d'électricité* (edition
   30/06/2026), captured 2026-08-28 through the same `records` endpoint

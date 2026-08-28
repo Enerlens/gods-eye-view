@@ -53,6 +53,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const argv = process.argv.slice(2);
 const getOpt = (name, fallback) => {
@@ -236,7 +237,7 @@ async function main() {
   const perPose = [];
   let renderer = 'unknown';
   try {
-    const page = await browser.newPage();
+    const page = await newQaPage(browser);
     await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
     page.on('console', (message) => {
       if (message.type() !== 'error') return;

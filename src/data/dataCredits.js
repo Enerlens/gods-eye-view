@@ -81,6 +81,13 @@ export const DATA_CREDITS = [
       '(ODbL 1.0)',
   },
   {
+    key: 'power-grid-osm',
+    html:
+      'High-voltage grid (lines, cables, substations, pylons &mdash; per viewport): ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">&copy; OpenStreetMap contributors</a> ' +
+      '(ODbL 1.0). Volunteer mapping, not a grid register: coverage varies by country, ' +
+      'only features OSM gives a voltage of 50 kV or more are drawn, and routes are the ' +
+      'mapped ground route &mdash; not the conductor height, which OpenStreetMap does not publish.',
     key: 'rte-actual-generation',
     html:
       'Per-unit electricity generation (France): ' +

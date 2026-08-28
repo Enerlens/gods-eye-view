@@ -9,6 +9,7 @@
 // Run: node scripts/qa-floor-verify.mjs   (dev server on :4173, real GPU best)
 // with the poison fix + simplified chain live.
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import fs from 'node:fs';
 
 // QA_BASE_URL matches the sibling harnesses (qa-height-datum / qa-cctv-v2) so
@@ -37,7 +38,7 @@ const browser = await puppeteer.launch({
   headless: 'new', executablePath: chrome,
   args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist', '--no-sandbox'],
 });
-const page = await browser.newPage();
+const page = await newQaPage(browser);
 await page.setViewport({ width: 1400, height: 900 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 120000 });

@@ -31,6 +31,7 @@
  * it) — a weaker but still decisive check, since the geoid sits ~150 m below it.
  */
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -63,7 +64,7 @@ const browser = await puppeteer.launch({
   args: ['--use-gl=angle', `--use-angle=${ANGLE}`, '--enable-webgl',
     '--ignore-gpu-blocklist', '--no-sandbox'],
 });
-const page = await browser.newPage();
+const page = await newQaPage(browser);
 await page.setViewport({ width: 1400, height: 900 });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 

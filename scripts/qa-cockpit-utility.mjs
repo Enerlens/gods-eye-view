@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = path.join(repoRoot, 'qa-shots', 'cockpit-utility');
@@ -22,7 +23,7 @@ const browser = await puppeteer.launch({
   ...(executablePath ? { executablePath } : {}),
   args: ['--use-angle=metal', '--enable-gpu', '--no-sandbox'],
 });
-const page = await browser.newPage();
+const page = await newQaPage(browser);
 const failures = [];
 const consoleErrors = [];
 const localHttpErrors = [];

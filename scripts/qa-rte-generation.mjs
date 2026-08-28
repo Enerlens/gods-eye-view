@@ -47,7 +47,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
-import { FIRST_RUN_SESSION_KEY } from '../src/firstRunExperience.js';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import {
   RTE_GENERATION_CLASSES,
   projectActualGenerations,
@@ -240,7 +240,7 @@ async function main() {
   });
 
   try {
-    const page = await browser.newPage();
+    const page = await newQaPage(browser);
     const consoleErrors = [];
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());
@@ -266,16 +266,6 @@ async function main() {
       }
       void request.continue();
     });
-
-    // The first-run mission card is a full-height `<aside>` over the globe. It
-    // is dismissed here the way the app itself records a dismissal — the
-    // session key — rather than by pressing Escape after boot, so it is never
-    // painted at all and cannot cover the pixels this harness counts and
-    // clicks. Found the hard way: `document.elementFromPoint` at a station's
-    // own coordinate returned `ASIDE#first-run-launcher`.
-    await page.evaluateOnNewDocument((key) => {
-      try { window.sessionStorage.setItem(key, 'dismissed'); } catch { /* no storage */ }
-    }, FIRST_RUN_SESSION_KEY);
 
     console.log(`[qa] booting ${APP_URL}${LIVE ? ' (LIVE proxy)' : ''}`);
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
