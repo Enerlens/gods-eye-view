@@ -1,0 +1,41 @@
+{
+  "id": "od0oo1bf-9oidk5ab8aujmam",
+  "slug": "centrales-de-production-hydraulique-de-edf-sa",
+  "title": "Centrales de production hydraulique de EDF SA",
+  "description": "Localisation et puissance installée des centrales et unités de productions d'EDF SA en exploitation, pour l’hydraulique. Sur les plus de 400 installations hydrauliques exploitées par EDF, seules les centrales d’une puissance supérieure à 100 MW sont présentes sur ce jeu de données - à l’exception des centrales dont la réserve secondaire est supérieure ou égale à 20MW.\n\nLe périmètre géographique est la France métropolitaine, mais sans la Corse ni les îles du ponant.\n\nVision consolidée au 31/12/2023.\n\n\n\n# Précisions concernant les catégories de centrales :\n\n**Fil de l'eau** : Ces chutes fonctionnent normalement en base et utilisent le débit qui se présente.\n\n**Chutes avec réserve** : Les chutes avec réserve stockent tout ou partie des apports dans leurs retenues, afin de produire dans des heures de forte demande. En fonction de la durée de remplissage d'un réservoir, on peut distinguer 2 cas : **Eclusée &amp; Lac**.\n\n**Marémotrice** : Son exploitation consiste à profiter du flux et du reflux de la marée pour alternativement remplir puis vider un bassin de retenue en actionnant des turbines incorporées dans le barrage.\n\n**Chutes équipées de Pompage** : Les chutes équipées de pompage sont celles dans lesquelles l’eau peut être élevée, d’un bassin inférieur vers un bassin supérieur, à l’aide de pompes et accumulée afin d’être ensuite utilisée de façon différée pour la production d’énergie électrique. On peut distinguer plusieurs catégories :\n\n**Pompage Pur** dont le but est de relever, aux heures creuses de consommation électrique, des volumes d’eau qui seront turbinés à des heures de pointes de consommation électrique. Les STEP Pures n'ont pas d'apports gravitaires au niveau du bassin supérieur.\n\n**Pompage Mixte** dont le but est de relever, aux heures creuses de consommation électrique, des volumes d’eau qui seront turbinés à des heures de pointes de consommation électrique. Les STEP Mixtes ont des apports gravitaires au niveau du bassin supérieur.",
+  "license": {
+    "href": "https://www.etalab.gouv.fr/licence-ouverte-open-licence",
+    "title": "Licence Ouverte / Open Licence version 2.0"
+  },
+  "owner": {
+    "type": "organization",
+    "id": "mnOAyfJpkLW7sIwsUZxP1",
+    "name": "EDF",
+    "department": "odmg",
+    "departmentName": "ODMG"
+  },
+  "keywords": [
+    "hydraulique",
+    "production",
+    "centrale",
+    "réserves secondaires"
+  ],
+  "temporal": {
+    "start": "2023-01-01",
+    "end": "2023-12-31"
+  },
+  "spatial": "France métropolitaine, sans la Corse ni les iles du Ponant",
+  "bbox": [
+    -2.0254315808415413,
+    42.58792648091912,
+    7.797562228515744,
+    49.925565593875945
+  ],
+  "count": 51,
+  "frequency": "annual",
+  "dataUpdatedAt": "2026-06-16T14:15:05.796Z",
+  "updatedAt": "2026-08-24T15:19:15.794Z",
+  "createdAt": "2025-10-27T09:28:12.241Z",
+  "href": "https://opendata.edf.fr/data-fair/api/v1/datasets/centrales-de-production-hydraulique-de-edf-sa",
+  "page": "https://opendata.edf.fr/datasets/centrales-de-production-hydraulique-de-edf-sa"
+}

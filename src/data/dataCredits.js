@@ -193,6 +193,17 @@ export const DATA_CREDITS = [
       'via <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a> (G. David), Licence Ouverte.',
   },
   {
+    key: 'edf-power-plants',
+    html:
+      'EDF generating fleet (localisation and installed power of its hydraulic, ' +
+      'nuclear and fossil-fired plants): ' +
+      '<a href="https://opendata.edf.fr/datasets" target="_blank" rel="noopener">Open Data EDF</a> — ' +
+      'three datasets published by EDF SA ' +
+      '(<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'Installed capacity, not production. Each file&rsquo;s own reference date is reported by the layer: ' +
+      'nuclear is a vision consolid&eacute;e au 31/12/2025, hydraulic and thermal au 31/12/2023.',
+  },
+  {
     key: 'pan-transit',
     html:
       'Live French transit vehicles: GTFS-Realtime feeds published on the ' +

@@ -1,0 +1,40 @@
+{
+  "id": "ohco3c11wq2fz546oumq6oxr",
+  "slug": "centrales-de-production-nucleaire-edf",
+  "title": "Centrales de production nucléaire d'EDF SA",
+  "description": "## Résumé :\nLocalisation et puissance installée des centrales et unités de productions d'EDF SA en exploitation, pour le nucléaire.\n\nLe périmètre géographique est la France métropolitaine, mais sans la Corse ni les îles du ponant.\n\n### Description détaillée :\nLe jeu de données a une vision consolidée au 31/12/2025.",
+  "license": {
+    "href": "https://www.etalab.gouv.fr/licence-ouverte-open-licence",
+    "title": "Licence Ouverte / Open Licence version 2.0"
+  },
+  "owner": {
+    "type": "organization",
+    "id": "mnOAyfJpkLW7sIwsUZxP1",
+    "name": "EDF",
+    "department": "odmg",
+    "departmentName": "ODMG"
+  },
+  "keywords": [
+    "nucléaire",
+    "centrale",
+    "Production"
+  ],
+  "temporal": {
+    "start": "2025-01-01",
+    "end": "2025-12-31"
+  },
+  "spatial": "France métropolitaine, sans la Corse ni les iles du Ponant",
+  "bbox": [
+    -1.8833420611917973,
+    44.10575096961111,
+    6.218270938843489,
+    51.01284599862993
+  ],
+  "count": 56,
+  "frequency": "annual",
+  "dataUpdatedAt": "2025-10-27T09:46:06.853Z",
+  "updatedAt": "2026-06-22T08:28:55.128Z",
+  "createdAt": "2025-10-27T09:46:06.853Z",
+  "href": "https://opendata.edf.fr/data-fair/api/v1/datasets/centrales-de-production-nucleaire-edf",
+  "page": "https://opendata.edf.fr/datasets/centrales-de-production-nucleaire-edf"
+}

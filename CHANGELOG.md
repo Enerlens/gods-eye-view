@@ -7,6 +7,39 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- Added the **Centrales EDF** layer — where French electricity is physically
+  made, from EDF's own three open datasets (hydraulic, nuclear, thermal),
+  keyless under Licence Ouverte 2.0. 79 generating sites carrying 80 094 MW:
+  18 nuclear sites (61 370 MW), 51 hydraulic plants (13 779 MW) and 10
+  fossil-fired sites (4 945 MW). Each site is one disc whose **area** — not its
+  radius — is its installed capacity, coloured by filière and labelled with
+  what the object actually is in the publisher's own vocabulary:
+  `GRAVELINES · 5 460 MW · 6 × REP 900`, `GRAND-MAISON · 1 714 MW ·
+  Pompage mixte`, `CORDEMAIS · 1 160 MW · 2 × Charbon`. This is the structural
+  half of the question **Mix élec** answers live: that layer says what is
+  flowing right now, this one says what is built, and where.
+- The layer is built around what these files do and do not say. **It is EDF's
+  fleet, not France's** — the hydro file carries 51 of the 400+ installations
+  EDF operates (those above 100 MW, plus those whose secondary reserve reaches
+  20 MW), no CNR or SHEM hydro and no Engie or TotalEnergies CCGT; only nuclear
+  is complete for the country. **There is no single "as of"**: nuclear is a
+  vision consolidée au 31/12/2025 and the other two au 31/12/2023, so every
+  site is stamped with its own file's date and the layer reports the range
+  rather than presenting a total that never existed at one instant. **Installed
+  capacity is not production**, and it is named that way everywhere. **A row is
+  not a site**: the nuclear and thermal files publish one row per unit with the
+  site's coordinate repeated on each, so six Gravelines reactors draw one
+  marker and not six stacked on a pixel, while a hydro plant — published one
+  row per plant, with no turbine count — reports no unit count rather than "1".
+- Two upstream traps are absorbed server-side in `edfPlantsFeed.js` and pinned
+  against captured payloads: the hydro file publishes **`coordonnees_x_wgs` as
+  the latitude** (read the usual way, Grand-Maison lands off Somalia) while the
+  other two publish one `"lat, lon"` string, and
+  `reserve_secondaire_maximale` is a **site figure repeated on every unit
+  row**, so Cattenom offers 60 MW of reserve and not four times 60. 48 unit
+  tests; `npm run qa:edf-plants` is the browser proof. Attribution registered
+  in the Data attribution popover and DATA_SOURCES.md.
+
 - **Shared mobility now says what an object is and who runs it, at the same
   time.** Two independent facts get two independent channels. **Shape** answers
   *what*: a bike, an e-bike, a kick scooter, a moped, a shared car and an
