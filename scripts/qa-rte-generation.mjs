@@ -52,6 +52,7 @@ import {
   RTE_GENERATION_CLASSES,
   projectActualGenerations,
 } from '../src/data/rteGenerationFeed.js';
+import { rteDiscSize } from '../src/data/rteGeneration.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -360,9 +361,14 @@ async function main() {
     check('in the consumption colour, not its filière’s',
       pumping.every((station) => station.discColor === PUMPING_COLOR),
       pumping.map((s) => s.discColor).join(','));
-    check('and sized on the magnitude, so 70% pumping reads as loudly as 70% generating',
-      pumping.every((station) => station.discPx >= station.ringPx * 0.6),
-      pumping.map((s) => `${s.discPx}/${s.ringPx}`).join(' '));
+    // NOT a magnitude assertion any more. In the captured hour the deepest
+    // negative in France is Chooz B — two reactors shut down, drawing ~80 MW of
+    // house load against a 3 000 MW nameplate, which is a small disc and should
+    // be. What must hold is that the sign costs it nothing: drawing at x% is
+    // drawn exactly as large as generating at x%.
+    check('and sized on the magnitude, so the sign costs it no area',
+      pumping.every((station) => station.discPx === rteDiscSize(station.ringPx, Math.abs(station.load))),
+      pumping.map((s) => `${s.discPx}px @ ${(s.load * 100).toFixed(1)}%`).join(' '));
 
     // ── v. the fleet is legible ────────────────────────────────────────────
     console.log('[qa] v. the discs are actually visible on the basemap');
@@ -382,34 +388,48 @@ async function main() {
     // and they are the thing this layer exists to show.
     const legible = async (lon, lat, hex, label) => {
       await setView(page, lon, lat, 60_000);
-      await sleep(1500);
+      // Wait for the rebuild, not for a clock. Each call to this helper toggles
+      // the layer, and toggling re-runs `load()` — an async fetch and a full
+      // rebuild of both collections. Counting before that lands measures an
+      // empty scene and reports it as "invisible", which is how the four-pixel
+      // Chooz disc first looked like a bug.
+      await waitForStations(page, 100);
+      await sleep(1200);
       await pump(page, 24, 80);
       const shown = await countPixels(page, hex);
       await setLayerEnabled(page, false);
       const hidden = await countPixels(page, hex);
       await setLayerEnabled(page, true);
-      await sleep(1200);
+      await waitForStations(page, 100);
       await pump(page, 24, 80);
       return { shown, hidden, label };
     };
 
-    // Belleville: 655 MW of a 1 310 MW reactor in the fixture, so a crisp ring
-    // with a disc half its width inside it.
-    const nuclear = await legible(2.8766, 47.5088, NUCLEAR_COLOR, 'nuclear');
+    // Paluel: 1 161 MW in the captured hour, the fixture's busiest reactor, so a
+    // crisp ring with a solid disc inside it.
+    const nuclear = await legible(0.634759, 49.858754, NUCLEAR_COLOR, 'nuclear');
     check('a producing reactor paints pixels nothing else on screen was painting',
       nuclear.shown - nuclear.hidden > 40, `${nuclear.hidden} → ${nuclear.shown}`);
     check('and the basemap was not already that colour', nuclear.hidden < 200,
       `${nuclear.hidden} before`);
     await shoot(page, '03-legible-nuclear.png');
 
-    // Grand'Maison, pumping at 1 180 MW of 1 690 — the loudest thing on the
-    // layer, and the one a reader is most likely to misread as generation.
-    const pumped = await legible(6.0757, 45.1889, PUMPING_COLOR, 'pumping');
-    check('and a station CONSUMING the grid is unmistakable',
-      pumped.shown - pumped.hidden > 40, `${pumped.hidden} → ${pumped.shown}`);
-    check('in a colour the map never uses on its own', pumped.hidden < 50,
-      `${pumped.hidden} before`);
-    await shoot(page, '03-legible-pumping.png');
+    // The consumption colour is deliberately NOT pixel-counted.
+    //
+    // Chooz B draws ~58 MW against a 3 000 MW nameplate, which is a THREE-PIXEL
+    // disc — correctly small, because that is what 2% of a station looks like.
+    // Counting it measures anti-aliasing, not legibility: a probe at 60 km
+    // found 4 matching pixels at tolerance 24 and 0 after a layer toggle, which
+    // is a coin flip, not a check. A check that cannot fail honestly is worse
+    // than no check.
+    //
+    // What actually needs proving about the drawing state is proven in section
+    // iv, off the rendered primitives rather than off the canvas: the disc
+    // exists, it carries the consumption colour and not its filière's, and it
+    // is sized to |load| exactly as a generating station would be.
+    check('the drawing state is proven off the primitives, not the canvas',
+      pumping.length > 0 && pumping.every((s) => s.hasDisc && s.discColor === PUMPING_COLOR),
+      `${pumping.length} station(s) drawing`);
 
     // ── vi. picking, through a real click on the station's own pixels ─────
     console.log('[qa] vi. clicking a station selects it, and Escape lets go');
@@ -494,7 +514,7 @@ async function main() {
     check('and it names all three states a reader has to tell apart',
       /faint empty ring/i.test(probe.controls.legend[0]?.blurb || '')
       && /crisp empty ring/i.test(probe.controls.legend[0]?.blurb || '')
-      && /CONSUMING/.test(probe.controls.legend[0]?.blurb || ''));
+      && /DRAWING from the/.test(probe.controls.legend[0]?.blurb || ''));
     check('nuclear has its own legend row, counted in stations',
       probe.controls.legend.some((row) => row.label === RTE_GENERATION_CLASSES.nuclear.label
         && row.count >= 15));

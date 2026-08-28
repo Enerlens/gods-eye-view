@@ -51,9 +51,12 @@ import {
  *                         has, and the one a `value || 0` guard would erase.
  *   crisp ring + disc     measured and producing; the disc fills the ring at
  *                         full load, on a √ ramp so area tracks power.
- *   magenta disc          measured and CONSUMING. Pumped storage filling its
- *                         upper lake, or a battery charging. Not a small
- *                         amount of generation — the opposite of generation.
+ *   magenta disc          measured and DRAWING from the grid. Usually a unit
+ *                         that is shut down and still running its own pumps and
+ *                         instrumentation — a stopped 1 500 MW reactor is a
+ *                         ~50 MW load — and sometimes pumped storage filling
+ *                         its upper lake. Not a small amount of generation; the
+ *                         opposite of generation.
  *
  * That distinction between "unknown" and "zero" is the whole reason the ring
  * and the disc are two primitives rather than one coloured point.
@@ -271,7 +274,9 @@ export function buildRteSelectionLabel(site, now = Date.now()) {
       `${site.mw < 0 ? '🔌' : '⚡'} ${formatGenMw(site.mw)}`
       + `${installed ? ` / ${formatGenMw(installed)} installed` : ''}${load}`,
     );
-    if (site.mw < 0) details.push('↓ consuming — this machine is charging, not generating');
+    if (site.mw < 0) {
+      details.push('↓ drawing from the grid — its own pumps and instruments, or storage charging');
+    }
     const clock = formatStepClock(site.latestAt);
     const age = formatPublishedAge(site.latestAt, now);
     if (clock || age) {
@@ -279,6 +284,14 @@ export function buildRteSelectionLabel(site, now = Date.now()) {
     }
     if (site.reporting < site.units.length) {
       details.push(`▸ ${site.reporting} of ${site.units.length} groups reporting`);
+    }
+    // Where RTE publishes the turbine groups inside a plant the register only
+    // carries whole, those groups reached this station by NAME, not by code.
+    // That is weaker evidence and the card says so rather than blending it in.
+    const byName = site.units.filter((unit) => unit.matchedBy === 'name').length;
+    if (byName) {
+      details.push(`↳ ${byName} of them matched by station name — RTE publishes this `
+        + 'plant group by group, the register only as a whole');
     }
   } else {
     details.push(`◌ ${installed ? `${formatGenMw(installed)} installed` : 'installed power not published'}`);
@@ -1055,7 +1068,8 @@ const rteGenerationLayer = {
       count: _sites.length,
       blurb: measured
         ? 'A faint empty ring is a station RTE published nothing for; a crisp empty ring is a '
-          + 'station measured at zero — an outage. A magenta disc is a machine CONSUMING.'
+          + 'station measured at zero — an outage. A magenta disc is a station DRAWING from the '
+          + 'grid: a stopped reactor still runs its own pumps, and reads as a ~50 MW load.'
         : 'No RTE credential, so no output is drawn. Set RTE_CLIENT_ID and RTE_CLIENT_SECRET '
           + 'from a free data.rte-france.com account and the rings fill.',
     });

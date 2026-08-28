@@ -147,7 +147,7 @@ test('the legend leads with the ring-and-disc grammar, not with a filière', () 
   assert.match(legend[0].label, /Ring/);
   assert.match(legend[0].blurb, /faint empty ring/);
   assert.match(legend[0].blurb, /crisp empty ring/);
-  assert.match(legend[0].blurb, /CONSUMING/);
+  assert.match(legend[0].blurb, /DRAWING from the/);
 
   // With no key at all the first row says what to do about it instead.
   seed([station({ mw: null, load: null, reporting: 0 })], { joinStats: { placedUnits: 0 } });
@@ -177,7 +177,7 @@ test('a pumping station keeps its sign, its size and its own colour', () => {
 
   const card = buildRteSelectionLabel(pumping);
   assert.match(card, /−1,180 MW/u);
-  assert.match(card, /consuming/);
+  assert.match(card, /drawing from the grid/);
   assert.match(card, /−70% of nameplate/u);
 
   // And the ambient label paints in the consumption colour, not the filière's.

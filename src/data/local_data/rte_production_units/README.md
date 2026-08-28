@@ -70,6 +70,20 @@ rings sit on the beach rather than 15 km out to sea. OpenStreetMap maps no
 `power=plant` for them and no open dataset publishes their footprint; the layer
 says so on the card rather than quietly moving them.
 
+## The join's real limit
+
+The EIC code joins RTE's live output to this register exactly for **nuclear and
+thermal**, where both publish one row per generating unit. It fails wholesale
+for **hydro**: this register carries one row per PLANT (Grand'Maison is one row,
+EIC `17W100P100P02756`, 1 690 MW) while RTE publishes the twelve turbine groups
+inside it under twelve different codes. Measured on the live API 2026-08-28:
+**55 of 152 units, 36% of the fleet and 1 914 MW**, had no code here.
+
+Those units reach their station through a match on RTE's `<STATION> <n>` unit
+name instead, and every one of them is marked `matchedBy: 'name'` — weaker
+evidence than a published code, and the card says so. An ambiguous name is
+refused rather than assigned.
+
 Nobody publishes where an individual **reactor** is — OpenStreetMap has zero
 `power=generator` + `generator:source=nuclear` elements over France — so the
 layer draws the station once and lists its groups on the card.

@@ -21,6 +21,7 @@ import {
   formatRteDate,
   generationSparkline,
   groupRegistreSites,
+  adoptUnitsByStationName,
   joinGenerationToRegistry,
   latestMeasured,
   measuredHistory,
@@ -36,6 +37,7 @@ import {
   publishedStepMinutes,
   registreKwToMw,
   rteGenerationClass,
+  rteStationNameOf,
   stationNameMatch,
   rteGenerationWindow,
   rteProductionTypeLabel,
@@ -55,7 +57,7 @@ const rowByEic = (eic) => REGISTRE.results.find((row) => row.codeeicresourceobje
 
 // --- The captured rows still say what the projection reads ------------------
 
-test('the captured register rows still carry the fields the projection reads', () => {
+test('the captured payloads still carry the fields the projection reads', () => {
   assert.ok(Array.isArray(REGISTRE.results) && REGISTRE.results.length >= 16);
   for (const field of [
     'codeeicresourceobject', 'nominstallation', 'puismaxinstallee', 'postesource',
@@ -63,14 +65,18 @@ test('the captured register rows still carry the fields the projection reads', (
   ]) {
     assert.ok(field in REGISTRE.results[0], field);
   }
-  // Every EIC in the contract fixture is a real one, except the two that are
-  // deliberately not — otherwise the join test proves nothing.
-  const known = new Set(REGISTRE.results.map((row) => row.codeeicresourceobject));
-  const live = GENERATION.actual_generations_per_unit
-    .map((entry) => entry.unit.eic_code)
-    .filter(Boolean);
-  assert.equal(live.filter((eic) => known.has(eic)).length, 7);
-  assert.equal(live.filter((eic) => !known.has(eic)).length, 1);
+  // The generation fixture is a REAL capture now, so it also pins what v1.1
+  // does NOT send: no unit carries an installed capacity (trap 7).
+  const envelopes = GENERATION.actual_generations_per_unit;
+  assert.equal(envelopes.length, 8);
+  for (const envelope of envelopes) {
+    assert.ok(envelope.unit.eic_code, 'every captured unit has an EIC');
+    assert.ok(envelope.unit.name && envelope.unit.production_type);
+    assert.equal('installed_capacity' in envelope.unit, false);
+    for (const value of envelope.values) {
+      assert.ok(value.updated_date, 'every captured row carries updated_date');
+    }
+  }
 });
 
 test('the endpoints are the ones this build measured', () => {
@@ -325,7 +331,7 @@ test('the window always spans a day boundary, so 00:30 is not an empty answer', 
 test('trap 1 — zero is a reading, not a gap', () => {
   assert.equal(parseGenerationValue(0), 0);
   assert.equal(parseGenerationValue('0'), 0);
-  // The three coercions that turn absence into a running-at-zero reactor.
+  // The coercions that turn absence into a running-at-zero reactor.
   assert.equal(parseGenerationValue(null), null);
   assert.equal(parseGenerationValue(''), null);
   assert.equal(parseGenerationValue(undefined), null);
@@ -334,40 +340,52 @@ test('trap 1 — zero is a reading, not a gap', () => {
   assert.equal(parseGenerationValue(-1180), -1180);
   assert.equal(parseGenerationValue(Number.NaN), null);
 
+  // MEASURED: Gravelines 5 sat at exactly 0 MW in the capture — a reactor in
+  // outage, and a reading, not a gap.
   const { units } = projectActualGenerations(GENERATION);
-  const huchet = units.find((unit) => unit.eic === '17W100P100P0005Z');
-  assert.equal(huchet.mw, 0);
-  // The station is measured and stopped — which is NOT "no data".
-  assert.notEqual(huchet.at, null);
+  const gravelines = units.find((unit) => unit.name === 'GRAVELINES 5');
+  assert.equal(gravelines.mw, 0);
+  assert.equal(gravelines.class, 'nuclear');
+  assert.notEqual(gravelines.at, null, 'measured, which is not the same as absent');
 });
 
-test('trap 2 — the tail of the window is the future, so the last row is not the last reading', () => {
-  const { units } = projectActualGenerations(GENERATION);
-  const belleville = units.find((unit) => unit.eic === '17W100P100P0090I');
-  const raw = GENERATION.actual_generations_per_unit
-    .find((entry) => entry.unit.eic_code === '17W100P100P0090I').values;
-  assert.equal(raw.at(-1).value, null, 'the fixture must end in unpublished hours');
-  assert.equal(belleville.mw, 655);
-  assert.equal(belleville.at, Date.parse('2026-08-28T12:00:00+02:00'));
+test('trap 2 — the last row MIGHT be the future (defensive; v1.1 sends no nulls)', () => {
+  // The capture contains zero nulls across every row, so this guard never
+  // fires against v1.1. It is pinned on a hand-built series because the schema
+  // permits a null `value` and éCO2mix pads exactly this way.
+  const rows = GENERATION.actual_generations_per_unit.flatMap((entry) => entry.values);
+  assert.equal(rows.filter((row) => row.value === null).length, 0, 'v1.1 sends no nulls');
 
-  // A unit whose whole window is unpublished reports null, not zero.
-  const tricastin = units.find((unit) => unit.eic === '17W100P100P0149B');
-  assert.equal(tricastin.mw, null);
-  assert.equal(tricastin.at, null);
-  assert.deepEqual(tricastin.history, []);
+  const padded = mergeUnitValues([
+    { start_date: '2026-08-28T10:00:00+02:00', value: 900 },
+    { start_date: '2026-08-28T11:00:00+02:00', value: 655 },
+    { start_date: '2026-08-28T12:00:00+02:00', value: null },
+    { start_date: '2026-08-28T13:00:00+02:00', value: null },
+  ]);
+  assert.equal(padded.at(-1).mw, null, 'the last ELEMENT is the unpublished future');
+  assert.equal(latestMeasured(padded).mw, 655, 'the last READING is not');
 });
 
-test('trap 3 — a negative reading is pumping, and survives to the card', () => {
+test('trap 3 — a negative reading is a station drawing from the grid', () => {
   const { units, stats } = projectActualGenerations(GENERATION);
-  const grandMaison = units.find((unit) => unit.eic === '17W100P100P02756');
-  assert.equal(grandMaison.mw, -1180);
-  assert.equal(grandMaison.class, 'hydro-pumped');
-  assert.equal(stats.pumping, 1);
-  // And it drags the national total down, because it is genuinely load.
-  assert.ok(stats.totalMw < 655 + 172 + 68 + 211);
+  // MEASURED, and not what the contract-only draft assumed: the deepest
+  // negative in the whole capture is a REACTOR, not a pump. Chooz 1 is shut
+  // down and buying back its own coolant pumps and instruments.
+  const chooz = units.find((unit) => unit.name === 'CHOOZ 1');
+  assert.equal(chooz.mw, -58);
+  assert.equal(chooz.class, 'nuclear');
+  assert.equal(chooz.productionType, 'NUCLEAR');
+  assert.ok(stats.pumping >= 1, 'counted as consumption');
+  // And it drags the national total down, because it genuinely is load.
+  const positive = units.filter((unit) => unit.mw > 0).reduce((sum, u) => sum + u.mw, 0);
+  assert.ok(stats.totalMw < positive);
 });
 
-test('trap 4 — values are sorted by time, not by arrival', () => {
+test('trap 4 — values are sorted by time (defensive; v1.1 arrives sorted)', () => {
+  for (const entry of GENERATION.actual_generations_per_unit) {
+    const dates = entry.values.map((value) => value.start_date);
+    assert.deepEqual(dates, [...dates].sort(), `${entry.unit.name} arrived sorted`);
+  }
   const scrambled = mergeUnitValues([
     { start_date: '2026-08-28T11:00:00+02:00', value: 3 },
     { start_date: '2026-08-28T09:00:00+02:00', value: 1 },
@@ -375,26 +393,22 @@ test('trap 4 — values are sorted by time, not by arrival', () => {
   ]);
   assert.deepEqual(scrambled.map((value) => value.mw), [1, 2, 3]);
   assert.equal(latestMeasured(scrambled).mw, 3);
-
-  const { units } = projectActualGenerations(GENERATION);
-  const brommat = units.find((unit) => unit.eic === '17W000000012816Y');
-  // The first envelope's three hours arrive out of order in the fixture.
-  assert.deepEqual(brommat.history.slice(0, 3), [118, 141, 96]);
 });
 
-test('trap 5 — one EIC arriving in two envelopes is merged, not overwritten', () => {
-  const envelopes = GENERATION.actual_generations_per_unit
-    .filter((entry) => entry.unit.eic_code === '17W000000012816Y');
-  assert.equal(envelopes.length, 2, 'the fixture must split one unit across two envelopes');
+test('trap 5 — one EIC in two envelopes is merged (defensive; v1.1 sends one each)', () => {
+  const envelopes = GENERATION.actual_generations_per_unit;
+  assert.equal(new Set(envelopes.map((e) => e.unit.eic_code)).size, envelopes.length);
 
-  const { units, stats } = projectActualGenerations(GENERATION);
-  const brommat = units.filter((unit) => unit.eic === '17W000000012816Y');
-  assert.equal(brommat.length, 1);
-  // Three hours from the first envelope, two distinct from the second.
-  assert.equal(brommat[0].history.length, 4);
-  // Nine envelopes in, eight EIC-bearing, seven distinct units out.
-  assert.equal(GENERATION.actual_generations_per_unit.length, 9);
-  assert.equal(stats.units, 7);
+  // Each envelope carries its OWN start/end, a shape that only makes sense if a
+  // unit may be split across several — so the merge is kept.
+  const split = projectActualGenerations({
+    actual_generations_per_unit: [
+      { unit: { eic_code: 'X', production_type: 'NUCLEAR' }, values: [{ start_date: '2026-08-27T22:00:00+02:00', value: 1 }] },
+      { unit: { eic_code: 'X', production_type: 'NUCLEAR' }, values: [{ start_date: '2026-08-28T12:00:00+02:00', value: 2 }] },
+    ],
+  });
+  assert.equal(split.units.length, 1);
+  assert.deepEqual(split.units[0].history, [1, 2]);
 });
 
 test('trap 6 — a republished hour is resolved on updated_date, not on order', () => {
@@ -420,37 +434,52 @@ test('trap 6 — a republished hour is resolved on updated_date, not on order', 
   assert.equal(unstamped[0].mw, 172);
 });
 
-test('trap 7 — two installed capacities that disagree are both kept', () => {
+test('trap 7 — RTE sends no installed capacity, so the register is the denominator', () => {
   const { units } = projectActualGenerations(GENERATION);
-  const registry = buildRegistry();
-  const joined = joinGenerationToRegistry(registry, units);
+  // MEASURED: 0 of 152 units carried one in the live response, and 0 of the 8
+  // kept here do.
+  assert.equal(units.filter((unit) => unit.installedMw !== null).length, 0);
+
+  const joined = joinGenerationToRegistry(buildRegistry(), units);
   const huchet = joined.sites.find((site) => site.id === 'E.HUC');
   const coal = huchet.units.find((unit) => unit.eic === '17W100P100P0005Z');
-  // RTE says 595, the register says 600. Neither is averaged away.
-  assert.equal(coal.installedMw, 595);
+  assert.equal(coal.mw, 0, 'Émile-Huchet 6 was measured, at zero');
+  assert.equal(coal.installedMw, 600, "so the load denominator is the register's");
   assert.equal(coal.registryMw, 600);
-  // The load denominator is RTE's, because RTE's megawatts are measured on it.
-  const gas = huchet.units.find((unit) => unit.eic === '17W100P100P00105');
-  assert.equal(gas.installedMw, 433.9, 'a unit RTE said nothing about keeps the register figure');
+
+  // The both-reported path is kept for a future version that populates it.
+  const withCapacity = projectActualGenerations({
+    actual_generations_per_unit: [{
+      unit: { eic_code: 'Y', production_type: 'NUCLEAR', installed_capacity: 595 },
+      values: [{ start_date: '2026-08-28T12:00:00+02:00', value: 500 }],
+    }],
+  });
+  assert.equal(withCapacity.units[0].installedMw, 595);
 });
 
 test('trap 8 — a unit the registry cannot place is counted, never drawn, never dropped', () => {
   const { units } = projectActualGenerations(GENERATION);
   const joined = joinGenerationToRegistry(buildRegistry(), units);
-  assert.equal(joined.unplaced.length, 1);
-  assert.equal(joined.unplaced[0].eic, '17W100P100P4242Z');
-  assert.equal(joined.stats.unplacedUnits, 1);
-  assert.equal(joined.stats.unplacedMw, 211);
-  // And it is nowhere on the map.
+  // Dirinon is in neither the register's EIC list nor its station names.
+  const dirinon = joined.unplaced.find((unit) => unit.name === 'DIRINON 1');
+  assert.ok(dirinon, 'Dirinon stays unplaced');
+  assert.equal(dirinon.mw, 1);
   const drawn = joined.sites.flatMap((site) => site.units.map((unit) => unit.eic));
-  assert.ok(!drawn.includes('17W100P100P4242Z'));
+  assert.ok(!drawn.includes(dirinon.eic));
+  assert.ok(joined.stats.unplacedUnits >= 1);
 });
 
 // --- RTE: the rest of the projection ----------------------------------------
 
-test('an envelope with no eic_code is counted rather than crashing the projection', () => {
-  const { stats } = projectActualGenerations(GENERATION);
-  assert.equal(stats.unnamed, 1);
+test('an envelope with no eic_code is counted rather than crashing (defensive)', () => {
+  // Every captured envelope has one; the counter exists so a future gap is
+  // visible in the readout rather than silently shortening the fleet.
+  assert.equal(projectActualGenerations(GENERATION).stats.unnamed, 0);
+  const anonymous = projectActualGenerations({
+    actual_generations_per_unit: [{ unit: { production_type: 'FOSSIL_GAS' }, values: [] }],
+  });
+  assert.equal(anonymous.stats.unnamed, 1);
+  assert.equal(anonymous.units.length, 0);
 });
 
 test('an unrecognised production_type is repeated, not flattened', () => {
@@ -473,12 +502,18 @@ test('the register and RTE agree on the class of the same machine', () => {
     ['17W0000014455651', 'WIND_OFFSHORE'],
   ];
   for (const [eic, productionType] of pairs) {
-    assert.equal(
-      classifyRegistreRow(rowByEic(eic)),
-      classifyRteProductionType(productionType),
-      eic,
-    );
+    assert.equal(classifyRegistreRow(rowByEic(eic)), classifyRteProductionType(productionType), eic);
   }
+  // Except for the grid batteries, which v1.1 publishes as OTHER while the
+  // register knows they are batteries. The REGISTER wins in the join, so the
+  // site keeps its colour — RTE only ever supplies the number.
+  const cernay = projectActualGenerations(GENERATION).units.find((u) => u.name === 'CERNAY');
+  assert.equal(cernay.productionType, 'OTHER');
+  assert.equal(cernay.class, 'other');
+  assert.equal(classifyRegistreRow(rowByEic('17W000002385265P')), 'battery');
+  const joined = joinGenerationToRegistry(buildRegistry(), [cernay]);
+  const site = joined.sites.find((s) => s.id === 'SSLAI');
+  assert.equal(site.units.find((u) => u.eic === cernay.eic).class, 'battery');
 });
 
 test('the published step is derived from the data, and is the modal one', () => {
@@ -560,29 +595,77 @@ test('a station’s load is its own units, summed, against its own nameplate', (
     buildRegistry(),
     projectActualGenerations(GENERATION).units,
   );
-  const belleville = joined.sites.find((site) => site.id === 'BVIL7');
-  assert.equal(belleville.mw, 655);
-  assert.equal(belleville.installedMw, 1310);
-  assert.equal(belleville.load, 0.5);
-  assert.equal(belleville.reporting, 1);
+  // Émile-Huchet: the coal group measured at zero, the gas group silent. The
+  // denominator is the whole station, so a partly-reported plant understates
+  // rather than claiming anything about the half nobody published.
+  const huchet = joined.sites.find((site) => site.id === 'E.HUC');
+  assert.equal(huchet.reporting, 1);
+  assert.equal(huchet.units.length, 2);
+  assert.equal(huchet.mw, 0);
+  assert.equal(huchet.installedMw, 1033.9);
+  assert.equal(huchet.load, 0);
 
-  // Brommat: one 180 MW group measured at 172 MW, one silent. The denominator
-  // is the WHOLE station, so this reads as 42% of 406 MW rather than 96% of
-  // 180 — understating rather than claiming anything about the silent group.
-  const brommat = joined.sites.find((site) => site.id === 'BROMM');
-  assert.equal(brommat.reporting, 1);
-  assert.equal(brommat.units.length, 2);
-  assert.equal(brommat.mw, 172);
-  // 405.6, not 406: the measured group takes RTE's 180 and the silent one keeps
-  // the register's 225.6. Each unit uses the best figure for ITSELF, and the
-  // two are never reconciled into a third number nobody published.
-  assert.equal(brommat.installedMw, 405.6);
-  assert.ok(Math.abs(brommat.load - 172 / 405.6) < 1e-9);
+  // A site nobody published anything for keeps a NULL load, not a zero one.
+  const rance = joined.sites.find((site) => site.id === 'RANCE');
+  assert.equal(rance.mw, null);
+  assert.equal(rance.load, null);
+});
 
-  // Pumping survives the roll-up with its sign.
-  const grandMaison = joined.sites.find((site) => site.id === 'VAUJA');
-  assert.equal(grandMaison.mw, -1180);
-  assert.ok(grandMaison.load < 0);
+test('trap 9 — RTE publishes turbine groups the register only carries as a plant', () => {
+  // MEASURED, and the single biggest finding of the first live run: 55 of 152
+  // units — 36% of the fleet, 1 914 MW — had no register EIC, almost all hydro.
+  // The register has ONE row for Grand'Maison (EIC 17W100P100P02756, 1 690 MW);
+  // RTE publishes its twelve turbine groups under twelve different codes.
+  const { units } = projectActualGenerations(GENERATION);
+  const groups = units.filter((unit) => unit.name.startsWith('GRAND MAISON'));
+  assert.equal(groups.length, 2);
+  const registryEics = new Set(buildRegistry().units.map((unit) => unit.eic));
+  for (const group of groups) {
+    assert.equal(registryEics.has(group.eic), false, `${group.name} has no register EIC`);
+  }
+
+  const joined = joinGenerationToRegistry(buildRegistry(), units);
+  const vaujany = joined.sites.find((site) => site.id === 'VAUJA');
+  // Both groups reached the station, and their megawatts summed: 0 + 104.
+  assert.equal(joined.stats.adoptedUnits, 2);
+  assert.equal(vaujany.mw, 104);
+  assert.equal(vaujany.reporting, 2);
+  // The station's nameplate is still the register's single plant figure — the
+  // adopted groups add output, never capacity, or the iron is counted twice.
+  assert.equal(vaujany.installedMw, 1690);
+  for (const unit of vaujany.units.filter((u) => u.matchedBy === 'name')) {
+    assert.equal(unit.installedMw, null);
+  }
+  // And the weaker join is labelled as such, so a card can say so.
+  const matched = [...new Set(vaujany.units.map((unit) => unit.matchedBy))];
+  assert.ok(matched.includes('name'), 'the adopted groups say how they got here');
+  assert.ok(matched.includes(null), 'the register plant row, which RTE never reported');
+});
+
+test('the name fallback refuses an ambiguous station and never outranks an EIC', () => {
+  assert.equal(rteStationNameOf('GRAND MAISON 10'), 'GRAND MAISON');
+  assert.equal(rteStationNameOf('CHOOZ B 1'), 'CHOOZ B', 'only a trailing ordinal goes');
+  assert.equal(rteStationNameOf('CERNAY'), 'CERNAY', 'a name with no ordinal is untouched');
+  assert.equal(rteStationNameOf(null), '');
+
+  // Two register stations answer to the same name, so neither gets the unit.
+  const registry = {
+    sites: [
+      { id: 'A', name: 'Centrale hydraulique de Saint-Pierre', rawSiteName: 'ST-PIERRE', units: [] },
+      { id: 'B', name: 'Centrale hydraulique de Saint-Pierre', rawSiteName: 'SAINT-PIERRE', units: [] },
+    ],
+    units: [],
+  };
+  const adopted = adoptUnitsByStationName(registry, [{ eic: 'Z', name: 'SAINT-PIERRE', mw: 12 }]);
+  assert.equal(adopted.size, 0, 'ambiguous stays unplaced rather than guessing');
+
+  // And a unit the EIC key already placed is never offered to the fallback.
+  const byEic = joinGenerationToRegistry(buildRegistry(), [
+    { eic: '17W100P100P0005Z', name: 'EMILE HUCHET 6', mw: 42, class: 'fossil-coal' },
+  ]);
+  assert.equal(byEic.stats.adoptedUnits, 0);
+  const huchet = byEic.sites.find((site) => site.id === 'E.HUC');
+  assert.equal(huchet.units.find((u) => u.eic === '17W100P100P0005Z').matchedBy, 'eic');
 });
 
 test('the join is stable under a registry with no sites and under junk', () => {

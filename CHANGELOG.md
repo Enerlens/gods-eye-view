@@ -7,6 +7,34 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Groupes de prod (FR) now draws the hydro fleet, and says what a negative
+  reading really is.** The layer shipped in #14 against a hand-written fixture,
+  because no RTE account was available to build it with. Run against the live
+  resource for the first time, three of its claims turned out to be wrong and
+  one gap turned out to be large.
+  - **36% of the fleet was invisible.** RTE and the ODRÉ register cut the fleet
+    at different granularities: the register carries one row per hydro PLANT,
+    RTE publishes its turbine GROUPS under entirely different EIC codes. 55 of
+    152 units — 1 914 MW — had no register code, so Grand'Maison, La Bâthie,
+    Montézic, Revin, Super-Bissorte and thirteen more read as "RTE published
+    nothing" while RTE was publishing them by the dozen. Those units now reach
+    their station through a name match, which is weaker evidence than a
+    published code and is labelled as such on the card. 148 of 152 units place;
+    the four that do not are still counted and reported. Live stations went from
+    43 to 60 of 108.
+  - **A negative reading is usually a stopped unit, not a pump.** 24 units read
+    negative and **fourteen were reactors** — Chooz 1 at −58 MW, Paluel 3 at
+    −49. A shut-down reactor still runs its coolant pumps and instruments and
+    buys that power off the grid: a stopped 1 500 MW machine is a ~50 MW load.
+    Not one of the 28 pumped-storage units was pumping at that hour. The card
+    and the legend say so now.
+  - **RTE sends no installed capacity** (0 of 152 units), so the register's
+    figure is the denominator behind every load percentage — and **no nulls**
+    (0 of 6 992 rows), so the future-padding guard is defensive rather than
+    observed. The module now marks each of its nine traps as MEASURED or
+    DEFENSIVE instead of implying all were seen.
+  - The test fixture is a **real capture** now, not a contract sketch.
+
 - Added the **Groupes de prod (FR)** layer — France's power stations, unit by
   unit, at the output RTE last published for each one. 171 generating units of
   100 MW or more across 108 stations: 57 reactors for 63.0 GW, 56 hydro

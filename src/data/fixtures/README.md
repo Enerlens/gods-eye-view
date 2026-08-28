@@ -101,21 +101,22 @@
   the site (`BROMMAT-7`), an accented `FERME ÉOLIENNE`, and a `STOCKAGE N0 01`
   that hides its ordinal inside the introducer. Licence Ouverte 2.0, ODRÉ.
 
-- `rte-actual-generation-sample.json` — **NOT a capture.** RTE's
-  `actual_generations_per_unit` needs an account, and this build had no
-  credential to record a live response with, so this file is hand-built to the
-  resource's published contract (`{actual_generations_per_unit: [{unit, values}]}`
-  with `eic_code` / `name` / `production_type` / `installed_capacity` and
-  `start_date` / `end_date` / `value` / `updated_date` per step). It is marked
-  as such in its own `_note` field. What it is good for is the projection: every
-  EIC code in it is a **real** one taken from the register capture above, so the
-  join runs end to end, and it carries each of the eight traps
-  `rteGenerationFeed.js` documents — a reactor reading exactly `0` (outage,
-  which a truthiness guard erases), a tail of `null` future hours after the last
-  measured one, a pumped-storage unit reading **−1 180 MW** while it fills its
-  lake, one unit's values out of chronological order, one EIC arriving in **two
-  envelopes**, one hour republished twice with a newer `updated_date`, an
-  `installed_capacity` that disagrees with the register's, a unit the register
-  has never heard of, an unrecognised `production_type`, and an envelope with
-  no `eic_code` at all. Replace it with a real capture the first time anyone
-  runs this layer with a key.
+- `rte-actual-generation-sample.json` — a **real capture** of RTE's
+  `actual_generations_per_unit` v1.1, taken 2026-08-28 through a free account,
+  trimmed to 8 of the 152 published units and to the last six published hours of
+  each. Every field and every value is verbatim. It replaced a fixture written
+  by hand against the contract, and the swap corrected the record: the live
+  resource sends **no nulls at all** (0 of 6 992 rows — it simply stops at the
+  last published hour, all units in lockstep) and **no `installed_capacity`**
+  (0 of 152), so two documented "traps" were reclassified as defensive guards.
+  The eight units kept are each one thing the projection exists for: **CHOOZ 1
+  at −58 MW** — a shut-down REACTOR buying back its own coolant pumps, which is
+  what the negative readings actually are and not the pumped storage the
+  hand-written fixture assumed; **GRAVELINES 5 at exactly 0 MW**, an outage and
+  the reading `value || 0` erases; **PALUEL 4** at full output; **GRAND MAISON
+  10 and 11**, two of the twelve turbine groups RTE publishes inside a plant the
+  register carries as one row with a different EIC entirely (trap 9, which cost
+  36% of the fleet before it was found); **EMILE HUCHET 6**, joined by EIC like
+  every nuclear and thermal unit; **CERNAY**, a grid battery published as
+  `production_type: OTHER`; and **DIRINON 1**, a unit the register has never
+  heard of by code or by name. RTE, free account required.
