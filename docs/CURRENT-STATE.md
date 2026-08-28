@@ -2656,6 +2656,13 @@ Replay transport uses one Play/Pause toggle plus Cancel. During ascent only the 
 - `tools/pano-pinhole.mjs`: equirectangular-to-pinhole reprojection.
 - `tools/sat-ortho.mjs`: Map Tiles ortho stitch and centered crop with georef corners.
 - `scripts/track-regression.mjs`: headless real-app regression harness for aircraft tracking/model/detection invariants (`npm run test:track`).
+- `scripts/lib/qa-first-run.mjs`: the QA fleet's first-run suppression. Every
+  `qa-*.mjs` opens its page with `newQaPage(browser)`, which writes the app's own
+  per-session dismissal before any page script runs, so the mission card never
+  paints over a harness's clicks, pixels, or focus. `npm test` audits the fleet
+  for it (`src/qaFirstRunSuppression.test.mjs`) — a new harness that forgets goes
+  red with the fix in the message. `qa-firstrun.mjs` is the single exemption:
+  the card is what it tests. By hand, `?welcome=0` on the app URL does the same.
 - `scripts/qa-map-source-tray.mjs`: browser proof for the four-source Map Source
   tray — presentation, keyboard disclosure, responsive bounds, unpinned
   auto-dismiss, ACQUIRING status, and retired/unknown stack-id restore

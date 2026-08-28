@@ -38,6 +38,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import {
   POWER_GRID_TIERS,
   POWER_GRID_TOWER_MAX_BOX_DEG,
@@ -277,7 +278,7 @@ async function main() {
   });
 
   try {
-    const page = await browser.newPage();
+    const page = await newQaPage(browser);
     const consoleErrors = [];
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text());

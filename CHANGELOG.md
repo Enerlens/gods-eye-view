@@ -315,6 +315,16 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   records and third-party-license boundaries in `docs/media/README.md`.
 - Added regression coverage for aircraft identity narration and optional-key
   loading feedback.
+- Added `scripts/lib/qa-first-run.mjs`: the QA fleet's shared handling of the
+  first-run mission card. Every headless harness is a fresh browser session, so
+  the card — which returns every fresh session by design — used to land on top
+  of each new dataset's QA run, swallowing the clicks and pixels the harness was
+  measuring, and each harness solved it again, differently. All 40 harnesses
+  that drive the app now open their page with `newQaPage(browser)`, and
+  `npm test` audits the fleet for it (`src/qaFirstRunSuppression.test.mjs`) so a
+  new harness cannot forget. `scripts/qa-firstrun.mjs` is the one exemption —
+  the card is what it tests. For QA by hand, `?welcome=0` on the app URL does
+  the same thing, and `dev-fresh.sh` now prints that URL on startup.
 
 ### Changed
 

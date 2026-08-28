@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const CHROME_EXECUTABLE = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const DEFAULT_URL = 'http://localhost:4176';
@@ -759,7 +760,7 @@ async function captureShot(page, shotsDir, sceneId, suffix) {
 }
 
 async function runScene(browser, scene, shotsDir) {
-  const page = await browser.newPage();
+  const page = await newQaPage(browser);
   await page.setViewport({ ...VIEWPORT, deviceScaleFactor: DPR });
   await installStaticDist(page, DIST_DIR);
   await installDeterministicDevEndpoints(page);
@@ -859,7 +860,7 @@ async function main() {
 
   const run = { generatedAt: new Date().toISOString(), context: null, scenes: [] };
   try {
-    const contextPage = await browser.newPage();
+    const contextPage = await newQaPage(browser);
     await contextPage.setViewport({ ...VIEWPORT, deviceScaleFactor: DPR });
     await installStaticDist(contextPage, DIST_DIR);
     await contextPage.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 60_000 });
