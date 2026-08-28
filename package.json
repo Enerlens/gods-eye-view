@@ -45,6 +45,8 @@
     "qa:shared-mobility-fr": "node scripts/qa-shared-mobility-fr.mjs",
     "qa:gas-fr": "node scripts/qa-gas-fr.mjs",
     "qa:power-grid": "node scripts/qa-power-grid.mjs",
+    "qa:power-grid-coverage": "node scripts/grid-audit/audit-substations.mjs",
+    "qa:power-grid-coverage:lines": "node scripts/grid-audit/audit-lines.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
     "shared-mobility:index": "node scripts/build-gbfs-fr-index.mjs"
   },
