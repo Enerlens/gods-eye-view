@@ -23,6 +23,7 @@
  *  17. transport.data.gouv.fr — French shared mobility (GBFS: bikes, scooters, cars)
  *  18. ODRÉ éCO2mix — French live electricity mix, national + 12 regions
  *  19. ODRÉ gas system — NaTran/Teréga transmission traces, gas power stations, biomethane injection
+ *  20. Power grid — viewport-bounded OpenStreetMap high-voltage lines, substations and pylons
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -58,6 +59,15 @@ import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
+import {
+  powerGridBoxKey,
+  powerGridIncludesTowers,
+  powerGridQuery,
+  projectPowerGrid,
+  snapPowerGridBox,
+  validPowerGridBox,
+  POWER_GRID_MAX_BOX_DEG,
+} from './src/data/powerGridFeed.js';
 import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints } from './src/data/viewportBox.js';
 import {
@@ -9529,6 +9539,289 @@ function militaryInstallationsProxy() {
 }
 
 // ---------------------------------------------------------------------------
+// Power-grid context proxy — viewport-bounded OpenStreetMap transmission network
+// ---------------------------------------------------------------------------
+// Like the mapped-installation and mapped-camera proxies, this deliberately does
+// not expose arbitrary Overpass QL to the browser: it answers one allow-listed
+// power query inside a box no wider than POWER_GRID_MAX_BOX_DEG, snapped OUTWARD
+// onto a shared grid so neighbouring viewports share one cached answer.
+//
+// It does NOT go through `fetchOverpassPayload`, and that is deliberate: that
+// helper runs `simplifyOverpassPayloadBody` on every success, which decimates
+// geometry past 1.5 MB at a ~44 m tolerance. A dense viewport here is 3.8 MB
+// (measured Île-de-France, 0.6°), so the shared path would silently move
+// transmission lines off their pylons. This proxy publishes the mapped vertices
+// and rounds them once, to five decimals, in `projectPowerGrid`.
+/** Memory-cache TTL for one snapped viewport box. */
+const POWER_GRID_CACHE_MS = 10 * 60_000;
+/** In-memory cache ceiling (boxes), evicted oldest-first. */
+const POWER_GRID_MAX_CACHE = 60;
+/** Disk-cache directory for projected power-grid boxes. */
+const POWER_GRID_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'power-grid');
+/**
+ * Disk TTL (7 days). A transmission line is built over a decade and mapped once;
+ * a week-old answer is the same answer, and the in-memory tier dies with the dev
+ * server — the same reasoning the mapped-installation proxy applies.
+ */
+const POWER_GRID_DISK_TTL_MS = 7 * 86_400_000;
+/** Bump when the projected document shape changes so old entries are ignored. */
+const POWER_GRID_CACHE_VERSION = 'v1';
+/**
+ * Read cap for one box probe. Measured worst case is 3.8 MB (Île-de-France at
+ * 0.6°, 2,200 strokes and 48,439 vertices); the cap leaves room for a denser
+ * box elsewhere without letting a runaway answer into memory.
+ */
+const POWER_GRID_MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
+/**
+ * Wall-clock budget for one box refresh, shared by all mirror attempts. Sized
+ * against measured Overpass latency for this query (4 s rural, 11-21 s in
+ * Île-de-France, with 429/504 common enough on the primary mirror that the
+ * fallbacks must still get a turn).
+ */
+const POWER_GRID_REFRESH_BUDGET_MS = 45_000;
+/**
+ * Floor on one mirror attempt's share of that budget — the same fairness rule
+ * the mapped-camera proxy learned twice: a mirror that stalls must not eat the
+ * whole window, and a mirror that is genuinely working must not be cut off at
+ * an even split. Sized above the measured latency of this query (2.2 s warm on
+ * a tight box, 7.2 s on a half-degree one, 11-21 s on the densest boxes
+ * Overpass will answer at all), so a mirror that is working is never aborted to
+ * preserve a turn for one that is not — while still leaving room for three
+ * mirrors inside the budget when the first ones fail fast, which is exactly
+ * what the field run of 2026-08-27 needed (504, 502, 504, then a timeout).
+ */
+const POWER_GRID_MIN_ATTEMPT_MS = 18_000;
+const _powerGridCache = new Map();
+const _powerGridInFlight = new Map();
+const _powerGridRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 40, globalMax: 120 });
+
+/** Cache key -> stable disk-cache file path. */
+function powerGridDiskPath(cacheKey) {
+  return path.join(POWER_GRID_DISK_DIR, `${createHash('sha1').update(cacheKey).digest('hex')}.json`);
+}
+
+/**
+ * Read a disk-cached box at ANY age. Freshness is the caller's decision: an
+ * expired box is still the right answer while Overpass is down (serve-stale
+ * beats an empty viewport).
+ * @param {string} cacheKey
+ * @returns {Promise<?{cachedAt:number, payload:object}>}
+ */
+async function readPowerGridDisk(cacheKey) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(powerGridDiskPath(cacheKey), 'utf8'));
+    if (!Number.isFinite(entry?.cachedAt) || !Array.isArray(entry?.payload?.strokes)) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist one box ATOMICALLY (temp sibling + rename), so a crash mid-write
+ * leaves the previous entry — and serve-stale — intact.
+ * @param {string} cacheKey
+ * @param {{cachedAt:number, payload:object}} entry
+ * @returns {Promise<boolean>}
+ */
+async function writePowerGridDisk(cacheKey, entry) {
+  const target = powerGridDiskPath(cacheKey);
+  const temp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    await fsp.mkdir(POWER_GRID_DISK_DIR, { recursive: true });
+    await fsp.writeFile(temp, JSON.stringify(entry));
+    await fsp.rename(temp, target);
+    return true;
+  } catch (error) {
+    console.warn('[Power Grid] disk cache write failed:', error?.message || error);
+    await fsp.rm(temp, { force: true }).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * One bounded Overpass probe: try mirrors in order until one answers or the
+ * deadline passes, ABORTING each attempt rather than letting a slow or wedged
+ * mirror hold the request open. Rate-limited, runtime-error, and non-JSON
+ * responses fall through to the next mirror; every per-mirror outcome is
+ * aggregated into the thrown error so an outage is readable.
+ *
+ * @param {string} ql - Overpass QL for one box.
+ * @param {number} deadline - Epoch-ms after which no further attempt starts.
+ * @returns {Promise<Array<object>>} Raw Overpass elements.
+ */
+async function fetchPowerGridElements(ql, deadline) {
+  const outcomes = [];
+  for (let index = 0; index < OVERPASS_UPSTREAMS.length; index++) {
+    const endpoint = OVERPASS_UPSTREAMS[index];
+    const host = new URL(endpoint).host;
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    const attemptMs = Math.max(
+      POWER_GRID_MIN_ATTEMPT_MS,
+      Math.floor(remainingMs / (OVERPASS_UPSTREAMS.length - index)),
+    );
+    try {
+      const upstream = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'gods-eye-view-power-grid-proxy/1.0',
+        },
+        body: `data=${encodeURIComponent(ql)}`,
+        signal: AbortSignal.timeout(Math.min(remainingMs, attemptMs)),
+      });
+      const body = await readResponseTextCapped(upstream, POWER_GRID_MAX_RESPONSE_BYTES);
+      const rateLimited = overpassLooksRateLimited(body);
+      if (upstream.status >= 400 || rateLimited || overpassLooksRuntimeError(body)) {
+        outcomes.push(`${host}: ${rateLimited ? 'rate limited' : `HTTP ${upstream.status}`}`);
+        continue;
+      }
+      const elements = JSON.parse(body)?.elements;
+      if (!Array.isArray(elements)) {
+        outcomes.push(`${host}: no element list`);
+        continue;
+      }
+      return elements;
+    } catch (error) {
+      const reason = /timeout|abort/i.test(String(error?.message))
+        ? `timed out after ${attemptMs} ms`
+        : (error?.message || 'failed');
+      outcomes.push(`${host}: ${reason}`);
+    }
+  }
+  const skipped = OVERPASS_UPSTREAMS.length - outcomes.length;
+  throw new Error(
+    `no Overpass mirror answered inside the request budget — ${outcomes.join('; ')}`
+    + (skipped > 0 ? `; ${skipped} not tried (budget spent)` : ''),
+  );
+}
+
+function trimPowerGridCache() {
+  while (_powerGridCache.size > POWER_GRID_MAX_CACHE) {
+    const oldest = _powerGridCache.keys().next().value;
+    if (oldest === undefined) break;
+    _powerGridCache.delete(oldest);
+  }
+}
+
+/**
+ * Vite plugin: viewport-bounded OpenStreetMap power-grid proxy.
+ *
+ *   GET /api/power-grid?south&west&north&east — high-voltage lines, cables,
+ *   substations and (in tight views) pylons inside that box, projected by
+ *   `projectPowerGrid`.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function powerGridProxy() {
+  async function refresh(box, key) {
+    const towers = powerGridIncludesTowers(box);
+    const ql = powerGridQuery(box, { towers });
+    const elements = await fetchPowerGridElements(
+      ql,
+      Date.now() + POWER_GRID_REFRESH_BUDGET_MS,
+    );
+    const payload = {
+      ...projectPowerGrid({ elements }, { towersRequested: towers }),
+      box,
+      retrievedAt: new Date().toISOString(),
+      status: 'ready',
+      source: 'OpenStreetMap contributors (ODbL 1.0), via Overpass',
+    };
+    const entry = { cachedAt: Date.now(), payload };
+    _powerGridCache.set(key, entry);
+    trimPowerGridCache();
+    writePowerGridDisk(key, entry);
+    return payload;
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/power-grid', async (req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        return;
+      }
+      if (!_powerGridRateLimiter(clientKey(req))) {
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '5' });
+        res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+        return;
+      }
+      const url = new URL(req.url, 'http://localhost');
+      const requested = validPowerGridBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      });
+      if (!requested) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: `A non-dateline bbox no larger than ${POWER_GRID_MAX_BOX_DEG} degrees is required`,
+        }));
+        return;
+      }
+      // Query the SNAPPED box, not the raw viewport: neighbouring views share
+      // one cache entry, and an outward snap always covers what was asked for.
+      // Whether pylons are included is decided from the SNAPPED box too, so the
+      // key stays a pure function of the box.
+      const box = snapPowerGridBox(requested);
+      const key = `${POWER_GRID_CACHE_VERSION}|${powerGridBoxKey(box)}`;
+      const now = Date.now();
+      const cached = _powerGridCache.get(key);
+      if (cached && now - cached.cachedAt <= POWER_GRID_CACHE_MS) {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120', 'X-Power-Grid': 'HIT' });
+        res.end(JSON.stringify({ ...cached.payload, status: 'cached' }));
+        return;
+      }
+      if (!_powerGridInFlight.has(key)) {
+        const disk = await readPowerGridDisk(key);
+        if (disk && now - disk.cachedAt <= POWER_GRID_DISK_TTL_MS) {
+          _powerGridCache.set(key, disk);
+          trimPowerGridCache();
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120', 'X-Power-Grid': 'DISK' });
+          res.end(JSON.stringify({ ...disk.payload, status: 'cached' }));
+          return;
+        }
+      }
+      const request = coalesceProxyRequest(_powerGridInFlight, key, () => refresh(box, key));
+      try {
+        const payload = await request.promise;
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=120',
+          'X-Power-Grid': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+        res.end(JSON.stringify(payload));
+      } catch (error) {
+        // Overpass is down: last-good geometry at ANY age beats an empty
+        // viewport (the same serve-stale rule the Overpass proxy applies).
+        const stale = await readPowerGridDisk(key);
+        if (stale) {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Power-Grid': 'STALE-DISK' });
+          res.end(JSON.stringify({ ...stale.payload, status: 'stale' }));
+          return;
+        }
+        console.warn('[Power Grid] box unavailable:', error?.message || error);
+        res.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: 'Mapped power-grid geometry is temporarily unavailable' }));
+      }
+    });
+  }
+
+  return {
+    name: 'power-grid-proxy',
+    configureServer(server) {
+      install(server.middlewares);
+    },
+    configurePreviewServer(server) {
+      install(server.middlewares);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Regional cockpit briefing proxy
 // ---------------------------------------------------------------------------
 const REGIONAL_BRIEF_CACHE_MS = 5 * 60_000;
@@ -9989,6 +10282,7 @@ export default defineConfig(({ mode }) => {
       adsbdbProxy(),
       overpassProxy(),
       militaryInstallationsProxy(),
+      powerGridProxy(),
       osmCamerasProxy(),
       regionalBriefProxy(),
       weatherEffectsProxy(),

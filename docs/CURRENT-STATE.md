@@ -946,7 +946,7 @@ This is the current runtime/source-of-truth snapshot for the project.
 >   still releases tracking in place. The 200 px feel needs close-range field
 >   verification; fleet model sizing remains unchanged.
 > - **Deterministic sprite stacking:** contact collections reassert the stable
->   bottom-to-top order CCTV, FIRMS, Réseau gaz, bikeshare, Shared Mobility FR, Transit FR, AIS,
+>   bottom-to-top order CCTV, FIRMS, Réseau gaz, Power Grid, bikeshare, Shared Mobility FR, Transit FR, AIS,
 >   military, then civilian
 >   — Shared Mobility FR occupies its slot with TWO collections (station dots
 >   below, vehicle glyphs above), registered in that order, so a parked scooter
@@ -1611,6 +1611,7 @@ its criteria cannot be silently ignored.
 | Shared Mobility FR 🛴 | transport.data.gouv.fr GBFS (135 distinct systems after de-duplication; observed footprints in `config/gbfs_fr_systems.json`; per-kind silhouettes in `src/data/sharedMobilityIcons.js`, per-operator hues in `src/data/mobilityOperators.js`) | `src/data/sharedMobilityFrance.js` | `/api/shared-mobility-fr/objects`, `/api/shared-mobility-fr/systems` | 60s, viewport-driven below ~80 km |
 | Mix élec 🇫🇷 ⚡ | éCO2mix national + 12 régions (RTE, via ODRÉ) — région balances painted on département geometry, five commercial border flows as arcs | `src/data/franceEnergy.js` | `/api/energy-fr` | 3 min (proxy TTL 4 min; product steps every 15 min) |
 | Réseau gaz 🇫🇷 ⬡ | NaTran + Teréga transmission traces (36,106 km, clamped ground polylines), 14 gas-fired power stations, 850 renewable-methane injection points (ODRÉ) | `src/data/gasFrance.js`, `src/data/gasFranceFeed.js` | `/api/gas-fr/network`, `/api/gas-fr/sites`, `/api/gas-fr/status` | 30 min (proxy TTL 7 d for the traces, 12 h for the registers; both are quasi-static) |
+| Power Grid ⌁ | OpenStreetMap `power=line`/`cable`/`substation`/`tower` at ≥ 50 kV, per viewport (batched `GroundPolylinePrimitive` strokes by voltage band, dashed underground) | `src/data/powerGrid.js`, `src/data/powerGridFeed.js` | `/api/power-grid` | viewport-driven (500 ms debounce, ≤ 0.8° box, pylons ≤ 0.25°) + 20 min idle; proxy TTL 10 min memory / 7 d disk; while failing, auto-retry 20 s → 240 s backoff |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
 | Dams ▰ | OpenInfraMap/OSM extract (bundled) | `src/data/localLayers.js` | — | static |
 | Submarine Cables ◠ | TeleGeography public map (bundled) | `src/data/telegeographySubmarineCables.js` | — | static |

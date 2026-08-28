@@ -296,6 +296,12 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'military', token: 'm', disposition: 'enabled+mirrored-options', optionOwner: 'flights' }),
   Object.freeze({ id: 'military-awareness', token: 'g', disposition: 'enabled-only' }),
   Object.freeze({ id: 'military-installations', token: 'i', disposition: 'enabled-only' }),
+  // `l` is the last free letter: every letter of "power"/"grid" is taken
+  // (p by transit-fr, g by military-awareness, r by radio, i by
+  // military-installations, d by datacenters), and `z` is the canonical
+  // UNKNOWN token two existing tests assert on — claiming it would turn
+  // "reject an unknown link" into "enable the power grid".
+  Object.freeze({ id: 'power-grid', token: 'l', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
   Object.freeze({ id: 'satellites', token: 's', disposition: 'enabled+options', optionOwner: 'satellites' }),
