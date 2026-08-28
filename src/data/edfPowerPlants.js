@@ -67,6 +67,19 @@ import {
  *   nothing there and says why — the same "absence is not a colour" rule the
  *   Vigilance and Mix élec layers follow, for a different reason.
  *
+ * • **Five of these sites are also drawn by the Réseau gaz layer, and both are
+ *   right.** That layer draws ODRÉ's register of the 14 centralised gas-fired
+ *   stations, whoever operates them; this one draws EDF's own fossil-fired
+ *   file, whatever it burns. Measured 2026-08-27, the overlap is exactly the
+ *   five EDF gas sites — Martigues (0.09 km apart), Bouchain (0.55), Blénod
+ *   (0.12), Montereau (0.60) and Gennevilliers (0.15) — and the two publishers
+ *   do not fully agree on their capacity: 585 against 575 MW at Bouchain, 427
+ *   against 430 at Blénod, 203 against 210 at Gennevilliers. Nothing is
+ *   de-duplicated, because neither set contains the other (ODRÉ carries Engie,
+ *   TotalEnergies and Uniper plants this file cannot claim; this file carries
+ *   the coal and fioul units a gas register does not) and because quietly
+ *   dropping one publisher's figure would hide that they disagree.
+ *
  * • **A dam is not a power station.** The bundled Dams layer draws OSM dam
  *   structures; measured, only 3 of these 51 hydro plants sit within 3 km of
  *   one. Nothing is de-duplicated between them, because a barrage and the

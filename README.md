@@ -168,7 +168,7 @@ Twenty-eight tools, four jobs — the commands below come straight from the prod
 
 ## 🛰️ What's on the Globe
 
-Twenty-one live layers. **Eighteen of them need nothing at all** — no key, no account, no signup. (🟢 nothing · 🟡 free key · 🔴 metered.)
+Twenty-two live layers. **Nineteen of them need nothing at all** — no key, no account, no signup. (🟢 nothing · 🟡 free key · 🔴 metered.)
 
 | Layer | What you get | Source | Auth |
 |-------|--------------|--------|------|
@@ -191,7 +191,8 @@ Twenty-one live layers. **Eighteen of them need nothing at all** — no key, no 
 | ◉ **Hub'Eau Gauges** 🇫🇷 | The live river-sensor mesh under Vigicrues — up to ~4,000 gauging stations, sized by discharge, with the raw number on the label | Hub'Eau / Eaufrance | 🟢 |
 | ⚠ **Vigilance MF** 🇫🇷 | The 4-colour départemental weather warning every French forecast leads with — 9 phenomena, only the raised départements painted | Météo-France | 🟢 (🟡 optional key swaps the mirror for the contracted API) |
 | ⚡ **Mix élec** 🇫🇷 | Where French electricity actually comes from, right now: the 12 métropolitaines painted by whether they *power* France or *draw* on it — Auvergne-Rhône-Alpes and Normandie exporting hard, Île-de-France importing almost its whole load — plus the five border flows as arcs pointing the way the power travels. Updated every 15 min | éCO2mix — RTE, via ODRÉ | 🟢 |
-| ◈ **Centrales EDF** 🇫🇷 | Where that electricity is physically made: EDF's own 79 generating sites — 18 nuclear (61 370 MW), 51 hydraulic (13 779 MW) and 10 fossil-fired (4 945 MW) — each a disc whose **area** is its installed capacity, labelled with what it actually is: `GRAVELINES · 5 460 MW · 6 × REP 900`, `GRAND-MAISON · 1 714 MW · Pompage mixte`. EDF's fleet rather than France's, and dated per file rather than pretending to one snapshot | EDF Open Data | 🟢 |
+| ⬡ **Réseau gaz** 🇫🇷 | The French gas system as three things at once: **36,106 km** of high-pressure transmission trace clamped to the ground — NaTran (ex-GRTgaz) in violet, Teréga in orchid, never merged — plus the **850 renewable-methane injection points** feeding it and the **14 gas-fired power stations** burning out of it, into the `gaz` filière of the Mix élec layer above. Both traces are the operators' own, simplified to about 250 m, and are drawn exactly as published | NaTran / Teréga / ODRÉ | 🟢 |
+| ◈ **Centrales EDF** 🇫🇷 | Where French electricity is physically made: EDF's own 79 generating sites — 18 nuclear (61 370 MW), 51 hydraulic (13 779 MW) and 10 fossil-fired (4 945 MW) — each a disc whose **area** is its installed capacity, labelled with what it actually is: `GRAVELINES · 5 460 MW · 6 × REP 900`, `GRAND-MAISON · 1 714 MW · Pompage mixte`. EDF's fleet rather than France's, and dated per file rather than pretending to one snapshot | EDF Open Data | 🟢 |
 | 🎖️ **Mapped Installations** | Viewport-bounded military-site context from community mapping — incomplete by nature, and labeled that way | OpenStreetMap | 🟢 |
 
 ![A reconstructed Falcon 9 ascent climbing and curving into its projected orbit](docs/media/08-falcon9-replay.gif)

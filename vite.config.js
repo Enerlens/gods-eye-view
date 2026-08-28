@@ -22,6 +22,7 @@
  *  16. transport.data.gouv.fr — French GTFS-RT live vehicle positions (PAN)
  *  17. transport.data.gouv.fr — French shared mobility (GBFS: bikes, scooters, cars)
  *  18. ODRÉ éCO2mix — French live electricity mix, national + 12 regions
+ *  19. ODRÉ gas system — NaTran/Teréga transmission traces, gas power stations, biomethane injection
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -56,6 +57,7 @@ import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
 import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
+import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
 import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints } from './src/data/viewportBox.js';
@@ -2952,6 +2954,291 @@ function eco2mixProxy() {
     configurePreviewServer(server) { install(server.middlewares); },
   };
 }
+
+/**
+ * ODRÉ French gas-system proxy — keyless, Licence Ouverte 2.0.
+ *
+ * Four datasets on the same Opendatasoft instance as éCO2mix, fetched through
+ * the `exports/json` endpoint (the whole file, not a paged query) because all
+ * four are small national inventories that only change a few times a year:
+ *
+ *   `trace-du-reseau-grt-250`   NaTran (ex-GRTgaz) trace   11 615 rows, 4.93 MB
+ *   `terega-trace-du-reseau`    Teréga trace                1 298 rows, 0.55 MB
+ *   `prod-elec-gaz-naturel-fr`  gas-fired power stations       98 rows, 29 KB
+ *   `points-dinjection-de-biomethane-en-france`
+ *                               methane injection points      854 rows, 684 KB
+ *
+ * MEASURED 2026-08-27, cold: 200 in 1.35 s / 0.34 s / 0.23 s / 0.31 s.
+ *
+ * WHY A PROXY, when Opendatasoft sends CORS headers and a direct browser fetch
+ * works: the raw four are 6.2 MB and the globe needs 1.26 MB of it, the
+ * anonymous ODRÉ quota is per-IP so every open tab would bill its own copy of
+ * that, and the projection that makes those two numbers differ — dropping
+ * Teréga's meaningless third ordinate, chaining published segments that share
+ * an endpoint, and collapsing seven annual editions of the same 14 power
+ * stations down to one — is exactly the work that should happen once, on a
+ * server, under test (`src/data/gasFranceFeed.js`).
+ *
+ * The split is along the real seam, the same one the Vigicrues proxy uses: a
+ * ~930 KB geometry document that is fetched ONCE per session and a ~330 KB
+ * register document that is polled. The traces are republished about once a
+ * year, so their cache TTL is a week; the registers move monthly, so theirs is
+ * twelve hours.
+ *
+ * Routes:
+ *   GET /api/gas-fr/network → {fetchedAt, stale, ttlMs, source, operators, groups, strokes, stats}
+ *   GET /api/gas-fr/sites   → {fetchedAt, stale, ttlMs, source, plants, injections, stats}
+ *   GET /api/gas-fr/status  → {source, lastFetch, stale, ttlMs, strokes, plants, injections}
+ *
+ * @returns {import('vite').Plugin}
+ */
+function gasFranceProxy() {
+  const BASE = 'https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets';
+  const exportUrl = (dataset) => `${BASE}/${dataset}/exports/json?limit=-1`;
+  // The traces carry a "MAJ 2024" / "MAJ 2023" year in their own titles; a week
+  // is already far more often than they change.
+  const NETWORK_TTL_MS = 7 * 24 * 3600_000;
+  // The injection register gains sites monthly and the power-station file gains
+  // one edition a year.
+  const SITES_TTL_MS = 12 * 3600_000;
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'gas-fr');
+  const NETWORK_CACHE_PATH = path.join(CACHE_DIR, 'network.json');
+  const SITES_CACHE_PATH = path.join(CACHE_DIR, 'sites.json');
+  const SOURCE = 'ODRÉ (odre.opendatasoft.com)';
+  // 4.93 MB over an anonymous connection: generous, and still bounded.
+  const UPSTREAM_TIMEOUT_MS = 60_000;
+
+  /** @type {{network: ?object, sites: ?object}} */
+  const mem = { network: null, sites: null };
+  const diskChecked = { network: false, sites: false };
+  /** @type {{network: ?Promise<?object>, sites: ?Promise<?object>}} */
+  const inflight = { network: null, sites: null };
+
+  async function fetchRows(dataset) {
+    const response = await fetch(exportUrl(dataset), {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`${dataset} HTTP ${response.status}`);
+    const payload = await response.json();
+    const rows = Array.isArray(payload) ? payload : payload?.results;
+    if (!Array.isArray(rows)) throw new Error(`${dataset} returned no rows`);
+    return rows;
+  }
+
+  /**
+   * Refresh the two traces. Settled, not all-or-nothing: Teréga is 4 686 km of
+   * a 36 106 km system, and losing it must not blank NaTran.
+   * @param {?object} previous Last good document, merged under a partial refresh.
+   */
+  async function refreshNetwork(previous) {
+    const [natran, terega] = await Promise.allSettled([
+      fetchRows('trace-du-reseau-grt-250'),
+      fetchRows('terega-trace-du-reseau'),
+    ]);
+    for (const [label, settled] of [['natran', natran], ['terega', terega]]) {
+      if (settled.status === 'rejected') {
+        console.warn(`[gas-fr-proxy] ${label} trace failed (${settled.reason?.message || settled.reason})`);
+      }
+    }
+    if (natran.status === 'rejected' && terega.status === 'rejected') {
+      throw new Error('both gas transmission traces are unavailable');
+    }
+    const projected = projectGasNetwork({
+      natran: natran.status === 'fulfilled' ? natran.value : [],
+      terega: terega.status === 'fulfilled' ? terega.value : [],
+    }, SOURCE);
+    // A half-failed refresh keeps the last good WHOLE rather than shipping a
+    // half-drawn network that looks like an operator went away — re-stamped,
+    // so one operator being unreachable does not turn every later request into
+    // another 4.93 MB attempt. These traces are republished about once a year;
+    // last week's whole beats this second's half.
+    const keepPrevious = previous?.strokes?.length
+      && (!projected.strokes.length
+        || natran.status === 'rejected'
+        || terega.status === 'rejected');
+    if (keepPrevious) return { ...previous, at: Date.now() };
+    return { at: Date.now(), ...projected };
+  }
+
+  /** Refresh the two registers, on the same settled rule. */
+  async function refreshSites(previous) {
+    const [plants, injections] = await Promise.allSettled([
+      fetchRows('prod-elec-gaz-naturel-fr'),
+      fetchRows('points-dinjection-de-biomethane-en-france'),
+    ]);
+    for (const [label, settled] of [['plants', plants], ['injections', injections]]) {
+      if (settled.status === 'rejected') {
+        console.warn(`[gas-fr-proxy] ${label} register failed (${settled.reason?.message || settled.reason})`);
+      }
+    }
+    if (plants.status === 'rejected' && injections.status === 'rejected') {
+      throw new Error('both gas registers are unavailable');
+    }
+    const projected = projectGasSites({
+      plants: plants.status === 'fulfilled' ? plants.value : [],
+      injections: injections.status === 'fulfilled' ? injections.value : [],
+    }, SOURCE);
+    return {
+      at: Date.now(),
+      source: projected.source,
+      plants: projected.plants.length ? projected.plants : (previous?.plants || []),
+      injections: projected.injections.length
+        ? projected.injections
+        : (previous?.injections || []),
+      stats: projected.stats,
+    };
+  }
+
+  async function readDiskOnce(kind, cachePath, validate) {
+    if (diskChecked[kind]) return;
+    diskChecked[kind] = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(cachePath, 'utf8'));
+      if (Number.isFinite(parsed?.at) && validate(parsed)) mem[kind] = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(cachePath, entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(cachePath, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[gas-fr-proxy] cache write failed (${err?.message || err})`);
+    }
+  }
+
+  /**
+   * Serve-or-refresh one half, single-flighted so N tabs opening at once cost
+   * one 4.93 MB upstream fetch rather than N.
+   * @returns {Promise<{served: ?object, stale: boolean}>}
+   */
+  async function resolve(kind, { cachePath, ttlMs, refresh, validate }) {
+    await readDiskOnce(kind, cachePath, validate);
+    const entry = mem[kind];
+    let current = entry && Date.now() - entry.at < ttlMs ? entry : null;
+    if (!current) {
+      if (!inflight[kind]) {
+        inflight[kind] = refresh(entry)
+          .then(async (next) => {
+            mem[kind] = next;
+            await writeDisk(cachePath, next);
+            return next;
+          })
+          .catch((err) => {
+            console.warn(`[gas-fr-proxy] ${kind} refresh failed (${err?.message || err}) — serving cache if any`);
+            return null;
+          })
+          .finally(() => { inflight[kind] = null; });
+      }
+      current = await inflight[kind];
+    }
+    return { served: current || entry, stale: !current && Boolean(entry) };
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/gas-fr', async (req, res) => {
+      const sendJson = (status, obj) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(obj));
+      };
+      try {
+        const subPath = String(req.url || '').split('?')[0];
+
+        if (subPath === '/network') {
+          const { served, stale } = await resolve('network', {
+            cachePath: NETWORK_CACHE_PATH,
+            ttlMs: NETWORK_TTL_MS,
+            refresh: refreshNetwork,
+            validate: (parsed) => Array.isArray(parsed?.strokes),
+          });
+          if (!served) {
+            sendJson(502, { error: 'gas transmission trace fetch failed and no cache available' });
+            return;
+          }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: NETWORK_TTL_MS,
+            source: served.source,
+            operators: served.operators,
+            groups: served.groups,
+            strokes: served.strokes,
+            stats: served.stats,
+          });
+          return;
+        }
+
+        if (subPath === '/sites') {
+          const { served, stale } = await resolve('sites', {
+            cachePath: SITES_CACHE_PATH,
+            ttlMs: SITES_TTL_MS,
+            refresh: refreshSites,
+            validate: (parsed) => Array.isArray(parsed?.plants) && Array.isArray(parsed?.injections),
+          });
+          if (!served) {
+            sendJson(502, { error: 'gas registers fetch failed and no cache available' });
+            return;
+          }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: SITES_TTL_MS,
+            source: served.source,
+            plants: served.plants,
+            injections: served.injections,
+            stats: served.stats,
+          });
+          return;
+        }
+
+        if (subPath === '/status') {
+          // Status reports what is already cached; it never triggers a 4.93 MB
+          // upstream fetch of its own.
+          await readDiskOnce('network', NETWORK_CACHE_PATH, (p) => Array.isArray(p?.strokes));
+          await readDiskOnce('sites', SITES_CACHE_PATH, (p) => Array.isArray(p?.plants));
+          const network = mem.network;
+          const sites = mem.sites;
+          sendJson(200, {
+            source: SOURCE,
+            network: network
+              ? {
+                lastFetch: network.at,
+                stale: Date.now() - network.at >= NETWORK_TTL_MS,
+                ttlMs: NETWORK_TTL_MS,
+                strokes: network.stats?.strokes ?? 0,
+                lengthKm: network.stats?.lengthKm ?? 0,
+              }
+              : null,
+            sites: sites
+              ? {
+                lastFetch: sites.at,
+                stale: Date.now() - sites.at >= SITES_TTL_MS,
+                ttlMs: SITES_TTL_MS,
+                plants: sites.plants?.length ?? 0,
+                injections: sites.injections?.length ?? 0,
+              }
+              : null,
+          });
+          return;
+        }
+
+        sendJson(404, { error: 'unknown gas-fr route' });
+      } catch (err) {
+        console.warn('[gas-fr-proxy] error:', err?.message || err);
+        sendJson(500, { error: 'gas-fr proxy error' });
+      }
+    });
+  }
+
+  return {
+    name: 'gas-fr-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
 
 /**
  * EDF generating-fleet proxy (hydraulic + nuclear + fossil-fired) with a
@@ -9926,6 +10213,7 @@ export default defineConfig(({ mode }) => {
       vigicruesProxy(),
       meteoFranceVigilanceProxy(),
       eco2mixProxy(),
+      gasFranceProxy(),
       edfPlantsProxy(),
       ndbcProxy(),
       rocketLaunchesProxy(),

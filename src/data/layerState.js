@@ -282,6 +282,11 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
   Object.freeze({ id: 'france-energy', token: 'j', disposition: 'enabled-only' }),
+  // A DIGIT, not a letter: every letter of "gas" is taken (g by
+  // military-awareness, a by AIS, s by satellites), and `z` is the token two
+  // existing tests use as their canonical UNKNOWN token — claiming it would
+  // silently turn "reject an unknown link" into "enable the gas layer".
+  Object.freeze({ id: 'gas-fr', token: '1', disposition: 'enabled-only' }),
   Object.freeze({ id: 'hubeau-hydro', token: 'h', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-dams', token: 'q', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-datacenters', token: 'd', disposition: 'enabled-only' }),

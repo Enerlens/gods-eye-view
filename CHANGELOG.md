@@ -31,12 +31,20 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   site's coordinate repeated on each, so six Gravelines reactors draw one
   marker and not six stacked on a pixel, while a hydro plant — published one
   row per plant, with no turbine count — reports no unit count rather than "1".
+- **Five of these sites are also drawn by the Réseau gaz layer, and both are
+  right.** That layer draws ODRÉ's register of the 14 centralised gas-fired
+  stations whoever runs them; this one draws EDF's own fossil-fired file
+  whatever it burns. The overlap is exactly the five EDF gas sites — Martigues,
+  Bouchain, Blénod, Montereau, Gennevilliers — where the two publishers
+  disagree slightly on capacity (585 against 575 MW at Bouchain). Nothing is
+  de-duplicated: neither set contains the other, and hiding one figure would
+  hide that they disagree.
 - Two upstream traps are absorbed server-side in `edfPlantsFeed.js` and pinned
   against captured payloads: the hydro file publishes **`coordonnees_x_wgs` as
   the latitude** (read the usual way, Grand-Maison lands off Somalia) while the
   other two publish one `"lat, lon"` string, and
   `reserve_secondaire_maximale` is a **site figure repeated on every unit
-  row**, so Cattenom offers 60 MW of reserve and not four times 60. 48 unit
+  row**, so Cattenom offers 60 MW of reserve and not four times 60. 49 unit
   tests; `npm run qa:edf-plants` is the browser proof. Attribution registered
   in the Data attribution popover and DATA_SOURCES.md.
 
@@ -62,6 +70,56 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   the same hue; the legend names them, and the names are what settle it. A
   selected vehicle's card now leads with its operator ("Lime E-bike"), and the
   detection readout says "PONY SCOOTER" rather than just "SCOOTER".
+
+- Added the **Réseau gaz** layer — the French gas system, keyless. Three ODRÉ
+  products drawn together because they only make sense next to each other: the
+  **pipes**, the **inlets** and the **outlets**.
+  - **36,106 km of high-pressure transmission trace**, clamped to the ground —
+    NaTran (ex-GRTgaz) 31,420 km in violet, Teréga 4,686 km in orchid. Two
+    companies, two colours, two length figures; a stroke of one is never
+    chained onto a stroke of the other.
+  - **850 renewable-methane injection points**, sized by the capacity each
+    declares (16.3 TWh/an in total), and **14 centralised gas-fired power
+    stations** sized by nameplate power (7,196 MW) — which is where a good part
+    of that gas leaves the system as the `gaz` filière of the Mix élec layer.
+  - It is a **published simplification, not a pipeline location**. Both
+    operators publish their trace at about 250 m; nothing is densified,
+    smoothed or re-routed, and every card says so.
+  - It is **installed capacity, not live output**, and it says that too. What
+    those 14 machines are producing right now is a national figure RTE does not
+    break down per station without an API account.
+  - **741 of the 850 injection points feed a network this layer does not
+    draw** — the local distribution grid. They are drawn dimmer, counted on
+    their own legend row, and no connector is ever drawn between a site and a
+    pipe, because none of these files publishes that link.
+- Six upstream traps are absorbed server-side and pinned against captured
+  payloads:
+  - The power-station file is **seven annual editions stacked in one table** —
+    98 rows are 14 sites × 2019…2025. Summing the column reports 50,372 MW for
+    a 7,196 MW fleet and stacks seven dots on each of 14 coordinates.
+  - **The editions disagree**, and no endpoint promises an order. Landivisiau
+    is `En projet` in 2019 and 2020 and `En service` from 2021; the export
+    answers 2025 first, the records API answered 2023, 2022, 2025, 2021, 2024,
+    2019, 2020. Newest edition wins, and the card names what the older ones
+    claimed.
+  - **Teréga's third ordinate is not a height** — it runs −705.5 m to
+    +1,809.4 m over ground that is 0–1,500 m. Dropped, and the arity is checked
+    per vertex because a flat lon/lat reader fed 3-tuples does not throw, it
+    silently mis-plots the network.
+  - One `geo_shape: null` row (which still carries a `geo_point_2d`) and eight
+    `MultiLineString` rows in a file that is otherwise all `LineString`.
+  - **Fifteen decimals on a ±250 m product.** Rounded to 5 (~1.1 m), which also
+    reveals 165 published "lines" whose vertices are all one point.
+  - **`site_ouvert` is the string `"False"`**, which JavaScript coerces to
+    `true` — that alone would draw three closed sites, at zero size, out of a
+    file titled *en service*.
+- A pipeline drawn in any blue renders perfectly and reads as a river. The
+  first version of this layer did exactly that — measured against the OSM
+  basemap, its steel blue sat within 14/255 of the basemap's own water colour
+  on every channel — so the two networks are violet and orchid, a unit test
+  keeps all four channels apart, and the browser harness now counts the
+  operator's own pixels with the trace shown against the same view with it
+  hidden. Every structural check can pass while nobody can see the layer.
 
 - Added the **Shared Mobility FR** layer — every French shared vehicle the
   Bikeshare layer does not already draw. From the same national access point as
