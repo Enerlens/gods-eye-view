@@ -7,6 +7,76 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- Added the **Groupes de prod (FR)** layer — France's power stations, unit by
+  unit, at the output RTE last published for each one. 171 generating units of
+  100 MW or more across 108 stations: 57 reactors for 63.0 GW, 56 hydro
+  machines, 44 thermal groups, 9 offshore wind units, the Rance tidal barrage
+  and two grid batteries. It completes the sentence the Réseau gaz layer's card
+  has been leaving open — what those stations are producing *right now*, which
+  éCO2mix only publishes as a national filière total.
+  - **A ring is what a station can do; a disc is what it is doing.** The ring is
+    sized by installed power on a √ ramp so area tracks megawatts, and the disc
+    fills it at full load. A **faint empty ring** is a station RTE published
+    nothing for. A **crisp empty ring** is one measured at zero — a reactor in
+    outage, which is the most interesting state a reactor has and the one a
+    `value || 0` guard silently erases. A **magenta disc** is a machine
+    *consuming* the grid: Grand'Maison pumping 1 690 MW back up its mountain, or
+    a battery charging.
+  - **Click a station and the card is its units.** Each group with its own
+    megawatts against its own nameplate, and a day of hourly history as a
+    sparkline — where `·` is a published gap, `▁` is a measured zero, and `▽` is
+    consumption. Not a smoothed line: the gaps are real and stay visible.
+  - **It draws with no key at all.** The fleet is a shipped file built from
+    ODRÉ's national register and positioned from EDF Open Data, OpenStreetMap
+    and geo.api.gouv.fr, so a `git clone` puts all 108 stations, their names,
+    their filières and 93.5 GW of installed capacity on the globe with zero
+    credentials. A free RTE account (`RTE_CLIENT_ID` / `RTE_CLIENT_SECRET`
+    from data.rte-france.com) only ever adds the number that moves — and the
+    layer says so, in the readout and in the first legend row, instead of
+    reporting zero.
+
+- Four things the Groupes de prod layer refuses to do, each stated on screen:
+  - **Draw a reactor.** Nobody publishes where an individual reactor building
+    is — OpenStreetMap has zero `power=generator` + `generator:source=nuclear`
+    elements over the whole of France — so Gravelines is one ring with six
+    groups on its card, not six discs invented from a site outline.
+  - **Hide where a ring came from.** RTE publishes no coordinate for any unit,
+    so every position is derived from four published anchors and every card
+    names its own: 69 stations sit on **EDF's own published coordinate for its
+    own station**, 11 on an OpenStreetMap `power=plant` outline, 13 on the
+    `ref:FR:RTE` switchyard their register entry names, and 15 at the centre of
+    their commune — including four offshore wind farms whose rings are therefore
+    on the beach, because nothing open publishes their footprint. A candidate
+    more than 30 km from the commune centre is refused, and two anchors are
+    never averaged into a third position nobody published. EDF outranks
+    OpenStreetMap because the two agree to within 300 m on every reactor and
+    every thermal site and diverge by up to 9.5 km on hydro, where a
+    powerhouse, an intake and a dam share a name across a valley; every
+    `edf-published` row records `supersededOsmKm` so that choice is auditable
+    per station rather than asserted.
+  - **Reconcile two capacities.** RTE's `installed_capacity` and the register's
+    `puismaxinstallee` are different administrative numbers for the same
+    machine; when they differ by a megawatt or more the card prints both.
+  - **Quietly drop a unit.** A unit RTE reports that the shipped register has
+    never heard of is counted in the readout with its megawatts, as *unplaced* —
+    because there is nowhere honest to draw it.
+
+- Eight upstream traps absorbed in the projection and pinned in the tests:
+  **zero is a reading, not a gap** (`value || null` erases every reactor in
+  outage and reads the fleet as 100% available); **the last row is the future**
+  (the window is padded with unpublished `null` hours, so `values.at(-1)` reads
+  the whole country as 0 MW — the same shape as éCO2mix's `prevision_j1`
+  padding); **negative is pumping, not corruption**; `values` arrive out of
+  chronological order; **one EIC code arrives in two envelopes** when the window
+  spans a day boundary, so last-one-wins throws away half the history; RTE
+  republishes an hour with a newer `updated_date`; the two installed capacities
+  disagree; and RTE's fleet drifts from ODRÉ's register. On the register side:
+  `puismaxinstallee` is published in **kilowatts** to three decimals, a 132 MW
+  photovoltaic farm at Ajaccio is filed under `filiere: "Thermique non
+  renouvelable"`, the Rance tidal barrage is named `CENTRALE HYDRAULIQUE`, and
+  unit names arrive in four grammars with the article parked at the end
+  (`TRICASTIN (LE)`).
+
 - Added the **Centrales EDF** layer — where French electricity is physically
   made, from EDF's own three open datasets (hydraulic, nuclear, thermal),
   keyless under Licence Ouverte 2.0. 79 generating sites carrying 80 094 MW:

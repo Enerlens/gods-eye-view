@@ -308,6 +308,15 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
+  // A DIGIT, because the letters ran out: a–y are all taken (every letter of
+  // "rte"/"gen"/"prod" among them — r by radio, t by traffic, e by earthquakes,
+  // g by military-awareness, n by meteofrance-vigilance, p by transit-fr, d by
+  // datacenters, o by ports), and `z` is the canonical UNKNOWN token two
+  // existing tests assert on. `1` is the gas layer's; `2` is deliberately
+  // skipped because the power-grid layer's open pull request already claims it,
+  // and a duplicate token is a boot failure (`validateLayerStateRegistry`
+  // throws), not a merge conflict anyone would notice.
+  Object.freeze({ id: 'rte-generation', token: '3', disposition: 'enabled-only' }),
   Object.freeze({ id: 'satellites', token: 's', disposition: 'enabled+options', optionOwner: 'satellites' }),
   Object.freeze({ id: 'shared-mobility-fr', token: 'k', disposition: 'enabled-only' }),
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),
