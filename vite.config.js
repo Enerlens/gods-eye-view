@@ -58,6 +58,7 @@ import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
+import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
 import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints } from './src/data/viewportBox.js';
 import {
@@ -3233,6 +3234,236 @@ function gasFranceProxy() {
 
   return {
     name: 'gas-fr-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+
+/**
+ * EDF generating-fleet proxy (hydraulic + nuclear + fossil-fired) with a
+ * memory + disk cache.
+ *
+ * THREE keyless upstreams on one portal. EDF publishes the location and
+ * installed power of its own fleet as three Licence Ouverte 2.0 datasets, and
+ * they are the answer to "where is France's generating capacity", not "how
+ * much is it generating" — that question belongs to `/api/energy-fr`.
+ *
+ *   `…-nucleaire-edf`            56 rows, one per REACTOR  → 18 sites
+ *   `…-hydraulique-de-edf-sa`    51 rows, one per PLANT    → 51 sites
+ *   `…-thermique-a-flamme-…`     19 rows, one per UNIT     → 10 sites
+ *
+ * WHICH API, and why not the obvious one: opendata.edf.fr used to be an
+ * Opendatasoft portal and has migrated to Koumoul's data-fair. The ODS
+ * compatibility layer still answers `/api/explore/v2.1/…/records`, but its
+ * catalog, facets and v1 search routes now return 410 or the SPA's HTML 404
+ * (measured 2026-08-27). The native data-fair routes are therefore the ones
+ * used here — and they carry the dataset DESCRIPTOR as well as the rows, which
+ * is what lets the layer report each file's own reference date and licence
+ * instead of hard-coding a date that will silently rot.
+ *
+ * Each dataset is fetched as a (descriptor, rows) pair, and the three pairs run
+ * in PARALLEL with `Promise.allSettled`: one filière failing must not blank the
+ * other two. A half-failed refresh is merged per filière over the previous
+ * cache, so a missing nuclear file leaves the previous 18 sites in place rather
+ * than reporting that France has no reactors.
+ *
+ * MEASURED 2026-08-27: six requests, 200 in 0.21–0.33 s each, ~159 KB raw,
+ * projected to one ~36 KB document of 79 sites / 80 094 MW.
+ *
+ * WHY A PROXY when the portal does send `Access-Control-Allow-Origin: *`: the
+ * six raw bodies are ~159 KB against the ~36 KB the globe needs, N open tabs
+ * would each pay for their own six round trips, and the row-to-site grouping,
+ * the two incompatible coordinate shapes and the three different vintages are
+ * traps best absorbed once, server-side, under test (`edfPlantsFeed.js`).
+ *
+ * Routes:
+ *   GET /api/edf-plants        → {fetchedAt, stale, ttlMs, source, sites, datasets, totals}
+ *   GET /api/edf-plants/status → {source, lastFetch, stale, ttlMs, siteCount}
+ *
+ * @returns {import('vite').Plugin}
+ */
+function edfPlantsProxy() {
+  // The three files are updated ANNUALLY (`frequency: 'annual'`, and the newest
+  // `dataUpdatedAt` at the time of writing was four months old). A day of cache
+  // is still two orders of magnitude fresher than the data, and it makes a cold
+  // page load cost nothing after the first one of the day.
+  const TTL_MS = 24 * 3600_000;
+  const BASE = 'https://opendata.edf.fr/data-fair/api/v1/datasets';
+  // The largest file holds 56 rows; 1 000 is headroom, not a page size to tune.
+  // If EDF ever publishes more than that, `truncated` says so rather than the
+  // layer quietly drawing a partial fleet.
+  const PAGE_SIZE = 1000;
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_PATH = path.join(CACHE_DIR, 'edf-plants.json');
+  const SOURCE = 'EDF Open Data (opendata.edf.fr)';
+
+  /** @type {?{at:number, source:string, sites:Array<object>, datasets:Array<object>, totals:object}} */
+  let mem = null;
+  let diskChecked = false;
+  /** @type {?Promise<?object>} */
+  let inflight = null;
+
+  async function fetchJson(url) {
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+    // The portal serves its SPA's HTML 404 for an unknown dataset slug, so a
+    // body that is not JSON is an error rather than an empty fleet.
+    const payload = await response.json();
+    if (!payload || typeof payload !== 'object') throw new Error('upstream returned no object');
+    return payload;
+  }
+
+  /**
+   * Fetch one dataset's rows and descriptor.
+   *
+   * The rows are required; the descriptor is not. A descriptor that fails to
+   * load costs the reference date and the licence string — which the client
+   * then reports as unknown — but it must not cost the 56 reactors.
+   * @param {{slug:string}} spec
+   */
+  async function fetchDataset(spec) {
+    const [lines, meta] = await Promise.allSettled([
+      fetchJson(`${BASE}/${spec.slug}/lines?size=${PAGE_SIZE}`),
+      fetchJson(`${BASE}/${spec.slug}`),
+    ]);
+    if (lines.status === 'rejected') throw lines.reason;
+    if (!Array.isArray(lines.value?.results)) throw new Error('upstream returned no results array');
+    if (meta.status === 'rejected') {
+      console.warn(`[edf-plants-proxy] ${spec.key} descriptor unavailable (${meta.reason?.message || meta.reason})`);
+    }
+    return { lines: lines.value, meta: meta.status === 'fulfilled' ? meta.value : null };
+  }
+
+  /**
+   * Refresh all three filières, keeping whichever succeeded.
+   * @param {?object} previous Last good document, merged under a partial refresh.
+   */
+  async function refreshUpstream(previous) {
+    const settled = await Promise.allSettled(EDF_DATASETS.map(fetchDataset));
+    /** @type {Record<string, object>} */
+    const payloads = {};
+    const failed = [];
+    EDF_DATASETS.forEach((spec, index) => {
+      const result = settled[index];
+      if (result.status === 'fulfilled') payloads[spec.key] = result.value;
+      else {
+        failed.push(spec.key);
+        console.warn(`[edf-plants-proxy] ${spec.key} fetch failed (${result.reason?.message || result.reason})`);
+      }
+    });
+    if (failed.length === EDF_DATASETS.length) {
+      throw new Error('all three EDF datasets are unavailable');
+    }
+
+    const projected = projectEdfPlants(payloads, SOURCE);
+    // Merge per filière, not per document: the half that failed keeps its last
+    // good sites rather than reporting none, which would read as "these plants
+    // were demolished".
+    const sites = projected.sites.slice();
+    const datasets = projected.datasets.slice();
+    for (const key of failed) {
+      for (const site of previous?.sites || []) {
+        if (site?.filiere === key) sites.push(site);
+      }
+      const descriptor = (previous?.datasets || []).find((entry) => entry?.key === key);
+      if (descriptor) datasets.push({ ...descriptor, stale: true });
+    }
+    sites.sort((a, b) => (b.mw ?? 0) - (a.mw ?? 0) || String(a.id).localeCompare(String(b.id)));
+    return {
+      at: Date.now(),
+      source: SOURCE,
+      sites,
+      datasets,
+      totals: projected.totals,
+    };
+  }
+
+  async function readDiskOnce() {
+    if (diskChecked) return;
+    diskChecked = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
+      if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.sites)) mem = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(CACHE_PATH, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[edf-plants-proxy] cache write failed (${err?.message || err})`);
+    }
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/edf-plants', async (req, res) => {
+      const sendJson = (status, obj) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(obj));
+      };
+      try {
+        const subPath = String(req.url || '').split('?')[0];
+        await readDiskOnce();
+
+        const entry = mem;
+        let current = entry && Date.now() - entry.at < TTL_MS ? entry : null;
+        if (!current) {
+          if (!inflight) {
+            inflight = refreshUpstream(entry)
+              .then(async (next) => {
+                mem = next;
+                await writeDisk(next);
+                return next;
+              })
+              .catch((err) => {
+                console.warn(`[edf-plants-proxy] refresh failed (${err?.message || err}) — serving cache if any`);
+                return null;
+              })
+              .finally(() => { inflight = null; });
+          }
+          current = await inflight;
+        }
+        const served = current || entry;
+        const stale = !current && Boolean(entry);
+
+        if (subPath === '/status') {
+          sendJson(200, {
+            source: served ? served.source : null,
+            lastFetch: served ? served.at : null,
+            siteCount: served ? served.sites.length : 0,
+            stale,
+            ttlMs: TTL_MS,
+          });
+          return;
+        }
+        if (!served) {
+          sendJson(502, { error: 'EDF Open Data fetch failed and no cache available' });
+          return;
+        }
+        sendJson(200, {
+          fetchedAt: served.at,
+          stale,
+          ttlMs: TTL_MS,
+          source: served.source,
+          sites: served.sites,
+          datasets: served.datasets,
+          totals: served.totals,
+        });
+      } catch (err) {
+        console.warn('[edf-plants-proxy] error:', err?.message || err);
+        sendJson(500, { error: 'EDF plants proxy error' });
+      }
+    });
+  }
+
+  return {
+    name: 'edf-plants-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -9983,6 +10214,7 @@ export default defineConfig(({ mode }) => {
       meteoFranceVigilanceProxy(),
       eco2mixProxy(),
       gasFranceProxy(),
+      edfPlantsProxy(),
       ndbcProxy(),
       rocketLaunchesProxy(),
       terrainHeightsProxy(),

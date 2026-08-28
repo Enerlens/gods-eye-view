@@ -60,3 +60,24 @@
   string JavaScript coerces to `true`), the one site that publishes no
   coordinates, both network tiers, and both spellings of the planned-increase
   flag. Licence Ouverte 2.0, NaTran / Teréga via ODRÉ.
+- `edf-plants-{hydraulique,nucleaire,thermique}-sample.json` — 19 of the 126
+  rows of EDF Open Data's three generating-fleet datasets, captured
+  2026-08-27 from the portal's `data-fair/api/v1/datasets/{slug}/lines`
+  route. Kept as the raw envelope (`{total, results}`) so the projection under
+  test reads exactly what the proxy reads; `total` is restated to the trimmed
+  row count so the completeness check still sees a whole page. The rows are
+  chosen to hold every trap the projection exists for: all six GRAVELINES
+  reactor rows (one site, 5 460 MW, one coordinate and one 40 MW reserve
+  repeated six times), SAINTE-CROIX's fractional 132.27 MW, GRANDVAL below the
+  file's own 100 MW threshold, RANCE with no région at all, KEMBS from 1932,
+  and MONTEREAU's single `Gaz naturel/Fioul Domestique` string for two fuels.
+  Licence Ouverte 2.0, EDF SA.
+- `edf-plants-{hydraulique,nucleaire,thermique}-dataset.json` — the matching
+  dataset DESCRIPTORS from the same API, trimmed to the top-level keys the
+  projection reads plus their context (`title`, `description`, `license`,
+  `temporal`, `spatial`, `bbox`, `count`, `frequency`, `dataUpdatedAt`,
+  `page`); the platform bookkeeping around them (permissions, storage, file
+  digests, publication sites, and the ~10 KB `schema` array) is removed. They
+  preserve the fact the layer is built around — nuclear is a vision consolidée
+  au **31/12/2025** while the other two are au **31/12/2023**, so the three
+  files are three vintages. Licence Ouverte 2.0, EDF SA.

@@ -1,0 +1,40 @@
+{
+  "id": "ko0lkx85rdu6mfns8i-jmg60",
+  "slug": "centrales-de-production-thermique-a-flamme-d-edf-sa-fioul-gaz-charbon",
+  "title": "Centrales de production thermique à flamme d'EDF SA (Fioul, Gaz, Charbon...)",
+  "description": "**Résumé :**\n\nLocalisation et puissance installée des centrales et unités de productions d'EDF SA en exploitation, pour le thermique à flamme.\n\nLe périmètre géographique est la France métropolitaine, mais sans la Corse ni les îles du ponant.\n\n**Description détaillée :**\n\nLe jeu de données a une vision consolidée au 31/12/2023.",
+  "license": {
+    "href": "https://www.etalab.gouv.fr/licence-ouverte-open-licence",
+    "title": "Licence Ouverte / Open Licence version 2.0"
+  },
+  "owner": {
+    "type": "organization",
+    "id": "mnOAyfJpkLW7sIwsUZxP1",
+    "name": "EDF",
+    "department": "odmg",
+    "departmentName": "ODMG"
+  },
+  "keywords": [
+    "centrale",
+    "Production",
+    "thermique à flamme"
+  ],
+  "temporal": {
+    "start": "2023-01-01",
+    "end": "2023-12-31"
+  },
+  "spatial": "France métropolitaine, sans la Corse ni les iles du Ponant",
+  "bbox": [
+    -4.265463016927242,
+    43.358401958830655,
+    6.078239930793643,
+    50.29630199074745
+  ],
+  "count": 19,
+  "frequency": "annual",
+  "dataUpdatedAt": "2026-03-11T14:57:09.671Z",
+  "updatedAt": "2026-08-24T15:16:15.204Z",
+  "createdAt": "2025-10-27T09:49:36.818Z",
+  "href": "https://opendata.edf.fr/data-fair/api/v1/datasets/centrales-de-production-thermique-a-flamme-d-edf-sa-fioul-gaz-charbon",
+  "page": "https://opendata.edf.fr/datasets/centrales-de-production-thermique-a-flamme-d-edf-sa-fioul-gaz-charbon"
+}
