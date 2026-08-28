@@ -11,6 +11,7 @@ import meteoFranceVigilanceLayer from './data/meteoFranceVigilance.js';
 import franceEnergyLayer from './data/franceEnergy.js';
 import gasFranceLayer from './data/gasFrance.js';
 import edfPowerPlantsLayer from './data/edfPowerPlants.js';
+import rteGenerationLayer from './data/rteGeneration.js';
 import satellitesLayer from './data/satellites.js';
 import rocketLaunchesLayer from './data/rocketLaunches.js';
 import trafficLayer from './data/traffic.js';
@@ -228,6 +229,7 @@ async function init() {
     dataManager.register(franceEnergyLayer);
     dataManager.register(gasFranceLayer);
     dataManager.register(edfPowerPlantsLayer);
+    dataManager.register(rteGenerationLayer);
     dataManager.register(satellitesLayer);
     dataManager.register(rocketLaunchesLayer);
     rocketLaunchesLayer.attachDataManager(dataManager);

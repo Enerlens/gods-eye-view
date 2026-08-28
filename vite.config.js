@@ -59,6 +59,12 @@ import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js'
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
+import {
+  RTE_ACTUAL_GENERATIONS_PER_UNIT_URL,
+  RTE_TOKEN_URL,
+  projectActualGenerations,
+  rteGenerationWindow,
+} from './src/data/rteGenerationFeed.js';
 import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints } from './src/data/viewportBox.js';
 import {
@@ -3464,6 +3470,357 @@ function edfPlantsProxy() {
 
   return {
     name: 'edf-plants-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Vite plugin: RTE per-unit generation proxy (OAuth2 client-credentials).
+ *
+ * Upstream: `actual_generation/v1/actual_generations_per_unit` on RTE's
+ * developer portal — what every French generating unit of 100 MW or more
+ * actually produced, hour by hour. It is the ONE source on this globe that
+ * needs an account and it is free: create one at
+ * https://data.rte-france.com/create_account, attach the **Actual Generation**
+ * API to an application, and put the pair in `.env` as `RTE_CLIENT_ID` /
+ * `RTE_CLIENT_SECRET` (or the ready-made base64 pair as `RTE_BASE64_KEY`).
+ *
+ * ── This route answers 200 with no credentials, deliberately ────────────────
+ *
+ * `auth: "missing"` and an empty unit list is a legitimate, complete answer,
+ * not an error. The layer ships the whole 171-unit fleet as a file and draws
+ * it keyless; RTE's contribution is the number that moves. Returning 502 here
+ * would make a working keyless layer look broken.
+ *
+ * ── Why the request is tried twice ──────────────────────────────────────────
+ *
+ * The dated window (`rteGenerationWindow`: Paris yesterday 00:00 → tomorrow
+ * 00:00) is what this layer wants — it always contains the last published hour
+ * and it carries the ~24 hours of history the cards draw. But this build could
+ * not verify against the live service that a 48-hour range is inside the
+ * resource's accepted span, and RTE answers an out-of-range window with 400.
+ * So a non-2xx dated attempt falls back to the BARE call, which is the
+ * documented default window and is what every published client of this
+ * resource uses. Whichever answered is reported in `window.mode`, so the
+ * fallback is visible rather than silent.
+ *
+ * Auth is refreshed on 401 exactly once per request: a token that expired
+ * between the cache check and the call is a race, not a credential problem.
+ *
+ * Routes:
+ *   GET /api/rte-generation        → {fetchedAt, stale, ttlMs, source, auth, window, units, stats}
+ *   GET /api/rte-generation/status → {source, auth, lastFetch, stale, ttlMs, units, reporting, totalMw}
+ *
+ * @returns {import('vite').Plugin}
+ */
+function rteGenerationProxy() {
+  // The resource publishes hourly. Five minutes bounds staleness to a twelfth
+  // of a step while costing 288 upstream calls a day against a free account.
+  const TTL_MS = 5 * 60_000;
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_PATH = path.join(CACHE_DIR, 'rte-generation.json');
+  const SOURCE = 'RTE (digital.iservices.rte-france.com)';
+  const UPSTREAM_TIMEOUT_MS = 60_000;
+  /** Refresh this long before the token actually expires. */
+  const TOKEN_SAFETY_MS = 60_000;
+  /** Fallback lifetime when RTE omits `expires_in`. Its tokens run ~2 h. */
+  const TOKEN_DEFAULT_S = 7200;
+
+  /** @type {?{at:number, auth:string, window:object, units:Array<object>, stats:object}} */
+  let mem = null;
+  let diskChecked = false;
+  /** @type {?Promise<?object>} */
+  let inflight = null;
+
+  let token = null;
+  let tokenExpiry = 0;
+  /** @type {?Promise<?string>} */
+  let tokenPromise = null;
+  let authWarned = false;
+  let lastAuthDetail = null;
+
+  /**
+   * The HTTP Basic credential, base64 of `client_id:client_secret`.
+   *
+   * RTE's application dashboard shows the pair AND an already-encoded key, and
+   * people copy whichever is in front of them — so both are accepted, with the
+   * pre-encoded one winning because it needs no assembly and cannot be
+   * assembled wrong.
+   * @returns {?string}
+   */
+  function basicCredential() {
+    const encoded = String(process.env.RTE_BASE64_KEY || '').trim();
+    if (encoded) return encoded;
+    const id = String(process.env.RTE_CLIENT_ID || '').trim();
+    const secret = String(process.env.RTE_CLIENT_SECRET || '').trim();
+    if (!id || !secret) return null;
+    return Buffer.from(`${id}:${secret}`, 'utf8').toString('base64');
+  }
+
+  /**
+   * A valid bearer token, refreshing when needed.
+   *
+   * Concurrent callers share one in-flight refresh — the same coalescing the
+   * OpenSky token path uses, for the same reason: N tabs opening at once must
+   * cost one token, not N.
+   * @param {boolean} [force=false] Discard a cached token first (401 recovery).
+   * @returns {Promise<?string>}
+   */
+  async function getToken(force = false) {
+    if (force) { token = null; tokenExpiry = 0; }
+    if (token && Date.now() < tokenExpiry - TOKEN_SAFETY_MS) return token;
+    if (tokenPromise) return tokenPromise;
+
+    const credential = basicCredential();
+    if (!credential) { lastAuthDetail = 'no RTE_CLIENT_ID / RTE_CLIENT_SECRET'; return null; }
+
+    tokenPromise = (async () => {
+      try {
+        const response = await fetch(RTE_TOKEN_URL, {
+          method: 'POST',
+          headers: {
+            // RTE's token endpoint reads the credential from the Basic header
+            // and takes NO body. Sending `grant_type=client_credentials` as a
+            // form body without the header is answered `invalid_client`.
+            Authorization: `Basic ${credential}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          signal: AbortSignal.timeout(30_000),
+        });
+        let data = null;
+        try { data = await response.json(); } catch { data = null; }
+        const accessToken = data?.access_token;
+        if (!response.ok || !accessToken) {
+          lastAuthDetail = data?.error_description || data?.error || `HTTP ${response.status}`;
+          if (!authWarned) {
+            console.warn(`[rte-generation-proxy] OAuth client_credentials failed: ${lastAuthDetail}`);
+            authWarned = true;
+          }
+          token = null;
+          tokenExpiry = 0;
+          return null;
+        }
+        const expiresIn = Number(data?.expires_in);
+        token = accessToken;
+        tokenExpiry = Date.now() + (Number.isFinite(expiresIn) ? expiresIn : TOKEN_DEFAULT_S) * 1000;
+        lastAuthDetail = null;
+        authWarned = false;
+        console.log(
+          '[rte-generation-proxy] OAuth token refreshed, expires in',
+          Number.isFinite(expiresIn) ? expiresIn : TOKEN_DEFAULT_S, 's',
+        );
+        return token;
+      } catch (err) {
+        lastAuthDetail = err?.message || String(err);
+        if (!authWarned) {
+          console.warn(`[rte-generation-proxy] OAuth token request failed: ${lastAuthDetail}`);
+          authWarned = true;
+        }
+        token = null;
+        tokenExpiry = 0;
+        return null;
+      } finally {
+        tokenPromise = null;
+      }
+    })();
+    return tokenPromise;
+  }
+
+  /** One authenticated GET, refreshing the token once on 401. */
+  async function authorizedGet(url) {
+    let bearer = await getToken();
+    if (!bearer) return { status: 0, body: null };
+    let response = await fetch(url, {
+      headers: { Authorization: `Bearer ${bearer}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (response.status === 401) {
+      bearer = await getToken(true);
+      if (!bearer) return { status: 401, body: null };
+      response = await fetch(url, {
+        headers: { Authorization: `Bearer ${bearer}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+    }
+    let body = null;
+    try { body = await response.json(); } catch { body = null; }
+    return { status: response.status, body };
+  }
+
+  /** Fetch and project one refresh. Never throws for a missing credential. */
+  async function refreshUpstream() {
+    if (!basicCredential()) {
+      return {
+        at: Date.now(),
+        auth: 'missing',
+        authDetail: 'set RTE_CLIENT_ID and RTE_CLIENT_SECRET in .env — free account at data.rte-france.com',
+        window: { mode: 'none' },
+        units: [],
+        stats: { units: 0, reporting: 0, totalMw: 0 },
+      };
+    }
+
+    const span = rteGenerationWindow(new Date());
+    const dated = `${RTE_ACTUAL_GENERATIONS_PER_UNIT_URL}`
+      + `?start_date=${encodeURIComponent(span.startDate)}`
+      + `&end_date=${encodeURIComponent(span.endDate)}`;
+
+    let attempt = await authorizedGet(dated);
+    let mode = 'dated';
+    // `status: 0` means the token itself never arrived. Retrying the same call
+    // on a different window would fail identically and would report the auth
+    // problem as a window problem, which is a worse error message.
+    if (attempt.status !== 0 && (attempt.status < 200 || attempt.status >= 300)) {
+      const detail = attempt.body?.error_description || attempt.body?.error || `HTTP ${attempt.status}`;
+      console.warn(
+        `[rte-generation-proxy] dated window ${span.startDate} → ${span.endDate} refused (${detail})`
+        + ' — retrying on the default window',
+      );
+      attempt = await authorizedGet(RTE_ACTUAL_GENERATIONS_PER_UNIT_URL);
+      mode = 'default';
+    }
+
+    if (attempt.status < 200 || attempt.status >= 300 || !attempt.body) {
+      const detail = attempt.body?.error_description || attempt.body?.error
+        || (attempt.status ? `HTTP ${attempt.status}` : lastAuthDetail || 'no token');
+      throw new Error(detail);
+    }
+
+    const projected = projectActualGenerations(attempt.body);
+    return {
+      at: Date.now(),
+      auth: 'ok',
+      authDetail: null,
+      window: mode === 'dated'
+        ? { mode, startDate: span.startDate, endDate: span.endDate }
+        // The default window is RTE's, not ours; reporting our own dates for it
+        // would be a claim about a request we did not make.
+        : { mode },
+      units: projected.units,
+      stats: projected.stats,
+    };
+  }
+
+  async function readDiskOnce() {
+    if (diskChecked) return;
+    diskChecked = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
+      if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.units)) mem = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(CACHE_PATH, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[rte-generation-proxy] cache write failed (${err?.message || err})`);
+    }
+  }
+
+  /** Serve-or-refresh, single-flighted. */
+  async function resolve() {
+    await readDiskOnce();
+    const entry = mem;
+    let current = entry && Date.now() - entry.at < TTL_MS ? entry : null;
+    if (!current) {
+      if (!inflight) {
+        inflight = refreshUpstream()
+          .then(async (next) => {
+            mem = next;
+            // A credential-less answer is not worth a disk round trip, and
+            // caching it would survive the user adding their key.
+            if (next.auth === 'ok') await writeDisk(next);
+            return next;
+          })
+          .catch((err) => {
+            console.warn(`[rte-generation-proxy] refresh failed (${err?.message || err}) — serving cache if any`);
+            return null;
+          })
+          .finally(() => { inflight = null; });
+      }
+      current = await inflight;
+    }
+    return { served: current || entry, stale: !current && Boolean(entry) };
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/rte-generation', async (req, res) => {
+      const sendJson = (status, obj) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(obj));
+      };
+      try {
+        const subPath = String(req.url || '').split('?')[0];
+
+        if (subPath === '/status') {
+          // Reports what is cached; never triggers an upstream call of its own.
+          await readDiskOnce();
+          sendJson(200, {
+            source: SOURCE,
+            auth: basicCredential()
+              ? (mem?.auth || (lastAuthDetail ? 'failed' : 'unknown'))
+              : 'missing',
+            authDetail: lastAuthDetail,
+            ttlMs: TTL_MS,
+            lastFetch: mem?.at ?? null,
+            stale: mem ? Date.now() - mem.at >= TTL_MS : null,
+            window: mem?.window || null,
+            units: mem?.stats?.units ?? 0,
+            reporting: mem?.stats?.reporting ?? 0,
+            totalMw: mem?.stats?.totalMw ?? 0,
+            latestAt: mem?.stats?.latestAt ?? null,
+          });
+          return;
+        }
+
+        if (subPath === '/' || subPath === '') {
+          const { served, stale } = await resolve();
+          if (!served) {
+            // 200, not 502. The layer draws 93.5 GW of French generating
+            // capacity from a file; this route only ever adds the numbers that
+            // move. Answering 5xx would turn "your key is wrong" into "the
+            // layer is broken", and the reason is right here in the payload.
+            sendJson(200, {
+              fetchedAt: Date.now(),
+              stale: false,
+              ttlMs: TTL_MS,
+              source: SOURCE,
+              auth: 'failed',
+              authDetail: lastAuthDetail || 'RTE actual_generations_per_unit is unavailable',
+              window: { mode: 'none' },
+              units: [],
+              stats: { units: 0, reporting: 0, totalMw: 0 },
+            });
+            return;
+          }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: TTL_MS,
+            source: SOURCE,
+            auth: served.auth,
+            authDetail: served.authDetail || null,
+            window: served.window,
+            units: served.units,
+            stats: served.stats,
+          });
+          return;
+        }
+
+        sendJson(404, { error: 'unknown rte-generation route' });
+      } catch (err) {
+        console.warn('[rte-generation-proxy] error:', err?.message || err);
+        sendJson(500, { error: 'rte-generation proxy error' });
+      }
+    });
+  }
+
+  return {
+    name: 'rte-generation-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -10215,6 +10572,7 @@ export default defineConfig(({ mode }) => {
       eco2mixProxy(),
       gasFranceProxy(),
       edfPlantsProxy(),
+      rteGenerationProxy(),
       ndbcProxy(),
       rocketLaunchesProxy(),
       terrainHeightsProxy(),

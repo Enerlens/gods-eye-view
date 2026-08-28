@@ -81,3 +81,41 @@
   preserve the fact the layer is built around — nuclear is a vision consolidée
   au **31/12/2025** while the other two are au **31/12/2023**, so the three
   files are three vintages. Licence Ouverte 2.0, EDF SA.
+
+- `rte-registre-units-sample.json` — 16 real rows of ODRÉ's *Registre national
+  des installations de production et de stockage d'électricité* (edition
+  30/06/2026), captured 2026-08-28 through the same `records` endpoint
+  `scripts/build-rte-units-registry.mjs` pages, kept as the raw Opendatasoft
+  envelope. Every trap in it is real and is the point: `puismaxinstallee` is in
+  **kilowatts** (1 310 000 for a 1 310 MW reactor) and carries three decimals
+  where one plant is split across two groups (Brommat 180 357.261 + 225 642.739
+  = 406 000 exactly); a 132 MW **photovoltaic** farm at Ajaccio is filed under
+  `filiere: "Thermique non renouvelable"`, so classifying on the filière alone
+  paints a solar farm as a thermal station; the Rance **tidal** barrage is named
+  `CENTRALE HYDRAULIQUE DE RANCE`; six overseas and Corsican units publish the
+  literal name `Confidentiel` with no `postesource`; Brommat and Sarrans are two
+  different plants in the SAME commune with two different `postesource` codes;
+  Émile-Huchet is one `postesource` holding both coal and gas groups; and the
+  names arrive in four grammars, with the article parked at the end
+  (`TRICASTIN (LE)`, `AIGLE (L )`, `MORANDES (LES)`), a group ordinal glued to
+  the site (`BROMMAT-7`), an accented `FERME ÉOLIENNE`, and a `STOCKAGE N0 01`
+  that hides its ordinal inside the introducer. Licence Ouverte 2.0, ODRÉ.
+
+- `rte-actual-generation-sample.json` — **NOT a capture.** RTE's
+  `actual_generations_per_unit` needs an account, and this build had no
+  credential to record a live response with, so this file is hand-built to the
+  resource's published contract (`{actual_generations_per_unit: [{unit, values}]}`
+  with `eic_code` / `name` / `production_type` / `installed_capacity` and
+  `start_date` / `end_date` / `value` / `updated_date` per step). It is marked
+  as such in its own `_note` field. What it is good for is the projection: every
+  EIC code in it is a **real** one taken from the register capture above, so the
+  join runs end to end, and it carries each of the eight traps
+  `rteGenerationFeed.js` documents — a reactor reading exactly `0` (outage,
+  which a truthiness guard erases), a tail of `null` future hours after the last
+  measured one, a pumped-storage unit reading **−1 180 MW** while it fills its
+  lake, one unit's values out of chronological order, one EIC arriving in **two
+  envelopes**, one hour republished twice with a newer `updated_date`, an
+  `installed_capacity` that disagrees with the register's, a unit the register
+  has never heard of, an unrecognised `production_type`, and an envelope with
+  no `eic_code` at all. Replace it with a real capture the first time anyone
+  runs this layer with a key.
