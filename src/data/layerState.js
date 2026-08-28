@@ -279,6 +279,7 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
   Object.freeze({ id: 'france-energy', token: 'j', disposition: 'enabled-only' }),
   // A DIGIT, not a letter: every letter of "gas" is taken (g by
@@ -296,12 +297,15 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'military', token: 'm', disposition: 'enabled+mirrored-options', optionOwner: 'flights' }),
   Object.freeze({ id: 'military-awareness', token: 'g', disposition: 'enabled-only' }),
   Object.freeze({ id: 'military-installations', token: 'i', disposition: 'enabled-only' }),
-  // `l` is the last free letter: every letter of "power"/"grid" is taken
-  // (p by transit-fr, g by military-awareness, r by radio, i by
-  // military-installations, d by datacenters), and `z` is the canonical
-  // UNKNOWN token two existing tests assert on — claiming it would turn
-  // "reject an unknown link" into "enable the power grid".
-  Object.freeze({ id: 'power-grid', token: 'l', disposition: 'enabled-only' }),
+  // A DIGIT, following `gas-fr` above, and for the same reason twice over:
+  // every letter of "power"/"grid" is taken (p by transit-fr, g by
+  // military-awareness, r by radio, i by military-installations, d by
+  // datacenters), `z` is the canonical UNKNOWN token two existing tests assert
+  // on, and `l` — the last free letter when this layer was written — was
+  // claimed by `edf-power-plants` before this branch merged. A share link that
+  // silently enabled the wrong layer is exactly what the duplicate-token
+  // assertion in this file exists to prevent.
+  Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
   Object.freeze({ id: 'satellites', token: 's', disposition: 'enabled+options', optionOwner: 'satellites' }),

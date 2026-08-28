@@ -10,6 +10,7 @@ import hubeauHydrometryLayer from './data/hubeauHydrometry.js';
 import meteoFranceVigilanceLayer from './data/meteoFranceVigilance.js';
 import franceEnergyLayer from './data/franceEnergy.js';
 import gasFranceLayer from './data/gasFrance.js';
+import edfPowerPlantsLayer from './data/edfPowerPlants.js';
 import powerGridLayer from './data/powerGrid.js';
 import satellitesLayer from './data/satellites.js';
 import rocketLaunchesLayer from './data/rocketLaunches.js';
@@ -227,6 +228,7 @@ async function init() {
     dataManager.register(meteoFranceVigilanceLayer);
     dataManager.register(franceEnergyLayer);
     dataManager.register(gasFranceLayer);
+    dataManager.register(edfPowerPlantsLayer);
     dataManager.register(powerGridLayer);
     dataManager.register(satellitesLayer);
     dataManager.register(rocketLaunchesLayer);
