@@ -35,50 +35,75 @@
  * OpenStreetMap plant outline, an RTE switchyard, or a commune centre — never
  * an average of them.
  *
- * ── Eight upstream traps, absorbed here and pinned in the test ──────────────
+ * ── Nine upstream traps, and which of them the live API actually plays ──────
  *
- * 1. **Zero is a reading, not a gap.** A reactor in outage reports
- *    `value: 0`. `value || null`, `if (!value)`, `values.filter(Boolean)` —
- *    every one of those erases precisely the units this layer exists to show,
- *    and the fleet then reads as 100% available. Nothing here tests a
- *    generation figure for truthiness; the guard is always `Number.isFinite`.
+ * Everything below was written before this build had an RTE account, from the
+ * published contract. It was then checked against a real 152-unit, 6 992-row
+ * response (2026-08-28), and that check is recorded honestly: four traps are
+ * MEASURED in v1.1, three are DEFENSIVE — the contract permits them, the
+ * resource does not currently do them — and two were wrong and are rewritten.
+ * A guard that has never fired is worth keeping and is not worth claiming.
  *
- * 2. **The last row is the future.** RTE returns the whole requested window,
- *    including hours that have not happened yet, with `value: null`. Reading
- *    `values.at(-1)` gives null and the whole country reads as 0 MW. The
- *    latest MEASURED value is the last one with a finite `value` — the same
- *    trap éCO2mix plays with its `prevision_j1` padding, in a different shape.
+ * 1. **Zero is a reading, not a gap.** MEASURED, and bigger than expected:
+ *    **56 of 152 units** read exactly 0 at the captured hour, four of them
+ *    reactors — Chinon 2, Cruas 4, Gravelines 5, Saint-Laurent 2. `value ||
+ *    null`, `if (!value)`, `values.filter(Boolean)` would each have erased a
+ *    third of the fleet and drawn the rest as fully available. Nothing here
+ *    tests a generation figure for truthiness; the guard is `Number.isFinite`.
  *
- * 3. **Negative is pumping, not corruption.** A `HYDRO_PUMPED_STORAGE` unit
- *    reports a negative value while it is filling its upper lake — Grand'Maison
- *    is 1 690 MW of it. Clamping at zero would hide the one behaviour on this
- *    layer that a grid actually turns on: a power station consuming the grid.
- *    The sign is carried all the way to the card, and `Math.abs` is used only
- *    to pick a radius.
+ * 2. **The last row might be the future.** DEFENSIVE, not measured: v1.1 sends
+ *    **zero nulls** — 0 of 6 992 rows — and simply stops at the last published
+ *    hour, with all 152 units in lockstep on it. The schema permits a null
+ *    `value`, and éCO2mix plays exactly this trap with its `prevision_j1`
+ *    padding, so the latest MEASURED value is still the last one with a finite
+ *    reading rather than the last element. It costs one backwards scan.
  *
- * 4. **`values` are not promised in order.** They are sorted here by
- *    `start_date`, because "latest" has to mean latest in time and not latest
- *    in the array.
+ * 3. **Negative is a station drawing from the grid, not corruption.** Measured
+ *    against the live API on 2026-08-28: 24 of 152 units read negative, and
+ *    **fourteen of them were REACTORS** — Chooz 1 at −58 MW, Paluel 3 at −49,
+ *    Belleville 2 at −43. A reactor cannot pump. A shut-down unit still runs
+ *    its coolant pumps, its instrumentation and its lighting, and buys that
+ *    power back off the grid: a stopped 1 500 MW reactor is a ~50 MW LOAD. The
+ *    rest are thermal units idling at −1 to −3 MW. (Pumped storage does read
+ *    negative while filling its upper lake — but not one of the 28 pumped
+ *    units was doing so at that hour, which is exactly why the first draft of
+ *    this note, written before there was a key to check it with, was wrong.)
+ *    Clamping at zero would erase the whole phenomenon. The sign is carried to
+ *    the card, and `Math.abs` is used only to pick a radius.
  *
- * 5. **One EIC can arrive twice.** The response is a list of unit envelopes,
- *    each with its own `start_date`/`end_date`; a window spanning two days can
- *    come back as two envelopes for the same unit. Last-one-wins would throw
- *    away half the history. Envelopes are MERGED by EIC.
+ * 4. **`values` are not promised in order.** DEFENSIVE: all 152 units arrived
+ *    sorted. Nothing in the contract says they must, and "latest" has to mean
+ *    latest in time rather than last in the array, so they are sorted here.
  *
- * 6. **RTE revises.** `updated_date` exists because an hour gets republished.
- *    Two rows for one `start_date` are resolved on the newest `updated_date`,
- *    not on arrival order.
+ * 5. **One EIC can arrive twice.** DEFENSIVE: the 48-hour window came back as
+ *    152 envelopes for 152 distinct units, one each. But each envelope carries
+ *    its OWN `start_date`/`end_date`, which is a shape that only makes sense if
+ *    a unit may be split across several — so envelopes are MERGED by EIC rather
+ *    than assigned, because last-one-wins would silently halve a history.
  *
- * 7. **Two installed capacities that disagree.** RTE's `installed_capacity`
- *    and the registre's `puismaxinstallee` are two different administrative
- *    figures for the same machine. They are both reported and never averaged;
- *    the load ratio is computed against RTE's when RTE sends one, because that
- *    is the number its own MW figure is measured against.
+ * 6. **RTE revises.** `updated_date` is populated on every one of the 6 992
+ *    rows, which is why it exists; no repeated `start_date` appeared in this
+ *    capture, so the resolution is DEFENSIVE. Two rows for one hour are settled
+ *    on the newest `updated_date`, never on arrival order.
+ *
+ * 7. **RTE sends no installed capacity at all.** The published schema carries
+ *    `unit.installed_capacity`, and v1.1 populates it on **0 of 152** units
+ *    (measured 2026-08-28). So the denominator behind every load figure on this
+ *    layer is the REGISTER's `puismaxinstallee`, never RTE's. The code still
+ *    prefers RTE's when present and still reports both when they disagree,
+ *    because a field that is absent today is not a field that is absent
+ *    forever — but nothing here may assume it will arrive.
  *
  * 8. **A unit RTE reports that the registry cannot place.** RTE's fleet and
  *    ODRÉ's register are maintained separately and drift. An unplaceable unit
  *    is COUNTED and its megawatts reported as unplaced — never dropped
  *    silently, and never dropped onto the nearest site that looks plausible.
+ *
+ * 9. **The two publishers cut the fleet at different granularities.** The EIC
+ *    join is exact for nuclear and thermal and fails wholesale for hydro, where
+ *    the register has one row per PLANT and RTE has one per TURBINE GROUP under
+ *    entirely different codes — 55 of 152 units, 36% of the fleet, left over on
+ *    the first live run. See `adoptUnitsByStationName`.
  *
  * Dependency-free and side-effect-free, so the projection the dev-server proxy
  * runs is the projection under test — the shape `gasFranceFeed.js` and
@@ -142,7 +167,7 @@ export const RTE_GENERATION_CLASSES = Object.freeze({
     label: 'Hydraulique · pompage',
     color: '#a78bfa',
     order: 3,
-    blurb: 'Pumped storage. The only class here that also CONSUMES: a negative reading is the machine filling its upper lake.',
+    blurb: 'Pumped storage. It generates and it consumes — a negative reading here is the machine filling its upper lake, rather than the house load a stopped unit of any class draws.',
   }),
   'fossil-gas': Object.freeze({
     id: 'fossil-gas',
@@ -1053,6 +1078,85 @@ export function projectActualGenerations(payload, { historySteps = RTE_HISTORY_S
 }
 
 /**
+ * RTE names a unit `<STATION> <n>` — `GRAND MAISON 10`, `BATHIE 3`, `PALUEL 1`.
+ * This strips the group ordinal to leave the station.
+ *
+ * Only a TRAILING number is removed, so `CHOOZ B 1` keeps its `B` and
+ * `SUPER BISSORTE 5` keeps `SUPER`. A name that is all station and no ordinal
+ * (`CERNAY`, `SAINT-PIERRE`) passes through untouched.
+ *
+ * @param {*} name - RTE's `unit.name`.
+ * @returns {string} The station part, unnormalized.
+ */
+export function rteStationNameOf(name) {
+  return String(name ?? '').replace(/\s+\d+\s*$/, '').trim();
+}
+
+/**
+ * Attach live units the EIC key could not place to the STATION they name.
+ *
+ * ── Trap 9: the two publishers cut the fleet in different places ────────────
+ *
+ * The EIC join is exact for nuclear and thermal, where both RTE and the ODRÉ
+ * register publish one row per generating unit and agree on its code. It fails
+ * wholesale for HYDRO, because they do not describe the same objects: the
+ * register carries one row per plant (`G.MAIH-CENTRALE HYDRAULIQUE DE
+ * GRAND-MAISON-7`, EIC `17W100P100P02756`, 1 690 MW) while RTE publishes the
+ * TWELVE turbine groups inside it under twelve entirely different EIC codes
+ * (`17W100P100P0058E` … `17W100P100P00699`). Neither is wrong; they are
+ * different granularities of the same machine hall, and no published table
+ * maps one onto the other.
+ *
+ * Measured against the live API on 2026-08-28: 152 units published, 97 placed
+ * by EIC, and **55 left over — 36% of the fleet and 1 914 MW**, nearly all of
+ * it hydro. Drawn without this fallback, Grand'Maison, La Bâthie, Montézic,
+ * Revin, Super-Bissorte and thirteen more read as "RTE published nothing" while
+ * RTE was publishing them by the dozen.
+ *
+ * So the ordinal is stripped and the station name is matched against the
+ * register's, through the same token matcher the authoring script uses. The
+ * rules that keep it honest:
+ *
+ * • **The EIC key always wins.** This runs only on what it could not place.
+ * • **Only a unique winner is taken.** `SAINT-PIERRE` matches two different
+ *   register stations, so it stays unplaced rather than being assigned to the
+ *   nearer-looking one.
+ * • **Every unit records how it was matched.** `matchedBy: 'name'` travels to
+ *   the card, because a name match is weaker evidence than a published code.
+ * • **Nothing is invented.** A unit whose station the register has never heard
+ *   of — `DIRINON 1`, `CYCOFOS PL2` — stays unplaced and counted.
+ *
+ * @param {object} registry - Shipped registry.
+ * @param {Array<object>} orphans - Live units no register EIC claimed.
+ * @returns {Map<string, Array<object>>} Site id → the units adopted into it.
+ */
+export function adoptUnitsByStationName(registry, orphans) {
+  const adopted = new Map();
+  const sites = (Array.isArray(registry?.sites) ? registry.sites : []).map((site) => ({
+    id: site.id,
+    key: normalizeStationName(site.rawSiteName || site.name),
+  })).filter((site) => site.key);
+  if (!sites.length) return adopted;
+
+  for (const unit of Array.isArray(orphans) ? orphans : []) {
+    const wanted = normalizeStationName(rteStationNameOf(unit?.name));
+    if (!wanted) continue;
+    let best = 0;
+    let winners = [];
+    for (const site of sites) {
+      const strength = stationNameMatch(wanted, site.key);
+      if (!strength) continue;
+      if (strength > best) { best = strength; winners = [site]; } else if (strength === best) winners.push(site);
+    }
+    if (winners.length !== 1) continue;
+    const id = winners[0].id;
+    if (!adopted.has(id)) adopted.set(id, []);
+    adopted.get(id).push(unit);
+  }
+  return adopted;
+}
+
+/**
  * Join projected live units onto the shipped registry.
  *
  * The registry is the drawn fleet; the live document only ever adds numbers to
@@ -1073,6 +1177,12 @@ export function joinGenerationToRegistry(registry, liveUnits) {
   const registryUnits = new Map(
     (Array.isArray(registry?.units) ? registry.units : []).map((unit) => [unit.eic, unit]),
   );
+
+  // Trap 9 — the two publishers cut the fleet at different granularities.
+  // Everything the EIC key could not place is offered to the name fallback,
+  // which attaches it to a SITE rather than to a register unit.
+  const adopted = adoptUnitsByStationName(registry, [...live.values()]
+    .filter((unit) => !registryUnits.has(unit.eic)));
 
   const sites = [];
   let placedMw = 0;
@@ -1114,6 +1224,37 @@ export function joinGenerationToRegistry(registry, liveUnits) {
         productionType: measured?.productionType || null,
         history: measured?.history || null,
         reporting: value !== null,
+        matchedBy: measured ? 'eic' : null,
+      });
+    }
+
+    // Units RTE publishes for this station that the register does not carry an
+    // EIC for — its turbine groups, where the register only has the plant.
+    // They add their MEGAWATTS but never their capacity: the register's plant
+    // figure already covers the whole hall, so adding a nameplate here would
+    // count the same iron twice.
+    for (const measured of adopted.get(site.id) || []) {
+      const value = Number.isFinite(measured.mw) ? measured.mw : null;
+      if (value !== null) {
+        mw += value;
+        reporting += 1;
+        if (latestAt === null || measured.at > latestAt) latestAt = measured.at;
+      }
+      units.push({
+        eic: measured.eic,
+        name: measured.name || null,
+        code: null,
+        class: measured.class || 'other',
+        registryMw: null,
+        installedMw: null,
+        mw: value,
+        at: measured.at ?? null,
+        updatedAt: measured.updatedAt ?? null,
+        regime: null,
+        productionType: measured.productionType || null,
+        history: measured.history || null,
+        reporting: value !== null,
+        matchedBy: 'name',
       });
     }
     units.sort((a, b) => (b.installedMw || 0) - (a.installedMw || 0) || a.eic.localeCompare(b.eic));
@@ -1141,10 +1282,11 @@ export function joinGenerationToRegistry(registry, liveUnits) {
     });
   }
 
+  const adoptedEics = new Set([...adopted.values()].flat().map((unit) => unit.eic));
   const unplaced = [];
   let unplacedMw = 0;
   for (const [eic, unit] of live) {
-    if (registryUnits.has(eic)) continue;
+    if (registryUnits.has(eic) || adoptedEics.has(eic)) continue;
     unplaced.push({
       eic,
       name: unit.name,
@@ -1167,6 +1309,9 @@ export function joinGenerationToRegistry(registry, liveUnits) {
       placedMw: Math.round(placedMw),
       unplacedUnits: unplaced.length,
       unplacedMw: Math.round(unplacedMw),
+      // How much of the fleet reached a station only through its NAME. Worth
+      // reporting on its own: it is the weaker of the two joins.
+      adoptedUnits: adoptedEics.size,
       // Registry units RTE said nothing about this window. Also a fact.
       silentUnits: [...registryUnits.keys()].filter((eic) => !live.has(eic)).length,
     },
