@@ -61,21 +61,20 @@ The live layers are grounded in public feeds: the airliner crossing your screen 
 
 Requires Node.js 24.14.x or 26.x (enforced by `package.json`).
 
-1. Copy `.env.example` → `.env` and set `GOOGLE_MAPS_API_KEY`.
-2. Install and run:
-
 ```bash
 npm install
 npm run dev -- --host localhost --port 4173
 ```
 
-3. Open **`http://localhost:4173`**. Cold start settles in under two seconds on a recent laptop (median 1.86 s in a point-in-time M5/Chrome capture — [docs/PERFORMANCE.md](docs/PERFORMANCE.md); a comparison baseline, not a hardware requirement). A first-run card offers to stage a mission for you — **Live Contacts**, **Space Missions**, **Environmental** — or leaves you to explore manually.
+Open **`http://localhost:4173`**. **No key, no `.env`, no signup.** Cold start settles in under two seconds on a recent laptop (median 1.86 s in a point-in-time M5/Chrome capture — [docs/PERFORMANCE.md](docs/PERFORMANCE.md); a comparison baseline, not a hardware requirement). A first-run card offers to stage a mission for you — **Live Contacts**, **Space Missions**, **Environmental** — or leaves you to explore manually.
 
-**That one key is the whole entry fee.** Everything in this README is color-coded — 🟢 needs nothing · 🟡 free key · 🔴 metered — and Google Maps is the only 🔴 you need: it buys the photorealistic planet, and most of the globe lights up 🟢 from there. Full map in [Keys & Costs](#-api-keys).
+Keyless you get the globe on **OSM** worldwide, and over France the **IGN Géoplateforme** basemaps — BD ORTHO® at 20 cm and Plan IGN — plus every 🟢 data layer, which is most of them. Pick a source in the **MAP SOURCE** row of the Visual Presets tray.
+
+To add the photorealistic 3D planet, copy `.env.example` → `.env` and set `GOOGLE_MAPS_API_KEY`. Everything in this README is color-coded — 🟢 needs nothing · 🟡 free key · 🔴 metered — and Google Maps is the only 🔴 that changes what the planet looks like. Full map in [Keys & Costs](#-api-keys).
 
 The dev server binds to **localhost** — your keys stay on your machine. Sharing on a LAN and the cost rails live in [Keys & Costs](#-api-keys) and [SECURITY.md](SECURITY.md).
 
-**macOS shortcut:** `./scripts/dev-fresh.sh` clears the Vite cache and pulls your keys straight from the Keychain.
+**macOS shortcut:** `./scripts/dev-fresh.sh` clears the Vite cache and pulls your keys straight from the Keychain. It runs keyless too, with a warning.
 
 ---
 
@@ -194,6 +193,7 @@ Twenty-four live layers. **Twenty of them need nothing at all** — no key, no a
 | ⬡ **Réseau gaz** 🇫🇷 | The French gas system as three things at once: **36,106 km** of high-pressure transmission trace clamped to the ground — NaTran (ex-GRTgaz) in violet, Teréga in orchid, never merged — plus the **850 renewable-methane injection points** feeding it and the **14 gas-fired power stations** burning out of it, into the `gaz` filière of the Mix élec layer above. Both traces are the operators' own, simplified to about 250 m, and are drawn exactly as published | NaTran / Teréga / ODRÉ | 🟢 |
 | ◈ **Centrales EDF** 🇫🇷 | Where French electricity is physically made: EDF's own 79 generating sites — 18 nuclear (61 370 MW), 51 hydraulic (13 779 MW) and 10 fossil-fired (4 945 MW) — each a disc whose **area** is its installed capacity, labelled with what it actually is: `GRAVELINES · 5 460 MW · 6 × REP 900`, `GRAND-MAISON · 1 714 MW · Pompage mixte`. EDF's fleet rather than France's, and dated per file rather than pretending to one snapshot | EDF Open Data | 🟢 |
 | ☢ **Groupes de prod** 🇫🇷 | France's power stations, **unit by unit**, at the output RTE last published for each one — 57 reactors, 6 pumped-storage machines, 44 thermal groups, 171 units and 93.5 GW in all. Each station is a ring sized by its nameplate, filled by what it is producing: a **crisp empty ring is a reactor in outage**, a faint one is a station RTE said nothing about, and a **magenta disc is a machine consuming the grid** to fill its upper lake. Click one and the card lists its groups with a day of hourly history each. Draws the whole fleet with no key at all — the key only adds the megawatts | RTE · ODRÉ · EDF · OpenStreetMap | 🟡 (🟢 without the key: installed capacity only) |
+| ≈ **Petite hydro** 🇫🇷 | The other 2 686 hydro plants. France's national register holds **2 742 hydroelectric installations for 26,02 GW** — the two layers above could draw 56 of them, because one is EDF-only and the other stops at RTE's 100 MW publication floor. Between them sat the nine SHEM plants of the Ossau valley at Laruns, 223,9 MW in one commune, on no layer at all. This draws the register whole, down to a 40 kW mill. **A filled disc is a plant where it is** — 589 of the 998 positions are a building footprint **surveyed by IGN**, the data the Plan IGN is drawn from, median span 32 m, with IGN's own accuracy on the card. **A hollow ring is a commune, not a plant**: the register publishes no coordinates, and for the 1 744 installations nobody places, the commune centre is a median 2,5 km from the powerhouse, so they are rolled up rather than pinned somewhere false. Half the register is anonymised by the publisher, and those cards are still full: power, technology, head, connection voltage, source substation, grid operator, and the energy actually injected over twelve rolling months. No key | IGN BD TOPO · ODRÉ · OpenStreetMap · EDF | 🟢 |
 | ⌁ **Power Grid** | The wires themselves — the high-voltage network as OpenStreetMap has mapped it, loaded for the viewport you are looking at. Routes coloured by voltage band (**400 kV** backbone down to **63 kV**), the **substations** they land in sized by the same band, and, once you are close enough for a pylon to be a thing rather than a dot, the **pylons** holding them up. Underground cable is dashed, because it has no pylons. This is the one part of the grid RTE publishes no geometry for, so it is volunteer mapping — and only what OSM has given a voltage of 50 kV or more | OpenStreetMap (Overpass) | 🟢 |
 | 🎖️ **Mapped Installations** | Viewport-bounded military-site context from community mapping — incomplete by nature, and labeled that way | OpenStreetMap | 🟢 |
 
@@ -276,7 +276,9 @@ See [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md) for the authoritative runti
 
 **The legend, one more time:** 🟢 **no signup** — works out of the box · 🟡 **free key** — register, paste, done · 🔴 **metered** — a billing-enabled account; costs are small but real.
 
-Most of the globe is 🟢: flights (anonymous), military traffic, satellites, earthquakes, CCTV, radio, bikeshare, French transit, French shared mobility, space missions, mapped installations, and every bundled dataset run with **zero keys**.
+Most of the globe is 🟢: the **basemap itself** (OSM worldwide, IGN Ortho and Plan IGN over France), **place search** (OpenStreetMap's Nominatim worldwide, the IGN Géoplateforme for French addresses), flights (anonymous), military traffic, satellites, earthquakes, CCTV, radio, bikeshare, French transit, French shared mobility, space missions, mapped installations, and every bundled dataset run with **zero keys**.
+
+**`git clone && npm i && npm run dev` needs no credential at all.** What a keyless build gives up is the photorealistic 3D planet, the Bing imagery stacks, the voice mic, and the Google-only place context behind annotations and the cockpit readout — each of which says which key it wants rather than failing silently. The search box is not on that list any more: it geocodes keylessly.
 
 ### What you need for the good experience
 
@@ -284,7 +286,7 @@ Five keys cover the fully keyed experience. Three currently offer no-cost develo
 
 | | Key | Why | Get it |
 |---|-----|-----|--------|
-| 🔴 | **Google Maps** *(required)* | The photorealistic 3D planet ([Map Tiles API](https://developers.google.com/maps/documentation/tile)) | [Google Cloud Console](https://console.cloud.google.com/) — metered; [check current pricing](https://developers.google.com/maps/billing-and-pricing/pricing) and URL-restrict it |
+| 🔴 | **Google Maps** | The photorealistic 3D planet ([Map Tiles API](https://developers.google.com/maps/documentation/tile)), the place context behind annotations and the cockpit readout, and the sharpest place search. Without it the app boots on the keyless globe stacks and searches through OpenStreetMap + IGN instead | [Google Cloud Console](https://console.cloud.google.com/) — metered; [check current pricing](https://developers.google.com/maps/billing-and-pricing/pricing) and URL-restrict it |
 | 🔴 | **OpenAI** | 🎙️ The voice experience + AI HUD summary. Want another provider behind the mic? PRs welcome | [platform.openai.com](https://platform.openai.com) — metered; [check current API pricing](https://openai.com/api/pricing/) |
 | 🟡 | **AISStream** | 🚢 Live global ships | [aisstream.io](https://aisstream.io) — free, seriously, it's a two-minute signup |
 | 🟡 | **NASA FIRMS** | 🔥 Live active fires | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/api/map_key/) — free |
@@ -328,7 +330,7 @@ Honest numbers, roughly, as of mid-2026 — always check the provider pricing pa
 |---|---|
 | **🟢 Most layers** | **$0, no signup.** OpenSky anon, USGS, CelesTrak, adsb.lol, city CCTV, Radio Browser, GBFS, transport.data.gouv.fr, Launch Library 2, Vigicrues, Hub'Eau, Météo-France Vigilance, ODRÉ éCO2mix, EDF Open Data, NOAA NDBC, bundled datasets. |
 | **🟡 Optional developer access** | AISStream, FIRMS, TomTom, Cesium ion, and authenticated OpenSky may offer no-cost access, but limits and permitted uses differ. Cesium ion and OpenSky in particular have plan or use restrictions; verify the current provider terms for your deployment. |
-| **🔴 Google 3D tiles** | Map Tiles usage is billed by session, with current prices and free-usage caps varying by billing region. Check Google's pricing page, restrict the key, set quotas, and configure a budget alert before sustained use. |
+| **🔴 Google 3D tiles** | Map Tiles usage is billed by session, with current prices and free-usage caps varying by billing region. Check Google's pricing page, restrict the key, set quotas, and configure a budget alert before sustained use. Skipping it entirely is supported: the app boots keyless onto OSM and the IGN France basemaps. |
 | **🔴 OpenAI voice** | Realtime audio is usage-metered and the total depends on the selected model, conversation length, and audio volume. The app shows a live session estimate, warns at $2, and applies a **$5 in-app session cap**; provider-side usage limits remain the billing backstop. |
 
 ### 🧗 The floor is low on purpose

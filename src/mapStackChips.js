@@ -1,9 +1,14 @@
 // MAP STACK source chips — the always-visible replacement for the `<select>`
 // that used to sit in the Map Stack panel. One button per stack, rendered from
-// `MapStackController.getStacks()`. The four accepted sources below are
+// `MapStackController.getStacks()`. The six accepted sources below are
 // the whole shipped set; keeping the allowlist explicit means a stack added to
 // `MAP_STACKS` for internal use cannot reach the tray until someone names it
 // here.
+//
+// Order groups by what a source COSTS the operator, not by age: the three that
+// need a credential first (Google 3D, the two Bing/ion stacks), then the three
+// keyless ones (OSM worldwide, then the two IGN France stacks). On the tray's
+// three-column desktop grid that puts each group on its own row.
 //
 // The chips are a control SURFACE only: selecting one calls back into the same
 // `_setMapStack()` path the dropdown's `change` handler used, and the active
@@ -16,6 +21,8 @@ export const PRESENTED_MAP_STACK_IDS = Object.freeze([
   'bing-aerial',
   'bing-labels',
   'osm',
+  'ign-ortho',
+  'ign-plan',
 ]);
 
 /**
@@ -26,13 +33,19 @@ export const PRESENTED_MAP_STACK_IDS = Object.freeze([
  * case), and a future stack may have its own reason. The ION badge is therefore
  * gated on the stack's own `requiresIon` flag, and the tooltip quotes the
  * controller's `unavailableReason` rather than assuming one.
- * @param {{id: string, label: string, available?: boolean, requiresIon?: boolean, unavailableReason?: string|null}} stack - Stack descriptor from `getStacks()`.
+ * An AVAILABLE stack can still be partial: the IGN sources cover metropolitan
+ * France and nothing else, and picking one over Texas changes the globe not at
+ * all. Their `coverageNote` rides into the tooltip so the tray says that
+ * BEFORE the click rather than leaving the operator to conclude the chip is
+ * broken. It is not a disabled state — the stack really is selectable.
+ * @param {{id: string, label: string, available?: boolean, requiresIon?: boolean, unavailableReason?: string|null, coverageNote?: string|null}} stack - Stack descriptor from `getStacks()`.
  * @param {string|null} activeId - Currently active stack id.
- * @returns {{id: string, label: string, available: boolean, active: boolean, requiresIon: boolean, requirement: string, unavailableHint: string, title: string}}
+ * @returns {{id: string, label: string, available: boolean, active: boolean, requiresIon: boolean, requirement: string, unavailableHint: string, coverageNote: string, title: string}}
  */
 export function mapStackChipModel(stack, activeId) {
   const available = stack?.available !== false;
   const label = String(stack?.label ?? stack?.id ?? '');
+  const coverageNote = String(stack?.coverageNote || '');
   const requiresIon = stack?.requiresIon === true;
   const fallbackReason = requiresIon
     ? 'Cesium ion token required'
@@ -49,7 +62,10 @@ export function mapStackChipModel(stack, activeId) {
     // unavailable chip carries the real reason in its tooltip.
     requirement: !available && requiresIon ? 'ION' : '',
     unavailableHint,
-    title: available ? label : unavailableHint,
+    coverageNote,
+    title: available
+      ? (coverageNote ? `${label} — ${coverageNote}` : label)
+      : unavailableHint,
   };
 }
 
@@ -100,6 +116,11 @@ export function renderMapStackChips(container, stacks, { activeId = null, onSele
     chip.setAttribute('aria-disabled', String(!model.available));
     if (!model.available) {
       chip.setAttribute('aria-label', `${model.label} unavailable: ${model.unavailableHint}`);
+    } else if (model.coverageNote) {
+      // A `title` alone is mouse-only. A partial-coverage source has to say so
+      // to a screen reader too, and it is not "unavailable" — so it gets a
+      // plain accessible name, not the unavailable phrasing.
+      chip.setAttribute('aria-label', `${model.label} — ${model.coverageNote}`);
     }
 
     const label = ownerDoc.createElement('span');

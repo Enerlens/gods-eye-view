@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { viewportBias, placesNearViewRecovery } from './annotations/annotationResolver.js';
+import { keylessGeocode } from './data/keylessGeocode.js';
 
 /**
  * Points of Interest per city.
@@ -117,7 +118,130 @@ export const CITY_POIS = {
       { name: 'Jefferson Memorial', lat: 38.8814, lon: -77.0365, alt: 400, pitch: -30, heading: 0, buildingHeight: 25 },
     ],
   },
+
+  /*
+   * The French cities, ranked by commune population (INSEE). Paris already sat
+   * above; these are ranks 2–8.
+   *
+   * They are APPENDED rather than moved to the top of this object on purpose.
+   * The seeded CCTV cameras in ./cctv.js anchor themselves to a `cityId` plus a
+   * `poiIndex` into that city's `pois` array — `paris-rivoli` is poiIndex 4,
+   * `paris-champs-n` is poiIndex 1 — so reordering a city's landmarks silently
+   * moves its cameras somewhere else in the world. Nothing here reorders an
+   * existing array, and the pill row draws from PILL_CITY_IDS below rather than
+   * from this object's key order, so insertion order carries no meaning at all.
+   */
+  marseille: {
+    name: 'Marseille',
+    groundElevation: 10,
+    viewBounds: { southwest: { lat: 43.169, lng: 5.228 }, northeast: { lat: 43.391, lng: 5.532 } },
+    pois: [
+      { name: 'Notre-Dame de la Garde', lat: 43.2841, lon: 5.3714, alt: 600, pitch: -25, heading: 340, buildingHeight: 60 },
+      { name: 'Vieux-Port', lat: 43.2951, lon: 5.3739, alt: 750, pitch: -30, heading: 270, buildingHeight: 15 },
+      { name: 'MuCEM', lat: 43.2965, lon: 5.3610, alt: 450, pitch: -25, heading: 135, buildingHeight: 20 },
+      { name: "Château d'If", lat: 43.2797, lon: 5.3255, alt: 600, pitch: -30, heading: 90, buildingHeight: 25 },
+      { name: 'Stade Vélodrome', lat: 43.2699, lon: 5.3958, alt: 650, pitch: -35, heading: 0, buildingHeight: 40 },
+    ],
+  },
+  lyon: {
+    name: 'Lyon',
+    groundElevation: 170,
+    viewBounds: { southwest: { lat: 45.707, lng: 4.771 }, northeast: { lat: 45.808, lng: 4.899 } },
+    pois: [
+      { name: 'Basilique de Fourvière', lat: 45.7622, lon: 4.8226, alt: 550, pitch: -25, heading: 90, buildingHeight: 50 },
+      { name: 'Place Bellecour', lat: 45.7578, lon: 4.8320, alt: 700, pitch: -35, heading: 0, buildingHeight: 10 },
+      { name: 'Musée des Confluences', lat: 45.7333, lon: 4.8180, alt: 500, pitch: -28, heading: 315, buildingHeight: 35 },
+      { name: 'Tour Part-Dieu', lat: 45.7605, lon: 4.8570, alt: 600, pitch: -22, heading: 225, buildingHeight: 90 },
+      { name: 'Cathédrale Saint-Jean', lat: 45.7602, lon: 4.8271, alt: 400, pitch: -28, heading: 45, buildingHeight: 35 },
+    ],
+  },
+  toulouse: {
+    name: 'Toulouse',
+    groundElevation: 145,
+    viewBounds: { southwest: { lat: 43.545, lng: 1.352 }, northeast: { lat: 43.669, lng: 1.507 } },
+    pois: [
+      { name: 'Place du Capitole', lat: 43.6043, lon: 1.4437, alt: 500, pitch: -32, heading: 90, buildingHeight: 20 },
+      { name: 'Basilique Saint-Sernin', lat: 43.6083, lon: 1.4419, alt: 450, pitch: -25, heading: 180, buildingHeight: 45 },
+      { name: 'Pont Neuf', lat: 43.5985, lon: 1.4386, alt: 500, pitch: -30, heading: 45, buildingHeight: 12 },
+      { name: 'Couvent des Jacobins', lat: 43.6033, lon: 1.4404, alt: 400, pitch: -28, heading: 135, buildingHeight: 30 },
+      { name: "Cité de l'Espace", lat: 43.5866, lon: 1.4913, alt: 550, pitch: -30, heading: 270, buildingHeight: 25 },
+    ],
+  },
+  nice: {
+    name: 'Nice',
+    groundElevation: 15,
+    viewBounds: { southwest: { lat: 43.653, lng: 7.190 }, northeast: { lat: 43.756, lng: 7.320 } },
+    pois: [
+      { name: 'Promenade des Anglais', lat: 43.6950, lon: 7.2650, alt: 700, pitch: -28, heading: 60, buildingHeight: 15 },
+      { name: 'Colline du Château', lat: 43.6952, lon: 7.2799, alt: 550, pitch: -30, heading: 250, buildingHeight: 60 },
+      { name: 'Place Masséna', lat: 43.6975, lon: 7.2707, alt: 450, pitch: -32, heading: 180, buildingHeight: 18 },
+      { name: 'Vieux-Nice', lat: 43.6970, lon: 7.2760, alt: 400, pitch: -30, heading: 315, buildingHeight: 20 },
+      { name: 'Aéroport Nice Côte d’Azur', lat: 43.6584, lon: 7.2159, alt: 900, pitch: -35, heading: 45, buildingHeight: 20 },
+    ],
+  },
+  nantes: {
+    name: 'Nantes',
+    groundElevation: 20,
+    viewBounds: { southwest: { lat: 47.180, lng: -1.612 }, northeast: { lat: 47.263, lng: -1.500 } },
+    pois: [
+      { name: 'Château des ducs de Bretagne', lat: 47.2158, lon: -1.5497, alt: 500, pitch: -32, heading: 225, buildingHeight: 25 },
+      { name: "Machines de l'île", lat: 47.2069, lon: -1.5648, alt: 450, pitch: -28, heading: 90, buildingHeight: 20 },
+      { name: 'Cathédrale Saint-Pierre', lat: 47.2184, lon: -1.5510, alt: 450, pitch: -25, heading: 270, buildingHeight: 45 },
+      { name: 'Tour Bretagne', lat: 47.2179, lon: -1.5606, alt: 500, pitch: -22, heading: 135, buildingHeight: 70 },
+      { name: 'Pont Anne-de-Bretagne', lat: 47.2064, lon: -1.5687, alt: 450, pitch: -30, heading: 0, buildingHeight: 12 },
+    ],
+  },
+  montpellier: {
+    name: 'Montpellier',
+    groundElevation: 30,
+    viewBounds: { southwest: { lat: 43.565, lng: 3.820 }, northeast: { lat: 43.653, lng: 3.937 } },
+    pois: [
+      { name: 'Place de la Comédie', lat: 43.6086, lon: 3.8797, alt: 500, pitch: -32, heading: 45, buildingHeight: 18 },
+      { name: 'Arc de Triomphe du Peyrou', lat: 43.6115, lon: 3.8712, alt: 400, pitch: -28, heading: 90, buildingHeight: 20 },
+      { name: 'Cathédrale Saint-Pierre', lat: 43.6142, lon: 3.8730, alt: 420, pitch: -25, heading: 180, buildingHeight: 40 },
+      { name: 'Antigone', lat: 43.6083, lon: 3.8869, alt: 550, pitch: -30, heading: 270, buildingHeight: 22 },
+      { name: 'Hôtel de Ville', lat: 43.5990, lon: 3.8925, alt: 450, pitch: -28, heading: 315, buildingHeight: 30 },
+    ],
+  },
+  strasbourg: {
+    name: 'Strasbourg',
+    groundElevation: 140,
+    viewBounds: { southwest: { lat: 48.518, lng: 7.680 }, northeast: { lat: 48.646, lng: 7.822 } },
+    pois: [
+      { name: 'Cathédrale Notre-Dame', lat: 48.5819, lon: 7.7509, alt: 450, pitch: -22, heading: 270, buildingHeight: 75 },
+      { name: 'Petite France', lat: 48.5804, lon: 7.7409, alt: 400, pitch: -30, heading: 45, buildingHeight: 15 },
+      { name: 'Parlement européen', lat: 48.5975, lon: 7.7677, alt: 600, pitch: -28, heading: 200, buildingHeight: 40 },
+      { name: 'Palais Rohan', lat: 48.5806, lon: 7.7522, alt: 400, pitch: -30, heading: 0, buildingHeight: 22 },
+      { name: 'Barrage Vauban', lat: 48.5800, lon: 7.7392, alt: 400, pitch: -28, heading: 90, buildingHeight: 15 },
+    ],
+  },
 };
+
+/**
+ * The cities the LOCATION tray offers as pills, in commune-population order
+ * (INSEE): Paris, Marseille, Lyon, Toulouse, Nice, Nantes, Montpellier,
+ * Strasbourg.
+ *
+ * This list is SEPARATE from CITY_POIS on purpose. What the tray offers is a
+ * product decision; what the app knows how to fly to is a data concern with
+ * dependents — the seeded CCTV cameras, the voice `fly_to_location` presets and
+ * free-text search all resolve against CITY_POIS. Deleting Austin or Tokyo from
+ * that object to shorten this row would strand their cameras; narrowing the row
+ * here costs nothing and is one line to revert.
+ */
+export const PILL_CITY_IDS = Object.freeze([
+  'paris',
+  'marseille',
+  'lyon',
+  'toulouse',
+  'nice',
+  'nantes',
+  'montpellier',
+  'strasbourg',
+]);
+
+/** The city the globe opens on when a visit carries no share state. */
+export const DEFAULT_CITY_ID = 'paris';
 
 /**
  * Absolute full-earth camera preset for the zoom_to_globe voice tool. The height
@@ -342,45 +466,82 @@ export function findPoiByName(query) {
 export const CANCELLED_SEARCH = Object.freeze({ cancelled: true });
 
 /**
- * Geocode a place name using Google Geocoding API, then fly there at a scale
- * appropriate to the request. Countries and cities use their viewport by
- * default; precise landmarks/buildings use close landmark framing.
+ * This build's Google Maps key, or `''` when there is none.
+ *
+ * `import.meta.env` is Vite's and does not exist under `node --test`, which is
+ * where the keyless path is exercised, so the read is guarded by `typeof`
+ * rather than `?.`: the key arrives through an exact-text `define`, and
+ * `import.meta.env?.GOOGLE_MAPS_API_KEY` would not match it.
+ */
+function googleMapsApiKey() {
+  if (window.__GOOGLE_MAPS_API_KEY__) return window.__GOOGLE_MAPS_API_KEY__;
+  return typeof import.meta.env === 'undefined' ? '' : (import.meta.env.GOOGLE_MAPS_API_KEY || '');
+}
+
+/**
+ * Geocode a place name, then fly there at a scale appropriate to the request.
+ * Countries and cities use their viewport by default; precise landmarks and
+ * buildings use close landmark framing.
+ *
+ * Google Geocoding answers when a key is configured. Without one the search box
+ * is not dead: `/api/geocode` answers the same three things — a location, a
+ * viewport, and Google-shaped `types` — from OpenStreetMap (Nominatim) and the
+ * IGN Géoplateforme, neither of which takes a key. Everything below the lookup
+ * is shared, so a keyless search frames a city, a park, a street and a building
+ * exactly the way a keyed one does.
  */
 export async function searchAndFlyTo(viewer, query, options = {}) {
-  const apiKey = window.__GOOGLE_MAPS_API_KEY__ || import.meta.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) throw new Error('No Google Maps API key available for geocoding');
+  const apiKey = googleMapsApiKey();
 
   const beforeFly = typeof options.beforeFly === 'function' ? options.beforeFly : null;
   const mayFly = () => beforeFly === null || beforeFly() !== false;
 
-  // Viewport-biased geocode — the same bias annotationResolver's geocodePlace uses:
+  // Viewport bias — the same bias annotationResolver's geocodePlace uses:
   // "Sixth Street" spoken over Austin must prefer the Sixth Street on screen, not a
   // same-named road in another city (or the wrong end of town — the W 6th vs E 6th bug).
-  let url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${apiKey}`;
   const bias = viewportBias(viewer);
-  if (bias) url += `&bounds=${bias}`;
-  const response = await fetch(url);
-  const data = await response.json();
 
-  const result = (data.status === 'OK' && data.results?.length) ? data.results[0] : null;
-  let lat = result?.geometry.location.lat;
-  let lng = result?.geometry.location.lng;
-  let label = result ? result.formatted_address : null;
-  let types = result?.types || [];
-  let viewport = result ? (result.geometry.bounds || result.geometry.viewport) : null;
+  let lat;
+  let lng;
+  let label;
+  let types;
+  let viewport;
 
-  // Places-near-view recovery (annotationResolver's twin): a missed geocode, or one
-  // that landed implausibly far from the view centre, snaps back to a view-biased
-  // Places hit within the trust bound — "the Capitol" means the one on screen.
-  const recovered = await placesNearViewRecovery(viewer, query, result ? { lat, lon: lng } : null);
-  if (recovered) {
-    lat = recovered.lat;
-    lng = recovered.lon;
-    label = recovered.label || label || query;
-    types = recovered.types || [];
-    viewport = placesViewportToBounds(recovered.viewport) || viewport;
-  } else if (!result) {
-    return null;
+  if (apiKey) {
+    let url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(query)}&key=${apiKey}`;
+    if (bias) url += `&bounds=${bias}`;
+    const response = await fetch(url);
+    const data = await response.json();
+
+    const result = (data.status === 'OK' && data.results?.length) ? data.results[0] : null;
+    lat = result?.geometry.location.lat;
+    lng = result?.geometry.location.lng;
+    label = result ? result.formatted_address : null;
+    types = result?.types || [];
+    viewport = result ? (result.geometry.bounds || result.geometry.viewport) : null;
+
+    // Places-near-view recovery (annotationResolver's twin): a missed geocode, or one
+    // that landed implausibly far from the view centre, snaps back to a view-biased
+    // Places hit within the trust bound — "the Capitol" means the one on screen.
+    // Google-only: the Text Search proxy behind it is brokered from the same key,
+    // so a keyless build would be asking a 503 endpoint on every search.
+    const recovered = await placesNearViewRecovery(viewer, query, result ? { lat, lon: lng } : null);
+    if (recovered) {
+      lat = recovered.lat;
+      lng = recovered.lon;
+      label = recovered.label || label || query;
+      types = recovered.types || [];
+      viewport = placesViewportToBounds(recovered.viewport) || viewport;
+    } else if (!result) {
+      return null;
+    }
+  } else {
+    // The keyless geocoder's own bounded-then-worldwide pass is what stands in
+    // for the Places recovery above: it searches INSIDE the view first, and only
+    // widens to the planet when the view holds nothing by that name.
+    const hit = await keylessGeocode(query, { bias });
+    if (!hit) return null;
+    ({ lat, lng, label, types, viewport } = hit);
   }
 
   const requestedRange = finitePositive(options.range);

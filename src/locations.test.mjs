@@ -19,6 +19,9 @@ import {
   REGION_SWATH_SPAN_KM,
   GLOBE_VIEW,
   searchAndFlyTo,
+  CITY_POIS,
+  PILL_CITY_IDS,
+  DEFAULT_CITY_ID,
 } from './locations.js';
 
 function stubViewer() {
@@ -69,6 +72,49 @@ async function runSearch(viewer, options, { result = AUSTIN_RESULT, query = 'aus
     else delete globalThis.window;
   }
 }
+
+/**
+ * The same search on a build with NO Google key: `searchAndFlyTo` must reach the
+ * keyless `/api/geocode` proxy and nothing else, and frame what comes back the
+ * same way it frames a Google answer.
+ */
+async function runKeylessSearch(viewer, options, { payload, query = 'toulouse' } = {}) {
+  const hadWindow = Object.hasOwn(globalThis, 'window');
+  const priorWindow = globalThis.window;
+  const priorFetch = globalThis.fetch;
+  const requested = [];
+  // No key on the window, but the timers resolveBuildingBounds needs for its
+  // Overpass call — a precise place still resolves its outline keylessly.
+  globalThis.window = { setTimeout, clearTimeout };
+  globalThis.fetch = async (url) => {
+    requested.push(String(url));
+    if (String(url).startsWith('/api/overpass')) return { ok: true, json: async () => ({ elements: [] }) };
+    return { ok: true, json: async () => payload };
+  };
+  try {
+    return { destination: await searchAndFlyTo(viewer, query, options), requested };
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (hadWindow) globalThis.window = priorWindow;
+    else delete globalThis.window;
+  }
+}
+
+const KEYLESS_TOULOUSE = {
+  result: {
+    lat: 43.6044638,
+    lon: 1.4442433,
+    label: 'Toulouse, France',
+    types: ['locality'],
+    viewport: {
+      southwest: { lat: 43.5326969, lng: 1.3503311 },
+      northeast: { lat: 43.6687119, lng: 1.5153356 },
+    },
+    source: 'nominatim',
+  },
+  source: 'nominatim',
+  attribution: '© OpenStreetMap contributors (ODbL 1.0), via Nominatim',
+};
 
 /** Read a recorded viewport flight back as a degrees rectangle. */
 function flownRectangleDegrees(viewer, index = 0) {
@@ -596,4 +642,135 @@ test('search without an authority hook preserves the existing caller contract', 
   const result = await runSearch(viewer, {});
   assert.equal(result.navigationMode, 'city-overview');
   assert.equal(viewer.flights.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Keyless search: a build with no Google Maps key still finds places.
+// ---------------------------------------------------------------------------
+
+test('a keyless build searches through /api/geocode, and asks Google nothing', async () => {
+  const viewer = stubViewer();
+  const { destination, requested } = await runKeylessSearch(viewer, {}, { payload: KEYLESS_TOULOUSE });
+  assert.equal(requested.length, 1);
+  assert.match(requested[0], /^\/api\/geocode\?/);
+  assert.equal(requested.some((url) => /googleapis|\/api\/google\//.test(url)), false);
+  assert.equal(destination.label, 'Toulouse, France');
+  assert.equal(destination.navigationMode, 'city-overview');
+  // Framed from the keyless viewport, exactly like a Google city result.
+  const framed = flownRectangleDegrees(viewer);
+  assert.ok(framed.south < 43.53 && framed.north > 43.67, JSON.stringify(framed));
+  assert.ok(framed.west < 1.35 && framed.east > 1.52, JSON.stringify(framed));
+});
+
+test('a keyless park keeps area framing and a keyless landmark keeps close framing', async () => {
+  const park = stubViewer();
+  await runKeylessSearch(park, {}, {
+    query: 'zilker park',
+    payload: {
+      result: {
+        lat: 30.2676852,
+        lon: -97.7668919,
+        label: 'Zilker Park, United States',
+        types: ['park'],
+        viewport: {
+          southwest: { lat: 30.2660419, lng: -97.7707530 },
+          northeast: { lat: 30.2693219, lng: -97.7624639 },
+        },
+        source: 'nominatim',
+      },
+    },
+  });
+  assert.ok(park.flights[0]?.destination instanceof Cesium.Rectangle, 'a park frames its box');
+
+  const tower = stubViewer();
+  const { destination } = await runKeylessSearch(tower, {}, {
+    query: 'tour eiffel',
+    payload: {
+      result: {
+        lat: 48.8582599,
+        lon: 2.2945006,
+        label: 'Tour Eiffel, France',
+        types: [],
+        viewport: null,
+        source: 'nominatim',
+      },
+    },
+  });
+  assert.equal(destination.navigationMode, 'precise-place');
+  assert.ok(tower.flights[0]?.sphere, 'a landmark flies to a bounding sphere, not a rectangle');
+});
+
+test('a keyless miss is a miss, not a thrown configuration error', async () => {
+  const viewer = stubViewer();
+  const { destination } = await runKeylessSearch(viewer, {}, {
+    query: 'zzzqqxxnotaplace',
+    payload: { result: null, source: null, attribution: null },
+  });
+  assert.equal(destination, null, 'the search box reports "Location not found"');
+  assert.equal(viewer.flights.length, 0);
+});
+
+test('a keyless search still honours the navigation authority veto', async () => {
+  const viewer = stubViewer();
+  const { destination } = await runKeylessSearch(viewer, { beforeFly: () => false }, {
+    payload: KEYLESS_TOULOUSE,
+  });
+  assert.equal(destination, CANCELLED_SEARCH);
+  assert.equal(viewer.flights.length, 0);
+});
+
+// ── LOCATION tray: the French pill row, and the coupling it must not break ───
+
+test('every pill resolves to a real city, and Paris opens the row', () => {
+  assert.equal(DEFAULT_CITY_ID, 'paris');
+  assert.equal(PILL_CITY_IDS[0], DEFAULT_CITY_ID);
+  assert.equal(new Set(PILL_CITY_IDS).size, PILL_CITY_IDS.length, 'no duplicate pill');
+  for (const cityId of PILL_CITY_IDS) {
+    const city = CITY_POIS[cityId];
+    assert.ok(city, `pill without a city: ${cityId}`);
+    assert.equal(city.pois.length, 5, `${cityId} must carry the standard 5 POIs`);
+    for (const poi of city.pois) {
+      assert.ok(Number.isFinite(poi.lat) && poi.lat > 41 && poi.lat < 52, `${cityId}/${poi.name} latitude`);
+      assert.ok(Number.isFinite(poi.lon) && poi.lon > -6 && poi.lon < 10, `${cityId}/${poi.name} longitude`);
+    }
+  }
+});
+
+test('every POI sits inside its own city viewBounds', () => {
+  for (const cityId of PILL_CITY_IDS) {
+    const { pois, viewBounds } = CITY_POIS[cityId];
+    for (const poi of pois) {
+      assert.ok(
+        poi.lat >= viewBounds.southwest.lat && poi.lat <= viewBounds.northeast.lat
+        && poi.lon >= viewBounds.southwest.lng && poi.lon <= viewBounds.northeast.lng,
+        `${cityId}/${poi.name} falls outside its viewBounds`,
+      );
+    }
+  }
+});
+
+test('narrowing the pill row never strands a city the app still flies to', () => {
+  // The tray shows French cities only; CITY_POIS keeps every city because voice
+  // presets, free-text search and the seeded CCTV cameras all resolve against
+  // it. This asserts the two are deliberately DIFFERENT sets, so a future
+  // "clean-up" that deletes the unpilled cities has to fail here first.
+  for (const cityId of ['austin', 'sf', 'nyc', 'tokyo', 'london', 'dubai', 'dc']) {
+    assert.ok(CITY_POIS[cityId], `flyable city removed: ${cityId}`);
+    assert.ok(!PILL_CITY_IDS.includes(cityId), `${cityId} should not be a pill`);
+  }
+});
+
+test('every seeded CCTV camera still lands on the POI it was calibrated against', () => {
+  // The seeds in ./data/cctv.js anchor to a cityId plus a poiIndex INTO the
+  // city's pois array. Reordering or shortening that array does not throw — it
+  // silently moves a camera to a different landmark. Parsed as text rather than
+  // imported, because cctv.js pulls the whole Cesium scene layer in with it.
+  const source = fs.readFileSync(new URL('./data/cctv.js', import.meta.url), 'utf8');
+  const seeds = [...source.matchAll(/cityId:\s*'([a-z-]+)',\s*poiIndex:\s*(\d+)/g)];
+  assert.ok(seeds.length >= 15, `expected the seed table, found ${seeds.length} entries`);
+  for (const [, cityId, rawIndex] of seeds) {
+    const city = CITY_POIS[cityId];
+    assert.ok(city, `seeded camera references an unknown city: ${cityId}`);
+    assert.ok(city.pois[Number(rawIndex)], `${cityId} has no POI at index ${rawIndex}`);
+  }
 });

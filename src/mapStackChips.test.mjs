@@ -67,19 +67,23 @@ const CONTROLLER_STACKS = [
   { id: 'bing-aerial', label: 'Bing Aerial', requiresIon: true, available: true, unavailableReason: null },
   { id: 'bing-labels', label: 'Bing Labels', requiresIon: true, available: true, unavailableReason: null },
   { id: 'osm', label: 'OSM', requiresIon: false, available: true, unavailableReason: null },
+  { id: 'ign-ortho', label: 'IGN Ortho', requiresIon: false, available: true, unavailableReason: null },
+  { id: 'ign-plan', label: 'Plan IGN', requiresIon: false, available: true, unavailableReason: null },
 ];
 
-test('the row renders exactly the four accepted sources', () => {
+test('the row renders exactly the six accepted sources', () => {
   const container = makeElement();
   renderMapStackChips(container, CONTROLLER_STACKS, { activeId: 'photoreal', doc });
 
   assert.deepEqual(container.children.map((chip) => chip.dataset.stackId), [
-    'photoreal', 'bing-aerial', 'bing-labels', 'osm',
+    'photoreal', 'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
   ]);
   assert.deepEqual(container.children.map(chipText), [
-    'Google 3D', 'Bing Aerial', 'Bing Labels', 'OSM',
+    'Google 3D', 'Bing Aerial', 'Bing Labels', 'OSM', 'IGN Ortho', 'Plan IGN',
   ]);
-  assert.deepEqual(PRESENTED_MAP_STACK_IDS, ['photoreal', 'bing-aerial', 'bing-labels', 'osm']);
+  assert.deepEqual(PRESENTED_MAP_STACK_IDS, [
+    'photoreal', 'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
+  ]);
   assert.ok(container.children.every((chip) => chip.tagName === 'button' && chip.type === 'button'));
   assert.ok(container.children.every((chip) => chip.classList.contains(MAP_STACK_CHIP_CLASS)));
 });
@@ -91,7 +95,7 @@ test('internal and future stacks stay outside the approved presentation set', ()
   const withHybrid = [...CONTROLLER_STACKS, { id: 'hybrid', label: 'Hybrid', available: true }];
   renderMapStackChips(container, withHybrid, { activeId: 'photoreal', doc });
 
-  assert.equal(container.children.length, 4);
+  assert.equal(container.children.length, PRESENTED_MAP_STACK_IDS.length);
   assert.doesNotMatch(container.children.map(chipText).join(' '), /Hybrid/);
 });
 
@@ -177,6 +181,32 @@ test('keyless ion stacks stay focusable, aria-disabled, and say why', () => {
   assert.equal(container.children[3].getAttribute('aria-disabled'), 'false', 'OSM stays selectable');
 });
 
+test('an AVAILABLE but partial source says where it works, without reading as broken', () => {
+  const container = makeElement();
+  const selected = [];
+  renderMapStackChips(container, CONTROLLER_STACKS.map((stack) => (stack.id === 'ign-ortho' ? {
+    ...stack,
+    coverageNote: 'metropolitan France only',
+  } : stack)), { activeId: 'osm', onSelect: (id) => selected.push(id), doc });
+
+  const ign = container.children[4];
+  assert.equal(ign.dataset.stackId, 'ign-ortho');
+  assert.equal(ign.getAttribute('aria-disabled'), 'false', 'a partial source is selectable, not disabled');
+  assert.ok(!ign.classList.contains('unavailable'));
+  assert.equal(ign.title, 'IGN Ortho — metropolitan France only');
+  assert.equal(ign.getAttribute('aria-label'), 'IGN Ortho — metropolitan France only');
+  assert.equal(chipText(ign), 'IGN Ortho', 'the coverage note lives in the tooltip, not the chip face');
+
+  ign.click();
+  assert.deepEqual(selected, ['ign-ortho'], 'a partial source still switches');
+
+  // A source with nothing to qualify keeps a bare label and no aria-label
+  // override — the button text is already its accessible name.
+  const osm = container.children[3];
+  assert.equal(osm.title, 'OSM');
+  assert.equal(osm.getAttribute('aria-label'), null);
+});
+
 test('a non-ion stack that fails never claims an ion token is required', () => {
   // The startup fallback-to-OSM case: Google 3D tiles failed to load, so
   // photoreal is unavailable for a reason that has nothing to do with ion.
@@ -205,6 +235,7 @@ test('models carry the stack\'s own reason and never invent an active chip', () 
     requiresIon: false,
     requirement: '',
     unavailableHint: '',
+    coverageNote: '',
     title: 'OSM',
   }]);
 

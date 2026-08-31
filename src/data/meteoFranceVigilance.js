@@ -134,7 +134,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
  * unknown stack id must reach the safe BOTH fallback rather than be asserted
  * onto a surface that is not there.
  */
-const VIGILANCE_GLOBE_STACK_IDS = Object.freeze(new Set(['bing-aerial', 'bing-labels', 'osm']));
+const VIGILANCE_GLOBE_STACK_IDS = Object.freeze(new Set(['bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan']));
 
 /**
  * Ground-fill classification for one map stack.

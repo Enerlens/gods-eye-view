@@ -277,6 +277,17 @@ const STACK_ALIASES = new Map([
   ['road', 'osm'],
   ['roads', 'osm'],
   ['road map', 'osm'],
+  ['ign-ortho', 'ign-ortho'],
+  ['ign ortho', 'ign-ortho'],
+  ['ign', 'ign-ortho'],
+  ['ign aerial', 'ign-ortho'],
+  ['ign satellite', 'ign-ortho'],
+  ['orthophoto', 'ign-ortho'],
+  ['france aerial', 'ign-ortho'],
+  ['ign-plan', 'ign-plan'],
+  ['ign plan', 'ign-plan'],
+  ['plan ign', 'ign-plan'],
+  ['france map', 'ign-plan'],
 ]);
 
 /** Search order for track_entity across entity layer families. */
@@ -3106,6 +3117,16 @@ async function fetchNearbyPlaces(latitude, longitude, cameraHeightM) {
   const cacheKey = nearbyPlacesCacheKey(latitude, longitude, cameraHeightM);
   if (nearbyPlacesCache.has(cacheKey)) return nearbyPlacesCache.get(cacheKey);
   if (nearbyPlacesInFlight.has(cacheKey)) return nearbyPlacesInFlight.get(cacheKey);
+
+  // `/api/google/nearby-places` is brokered by the dev server from the SAME
+  // `GOOGLE_MAPS_API_KEY` this bundle was built with, so a keyless build can
+  // never get an answer — it only gets a 503 the browser logs as a failed
+  // resource on every camera move. The caller already treats an empty list as
+  // "no viewport places", so not asking is the same result without the noise.
+  if (!(window.__GOOGLE_MAPS_API_KEY__ || import.meta.env.GOOGLE_MAPS_API_KEY)) {
+    nearbyPlacesCache.set(cacheKey, []);
+    return [];
+  }
 
   const request = (async () => {
     try {

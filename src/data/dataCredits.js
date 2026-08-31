@@ -124,6 +124,16 @@ export const DATA_CREDITS = [
       'via Nominatim (ODbL 1.0)',
   },
   {
+    key: 'search-geocoder',
+    html:
+      'Place search (keyless builds): ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">&copy; OpenStreetMap contributors</a> ' +
+      'via <a href="https://nominatim.openstreetmap.org" target="_blank" rel="noopener">Nominatim</a> (ODbL 1.0), ' +
+      'with French addresses and points of interest from the ' +
+      '<a href="https://data.geopf.fr/geocodage/" target="_blank" rel="noopener">IGN G&eacute;oplateforme geocoder</a> ' +
+      '(BAN &mdash; Licence Ouverte 2.0)',
+  },
+  {
     key: 'open-meteo',
     html:
       'Cockpit current conditions: ' +
@@ -211,6 +221,19 @@ export const DATA_CREDITS = [
       'via <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a> (G. David), Licence Ouverte.',
   },
   {
+    key: 'ign-geoplateforme',
+    html:
+      'IGN basemaps (France): ' +
+      '<a href="https://cartes.gouv.fr/rechercher-une-donnee/dataset/IGNF_BD-ORTHO" target="_blank" rel="noopener">BD ORTHO&reg; (ORTHOIMAGERY.ORTHOPHOTOS)</a> ' +
+      'and <a href="https://cartes.gouv.fr/rechercher-une-donnee/dataset/IGNF_PLAN-IGN" target="_blank" rel="noopener">Plan IGN v2</a>, ' +
+      'served keyless by the IGN G&eacute;oplateforme (data.geopf.fr) under ' +
+      '<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>. ' +
+      'The orthophoto mosaic has no single update date &mdash; the aerial survey year differs per d&eacute;partement and is published by IGN as a ' +
+      '<a href="https://data.geopf.fr/annexes/ressources/fiches/photographies-aeriennes-RVB/geoportail_dates_des_prises_de_vues_aeriennes-RVB.pdf" target="_blank" rel="noopener">table of flight dates</a>. ' +
+      'Plan IGN v2 is regenerated continuously from IGN&rsquo;s vector databases. ' +
+      'Coverage is clipped to metropolitan France and Corsica; DOM-TOM are not shown.',
+  },
+  {
     key: 'odre-eco2mix',
     html:
       'Live French electricity mix (&eacute;CO2mix, national + 12 r&eacute;gions): ' +
@@ -257,6 +280,22 @@ export const DATA_CREDITS = [
       '(<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
       'Installed capacity, not production. Each file&rsquo;s own reference date is reported by the layer: ' +
       'nuclear is a vision consolid&eacute;e au 31/12/2025, hydraulic and thermal au 31/12/2023.',
+  },
+  {
+    key: 'fr-hydro-plants',
+    html:
+      'French hydro fleet (all 2 742 installations of the national register, not just the large ones): ' +
+      '<a href="https://odre.opendatasoft.com/explore/dataset/registre-national-installation-production-stockage-electricite-agrege/" target="_blank" rel="noopener">ODR&Eacute; — Registre national des installations de production et de stockage d&rsquo;&eacute;lectricit&eacute;</a> ' +
+      '(<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The register publishes NO coordinates, so positions are joined from ' +
+      '<a href="https://geoservices.ign.fr/bdtopo" target="_blank" rel="noopener">IGN BD TOPO&reg;</a> ' +
+      '(Licence Ouverte 2.0 &mdash; the surveyed building footprints the Plan IGN is drawn from, 589 of 998 positions), ' +
+      '<a href="https://opendata.edf.fr/datasets" target="_blank" rel="noopener">Open Data EDF</a> (Licence Ouverte 2.0), ' +
+      '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors ' +
+      '(<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL 1.0</a>) ' +
+      'and <a href="https://geo.api.gouv.fr" target="_blank" rel="noopener">geo.api.gouv.fr</a> commune centres. ' +
+      'Installed capacity, not live output; the energy figure on a card is a trailing twelve-month total. ' +
+      'A hollow ring is a commune, not a plant.',
   },
   {
     key: 'pan-transit',

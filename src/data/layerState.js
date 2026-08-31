@@ -277,16 +277,25 @@ export const SHARE_TRACKING_RESTORE_POLICIES = Object.freeze({
 export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'ais-live-vessels', token: 'a', disposition: 'enabled-only' }),
   // A DIGIT for the same reason as `gas-fr` and `power-grid` below: every
-  // letter is taken, `z` is the canonical UNKNOWN token two tests assert on,
-  // and 1/2/3 already belong to the gas, grid and RTE layers. A duplicate
-  // token is a boot failure (`validateLayerStateRegistry` throws), not a
-  // merge conflict anyone would notice in review.
-  Object.freeze({ id: 'bdtopo-buildings', token: '4', disposition: 'enabled-only' }),
+  // letter is taken and `z` is the canonical UNKNOWN token two tests assert on.
+  // `5` and not `4`: this branch claimed `4` while `fr-hydro-plants` claimed it
+  // too on main, and the two only met at the merge. That is exactly the failure
+  // the duplicate-token assertion exists to catch — a silent collision would
+  // make one share link enable the wrong layer — so it is worth restating that
+  // a duplicate here is a BOOT failure, not a review nit.
+  Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
   Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
+  // A DIGIT, for the third time and the same reason: a–y are all taken, `z` is
+  // the canonical UNKNOWN token two existing tests assert on, and 1–3 belong to
+  // gas-fr, power-grid and rte-generation. `enabled-only` rather than
+  // `enabled+options`: the layer's one runtime param is a display floor, and a
+  // shared link that silently hid two thousand plants would be a worse surprise
+  // than one that shows the register whole.
+  Object.freeze({ id: 'fr-hydro-plants', token: '4', disposition: 'enabled-only' }),
   Object.freeze({ id: 'france-energy', token: 'j', disposition: 'enabled-only' }),
   // A DIGIT, not a letter: every letter of "gas" is taken (g by
   // military-awareness, a by AIS, s by satellites), and `z` is the token two
