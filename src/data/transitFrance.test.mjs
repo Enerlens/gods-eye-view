@@ -294,3 +294,65 @@ test('a glyph travels between two fixes at the speed the feed implies', () => {
   assert.equal(glideDurationMs(fix, fix + 200), 3_000);
   assert.equal(glideDurationMs(fix, fix + 10 * 60_000), 90_000);
 });
+
+// --- The card, once the line under the vehicle has resolved ----------------
+//
+// The line arrives one request after the contact does, so the card has to read
+// correctly at both moments: before the answer (the feed's own `route_id` and
+// vehicle label, exactly as it always did) and after it (the line's PUBLIC
+// name, the run's headsign, and where it goes next).
+
+/** A TBM bus with the `/api/transit-fr/trip` answer attached to its record. */
+function recordWithRoute(nowMs) {
+  return {
+    id: 'pan-83026:ineo-bus:1601',
+    vehicle: {
+      id: 'pan-83026:ineo-bus:1601',
+      feed: 'pan-83026',
+      lat: 44.8571,
+      lon: -0.5473,
+      mode: 'urban',
+      kind: 'bus',
+      kindSource: 'route_type',
+      route: '07',
+      routeId: '07',
+      tripId: 'b_268436334_31',
+      stopSequence: 2,
+      label: 'AMBARES PARABELLE',
+      status: 'in-transit',
+      timestampMs: nowMs - 12_000,
+    },
+    feed: { network: 'TBM', licence: 'Licence Ouverte 1.0' },
+    route: {
+      route: { id: '07', shortName: '7', longName: 'Lianes 7', color: '#00b1eb', variantCount: 6 },
+      trip: { id: 'b_268436334_31', headsign: 'AMBARES PARABELLE' },
+      shapeMatch: { matched: true, variants: 6, maxDeviationM: 12, medianDeviationM: 1 },
+      stopsReported: 2,
+      stops: [
+        { id: '7451', name: 'Lavignolle', sequence: 2, arrivalMs: nowMs + 180_000, delaySec: 48 },
+        { id: '5650', name: 'Parabelle', sequence: 3, arrivalMs: nowMs + 900_000, delaySec: 85 },
+      ],
+    },
+  };
+}
+
+test('the card prints the line\'s public name once the static feed has been read', () => {
+  const nowMs = Date.UTC(2026, 7, 31, 18, 40, 0);
+  const lines = buildTransitSelectionLabel(recordWithRoute(nowMs), nowMs).split('\n');
+  // "7" is what is written on the front of the bus; "07" is the operator's
+  // key, and it is what the title used before any of this existed.
+  assert.equal(lines[0], 'LINE 7 · AMBARES PARABELLE');
+  assert.ok(lines.includes('Lianes 7'));
+  assert.ok(lines.includes('▸ Lavignolle · 3 min · 1 min late'));
+  assert.ok(lines.includes('⇥ Parabelle · 2 stops'));
+});
+
+test('a vehicle whose line has not resolved yet reads exactly as it did before', () => {
+  const nowMs = Date.UTC(2026, 7, 31, 18, 40, 0);
+  const record = recordWithRoute(nowMs);
+  record.route = null;
+  const lines = buildTransitSelectionLabel(record, nowMs).split('\n');
+  assert.equal(lines[0], 'LINE 07 · AMBARES PARABELLE');
+  // Nothing about a run is claimed while the answer is still in flight.
+  assert.ok(!lines.some((line) => line.startsWith('▸') || line.startsWith('⇥')));
+});
