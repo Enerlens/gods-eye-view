@@ -9,8 +9,10 @@ import {
   boxContains,
   boxOverlapArea,
   boxesIntersect,
+  isTripUpdateResource,
   isVehiclePositionResource,
   mergeObservedBounds,
+  panGeoJsonConversionUrl,
   padTransitBox,
   panAreaLabel,
   panFeedDescriptor,
@@ -21,6 +23,7 @@ import {
   snapTransitBox,
   transitBoxKey,
   validTransitBox,
+  staticGtfsResources,
   vehiclePositionFeedsFromCatalog,
   PAN_BOX_STEP_DEG,
   PAN_MAX_BOX_DEG,
@@ -208,6 +211,23 @@ test('a metro fully on screen outranks a région clipping the same corner', () =
   assert.deepEqual(selected.map((feed) => feed.id), ['pan-metro', 'pan-region']);
 });
 
+test('a confirmed duplicate never takes a feed slot from a live network', () => {
+  // Kicéo publishes one body under two resource ids; measured 2026-08-31 both
+  // returned the same 62 vehicles at the same 62 coordinates. The twin is
+  // carried in the index (so a later build can revive it) and never fetched.
+  const twin = { ...METRO, id: 'pan-metro-twin', duplicateOf: 'pan-metro' };
+  const result = selectFeedsForBox([METRO, twin], CITY_VIEW, { maxFeeds: 8, unknownSlots: 0 });
+  assert.deepEqual(result.selected.map((feed) => feed.id), ['pan-metro']);
+  assert.equal(result.matched, 1, 'the twin does not even count as matched');
+});
+
+test('a quarantined feed is skipped, and a merely-failing one is not', () => {
+  const dead = { ...REGION, id: 'pan-dead', health: { consecutiveFailures: 3, quarantined: true } };
+  const flaky = { ...REGION, id: 'pan-flaky', health: { consecutiveFailures: 1, quarantined: false } };
+  const result = selectFeedsForBox([METRO, dead, flaky], CITY_VIEW, { maxFeeds: 8, unknownSlots: 0 });
+  assert.deepEqual(result.selected.map((feed) => feed.id).sort(), ['pan-flaky', 'pan-metro']);
+});
+
 test('disjoint feeds are never fetched, and truncation is reported honestly', () => {
   const result = selectFeedsForBox([METRO, REGION, ELSEWHERE], CITY_VIEW, { maxFeeds: 1, unknownSlots: 0 });
   assert.deepEqual(result.selected.map((feed) => feed.id), ['pan-metro']);
@@ -274,5 +294,55 @@ test('observed footprints only ever grow', () => {
   assert.deepEqual(
     mergeObservedBounds(sundayNight, { south: 44.80, west: -0.70, north: 44.95, east: -0.45 }),
     { south: 44.80, west: -0.70, north: 44.95, east: -0.45 },
+  );
+});
+
+// --- The companion resources a click needs --------------------------------
+//
+// A live position answers "a bus is here". The line under it lives in two
+// sibling resources of the same dataset: the TripUpdates feed (this run's
+// stops) and the static GTFS (the line's trace). Both are selected by the same
+// declared-feature and availability rules the position feed is.
+
+test('a trip-update resource is recognised by its declared feature, not its title', () => {
+  assert.equal(isTripUpdateResource({
+    format: 'gtfs-rt', id: 83025, url: 'https://example/tu', features: ['trip_updates'],
+  }), true);
+  // A resource TITLED "TripUpdates" that declares only positions is a position
+  // feed; the catalog's own feature list is the contract.
+  assert.equal(isTripUpdateResource({
+    format: 'gtfs-rt', id: 1, url: 'https://example/x', title: 'GTFS-RT TripUpdates',
+    features: ['vehicle_positions'],
+  }), false);
+  // The PAN's own "we could not reach this" flag is respected, exactly as it
+  // is for positions: polling a resource the catalog knows is down is noise.
+  assert.equal(isTripUpdateResource({
+    format: 'gtfs-rt', id: 2, url: 'https://example/y', features: ['trip_updates'],
+    is_available: false,
+  }), false);
+  assert.equal(isTripUpdateResource({ format: 'GTFS', id: 3, url: 'u' }), false);
+  assert.equal(isTripUpdateResource(null), false);
+});
+
+test('static GTFS resources are kept as a list, in catalog order', () => {
+  // STAR Rennes publishes "version en cours" and "version à venir"; reducing
+  // them to a guess is how a checkout ends up reading the one that 404s.
+  const dataset = {
+    resources: [
+      { format: 'gtfs-rt', id: 1, url: 'https://example/rt', features: ['vehicle_positions'] },
+      { format: 'GTFS', id: 10, url: 'https://example/current', title: 'version en cours' },
+      { format: 'GTFS', id: 11, url: 'https://example/next', title: 'version à venir' },
+      { format: 'GTFS', id: 12, title: 'no url at all' },
+      { format: 'NeTEx', id: 13, url: 'https://example/netex' },
+    ],
+  };
+  assert.deepEqual(staticGtfsResources(dataset).map((resource) => resource.id), [10, 11]);
+  assert.deepEqual(staticGtfsResources({}), []);
+});
+
+test('the GeoJSON conversion URL is derived from the resource id', () => {
+  assert.equal(
+    panGeoJsonConversionUrl(83024),
+    'https://transport.data.gouv.fr/resources/conversions/83024/GeoJSON',
   );
 });

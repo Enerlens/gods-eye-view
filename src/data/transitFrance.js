@@ -20,19 +20,36 @@
  *
  * WHAT IS REAL AND WHAT IS DISPLAY:
  *   - Position, bearing, speed, stop status and occupancy are the operator's
- *     own reported values, passed through unchanged.
+ *     own reported values, passed through unchanged. The bearing is drawn as a
+ *     small wedge ORBITING the vehicle icon rather than by rotating the icon
+ *     itself: the icons are front views, and a bus seen head-on turned to face
+ *     west is not a bus facing west. A vehicle whose feed publishes no bearing
+ *     has no wedge — which is the same statement the bare disc used to make.
  *   - The glyph GLIDES between two consecutive reported fixes, over the time
  *     the operator actually took to report them. Like the flights layer, the
  *     scene therefore renders one fix interval behind live, and never
  *     extrapolates past the newest fix: every drawn position lies on the
  *     segment between two things the feed actually said, travelled at the
  *     speed the feed implies. The card always prints the age of the real fix.
- *   - MODE is the network's declared service class (`urban`, `intercity`,
- *     `school`…), not the vehicle's. GTFS-Realtime carries no `route_type`, so
- *     a tram inside an urban network is coloured as urban until the matching
- *     GTFS *static* feed is loaded — which this layer deliberately does not do.
+ *   - KIND is the vehicle's own class — bus, tram, metro, ferry — drawn with
+ *     the matching Material Symbol (`transitVehicleIcons.js`) and tinted its
+ *     own colour, and joined from the network's static GTFS `route_type` by
+ *     `scripts/build-pan-route-types.mjs` and resolved in the proxy. Measured
+ *     2026-08-31 it types 92.7% of the national live fleet: 86.9% from the
+ *     vehicle's own `route_id`, the rest from networks where every published
+ *     route is one class. Three networks resolve nothing — Tours Fil Bleu and
+ *     one of Le Havre's two feeds publish no usable `route_id`, Valenciennes
+ *     Transvilles publishes ids that are in no `routes.txt` — and those keep
+ *     the neutral glyph and say `Type unknown` rather than being guessed at.
+ *   - MODE is the network's declared SERVICE class (`urban`, `intercity`,
+ *     `school`…). It is not a vehicle type and never was; it is the fallback
+ *     when the kind join finds nothing, and the card labels it as such.
  *   - ROUTE is the feed's `route_id`, unwrapped from its NeTEx envelope when it
  *     has one. Networks that publish an opaque internal key show that key.
+ *   - OCCUPANCY is published by almost nobody: 9% of the national fleet on
+ *     2026-08-31 (Palm Bus, SudLib and TCAT essentially alone). SPEED by half
+ *     of it. Both are drawn only when the operator sent them, and neither is
+ *     advertised as a feature of the layer.
  */
 import * as Cesium from 'cesium';
 import {
@@ -54,6 +71,16 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { PAN_MAX_BOX_DEG, PAN_MODE_LABELS } from './panFeeds.js';
+import { vehicleKindColor, vehicleKindLabel } from './transitVehicleKind.js';
+import { transitHeadingPointer, transitVehicleGlyph } from './transitVehicleIcons.js';
+import { transitCoverageNotice } from './transitCoverage.js';
+import {
+  clearTransitRoute,
+  destroyTransitRouteView,
+  initTransitRouteView,
+  showTransitRoute,
+  transitRouteCardLines,
+} from './transitRouteView.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const TRANSIT_FR_LAYER_ID = 'transit-fr';
@@ -95,11 +122,41 @@ const MAX_FIX_AGE_MS = 10 * 60 * 1000;
 const MAX_RENDERED_VEHICLES = 4_000;
 /** Metres above the resolved ground floor the glyph sits. */
 const GLYPH_LIFT_M = 4;
+/**
+ * How often the selected vehicle's RUN is re-read, ms.
+ *
+ * Slower than the fleet poll on purpose: the trace does not move and the stop
+ * predictions are republished every 20–30 s, so asking faster would re-serve
+ * the same answer. Slow enough that a card left open on a bus keeps counting
+ * down honestly rather than freezing on the arrival it was opened with.
+ */
+const ROUTE_REFRESH_MS = 25_000;
+/** Request timeout (ms) for one line lookup. */
+const ROUTE_TIMEOUT_MS = 30_000;
 
 // --- Presentation -----------------------------------------------------------
-/** Rendered glyph size (px). Tracked/selected uses the larger box. */
-const GLYPH_PX = 17;
-const GLYPH_SELECTED_PX = 24;
+/**
+ * Rendered glyph size (px). Tracked/selected uses the larger box.
+ *
+ * 22 rather than the original 17 since the glyphs became real vehicle icons:
+ * a Material Symbols bus carries a windscreen, a window band and two
+ * headlights, and a tram a pantograph above its roof — detail that is what
+ * makes them recognisable and the first thing minification destroys.
+ */
+const GLYPH_PX = 22;
+const GLYPH_SELECTED_PX = 26;
+/**
+ * The heading pointer's box (px), deliberately larger than the icon's.
+ *
+ * The wedge is drawn at the TOP EDGE of its texture, so the box's radius is
+ * how far the wedge orbits from the vehicle's centre. It has to clear the
+ * icon's own half-height (11 px at {@link GLYPH_PX}) or the two fuse into one
+ * map-pin shape and the direction stops reading as direction: the wedge's
+ * inner edge sits at 24/96 of the box from its centre, so 44 puts it at
+ * ~12 px — just outside the icon.
+ */
+const POINTER_PX = 44;
+const POINTER_SELECTED_PX = 50;
 /**
  * Per-mode tint. Amber-through-violet keeps ground transit visually separate
  * from aircraft (white/cyan) and vessels (teal) at a glance, and the ramp runs
@@ -134,26 +191,36 @@ const OCCUPANCY_LABELS = Object.freeze({
 });
 
 /**
- * Nose-up chevron, white so the billboard tint pipeline owns the colour —
- * identical convention to `aircraftIcons.js`. Drawn in a 96-unit box with the
- * point toward -Y, which is what `screenProjectedRotation` expects.
- */
-const CHEVRON_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
-  <path d="M48,12 L74,78 L48,64 L22,78 Z" fill="white"
-        stroke="rgba(0,0,0,0.42)" stroke-width="4" stroke-linejoin="round"/>
-</svg>`;
-
-/**
- * Fallback disc for a vehicle whose feed reports NO bearing. A chevron would
- * claim a heading the operator never published; a disc says "here, direction
- * unknown" — the same rule the CCTV pack applies to unposed cameras.
+ * Fallback disc for a vehicle whose CLASS did not resolve — the same rule the
+ * shared-mobility pack applies to an unknown form factor, and the CCTV pack to
+ * an unposed camera. It says "something is here", which is all that is known.
  */
 const DISC_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96">
   <circle cx="48" cy="48" r="27" fill="white" stroke="rgba(0,0,0,0.42)" stroke-width="5"/>
 </svg>`;
 
-const CHEVRON_URI = `data:image/svg+xml;base64,${btoa(CHEVRON_SVG)}`;
 const DISC_URI = `data:image/svg+xml;base64,${btoa(DISC_SVG)}`;
+
+/**
+ * The glyph for one vehicle: WHAT it is.
+ *
+ *   - CLASS resolved → the Material Symbol for it (`transitVehicleIcons.js`).
+ *     A tram draws as a tram, a river shuttle as a boat.
+ *   - CLASS unresolved → the plain disc. No shape claim without a type claim:
+ *     drawing a bus for a vehicle the static join could not explain would
+ *     state something no feed published.
+ *
+ * The heading is a SEPARATE glyph — see {@link transitHeadingPointer} — because
+ * these icons are front views and a front view rotated to a compass bearing is
+ * nonsense.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {string} Billboard image URI.
+ */
+export function transitVehicleGlyphUri(vehicle) {
+  if (!vehicle?.kind) return DISC_URI;
+  return transitVehicleGlyph(vehicle.kind);
+}
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
@@ -165,6 +232,16 @@ let _overlayHost = DEFAULT_OVERLAY_HOST;
 // --- Runtime state ----------------------------------------------------------
 let _viewer = null;
 let _billboards = null;
+/**
+ * Heading pointers, on their own collection.
+ *
+ * Separate from the vehicle icons for two reasons: the pointer is the only
+ * thing that rotates, and it must draw UNDER the icon it orbits. A second
+ * collection added to the scene first satisfies both, and it holds an entry
+ * only for vehicles whose feed actually publishes a bearing — 84% of the
+ * national fleet, so it is never a full parallel fleet.
+ */
+let _pointers = null;
 /** id -> render record */
 let _records = new Map();
 let _enabled = false;
@@ -174,6 +251,9 @@ let _cameraDebounceTimer = null;
 let _preRenderRemover = null;
 let _lastCameraPoseSignature = '';
 let _selectedId = null;
+let _routeInFlight = null;
+let _routeGeneration = 0;
+let _routeTimer = null;
 let _inFlight = null;
 let _requestGeneration = 0;
 let _loading = false;
@@ -187,6 +267,8 @@ let _feedsTruncated = false;
 let _vehiclesTruncated = false;
 let _renderTruncated = false;
 let _lastBox = null;
+/** The last requested viewport itself, for the coverage explanation. */
+let _lastBoxBounds = null;
 
 /** Colour for a service mode, falling back to the urban tint. */
 export function transitModeColor(mode) {
@@ -196,6 +278,43 @@ export function transitModeColor(mode) {
 /** Display label for a service mode. */
 export function transitModeLabel(mode) {
   return PAN_MODE_LABELS[mode] || (mode ? String(mode) : 'Transit');
+}
+
+/**
+ * Glyph colour for one vehicle.
+ *
+ * A KNOWN vehicle class wins: separating Bordeaux's 77 trams from its 372
+ * buses at a glance is the whole reason the static join exists. A vehicle
+ * whose class did not resolve falls back to its network's service-class tint
+ * rather than borrowing a class colour it has not earned.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {string} CSS colour.
+ */
+export function transitVehicleColor(vehicle) {
+  return vehicle?.kind ? vehicleKindColor(vehicle.kind) : transitModeColor(vehicle?.mode);
+}
+
+/**
+ * How the layer should NAME what a contact is, and how sure it is.
+ *
+ * Three answers, matching the proxy's `kindSource`, because a card that prints
+ * "Bus" from a real `route_type` and one that prints "Bus" from a guess would
+ * be the same sentence about two different amounts of knowledge.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {{label: string, qualifier: ?string}}
+ */
+export function transitKindReadout(vehicle) {
+  if (vehicle?.kind && vehicle.kindSource === 'route_type') {
+    return { label: vehicleKindLabel(vehicle.kind), qualifier: null };
+  }
+  if (vehicle?.kind && vehicle.kindSource === 'uniform') {
+    // Every route this network publishes is one class, so the class holds even
+    // though this vehicle's own route id did not resolve.
+    return { label: vehicleKindLabel(vehicle.kind), qualifier: 'single-mode network' };
+  }
+  return { label: 'Type unknown', qualifier: transitModeLabel(vehicle?.mode) };
 }
 
 /**
@@ -287,17 +406,29 @@ function vehiclePosition(vehicle) {
 export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
   const vehicle = record?.vehicle || {};
   const feed = record?.feed || {};
-  const route = vehicle.route ? `LINE ${vehicle.route}` : 'LINE —';
-  const title = vehicle.label ? `${route} · ${vehicle.label}` : route;
+  // The line's PUBLIC name when the static feed has been read for it — "7" is
+  // what is written on the front of the bus, where `route_id` "07" is the
+  // operator's key. Until then, and for a network with no resolvable line, the
+  // feed's own label stands unchanged.
+  const shortName = record?.route?.route?.shortName || vehicle.route;
+  const route = shortName ? `LINE ${shortName}` : 'LINE —';
+  const headsign = record?.route?.trip?.headsign || vehicle.label;
+  const title = headsign ? `${route} · ${headsign}` : route;
 
   const details = [];
+  const longName = record?.route?.route?.longName;
+  if (longName && longName !== shortName) details.push(longName);
   if (feed.network) details.push(`🚍 ${feed.network}`);
 
   const motion = [];
   if (Number.isFinite(vehicle.speedMps)) {
     motion.push(`${Math.round(vehicle.speedMps * 3.6)} km/h`);
   }
+  // Half the national fleet publishes no speed and 16% no bearing. A missing
+  // value is left out; it is never printed as a zero, which would read as
+  // "stationary, facing north" instead of "not reported".
   if (Number.isFinite(vehicle.bearing)) motion.push(`${Math.round(vehicle.bearing)}°`);
+  else motion.push('no heading published');
   if (vehicle.status) motion.push(STATUS_LABELS[vehicle.status] || vehicle.status);
   if (motion.length) details.push(motion.join(' · '));
 
@@ -312,9 +443,21 @@ export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
     details.push(ageSec < 60 ? `⏱ fix ${ageSec}s ago` : `⏱ fix ${Math.round(ageSec / 60)}m ago`);
   }
 
-  const provenance = [transitModeLabel(vehicle.mode)];
+  // What it IS, then how the layer knows — a class read from the operator's
+  // own `route_type` and a class inferred from a single-mode network are not
+  // the same claim and do not print the same way.
+  const kind = transitKindReadout(vehicle);
+  const provenance = [kind.qualifier ? `${kind.label} (${kind.qualifier})` : kind.label];
   if (hasText(feed.licence)) provenance.push(feed.licence);
   details.push(provenance.join(' · '));
+
+  // Where this run goes next, from the network's trip updates. Appended after
+  // the provenance rather than woven into it: these lines answer a different
+  // question and arrive one request later than the rest of the card.
+  details.push(...transitRouteCardLines(record?.route, {
+    vehicleStopSequence: vehicle.stopSequence,
+    nowMs,
+  }));
 
   return [title, ...details].join('\n');
 }
@@ -362,13 +505,85 @@ function clearSelection() {
   if (_selectedId) {
     const record = _records.get(_selectedId);
     if (record?.billboard) {
-      record.billboard.color = Cesium.Color.fromCssColorString(transitModeColor(record.vehicle.mode));
+      const color = Cesium.Color.fromCssColorString(transitVehicleColor(record.vehicle));
+      record.billboard.color = color;
       record.billboard.width = GLYPH_PX;
       record.billboard.height = GLYPH_PX;
+      // The pointer is part of the same contact and follows it in and out of
+      // selection; a cyan wedge left orbiting a deselected bus would read as
+      // a second, still-tracked vehicle.
+      if (record.pointer) {
+        record.pointer.color = color;
+        record.pointer.width = POINTER_PX;
+        record.pointer.height = POINTER_PX;
+      }
     }
   }
   _selectedId = null;
   _overlayHost.clearSource(TRANSIT_FR_OVERLAY_SOURCE_ID);
+  clearSelectedRoute();
+}
+
+/** Abort any line lookup and take the drawn run off the globe. */
+function clearSelectedRoute() {
+  _routeGeneration += 1;
+  _routeInFlight?.abort?.();
+  _routeInFlight = null;
+  clearTimeout(_routeTimer);
+  _routeTimer = null;
+  clearTransitRoute();
+}
+
+/**
+ * Ask the proxy what line the selected vehicle is on, and draw the answer.
+ *
+ * A vehicle whose feed publishes no `trip_id` and no `route_id` is not asked
+ * about: there is nothing to join on, and a request that can only fail is not
+ * a request worth making. Its card keeps saying exactly what it said before.
+ *
+ * @param {Object} record Render record for the selected vehicle.
+ * @returns {Promise<void>}
+ */
+async function loadSelectedRoute(record) {
+  const vehicle = record?.vehicle;
+  if (!vehicle?.feed || (!vehicle.tripId && !vehicle.routeId)) return;
+
+  const generation = ++_routeGeneration;
+  _routeInFlight?.abort?.();
+  const controller = new AbortController();
+  _routeInFlight = controller;
+  const timer = setTimeout(() => controller.abort(), ROUTE_TIMEOUT_MS);
+
+  try {
+    const params = new URLSearchParams({ feed: vehicle.feed });
+    if (vehicle.tripId) params.set('trip', vehicle.tripId);
+    if (vehicle.routeId) params.set('route', vehicle.routeId);
+    const response = await fetch(`/api/transit-fr/trip?${params}`, { signal: controller.signal });
+    if (generation !== _routeGeneration || record.id !== _selectedId) return;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (generation !== _routeGeneration || record.id !== _selectedId) return;
+
+    record.route = payload;
+    showTransitRoute(payload, {
+      vehicleStopSequence: vehicle.stopSequence,
+      fallbackColor: transitVehicleColor(vehicle),
+    });
+    publishSelectionCard(record);
+    // Stop predictions age; the trace does not. Re-reading on a slow cadence
+    // keeps the countdown on the card true without re-fetching geometry the
+    // proxy already has in memory.
+    _routeTimer = setTimeout(() => {
+      if (record.id === _selectedId) void loadSelectedRoute(record);
+    }, ROUTE_REFRESH_MS);
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    if (generation !== _routeGeneration) return;
+    console.warn('[Data:TransitFR] line lookup failed:', error?.message || error);
+  } finally {
+    clearTimeout(timer);
+    if (generation === _routeGeneration) _routeInFlight = null;
+  }
 }
 
 /** Select a vehicle by render id. */
@@ -381,9 +596,15 @@ function selectVehicle(id) {
     record.billboard.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
     record.billboard.width = GLYPH_SELECTED_PX;
     record.billboard.height = GLYPH_SELECTED_PX;
+    if (record.pointer) {
+      record.pointer.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
+      record.pointer.width = POINTER_SELECTED_PX;
+      record.pointer.height = POINTER_SELECTED_PX;
+    }
   }
   publishSelectionCard(record);
   governorRequestRender('transit-fr-select');
+  void loadSelectedRoute(record);
 }
 
 /** Push (or refresh) the selected card. Called on select and on every glide tick. */
@@ -449,25 +670,30 @@ function onPreRender() {
   for (const record of _records.values()) {
     const billboard = record.billboard;
     if (!billboard) continue;
+    const pointer = record.pointer;
 
     if (record.tweenMs > 0 && record.from && record.to) {
       const t = Math.min(1, (now - record.tweenStart) / record.tweenMs);
       if (t < 1) moving = true;
       Cesium.Cartesian3.lerp(record.from, record.to, t, record.renderPosition);
       billboard.position = record.renderPosition;
+      if (pointer) pointer.position = record.renderPosition;
     }
 
     if (occluder) {
       billboard.show = occluder.isPointVisible(record.renderPosition);
+      if (pointer) pointer.show = billboard.show;
     }
     if (!billboard.show) continue;
 
-    if (poseChanged && record.hasBearing) {
+    // Only the POINTER turns. The vehicle icon is a front view — a bus seen
+    // head-on — and rotating it to a compass bearing would be nonsense.
+    if (poseChanged && pointer) {
       const rotation = screenProjectedRotation(
-        scene, record.renderPosition, record.vehicle.bearing, billboard.rotation,
+        scene, record.renderPosition, record.vehicle.bearing, pointer.rotation,
       );
-      if (rotation !== null && Math.abs(rotation - billboard.rotation) > 0.002) {
-        billboard.rotation = rotation;
+      if (rotation !== null && Math.abs(rotation - pointer.rotation) > 0.002) {
+        pointer.rotation = rotation;
       }
     }
   }
@@ -482,6 +708,47 @@ function onPreRender() {
   // Belt-and-braces with the enable-time hold: a frame requested here also
   // covers the window between a reconcile and the hold being observed.
   if (moving) governorRequestRender('transit-fr-glide');
+}
+
+/**
+ * Give a record the heading pointer its feed entitles it to — or take it away.
+ *
+ * Created lazily and destroyed the moment a feed stops publishing a bearing,
+ * so the collection only ever holds pointers that mean something. Returns
+ * nothing; the record owns the reference.
+ *
+ * @param {Object} record Render record.
+ * @param {number} px Pointer box size.
+ */
+function syncHeadingPointer(record, px) {
+  if (!_pointers) return;
+  const wanted = Number.isFinite(record.vehicle?.bearing);
+  if (wanted && !record.pointer) {
+    record.pointer = _pointers.add({
+      position: record.renderPosition,
+      image: transitHeadingPointer(),
+      width: px,
+      height: px,
+      color: record.billboard.color,
+      rotation: 0,
+      alignedAxis: Cesium.Cartesian3.ZERO,
+      disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      translucencyByDistance: new Cesium.NearFarScalar(1_000, 1.0, 260_000, 0.35),
+    });
+    // A brand-new pointer has no rotation yet, and the per-frame pass only
+    // computes one when the CAMERA moved. Invalidate the pose so it does.
+    _lastCameraPoseSignature = '';
+    return;
+  }
+  if (!wanted && record.pointer) {
+    _pointers.remove(record.pointer);
+    record.pointer = null;
+    return;
+  }
+  if (record.pointer) {
+    record.pointer.width = px;
+    record.pointer.height = px;
+  }
 }
 
 /**
@@ -517,13 +784,14 @@ function reconcile(vehicles, feedsById, nowMs) {
     let record = _records.get(id);
 
     if (!record) {
+      const image = transitVehicleGlyphUri(vehicle);
       const billboard = _billboards.add({
         id,
         position,
-        image: Number.isFinite(vehicle.bearing) ? CHEVRON_URI : DISC_URI,
+        image,
         width: GLYPH_PX,
         height: GLYPH_PX,
-        color: Cesium.Color.fromCssColorString(transitModeColor(vehicle.mode)),
+        color: Cesium.Color.fromCssColorString(transitVehicleColor(vehicle)),
         rotation: 0,
         alignedAxis: Cesium.Cartesian3.ZERO,
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
@@ -532,9 +800,10 @@ function reconcile(vehicles, feedsById, nowMs) {
       record = {
         id,
         billboard,
+        pointer: null,
         vehicle,
         feed,
-        hasBearing: Number.isFinite(vehicle.bearing),
+        image,
         from: position.clone(),
         to: position.clone(),
         renderPosition: position.clone(),
@@ -543,6 +812,7 @@ function reconcile(vehicles, feedsById, nowMs) {
         fixMs: Number.isFinite(vehicle.timestampMs) ? vehicle.timestampMs : null,
       };
       _records.set(id, record);
+      syncHeadingPointer(record, POINTER_PX);
       // A brand-new glyph has no rotation and no visibility decision yet, and
       // the per-frame pass only runs those when the CAMERA moved. Invalidate
       // the pose signature so the next frame treats this as a fresh scene.
@@ -557,14 +827,28 @@ function reconcile(vehicles, feedsById, nowMs) {
     const nextFixMs = Number.isFinite(vehicle.timestampMs) ? vehicle.timestampMs : null;
     record.vehicle = vehicle;
     record.feed = feed;
-    const hasBearing = Number.isFinite(vehicle.bearing);
-    if (hasBearing !== record.hasBearing) {
-      record.hasBearing = hasBearing;
-      record.billboard.image = hasBearing ? CHEVRON_URI : DISC_URI;
-      if (!hasBearing) record.billboard.rotation = 0;
+    // The icon tracks the CLASS, which can resolve on a later poll — compared
+    // against the URI actually set, so a class change is never silently missed.
+    const image = transitVehicleGlyphUri(vehicle);
+    if (image !== record.image) {
+      record.image = image;
+      record.billboard.image = image;
+    }
+    // And the pointer tracks the HEADING, which a feed can start or stop
+    // publishing between two polls.
+    syncHeadingPointer(record, id === _selectedId ? POINTER_SELECTED_PX : POINTER_PX);
+    // A selected vehicle that has been given a new trip is running a
+    // different line, or the same line the other way. The drawn run follows
+    // it rather than staying on the one that was open when it was clicked.
+    if (id === _selectedId && record.route && record.route.trip?.id
+      && vehicle.tripId && record.route.trip.id !== vehicle.tripId) {
+      record.route = null;
+      void loadSelectedRoute(record);
     }
     if (id !== _selectedId) {
-      record.billboard.color = Cesium.Color.fromCssColorString(transitModeColor(vehicle.mode));
+      const color = Cesium.Color.fromCssColorString(transitVehicleColor(vehicle));
+      record.billboard.color = color;
+      if (record.pointer) record.pointer.color = color;
     }
     if (moved) {
       Cesium.Cartesian3.clone(record.renderPosition, record.from);
@@ -583,6 +867,7 @@ function reconcile(vehicles, feedsById, nowMs) {
     if (seen.has(id)) continue;
     if (id === _selectedId) clearSelection();
     _billboards.remove(record.billboard);
+    if (record.pointer) _pointers.remove(record.pointer);
     _records.delete(id);
   }
 
@@ -597,6 +882,7 @@ function reconcile(vehicles, feedsById, nowMs) {
 function clearFleet() {
   clearSelection();
   if (_billboards) _billboards.removeAll();
+  if (_pointers) _pointers.removeAll();
   _records.clear();
   _count = 0;
 }
@@ -630,6 +916,7 @@ async function loadViewport({ force = false } = {}) {
   const boxKey = [box.south, box.west, box.north, box.east].map((v) => v.toFixed(3)).join(',');
   if (!force && boxKey === _lastBox && _inFlight) return;
   _lastBox = boxKey;
+  _lastBoxBounds = box;
 
   const generation = ++_requestGeneration;
   _inFlight?.abort?.();
@@ -726,7 +1013,14 @@ function buildLoadingLabel() {
   if (_status === 'zoom-in') return 'zoom in to load live transit';
   if (_loading) return _records.size ? 'refreshing networks...' : 'resolving networks...';
   if (_status === 'empty') {
-    return _feedsMatched > 0 ? 'no vehicles reporting here' : 'no PAN feed covers this view';
+    // Two different empties. Feeds matched and reported nothing: the network
+    // exists and its buses are parked. No feed matched at all: nobody
+    // publishes positions here, which for Paris, Lyon, Marseille, Lille,
+    // Strasbourg and Toulouse is permanent — so the layer names the publisher
+    // and points at a city where it works, instead of reading like a bug.
+    if (_feedsMatched > 0) return 'no vehicles reporting here';
+    return transitCoverageNotice(_lastBoxBounds, { feedsMatched: 0 })?.text
+      || 'no PAN feed covers this view';
   }
   const networks = _feedSummaries.filter((feed) => feed.inView > 0).length;
   const parts = [`${networks} network${networks === 1 ? '' : 's'}`];
@@ -751,6 +1045,15 @@ const transitFranceLayer = {
   /** Create the billboard collection and reset all state. */
   init(viewer) {
     _viewer = viewer;
+    // Pointers are added FIRST so they draw under the vehicle icons they
+    // orbit. They are deliberately not registered for picking: a click near a
+    // bus must select the bus, never the wedge next to it.
+    _pointers = new Cesium.BillboardCollection({
+      blendOption: Cesium.BlendOption.TRANSLUCENT,
+    });
+    _pointers.show = false;
+    viewer.scene.primitives.add(_pointers);
+
     _billboards = new Cesium.BillboardCollection({
       blendOption: Cesium.BlendOption.TRANSLUCENT,
     });
@@ -772,9 +1075,12 @@ const transitFranceLayer = {
     _vehiclesTruncated = false;
     _renderTruncated = false;
     _lastBox = null;
+    _lastBoxBounds = null;
     _altitudeGateOpen = false;
 
     _overlayHost.setVisible(TRANSIT_FR_OVERLAY_SOURCE_ID, false);
+    // The drawn run belongs to the selected vehicle and shares its lifecycle.
+    initTransitRouteView(viewer);
     restoreSpriteOrder(viewer);
   },
 
@@ -784,6 +1090,7 @@ const transitFranceLayer = {
     _error = null;
     _lastCameraPoseSignature = '';
     _billboards.show = true;
+    _pointers.show = true;
     // A fleet mid-glide is a per-frame animation, and the glide is driven from
     // preRender — which only fires when a frame renders. Under the idle render
     // governor that is circular: no frame, no preRender, no motion, nothing to
@@ -837,10 +1144,12 @@ const transitFranceLayer = {
     }
 
     _billboards.show = false;
+    _pointers.show = false;
     _loading = false;
     _status = 'idle';
     _feedSummaries = [];
     _lastBox = null;
+    _lastBoxBounds = null;
     releaseContinuousRender('transit-fr');
   },
 
@@ -883,20 +1192,34 @@ const transitFranceLayer = {
    * @returns {{ chips: Array<object>, legend: Array<object> }}
    */
   getRowControls() {
+    // Tallied by VEHICLE class, which is what a viewer is actually looking at.
+    // Vehicles whose class did not resolve are their own entry rather than
+    // being folded into the largest one — a bucket named "type inconnu" is the
+    // honest shape of a 92.7% join.
     const tally = new Map();
     for (const record of _records.values()) {
-      const mode = record.vehicle?.mode || 'urban';
-      tally.set(mode, (tally.get(mode) || 0) + 1);
+      const vehicle = record.vehicle || {};
+      const key = vehicle.kind ? `kind:${vehicle.kind}` : `mode:${vehicle.mode || 'urban'}`;
+      const entry = tally.get(key) || { count: 0, vehicle };
+      entry.count += 1;
+      tally.set(key, entry);
     }
     const legend = [...tally.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .map(([mode, count]) => ({
-        label: transitModeLabel(mode),
-        color: transitModeColor(mode),
-        count,
-        blurb: 'Service class declared by the network, not the vehicle type — '
-          + 'GTFS-Realtime carries no route_type.',
-      }));
+      .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+      .map(([key, entry]) => {
+        const kind = transitKindReadout(entry.vehicle);
+        return {
+          label: kind.qualifier && key.startsWith('mode:')
+            ? `${kind.label} (${kind.qualifier})`
+            : kind.label,
+          color: transitVehicleColor(entry.vehicle),
+          count: entry.count,
+          blurb: key.startsWith('kind:')
+            ? 'Vehicle class joined from the network\'s static GTFS route_type.'
+            : 'This network publishes no route_id the static feed resolves, so only '
+              + 'its declared SERVICE class is known — not what the vehicle is.',
+        };
+      });
     return { chips: [], legend };
   },
 
@@ -921,6 +1244,11 @@ const transitFranceLayer = {
       viewer.scene.primitives.remove(_billboards);
       _billboards = null;
     }
+    if (_pointers) {
+      viewer.scene.primitives.remove(_pointers);
+      _pointers = null;
+    }
+    destroyTransitRouteView(viewer);
     releaseContinuousRender('transit-fr');
     _records.clear();
     _viewer = null;

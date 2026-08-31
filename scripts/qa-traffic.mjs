@@ -101,6 +101,24 @@ async function settleTraffic(page, view, { minCount = 1, timeoutS = 30 } = {}) {
   }, view, minCount, timeoutS);
 }
 
+/**
+ * Screenshot, best-effort.
+ *
+ * These are EVIDENCE, not assertions. A software-rendered headless GL context
+ * sometimes has no animation-frame loop running at all, and `captureScreenshot`
+ * waits for a frame — so a lost shot used to abort a run whose assertions had
+ * all passed. Pump a frame first, and never let the shot fail the proof. Same
+ * rule, same reason, as `qa-transit-fr.mjs`.
+ */
+async function shoot(page, name) {
+  try {
+    await page.evaluate(() => { try { window.__godsEyeView?.viewer?.scene?.render(); } catch { /* stalled context */ } });
+    await page.screenshot({ path: path.join(SHOTS_DIR, name) });
+  } catch (error) {
+    console.log(`  · screenshot ${name} unavailable (${String(error?.message || error).split('\n')[0]})`);
+  }
+}
+
 async function main() {
   console.log('\nTomTom Live-Flow Traffic Proof (qa-traffic)');
   console.log(`  App URL : ${APP_URL}\n`);
@@ -149,9 +167,13 @@ async function main() {
 
     console.log('Loading app...');
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // Interval polling, not the default animation-frame polling: software
+    // headless WebGL can stall the rAF loop outright, and a rAF-polled wait
+    // then times out on an app that booted perfectly well. Same fix, same
+    // reason, as `qa-transit-fr.mjs`.
     await page.waitForFunction(
       () => window.__godsEyeView?.viewer && window.__godsEyeView?.dataManager,
-      { timeout: 60000 },
+      { timeout: 60000, polling: 200 },
     );
     await sleep(1500);
 
@@ -177,7 +199,7 @@ async function main() {
         `coverage=${mumbai.flowCoveragePct}% tiles=${mumbai.tilesFetched}`);
       if (mumbai.mode !== 'live' || !(mumbai.count > 0) || !(colored > 0)) exitCode = 1;
       await sleep(1200);
-      await page.screenshot({ path: path.join(SHOTS_DIR, 'traffic-live-flow.png') });
+      await shoot(page, 'traffic-live-flow.png');
     }
 
     // ── (iv) uncovered-roads param — hide vs sim ─────────────────────────────
@@ -210,7 +232,7 @@ async function main() {
         (hid.flowBuckets?.sim || 0) === 0 && hid.count > 0,
         `count=${hid.count} sim=${hid.flowBuckets?.sim}`);
       if ((hid.flowBuckets?.sim || 0) !== 0) exitCode = 1;
-      await page.screenshot({ path: path.join(SHOTS_DIR, 'traffic-live-hide-mode.png') });
+      await shoot(page, 'traffic-live-hide-mode.png');
     } else {
       record('PARAM: hide mode renders zero sim (white) dots', null,
         'view had 100% coverage (no sim dots to hide) — inconclusive here, covered by unit tests');
@@ -235,7 +257,7 @@ async function main() {
       }
       record('C4: oblique fetch box centers on the look-at point', ok, detail);
       if (!ok) exitCode = 1;
-      await page.screenshot({ path: path.join(SHOTS_DIR, 'traffic-c4-oblique.png') });
+      await shoot(page, 'traffic-c4-oblique.png');
     }
 
     // ── (iii) budget honesty ─────────────────────────────────────────────────
@@ -295,7 +317,7 @@ async function main() {
         exitCode = 1;
       }
       await sleep(1000);
-      await page.screenshot({ path: path.join(SHOTS_DIR, 'traffic-sim-keyless.png') });
+      await shoot(page, 'traffic-sim-keyless.png');
     }
   } catch (e) {
     console.error('\x1b[31mHarness error:\x1b[0m', e);

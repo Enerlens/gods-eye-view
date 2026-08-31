@@ -13,8 +13,11 @@ import transitFranceLayer, {
   cameraTransitBox,
   createTransitSelectedOverlayEntry,
   glideDurationMs,
+  transitKindReadout,
   transitModeColor,
+  transitVehicleGlyphUri,
   transitModeLabel,
+  transitVehicleColor,
   _clearTransitSelectionForTest,
   _selectTransitVehicleForTest,
   _setTransitStateForTest,
@@ -22,6 +25,11 @@ import transitFranceLayer, {
   TRANSIT_FR_OVERLAY_SOURCE_OPTIONS,
 } from './transitFrance.js';
 import { PAN_MAX_BOX_DEG } from './panFeeds.js';
+import { vehicleKindColor } from './transitVehicleKind.js';
+import { transitVehicleGlyph, TRANSIT_GLYPH_KINDS } from './transitVehicleIcons.js';
+
+/** Every vehicle icon the pack can produce, for the "must not borrow" check. */
+const TRANSIT_VEHICLE_ICONS = new Set(TRANSIT_GLYPH_KINDS.map((kind) => transitVehicleGlyph(kind)));
 
 /** A viewer stub whose camera reports one view rectangle. */
 function viewerWithView(degrees) {
@@ -48,6 +56,8 @@ function makeRecord(overrides = {}) {
     status: 'in-transit',
     occupancy: 'few-seats',
     mode: 'urban',
+    kind: 'bus',
+    kindSource: 'route_type',
     timestampMs: 1787765215000,
     ...(overrides.vehicle || {}),
   };
@@ -107,7 +117,9 @@ test('the card reports operator values, in the units a person reads', () => {
   // 30 s after the fix — the age of what the OPERATOR said, not of the glyph,
   // which is mid-glide between this fix and the previous one.
   assert.equal(lines[4], '⏱ fix 30s ago');
-  assert.equal(lines[5], 'Urban · Licence Ouverte 2.0');
+  // What it IS, from the operator's own route_type — not the network's
+  // service class, which is a different question with a different answer.
+  assert.equal(lines[5], 'Bus · Licence Ouverte 2.0');
 });
 
 test('missing values are omitted, never filled in with a plausible default', () => {
@@ -115,12 +127,69 @@ test('missing values are omitted, never filled in with a plausible default', () 
     vehicle: {
       bearing: null, speedMps: null, route: null, label: null,
       status: null, occupancy: null, timestampMs: null,
+      kind: null, kindSource: 'network',
     },
     feed: { network: null, licence: null },
   });
   const lines = buildTransitSelectionLabel(record).split('\n');
   assert.equal(lines[0], 'LINE —', 'an unknown line is dashed out, not guessed');
-  assert.deepEqual(lines.slice(1), ['Urban']);
+  // Half the national fleet publishes no speed: that line simply is not there.
+  // The heading is different — its absence changes the GLYPH from a chevron to
+  // a disc, so the card names it rather than leaving the shape unexplained.
+  // And an unresolved class says so instead of borrowing the service class.
+  assert.deepEqual(lines.slice(1), ['no heading published', 'Type unknown (Urban)']);
+});
+
+test('the card distinguishes a class read from one inferred', () => {
+  // Read from this vehicle's own route_id in the network's routes.txt.
+  assert.deepEqual(
+    transitKindReadout({ kind: 'tram', kindSource: 'route_type', mode: 'urban' }),
+    { label: 'Tram', qualifier: null },
+  );
+  // TADAO publishes 333 routes and all 333 are buses, so an unmatched route id
+  // there is still a bus — but the card says on what grounds.
+  assert.deepEqual(
+    transitKindReadout({ kind: 'bus', kindSource: 'uniform', mode: 'urban' }),
+    { label: 'Bus', qualifier: 'single-mode network' },
+  );
+  // Tours Fil Bleu publishes no usable route_id and runs both buses and a
+  // tram. Nothing may be claimed, and the service class is offered as what it
+  // is: the network's, not the vehicle's.
+  assert.deepEqual(
+    transitKindReadout({ kind: null, kindSource: 'network', mode: 'intercity' }),
+    { label: 'Type unknown', qualifier: 'Intercity' },
+  );
+});
+
+test('a resolved class colours the glyph; an unresolved one falls back', () => {
+  assert.equal(transitVehicleColor({ kind: 'tram', mode: 'urban' }), vehicleKindColor('tram'));
+  assert.equal(transitVehicleColor({ kind: 'ferry', mode: 'urban' }), vehicleKindColor('ferry'));
+  assert.notEqual(vehicleKindColor('tram'), vehicleKindColor('bus'), 'a tram must not read as a bus');
+  // No class: the network's service-class tint, which is what the layer had
+  // before the static join existed.
+  assert.equal(transitVehicleColor({ kind: null, mode: 'school' }), transitModeColor('school'));
+  assert.equal(transitVehicleColor({}), transitModeColor('urban'));
+});
+
+test('the icon says WHAT it is, and says nothing about heading', () => {
+  // The icon is a front view, so it is the same picture whatever the vehicle
+  // is doing. Heading lives on its own glyph, which is why this is decoupled.
+  const tram = { kind: 'tram', bearing: 146 };
+  const parkedTram = { kind: 'tram', bearing: null };
+  assert.equal(transitVehicleGlyphUri(tram), transitVehicleGlyph('tram'));
+  assert.equal(transitVehicleGlyphUri(parkedTram), transitVehicleGlyph('tram'));
+
+  // A ferry and a bus are not the same picture.
+  assert.notEqual(
+    transitVehicleGlyphUri({ kind: 'ferry' }),
+    transitVehicleGlyphUri({ kind: 'bus' }),
+  );
+
+  // No class resolved: the plain disc. Drawing a bus here would state
+  // something no feed published.
+  const unknown = transitVehicleGlyphUri({ kind: null, bearing: 90 });
+  assert.equal(transitVehicleGlyphUri({}), unknown);
+  assert.ok(!TRANSIT_VEHICLE_ICONS.has(unknown), 'an unresolved class must not borrow a vehicle');
 });
 
 test('the selected entry takes the protected lane a moving card needs', () => {
@@ -134,7 +203,7 @@ test('the selected entry takes the protected lane a moving card needs', () => {
     '30 km/h · 146° · in transit',
     '👥 few seats',
     '⏱ fix 30s ago',
-    'Urban · Licence Ouverte 2.0',
+    'Bus · Licence Ouverte 2.0',
   ]);
   assert.equal(entry.protected, true);
   assert.equal(entry.paintLane, 'selected');
@@ -173,27 +242,36 @@ test('selecting and clearing drives the real host seam and restores the glyph', 
 
   _clearTransitSelectionForTest();
   assert.ok(calls.some((call) => call[0] === 'clear' && call[1] === TRANSIT_FR_OVERLAY_SOURCE_ID));
-  assert.equal(record.billboard.color.toCssHexString(), transitModeColor('urban'));
+  assert.equal(record.billboard.color.toCssHexString(), vehicleKindColor('bus'));
 });
 
-test('the row legend counts what is on screen, and omits what is not', () => {
+test('the row legend counts vehicle classes, and names the ones it could not resolve', () => {
+  // A Bordeaux viewport: buses, trams, a river shuttle — and a contact from a
+  // network whose route ids resolve to nothing.
   const records = [
-    makeRecord({ vehicle: { id: 'a', mode: 'urban' } }),
-    makeRecord({ vehicle: { id: 'b', mode: 'urban' } }),
-    makeRecord({ vehicle: { id: 'c', mode: 'intercity' } }),
+    makeRecord({ vehicle: { id: 'a', kind: 'bus', kindSource: 'route_type' } }),
+    makeRecord({ vehicle: { id: 'b', kind: 'bus', kindSource: 'route_type' } }),
+    makeRecord({ vehicle: { id: 'c', kind: 'tram', kindSource: 'route_type' } }),
+    makeRecord({ vehicle: { id: 'd', kind: 'ferry', kindSource: 'route_type' } }),
+    makeRecord({ vehicle: { id: 'e', kind: null, kindSource: 'network', mode: 'intercity' } }),
   ];
   _setTransitStateForTest({ viewer: viewerWithView(null), records });
 
   const { legend, chips } = transitFranceLayer.getRowControls();
   assert.deepEqual(chips, []);
-  assert.deepEqual(legend.map((item) => [item.label, item.count]), [['Urban', 2], ['Intercity', 1]]);
-  assert.equal(legend[0].color, transitModeColor('urban'));
+  assert.deepEqual(legend.map((item) => [item.label, item.count]), [
+    ['Bus', 2],
+    ['Ferry', 1],
+    ['Tram', 1],
+    ['Type unknown (Intercity)', 1],
+  ]);
+  assert.equal(legend[0].color, vehicleKindColor('bus'));
   // Nothing reads "School 0": an entry with no vehicles implies coverage this
   // viewport does not have.
   assert.ok(legend.every((item) => item.count > 0));
-  // The blurb has to carry the caveat, because the colour cannot: the class is
-  // the NETWORK's, and a tram inside an urban network is coloured urban.
+  // The two blurbs make different claims, because they know different things.
   assert.match(legend[0].blurb, /route_type/);
+  assert.match(legend.at(-1).blurb, /not what the vehicle is/);
 
   _setTransitStateForTest({ viewer: null, records: [] });
   assert.deepEqual(transitFranceLayer.getRowControls().legend, []);
@@ -215,4 +293,66 @@ test('a glyph travels between two fixes at the speed the feed implies', () => {
   // and nothing creeps past the window in which a feed is still reporting.
   assert.equal(glideDurationMs(fix, fix + 200), 3_000);
   assert.equal(glideDurationMs(fix, fix + 10 * 60_000), 90_000);
+});
+
+// --- The card, once the line under the vehicle has resolved ----------------
+//
+// The line arrives one request after the contact does, so the card has to read
+// correctly at both moments: before the answer (the feed's own `route_id` and
+// vehicle label, exactly as it always did) and after it (the line's PUBLIC
+// name, the run's headsign, and where it goes next).
+
+/** A TBM bus with the `/api/transit-fr/trip` answer attached to its record. */
+function recordWithRoute(nowMs) {
+  return {
+    id: 'pan-83026:ineo-bus:1601',
+    vehicle: {
+      id: 'pan-83026:ineo-bus:1601',
+      feed: 'pan-83026',
+      lat: 44.8571,
+      lon: -0.5473,
+      mode: 'urban',
+      kind: 'bus',
+      kindSource: 'route_type',
+      route: '07',
+      routeId: '07',
+      tripId: 'b_268436334_31',
+      stopSequence: 2,
+      label: 'AMBARES PARABELLE',
+      status: 'in-transit',
+      timestampMs: nowMs - 12_000,
+    },
+    feed: { network: 'TBM', licence: 'Licence Ouverte 1.0' },
+    route: {
+      route: { id: '07', shortName: '7', longName: 'Lianes 7', color: '#00b1eb', variantCount: 6 },
+      trip: { id: 'b_268436334_31', headsign: 'AMBARES PARABELLE' },
+      shapeMatch: { matched: true, variants: 6, maxDeviationM: 12, medianDeviationM: 1 },
+      stopsReported: 2,
+      stops: [
+        { id: '7451', name: 'Lavignolle', sequence: 2, arrivalMs: nowMs + 180_000, delaySec: 48 },
+        { id: '5650', name: 'Parabelle', sequence: 3, arrivalMs: nowMs + 900_000, delaySec: 85 },
+      ],
+    },
+  };
+}
+
+test('the card prints the line\'s public name once the static feed has been read', () => {
+  const nowMs = Date.UTC(2026, 7, 31, 18, 40, 0);
+  const lines = buildTransitSelectionLabel(recordWithRoute(nowMs), nowMs).split('\n');
+  // "7" is what is written on the front of the bus; "07" is the operator's
+  // key, and it is what the title used before any of this existed.
+  assert.equal(lines[0], 'LINE 7 · AMBARES PARABELLE');
+  assert.ok(lines.includes('Lianes 7'));
+  assert.ok(lines.includes('▸ Lavignolle · 3 min · 1 min late'));
+  assert.ok(lines.includes('⇥ Parabelle · 2 stops'));
+});
+
+test('a vehicle whose line has not resolved yet reads exactly as it did before', () => {
+  const nowMs = Date.UTC(2026, 7, 31, 18, 40, 0);
+  const record = recordWithRoute(nowMs);
+  record.route = null;
+  const lines = buildTransitSelectionLabel(record, nowMs).split('\n');
+  assert.equal(lines[0], 'LINE 07 · AMBARES PARABELLE');
+  // Nothing about a run is claimed while the answer is still in flight.
+  assert.ok(!lines.some((line) => line.startsWith('▸') || line.startsWith('⇥')));
 });

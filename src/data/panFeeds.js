@@ -27,6 +27,7 @@
  * itself lives in `viewportBox.js`, shared with the French shared-mobility
  * source, which asks the same question of a different catalog.
  */
+import { feedIsSelectable } from './panFeedHealth.js';
 import {
   boxArea,
   boxContains as boxContainsPoint,
@@ -47,6 +48,20 @@ export const PAN_GTFS_RT_FORMAT = 'gtfs-rt';
 
 /** Declared feature that means "this resource has VehiclePosition entities". */
 export const PAN_VEHICLE_POSITIONS_FEATURE = 'vehicle_positions';
+
+/**
+ * Declared feature that means "this resource has TripUpdate entities".
+ *
+ * Measured 2026-08-31, ALL 142 datasets that publish vehicle positions also
+ * publish trip updates — which is how the route panel knows the ordered stops
+ * of the trip a selected vehicle is running, and when the operator expects it
+ * at each of them, without touching the 223 MB `stop_times.txt` of the static
+ * archive.
+ */
+export const PAN_TRIP_UPDATES_FEATURE = 'trip_updates';
+
+/** Resource format that carries static GTFS archives. */
+export const PAN_GTFS_FORMAT = 'GTFS';
 
 /** Human labels for the licence codes the PAN publishes on these datasets. */
 export const PAN_LICENCE_LABELS = Object.freeze({
@@ -218,6 +233,60 @@ export function isVehiclePositionResource(resource) {
 }
 
 /**
+ * Whether a resource is a GTFS-RT body that declares trip updates.
+ *
+ * Same availability rule as {@link isVehiclePositionResource}: a resource the
+ * catalog already flags as unreachable is not one to poll on a click.
+ *
+ * @param {Object} resource One entry of `dataset.resources`.
+ * @returns {boolean}
+ */
+export function isTripUpdateResource(resource) {
+  if (!resource || resource.format !== PAN_GTFS_RT_FORMAT) return false;
+  if (resource.is_available === false) return false;
+  const features = Array.isArray(resource.features) ? resource.features : [];
+  return features.includes(PAN_TRIP_UPDATES_FEATURE);
+}
+
+/**
+ * Static GTFS resources of one dataset, in catalog order.
+ *
+ * Kept as a LIST rather than reduced to a guess: several datasets ship more
+ * than one archive — STAR Rennes publishes "version en cours" and "version à
+ * venir" — and which of them carries usable geometry is answered by trying
+ * them, not by picking the first.
+ *
+ * @param {Object} dataset PAN dataset record.
+ * @returns {Array<Object>} The `format: 'GTFS'` resources.
+ */
+export function staticGtfsResources(dataset) {
+  const resources = Array.isArray(dataset?.resources) ? dataset.resources : [];
+  return resources.filter((resource) => resource?.format === PAN_GTFS_FORMAT && resource?.url);
+}
+
+/**
+ * Stable URL of the PAN's own GeoJSON conversion of a static GTFS resource.
+ *
+ * The PAN converts every GTFS it hosts to GeoJSON and serves the result from a
+ * URL derived from the RESOURCE id, refreshed whenever the archive is. That
+ * conversion is what makes a line's trace drawable at all: it carries the
+ * `shapes.txt` geometry already joined to `routes.txt` (`route_id`,
+ * `route_short_name`, `route_color`), and the stop points with their ids — the
+ * two members that, read raw, are the largest in the archive (36 MB and 13 MB
+ * compressed for Normandy, measured 2026-08-31).
+ *
+ * The URL is DERIVED, not published in the bulk catalog: only the per-dataset
+ * endpoint carries `conversions.GeoJSON`, which the index builder reads to
+ * learn whether a conversion exists and how big it is.
+ *
+ * @param {number|string} resourceId PAN resource id of the static GTFS.
+ * @returns {string}
+ */
+export function panGeoJsonConversionUrl(resourceId) {
+  return `https://transport.data.gouv.fr/resources/conversions/${resourceId}/GeoJSON`;
+}
+
+/**
  * Every vehicle-position feed in a PAN catalog dump, in stable id order.
  * @param {Array<Object>} datasets Parsed `GET /api/datasets` body.
  * @returns {Array<Object>} Feed descriptors.
@@ -325,7 +394,11 @@ export function selectFeedsForBox(feeds, box, options = {}) {
   const unknown = [];
   let nearKnownCoverage = false;
   for (const feed of Array.isArray(feeds) ? feeds : []) {
-    if (!feed?.url) continue;
+    // Duplicates and quarantined feeds never earn a slot: a viewport gets 16,
+    // and spending one on a body that is already on screen under another id —
+    // or on a resource that has failed every probe for two builds — costs a
+    // live network its place. See `panFeedHealth.js` for how both are measured.
+    if (!feedIsSelectable(feed)) continue;
     if (!feed.bbox) {
       unknown.push(feed);
       continue;
