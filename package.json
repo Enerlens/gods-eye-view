@@ -56,7 +56,8 @@
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
     "shared-mobility:index": "node scripts/build-gbfs-fr-index.mjs",
     "rte:units": "node scripts/build-rte-units-registry.mjs",
-    "hydro:registry": "node scripts/build-fr-hydro-registry.mjs"
+    "hydro:registry": "node scripts/build-fr-hydro-registry.mjs",
+    "airports:pack": "node scripts/build-ourairports.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",
