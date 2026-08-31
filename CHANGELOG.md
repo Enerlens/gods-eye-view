@@ -7,6 +7,54 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Live French transit vehicles now say what they ARE.** GTFS-Realtime carries
+  no vehicle class, so `npm run transit:route-types` joins each network's static
+  GTFS `route_type` and commits `config/pan_route_types.json` — 147 feeds, 7,044
+  routes, 195 KB. It reads **one member** out of each remote archive
+  (`routes.txt`, 8.7 KB inside Bordeaux TBM's 26.7 MB / 250 MB-expanded feed)
+  via HTTP range requests where the publisher allows them, so the national build
+  transfers ~136 MB instead of ~1.5 GB. A Bordeaux viewport now separates its
+  **67 trams and 3 Garonne river shuttles from its 358 buses**, coloured and
+  labelled per class. Measured 2026-08-31 the join types **92.7% of the national
+  live fleet**; the rest keep a neutral glyph and read `Type unknown` rather than
+  borrowing their network's service class, which is a different question.
+- **Transit vehicles are drawn as vehicles.** Each class now renders with its
+  **Material Symbol** (Apache-2.0, vendored path by path under
+  `licenses/material-symbols/`): a bus with a windscreen and headlights, a tram
+  with its pantograph, a river shuttle as a boat, a métro, a funicular, a cable
+  car. An earlier pass drew hand-made plan-view silhouettes and they were
+  internally consistent and unrecognisable — recognition beats invention. The
+  icons are FRONT views and so are never rotated; the operator's bearing is
+  drawn instead as a small wedge that ORBITS the icon on its own billboard, so
+  a bus stays a bus while still showing which way it is going. A vehicle whose
+  feed publishes no bearing has no wedge, which is the same statement the bare
+  disc used to make.
+- **The road layer reaches metro altitude.** `trafficBounds.ROAD_FETCH_TIERS`
+  replaces one fixed 0.05° fetch box with three altitude bands, the coarsest
+  drawing arterials across a **0.30° (~33 km) box up to 30 km** — where it used
+  to switch off at 8 km. Animated road traffic and the live transit fleet can
+  finally share a frame over a whole French métropole: measured over Bordeaux,
+  1,605 road dots and 356 live vehicles at once. The coarse band is cheaper than
+  the street band it sits above (1,929 ways vs 3,701). Two new scene recipes,
+  **Bordeaux Transport Pulse** and **France Transit Showcase**, are written
+  against those bands.
+- **The layer says where it has nothing, and why.** `src/data/transitCoverage.js`
+  records the measured French coverage map — Paris intra-muros, Lyon, Marseille,
+  Lille and Strasbourg had **zero** live vehicles at a Monday peak on 2026-08-31,
+  because Île-de-France Mobilités publishes no GTFS-Realtime at all, Marseille
+  publishes alerts only and Tisséo trip updates only. An empty viewport there now
+  names the publisher and points at the nearest city that works, instead of
+  reading "no PAN feed covers this view" and looking like a bug. A unit test
+  cross-checks every "dark" claim against the shipped feed index, so an operator
+  that starts publishing breaks the build.
+- **The shipped PAN index deduplicates and quarantines itself.** Some networks
+  publish one body under two resource ids — Kicéo's twin returned the same 59
+  vehicles, drawn twice. `src/data/panFeedHealth.js` finds candidates by
+  positional fingerprint and confirms them on a second probe **by roster only**,
+  because the fleet moves between probes. A run of failed probes takes a feed out
+  of viewport selection without deleting it, and any success revives it.
+  `/api/transit-fr/feeds` now reports shipped and queryable counts side by side.
+
 - **Every data layer now knows what it is.** A new `src/data/layerTaxonomy.js`
   gives all 28 registered layers a category — **AIR & ESPACE**, **DÉFENSE**,
   **MARITIME**, **MOBILITÉ TERRESTRE**, **ÉNERGIE**, **RISQUES &
@@ -40,6 +88,17 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   cameras, which anchor to a city plus a landmark *index* — a regression test
   now walks that seed table and fails if any camera loses the landmark it was
   calibrated against.
+
+### Fixed
+
+- **`npm run qa:traffic` could not boot at all.** It waited on
+  `window.__godsEyeView` with puppeteer's default animation-frame polling, and
+  software-rendered headless WebGL stalls the rAF loop — so the harness timed
+  out after 60 s on an app that had booted perfectly well, reporting `0 passed,
+  0 failed`. It now polls on an interval, the way `qa-transit-fr.mjs` already
+  documented, and its screenshots are best-effort: a lost frame capture used to
+  abort a run whose assertions had all passed. The traffic proof runs end to
+  end again — 11 assertions, live and keyless.
 
 ## [Unreleased] — 2026-08-28
 

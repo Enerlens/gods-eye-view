@@ -1,6 +1,16 @@
 /**
  * Scene recipes optimized for short social clips.
  * Each recipe is deterministic so repeated runs produce similar footage.
+ *
+ * THE TWO FRENCH GROUND-TRANSPORT RECIPES AT THE END OF THIS LIST exist
+ * because of a measurement, not a mood. France's national access point obliges
+ * operators to publish timetables, not vehicle positions, and the largest
+ * networks publish none: on 2026-08-31 at a Monday peak, Paris intra-muros,
+ * Lyon, Marseille, Lille and Strasbourg had ZERO live transit vehicles between
+ * them, while Bordeaux had 453 and Rouen 379. A ground-transport scene set in
+ * Paris — where the globe opens — would be a blank city. These two are set
+ * where the data is, and `src/data/transitCoverage.js` carries the same table
+ * so the layer can say the same thing to anyone who flies to Lyon and wonders.
  */
 
 export const SCENE_RECIPES = [
@@ -157,6 +167,84 @@ export const SCENE_RECIPES = [
       { lat: 35.68, lon: 139.76, alt: 3800000, heading: 18, pitch: -52, roll: 0, duration: 5, hold: 1 },
       { lat: 20.0, lon: 110.0, alt: 9500000, heading: 8, pitch: -66, roll: 0, duration: 5, hold: 1 },
       { lat: 5.0, lon: 30.0, alt: 18000000, heading: -8, pitch: -78, roll: 0, duration: 6, hold: 0 },
+    ],
+  },
+  {
+    // Bordeaux, because it is the best-covered city in France: 453 live
+    // vehicles measured 2026-08-31, and the only large network publishing
+    // buses, trams AND river shuttles through one feed (195 bus routes, 6 tram,
+    // 3 boat). The descent is written against the road layer's altitude bands
+    // (`trafficBounds.ROAD_FETCH_TIERS`): 22 km and 12 km sit in the metro
+    // band, where arterials animate across a 33 km box and the WHOLE TBM fleet
+    // is on screen at once — a composition that did not exist while the road
+    // layer stopped at 8 km with a 5.5 km box. 6 km enters the district band,
+    // 2.2 km the full street graph over the Garonne.
+    id: 'bordeaux-transport-pulse',
+    title: 'Bordeaux Transport Pulse',
+    durationSec: 34,
+    style: 'surveillance',
+    ui: { hidePanels: true, hudMode: 'full', safeFrame: '16:9' },
+    layers: {
+      'transit-fr': true,
+      traffic: true,
+      'shared-mobility-fr': true,
+      bikeshare: true,
+      flights: true,
+      'ais-live-vessels': true,
+      satellites: false,
+      earthquakes: false,
+    },
+    post: {
+      bloom: 60,
+      sharpen: true,
+      detectionMode: 'SPARSE',
+      styleParams: {
+        surveillance: {
+          gain: 0.6,
+          bloom: 0.36,
+          scanlineStr: 0.8,
+          pixelation: 1.8,
+        },
+      },
+    },
+    cameraPath: [
+      { lat: 44.8378, lon: -0.5792, alt: 22000, heading: 20, pitch: -55, roll: 0, duration: 6, hold: 2 },
+      { lat: 44.8500, lon: -0.5850, alt: 12000, heading: 45, pitch: -45, roll: 0, duration: 5, hold: 2 },
+      { lat: 44.8412, lon: -0.5697, alt: 6000, heading: 70, pitch: -38, roll: 0, duration: 5, hold: 2 },
+      { lat: 44.8395, lon: -0.5680, alt: 2200, heading: 105, pitch: -30, roll: 0, duration: 5, hold: 2 },
+      { lat: 44.8600, lon: -0.5500, alt: 9000, heading: 140, pitch: -42, roll: 0, duration: 5, hold: 0 },
+    ],
+  },
+  {
+    // The four other cities where the layer has something to show, in
+    // descending fleet size. Every altitude sits in the metro road band so the
+    // transit fleet and the arterial traffic share every frame; Rouen and
+    // Toulon are here because they carry the only live `route_type` diversity
+    // in the country — Rouen a métro-classed line, Toulon a ferry and a cable
+    // car alongside its buses.
+    id: 'france-transit-showcase',
+    title: 'France Transit Showcase',
+    durationSec: 32,
+    style: 'retro',
+    ui: { hidePanels: true, hudMode: 'full', safeFrame: '16:9' },
+    layers: {
+      'transit-fr': true,
+      traffic: true,
+      flights: false,
+      satellites: false,
+      earthquakes: false,
+    },
+    post: {
+      bloom: 58,
+      sharpen: true,
+      detectionMode: 'OFF',
+    },
+    cameraPath: [
+      { lat: 44.8378, lon: -0.5792, alt: 20000, heading: 15, pitch: -52, roll: 0, duration: 5, hold: 2 },
+      { lat: 49.4432, lon: 1.0999, alt: 18000, heading: 35, pitch: -50, roll: 0, duration: 5, hold: 2 },
+      { lat: 48.1173, lon: -1.6778, alt: 16000, heading: 55, pitch: -48, roll: 0, duration: 5, hold: 2 },
+      { lat: 43.6108, lon: 3.8767, alt: 15000, heading: 75, pitch: -46, roll: 0, duration: 5, hold: 2 },
+      { lat: 43.1242, lon: 5.9280, alt: 14000, heading: 95, pitch: -44, roll: 0, duration: 4, hold: 0 },
     ],
   },
 ];

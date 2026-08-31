@@ -106,6 +106,8 @@ import {
   PAN_MAX_FEEDS_PER_REQUEST,
   PAN_MAX_VEHICLES,
 } from './src/data/panFeeds.js';
+import { partitionFeedsByHealth } from './src/data/panFeedHealth.js';
+import { resolveVehicleKind } from './src/data/transitVehicleKind.js';
 import {
   filterFreshObservations,
   parseNdbcLatestObservations,
@@ -5025,6 +5027,16 @@ function gbfsProxy() {
  * server, never sent to the browser whole — the client asks for a viewport.
  */
 const PAN_INDEX_PATH = path.join(process.cwd(), 'config', 'pan_gtfs_rt_feeds.json');
+/**
+ * `route_id → route_type` per feed, from `scripts/build-pan-route-types.mjs`.
+ *
+ * GTFS-Realtime carries no vehicle class, so without this the layer can only
+ * colour by the NETWORK's declared service class and Bordeaux's 77 trams, 3
+ * river shuttles and 372 buses are one amber swarm. Optional on purpose: a
+ * checkout that has never run the builder still serves vehicles, they just
+ * arrive with `kindSource: 'network'`.
+ */
+const PAN_ROUTE_TYPES_PATH = path.join(process.cwd(), 'config', 'pan_route_types.json');
 /** Footprints learned at runtime, merged over the shipped ones on next boot. */
 const PAN_BOUNDS_PATH = path.join(process.cwd(), '.gev-cache', 'pan-transit-bounds.json');
 /**
@@ -5050,6 +5062,8 @@ const PAN_USER_AGENT = 'gods-eye-view/0.1 (+https://github.com/bilawalsidhu/gods
 /** @type {?{feeds: Array<Object>, generatedAt: string, source: string}} */
 let _panIndex = null;
 let _panIndexPromise = null;
+/** feedId -> {routes, uniformKind}; empty when the route-type index is absent. */
+let _panRouteTypes = new Map();
 /** feedId -> {at:number, vehicles:Array, error:?string, failedAt:?number} */
 const _panFeedCache = new Map();
 const _panFeedInFlight = new Map();
@@ -5093,16 +5107,47 @@ async function loadPanIndex() {
       if (merged) feed.bbox = merged;
     }
     _panIndex = { ...raw, feeds };
+
+    const { selectable, duplicates, quarantined } = partitionFeedsByHealth(feeds);
     console.log(
       `[PAN Transit] ${feeds.length} GTFS-RT vehicle-position feeds `
-      + `(${feeds.filter((feed) => feed.bbox).length} with a footprint), index built ${raw?.generatedAt || 'unknown'}`,
+      + `(${feeds.filter((feed) => feed.bbox).length} with a footprint, ${selectable.length} queryable — `
+      + `${duplicates} duplicate, ${quarantined} quarantined), index built ${raw?.generatedAt || 'unknown'}`,
     );
+
+    await loadPanRouteTypes();
     return _panIndex;
   })().catch((error) => {
     _panIndexPromise = null;
     throw error;
   });
   return _panIndexPromise;
+}
+
+/**
+ * Load the route-type index, if the builder has ever been run here.
+ *
+ * Absence is a normal state, not an error: `npm run transit:route-types` is a
+ * network-bound build step, and a clone that has not run it must still serve
+ * live vehicles. It loses only the vehicle CLASS, and every wire record says
+ * so through `kindSource`.
+ */
+async function loadPanRouteTypes() {
+  try {
+    const raw = JSON.parse(await fsp.readFile(PAN_ROUTE_TYPES_PATH, 'utf8'));
+    _panRouteTypes = new Map(Object.entries(raw?.feeds || {}));
+    const typed = [..._panRouteTypes.values()].filter((entry) => entry?.uniformKind).length;
+    console.log(
+      `[PAN Transit] route types for ${_panRouteTypes.size} feeds `
+      + `(${raw?.routeCount || 0} routes, ${typed} single-class networks), built ${raw?.generatedAt || 'unknown'}`,
+    );
+  } catch {
+    _panRouteTypes = new Map();
+    console.log(
+      '[PAN Transit] no route-type index — vehicles will report their network\'s '
+      + 'service class instead of a vehicle type. Run `npm run transit:route-types`.',
+    );
+  }
 }
 
 /** Persist learned footprints, at most once per PAN_BOUNDS_FLUSH_MS. */
@@ -5209,13 +5254,20 @@ async function panFeedVehicles(feed) {
 
 /** Trim a decoded record to the fields the layer renders, dropping empties. */
 function panWireVehicle(vehicle, feed) {
+  // `mode` is the NETWORK's declared service class (urban, school, …).
+  // `kind` is the VEHICLE's class, joined from the network's static GTFS.
+  // They answer different questions and both are sent, with the provenance of
+  // the second attached so the card never has to guess which it is showing.
+  const { kind, source } = resolveVehicleKind(vehicle.routeId, _panRouteTypes.get(feed.id));
   const wire = {
     id: vehicle.id,
     feed: feed.id,
     lat: Number(vehicle.lat.toFixed(5)),
     lon: Number(vehicle.lon.toFixed(5)),
     mode: feed.modes?.[0] || 'urban',
+    kindSource: source,
   };
+  if (kind) wire.kind = kind;
   if (vehicle.bearing !== null) wire.bearing = Number(vehicle.bearing.toFixed(1));
   if (vehicle.speedMps !== null) wire.speedMps = Number(vehicle.speedMps.toFixed(2));
   if (vehicle.route) wire.route = vehicle.route;
@@ -5340,8 +5392,12 @@ function panTransitProxy() {
       }
 
       if (route === '/feeds') {
+        // Licences are counted over the QUERYABLE set: a licence that only
+        // appears on a quarantined duplicate is not a licence this proxy is
+        // serving anyone under.
+        const { selectable, duplicates, quarantined } = partitionFeedsByHealth(index.feeds);
         const licences = {};
-        for (const feed of index.feeds) {
+        for (const feed of selectable) {
           const label = feed.licenceLabel || 'Licence non précisée';
           licences[label] = (licences[label] || 0) + 1;
         }
@@ -5350,6 +5406,10 @@ function panTransitProxy() {
           generatedAt: index.generatedAt || null,
           feedCount: index.feeds.length,
           feedsWithBounds: index.feeds.filter((feed) => feed.bbox).length,
+          // Shipped ≠ queryable, and the difference is named rather than hidden.
+          feedsQueryable: selectable.length,
+          feedsDuplicate: duplicates,
+          feedsQuarantined: quarantined,
           licences,
           maxBoxDeg: PAN_MAX_BOX_DEG,
           maxFeedsPerRequest: PAN_MAX_FEEDS_PER_REQUEST,
