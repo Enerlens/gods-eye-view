@@ -354,6 +354,15 @@ export const DATA_CREDITS = [
       '— U.S. public domain. Harbour depths are WPI range bins, not surveyed soundings.',
   },
   {
+    key: 'ourairports',
+    html:
+      'Airports &amp; aerodromes: ' +
+      '<a href="https://ourairports.com/data/" target="_blank" rel="noopener">OurAirports</a> ' +
+      '— dedicated to the public domain by its volunteer editors. Bundled as a ' +
+      'selection, not the whole catalogue: every large/medium airport and every ' +
+      'scheduled-service field worldwide, plus the full French long tail.',
+  },
+  {
     key: 'firms',
     html:
       'Active fires: NASA FIRMS — we acknowledge the use of data and/or imagery ' +

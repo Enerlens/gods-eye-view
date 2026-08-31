@@ -303,6 +303,12 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // silently turn "reject an unknown link" into "enable the gas layer".
   Object.freeze({ id: 'gas-fr', token: '1', disposition: 'enabled-only' }),
   Object.freeze({ id: 'hubeau-hydro', token: 'h', disposition: 'enabled-only' }),
+  // A DIGIT, for the sixth time and always for the same reason: a–y are all
+  // taken and `z` is the canonical UNKNOWN token two tests assert on. `6`
+  // because 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants
+  // and bdtopo-buildings. Not `a` for "airports" — that is the AIS layer, and a
+  // duplicate token is a share link that silently enables the wrong one.
+  Object.freeze({ id: 'local-airports', token: '6', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-dams', token: 'q', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-datacenters', token: 'd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-firms', token: 'w', disposition: 'enabled-only' }),

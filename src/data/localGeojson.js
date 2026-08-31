@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
+import { airportCardDetails, airportLabelPriority } from './airportsPack.js';
 import {
   clearSelectedEntityContextForLayer,
   registerEntityContext,
@@ -107,6 +108,11 @@ export function localInfrastructureOverlayCopy(properties, layerId) {
     if (Number.isFinite(channel)) {
       details.push(clampCardLine(`~${channel} m channel (approx.)`));
     }
+  } else if (layerId === 'local-airports') {
+    // The airport pack owns its own copy: the same module decides what the
+    // build emits, so a dropped field cannot become a blank line here. The
+    // host still owns the width, hence the clamp on the way out.
+    for (const line of airportCardDetails(props)) details.push(clampCardLine(line));
   }
 
   return { title, details };
@@ -122,6 +128,15 @@ export function localInfrastructureOverlayCopy(properties, layerId) {
  * @param {object} options.properties Unwrapped feature properties.
  * @param {number} options.priority Source-owned importance score.
  * @param {string} options.accent Source accent color.
+ * @param {number} [options.maxDistance] How far out the card may still be read.
+ *   A GRADED pack shortens this for its lesser groups: at 260 km over
+ *   Île-de-France the label grid was handing fifteen cells to aéroclubs and
+ *   three to Roissy, Orly and Le Bourget — which inverts, on the one surface a
+ *   reader actually reads, the ranking the dot sizes had just established.
+ *   Priority alone cannot fix that: the arbiter awards cells LOCALLY, so a
+ *   grass strip with no competition in its own cell always wins it. Range does
+ *   fix it, because "you have to come closer to be told about this one" is the
+ *   same statement as "this one matters less".
  * @returns {object}
  */
 export function createLocalInfrastructureOverlayEntry({
@@ -131,8 +146,12 @@ export function createLocalInfrastructureOverlayEntry({
   properties,
   priority,
   accent,
+  maxDistance = LOCAL_OVERLAY_MAX_DISTANCE_M,
 }) {
   const copy = localInfrastructureOverlayCopy(properties, layerId);
+  const range = Number.isFinite(maxDistance) && maxDistance > 0
+    ? maxDistance
+    : LOCAL_OVERLAY_MAX_DISTANCE_M;
   return {
     id: String(id),
     source: layerId,
@@ -146,8 +165,12 @@ export function createLocalInfrastructureOverlayEntry({
     zIndex: 30,
     interactive: false,
     minDistance: 0,
-    maxDistance: LOCAL_OVERLAY_MAX_DISTANCE_M,
-    distanceFadeStartRatio: LOCAL_OVERLAY_FADE_START_RATIO,
+    maxDistance: range,
+    // The fade has to start INSIDE the range it fades over. A short-range card
+    // whose fade began at the shared 250 km would be born already faded out.
+    distanceFadeStartRatio: range > LOCAL_OVERLAY_FADE_START_M
+      ? LOCAL_OVERLAY_FADE_START_M / range
+      : 0.5,
     distanceScale: {
       near: 250000,
       nearValue: 1,
@@ -307,11 +330,43 @@ export function createLocalGeoJsonLayer({
   overlayHost = DEFAULT_OVERLAY_HOST,
   screenSpaceEventHandlerFactory = (canvas) => new Cesium.ScreenSpaceEventHandler(canvas),
   projectToWindow = (scene, position) => Cesium.SceneTransforms.worldToWindowCoordinates(scene, position),
+  /*
+   * ── OPTIONAL: GRADED DATASETS ──────────────────────────────────────────
+   *
+   * A pack whose features are NOT all equally important can classify them into
+   * groups and let the group drive three things at once: how the marker is
+   * drawn, whether it is drawn at all, and what the row's legend says. Airports
+   * are the first caller — seven thousand identical dots is a wall, not a map —
+   * but nothing here is airport-specific, and ports could grade by harbour size
+   * tomorrow without touching this function again.
+   *
+   * All five default to the flat behaviour the other bundled layers already
+   * have: one colour, one size, everything visible, no row controls. In
+   * particular `getRowControls` is only ATTACHED when `rowControls` is passed,
+   * because the manager tests for the method's existence to decide whether to
+   * build the row's control strip at all.
+   */
+  /** @type {(props:object)=>(string|null)} Classify a feature into a group key. */
+  groupOf = null,
+  /** @type {Record<string,{color?:string,pixelSize?:number,stemWidth?:number}>} Per-group styling. */
+  groupStyles = null,
+  /** @type {(groupKey:string, params:object)=>boolean} Whether a group is drawn. */
+  groupVisible = null,
+  /** @type {object} Initial runtime params (never share-link state). */
+  defaultParams = null,
+  /** @type {(params:object, tally:Map<string,{total:number,visible:number}>)=>object} Row chips + legend. */
+  rowControls = null,
 }) {
   let _dataSource = null;
   let _enabled = false;
   let _clickHandler = null;
   let _count = 0;
+  /** Runtime params owned by the row chips. Cloned so the caller's literal is safe. */
+  let _params = { ...(defaultParams || {}) };
+  /** @type {Map<string,{total:number, visible:number}>} Per-group counts, drawn vs loaded. */
+  const _groupTally = new Map();
+  /** @type {(()=>void)|null} Panel repaint hook, installed by the manager. */
+  let _rowControlsListener = null;
   /** @type {number|null} Timestamp of the last successful dataset load. */
   let _lastUpdate = null;
   /** @type {string|null} Short reason the bundled dataset failed to load. */
@@ -364,6 +419,30 @@ export function createLocalGeoJsonLayer({
     clearTimeout(_groundRetryTimer);
     _groundRetryTimer = null;
   }
+
+  /**
+   * Re-decide which groups are drawn under the current params, and refresh the
+   * per-group tally the legend reads.
+   *
+   * The record keeps `filteredOut` rather than writing `entity.show` here: the
+   * pre-render walk owns `show` — it is also where horizon occlusion lands — so
+   * two writers would fight, and a filtered marker would flicker back on the
+   * next camera move. Ungraded layers exit on the first line and pay nothing.
+   * @returns {void}
+   */
+  function applyGroupFilter() {
+    if (typeof groupOf !== 'function') return;
+    for (const bucket of _groupTally.values()) bucket.visible = 0;
+    const allow = typeof groupVisible === 'function' ? groupVisible : null;
+    for (const record of _stemRecords) {
+      const visible = !allow || !record.groupKey || allow(record.groupKey, _params) === true;
+      record.filteredOut = !visible;
+      if (visible && record.groupKey) {
+        const bucket = _groupTally.get(record.groupKey);
+        if (bucket) bucket.visible += 1;
+      }
+    }
+  }
   const _overlayPublisher = createLocalInfrastructureOverlayPublisher({
     sourceId: id,
     host: overlayHost,
@@ -413,6 +492,43 @@ export function createLocalGeoJsonLayer({
     getStats: () => {
       return { count: _count, lastUpdate: _lastUpdate, error: _error };
     },
+
+    // ── Row controls (graded packs only) ──────────────────────────────────
+    // Attached conditionally: the manager decides whether to build a row's
+    // control strip by testing `typeof module.getRowControls === 'function'`,
+    // so defining these unconditionally would give ports, dams and datacenters
+    // an empty strip they have nothing to put in.
+    ...(rowControls ? {
+      /**
+       * Apply a row chip's params. `count` in `getStats()` deliberately does
+       * NOT move: the pack always ships whole, and a floor hides markers
+       * without losing them — same contract as the hydro layer's `floorKw`.
+       * @param {object} [params] Partial params to merge.
+       * @returns {boolean} Whether anything actually changed.
+       */
+      setParams(params = {}) {
+        const next = { ..._params, ...(params || {}) };
+        const changed = Object.keys(next).some((key) => next[key] !== _params[key]);
+        if (!changed) return false;
+        _params = next;
+        applyGroupFilter();
+        // The walk is throttled to VISIBILITY_UPDATE_MS and the governor is in
+        // requestRenderMode, so without both of these the chip would appear to
+        // do nothing for up to half a second on a parked camera.
+        _lastVisibilityUpdate = Number.NEGATIVE_INFINITY;
+        governorRequestRender(`local-group-filter:${id}`);
+        _rowControlsListener?.();
+        return true;
+      },
+
+      setRowControlsListener(listener) {
+        _rowControlsListener = typeof listener === 'function' ? listener : null;
+      },
+
+      getRowControls() {
+        return rowControls(_params, _groupTally) || null;
+      },
+    } : {}),
 
     enable: async (viewer) => {
       if (_destroyed) return;
@@ -480,6 +596,9 @@ export function createLocalGeoJsonLayer({
           const entities = loaded.entities.values;
           _count = entities.length;
           _stemRecords = [];
+          // Rebuilt from scratch below; a retry after a failed load must not
+          // inherit the counts of the attempt that died.
+          _groupTally.clear();
           _stemGeometryDirty = true;
           
           for (let i = 0; i < entities.length; i++) {
@@ -532,21 +651,35 @@ export function createLocalGeoJsonLayer({
             // cadence. Cesium no longer evaluates 2-3 callbacks per entity on
             // every frame, while the point/stem pick surface stays native.
             feature.position = tip;
+            // A graded pack styles per group; a flat one falls through to the
+            // single layer colour and the historical 10 px / 3.5 px geometry.
+            const groupKey = typeof groupOf === 'function' ? (groupOf(properties) || null) : null;
+            const groupStyle = (groupKey && groupStyles?.[groupKey]) || null;
+            const markerColor = groupStyle?.color
+              ? Cesium.Color.fromCssColorString(groupStyle.color)
+              : baseColor;
+            const accent = groupStyle?.color || color;
             const stemPositionBuffers = [[base, tip], [base, tip]];
             feature.polyline = new Cesium.PolylineGraphics({
               positions: stemPositionBuffers[0],
-              width: 3.5,
-              material: new Cesium.ColorMaterialProperty(baseColor),
+              width: groupStyle?.stemWidth ?? 3.5,
+              material: new Cesium.ColorMaterialProperty(markerColor),
             });
             feature.point = new Cesium.PointGraphics({
-              pixelSize: 10,
-              color: baseColor,
+              pixelSize: groupStyle?.pixelSize ?? 10,
+              color: markerColor,
               outlineColor: Cesium.Color.BLACK,
               outlineWidth: 2,
               // Never depth-cull the anchor against the photoreal mesh —
               // globe-horizon culling is handled by the pre-render occluder.
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
             });
+
+            if (groupKey) {
+              const bucket = _groupTally.get(groupKey);
+              if (bucket) bucket.total += 1;
+              else _groupTally.set(groupKey, { total: 1, visible: 0 });
+            }
 
             const priority = labelPriorityFromProperties(properties, id);
             _stemRecords.push({
@@ -562,16 +695,21 @@ export function createLocalGeoJsonLayer({
               groundSampled: false,
               lastGroundSampleMs: 0,
               priority,
+              groupKey,
+              /** Hidden by a row-chip display floor — NOT by the horizon occluder. */
+              filteredOut: false,
               entry: labels ? createLocalInfrastructureOverlayEntry({
                 id: recordId,
                 layerId: id,
                 position: tip,
                 properties,
                 priority,
-                accent: color,
+                accent,
+                maxDistance: groupStyle?.cardMaxDistance,
               }) : null,
             });
           }
+          applyGroupFilter();
           // Setup finished — publish it.
           _dataSource = loaded;
           _lastUpdate = Date.now();
@@ -589,6 +727,7 @@ export function createLocalGeoJsonLayer({
           }
           _count = 0;
           _stemRecords = [];
+          _groupTally.clear();
           console.error(`Failed to load ${id}:`, e);
         }
 
@@ -695,7 +834,10 @@ export function createLocalGeoJsonLayer({
                 < GROUND_SAMPLE_MAX_DISTANCE_M) {
               groundRetryPending = true;
             }
-            const isVisible = occluder.isPointVisible(record.base);
+            // Two independent reasons to be invisible: over the horizon, or
+            // below the row's display floor. Both must clear before a marker —
+            // or its ambient card — reaches the screen.
+            const isVisible = !record.filteredOut && occluder.isPointVisible(record.base);
             if (record.entity.show !== isVisible) record.entity.show = isVisible;
             if (isVisible && record.entry) visibleOverlayRecords.push(record);
           }
@@ -755,6 +897,7 @@ export function createLocalGeoJsonLayer({
       _overlayPublisher.destroy();
       _dataSource = null;
       _stemRecords = [];
+      _groupTally.clear();
       _count = 0;
       _lastUpdate = null;
       _error = null;
@@ -867,6 +1010,9 @@ function labelPriorityFromProperties(props, layerId) {
     else if (size === 'medium') score += 160;
     else if (size === 'small') score += 80;
   }
+  // Same idea for airports, but the ladder lives with the pack that writes the
+  // `type`/`scheduled` fields it reads — see src/data/airportsPack.js.
+  if (layerId === 'local-airports') score += airportLabelPriority(props);
   return score;
 }
 
@@ -914,5 +1060,6 @@ function layerTitle(layerId) {
   if (layerId === 'local-datacenters') return 'Datacenter';
   if (layerId === 'local-dams') return 'Dam';
   if (layerId === 'local-ports') return 'Port';
+  if (layerId === 'local-airports') return 'Aérodrome';
   return 'Feature';
 }

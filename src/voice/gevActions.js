@@ -234,6 +234,14 @@ const LAYER_ALIASES = new Map([
   ['harbors', 'local-ports'],
   ['harbours', 'local-ports'],
   ['seaports', 'local-ports'],
+  ['airports', 'local-airports'],
+  ['airport', 'local-airports'],
+  ['aeroports', 'local-airports'],
+  ['aéroports', 'local-airports'],
+  ['aerodromes', 'local-airports'],
+  ['aérodromes', 'local-airports'],
+  ['airfields', 'local-airports'],
+  ['runways', 'local-airports'],
   ['buoys', 'marine-buoys'],
   ['marine buoys', 'marine-buoys'],
   ['ndbc', 'marine-buoys'],
@@ -3360,6 +3368,7 @@ function layerTitle(layerId) {
   if (layerId === 'bdtopo-buildings') return 'Building';
   if (layerId === 'rte-generation') return 'Power Station';
   if (layerId === 'local-ports') return 'Port';
+  if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
   return layerId || 'Entity';
 }
