@@ -57,6 +57,13 @@ export const LAYER_CATEGORIES = Object.freeze([
   Object.freeze({ id: 'energy', label: 'ÉNERGIE', icon: '⚡' }),
   Object.freeze({ id: 'hazards', label: 'RISQUES & ENVIRONNEMENT', icon: '⚠' }),
   Object.freeze({ id: 'comms-sensors', label: 'RÉSEAUX & CAPTEURS', icon: '≋' }),
+  // An EIGHTH group, added rather than forcing the building stock into one of
+  // the seven. It fits none of them: a building is not energy, not a hazard,
+  // not mobility, and putting it in "RÉSEAUX & CAPTEURS" beside CCTV and radio
+  // would say it is a network, which it is not. It closes the panel because it
+  // is base reference data — the ground everything else stands on — and it is
+  // where a cadastre, a land-use or a population layer would join.
+  Object.freeze({ id: 'built-environment', label: 'BÂTI & TERRITOIRE', icon: '▤' }),
 ]);
 
 /**
@@ -401,6 +408,21 @@ export const LAYER_TAXONOMY = Object.freeze([
     coverage: 'global',
     auth: 'none',
     cadence: 'live',
+  }),
+
+  // ── BÂTI & TERRITOIRE ─────────────────────────────────────────────────────
+  // `periodic` rather than `static`: nothing about a building moves, but the
+  // layer refetches per viewport because no bundle could hold 47 million of
+  // them. The cadence facet describes how the app ACQUIRES the data, not how
+  // fast the subject changes.
+  Object.freeze({
+    id: 'bdtopo-buildings',
+    category: 'built-environment',
+    label: 'Bâti 3D',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
   }),
 ]);
 

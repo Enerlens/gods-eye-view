@@ -276,6 +276,14 @@ export const SHARE_TRACKING_RESTORE_POLICIES = Object.freeze({
  */
 export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'ais-live-vessels', token: 'a', disposition: 'enabled-only' }),
+  // A DIGIT for the same reason as `gas-fr` and `power-grid` below: every
+  // letter is taken and `z` is the canonical UNKNOWN token two tests assert on.
+  // `5` and not `4`: this branch claimed `4` while `fr-hydro-plants` claimed it
+  // too on main, and the two only met at the merge. That is exactly the failure
+  // the duplicate-token assertion exists to catch — a silent collision would
+  // make one share link enable the wrong layer — so it is worth restating that
+  // a duplicate here is a BOOT failure, not a review nit.
+  Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
