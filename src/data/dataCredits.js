@@ -268,6 +268,22 @@ export const DATA_CREDITS = [
       'nuclear is a vision consolid&eacute;e au 31/12/2025, hydraulic and thermal au 31/12/2023.',
   },
   {
+    key: 'fr-hydro-plants',
+    html:
+      'French hydro fleet (all 2 742 installations of the national register, not just the large ones): ' +
+      '<a href="https://odre.opendatasoft.com/explore/dataset/registre-national-installation-production-stockage-electricite-agrege/" target="_blank" rel="noopener">ODR&Eacute; — Registre national des installations de production et de stockage d&rsquo;&eacute;lectricit&eacute;</a> ' +
+      '(<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The register publishes NO coordinates, so positions are joined from ' +
+      '<a href="https://geoservices.ign.fr/bdtopo" target="_blank" rel="noopener">IGN BD TOPO&reg;</a> ' +
+      '(Licence Ouverte 2.0 &mdash; the surveyed building footprints the Plan IGN is drawn from, 589 of 998 positions), ' +
+      '<a href="https://opendata.edf.fr/datasets" target="_blank" rel="noopener">Open Data EDF</a> (Licence Ouverte 2.0), ' +
+      '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors ' +
+      '(<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL 1.0</a>) ' +
+      'and <a href="https://geo.api.gouv.fr" target="_blank" rel="noopener">geo.api.gouv.fr</a> commune centres. ' +
+      'Installed capacity, not live output; the energy figure on a card is a trailing twelve-month total. ' +
+      'A hollow ring is a commune, not a plant.',
+  },
+  {
     key: 'pan-transit',
     html:
       'Live French transit vehicles: GTFS-Realtime feeds published on the ' +

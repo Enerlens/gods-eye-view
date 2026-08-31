@@ -45,6 +45,183 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Petite hydro: the markers were half a kilometre underground, and it showed
+  as drift.** Reported from the map: pan the camera and the dots appeared to
+  slide over a map that was standing still — the Espalungue marker would not sit
+  on its building, and the offset changed direction between two screenshots of
+  the same place.
+
+  It was not a data error. Espalungue's coordinate is **6 m** from IGN's
+  building footprint. The markers were being drawn at **ellipsoidal height 0**
+  while the ground in the Ossau valley is at **556 m**, so every dot was 556 m
+  below the terrain it was meant to stand on — 840 m at Grand-Maison. A point
+  under the surface is not merely low: its screen position is offset from the
+  surface point above it by `depth × tan(angle between the view ray and the
+  local vertical)`, which is zero at the centre of a nadir view and reaches
+  about **320 m** at the rim of a 60° field of view. That angle changes as the
+  camera moves, so the marker slides.
+
+  Markers are now clamped onto the terrain, the way `rteGeneration.js` already
+  clamps its station rings. The synchronous half — reading a floor already in
+  cache — is free and always applies; the terrain fetch is bounded to the
+  markers actually on screen, capped at 250, and skipped entirely above 200 km
+  of camera height where the offset is under two pixels. Positions are updated
+  in place on the existing primitives rather than by repainting 2 742 points.
+
+  The clamp follows **both** `camera.moveEnd` and `camera.changed`, because
+  neither covers the other: `moveEnd` does not fire when the camera is placed
+  programmatically, which is exactly what a share link does, so on its own it
+  would have left a link that opens straight into a valley with every marker
+  still buried.
+
+### Fixed
+
+- `qa-fr-hydro.mjs` now probes `/api/terrain/heights` and reports which checks a
+  target cannot run, instead of failing them. `vite preview` serves `dist`
+  without the dev-server API middlewares, so the ground clamp and the overlay
+  paint checks are only meaningful against `npm run dev` — where they pass. An
+  earlier note in this harness blamed SwiftShader for the empty overlay
+  diagnostics; that was wrong, and the cause was the preview target.
+
+- **Petite hydro now reads the Plan IGN, and 229 more plants have a place on
+  the map.** Asked for better precision, and the suggestion was the right one:
+  the Plan IGN draws France's power stations, and it draws them from **BD
+  TOPO**, whose `zone_d_activite_ou_d_interet` layer carries 4 318 features
+  tagged `nature = 'Centrale électrique'`. Three things make it the best
+  positional evidence available. It is **the building** — median footprint span
+  **32 m**, against an OpenStreetMap `type=site` relation that can be twelve
+  kilometres wide. It **publishes its own error bar**, `precision_planimetrique`,
+  3 m or better on 242 of the positions used here, and the card now prints it.
+  And the join needs no guessing at all: BD TOPO publishes `insee_commune`, the
+  same INSEE code ODRÉ prints on every register row.
+
+  Used in two passes. **Refine:** a plant another tier had already identified is
+  snapped onto the nearest footprint in its commune within 250 m — **360
+  positions moved, a median of 12 m.** The radius is read off the measured
+  distribution rather than chosen: agreement clusters tight below 250 m and the
+  curve flattens after it. **Place:** a row nothing else could position takes a
+  footprint when the toponym matches, or when the commune holds exactly one
+  register row and exactly one free footprint. **765 → 998 plants placed**, and
+  coverage below 4,5 MW roughly doubled — 50 % of the 1–4,5 MW band (was 38 %)
+  and 19 % below 1 MW (was 11 %). The honest caveat is on the card: 86 of the
+  229 new placements sit on a `Centrale électrique` whose kind IGN leaves blank,
+  and where IGN did not say "hydroélectrique", the card says so.
+
+- **Four plants were on the wrong continent, and the register said so itself.**
+  Both the commune and the source substation are codes ODRÉ publishes, and
+  OpenStreetMap publishes the substation code too as `ref:FR:RTE`. Across the
+  378 RTE-connected rows OSM can check, the two agree to a median of 2,4 km and
+  a p90 of 5,4 km; **the largest legitimate gap is 11 km, and then the next four
+  are 6 717, 6 864, 7 263 and 8 945 km.** All four are metropolitan hydro plants
+  filed under an overseas commune: the 30 MW **Lac d'Oô** — Luchon,
+  Haute-Garonne — is published in **Guyane**, **Luz** in Martinique, **Motz** in
+  Guadeloupe and **Pont-du-Loup** at La Réunion. For those the commune is simply
+  the wrong field, so the substation wins and the plant is drawn where its own
+  yard is. The register's commune is kept verbatim on the record and the card
+  prints both claims: the reader is owed the contradiction, not a quiet edit.
+
+- **Petite hydro: 167 plants were in the wrong place, including one in a
+  forest.** Reported from the map: the Centrale du Hourat at Laruns was drawn
+  2,7 km up the mountain, mid-forest, when it stands in the middle of the
+  village beside the Arriussé. Two independent bugs, both mine, both now
+  measured and pinned:
+
+  **Overpass `center` on a relation is the centre of its BOUNDING BOX.**
+  OpenStreetMap maps a large hydro scheme as one `type=site` relation covering
+  the intake, the headrace tunnel, the penstock, the powerhouse and the
+  tailrace — the Hourat's spans 6,0 km, Grand-Maison's 12,1 km, Montpezat's
+  22,8 km — and the centre of that box is a point on **no object at all**.
+  Measured on the first build: **167 of 722 OSM-positioned plants (23 %) sat at
+  the centre of an object more than 500 m across, 99 of them more than 3 km.**
+  The build now asks for `bb` instead of `center` so it can see the span,
+  refuses anything wider than 500 m as a position, and snaps those to the
+  `power=generator` elements inside — the generating hall. **127 plants moved,
+  a median of 1,3 km and up to 7,5 km.** The Hourat now lands 47 m from 4 rue
+  de Gerp, 64440 Laruns. What cannot be resolved is not guessed: it goes to its
+  commune ring.
+
+  **A prefix-shaped first word is not decoration.** The register writes
+  `MIEGEH-CENTRALE HYDRAULIQUE DE MIEGEBAT-3`, so the build stripped any four to
+  six uppercase characters followed by a hyphen. `GRAND` is five uppercase
+  characters followed by a hyphen: **`GRAND-MAISON` became `MAISON`**, and
+  France's largest hydro plant lost its join to EDF's own published coordinate.
+  The decoration is now recognised only as a pair — prefix *and* trailing `-n` —
+  which also spares the real register names `HYDR-AUZENE` and `COLY-LAMALETTE`.
+
+  Three consequences worth naming. Cards now say **which object** the dot is —
+  a published point, a mapped outline, a generating hall, or a connection yard —
+  alongside how the plant was identified, and print how far a snapped position
+  moved. A new last-resort tier places 49 plants on the **RTE switchyard whose
+  `ref:FR:RTE` is the register's own `postesource`**, applied only to
+  RTE-connected rows because on an Enedis row that substation serves a whole
+  area and would stack a dozen producers on one pixel. And the 12 km commune
+  ring is now re-tested on the FINAL position rather than on the candidate that
+  was about to be thrown away. Coverage rose with the accuracy: **765 plants
+  placed (was 761), 98 % of the fleet above 100 MW and 90 % of the 10–100 MW
+  band.**
+
+- **Petite hydro (FR): the other 2 686 hydroelectric plants.** A user went
+  looking for the hydro installation at **Laruns**, in the
+  Pyrénées-Atlantiques, and could not find it. Nothing was broken — there are
+  *nine* plants in that commune (Miégebat 74 MW, Le Hourat 46,9 MW,
+  Pont-de-Camps 39,4 MW, Artouste, Bious, Geteu, Fabrèges, Espalungue,
+  Artouste-Lac, **223,9 MW between them**) and this globe could draw none of
+  them: *Centrales EDF* covers EDF SA's own fleet and those nine are **SHEM's**,
+  while *Groupes de prod* stops at 100 MW because that is RTE's publication
+  floor. Two correct layers, and a whole valley in the gap. Measured against
+  ODRÉ's national register, that gap is **2 742 installations and 26,02 GW**, of
+  which the two existing layers between them reach 56.
+
+  The new layer draws the register whole, down to a **40 kW mill at Monteils**,
+  keyless, from a file shipped in the repo. It carries two kinds of marker and
+  the difference between them is the point:
+
+  - **A filled disc is a plant, where it is** — 761 of them, 23,4 GW, coloured
+    by the register's own technology vocabulary (fil de l'eau, éclusée, lac,
+    pompage-turbinage, hydrolien fluvial) and sized by installed power on a
+    fourth-root ramp, because this fleet spans 40 kW to 1,69 GW and a
+    square-root scale over that range either drowns the mills or paints
+    Grand-Maison over a département.
+  - **A hollow ring is a COMMUNE, not a plant** — 1 368 of them, standing for
+    the 1 981 installations no source places. **The register publishes no
+    coordinates at all**, only an INSEE code, and measured across the plants
+    that *do* get a real position the commune centre sits a **median 3,0 km**
+    from the actual powerhouse (p90 9,0 km) — in a Pyrenean valley, routinely a
+    different river. So they are not pinned somewhere false; the ring says how
+    many and how much, and never where.
+
+  **Half the register is anonymised, and those cards are still full.** 1 357
+  rows publish `Confidentiel` where a name belongs — small private plants whose
+  operator is a person. They are neither dropped nor labelled "Confidentiel":
+  the card leads with what the publisher *does* give, which for those rows is
+  commune, installed power, technology, commissioning date, connection voltage,
+  source substation, grid operator and EIC code at 95–100 %, plus — on 90 % of
+  them — **the energy actually injected over the trailing twelve months**, which
+  yields a capacity factor. An unnamed 3,9 MW plant at Licq-Athérey reads *3,9
+  MW installés · 3,9 GWh injectés sur 12 mois glissants (12 %) · Fil de l'eau ·
+  HTA, poste L.ATH, Enedis · en service depuis le 15/11/2007*.
+
+  Three chips (**TOUT / ≥ 1 MW / ≥ 10 MW**) hide markers at runtime without
+  touching the register behind them — the totals in the stats line stay put, and
+  a ring clears a floor on its largest member, never on its commune total.
+  Ambient labels follow the camera rather than the national capacity ranking, so
+  zooming into the Ossau valley names Miégebat and Le Hourat instead of holding
+  the label budget for Grand-Maison four hundred kilometres away.
+
+  Four upstream traps are absorbed and documented rather than smoothed over:
+  the register's **published zeros that mean "not declared"** (`debitmaximal` is
+  zero on every single row in France, so it is not read at all); its internal
+  name decoration (`MIEGEH-CENTRALE HYDRAULIQUE DE MIEGEBAT-3` is a poste-source
+  code, a name and a revision number); **26 hydro plants published as
+  `Photovoltaïque`**, 25 of them Corsica's real hydro fleet — Rizzanese 55 MW,
+  Lugo-di-Nazza 43 MW, Castirla 28,5 MW, Tolla, Calacuccia, Ocana, Asco — which
+  keep their disc and their published string on the card but are refused a hydro
+  colour; and EDF's hydro file, where **`coordonnees_x_wgs` is the latitude**.
+  Sources: ODRÉ (Licence Ouverte 2.0), EDF Open Data (Licence Ouverte 2.0),
+  OpenStreetMap (**ODbL 1.0 — the share-alike travels with the shipped file**),
+  geo.api.gouv.fr. Rebuild with `npm run hydro:registry -- --report`; browser
+  proof in `npm run qa:fr-hydro`.
+
 - **The app now starts with no key at all.** `git clone && npm i && npm run dev`
   boots to a working globe. Previously `src/main.js` threw before the viewer
   existed if `GOOGLE_MAPS_API_KEY` was missing, so a fresh checkout without a

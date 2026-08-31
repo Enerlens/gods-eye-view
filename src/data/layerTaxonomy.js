@@ -276,6 +276,18 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // `static`, like `local-dams`: the register is a file committed in the repo
+  // (ODRÉ publishes no coordinates, so every position is a build-time join) and
+  // it changes only when someone re-runs `npm run hydro:registry`.
+  Object.freeze({
+    id: 'fr-hydro-plants',
+    category: 'energy',
+    label: 'Petite hydro',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'static',
+  }),
   Object.freeze({
     id: 'power-grid',
     category: 'energy',
