@@ -1232,9 +1232,13 @@ body.cockpit-mode #cockpit-cloud-effects.active {
   letter-spacing: 1.35px;
 }
 
+/* Three columns, two rows: six sources at this type size do not fit one
+   desktop row inside the tray's ~34rem popover without truncating "Bing
+   Aerial". Three also matches how the allowlist groups them — keyed sources on
+   the first row, keyless ones on the second. */
 .map-stack-chip-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
 }
 

@@ -48,6 +48,29 @@ const check = (name, passed, detail = '') => {
   if (!passed) failures.push(name);
 };
 
+/**
+ * Leaves the tray OPEN, driving the toggle in-page.
+ *
+ * The keyboard-open assertions above test the real disclosure path and are the
+ * ones that matter. This is only a recovery so that ONE flaky open does not
+ * abort the whole run: a collapsed tray puts `.map-source-section` at
+ * `display: none`, and every later `page.focus`/`page.click` on a tile then
+ * throws "Node is either not clickable" instead of recording a failure.
+ * @returns {Promise<boolean>} whether the tray ended up open.
+ */
+const ensureTrayOpen = async () => {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const expanded = await page.evaluate(() => {
+      const toggle = document.getElementById('control-panel-toggle');
+      if (toggle?.getAttribute('aria-expanded') !== 'true') toggle?.click();
+      return document.getElementById('control-panel-toggle')?.getAttribute('aria-expanded');
+    });
+    if (expanded === 'true') return true;
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return false;
+};
+
 const trayMetrics = () => page.evaluate(() => {
   const panel = document.getElementById('control-panel');
   const popover = document.getElementById('control-panel-popover');
@@ -112,9 +135,9 @@ try {
     controls: document.getElementById('control-panel-toggle')?.getAttribute('aria-controls'),
   }));
   check(
-    'exact four-source presentation; the retired left Map Stack panel is gone',
+    'exact six-source presentation; the retired left Map Stack panel is gone',
     JSON.stringify(presentation.ids) === JSON.stringify([
-      'photoreal', 'bing-aerial', 'bing-labels', 'osm',
+      'photoreal', 'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
     ]) && !presentation.retiredPanel,
     JSON.stringify(presentation),
   );
@@ -178,6 +201,13 @@ try {
     JSON.stringify(longHoldRecovery),
   );
 
+  const trayOpenForTiles = await ensureTrayOpen();
+  check(
+    'the tile row is reachable before the per-source assertions',
+    trayOpenForTiles,
+    'a collapsed tray hides every tile behind display:none',
+  );
+
   if (forceKeyless) {
     await page.evaluate(() => {
       const styleManager = window.__godsEyeView.styleManager;
@@ -190,6 +220,13 @@ try {
   const ionAvailable = await page.$eval(
     '[data-stack-id="bing-aerial"]',
     (chip) => chip.getAttribute('aria-disabled') !== 'true',
+  );
+  // What an INERT click must leave lit is "whatever was already active", not a
+  // literal `photoreal`: on a build with no Google key the tray opens on OSM,
+  // and hard-coding the keyed build's default would fail this check for a
+  // reason that has nothing to do with ion.
+  const stackBeforeIonClick = await page.evaluate(
+    () => window.__godsEyeView.styleManager.mapStackController.getActiveId(),
   );
   await page.click('[data-stack-id="bing-aerial"]');
   if (ionAvailable) {
@@ -218,8 +255,8 @@ try {
       ionSource.ariaDisabled === 'true'
         && ionSource.focused
         && /token required/i.test(ionSource.ariaLabel)
-        && JSON.stringify(ionSource.active) === JSON.stringify(['photoreal']),
-      JSON.stringify(ionSource),
+        && JSON.stringify(ionSource.active) === JSON.stringify([stackBeforeIonClick]),
+      JSON.stringify({ ...ionSource, stackBeforeIonClick }),
     );
   } else {
     check(
@@ -240,6 +277,57 @@ try {
       styleManager._initMapStackControl();
     });
   }
+
+  // The two keyless France sources are the whole point of a keyless build:
+  // they must be selectable with NO credential of any kind, and they must say
+  // up front that they only cover France — an operator who picks IGN over
+  // Texas sees the globe not change at all, and needs to know why.
+  const ignChips = await page.evaluate(() => ['ign-ortho', 'ign-plan'].map((id) => {
+    const chip = document.querySelector(`[data-stack-id="${id}"]`);
+    return {
+      id,
+      ariaDisabled: chip?.getAttribute('aria-disabled'),
+      title: chip?.title,
+      ariaLabel: chip?.getAttribute('aria-label'),
+      unavailableClass: chip?.classList.contains('unavailable'),
+    };
+  }));
+  check(
+    'keyless IGN sources are selectable and declare their France-only coverage',
+    ignChips.every((chip) => chip.ariaDisabled === 'false'
+      && !chip.unavailableClass
+      && /metropolitan France only/.test(chip.title || '')
+      && /metropolitan France only/.test(chip.ariaLabel || '')),
+    JSON.stringify(ignChips),
+  );
+
+  const ignSwitch = await page.evaluate(async () => {
+    const styleManager = window.__godsEyeView.styleManager;
+    const controller = styleManager.mapStackController;
+    const before = controller.getActiveId();
+    const result = await styleManager.setMapStack('ign-ortho');
+    const layers = window.__godsEyeView.viewer.imageryLayers;
+    const providers = [];
+    for (let i = 0; i < layers.length; i++) {
+      providers.push(layers.get(i).imageryProvider?.constructor?.name);
+    }
+    const lit = [...document.querySelectorAll('.map-stack-chip')]
+      .filter((chip) => chip.getAttribute('aria-pressed') === 'true')
+      .map((chip) => chip.dataset.stackId);
+    await styleManager._setMapStack(before, { syncShare: false });
+    return { result, providers, lit, activeAfterRestore: controller.getActiveId(), before };
+  });
+  check(
+    'IGN composites over an OSM base — two layers, OSM underneath',
+    ignSwitch.result?.ok === true
+      && ignSwitch.result?.activeStack === 'ign-ortho'
+      && JSON.stringify(ignSwitch.providers) === JSON.stringify([
+        'OpenStreetMapImageryProvider', 'WebMapTileServiceImageryProvider',
+      ])
+      && JSON.stringify(ignSwitch.lit) === JSON.stringify(['ign-ortho'])
+      && ignSwitch.activeAfterRestore === ignSwitch.before,
+    JSON.stringify(ignSwitch),
+  );
 
   const switching = await page.evaluate(async () => {
     const styleManager = window.__godsEyeView.styleManager;
@@ -525,8 +613,14 @@ try {
   const pinnedForHold = await setControlPanelPinned(true);
   const pinnedHold = await clickTileThenLeave('photoreal');
   await setControlPanelPinned(false);
-  await page.evaluate(() => window.__godsEyeView.styleManager
-    ._setMapStack('photoreal', { syncShare: false }));
+  // Put the globe back on a source this build can actually show. Hard-coding
+  // `photoreal` here left a keyless run carrying a "Google Maps API key
+  // required" `lastError` into every later assertion that reads it.
+  await page.evaluate(() => {
+    const controller = window.__godsEyeView.styleManager.mapStackController;
+    const restoreTo = controller.isStackAvailable('photoreal') ? 'photoreal' : 'osm';
+    return window.__godsEyeView.styleManager._setMapStack(restoreTo, { syncShare: false });
+  });
   // Hand the tray back OPEN and unpinned — the responsive block below starts by
   // clicking the pin control, which is only hittable while the tray is showing.
   await page.evaluate(() => window.__godsEyeView.styleManager
@@ -546,9 +640,15 @@ try {
 
   await page.click('.dock-pin-btn[data-pin-target="control-panel"]');
   const desktop = await trayMetrics();
+  // Two rows of three since the tray grew from four sources to six: six tiles
+  // do not fit one row of the ~34rem popover without truncating "Bing Aerial".
+  // The grid is deliberately 3-up so keyed sources share the first row and
+  // keyless ones the second.
   check(
-    'desktop tray is one row and fully inside the viewport',
-    desktop.rows === 1
+    'desktop tray is two rows of three and fully inside the viewport',
+    desktop.rows === 2
+      && desktop.chips.length === 6
+      && new Set(desktop.chips.map((chip) => chip.left)).size === 3
       && desktop.popover.left >= 0
       && desktop.popover.right <= desktop.viewport.width,
     JSON.stringify(desktop),
@@ -558,10 +658,11 @@ try {
   await new Promise((resolve) => setTimeout(resolve, 180));
   const at620 = await trayMetrics();
   check(
-    '620 px tray uses two rows without clipping',
+    '620 px tray falls to two columns without clipping',
     at620.expanded === 'true'
       && at620.pinned
-      && at620.rows === 2
+      && at620.rows === 3
+      && new Set(at620.chips.map((chip) => chip.left)).size === 2
       && at620.popover.left >= 0
       && at620.popover.right <= at620.viewport.width,
     JSON.stringify(at620),
@@ -578,7 +679,7 @@ try {
     '480 px live resize keeps the open tray and every tile in bounds',
     at480.expanded === 'true'
       && at480.pinned
-      && at480.rows === 2
+      && at480.rows === 3
       && at480.popover.left >= 0
       && at480.popover.right <= at480.viewport.width
       && allRectsInside,
@@ -604,15 +705,27 @@ try {
   // source behind the retired left Map Stack panel; deleting it from
   // `MAP_STACKS` (no build carrying it ever shipped publicly, so no link is
   // owed anything) means an old `map=bing-road` link is now simply an
-  // unrecognized id, and `setStack()`'s `getStack(id) || getStack('photoreal')`
-  // fallback lands it on Google 3D with that tile lit — never on a hidden fifth
-  // source whose status reads ROAD while no tile is pressed.
+  // unrecognized id, and `setStack()`'s `getStack(id) || _fallbackStack()`
+  // lands it on this build's default source with that tile lit — never on a
+  // hidden fifth source whose status reads ROAD while no tile is pressed, and
+  // never on a credential error about a source nobody asked for.
+  //
+  // The expected landing is the build's OWN default, not a hard-coded
+  // `photoreal`: a keyless build cannot show Google 3D, and demanding it here
+  // would make this assertion fail for the exact configuration the keyless
+  // work exists to support.
   await page.setViewport({ width: 1000, height: 900, deviceScaleFactor: 1 });
   for (const legacyId of ['bing-road', 'garbage']) {
     await page.goto(`${appUrl}#v=2&lat=30.27&lon=-97.74&map=${legacyId}`, {
       waitUntil: 'domcontentloaded',
       timeout: 60_000,
     });
+    // `goto` to a URL that differs from the current one ONLY by its fragment is
+    // a same-document navigation: nothing re-executes, `window.__godsEyeView`
+    // is the object the earlier assertions left behind, and this check silently
+    // measured the previous test's state instead of a share-link restore. The
+    // reload is what makes it a boot.
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForFunction(() => window.__godsEyeView?.styleManager, { timeout: 60_000 });
     await page.waitForFunction(
       () => document.getElementById('loading-screen')?.classList.contains('hidden'),
@@ -624,17 +737,20 @@ try {
     ).catch(() => {});
     const restored = await page.evaluate(() => ({
       activeId: window.__godsEyeView.styleManager.mapStackController.getActiveId(),
+      photorealAvailable: window.__godsEyeView.styleManager.mapStackController
+        .isStackAvailable('photoreal'),
       lastError: window.__godsEyeView.styleManager.mapStackController.getState()?.lastError || null,
       status: document.getElementById('map-stack-status').textContent.trim(),
       pressed: [...document.querySelectorAll('.map-stack-chip')]
         .filter((chip) => chip.getAttribute('aria-pressed') === 'true')
         .map((chip) => chip.dataset.stackId),
     }));
+    const expectedDefault = restored.photorealAvailable ? 'photoreal' : 'osm';
     check(
-      `a map=${legacyId} link restores to photoreal with the photoreal tile lit`,
-      restored.activeId === 'photoreal'
+      `a map=${legacyId} link restores to ${expectedDefault} with that tile lit and no error`,
+      restored.activeId === expectedDefault
         && restored.lastError === null
-        && JSON.stringify(restored.pressed) === JSON.stringify(['photoreal']),
+        && JSON.stringify(restored.pressed) === JSON.stringify([expectedDefault]),
       JSON.stringify(restored),
     );
     await page.screenshot({ path: path.join(shotsDir, `legacy-${legacyId}.png`) });

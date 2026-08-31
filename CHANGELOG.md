@@ -3,7 +3,59 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
-## [Unreleased] — 2026-08-26
+## [Unreleased] — 2026-08-28
+
+### Added
+
+- **The app now starts with no key at all.** `git clone && npm i && npm run dev`
+  boots to a working globe. Previously `src/main.js` threw before the viewer
+  existed if `GOOGLE_MAPS_API_KEY` was missing, so a fresh checkout without a
+  billed Google account produced a dead page — even though the whole fallback
+  path already existed downstream. The key is now optional and, when absent, is
+  never published to the page: `Cesium.GoogleMaps.defaultApiKey` and
+  `window.__GOOGLE_MAPS_API_KEY__` stay unset, so no request is fired with an
+  undefined key. Google 3D reports **"Google Maps API key required for Google
+  3D"** rather than a generic failure, and the Google-only viewport-places
+  endpoint is not called at all. `scripts/dev-fresh.sh` warns and continues
+  instead of exiting.
+- **The search box works without a Google key.** Type a place, land on it — no
+  credential involved. A keyless build now geocodes through `/api/geocode`,
+  which answers from **OpenStreetMap (Nominatim)** worldwide and from the **IGN
+  Géoplateforme** (BAN addresses and the IGN POI index) for the French
+  addresses OSM has not mapped. Cities, régions, parks, streets and buildings
+  are framed exactly as before — the camera work is unchanged, only the
+  geocoder is new. Searching biases to what you are looking at, so "sixth
+  street" over Austin is East 6th Street rather than a village in Uganda,
+  while a place the whole world knows by that name still wins: "Toulouse" typed
+  over Austin is the city in France, not the bistro down the road. Results are
+  cached and the OpenStreetMap usage policy's one-request-per-second limit is
+  respected for the whole app, so a search can take a couple of seconds the
+  first time and is instant afterwards.
+- **Two keyless France basemaps, from the IGN Géoplateforme.** **IGN Ortho**
+  (BD ORTHO®, 20 cm aerial, z0-19) and **Plan IGN** (Plan IGN v2, z0-19) join
+  the MAP SOURCE row, which is now six tiles on two rows. No key, no token, no
+  account — `data.geopf.fr` serves WMTS with `access-control-allow-origin: *`,
+  and IGN documents the WMTS endpoints as not rate-limited. Licence Ouverte
+  2.0; the attribution popover names both products with their `cartes.gouv.fr`
+  records and links IGN's table of aerial-survey dates, because an orthophoto
+  mosaic has no single update date.
+- Coverage is **metropolitan France and Corsica**, and the tray says so before
+  you click: both tiles carry "IGN Ortho — metropolitan France only" in their
+  tooltip and accessible name. Each IGN stack composites **over an OSM base
+  layer** rather than replacing it, so the rest of the planet stays present —
+  a rectangle-limited layer at index 0 would be Cesium's base layer, and Cesium
+  smears a base layer's edge pixels across every tile outside its bounds.
+
+### Fixed
+
+- A retired or corrupted `map=` share parameter no longer raises a credential
+  error about a source nobody asked for. An unrecognized id now resolves to the
+  build's own default stack (`photoreal` when it is available, otherwise the
+  first source that is), instead of unconditionally to `photoreal`.
+- The `set_map_stack` voice tool and its toast quoted a hard-coded "requires a
+  Cesium ion token" for **every** unavailable stack. They now quote the
+  controller's own reason, so a keyless build stops sending operators after the
+  wrong credential.
 
 ### Added
 
