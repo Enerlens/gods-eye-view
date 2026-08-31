@@ -12,7 +12,7 @@ import {
   clampBloomIntensity,
   decodeBloomIntensity,
 } from './bloom.js';
-import { LOCATIONS, CITY_POIS, GLOBE_VIEW, flyToGlobeView, flyToPresetLocation, flyToPOI, searchAndFlyTo } from './locations.js';
+import { LOCATIONS, CITY_POIS, GLOBE_VIEW, PILL_CITY_IDS, flyToGlobeView, flyToPresetLocation, flyToPOI, searchAndFlyTo } from './locations.js';
 import { locationMiniStatus } from './locationStatus.js';
 import { interruptCameraMotion } from './cameraVerbs.js';
 import {
@@ -9402,8 +9402,16 @@ export class StyleManager {
   _initLocationBar() {
     const QWERTY_KEYS = ['Q', 'W', 'E', 'R', 'T'];
 
-    // Render city pills (no submenu wrappers — POI row is separate)
-    for (const [cityId, city] of Object.entries(CITY_POIS)) {
+    // Render city pills (no submenu wrappers — POI row is separate).
+    //
+    // Driven by PILL_CITY_IDS, NOT by CITY_POIS' key order: the tray offers the
+    // eight largest French communes, while CITY_POIS still holds every city the
+    // app can fly to — the seeded CCTV cameras, voice presets and search all
+    // resolve against it. An id listed here with no CITY_POIS entry is skipped
+    // rather than rendered as a dead pill.
+    for (const cityId of PILL_CITY_IDS) {
+      const city = CITY_POIS[cityId];
+      if (!city) continue;
       const pill = document.createElement('button');
       pill.className = 'location-pill';
       pill.dataset.locationId = cityId;

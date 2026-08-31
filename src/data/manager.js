@@ -125,6 +125,10 @@ export class DataLayerManager {
     this._visibilityGuards = new Set();
     this._registrationsFinalized = false;
     this._registrationDispositions = null;
+    // Category + facet table, supplied at seal time. Null until then, and null
+    // for any manager sealed without one — getAll() reports that as absent
+    // taxonomy rather than inventing a default group.
+    this._registrationTaxonomy = null;
     this._allowQaRegistration = allowQaRegistration === true;
     this._qaLayerIds = new Set();
   }
@@ -215,8 +219,20 @@ export class DataLayerManager {
     });
   }
 
-  /** Seal registration and prove each production layer has one share disposition. */
-  finalizeRegistrations(serializationRegistry) {
+  /**
+   * Seal registration and prove each production layer has one share disposition.
+   *
+   * The optional taxonomy is validated by the SAME rule as the dispositions
+   * above — exact coverage, both directions — so a layer that reaches this
+   * method without a category fails the boot rather than rendering ungrouped.
+   * It stays OPTIONAL because the manager is deliberately given its registries
+   * rather than importing them, and the QA/unit managers seal partial sets that
+   * have no taxonomy of their own.
+   * @param {ReadonlyArray<object>} serializationRegistry Share dispositions.
+   * @param {ReadonlyArray<object>|null} [taxonomy] Category + facet table.
+   * @returns {true} When sealed.
+   */
+  finalizeRegistrations(serializationRegistry, taxonomy = null) {
     if (this._registrationsFinalized) throw new Error('Data-layer registrations are already finalized');
     if (!Array.isArray(serializationRegistry)) throw new Error('Layer serialization registry must be an array');
     const dispositions = new Map();
@@ -233,6 +249,21 @@ export class DataLayerManager {
     const extra = [...dispositions.keys()].filter((id) => !this.layers.has(id));
     if (missing.length || extra.length) {
       throw new Error(`Layer serialization registry mismatch (missing: ${missing.join(', ') || 'none'}; extra: ${extra.join(', ') || 'none'})`);
+    }
+    if (taxonomy !== null) {
+      if (!Array.isArray(taxonomy)) throw new Error('Layer taxonomy must be an array');
+      const entries = new Map();
+      for (const entry of taxonomy) {
+        if (!entry?.id || !entry?.category) throw new Error('Layer taxonomy entry is incomplete');
+        if (entries.has(entry.id)) throw new Error(`Duplicate layer taxonomy id: ${entry.id}`);
+        entries.set(entry.id, entry);
+      }
+      const uncategorized = registeredIds.filter((id) => !entries.has(id));
+      const unknown = [...entries.keys()].filter((id) => !this.layers.has(id));
+      if (uncategorized.length || unknown.length) {
+        throw new Error(`Layer taxonomy mismatch (uncategorized: ${uncategorized.join(', ') || 'none'}; unknown: ${unknown.join(', ') || 'none'})`);
+      }
+      this._registrationTaxonomy = entries;
     }
     this._registrationDispositions = dispositions;
     this._registrationsFinalized = true;
@@ -1917,12 +1948,24 @@ export class DataLayerManager {
   getAll() {
     const result = [];
     for (const [id, entry] of this.layers) {
+      // Present but null on a manager sealed without a taxonomy, so a consumer
+      // reads "not categorized here" rather than crashing on a missing field.
+      const taxonomy = this._registrationTaxonomy?.get(id) || null;
       result.push({
         id,
         name: entry.module.name,
         icon: entry.module.icon,
         source: entry.module.source,
         showInTogglePanel: entry.module.showInTogglePanel !== false,
+        category: taxonomy?.category || null,
+        kind: taxonomy?.kind || null,
+        tags: taxonomy
+          ? Object.freeze({
+            coverage: taxonomy.coverage,
+            auth: taxonomy.auth,
+            cadence: taxonomy.cadence,
+          })
+          : null,
         enabled: entry.enabled,
         lifecycleState: entry.lifecycleState,
         lifecycleUncertain: entry.lifecycleUncertain,
