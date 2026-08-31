@@ -81,6 +81,35 @@ export const DATA_CREDITS = [
       '(ODbL 1.0)',
   },
   {
+    key: 'power-grid-osm',
+    html:
+      'High-voltage grid (lines, cables, substations, pylons &mdash; per viewport): ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">&copy; OpenStreetMap contributors</a> ' +
+      '(ODbL 1.0). Volunteer mapping, not a grid register: coverage varies by country, ' +
+      'only features OSM gives a voltage of 50 kV or more are drawn, and routes are the ' +
+      'mapped ground route &mdash; not the conductor height, which OpenStreetMap does not publish.',
+    key: 'rte-actual-generation',
+    html:
+      'Per-unit electricity generation (France): ' +
+      '<a href="https://data.rte-france.com/catalog/-/api/generation/Actual-Generation/v1.1" target="_blank" rel="noopener">RTE — API Actual Generation</a>, ' +
+      'resource <code>actual_generations_per_unit</code> (free account required; units of 100&nbsp;MW ' +
+      'and above on the metropolitan transmission grid). Output as last published by RTE for the ' +
+      'hour shown &mdash; not an instantaneous reading.',
+  },
+  {
+    key: 'odre-registre-production',
+    html:
+      'Generating-unit register (France &mdash; EIC codes, installed power, filière, commune): ' +
+      '<a href="https://odre.opendatasoft.com/explore/dataset/registre-national-installation-production-stockage-electricite-agrege/" target="_blank" rel="noopener">ODRÉ &mdash; Registre national des installations de production et de stockage d’électricité</a> ' +
+      '(Licence Ouverte 2.0). Station positions are derived at build time from this register joined ' +
+      'to <a href="https://opendata.edf.fr" target="_blank" rel="noopener">EDF Open Data</a> ' +
+      '(Licence Ouverte 2.0, localisation of EDF SA’s nuclear, hydraulic and thermal stations), to ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">&copy; OpenStreetMap contributors</a> ' +
+      '(ODbL 1.0, <code>power=plant</code> and <code>ref:FR:RTE</code> substations) and to ' +
+      '<a href="https://geo.api.gouv.fr" target="_blank" rel="noopener">geo.api.gouv.fr</a> commune ' +
+      'centres (Licence Ouverte); each station states which of the four it was placed on.',
+  },
+  {
     key: 'military-installations-osm',
     html:
       'Mapped installation context: ' +

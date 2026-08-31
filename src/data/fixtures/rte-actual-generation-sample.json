@@ -1,0 +1,389 @@
+{
+  "_note": "REAL CAPTURE from RTE `actual_generations_per_unit` v1.1, taken 2026-08-28 through the \"energio\" application. Trimmed to 8 of the 152 published units and to the last six published hours of each plus the unpublished tail; every field and every value is verbatim. See src/data/fixtures/README.md.",
+  "actual_generations_per_unit": [
+    {
+      "start_date": "2026-08-27T00:00:00+02:00",
+      "end_date": "2026-08-29T00:00:00+02:00",
+      "unit": {
+        "eic_code": "17W100P100P01101",
+        "name": "CHOOZ 1",
+        "production_type": "NUCLEAR"
+      },
+      "values": [
+        {
+          "start_date": "2026-08-28T16:00:00+02:00",
+          "end_date": "2026-08-28T17:00:00+02:00",
+          "updated_date": "2026-08-28T16:57:08+02:00",
+          "value": -59
+        },
+        {
+          "start_date": "2026-08-28T17:00:00+02:00",
+          "end_date": "2026-08-28T18:00:00+02:00",
+          "updated_date": "2026-08-28T17:57:16+02:00",
+          "value": -59
+        },
+        {
+          "start_date": "2026-08-28T18:00:00+02:00",
+          "end_date": "2026-08-28T19:00:00+02:00",
+          "updated_date": "2026-08-28T18:57:11+02:00",
+          "value": -59
+        },
+        {
+          "start_date": "2026-08-28T19:00:00+02:00",
+          "end_date": "2026-08-28T20:00:00+02:00",
+          "updated_date": "2026-08-28T19:57:14+02:00",
+          "value": -58
+        },
+        {
+          "start_date": "2026-08-28T20:00:00+02:00",
+          "end_date": "2026-08-28T21:00:00+02:00",
+          "updated_date": "2026-08-28T20:57:20+02:00",
+          "value": -59
+        },
+        {
+          "start_date": "2026-08-28T21:00:00+02:00",
+          "end_date": "2026-08-28T22:00:00+02:00",
+          "updated_date": "2026-08-28T21:57:24+02:00",
+          "value": -58
+        }
+      ],
+      "_why": "a REACTOR reading −58 MW: shut down and buying back its own house load"
+    },
+    {
+      "start_date": "2026-08-27T00:00:00+02:00",
+      "end_date": "2026-08-29T00:00:00+02:00",
+      "unit": {
+        "eic_code": "17W100P100P0142P",
+        "name": "PALUEL 4",
+        "production_type": "NUCLEAR"
+      },
+      "values": [
+        {
+          "start_date": "2026-08-28T16:00:00+02:00",
+          "end_date": "2026-08-28T17:00:00+02:00",
+          "updated_date": "2026-08-28T16:57:08+02:00",
+          "value": 1160
+        },
+        {
+          "start_date": "2026-08-28T17:00:00+02:00",
+          "end_date": "2026-08-28T18:00:00+02:00",
+          "updated_date": "2026-08-28T17:57:17+02:00",
+          "value": 1160
+        },
+        {
+          "start_date": "2026-08-28T18:00:00+02:00",
+          "end_date": "2026-08-28T19:00:00+02:00",
+          "updated_date": "2026-08-28T18:57:12+02:00",
+          "value": 1158
+        },
+        {
+          "start_date": "2026-08-28T19:00:00+02:00",
+          "end_date": "2026-08-28T20:00:00+02:00",
+          "updated_date": "2026-08-28T19:57:15+02:00",
+          "value": 1157
+        },
+        {
+          "start_date": "2026-08-28T20:00:00+02:00",
+          "end_date": "2026-08-28T21:00:00+02:00",
+          "updated_date": "2026-08-28T20:57:20+02:00",
+          "value": 1157
+        },
+        {
+          "start_date": "2026-08-28T21:00:00+02:00",
+          "end_date": "2026-08-28T22:00:00+02:00",
+          "updated_date": "2026-08-28T21:57:24+02:00",
+          "value": 1161
+        }
+      ],
+      "_why": "a reactor at full output, 1 161 MW"
+    },
+    {
+      "start_date": "2026-08-27T00:00:00+02:00",
+      "end_date": "2026-08-29T00:00:00+02:00",
+      "unit": {
+        "eic_code": "17W100P100P0135M",
+        "name": "GRAVELINES 5",
+        "production_type": "NUCLEAR"
+      },
+      "values": [
+        {
+          "start_date": "2026-08-28T16:00:00+02:00",
+          "end_date": "2026-08-28T17:00:00+02:00",
+          "updated_date": "2026-08-28T16:57:08+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T17:00:00+02:00",
+          "end_date": "2026-08-28T18:00:00+02:00",
+          "updated_date": "2026-08-28T17:57:17+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T18:00:00+02:00",
+          "end_date": "2026-08-28T19:00:00+02:00",
+          "updated_date": "2026-08-28T18:57:11+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T19:00:00+02:00",
+          "end_date": "2026-08-28T20:00:00+02:00",
+          "updated_date": "2026-08-28T19:57:15+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T20:00:00+02:00",
+          "end_date": "2026-08-28T21:00:00+02:00",
+          "updated_date": "2026-08-28T20:57:20+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T21:00:00+02:00",
+          "end_date": "2026-08-28T22:00:00+02:00",
+          "updated_date": "2026-08-28T21:57:24+02:00",
+          "value": 0
+        }
+      ],
+      "_why": "a reactor at exactly 0 MW — an outage, the reading `value || 0` erases"
+    },
+    {
+      "start_date": "2026-08-27T00:00:00+02:00",
+      "end_date": "2026-08-29T00:00:00+02:00",
+      "unit": {
+        "eic_code": "17W100P100P0058E",
+        "name": "GRAND MAISON 10",
+        "production_type": "HYDRO_PUMPED_STORAGE"
+      },
+      "values": [
+        {
+          "start_date": "2026-08-28T16:00:00+02:00",
+          "end_date": "2026-08-28T17:00:00+02:00",
+          "updated_date": "2026-08-28T16:57:08+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T17:00:00+02:00",
+          "end_date": "2026-08-28T18:00:00+02:00",
+          "updated_date": "2026-08-28T17:57:16+02:00",
+          "value": 53
+        },
+        {
+          "start_date": "2026-08-28T18:00:00+02:00",
+          "end_date": "2026-08-28T19:00:00+02:00",
+          "updated_date": "2026-08-28T18:57:11+02:00",
+          "value": 102
+        },
+        {
+          "start_date": "2026-08-28T19:00:00+02:00",
+          "end_date": "2026-08-28T20:00:00+02:00",
+          "updated_date": "2026-08-28T19:57:14+02:00",
+          "value": 5
+        },
+        {
+          "start_date": "2026-08-28T20:00:00+02:00",
+          "end_date": "2026-08-28T21:00:00+02:00",
+          "updated_date": "2026-08-28T20:57:20+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T21:00:00+02:00",
+          "end_date": "2026-08-28T22:00:00+02:00",
+          "updated_date": "2026-08-28T21:57:24+02:00",
+          "value": 0
+        }
+      ],
+      "_why": "a turbine group the register carries no EIC for (trap 9)"
+    },
+    {
+      "start_date": "2026-08-27T00:00:00+02:00",
+      "end_date": "2026-08-29T00:00:00+02:00",
+      "unit": {
+        "eic_code": "17W100P100P0060R",
+        "name": "GRAND MAISON 11",
+        "production_type": "HYDRO_PUMPED_STORAGE"
+      },
+      "values": [
+        {
+          "start_date": "2026-08-28T16:00:00+02:00",
+          "end_date": "2026-08-28T17:00:00+02:00",
+          "updated_date": "2026-08-28T16:57:08+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T17:00:00+02:00",
+          "end_date": "2026-08-28T18:00:00+02:00",
+          "updated_date": "2026-08-28T17:57:16+02:00",
+          "value": 53
+        },
+        {
+          "start_date": "2026-08-28T18:00:00+02:00",
+          "end_date": "2026-08-28T19:00:00+02:00",
+          "updated_date": "2026-08-28T18:57:11+02:00",
+          "value": 102
+        },
+        {
+          "start_date": "2026-08-28T19:00:00+02:00",
+          "end_date": "2026-08-28T20:00:00+02:00",
+          "updated_date": "2026-08-28T19:57:14+02:00",
+          "value": 57
+        },
+        {
+          "start_date": "2026-08-28T20:00:00+02:00",
+          "end_date": "2026-08-28T21:00:00+02:00",
+          "updated_date": "2026-08-28T20:57:20+02:00",
+          "value": 102
+        },
+        {
+          "start_date": "2026-08-28T21:00:00+02:00",
+          "end_date": "2026-08-28T22:00:00+02:00",
+          "updated_date": "2026-08-28T21:57:24+02:00",
+          "value": 104
+        }
+      ],
+      "_why": "a second group inside the same plant, so the name join must sum them"
+    },
+    {
+      "start_date": "2026-08-27T00:00:00+02:00",
+      "end_date": "2026-08-29T00:00:00+02:00",
+      "unit": {
+        "eic_code": "17W100P100P0005Z",
+        "name": "EMILE HUCHET 6",
+        "production_type": "FOSSIL_HARD_COAL"
+      },
+      "values": [
+        {
+          "start_date": "2026-08-28T16:00:00+02:00",
+          "end_date": "2026-08-28T17:00:00+02:00",
+          "updated_date": "2026-08-28T16:57:07+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T17:00:00+02:00",
+          "end_date": "2026-08-28T18:00:00+02:00",
+          "updated_date": "2026-08-28T17:57:16+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T18:00:00+02:00",
+          "end_date": "2026-08-28T19:00:00+02:00",
+          "updated_date": "2026-08-28T18:57:11+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T19:00:00+02:00",
+          "end_date": "2026-08-28T20:00:00+02:00",
+          "updated_date": "2026-08-28T19:57:14+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T20:00:00+02:00",
+          "end_date": "2026-08-28T21:00:00+02:00",
+          "updated_date": "2026-08-28T20:57:20+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T21:00:00+02:00",
+          "end_date": "2026-08-28T22:00:00+02:00",
+          "updated_date": "2026-08-28T21:57:24+02:00",
+          "value": 0
+        }
+      ],
+      "_why": "thermal, joined by EIC like every nuclear and thermal unit"
+    },
+    {
+      "start_date": "2026-08-27T00:00:00+02:00",
+      "end_date": "2026-08-29T00:00:00+02:00",
+      "unit": {
+        "eic_code": "17W000002385265P",
+        "name": "CERNAY",
+        "production_type": "OTHER"
+      },
+      "values": [
+        {
+          "start_date": "2026-08-28T16:00:00+02:00",
+          "end_date": "2026-08-28T17:00:00+02:00",
+          "updated_date": "2026-08-28T16:57:08+02:00",
+          "value": -118
+        },
+        {
+          "start_date": "2026-08-28T17:00:00+02:00",
+          "end_date": "2026-08-28T18:00:00+02:00",
+          "updated_date": "2026-08-28T17:57:17+02:00",
+          "value": -95
+        },
+        {
+          "start_date": "2026-08-28T18:00:00+02:00",
+          "end_date": "2026-08-28T19:00:00+02:00",
+          "updated_date": "2026-08-28T18:57:12+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T19:00:00+02:00",
+          "end_date": "2026-08-28T20:00:00+02:00",
+          "updated_date": "2026-08-28T19:57:15+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T20:00:00+02:00",
+          "end_date": "2026-08-28T21:00:00+02:00",
+          "updated_date": "2026-08-28T20:57:20+02:00",
+          "value": 0
+        },
+        {
+          "start_date": "2026-08-28T21:00:00+02:00",
+          "end_date": "2026-08-28T22:00:00+02:00",
+          "updated_date": "2026-08-28T21:57:25+02:00",
+          "value": 209
+        }
+      ],
+      "_why": "a grid battery, published as production_type OTHER"
+    },
+    {
+      "start_date": "2026-08-27T00:00:00+02:00",
+      "end_date": "2026-08-29T00:00:00+02:00",
+      "unit": {
+        "eic_code": "17W100P100P0262F",
+        "name": "DIRINON 1",
+        "production_type": "FOSSIL_OIL"
+      },
+      "values": [
+        {
+          "start_date": "2026-08-28T16:00:00+02:00",
+          "end_date": "2026-08-28T17:00:00+02:00",
+          "updated_date": "2026-08-28T16:57:08+02:00",
+          "value": 1
+        },
+        {
+          "start_date": "2026-08-28T17:00:00+02:00",
+          "end_date": "2026-08-28T18:00:00+02:00",
+          "updated_date": "2026-08-28T17:57:17+02:00",
+          "value": 1
+        },
+        {
+          "start_date": "2026-08-28T18:00:00+02:00",
+          "end_date": "2026-08-28T19:00:00+02:00",
+          "updated_date": "2026-08-28T18:57:12+02:00",
+          "value": 1
+        },
+        {
+          "start_date": "2026-08-28T19:00:00+02:00",
+          "end_date": "2026-08-28T20:00:00+02:00",
+          "updated_date": "2026-08-28T19:57:15+02:00",
+          "value": 1
+        },
+        {
+          "start_date": "2026-08-28T20:00:00+02:00",
+          "end_date": "2026-08-28T21:00:00+02:00",
+          "updated_date": "2026-08-28T20:57:20+02:00",
+          "value": 1
+        },
+        {
+          "start_date": "2026-08-28T21:00:00+02:00",
+          "end_date": "2026-08-28T22:00:00+02:00",
+          "updated_date": "2026-08-28T21:57:24+02:00",
+          "value": 1
+        }
+      ],
+      "_why": "a unit the register has never heard of, by code or by name"
+    }
+  ]
+}

@@ -59,6 +59,104 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Groupes de prod (FR) now draws the hydro fleet, and says what a negative
+  reading really is.** The layer shipped in #14 against a hand-written fixture,
+  because no RTE account was available to build it with. Run against the live
+  resource for the first time, three of its claims turned out to be wrong and
+  one gap turned out to be large.
+  - **36% of the fleet was invisible.** RTE and the ODRÉ register cut the fleet
+    at different granularities: the register carries one row per hydro PLANT,
+    RTE publishes its turbine GROUPS under entirely different EIC codes. 55 of
+    152 units — 1 914 MW — had no register code, so Grand'Maison, La Bâthie,
+    Montézic, Revin, Super-Bissorte and thirteen more read as "RTE published
+    nothing" while RTE was publishing them by the dozen. Those units now reach
+    their station through a name match, which is weaker evidence than a
+    published code and is labelled as such on the card. 148 of 152 units place;
+    the four that do not are still counted and reported. Live stations went from
+    43 to 60 of 108.
+  - **A negative reading is usually a stopped unit, not a pump.** 24 units read
+    negative and **fourteen were reactors** — Chooz 1 at −58 MW, Paluel 3 at
+    −49. A shut-down reactor still runs its coolant pumps and instruments and
+    buys that power off the grid: a stopped 1 500 MW machine is a ~50 MW load.
+    Not one of the 28 pumped-storage units was pumping at that hour. The card
+    and the legend say so now.
+  - **RTE sends no installed capacity** (0 of 152 units), so the register's
+    figure is the denominator behind every load percentage — and **no nulls**
+    (0 of 6 992 rows), so the future-padding guard is defensive rather than
+    observed. The module now marks each of its nine traps as MEASURED or
+    DEFENSIVE instead of implying all were seen.
+  - The test fixture is a **real capture** now, not a contract sketch.
+
+- Added the **Groupes de prod (FR)** layer — France's power stations, unit by
+  unit, at the output RTE last published for each one. 171 generating units of
+  100 MW or more across 108 stations: 57 reactors for 63.0 GW, 56 hydro
+  machines, 44 thermal groups, 9 offshore wind units, the Rance tidal barrage
+  and two grid batteries. It completes the sentence the Réseau gaz layer's card
+  has been leaving open — what those stations are producing *right now*, which
+  éCO2mix only publishes as a national filière total.
+  - **A ring is what a station can do; a disc is what it is doing.** The ring is
+    sized by installed power on a √ ramp so area tracks megawatts, and the disc
+    fills it at full load. A **faint empty ring** is a station RTE published
+    nothing for. A **crisp empty ring** is one measured at zero — a reactor in
+    outage, which is the most interesting state a reactor has and the one a
+    `value || 0` guard silently erases. A **magenta disc** is a machine
+    *consuming* the grid: Grand'Maison pumping 1 690 MW back up its mountain, or
+    a battery charging.
+  - **Click a station and the card is its units.** Each group with its own
+    megawatts against its own nameplate, and a day of hourly history as a
+    sparkline — where `·` is a published gap, `▁` is a measured zero, and `▽` is
+    consumption. Not a smoothed line: the gaps are real and stay visible.
+  - **It draws with no key at all.** The fleet is a shipped file built from
+    ODRÉ's national register and positioned from EDF Open Data, OpenStreetMap
+    and geo.api.gouv.fr, so a `git clone` puts all 108 stations, their names,
+    their filières and 93.5 GW of installed capacity on the globe with zero
+    credentials. A free RTE account (`RTE_CLIENT_ID` / `RTE_CLIENT_SECRET`
+    from data.rte-france.com) only ever adds the number that moves — and the
+    layer says so, in the readout and in the first legend row, instead of
+    reporting zero.
+
+- Four things the Groupes de prod layer refuses to do, each stated on screen:
+  - **Draw a reactor.** Nobody publishes where an individual reactor building
+    is — OpenStreetMap has zero `power=generator` + `generator:source=nuclear`
+    elements over the whole of France — so Gravelines is one ring with six
+    groups on its card, not six discs invented from a site outline.
+  - **Hide where a ring came from.** RTE publishes no coordinate for any unit,
+    so every position is derived from four published anchors and every card
+    names its own: 69 stations sit on **EDF's own published coordinate for its
+    own station**, 11 on an OpenStreetMap `power=plant` outline, 13 on the
+    `ref:FR:RTE` switchyard their register entry names, and 15 at the centre of
+    their commune — including four offshore wind farms whose rings are therefore
+    on the beach, because nothing open publishes their footprint. A candidate
+    more than 30 km from the commune centre is refused, and two anchors are
+    never averaged into a third position nobody published. EDF outranks
+    OpenStreetMap because the two agree to within 300 m on every reactor and
+    every thermal site and diverge by up to 9.5 km on hydro, where a
+    powerhouse, an intake and a dam share a name across a valley; every
+    `edf-published` row records `supersededOsmKm` so that choice is auditable
+    per station rather than asserted.
+  - **Reconcile two capacities.** RTE's `installed_capacity` and the register's
+    `puismaxinstallee` are different administrative numbers for the same
+    machine; when they differ by a megawatt or more the card prints both.
+  - **Quietly drop a unit.** A unit RTE reports that the shipped register has
+    never heard of is counted in the readout with its megawatts, as *unplaced* —
+    because there is nowhere honest to draw it.
+
+- Eight upstream traps absorbed in the projection and pinned in the tests:
+  **zero is a reading, not a gap** (`value || null` erases every reactor in
+  outage and reads the fleet as 100% available); **the last row is the future**
+  (the window is padded with unpublished `null` hours, so `values.at(-1)` reads
+  the whole country as 0 MW — the same shape as éCO2mix's `prevision_j1`
+  padding); **negative is pumping, not corruption**; `values` arrive out of
+  chronological order; **one EIC code arrives in two envelopes** when the window
+  spans a day boundary, so last-one-wins throws away half the history; RTE
+  republishes an hour with a newer `updated_date`; the two installed capacities
+  disagree; and RTE's fleet drifts from ODRÉ's register. On the register side:
+  `puismaxinstallee` is published in **kilowatts** to three decimals, a 132 MW
+  photovoltaic farm at Ajaccio is filed under `filiere: "Thermique non
+  renouvelable"`, the Rance tidal barrage is named `CENTRALE HYDRAULIQUE`, and
+  unit names arrive in four grammars with the article parked at the end
+  (`TRICASTIN (LE)`).
+
 - Added the **Centrales EDF** layer — where French electricity is physically
   made, from EDF's own three open datasets (hydraulic, nuclear, thermal),
   keyless under Licence Ouverte 2.0. 79 generating sites carrying 80 094 MW:
@@ -99,6 +197,57 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   row**, so Cattenom offers 60 MW of reserve and not four times 60. 49 unit
   tests; `npm run qa:edf-plants` is the browser proof. Attribution registered
   in the Data attribution popover and DATA_SOURCES.md.
+
+- Added the **Power Grid** layer — the wires themselves, from OpenStreetMap,
+  keyless, loaded for the viewport you are looking at. The Mix élec and Réseau
+  gaz layers came from ODRÉ; the electricity network's own geometry is the one
+  part RTE publishes nothing for, so this is community mapping and the layer
+  says so everywhere it can.
+  - **Routes by voltage band** — a 400 kV backbone stroke is thicker and hotter
+    than a 63 kV one, and the four bands (≥ 300 / 180–299 / 100–179 / 50–99 kV)
+    are generic rather than French, so the same palette reads correctly on the
+    British 400/275/132 and German 380/220/110 grids. Verified live against
+    central London.
+  - **The substations they land in**, sized by the same band, named on the globe
+    when OSM names them — "Poste électrique de Villejust", 400/225/90 kV, RTE —
+    and captioned with what OSM calls them: a poste source, a traction feed, or
+    a role it never stated.
+  - **The pylons**, but only below 0.25° of view, where a pylon is a thing
+    rather than a dot. There are 11,670 of them in a 1.2° × 1.6° box; at that
+    range they cost more bandwidth than the entire network they carry.
+  - **Underground cable is dashed.** In Île-de-France a quarter of the mapped
+    high-voltage network is `power=cable`, and drawing it like an overhead line
+    would claim pylons that are not there.
+
+- Four things the Power Grid layer refuses to do, each stated on screen:
+  - **Draw a line at conductor height.** The wire hangs tens of metres up and
+    OSM records that for a minority of pylons and for no line at all, so every
+    route is a ground-clamped stroke of the mapped ROUTE — and every legend row
+    says so, rather than lifting the network to a plausible-looking catenary.
+  - **Guess a voltage.** Voltage is the filter because voltage is the evidence:
+    a feature OSM has not given one is absent, not demoted. That filter is also
+    what turns 619 raw "substations" in one Paris viewport — 404 of them
+    street-corner cabinets and cadastre-imported building footprints — into the
+    209 real high-voltage yards worth drawing.
+  - **Call a stroke a line.** OSM splits one named liaison across dozens of
+    ways, so the readout reports both: 1,386 strokes for 304 mapped routes, over
+    Île-de-France.
+  - **Imply a truncated view is a complete one.** Each class has its own element
+    cap and reports its own truncation, and the readout says which one was cut
+    and to zoom in. Above 0.8° of view the layer asks for nothing at all and
+    says "zoom in" instead of drawing a partial grid that looks whole.
+
+- Six upstream traps absorbed server-side and pinned against a captured Overpass
+  response: **one shared element cap starves whatever Overpass emits last** (899
+  pylons erased every line and substation in a Paris box, so each class now gets
+  its own bounded output); `voltage` arrives as a `;` list carrying junk
+  (`225000;0`, `225000;225000;225000;63000`) that `Number()` turns into NaN;
+  `power=line` is not a synonym for high voltage (one is tagged 400 **volts**);
+  RTE's own 225 kV yards are tagged `substation=industrial`, so the subtype is a
+  caption and never a filter; a multipolygon substation carries no `lat`/`lon`
+  at all, only a computed centre; and `power=cable` is the same network
+  underground.
+
 
 - **Shared mobility now says what an object is and who runs it, at the same
   time.** Two independent facts get two independent channels. **Shape** answers
@@ -316,6 +465,16 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   records and third-party-license boundaries in `docs/media/README.md`.
 - Added regression coverage for aircraft identity narration and optional-key
   loading feedback.
+- Added `scripts/lib/qa-first-run.mjs`: the QA fleet's shared handling of the
+  first-run mission card. Every headless harness is a fresh browser session, so
+  the card — which returns every fresh session by design — used to land on top
+  of each new dataset's QA run, swallowing the clicks and pixels the harness was
+  measuring, and each harness solved it again, differently. All 40 harnesses
+  that drive the app now open their page with `newQaPage(browser)`, and
+  `npm test` audits the fleet for it (`src/qaFirstRunSuppression.test.mjs`) so a
+  new harness cannot forget. `scripts/qa-firstrun.mjs` is the one exemption —
+  the card is what it tests. For QA by hand, `?welcome=0` on the app URL does
+  the same thing, and `dev-fresh.sh` now prints that URL on startup.
 
 ### Changed
 

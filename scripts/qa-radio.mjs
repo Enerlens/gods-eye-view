@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -94,7 +95,7 @@ async function main() {
   });
 
   try {
-    const page = await browser.newPage();
+    const page = await newQaPage(browser);
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     await page.evaluateOnNewDocument(() => {
       window.__qaRadioPlayCalls = [];

@@ -23,6 +23,7 @@
  *  17. transport.data.gouv.fr — French shared mobility (GBFS: bikes, scooters, cars)
  *  18. ODRÉ éCO2mix — French live electricity mix, national + 12 regions
  *  19. ODRÉ gas system — NaTran/Teréga transmission traces, gas power stations, biomethane injection
+ *  20. Power grid — viewport-bounded OpenStreetMap high-voltage lines, substations and pylons
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -59,6 +60,21 @@ import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js'
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
+import {
+  powerGridBoxKey,
+  powerGridIncludesTowers,
+  powerGridQuery,
+  projectPowerGrid,
+  snapPowerGridBox,
+  validPowerGridBox,
+  POWER_GRID_MAX_BOX_DEG,
+} from './src/data/powerGridFeed.js';
+import {
+  RTE_ACTUAL_GENERATIONS_PER_UNIT_URL,
+  RTE_TOKEN_URL,
+  projectActualGenerations,
+  rteGenerationWindow,
+} from './src/data/rteGenerationFeed.js';
 import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints } from './src/data/viewportBox.js';
 import {
@@ -3464,6 +3480,357 @@ function edfPlantsProxy() {
 
   return {
     name: 'edf-plants-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Vite plugin: RTE per-unit generation proxy (OAuth2 client-credentials).
+ *
+ * Upstream: `actual_generation/v1/actual_generations_per_unit` on RTE's
+ * developer portal — what every French generating unit of 100 MW or more
+ * actually produced, hour by hour. It is the ONE source on this globe that
+ * needs an account and it is free: create one at
+ * https://data.rte-france.com/create_account, attach the **Actual Generation**
+ * API to an application, and put the pair in `.env` as `RTE_CLIENT_ID` /
+ * `RTE_CLIENT_SECRET` (or the ready-made base64 pair as `RTE_BASE64_KEY`).
+ *
+ * ── This route answers 200 with no credentials, deliberately ────────────────
+ *
+ * `auth: "missing"` and an empty unit list is a legitimate, complete answer,
+ * not an error. The layer ships the whole 171-unit fleet as a file and draws
+ * it keyless; RTE's contribution is the number that moves. Returning 502 here
+ * would make a working keyless layer look broken.
+ *
+ * ── Why the request is tried twice ──────────────────────────────────────────
+ *
+ * The dated window (`rteGenerationWindow`: Paris yesterday 00:00 → tomorrow
+ * 00:00) is what this layer wants — it always contains the last published hour
+ * and it carries the ~24 hours of history the cards draw. But this build could
+ * not verify against the live service that a 48-hour range is inside the
+ * resource's accepted span, and RTE answers an out-of-range window with 400.
+ * So a non-2xx dated attempt falls back to the BARE call, which is the
+ * documented default window and is what every published client of this
+ * resource uses. Whichever answered is reported in `window.mode`, so the
+ * fallback is visible rather than silent.
+ *
+ * Auth is refreshed on 401 exactly once per request: a token that expired
+ * between the cache check and the call is a race, not a credential problem.
+ *
+ * Routes:
+ *   GET /api/rte-generation        → {fetchedAt, stale, ttlMs, source, auth, window, units, stats}
+ *   GET /api/rte-generation/status → {source, auth, lastFetch, stale, ttlMs, units, reporting, totalMw}
+ *
+ * @returns {import('vite').Plugin}
+ */
+function rteGenerationProxy() {
+  // The resource publishes hourly. Five minutes bounds staleness to a twelfth
+  // of a step while costing 288 upstream calls a day against a free account.
+  const TTL_MS = 5 * 60_000;
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_PATH = path.join(CACHE_DIR, 'rte-generation.json');
+  const SOURCE = 'RTE (digital.iservices.rte-france.com)';
+  const UPSTREAM_TIMEOUT_MS = 60_000;
+  /** Refresh this long before the token actually expires. */
+  const TOKEN_SAFETY_MS = 60_000;
+  /** Fallback lifetime when RTE omits `expires_in`. Its tokens run ~2 h. */
+  const TOKEN_DEFAULT_S = 7200;
+
+  /** @type {?{at:number, auth:string, window:object, units:Array<object>, stats:object}} */
+  let mem = null;
+  let diskChecked = false;
+  /** @type {?Promise<?object>} */
+  let inflight = null;
+
+  let token = null;
+  let tokenExpiry = 0;
+  /** @type {?Promise<?string>} */
+  let tokenPromise = null;
+  let authWarned = false;
+  let lastAuthDetail = null;
+
+  /**
+   * The HTTP Basic credential, base64 of `client_id:client_secret`.
+   *
+   * RTE's application dashboard shows the pair AND an already-encoded key, and
+   * people copy whichever is in front of them — so both are accepted, with the
+   * pre-encoded one winning because it needs no assembly and cannot be
+   * assembled wrong.
+   * @returns {?string}
+   */
+  function basicCredential() {
+    const encoded = String(process.env.RTE_BASE64_KEY || '').trim();
+    if (encoded) return encoded;
+    const id = String(process.env.RTE_CLIENT_ID || '').trim();
+    const secret = String(process.env.RTE_CLIENT_SECRET || '').trim();
+    if (!id || !secret) return null;
+    return Buffer.from(`${id}:${secret}`, 'utf8').toString('base64');
+  }
+
+  /**
+   * A valid bearer token, refreshing when needed.
+   *
+   * Concurrent callers share one in-flight refresh — the same coalescing the
+   * OpenSky token path uses, for the same reason: N tabs opening at once must
+   * cost one token, not N.
+   * @param {boolean} [force=false] Discard a cached token first (401 recovery).
+   * @returns {Promise<?string>}
+   */
+  async function getToken(force = false) {
+    if (force) { token = null; tokenExpiry = 0; }
+    if (token && Date.now() < tokenExpiry - TOKEN_SAFETY_MS) return token;
+    if (tokenPromise) return tokenPromise;
+
+    const credential = basicCredential();
+    if (!credential) { lastAuthDetail = 'no RTE_CLIENT_ID / RTE_CLIENT_SECRET'; return null; }
+
+    tokenPromise = (async () => {
+      try {
+        const response = await fetch(RTE_TOKEN_URL, {
+          method: 'POST',
+          headers: {
+            // RTE's token endpoint reads the credential from the Basic header
+            // and takes NO body. Sending `grant_type=client_credentials` as a
+            // form body without the header is answered `invalid_client`.
+            Authorization: `Basic ${credential}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          signal: AbortSignal.timeout(30_000),
+        });
+        let data = null;
+        try { data = await response.json(); } catch { data = null; }
+        const accessToken = data?.access_token;
+        if (!response.ok || !accessToken) {
+          lastAuthDetail = data?.error_description || data?.error || `HTTP ${response.status}`;
+          if (!authWarned) {
+            console.warn(`[rte-generation-proxy] OAuth client_credentials failed: ${lastAuthDetail}`);
+            authWarned = true;
+          }
+          token = null;
+          tokenExpiry = 0;
+          return null;
+        }
+        const expiresIn = Number(data?.expires_in);
+        token = accessToken;
+        tokenExpiry = Date.now() + (Number.isFinite(expiresIn) ? expiresIn : TOKEN_DEFAULT_S) * 1000;
+        lastAuthDetail = null;
+        authWarned = false;
+        console.log(
+          '[rte-generation-proxy] OAuth token refreshed, expires in',
+          Number.isFinite(expiresIn) ? expiresIn : TOKEN_DEFAULT_S, 's',
+        );
+        return token;
+      } catch (err) {
+        lastAuthDetail = err?.message || String(err);
+        if (!authWarned) {
+          console.warn(`[rte-generation-proxy] OAuth token request failed: ${lastAuthDetail}`);
+          authWarned = true;
+        }
+        token = null;
+        tokenExpiry = 0;
+        return null;
+      } finally {
+        tokenPromise = null;
+      }
+    })();
+    return tokenPromise;
+  }
+
+  /** One authenticated GET, refreshing the token once on 401. */
+  async function authorizedGet(url) {
+    let bearer = await getToken();
+    if (!bearer) return { status: 0, body: null };
+    let response = await fetch(url, {
+      headers: { Authorization: `Bearer ${bearer}`, Accept: 'application/json' },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (response.status === 401) {
+      bearer = await getToken(true);
+      if (!bearer) return { status: 401, body: null };
+      response = await fetch(url, {
+        headers: { Authorization: `Bearer ${bearer}`, Accept: 'application/json' },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+    }
+    let body = null;
+    try { body = await response.json(); } catch { body = null; }
+    return { status: response.status, body };
+  }
+
+  /** Fetch and project one refresh. Never throws for a missing credential. */
+  async function refreshUpstream() {
+    if (!basicCredential()) {
+      return {
+        at: Date.now(),
+        auth: 'missing',
+        authDetail: 'set RTE_CLIENT_ID and RTE_CLIENT_SECRET in .env — free account at data.rte-france.com',
+        window: { mode: 'none' },
+        units: [],
+        stats: { units: 0, reporting: 0, totalMw: 0 },
+      };
+    }
+
+    const span = rteGenerationWindow(new Date());
+    const dated = `${RTE_ACTUAL_GENERATIONS_PER_UNIT_URL}`
+      + `?start_date=${encodeURIComponent(span.startDate)}`
+      + `&end_date=${encodeURIComponent(span.endDate)}`;
+
+    let attempt = await authorizedGet(dated);
+    let mode = 'dated';
+    // `status: 0` means the token itself never arrived. Retrying the same call
+    // on a different window would fail identically and would report the auth
+    // problem as a window problem, which is a worse error message.
+    if (attempt.status !== 0 && (attempt.status < 200 || attempt.status >= 300)) {
+      const detail = attempt.body?.error_description || attempt.body?.error || `HTTP ${attempt.status}`;
+      console.warn(
+        `[rte-generation-proxy] dated window ${span.startDate} → ${span.endDate} refused (${detail})`
+        + ' — retrying on the default window',
+      );
+      attempt = await authorizedGet(RTE_ACTUAL_GENERATIONS_PER_UNIT_URL);
+      mode = 'default';
+    }
+
+    if (attempt.status < 200 || attempt.status >= 300 || !attempt.body) {
+      const detail = attempt.body?.error_description || attempt.body?.error
+        || (attempt.status ? `HTTP ${attempt.status}` : lastAuthDetail || 'no token');
+      throw new Error(detail);
+    }
+
+    const projected = projectActualGenerations(attempt.body);
+    return {
+      at: Date.now(),
+      auth: 'ok',
+      authDetail: null,
+      window: mode === 'dated'
+        ? { mode, startDate: span.startDate, endDate: span.endDate }
+        // The default window is RTE's, not ours; reporting our own dates for it
+        // would be a claim about a request we did not make.
+        : { mode },
+      units: projected.units,
+      stats: projected.stats,
+    };
+  }
+
+  async function readDiskOnce() {
+    if (diskChecked) return;
+    diskChecked = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
+      if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.units)) mem = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(CACHE_PATH, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[rte-generation-proxy] cache write failed (${err?.message || err})`);
+    }
+  }
+
+  /** Serve-or-refresh, single-flighted. */
+  async function resolve() {
+    await readDiskOnce();
+    const entry = mem;
+    let current = entry && Date.now() - entry.at < TTL_MS ? entry : null;
+    if (!current) {
+      if (!inflight) {
+        inflight = refreshUpstream()
+          .then(async (next) => {
+            mem = next;
+            // A credential-less answer is not worth a disk round trip, and
+            // caching it would survive the user adding their key.
+            if (next.auth === 'ok') await writeDisk(next);
+            return next;
+          })
+          .catch((err) => {
+            console.warn(`[rte-generation-proxy] refresh failed (${err?.message || err}) — serving cache if any`);
+            return null;
+          })
+          .finally(() => { inflight = null; });
+      }
+      current = await inflight;
+    }
+    return { served: current || entry, stale: !current && Boolean(entry) };
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/rte-generation', async (req, res) => {
+      const sendJson = (status, obj) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(obj));
+      };
+      try {
+        const subPath = String(req.url || '').split('?')[0];
+
+        if (subPath === '/status') {
+          // Reports what is cached; never triggers an upstream call of its own.
+          await readDiskOnce();
+          sendJson(200, {
+            source: SOURCE,
+            auth: basicCredential()
+              ? (mem?.auth || (lastAuthDetail ? 'failed' : 'unknown'))
+              : 'missing',
+            authDetail: lastAuthDetail,
+            ttlMs: TTL_MS,
+            lastFetch: mem?.at ?? null,
+            stale: mem ? Date.now() - mem.at >= TTL_MS : null,
+            window: mem?.window || null,
+            units: mem?.stats?.units ?? 0,
+            reporting: mem?.stats?.reporting ?? 0,
+            totalMw: mem?.stats?.totalMw ?? 0,
+            latestAt: mem?.stats?.latestAt ?? null,
+          });
+          return;
+        }
+
+        if (subPath === '/' || subPath === '') {
+          const { served, stale } = await resolve();
+          if (!served) {
+            // 200, not 502. The layer draws 93.5 GW of French generating
+            // capacity from a file; this route only ever adds the numbers that
+            // move. Answering 5xx would turn "your key is wrong" into "the
+            // layer is broken", and the reason is right here in the payload.
+            sendJson(200, {
+              fetchedAt: Date.now(),
+              stale: false,
+              ttlMs: TTL_MS,
+              source: SOURCE,
+              auth: 'failed',
+              authDetail: lastAuthDetail || 'RTE actual_generations_per_unit is unavailable',
+              window: { mode: 'none' },
+              units: [],
+              stats: { units: 0, reporting: 0, totalMw: 0 },
+            });
+            return;
+          }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: TTL_MS,
+            source: SOURCE,
+            auth: served.auth,
+            authDetail: served.authDetail || null,
+            window: served.window,
+            units: served.units,
+            stats: served.stats,
+          });
+          return;
+        }
+
+        sendJson(404, { error: 'unknown rte-generation route' });
+      } catch (err) {
+        console.warn('[rte-generation-proxy] error:', err?.message || err);
+        sendJson(500, { error: 'rte-generation proxy error' });
+      }
+    });
+  }
+
+  return {
+    name: 'rte-generation-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -9760,6 +10127,289 @@ function militaryInstallationsProxy() {
 }
 
 // ---------------------------------------------------------------------------
+// Power-grid context proxy — viewport-bounded OpenStreetMap transmission network
+// ---------------------------------------------------------------------------
+// Like the mapped-installation and mapped-camera proxies, this deliberately does
+// not expose arbitrary Overpass QL to the browser: it answers one allow-listed
+// power query inside a box no wider than POWER_GRID_MAX_BOX_DEG, snapped OUTWARD
+// onto a shared grid so neighbouring viewports share one cached answer.
+//
+// It does NOT go through `fetchOverpassPayload`, and that is deliberate: that
+// helper runs `simplifyOverpassPayloadBody` on every success, which decimates
+// geometry past 1.5 MB at a ~44 m tolerance. A dense viewport here is 3.8 MB
+// (measured Île-de-France, 0.6°), so the shared path would silently move
+// transmission lines off their pylons. This proxy publishes the mapped vertices
+// and rounds them once, to five decimals, in `projectPowerGrid`.
+/** Memory-cache TTL for one snapped viewport box. */
+const POWER_GRID_CACHE_MS = 10 * 60_000;
+/** In-memory cache ceiling (boxes), evicted oldest-first. */
+const POWER_GRID_MAX_CACHE = 60;
+/** Disk-cache directory for projected power-grid boxes. */
+const POWER_GRID_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'power-grid');
+/**
+ * Disk TTL (7 days). A transmission line is built over a decade and mapped once;
+ * a week-old answer is the same answer, and the in-memory tier dies with the dev
+ * server — the same reasoning the mapped-installation proxy applies.
+ */
+const POWER_GRID_DISK_TTL_MS = 7 * 86_400_000;
+/** Bump when the projected document shape changes so old entries are ignored. */
+const POWER_GRID_CACHE_VERSION = 'v1';
+/**
+ * Read cap for one box probe. Measured worst case is 3.8 MB (Île-de-France at
+ * 0.6°, 2,200 strokes and 48,439 vertices); the cap leaves room for a denser
+ * box elsewhere without letting a runaway answer into memory.
+ */
+const POWER_GRID_MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
+/**
+ * Wall-clock budget for one box refresh, shared by all mirror attempts. Sized
+ * against measured Overpass latency for this query (4 s rural, 11-21 s in
+ * Île-de-France, with 429/504 common enough on the primary mirror that the
+ * fallbacks must still get a turn).
+ */
+const POWER_GRID_REFRESH_BUDGET_MS = 45_000;
+/**
+ * Floor on one mirror attempt's share of that budget — the same fairness rule
+ * the mapped-camera proxy learned twice: a mirror that stalls must not eat the
+ * whole window, and a mirror that is genuinely working must not be cut off at
+ * an even split. Sized above the measured latency of this query (2.2 s warm on
+ * a tight box, 7.2 s on a half-degree one, 11-21 s on the densest boxes
+ * Overpass will answer at all), so a mirror that is working is never aborted to
+ * preserve a turn for one that is not — while still leaving room for three
+ * mirrors inside the budget when the first ones fail fast, which is exactly
+ * what the field run of 2026-08-27 needed (504, 502, 504, then a timeout).
+ */
+const POWER_GRID_MIN_ATTEMPT_MS = 18_000;
+const _powerGridCache = new Map();
+const _powerGridInFlight = new Map();
+const _powerGridRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 40, globalMax: 120 });
+
+/** Cache key -> stable disk-cache file path. */
+function powerGridDiskPath(cacheKey) {
+  return path.join(POWER_GRID_DISK_DIR, `${createHash('sha1').update(cacheKey).digest('hex')}.json`);
+}
+
+/**
+ * Read a disk-cached box at ANY age. Freshness is the caller's decision: an
+ * expired box is still the right answer while Overpass is down (serve-stale
+ * beats an empty viewport).
+ * @param {string} cacheKey
+ * @returns {Promise<?{cachedAt:number, payload:object}>}
+ */
+async function readPowerGridDisk(cacheKey) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(powerGridDiskPath(cacheKey), 'utf8'));
+    if (!Number.isFinite(entry?.cachedAt) || !Array.isArray(entry?.payload?.strokes)) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Persist one box ATOMICALLY (temp sibling + rename), so a crash mid-write
+ * leaves the previous entry — and serve-stale — intact.
+ * @param {string} cacheKey
+ * @param {{cachedAt:number, payload:object}} entry
+ * @returns {Promise<boolean>}
+ */
+async function writePowerGridDisk(cacheKey, entry) {
+  const target = powerGridDiskPath(cacheKey);
+  const temp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    await fsp.mkdir(POWER_GRID_DISK_DIR, { recursive: true });
+    await fsp.writeFile(temp, JSON.stringify(entry));
+    await fsp.rename(temp, target);
+    return true;
+  } catch (error) {
+    console.warn('[Power Grid] disk cache write failed:', error?.message || error);
+    await fsp.rm(temp, { force: true }).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * One bounded Overpass probe: try mirrors in order until one answers or the
+ * deadline passes, ABORTING each attempt rather than letting a slow or wedged
+ * mirror hold the request open. Rate-limited, runtime-error, and non-JSON
+ * responses fall through to the next mirror; every per-mirror outcome is
+ * aggregated into the thrown error so an outage is readable.
+ *
+ * @param {string} ql - Overpass QL for one box.
+ * @param {number} deadline - Epoch-ms after which no further attempt starts.
+ * @returns {Promise<Array<object>>} Raw Overpass elements.
+ */
+async function fetchPowerGridElements(ql, deadline) {
+  const outcomes = [];
+  for (let index = 0; index < OVERPASS_UPSTREAMS.length; index++) {
+    const endpoint = OVERPASS_UPSTREAMS[index];
+    const host = new URL(endpoint).host;
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    const attemptMs = Math.max(
+      POWER_GRID_MIN_ATTEMPT_MS,
+      Math.floor(remainingMs / (OVERPASS_UPSTREAMS.length - index)),
+    );
+    try {
+      const upstream = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'User-Agent': 'gods-eye-view-power-grid-proxy/1.0',
+        },
+        body: `data=${encodeURIComponent(ql)}`,
+        signal: AbortSignal.timeout(Math.min(remainingMs, attemptMs)),
+      });
+      const body = await readResponseTextCapped(upstream, POWER_GRID_MAX_RESPONSE_BYTES);
+      const rateLimited = overpassLooksRateLimited(body);
+      if (upstream.status >= 400 || rateLimited || overpassLooksRuntimeError(body)) {
+        outcomes.push(`${host}: ${rateLimited ? 'rate limited' : `HTTP ${upstream.status}`}`);
+        continue;
+      }
+      const elements = JSON.parse(body)?.elements;
+      if (!Array.isArray(elements)) {
+        outcomes.push(`${host}: no element list`);
+        continue;
+      }
+      return elements;
+    } catch (error) {
+      const reason = /timeout|abort/i.test(String(error?.message))
+        ? `timed out after ${attemptMs} ms`
+        : (error?.message || 'failed');
+      outcomes.push(`${host}: ${reason}`);
+    }
+  }
+  const skipped = OVERPASS_UPSTREAMS.length - outcomes.length;
+  throw new Error(
+    `no Overpass mirror answered inside the request budget — ${outcomes.join('; ')}`
+    + (skipped > 0 ? `; ${skipped} not tried (budget spent)` : ''),
+  );
+}
+
+function trimPowerGridCache() {
+  while (_powerGridCache.size > POWER_GRID_MAX_CACHE) {
+    const oldest = _powerGridCache.keys().next().value;
+    if (oldest === undefined) break;
+    _powerGridCache.delete(oldest);
+  }
+}
+
+/**
+ * Vite plugin: viewport-bounded OpenStreetMap power-grid proxy.
+ *
+ *   GET /api/power-grid?south&west&north&east — high-voltage lines, cables,
+ *   substations and (in tight views) pylons inside that box, projected by
+ *   `projectPowerGrid`.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function powerGridProxy() {
+  async function refresh(box, key) {
+    const towers = powerGridIncludesTowers(box);
+    const ql = powerGridQuery(box, { towers });
+    const elements = await fetchPowerGridElements(
+      ql,
+      Date.now() + POWER_GRID_REFRESH_BUDGET_MS,
+    );
+    const payload = {
+      ...projectPowerGrid({ elements }, { towersRequested: towers }),
+      box,
+      retrievedAt: new Date().toISOString(),
+      status: 'ready',
+      source: 'OpenStreetMap contributors (ODbL 1.0), via Overpass',
+    };
+    const entry = { cachedAt: Date.now(), payload };
+    _powerGridCache.set(key, entry);
+    trimPowerGridCache();
+    writePowerGridDisk(key, entry);
+    return payload;
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/power-grid', async (req, res) => {
+      if (req.method !== 'GET') {
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method Not Allowed' }));
+        return;
+      }
+      if (!_powerGridRateLimiter(clientKey(req))) {
+        res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '5' });
+        res.end(JSON.stringify({ error: 'Rate limit exceeded' }));
+        return;
+      }
+      const url = new URL(req.url, 'http://localhost');
+      const requested = validPowerGridBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      });
+      if (!requested) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: `A non-dateline bbox no larger than ${POWER_GRID_MAX_BOX_DEG} degrees is required`,
+        }));
+        return;
+      }
+      // Query the SNAPPED box, not the raw viewport: neighbouring views share
+      // one cache entry, and an outward snap always covers what was asked for.
+      // Whether pylons are included is decided from the SNAPPED box too, so the
+      // key stays a pure function of the box.
+      const box = snapPowerGridBox(requested);
+      const key = `${POWER_GRID_CACHE_VERSION}|${powerGridBoxKey(box)}`;
+      const now = Date.now();
+      const cached = _powerGridCache.get(key);
+      if (cached && now - cached.cachedAt <= POWER_GRID_CACHE_MS) {
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120', 'X-Power-Grid': 'HIT' });
+        res.end(JSON.stringify({ ...cached.payload, status: 'cached' }));
+        return;
+      }
+      if (!_powerGridInFlight.has(key)) {
+        const disk = await readPowerGridDisk(key);
+        if (disk && now - disk.cachedAt <= POWER_GRID_DISK_TTL_MS) {
+          _powerGridCache.set(key, disk);
+          trimPowerGridCache();
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=120', 'X-Power-Grid': 'DISK' });
+          res.end(JSON.stringify({ ...disk.payload, status: 'cached' }));
+          return;
+        }
+      }
+      const request = coalesceProxyRequest(_powerGridInFlight, key, () => refresh(box, key));
+      try {
+        const payload = await request.promise;
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=120',
+          'X-Power-Grid': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+        res.end(JSON.stringify(payload));
+      } catch (error) {
+        // Overpass is down: last-good geometry at ANY age beats an empty
+        // viewport (the same serve-stale rule the Overpass proxy applies).
+        const stale = await readPowerGridDisk(key);
+        if (stale) {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Power-Grid': 'STALE-DISK' });
+          res.end(JSON.stringify({ ...stale.payload, status: 'stale' }));
+          return;
+        }
+        console.warn('[Power Grid] box unavailable:', error?.message || error);
+        res.writeHead(503, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify({ error: 'Mapped power-grid geometry is temporarily unavailable' }));
+      }
+    });
+  }
+
+  return {
+    name: 'power-grid-proxy',
+    configureServer(server) {
+      install(server.middlewares);
+    },
+    configurePreviewServer(server) {
+      install(server.middlewares);
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Regional cockpit briefing proxy
 // ---------------------------------------------------------------------------
 const REGIONAL_BRIEF_CACHE_MS = 5 * 60_000;
@@ -10710,12 +11360,14 @@ export default defineConfig(({ mode }) => {
       eco2mixProxy(),
       gasFranceProxy(),
       edfPlantsProxy(),
+      rteGenerationProxy(),
       ndbcProxy(),
       rocketLaunchesProxy(),
       terrainHeightsProxy(),
       adsbdbProxy(),
       overpassProxy(),
       militaryInstallationsProxy(),
+      powerGridProxy(),
       osmCamerasProxy(),
       regionalBriefProxy(),
       weatherEffectsProxy(),

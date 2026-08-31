@@ -47,8 +47,13 @@
     "qa:energy-fr": "node scripts/qa-energy-fr.mjs",
     "qa:shared-mobility-fr": "node scripts/qa-shared-mobility-fr.mjs",
     "qa:gas-fr": "node scripts/qa-gas-fr.mjs",
+    "qa:power-grid": "node scripts/qa-power-grid.mjs",
+    "qa:power-grid-coverage": "node scripts/grid-audit/audit-substations.mjs",
+    "qa:power-grid-coverage:lines": "node scripts/grid-audit/audit-lines.mjs",
+    "qa:rte-generation": "node scripts/qa-rte-generation.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
-    "shared-mobility:index": "node scripts/build-gbfs-fr-index.mjs"
+    "shared-mobility:index": "node scripts/build-gbfs-fr-index.mjs",
+    "rte:units": "node scripts/build-rte-units-registry.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",

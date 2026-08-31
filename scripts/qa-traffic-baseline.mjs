@@ -36,6 +36,7 @@
  */
 
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import fs from 'node:fs';
 
 const argv = process.argv.slice(2);
@@ -315,7 +316,7 @@ async function main() {
   const captures = [];
   const consoleErrors = [];
   try {
-    const page = await browser.newPage();
+    const page = await newQaPage(browser);
     await page.setViewport({ width: 1440, height: 900 });
     await page.evaluateOnNewDocument(() => localStorage.clear());
     page.on('console', (message) => {

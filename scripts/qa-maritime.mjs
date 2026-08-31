@@ -17,6 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { firstRunLauncherSuppressed, newQaPage } from './lib/qa-first-run.mjs';
 
 const args = process.argv.slice(2);
 const getOpt = (flag, fallback) => {
@@ -73,19 +74,12 @@ async function main() {
 
   const consoleErrors = [];
   try {
-    const page = await browser.newPage();
+    const page = await newQaPage(browser);
     await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
     page.on('console', (message) => {
       if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 300));
     });
     page.on('pageerror', (error) => consoleErrors.push(`pageerror: ${error.message.slice(0, 300)}`));
-
-    // Suppress the first-run mission launcher BEFORE the app boots. Clicking
-    // it away afterwards loses the race: the chosen mission drives the camera,
-    // and the modal covers the globe in every shot taken before that settles.
-    await page.evaluateOnNewDocument(() => {
-      try { localStorage.setItem('gev:first-run-mission:v1', 'suppressed'); } catch { /* private mode */ }
-    });
 
     console.log(`\nOpening ${APP_URL} …`);
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 90_000 });
@@ -241,10 +235,10 @@ async function main() {
 
     // Fly somewhere the two layers actually overlap, so the shot shows the
     // feature rather than the default view.
-    const launcherGone = await page.evaluate(
-      () => !document.querySelector('#first-run-launcher')?.classList.contains('visible'),
-    );
-    record('first-run launcher stays suppressed for the shot', launcherGone);
+    // newQaPage() suppressed the launcher before boot; this asserts the card is
+    // actually out of the shot rather than trusting that it worked.
+    record('first-run launcher stays suppressed for the shot',
+      await firstRunLauncherSuppressed(page));
     await page.evaluate(() => {
       const viewer = window.__godsEyeView.styleManager?.viewer;
       const Cesium = window.Cesium;

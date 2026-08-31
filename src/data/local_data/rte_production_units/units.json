@@ -1,0 +1,4443 @@
+{
+  "generated": "2026-08-28",
+  "floorMw": 100,
+  "maxAnchorKm": 30,
+  "registre": {
+    "dataset": "registre-national-installation-production-stockage-electricite-agrege",
+    "edition": "Registre national des installations de production et de stockage d'électricité (au 30/06/2026)",
+    "modified": "2026-07-30T16:55:39+00:00"
+  },
+  "sources": [
+    "ODRÉ — Registre national des installations de production et de stockage d'électricité (Licence Ouverte 2.0)",
+    "EDF Open Data — localisation des centrales nucléaires, hydrauliques et thermiques à flamme d’EDF SA (Licence Ouverte 2.0)",
+    "© OpenStreetMap contributors (ODbL 1.0) — power=plant, power=substation ref:FR:RTE",
+    "geo.api.gouv.fr — centre de commune (Licence Ouverte)"
+  ],
+  "stats": {
+    "units": 171,
+    "sites": 108,
+    "placement": {
+      "edf-published": 69,
+      "osm-plant": 11,
+      "rte-switchyard": 13,
+      "commune-centre": 15,
+      "none": 0
+    },
+    "installedMw": 93502,
+    "byClass": {
+      "nuclear": 57,
+      "hydro-reservoir": 27,
+      "hydro-run-of-river": 23,
+      "hydro-pumped": 6,
+      "fossil-gas": 29,
+      "fossil-coal": 7,
+      "fossil-oil": 6,
+      "biomass": 2,
+      "wind": 9,
+      "solar": 2,
+      "marine": 1,
+      "battery": 2
+    }
+  },
+  "sites": [
+    {
+      "id": "GRAV5",
+      "name": "Centrale nucléaire de Gravelines",
+      "class": "nuclear",
+      "mw": 5460,
+      "units": [
+        "17W100P100P0130W",
+        "17W100P100P0131U",
+        "17W100P100P0132S",
+        "17W100P100P0133Q",
+        "17W100P100P0135M",
+        "17W100P100P0136K"
+      ],
+      "commune": "Gravelines",
+      "insee": "59273",
+      "departement": "Nord",
+      "region": "Hauts-de-France",
+      "classMix": {
+        "nuclear": 5460
+      },
+      "lat": 51.01285,
+      "lon": 2.13929,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:GRAVELINES",
+      "placementName": "GRAVELINES",
+      "anchorKm": 1.11,
+      "supersededOsmKm": 0.29
+    },
+    {
+      "id": "PALUE",
+      "name": "Centrale nucléaire de Paluel",
+      "class": "nuclear",
+      "mw": 5320,
+      "units": [
+        "17W100P100P0139E",
+        "17W100P100P0140T",
+        "17W100P100P0141R",
+        "17W100P100P0142P"
+      ],
+      "commune": "Paluel",
+      "insee": "76493",
+      "departement": "Seine-Maritime",
+      "region": "Normandie",
+      "classMix": {
+        "nuclear": 5320
+      },
+      "lat": 49.85875,
+      "lon": 0.63476,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:PALUEL",
+      "placementName": "PALUEL",
+      "anchorKm": 1.82,
+      "supersededOsmKm": 0.05
+    },
+    {
+      "id": "CATTE",
+      "name": "Centrale nucléaire de Cattenom",
+      "class": "nuclear",
+      "mw": 5200,
+      "units": [
+        "17W100P100P0103Z",
+        "17W100P100P0104X",
+        "17W100P100P0105V",
+        "17W100P100P01012"
+      ],
+      "commune": "Cattenom",
+      "insee": "57124",
+      "departement": "Moselle",
+      "region": "Grand Est",
+      "classMix": {
+        "nuclear": 5200
+      },
+      "lat": 49.41595,
+      "lon": 6.21827,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:CATTENOM",
+      "placementName": "CATTENOM",
+      "anchorKm": 1.2,
+      "supersededOsmKm": 0.16
+    },
+    {
+      "id": "FLAMA",
+      "name": "Centrale nucléaire de Flamanville",
+      "class": "nuclear",
+      "mw": 4280,
+      "units": [
+        "17W100P100P0126N",
+        "17W100P100P0127L",
+        "17W100P100P03639"
+      ],
+      "commune": "Flamanville",
+      "insee": "50184",
+      "departement": "Manche",
+      "region": "Normandie",
+      "classMix": {
+        "nuclear": 4280
+      },
+      "lat": 49.53599,
+      "lon": -1.88334,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:FLAMANVILLE",
+      "placementName": "FLAMANVILLE",
+      "anchorKm": 1.32,
+      "supersededOsmKm": 0.33
+    },
+    {
+      "id": "CRUA5",
+      "name": "Centrale nucléaire de Cruas",
+      "class": "nuclear",
+      "mw": 3660,
+      "units": [
+        "17W100P100P0115S",
+        "17W100P100P0116Q",
+        "17W100P100P0118M",
+        "17W100P100P0119K"
+      ],
+      "commune": "Cruas",
+      "insee": "07076",
+      "departement": "Ardèche",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "nuclear": 3660
+      },
+      "lat": 44.63283,
+      "lon": 4.75082,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:CRUAS",
+      "placementName": "CRUAS",
+      "anchorKm": 2.51,
+      "supersededOsmKm": 0.36
+    },
+    {
+      "id": "TRI.P",
+      "name": "Centrale nucléaire du Tricastin",
+      "class": "nuclear",
+      "mw": 3660,
+      "units": [
+        "17W100P100P0149B",
+        "17W100P100P0150Q",
+        "17W100P100P0152M",
+        "17W100P100P0153K"
+      ],
+      "commune": "Pierrelatte",
+      "insee": "26235",
+      "departement": "Drôme",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "nuclear": 3660
+      },
+      "lat": 44.32636,
+      "lon": 4.73154,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:TRICASTIN (LE)",
+      "placementName": "TRICASTIN (LE)",
+      "anchorKm": 5.35,
+      "supersededOsmKm": 0.53
+    },
+    {
+      "id": "BLAYA",
+      "name": "Centrale nucléaire du Blayais",
+      "class": "nuclear",
+      "mw": 3640,
+      "units": [
+        "17W100P100P0092E",
+        "17W100P100P0093C",
+        "17W100P100P0094A",
+        "17W100P100P00958"
+      ],
+      "commune": "Braud-et-Saint-Louis",
+      "insee": "33073",
+      "departement": "Gironde",
+      "region": "Nouvelle-Aquitaine",
+      "classMix": {
+        "nuclear": 3640
+      },
+      "lat": 45.25761,
+      "lon": -0.69061,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:BLAYAIS (LE)",
+      "placementName": "BLAYAIS (LE)",
+      "anchorKm": 2.55,
+      "supersededOsmKm": 0.31
+    },
+    {
+      "id": "CHIN2",
+      "name": "Centrale nucléaire de Chinon B",
+      "class": "nuclear",
+      "mw": 3620,
+      "units": [
+        "17W100P100P0106T",
+        "17W100P100P0107R",
+        "17W100P100P0108P",
+        "17W100P100P0109N"
+      ],
+      "commune": "Avoine",
+      "insee": "37011",
+      "departement": "Indre-et-Loire",
+      "region": "Centre-Val de Loire",
+      "classMix": {
+        "nuclear": 3620
+      },
+      "lat": 47.22873,
+      "lon": 0.16831,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:CHINON B",
+      "placementName": "CHINON B",
+      "anchorKm": 1.84,
+      "supersededOsmKm": 0.24
+    },
+    {
+      "id": "BUGEY",
+      "name": "Centrale nucléaire du Bugey",
+      "class": "nuclear",
+      "mw": 3580,
+      "units": [
+        "17W100P100P00966",
+        "17W100P100P00974",
+        "17W100P100P00982",
+        "17W100P100P01004"
+      ],
+      "commune": "Saint-Vulbas",
+      "insee": "01390",
+      "departement": "Ain",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "nuclear": 3580
+      },
+      "lat": 45.80115,
+      "lon": 5.26607,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:BUGEY (LE)",
+      "placementName": "BUGEY (LE)",
+      "anchorKm": 2.48,
+      "supersededOsmKm": 0.29
+    },
+    {
+      "id": "D.BUR",
+      "name": "Centrale nucléaire de Dampierre-en-Burly",
+      "class": "nuclear",
+      "mw": 3560,
+      "units": [
+        "17W100P100P0120Z",
+        "17W100P100P0121X",
+        "17W100P100P0122V",
+        "17W100P100P0123T"
+      ],
+      "commune": "Dampierre-en-Burly",
+      "insee": "45122",
+      "departement": "Loiret",
+      "region": "Centre-Val de Loire",
+      "classMix": {
+        "nuclear": 3560
+      },
+      "lat": 47.73264,
+      "lon": 2.51782,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:DAMPIERRE-EN-BURLY",
+      "placementName": "DAMPIERRE-EN-BURLY",
+      "anchorKm": 3.82,
+      "supersededOsmKm": 0.08
+    },
+    {
+      "id": "CHOO2",
+      "name": "Centrale nucléaire de Chooz B",
+      "class": "nuclear",
+      "mw": 3000,
+      "units": [
+        "17W100P100P0112Y",
+        "17W100P100P01101"
+      ],
+      "commune": "Chooz",
+      "insee": "08122",
+      "departement": "Ardennes",
+      "region": "Grand Est",
+      "classMix": {
+        "nuclear": 3000
+      },
+      "lat": 50.09034,
+      "lon": 4.78959,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:CHOOZ B",
+      "placementName": "CHOOZ B",
+      "anchorKm": 0.75,
+      "supersededOsmKm": 0.21
+    },
+    {
+      "id": "CIVAU",
+      "name": "Centrale nucléaire de Civaux",
+      "class": "nuclear",
+      "mw": 2990,
+      "units": [
+        "17W100P100P0113W",
+        "17W100P100P0114U"
+      ],
+      "commune": "Civaux",
+      "insee": "86077",
+      "departement": "Vienne",
+      "region": "Nouvelle-Aquitaine",
+      "classMix": {
+        "nuclear": 2990
+      },
+      "lat": 46.46218,
+      "lon": 0.64888,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:CIVAUX",
+      "placementName": "CIVAUX",
+      "anchorKm": 2.89,
+      "supersededOsmKm": 1
+    },
+    {
+      "id": "SSAL7",
+      "name": "Centrale nucléaire de St-Alban-St-Maurice",
+      "class": "nuclear",
+      "mw": 2670,
+      "units": [
+        "17W100P100P0145J",
+        "17W100P100P0146H"
+      ],
+      "commune": "Saint-Maurice-l'Exil",
+      "insee": "38425",
+      "departement": "Isère",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "nuclear": 2670
+      },
+      "lat": 45.40545,
+      "lon": 4.75557,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:ST-ALBAN-ST-MAURICE",
+      "placementName": "ST-ALBAN-ST-MAURICE",
+      "anchorKm": 2.33,
+      "supersededOsmKm": 0.26
+    },
+    {
+      "id": "PENLY",
+      "name": "Centrale nucléaire de Penly",
+      "class": "nuclear",
+      "mw": 2660,
+      "units": [
+        "17W100P100P0143N",
+        "17W100P100P0144L"
+      ],
+      "commune": "Petit-Caux",
+      "insee": "76618",
+      "departement": "Seine-Maritime",
+      "region": "Normandie",
+      "classMix": {
+        "nuclear": 2660
+      },
+      "lat": 49.97614,
+      "lon": 1.21024,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:PENLY",
+      "placementName": "PENLY",
+      "anchorKm": 2.39,
+      "supersededOsmKm": 0.55
+    },
+    {
+      "id": "BVIL7",
+      "name": "Centrale nucléaire de Belleville (Belleville-sur-Loire)",
+      "class": "nuclear",
+      "mw": 2620,
+      "units": [
+        "17W100P100P0090I",
+        "17W100P100P0091G"
+      ],
+      "commune": "Belleville-sur-Loire",
+      "insee": "18026",
+      "departement": "Cher",
+      "region": "Centre-Val de Loire",
+      "classMix": {
+        "nuclear": 2620
+      },
+      "lat": 47.50895,
+      "lon": 2.87568,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:BELLEVILLE",
+      "placementName": "BELLEVILLE",
+      "anchorKm": 2.98,
+      "supersededOsmKm": 0.07
+    },
+    {
+      "id": "GOLF5",
+      "name": "Centrale nucléaire de Golfech",
+      "class": "nuclear",
+      "mw": 2620,
+      "units": [
+        "17W100P100P0128J",
+        "17W100P100P0129H"
+      ],
+      "commune": "Golfech",
+      "insee": "82072",
+      "departement": "Tarn-et-Garonne",
+      "region": "Occitanie",
+      "classMix": {
+        "nuclear": 2620
+      },
+      "lat": 44.10575,
+      "lon": 0.84572,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:GOLFECH",
+      "placementName": "GOLFECH",
+      "anchorKm": 1.06,
+      "supersededOsmKm": 0.22
+    },
+    {
+      "id": "N.SE5",
+      "name": "Centrale nucléaire de Nogent-sur-Seine",
+      "class": "nuclear",
+      "mw": 2620,
+      "units": [
+        "17W100P100P0137I",
+        "17W100P100P0138G"
+      ],
+      "commune": "Nogent-sur-Seine",
+      "insee": "10268",
+      "departement": "Aube",
+      "region": "Grand Est",
+      "classMix": {
+        "nuclear": 2620
+      },
+      "lat": 48.51458,
+      "lon": 3.52418,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:NOGENT-SUR-SEINE",
+      "placementName": "NOGENT-SUR-SEINE",
+      "anchorKm": 2.89,
+      "supersededOsmKm": 0.62
+    },
+    {
+      "id": "SSEA2",
+      "name": "Centrale nucléaire de St-Laurent-des-Eaux B",
+      "class": "nuclear",
+      "mw": 1830,
+      "units": [
+        "17W100P100P0147F",
+        "17W100P100P0148D"
+      ],
+      "commune": "Saint-Laurent-Nouan",
+      "insee": "41220",
+      "departement": "Loir-et-Cher",
+      "region": "Centre-Val de Loire",
+      "classMix": {
+        "nuclear": 1830
+      },
+      "lat": 47.72025,
+      "lon": 1.58022,
+      "placement": "edf-published",
+      "placementRef": "edf:nucleaire:ST-LAURENT-DES-EAUX B",
+      "placementName": "ST-LAURENT-DES-EAUX B",
+      "anchorKm": 4.29,
+      "supersededOsmKm": 0.1
+    },
+    {
+      "id": "VAUJA",
+      "name": "Station de pompage de Grand-Maison",
+      "class": "hydro-pumped",
+      "mw": 1690,
+      "units": [
+        "17W100P100P02756"
+      ],
+      "commune": "Vaujany",
+      "insee": "38527",
+      "departement": "Isère",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-pumped": 1690
+      },
+      "lat": 45.14579,
+      "lon": 6.05116,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:GRAND-MAISON",
+      "placementName": "GRAND-MAISON",
+      "anchorKm": 6.07,
+      "supersededOsmKm": 5.9
+    },
+    {
+      "id": "E.HUC",
+      "name": "Centrale thermique d’Emile-Huchet",
+      "class": "fossil-gas",
+      "mw": 1467.8,
+      "units": [
+        "17W100P100P0005Z",
+        "17W100P100P00105",
+        "17W100P100P00113"
+      ],
+      "commune": "Saint-Avold",
+      "insee": "57606",
+      "departement": "Moselle",
+      "region": "Grand Est",
+      "classMix": {
+        "fossil-gas": 867.8,
+        "fossil-coal": 600
+      },
+      "lat": 49.1279,
+      "lon": 6.7088,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:57606",
+      "placementName": "Saint-Avold",
+      "anchorKm": 0
+    },
+    {
+      "id": "CORD5",
+      "name": "Centrale thermique de Cordemais",
+      "class": "fossil-coal",
+      "mw": 1160,
+      "units": [
+        "17W100P100P0017S",
+        "17W100P100P0018Q"
+      ],
+      "commune": "Cordemais",
+      "insee": "44045",
+      "departement": "Loire-Atlantique",
+      "region": "Pays de la Loire",
+      "classMix": {
+        "fossil-coal": 1160
+      },
+      "lat": 47.27513,
+      "lon": -1.87459,
+      "placement": "edf-published",
+      "placementRef": "edf:thermique:CORDEMAIS",
+      "placementName": "CORDEMAIS",
+      "anchorKm": 3.52,
+      "supersededOsmKm": null
+    },
+    {
+      "id": "BOUCH",
+      "name": "Centrale thermique de Bouchain",
+      "class": "fossil-gas",
+      "mw": 1063,
+      "units": [
+        "17W100P100P01768",
+        "17W000000012237D",
+        "17W000000012843V"
+      ],
+      "commune": "Bouchain",
+      "insee": "59092",
+      "departement": "Nord",
+      "region": "Hauts-de-France",
+      "classMix": {
+        "fossil-gas": 563,
+        "fossil-coal": 500
+      },
+      "lat": 50.2963,
+      "lon": 3.31519,
+      "placement": "edf-published",
+      "placementRef": "edf:thermique:BOUCHAIN",
+      "placementName": "BOUCHAIN",
+      "anchorKm": 1.98,
+      "supersededOsmKm": 0.28
+    },
+    {
+      "id": "M.PON",
+      "name": "Centrale thermique de Martigues-Ponteau (Tac)",
+      "class": "fossil-gas",
+      "mw": 990,
+      "units": [
+        "17W100P100P2114K",
+        "17W100P100P2115I",
+        "17W100P100P2116G",
+        "17W100P100P2117E"
+      ],
+      "commune": "Martigues",
+      "insee": "13056",
+      "departement": "Bouches-du-Rhône",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "fossil-gas": 990
+      },
+      "lat": 43.3584,
+      "lon": 5.02132,
+      "placement": "edf-published",
+      "placementRef": "edf:thermique:MARTIGUES-PONTEAU",
+      "placementName": "MARTIGUES-PONTEAU",
+      "anchorKm": 3.43,
+      "supersededOsmKm": 0.14
+    },
+    {
+      "id": "MTEZI",
+      "name": "Station de pompage de Montezic",
+      "class": "hydro-pumped",
+      "mw": 910,
+      "units": [
+        "17W100P100P02772"
+      ],
+      "commune": "Montézic",
+      "insee": "12151",
+      "departement": "Aveyron",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-pumped": 910
+      },
+      "lat": 44.72929,
+      "lon": 2.64377,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:MONTEZIC",
+      "placementName": "MONTEZIC",
+      "anchorKm": 1,
+      "supersededOsmKm": 1.29
+    },
+    {
+      "id": "BRAEK",
+      "name": "Centrale thermique de Braek",
+      "class": "fossil-gas",
+      "mw": 808,
+      "units": [
+        "17W100P100P0330O",
+        "17W100P100P0331M",
+        "17W100P100P0332K",
+        "17W100P100P0333I"
+      ],
+      "commune": "Grande-Synthe",
+      "insee": "59271",
+      "departement": "Nord",
+      "region": "Hauts-de-France",
+      "classMix": {
+        "fossil-gas": 808
+      },
+      "lat": 51.03718,
+      "lon": 2.29438,
+      "placement": "rte-switchyard",
+      "placementRef": "way/818615581",
+      "placementName": "Poste électrique de Braek",
+      "anchorKm": 2.39
+    },
+    {
+      "id": "REVI5",
+      "name": "Station de pompage de Revin",
+      "class": "hydro-pumped",
+      "mw": 808,
+      "units": [
+        "17W100P100P02780"
+      ],
+      "commune": "Les Mazures",
+      "insee": "08284",
+      "departement": "Ardennes",
+      "region": "Grand Est",
+      "classMix": {
+        "hydro-pumped": 808
+      },
+      "lat": 49.92557,
+      "lon": 4.61328,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:REVIN",
+      "placementName": "REVIN",
+      "anchorKm": 3.72,
+      "supersededOsmKm": 0.89
+    },
+    {
+      "id": "P.AND",
+      "name": "Station de pompage de Super-Bissorte",
+      "class": "hydro-pumped",
+      "mw": 742.3,
+      "units": [
+        "17W100P100P02764"
+      ],
+      "commune": "Saint-André",
+      "insee": "73223",
+      "departement": "Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-pumped": 742.3
+      },
+      "lat": 45.20144,
+      "lon": 6.57718,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SUPER-BISSORTE",
+      "placementName": "SUPER-BISSORTE",
+      "anchorKm": 4.21,
+      "supersededOsmKm": 1.73
+    },
+    {
+      "id": "VAIRE",
+      "name": "Centrale thermique de Vaires-sur-Marne",
+      "class": "fossil-oil",
+      "mw": 600,
+      "units": [
+        "17W100P100P0046L",
+        "17W100P100P0047J",
+        "17W100P100P0048H"
+      ],
+      "commune": "Vaires-sur-Marne",
+      "insee": "77479",
+      "departement": "Seine-et-Marne",
+      "region": "Île-de-France",
+      "classMix": {
+        "fossil-oil": 600
+      },
+      "lat": 48.87179,
+      "lon": 2.65263,
+      "placement": "edf-published",
+      "placementRef": "edf:thermique:VAIRES SUR MARNE",
+      "placementName": "VAIRES SUR MARNE",
+      "anchorKm": 1.43,
+      "supersededOsmKm": 0.36
+    },
+    {
+      "id": "BATHI",
+      "name": "Centrale hydraulique de la Bathie",
+      "class": "hydro-reservoir",
+      "mw": 546,
+      "units": [
+        "17W000000012851W",
+        "17W000000012975E"
+      ],
+      "commune": "La Bâthie",
+      "insee": "73032",
+      "departement": "Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-reservoir": 546
+      },
+      "lat": 45.64527,
+      "lon": 6.44493,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:BATHIE (LA)",
+      "placementName": "BATHIE (LA)",
+      "anchorKm": 3.15,
+      "supersededOsmKm": 8.26
+    },
+    {
+      "id": "MAXE",
+      "name": "Centrale thermique de la Maxe",
+      "class": "fossil-coal",
+      "mw": 500,
+      "units": [
+        "17W000000012673U",
+        "17W000000012683R"
+      ],
+      "commune": "La Maxe",
+      "insee": "57452",
+      "departement": "Moselle",
+      "region": "Grand Est",
+      "classMix": {
+        "fossil-coal": 500
+      },
+      "lat": 49.1604,
+      "lon": 6.1901,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:57452",
+      "placementName": "La Maxe",
+      "anchorKm": 0
+    },
+    {
+      "id": "V.ILE",
+      "name": "Ferme éolienne de Vent-des-Iles",
+      "class": "wind",
+      "mw": 500,
+      "units": [
+        "17W000002144986W",
+        "17W000002144987U"
+      ],
+      "commune": "La Barre-de-Monts",
+      "insee": "85012",
+      "departement": "Vendée",
+      "region": "Pays de la Loire",
+      "classMix": {
+        "wind": 500
+      },
+      "lat": 46.8741,
+      "lon": -2.0915,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:85012",
+      "placementName": "La Barre-de-Monts",
+      "anchorKm": 0
+    },
+    {
+      "id": "H.FAL",
+      "name": "Ferme éolienne de Hautes - Falaises",
+      "class": "wind",
+      "mw": 497,
+      "units": [
+        "17W000001445569U",
+        "17W0000014455708"
+      ],
+      "commune": "Fécamp",
+      "insee": "76259",
+      "departement": "Seine-Maritime",
+      "region": "Normandie",
+      "classMix": {
+        "wind": 497
+      },
+      "lat": 49.90219,
+      "lon": 0.26845,
+      "placement": "rte-switchyard",
+      "placementRef": "node/11030514252",
+      "placementName": "Fécamp Substation",
+      "anchorKm": 19.62
+    },
+    {
+      "id": "B.SSB",
+      "name": "Ferme éolienne de Baie-de-St-Brieuc",
+      "class": "wind",
+      "mw": 496,
+      "units": [
+        "17W100P100P0842Y",
+        "17W100P100P3382R"
+      ],
+      "commune": "Erquy",
+      "insee": "22054",
+      "departement": "Côtes-d'Armor",
+      "region": "Bretagne",
+      "classMix": {
+        "wind": 496
+      },
+      "lat": 48.618,
+      "lon": -2.4571,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:22054",
+      "placementName": "Erquy",
+      "anchorKm": 0
+    },
+    {
+      "id": "CHEY6",
+      "name": "Station de pompage du Cheylas",
+      "class": "hydro-pumped",
+      "mw": 485,
+      "units": [
+        "17W100P100P0273A"
+      ],
+      "commune": "Le Cheylas",
+      "insee": "38100",
+      "departement": "Isère",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-pumped": 485
+      },
+      "lat": 45.38458,
+      "lon": 6.00092,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:CHEYLAS (LE)",
+      "placementName": "CHEYLAS (LE)",
+      "anchorKm": 0.6,
+      "supersededOsmKm": 1.96
+    },
+    {
+      "id": "B.GUE",
+      "name": "Ferme éolienne de Banc-de-Guerande",
+      "class": "wind",
+      "mw": 480,
+      "units": [
+        "17W000001445567Y",
+        "17W0000014455651"
+      ],
+      "commune": "Saint-Nazaire",
+      "insee": "44184",
+      "departement": "Loire-Atlantique",
+      "region": "Pays de la Loire",
+      "classMix": {
+        "wind": 480
+      },
+      "lat": 47.2768,
+      "lon": -2.2392,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:44184",
+      "placementName": "Saint-Nazaire",
+      "anchorKm": 0
+    },
+    {
+      "id": "GRACI",
+      "name": "Centrale thermique de la Gracieuse",
+      "class": "fossil-gas",
+      "mw": 453,
+      "units": [
+        "17W100P100P01679"
+      ],
+      "commune": "Fos-sur-Mer",
+      "insee": "13039",
+      "departement": "Bouches-du-Rhône",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "fossil-gas": 453
+      },
+      "lat": 43.4086,
+      "lon": 4.8678,
+      "placement": "rte-switchyard",
+      "placementRef": "way/182939731",
+      "placementName": null,
+      "anchorKm": 5.65
+    },
+    {
+      "id": "RICHI",
+      "name": "Centrale thermique de Richier",
+      "class": "fossil-gas",
+      "mw": 451,
+      "units": [
+        "17W100P100P03388"
+      ],
+      "commune": "Fos-sur-Mer",
+      "insee": "13039",
+      "departement": "Bouches-du-Rhône",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "fossil-gas": 451
+      },
+      "lat": 43.45335,
+      "lon": 4.89969,
+      "placement": "rte-switchyard",
+      "placementRef": "way/139251095",
+      "placementName": null,
+      "anchorKm": 0.19
+    },
+    {
+      "id": "BLENO",
+      "name": "Centrale thermique de Blenod",
+      "class": "fossil-gas",
+      "mw": 450.5,
+      "units": [
+        "17W100P100P2608W",
+        "17W100P100P04740"
+      ],
+      "commune": "Blénod-lès-Pont-à-Mousson",
+      "insee": "54079",
+      "departement": "Meurthe-et-Moselle",
+      "region": "Grand Est",
+      "classMix": {
+        "fossil-gas": 450.5
+      },
+      "lat": 48.86655,
+      "lon": 6.07824,
+      "placement": "edf-published",
+      "placementRef": "edf:thermique:BLENOD",
+      "placementName": "BLENOD",
+      "anchorKm": 1.4,
+      "supersededOsmKm": 0.41
+    },
+    {
+      "id": "QUAR5",
+      "name": "Centrale thermique de Quartes",
+      "class": "fossil-gas",
+      "mw": 450,
+      "units": [
+        "17W100P100P00016"
+      ],
+      "commune": "Pont-sur-Sambre",
+      "insee": "59467",
+      "departement": "Nord",
+      "region": "Hauts-de-France",
+      "classMix": {
+        "fossil-gas": 450
+      },
+      "lat": 50.2307,
+      "lon": 3.8484,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:59467",
+      "placementName": "Pont-sur-Sambre",
+      "anchorKm": 0
+    },
+    {
+      "id": "POUGE",
+      "name": "Centrale hydraulique du Pouget",
+      "class": "hydro-reservoir",
+      "mw": 446.9,
+      "units": [
+        "17W100P100P0290A"
+      ],
+      "commune": "Le Truel",
+      "insee": "12284",
+      "departement": "Aveyron",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-reservoir": 446.9
+      },
+      "lat": 44.05895,
+      "lon": 2.76856,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:POUGET (LE)",
+      "placementName": "POUGET (LE)",
+      "anchorKm": 1.47,
+      "supersededOsmKm": 4.83
+    },
+    {
+      "id": "G.RIV",
+      "name": "Centrale thermique de Grandes-Rivieres",
+      "class": "fossil-gas",
+      "mw": 446,
+      "units": [
+        "17W100P100P0171I"
+      ],
+      "commune": "Montoir-de-Bretagne",
+      "insee": "44103",
+      "departement": "Loire-Atlantique",
+      "region": "Pays de la Loire",
+      "classMix": {
+        "fossil-gas": 446
+      },
+      "lat": 47.30667,
+      "lon": -2.13659,
+      "placement": "rte-switchyard",
+      "placementRef": "way/545376170",
+      "placementName": "Poste électrique de Grandes-Rivières",
+      "anchorKm": 2.31
+    },
+    {
+      "id": "PONAN",
+      "name": "Centrale thermique de Ponant",
+      "class": "fossil-gas",
+      "mw": 446,
+      "units": [
+        "17W000001023725I"
+      ],
+      "commune": "Landivisiau",
+      "insee": "29105",
+      "departement": "Finistère",
+      "region": "Bretagne",
+      "classMix": {
+        "fossil-gas": 446
+      },
+      "lat": 48.52227,
+      "lon": -4.07261,
+      "placement": "rte-switchyard",
+      "placementRef": "way/1010338785",
+      "placementName": null,
+      "anchorKm": 1.05
+    },
+    {
+      "id": "MORA5",
+      "name": "Centrale thermique des Morandes",
+      "class": "fossil-gas",
+      "mw": 442,
+      "units": [
+        "17W000000918390N"
+      ],
+      "commune": "Bayet",
+      "insee": "03018",
+      "departement": "Allier",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "fossil-gas": 442
+      },
+      "lat": 46.27248,
+      "lon": 3.30154,
+      "placement": "rte-switchyard",
+      "placementRef": "way/1081289667",
+      "placementName": null,
+      "anchorKm": 2.53
+    },
+    {
+      "id": "C.ME5",
+      "name": "Centrale thermique de Croix-de-Metz (Centrale)",
+      "class": "fossil-gas",
+      "mw": 440,
+      "units": [
+        "17W000000918406Y"
+      ],
+      "commune": "Toul",
+      "insee": "54528",
+      "departement": "Meurthe-et-Moselle",
+      "region": "Grand Est",
+      "classMix": {
+        "fossil-gas": 440
+      },
+      "lat": 48.6794,
+      "lon": 5.898,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:54528",
+      "placementName": "Toul",
+      "anchorKm": 0
+    },
+    {
+      "id": "BROMM",
+      "name": "Centrale hydraulique de Brommat",
+      "class": "hydro-reservoir",
+      "mw": 406,
+      "units": [
+        "17W000000012816Y",
+        "17W000000012953O"
+      ],
+      "commune": "Brommat",
+      "insee": "12036",
+      "departement": "Aveyron",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-reservoir": 406
+      },
+      "lat": 44.76757,
+      "lon": 2.68354,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:BROMMAT",
+      "placementName": "BROMMAT",
+      "anchorKm": 5.92,
+      "supersededOsmKm": 2.18
+    },
+    {
+      "id": "GEN.P",
+      "name": "Centrale hydraulique de Genissiat",
+      "class": "hydro-reservoir",
+      "mw": 405,
+      "units": [
+        "17W100P100P0319C"
+      ],
+      "commune": "Injoux-Génissiat",
+      "insee": "01189",
+      "departement": "Ain",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-reservoir": 405
+      },
+      "lat": 46.05239,
+      "lon": 5.81269,
+      "placement": "osm-plant",
+      "placementRef": "way/80667335",
+      "placementName": "Barrage de Génissiat",
+      "anchorKm": 3.47
+    },
+    {
+      "id": "MTERE",
+      "name": "Centrale thermique de Montereau",
+      "class": "fossil-gas",
+      "mw": 400,
+      "units": [
+        "17W100P100P0040X",
+        "17W100P100P0041V"
+      ],
+      "commune": "Vernou-la-Celle-sur-Seine",
+      "insee": "77494",
+      "departement": "Seine-et-Marne",
+      "region": "Île-de-France",
+      "classMix": {
+        "fossil-gas": 400
+      },
+      "lat": 48.38207,
+      "lon": 2.84779,
+      "placement": "edf-published",
+      "placementRef": "edf:thermique:MONTEREAU",
+      "placementName": "MONTEREAU",
+      "anchorKm": 2.65,
+      "supersededOsmKm": null
+    },
+    {
+      "id": "COCHE",
+      "name": "Station de pompage de la Coche",
+      "class": "hydro-pumped",
+      "mw": 384,
+      "units": [
+        "17W100P100P02748"
+      ],
+      "commune": "Grand-Aigueblanche",
+      "insee": "73003",
+      "departement": "Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-pumped": 384
+      },
+      "lat": 45.49436,
+      "lon": 6.51248,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:COCHE (LA)",
+      "placementName": "COCHE (LA)",
+      "anchorKm": 2.32,
+      "supersededOsmKm": 1.3
+    },
+    {
+      "id": "S.PON",
+      "name": "Centrale hydraulique de Serre-Poncon",
+      "class": "hydro-reservoir",
+      "mw": 370,
+      "units": [
+        "17W100P100P02926"
+      ],
+      "commune": "Ubaye-Serre-Ponçon",
+      "insee": "04033",
+      "departement": "Alpes-de-Haute-Provence",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "hydro-reservoir": 370
+      },
+      "lat": 44.4693,
+      "lon": 6.27265,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SERRE-PONCON",
+      "placementName": "SERRE-PONCON",
+      "anchorKm": 4.58,
+      "supersededOsmKm": 0.15
+    },
+    {
+      "id": "MTEYN",
+      "name": "Centrale hydraulique de Monteynard",
+      "class": "hydro-reservoir",
+      "mw": 366,
+      "units": [
+        "17W100P100P02861"
+      ],
+      "commune": "Monteynard",
+      "insee": "38254",
+      "departement": "Isère",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-reservoir": 366
+      },
+      "lat": 44.96171,
+      "lon": 5.68839,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:MONTEYNARD",
+      "placementName": "MONTEYNARD",
+      "anchorKm": 2.27,
+      "supersededOsmKm": 0.02
+    },
+    {
+      "id": "BREUI",
+      "name": "Centrale hydraulique de l’Aigle",
+      "class": "hydro-reservoir",
+      "mw": 360,
+      "units": [
+        "17W100P100P0279Z"
+      ],
+      "commune": "Soursac",
+      "insee": "19264",
+      "departement": "Corrèze",
+      "region": "Nouvelle-Aquitaine",
+      "classMix": {
+        "hydro-reservoir": 360
+      },
+      "lat": 45.24325,
+      "lon": 2.2248,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:AIGLE (L')",
+      "placementName": "AIGLE (L')",
+      "anchorKm": 3.12,
+      "supersededOsmKm": 0.06
+    },
+    {
+      "id": "VLARO",
+      "name": "Centrale hydraulique de Villarodin",
+      "class": "hydro-reservoir",
+      "mw": 357,
+      "units": [
+        "17W100P100P0300X"
+      ],
+      "commune": "Avrieux",
+      "insee": "73026",
+      "departement": "Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-reservoir": 357
+      },
+      "lat": 45.21263,
+      "lon": 6.71627,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:VILLARODIN",
+      "placementName": "VILLARODIN",
+      "anchorKm": 4.11,
+      "supersededOsmKm": 9.48
+    },
+    {
+      "id": "BOLL5",
+      "name": "Centrale hydraulique de Bollene (Specialise)",
+      "class": "hydro-run-of-river",
+      "mw": 345,
+      "units": [
+        "17W100P100P0324J"
+      ],
+      "commune": "Bollène",
+      "insee": "84019",
+      "departement": "Vaucluse",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "hydro-run-of-river": 345
+      },
+      "lat": 44.3034,
+      "lon": 4.73526,
+      "placement": "rte-switchyard",
+      "placementRef": "way/148059537",
+      "placementName": "Poste électrique de Bollène",
+      "anchorKm": 2.08
+    },
+    {
+      "id": "MALGO",
+      "name": "Centrale hydraulique de Malgovert",
+      "class": "hydro-reservoir",
+      "mw": 297,
+      "units": [
+        "17W100P100P02853"
+      ],
+      "commune": "Séez",
+      "insee": "73285",
+      "departement": "Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-reservoir": 297
+      },
+      "lat": 45.61786,
+      "lon": 6.79058,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:MALGOVERT",
+      "placementName": "MALGOVERT",
+      "anchorKm": 5.12,
+      "supersededOsmKm": 0.03
+    },
+    {
+      "id": "CHAST",
+      "name": "Centrale hydraulique du Chastang",
+      "class": "hydro-run-of-river",
+      "mw": 293,
+      "units": [
+        "17W100P100P0302T"
+      ],
+      "commune": "Saint-Martin-la-Méanne",
+      "insee": "19222",
+      "departement": "Corrèze",
+      "region": "Nouvelle-Aquitaine",
+      "classMix": {
+        "hydro-run-of-river": 293
+      },
+      "lat": 45.15095,
+      "lon": 2.00913,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:CHASTANG (LE)",
+      "placementName": "CHASTANG (LE)",
+      "anchorKm": 2.28,
+      "supersededOsmKm": 0.09
+    },
+    {
+      "id": "C.RHO",
+      "name": "Centrale hydraulique de Chateauneuf-du-Rhone",
+      "class": "hydro-run-of-river",
+      "mw": 285,
+      "units": [
+        "17W100P100P0323L"
+      ],
+      "commune": "Châteauneuf-du-Rhône",
+      "insee": "26085",
+      "departement": "Drôme",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-run-of-river": 285
+      },
+      "lat": 44.49895,
+      "lon": 4.70821,
+      "placement": "osm-plant",
+      "placementRef": "relation/6014338",
+      "placementName": "Centrale de Châteauneuf-du-Rhone",
+      "anchorKm": 1.96
+    },
+    {
+      "id": "VOUGL",
+      "name": "Centrale hydraulique de Vouglans",
+      "class": "hydro-reservoir",
+      "mw": 285,
+      "units": [
+        "17W100P100P0301V"
+      ],
+      "commune": "Cernon",
+      "insee": "39086",
+      "departement": "Jura",
+      "region": "Bourgogne-Franche-Comté",
+      "classMix": {
+        "hydro-reservoir": 285
+      },
+      "lat": 46.39651,
+      "lon": 5.66337,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:VOUGLANS",
+      "placementName": "VOUGLANS",
+      "anchorKm": 2.05,
+      "supersededOsmKm": 4.7
+    },
+    {
+      "id": "AMFAR",
+      "name": "Centrale thermique d’Amfard",
+      "class": "fossil-gas",
+      "mw": 250,
+      "units": [
+        "17W000001468589Y",
+        "17W000001468590C"
+      ],
+      "commune": "Gonfreville-l'Orcher",
+      "insee": "76305",
+      "departement": "Seine-Maritime",
+      "region": "Normandie",
+      "classMix": {
+        "fossil-gas": 250
+      },
+      "lat": 49.4941,
+      "lon": 0.2176,
+      "placement": "osm-plant",
+      "placementRef": "way/440871654",
+      "placementName": "Centrale thermique d'Amfard",
+      "anchorKm": 0.86
+    },
+    {
+      "id": "ARRI5",
+      "name": "Centrale thermique d’Arrighi (Tac 1)",
+      "class": "fossil-oil",
+      "mw": 250,
+      "units": [
+        "17W100P100P0031Y",
+        "17W100P100P0032W"
+      ],
+      "commune": "Vitry-sur-Seine",
+      "insee": "94081",
+      "departement": "Val-de-Marne",
+      "region": "Île-de-France",
+      "classMix": {
+        "fossil-oil": 250
+      },
+      "lat": 48.79155,
+      "lon": 2.41714,
+      "placement": "edf-published",
+      "placementRef": "edf:thermique:ARRIGHI",
+      "placementName": "ARRIGHI",
+      "anchorKm": 1.63,
+      "supersededOsmKm": 0.54
+    },
+    {
+      "id": "R.DIE",
+      "name": "Ferme éolienne de Ridens-de-Dieppe",
+      "class": "wind",
+      "mw": 248,
+      "units": [
+        "17W100P100P21629"
+      ],
+      "commune": "Petit-Caux",
+      "insee": "76618",
+      "departement": "Seine-Maritime",
+      "region": "Normandie",
+      "classMix": {
+        "wind": 248
+      },
+      "lat": 49.9612,
+      "lon": 1.2343,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:76618",
+      "placementName": "Petit-Caux",
+      "anchorKm": 0
+    },
+    {
+      "id": "GENN3",
+      "name": "Centrale thermique de Gennevilliers (Turbine A Gaz)",
+      "class": "fossil-gas",
+      "mw": 240.7,
+      "units": [
+        "17W100P100P0037M"
+      ],
+      "commune": "Gennevilliers",
+      "insee": "92036",
+      "departement": "Hauts-de-Seine",
+      "region": "Île-de-France",
+      "classMix": {
+        "fossil-gas": 240.7
+      },
+      "lat": 48.93719,
+      "lon": 2.26176,
+      "placement": "edf-published",
+      "placementRef": "edf:thermique:GENNEVILLIERS",
+      "placementName": "GENNEVILLIERS",
+      "anchorKm": 2.01,
+      "supersededOsmKm": null
+    },
+    {
+      "id": "RANCE",
+      "name": "Usine marémotrice de Rance",
+      "class": "marine",
+      "mw": 240,
+      "units": [
+        "17W100P100P0272C"
+      ],
+      "commune": "La Richardais",
+      "insee": "35241",
+      "departement": "Ille-et-Vilaine",
+      "region": "Bretagne",
+      "classMix": {
+        "marine": 240
+      },
+      "lat": 48.6178,
+      "lon": -2.02543,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:RANCE",
+      "placementName": "RANCE",
+      "anchorKm": 1.56,
+      "supersededOsmKm": 0.06
+    },
+    {
+      "id": "SSLAI",
+      "name": "Stockage de Saint-Laid",
+      "class": "battery",
+      "mw": 240,
+      "units": [
+        "17W000002385265P"
+      ],
+      "commune": "Cernay-lès-Reims",
+      "insee": "51105",
+      "departement": "Marne",
+      "region": "Grand Est",
+      "classMix": {
+        "battery": 240
+      },
+      "lat": 49.2539,
+      "lon": 4.1078,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:51105",
+      "placementName": "Cernay-lès-Reims",
+      "anchorKm": 0
+    },
+    {
+      "id": "BORT",
+      "name": "Centrale hydraulique de Bort",
+      "class": "hydro-reservoir",
+      "mw": 232.2,
+      "units": [
+        "17W100P100P0281B"
+      ],
+      "commune": "Bort-les-Orgues",
+      "insee": "19028",
+      "departement": "Corrèze",
+      "region": "Nouvelle-Aquitaine",
+      "classMix": {
+        "hydro-reservoir": 232.2
+      },
+      "lat": 45.4129,
+      "lon": 2.49842,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:BORT",
+      "placementName": "BORT",
+      "anchorKm": 2.36,
+      "supersededOsmKm": 0.02
+    },
+    {
+      "id": "BXCHA",
+      "name": "Centrale hydraulique de Beauchastel",
+      "class": "hydro-run-of-river",
+      "mw": 222,
+      "units": [
+        "17W000000012863P"
+      ],
+      "commune": "Beauchastel",
+      "insee": "07027",
+      "departement": "Ardèche",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-run-of-river": 222
+      },
+      "lat": 44.82375,
+      "lon": 4.81144,
+      "placement": "osm-plant",
+      "placementRef": "way/135245012",
+      "placementName": "Usine hydroélectrique de Beauchastel",
+      "anchorKm": 1.69
+    },
+    {
+      "id": "SISTE",
+      "name": "Centrale hydraulique de Sisteron",
+      "class": "hydro-reservoir",
+      "mw": 214,
+      "units": [
+        "17W100P100P02942"
+      ],
+      "commune": "Sisteron",
+      "insee": "04209",
+      "departement": "Alpes-de-Haute-Provence",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "hydro-reservoir": 214
+      },
+      "lat": 44.20788,
+      "lon": 5.91858,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SISTERON",
+      "placementName": "SISTERON",
+      "anchorKm": 1.19,
+      "supersededOsmKm": 0.48
+    },
+    {
+      "id": "INSEE:97103",
+      "name": "Centrale thermique · Baie-Mahault",
+      "class": "fossil-gas",
+      "mw": 211,
+      "units": [
+        "17W000002341295N"
+      ],
+      "commune": "Baie-Mahault",
+      "insee": "97103",
+      "departement": "Guadeloupe",
+      "region": "Guadeloupe",
+      "classMix": {
+        "fossil-gas": 211
+      },
+      "lat": 16.2498,
+      "lon": -61.5951,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:97103",
+      "placementName": "Baie-Mahault",
+      "anchorKm": 0
+    },
+    {
+      "id": "INSEE:97234",
+      "name": "Centrale thermique · Bellefontaine",
+      "class": "fossil-gas",
+      "mw": 211,
+      "units": [
+        "17W000002341296L"
+      ],
+      "commune": "Bellefontaine",
+      "insee": "97234",
+      "departement": "Martinique",
+      "region": "Martinique",
+      "classMix": {
+        "fossil-gas": 211
+      },
+      "lat": 14.6747,
+      "lon": -61.146,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:97234",
+      "placementName": "Bellefontaine",
+      "anchorKm": 0
+    },
+    {
+      "id": "INSEE:97407",
+      "name": "Centrale biomasse · Le Port",
+      "class": "biomass",
+      "mw": 211,
+      "units": [
+        "17W000002341297J"
+      ],
+      "commune": "Le Port",
+      "insee": "97407",
+      "departement": "La Réunion",
+      "region": "La Réunion",
+      "classMix": {
+        "biomass": 211
+      },
+      "lat": -20.9459,
+      "lon": 55.3038,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:97407",
+      "placementName": "Le Port",
+      "anchorKm": 0
+    },
+    {
+      "id": "BXCAI",
+      "name": "Centrale hydraulique de Beaucaire",
+      "class": "hydro-run-of-river",
+      "mw": 210,
+      "units": [
+        "17W100P100P0327D"
+      ],
+      "commune": "Beaucaire",
+      "insee": "30032",
+      "departement": "Gard",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-run-of-river": 210
+      },
+      "lat": 43.8244,
+      "lon": 4.64384,
+      "placement": "osm-plant",
+      "placementRef": "way/392308130",
+      "placementName": "Centrale Hydroélectrique de Beaucaire",
+      "anchorKm": 6.37
+    },
+    {
+      "id": "VALLO",
+      "name": "Centrale hydraulique de Vallorcine",
+      "class": "hydro-reservoir",
+      "mw": 190,
+      "units": [
+        "17W000000012872O"
+      ],
+      "commune": "Vallorcine",
+      "insee": "74290",
+      "departement": "Haute-Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-reservoir": 190
+      },
+      "lat": 46.03543,
+      "lon": 6.93779,
+      "placement": "osm-plant",
+      "placementRef": "relation/8277085",
+      "placementName": "Centrale de Châtelard-Vallorcine",
+      "anchorKm": 2.8
+    },
+    {
+      "id": "PRAGN",
+      "name": "Centrale hydraulique de Pragneres",
+      "class": "hydro-reservoir",
+      "mw": 188.9,
+      "units": [
+        "17W100P100P02918"
+      ],
+      "commune": "Gavarnie-Gèdre",
+      "insee": "65192",
+      "departement": "Hautes-Pyrénées",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-reservoir": 188.9
+      },
+      "lat": 42.82083,
+      "lon": 0.01075,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:PRAGNERES",
+      "placementName": "PRAGNERES",
+      "anchorKm": 7.21,
+      "supersededOsmKm": 1.17
+    },
+    {
+      "id": "ORAIS",
+      "name": "Centrale hydraulique d’Oraison",
+      "class": "hydro-reservoir",
+      "mw": 187,
+      "units": [
+        "17W100P100P0288Y"
+      ],
+      "commune": "Oraison",
+      "insee": "04143",
+      "departement": "Alpes-de-Haute-Provence",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "hydro-reservoir": 187
+      },
+      "lat": 43.92113,
+      "lon": 5.92413,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:ORAISON",
+      "placementName": "ORAISON",
+      "anchorKm": 1.06,
+      "supersededOsmKm": 0.11
+    },
+    {
+      "id": "B.VAL",
+      "name": "Centrale hydraulique de Bourg-les-Valence",
+      "class": "hydro-run-of-river",
+      "mw": 186,
+      "units": [
+        "17W100P100P0320R"
+      ],
+      "commune": "Bourg-lès-Valence",
+      "insee": "26058",
+      "departement": "Drôme",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-run-of-river": 186
+      },
+      "lat": 44.96119,
+      "lon": 4.87183,
+      "placement": "osm-plant",
+      "placementRef": "way/133151103",
+      "placementName": "Centrale électrique de Bourg-lès-Valence",
+      "anchorKm": 1.46
+    },
+    {
+      "id": "SARRA",
+      "name": "Centrale hydraulique de Sarrans",
+      "class": "hydro-reservoir",
+      "mw": 183,
+      "units": [
+        "17W100P100P02934"
+      ],
+      "commune": "Brommat",
+      "insee": "12036",
+      "departement": "Aveyron",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-reservoir": 183
+      },
+      "lat": 44.82869,
+      "lon": 2.74005,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SARRANS",
+      "placementName": "SARRANS",
+      "anchorKm": 2.79,
+      "supersededOsmKm": 0.1
+    },
+    {
+      "id": "FESSE",
+      "name": "Centrale hydraulique de Fessenheim",
+      "class": "hydro-run-of-river",
+      "mw": 175,
+      "units": [
+        "17W100P100P0303R"
+      ],
+      "commune": "Fessenheim",
+      "insee": "68091",
+      "departement": "Haut-Rhin",
+      "region": "Grand Est",
+      "classMix": {
+        "hydro-run-of-river": 175
+      },
+      "lat": 47.91509,
+      "lon": 7.57054,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:FESSENHEIM",
+      "placementName": "FESSENHEIM",
+      "anchorKm": 3.05,
+      "supersededOsmKm": 0.1
+    },
+    {
+      "id": "SSCHA",
+      "name": "Centrale hydraulique de St-Chamas",
+      "class": "hydro-reservoir",
+      "mw": 159,
+      "units": [
+        "17W100P100P0296Z"
+      ],
+      "commune": "Saint-Chamas",
+      "insee": "13092",
+      "departement": "Bouches-du-Rhône",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "hydro-reservoir": 159
+      },
+      "lat": 43.52749,
+      "lon": 5.07334,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SAINT-CHAMAS",
+      "placementName": "SAINT-CHAMAS",
+      "anchorKm": 1.55,
+      "supersededOsmKm": 0.17
+    },
+    {
+      "id": "CADER",
+      "name": "Centrale hydraulique de Caderousse",
+      "class": "hydro-run-of-river",
+      "mw": 156,
+      "units": [
+        "17W100P100P0325H"
+      ],
+      "commune": "Caderousse",
+      "insee": "84027",
+      "departement": "Vaucluse",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "hydro-run-of-river": 156
+      },
+      "lat": 44.09605,
+      "lon": 4.72312,
+      "placement": "osm-plant",
+      "placementRef": "way/231680649",
+      "placementName": "Barrage de Caderousse",
+      "anchorKm": 2.83
+    },
+    {
+      "id": "MARCK",
+      "name": "Centrale hydraulique de Marckolsheim",
+      "class": "hydro-run-of-river",
+      "mw": 155,
+      "units": [
+        "17W100P100P0305N"
+      ],
+      "commune": "Marckolsheim",
+      "insee": "67281",
+      "departement": "Bas-Rhin",
+      "region": "Grand Est",
+      "classMix": {
+        "hydro-run-of-river": 155
+      },
+      "lat": 48.15411,
+      "lon": 7.58836,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:MARCKOLSHEIM",
+      "placementName": "MARCKOLSHEIM",
+      "anchorKm": 1.92,
+      "supersededOsmKm": 0.09
+    },
+    {
+      "id": "KEMBS",
+      "name": "Centrale hydraulique de Kembs",
+      "class": "hydro-run-of-river",
+      "mw": 151.1,
+      "units": [
+        "17W100P100P0307J"
+      ],
+      "commune": "Kembs",
+      "insee": "68163",
+      "departement": "Haut-Rhin",
+      "region": "Grand Est",
+      "classMix": {
+        "hydro-run-of-river": 151.1
+      },
+      "lat": 47.65436,
+      "lon": 7.51877,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:KEMBS",
+      "placementName": "KEMBS",
+      "anchorKm": 2.71,
+      "supersededOsmKm": 0.05
+    },
+    {
+      "id": "PALUN",
+      "name": "Centrale biomasse de Provence (Ex Gard5)",
+      "class": "biomass",
+      "mw": 150,
+      "units": [
+        "17W100P100P03655"
+      ],
+      "commune": "Gardanne",
+      "insee": "13041",
+      "departement": "Bouches-du-Rhône",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "biomass": 150
+      },
+      "lat": 43.46818,
+      "lon": 5.48969,
+      "placement": "osm-plant",
+      "placementRef": "relation/19730645",
+      "placementName": "Centrale thermique de Provence",
+      "anchorKm": 1.12
+    },
+    {
+      "id": "MAREG",
+      "name": "Centrale hydraulique de Mareges",
+      "class": "hydro-run-of-river",
+      "mw": 146,
+      "units": [
+        "17W100P100P0328B"
+      ],
+      "commune": "Liginiac",
+      "insee": "19113",
+      "departement": "Corrèze",
+      "region": "Nouvelle-Aquitaine",
+      "classMix": {
+        "hydro-run-of-river": 146
+      },
+      "lat": 45.38838,
+      "lon": 2.36569,
+      "placement": "osm-plant",
+      "placementRef": "relation/5973965",
+      "placementName": "Centrale hydroélectrique de Marèges",
+      "anchorKm": 3.89
+    },
+    {
+      "id": "SAUS2",
+      "name": "Centrale hydraulique de la Saussaz II",
+      "class": "hydro-run-of-river",
+      "mw": 145.4,
+      "units": [
+        "17W100P100P0309F"
+      ],
+      "commune": "Saint-Michel-de-Maurienne",
+      "insee": "73261",
+      "departement": "Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-run-of-river": 145.4
+      },
+      "lat": 45.20594,
+      "lon": 6.47525,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SAUSSAZ II (LA)",
+      "placementName": "SAUSSAZ II (LA)",
+      "anchorKm": 4.1,
+      "supersededOsmKm": null
+    },
+    {
+      "id": "SSEST",
+      "name": "Centrale hydraulique de St-Esteve",
+      "class": "hydro-reservoir",
+      "mw": 141,
+      "units": [
+        "17W0000000123492"
+      ],
+      "commune": "Saint-Estève-Janson",
+      "insee": "13093",
+      "departement": "Bouches-du-Rhône",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "hydro-reservoir": 141
+      },
+      "lat": 43.69188,
+      "lon": 5.38558,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SAINT-ESTEVE",
+      "placementName": "SAINT-ESTEVE",
+      "anchorKm": 0.29,
+      "supersededOsmKm": 0.15
+    },
+    {
+      "id": "VOGEL",
+      "name": "Centrale hydraulique de Vogelgrun",
+      "class": "hydro-run-of-river",
+      "mw": 140.5,
+      "units": [
+        "17W100P100P0311S"
+      ],
+      "commune": "Vogelgrun",
+      "insee": "68351",
+      "departement": "Haut-Rhin",
+      "region": "Grand Est",
+      "classMix": {
+        "hydro-run-of-river": 140.5
+      },
+      "lat": 48.0204,
+      "lon": 7.57407,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:VOGELGRUN",
+      "placementName": "VOGELGRUN",
+      "anchorKm": 1.32,
+      "supersededOsmKm": 0.06
+    },
+    {
+      "id": "L.NEU",
+      "name": "Centrale hydraulique de Logis-Neuf",
+      "class": "hydro-run-of-river",
+      "mw": 140,
+      "units": [
+        "17W000000012684P"
+      ],
+      "commune": "Les Tourrettes",
+      "insee": "26353",
+      "departement": "Drôme",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-run-of-river": 140
+      },
+      "lat": 44.67462,
+      "lon": 4.79135,
+      "placement": "rte-switchyard",
+      "placementRef": "way/135314787",
+      "placementName": "Poste électrique de Logis-Neuf",
+      "anchorKm": 1.4
+    },
+    {
+      "id": "GERST",
+      "name": "Centrale hydraulique de Gerstheim",
+      "class": "hydro-run-of-river",
+      "mw": 139.4,
+      "units": [
+        "17W000000012511J"
+      ],
+      "commune": "Gerstheim",
+      "insee": "67154",
+      "departement": "Bas-Rhin",
+      "region": "Grand Est",
+      "classMix": {
+        "hydro-run-of-river": 139.4
+      },
+      "lat": 48.40399,
+      "lon": 7.72694,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:GERSTHEIM",
+      "placementName": "GERSTHEIM",
+      "anchorKm": 3.6,
+      "supersededOsmKm": 0.05
+    },
+    {
+      "id": "CURBA",
+      "name": "Centrale hydraulique de Curbans",
+      "class": "hydro-reservoir",
+      "mw": 139,
+      "units": [
+        "17W100P100P02845"
+      ],
+      "commune": "Venterol",
+      "insee": "04234",
+      "departement": "Alpes-de-Haute-Provence",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "hydro-reservoir": 139
+      },
+      "lat": 44.44729,
+      "lon": 6.05982,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:CURBANS",
+      "placementName": "CURBANS",
+      "anchorKm": 2.3,
+      "supersededOsmKm": 5.81
+    },
+    {
+      "id": "INSEE:2A004",
+      "name": "Centrale photovoltaïque · Ajaccio",
+      "class": "solar",
+      "mw": 132.3,
+      "units": [
+        "17W000002341298H"
+      ],
+      "commune": "Ajaccio",
+      "insee": "2A004",
+      "departement": "Corse-du-Sud",
+      "region": "Corse",
+      "classMix": {
+        "solar": 132.3
+      },
+      "lat": 41.9228,
+      "lon": 8.7058,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:2A004",
+      "placementName": "Ajaccio",
+      "anchorKm": 0
+    },
+    {
+      "id": "SSCRO",
+      "name": "Centrale hydraulique de Ste-Croix-du-Verdon",
+      "class": "hydro-reservoir",
+      "mw": 132.3,
+      "units": [
+        "17W100P100P0297X"
+      ],
+      "commune": "Sainte-Croix-du-Verdon",
+      "insee": "04176",
+      "departement": "Alpes-de-Haute-Provence",
+      "region": "Provence-Alpes-Côte d'Azur",
+      "classMix": {
+        "hydro-reservoir": 132.3
+      },
+      "lat": 43.73748,
+      "lon": 6.13407,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SAINTE-CROIX",
+      "placementName": "SAINTE-CROIX",
+      "anchorKm": 3.02,
+      "supersededOsmKm": 0.04
+    },
+    {
+      "id": "MTPEZ",
+      "name": "Centrale hydraulique de Montpezat",
+      "class": "hydro-reservoir",
+      "mw": 131.8,
+      "units": [
+        "17W100B100P0287S"
+      ],
+      "commune": "Montpezat-sous-Bauzon",
+      "insee": "07161",
+      "departement": "Ardèche",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-reservoir": 131.8
+      },
+      "lat": 44.7041,
+      "lon": 4.23127,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:MONTPEZAT",
+      "placementName": "MONTPEZAT",
+      "anchorKm": 3.28,
+      "supersededOsmKm": 9.07
+    },
+    {
+      "id": "HERMI",
+      "name": "Centrale hydraulique de Hermillon",
+      "class": "hydro-run-of-river",
+      "mw": 125.4,
+      "units": [
+        "17W100P100P0314M"
+      ],
+      "commune": "La Tour-en-Maurienne",
+      "insee": "73135",
+      "departement": "Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-run-of-river": 125.4
+      },
+      "lat": 45.28501,
+      "lon": 6.36403,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:HERMILLON",
+      "placementName": "HERMILLON",
+      "anchorKm": 2.92,
+      "supersededOsmKm": 3.71
+    },
+    {
+      "id": "RHINA",
+      "name": "Centrale hydraulique de Rhinau",
+      "class": "hydro-run-of-river",
+      "mw": 125.3,
+      "units": [
+        "17W000000012043Q"
+      ],
+      "commune": "Rhinau",
+      "insee": "67397",
+      "departement": "Bas-Rhin",
+      "region": "Grand Est",
+      "classMix": {
+        "hydro-run-of-river": 125.3
+      },
+      "lat": 48.2842,
+      "lon": 7.67627,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:RHINAU",
+      "placementName": "RHINAU",
+      "anchorKm": 3.34,
+      "supersededOsmKm": 0.07
+    },
+    {
+      "id": "BRENN",
+      "name": "Centrale thermique de Brennilis",
+      "class": "fossil-oil",
+      "mw": 125,
+      "units": [
+        "17W100P100P0033U"
+      ],
+      "commune": "Brennilis",
+      "insee": "29018",
+      "departement": "Finistère",
+      "region": "Bretagne",
+      "classMix": {
+        "fossil-oil": 125
+      },
+      "lat": 48.35332,
+      "lon": -3.87148,
+      "placement": "edf-published",
+      "placementRef": "edf:thermique:BRENNILIS",
+      "placementName": "BRENNILIS",
+      "anchorKm": 2.34,
+      "supersededOsmKm": null
+    },
+    {
+      "id": "RANDE",
+      "name": "Centrale hydraulique de Randens",
+      "class": "hydro-run-of-river",
+      "mw": 124,
+      "units": [
+        "17W000000012084C"
+      ],
+      "commune": "Val-d'Arc",
+      "insee": "73212",
+      "departement": "Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-run-of-river": 124
+      },
+      "lat": 45.52747,
+      "lon": 6.32114,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:RANDENS",
+      "placementName": "RANDENS",
+      "anchorKm": 1.29,
+      "supersededOsmKm": 8.01
+    },
+    {
+      "id": "C.AVR",
+      "name": "Centrale hydraulique de Combe D Avrieux",
+      "class": "hydro-reservoir",
+      "mw": 122,
+      "units": [
+        "17W100P100P02837"
+      ],
+      "commune": "Avrieux",
+      "insee": "73026",
+      "departement": "Savoie",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-reservoir": 122
+      },
+      "lat": 45.2159,
+      "lon": 6.71701,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:COMBE-D'AVRIEUX",
+      "placementName": "COMBE-D'AVRIEUX",
+      "anchorKm": 4.34,
+      "supersededOsmKm": 1.8
+    },
+    {
+      "id": "SSPMA",
+      "name": "Centrale hydraulique de St-Pierre-Mareges",
+      "class": "hydro-run-of-river",
+      "mw": 120.2,
+      "units": [
+        "17W100P100P03299"
+      ],
+      "commune": "Saint-Pierre",
+      "insee": "15206",
+      "departement": "Cantal",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-run-of-river": 120.2
+      },
+      "lat": 45.39073,
+      "lon": 2.36619,
+      "placement": "rte-switchyard",
+      "placementRef": "way/397641847",
+      "placementName": "Poste électrique de Saint Pierre",
+      "anchorKm": 1.65
+    },
+    {
+      "id": "BATEL",
+      "name": "Centrale thermique de Bateliers",
+      "class": "fossil-gas",
+      "mw": 120,
+      "units": [
+        "17W0000014186456"
+      ],
+      "commune": "Saint-Ouen-sur-Seine",
+      "insee": "93070",
+      "departement": "Seine-Saint-Denis",
+      "region": "Île-de-France",
+      "classMix": {
+        "fossil-gas": 120
+      },
+      "lat": 48.91145,
+      "lon": 2.32788,
+      "placement": "rte-switchyard",
+      "placementRef": "way/564110792",
+      "placementName": null,
+      "anchorKm": 0.37
+    },
+    {
+      "id": "COUES",
+      "name": "Centrale hydraulique de Couesque",
+      "class": "hydro-run-of-river",
+      "mw": 119,
+      "units": [
+        "17W100P100P0313O"
+      ],
+      "commune": "Saint-Hippolyte",
+      "insee": "12226",
+      "departement": "Aveyron",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-run-of-river": 119
+      },
+      "lat": 44.6953,
+      "lon": 2.58251,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:COUESQUE",
+      "placementName": "COUESQUE",
+      "anchorKm": 4.09,
+      "supersededOsmKm": null
+    },
+    {
+      "id": "INSEE:97312",
+      "name": "Centrale hydraulique · Sinnamary",
+      "class": "hydro-reservoir",
+      "mw": 113.6,
+      "units": [
+        "17W000002341299F"
+      ],
+      "commune": "Sinnamary",
+      "insee": "97312",
+      "departement": "Guyane",
+      "region": "Guyane",
+      "classMix": {
+        "hydro-reservoir": 113.6
+      },
+      "lat": 5.2418,
+      "lon": -53.0097,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:97312",
+      "placementName": "Sinnamary",
+      "anchorKm": 0
+    },
+    {
+      "id": "INSEE:2B148",
+      "name": "Centrale photovoltaïque · Lucciana",
+      "class": "solar",
+      "mw": 112,
+      "units": [
+        "17W000002344518E"
+      ],
+      "commune": "Lucciana",
+      "insee": "2B148",
+      "departement": "Haute-Corse",
+      "region": "Corse",
+      "classMix": {
+        "solar": 112
+      },
+      "lat": 42.5393,
+      "lon": 9.465,
+      "placement": "commune-centre",
+      "placementRef": "INSEE:2B148",
+      "placementName": "Lucciana",
+      "anchorKm": 0
+    },
+    {
+      "id": "MOTT5",
+      "name": "Centrale hydraulique d’Avignon",
+      "class": "hydro-run-of-river",
+      "mw": 110,
+      "units": [
+        "17W100P100P0326F"
+      ],
+      "commune": "Villeneuve-lès-Avignon",
+      "insee": "30351",
+      "departement": "Gard",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-run-of-river": 110
+      },
+      "lat": 43.97605,
+      "lon": 4.81762,
+      "placement": "osm-plant",
+      "placementRef": "way/57792358",
+      "placementName": "Centrale hydroélectrique d’Avignon",
+      "anchorKm": 2.06
+    },
+    {
+      "id": "P.BOR",
+      "name": "Centrale hydraulique de Pied-de-Borne",
+      "class": "hydro-reservoir",
+      "mw": 109.4,
+      "units": [
+        "17W100P100P0289W"
+      ],
+      "commune": "Pied-de-Borne",
+      "insee": "48015",
+      "departement": "Lozère",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-reservoir": 109.4
+      },
+      "lat": 44.47867,
+      "lon": 3.98567,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:PIED-DE-BORNE",
+      "placementName": "PIED-DE-BORNE",
+      "anchorKm": 1.48,
+      "supersededOsmKm": 0
+    },
+    {
+      "id": "SSCAN",
+      "name": "Centrale hydraulique de St-Etienne-Cantales",
+      "class": "hydro-reservoir",
+      "mw": 106.5,
+      "units": [
+        "17W100P100P02950"
+      ],
+      "commune": "Saint-Étienne-Cantalès",
+      "insee": "15182",
+      "departement": "Cantal",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-reservoir": 106.5
+      },
+      "lat": 44.94563,
+      "lon": 2.21901,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SAINT-ETIENNE-CANTALES",
+      "placementName": "SAINT-ETIENNE-CANTALES",
+      "anchorKm": 1.9,
+      "supersededOsmKm": 3.8
+    },
+    {
+      "id": "BARBA",
+      "name": "Stockage de Barban",
+      "class": "battery",
+      "mw": 105,
+      "units": [
+        "17W000001637626Q"
+      ],
+      "commune": "Saucats",
+      "insee": "33501",
+      "departement": "Gironde",
+      "region": "Nouvelle-Aquitaine",
+      "classMix": {
+        "battery": 105
+      },
+      "lat": 44.61636,
+      "lon": -0.61565,
+      "placement": "rte-switchyard",
+      "placementRef": "way/1328928941",
+      "placementName": null,
+      "anchorKm": 3.89
+    },
+    {
+      "id": "ASTON",
+      "name": "Centrale hydraulique d’Aston",
+      "class": "hydro-run-of-river",
+      "mw": 104,
+      "units": [
+        "17W100P100P0315K"
+      ],
+      "commune": "Aston",
+      "insee": "09024",
+      "departement": "Ariège",
+      "region": "Occitanie",
+      "classMix": {
+        "hydro-run-of-river": 104
+      },
+      "lat": 42.77667,
+      "lon": 1.67713,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:ASTON",
+      "placementName": "ASTON",
+      "anchorKm": 8.88,
+      "supersededOsmKm": 9.21
+    },
+    {
+      "id": "SSCOG",
+      "name": "Centrale hydraulique de St-Pierre-Cognet",
+      "class": "hydro-run-of-river",
+      "mw": 101,
+      "units": [
+        "17W100P100P0317G"
+      ],
+      "commune": "Saint-Jean-d'Hérans",
+      "insee": "38403",
+      "departement": "Isère",
+      "region": "Auvergne-Rhône-Alpes",
+      "classMix": {
+        "hydro-run-of-river": 101
+      },
+      "lat": 44.87209,
+      "lon": 5.77293,
+      "placement": "edf-published",
+      "placementRef": "edf:hydraulique:SAINT-PIERRE-COGNET",
+      "placementName": "SAINT-PIERRE-COGNET",
+      "anchorKm": 1.91,
+      "supersededOsmKm": 4.11
+    },
+    {
+      "id": "GUESD",
+      "name": "Centrale thermique de Guesde",
+      "class": "fossil-gas",
+      "mw": 100,
+      "units": [
+        "17W000001418626A"
+      ],
+      "commune": "Vitry-sur-Seine",
+      "insee": "94081",
+      "departement": "Val-de-Marne",
+      "region": "Île-de-France",
+      "classMix": {
+        "fossil-gas": 100
+      },
+      "lat": 48.78809,
+      "lon": 2.41765,
+      "placement": "rte-switchyard",
+      "placementRef": "way/447600116",
+      "placementName": "Poste électrique Guesde",
+      "anchorKm": 1.66
+    }
+  ],
+  "units": [
+    {
+      "eic": "17W000000012043Q",
+      "site": "RHINA",
+      "code": "RHINAH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 125.3,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W000000012084C",
+      "site": "RANDE",
+      "code": "RANDEH",
+      "unitName": "Groupe 5",
+      "class": "hydro-run-of-river",
+      "mw": 124,
+      "regime": "En service",
+      "kv": "150 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W000000012237D",
+      "site": "BOUCH",
+      "code": "BOUCHT02",
+      "unitName": "Groupe 02",
+      "class": "fossil-coal",
+      "mw": 250,
+      "regime": "En retrait provisoire",
+      "kv": "225 kV",
+      "commissioned": "1970-04-01"
+    },
+    {
+      "eic": "17W0000000123492",
+      "site": "SSEST",
+      "code": "SSESTH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 141,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W000000012511J",
+      "site": "GERST",
+      "code": "GERSTH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 139.4,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W000000012673U",
+      "site": "MAXE",
+      "code": "MAXE T02",
+      "unitName": "Groupe 02",
+      "class": "fossil-coal",
+      "mw": 250,
+      "regime": "En retrait provisoire",
+      "kv": "225 kV",
+      "commissioned": "1971-11-01"
+    },
+    {
+      "eic": "17W000000012683R",
+      "site": "MAXE",
+      "code": "MAXE T01",
+      "unitName": "Groupe 01",
+      "class": "fossil-coal",
+      "mw": 250,
+      "regime": "En retrait provisoire",
+      "kv": "225 kV",
+      "commissioned": "1971-06-01"
+    },
+    {
+      "eic": "17W000000012684P",
+      "site": "L.NEU",
+      "code": "L.NEUH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 140,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W000000012816Y",
+      "site": "BROMM",
+      "code": "BROMMH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 180.4,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W000000012843V",
+      "site": "BOUCH",
+      "code": "BOUCHT01",
+      "unitName": "Groupe 01",
+      "class": "fossil-coal",
+      "mw": 250,
+      "regime": "En retrait provisoire",
+      "kv": "225 kV",
+      "commissioned": "1970-04-01"
+    },
+    {
+      "eic": "17W000000012851W",
+      "site": "BATHI",
+      "code": "BATHIH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 182,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W000000012863P",
+      "site": "BXCHA",
+      "code": "BXCHAH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 222,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W000000012872O",
+      "site": "VALLO",
+      "code": "VALLOH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 190,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W000000012953O",
+      "site": "BROMM",
+      "code": "BROMMH",
+      "unitName": "Groupe 7",
+      "class": "hydro-reservoir",
+      "mw": 225.6,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W000000012975E",
+      "site": "BATHI",
+      "code": "BATHIH",
+      "unitName": "Groupe 7",
+      "class": "hydro-reservoir",
+      "mw": 364,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W000000918390N",
+      "site": "MORA5",
+      "code": "MORA5T01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 442,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2011-07-01"
+    },
+    {
+      "eic": "17W000000918406Y",
+      "site": "C.ME5",
+      "code": "C.ME5T01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 440,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2012-12-21"
+    },
+    {
+      "eic": "17W000001023725I",
+      "site": "PONAN",
+      "code": "PONANT01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 446,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2021-06-28"
+    },
+    {
+      "eic": "17W000001418626A",
+      "site": "GUESD",
+      "code": "GUESDT01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 100,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W0000014186456",
+      "site": "BATEL",
+      "code": "BATELT01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 120,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W0000014455651",
+      "site": "B.GUE",
+      "code": "B.GUEEA1",
+      "unitName": "Adp A1",
+      "class": "wind",
+      "mw": 240,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2022-06-05"
+    },
+    {
+      "eic": "17W000001445567Y",
+      "site": "B.GUE",
+      "code": "B.GUEEA2",
+      "unitName": "Adp A2",
+      "class": "wind",
+      "mw": 240,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2022-06-05"
+    },
+    {
+      "eic": "17W000001445569U",
+      "site": "H.FAL",
+      "code": "H.FALEA1",
+      "unitName": "Adp A1",
+      "class": "wind",
+      "mw": 245,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2023-06-15"
+    },
+    {
+      "eic": "17W0000014455708",
+      "site": "H.FAL",
+      "code": "H.FALEA2",
+      "unitName": "Adp A2",
+      "class": "wind",
+      "mw": 252,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2023-06-15"
+    },
+    {
+      "eic": "17W000001468589Y",
+      "site": "AMFAR",
+      "code": "AMFART14",
+      "unitName": "Groupe 14",
+      "class": "fossil-gas",
+      "mw": 125,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W000001468590C",
+      "site": "AMFAR",
+      "code": "AMFART15",
+      "unitName": "Groupe 15",
+      "class": "fossil-gas",
+      "mw": 125,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W000001637626Q",
+      "site": "BARBA",
+      "code": "BARBAS01",
+      "unitName": "Groupe 01",
+      "class": "battery",
+      "mw": 105,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2023-04-10"
+    },
+    {
+      "eic": "17W000002144986W",
+      "site": "V.ILE",
+      "code": "V.ILEE01",
+      "unitName": "Adp 01",
+      "class": "wind",
+      "mw": 250,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2025-08-01"
+    },
+    {
+      "eic": "17W000002144987U",
+      "site": "V.ILE",
+      "code": "V.ILEE02",
+      "unitName": "Adp 02",
+      "class": "wind",
+      "mw": 250,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2025-08-10"
+    },
+    {
+      "eic": "17W000002341295N",
+      "site": "INSEE:97103",
+      "code": null,
+      "unitName": null,
+      "class": "fossil-gas",
+      "mw": 211,
+      "regime": "En service",
+      "kv": "COURANT CONTINU",
+      "commissioned": "2014-08-30",
+      "confidential": true
+    },
+    {
+      "eic": "17W000002341296L",
+      "site": "INSEE:97234",
+      "code": null,
+      "unitName": null,
+      "class": "fossil-gas",
+      "mw": 211,
+      "regime": "En service",
+      "kv": "COURANT CONTINU",
+      "commissioned": "2013-11-01",
+      "confidential": true
+    },
+    {
+      "eic": "17W000002341297J",
+      "site": "INSEE:97407",
+      "code": null,
+      "unitName": null,
+      "class": "biomass",
+      "mw": 211,
+      "regime": "En service",
+      "kv": "COURANT CONTINU",
+      "commissioned": "2012-12-12",
+      "confidential": true
+    },
+    {
+      "eic": "17W000002341298H",
+      "site": "INSEE:2A004",
+      "code": null,
+      "unitName": null,
+      "class": "solar",
+      "mw": 132.3,
+      "regime": "En service",
+      "kv": "COURANT CONTINU",
+      "commissioned": "1981-01-01",
+      "confidential": true
+    },
+    {
+      "eic": "17W000002341299F",
+      "site": "INSEE:97312",
+      "code": null,
+      "unitName": null,
+      "class": "hydro-reservoir",
+      "mw": 113.6,
+      "regime": "En service",
+      "kv": "COURANT CONTINU",
+      "commissioned": "1995-01-01",
+      "confidential": true
+    },
+    {
+      "eic": "17W000002344518E",
+      "site": "INSEE:2B148",
+      "code": null,
+      "unitName": null,
+      "class": "solar",
+      "mw": 112,
+      "regime": "En service",
+      "kv": "COURANT CONTINU",
+      "commissioned": "2014-01-16",
+      "confidential": true
+    },
+    {
+      "eic": "17W000002385265P",
+      "site": "SSLAI",
+      "code": "SSLAIS01",
+      "unitName": "Groupe 01",
+      "class": "battery",
+      "mw": 240,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2026-01-12"
+    },
+    {
+      "eic": "17W100B100P0287S",
+      "site": "MTPEZ",
+      "code": "MTPEZH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 131.8,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P00016",
+      "site": "QUAR5",
+      "code": "QUAR5T01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 450,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2017-05-19"
+    },
+    {
+      "eic": "17W100P100P0005Z",
+      "site": "E.HUC",
+      "code": "E.HUCT06",
+      "unitName": "Groupe 06",
+      "class": "fossil-coal",
+      "mw": 600,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1982-01-01"
+    },
+    {
+      "eic": "17W100P100P00105",
+      "site": "E.HUC",
+      "code": "E.HUCT07",
+      "unitName": "Groupe 07",
+      "class": "fossil-gas",
+      "mw": 433.9,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P00113",
+      "site": "E.HUC",
+      "code": "E.HUCT08",
+      "unitName": "Groupe 08",
+      "class": "fossil-gas",
+      "mw": 433.9,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0017S",
+      "site": "CORD5",
+      "code": "CORD5T04",
+      "unitName": "Groupe 04",
+      "class": "fossil-coal",
+      "mw": 580,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1984-05-12"
+    },
+    {
+      "eic": "17W100P100P0018Q",
+      "site": "CORD5",
+      "code": "CORD5T05",
+      "unitName": "Groupe 05",
+      "class": "fossil-coal",
+      "mw": 580,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1984-12-21"
+    },
+    {
+      "eic": "17W100P100P0031Y",
+      "site": "ARRI5",
+      "code": "ARRI5T01",
+      "unitName": "Groupe 01",
+      "class": "fossil-oil",
+      "mw": 125,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0032W",
+      "site": "ARRI5",
+      "code": "ARRI5T02",
+      "unitName": "Groupe 02",
+      "class": "fossil-oil",
+      "mw": 125,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2007-11-23"
+    },
+    {
+      "eic": "17W100P100P0033U",
+      "site": "BRENN",
+      "code": "BRENNT04",
+      "unitName": "Groupe 04",
+      "class": "fossil-oil",
+      "mw": 125,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1997-04-11"
+    },
+    {
+      "eic": "17W100P100P0037M",
+      "site": "GENN3",
+      "code": "GENN3T01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 240.7,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1994-09-01"
+    },
+    {
+      "eic": "17W100P100P0040X",
+      "site": "MTERE",
+      "code": "MTERET05",
+      "unitName": "Groupe 05",
+      "class": "fossil-gas",
+      "mw": 200,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2010-11-30"
+    },
+    {
+      "eic": "17W100P100P0041V",
+      "site": "MTERE",
+      "code": "MTERET06",
+      "unitName": "Groupe 06",
+      "class": "fossil-gas",
+      "mw": 200,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2010-11-30"
+    },
+    {
+      "eic": "17W100P100P0046L",
+      "site": "VAIRE",
+      "code": "VAIR6T01",
+      "unitName": "Groupe 01",
+      "class": "fossil-oil",
+      "mw": 200,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0047J",
+      "site": "VAIRE",
+      "code": "VAIR6T02",
+      "unitName": "Groupe 02",
+      "class": "fossil-oil",
+      "mw": 200,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0048H",
+      "site": "VAIRE",
+      "code": "VAIR6T03",
+      "unitName": "Groupe 03",
+      "class": "fossil-oil",
+      "mw": 200,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2009-10-26"
+    },
+    {
+      "eic": "17W100P100P0090I",
+      "site": "BVIL7",
+      "code": "BVIL7N01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1310,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1988-06-01"
+    },
+    {
+      "eic": "17W100P100P0091G",
+      "site": "BVIL7",
+      "code": "BVIL7N02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1310,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1989-01-01"
+    },
+    {
+      "eic": "17W100P100P0092E",
+      "site": "BLAYA",
+      "code": "BLAYAN01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1981-12-01"
+    },
+    {
+      "eic": "17W100P100P0093C",
+      "site": "BLAYA",
+      "code": "BLAYAN02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1983-02-01"
+    },
+    {
+      "eic": "17W100P100P0094A",
+      "site": "BLAYA",
+      "code": "BLAYAN03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1983-12-01"
+    },
+    {
+      "eic": "17W100P100P00958",
+      "site": "BLAYA",
+      "code": "BLAYAN04",
+      "unitName": "Groupe 04",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1983-10-01"
+    },
+    {
+      "eic": "17W100P100P00966",
+      "site": "BUGEY",
+      "code": "BUGEYN02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1979-03-01"
+    },
+    {
+      "eic": "17W100P100P00974",
+      "site": "BUGEY",
+      "code": "BUGEYN03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1979-03-01"
+    },
+    {
+      "eic": "17W100P100P00982",
+      "site": "BUGEY",
+      "code": "BUGEYN04",
+      "unitName": "Groupe 04",
+      "class": "nuclear",
+      "mw": 880,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1979-07-01"
+    },
+    {
+      "eic": "17W100P100P01004",
+      "site": "BUGEY",
+      "code": "BUGEYN05",
+      "unitName": "Groupe 05",
+      "class": "nuclear",
+      "mw": 880,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1980-01-01"
+    },
+    {
+      "eic": "17W100P100P01012",
+      "site": "CATTE",
+      "code": "CATTEN01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1300,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1987-04-01"
+    },
+    {
+      "eic": "17W100P100P0103Z",
+      "site": "CATTE",
+      "code": "CATTEN02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1300,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1988-02-01"
+    },
+    {
+      "eic": "17W100P100P0104X",
+      "site": "CATTE",
+      "code": "CATTEN03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 1300,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1991-02-01"
+    },
+    {
+      "eic": "17W100P100P0105V",
+      "site": "CATTE",
+      "code": "CATTEN04",
+      "unitName": "Groupe 04",
+      "class": "nuclear",
+      "mw": 1300,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1992-01-01"
+    },
+    {
+      "eic": "17W100P100P0106T",
+      "site": "CHIN2",
+      "code": "CHIN2N01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 905,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1984-02-01"
+    },
+    {
+      "eic": "17W100P100P0107R",
+      "site": "CHIN2",
+      "code": "CHIN2N02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 905,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1984-08-01"
+    },
+    {
+      "eic": "17W100P100P0108P",
+      "site": "CHIN2",
+      "code": "CHIN2N03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 905,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1987-03-04"
+    },
+    {
+      "eic": "17W100P100P0109N",
+      "site": "CHIN2",
+      "code": "CHIN2N04",
+      "unitName": "Groupe 04",
+      "class": "nuclear",
+      "mw": 905,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1988-04-01"
+    },
+    {
+      "eic": "17W100P100P01101",
+      "site": "CHOO2",
+      "code": "CHOO2N01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1500,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2000-05-15"
+    },
+    {
+      "eic": "17W100P100P0112Y",
+      "site": "CHOO2",
+      "code": "CHOO2N02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1500,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2000-09-29"
+    },
+    {
+      "eic": "17W100P100P0113W",
+      "site": "CIVAU",
+      "code": "CIVAUN01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1495,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2002-01-29"
+    },
+    {
+      "eic": "17W100P100P0114U",
+      "site": "CIVAU",
+      "code": "CIVAUN02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1495,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2002-04-23"
+    },
+    {
+      "eic": "17W100P100P0115S",
+      "site": "CRUA5",
+      "code": "CRUA5N01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1984-04-02"
+    },
+    {
+      "eic": "17W100P100P0116Q",
+      "site": "CRUA5",
+      "code": "CRUA5N02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1985-04-01"
+    },
+    {
+      "eic": "17W100P100P0118M",
+      "site": "CRUA5",
+      "code": "CRUA5N03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1984-09-10"
+    },
+    {
+      "eic": "17W100P100P0119K",
+      "site": "CRUA5",
+      "code": "CRUA5N04",
+      "unitName": "Groupe 04",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1985-02-11"
+    },
+    {
+      "eic": "17W100P100P0120Z",
+      "site": "D.BUR",
+      "code": "D.BURN01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 890,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1980-10-01"
+    },
+    {
+      "eic": "17W100P100P0121X",
+      "site": "D.BUR",
+      "code": "D.BURN02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 890,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1981-02-01"
+    },
+    {
+      "eic": "17W100P100P0122V",
+      "site": "D.BUR",
+      "code": "D.BURN03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 890,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1981-06-01"
+    },
+    {
+      "eic": "17W100P100P0123T",
+      "site": "D.BUR",
+      "code": "D.BURN04",
+      "unitName": "Groupe 04",
+      "class": "nuclear",
+      "mw": 890,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1981-12-01"
+    },
+    {
+      "eic": "17W100P100P0126N",
+      "site": "FLAMA",
+      "code": "FLAMAN01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1330,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1986-12-01"
+    },
+    {
+      "eic": "17W100P100P0127L",
+      "site": "FLAMA",
+      "code": "FLAMAN02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1330,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1987-03-09"
+    },
+    {
+      "eic": "17W100P100P0128J",
+      "site": "GOLF5",
+      "code": "GOLF5N01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1310,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1991-02-01"
+    },
+    {
+      "eic": "17W100P100P0129H",
+      "site": "GOLF5",
+      "code": "GOLF5N02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1310,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1994-03-01"
+    },
+    {
+      "eic": "17W100P100P0130W",
+      "site": "GRAV5",
+      "code": "GRAV5N01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1980-12-01"
+    },
+    {
+      "eic": "17W100P100P0131U",
+      "site": "GRAV5",
+      "code": "GRAV5N02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1980-12-01"
+    },
+    {
+      "eic": "17W100P100P0132S",
+      "site": "GRAV5",
+      "code": "GRAV5N03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1980-12-01"
+    },
+    {
+      "eic": "17W100P100P0133Q",
+      "site": "GRAV5",
+      "code": "GRAV5N04",
+      "unitName": "Groupe 04",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1981-10-01"
+    },
+    {
+      "eic": "17W100P100P0135M",
+      "site": "GRAV5",
+      "code": "GRAV5N05",
+      "unitName": "Groupe 05",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1985-01-15"
+    },
+    {
+      "eic": "17W100P100P0136K",
+      "site": "GRAV5",
+      "code": "GRAV5N06",
+      "unitName": "Groupe 06",
+      "class": "nuclear",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1985-10-25"
+    },
+    {
+      "eic": "17W100P100P0137I",
+      "site": "N.SE5",
+      "code": "N.SE5N01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1310,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1988-02-24"
+    },
+    {
+      "eic": "17W100P100P0138G",
+      "site": "N.SE5",
+      "code": "N.SE5N02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1310,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1989-05-01"
+    },
+    {
+      "eic": "17W100P100P0139E",
+      "site": "PALUE",
+      "code": "PALUEN01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1330,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1985-12-01"
+    },
+    {
+      "eic": "17W100P100P0140T",
+      "site": "PALUE",
+      "code": "PALUEN02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1330,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1985-12-01"
+    },
+    {
+      "eic": "17W100P100P0141R",
+      "site": "PALUE",
+      "code": "PALUEN03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 1330,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1986-02-01"
+    },
+    {
+      "eic": "17W100P100P0142P",
+      "site": "PALUE",
+      "code": "PALUEN04",
+      "unitName": "Groupe 04",
+      "class": "nuclear",
+      "mw": 1330,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1986-06-01"
+    },
+    {
+      "eic": "17W100P100P0143N",
+      "site": "PENLY",
+      "code": "PENLYN01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1330,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1990-12-01"
+    },
+    {
+      "eic": "17W100P100P0144L",
+      "site": "PENLY",
+      "code": "PENLYN02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1330,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1992-11-01"
+    },
+    {
+      "eic": "17W100P100P0145J",
+      "site": "SSAL7",
+      "code": "SSAL7N01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 1335,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1986-05-01"
+    },
+    {
+      "eic": "17W100P100P0146H",
+      "site": "SSAL7",
+      "code": "SSAL7N02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 1335,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1987-03-01"
+    },
+    {
+      "eic": "17W100P100P0147F",
+      "site": "SSEA2",
+      "code": "SSEA2N01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1983-08-01"
+    },
+    {
+      "eic": "17W100P100P0148D",
+      "site": "SSEA2",
+      "code": "SSEA2N02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1983-08-01"
+    },
+    {
+      "eic": "17W100P100P0149B",
+      "site": "TRI.P",
+      "code": "TRICAN01",
+      "unitName": "Groupe 01",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1980-12-01"
+    },
+    {
+      "eic": "17W100P100P0150Q",
+      "site": "TRI.P",
+      "code": "TRICAN02",
+      "unitName": "Groupe 02",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1980-12-01"
+    },
+    {
+      "eic": "17W100P100P0152M",
+      "site": "TRI.P",
+      "code": "TRICAN03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1981-05-01"
+    },
+    {
+      "eic": "17W100P100P0153K",
+      "site": "TRI.P",
+      "code": "TRICAN04",
+      "unitName": "Groupe 04",
+      "class": "nuclear",
+      "mw": 915,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1981-11-01"
+    },
+    {
+      "eic": "17W100P100P01679",
+      "site": "GRACI",
+      "code": "GRACIT01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 453,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2010-10-01"
+    },
+    {
+      "eic": "17W100P100P0171I",
+      "site": "G.RIV",
+      "code": "G.RIVT01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 446,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P01768",
+      "site": "BOUCH",
+      "code": "BOUCHT07",
+      "unitName": "Groupe 07",
+      "class": "fossil-gas",
+      "mw": 563,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2016-07-26"
+    },
+    {
+      "eic": "17W100P100P0272C",
+      "site": "RANCE",
+      "code": "RANCEH",
+      "unitName": "Groupe 6",
+      "class": "marine",
+      "mw": 240,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2013-10-01"
+    },
+    {
+      "eic": "17W100P100P0273A",
+      "site": "CHEY6",
+      "code": "CHEY6H",
+      "unitName": "Groupe 7",
+      "class": "hydro-pumped",
+      "mw": 485,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P02748",
+      "site": "COCHE",
+      "code": "COCHEH",
+      "unitName": "Groupe 7",
+      "class": "hydro-pumped",
+      "mw": 384,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P02756",
+      "site": "VAUJA",
+      "code": "G.MAIH",
+      "unitName": "Groupe 7",
+      "class": "hydro-pumped",
+      "mw": 1690,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P02764",
+      "site": "P.AND",
+      "code": "S.BISH",
+      "unitName": "Groupe 7",
+      "class": "hydro-pumped",
+      "mw": 742.3,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P02772",
+      "site": "MTEZI",
+      "code": "MTEZIH",
+      "unitName": "Groupe 7",
+      "class": "hydro-pumped",
+      "mw": 910,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P02780",
+      "site": "REVI5",
+      "code": "REVI5H",
+      "unitName": "Groupe 7",
+      "class": "hydro-pumped",
+      "mw": 808,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0279Z",
+      "site": "BREUI",
+      "code": "AIGLEH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 360,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0281B",
+      "site": "BORT",
+      "code": "BORT H",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 232.2,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P02837",
+      "site": "C.AVR",
+      "code": "C.AVRH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 122,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2014-01-01"
+    },
+    {
+      "eic": "17W100P100P02845",
+      "site": "CURBA",
+      "code": "CURBAH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 139,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P02853",
+      "site": "MALGO",
+      "code": "MALGOH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 297,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P02861",
+      "site": "MTEYN",
+      "code": "MTEYNH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 366,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0288Y",
+      "site": "ORAIS",
+      "code": "ORAISH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 187,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0289W",
+      "site": "P.BOR",
+      "code": "P.BORH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 109.4,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0290A",
+      "site": "POUGE",
+      "code": "POUGEH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 446.9,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1994-01-01"
+    },
+    {
+      "eic": "17W100P100P02918",
+      "site": "PRAGN",
+      "code": "PRAGNH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 188.9,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P02926",
+      "site": "S.PON",
+      "code": "S.PONH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 370,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P02934",
+      "site": "SARRA",
+      "code": "SARRAH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 183,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P02942",
+      "site": "SISTE",
+      "code": "SISTEH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 214,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P02950",
+      "site": "SSCAN",
+      "code": "SSCANH",
+      "unitName": "Groupe 4",
+      "class": "hydro-reservoir",
+      "mw": 106.5,
+      "regime": "En service",
+      "kv": "90 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0296Z",
+      "site": "SSCHA",
+      "code": "SSCHAH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 159,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0297X",
+      "site": "SSCRO",
+      "code": "SSCROH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 132.3,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0300X",
+      "site": "VLARO",
+      "code": "VLAROH",
+      "unitName": "Groupe 7",
+      "class": "hydro-reservoir",
+      "mw": 357,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0301V",
+      "site": "VOUGL",
+      "code": "VOUGLH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 285,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0302T",
+      "site": "CHAST",
+      "code": "CHASTH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 293,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0303R",
+      "site": "FESSE",
+      "code": "FESSEH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 175,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0305N",
+      "site": "MARCK",
+      "code": "MARCKH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 155,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0307J",
+      "site": "KEMBS",
+      "code": "KEMBSH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 151.1,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0309F",
+      "site": "SAUS2",
+      "code": "SAUS2H",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 145.4,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0311S",
+      "site": "VOGEL",
+      "code": "VOGELH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 140.5,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0313O",
+      "site": "COUES",
+      "code": "COUESH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 119,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0314M",
+      "site": "HERMI",
+      "code": "HERMIH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 125.4,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0315K",
+      "site": "ASTON",
+      "code": "ASTONH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 104,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0317G",
+      "site": "SSCOG",
+      "code": "SSCOGH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 101,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0319C",
+      "site": "GEN.P",
+      "code": "GENISH",
+      "unitName": "Groupe 6",
+      "class": "hydro-reservoir",
+      "mw": 405,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0320R",
+      "site": "B.VAL",
+      "code": "B.VALH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 186,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0323L",
+      "site": "C.RHO",
+      "code": "C.RHOH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 285,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0324J",
+      "site": "BOLL5",
+      "code": "BOLLEH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 345,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0325H",
+      "site": "CADER",
+      "code": "CADERH",
+      "unitName": "Groupe 3",
+      "class": "hydro-run-of-river",
+      "mw": 156,
+      "regime": "En service",
+      "kv": "63 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0326F",
+      "site": "MOTT5",
+      "code": "AVIG6H",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 110,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "1990-05-01"
+    },
+    {
+      "eic": "17W100P100P0327D",
+      "site": "BXCAI",
+      "code": "BXCAIH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 210,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0328B",
+      "site": "MAREG",
+      "code": "MAREGH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 146,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P03299",
+      "site": "SSPMA",
+      "code": "SSPMAH",
+      "unitName": "Groupe 6",
+      "class": "hydro-run-of-river",
+      "mw": 120.2,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0330O",
+      "site": "BRAEK",
+      "code": "BRAEKT11",
+      "unitName": "Groupe 11",
+      "class": "fossil-gas",
+      "mw": 165,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0331M",
+      "site": "BRAEK",
+      "code": "BRAEKT12",
+      "unitName": "Groupe 12",
+      "class": "fossil-gas",
+      "mw": 239,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0332K",
+      "site": "BRAEK",
+      "code": "BRAEKT21",
+      "unitName": "Groupe 21",
+      "class": "fossil-gas",
+      "mw": 165,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P0333I",
+      "site": "BRAEK",
+      "code": "BRAEKT22",
+      "unitName": "Groupe 22",
+      "class": "fossil-gas",
+      "mw": 239,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P03388",
+      "site": "RICHI",
+      "code": "RICHIT01",
+      "unitName": "Groupe 01",
+      "class": "fossil-gas",
+      "mw": 451,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2011-03-08"
+    },
+    {
+      "eic": "17W100P100P03639",
+      "site": "FLAMA",
+      "code": "FLAMAN03",
+      "unitName": "Groupe 03",
+      "class": "nuclear",
+      "mw": 1620,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2024-12-21"
+    },
+    {
+      "eic": "17W100P100P03655",
+      "site": "PALUN",
+      "code": "PROV5TG4",
+      "unitName": "Groupe G4",
+      "class": "biomass",
+      "mw": 150,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2016-04-20"
+    },
+    {
+      "eic": "17W100P100P04740",
+      "site": "BLENO",
+      "code": "BLENOT52",
+      "unitName": "Groupe 52",
+      "class": "fossil-gas",
+      "mw": 155.5,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2011-10-07"
+    },
+    {
+      "eic": "17W100P100P0842Y",
+      "site": "B.SSB",
+      "code": "B.SSBEA1",
+      "unitName": "Adp A1",
+      "class": "wind",
+      "mw": 248,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2023-03-17"
+    },
+    {
+      "eic": "17W100P100P2114K",
+      "site": "M.PON",
+      "code": "M.PONT51",
+      "unitName": "Groupe 51",
+      "class": "fossil-gas",
+      "mw": 304,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P2115I",
+      "site": "M.PON",
+      "code": "M.PONT52",
+      "unitName": "Groupe 52",
+      "class": "fossil-gas",
+      "mw": 191,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": null
+    },
+    {
+      "eic": "17W100P100P2116G",
+      "site": "M.PON",
+      "code": "M.PONT61",
+      "unitName": "Groupe 61",
+      "class": "fossil-gas",
+      "mw": 304,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2013-08-28"
+    },
+    {
+      "eic": "17W100P100P2117E",
+      "site": "M.PON",
+      "code": "M.PONT62",
+      "unitName": "Groupe 62",
+      "class": "fossil-gas",
+      "mw": 191,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2013-03-02"
+    },
+    {
+      "eic": "17W100P100P21629",
+      "site": "R.DIE",
+      "code": "R.DIEEA1",
+      "unitName": "Adp A1",
+      "class": "wind",
+      "mw": 248,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2026-02-06"
+    },
+    {
+      "eic": "17W100P100P2608W",
+      "site": "BLENO",
+      "code": "BLENOT51",
+      "unitName": "Groupe 51",
+      "class": "fossil-gas",
+      "mw": 295,
+      "regime": "En service",
+      "kv": "400 kV",
+      "commissioned": "2011-10-07"
+    },
+    {
+      "eic": "17W100P100P3382R",
+      "site": "B.SSB",
+      "code": "B.SSBEA2",
+      "unitName": "Adp A2",
+      "class": "wind",
+      "mw": 248,
+      "regime": "En service",
+      "kv": "225 kV",
+      "commissioned": "2023-03-17"
+    }
+  ]
+}

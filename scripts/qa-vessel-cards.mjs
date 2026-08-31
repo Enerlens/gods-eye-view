@@ -30,6 +30,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const argv = process.argv.slice(2);
 const getOpt = (name, dflt) => {
@@ -251,7 +252,7 @@ async function main() {
       }));
       console.log(`  ▸ ${key} → ${outPath}`);
 
-      const page = await browser.newPage();
+      const page = await newQaPage(browser);
       await page.setViewport({ width: 1600, height: 900 });
       page.on('pageerror', (err) => console.error(`    [page-error] ${err.message}`));
 

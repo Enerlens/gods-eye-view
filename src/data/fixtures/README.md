@@ -81,3 +81,55 @@
   preserve the fact the layer is built around — nuclear is a vision consolidée
   au **31/12/2025** while the other two are au **31/12/2023**, so the three
   files are three vintages. Licence Ouverte 2.0, EDF SA.
+
+- `power-grid-osm-sample.json` — a real Overpass answer for the Saclay plateau
+  (48.66,2.12 → 48.76,2.26), captured 2026-08-27, trimmed to one way per
+  distinct `power`/`voltage` combination plus every substation in the box and a
+  spread of pylons. It is kept as a raw Overpass response so the projection
+  under test reads exactly what the proxy reads. Every oddity in it is real and
+  is the point: the `voltage` tag arrives as a `;` list carrying junk
+  (`225000;0`, `63000;0`, `225000;225000;225000;63000`, `400000;225000;90000`),
+  RTE's own 225 kV Villeras yard is tagged `substation=industrial` and its 90 kV
+  Provence yard carries no `substation` tag at all, an Enedis yard is literally
+  named "Poste source Enedis", an SNCF `traction` substation steps 225 kV to
+  25 kV, and the Haute-Borne yard is a **multipolygon relation with no `lat`/`lon`
+  of its own** — only Overpass's computed `center`. © OpenStreetMap
+  contributors, ODbL 1.0.
+- `rte-registre-units-sample.json` — 16 real rows of ODRÉ's *Registre national
+  des installations de production et de stockage d'électricité* (edition
+  30/06/2026), captured 2026-08-28 through the same `records` endpoint
+  `scripts/build-rte-units-registry.mjs` pages, kept as the raw Opendatasoft
+  envelope. Every trap in it is real and is the point: `puismaxinstallee` is in
+  **kilowatts** (1 310 000 for a 1 310 MW reactor) and carries three decimals
+  where one plant is split across two groups (Brommat 180 357.261 + 225 642.739
+  = 406 000 exactly); a 132 MW **photovoltaic** farm at Ajaccio is filed under
+  `filiere: "Thermique non renouvelable"`, so classifying on the filière alone
+  paints a solar farm as a thermal station; the Rance **tidal** barrage is named
+  `CENTRALE HYDRAULIQUE DE RANCE`; six overseas and Corsican units publish the
+  literal name `Confidentiel` with no `postesource`; Brommat and Sarrans are two
+  different plants in the SAME commune with two different `postesource` codes;
+  Émile-Huchet is one `postesource` holding both coal and gas groups; and the
+  names arrive in four grammars, with the article parked at the end
+  (`TRICASTIN (LE)`, `AIGLE (L )`, `MORANDES (LES)`), a group ordinal glued to
+  the site (`BROMMAT-7`), an accented `FERME ÉOLIENNE`, and a `STOCKAGE N0 01`
+  that hides its ordinal inside the introducer. Licence Ouverte 2.0, ODRÉ.
+
+- `rte-actual-generation-sample.json` — a **real capture** of RTE's
+  `actual_generations_per_unit` v1.1, taken 2026-08-28 through a free account,
+  trimmed to 8 of the 152 published units and to the last six published hours of
+  each. Every field and every value is verbatim. It replaced a fixture written
+  by hand against the contract, and the swap corrected the record: the live
+  resource sends **no nulls at all** (0 of 6 992 rows — it simply stops at the
+  last published hour, all units in lockstep) and **no `installed_capacity`**
+  (0 of 152), so two documented "traps" were reclassified as defensive guards.
+  The eight units kept are each one thing the projection exists for: **CHOOZ 1
+  at −58 MW** — a shut-down REACTOR buying back its own coolant pumps, which is
+  what the negative readings actually are and not the pumped storage the
+  hand-written fixture assumed; **GRAVELINES 5 at exactly 0 MW**, an outage and
+  the reading `value || 0` erases; **PALUEL 4** at full output; **GRAND MAISON
+  10 and 11**, two of the twelve turbine groups RTE publishes inside a plant the
+  register carries as one row with a different EIC entirely (trap 9, which cost
+  36% of the fleet before it was found); **EMILE HUCHET 6**, joined by EIC like
+  every nuclear and thermal unit; **CERNAY**, a grid battery published as
+  `production_type: OTHER`; and **DIRINON 1**, a unit the register has never
+  heard of by code or by name. RTE, free account required.
