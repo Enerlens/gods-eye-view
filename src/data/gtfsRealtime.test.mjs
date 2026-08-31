@@ -9,17 +9,57 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PbfWriter } from 'pbf';
 import {
+  alertIsActive,
+  alertsFromBytes,
   boundsOfVehicles,
+  decodeAlertFeed,
   decodeFeedMessage,
+  decodeTripUpdateFeed,
   normalizeBearing,
   normalizeFeedTimestampMs,
   routeLabelFromId,
-  vehicleFromEntity,
+  translatedText,
   tripUpdatesFromBytes,
+  vehicleFromEntity,
   vehiclePositionsFromBytes,
   MAX_PLAUSIBLE_DELAY_SEC,
   MAX_PLAUSIBLE_SPEED_MPS,
 } from './gtfsRealtime.js';
+
+/** `TripDescriptor` — the one message shared by positions, updates and alerts. */
+function writeTripDescriptor(field, writer, trip) {
+  writer.writeMessage(field, (value, tw) => {
+    if (value.tripId) tw.writeStringField(1, value.tripId);
+    if (value.startTime) tw.writeStringField(2, value.startTime);
+    if (value.startDate) tw.writeStringField(3, value.startDate);
+    if (value.scheduleRelationship !== undefined) tw.writeVarintField(4, value.scheduleRelationship);
+    if (value.routeId) tw.writeStringField(5, value.routeId);
+    if (value.directionId !== undefined) tw.writeVarintField(6, value.directionId);
+  }, trip);
+}
+
+/** `StopTimeEvent` — delay 1, time 2, uncertainty 3. */
+function writeStopTimeEvent(field, writer, event) {
+  writer.writeMessage(field, (value, ew) => {
+    // `delay` is a plain int32, so a negative one is written sign-extended
+    // rather than zigzagged. Encoding it any other way would test the test.
+    if (value.delay !== undefined) ew.writeVarintField(1, value.delay);
+    if (value.time !== undefined) ew.writeVarintField(2, value.time);
+    if (value.uncertainty !== undefined) ew.writeVarintField(3, value.uncertainty);
+  }, event);
+}
+
+/** `TranslatedString` — translation 1 (repeated), each text 1 / language 2. */
+function writeTranslatedString(field, writer, translations) {
+  writer.writeMessage(field, (value, sw) => {
+    for (const translation of value) {
+      sw.writeMessage(1, (item, tw) => {
+        tw.writeStringField(1, item.text);
+        if (item.language) tw.writeStringField(2, item.language);
+      }, translation);
+    }
+  }, translations);
+}
 
 /** Encode a FeedMessage using the GTFS-RT v2.0 field numbers, verbatim. */
 function encodeFeed({ timestamp = 1787765165, entities = [] } = {}) {
@@ -34,22 +74,67 @@ function encodeFeed({ timestamp = 1787765165, entities = [] } = {}) {
       writer.writeStringField(1, item.id);
       if (item.isDeleted) writer.writeBooleanField(2, true);
       if (item.tripUpdateOnly) {
-        // TripUpdate is tag 3 — decoded feeds must skip it, not mistake it for
-        // a position.
+        // TripUpdate is tag 3 — a positions pass must skip it, not mistake it
+        // for a position. The body is deliberately NOT a valid TripUpdate:
+        // skipping happens by wire type, so it must not depend on the content.
         writer.writeMessage(3, (_unused, w) => w.writeStringField(1, 'trip-1'), {});
+        return;
+      }
+      if (item.tripUpdate) {
+        writer.writeMessage(3, (update, w) => {
+          if (update.trip) writeTripDescriptor(1, w, update.trip);
+          for (const stop of update.stops || []) {
+            w.writeMessage(2, (value, sw) => {
+              if (value.sequence !== undefined) sw.writeVarintField(1, value.sequence);
+              if (value.arrival) writeStopTimeEvent(2, sw, value.arrival);
+              if (value.departure) writeStopTimeEvent(3, sw, value.departure);
+              if (value.stopId) sw.writeStringField(4, value.stopId);
+              if (value.scheduleRelationship !== undefined) {
+                sw.writeVarintField(5, value.scheduleRelationship);
+              }
+            }, stop);
+          }
+          if (update.descriptor) {
+            w.writeMessage(3, (descriptor, dw) => {
+              if (descriptor.id) dw.writeStringField(1, descriptor.id);
+              if (descriptor.label) dw.writeStringField(2, descriptor.label);
+            }, update.descriptor);
+          }
+          if (update.timestamp !== undefined) w.writeVarintField(4, update.timestamp);
+          if (update.delay !== undefined) w.writeVarintField(5, update.delay);
+        }, item.tripUpdate);
+        return;
+      }
+      if (item.alert) {
+        writer.writeMessage(5, (alert, w) => {
+          for (const period of alert.activePeriods || []) {
+            w.writeMessage(1, (value, pw) => {
+              if (value.start !== undefined) pw.writeVarintField(1, value.start);
+              if (value.end !== undefined) pw.writeVarintField(2, value.end);
+            }, period);
+          }
+          for (const informed of alert.informed || []) {
+            w.writeMessage(5, (value, iw) => {
+              if (value.agencyId) iw.writeStringField(1, value.agencyId);
+              if (value.routeId) iw.writeStringField(2, value.routeId);
+              if (value.routeType !== undefined) iw.writeVarintField(3, value.routeType);
+              if (value.trip) writeTripDescriptor(4, iw, value.trip);
+              if (value.stopId) iw.writeStringField(5, value.stopId);
+              if (value.directionId !== undefined) iw.writeVarintField(6, value.directionId);
+            }, informed);
+          }
+          if (alert.cause !== undefined) w.writeVarintField(6, alert.cause);
+          if (alert.effect !== undefined) w.writeVarintField(7, alert.effect);
+          if (alert.url) writeTranslatedString(8, w, alert.url);
+          if (alert.header) writeTranslatedString(10, w, alert.header);
+          if (alert.description) writeTranslatedString(11, w, alert.description);
+          if (alert.severity !== undefined) w.writeVarintField(14, alert.severity);
+        }, item.alert);
         return;
       }
       if (!item.vehicle) return;
       writer.writeMessage(4, (vehicle, w) => {
-        if (vehicle.trip) {
-          w.writeMessage(1, (trip, tw) => {
-            if (trip.tripId) tw.writeStringField(1, trip.tripId);
-            if (trip.startTime) tw.writeStringField(2, trip.startTime);
-            if (trip.startDate) tw.writeStringField(3, trip.startDate);
-            if (trip.routeId) tw.writeStringField(5, trip.routeId);
-            if (trip.directionId !== undefined) tw.writeVarintField(6, trip.directionId);
-          }, vehicle.trip);
-        }
+        if (vehicle.trip) writeTripDescriptor(1, w, vehicle.trip);
         if (vehicle.position) {
           w.writeMessage(2, (position, pw) => {
             pw.writeFloatField(1, position.lat);
@@ -258,72 +343,18 @@ test('a handful of fixes is never fenced — there is no distribution to reason 
 // than to 9.2e18; and the vehicle pass must keep ignoring these entities even
 // though the module now knows how to read them.
 
-/** Encode a FeedMessage whose entities carry TripUpdates (tag 3). */
-function encodeTripFeed({ timestamp = 1788200903, entities = [] } = {}) {
-  const pbf = new PbfWriter();
-  pbf.writeMessage(1, (header, writer) => {
-    writer.writeStringField(1, '2.0');
-    if (header.timestamp) writer.writeVarintField(3, header.timestamp);
-  }, { timestamp });
-  for (const entity of entities) {
-    pbf.writeMessage(2, (item, writer) => {
-      writer.writeStringField(1, item.id);
-      if (item.isDeleted) writer.writeBooleanField(2, true);
-      if (!item.tripUpdate) return;
-      writer.writeMessage(3, (update, w) => {
-        if (update.trip) {
-          w.writeMessage(1, (trip, tw) => {
-            if (trip.tripId) tw.writeStringField(1, trip.tripId);
-            if (trip.startDate) tw.writeStringField(3, trip.startDate);
-            if (trip.routeId) tw.writeStringField(5, trip.routeId);
-            if (trip.directionId !== undefined) tw.writeVarintField(6, trip.directionId);
-          }, update.trip);
-        }
-        for (const stop of update.stops || []) {
-          w.writeMessage(2, (entry, sw) => {
-            if (entry.sequence !== undefined) sw.writeVarintField(1, entry.sequence);
-            if (entry.arrival) {
-              sw.writeMessage(2, (event, ew) => {
-                // int32, sign-extended — exactly how a real feed writes it.
-                if (event.delay !== undefined) ew.writeVarintField(1, event.delay);
-                if (event.time !== undefined) ew.writeVarintField(2, event.time);
-              }, entry.arrival);
-            }
-            if (entry.departure) {
-              sw.writeMessage(3, (event, ew) => {
-                if (event.delay !== undefined) ew.writeVarintField(1, event.delay);
-                if (event.time !== undefined) ew.writeVarintField(2, event.time);
-              }, entry.departure);
-            }
-            if (entry.stopId) sw.writeStringField(4, entry.stopId);
-            if (entry.relationship !== undefined) sw.writeVarintField(5, entry.relationship);
-          }, stop);
-        }
-        if (update.vehicle) {
-          w.writeMessage(3, (descriptor, dw) => {
-            if (descriptor.id) dw.writeStringField(1, descriptor.id);
-            if (descriptor.label) dw.writeStringField(2, descriptor.label);
-          }, update.vehicle);
-        }
-        if (update.timestamp !== undefined) w.writeVarintField(4, update.timestamp);
-      }, item.tripUpdate);
-    }, entity);
-  }
-  return pbf.finish();
-}
-
 /** One TBM-shaped run: three stops, one of them already served. */
 function tbmTrip(overrides = {}) {
   return {
     id: 'entity-tu-1',
     tripUpdate: {
       trip: { tripId: 'b_268437828_31', routeId: '25', startDate: '20260831', directionId: 1 },
-      vehicle: { id: 'ineo-bus:89124', label: 'LA CITE DU VIN' },
+      descriptor: { id: 'ineo-bus:89124', label: 'LA CITE DU VIN' },
       timestamp: 1788200903,
       stops: [
         { sequence: 1, stopId: '8003', arrival: { delay: -643, time: 1788197837 }, departure: { delay: 13, time: 1788198506 } },
         { sequence: 2, stopId: '8002', arrival: { delay: 26, time: 1788198581 } },
-        { sequence: 3, stopId: '932', departure: { delay: 38, time: 1788198611 }, relationship: 1 },
+        { sequence: 3, stopId: '932', departure: { delay: 38, time: 1788198611 }, scheduleRelationship: 1 },
       ],
       ...overrides,
     },
@@ -332,7 +363,7 @@ function tbmTrip(overrides = {}) {
 
 test('a trip update decodes to the run\'s ordered stops with the operator\'s times', () => {
   const { trips, headerTimestampMs, entityCount } = tripUpdatesFromBytes(
-    encodeTripFeed({ entities: [tbmTrip()] }),
+    encodeFeed({ timestamp: 1788200903, entities: [tbmTrip()] }),
   );
   assert.equal(entityCount, 1);
   assert.equal(headerTimestampMs, 1788200903000);
@@ -355,7 +386,7 @@ test('a trip update decodes to the run\'s ordered stops with the operator\'s tim
 });
 
 test('a negative delay is an int32, not a zigzag — early is early, not 9.2e18', () => {
-  const { trips } = tripUpdatesFromBytes(encodeTripFeed({ entities: [tbmTrip()] }));
+  const { trips } = tripUpdatesFromBytes(encodeFeed({ entities: [tbmTrip()] }));
   const [first, second, third] = trips[0].stops;
   assert.equal(first.delaySec, -643);
   assert.equal(second.delaySec, 26);
@@ -364,7 +395,7 @@ test('a negative delay is an int32, not a zigzag — early is early, not 9.2e18'
 });
 
 test('a delay beyond a day is a lost reference timetable, not a prediction', () => {
-  const { trips } = tripUpdatesFromBytes(encodeTripFeed({
+  const { trips } = tripUpdatesFromBytes(encodeFeed({
     entities: [{
       id: 'e',
       tripUpdate: {
@@ -379,7 +410,7 @@ test('a delay beyond a day is a lost reference timetable, not a prediction', () 
 });
 
 test('stops are ordered by sequence only when every one of them carries a sequence', () => {
-  const scrambled = tripUpdatesFromBytes(encodeTripFeed({
+  const scrambled = tripUpdatesFromBytes(encodeFeed({
     entities: [{
       id: 'e',
       tripUpdate: {
@@ -396,7 +427,7 @@ test('stops are ordered by sequence only when every one of them carries a sequen
 
   // Partially numbered: sorting would invent an order no feed published, so
   // the wire order stands.
-  const partial = tripUpdatesFromBytes(encodeTripFeed({
+  const partial = tripUpdatesFromBytes(encodeFeed({
     entities: [{
       id: 'e',
       tripUpdate: {
@@ -409,7 +440,7 @@ test('stops are ordered by sequence only when every one of them carries a sequen
 });
 
 test('deleted and trip-less updates are dropped, and positions ignore trip updates', () => {
-  const bytes = encodeTripFeed({
+  const bytes = encodeFeed({
     entities: [
       tbmTrip(),
       { id: 'gone', isDeleted: true, tripUpdate: { trip: { tripId: 'x' }, stops: [] } },
@@ -424,4 +455,131 @@ test('deleted and trip-less updates are dropped, and positions ignore trip updat
   // body of contacts, and the vehicle decoder does not try to make it one.
   const { vehicles } = vehiclePositionsFromBytes(bytes, { feedId: 'f' });
   assert.deepEqual(vehicles, []);
+});
+
+// --- The trip-level schedule relationship, and Alerts -----------------------
+//
+// The two members the enrichment adds on top of the run's stop times: whether
+// the operator has CANCELLED the run at all, and the sentence it has written
+// about the line.
+
+test('a cancelled run is read off the trip descriptor, on the update and on the position', () => {
+  const fromUpdate = tripUpdatesFromBytes(encodeFeed({
+    entities: [{
+      id: 'tu-cancel',
+      tripUpdate: { trip: { tripId: 'trip-x', scheduleRelationship: 3 }, stops: [] },
+    }],
+  })).trips[0];
+  assert.equal(fromUpdate.relationship, 'canceled');
+
+  const fromPosition = vehiclePositionsFromBytes(encodeFeed({
+    entities: [tbmVehicle({ trip: { tripId: 'trip-x', routeId: '07', scheduleRelationship: 3 } })],
+  }), { feedId: 'f' }).vehicles[0];
+  // Free: no join, no second request — the position feed said it itself.
+  assert.equal(fromPosition.tripRelationship, 'canceled');
+});
+
+// --- Alert ------------------------------------------------------------------
+
+test('an alert decodes with its French text, its scope and its effect', () => {
+  const bytes = encodeFeed({
+    entities: [{
+      id: 'alert-1',
+      alert: {
+        activePeriods: [{ start: 1787700000, end: 1787800000 }],
+        informed: [{ agencyId: 'BMA', routeId: '07' }, { stopId: '3790' }],
+        cause: 10,
+        effect: 4,
+        severity: 3,
+        url: [{ text: 'https://infotbm.com/perturbations', language: 'fr' }],
+        header: [
+          { text: 'Bordeaux : travaux quai de Paludate', language: 'fr' },
+          { text: 'Bordeaux: Paludate quay works', language: 'en' },
+        ],
+        description: [{ text: 'Déviation par le cours Barbey.', language: 'fr' }],
+      },
+    }],
+  });
+
+  const { alerts } = alertsFromBytes(bytes);
+  assert.equal(alerts.length, 1);
+  const [alert] = alerts;
+  assert.equal(alert.header, 'Bordeaux : travaux quai de Paludate', 'French wins over English');
+  assert.equal(alert.description, 'Déviation par le cours Barbey.');
+  assert.equal(alert.cause, 'construction');
+  assert.equal(alert.effect, 'detour');
+  assert.equal(alert.severity, 'warning');
+  assert.equal(alert.url, 'https://infotbm.com/perturbations');
+  assert.deepEqual(alert.informed[0], {
+    agencyId: 'BMA', routeId: '07', routeType: null, tripId: null, stopId: null, directionId: null,
+  });
+  assert.equal(alert.activePeriods[0].startMs, 1787700000000);
+});
+
+test('an untagged translation is used before an arbitrary one', () => {
+  assert.equal(translatedText({ translations: [{ text: 'sans langue' }] }), 'sans langue');
+  assert.equal(
+    translatedText({ translations: [{ text: 'de', language: 'de' }, { text: 'brut' }] }),
+    'brut',
+  );
+  assert.equal(translatedText({ translations: [] }), null);
+  assert.equal(translatedText(null), null);
+});
+
+test('an alert that informs nothing, or says nothing, is not an alert', () => {
+  const { alerts } = alertsFromBytes(encodeFeed({
+    entities: [
+      { id: 'a-noentity', alert: { header: [{ text: 'about what?' }], informed: [] } },
+      { id: 'a-notext', alert: { informed: [{ routeId: '07' }] } },
+    ],
+  }));
+  assert.deepEqual(alerts, []);
+});
+
+test('an alert with no active period is in force; one with a window is not always', () => {
+  const always = { activePeriods: [] };
+  assert.equal(alertIsActive(always, 1787765165000), true);
+  const windowed = { activePeriods: [{ startMs: 1787700000000, endMs: 1787800000000 }] };
+  assert.equal(alertIsActive(windowed, 1787765165000), true);
+  assert.equal(alertIsActive(windowed, 1787600000000), false);
+  assert.equal(alertIsActive(windowed, 1787900000000), false);
+  // Half-open in the direction it names.
+  assert.equal(alertIsActive({ activePeriods: [{ startMs: null, endMs: 1787800000000 }] }, 1000), true);
+});
+
+// --- One entity type per pass ----------------------------------------------
+
+test('each decoder reads only its own entity type out of a shared body', () => {
+  // 63 French feeds publish all three types under one resource id. Reading one
+  // must not depend on — or be broken by — the other two, and the members it
+  // did not ask for are never even built.
+  const bytes = encodeFeed({
+    entities: [
+      tbmVehicle(),
+      {
+        id: 'tu-1',
+        tripUpdate: {
+          trip: { tripId: 'b_268436222_26' },
+          stops: [{ sequence: 6, arrival: { delay: 120 } }],
+        },
+      },
+      {
+        id: 'alert-1',
+        alert: { informed: [{ routeId: '07' }], header: [{ text: 'Grève' }], cause: 4 },
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    vehiclePositionsFromBytes(bytes, { feedId: 'f' }).vehicles.map((v) => v.id),
+    ['f:2481'],
+  );
+  assert.deepEqual(tripUpdatesFromBytes(bytes).trips.map((t) => t.tripId), ['b_268436222_26']);
+  assert.deepEqual(alertsFromBytes(bytes).alerts.map((a) => a.cause), ['strike']);
+
+  const positions = decodeFeedMessage(bytes);
+  assert.equal(positions.entities[1].tripUpdate, undefined);
+  assert.equal(positions.entities[2].alert, undefined);
+  assert.equal(decodeTripUpdateFeed(bytes).entities[1].tripUpdate.tripId, 'b_268436222_26');
+  assert.equal(decodeAlertFeed(bytes).entities[0].vehicle, undefined);
 });

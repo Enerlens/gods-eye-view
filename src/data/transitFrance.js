@@ -50,6 +50,21 @@
  *     2026-08-31 (Palm Bus, SudLib and TCAT essentially alone). SPEED by half
  *     of it. Both are drawn only when the operator sent them, and neither is
  *     advertised as a feature of the layer.
+ *   - DELAY and DISRUPTION are the same 150 networks' OTHER two GTFS-Realtime
+ *     messages, joined to the vehicle already on screen rather than drawn as a
+ *     layer of their own: how far off the timetable the operator says this run
+ *     is, whether it has been cancelled, which of its remaining stops it will
+ *     skip, and what has been written about its line. The proxy does the join
+ *     (one companion body is up to 1.2 MB, and it would otherwise cross the
+ *     wire per client to answer the same question); `transitSchedule.js` holds
+ *     the rules. Measured
+ *     2026-08-31 over the 30 largest live networks: 67% of vehicles join a
+ *     trip update, 38% end up with a deviation — the rest run on networks that
+ *     publish an absolute predicted TIME and never a delay, which cannot be
+ *     converted without the 223 MB `stop_times.txt` this layer refuses to
+ *     load. A vehicle with no published deviation says so instead of showing
+ *     zero, and a bus parked at its terminus waiting for a departure an hour
+ *     away is reported as waiting rather than as an hour early.
  */
 import * as Cesium from 'cesium';
 import {
@@ -71,6 +86,7 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { PAN_MAX_BOX_DEG, PAN_MODE_LABELS } from './panFeeds.js';
+import { formatDelay } from './transitSchedule.js';
 import { vehicleKindColor, vehicleKindLabel } from './transitVehicleKind.js';
 import { transitHeadingPointer, transitVehicleGlyph } from './transitVehicleIcons.js';
 import { transitCoverageNotice } from './transitCoverage.js';
@@ -262,6 +278,8 @@ let _status = 'idle';
 let _count = 0;
 let _lastUpdate = null;
 let _feedSummaries = [];
+/** Punctuality tally of the last viewport answer — see `summarizeSchedule`. */
+let _schedule = null;
 let _feedsMatched = 0;
 let _feedsTruncated = false;
 let _vehiclesTruncated = false;
@@ -396,6 +414,124 @@ function vehiclePosition(vehicle) {
 }
 
 /**
+ * How a deviation was read, when that is worth saying.
+ *
+ * The strongest case — the stop the vehicle is heading for, matched on its own
+ * `current_stop_sequence` — is left unqualified, because qualifying it would
+ * make the default case the noisy one. The three weaker readings say so.
+ */
+const DELAY_SOURCE_QUALIFIER = Object.freeze({
+  ahead: 'next predicted stop',
+  behind: 'last measured stop',
+  trip: 'whole run',
+});
+
+/** What an alert was matched ON. See `transitSchedule.alertForVehicle`. */
+const ALERT_SCOPE_LABELS = Object.freeze({
+  trip: 'this run',
+  route: 'this line',
+  network: 'network-wide',
+});
+
+/** Local wall-clock HH:MM — the form a departure board uses. */
+function clockTime(ms) {
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Cut a publisher's sentence to card width without cutting mid-word. */
+function clip(text, max = 58) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/**
+ * The schedule line: how far off the timetable the operator says this vehicle
+ * is running, or why there is no such number.
+ *
+ * Four outcomes, and the fourth is the point. 62% of the national fleet is
+ * carried by networks that publish an absolute predicted TIME and never a
+ * deviation, so a card that simply omitted the line would leave a viewer
+ * unable to tell "on time" from "this network does not say". A vehicle whose
+ * run was matched but whose feed published no deviation says exactly that.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {?string}
+ */
+export function transitScheduleReadout(vehicle) {
+  if (!vehicle) return null;
+  if (vehicle.awaitingDeparture) {
+    const due = Number.isFinite(vehicle.scheduledDepartureMs)
+      ? clockTime(vehicle.scheduledDepartureMs)
+      : null;
+    return due ? `🕘 waiting to depart · due out ${due}` : '🕘 waiting to depart';
+  }
+  const text = formatDelay(vehicle.delaySec);
+  if (text) {
+    const qualifier = DELAY_SOURCE_QUALIFIER[vehicle.delayFrom];
+    return qualifier ? `🕘 ${text} · ${qualifier}` : `🕘 ${text}`;
+  }
+  if (vehicle.tripMatch) return '🕘 run tracked · no delay published';
+  return null;
+}
+
+/**
+ * The disruption line: what the operator has changed about this RUN.
+ *
+ * Cancellations and skipped stops come from the trip update rather than from
+ * an alert, which makes them the operator acting rather than the operator
+ * writing. `skippedAhead` decides the wording: a stop already behind the
+ * vehicle is not one anybody is still waiting at, and the count is only
+ * narrowed to the ones ahead when both the vehicle and the update numbered
+ * their stops.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {?string}
+ */
+export function transitDisruptionReadout(vehicle) {
+  if (!vehicle) return null;
+  const parts = [];
+  if (vehicle.tripState === 'canceled') parts.push('run cancelled');
+  else if (vehicle.tripState === 'added') parts.push('extra run');
+  else if (vehicle.tripState) parts.push(`run ${vehicle.tripState}`);
+  const skipped = Number(vehicle.skippedStops) || 0;
+  if (skipped > 0) {
+    parts.push(
+      `${skipped} stop${skipped === 1 ? '' : 's'} skipped ${vehicle.skippedAhead ? 'ahead' : 'on this run'}`,
+    );
+  }
+  return parts.length ? `⚠ ${parts.join(' · ')}` : null;
+}
+
+/**
+ * The alert line: the operator's own sentence, with what it is about.
+ *
+ * The scope is never dropped. "Your bus is diverted" and "this line is
+ * diverted somewhere today" are different claims, and an alert matched on the
+ * LINE — which is how almost all French alerts are published — is the second
+ * one. The effect is appended only when the feed named one that says more than
+ * the text already does.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {?string}
+ */
+export function transitAlertReadout(vehicle) {
+  const alert = vehicle?.alert;
+  if (!alert?.text) return null;
+  const scope = ALERT_SCOPE_LABELS[alert.scope] || alert.scope;
+  const context = [scope];
+  if (alert.effect && alert.effect !== 'other effect' && alert.effect !== 'no effect') {
+    context.push(alert.effect);
+  }
+  const more = Number(vehicle.alertCount) > 1 ? ` +${Number(vehicle.alertCount) - 1} more` : '';
+  return `⚠ ${clip(alert.text)} (${context.join(' · ')})${more}`;
+}
+
+/**
  * Build the multi-line label for the selected vehicle's card.
  * Every line is a value the feed published; nothing is inferred.
  *
@@ -435,6 +571,17 @@ export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
   if (vehicle.occupancy) {
     details.push(`👥 ${OCCUPANCY_LABELS[vehicle.occupancy] || vehicle.occupancy}`);
   }
+
+  // What the operator says about the RUN, not the vehicle: how far off the
+  // timetable it is, what it has stopped doing, and what has been written
+  // about its line. All three come from the same networks' own trip updates
+  // and alerts — see `transitSchedule.js`.
+  const schedule = transitScheduleReadout(vehicle);
+  if (schedule) details.push(schedule);
+  const disruption = transitDisruptionReadout(vehicle);
+  if (disruption) details.push(disruption);
+  const alert = transitAlertReadout(vehicle);
+  if (alert) details.push(alert);
 
   // Fix age, not render age: the glyph is mid-glide between two real fixes, and
   // the card must report the newest one the operator actually published.
@@ -949,6 +1096,7 @@ async function loadViewport({ force = false } = {}) {
     reconcile(Array.isArray(payload.vehicles) ? payload.vehicles : [], feedsById, Date.now());
 
     _feedSummaries = payload.feeds || [];
+    _schedule = payload.schedule || null;
     _feedsMatched = Number(payload.feedsMatched) || 0;
     _feedsTruncated = payload.feedsTruncated === true;
     _vehiclesTruncated = payload.vehiclesTruncated === true;
@@ -976,6 +1124,24 @@ function onCameraChanged() {
   _cameraDebounceTimer = setTimeout(() => { void loadViewport(); }, CAMERA_DEBOUNCE_MS);
 }
 
+/**
+ * Ambient label for one vehicle: the line, plus its deviation when it has one.
+ *
+ * `+4m` / `-2m` rather than words, because this string is drawn at the size a
+ * radar contact gets. Routed through {@link formatDelay}'s own banding so a
+ * vehicle the card calls on time never carries a number here.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {string}
+ */
+export function detectionLabelFor(vehicle) {
+  const line = vehicle?.route ? `LN ${vehicle.route}` : 'TRANSIT';
+  const text = formatDelay(vehicle?.delaySec);
+  if (!text || text === 'on time') return line;
+  const minutes = Math.max(1, Math.round(Math.abs(vehicle.delaySec) / 60));
+  return `${line} ${vehicle.delaySec > 0 ? '+' : '-'}${minutes}m`;
+}
+
 /** Deterministic subsample of rendered vehicles for the detection overlay. */
 function collectDetectableVehicles(options = {}) {
   if (!_enabled || !_billboards?.show || !_records.size) return [];
@@ -999,7 +1165,11 @@ function collectDetectableVehicles(options = {}) {
     result.push({
       position: record.renderPosition,
       sourceId: record.id,
-      id: record.vehicle.route ? `LN ${record.vehicle.route}` : 'TRANSIT',
+      // The line, and — only when the operator published one and it is outside
+      // the on-time band — the deviation in minutes. Two extra characters is
+      // all an ambient label can spare, and they are the ones that turn a
+      // swarm of line numbers into a picture of a network running late.
+      id: detectionLabelFor(record.vehicle),
       type: 'VEH',
       skipLabel: record.id === _selectedId,
     });
@@ -1024,6 +1194,16 @@ function buildLoadingLabel() {
   }
   const networks = _feedSummaries.filter((feed) => feed.inView > 0).length;
   const parts = [`${networks} network${networks === 1 ? '' : 's'}`];
+  // The one number worth a row of the control panel: how much of what is on
+  // screen is running behind. Only ever shown when a network in view actually
+  // published deviations — a silent "0 late" over a fleet that never said
+  // would be the layer claiming punctuality it cannot see.
+  if (_schedule?.late) parts.push(`${_schedule.late} late`);
+  if (_schedule?.canceled) parts.push(`${_schedule.canceled} cancelled`);
+  // The disruption a network can report even when it publishes no deviation
+  // at all: Rennes types 27 vehicles, gives a delay for none of them, and says
+  // 16 of their runs will skip a stop.
+  if (_schedule?.skipped) parts.push(`${_schedule.skipped} skipping stops`);
   if (_feedsTruncated) parts.push(`${_feedsMatched} in range`);
   if (_vehiclesTruncated || _renderTruncated) parts.push('capped');
   const stale = _feedSummaries.filter((feed) => feed.stale).length;
@@ -1070,6 +1250,7 @@ const transitFranceLayer = {
     _error = null;
     _status = 'idle';
     _feedSummaries = [];
+    _schedule = null;
     _feedsMatched = 0;
     _feedsTruncated = false;
     _vehiclesTruncated = false;
@@ -1148,6 +1329,7 @@ const transitFranceLayer = {
     _loading = false;
     _status = 'idle';
     _feedSummaries = [];
+    _schedule = null;
     _lastBox = null;
     _lastBoxBounds = null;
     releaseContinuousRender('transit-fr');

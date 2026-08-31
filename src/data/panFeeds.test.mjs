@@ -9,6 +9,8 @@ import {
   boxContains,
   boxOverlapArea,
   boxesIntersect,
+  companionResources,
+  isRealtimeResourceWith,
   isTripUpdateResource,
   isVehiclePositionResource,
   mergeObservedBounds,
@@ -28,6 +30,8 @@ import {
   PAN_BOX_STEP_DEG,
   PAN_MAX_BOX_DEG,
   PAN_UNKNOWN_FOOTPRINT_SLOTS,
+  PAN_SERVICE_ALERTS_FEATURE,
+  PAN_TRIP_UPDATES_FEATURE,
   PAN_UNKNOWN_PROBE_MARGIN_DEG,
 } from './panFeeds.js';
 
@@ -345,4 +349,71 @@ test('the GeoJSON conversion URL is derived from the resource id', () => {
     panGeoJsonConversionUrl(83024),
     'https://transport.data.gouv.fr/resources/conversions/83024/GeoJSON',
   );
+});
+
+// --- Companion resources ----------------------------------------------------
+// A network's DELAYS live in a different resource from its positions, and the
+// catalog never says which. These are the ranking rules the index builder then
+// settles by measurement.
+
+/** One `gtfs-rt` resource, shaped like the catalog's. */
+function resource(id, features, overrides = {}) {
+  return {
+    id,
+    format: 'gtfs-rt',
+    features,
+    is_available: true,
+    url: `https://www.data.gouv.fr/api/1/datasets/r/res-${id}`,
+    ...overrides,
+  };
+}
+
+test('a feed that publishes everything in one body is its own companion', () => {
+  // 63 of the 150 French feeds do this, and for them the delays are bytes
+  // already fetched rather than a second request.
+  const self = resource(36515, ['vehicle_positions', 'trip_updates', 'service_alerts']);
+  const neighbour = resource(36516, ['trip_updates']);
+  const ranked = companionResources({ resources: [neighbour, self] }, self, PAN_TRIP_UPDATES_FEATURE);
+  assert.deepEqual(ranked.map((entry) => entry.id), [36515, 36516]);
+});
+
+test('otherwise the adjacent resource id ranks first — that is how the PAN mints pairs', () => {
+  // TaM publishes urban positions at 81755 with its urban updates at 81757,
+  // and suburban positions at 83780 with its suburban updates at 83779.
+  const urban = resource(81755, ['vehicle_positions']);
+  const suburban = resource(83780, ['vehicle_positions']);
+  const dataset = {
+    resources: [urban, suburban, resource(83779, ['trip_updates']), resource(81757, ['trip_updates'])],
+  };
+  assert.equal(companionResources(dataset, urban, PAN_TRIP_UPDATES_FEATURE)[0].id, 81757);
+  assert.equal(companionResources(dataset, suburban, PAN_TRIP_UPDATES_FEATURE)[0].id, 83779);
+});
+
+test('unavailable, urlless and wrong-format resources are never candidates', () => {
+  const position = resource(100, ['vehicle_positions']);
+  const dataset = {
+    resources: [
+      position,
+      resource(101, ['trip_updates'], { is_available: false }),
+      resource(102, ['trip_updates'], { url: '' }),
+      resource(103, ['trip_updates'], { format: 'GTFS' }),
+      resource(104, ['service_alerts']),
+      resource(105, ['trip_updates']),
+    ],
+  };
+  assert.deepEqual(
+    companionResources(dataset, position, PAN_TRIP_UPDATES_FEATURE).map((entry) => entry.id),
+    [105],
+  );
+  assert.deepEqual(
+    companionResources(dataset, position, PAN_SERVICE_ALERTS_FEATURE).map((entry) => entry.id),
+    [104],
+  );
+  assert.deepEqual(companionResources({ resources: [] }, position, PAN_TRIP_UPDATES_FEATURE), []);
+});
+
+test('the feature test is the availability test, applied to any feature', () => {
+  assert.equal(isRealtimeResourceWith(resource(1, ['trip_updates']), PAN_TRIP_UPDATES_FEATURE), true);
+  assert.equal(isRealtimeResourceWith(resource(1, ['vehicle_positions']), PAN_TRIP_UPDATES_FEATURE), false);
+  assert.equal(isRealtimeResourceWith(null, PAN_TRIP_UPDATES_FEATURE), false);
 });

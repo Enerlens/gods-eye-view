@@ -76,6 +76,8 @@ import {
   rteGenerationWindow,
 } from './src/data/rteGenerationFeed.js';
 import {
+  alertIsActive,
+  alertsFromBytes,
   boundsOfVehicles,
   tripUpdatesFromBytes,
   vehiclePositionsFromBytes,
@@ -117,6 +119,14 @@ import {
   indexGtfsGeoJson,
   pathLengthMeters,
 } from './src/data/transitRouteShape.js';
+import {
+  alertForVehicle,
+  alertWireRecord,
+  indexAlerts,
+  indexTripUpdates,
+  scheduleForVehicle,
+  summarizeSchedule,
+} from './src/data/transitSchedule.js';
 import {
   filterFreshObservations,
   parseNdbcLatestObservations,
@@ -5029,7 +5039,8 @@ function gbfsProxy() {
 }
 
 // ---------------------------------------------------------------------------
-// transport.data.gouv.fr — French GTFS-Realtime vehicle positions
+// transport.data.gouv.fr — French GTFS-Realtime vehicle positions, and the
+// delays and disruptions published alongside them
 // ---------------------------------------------------------------------------
 /**
  * Shipped feed index (see `scripts/build-pan-gtfs-rt-index.mjs`). Read once per
@@ -5062,6 +5073,39 @@ const PAN_FEED_BACKOFF_MS = 90_000;
 const PAN_FEED_STALE_MS = 90_000;
 const PAN_FEED_TIMEOUT_MS = 9_000;
 const PAN_FEED_MAX_BYTES = 8 * 1024 * 1024;
+/**
+ * Trip-update body cache, ms — shared by the viewport pass and the click.
+ *
+ * Four times the position cache, and deliberately: a trip update is the
+ * operator's PREDICTION, recomputed every 20-60 s and rarely by more than a
+ * few seconds; TBM's body is 1.2 MB against 37 KB for its positions, so
+ * refreshing it on the position cadence would spend 32x the bandwidth to
+ * restate the same "4 min late". A delay 45 s old is still that delay.
+ *
+ * One window for both surfaces, because they read the same bytes: a click on
+ * a bus whose fleet was just enriched answers from the entry that enrichment
+ * populated, instead of re-downloading a megabyte the server already has.
+ */
+const PAN_TRIP_CACHE_MS = 45_000;
+/**
+ * Alert body cache, ms. An alert is written by a person and lives for hours or
+ * days; five minutes is already far finer than the thing it describes changes.
+ */
+const PAN_ALERT_CACHE_MS = 5 * 60_000;
+/**
+ * Timeout for one companion body, ms — shorter than the position timeout on
+ * purpose. Positions are the layer; delays are an enrichment, and a slow
+ * trip-update server must never be able to hold up the fleet behind it.
+ */
+const PAN_COMPANION_TIMEOUT_MS = 6_000;
+/** A companion that just failed is left alone for this long. */
+const PAN_COMPANION_BACKOFF_MS = 120_000;
+/**
+ * Ceiling on one companion body. Trip updates are the largest GTFS-RT bodies
+ * a French network publishes — TBM's is 1.2 MB — and the cap is four times the
+ * position cap so that an aggregate régional feed has room to grow into it.
+ */
+const PAN_COMPANION_MAX_BYTES = 32 * 1024 * 1024;
 /** Margin kept around the viewport so vehicles enter from off-screen. */
 const PAN_VIEWPORT_PAD_DEG = 0.06;
 /** How often learned footprints are flushed to disk. */
@@ -5073,9 +5117,43 @@ let _panIndex = null;
 let _panIndexPromise = null;
 /** feedId -> {routes, uniformKind}; empty when the route-type index is absent. */
 let _panRouteTypes = new Map();
-/** feedId -> {at:number, vehicles:Array, error:?string, failedAt:?number} */
+/**
+ * feedId -> {at, vehicles, trips, alerts, error, failedAt}. `trips`/`alerts`
+ * are set only for the 63 feeds whose companion IS this body.
+ */
 const _panFeedCache = new Map();
 const _panFeedInFlight = new Map();
+/**
+ * Companion body cache, keyed `kind:url`.
+ *
+ * By URL and not by feed id, because a dataset can point several position
+ * feeds at one trip-update resource — Astuce's three operator feeds do — and
+ * because 63 feeds read their companion out of their OWN body, which never
+ * reaches this map at all.
+ *
+ * @type {Map<string, {at:number, value:Array, error:?string, failedAt:?number}>}
+ */
+const _panCompanionCache = new Map();
+const _panCompanionInFlight = new Map();
+/**
+ * Cap on cached companion bodies.
+ *
+ * Lower than it looks: one viewport touches at most
+ * {@link PAN_MAX_FEEDS_PER_REQUEST} feeds, and a decoded trip-update body is
+ * the biggest thing this proxy holds — TBM's is 900 trips of 36 stops each.
+ * The map is kept in least-recently-USED order (a refresh re-inserts its key)
+ * so panning across France evicts the city that was left behind, not the one
+ * on screen.
+ */
+const PAN_COMPANION_CACHE_MAX = 32;
+
+function trimPanCompanionCache() {
+  while (_panCompanionCache.size > PAN_COMPANION_CACHE_MAX) {
+    const oldest = _panCompanionCache.keys().next().value;
+    if (oldest === undefined) break;
+    _panCompanionCache.delete(oldest);
+  }
+}
 /** viewport key -> {at:number, payload:object} */
 const _panViewportCache = new Map();
 const _panViewportInFlight = new Map();
@@ -5122,6 +5200,12 @@ async function loadPanIndex() {
       `[PAN Transit] ${feeds.length} GTFS-RT vehicle-position feeds `
       + `(${feeds.filter((feed) => feed.bbox).length} with a footprint, ${selectable.length} queryable — `
       + `${duplicates} duplicate, ${quarantined} quarantined), index built ${raw?.generatedAt || 'unknown'}`,
+    );
+    const withTrips = feeds.filter((feed) => feed.tripUpdates?.url).length;
+    const shared = feeds.filter((feed) => feed.tripUpdates?.sameResource).length;
+    console.log(
+      `[PAN Transit] schedule companions: ${withTrips} feeds carry trip updates `
+      + `(${shared} in the same body, so free), ${feeds.filter((feed) => feed.alerts?.url).length} carry alerts`,
     );
 
     await loadPanRouteTypes();
@@ -5192,7 +5276,10 @@ async function panFeedVehicles(feed) {
   const now = Date.now();
   const cached = _panFeedCache.get(feed.id);
   if (cached && now - cached.at <= PAN_FEED_CACHE_MS) {
-    return { vehicles: cached.vehicles, at: cached.at, error: cached.error, stale: false };
+    return {
+      vehicles: cached.vehicles, trips: cached.trips, alerts: cached.alerts,
+      at: cached.at, error: cached.error, stale: false,
+    };
   }
   // A feed that just failed is left alone; its last-good fixes keep serving
   // until they age out, then it reports empty with the reason attached.
@@ -5200,6 +5287,8 @@ async function panFeedVehicles(feed) {
     const stale = now - cached.at <= PAN_FEED_STALE_MS;
     return {
       vehicles: stale ? cached.vehicles : [],
+      trips: stale ? cached.trips : null,
+      alerts: stale ? cached.alerts : null,
       at: cached.at,
       error: cached.error,
       stale: stale && cached.vehicles.length > 0,
@@ -5226,6 +5315,12 @@ async function panFeedVehicles(feed) {
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (bytes.byteLength > PAN_FEED_MAX_BYTES) throw new Error('feed body too large');
       const { vehicles } = vehiclePositionsFromBytes(bytes, { feedId: feed.id });
+      // 63 of the 150 feeds publish positions, predictions and alerts as one
+      // `FeedMessage` under one resource id. For those the delay of every bus
+      // on screen is already in hand — the same bytes read a second way, at no
+      // extra request. `sameResource` was measured by the index builder.
+      const trips = feed.tripUpdates?.sameResource ? tripUpdatesFromBytes(bytes).trips : null;
+      const alerts = feed.alerts?.sameResource ? alertsFromBytes(bytes).alerts : null;
       // Learn the footprint from what actually arrived. Bounds only grow, and
       // junk fixes are fenced out before they can widen a city into a country.
       const observed = boundsOfVehicles(vehicles, { rejectOutliers: true });
@@ -5234,9 +5329,12 @@ async function panFeedVehicles(feed) {
         feed.bbox = merged;
         _panBoundsDirty = true;
       }
-      const entry = { at: Date.now(), vehicles, error: null, failedAt: null };
+      const entry = { at: Date.now(), vehicles, trips, alerts, error: null, failedAt: null };
       _panFeedCache.set(feed.id, entry);
-      return { vehicles: entry.vehicles, at: entry.at, error: null, stale: false };
+      return {
+        vehicles: entry.vehicles, trips: entry.trips, alerts: entry.alerts,
+        at: entry.at, error: null, stale: false,
+      };
     } catch (error) {
       const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
       const previous = _panFeedCache.get(feed.id);
@@ -5244,12 +5342,16 @@ async function panFeedVehicles(feed) {
       const entry = {
         at: keepStale ? previous.at : Date.now(),
         vehicles: keepStale ? previous.vehicles : [],
+        trips: keepStale ? previous.trips : null,
+        alerts: keepStale ? previous.alerts : null,
         error: message,
         failedAt: Date.now(),
       };
       _panFeedCache.set(feed.id, entry);
       return {
         vehicles: entry.vehicles,
+        trips: entry.trips,
+        alerts: entry.alerts,
         at: entry.at,
         error: message,
         stale: keepStale && entry.vehicles.length > 0,
@@ -5261,8 +5363,135 @@ async function panFeedVehicles(feed) {
   return request.promise;
 }
 
+/**
+ * Fetch and decode ONE companion body — a network's trip updates or its alerts.
+ *
+ * Keyed by URL rather than by feed so a resource shared by several position
+ * feeds is downloaded once, and given a cache window of its own because the
+ * two answer questions that change at different speeds (see
+ * {@link PAN_TRIP_CACHE_MS} and {@link PAN_ALERT_CACHE_MS}).
+ *
+ * Never throws and never serves stale: a failure returns an empty list with
+ * the reason attached, and the vehicles simply arrive without a delay on them.
+ * The enrichment is allowed to be absent; the fleet is not.
+ *
+ * @param {string} url Companion resource URL.
+ * @param {'trips'|'alerts'} kind Which decoder to run.
+ * @param {number} cacheMs Freshness window for this kind.
+ * @returns {Promise<{value: Array<Object>, at: number, error: ?string}>}
+ */
+async function panCompanionBody(url, kind, cacheMs) {
+  const key = `${kind}:${url}`;
+  const now = Date.now();
+  const cached = _panCompanionCache.get(key);
+  if (cached && now - cached.at <= cacheMs) {
+    // Re-insert to mark it as the most recently used; Map preserves insertion
+    // order and a plain `get` does not move it.
+    _panCompanionCache.delete(key);
+    _panCompanionCache.set(key, cached);
+    return { value: cached.value, at: cached.at, headerMs: cached.headerMs, error: cached.error };
+  }
+  if (cached?.failedAt && now - cached.failedAt < PAN_COMPANION_BACKOFF_MS) {
+    return { value: cached.value || [], at: cached.at, headerMs: cached.headerMs, error: cached.error };
+  }
+
+  const request = coalesceProxyRequest(_panCompanionInFlight, key, async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PAN_COMPANION_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/x-protobuf,application/octet-stream;q=0.9,*/*;q=0.8',
+          'User-Agent': PAN_USER_AGENT,
+        },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const declared = Number(response.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > PAN_COMPANION_MAX_BYTES) {
+        throw new Error('companion body too large');
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > PAN_COMPANION_MAX_BYTES) throw new Error('companion body too large');
+      const decoded = kind === 'trips' ? tripUpdatesFromBytes(bytes) : alertsFromBytes(bytes);
+      const value = kind === 'trips' ? decoded.trips : decoded.alerts;
+      // The publisher's own stamp on the body, which the click endpoint reports
+      // beside the stop times so a viewer can see how old the prediction is.
+      const entry = {
+        at: Date.now(), value, headerMs: decoded.headerTimestampMs || null, error: null, failedAt: null,
+      };
+      _panCompanionCache.delete(key);
+      _panCompanionCache.set(key, entry);
+      trimPanCompanionCache();
+      return { value: entry.value, at: entry.at, headerMs: entry.headerMs, error: null };
+    } catch (error) {
+      const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
+      // Keep the last good body rather than blanking it: a prediction 90 s old
+      // beats no prediction, and the error travels with it.
+      const previous = _panCompanionCache.get(key);
+      _panCompanionCache.delete(key);
+      _panCompanionCache.set(key, {
+        at: previous?.at || Date.now(),
+        value: previous?.value || [],
+        headerMs: previous?.headerMs || null,
+        error: message,
+        failedAt: Date.now(),
+      });
+      trimPanCompanionCache();
+      return { value: previous?.value || [], at: previous?.at || Date.now(), headerMs: previous?.headerMs || null, error: message };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+  return request.promise;
+}
+
+/**
+ * The schedule context for one feed: its trips indexed by join key, and its
+ * active alerts indexed by what they inform.
+ *
+ * Reads the companion out of the position body when the index measured them to
+ * be the same resource, and otherwise fetches it. Both are optional — a feed
+ * with no measured companion, or a companion that failed, yields empty indexes
+ * and the vehicles render exactly as they did before this existed.
+ *
+ * @param {Object} feed Index entry.
+ * @param {Object} outcome The result of {@link panFeedVehicles} for this feed.
+ * @returns {Promise<Object>} Indexes plus the provenance the summary reports.
+ */
+async function panFeedSchedule(feed, outcome) {
+  const nowMs = Date.now();
+  let trips = outcome?.trips || null;
+  let tripsError = null;
+  if (!trips && feed.tripUpdates?.url) {
+    const body = await panCompanionBody(feed.tripUpdates.url, 'trips', PAN_TRIP_CACHE_MS);
+    trips = body.value;
+    tripsError = body.error;
+  }
+
+  let alerts = outcome?.alerts || null;
+  let alertsError = null;
+  if (!alerts && feed.alerts?.url) {
+    const body = await panCompanionBody(feed.alerts.url, 'alerts', PAN_ALERT_CACHE_MS);
+    alerts = body.value;
+    alertsError = body.error;
+  }
+
+  return {
+    nowMs,
+    tripIndex: trips?.length ? indexTripUpdates(trips) : null,
+    tripCount: trips?.length || 0,
+    alertIndex: alerts?.length ? indexAlerts(alerts, { nowMs, isActive: alertIsActive }) : null,
+    // The count BEFORE the active-period filter, so "12 published, 3 in force"
+    // stays sayable rather than collapsing to one number.
+    alertsPublished: alerts?.length || 0,
+    error: tripsError || alertsError || null,
+  };
+}
+
 /** Trim a decoded record to the fields the layer renders, dropping empties. */
-function panWireVehicle(vehicle, feed) {
+function panWireVehicle(vehicle, feed, schedule = null) {
   // `mode` is the NETWORK's declared service class (urban, school, …).
   // `kind` is the VEHICLE's class, joined from the network's static GTFS.
   // They answer different questions and both are sent, with the provenance of
@@ -5295,6 +5524,36 @@ function panWireVehicle(vehicle, feed) {
   if (vehicle.status) wire.status = vehicle.status;
   if (vehicle.occupancy) wire.occupancy = vehicle.occupancy;
   if (vehicle.timestampMs) wire.timestampMs = vehicle.timestampMs;
+
+  // --- The enrichment -------------------------------------------------------
+  // Everything below is a claim from the operator's OWN prediction for the run
+  // this vehicle is on, joined HERE and not in the browser: the companion body
+  // it is joined against is up to 1.2 MB, and it would have to cross the wire
+  // once per client to answer a question that is the same for all of them.
+  // Every field is omitted when the feed said nothing; none is defaulted.
+  const state = scheduleForVehicle(vehicle, schedule?.tripIndex, { nowMs: schedule?.nowMs });
+  if (state) {
+    if (Number.isFinite(state.delaySec)) {
+      wire.delaySec = state.delaySec;
+      wire.delayFrom = state.delayFrom;
+    }
+    if (state.awaitingDeparture) {
+      wire.awaitingDeparture = true;
+      if (state.scheduledDepartureMs) wire.scheduledDepartureMs = state.scheduledDepartureMs;
+    }
+    if (state.tripState) wire.tripState = state.tripState;
+    if (state.skippedStops) {
+      wire.skippedStops = state.skippedStops;
+      wire.skippedAhead = state.skippedAhead;
+    }
+    if (state.nextStopEtaMs) wire.nextStopEtaMs = state.nextStopEtaMs;
+    if (state.matchedBy) wire.tripMatch = state.matchedBy;
+  }
+  const alert = schedule?.alertIndex ? alertForVehicle(vehicle, schedule.alertIndex) : null;
+  if (alert) {
+    wire.alert = alertWireRecord(alert.alert, alert.scope);
+    if (alert.count > 1) wire.alertCount = alert.count;
+  }
   return wire;
 }
 
@@ -5307,18 +5566,20 @@ async function refreshPanViewport(box, key) {
 
   const results = await Promise.all(selection.selected.map(async (feed) => {
     const outcome = await panFeedVehicles(feed);
-    const vehicles = [];
-    for (const vehicle of outcome.vehicles) {
-      if (!boxContains(clip, vehicle.lat, vehicle.lon)) continue;
-      vehicles.push(panWireVehicle(vehicle, feed));
-    }
-    return { feed, outcome, vehicles };
+    const inBox = outcome.vehicles.filter((vehicle) => boxContains(clip, vehicle.lat, vehicle.lon));
+    // The delay fetch is gated on the box, not on the selection. A feed earns
+    // a slot by OVERLAPPING the viewport, which is not the same as having a
+    // bus in it — and TBM's trip updates are 1.2 MB, which is not a thing to
+    // download because the camera is near Bordeaux.
+    const schedule = inBox.length ? await panFeedSchedule(feed, outcome) : null;
+    const vehicles = inBox.map((vehicle) => panWireVehicle(vehicle, feed, schedule));
+    return { feed, outcome, vehicles, schedule };
   }));
 
   const vehicles = [];
   const feeds = [];
   let vehiclesTruncated = false;
-  for (const { feed, outcome, vehicles: inBox } of results) {
+  for (const { feed, outcome, vehicles: inBox, schedule } of results) {
     for (const vehicle of inBox) {
       if (vehicles.length >= PAN_MAX_VEHICLES) { vehiclesTruncated = true; break; }
       vehicles.push(vehicle);
@@ -5337,6 +5598,13 @@ async function refreshPanViewport(box, key) {
       retrievedAt: outcome.at ? new Date(outcome.at).toISOString() : null,
       stale: outcome.stale || false,
       error: outcome.error || null,
+      // How much of this network's fleet the schedule feed could speak for.
+      // `delayed` counts vehicles that got a NUMBER, not vehicles running late.
+      trips: schedule?.tripCount || 0,
+      delayed: inBox.filter((vehicle) => Number.isFinite(vehicle.delaySec)).length,
+      alertsPublished: schedule?.alertsPublished || 0,
+      alertsActive: schedule?.alertIndex?.count || 0,
+      scheduleError: schedule?.error || null,
     });
   }
 
@@ -5354,6 +5622,9 @@ async function refreshPanViewport(box, key) {
     // polled, or the vehicle cap cut the answer.
     feedsTruncated: selection.truncated,
     vehiclesTruncated,
+    // Punctuality of what is actually being returned, so the layer can say
+    // what is happening without every client re-tallying the same array.
+    schedule: summarizeSchedule(vehicles),
     indexGeneratedAt: index.generatedAt || null,
   };
 
@@ -5397,12 +5668,6 @@ const PAN_GEOJSON_TIMEOUT_MS = 45_000;
 const PAN_GEO_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /** Indexed networks held in memory. Bordeaux's index is 2.4 MB. */
 const PAN_GEO_MEMORY_MAX = 3;
-/** Trip-update body cache; the feeds republish every 10–30 s. */
-const PAN_TRIP_CACHE_MS = 12_000;
-const PAN_TRIP_TIMEOUT_MS = 12_000;
-const PAN_TRIP_BACKOFF_MS = 90_000;
-/** Trip updates are the largest GTFS-RT bodies: TBM's is 1.3 MB. */
-const PAN_TRIP_MAX_BYTES = 32 * 1024 * 1024;
 
 /** @type {?{feeds: Object, generatedAt: string}} */
 let _panStaticIndex = null;
@@ -5410,9 +5675,6 @@ let _panStaticIndexPromise = null;
 /** feedId -> {index, source, fetchedAt} — insertion-ordered, oldest evicted. */
 const _panGeoMemory = new Map();
 const _panGeoInFlight = new Map();
-/** feedId -> {at, byTrip: Map, headerMs, error, failedAt} */
-const _panTripCache = new Map();
-const _panTripInFlight = new Map();
 
 /**
  * Load the companion index once. Absent is not fatal: the layer keeps drawing
@@ -5549,58 +5811,39 @@ async function panRouteGeometry(feedId, entry) {
 /**
  * One network's live trip updates, keyed by `trip_id`.
  *
- * Cached and back-off-guarded exactly like the vehicle-position bodies, and
- * for the same reason: a viewport of Bordeaux is one network, but a click in
- * Normandy can land on any of 22.
+ * The body is fetched by {@link panCompanionBody}, which is also what the
+ * VIEWPORT pass uses to put a delay on every vehicle on screen — so a click on
+ * a Bordeaux bus normally costs nothing at all: the 1.2 MB its network
+ * publishes was already read for the fleet the viewer is looking at, and both
+ * surfaces answer from one cache entry.
+ *
+ * WHICH resource is asked for is the measured one. `pan_gtfs_rt_feeds.json`
+ * records the trip-update companion whose trips actually JOIN each feed's own
+ * vehicles (see `scripts/build-pan-gtfs-rt-index.mjs`); the companion index's
+ * first declared resource is the fallback for a feed that predates that
+ * measurement. It matters: Rouen Astuce publishes three position feeds and
+ * four trip-update feeds on interleaved ids, and the declared order pairs them
+ * wrongly.
  *
  * @param {string} feedId
  * @param {Object} entry Companion-index entry for the feed.
  * @returns {Promise<{byTrip: Map<string, Object>, at: number, headerMs: ?number, error: ?string}>}
  */
 async function panTripUpdates(feedId, entry) {
-  const resource = (Array.isArray(entry?.tripUpdates) ? entry.tripUpdates : [])[0];
-  if (!resource?.url) {
+  let measured = null;
+  try {
+    const index = await loadPanIndex();
+    measured = index.feeds.find((feed) => feed.id === feedId)?.tripUpdates?.url || null;
+  } catch { /* the live index is optional here; the companion index answers */ }
+  const url = measured || (Array.isArray(entry?.tripUpdates) ? entry.tripUpdates : [])[0]?.url;
+  if (!url) {
     return { byTrip: new Map(), at: Date.now(), headerMs: null, error: 'no trip-update feed published' };
   }
 
-  const now = Date.now();
-  const cached = _panTripCache.get(feedId);
-  if (cached && now - cached.at <= PAN_TRIP_CACHE_MS) return cached;
-  if (cached?.failedAt && now - cached.failedAt < PAN_TRIP_BACKOFF_MS) return cached;
-
-  const request = coalesceProxyRequest(_panTripInFlight, feedId, async () => {
-    try {
-      const response = await fetch(resource.url, {
-        headers: {
-          Accept: 'application/x-protobuf,application/octet-stream;q=0.9,*/*;q=0.8',
-          'User-Agent': PAN_USER_AGENT,
-        },
-        redirect: 'follow',
-        signal: AbortSignal.timeout(PAN_TRIP_TIMEOUT_MS),
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
-      if (bytes.byteLength > PAN_TRIP_MAX_BYTES) throw new Error('trip-update body too large');
-      const { trips, headerTimestampMs } = tripUpdatesFromBytes(bytes);
-      const byTrip = new Map();
-      for (const trip of trips) byTrip.set(trip.tripId, trip);
-      const entryRecord = { byTrip, at: Date.now(), headerMs: headerTimestampMs, error: null, failedAt: null };
-      _panTripCache.set(feedId, entryRecord);
-      return entryRecord;
-    } catch (error) {
-      const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
-      const entryRecord = {
-        byTrip: cached?.byTrip || new Map(),
-        at: cached?.at || Date.now(),
-        headerMs: cached?.headerMs || null,
-        error: message,
-        failedAt: Date.now(),
-      };
-      _panTripCache.set(feedId, entryRecord);
-      return entryRecord;
-    }
-  });
-  return request.promise;
+  const body = await panCompanionBody(url, 'trips', PAN_TRIP_CACHE_MS);
+  const byTrip = new Map();
+  for (const trip of body.value) byTrip.set(trip.tripId, trip);
+  return { byTrip, at: body.at, headerMs: body.headerMs || null, error: body.error };
 }
 
 /**
@@ -5752,7 +5995,9 @@ function geometryTripUpdate(updates, tripId) {
  * Vite plugin: viewport-bounded French real-time transit proxy.
  *
  *   GET /api/transit-fr/feeds                          — index summary
- *   GET /api/transit-fr/vehicles?south&west&north&east — live positions in box
+ *   GET /api/transit-fr/vehicles?south&west&north&east — live positions in box,
+ *       each carrying the operator's own delay and disruption for the run it
+ *       is on
  *   GET /api/transit-fr/trip?feed&trip&route           — one vehicle's line:
  *       its trace, the ordered stops of the run it is on, and when the
  *       operator expects it at each of them
@@ -5814,6 +6059,11 @@ function panTransitProxy() {
           generatedAt: index.generatedAt || null,
           feedCount: index.feeds.length,
           feedsWithBounds: index.feeds.filter((feed) => feed.bbox).length,
+          // Which of the queryable feeds can answer "how late is this bus",
+          // and how many of those cost no second request to ask.
+          feedsWithTripUpdates: selectable.filter((feed) => feed.tripUpdates?.url).length,
+          feedsWithAlerts: selectable.filter((feed) => feed.alerts?.url).length,
+          feedsSharingOneBody: selectable.filter((feed) => feed.tripUpdates?.sameResource).length,
           // Shipped ≠ queryable, and the difference is named rather than hidden.
           feedsQueryable: selectable.length,
           feedsDuplicate: duplicates,
