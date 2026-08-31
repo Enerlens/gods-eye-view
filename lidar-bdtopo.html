@@ -1,0 +1,151 @@
+<!doctype html>
+<!--
+  APERÇU — LiDAR HD (MNT) + BD TOPO 3D, sur un quartier réel.
+
+  Page autonome, sans lien avec src/main.js, à ouvrir en dev :
+      npm run dev  →  http://localhost:5173/lidar-bdtopo.html
+
+  Elle existe pour répondre à une seule question avant de décider quoi intégrer :
+  « à quoi ressemble le bâti IGN posé sur le vrai relief LiDAR ? ».
+
+  Trois sources, toutes IGN, toutes keyless, toutes Licence Ouverte 2.0 :
+
+    RELIEF   MNT LiDAR HD 50 cm — data.geopf.fr/wms-r, une seule requête
+             GetMap au format image/x-bil;bits=32 sur l'emprise du quartier,
+             échantillonnée ensuite par un CustomHeightmapTerrainProvider.
+             (Une requête au lieu de centaines : le WMS raster de la
+             Géoplateforme est limité à 40 req/min, un terrain tuilé classique
+             le ferait sauter en trois secondes de navigation.)
+
+    BÂTI     BD TOPO, tuiles vectorielles data.geopf.fr/tms/1.0.0/BDTOPO,
+             couche `batiment`. Chaque bâtiment porte ses quatre altitudes
+             (min/max sol, min/max toit) en NGF-IGN69.
+
+    IMAGE    BD ORTHO 20 cm, ou l'estompage du MNT / du MNH LiDAR HD, ou le
+             Plan IGN LiDAR — pour voir la même scène habillée autrement.
+
+  Le point de la démonstration : le MNT et la BD TOPO sont tous deux en
+  NGF-IGN69. Ils partagent donc le MÊME datum, et la même correction de géoïde
+  les emmène tous les deux sur l'ellipsoïde WGS84 de Cesium. Le bâti ne se
+  « pose » pas sur le sol par astuce de rendu — il y tombe juste.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>LiDAR HD + BD TOPO 3D — aperçu</title>
+<style>
+  html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; }
+  body { background: #000; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: #d8e6f2; }
+
+  #panel {
+    position: absolute; top: 12px; left: 12px; z-index: 10; width: 322px;
+    max-height: calc(100vh - 24px); overflow-y: auto;
+    background: rgba(6, 14, 22, .88); border: 1px solid rgba(120, 190, 240, .35);
+    border-radius: 6px; padding: 12px 14px; backdrop-filter: blur(6px);
+  }
+  #panel h1 { margin: 0 0 4px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: #7fd4ff; }
+  #panel p.lede { margin: 0 0 12px; color: #9db4c6; font-size: 11.5px; }
+
+  label { display: block; margin: 10px 0 4px; font-size: 11px; color: #9db4c6; letter-spacing: .04em; text-transform: uppercase; }
+  select, button {
+    width: 100%; padding: 6px 7px; font: inherit; font-size: 12px; border-radius: 4px;
+    background: #0d1e2c; color: #cfe9ff; border: 1px solid #2f6f9e;
+  }
+  button { background: #123049; cursor: pointer; margin-top: 8px; padding: 8px; }
+  button:hover { background: #1a4467; }
+  button:disabled { opacity: .45; cursor: default; }
+  .row { display: flex; gap: 6px; }
+  .row > * { flex: 1; }
+
+  .toggle { display: flex; align-items: center; gap: 7px; margin: 7px 0 0; font-size: 11.5px; color: #cfe9ff; text-transform: none; letter-spacing: 0; }
+  .toggle input { width: auto; margin: 0; accent-color: #2f6f9e; }
+
+  #stats { margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(120,190,240,.2); font-size: 11.5px; }
+  #stats b { color: #7fd4ff; font-weight: 600; }
+  #stats .k { color: #8fa6b6; }
+  #stats .warn { color: #e8b96a; }
+
+  .legend { margin-top: 10px; padding-top: 9px; border-top: 1px solid rgba(120,190,240,.2); font-size: 11px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; vertical-align: -1px; }
+
+  .note { margin: 10px 0 0; font-size: 10.5px; color: #7d8f9d; }
+  .note code { color: #9db4c6; }
+
+  #probe {
+    position: absolute; bottom: 12px; left: 12px; z-index: 10;
+    background: rgba(6, 14, 22, .88); border: 1px solid rgba(120, 190, 240, .3);
+    border-radius: 6px; padding: 8px 11px; font-size: 11.5px; color: #9db4c6;
+    backdrop-filter: blur(6px); max-width: 420px;
+  }
+  #probe b { color: #7fd4ff; }
+</style>
+</head>
+<body>
+<div id="cesiumContainer"></div>
+
+<div id="panel">
+  <h1>LiDAR HD + BD TOPO 3D</h1>
+  <p class="lede">Le relief mesuré au laser, le bâti IGN posé dessus à son altitude publiée. Aucune clé, aucun compte.</p>
+
+  <label for="place">Quartier</label>
+  <select id="place">
+    <option value="lyon">Lyon — Fourvière et la Saône (137 m de dénivelé)</option>
+    <option value="grenoble">Grenoble — la Bastille (285 m)</option>
+    <option value="marseille">Marseille — Notre-Dame-de-la-Garde (133 m)</option>
+    <option value="montmartre">Paris — la butte Montmartre (77 m)</option>
+    <option value="defense">Paris — La Défense (le plat et les tours)</option>
+  </select>
+
+  <label for="res">Finesse du MNT</label>
+  <select id="res">
+    <option value="1024">1024 px de côté — aperçu rapide</option>
+    <option value="2048" selected>2048 px — le défaut</option>
+    <option value="4096">4096 px — résolution native LiDAR, ~67 Mo</option>
+  </select>
+
+  <label for="base">Habillage</label>
+  <select id="base">
+    <option value="ortho">BD ORTHO 20 cm</option>
+    <option value="mnt">Estompage MNT LiDAR — le sol nu</option>
+    <option value="mnh">Estompage MNH LiDAR — la hauteur du sursol</option>
+    <option value="plan">Plan IGN LiDAR — terrain</option>
+  </select>
+
+  <label for="tint">Teinte du bâti</label>
+  <select id="tint">
+    <option value="massing" selected>Maquette — clarté par la hauteur</option>
+    <option value="usage">Usage BD TOPO — 6 couleurs</option>
+  </select>
+
+  <label class="toggle"><input type="checkbox" id="terrain" checked> Relief LiDAR (décocher = ellipsoïde plat)</label>
+  <label class="toggle"><input type="checkbox" id="buildings" checked> Bâti BD TOPO</label>
+
+  <div class="row">
+    <button id="reload">Recharger ce quartier</button>
+  </div>
+
+  <div id="stats">Chargement…</div>
+
+  <p class="note" style="margin-top:10px">En mode maquette la couleur porte la <b>hauteur</b> :
+  83 à 87 % des bâtiments partagent deux usages seulement, donc l'usage ne sépare presque rien.
+  La légende ci-dessous ne s'applique qu'au mode « Usage ».</p>
+
+  <div class="legend">
+    <div><i style="background:#e8b96a"></i>Résidentiel</div>
+    <div><i style="background:#6ad0e8"></i>Commercial / services</div>
+    <div><i style="background:#e87d7d"></i>Industriel</div>
+    <div><i style="background:#9ee87d"></i>Agricole</div>
+    <div><i style="background:#b9a7e8"></i>Sportif / religieux / annexe</div>
+    <div><i style="background:#8d9aa6"></i>Indifférencié</div>
+  </div>
+
+  <p class="note">Sol : <code>MNT LiDAR HD</code> · Bâti : <code>BD TOPO batiment</code> ·
+  © IGN — Géoplateforme, Licence Ouverte 2.0. Clique un bâtiment pour ses attributs,
+  clique le sol pour une mesure d'altitude.</p>
+</div>
+
+<div id="probe">Clique le sol : il te rendra l'altitude LiDAR mesurée à cet endroit.</div>
+
+<script type="module" src="/lidar-bdtopo.js"></script>
+</body>
+</html>

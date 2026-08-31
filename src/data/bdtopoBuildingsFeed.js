@@ -88,6 +88,23 @@ export const BASE_SINK_M = 2.5;
 export const DEFAULT_HEIGHT_M = 6;
 
 /**
+ * How far the rendered surface is allowed to move a volume.
+ *
+ * The datum offset removes the systematic part of the disagreement between a
+ * national survey and a global terrain mesh; what is left is the LOCAL part —
+ * the mesh cutting a corner off a slope the survey measured. That residual is
+ * metres, and {@link seatOnGround} absorbs it by growing the volume: base down
+ * where the mesh is low, roof up where it is high.
+ *
+ * Past this the number is not a residual, it is a bad ground sample: a terrain
+ * tile at a coarse LOD, a cliff edge, a cell that resolved somewhere else. A
+ * building is not dragged 200 m to meet one of those — a 200 m skirt of wall is
+ * a worse artefact than the float it was meant to hide, so the correction stops
+ * here and the volume stays where IGN put it.
+ */
+export const MAX_GROUND_CORRECTION_M = 60;
+
+/**
  * Usage bands. These are the values IGN actually puts in `usage_1`; anything
  * else lands in `other`, which is why `other` is grey rather than a colour
  * that would imply a category.
@@ -220,6 +237,29 @@ export function declaredAltimetricPrecisionM(props) {
 }
 
 /**
+ * The ground the SURVEY puts under a building, at the middle of its footprint,
+ * in orthometric metres — or null when BD TOPO gives no floor at all.
+ *
+ * `altitude_minimale_sol` is the LOWEST ground the footprint touches, which is
+ * where the floor belongs but not what a height sampled at the centroid
+ * measures. Where IGN also publishes `altitude_maximale_sol` — Lyon, Marseille,
+ * Grenoble; the drop runs 0 to 13 m on the captured tiles, median 1.9 m — the
+ * middle of the two is the fair comparison. Comparing a centroid height against
+ * the low corner instead reads half the footprint's own slope as a terrain
+ * disagreement, and quietly makes every hillside building taller.
+ *
+ * Paris publishes neither, and Paris is flat: the floor is the whole answer.
+ * @param {object} props - BD TOPO attributes.
+ * @returns {?number}
+ */
+export function surveyedGroundM(props) {
+  const minSol = finiteOrNull(props?.altitude_minimale_sol);
+  if (minSol === null) return null;
+  const maxSol = finiteOrNull(props?.altitude_maximale_sol);
+  return maxSol !== null && maxSol > minSol ? (minSol + maxSol) / 2 : minSol;
+}
+
+/**
  * Where a building's floor and roof go, in ELLIPSOIDAL metres, and on what
  * evidence.
  *
@@ -239,12 +279,19 @@ export function declaredAltimetricPrecisionM(props) {
  * known, which is correct rather than merely safe: with no offset the building
  * sits at its true NGF altitude, which is where it really is.
  *
+ * `surfaceM` is the rendered surface UNDER THIS BUILDING. It does two jobs. It
+ * is the last-resort seat for a building with no altimetry at all, and it
+ * closes the gap the datum offset cannot: the offset is one number for a whole
+ * cell, so where the mesh disagrees with the survey building by building, some
+ * volumes would still hang in the air and some would sink out of sight. See
+ * {@link seatOnGround}.
+ *
  * @param {object} props - BD TOPO attributes.
  * @param {object} options
  * @param {number} options.geoidN - Geoid undulation N at the building, metres.
- * @param {?number} [options.surfaceM] - Rendered ellipsoidal ground, if warm.
+ * @param {?number} [options.surfaceM] - Rendered ground under the building, if known.
  * @param {number} [options.offsetM] - Rendered-surface minus IGN datum, metres.
- * @returns {{baseM: number, topM: number, basis: 'published'|'height'|'surface'|'default'}}
+ * @returns {{baseM: number, topM: number, basis: 'published'|'height'|'surface'|'default', gapM: ?number}}
  */
 export function seatBuilding(props, { geoidN, surfaceM = null, offsetM = 0 }) {
   const minSol = finiteOrNull(props?.altitude_minimale_sol);
@@ -252,25 +299,72 @@ export function seatBuilding(props, { geoidN, surfaceM = null, offsetM = 0 }) {
   const hauteur = finiteOrNull(props?.hauteur);
   const shift = (Number.isFinite(geoidN) ? geoidN : 0) + (Number.isFinite(offsetM) ? offsetM : 0);
 
+  // How far the drawn ground ends up from where the survey says that same spot
+  // is, once the cell's datum offset has been applied. Zero when either side is
+  // unknown, which leaves the building exactly where IGN put it.
+  const surveyGround = surveyedGroundM(props);
+  const residualM = Number.isFinite(surfaceM) && surveyGround !== null
+    ? clampCorrection(surfaceM - (surveyGround + shift))
+    : 0;
+
   if (minSol !== null && maxToit !== null && maxToit > minSol) {
     const floor = minSol + shift;
-    return { baseM: floor - BASE_SINK_M, topM: maxToit + shift, basis: 'published' };
+    return seatOnGround(floor, maxToit + shift, residualM, 'published');
   }
   if (minSol !== null && hauteur !== null && hauteur > 0) {
     const floor = minSol + shift;
-    return { baseM: floor - BASE_SINK_M, topM: floor + hauteur, basis: 'height' };
+    return seatOnGround(floor, floor + hauteur, residualM, 'height');
   }
   if (Number.isFinite(surfaceM)) {
     const height = hauteur !== null && hauteur > 0 ? hauteur : DEFAULT_HEIGHT_M;
-    return {
-      baseM: surfaceM - BASE_SINK_M,
-      topM: surfaceM + height,
-      basis: hauteur !== null && hauteur > 0 ? 'surface' : 'default',
-    };
+    // Nothing altimetric to disagree with: the rendered ground IS the floor.
+    return seatOnGround(
+      surfaceM,
+      surfaceM + height,
+      0,
+      hauteur !== null && hauteur > 0 ? 'surface' : 'default',
+    );
   }
   // No altitude, no surface: the building cannot be placed. The caller drops it
   // rather than inventing a floor at zero, which would put it under the sea.
-  return { baseM: NaN, topM: NaN, basis: 'default' };
+  return { baseM: NaN, topM: NaN, basis: 'default', gapM: null };
+}
+
+/** Terrain disagreement, held to what a disagreement can plausibly be. */
+function clampCorrection(metres) {
+  if (!Number.isFinite(metres)) return 0;
+  return Math.max(-MAX_GROUND_CORRECTION_M, Math.min(MAX_GROUND_CORRECTION_M, metres));
+}
+
+/**
+ * Absorb the leftover terrain disagreement by GROWING the volume.
+ *
+ * The volume is only ever made taller, never moved, and that is the whole
+ * design. A building keeps the floor altitude IGN surveyed for it — the card
+ * quotes that number and it stays true — and the extra length is spent burying
+ * the base or raising the roof, neither of which claims anything the data does
+ * not say.
+ *
+ *   residual < 0  the mesh is BELOW the survey. The base reaches down by it, so
+ *                 no daylight shows under the walls.
+ *   residual > 0  the mesh is ABOVE the survey. The roof rises by it, so a
+ *                 building does not end up as a ridge poking out of a hillside
+ *                 — or vanish inside it altogether.
+ *
+ * @param {number} floorM - IGN floor, ellipsoidal, offset applied.
+ * @param {number} roofM - IGN roof, ellipsoidal, offset applied.
+ * @param {number} residualM - Rendered ground minus surveyed ground, capped.
+ * @param {string} basis - The evidence the floor rests on.
+ * @returns {{baseM: number, topM: number, basis: string, gapM: number}}
+ */
+export function seatOnGround(floorM, roofM, residualM, basis) {
+  const residual = Number.isFinite(residualM) ? residualM : 0;
+  return {
+    baseM: floorM + Math.min(0, residual) - BASE_SINK_M,
+    topM: roofM + Math.max(0, residual),
+    basis,
+    gapM: residual,
+  };
 }
 
 /** Median of a numeric array. Sorts a COPY. @returns {?number} */
@@ -284,13 +378,17 @@ export function medianOf(values) {
 /**
  * Side of the datum-offset cell, in degrees. ~1.1 km.
  *
- * Deliberately much coarser than the shared 111 m floor grid, and the reason is
- * arithmetic rather than taste: a 0.08 degree viewport holds 6 400 of the fine
- * cells, and asking the terrain resolver for 6 400 heights to correct a metre
- * of datum error would be a denial-of-service written as a feature. At 1.1 km
- * the same viewport is 64 samples, and the error being corrected — a global
- * 30 m terrain disagreeing with a national survey — varies on the kilometre
- * scale anyway.
+ * This is the size of the neighbourhood a single offset is averaged over, NOT
+ * the size of the area one ground sample is stretched across — every building
+ * is measured where it stands (`globe.getHeight`, free and synchronous), and
+ * the cell only decides which measurements go into the same median.
+ *
+ * A kilometre is the right neighbourhood because the thing being estimated —
+ * a global 30 m terrain disagreeing with a national survey — varies on the
+ * kilometre scale, and because a median wants enough buildings under it to
+ * mean something. It is also the size of the coarse DEM fallback's budget: a
+ * 0.08 degree viewport is 64 cell-centre heights, not the 6 400 the shared
+ * 111 m floor grid would ask the terrain proxy for.
  */
 export const OFFSET_CELL_DEG = 0.01;
 
@@ -300,9 +398,9 @@ export function offsetCellKey(lat, lon) {
 }
 
 /**
- * The centre of a point's offset cell — the ONE place the rendered surface is
- * sampled for that cell, so every building in it is corrected against the same
- * measurement rather than against its own noisy neighbour.
+ * The centre of a point's offset cell — where the coarse DEM fallback takes its
+ * one height for the cell, on the loads where the globe has no terrain resident
+ * to read.
  * @returns {{lat: number, lon: number}}
  */
 export function offsetCellCentre(lat, lon) {
@@ -321,7 +419,7 @@ export const OFFSET_MIN_SAMPLES = 3;
 
 /**
  * The gap between where IGN says the ground is and where the globe draws it,
- * per ~111 m cell.
+ * per ~1.1 km cell.
  *
  * This is the whole reason French buildings can sit on a 30 m global terrain
  * without floating or drowning. IGN's per-building altitudes are exact and
@@ -330,11 +428,19 @@ export const OFFSET_MIN_SAMPLES = 3;
  * difference keeps the fine relief between neighbours and still lands the block
  * on the ground the user can see.
  *
+ * **Both numbers in a sample must describe the SAME SPOT.** `renderedM` is the
+ * surface under THAT building, never a height borrowed from somewhere else in
+ * the cell: difference a cell-centre height against a building's own floor and
+ * the median stops being a datum error and becomes the relief between the two
+ * points — a hillside cell then lifts every building in it by the drop from its
+ * centre, which is a whole block floating in the air over Lyon.
+ *
  * A cell with too few buildings falls back to the viewport median, and a
  * viewport with no warm cells at all falls back to zero — which puts the city
  * at its true altitude, the honest answer when the surface is unknown.
  *
  * @param {Array<{cellKey: string, ignM: number, renderedM: ?number}>} samples
+ *   `renderedM` is the rendered surface UNDER the building `ignM` belongs to.
  * @param {object} [options]
  * @param {number} [options.minSamples]
  * @returns {{byCell: Map<string, number>, medianM: number, cells: number, samples: number}}
@@ -389,6 +495,10 @@ export function summarizeBuildings(records, extra = {}) {
   let tallestName = null;
   let withHeight = 0;
   let withRnb = 0;
+  // How far the survey and the rendered mesh ended up apart, per building. The
+  // layer reports it rather than averaging it away: it is the one number that
+  // says whether the terrain under a city is worth trusting.
+  const gaps = [];
 
   for (const record of records || []) {
     byTier.set(record.tierId, (byTier.get(record.tierId) || 0) + 1);
@@ -399,8 +509,10 @@ export function summarizeBuildings(records, extra = {}) {
       if (record.heightM > tallestM) { tallestM = record.heightM; tallestName = record.label; }
     }
     if (record.rnb) withRnb += 1;
+    if (Number.isFinite(record.gapM)) gaps.push(Math.abs(record.gapM));
   }
 
+  gaps.sort((a, b) => a - b);
   const count = records?.length || 0;
   return {
     count,
@@ -410,6 +522,8 @@ export function summarizeBuildings(records, extra = {}) {
     heightCoverage: count ? withHeight / count : 0,
     rnbCoverage: count ? withRnb / count : 0,
     basis,
+    groundGapMedianM: gaps.length ? medianOf(gaps) : null,
+    groundGapWorstM: gaps.length ? gaps[Math.floor((gaps.length - 1) * 0.95)] : null,
     tiers: BDTOPO_USAGE_TIERS.map((tier) => ({
       id: tier.id,
       label: tier.label,

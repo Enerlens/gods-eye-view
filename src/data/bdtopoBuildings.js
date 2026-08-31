@@ -36,6 +36,7 @@ import {
   offsetForCell,
   seatBuilding,
   summarizeBuildings,
+  surveyedGroundM,
 } from './bdtopoBuildingsFeed.js';
 
 /**
@@ -60,8 +61,20 @@ import {
  *   layer adds is a per-cell RE-ANCHORING onto the surface the globe actually
  *   renders — because a 30 m global terrain and a 20 cm national survey do not
  *   agree, and the disagreement is where buildings float or drown. The shift is
- *   local — one terrain sample per ~1.1 km cell — so a hillside stays a hillside
+ *   local — the median over a ~1.1 km cell — so a hillside stays a hillside
  *   instead of being flattened by a single viewport-wide correction.
+ *
+ * • **Every building is measured under its own feet.** The rendered surface is
+ *   read where the building stands, via `globe.getHeight` — the resident terrain
+ *   triangles, one synchronous call per volume and no network at all. The first
+ *   version took ONE height per ~1.1 km cell and differenced it against each
+ *   building's own floor; on flat ground that difference is the datum error, but
+ *   on the Croix-Rousse it is the drop from the cell centre to the building, and
+ *   it lifted whole blocks of Lyon into the air. Per-building sampling was priced
+ *   as unaffordable against the network DEM; against resident triangles it is
+ *   free. What is left after the shift is the mesh disagreeing with the survey
+ *   building by building, and the volume absorbs it by growing rather than
+ *   moving (see `seatOnGround`).
  *
  * • **The height and the floor come from different places, and the card says
  *   which.** `published` = both altitudes are IGN's. `height` = floor is IGN's,
@@ -126,6 +139,9 @@ const BOX_SNAP_DEG = 0.004;
  * genuinely unreachable terrain proxy costs one extra load and not a loop.
  */
 const COLD_FLOOR_RETRY_MS = 3_000;
+
+/** Reused so a 14 000-volume payload does not mint 14 000 Cartographics. */
+const _groundScratch = new Cesium.Cartographic();
 
 const SELECTED_COLOR = '#00ffff';
 
@@ -264,6 +280,16 @@ export function createBdtopoSelectedOverlayEntry(record) {
     default: 'Hauteur inconnue : 6 m par défaut',
   }[record.basis]);
 
+  // The volume on screen is taller than the two altitudes above whenever the
+  // globe's terrain and the survey disagree, and a viewer cannot tell by
+  // looking. Under a metre is the survey's own tolerance and not worth a line.
+  if (Number.isFinite(record.gapM) && Math.abs(record.gapM) >= 1) {
+    const metres = formatMetres(Math.abs(record.gapM));
+    details.push(record.gapM < 0
+      ? `Sol rendu ${metres} sous l'altitude IGN · base prolongée d'autant`
+      : `Sol rendu ${metres} au-dessus de l'altitude IGN · toit relevé d'autant`);
+  }
+
   const precision = declaredAltimetricPrecisionM(props);
   details.push(precision !== null
     ? `Altimétrie ${String(props.methode_d_acquisition_altimetrique || 'non précisée').toLowerCase()}, ±${precision} m`
@@ -305,13 +331,42 @@ async function fetchTile(tile, signal) {
 }
 
 /**
+ * The height of the surface the globe is DRAWING at a point, in ellipsoidal
+ * metres, or null.
+ *
+ * `globe.getHeight` reads the terrain tile that is already resident — the exact
+ * triangles on screen, at the LOD they are being rendered at, synchronously and
+ * with no network at all. That is the surface a building has to sit on: not the
+ * DEM the terrain was built from, and not a neighbouring cell's DEM value.
+ *
+ * The coarse DEM grid stays as the fallback for the one case the globe cannot
+ * answer — a camera that has just teleported, with nothing streamed yet — where
+ * it is the only prior available and the layer's cold-floor retry will come
+ * back for a second look regardless.
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {?number}
+ */
+function renderedGroundM(lat, lon) {
+  const globe = _viewer?.scene?.globe;
+  if (globe) {
+    _groundScratch.longitude = Cesium.Math.toRadians(lon);
+    _groundScratch.latitude = Cesium.Math.toRadians(lat);
+    _groundScratch.height = 0;
+    const height = globe.getHeight(_groundScratch);
+    if (Number.isFinite(height)) return height;
+  }
+  const warm = cachedGroundFloor(lat, lon);
+  return Number.isFinite(warm) ? warm : null;
+}
+
+/**
  * Turn decoded tiles into one record per drawn footprint.
  *
- * Two passes on purpose. The first reads the geometry and asks the shared floor
- * grid for the surface under each building; the second seats the buildings once
- * the datum offset for each cell is known. Seating in one pass would mean
- * seating the first building before the surface under the last one had been
- * looked at.
+ * Two passes on purpose. The first reads the geometry and the rendered surface
+ * under each building; the second seats the buildings once the datum offset for
+ * each cell is known. Seating in one pass would mean seating the first building
+ * before the surface under the last one had been looked at.
  * @param {Array<object>} tiles
  * @returns {Promise<{records: Array<object>, saturated: boolean, offsets: object}>}
  */
@@ -386,45 +441,65 @@ async function buildRecords(tiles) {
     }
   }
 
-  // One bounded wait on the shared floor grid, then everything is seated
-  // against whatever came back. Cells that miss the deadline keep resolving in
-  // the background and land in the cache for the next camera move.
-  // ONE sample point per offset cell — the cell centre — so a 6 km viewport
-  // costs ~64 terrain heights instead of the 6 400 the fine floor grid would
-  // ask for. Every building in a cell is then corrected against that single
-  // measurement, which is also what makes the correction a datum shift rather
-  // than per-building noise.
-  const cellPoints = new Map();
+  // The surface under each building, read off the terrain the globe already has
+  // resident. Free and synchronous, so it is taken PER BUILDING — which is the
+  // whole correctness of the datum offset below. Sampling one point per ~1.1 km
+  // cell and differencing it against each building's own IGN floor measures the
+  // relief between the cell centre and the building, not the datum error, and on
+  // a hillside that is tens of metres of lift applied to a whole block.
+  let coldGround = 0;
   for (const entry of raw) {
-    if (!cellPoints.has(entry.cellKey)) cellPoints.set(entry.cellKey, offsetCellCentre(entry.lat, entry.lon));
-  }
-  const points = [...cellPoints.values()];
-  warmGroundFloor(points);
-  await resolveGroundFloorCellsBounded(points);
-
-  const surfaceByCell = new Map();
-  for (const [key, centre] of cellPoints) {
-    surfaceByCell.set(key, cachedGroundFloor(centre.lat, centre.lon));
+    entry.surfaceM = renderedGroundM(entry.lat, entry.lon);
+    if (entry.surfaceM === null) coldGround += 1;
   }
 
+  // Only when the globe could not answer — a camera that just teleported, with
+  // no terrain tile resident yet — is the network DEM worth a bounded wait. One
+  // sample per offset cell, so a 6 km viewport costs ~64 heights and not 6 400.
+  //
+  // And a cell-centre height is then given ONLY to the buildings that have no
+  // altimetry of their own, for which it is the difference between being drawn
+  // and being dropped. A building that HAS a surveyed floor keeps it: correcting
+  // it against a height from up to a kilometre away is the bug this layer was
+  // just fixed for, and its own altitude is the honest answer until the terrain
+  // arrives and the cold-ground reload asks again.
+  const cellPoints = new Map();
+  if (coldGround) {
+    for (const entry of raw) {
+      if (!cellPoints.has(entry.cellKey)) {
+        cellPoints.set(entry.cellKey, offsetCellCentre(entry.lat, entry.lon));
+      }
+    }
+    const points = [...cellPoints.values()];
+    warmGroundFloor(points);
+    await resolveGroundFloorCellsBounded(points);
+    for (const entry of raw) {
+      if (entry.surfaceM !== null || surveyedGroundM(entry.props) !== null) continue;
+      const centre = cellPoints.get(entry.cellKey);
+      const fallback = cachedGroundFloor(centre.lat, centre.lon);
+      if (Number.isFinite(fallback)) entry.surfaceM = fallback;
+    }
+  }
+
+  // Both sides of the difference describe the SAME SPOT: the middle of this
+  // building's footprint, measured on the mesh and stated by the survey.
   const samples = [];
   for (const entry of raw) {
-    const minSol = finiteOrNull(entry.props.altitude_minimale_sol);
-    if (minSol === null) continue;
+    const groundM = surveyedGroundM(entry.props);
+    if (groundM === null) continue;
     samples.push({
       cellKey: entry.cellKey,
-      ignM: minSol + entry.geoidN,
-      renderedM: surfaceByCell.get(entry.cellKey),
+      ignM: groundM + entry.geoidN,
+      renderedM: entry.surfaceM,
     });
   }
   const offsets = datumOffsetsByCell(samples);
 
   const records = [];
   for (const entry of raw) {
-    const surfaceM = surfaceByCell.get(entry.cellKey);
     const seat = seatBuilding(entry.props, {
       geoidN: entry.geoidN,
-      surfaceM,
+      surfaceM: entry.surfaceM,
       offsetM: offsetForCell(offsets, entry.cellKey),
     });
     if (!Number.isFinite(seat.baseM) || !Number.isFinite(seat.topM) || seat.topM <= seat.baseM) continue;
@@ -442,6 +517,7 @@ async function buildRecords(tiles) {
       baseM: seat.baseM,
       topM: seat.topM,
       basis: seat.basis,
+      gapM: seat.gapM,
       heightM: finiteOrNull(entry.props.hauteur),
       dwellings: Number(entry.props.nombre_de_logements) || 0,
       rnb: entry.props.identifiants_rnb || null,
@@ -451,7 +527,7 @@ async function buildRecords(tiles) {
     });
   }
 
-  return { records, saturated, offsets, requestedCells: points.length };
+  return { records, saturated, offsets, requestedCells: cellPoints.size, coldGround };
 }
 
 /** Drop the drawn primitive and everything that indexes into it. */
@@ -662,7 +738,7 @@ async function load() {
     if (signal.aborted) return false;
 
     const bytes = fetched.reduce((total, entry) => total + entry.bytes, 0);
-    const { records, saturated, offsets, requestedCells } = await buildRecords(fetched);
+    const { records, saturated, offsets, requestedCells, coldGround } = await buildRecords(fetched);
     if (signal.aborted) return false;
 
     drawRecords(records);
@@ -676,6 +752,7 @@ async function load() {
       offsetM: offsets.medianM,
       offsetCells: offsets.cells,
       offsetCellsRequested: requestedCells,
+      coldGround,
       elapsedMs: performance.now() - started,
       box: snapped,
     });
@@ -685,10 +762,12 @@ async function load() {
     _retryDelayMs = 0;
     clearRetry();
 
-    // Drawn with a cold floor grid: the buildings are at their true NGF
-    // altitudes, which is correct but not yet re-anchored to what the globe
-    // renders. The cells resolve a moment later, so ask again — once.
-    if (offsets.cells === 0 && requestedCells > 0 && _coldFloorKey !== key) {
+    // Drawn against ground that was not all there: terrain still streaming into
+    // a freshly entered area, and for those buildings the seating fell back to
+    // a cell-centre DEM height or to the raw NGF altitude. Both are honest and
+    // neither is final, so ask again once the tiles have landed — once per box,
+    // so a genuinely unreachable surface costs one extra load and not a loop.
+    if ((coldGround > 0 || (offsets.cells === 0 && requestedCells > 0)) && _coldFloorKey !== key) {
       _coldFloorKey = key;
       _loadedKey = null;
       clearTimeout(_coldFloorTimer);
@@ -834,6 +913,9 @@ const bdtopoBuildingsLayer = {
       datumOffsetM: _payload?.offsetM ?? null,
       datumCells: _payload?.offsetCells ?? null,
       datumCellsRequested: _payload?.offsetCellsRequested ?? null,
+      groundColdVolumes: _payload?.coldGround ?? null,
+      groundGapMedianM: _payload?.groundGapMedianM ?? null,
+      groundGapWorstM: _payload?.groundGapWorstM ?? null,
       saturated: Boolean(_payload?.saturated),
       lastUpdate: _lastUpdate,
       loading: _loading,

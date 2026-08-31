@@ -76,6 +76,35 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **Bâti 3D no longer floats over Lyon's hillsides.** Reported from a
+  Croix-Rousse view where whole blocks hung in the air while the next block sat
+  correctly on the ground — and that pattern was the diagnosis. The layer
+  re-anchors IGN's surveyed floor altitudes onto the surface the globe draws by
+  taking the median difference between the two over a ~1.1 km cell, but it
+  sampled that surface **once per cell, at the cell centre**, and differenced
+  that single height against each building's own floor. On flat ground the
+  result is the datum error, which is what the correction is for. On a slope it
+  is the *relief between the cell centre and the building* — 30 to 60 m across a
+  0.01° cell on the Croix-Rousse — and every building in the cell was lifted by
+  it, uniformly, which is why the artefact came in cell-shaped blocks.
+  The surface is now measured under each building with `globe.getHeight` — the
+  terrain triangles already resident on screen, one synchronous read per volume
+  and no network at all. The per-building sampling the first version priced as
+  unaffordable (6 400 DEM lookups per viewport) costs nothing, because it never
+  touches the DEM; the coarse grid is now only consulted when the camera has
+  teleported and no terrain is resident yet. Two smaller corrections came with
+  it: the surveyed ground compared against that height is now the middle of the
+  footprint (`altitude_minimale_sol` is its LOW corner, and IGN publishes
+  `altitude_maximale_sol` beside it — median drop 1.9 m, up to 13 m), which
+  stops half of each building's own slope being read as terrain error; and what
+  the cell median still cannot fix is absorbed by GROWING each volume — base
+  down where the mesh is low, roof up where it is high, capped at 60 m.
+  **The correction only ever lengthens a volume, never moves it**, so the floor
+  altitude on every card is still the one IGN published. The layer also reports
+  the residual it had to absorb (median and worst 5%) rather than averaging it
+  out of sight, and `npm run qa:bdtopo` now asserts that residual over
+  Fourvière — a hill, chosen because the old sampling could not pass there.
+
 - `qa-fr-hydro.mjs` now probes `/api/terrain/heights` and reports which checks a
   target cannot run, instead of failing them. `vite preview` serves `dist`
   without the dev-server API middlewares, so the ground clamp and the overlay
