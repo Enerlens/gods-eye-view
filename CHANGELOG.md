@@ -130,6 +130,46 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   sibling and its static GTFS's GeoJSON conversion. Geometry itself is fetched
   on demand and cached under `.gev-cache/pan-gtfs-geo/` — a first click on a
   network costs 0.87 s, every later one 18 ms.
+- **A new layer: the State's own traffic sensors on the French national road
+  network.** `Road Status FR` (`road-status-fr`) draws **830 segments, 918 km**
+  of the non-conceded RRN, coloured every 60–360 s by the sixteen DIR
+  traffic-management centres' own DATEX II `trafficStatusValue`, and carries the
+  one measurement TomTom has no equivalent of at any price: a **vehicle count**
+  — veh/h and average km/h per station, from Bison Futé's six-minute national
+  snapshot. Keyless and Licence Ouverte 2.0, so on a build with no
+  `TOMTOM_API_KEY` — where the traffic layer runs its simulation — this is the
+  only measured congestion data on the globe. It is brightest exactly where
+  `Transit FR` is dark: Marseille (186 segments), Toulouse (127), Lyon (106) and
+  Saint-Étienne (100) publish no live bus at all.
+- **The geometry is built offline, because the published referential is three
+  traps.** `npm run road-status:index` commits
+  `config/datex_traficolor_sites.json` (178 KB, 1 195 sites, 832 located).
+  `refDir.csv` is in **Lambert-93**, so `scripts/lib/lambert93.mjs` reprojects
+  it — deriving the projection constants from its defining parameters and
+  asserting them against IGN's published NTG_71 values rather than pasting
+  numbers a typo would turn into a silent kilometre. It is **regenerated every
+  six-minute cycle with a moving row set** (1 197 stations in one cycle, 1 192
+  in the next), so the build UNIONS successive cycles instead of trusting one.
+  And it **declares twenty columns while publishing nineteen** on every row, so
+  the parser reads positionally: a header-zipped read puts `nb_voies` in the
+  easting and makes most of the network look unlocatable, which it is not.
+- **Two different kinds of empty, kept apart.** Île-de-France has no publisher
+  at all — the DIRIF appears in neither publication, verified three ways — while
+  Lille, Nantes, Rennes, Saint-Brieuc, Lorient–Vannes and Nancy–Metz publish a
+  live colour for **1 046 sites whose position nobody publishes**. A viewport
+  over Lille now reads "357 live road states published under site ids that are
+  in no national referential row" instead of a blank that looks like a bug, and
+  `roadStatusCoverage.test.mjs` cross-checks every such claim against the built
+  index so a DIR that starts publishing coordinates fails the suite rather than
+  leaving a city wrongly dark.
+- **Nothing is inferred from the count.** A located station no traffic centre
+  watches stays grey and reads `Not reported` rather than being folded into free
+  flow; where two centres report one site the WORSE state wins; flow and speed
+  are labelled **6-min average**, never as an instantaneous reading; and a
+  station that counted nothing says so instead of printing "0 km/h" — 114 of
+  1 192 stations at 22:30 CEST, which is a fact about the hour, not a jam.
+  Proven end-to-end by `npm run qa:road-status-fr` (18 checks) and 44 new unit
+  tests.
 - **Live French transit vehicles now say what they ARE.** GTFS-Realtime carries
   no vehicle class, so `npm run transit:route-types` joins each network's static
   GTFS `route_type` and commits `config/pan_route_types.json` — 147 feeds, 7,044
@@ -213,6 +253,14 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   calibrated against.
 
 ### Fixed
+
+- **The power grid's OpenStreetMap attribution was never rendered.** Its entry
+  in `DATA_CREDITS` was missing its object boundary, so `power-grid-osm` and
+  `rte-actual-generation` shared one object literal and the second `key`/`html`
+  pair silently overwrote the first — the ODbL credit for a layer that draws
+  volunteer-mapped geometry simply did not appear in the Data attribution
+  popover. Both entries are now separate objects, and 42 credits are registered
+  where 41 were. Found while adding the Bison Futé credit next to it.
 
 - **`npm run qa:traffic` could not boot at all.** It waited on
   `window.__godsEyeView` with puppeteer's default animation-frame polling, and

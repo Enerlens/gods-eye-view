@@ -24,6 +24,7 @@
  *  18. ODRÉ éCO2mix — French live electricity mix, national + 12 regions
  *  19. ODRÉ gas system — NaTran/Teréga transmission traces, gas power stations, biomethane injection
  *  20. Power grid — viewport-bounded OpenStreetMap high-voltage lines, substations and pylons
+ *  21. Bison Futé DATEX II — live status, flow and speed on the French national road network
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -54,6 +55,20 @@ import {
   normalizeBudget as normalizeTomTomBudget,
   isOverBudget as isTomTomOverBudget,
 } from './src/data/tomtomTiles.js';
+import {
+  QTV_MEASUREMENTS_URL,
+  ROAD_STATUS_MAX_BOX_DEG,
+  ROAD_STATUS_MAX_SEGMENTS,
+  TRAFICOLOR_INDEX_URL,
+  agglomerationLabel,
+  latestPublicationFile,
+  parseIndexDirectories,
+  parseQtvMeasurements,
+  parseTraficolorStatuses,
+  segmentIntersectsBox,
+  validRoadStatusBox,
+  worseRoadStatus,
+} from './src/data/datexRoadStatus.js';
 import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
 import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
@@ -12037,6 +12052,414 @@ function weatherEffectsProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Bison Futé DATEX II — live status of the French national road network
+// ---------------------------------------------------------------------------
+/** Committed geometry (see `scripts/build-datex-traficolor-sites.mjs`). */
+const ROAD_STATUS_SITES_PATH = path.join(process.cwd(), 'config', 'datex_traficolor_sites.json');
+/**
+ * Snapshot TTL. The fastest agglomeration (Bordeaux, Toulouse, Lyon, Limoges)
+ * writes a new file every 60 s and the slowest every 360 s, so asking more
+ * often than a minute cannot return anything new — it only costs the publisher
+ * bandwidth.
+ */
+const ROAD_STATUS_SNAPSHOT_TTL_MS = 60_000;
+/**
+ * The flow/speed snapshot has a strict six-minute cycle: `publicationTime`
+ * 22:24 covers the window 22:24–22:30, the next is 22:30 covering 22:30–22:36.
+ * Re-fetching 1.2 MB inside that window returns the identical document.
+ */
+const ROAD_STATUS_QTV_TTL_MS = 6 * 60_000;
+/** Longest a stale snapshot is still served while upstream is unreachable. */
+const ROAD_STATUS_STALE_MS = 30 * 60_000;
+const ROAD_STATUS_TIMEOUT_MS = 20_000;
+/** The national flow snapshot is 1.2 MB; this is headroom, not an expectation. */
+const ROAD_STATUS_MAX_BYTES = 24 * 1024 * 1024;
+/** How many agglomeration directories are read at once. */
+const ROAD_STATUS_CONCURRENCY = 6;
+const ROAD_STATUS_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'road-status-fr');
+const ROAD_STATUS_CACHE_PATH = path.join(ROAD_STATUS_CACHE_DIR, 'snapshot.json');
+const ROAD_STATUS_USER_AGENT = 'GodsEyeView/1.0 (+https://github.com/bilawalsidhu/gods-eye-view)';
+const _roadStatusRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 90, globalMax: 240 });
+
+/** @type {?object} Parsed `config/datex_traficolor_sites.json`. */
+let _roadStatusSites = null;
+/** @type {?Promise<object>} */
+let _roadStatusSitesPromise = null;
+/** @type {?{at:number, publishedAt:?string, windowStart:?string, windowEnd:?string, measurements:Map}} */
+let _roadStatusQtv = null;
+/** @type {?{at:number, segments:Array<object>, feeds:Array<object>, counts:object}} */
+let _roadStatusSnapshot = null;
+let _roadStatusDiskChecked = false;
+/** @type {Map<string, Promise<object>>} */
+const _roadStatusInFlight = new Map();
+
+/** Load the committed site geometry once per process. */
+function loadRoadStatusSites() {
+  if (_roadStatusSites) return Promise.resolve(_roadStatusSites);
+  if (!_roadStatusSitesPromise) {
+    _roadStatusSitesPromise = fsp.readFile(ROAD_STATUS_SITES_PATH, 'utf8')
+      .then((text) => {
+        const parsed = JSON.parse(text);
+        if (!parsed?.sites || typeof parsed.sites !== 'object') {
+          throw new Error('site index has no `sites` map');
+        }
+        _roadStatusSites = parsed;
+        return parsed;
+      })
+      .catch((error) => {
+        _roadStatusSitesPromise = null;
+        throw error;
+      });
+  }
+  return _roadStatusSitesPromise;
+}
+
+async function fetchRoadStatusText(url) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': ROAD_STATUS_USER_AGENT, Accept: '*/*' },
+    signal: AbortSignal.timeout(ROAD_STATUS_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return readResponseTextCapped(response, ROAD_STATUS_MAX_BYTES);
+}
+
+/** Run `worker` over `items` with a fixed number of concurrent slots. */
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+/**
+ * Refresh the six-minute national flow/speed snapshot, if its window elapsed.
+ *
+ * Failure is NOT fatal to the status snapshot: the colour of a road and the
+ * count on it come from two independent publications, and losing the count
+ * must not blank the colour. The previous measurements are kept and their own
+ * timestamps go out with them, so the client can see they are the last cycle's.
+ */
+async function refreshRoadStatusQtv() {
+  const now = Date.now();
+  if (_roadStatusQtv && now - _roadStatusQtv.at < ROAD_STATUS_QTV_TTL_MS) return _roadStatusQtv;
+  try {
+    const xml = await fetchRoadStatusText(QTV_MEASUREMENTS_URL);
+    const parsed = parseQtvMeasurements(xml);
+    _roadStatusQtv = { at: now, ...parsed };
+  } catch (error) {
+    console.warn('[road-status-fr] flow snapshot unavailable:', error?.message || error);
+    if (!_roadStatusQtv) {
+      _roadStatusQtv = {
+        at: now, publishedAt: null, windowStart: null, windowEnd: null, measurements: new Map(),
+      };
+    }
+  }
+  return _roadStatusQtv;
+}
+
+/**
+ * Read every agglomeration status feed and join it to the committed geometry.
+ *
+ * ONE NATIONAL SNAPSHOT, not one fetch per viewport. The whole country is
+ * ~2 000 status sites and ~830 drawable segments — small enough to hold, and
+ * far cheaper to hold than to re-derive per camera box. Viewport filtering is
+ * therefore a pass over an array, which is why the box ceiling on the endpoint
+ * is 20° rather than the 6° the transit proxy has to enforce.
+ *
+ * SETTLED PER FEED. Sixteen directories, each a separate traffic-management
+ * centre; one being down is one city going grey, not the country going blank.
+ * Every failure is named in the `feeds` array the client renders.
+ *
+ * A SITE IS DRAWN IF EITHER PUBLICATION SPEAKS FOR IT. A located station with
+ * a flow reading and no colour is drawn in the `unknown` grey and carries its
+ * count; a site with a colour and no count is drawn coloured. Requiring both
+ * would silently drop the stations no traffic centre watches.
+ */
+async function refreshRoadStatusSnapshot() {
+  const sitesDoc = await loadRoadStatusSites();
+  const qtv = await refreshRoadStatusQtv();
+  const index = await fetchRoadStatusText(TRAFICOLOR_INDEX_URL);
+  const directories = parseIndexDirectories(index);
+
+  const outcomes = await mapWithConcurrency(directories, ROAD_STATUS_CONCURRENCY, async (directory) => {
+    const base = `${TRAFICOLOR_INDEX_URL}${directory}/`;
+    try {
+      const listing = await fetchRoadStatusText(base);
+      const latest = latestPublicationFile(listing);
+      if (!latest) return { directory, statuses: new Map(), error: 'no publication file' };
+      const body = await fetchRoadStatusText(base + latest);
+      const parsed = parseTraficolorStatuses(body);
+      return {
+        directory, statuses: parsed.statuses, publishedAt: parsed.publishedAt, file: latest, error: null,
+      };
+    } catch (error) {
+      console.warn(`[road-status-fr] ${directory}: ${error?.message || error}`);
+      return { directory, statuses: new Map(), error: String(error?.message || error) };
+    }
+  });
+
+  /** @type {Map<string, {status:string, at:?string, sources:Array<string>}>} */
+  const merged = new Map();
+  const feeds = [];
+  for (const outcome of outcomes) {
+    let drawable = 0;
+    for (const [id, reading] of outcome.statuses) {
+      if (sitesDoc.sites[id]?.c) drawable += 1;
+      const existing = merged.get(id);
+      if (existing) {
+        // Two centres watching one site: keep the worse state, and record both
+        // so the card can say who is reporting it.
+        existing.status = worseRoadStatus(existing.status, reading.status);
+        if (!existing.sources.includes(outcome.directory)) existing.sources.push(outcome.directory);
+        if (reading.at && (!existing.at || reading.at > existing.at)) existing.at = reading.at;
+      } else {
+        merged.set(id, { status: reading.status, at: reading.at, sources: [outcome.directory] });
+      }
+    }
+    feeds.push({
+      directory: outcome.directory,
+      label: agglomerationLabel(outcome.directory),
+      sites: outcome.statuses.size,
+      drawable,
+      publishedAt: outcome.publishedAt || null,
+      file: outcome.file || null,
+      error: outcome.error,
+    });
+  }
+  feeds.sort((a, b) => b.drawable - a.drawable || a.label.localeCompare(b.label));
+
+  const segments = [];
+  const counts = {
+    freeFlow: 0, heavy: 0, congested: 0, impossible: 0, unknown: 0,
+  };
+  let measured = 0;
+  for (const [id, site] of Object.entries(sitesDoc.sites)) {
+    if (!site?.c) continue;
+    const reading = merged.get(id);
+    const measurement = qtv.measurements.get(id);
+    if (!reading && !measurement) continue;
+    const status = reading?.status || 'unknown';
+    counts[status] = (counts[status] || 0) + 1;
+    if (measurement) measured += 1;
+    segments.push({
+      id,
+      c: site.c,
+      s: status,
+      d: site.d || null,
+      a: site.a || null,
+      z: site.z || null,
+      src: reading?.sources || [],
+      at: reading?.at || null,
+      f: measurement?.flowVehH ?? null,
+      v: measurement?.speedKph ?? null,
+      n: measurement?.samples ?? null,
+    });
+  }
+
+  const failed = feeds.filter((feed) => feed.error).length;
+  const snapshot = {
+    at: Date.now(),
+    status: failed && failed === feeds.length ? 'degraded' : 'ready',
+    retrievedAt: new Date().toISOString(),
+    segments,
+    feeds,
+    counts,
+    measured,
+    feedsFailed: failed,
+    statusSites: merged.size,
+    // The two numbers the honesty of this layer rests on: how many sites the
+    // country publishes a position for, and how many it does not.
+    sitesTotal: sitesDoc.stats?.sites ?? null,
+    sitesLocated: sitesDoc.stats?.located ?? null,
+    sitesUnlocated: sitesDoc.stats?.unlocated ?? null,
+    lengthKm: sitesDoc.stats?.lengthKm ?? null,
+    licence: sitesDoc.licence || null,
+    attribution: sitesDoc.attribution || null,
+    datasetPage: sitesDoc.datasetPage || null,
+    geometryGeneratedAt: sitesDoc.generatedAt || null,
+    flow: {
+      publishedAt: qtv.publishedAt,
+      windowStart: qtv.windowStart,
+      windowEnd: qtv.windowEnd,
+      stations: qtv.measurements.size,
+    },
+  };
+  _roadStatusSnapshot = snapshot;
+  void fsp.mkdir(ROAD_STATUS_CACHE_DIR, { recursive: true })
+    .then(() => fsp.writeFile(ROAD_STATUS_CACHE_PATH, JSON.stringify(snapshot), 'utf8'))
+    .catch((error) => console.warn('[road-status-fr] cache write failed:', error?.message || error));
+  return snapshot;
+}
+
+/** Warm the in-memory snapshot from disk once, so a restart is not a cold map. */
+async function readRoadStatusDiskCache() {
+  if (_roadStatusDiskChecked) return;
+  _roadStatusDiskChecked = true;
+  try {
+    const parsed = JSON.parse(await fsp.readFile(ROAD_STATUS_CACHE_PATH, 'utf8'));
+    if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.segments)) _roadStatusSnapshot = parsed;
+  } catch { /* no disk cache yet */ }
+}
+
+/**
+ * Vite plugin: live French national road status.
+ *
+ *   GET /api/road-status-fr/sources                          — publishers and coverage
+ *   GET /api/road-status-fr/segments?south&west&north&east   — coloured segments in box
+ *
+ * The browser never talks to `tipi.bison-fute.gouv.fr` directly: the host is
+ * plain HTTP with no CORS header and no TLS at all, so a page served over
+ * https could not read it even if it were allowed to; one viewport needs
+ * seventeen upstream requests that are worth sharing across clients; and the
+ * geometry join happens against a file the browser has no reason to hold.
+ *
+ * Keyless, Licence Ouverte 2.0.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function roadStatusFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/road-status-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_roadStatusRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      let sitesDoc;
+      try {
+        sitesDoc = await loadRoadStatusSites();
+      } catch (error) {
+        console.warn('[road-status-fr] site index unavailable:', error?.message || error);
+        json(503, {
+          error: 'French road-status geometry is missing — run `npm run road-status:index`',
+          missingIndex: true,
+        });
+        return;
+      }
+
+      if (route === '/sources') {
+        json(200, {
+          source: sitesDoc.statusSource || TRAFICOLOR_INDEX_URL,
+          referentialSource: sitesDoc.source || null,
+          datasetPage: sitesDoc.datasetPage || null,
+          licence: sitesDoc.licence || null,
+          attribution: sitesDoc.attribution || null,
+          geometryGeneratedAt: sitesDoc.generatedAt || null,
+          cycles: sitesDoc.cycles || null,
+          referential: sitesDoc.referential || null,
+          stats: sitesDoc.stats || null,
+          coverage: sitesDoc.coverage || [],
+        }, { 'Cache-Control': 'public, max-age=300' });
+        return;
+      }
+
+      if (route !== '/segments') {
+        json(404, { error: 'Unknown road-status endpoint' });
+        return;
+      }
+
+      const box = validRoadStatusBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      });
+      if (!box) {
+        json(400, { error: `A non-dateline bbox no larger than ${ROAD_STATUS_MAX_BOX_DEG} degrees is required` });
+        return;
+      }
+
+      await readRoadStatusDiskCache();
+      const now = Date.now();
+      const fresh = _roadStatusSnapshot && now - _roadStatusSnapshot.at <= ROAD_STATUS_SNAPSHOT_TTL_MS;
+      let snapshot = fresh ? _roadStatusSnapshot : null;
+      let cacheState = 'HIT';
+      if (!snapshot) {
+        const request = coalesceProxyRequest(_roadStatusInFlight, 'national', refreshRoadStatusSnapshot);
+        cacheState = request.shared ? 'INFLIGHT' : 'MISS';
+        try {
+          snapshot = await request.promise;
+        } catch (error) {
+          console.warn('[road-status-fr] refresh failed:', error?.message || error);
+          const stale = _roadStatusSnapshot;
+          if (!stale || now - stale.at > ROAD_STATUS_STALE_MS) {
+            json(503, { error: 'Live French road status is temporarily unavailable' });
+            return;
+          }
+          snapshot = stale;
+          cacheState = 'STALE';
+        }
+      }
+
+      const inBox = [];
+      const counts = {
+        freeFlow: 0, heavy: 0, congested: 0, impossible: 0, unknown: 0,
+      };
+      let truncated = false;
+      for (const segment of snapshot.segments) {
+        if (!segmentIntersectsBox(segment, box)) continue;
+        if (inBox.length >= ROAD_STATUS_MAX_SEGMENTS) { truncated = true; break; }
+        inBox.push(segment);
+        counts[segment.s] = (counts[segment.s] || 0) + 1;
+      }
+
+      json(200, {
+        status: cacheState === 'STALE' ? 'stale' : snapshot.status,
+        retrievedAt: snapshot.retrievedAt,
+        stale: cacheState === 'STALE',
+        box,
+        segments: inBox,
+        counts,
+        segmentsTruncated: truncated,
+        nationalSegments: snapshot.segments.length,
+        nationalCounts: snapshot.counts,
+        measured: snapshot.measured,
+        feeds: snapshot.feeds,
+        feedsFailed: snapshot.feedsFailed,
+        sitesTotal: snapshot.sitesTotal,
+        sitesLocated: snapshot.sitesLocated,
+        sitesUnlocated: snapshot.sitesUnlocated,
+        lengthKm: snapshot.lengthKm,
+        flow: snapshot.flow,
+        licence: snapshot.licence,
+        attribution: snapshot.attribution,
+        datasetPage: snapshot.datasetPage,
+        geometryGeneratedAt: snapshot.geometryGeneratedAt,
+      }, { 'X-Road-Status-FR': cacheState });
+    });
+  }
+
+  return {
+    name: 'road-status-fr-proxy',
+    configureServer(server) {
+      install(server.middlewares);
+    },
+    configurePreviewServer(server) {
+      install(server.middlewares);
+    },
+  };
+}
+
 function parseJsonEnv(key, fallback) {
   const value = process.env[key];
   if (!value) return fallback;
@@ -12131,6 +12554,7 @@ export default defineConfig(({ mode }) => {
       radioBrowserProxy(),
       gbfsProxy(),
       panTransitProxy(),
+      roadStatusFranceProxy(),
       gbfsFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),

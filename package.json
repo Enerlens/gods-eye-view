@@ -43,6 +43,7 @@
     "qa:ign-terrain": "node scripts/qa-ign-terrain.mjs",
     "qa:map-source-tray": "node scripts/qa-map-source-tray.mjs",
     "qa:transit-fr": "node scripts/qa-transit-fr.mjs",
+    "qa:road-status-fr": "node scripts/qa-road-status-fr.mjs",
     "qa:traffic-lod": "node scripts/qa-traffic-lod.mjs",
     "qa:edf-plants": "node scripts/qa-edf-plants.mjs",
     "qa:energy-fr": "node scripts/qa-energy-fr.mjs",
@@ -59,6 +60,7 @@
     "transit:route-types": "node scripts/build-pan-route-types.mjs",
     "transit:static": "node scripts/build-pan-static-index.mjs",
     "shared-mobility:index": "node scripts/build-gbfs-fr-index.mjs",
+    "road-status:index": "node scripts/build-datex-traficolor-sites.mjs",
     "rte:units": "node scripts/build-rte-units-registry.mjs",
     "hydro:registry": "node scripts/build-fr-hydro-registry.mjs",
     "airports:pack": "node scripts/build-ourairports.mjs"

@@ -229,6 +229,18 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'live',
   }),
+  // Directly under "Trafic routier" because it is the same subject measured a
+  // different way — TomTom's modelled ratio above, the State's own loop
+  // detectors here — and a viewer comparing them should not have to hunt.
+  Object.freeze({
+    id: 'road-status-fr',
+    category: 'ground-mobility',
+    label: 'État du réseau routier',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'live',
+  }),
   Object.freeze({
     id: 'transit-fr',
     category: 'ground-mobility',
