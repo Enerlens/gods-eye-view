@@ -27,6 +27,7 @@
  * itself lives in `viewportBox.js`, shared with the French shared-mobility
  * source, which asks the same question of a different catalog.
  */
+import { feedIsSelectable } from './panFeedHealth.js';
 import {
   boxArea,
   boxContains as boxContainsPoint,
@@ -325,7 +326,11 @@ export function selectFeedsForBox(feeds, box, options = {}) {
   const unknown = [];
   let nearKnownCoverage = false;
   for (const feed of Array.isArray(feeds) ? feeds : []) {
-    if (!feed?.url) continue;
+    // Duplicates and quarantined feeds never earn a slot: a viewport gets 16,
+    // and spending one on a body that is already on screen under another id —
+    // or on a resource that has failed every probe for two builds — costs a
+    // live network its place. See `panFeedHealth.js` for how both are measured.
+    if (!feedIsSelectable(feed)) continue;
     if (!feed.bbox) {
       unknown.push(feed);
       continue;

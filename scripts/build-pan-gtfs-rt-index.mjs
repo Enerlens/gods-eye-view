@@ -35,6 +35,21 @@
  * `--no-probe` refreshes descriptors from the catalog while KEEPING the bounds
  * already in the output file — use it to pick up new networks without
  * re-measuring every footprint.
+ *
+ * TWO THINGS THE CATALOG DOES NOT SAY, MEASURED HERE. Both live under
+ * `src/data/panFeedHealth.js` and are recorded per feed:
+ *
+ *   - `duplicateOf` — some networks publish one body under two resource ids.
+ *     Measured 2026-08-31, Kicéo's two resources returned the same 62 vehicles
+ *     at the same 62 coordinates and Lila presqu'île's the same 14; each was
+ *     drawn twice. A candidate found in the first probe pass is RE-PROBED, and
+ *     only a second agreement is recorded — resources that merely looked alike
+ *     for one moment are kept.
+ *
+ *   - `health` — a run of failed probes quarantines a feed out of viewport
+ *     selection. Between 2026-08-26 and 2026-08-31, seven resources began
+ *     answering HTTP 403 behind a WAF and one HTTP 500. Nothing is deleted: a
+ *     single successful probe in any later build clears the quarantine.
  */
 
 import { promises as fsp } from 'node:fs';
@@ -42,6 +57,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { vehiclePositionsFromBytes, boundsOfVehicles } from '../src/data/gtfsRealtime.js';
 import { PAN_DATASETS_URL, vehiclePositionFeedsFromCatalog } from '../src/data/panFeeds.js';
+import {
+  applyProbeHealth,
+  duplicateFeedGroups,
+  fleetFingerprint,
+  fleetRoster,
+  sameFleet,
+} from '../src/data/panFeedHealth.js';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT = path.join(ROOT, 'config', 'pan_gtfs_rt_feeds.json');
@@ -102,6 +124,10 @@ async function probeFeed(feed, timeoutMs) {
       entityCount,
       vehicles: vehicles.length,
       bbox: boundsOfVehicles(vehicles, { rejectOutliers: true }),
+      // Two digests of the same fleet: positional (finds duplicate candidates)
+      // and roster-only (confirms them after the fleet has moved on).
+      fingerprint: fleetFingerprint(vehicles, feed.id),
+      roster: fleetRoster(vehicles, feed.id),
     };
   } catch (error) {
     const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
@@ -167,6 +193,68 @@ async function main() {
     console.log('[PAN] --no-probe: keeping bounds from the existing index');
   }
 
+  // --- Duplicate confirmation ---------------------------------------------
+  // A single agreeing probe is a coincidence budget this build refuses to
+  // spend: a wrong verdict here silently deletes a network from the map. So
+  // candidates found positionally in the first pass are re-probed — and the
+  // second question is the ROSTER, not the positions. The fleet has moved
+  // between the two passes; asking for identical coordinates twice tests the
+  // upstream's refresh timing, not whether two resources are one feed.
+  const duplicateOf = new Map();
+  const disproven = new Set();
+  if (args.probe) {
+    const candidates = duplicateFeedGroups(feeds.map((feed, i) => ({
+      id: feed.id,
+      resourceId: feed.resourceId,
+      fingerprint: probes[i]?.fingerprint || null,
+    })));
+    if (candidates.length) {
+      const members = [...new Set(candidates.flatMap((g) => [g.keeper, ...g.duplicates]))];
+      console.log(`[PAN] ${candidates.length} duplicate candidate group(s), re-probing ${members.length} feeds …`);
+      const byId = new Map(feeds.map((feed) => [feed.id, feed]));
+      // Every member of a group at once, so the two bodies are read as close
+      // to the same instant as the network allows.
+      const confirmPairs = await Promise.all(members.map(async (id) => {
+        const probe = await probeFeed(byId.get(id), args.timeout);
+        return [id, probe?.ok ? probe.roster : null];
+      }));
+      const confirmed = new Map(confirmPairs);
+      for (const group of candidates) {
+        const keeperRoster = confirmed.get(group.keeper);
+        for (const id of group.duplicates) {
+          if (sameFleet(keeperRoster, confirmed.get(id))) {
+            duplicateOf.set(id, group.keeper);
+            console.log(`[PAN] duplicate confirmed: ${id} → ${group.keeper} (${group.fleet} vehicles)`);
+          } else if (keeperRoster && confirmed.get(id)) {
+            // Both answered and the rosters differ: positive evidence that
+            // these are two feeds, which is the only thing that may overturn
+            // a verdict an earlier build confirmed.
+            disproven.add(id);
+            console.log(`[PAN] duplicate DISPROVEN on re-probe: ${id} vs ${group.keeper}`);
+          } else {
+            console.log(`[PAN] duplicate inconclusive (a feed did not answer): ${id} vs ${group.keeper}`);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Resolve one feed's duplicate verdict.
+   *
+   * A confirmed duplicate is STICKY: a resource does not stop being a mirror
+   * because one probe timed out, and letting a failed probe clear the verdict
+   * makes the flag flap between builds — which is how a double-drawn fleet
+   * comes back. Only two feeds that both answered with different rosters
+   * overturn it.
+   */
+  function resolveDuplicateOf(feed, prior) {
+    if (!args.probe) return prior?.duplicateOf || null;
+    if (duplicateOf.has(feed.id)) return duplicateOf.get(feed.id);
+    if (disproven.has(feed.id)) return null;
+    return prior?.duplicateOf || null;
+  }
+
   const now = new Date().toISOString();
   const indexed = feeds.map((feed, i) => {
     const probe = probes[i];
@@ -191,10 +279,20 @@ async function main() {
       lastProbe: probe
         ? { at: now, ok: probe.ok, ms: probe.ms, vehicles: probe.vehicles ?? 0, error: probe.error || null }
         : (prior?.lastProbe || null),
+      // A run of failed probes takes a feed out of viewport selection without
+      // deleting it; one success anywhere in a later build brings it back.
+      health: probe
+        ? applyProbeHealth(prior?.health, probe, now)
+        : (prior?.health || null),
+      // Set only when a second probe agreed that this resource carries the
+      // same fleet as its keeper, and cleared only by contrary evidence.
+      duplicateOf: resolveDuplicateOf(feed, prior),
     };
   });
 
   const withBounds = indexed.filter((feed) => feed.bbox).length;
+  const quarantined = indexed.filter((feed) => feed.health?.quarantined).length;
+  const duplicates = indexed.filter((feed) => feed.duplicateOf).length;
   const payload = {
     source: PAN_DATASETS_URL,
     generatedAt: now,
@@ -203,12 +301,22 @@ async function main() {
     datasetCount: datasets.length,
     feedCount: indexed.length,
     feedsWithBounds: withBounds,
+    // Shipped ≠ queryable. Duplicates and quarantined feeds stay in the file
+    // so the next build can revive them, but no viewport spends a slot on
+    // them — see `panFeedHealth.partitionFeedsByHealth`.
+    feedsQueryable: indexed.length - quarantined - duplicates,
+    feedsQuarantined: quarantined,
+    feedsDuplicate: duplicates,
     feeds: indexed,
   };
 
   await fsp.mkdir(path.dirname(args.out), { recursive: true });
   await fsp.writeFile(args.out, `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
-  console.log(`[PAN] wrote ${path.relative(ROOT, args.out)} — ${indexed.length} feeds, ${withBounds} with observed bounds`);
+  console.log(
+    `[PAN] wrote ${path.relative(ROOT, args.out)} — ${indexed.length} feeds, `
+    + `${withBounds} with observed bounds, ${payload.feedsQueryable} queryable `
+    + `(${duplicates} duplicate, ${quarantined} quarantined)`,
+  );
 }
 
 main().catch((error) => {

@@ -12,6 +12,7 @@ import {
   stripSceneTrackingParams,
 } from './scenePolicy.js';
 import { SCENE_RECIPES } from './recipes.js';
+import { REGISTERED_LAYER_IDS } from '../data/layerState.js';
 import { LAYER_STATE_REGISTRY } from '../data/layerState.js';
 
 /**
@@ -38,13 +39,15 @@ function sweepLayerParamKeys() {
   return byFile;
 }
 
-/** The layer registry as main.js builds it (src/main.js dataManager.register calls). */
-const REGISTERED = new Set([
-  'flights', 'military', 'earthquakes', 'satellites', 'rocket-launches', 'traffic',
-  'cctv', 'radio', 'bikeshare', 'ais-live-vessels', 'military-installations',
-  'military-awareness', 'local-datacenters', 'local-dams',
-  'telegeography-submarine-cables', 'local-firms',
-]);
+/**
+ * The live layer registry.
+ *
+ * Read from `layerState.js` rather than transcribed: a hand-kept copy went
+ * stale at sixteen ids while the registry grew to thirty, so the assertion
+ * below — "every shipped recipe declares only REGISTERED layer ids" — was
+ * checking recipes against a list that no longer described the app.
+ */
+const REGISTERED = new Set(REGISTERED_LAYER_IDS);
 
 test('a shot only reconciles the layers it declares', () => {
   const plan = sceneLayerPlan({ flights: { enabled: true } }, REGISTERED);
@@ -201,12 +204,17 @@ test('an isolating context mode must be exited before a shot applies', () => {
   assert.equal(sceneRequiresContextModeExit(undefined), false);
 });
 
-test('shipped recipes touch only their four declared layers', () => {
+test('shipped recipes touch only the layers they declare', () => {
+  // The invariant is the RATIO, not a fixed number: every recipe used to
+  // declare exactly four layers, and pinning "≤ 4" turned that coincidence
+  // into a rule that a seven-layer city composition would have broken for no
+  // reason. What must hold is that a shot never reaches past its own map into
+  // the rest of the registry — which is the whole point of scenePolicy.
   for (const recipe of SCENE_RECIPES) {
     const declared = Object.entries(recipe.layers || {})
       .map(([id, enabled]) => [id, { enabled }]);
     const plan = sceneLayerPlan(Object.fromEntries(declared), REGISTERED);
     assert.equal(plan.length, Object.keys(recipe.layers || {}).length, recipe.id);
-    assert.ok(plan.length <= 4, `${recipe.id} should not reach beyond its declared layers`);
+    assert.ok(plan.length < REGISTERED.size, `${recipe.id} should not reconcile the whole registry`);
   }
 });

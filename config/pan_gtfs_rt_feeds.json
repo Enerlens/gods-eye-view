@@ -1,11 +1,14 @@
 {
   "source": "https://transport.data.gouv.fr/api/datasets",
-  "generatedAt": "2026-08-26T17:35:46.269Z",
+  "generatedAt": "2026-08-31T16:39:25.168Z",
   "generator": "scripts/build-pan-gtfs-rt-index.mjs",
   "note": "bbox values are OBSERVED vehicle bounds at probe time, not published coverage areas",
-  "datasetCount": 781,
-  "feedCount": 151,
-  "feedsWithBounds": 125,
+  "datasetCount": 784,
+  "feedCount": 150,
+  "feedsWithBounds": 143,
+  "feedsQueryable": 148,
+  "feedsQuarantined": 0,
+  "feedsDuplicate": 2,
   "feeds": [
     {
       "id": "pan-10231",
@@ -24,20 +27,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/10231",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-bordeaux-navettes-aeroport-30-direct-gtfs-gtfs-rt",
       "bbox": {
-        "south": 44.8211,
+        "south": 44.7884,
         "west": -0.6965,
-        "north": 44.8308,
+        "north": 44.8345,
         "east": -0.5412
       },
-      "vehicleSample": 2,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 336,
-        "vehicles": 2,
+        "ms": 303,
+        "vehicles": 3,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-12600",
@@ -56,20 +67,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/12600",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-buss-saintes-gtfs-gtfs-rt",
       "bbox": {
-        "south": 45.7329,
+        "south": 45.7321,
         "west": -0.6762,
         "north": 45.7483,
-        "east": -0.6302
+        "east": -0.6265
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 7,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 378,
-        "vehicles": 5,
+        "ms": 308,
+        "vehicles": 7,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-12609",
@@ -88,20 +107,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/12609",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-maybus-mayenne-gtfs-gtfs-rt",
       "bbox": {
-        "south": 48.3106,
+        "south": 48.2939,
         "west": -0.643,
-        "north": 48.3106,
-        "east": -0.643
+        "north": 48.3112,
+        "east": -0.6123
       },
-      "vehicleSample": 1,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 425,
-        "vehicles": 1,
+        "ms": 298,
+        "vehicles": 2,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-12617",
@@ -123,12 +150,20 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 776,
+        "ms": 299,
         "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-15449",
@@ -148,19 +183,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-lulu-en-bus-ex-luneo-gtfs-gtfs-rt",
       "bbox": {
         "south": 48.586,
-        "west": 6.4934,
+        "west": 6.4896,
         "north": 48.6022,
         "east": 6.5112
       },
-      "vehicleSample": 2,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 461,
-        "vehicles": 2,
+        "ms": 284,
+        "vehicles": 3,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-25678",
@@ -178,16 +221,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/0057d63f-cf69-4d67-8c44-3c546ec7d403",
       "pageUrl": "https://transport.data.gouv.fr/resources/25678",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-du-reseau-figeac-le-bus-gtfs",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 44.596,
+        "west": 2.0054,
+        "north": 44.6108,
+        "east": 2.0446
+      },
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 374,
-        "vehicles": 0,
+        "ms": 262,
+        "vehicles": 3,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-34266",
@@ -205,16 +261,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/afee6b6e-2c3f-4317-9d0a-d70540acf8d8",
       "pageUrl": "https://transport.data.gouv.fr/resources/34266",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-oloron-sainte-marie-la-navette-gtfs-gtfs-rt",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 43.1857,
+        "west": -0.6246,
+        "north": 43.19,
+        "east": -0.6079
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 355,
-        "vehicles": 0,
+        "ms": 298,
+        "vehicles": 2,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-36515",
@@ -234,19 +303,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-au-format-gtfs-et-horaires-temps-reel-au-format-gtfs-rt-du-reseau-car-jaune-a-la-reunion",
       "bbox": {
         "south": -21.2919,
-        "west": 55.2499,
-        "north": -20.8742,
-        "east": 55.4465
+        "west": 55.2394,
+        "north": -20.874,
+        "east": 55.6534
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 17,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 2422,
-        "vehicles": 5,
+        "ms": 302,
+        "vehicles": 17,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-38878",
@@ -270,15 +347,23 @@
         "north": 47.248,
         "east": -2.1623
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 446,
-        "vehicles": 1,
+        "ms": 273,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-40392",
@@ -296,16 +381,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/8bd532f4-8813-4313-be7c-304b8f8f47a7",
       "pageUrl": "https://transport.data.gouv.fr/resources/40392",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-nosbus",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 48.3166,
+        "west": 0.8181,
+        "north": 48.3191,
+        "east": 0.8191
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 3259,
-        "vehicles": 0,
+        "ms": 281,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-40623",
@@ -326,18 +424,26 @@
       "bbox": {
         "south": 43.2739,
         "west": 3.4136,
-        "north": 43.4051,
+        "north": 43.4535,
         "east": 3.5174
       },
-      "vehicleSample": 11,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 10,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 91,
-        "vehicles": 11,
+        "ms": 89,
+        "vehicles": 10,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-52582",
@@ -355,16 +461,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/0fbf9dc8-d2db-405d-ade4-fdd04a6f8272",
       "pageUrl": "https://transport.data.gouv.fr/resources/52582",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-reso",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 47.8357,
+        "west": -0.3429,
+        "north": 47.8386,
+        "east": -0.3425
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 145,
-        "vehicles": 0,
+        "ms": 1731,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-52918",
@@ -383,20 +502,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/52918",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-lva",
       "bbox": {
-        "south": 45.5032,
-        "west": 4.7711,
+        "south": 45.5014,
+        "west": 4.7707,
         "north": 45.591,
         "east": 4.9183
       },
-      "vehicleSample": 14,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 16,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 225,
-        "vehicles": 14,
+        "ms": 186,
+        "vehicles": 16,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-67153",
@@ -414,16 +541,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/ea44be8d-36ef-4aac-b56f-98b78eb54382",
       "pageUrl": "https://transport.data.gouv.fr/resources/67153",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-caux-seine-mobilite-rezobus",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 49.5735,
+        "west": 0.4803,
+        "north": 49.5754,
+        "east": 0.4876
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 827,
-        "vehicles": 0,
+        "ms": 452,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-67732",
@@ -443,19 +583,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-diviamobilites",
       "bbox": {
         "south": 47.2593,
-        "west": 4.9838,
+        "west": 4.965,
         "north": 47.3652,
-        "east": 5.1274
+        "east": 5.1802
       },
-      "vehicleSample": 92,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 139,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 91,
-        "vehicles": 92,
+        "ms": 67,
+        "vehicles": 139,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-74509",
@@ -475,19 +623,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-des-bus-et-tramways-circulant-sur-le-territoire-de-brest-metropole",
       "bbox": {
         "south": 48.3604,
-        "west": -4.6168,
+        "west": -4.6223,
         "north": 48.4531,
-        "east": -4.3679
+        "east": -4.3638
       },
       "vehicleSample": 79,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 121,
+        "ms": 70,
         "vehicles": 79,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-78388",
@@ -506,20 +662,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/78388",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-des-navettes-hivernales-de-lalpe-dhuez-gtfs-gtfs-rt",
       "bbox": {
-        "south": 45.0891,
+        "south": 45.0304,
         "west": 6.0726,
         "north": 45.092,
-        "east": 6.0727
+        "east": 6.0771
       },
-      "vehicleSample": 2,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 90,
-        "vehicles": 2,
+        "ms": 85,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-79015",
@@ -538,20 +702,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/79015",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-ritmo-haguenau-gtfs-gtfs-rt",
       "bbox": {
-        "south": 48.7428,
-        "west": 7.6132,
-        "north": 48.8331,
-        "east": 7.857
+        "south": 48.7304,
+        "west": 7.6116,
+        "north": 48.8528,
+        "east": 7.8645
       },
-      "vehicleSample": 14,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 20,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 94,
-        "vehicles": 14,
+        "ms": 103,
+        "vehicles": 20,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-79036",
@@ -570,20 +742,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/79036",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-ruban",
       "bbox": {
-        "south": 45.5827,
+        "south": 45.58,
         "west": 5.0956,
-        "north": 45.6379,
+        "north": 45.6448,
         "east": 5.3186
       },
-      "vehicleSample": 10,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 17,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 134,
-        "vehicles": 10,
+        "ms": 121,
+        "vehicles": 17,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-79742",
@@ -603,19 +783,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-surf",
       "bbox": {
         "south": 48.3533,
-        "west": -1.1987,
-        "north": 48.3537,
-        "east": -1.1984
+        "west": -1.2012,
+        "north": 48.3587,
+        "east": -1.1931
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 7,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 3,
+        "ms": 69,
+        "vehicles": 7,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-79746",
@@ -640,15 +828,23 @@
         "north": 48.8171,
         "east": -3.019
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 1,
+        "ms": 68,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-79830",
@@ -667,20 +863,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/79830",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-en-temps-reel-des-bus-et-autocars-circulant-sur-le-reseau-cap-cotentin",
       "bbox": {
-        "south": 49.459,
-        "west": -1.8443,
+        "south": 49.4405,
+        "west": -1.8606,
         "north": 49.6933,
-        "east": -1.427
+        "east": -1.4216
       },
-      "vehicleSample": 33,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 47,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 969,
-        "vehicles": 33,
+        "ms": 157,
+        "vehicles": 47,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-79993",
@@ -699,20 +903,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/79993",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-sarlatbus-gtfs-gtfs-rt",
       "bbox": {
-        "south": 44.8874,
+        "south": 44.8755,
         "west": 1.2158,
         "north": 44.8874,
-        "east": 1.2158
+        "east": 1.2223
       },
       "vehicleSample": 1,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 95,
+        "ms": 87,
         "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-80184",
@@ -731,20 +943,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/80184",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-gtfs-gtfs-rt-du-reseau-palmbus-cannes-pays-de-lerins",
       "bbox": {
-        "south": 43.5047,
-        "west": 6.9317,
-        "north": 43.6236,
-        "east": 7.048
+        "south": 43.4991,
+        "west": 6.9198,
+        "north": 43.6243,
+        "east": 7.055
       },
-      "vehicleSample": 82,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 80,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
         "ms": 22,
-        "vehicles": 82,
+        "vehicles": 80,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-80381",
@@ -763,20 +983,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/80381",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-move-vendome",
       "bbox": {
-        "south": 47.7818,
-        "west": 1.0215,
+        "south": 47.7777,
+        "west": 0.9322,
         "north": 47.8221,
-        "east": 1.0716
+        "east": 1.0754
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 4,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 78,
-        "vehicles": 3,
+        "ms": 94,
+        "vehicles": 4,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-80382",
@@ -796,20 +1024,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/80382",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/noirmoutier-gratibus-gtfs-gtfs-rt",
       "bbox": {
-        "south": 46.953,
-        "west": -2.2498,
-        "north": 47.0004,
-        "east": -2.1864
+        "south": 46.9389,
+        "west": -2.2943,
+        "north": 47.0176,
+        "east": -2.1743
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 65,
-        "vehicles": 3,
+        "ms": 206,
+        "vehicles": 5,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-80662",
@@ -827,16 +1063,29 @@
       "url": "https://proxy.transport.data.gouv.fr/resource/alterneo-civis-gtfs-rt-vehicle-position",
       "pageUrl": "https://transport.data.gouv.fr/resources/80662",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-du-reseau-alterneo",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": -21.2095,
+        "west": 55.3541,
+        "north": -21.2095,
+        "east": 55.3541
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 0,
+        "ms": 23,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-80699",
@@ -860,15 +1109,23 @@
         "north": 47.4758,
         "east": 0.8461
       },
-      "vehicleSample": 111,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 152,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 228,
-        "vehicles": 111,
+        "ms": 229,
+        "vehicles": 152,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-80710",
@@ -890,17 +1147,25 @@
         "south": 49.8178,
         "west": 2.229,
         "north": 49.9705,
-        "east": 2.3829
+        "east": 2.4212
       },
-      "vehicleSample": 53,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 93,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 25,
-        "vehicles": 53,
+        "ms": 22,
+        "vehicles": 93,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-80723",
@@ -920,19 +1185,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/arrets-horaires-et-circuits-des-lignes-de-transports-aleop-1",
       "bbox": {
         "south": 46.1711,
-        "west": -2.2127,
+        "west": -2.251,
         "north": 48.2865,
         "east": 0.7328
       },
-      "vehicleSample": 89,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 187,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 89,
+        "ms": 46,
+        "vehicles": 187,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-80732",
@@ -951,20 +1224,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/80732",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-tango-de-nimes-metropole-gtfs-gtfs-rt",
       "bbox": {
-        "south": 43.7662,
-        "west": 4.2263,
-        "north": 43.8661,
-        "east": 4.4467
+        "south": 43.6715,
+        "west": 4.2134,
+        "north": 43.9173,
+        "east": 4.4961
       },
-      "vehicleSample": 60,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 97,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 181,
-        "vehicles": 60,
+        "ms": 182,
+        "vehicles": 97,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-80939",
@@ -982,16 +1263,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/476d53cd-374b-41b7-b11a-a158cc9abfaa",
       "pageUrl": "https://transport.data.gouv.fr/resources/80939",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-illygo",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 47.8332,
+        "west": -0.122,
+        "north": 48.1952,
+        "east": 0.2868
+      },
+      "vehicleSample": 4,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 136,
-        "vehicles": 0,
+        "ms": 148,
+        "vehicles": 4,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81017",
@@ -1010,20 +1304,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81017",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel",
       "bbox": {
-        "south": 44.5975,
-        "west": 4.3676,
+        "south": 44.5596,
+        "west": 4.3586,
         "north": 44.6476,
-        "east": 4.4048
+        "east": 4.4084
       },
-      "vehicleSample": 4,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 1372,
-        "vehicles": 4,
+        "ms": 233,
+        "vehicles": 3,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81036",
@@ -1044,18 +1346,26 @@
       "bbox": {
         "south": 49.294,
         "west": 2.5206,
-        "north": 49.3333,
-        "east": 2.6403
+        "north": 49.3527,
+        "east": 2.6564
       },
       "vehicleSample": 6,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 222,
+        "ms": 217,
         "vehicles": 6,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81044",
@@ -1074,20 +1384,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81044",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-airemob-communaute-de-communes-de-laire-cantilienne",
       "bbox": {
-        "south": 49.0858,
+        "south": 49.0259,
         "west": 2.4097,
-        "north": 49.1911,
+        "north": 49.2006,
         "east": 2.5434
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 174,
-        "vehicles": 5,
+        "ms": 209,
+        "vehicles": 3,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81060",
@@ -1107,19 +1425,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-mobi-communaute-de-communes-du-pays-de-valois",
       "bbox": {
         "south": 49.2233,
-        "west": 2.8846,
+        "west": 2.8794,
         "north": 49.2346,
-        "east": 2.898
+        "east": 2.8998
       },
       "vehicleSample": 5,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 178,
+        "ms": 207,
         "vehicles": 5,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81122",
@@ -1139,20 +1465,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81122",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-axo-communaute-dagglomeration-creil-sud-oise",
       "bbox": {
-        "south": 49.2156,
-        "west": 2.4192,
-        "north": 49.2838,
+        "south": 49.1883,
+        "west": 2.4055,
+        "north": 49.2883,
         "east": 2.4874
       },
-      "vehicleSample": 21,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 26,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 192,
-        "vehicles": 21,
+        "ms": 193,
+        "vehicles": 26,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81126",
@@ -1171,20 +1505,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81126",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-corolis-urbain-communaute-dagglomeration-du-beauvaisis",
       "bbox": {
-        "south": 49.4098,
-        "west": 2.07,
-        "north": 49.4511,
-        "east": 2.1137
+        "south": 49.4082,
+        "west": 2.0699,
+        "north": 49.4599,
+        "east": 2.1191
       },
-      "vehicleSample": 19,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 23,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 188,
-        "vehicles": 19,
+        "ms": 174,
+        "vehicles": 23,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81134",
@@ -1204,19 +1546,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-tic-urbain-communaute-dagglomeration-de-la-region-de-compiegne-et-de-la-basse-automne",
       "bbox": {
         "south": 49.3863,
-        "west": 2.7942,
+        "west": 2.7678,
         "north": 49.4264,
-        "east": 2.8283
+        "east": 2.8286
       },
-      "vehicleSample": 11,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 12,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 77,
-        "vehicles": 11,
+        "ms": 158,
+        "vehicles": 12,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81140",
@@ -1236,16 +1586,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/052ae731-ee66-45c0-97f4-bdd29f93cead",
       "pageUrl": "https://transport.data.gouv.fr/resources/81140",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-corolis-interurbain-communaute-dagglomeration-du-beauvaisis",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 49.4268,
+        "west": 2.0865,
+        "north": 49.4268,
+        "east": 2.0865
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 85,
-        "vehicles": 0,
+        "ms": 176,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81150",
@@ -1264,20 +1627,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81150",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-tic-interurbain-communaute-dagglomeration-de-la-region-de-compiegne-et-de-la-basse-automne",
       "bbox": {
-        "south": 49.3109,
+        "south": 49.3082,
         "west": 2.6832,
-        "north": 49.3109,
-        "east": 2.6832
+        "north": 49.4222,
+        "east": 2.8239
       },
-      "vehicleSample": 1,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 76,
-        "vehicles": 1,
+        "ms": 92,
+        "vehicles": 3,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-8118",
@@ -1296,20 +1667,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/8118",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-alliance-auch-gtfs-gtfs-rt",
       "bbox": {
-        "south": 43.636,
-        "west": 0.5853,
-        "north": 43.6676,
-        "east": 0.6005
+        "south": 43.6323,
+        "west": 0.5756,
+        "north": 43.6682,
+        "east": 0.6049
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 8,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 90,
-        "vehicles": 5,
+        "ms": 93,
+        "vehicles": 8,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81256",
@@ -1327,16 +1706,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/365ca136-0b94-4c28-9931-a812e792e108",
       "pageUrl": "https://transport.data.gouv.fr/resources/81256",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-pondibus",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 48.0656,
+        "west": -2.9665,
+        "north": 48.0874,
+        "east": -2.9137
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 76,
-        "vehicles": 0,
+        "ms": 422,
+        "vehicles": 2,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81290",
@@ -1358,12 +1750,20 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 22,
+        "ms": 21,
         "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81300",
@@ -1385,18 +1785,26 @@
       "bbox": {
         "south": 49.3116,
         "west": 2.3243,
-        "north": 49.3949,
-        "east": 2.425
+        "north": 49.3988,
+        "east": 2.4852
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 85,
-        "vehicles": 3,
+        "ms": 109,
+        "vehicles": 5,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81306",
@@ -1415,20 +1823,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81306",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-libbus-communaute-de-communes-du-pays-noyonnais",
       "bbox": {
-        "south": 49.5812,
-        "west": 3.0119,
+        "south": 49.5787,
+        "west": 2.9933,
         "north": 49.5812,
         "east": 3.0119
       },
       "vehicleSample": 1,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 77,
+        "ms": 109,
         "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81312",
@@ -1453,15 +1869,23 @@
         "north": 49.1797,
         "east": 2.2801
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 79,
-        "vehicles": 1,
+        "ms": 86,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81324",
@@ -1480,16 +1904,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/52f94449-5af7-4553-bcc6-44fc417ebdd2",
       "pageUrl": "https://transport.data.gouv.fr/resources/81324",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-sablons-bus-communaute-de-communes-des-sablons",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 49.2397,
+        "west": 2.1247,
+        "north": 49.2427,
+        "east": 2.1273
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 83,
-        "vehicles": 0,
+        "ms": 77,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81335",
@@ -1508,20 +1945,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81335",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-du-reseau-moova-communaute-dagglomeration-de-vesoul-gtfs",
       "bbox": {
-        "south": 47.6204,
-        "west": 6.1606,
-        "north": 47.636,
-        "east": 6.165
+        "south": 47.6085,
+        "west": 6.1067,
+        "north": 47.6522,
+        "east": 6.1794
       },
-      "vehicleSample": 2,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 8,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 2,
+        "ms": 40,
+        "vehicles": 8,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81341",
@@ -1540,20 +1985,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81341",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-du-grand-dole",
       "bbox": {
-        "south": 47.0778,
-        "west": 5.4654,
-        "north": 47.081,
-        "east": 5.4694
+        "south": 47.0657,
+        "west": 5.4576,
+        "north": 47.0976,
+        "east": 5.5098
       },
-      "vehicleSample": 2,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 4,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 2,
+        "ms": 41,
+        "vehicles": 4,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81420",
@@ -1573,19 +2026,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-reseau-zest",
       "bbox": {
         "south": 43.7377,
-        "west": 7.4032,
+        "west": 7.4025,
         "north": 43.9439,
-        "east": 7.5167
+        "east": 7.5503
       },
-      "vehicleSample": 18,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 23,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 18,
+        "ms": 21,
+        "vehicles": 23,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81512",
@@ -1604,20 +2065,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81512",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/fichiers-gtfs-eurometropole-de-metz",
       "bbox": {
-        "south": 49.0579,
-        "west": 6.0497,
+        "south": 49.0032,
+        "west": 6.016,
         "north": 49.2036,
-        "east": 6.2747
+        "east": 6.276
       },
-      "vehicleSample": 78,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 129,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 73,
-        "vehicles": 78,
+        "ms": 24,
+        "vehicles": 129,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81543",
@@ -1636,20 +2105,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81543",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-tcat-troyes-champagne-metropole-1",
       "bbox": {
-        "south": 48.2334,
-        "west": 4.0075,
+        "south": 48.227,
+        "west": 4.0054,
         "north": 48.3381,
         "east": 4.1363
       },
-      "vehicleSample": 35,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 42,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 102,
-        "vehicles": 35,
+        "ms": 121,
+        "vehicles": 42,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81579",
@@ -1669,19 +2146,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-bus-sete-agglopole-mobilite",
       "bbox": {
         "south": 43.311,
-        "west": 3.5325,
+        "west": 3.525,
         "north": 43.5737,
         "east": 3.8665
       },
-      "vehicleSample": 55,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 49,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 217,
-        "vehicles": 55,
+        "ms": 124,
+        "vehicles": 49,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81626",
@@ -1700,20 +2185,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81626",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reels-du-reseau-de-transports-lagglo-en-bus-communaute-dagglomeration-gap-tallard-durance",
       "bbox": {
-        "south": 44.5383,
-        "west": 6.0517,
-        "north": 44.5596,
-        "east": 6.0844
+        "south": 44.5305,
+        "west": 6.048,
+        "north": 44.5712,
+        "east": 6.0852
       },
-      "vehicleSample": 2,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 8,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 899,
-        "vehicles": 2,
+        "ms": 61,
+        "vehicles": 8,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81697",
@@ -1734,18 +2227,26 @@
       "bbox": {
         "south": 49.0867,
         "west": 0.5949,
-        "north": 49.0867,
-        "east": 0.5949
+        "north": 49.09,
+        "east": 0.601
       },
       "vehicleSample": 1,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 160,
+        "ms": 96,
         "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81698",
@@ -1763,16 +2264,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/bbc60d61-bf8f-40ec-9e3b-9c040cc2b06e",
       "pageUrl": "https://transport.data.gouv.fr/resources/81698",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/cherpa-horaires-lignes-regulieres",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 45.5481,
+        "west": 3.2627,
+        "north": 45.5496,
+        "east": 3.2667
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 108,
-        "vehicles": 0,
+        "ms": 98,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81755",
@@ -1791,20 +2305,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81755",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-tam-en-temps-reel-gtfs-rt-urbain-et-suburbain",
       "bbox": {
-        "south": 43.5707,
+        "south": 43.5652,
         "west": 3.81,
-        "north": 43.6545,
-        "east": 3.9368
+        "north": 43.6546,
+        "east": 3.9574
       },
-      "vehicleSample": 99,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 167,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 259,
-        "vehicles": 99,
+        "ms": 793,
+        "vehicles": 167,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81786",
@@ -1826,17 +2348,25 @@
         "south": 47.3436,
         "west": -0.751,
         "north": 47.6117,
-        "east": -0.3413
+        "east": -0.3406
       },
-      "vehicleSample": 116,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 142,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 187,
-        "vehicles": 116,
+        "ms": 124,
+        "vehicles": 142,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81808",
@@ -1855,20 +2385,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81808",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-a-citadina-porto-vecchio-horaires-theoriques-et-temps-reel",
       "bbox": {
-        "south": 41.5927,
-        "west": 9.2827,
-        "north": 41.5927,
-        "east": 9.2827
+        "south": 41.5834,
+        "west": 9.2633,
+        "north": 41.606,
+        "east": 9.2839
       },
-      "vehicleSample": 1,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 106,
-        "vehicles": 1,
+        "ms": 1172,
+        "vehicles": 3,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81908",
@@ -1887,20 +2425,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81908",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-tedbus-lignes-regulieres-dracenie-provence-verdon-agglomeration",
       "bbox": {
-        "south": 43.4626,
-        "west": 6.4567,
-        "north": 43.5346,
+        "south": 43.4557,
+        "west": 6.4454,
+        "north": 43.5484,
         "east": 6.4873
       },
-      "vehicleSample": 4,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 8,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 71,
-        "vehicles": 4,
+        "ms": 126,
+        "vehicles": 8,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81925",
@@ -1919,20 +2465,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81925",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-transport-en-commun-du-reseau-transpor-gtfs",
       "bbox": {
-        "south": 43.5291,
+        "south": 43.5264,
         "west": 3.9224,
-        "north": 43.6159,
-        "east": 4.0624
+        "north": 43.6402,
+        "east": 4.0857
       },
       "vehicleSample": 9,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
+        "ms": 22,
         "vehicles": 9,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81953",
@@ -1956,15 +2510,23 @@
         "north": 44.2009,
         "east": 0.6285
       },
-      "vehicleSample": 6,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 586,
-        "vehicles": 6,
+        "ms": 573,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81967",
@@ -1982,16 +2544,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/146fe36f-16c5-44bc-ac1a-06c0fedcc4dd",
       "pageUrl": "https://transport.data.gouv.fr/resources/81967",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/referentiel-topologique-reseau-carsud",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": -21.2968,
+        "west": 55.5007,
+        "north": -21.2935,
+        "east": 55.5028
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 191,
-        "vehicles": 0,
+        "ms": 230,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81988",
@@ -2011,19 +2586,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-du-reseau-tgl",
       "bbox": {
         "south": 49.4559,
-        "west": 5.7683,
-        "north": 49.5189,
-        "east": 5.8693
+        "west": 5.7523,
+        "north": 49.5313,
+        "east": 5.9275
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 7,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 5,
+        "ms": 22,
+        "vehicles": 7,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-81998",
@@ -2042,20 +2625,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81998",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-du-reseau-tarbes-lourdes-tlp-mobilites-gtfs",
       "bbox": {
-        "south": 43.0966,
+        "south": 43.0919,
         "west": -0.0551,
-        "north": 43.2405,
-        "east": 0.0912
+        "north": 43.2907,
+        "east": 0.1003
       },
-      "vehicleSample": 17,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 24,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 97,
-        "vehicles": 17,
+        "ms": 165,
+        "vehicles": 24,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-8202",
@@ -2077,17 +2668,25 @@
         "south": 48.862,
         "west": 2.4599,
         "north": 48.8797,
-        "east": 2.4923
+        "east": 2.5006
       },
-      "vehicleSample": 4,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 85,
-        "vehicles": 4,
+        "ms": 149,
+        "vehicles": 3,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82095",
@@ -2108,18 +2707,26 @@
       "bbox": {
         "south": 47.4899,
         "west": -2.865,
-        "north": 47.6903,
-        "east": -2.7042
+        "north": 47.6989,
+        "east": -2.6861
       },
-      "vehicleSample": 33,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 59,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 33,
+        "ms": 23,
+        "vehicles": 59,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82142",
@@ -2139,19 +2746,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/astrobus-lisieux-normandie",
       "bbox": {
         "south": 48.9315,
-        "west": 0.1958,
+        "west": 0.1665,
         "north": 49.1671,
         "east": 0.5454
       },
-      "vehicleSample": 7,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
         "ms": 20,
-        "vehicles": 7,
+        "vehicles": 5,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82163",
@@ -2171,19 +2786,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/versions-des-horaires-theoriques-des-lignes-de-bus-et-de-metro-du-reseau-star-dans-les-formats-gtfs-et-netex-ainsi-que-les-urls-dacces-au-gtfs-rt-1",
       "bbox": {
         "south": 47.9747,
-        "west": -1.8671,
-        "north": 48.2218,
-        "east": -1.5118
+        "west": -1.8931,
+        "north": 48.2797,
+        "east": -1.4793
       },
-      "vehicleSample": 142,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 292,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 142,
+        "ms": 23,
+        "vehicles": 292,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82186",
@@ -2202,20 +2825,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/82186",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-le-vib",
       "bbox": {
-        "south": 47.2214,
+        "south": 47.2213,
         "west": 2.0625,
         "north": 47.2248,
-        "east": 2.0663
+        "east": 2.0665
       },
       "vehicleSample": 2,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 19,
+        "ms": 23,
         "vehicles": 2,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82278",
@@ -2234,20 +2865,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/82278",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-aux-formats-gtfs-et-gtfs-rt-du-reseau-sitac",
       "bbox": {
-        "south": 50.8945,
+        "south": 50.8904,
         "west": 1.7217,
         "north": 50.965,
-        "east": 1.9646
+        "east": 1.9647
       },
-      "vehicleSample": 31,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 38,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 128,
-        "vehicles": 31,
+        "ms": 174,
+        "vehicles": 38,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82296",
@@ -2272,15 +2911,23 @@
         "north": 49.9265,
         "east": 1.4895
       },
-      "vehicleSample": 211,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 171,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 58,
-        "vehicles": 211,
+        "ms": 113,
+        "vehicles": 171,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82474",
@@ -2301,18 +2948,26 @@
       "bbox": {
         "south": 43.0283,
         "west": 5.8046,
-        "north": 43.1598,
-        "east": 6.1867
+        "north": 43.1706,
+        "east": 6.188
       },
-      "vehicleSample": 148,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 188,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 210,
-        "vehicles": 148,
+        "ms": 253,
+        "vehicles": 188,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82549",
@@ -2330,16 +2985,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/eff8bfff-3d8d-4264-b443-f8aab1d94909",
       "pageUrl": "https://transport.data.gouv.fr/resources/82549",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-du-reseau-urbain-de-flers-agglo-au-format-gtfs",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 48.7293,
+        "west": -0.5821,
+        "north": 48.7588,
+        "east": -0.562
+      },
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 303,
-        "vehicles": 0,
+        "ms": 323,
+        "vehicles": 5,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82578",
@@ -2358,20 +3026,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/82578",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-rlv-mobilites",
       "bbox": {
-        "south": 45.8839,
-        "west": 3.0739,
+        "south": 45.8655,
+        "west": 3.0399,
         "north": 45.919,
-        "east": 3.1166
+        "east": 3.2195
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 6,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 19,
-        "vehicles": 5,
+        "ms": 20,
+        "vehicles": 6,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82596",
@@ -2389,16 +3065,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/b2bccdd8-ac63-4092-bed5-9431fb38bb5b",
       "pageUrl": "https://transport.data.gouv.fr/resources/82596",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-distribus",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 48.4607,
+        "west": -2.5439,
+        "north": 48.4738,
+        "east": -2.4977
+      },
+      "vehicleSample": 4,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 95,
-        "vehicles": 0,
+        "ms": 108,
+        "vehicles": 4,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82620",
@@ -2417,20 +3106,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/82620",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-pybus-le-reseau-urbain-de-parthenay",
       "bbox": {
-        "south": 46.953,
-        "west": -2.2498,
-        "north": 47.0004,
-        "east": -2.1864
+        "south": 46.9389,
+        "west": -2.2943,
+        "north": 47.0176,
+        "east": -2.1743
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 298,
-        "vehicles": 3,
+        "ms": 74,
+        "vehicles": 5,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": "pan-80382"
     },
     {
       "id": "pan-82630",
@@ -2448,16 +3145,29 @@
       "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt",
       "pageUrl": "https://transport.data.gouv.fr/resources/82630",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/moca-communaute-de-communes-caux-austreberthe",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 49.5551,
+        "west": 0.9397,
+        "north": 49.5551,
+        "east": 0.9397
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 0,
+        "ms": 23,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82632",
@@ -2475,16 +3185,29 @@
       "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt-vehicle-position",
       "pageUrl": "https://transport.data.gouv.fr/resources/82632",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/moca-communaute-de-communes-caux-austreberthe",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 49.5553,
+        "west": 0.9391,
+        "north": 49.5553,
+        "east": 0.9391
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 0,
+        "ms": 21,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82677",
@@ -2506,17 +3229,25 @@
         "south": 49.3283,
         "west": 1.0157,
         "north": 49.5312,
-        "east": 1.1625
+        "east": 1.168
       },
-      "vehicleSample": 140,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 187,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 206,
-        "vehicles": 140,
+        "ms": 153,
+        "vehicles": 187,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82713",
@@ -2535,20 +3266,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/82713",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/hobus-honfleur",
       "bbox": {
-        "south": 49.418,
+        "south": 49.4027,
         "west": 0.2398,
         "north": 49.418,
-        "east": 0.2398
+        "east": 0.2509
       },
       "vehicleSample": 1,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 23,
+        "ms": 22,
         "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82719",
@@ -2567,20 +3306,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/82719",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/fr-200052264-t0007-0000-1",
       "bbox": {
-        "south": 49.1186,
-        "west": 6.8751,
+        "south": 49.1179,
+        "west": 6.851,
         "north": 49.2378,
         "east": 6.991
       },
-      "vehicleSample": 15,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 11,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
         "ms": 21,
-        "vehicles": 15,
+        "vehicles": 11,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82723",
@@ -2604,15 +3351,23 @@
         "north": 48.8532,
         "east": -1.5529
       },
-      "vehicleSample": 7,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 7,
+        "ms": 40,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82731",
@@ -2636,15 +3391,23 @@
         "north": 49.0462,
         "east": 1.18
       },
-      "vehicleSample": 13,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 95,
-        "vehicles": 13,
+        "ms": 21,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82783",
@@ -2664,19 +3427,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-de-transports-beemob-beziers-mediterranee",
       "bbox": {
         "south": 43.2301,
-        "west": 3.2037,
-        "north": 43.3628,
-        "east": 3.3041
+        "west": 3.2021,
+        "north": 43.4123,
+        "east": 3.3146
       },
-      "vehicleSample": 35,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 36,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 355,
-        "vehicles": 35,
+        "ms": 266,
+        "vehicles": 36,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82875",
@@ -2698,12 +3469,20 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 593,
+        "ms": 743,
         "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82889",
@@ -2723,19 +3502,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-du-reseau-des-transports-bus-et-tramway-setram-circulant-sur-le-territoire-le-mans-metropole",
       "bbox": {
         "south": 47.9071,
-        "west": 0.1301,
+        "west": 0.0918,
         "north": 48.0736,
         "east": 0.3451
       },
-      "vehicleSample": 61,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 102,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 24,
-        "vehicles": 61,
+        "ms": 22,
+        "vehicles": 102,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82896",
@@ -2754,20 +3541,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/82896",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-en-commun-lia-gtfs-siri",
       "bbox": {
-        "south": 49.4789,
-        "west": 0.074,
-        "north": 49.6201,
-        "east": 0.3357
+        "south": 49.4783,
+        "west": 0.0691,
+        "north": 49.6371,
+        "east": 0.3389
       },
-      "vehicleSample": 99,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 136,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 68,
-        "vehicles": 99,
+        "ms": 150,
+        "vehicles": 136,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-82909",
@@ -2787,19 +3582,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-de-la-communaute-de-communes-des-pays-du-sel-et-du-vermois",
       "bbox": {
         "south": 48.6053,
-        "west": 6.2804,
+        "west": 6.2754,
         "north": 48.6201,
         "east": 6.3508
       },
-      "vehicleSample": 2,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 39,
-        "vehicles": 2,
+        "ms": 20,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83026",
@@ -2820,19 +3623,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offres-de-services-bus-tram-et-scolaire-au-format-gtfs-netex-gtfs-rt-siri-lite",
       "bbox": {
         "south": 44.7549,
-        "west": -0.7882,
+        "west": -0.7987,
         "north": 44.9653,
         "east": -0.4624
       },
-      "vehicleSample": 321,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 452,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 177,
-        "vehicles": 321,
+        "ms": 186,
+        "vehicles": 452,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83078",
@@ -2851,20 +3662,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83078",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/sngo-vernon-les-andelys-seine-normandie-agglo",
       "bbox": {
-        "south": 49.0899,
-        "west": 1.472,
-        "north": 49.091,
-        "east": 1.4793
+        "south": 49.0798,
+        "west": 1.443,
+        "north": 49.1153,
+        "east": 1.5072
       },
-      "vehicleSample": 4,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 4,
+        "ms": 24,
+        "vehicles": 5,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83079",
@@ -2883,20 +3702,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83079",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-temps-reels-reseau-envia",
       "bbox": {
-        "south": 43.4815,
+        "south": 43.4524,
         "west": 4.4048,
-        "north": 43.7087,
-        "east": 4.7174
+        "north": 43.7203,
+        "east": 4.8149
       },
-      "vehicleSample": 6,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 16,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 321,
-        "vehicles": 6,
+        "ms": 261,
+        "vehicles": 16,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83118",
@@ -2917,18 +3744,26 @@
       "bbox": {
         "south": 44.8528,
         "west": 4.7409,
-        "north": 45.0511,
-        "east": 5.0845
+        "north": 45.0691,
+        "east": 5.1369
       },
-      "vehicleSample": 49,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 86,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
         "ms": 21,
-        "vehicles": 49,
+        "vehicles": 86,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83139",
@@ -2946,16 +3781,29 @@
       "url": "https://proxy.transport.data.gouv.fr/resource/beaune-cote-et-bus-gtfs-rt-vehicle-position",
       "pageUrl": "https://transport.data.gouv.fr/resources/83139",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-de-la-c-a-beaune-cote-sud-gtfs",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 47.0222,
+        "west": 4.8445,
+        "north": 47.0237,
+        "east": 4.8472
+      },
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 0,
+        "ms": 24,
+        "vehicles": 2,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83150",
@@ -2974,20 +3822,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83150",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/vikibus-yvetot-normandie",
       "bbox": {
-        "south": 49.6219,
-        "west": 0.7531,
+        "south": 49.6159,
+        "west": 0.7525,
         "north": 49.6219,
-        "east": 0.7531
+        "east": 0.7648
       },
-      "vehicleSample": 1,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 1,
+        "ms": 20,
+        "vehicles": 3,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83190",
@@ -3011,15 +3867,23 @@
         "north": 47.1633,
         "east": 0.2483
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 2537,
-        "vehicles": 1,
+        "ms": 539,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83192",
@@ -3038,20 +3902,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83192",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-cvlmobilite-plan-de-transport-theorique-ligne-a-format-gtfs",
       "bbox": {
-        "south": 47.2088,
-        "west": 0.1611,
-        "north": 47.2326,
-        "east": 0.1827
+        "south": 47.1655,
+        "west": 0.1568,
+        "north": 47.2427,
+        "east": 0.2573
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 274,
-        "vehicles": 3,
+        "ms": 354,
+        "vehicles": 5,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83201",
@@ -3070,20 +3942,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83201",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/hop-bus-le-reseau-100-gratuit-du-coeur-de-flandre",
       "bbox": {
-        "south": 50.6963,
+        "south": 50.6873,
         "west": 2.5183,
-        "north": 50.754,
-        "east": 2.8347
+        "north": 50.7572,
+        "east": 2.8413
       },
       "vehicleSample": 9,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 55,
+        "ms": 156,
         "vehicles": 9,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83285",
@@ -3107,15 +3987,23 @@
         "north": 49.3031,
         "east": 1.2243
       },
-      "vehicleSample": 12,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 12,
+        "ms": 41,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83297",
@@ -3136,18 +4024,26 @@
       "bbox": {
         "south": 49.3283,
         "west": 1.0157,
-        "north": 49.5281,
+        "north": 49.5313,
         "east": 1.1762
       },
-      "vehicleSample": 166,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 199,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 160,
-        "vehicles": 166,
+        "ms": 219,
+        "vehicles": 199,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83298",
@@ -3166,20 +4062,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83298",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-temps-reel-du-reseau-astuce-metropole-rouen-normandie",
       "bbox": {
-        "south": 49.4403,
+        "south": 49.4401,
         "west": 0.8953,
         "north": 49.4862,
         "east": 1.0887
       },
       "vehicleSample": 4,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 153,
+        "ms": 209,
         "vehicles": 4,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83319",
@@ -3198,20 +4102,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83319",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-dynamiques-du-reseau-de-transport-lignes-dazur",
       "bbox": {
-        "south": 43.6591,
+        "south": 43.6528,
         "west": 7.0879,
-        "north": 43.8212,
+        "north": 43.8607,
         "east": 7.3811
       },
-      "vehicleSample": 165,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 218,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 66,
-        "vehicles": 165,
+        "ms": 83,
+        "vehicles": 218,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83331",
@@ -3230,20 +4142,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83331",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-des-lignes-urbaines-et-interurbaines-sur-le-reseau-alesy-gtfs",
       "bbox": {
-        "south": 44.0807,
-        "west": 3.9834,
-        "north": 44.1382,
-        "east": 4.1092
+        "south": 44.0124,
+        "west": 3.9475,
+        "north": 44.2069,
+        "east": 4.1657
       },
-      "vehicleSample": 9,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 15,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 328,
-        "vehicles": 9,
+        "ms": 300,
+        "vehicles": 15,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83365",
@@ -3262,20 +4182,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83365",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-glazgo",
       "bbox": {
-        "south": 47.4861,
+        "south": 47.4808,
         "west": -3.1481,
-        "north": 47.6709,
-        "east": -2.9925
+        "north": 47.6862,
+        "east": -2.962
       },
-      "vehicleSample": 10,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 15,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 201,
-        "vehicles": 10,
+        "ms": 135,
+        "vehicles": 15,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83386",
@@ -3294,20 +4222,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83386",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/agence-agglobus",
       "bbox": {
-        "south": 4.8304,
+        "south": 4.7983,
         "west": -52.5174,
-        "north": 4.9474,
-        "east": -52.2737
+        "north": 5.0138,
+        "east": -52.2596
       },
-      "vehicleSample": 29,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 33,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 432,
-        "vehicles": 29,
+        "ms": 301,
+        "vehicles": 33,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83392",
@@ -3331,15 +4267,23 @@
         "north": 49.922,
         "east": 1.0997
       },
-      "vehicleSample": 5,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
         "ms": 21,
-        "vehicles": 5,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83395",
@@ -3358,20 +4302,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83395",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-reseau-cmonbus",
       "bbox": {
-        "south": 43.8201,
+        "south": 43.8168,
         "west": 5.0262,
         "north": 43.8529,
         "east": 5.0815
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 6,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 120,
-        "vehicles": 3,
+        "ms": 316,
+        "vehicles": 6,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83414",
@@ -3390,20 +4342,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83414",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/agglopolys-offre-theorique-mobilite-reseau-urbain-azalys-de-blois",
       "bbox": {
-        "south": 47.5673,
-        "west": 1.2996,
-        "north": 47.6152,
-        "east": 1.3664
+        "south": 47.5636,
+        "west": 1.2989,
+        "north": 47.624,
+        "east": 1.3733
       },
-      "vehicleSample": 12,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 18,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 204,
-        "vehicles": 12,
+        "ms": 123,
+        "vehicles": 18,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83468",
@@ -3425,12 +4385,20 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 158,
+        "ms": 82,
         "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83523",
@@ -3449,20 +4417,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83523",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/ficibus-fecamp-caux-littoral",
       "bbox": {
-        "south": 49.7466,
+        "south": 49.7443,
         "west": 0.375,
         "north": 49.759,
         "east": 0.3987
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 65,
-        "vehicles": 3,
+        "ms": 70,
+        "vehicles": 2,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83538",
@@ -3481,20 +4457,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83538",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-montelibus",
       "bbox": {
-        "south": 44.5243,
+        "south": 44.4835,
         "west": 4.6046,
-        "north": 44.7197,
+        "north": 44.7225,
         "east": 4.8202
       },
-      "vehicleSample": 10,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 8,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 10,
+        "ms": 40,
+        "vehicles": 8,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83628",
@@ -3516,17 +4500,25 @@
         "south": 45.4696,
         "west": 6.9073,
         "north": 45.501,
-        "east": 6.925
+        "east": 6.9279
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 86,
-        "vehicles": 3,
+        "ms": 103,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83630",
@@ -3550,15 +4542,23 @@
         "north": 45.501,
         "east": 6.9798
       },
-      "vehicleSample": 3,
+      "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
         "ms": 91,
-        "vehicles": 3,
+        "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83714",
@@ -3577,20 +4577,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83714",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-fluo-grand-est-haut-rhin-68",
       "bbox": {
-        "south": 47.5358,
-        "west": 6.9437,
-        "north": 48.134,
+        "south": 47.4669,
+        "west": 6.9237,
+        "north": 48.1594,
         "east": 7.5901
       },
-      "vehicleSample": 26,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 53,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 26,
+        "ms": 23,
+        "vehicles": 53,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83743",
@@ -3610,19 +4618,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-communaute-dagglomeration-le-grand-narbonne",
       "bbox": {
         "south": 43.0113,
-        "west": 2.9629,
-        "north": 43.2362,
-        "east": 3.1333
+        "west": 2.9464,
+        "north": 43.246,
+        "east": 3.1944
       },
-      "vehicleSample": 32,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 35,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 275,
-        "vehicles": 32,
+        "ms": 247,
+        "vehicles": 35,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83748",
@@ -3642,19 +4658,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-du-reseau-de-transports-qub-transports-urbains-de-quimper-bretagne-occidentale",
       "bbox": {
         "south": 47.931,
-        "west": -4.1526,
+        "west": -4.181,
         "north": 48.1014,
-        "east": -3.9872
+        "east": -3.9126
       },
-      "vehicleSample": 23,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 39,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 295,
-        "vehicles": 23,
+        "ms": 343,
+        "vehicles": 39,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83764",
@@ -3674,20 +4698,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83764",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-scolaire-lila-presquile",
       "bbox": {
-        "south": 47.2602,
-        "west": -2.4683,
+        "south": 47.258,
+        "west": -2.5357,
         "north": 47.4149,
-        "east": -2.2638
+        "east": -2.2258
       },
-      "vehicleSample": 11,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 13,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 11,
+        "ms": 221,
+        "vehicles": 13,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83766",
@@ -3707,20 +4739,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83766",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-scolaire-lila-presquile",
       "bbox": {
-        "south": 47.2602,
-        "west": -2.4683,
+        "south": 47.258,
+        "west": -2.5355,
         "north": 47.4149,
-        "east": -2.2638
+        "east": -2.2277
       },
-      "vehicleSample": 11,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 13,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 11,
+        "ms": 24,
+        "vehicles": 13,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83780",
@@ -3739,20 +4779,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83780",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-tam-en-temps-reel-gtfs-rt-urbain-et-suburbain",
       "bbox": {
-        "south": 43.5373,
+        "south": 43.5332,
         "west": 3.7024,
-        "north": 43.6736,
-        "east": 4.0057
+        "north": 43.6771,
+        "east": 4.0401
       },
-      "vehicleSample": 24,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 40,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 201,
-        "vehicles": 24,
+        "ms": 159,
+        "vehicles": 40,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83796",
@@ -3771,20 +4819,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83796",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-mat",
       "bbox": {
-        "south": 48.6143,
+        "south": 48.5994,
         "west": -2.0216,
-        "north": 48.6803,
-        "east": -1.8499
+        "north": 48.6873,
+        "east": -1.8498
       },
-      "vehicleSample": 15,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 24,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 15,
+        "ms": 22,
+        "vehicles": 24,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83840",
@@ -3803,20 +4859,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83840",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-du-reseau-de-transport-aleo",
       "bbox": {
-        "south": 46.5483,
-        "west": 3.3232,
-        "north": 46.5901,
-        "east": 3.349
+        "south": 46.5409,
+        "west": 3.3139,
+        "north": 46.5909,
+        "east": 3.3621
       },
-      "vehicleSample": 7,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 9,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 68,
-        "vehicles": 7,
+        "ms": 80,
+        "vehicles": 9,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83843",
@@ -3835,20 +4899,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83843",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/rubis-grand-bourg-mobilites-offre-de-transport-theorique-et-temps-reel",
       "bbox": {
-        "south": 46.1754,
-        "west": 5.1962,
-        "north": 46.232,
+        "south": 46.167,
+        "west": 5.13,
+        "north": 46.3215,
         "east": 5.3299
       },
-      "vehicleSample": 16,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 24,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 44,
-        "vehicles": 16,
+        "ms": 22,
+        "vehicles": 24,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83851",
@@ -3867,20 +4939,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83851",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/filibus-urbain",
       "bbox": {
-        "south": 48.424,
-        "west": 1.4434,
+        "south": 48.3956,
+        "west": 1.4412,
         "north": 48.4763,
-        "east": 1.5208
+        "east": 1.565
       },
-      "vehicleSample": 27,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 51,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 163,
-        "vehicles": 27,
+        "ms": 219,
+        "vehicles": 51,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83855",
@@ -3899,20 +4979,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83855",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-ole-lunel-agglo-gtfs-et-gtfs-rt",
       "bbox": {
-        "south": 43.6791,
+        "south": 43.672,
         "west": 4.0825,
         "north": 43.7574,
-        "east": 4.1294
+        "east": 4.1374
       },
-      "vehicleSample": 2,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 300,
-        "vehicles": 2,
+        "ms": 350,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83857",
@@ -3931,20 +5019,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83857",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transports-reseau-dk-bus-de-la-communaute-urbaine-de-dunkerque-gtfs",
       "bbox": {
-        "south": 50.9678,
-        "west": 2.1071,
-        "north": 51.0754,
-        "east": 2.5142
+        "south": 50.9551,
+        "west": 2.1066,
+        "north": 51.0797,
+        "east": 2.5781
       },
-      "vehicleSample": 76,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 92,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 107,
-        "vehicles": 76,
+        "ms": 139,
+        "vehicles": 92,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83860",
@@ -3966,12 +5062,20 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 703,
+        "ms": 331,
         "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83868",
@@ -3990,20 +5094,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83868",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/dreux-offre-theorique-mobilite-reseau-urbain",
       "bbox": {
-        "south": 48.7194,
-        "west": 1.366,
-        "north": 48.7394,
-        "east": 1.3922
+        "south": 48.703,
+        "west": 1.1715,
+        "north": 48.8833,
+        "east": 1.479
       },
-      "vehicleSample": 4,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 19,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 73,
-        "vehicles": 4,
+        "ms": 157,
+        "vehicles": 19,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83889",
@@ -4022,20 +5134,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83889",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transports-jybus-a-rumilly",
       "bbox": {
-        "south": 45.8612,
+        "south": 45.8472,
         "west": 5.9466,
-        "north": 45.8806,
+        "north": 45.9215,
         "east": 6.0463
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 3,
+        "ms": 92,
+        "vehicles": 5,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83924",
@@ -4056,19 +5176,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-le-libellule-communaute-du-liancourtois-la-vallee-doree",
       "bbox": {
         "south": 49.3148,
-        "west": 2.4709,
-        "north": 49.3148,
+        "west": 2.4587,
+        "north": 49.328,
         "east": 2.4709
       },
       "vehicleSample": 1,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 74,
+        "ms": 81,
         "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-83928",
@@ -4092,15 +5220,23 @@
         "north": 50.8701,
         "east": 2.3965
       },
-      "vehicleSample": 11,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 14,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 107,
-        "vehicles": 11,
+        "ms": 23,
+        "vehicles": 14,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84015",
@@ -4119,20 +5255,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84015",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-reel-du-reseau-maelis-montlucon-communaute-gtfs",
       "bbox": {
-        "south": 46.3352,
-        "west": 2.5745,
-        "north": 46.3506,
-        "east": 2.6108
+        "south": 46.3175,
+        "west": 2.5496,
+        "north": 46.393,
+        "east": 2.6224
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 11,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
         "ms": 21,
-        "vehicles": 5,
+        "vehicles": 11,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84017",
@@ -4151,20 +5295,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84017",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-transport-urbain-le-bus",
       "bbox": {
-        "south": 43.4153,
+        "south": 43.3563,
         "west": 6.637,
-        "north": 43.4891,
+        "north": 43.491,
         "east": 6.8567
       },
-      "vehicleSample": 22,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 26,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 259,
-        "vehicles": 22,
+        "ms": 397,
+        "vehicles": 26,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84038",
@@ -4183,20 +5335,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84038",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-en-commun-lia-gtfs-siri",
       "bbox": {
-        "south": 49.479,
-        "west": 0.074,
-        "north": 49.6913,
-        "east": 0.3357
+        "south": 49.4783,
+        "west": 0.0691,
+        "north": 49.6933,
+        "east": 0.3389
       },
-      "vehicleSample": 78,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 102,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 221,
-        "vehicles": 78,
+        "ms": 109,
+        "vehicles": 102,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84047",
@@ -4217,18 +5377,26 @@
       "bbox": {
         "south": 47.4899,
         "west": -2.865,
-        "north": 47.6903,
-        "east": -2.7042
+        "north": 47.6989,
+        "east": -2.6861
       },
-      "vehicleSample": 33,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 59,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 33,
+        "ms": 42,
+        "vehicles": 59,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": "pan-82095"
     },
     {
       "id": "pan-84050",
@@ -4247,20 +5415,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84050",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-tadao",
       "bbox": {
-        "south": 50.3883,
+        "south": 50.3737,
         "west": 2.4516,
-        "north": 50.5584,
-        "east": 3.0397
+        "north": 50.5913,
+        "east": 3.0602
       },
-      "vehicleSample": 128,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 133,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 158,
-        "vehicles": 128,
+        "ms": 117,
+        "vehicles": 133,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84054",
@@ -4279,20 +5455,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84054",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/remi-offre-theorique-mobilite-reseau-interurbain-regional",
       "bbox": {
-        "south": 47.7114,
-        "west": 0.8315,
-        "north": 48.8597,
+        "south": 47.4783,
+        "west": 0.7614,
+        "north": 48.8674,
         "east": 1.956
       },
-      "vehicleSample": 20,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 37,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 320,
-        "vehicles": 20,
+        "ms": 161,
+        "vehicles": 37,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84058",
@@ -4312,19 +5496,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-orizo-grand-avignon",
       "bbox": {
         "south": 43.8853,
-        "west": 4.7084,
-        "north": 43.9907,
+        "west": 4.685,
+        "north": 44.0066,
         "east": 4.9656
       },
-      "vehicleSample": 82,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 91,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 248,
-        "vehicles": 82,
+        "ms": 171,
+        "vehicles": 91,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84067",
@@ -4344,19 +5536,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-reseau-chamonix-mobilite",
       "bbox": {
         "south": 45.8897,
-        "west": 6.7892,
-        "north": 45.9823,
-        "east": 6.926
+        "west": 6.7553,
+        "north": 46.0039,
+        "east": 6.9466
       },
-      "vehicleSample": 10,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 12,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 446,
-        "vehicles": 10,
+        "ms": 128,
+        "vehicles": 12,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84069",
@@ -4374,16 +5574,29 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/c854a422-f68a-469b-af72-b35c2d4dc84c",
       "pageUrl": "https://transport.data.gouv.fr/resources/84069",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/u-vagabondu",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 42.1157,
+        "west": 8.7013,
+        "north": 42.1274,
+        "east": 8.7048
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 151,
-        "vehicles": 0,
+        "ms": 106,
+        "vehicles": 1,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84080",
@@ -4403,19 +5616,27 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-urbain-de-la-zone-sud",
       "bbox": {
         "south": 14.4322,
-        "west": -61.0168,
+        "west": -61.0657,
         "north": 14.6388,
-        "east": -60.8351
+        "east": -60.8336
       },
-      "vehicleSample": 51,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 39,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 185,
-        "vehicles": 51,
+        "ms": 137,
+        "vehicles": 39,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84081",
@@ -4439,15 +5660,23 @@
         "north": 14.6795,
         "east": -60.9839
       },
-      "vehicleSample": 33,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 27,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 497,
-        "vehicles": 33,
+        "ms": 534,
+        "vehicles": 27,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84086",
@@ -4469,12 +5698,20 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 1392,
+        "ms": 899,
         "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84088",
@@ -4496,12 +5733,20 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 81,
+        "ms": 84,
         "vehicles": 0,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84094",
@@ -4522,18 +5767,26 @@
       "bbox": {
         "south": 42.4076,
         "west": -0.3596,
-        "north": 44.838,
-        "east": 4.8036
+        "north": 45.7194,
+        "east": 4.8059
       },
-      "vehicleSample": 128,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 253,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 311,
-        "vehicles": 128,
+        "ms": 359,
+        "vehicles": 253,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84122",
@@ -4552,20 +5805,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84122",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/simouv-horaires-theoriques-format-gtfs-et-temps-reel-format-siri-transvilles-valenciennes",
       "bbox": {
-        "south": 50.3174,
-        "west": 3.3637,
+        "south": 50.3108,
+        "west": 3.3439,
         "north": 50.4776,
         "east": 3.6648
       },
-      "vehicleSample": 81,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 83,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 86,
-        "vehicles": 81,
+        "ms": 81,
+        "vehicles": 83,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84125",
@@ -4584,20 +5845,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84125",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-tango-de-nimes-metropole-gtfs-gtfs-rt",
       "bbox": {
-        "south": 43.7662,
-        "west": 4.2263,
-        "north": 43.8661,
-        "east": 4.4467
+        "south": 43.6717,
+        "west": 4.2134,
+        "north": 43.9141,
+        "east": 4.4961
       },
-      "vehicleSample": 60,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 99,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 69,
-        "vehicles": 60,
+        "ms": 72,
+        "vehicles": 99,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84138",
@@ -4616,20 +5885,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84138",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/mobivie-reseau-urbain-vichy-communaute",
       "bbox": {
-        "south": 46.1185,
-        "west": 3.4081,
-        "north": 46.1278,
-        "east": 3.4298
+        "south": 46.0976,
+        "west": 3.408,
+        "north": 46.1581,
+        "east": 3.4565
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 12,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 5,
+        "ms": 22,
+        "vehicles": 12,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-84157",
@@ -4648,47 +5925,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84157",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-rtca",
       "bbox": {
-        "south": 43.2032,
-        "west": 2.3106,
-        "north": 43.2358,
-        "east": 2.4225
+        "south": 43.1916,
+        "west": 2.303,
+        "north": 43.2492,
+        "east": 2.4426
       },
-      "vehicleSample": 10,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "vehicleSample": 16,
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 23,
-        "vehicles": 10,
+        "ms": 36,
+        "vehicles": 16,
         "error": null
-      }
-    },
-    {
-      "id": "pan-8488",
-      "resourceId": 8488,
-      "datagouvId": "9b9013ec-4cbb-4f18-b44a-1e94088320a8",
-      "network": "TUM - Transports Urbain Mendois",
-      "title": "Réseau urbain TUM",
-      "publisher": "Zenbus",
-      "area": "Mende",
-      "modes": [
-        "urban"
-      ],
-      "licence": "odc-odbl",
-      "licenceLabel": "ODbL 1.0",
-      "url": "https://www.data.gouv.fr/api/1/datasets/r/9b9013ec-4cbb-4f18-b44a-1e94088320a8",
-      "pageUrl": "https://transport.data.gouv.fr/resources/8488",
-      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-transports-urbains-mendois-mende-gtfs-gtfs-rt",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
-      "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
-        "ok": true,
-        "ms": 85,
-        "vehicles": 0,
-        "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     },
     {
       "id": "pan-8598",
@@ -4707,20 +5965,28 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/8598",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-respire-ile-de-re-gtfs-gtfs-rt",
       "bbox": {
-        "south": 46.1536,
+        "south": 46.1528,
         "west": -1.5551,
         "north": 46.2406,
         "east": -1.2144
       },
       "vehicleSample": 11,
-      "observedAt": "2026-08-26T17:35:12.482Z",
+      "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-26T17:35:12.482Z",
+        "at": "2026-08-31T16:39:25.168Z",
         "ok": true,
-        "ms": 92,
+        "ms": 137,
         "vehicles": 11,
         "error": null
-      }
+      },
+      "health": {
+        "consecutiveFailures": 0,
+        "quarantined": false,
+        "quarantinedSince": null,
+        "lastError": null,
+        "lastOkAt": "2026-08-31T16:39:25.168Z"
+      },
+      "duplicateOf": null
     }
   ]
 }

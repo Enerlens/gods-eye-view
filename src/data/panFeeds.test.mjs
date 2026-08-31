@@ -208,6 +208,23 @@ test('a metro fully on screen outranks a région clipping the same corner', () =
   assert.deepEqual(selected.map((feed) => feed.id), ['pan-metro', 'pan-region']);
 });
 
+test('a confirmed duplicate never takes a feed slot from a live network', () => {
+  // Kicéo publishes one body under two resource ids; measured 2026-08-31 both
+  // returned the same 62 vehicles at the same 62 coordinates. The twin is
+  // carried in the index (so a later build can revive it) and never fetched.
+  const twin = { ...METRO, id: 'pan-metro-twin', duplicateOf: 'pan-metro' };
+  const result = selectFeedsForBox([METRO, twin], CITY_VIEW, { maxFeeds: 8, unknownSlots: 0 });
+  assert.deepEqual(result.selected.map((feed) => feed.id), ['pan-metro']);
+  assert.equal(result.matched, 1, 'the twin does not even count as matched');
+});
+
+test('a quarantined feed is skipped, and a merely-failing one is not', () => {
+  const dead = { ...REGION, id: 'pan-dead', health: { consecutiveFailures: 3, quarantined: true } };
+  const flaky = { ...REGION, id: 'pan-flaky', health: { consecutiveFailures: 1, quarantined: false } };
+  const result = selectFeedsForBox([METRO, dead, flaky], CITY_VIEW, { maxFeeds: 8, unknownSlots: 0 });
+  assert.deepEqual(result.selected.map((feed) => feed.id).sort(), ['pan-flaky', 'pan-metro']);
+});
+
 test('disjoint feeds are never fetched, and truncation is reported honestly', () => {
   const result = selectFeedsForBox([METRO, REGION, ELSEWHERE], CITY_VIEW, { maxFeeds: 1, unknownSlots: 0 });
   assert.deepEqual(result.selected.map((feed) => feed.id), ['pan-metro']);

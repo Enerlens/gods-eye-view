@@ -1,5 +1,12 @@
 import * as Cesium from 'cesium';
-import { deriveFetchCenter, clampBoundsAroundCenter } from './trafficBounds.js';
+import {
+  deriveFetchCenter,
+  clampBoundsAroundCenter,
+  roadFetchTier,
+  roadRefetchNeeded,
+  ROAD_ACTIVATION_ALTITUDE_M,
+  ROAD_FETCH_TIERS,
+} from './trafficBounds.js';
 import { fetchFlowForBounds, getFlowSessionStats, resetFlowTileCache } from './flowTiles.js';
 import { matchFlowToRoads } from './flowMatch.js';
 import { flowBucket, flowSpeedScale, flowDensityMult } from './trafficFlowStyle.js';
@@ -20,7 +27,9 @@ import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor
  *
  * Road geometry: OSM Overpass API (free, no auth). Fetches road polylines for
  * the camera viewport, spawns PointPrimitives that lerp along pre-computed
- * Cartesian3 waypoints. Camera-gated: only active below ~8 km altitude.
+ * Cartesian3 waypoints. Camera-gated by altitude BAND (see
+ * `trafficBounds.ROAD_FETCH_TIERS`): the full street graph in a 5.5 km box up
+ * to 8 km, arterials only in a 33 km box up to 30 km, nothing above.
  *
  * Two modes (decided once per session via `/api/tomtom/status`):
  *  - `sim` (keyless default): white dots at hardcoded per-road-class speeds —
@@ -43,29 +52,24 @@ import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor
 
 /** @const {string} Proxy endpoint for Overpass API queries */
 const OVERPASS_URL = '/api/overpass';
-/** @const {number} Meters — hide all traffic dots above this camera altitude */
-const ACTIVATION_ALTITUDE = 8000;
-/** @const {number} Meters — above this altitude, only major roads are fetched */
-const FAST_FETCH_ALTITUDE = 4500;
+/**
+ * @const {number} Meters — hide all traffic dots above this camera altitude.
+ *
+ * Owned by `trafficBounds.ROAD_FETCH_TIERS`, whose coarsest band this is. It
+ * used to be 8 km, which — with a fetch box capped at 0.05° at every altitude
+ * — meant the animated-road view and the live-transit view could never be the
+ * same view. See the tier table for the measurements.
+ */
+const ACTIVATION_ALTITUDE = ROAD_ACTIVATION_ALTITUDE_M;
 /** @const {number} Milliseconds — debounce delay before fetching after camera settles */
 const FETCH_DEBOUNCE = 320;
 /** @const {number} Meters — vertical offset to keep dots above clamped terrain surface */
 const DOT_HEIGHT_OFFSET = 3.0;
-/** @const {number} Fraction (0-1) — skip re-fetch when viewport overlap exceeds this */
-const OVERLAP_THRESHOLD = 0.6;
 /** @const {number} Hard cap on total rendered dot primitives for GPU/CPU performance */
 const MAX_DOTS = 6000;
 /** @const {number} Polylines longer than this are simplified by sub-sampling */
 const MAX_WAYPOINTS_PER_ROAD = 80;
-/** @const {number} Km — minimum viewport center shift before allowing refresh */
-const MIN_CENTER_SHIFT_KM = 0.35;
-/**
- * @const {number} Km — max great-circle distance the fetch center may sit from
- * the camera nadir. Traffic only activates below ACTIVATION_ALTITUDE (8 km),
- * so a look-at ground point farther than this is horizon-gazing and gets
- * pulled back toward nadir (C4 oblique-bounds fix).
- */
-const MAX_LOOKAT_PULL_KM = 12;
+
 /**
  * Development-only causal timing. Vite folds `import.meta.env.DEV` to false
  * in production, so the query-string read, nullable trace branches, and every
@@ -180,6 +184,16 @@ let _densityScale = 1.0;
 let _speedScale = 1.0;
 /** @type {{lat:number,lon:number}|null} Center of last-fetched viewport for shift gating */
 let _lastViewCenter = null;
+/**
+ * @type {?string} Id of the altitude band the last committed fetch ran at.
+ *
+ * The skip gate below compares the NEW box against the last one, and a finer
+ * band's box sits entirely inside a coarser band's. Without this, descending
+ * from 22 km to 2 km over the same point scores 100% overlap and zero centre
+ * shift — so the layer would keep serving arterials-only roads all the way
+ * down to street level and never fetch the graph it is supposed to draw there.
+ */
+let _lastTierId = null;
 /** @type {number|null} camera.percentageChanged value before we overrode it, restored on disable */
 let _prevPercentageChanged = null;
 /** @type {boolean} Live TomTom flow mode — true iff /api/tomtom/status reports a key */
@@ -430,25 +444,23 @@ const _scratchLerp = new Cesium.Cartesian3();
 /**
  * Build an Overpass QL query string to fetch road ways within a bounding box.
  *
- * The query uses a highway tag regex filter. When `majorOnly` is true, only
- * motorway/trunk/primary/secondary are included; otherwise all drivable road
- * classes are fetched. The `out geom qt;` suffix returns inline geometry
- * (lat/lon per node) sorted by quadtile for faster server response.
+ * The query filters the OSM `highway` tag against an explicit class list,
+ * supplied by the caller's altitude band (`trafficBounds.ROAD_FETCH_TIERS`):
+ * the whole drivable graph at street scale, the arterials at metro scale. The
+ * `out geom qt;` suffix returns inline geometry (lat/lon per node) sorted by
+ * quadtile for faster server response.
  *
  * @param {number} south - Southern latitude bound (degrees).
  * @param {number} west  - Western longitude bound (degrees).
  * @param {number} north - Northern latitude bound (degrees).
  * @param {number} east  - Eastern longitude bound (degrees).
  * @param {Object}  [opts]
- * @param {boolean} [opts.majorOnly=false] - Restrict to major highway classes only.
- * @param {number}  [opts.timeoutSec=25]   - Overpass server-side timeout.
+ * @param {string[]} opts.classes      - OSM highway classes to fetch.
+ * @param {number}  [opts.timeoutSec=25] - Overpass server-side timeout.
  * @returns {string} Overpass QL query body.
  */
-function buildOverpassQuery(south, west, north, east, { majorOnly = false, timeoutSec = 25 } = {}) {
-  // Regex matches the OSM `highway` tag value against allowed road types
-  const regex = majorOnly
-    ? '^(motorway|trunk|primary|secondary)$'
-    : '^(motorway|trunk|primary|secondary|tertiary|residential|unclassified)$';
+export function buildOverpassQuery(south, west, north, east, { classes, timeoutSec = 25 } = {}) {
+  const regex = `^(${(classes || []).join('|')})$`;
   return `[out:json][timeout:${timeoutSec}];(way["highway"~"${regex}"](${south},${west},${north},${east}););out geom qt;`;
 }
 
@@ -464,7 +476,8 @@ function buildOverpassQuery(south, west, north, east, { majorOnly = false, timeo
  * @param {number} north - Northern latitude bound (degrees).
  * @param {number} east  - Eastern longitude bound (degrees).
  * @param {Object}  [opts]
- * @param {boolean} [opts.majorOnly=false]  - Restrict to major highway classes.
+ * @param {string[]} opts.classes           - OSM highway classes to fetch.
+ * @param {string} [opts.pass='major']       - Which pass this is, for tracing.
  * @param {number}  [opts.timeoutSec=25]    - Server-side Overpass timeout.
  * @param {AbortSignal} [opts.signal]       - Abort signal for cancellation.
  * @param {Object|null} [trace=null] - Development-only correlated load trace.
@@ -476,12 +489,12 @@ async function fetchRoads(
   west,
   north,
   east,
-  { majorOnly = false, timeoutSec = 25, signal } = {},
+  { classes, pass = 'major', timeoutSec = 25, signal } = {},
   trace = null,
 ) {
-  const query = buildOverpassQuery(south, west, north, east, { majorOnly, timeoutSec });
+  const query = buildOverpassQuery(south, west, north, east, { classes, timeoutSec });
   const state = TRAFFIC_TIMING_ENABLED && trace
-    ? trafficTimingPass(trace, majorOnly ? 'major' : 'full', 'proxy')
+    ? trafficTimingPass(trace, pass, 'proxy')
     : null;
   if (state) trace.currentPass = state.pass;
   const fetchStart = state ? trafficTimingMark(state, 'fetch-start') : null;
@@ -660,7 +673,14 @@ function computeDotCount(road, altitude) {
   if (altitude < 1000)      spacing = 30;
   else if (altitude < 3000) spacing = 80;
   else if (altitude < 5000) spacing = 150;
-  else                      spacing = 250;
+  else if (altitude < 8000) spacing = 250;
+  // Metro band: only arterials are drawn, over a box 36× the area of the
+  // street band. Asking for 250 m spacing there demands far more than the
+  // 6 000 cap and the allocator spends most of its budget on the fairness
+  // seed. Measured over Bordeaux at 12 km, 400 m puts a dot roughly every
+  // 30 screen pixels along an arterial — a stream rather than a dotted line —
+  // for ~1 800 dots, comfortably inside the cap.
+  else                      spacing = 400;
 
   const mult = (DENSITY_MULT[road.type] || 1)
     * _densityScale
@@ -1023,12 +1043,12 @@ function getViewBounds() {
  * we pick the ellipsoid under the canvas center (`camera.pickEllipsoid` — this
  * works with the globe hidden under Google 3D tiles, where `scene.globe.pick`
  * is NOT reliable), fall back to the camera nadir on a sky/horizon look, and
- * pull horizon-gaze hits back to MAX_LOOKAT_PULL_KM from nadir.
+ * pull horizon-gaze hits back to the band's `pullKm` from nadir.
  *
  * @returns {{lat:number, lon:number, source:string}|null} Fetch center in
  *   degrees, or null when the camera position is unavailable.
  */
-function getFetchCenter() {
+function getFetchCenter(tier) {
   const carto = _viewer.camera.positionCartographic;
   if (!carto) return null;
   const nadirLat = Cesium.Math.toDegrees(carto.latitude);
@@ -1052,7 +1072,7 @@ function getFetchCenter() {
   }
 
   return deriveFetchCenter({
-    nadirLat, nadirLon, hitLat, hitLon, maxPullKm: MAX_LOOKAT_PULL_KM,
+    nadirLat, nadirLon, hitLat, hitLon, maxPullKm: tier.pullKm,
   });
 }
 
@@ -1079,39 +1099,6 @@ function getBoundsCenter(bounds) {
  * @param {{lat:number, lon:number}} b - Second point.
  * @returns {number} Distance in kilometres.
  */
-function distanceKm(a, b) {
-  const dLat = (a.lat - b.lat) * 111;
-  const avgLat = ((a.lat + b.lat) / 2) * (Math.PI / 180);
-  const dLon = (a.lon - b.lon) * 111 * Math.cos(avgLat);
-  return Math.sqrt((dLat * dLat) + (dLon * dLon));
-}
-
-/**
- * Check whether two bounding boxes overlap by at least a given fraction of
- * the first box's area. Used to decide if a camera move is large enough to
- * warrant a new road fetch.
- *
- * @param {{south:number, west:number, north:number, east:number}} a - Reference bounds.
- * @param {{south:number, west:number, north:number, east:number}} b - Bounds to compare.
- * @param {number} threshold - Minimum overlap fraction (0-1) relative to `a`.
- * @returns {boolean} True if overlap area / a area >= threshold.
- */
-function boundsOverlap(a, b, threshold) {
-  // Compute the intersection rectangle
-  const overlapS = Math.max(a.south, b.south);
-  const overlapN = Math.min(a.north, b.north);
-  const overlapW = Math.max(a.west, b.west);
-  const overlapE = Math.min(a.east, b.east);
-
-  // No intersection if the rectangle is degenerate
-  if (overlapN <= overlapS || overlapE <= overlapW) return false;
-
-  const overlapArea = (overlapN - overlapS) * (overlapE - overlapW);
-  const aArea = (a.north - a.south) * (a.east - a.west);
-
-  return aArea > 0 && (overlapArea / aArea) >= threshold;
-}
-
 /**
  * Clamp a bounding box to a maximum span to avoid overloading the Overpass API.
  *
@@ -1127,18 +1114,18 @@ function boundsOverlap(a, b, threshold) {
  * @param {{south:number, west:number, north:number, east:number}} bounds
  * @returns {{south:number, west:number, north:number, east:number}} Clamped bounds.
  */
-function clampBounds(bounds) {
-  return clampBoundsAroundCenter(bounds, getBoundsCenter(bounds));
+function clampBounds(bounds, tier) {
+  return clampBoundsAroundCenter(bounds, getBoundsCenter(bounds), tier.spanDeg);
 }
 
 /**
  * Camera-change handler — the main entry point for viewport-driven road loading.
  *
  * Gating logic:
- *  1. If the camera is above ACTIVATION_ALTITUDE, clear all dots and bail.
- *  2. Clamp the view bounds and compute the viewport center.
+ *  1. If the camera is above every road band, clear all dots and bail.
+ *  2. Clamp the view bounds to the band's span and compute the viewport center.
  *  3. Skip the fetch if the new viewport significantly overlaps the last-fetched
- *     bounds AND the center has shifted less than MIN_CENTER_SHIFT_KM. This
+ *     bounds AND the center has shifted less than the band's `minShiftKm`. This
  *     prevents redundant fetches during small pans.
  *  4. Otherwise, debounce and schedule `loadRoadsForBounds`.
  */
@@ -1151,31 +1138,37 @@ function onCameraChanged() {
   // Also null the last-fetch gate: otherwise zooming back down to the SAME
   // viewport hits the overlap/center-shift skip in step 3 and the dots
   // (cleared here) never reload (H5). Clearing the gate forces a fresh fetch.
-  if (alt > ACTIVATION_ALTITUDE) {
+  const tier = roadFetchTier(alt);
+  if (!tier) {
     clearDots();
     _lastBounds = null;
     _lastViewCenter = null;
+    _lastTierId = null;
     return;
   }
 
   const bounds = getViewBounds();
   if (!bounds) return;
   // C4 fix: center the fetch box on the camera's look-at ground point (with
-  // nadir fallback + 12 km horizon-gaze pull-back), NOT the view rectangle's
-  // midpoint — at oblique pitch that midpoint drifts toward the horizon.
-  const fetchCenter = getFetchCenter();
+  // nadir fallback + a per-band horizon-gaze pull-back), NOT the view
+  // rectangle's midpoint — at oblique pitch that midpoint drifts toward the
+  // horizon. The box SPAN is the band's too: 0.05° at street scale, 0.30° at
+  // metro scale, where a 5.5 km box would show a third of the city.
+  const fetchCenter = getFetchCenter(tier);
   const clamped = fetchCenter
-    ? clampBoundsAroundCenter(bounds, fetchCenter)
-    : clampBounds(bounds);
+    ? clampBoundsAroundCenter(bounds, fetchCenter, tier.spanDeg)
+    : clampBounds(bounds, tier);
   const center = getBoundsCenter(clamped);
 
-  // Skip re-fetch when viewport overlap is high and center shift is negligible
-  if (
-    _lastBounds
-    && _lastViewCenter
-    && boundsOverlap(clamped, _lastBounds, OVERLAP_THRESHOLD)
-    && distanceKm(center, _lastViewCenter) < MIN_CENTER_SHIFT_KM
-  ) {
+  // Skip re-fetch when the band, the coverage and the centre all say the held
+  // roads are still the answer. See `roadRefetchNeeded` for why the band has
+  // to be part of that question.
+  if (!roadRefetchNeeded({
+    tier,
+    box: clamped,
+    center,
+    last: { tierId: _lastTierId, bounds: _lastBounds, center: _lastViewCenter },
+  })) {
     return;
   }
 
@@ -1986,7 +1979,7 @@ async function loadRoadsForBoundsTimed(bounds, altitude, expectedAnchor) {
     return;
   }
   _trafficTimingCurrentAnchor = null;
-  const clamped = clampBounds(bounds);
+  const clamped = clampBounds(bounds, roadFetchTier(altitude) ?? ROAD_FETCH_TIERS[0]);
   const trace = {
     id: ++_trafficTimingSequence,
     interactionId: expectedAnchor.interactionId,
@@ -2020,7 +2013,7 @@ const _loadRoadsForBounds = TRAFFIC_TIMING_ENABLED
  *     - If a full road set is cached, render immediately and return.
  *     - If only major roads are cached, render those first.
  *  2. Fetch major roads from Overpass (fast, small payload). Render.
- *  3. If altitude is low enough (< FAST_FETCH_ALTITUDE), fetch the full
+ *  3. If the band publishes a full-graph pass (street scale only), fetch the full
  *     road graph (includes tertiary/residential). Render again to upgrade.
  *
  * Each fetch is guarded by a monotonic `_loadGeneration` counter so that
@@ -2036,7 +2029,15 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
   // Increment generation to invalidate any in-flight responses from prior calls
   const generation = ++_loadGeneration;
   cancelActiveFetch();
-  const clamped = clampBounds(bounds);
+  // The band decides the box span, the road classes and whether a full-graph
+  // second pass happens at all. A load scheduled just before the camera rose
+  // past the last band is dropped rather than fetched at a guessed scale.
+  const tier = roadFetchTier(altitude);
+  if (!tier) {
+    clearDots();
+    return;
+  }
+  const clamped = clampBounds(bounds, tier);
 
   // Cache key: fixed-precision bounding-box string for deterministic lookups
   const cacheKey = `${clamped.south.toFixed(4)},${clamped.west.toFixed(4)},${clamped.north.toFixed(4)},${clamped.east.toFixed(4)}`;
@@ -2057,8 +2058,10 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
   // prospective values and roll back if nothing rendered.
   const prevBounds = _lastBounds;
   const prevViewCenter = _lastViewCenter;
+  const prevTierId = _lastTierId;
   _lastBounds = clamped;
   _lastViewCenter = getBoundsCenter(clamped);
+  _lastTierId = tier.id;
   let renderedSomething = false;
 
   try {
@@ -2096,7 +2099,7 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
       console.log(`[Data:Traffic] Fast fetch major roads [${cacheKey}]`);
       const majorData = await fetchRoads(
         clamped.south, clamped.west, clamped.north, clamped.east,
-        { majorOnly: true, timeoutSec: 12, signal: _activeFetchAbort.signal },
+        { classes: tier.classes, pass: 'major', timeoutSec: 12, signal: _activeFetchAbort.signal },
         trace,
       );
       // Discard stale response if a newer load was triggered while waiting
@@ -2108,15 +2111,17 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
       renderedSomething = true;
     }
 
-    // At higher altitude, major roads provide sufficient motion density
-    if (altitude > FAST_FETCH_ALTITUDE) return;
+    // Above street scale the band publishes no full-graph pass: residential
+    // roads are sub-pixel there, and fetching them at a 0.30° box would be a
+    // national download to draw nothing legible.
+    if (!tier.fullClasses) return;
 
     // Detailed pass: fetch the full road graph (tertiary, residential, etc.)
     _activeFetchAbort = new AbortController();
     console.log(`[Data:Traffic] Full fetch local roads [${cacheKey}]`);
     const fullData = await fetchRoads(
       clamped.south, clamped.west, clamped.north, clamped.east,
-      { majorOnly: false, timeoutSec: 20, signal: _activeFetchAbort.signal },
+      { classes: tier.fullClasses, pass: 'full', timeoutSec: 20, signal: _activeFetchAbort.signal },
       trace,
     );
     if (generation !== _loadGeneration) return;
@@ -2140,6 +2145,7 @@ async function loadRoadsForBounds(bounds, altitude, trace = null) {
       if (!renderedSomething) {
         _lastBounds = prevBounds;
         _lastViewCenter = prevViewCenter;
+        _lastTierId = prevTierId;
       }
     }
     _activeFetchAbort = null;
@@ -2197,6 +2203,7 @@ const trafficLayer = {
     _count = 0;
     _lastUpdate = null;
     _lastBounds = null;
+    _lastTierId = null;
     _fetching = false;
     _loadGeneration = 0;
     _densityScale = 1.0;
@@ -2295,6 +2302,8 @@ const trafficLayer = {
     _loadGeneration++;
     clearDots();
     _lastViewCenter = null;
+    _lastBounds = null;
+    _lastTierId = null;
     // A stale outage from the last session would misreport a fresh enable —
     // the next load re-derives feed health from real evidence.
     _flowError = null;
