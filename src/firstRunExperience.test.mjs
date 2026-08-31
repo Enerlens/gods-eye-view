@@ -660,10 +660,15 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   // exactly what this guard exists to make visible. What it still forbids is
   // the thing it was written for: a FIRST-RUN MISSION quietly growing the
   // schema instead of riding the tools that already exist.
-  assert.equal(block.length, 31323, 'tool schema byte length drifted from the frozen baseline');
+  //
+  // Re-frozen a second time, for the same reason and at the same price:
+  // `local-airports` (OurAirports) joined the three layer enums and the
+  // common-name mapping, so "show me the airports" resolves without an
+  // instruction. +148 bytes, one cache bust, still a deliberate schema edit.
+  assert.equal(block.length, 31471, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '8c359b1e4e12bdb71ed4c959c12988293cba67748b6d59cbe60fed66ae2769da',
+    '7ea93625da0378c1575660873eb7e00eaa3e81698149ea402ac964322cb49916',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 
