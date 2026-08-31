@@ -124,6 +124,16 @@ export const DATA_CREDITS = [
       'via Nominatim (ODbL 1.0)',
   },
   {
+    key: 'search-geocoder',
+    html:
+      'Place search (keyless builds): ' +
+      '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">&copy; OpenStreetMap contributors</a> ' +
+      'via <a href="https://nominatim.openstreetmap.org" target="_blank" rel="noopener">Nominatim</a> (ODbL 1.0), ' +
+      'with French addresses and points of interest from the ' +
+      '<a href="https://data.geopf.fr/geocodage/" target="_blank" rel="noopener">IGN G&eacute;oplateforme geocoder</a> ' +
+      '(BAN &mdash; Licence Ouverte 2.0)',
+  },
+  {
     key: 'open-meteo',
     html:
       'Cockpit current conditions: ' +
@@ -209,6 +219,19 @@ export const DATA_CREDITS = [
       'via the data.gouv.fr mirror unless an API key is configured. ' +
       'D&eacute;partement boundaries: IGN — ADMIN EXPRESS COG (&eacute;dition 2018), ' +
       'via <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a> (G. David), Licence Ouverte.',
+  },
+  {
+    key: 'ign-geoplateforme',
+    html:
+      'IGN basemaps (France): ' +
+      '<a href="https://cartes.gouv.fr/rechercher-une-donnee/dataset/IGNF_BD-ORTHO" target="_blank" rel="noopener">BD ORTHO&reg; (ORTHOIMAGERY.ORTHOPHOTOS)</a> ' +
+      'and <a href="https://cartes.gouv.fr/rechercher-une-donnee/dataset/IGNF_PLAN-IGN" target="_blank" rel="noopener">Plan IGN v2</a>, ' +
+      'served keyless by the IGN G&eacute;oplateforme (data.geopf.fr) under ' +
+      '<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>. ' +
+      'The orthophoto mosaic has no single update date &mdash; the aerial survey year differs per d&eacute;partement and is published by IGN as a ' +
+      '<a href="https://data.geopf.fr/annexes/ressources/fiches/photographies-aeriennes-RVB/geoportail_dates_des_prises_de_vues_aeriennes-RVB.pdf" target="_blank" rel="noopener">table of flight dates</a>. ' +
+      'Plan IGN v2 is regenerated continuously from IGN&rsquo;s vector databases. ' +
+      'Coverage is clipped to metropolitan France and Corsica; DOM-TOM are not shown.',
   },
   {
     key: 'odre-eco2mix',

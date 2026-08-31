@@ -130,7 +130,7 @@ const SELECTED_STROKE_WIDTH = 4;
  * module has never heard of must reach the documented BOTH fallback rather
  * than be asserted onto a surface that is not there.
  */
-const GAS_GLOBE_STACK_IDS = Object.freeze(new Set(['bing-aerial', 'bing-labels', 'osm']));
+const GAS_GLOBE_STACK_IDS = Object.freeze(new Set(['bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan']));
 
 /**
  * Ground-line classification for one map stack.

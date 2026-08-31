@@ -8090,7 +8090,15 @@ export class StyleManager {
       return { ok: false, error: `Unknown map stack: ${stackId}`, available: stacks.map((s) => s.id) };
     }
     if (!target.available) {
-      return { ok: false, error: `${target.label} requires a Cesium ion token`, activeStack: this.mapStackController.getActiveId() };
+      // Quote the controller's OWN reason. Hard-coding "requires a Cesium ion
+      // token" made the tool lie about every stack that is unavailable for some
+      // other reason — `photoreal` with no Google key, an IGN stack that failed
+      // to construct — and sent the operator looking for the wrong credential.
+      return {
+        ok: false,
+        error: target.unavailableReason || `${target.label} is unavailable`,
+        activeStack: this.mapStackController.getActiveId(),
+      };
     }
     await this._setMapStack(stackId);
     const state = this.mapStackController.getState();

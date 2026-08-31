@@ -39,6 +39,8 @@
     "preview": "vite preview",
     "test": "node scripts/run-unit-tests.mjs",
     "test:track": "node scripts/track-regression.mjs",
+    "qa:keyless-boot": "node scripts/qa-keyless-boot.mjs",
+    "qa:ign-terrain": "node scripts/qa-ign-terrain.mjs",
     "qa:map-source-tray": "node scripts/qa-map-source-tray.mjs",
     "qa:transit-fr": "node scripts/qa-transit-fr.mjs",
     "qa:edf-plants": "node scripts/qa-edf-plants.mjs",

@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from './renderGovernor.js';
+import { IgnBilTerrainProvider } from './data/ignBilTerrain.js';
 
 export const MAP_STACKS = [
   {
@@ -32,9 +33,65 @@ export const MAP_STACKS = [
     kind: 'osm',
     requiresIon: false,
   },
+  // ── IGN Géoplateforme (keyless, France only) ───────────────────────────────
+  // The two stacks that make a keyless build worth looking at. `data.geopf.fr`
+  // serves WMTS with `access-control-allow-origin: *` and no key of any kind,
+  // and the WMTS/TMS endpoints are not rate-limited (unlike the vector-tile
+  // ones). Coverage is France + DOM; this pass ships metropolitan France only
+  // (`IGN_FRANCE_RECTANGLE`), because the DOM sit in three different vertical
+  // systems and belong with the terrain work, not here.
+  {
+    id: 'ign-ortho',
+    label: 'IGN Ortho',
+    shortLabel: 'Ortho',
+    kind: 'ign-wmts',
+    requiresIon: false,
+    coverageNote: 'metropolitan France only',
+    wmts: {
+      layer: 'ORTHOIMAGERY.ORTHOPHOTOS',
+      format: 'image/jpeg',
+      maximumLevel: 19,
+    },
+  },
+  {
+    id: 'ign-plan',
+    label: 'Plan IGN',
+    shortLabel: 'Plan',
+    kind: 'ign-wmts',
+    requiresIon: false,
+    coverageNote: 'metropolitan France only',
+    wmts: {
+      layer: 'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2',
+      format: 'image/png',
+      maximumLevel: 19,
+    },
+  },
 ];
 
 const DEFAULT_OSM_CREDIT = '© OpenStreetMap contributors';
+
+/** Keyless IGN Géoplateforme WMTS endpoint (no key, no token, CORS-open). */
+const IGN_WMTS_URL = 'https://data.geopf.fr/wmts';
+
+/**
+ * Metropolitan France + Corsica, in degrees. Two jobs, both load-bearing:
+ *
+ * 1. It bounds the IGN layer, so Cesium never requests a tile the
+ *    Géoplateforme has nothing for. Without it the provider issues 404s for
+ *    the whole planet on every zoom — the declared layer bbox is useless as a
+ *    coverage mask, since it is the bounding box of France UNION the DOM and
+ *    therefore spans most of the globe.
+ * 2. It is why the IGN stacks need TWO imagery layers (see
+ *    `_activateGlobeStack`): a rectangle-limited layer sitting at index 0 is
+ *    Cesium's BASE layer, and Cesium smears a base layer's edge pixels across
+ *    every tile outside its bounds rather than leaving them blank. France's
+ *    coastline would paint the Atlantic and then the rest of Earth.
+ *
+ * DOM-TOM are deliberately outside this pass.
+ */
+export const IGN_FRANCE_RECTANGLE = Object.freeze({
+  west: -5.5, south: 41.2, east: 9.8, north: 51.2,
+});
 
 // Keyless global ellipsoidal terrain (Re:Earth Terrain / Mapterhorn, CC BY 4.0,
 // EGM2008 geoid via NGA) — quantized-mesh 1.0, `ellipsoid` data-type. Fixes
@@ -45,14 +102,60 @@ const DEFAULT_OSM_CREDIT = '© OpenStreetMap contributors';
 const REEARTH_TERRAIN_URL = 'https://terrain.reearth.land/cesium-mesh/ellipsoid';
 
 /**
+ * Builds the keyless IGN Geoplateforme WMTS imagery provider for one stack.
+ *
+ * Four details are load-bearing and each was checked against a live
+ * `data.geopf.fr` GetCapabilities on 2026-08-28:
+ *
+ * - `style: 'normal'` is REQUIRED. Cesium's `WebMapTileServiceImageryProvider`
+ *   throws synchronously without it, and IGN publishes exactly one style named
+ *   `normal` for both layers — so omitting it fails the switch, it does not
+ *   quietly pick a default.
+ * - `tileMatrixSetID: 'PM'` is IGN's Web Mercator set, and it is bit-for-bit
+ *   Cesium's default `WebMercatorTilingScheme`: 256 px tiles, top-left
+ *   -20037508.34/+20037508.34, a single tile at level 0. The layers declare the
+ *   `PM_0_19` subset, but the server accepts plain `PM` for the same tiles, and
+ *   `PM` is the set whose level ids match Cesium's own.
+ * - `tileMatrixLabels` must be the STRING level ids `'0'..'19'`; Cesium passes
+ *   the label through verbatim as `TILEMATRIX`.
+ * - `rectangle` is the France clamp. See `IGN_FRANCE_RECTANGLE`.
+ * @param {object} stack - An `ign-wmts` descriptor from `MAP_STACKS`.
+ * @returns {Cesium.WebMapTileServiceImageryProvider}
+ */
+export function createIgnWmtsProvider(stack) {
+  const { layer, format, maximumLevel } = stack.wmts;
+  return new Cesium.WebMapTileServiceImageryProvider({
+    url: IGN_WMTS_URL,
+    layer,
+    style: 'normal',
+    format,
+    tileMatrixSetID: 'PM',
+    tileMatrixLabels: Array.from({ length: maximumLevel + 1 }, (_, level) => String(level)),
+    maximumLevel,
+    rectangle: Cesium.Rectangle.fromDegrees(
+      IGN_FRANCE_RECTANGLE.west,
+      IGN_FRANCE_RECTANGLE.south,
+      IGN_FRANCE_RECTANGLE.east,
+      IGN_FRANCE_RECTANGLE.north,
+    ),
+    // The on-globe line. Etalab 2.0 wants the source named where the data is
+    // shown; the fuller notice, with the product edition, is the static entry
+    // `registerDataCredits()` puts in the "Data attribution" popover.
+    credit: new Cesium.Credit('© IGN — Géoplateforme', true),
+  });
+}
+
+/**
  * Controls the active globe/map stack. Google Photorealistic 3D Tiles remain
- * the cinematic default, while Cesium ion world imagery and OSM run as globe
- * imagery stacks.
+ * the cinematic default, while Cesium ion world imagery, OSM, and the keyless
+ * IGN Geoplateforme stacks run as globe imagery stacks.
  */
 export class MapStackController {
   constructor(viewer, {
     googleTileset = null,
     cesiumToken = '',
+    googleKeyConfigured = null,
+    ignTerrainSpike = false,
     initialStack = 'photoreal',
     onChange = null,
     onError = null,
@@ -60,10 +163,27 @@ export class MapStackController {
     this.viewer = viewer;
     this.googleTileset = googleTileset;
     this.cesiumToken = String(cesiumToken || '').trim();
+    // Why `photoreal` is unavailable, when it is: a build with NO Google key
+    // (the keyless build) and a keyed build whose tileset failed to load are
+    // the same `googleTileset === null` here but need opposite advice. Default
+    // `null` means "caller didn't say" and keeps the old generic wording, so a
+    // controller built by a test or a tool doesn't start claiming a cause it
+    // has no evidence for.
+    this.googleKeyConfigured = googleKeyConfigured;
+    // DEV-ONLY SPIKE (`?ign_terrain=1`). Replaces the keyless terrain provider
+    // with IGN RGE ALTI over France, and FORCES the keyless branch even when an
+    // ion token is present — the point of the spike is to look at IGN terrain,
+    // and Cesium World Terrain would silently win on a keyed machine. Read once
+    // at construction: a flag that could flip mid-session would leave meshed
+    // tiles from two different datums on the globe at the same time.
+    // See src/data/ignBilTerrain.js for why this must never be the default.
+    this.ignTerrainSpike = ignTerrainSpike === true;
     this._onChange = onChange;
     this._onError = onError;
     this._activeId = googleTileset ? initialStack : 'osm';
-    this._imageryLayer = null;
+    // A stack owns an ORDERED LIST of imagery layers, not one layer: the IGN
+    // stacks are OSM (base, index 0) + IGN France (index 1). Bottom-first.
+    this._imageryLayers = [];
     this._imageryProviders = new Map();
     this._isSwitching = false;
     this._lastError = null;
@@ -115,9 +235,14 @@ export class MapStackController {
    * @returns {string}
    */
   _unavailableReason(stack) {
-    return stack?.requiresIon
-      ? 'Cesium ion token required for Bing stacks'
-      : `${stack?.label || 'This map stack'} is unavailable`;
+    if (stack?.requiresIon) return 'Cesium ion token required for Bing stacks';
+    if (stack?.kind === 'photoreal' && this.googleKeyConfigured === false) {
+      return 'Google Maps API key required for Google 3D';
+    }
+    if (stack?.kind === 'photoreal' && this.googleKeyConfigured === true) {
+      return 'Google 3D Tiles failed to load';
+    }
+    return `${stack?.label || 'This map stack'} is unavailable`;
   }
 
   getStack(id) {
@@ -154,8 +279,24 @@ export class MapStackController {
     return true;
   }
 
+  /**
+   * Where an UNRECOGNIZED stack id lands.
+   *
+   * `photoreal` when it can actually be shown, else the first stack that can.
+   * The distinction matters because an unknown id is not a request for a
+   * particular source — it is a retired or corrupted `map=` share param — so
+   * resolving it to a source this build cannot show would raise a credential
+   * error about a stack nobody asked for. A DELIBERATE request for an
+   * unavailable stack still errors; that one is a real answer to a real ask.
+   * @returns {object} An available stack descriptor, or OSM as the last resort.
+   */
+  _fallbackStack() {
+    if (this.isStackAvailable('photoreal')) return this.getStack('photoreal');
+    return MAP_STACKS.find((stack) => this.isStackAvailable(stack.id)) || this.getStack('osm');
+  }
+
   async setStack(id, { silent = false } = {}) {
-    const stack = this.getStack(id) || this.getStack('photoreal');
+    const stack = this.getStack(id) || this._fallbackStack();
     if (!stack) return null;
 
     if (!this.isStackAvailable(stack.id)) {
@@ -216,7 +357,7 @@ export class MapStackController {
   }
 
   async _activatePhotoreal(gen) {
-    this._removeImageryLayer();
+    this._removeImageryLayers();
     if (this.googleTileset) this.googleTileset.show = true;
     this.viewer.scene.globe.show = false;
     // Terrain is left UNTOUCHED here. The photoreal globe is hidden
@@ -234,18 +375,42 @@ export class MapStackController {
   }
 
   async _activateGlobeStack(stack, gen) {
-    const provider = await this._getImageryProvider(stack);
+    const providers = await this._getStackProviders(stack);
     // A newer switch started while the provider was resolving — don't touch the
     // scene's imagery layers, the winning switch already owns them (M7).
     if (gen != null && gen !== this._switchGen) return;
-    this._removeImageryLayer();
+    this._removeImageryLayers();
 
-    this._imageryLayer = new Cesium.ImageryLayer(provider);
-    this.viewer.imageryLayers.add(this._imageryLayer, 0);
+    // Added bottom-first at ascending indices, so `providers[0]` is Cesium's
+    // BASE layer and later entries composite over it.
+    providers.forEach((provider, index) => {
+      const layer = new Cesium.ImageryLayer(provider);
+      this.viewer.imageryLayers.add(layer, index);
+      this._imageryLayers.push(layer);
+    });
 
     if (this.googleTileset) this.googleTileset.show = false;
     this.viewer.scene.globe.show = true;
-    await this._setWorldTerrainEnabled(!!this.cesiumToken, gen);
+    await this._setWorldTerrainEnabled(!!this.cesiumToken && !this.ignTerrainSpike, gen);
+  }
+
+  /**
+   * Imagery providers for one stack, BOTTOM-FIRST.
+   *
+   * Every stack but the IGN pair is a single world-covering layer. The IGN
+   * stacks return `[osm, ign]`: IGN covers metropolitan France only, and a
+   * France-shaped layer at index 0 would be Cesium's base layer, whose edge
+   * pixels Cesium stretches over the rest of the planet. OSM underneath keeps
+   * the world honest and the French tiles land on top of it.
+   * @param {object} stack - Stack descriptor from `MAP_STACKS`.
+   * @returns {Promise<Array<Cesium.ImageryProvider>>}
+   */
+  async _getStackProviders(stack) {
+    if (stack.kind !== 'ign-wmts') return [await this._getImageryProvider(stack)];
+    return [
+      await this._getImageryProvider(this.getStack('osm')),
+      await this._getImageryProvider(stack),
+    ];
   }
 
   async _getImageryProvider(stack) {
@@ -261,6 +426,8 @@ export class MapStackController {
         url: 'https://tile.openstreetmap.org/',
         credit: DEFAULT_OSM_CREDIT,
       });
+    } else if (stack.kind === 'ign-wmts') {
+      provider = createIgnWmtsProvider(stack);
     } else {
       throw new Error(`Unsupported map stack: ${stack.id}`);
     }
@@ -269,10 +436,11 @@ export class MapStackController {
     return provider;
   }
 
-  _removeImageryLayer() {
-    if (!this._imageryLayer) return;
-    this.viewer.imageryLayers.remove(this._imageryLayer, false);
-    this._imageryLayer = null;
+  _removeImageryLayers() {
+    for (const layer of this._imageryLayers) {
+      this.viewer.imageryLayers.remove(layer, false);
+    }
+    this._imageryLayers.length = 0;
   }
 
   /**
@@ -320,6 +488,13 @@ export class MapStackController {
    */
   async _getKeylessTerrainProvider() {
     if (this._reearthTerrainProvider) return this._reearthTerrainProvider;
+    if (this.ignTerrainSpike) {
+      // Cached in the same slot as Re:Earth on purpose: the spike and the
+      // shipped keyless provider are mutually exclusive for the whole session,
+      // so one cache entry is the whole truth about what terrain is installed.
+      this._reearthTerrainProvider = new IgnBilTerrainProvider();
+      return this._reearthTerrainProvider;
+    }
     try {
       this._reearthTerrainProvider = await Cesium.CesiumTerrainProvider.fromUrl(REEARTH_TERRAIN_URL);
     } catch (error) {

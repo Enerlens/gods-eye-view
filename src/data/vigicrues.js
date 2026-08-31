@@ -135,7 +135,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
  * id this module has never heard of must reach the safe BOTH fallback rather
  * than be asserted onto a surface that is not there.
  */
-const VIGICRUES_GLOBE_STACK_IDS = Object.freeze(new Set(['bing-aerial', 'bing-labels', 'osm']));
+const VIGICRUES_GLOBE_STACK_IDS = Object.freeze(new Set(['bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan']));
 
 /**
  * Ground-line classification for one map stack.

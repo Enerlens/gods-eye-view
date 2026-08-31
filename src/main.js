@@ -31,6 +31,7 @@ import { registerDataCredits } from './data/dataCredits.js';
 import { SceneDirector } from './scenes/director.js';
 import { initGevVoiceCommands } from './voice/gevRealtime.js';
 import { MapStackController } from './mapStackController.js';
+import { ignTerrainFlagEnabled } from './data/ignBilTerrain.js';
 import { initAnnotations } from './annotations/index.js';
 import { initLogoGaze } from './logoGaze.js';
 import { initCockpitCloudEffects } from './cockpitCloudEffects.js';
@@ -90,15 +91,34 @@ async function init() {
       Cesium.Ion.defaultAccessToken = cesiumToken;
     }
 
-    // Set Google Maps API key for 3D Tiles
+    // Google Maps API key for Photorealistic 3D Tiles. OPTIONAL: a missing key
+    // is a supported configuration (the keyless build), not a fatal error.
+    // Throwing here used to abort init before the viewer existed, so
+    // `git clone && npm i && npm run dev` produced a dead page for anyone
+    // without a billed Google key — even though the whole downstream fallback
+    // path already existed (`tileset === null` → `initialStack: 'osm'`, and
+    // `MapStackController` already reports `photoreal` as unavailable with the
+    // right reason). Keyless boots onto the keyless globe stacks instead.
+    //
+    // The key is only PUBLISHED when it exists: `Cesium.GoogleMaps.defaultApiKey`
+    // and `window.__GOOGLE_MAPS_API_KEY__` stay untouched otherwise, so every
+    // consumer sees a falsy value and takes its own degraded path rather than
+    // firing a request with `key=undefined`. Geocoding consumers are the ones
+    // that matter: `annotationResolver.geocodePlace()` and `gevActions`'
+    // `reverseGeocode()` return null, and `locations.searchAndFlyTo()` rejects
+    // with a keyless-specific message the search box turns into a toast.
     const googleApiKey = import.meta.env.GOOGLE_MAPS_API_KEY;
-    if (!googleApiKey) {
-      throw new Error('GOOGLE_MAPS_API_KEY not found. Set it as an environment variable.');
+    const keylessMode = !googleApiKey;
+    if (googleApiKey) {
+      Cesium.GoogleMaps.defaultApiKey = googleApiKey;
+      // Expose API key globally for geocoding in locations.js
+      window.__GOOGLE_MAPS_API_KEY__ = googleApiKey;
+    } else {
+      console.info(
+        '[Init] No GOOGLE_MAPS_API_KEY — starting keyless. Google 3D Tiles and '
+        + 'Google-backed geocoding are unavailable; the globe stacks (OSM, IGN) are not.',
+      );
     }
-    Cesium.GoogleMaps.defaultApiKey = googleApiKey;
-
-    // Expose API key globally for geocoding in locations.js
-    window.__GOOGLE_MAPS_API_KEY__ = googleApiKey;
 
     // Create the Cesium viewer with minimal chrome
     const viewer = new Cesium.Viewer('cesiumContainer', {
@@ -154,7 +174,12 @@ async function init() {
     // Hide Cesium's default globe — Google Photorealistic 3D Tiles provide their own
     // globe at all LODs (street level → orbital). The default globe's 2D imagery
     // clips through 3D tile buildings at close range.
-    viewer.scene.globe.show = false;
+    //
+    // Keyless, the photoreal globe is never coming, so the Cesium globe IS the
+    // product and hiding it here would flash a starfield until the OSM stack
+    // settled. `_activateGlobeStack()` shows it again either way; this only
+    // decides what the first frames look like.
+    viewer.scene.globe.show = keylessMode;
 
     // Keep a sky behind Google 3D Tiles, but soften Cesium's high-intensity
     // default atmosphere. With the globe hidden its bright limb otherwise
@@ -164,30 +189,57 @@ async function init() {
     viewer.scene.skyAtmosphere.saturationShift = -0.12;
     viewer.scene.skyAtmosphere.brightnessShift = -0.08;
 
-    loaderStatus.textContent = 'Loading Google 3D Tiles...';
     let tileset = null;
-    try {
-      // Load Google Photorealistic 3D Tiles
-      tileset = await Cesium.createGooglePhotorealistic3DTileset({
-        onlyUsingWithGoogleGeocoder: true,
-      });
-      viewer.scene.primitives.add(tileset);
-      // NOTE: Cesium World Terrain intentionally disabled — conflicts with Google 3D Tiles at high zoom.
-      // Google Photorealistic 3D Tiles provide their own terrain/elevation.
-      viewer.scene.globe.show = false;
-    } catch (tileError) {
-      console.warn('[Init] Google 3D Tiles unavailable, falling back to Cesium globe:', tileError);
-      const tileErrorDetail = describeError(tileError);
-      loaderStatus.textContent = `Google 3D Tiles unavailable (${tileErrorDetail}). Continuing in fallback mode...`;
-      // Keep Cesium globe visible as fallback instead of aborting the app.
-      viewer.scene.globe.show = true;
+    if (keylessMode) {
+      // Deliberately NOT "call it and catch": `createGooglePhotorealistic3DTileset()`
+      // with no key spends a doomed round-trip and then reports a network error,
+      // which the loader would print as if something had gone wrong. Nothing has —
+      // this is the configured build.
+      loaderStatus.textContent = 'No Google key — starting keyless...';
+    } else {
+      loaderStatus.textContent = 'Loading Google 3D Tiles...';
+      try {
+        // Load Google Photorealistic 3D Tiles
+        tileset = await Cesium.createGooglePhotorealistic3DTileset({
+          onlyUsingWithGoogleGeocoder: true,
+        });
+        viewer.scene.primitives.add(tileset);
+        // NOTE: Cesium World Terrain intentionally disabled — conflicts with Google 3D Tiles at high zoom.
+        // Google Photorealistic 3D Tiles provide their own terrain/elevation.
+        viewer.scene.globe.show = false;
+      } catch (tileError) {
+        console.warn('[Init] Google 3D Tiles unavailable, falling back to Cesium globe:', tileError);
+        const tileErrorDetail = describeError(tileError);
+        loaderStatus.textContent = `Google 3D Tiles unavailable (${tileErrorDetail}). Continuing in fallback mode...`;
+        // Keep Cesium globe visible as fallback instead of aborting the app.
+        viewer.scene.globe.show = true;
+      }
     }
 
     loaderStatus.textContent = 'Initializing systems...';
 
+    // DEV-ONLY terrain spike. Loud on purpose: with IGN RGE ALTI under the
+    // globe, the repo's "terrain-globe means the Re:Earth prior IS the ground"
+    // identity no longer holds, so everything clamped to the ground from a
+    // cached sample — CCTV, traffic, local GeoJSON, mesh floors — is placed
+    // against the wrong surface. Never ship this on.
+    const ignTerrainSpike = ignTerrainFlagEnabled();
+    if (ignTerrainSpike) {
+      console.warn(
+        '[Init] ?ign_terrain=1 — DEV SPIKE: IGN RGE ALTI terrain is installed over '
+        + 'France. Ground-clamped objects (CCTV, traffic, local GeoJSON, mesh floors) '
+        + 'are placed against the wrong surface while this is on.',
+      );
+    }
+
     const mapStackController = new MapStackController(viewer, {
       googleTileset: tileset,
       cesiumToken,
+      // Lets the controller say WHY photoreal is unavailable: no key at all
+      // (keyless build) reads differently from a keyed build whose tiles
+      // failed, and both arrive here as `googleTileset: null`.
+      googleKeyConfigured: !keylessMode,
+      ignTerrainSpike,
       initialStack: tileset ? 'photoreal' : 'osm',
       // Task 5 (height-datum fix): rebroadcast stack changes as a window
       // CustomEvent so data layers (CCTV per-regime ground resolution) can

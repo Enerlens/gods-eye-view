@@ -70,6 +70,49 @@ async function runSearch(viewer, options, { result = AUSTIN_RESULT, query = 'aus
   }
 }
 
+/**
+ * The same search on a build with NO Google key: `searchAndFlyTo` must reach the
+ * keyless `/api/geocode` proxy and nothing else, and frame what comes back the
+ * same way it frames a Google answer.
+ */
+async function runKeylessSearch(viewer, options, { payload, query = 'toulouse' } = {}) {
+  const hadWindow = Object.hasOwn(globalThis, 'window');
+  const priorWindow = globalThis.window;
+  const priorFetch = globalThis.fetch;
+  const requested = [];
+  // No key on the window, but the timers resolveBuildingBounds needs for its
+  // Overpass call — a precise place still resolves its outline keylessly.
+  globalThis.window = { setTimeout, clearTimeout };
+  globalThis.fetch = async (url) => {
+    requested.push(String(url));
+    if (String(url).startsWith('/api/overpass')) return { ok: true, json: async () => ({ elements: [] }) };
+    return { ok: true, json: async () => payload };
+  };
+  try {
+    return { destination: await searchAndFlyTo(viewer, query, options), requested };
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (hadWindow) globalThis.window = priorWindow;
+    else delete globalThis.window;
+  }
+}
+
+const KEYLESS_TOULOUSE = {
+  result: {
+    lat: 43.6044638,
+    lon: 1.4442433,
+    label: 'Toulouse, France',
+    types: ['locality'],
+    viewport: {
+      southwest: { lat: 43.5326969, lng: 1.3503311 },
+      northeast: { lat: 43.6687119, lng: 1.5153356 },
+    },
+    source: 'nominatim',
+  },
+  source: 'nominatim',
+  attribution: '© OpenStreetMap contributors (ODbL 1.0), via Nominatim',
+};
+
 /** Read a recorded viewport flight back as a degrees rectangle. */
 function flownRectangleDegrees(viewer, index = 0) {
   const rectangle = viewer.flights[index]?.destination;
@@ -596,4 +639,79 @@ test('search without an authority hook preserves the existing caller contract', 
   const result = await runSearch(viewer, {});
   assert.equal(result.navigationMode, 'city-overview');
   assert.equal(viewer.flights.length, 1);
+});
+
+// ---------------------------------------------------------------------------
+// Keyless search: a build with no Google Maps key still finds places.
+// ---------------------------------------------------------------------------
+
+test('a keyless build searches through /api/geocode, and asks Google nothing', async () => {
+  const viewer = stubViewer();
+  const { destination, requested } = await runKeylessSearch(viewer, {}, { payload: KEYLESS_TOULOUSE });
+  assert.equal(requested.length, 1);
+  assert.match(requested[0], /^\/api\/geocode\?/);
+  assert.equal(requested.some((url) => /googleapis|\/api\/google\//.test(url)), false);
+  assert.equal(destination.label, 'Toulouse, France');
+  assert.equal(destination.navigationMode, 'city-overview');
+  // Framed from the keyless viewport, exactly like a Google city result.
+  const framed = flownRectangleDegrees(viewer);
+  assert.ok(framed.south < 43.53 && framed.north > 43.67, JSON.stringify(framed));
+  assert.ok(framed.west < 1.35 && framed.east > 1.52, JSON.stringify(framed));
+});
+
+test('a keyless park keeps area framing and a keyless landmark keeps close framing', async () => {
+  const park = stubViewer();
+  await runKeylessSearch(park, {}, {
+    query: 'zilker park',
+    payload: {
+      result: {
+        lat: 30.2676852,
+        lon: -97.7668919,
+        label: 'Zilker Park, United States',
+        types: ['park'],
+        viewport: {
+          southwest: { lat: 30.2660419, lng: -97.7707530 },
+          northeast: { lat: 30.2693219, lng: -97.7624639 },
+        },
+        source: 'nominatim',
+      },
+    },
+  });
+  assert.ok(park.flights[0]?.destination instanceof Cesium.Rectangle, 'a park frames its box');
+
+  const tower = stubViewer();
+  const { destination } = await runKeylessSearch(tower, {}, {
+    query: 'tour eiffel',
+    payload: {
+      result: {
+        lat: 48.8582599,
+        lon: 2.2945006,
+        label: 'Tour Eiffel, France',
+        types: [],
+        viewport: null,
+        source: 'nominatim',
+      },
+    },
+  });
+  assert.equal(destination.navigationMode, 'precise-place');
+  assert.ok(tower.flights[0]?.sphere, 'a landmark flies to a bounding sphere, not a rectangle');
+});
+
+test('a keyless miss is a miss, not a thrown configuration error', async () => {
+  const viewer = stubViewer();
+  const { destination } = await runKeylessSearch(viewer, {}, {
+    query: 'zzzqqxxnotaplace',
+    payload: { result: null, source: null, attribution: null },
+  });
+  assert.equal(destination, null, 'the search box reports "Location not found"');
+  assert.equal(viewer.flights.length, 0);
+});
+
+test('a keyless search still honours the navigation authority veto', async () => {
+  const viewer = stubViewer();
+  const { destination } = await runKeylessSearch(viewer, { beforeFly: () => false }, {
+    payload: KEYLESS_TOULOUSE,
+  });
+  assert.equal(destination, CANCELLED_SEARCH);
+  assert.equal(viewer.flights.length, 0);
 });

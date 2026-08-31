@@ -128,7 +128,7 @@ const SUBSTATION_OUTLINE_ALPHA = 0.65;
  * this module has never heard of must reach the documented BOTH fallback rather
  * than be asserted onto a surface that is not there.
  */
-const POWER_GLOBE_STACK_IDS = Object.freeze(new Set(['bing-aerial', 'bing-labels', 'osm']));
+const POWER_GLOBE_STACK_IDS = Object.freeze(new Set(['bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan']));
 
 /**
  * Ground-line classification for one map stack.
