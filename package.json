@@ -56,6 +56,7 @@
     "qa:fr-hydro": "node scripts/qa-fr-hydro.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
     "transit:route-types": "node scripts/build-pan-route-types.mjs",
+    "transit:static": "node scripts/build-pan-static-index.mjs",
     "shared-mobility:index": "node scripts/build-gbfs-fr-index.mjs",
     "rte:units": "node scripts/build-rte-units-registry.mjs",
     "hydro:registry": "node scripts/build-fr-hydro-registry.mjs"

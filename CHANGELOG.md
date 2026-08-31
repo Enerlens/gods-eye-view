@@ -7,6 +7,32 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Click a live bus and see the line it is running.** Selecting a vehicle in
+  **Transit FR** now draws its **route trace on the ground in the operator's own
+  colour**, marks **every stop of the run it is on**, and adds to the card the
+  line's public name, the stop it is heading for with a countdown and schedule
+  deviation, and its terminus. Bordeaux's Lianes 35 draws as a 32 km loop with
+  its 82 stops and reads *"▸ Avenue de l'Europe · due · 5 min late / ⇥ Gare
+  Saint-Jean · 67 stops"*. Escape puts it all away again.
+- **The two halves of that answer come from two feeds, and degrade separately.**
+  The **trace, the line's name and its colour** come from the network's static
+  GTFS — through the PAN's own **GeoJSON conversion** of it, so `shapes.txt`
+  (36.7 MB compressed for Normandie) is never downloaded; the **ordered stops
+  and their predicted times** come from the network's live **GTFS-RT
+  TripUpdates** feed, which every one of the 142 datasets publishing vehicle
+  positions also publishes. A network with no usable trip update still gets its
+  line drawn, from `route_id` alone, and the card says the stops are not listed.
+- **Which of a line's traces the run is on is measured, not guessed.** A French
+  line publishes several shape variants and the conversion drops `shape_id`, so
+  the layer picks the variant that carries **every one of the trip's own stops**
+  — measured against all 897 of TBM's running trips on 2026-08-31, all 897
+  matched at a median stop-to-trace offset of 3 m. When no variant fits, the
+  **whole line** is drawn instead of one run of it and the card says so.
+- **`npm run transit:static`** builds `config/pan_gtfs_static.json` (196 KB,
+  URLs only): for each of the 148 queryable vehicle feeds, its TripUpdates
+  sibling and its static GTFS's GeoJSON conversion. Geometry itself is fetched
+  on demand and cached under `.gev-cache/pan-gtfs-geo/` — a first click on a
+  network costs 0.87 s, every later one 18 ms.
 - **Live French transit vehicles now say what they ARE.** GTFS-Realtime carries
   no vehicle class, so `npm run transit:route-types` joins each network's static
   GTFS `route_type` and commits `config/pan_route_types.json` — 147 feeds, 7,044
