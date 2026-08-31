@@ -276,6 +276,12 @@ export const SHARE_TRACKING_RESTORE_POLICIES = Object.freeze({
  */
 export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'ais-live-vessels', token: 'a', disposition: 'enabled-only' }),
+  // A DIGIT for the same reason as `gas-fr` and `power-grid` below: every
+  // letter is taken, `z` is the canonical UNKNOWN token two tests assert on,
+  // and 1/2/3 already belong to the gas, grid and RTE layers. A duplicate
+  // token is a boot failure (`validateLayerStateRegistry` throws), not a
+  // merge conflict anyone would notice in review.
+  Object.freeze({ id: 'bdtopo-buildings', token: '4', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),

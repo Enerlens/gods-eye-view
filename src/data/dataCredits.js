@@ -234,6 +234,20 @@ export const DATA_CREDITS = [
       'they are not a pipeline location. Power-station figures are installed capacity by annual edition, not live output.',
   },
   {
+    key: 'ign-bdtopo',
+    html:
+      'French buildings in 3D (footprint, measured height, floor and roof altitudes, ' +
+      'use, dwelling count, RNB identifier): IGN — ' +
+      '<a href="https://geoservices.ign.fr/bdtopo" target="_blank" rel="noopener">BD TOPO&reg;</a>, ' +
+      'served as vector tiles by the ' +
+      '<a href="https://data.geopf.fr/" target="_blank" rel="noopener">G&eacute;oplateforme</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'Altitudes are NGF-IGN69 and are converted to WGS84 ellipsoidal heights (h = H + N) before drawing. ' +
+      'Roof altitudes are published for most of France but NOT for Paris, whose buildings come from the ' +
+      'cadastre with an interpolated Z; those are extruded from the published floor altitude by the ' +
+      'published height instead, and each card names which of the two it used.',
+  },
+  {
     key: 'edf-power-plants',
     html:
       'EDF generating fleet (localisation and installed power of its hydraulic, ' +

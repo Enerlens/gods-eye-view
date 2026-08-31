@@ -133,3 +133,14 @@
   every nuclear and thermal unit; **CERNAY**, a grid battery published as
   `production_type: OTHER`; and **DIRINON 1**, a unit the register has never
   heard of by code or by name. RTE, free account required.
+
+- `bdtopo-batiment-sample.json` — three real IGN BD TOPO vector tiles at z15
+  (Fourvière `15/16823/11688`, Montmartre `15/16597/11268`, La Défense
+  `15/16587/11268`), captured 2026-08-31 from
+  `data.geopf.fr/tms/1.0.0/BDTOPO` and trimmed to one feature per distinct
+  (`usage_1`, altimetric method, has-roof-altitude, no-Z) combination — 66
+  buildings out of 3,240 — with each tile's FULL counts kept beside them. The
+  counts are the point: Fourvière publishes `altitude_maximale_toit` for 1,143
+  of 1,173 buildings and Paris for 0 of 2,067, which is the asymmetry every
+  seating rule in `bdtopoBuildingsFeed.js` exists to handle. Used by
+  `src/data/bdtopoBuildingsFeed.test.mjs`. © IGN, Licence Ouverte 2.0.

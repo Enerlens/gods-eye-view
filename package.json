@@ -46,6 +46,7 @@
     "qa:shared-mobility-fr": "node scripts/qa-shared-mobility-fr.mjs",
     "qa:gas-fr": "node scripts/qa-gas-fr.mjs",
     "qa:power-grid": "node scripts/qa-power-grid.mjs",
+    "qa:bdtopo": "node scripts/qa-bdtopo-buildings.mjs",
     "qa:power-grid-coverage": "node scripts/grid-audit/audit-substations.mjs",
     "qa:power-grid-coverage:lines": "node scripts/grid-audit/audit-lines.mjs",
     "qa:rte-generation": "node scripts/qa-rte-generation.mjs",
