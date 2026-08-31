@@ -18,6 +18,7 @@ import {
   BDTOPO_USAGE_TIERS,
   BDTOPO_ZOOM,
   DEFAULT_HEIGHT_M,
+  MAX_GROUND_CORRECTION_M,
   NO_Z_SENTINEL,
   OFFSET_MIN_SAMPLES,
   bdtopoBoxTooWide,
@@ -36,6 +37,7 @@ import {
   offsetForCell,
   seatBuilding,
   summarizeBuildings,
+  surveyedGroundM,
 } from './bdtopoBuildingsFeed.js';
 
 /**
@@ -221,6 +223,100 @@ test('a cold floor grid produces a zero offset, which is the true altitude', () 
   // And with no offset the building sits exactly where IGN says it is.
   const seat = seatBuilding({ altitude_minimale_sol: 100, hauteur: 10 }, { geoidN: 45, offsetM: 0 });
   assert.equal(seat.topM, 155);
+});
+
+test('a volume reaches down to ground the mesh drew below the survey', () => {
+  const props = { altitude_minimale_sol: 200, altitude_maximale_toit: 212 };
+  // The mesh drew this spot 4 m low: without the reach, 4 m of daylight shows
+  // under the walls.
+  const seat = seatBuilding(props, { geoidN: 50, surfaceM: 246 });
+  assert.equal(seat.baseM, 250 - 4 - BASE_SINK_M);
+  // The roof it was surveyed with is untouched by the reach.
+  assert.equal(seat.topM, 212 + 50);
+  assert.equal(seat.basis, 'published');
+});
+
+test('a volume never loses its height into ground the mesh drew too high', () => {
+  const props = { altitude_minimale_sol: 200, hauteur: 10 };
+  // Rendered ground 6 m above the surveyed floor would leave 4 m of roof
+  // showing; the roof rises with the ground instead.
+  const seat = seatBuilding(props, { geoidN: 0, surfaceM: 206 });
+  assert.equal(seat.topM, 216);
+  assert.equal(seat.baseM, 200 - BASE_SINK_M);
+  assert.equal(seat.basis, 'height');
+});
+
+test('the surveyed ground is the middle of the footprint, not its low corner', () => {
+  // A footprint that drops 6 m across itself: its floor is the low corner, but
+  // a height sampled at its centroid measures the middle. Comparing the two
+  // would read 3 m of the building's own slope as terrain disagreement.
+  const sloped = { altitude_minimale_sol: 200, altitude_maximale_sol: 206, hauteur: 10 };
+  assert.equal(surveyedGroundM(sloped), 203);
+  const seat = seatBuilding(sloped, { geoidN: 0, surfaceM: 203 });
+  assert.equal(seat.gapM, 0);
+  assert.equal(seat.topM, 210);
+  assert.equal(seat.baseM, 200 - BASE_SINK_M);
+
+  // Paris publishes no maximum: the floor is the whole answer, and it is flat.
+  assert.equal(surveyedGroundM({ altitude_minimale_sol: 40 }), 40);
+  assert.equal(surveyedGroundM({}), null);
+  // An inverted pair is corruption, not a slope.
+  assert.equal(surveyedGroundM({ altitude_minimale_sol: 200, altitude_maximale_sol: 190 }), 200);
+});
+
+test('ground that disagrees by more than the cap is a bad sample, not a datum', () => {
+  const props = { altitude_minimale_sol: 200, altitude_maximale_toit: 210 };
+  const sunk = seatBuilding(props, { geoidN: 0, surfaceM: 0 });
+  // A 200 m skirt of wall is a worse artefact than the float it would hide.
+  assert.equal(sunk.baseM, 200 - MAX_GROUND_CORRECTION_M - BASE_SINK_M);
+
+  const lifted = seatBuilding(props, { geoidN: 0, surfaceM: 900 });
+  assert.equal(lifted.topM, 210 + MAX_GROUND_CORRECTION_M);
+});
+
+test('ground that agrees with the survey changes nothing at all', () => {
+  const props = { altitude_minimale_sol: 200, altitude_maximale_toit: 212 };
+  const bare = seatBuilding(props, { geoidN: 45 });
+  const grounded = seatBuilding(props, { geoidN: 45, surfaceM: 245 });
+  assert.equal(grounded.baseM, bare.baseM);
+  assert.equal(grounded.topM, bare.topM);
+  assert.equal(grounded.basis, bare.basis);
+  // Nothing to correct, and the layer says so rather than reporting no reading.
+  assert.equal(grounded.gapM, 0);
+  assert.equal(bare.gapM, 0);
+});
+
+test('the datum sample is the ground under the building, not the cell centre', () => {
+  // Croix-Rousse, one ~1.1 km cell: the slope drops 40 m across it and the
+  // globe draws it 2 m high everywhere. Sampling per building recovers the 2 m;
+  // reusing the cell-centre height for every building recovers the relief
+  // instead, which is what floated whole blocks over Lyon.
+  const ign = [180, 200, 220];
+  const rendered = ign.map((h) => h + 2);
+  const perBuilding = datumOffsetsByCell(ign.map((ignM, i) => ({
+    cellKey: 'croix-rousse', ignM, renderedM: rendered[i],
+  })));
+  assert.equal(perBuilding.byCell.get('croix-rousse'), 2);
+
+  // The same cell measured once at its centre — here the uphill end — reads the
+  // 20 m of relief between the centre and the median building as datum error.
+  const cellCentre = datumOffsetsByCell(ign.map((ignM) => ({
+    cellKey: 'croix-rousse', ignM, renderedM: rendered[2],
+  })));
+  assert.equal(cellCentre.byCell.get('croix-rousse'), 22);
+
+  // Applied to the building at the bottom of the slope, those 20 m are 20 m of
+  // daylight under its walls — the Lyon screenshot, in one number.
+  const house = { altitude_minimale_sol: ign[0], hauteur: 9 };
+  const floated = seatBuilding(house, {
+    geoidN: 0, offsetM: offsetForCell(cellCentre, 'croix-rousse'),
+  });
+  assert.equal(floated.topM - rendered[0], 9 + 20);
+
+  const seated = seatBuilding(house, {
+    geoidN: 0, offsetM: offsetForCell(perBuilding, 'croix-rousse'),
+  });
+  assert.equal(seated.topM - rendered[0], 9);
 });
 
 test('offsets shift a building without changing its height', () => {

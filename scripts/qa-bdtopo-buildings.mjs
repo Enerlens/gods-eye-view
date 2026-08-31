@@ -41,6 +41,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { newQaPage } from './lib/qa-first-run.mjs';
+import { MAX_GROUND_CORRECTION_M } from '../src/data/bdtopoBuildingsFeed.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOTS_DIR = path.join(REPO_ROOT, 'qa-shots', 'bdtopo-buildings');
@@ -211,14 +212,25 @@ try {
   check((lyon?.tallestM || 0) > 10, 'heights are real metres', `tallest=${lyon?.tallestM}`);
   check((lyon?.rnbCoverage || 0) > 0.9, 'buildings keep their national identifier', `rnb=${lyon?.rnbCoverage}`);
 
-  // ── 2. the datum offset ran, and did not cost the earth ──────────────────
+  // ── 2. the buildings are seated on the ground the globe draws ────────────
   check(Number.isFinite(lyon?.datumOffsetM), 'a datum offset was computed', `offset=${lyon?.datumOffsetM}`);
   check((lyon?.datumCells || 0) > 0, 'at least one offset cell was trusted on its own',
     `cells=${lyon?.datumCells}/${lyon?.datumCellsRequested}`);
   check((lyon?.datumCellsRequested || 0) <= 200,
-    'the offset costs a bounded number of terrain samples', `requested=${lyon?.datumCellsRequested}`);
+    'the coarse DEM fallback stays bounded when it is needed at all',
+    `requested=${lyon?.datumCellsRequested}`);
   check(Math.abs(lyon?.datumOffsetM ?? 999) < 120,
     'the offset is a terrain disagreement, not a datum blunder', `offset=${lyon?.datumOffsetM}`);
+  // Fourvière is a hill, and a hill is where the old cell-centre sampling
+  // turned 40 m of relief into 40 m of daylight under a whole block. What is
+  // left after a per-building measurement is the mesh disagreeing with the
+  // survey, which over a 30 m global terrain is metres — not tens of metres.
+  check(Number.isFinite(lyon?.groundGapMedianM) && lyon.groundGapMedianM < 8,
+    'on a hillside the survey and the rendered mesh agree to a few metres',
+    `median=${lyon?.groundGapMedianM} worst5%=${lyon?.groundGapWorstM}`);
+  check((lyon?.groundGapWorstM ?? 999) < MAX_GROUND_CORRECTION_M,
+    'and the worst of them is still a residual, not a bad sample',
+    `worst5%=${lyon?.groundGapWorstM}`);
 
   // ── 3. seating bases are reported apart ──────────────────────────────────
   const basis = lyon?.basis || {};
