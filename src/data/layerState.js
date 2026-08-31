@@ -281,6 +281,13 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
   Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
+  // A DIGIT, for the third time and the same reason: a–y are all taken, `z` is
+  // the canonical UNKNOWN token two existing tests assert on, and 1–3 belong to
+  // gas-fr, power-grid and rte-generation. `enabled-only` rather than
+  // `enabled+options`: the layer's one runtime param is a display floor, and a
+  // shared link that silently hid two thousand plants would be a worse surprise
+  // than one that shows the register whole.
+  Object.freeze({ id: 'fr-hydro-plants', token: '4', disposition: 'enabled-only' }),
   Object.freeze({ id: 'france-energy', token: 'j', disposition: 'enabled-only' }),
   // A DIGIT, not a letter: every letter of "gas" is taken (g by
   // military-awareness, a by AIS, s by satellites), and `z` is the token two
