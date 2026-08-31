@@ -3,6 +3,44 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
+## [Unreleased] — 2026-08-31
+
+### Added
+
+- **Every data layer now knows what it is.** A new `src/data/layerTaxonomy.js`
+  gives all 28 registered layers a category — **AIR & ESPACE**, **DÉFENSE**,
+  **MARITIME**, **MOBILITÉ TERRESTRE**, **ÉNERGIE**, **RISQUES &
+  ENVIRONNEMENT**, **RÉSEAUX & CAPTEURS** — plus three facets: coverage
+  (`global` / `fr` / `us` / `cities`), auth (`none` / `free-key` / `metered`)
+  and cadence (`live` / `periodic` / `static`). The table is cross-checked
+  against the registered layer set in BOTH directions at import, so adding a
+  layer without categorizing it is a boot failure rather than a row that
+  quietly lands in whatever group it was appended next to.
+  `DataLayerManager.getAll()` now reports `category`, `kind` and `tags`, and
+  the one registered layer that loads nothing of its own — the CONTACTS
+  coordinator — is marked `kind: 'coordinator'` so it can never occupy a row or
+  inflate a group count. **Nothing changes on screen yet**: the DATA LAYERS
+  panel still renders its flat list. This is the data the grouped panel reads.
+- **Seven more French cities on the LOCATION tray**, five landmarks each —
+  Marseille (Notre-Dame de la Garde, Vieux-Port, MuCEM, Château d'If,
+  Vélodrome), Lyon (Fourvière, Bellecour, Confluences, Part-Dieu, Saint-Jean),
+  Toulouse (Capitole, Saint-Sernin, Pont Neuf, Jacobins, Cité de l'Espace),
+  Nice, Nantes, Montpellier and Strasbourg (cathédrale, Petite France,
+  Parlement européen).
+
+### Changed
+
+- **The globe opens on Paris.** A visit carrying no share link now starts over
+  the Eiffel Tower at 600 m, framed toward the Trocadéro, instead of Austin.
+  The LOCATION tray offers the eight largest French communes by population —
+  Paris, Marseille, Lyon, Toulouse, Nice, Nantes, Montpellier, Strasbourg — in
+  that order. The cities that left the tray did **not** leave the app: Austin,
+  San Francisco, New York, Tokyo, London, Dubai and Washington stay reachable
+  by search and by voice. Deleting them would have stranded the seeded CCTV
+  cameras, which anchor to a city plus a landmark *index* — a regression test
+  now walks that seed table and fails if any camera loses the landmark it was
+  calibrated against.
+
 ## [Unreleased] — 2026-08-28
 
 ### Added

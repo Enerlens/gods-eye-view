@@ -1,6 +1,6 @@
 import * as Cesium from 'cesium';
 import { StyleManager } from './ui.js';
-import { flyToAustin } from './camera.js';
+import { DEFAULT_CITY_VIEW, flyToDefaultCity } from './camera.js';
 import { DataLayerManager } from './data/manager.js';
 import flightsLayer from './data/flights.js';
 import militaryFlightsLayer from './data/militaryFlights.js';
@@ -27,6 +27,7 @@ import militaryAwarenessLayer from './data/militaryAwareness.js';
 import marineBuoysLayer from './data/marineBuoys.js';
 import localDataLayers from './data/localLayers.js';
 import { LAYER_STATE_REGISTRY } from './data/layerState.js';
+import { LAYER_TAXONOMY } from './data/layerTaxonomy.js';
 import { registerDataCredits } from './data/dataCredits.js';
 import { SceneDirector } from './scenes/director.js';
 import { initGevVoiceCommands } from './voice/gevRealtime.js';
@@ -261,10 +262,10 @@ async function init() {
     const weatherEffects = null;
     const cockpitCloudEffects = initCockpitCloudEffects(viewer);
 
-    // If no share link state, do default fly-to Austin
+    // If no share link state, do the default fly-to (Paris)
     if (!styleManager.hasShareState) {
-      loaderStatus.textContent = 'Flying to Austin, TX...';
-      flyToAustin(viewer);
+      loaderStatus.textContent = `Flying to ${DEFAULT_CITY_VIEW.label}...`;
+      flyToDefaultCity(viewer);
     } else {
       loaderStatus.textContent = 'Restoring shared view...';
     }
@@ -302,7 +303,7 @@ async function init() {
       dataManager.register(layer);
     }
     // Restoration starts only after the complete production registry is sealed.
-    dataManager.finalizeRegistrations(LAYER_STATE_REGISTRY);
+    dataManager.finalizeRegistrations(LAYER_STATE_REGISTRY, LAYER_TAXONOMY);
     if (import.meta.env.DEV) {
       window.__gevQaRegisterLayer = (targetManager, layerModule) => {
         if (targetManager !== dataManager) throw new Error('QA layer manager mismatch');

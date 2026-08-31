@@ -19,6 +19,9 @@ import {
   REGION_SWATH_SPAN_KM,
   GLOBE_VIEW,
   searchAndFlyTo,
+  CITY_POIS,
+  PILL_CITY_IDS,
+  DEFAULT_CITY_ID,
 } from './locations.js';
 
 function stubViewer() {
@@ -714,4 +717,60 @@ test('a keyless search still honours the navigation authority veto', async () =>
   });
   assert.equal(destination, CANCELLED_SEARCH);
   assert.equal(viewer.flights.length, 0);
+});
+
+// ── LOCATION tray: the French pill row, and the coupling it must not break ───
+
+test('every pill resolves to a real city, and Paris opens the row', () => {
+  assert.equal(DEFAULT_CITY_ID, 'paris');
+  assert.equal(PILL_CITY_IDS[0], DEFAULT_CITY_ID);
+  assert.equal(new Set(PILL_CITY_IDS).size, PILL_CITY_IDS.length, 'no duplicate pill');
+  for (const cityId of PILL_CITY_IDS) {
+    const city = CITY_POIS[cityId];
+    assert.ok(city, `pill without a city: ${cityId}`);
+    assert.equal(city.pois.length, 5, `${cityId} must carry the standard 5 POIs`);
+    for (const poi of city.pois) {
+      assert.ok(Number.isFinite(poi.lat) && poi.lat > 41 && poi.lat < 52, `${cityId}/${poi.name} latitude`);
+      assert.ok(Number.isFinite(poi.lon) && poi.lon > -6 && poi.lon < 10, `${cityId}/${poi.name} longitude`);
+    }
+  }
+});
+
+test('every POI sits inside its own city viewBounds', () => {
+  for (const cityId of PILL_CITY_IDS) {
+    const { pois, viewBounds } = CITY_POIS[cityId];
+    for (const poi of pois) {
+      assert.ok(
+        poi.lat >= viewBounds.southwest.lat && poi.lat <= viewBounds.northeast.lat
+        && poi.lon >= viewBounds.southwest.lng && poi.lon <= viewBounds.northeast.lng,
+        `${cityId}/${poi.name} falls outside its viewBounds`,
+      );
+    }
+  }
+});
+
+test('narrowing the pill row never strands a city the app still flies to', () => {
+  // The tray shows French cities only; CITY_POIS keeps every city because voice
+  // presets, free-text search and the seeded CCTV cameras all resolve against
+  // it. This asserts the two are deliberately DIFFERENT sets, so a future
+  // "clean-up" that deletes the unpilled cities has to fail here first.
+  for (const cityId of ['austin', 'sf', 'nyc', 'tokyo', 'london', 'dubai', 'dc']) {
+    assert.ok(CITY_POIS[cityId], `flyable city removed: ${cityId}`);
+    assert.ok(!PILL_CITY_IDS.includes(cityId), `${cityId} should not be a pill`);
+  }
+});
+
+test('every seeded CCTV camera still lands on the POI it was calibrated against', () => {
+  // The seeds in ./data/cctv.js anchor to a cityId plus a poiIndex INTO the
+  // city's pois array. Reordering or shortening that array does not throw — it
+  // silently moves a camera to a different landmark. Parsed as text rather than
+  // imported, because cctv.js pulls the whole Cesium scene layer in with it.
+  const source = fs.readFileSync(new URL('./data/cctv.js', import.meta.url), 'utf8');
+  const seeds = [...source.matchAll(/cityId:\s*'([a-z-]+)',\s*poiIndex:\s*(\d+)/g)];
+  assert.ok(seeds.length >= 15, `expected the seed table, found ${seeds.length} entries`);
+  for (const [, cityId, rawIndex] of seeds) {
+    const city = CITY_POIS[cityId];
+    assert.ok(city, `seeded camera references an unknown city: ${cityId}`);
+    assert.ok(city.pois[Number(rawIndex)], `${cityId} has no POI at index ${rawIndex}`);
+  }
 });

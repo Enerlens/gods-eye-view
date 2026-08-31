@@ -1,0 +1,484 @@
+/*
+ * LAYER TAXONOMY — the one place that says what each dataset IS.
+ *
+ * The Data Layers panel renders `getAll()` in registration order, which is the
+ * order the layers were merged in. That is an accident, not a decision: the
+ * French energy layers sit together because their PRs landed back to back, and
+ * Marine Buoys sits between Mapped Installations and Datacenters for no reason
+ * at all. This file replaces that accident with a stated grouping.
+ *
+ * WHY A CENTRAL FILE AND NOT A `category:` FIELD ON EACH LAYER MODULE
+ *
+ * Grouping and ordering are product decisions about the WHOLE set — "does
+ * Defence stand apart from Air & Space?" is not a question any single layer
+ * module can answer. Spread across 27 modules those decisions become unreviewable;
+ * here they are one diff. This mirrors LAYER_STATE_REGISTRY in ./layerState.js,
+ * which already owns the other cross-cutting per-layer decision (share tokens).
+ *
+ * EXHAUSTIVENESS IS ENFORCED, NOT DOCUMENTED
+ *
+ * `validateLayerTaxonomy()` runs at import and cross-checks this table against
+ * REGISTERED_LAYER_IDS in both directions. Adding a data layer without giving it
+ * a category is therefore a BOOT FAILURE, not a row that quietly lands in
+ * whatever group it was appended next to. Same contract, same reason, as the
+ * duplicate-token assertion next door.
+ *
+ * WHAT IS NOT WIRED YET (deliberate)
+ *
+ * `label` carries the agreed French name for every layer, but NOTHING reads it
+ * yet — the panel still renders `layer.name` from the module. Recording the
+ * names here keeps the naming decision reviewable in the same diff as the
+ * grouping it belongs to; switching the panel over is a separate change, and a
+ * one-line one. Until then `name` remains the only display name in the app.
+ */
+
+import { REGISTERED_LAYER_IDS } from './layerState.js';
+
+/**
+ * The seven groups, in panel order. Ordering is a product decision: the flagship
+ * live-tracking layers open the panel, the bundled reference sets close it.
+ *
+ * Labels are French and UPPERCASE. They are stored ACCENTED (`ÉNERGIE`, not
+ * `ENERGIE`) rather than relying on `text-transform: uppercase` to add accents,
+ * because it does not — CSS uppercasing preserves an accent that is already
+ * there and invents none. `Énergie` typed lowercase-accented would render
+ * correctly, but a plain `Energie` would render as a typo forever.
+ */
+export const LAYER_CATEGORIES = Object.freeze([
+  Object.freeze({ id: 'air-space', label: 'AIR & ESPACE', icon: '✈️' }),
+  Object.freeze({ id: 'defence', label: 'DÉFENSE', icon: '🎖️' }),
+  Object.freeze({ id: 'maritime', label: 'MARITIME', icon: '⚓' }),
+  Object.freeze({ id: 'ground-mobility', label: 'MOBILITÉ TERRESTRE', icon: '🚗' }),
+  // Deliberately "ÉNERGIE" and not "ÉNERGIE & RÉSEAUX": `comms-sensors` below is
+  // "RÉSEAUX & CAPTEURS", and two categories whose labels both lead with the same
+  // noun are two categories nobody can tell apart at a glance. The six layers
+  // here — mix, production groups, plants, HV grid, gas, dams — are all covered
+  // honestly by the single word.
+  Object.freeze({ id: 'energy', label: 'ÉNERGIE', icon: '⚡' }),
+  Object.freeze({ id: 'hazards', label: 'RISQUES & ENVIRONNEMENT', icon: '⚠' }),
+  Object.freeze({ id: 'comms-sensors', label: 'RÉSEAUX & CAPTEURS', icon: '≋' }),
+]);
+
+/**
+ * `dataset` — a toggleable source the visitor turns on and off.
+ * `coordinator` — registered in the same manager, but loads nothing of its own:
+ *   it orchestrates other layers. `military-awareness` is the only one, and it
+ *   is why this distinction exists. It depends on flights + military + AIS +
+ *   installations to compute the 250 km proximity roster behind the CONTACTS
+ *   panel, and it is `showInTogglePanel: false` because you enter it through
+ *   that tab, never through a toggle. Listing it as a dataset would put a row
+ *   in a group count for something that is not a source of data.
+ */
+const VALID_KINDS = new Set(['dataset', 'coordinator']);
+
+/** Where the layer has data at all. Drives the per-row scope chip. */
+const VALID_COVERAGE = new Set(['global', 'fr', 'us', 'cities']);
+
+/** What it costs to see it — the README's 🟢 / 🟡 / 🔴 ladder, as data. */
+const VALID_AUTH = new Set(['none', 'free-key', 'metered']);
+
+/**
+ * `live` — continuously moving or streaming subjects.
+ * `periodic` — refetched on a poll or per viewport.
+ * `static` — bundled in the repo; changes only when someone rebuilds the pack.
+ */
+const VALID_CADENCE = new Set(['live', 'periodic', 'static']);
+
+const VALID_CATEGORY_IDS = new Set(LAYER_CATEGORIES.map((entry) => entry.id));
+
+/**
+ * Category, display name and facets for every registered layer.
+ *
+ * Ordered by category, then by intended within-group order — this array IS the
+ * panel order once the grouped renderer lands, so a layer's position here is
+ * the decision, not an artifact of where it was appended.
+ *
+ * The `(FR)` suffixes that five names carry today are gone on purpose: the
+ * `coverage: 'fr'` facet renders as a scope chip on the row, which says the same
+ * thing once instead of five times, and frees the width for a readable name
+ * ("Groupes de production" rather than "Groupes de prod (FR)").
+ */
+export const LAYER_TAXONOMY = Object.freeze([
+  // ── AIR & ESPACE ──────────────────────────────────────────────────────────
+  Object.freeze({
+    id: 'flights',
+    category: 'air-space',
+    label: 'Vols en direct',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'live',
+  }),
+  Object.freeze({
+    id: 'satellites',
+    category: 'air-space',
+    label: 'Satellites',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'live',
+  }),
+  // "(30d)" is dropped from the name: the rolling window is a property of the
+  // feed, and the row's meta line already reports it.
+  Object.freeze({
+    id: 'rocket-launches',
+    category: 'air-space',
+    label: 'Missions spatiales',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
+  // ── DÉFENSE ───────────────────────────────────────────────────────────────
+  Object.freeze({
+    id: 'military',
+    category: 'defence',
+    label: 'Vols militaires',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'live',
+  }),
+  // The English name says "Mapped", not "Military", as a deliberate hedge: this
+  // is volunteer OSM tagging (military=airfield|naval_base|range|barracks|base
+  // plus landuse=military), incomplete by nature. "Sites cartographiés" carried
+  // the hedge but told the visitor nothing about the subject, so the honesty
+  // moves to where it is already stated — the row's source line and the card —
+  // and the name says what the things are.
+  Object.freeze({
+    id: 'military-installations',
+    category: 'defence',
+    label: 'Sites militaires',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'military-awareness',
+    category: 'defence',
+    label: 'Contexte global',
+    kind: 'coordinator',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'live',
+  }),
+
+  // ── MARITIME ──────────────────────────────────────────────────────────────
+  // "Navires en direct" rather than "Navires AIS": the acronym means nothing to
+  // a first-time visitor, it is already on the source line, and this phrasing
+  // makes a matched pair with "Vols en direct" at the top of AIR & ESPACE.
+  Object.freeze({
+    id: 'ais-live-vessels',
+    category: 'maritime',
+    label: 'Navires en direct',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'free-key',
+    cadence: 'live',
+  }),
+  Object.freeze({
+    id: 'marine-buoys',
+    category: 'maritime',
+    label: 'Bouées marines',
+    kind: 'dataset',
+    coverage: 'us',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'local-ports',
+    category: 'maritime',
+    label: 'Ports',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'static',
+  }),
+
+  // ── MOBILITÉ TERRESTRE ────────────────────────────────────────────────────
+  Object.freeze({
+    id: 'traffic',
+    category: 'ground-mobility',
+    label: 'Trafic routier',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'live',
+  }),
+  Object.freeze({
+    id: 'transit-fr',
+    category: 'ground-mobility',
+    label: 'Transports en commun',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'live',
+  }),
+  // OPEN QUESTION, deliberately parked: this pair's names do not yet express
+  // what actually separates them. It is not docked-vs-free-floating — both carry
+  // stations. It is 36 curated flagship bike systems here, against the long tail
+  // of 135 French operators across every mode there. "Vélos en libre-service" /
+  // "Véhicules partagés" would say that; "Stations vélos" describes what the
+  // row draws. Left as-is until it is decided, and nothing reads `label` yet.
+  Object.freeze({
+    id: 'bikeshare',
+    category: 'ground-mobility',
+    label: 'Stations vélos',
+    kind: 'dataset',
+    coverage: 'cities',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  // "Véhicules" and not "Mobilité": the layer draws six distinct silhouettes —
+  // bike, e-bike, trottinette, moped, CAR, other — so any name built on bikes or
+  // scooters alone would be false, and "mobilité" is an abstraction where the
+  // globe shows objects.
+  Object.freeze({
+    id: 'shared-mobility-fr',
+    category: 'ground-mobility',
+    label: 'Véhicules partagés',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
+  // ── ÉNERGIE ───────────────────────────────────────────────────────────────
+  Object.freeze({
+    id: 'france-energy',
+    category: 'energy',
+    label: 'Mix électrique',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  // `free-key` is the honest reading of a layer that draws its whole subject
+  // keyless and uses the key only to fill in live output: without RTE
+  // credentials the fleet still renders at installed capacity.
+  Object.freeze({
+    id: 'rte-generation',
+    category: 'energy',
+    label: 'Groupes de production',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'free-key',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'edf-power-plants',
+    category: 'energy',
+    label: 'Centrales EDF',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'power-grid',
+    category: 'energy',
+    label: 'Réseau électrique',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'gas-fr',
+    category: 'energy',
+    label: 'Réseau gaz',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'local-dams',
+    category: 'energy',
+    label: 'Barrages',
+    kind: 'dataset',
+    coverage: 'us',
+    auth: 'none',
+    cadence: 'static',
+  }),
+
+  // ── RISQUES & ENVIRONNEMENT ───────────────────────────────────────────────
+  Object.freeze({
+    id: 'earthquakes',
+    category: 'hazards',
+    label: 'Séismes (24 h)',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'local-firms',
+    category: 'hazards',
+    label: 'Feux actifs (FIRMS)',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'free-key',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'vigicrues',
+    category: 'hazards',
+    label: 'Vigicrues',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'hubeau-hydro',
+    category: 'hazards',
+    label: "Stations Hub'Eau",
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'meteofrance-vigilance',
+    category: 'hazards',
+    label: 'Vigilance météo',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
+  // ── RÉSEAUX & CAPTEURS ────────────────────────────────────────────────────
+  Object.freeze({
+    id: 'telegeography-submarine-cables',
+    category: 'comms-sensors',
+    label: 'Câbles sous-marins',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'static',
+  }),
+  Object.freeze({
+    id: 'local-datacenters',
+    category: 'comms-sensors',
+    label: 'Datacenters',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'static',
+  }),
+  // The LAYER is renamed; the dedicated CCTV panel keeps its acronym by explicit
+  // decision, so `#cctv-panel` and its buttons stay as they are.
+  Object.freeze({
+    id: 'cctv',
+    category: 'comms-sensors',
+    label: 'Caméras publiques',
+    kind: 'dataset',
+    coverage: 'cities',
+    auth: 'none',
+    cadence: 'live',
+  }),
+  Object.freeze({
+    id: 'radio',
+    category: 'comms-sensors',
+    label: 'Radio',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'live',
+  }),
+]);
+
+const TAXONOMY_BY_ID = new Map(LAYER_TAXONOMY.map((entry) => [entry.id, entry]));
+
+/**
+ * Validate the taxonomy, and prove it covers the registered layer set exactly.
+ *
+ * The cross-check is the point: a table that merely happens to be complete today
+ * is a table that silently stops being complete on the next merge.
+ * @param {ReadonlyArray<object>} [taxonomy] Table under test.
+ * @param {ReadonlyArray<string>} [registeredIds] Ids the app actually registers.
+ * @returns {true} When valid.
+ * @throws {Error} On any malformed entry, duplicate, or coverage mismatch.
+ */
+export function validateLayerTaxonomy(
+  taxonomy = LAYER_TAXONOMY,
+  registeredIds = REGISTERED_LAYER_IDS,
+) {
+  if (!Array.isArray(taxonomy) || taxonomy.length === 0) {
+    throw new Error('Layer taxonomy must be a non-empty array');
+  }
+  const categoryIds = new Set();
+  for (const category of LAYER_CATEGORIES) {
+    if (!category?.id || !/^[a-z0-9-]+$/.test(category.id)) {
+      throw new Error(`Invalid layer category id: ${category?.id}`);
+    }
+    if (categoryIds.has(category.id)) throw new Error(`Duplicate layer category: ${category.id}`);
+    if (!category.label || typeof category.label !== 'string') {
+      throw new Error(`Layer category missing label: ${category.id}`);
+    }
+    categoryIds.add(category.id);
+  }
+
+  const seen = new Set();
+  for (const entry of taxonomy) {
+    if (!entry || typeof entry.id !== 'string' || !entry.id) {
+      throw new Error('Layer taxonomy entry missing id');
+    }
+    if (seen.has(entry.id)) throw new Error(`Duplicate layer taxonomy id: ${entry.id}`);
+    seen.add(entry.id);
+    if (!VALID_CATEGORY_IDS.has(entry.category)) {
+      throw new Error(`Unknown category for layer: ${entry.id}`);
+    }
+    if (!entry.label || typeof entry.label !== 'string') {
+      throw new Error(`Layer taxonomy entry missing label: ${entry.id}`);
+    }
+    if (!VALID_KINDS.has(entry.kind)) throw new Error(`Invalid layer kind: ${entry.id}`);
+    if (!VALID_COVERAGE.has(entry.coverage)) throw new Error(`Invalid layer coverage: ${entry.id}`);
+    if (!VALID_AUTH.has(entry.auth)) throw new Error(`Invalid layer auth: ${entry.id}`);
+    if (!VALID_CADENCE.has(entry.cadence)) throw new Error(`Invalid layer cadence: ${entry.id}`);
+  }
+
+  const registered = new Set(registeredIds);
+  const missing = [...registered].filter((id) => !seen.has(id));
+  const extra = [...seen].filter((id) => !registered.has(id));
+  if (missing.length || extra.length) {
+    throw new Error(
+      `Layer taxonomy mismatch (uncategorized: ${missing.join(', ') || 'none'}; `
+      + `unknown: ${extra.join(', ') || 'none'})`,
+    );
+  }
+  return true;
+}
+
+validateLayerTaxonomy();
+
+/**
+ * Look up one layer's taxonomy entry.
+ * @param {string} layerId Registered layer id.
+ * @returns {object|null} Frozen entry, or null when the id is not registered.
+ */
+export function layerTaxonomyFor(layerId) {
+  return TAXONOMY_BY_ID.get(layerId) || null;
+}
+
+/**
+ * Group layer ids by category, in category order then within-group order.
+ * Coordinators are excluded: they are not datasets and must never occupy a row
+ * or inflate a group's count.
+ * @param {ReadonlyArray<object>} [taxonomy] Table to project.
+ * @returns {Array<{id: string, label: string, icon: string, layerIds: string[]}>} Groups.
+ */
+export function groupLayerIdsByCategory(taxonomy = LAYER_TAXONOMY) {
+  return LAYER_CATEGORIES.map((category) => Object.freeze({
+    id: category.id,
+    label: category.label,
+    icon: category.icon,
+    layerIds: taxonomy
+      .filter((entry) => entry.category === category.id && entry.kind === 'dataset')
+      .map((entry) => entry.id),
+  }));
+}
