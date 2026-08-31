@@ -56,6 +56,7 @@ How to read this:
 | **ODRÉ — Registre national des installations de production et de stockage d'électricité** | The 171 generating units at or above 100 MW, keyed by EIC code: name, installed power, filière, technology, fuel, connection substation and commune — the register that lets RTE's coordinate-less API be drawn at all (shipped as `src/data/local_data/rte_production_units/units.json`) | [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md) — attribution required, including the data's last-update date; commercial reuse permitted; distorting the information is not | "Registre national des installations de production et de stockage d'électricité — ODRÉ (odre.opendatasoft.com). Licence Ouverte 2.0", plus the register edition the layer reports (30/06/2026) |
 | **EDF Open Data** | Localisation of EDF SA's own nuclear, hydraulic and thermal-à-flamme stations — the top-priority position anchor for the generating-unit layer (69 of its 108 stations), read at build time from the portal's native data-fair routes | [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md) — attribution required; commercial reuse permitted | "EDF Open Data (opendata.edf.fr). Licence Ouverte 2.0"; each station also names its own anchor on its card |
 | **OpenStreetMap + geo.api.gouv.fr** | Station POSITIONS for the generating-unit layer where EDF publishes none: `power=plant` outlines and `ref:FR:RTE` substations from OSM, commune centres from geo.api.gouv.fr | ODbL 1.0 (OSM) / [Licence Ouverte](https://github.com/etalab/licence-ouverte/blob/master/LO.md) (geo.api.gouv.fr) | "© OpenStreetMap contributors" + "geo.api.gouv.fr"; each station also names its own anchor on its card |
+| **ODRÉ — Registre national** (whole hydraulic filière) | Every hydroelectric installation in France, not only the large ones — 2,742 rows, 26.02 GW, down to a 40 kW mill: installed power, technology, commune, connection voltage and substation, grid operator, commissioning date, and the energy actually injected over the trailing twelve months. Shipped as `src/data/local_data/fr_hydro_plants/plants.json`; the register publishes **no coordinates**, so positions are joined at build time from **IGN BD TOPO®** (the data behind the Plan IGN — surveyed building footprints, median span 32 m, with IGN's own `precision_planimetrique`), EDF Open Data, OpenStreetMap (`power=plant`, `power=generator`, `power=substation` `ref:FR:RTE`) and geo.api.gouv.fr | [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md) — attribution required, including the data's last-update date; commercial reuse permitted; distorting the information is not. The joined positions additionally carry **ODbL 1.0** from OpenStreetMap | "Registre national des installations de production et de stockage d'électricité — ODRÉ (odre.opendatasoft.com). Licence Ouverte 2.0", plus the register edition the layer reports (30/06/2026), plus "© OpenStreetMap contributors" for the positions |
 | **Radio Browser** | Geolocated internet-radio station directory and station-level tags | Public-domain directory data under PDDL 1.0; individual broadcaster stream terms apply | "Radio Browser" plus a link to the selected broadcaster |
 | **IGN Géoplateforme** (data.geopf.fr, WMTS) | The two keyless France basemaps: BD ORTHO® 20 cm aerial imagery (`ORTHOIMAGERY.ORTHOPHOTOS`) and Plan IGN v2 (`GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2`), z0-19, clipped to metropolitan France + Corsica and composited over OSM | [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md) — attribution required, including the data's last-update date; commercial reuse permitted. No key, no token, no account; `access-control-allow-origin: *`, and IGN documents the WMTS/TMS endpoints as not rate-limited (unlike the vector-tile ones) | On-globe: "© IGN — Géoplateforme". In the attribution popover: the two named products with their `cartes.gouv.fr` dataset records. The orthophoto mosaic has **no single update date** — the survey year differs per département, and IGN publishes the [table of flight dates](https://data.geopf.fr/annexes/ressources/fiches/photographies-aeriennes-RVB/geoportail_dates_des_prises_de_vues_aeriennes-RVB.pdf) as the canonical answer; Plan IGN v2 is regenerated continuously |
 | **Re:Earth Terrain** (Mapterhorn) | Terrain (keyless globe stacks — OSM etc. — + `/api/terrain/heights` ellipsoidal-height lookups) | Terrain mesh: CC BY 4.0; geoid: EGM2008 (NGA, public domain) | "Terrain (keyless globe stacks): Re:Earth Terrain / Mapterhorn (CC BY 4.0) / EGM2008 (NGA)" |
@@ -134,6 +135,7 @@ Static datasets shipped in the repo for an out-of-the-box experience. **None are
 | **TeleGeography Submarine Cable Map** (712 cables + 1,917 landing points) | `telegeography_submarine_cables/` | **CC BY-NC-SA 3.0** | ❌ **NonCommercial — remove for commercial use** | "© TeleGeography — submarinecablemap.com" |
 | **Natural Earth physical regions** (1,046 land + 292 marine named polygons) | `natural_earth/` | **Public domain** | ✅ (no restrictions) | "Made with Natural Earth" (courtesy credit — not legally required) |
 | **French département polygons** (96 metropolitan départements) | `france_departements/` | **Licence Ouverte** (IGN ADMIN EXPRESS COG 2018, inherited by reference — see the folder's SOURCE.md) | ✅ (attribution only) | "Contours des départements : IGN — ADMIN EXPRESS COG (édition 2018), via france-geojson (G. David). Licence Ouverte." |
+| **French hydro register** (2,742 installations, 26.02 GW) | `fr_hydro_plants/` | **Licence Ouverte 2.0** (ODRÉ register, IGN BD TOPO®) + **ODbL 1.0** on the positions joined in from OpenStreetMap | ✅ (attribution + share-alike on the OSM-derived positions) | "Registre national des installations de production et de stockage d'électricité — ODRÉ (Licence Ouverte 2.0)" + "© OpenStreetMap contributors" + "EDF Open Data" + "geo.api.gouv.fr" |
 | **DataSF Analysis Neighborhoods** (41 SF neighborhood polygons) | `neighborhoods/` | **PDDL 1.0** (public domain) | ✅ (no restrictions) | "City & County of San Francisco — DataSF" (courtesy — not legally required) |
 
 ### ⚠️ TeleGeography is bundled but NonCommercial
@@ -153,6 +155,21 @@ that contains an email or phone identifier. Those fields are not used by the
 application. This privacy transform does not change feature geometry, identity,
 name, operator, capacity, or river metadata, and the resulting derived databases
 remain under ODbL 1.0.
+
+### The hydro register is a JOIN, and half of it carries ODbL (`fr_hydro_plants/`)
+
+`plants.json` is not one dataset. Its **rows** come from ODRÉ's national
+register under Licence Ouverte 2.0, and 589 of its 998 **positions** are IGN BD TOPO footprints while 387 come from
+OpenStreetMap under ODbL 1.0 — which means the file as distributed is a derived
+database and the share-alike obligation travels with it. Every record names its
+own source in `placement` / `placementRef`, so the two halves stay separable:
+an `edf-published` row's coordinate is EDF's, an `osm-plant` row's is OSM's, and
+a commune ring's is geo.api.gouv.fr's.
+
+Redistributing this file, or a globe built from it, means keeping "©
+OpenStreetMap contributors" alongside the ODRÉ credit. See
+`src/data/local_data/fr_hydro_plants/README.md` for the per-tier counts and the
+placement audit.
 
 ### NASA FIRMS acknowledgement
 
