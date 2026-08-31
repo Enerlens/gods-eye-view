@@ -1,9 +1,16 @@
 /**
  * @module gtfsRealtime
  *
- * Pure GTFS-Realtime (`FeedMessage`) decoding for the **VehiclePosition**
- * subset, plus the normalization that turns one decoded entity into the flat
- * record the transit layer renders.
+ * Pure GTFS-Realtime (`FeedMessage`) decoding for the **VehiclePosition** and
+ * **TripUpdate** subsets, plus the normalization that turns one decoded entity
+ * into the flat record the transit layer renders.
+ *
+ * The two are read by one decoder because they are one message type served
+ * from two URLs, and because the second is the only keyless answer to "where
+ * is this bus going next": a TripUpdate carries the ordered stops of the trip
+ * a vehicle is running and the time the operator expects it at each of them.
+ * The static equivalent, `stop_times.txt`, is 223 MB expanded for Bordeaux
+ * alone and re-minted with every GTFS version.
  *
  * WHY A HAND-ROLLED DECODER: GTFS-RT is Protocol Buffers, and the canonical
  * `gtfs-realtime-bindings` package ships the full generated schema (trip
@@ -63,6 +70,90 @@ export const CONGESTION_LEVEL = Object.freeze({
 });
 
 /**
+ * `TripUpdate.StopTimeUpdate.ScheduleRelationship` (tag 5).
+ *
+ * `SCHEDULED` is the default and says nothing, so it normalizes to null and
+ * only the three departures from the timetable are carried: a stop the
+ * operator has cancelled, one it can give no prediction for, and one it has
+ * added. A panel that printed "scheduled" against every stop would be
+ * printing the absence of news as news.
+ *
+ * @see https://gtfs.org/documentation/realtime/reference/#enum-schedulerelationship-1
+ */
+export const STOP_TIME_SCHEDULE_RELATIONSHIP = Object.freeze({
+  1: 'skipped',
+  2: 'no-data',
+  3: 'unscheduled',
+});
+
+/**
+ * `TripDescriptor.ScheduleRelationship` (tag 4).
+ *
+ * `SCHEDULED` (0) is the default and normalizes to null for the same reason
+ * the stop-level default does: a trip running as timetabled is not news. The
+ * four that ARE news are kept, and `canceled` is the one this layer treats as
+ * a disruption in its own right — a vehicle still reporting its position on a
+ * trip the operator has cancelled is a thing riders can see happening.
+ *
+ * @see https://gtfs.org/documentation/realtime/reference/#enum-schedulerelationship
+ */
+export const TRIP_SCHEDULE_RELATIONSHIP = Object.freeze({
+  1: 'added',
+  2: 'unscheduled',
+  3: 'canceled',
+  5: 'replacement',
+  6: 'duplicated',
+  7: 'deleted',
+});
+
+/**
+ * `Alert.Cause` (tag 6). `UNKNOWN_CAUSE` (1) is absent on purpose: it is the
+ * proto default and normalizes to null, so a card never prints "cause:
+ * unknown" as though the operator had said something.
+ *
+ * @see https://gtfs.org/documentation/realtime/reference/#enum-cause
+ */
+export const ALERT_CAUSE = Object.freeze({
+  2: 'other',
+  3: 'technical problem',
+  4: 'strike',
+  5: 'demonstration',
+  6: 'accident',
+  7: 'holiday',
+  8: 'weather',
+  9: 'maintenance',
+  10: 'construction',
+  11: 'police activity',
+  12: 'medical emergency',
+});
+
+/**
+ * `Alert.Effect` (tag 7) — what the alert DOES to service, which is the part
+ * a map can rank by. `UNKNOWN_EFFECT` (8) normalizes to null.
+ *
+ * @see https://gtfs.org/documentation/realtime/reference/#enum-effect
+ */
+export const ALERT_EFFECT = Object.freeze({
+  1: 'no service',
+  2: 'reduced service',
+  3: 'significant delays',
+  4: 'detour',
+  5: 'additional service',
+  6: 'modified service',
+  7: 'other effect',
+  9: 'stop moved',
+  10: 'no effect',
+  11: 'accessibility issue',
+});
+
+/** `Alert.SeverityLevel` (tag 14); `UNKNOWN_SEVERITY` (1) normalizes to null. */
+export const ALERT_SEVERITY = Object.freeze({
+  2: 'info',
+  3: 'warning',
+  4: 'severe',
+});
+
+/**
  * NeTEx/Transmodel id parts that are structural, never the line's public name.
  * French networks publish `route_id`s like `ATOUMOD003:Line:6xC5:LOC`, where
  * only `6xC5` is the thing printed on the front of the bus.
@@ -83,11 +174,15 @@ function readPosition(tag, out, pbf) {
   else if (tag === 5) out.speed = pbf.readFloat();
 }
 
-/** `TripDescriptor` — trip_id 1, start_time 2, start_date 3, route_id 5, direction_id 6. */
+/**
+ * `TripDescriptor` — trip_id 1, start_time 2, start_date 3,
+ * schedule_relationship 4, route_id 5, direction_id 6.
+ */
 function readTripDescriptor(tag, out, pbf) {
   if (tag === 1) out.tripId = pbf.readString();
   else if (tag === 2) out.startTime = pbf.readString();
   else if (tag === 3) out.startDate = pbf.readString();
+  else if (tag === 4) out.tripScheduleRelationship = pbf.readVarint();
   else if (tag === 5) out.routeId = pbf.readString();
   else if (tag === 6) out.directionId = pbf.readVarint();
 }
@@ -118,14 +213,120 @@ function readVehiclePosition(tag, out, pbf) {
 }
 
 /**
- * `FeedEntity` — id 1, is_deleted 2, vehicle 4. Trip updates (3), alerts (5)
- * and shapes (6) are deliberately skipped: this layer draws positions.
+ * `StopTimeEvent` — delay 1 (int32), time 2 (int64), uncertainty 3 (int32).
+ *
+ * `delay` is a protobuf `int32`, NOT a `sint32`: a negative one is written as
+ * a ten-byte sign-extended varint rather than zigzagged, so it is read with
+ * `readVarint(true)`. Read as unsigned it comes back as 9.2e18 — which is what
+ * a bus running 19 seconds early looks like when the wire type is guessed.
+ */
+function readStopTimeEvent(tag, out, pbf) {
+  if (tag === 1) out.delay = pbf.readVarint(true);
+  else if (tag === 2) out.time = pbf.readVarint(true);
+  else if (tag === 3) out.uncertainty = pbf.readVarint(true);
+}
+
+/**
+ * `TripUpdate.StopTimeUpdate` — stop_sequence 1, arrival 2, departure 3,
+ * stop_id 4, schedule_relationship 5.
+ */
+function readStopTimeUpdate(tag, out, pbf) {
+  if (tag === 1) out.stopSequence = pbf.readVarint();
+  else if (tag === 2) out.arrival = pbf.readMessage(readStopTimeEvent, {});
+  else if (tag === 3) out.departure = pbf.readMessage(readStopTimeEvent, {});
+  else if (tag === 4) out.stopId = pbf.readString();
+  else if (tag === 5) out.scheduleRelationship = pbf.readVarint();
+}
+
+/**
+ * `TripUpdate` — trip 1, stop_time_update 2 (repeated), vehicle 3,
+ * timestamp 4, delay 5.
+ */
+function readTripUpdate(tag, out, pbf) {
+  if (tag === 1) pbf.readMessage(readTripDescriptor, out);
+  else if (tag === 2) out.stopTimeUpdates.push(pbf.readMessage(readStopTimeUpdate, {}));
+  else if (tag === 3) pbf.readMessage(readVehicleDescriptor, out);
+  else if (tag === 4) out.timestamp = pbf.readVarint();
+  else if (tag === 5) out.delay = pbf.readVarint(true);
+}
+
+/** `Translation` — text 1, language 2. */
+function readTranslation(tag, out, pbf) {
+  if (tag === 1) out.text = pbf.readString();
+  else if (tag === 2) out.language = pbf.readString();
+}
+
+/** `TranslatedString` — translation 1 (repeated). */
+function readTranslatedString(tag, out, pbf) {
+  if (tag === 1) out.translations.push(pbf.readMessage(readTranslation, {}));
+}
+
+/** `TimeRange` — start 1, end 2 (both POSIX seconds, both optional). */
+function readTimeRange(tag, out, pbf) {
+  if (tag === 1) out.start = pbf.readVarint();
+  else if (tag === 2) out.end = pbf.readVarint();
+}
+
+/**
+ * `EntitySelector` — agency_id 1, route_id 2, route_type 3, trip 4, stop_id 5,
+ * direction_id 6.
+ *
+ * This is WHAT an alert is about, and it is the only reason alerts can be
+ * attached to a moving vehicle at all: a selector naming a `route_id` names
+ * the same key the vehicle's own `TripDescriptor` publishes.
+ */
+function readEntitySelector(tag, out, pbf) {
+  if (tag === 1) out.agencyId = pbf.readString();
+  else if (tag === 2) out.routeId = pbf.readString();
+  else if (tag === 3) out.routeType = pbf.readVarint();
+  else if (tag === 4) pbf.readMessage(readTripDescriptor, out);
+  else if (tag === 5) out.stopId = pbf.readString();
+  else if (tag === 6) out.selectorDirectionId = pbf.readVarint();
+}
+
+/**
+ * `Alert` — active_period 1, informed_entity 5, cause 6, effect 7, url 8,
+ * header_text 10, description_text 11, severity_level 14.
+ *
+ * The TTS variants (12, 13) and the image members (15, 16) are skipped: they
+ * restate text this already carries, for surfaces this project does not have.
+ */
+function readAlert(tag, out, pbf) {
+  if (tag === 1) out.activePeriods.push(pbf.readMessage(readTimeRange, {}));
+  else if (tag === 5) out.informedEntities.push(pbf.readMessage(readEntitySelector, {}));
+  else if (tag === 6) out.cause = pbf.readVarint();
+  else if (tag === 7) out.effect = pbf.readVarint();
+  else if (tag === 8) out.url = pbf.readMessage(readTranslatedString, { translations: [] });
+  else if (tag === 10) out.headerText = pbf.readMessage(readTranslatedString, { translations: [] });
+  else if (tag === 11) out.descriptionText = pbf.readMessage(readTranslatedString, { translations: [] });
+  else if (tag === 14) out.severityLevel = pbf.readVarint();
+}
+
+/**
+ * `FeedEntity` — id 1, is_deleted 2, trip_update 3, vehicle 4, alert 5.
+ *
+ * Shapes (6) and trip modifications (7, 8) are skipped: they describe geometry
+ * and timetable surgery, and this module answers three questions about a
+ * vehicle a person can see — where it is, when it is next expected, and what
+ * the operator has said about its line.
+ *
+ * ONE ENTITY TYPE PER PASS, and this is a robustness rule rather than an
+ * optimisation. 63 French feeds carry all three types in ONE body, so a body
+ * read for positions would otherwise also walk every stop of every trip — and
+ * a publisher whose bytes this decoder mis-reads anywhere in that walk would
+ * take the POSITIONS down with it, in a feed where they had been arriving
+ * fine. `out.want` keeps each pass inside the message it came for; pbf skips
+ * the rest by wire type without interpreting it.
  */
 function readFeedEntity(tag, out, pbf) {
   if (tag === 1) out.id = pbf.readString();
   else if (tag === 2) out.isDeleted = pbf.readBoolean();
-  else if (tag === 4) {
+  else if (tag === 3 && (out.want === 'trip' || out.want === 'all')) {
+    out.tripUpdate = pbf.readMessage(readTripUpdate, { stopTimeUpdates: [] });
+  } else if (tag === 4 && (out.want === 'vehicle' || out.want === 'all')) {
     out.vehicle = pbf.readMessage(readVehiclePosition, {});
+  } else if (tag === 5 && (out.want === 'alert' || out.want === 'all')) {
+    out.alert = pbf.readMessage(readAlert, { activePeriods: [], informedEntities: [] });
   }
 }
 
@@ -139,7 +340,7 @@ function readFeedHeader(tag, out, pbf) {
 /** `FeedMessage` — header 1, entity 2 (repeated). */
 function readFeedMessage(tag, out, pbf) {
   if (tag === 1) pbf.readMessage(readFeedHeader, out.header);
-  else if (tag === 2) out.entities.push(pbf.readMessage(readFeedEntity, {}));
+  else if (tag === 2) out.entities.push(pbf.readMessage(readFeedEntity, { want: out.want }));
 }
 
 /**
@@ -149,12 +350,17 @@ function readFeedMessage(tag, out, pbf) {
  * message carrying only trip updates decodes to entities with no `vehicle`.
  *
  * @param {Uint8Array|ArrayBuffer|Buffer} bytes Raw feed body.
+ * @param {Object} [options]
+ * @param {'vehicle'|'trip'|'alert'|'all'} [options.want] Which entity member to
+ *   parse; everything else is skipped by wire type. Defaults to `all` for
+ *   direct callers, while the three `*FromBytes` entry points each ask for
+ *   exactly what they return — see {@link readFeedEntity}.
  * @returns {{header: {version?: string, incrementality?: number, timestamp?: number},
  *            entities: Array<Object>}}
  */
-export function decodeFeedMessage(bytes) {
+export function decodeFeedMessage(bytes, { want = 'all' } = {}) {
   const buffer = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  const message = { header: {}, entities: [] };
+  const message = { header: {}, entities: [], want };
   new PbfReader(buffer).readFields(readFeedMessage, message);
   return message;
 }
@@ -257,6 +463,9 @@ export function vehicleFromEntity(entity, { feedId = '' } = {}) {
     stopId: vehicle.stopId ? String(vehicle.stopId) : null,
     stopSequence: Number.isFinite(vehicle.stopSequence) ? vehicle.stopSequence : null,
     status: VEHICLE_STOP_STATUS[vehicle.currentStatus] || null,
+    // Carried from the vehicle's OWN `TripDescriptor`, so a cancelled run is
+    // known from the position feed alone — no second request, no join.
+    tripRelationship: TRIP_SCHEDULE_RELATIONSHIP[vehicle.tripScheduleRelationship] || null,
     occupancy: OCCUPANCY_STATUS[vehicle.occupancyStatus] || null,
     congestion: CONGESTION_LEVEL[vehicle.congestionLevel] || null,
     timestampMs: normalizeFeedTimestampMs(vehicle.timestamp),
@@ -272,7 +481,7 @@ export function vehicleFromEntity(entity, { feedId = '' } = {}) {
  * @returns {{vehicles: Array<Object>, headerTimestampMs: ?number, entityCount: number}}
  */
 export function vehiclePositionsFromBytes(bytes, context = {}) {
-  const message = decodeFeedMessage(bytes);
+  const message = decodeFeedMessage(bytes, { want: 'vehicle' });
   const vehicles = [];
   for (const entity of message.entities) {
     const record = vehicleFromEntity(entity, context);
@@ -280,6 +489,250 @@ export function vehiclePositionsFromBytes(bytes, context = {}) {
   }
   return {
     vehicles,
+    headerTimestampMs: normalizeFeedTimestampMs(message.header?.timestamp),
+    entityCount: message.entities.length,
+  };
+}
+
+/**
+ * Largest schedule deviation accepted from a feed, seconds (±24 h).
+ *
+ * Not a style rule: a delay is an `int32` the operator computes, and a feed
+ * that has lost its reference timetable publishes values in the hundreds of
+ * thousands of seconds. "4 days late" is not a prediction, so it is dropped
+ * rather than printed next to a stop name.
+ */
+export const MAX_PLAUSIBLE_DELAY_SEC = 24 * 3600;
+
+/** A schedule deviation, or null when the feed published none that means anything. */
+function normalizeDelaySec(value) {
+  const delay = Number(value);
+  if (!Number.isFinite(delay)) return null;
+  if (Math.abs(delay) > MAX_PLAUSIBLE_DELAY_SEC) return null;
+  return Math.round(delay);
+}
+
+/**
+ * Flatten one decoded `StopTimeUpdate` into a stop the panel can print.
+ *
+ * Returns null only for an update that identifies no stop at all — neither by
+ * id nor by sequence — which nothing downstream could place.
+ *
+ * @param {Object} update Decoded `StopTimeUpdate`.
+ * @returns {?{sequence: ?number, stopId: ?string, arrivalMs: ?number,
+ *             departureMs: ?number, delaySec: ?number, relationship: ?string}}
+ */
+export function stopTimeFromUpdate(update) {
+  if (!update) return null;
+  const stopId = update.stopId ? String(update.stopId).trim() : null;
+  const sequence = Number.isFinite(update.stopSequence) ? update.stopSequence : null;
+  if (!stopId && sequence === null) return null;
+  const arrivalMs = normalizeFeedTimestampMs(update.arrival?.time);
+  const departureMs = normalizeFeedTimestampMs(update.departure?.time);
+  // The arrival delay is the one a rider waiting at the stop feels; the
+  // departure delay is only the fallback for feeds that publish one event.
+  const delaySec = normalizeDelaySec(update.arrival?.delay)
+    ?? normalizeDelaySec(update.departure?.delay);
+  return {
+    sequence,
+    stopId,
+    arrivalMs,
+    departureMs,
+    delaySec,
+    relationship: STOP_TIME_SCHEDULE_RELATIONSHIP[update.scheduleRelationship] || null,
+  };
+}
+
+/**
+ * Flatten one decoded `FeedEntity` carrying a `TripUpdate`.
+ *
+ * Returns null for entities that carry no trip update, for deletions, and for
+ * updates with no `trip_id` — the key everything downstream joins on.
+ *
+ * @param {Object} entity Decoded `FeedEntity`.
+ * @returns {?Object} Normalized trip update.
+ */
+export function tripUpdateFromEntity(entity) {
+  if (!entity || entity.isDeleted === true) return null;
+  const update = entity.tripUpdate;
+  if (!update) return null;
+  const tripId = update.tripId ? String(update.tripId).trim() : '';
+  if (!tripId) return null;
+
+  const stops = [];
+  for (const raw of update.stopTimeUpdates || []) {
+    const stop = stopTimeFromUpdate(raw);
+    if (stop) stops.push(stop);
+  }
+  // The spec requires stop_time_updates in stop_sequence order, and most feeds
+  // honour it. Sorting is applied only when EVERY entry carries a sequence:
+  // partially-numbered lists sort into an order no feed published.
+  if (stops.length > 1 && stops.every((stop) => stop.sequence !== null)) {
+    stops.sort((a, b) => a.sequence - b.sequence);
+  }
+
+  return {
+    tripId,
+    relationship: TRIP_SCHEDULE_RELATIONSHIP[update.tripScheduleRelationship] || null,
+    routeId: update.routeId ? String(update.routeId) : null,
+    directionId: Number.isFinite(update.directionId) ? update.directionId : null,
+    startDate: update.startDate ? String(update.startDate) : null,
+    startTime: update.startTime ? String(update.startTime) : null,
+    vehicleId: update.vehicleId ? String(update.vehicleId) : null,
+    vehicleLabel: update.vehicleLabel ? String(update.vehicleLabel) : null,
+    timestampMs: normalizeFeedTimestampMs(update.timestamp),
+    delaySec: normalizeDelaySec(update.delay),
+    stops,
+  };
+}
+
+/**
+ * Decode a feed body straight to normalized trip updates.
+ *
+ * A vehicle-position body decodes to an empty list rather than raising: the
+ * two message types share one `FeedMessage`, and several French publishers
+ * serve both from URLs that differ only by a resource id.
+ *
+ * @param {Uint8Array|ArrayBuffer|Buffer} bytes Raw feed body.
+ * @returns {{trips: Array<Object>, headerTimestampMs: ?number, entityCount: number}}
+ */
+export function tripUpdatesFromBytes(bytes) {
+  const message = decodeFeedMessage(bytes, { want: 'trip' });
+  const trips = [];
+  for (const entity of message.entities) {
+    const record = tripUpdateFromEntity(entity);
+    if (record) trips.push(record);
+  }
+  return {
+    trips,
+    headerTimestampMs: normalizeFeedTimestampMs(message.header?.timestamp),
+    entityCount: message.entities.length,
+  };
+}
+
+/**
+ * Pick one language out of a `TranslatedString`.
+ *
+ * French first, because these are French operators writing for French riders
+ * and several publish an English translation that is a machine rendering of
+ * the French one. Then an UNTAGGED translation — the spec allows exactly one,
+ * and a feed that publishes a single string with no language tag is the common
+ * French case. Then whatever came first, because one language is better than
+ * printing nothing.
+ *
+ * @param {Object} translated Decoded `TranslatedString`.
+ * @param {string[]} [preferred] Language codes, most wanted first.
+ * @returns {?string}
+ */
+export function translatedText(translated, preferred = ['fr']) {
+  const translations = Array.isArray(translated?.translations) ? translated.translations : [];
+  const usable = translations.filter((entry) => String(entry?.text ?? '').trim());
+  if (!usable.length) return null;
+  for (const want of preferred) {
+    const match = usable.find(
+      (entry) => String(entry.language ?? '').toLowerCase().split('-')[0] === want,
+    );
+    if (match) return String(match.text).trim();
+  }
+  const untagged = usable.find((entry) => !String(entry.language ?? '').trim());
+  return String((untagged || usable[0]).text).trim();
+}
+
+/**
+ * Flatten one decoded `FeedEntity` carrying an `Alert`.
+ *
+ * Returns null for entities that carry no alert, for deletions, and for alerts
+ * that inform NO entity — an alert with an empty `informed_entity` list is
+ * about nothing this layer can attach it to, and attaching it to everything
+ * would put a random disruption on every vehicle in the network.
+ *
+ * @param {Object} entity Decoded `FeedEntity`.
+ * @param {Object} [options]
+ * @param {string[]} [options.languages] Forwarded to {@link translatedText}.
+ * @returns {?Object} Normalized alert.
+ */
+export function alertFromEntity(entity, { languages = ['fr'] } = {}) {
+  if (!entity || entity.isDeleted === true) return null;
+  const alert = entity.alert;
+  if (!alert) return null;
+
+  const informed = [];
+  for (const selector of alert.informedEntities || []) {
+    const entry = {
+      agencyId: selector.agencyId ? String(selector.agencyId) : null,
+      routeId: selector.routeId ? String(selector.routeId) : null,
+      routeType: Number.isFinite(selector.routeType) ? selector.routeType : null,
+      tripId: selector.tripId ? String(selector.tripId) : null,
+      stopId: selector.stopId ? String(selector.stopId) : null,
+      directionId: Number.isFinite(selector.selectorDirectionId) ? selector.selectorDirectionId : null,
+    };
+    if (Object.values(entry).some((value) => value !== null)) informed.push(entry);
+  }
+  if (!informed.length) return null;
+
+  const header = translatedText(alert.headerText, languages);
+  const description = translatedText(alert.descriptionText, languages);
+  if (!header && !description) return null;
+
+  return {
+    id: entity.id ? String(entity.id) : null,
+    header,
+    description,
+    url: translatedText(alert.url, languages),
+    cause: ALERT_CAUSE[alert.cause] || null,
+    effect: ALERT_EFFECT[alert.effect] || null,
+    severity: ALERT_SEVERITY[alert.severityLevel] || null,
+    activePeriods: (alert.activePeriods || []).map((period) => ({
+      startMs: normalizeFeedTimestampMs(period.start),
+      endMs: normalizeFeedTimestampMs(period.end),
+    })),
+    informed,
+  };
+}
+
+/**
+ * Whether an alert is in force at `nowMs`.
+ *
+ * An alert with NO active period is active — that is the spec's own reading
+ * ("if missing, the alert will be shown as long as it appears in the feed"),
+ * and it is what most French publishers rely on. A period with only a start or
+ * only an end is half-open in the direction it names.
+ *
+ * @param {Object} alert Normalized alert.
+ * @param {number} [nowMs]
+ * @returns {boolean}
+ */
+export function alertIsActive(alert, nowMs = Date.now()) {
+  const periods = Array.isArray(alert?.activePeriods) ? alert.activePeriods : [];
+  if (!periods.length) return true;
+  return periods.some((period) => {
+    if (period.startMs !== null && nowMs < period.startMs) return false;
+    if (period.endMs !== null && nowMs > period.endMs) return false;
+    return true;
+  });
+}
+
+/**
+ * Decode a feed body straight to normalized alerts.
+ *
+ * Like {@link tripUpdatesFromBytes}, a body of another entity type decodes to
+ * an empty list rather than raising: 63 of the 150 French position feeds serve
+ * all three entity types from ONE resource id, so the same bytes are read
+ * three ways (measured 2026-08-31).
+ *
+ * @param {Uint8Array|ArrayBuffer|Buffer} bytes Raw feed body.
+ * @param {Object} [options] Forwarded to {@link alertFromEntity}.
+ * @returns {{alerts: Array<Object>, headerTimestampMs: ?number, entityCount: number}}
+ */
+export function alertsFromBytes(bytes, options = {}) {
+  const message = decodeFeedMessage(bytes, { want: 'alert' });
+  const alerts = [];
+  for (const entity of message.entities) {
+    const record = alertFromEntity(entity, options);
+    if (record) alerts.push(record);
+  }
+  return {
+    alerts,
     headerTimestampMs: normalizeFeedTimestampMs(message.header?.timestamp),
     entityCount: message.entities.length,
   };

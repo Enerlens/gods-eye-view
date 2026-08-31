@@ -10,6 +10,10 @@ import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
 import transitFranceLayer, {
   buildTransitSelectionLabel,
+  detectionLabelFor,
+  transitAlertReadout,
+  transitDisruptionReadout,
+  transitScheduleReadout,
   cameraTransitBox,
   createTransitSelectedOverlayEntry,
   glideDurationMs,
@@ -293,4 +297,115 @@ test('a glyph travels between two fixes at the speed the feed implies', () => {
   // and nothing creeps past the window in which a feed is still reporting.
   assert.equal(glideDurationMs(fix, fix + 200), 3_000);
   assert.equal(glideDurationMs(fix, fix + 10 * 60_000), 90_000);
+});
+
+// --- Delays and disruptions -------------------------------------------------
+// The enrichment: the operator's own prediction for the run this vehicle is
+// on, joined by the proxy and printed here. What is worth pinning is the
+// SILENCE cases — 62% of the national fleet is carried by networks that
+// publish no deviation at all, and the card must be able to tell that apart
+// from "on time" without inventing either.
+
+test('the card prints the deviation, the disruption and the operator\'s own sentence', () => {
+  const record = makeRecord({
+    vehicle: {
+      delaySec: 245,
+      delayFrom: 'current-stop',
+      tripMatch: 'trip',
+      skippedStops: 2,
+      skippedAhead: true,
+      alert: {
+        scope: 'route',
+        text: 'Bordeaux : travaux quai de Paludate',
+        effect: 'detour',
+        severity: 'warning',
+      },
+      alertCount: 3,
+    },
+  });
+  const lines = buildTransitSelectionLabel(record, 1787765245000).split('\n');
+  assert.equal(lines[4], '🕘 4 min late');
+  assert.equal(lines[5], '⚠ 2 stops skipped ahead');
+  assert.equal(lines[6], '⚠ Bordeaux : travaux quai de Paludate (this line · detour) +2 more');
+  // The lines the card already had are still where they were.
+  assert.equal(lines[7], '⏱ fix 30s ago');
+  assert.equal(lines[8], 'Bus · Licence Ouverte 2.0');
+});
+
+test('a weakly-sourced deviation says where it was read; the strong one does not', () => {
+  assert.equal(
+    transitScheduleReadout({ delaySec: 245, delayFrom: 'current-stop' }),
+    '🕘 4 min late',
+  );
+  assert.equal(
+    transitScheduleReadout({ delaySec: 245, delayFrom: 'behind' }),
+    '🕘 4 min late · last measured stop',
+  );
+  assert.equal(
+    transitScheduleReadout({ delaySec: -300, delayFrom: 'ahead' }),
+    '🕘 5 min early · next predicted stop',
+  );
+});
+
+test('a network that publishes no deviation says so, and silence stays silent', () => {
+  // Joined to its run, but this operator publishes absolute times and never a
+  // delay. Omitting the line would leave "on time" and "never said" identical.
+  assert.equal(
+    transitScheduleReadout({ tripMatch: 'trip' }),
+    '🕘 run tracked · no delay published',
+  );
+  // Not joined to anything: nothing to say, so nothing is said.
+  assert.equal(transitScheduleReadout({}), null);
+  assert.equal(transitScheduleReadout(null), null);
+});
+
+test('a bus waiting at its terminus is never printed as an hour early', () => {
+  const due = new Date(1787768000000);
+  const clock = `${String(due.getHours()).padStart(2, '0')}:${String(due.getMinutes()).padStart(2, '0')}`;
+  assert.equal(
+    transitScheduleReadout({ awaitingDeparture: true, scheduledDepartureMs: 1787768000000 }),
+    `🕘 waiting to depart · due out ${clock}`,
+  );
+  assert.equal(transitScheduleReadout({ awaitingDeparture: true }), '🕘 waiting to depart');
+});
+
+test('the disruption line reads the run, and says whether a skip is still ahead', () => {
+  assert.equal(transitDisruptionReadout({ tripState: 'canceled' }), '⚠ run cancelled');
+  assert.equal(transitDisruptionReadout({ tripState: 'added' }), '⚠ extra run');
+  assert.equal(
+    transitDisruptionReadout({ tripState: 'canceled', skippedStops: 1, skippedAhead: false }),
+    '⚠ run cancelled · 1 stop skipped on this run',
+  );
+  assert.equal(transitDisruptionReadout({ skippedStops: 0 }), null);
+  assert.equal(transitDisruptionReadout({}), null);
+});
+
+test('an alert carries its scope, because a line notice is not a vehicle notice', () => {
+  assert.equal(
+    transitAlertReadout({ alert: { scope: 'trip', text: 'Ce service est dévié', effect: 'detour' } }),
+    '⚠ Ce service est dévié (this run · detour)',
+  );
+  assert.equal(
+    transitAlertReadout({ alert: { scope: 'network', text: 'Grève', effect: 'other effect' } }),
+    '⚠ Grève (network-wide)',
+    'an effect that says nothing the text does not is left off',
+  );
+  // A publisher's paragraph is cut to card width, on a word boundary.
+  const long = transitAlertReadout({
+    alert: {
+      scope: 'route',
+      text: 'Travaux de renouvellement des voies entre la place de la Victoire et la gare Saint-Jean',
+    },
+  });
+  assert.ok(long.length < 90 && long.includes('…'), long);
+  assert.equal(transitAlertReadout({}), null);
+});
+
+test('the ambient label carries minutes only when the vehicle is out of the band', () => {
+  assert.equal(detectionLabelFor({ route: '07', delaySec: 245 }), 'LN 07 +4m');
+  assert.equal(detectionLabelFor({ route: '07', delaySec: -180 }), 'LN 07 -3m');
+  // Inside the on-time band the card says "on time", so the label says nothing.
+  assert.equal(detectionLabelFor({ route: '07', delaySec: 90 }), 'LN 07');
+  assert.equal(detectionLabelFor({ route: '07' }), 'LN 07');
+  assert.equal(detectionLabelFor({}), 'TRANSIT');
 });

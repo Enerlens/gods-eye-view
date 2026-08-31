@@ -7,6 +7,45 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Every live transit vehicle now carries the operator's own delay and
+  disruption.** The 150 French networks that publish vehicle positions all
+  publish `TripUpdate` as well — and **63 of them publish it in the same
+  protobuf body**, so for those the delay is bytes already fetched rather than a
+  second request. The dev-server proxy joins that prediction to the vehicle
+  already on screen and sends four things with it: how far off the timetable the
+  operator says the run is, whether the run has been **cancelled**, which of its
+  remaining stops it will **skip**, and the operator's own sentence about its
+  line from `Alert` (60 feeds carry them). The card reads *"🕘 9 min late"* and
+  *"⚠ Bordeaux : travaux quai de Paludate (this line · detour)"*, the ambient
+  contact label reads *"LN 15 +9m"*, and the control-panel row says *"1 network ·
+  25 late"* without a click. Measured 2026-08-31 over the 30 largest live
+  networks (1,865 vehicles): **67% of vehicles join a trip update** by `trip_id`,
+  a further 2% only by vehicle id, and **38% end up with a deviation**. The gap
+  is not a join failure — 17 of those 30 networks publish an absolute predicted
+  `time` and never a `delay`, and converting one to the other needs the 223 MB
+  `stop_times.txt` this project refuses to load. Those vehicles read *"run
+  tracked · no delay published"* instead of showing zero, because a viewer must
+  be able to tell "on time" from "nobody said".
+- **A bus parked at its terminus is not fifty-six minutes early.** A vehicle
+  waiting for a departure an hour away publishes a predicted arrival of "about
+  now" against a scheduled arrival an hour ahead, and the deviation the operator
+  computes is −3,361 s. Printed as punctuality that reads *56 minutes early*,
+  which is not a thing a bus can be. `transitSchedule.awaitingDeparture` catches
+  it — stopped at the first stop of its own run, ahead of schedule — and reports
+  *"🕘 waiting to depart · due out 22:46"* instead. Over one Bordeaux viewport
+  that is the difference between a summary claiming **28 early** and one saying
+  **7 early, 13 waiting**. The rule is deliberately one-sided: a vehicle at its
+  first stop running LATE has an overdue departure, which is real lateness.
+- **Which resource carries a network's delays is now measured, not guessed.**
+  The PAN catalog never says which trip-update resource pairs with which
+  position feed, and a dataset can publish several of each — Astuce ships three
+  position feeds and four trip-update feeds, one per operator, on interleaved
+  ids. `scripts/build-pan-gtfs-rt-index.mjs` now probes the candidates and keeps
+  the one whose trips actually **join this feed's own vehicles**, committing the
+  measured join rate alongside. Adjacent resource ids are only the ranking hint:
+  they pair TaM's urban and suburban feeds correctly and get Astuce wrong, where
+  measurement scores the right body at 90%. Mean measured join rate across the
+  79 networks with vehicles running at build time: **0.92**.
 - **Live French transit vehicles now say what they ARE.** GTFS-Realtime carries
   no vehicle class, so `npm run transit:route-types` joins each network's static
   GTFS `route_type` and commits `config/pan_route_types.json` — 147 feeds, 7,044

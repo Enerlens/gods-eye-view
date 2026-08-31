@@ -14,6 +14,9 @@
  *        and never runs past the newest fix
  *   iv.  clicking a vehicle raises the protected card with operator values,
  *        and Escape puts it back
+ *   v.   the schedule enrichment survives the round trip — a late vehicle
+ *        carries its minutes into the ambient label, and the row says how much
+ *        of what is on screen is running behind
  *
  * Screenshots are written under the gitignored `qa-shots/transit-fr/`.
  *
@@ -75,7 +78,7 @@ function vehiclePayload({ shiftDeg = 0, includeStale = false } = {}) {
   for (let i = 0; i < 24; i++) {
     const row = Math.floor(i / 6);
     const column = i % 6;
-    vehicles.push({
+    const vehicle = {
       id: `pan-83026:bus-${i}`,
       feed: FEED.id,
       lat: Number((CITY.lat - 0.02 + row * 0.012 + shiftDeg).toFixed(5)),
@@ -88,8 +91,30 @@ function vehiclePayload({ shiftDeg = 0, includeStale = false } = {}) {
       status: 'in-transit',
       occupancy: 'few-seats',
       timestampMs: now - 5000,
-    });
+    };
+    // The four schedule outcomes a real viewport mixes: a deviation past the
+    // band, one inside it, a run that was joined but whose network publishes no
+    // deviation at all, and a vehicle nothing could be said about.
+    if (i % 4 === 0) Object.assign(vehicle, { delaySec: 245, delayFrom: 'current-stop', tripMatch: 'trip' });
+    else if (i % 4 === 1) Object.assign(vehicle, { delaySec: 30, delayFrom: 'current-stop', tripMatch: 'trip' });
+    else if (i % 4 === 2) vehicle.tripMatch = 'trip';
+    vehicles.push(vehicle);
   }
+  // One of each disruption, so the card and the row have something to say.
+  Object.assign(vehicles[0], {
+    alert: {
+      scope: 'route',
+      text: 'Bordeaux : travaux quai de Paludate',
+      effect: 'detour',
+      severity: 'warning',
+    },
+  });
+  Object.assign(vehicles[5], { tripState: 'canceled', skippedStops: 2, skippedAhead: true });
+  Object.assign(vehicles[9], {
+    delaySec: undefined,
+    awaitingDeparture: true,
+    scheduledDepartureMs: now + 45 * 60 * 1000,
+  });
   if (includeStale) {
     vehicles.push({
       id: 'pan-83026:bus-stale',
@@ -113,6 +138,16 @@ function vehiclePayload({ shiftDeg = 0, includeStale = false } = {}) {
     feedsFailed: 0,
     feedsTruncated: false,
     vehiclesTruncated: false,
+    schedule: {
+      late: vehicles.filter((entry) => (entry.delaySec ?? 0) >= 180).length,
+      early: 0,
+      onTime: vehicles.filter((entry) => entry.delaySec === 30).length,
+      unknown: vehicles.filter((entry) => entry.delaySec === undefined).length,
+      waiting: vehicles.filter((entry) => entry.awaitingDeparture).length,
+      canceled: vehicles.filter((entry) => entry.tripState === 'canceled').length,
+      skipped: vehicles.filter((entry) => entry.skippedStops > 0).length,
+      alerted: vehicles.filter((entry) => entry.alert).length,
+    },
     indexGeneratedAt: new Date().toISOString(),
   };
 }
@@ -355,6 +390,31 @@ async function main() {
       clicked && clicked.type === 'VEH', JSON.stringify(clicked));
     check('with a line-tagged callout id', clicked && /^LN |^TRANSIT$/.test(clicked.id),
       clicked?.id);
+
+    // ── v. delays and disruptions ─────────────────────────────────────────
+    //
+    // The enrichment is not a layer of its own: it rides on the vehicles that
+    // were already being drawn. So what is proved here is that it survives the
+    // round trip and reaches the two surfaces a viewer sees without clicking —
+    // the ambient contact label and the control-panel row.
+    console.log('[qa] v. delays and disruptions');
+    const labelled = await page.evaluate(() => {
+      const module = window.__godsEyeView.dataManager.layers.get('transit-fr').module;
+      return {
+        ids: module.getDetectableObjects({ maxCount: 100000 }).map((object) => object.id),
+        label: module.getStats().loadingLabel,
+      };
+    });
+    const late = labelled.ids.filter((id) => /^LN \d+ \+4m$/.test(id));
+    check('a late vehicle carries its minutes into the ambient label', late.length === 6,
+      `${late.length} labelled late of ${labelled.ids.length}`);
+    check('a vehicle inside the on-time band carries no number',
+      labelled.ids.filter((id) => /[+-]\d+m$/.test(id)).length === late.length,
+      labelled.ids.filter((id) => /[+-]\d+m$/.test(id)).join(' '));
+    check('the row says how much of the viewport is running behind',
+      /\b6 late\b/.test(labelled.label || ''), labelled.label);
+    check('and names a cancelled run rather than hiding it',
+      /\b1 cancelled\b/.test(labelled.label || ''), labelled.label);
 
     // ── console hygiene ────────────────────────────────────────────────────
     const relevant = consoleErrors.filter((entry) => !/favicon|Failed to load resource/i.test(entry));
