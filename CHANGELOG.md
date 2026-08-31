@@ -7,6 +7,64 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Aéroports: 7 464 places to land, France in full.** A new bundled layer
+  draws the world's airports and aerodromes from **OurAirports**, the open
+  catalogue its volunteer editors dedicate to the public domain. Cards carry the
+  **ICAO and IATA codes**, the class, the **longest open runway** in metres with
+  its surface family, and the commune — Roissy at 4 215 m of asphalt, an 82 m
+  strip at La Tour-du-Pin, and 7 462 more in between. Bundled with the build, so
+  it draws with **no key and no network**.
+
+  The pack is a **selection, and the selection is asymmetric on purpose**:
+  worldwide it is every large and medium airport plus everything that sells a
+  scheduled seat (which is what keeps Monaco's heliport and the Greenland
+  shuttles), while **France and the overseas territories carry the whole long
+  tail** — 1 335 fields, altiports, hydrobases and one balloon field included.
+  Shipped whole, the catalogue is 86 002 rows and roughly 25 MB of committed
+  JSON, 23 196 of them heliports, and in France almost every one of those is a
+  hospital landing pad with no ICAO code. The four clauses that decide what
+  survives live in `src/data/airportsPack.js` — the same module the layer reads
+  back when it writes a card, so the build and the globe cannot disagree about a
+  field — and `airports/README.md` states the limit plainly: a small airfield
+  missing outside France was **not selected**, and is not evidence of an empty
+  sky.
+
+  **Importance is a map channel, not a footnote.** Seven thousand identical dots
+  is a wall, and this pack is the opposite of uniform. Two independent fields
+  decide how much an airfield matters — OurAirports' editorial **size** class,
+  and the hard fact of whether a **timetabled service** calls there — so
+  crossing them gives four tiers: **Grand aéroport** (1 172), **Aéroport de
+  ligne** (3 175), **Aéroport sans ligne** (1 991) and **Aérodrome & aéroclub**
+  (1 126, all of them French, because the clause that admits them is). The tier
+  is decided once and then drives everything: the dot size (14 → 6 px), the
+  colour ramp, the label ladder, the legend, and **how far out the card stays
+  readable** (14 000 km → 200 km). That last channel is the one that fixed the
+  real problem: over Île-de-France the shared label grid was awarding fifteen
+  cells to aéroclubs and three to Roissy, Orly and Le Bourget, because cells are
+  awarded *locally* and a grass strip with no competition always wins its own.
+  Priority cannot fix that; range can. The marker is always drawn — only its
+  name waits until you come closer.
+
+  Four chips on the layer row cut to the tier you want — `TOUS`, `AÉROPORTS`
+  (drops the aéroclubs), `LIGNES` (only what a ticket is sold to), `GRANDS`.
+  They are runtime params, **not** share-link state, and the layer keeps
+  reporting all 7 464 features while a floor is on: a chip hides markers without
+  losing them, the same contract the hydro layer's `floorKw` already follows.
+  The legend counts what is **drawn**, not what is loaded, so a hidden tier
+  reads 0 and says how many it is holding back rather than quietly overstating
+  the picture. The grading itself is generic — `createLocalGeoJsonLayer` now
+  takes an optional group/style/filter/legend contract, and the three other
+  bundled packs are untouched by it.
+
+  Three values in the pack are easy to misread and are labelled rather than
+  cleaned up. `runways.count` counts upstream runway *records*, helicopter lanes
+  included — Charles de Gaulle reports 5, of which four are its paved runways.
+  `type` is OurAirports' editorial **size** bucket and does **not** map onto the
+  French regulatory ladder. And `runways.surface` is a three-value family
+  (`revêtue` / `non revêtue` / `eau`) collapsed from 557 free-text spellings
+  across 48 203 runways; 22% of features carry no surface at all rather than a
+  guess.
+
 - **Every data layer now knows what it is.** A new `src/data/layerTaxonomy.js`
   gives all 28 registered layers a category — **AIR & ESPACE**, **DÉFENSE**,
   **MARITIME**, **MOBILITÉ TERRESTRE**, **ÉNERGIE**, **RISQUES &

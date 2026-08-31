@@ -174,6 +174,7 @@ Twenty-four live layers. **Twenty of them need nothing at all** — no key, no a
 | 🗺️ **Map Stack** | Google Photorealistic 3D, Bing aerial, OSM | Google / Ion / OSM | 🔴 Google (required) · 🟡 ion for Bing · 🟢 OSM |
 | ✈️ **Live Flights** | Thousands of live aircraft + route history | OpenSky + adsb.lol | 🟢 (🟡 optional for more polling credits) |
 | 🎖️ **Military Flights** | ADS-B military traffic in amber | adsb.lol | 🟢 |
+| ✈ **Aéroports** | Where everything above actually lands — **7 464 aéroports et aérodromes**, from Roissy's 4 215 m of asphalt to an 82 m strip at La Tour-du-Pin. Worldwide it draws every large and medium airport plus **everything that sells a scheduled seat**, down to Monaco's heliport and the Greenland shuttles; **in France it draws the whole long tail** — 1 335 fields across the métropole and the outre-mer, altiports, hydrobases and one balloon field included. Each card carries the ICAO and IATA codes, the class, the longest **open** runway with its surface, and the commune. **Importance is on the map, not just in the text:** four tiers — *Grand aéroport*, *Aéroport de ligne*, *Aéroport sans ligne*, *Aérodrome & aéroclub* — set the dot size, the colour and how far out the card is readable, so an aéroclub stops taking a label cell from Roissy. Four chips on the row cut straight to the tier you want. Bundled with the build, so it draws with no key and no network | OurAirports (domaine public) | 🟢 |
 | 🚢 **Live Vessels** | Thousands of ships worldwide | AISStream | 🟡 |
 | 🛰️ **Satellites** | A roughly 840-object core catalog, color-coded by class with a live legend — the **DENSE** chip drops in the whole Starlink shell | CelesTrak | 🟢 |
 | 🌍 **Earthquakes** | Global seismic activity, last 24h | USGS | 🟢 |
@@ -201,7 +202,7 @@ Twenty-four live layers. **Twenty of them need nothing at all** — no key, no a
 
 *The Space Missions layer replaying a Falcon 9 ascent — labeled `RECONSTRUCTED ESTIMATE`, scrubbable 0.25×–4×.*
 
-**Also on the globe:** neighborhood overlays · an optional cockpit WX cloud effect. **Bundled static infrastructure:** Datacenters (4,351), Dams (704), Submarine Cables (712), Ports (2,951 — NGA World Port Index, US public domain), and the 96 French département polygons the Vigilance layer colours.
+**Also on the globe:** neighborhood overlays · an optional cockpit WX cloud effect. **Bundled static infrastructure:** Airports (7,464 — OurAirports, public domain), Datacenters (4,351), Dams (704), Submarine Cables (712), Ports (2,951 — NGA World Port Index, US public domain), and the 96 French département polygons the Vigilance layer colours.
 
 ![Diving into the Bahamas and revealing labeled submarine cable routes beneath the globe](docs/media/09-undersea-cables.gif)
 

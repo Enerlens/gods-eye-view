@@ -141,6 +141,7 @@ Static datasets shipped in the repo for an out-of-the-box experience. **None are
 | **Datacenters** (~4.3K) | `datacenters/` | **ODbL 1.0** (OpenStreetMap extract) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" |
 | **Dams** (704) | `dams/` | **ODbL 1.0** (OpenInfraMap / OSM extract) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" (+ Open Infrastructure Map) |
 | **NGA World Port Index** (2,951 ports) | `ports/` | **Public domain** (U.S. Government work, 17 U.S.C. § 105) | ✅ (no restrictions) | "NGA World Port Index (Pub. 150)" (courtesy — not legally required) |
+| **OurAirports** (7,464 airports & aerodromes) | `airports/` | **Public domain** (dedicated by OurAirports) | ✅ (no restrictions) | "OurAirports" (courtesy — not legally required) |
 | **TeleGeography Submarine Cable Map** (712 cables + 1,917 landing points) | `telegeography_submarine_cables/` | **CC BY-NC-SA 3.0** | ❌ **NonCommercial — remove for commercial use** | "© TeleGeography — submarinecablemap.com" |
 | **Natural Earth physical regions** (1,046 land + 292 marine named polygons) | `natural_earth/` | **Public domain** | ✅ (no restrictions) | "Made with Natural Earth" (courtesy credit — not legally required) |
 | **French département polygons** (96 metropolitan départements) | `france_departements/` | **Licence Ouverte** (IGN ADMIN EXPRESS COG 2018, inherited by reference — see the folder's SOURCE.md) | ✅ (attribution only) | "Contours des départements : IGN — ADMIN EXPRESS COG (édition 2018), via france-geojson (G. David). Licence Ouverte." |
@@ -190,6 +191,45 @@ Suomi-NPP) clamped to the trailing 24 h, cached 30 min to respect the shared MAP
 transaction quota. Requires a free `FIRMS_MAP_KEY`
 (https://firms.modaps.eosdis.nasa.gov/api/map_key/); the layer is empty without it.
 The former bundled 2026-05-25 snapshot was removed 2026-07-16.
+
+### OurAirports (`airports/`)
+
+`airports/airports.geojsonl` bundles a **selection** of the OurAirports
+catalogue — 7,464 of its 86,002 rows — with ICAO/IATA codes, municipality,
+country, elevation and a runway summary (longest open runway in metres, surface
+family, lit, record count). Retrieved 2026-08-31 from
+`https://davidmegginson.github.io/ourairports-data/` (the daily mirror of
+`ourairports.com/data/`) and transformed by `scripts/build-ourairports.mjs`.
+
+OurAirports **dedicates its data to the public domain** — *"You may use it for
+any purpose, including commercial."* No permission needed, no attribution
+legally required. We credit OurAirports and its volunteer editors anyway.
+
+Three things about this pack are easy to get wrong, and all three are documented
+in `airports/README.md` and enforced by `src/data/airportsPack.js`:
+
+- **It is a selection, and the selection is asymmetric.** Worldwide it carries
+  every large/medium airport and everything that sells a scheduled seat; inside
+  France and the overseas territories it also carries the whole long tail down
+  to the grass strips (1,335 features). A small airfield missing outside France
+  was **not selected** — it is not evidence of an empty sky.
+- **`type` is OurAirports' editorial SIZE bucket, not a legal category.** It does
+  not map onto the French ladder (aérodrome d'intérêt national / régional /
+  local). The rendered *Grand aéroport* / *Aéroport* / *Aérodrome* translate the
+  bucket; they do not grant a status.
+- **`runways.count` counts upstream runway RECORDS, helicopter lanes included.**
+  Charles de Gaulle reports 5, of which four are its paved runways.
+  `runways.surface` is likewise a three-value family collapsed from 557 free-text
+  spellings, and is omitted rather than guessed when unreadable.
+
+Positions and elevations are volunteer-maintained. **Not usable for navigation.**
+
+The layer grades every feature into four importance tiers (`large_airport` first, then
+scheduled service, then the `medium_airport` remainder, then everything else). The tier
+drives the dot size, the colour, the label ladder and how far out the card stays
+readable, and four row chips filter by it. Those chips are runtime params, not
+share-link state: the pack always ships whole and the layer keeps reporting all 7,464
+features, so a floor hides markers without losing them.
 
 ### NGA World Port Index (`ports/`)
 
@@ -259,4 +299,4 @@ Douglas-Peucker simplification, 6-decimal rounding).
 
 ## In-app attribution
 
-The required Google Maps / Cesium credit renders on the on-globe credit line (`#cesium-credits`, bottom-left) and must stay visible — including in clean-view and recording modes (the whole line, logo + "Google Maps" + the "Data attribution" link, stays on screen; only the GEV panels/HUD fade). The layer-specific credits (adsb.lol, TeleGeography, OSM datacenters/dams/roads, NASA FIRMS, CelesTrak, USGS, NOAA NDBC, NGA World Port Index, City of Austin, Métropole de Lyon, GBFS, Radio Browser, OpenSky, AISStream) are registered into the expandable **"Data attribution"** popover on that credit line via `viewer.creditDisplay.addStaticCredit(new Cesium.Credit(html, /* showOnScreen */ false))` — see `src/data/dataCredits.js`. When you add a new data source, add its license and attribution to this file **and** append an entry to `DATA_CREDITS` in `src/data/dataCredits.js` so it surfaces in the app. A source that only activates on an opt-in flag (TomTom live flow, the OSM mapped-camera source) is instead registered through `registerDynamicCredit` at the moment it activates, so the popover never credits data that is not on screen.
+The required Google Maps / Cesium credit renders on the on-globe credit line (`#cesium-credits`, bottom-left) and must stay visible — including in clean-view and recording modes (the whole line, logo + "Google Maps" + the "Data attribution" link, stays on screen; only the GEV panels/HUD fade). The layer-specific credits (adsb.lol, TeleGeography, OSM datacenters/dams/roads, NASA FIRMS, CelesTrak, USGS, NOAA NDBC, NGA World Port Index, OurAirports, City of Austin, Métropole de Lyon, GBFS, Radio Browser, OpenSky, AISStream) are registered into the expandable **"Data attribution"** popover on that credit line via `viewer.creditDisplay.addStaticCredit(new Cesium.Credit(html, /* showOnScreen */ false))` — see `src/data/dataCredits.js`. When you add a new data source, add its license and attribution to this file **and** append an entry to `DATA_CREDITS` in `src/data/dataCredits.js` so it surfaces in the app. A source that only activates on an opt-in flag (TomTom live flow, the OSM mapped-camera source) is instead registered through `registerDynamicCredit` at the moment it activates, so the popover never credits data that is not on screen.
