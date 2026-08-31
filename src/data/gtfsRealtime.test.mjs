@@ -12,7 +12,9 @@ import {
   alertIsActive,
   alertsFromBytes,
   boundsOfVehicles,
+  decodeAlertFeed,
   decodeFeedMessage,
+  decodeTripUpdateFeed,
   normalizeBearing,
   normalizeFeedTimestampMs,
   routeLabelFromId,
@@ -333,82 +335,133 @@ test('a handful of fixes is never fenced — there is no distribution to reason 
   assert.equal(boundsOfVehicles([]), null);
 });
 
-// --- TripUpdate -------------------------------------------------------------
-// The second message these same 150 networks publish, and the only keyless
-// answer to "how late is this bus". Its field numbers matter as much as the
-// position's, and one of them — `delay` — is the single easiest thing in the
-// whole schema to decode into nonsense.
+// --- TripUpdate: where a vehicle is going next -----------------------------
+//
+// The second half of the schema, and the one the line panel stands on. Two
+// things here are worth pinning past the field numbers: `delay` is an `int32`
+// and NOT a zigzagged `sint32`, so a bus running early decodes to -19 rather
+// than to 9.2e18; and the vehicle pass must keep ignoring these entities even
+// though the module now knows how to read them.
 
-test('a trip update decodes into ordered stops with their own deviations', () => {
-  const bytes = encodeFeed({
-    entities: [{
-      id: 'tu-1',
-      tripUpdate: {
-        trip: { tripId: 'b_268436222_26', routeId: '07', startDate: '20260831', directionId: 1 },
-        descriptor: { id: '2481', label: 'TBM 2481' },
-        timestamp: 1787765200,
-        stops: [
-          { sequence: 6, stopId: '3790', arrival: { delay: 245, time: 1787765400 } },
-          { sequence: 7, stopId: '3791', departure: { delay: 260, time: 1787765600 } },
-          { sequence: 8, stopId: '3792', scheduleRelationship: 1 },
-        ],
-      },
-    }],
-  });
+/** One TBM-shaped run: three stops, one of them already served. */
+function tbmTrip(overrides = {}) {
+  return {
+    id: 'entity-tu-1',
+    tripUpdate: {
+      trip: { tripId: 'b_268437828_31', routeId: '25', startDate: '20260831', directionId: 1 },
+      descriptor: { id: 'ineo-bus:89124', label: 'LA CITE DU VIN' },
+      timestamp: 1788200903,
+      stops: [
+        { sequence: 1, stopId: '8003', arrival: { delay: -643, time: 1788197837 }, departure: { delay: 13, time: 1788198506 } },
+        { sequence: 2, stopId: '8002', arrival: { delay: 26, time: 1788198581 } },
+        { sequence: 3, stopId: '932', departure: { delay: 38, time: 1788198611 }, scheduleRelationship: 1 },
+      ],
+      ...overrides,
+    },
+  };
+}
 
-  const { trips, entityCount } = tripUpdatesFromBytes(bytes);
+test('a trip update decodes to the run\'s ordered stops with the operator\'s times', () => {
+  const { trips, headerTimestampMs, entityCount } = tripUpdatesFromBytes(
+    encodeFeed({ timestamp: 1788200903, entities: [tbmTrip()] }),
+  );
   assert.equal(entityCount, 1);
+  assert.equal(headerTimestampMs, 1788200903000);
   assert.equal(trips.length, 1);
-  const [trip] = trips;
-  assert.equal(trip.tripId, 'b_268436222_26');
-  assert.equal(trip.routeId, '07');
+
+  const trip = trips[0];
+  assert.equal(trip.tripId, 'b_268437828_31');
+  assert.equal(trip.routeId, '25');
   assert.equal(trip.directionId, 1);
-  assert.equal(trip.vehicleId, '2481');
-  assert.equal(trip.timestampMs, 1787765200000);
-  assert.equal(trip.stops.length, 3);
-  // The ARRIVAL deviation is the one a rider waiting at the stop feels, and it
-  // wins over the departure when a feed publishes both.
-  assert.equal(trip.stops[0].delaySec, 245);
-  assert.equal(trip.stops[0].arrivalMs, 1787765400000);
-  assert.equal(trip.stops[1].delaySec, 260, 'departure is the fallback, not the default');
+  assert.equal(trip.startDate, '20260831');
+  assert.equal(trip.vehicleLabel, 'LA CITE DU VIN');
+  assert.equal(trip.timestampMs, 1788200903000);
+  assert.deepEqual(trip.stops.map((stop) => stop.stopId), ['8003', '8002', '932']);
+  assert.equal(trip.stops[0].arrivalMs, 1788197837000);
+  assert.equal(trip.stops[0].departureMs, 1788198506000);
+  // A stop the operator has cancelled says so; a scheduled one says nothing,
+  // because "scheduled" is the absence of news.
   assert.equal(trip.stops[2].relationship, 'skipped');
-  assert.equal(trip.stops[0].relationship, null, 'SCHEDULED is not news and stays null');
+  assert.equal(trip.stops[1].relationship, null);
 });
 
-test('a bus running EARLY decodes as early, not as 9.2 quintillion seconds late', () => {
-  // `delay` is a protobuf int32, so -19 is written as a ten-byte sign-extended
-  // varint. Read unsigned it comes back as 1.8e19. This is the bug the whole
-  // signed read exists to prevent, so it is pinned with a real encoded body.
-  const bytes = encodeFeed({
+test('a negative delay is an int32, not a zigzag — early is early, not 9.2e18', () => {
+  const { trips } = tripUpdatesFromBytes(encodeFeed({ entities: [tbmTrip()] }));
+  const [first, second, third] = trips[0].stops;
+  assert.equal(first.delaySec, -643);
+  assert.equal(second.delaySec, 26);
+  // No arrival event at all: the departure delay is the fallback, not a zero.
+  assert.equal(third.delaySec, 38);
+});
+
+test('a delay beyond a day is a lost reference timetable, not a prediction', () => {
+  const { trips } = tripUpdatesFromBytes(encodeFeed({
     entities: [{
-      id: 'tu-early',
+      id: 'e',
       tripUpdate: {
-        trip: { tripId: 'trip-early' },
-        stops: [{ sequence: 3, arrival: { delay: -19, time: 1787765400 } }],
+        trip: { tripId: 't' },
+        stops: [{ sequence: 1, stopId: 's', arrival: { delay: MAX_PLAUSIBLE_DELAY_SEC + 1, time: 1788198581 } }],
       },
     }],
-  });
-  const [trip] = tripUpdatesFromBytes(bytes).trips;
-  assert.equal(trip.stops[0].delaySec, -19);
+  }));
+  assert.equal(trips[0].stops[0].delaySec, null);
+  // The time itself is still good — only the deviation was unusable.
+  assert.equal(trips[0].stops[0].arrivalMs, 1788198581000);
 });
 
-test('a deviation past the plausible fence is dropped rather than printed', () => {
-  const bytes = encodeFeed({
+test('stops are ordered by sequence only when every one of them carries a sequence', () => {
+  const scrambled = tripUpdatesFromBytes(encodeFeed({
     entities: [{
-      id: 'tu-junk',
+      id: 'e',
       tripUpdate: {
-        trip: { tripId: 'trip-junk' },
+        trip: { tripId: 't' },
         stops: [
-          { sequence: 1, arrival: { delay: MAX_PLAUSIBLE_DELAY_SEC + 1 } },
-          { sequence: 2, arrival: { delay: MAX_PLAUSIBLE_DELAY_SEC } },
+          { sequence: 3, stopId: 'c' },
+          { sequence: 1, stopId: 'a' },
+          { sequence: 2, stopId: 'b' },
         ],
       },
     }],
-  });
-  const [trip] = tripUpdatesFromBytes(bytes).trips;
-  assert.equal(trip.stops[0].delaySec, null, 'four days late is not a prediction');
-  assert.equal(trip.stops[1].delaySec, MAX_PLAUSIBLE_DELAY_SEC, 'the fence itself is inclusive');
+  }));
+  assert.deepEqual(scrambled.trips[0].stops.map((stop) => stop.stopId), ['a', 'b', 'c']);
+
+  // Partially numbered: sorting would invent an order no feed published, so
+  // the wire order stands.
+  const partial = tripUpdatesFromBytes(encodeFeed({
+    entities: [{
+      id: 'e',
+      tripUpdate: {
+        trip: { tripId: 't' },
+        stops: [{ sequence: 3, stopId: 'c' }, { stopId: 'a' }, { sequence: 2, stopId: 'b' }],
+      },
+    }],
+  }));
+  assert.deepEqual(partial.trips[0].stops.map((stop) => stop.stopId), ['c', 'a', 'b']);
 });
+
+test('deleted and trip-less updates are dropped, and positions ignore trip updates', () => {
+  const bytes = encodeFeed({
+    entities: [
+      tbmTrip(),
+      { id: 'gone', isDeleted: true, tripUpdate: { trip: { tripId: 'x' }, stops: [] } },
+      { id: 'no-trip-id', tripUpdate: { trip: {}, stops: [{ sequence: 1, stopId: 's' }] } },
+    ],
+  });
+  const { trips, entityCount } = tripUpdatesFromBytes(bytes);
+  assert.equal(entityCount, 3);
+  assert.deepEqual(trips.map((trip) => trip.tripId), ['b_268437828_31']);
+
+  // The same bytes read by the POSITION pass: a body of trip updates is not a
+  // body of contacts, and the vehicle decoder does not try to make it one.
+  const { vehicles } = vehiclePositionsFromBytes(bytes, { feedId: 'f' });
+  assert.deepEqual(vehicles, []);
+});
+
+// --- The trip-level schedule relationship, and Alerts -----------------------
+//
+// The two members the enrichment adds on top of the run's stop times: whether
+// the operator has CANCELLED the run at all, and the sentence it has written
+// about the line.
 
 test('a cancelled run is read off the trip descriptor, on the update and on the position', () => {
   const fromUpdate = tripUpdatesFromBytes(encodeFeed({
@@ -424,41 +477,6 @@ test('a cancelled run is read off the trip descriptor, on the update and on the 
   }), { feedId: 'f' }).vehicles[0];
   // Free: no join, no second request — the position feed said it itself.
   assert.equal(fromPosition.tripRelationship, 'canceled');
-});
-
-test('a trip update with no trip id joins to nothing and is dropped', () => {
-  const bytes = encodeFeed({
-    entities: [{ id: 'tu-anon', tripUpdate: { trip: { routeId: '07' }, stops: [{ sequence: 1 }] } }],
-  });
-  assert.deepEqual(tripUpdatesFromBytes(bytes).trips, []);
-});
-
-test('stops are sorted only when EVERY entry carries a sequence', () => {
-  const numbered = tripUpdatesFromBytes(encodeFeed({
-    entities: [{
-      id: 'tu-order',
-      tripUpdate: {
-        trip: { tripId: 't' },
-        stops: [{ sequence: 9, stopId: 'c' }, { sequence: 2, stopId: 'a' }, { sequence: 5, stopId: 'b' }],
-      },
-    }],
-  })).trips[0];
-  assert.deepEqual(numbered.stops.map((stop) => stop.stopId), ['a', 'b', 'c']);
-
-  const partial = tripUpdatesFromBytes(encodeFeed({
-    entities: [{
-      id: 'tu-partial',
-      tripUpdate: {
-        trip: { tripId: 't' },
-        stops: [{ sequence: 9, stopId: 'c' }, { stopId: 'unnumbered' }, { sequence: 2, stopId: 'a' }],
-      },
-    }],
-  })).trips[0];
-  assert.deepEqual(
-    partial.stops.map((stop) => stop.stopId),
-    ['c', 'unnumbered', 'a'],
-    'a partially-numbered list keeps the order the feed published',
-  );
 });
 
 // --- Alert ------------------------------------------------------------------
@@ -533,7 +551,8 @@ test('an alert with no active period is in force; one with a window is not alway
 
 test('each decoder reads only its own entity type out of a shared body', () => {
   // 63 French feeds publish all three types under one resource id. Reading one
-  // must not depend on — or be broken by — the other two.
+  // must not depend on — or be broken by — the other two, and the members it
+  // did not ask for are never even built.
   const bytes = encodeFeed({
     entities: [
       tbmVehicle(),
@@ -558,9 +577,9 @@ test('each decoder reads only its own entity type out of a shared body', () => {
   assert.deepEqual(tripUpdatesFromBytes(bytes).trips.map((t) => t.tripId), ['b_268436222_26']);
   assert.deepEqual(alertsFromBytes(bytes).alerts.map((a) => a.cause), ['strike']);
 
-  // And the pass that was not asked for never even builds the member.
-  const positionsOnly = decodeFeedMessage(bytes, { want: 'vehicle' });
-  assert.equal(positionsOnly.entities[1].tripUpdate, undefined);
-  assert.equal(positionsOnly.entities[2].alert, undefined);
-  assert.equal(decodeFeedMessage(bytes).entities[1].tripUpdate.tripId, 'b_268436222_26');
+  const positions = decodeFeedMessage(bytes);
+  assert.equal(positions.entities[1].tripUpdate, undefined);
+  assert.equal(positions.entities[2].alert, undefined);
+  assert.equal(decodeTripUpdateFeed(bytes).entities[1].tripUpdate.tripId, 'b_268436222_26');
+  assert.equal(decodeAlertFeed(bytes).entities[0].vehicle, undefined);
 });

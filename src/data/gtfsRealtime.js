@@ -1,16 +1,22 @@
 /**
  * @module gtfsRealtime
  *
- * Pure GTFS-Realtime (`FeedMessage`) decoding for the **VehiclePosition** and
- * **TripUpdate** subsets, plus the normalization that turns one decoded entity
- * into the flat record the transit layer renders.
+ * Pure GTFS-Realtime (`FeedMessage`) decoding for the **VehiclePosition**,
+ * **TripUpdate** and **Alert** subsets, plus the normalization that turns one
+ * decoded entity into the flat record the transit layer renders.
  *
- * The two are read by one decoder because they are one message type served
- * from two URLs, and because the second is the only keyless answer to "where
- * is this bus going next": a TripUpdate carries the ordered stops of the trip
- * a vehicle is running and the time the operator expects it at each of them.
- * The static equivalent, `stop_times.txt`, is 223 MB expanded for Bordeaux
- * alone and re-minted with every GTFS version.
+ * The three are read by one decoder because they are one message type, often
+ * served from one URL — 63 of the 150 French position feeds publish all three
+ * under a single resource id (measured 2026-08-31). Each has its own pass and
+ * its own entity reader, so a body read for positions never walks the others.
+ *
+ * They answer three different questions about the same bus. WHERE IT IS is the
+ * position. WHERE IT IS GOING NEXT, and how far off the timetable it is, is the
+ * TripUpdate: the ordered stops of the trip it is running and the time the
+ * operator expects it at each of them — the static equivalent, `stop_times.txt`,
+ * is 223 MB expanded for Bordeaux alone and re-minted with every GTFS version.
+ * WHAT HAS BEEN SAID ABOUT ITS LINE is the Alert, which is the only place in
+ * the schema an operator writes a sentence for riders.
  *
  * WHY A HAND-ROLLED DECODER: GTFS-RT is Protocol Buffers, and the canonical
  * `gtfs-realtime-bindings` package ships the full generated schema (trip
@@ -303,29 +309,38 @@ function readAlert(tag, out, pbf) {
 }
 
 /**
- * `FeedEntity` — id 1, is_deleted 2, trip_update 3, vehicle 4, alert 5.
+ * `FeedEntity` — id 1, is_deleted 2, vehicle 4, for the POSITION pass.
  *
- * Shapes (6) and trip modifications (7, 8) are skipped: they describe geometry
- * and timetable surgery, and this module answers three questions about a
- * vehicle a person can see — where it is, when it is next expected, and what
- * the operator has said about its line.
- *
- * ONE ENTITY TYPE PER PASS, and this is a robustness rule rather than an
- * optimisation. 63 French feeds carry all three types in ONE body, so a body
- * read for positions would otherwise also walk every stop of every trip — and
- * a publisher whose bytes this decoder mis-reads anywhere in that walk would
- * take the POSITIONS down with it, in a feed where they had been arriving
- * fine. `out.want` keeps each pass inside the message it came for; pbf skips
- * the rest by wire type without interpreting it.
+ * Trip updates (3), alerts (5) and shapes (6) are skipped rather than decoded.
+ * Not only because this pass draws positions: several French publishers serve
+ * all three message types from one dataset, TBM's trip-update body is 1.3 MB of
+ * stop-time predictions against 300 KB of positions, and decoding it on every
+ * 15-second viewport poll would be work no caller asked for — done inside the
+ * hot path, on bytes a malformed publisher could make throw. Each of the other
+ * two has a pass of its own below, run only when something asks for it.
  */
-function readFeedEntity(tag, out, pbf) {
+function readVehicleEntity(tag, out, pbf) {
   if (tag === 1) out.id = pbf.readString();
   else if (tag === 2) out.isDeleted = pbf.readBoolean();
-  else if (tag === 3 && (out.want === 'trip' || out.want === 'all')) {
-    out.tripUpdate = pbf.readMessage(readTripUpdate, { stopTimeUpdates: [] });
-  } else if (tag === 4 && (out.want === 'vehicle' || out.want === 'all')) {
+  else if (tag === 4) {
     out.vehicle = pbf.readMessage(readVehiclePosition, {});
-  } else if (tag === 5 && (out.want === 'alert' || out.want === 'all')) {
+  }
+}
+
+/** `FeedEntity` — id 1, is_deleted 2, trip_update 3, for the TRIP pass. */
+function readTripEntity(tag, out, pbf) {
+  if (tag === 1) out.id = pbf.readString();
+  else if (tag === 2) out.isDeleted = pbf.readBoolean();
+  else if (tag === 3) {
+    out.tripUpdate = pbf.readMessage(readTripUpdate, { stopTimeUpdates: [] });
+  }
+}
+
+/** `FeedEntity` — id 1, is_deleted 2, alert 5, for the ALERT pass. */
+function readAlertEntity(tag, out, pbf) {
+  if (tag === 1) out.id = pbf.readString();
+  else if (tag === 2) out.isDeleted = pbf.readBoolean();
+  else if (tag === 5) {
     out.alert = pbf.readMessage(readAlert, { activePeriods: [], informedEntities: [] });
   }
 }
@@ -337,11 +352,17 @@ function readFeedHeader(tag, out, pbf) {
   else if (tag === 3) out.timestamp = pbf.readVarint();
 }
 
-/** `FeedMessage` — header 1, entity 2 (repeated). */
-function readFeedMessage(tag, out, pbf) {
-  if (tag === 1) pbf.readMessage(readFeedHeader, out.header);
-  else if (tag === 2) out.entities.push(pbf.readMessage(readFeedEntity, { want: out.want }));
+/** `FeedMessage` — header 1, entity 2 (repeated), read by the given entity reader. */
+function feedMessageReader(readEntity) {
+  return (tag, out, pbf) => {
+    if (tag === 1) pbf.readMessage(readFeedHeader, out.header);
+    else if (tag === 2) out.entities.push(pbf.readMessage(readEntity, {}));
+  };
 }
+
+const readVehicleFeedMessage = feedMessageReader(readVehicleEntity);
+const readTripFeedMessage = feedMessageReader(readTripEntity);
+const readAlertFeedMessage = feedMessageReader(readAlertEntity);
 
 /**
  * Decode a GTFS-RT `FeedMessage` down to its header and entity list.
@@ -350,18 +371,46 @@ function readFeedMessage(tag, out, pbf) {
  * message carrying only trip updates decodes to entities with no `vehicle`.
  *
  * @param {Uint8Array|ArrayBuffer|Buffer} bytes Raw feed body.
- * @param {Object} [options]
- * @param {'vehicle'|'trip'|'alert'|'all'} [options.want] Which entity member to
- *   parse; everything else is skipped by wire type. Defaults to `all` for
- *   direct callers, while the three `*FromBytes` entry points each ask for
- *   exactly what they return — see {@link readFeedEntity}.
  * @returns {{header: {version?: string, incrementality?: number, timestamp?: number},
  *            entities: Array<Object>}}
  */
-export function decodeFeedMessage(bytes, { want = 'all' } = {}) {
+export function decodeFeedMessage(bytes) {
+  return decodeFeed(bytes, readVehicleFeedMessage);
+}
+
+/**
+ * Decode a GTFS-RT `FeedMessage` for its TRIP UPDATES.
+ *
+ * The same bytes, read for the other half of the schema: entities carry a
+ * `tripUpdate` and no `vehicle`.
+ *
+ * @param {Uint8Array|ArrayBuffer|Buffer} bytes Raw feed body.
+ * @returns {{header: Object, entities: Array<Object>}}
+ */
+export function decodeTripUpdateFeed(bytes) {
+  return decodeFeed(bytes, readTripFeedMessage);
+}
+
+/**
+ * Decode a GTFS-RT `FeedMessage` for its ALERTS.
+ *
+ * The third pass over the same shape: entities carry an `alert` and nothing
+ * else. 63 of the 150 French position feeds publish all three entity types
+ * under ONE resource id (measured 2026-08-31), so these bytes are frequently
+ * bytes already fetched.
+ *
+ * @param {Uint8Array|ArrayBuffer|Buffer} bytes Raw feed body.
+ * @returns {{header: Object, entities: Array<Object>}}
+ */
+export function decodeAlertFeed(bytes) {
+  return decodeFeed(bytes, readAlertFeedMessage);
+}
+
+/** Shared body of the three decoders above. */
+function decodeFeed(bytes, reader) {
   const buffer = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
-  const message = { header: {}, entities: [], want };
-  new PbfReader(buffer).readFields(readFeedMessage, message);
+  const message = { header: {}, entities: [] };
+  new PbfReader(buffer).readFields(reader, message);
   return message;
 }
 
@@ -481,7 +530,7 @@ export function vehicleFromEntity(entity, { feedId = '' } = {}) {
  * @returns {{vehicles: Array<Object>, headerTimestampMs: ?number, entityCount: number}}
  */
 export function vehiclePositionsFromBytes(bytes, context = {}) {
-  const message = decodeFeedMessage(bytes, { want: 'vehicle' });
+  const message = decodeFeedMessage(bytes);
   const vehicles = [];
   for (const entity of message.entities) {
     const record = vehicleFromEntity(entity, context);
@@ -597,7 +646,7 @@ export function tripUpdateFromEntity(entity) {
  * @returns {{trips: Array<Object>, headerTimestampMs: ?number, entityCount: number}}
  */
 export function tripUpdatesFromBytes(bytes) {
-  const message = decodeFeedMessage(bytes, { want: 'trip' });
+  const message = decodeTripUpdateFeed(bytes);
   const trips = [];
   for (const entity of message.entities) {
     const record = tripUpdateFromEntity(entity);
@@ -725,7 +774,7 @@ export function alertIsActive(alert, nowMs = Date.now()) {
  * @returns {{alerts: Array<Object>, headerTimestampMs: ?number, entityCount: number}}
  */
 export function alertsFromBytes(bytes, options = {}) {
-  const message = decodeFeedMessage(bytes, { want: 'alert' });
+  const message = decodeAlertFeed(bytes);
   const alerts = [];
   for (const entity of message.entities) {
     const record = alertFromEntity(entity, options);

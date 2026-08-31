@@ -55,8 +55,9 @@
  *     layer of their own: how far off the timetable the operator says this run
  *     is, whether it has been cancelled, which of its remaining stops it will
  *     skip, and what has been written about its line. The proxy does the join
- *     (the key is a trip id no browser needs to carry, and one companion body
- *     is up to 1.2 MB); `transitSchedule.js` holds the rules. Measured
+ *     (one companion body is up to 1.2 MB, and it would otherwise cross the
+ *     wire per client to answer the same question); `transitSchedule.js` holds
+ *     the rules. Measured
  *     2026-08-31 over the 30 largest live networks: 67% of vehicles join a
  *     trip update, 38% end up with a deviation — the rest run on networks that
  *     publish an absolute predicted TIME and never a delay, which cannot be
@@ -89,6 +90,13 @@ import { formatDelay } from './transitSchedule.js';
 import { vehicleKindColor, vehicleKindLabel } from './transitVehicleKind.js';
 import { transitHeadingPointer, transitVehicleGlyph } from './transitVehicleIcons.js';
 import { transitCoverageNotice } from './transitCoverage.js';
+import {
+  clearTransitRoute,
+  destroyTransitRouteView,
+  initTransitRouteView,
+  showTransitRoute,
+  transitRouteCardLines,
+} from './transitRouteView.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const TRANSIT_FR_LAYER_ID = 'transit-fr';
@@ -130,6 +138,17 @@ const MAX_FIX_AGE_MS = 10 * 60 * 1000;
 const MAX_RENDERED_VEHICLES = 4_000;
 /** Metres above the resolved ground floor the glyph sits. */
 const GLYPH_LIFT_M = 4;
+/**
+ * How often the selected vehicle's RUN is re-read, ms.
+ *
+ * Slower than the fleet poll on purpose: the trace does not move and the stop
+ * predictions are republished every 20–30 s, so asking faster would re-serve
+ * the same answer. Slow enough that a card left open on a bus keeps counting
+ * down honestly rather than freezing on the arrival it was opened with.
+ */
+const ROUTE_REFRESH_MS = 25_000;
+/** Request timeout (ms) for one line lookup. */
+const ROUTE_TIMEOUT_MS = 30_000;
 
 // --- Presentation -----------------------------------------------------------
 /**
@@ -248,6 +267,9 @@ let _cameraDebounceTimer = null;
 let _preRenderRemover = null;
 let _lastCameraPoseSignature = '';
 let _selectedId = null;
+let _routeInFlight = null;
+let _routeGeneration = 0;
+let _routeTimer = null;
 let _inFlight = null;
 let _requestGeneration = 0;
 let _loading = false;
@@ -520,10 +542,18 @@ export function transitAlertReadout(vehicle) {
 export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
   const vehicle = record?.vehicle || {};
   const feed = record?.feed || {};
-  const route = vehicle.route ? `LINE ${vehicle.route}` : 'LINE —';
-  const title = vehicle.label ? `${route} · ${vehicle.label}` : route;
+  // The line's PUBLIC name when the static feed has been read for it — "7" is
+  // what is written on the front of the bus, where `route_id` "07" is the
+  // operator's key. Until then, and for a network with no resolvable line, the
+  // feed's own label stands unchanged.
+  const shortName = record?.route?.route?.shortName || vehicle.route;
+  const route = shortName ? `LINE ${shortName}` : 'LINE —';
+  const headsign = record?.route?.trip?.headsign || vehicle.label;
+  const title = headsign ? `${route} · ${headsign}` : route;
 
   const details = [];
+  const longName = record?.route?.route?.longName;
+  if (longName && longName !== shortName) details.push(longName);
   if (feed.network) details.push(`🚍 ${feed.network}`);
 
   const motion = [];
@@ -567,6 +597,14 @@ export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
   const provenance = [kind.qualifier ? `${kind.label} (${kind.qualifier})` : kind.label];
   if (hasText(feed.licence)) provenance.push(feed.licence);
   details.push(provenance.join(' · '));
+
+  // Where this run goes next, from the network's trip updates. Appended after
+  // the provenance rather than woven into it: these lines answer a different
+  // question and arrive one request later than the rest of the card.
+  details.push(...transitRouteCardLines(record?.route, {
+    vehicleStopSequence: vehicle.stopSequence,
+    nowMs,
+  }));
 
   return [title, ...details].join('\n');
 }
@@ -630,6 +668,69 @@ function clearSelection() {
   }
   _selectedId = null;
   _overlayHost.clearSource(TRANSIT_FR_OVERLAY_SOURCE_ID);
+  clearSelectedRoute();
+}
+
+/** Abort any line lookup and take the drawn run off the globe. */
+function clearSelectedRoute() {
+  _routeGeneration += 1;
+  _routeInFlight?.abort?.();
+  _routeInFlight = null;
+  clearTimeout(_routeTimer);
+  _routeTimer = null;
+  clearTransitRoute();
+}
+
+/**
+ * Ask the proxy what line the selected vehicle is on, and draw the answer.
+ *
+ * A vehicle whose feed publishes no `trip_id` and no `route_id` is not asked
+ * about: there is nothing to join on, and a request that can only fail is not
+ * a request worth making. Its card keeps saying exactly what it said before.
+ *
+ * @param {Object} record Render record for the selected vehicle.
+ * @returns {Promise<void>}
+ */
+async function loadSelectedRoute(record) {
+  const vehicle = record?.vehicle;
+  if (!vehicle?.feed || (!vehicle.tripId && !vehicle.routeId)) return;
+
+  const generation = ++_routeGeneration;
+  _routeInFlight?.abort?.();
+  const controller = new AbortController();
+  _routeInFlight = controller;
+  const timer = setTimeout(() => controller.abort(), ROUTE_TIMEOUT_MS);
+
+  try {
+    const params = new URLSearchParams({ feed: vehicle.feed });
+    if (vehicle.tripId) params.set('trip', vehicle.tripId);
+    if (vehicle.routeId) params.set('route', vehicle.routeId);
+    const response = await fetch(`/api/transit-fr/trip?${params}`, { signal: controller.signal });
+    if (generation !== _routeGeneration || record.id !== _selectedId) return;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (generation !== _routeGeneration || record.id !== _selectedId) return;
+
+    record.route = payload;
+    showTransitRoute(payload, {
+      vehicleStopSequence: vehicle.stopSequence,
+      fallbackColor: transitVehicleColor(vehicle),
+    });
+    publishSelectionCard(record);
+    // Stop predictions age; the trace does not. Re-reading on a slow cadence
+    // keeps the countdown on the card true without re-fetching geometry the
+    // proxy already has in memory.
+    _routeTimer = setTimeout(() => {
+      if (record.id === _selectedId) void loadSelectedRoute(record);
+    }, ROUTE_REFRESH_MS);
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    if (generation !== _routeGeneration) return;
+    console.warn('[Data:TransitFR] line lookup failed:', error?.message || error);
+  } finally {
+    clearTimeout(timer);
+    if (generation === _routeGeneration) _routeInFlight = null;
+  }
 }
 
 /** Select a vehicle by render id. */
@@ -650,6 +751,7 @@ function selectVehicle(id) {
   }
   publishSelectionCard(record);
   governorRequestRender('transit-fr-select');
+  void loadSelectedRoute(record);
 }
 
 /** Push (or refresh) the selected card. Called on select and on every glide tick. */
@@ -882,6 +984,14 @@ function reconcile(vehicles, feedsById, nowMs) {
     // And the pointer tracks the HEADING, which a feed can start or stop
     // publishing between two polls.
     syncHeadingPointer(record, id === _selectedId ? POINTER_SELECTED_PX : POINTER_PX);
+    // A selected vehicle that has been given a new trip is running a
+    // different line, or the same line the other way. The drawn run follows
+    // it rather than staying on the one that was open when it was clicked.
+    if (id === _selectedId && record.route && record.route.trip?.id
+      && vehicle.tripId && record.route.trip.id !== vehicle.tripId) {
+      record.route = null;
+      void loadSelectedRoute(record);
+    }
     if (id !== _selectedId) {
       const color = Cesium.Color.fromCssColorString(transitVehicleColor(vehicle));
       record.billboard.color = color;
@@ -1150,6 +1260,8 @@ const transitFranceLayer = {
     _altitudeGateOpen = false;
 
     _overlayHost.setVisible(TRANSIT_FR_OVERLAY_SOURCE_ID, false);
+    // The drawn run belongs to the selected vehicle and shares its lifecycle.
+    initTransitRouteView(viewer);
     restoreSpriteOrder(viewer);
   },
 
@@ -1318,6 +1430,7 @@ const transitFranceLayer = {
       viewer.scene.primitives.remove(_pointers);
       _pointers = null;
     }
+    destroyTransitRouteView(viewer);
     releaseContinuousRender('transit-fr');
     _records.clear();
     _viewer = null;

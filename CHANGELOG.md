@@ -8,9 +8,9 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ### Added
 
 - **Every live transit vehicle now carries the operator's own delay and
-  disruption.** The 150 French networks that publish vehicle positions all
-  publish `TripUpdate` as well — and **63 of them publish it in the same
-  protobuf body**, so for those the delay is bytes already fetched rather than a
+  disruption.** All 150 French vehicle-position feeds have a `TripUpdate`
+  companion in their own dataset — and **63 of them ARE that companion**,
+  publishing both in one protobuf body, so for those the delay is bytes already fetched rather than a
   second request. The dev-server proxy joins that prediction to the vehicle
   already on screen and sends four things with it: how far off the timetable the
   operator says the run is, whether the run has been **cancelled**, which of its
@@ -46,6 +46,90 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   they pair TaM's urban and suburban feeds correctly and get Astuce wrong, where
   measurement scores the right body at 90%. Mean measured join rate across the
   79 networks with vehicles running at build time: **0.92**.
+- **Aéroports: 7 464 places to land, France in full.** A new bundled layer
+  draws the world's airports and aerodromes from **OurAirports**, the open
+  catalogue its volunteer editors dedicate to the public domain. Cards carry the
+  **ICAO and IATA codes**, the class, the **longest open runway** in metres with
+  its surface family, and the commune — Roissy at 4 215 m of asphalt, an 82 m
+  strip at La Tour-du-Pin, and 7 462 more in between. Bundled with the build, so
+  it draws with **no key and no network**.
+
+  The pack is a **selection, and the selection is asymmetric on purpose**:
+  worldwide it is every large and medium airport plus everything that sells a
+  scheduled seat (which is what keeps Monaco's heliport and the Greenland
+  shuttles), while **France and the overseas territories carry the whole long
+  tail** — 1 335 fields, altiports, hydrobases and one balloon field included.
+  Shipped whole, the catalogue is 86 002 rows and roughly 25 MB of committed
+  JSON, 23 196 of them heliports, and in France almost every one of those is a
+  hospital landing pad with no ICAO code. The four clauses that decide what
+  survives live in `src/data/airportsPack.js` — the same module the layer reads
+  back when it writes a card, so the build and the globe cannot disagree about a
+  field — and `airports/README.md` states the limit plainly: a small airfield
+  missing outside France was **not selected**, and is not evidence of an empty
+  sky.
+
+  **Importance is a map channel, not a footnote.** Seven thousand identical dots
+  is a wall, and this pack is the opposite of uniform. Two independent fields
+  decide how much an airfield matters — OurAirports' editorial **size** class,
+  and the hard fact of whether a **timetabled service** calls there — so
+  crossing them gives four tiers: **Grand aéroport** (1 172), **Aéroport de
+  ligne** (3 175), **Aéroport sans ligne** (1 991) and **Aérodrome & aéroclub**
+  (1 126, all of them French, because the clause that admits them is). The tier
+  is decided once and then drives everything: the dot size (14 → 6 px), the
+  colour ramp, the label ladder, the legend, and **how far out the card stays
+  readable** (14 000 km → 200 km). That last channel is the one that fixed the
+  real problem: over Île-de-France the shared label grid was awarding fifteen
+  cells to aéroclubs and three to Roissy, Orly and Le Bourget, because cells are
+  awarded *locally* and a grass strip with no competition always wins its own.
+  Priority cannot fix that; range can. The marker is always drawn — only its
+  name waits until you come closer.
+
+  Four chips on the layer row cut to the tier you want — `TOUS`, `AÉROPORTS`
+  (drops the aéroclubs), `LIGNES` (only what a ticket is sold to), `GRANDS`.
+  They are runtime params, **not** share-link state, and the layer keeps
+  reporting all 7 464 features while a floor is on: a chip hides markers without
+  losing them, the same contract the hydro layer's `floorKw` already follows.
+  The legend counts what is **drawn**, not what is loaded, so a hidden tier
+  reads 0 and says how many it is holding back rather than quietly overstating
+  the picture. The grading itself is generic — `createLocalGeoJsonLayer` now
+  takes an optional group/style/filter/legend contract, and the three other
+  bundled packs are untouched by it.
+
+  Three values in the pack are easy to misread and are labelled rather than
+  cleaned up. `runways.count` counts upstream runway *records*, helicopter lanes
+  included — Charles de Gaulle reports 5, of which four are its paved runways.
+  `type` is OurAirports' editorial **size** bucket and does **not** map onto the
+  French regulatory ladder. And `runways.surface` is a three-value family
+  (`revêtue` / `non revêtue` / `eau`) collapsed from 557 free-text spellings
+  across 48 203 runways; 22% of features carry no surface at all rather than a
+  guess.
+
+- **Click a live bus and see the line it is running.** Selecting a vehicle in
+  **Transit FR** now draws its **route trace on the ground in the operator's own
+  colour**, marks **every stop of the run it is on**, and adds to the card the
+  line's public name, the stop it is heading for with a countdown and schedule
+  deviation, and its terminus. Bordeaux's Lianes 35 draws as a 32 km loop with
+  its 82 stops and reads *"▸ Avenue de l'Europe · due · 5 min late / ⇥ Gare
+  Saint-Jean · 67 stops"*. Escape puts it all away again.
+- **The two halves of that answer come from two feeds, and degrade separately.**
+  The **trace, the line's name and its colour** come from the network's static
+  GTFS — through the PAN's own **GeoJSON conversion** of it, so `shapes.txt`
+  (36.7 MB compressed for Normandie) is never downloaded; the **ordered stops
+  and their predicted times** come from the network's live **GTFS-RT
+  TripUpdates** feed, which every one of the 142 datasets publishing vehicle
+  positions also publishes. A network with no usable trip update still gets its
+  line drawn, from `route_id` alone, and the card says the stops are not listed.
+- **Which of a line's traces the run is on is measured, not guessed.** A French
+  line publishes several shape variants and the conversion drops `shape_id`, so
+  the layer picks the variant that carries **every one of the trip's own stops**
+  — measured against all 897 of TBM's running trips on 2026-08-31, all 897
+  matched at a median stop-to-trace offset of 3 m. When no variant fits, the
+  **whole line** is drawn instead of one run of it and the card says so.
+- **`npm run transit:static`** builds `config/pan_gtfs_static.json` (196 KB,
+  URLs only): for each of the 148 queryable vehicle feeds, its TripUpdates
+  sibling and its static GTFS's GeoJSON conversion. Geometry itself is fetched
+  on demand and cached under `.gev-cache/pan-gtfs-geo/` — a first click on a
+  network costs 0.87 s, every later one 18 ms.
 - **Live French transit vehicles now say what they ARE.** GTFS-Realtime carries
   no vehicle class, so `npm run transit:route-types` joins each network's static
   GTFS `route_type` and commits `config/pan_route_types.json` — 147 feeds, 7,044
