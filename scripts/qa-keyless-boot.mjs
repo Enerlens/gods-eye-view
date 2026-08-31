@@ -27,6 +27,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const shotsDir = path.join(repoRoot, 'qa-shots', 'keyless-boot');
@@ -51,7 +52,9 @@ const browser = await puppeteer.launch({
   executablePath,
   args: ['--use-angle=metal', '--enable-gpu', '--no-sandbox'],
 });
-const page = await browser.newPage();
+// The first-run mission card returns for every fresh session, and a headless
+// run is always one — `newQaPage()` is the repo's single answer to that.
+const page = await newQaPage(browser);
 const consoleErrors = [];
 page.on('console', (message) => {
   if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 240));
@@ -71,9 +74,7 @@ const poll = async (fn, timeoutMs = 60_000, stepMs = 300) => {
 
 try {
   await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
-  // `?welcome=0` suppresses the first-run card for a fresh session; hand-
-  // dismissing it would be testing the card, not the boot.
-  await page.goto(`${appUrl}/?welcome=0`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
+  await page.goto(`${appUrl}/`, { waitUntil: 'domcontentloaded', timeout: 60_000 });
 
   const booted = await poll(() => Boolean(window.__godsEyeView?.styleManager));
   check('the app boots with no Google Maps API key', Boolean(booted),

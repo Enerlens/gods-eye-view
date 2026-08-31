@@ -46,19 +46,6 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   a rectangle-limited layer at index 0 would be Cesium's base layer, and Cesium
   smears a base layer's edge pixels across every tile outside its bounds.
 
-### Fixed
-
-- A retired or corrupted `map=` share parameter no longer raises a credential
-  error about a source nobody asked for. An unrecognized id now resolves to the
-  build's own default stack (`photoreal` when it is available, otherwise the
-  first source that is), instead of unconditionally to `photoreal`.
-- The `set_map_stack` voice tool and its toast quoted a hard-coded "requires a
-  Cesium ion token" for **every** unavailable stack. They now quote the
-  controller's own reason, so a keyless build stops sending operators after the
-  wrong credential.
-
-### Added
-
 - **Groupes de prod (FR) now draws the hydro fleet, and says what a negative
   reading really is.** The layer shipped in #14 against a hand-written fixture,
   because no RTE account was available to build it with. Run against the live
@@ -503,6 +490,14 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- A retired or corrupted `map=` share parameter no longer raises a credential
+  error about a source nobody asked for. An unrecognized id now resolves to the
+  build's own default stack (`photoreal` when it is available, otherwise the
+  first source that is), instead of unconditionally to `photoreal`.
+- The `set_map_stack` voice tool and its toast quoted a hard-coded "requires a
+  Cesium ion token" for **every** unavailable stack. They now quote the
+  controller's own reason, so a keyless build stops sending operators after the
+  wrong credential.
 - The Data attribution popover listed the French transit source twice: a
   three-way merge of two branches that had each added it once left the entry
   duplicated verbatim. Credits are now registered by key, so that class of
