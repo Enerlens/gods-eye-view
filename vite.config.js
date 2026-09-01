@@ -119,7 +119,15 @@ import {
   projectIsochrone,
   resolveProfile as resolveIsochroneProfile,
 } from './src/data/isochroneFeed.js';
-import { buildGpuUrl, projectGpu } from './src/data/gpuFeed.js';
+import {
+  GPU_BOX_STEP_DEG,
+  GPU_REQUEST_MAX_BOX_DEG,
+  GPU_UPSTREAM_LIMIT,
+  buildGpuBoxUrl,
+  buildGpuUrl,
+  gpuTruncation,
+  projectGpu,
+} from './src/data/gpuFeed.js';
 import {
   IDFM_PAGE_LIMIT,
   buildLinesUrl,
@@ -14489,21 +14497,101 @@ function isochroneProxy() {
  * `GET /api/gpu?lat=&lon=`
  * @returns {import('vite').Plugin}
  */
+/**
+ * Zoning answers keyed on the SNAPPED BOX, so panning a street does not buy the
+ * same 300 KB twice.
+ *
+ * A second cache, next to the route's own, because the two halves of a GPU
+ * answer have different keys and merging them would break whichever one loses.
+ * The zoning half depends on the BOX; the servitude half and the `atPoint`
+ * marking depend on the POINT. Keying the whole payload on the box would tell
+ * two different addresses in one block that they stand in the same zone, which
+ * is the exact question this layer exists to answer correctly.
+ */
+const _gpuZoningCache = new Map();
+const GPU_ZONING_CACHE_MAX_ENTRIES = 120;
+
+function gpuZoningCacheSet(key, payload) {
+  _gpuZoningCache.set(key, { payload, at: Date.now() });
+  while (_gpuZoningCache.size > GPU_ZONING_CACHE_MAX_ENTRIES) {
+    _gpuZoningCache.delete(_gpuZoningCache.keys().next().value);
+  }
+}
+
+/**
+ * Read the optional bbox off a GPU request.
+ *
+ * Absent is not an error: no box is the POINT regime, which is what the layer
+ * falls back to above its own box altitude. A PARTIAL box is an error, because
+ * silently answering a different question than the one asked is how a layer
+ * ends up drawing the wrong block.
+ *
+ * @param {URLSearchParams} searchParams
+ * @returns {?object} Validated box, or null for the point regime.
+ * @throws {Error} On a malformed or over-wide box; `installAddressRoute` turns
+ *   that into a 400 with the message.
+ */
+export function gpuRequestBox(searchParams) {
+  const edges = ['south', 'west', 'north', 'east'].map((k) => searchParams.get(k));
+  if (edges.every((v) => v === null || v.trim() === '')) return null;
+  const [south, west, north, east] = edges;
+  const box = validBox({ south, west, north, east }, GPU_REQUEST_MAX_BOX_DEG);
+  if (!box) {
+    // Rounded for the message only: `0.02 + 3 * 0.002` is
+    // `0.026000000000000002` in binary floating point, and an error string is
+    // read by a person.
+    throw new Error(
+      `A complete non-dateline bbox no larger than ${GPU_REQUEST_MAX_BOX_DEG.toFixed(3)} degrees is required`,
+    );
+  }
+  return box;
+}
+
 function gpuProxy() {
   function install(middlewares) {
     installAddressRoute(middlewares, '/api/gpu', (url) => {
       const point = addressPoint(url.searchParams);
       if (!point) return null;
+      // Snapped OUTWARD onto the shared grid, so the box sent upstream is up to
+      // two steps wider than the one that was validated. That widening is the
+      // cache doing its job and is deliberately NOT re-checked against the
+      // ceiling — an outward snap of a box that only just passed always lands
+      // over it, and re-checking would 400 every request at the layer's own
+      // maximum zoom. `GPU_REQUEST_MAX_BOX_DEG` already carries the margin.
+      const asked = gpuRequestBox(url.searchParams);
+      const box = asked ? snapBoxOutward(asked, GPU_BOX_STEP_DEG) : null;
+      const boxTag = box ? boxKey(box, 3) : 'pt';
       return {
-        key: addressCacheKey('gpu', point),
+        key: addressCacheKey('gpu', point, boxTag),
         load: async () => {
+          const zoningKey = box ? boxTag : null;
+          const cachedZoning = zoningKey ? _gpuZoningCache.get(zoningKey) : null;
           const [zoning, servitudes] = await Promise.all([
-            fetchAddressSource(buildGpuUrl('zone-urba', point)),
-            // The measured worst case for a single point is 1.4 MB.
+            cachedZoning
+              ? Promise.resolve(cachedZoning.payload)
+              : fetchAddressSource(
+                box ? buildGpuBoxUrl('zone-urba', box) : buildGpuUrl('zone-urba', point),
+                // A box answers a neighbourhood: 405 KB over Paris at the
+                // layer's ceiling, against 90 KB for one point.
+                box ? { maxBytes: 32 * 1024 * 1024 } : undefined,
+              ),
+            // The measured worst case for a single point is 1.4 MB. Always a
+            // POINT: one 390 m box over Lyon's Presqu'île answers 210 easement
+            // features and 2.3 MB, four times the payload for the half of the
+            // answer a point already gets right.
             fetchAddressSource(buildGpuUrl('assiette-sup-s', point), { maxBytes: 32 * 1024 * 1024 }),
           ]);
           if (!zoning && !servitudes) return null;
-          return projectGpu({ zoning, servitudes });
+          if (zoning && zoningKey && !cachedZoning) gpuZoningCacheSet(zoningKey, zoning);
+          // APIcarto caps at 5 000 features, HTTP 200, and says so only in
+          // `totalFeatures`. A zoning map missing four fifths of itself is not
+          // visibly incomplete — it looks like a commune with mixed zoning — so
+          // the whole half is refused and the true count printed.
+          const truncation = zoning ? gpuTruncation(zoning) : null;
+          const zoningRefused = truncation?.truncated
+            ? { found: truncation.total, limit: GPU_UPSTREAM_LIMIT }
+            : null;
+          return projectGpu({ zoning, servitudes, point, box, zoningRefused });
         },
       };
     });

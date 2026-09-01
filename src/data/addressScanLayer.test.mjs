@@ -286,3 +286,79 @@ test('the four billboard layers do not subscribe, and unsubscribe on disable', a
   assert.equal(listening.size(), 0);
   layer.disable();
 });
+
+/**
+ * A layer whose question depends on the CAMERA, not only on where it points —
+ * which is the urbanism layer, asking for a box close in and a point higher up.
+ */
+async function regimeLayer() {
+  const queries = [];
+  const { viewer } = headlessViewer(ADDRESS.lon, ADDRESS.lat, 900);
+  let altitude = 900;
+  const layer = createAddressScanLayer({
+    id: 'regime-test',
+    name: 'Regime test',
+    icon: '▦',
+    source: 'test',
+    endpoint: '/api/test',
+    updateInterval: 900_000,
+    // Below 1 500 m it asks for a box; above it, only the point.
+    params: () => (altitude <= 1500 ? { box: '1' } : {}),
+    render: ({ dataSource }) => { dataSource.entities.add({ id: `d${queries.length}` }); return 1; },
+    fetchImpl: async (url) => {
+      queries.push(String(url));
+      return { ok: true, json: async () => ({ zones: [] }) };
+    },
+  });
+  layer.init(viewer);
+  layer.enable(viewer);
+  return {
+    layer,
+    viewer,
+    queries,
+    setAltitude(next) {
+      altitude = next;
+      viewer.camera.positionCartographic.height = next;
+    },
+  };
+}
+
+/**
+ * The scan-shift guard watches the CENTRE and nothing else. Zoom straight down
+ * through the altitude where the urbanism layer switches from a box to a point
+ * and the centre has not moved a metre, while the answer on screen is now the
+ * wrong KIND of answer — a block of zoning left standing at 9 km, or one
+ * polygon where the neighbourhood should be.
+ */
+test('a params change rescans even when the scan centre has not moved', async (t) => {
+  // `disable()` detaches the Escape-to-dismiss handler from `document`, which
+  // only exists in the browser this runs in.
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer, viewer, queries, setAltitude } = await regimeLayer();
+  await layer.update(viewer);
+  assert.equal(queries.length, 1);
+  assert.ok(queries[0].includes('box=1'), 'close in, it asks for the block');
+
+  // Same point, same everything, except the question.
+  setAltitude(9000);
+  await layer.update(viewer);
+  assert.equal(queries.length, 2, 'the regime changed, so the answer is refetched');
+  assert.ok(!queries[1].includes('box=1'), 'higher up, it asks about the point');
+  layer.disable();
+});
+
+test('an unchanged question at an unchanged point still costs nothing', async (t) => {
+  // `disable()` detaches the Escape-to-dismiss handler from `document`, which
+  // only exists in the browser this runs in.
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer, viewer, queries } = await regimeLayer();
+  await layer.update(viewer);
+  await layer.update(viewer);
+  await layer.update(viewer);
+  assert.equal(queries.length, 1, 'the guard still holds when nothing changed');
+  layer.disable();
+});

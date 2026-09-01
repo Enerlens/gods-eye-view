@@ -2,8 +2,9 @@
  * @module viewportBox
  *
  * Axis-aligned lat/lon box geometry shared by the viewport-driven data
- * sources — the French transit feeds (`panFeeds.js`) and the French shared-
- * mobility feeds (`gbfsFeeds.js`).
+ * sources — the French transit feeds (`panFeeds.js`), the French shared-
+ * mobility feeds (`gbfsFeeds.js`), the cadastre (`cadastreFeed.js`) and the
+ * Géoportail de l'urbanisme (`gpuFeed.js`).
  *
  * These sources answer the same shape of question: *"which upstream feeds
  * intersect what the camera is looking at, and how much of each is on
@@ -69,6 +70,64 @@ export function boxKey(box, decimals = 3) {
   return [box.south, box.west, box.north, box.east]
     .map((value) => Number(value).toFixed(decimals))
     .join(',');
+}
+
+/**
+ * Whether a box is wider than a ceiling on either axis.
+ * @param {?{south:number, west:number, north:number, east:number}} box
+ * @param {number} maxDeg
+ * @returns {boolean} True for a missing box: nothing to draw is not a fit.
+ */
+export function boxTooWide(box, maxDeg) {
+  if (!box) return true;
+  return (box.north - box.south) > maxDeg || (box.east - box.west) > maxDeg;
+}
+
+/**
+ * The box to actually request: what the operator is looking AT, bounded.
+ *
+ * Two inputs, and neither is sufficient alone. The view rectangle knows what is
+ * on screen, but on a TILTED camera it reaches the horizon — far more ground
+ * than a per-viewport API will answer for, and far more than carries a legible
+ * feature. The focus point — where the middle of the screen meets the globe —
+ * knows WHERE the operator is looking but nothing about how much of it fits.
+ *
+ * So: a `maxDeg` box centred on the focus point, clipped to the view. Under a
+ * nadir camera at low altitude the view is the smaller of the two and the
+ * result IS the view, so nothing is requested that is not on screen. Under a
+ * strong tilt the result is the near and middle ground around the point being
+ * looked at, and the far half of the screen — where the feature is well under
+ * a pixel anyway — is simply not asked for.
+ *
+ * Lifted here from `cadastreFeed.js`, which learned it from a bug report, when
+ * the urbanism layer needed the same box for the same reason. The two callers
+ * keep their own ceilings; only the arithmetic is shared.
+ *
+ * @param {?{south:number, west:number, north:number, east:number}} view
+ * @param {?{lat:number, lon:number}} focus Screen-centre point on the globe.
+ * @param {number} maxDeg
+ * @returns {?{south:number, west:number, north:number, east:number}}
+ */
+export function focusedViewBox(view, focus, maxDeg) {
+  if (!view) return null;
+  const lat = Number(focus?.lat);
+  const lon = Number(focus?.lon);
+  // No focus point at all — the middle of the screen is sky. The view is then
+  // the only thing known, and it is used only if it already fits.
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+    return boxTooWide(view, maxDeg) ? null : { ...view };
+  }
+  const half = maxDeg / 2;
+  const box = {
+    south: Math.max(view.south, lat - half),
+    north: Math.min(view.north, lat + half),
+    west: Math.max(view.west, lon - half),
+    east: Math.min(view.east, lon + half),
+  };
+  // A focus point outside its own view rectangle is possible for a degenerate
+  // camera; an inverted box is not a small request, it is a broken one.
+  if (box.south >= box.north || box.west >= box.east) return null;
+  return box;
 }
 
 /** Grow a box by a margin in degrees, clamped to the globe. */

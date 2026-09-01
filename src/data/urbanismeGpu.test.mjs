@@ -11,11 +11,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
-import { projectZones } from './gpuFeed.js';
+import { GPU_BOX_MAX_ALTITUDE_M, GPU_MAX_BOX_DEG, projectZones } from './gpuFeed.js';
 import {
   ZONE_FILL_MAX_ALPHA,
   drawGpuParts,
   gpuClassificationTypeForScene,
+  gpuScanBox,
+  gpuScanParams,
+  zoneDescription,
   zoneColorCss,
   zoneFamilySentence,
   zoneFillAlpha,
@@ -176,4 +179,70 @@ test('a hidden globe leaves only the tileset to receive the wash', () => {
     Cesium.ClassificationType.TERRAIN,
   );
   assert.equal(gpuClassificationTypeForScene(null), Cesium.ClassificationType.BOTH);
+});
+
+// ── Which question the layer asks ───────────────────────────────────────────
+
+/** A viewer whose camera sits at `altitudeM` over a point, looking down. */
+function viewerAt(lon, lat, altitudeM, spanDeg = 0.03) {
+  return {
+    camera: {
+      positionCartographic: new Cesium.Cartographic(
+        Cesium.Math.toRadians(lon), Cesium.Math.toRadians(lat), altitudeM,
+      ),
+      computeViewRectangle: () => Cesium.Rectangle.fromDegrees(
+        lon - spanDeg / 2, lat - spanDeg / 2, lon + spanDeg / 2, lat + spanDeg / 2,
+      ),
+    },
+    scene: { globe: { ellipsoid: Cesium.Ellipsoid.WGS84 } },
+  };
+}
+
+const USTARITZ = { lon: -1.454242, lat: 43.395303 };
+
+test('close in it asks for the block; higher up it asks about the point', () => {
+  const low = { ...USTARITZ, altitudeM: 900 };
+  const box = gpuScanBox(low, viewerAt(USTARITZ.lon, USTARITZ.lat, 900));
+  assert.ok(box, 'below the box altitude the layer draws the neighbourhood');
+  assert.ok((box.north - box.south) <= GPU_MAX_BOX_DEG + 1e-9);
+  assert.ok((box.east - box.west) <= GPU_MAX_BOX_DEG + 1e-9);
+
+  const high = { ...USTARITZ, altitudeM: GPU_BOX_MAX_ALTITUDE_M + 1 };
+  assert.equal(gpuScanBox(high, viewerAt(USTARITZ.lon, USTARITZ.lat, high.altitudeM)), null,
+    'above it, one point is still a correct answer and a far cheaper one');
+});
+
+test('the box is clipped to the view, so nothing off screen is asked for', () => {
+  // A tight nadir view is smaller than the ceiling; the box must be the view,
+  // not a fixed square around it.
+  const tight = viewerAt(USTARITZ.lon, USTARITZ.lat, 300, 0.004);
+  const box = gpuScanBox({ ...USTARITZ, altitudeM: 300 }, tight);
+  assert.ok((box.east - box.west) < GPU_MAX_BOX_DEG / 2, 'clipped to the smaller view');
+});
+
+test('the regime shows up in the query, which is what makes a zoom rescan', () => {
+  // The scan-shift guard only watches the CENTRE. Zoom straight down through
+  // the box altitude and the centre has not moved at all, while the question
+  // being asked has changed completely — so the params have to differ.
+  const near = gpuScanParams({ ...USTARITZ, altitudeM: 900 },
+    viewerAt(USTARITZ.lon, USTARITZ.lat, 900));
+  const far = gpuScanParams({ ...USTARITZ, altitudeM: 9000 },
+    viewerAt(USTARITZ.lon, USTARITZ.lat, 9000));
+  assert.deepEqual(Object.keys(near).sort(), ['east', 'north', 'south', 'west']);
+  assert.deepEqual(far, {}, 'no bbox at all IS the point regime, server-side');
+  assert.notDeepEqual(near, far);
+});
+
+test('a camera with no view rectangle asks about the point rather than guessing', () => {
+  assert.equal(gpuScanBox({ ...USTARITZ, altitudeM: 400 }, null), null);
+  assert.equal(gpuScanBox({ lon: 1, lat: 1, altitudeM: NaN }, viewerAt(1, 1, 400)), null);
+});
+
+test('a neighbouring zone says it is a neighbour, on its own card', () => {
+  // Under a box most of what is drawn is NOT the answer to "what applies
+  // here", and a card that read the same either way would turn a map of the
+  // block into fifty claims about one address.
+  assert.ok(zoneDescription({ kind: 'U', code: 'UB', atPoint: true }).length > 0);
+  assert.ok(!zoneDescription({ kind: 'U', code: 'UB', atPoint: true }).includes('voisine'));
+  assert.ok(zoneDescription({ kind: 'A', code: 'A', atPoint: false }).includes('voisine'));
 });

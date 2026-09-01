@@ -377,6 +377,10 @@ export function scanShiftNeeded(last, next, minShiftKm = ADDRESS_SCAN_MIN_SHIFT_
  *   config.render Draws the payload and returns how many entities it created.
  * @param {(payload: object) => Record<string, unknown>} [config.summarize]
  *   Extra fields merged into `getStats()`.
+ * @param {(point: object, viewer: ?object) => Record<string, string>} [config.params]
+ *   Extra query parameters. Takes the viewer as well as the point because a
+ *   layer may ask a different question depending on the CAMERA — the urbanism
+ *   layer asks for a box close in and a point higher up.
  * @param {number} [config.maxAltitudeM]
  * @param {number} [config.minShiftKm]
  * @param {typeof fetch} [config.fetchImpl] Injection seam for tests.
@@ -421,6 +425,8 @@ export function createAddressScanLayer(config) {
   let _seatTimer = null;
   let _seatPending = false;
   let _mapStackListener = null;
+  /** The exact query the drawn answer came from, for change detection. */
+  let _lastQuery = null;
   const _cards = new Map();
 
   /** Restore the marker a selection had enlarged. */
@@ -609,6 +615,7 @@ export function createAddressScanLayer(config) {
           _payload = null;
           _dormant = true;
           _lastPoint = null;
+          _lastQuery = null;
           _seatPending = false;
         }
         _lastError = null;
@@ -616,15 +623,25 @@ export function createAddressScanLayer(config) {
         return true;
       }
       _dormant = false;
-      if (!scanShiftNeeded(_lastPoint, point, minShiftKm)) return true;
 
       const query = new URLSearchParams({
         lat: point.lat.toFixed(6),
         lon: point.lon.toFixed(6),
-        ...params(point),
+        ...params(point, _viewer),
       });
+      const queryString = String(query);
+      // TWO reasons to rescan, and the movement one is not sufficient on its
+      // own. A layer whose params depend on the camera — the urbanism layer
+      // asks for a BOX below its own altitude and a point above it — changes
+      // the question it is asking without the scan centre moving at all: zoom
+      // straight down through that altitude and the shift is zero while the
+      // answer that is on screen is now the wrong kind. Comparing the query
+      // covers both, because the point is in it.
+      if (!scanShiftNeeded(_lastPoint, point, minShiftKm) && queryString === _lastQuery) {
+        return true;
+      }
       try {
-        const response = await fetchImpl(`${endpoint}?${query}`, signal ? { signal } : undefined);
+        const response = await fetchImpl(`${endpoint}?${queryString}`, signal ? { signal } : undefined);
         if (!response.ok) {
           _lastError = `${name} HTTP ${response.status}`;
           return false;
@@ -645,6 +662,7 @@ export function createAddressScanLayer(config) {
         indexCards();
         _payload = payload;
         _lastPoint = point;
+        _lastQuery = queryString;
         _lastUpdate = Date.now();
         _stale = payload.stale === true;
         _lastError = null;
@@ -704,6 +722,7 @@ export function createAddressScanLayer(config) {
       setOverlaySourceVisible(id, false);
       _enabled = false;
       _lastPoint = null;
+      _lastQuery = null;
       _lastUpdate = null;
       _lastError = null;
       _count = 0;
@@ -737,6 +756,7 @@ export function createAddressScanLayer(config) {
       // Force the next update to scan: the camera may have travelled a
       // continent while the layer was off.
       _lastPoint = null;
+      _lastQuery = null;
     },
 
     disable() {

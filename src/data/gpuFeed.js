@@ -33,8 +33,21 @@
  * them into the sentence a buyer needs. Anything unmapped keeps its raw code
  * rather than being hidden.
  *
- * Dependency-free and side-effect-free. The `/api/gpu` proxy imports this.
+ * TWO REGIMES, ONE PROJECTION. Close in, the zoning half is asked for over a
+ * BOX — the neighbourhood, not only the ground underfoot — because "what may
+ * be built on the plot opposite" is the question this layer exists for and a
+ * point cannot answer it. Above `GPU_BOX_MAX_ALTITUDE_M` it falls back to the
+ * point, which is still a correct answer and a far cheaper one. The servitude
+ * half is ALWAYS a point: measured, one 390 m box over Lyon's Presqu'île
+ * returns 210 easement features and 2.3 MB, four times the payload for the
+ * part of the answer a point already gets right.
+ *
+ * Side-effect-free, and its only dependency is `ringGeometry.js` — the
+ * cadastre layer had already paid for the point-in-polygon this needs to say
+ * WHICH of several returned zones is the one under the operator's feet.
  */
+
+import { pointInPolygons, ringLabelAnchor } from './ringGeometry.js';
 
 const APICARTO_ROOT = 'https://apicarto.ign.fr/api/gpu';
 
@@ -64,6 +77,64 @@ export const GPU_MAX_RING_VERTICES = 400;
 export const GPU_MAX_FEATURE_PARTS = 24;
 /** Total vertices kept per feature, across all its rings. */
 export const GPU_MAX_FEATURE_VERTICES = 1200;
+
+/**
+ * Widest box the ZONING half will be asked for, in degrees.
+ *
+ * The layer answers one point until it is close enough to answer a
+ * neighbourhood, and this is where "close enough" is set. Measured against
+ * live APIcarto on 2026-09-01, `zone-urba` over a square of this side:
+ *
+ *   Paris 13e         52 zones    405 KB upstream
+ *   Marseille centre  17 zones    (with the servitudes, 2.9 MB)
+ *   Ustaritz          55 zones    284 KB
+ *
+ * At twice this side Paris answers 243 zones and 1.2 MB, which is four times
+ * the bytes for ground the operator cannot read at that altitude anyway. The
+ * same 0.02° the cadastre layer settled on, for the same reason and against
+ * the same API.
+ */
+export const GPU_MAX_BOX_DEG = 0.02;
+
+/**
+ * Camera altitude above which the layer answers a POINT rather than a box.
+ *
+ * Not a dormancy ceiling — the point regime is still a correct and useful
+ * answer, and it remains the layer's behaviour up to
+ * `ADDRESS_SCAN_MAX_ALTITUDE_M`. This is where a 0.02° box stops covering the
+ * view and would become a patch in the middle of the screen: at a nadir camera
+ * 1 500 m gives about 0.0157° of longitude at 1 000 m and 0.0315° at 2 000 m.
+ * Same number and same arithmetic as `CADASTRE_MAX_ALTITUDE_M`.
+ */
+export const GPU_BOX_MAX_ALTITUDE_M = 1500;
+
+/** Cache grid the request box is snapped onto. 0.002° ≈ 220 m. */
+export const GPU_BOX_STEP_DEG = 0.002;
+
+/**
+ * The ceiling the PROXY accepts, deliberately wider than the one the client
+ * asks for: `snapBoxOutward` moves each edge out by up to a full grid step, so
+ * a box already at the client ceiling arrives up to two steps wider, and a
+ * snapped edge rounded to six decimals is compared against an exact ceiling by
+ * floating-point noise. Two steps for the snap, a third for the noise — the
+ * cadastre layer paid for this margin at 400 m and 800 m over Paris.
+ */
+export const GPU_REQUEST_MAX_BOX_DEG = GPU_MAX_BOX_DEG + 3 * GPU_BOX_STEP_DEG;
+
+/**
+ * APIcarto's own per-request ceiling, measured rather than documented.
+ *
+ * `zone-urba` truncates exactly the way `cadastre/parcelle` does and says so
+ * only in `totalFeatures`. Measured 2026-09-01 over Paris: a 0.15° box returns
+ * 4 105 of 4 105 whole, HTTP 200; a 0.40° box returns **5 000 of 17 182**, and
+ * a 1.0° Île-de-France box **5 000 of 46 500** — both HTTP 200, no warning.
+ * A truncated zoning map is a commune with unzoned patches scattered through
+ * it, which is not what an incomplete answer looks like — it is what a
+ * commune with genuinely mixed zoning looks like. So a box over the ceiling is
+ * refused whole and the true count is reported. At `GPU_MAX_BOX_DEG` the
+ * densest measured box answers 55 zones, so the refusal is the exception.
+ */
+export const GPU_UPSTREAM_LIMIT = 5000;
 
 /**
  * The national servitude nomenclature, in the words a buyer would use.
@@ -105,6 +176,55 @@ export function buildGpuUrl(endpoint, { lon, lat }) {
   }
   const geom = JSON.stringify({ type: 'Point', coordinates: [lon, lat] });
   return `${APICARTO_ROOT}/${endpoint}?geom=${encodeURIComponent(geom)}`;
+}
+
+/**
+ * One APIcarto URL for a BOX — the zoning around the point, not only under it.
+ *
+ * Asked for as a Polygon rather than a `bbox` parameter because that is the
+ * only geometry filter the GPU module takes; it is the same `geom` slot the
+ * point query uses, so nothing else about the request changes.
+ *
+ * `_limit` asks for exactly {@link GPU_UPSTREAM_LIMIT}. Asking for more buys
+ * nothing — the service caps there regardless — and it would hide the
+ * truncation behind a number the caller chose rather than one the caller can
+ * compare against `totalFeatures`.
+ *
+ * @param {'zone-urba'|'assiette-sup-s'|'prescription-surf'} endpoint
+ * @param {{south:number, west:number, north:number, east:number}} box
+ * @returns {string}
+ */
+export function buildGpuBoxUrl(endpoint, box) {
+  const { south, west, north, east } = box || {};
+  if (![south, west, north, east].every(Number.isFinite)) {
+    throw new Error('gpu: box edges must be finite numbers');
+  }
+  if (south >= north || west >= east) throw new Error('gpu: box must be ordered');
+  const geom = JSON.stringify({
+    type: 'Polygon',
+    coordinates: [[
+      [west, south], [east, south], [east, north], [west, north], [west, south],
+    ]],
+  });
+  return `${APICARTO_ROOT}/${endpoint}?geom=${encodeURIComponent(geom)}`
+    + `&_limit=${GPU_UPSTREAM_LIMIT}`;
+}
+
+/**
+ * Whether an answer is all of itself, or the first 5 000 of something larger.
+ *
+ * `numberReturned` is not always published, so the feature count stands in for
+ * it; `totalFeatures` is the field that gives the game away. Absent, the answer
+ * is trusted — this must never invent a refusal.
+ *
+ * @param {object|null|undefined} payload A GeoJSON FeatureCollection.
+ * @returns {{truncated: boolean, returned: number, total: ?number}}
+ */
+export function gpuTruncation(payload) {
+  const returned = Number(payload?.numberReturned ?? payload?.features?.length ?? 0);
+  const rawTotal = payload?.totalFeatures ?? payload?.numberMatched;
+  const total = Number.isFinite(Number(rawTotal)) ? Number(rawTotal) : null;
+  return { truncated: total !== null && returned < total, returned, total };
 }
 
 /**
@@ -227,12 +347,72 @@ export function projectGeometry(geometry) {
 }
 
 /**
+ * Where to stand this feature's label: inside its WIDEST part.
+ *
+ * Per part rather than per feature, because a zone published as twenty
+ * separate patches has no single inside; the widest one is the piece a reader
+ * is most likely to be looking at and the only one with room for text.
+ * @param {Array<Array<Array<number[]>>>} parts
+ * @returns {?{lon:number, lat:number, widthDeg:number}}
+ */
+function labelAnchor(parts) {
+  let best = null;
+  for (const rings of parts || []) {
+    const anchor = ringLabelAnchor(rings);
+    if (anchor && (!best || anchor.widthDeg > best.widthDeg)) best = anchor;
+  }
+  return best;
+}
+
+/**
+ * The feature's rings as PUBLISHED, before any decimation.
+ * @param {object|null|undefined} geometry
+ * @returns {Array<Array<Array<number[]>>>}
+ */
+function rawParts(geometry) {
+  if (geometry?.type === 'Polygon') return [geometry.coordinates];
+  if (geometry?.type === 'MultiPolygon') return geometry.coordinates;
+  return [];
+}
+
+/**
  * Project the zoning answer.
+ *
+ * `point` is the ground under the operator, and it is what separates "the zone
+ * you are standing in" from "the zones around you". Under a box a
+ * neighbourhood arrives — 52 zones over Paris at the layer's own ceiling — and
+ * exactly one of them normally holds the scan point. `atPoint` marks it, so
+ * the marker and the card still answer the point question directly while the
+ * map answers the wider one.
+ *
+ * WHO DECIDES `atPoint` DEPENDS ON WHO WAS ASKED, and getting this wrong is
+ * subtle enough to be worth the paragraph. Under a POINT query every feature
+ * APIcarto returns intersects that point by construction — the service has
+ * already answered the question, and re-deciding it here can only disagree
+ * with it. Under a BOX query the service has answered a different question, so
+ * this decides, against the ring as PUBLISHED rather than the one that will be
+ * drawn.
+ *
+ * That distinction is not academic. Ustaritz's `UB` outer ring is 521 vertices
+ * and is decimated to 400 for drawing; the scan point APIcarto itself answers
+ * `UB` for falls OUTSIDE the decimated ring, because a straightened edge cut
+ * across it. The drawn shape is a simplification and must never be the thing
+ * that decides which rule applies to a house — it is wrong by exactly the
+ * tolerance the layer already declares.
+ *
+ * More than one `atPoint` is not an error and is not deduplicated: two
+ * communes digitising their shared limit independently really do zone the same
+ * ground twice, and the layer reports it rather than picking a winner.
+ *
  * @param {object|null|undefined} payload `zone-urba` FeatureCollection.
+ * @param {{point?: ?{lon:number, lat:number}, boxed?: boolean}} [options]
  * @returns {Array<object>}
  */
-export function projectZones(payload) {
+export function projectZones(payload, { point = null, boxed = false } = {}) {
   const features = Array.isArray(payload?.features) ? payload.features : [];
+  const lon = Number(point?.lon);
+  const lat = Number(point?.lat);
+  const hasPoint = Number.isFinite(lon) && Number.isFinite(lat);
   const zones = [];
   for (const feature of features) {
     const properties = feature?.properties || {};
@@ -251,6 +431,15 @@ export function projectZones(payload) {
       regulationUrl: properties.urlfic || null,
       parts: geometry.parts,
       holes: geometry.holes,
+      // Whether THIS zone is the one under the scan point. See above for why
+      // the answer comes from the service under a point query and from the
+      // PUBLISHED ring — never the drawn one — under a box query.
+      atPoint: boxed
+        ? (hasPoint && pointInPolygons(rawParts(feature?.geometry), lon, lat))
+        : true,
+      // Where a label can stand without leaving its own colour. Null for a
+      // sliver, which is then drawn unlabelled rather than mislabelled.
+      anchor: labelAnchor(geometry.parts),
       simplified: geometry.simplified,
       sourceVertices: geometry.sourceVertices,
       sourceRings: geometry.sourceRings,
@@ -258,6 +447,10 @@ export function projectZones(payload) {
       servedParts: geometry.servedParts,
     });
   }
+  // The zone under the operator first, so a reader meets their own ground
+  // before the neighbours' — and so a consumer that takes `zones[0]` is right
+  // rather than lucky.
+  zones.sort((a, b) => Number(b.atPoint) - Number(a.atPoint));
   return zones;
 }
 
@@ -303,13 +496,43 @@ export function projectServitudes(payload) {
 
 /**
  * Assemble both answers into the one document the client reads.
- * @param {{zoning?: object|null, servitudes?: object|null}} input
+ *
+ * `box` and `point` are carried through rather than inferred: the client has
+ * to be able to say WHICH question was answered, because "one zone" means
+ * something different in each regime — under a point it is the only zone there
+ * is, and under a box it is a neighbourhood with one zone in it.
+ *
+ * A REFUSED zoning half is not an error and is not an empty answer. Over the
+ * upstream's 5 000-feature ceiling the service returns the first 5 000 with
+ * HTTP 200 and no warning, and a zoning map missing four fifths of itself
+ * looks exactly like one with genuinely mixed zoning. So the caller passes
+ * `zoningRefused` and this returns no zones at all plus the true count, which
+ * the row prints. At the layer's own box ceiling the densest measured box
+ * answers 55 zones, so this path is the exception.
+ *
+ * @param {{zoning?: object|null, servitudes?: object|null,
+ *   point?: ?{lon:number, lat:number}, box?: ?object,
+ *   zoningRefused?: ?{found:number, limit:number}}} input
  * @returns {object}
  */
-export function projectGpu({ zoning, servitudes }) {
+export function projectGpu({
+  zoning, servitudes, point = null, box = null, zoningRefused = null,
+} = {}) {
+  const zones = zoningRefused ? [] : projectZones(zoning, { point, boxed: Boolean(box) });
   return {
-    zones: projectZones(zoning),
+    zones,
     servitudes: projectServitudes(servitudes),
-    available: { zoning: Boolean(zoning), servitudes: Boolean(servitudes) },
+    // The regime that answered, said out loud. `zones.length` alone cannot
+    // distinguish "one zone here" from "one zone in the whole block".
+    regime: box ? 'box' : 'point',
+    box: box ? { ...box } : null,
+    // How many zones claim the ground under the operator. More than one is the
+    // register disagreeing with itself at a commune limit, not a bug.
+    zonesAtPoint: zones.filter((zone) => zone.atPoint).length,
+    zoningRefused: zoningRefused ? { ...zoningRefused } : null,
+    available: {
+      zoning: Boolean(zoning) && !zoningRefused,
+      servitudes: Boolean(servitudes),
+    },
   };
 }

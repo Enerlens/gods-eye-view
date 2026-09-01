@@ -9,18 +9,25 @@ import { readFileSync } from 'node:fs';
 import {
   GPU_COORDINATE_DECIMALS,
   GPU_MAX_FEATURE_PARTS,
+  GPU_MAX_FEATURE_VERTICES,
+  GPU_UPSTREAM_LIMIT,
   GPU_MAX_RING_VERTICES,
   SUP_TYPE_LABELS,
+  buildGpuBoxUrl,
   buildGpuUrl,
   decimateRing,
+  gpuTruncation,
   projectGpu,
   projectServitudes,
   projectZones,
 } from './gpuFeed.js';
+import { pointInPolygons } from './ringGeometry.js';
 
 const read = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 const ZONING = read('gpu-zone-urba-sample.json');
 const ENCLAVES = read('gpu-zone-urba-enclaves-sample.json');
+/** The exact coordinate APIcarto answered `UB` for, in the village centre. */
+const USTARITZ = { lon: -1.454242, lat: 43.395303 };
 const SERVITUDES = read('gpu-assiette-sup-s-sample.json');
 
 test('the captured answers still carry every field the projection reads', () => {
@@ -194,9 +201,114 @@ test('a hole is never dropped while the ring it perforates survives', () => {
   assert.equal(zone.simplified, true, 'the outer ring was decimated and says so');
 });
 
-test('the enclaves cost bytes, and the projection still pays for itself', () => {
-  const projected = projectGpu({ zoning: ENCLAVES, servitudes: null });
-  const after = JSON.stringify(projected).length;
-  assert.ok(after * 2 < JSON.stringify(ENCLAVES).length,
-    `${after} must still be well under half of the captured answer`);
+test('the enclaves cost vertices, and the budget still holds', () => {
+  // Measured on the drawn shape rather than on bytes: the byte ratio of one
+  // small zone sits near a half and would flip on a field being added, which
+  // makes it a test of the payload's shape rather than of the budget.
+  const [zone] = projectZones(ENCLAVES);
+  const drawn = zone.parts.reduce((sum, part) => sum + part.reduce((n, ring) => n + ring.length, 0), 0);
+  assert.ok(drawn <= GPU_MAX_FEATURE_VERTICES + GPU_MAX_RING_VERTICES,
+    `${drawn} vertices must stay inside the per-feature budget`);
+  assert.equal(zone.sourceRings, 3, 'the outer ring and its two enclaves were all read');
+  assert.ok(zone.sourceVertices > drawn, 'the upstream was heavier than what is drawn');
+});
+
+// ── The box regime ──────────────────────────────────────────────────────────
+
+test('a box is asked for as a Polygon, with the cap the service actually has', () => {
+  const url = new URL(buildGpuBoxUrl('zone-urba', {
+    south: 43.385, west: -1.464, north: 43.405, east: -1.444,
+  }));
+  const geom = JSON.parse(url.searchParams.get('geom'));
+  assert.equal(geom.type, 'Polygon');
+  assert.equal(geom.coordinates[0].length, 5, 'a closed ring');
+  assert.deepEqual(geom.coordinates[0][0], geom.coordinates[0][4]);
+  // Asking for more than the service will send buys nothing and hides the
+  // truncation behind a number the caller chose.
+  assert.equal(url.searchParams.get('_limit'), String(GPU_UPSTREAM_LIMIT));
+  assert.throws(() => buildGpuBoxUrl('zone-urba', { south: 1, west: 2, north: 0, east: 3 }), /ordered/);
+  assert.throws(() => buildGpuBoxUrl('zone-urba', { south: NaN }), /finite/);
+});
+
+test('truncation is read from totalFeatures, because HTTP 200 will not say it', () => {
+  // Measured 2026-09-01: a 0.40° box over Paris returns 5 000 of 17 182 and a
+  // 1.0° Île-de-France box 5 000 of 46 500 — both HTTP 200, no warning.
+  assert.deepEqual(gpuTruncation({ features: new Array(5000), totalFeatures: 17182 }),
+    { truncated: true, returned: 5000, total: 17182 });
+  assert.equal(gpuTruncation({ features: new Array(55), totalFeatures: 55 }).truncated, false);
+  // No count published is not evidence of truncation; inventing a refusal
+  // would blank a layer that had a perfectly good answer.
+  assert.equal(gpuTruncation({ features: new Array(12) }).truncated, false);
+  assert.equal(gpuTruncation(null).truncated, false);
+});
+
+test('under a POINT query the service decided, and this does not second-guess it', () => {
+  // The trap, measured on the real Ustaritz answer: APIcarto returns `UB` for
+  // this exact coordinate, and the coordinate falls OUTSIDE the ring after the
+  // 521→400 decimation, because a straightened edge cut across it. Deciding
+  // `atPoint` from the drawn shape would contradict the register by exactly
+  // the tolerance the layer already declares.
+  const [zone] = projectZones(ENCLAVES, { point: USTARITZ, boxed: false });
+  assert.equal(zone.atPoint, true);
+  assert.equal(pointInPolygons(zone.parts, USTARITZ.lon, USTARITZ.lat), false,
+    'the drawn ring really does exclude the point — that is why the flag is not read from it');
+});
+
+test('under a BOX query this decides, from the ring as PUBLISHED', () => {
+  const [zone] = projectZones(ENCLAVES, { point: USTARITZ, boxed: true });
+  assert.equal(zone.atPoint, true, 'the published ring contains the point, and it is the one asked');
+  const away = projectZones(ENCLAVES, { point: { lon: 2.35, lat: 48.85 }, boxed: true });
+  assert.equal(away[0].atPoint, false, 'a point in Paris is not in an Ustaritz zone');
+});
+
+test('a zone the operator is standing in sorts before the neighbours', () => {
+  const neighbour = structuredClone(ENCLAVES.features[0]);
+  neighbour.properties = { ...neighbour.properties, gid: 999, libelle: 'A', typezone: 'A' };
+  // Move it far enough that it cannot hold the point.
+  neighbour.geometry.coordinates = neighbour.geometry.coordinates.map(
+    (part) => part.map((ring) => ring.map(([lon, lat]) => [lon + 1, lat + 1])),
+  );
+  const zones = projectZones({ features: [neighbour, ENCLAVES.features[0]] },
+    { point: USTARITZ, boxed: true });
+  assert.equal(zones.length, 2);
+  assert.equal(zones[0].code, 'UB');
+  assert.equal(zones[0].atPoint, true);
+  assert.equal(zones[1].atPoint, false);
+});
+
+test('every zone carries a label anchor inside its own drawn shape', () => {
+  const [zone] = projectZones(ENCLAVES);
+  assert.ok(zone.anchor, 'a zone this size must be labellable');
+  assert.equal(pointInPolygons(zone.parts, zone.anchor.lon, zone.anchor.lat), true);
+  // Rounded like the rings: this is a place to stand a label, not a survey.
+  assert.ok(String(zone.anchor.lon).split('.')[1].length <= GPU_COORDINATE_DECIMALS);
+});
+
+test('the assembled document says which question it answered', () => {
+  const box = { south: 43.385, west: -1.464, north: 43.405, east: -1.444 };
+  const asPoint = projectGpu({ zoning: ENCLAVES, servitudes: null, point: USTARITZ });
+  assert.equal(asPoint.regime, 'point');
+  assert.equal(asPoint.box, null);
+  assert.equal(asPoint.zonesAtPoint, 1);
+
+  const asBox = projectGpu({ zoning: ENCLAVES, servitudes: null, point: USTARITZ, box });
+  assert.equal(asBox.regime, 'box');
+  assert.deepEqual(asBox.box, box);
+  assert.equal(asBox.zonesAtPoint, 1);
+});
+
+test('a refused zoning half draws nothing and reports the true count', () => {
+  // Not an empty answer and not an error: a zoning map missing four fifths of
+  // itself looks exactly like a commune with genuinely mixed zoning.
+  const refused = projectGpu({
+    zoning: ENCLAVES,
+    servitudes: SERVITUDES,
+    point: USTARITZ,
+    box: { south: 43, west: -2, north: 44, east: -1 },
+    zoningRefused: { found: 46500, limit: GPU_UPSTREAM_LIMIT },
+  });
+  assert.deepEqual(refused.zones, []);
+  assert.equal(refused.zoningRefused.found, 46500);
+  assert.equal(refused.available.zoning, false, 'a refusal is not an available answer');
+  assert.ok(refused.servitudes.length > 0, 'the other half is untouched');
 });

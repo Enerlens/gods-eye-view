@@ -65,6 +65,13 @@
 //    arrondissements and no absorbed communes in that range. Both fields are
 //    carried as opaque strings and neither is parsed for meaning.
 
+import {
+  pointInPolygons as partsContain,
+  polygonsBounds as ringBounds,
+  pointInRing as ringContains,
+} from './ringGeometry.js';
+import { boxTooWide, focusedViewBox } from './viewportBox.js';
+
 /** Api Carto's cadastre module. Keyless, CORS-open, Licence Ouverte 2.0. */
 export const CADASTRE_API_BASE = 'https://apicarto.ign.fr/api/cadastre';
 
@@ -300,26 +307,16 @@ export function cadastreCoverageIntersects(box) {
  * @returns {boolean} Whether either span exceeds {@link CADASTRE_MAX_BOX_DEG}.
  */
 export function cadastreBoxTooWide(box) {
-  if (!box) return true;
-  return (box.north - box.south) > CADASTRE_MAX_BOX_DEG
-    || (box.east - box.west) > CADASTRE_MAX_BOX_DEG;
+  return boxTooWide(box, CADASTRE_MAX_BOX_DEG);
 }
 
 /**
  * The box to actually request: what the operator is looking AT, bounded.
  *
- * Two inputs, and neither is sufficient alone. The view rectangle knows what is
- * on screen but on a tilted camera that reaches the horizon, which is far more
- * ground than Api Carto will answer for and far more than carries a legible
- * parcel. The focus point — where the middle of the screen meets the globe —
- * knows WHERE the operator is looking but nothing about how much of it fits.
- *
- * So: a `maxDeg` box centred on the focus point, clipped to the view. Under a
- * nadir camera at low altitude the view is the smaller of the two and the
- * result IS the view, so nothing is requested that is not on screen. Under a
- * strong tilt the result is the near and middle ground around the point being
- * looked at, and the far half of the screen — where a parcel is well under a
- * pixel anyway — is simply not asked for.
+ * The arithmetic — and the bug report behind it — now lives in
+ * `viewportBox.focusedViewBox`, because the urbanism layer needed the same box
+ * for the same reason. This keeps the name the cadastre layer and its tests
+ * already use, and the default ceiling that is this layer's own.
  *
  * @param {?{south:number, west:number, north:number, east:number}} view
  * @param {?{lat:number, lon:number}} focus Screen-centre point on the globe.
@@ -327,25 +324,7 @@ export function cadastreBoxTooWide(box) {
  * @returns {?{south:number, west:number, north:number, east:number}}
  */
 export function cadastreRequestBox(view, focus, maxDeg = CADASTRE_MAX_BOX_DEG) {
-  if (!view) return null;
-  const lat = finiteOrNull(focus?.lat);
-  const lon = finiteOrNull(focus?.lon);
-  // No focus point at all — the middle of the screen is sky. The view is then
-  // the only thing known, and it is used only if it already fits.
-  if (lat === null || lon === null) {
-    return cadastreBoxTooWide(view) ? null : { ...view };
-  }
-  const half = maxDeg / 2;
-  const box = {
-    south: Math.max(view.south, lat - half),
-    north: Math.min(view.north, lat + half),
-    west: Math.max(view.west, lon - half),
-    east: Math.min(view.east, lon + half),
-  };
-  // A focus point outside its own view rectangle is possible for a degenerate
-  // camera; an inverted box is not a small request, it is a broken one.
-  if (box.south >= box.north || box.west >= box.east) return null;
-  return box;
+  return focusedViewBox(view, focus, maxDeg);
 }
 
 /**
@@ -542,25 +521,7 @@ export function parcelAnchor(geometry) {
  * @returns {?{south:number, west:number, north:number, east:number}}
  */
 export function polygonsBounds(polygons) {
-  let south = Infinity;
-  let west = Infinity;
-  let north = -Infinity;
-  let east = -Infinity;
-  for (const polygon of polygons || []) {
-    for (const point of polygon?.[0] || []) {
-      if (!Array.isArray(point)) continue;
-      const lon = point[0];
-      const lat = point[1];
-      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-      if (lat < south) south = lat;
-      if (lat > north) north = lat;
-      if (lon < west) west = lon;
-      if (lon > east) east = lon;
-    }
-  }
-  return Number.isFinite(south) && Number.isFinite(west) ? {
-    south, west, north, east,
-  } : null;
+  return ringBounds(polygons);
 }
 
 /**
@@ -571,17 +532,7 @@ export function polygonsBounds(polygons) {
  * @returns {boolean}
  */
 export function pointInRing(lon, lat, ring) {
-  if (!Array.isArray(ring) || ring.length < 3) return false;
-  let inside = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
-    const a = ring[j];
-    const b = ring[i];
-    if (!Array.isArray(a) || !Array.isArray(b)) continue;
-    const intersects = ((b[1] > lat) !== (a[1] > lat))
-      && (lon < ((a[0] - b[0]) * (lat - b[1])) / (a[1] - b[1]) + b[0]);
-    if (intersects) inside = !inside;
-  }
-  return inside;
+  return ringContains(lon, lat, ring);
 }
 
 /**
@@ -604,16 +555,7 @@ export function pointInRing(lon, lat, ring) {
  * @returns {boolean}
  */
 export function pointInPolygons(polygons, lon, lat) {
-  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return false;
-  for (const polygon of polygons || []) {
-    if (!Array.isArray(polygon) || !pointInRing(lon, lat, polygon[0])) continue;
-    let inHole = false;
-    for (let h = 1; h < polygon.length; h += 1) {
-      if (pointInRing(lon, lat, polygon[h])) { inHole = true; break; }
-    }
-    if (!inHole) return true;
-  }
-  return false;
+  return partsContain(polygons, lon, lat);
 }
 
 /**

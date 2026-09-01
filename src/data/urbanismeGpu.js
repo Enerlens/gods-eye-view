@@ -1,6 +1,9 @@
 import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
 import { createAddressScanLayer } from './addressScanLayer.js';
+import { GPU_BOX_MAX_ALTITUDE_M, GPU_MAX_BOX_DEG } from './gpuFeed.js';
+import { cameraViewBox } from './viewGate.js';
+import { focusedViewBox } from './viewportBox.js';
 
 /**
  * Géoportail de l'urbanisme — what may legally be built here, and what the
@@ -11,6 +14,23 @@ import { createAddressScanLayer } from './addressScanLayer.js';
  * for construction, that an airport noise-exposure plan covers the address, or
  * that a railway protection strip runs under the balcony. All three are
  * public, drawable, and read today — if at all — one PDF at a time.
+ *
+ * IT DRAWS THE BLOCK, NOT THE DOT. Below {@link GPU_BOX_MAX_ALTITUDE_M} the
+ * zoning half is asked for over a BOX around what the camera is looking at, so
+ * the answer on screen is the neighbourhood's zoning rather than one polygon
+ * under the operator's feet. That is the layer's actual question — "could the
+ * car park opposite become twenty-five metres of construction?" is about the
+ * plot OPPOSITE — and a point query cannot answer it. Higher up it falls back
+ * to the point, which is still correct and much cheaper. Measured on
+ * 2026-09-01 at the 0.02° ceiling: Paris 52 zones and 221 KB against 122 KB
+ * for the point, Ustaritz 55 zones and 170 KB against 17 KB.
+ *
+ * THE SERVITUDE HALF STAYS A POINT IN BOTH REGIMES, and the measurement is
+ * why: one 390 m box over Lyon's Presqu'île answers 210 easement features and
+ * 2.3 MB. At the zoning ceiling the full-box regime cost 4 MB upstream, 1.8 MB
+ * on the wire and 1 182 entities against the hybrid's 888 KB, 506 KB and 218 —
+ * four times the payload for the half of the answer a point already gets
+ * right. "What reaches this address" is the right question for an easement.
  *
  * THE ZONE IS FILLED, AND THAT IS NOT DECORATION. It was drawn as a bare
  * outline until an operator looked at Ustaritz and asked how one house could
@@ -168,6 +188,22 @@ const SERVITUDE_COLOR = '#ff4d3d';
 const SERVITUDE_DASH_LENGTH_PX = 20;
 
 /**
+ * Narrowest zone that gets its code written on it, in degrees of longitude.
+ *
+ * A neighbourhood of fifty coloured polygons with no codes on them is a puzzle,
+ * not a map — which family a colour means is learnable, but `UB` against `UYc`
+ * is not, and those two are the same orange. So each zone carries its code on
+ * the ground, the way the paper document does.
+ *
+ * The threshold is what keeps that from becoming noise. `anchor.widthDeg` is
+ * the width of the chord the label stands on, so this is "do not write four
+ * characters across a shape a few metres wide": 0.0004° is about 33 m of
+ * longitude at 45°N, roughly a building. Below it the zone is drawn and
+ * coloured but unlabelled — its card still names it.
+ */
+const ZONE_LABEL_MIN_WIDTH_DEG = 0.0004;
+
+/**
  * What each family means, in the words someone buying a house would use.
  *
  * The register's own `libelong` is frequently just "Zone UB", which restates
@@ -314,6 +350,67 @@ export function drawGpuParts(dataSource, idPrefix, parts, style) {
   return drawn;
 }
 
+/**
+ * One zone's card, shared by its outline and by the code written on it.
+ *
+ * The same sentence either way, because they are the same zone: clicking the
+ * code on the ground and clicking its boundary must not tell a reader two
+ * different things about the rule they are standing on.
+ * @param {object} entry Projected zone.
+ * @returns {string}
+ */
+export function zoneDescription(entry) {
+  return [
+    zoneFamilySentence(entry?.kind),
+    entry?.atPoint === false ? 'zone voisine — pas celle sous le repère' : null,
+    entry?.label,
+    entry?.approvedOn ? `PLU approuvé le ${entry.approvedOn}` : null,
+    entry?.regulationFile,
+    entry?.holes
+      ? `${entry.holes} enclave${entry.holes > 1 ? 's' : ''} découpée${entry.holes > 1 ? 's' : ''} dans la zone`
+      : null,
+    entry?.simplified ? `contour simplifié (${entry.sourceVertices} sommets à l'amont)` : null,
+  ].filter(Boolean).join(' · ');
+}
+
+/**
+ * The box this scan should ask for, or null to ask about the point.
+ *
+ * The gate is the camera's ALTITUDE, not the span of the view rectangle, and
+ * the cadastre layer paid for that distinction: `computeViewRectangle` on a
+ * TILTED camera reaches the horizon, so gating on its span refuses the layer at
+ * street level on exactly the oblique view this globe defaults to.
+ *
+ * @param {?{lat:number, lon:number, altitudeM:number}} point Scan centre.
+ * @param {?object} viewer
+ * @returns {?{south:number, west:number, north:number, east:number}}
+ */
+export function gpuScanBox(point, viewer) {
+  if (!Number.isFinite(point?.altitudeM) || point.altitudeM > GPU_BOX_MAX_ALTITUDE_M) return null;
+  // The shared `cameraViewBox`, the same arithmetic the view gate solves its
+  // flights against, so the box asked for and the box a flight is planned from
+  // cannot drift apart.
+  return focusedViewBox(cameraViewBox(viewer), point, GPU_MAX_BOX_DEG);
+}
+
+/**
+ * Query parameters for one scan: the bbox when there is one, nothing when
+ * there is not. An absent box IS the point regime, server-side.
+ * @param {object} point
+ * @param {?object} viewer
+ * @returns {Record<string, string>}
+ */
+export function gpuScanParams(point, viewer) {
+  const box = gpuScanBox(point, viewer);
+  if (!box) return {};
+  return {
+    south: box.south.toFixed(6),
+    west: box.west.toFixed(6),
+    north: box.north.toFixed(6),
+    east: box.east.toFixed(6),
+  };
+}
+
 const urbanismeGpuLayer = createAddressScanLayer({
   id: 'urbanisme-gpu',
   name: 'Urbanisme (PLU & servitudes)',
@@ -321,6 +418,7 @@ const urbanismeGpuLayer = createAddressScanLayer({
   source: 'Géoportail de l\'urbanisme — IGN',
   endpoint: '/api/gpu',
   updateInterval: UPDATE_INTERVAL_MS,
+  params: gpuScanParams,
   // The wash is ground-classification geometry and a classification type is
   // read once, when the primitive is built. Switching from IGN ortho to the
   // Google photoreal tileset hides the globe, and a wash built for TERRAIN
@@ -331,10 +429,16 @@ const urbanismeGpuLayer = createAddressScanLayer({
   render({ payload, dataSource, point, viewer }) {
     const classificationType = gpuClassificationTypeForScene(viewer?.scene);
     let drawn = 0;
-    const zone = (payload.zones || [])[0] || null;
+    const zones = payload.zones || [];
+    // The zone under the operator's own feet, which under a box is one of
+    // many. `projectZones` already sorted it first, but reading the flag says
+    // what is meant instead of trusting an order.
+    const here = zones.filter((entry) => entry.atPoint);
+    const zone = here[0] || null;
     const servitudes = payload.servitudes || [];
-    const enclaves = (payload.zones || []).reduce((sum, entry) => sum + (entry.holes || 0), 0);
-    if (point && (zone || servitudes.length)) {
+    const enclaves = zones.reduce((sum, entry) => sum + (entry.holes || 0), 0);
+    const boxed = payload.regime === 'box';
+    if (point && (zone || zones.length || servitudes.length)) {
       dataSource.entities.add({
         id: 'gpu:scan-point',
         position: Cesium.Cartesian3.fromDegrees(point.lon, point.lat),
@@ -355,11 +459,27 @@ const urbanismeGpuLayer = createAddressScanLayer({
           zoneFamilySentence(zone?.kind),
           zone?.approvedOn ? `PLU approuvé le ${zone.approvedOn}` : null,
           zone?.regulationFile,
+          // The register contradicting itself, said plainly. Two communes
+          // digitise their shared limit independently and the Géoportail
+          // stacks both documents, so the strip between the two versions of
+          // the boundary carries two zonings. Measured around Ustaritz: 17 of
+          // 34 126 sampled points, every one at a commune limit.
+          here.length > 1
+            ? `${here.length} zonages se superposent ici — deux communes ne placent pas leur limite au même endroit`
+            : null,
+          // What is on screen BESIDES the answer, so a map of fifty polygons
+          // is not mistaken for fifty answers about this address.
+          boxed && zones.length > here.length
+            ? `${zones.length - here.length} autres zones autour, dans le bloc`
+            : null,
           // Said out loud because the reader is about to see unpainted islands
           // inside a painted zone and deserves to know they are the register's,
           // not a gap in the draw.
           enclaves
             ? `${enclaves} enclave${enclaves > 1 ? 's' : ''} découpée${enclaves > 1 ? 's' : ''} — un autre zonage s'y applique`
+            : null,
+          payload.zoningRefused
+            ? `zonage non dessiné : ${payload.zoningRefused.found} zones dans ce cadre, au-delà des ${payload.zoningRefused.limit} que le service renvoie`
             : null,
           servitudes.length
             ? `${servitudes.length} servitude${servitudes.length > 1 ? 's' : ''} : `
@@ -371,7 +491,40 @@ const urbanismeGpuLayer = createAddressScanLayer({
       });
       drawn += 1;
     }
-    for (const entry of payload.zones || []) {
+    for (const entry of zones) {
+      // The code, written on the ground, the way the paper document does it.
+      // Without it a block of fifty polygons is a colour chart: the FAMILY is
+      // legible from the hue, but `UB` against `UYc` — both orange, one
+      // residential and one industrial — is not.
+      if (entry.anchor && entry.anchor.widthDeg >= ZONE_LABEL_MIN_WIDTH_DEG && entry.code) {
+        dataSource.entities.add({
+          id: `gpu:zone:${entry.id}:label`,
+          position: Cesium.Cartesian3.fromDegrees(entry.anchor.lon, entry.anchor.lat),
+          // The zone's own card, so clicking the code opens the rule. This is
+          // also the only PICKABLE thing a zone has: clamped polylines are
+          // ground primitives and `scene.pick` returns null on them, measured
+          // at every one of 62 vertices of a ring on screen.
+          name: `${entry.code} — ${entry.label || 'zonage PLU'}`,
+          description: zoneDescription(entry),
+          properties: { kind: 'plu-zone-label', zoneKind: entry.kind },
+          label: {
+            text: entry.code,
+            font: 'bold 13px "Roboto Mono", monospace',
+            fillColor: Cesium.Color.fromCssColorString(zoneColorCss(entry.kind)),
+            // Black, not a lighter outline: it survives over both a pale
+            // orthophoto and the dark end of the wash, and it is the same
+            // discipline the marker glyphs use.
+            outlineColor: Cesium.Color.BLACK.withAlpha(0.85),
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            // Fade out where the zone is too small on screen to hold text,
+            // rather than piling codes on top of each other over a city.
+            scaleByDistance: new Cesium.NearFarScalar(500, 1.0, 6000, 0.55),
+            translucencyByDistance: new Cesium.NearFarScalar(3000, 1.0, 9000, 0.0),
+          },
+        });
+      }
       drawn += drawGpuParts(dataSource, `gpu:zone:${entry.id}`, entry.parts, {
         css: zoneColorCss(entry.kind),
         fillAlpha: zoneFillAlpha(entry.kind),
@@ -380,16 +533,7 @@ const urbanismeGpuLayer = createAddressScanLayer({
         classificationType,
         name: `${entry.code || 'Zone'} — ${entry.label || 'zonage PLU'}`,
         properties: { kind: 'plu-zone', zoneKind: entry.kind, simplified: entry.simplified },
-        description: [
-          zoneFamilySentence(entry.kind),
-          entry.label,
-          entry.approvedOn ? `PLU approuvé le ${entry.approvedOn}` : null,
-          entry.regulationFile,
-          entry.holes
-            ? `${entry.holes} enclave${entry.holes > 1 ? 's' : ''} découpée${entry.holes > 1 ? 's' : ''} dans la zone`
-            : null,
-          entry.simplified ? `contour simplifié (${entry.sourceVertices} sommets à l'amont)` : null,
-        ].filter(Boolean).join(' · '),
+        description: zoneDescription(entry),
       });
     }
     for (const servitude of payload.servitudes || []) {
@@ -433,15 +577,26 @@ const urbanismeGpuLayer = createAddressScanLayer({
   summarize(payload) {
     const servitudes = payload.servitudes || [];
     const zones = payload.zones || [];
+    const here = zones.filter((zone) => zone.atPoint);
     return {
-      zones: zones.map((zone) => ({
+      // The zones under the operator, not everything on screen. Under a box
+      // `zones` is a neighbourhood, and a row reading "52 zones" would say the
+      // address has 52 zonings.
+      zones: here.map((zone) => ({
         code: zone.code, kind: zone.kind, label: zone.label, approvedOn: zone.approvedOn,
       })),
+      // Which question was answered. `zoneCount` alone cannot tell "one zone
+      // here" from "one zone in the whole block".
+      regime: payload.regime ?? 'point',
       // More than one zone for ONE point is not a bug here and is worth
       // reporting: two communes digitise their shared limit independently and
       // the Géoportail stacks both documents without reconciling them, so the
       // strip between the two versions of the boundary carries two zonings.
-      zoneCount: zones.length,
+      zoneCount: here.length,
+      // Everything drawn, including the neighbours.
+      zonesDrawn: zones.length,
+      // A zoning half refused rather than truncated. See `gpuFeed.js`.
+      zoningRefused: payload.zoningRefused ?? null,
       // Ground inside a drawn zone that the same document zones otherwise.
       enclaves: zones.reduce((sum, zone) => sum + (zone.holes || 0), 0),
       servitudeCount: servitudes.length,

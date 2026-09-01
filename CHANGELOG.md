@@ -7,6 +7,59 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Urbanisme (PLU) — it draws the block now, not the dot.** The layer answered
+  one point, which is the wrong question: "could the car park opposite become
+  twenty-five metres of construction?" is about the plot OPPOSITE. Below
+  1 500 m the zoning half is asked for over a BOX around what the camera is
+  looking at — clipped to the view, so nothing off screen is fetched — and each
+  zone is drawn in its family's colour with **its code written on the ground**,
+  the way the paper document does it. Above 1 500 m it falls back to the point
+  answer, which is still correct and much cheaper. The enclaves that were blank
+  islands are now named: the school reads `UE`, the industrial estate `UYc`.
+- **The servitude half stays a point, and the measurement is why.** One 390 m
+  box over Lyon's Presqu'île answers **210 easement features and 2.3 MB**. At
+  the zoning ceiling a full-box regime cost 4 MB upstream, 1.8 MB on the wire
+  and 1 182 entities, against the hybrid's 888 KB, 506 KB and 218 — four times
+  the payload for the half of the answer a point already gets right.
+- **It costs bytes, not frames.** Measured in the browser on the shipped build,
+  both regimes, IGN ortho: median frame **0.6–1.4 ms**, worst frame after a
+  redraw **1.4–2.2 ms**, and **zero frames over 16 ms** in either. Cesium
+  batches ground fills by material and there are only eight zone colours.
+  Upstream, the box costs +13% to +27% in a city (the easements already
+  dominate) and 17× in a rural commune, where the point answer was 30 KB.
+- **`zone-urba` truncates at 5 000 features, HTTP 200, silently — same trap as
+  the cadastre.** Measured 2026-09-01: a 0.15° box over Paris returns 4 105 of
+  4 105 whole; a 0.40° box returns **5 000 of 17 182**, and a 1.0°
+  Île-de-France box **5 000 of 46 500**. A zoning map missing four fifths of
+  itself is not visibly incomplete — it looks like a commune with genuinely
+  mixed zoning — so a box over the ceiling is refused whole and the true count
+  printed. At the layer's own 0.02° ceiling the densest measured box answers 55
+  zones, so the refusal is the exception.
+- **A label that might sit outside its own zone would be worse than no label.**
+  Anchors are the midpoint of the longest interior chord, not the centroid: a
+  PLU zone is routinely a meander along a village street or a ring around a
+  hamlet, and the centroid of either lands on ground the rule does not cover.
+  Verified against all 55 zones of a real answer — every anchor inside its own
+  drawn shape. A zone too narrow to hold text is drawn and coloured but
+  unlabelled; its card still names it.
+- **Which zone you are standing in is decided by whoever was asked.** Under a
+  point query APIcarto has already answered it, and re-deciding can only
+  disagree; under a box query the layer decides, against the ring as PUBLISHED
+  rather than the one it draws. That is not academic: Ustaritz's `UB` ring is
+  521 vertices, decimated to 400 for drawing, and the coordinate APIcarto
+  itself answers `UB` for falls OUTSIDE the decimated ring. The drawn shape is
+  a simplification and must never decide which rule applies to a house.
+- The card separates the block from the address: the zone under the marker, how
+  many others are on screen, and — when two communes disagree at their shared
+  limit — that several zonings claim the same ground. A neighbouring zone's own
+  card says it is a neighbour.
+- A scan now refetches when the QUESTION changes, not only when the scan centre
+  moves 250 m. Zooming straight down through the box altitude moves the centre
+  by nothing at all while changing the kind of answer that belongs on screen.
+- `viewportBox.focusedViewBox` and a new `ringGeometry.js` hold the box
+  derivation and the point-in-polygon the cadastre layer had already paid for;
+  the cadastre keeps its own names and ceilings and delegates the arithmetic.
+
 - **Urbanisme (PLU) — the zone is now a wash on the ground, with its enclaves
   cut out of it.** The layer drew bare outlines, and an operator asked the
   right question of them: how can one house be in two PLU zones at once? An

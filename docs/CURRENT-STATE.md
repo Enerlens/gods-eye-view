@@ -2028,9 +2028,48 @@ measures the residual offset in pixels from two camera poses; a unit test
 covers the seating arithmetic. Clamped polylines carry no `position` and are
 skipped — they were already on the ground.
 
-**Urbanisme draws GROUND, and the other four draw points.** A PLU zone is not a
-place, it is a rule over an area, so `urbanisme-gpu` is the one address layer
-that fills: each zone is a translucent, ground-classified wash with its
+**Urbanisme answers a BLOCK below 1 500 m and a POINT above it.** It is the one
+layer of the five whose question depends on the camera as well as on where the
+camera points, because its own question is about the plot OPPOSITE: "could the
+car park across the street become twenty-five metres of construction?" cannot
+be answered by a query about the ground underfoot. Below
+`GPU_BOX_MAX_ALTITUDE_M` the zoning half is asked for over a box around the
+camera's ground point — `focusedViewBox`, clipped to the view so nothing off
+screen is fetched, capped at `GPU_MAX_BOX_DEG` (0.02°, the cadastre's number
+for the cadastre's reason: at twice that side Paris answers 243 zones and
+1.2 MB against 52 and 405 KB). The gate is ALTITUDE, never the span of the view
+rectangle, which on a tilted camera reaches the horizon. Above it, the point
+regime is unchanged.
+
+The EASEMENT half is always a point, and one measurement decides it: a 390 m
+box over Lyon's Presqu'île answers 210 easement features and 2.3 MB. At the
+zoning ceiling, upstream / on the wire / entities: Lyon point 725 KB / 409 KB /
+153, full box 4 004 KB / 1 823 KB / 1 182, hybrid 888 KB / 506 KB / 218.
+
+It costs bytes, not frames. Measured on the shipped build over IGN ortho in
+both regimes: median frame 0.6–1.4 ms, worst frame after a redraw 1.4–2.2 ms,
+zero frames over 16 ms. `zone-urba` carries the SAME silent 5 000-feature cap
+as `cadastre/parcelle` — a 0.40° Paris box returns 5 000 of 17 182 at HTTP 200
+— so a box over it is refused whole and the true count printed; at 0.02° the
+densest measured box answers 55 zones.
+
+`atPoint` marks the zone under the operator, and WHO decides it depends on who
+was asked. Under a point query APIcarto has already answered — every returned
+feature intersects that point by construction — so the flag is simply true.
+Under a box query the layer decides, against the ring as PUBLISHED and never
+the one it draws: Ustaritz's `UB` ring is 521 vertices decimated to 400, and
+the coordinate the service itself answers `UB` for falls outside the decimated
+ring. Each zone also carries a label anchor — the midpoint of its longest
+interior chord, not its centroid, which for a zone shaped like a meander or a
+ring around a hamlet lands outside the zone entirely — and its code is written
+on the ground there, because hue gives the family but not `UB` against `UYc`.
+
+The shell rescans when the QUERY changes, not only when the scan centre moves
+250 m: zooming straight down through the box altitude moves the centre by
+nothing while changing the kind of answer that belongs on screen.
+
+**A PLU zone is not a place, it is a rule over an area,** so `urbanisme-gpu` is
+also the one address layer that fills: each zone is a translucent, ground-classified wash with its
 interior rings CUT OUT, and the stroke on top of it. The wash says where, the
 stroke says exactly where — and the enclave is the part that matters. The
 projection kept outer rings only until 2026-09-01, on the reasoning that a hole
