@@ -173,6 +173,22 @@ import {
   projectSchoolsDepartements,
 } from './src/data/schoolsDepartements.js';
 import {
+  SUP_ATLAS_FIELDS,
+  SUP_DATASET,
+  SUP_OFFER_DATASET,
+  SUP_OFFER_FIELDS,
+  SUP_PORTAL,
+  SUP_RENTREE_FLOOR,
+  SUP_SESSION_FLOOR,
+  SUP_SOURCE,
+  indexSupOffers,
+  newestYear,
+  projectSupSites,
+  supAtlasWhere,
+  supOfferWhere,
+} from './src/data/supFeed.js';
+import { projectSupDepartements } from './src/data/supDepartements.js';
+import {
   gbfsBoxKey,
   gbfsBoxContains,
   mergeGbfsBounds,
@@ -4003,6 +4019,283 @@ function schoolsFranceProxy() {
 
   return {
     name: 'schools-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * French higher-education proxy — keyless, Licence Ouverte 2.0.
+ *
+ *   GET /api/sup-fr/sites        — the whole national register, once
+ *   GET /api/sup-fr/departements — national rollup, 96 départements
+ *   GET /api/sup-fr/status       — dataset provenance + cache state
+ *
+ * WHY A PROXY, when the portal sends CORS headers and a direct browser fetch
+ * works: this layer is a JOIN of two files that disagree about their unit. The
+ * register publishes one row per (établissement × composante × degré) and
+ * geolocates only 80% of them; the Parcoursup cartography publishes one row per
+ * formation and geolocates all of them. Resolving 22 068 + 25 831 rows into
+ * 6 914 sites in the client would mean every open tab downloading both
+ * national files and re-deriving the same map. The join happens once, on a
+ * server, under test (`supFeed.js`, `supDepartements.js`).
+ *
+ * WHY THERE IS NO VIEWPORT ENDPOINT, unlike `/api/schools-fr/sites` next door:
+ * the resolved register is 6 914 sites and **0.62 MB gzipped with every name
+ * on it**. A bbox query would be a round trip to avoid a download the size of
+ * the one the schools maillage already makes. The browser gets the register.
+ *
+ * WHY THE YEARS ARE DISCOVERED AND NOT PINNED: the Atlas gains a rentrée every
+ * spring and Parcoursup a session every winter. Hard-coding either would serve
+ * a quietly stale map forever, so both are read from the portal's own grouping
+ * and floored at the values this was measured against — a discovery that comes
+ * back OLDER than the floor is a malformed answer, not a new fact.
+ */
+const SUP_BASE = `https://${SUP_PORTAL}/api/explore/v2.1/catalog/datasets`;
+/**
+ * The register is published ONCE A YEAR. A week in memory is already four
+ * hundred times faster than the data changes; the disk cache below is what
+ * actually spares the portal across restarts.
+ */
+const SUP_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling. A register a month old is still this year's register. */
+const SUP_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+const SUP_TIMEOUT_MS = 60_000;
+/** The Atlas export is ~9 MB, the cartography ~15 MB. */
+const SUP_MAX_BYTES = 64 * 1024 * 1024;
+const SUP_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'sup-fr');
+const SUP_CACHE_PATH = path.join(SUP_DISK_DIR, 'register.json');
+/**
+ * Shape version of the cached register. Bump whenever `projectSupSites` or
+ * `projectSupDepartements` changes what it returns — the cache lives for a
+ * WEEK on disk, so without it a projection edit is invisible until next month.
+ */
+const SUP_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _supRegister = null;
+/** @type {?Promise<object>} */
+let _supInFlight = null;
+let _supDiskChecked = false;
+const _supRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 90 });
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchSupJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(SUP_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, SUP_MAX_BYTES);
+}
+
+/**
+ * Newest published year for one dataset's year column.
+ *
+ * A failed discovery is not a failed build: it falls back to the floor, which
+ * is the year this layer was measured against and is guaranteed to exist.
+ */
+async function discoverSupYear(dataset, field, floor) {
+  try {
+    const params = new URLSearchParams({
+      select: field, group_by: field, order_by: `${field} desc`, limit: '1',
+    });
+    const body = await fetchSupJson(`${SUP_BASE}/${dataset}/records?${params}`);
+    return newestYear(body?.results, field, floor);
+  } catch (error) {
+    console.warn(`[Sup Proxy] ${field} discovery failed:`, error?.message || error);
+    return floor;
+  }
+}
+
+/**
+ * Build the whole layer: two exports, one join, one fold onto the polygons.
+ *
+ * The three upstream calls run in PARALLEL and mean different things. The
+ * Atlas export is the register; the `limit=0` call is the portal's own count
+ * for the same `where`, and exists only so `projectSupSites` can prove the
+ * export was not silently short; the cartography is the complement.
+ *
+ * The cartography failing is NOT fatal and is deliberately not treated as
+ * such: losing it costs the 977 borrowed coordinates, the names and the
+ * formation lists, and the layer degrades to the register alone — which is
+ * still 95.7% of French students. Losing the register itself is fatal,
+ * because there is nothing left to draw.
+ */
+async function refreshSupRegister() {
+  const started = Date.now();
+  const [rentree, session] = await Promise.all([
+    discoverSupYear(SUP_DATASET, 'rentree', SUP_RENTREE_FLOOR),
+    discoverSupYear(SUP_OFFER_DATASET, 'annee', SUP_SESSION_FLOOR),
+  ]);
+
+  const atlasWhere = supAtlasWhere(rentree);
+  const atlasParams = new URLSearchParams({
+    select: SUP_ATLAS_FIELDS.join(','), where: atlasWhere, limit: '-1',
+  });
+  const offerParams = new URLSearchParams({
+    select: SUP_OFFER_FIELDS.join(','), where: supOfferWhere(session), limit: '-1',
+  });
+  const countParams = new URLSearchParams({ where: atlasWhere, limit: '0' });
+
+  const [index, exported, counted, offered] = await Promise.all([
+    loadSchoolsDepartementIndex(),
+    fetchSupJson(`${SUP_BASE}/${SUP_DATASET}/exports/json?${atlasParams}`),
+    fetchSupJson(`${SUP_BASE}/${SUP_DATASET}/records?${countParams}`).catch((error) => {
+      // The count is a completeness PROOF, not the data. Losing it degrades
+      // the guarantee to "unknown" rather than blanking the layer.
+      console.warn('[Sup Proxy] register count unavailable:', error?.message || error);
+      return null;
+    }),
+    fetchSupJson(`${SUP_BASE}/${SUP_OFFER_DATASET}/exports/json?${offerParams}`).catch((error) => {
+      console.warn('[Sup Proxy] Parcoursup cartography unavailable:', error?.message || error);
+      return null;
+    }),
+  ]);
+
+  const projected = projectSupSites({
+    records: Array.isArray(exported) ? exported : [],
+    offers: indexSupOffers(Array.isArray(offered) ? offered : []),
+    rentree,
+    session,
+    totalCount: counted?.total_count ?? null,
+  });
+  if (!projected.complete) {
+    console.warn(`[Sup Proxy] register export short: ${projected.rowsSwept}/${projected.rowsTotal} rows`);
+  }
+
+  const rollup = projectSupDepartements({ sites: projected.sites, index });
+  // The two documents are cached together because one build makes both, and
+  // served apart because they are read at different moments and at different
+  // sizes: the rollup is ~30 KB and arrives with the layer, the register is
+  // 0.62 MB gzipped and is only fetched if the operator leaves the choropleth.
+  const { sites, ...summary } = projected;
+  return {
+    register: { ...summary, sites, complementAvailable: Array.isArray(offered) },
+    rollup: {
+      ...rollup,
+      rentree,
+      session,
+      builtInMs: Date.now() - started,
+    },
+  };
+}
+
+async function readSupDisk() {
+  if (_supDiskChecked) return;
+  _supDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(SUP_CACHE_PATH, 'utf8'));
+    if (entry?.version === SUP_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.register?.sites)
+      && Array.isArray(entry.payload?.rollup?.departements)) {
+      _supRegister = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeSupDisk(entry) {
+  fsp.mkdir(SUP_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(SUP_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Sup Proxy] cache write failed:', err?.message || err));
+}
+
+/** Shared build, so `/sites` and `/departements` never sweep twice. */
+function ensureSupRegister() {
+  if (!_supInFlight) {
+    _supInFlight = refreshSupRegister()
+      .then((payload) => {
+        const entry = { version: SUP_CACHE_VERSION, at: Date.now(), payload };
+        _supRegister = entry;
+        writeSupDisk(entry);
+        return entry;
+      })
+      .finally(() => { _supInFlight = null; });
+  }
+  return _supInFlight;
+}
+
+/**
+ * Vite plugin: French higher-education register proxy.
+ * @returns {import('vite').Plugin}
+ */
+function supFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/sup-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_supRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readSupDisk();
+        json(200, {
+          source: SUP_SOURCE,
+          dataset: SUP_DATASET,
+          offerDataset: SUP_OFFER_DATASET,
+          ttlMs: SUP_TTL_MS,
+          register: _supRegister
+            ? {
+              at: _supRegister.at,
+              rentree: _supRegister.payload.rollup.rentree,
+              session: _supRegister.payload.rollup.session,
+              sites: _supRegister.payload.register.count,
+              establishments: _supRegister.payload.register.establishments,
+              students: _supRegister.payload.register.students,
+              borrowed: _supRegister.payload.register.borrowed,
+              unplaced: _supRegister.payload.register.unplaced,
+              painted: _supRegister.payload.rollup.painted,
+              unassigned: _supRegister.payload.rollup.unassigned,
+              complementAvailable: _supRegister.payload.register.complementAvailable,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/sites' && route !== '/departements') {
+        json(404, { error: 'Unknown higher-education endpoint' });
+        return;
+      }
+
+      const pick = (payload) => (route === '/sites' ? payload.register : payload.rollup);
+      await readSupDisk();
+      const now = Date.now();
+      if (_supRegister && now - _supRegister.at <= SUP_TTL_MS) {
+        json(200, { ...pick(_supRegister.payload), fetchedAt: _supRegister.at, stale: false }, { 'X-SUP-FR': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensureSupRegister();
+        json(200, { ...pick(entry.payload), fetchedAt: entry.at, stale: false }, { 'X-SUP-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[Sup Proxy] register build unavailable:', error?.message || error);
+        // A register a month old is still a true picture of a file that is
+        // rebuilt once a year — serving it beats blanking the layer.
+        if (_supRegister && now - _supRegister.at <= SUP_STALE_MS) {
+          json(200, { ...pick(_supRegister.payload), fetchedAt: _supRegister.at, stale: true }, { 'X-SUP-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French higher-education register is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'sup-france-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -14514,6 +14807,7 @@ export default defineConfig(({ mode }) => {
       gbfsFranceProxy(),
       irveFranceProxy(),
       schoolsFranceProxy(),
+      supFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),
