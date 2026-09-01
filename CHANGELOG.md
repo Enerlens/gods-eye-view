@@ -7,6 +7,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Médecins (FR) — where doctors are, and where access runs out.** 64 232
+  practice addresses, 117 922 named doctors and what each of them charges,
+  drawn at three scales. The national view paints the DREES's **accessibilité
+  potentielle localisée** rather than a headcount, and that is a measured
+  choice: the median French person lives **0.7 km from a general practitioner**
+  and only 0.49 % of the population is beyond 10 km, so a map of counts would
+  say "France is covered" and be useless. What is scarce is capacity — 18 % of
+  the population lives in a commune the ARS class as under-served. Closer in,
+  colour is the family of medicine and dot size is the number of distinct
+  doctors at the address; a click names them, says what each costs (94 % of GP
+  entries are secteur 1 against 18 % of ophthalmologists, 63 % of whom set
+  their own fees), places the commune in the national tenth, and shows what
+  the neighbourhood loses when its over-62s retire — **−22 % nationally**.
+- **The register that publishes no coordinates, geocoded.** The CNAM's
+  *Annuaire santé Ameli* is the only nationwide list of conventioned doctors
+  and it contains **not one latitude**: its address block is named
+  `coordonnees_*` in the sense of *contact details*. Every ready-geocoded copy
+  in circulation descends from the previous CNAM directory, deprecated in
+  December 2025, and still speaks of the *contrat d'accès aux soins* — closed
+  to new signatures on 2016-12-31. The one daily-geocoded national register,
+  Atlasanté's, answers HTTP 403 outside the ARS network. So
+  `npm run medecins:registry` geocodes the register against the Base Adresse
+  Nationale in three passes and ships the result: **64 232 of 64 625 addresses
+  placed, 99.4 %**, 82.7 % at the exact door, 1.1 % at a commune centre that
+  says so on its card, and 393 named rather than quietly dropped.
+- **Checked against the CNAM's own headcount, and it holds.** The same
+  publisher counts the same population a second way; `--verifier` replays the
+  comparison. **117 922 named doctors against 112 159**, +5.1 % — the gap a
+  directory should show over an activity count taken two years earlier — with
+  23 professions between −1.5 % and +15.1 %, and per DÉPARTEMENT a median gap
+  of **+2.1 %, 97 of 101 inside [−10 %, +15 %]**, so the geocoding moved nobody
+  between departments. Three register traps are neutralised on the way: a
+  radiologist is listed at every imaging site they cover (5.53 entries per name
+  against 1.18 for a GP), three separate codes read `Médecin généraliste`
+  (grouping by code loses 11 % of them), and 9 328 doctors practise in more
+  than one département (summing per-department distinct names answers 130 330
+  for a country holding 117 922).
+
 - **Six French public registers, read from a coordinate.** Géorisques, DVF,
   the ADEME DPE register, the IGN isochrone service, the Géoportail de
   l'urbanisme and Île-de-France Mobilités are now integrated end to end —
