@@ -19,6 +19,8 @@ import {
   projectSchoolSites,
   schoolLevel,
   schoolPrecision,
+  schoolDisplayName,
+  schoolNameStatesLevel,
   schoolPriorityEducation,
   schoolSector,
   schoolSiteKey,
@@ -264,4 +266,68 @@ test('the box ceiling is the one the proxy and the layer both read', () => {
 test('the site key is coordinate-based and stable to 5 decimals', () => {
   assert.equal(schoolSiteKey(48.123456789, 2.987654321), '48.12346,2.98765');
   assert.equal(schoolSiteKey(48.123456789, 2.987654321), schoolSiteKey(48.1234567, 2.9876543));
+});
+
+// --- Naming an establishment ------------------------------------------------
+//
+// `nom_etablissement` is the register's own name and 97.4% of the 68 557 open
+// rows already open with their type ("Collège Jean Moulin"). The rule is
+// therefore to PREFIX ONLY WHAT DOES NOT, or every card in France reads
+// "Collège · Collège Jean Moulin".
+
+test('a name that already states its type is left exactly as published', () => {
+  assert.equal(
+    schoolDisplayName({ name: 'Collège Jean Moulin', level: 'college' }),
+    'Collège Jean Moulin',
+  );
+  assert.equal(
+    schoolDisplayName({ name: 'Lycée du Parc', level: 'lycee' }),
+    'Lycée du Parc',
+  );
+  // Accents and case are the académies' business, not the reader's.
+  assert.equal(schoolDisplayName({ name: 'LYCEE DU PARC', level: 'lycee' }), 'LYCEE DU PARC');
+});
+
+test('a name that states no type gets its level in front', () => {
+  // The 2 467 rows measured in the register: campuses, institutions, groupes.
+  assert.equal(
+    schoolDisplayName({ name: 'Institution Saint-Pierre', level: 'lycee' }),
+    'Lycée · Institution Saint-Pierre',
+  );
+});
+
+test('the école band recognises the words the register actually uses for it', () => {
+  for (const name of [
+    'Ecole primaire publique Jules Ferry',
+    'École maternelle Les Tilleuls',
+    'Groupe scolaire Saint Exupéry',
+    'ECOLE ELEMENTAIRE PUBLIQUE',
+  ]) {
+    assert.equal(schoolNameStatesLevel(name, 'ecole'), true, name);
+  }
+  assert.equal(schoolNameStatesLevel('Envie', 'ecole'), false);
+});
+
+test('the non-teaching band is never prefixed with its legend row', () => {
+  // "Administratif & orientation" names a legend row, not a kind of building.
+  assert.equal(
+    schoolDisplayName({ name: "Rectorat de l'académie de Lyon", level: 'autre' }),
+    "Rectorat de l'académie de Lyon",
+  );
+});
+
+test('with no name at all the level is the answer, and never a blank', () => {
+  assert.equal(schoolDisplayName({ level: 'college' }), 'Collège');
+  assert.equal(schoolDisplayName({ name: '   ', level: 'lycee' }), 'Lycée');
+  // No level either: the generic word, not a band it was never sorted into.
+  assert.equal(schoolDisplayName(null), 'Établissement');
+  assert.equal(schoolDisplayName({}), 'Établissement');
+});
+
+test('every projected site can be named without inventing anything', () => {
+  for (const site of projectSchoolSites({ records: SAMPLE }).sites) {
+    const display = schoolDisplayName(site);
+    assert.ok(display.length > 0);
+    if (site.name) assert.ok(display.includes(site.name), site.name);
+  }
 });

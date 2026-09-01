@@ -61,6 +61,7 @@
     "qa:airports": "node scripts/qa-airports.mjs",
     "qa:bison-fute": "node scripts/qa-bison-fute.mjs",
     "qa:irve-fr": "node scripts/qa-irve-fr.mjs",
+    "qa:schools-fr": "node scripts/qa-schools-fr.mjs",
     "qa:dams": "node scripts/qa-dams.mjs",
     "rrn:pack": "node scripts/build-rrn-centreline-pack.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
