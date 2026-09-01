@@ -33,6 +33,7 @@ import cadastreParcelsLayer, {
 import {
   pointInPolygons,
   pointInRing,
+  cadastreLoadingLabel,
   CADASTRE_MAX_ALTITUDE_M,
   CADASTRE_MAX_BOX_DEG,
   CADASTRE_SCALE_BANDS,
@@ -490,6 +491,30 @@ test('above the altitude ceiling nothing is requested', () => {
   );
 });
 
+test('a camera aimed off France reports off-coverage, however high it is', () => {
+  // Measured in the app: at 900 km with a 40° pitch over 46.6N the view
+  // rectangle is 51.28-60.70 N — the camera is tilted far enough that it is
+  // looking at the North Sea, and métropole ends at 51.2 N. `off-coverage` is
+  // the true answer there and `too-high` would be a lie that sends the operator
+  // descending toward nothing. Coverage is therefore tested before altitude.
+  const northSea = {
+    south: 51.28, west: -59.91, north: 60.70, east: 64.71,
+  };
+  assert.equal(
+    cadastreViewportBox(viewerWithView(northSea, { altitude: 900000 })).reason,
+    'off-coverage',
+  );
+  // The same altitude aimed DOWN sees France, and is told to descend.
+  const overFrance = {
+    south: 43.36, west: -5.03, north: 49.39, east: 9.83,
+  };
+  assert.equal(
+    cadastreViewportBox(viewerWithView(overFrance, { altitude: 900000 })).reason,
+    'too-high',
+  );
+  assert.match(flat(cadastreLoadingLabel({ status: 'too-high' })), /Descends sous 1 500 m/);
+});
+
 test('the gate names each refusal separately', () => {
   assert.equal(cadastreViewportBox(viewerWithView(null)).reason, 'no-view');
   assert.equal(cadastreViewportBox(null).reason, 'no-view');
@@ -653,32 +678,52 @@ test('the layer registers under the id the share registry and voice tool use', (
   assert.ok(cadastreParcelsLayer.updateInterval > 0);
 });
 
-test('update() never refuses the lifecycle just because it had nothing to fetch', async () => {
+test('update() never refuses the lifecycle just because a GATE said no', async () => {
   // `DataLayerManager` reads a literal `false` from update() as a rejection: it
   // fails the enable, throws LifecycleRejectedError and leaves the layer
-  // switched OFF. This layer refuses any view wider than 0.02°, so returning
-  // the load's own boolean meant that switching it on from anywhere but street
-  // level turned itself straight back off — which is what the operator saw as
-  // "échec de chargement".
+  // switched off. This layer has the strictest gate in the app, so returning
+  // the load's own boolean meant switching it on from anywhere but street level
+  // turned itself straight back off — what the operator saw as "échec de
+  // chargement".
   //
-  // Every gate is exercised, because each one is a different `false` from
-  // `load()`: too wide, off coverage, and a camera with no rectangle at all.
-  const wide = { south: 48.8, west: 2.2, north: 48.9, east: 2.5 };
-  const atlantic = { south: 39, west: -31, north: 41, east: -29 };
-  for (const view of [wide, atlantic, null]) {
+  // Every gate is exercised, because each is a different `false` out of
+  // `load()` and none of them is a failure.
+  const paris = { south: 48.86, west: 2.28, north: 48.88, east: 2.31 };
+  const cases = [
+    ['too high', paris, { altitude: CADASTRE_MAX_ALTITUDE_M + 1 }],
+    ['off coverage', { south: 39, west: -31, north: 41, east: -29 }, { altitude: 400 }],
+    ['no view at all', null, { altitude: 400 }],
+    ['no altitude to gate on', paris, { altitude: NaN }],
+  ];
+  for (const [label, view, options] of cases) {
     _setCadastreStateForTest({
-      viewer: viewerWithView(view),
+      viewer: viewerWithView(view, options),
       records: new Map(),
       payload: null,
       overlayHost: recordingOverlayHost(),
       enabled: true,
-      // No fetch is reachable from any of these: a `false` here would come from
-      // the gate, which is exactly the case under test.
-      fetchImpl: () => { throw new Error('update() must not reach the network at a closed gate'); },
+      // None of these may reach the network; a `false` from a fetch would be a
+      // different claim than the one under test.
+      fetchImpl: () => { throw new Error('a closed gate must not reach the network'); },
     });
-    const result = await cadastreParcelsLayer.update();
-    assert.notEqual(result, false, `update() refused the lifecycle for ${JSON.stringify(view)}`);
+    assert.notEqual(await cadastreParcelsLayer.update(), false, `update() refused the lifecycle: ${label}`);
   }
+});
+
+test('a genuine load failure IS reported as a failed refresh', async () => {
+  // The other half of the rule, and the house form: only a recorded error is a
+  // failed refresh. Bâti 3D and the mapped grid settled on the same shape, so a
+  // dead feed surfaces here rather than leaving the row silently empty.
+  _setCadastreStateForTest({
+    viewer: viewerWithView({ south: 48.8700, west: 2.2926, north: 48.8716, east: 2.2964 }, { altitude: 240 }),
+    records: new Map(),
+    payload: null,
+    overlayHost: recordingOverlayHost(),
+    enabled: true,
+    fetchImpl: async () => ({ ok: false, status: 503 }),
+  });
+  assert.equal(await cadastreParcelsLayer.update(), false);
+  assert.match(_cadastreStatsForTest().error || '', /503/);
 });
 
 test('a DISABLED layer is the one thing update() does refuse', async () => {

@@ -9,6 +9,7 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { boxKey, snapBoxOutward } from './viewportBox.js';
+import { applyViewGate, cameraViewBox } from './viewGate.js';
 import { bdtopoTileUrl, bdtopoTiles, BDTOPO_LAYER_NAME } from './bdtopoBuildingsFeed.js';
 import {
   addressLine,
@@ -22,6 +23,7 @@ import {
 import {
   CADASTRE_AREA_TOLERANCE,
   CADASTRE_BOX_STEP_DEG,
+  CADASTRE_COVERAGE,
   CADASTRE_MAX_ALTITUDE_M,
   CADASTRE_MAX_BOX_DEG,
   CADASTRE_SCALE_BANDS,
@@ -252,18 +254,13 @@ export function cadastreFocusPoint(viewer) {
  * @returns {{box: ?object, reason: ?string}}
  */
 export function cadastreViewportBox(viewer) {
-  const rectangle = viewer?.camera?.computeViewRectangle?.(viewer?.scene?.globe?.ellipsoid);
-  if (!rectangle) return { box: null, reason: 'no-view' };
-  const view = {
-    south: Cesium.Math.toDegrees(rectangle.south),
-    north: Cesium.Math.toDegrees(rectangle.north),
-    west: Cesium.Math.toDegrees(rectangle.west),
-    east: Cesium.Math.toDegrees(rectangle.east),
-  };
-  if (![view.south, view.west, view.north, view.east].every(Number.isFinite)) {
-    return { box: null, reason: 'no-view' };
-  }
-  if (view.west >= view.east || view.south >= view.north) return { box: null, reason: 'no-view' };
+  // The shared `cameraViewBox`, not a local conversion. It is the same
+  // arithmetic the view gate solves its flights against, so the box this layer
+  // gates on and the box a flight is planned from cannot drift apart — and it
+  // UNWRAPS a rectangle whose east edge has crossed the antimeridian rather
+  // than rejecting it as impossible, which the hand-rolled version did.
+  const view = cameraViewBox(viewer);
+  if (!view) return { box: null, reason: 'no-view' };
   if (!cadastreCoverageIntersects(view)) return { box: null, reason: 'off-coverage' };
 
   const altitude = viewer?.camera?.positionCartographic?.height;
@@ -1001,21 +998,54 @@ const cadastreParcelsLayer = {
     _status = 'idle';
   },
 
+  /**
+   * Carry out the zoom this layer needs, instead of announcing it.
+   *
+   * The strictest gate in the app — 1 500 m of altitude and a 0.02° box — so
+   * this is the layer that most needs to fly rather than to instruct: switched
+   * on from a view of France, the honest guidance line is also three or four
+   * deliberate zoom gestures away from anything.
+   *
+   * `too-high` is the ONLY reason worth flying for. Off-coverage does not
+   * become French at 250 m, and a camera with no rectangle has nothing to aim
+   * at; both keep their guidance state, which is the true answer in each case.
+   *
+   * The flight is solved against the BOX ceiling rather than the altitude one,
+   * because the box is the binding constraint: 0.02° of longitude is ~1.4 km in
+   * France, which needs a camera well under 1 500 m, so a plan that satisfies
+   * the box satisfies the altitude gate on the way. `fits()` re-asks this
+   * layer's own gate after each hop regardless, so the two cannot drift.
+   * @param {?Cesium.Viewer} viewer
+   * @param {{signal?: ?AbortSignal}} [options]
+   * @returns {Promise<boolean>} Whether the camera ended inside the gate.
+   */
+  async ensureViewGate(viewer, { signal } = {}) {
+    const target = viewer || _viewer;
+    if (!target) return false;
+    const { box, reason } = cadastreViewportBox(target);
+    if (reason !== 'too-high') return Boolean(box);
+    return applyViewGate(target, {
+      fits: () => Boolean(cadastreViewportBox(target).box),
+      maxDeg: CADASTRE_MAX_BOX_DEG,
+      coverage: CADASTRE_COVERAGE,
+      signal,
+      reason: 'cadastre-view-gate',
+    });
+  },
+
   async update() {
     if (!_enabled) return false;
     // An idle refresh has to actually refetch, so drop the box memo first.
     _loadedKey = null;
-    await load();
+    const loaded = await load();
     // `load()` answers "did I fetch", which is false at BOTH gates, on an
     // unchanged viewport, and on an aborted request. None of those is a refusal
     // of the lifecycle transition — but `DataLayerManager` reads a literal
     // `false` from update() as exactly that, fails the enable, and leaves the
     // layer switched off with a LifecycleRejectedError the operator sees as
-    // "échec de chargement". Since this layer refuses any view wider than
-    // 0.02°, returning `load()` directly meant switching it on from anywhere
-    // but street level turned itself back off. Only a disabled layer refuses
-    // here; the load's own outcome is reported through `getStats()`.
-    return true;
+    // "échec de chargement". Only a recorded ERROR is a failed refresh, which
+    // is the same form Bâti 3D and the mapped grid settled on.
+    return loaded || !_error;
   },
 
   /**
