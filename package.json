@@ -57,6 +57,7 @@
     "qa:power-grid-coverage:lines": "node scripts/grid-audit/audit-lines.mjs",
     "qa:rte-generation": "node scripts/qa-rte-generation.mjs",
     "qa:fr-hydro": "node scripts/qa-fr-hydro.mjs",
+    "qa:label-click": "node scripts/qa-label-click.mjs",
     "qa:airports": "node scripts/qa-airports.mjs",
     "qa:bison-fute": "node scripts/qa-bison-fute.mjs",
     "qa:irve-fr": "node scripts/qa-irve-fr.mjs",

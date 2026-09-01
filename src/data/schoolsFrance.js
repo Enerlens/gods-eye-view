@@ -58,9 +58,11 @@ import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   SCHOOLS_MAX_BOX_DEG,
   SCHOOL_LEVELS,
@@ -85,6 +87,8 @@ export const SCHOOLS_FR_OVERLAY_SOURCE_OPTIONS = Object.freeze({
   moving: false,
 });
 export const SCHOOLS_FR_LABEL_SOURCE_ID = 'schools-fr-departements';
+/** Ambient-label entry-id prefix — the click surface the département NAME provides. */
+export const SCHOOLS_FR_DEP_LABEL_PREFIX = 'schools-fr:dep:';
 export const SCHOOLS_FR_LABEL_COHORT_LIMIT = 14;
 export const SCHOOLS_FR_LABEL_COLLISION_CAPACITY = 12;
 
@@ -183,6 +187,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 let _overlayHost = DEFAULT_OVERLAY_HOST;
 
@@ -512,7 +517,7 @@ export function createSchoolSelectedOverlayEntry(record) {
 /** Ambient label for one département at national altitude. */
 export function createSchoolsDepartementOverlayEntry(row, position) {
   return {
-    id: `schools-fr:dep:${row.code}`,
+    id: `${SCHOOLS_FR_DEP_LABEL_PREFIX}${row.code}`,
     position,
     variant: 'label',
     title: `${row.name} · ${fr(row.schools)}`,
@@ -520,7 +525,9 @@ export function createSchoolsDepartementOverlayEntry(row, position) {
     priority: Number(row.schools) || 0,
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The département's name is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -642,6 +649,19 @@ function installClickHandler(viewer) {
       const code = pickedDepartementCode(picked);
       if (code && _depEntities.has(code)) {
         selectDepartement(code);
+        return;
+      }
+      // The label plane the depth buffer knows nothing about, resolved after
+      // the polygon pick. At national altitude the name floats clear of the
+      // shape it belongs to, so it is often the only thing under the cursor.
+      const labelled = pickOverlayLabelId(movement.position, {
+        sourceId: SCHOOLS_FR_LABEL_SOURCE_ID,
+        prefix: SCHOOLS_FR_DEP_LABEL_PREFIX,
+        has: (depCode) => _depEntities.has(depCode),
+        hitTest: _overlayHost.hitTest,
+      });
+      if (labelled) {
+        selectDepartement(labelled);
         return;
       }
     }

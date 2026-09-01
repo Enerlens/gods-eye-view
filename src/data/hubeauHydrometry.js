@@ -4,9 +4,11 @@ import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { bucketSeries, textSparkline } from './sparkline.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 
 /**
  * Hub'Eau Hydrométrie — France's live river-gauge mesh.
@@ -126,6 +128,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 /**
@@ -543,7 +546,12 @@ export function createHubeauOverlayEntry(record, position) {
       : 500,
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The station's NAME is a click surface, not a caption. A gauge dot is
+    // 5–15 px across and floats under a label five times its width; asking
+    // people to hit the dot when the name is what they read is a target they
+    // will miss. See `overlayLabelPick.js` for the host mechanism and the
+    // pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -558,11 +566,17 @@ export function createHubeauOverlayEntry(record, position) {
  * ══════════════════════════════════════════════════════════════════════════
  *
  * The layer drew up to 900 dots and every one of them was inert: it registered
- * no pick owner, installed no click handler, and its ambient labels are
- * `interactive: false`, so the only thing a station could ever tell you was the
- * one number already printed beside it. The point primitives have carried a
- * stable `hubeau:<code>` id all along, so the hit target existed; nothing
- * listened for it.
+ * no pick owner and installed no click handler, so the only thing a station
+ * could ever tell you was the one number already printed beside it. The point
+ * primitives have carried a stable `hubeau:<code>` id all along, so the hit
+ * target existed; nothing listened for it.
+ *
+ * The NAME is now a click surface too, and it is the one people actually aim
+ * at: it says which river this is and it is several times the dot's target
+ * area. The ambient label carries the same `hubeau:<code>` id as the dot, so
+ * one string identifies a station across the native drill pick, the overlay
+ * hit test and the pick registry. See `overlayLabelPick.js` for the shared
+ * mechanism and the pick-ordering rule.
  */
 
 /** Selected-station card, on its own protected overlay source. */
@@ -822,6 +836,13 @@ export function createHubeauHydrometryLayer({
   stationsUrl = STATIONS_URL,
   observationsUrl = OBSERVATIONS_URL,
   now = () => Date.now(),
+  // Cesium registers DOM listeners in the ScreenSpaceEventHandler constructor,
+  // and this layer's lifecycle is exercised headless. The factory is the seam
+  // that keeps the click ORDER — dot, then name, then empty space — under test
+  // off-browser; the Escape listener still needs a real `document`.
+  screenSpaceEventHandlerFactory = (viewer) => (
+    new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+  ),
 } = {}) {
   let _viewer = null;
   let _pointCollection = null;
@@ -990,12 +1011,13 @@ export function createHubeauHydrometryLayer({
    * pick would return the neighbour and this layer would look dead — the same
    * contention measured on the EDF discs.
    *
-   * Guarded on `document` because Cesium's `ScreenSpaceEventHandler` registers
-   * DOM listeners in its constructor and this layer runs headless under test.
+   * The default handler factory touches the DOM in its constructor, so it is
+   * injectable; the Escape listener below is skipped when there is no
+   * `document` rather than skipping the whole install.
    */
   function installClickHandler(viewer) {
-    if (_clickHandler || typeof document === 'undefined' || !viewer?.scene?.canvas) return;
-    _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    if (_clickHandler || !viewer?.scene?.canvas) return;
+    _clickHandler = screenSpaceEventHandlerFactory(viewer);
     _clickHandler.setInputAction((click) => {
       if (!_enabled) return;
       const drilled = viewer.scene.drillPick(click.position, DRILL_PICK_LIMIT) || [];
@@ -1006,10 +1028,22 @@ export function createHubeauHydrometryLayer({
           return;
         }
       }
+      // The label plane the depth buffer knows nothing about, resolved after
+      // the drill pick so a name drawn across a neighbouring gauge cannot
+      // steal that gauge's click. The label id IS the dot's render id.
+      const labelled = pickOverlayLabelId(click.position, {
+        sourceId: HUBEAU_OVERLAY_SOURCE_ID,
+        has: (renderId) => _drawn.has(renderId),
+        hitTest: overlayHost.hitTest,
+      });
+      if (labelled) {
+        selectObject(labelled);
+        return;
+      }
       clearSelection();
       governorRequestRender('hubeau-deselect');
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
-    document.addEventListener('keydown', onKeyDown);
+    if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
   }
 
   function removeClickHandler() {

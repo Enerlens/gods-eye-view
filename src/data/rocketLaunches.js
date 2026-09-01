@@ -7,9 +7,11 @@ import {
 import { getKeyholeGeometry } from '../celestialRing.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
 
 const WINDOW_DAYS = 30;
@@ -17,6 +19,8 @@ const API_URL = '/api/launches';
 
 export const ROCKET_MISSION_AMBIENT_OVERLAY_SOURCE_ID = 'rocket-missions';
 export const ROCKET_MISSION_SELECTED_OVERLAY_SOURCE_ID = 'rocket-mission-selected';
+/** Ambient-marker entry-id prefix — the click surface the MISSION NAME provides. */
+export const ROCKET_MISSION_LABEL_PREFIX = 'launch:';
 export const ROCKET_MISSION_AMBIENT_OVERLAY_COHORT_LIMIT = 48;
 export const ROCKET_MISSION_AMBIENT_OVERLAY_COLLISION_CAPACITY = 24;
 export const ROCKET_MISSION_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
@@ -35,6 +39,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 let _dataSource = null;
@@ -514,7 +519,7 @@ export function createRocketMissionMarkerOverlayEntry(launch, position, selected
       : 'LAUNCH SITE']
     : [];
   return {
-    id: `launch:${launch?.id}`,
+    id: `${ROCKET_MISSION_LABEL_PREFIX}${launch?.id}`,
     position,
     variant: 'label',
     title: mission,
@@ -527,7 +532,11 @@ export function createRocketMissionMarkerOverlayEntry(launch, position, selected
     protected: selected,
     paintLane: selected ? 'selected' : 'ambient-label',
     collisionGroup: 'ambient-label',
-    interactive: false,
+    // The mission name is a click surface, not a caption. Only the ambient
+    // marker takes clicks: the selected copy names the mission that is already
+    // selected, so a hit rectangle there would do nothing but cover the
+    // ambient markers behind it. See `overlayLabelPick.js`.
+    interactive: !selected,
     distanceScale: {
       near: 1000,
       nearValue: 1.08,
@@ -1002,6 +1011,20 @@ function entityLaunchId(entity) {
   if (!entity?.id || typeof entity.id !== 'string') return null;
   const match = entity.id.match(/^rocket-[^:]+:([^:]+)/);
   return match?.[1] || null;
+}
+
+/**
+ * Resolve a screen position against the ambient mission-name labels.
+ * @param {{x:number,y:number}|null|undefined} position
+ * @returns {?string} Launch id.
+ */
+function pickedMissionLabelId(position) {
+  return pickOverlayLabelId(position, {
+    sourceId: ROCKET_MISSION_AMBIENT_OVERLAY_SOURCE_ID,
+    prefix: ROCKET_MISSION_LABEL_PREFIX,
+    has: (launchId) => _missionOverlayRecords.has(launchId),
+    hitTest: _missionOverlayHost.hitTest,
+  });
 }
 
 function clearMissionOverlaySources() {
@@ -3428,7 +3451,9 @@ const rocketLaunchesLayer = {
       const entity = viewer.scene.drillPick(movement.position, 12)
         .map((picked) => picked?.id)
         .find((candidate) => entityLaunchId(candidate));
-      const launchId = entityLaunchId(entity);
+      // The label plane, which the depth buffer knows nothing about, resolved
+      // after the native drill pick so a pad under the cursor still wins.
+      const launchId = entityLaunchId(entity) || pickedMissionLabelId(movement.position);
       if (!launchId) return;
       setSelectedMission(launchId);
       focusMission(_launches.find((launch) => launch.id === launchId));
@@ -3439,7 +3464,9 @@ const rocketLaunchesLayer = {
       const missionEntity = viewer.scene.drillPick(movement.endPosition, 12)
         .map((picked) => picked?.id)
         .find((candidate) => entityLaunchId(candidate));
-      viewer.scene.canvas.style.cursor = missionEntity ? 'pointer' : '';
+      const overMission = Boolean(entityLaunchId(missionEntity))
+        || Boolean(pickedMissionLabelId(movement.endPosition));
+      viewer.scene.canvas.style.cursor = overMission ? 'pointer' : '';
     }, Cesium.ScreenSpaceEventType.MOUSE_MOVE);
     // Apply horizon visibility before Cesium traverses and picks the scene.
     // A postRender write is one frame late and can remain visibly stale when

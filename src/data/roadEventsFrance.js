@@ -3,9 +3,11 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 
 /**
  * Événements routiers (FR) — what the road operators themselves have declared.
@@ -68,6 +70,8 @@ const EVENTS_URL = '/api/bison-fute/events';
 export const ROAD_EVENTS_FR_LAYER_ID = 'road-events-fr';
 const OVERLAY_SOURCE_ID = ROAD_EVENTS_FR_LAYER_ID;
 const SELECTED_OVERLAY_SOURCE_ID = `${ROAD_EVENTS_FR_LAYER_ID}-selected`;
+/** Ambient-label entry-id prefix — the click surface the event's TITLE provides. */
+export const ROAD_EVENT_LABEL_PREFIX = 'road-event-label:';
 /** Bounded ambient-label cohort, matching the sibling alert sources. */
 export const ROAD_EVENTS_FR_OVERLAY_COHORT_LIMIT = 40;
 /** Shared ambient-label paint budget. */
@@ -531,7 +535,7 @@ export function createRoadEventOverlayEntry({ id, position, event }) {
   const category = roadEventCategory(event?.category);
   const severity = ROAD_EVENT_SEVERITIES[String(event?.severity)]?.weight ?? 2;
   return {
-    id: `road-event-label:${id}`,
+    id: `${ROAD_EVENT_LABEL_PREFIX}${id}`,
     position,
     variant: 'label',
     title: roadEventTitle(event),
@@ -541,7 +545,9 @@ export function createRoadEventOverlayEntry({ id, position, event }) {
     priority: category.priority * 1000 + severity * 100 + (event?.safety ? 10 : 0),
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The event's title is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -619,6 +625,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 /**
@@ -801,8 +808,18 @@ export function createRoadEventsFranceLayer({
     _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     _clickHandler.setInputAction((click) => {
       const id = resolvePick(viewer.scene.pick(click.position));
-      if (id) selectEvent(id);
-      else if (_selectedId) clearSelection();
+      if (id) { selectEvent(id); return; }
+      // The label plane the depth buffer knows nothing about, resolved after
+      // the native pick so a title drawn across a neighbouring event cannot
+      // steal it.
+      const labelled = pickOverlayLabelId(click.position, {
+        sourceId: OVERLAY_SOURCE_ID,
+        prefix: ROAD_EVENT_LABEL_PREFIX,
+        has: (recordId) => _byRenderId.has(recordId),
+        hitTest: overlayHost.hitTest,
+      });
+      if (labelled) { selectEvent(labelled); return; }
+      if (_selectedId) clearSelection();
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
   }

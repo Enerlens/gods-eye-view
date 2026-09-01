@@ -402,7 +402,9 @@ test('the ambient labels are the power stations, ranked by the machine they name
   assert.ok(big.priority > small.priority);
   assert.match(big.title, /Martigues · 930 MW/);
   assert.equal(big.accent, GAS_PLANT_COLOR);
-  assert.equal(big.interactive, false);
+  // The name is a click surface: without a hit rectangle, clicking it lands on
+  // the terrain behind the overlay canvas and dismisses the selection.
+  assert.equal(big.interactive, true);
 
   const cohort = selectGasOverlayCohort([small, big]);
   assert.deepEqual(cohort.map((entry) => entry.id), ['gas-fr-label:a', 'gas-fr-label:b']);
