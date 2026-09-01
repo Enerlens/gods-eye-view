@@ -77,7 +77,7 @@ import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js'
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
-import { projectRoadEvents, projectRoadSensors } from './src/data/bisonFuteFeed.js';
+import { projectRoadEvents } from './src/data/bisonFuteFeed.js';
 import {
   powerGridBoxKey,
   powerGridIncludesTowers,
@@ -3296,57 +3296,48 @@ function gasFranceProxy() {
 
 
 /**
- * Bison Futé proxy (France's official road-event and traffic-measurement feeds)
- * with a memory + disk cache and a conditional-GET refresh.
+ * Bison Futé proxy (the road events France's DIRs declare) with a memory + disk
+ * cache and a conditional-GET refresh.
  *
- * TWO KEYLESS UPSTREAMS, published by Tipi for the DGITM under Licence Ouverte
- * 2.0, both covering the réseau routier national **non concédé** only:
+ * ONE keyless upstream, published by Tipi for the DGITM under Licence Ouverte
+ * 2.0, covering the réseau routier national **non concédé** only:
  *   `Evenementiel-DIR/grt/RRN/content.xml` — every incident, roadworks order,
  *     closure, diversion and restriction the DIRs have declared, DATEX II v2
- *   `QTV-DIR/qtvDir.xml` + `refDir.csv` — average speed and hourly flow per
- *     measurement station, DATEX II v2 plus a Lambert-93 referential
  *
- * WHY A PROXY when both origins send no CORS restriction a dev server cannot
- * work around: the two XML documents are 3.3 MB and 1.25 MB, and every open tab
- * would parse both for itself. Projected once, server-side, under test, they
- * become ~180 KB and ~200 KB of JSON the globe can draw directly — and the
- * DATEX II parsing lives in `bisonFuteFeed.js` where a unit test can point at a
- * real captured response instead of at a browser.
+ * The SIBLING product on the same host — QTV-DIR's six-minute speed and flow
+ * snapshot — has its own proxy in `roadStatusFranceProxy()`, which also serves
+ * Traficolor to the `road-status-fr` layer. Two proxies rather than one
+ * deliberately: they poll on different clocks (hourly against six-minutely) and
+ * one shared cache would tie the slower product's TTL to the faster one's.
  *
- * WHY CONDITIONAL GET and not a plain poll. MEASURED 2026-08-31: both origins
- * serve `ETag`, `Last-Modified` AND gzip (events 3,365,501 → 165,296 bytes;
- * QTV 1,251,866 → 26,727), and both answer `If-None-Match` with a 304. The
- * events aggregate is republished HOURLY at HH:13 and QTV every ~6 minutes, so
- * a naive 5-minute poll would re-download and re-parse an unchanged 3.3 MB
- * document eleven times an hour. With `If-None-Match` the same cadence costs
- * one 304 per poll, and the projection runs only when the file has genuinely
- * moved. That is the whole reason this layer is affordable at a cadence worth
+ * WHY A PROXY when the origin sends no CORS restriction a dev server cannot work
+ * around: the document is 3.3 MB, and every open tab would parse it for itself.
+ * Projected once, server-side, under test, it becomes ~190 KB of JSON the globe
+ * can draw directly — and the DATEX II parsing lives in `bisonFuteFeed.js` where
+ * a unit test can point at a real captured response instead of at a browser.
+ *
+ * WHY CONDITIONAL GET and not a plain poll. MEASURED 2026-08-31: the origin
+ * serves `ETag`, `Last-Modified` AND gzip (3,365,501 → 165,296 bytes) and
+ * answers `If-None-Match` with a 304. The aggregate is republished HOURLY at
+ * HH:13, so a naive 5-minute poll would re-download and re-parse an unchanged
+ * 3.3 MB document eleven times an hour. With `If-None-Match` the same cadence
+ * costs one 304 per poll, and the projection runs only when the file has
+ * genuinely moved — which is what makes the layer affordable at a cadence worth
  * having.
  *
- * The referential CSV changes when stations are commissioned, i.e. rarely; it
- * gets its own day-long TTL and its own conditional GET, and a QTV refresh that
- * cannot re-read it reuses the last one rather than shipping 1,206 stations
- * with no geometry.
- *
  * Routes:
- *   GET /api/bison-fute/events       → {fetchedAt, stale, publishedAt, events, counts}
- *   GET /api/bison-fute/measurements → {fetchedAt, stale, publishedAt, ageMs, stations, counts}
- *   GET /api/bison-fute/status       → both feeds' cache state
+ *   GET /api/bison-fute/events → {fetchedAt, stale, publishedAt, events, counts}
+ *   GET /api/bison-fute/status → the cache state
  *
  * @returns {import('vite').Plugin}
  */
 function bisonFuteProxy() {
   const BASE = 'https://tipi.bison-fute.gouv.fr/bison-fute-ouvert/publicationsDIR';
   const EVENTS_URL = `${BASE}/Evenementiel-DIR/grt/RRN/content.xml`;
-  const QTV_URL = `${BASE}/QTV-DIR/qtvDir.xml`;
-  const QTV_REFERENTIAL_URL = `${BASE}/QTV-DIR/refDir.csv`;
-  // Bounded well inside each product's own cadence, because a 304 is nearly
-  // free: the events file moves hourly, the measurements every ~6 minutes.
+  // Bounded well inside the product's own cadence, because a 304 is nearly
+  // free: the file moves hourly, and this catches a republication within five
+  // minutes for the cost of eleven conditional GETs an hour.
   const EVENTS_TTL_MS = 5 * 60_000;
-  const MEASUREMENTS_TTL_MS = 3 * 60_000;
-  // The referential is a station inventory. A day is already far more often
-  // than the DIRs commission new counting loops.
-  const REFERENTIAL_TTL_MS = 24 * 3600_000;
   // 3.3 MB gzipped to 165 KB, from a government origin: generous, still bounded.
   const UPSTREAM_TIMEOUT_MS = 45_000;
   const CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'bison-fute');
@@ -3356,22 +3347,18 @@ function bisonFuteProxy() {
    * One conditionally-refreshed upstream document.
    *
    * `etag` and `lastModified` are what make the poll cheap; `body` is retained
-   * so a 304 can re-run the projection without a download — which matters for
-   * the measurements, whose projection depends on a SECOND document that may
-   * have moved even when this one did not.
+   * so a 304 can re-run the projection without a download — which matters
+   * because `state` is time-dependent even when the document is not: roadworks
+   * ordered for 08:30 become active at 08:30 whether or not the file moved.
    */
   const makeSlot = () => ({ etag: null, lastModified: null, body: null, at: 0 });
-  const upstream = {
-    events: makeSlot(),
-    qtv: makeSlot(),
-    referential: makeSlot(),
-  };
+  const upstream = { events: makeSlot() };
 
-  /** @type {{events: ?object, measurements: ?object}} */
-  const mem = { events: null, measurements: null };
-  const diskChecked = { events: false, measurements: false };
-  /** @type {{events: ?Promise<?object>, measurements: ?Promise<?object>}} */
-  const inflight = { events: null, measurements: null };
+  /** @type {{events: ?object}} */
+  const mem = { events: null };
+  const diskChecked = { events: false };
+  /** @type {{events: ?Promise<?object>}} */
+  const inflight = { events: null };
 
   /**
    * Conditionally fetch one upstream document into its slot.
@@ -3421,29 +3408,6 @@ function bisonFuteProxy() {
     return { at: Date.now(), source: SOURCE, ...projected };
   }
 
-  /**
-   * Refresh and project the measurement document plus its referential.
-   *
-   * Unlike the events refresher there is nothing to carry over from the last
-   * document: a QTV publication is a complete snapshot of every station, so a
-   * partial merge would resurrect readings the feed has stopped publishing.
-   */
-  async function refreshMeasurements() {
-    // The referential is its own document on its own clock. A failure to
-    // re-read it is not a failure of the measurements: keep the last one.
-    if (Date.now() - upstream.referential.at > REFERENTIAL_TTL_MS || upstream.referential.body === null) {
-      try {
-        await refreshDocument(QTV_REFERENTIAL_URL, upstream.referential);
-      } catch (err) {
-        console.warn(`[bison-fute-proxy] referential refresh failed (${err?.message || err})`);
-        if (upstream.referential.body === null) throw err;
-      }
-    }
-    await refreshDocument(QTV_URL, upstream.qtv);
-    const projected = projectRoadSensors(upstream.qtv.body, upstream.referential.body);
-    return { at: Date.now(), source: SOURCE, ...projected };
-  }
-
   const cachePath = (key) => path.join(CACHE_DIR, `${key}.json`);
 
   async function readDiskOnce(key, valid) {
@@ -3467,7 +3431,7 @@ function bisonFuteProxy() {
   /**
    * Serve one of the two documents, refreshing it when its TTL has expired and
    * falling back to the last good copy when the origin is down.
-   * @param {'events'|'measurements'} key
+   * @param {'events'} key
    * @param {number} ttlMs
    * @param {(previous:?object)=>Promise<object>} refresh
    * @returns {Promise<{served:?object, stale:boolean}>}
@@ -3504,7 +3468,6 @@ function bisonFuteProxy() {
       try {
         const subPath = String(req.url || '').split('?')[0];
         await readDiskOnce('events', (parsed) => Array.isArray(parsed?.events));
-        await readDiskOnce('measurements', (parsed) => Array.isArray(parsed?.stations));
 
         if (subPath === '/status') {
           sendJson(200, {
@@ -3512,14 +3475,7 @@ function bisonFuteProxy() {
             events: mem.events
               ? { lastFetch: mem.events.at, publishedAt: mem.events.publishedAt, count: mem.events.events.length }
               : null,
-            measurements: mem.measurements
-              ? {
-                lastFetch: mem.measurements.at,
-                publishedAt: mem.measurements.publishedAt,
-                count: mem.measurements.stations.length,
-              }
-              : null,
-            ttlMs: { events: EVENTS_TTL_MS, measurements: MEASUREMENTS_TTL_MS },
+            ttlMs: EVENTS_TTL_MS,
           });
           return;
         }
@@ -3537,29 +3493,6 @@ function bisonFuteProxy() {
             supplier: served.supplier,
             counts: served.counts,
             events: served.events,
-          });
-          return;
-        }
-
-        if (subPath === '/measurements' || subPath === '/measurements/') {
-          const { served, stale } = await serve('measurements', MEASUREMENTS_TTL_MS, refreshMeasurements);
-          if (!served) { sendJson(502, { error: 'Bison Futé measurements fetch failed and no cache available' }); return; }
-          sendJson(200, {
-            fetchedAt: served.at,
-            stale,
-            ttlMs: MEASUREMENTS_TTL_MS,
-            source: served.source,
-            publishedAt: served.publishedAt,
-            publishedAtMs: served.publishedAtMs,
-            measuredAtMs: served.measuredAtMs,
-            // Recomputed at SERVE time, not at fetch time: a cached document
-            // served four minutes later carries readings four minutes older,
-            // and the layer's honest headline is the age.
-            ageMs: served.measuredAtMs === null
-              ? null
-              : Math.max(0, Date.now() - served.measuredAtMs),
-            counts: served.counts,
-            stations: served.stations,
           });
           return;
         }

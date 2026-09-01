@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 /**
- * Deterministic browser proof for the two Bison Futé layers — `road-events-fr`
- * (Événements routiers) and `road-sensors-fr` (Capteurs trafic).
+ * Deterministic browser proof for `road-events-fr` (Événements routiers).
  *
- * Both upstreams are live and change every few minutes, so this harness
- * intercepts `/api/bison-fute/*` with the SAME captured DATEX II documents the
- * unit tests use — run through the real `projectRoadEvents` /
- * `projectRoadSensors` projections, so the fixture cannot drift from what the
- * proxy actually serves — and proves the things only a real Cesium scene can:
+ * The upstream is live and republished hourly, so this harness intercepts
+ * `/api/bison-fute/events` with the SAME captured DATEX II document the unit
+ * tests use — run through the real `projectRoadEvents` projection, so the
+ * fixture cannot drift from what the proxy actually serves — and proves the
+ * things only a real Cesium scene can:
  *
  *   i.    events reach the globe as CLAMPED ground geometry, one primitive per
  *         situation, points clamped and segments classified against the surface
@@ -18,13 +17,8 @@
  *         0.45: on a light basemap the fainter marker registered no pixels.
  *   iii.  the scope chip the app actually renders widens the drawn set through
  *         the manager's own `setLayerParams`, not through the module directly
- *   iv.   the zero-sample trap survives the WHOLE path: MYK69.K1 is drawn grey
- *         under `Vitesse` — because its 0.0 km/h came from no samples — and
- *         magenta under `Débit`, because its 7 114 véh/h is a real measurement
- *   v.    a station whose two published ends coincide is drawn as a point, not
- *         as a zero-length polyline
- *   vi.   switching the map stack re-classifies every stroke in both layers
- *   vii.  both layers turn off cleanly and leave nothing on the globe
+ *   iv.   switching the map stack re-classifies every stroke
+ *   v.    the layer turns off cleanly and leaves nothing on the globe
  *
  * Screenshots are written under the gitignored `qa-shots/bison-fute/`.
  *
@@ -37,7 +31,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer';
 import { newQaPage } from './lib/qa-first-run.mjs';
-import { projectRoadEvents, projectRoadSensors } from '../src/data/bisonFuteFeed.js';
+import { projectRoadEvents } from '../src/data/bisonFuteFeed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -65,7 +59,6 @@ const chrome = chromeCandidates.find((candidate) => {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const EVENTS_LAYER = 'road-events-fr';
-const SENSORS_LAYER = 'road-sensors-fr';
 
 /** A view that holds all of metropolitan France. */
 const FRANCE = { lon: 2.4, lat: 46.6, height: 1_800_000 };
@@ -77,20 +70,14 @@ const FRANCE = { lon: 2.4, lat: 46.6, height: 1_800_000 };
  * to be absent would prove the opposite of what it claims to.
  */
 const VOGLANS = { lon: 6.03332, lat: 45.59788, height: 40_000 };
-/** Lyon east — where the captured A42/N346 stations are. */
-const LYON = { lon: 4.95, lat: 45.76, height: 60_000 };
-
 /** The palette, duplicated on purpose: a QA harness asserts, it doesn't import styling. */
 const OBSTACLE = '#b06bff';
-const NO_DATA = '#6b7280';
-const SATURATED = '#ff2d95';
 
 /**
- * The captured documents' own instants, so the fixture's `state` and `age` are
- * the same in this harness as in the unit tests, forever.
+ * The captured document's own instant, so the fixture's `state` is the same in
+ * this harness as in the unit tests, forever.
  */
 const EVENTS_CAPTURE_MS = Date.parse('2026-08-31T21:13:26.825+02:00');
-const QTV_CAPTURE_MS = Date.parse('2026-08-31T22:11:52+02:00');
 
 const readFixture = (name) => fs.readFileSync(
   path.join(REPO_ROOT, 'src', 'data', 'fixtures', name), 'utf8',
@@ -104,18 +91,6 @@ function eventsPayload() {
   );
   return {
     fetchedAt: Date.now(), stale: false, ttlMs: 300_000,
-    source: 'Bison Futé / Tipi (qa fixture)', ...projected,
-  };
-}
-
-function measurementsPayload() {
-  const projected = projectRoadSensors(
-    readFixture('bison-fute-qtv-sample.xml'),
-    readFixture('bison-fute-qtv-referentiel-sample.csv'),
-    { nowMs: QTV_CAPTURE_MS },
-  );
-  return {
-    fetchedAt: Date.now(), stale: false, ttlMs: 180_000,
     source: 'Bison Futé / Tipi (qa fixture)', ...projected,
   };
 }
@@ -308,18 +283,16 @@ async function main() {
     });
 
     const events = eventsPayload();
-    const measurements = measurementsPayload();
     let apiRequests = 0;
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const url = new URL(request.url());
       if (!LIVE && url.origin === APP_ORIGIN && url.pathname.startsWith('/api/bison-fute/')) {
         apiRequests += 1;
-        const body = url.pathname.endsWith('/measurements') ? measurements : events;
         void request.respond({
           status: 200,
           contentType: 'application/json',
-          body: JSON.stringify(body),
+          body: JSON.stringify(events),
         });
         return;
       }
@@ -397,58 +370,10 @@ async function main() {
       .setLayerParams(id, { scope: 'active' }, { origin: 'user' }), EVENTS_LAYER);
     await pump(page, 3, 60);
 
-    // ── iv. the zero-sample trap survives the whole path ───────────────────
-    console.log('[qa] iv. a 0 km/h built from no samples is grey, and its real flow is not');
-    await page.evaluate((id) => window.__godsEyeView.dataManager.setEnabled(id, true), SENSORS_LAYER);
-    await setView(page, LYON.lon, LYON.lat, LYON.height);
-    const sensors = await waitForDrawing(page, SENSORS_LAYER);
-    check('the sensors data source is on the globe', sensors?.sourceFound === true);
-    check('every placed station is drawn',
-      sensors.strokes.length + sensors.points.length === sensors.stats.count,
-      `${sensors.strokes.length + sensors.points.length} vs ${sensors.stats.count}`);
-    check('the row shows the placed count against the published one',
-      sensors.stats.published > sensors.stats.count,
-      `${sensors.stats.count} placed of ${sensors.stats.published} published`);
-
-    const trap = [...sensors.strokes, ...sensors.points]
-      .find((entry) => entry.id === 'road-sensor:MYK69.K1');
-    check('the zero-sample station reached the globe', Boolean(trap));
-    check('its speed is drawn as NO MEASUREMENT, not as a standstill',
-      trap?.color?.toLowerCase() === NO_DATA, String(trap?.color));
-
-    await page.evaluate((id) => window.__godsEyeView.dataManager
-      .setLayerParams(id, { metric: 'flow' }, { origin: 'user' }), SENSORS_LAYER);
-    await pump(page, 4, 80);
-    const byFlow = await sceneProbe(page, SENSORS_LAYER);
-    const trapFlow = [...byFlow.strokes, ...byFlow.points]
-      .find((entry) => entry.id === 'road-sensor:MYK69.K1');
-    check('its 7 114 véh/h IS a measurement and is coloured as one',
-      trapFlow?.color?.toLowerCase() === SATURATED, String(trapFlow?.color));
-    check('the metric switch recoloured without changing the drawn count',
-      byFlow.strokes.length + byFlow.points.length === sensors.strokes.length + sensors.points.length);
-    check('the legend followed the metric',
-      byFlow.controls.legend.some((row) => row.label.includes('véh/h')),
-      JSON.stringify(byFlow.controls.legend.map((row) => row.label)));
-    await page.evaluate((id) => window.__godsEyeView.dataManager
-      .setLayerParams(id, { metric: 'speed' }, { origin: 'user' }), SENSORS_LAYER);
-    await pump(page, 3, 60);
-    await shoot(page, '03-sensors-lyon.png');
-
-    // ── v. a degenerate station is a point, not a zero-length line ─────────
-    console.log('[qa] v. a station whose two ends coincide is drawn as a point');
-    const degenerate = sensors.points.find((point) => point.id === 'road-sensor:MY269.C4');
-    check('the degenerate station is a point', Boolean(degenerate));
-    check('it is not also a polyline',
-      !sensors.strokes.some((stroke) => stroke.id === 'road-sensor:MY269.C4'));
-    check('every drawn stroke has two distinct vertices',
-      sensors.strokes.every((stroke) => stroke.vertices === 2),
-      JSON.stringify(sensors.strokes.map((stroke) => stroke.vertices)));
-
-    // ── vi. the map stack re-classifies both layers ────────────────────────
-    console.log('[qa] vi. switching the map stack re-classifies every stroke');
+    // ── iv. the map stack re-classifies the layer ──────────────────────────
+    console.log('[qa] iv. switching the map stack re-classifies every stroke');
     const classificationsFor = (probe) => new Set(probe.strokes.map((stroke) => stroke.classification));
     const beforeEvents = classificationsFor(await sceneProbe(page, EVENTS_LAYER));
-    const beforeSensors = classificationsFor(await sceneProbe(page, SENSORS_LAYER));
     // The switch is ASKED FOR and then READ BACK. `photoreal` is the only stack
     // whose surface differs — it classifies against the 3D tiles instead of the
     // terrain — and it needs a Google 3D Tiles key a keyless checkout does not
@@ -473,43 +398,32 @@ async function main() {
     if (switched === 'photoreal') {
       await pump(page, 5, 80);
       const afterEvents = classificationsFor(await sceneProbe(page, EVENTS_LAYER));
-      const afterSensors = classificationsFor(await sceneProbe(page, SENSORS_LAYER));
       check('events re-classified against the new surface',
         [...afterEvents].join() !== [...beforeEvents].join(),
         `${[...beforeEvents].join()} → ${[...afterEvents].join()}`);
-      check('sensors re-classified against the new surface',
-        [...afterSensors].join() !== [...beforeSensors].join(),
-        `${[...beforeSensors].join()} → ${[...afterSensors].join()}`);
-      check('each layer classifies in ONE batched pass, not per stroke',
-        afterEvents.size <= 1 && afterSensors.size <= 1);
+      check('the layer classifies in ONE batched pass, not per stroke',
+        afterEvents.size <= 1);
     } else {
       console.log(`  · photoreal unavailable (stack is now "${switched ?? 'none'}") — `
         + 'the 3D-tiles classification is not exercised; it needs a Google 3D Tiles key');
       await pump(page, 5, 80);
       const afterEvents = classificationsFor(await sceneProbe(page, EVENTS_LAYER));
-      const afterSensors = classificationsFor(await sceneProbe(page, SENSORS_LAYER));
-      check('a globe-to-globe switch leaves both layers on a valid surface',
-        [...afterEvents, ...afterSensors].every((value) => value !== ''),
-        `${[...afterEvents].join()} / ${[...afterSensors].join()}`);
-      check('and each still classifies in ONE batched pass',
-        afterEvents.size <= 1 && afterSensors.size <= 1);
+      check('a globe-to-globe switch leaves the layer on a valid surface',
+        [...afterEvents].every((value) => value !== ''), [...afterEvents].join());
+      check('and it still classifies in ONE batched pass', afterEvents.size <= 1);
     }
 
-    // ── vii. both layers turn off cleanly ──────────────────────────────────
-    console.log('[qa] vii. disabling clears the globe');
-    for (const layerId of [EVENTS_LAYER, SENSORS_LAYER]) {
-      await page.evaluate((id) => window.__godsEyeView.dataManager.setEnabled(id, false), layerId);
-    }
+    // ── v. the layer turns off cleanly ─────────────────────────────────────
+    console.log('[qa] v. disabling clears the globe');
+    await page.evaluate((id) => window.__godsEyeView.dataManager.setEnabled(id, false), EVENTS_LAYER);
     await pump(page, 4, 60);
-    for (const layerId of [EVENTS_LAYER, SENSORS_LAYER]) {
-      const off = await sceneProbe(page, layerId);
-      check(`${layerId} is hidden when off`, off.shown === false, String(off.shown));
-      check(`${layerId} answers no analyst query when off`, off.analyst.length === 0);
-    }
+    const off = await sceneProbe(page, EVENTS_LAYER);
+    check('the layer is hidden when off', off.shown === false, String(off.shown));
+    check('it answers no analyst query when off', off.analyst.length === 0);
     await shoot(page, '04-off.png');
 
     const relevantErrors = consoleErrors.filter(
-      (text) => /bison-fute|RoadEvents|RoadSensors|road-events-fr|road-sensors-fr/i.test(text),
+      (text) => /bison-fute|RoadEvents|road-events-fr/i.test(text),
     );
     check('no layer console errors', relevantErrors.length === 0, relevantErrors[0] || '');
   } finally {
@@ -522,7 +436,7 @@ async function main() {
     for (const failure of failures) console.log(`  · ${failure}`);
     process.exitCode = 1;
   } else {
-    console.log('[qa] bison-fute: all checks passed');
+    console.log('[qa] road-events-fr: all checks passed');
   }
   console.log(`[qa] shots → ${path.relative(REPO_ROOT, SHOTS_DIR)}/`);
 }

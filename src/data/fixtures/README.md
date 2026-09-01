@@ -165,20 +165,3 @@
   to their own district, which the projection reads and drops; plus a queue at
   Calais, snow closing the col du Glandon, a landslide cutting the D21, and
   live roadworks. Licence Ouverte 2.0, DIR via Bison Futé / Tipi.
-
-- `bison-fute-qtv-sample.xml` / `bison-fute-qtv-referentiel-sample.csv` — 9 real
-  `siteMeasurements` of `QTV-DIR/qtvDir.xml` with the matching 8 rows of
-  `refDir.csv`, captured 2026-08-31 (publication 21:54, measurement label 22:00,
-  file written 22:11:52 — the ~12-minute lag the layer reports as an age). The
-  CSV keeps the file's real defect: a **20-column header over 19-column rows**,
-  `code_insee_commune` absent from every one. Every station is a trap the
-  projection exists for: **MYK69.K1** counted **7 114 véh/h** beside a `0.0`
-  km/h computed from **zero samples** — the row that proves a zero is not always
-  a zero; **MYL42.U2** measured 0 km/h with 600 véh/h from 60 real samples,
-  which is a genuine queue; **MY269.C4** measured 0 and 0 from 420 samples on
-  the A42 at 22:00, which is an empty road, *and* publishes `x_deb === x_fin`,
-  so its "segment" has no length; **MM713.O1** published both values from zero
-  samples; **MB333.O1** publishes only one endpoint; **MWO56.J1** has a
-  referential row with no coordinates at all; and **`#MZo57.2`** is measured
-  every six minutes with no referential row behind it. Coordinates are
-  Lambert-93 (EPSG:2154). Licence Ouverte 2.0, DIR via Bison Futé / Tipi.

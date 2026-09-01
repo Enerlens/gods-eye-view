@@ -328,22 +328,20 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // assertion in this file exists to prevent.
   Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
-  // Three road layers now, and the digits are how they are told apart in a
-  // share link. `road-status-fr` keeps `7`: it is already on `main`, so links
-  // carrying it exist and re-lettering it would silently enable a DIFFERENT
-  // layer for whoever opens one. The two that land here are unreleased, so
-  // they take the next free digits instead — `1`–`5` are gas-fr, power-grid,
-  // rte-generation, fr-hydro-plants and bdtopo-buildings, `6` is the airports
-  // pack, and `z` is the canonical UNKNOWN token two existing tests assert on.
+  // Two road layers, and the digits are how they are told apart in a share
+  // link. `road-status-fr` keeps `7`: it is already on `main`, so links
+  // carrying that token exist, and re-lettering it would silently enable a
+  // DIFFERENT layer for whoever opens one. `road-events-fr` landed after it and
+  // is unreleased, so it takes the next free digit — `1`-`5` are gas-fr,
+  // power-grid, rte-generation, fr-hydro-plants and bdtopo-buildings, `6` is
+  // the airports pack, and `z` is the canonical UNKNOWN token two existing
+  // tests assert on.
   //
-  // `enabled-only` for all three, although the two added here each own a
-  // runtime chip. The chips select what the row SHOWS — which temporal scope
-  // of events, which of the two measured quantities colours the sensors — and
-  // a share link that silently pinned a recipient to "débit" or hid every
-  // planned closure would be a worse surprise than one that opens on the
-  // defaults its author saw.
+  // `enabled-only`, although the events layer owns a runtime chip. The chip
+  // selects which temporal scope the row SHOWS, and a share link that silently
+  // hid every planned closure from its recipient would be a worse surprise than
+  // one that opens on the default its author saw.
   Object.freeze({ id: 'road-events-fr', token: '8', disposition: 'enabled-only' }),
-  Object.freeze({ id: 'road-sensors-fr', token: '9', disposition: 'enabled-only' }),
   Object.freeze({ id: 'road-status-fr', token: '7', disposition: 'enabled-only' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
   // A DIGIT, because the letters ran out: a–y are all taken (every letter of

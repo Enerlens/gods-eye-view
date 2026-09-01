@@ -341,18 +341,6 @@ export const DATA_CREDITS = [
       'A segment is drawn as the straight line between the two endpoints DATEX II publishes; the road\u2019s real geometry is not part of the feed.',
   },
   {
-    key: 'bison-fute-qtv',
-    html:
-      'French road traffic measurements (average speed and hourly flow per station): ' +
-      '<a href="https://transport.data.gouv.fr/datasets/etat-de-circulation-en-temps-reel-sur-le-reseau-national-routier-non-concede" target="_blank" rel="noopener">QTV-DIR</a>, ' +
-      'published as DATEX II by the Directions interd&eacute;partementales des routes through Bison Fut&eacute; / Tipi for the DGITM ' +
-      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
-      'joined to the same publisher\u2019s <code>refDir.csv</code> station referential (Lambert-93, converted to WGS84). ' +
-      'Measured values, not a congestion index: no reference or free-flow speed is published alongside them. ' +
-      'Each reading carries the measurement time the feed states, and the layer reports its age. ' +
-      'R&eacute;seau routier national non conc&eacute;d&eacute; only.',
-  },
-  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +
