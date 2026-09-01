@@ -351,6 +351,18 @@ export const DATA_CREDITS = [
       'availability, and each site&rsquo;s own <code>date_maj</code> is reported as its data timestamp.',
   },
   {
+    key: 'schools-fr',
+    html:
+      'French schools: <em>Annuaire de l&rsquo;&eacute;ducation</em>, published by the ' +
+      '<a href="https://data.education.gouv.fr/explore/dataset/fr-en-annuaire-education/" target="_blank" rel="noopener">Minist&egrave;re de l&rsquo;&Eacute;ducation nationale</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
+      'rebuilt daily. Pupil numbers are joined on the UAI from the ministry&rsquo;s four ' +
+      'per-level <em>effectifs</em> datasets at rentr&eacute;e 2025 and cover 91.7% of teaching ' +
+      'establishments &mdash; a site with no published roll is drawn at the base size and says so. ' +
+      'Coordinates carry the register&rsquo;s own <code>precision_localisation</code>; 2 159 rows are ' +
+      'geocoded only to their commune, and their cards say that too.',
+  },
+  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +

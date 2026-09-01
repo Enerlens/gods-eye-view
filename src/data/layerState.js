@@ -362,6 +362,14 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // throws), not a merge conflict anyone would notice.
   Object.freeze({ id: 'rte-generation', token: '3', disposition: 'enabled-only' }),
   Object.freeze({ id: 'satellites', token: 's', disposition: 'enabled+options', optionOwner: 'satellites' }),
+  // `0`, and it is the LAST free token in the alphabet-plus-digits space: a–y
+  // are taken, `z` is the canonical UNKNOWN token two tests assert on, and
+  // 1–9 went to gas-fr, power-grid, rte-generation, fr-hydro-plants,
+  // bdtopo-buildings, local-airports, road-status-fr, road-events-fr and
+  // irve-fr. The next layer to land here cannot take a single character and
+  // will have to widen the token grammar — which is a real decision, and one
+  // this comment exists to hand over rather than leave as a surprise.
+  Object.freeze({ id: 'schools-fr', token: '0', disposition: 'enabled-only' }),
   Object.freeze({ id: 'shared-mobility-fr', token: 'k', disposition: 'enabled-only' }),
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),

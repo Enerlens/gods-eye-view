@@ -26,6 +26,7 @@ import transitFranceLayer from './data/transitFrance.js';
 import roadStatusFranceLayer from './data/roadStatusFrance.js';
 import sharedMobilityFranceLayer from './data/sharedMobilityFrance.js';
 import irveFranceLayer from './data/irveFrance.js';
+import schoolsFranceLayer from './data/schoolsFrance.js';
 import aisLiveVesselsLayer from './data/aisLiveVessels.js';
 import militaryInstallationsLayer from './data/militaryInstallations.js';
 import militaryAwarenessLayer from './data/militaryAwareness.js';
@@ -304,6 +305,7 @@ async function init() {
     dataManager.register(roadStatusFranceLayer);
     dataManager.register(sharedMobilityFranceLayer);
     dataManager.register(irveFranceLayer);
+    dataManager.register(schoolsFranceLayer);
     dataManager.register(aisLiveVesselsLayer);
     dataManager.register(militaryInstallationsLayer);
     dataManager.register(militaryAwarenessLayer);

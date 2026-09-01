@@ -7,6 +7,58 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- Added the **Établissements scolaires** layer — every school France
+  registers, keyless. The *Annuaire de l'éducation* is published by the
+  Ministère de l'Éducation nationale on data.education.gouv.fr under Licence
+  Ouverte 2.0 and rebuilt daily: 68,939 rows on 2026-09-01, of which 68,557 are
+  open and **68,158 are open and carry a coordinate** — the set the layer
+  draws. Three regimes by view span, as the IRVE layer: the 96 départements
+  with the country in view, a spatially thinned *maillage* of real positions in
+  between, and every establishment with its card over a city. Coloured by
+  school level, sized by pupils.
+- The register holds no roll, so the roll is a join, and its completeness is
+  stated rather than assumed. Dot size comes from the ministry's four per-level
+  *effectifs* datasets at rentrée 2025, joined on the UAI: **57,683 of the
+  62,918 open, geolocated teaching establishments get one (91.7%)**,
+  11,237,267 pupils in total. The 5,235 that do not are named — 2,212 are
+  sub-UAI SEGPA and SEP *sections* whose pupils are already counted inside the
+  collège or lycée at the same coordinate, and 455 are under the ministry of
+  Agriculture. A school with no roll draws at the base size and its card says
+  *effectif non publié*; it is never drawn as, or described as, a school with
+  no pupils.
+- The register's own uncertainties are surfaced instead of flattened:
+  - `precision_localisation` is its account of its own geocoding, and it is not
+    uniform — **2,159 rows are placed at their commune's centroid, not at the
+    school**. Those cards say so. The 22 published spellings fold onto a
+    four-step ladder, and an unrecognised one resolves to *unknown* rather than
+    inheriting "exact address".
+  - **399 open establishments have no coordinate at all**, and 332 of them are
+    one place: French Polynesia's 311 and Wallis-et-Futuna's 21 are ungeocoded
+    in their entirety. They are excluded at the query rather than placed at a
+    commune centroid, and the shortfall is carried to the client.
+  - A UAI is an administrative unit, not a building, so two dots can share one
+    address. Every site carries its `etablissement_mere`, and the card names
+    the parent.
+  - `restauration`, `hebergement`, `ulis`, `segpa` and `apprentissage` publish
+    1, 0 **and null**, where null means "not declared". The card lists what is
+    declared present rather than denying what was never stated.
+- The national choropleth is metropolitan and admits it. The bundled
+  département polygons are 96 features with no overseas geometry, so **2,762
+  open, geolocated schools cannot be painted** — La Réunion's 855, Guadeloupe's
+  448, Martinique's 403 and the rest, plus 9 island schools the simplified
+  outlines drop. They are counted, named, and reported on the national row
+  line; the other two regimes draw positions and show all of them. Assignment
+  is point-in-polygon and never a code join, because the register spells
+  Corsica `02A` where the IGN outlines say `2A`.
+
+### Changed
+
+- The maillage thinning and the point-in-département lookup now live in
+  `src/data/geoMeshThinning.js` and `src/data/franceDepartements.js`, shared by
+  the charge-point and schools layers instead of duplicated. `irveMesh.js` and
+  `irveDepartements.js` keep their full export surface and their measurements;
+  their unchanged test suites are what prove the extraction was faithful.
+
 - Added the **Bornes IRVE** layer — every public EV charge point France has
   declared, keyless. The *fichier consolidé des bornes de recharge pour
   véhicules électriques* is assembled daily by transport.data.gouv.fr from the

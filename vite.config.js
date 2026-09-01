@@ -103,8 +103,8 @@ import {
   vehiclePositionsFromBytes,
 } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints, boxKey, snapBoxOutward, validBox } from './src/data/viewportBox.js';
+import { buildDepartementIndex } from './src/data/franceDepartements.js';
 import {
-  buildDepartementIndex,
   projectIrveDepartements,
   sweepStripeTruncated,
   IRVE_SWEEP_FIELDS,
@@ -123,6 +123,24 @@ import {
   IRVE_MAX_BOX_DEG,
   IRVE_SOURCE,
 } from './src/data/irveFeed.js';
+import {
+  SCHOOLS_BOX_STEP_DEG,
+  SCHOOLS_DATASET,
+  SCHOOLS_MAX_BOX_DEG,
+  SCHOOLS_OPEN_WHERE,
+  SCHOOLS_PORTAL,
+  SCHOOLS_ROLL_DATASETS,
+  SCHOOLS_ROLL_YEAR,
+  SCHOOLS_SITE_FIELDS,
+  SCHOOLS_SOURCE,
+  SCHOOL_LEVELS,
+  projectSchoolSites,
+  schoolsBboxWhere,
+} from './src/data/schoolsFeed.js';
+import {
+  SCHOOLS_SWEEP_FIELDS,
+  projectSchoolsDepartements,
+} from './src/data/schoolsDepartements.js';
 import {
   gbfsBoxKey,
   gbfsBoxContains,
@@ -3508,6 +3526,452 @@ function irveFranceProxy() {
 
   return {
     name: 'irve-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Annuaire de l'éducation proxy — keyless, Licence Ouverte 2.0.
+ *
+ *   GET /api/schools-fr/sites?south&west&north&east — schools in one box
+ *   GET /api/schools-fr/departements                — national rollup, 96 départements
+ *   GET /api/schools-fr/mesh                        — the national point set, once
+ *   GET /api/schools-fr/status                      — dataset provenance + cache state
+ *
+ * WHY A PROXY, when data.education.gouv.fr sends CORS headers and a direct
+ * browser fetch works: the roll is not in the register. Sizing a school by its
+ * pupils means joining FOUR further datasets on the UAI, and doing that in the
+ * client would mean every open tab downloading four national files and
+ * re-deriving the same map. The join happens once, on a server, under test
+ * (`schoolsFeed.js`, `schoolsDepartements.js`), and is cached for a day beside
+ * the rollup the same sweep already builds.
+ *
+ * WHY `exports/json` AND NOT `records`: the Explore v2.1 `records` endpoint
+ * caps a page at 100 rows, so the densest viewport (Paris at 0.35°, 5 506
+ * schools — measured) would be 56 round trips. `exports/json` streams the
+ * whole filtered set in one: 3.26 MB in 0.57 s for that same box. `records` is
+ * still called alongside it, with `limit=0`, purely for its `total_count` —
+ * that number is the completeness proof, and a short export is the one failure
+ * Opendatasoft returns as HTTP 200.
+ */
+const SCHOOLS_BASE = `https://${SCHOOLS_PORTAL}/api/explore/v2.1/catalog/datasets`;
+const SCHOOLS_RECORDS_URL = `${SCHOOLS_BASE}/${SCHOOLS_DATASET}/records`;
+const SCHOOLS_EXPORT_URL = `${SCHOOLS_BASE}/${SCHOOLS_DATASET}/exports/json`;
+/** The register is rebuilt daily; a cold viewport is paid for at most 4× a day. */
+const SCHOOLS_TTL_MS = 6 * 60 * 60 * 1000;
+/** Serve-stale ceiling. A register a week old is still a register. */
+const SCHOOLS_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+/** The national rollup is rebuilt daily upstream; a 24-hour cache matches it. */
+const SCHOOLS_NATIONAL_TTL_MS = 24 * 60 * 60 * 1000;
+const SCHOOLS_TIMEOUT_MS = 45_000;
+/** The national export is 8.5 MB; the densest viewport 3.3 MB. */
+const SCHOOLS_MAX_BYTES = 64 * 1024 * 1024;
+const SCHOOLS_VIEWPORT_CACHE_MAX = 24;
+const SCHOOLS_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'schools-fr');
+const SCHOOLS_NATIONAL_CACHE_PATH = path.join(SCHOOLS_DISK_DIR, 'departements.json');
+/**
+ * Shape version of the cached national rollup. Bump whenever
+ * `projectSchoolsDepartements` changes what it returns — the cache lives for a
+ * day on disk, so without it a projection edit is invisible until tomorrow.
+ */
+const SCHOOLS_NATIONAL_CACHE_VERSION = 1;
+
+/** box key -> {at:number, payload:object} */
+const _schoolsViewportCache = new Map();
+const _schoolsViewportInFlight = new Map();
+const _schoolsRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/** @type {?{at:number, payload:object}} */
+let _schoolsNational = null;
+/** @type {?Promise<object>} */
+let _schoolsNationalInFlight = null;
+let _schoolsNationalDiskChecked = false;
+/** @type {?Promise<Map<string, number>>} UAI → pupils, built once per process. */
+let _schoolsRollsPromise = null;
+
+function trimSchoolsViewportCache() {
+  while (_schoolsViewportCache.size > SCHOOLS_VIEWPORT_CACHE_MAX) {
+    const oldest = _schoolsViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _schoolsViewportCache.delete(oldest);
+  }
+}
+
+function schoolsDiskPath(key) {
+  return path.join(SCHOOLS_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+async function readSchoolsDisk(key, maxAgeMs) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(schoolsDiskPath(key), 'utf8'));
+    if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.sites)) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeSchoolsDisk(key, entry) {
+  fsp.mkdir(SCHOOLS_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(schoolsDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Schools Proxy] disk cache write failed:', err?.message || err));
+}
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchSchoolsJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(SCHOOLS_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, SCHOOLS_MAX_BYTES);
+}
+
+/**
+ * Build the UAI → pupils map from the four per-level roll datasets.
+ *
+ * Fetched once per process and never invalidated: a rentrée's rolls are
+ * published once and do not move during a school year, so re-reading them on
+ * the register's daily cadence would be four national downloads a day for a
+ * file that changes in September.
+ *
+ * A level that fails to load is WARNED and skipped rather than failing the
+ * whole join — losing the lycée rolls should cost lycée dot sizes, not the
+ * entire layer. The count that survives travels to the client so the shortfall
+ * is visible instead of looking like a country of small schools.
+ */
+async function loadSchoolsRolls() {
+  if (_schoolsRollsPromise) return _schoolsRollsPromise;
+  _schoolsRollsPromise = (async () => {
+    const rolls = new Map();
+    const results = await Promise.allSettled(SCHOOLS_ROLL_DATASETS.map(async (spec) => {
+      const params = new URLSearchParams({
+        select: `${spec.key},${spec.total}`,
+        where: `year(rentree_scolaire)=${SCHOOLS_ROLL_YEAR}`,
+        limit: '-1',
+      });
+      const rows = await fetchSchoolsJson(`${SCHOOLS_BASE}/${spec.dataset}/exports/json?${params}`);
+      return { spec, rows: Array.isArray(rows) ? rows : [] };
+    }));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.warn('[Schools Proxy] roll dataset unavailable:', result.reason?.message || result.reason);
+        continue;
+      }
+      const { spec, rows } = result.value;
+      for (const row of rows) {
+        const uai = String(row?.[spec.key] || '').trim();
+        const total = Number(row?.[spec.total]);
+        if (!uai || !Number.isFinite(total)) continue;
+        // Last writer wins, and the order is fixed by SCHOOLS_ROLL_DATASETS:
+        // a lycée polyvalent appears in BOTH lycée files, and the professional
+        // roll is the one that lands second. That is a real ambiguity in the
+        // upstream and it is resolved deterministically rather than by
+        // whichever request happened to finish first.
+        rolls.set(uai, total);
+      }
+    }
+    return rolls;
+  })().catch((error) => {
+    console.warn('[Schools Proxy] roll join failed:', error?.message || error);
+    _schoolsRollsPromise = null;
+    return new Map();
+  });
+  return _schoolsRollsPromise;
+}
+
+/**
+ * Fetch one viewport and project it.
+ *
+ * The two calls run in PARALLEL and mean different things. The export is the
+ * answer; the `limit=0` call is the dataset's own count for the same `where`,
+ * and exists only so `projectSchoolSites` can prove the export was complete.
+ */
+async function refreshSchoolsViewport(box) {
+  const where = schoolsBboxWhere(box);
+  const exportParams = new URLSearchParams({
+    select: SCHOOLS_SITE_FIELDS.join(','),
+    where,
+    limit: '-1',
+  });
+  const countParams = new URLSearchParams({ where, limit: '0' });
+
+  const [exported, counted, rolls] = await Promise.all([
+    fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
+    fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${countParams}`).catch((error) => {
+      // The count is a completeness PROOF, not the data. Losing it degrades
+      // the guarantee to "unknown" rather than blanking a viewport.
+      console.warn('[Schools Proxy] box count unavailable:', error?.message || error);
+      return null;
+    }),
+    loadSchoolsRolls(),
+  ]);
+
+  const projected = projectSchoolSites({
+    records: Array.isArray(exported) ? exported : [],
+    rolls,
+    totalCount: counted?.total_count ?? null,
+  });
+  return {
+    ...projected,
+    box,
+    maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
+  };
+}
+
+/**
+ * Bundled département polygons, read once from disk.
+ *
+ * The dev-server proxy reads the same file the browser layer fetches, so the
+ * national rollup and the shapes it is painted on can never come from two
+ * different vintages.
+ */
+let _schoolsDepartementIndex = null;
+async function loadSchoolsDepartementIndex() {
+  if (_schoolsDepartementIndex) return _schoolsDepartementIndex;
+  const file = path.join(process.cwd(), 'src', 'data', 'local_data', 'france_departements', 'departements.geojson');
+  _schoolsDepartementIndex = buildDepartementIndex(JSON.parse(await fsp.readFile(file, 'utf8')));
+  return _schoolsDepartementIndex;
+}
+
+/**
+ * Build the national rollup: one export, the roll join, then fold onto the
+ * polygons.
+ *
+ * No latitude striping and no truncation recursion, unlike the charge-point
+ * sweep next door: this is not a grouped query, so Opendatasoft applies no
+ * aggregation cap to it and the whole filtered register arrives in one
+ * response. The completeness check is therefore a direct comparison against
+ * the portal's own count rather than a per-stripe limit probe.
+ */
+async function refreshSchoolsNational() {
+  const started = Date.now();
+  const exportParams = new URLSearchParams({
+    select: SCHOOLS_SWEEP_FIELDS.join(','),
+    where: SCHOOLS_OPEN_WHERE,
+    limit: '-1',
+  });
+  const [index, counted, exported, rolls] = await Promise.all([
+    loadSchoolsDepartementIndex(),
+    fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${new URLSearchParams({ where: SCHOOLS_OPEN_WHERE, limit: '0' })}`)
+      .catch((error) => {
+        console.warn('[Schools Proxy] national count unavailable:', error?.message || error);
+        return null;
+      }),
+    fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
+    loadSchoolsRolls(),
+  ]);
+
+  const projected = projectSchoolsDepartements({
+    records: Array.isArray(exported) ? exported : [],
+    index,
+    rolls,
+    totalCount: counted?.total_count ?? null,
+  });
+  if (projected.truncated) {
+    console.warn(
+      `[Schools Proxy] national export short: ${projected.schoolsSwept}/${projected.schoolsTotal} rows`,
+    );
+  }
+  // The two documents are cached together because one sweep builds both, and
+  // served apart because they are read at different moments and at different
+  // sizes: the rollup is ~20 KB and arrives with the layer, the mesh is
+  // ~0.7 MB gzipped and is only fetched if the operator leaves the choropleth.
+  const { mesh, ...rollup } = projected;
+  return {
+    rollup: {
+      ...rollup,
+      sweptInMs: Date.now() - started,
+    },
+    mesh: {
+      sites: mesh,
+      siteCount: mesh.length,
+      levels: SCHOOL_LEVELS,
+      dataset: SCHOOLS_DATASET,
+      source: SCHOOLS_SOURCE,
+    },
+  };
+}
+
+async function readSchoolsNationalDisk() {
+  if (_schoolsNationalDiskChecked) return;
+  _schoolsNationalDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(SCHOOLS_NATIONAL_CACHE_PATH, 'utf8'));
+    if (entry?.version === SCHOOLS_NATIONAL_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.rollup?.departements)
+      && Array.isArray(entry.payload?.mesh?.sites)) {
+      _schoolsNational = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeSchoolsNationalDisk(entry) {
+  fsp.mkdir(SCHOOLS_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(SCHOOLS_NATIONAL_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Schools Proxy] national cache write failed:', err?.message || err));
+}
+
+/** Shared national build, so `/departements` and `/mesh` never sweep twice. */
+function ensureSchoolsNational() {
+  if (!_schoolsNationalInFlight) {
+    _schoolsNationalInFlight = refreshSchoolsNational()
+      .then((payload) => {
+        const entry = { version: SCHOOLS_NATIONAL_CACHE_VERSION, at: Date.now(), payload };
+        _schoolsNational = entry;
+        writeSchoolsNationalDisk(entry);
+        return entry;
+      })
+      .finally(() => { _schoolsNationalInFlight = null; });
+  }
+  return _schoolsNationalInFlight;
+}
+
+/**
+ * Vite plugin: viewport-bounded French school-register proxy.
+ * @returns {import('vite').Plugin}
+ */
+function schoolsFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/schools-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_schoolsRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        let newest = null;
+        for (const entry of _schoolsViewportCache.values()) {
+          if (!newest || entry.at > newest) newest = entry.at;
+        }
+        json(200, {
+          source: SCHOOLS_SOURCE,
+          dataset: SCHOOLS_DATASET,
+          lastFetch: newest,
+          cachedBoxes: _schoolsViewportCache.size,
+          ttlMs: SCHOOLS_TTL_MS,
+          maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
+          rollYear: SCHOOLS_ROLL_YEAR,
+          national: _schoolsNational
+            ? {
+              at: _schoolsNational.at,
+              painted: _schoolsNational.payload.rollup.painted,
+              schools: _schoolsNational.payload.rollup.assigned,
+              unassigned: _schoolsNational.payload.rollup.unassigned,
+              meshSites: _schoolsNational.payload.mesh.siteCount,
+            }
+            : null,
+          nationalTtlMs: SCHOOLS_NATIONAL_TTL_MS,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route === '/departements' || route === '/mesh') {
+        const pick = (payload) => (route === '/mesh' ? payload.mesh : payload.rollup);
+        await readSchoolsNationalDisk();
+        const now = Date.now();
+        if (_schoolsNational && now - _schoolsNational.at <= SCHOOLS_NATIONAL_TTL_MS) {
+          json(200, { ...pick(_schoolsNational.payload), fetchedAt: _schoolsNational.at, stale: false }, { 'X-SCHOOLS-FR': 'HIT' });
+          return;
+        }
+        try {
+          const entry = await ensureSchoolsNational();
+          json(200, { ...pick(entry.payload), fetchedAt: entry.at, stale: false }, { 'X-SCHOOLS-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[Schools Proxy] national build unavailable:', error?.message || error);
+          // A rollup a week old is still a true picture of a register that is
+          // rebuilt daily — serving it beats blanking the national view.
+          if (_schoolsNational) {
+            json(200, { ...pick(_schoolsNational.payload), fetchedAt: _schoolsNational.at, stale: true }, { 'X-SCHOOLS-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'French school register is temporarily unavailable' });
+        }
+        return;
+      }
+
+      if (route !== '/sites') {
+        json(404, { error: 'Unknown schools endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, SCHOOLS_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${SCHOOLS_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
+        });
+        return;
+      }
+
+      const box = snapBoxOutward(requested, SCHOOLS_BOX_STEP_DEG);
+      const key = boxKey(box);
+      const now = Date.now();
+
+      const fresh = _schoolsViewportCache.get(key);
+      if (fresh && now - fresh.at <= SCHOOLS_TTL_MS) {
+        json(200, { ...fresh.payload, fetchedAt: fresh.at, stale: false }, { 'X-SCHOOLS-FR': 'HIT' });
+        return;
+      }
+      const onDisk = await readSchoolsDisk(key, SCHOOLS_TTL_MS);
+      if (onDisk) {
+        _schoolsViewportCache.set(key, onDisk);
+        trimSchoolsViewportCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-SCHOOLS-FR': 'DISK' });
+        return;
+      }
+
+      let pending = _schoolsViewportInFlight.get(key);
+      if (!pending) {
+        pending = refreshSchoolsViewport(box)
+          .then((payload) => {
+            const entry = { at: Date.now(), payload };
+            _schoolsViewportCache.set(key, entry);
+            trimSchoolsViewportCache();
+            writeSchoolsDisk(key, entry);
+            return entry;
+          })
+          .finally(() => { _schoolsViewportInFlight.delete(key); });
+        _schoolsViewportInFlight.set(key, pending);
+      }
+
+      try {
+        const entry = await pending;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-SCHOOLS-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[Schools Proxy] viewport unavailable:', error?.message || error);
+        const stale = _schoolsViewportCache.get(key) || await readSchoolsDisk(key, SCHOOLS_STALE_MS);
+        if (stale) {
+          json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-SCHOOLS-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French school register is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'schools-france-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -13281,6 +13745,7 @@ export default defineConfig(({ mode }) => {
       roadStatusFranceProxy(),
       gbfsFranceProxy(),
       irveFranceProxy(),
+      schoolsFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),

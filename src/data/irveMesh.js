@@ -58,6 +58,15 @@
  * (bounded budget, no clumping, stable under small camera moves) and had
  * already been through the field testing.
  *
+ * ── Where the algorithm now lives ───────────────────────────────────────────
+ * In `geoMeshThinning.js`, unchanged. The measurements above are what justify
+ * it, and they are charge-point measurements, so the argument stays here; the
+ * code moved out when the schools layer arrived needing the identical policy
+ * over `[lat, lon, pupils, level]` instead of `[lat, lon, pdc, band]`. This
+ * file is now the charge-point ADAPTER: it names the tuple, sets the budgets,
+ * and re-exports the surface its tests and callers already use. Those tests
+ * are unchanged, and their staying green is what proves the move was faithful.
+ *
  * ── What the caller must do with the result ────────────────────────────────
  * Report it. A thinned map that does not say it is thinned is a map claiming
  * France has 900 charge points. `selectIrveMesh` returns the count it kept
@@ -67,6 +76,20 @@
  * identically in the browser and under `node --test`.
  */
 
+import {
+  MESH_CATEGORY,
+  MESH_COLS,
+  MESH_LAT,
+  MESH_LON,
+  MESH_ROWS,
+  MESH_WEIGHT,
+  cellRepresentative,
+  meshBudgetForSpan,
+  meshRowId,
+  meshRowInBox,
+  selectGeoMesh,
+} from './geoMeshThinning.js';
+
 /**
  * A mesh site is a 4-tuple, not an object: `[lat, lon, pdc, band]`.
  *
@@ -74,10 +97,10 @@
  * four keys apiece cost 2.4 MB where tuples cost 0.9 MB (measured). The
  * index constants exist so no caller has to remember the order.
  */
-export const MESH_LAT = 0;
-export const MESH_LON = 1;
-export const MESH_PDC = 2;
-export const MESH_BAND = 3;
+export { MESH_LAT, MESH_LON };
+/** The charge-point names for the generic weight and category slots. */
+export const MESH_PDC = MESH_WEIGHT;
+export const MESH_BAND = MESH_CATEGORY;
 
 /**
  * Grid the view is bucketed into.
@@ -88,8 +111,8 @@ export const MESH_BAND = 3;
  * prevent. Keeping cells < budget guarantees every occupied cell is
  * represented before a single second dot is placed anywhere.
  */
-export const IRVE_MESH_COLS = 30;
-export const IRVE_MESH_ROWS = 20;
+export const IRVE_MESH_COLS = MESH_COLS;
+export const IRVE_MESH_ROWS = MESH_ROWS;
 
 /**
  * Budget by how much of the world is on screen, measured in degrees of
@@ -119,19 +142,12 @@ export const IRVE_MESH_BUDGETS = Object.freeze([
  * @returns {number}
  */
 export function irveMeshBudget(latSpanDeg) {
-  const span = Number.isFinite(latSpanDeg) ? Math.max(0, latSpanDeg) : Infinity;
-  for (const tier of IRVE_MESH_BUDGETS) {
-    if (span <= tier.maxLatSpanDeg) return tier.budget;
-  }
-  return IRVE_MESH_BUDGETS.at(-1).budget;
+  return meshBudgetForSpan(latSpanDeg, IRVE_MESH_BUDGETS);
 }
 
 /** Whether a mesh tuple falls inside a box (edges count). */
 export function meshSiteInBox(site, box) {
-  if (!box || !Array.isArray(site)) return false;
-  const lat = site[MESH_LAT];
-  const lon = site[MESH_LON];
-  return lat >= box.south && lat <= box.north && lon >= box.west && lon <= box.east;
+  return meshRowInBox(site, box);
 }
 
 /**
@@ -139,27 +155,7 @@ export function meshSiteInBox(site, box) {
  * a selection can survive the handover between the two.
  */
 export function meshSiteId(site) {
-  return `${Number(site[MESH_LAT]).toFixed(5)},${Number(site[MESH_LON]).toFixed(5)}`;
-}
-
-/**
- * Largest first, ties broken by position.
- *
- * The tie-break is not decoration — without it, two sites with the same
- * charge-point count would swap places between frames as the array order
- * shifted, and the map would shimmer while standing still.
- */
-function byPdc(a, b) {
-  const delta = (b[MESH_PDC] || 0) - (a[MESH_PDC] || 0);
-  if (delta) return delta;
-  if (a[MESH_LAT] !== b[MESH_LAT]) return a[MESH_LAT] - b[MESH_LAT];
-  return a[MESH_LON] - b[MESH_LON];
-}
-
-/** South-to-north, then west-to-east. The order the stride fill walks. */
-function byPosition(a, b) {
-  if (a[MESH_LAT] !== b[MESH_LAT]) return a[MESH_LAT] - b[MESH_LAT];
-  return a[MESH_LON] - b[MESH_LON];
+  return meshRowId(site);
 }
 
 /**
@@ -171,25 +167,10 @@ function byPosition(a, b) {
  * lower band index, which is deterministic and errs toward slower charging —
  * the side that over-claims nothing.
  *
- * @param {Array<Array<number>>} bucket Sites in one cell, sorted by `byPdc`.
+ * @param {Array<Array<number>>} bucket Sites in one cell, sorted by pdc.
  * @returns {Array<number>}
  */
-export function cellRepresentative(bucket) {
-  const counts = [];
-  for (const site of bucket) {
-    const band = site[MESH_BAND];
-    counts[band] = (counts[band] || 0) + 1;
-  }
-  let modal = -1;
-  let best = 0;
-  for (let band = 0; band < counts.length; band += 1) {
-    if ((counts[band] || 0) > best) {
-      best = counts[band];
-      modal = band;
-    }
-  }
-  return bucket.find((site) => site[MESH_BAND] === modal) || bucket[0];
-}
+export { cellRepresentative };
 
 /**
  * Pick a bounded, spatially-spread subset of the sites inside a box.
@@ -204,74 +185,11 @@ export function cellRepresentative(bucket) {
  *   thinned:boolean, cells:number}}
  */
 export function selectIrveMesh(sites, { box, budget, cols, rows } = {}) {
-  const rowsIn = Array.isArray(sites) ? sites : [];
   if (!box) return { picked: [], inBox: 0, budget: 0, thinned: false, cells: 0 };
-
-  const cap = Math.max(0, Math.floor(
-    Number.isFinite(budget) ? budget : irveMeshBudget(box.north - box.south),
-  ));
-  const nCols = Math.max(1, Math.floor(cols ?? IRVE_MESH_COLS));
-  const nRows = Math.max(1, Math.floor(rows ?? IRVE_MESH_ROWS));
-
-  // A degenerate box would divide by zero; one cell is the honest answer for
-  // a view with no extent rather than a NaN column index.
-  const latSpan = box.north - box.south;
-  const lonSpan = box.east - box.west;
-
-  /** @type {Map<number, Array<Array<number>>>} occupied cell → its sites */
-  const cells = new Map();
-  let inBox = 0;
-  for (const site of rowsIn) {
-    if (!meshSiteInBox(site, box)) continue;
-    inBox += 1;
-    const col = lonSpan > 0
-      ? Math.min(nCols - 1, Math.max(0, Math.floor(((site[MESH_LON] - box.west) / lonSpan) * nCols)))
-      : 0;
-    const row = latSpan > 0
-      ? Math.min(nRows - 1, Math.max(0, Math.floor(((site[MESH_LAT] - box.south) / latSpan) * nRows)))
-      : 0;
-    const key = row * nCols + col;
-    const bucket = cells.get(key);
-    if (bucket) bucket.push(site);
-    else cells.set(key, [site]);
-  }
-  if (!cap || !inBox) {
-    return { picked: [], inBox, budget: cap, thinned: inBox > 0, cells: cells.size };
-  }
-
-  const cellBest = [];
-  const rest = [];
-  for (const bucket of cells.values()) {
-    bucket.sort(byPdc);
-    const winner = cellRepresentative(bucket);
-    cellBest.push(winner);
-    for (const site of bucket) {
-      if (site !== winner) rest.push(site);
-    }
-  }
-  // Cell winners are cut largest-first if there are somehow more cells than
-  // budget, so an under-budget view still shows the most substantial ones.
-  cellBest.sort(byPdc);
-  const picked = cellBest.slice(0, cap);
-
-  // Spend the rest by walking position order at a fixed stride: that samples
-  // whatever band mix is actually in view, where re-sorting by size would put
-  // back the over-representation the cell rule just removed.
-  rest.sort(byPosition);
-  const need = cap - picked.length;
-  if (need > 0 && rest.length) {
-    const taken = new Set();
-    const stride = Math.max(1, Math.floor(rest.length / need));
-    for (let i = 0; i < rest.length && picked.length < cap; i += stride) {
-      taken.add(i);
-      picked.push(rest[i]);
-    }
-    // The stride can undershoot on a short remainder; top up in order so the
-    // budget is actually spent rather than silently left on the table.
-    for (let i = 0; i < rest.length && picked.length < cap; i += 1) {
-      if (taken.has(i)) continue;
-      picked.push(rest[i]);
-    }
-  }
-  return { picked, inBox, budget: cap, thinned: picked.length < inBox, cells: cells.size };
+  return selectGeoMesh(sites, {
+    box,
+    budget: Number.isFinite(budget) ? budget : irveMeshBudget(box.north - box.south),
+    cols,
+    rows,
+  });
 }

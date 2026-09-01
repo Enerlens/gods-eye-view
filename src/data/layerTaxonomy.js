@@ -483,6 +483,21 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Joins the eighth group rather than founding a ninth. The header above says
+  // this is where "a cadastre, a land-use or a population layer would join",
+  // and 68 158 schools are a population layer wearing an address: the register
+  // is the State's account of where its pupils are put, which is base
+  // reference data in exactly the sense `bdtopo-buildings` is. It is not
+  // mobility, not energy, and not a hazard.
+  Object.freeze({
+    id: 'schools-fr',
+    category: 'built-environment',
+    label: 'Établissements scolaires',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
 ]);
 
 const TAXONOMY_BY_ID = new Map(LAYER_TAXONOMY.map((entry) => [entry.id, entry]));
