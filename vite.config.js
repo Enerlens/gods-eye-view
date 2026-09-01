@@ -29,6 +29,8 @@
  *      (accidents, closures, roadworks, diversions)
  *  23. transport.data.gouv.fr / ODRÉ — French EV charge points (IRVE): per viewport,
  *      per département, and the thinned national mesh between the two
+ *  24. IGN Api Carto — French cadastral parcels (PCI vecteur) joined to the scale
+ *      of the sheet each one was drawn on
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -123,7 +125,15 @@ import {
   projectIsochrone,
   resolveProfile as resolveIsochroneProfile,
 } from './src/data/isochroneFeed.js';
-import { buildGpuUrl, projectGpu } from './src/data/gpuFeed.js';
+import {
+  GPU_BOX_STEP_DEG,
+  GPU_REQUEST_MAX_BOX_DEG,
+  GPU_UPSTREAM_LIMIT,
+  buildGpuBoxUrl,
+  buildGpuUrl,
+  gpuTruncation,
+  projectGpu,
+} from './src/data/gpuFeed.js';
 import {
   IDFM_PAGE_LIMIT,
   buildLinesUrl,
@@ -160,6 +170,17 @@ import {
   IRVE_MAX_BOX_DEG,
   IRVE_SOURCE,
 } from './src/data/irveFeed.js';
+import {
+  projectCadastreParcels,
+  CADASTRE_API_BASE,
+  CADASTRE_BOX_STEP_DEG,
+  CADASTRE_DATASET_PAGE,
+  CADASTRE_LICENCE,
+  CADASTRE_MAX_BOX_DEG,
+  CADASTRE_REQUEST_MAX_BOX_DEG,
+  CADASTRE_SOURCE,
+  CADASTRE_UPSTREAM_LIMIT,
+} from './src/data/cadastreFeed.js';
 import {
   SCHOOLS_BOX_STEP_DEG,
   SCHOOLS_DATASET,
@@ -14116,6 +14137,251 @@ function roadStatusFranceProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Cadastre proxy (France's parcel plan, PCI vecteur, through IGN Api Carto)
+// ---------------------------------------------------------------------------
+/**
+ * A parcel outlives the people who own it and the PCI is republished monthly,
+ * so a day is a short cache for this data, not a long one. It is set by what
+ * changes upstream, not by how fresh the answer feels.
+ */
+const CADASTRE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling when Api Carto is down. A plan a month old is still the plan. */
+const CADASTRE_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+const CADASTRE_TIMEOUT_MS = 45_000;
+/**
+ * Byte cap on ONE upstream answer. The densest measured box — Marseille at
+ * 0.034°, truncated at Api Carto's own 5 000 — is 3.5 MB, and a full 5 000
+ * rural parcels with 32 vertices each would be larger; 32 MB is comfortably
+ * clear of both and still bounded.
+ */
+const CADASTRE_MAX_BYTES = 32 * 1024 * 1024;
+const CADASTRE_VIEWPORT_CACHE_MAX = 48;
+const CADASTRE_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'cadastre');
+
+/** box key -> {at:number, payload:object} */
+const _cadastreViewportCache = new Map();
+const _cadastreViewportInFlight = new Map();
+const _cadastreRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+function trimCadastreViewportCache() {
+  while (_cadastreViewportCache.size > CADASTRE_VIEWPORT_CACHE_MAX) {
+    const oldest = _cadastreViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _cadastreViewportCache.delete(oldest);
+  }
+}
+
+/** Snapped box key -> stable disk-cache file path. */
+function cadastreDiskPath(key) {
+  return path.join(CADASTRE_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+/** Read a disk-cached viewport answer. `maxAgeMs` Infinity = any age. */
+async function readCadastreDisk(key, maxAgeMs) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(cadastreDiskPath(key), 'utf8'));
+    if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.parcels)) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/** Fire-and-forget disk write for a successful viewport answer. */
+function writeCadastreDisk(key, entry) {
+  fsp.mkdir(CADASTRE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(cadastreDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Cadastre Proxy] disk cache write failed:', err?.message || err));
+}
+
+/** One Api Carto GeoJSON call, under a timeout and a byte cap. */
+async function fetchCadastreCollection(route, box, limit) {
+  const geom = JSON.stringify({
+    type: 'Polygon',
+    coordinates: [[
+      [box.west, box.south], [box.east, box.south],
+      [box.east, box.north], [box.west, box.north], [box.west, box.south],
+    ]],
+  });
+  const params = new URLSearchParams({ geom, _limit: String(limit) });
+  const response = await fetch(`${CADASTRE_API_BASE}/${route}?${params}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(CADASTRE_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream ${route} HTTP ${response.status}`);
+  return readResponseJsonCapped(response, CADASTRE_MAX_BYTES);
+}
+
+/**
+ * Fetch one viewport and fold it into the client payload.
+ *
+ * The two calls run in PARALLEL and answer different questions. `parcelle` is
+ * the map; `feuille` is the SCALE each of those parcels was drawn at, which is
+ * the layer's whole subject and which the parcel records do not carry. The join
+ * is five parts wide (see `sheetKey`) because Lyon publishes one section number
+ * across five arrondissements at two different scales.
+ *
+ * @param {{south:number, west:number, north:number, east:number}} box Snapped box.
+ * @returns {Promise<object>} Client payload.
+ */
+async function refreshCadastreViewport(box) {
+  const [parcelle, feuille] = await Promise.all([
+    fetchCadastreCollection('parcelle', box, CADASTRE_UPSTREAM_LIMIT),
+    // Sheets are two orders of magnitude rarer than parcels — 214 was the most
+    // ever measured in a box four times this one — so the same ceiling is far
+    // more headroom than it is for the parcels, and truncation here degrades
+    // (some parcels lose their scale) rather than lying.
+    fetchCadastreCollection('feuille', box, CADASTRE_UPSTREAM_LIMIT)
+      .catch((error) => {
+        // A sheet failure costs tolerances, not the map. Parcels still draw, in
+        // the UNKNOWN band, which says exactly that on its own legend row.
+        console.warn('[Cadastre Proxy] sheet join unavailable:', error?.message || error);
+        return null;
+      }),
+  ]);
+  return projectCadastreParcels({ parcelle, feuille, box });
+}
+
+/**
+ * Vite plugin: French cadastral parcels through IGN's Api Carto.
+ *
+ *   GET /api/cadastre-fr/parcelles?south&west&north&east — parcels in one box
+ *   GET /api/cadastre-fr/status                         — provenance + cache state
+ *
+ * WHY A PROXY at all, when Api Carto reflects the Origin header and a browser
+ * could fetch this directly: the service answers `Cache-Control: private,
+ * no-cache, no-store, must-revalidate`, so the browser cache is forbidden from
+ * helping and every pan would be a fresh round trip to a free public service
+ * for data that changes monthly; one viewport is TWO upstream calls that are
+ * worth sharing across clients and across restarts; the five-part sheet join
+ * and the truncation check in `cadastreFeed.js` are absorbed once, server-side,
+ * under test, instead of in every client; and the shape changes on the way
+ * through — 3.3 MB of GeoJSON scaffolding folds to 1.8 MB of parcels.
+ *
+ * Keyless, Licence Ouverte 2.0.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function cadastreFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/cadastre-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_cadastreRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        let newest = null;
+        for (const entry of _cadastreViewportCache.values()) {
+          if (!newest || entry.at > newest) newest = entry.at;
+        }
+        json(200, {
+          source: CADASTRE_SOURCE,
+          licence: CADASTRE_LICENCE,
+          datasetPage: CADASTRE_DATASET_PAGE,
+          lastFetch: newest,
+          cachedBoxes: _cadastreViewportCache.size,
+          ttlMs: CADASTRE_TTL_MS,
+          maxBoxDeg: CADASTRE_MAX_BOX_DEG,
+          requestMaxBoxDeg: CADASTRE_REQUEST_MAX_BOX_DEG,
+          upstreamLimit: CADASTRE_UPSTREAM_LIMIT,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+      if (route !== '/parcelles') {
+        json(404, { error: 'Unknown cadastre endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, CADASTRE_REQUEST_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${CADASTRE_REQUEST_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: CADASTRE_REQUEST_MAX_BOX_DEG,
+          layerMaxBoxDeg: CADASTRE_MAX_BOX_DEG,
+        });
+        return;
+      }
+
+      // Snapped OUTWARD, so the box sent upstream is up to two grid steps wider
+      // than the one that was validated — 0.024° against a 0.02° ceiling, worst
+      // case. That widening is the cache doing its job and is NOT re-checked
+      // against the ceiling here: an outward snap of a box that only just
+      // passed always lands over it, so re-checking would 400 every request at
+      // the layer's own maximum zoom. The upstream bound is `validBox` above
+      // plus this known, constant margin.
+      const box = snapBoxOutward(requested, CADASTRE_BOX_STEP_DEG);
+      const key = boxKey(box, 3);
+      const now = Date.now();
+
+      const cached = _cadastreViewportCache.get(key);
+      if (cached && now - cached.at <= CADASTRE_TTL_MS) {
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-Cadastre-FR': 'HIT' });
+        return;
+      }
+      const onDisk = await readCadastreDisk(key, CADASTRE_TTL_MS);
+      if (onDisk) {
+        _cadastreViewportCache.set(key, onDisk);
+        trimCadastreViewportCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-Cadastre-FR': 'DISK' });
+        return;
+      }
+
+      const request = coalesceProxyRequest(_cadastreViewportInFlight, key, async () => {
+        const payload = await refreshCadastreViewport(box);
+        const entry = { at: Date.now(), payload };
+        _cadastreViewportCache.set(key, entry);
+        trimCadastreViewportCache();
+        // A refusal is cached like any other answer. It is not an error and it
+        // is not going to change until the operator zooms: re-asking Api Carto
+        // for 15 977 parcels it will not send is a round trip spent to be told
+        // the same thing twice.
+        writeCadastreDisk(key, entry);
+        return entry;
+      });
+      try {
+        const entry = await request.promise;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, {
+          'X-Cadastre-FR': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+      } catch (error) {
+        console.warn('[Cadastre Proxy] viewport unavailable:', error?.message || error);
+        const stale = cached || await readCadastreDisk(key, CADASTRE_STALE_MS);
+        if (stale) {
+          json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-Cadastre-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'The French cadastre is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'cadastre-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
 function parseJsonEnv(key, fallback) {
   const value = process.env[key];
   if (!value) return fallback;
@@ -14662,21 +14928,101 @@ function isochroneProxy() {
  * `GET /api/gpu?lat=&lon=`
  * @returns {import('vite').Plugin}
  */
+/**
+ * Zoning answers keyed on the SNAPPED BOX, so panning a street does not buy the
+ * same 300 KB twice.
+ *
+ * A second cache, next to the route's own, because the two halves of a GPU
+ * answer have different keys and merging them would break whichever one loses.
+ * The zoning half depends on the BOX; the servitude half and the `atPoint`
+ * marking depend on the POINT. Keying the whole payload on the box would tell
+ * two different addresses in one block that they stand in the same zone, which
+ * is the exact question this layer exists to answer correctly.
+ */
+const _gpuZoningCache = new Map();
+const GPU_ZONING_CACHE_MAX_ENTRIES = 120;
+
+function gpuZoningCacheSet(key, payload) {
+  _gpuZoningCache.set(key, { payload, at: Date.now() });
+  while (_gpuZoningCache.size > GPU_ZONING_CACHE_MAX_ENTRIES) {
+    _gpuZoningCache.delete(_gpuZoningCache.keys().next().value);
+  }
+}
+
+/**
+ * Read the optional bbox off a GPU request.
+ *
+ * Absent is not an error: no box is the POINT regime, which is what the layer
+ * falls back to above its own box altitude. A PARTIAL box is an error, because
+ * silently answering a different question than the one asked is how a layer
+ * ends up drawing the wrong block.
+ *
+ * @param {URLSearchParams} searchParams
+ * @returns {?object} Validated box, or null for the point regime.
+ * @throws {Error} On a malformed or over-wide box; `installAddressRoute` turns
+ *   that into a 400 with the message.
+ */
+export function gpuRequestBox(searchParams) {
+  const edges = ['south', 'west', 'north', 'east'].map((k) => searchParams.get(k));
+  if (edges.every((v) => v === null || v.trim() === '')) return null;
+  const [south, west, north, east] = edges;
+  const box = validBox({ south, west, north, east }, GPU_REQUEST_MAX_BOX_DEG);
+  if (!box) {
+    // Rounded for the message only: `0.02 + 3 * 0.002` is
+    // `0.026000000000000002` in binary floating point, and an error string is
+    // read by a person.
+    throw new Error(
+      `A complete non-dateline bbox no larger than ${GPU_REQUEST_MAX_BOX_DEG.toFixed(3)} degrees is required`,
+    );
+  }
+  return box;
+}
+
 function gpuProxy() {
   function install(middlewares) {
     installAddressRoute(middlewares, '/api/gpu', (url) => {
       const point = addressPoint(url.searchParams);
       if (!point) return null;
+      // Snapped OUTWARD onto the shared grid, so the box sent upstream is up to
+      // two steps wider than the one that was validated. That widening is the
+      // cache doing its job and is deliberately NOT re-checked against the
+      // ceiling — an outward snap of a box that only just passed always lands
+      // over it, and re-checking would 400 every request at the layer's own
+      // maximum zoom. `GPU_REQUEST_MAX_BOX_DEG` already carries the margin.
+      const asked = gpuRequestBox(url.searchParams);
+      const box = asked ? snapBoxOutward(asked, GPU_BOX_STEP_DEG) : null;
+      const boxTag = box ? boxKey(box, 3) : 'pt';
       return {
-        key: addressCacheKey('gpu', point),
+        key: addressCacheKey('gpu', point, boxTag),
         load: async () => {
+          const zoningKey = box ? boxTag : null;
+          const cachedZoning = zoningKey ? _gpuZoningCache.get(zoningKey) : null;
           const [zoning, servitudes] = await Promise.all([
-            fetchAddressSource(buildGpuUrl('zone-urba', point)),
-            // The measured worst case for a single point is 1.4 MB.
+            cachedZoning
+              ? Promise.resolve(cachedZoning.payload)
+              : fetchAddressSource(
+                box ? buildGpuBoxUrl('zone-urba', box) : buildGpuUrl('zone-urba', point),
+                // A box answers a neighbourhood: 405 KB over Paris at the
+                // layer's ceiling, against 90 KB for one point.
+                box ? { maxBytes: 32 * 1024 * 1024 } : undefined,
+              ),
+            // The measured worst case for a single point is 1.4 MB. Always a
+            // POINT: one 390 m box over Lyon's Presqu'île answers 210 easement
+            // features and 2.3 MB, four times the payload for the half of the
+            // answer a point already gets right.
             fetchAddressSource(buildGpuUrl('assiette-sup-s', point), { maxBytes: 32 * 1024 * 1024 }),
           ]);
           if (!zoning && !servitudes) return null;
-          return projectGpu({ zoning, servitudes });
+          if (zoning && zoningKey && !cachedZoning) gpuZoningCacheSet(zoningKey, zoning);
+          // APIcarto caps at 5 000 features, HTTP 200, and says so only in
+          // `totalFeatures`. A zoning map missing four fifths of itself is not
+          // visibly incomplete — it looks like a commune with mixed zoning — so
+          // the whole half is refused and the true count printed.
+          const truncation = zoning ? gpuTruncation(zoning) : null;
+          const zoningRefused = truncation?.truncated
+            ? { found: truncation.total, limit: GPU_UPSTREAM_LIMIT }
+            : null;
+          return projectGpu({ zoning, servitudes, point, box, zoningRefused });
         },
       };
     });
@@ -14944,6 +15290,7 @@ export default defineConfig(({ mode }) => {
       roadStatusFranceProxy(),
       gbfsFranceProxy(),
       irveFranceProxy(),
+      cadastreFranceProxy(),
       schoolsFranceProxy(),
       supFranceProxy(),
       adsbLolProxy(),

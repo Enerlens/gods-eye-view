@@ -224,6 +224,20 @@ const LAYER_ALIASES = new Map([
   ['ev charging', 'irve-fr'],
   ['irve', 'irve-fr'],
   ['bornes', 'irve-fr'],
+  // "property lines" and "property boundaries" are here deliberately, even
+  // though the layer's whole point is that a cadastral line is NOT one. Someone
+  // asking for property boundaries in France is asking for this — it is the
+  // only thing published — and giving them the layer, whose every card says
+  // what the document is actually worth, corrects the misreading. Matching
+  // nothing would leave it uncorrected.
+  ['cadastre', 'cadastre-fr'],
+  ['parcels', 'cadastre-fr'],
+  ['parcelles', 'cadastre-fr'],
+  ['land parcels', 'cadastre-fr'],
+  ['property lines', 'cadastre-fr'],
+  ['property boundaries', 'cadastre-fr'],
+  ['lot lines', 'cadastre-fr'],
+  ['land registry', 'cadastre-fr'],
   ['schools', 'schools-fr'],
   ['school', 'schools-fr'],
   ['ecoles', 'schools-fr'],
@@ -3409,6 +3423,7 @@ function layerTitle(layerId) {
   if (layerId === 'bdtopo-buildings') return 'Building';
   if (layerId === 'rte-generation') return 'Power Station';
   if (layerId === 'irve-fr') return 'Charge Point';
+  if (layerId === 'cadastre-fr') return 'Parcel';
   if (layerId === 'schools-fr') return 'School';
   if (layerId === 'sup-fr') return 'Campus';
   if (layerId === 'local-ports') return 'Port';

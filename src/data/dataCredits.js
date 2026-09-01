@@ -345,6 +345,8 @@ export const DATA_CREDITS = [
       'The publication\u2019s own timestamp is reported by the layer as its data timestamp. ' +
       'Coverage is the r&eacute;seau routier national NON CONC&Eacute;D&Eacute; only &mdash; the conceded motorways are not in this feed. ' +
       'A segment is drawn as the straight line between the two endpoints DATEX II publishes; the road\u2019s real geometry is not part of the feed.',
+  },
+  {
     key: 'irve-charge-points',
     html:
       'EV charge points (France): <em>fichier consolid&eacute; des bornes de recharge pour v&eacute;hicules ' +
@@ -355,6 +357,27 @@ export const DATA_CREDITS = [
       '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
       '&copy; each am&eacute;nageur / op&eacute;rateur. Installed capacity only &mdash; the file publishes no ' +
       'availability, and each site&rsquo;s own <code>date_maj</code> is reported as its data timestamp.',
+  },
+  {
+    key: 'cadastre-pci',
+    html:
+      'French cadastral parcels: <em>Plan Cadastral Informatis&eacute; (PCI vecteur)</em>, ' +
+      '&copy; Direction g&eacute;n&eacute;rale des Finances publiques, served through ' +
+      '<a href="https://apicarto.ign.fr/api/doc/cadastre" target="_blank" rel="noopener">IGN Api Carto</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'A FISCAL document: cadastral limits carry no legal force, and a property boundary in France is ' +
+      'fixed by bornage under article 646 of the Code civil. Each parcel\u2019s tolerance is derived from the ' +
+      'published scale of the feuille it was drawn on, at 0,5 mm of line; the <code>contenance</code> is the ' +
+      'DGFiP\u2019s registered surface and is shown beside the drawn one, never merged with it.',
+  },
+  {
+    key: 'ban-adresse',
+    html:
+      'Addresses on a selected cadastral parcel: ' +
+      '<a href="https://adresse.data.gouv.fr" target="_blank" rel="noopener">Base Adresse Nationale (BAN)</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The NEAREST address point to the parcel\u2019s centroid, not a published parcel-to-address relation: the card prints the ' +
+      'distance BAN itself reports whenever it exceeds 10 m, and drops the answer entirely beyond 60 m.',
   },
   {
     key: 'schools-fr',

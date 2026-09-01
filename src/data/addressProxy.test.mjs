@@ -4,7 +4,13 @@
 // running dev server, not by reading the code — and neither one throws.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addressCacheKey, addressPoint } from '../../vite.config.js';
+import { addressCacheKey, addressPoint, gpuRequestBox } from '../../vite.config.js';
+import {
+  GPU_BOX_STEP_DEG,
+  GPU_MAX_BOX_DEG,
+  GPU_REQUEST_MAX_BOX_DEG,
+} from './gpuFeed.js';
+import { snapBoxOutward } from './viewportBox.js';
 
 const params = (query) => new URL(`http://localhost/?${query}`).searchParams;
 
@@ -62,4 +68,63 @@ test('a different radius or a different street is a different entry', () => {
   assert.notEqual(base, addressCacheKey('dvf', { lon: 2.3760, lat: 48.8300 }, 600));
   assert.notEqual(base, addressCacheKey('dvf', { lon: 2.3800, lat: 48.8300 }, 300));
   assert.notEqual(base, addressCacheKey('dpe', { lon: 2.3760, lat: 48.8300 }, 300));
+});
+
+// ── The urbanism layer's optional bbox ──────────────────────────────────────
+
+const query = (obj) => new URLSearchParams(obj);
+
+test('no bbox at all is the POINT regime, not a bad request', () => {
+  // The urbanism layer sends a box only below its own altitude; above it the
+  // point answer is correct and much cheaper, and it arrives as a request with
+  // no box in it.
+  assert.equal(gpuRequestBox(query({ lat: '48.83', lon: '2.376' })), null);
+  assert.equal(gpuRequestBox(query({ south: '', west: '', north: '', east: '' })), null);
+});
+
+test('a complete, bounded bbox is accepted and returned as numbers', () => {
+  const box = gpuRequestBox(query({
+    south: '43.385', west: '-1.464', north: '43.405', east: '-1.444',
+  }));
+  assert.deepEqual(box, {
+    south: 43.385, west: -1.464, north: 43.405, east: -1.444,
+  });
+});
+
+test('a PARTIAL bbox is refused rather than quietly answered as a point', () => {
+  // Half a box is a client bug, and answering a different question than the
+  // one asked is how a layer ends up drawing the wrong block.
+  assert.throws(() => gpuRequestBox(query({ south: '43.385', west: '-1.464' })), /bbox/);
+});
+
+test('a bbox wider than the server accepts is refused, with the ceiling named', () => {
+  assert.throws(() => gpuRequestBox(query({
+    south: '43', west: '-2', north: '44', east: '-1',
+  })), new RegExp(GPU_REQUEST_MAX_BOX_DEG.toFixed(3)));
+  // Inverted is not a small request, it is a broken one.
+  assert.throws(() => gpuRequestBox(query({
+    south: '43.405', west: '-1.444', north: '43.385', east: '-1.464',
+  })), /bbox/);
+});
+
+test('the server ceiling leaves room for the outward snap the client cannot see', () => {
+  // `snapBoxOutward` moves each edge out by up to a full grid step, so a box
+  // already at the client ceiling arrives up to two steps wider; a snapped edge
+  // rounded to six decimals is then compared against an exact ceiling by
+  // floating-point noise. A one-step margin 400'd the cadastre layer at the
+  // altitudes where its box first stops being view-sized.
+  assert.ok(GPU_REQUEST_MAX_BOX_DEG >= GPU_MAX_BOX_DEG + 2 * GPU_BOX_STEP_DEG);
+  const atCeiling = {
+    south: 43.385, west: -1.464, north: 43.385 + GPU_MAX_BOX_DEG, east: -1.464 + GPU_MAX_BOX_DEG,
+  };
+  const snapped = snapBoxOutward(atCeiling, GPU_BOX_STEP_DEG);
+  assert.ok((snapped.north - snapped.south) <= GPU_REQUEST_MAX_BOX_DEG);
+  assert.ok((snapped.east - snapped.west) <= GPU_REQUEST_MAX_BOX_DEG);
+});
+
+test('a box and a point at the same address are different cache entries', () => {
+  // They are different answers to different questions, and sharing a slot
+  // would tell a reader at 9 km that they can see their neighbours' zoning.
+  const point = { lon: 2.376, lat: 48.83 };
+  assert.notEqual(addressCacheKey('gpu', point, 'pt'), addressCacheKey('gpu', point, '43.385,-1.464,43.405,-1.444'));
 });
