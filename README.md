@@ -206,7 +206,7 @@ Twenty-four live layers. **Twenty of them need nothing at all** — no key, no a
 
 *The Space Missions layer replaying a Falcon 9 ascent — labeled `RECONSTRUCTED ESTIMATE`, scrubbable 0.25×–4×.*
 
-**Also on the globe:** neighborhood overlays · an optional cockpit WX cloud effect. **Bundled static infrastructure:** Airports (7,464 — OurAirports, public domain), Datacenters (4,351), Dams (704), Submarine Cables (712), Ports (2,951 — NGA World Port Index, US public domain), and the 96 French département polygons the Vigilance layer colours.
+**Also on the globe:** neighborhood overlays · an optional cockpit WX cloud effect. **Bundled static infrastructure:** Airports (7,464 — OurAirports, public domain), Datacenters (4,351), Barrages (6,189 — 5,529 of them in France, OSM/ODbL), Submarine Cables (712), Ports (2,951 — NGA World Port Index, US public domain), and the 96 French département polygons the Vigilance layer colours.
 
 ![Diving into the Bahamas and revealing labeled submarine cable routes beneath the globe](docs/media/09-undersea-cables.gif)
 
@@ -230,7 +230,7 @@ Once the basics click, run these:
 | **📏 Measure LAX to DFW** *🎙️* | *"How far is LAX from DFW?"* — an arrow spans the country, the distance lands in the caption, and the endpoints stay pinned to the real world as you orbit. |
 | **🚀 Launch replay** | Open **Space Missions**, pick a launch from the last 30 days, and ride the T-minus countdown through ascent to orbit — scrub it at 0.25×–4×. Labeled `RECONSTRUCTED ESTIMATE`, because it is one. |
 | **🪦 Walk the boneyard** | Fly from regional context down into dense, fully resolved rows of retired aircraft. |
-| **🏗️ Orbit Three Gorges** | Sweep the dam and its terrain at a glance — then flip on the **Dams** layer and find 703 more. |
+| **🏗️ Orbit Three Gorges** | Sweep the dam and its terrain at a glance — then flip on the **Barrages** layer and find 6,188 more. |
 
 *🎙️ = voice missions — they need an OpenAI key.*
 

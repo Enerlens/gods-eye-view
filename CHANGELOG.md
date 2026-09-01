@@ -59,7 +59,22 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `irveDepartements.js` keep their full export surface and their measurements;
   their unchanged test suites are what prove the extraction was faithful.
 
-- Added the **Bornes IRVE** layer — every public EV charge point France has
+- **The Data Layers panel is grouped and in French.** Thirty-four datasets no
+  longer arrive as one flat list ordered by the accident of which PR merged
+  first. They sit in **eight thematic groups** — *Air & espace, Défense,
+  Maritime, Mobilité terrestre, Énergie, Risques & environnement, Réseaux &
+  capteurs, Bâti & territoire* — each a collapsible section whose header carries
+  its own tally (*"2/8 ON"*) and turns cyan while anything in it is live. Every
+  group opens by default; a group you close is remembered, per group, across
+  reloads.
+- **Every row now reads in French.** *Live Flights* is **Vols en direct**, *Live
+  AIS Vessels* is **Navires en direct**, *Mapped Installations* is **Sites
+  militaires**, *Street Traffic* is **Trafic routier**, *Groupes de prod (FR)*
+  is **Groupes de production**. The five `(FR)` suffixes are gone: a small
+  **FR** / **US** / **VILLES** chip now says where a layer has data, once, on
+  the sixteen rows where the answer is not "everywhere" — and nothing at all on
+  a global layer, because a badge on every row is a badge on none. The panel
+  widened from 280 to 320 px to hold the longer names on one line.- Added the **Bornes IRVE** layer — every public EV charge point France has
   declared, keyless. The *fichier consolidé des bornes de recharge pour
   véhicules électriques* is assembled daily by transport.data.gouv.fr from the
   operators' own filings and republished by **ODRÉ** under Licence Ouverte 2.0:

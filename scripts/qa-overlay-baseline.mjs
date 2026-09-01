@@ -42,6 +42,13 @@ const SCENES = Object.freeze([
   { id: 'datacenters', layers: ['local-datacenters'], camera: [-98, 38, 6_000_000, 0, -Math.PI / 2] },
   { id: 'dams', layers: ['local-dams'], camera: [-98, 38, 6_000_000, 0, -Math.PI / 2] },
   { id: 'datacenters+dams', layers: ['local-datacenters', 'local-dams'], camera: [-98, 38, 6_000_000, 0, -Math.PI / 2] },
+  // Added beside the three scenes above rather than replacing them: those are
+  // a stable series measured over the US and comparable to each other, and
+  // moving one would break that. But the dam pack's real load is France —
+  // 5,529 of its 6,189 features — and a scene that never sees them measures
+  // the wrong layer. 700 km puts the whole hexagon in frame, inside the
+  // named tier's 1,200 km card range and outside the seuils' 200 km.
+  { id: 'dams-fr', layers: ['local-dams'], camera: [3.5, 46.5, 700_000, 0, -Math.PI / 2] },
   { id: 'submarine-cables', layers: ['telegeography-submarine-cables'], camera: [-20, 12, 11_000_000, 0, -Math.PI / 2] },
   { id: 'cctv-street', layers: ['cctv'], cctvHeightM: 1_500 },
   { id: 'cctv-city', layers: ['cctv'], cctvHeightM: 6_000 },

@@ -387,9 +387,11 @@ export const DATA_CREDITS = [
   {
     key: 'dams',
     html:
-      'Dams: ' +
+      'Barrages: ' +
       '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
-      '(ODbL 1.0) + Open Infrastructure Map',
+      '(ODbL 1.0) — France extracted via the ' +
+      '<a href="https://overpass-api.de" target="_blank" rel="noopener">Overpass API</a>, ' +
+      'rest of the world from Open Infrastructure Map',
   },
   {
     key: 'ports',
