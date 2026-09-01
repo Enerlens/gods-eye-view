@@ -205,7 +205,7 @@ Static datasets shipped in the repo for an out-of-the-box experience. **None are
 | Dataset | Folder | License | Commercial use? | Attribution |
 |---------|--------|---------|-----------------|-------------|
 | **Datacenters** (~4.3K) | `datacenters/` | **ODbL 1.0** (OpenStreetMap extract) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" |
-| **Barrages** (6,189 — 5,529 in France) | `dams/` | **ODbL 1.0** (OSM via Overpass for France; OpenInfraMap snapshot elsewhere) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" (+ Open Infrastructure Map for the world half) |
+| **Barrages et digues** (7,432 — 6,771 in France; 5,504 dams, 1,243 dykes, 24 both) | `dams/` | **ODbL 1.0** (OSM via Overpass for France; OpenInfraMap snapshot elsewhere) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" (+ Open Infrastructure Map for the world half) |
 | **NGA World Port Index** (2,951 ports) | `ports/` | **Public domain** (U.S. Government work, 17 U.S.C. § 105) | ✅ (no restrictions) | "NGA World Port Index (Pub. 150)" (courtesy — not legally required) |
 | **OurAirports** (7,464 airports & aerodromes) | `airports/` | **Public domain** (dedicated by OurAirports) | ✅ (no restrictions) | "OurAirports" (courtesy — not legally required) |
 | **TeleGeography Submarine Cable Map** (712 cables + 1,917 landing points) | `telegeography_submarine_cables/` | **CC BY-NC-SA 3.0** | ❌ **NonCommercial — remove for commercial use** | "© TeleGeography — submarinecablemap.com" |

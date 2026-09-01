@@ -37,18 +37,113 @@
 
 /**
  * The Overpass tag filters the pack is extracted with. The selection policy IS
- * this query — there is no second filter in the build script — so it lives here
- * beside the code that reads the result back.
+ * this query — plus one documented exclusion in the build script — so it lives
+ * here beside the code that reads the result back.
  *
  * `man_made=dam` and `building=dam` are kept alongside the canonical
  * `waterway=dam` because 55 French structures carry only one of those two, and
  * dropping them would lose real barrages to a tagging preference.
+ *
+ * ── WHY DYKES ARE HERE NOW, AND WEIRS ARE NOT ───────────────────────────────
+ *
+ * A digue and a barrage are different objects. OSM says so unambiguously —
+ * `waterway=dam` is "a barrier built ACROSS a river", `man_made=dyke` is "an
+ * embankment built to restrict the flow of water", running PARALLEL to it —
+ * and the layer was drawing them as one thing. Not hypothetically: 25 features
+ * in the shipped pack already carry `man_made=dyke` (they got in because they
+ * also carry `waterway=dam`), 26 are literally named "Digue …", and SEVEN of
+ * those are promoted to the top tier and labelled "Grand barrage", because the
+ * `name AND span ≥ 300 m` clause cannot tell a 1 106 m dyke from a dam.
+ *
+ * `embankment=dyke` is included alongside `man_made=dyke` because it is the
+ * wiki-documented tag for a dyke that also carries a road, and ~96 French
+ * dykes are findable only through it.
+ *
+ * WEIRS ARE DELIBERATELY LEFT OUT, for now. France has 7 704 `waterway=weir`
+ * against 5 519 `waterway=dam`, so adding them would more than double a layer
+ * called "Barrages" with objects most readers would not call one, and the
+ * dam-versus-weir boundary is a mapper's judgement about overtopping rather
+ * than a survey. That is a separate decision from the one this pack is making,
+ * which is that a dyke is not a dam. See `DAM_STRUCTURES` for what the tier
+ * label used to claim about weirs, and stopped claiming.
+ *
+ * `man_made=embankment` (14 169 in France) is NOT a dyke tag — the wiki lists
+ * it as a raised bank carrying rail or road — and including it would bury the
+ * layer under railway embankments.
  */
 export const DAM_TAG_FILTERS = Object.freeze([
   Object.freeze(['waterway', 'dam']),
   Object.freeze(['man_made', 'dam']),
   Object.freeze(['building', 'dam']),
+  Object.freeze(['man_made', 'dyke']),
+  Object.freeze(['embankment', 'dyke']),
 ]);
+
+/**
+ * What the structure IS, as a closed vocabulary.
+ *
+ * This is the field the pack never had. `damFeatureProperties` emitted eleven
+ * properties and not one of them said what the object was, so the raw tag that
+ * SELECTED each feature was discarded at build time and nothing downstream
+ * could tell a barrage from a digue.
+ *
+ * `dam+dyke` is not a hedge, it is the honest answer for the 25 features whose
+ * mapper applied both tags. Picking a side for them silently would file 25
+ * objects under a category nobody intended; naming the ambiguity costs one
+ * value and states it.
+ */
+export const DAM_STRUCTURES = Object.freeze([
+  Object.freeze({
+    key: 'dam',
+    label: 'Barrage',
+    blurb: 'Ouvrage en travers du cours d’eau, qui le retient.',
+  }),
+  Object.freeze({
+    key: 'dyke',
+    label: 'Digue',
+    // The limit of what OSM can say, stated where a reader will see it: there
+    // is no tag anywhere that separates a flood-defence dyke from a pond bund
+    // (`dyke:type` has ONE use worldwide), and the register that does cover
+    // French flood dykes — SIOUH, décret 2015-526 — is not open bulk data.
+    blurb: 'Remblai le long de l’eau, qui la contient. OpenStreetMap ne '
+      + 'distingue pas une digue de protection d’une digue d’étang.',
+  }),
+  Object.freeze({
+    key: 'dam+dyke',
+    label: 'Barrage-digue',
+    blurb: 'Porte les deux tags dans OpenStreetMap — le cartographe n’a pas '
+      + 'tranché, et cette couche ne tranche pas à sa place.',
+  }),
+]);
+
+const STRUCTURE_KEYS = new Set(DAM_STRUCTURES.map((entry) => entry.key));
+
+/**
+ * The structure one element's tags describe.
+ *
+ * Returns `''` when nothing matches, which is NOT the same as `dam`: the world
+ * half of the pack was carried over from an older snapshot and has no raw tags
+ * left, so those features are unclassified and must say so. Defaulting them to
+ * `dam` would re-create the exact conflation this field exists to end, outside
+ * France where nobody would notice.
+ *
+ * @param {object} tags Raw OSM tags.
+ * @returns {string} A key of {@link DAM_STRUCTURES}, or ''.
+ */
+export function damStructureKind(tags) {
+  const source = tags && typeof tags === 'object' ? tags : {};
+  const isDam = source.waterway === 'dam' || source.man_made === 'dam' || source.building === 'dam';
+  const isDyke = source.man_made === 'dyke' || source.embankment === 'dyke';
+  if (isDam && isDyke) return 'dam+dyke';
+  if (isDyke) return 'dyke';
+  if (isDam) return 'dam';
+  return '';
+}
+
+/** Whether a `kind` string is one this pack knows. */
+export function isDamStructureKind(value) {
+  return STRUCTURE_KEYS.has(String(value ?? ''));
+}
 
 /**
  * Build the Overpass QL query for one area selector.
@@ -310,6 +405,12 @@ export function damFeatureProperties({ tags, osm, spanM = null }) {
   const id = text(osm);
   if (id) properties.osm = id;
 
+  // Emitted even when it is the boring value, unlike every other field here:
+  // an ABSENT `kind` has to keep meaning "unclassified" (the carried-over world
+  // half), so it cannot double as shorthand for "dam".
+  const kind = damStructureKind(source);
+  if (kind) properties.kind = kind;
+
   const operator = text(source.operator) || text(source['operator:short']);
   if (operator) properties.operator = operator;
 
@@ -405,7 +506,11 @@ export const DAM_TIERS = Object.freeze([
   }),
   Object.freeze({
     key: 'minor',
-    label: 'Seuil & petit ouvrage',
+    // NOT 'Seuil & petit ouvrage'. `waterway=weir` is not in DAM_TAG_FILTERS,
+    // so this tier has never contained a single OSM-tagged weir — the label
+    // named a thing the pack does not hold. It names the tier's actual rule
+    // instead: no name, no height, no operator.
+    label: 'Petit ouvrage',
     color: '#2b6c96',
     pixelSize: 6,
     stemWidth: 2,
@@ -413,20 +518,73 @@ export const DAM_TIERS = Object.freeze([
     // Départemental scale. The marker is always drawn; only its CARD waits
     // until you are close enough for an unnamed weir to be the point.
     cardMaxDistance: 200_000,
-    blurb: 'Sans nom : seuils de rivière, digues d’étang, ouvrages de dérivation.',
+    blurb: 'Sans nom, sans hauteur et sans exploitant : sorties d’étang et '
+      + 'ouvrages de dérivation, pour l’essentiel.',
   }),
 ]);
 
 const TIER_BY_KEY = new Map(DAM_TIERS.map((tier) => [tier.key, tier]));
 
+/**
+ * ── TWO AXES, TWO CHANNELS ──────────────────────────────────────────────────
+ *
+ * WHAT the structure is, and HOW MUCH it matters, are independent facts and
+ * they get independent channels: COLOUR says what, SIZE says how much. A
+ * 1 106 m dyke and a 1 106 m barrage are the same size on screen because they
+ * are the same size in the world; they are different colours because they are
+ * different objects.
+ *
+ * That split is forced by the renderer as much as chosen: `createLocalGeoJsonLayer`
+ * resolves ONE group key per feature at load and bakes its colour and pixel
+ * size into the Cesium primitives, so anything that must vary per feature has
+ * to live in that key. Hence a composite `kind:tier`.
+ *
+ * The dyke ramp is ochre — earth, which is what a dyke is made of — and stays
+ * clear of the blues this layer already spends on dams, of cyan (datacenters),
+ * amber (ports) and violet (airports), which share the one `ambient-card`
+ * collision group.
+ */
+const STRUCTURE_RAMPS = Object.freeze({
+  dam: Object.freeze({ major: '#9ad9ff', named: '#3fa4e0', minor: '#2b6c96' }),
+  dyke: Object.freeze({ major: '#f0c46a', named: '#c99a3c', minor: '#8d6b26' }),
+  // Both tags at once: the blue-green between the two ramps, so it reads as
+  // neither one nor the other — which is exactly its situation.
+  'dam+dyke': Object.freeze({ major: '#7fd9c0', named: '#3fa48d', minor: '#2b6c5e' }),
+  // The carried-over world half, which has no tags left to classify. Grey, not
+  // blue: unclassified must not look like "dam".
+  '': Object.freeze({ major: '#b9c4cf', named: '#8b98a6', minor: '#5d6a77' }),
+});
+
+/**
+ * The group key one feature draws under: what it is, then how much it matters.
+ * @param {object} props Shipped feature properties.
+ * @returns {string} `"<kind>:<tier>"`.
+ */
+export function damGroupKey(props) {
+  const kind = isDamStructureKind(props?.kind) ? String(props.kind) : '';
+  return `${kind}:${damTier(props)}`;
+}
+
+/** Split a composite key back into its two axes. */
+export function damGroupParts(key) {
+  const raw = String(key ?? '');
+  const at = raw.lastIndexOf(':');
+  if (at < 0) return { kind: '', tier: raw || 'minor' };
+  return { kind: raw.slice(0, at), tier: raw.slice(at + 1) || 'minor' };
+}
+
 /** Per-tier point/stem styling, in the shape `createLocalGeoJsonLayer` reads. */
 export const DAM_TIER_STYLES = Object.freeze(Object.fromEntries(
-  DAM_TIERS.map((tier) => [tier.key, Object.freeze({
-    color: tier.color,
-    pixelSize: tier.pixelSize,
-    stemWidth: tier.stemWidth,
-    cardMaxDistance: tier.cardMaxDistance,
-  })]),
+  Object.entries(STRUCTURE_RAMPS).flatMap(([kind, ramp]) => DAM_TIERS.map((tier) => [
+    `${kind}:${tier.key}`,
+    Object.freeze({
+      // Colour from the structure, everything else from the tier.
+      color: ramp[tier.key],
+      pixelSize: tier.pixelSize,
+      stemWidth: tier.stemWidth,
+      cardMaxDistance: tier.cardMaxDistance,
+    }),
+  ])),
 ));
 
 /** The ICOLD threshold, in metres, that puts a dam in the top tier. */
@@ -503,8 +661,60 @@ export function damDisplayFloor(floorId) {
  * @param {{floor?: string}} [params] Layer runtime params.
  * @returns {boolean}
  */
-export function damTierVisible(tierKey, params = {}) {
-  return damDisplayFloor(params?.floor).keep.includes(tierKey);
+export function damTierVisible(groupKey, params = {}) {
+  const { kind, tier } = damGroupParts(groupKey);
+  if (!damDisplayFloor(params?.floor).keep.includes(tier)) return false;
+  return damStructureVisible(kind, params);
+}
+
+/**
+ * The structure chips — the second, orthogonal axis.
+ *
+ * Runtime params MERGE rather than replace in `createLocalGeoJsonLayer`, so
+ * this row coexists with the importance floors without touching the share-link
+ * grammar: `local-dams` keeps its single token and the floors stay runtime-only,
+ * exactly as documented for `DAM_DISPLAY_FLOORS`.
+ */
+export const DAM_STRUCTURE_CHIPS = Object.freeze([
+  Object.freeze({
+    id: 'all',
+    label: 'TOUS',
+    keep: null,
+    title: 'Barrages et digues ensemble',
+  }),
+  Object.freeze({
+    id: 'dams',
+    label: 'BARRAGES',
+    // The ambiguous double-tagged features are kept by BOTH chips rather than
+    // assigned to one: they genuinely are both, and hiding them from either
+    // view would make a filter lie about what it excludes.
+    keep: Object.freeze(['dam', 'dam+dyke', '']),
+    title: 'Ouvrages en travers du cours d’eau (et non classés)',
+  }),
+  Object.freeze({
+    id: 'dykes',
+    label: 'DIGUES',
+    keep: Object.freeze(['dyke', 'dam+dyke']),
+    title: 'Remblais le long de l’eau — protection ou étang, OSM ne dit pas',
+  }),
+]);
+
+const STRUCTURE_CHIP_BY_ID = new Map(DAM_STRUCTURE_CHIPS.map((chip) => [chip.id, chip]));
+
+/** The structure chip a params object selects, falling back to "show everything". */
+export function damStructureChip(chipId) {
+  return STRUCTURE_CHIP_BY_ID.get(text(chipId)) || DAM_STRUCTURE_CHIPS[0];
+}
+
+/**
+ * Whether a structure is drawn under the given chip.
+ * @param {string} kind A key of DAM_STRUCTURES, or '' for unclassified.
+ * @param {{kinds?: string}} [params]
+ * @returns {boolean}
+ */
+export function damStructureVisible(kind, params = {}) {
+  const chip = damStructureChip(params?.kinds);
+  return chip.keep === null || chip.keep.includes(String(kind ?? ''));
 }
 
 /**
@@ -518,18 +728,46 @@ export function damTierVisible(tierKey, params = {}) {
  * @returns {Array<{label:string,color:string,blurb:string,count:number}>}
  */
 export function damTierLegend(tally) {
-  const read = (key) => (tally instanceof Map ? tally.get(key) : tally?.[key]) || null;
-  const legend = [];
-  for (const tier of DAM_TIERS) {
-    const bucket = read(tier.key);
+  const entries = tally instanceof Map ? [...tally] : Object.entries(tally || {});
+  // The tally now arrives keyed by the COMPOSITE key, so it is folded twice:
+  // once per structure and once per tier. Both rows answer a question the
+  // panel is actually asked — "how many digues are there" and "how many of
+  // these are big" — and neither can be read off the other.
+  const byKind = new Map();
+  const byTier = new Map();
+  for (const [key, bucket] of entries) {
     if (!bucket?.total) continue;
-    const hidden = bucket.total - (bucket.visible ?? bucket.total);
+    const { kind, tier } = damGroupParts(key);
+    for (const [map, id] of [[byKind, kind], [byTier, tier]]) {
+      const seen = map.get(id) || { total: 0, visible: 0 };
+      seen.total += bucket.total;
+      seen.visible += bucket.visible ?? bucket.total;
+      map.set(id, seen);
+    }
+  }
+  const legend = [];
+  const row = (label, color, blurb, bucket) => {
+    if (!bucket?.total) return;
+    const hidden = bucket.total - bucket.visible;
     legend.push({
-      label: tier.label,
-      color: tier.color,
-      blurb: hidden > 0 ? `${tier.blurb} — ${hidden} masqué${hidden > 1 ? 's' : ''}` : tier.blurb,
-      count: bucket.visible ?? bucket.total,
+      label,
+      color,
+      blurb: hidden > 0 ? `${blurb} — ${hidden} masqué${hidden > 1 ? 's' : ''}` : blurb,
+      count: bucket.visible,
     });
+  };
+  // Structure first: it is the distinction this layer was getting wrong.
+  for (const structure of DAM_STRUCTURES) {
+    row(structure.label, STRUCTURE_RAMPS[structure.key].named, structure.blurb, byKind.get(structure.key));
+  }
+  row(
+    'Non classé',
+    STRUCTURE_RAMPS[''].named,
+    'Hors de France : reprise d’un instantané plus ancien, dont les tags OSM ne sont plus disponibles.',
+    byKind.get(''),
+  );
+  for (const tier of DAM_TIERS) {
+    row(tier.label, tier.color, tier.blurb, byTier.get(tier.key));
   }
   return legend;
 }
