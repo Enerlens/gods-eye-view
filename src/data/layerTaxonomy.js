@@ -609,6 +609,21 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Beside `schools-fr` and not in a group of its own, because it is the same
+  // kind of fact about the same country: the State's account of where it puts
+  // the people it educates. `schools-fr` covers the register up to the
+  // baccalauréat and this one covers what comes after it — the two are one
+  // subject split across two ministries, and the taxonomy should not repeat
+  // the split.
+  Object.freeze({
+    id: 'sup-fr',
+    category: 'built-environment',
+    label: 'Enseignement supérieur',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
 ]);
 
 /**

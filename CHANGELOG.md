@@ -7,6 +7,49 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Enseignement supérieur (FR) — the level the schools layer stops before.**
+  The *Annuaire de l'éducation* ends at the baccalauréat: measured 2026-09-01,
+  its `type_etablissement` has eight values and not one of them is a
+  university, an IUT, an école d'ingénieurs, an école de commerce, an IFSI or a
+  school of architecture. Joining the two registers on the UAI measures the
+  hole — of the 6 509 establishments the ministry's Parcoursup cartography
+  lists for the 2026 session, **3 492 appear nowhere in the Annuaire**. The new
+  layer draws the MESR's own *Effectifs d'étudiants inscrits — détail par
+  établissements* (Licence Ouverte 2.0, rentrée 2024): **6 294 establishments,
+  6 914 sites, 2 960 012 students placed**, coloured by seven bands folded from
+  the register's 14 published categories and sized by the students counted at
+  that campus.
+- **No thinning and no sampling, because the whole register fits.** Resolved to
+  sites it is **0.62 MB gzipped with every name, band, roll, cycle mix, campus
+  count, formation list and website on it** — what the `schools-fr` maillage
+  costs (0.63 MB gzipped) while carrying no names at all. So there is no bbox endpoint,
+  no ceiling and no spatial thinning: `/api/sup-fr/sites` hands the browser the
+  register once and every zoom is answered from it. `/api/sup-fr/departements`
+  is the ~30 KB national rollup built by the same sweep. Cold build, measured
+  end to end against the live portal: **2.9 s**.
+- **1 665 establishments have no coordinate, and the fix is a second register.**
+  `geo` is null on 3 442 of the register's 22 068 rows — the Université de la
+  Nouvelle-Calédonie and the Université de la Polynésie française among them.
+  Nothing is placed at a commune centroid. The layer reads the ministry's
+  *Cartographie des formations Parcoursup* (session 2026, 25 831 formations,
+  every one geolocated) and borrows a coordinate ONLY where that file gives
+  exactly one point for the UAI: **977 establishments and 82 200 students**,
+  lifting placed enrolment from 95.69% to **98.41%**. The borrow was checked
+  rather than assumed — where both files give one point, the median
+  disagreement is **74 m** and 90% agree within 1 km. Polynésie is recovered
+  this way; New Caledonia is not, so all 18 of its establishments are reported
+  as unplaced instead of being invented into the Pacific. A borrowed coordinate
+  says so on its card.
+- **The choropleth counts students, not dots — and says why.** Counting sites,
+  Paris (484) leads the Nord (292) by 1.66× and the top ten départements hold
+  35%. Counting students, Paris (394 788) leads the Rhône (192 964) by 2.05×
+  and the top ten hold **49.8%**. The site count is flatter because 2 800 of
+  the 6 914 sites are lycées running a BTS — and a map of where BTS sections
+  are is a map of where lycées are, which **Établissements scolaires** already
+  draws. Those 2 800 shared addresses get their own legend band, and the two
+  layers use deliberately different palettes (deep hues and a white dot outline
+  here, pastels and a black one there) so a stacked dot reads as the overlap it
+  is rather than as a duplicate.
 - **Six French public registers, read from a coordinate.** Géorisques, DVF,
   the ADEME DPE register, the IGN isochrone service, the Géoportail de
   l'urbanisme and Île-de-France Mobilités are now integrated end to end —
