@@ -195,6 +195,21 @@ export function installationResponseSaturated(payload) {
  * screen indefinitely.
  * @param {string} status @param {?string} error
  */
+/**
+ * The row's one-line provenance, and the home of its guidance prompts.
+ *
+ * Guidance and faults are different claims and live in different fields: this
+ * returns what the layer is DOING or asking for, while `getStats().error` stays
+ * reserved for something that actually went wrong. The manager renders the two
+ * in different slots.
+ * @returns {string}
+ */
+function installationLoadingLabel() {
+  if (state.loading) return 'loading mapped installation context';
+  if (state.status === 'zoom-in') return 'zoom in to load mapped installation context';
+  return '';
+}
+
 function setInstallationStatus(status, error = null) {
   if (state.status === status && state.error === error) return;
   state.status = status;
@@ -407,8 +422,18 @@ async function loadInstallations() {
     state.abort?.abort();
     state.abort = null;
     state.loading = false;
+    // The status below passes NULL, not a prompt. `setInstallationStatus`'s
+    // second argument is `state.error`, and the row renders a non-empty
+    // `error` in its fault slot — so that one argument was the whole of
+    // "Sites militaires shows Loaded Error". The layer was never failing: at a
+    // country-wide camera it is correctly zoom-gated, and the prompt now
+    // travels as `loadingLabel`, which is the guidance slot.
+    //
+    // These two calls stay ADJACENT: `militaryInstallations.test.mjs` asserts
+    // that on the source text, because cancelling the retry is what hands
+    // re-entry back to moveEnd. Comments go above the pair, never between it.
     clearUnavailableRetry();
-    setInstallationStatus('zoom-in', 'Zoom in to load mapped installation context');
+    setInstallationStatus('zoom-in', null);
     return;
   }
   state.abort?.abort();
@@ -632,7 +657,7 @@ const militaryInstallationsLayer = {
       error: state.error,
       status: state.status,
       loading: state.loading,
-      loadingLabel: state.loading ? 'loading mapped installation context' : '',
+      loadingLabel: installationLoadingLabel(),
     };
   },
 };

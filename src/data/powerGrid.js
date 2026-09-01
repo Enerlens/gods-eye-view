@@ -860,7 +860,13 @@ async function load() {
     _loading = false;
     clearRendered();
     clearUnavailableRetry();
-    setStatus('zoom-in', `Zoom in below ${POWER_GRID_MAX_BOX_DEG}° to load the mapped grid`);
+    // NULL, not the prompt. `setStatus`'s second argument is `_error`, and the
+    // Data Layers row prints a non-empty `error` in its FAULT slot — under a
+    // green ON chip, because `layerFeedState()` has always carved `zoom-in` out
+    // as guidance. The two halves of one row contradicted each other and the
+    // layer read as broken while doing exactly its job. The prompt itself is
+    // `buildLoadingLabel()`'s, which is the guidance slot the row also reads.
+    setStatus('zoom-in', null);
     governorRequestRender('power-grid-zoom-out');
     return false;
   }
@@ -953,7 +959,7 @@ function collectDetectableObjects(options = {}) {
 
 function buildLoadingLabel() {
   if (_loading) return 'loading the mapped grid for this view...';
-  if (_status === 'zoom-in') return _error || 'zoom in to load the mapped grid';
+  if (_status === 'zoom-in') return `zoom in below ${POWER_GRID_MAX_BOX_DEG}° to load the mapped grid`;
   if (_status === 'error') return _error || 'unavailable';
   if (_status === 'empty') return 'nothing high-voltage mapped in this view';
   const stats = _payload?.stats;

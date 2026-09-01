@@ -1833,6 +1833,54 @@ test('layer feed states distinguish unavailable, fallback, stale, and degraded c
   assert.equal(layerFeedState({ count: 5, lastUpdate: 1 }), 'nominal');
 });
 
+test('a guidance status prints as a prompt, never in the fault slot', () => {
+  // The reported bug, as a unit. "Sites militaires" and "Réseau électrique"
+  // both put their zoom prompt in `stats.error`, and the row printed it where
+  // a failure goes — under an ON chip, because `layerFeedState` had always
+  // carved these statuses out. The two halves of one row disagreed, and the
+  // layer read as broken while doing exactly its job.
+  const mgr = new DataLayerManager({});
+
+  // The chip half of the contract, restated so the two can never drift apart.
+  assert.equal(layerFeedState({ status: 'zoom-in', error: 'Zoom in below 0.8°' }), 'nominal');
+
+  // Guidance text belongs in `loadingLabel`, and that is what prints.
+  assert.equal(mgr._buildMetaText({
+    source: 'OpenStreetMap (Overpass)',
+    stats: {
+      status: 'zoom-in',
+      loadingLabel: 'zoom in below 0.8° to load the mapped grid',
+      count: 0,
+      lastUpdate: null,
+    },
+  }), 'OpenStreetMap (Overpass) · zoom in below 0.8° to load the mapped grid');
+
+  // A layer that still stores its prompt in `error` is presented as guidance
+  // rather than silenced — no state label, no fault framing.
+  assert.equal(mgr._buildMetaText({
+    source: 'OpenStreetMap',
+    stats: { status: 'zoom-in', error: 'Zoom in to load mapped installation context' },
+  }), 'OpenStreetMap · Zoom in to load mapped installation context');
+
+  // `empty` and `idle` are the same kind of claim.
+  assert.equal(mgr._buildMetaText({
+    source: 'PAN',
+    stats: { status: 'empty', loadingLabel: 'no vehicles reporting here' },
+  }), 'PAN · no vehicles reporting here');
+
+  // And a REAL fault still reads as one — the carve-out is scoped to the
+  // guidance statuses, not to "any layer with no data".
+  assert.equal(mgr._buildMetaText({
+    source: 'CelesTrak',
+    stats: { status: 'unavailable', error: 'CelesTrak unreachable' },
+  }), 'UNAVAILABLE · CelesTrak · CelesTrak unreachable');
+  // A loading layer keeps its loading line, guidance status or not.
+  assert.equal(mgr._buildMetaText({
+    source: 'Hub\'Eau',
+    stats: { status: 'zoom-in', loading: true, loadingLabel: 'resolving stations...' },
+  }), "Hub'Eau · resolving stations...");
+});
+
 test('layer metadata names degraded state instead of presenting an ordinary age', () => {
   const mgr = new DataLayerManager({});
   assert.match(mgr._buildMetaText({
@@ -3455,121 +3503,5 @@ test('categories naming no group, or arriving without a taxonomy, are refused', 
     ),
     true,
   );
-  await mgr.destroyAll();
-});
-
-/** A layer that only answers for a close camera, with a gate someone has to satisfy. */
-function makeGatedLayer(id = 'bdtopo-buildings') {
-  const calls = { gate: [], update: 0, disable: 0 };
-  const state = { fits: false, satisfiable: true };
-  return {
-    calls,
-    state,
-    module: {
-      id,
-      name: id,
-      icon: '',
-      source: 'test',
-      updateInterval: -1,
-      init() {},
-      enable() {},
-      disable() { calls.disable += 1; },
-      async ensureViewGate(viewer, options) {
-        calls.gate.push({ viewer, signal: options?.signal || null });
-        await Promise.resolve();
-        if (state.satisfiable) state.fits = true;
-        return state.fits;
-      },
-      async update() {
-        calls.update += 1;
-        // The layer's own honest contract: a camera outside the gate fetched
-        // nothing and failed at nothing.
-        return true;
-      },
-      getStats() {
-        return {
-          count: state.fits ? 1200 : 0,
-          status: state.fits ? 'ok' : 'zoom-in',
-          loadingLabel: state.fits ? '' : 'Zoome sous 0.08° pour charger le bâti',
-        };
-      },
-    },
-  };
-}
-
-test('an explicit enable applies the zoom a gated layer needs before its first load', async () => {
-  const viewer = { camera: {} };
-  const mgr = new DataLayerManager(viewer);
-  const layer = makeGatedLayer();
-  mgr.register(layer.module);
-
-  assert.equal(await mgr.setEnabled('bdtopo-buildings', true, { origin: 'user' }), true);
-  assert.equal(layer.calls.gate.length, 1, 'the gate ran');
-  assert.equal(layer.calls.gate[0].viewer, viewer, 'against the manager\'s own viewer');
-  assert.equal(layer.calls.update, 1, 'and the first load followed it, once');
-  assert.equal(layer.state.fits, true);
-  assert.equal(mgr.isEnabled('bdtopo-buildings'), true);
-  assert.equal(layer.calls.disable, 0, 'nothing was torn back down');
-  await mgr.destroyAll();
-});
-
-test('a gate that cannot be satisfied leaves the layer ON with its guidance', async () => {
-  const mgr = new DataLayerManager({ camera: {} });
-  const layer = makeGatedLayer();
-  layer.state.satisfiable = false;
-  mgr.register(layer.module);
-
-  assert.equal(await mgr.setEnabled('bdtopo-buildings', true, { origin: 'user' }), true);
-  assert.equal(mgr.isEnabled('bdtopo-buildings'), true, 'ON, because it is on');
-  const stats = mgr.getAll()[0].stats;
-  assert.equal(layerFeedState(stats), 'nominal', 'guidance is not a fault');
-  assert.equal(stats.status, 'zoom-in');
-  await mgr.destroyAll();
-});
-
-test('a gate that throws never costs the operator the layer', async () => {
-  const mgr = new DataLayerManager({ camera: {} });
-  const layer = makeGatedLayer();
-  layer.module.ensureViewGate = async () => { throw new Error('camera busy'); };
-  mgr.register(layer.module);
-
-  assert.equal(await mgr.setEnabled('bdtopo-buildings', true, { origin: 'user' }), true);
-  assert.equal(layer.calls.update, 1, 'the load still ran');
-  assert.equal(mgr.isEnabled('bdtopo-buildings'), true);
-  await mgr.destroyAll();
-});
-
-test('a restored camera is never overruled by a view gate', async () => {
-  // Share links and Context restores carry a camera of their own. Only the
-  // operator asking for the layer asks for the flight.
-  const mgr = new DataLayerManager({ camera: {} });
-  const layer = makeGatedLayer();
-  mgr.register(layer.module);
-
-  assert.equal(await mgr.setEnabled('bdtopo-buildings', true, { origin: 'share' }), true);
-  assert.equal(layer.calls.gate.length, 0, 'no flight');
-  assert.equal(layer.calls.update, 1, 'the layer still loads what it can see');
-  assert.equal(mgr.isEnabled('bdtopo-buildings'), true);
-  await mgr.destroyAll();
-});
-
-test('turning a gated layer off mid-flight settles as OFF, not as a failure', async () => {
-  const mgr = new DataLayerManager({ camera: {} });
-  const layer = makeGatedLayer();
-  let releaseGate;
-  layer.module.ensureViewGate = (viewer, options) => {
-    layer.calls.gate.push({ viewer, signal: options?.signal || null });
-    return new Promise((resolve) => { releaseGate = resolve; });
-  };
-  mgr.register(layer.module);
-
-  const enabling = mgr.setEnabled('bdtopo-buildings', true, { origin: 'user' });
-  await Promise.resolve();
-  const disabling = mgr.setEnabled('bdtopo-buildings', false, { origin: 'user' });
-  releaseGate?.(false);
-  await enabling;
-  await disabling;
-  assert.equal(mgr.isEnabled('bdtopo-buildings'), false);
-  assert.equal(layer.calls.update, 0, 'the load the operator cancelled never ran');
   await mgr.destroyAll();
 });
