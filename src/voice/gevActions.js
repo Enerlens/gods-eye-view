@@ -233,6 +233,22 @@ const LAYER_ALIASES = new Map([
   ['colleges', 'schools-fr'],
   ['lycees', 'schools-fr'],
   ['education', 'schools-fr'],
+  ['doctors', 'medecins-fr'],
+  ['doctor', 'medecins-fr'],
+  ['medecins', 'medecins-fr'],
+  ['médecins', 'medecins-fr'],
+  ['medecin', 'medecins-fr'],
+  ['médecin', 'medecins-fr'],
+  ['physicians', 'medecins-fr'],
+  ['gp', 'medecins-fr'],
+  ['generalistes', 'medecins-fr'],
+  ['généralistes', 'medecins-fr'],
+  ['deserts medicaux', 'medecins-fr'],
+  ['déserts médicaux', 'medecins-fr'],
+  ['medical deserts', 'medecins-fr'],
+  ['healthcare', 'medecins-fr'],
+  ['sante', 'medecins-fr'],
+  ['santé', 'medecins-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -3389,6 +3405,7 @@ function layerTitle(layerId) {
   if (layerId === 'rte-generation') return 'Power Station';
   if (layerId === 'irve-fr') return 'Charge Point';
   if (layerId === 'schools-fr') return 'School';
+  if (layerId === 'medecins-fr') return 'Medical Practice';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
