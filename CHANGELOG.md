@@ -75,6 +75,36 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **"Sites militaires — Error loading" was one mirror refusing, and three
+  healthy ones never asked.** Every viewport answered HTTP 503, and the layer
+  was right to say so: `/api/military-installations` reads `status >= 400` as a
+  failure. The failure was underneath it. `overpass-api.de` scores requests for
+  abuse at its Apache front-end and was returning a bare **406 Not Acceptable**
+  to the proxy's agent string — a plain HTML page matching neither the
+  rate-limit nor the runtime-error sniffer. Measured 2026-09-01, same query,
+  interleaved to control for server load: the old
+  `gods-eye-view-overpass-proxy/1.0` drew a 406 on **8 of 11** attempts, an
+  OSM-conventional `app/version (+contact)` agent on **0 of 11**. That alone was
+  survivable; what made it fatal is that `fetchOverpassPayload` rotated to the
+  next mirror only on 429/5xx, so a 4xx ended the chain at mirror 1 with three
+  mirrors untried below it. A 4xx is a MIRROR verdict, not a query verdict, and
+  now rotates — the same rule the mapped-camera and power-grid probes already
+  applied, which is why those layers stayed up through the same outage. A
+  genuinely malformed query still surfaces: every mirror rejects it, nothing
+  outranks it, the caller gets the 4xx back. Third fault, and the one that would
+  have outlived the other two: `/api/overpass` cached anything under `< 500`, so
+  the refusal was written to memory AND to disk under a **7-to-30-day TTL** and
+  re-served as a `HIT` without asking upstream again — one bad minute upstream
+  taking every Overpass-backed layer down for a month. Success only, now, and a
+  4xx joins 5xx in serving last-good from disk at any age. Measured back to back
+  on the same server, fresh cache keys: Lyon, Marseille and Nantes went 503 →
+  200 with 21, 23 and 4 installations; in the browser the layer reports `ready`
+  with BA107 Villacoublay, le Mont-Valérien and le Fort de Rosny drawn. Six
+  regression tests in `overpassProxy.test.mjs` pin the rotation. Worth knowing
+  separately: the other three mirrors were all answering 502/504 that day, so
+  `overpass-api.de` was the only healthy one — which is why this filter hit so
+  hard.
+
 - **"Bâti 3D could not start cleanly" was a camera, not a fault.** Turning the
   layer on from a wide view failed outright: the toggle flipped straight back
   to OFF under an error toast, with a perfectly healthy IGN feed behind it. Two
