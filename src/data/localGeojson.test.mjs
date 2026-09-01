@@ -319,12 +319,18 @@ test('local infrastructure card copy uses the validated source fields', () => {
     details: ['Example Cloud · 27 MW'],
   });
 
+  // Dams read the FLAT shipped shape written by scripts/build-osm-dams.mjs, not
+  // raw OSM tags: the card lines live in src/data/damsPack.js beside the
+  // projection that emits the fields, so the two cannot drift.
   assert.deepEqual(localInfrastructureOverlayCopy({
     name: 'Barrage Bin el Ouidane',
-    tags: { associated_river: 'El Abid' },
+    river: 'El Abid',
+    heightM: 133,
+    hydro: true,
+    outputMw: 135,
   }, 'local-dams'), {
     title: 'Barrage Bin el Ouidane',
-    details: ['El Abid'],
+    details: ['hydroélectrique · 135 MW', '133 m de haut', 'El Abid'],
   });
 
   assert.deepEqual(localInfrastructureOverlayCopy({
@@ -707,7 +713,7 @@ async function enableLayerWithFetch(fetchImpl, { dataSources, windowStub } = {})
   const layer = createLocalGeoJsonLayer({
     id: 'local-dams',
     url: '/missing.geojsonl',
-    name: 'Dams',
+    name: 'Barrages',
     color: '#0088ff',
     overlayHost: { setVisible() {}, setEntries() {}, clearSource() {} },
     screenSpaceEventHandlerFactory: () => ({ setInputAction() {}, destroy() {} }),

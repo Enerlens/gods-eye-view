@@ -58,6 +58,7 @@
     "qa:airports": "node scripts/qa-airports.mjs",
     "qa:bison-fute": "node scripts/qa-bison-fute.mjs",
     "qa:irve-fr": "node scripts/qa-irve-fr.mjs",
+    "qa:dams": "node scripts/qa-dams.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
     "transit:route-types": "node scripts/build-pan-route-types.mjs",
     "transit:static": "node scripts/build-pan-static-index.mjs",
@@ -65,7 +66,8 @@
     "road-status:index": "node scripts/build-datex-traficolor-sites.mjs",
     "rte:units": "node scripts/build-rte-units-registry.mjs",
     "hydro:registry": "node scripts/build-fr-hydro-registry.mjs",
-    "airports:pack": "node scripts/build-ourairports.mjs"
+    "airports:pack": "node scripts/build-ourairports.mjs",
+    "dams:pack": "node scripts/build-osm-dams.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",
