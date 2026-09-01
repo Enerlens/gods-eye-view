@@ -328,6 +328,11 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // assertion in this file exists to prevent.
   Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
+  // `7`, continuing the digit overflow below: every letter of "road"/"status"
+  // is taken (r by radio, o by ports, a by ais-live-vessels, d by datacenters,
+  // s by satellites, t by traffic, u by cables), `1`–`6` are claimed (`6` by
+  // the airports pack), and `z` is the canonical UNKNOWN token.
+  Object.freeze({ id: 'road-status-fr', token: '7', disposition: 'enabled-only' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
   // A DIGIT, because the letters ran out: a–y are all taken (every letter of
   // "rte"/"gen"/"prod" among them — r by radio, t by traffic, e by earthquakes,
