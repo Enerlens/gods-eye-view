@@ -391,6 +391,15 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // this comment exists to hand over rather than leave as a surprise.
   Object.freeze({ id: 'schools-fr', token: '0', disposition: 'enabled-only' }),
   Object.freeze({ id: 'shared-mobility-fr', token: 'k', disposition: 'enabled-only' }),
+  // TWO CHARACTERS, and the comment above `schools-fr` is the reason: it
+  // predicted that the next layer would have to widen the grammar, the five
+  // French address layers did exactly that, and this is the first layer to
+  // arrive with the widened space already available rather than to discover
+  // the problem. `su` for supérieur; `s` is satellites and `0` is schools-fr.
+  // A duplicate here is a BOOT failure (`validateLayerStateRegistry` throws),
+  // not a review nit — two layers on one token is a share link that silently
+  // enables the wrong one.
+  Object.freeze({ id: 'sup-fr', token: 'su', disposition: 'enabled-only' }),
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),
   Object.freeze({ id: 'transit-fr', token: 'p', disposition: 'enabled-only' }),
