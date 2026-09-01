@@ -195,6 +195,21 @@ import {
 } from './src/data/supFeed.js';
 import { projectSupDepartements } from './src/data/supDepartements.js';
 import {
+  PE_GEO_SOURCE,
+  PE_NATIONAL_DATASET,
+  PE_PORTAL,
+  PE_SOURCE,
+  PE_SCALES,
+  PE_YEAR_FLOOR,
+  newestYear as peNewestYear,
+  peScaleSpec,
+  peYearWhere,
+  placePeAreas,
+  projectPeAreas,
+  readNational as peReadNational,
+} from './src/data/petiteEnfanceFeed.js';
+import { projectPeDepartements } from './src/data/petiteEnfanceDepartements.js';
+import {
   gbfsBoxKey,
   gbfsBoxContains,
   mergeGbfsBounds,
@@ -4302,6 +4317,331 @@ function supFranceProxy() {
 
   return {
     name: 'sup-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * CNAF childcare-coverage proxy — keyless, Licence Ouverte 2.0.
+ *
+ *   GET /api/petite-enfance-fr/departements — national rollup, 96 départements
+ *   GET /api/petite-enfance-fr/areas        — 1 250 EPCI + 1 061 commune points
+ *   GET /api/petite-enfance-fr/status       — provenance + cache state
+ *
+ * WHY A PROXY, when data.caf.fr sends CORS headers: this layer is SEVEN files
+ * from one producer joined to THREE centroid files from another. Each scale
+ * publishes its rates and its place counts separately (`txcouv_pe_*` and
+ * `nbpla_pe_*`), the national reference is an eighth file whose `annee` column
+ * has a different TYPE from the other six, and none of the eight carries a
+ * coordinate — those come from geo.api.gouv.fr. Doing that in the client would
+ * mean every open tab fetching eleven documents and re-deriving the same join.
+ *
+ * WHY THE YEAR IS DISCOVERED: the CNAF adds an edition each January. A pinned
+ * year would serve a quietly stale map forever, so it is read from the
+ * portal's own grouping and floored at the edition this was measured against.
+ *
+ * WHY CENTROIDS AND NOT CONTOURS: geo.api.gouv.fr refuses an unfiltered
+ * contour request, so EPCI polygons would be 1 255 separate calls, 66 MB and
+ * 3.1 million vertices (measured) before simplification. The centroids are ONE
+ * 198 KB call. The layer says on every card that its point is the centre of an
+ * area rather than a place, which is the honest form of that trade.
+ */
+const PE_BASE = `https://${PE_PORTAL}/api/explore/v2.1/catalog/datasets`;
+const PE_GEO_BASE = 'https://geo.api.gouv.fr';
+/** Published once a year, in January. A week in memory is already generous. */
+const PE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling. A rate a month old is still this edition's rate. */
+const PE_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+const PE_TIMEOUT_MS = 60_000;
+/** The commune centroid file is 3.9 MB; every CNAF export is under 0.4 MB. */
+const PE_MAX_BYTES = 32 * 1024 * 1024;
+const PE_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'petite-enfance-fr');
+const PE_CACHE_PATH = path.join(PE_DISK_DIR, 'coverage.json');
+/**
+ * Shape version of the cached payload. Bump whenever `projectPeAreas` or
+ * `projectPeDepartements` changes what it returns — the cache lives a WEEK on
+ * disk, so without it a projection edit is invisible until next month.
+ */
+const PE_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _peCoverage = null;
+/** @type {?Promise<object>} */
+let _peInFlight = null;
+let _peDiskChecked = false;
+const _peRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 90 });
+
+/** GET one JSON document, under a timeout and a byte cap. */
+async function fetchPeJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(PE_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, PE_MAX_BYTES);
+}
+
+/**
+ * Newest reference year the CNAF publishes.
+ *
+ * Read off the DÉPARTEMENT file rather than the national one, because that is
+ * where `annee` is an int — see Trap 3 in `petiteEnfanceFeed.js`. A failed
+ * discovery falls back to the floor, which is guaranteed to exist.
+ */
+async function discoverPeYear() {
+  try {
+    const params = new URLSearchParams({
+      select: 'annee', group_by: 'annee', order_by: 'annee desc', limit: '1',
+    });
+    const body = await fetchPeJson(`${PE_BASE}/txcouv_pe_dep/records?${params}`);
+    return peNewestYear(body?.results, PE_YEAR_FLOOR);
+  } catch (error) {
+    console.warn('[PetiteEnfance Proxy] year discovery failed:', error?.message || error);
+    return PE_YEAR_FLOOR;
+  }
+}
+
+/**
+ * EPCI, commune and municipal-arrondissement centres, indexed by INSEE code.
+ *
+ * Three calls, and the third is not optional: the CNAF breaks Paris, Lyon and
+ * Marseille down by arrondissement municipal, and `geo.api.gouv.fr/communes`
+ * omits those by default. Without it the commune scale loses 45 of its 1 061
+ * rows — every one of them in the three largest cities in France, which is
+ * precisely where a reader zooms first.
+ */
+async function loadPeCentroids() {
+  const read = async (url) => {
+    try {
+      return await fetchPeJson(url);
+    } catch (error) {
+      console.warn('[PetiteEnfance Proxy] centroid source unavailable:', error?.message || error);
+      return [];
+    }
+  };
+  const [epcis, communes, arrondissements] = await Promise.all([
+    read(`${PE_GEO_BASE}/epcis?fields=code,nom,centre,population&format=json`),
+    read(`${PE_GEO_BASE}/communes?fields=code,nom,centre,population&format=json`),
+    read(`${PE_GEO_BASE}/communes?type=arrondissement-municipal&fields=code,nom,centre,population&format=json`),
+  ]);
+  const index = new Map();
+  for (const rows of [epcis, communes, arrondissements]) {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const code = String(row?.code || '').trim().toUpperCase();
+      const point = row?.centre?.coordinates;
+      if (!code || !Array.isArray(point)) continue;
+      const lon = Number(point[0]);
+      const lat = Number(point[1]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      index.set(code, { lat, lon, population: Number(row?.population) || null });
+    }
+  }
+  return index;
+}
+
+/**
+ * Build the whole layer: eight CNAF documents, three centroid files, one fold.
+ *
+ * The national reference is fetched WITHOUT a `where` clause, because its
+ * `annee` column is a date where the other six publish an int and the filter
+ * answers HTTP 400. It is two rows.
+ */
+async function refreshPeCoverage() {
+  const started = Date.now();
+  const year = await discoverPeYear();
+  const where = peYearWhere(year);
+
+  const scaleFetches = PE_SCALES.map(async (scale) => {
+    const spec = peScaleSpec(scale);
+    const q = new URLSearchParams({ where });
+    const [taux, places] = await Promise.all([
+      fetchPeJson(`${PE_BASE}/${spec.taux}/exports/json?${q}`),
+      fetchPeJson(`${PE_BASE}/${spec.places}/exports/json?${q}`).catch((error) => {
+        // Losing a place file costs dot SIZES and the per-mode place counts on
+        // a card. It must not cost the rate, which is the whole layer.
+        console.warn(`[PetiteEnfance Proxy] ${spec.places} unavailable:`, error?.message || error);
+        return null;
+      }),
+    ]);
+    return { scale, taux, places };
+  });
+
+  const [nationalRows, centroids, index, ...scaled] = await Promise.all([
+    fetchPeJson(`${PE_BASE}/${PE_NATIONAL_DATASET}/exports/json`),
+    loadPeCentroids(),
+    loadSchoolsDepartementIndex(),
+    ...scaleFetches,
+  ]);
+
+  const national = peReadNational(nationalRows, year);
+  const byScale = new Map(scaled.map((entry) => [entry.scale, entry]));
+
+  const dep = projectPeAreas({
+    scale: 'dep',
+    taux: byScale.get('dep')?.taux,
+    places: byScale.get('dep')?.places,
+    national: national?.rate ?? null,
+    year,
+  });
+  const rollup = projectPeDepartements({
+    areas: dep.areas, index, national: national?.rate ?? null, year,
+  });
+
+  const areas = [];
+  let unplaced = 0;
+  let dropped = dep.dropped;
+  for (const scale of ['epci', 'com']) {
+    const projected = projectPeAreas({
+      scale,
+      taux: byScale.get(scale)?.taux,
+      places: byScale.get(scale)?.places,
+      national: national?.rate ?? null,
+      year,
+    });
+    dropped += projected.dropped;
+    const placed = placePeAreas(projected.areas, centroids);
+    unplaced += placed.unplaced;
+    areas.push(...placed.placed);
+  }
+
+  return {
+    rollup: {
+      ...rollup,
+      perimeter: national?.perimeter ?? null,
+      nationalModes: national?.modes ?? null,
+      builtInMs: Date.now() - started,
+    },
+    areas: {
+      areas,
+      count: areas.length,
+      epci: areas.filter((area) => area.scale === 'epci').length,
+      communes: areas.filter((area) => area.scale === 'com').length,
+      unplaced,
+      dropped,
+      national: national?.rate ?? null,
+      year,
+      source: PE_SOURCE,
+      geoSource: PE_GEO_SOURCE,
+    },
+  };
+}
+
+async function readPeDisk() {
+  if (_peDiskChecked) return;
+  _peDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(PE_CACHE_PATH, 'utf8'));
+    if (entry?.version === PE_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.rollup?.departements)
+      && Array.isArray(entry.payload?.areas?.areas)) {
+      _peCoverage = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writePeDisk(entry) {
+  fsp.mkdir(PE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(PE_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[PetiteEnfance Proxy] cache write failed:', err?.message || err));
+}
+
+/** Shared build, so `/areas` and `/departements` never sweep twice. */
+function ensurePeCoverage() {
+  if (!_peInFlight) {
+    _peInFlight = refreshPeCoverage()
+      .then((payload) => {
+        const entry = { version: PE_CACHE_VERSION, at: Date.now(), payload };
+        _peCoverage = entry;
+        writePeDisk(entry);
+        return entry;
+      })
+      .finally(() => { _peInFlight = null; });
+  }
+  return _peInFlight;
+}
+
+/**
+ * Vite plugin: CNAF childcare-coverage proxy.
+ * @returns {import('vite').Plugin}
+ */
+function petiteEnfanceFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/petite-enfance-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_peRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readPeDisk();
+        json(200, {
+          source: PE_SOURCE,
+          geoSource: PE_GEO_SOURCE,
+          portal: PE_PORTAL,
+          ttlMs: PE_TTL_MS,
+          coverage: _peCoverage
+            ? {
+              at: _peCoverage.at,
+              year: _peCoverage.payload.rollup.year,
+              national: _peCoverage.payload.rollup.national,
+              perimeter: _peCoverage.payload.rollup.perimeter,
+              painted: _peCoverage.payload.rollup.painted,
+              published: _peCoverage.payload.rollup.published,
+              unpainted: _peCoverage.payload.rollup.unpainted.length,
+              epci: _peCoverage.payload.areas.epci,
+              communes: _peCoverage.payload.areas.communes,
+              unplaced: _peCoverage.payload.areas.unplaced,
+              dropped: _peCoverage.payload.areas.dropped,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/areas' && route !== '/departements') {
+        json(404, { error: 'Unknown childcare-coverage endpoint' });
+        return;
+      }
+
+      const pick = (payload) => (route === '/areas' ? payload.areas : payload.rollup);
+      await readPeDisk();
+      const now = Date.now();
+      if (_peCoverage && now - _peCoverage.at <= PE_TTL_MS) {
+        json(200, { ...pick(_peCoverage.payload), fetchedAt: _peCoverage.at, stale: false }, { 'X-PETITE-ENFANCE-FR': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensurePeCoverage();
+        json(200, { ...pick(entry.payload), fetchedAt: entry.at, stale: false }, { 'X-PETITE-ENFANCE-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[PetiteEnfance Proxy] build unavailable:', error?.message || error);
+        // A rate a month old is still this edition's rate — serving it beats
+        // blanking a layer whose source is republished once a year.
+        if (_peCoverage && now - _peCoverage.at <= PE_STALE_MS) {
+          json(200, { ...pick(_peCoverage.payload), fetchedAt: _peCoverage.at, stale: true }, { 'X-PETITE-ENFANCE-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French childcare-coverage data is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'petite-enfance-france-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -14882,6 +15222,7 @@ export default defineConfig(({ mode }) => {
       irveFranceProxy(),
       schoolsFranceProxy(),
       supFranceProxy(),
+      petiteEnfanceFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),
