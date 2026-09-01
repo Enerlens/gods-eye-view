@@ -9,17 +9,38 @@ License in the `LICENSE` file next to this notice, or at
 
 Source: https://github.com/google/material-design-icons
         symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg
-        (Material Symbols Rounded, filled, weight 400, retrieved 2026-08-31)
+        (Material Symbols Rounded, filled, weight 400)
 
-WHAT WAS TAKEN AND WHAT WAS CHANGED. Thirteen glyphs are used by
-`src/data/transitVehicleIcons.js` to draw live French transit vehicles by
-class: airport_shuttle, cable_car, directions_boat, directions_bus,
-directions_railway, flight, funicular, local_taxi, monorail, subway, train,
-tram, trolley.
+WHAT WAS TAKEN. Eighteen glyphs, across two modules.
+
+`src/data/transitVehicleIcons.js` draws live French transit vehicles by class
+(retrieved 2026-08-31): airport_shuttle, cable_car, directions_boat,
+directions_bus, directions_railway, flight, funicular, local_taxi, monorail,
+subway, train, tram, trolley.
+
+`src/data/sharedMobilityIcons.js` draws shared vehicles by form factor
+(retrieved 2026-09-01): pedal_bike, electric_bike, electric_scooter,
+electric_moped, directions_car.
+
+WHAT WAS CHANGED. Nothing, in the artwork.
 
 Only the single `d` path string of each glyph is vendored, verbatim and
-unmodified, into that module — the surrounding SVG document is not. At render
-time each path is drawn TWICE by this project: once as a wide dark stroke (a
-halo, so the glyph stays readable over pale terrain) and once as a white fill
-(so Cesium's per-billboard colour multiply can tint it by vehicle class). The
-path geometry itself is untouched.
+unmodified, into those modules — the surrounding SVG document is not, and the
+coordinates are NOT rescaled: both modules carry Material's own
+`0 -960 960 960` viewBox precisely so that this paragraph stays true.
+
+At render time each path is drawn TWICE by this project: once as a wide dark
+stroke (a halo, so the glyph stays readable over pale terrain) and once as a
+white fill (so Cesium's per-billboard colour multiply can tint it — by vehicle
+class in the transit layer, by operator in the shared-mobility one). The path
+geometry itself is untouched.
+
+TWO SHAPES IN `sharedMobilityIcons.js` ARE NOT GOOGLE'S and carry no claim
+under this notice: the `other` disc (drawn when a feed does not say what a
+vehicle is) and the `station` dock rack, both authored by this project in the
+same coordinate box. Material's own `bike_dock` was evaluated for the latter
+and rejected on legibility — it renders as a bollard at the size this layer
+draws.
+
+Apache-2.0 §6 grants no trademark rights, and none is claimed or exercised
+here: no operator's mark appears anywhere in this project's iconography.
