@@ -3,8 +3,8 @@
  * Deterministic browser proof for the French charge-point layer.
  *
  * The register is rebuilt daily and cannot be a fixed truth, so this
- * intercepts both IRVE endpoints with fixtures and proves the six things the
- * live feed itself cannot:
+ * intercepts all three IRVE endpoints with fixtures and proves the seven
+ * things the live feed itself cannot:
  *
  *   i.   at national altitude the layer answers with the 96 DÉPARTEMENTS and
  *        asks for no viewport at all — the country-scale question is answered
@@ -21,6 +21,8 @@
  *        the de-duplicated count, and never implies availability
  *   vi.  the two scales never share a legend: at altitude it is the quantile
  *        ramp, over a city it is the power bands, and never both
+ *   vii. between the two, the MAILLAGE: real positions, spatially thinned so
+ *        the sparse country survives, fetched once and reported as a sample
  *
  * Run: node scripts/qa-irve-fr.mjs --url http://localhost:4173
  */
@@ -161,6 +163,46 @@ const NATIONAL = {
   stale: false,
 };
 
+/**
+ * The national point set, shaped as `/api/irve-fr/mesh` returns it: 4-tuples
+ * of `[lat, lon, pdc, bandIndex]` against `IRVE_BAND_KEYS`, never objects.
+ *
+ * Deliberately built as a DENSE Paris cluster and a SPARSE rural spread, so
+ * the stratified pick has something to prove: a rank-ordered thinning would
+ * keep the capital and drop the Massif Central, and the assertion below is
+ * that both survive. `lente`(0) dominates the rural cells and `hpc`(4) the
+ * motorway sites, which is the bias the modal-band rule exists to correct.
+ */
+const MESH_SITES = (() => {
+  const sites = [];
+  // A dense conurbation: 1 800 sites inside half a degree of Paris. The count
+  // has to clear the regime's own render budget (1 100) or nothing is thinned
+  // and the assertion below would pass on a map that never had to choose.
+  for (let i = 0; i < 1800; i++) {
+    const lat = 48.75 + ((i * 37) % 500) / 1000;
+    const lon = 2.05 + ((i * 53) % 500) / 1000;
+    sites.push([Number(lat.toFixed(5)), Number(lon.toFixed(5)), 2 + (i % 40), i % 5]);
+  }
+  // A sparse country: one site per cell across the rest of France, including
+  // the Massif Central, whose emptiness must read as sparse and not as absent.
+  for (let i = 0; i < 500; i++) {
+    const lat = 43.2 + (i % 25) * 0.26;
+    const lon = 0.4 + Math.floor(i / 25) * 0.31;
+    sites.push([Number(lat.toFixed(5)), Number(lon.toFixed(5)), 1 + (i % 6), i % 2 ? 0 : 1]);
+  }
+  return sites;
+})();
+
+const MESH = {
+  sites: MESH_SITES,
+  siteCount: MESH_SITES.length,
+  pdc: MESH_SITES.reduce((sum, site) => sum + site[2], 0),
+  bands: ['lente', 'normale', 'accelere', 'rapide', 'hpc', 'inconnue'],
+  dataset: 'bornes-irve',
+  source: 'transport.data.gouv.fr / ODRÉ (odre.opendatasoft.com)',
+  stale: false,
+};
+
 function sitesPayload() {
   return {
     sites: SITES,
@@ -245,6 +287,7 @@ function probe(page) {
       stats: module.getStats(),
       summary: module.getViewportSummary(),
       national: module.getNationalSummary(),
+      meshPick: module.getMeshSummary(),
       legend: module.getRowControls().legend.map((item) => [item.label, item.count, item.color]),
       rendered: module.getDetectableObjects({ maxCount: 100000 }).length,
       polygonsShown: shownCodes.size,
@@ -274,12 +317,22 @@ async function main() {
     const payload = sitesPayload();
     let siteRequests = 0;
     let nationalRequests = 0;
+    let meshRequests = 0;
     await page.setRequestInterception(true);
     page.on('request', (request) => {
       const url = new URL(request.url());
       if (url.origin === APP_ORIGIN && url.pathname === '/api/irve-fr/sites') {
         siteRequests += 1;
         void request.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(payload) });
+        return;
+      }
+      if (url.origin === APP_ORIGIN && url.pathname === '/api/irve-fr/mesh') {
+        meshRequests += 1;
+        void request.respond({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ ...MESH, fetchedAt: Date.now() }),
+        });
         return;
       }
       if (url.origin === APP_ORIGIN && url.pathname === '/api/irve-fr/departements') {
@@ -310,10 +363,15 @@ async function main() {
 
     // ── i. national altitude answers with départements ─────────────────────
     console.log('[qa] i. the national regime');
-    await setView(page, 2.4, 46.6, 900_000);
+    // 9.5° of LATITUDE SPAN, not an altitude: `NATIONAL_ENTER_SPAN_DEG` in
+    // irveFrance.js. 900 km cleared the ORIGINAL altitude gate and clears
+    // nothing now — at this window shape it spans ~6.7° and lands in the
+    // maillage. 1 800 km is the whole country with margin on both sides.
+    await setView(page, 2.4, 46.6, 1_800_000);
     await page.evaluate(() => window.__godsEyeView.dataManager.setEnabled('irve-fr', true));
     let national = null;
-    for (let attempt = 0; attempt < 30; attempt++) {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (attempt % 5 === 0) await setView(page, 2.4, 46.6, 1_800_000);
       await pump(page, 3, 60);
       await sleep(400);
       national = await probe(page);
@@ -351,6 +409,54 @@ async function main() {
     check('the ramp is the violet scale, not the power ramp',
       national.legend.every(([, , color]) => /^#(2f1b52|4d2a86|7239b4|9b4fd0|c774e0|eba9ef)$/.test(color)),
       JSON.stringify(national.legend.map(([, , c]) => c)));
+
+    // ── vii. the maillage, between the country and the city ────────────────
+    // The regime the second commit added and this harness never covered: at
+    // régional scale the layer neither paints départements nor draws 39 859
+    // dots, but a spatially thinned sample of real sites that SAYS it is one.
+    console.log('[qa] vii. the maillage');
+    // The camera is re-asserted every few attempts, not set once. Leaving the
+    // national regime is a CAMERA-driven transition, and on a cold dev server
+    // the scene is still compiling modules when the first setView lands — the
+    // move is then swallowed and the layer sits in the choropleth until the
+    // retry budget runs out. Re-issuing it costs nothing and makes the run
+    // independent of how warm the server is.
+    let mesh = null;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      if (attempt % 5 === 0) await setView(page, 2.4, 46.9, 600_000);
+      await pump(page, 3, 60);
+      await sleep(400);
+      mesh = await probe(page);
+      if (meshRequests >= 1 && !mesh.stats.loading && mesh.rendered > 0) break;
+    }
+    const meshPick = mesh.meshPick;
+    check('the middle regime fetches the national point set, once',
+      meshRequests === 1, `${meshRequests} mesh request(s)`);
+    check('and never asks for a viewport it cannot answer',
+      siteRequests === 0, `${siteRequests} site request(s)`);
+    check('the choropleth has stood down', mesh.polygonsShown === 0,
+      `${mesh.polygonsShown} polygons still painted`);
+    check('real positions are drawn, and fewer than the set it picked from',
+      mesh.rendered > 0 && mesh.rendered < MESH_SITES.length,
+      `${mesh.rendered} of ${MESH_SITES.length}`);
+    // The point of a stratified pick: the sparse country survives the thinning
+    // that a rank-ordered one would spend entirely on the dense conurbation.
+    // `sourceId` is the mesh site's own "lat,lon", so this reads real drawn
+    // positions rather than trusting the picker's own accounting.
+    const rural = await page.evaluate(() => window.__godsEyeView.dataManager.layers
+      .get('irve-fr').module.getDetectableObjects({ maxCount: 100000 })
+      .filter((entry) => Number(String(entry.sourceId).split(',')[0]) < 48).length);
+    check('the sparse country is sampled too, not spent on the dense one',
+      rural > 0, `${rural} rural dots`);
+    // A thinned map that does not say it is thinned claims France has 1 100
+    // charge points — the regime's stated contract, asserted as data.
+    check('the layer declares the sample rather than implying an inventory',
+      meshPick?.thinned === true && meshPick.shown < meshPick.inBox,
+      JSON.stringify(meshPick));
+    check('and the row line under the toggle names both counts',
+      /\d.* of \d.* sites — sampled maillage/.test(String(mesh.stats.loadingLabel || '')),
+      String(mesh.stats.loadingLabel || '').slice(0, 160));
+    await shoot(page, '03-maillage.png');
 
     // ── ii. one dot per SITE ───────────────────────────────────────────────
     console.log('[qa] ii. city view');

@@ -3315,6 +3315,8 @@ function writeIrveNationalDisk(entry) {
  * Vite plugin: viewport-bounded French charge-point proxy.
  *
  *   GET /api/irve-fr/sites?south&west&north&east — charging sites in one box
+ *   GET /api/irve-fr/departements                — national rollup, 96 départements
+ *   GET /api/irve-fr/mesh                        — the national point set, once
  *   GET /api/irve-fr/status                      — dataset provenance + cache state
  *
  * WHY A PROXY at all, when Opendatasoft sends CORS headers and a browser could
