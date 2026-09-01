@@ -18,6 +18,8 @@ import rteGenerationLayer from './data/rteGeneration.js';
 import satellitesLayer from './data/satellites.js';
 import rocketLaunchesLayer from './data/rocketLaunches.js';
 import trafficLayer from './data/traffic.js';
+import roadEventsFranceLayer from './data/roadEventsFrance.js';
+import roadSensorsFranceLayer from './data/roadSensorsFrance.js';
 import cctvLayer from './data/cctv.js';
 import radioLayer from './data/radio.js';
 import bikeshareLayer from './data/bikeshare.js';
@@ -293,6 +295,8 @@ async function init() {
     dataManager.register(rocketLaunchesLayer);
     rocketLaunchesLayer.attachDataManager(dataManager);
     dataManager.register(trafficLayer);
+    dataManager.register(roadEventsFranceLayer);
+    dataManager.register(roadSensorsFranceLayer);
     dataManager.register(cctvLayer);
     dataManager.register(radioLayer);
     dataManager.register(bikeshareLayer);

@@ -251,6 +251,37 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // The two Bison Futé layers close the group, in the order a reader needs
+  // them: what has HAPPENED on the network, then what is being MEASURED on it.
+  // Both are `periodic` and not `live`: the event aggregate is republished
+  // hourly and the measurement file every six minutes, so neither streams —
+  // they are polled snapshots, and calling them live would promise a cadence
+  // the source does not have.
+  //
+  // "Événements routiers" keeps no `(FR)` in the label, like the rest of the
+  // table: the `coverage: 'fr'` facet renders as a scope chip on the row and
+  // says it once instead of twice. It cannot say the sharper truth — that the
+  // coverage is the RRN *non concédé*, without the conceded motorways — so the
+  // row's source line and each card carry that, and `getStats().coverage`
+  // states it in one string.
+  Object.freeze({
+    id: 'road-events-fr',
+    category: 'ground-mobility',
+    label: 'Événements routiers',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'road-sensors-fr',
+    category: 'ground-mobility',
+    label: 'Capteurs trafic',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
 
   // ── ÉNERGIE ───────────────────────────────────────────────────────────────
   Object.freeze({
