@@ -95,6 +95,15 @@ const VALID_COVERAGE = new Set(['global', 'fr', 'us', 'cities']);
  * exceptional rows no louder than the ordinary ones. The chip answers one
  * question — "does this layer have anything where I am looking?" — and only a
  * non-global layer can ever answer it "no".
+ *
+ * `us` currently chips NOTHING. Marine Buoys was the only layer that carried
+ * it, and it does not any more (see that entry for the measurement). The value
+ * stays in the vocabulary because this table is the SCOPE VOCABULARY, not a
+ * census of occupied scopes: a US-only source is a perfectly plausible next
+ * layer, and deleting the row would mean the next one to need it re-derives
+ * the chip text rather than finding it. The taxonomy's exhaustiveness check
+ * runs from the layers to this table, never the reverse, so an unused entry
+ * costs nothing and breaks nothing.
  */
 export const COVERAGE_CHIPS = Object.freeze({
   global: null,
@@ -231,12 +240,26 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'free-key',
     cadence: 'live',
   }),
+  // `global`, and NOT `us`, despite the operator being NOAA. The chip answers
+  // "does this layer have anything where I am looking?", and over the French
+  // and Belgian coasts it answers YES — which is the one thing a `US` badge
+  // told the visitor it would not. NDBC's `latest_obs` is not a national
+  // network: it republishes the international partner moorings alongside its
+  // own. Counted on the 2026-09-01 report, 882 stations, 38 of them in the
+  // eastern hemisphere — 28 in the North Sea and the north-east Atlantic
+  // (the UK Met Office K-buoys and their neighbours, exactly the ones visible
+  // off Dunkerque), 19 in the western Pacific and 2 in the Indian Ocean.
+  //
+  // The network IS densest over American waters, and that is a DENSITY claim,
+  // not a coverage one. Density is what the row's own count and the map itself
+  // report honestly; a scope chip that says `US` reports it as an absence, and
+  // an absence is false here.
   Object.freeze({
     id: 'marine-buoys',
     category: 'maritime',
     label: 'Bouées marines',
     kind: 'dataset',
-    coverage: 'us',
+    coverage: 'global',
     auth: 'none',
     cadence: 'periodic',
   }),
