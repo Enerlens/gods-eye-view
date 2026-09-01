@@ -328,10 +328,20 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // assertion in this file exists to prevent.
   Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
-  // `7`, continuing the digit overflow below: every letter of "road"/"status"
-  // is taken (r by radio, o by ports, a by ais-live-vessels, d by datacenters,
-  // s by satellites, t by traffic, u by cables), `1`–`6` are claimed (`6` by
-  // the airports pack), and `z` is the canonical UNKNOWN token.
+  // Two road layers, and the digits are how they are told apart in a share
+  // link. `road-status-fr` keeps `7`: it is already on `main`, so links
+  // carrying that token exist, and re-lettering it would silently enable a
+  // DIFFERENT layer for whoever opens one. `road-events-fr` landed after it and
+  // is unreleased, so it takes the next free digit — `1`-`5` are gas-fr,
+  // power-grid, rte-generation, fr-hydro-plants and bdtopo-buildings, `6` is
+  // the airports pack, and `z` is the canonical UNKNOWN token two existing
+  // tests assert on.
+  //
+  // `enabled-only`, although the events layer owns a runtime chip. The chip
+  // selects which temporal scope the row SHOWS, and a share link that silently
+  // hid every planned closure from its recipient would be a worse surprise than
+  // one that opens on the default its author saw.
+  Object.freeze({ id: 'road-events-fr', token: '8', disposition: 'enabled-only' }),
   Object.freeze({ id: 'road-status-fr', token: '7', disposition: 'enabled-only' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
   // A DIGIT, because the letters ran out: a–y are all taken (every letter of

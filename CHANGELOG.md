@@ -218,6 +218,55 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   of viewport selection without deleting it, and any success revives it.
   `/api/transit-fr/feeds` now reports shipped and queryable counts side by side.
 
+- **Événements routiers (FR): what the road operators themselves declared.** A
+  new layer in **MOBILITÉ TERRESTRE**, keyless, Licence Ouverte 2.0, through a
+  new `/api/bison-fute` proxy. It draws `Événementiel-DIR` — the national DATEX
+  II aggregate every Direction interdépartementale des routes publishes its
+  event log into. On the snapshot it was built against that was **286 situations
+  holding 600 records**: nine accidents, one queue, 48 obstructions, 184
+  roadworks orders, four closures and the diversions posted around them, across
+  eight categories with their own legend.
+
+  It is the companion to **Road Status FR**, which landed the same week and
+  reads this publisher's OTHER product: that layer draws how the network is
+  *flowing* (Traficolor status, veh/h, km/h), this one draws what has been
+  *declared to have happened on it*. Neither reads the other's feed.
+
+  Three decisions are the layer:
+
+  - **One situation, one marker.** DATEX II nests up to twelve records inside a
+    single situation — the accident, the two lanes it blocked, the four exits
+    now closed. Drawing them all would put one crash on the map twelve times,
+    so the CAUSE is drawn and the consequences are counted on its card
+    (`+ 5 déviations`). An accident outranks the lane closure it caused; a
+    diversion only wins when a situation is nothing but diversions.
+  - **Planned is not happening.** 68 of the 286 had not started yet — works
+    ordered for October. They are hidden by default, drawn dimmer and smaller
+    under the `+ À venir` chip, and a globe that painted next month's roadworks
+    over tonight's traffic would be saying something false about now.
+  - **Ended means ended.** A rockfall opened on 31 January, cleared in March,
+    and published with **no end time at all** — only the operator's lifecycle
+    flag says it is over. Read on its validity window it has been blocking the
+    N20 for seven months. The flag wins.
+
+  The layer covers the **réseau routier national non concédé** and says so. The
+  conceded motorways — the whole ASF/APRR/Sanef network — are not in this feed
+  at all; Bison Futé serves them under the credentialed *Action b* / *Action c*
+  licences, and their absence is a property of the source rather than a gap the
+  layer hides. Two further caveats are stated rather than hidden: a `Linear`
+  event publishes only its two endpoints, so a segment is the straight chord
+  between them (median 1.77 km on the capture; the card says so past 10 km), and
+  records the feed marks `probable` or `riskOf` are labelled unconfirmed.
+
+  Under the hood: `bisonFuteFeed.js` holds a ~90-line DATEX II reader (no new
+  dependency), the situation classifier and the primacy ordering, pinned by 17
+  unit tests against a real captured document — including the rockfall with no
+  end time and the situation whose internal operator notes must not reach a
+  public globe. The proxy refreshes with `If-None-Match`: the origin serves ETag
+  and gzip (3.3 MB → 165 KB) and answers a conditional GET with a 304, which is
+  what makes a five-minute poll of a 3.3 MB document affordable.
+  `npm run qa:bison-fute` proves the rest in a real browser.
+
 - **Every data layer now knows what it is.** A new `src/data/layerTaxonomy.js`
   gives all 28 registered layers a category — **AIR & ESPACE**, **DÉFENSE**,
   **MARITIME**, **MOBILITÉ TERRESTRE**, **ÉNERGIE**, **RISQUES &

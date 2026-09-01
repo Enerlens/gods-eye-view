@@ -56,6 +56,7 @@
     "qa:rte-generation": "node scripts/qa-rte-generation.mjs",
     "qa:fr-hydro": "node scripts/qa-fr-hydro.mjs",
     "qa:airports": "node scripts/qa-airports.mjs",
+    "qa:bison-fute": "node scripts/qa-bison-fute.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
     "transit:route-types": "node scripts/build-pan-route-types.mjs",
     "transit:static": "node scripts/build-pan-static-index.mjs",
