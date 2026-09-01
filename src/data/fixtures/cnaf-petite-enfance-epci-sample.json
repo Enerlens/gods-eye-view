@@ -1,0 +1,110 @@
+{
+ "txcouv": [
+  {
+   "annee": 2023,
+   "numepci": "248100745",
+   "nomepci": "CC THORE MONTAGNE NOIRE",
+   "txcouv_psu_col_epci": 0.0,
+   "txcouv_hors_psu_col_epci": 0.0,
+   "txcouv_eaje_epci": 0.0,
+   "txcouv_prescol_epci": 5.6,
+   "txcouv_am_ind_epci": 16.8,
+   "txcouv_gad_ind_epci": 0.0,
+   "txcouv_ind_epci": 16.8,
+   "txcouv_epci": 22.4
+  },
+  {
+   "annee": 2023,
+   "numepci": "200071363",
+   "nomepci": "CA VICHY COMMUNAUTE",
+   "txcouv_psu_col_epci": 13.0,
+   "txcouv_hors_psu_col_epci": 0.6,
+   "txcouv_eaje_epci": 13.6,
+   "txcouv_prescol_epci": 6.2,
+   "txcouv_am_ind_epci": 43.7,
+   "txcouv_gad_ind_epci": 0.9,
+   "txcouv_ind_epci": 44.6,
+   "txcouv_epci": 64.4
+  },
+  {
+   "annee": 2023,
+   "numepci": "200070555",
+   "nomepci": "CC DE LA VEYLE",
+   "txcouv_psu_col_epci": 9.2,
+   "txcouv_hors_psu_col_epci": 0.0,
+   "txcouv_eaje_epci": 9.2,
+   "txcouv_prescol_epci": 0.8,
+   "txcouv_am_ind_epci": 79.2,
+   "txcouv_gad_ind_epci": 0.4,
+   "txcouv_ind_epci": 79.6,
+   "txcouv_epci": 89.7
+  },
+  {
+   "annee": 2023,
+   "numepci": "XX",
+   "nomepci": "XX",
+   "txcouv_psu_col_epci": 7.8,
+   "txcouv_hors_psu_col_epci": 160.5,
+   "txcouv_eaje_epci": 168.3,
+   "txcouv_prescol_epci": 8.5,
+   "txcouv_am_ind_epci": 17.8,
+   "txcouv_gad_ind_epci": 1.2,
+   "txcouv_ind_epci": 19.0,
+   "txcouv_epci": 195.8
+  }
+ ],
+ "nbpla": [
+  {
+   "annee": 2023,
+   "numepci": "200070555",
+   "nomepci": "CC DE LA VEYLE",
+   "pl_psu_col_epci": 65,
+   "pl_hors_psu_col_epci": 0,
+   "pl_eaje_epci": 65.0,
+   "pl_prescol_epci": 6,
+   "pl_am_ind_epci": 560,
+   "pl_gad_ind_epci": 3,
+   "pl_ind_epci": 563.0,
+   "tot_offre_epci": 634
+  },
+  {
+   "annee": 2023,
+   "numepci": "248100745",
+   "nomepci": "CC THORE MONTAGNE NOIRE",
+   "pl_psu_col_epci": 0,
+   "pl_hors_psu_col_epci": 0,
+   "pl_eaje_epci": 0.0,
+   "pl_prescol_epci": 7,
+   "pl_am_ind_epci": 21,
+   "pl_gad_ind_epci": 0,
+   "pl_ind_epci": 21.0,
+   "tot_offre_epci": 28
+  },
+  {
+   "annee": 2023,
+   "numepci": "200071363",
+   "nomepci": "CA VICHY COMMUNAUTE",
+   "pl_psu_col_epci": 256,
+   "pl_hors_psu_col_epci": 12,
+   "pl_eaje_epci": 268.0,
+   "pl_prescol_epci": 121,
+   "pl_am_ind_epci": 859,
+   "pl_gad_ind_epci": 18,
+   "pl_ind_epci": 877.0,
+   "tot_offre_epci": 1265
+  },
+  {
+   "annee": 2023,
+   "numepci": "XX",
+   "nomepci": "XX",
+   "pl_psu_col_epci": 139,
+   "pl_hors_psu_col_epci": 2862,
+   "pl_eaje_epci": 3001.0,
+   "pl_prescol_epci": 152,
+   "pl_am_ind_epci": 317,
+   "pl_gad_ind_epci": 22,
+   "pl_ind_epci": 339.0,
+   "tot_offre_epci": 3492
+  }
+ ]
+}
