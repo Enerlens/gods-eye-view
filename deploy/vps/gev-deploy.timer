@@ -1,0 +1,10 @@
+[Unit]
+Description=Poll GitHub for the branch God's Eye View staging should show
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=3min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

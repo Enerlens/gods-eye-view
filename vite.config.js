@@ -38,7 +38,7 @@
 
 import fs from 'node:fs';
 import { promises as fsp } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import https from 'node:https';
@@ -13699,6 +13699,115 @@ function normalizeAisTimestamp(value) {
   return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
 }
 
+// ---------------------------------------------------------------------------
+// Hosted-deployment plumbing (access gate + preview parity)
+// ---------------------------------------------------------------------------
+/**
+ * HTTP Basic gate for the whole origin.
+ *
+ * Every proxy in this file brokers a key somebody pays for, so a reachable
+ * origin is a spendable wallet. When GEV_ACCESS_PASSWORD is set this
+ * middleware fronts everything — app shell, assets and /api/* alike — and
+ * nothing downstream runs until the request authenticates. Unset (the local
+ * default) it is a no-op, so `npm run dev` is unchanged.
+ *
+ * GEV_ACCESS_USER is optional: leave it empty to accept any username.
+ * /healthz stays open so a platform health check needs no password.
+ *
+ * @returns {import('vite').Plugin} Vite plugin.
+ */
+function accessGatePlugin() {
+  let warnedOpen = false;
+
+  /**
+   * Constant-time string compare via fixed-width digests (the raw strings
+   * differ in length, which timingSafeEqual rejects outright).
+   * @param {string} received - Value from the request.
+   * @param {string} expected - Configured value.
+   * @returns {boolean} True when equal.
+   */
+  const secretEquals = (received, expected) => timingSafeEqual(
+    createHash('sha256').update(String(received), 'utf8').digest(),
+    createHash('sha256').update(String(expected), 'utf8').digest(),
+  );
+
+  /**
+   * @param {import('connect').Server} middlewares - Middleware stack.
+   * @param {boolean} hosted - True on the preview server (a real deployment).
+   */
+  const install = (middlewares, hosted) => {
+    middlewares.use('/healthz', (req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, gated: Boolean(process.env.GEV_ACCESS_PASSWORD) }));
+    });
+
+    middlewares.use((req, res, next) => {
+      const expectedUser = String(process.env.GEV_ACCESS_USER || '').trim();
+      const expectedPassword = String(process.env.GEV_ACCESS_PASSWORD || '');
+      if (!expectedPassword) {
+        if (hosted && !warnedOpen) {
+          warnedOpen = true;
+          console.warn(
+            '[access-gate] GEV_ACCESS_PASSWORD is unset — this origin is OPEN, and every keyed proxy on it is spendable by anyone who finds the URL.',
+          );
+        }
+        next();
+        return;
+      }
+
+      const [scheme, encoded] = String(req.headers.authorization || '').split(' ');
+      let authorized = false;
+      if (/^basic$/i.test(scheme || '') && encoded) {
+        const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+        const split = decoded.indexOf(':');
+        if (split >= 0) {
+          const user = decoded.slice(0, split);
+          const password = decoded.slice(split + 1);
+          authorized = secretEquals(password, expectedPassword)
+            && (!expectedUser || secretEquals(user, expectedUser));
+        }
+      }
+      if (authorized) {
+        next();
+        return;
+      }
+
+      res.writeHead(401, {
+        'WWW-Authenticate': 'Basic realm="God\'s Eye View", charset="UTF-8"',
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end('401 — God\'s Eye View is private.\n');
+    });
+  };
+
+  return {
+    name: 'gev-access-gate',
+    configureServer(server) { install(server.middlewares, false); },
+    configurePreviewServer(server) { install(server.middlewares, true); },
+  };
+}
+
+/**
+ * Mirrors a dev-only middleware plugin onto the preview server.
+ *
+ * The proxies above were written against `vite dev`; a deployment serves the
+ * built bundle through `vite preview`, a different server that installs none
+ * of them — so without this the hosted app boots with a third of its /api
+ * surface missing. Every mirrored plugin touches only `server.middlewares`
+ * (the three that also need `server.httpServer` already declare their own
+ * preview hook, and are left untouched here).
+ *
+ * @param {import('vite').Plugin} plugin - Proxy plugin to mirror.
+ * @returns {import('vite').Plugin} The plugin, with preview parity.
+ */
+function withPreviewParity(plugin) {
+  if (!plugin || typeof plugin !== 'object') return plugin;
+  if (typeof plugin.configureServer !== 'function') return plugin;
+  if (plugin.configurePreviewServer) return plugin;
+  return { ...plugin, configurePreviewServer: plugin.configureServer };
+}
+
 /**
  * Main Vite configuration factory.
  *
@@ -13714,9 +13823,16 @@ export default defineConfig(({ mode }) => {
     if (process.env[key] === undefined) process.env[key] = val;
   }
   const env = { ...process.env };
+  const publicHosts = String(env.GEV_PUBLIC_HOST || '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter(Boolean);
   return {
     plugins: [
+      // First in the list so the gate's middleware lands ahead of every proxy.
+      accessGatePlugin(),
       cesium(),
+      ...[
       openSkyProxy(),
       celestrakProxy(),
       tomtomProxy(),
@@ -13752,6 +13868,7 @@ export default defineConfig(({ mode }) => {
       openAiRealtimeProxy(),
       googlePlacesContextProxy(),
       keylessGeocodeProxy(),
+      ].map(withPreviewParity),
     ],
     server: {
       host: env.HOST || 'localhost',
@@ -13760,6 +13877,19 @@ export default defineConfig(({ mode }) => {
       allowedHosts: (env.HOST === '0.0.0.0' || env.HOST === '::')
         ? true
         : ['localhost', '127.0.0.1', '.local'],
+    },
+    // `vite preview` is what a deployment runs: the built bundle plus the
+    // proxies above. A hosted origin answers on a name this checkout cannot
+    // guess, so GEV_PUBLIC_HOST names it (comma-separated for several);
+    // without it the preview server stays as locked down as the dev one.
+    preview: {
+      host: env.HOST || 'localhost',
+      port: parseInt(env.PORT, 10) || 4173,
+      allowedHosts: publicHosts.length
+        ? ['localhost', '127.0.0.1', '.local', ...publicHosts]
+        : ((env.HOST === '0.0.0.0' || env.HOST === '::')
+          ? true
+          : ['localhost', '127.0.0.1', '.local']),
     },
     // Expose selected API keys to the browser via import.meta.env.*
     define: {

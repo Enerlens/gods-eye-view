@@ -37,6 +37,7 @@
     "opensky:import": "./scripts/opensky-import-client.sh",
     "build": "vite build",
     "preview": "vite preview",
+    "start": "vite preview --host ${HOST:-0.0.0.0} --port ${PORT:-4173}",
     "test": "node scripts/run-unit-tests.mjs",
     "test:track": "node scripts/track-regression.mjs",
     "qa:keyless-boot": "node scripts/qa-keyless-boot.mjs",
