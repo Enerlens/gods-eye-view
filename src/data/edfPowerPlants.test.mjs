@@ -25,6 +25,14 @@ import {
   referenceDateRange,
   selectPlantOverlayCohort,
   summarizePlants,
+  EDF_PLANTS_LAYER_ID,
+  EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID,
+  EDF_PLANTS_SELECTED_OVERLAY_SOURCE_OPTIONS,
+  EDF_SELECTED_COLOR,
+  buildEdfPlantCard,
+  createPlantOverlayEntry,
+  commissioningText,
+  createEdfSelectedOverlayEntry,
 } from './edfPowerPlants.js';
 import { projectEdfPlants } from './edfPlantsFeed.js';
 
@@ -454,4 +462,116 @@ test('disable hides the fleet and drops its labels; destroy releases the collect
   } finally {
     h.restore();
   }
+});
+
+// ── Selection card ──────────────────────────────────────────────────────────
+
+const GRAVELINES = Object.freeze({
+  id: 'nucleaire:GRAVELINES',
+  name: 'GRAVELINES',
+  filiere: 'nucleaire',
+  lat: 51.012846,
+  lon: 2.139287,
+  mw: 5460,
+  units: 6,
+  kind: 'REP 900',
+  tech: 'REP',
+  fuel: null,
+  operator: 'EDF SA',
+  commune: 'Gravelines',
+  departement: 'Nord',
+  region: 'Hauts-de-France',
+  commissionedFrom: 1980,
+  commissionedTo: 1985,
+  secondaryReserveMw: 150,
+  referenceDate: '2025-12-31',
+});
+
+test('a commissioning SPAN is a span, and a single year is a year', () => {
+  // The two fields cover a site's units — Gravelines' six reactors came online
+  // across five years — so collapsing them to one date would be a claim about
+  // a different object.
+  assert.equal(commissioningText(1980, 1985), '1980–1985');
+  assert.equal(commissioningText(2012, 2012), '2012');
+  assert.equal(commissioningText(1980, null), '1980');
+  assert.equal(commissioningText(null, 1985), '1985');
+  assert.equal(commissioningText(null, null), '');
+  assert.equal(commissioningText(NaN, undefined), '');
+});
+
+test('the card publishes the fields that reached the browser and were never shown', () => {
+  const lines = buildEdfPlantCard(GRAVELINES).split('\n');
+  assert.equal(lines[0], 'GRAVELINES', 'the first line is the title');
+  const body = lines.slice(1).join('\n');
+  assert.match(body, /5 460 MW installés · 6 × REP 900/);
+  // secondaryReserveMw reached the client record at buildPlantRecords and was
+  // rendered by nothing at all before this card existed.
+  assert.match(body, /150 MW de réserve secondaire/);
+  assert.match(body, /Gravelines · Nord · Hauts-de-France/);
+  assert.match(body, /1980–1985/);
+  assert.match(body, /situation au 2025-12-31/);
+});
+
+test('the card never claims live output', () => {
+  // The join to RTE is exact and already shipped, and is still wrong here: the
+  // layer is auth:'none', only 42 of the 69 joinable sites have a reporting
+  // unit at any moment, and Flamanville's live 3 583 MW against EDF's 2 660 MW
+  // nameplate would print as 135 %. `Groupes de prod` owns that number.
+  const body = buildEdfPlantCard(GRAVELINES);
+  assert.doesNotMatch(body, /produit|production actuelle|en ce moment|%/i);
+});
+
+test('EDF as the operator earns no line, because every row says EDF', () => {
+  assert.doesNotMatch(buildEdfPlantCard(GRAVELINES), /exploitant/);
+  const other = buildEdfPlantCard({ ...GRAVELINES, operator: 'CNR' });
+  assert.match(other, /exploitant : CNR/);
+});
+
+test('a site with nothing but a name still yields a title and a power line', () => {
+  const lines = buildEdfPlantCard({ name: 'INCONNUE' }).split('\n');
+  assert.equal(lines[0], 'INCONNUE');
+  // "— MW" rather than a silent omission: an unpublished power is a fact.
+  assert.match(lines[1], /— MW installés/);
+  for (const line of lines) assert.ok(!/undefined|null|NaN/.test(line), line);
+  assert.equal(buildEdfPlantCard({}).split('\n')[0], 'Centrale');
+  assert.ok(buildEdfPlantCard(null).length > 0);
+});
+
+test('the selected entry is protected, on its own source, and anchored to the disc', () => {
+  const position = Cesium.Cartesian3.fromDegrees(GRAVELINES.lon, GRAVELINES.lat);
+  const entry = createEdfSelectedOverlayEntry(GRAVELINES, position);
+  assert.equal(entry.id, 'edf-plants:nucleaire:GRAVELINES');
+  assert.equal(entry.position, position);
+  assert.equal(entry.variant, 'selected');
+  // Protected and MAX_SAFE_INTEGER priority: a card the visitor asked for by
+  // clicking must not lose its slot to an ambient label.
+  assert.equal(entry.protected, true);
+  assert.equal(entry.priority, Number.MAX_SAFE_INTEGER);
+  assert.equal(entry.paintLane, 'selected');
+  assert.equal(entry.accent, EDF_SELECTED_COLOR);
+  assert.equal(entry.interactive, false);
+  assert.equal(entry.title, 'GRAVELINES');
+  assert.ok(entry.details.length >= 4);
+  assert.equal(createEdfSelectedOverlayEntry(null, position), null);
+  assert.equal(createEdfSelectedOverlayEntry(GRAVELINES, null), null);
+});
+
+test('the selected source holds exactly one card and the layer id is the pick key', () => {
+  assert.equal(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID, 'edf-power-plants-selected');
+  assert.deepEqual({ ...EDF_PLANTS_SELECTED_OVERLAY_SOURCE_OPTIONS }, {
+    cohortLimit: 1,
+    collisionCapacity: 1,
+    moving: false,
+  });
+  assert.equal(EDF_PLANTS_LAYER_ID, 'edf-power-plants');
+});
+
+test('the ambient label steps aside for the selected card', () => {
+  const position = Cesium.Cartesian3.fromDegrees(GRAVELINES.lon, GRAVELINES.lat);
+  assert.equal(createPlantOverlayEntry(GRAVELINES, position).skipLabel, false);
+  assert.equal(
+    createPlantOverlayEntry(GRAVELINES, position, { skipLabel: true }).skipLabel,
+    true,
+    'a selected site must not compete with its own ambient label',
+  );
 });
