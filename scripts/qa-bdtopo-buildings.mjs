@@ -18,7 +18,9 @@
  *      Escape takes it away;
  *   5. a viewport that is too wide, or outside France, says which instead of
  *      failing silently;
- *   6. toggling the layer off leaves nothing drawn and nothing selected.
+ *   6. a viewport the Géoplateforme only PARTLY answers still draws, and says
+ *      it is incomplete rather than reporting the layer dead;
+ *   7. toggling the layer off leaves nothing drawn and nothing selected.
  *
  * ── Two things this harness works around, both the app being itself ─────────
  *
@@ -304,7 +306,56 @@ try {
     'outside France the layer names the coverage limit', away?.loadingLabel || '(none)');
   check(!away?.error, 'being outside France is not an error state');
 
-  // ── 6. toggle off ────────────────────────────────────────────────────────
+  // ── 6. a Géoplateforme that refuses part of the viewport ─────────────────
+  //
+  // The one failure this harness CANNOT wait for the real service to produce,
+  // and the one that took the layer down on the hosted deployment: a city box
+  // is 24–60 separate tile requests against a free service that rate-limits at
+  // 400 req/min, and gathering them with `Promise.all` let one 503 out of
+  // sixty report the whole layer UNAVAILABLE with fifty-nine good tiles in
+  // hand. So the refusal is injected here rather than hoped for.
+  //
+  // The refusal is injected by wrapping `window.fetch` rather than through
+  // Puppeteer's request interception: `request.continue()` re-issues the tile
+  // request without its CORS preflight, so every SURVIVING tile would fail too
+  // and the harness would be proving the wrong outage.
+  console.log('\n[qa] a partial Géoplateforme outage');
+  await page.evaluate(() => {
+    window.__qaTileRefusals = 0;
+    window.__qaRealFetch = window.fetch;
+    window.fetch = (input, init) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      if (/data\.geopf\.fr\/tms\/1\.0\.0\/BDTOPO\//.test(url)) {
+        window.__qaTileRefusals += 1;
+        if (window.__qaTileRefusals % 4 === 0) {
+          return Promise.resolve(new Response('rate limited', { status: 503 }));
+        }
+      }
+      return window.__qaRealFetch(input, init);
+    };
+  });
+  await goTo(LYON_WIDE);
+  const partial = await stats();
+  console.log('  stats:', JSON.stringify({
+    status: partial?.status,
+    count: partial?.count,
+    missingTiles: partial?.missingTiles,
+    degraded: partial?.degraded,
+    error: partial?.error,
+  }));
+  check((partial?.missingTiles || 0) > 0, 'the injected refusals actually reached the layer',
+    `missing=${partial?.missingTiles}`);
+  check((partial?.count || 0) > 500, 'the squares that answered are still drawn', `count=${partial?.count}`);
+  check(!partial?.error && partial?.status === 'ok',
+    'a partial answer is not reported as a dead layer', partial?.error || '');
+  check(partial?.degraded === true, 'but it IS reported as incomplete, not as the whole city');
+  check(/tuiles? BD TOPO refusées?/.test(partial?.loadingLabel || ''),
+    'and the row names the shortfall', partial?.loadingLabel || '(none)');
+  await page.evaluate(() => {
+    if (window.__qaRealFetch) window.fetch = window.__qaRealFetch;
+  });
+
+  // ── 7. toggle off ────────────────────────────────────────────────────────
   console.log('\n[qa] teardown');
   await goTo(LYON_TIGHT);
   await page.evaluate(

@@ -683,6 +683,30 @@ Verified over Paris 16e on the oblique view that reported it: 2 393 parcelles at
   Rennes, Saint-Brieuc and Lorient–Vannes on a day nothing about them had changed. It
   now counts from the committed record, and the assertion that guards those four cities
   survives a re-run.
+- **One refused tile took the whole Bâti 3D layer down.** A city-sized viewport is 24–60
+  separate requests to the Géoplateforme, a free service that rate-limits at 400 req/min
+  and answers 5xx under load; they were gathered with `Promise.all`, so a single refusal
+  rejected the entire load, blanked the buildings and put the layer into a 20 s→4 min
+  backoff with fifty-nine good tiles in hand. This is why the layer failed to load on
+  the hosted deployment and not on a laptop. A refusal is now per-tile: the squares that
+  answered are drawn, the shortfall is counted, the row reads *"N tuiles BD TOPO refusées
+  sur M — bâti incomplet, nouvelle tentative"*, and the layer asks again. Only every tile
+  refusing is still a failure — there is nothing to draw then. A partial answer is marked
+  DEGRADED and never passes as a whole city.
+- **A school's name depended on how far you had zoomed.** The national *maillage* pack
+  ships coordinates and not names on purpose — carrying them takes it from 1.66 MB to
+  5.42 MB — so a dot clicked at region scale produced a card titled "Établissement" and
+  an instruction to zoom in, while the same school two zoom steps closer was "Collège
+  Jean Moulin". A click now asks the register for that one coordinate and the card
+  becomes the full one, name included; the answer is remembered for the session, so
+  re-clicking costs nothing. Where several UAIs share an address — 2,212 SEGPA and SEP
+  sections nationally sit at their parent's coordinate — the dot's own level picks
+  between them and the card says how many others are there.
+- **DETECT described schools by their level or their roll, never by their name.** A
+  callout read "412 élèves", which names nothing, or "École", of which a district has
+  hundreds. It now reads the establishment's published name — "Collège Jean Moulin" —
+  prefixed with its level only for the 2.6% of register names that do not already state
+  one ("Lycée · Institution Saint-Pierre").
 
 ## [Unreleased] — 2026-08-31
 
