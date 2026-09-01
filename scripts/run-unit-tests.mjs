@@ -21,9 +21,18 @@ export function assertNode24AllocationRuntime(version = process.versions.node) {
   return version;
 }
 
+/**
+ * Roots scanned for `*.test.mjs`.
+ *
+ * `scripts/` is here because the build scripts carry real logic — ZIP range
+ * arithmetic, catalog joins — whose failure mode is a wrong number committed
+ * into `config/`, which no runtime test can catch. Only `*.test.mjs` is
+ * collected, so the `qa-*.mjs` browser harnesses are untouched.
+ */
+export const UNIT_TEST_ROOTS = Object.freeze(['src', 'scripts']);
+
 /** Discover repository unit tests in stable path order. */
 export function discoverUnitTestFiles(root = process.cwd()) {
-  const sourceRoot = path.join(root, 'src');
   const files = [];
   const visit = (directory) => {
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -34,7 +43,7 @@ export function discoverUnitTestFiles(root = process.cwd()) {
       }
     }
   };
-  visit(sourceRoot);
+  for (const name of UNIT_TEST_ROOTS) visit(path.join(root, name));
   return files.sort();
 }
 

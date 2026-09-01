@@ -125,6 +125,21 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'live',
   }),
+  // The ground half of AIR & ESPACE, and the only static row in the group: the
+  // other three move. `coverage: 'global'` is the honest facet even though the
+  // pack is denser over France — the scope chip says where a layer HAS data,
+  // and this one has data everywhere. What it does NOT have everywhere is the
+  // grass-strip long tail, which is a completeness claim the row's source line
+  // and the dataset README carry, not a two-word chip.
+  Object.freeze({
+    id: 'local-airports',
+    category: 'air-space',
+    label: 'Aéroports',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'static',
+  }),
   // "(30d)" is dropped from the name: the rolling window is a property of the
   // feed, and the row's meta line already reports it.
   Object.freeze({
@@ -211,6 +226,18 @@ export const LAYER_TAXONOMY = Object.freeze([
     label: 'Trafic routier',
     kind: 'dataset',
     coverage: 'global',
+    auth: 'none',
+    cadence: 'live',
+  }),
+  // Directly under "Trafic routier" because it is the same subject measured a
+  // different way — TomTom's modelled ratio above, the State's own loop
+  // detectors here — and a viewer comparing them should not have to hunt.
+  Object.freeze({
+    id: 'road-status-fr',
+    category: 'ground-mobility',
+    label: 'État du réseau routier',
+    kind: 'dataset',
+    coverage: 'fr',
     auth: 'none',
     cadence: 'live',
   }),

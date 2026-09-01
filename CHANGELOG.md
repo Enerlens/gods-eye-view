@@ -7,6 +7,217 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Every live transit vehicle now carries the operator's own delay and
+  disruption.** All 150 French vehicle-position feeds have a `TripUpdate`
+  companion in their own dataset — and **63 of them ARE that companion**,
+  publishing both in one protobuf body, so for those the delay is bytes already fetched rather than a
+  second request. The dev-server proxy joins that prediction to the vehicle
+  already on screen and sends four things with it: how far off the timetable the
+  operator says the run is, whether the run has been **cancelled**, which of its
+  remaining stops it will **skip**, and the operator's own sentence about its
+  line from `Alert` (60 feeds carry them). The card reads *"🕘 9 min late"* and
+  *"⚠ Bordeaux : travaux quai de Paludate (this line · detour)"*, the ambient
+  contact label reads *"LN 15 +9m"*, and the control-panel row says *"1 network ·
+  25 late"* without a click. Measured 2026-08-31 over the 30 largest live
+  networks (1,865 vehicles): **67% of vehicles join a trip update** by `trip_id`,
+  a further 2% only by vehicle id, and **38% end up with a deviation**. The gap
+  is not a join failure — 17 of those 30 networks publish an absolute predicted
+  `time` and never a `delay`, and converting one to the other needs the 223 MB
+  `stop_times.txt` this project refuses to load. Those vehicles read *"run
+  tracked · no delay published"* instead of showing zero, because a viewer must
+  be able to tell "on time" from "nobody said".
+- **A bus parked at its terminus is not fifty-six minutes early.** A vehicle
+  waiting for a departure an hour away publishes a predicted arrival of "about
+  now" against a scheduled arrival an hour ahead, and the deviation the operator
+  computes is −3,361 s. Printed as punctuality that reads *56 minutes early*,
+  which is not a thing a bus can be. `transitSchedule.awaitingDeparture` catches
+  it — stopped at the first stop of its own run, ahead of schedule — and reports
+  *"🕘 waiting to depart · due out 22:46"* instead. Over one Bordeaux viewport
+  that is the difference between a summary claiming **28 early** and one saying
+  **7 early, 13 waiting**. The rule is deliberately one-sided: a vehicle at its
+  first stop running LATE has an overdue departure, which is real lateness.
+- **Which resource carries a network's delays is now measured, not guessed.**
+  The PAN catalog never says which trip-update resource pairs with which
+  position feed, and a dataset can publish several of each — Astuce ships three
+  position feeds and four trip-update feeds, one per operator, on interleaved
+  ids. `scripts/build-pan-gtfs-rt-index.mjs` now probes the candidates and keeps
+  the one whose trips actually **join this feed's own vehicles**, committing the
+  measured join rate alongside. Adjacent resource ids are only the ranking hint:
+  they pair TaM's urban and suburban feeds correctly and get Astuce wrong, where
+  measurement scores the right body at 90%. Mean measured join rate across the
+  79 networks with vehicles running at build time: **0.92**.
+- **Aéroports: 7 464 places to land, France in full.** A new bundled layer
+  draws the world's airports and aerodromes from **OurAirports**, the open
+  catalogue its volunteer editors dedicate to the public domain. Cards carry the
+  **ICAO and IATA codes**, the class, the **longest open runway** in metres with
+  its surface family, and the commune — Roissy at 4 215 m of asphalt, an 82 m
+  strip at La Tour-du-Pin, and 7 462 more in between. Bundled with the build, so
+  it draws with **no key and no network**.
+
+  The pack is a **selection, and the selection is asymmetric on purpose**:
+  worldwide it is every large and medium airport plus everything that sells a
+  scheduled seat (which is what keeps Monaco's heliport and the Greenland
+  shuttles), while **France and the overseas territories carry the whole long
+  tail** — 1 335 fields, altiports, hydrobases and one balloon field included.
+  Shipped whole, the catalogue is 86 002 rows and roughly 25 MB of committed
+  JSON, 23 196 of them heliports, and in France almost every one of those is a
+  hospital landing pad with no ICAO code. The four clauses that decide what
+  survives live in `src/data/airportsPack.js` — the same module the layer reads
+  back when it writes a card, so the build and the globe cannot disagree about a
+  field — and `airports/README.md` states the limit plainly: a small airfield
+  missing outside France was **not selected**, and is not evidence of an empty
+  sky.
+
+  **Importance is a map channel, not a footnote.** Seven thousand identical dots
+  is a wall, and this pack is the opposite of uniform. Two independent fields
+  decide how much an airfield matters — OurAirports' editorial **size** class,
+  and the hard fact of whether a **timetabled service** calls there — so
+  crossing them gives four tiers: **Grand aéroport** (1 172), **Aéroport de
+  ligne** (3 175), **Aéroport sans ligne** (1 991) and **Aérodrome & aéroclub**
+  (1 126, all of them French, because the clause that admits them is). The tier
+  is decided once and then drives everything: the dot size (14 → 6 px), the
+  colour ramp, the label ladder, the legend, and **how far out the card stays
+  readable** (14 000 km → 200 km). That last channel is the one that fixed the
+  real problem: over Île-de-France the shared label grid was awarding fifteen
+  cells to aéroclubs and three to Roissy, Orly and Le Bourget, because cells are
+  awarded *locally* and a grass strip with no competition always wins its own.
+  Priority cannot fix that; range can. The marker is always drawn — only its
+  name waits until you come closer.
+
+  Four chips on the layer row cut to the tier you want — `TOUS`, `AÉROPORTS`
+  (drops the aéroclubs), `LIGNES` (only what a ticket is sold to), `GRANDS`.
+  They are runtime params, **not** share-link state, and the layer keeps
+  reporting all 7 464 features while a floor is on: a chip hides markers without
+  losing them, the same contract the hydro layer's `floorKw` already follows.
+  The legend counts what is **drawn**, not what is loaded, so a hidden tier
+  reads 0 and says how many it is holding back rather than quietly overstating
+  the picture. The grading itself is generic — `createLocalGeoJsonLayer` now
+  takes an optional group/style/filter/legend contract, and the three other
+  bundled packs are untouched by it.
+
+  Three values in the pack are easy to misread and are labelled rather than
+  cleaned up. `runways.count` counts upstream runway *records*, helicopter lanes
+  included — Charles de Gaulle reports 5, of which four are its paved runways.
+  `type` is OurAirports' editorial **size** bucket and does **not** map onto the
+  French regulatory ladder. And `runways.surface` is a three-value family
+  (`revêtue` / `non revêtue` / `eau`) collapsed from 557 free-text spellings
+  across 48 203 runways; 22% of features carry no surface at all rather than a
+  guess.
+
+- **Click a live bus and see the line it is running.** Selecting a vehicle in
+  **Transit FR** now draws its **route trace on the ground in the operator's own
+  colour**, marks **every stop of the run it is on**, and adds to the card the
+  line's public name, the stop it is heading for with a countdown and schedule
+  deviation, and its terminus. Bordeaux's Lianes 35 draws as a 32 km loop with
+  its 82 stops and reads *"▸ Avenue de l'Europe · due · 5 min late / ⇥ Gare
+  Saint-Jean · 67 stops"*. Escape puts it all away again.
+- **The two halves of that answer come from two feeds, and degrade separately.**
+  The **trace, the line's name and its colour** come from the network's static
+  GTFS — through the PAN's own **GeoJSON conversion** of it, so `shapes.txt`
+  (36.7 MB compressed for Normandie) is never downloaded; the **ordered stops
+  and their predicted times** come from the network's live **GTFS-RT
+  TripUpdates** feed, which every one of the 142 datasets publishing vehicle
+  positions also publishes. A network with no usable trip update still gets its
+  line drawn, from `route_id` alone, and the card says the stops are not listed.
+- **Which of a line's traces the run is on is measured, not guessed.** A French
+  line publishes several shape variants and the conversion drops `shape_id`, so
+  the layer picks the variant that carries **every one of the trip's own stops**
+  — measured against all 897 of TBM's running trips on 2026-08-31, all 897
+  matched at a median stop-to-trace offset of 3 m. When no variant fits, the
+  **whole line** is drawn instead of one run of it and the card says so.
+- **`npm run transit:static`** builds `config/pan_gtfs_static.json` (196 KB,
+  URLs only): for each of the 148 queryable vehicle feeds, its TripUpdates
+  sibling and its static GTFS's GeoJSON conversion. Geometry itself is fetched
+  on demand and cached under `.gev-cache/pan-gtfs-geo/` — a first click on a
+  network costs 0.87 s, every later one 18 ms.
+- **A new layer: the State's own traffic sensors on the French national road
+  network.** `Road Status FR` (`road-status-fr`) draws **830 segments, 918 km**
+  of the non-conceded RRN, coloured every 60–360 s by the sixteen DIR
+  traffic-management centres' own DATEX II `trafficStatusValue`, and carries the
+  one measurement TomTom has no equivalent of at any price: a **vehicle count**
+  — veh/h and average km/h per station, from Bison Futé's six-minute national
+  snapshot. Keyless and Licence Ouverte 2.0, so on a build with no
+  `TOMTOM_API_KEY` — where the traffic layer runs its simulation — this is the
+  only measured congestion data on the globe. It is brightest exactly where
+  `Transit FR` is dark: Marseille (186 segments), Toulouse (127), Lyon (106) and
+  Saint-Étienne (100) publish no live bus at all.
+- **The geometry is built offline, because the published referential is three
+  traps.** `npm run road-status:index` commits
+  `config/datex_traficolor_sites.json` (178 KB, 1 195 sites, 832 located).
+  `refDir.csv` is in **Lambert-93**, so `scripts/lib/lambert93.mjs` reprojects
+  it — deriving the projection constants from its defining parameters and
+  asserting them against IGN's published NTG_71 values rather than pasting
+  numbers a typo would turn into a silent kilometre. It is **regenerated every
+  six-minute cycle with a moving row set** (1 197 stations in one cycle, 1 192
+  in the next), so the build UNIONS successive cycles instead of trusting one.
+  And it **declares twenty columns while publishing nineteen** on every row, so
+  the parser reads positionally: a header-zipped read puts `nb_voies` in the
+  easting and makes most of the network look unlocatable, which it is not.
+- **Two different kinds of empty, kept apart.** Île-de-France has no publisher
+  at all — the DIRIF appears in neither publication, verified three ways — while
+  Lille, Nantes, Rennes, Saint-Brieuc, Lorient–Vannes and Nancy–Metz publish a
+  live colour for **1 046 sites whose position nobody publishes**. A viewport
+  over Lille now reads "357 live road states published under site ids that are
+  in no national referential row" instead of a blank that looks like a bug, and
+  `roadStatusCoverage.test.mjs` cross-checks every such claim against the built
+  index so a DIR that starts publishing coordinates fails the suite rather than
+  leaving a city wrongly dark.
+- **Nothing is inferred from the count.** A located station no traffic centre
+  watches stays grey and reads `Not reported` rather than being folded into free
+  flow; where two centres report one site the WORSE state wins; flow and speed
+  are labelled **6-min average**, never as an instantaneous reading; and a
+  station that counted nothing says so instead of printing "0 km/h" — 114 of
+  1 192 stations at 22:30 CEST, which is a fact about the hour, not a jam.
+  Proven end-to-end by `npm run qa:road-status-fr` (18 checks) and 44 new unit
+  tests.
+- **Live French transit vehicles now say what they ARE.** GTFS-Realtime carries
+  no vehicle class, so `npm run transit:route-types` joins each network's static
+  GTFS `route_type` and commits `config/pan_route_types.json` — 147 feeds, 7,044
+  routes, 195 KB. It reads **one member** out of each remote archive
+  (`routes.txt`, 8.7 KB inside Bordeaux TBM's 26.7 MB / 250 MB-expanded feed)
+  via HTTP range requests where the publisher allows them, so the national build
+  transfers ~136 MB instead of ~1.5 GB. A Bordeaux viewport now separates its
+  **67 trams and 3 Garonne river shuttles from its 358 buses**, coloured and
+  labelled per class. Measured 2026-08-31 the join types **92.7% of the national
+  live fleet**; the rest keep a neutral glyph and read `Type unknown` rather than
+  borrowing their network's service class, which is a different question.
+- **Transit vehicles are drawn as vehicles.** Each class now renders with its
+  **Material Symbol** (Apache-2.0, vendored path by path under
+  `licenses/material-symbols/`): a bus with a windscreen and headlights, a tram
+  with its pantograph, a river shuttle as a boat, a métro, a funicular, a cable
+  car. An earlier pass drew hand-made plan-view silhouettes and they were
+  internally consistent and unrecognisable — recognition beats invention. The
+  icons are FRONT views and so are never rotated; the operator's bearing is
+  drawn instead as a small wedge that ORBITS the icon on its own billboard, so
+  a bus stays a bus while still showing which way it is going. A vehicle whose
+  feed publishes no bearing has no wedge, which is the same statement the bare
+  disc used to make.
+- **The road layer reaches metro altitude.** `trafficBounds.ROAD_FETCH_TIERS`
+  replaces one fixed 0.05° fetch box with three altitude bands, the coarsest
+  drawing arterials across a **0.30° (~33 km) box up to 30 km** — where it used
+  to switch off at 8 km. Animated road traffic and the live transit fleet can
+  finally share a frame over a whole French métropole: measured over Bordeaux,
+  1,605 road dots and 356 live vehicles at once. The coarse band is cheaper than
+  the street band it sits above (1,929 ways vs 3,701). Two new scene recipes,
+  **Bordeaux Transport Pulse** and **France Transit Showcase**, are written
+  against those bands.
+- **The layer says where it has nothing, and why.** `src/data/transitCoverage.js`
+  records the measured French coverage map — Paris intra-muros, Lyon, Marseille,
+  Lille and Strasbourg had **zero** live vehicles at a Monday peak on 2026-08-31,
+  because Île-de-France Mobilités publishes no GTFS-Realtime at all, Marseille
+  publishes alerts only and Tisséo trip updates only. An empty viewport there now
+  names the publisher and points at the nearest city that works, instead of
+  reading "no PAN feed covers this view" and looking like a bug. A unit test
+  cross-checks every "dark" claim against the shipped feed index, so an operator
+  that starts publishing breaks the build.
+- **The shipped PAN index deduplicates and quarantines itself.** Some networks
+  publish one body under two resource ids — Kicéo's twin returned the same 59
+  vehicles, drawn twice. `src/data/panFeedHealth.js` finds candidates by
+  positional fingerprint and confirms them on a second probe **by roster only**,
+  because the fleet moves between probes. A run of failed probes takes a feed out
+  of viewport selection without deleting it, and any success revives it.
+  `/api/transit-fr/feeds` now reports shipped and queryable counts side by side.
+
 - **Bison Futé, both open feeds of it: what the road operators declared, and
   what their loops measured.** Two new layers in **MOBILITÉ TERRESTRE**, both
   keyless, both Licence Ouverte 2.0, both through one new `/api/bison-fute`
@@ -109,6 +320,25 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   cameras, which anchor to a city plus a landmark *index* — a regression test
   now walks that seed table and fails if any camera loses the landmark it was
   calibrated against.
+
+### Fixed
+
+- **The power grid's OpenStreetMap attribution was never rendered.** Its entry
+  in `DATA_CREDITS` was missing its object boundary, so `power-grid-osm` and
+  `rte-actual-generation` shared one object literal and the second `key`/`html`
+  pair silently overwrote the first — the ODbL credit for a layer that draws
+  volunteer-mapped geometry simply did not appear in the Data attribution
+  popover. Both entries are now separate objects, and 42 credits are registered
+  where 41 were. Found while adding the Bison Futé credit next to it.
+
+- **`npm run qa:traffic` could not boot at all.** It waited on
+  `window.__godsEyeView` with puppeteer's default animation-frame polling, and
+  software-rendered headless WebGL stalls the rAF loop — so the harness timed
+  out after 60 s on an app that had booted perfectly well, reporting `0 passed,
+  0 failed`. It now polls on an interval, the way `qa-transit-fr.mjs` already
+  documented, and its screenshots are best-effort: a lost frame capture used to
+  abort a run whose assertions had all passed. The traffic proof runs end to
+  end again — 11 assertions, live and keyless.
 
 ## [Unreleased] — 2026-08-28
 

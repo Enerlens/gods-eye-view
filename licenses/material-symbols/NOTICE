@@ -1,0 +1,25 @@
+Material Symbols
+Copyright Google LLC
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+these files except in compliance with the License. You may obtain a copy of the
+License in the `LICENSE` file next to this notice, or at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Source: https://github.com/google/material-design-icons
+        symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg
+        (Material Symbols Rounded, filled, weight 400, retrieved 2026-08-31)
+
+WHAT WAS TAKEN AND WHAT WAS CHANGED. Thirteen glyphs are used by
+`src/data/transitVehicleIcons.js` to draw live French transit vehicles by
+class: airport_shuttle, cable_car, directions_boat, directions_bus,
+directions_railway, flight, funicular, local_taxi, monorail, subway, train,
+tram, trolley.
+
+Only the single `d` path string of each glyph is vendored, verbatim and
+unmodified, into that module — the surrounding SVG document is not. At render
+time each path is drawn TWICE by this project: once as a wide dark stroke (a
+halo, so the glyph stays readable over pale terrain) and once as a white fill
+(so Cesium's per-billboard colour multiply can tint it by vehicle class). The
+path geometry itself is untouched.

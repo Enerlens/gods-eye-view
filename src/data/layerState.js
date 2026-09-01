@@ -303,6 +303,12 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // silently turn "reject an unknown link" into "enable the gas layer".
   Object.freeze({ id: 'gas-fr', token: '1', disposition: 'enabled-only' }),
   Object.freeze({ id: 'hubeau-hydro', token: 'h', disposition: 'enabled-only' }),
+  // A DIGIT, for the sixth time and always for the same reason: a–y are all
+  // taken and `z` is the canonical UNKNOWN token two tests assert on. `6`
+  // because 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants
+  // and bdtopo-buildings. Not `a` for "airports" — that is the AIS layer, and a
+  // duplicate token is a share link that silently enables the wrong one.
+  Object.freeze({ id: 'local-airports', token: '6', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-dams', token: 'q', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-datacenters', token: 'd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-firms', token: 'w', disposition: 'enabled-only' }),
@@ -322,18 +328,23 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // assertion in this file exists to prevent.
   Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
-  // DIGITS again, and for the last time worth restating: a–y are all taken and
-  // `z` is the canonical UNKNOWN token two existing tests assert on. `6` and
-  // `7` are the next free ones after gas-fr (1), power-grid (2), rte-generation
-  // (3), fr-hydro-plants (4) and bdtopo-buildings (5).
+  // Three road layers now, and the digits are how they are told apart in a
+  // share link. `road-status-fr` keeps `7`: it is already on `main`, so links
+  // carrying it exist and re-lettering it would silently enable a DIFFERENT
+  // layer for whoever opens one. The two that land here are unreleased, so
+  // they take the next free digits instead — `1`–`5` are gas-fr, power-grid,
+  // rte-generation, fr-hydro-plants and bdtopo-buildings, `6` is the airports
+  // pack, and `z` is the canonical UNKNOWN token two existing tests assert on.
   //
-  // `enabled-only` for both, although each owns one runtime chip. The chips
-  // select what the row SHOWS — which temporal scope of events, which of the
-  // two measured quantities colours the sensors — and a share link that
-  // silently pinned a recipient to "débit" or hid every planned closure would
-  // be a worse surprise than one that opens on the defaults the author saw.
-  Object.freeze({ id: 'road-events-fr', token: '6', disposition: 'enabled-only' }),
-  Object.freeze({ id: 'road-sensors-fr', token: '7', disposition: 'enabled-only' }),
+  // `enabled-only` for all three, although the two added here each own a
+  // runtime chip. The chips select what the row SHOWS — which temporal scope
+  // of events, which of the two measured quantities colours the sensors — and
+  // a share link that silently pinned a recipient to "débit" or hid every
+  // planned closure would be a worse surprise than one that opens on the
+  // defaults its author saw.
+  Object.freeze({ id: 'road-events-fr', token: '8', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'road-sensors-fr', token: '9', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'road-status-fr', token: '7', disposition: 'enabled-only' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
   // A DIGIT, because the letters ran out: a–y are all taken (every letter of
   // "rte"/"gen"/"prod" among them — r by radio, t by traffic, e by earthquakes,

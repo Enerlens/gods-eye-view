@@ -88,6 +88,8 @@ export const DATA_CREDITS = [
       '(ODbL 1.0). Volunteer mapping, not a grid register: coverage varies by country, ' +
       'only features OSM gives a voltage of 50 kV or more are drawn, and routes are the ' +
       'mapped ground route &mdash; not the conductor height, which OpenStreetMap does not publish.',
+  },
+  {
     key: 'rte-actual-generation',
     html:
       'Per-unit electricity generation (France): ' +
@@ -308,6 +310,15 @@ export const DATA_CREDITS = [
       '© each transport authority / operator',
   },
   {
+    key: 'datex-road-status-fr',
+    html:
+      'Live French road status, flow and speed: DATEX II published by the ' +
+      '<a href="https://www.bison-fute.gouv.fr" target="_blank" rel="noopener">Directions Interdépartementales des Routes via Bison Futé</a> — ' +
+      '<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a>. ' +
+      'Non-conceded national network only: no coverage in Île-de-France, and no département or city road. ' +
+      'Flow and speed are six-minute averages, not instantaneous readings.',
+  },
+  {
     key: 'pan-shared-mobility',
     html:
       'Shared vehicles in France (bikes, scooters, mopeds, car-sharing): GBFS feeds published on the ' +
@@ -376,6 +387,15 @@ export const DATA_CREDITS = [
       'Ports: NGA World Port Index (Pub. 150) — ' +
       '<a href="https://msi.nga.mil/Publications/WPI" target="_blank" rel="noopener">msi.nga.mil</a> ' +
       '— U.S. public domain. Harbour depths are WPI range bins, not surveyed soundings.',
+  },
+  {
+    key: 'ourairports',
+    html:
+      'Airports &amp; aerodromes: ' +
+      '<a href="https://ourairports.com/data/" target="_blank" rel="noopener">OurAirports</a> ' +
+      '— dedicated to the public domain by its volunteer editors. Bundled as a ' +
+      'selection, not the whole catalogue: every large/medium airport and every ' +
+      'scheduled-service field worldwide, plus the full French long tail.',
   },
   {
     key: 'firms',

@@ -24,7 +24,9 @@
  *  18. ODRÉ éCO2mix — French live electricity mix, national + 12 regions
  *  19. ODRÉ gas system — NaTran/Teréga transmission traces, gas power stations, biomethane injection
  *  20. Power grid — viewport-bounded OpenStreetMap high-voltage lines, substations and pylons
- *  21. Bison Futé — French road events (DATEX II) and QTV speed/flow measurement stations
+ *  21. Bison Futé DATEX II — live status, flow and speed on the French national road network
+ *  22. Bison Futé Événementiel-DIR — the road events the DIRs declare on that same network
+ *      (accidents, closures, roadworks, diversions)
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -55,6 +57,20 @@ import {
   normalizeBudget as normalizeTomTomBudget,
   isOverBudget as isTomTomOverBudget,
 } from './src/data/tomtomTiles.js';
+import {
+  QTV_MEASUREMENTS_URL,
+  ROAD_STATUS_MAX_BOX_DEG,
+  ROAD_STATUS_MAX_SEGMENTS,
+  TRAFICOLOR_INDEX_URL,
+  agglomerationLabel,
+  latestPublicationFile,
+  parseIndexDirectories,
+  parseQtvMeasurements,
+  parseTraficolorStatuses,
+  segmentIntersectsBox,
+  validRoadStatusBox,
+  worseRoadStatus,
+} from './src/data/datexRoadStatus.js';
 import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
 import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
@@ -77,7 +93,13 @@ import {
   projectActualGenerations,
   rteGenerationWindow,
 } from './src/data/rteGenerationFeed.js';
-import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
+import {
+  alertIsActive,
+  alertsFromBytes,
+  boundsOfVehicles,
+  tripUpdatesFromBytes,
+  vehiclePositionsFromBytes,
+} from './src/data/gtfsRealtime.js';
 import { boundsOfPoints } from './src/data/viewportBox.js';
 import {
   gbfsBoxKey,
@@ -108,6 +130,21 @@ import {
   PAN_MAX_FEEDS_PER_REQUEST,
   PAN_MAX_VEHICLES,
 } from './src/data/panFeeds.js';
+import { partitionFeedsByHealth } from './src/data/panFeedHealth.js';
+import { resolveVehicleKind } from './src/data/transitVehicleKind.js';
+import {
+  chooseTripShape,
+  indexGtfsGeoJson,
+  pathLengthMeters,
+} from './src/data/transitRouteShape.js';
+import {
+  alertForVehicle,
+  alertWireRecord,
+  indexAlerts,
+  indexTripUpdates,
+  scheduleForVehicle,
+  summarizeSchedule,
+} from './src/data/transitSchedule.js';
 import {
   filterFreshObservations,
   parseNdbcLatestObservations,
@@ -5304,13 +5341,24 @@ function gbfsProxy() {
 }
 
 // ---------------------------------------------------------------------------
-// transport.data.gouv.fr — French GTFS-Realtime vehicle positions
+// transport.data.gouv.fr — French GTFS-Realtime vehicle positions, and the
+// delays and disruptions published alongside them
 // ---------------------------------------------------------------------------
 /**
  * Shipped feed index (see `scripts/build-pan-gtfs-rt-index.mjs`). Read once per
  * server, never sent to the browser whole — the client asks for a viewport.
  */
 const PAN_INDEX_PATH = path.join(process.cwd(), 'config', 'pan_gtfs_rt_feeds.json');
+/**
+ * `route_id → route_type` per feed, from `scripts/build-pan-route-types.mjs`.
+ *
+ * GTFS-Realtime carries no vehicle class, so without this the layer can only
+ * colour by the NETWORK's declared service class and Bordeaux's 77 trams, 3
+ * river shuttles and 372 buses are one amber swarm. Optional on purpose: a
+ * checkout that has never run the builder still serves vehicles, they just
+ * arrive with `kindSource: 'network'`.
+ */
+const PAN_ROUTE_TYPES_PATH = path.join(process.cwd(), 'config', 'pan_route_types.json');
 /** Footprints learned at runtime, merged over the shipped ones on next boot. */
 const PAN_BOUNDS_PATH = path.join(process.cwd(), '.gev-cache', 'pan-transit-bounds.json');
 /**
@@ -5327,6 +5375,39 @@ const PAN_FEED_BACKOFF_MS = 90_000;
 const PAN_FEED_STALE_MS = 90_000;
 const PAN_FEED_TIMEOUT_MS = 9_000;
 const PAN_FEED_MAX_BYTES = 8 * 1024 * 1024;
+/**
+ * Trip-update body cache, ms — shared by the viewport pass and the click.
+ *
+ * Four times the position cache, and deliberately: a trip update is the
+ * operator's PREDICTION, recomputed every 20-60 s and rarely by more than a
+ * few seconds; TBM's body is 1.2 MB against 37 KB for its positions, so
+ * refreshing it on the position cadence would spend 32x the bandwidth to
+ * restate the same "4 min late". A delay 45 s old is still that delay.
+ *
+ * One window for both surfaces, because they read the same bytes: a click on
+ * a bus whose fleet was just enriched answers from the entry that enrichment
+ * populated, instead of re-downloading a megabyte the server already has.
+ */
+const PAN_TRIP_CACHE_MS = 45_000;
+/**
+ * Alert body cache, ms. An alert is written by a person and lives for hours or
+ * days; five minutes is already far finer than the thing it describes changes.
+ */
+const PAN_ALERT_CACHE_MS = 5 * 60_000;
+/**
+ * Timeout for one companion body, ms — shorter than the position timeout on
+ * purpose. Positions are the layer; delays are an enrichment, and a slow
+ * trip-update server must never be able to hold up the fleet behind it.
+ */
+const PAN_COMPANION_TIMEOUT_MS = 6_000;
+/** A companion that just failed is left alone for this long. */
+const PAN_COMPANION_BACKOFF_MS = 120_000;
+/**
+ * Ceiling on one companion body. Trip updates are the largest GTFS-RT bodies
+ * a French network publishes — TBM's is 1.2 MB — and the cap is four times the
+ * position cap so that an aggregate régional feed has room to grow into it.
+ */
+const PAN_COMPANION_MAX_BYTES = 32 * 1024 * 1024;
 /** Margin kept around the viewport so vehicles enter from off-screen. */
 const PAN_VIEWPORT_PAD_DEG = 0.06;
 /** How often learned footprints are flushed to disk. */
@@ -5336,9 +5417,45 @@ const PAN_USER_AGENT = 'gods-eye-view/0.1 (+https://github.com/bilawalsidhu/gods
 /** @type {?{feeds: Array<Object>, generatedAt: string, source: string}} */
 let _panIndex = null;
 let _panIndexPromise = null;
-/** feedId -> {at:number, vehicles:Array, error:?string, failedAt:?number} */
+/** feedId -> {routes, uniformKind}; empty when the route-type index is absent. */
+let _panRouteTypes = new Map();
+/**
+ * feedId -> {at, vehicles, trips, alerts, error, failedAt}. `trips`/`alerts`
+ * are set only for the 63 feeds whose companion IS this body.
+ */
 const _panFeedCache = new Map();
 const _panFeedInFlight = new Map();
+/**
+ * Companion body cache, keyed `kind:url`.
+ *
+ * By URL and not by feed id, because a dataset can point several position
+ * feeds at one trip-update resource — Astuce's three operator feeds do — and
+ * because 63 feeds read their companion out of their OWN body, which never
+ * reaches this map at all.
+ *
+ * @type {Map<string, {at:number, value:Array, error:?string, failedAt:?number}>}
+ */
+const _panCompanionCache = new Map();
+const _panCompanionInFlight = new Map();
+/**
+ * Cap on cached companion bodies.
+ *
+ * Lower than it looks: one viewport touches at most
+ * {@link PAN_MAX_FEEDS_PER_REQUEST} feeds, and a decoded trip-update body is
+ * the biggest thing this proxy holds — TBM's is 900 trips of 36 stops each.
+ * The map is kept in least-recently-USED order (a refresh re-inserts its key)
+ * so panning across France evicts the city that was left behind, not the one
+ * on screen.
+ */
+const PAN_COMPANION_CACHE_MAX = 32;
+
+function trimPanCompanionCache() {
+  while (_panCompanionCache.size > PAN_COMPANION_CACHE_MAX) {
+    const oldest = _panCompanionCache.keys().next().value;
+    if (oldest === undefined) break;
+    _panCompanionCache.delete(oldest);
+  }
+}
 /** viewport key -> {at:number, payload:object} */
 const _panViewportCache = new Map();
 const _panViewportInFlight = new Map();
@@ -5379,16 +5496,53 @@ async function loadPanIndex() {
       if (merged) feed.bbox = merged;
     }
     _panIndex = { ...raw, feeds };
+
+    const { selectable, duplicates, quarantined } = partitionFeedsByHealth(feeds);
     console.log(
       `[PAN Transit] ${feeds.length} GTFS-RT vehicle-position feeds `
-      + `(${feeds.filter((feed) => feed.bbox).length} with a footprint), index built ${raw?.generatedAt || 'unknown'}`,
+      + `(${feeds.filter((feed) => feed.bbox).length} with a footprint, ${selectable.length} queryable — `
+      + `${duplicates} duplicate, ${quarantined} quarantined), index built ${raw?.generatedAt || 'unknown'}`,
     );
+    const withTrips = feeds.filter((feed) => feed.tripUpdates?.url).length;
+    const shared = feeds.filter((feed) => feed.tripUpdates?.sameResource).length;
+    console.log(
+      `[PAN Transit] schedule companions: ${withTrips} feeds carry trip updates `
+      + `(${shared} in the same body, so free), ${feeds.filter((feed) => feed.alerts?.url).length} carry alerts`,
+    );
+
+    await loadPanRouteTypes();
     return _panIndex;
   })().catch((error) => {
     _panIndexPromise = null;
     throw error;
   });
   return _panIndexPromise;
+}
+
+/**
+ * Load the route-type index, if the builder has ever been run here.
+ *
+ * Absence is a normal state, not an error: `npm run transit:route-types` is a
+ * network-bound build step, and a clone that has not run it must still serve
+ * live vehicles. It loses only the vehicle CLASS, and every wire record says
+ * so through `kindSource`.
+ */
+async function loadPanRouteTypes() {
+  try {
+    const raw = JSON.parse(await fsp.readFile(PAN_ROUTE_TYPES_PATH, 'utf8'));
+    _panRouteTypes = new Map(Object.entries(raw?.feeds || {}));
+    const typed = [..._panRouteTypes.values()].filter((entry) => entry?.uniformKind).length;
+    console.log(
+      `[PAN Transit] route types for ${_panRouteTypes.size} feeds `
+      + `(${raw?.routeCount || 0} routes, ${typed} single-class networks), built ${raw?.generatedAt || 'unknown'}`,
+    );
+  } catch {
+    _panRouteTypes = new Map();
+    console.log(
+      '[PAN Transit] no route-type index — vehicles will report their network\'s '
+      + 'service class instead of a vehicle type. Run `npm run transit:route-types`.',
+    );
+  }
 }
 
 /** Persist learned footprints, at most once per PAN_BOUNDS_FLUSH_MS. */
@@ -5424,7 +5578,10 @@ async function panFeedVehicles(feed) {
   const now = Date.now();
   const cached = _panFeedCache.get(feed.id);
   if (cached && now - cached.at <= PAN_FEED_CACHE_MS) {
-    return { vehicles: cached.vehicles, at: cached.at, error: cached.error, stale: false };
+    return {
+      vehicles: cached.vehicles, trips: cached.trips, alerts: cached.alerts,
+      at: cached.at, error: cached.error, stale: false,
+    };
   }
   // A feed that just failed is left alone; its last-good fixes keep serving
   // until they age out, then it reports empty with the reason attached.
@@ -5432,6 +5589,8 @@ async function panFeedVehicles(feed) {
     const stale = now - cached.at <= PAN_FEED_STALE_MS;
     return {
       vehicles: stale ? cached.vehicles : [],
+      trips: stale ? cached.trips : null,
+      alerts: stale ? cached.alerts : null,
       at: cached.at,
       error: cached.error,
       stale: stale && cached.vehicles.length > 0,
@@ -5458,6 +5617,12 @@ async function panFeedVehicles(feed) {
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (bytes.byteLength > PAN_FEED_MAX_BYTES) throw new Error('feed body too large');
       const { vehicles } = vehiclePositionsFromBytes(bytes, { feedId: feed.id });
+      // 63 of the 150 feeds publish positions, predictions and alerts as one
+      // `FeedMessage` under one resource id. For those the delay of every bus
+      // on screen is already in hand — the same bytes read a second way, at no
+      // extra request. `sameResource` was measured by the index builder.
+      const trips = feed.tripUpdates?.sameResource ? tripUpdatesFromBytes(bytes).trips : null;
+      const alerts = feed.alerts?.sameResource ? alertsFromBytes(bytes).alerts : null;
       // Learn the footprint from what actually arrived. Bounds only grow, and
       // junk fixes are fenced out before they can widen a city into a country.
       const observed = boundsOfVehicles(vehicles, { rejectOutliers: true });
@@ -5466,9 +5631,12 @@ async function panFeedVehicles(feed) {
         feed.bbox = merged;
         _panBoundsDirty = true;
       }
-      const entry = { at: Date.now(), vehicles, error: null, failedAt: null };
+      const entry = { at: Date.now(), vehicles, trips, alerts, error: null, failedAt: null };
       _panFeedCache.set(feed.id, entry);
-      return { vehicles: entry.vehicles, at: entry.at, error: null, stale: false };
+      return {
+        vehicles: entry.vehicles, trips: entry.trips, alerts: entry.alerts,
+        at: entry.at, error: null, stale: false,
+      };
     } catch (error) {
       const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
       const previous = _panFeedCache.get(feed.id);
@@ -5476,12 +5644,16 @@ async function panFeedVehicles(feed) {
       const entry = {
         at: keepStale ? previous.at : Date.now(),
         vehicles: keepStale ? previous.vehicles : [],
+        trips: keepStale ? previous.trips : null,
+        alerts: keepStale ? previous.alerts : null,
         error: message,
         failedAt: Date.now(),
       };
       _panFeedCache.set(feed.id, entry);
       return {
         vehicles: entry.vehicles,
+        trips: entry.trips,
+        alerts: entry.alerts,
         at: entry.at,
         error: message,
         stale: keepStale && entry.vehicles.length > 0,
@@ -5493,22 +5665,197 @@ async function panFeedVehicles(feed) {
   return request.promise;
 }
 
+/**
+ * Fetch and decode ONE companion body — a network's trip updates or its alerts.
+ *
+ * Keyed by URL rather than by feed so a resource shared by several position
+ * feeds is downloaded once, and given a cache window of its own because the
+ * two answer questions that change at different speeds (see
+ * {@link PAN_TRIP_CACHE_MS} and {@link PAN_ALERT_CACHE_MS}).
+ *
+ * Never throws and never serves stale: a failure returns an empty list with
+ * the reason attached, and the vehicles simply arrive without a delay on them.
+ * The enrichment is allowed to be absent; the fleet is not.
+ *
+ * @param {string} url Companion resource URL.
+ * @param {'trips'|'alerts'} kind Which decoder to run.
+ * @param {number} cacheMs Freshness window for this kind.
+ * @returns {Promise<{value: Array<Object>, at: number, error: ?string}>}
+ */
+async function panCompanionBody(url, kind, cacheMs) {
+  const key = `${kind}:${url}`;
+  const now = Date.now();
+  const cached = _panCompanionCache.get(key);
+  if (cached && now - cached.at <= cacheMs) {
+    // Re-insert to mark it as the most recently used; Map preserves insertion
+    // order and a plain `get` does not move it.
+    _panCompanionCache.delete(key);
+    _panCompanionCache.set(key, cached);
+    return { value: cached.value, at: cached.at, headerMs: cached.headerMs, error: cached.error };
+  }
+  if (cached?.failedAt && now - cached.failedAt < PAN_COMPANION_BACKOFF_MS) {
+    return { value: cached.value || [], at: cached.at, headerMs: cached.headerMs, error: cached.error };
+  }
+
+  const request = coalesceProxyRequest(_panCompanionInFlight, key, async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PAN_COMPANION_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/x-protobuf,application/octet-stream;q=0.9,*/*;q=0.8',
+          'User-Agent': PAN_USER_AGENT,
+        },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const declared = Number(response.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > PAN_COMPANION_MAX_BYTES) {
+        throw new Error('companion body too large');
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > PAN_COMPANION_MAX_BYTES) throw new Error('companion body too large');
+      const decoded = kind === 'trips' ? tripUpdatesFromBytes(bytes) : alertsFromBytes(bytes);
+      const value = kind === 'trips' ? decoded.trips : decoded.alerts;
+      // The publisher's own stamp on the body, which the click endpoint reports
+      // beside the stop times so a viewer can see how old the prediction is.
+      const entry = {
+        at: Date.now(), value, headerMs: decoded.headerTimestampMs || null, error: null, failedAt: null,
+      };
+      _panCompanionCache.delete(key);
+      _panCompanionCache.set(key, entry);
+      trimPanCompanionCache();
+      return { value: entry.value, at: entry.at, headerMs: entry.headerMs, error: null };
+    } catch (error) {
+      const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
+      // Keep the last good body rather than blanking it: a prediction 90 s old
+      // beats no prediction, and the error travels with it.
+      const previous = _panCompanionCache.get(key);
+      _panCompanionCache.delete(key);
+      _panCompanionCache.set(key, {
+        at: previous?.at || Date.now(),
+        value: previous?.value || [],
+        headerMs: previous?.headerMs || null,
+        error: message,
+        failedAt: Date.now(),
+      });
+      trimPanCompanionCache();
+      return { value: previous?.value || [], at: previous?.at || Date.now(), headerMs: previous?.headerMs || null, error: message };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+  return request.promise;
+}
+
+/**
+ * The schedule context for one feed: its trips indexed by join key, and its
+ * active alerts indexed by what they inform.
+ *
+ * Reads the companion out of the position body when the index measured them to
+ * be the same resource, and otherwise fetches it. Both are optional — a feed
+ * with no measured companion, or a companion that failed, yields empty indexes
+ * and the vehicles render exactly as they did before this existed.
+ *
+ * @param {Object} feed Index entry.
+ * @param {Object} outcome The result of {@link panFeedVehicles} for this feed.
+ * @returns {Promise<Object>} Indexes plus the provenance the summary reports.
+ */
+async function panFeedSchedule(feed, outcome) {
+  const nowMs = Date.now();
+  let trips = outcome?.trips || null;
+  let tripsError = null;
+  if (!trips && feed.tripUpdates?.url) {
+    const body = await panCompanionBody(feed.tripUpdates.url, 'trips', PAN_TRIP_CACHE_MS);
+    trips = body.value;
+    tripsError = body.error;
+  }
+
+  let alerts = outcome?.alerts || null;
+  let alertsError = null;
+  if (!alerts && feed.alerts?.url) {
+    const body = await panCompanionBody(feed.alerts.url, 'alerts', PAN_ALERT_CACHE_MS);
+    alerts = body.value;
+    alertsError = body.error;
+  }
+
+  return {
+    nowMs,
+    tripIndex: trips?.length ? indexTripUpdates(trips) : null,
+    tripCount: trips?.length || 0,
+    alertIndex: alerts?.length ? indexAlerts(alerts, { nowMs, isActive: alertIsActive }) : null,
+    // The count BEFORE the active-period filter, so "12 published, 3 in force"
+    // stays sayable rather than collapsing to one number.
+    alertsPublished: alerts?.length || 0,
+    error: tripsError || alertsError || null,
+  };
+}
+
 /** Trim a decoded record to the fields the layer renders, dropping empties. */
-function panWireVehicle(vehicle, feed) {
+function panWireVehicle(vehicle, feed, schedule = null) {
+  // `mode` is the NETWORK's declared service class (urban, school, …).
+  // `kind` is the VEHICLE's class, joined from the network's static GTFS.
+  // They answer different questions and both are sent, with the provenance of
+  // the second attached so the card never has to guess which it is showing.
+  const { kind, source } = resolveVehicleKind(vehicle.routeId, _panRouteTypes.get(feed.id));
   const wire = {
     id: vehicle.id,
     feed: feed.id,
     lat: Number(vehicle.lat.toFixed(5)),
     lon: Number(vehicle.lon.toFixed(5)),
     mode: feed.modes?.[0] || 'urban',
+    kindSource: source,
   };
+  if (kind) wire.kind = kind;
   if (vehicle.bearing !== null) wire.bearing = Number(vehicle.bearing.toFixed(1));
   if (vehicle.speedMps !== null) wire.speedMps = Number(vehicle.speedMps.toFixed(2));
   if (vehicle.route) wire.route = vehicle.route;
+  // The raw ids, alongside the display label: `route` is unwrapped from its
+  // NeTEx envelope for reading, and the geometry and trip-stop joins need the
+  // key the operator actually published. Both are small and both are the only
+  // way a click can ask "which line is this, and where does this run go".
+  if (vehicle.routeId) wire.routeId = vehicle.routeId;
+  if (vehicle.tripId) wire.tripId = vehicle.tripId;
+  // Where the operator says the vehicle is ON its run. This is what makes the
+  // approached stop the approached stop, rather than the first one whose
+  // predicted time has not yet passed.
+  if (Number.isFinite(vehicle.stopSequence)) wire.stopSequence = vehicle.stopSequence;
+  if (vehicle.stopId) wire.stopId = vehicle.stopId;
   if (vehicle.label) wire.label = vehicle.label;
   if (vehicle.status) wire.status = vehicle.status;
   if (vehicle.occupancy) wire.occupancy = vehicle.occupancy;
   if (vehicle.timestampMs) wire.timestampMs = vehicle.timestampMs;
+
+  // --- The enrichment -------------------------------------------------------
+  // Everything below is a claim from the operator's OWN prediction for the run
+  // this vehicle is on, joined HERE and not in the browser: the companion body
+  // it is joined against is up to 1.2 MB, and it would have to cross the wire
+  // once per client to answer a question that is the same for all of them.
+  // Every field is omitted when the feed said nothing; none is defaulted.
+  const state = scheduleForVehicle(vehicle, schedule?.tripIndex, { nowMs: schedule?.nowMs });
+  if (state) {
+    if (Number.isFinite(state.delaySec)) {
+      wire.delaySec = state.delaySec;
+      wire.delayFrom = state.delayFrom;
+    }
+    if (state.awaitingDeparture) {
+      wire.awaitingDeparture = true;
+      if (state.scheduledDepartureMs) wire.scheduledDepartureMs = state.scheduledDepartureMs;
+    }
+    if (state.tripState) wire.tripState = state.tripState;
+    if (state.skippedStops) {
+      wire.skippedStops = state.skippedStops;
+      wire.skippedAhead = state.skippedAhead;
+    }
+    if (state.nextStopEtaMs) wire.nextStopEtaMs = state.nextStopEtaMs;
+    if (state.matchedBy) wire.tripMatch = state.matchedBy;
+  }
+  const alert = schedule?.alertIndex ? alertForVehicle(vehicle, schedule.alertIndex) : null;
+  if (alert) {
+    wire.alert = alertWireRecord(alert.alert, alert.scope);
+    if (alert.count > 1) wire.alertCount = alert.count;
+  }
   return wire;
 }
 
@@ -5521,18 +5868,20 @@ async function refreshPanViewport(box, key) {
 
   const results = await Promise.all(selection.selected.map(async (feed) => {
     const outcome = await panFeedVehicles(feed);
-    const vehicles = [];
-    for (const vehicle of outcome.vehicles) {
-      if (!boxContains(clip, vehicle.lat, vehicle.lon)) continue;
-      vehicles.push(panWireVehicle(vehicle, feed));
-    }
-    return { feed, outcome, vehicles };
+    const inBox = outcome.vehicles.filter((vehicle) => boxContains(clip, vehicle.lat, vehicle.lon));
+    // The delay fetch is gated on the box, not on the selection. A feed earns
+    // a slot by OVERLAPPING the viewport, which is not the same as having a
+    // bus in it — and TBM's trip updates are 1.2 MB, which is not a thing to
+    // download because the camera is near Bordeaux.
+    const schedule = inBox.length ? await panFeedSchedule(feed, outcome) : null;
+    const vehicles = inBox.map((vehicle) => panWireVehicle(vehicle, feed, schedule));
+    return { feed, outcome, vehicles, schedule };
   }));
 
   const vehicles = [];
   const feeds = [];
   let vehiclesTruncated = false;
-  for (const { feed, outcome, vehicles: inBox } of results) {
+  for (const { feed, outcome, vehicles: inBox, schedule } of results) {
     for (const vehicle of inBox) {
       if (vehicles.length >= PAN_MAX_VEHICLES) { vehiclesTruncated = true; break; }
       vehicles.push(vehicle);
@@ -5551,6 +5900,13 @@ async function refreshPanViewport(box, key) {
       retrievedAt: outcome.at ? new Date(outcome.at).toISOString() : null,
       stale: outcome.stale || false,
       error: outcome.error || null,
+      // How much of this network's fleet the schedule feed could speak for.
+      // `delayed` counts vehicles that got a NUMBER, not vehicles running late.
+      trips: schedule?.tripCount || 0,
+      delayed: inBox.filter((vehicle) => Number.isFinite(vehicle.delaySec)).length,
+      alertsPublished: schedule?.alertsPublished || 0,
+      alertsActive: schedule?.alertIndex?.count || 0,
+      scheduleError: schedule?.error || null,
     });
   }
 
@@ -5568,6 +5924,9 @@ async function refreshPanViewport(box, key) {
     // polled, or the vehicle cap cut the answer.
     feedsTruncated: selection.truncated,
     vehiclesTruncated,
+    // Punctuality of what is actually being returned, so the layer can say
+    // what is happening without every client re-tallying the same array.
+    schedule: summarizeSchedule(vehicles),
     indexGeneratedAt: index.generatedAt || null,
   };
 
@@ -5577,11 +5936,373 @@ async function refreshPanViewport(box, key) {
   return payload;
 }
 
+
+// ---------------------------------------------------------------------------
+// The line under a vehicle: its trace, and the stops of the run it is on
+// ---------------------------------------------------------------------------
+/**
+ * Companion resources per live feed — the TripUpdates sibling and the PAN's
+ * GeoJSON conversion of the static GTFS (see
+ * `scripts/build-pan-static-index.mjs`). URLs only; the geometry itself is
+ * fetched on demand and cached under `.gev-cache/`.
+ */
+const PAN_STATIC_INDEX_PATH = path.join(process.cwd(), 'config', 'pan_gtfs_static.json');
+const PAN_GEO_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'pan-gtfs-geo');
+/**
+ * Ceiling on one conversion body.
+ *
+ * Measured 2026-08-31 the largest of the 148 is Normandy's aggregate at
+ * 68.9 MB and the median is 1.4 MB, so the cap refuses nothing that exists
+ * today; it is here so that a publisher who one day serves something
+ * pathological gets an error rather than the dev server's heap.
+ */
+const PAN_GEOJSON_MAX_BYTES = 96 * 1024 * 1024;
+const PAN_GEOJSON_TIMEOUT_MS = 45_000;
+/**
+ * How long an indexed conversion is served from disk before it is re-fetched.
+ *
+ * French networks republish their static GTFS every few days — Bordeaux's was
+ * 26 hours old when this was written — but the shape of a line changes with a
+ * timetable, not with a bus. A week is short enough that a re-routed line
+ * corrects itself without anyone clearing a cache, and long enough that a
+ * fortnight of clicking costs two fetches.
+ */
+const PAN_GEO_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Indexed networks held in memory. Bordeaux's index is 2.4 MB. */
+const PAN_GEO_MEMORY_MAX = 3;
+
+/** @type {?{feeds: Object, generatedAt: string}} */
+let _panStaticIndex = null;
+let _panStaticIndexPromise = null;
+/** feedId -> {index, source, fetchedAt} — insertion-ordered, oldest evicted. */
+const _panGeoMemory = new Map();
+const _panGeoInFlight = new Map();
+
+/**
+ * Load the companion index once. Absent is not fatal: the layer keeps drawing
+ * vehicles and only the line panel goes dark, with the build command named.
+ */
+async function loadPanStaticIndex() {
+  if (_panStaticIndex) return _panStaticIndex;
+  if (_panStaticIndexPromise) return _panStaticIndexPromise;
+  _panStaticIndexPromise = (async () => {
+    const raw = JSON.parse(await fsp.readFile(PAN_STATIC_INDEX_PATH, 'utf8'));
+    _panStaticIndex = { feeds: raw?.feeds || {}, generatedAt: raw?.generatedAt || null };
+    return _panStaticIndex;
+  })().finally(() => { _panStaticIndexPromise = null; });
+  return _panStaticIndexPromise;
+}
+
+/**
+ * The static resource whose conversion should be tried for a feed.
+ *
+ * Same rule as the builder's: a conversion that answered the build-time probe
+ * wins, then one that was never probed; a conversion known dead is skipped
+ * rather than fetched to rediscover that it is dead.
+ */
+function panGeoResource(entry) {
+  const statics = Array.isArray(entry?.statics) ? entry.statics : [];
+  const usable = statics.filter((resource) => resource?.geojson?.url);
+  return usable.find((resource) => resource.geojson.reachable === true)
+    || usable.find((resource) => resource.geojson.reachable !== false)
+    || null;
+}
+
+/** Disk path for one network's indexed geometry. */
+function panGeoCachePath(feedId) {
+  return path.join(PAN_GEO_CACHE_DIR, `${String(feedId).replace(/[^\w.-]/g, '_')}.json`);
+}
+
+/** Keep the newest {@link PAN_GEO_MEMORY_MAX} networks resident. */
+function trimPanGeoMemory() {
+  while (_panGeoMemory.size > PAN_GEO_MEMORY_MAX) {
+    const oldest = _panGeoMemory.keys().next().value;
+    if (oldest === undefined) break;
+    _panGeoMemory.delete(oldest);
+  }
+}
+
+/**
+ * One network's line geometry, indexed: memory, then disk, then the PAN.
+ *
+ * The network fetch is the expensive one — 13 MB and ~0.7 s for Bordeaux, of
+ * which 0.2 s is parsing and indexing — and it happens at most once a week per
+ * network per checkout. Concurrent clicks on two buses of the same network
+ * share one fetch.
+ *
+ * @param {string} feedId
+ * @param {Object} entry Companion-index entry for the feed.
+ * @returns {Promise<{index: Object, source: Object, fetchedAt: number}>}
+ */
+async function panRouteGeometry(feedId, entry) {
+  const resident = _panGeoMemory.get(feedId);
+  if (resident) return resident;
+
+  const resource = panGeoResource(entry);
+  if (!resource) {
+    const error = new Error('this network publishes no converted line geometry');
+    error.code = 'NO_GEOMETRY';
+    throw error;
+  }
+
+  const request = coalesceProxyRequest(_panGeoInFlight, feedId, async () => {
+    const cachePath = panGeoCachePath(feedId);
+    try {
+      const cached = JSON.parse(await fsp.readFile(cachePath, 'utf8'));
+      const fresh = Date.now() - Number(cached.fetchedAt || 0) < PAN_GEO_DISK_TTL_MS;
+      // The conversion timestamp is the PAN's own statement about the archive
+      // behind it: a cache built from an older conversion is rebuilt even when
+      // it is inside the TTL.
+      const sameConversion = (cached.source?.checkedAt || null) === (resource.geojson.checkedAt || null);
+      if (fresh && sameConversion && cached.index?.routes && cached.index?.stops) {
+        const record = { index: cached.index, source: cached.source, fetchedAt: cached.fetchedAt };
+        _panGeoMemory.set(feedId, record);
+        trimPanGeoMemory();
+        return record;
+      }
+    } catch { /* no usable cache — fetch it */ }
+
+    const startedAt = Date.now();
+    const response = await fetch(resource.geojson.url, {
+      // `Accept: */*` deliberately. The conversion URL is a redirect the PAN
+      // serves from its own application, and asking it for
+      // `application/geo+json` makes it answer HTTP 500 — measured against
+      // resource 83024 on 2026-08-31, where the same request with `*/*`
+      // returns the file.
+      headers: { Accept: '*/*', 'User-Agent': PAN_USER_AGENT },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(PAN_GEOJSON_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`conversion HTTP ${response.status}`);
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > PAN_GEOJSON_MAX_BYTES) {
+      await response.arrayBuffer().catch(() => {});
+      throw new Error('converted geometry exceeds the size cap');
+    }
+    const document = await readResponseJsonCapped(response, PAN_GEOJSON_MAX_BYTES);
+    const index = indexGtfsGeoJson(document);
+    const source = {
+      url: resource.geojson.url,
+      resourceId: resource.resourceId,
+      pageUrl: resource.pageUrl || null,
+      declared: resource.geojson.declared === true,
+      checkedAt: resource.geojson.checkedAt || null,
+      bytes: Number.isFinite(resource.geojson.bytes) ? resource.geojson.bytes : null,
+    };
+    const record = { index, source, fetchedAt: Date.now() };
+    console.log(
+      `[PAN Transit] ${feedId} line geometry — ${index.stats.routeCount} routes, `
+      + `${index.stats.shapeCount} traces, ${index.stats.stopCount} stops, `
+      + `${index.stats.rawPoints} points kept as ${index.stats.keptPoints} in ${Date.now() - startedAt} ms`,
+    );
+
+    _panGeoMemory.set(feedId, record);
+    trimPanGeoMemory();
+    try {
+      await fsp.mkdir(PAN_GEO_CACHE_DIR, { recursive: true });
+      await fsp.writeFile(cachePath, JSON.stringify(record), 'utf8');
+    } catch (error) {
+      // A cache that cannot be written costs a re-fetch, nothing else.
+      console.warn('[PAN Transit] geometry cache write failed:', error?.message || error);
+    }
+    return record;
+  });
+  return request.promise;
+}
+
+/**
+ * One network's live trip updates, keyed by `trip_id`.
+ *
+ * The body is fetched by {@link panCompanionBody}, which is also what the
+ * VIEWPORT pass uses to put a delay on every vehicle on screen — so a click on
+ * a Bordeaux bus normally costs nothing at all: the 1.2 MB its network
+ * publishes was already read for the fleet the viewer is looking at, and both
+ * surfaces answer from one cache entry.
+ *
+ * WHICH resource is asked for is the measured one. `pan_gtfs_rt_feeds.json`
+ * records the trip-update companion whose trips actually JOIN each feed's own
+ * vehicles (see `scripts/build-pan-gtfs-rt-index.mjs`); the companion index's
+ * first declared resource is the fallback for a feed that predates that
+ * measurement. It matters: Rouen Astuce publishes three position feeds and
+ * four trip-update feeds on interleaved ids, and the declared order pairs them
+ * wrongly.
+ *
+ * @param {string} feedId
+ * @param {Object} entry Companion-index entry for the feed.
+ * @returns {Promise<{byTrip: Map<string, Object>, at: number, headerMs: ?number, error: ?string}>}
+ */
+async function panTripUpdates(feedId, entry) {
+  let measured = null;
+  try {
+    const index = await loadPanIndex();
+    measured = index.feeds.find((feed) => feed.id === feedId)?.tripUpdates?.url || null;
+  } catch { /* the live index is optional here; the companion index answers */ }
+  const url = measured || (Array.isArray(entry?.tripUpdates) ? entry.tripUpdates : [])[0]?.url;
+  if (!url) {
+    return { byTrip: new Map(), at: Date.now(), headerMs: null, error: 'no trip-update feed published' };
+  }
+
+  const body = await panCompanionBody(url, 'trips', PAN_TRIP_CACHE_MS);
+  const byTrip = new Map();
+  for (const trip of body.value) byTrip.set(trip.tripId, trip);
+  return { byTrip, at: body.at, headerMs: body.headerMs || null, error: body.error };
+}
+
+/**
+ * Build the answer for one click: the line, its trace, and the ordered stops
+ * of the run the vehicle is on.
+ *
+ * The three come from three different places and each is reported with its
+ * own provenance, because a viewer is entitled to know that the trace is
+ * yesterday's timetable and the stop times are ninety seconds old:
+ *
+ *   - the LINE and its TRACE from the network's static GTFS, via the PAN's
+ *     GeoJSON conversion of it;
+ *   - the STOPS of this run, in order, from the live TripUpdates feed;
+ *   - each stop's POSITION from the same conversion, joined on `stop_id`.
+ *
+ * @param {Object} params
+ * @returns {Promise<Object>} Wire document for `/api/transit-fr/trip`.
+ */
+async function buildPanTripAnswer({ feedId, tripId, routeId }) {
+  const index = await loadPanStaticIndex();
+  const entry = index.feeds?.[feedId];
+  if (!entry) {
+    const error = new Error('unknown transit feed');
+    error.code = 'UNKNOWN_FEED';
+    throw error;
+  }
+
+  const notes = [];
+  const [geometry, updates] = await Promise.all([
+    panRouteGeometry(feedId, entry).catch((error) => {
+      notes.push(error?.code === 'NO_GEOMETRY'
+        ? 'This network publishes no converted line geometry, so no trace is drawn.'
+        : `Line geometry unavailable: ${error?.message || error}`);
+      return null;
+    }),
+    tripId
+      ? panTripUpdates(feedId, entry)
+      : Promise.resolve({ byTrip: new Map(), at: Date.now(), headerMs: null, error: null }),
+  ]);
+
+  const trip = tripId ? geometryTripUpdate(updates, tripId) : null;
+  if (tripId && !trip) {
+    notes.push(updates.error
+      ? `The network's trip-update feed is unavailable (${updates.error}), so this run's stops are not listed.`
+      : 'The trip-update feed does not carry this run, so its stops are not listed.');
+  }
+
+  // The vehicle's own route id wins; a trip update that carries one is only
+  // the fallback, because the two come from the same operator and the vehicle
+  // feed is the one the contact on screen was drawn from.
+  const resolvedRouteId = routeId || trip?.routeId || null;
+  const route = resolvedRouteId ? geometry?.index.routes?.[resolvedRouteId] || null : null;
+  if (resolvedRouteId && geometry && !route) {
+    notes.push(`The static feed publishes no route "${resolvedRouteId}", so no trace is drawn.`);
+  }
+
+  const stops = [];
+  let unlocated = 0;
+  for (const stop of trip?.stops || []) {
+    const point = stop.stopId ? geometry?.index.stops?.[stop.stopId] : null;
+    if (!point) {
+      unlocated += 1;
+      continue;
+    }
+    stops.push({
+      id: stop.stopId,
+      name: point[2] || stop.stopId,
+      code: point[3] || null,
+      lon: point[0],
+      lat: point[1],
+      sequence: stop.sequence,
+      arrivalMs: stop.arrivalMs,
+      departureMs: stop.departureMs,
+      delaySec: stop.delaySec,
+      relationship: stop.relationship,
+    });
+  }
+  if (unlocated) {
+    notes.push(`${unlocated} stop${unlocated === 1 ? '' : 's'} of this run `
+      + `${unlocated === 1 ? 'is' : 'are'} not in the static feed and cannot be placed.`);
+  }
+
+  // Which of the line's traces this run is on, decided against this run's own
+  // stops. With no stops there is no evidence, so every variant is returned
+  // and the answer says so.
+  const variants = route?.shapes || [];
+  const match = stops.length
+    ? chooseTripShape(variants, stops.map((stop) => [stop.lon, stop.lat]))
+    : { index: null, maxDeviationM: null, medianDeviationM: null };
+  const shapes = match.index === null ? variants : [variants[match.index]];
+  if (variants.length > 1 && match.index === null && stops.length) {
+    notes.push(`None of the ${variants.length} published traces for this line holds every `
+      + 'stop of this run, so the whole line is drawn rather than one run of it.');
+  }
+
+  return {
+    status: 'ready',
+    feed: feedId,
+    network: entry.network || null,
+    licence: entry.licenceLabel || null,
+    datasetUrl: entry.datasetUrl || null,
+    route: route
+      ? {
+        id: resolvedRouteId,
+        shortName: route.shortName,
+        longName: route.longName,
+        color: route.color,
+        textColor: route.textColor,
+        variantCount: variants.length,
+      }
+      : (resolvedRouteId ? { id: resolvedRouteId, shortName: null, longName: null, color: null, textColor: null, variantCount: 0 } : null),
+    shapes,
+    shapeLengthM: shapes.length === 1 ? Math.round(pathLengthMeters(shapes[0])) : null,
+    shapeMatch: {
+      matched: match.index !== null,
+      variants: variants.length,
+      maxDeviationM: match.maxDeviationM,
+      medianDeviationM: match.medianDeviationM,
+    },
+    trip: trip
+      ? {
+        id: trip.tripId,
+        headsign: trip.vehicleLabel,
+        directionId: trip.directionId,
+        startDate: trip.startDate,
+        startTime: trip.startTime,
+        delaySec: trip.delaySec,
+        timestampMs: trip.timestampMs,
+      }
+      : (tripId ? { id: tripId, headsign: null, directionId: null, startDate: null, startTime: null, delaySec: null, timestampMs: null } : null),
+    stops,
+    stopsSource: stops.length ? 'trip_updates' : 'none',
+    stopsReported: trip?.stops?.length || 0,
+    tripUpdatesAt: updates.headerMs || updates.at || null,
+    geometry: geometry
+      ? { ...geometry.source, fetchedAt: new Date(geometry.fetchedAt).toISOString() }
+      : null,
+    notes,
+    retrievedAt: new Date().toISOString(),
+  };
+}
+
+/** The trip a click asked about, or null when the feed is not carrying it. */
+function geometryTripUpdate(updates, tripId) {
+  return updates?.byTrip?.get(String(tripId)) || null;
+}
+
 /**
  * Vite plugin: viewport-bounded French real-time transit proxy.
  *
  *   GET /api/transit-fr/feeds                          — index summary
- *   GET /api/transit-fr/vehicles?south&west&north&east — live positions in box
+ *   GET /api/transit-fr/vehicles?south&west&north&east — live positions in box,
+ *       each carrying the operator's own delay and disruption for the run it
+ *       is on
+ *   GET /api/transit-fr/trip?feed&trip&route           — one vehicle's line:
+ *       its trace, the ordered stops of the run it is on, and when the
+ *       operator expects it at each of them
  *
  * The browser never talks to transport.data.gouv.fr directly, for three
  * reasons: the feeds are Protocol Buffers (decoded here, so the client bundle
@@ -5626,8 +6347,12 @@ function panTransitProxy() {
       }
 
       if (route === '/feeds') {
+        // Licences are counted over the QUERYABLE set: a licence that only
+        // appears on a quarantined duplicate is not a licence this proxy is
+        // serving anyone under.
+        const { selectable, duplicates, quarantined } = partitionFeedsByHealth(index.feeds);
         const licences = {};
-        for (const feed of index.feeds) {
+        for (const feed of selectable) {
           const label = feed.licenceLabel || 'Licence non précisée';
           licences[label] = (licences[label] || 0) + 1;
         }
@@ -5636,10 +6361,54 @@ function panTransitProxy() {
           generatedAt: index.generatedAt || null,
           feedCount: index.feeds.length,
           feedsWithBounds: index.feeds.filter((feed) => feed.bbox).length,
+          // Which of the queryable feeds can answer "how late is this bus",
+          // and how many of those cost no second request to ask.
+          feedsWithTripUpdates: selectable.filter((feed) => feed.tripUpdates?.url).length,
+          feedsWithAlerts: selectable.filter((feed) => feed.alerts?.url).length,
+          feedsSharingOneBody: selectable.filter((feed) => feed.tripUpdates?.sameResource).length,
+          // Shipped ≠ queryable, and the difference is named rather than hidden.
+          feedsQueryable: selectable.length,
+          feedsDuplicate: duplicates,
+          feedsQuarantined: quarantined,
           licences,
           maxBoxDeg: PAN_MAX_BOX_DEG,
           maxFeedsPerRequest: PAN_MAX_FEEDS_PER_REQUEST,
         }, { 'Cache-Control': 'public, max-age=300' });
+        return;
+      }
+
+      if (route === '/trip') {
+        // What line is this, where does it go, and which stops does this run
+        // serve. Three sources, one answer — see `buildPanTripAnswer`.
+        const feedId = String(url.searchParams.get('feed') || '').trim();
+        const tripId = String(url.searchParams.get('trip') || '').trim();
+        const routeId = String(url.searchParams.get('route') || '').trim();
+        if (!feedId || (!tripId && !routeId)) {
+          json(400, { error: 'A feed id and at least one of trip / route is required' });
+          return;
+        }
+        try {
+          const payload = await buildPanTripAnswer({
+            feedId,
+            tripId: tripId || null,
+            routeId: routeId || null,
+          });
+          json(200, payload);
+        } catch (error) {
+          if (error?.code === 'UNKNOWN_FEED') {
+            json(404, { error: 'Unknown transit feed' });
+            return;
+          }
+          if (error?.code === 'ENOENT' || /pan_gtfs_static/.test(error?.message || '')) {
+            json(503, {
+              error: 'The line-geometry index is missing — run `node scripts/build-pan-static-index.mjs`',
+              missingIndex: true,
+            });
+            return;
+          }
+          console.warn('[PAN Transit] line unavailable:', error?.message || error);
+          json(503, { error: 'Line geometry is temporarily unavailable' });
+        }
         return;
       }
 
@@ -9153,7 +9922,7 @@ const GEV_REALTIME_TOOLS = [
         layerId: {
           type: 'string',
           description:
-            'Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS); ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; ports/harbors/seaports → local-ports; buoys/sea state/wave height → marine-buoys; bikes/bike share → bikeshare; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio.',
+            'Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS); ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; ports/harbors/seaports → local-ports; airports/aerodromes/airfields/aéroports → local-airports; buoys/sea state/wave height → marine-buoys; bikes/bike share → bikeshare; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio.',
           enum: [
             'flights',
             'military',
@@ -9168,6 +9937,7 @@ const GEV_REALTIME_TOOLS = [
             'local-datacenters',
             'local-dams',
             'local-ports',
+            'local-airports',
             'telegeography-submarine-cables',
             'local-firms',
             'marine-buoys',
@@ -9201,6 +9971,7 @@ const GEV_REALTIME_TOOLS = [
             'local-datacenters',
             'local-dams',
             'local-ports',
+            'local-airports',
             'telegeography-submarine-cables',
             'local-firms',
             'marine-buoys',
@@ -9305,6 +10076,7 @@ const GEV_REALTIME_TOOLS = [
             'local-datacenters',
             'local-dams',
             'local-ports',
+            'local-airports',
             'telegeography-submarine-cables',
             'local-firms',
           ],
@@ -11567,6 +12339,414 @@ function weatherEffectsProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Bison Futé DATEX II — live status of the French national road network
+// ---------------------------------------------------------------------------
+/** Committed geometry (see `scripts/build-datex-traficolor-sites.mjs`). */
+const ROAD_STATUS_SITES_PATH = path.join(process.cwd(), 'config', 'datex_traficolor_sites.json');
+/**
+ * Snapshot TTL. The fastest agglomeration (Bordeaux, Toulouse, Lyon, Limoges)
+ * writes a new file every 60 s and the slowest every 360 s, so asking more
+ * often than a minute cannot return anything new — it only costs the publisher
+ * bandwidth.
+ */
+const ROAD_STATUS_SNAPSHOT_TTL_MS = 60_000;
+/**
+ * The flow/speed snapshot has a strict six-minute cycle: `publicationTime`
+ * 22:24 covers the window 22:24–22:30, the next is 22:30 covering 22:30–22:36.
+ * Re-fetching 1.2 MB inside that window returns the identical document.
+ */
+const ROAD_STATUS_QTV_TTL_MS = 6 * 60_000;
+/** Longest a stale snapshot is still served while upstream is unreachable. */
+const ROAD_STATUS_STALE_MS = 30 * 60_000;
+const ROAD_STATUS_TIMEOUT_MS = 20_000;
+/** The national flow snapshot is 1.2 MB; this is headroom, not an expectation. */
+const ROAD_STATUS_MAX_BYTES = 24 * 1024 * 1024;
+/** How many agglomeration directories are read at once. */
+const ROAD_STATUS_CONCURRENCY = 6;
+const ROAD_STATUS_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'road-status-fr');
+const ROAD_STATUS_CACHE_PATH = path.join(ROAD_STATUS_CACHE_DIR, 'snapshot.json');
+const ROAD_STATUS_USER_AGENT = 'GodsEyeView/1.0 (+https://github.com/bilawalsidhu/gods-eye-view)';
+const _roadStatusRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 90, globalMax: 240 });
+
+/** @type {?object} Parsed `config/datex_traficolor_sites.json`. */
+let _roadStatusSites = null;
+/** @type {?Promise<object>} */
+let _roadStatusSitesPromise = null;
+/** @type {?{at:number, publishedAt:?string, windowStart:?string, windowEnd:?string, measurements:Map}} */
+let _roadStatusQtv = null;
+/** @type {?{at:number, segments:Array<object>, feeds:Array<object>, counts:object}} */
+let _roadStatusSnapshot = null;
+let _roadStatusDiskChecked = false;
+/** @type {Map<string, Promise<object>>} */
+const _roadStatusInFlight = new Map();
+
+/** Load the committed site geometry once per process. */
+function loadRoadStatusSites() {
+  if (_roadStatusSites) return Promise.resolve(_roadStatusSites);
+  if (!_roadStatusSitesPromise) {
+    _roadStatusSitesPromise = fsp.readFile(ROAD_STATUS_SITES_PATH, 'utf8')
+      .then((text) => {
+        const parsed = JSON.parse(text);
+        if (!parsed?.sites || typeof parsed.sites !== 'object') {
+          throw new Error('site index has no `sites` map');
+        }
+        _roadStatusSites = parsed;
+        return parsed;
+      })
+      .catch((error) => {
+        _roadStatusSitesPromise = null;
+        throw error;
+      });
+  }
+  return _roadStatusSitesPromise;
+}
+
+async function fetchRoadStatusText(url) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': ROAD_STATUS_USER_AGENT, Accept: '*/*' },
+    signal: AbortSignal.timeout(ROAD_STATUS_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return readResponseTextCapped(response, ROAD_STATUS_MAX_BYTES);
+}
+
+/** Run `worker` over `items` with a fixed number of concurrent slots. */
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+/**
+ * Refresh the six-minute national flow/speed snapshot, if its window elapsed.
+ *
+ * Failure is NOT fatal to the status snapshot: the colour of a road and the
+ * count on it come from two independent publications, and losing the count
+ * must not blank the colour. The previous measurements are kept and their own
+ * timestamps go out with them, so the client can see they are the last cycle's.
+ */
+async function refreshRoadStatusQtv() {
+  const now = Date.now();
+  if (_roadStatusQtv && now - _roadStatusQtv.at < ROAD_STATUS_QTV_TTL_MS) return _roadStatusQtv;
+  try {
+    const xml = await fetchRoadStatusText(QTV_MEASUREMENTS_URL);
+    const parsed = parseQtvMeasurements(xml);
+    _roadStatusQtv = { at: now, ...parsed };
+  } catch (error) {
+    console.warn('[road-status-fr] flow snapshot unavailable:', error?.message || error);
+    if (!_roadStatusQtv) {
+      _roadStatusQtv = {
+        at: now, publishedAt: null, windowStart: null, windowEnd: null, measurements: new Map(),
+      };
+    }
+  }
+  return _roadStatusQtv;
+}
+
+/**
+ * Read every agglomeration status feed and join it to the committed geometry.
+ *
+ * ONE NATIONAL SNAPSHOT, not one fetch per viewport. The whole country is
+ * ~2 000 status sites and ~830 drawable segments — small enough to hold, and
+ * far cheaper to hold than to re-derive per camera box. Viewport filtering is
+ * therefore a pass over an array, which is why the box ceiling on the endpoint
+ * is 20° rather than the 6° the transit proxy has to enforce.
+ *
+ * SETTLED PER FEED. Sixteen directories, each a separate traffic-management
+ * centre; one being down is one city going grey, not the country going blank.
+ * Every failure is named in the `feeds` array the client renders.
+ *
+ * A SITE IS DRAWN IF EITHER PUBLICATION SPEAKS FOR IT. A located station with
+ * a flow reading and no colour is drawn in the `unknown` grey and carries its
+ * count; a site with a colour and no count is drawn coloured. Requiring both
+ * would silently drop the stations no traffic centre watches.
+ */
+async function refreshRoadStatusSnapshot() {
+  const sitesDoc = await loadRoadStatusSites();
+  const qtv = await refreshRoadStatusQtv();
+  const index = await fetchRoadStatusText(TRAFICOLOR_INDEX_URL);
+  const directories = parseIndexDirectories(index);
+
+  const outcomes = await mapWithConcurrency(directories, ROAD_STATUS_CONCURRENCY, async (directory) => {
+    const base = `${TRAFICOLOR_INDEX_URL}${directory}/`;
+    try {
+      const listing = await fetchRoadStatusText(base);
+      const latest = latestPublicationFile(listing);
+      if (!latest) return { directory, statuses: new Map(), error: 'no publication file' };
+      const body = await fetchRoadStatusText(base + latest);
+      const parsed = parseTraficolorStatuses(body);
+      return {
+        directory, statuses: parsed.statuses, publishedAt: parsed.publishedAt, file: latest, error: null,
+      };
+    } catch (error) {
+      console.warn(`[road-status-fr] ${directory}: ${error?.message || error}`);
+      return { directory, statuses: new Map(), error: String(error?.message || error) };
+    }
+  });
+
+  /** @type {Map<string, {status:string, at:?string, sources:Array<string>}>} */
+  const merged = new Map();
+  const feeds = [];
+  for (const outcome of outcomes) {
+    let drawable = 0;
+    for (const [id, reading] of outcome.statuses) {
+      if (sitesDoc.sites[id]?.c) drawable += 1;
+      const existing = merged.get(id);
+      if (existing) {
+        // Two centres watching one site: keep the worse state, and record both
+        // so the card can say who is reporting it.
+        existing.status = worseRoadStatus(existing.status, reading.status);
+        if (!existing.sources.includes(outcome.directory)) existing.sources.push(outcome.directory);
+        if (reading.at && (!existing.at || reading.at > existing.at)) existing.at = reading.at;
+      } else {
+        merged.set(id, { status: reading.status, at: reading.at, sources: [outcome.directory] });
+      }
+    }
+    feeds.push({
+      directory: outcome.directory,
+      label: agglomerationLabel(outcome.directory),
+      sites: outcome.statuses.size,
+      drawable,
+      publishedAt: outcome.publishedAt || null,
+      file: outcome.file || null,
+      error: outcome.error,
+    });
+  }
+  feeds.sort((a, b) => b.drawable - a.drawable || a.label.localeCompare(b.label));
+
+  const segments = [];
+  const counts = {
+    freeFlow: 0, heavy: 0, congested: 0, impossible: 0, unknown: 0,
+  };
+  let measured = 0;
+  for (const [id, site] of Object.entries(sitesDoc.sites)) {
+    if (!site?.c) continue;
+    const reading = merged.get(id);
+    const measurement = qtv.measurements.get(id);
+    if (!reading && !measurement) continue;
+    const status = reading?.status || 'unknown';
+    counts[status] = (counts[status] || 0) + 1;
+    if (measurement) measured += 1;
+    segments.push({
+      id,
+      c: site.c,
+      s: status,
+      d: site.d || null,
+      a: site.a || null,
+      z: site.z || null,
+      src: reading?.sources || [],
+      at: reading?.at || null,
+      f: measurement?.flowVehH ?? null,
+      v: measurement?.speedKph ?? null,
+      n: measurement?.samples ?? null,
+    });
+  }
+
+  const failed = feeds.filter((feed) => feed.error).length;
+  const snapshot = {
+    at: Date.now(),
+    status: failed && failed === feeds.length ? 'degraded' : 'ready',
+    retrievedAt: new Date().toISOString(),
+    segments,
+    feeds,
+    counts,
+    measured,
+    feedsFailed: failed,
+    statusSites: merged.size,
+    // The two numbers the honesty of this layer rests on: how many sites the
+    // country publishes a position for, and how many it does not.
+    sitesTotal: sitesDoc.stats?.sites ?? null,
+    sitesLocated: sitesDoc.stats?.located ?? null,
+    sitesUnlocated: sitesDoc.stats?.unlocated ?? null,
+    lengthKm: sitesDoc.stats?.lengthKm ?? null,
+    licence: sitesDoc.licence || null,
+    attribution: sitesDoc.attribution || null,
+    datasetPage: sitesDoc.datasetPage || null,
+    geometryGeneratedAt: sitesDoc.generatedAt || null,
+    flow: {
+      publishedAt: qtv.publishedAt,
+      windowStart: qtv.windowStart,
+      windowEnd: qtv.windowEnd,
+      stations: qtv.measurements.size,
+    },
+  };
+  _roadStatusSnapshot = snapshot;
+  void fsp.mkdir(ROAD_STATUS_CACHE_DIR, { recursive: true })
+    .then(() => fsp.writeFile(ROAD_STATUS_CACHE_PATH, JSON.stringify(snapshot), 'utf8'))
+    .catch((error) => console.warn('[road-status-fr] cache write failed:', error?.message || error));
+  return snapshot;
+}
+
+/** Warm the in-memory snapshot from disk once, so a restart is not a cold map. */
+async function readRoadStatusDiskCache() {
+  if (_roadStatusDiskChecked) return;
+  _roadStatusDiskChecked = true;
+  try {
+    const parsed = JSON.parse(await fsp.readFile(ROAD_STATUS_CACHE_PATH, 'utf8'));
+    if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.segments)) _roadStatusSnapshot = parsed;
+  } catch { /* no disk cache yet */ }
+}
+
+/**
+ * Vite plugin: live French national road status.
+ *
+ *   GET /api/road-status-fr/sources                          — publishers and coverage
+ *   GET /api/road-status-fr/segments?south&west&north&east   — coloured segments in box
+ *
+ * The browser never talks to `tipi.bison-fute.gouv.fr` directly: the host is
+ * plain HTTP with no CORS header and no TLS at all, so a page served over
+ * https could not read it even if it were allowed to; one viewport needs
+ * seventeen upstream requests that are worth sharing across clients; and the
+ * geometry join happens against a file the browser has no reason to hold.
+ *
+ * Keyless, Licence Ouverte 2.0.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function roadStatusFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/road-status-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_roadStatusRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      let sitesDoc;
+      try {
+        sitesDoc = await loadRoadStatusSites();
+      } catch (error) {
+        console.warn('[road-status-fr] site index unavailable:', error?.message || error);
+        json(503, {
+          error: 'French road-status geometry is missing — run `npm run road-status:index`',
+          missingIndex: true,
+        });
+        return;
+      }
+
+      if (route === '/sources') {
+        json(200, {
+          source: sitesDoc.statusSource || TRAFICOLOR_INDEX_URL,
+          referentialSource: sitesDoc.source || null,
+          datasetPage: sitesDoc.datasetPage || null,
+          licence: sitesDoc.licence || null,
+          attribution: sitesDoc.attribution || null,
+          geometryGeneratedAt: sitesDoc.generatedAt || null,
+          cycles: sitesDoc.cycles || null,
+          referential: sitesDoc.referential || null,
+          stats: sitesDoc.stats || null,
+          coverage: sitesDoc.coverage || [],
+        }, { 'Cache-Control': 'public, max-age=300' });
+        return;
+      }
+
+      if (route !== '/segments') {
+        json(404, { error: 'Unknown road-status endpoint' });
+        return;
+      }
+
+      const box = validRoadStatusBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      });
+      if (!box) {
+        json(400, { error: `A non-dateline bbox no larger than ${ROAD_STATUS_MAX_BOX_DEG} degrees is required` });
+        return;
+      }
+
+      await readRoadStatusDiskCache();
+      const now = Date.now();
+      const fresh = _roadStatusSnapshot && now - _roadStatusSnapshot.at <= ROAD_STATUS_SNAPSHOT_TTL_MS;
+      let snapshot = fresh ? _roadStatusSnapshot : null;
+      let cacheState = 'HIT';
+      if (!snapshot) {
+        const request = coalesceProxyRequest(_roadStatusInFlight, 'national', refreshRoadStatusSnapshot);
+        cacheState = request.shared ? 'INFLIGHT' : 'MISS';
+        try {
+          snapshot = await request.promise;
+        } catch (error) {
+          console.warn('[road-status-fr] refresh failed:', error?.message || error);
+          const stale = _roadStatusSnapshot;
+          if (!stale || now - stale.at > ROAD_STATUS_STALE_MS) {
+            json(503, { error: 'Live French road status is temporarily unavailable' });
+            return;
+          }
+          snapshot = stale;
+          cacheState = 'STALE';
+        }
+      }
+
+      const inBox = [];
+      const counts = {
+        freeFlow: 0, heavy: 0, congested: 0, impossible: 0, unknown: 0,
+      };
+      let truncated = false;
+      for (const segment of snapshot.segments) {
+        if (!segmentIntersectsBox(segment, box)) continue;
+        if (inBox.length >= ROAD_STATUS_MAX_SEGMENTS) { truncated = true; break; }
+        inBox.push(segment);
+        counts[segment.s] = (counts[segment.s] || 0) + 1;
+      }
+
+      json(200, {
+        status: cacheState === 'STALE' ? 'stale' : snapshot.status,
+        retrievedAt: snapshot.retrievedAt,
+        stale: cacheState === 'STALE',
+        box,
+        segments: inBox,
+        counts,
+        segmentsTruncated: truncated,
+        nationalSegments: snapshot.segments.length,
+        nationalCounts: snapshot.counts,
+        measured: snapshot.measured,
+        feeds: snapshot.feeds,
+        feedsFailed: snapshot.feedsFailed,
+        sitesTotal: snapshot.sitesTotal,
+        sitesLocated: snapshot.sitesLocated,
+        sitesUnlocated: snapshot.sitesUnlocated,
+        lengthKm: snapshot.lengthKm,
+        flow: snapshot.flow,
+        licence: snapshot.licence,
+        attribution: snapshot.attribution,
+        datasetPage: snapshot.datasetPage,
+        geometryGeneratedAt: snapshot.geometryGeneratedAt,
+      }, { 'X-Road-Status-FR': cacheState });
+    });
+  }
+
+  return {
+    name: 'road-status-fr-proxy',
+    configureServer(server) {
+      install(server.middlewares);
+    },
+    configurePreviewServer(server) {
+      install(server.middlewares);
+    },
+  };
+}
+
 function parseJsonEnv(key, fallback) {
   const value = process.env[key];
   if (!value) return fallback;
@@ -11662,6 +12842,7 @@ export default defineConfig(({ mode }) => {
       radioBrowserProxy(),
       gbfsProxy(),
       panTransitProxy(),
+      roadStatusFranceProxy(),
       gbfsFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
