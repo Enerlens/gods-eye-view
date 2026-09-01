@@ -329,6 +329,16 @@ export const DATA_CREDITS = [
       '© each operator / mobility authority',
   },
   {
+    key: 'bison-fute-events',
+    html:
+      'French road events (accidents, closures, roadworks, diversions, restrictions): ' +
+      '<a href="https://transport.data.gouv.fr/datasets/evenements-routiers-sur-le-reseau-routier-national-non-concede" target="_blank" rel="noopener">' +
+      '&Eacute;v&eacute;nementiel-DIR</a>, published as DATEX II by the Directions interd&eacute;partementales des routes ' +
+      'through Bison Fut&eacute; / Tipi for the DGITM ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The publication\u2019s own timestamp is reported by the layer as its data timestamp. ' +
+      'Coverage is the r&eacute;seau routier national NON CONC&Eacute;D&Eacute; only &mdash; the conceded motorways are not in this feed. ' +
+      'A segment is drawn as the straight line between the two endpoints DATEX II publishes; the road\u2019s real geometry is not part of the feed.',
     key: 'irve-charge-points',
     html:
       'EV charge points (France): <em>fichier consolid&eacute; des bornes de recharge pour v&eacute;hicules ' +

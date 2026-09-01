@@ -304,11 +304,13 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'gas-fr', token: '1', disposition: 'enabled-only' }),
   Object.freeze({ id: 'hubeau-hydro', token: 'h', disposition: 'enabled-only' }),
   // A DIGIT, and NOT the `l` this layer was written against: `l` went to
-  // edf-power-plants while this branch sat unmerged. Two layers on one token is
-  // precisely the share link that silently enables the wrong one, so IRVE takes
-  // the next free digit — 1-7 belong to gas-fr, power-grid, rte-generation,
-  // fr-hydro-plants, bdtopo-buildings, local-airports and road-status-fr.
-  Object.freeze({ id: 'irve-fr', token: '8', disposition: 'enabled-only' }),
+  // edf-power-plants while this branch sat unmerged, and `8` — this layer's
+  // first re-pick — went to road-events-fr in the days it stayed unmerged
+  // after that. Twice, the same lesson: two layers on one token is a share
+  // link that silently enables the wrong one. 1-8 are gas-fr, power-grid,
+  // rte-generation, fr-hydro-plants, bdtopo-buildings, local-airports,
+  // road-status-fr and road-events-fr, so IRVE takes `9`.
+  Object.freeze({ id: 'irve-fr', token: '9', disposition: 'enabled-only' }),
   // A DIGIT, for the sixth time and always for the same reason: a–y are all
   // taken and `z` is the canonical UNKNOWN token two tests assert on. `6`
   // because 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants
@@ -334,10 +336,20 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // assertion in this file exists to prevent.
   Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
-  // `7`, continuing the digit overflow below: every letter of "road"/"status"
-  // is taken (r by radio, o by ports, a by ais-live-vessels, d by datacenters,
-  // s by satellites, t by traffic, u by cables), `1`–`6` are claimed (`6` by
-  // the airports pack), and `z` is the canonical UNKNOWN token.
+  // Two road layers, and the digits are how they are told apart in a share
+  // link. `road-status-fr` keeps `7`: it is already on `main`, so links
+  // carrying that token exist, and re-lettering it would silently enable a
+  // DIFFERENT layer for whoever opens one. `road-events-fr` landed after it and
+  // is unreleased, so it takes the next free digit — `1`-`5` are gas-fr,
+  // power-grid, rte-generation, fr-hydro-plants and bdtopo-buildings, `6` is
+  // the airports pack, and `z` is the canonical UNKNOWN token two existing
+  // tests assert on.
+  //
+  // `enabled-only`, although the events layer owns a runtime chip. The chip
+  // selects which temporal scope the row SHOWS, and a share link that silently
+  // hid every planned closure from its recipient would be a worse surprise than
+  // one that opens on the default its author saw.
+  Object.freeze({ id: 'road-events-fr', token: '8', disposition: 'enabled-only' }),
   Object.freeze({ id: 'road-status-fr', token: '7', disposition: 'enabled-only' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
   // A DIGIT, because the letters ran out: a–y are all taken (every letter of
