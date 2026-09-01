@@ -370,6 +370,19 @@ const OVERPASS_UPSTREAMS = [
   'https://overpass.private.coffee/api/interpreter',
 ];
 /**
+ * Agent string for every Overpass request.
+ *
+ * The OSM convention is `app/version (+contact)`, and it is not decorative:
+ * overpass-api.de scores requests for abuse at its Apache front-end and answers
+ * a bare `406 Not Acceptable` to the ones it dislikes. Measured 2026-09-01 from
+ * one dev machine, same query, interleaved to control for server load: the old
+ * `gods-eye-view-overpass-proxy/1.0` drew 406 on 8 of 11 attempts, this string
+ * on 0 of 11. The rotation fix below is what makes a 406 survivable; this is
+ * what makes it rare, and it gives the operators someone to contact instead of
+ * an anonymous robot to ban.
+ */
+const OVERPASS_USER_AGENT = 'gods-eye-view/1.0 (+https://github.com/bilawalsidhu/gods-eye-view)';
+/**
  * TTL for FRESH cached Overpass responses (ms). Road geometry is static for
  * months — the original 45 s TTL forced a public-mirror round-trip on nearly
  * every viewport revisit and left nothing to serve when the mirrors 502
@@ -4647,6 +4660,7 @@ function petiteEnfanceFranceProxy() {
   };
 }
 
+
 /**
  * ODRÉ French gas-system proxy — keyless, Licence Ouverte 2.0.
  *
@@ -6125,30 +6139,68 @@ function sendOverpassResponse(res, payload, cacheStatus = 'MISS') {
 }
 
 /**
+ * What one mirror's answer means for the rotation: keep it, or try the next.
+ *
+ * A 4xx is a MIRROR verdict, not a query verdict. overpass-api.de's front-end
+ * answers `406 Not Acceptable` to requests its abuse filter dislikes — a plain
+ * Apache HTML page, matching neither the rate-limit nor the runtime-error
+ * sniffer — and field test 2026-09-01 caught it doing so on the majority of
+ * requests carrying the old `…-overpass-proxy/1.0` agent. Accepting that as a
+ * terminal answer stopped the rotation dead at mirror 1 and handed the caller a
+ * 406, which is exactly what "Sites militaires — Error loading" was: the layer
+ * treats `status >= 400` as a failure, while three healthy mirrors sat untried
+ * below. The cameras and power-grid probes already rotate on `>= 400`; this is
+ * the same rule, and it is why those layers kept working through the same
+ * outage.
+ *
+ * A genuinely malformed query still surfaces: every mirror rejects it, no
+ * rate-limit answer exists to outrank it, and the caller gets the 4xx back.
+ * @param {{status:number, rateLimited:boolean, runtimeError:boolean}} attempt
+ * @returns {'accept'|'rate-limited'|'runtime-error'|'server-error'|'client-error'}
+ */
+export function overpassAttemptDisposition({ status, rateLimited, runtimeError }) {
+  if (rateLimited) return 'rate-limited';
+  // A 200 body carrying a runtime error / timeout is a transient upstream
+  // failure — skip to the next mirror rather than returning or caching it.
+  if (runtimeError) return 'runtime-error';
+  if (status >= 500) return 'server-error';
+  if (status >= 400) return 'client-error';
+  return 'accept';
+}
+
+/**
  * Try each Overpass upstream in order until one succeeds.
  *
- * Skips rate-limited or 5xx responses and falls through to the next
- * mirror. If all mirrors fail, returns the last rate-limited payload
- * (if any) or throws the last error.
+ * Skips rate-limited, 4xx and 5xx responses and falls through to the next
+ * mirror. If all mirrors fail, returns the last rate-limited payload, else the
+ * last 4xx payload, else throws the last error.
  *
  * @param {string} body - URL-encoded Overpass QL query body.
  * @param {number} [maxResponseBytes] Endpoint-specific response cap.
+ * @param {object} [deps] Injection seam for tests.
+ * @param {Array<string>} [deps.endpoints] Mirrors to try, in order.
+ * @param {typeof fetch} [deps.fetchImpl] Fetch implementation.
  * @returns {Promise<{status:number,body:string,contentType:string,endpoint:string,rateLimited:boolean}>}
  */
-async function fetchOverpassPayload(body, maxResponseBytes = OVERPASS_MAX_RESPONSE_BYTES) {
+export async function fetchOverpassPayload(
+  body,
+  maxResponseBytes = OVERPASS_MAX_RESPONSE_BYTES,
+  { endpoints = OVERPASS_UPSTREAMS, fetchImpl = fetch } = {},
+) {
   let lastError = null;
   let lastRateLimitPayload = null;
+  let lastClientErrorPayload = null;
 
-  for (const endpoint of OVERPASS_UPSTREAMS) {
+  for (const endpoint of endpoints) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
 
     try {
-      const upstream = await fetch(endpoint, {
+      const upstream = await fetchImpl(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'gods-eye-view-overpass-proxy/1.0',
+          'User-Agent': OVERPASS_USER_AGENT,
         },
         body,
         signal: controller.signal,
@@ -6168,17 +6220,21 @@ async function fetchOverpassPayload(body, maxResponseBytes = OVERPASS_MAX_RESPON
         runtimeError,
       };
 
-      if (rateLimited) {
+      const disposition = overpassAttemptDisposition(payload);
+      if (disposition === 'rate-limited') {
         lastRateLimitPayload = payload;
         continue;
       }
-      // A 200 body carrying a runtime error / timeout is a transient upstream
-      // failure — skip to the next mirror rather than returning or caching it.
-      if (runtimeError) {
+      if (disposition === 'runtime-error') {
         lastError = new Error(`Overpass runtime error (${endpoint})`);
         continue;
       }
-      if (status >= 500) {
+      if (disposition === 'client-error') {
+        lastClientErrorPayload = payload;
+        lastError = new Error(`Overpass upstream refused with ${status} (${endpoint})`);
+        continue;
+      }
+      if (disposition === 'server-error') {
         lastError = new Error(`Overpass upstream returned ${status} (${endpoint})`);
         continue;
       }
@@ -6194,7 +6250,11 @@ async function fetchOverpassPayload(body, maxResponseBytes = OVERPASS_MAX_RESPON
     }
   }
 
+  // Every mirror refused. A rate-limit answer is the most actionable thing the
+  // caller can be told; a 4xx is next (it is the only shape that can carry a
+  // real query error); a bare throw is the last resort.
   if (lastRateLimitPayload) return lastRateLimitPayload;
+  if (lastClientErrorPayload) return lastClientErrorPayload;
   throw lastError || new Error('All Overpass upstreams failed');
 }
 
@@ -6287,7 +6347,12 @@ function overpassProxy() {
           _overpassConcurrent += 1;
           const requestPromise = fetchOverpassPayload(safeBody)
             .then((payload) => {
-              if (payload.status < 500 && !payload.rateLimited && !payload.runtimeError) {
+              // Cache SUCCESS only. The old `< 500` test admitted 4xx, so a
+              // front-end refusal (the 406 above) was written to memory AND to
+              // disk under a 7-to-30-day TTL — one bad minute upstream took
+              // every Overpass-backed layer down for a month, and re-serving it
+              // as a HIT meant the mirrors were never even asked again.
+              if (payload.status < 400 && !payload.rateLimited && !payload.runtimeError) {
                 const entry = { ...payload, cachedAt: Date.now() };
                 _overpassCache.set(cacheKey, entry);
                 trimOverpassCache();
@@ -6302,10 +6367,10 @@ function overpassProxy() {
 
           _overpassInFlight.set(cacheKey, requestPromise);
           const payload = await requestPromise;
-          // Degraded upstream (rate-limited on every mirror / 5xx / runtime
-          // error): last-good roads beat an empty layer — serve stale from
-          // memory or disk at ANY age before surfacing the failure.
-          if (payload.rateLimited || payload.runtimeError || payload.status >= 500) {
+          // Degraded upstream (rate-limited on every mirror / 4xx / 5xx /
+          // runtime error): last-good roads beat an empty layer — serve stale
+          // from memory or disk at ANY age before surfacing the failure.
+          if (payload.rateLimited || payload.runtimeError || payload.status >= 400) {
             const stale = _overpassCache.get(cacheKey) || await readOverpassDisk(cacheKey, Infinity);
             if (stale) {
               sendOverpassResponse(res, stale, 'STALE');
@@ -9490,7 +9555,7 @@ async function fetchOsmCameraElements(ql, deadline) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'gods-eye-view-cctv-proxy/1.0',
+          'User-Agent': OVERPASS_USER_AGENT,
         },
         body: `data=${encodeURIComponent(ql)}`,
         signal: AbortSignal.timeout(Math.min(remainingMs, attemptMs)),
@@ -12950,7 +13015,7 @@ async function fetchPowerGridElements(ql, deadline) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'gods-eye-view-power-grid-proxy/1.0',
+          'User-Agent': OVERPASS_USER_AGENT,
         },
         body: `data=${encodeURIComponent(ql)}`,
         signal: AbortSignal.timeout(Math.min(remainingMs, attemptMs)),
