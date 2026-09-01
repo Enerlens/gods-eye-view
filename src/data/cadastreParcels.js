@@ -1,4 +1,6 @@
 import * as Cesium from 'cesium';
+import { PbfReader } from 'pbf';
+import { VectorTile } from '@mapbox/vector-tile';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import {
@@ -7,6 +9,16 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { boxKey, snapBoxOutward } from './viewportBox.js';
+import { bdtopoTileUrl, bdtopoTiles, BDTOPO_LAYER_NAME } from './bdtopoBuildingsFeed.js';
+import {
+  addressLine,
+  buildingLines,
+  dimensionLine,
+  projectBanAddress,
+  summarizeParcelBuildings,
+  BAN_REVERSE_URL,
+  BUILDING_TILE_CAP,
+} from './cadastreParcelDetail.js';
 import {
   CADASTRE_AREA_TOLERANCE,
   CADASTRE_BOX_STEP_DEG,
@@ -20,6 +32,8 @@ import {
   cadastreLoadingLabel,
   cadastreParcelTitle,
   cadastreRequestBox,
+  pointInPolygons,
+  polygonsBounds,
   cadastreScaleBand,
   cadastreSheetLine,
   cadastreToleranceLine,
@@ -161,6 +175,9 @@ let _moveEndRemover = null;
 let _mapStackListener = null;
 let _classificationType = Cesium.ClassificationType.BOTH;
 let _fetchImpl = null;
+/** IDU → resolved detail, so re-clicking a parcel is free. */
+const _detailCache = new Map();
+let _detailAbort = null;
 
 /**
  * Ground-clamped classification for one map stack.
@@ -278,18 +295,35 @@ export function parcelBand(parcel, sheets = {}) {
  * @param {object} [sheets]
  * @returns {?object}
  */
-export function createCadastreSelectedOverlayEntry(record, communes = {}, sheets = {}) {
+export function createCadastreSelectedOverlayEntry(record, communes = {}, sheets = {}, detail = null) {
   if (!record?.id || !record.position) return null;
   const parcel = record.parcel || {};
   const sheet = parcel.k ? sheets[parcel.k] : null;
-  const details = [cadastreCommuneLine(parcel, communes)];
+  const details = [];
 
+  // The address FIRST, because it is the question a reader actually has, and
+  // because everything below it is only meaningful once they know which piece
+  // of ground is being described. Absent until the lookup answers, and absent
+  // for good when the nearest address point is too far to be about this parcel.
+  const address = addressLine(detail?.address);
+  if (address) details.push(address);
+
+  details.push(cadastreCommuneLine(parcel, communes));
   if (parcel.u) details.push(`IDU ${parcel.u}`);
   // Only when it is not the `000` that most of France carries: a line saying
   // "préfixe 000" is a line spent on the absence of a subdivision.
   if (parcel.b && parcel.b !== '000') details.push(`Préfixe de section ${parcel.b}`);
 
-  details.push(...cadastreAreaLines(parcel));
+  const areas = cadastreAreaLines(parcel);
+  const span = dimensionLine(record.polygons);
+  // Folded onto the drawn-area line rather than given a row of its own: the
+  // card is already long and the dimension is a qualifier of the surface beside
+  // it, not a separate finding.
+  if (span && areas.length > 1) areas[areas.length - 1] += ` · ${span.replace('Plus grande dimension ', '')} de long`;
+  details.push(...areas);
+
+  if (detail?.buildings) details.push(...buildingLines(detail.buildings, detail.partial));
+
   details.push(cadastreSheetLine(sheet, parcel));
   details.push(cadastreToleranceLine(sheet));
   details.push('Document fiscal — la limite de propriété se fixe par bornage');
@@ -317,7 +351,15 @@ export function createCadastreSelectedOverlayEntry(record, communes = {}, sheets
   };
 }
 
-/** Drop the drawn primitives and everything that indexes into them. */
+/**
+ * Drop the drawn primitives and everything that indexes into them.
+ *
+ * Clears the CARD too, and that is not tidiness. `_selectedId` indexes into
+ * `_records`, so dropping the records without dropping the overlay leaves a
+ * card on screen describing a parcel that is no longer drawn, no longer
+ * highlighted, and no longer selectable — a panel the operator cannot dismiss
+ * by clicking away because nothing under it answers.
+ */
 function clearPrimitives() {
   const primitives = _viewer?.scene?.primitives;
   if (primitives) {
@@ -327,7 +369,10 @@ function clearPrimitives() {
   _fills = null;
   _outlines = null;
   _records = new Map();
-  _selectedId = null;
+  if (_selectedId) {
+    _selectedId = null;
+    _overlayHost.clearSource(CADASTRE_SELECTED_OVERLAY_SOURCE_ID);
+  }
 }
 
 /** Cesium positions for one ring, dropping the repeated closing vertex. */
@@ -356,6 +401,11 @@ function ringPositions(ring) {
  * @param {Array<object>} records
  */
 function drawRecords(records) {
+  // A pan re-requests the box and rebuilds every record, which would drop the
+  // selection the operator just made — one street of movement and the card
+  // they were reading is gone. The parcel itself has not moved, so it is
+  // matched back by IDU after the rebuild.
+  const selectedIdu = _records.get(_selectedId)?.parcel?.u || null;
   clearPrimitives();
   if (!records.length || !_viewer) return;
 
@@ -429,6 +479,17 @@ function drawRecords(records) {
     _viewer.scene.primitives.add(_outlines);
   }
   governorRequestRender('cadastre-draw');
+
+  // Restored AFTER the primitives exist, so the highlight lands on the new
+  // instance table rather than on the one that was just thrown away. A parcel
+  // that panned out of the box is not restored, and its card is already gone.
+  if (selectedIdu) {
+    for (const [id, record] of _records) {
+      if (record.parcel?.u !== selectedIdu) continue;
+      selectParcel(id);
+      break;
+    }
+  }
 }
 
 /** Apply a classification surface to whatever is currently drawn. */
@@ -466,6 +527,8 @@ function applyInstanceColor(primitive, id, color) {
 }
 
 function clearSelection() {
+  _detailAbort?.abort();
+  _detailAbort = null;
   if (_selectedId) {
     const record = _records.get(_selectedId);
     if (record) {
@@ -481,6 +544,87 @@ function clearSelection() {
   _overlayHost.clearSource(CADASTRE_SELECTED_OVERLAY_SOURCE_ID);
 }
 
+/** Publish the card for the current selection, with whatever detail is known. */
+function publishSelection(record, detail) {
+  const entry = createCadastreSelectedOverlayEntry(
+    record, _payload?.communes, _payload?.sheets, detail,
+  );
+  if (!entry) return;
+  _overlayHost.setEntries(
+    CADASTRE_SELECTED_OVERLAY_SOURCE_ID,
+    [entry],
+    CADASTRE_SELECTED_OVERLAY_SOURCE_OPTIONS,
+  );
+  governorRequestRender('cadastre-select');
+}
+
+/** One BD TOPO vector tile, decoded. A 404 means "no data here", not a failure. */
+async function fetchBuildingTile(tile, signal) {
+  const response = await fetch(bdtopoTileUrl(tile), { signal });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error(`BD TOPO ${tile.z}/${tile.x}/${tile.y}: HTTP ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (!bytes.length) return [];
+  const layer = new VectorTile(new PbfReader(bytes)).layers?.[BDTOPO_LAYER_NAME];
+  if (!layer) return [];
+  const features = [];
+  for (let i = 0; i < layer.length; i += 1) {
+    features.push(layer.feature(i).toGeoJSON(tile.x, tile.y, tile.z));
+  }
+  return features;
+}
+
+/**
+ * Everything a parcel does not say about itself: its address and what is built
+ * on it.
+ *
+ * Two other sources, fetched only on demand — one click, not one viewport — and
+ * both keyless and CORS-open, so neither goes through the proxy. The BD TOPO
+ * tiles carry a 21-day browser cache and the layer next door already reads
+ * them; BAN is one 600-byte answer per click. Memoised per IDU, because the
+ * commonest gesture after clicking a parcel is clicking it again.
+ *
+ * Failures are absences, never errors: the card is complete and correct without
+ * either of these, and a parcel that cannot be geocoded is not a broken parcel.
+ * @param {object} record
+ * @param {AbortSignal} signal
+ * @returns {Promise<object>}
+ */
+async function resolveParcelDetail(record, signal) {
+  const parcel = record.parcel || {};
+  const anchor = Array.isArray(parcel.p) ? parcel.p : null;
+  const { tiles, overflow } = record.bounds
+    ? bdtopoTiles(record.bounds, undefined, BUILDING_TILE_CAP)
+    : { tiles: [], overflow: false };
+
+  const [address, buildings] = await Promise.all([
+    (async () => {
+      if (!anchor) return null;
+      try {
+        const params = new URLSearchParams({ lon: String(anchor[0]), lat: String(anchor[1]), limit: '1' });
+        const response = await fetch(`${BAN_REVERSE_URL}?${params}`, { signal });
+        if (!response.ok) return null;
+        return projectBanAddress(await response.json());
+      } catch {
+        return null;
+      }
+    })(),
+    (async () => {
+      if (!tiles.length) return null;
+      try {
+        const decoded = await Promise.all(tiles.map((tile) => fetchBuildingTile(tile, signal)));
+        return summarizeParcelBuildings(decoded.flat(), {
+          polygons: record.polygons,
+          areaM2: parcel.a,
+        });
+      } catch {
+        return null;
+      }
+    })(),
+  ]);
+  return { address, buildings, partial: overflow };
+}
+
 function selectParcel(id) {
   clearSelection();
   const record = _records.get(id);
@@ -489,24 +633,120 @@ function selectParcel(id) {
   const highlight = Cesium.Color.fromCssColorString(SELECTED_COLOR);
   applyInstanceColor(_fills, id, highlight.withAlpha(0.55));
   applyInstanceColor(_outlines, id, highlight);
-  const entry = createCadastreSelectedOverlayEntry(record, _payload?.communes, _payload?.sheets);
-  if (entry) {
-    _overlayHost.setEntries(
-      CADASTRE_SELECTED_OVERLAY_SOURCE_ID,
-      [entry],
-      CADASTRE_SELECTED_OVERLAY_SOURCE_OPTIONS,
-    );
-  }
-  governorRequestRender('cadastre-select');
+
+  // The parcel's own card goes up IMMEDIATELY. Everything the cadastre itself
+  // publishes is already in hand, and holding it back behind two network calls
+  // would trade a complete answer now for a slightly fuller one later.
+  const key = record.parcel?.u || id;
+  const cached = _detailCache.get(key);
+  publishSelection(record, cached || null);
+  if (cached) return;
+
+  _detailAbort?.abort();
+  _detailAbort = new AbortController();
+  const signal = _detailAbort.signal;
+  void resolveParcelDetail(record, signal)
+    .then((detail) => {
+      if (signal.aborted) return;
+      _detailCache.set(key, detail);
+      // The operator may have clicked elsewhere while this was in flight, and
+      // repainting the previous parcel's card over the current one is worse
+      // than never enriching it at all.
+      if (_selectedId === id) publishSelection(record, detail);
+    })
+    .catch(() => { /* an absent address is an absence, not an error */ });
 }
 
-/** Resolve a Cesium pick into one of this layer's render ids. */
+/**
+ * Resolve a Cesium pick into one of this layer's render ids.
+ *
+ * NOT the selection path — see `installClickHandler`, which resolves a click
+ * geometrically because the pick is unreliable on classification geometry at a
+ * grazing angle. This remains because `registerPickOwner` still has to be able
+ * to say "that instance is ours" so another layer's click handler does not
+ * claim a click that landed on our parcels.
+ */
 export function resolveCadastrePickId(picked, has = (id) => _records.has(id)) {
   if (!picked) return null;
   if (typeof picked.id === 'string' && has(picked.id)) return picked.id;
   const nested = picked.id?.id;
   if (typeof nested === 'string' && has(nested)) return nested;
   return null;
+}
+
+/**
+ * Where on the globe a screen point lands, in degrees.
+ *
+ * Three sources, in the order of how well each answers "what is the operator
+ * pointing at". The rendered terrain first, because that is the surface the
+ * parcels are draped on and it is exact. The depth buffer second, which is what
+ * answers on the photoreal stack where the globe is hidden. The bare ellipsoid
+ * last, which ignores relief and is wrong by the local terrain height times the
+ * tangent of the view angle — acceptable as a floor, never as a first choice.
+ * @param {?Cesium.Viewer} viewer
+ * @param {{x:number, y:number}} windowPosition
+ * @returns {?{lon:number, lat:number}}
+ */
+export function cadastreGroundPoint(viewer, windowPosition) {
+  const scene = viewer?.scene;
+  if (!scene || !windowPosition) return null;
+  const ellipsoid = scene.globe?.ellipsoid || Cesium.Ellipsoid.WGS84;
+  const toDegrees = (cartesian) => {
+    if (!cartesian) return null;
+    const carto = ellipsoid.cartesianToCartographic(cartesian);
+    if (!carto) return null;
+    const lon = Cesium.Math.toDegrees(carto.longitude);
+    const lat = Cesium.Math.toDegrees(carto.latitude);
+    return Number.isFinite(lon) && Number.isFinite(lat) ? { lon, lat } : null;
+  };
+
+  if (scene.globe?.show !== false) {
+    try {
+      const ray = scene.camera?.getPickRay?.(windowPosition);
+      const hit = ray ? scene.globe.pick(ray, scene) : null;
+      const point = toDegrees(hit);
+      if (point) return point;
+    } catch { /* no terrain resident under this pixel */ }
+  }
+  try {
+    if (scene.pickPositionSupported) {
+      const point = toDegrees(scene.pickPosition(windowPosition));
+      if (point) return point;
+    }
+  } catch { /* no depth texture */ }
+  try {
+    return toDegrees(scene.camera?.pickEllipsoid?.(windowPosition, ellipsoid));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The drawn parcel under a ground point, or null.
+ *
+ * Smallest-first on a tie. Cadastral parcels do not overlap by construction, so
+ * a tie means the data disagrees with itself; answering with the smaller one
+ * picks the more specific claim rather than whichever happened to load first.
+ * @param {number} lon
+ * @param {number} lat
+ * @param {Map<string, object>} [records]
+ * @returns {?string} The render id.
+ */
+export function cadastreRecordAt(lon, lat, records = _records) {
+  let bestId = null;
+  let bestArea = Infinity;
+  for (const [id, record] of records) {
+    const bounds = record.bounds;
+    // The bbox rejects almost everything for almost nothing — at a few thousand
+    // parcels it is the difference between a hit test and a stutter.
+    if (bounds && (lat < bounds.south || lat > bounds.north
+      || lon < bounds.west || lon > bounds.east)) continue;
+    if (!pointInPolygons(record.polygons, lon, lat)) continue;
+    const area = Number(record.parcel?.a);
+    const size = Number.isFinite(area) ? area : Infinity;
+    if (size < bestArea) { bestArea = size; bestId = id; }
+  }
+  return bestId;
 }
 
 function onKeyDown(event) {
@@ -517,7 +757,17 @@ function installClickHandler(viewer) {
   if (_clickHandler) return;
   _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
   _clickHandler.setInputAction((click) => {
-    const id = resolveCadastrePickId(viewer.scene.pick(click.position));
+    // Resolved GEOMETRICALLY, not with `scene.pick`. Ground-classification
+    // geometry answers a pick with whichever shadow volume the ray enters
+    // first, and at the grazing angles this globe is flown at that is not
+    // reliably the parcel visible under the pointer — clicking one parcel lit
+    // up a shape somewhere else. The polygons are already in memory, so the
+    // question is answered against them directly.
+    //
+    // A click that lands on no parcel clears the selection, and that is a real
+    // answer rather than a miss: the gaps in this layer are the street.
+    const point = cadastreGroundPoint(viewer, click.position);
+    const id = point ? cadastreRecordAt(point.lon, point.lat) : null;
     if (id) selectParcel(id);
     else if (_selectedId) clearSelection();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
@@ -546,6 +796,7 @@ export function buildRecords(payload) {
       id: `cadastre:${parcel.u || `${parcel.m || '?'}:${records.length}`}`,
       parcel,
       polygons: parcel.g,
+      bounds: polygonsBounds(parcel.g),
       bandId: band.id,
       color: band.color,
       position: anchor
@@ -823,13 +1074,31 @@ const cadastreParcelsLayer = {
     return true;
   },
 
-  /** The selected parcel's card lines, or null. @returns {?object} */
+  /**
+   * The selected parcel's card lines, or null.
+   *
+   * Reads the SAME detail the overlay is showing rather than rebuilding the
+   * entry from the parcel alone. Without that this returns a card the operator
+   * is not looking at — it silently drops the address and the building lines,
+   * which resolve after the first paint, and any check written against it
+   * reports a card that has never been on screen.
+   * @returns {?object}
+   */
   getSelectedParcel() {
     if (!_selectedId) return null;
     const record = _records.get(_selectedId);
     if (!record) return null;
-    const entry = createCadastreSelectedOverlayEntry(record, _payload?.communes, _payload?.sheets);
-    return entry ? { id: _selectedId, idu: record.parcel.u, title: entry.title, details: entry.details } : null;
+    const detail = _detailCache.get(record.parcel?.u || _selectedId) || null;
+    const entry = createCadastreSelectedOverlayEntry(
+      record, _payload?.communes, _payload?.sheets, detail,
+    );
+    return entry ? {
+      id: _selectedId,
+      idu: record.parcel.u,
+      title: entry.title,
+      details: entry.details,
+      detailResolved: Boolean(detail),
+    } : null;
   },
 
   /**
@@ -926,8 +1195,10 @@ const cadastreParcelsLayer = {
 
 /** Seed rendered records so selection/card/legend paths run without WebGL. */
 export function _setCadastreStateForTest({
-  viewer, records, payload, overlayHost, enabled = true, status = 'ready', fetchImpl,
+  viewer, records, payload, overlayHost, enabled = true, status = 'ready', fetchImpl, detail,
 } = {}) {
+  _detailCache.clear();
+  if (detail) for (const [idu, value] of Object.entries(detail)) _detailCache.set(idu, value);
   _viewer = viewer || null;
   if (records) _records = records instanceof Map ? records : new Map(Object.entries(records));
   if (payload !== undefined) _payload = payload;

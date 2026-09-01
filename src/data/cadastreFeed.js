@@ -533,6 +533,90 @@ export function parcelAnchor(geometry) {
 }
 
 /**
+ * Axis-aligned bounds of a parcel's rings, as a cheap rejection test.
+ *
+ * Precomputed once per record and checked before any ray casting: a click has
+ * to be resolved against every parcel in the box, and at 5 000 of them four
+ * comparisons each is the difference between a hit test and a stutter.
+ * @param {Array<Array<Array<number[]>>>} polygons
+ * @returns {?{south:number, west:number, north:number, east:number}}
+ */
+export function polygonsBounds(polygons) {
+  let south = Infinity;
+  let west = Infinity;
+  let north = -Infinity;
+  let east = -Infinity;
+  for (const polygon of polygons || []) {
+    for (const point of polygon?.[0] || []) {
+      if (!Array.isArray(point)) continue;
+      const lon = point[0];
+      const lat = point[1];
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+      if (lat < south) south = lat;
+      if (lat > north) north = lat;
+      if (lon < west) west = lon;
+      if (lon > east) east = lon;
+    }
+  }
+  return Number.isFinite(south) && Number.isFinite(west) ? {
+    south, west, north, east,
+  } : null;
+}
+
+/**
+ * Ray-casting point-in-ring. `ring` is `[[lon, lat], …]`, open or closed.
+ * @param {number} lon
+ * @param {number} lat
+ * @param {Array<number[]>} ring
+ * @returns {boolean}
+ */
+export function pointInRing(lon, lat, ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const a = ring[j];
+    const b = ring[i];
+    if (!Array.isArray(a) || !Array.isArray(b)) continue;
+    const intersects = ((b[1] > lat) !== (a[1] > lat))
+      && (lon < ((a[0] - b[0]) * (lat - b[1])) / (a[1] - b[1]) + b[0]);
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+/**
+ * Whether a point falls on a parcel — inside one of its outer rings and inside
+ * none of that ring's holes.
+ *
+ * This is what resolves a CLICK, and it deliberately replaced asking Cesium
+ * what was under the cursor. `scene.pick` against ground-classification
+ * geometry answers with whichever shadow volume the ray enters first, and at
+ * the grazing angles this globe is normally flown at that is not reliably the
+ * parcel the operator can see under their pointer — a click would light up a
+ * shape somewhere else entirely. The polygons are already in memory, so
+ * answering the question directly is both exact and cheaper than the pick.
+ *
+ * The hole test is not a nicety: click inside the Palais-Royal's courtyard and
+ * the honest answer is that you have not clicked the parcel.
+ * @param {Array<Array<Array<number[]>>>} polygons
+ * @param {number} lon
+ * @param {number} lat
+ * @returns {boolean}
+ */
+export function pointInPolygons(polygons, lon, lat) {
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return false;
+  for (const polygon of polygons || []) {
+    if (!Array.isArray(polygon) || !pointInRing(lon, lat, polygon[0])) continue;
+    let inHole = false;
+    for (let h = 1; h < polygon.length; h += 1) {
+      if (pointInRing(lon, lat, polygon[h])) { inHole = true; break; }
+    }
+    if (!inHole) return true;
+  }
+  return false;
+}
+
+/**
  * Sutherland-Hodgman clip of a convex-or-concave ring against an axis-aligned
  * box. Used only for the coverage fraction below.
  * @param {Array<number[]>} ring

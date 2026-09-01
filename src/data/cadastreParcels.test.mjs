@@ -17,6 +17,7 @@ import cadastreParcelsLayer, {
   CADASTRE_SELECTED_OVERLAY_SOURCE_OPTIONS,
   buildRecords,
   cadastreClassificationTypeForScene,
+  cadastreRecordAt,
   cadastreClassificationTypeForStack,
   cadastreViewportBox,
   createCadastreSelectedOverlayEntry,
@@ -30,6 +31,8 @@ import cadastreParcelsLayer, {
   _setCadastreStateForTest,
 } from './cadastreParcels.js';
 import {
+  pointInPolygons,
+  pointInRing,
   CADASTRE_MAX_ALTITUDE_M,
   CADASTRE_MAX_BOX_DEG,
   CADASTRE_SCALE_BANDS,
@@ -232,6 +235,86 @@ test('the card is a protected single-entry source', () => {
 
 // ── Selection ───────────────────────────────────────────────────────────────
 
+test('a click is resolved against the geometry, not against Cesium\'s pick', () => {
+  // `scene.pick` on ground-classification geometry answers with whichever
+  // shadow volume the ray enters first, and at the grazing angles this globe is
+  // flown at that is not reliably the parcel under the pointer — clicking one
+  // parcel lit up a shape somewhere else. The polygons are in memory, so the
+  // question is answered against them.
+  const map = new Map(RECORDS.map((r) => [r.id, r]));
+  for (const record of RECORDS) {
+    // The anchor is the area centroid of the largest ring, which for these
+    // fixture parcels is inside the parcel.
+    const [lon, lat] = record.parcel.p;
+    if (!pointInPolygons(record.polygons, lon, lat)) continue;
+    assert.equal(
+      cadastreRecordAt(lon, lat, map),
+      record.id,
+      `${record.parcel.u} did not resolve to itself at its own centroid`,
+    );
+  }
+});
+
+test('clicking a courtyard selects nothing, because nothing is what is there', () => {
+  // The Palais-Royal's parcel carries an interior ring. A point inside that
+  // ring is inside the parcel's OUTER boundary and on none of its land, and
+  // the hole test is the only thing that knows the difference.
+  const palaisRoyal = recordFor('75101000AJ0002');
+  const hole = palaisRoyal.polygons[0][1];
+  assert.ok(hole, 'the fixture parcel should carry a hole');
+  let lon = 0;
+  let lat = 0;
+  for (const [x, y] of hole) { lon += x; lat += y; }
+  lon /= hole.length;
+  lat /= hole.length;
+
+  assert.equal(pointInRing(lon, lat, palaisRoyal.polygons[0][0]), true, 'inside the outer ring');
+  assert.equal(pointInRing(lon, lat, hole), true, 'and inside the courtyard');
+  assert.equal(pointInPolygons(palaisRoyal.polygons, lon, lat), false, 'so NOT on the parcel');
+  assert.equal(cadastreRecordAt(lon, lat, new Map([[palaisRoyal.id, palaisRoyal]])), null);
+});
+
+test('a click on the street selects nothing rather than the nearest parcel', () => {
+  // The gaps in this layer are the public domain. Answering a click there with
+  // "the closest thing I have" would invent a parcel where France publishes
+  // none — which is the layer's own headline, undone by its click handler.
+  const map = new Map(RECORDS.map((r) => [r.id, r]));
+  assert.equal(cadastreRecordAt(0, 0, map), null);
+  assert.equal(cadastreRecordAt(2.35, 48.86, map), null, 'a Paris point on no fixture parcel');
+});
+
+test('both parts of a split parcel answer to the same record', () => {
+  const marseille = recordFor('132038120D0037');
+  const map = new Map([[marseille.id, marseille]]);
+  let hits = 0;
+  for (const polygon of marseille.polygons) {
+    const ring = polygon[0];
+    let lon = 0;
+    let lat = 0;
+    for (const [x, y] of ring) { lon += x; lat += y; }
+    lon /= ring.length; lat /= ring.length;
+    if (cadastreRecordAt(lon, lat, map) === marseille.id) hits += 1;
+  }
+  assert.ok(hits >= 1, 'at least one part should resolve; neither may resolve elsewhere');
+});
+
+test('the bbox prefilter never rejects a point the polygon would have accepted', () => {
+  // The prefilter is an optimisation and must be conservative: a bounds check
+  // that is even slightly tight silently makes edge parcels unclickable.
+  for (const record of RECORDS) {
+    for (const polygon of record.polygons) {
+      for (const [lon, lat] of polygon[0]) {
+        assert.ok(
+          lat >= record.bounds.south && lat <= record.bounds.north
+          && lon >= record.bounds.west && lon <= record.bounds.east,
+          `${record.parcel.u} has a vertex outside its own bounds`,
+        );
+      }
+    }
+  }
+});
+
+
 test('selecting a parcel publishes exactly one card on the protected source', () => {
   const overlayHost = recordingOverlayHost();
   seed(overlayHost);
@@ -282,6 +365,56 @@ test('a pick resolves through both the flat and the nested Cesium id shapes', ()
   assert.equal(resolveCadastrePickId({ id: { id: 'cadastre:75103000AP0045' } }, has), 'cadastre:75103000AP0045');
   assert.equal(resolveCadastrePickId({ id: 'someone-elses-primitive' }, has), null);
   assert.equal(resolveCadastrePickId(null, has), null);
+});
+
+test('the card the operator reads is the card the accessor returns', () => {
+  // The address and the building lines resolve AFTER the first paint. An
+  // accessor that rebuilds the entry from the parcel alone reports a card that
+  // has never been on screen — which is exactly how this shipped: the overlay
+  // showed the enriched card and every check against it saw the bare one.
+  const record = recordFor('75103000AP0045');
+  const overlayHost = recordingOverlayHost();
+  _setCadastreStateForTest({
+    records: new Map(RECORDS.map((r) => [r.id, r])),
+    payload: PAYLOAD,
+    overlayHost,
+    detail: {
+      '75103000AP0045': {
+        address: { label: '5 Rue de Bretagne 75003 Paris', distanceM: 6 },
+        buildings: {
+          count: 2, footprintM2: 1840, coverage: 0.73, tallestM: 21, storeys: 6,
+          dwellings: 34, usages: [{ name: 'Résidentiel', count: 2 }], oldest: null, anonymous: 0,
+        },
+        partial: false,
+      },
+    },
+  });
+  _selectCadastreParcelForTest(record.id);
+
+  const shown = overlayHost.calls.setEntries.at(-1).entries[0].details.map(flat);
+  const returned = cadastreParcelsLayer.getSelectedParcel();
+  assert.deepEqual(returned.details.map(flat), shown, 'the accessor drifted from the overlay');
+  assert.equal(returned.detailResolved, true);
+  assert.equal(shown[0], '5 Rue de Bretagne 75003 Paris', 'the address leads the card');
+  assert.ok(shown.some((l) => /2 bâtiments · 1 840 m² au sol · 73 % de la parcelle/.test(l)), shown.join(' | '));
+  assert.ok(shown.some((l) => /R\+6 · 21 m de haut · 34 logements/.test(l)), shown.join(' | '));
+  // And the honesty lines survive the enrichment rather than being pushed off.
+  assert.ok(shown.some((l) => /centre d'emprise/.test(l)));
+  assert.equal(shown.at(-1), 'Document fiscal — la limite de propriété se fixe par bornage');
+});
+
+test('an unresolved parcel still gets a complete, correct card', () => {
+  // Everything the cadastre itself publishes is in hand before either lookup
+  // returns, and holding the card back would trade a complete answer now for a
+  // fuller one later.
+  const overlayHost = recordingOverlayHost();
+  seed(overlayHost);
+  _selectCadastreParcelForTest(recordFor('75103000AP0045').id);
+  const returned = cadastreParcelsLayer.getSelectedParcel();
+  assert.equal(returned.detailResolved, false);
+  assert.equal(returned.details[0], 'Paris 3ᵉ · INSEE 75056');
+  assert.equal(returned.details.at(-1), 'Document fiscal — la limite de propriété se fixe par bornage');
+  assert.ok(!returned.details.some((l) => /BD TOPO|point adresse/.test(l)));
 });
 
 // ── The viewport gate ───────────────────────────────────────────────────────

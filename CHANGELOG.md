@@ -135,8 +135,48 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   one. Links written before this lands never carried an IRVE token at all, so
   nothing in the wild changes meaning.
 
+- **Clicking a parcel now answers what is on it, not only where it is.** The
+  card leads with the **address** (Base Adresse Nationale, keyless, Licence
+  Ouverte 2.0) and carries **what is built there** from IGN BD TOPO — the
+  building count, their footprint, the share of the parcel they cover, the
+  tallest, the storeys, the dwellings and the dominant use — plus the parcel's
+  own longest dimension. `24 Rue Paul Valéry 75116 Paris · 1 bâtiment · 1 026 m²
+  au sol · 83 % de la parcelle · R+7 · 25 logements`.
+  - **Neither join is published, and both lines say so.** BD TOPO and the PCI
+    are two products with two lineages and no key between them, so a building
+    belongs to the parcel its footprint centre falls on — a stated rule the card
+    names, wrong in both directions at a boundary. BAN answers with the NEAREST
+    address point, so the distance it publishes is printed beside the address
+    past 10 m and the answer is dropped entirely past 60 m: on a card whose
+    subject is which piece of ground you are looking at, a confidently wrong
+    address does more damage than a missing line.
+  - **A building near a tile edge is in both tiles.** Measured over Paris 16e: a
+    naive join of two z15 tiles reported 25 buildings on a parcel that has 14,
+    with one identifier appearing three times at 2 983, 13 and 5 042 m². Vector
+    tiles carry a buffer. Deduplicating on `cleabs` — present on 100% of the
+    1 202 features in a sampled tile — is the difference between 89% built and
+    56%.
+  - Both lookups run only on a click, are memoised per parcel, and fail as
+    absences: the cadastre's own card is complete and correct without either.
+
 ### Fixed
 
+- **Clicking a parcel highlighted a shape somewhere else.** Selection asked
+  Cesium what was under the cursor, and `scene.pick` against ground-
+  classification geometry answers with whichever shadow volume the ray enters
+  first — which at the grazing angles this globe is normally flown at is not
+  reliably the parcel visible under the pointer. The polygons are already in
+  memory, so a click is now resolved against them directly: exact, independent
+  of the classification pass, and testable without WebGL. Clicking a courtyard
+  or a street selects nothing, which is the honest answer — the gaps in this
+  layer are the public domain, and answering with the nearest parcel would
+  invent one where France publishes none.
+- **A pan dropped the selection and left the card behind.** Rebuilding the
+  records on a new viewport cleared `_selectedId` without clearing the overlay,
+  so the card stayed on screen describing a parcel that was no longer drawn,
+  no longer highlighted and no longer clickable. The selection is now matched
+  back by IDU after a redraw, and cleared with the records when the parcel has
+  genuinely left the box.
 - **The layer would not load at street level on a tilted camera.** The viewport
   gate read the span of `computeViewRectangle`, which on a TILTED camera returns
   everything the lens can see down to the horizon — a statement about the pitch

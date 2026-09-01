@@ -365,6 +365,15 @@ export const DATA_CREDITS = [
       'DGFiP\u2019s registered surface and is shown beside the drawn one, never merged with it.',
   },
   {
+    key: 'ban-adresse',
+    html:
+      'Addresses on a selected cadastral parcel: ' +
+      '<a href="https://adresse.data.gouv.fr" target="_blank" rel="noopener">Base Adresse Nationale (BAN)</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The NEAREST address point to the parcel\u2019s centroid, not a published parcel-to-address relation: the card prints the ' +
+      'distance BAN itself reports whenever it exceeds 10 m, and drops the answer entirely beyond 60 m.',
+  },
+  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +
