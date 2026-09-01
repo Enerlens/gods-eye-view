@@ -303,6 +303,14 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // silently turn "reject an unknown link" into "enable the gas layer".
   Object.freeze({ id: 'gas-fr', token: '1', disposition: 'enabled-only' }),
   Object.freeze({ id: 'hubeau-hydro', token: 'h', disposition: 'enabled-only' }),
+  // A DIGIT, and NOT the `l` this layer was written against: `l` went to
+  // edf-power-plants while this branch sat unmerged, and `8` — this layer's
+  // first re-pick — went to road-events-fr in the days it stayed unmerged
+  // after that. Twice, the same lesson: two layers on one token is a share
+  // link that silently enables the wrong one. 1-8 are gas-fr, power-grid,
+  // rte-generation, fr-hydro-plants, bdtopo-buildings, local-airports,
+  // road-status-fr and road-events-fr, so IRVE takes `9`.
+  Object.freeze({ id: 'irve-fr', token: '9', disposition: 'enabled-only' }),
   // A DIGIT, for the sixth time and always for the same reason: a–y are all
   // taken and `z` is the canonical UNKNOWN token two tests assert on. `6`
   // because 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants

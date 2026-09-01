@@ -339,6 +339,16 @@ export const DATA_CREDITS = [
       'The publication\u2019s own timestamp is reported by the layer as its data timestamp. ' +
       'Coverage is the r&eacute;seau routier national NON CONC&Eacute;D&Eacute; only &mdash; the conceded motorways are not in this feed. ' +
       'A segment is drawn as the straight line between the two endpoints DATEX II publishes; the road\u2019s real geometry is not part of the feed.',
+    key: 'irve-charge-points',
+    html:
+      'EV charge points (France): <em>fichier consolid&eacute; des bornes de recharge pour v&eacute;hicules ' +
+      '&eacute;lectriques</em>, assembled by ' +
+      '<a href="https://transport.data.gouv.fr" target="_blank" rel="noopener">transport.data.gouv.fr</a> ' +
+      'from the operators&rsquo; own IRVE filings and republished by ' +
+      '<a href="https://odre.opendatasoft.com/explore/dataset/bornes-irve/" target="_blank" rel="noopener">ODR&Eacute; — Open Data R&eacute;seaux &Eacute;nergies</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
+      '&copy; each am&eacute;nageur / op&eacute;rateur. Installed capacity only &mdash; the file publishes no ' +
+      'availability, and each site&rsquo;s own <code>date_maj</code> is reported as its data timestamp.',
   },
   {
     key: 'radio-browser',

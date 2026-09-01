@@ -359,6 +359,19 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // The hinge between ÉNERGIE and MOBILITÉ TERRESTRE, filed under energy because
+  // what it publishes is installed capacity — kW per point de charge — and never
+  // whether one is free. `periodic`, like its neighbours: the register is
+  // consolidated daily upstream and this layer refetches per viewport.
+  Object.freeze({
+    id: 'irve-fr',
+    category: 'energy',
+    label: 'Bornes de recharge',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'local-dams',
     category: 'energy',

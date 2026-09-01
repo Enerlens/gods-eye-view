@@ -3,6 +3,76 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
+## [Unreleased] — 2026-09-01
+
+### Added
+
+- Added the **Bornes IRVE** layer — every public EV charge point France has
+  declared, keyless. The *fichier consolidé des bornes de recharge pour
+  véhicules électriques* is assembled daily by transport.data.gouv.fr from the
+  operators' own filings and republished by **ODRÉ** under Licence Ouverte 2.0:
+  231,079 points de charge, loaded per viewport, drawn as one dot per *site*,
+  coloured by the highest power band installed there and sized by how many
+  charge points are there. Clicking one gives the split by power, the
+  connectors, the access conditions, the operators — and the span of that
+  site's own declarations rather than the age of the poll.
+- It is installed capacity, not availability, and says so. The register
+  publishes where the charge points are, never whether any of them is free, so
+  the layer draws no availability colour and prints no "libre" count.
+- The register disagrees with itself in ways that a naive read gets visibly
+  wrong, so seven of them are absorbed server-side and pinned against a
+  captured payload:
+  - `coordonneesxy` is **labelled backwards** — its `lon` key holds the
+    latitude — on every row checked, and `geo_point_borne` is null on all
+    231,079, so Opendatasoft's own geo filter matches nothing. Only the
+    consolidated columns are read.
+  - The station id fragments the station: Q-Park's Grande Arche car park
+    publishes **127 station ids at one coordinate**, and 1,192 rows nationally
+    publish the literal string `"Non concerné"`. The render unit is the
+    coordinate, rounded to ~1.1 m.
+  - 442 of 3,812 Île-de-France sites carry two "operators" publishing an
+    **identical** power profile at the same point — 7.5% of the area's charge
+    points, counted twice by any plain sum. Identical profiles collapse;
+    overlapping ones never do; both totals travel to the client.
+  - 3.0% of rows publish a power no charge point can have (771 rows at 7,360 —
+    watts in a kilowatt column — and 5,315 at ≤ 0). Those are counted in an
+    explicit *puissance non exploitable* band rather than rescaled by a guess
+    that would turn a real 600 kW bank into 0.6 kW.
+  - `consolidated_is_lon_lat_correct` is False for two different reasons. False
+    with no verified commune (80,545 rows) means *unverifiable* and is kept;
+    False with one (5,361 rows) means the position contradicts its own commune
+    and is withheld and counted. Reading the flag as one thing would either
+    discard a third of France or leave a Gironde site drawn south of Madagascar.
+  - Booleans arrive in nine forms including `"False"`, which JavaScript coerces
+    to `true` — that alone would report every paid site as free.
+  - Some publishers ship Mac-Roman accents decoded as Latin-1, which would
+    split one legend row into four.
+
+- **Bornes IRVE** gained its middle regime — the *maillage*. The layer now
+  answers at three scales instead of two: the 96 départements while the whole
+  country is in view, real site positions thinned onto a 30 × 20 grid once
+  France is cropped, and every site with full detail over a city. Only one is
+  ever drawn, and each carries its own legend.
+- The thinning is spatial, not by rank: every occupied grid cell gets a dot
+  before any cell gets a second, so the Massif Central stays visible as sparse
+  rather than vanishing. Taking the biggest N instead would have collapsed
+  France to a dozen conurbations.
+- And each cell is represented by its most common band rather than its biggest
+  site. Picking the largest drew **46.2% of the dots as high-power DC when
+  12.2% of the sites in view were** — the biggest site in a rural cell is the
+  motorway bank — which made the map say France runs on 300 kW chargers when
+  it runs on 22 kW ones. The modal rule brings that to 8.7% against 12.2%
+  true. The residual (`normale` at ~46% against 36%) is stated in the legend
+  rather than hidden.
+- The national point set is served once (`/api/irve-fr/mesh`, 39 579 tuples,
+  0.9 MB, cached a day) and picked in the client, so panning the maillage
+  costs no round trip.
+- The layer's share-link token is **`8`**, not the `l` this work was originally
+  written against: `l` went to **Centrales EDF** while the branch sat unmerged,
+  and two layers on one token is a share link that silently enables the wrong
+  one. Links written before this lands never carried an IRVE token at all, so
+  nothing in the wild changes meaning.
+
 ## [Unreleased] — 2026-08-31
 
 ### Added

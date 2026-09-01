@@ -216,6 +216,14 @@ const LAYER_ALIASES = new Map([
   ['production units', 'rte-generation'],
   ['groupes de production', 'rte-generation'],
   ['centrales', 'rte-generation'],
+  ['charge points', 'irve-fr'],
+  ['charging points', 'irve-fr'],
+  ['charging stations', 'irve-fr'],
+  ['chargers', 'irve-fr'],
+  ['ev chargers', 'irve-fr'],
+  ['ev charging', 'irve-fr'],
+  ['irve', 'irve-fr'],
+  ['bornes', 'irve-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -3367,6 +3375,7 @@ function layerTitle(layerId) {
   if (layerId === 'power-grid') return 'Grid Node';
   if (layerId === 'bdtopo-buildings') return 'Building';
   if (layerId === 'rte-generation') return 'Power Station';
+  if (layerId === 'irve-fr') return 'Charge Point';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
