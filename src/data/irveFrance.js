@@ -265,6 +265,16 @@ let _overlayHost = DEFAULT_OVERLAY_HOST;
 // --- Runtime state ----------------------------------------------------------
 let _viewer = null;
 let _points = null;
+/** The beams. Allocated once, recycled across rebuilds — never churned. */
+let _beams = null;
+/** Set when the next frame owes a beam sweep (camera settle, or a rebuild). */
+let _beamSweepDirty = true;
+/** Where the camera was when the last sweep ran, for the motion fallback. */
+let _beamSweptFrom = null;
+/** Throttles how often the motion fallback is allowed to read the clock. */
+let _beamSweepProbedAt = 0;
+/** Reused so a sweep over 2 575 records allocates no Cartesians. */
+const _beamTipScratch = new Cesium.Cartesian3();
 let _records = new Map();
 let _enabled = false;
 let _clickHandler = null;
@@ -693,7 +703,7 @@ export function selectIrveLabelCohort(entries, limit = IRVE_FR_LABEL_COHORT_LIMI
 function restoreRecordStyle(record) {
   if (!record?.point) return;
   record.point.color = Cesium.Color.fromCssColorString(record.baseColor);
-  record.point.pixelSize = record.baseSize;
+  record.point.pixelSize = record.baseSize;  styleBeam(record, false);
 }
 
 function clearSelection() {
@@ -717,6 +727,7 @@ function selectSite(id) {
     record.point.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
     record.point.pixelSize = SELECTED_POINT_PX;
   }
+  styleBeam(record, true);
   const entry = createIrveSelectedOverlayEntry(record);
   if (entry) {
     _overlayHost.setEntries(IRVE_FR_OVERLAY_SOURCE_ID, [entry], IRVE_FR_OVERLAY_SOURCE_OPTIONS);
@@ -792,15 +803,273 @@ function installClickHandler(viewer) {
  * does not move — so this is the layer's only per-frame work, and it is idle
  * entirely in the national regime.
  */
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE BEAMS — lifting the marker off a basemap we do not control
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * A 7–14 px dot with a one-pixel outline is legible against a basemap you
+ * choose and against nothing else. This layer draws over OSM, Plan IGN, IGN
+ * ortho and Bing aerial, and on ortho a coloured dot the size of a parked car
+ * is simply part of the texture. The fix used elsewhere in this console is to
+ * stand the marker UP: a short vertical beam has a length and a direction that
+ * no aerial photograph contains, so it reads as an overlay at any zoom, over
+ * any surface.
+ *
+ * ── WHY A RECYCLED POLYLINE COLLECTION AND NOT ENTITIES ─────────────────────
+ *
+ * The two stem implementations already in this repo — the submarine cables and
+ * the shared `createLocalGeoJsonLayer` factory — both build their stems ONCE
+ * from a bundled file and never rebuild: 2 629 and 7 464 of them, added at load
+ * and left alone. This layer is the opposite. Its record set is rebuilt on
+ * every camera settle behind a 450 ms debounce, and the densest real viewport
+ * in France (a 0.35° box over central Paris, measured live: 5 253 grouped rows
+ * → 2 575 distinct sites) would mean up to 2 575 entity add/remove per pan —
+ * a workload neither precedent has ever run, and precisely the shape of the
+ * hitch the cable layer documented and removed.
+ *
+ * So the beams live in a `PolylineCollection` that is allocated once and
+ * RECYCLED: a rebuild rewrites positions and colours on the polylines that
+ * already exist and hides the surplus. Nothing is destroyed, nothing is
+ * re-created, and the collection converges on the largest view the session has
+ * seen. `PolylineCollection.update` takes its partial-buffer `writeUpdate`
+ * path when only positions moved and the vertex count is unchanged — which,
+ * for a two-vertex beam, is every rebuild.
+ *
+ * ── WHY THEY GET SHORTER AS THE VIEW GETS BUSIER ────────────────────────────
+ *
+ * 2 575 vertical beams inside one city do not read as markers; they read as a
+ * hedge. The cables' 2 629 are spread over every ocean on Earth and the
+ * airports' 7 464 over the whole planet — this layer's worst case is all of
+ * them inside 39 km. The beam therefore has a length BUDGET that falls as the
+ * in-view count rises (see {@link irveBeamTargetPx}), so a quiet market town
+ * gets a tall obvious marker and central Paris gets a short bristle that still
+ * lifts the dot off the tarmac without becoming a wall.
+ */
+
+/**
+ * Beam length in pixels for a sparse view, and for a saturated one.
+ *
+ * CALIBRATED AGAINST THE REGIMES, not against a guess. The first attempt used
+ * a 14 px floor reached at 1 600 markers, on the reasoning that the densest
+ * real viewport in France holds ~2 575 sites. It was wrong in practice for a
+ * reason a browser found and arithmetic did not: the MESH regime is capped at
+ * 2 200 dots and covers most of the useful zoom range, so every mesh view
+ * saturated the budget and drew the minimum. Measured over Paris at 9 km that
+ * is a ~100 m beam — about 8 px — which at 0.62 alpha over an OSM basemap is
+ * indistinguishable from nothing. The beams were rendering perfectly and were
+ * invisible, which is the failure this whole change exists to fix.
+ *
+ * The saturation point now sits above the mesh cap so a mesh view is not
+ * automatically on the floor, and the floor itself was raised twice against a
+ * measurement rather than a taste. Counting the pixels a beam actually changes
+ * on a 1 200×800 canvas over central Paris at 2 200 markers:
+ *
+ *     406 m of beam (26 px budget)     3 186 px   present, but faint
+ *     406 m, drawn fat and opaque     11 406 px   width is NOT the lever
+ *   3 000 m, shipped width and alpha  81 595 px   unmistakable — and a hedge
+ *
+ * Height dominates by a factor of twenty-five and width barely moves it, so the
+ * budget is where the tuning belongs. 3 000 m covers 8.5 % of the canvas, which
+ * is the wall the recon warned about; the shipped 38–64 px band sits between
+ * the two, roughly doubling the faint case without approaching the wall.
+ *
+ * The last word on this belongs to a real browser on the staging URL. A
+ * software rasteriser at 1 200×800 is not where a judgement about whether a
+ * marker reads should be made, and this comment records the numbers so the
+ * next adjustment starts from data instead of from taste.
+ */
+export const IRVE_BEAM_MAX_PX = 64;
+export const IRVE_BEAM_MIN_PX = 38;
+/** In-view counts the budget interpolates between. */
+export const IRVE_BEAM_SPARSE_COUNT = 300;
+export const IRVE_BEAM_DENSE_COUNT = 2400;
+/** Metres a beam may never fall below or exceed, whatever the pixel budget says. */
+const BEAM_MIN_M = 60;
+const BEAM_MAX_M = 40_000;
+/** Sub-metre tip noise is not worth a geometry write. */
+const BEAM_TIP_EPSILON_M = 0.5;
+const BEAM_TIP_EPSILON_SQ = BEAM_TIP_EPSILON_M ** 2;
+/** Beam width, and the width a selected beam takes. */
+const BEAM_WIDTH_PX = 2.6;
+const SELECTED_BEAM_WIDTH_PX = 5;
+/**
+ * Beams are translucent so a dense view reads as a field rather than a fence —
+ * but not so translucent that a single one disappears. 0.62 was measured too
+ * faint over an OSM basemap at the length the budget was giving.
+ */
+const BEAM_ALPHA = 0.82;
+/** Camera travel that re-arms the beam sweep when `moveEnd` never fires. */
+const BEAM_SWEEP_MOTION_EPSILON_M = 250;
+const BEAM_SWEEP_MOTION_EPSILON_SQ = BEAM_SWEEP_MOTION_EPSILON_M ** 2;
+/** How often the motion fallback is even allowed to look at the clock. */
+const BEAM_SWEEP_PROBE_INTERVAL_MS = 2000;
+
+/**
+ * Beam length, in pixels, for a view holding `count` markers.
+ *
+ * Linear between the two anchors and clamped outside them. The shape is not
+ * the point — the point is that it is MONOTONIC DECREASING, so the layer can
+ * never make a dense view taller than a sparse one.
+ * @param {number} count Markers currently rendered.
+ * @returns {number} Target beam length in CSS pixels.
+ */
+export function irveBeamTargetPx(count) {
+  const n = Number.isFinite(count) ? count : 0;
+  if (n <= IRVE_BEAM_SPARSE_COUNT) return IRVE_BEAM_MAX_PX;
+  if (n >= IRVE_BEAM_DENSE_COUNT) return IRVE_BEAM_MIN_PX;
+  const t = (n - IRVE_BEAM_SPARSE_COUNT) / (IRVE_BEAM_DENSE_COUNT - IRVE_BEAM_SPARSE_COUNT);
+  return IRVE_BEAM_MAX_PX - t * (IRVE_BEAM_MAX_PX - IRVE_BEAM_MIN_PX);
+}
+
+/**
+ * Metres of beam that subtend `targetPx` at `distance`, clamped.
+ * @param {number} distance Camera distance to the beam foot, metres.
+ * @param {number} targetPx Desired on-screen length.
+ * @param {number} metresPerPixelFactor `2·tan(fov/2) / canvasHeight`.
+ * @returns {number}
+ */
+export function irveBeamHeightM(distance, targetPx, metresPerPixelFactor) {
+  const effective = Math.max(Number(distance) || 0, 500);
+  const raw = effective * metresPerPixelFactor * targetPx;
+  if (!Number.isFinite(raw)) return BEAM_MIN_M;
+  return Math.max(BEAM_MIN_M, Math.min(BEAM_MAX_M, raw));
+}
+
+/**
+ * Rebuild the beam for every rendered record, and hide the surplus.
+ *
+ * Runs on the SWEEP, not on every frame — see {@link onPreRender}.
+ */
+function sweepBeams() {
+  if (!_beams || !_viewer) return;
+  const camera = _viewer.camera;
+  const scene = _viewer.scene;
+  const canvasHeight = scene?.canvas?.clientHeight || 0;
+  if (!canvasHeight) return;
+  const fov = scene?.camera?.frustum?.fovy;
+  if (!Number.isFinite(fov)) return;
+  const metresPerPixelFactor = (2 * Math.tan(fov * 0.5)) / canvasHeight;
+  const targetPx = irveBeamTargetPx(_records.size);
+  const occluder = horizonOccluder(camera);
+
+  let index = 0;
+  for (const record of _records.values()) {
+    const visible = occluder.isPointVisible(record.position);
+    if (record.point) record.point.show = visible;
+    const line = _beams.get(index);
+    index += 1;
+    if (!line) continue;
+    if (!visible) {
+      // Hidden beams keep their last geometry: the sweep that turns them
+      // visible again is the one that refreshes it, and rewriting positions
+      // for something nobody can see is a buffer write for nothing.
+      line.show = false;
+      continue;
+    }
+    const distance = Cesium.Cartesian3.distance(camera.positionWC, record.position);
+    const height = irveBeamHeightM(distance, targetPx, metresPerPixelFactor);
+    const carto = record.carto;
+    Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, carto.height + height, undefined, _beamTipScratch);
+    // Skip the write when the tip has not meaningfully moved. At the shipped
+    // budget a 250 m camera move shifts a tip by a few metres, so a settled
+    // camera costs zero buffer writes.
+    const positions = line.positions;
+    if (positions && positions.length === 2
+      && Cesium.Cartesian3.distanceSquared(positions[1], _beamTipScratch) <= BEAM_TIP_EPSILON_SQ) {
+      line.show = true;
+      continue;
+    }
+    line.positions = [record.position, Cesium.Cartesian3.clone(_beamTipScratch)];
+    line.show = true;
+  }
+  // Everything past the record set is surplus from a busier view. Hidden, not
+  // removed — the collection converges rather than churning.
+  for (let i = index; i < _beams.length; i += 1) _beams.get(i).show = false;
+}
+
+/**
+ * Give every rendered record a beam, recycling the polylines already allocated.
+ *
+ * Called from both reconcile paths after the dots are rebuilt. Colour and width
+ * are set here (they change with the record); geometry is left to the sweep,
+ * which is the only place that knows where the camera is.
+ */
+function rebuildBeams() {
+  if (!_beams) return;
+  let index = 0;
+  for (const record of _records.values()) {
+    const color = Cesium.Color.fromCssColorString(record.baseColor).withAlpha(BEAM_ALPHA);
+    let line = _beams.get(index);
+    if (!line) {
+      line = _beams.add({
+        positions: [record.position, record.position],
+        width: BEAM_WIDTH_PX,
+        material: Cesium.Material.fromType('Color', { color }),
+        show: false,
+      });
+    } else {
+      line.material.uniforms.color = color;
+      line.width = BEAM_WIDTH_PX;
+    }
+    record.beamIndex = index;
+    index += 1;
+  }
+  for (let i = index; i < _beams.length; i += 1) _beams.get(i).show = false;
+  _beamSweepDirty = true;
+}
+
+/**
+ * Per-frame work: decide whether this frame owes a sweep, and run one if so.
+ *
+ * The walk itself is unchanged in kind — it was already an occluder test over
+ * every record — but it is now GATED rather than run unconditionally, and it
+ * carries the beam resize with it. Two dirty conditions, no timer: a camera
+ * settle (or a rebuild), and a motion fallback for tracked cameras that never
+ * emit `moveEnd`, which reads the clock at most every 2 s and only re-arms
+ * past 250 m of travel since the LAST SWEPT position. A parked camera costs
+ * one distance comparison per frame.
+ */
 function onPreRender() {
   if (!_enabled || !_records.size) return;
   const camera = _viewer?.camera;
   if (!camera) return;
-  const occluder = horizonOccluder(camera);
-  for (const record of _records.values()) {
-    if (!record.point) continue;
-    record.point.show = occluder.isPointVisible(record.position);
+  if (!_beamSweepDirty) {
+    const now = Date.now();
+    if (now - _beamSweepProbedAt < BEAM_SWEEP_PROBE_INTERVAL_MS) return;
+    _beamSweepProbedAt = now;
+    if (!_beamSweptFrom
+      || Cesium.Cartesian3.distanceSquared(camera.positionWC, _beamSweptFrom) < BEAM_SWEEP_MOTION_EPSILON_SQ) {
+      return;
+    }
   }
+  _beamSweepDirty = false;
+  _beamSweptFrom = Cesium.Cartesian3.clone(camera.positionWC, _beamSweptFrom);
+  sweepBeams();
+}
+
+/**
+ * Paint one record's beam as selected, or back to its band colour.
+ *
+ * The beam is widened as well as recoloured: at the dense end of the length
+ * budget a selected beam is only 14 px tall, and a colour change alone on a
+ * 2.2 px line inside a field of 1 600 of them is not a selection anyone can
+ * find.
+ * @param {object|null|undefined} record
+ * @param {boolean} selected
+ */
+function styleBeam(record, selected) {
+  if (!_beams || !record || !Number.isFinite(record.beamIndex)) return;
+  const line = _beams.get(record.beamIndex);
+  if (!line) return;
+  line.material.uniforms.color = selected
+    ? Cesium.Color.fromCssColorString(SELECTED_COLOR)
+    : Cesium.Color.fromCssColorString(record.baseColor).withAlpha(BEAM_ALPHA);
+  line.width = selected ? SELECTED_BEAM_WIDTH_PX : BEAM_WIDTH_PX;
+}
+
+/** Ask for a sweep on the next frame. */
+function markBeamSweepDirty() {
+  _beamSweepDirty = true;
 }
 
 // --- National regime --------------------------------------------------------
@@ -1106,11 +1375,13 @@ function reconcileMesh(box) {
       site: { id, lat, lon, pdcDistinct: site[MESH_PDC], pdcPublished: site[MESH_PDC], topBand: band },
       point,
       position,
+      carto: Cesium.Cartographic.fromCartesian(position),
       baseColor: color,
       baseSize: size,
     });
   }
   _count = _records.size;
+  rebuildBeams();
   governorRequestRender('irve-fr-mesh');
 }
 
@@ -1165,11 +1436,21 @@ function reconcile(payload) {
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
       translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 60_000, 0.35),
     });
-    _records.set(id, { id, site, point, position, baseColor: color, baseSize: size });
+    _records.set(id, {
+      id,
+      site,
+      point,
+      position,
+      // Cached so the beam sweep never re-derives a cartographic per frame.
+      carto: Cesium.Cartographic.fromCartesian(position),
+      baseColor: color,
+      baseSize: size,
+    });
     warm.push(site);
   }
 
   _count = _records.size;
+  rebuildBeams();
   warmGroundFloor(warm.slice(0, GROUND_WARM_LIMIT));
   governorRequestRender('irve-fr-reconcile');
 }
@@ -1177,6 +1458,9 @@ function reconcile(payload) {
 function clearSites() {
   if (_selectedId && !_selectedId.startsWith('dep:')) clearSelection();
   if (_points) _points.removeAll();
+  // The national regime draws départements, not sites, so every beam has to go
+  // dark. Hidden rather than removed: the collection is a pool.
+  if (_beams) for (let i = 0; i < _beams.length; i += 1) _beams.get(i).show = false;
   _records.clear();
   _count = 0;
   _summary = null;
@@ -1375,6 +1659,14 @@ const irveFranceLayer = {
     _points.show = false;
     viewer.scene.primitives.add(_points);
     registerSpriteCollection(IRVE_FR_LAYER_ID, _points);
+    // NOT registered with the sprite order: that registry arbitrates
+    // near-plane-clamped sprite collections, and a beam is depth-bearing
+    // geometry that has to sort against the world rather than against sprites.
+    _beams = new Cesium.PolylineCollection();
+    _beams.show = false;
+    viewer.scene.primitives.add(_beams);
+    _beamSweepDirty = true;
+    _beamSweptFrom = null;
 
     _enabled = false;
     _records = new Map();
@@ -1408,6 +1700,8 @@ const irveFranceLayer = {
     _enabled = true;
     _error = null;
     _points.show = true;
+    if (_beams) _beams.show = true;
+    markBeamSweepDirty();
     if (_depDataSource) _depDataSource.show = true;
     _overlayHost.setVisible(IRVE_FR_OVERLAY_SOURCE_ID, true);
     _overlayHost.setVisible(IRVE_FR_LABEL_SOURCE_ID, true);
@@ -1461,6 +1755,7 @@ const irveFranceLayer = {
     }
 
     _points.show = false;
+    if (_beams) _beams.show = false;
     _loading = false;
     _status = 'idle';
     _lastBox = null;
@@ -1604,6 +1899,11 @@ const irveFranceLayer = {
       viewer.scene.primitives.remove(_points);
       _points = null;
     }
+    if (_beams) {
+      viewer?.scene?.primitives?.remove?.(_beams);
+      _beams = null;
+    }
+    _beamSweptFrom = null;
     _records.clear();
     _viewer = null;
   },
