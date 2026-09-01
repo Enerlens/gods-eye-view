@@ -68,9 +68,24 @@ const FRANCE = { lon: 2.4, lat: 46.6, height: 1_800_000 };
 /** Béarn — where the captured Teréga rows and BIOBEARN are. */
 const BEARN = { lon: -0.6, lat: 43.4, height: 120_000 };
 
-/** The palette, duplicated on purpose: a QA harness asserts, it doesn't import styling. */
-const NATRAN = '#9d7ae6';
-const TEREGA = '#e87ad0';
+/**
+ * The palette, duplicated on purpose: a QA harness asserts, it doesn't import styling.
+ *
+ * These two moved when the pastels they replace turned out to clear the "does
+ * not read as a river" bar on OSM and still lose to IGN ortho. Counting pixels
+ * of a colour nothing draws any more would report a zero delta and read as
+ * "the network is invisible", so this pair has to be edited in step with
+ * `GAS_NETWORK_OPERATORS` — which is the cost of not importing it, and the
+ * point of not importing it.
+ *
+ * Section ii-bis below is also what chose flat strokes over a dark casing:
+ * on Teréga it scored baseline 0, cased 16, cased-and-wider 84, flat-and-
+ * brighter 127. Note that on a headless SwiftShader machine that section does
+ * not pass in ANY configuration, baseline included — treat its numbers as a
+ * relative measure between variants, not as a green light.
+ */
+const NATRAN = '#c08bff';
+const TEREGA = '#ff6ad5';
 const PLANT = '#ff8c42';
 const INJECTION = '#5ddc8f';
 

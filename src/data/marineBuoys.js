@@ -13,6 +13,16 @@ import {
  * aircraft nothing here interpolates or animates: a poll replaces values in
  * place and the render governor is only nudged on that discrete change.
  *
+ * NOAA IS THE OPERATOR, NOT THE EXTENT
+ * ------------------------------------
+ * `latest_obs` republishes international partner moorings beside NOAA's own,
+ * so this layer is not a map of American waters. Counted on the 2026-09-01
+ * report: 882 stations, 38 in the eastern hemisphere — 28 in the North Sea
+ * and north-east Atlantic, 19 in the western Pacific, 2 in the Indian Ocean.
+ * The network is DENSEST over the Americas, which the map shows for itself;
+ * that density is why the layer used to carry a `US` scope chip, and why it
+ * no longer does — see the `marine-buoys` entry in `layerTaxonomy.js`.
+ *
  * WHY MOST BUOYS SHOW NO WAVE HEIGHT
  * ----------------------------------
  * The network is not homogeneous. Measured over the full 892-station report on

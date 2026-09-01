@@ -89,6 +89,29 @@ test('the four level colours are the ones Vigicrues itself publishes', () => {
   assert.deepEqual(widths, [...widths].sort((a, b) => a - b));
 });
 
+test('every level draws wide enough, and opaque enough, to reach the screen', () => {
+  // The four hues cannot move — Licence Ouverte 2.0, see the module header — so
+  // width and alpha are the only levers, and a level that is thin AND faint is
+  // a level nobody sees. 2 px is the floor because a thinner stroke under this
+  // scene's `msaaSamples: 4` plus FXAA is largely edge-blend, and its own
+  // colour stops reaching the canvas — the effect the gas layer measured.
+  const levels = [...Object.values(VIGICRUES_LEVELS), VIGICRUES_UNKNOWN_LEVEL];
+  for (const level of levels) {
+    assert.ok(level.width >= 2, `${level.key} is ${level.width}px`);
+    assert.ok(level.alpha >= 0.7, `${level.key} draws at ${level.alpha}`);
+  }
+  // Not published must never out-shout published-as-calm.
+  assert.ok(VIGICRUES_UNKNOWN_LEVEL.width < VIGICRUES_LEVELS[1].width);
+  assert.ok(VIGICRUES_UNKNOWN_LEVEL.alpha < VIGICRUES_LEVELS[1].alpha);
+  // And the step into "something is happening" is the widest on the ladder.
+  const steps = [
+    VIGICRUES_LEVELS[2].width - VIGICRUES_LEVELS[1].width,
+    VIGICRUES_LEVELS[3].width - VIGICRUES_LEVELS[2].width,
+    VIGICRUES_LEVELS[4].width - VIGICRUES_LEVELS[3].width,
+  ];
+  assert.equal(steps[0], Math.max(...steps), 'green→yellow must be the loudest step');
+});
+
 test('the alert threshold is yellow — the first level that means "something is happening"', () => {
   assert.equal(VIGICRUES_ALERT_LEVEL, 2);
   assert.equal(VIGICRUES_LEVELS[VIGICRUES_ALERT_LEVEL].key, 'yellow');
@@ -381,6 +404,11 @@ test('lifecycle draws static clamped polylines and labels only the raised reache
       assert.equal(entity.polyline.clampToGround.getValue(), true);
       assert.equal(entity.label, undefined, 'labels live in the shared overlay host');
     }
+
+    // One shared material instance per level, not one per reach.
+    const materials = new Set(entities.map((entity) => entity.polyline.material));
+    const levels = new Set(entities.map((entity) => entity.properties.level.getValue()));
+    assert.equal(materials.size, levels.size, 'materials are shared per level');
 
     const publication = h.hostCalls.filter(([type]) => type === 'entries').pop();
     assert.ok(publication, 'the update must publish the overlay source');

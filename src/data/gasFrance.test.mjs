@@ -26,6 +26,8 @@ import gasFranceLayer, {
   GAS_FR_LAYER_ID,
   GAS_FR_OVERLAY_COHORT_LIMIT,
   GAS_FR_SELECTED_OVERLAY_SOURCE_ID,
+  GAS_OPERATOR_MATERIALS,
+  GAS_STROKE_WIDTH_PX,
   _clearGasSelectionForTest,
   _gasDetectablesForTest,
   _gasRowControlsForTest,
@@ -316,12 +318,52 @@ test('selecting a pipe restores its SHARED material, not a per-stroke copy', () 
   const record = pipeRecord();
   seed([record]);
   _selectGasObjectForTest(record.id);
-  assert.notEqual(record.entity.polyline.material, 'BASE');
-  assert.ok(record.entity.polyline.width > 1.8);
+  const selectedMaterial = record.entity.polyline.material;
+  const selectedWidth = record.entity.polyline.width;
+  assert.notEqual(selectedMaterial, 'BASE');
   _clearGasSelectionForTest();
   // One material instance is shared by every stroke of an operator; restoring
   // anything else would quietly fork 6 074 materials out of one.
   assert.equal(record.entity.polyline.material, 'BASE');
+
+  // Selection has to READ as selection, stated against the width it replaces
+  // rather than against a number copied out of the module — the base stroke
+  // widened when the trace gained its casing, and a hard-coded floor would
+  // have gone on passing while the two converged.
+  assert.ok(
+    selectedWidth > record.entity.polyline.width,
+    `selected ${selectedWidth} must exceed base ${record.entity.polyline.width}`,
+  );
+});
+
+test('every operator draws one flat material carrying its published hue', () => {
+  // FLAT is the decision, not the default. A dark casing under each pipe was
+  // implemented and measured with `scripts/qa-gas-fr.mjs` §ii-bis, which counts
+  // how many pixels of the operator's own colour reach the canvas. On Teréga,
+  // same view and machine: baseline 0, cased 16, cased-and-wider 84, flat-and-
+  // brighter 127. Under `msaaSamples: 4` plus FXAA a cased core is largely
+  // edge-blend, and both hues leave that harness's ±24 tolerance at only ~10%
+  // casing contamination — so the casing spends against the colour what it
+  // buys against the basemap. It also splits the network into one primitive per
+  // operator, where ColorMaterialProperty keeps all 7 199 strokes in one.
+  const materials = GAS_OPERATOR_MATERIALS;
+  assert.deepEqual([...materials.keys()], Object.keys(GAS_NETWORK_OPERATORS));
+  for (const [id, material] of materials) {
+    assert.ok(
+      material instanceof Cesium.ColorMaterialProperty,
+      `${id} must stay a flat colour — see qa-gas-fr.mjs section ii-bis`,
+    );
+    const drawn = material.color.getValue(Cesium.JulianDate.now());
+    const expected = Cesium.Color.fromCssColorString(GAS_NETWORK_OPERATORS[id].color);
+    assert.equal(drawn.red, expected.red, `${id} keeps its published hue`);
+    assert.equal(drawn.green, expected.green, `${id} keeps its published hue`);
+    assert.equal(drawn.blue, expected.blue, `${id} keeps its published hue`);
+    // Near-opaque: the alpha that used to be spent hiding a pastel is exactly
+    // what the pixel counter loses to the basemap underneath.
+    assert.ok(drawn.alpha > 0.9, `${id} draws at ${drawn.alpha}`);
+  }
+  // Wide enough to hold pure interior pixels through both antialiasing passes.
+  assert.ok(GAS_STROKE_WIDTH_PX >= 4, `${GAS_STROKE_WIDTH_PX}px is back in pastel territory`);
 });
 
 test('selecting a second object never leaves the first one highlighted', () => {
@@ -424,8 +466,8 @@ test('the legend splits injection points by tier, because that split is the hone
       { id: 'i3', tier: 'distribution', gwh: 50 },
     ],
     operators: [
-      { id: 'natran', label: 'NaTran (ex-GRTgaz)', color: '#9d7ae6', strokes: 6074, lengthKm: 31420, departements: 80 },
-      { id: 'terega', label: 'Teréga', color: '#e87ad0', strokes: 1125, lengthKm: 4686, departements: 15 },
+      { id: 'natran', label: 'NaTran (ex-GRTgaz)', color: '#c08bff', strokes: 6074, lengthKm: 31420, departements: 80 },
+      { id: 'terega', label: 'Teréga', color: '#ff6ad5', strokes: 1125, lengthKm: 4686, departements: 15 },
     ],
     siteStats: { plants: { fleetMw: 7196 } },
   });
