@@ -419,7 +419,9 @@ test('an unbounded camera asks for a zoom instead of asking Hub\'Eau for the wor
   try {
     h.layer.init(h.viewer);
     h.layer.enable(h.viewer);
-    await h.layer.update(h.viewer);
+    // Asking for a zoom is guidance, not a failed refresh: reporting it as one
+    // made the manager tear the layer back down the moment it was turned on.
+    assert.equal(await h.layer.update(h.viewer), true);
     assert.equal(h.fetchUrls.length, 0, 'no request is made at all');
     assert.equal(h.layer.getStats().status, 'zoom-in');
     assert.equal(h.layer.getStats().count, 0);

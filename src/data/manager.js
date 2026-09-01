@@ -970,6 +970,25 @@ export class DataLayerManager {
       }
       if (signal?.aborted) return finishCancelledEnable('enable');
 
+      // A layer that only answers for a close camera gets one, before its first
+      // load rather than instead of it. Explicit intent only: the operator who
+      // just asked for this layer is asking to see it, while a share link or a
+      // Context restore carries a camera of its own that must not be overruled.
+      // A gate that cannot be satisfied is not a failure — the layer keeps its
+      // own guidance state and stays ON, saying what it needs.
+      if (
+        isExplicitLayerIntentOrigin(origin)
+        && typeof entry.module.ensureViewGate === 'function'
+      ) {
+        this._setVisibilityIntentPhase(entry, intentEpoch, 'view-gate');
+        try {
+          await entry.module.ensureViewGate(this.viewer, { signal });
+        } catch (error) {
+          console.warn(`[Data] ${layerId} view gate error:`, error);
+        }
+        if (signal?.aborted) return finishCancelledEnable('view-gate');
+      }
+
       // First update immediately
       this._setVisibilityIntentPhase(entry, intentEpoch, 'update');
       try {
