@@ -155,8 +155,8 @@ function encode(state) {
 
 test('production registry is exact, canonical, and rejects incomplete contracts', async () => {
   assert.equal(validateLayerStateRegistry(), true);
-  assert.equal(REGISTERED_LAYER_IDS.length, 35);
-  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 35);
+  assert.equal(REGISTERED_LAYER_IDS.length, 40);
+  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 40);
   assert.deepEqual(REGISTERED_LAYER_IDS, [...REGISTERED_LAYER_IDS].sort());
   assert.throws(
     () => validateLayerStateRegistry([...LAYER_STATE_REGISTRY, LAYER_STATE_REGISTRY[0]]),
@@ -1593,4 +1593,45 @@ test('the owner layer going away revokes the pending watch at any origin', async
     );
     f.coordinator.destroy();
   }
+});
+
+/**
+ * The ceiling exists to reject a hostile payload, so it must never fire on the
+ * most ordinary one there is: a user who turned everything on and pressed
+ * share. That regressed silently once — the cap was written against 16 layers
+ * and the registry reached 35 — and the only symptom was a share link that
+ * decoded to null. Deriving the assertion from the registry means the next
+ * layer added either fits or fails here, rather than in someone's inbox.
+ */
+test('a share link with every layer enabled is under the payload ceiling', () => {
+  const params = new URLSearchParams();
+  encodeLayerStateParams(params, {
+    enabledLayerIds: LAYER_STATE_REGISTRY.map((entry) => entry.id),
+    options: {},
+  });
+  params.set('v', '2');
+  const decoded = decodeLayerStateParams(params);
+  assert.ok(decoded, 'the everything-on link decodes at all');
+  assert.equal(decoded.enabledLayerIds.length, LAYER_STATE_REGISTRY.length,
+    'and decodes to every layer, not a prefix of them');
+});
+
+/**
+ * Two characters, and why it is safe. The wire format has always been
+ * dot-separated, so widening the token grammar cannot change how any link ever
+ * issued decodes — and a two-character token can never collide with a
+ * one-character one.
+ */
+test('one- and two-character tokens coexist, and old links still decode', () => {
+  for (const entry of LAYER_STATE_REGISTRY) {
+    assert.match(entry.token, /^[a-z0-9]{1,2}$/, `${entry.id} token is in grammar`);
+  }
+  assert.ok(LAYER_STATE_REGISTRY.some((entry) => entry.token.length === 2),
+    'the widened space is actually in use');
+  // A link written before the widening, character for character. Sorted
+  // because the decoder answers in REGISTRY order, not in link order — which
+  // is the property that makes a link stable, and is asserted elsewhere.
+  const legacy = new URLSearchParams({ v: '2', l: 'f.p.c' });
+  assert.deepEqual([...decodeLayerStateParams(legacy).enabledLayerIds].sort(),
+    ['cctv', 'flights', 'transit-fr']);
 });

@@ -1947,6 +1947,84 @@ model of what a camera sees and asserts the box lands under the ceiling —
 including non-cardinal headings, where the axis-aligned rectangle has to contain
 a rotated trapezoid.
 
+#### French address layers (September 2026)
+
+Five layers scan around the ground point the camera is LOOKING AT — via
+`deriveFetchCenter()`, shared with the traffic layer — rather than over the
+viewport, because all four of their upstreams take a coordinate and a radius,
+not a box. They go dormant and clear their draw above 12 km (`idfm-network`:
+20 km), and report `dormant` in `getStats()` so an empty screen is never
+ambiguous between "too high to scan" and "this address is clear".
+
+| Layer | Token | Proxy | Upstream |
+|---|---|---|---|
+| `georisques` | `gr` | `/api/georisques` | Géorisques (BRGM) — 3 endpoints fanned out per scan |
+| `dvf-sales` | `dv` | `/api/dvf` | geo-DVF CSV per commune-year, parsed and cached server-side |
+| `dpe-fr` | `dp` | `/api/dpe` | ADEME `dpe03existant`, `geo_distance` query |
+| `urbanisme-gpu` | `ur` | `/api/gpu` | APIcarto `zone-urba` + `assiette-sup-s` |
+| `idfm-network` | `if` | `/api/idfm/stops`, `/api/idfm/lines` | Île-de-France Mobilités Opendatasoft |
+
+`/api/isochrone` (IGN Valhalla over BD TOPO®) is a SERVICE, not a layer: an
+isochrone has no meaning without a chosen point, so it is not in the layer
+registry and carries no share token. Walking and driving only.
+
+These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
+`ur`, `if`. The single-character space ran out exactly where this file kept
+predicting it would: by the time this branch met main, `0`–`9` and `a`–`y` were
+all claimed and `z` is the canonical UNKNOWN token two tests assert on. Widening
+cost nothing on the wire, because `l=` has always been DOT-SEPARATED: `l=f.dv.p`
+parses by the same split that read `l=f.7.p`, every link ever issued still
+decodes to exactly what it decoded to before, and a two-character token can
+never collide with a one-character one. `MAX_ENABLED_LAYERS_CHARS` was raised
+from 64 in the same change — it had quietly stopped covering the everything-on
+link at 35 layers (69 characters), so sharing every layer at once produced a
+link that decoded to `null`; `layerState.test.mjs` now derives that assertion
+from the registry instead of a number someone has to remember to update.
+
+**One silhouette per register** (`addressMarkerIcons.js`). All five layers
+answer a question about the same building, and drawn as discs they were
+indistinguishable from each other on screen. Colour could not carry the source
+— DVF spends it on the price ratio, DPE on the official A–G scale, Géorisques
+on severity, IDFM on the mode family — so the shape does: **€** for a sale,
+**the A–G letter framed** for a diagnostic, a **hazard triangle**, a **plan
+sheet**, and the **mode pictogram** (reused from `transitVehicleIcons.js`,
+because a stop is signed in the street with its mode's own symbol). The DPE
+marker being the label itself means a grade is readable without a click.
+
+Glyphs are SVG data URIs, cached per kind and raster size, drawn as white
+line-art over a dark halo and carrying no hue of their own — Cesium multiplies
+`billboard.color` into the texture, so white takes the value colour exactly
+while black survives the multiply. That is the same tint-safe discipline
+`sharedMobilityIcons.js` and `transitVehicleIcons.js` record, and it is why one
+image per shape serves every colour. Drawn here rather than vendored from
+Material Symbols: that pack was taken for vehicles because a tram in plan view
+is hard to invent recognisably, which is not true of a euro sign, so these
+carry no third-party licence obligation. `scripts/qa-address-layers.mjs` proves
+no two registers ever resolve to the same image, and that clicking a billboard
+still opens its card — a billboard is not a point, and pickability had to be
+re-measured rather than assumed.
+
+**Markers are seated on the rendered terrain, not on the ellipsoid.**
+`Cartesian3.fromDegrees(lon, lat)` places a marker at height 0, and the globe
+draws avenue de France at 79–83 m of ellipsoidal height — so every marker sat
+eighty metres under its own street, painted anyway because depth testing is
+disabled. Under an oblique camera a vertical error is a HORIZONTAL error on
+screen, and one that changes with the camera pose: measured at 700 m and −35°,
+a DVF dot landed 83 px from its address, and turning 40° moved the error
+sideways. The dots therefore slid across the city as the camera moved. Every
+marker is now placed at `globe.getHeight()` — the height of the terrain
+triangle actually being rendered, the same call `bdtopoBuildings.js` uses — and
+re-seated when terrain finishes streaming (`tileLoadProgressEvent`) and when
+the camera settles, because the LOD under a point refines as you fly toward it.
+While terrain has not answered for a marker, the scan centre's height stands in
+for it and `getStats().seatPending` says so. `scripts/qa-address-layers.mjs`
+measures the residual offset in pixels from two camera poses; a unit test
+covers the seating arithmetic. Clamped polylines carry no `position` and are
+skipped — they were already on the ground.
+
+Licence note: IDFM is **ODbL 1.0** — attribution and share-alike on derived
+databases — while the other five are Licence Ouverte. See `DATA_SOURCES.md`.
+
 ### Context / Contacts coordinator (July 2026)
 
 - The internal Context coordinator is available in every visual style. Its dedicated right-side `CONTEXT` chooser exposes the neutral shell; the coordinator is not duplicated in Data Layers and does not enable a live-data dependency until a mode is selected.
