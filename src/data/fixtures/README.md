@@ -144,3 +144,37 @@
   of 1,173 buildings and Paris for 0 of 2,067, which is the asymmetry every
   seating rule in `bdtopoBuildingsFeed.js` exists to handle. Used by
   `src/data/bdtopoBuildingsFeed.test.mjs`. © IGN, Licence Ouverte 2.0.
+
+- `bison-fute-evenementiel-sample.xml` — 9 real situations (16 records) of the
+  national DATEX II road-event aggregate
+  `tipi.bison-fute.gouv.fr/.../Evenementiel-DIR/grt/RRN/content.xml`, captured
+  2026-08-31 at its own `publicationTime` of 21:13:26.825+02:00, with the SOAP
+  envelope and publication header kept verbatim so the projection under test
+  reads exactly what the proxy reads. Nine of 286, chosen to hold every trap
+  and seven of the eight drawn categories. Each is one thing the projection
+  exists for: **260830-002035**, an accident on the N94 that also publishes the
+  lane closure it caused — the situation that proves one incident must not be
+  drawn twice; **260131-000090**, a rockfall opened on 31 January whose validity
+  window has **no end time at all** and which only `lifeCycleManagement/end`
+  closes, so reading the window alone leaves a landslide on the N20 for seven
+  months; **260122-001698**, roadworks ordered for **1 October** that carry a
+  closure and a diversion of their own; **260722-001613**, a `roadClosed`
+  segment, which is the only way to tell a closure from a restriction inside
+  one DATEX II class; **260113-001342**, a situation that is nothing but
+  diversions *and* publishes an `internalNote` comment — the operator's message
+  to their own district, which the projection reads and drops; plus a queue at
+  Calais, snow closing the col du Glandon, a landslide cutting the D21, and
+  live roadworks. Licence Ouverte 2.0, DIR via Bison Futé / Tipi.
+- `irve-bornes-grouped-sample.json` — 31 grouped rows of ODRÉ's `bornes-irve`,
+  captured 2026-08-27 through the same `group_by` the proxy uses, holding 311
+  real points de charge across 12 coordinates. Kept as the raw Opendatasoft
+  envelope (`{total_count, results}`) so the projection under test reads exactly
+  what the proxy reads. Every trap in it is real and is the point: Q-Park's
+  Grande Arche car park (224 charge points on one coordinate), the same Belib'
+  and ENGIE Vianeo sites published twice under a second operator name, a
+  Brétigny-sur-Orge site published at six decimals by one feed and seven by
+  another, `puissance_nominale` of 7 360 in a kilowatt column, a 0 kW row at
+  exactly (0, 0), a QOVOLTIS site whose verified commune is Le Porge but whose
+  coordinate is south of Madagascar, Mac-Roman mojibake in `condition_acces`,
+  and four spellings of a boolean in one file. Licence Ouverte 2.0,
+  transport.data.gouv.fr via ODRÉ.

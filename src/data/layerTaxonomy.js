@@ -309,6 +309,25 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // `periodic` and not `live`: the event aggregate is republished hourly, so it
+  // does not stream — it is a polled snapshot, and calling it live would
+  // promise a cadence the source does not have. (Its sibling `road-status-fr`
+  // IS `live`: the Traficolor status it draws moves every 60-360 s.)
+  //
+  // It keeps no `(FR)` in the label, like the rest of the table: the `coverage: 'fr'` facet renders as a scope chip on the row and
+  // says it once instead of twice. It cannot say the sharper truth — that the
+  // coverage is the RRN *non concédé*, without the conceded motorways — so the
+  // row's source line and each card carry that, and `getStats().coverage`
+  // states it in one string.
+  Object.freeze({
+    id: 'road-events-fr',
+    category: 'ground-mobility',
+    label: 'Événements routiers',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
 
   // ── ÉNERGIE ───────────────────────────────────────────────────────────────
   Object.freeze({
@@ -366,6 +385,19 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     id: 'gas-fr',
     category: 'energy',
     label: 'Réseau gaz',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  // The hinge between ÉNERGIE and MOBILITÉ TERRESTRE, filed under energy because
+  // what it publishes is installed capacity — kW per point de charge — and never
+  // whether one is free. `periodic`, like its neighbours: the register is
+  // consolidated daily upstream and this layer refetches per viewport.
+  Object.freeze({
+    id: 'irve-fr',
+    category: 'energy',
+    label: 'Bornes de recharge',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',

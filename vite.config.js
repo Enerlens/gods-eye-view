@@ -25,6 +25,10 @@
  *  19. ODRÉ gas system — NaTran/Teréga transmission traces, gas power stations, biomethane injection
  *  20. Power grid — viewport-bounded OpenStreetMap high-voltage lines, substations and pylons
  *  21. Bison Futé DATEX II — live status, flow and speed on the French national road network
+ *  22. Bison Futé Événementiel-DIR — the road events the DIRs declare on that same network
+ *      (accidents, closures, roadworks, diversions)
+ *  23. transport.data.gouv.fr / ODRÉ — French EV charge points (IRVE): per viewport,
+ *      per département, and the thinned national mesh between the two
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -75,6 +79,7 @@ import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js'
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
+import { projectRoadEvents } from './src/data/bisonFuteFeed.js';
 import {
   powerGridBoxKey,
   powerGridIncludesTowers,
@@ -97,7 +102,27 @@ import {
   tripUpdatesFromBytes,
   vehiclePositionsFromBytes,
 } from './src/data/gtfsRealtime.js';
-import { boundsOfPoints } from './src/data/viewportBox.js';
+import { boundsOfPoints, boxKey, snapBoxOutward, validBox } from './src/data/viewportBox.js';
+import {
+  buildDepartementIndex,
+  projectIrveDepartements,
+  sweepStripeTruncated,
+  IRVE_SWEEP_FIELDS,
+  IRVE_SWEEP_LIMIT,
+  IRVE_SWEEP_MIN_SPAN_DEG,
+  IRVE_SWEEP_SEED_SPAN_DEG,
+} from './src/data/irveDepartements.js';
+import {
+  irveBboxWhere,
+  projectIrveSites,
+  IRVE_BAND_KEYS,
+  IRVE_BOX_STEP_DEG,
+  IRVE_DATASET,
+  IRVE_GROUP_FIELDS,
+  IRVE_GROUP_LIMIT,
+  IRVE_MAX_BOX_DEG,
+  IRVE_SOURCE,
+} from './src/data/irveFeed.js';
 import {
   gbfsBoxKey,
   gbfsBoxContains,
@@ -3007,6 +3032,487 @@ function eco2mixProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// IRVE charge-point proxy (France's public EV charging register)
+// ---------------------------------------------------------------------------
+/**
+ * The consolidation runs once a day, so a 6-hour cache costs nothing real and
+ * a cold viewport is paid for at most four times a day.
+ */
+const IRVE_TTL_MS = 6 * 60 * 60 * 1000;
+/** Serve-stale ceiling when ODRÉ is down. A register a week old is still a register. */
+const IRVE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+const IRVE_TIMEOUT_MS = 30_000;
+/** Byte cap on one grouped answer. The densest measured box (Paris, 0.35°) is 3.3 MB. */
+const IRVE_MAX_BYTES = 24 * 1024 * 1024;
+const IRVE_VIEWPORT_CACHE_MAX = 24;
+const IRVE_RECORDS_URL = `https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/${IRVE_DATASET}/records`;
+const IRVE_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'irve');
+
+/** box key -> {at:number, payload:object} */
+const _irveViewportCache = new Map();
+const _irveViewportInFlight = new Map();
+const _irveRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+function trimIrveViewportCache() {
+  while (_irveViewportCache.size > IRVE_VIEWPORT_CACHE_MAX) {
+    const oldest = _irveViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _irveViewportCache.delete(oldest);
+  }
+}
+
+/** Snapped box key -> stable disk-cache file path. */
+function irveDiskPath(key) {
+  return path.join(IRVE_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+/** Read a disk-cached viewport answer. `maxAgeMs` Infinity = any age. */
+async function readIrveDisk(key, maxAgeMs) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(irveDiskPath(key), 'utf8'));
+    if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.sites)) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/** Fire-and-forget disk write for a successful viewport answer. */
+function writeIrveDisk(key, entry) {
+  fsp.mkdir(IRVE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(irveDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[IRVE Proxy] disk cache write failed:', err?.message || err));
+}
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchIrveJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(IRVE_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, IRVE_MAX_BYTES);
+}
+
+/**
+ * Fetch one viewport and fold it into sites.
+ *
+ * The two calls run in PARALLEL and mean different things. The grouped call is
+ * the answer; the `limit=0` call is the dataset's own count for the same box,
+ * and exists only so `projectIrveSites` can prove the grouped answer was
+ * complete. A silent aggregation cap is the one failure mode Opendatasoft
+ * would not report as an error, and it would look exactly like a quiet city.
+ *
+ * @param {{south:number, west:number, north:number, east:number}} box Snapped box.
+ * @returns {Promise<object>} Client payload.
+ */
+async function refreshIrveViewport(box) {
+  const where = irveBboxWhere(box);
+  const fields = IRVE_GROUP_FIELDS.join(',');
+  const grouped = new URLSearchParams({
+    where,
+    group_by: fields,
+    select: `${fields},count(*) as pdc`,
+    limit: String(IRVE_GROUP_LIMIT),
+  });
+  const counted = new URLSearchParams({ where, limit: '0' });
+
+  const [groupedResult, countResult] = await Promise.allSettled([
+    fetchIrveJson(`${IRVE_RECORDS_URL}?${grouped}`),
+    fetchIrveJson(`${IRVE_RECORDS_URL}?${counted}`),
+  ]);
+  if (groupedResult.status === 'rejected') {
+    throw new Error(groupedResult.reason?.message || 'grouped query failed');
+  }
+  if (countResult.status === 'rejected') {
+    // The count is a completeness PROOF, not the data. Losing it degrades the
+    // guarantee to "unknown" rather than blanking a viewport that arrived.
+    console.warn('[IRVE Proxy] box count unavailable:', countResult.reason?.message || countResult.reason);
+  }
+
+  const projected = projectIrveSites({
+    groups: groupedResult.value?.results,
+    totalCount: countResult.status === 'fulfilled' ? countResult.value?.total_count : null,
+  });
+  return {
+    ...projected,
+    box,
+    dataset: IRVE_DATASET,
+    maxBoxDeg: IRVE_MAX_BOX_DEG,
+  };
+}
+
+
+/**
+ * Bundled département polygons, read once from disk.
+ *
+ * The dev-server proxy reads the same file the browser layer fetches
+ * (`src/data/local_data/france_departements/`), so the national rollup and the
+ * shapes it is painted on can never come from two different vintages.
+ */
+let _irveDepartementIndex = null;
+async function loadIrveDepartementIndex() {
+  if (_irveDepartementIndex) return _irveDepartementIndex;
+  const file = path.join(process.cwd(), 'src', 'data', 'local_data', 'france_departements', 'departements.geojson');
+  _irveDepartementIndex = buildDepartementIndex(JSON.parse(await fsp.readFile(file, 'utf8')));
+  return _irveDepartementIndex;
+}
+
+/** Grouped stripes are answered concurrently, but politely — this is one anonymous quota. */
+const IRVE_SWEEP_CONCURRENCY = 5;
+/** The national rollup is rebuilt daily upstream; a 24-hour cache matches it. */
+const IRVE_NATIONAL_TTL_MS = 24 * 60 * 60 * 1000;
+const IRVE_NATIONAL_CACHE_PATH = path.join(IRVE_DISK_DIR, 'departements.json');
+/**
+ * Shape version of the cached national rollup.
+ *
+ * Bump this whenever `projectIrveDepartements` changes what it returns. The
+ * cache lives for a day on disk, so without it an edit to the projection is
+ * invisible until tomorrow — and the version that caught this was a coastal
+ * snap that the served payload silently did not have.
+ */
+const IRVE_NATIONAL_CACHE_VERSION = 3;
+
+/** @type {?{at:number, payload:object}} */
+let _irveNational = null;
+/** @type {?Promise<object>} */
+let _irveNationalInFlight = null;
+let _irveNationalDiskChecked = false;
+
+/** Fetch one latitude stripe of the national sweep, grouped. */
+async function fetchIrveStripe(lo, hi) {
+  const fields = IRVE_SWEEP_FIELDS.join(',');
+  const params = new URLSearchParams({
+    where: `consolidated_latitude>=${lo} AND consolidated_latitude<${hi}`,
+    group_by: fields,
+    select: `${fields},count(*) as pdc`,
+    limit: String(IRVE_SWEEP_LIMIT),
+  });
+  const payload = await fetchIrveJson(`${IRVE_RECORDS_URL}?${params}`);
+  return Array.isArray(payload?.results) ? payload.results : [];
+}
+
+/**
+ * Sweep the whole dataset in latitude stripes, splitting any stripe that comes
+ * back at the aggregation limit.
+ *
+ * The split is the only defence against a truncation Opendatasoft does not
+ * report: an over-limit aggregated query returns exactly `limit` rows with
+ * HTTP 200 and no error field, so "did this stripe reach the limit" is the
+ * single available signal. `IRVE_SWEEP_MIN_SPAN_DEG` bounds the recursion,
+ * because the value being split on is upstream-controlled; a stripe still at
+ * the limit down there is returned as `stalled` and surfaces in the payload
+ * rather than halving for ever.
+ *
+ * @returns {Promise<{rows:Array<object>, calls:number, stalled:Array<object>}>}
+ */
+async function sweepIrveNational() {
+  let queue = [];
+  for (let lo = -90; lo < 90; lo += IRVE_SWEEP_SEED_SPAN_DEG) {
+    queue.push({ lo, hi: Math.min(90, lo + IRVE_SWEEP_SEED_SPAN_DEG) });
+  }
+  const rows = [];
+  const stalled = [];
+  let calls = 0;
+
+  while (queue.length) {
+    const batch = queue.splice(0, IRVE_SWEEP_CONCURRENCY);
+    const answers = await Promise.all(batch.map(async (stripe) => {
+      calls += 1;
+      return { stripe, results: await fetchIrveStripe(stripe.lo, stripe.hi) };
+    }));
+    const next = [];
+    for (const { stripe, results } of answers) {
+      if (!sweepStripeTruncated(results.length)) {
+        rows.push(...results);
+        continue;
+      }
+      const span = stripe.hi - stripe.lo;
+      if (span <= IRVE_SWEEP_MIN_SPAN_DEG) {
+        // Keep what came back and say it is short, rather than pretend.
+        rows.push(...results);
+        stalled.push(stripe);
+        continue;
+      }
+      const mid = stripe.lo + span / 2;
+      next.push({ lo: stripe.lo, hi: mid }, { lo: mid, hi: stripe.hi });
+    }
+    queue = next.concat(queue);
+  }
+  return { rows, calls, stalled };
+}
+
+/** Build the national rollup: sweep, verify, then fold onto the polygons. */
+async function refreshIrveNational() {
+  const started = Date.now();
+  const [index, counted, swept] = await Promise.all([
+    loadIrveDepartementIndex(),
+    fetchIrveJson(`${IRVE_RECORDS_URL}?${new URLSearchParams({ limit: '0' })}`)
+      .catch((error) => {
+        console.warn('[IRVE Proxy] national count unavailable:', error?.message || error);
+        return null;
+      }),
+    sweepIrveNational(),
+  ]);
+
+  const projected = projectIrveDepartements({
+    groups: swept.rows,
+    index,
+    totalCount: counted?.total_count ?? null,
+  });
+  if (projected.truncated || swept.stalled.length) {
+    console.warn(
+      `[IRVE Proxy] national sweep incomplete: ${projected.pdcSwept}/${projected.pdcTotal} charge points`
+      + `${swept.stalled.length ? `, ${swept.stalled.length} stripe(s) still at the limit` : ''}`,
+    );
+  }
+  // The two documents are cached together because one sweep builds both, and
+  // served apart because they are read at different moments and at wildly
+  // different sizes: the rollup is 18 KB and arrives with the layer, the mesh
+  // is ~0.9 MB and is only fetched if the operator zooms past the choropleth.
+  const { mesh, ...rollup } = projected;
+  return {
+    rollup: {
+      ...rollup,
+      stalledStripes: swept.stalled.length,
+      upstreamCalls: swept.calls,
+      sweptInMs: Date.now() - started,
+      dataset: IRVE_DATASET,
+      source: IRVE_SOURCE,
+    },
+    mesh: {
+      sites: mesh,
+      siteCount: mesh.length,
+      pdc: rollup.pdcAssigned,
+      bands: IRVE_BAND_KEYS,
+      dataset: IRVE_DATASET,
+      source: IRVE_SOURCE,
+    },
+  };
+}
+
+/** Load the national rollup from disk once, lazily. */
+async function readIrveNationalDisk() {
+  if (_irveNationalDiskChecked) return;
+  _irveNationalDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(IRVE_NATIONAL_CACHE_PATH, 'utf8'));
+    if (entry?.version === IRVE_NATIONAL_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.rollup?.departements)
+      && Array.isArray(entry.payload?.mesh?.sites)) {
+      _irveNational = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeIrveNationalDisk(entry) {
+  fsp.mkdir(IRVE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(IRVE_NATIONAL_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[IRVE Proxy] national cache write failed:', err?.message || err));
+}
+
+/**
+ * Vite plugin: viewport-bounded French charge-point proxy.
+ *
+ *   GET /api/irve-fr/sites?south&west&north&east — charging sites in one box
+ *   GET /api/irve-fr/departements                — national rollup, 96 départements
+ *   GET /api/irve-fr/mesh                        — the national point set, once
+ *   GET /api/irve-fr/status                      — dataset provenance + cache state
+ *
+ * WHY A PROXY at all, when Opendatasoft sends CORS headers and a browser could
+ * fetch this directly: the anonymous ODRÉ quota is per-IP, so N open tabs
+ * would each bill their own calls; the traps in `irveFeed.js` are absorbed
+ * once, server-side, under test, instead of in every client; and the shape
+ * changes completely on the way through. The densest real viewport is 22 348
+ * charge points, which Opendatasoft's own `group_by` collapses to 4 996 rows
+ * (3.3 MB) and this proxy folds again to ~2 700 sites — the browser is served
+ * the sites, never the 17 MB of charge points behind them.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function irveFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/irve-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_irveRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        let newest = null;
+        for (const entry of _irveViewportCache.values()) {
+          if (!newest || entry.at > newest) newest = entry.at;
+        }
+        json(200, {
+          source: IRVE_SOURCE,
+          dataset: IRVE_DATASET,
+          lastFetch: newest,
+          cachedBoxes: _irveViewportCache.size,
+          ttlMs: IRVE_TTL_MS,
+          maxBoxDeg: IRVE_MAX_BOX_DEG,
+          national: _irveNational
+            ? {
+              at: _irveNational.at,
+              painted: _irveNational.payload.rollup.painted,
+              pdc: _irveNational.payload.rollup.pdcAssigned,
+              meshSites: _irveNational.payload.mesh.siteCount,
+            }
+            : null,
+          nationalTtlMs: IRVE_NATIONAL_TTL_MS,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+      if (route === '/departements') {
+        await readIrveNationalDisk();
+        const now = Date.now();
+        if (_irveNational && now - _irveNational.at <= IRVE_NATIONAL_TTL_MS) {
+          json(200, { ..._irveNational.payload.rollup, fetchedAt: _irveNational.at, stale: false }, { 'X-IRVE-FR': 'HIT' });
+          return;
+        }
+        if (!_irveNationalInFlight) {
+          _irveNationalInFlight = refreshIrveNational()
+            .then((payload) => {
+              const entry = { version: IRVE_NATIONAL_CACHE_VERSION, at: Date.now(), payload };
+              _irveNational = entry;
+              writeIrveNationalDisk(entry);
+              return entry;
+            })
+            .finally(() => { _irveNationalInFlight = null; });
+        }
+        try {
+          const entry = await _irveNationalInFlight;
+          json(200, { ...entry.payload.rollup, fetchedAt: entry.at, stale: false }, { 'X-IRVE-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[IRVE Proxy] national rollup unavailable:', error?.message || error);
+          // A rollup a week old is still a true picture of a register that is
+          // rebuilt daily — serving it beats blanking the national view.
+          if (_irveNational) {
+            json(200, { ..._irveNational.payload.rollup, fetchedAt: _irveNational.at, stale: true }, { 'X-IRVE-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'French charge-point register is temporarily unavailable' });
+        }
+        return;
+      }
+      if (route === '/mesh') {
+        // The whole national point set, once. It is served entire and thinned
+        // in the CLIENT (`irveMesh.js`) rather than per request, because the
+        // thinning is a function of the viewport and a round trip on every
+        // pan would make the middle regime feel worse than either of the two
+        // it sits between. ~0.9 MB, cached for a day, fetched at most once a
+        // session — and only if the operator leaves the choropleth.
+        await readIrveNationalDisk();
+        const now = Date.now();
+        if (_irveNational && now - _irveNational.at <= IRVE_NATIONAL_TTL_MS) {
+          json(200, { ..._irveNational.payload.mesh, fetchedAt: _irveNational.at, stale: false }, { 'X-IRVE-FR': 'HIT' });
+          return;
+        }
+        if (!_irveNationalInFlight) {
+          _irveNationalInFlight = refreshIrveNational()
+            .then((payload) => {
+              const entry = { version: IRVE_NATIONAL_CACHE_VERSION, at: Date.now(), payload };
+              _irveNational = entry;
+              writeIrveNationalDisk(entry);
+              return entry;
+            })
+            .finally(() => { _irveNationalInFlight = null; });
+        }
+        try {
+          const entry = await _irveNationalInFlight;
+          json(200, { ...entry.payload.mesh, fetchedAt: entry.at, stale: false }, { 'X-IRVE-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[IRVE Proxy] national mesh unavailable:', error?.message || error);
+          if (_irveNational) {
+            json(200, { ..._irveNational.payload.mesh, fetchedAt: _irveNational.at, stale: true }, { 'X-IRVE-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'French charge-point register is temporarily unavailable' });
+        }
+        return;
+      }
+      if (route !== '/sites') {
+        json(404, { error: 'Unknown IRVE endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, IRVE_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${IRVE_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: IRVE_MAX_BOX_DEG,
+        });
+        return;
+      }
+
+      const box = snapBoxOutward(requested, IRVE_BOX_STEP_DEG);
+      const key = boxKey(box);
+      const now = Date.now();
+
+      const cached = _irveViewportCache.get(key);
+      if (cached && now - cached.at <= IRVE_TTL_MS) {
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-IRVE-FR': 'HIT' });
+        return;
+      }
+      const onDisk = await readIrveDisk(key, IRVE_TTL_MS);
+      if (onDisk) {
+        _irveViewportCache.set(key, onDisk);
+        trimIrveViewportCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-IRVE-FR': 'DISK' });
+        return;
+      }
+
+      const request = coalesceProxyRequest(_irveViewportInFlight, key, async () => {
+        const payload = await refreshIrveViewport(box);
+        const entry = { at: Date.now(), payload };
+        _irveViewportCache.set(key, entry);
+        trimIrveViewportCache();
+        writeIrveDisk(key, entry);
+        return entry;
+      });
+      try {
+        const entry = await request.promise;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, {
+          'X-IRVE-FR': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+      } catch (error) {
+        console.warn('[IRVE Proxy] viewport unavailable:', error?.message || error);
+        const stale = cached || await readIrveDisk(key, IRVE_STALE_MS);
+        if (stale) {
+          json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-IRVE-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French charge-point register is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'irve-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
 /**
  * ODRÉ French gas-system proxy — keyless, Licence Ouverte 2.0.
  *
@@ -3291,6 +3797,223 @@ function gasFranceProxy() {
   };
 }
 
+
+/**
+ * Bison Futé proxy (the road events France's DIRs declare) with a memory + disk
+ * cache and a conditional-GET refresh.
+ *
+ * ONE keyless upstream, published by Tipi for the DGITM under Licence Ouverte
+ * 2.0, covering the réseau routier national **non concédé** only:
+ *   `Evenementiel-DIR/grt/RRN/content.xml` — every incident, roadworks order,
+ *     closure, diversion and restriction the DIRs have declared, DATEX II v2
+ *
+ * The SIBLING product on the same host — QTV-DIR's six-minute speed and flow
+ * snapshot — has its own proxy in `roadStatusFranceProxy()`, which also serves
+ * Traficolor to the `road-status-fr` layer. Two proxies rather than one
+ * deliberately: they poll on different clocks (hourly against six-minutely) and
+ * one shared cache would tie the slower product's TTL to the faster one's.
+ *
+ * WHY A PROXY when the origin sends no CORS restriction a dev server cannot work
+ * around: the document is 3.3 MB, and every open tab would parse it for itself.
+ * Projected once, server-side, under test, it becomes ~190 KB of JSON the globe
+ * can draw directly — and the DATEX II parsing lives in `bisonFuteFeed.js` where
+ * a unit test can point at a real captured response instead of at a browser.
+ *
+ * WHY CONDITIONAL GET and not a plain poll. MEASURED 2026-08-31: the origin
+ * serves `ETag`, `Last-Modified` AND gzip (3,365,501 → 165,296 bytes) and
+ * answers `If-None-Match` with a 304. The aggregate is republished HOURLY at
+ * HH:13, so a naive 5-minute poll would re-download and re-parse an unchanged
+ * 3.3 MB document eleven times an hour. With `If-None-Match` the same cadence
+ * costs one 304 per poll, and the projection runs only when the file has
+ * genuinely moved — which is what makes the layer affordable at a cadence worth
+ * having.
+ *
+ * Routes:
+ *   GET /api/bison-fute/events → {fetchedAt, stale, publishedAt, events, counts}
+ *   GET /api/bison-fute/status → the cache state
+ *
+ * @returns {import('vite').Plugin}
+ */
+function bisonFuteProxy() {
+  const BASE = 'https://tipi.bison-fute.gouv.fr/bison-fute-ouvert/publicationsDIR';
+  const EVENTS_URL = `${BASE}/Evenementiel-DIR/grt/RRN/content.xml`;
+  // Bounded well inside the product's own cadence, because a 304 is nearly
+  // free: the file moves hourly, and this catches a republication within five
+  // minutes for the cost of eleven conditional GETs an hour.
+  const EVENTS_TTL_MS = 5 * 60_000;
+  // 3.3 MB gzipped to 165 KB, from a government origin: generous, still bounded.
+  const UPSTREAM_TIMEOUT_MS = 45_000;
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'bison-fute');
+  const SOURCE = 'Bison Futé / Tipi (tipi.bison-fute.gouv.fr)';
+
+  /**
+   * One conditionally-refreshed upstream document.
+   *
+   * `etag` and `lastModified` are what make the poll cheap; `body` is retained
+   * so a 304 can re-run the projection without a download — which matters
+   * because `state` is time-dependent even when the document is not: roadworks
+   * ordered for 08:30 become active at 08:30 whether or not the file moved.
+   */
+  const makeSlot = () => ({ etag: null, lastModified: null, body: null, at: 0 });
+  const upstream = { events: makeSlot() };
+
+  /** @type {{events: ?object}} */
+  const mem = { events: null };
+  const diskChecked = { events: false };
+  /** @type {{events: ?Promise<?object>}} */
+  const inflight = { events: null };
+
+  /**
+   * Conditionally fetch one upstream document into its slot.
+   *
+   * Returns whether the body CHANGED, so a caller can skip re-projecting an
+   * unchanged document. A 304 refreshes the slot's timestamp and nothing else.
+   * @param {string} url
+   * @param {{etag:?string,lastModified:?string,body:?string,at:number}} slot
+   * @returns {Promise<boolean>} True when a new body was read.
+   */
+  async function refreshDocument(url, slot) {
+    const headers = { Accept: 'application/xml,text/csv,*/*' };
+    // Only offer validators when there is a body they could validate: after a
+    // cache eviction an `If-None-Match` hit would leave nothing to project.
+    if (slot.body !== null) {
+      if (slot.etag) headers['If-None-Match'] = slot.etag;
+      if (slot.lastModified) headers['If-Modified-Since'] = slot.lastModified;
+    }
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (response.status === 304) {
+      slot.at = Date.now();
+      return false;
+    }
+    if (!response.ok) throw new Error(`${url} HTTP ${response.status}`);
+    const body = await response.text();
+    if (!body.trim()) throw new Error(`${url} returned an empty body`);
+    slot.etag = response.headers.get('etag');
+    slot.lastModified = response.headers.get('last-modified');
+    slot.body = body;
+    slot.at = Date.now();
+    return true;
+  }
+
+  /** Refresh and project the road-event document. */
+  async function refreshEvents(previous) {
+    const changed = await refreshDocument(EVENTS_URL, upstream.events);
+    // Unchanged upstream, but `state` is time-dependent: roadworks ordered for
+    // 08:30 become active at 08:30 whether or not the file moved. Re-project
+    // from the retained body rather than serving a stale "planned".
+    const projected = projectRoadEvents(upstream.events.body);
+    if (!changed && previous) {
+      return { ...previous, at: Date.now(), ...projected };
+    }
+    return { at: Date.now(), source: SOURCE, ...projected };
+  }
+
+  const cachePath = (key) => path.join(CACHE_DIR, `${key}.json`);
+
+  async function readDiskOnce(key, valid) {
+    if (diskChecked[key]) return;
+    diskChecked[key] = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(cachePath(key), 'utf8'));
+      if (Number.isFinite(parsed?.at) && valid(parsed)) mem[key] = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(key, entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(cachePath(key), JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[bison-fute-proxy] ${key} cache write failed (${err?.message || err})`);
+    }
+  }
+
+  /**
+   * Serve one of the two documents, refreshing it when its TTL has expired and
+   * falling back to the last good copy when the origin is down.
+   * @param {'events'} key
+   * @param {number} ttlMs
+   * @param {(previous:?object)=>Promise<object>} refresh
+   * @returns {Promise<{served:?object, stale:boolean}>}
+   */
+  async function serve(key, ttlMs, refresh) {
+    const entry = mem[key];
+    let current = entry && Date.now() - entry.at < ttlMs ? entry : null;
+    if (!current) {
+      if (!inflight[key]) {
+        inflight[key] = refresh(entry)
+          .then(async (next) => {
+            mem[key] = next;
+            await writeDisk(key, next);
+            return next;
+          })
+          .catch((err) => {
+            console.warn(`[bison-fute-proxy] ${key} refresh failed (${err?.message || err}) — serving cache if any`);
+            return null;
+          })
+          .finally(() => { inflight[key] = null; });
+      }
+      current = await inflight[key];
+    }
+    return { served: current || entry, stale: !current && Boolean(entry) };
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/bison-fute', async (req, res) => {
+      const sendJson = (status, obj) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(obj));
+      };
+      try {
+        const subPath = String(req.url || '').split('?')[0];
+        await readDiskOnce('events', (parsed) => Array.isArray(parsed?.events));
+
+        if (subPath === '/status') {
+          sendJson(200, {
+            source: SOURCE,
+            events: mem.events
+              ? { lastFetch: mem.events.at, publishedAt: mem.events.publishedAt, count: mem.events.events.length }
+              : null,
+            ttlMs: EVENTS_TTL_MS,
+          });
+          return;
+        }
+
+        if (subPath === '/events' || subPath === '/events/') {
+          const { served, stale } = await serve('events', EVENTS_TTL_MS, refreshEvents);
+          if (!served) { sendJson(502, { error: 'Bison Futé events fetch failed and no cache available' }); return; }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: EVENTS_TTL_MS,
+            source: served.source,
+            publishedAt: served.publishedAt,
+            publishedAtMs: served.publishedAtMs,
+            supplier: served.supplier,
+            counts: served.counts,
+            events: served.events,
+          });
+          return;
+        }
+
+        sendJson(404, { error: 'unknown Bison Futé route' });
+      } catch (err) {
+        console.warn('[bison-fute-proxy] error:', err?.message || err);
+        sendJson(500, { error: 'Bison Futé proxy error' });
+      }
+    });
+  }
+
+  return {
+    name: 'bison-fute-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
 
 /**
  * EDF generating-fleet proxy (hydraulic + nuclear + fossil-fired) with a
@@ -12539,6 +13262,7 @@ export default defineConfig(({ mode }) => {
       eco2mixProxy(),
       gasFranceProxy(),
       edfPlantsProxy(),
+      bisonFuteProxy(),
       rteGenerationProxy(),
       ndbcProxy(),
       rocketLaunchesProxy(),
@@ -12556,6 +13280,7 @@ export default defineConfig(({ mode }) => {
       panTransitProxy(),
       roadStatusFranceProxy(),
       gbfsFranceProxy(),
+      irveFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),
