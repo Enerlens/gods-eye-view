@@ -77,6 +77,37 @@ import {
 } from './src/data/rteGenerationFeed.js';
 import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints } from './src/data/viewportBox.js';
+// Address-scan feed projections. Each module is pure and unit-tested against a
+// captured upstream response; the proxies below are the only importers.
+import {
+  buildGeorisquesUrls,
+  clampRadius as clampGeorisquesRadius,
+  projectGeorisques,
+} from './src/data/georisquesFeed.js';
+import {
+  DVF_FIRST_YEAR,
+  buildDvfUrl,
+  clampDvfRadius,
+  groupMutations,
+  parseDvfCsv,
+  selectNearbySales,
+} from './src/data/dvfFeed.js';
+import { buildDpeUrl, clampDpeRadius, projectDpe } from './src/data/dpeFeed.js';
+import {
+  buildIsochroneUrl,
+  clampSeconds as clampIsochroneSeconds,
+  projectIsochrone,
+  resolveProfile as resolveIsochroneProfile,
+} from './src/data/isochroneFeed.js';
+import { buildGpuUrl, projectGpu } from './src/data/gpuFeed.js';
+import {
+  IDFM_PAGE_LIMIT,
+  buildLinesUrl,
+  buildStopsBboxUrl,
+  buildStopsRadiusUrl,
+  projectLines,
+  projectStops,
+} from './src/data/idfmFeed.js';
 import {
   gbfsBoxKey,
   gbfsBoxContains,
@@ -11393,6 +11424,620 @@ function normalizeAisTimestamp(value) {
   return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
 }
 
+
+// ---------------------------------------------------------------------------
+// Address-scan proxies — Géorisques, DVF, DPE, isochrone, GPU, IDFM
+// ---------------------------------------------------------------------------
+/**
+ * Six French public sources, read from a single coordinate, behind one shared
+ * cache discipline.
+ *
+ * NONE of these exists to bypass CORS: every one of them sends
+ * `access-control-allow-origin: *` (APIcarto echoes the origin), and a browser
+ * could call them directly. They are proxied for reasons measured per source
+ * on 2026-09-01 and recorded in each `src/data/*Feed.js` header:
+ *
+ *   - **GPU** — 1,396,720 bytes of servitude geometry for ONE point, one
+ *     feature of which is 759 polygons and 50,669 vertices. Projected: 96%
+ *     smaller. This is the strongest case of the six.
+ *   - **DVF** — 752,768 bytes of CSV per commune-year, of which a 300 m radius
+ *     needs a few dozen rows, and the arithmetic on it is wrong by 17× if done
+ *     naively (see `dvfFeed.js`). Parsed once, server-side, cached to disk.
+ *   - **Géorisques** — three endpoints fanned out per scan, upstream
+ *     `cache-control: no-store`, so the per-address cache has to live here.
+ *   - **DPE** — small, but the 230-field surface answers HTTP 400 for an
+ *     unknown column; the field list belongs somewhere pinned by a unit test.
+ *   - **Isochrone** — small, cacheable for weeks upstream, but a routing engine
+ *     is the one upstream here that a loop could hammer; rate-limited.
+ *   - **IDFM** — small, but the line referential is 2,121 rows that do not
+ *     change during a session.
+ *
+ * Every route answers `{ fetchedAt, stale, ... }` and exposes `/status`.
+ * A partial upstream failure degrades one field and leaves the rest standing —
+ * the mission design's rule that no single slow source may take down a scan.
+ */
+const ADDRESS_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'address');
+const ADDRESS_FETCH_TIMEOUT_MS = 20_000;
+/** One retry, for transport-level failures only. See `fetchAddressSource`. */
+const ADDRESS_FETCH_ATTEMPTS = 2;
+const ADDRESS_RETRY_DELAY_MS = 400;
+const ADDRESS_MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
+/** Scans are cheap to repeat and the underlying registers move slowly. */
+const ADDRESS_MEMORY_TTL_MS = 30 * 60 * 1000;
+/** A commune-year of DVF is a published file: it does not change at all. */
+const DVF_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const IDFM_LINES_TTL_MS = 12 * 60 * 60 * 1000;
+const _addressRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 90, globalMax: 400 });
+const _addressInFlight = new Map();
+
+/**
+ * Bounded JSON fetch shared by the address proxies.
+ *
+ * Resolves to `null` rather than throwing on any failure — HTTP error, timeout,
+ * oversized body, unparseable JSON. Every caller of this treats a null as "this
+ * one source did not answer" and continues, which is only safe because the
+ * failure cannot arrive as an exception from somewhere else.
+ *
+ * @param {string} url
+ * @param {{timeoutMs?: number, maxBytes?: number, text?: boolean}} [options]
+ * @returns {Promise<any|null>}
+ */
+async function fetchAddressSource(url, options = {}) {
+  const {
+    timeoutMs = ADDRESS_FETCH_TIMEOUT_MS,
+    maxBytes = ADDRESS_MAX_RESPONSE_BYTES,
+    text = false,
+    attempts = ADDRESS_FETCH_ATTEMPTS,
+  } = options;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = await fetchAddressSourceOnce(url, { timeoutMs, maxBytes, text });
+    if (result.ok) return result.value;
+    // Retry ONLY a transport-level failure, and only once. Measured: Géorisques
+    // resets the connection (ECONNRESET) on roughly one call in four while
+    // answering the very same URL from curl, so a scan that gave up on the
+    // first reset reported "no risks at this address" for a live register. An
+    // HTTP error or an oversized body is a real answer and is never retried.
+    if (!result.retryable || attempt === attempts) return null;
+    await new Promise((resolve) => { setTimeout(resolve, ADDRESS_RETRY_DELAY_MS); });
+  }
+  return null;
+}
+
+/**
+ * One attempt of {@link fetchAddressSource}.
+ * @param {string} url
+ * @param {{timeoutMs: number, maxBytes: number, text: boolean}} options
+ * @returns {Promise<{ok: boolean, value?: any, retryable?: boolean}>}
+ */
+async function fetchAddressSourceOnce(url, options) {
+  const { timeoutMs, maxBytes, text } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'GodsEyeView/1.0 (address scan; +https://github.com/bilawalsidhu/gods-eye-view)' },
+    });
+    if (!response.ok) {
+      console.warn(`[address-proxy] ${response.status} from ${new URL(url).host}`);
+      // A 5xx is the server saying "not now"; a 4xx is it saying "not this".
+      return { ok: false, retryable: response.status >= 500 };
+    }
+    // Refuse on the declared size before buffering it. The measured worst case
+    // is 1.4 MB of servitude geometry, so anything past the cap is a changed
+    // upstream, not a big answer — and reading it to find out is the cost this
+    // check exists to avoid.
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      console.warn(`[address-proxy] declared ${declared} bytes from ${new URL(url).host}, over cap`);
+      return { ok: false, retryable: false };
+    }
+    const body = await response.text();
+    if (body.length > maxBytes) {
+      console.warn(`[address-proxy] oversized body (${body.length}) from ${new URL(url).host}`);
+      return { ok: false, retryable: false };
+    }
+    return { ok: true, value: text ? body : JSON.parse(body) };
+  } catch (error) {
+    if (error?.name !== 'AbortError') {
+      // The cause, not just the message: undici reports every transport-level
+      // failure as the same opaque "fetch failed", and the code underneath
+      // (ECONNRESET, ENOTFOUND, UND_ERR_CONNECT_TIMEOUT…) is the only thing
+      // that distinguishes a flaky upstream from a broken request.
+      const cause = error?.cause?.code || error?.cause?.message || null;
+      console.warn(`[address-proxy] ${new URL(url).host}: ${error?.message || error}`
+        + (cause ? ` (${cause})` : ''));
+      // A transport failure (ECONNRESET, socket hang up) or a bad body. Only
+      // the former is worth another go; a SyntaxError from JSON.parse is not.
+      return { ok: false, retryable: !(error instanceof SyntaxError) };
+    }
+    // Aborted: the caller's deadline, not the upstream's fault, but retrying
+    // would blow the same deadline again.
+    return { ok: false, retryable: false };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Read one coordinate pair from a request, or null when either is unusable.
+ *
+ * The presence check is not redundant with the finite check, and the bug it
+ * prevents was found live: `searchParams.get('lon')` returns `null` for an
+ * absent parameter, `Number(null)` is `0`, and `Number.isFinite(0)` is true.
+ * A request with no coordinates at all therefore scanned 0°N 0°E — a point in
+ * the Gulf of Guinea — and returned HTTP 200 with an empty result, which reads
+ * as "there is nothing at your address" rather than as a malformed request.
+ */
+export function addressPoint(searchParams) {
+  const rawLon = searchParams.get('lon');
+  const rawLat = searchParams.get('lat');
+  if (rawLon === null || rawLat === null || rawLon.trim() === '' || rawLat.trim() === '') return null;
+  const lon = Number(rawLon);
+  const lat = Number(rawLat);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lon, lat };
+}
+
+/**
+ * Cache key for a point, rounded to ~11 m.
+ *
+ * Four decimals, not the full precision: two clicks on the same doorway must
+ * share one cache entry, or the cache never hits for the one workload it was
+ * built for.
+ */
+export function addressCacheKey(prefix, { lon, lat }, ...rest) {
+  return `${prefix}|${lon.toFixed(4)},${lat.toFixed(4)}|${rest.join('|')}`;
+}
+
+/** Shared in-memory cache for every address route. */
+const _addressCache = new Map();
+const ADDRESS_CACHE_MAX_ENTRIES = 300;
+
+function addressCacheGet(key, ttlMs = ADDRESS_MEMORY_TTL_MS) {
+  const entry = _addressCache.get(key);
+  if (!entry) return null;
+  return { payload: entry.payload, stale: Date.now() - entry.cachedAt >= ttlMs, cachedAt: entry.cachedAt };
+}
+
+function addressCacheSet(key, payload) {
+  _addressCache.set(key, { payload, cachedAt: Date.now() });
+  while (_addressCache.size > ADDRESS_CACHE_MAX_ENTRIES) {
+    _addressCache.delete(_addressCache.keys().next().value);
+  }
+}
+
+/**
+ * Install one address route with the shared cache, limiter and error shape.
+ *
+ * @param {object} middlewares Vite middleware stack.
+ * @param {string} route Mount path, e.g. `/api/dvf`.
+ * @param {(url: URL, req: object) => {key: string, load: () => Promise<object|null>}|null} plan
+ *   Returns the cache key and the loader, or null when the request is invalid.
+ * @param {{ttlMs?: number}} [options]
+ */
+function installAddressRoute(middlewares, route, plan, options = {}) {
+  const ttlMs = options.ttlMs ?? ADDRESS_MEMORY_TTL_MS;
+  middlewares.use(route, async (req, res) => {
+    const send = (status, payload) => {
+      if (res.headersSent) return;
+      res.writeHead(status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': status === 200 ? 'private, max-age=300' : 'no-store',
+      });
+      res.end(JSON.stringify(payload));
+    };
+    if (req.method !== 'GET') {
+      send(405, { error: 'Method Not Allowed' });
+      return;
+    }
+    const url = new URL(req.url || '', 'http://localhost');
+    if (url.pathname === '/status' || url.pathname.endsWith('/status')) {
+      send(200, { route, entries: _addressCache.size, ttlMs });
+      return;
+    }
+    let planned;
+    try {
+      planned = plan(url, req);
+    } catch (error) {
+      send(400, { error: error?.message || 'invalid request' });
+      return;
+    }
+    if (!planned) {
+      send(400, { error: 'lat and lon are required' });
+      return;
+    }
+    // Cache before limiter: a repeat of a scan already answered costs nothing
+    // upstream, so it should not spend a slot either.
+    const cached = addressCacheGet(planned.key, ttlMs);
+    if (cached && !cached.stale) {
+      send(200, { ...cached.payload, fetchedAt: cached.cachedAt, stale: false });
+      return;
+    }
+    if (!_addressRateLimiter(clientKey(req))) {
+      res.setHeader('Retry-After', '5');
+      send(429, { error: 'Rate limit exceeded' });
+      return;
+    }
+    try {
+      const { promise } = coalesceProxyRequest(_addressInFlight, planned.key, planned.load);
+      const payload = await promise;
+      if (!payload) {
+        // Serve a stale answer rather than nothing: an outage must not read as
+        // "there is nothing here".
+        if (cached) {
+          send(200, { ...cached.payload, fetchedAt: cached.cachedAt, stale: true });
+          return;
+        }
+        send(502, { error: `${route} upstream unavailable` });
+        return;
+      }
+      addressCacheSet(planned.key, payload);
+      send(200, { ...payload, fetchedAt: Date.now(), stale: false });
+    } catch (error) {
+      console.error(`[address-proxy] ${route}`, error?.message || error);
+      send(502, { error: `${route} proxy error` });
+    }
+  });
+}
+
+/**
+ * Resolve the ARRONDISSEMENT-level INSEE code for a point, via the BAN.
+ *
+ * The BAN reverse geocoder, and only it. `geo.api.gouv.fr` answers **75056** —
+ * Paris as one commune — for every Paris point, and so does the `codeInsee`
+ * Géorisques echoes back; DVF publishes its files as **75113**. Two consumers
+ * need this now (DVF for its file path, Géorisques for its radon lookup), which
+ * is why it is shared rather than copied.
+ *
+ * Memoised on a ~11 m grid: it is the same call for every scan of a block.
+ *
+ * @param {number} lon @param {number} lat
+ * @returns {Promise<{code: string, name: string|null}|null>}
+ */
+const _communeCodeCache = new Map();
+async function resolveCommuneCode(lon, lat) {
+  const key = `${lon.toFixed(4)},${lat.toFixed(4)}`;
+  if (_communeCodeCache.has(key)) return _communeCodeCache.get(key);
+  const body = await fetchAddressSource(
+    `https://api-adresse.data.gouv.fr/reverse/?lon=${lon}&lat=${lat}`,
+    { maxBytes: 256 * 1024 },
+  );
+  const properties = body?.features?.[0]?.properties;
+  const code = String(properties?.citycode || '').toUpperCase();
+  const resolved = /^[0-9][0-9AB][0-9]{3}$/.test(code)
+    ? { code, name: properties?.city || null }
+    : null;
+  // A failed lookup is NOT cached: it is usually a reset, not a coordinate
+  // without a commune, and caching it would make one blip permanent.
+  if (resolved) {
+    _communeCodeCache.set(key, resolved);
+    while (_communeCodeCache.size > 500) {
+      _communeCodeCache.delete(_communeCodeCache.keys().next().value);
+    }
+  }
+  return resolved;
+}
+
+/**
+ * Géorisques — the state's own risk register, read from a coordinate.
+ * `GET /api/georisques?lat=&lon=&radius=&insee=`
+ * @returns {import('vite').Plugin}
+ */
+function georisquesProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/georisques', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const radiusM = clampGeorisquesRadius(url.searchParams.get('radius'));
+      const rawInsee = String(url.searchParams.get('insee') || '').trim().toUpperCase();
+      const givenInsee = /^[0-9][0-9AB][0-9]{3}$/.test(rawInsee) ? rawInsee : null;
+      return {
+        key: addressCacheKey('georisques', point, radiusM),
+        load: async () => {
+          // Radon is published per commune and keyed by INSEE code, which the
+          // report itself does NOT supply at arrondissement level. Resolving it
+          // here rather than demanding it from the caller is what makes radon —
+          // one of the items on the statutory état des risques — actually
+          // reachable from a bare coordinate.
+          const inseeCode = givenInsee ?? (await resolveCommuneCode(point.lon, point.lat))?.code ?? null;
+          const urls = buildGeorisquesUrls({ ...point, radiusM, inseeCode });
+          const [report, icpe, radon] = await Promise.all([
+            fetchAddressSource(urls.report),
+            fetchAddressSource(urls.icpe),
+            urls.radon ? fetchAddressSource(urls.radon) : Promise.resolve(null),
+          ]);
+          // All three failing is an outage; any one answering is a scan.
+          if (!report && !icpe && !radon) return null;
+          return projectGeorisques({ report, icpe, radon, origin: point, radiusM });
+        },
+      };
+    });
+  }
+  return {
+    name: 'georisques-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * DVF — what property actually sold for, per commune-year, parsed server-side.
+ * `GET /api/dvf?lat=&lon=&radius=&years=2024,2023`
+ * @returns {import('vite').Plugin}
+ */
+function dvfProxy() {
+  /**
+   * Parsed mutations per commune-year, memoised for the process.
+   *
+   * BOUNDED, because it is the one structure here that a user can grow just by
+   * panning: one entry per commune-year, and a Paris arrondissement year is
+   * ~1,700 mutations. A tour of France would otherwise accumulate every commune
+   * it crossed for the life of the dev server. The disk cache underneath makes
+   * eviction cheap — a re-read is a file, not a download.
+   */
+  const editions = new Map();
+  const EDITION_MEMORY_MAX = 40;
+
+  function rememberEdition(key, mutations) {
+    editions.set(key, mutations);
+    while (editions.size > EDITION_MEMORY_MAX) {
+      editions.delete(editions.keys().next().value);
+    }
+    return mutations;
+  }
+
+  async function loadEdition(year, communeCode) {
+    const cacheKey = `${year}-${communeCode}`;
+    if (editions.has(cacheKey)) return editions.get(cacheKey);
+    const diskPath = path.join(ADDRESS_CACHE_DIR, `dvf-${cacheKey}.json`);
+    try {
+      const stat = await fsp.stat(diskPath);
+      if (Date.now() - stat.mtimeMs < DVF_DISK_TTL_MS) {
+        return rememberEdition(cacheKey, JSON.parse(await fsp.readFile(diskPath, 'utf8')));
+      }
+    } catch { /* no disk copy yet */ }
+    const csv = await fetchAddressSource(buildDvfUrl({ year, communeCode }), { text: true });
+    // A commune with no edition for a year is a 404, which is data, not an
+    // error: an empty list is cached so the miss is not re-fetched every scan.
+    const mutations = csv ? groupMutations(parseDvfCsv(csv)) : [];
+    rememberEdition(cacheKey, mutations);
+    try {
+      await fsp.mkdir(ADDRESS_CACHE_DIR, { recursive: true });
+      await fsp.writeFile(diskPath, JSON.stringify(mutations));
+    } catch { /* cache is an optimisation, never a requirement */ }
+    return mutations;
+  }
+
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/dvf', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const radiusM = clampDvfRadius(url.searchParams.get('radius'));
+      const thisYear = new Date().getFullYear();
+      const requested = String(url.searchParams.get('years') || '')
+        .split(',').map((value) => Number.parseInt(value.trim(), 10))
+        .filter((year) => Number.isFinite(year) && year >= DVF_FIRST_YEAR && year <= thisYear);
+      // Default to the three most recent editions that can exist. The newest
+      // is published with a lag, so an empty answer for it is normal.
+      const years = (requested.length ? requested : [thisYear - 1, thisYear - 2, thisYear - 3])
+        .filter((year) => year >= DVF_FIRST_YEAR)
+        .slice(0, 5)
+        .sort((a, b) => b - a);
+      return {
+        key: addressCacheKey('dvf', point, radiusM, years.join('-')),
+        load: async () => {
+          const commune = await resolveCommuneCode(point.lon, point.lat);
+          if (!commune) return null;
+          const all = [];
+          for (const year of years) {
+            // Sequential on purpose: three 750 KB downloads in parallel for one
+            // click is a burst the file host has no reason to absorb.
+            all.push(...await loadEdition(year, commune.code));
+          }
+          const { sales, summary } = selectNearbySales(all, point, radiusM);
+          return { commune, years, sales, summary };
+        },
+      };
+    });
+  }
+  return {
+    name: 'dvf-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * ADEME DPE — the energy label of a building and of its neighbours.
+ * `GET /api/dpe?lat=&lon=&radius=&limit=`
+ * @returns {import('vite').Plugin}
+ */
+function dpeProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/dpe', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const radiusM = clampDpeRadius(url.searchParams.get('radius'));
+      const limit = Number.parseInt(url.searchParams.get('limit') || '', 10) || 100;
+      return {
+        key: addressCacheKey('dpe', point, radiusM, limit),
+        load: async () => {
+          const payload = await fetchAddressSource(buildDpeUrl({ ...point, radiusM, limit }));
+          return payload ? projectDpe(payload, { radiusM }) : null;
+        },
+      };
+    });
+  }
+  return {
+    name: 'dpe-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * IGN isochrone — the area actually reachable, rather than a circle.
+ * `GET /api/isochrone?lat=&lon=&profile=foot|car&seconds=900`
+ * @returns {import('vite').Plugin}
+ */
+function isochroneProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/isochrone', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const profile = url.searchParams.get('profile') || 'foot';
+      if (!resolveIsochroneProfile(profile)) {
+        // Cycling is the one the mission design asked for and this service does
+        // not have; failing loudly beats drawing a walking ring labelled bike.
+        throw new Error(`unsupported profile: ${profile} (foot or car)`);
+      }
+      const seconds = clampIsochroneSeconds(url.searchParams.get('seconds'));
+      return {
+        key: addressCacheKey('isochrone', point, profile, seconds),
+        load: async () => {
+          const payload = await fetchAddressSource(
+            buildIsochroneUrl({ ...point, profile, seconds }),
+            { maxBytes: 4 * 1024 * 1024 },
+          );
+          return payload ? projectIsochrone(payload) : null;
+        },
+      };
+    });
+  }
+  return {
+    name: 'isochrone-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Géoportail de l'urbanisme — zoning and servitudes, decimated to an outline.
+ * `GET /api/gpu?lat=&lon=`
+ * @returns {import('vite').Plugin}
+ */
+function gpuProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/gpu', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      return {
+        key: addressCacheKey('gpu', point),
+        load: async () => {
+          const [zoning, servitudes] = await Promise.all([
+            fetchAddressSource(buildGpuUrl('zone-urba', point)),
+            // The measured worst case for a single point is 1.4 MB.
+            fetchAddressSource(buildGpuUrl('assiette-sup-s', point), { maxBytes: 32 * 1024 * 1024 }),
+          ]);
+          if (!zoning && !servitudes) return null;
+          return projectGpu({ zoning, servitudes });
+        },
+      };
+    });
+  }
+  return {
+    name: 'gpu-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Île-de-France Mobilités — the Paris network as an offer.
+ * `GET /api/idfm/stops?bbox=W,S,E,N` or `?lat=&lon=&radius=`
+ * `GET /api/idfm/lines`
+ * @returns {import('vite').Plugin}
+ */
+function idfmProxy() {
+  let linesCache = null;
+
+  async function loadLines() {
+    if (linesCache && Date.now() - linesCache.at < IDFM_LINES_TTL_MS) return linesCache.payload;
+    const pages = [];
+    // 2,121 lines at 100 per page. Bounded hard: a referential that grew by an
+    // order of magnitude must not turn one click into 200 requests.
+    for (let offset = 0; offset < 2600; offset += IDFM_PAGE_LIMIT) {
+      const page = await fetchAddressSource(buildLinesUrl({ offset, limit: IDFM_PAGE_LIMIT }));
+      if (!page?.results?.length) break;
+      pages.push(...projectLines(page).lines);
+      if (pages.length >= (page.total_count ?? 0)) break;
+    }
+    if (!pages.length) return linesCache?.payload ?? null;
+    const payload = { count: pages.length, lines: pages };
+    linesCache = { at: Date.now(), payload };
+    return payload;
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/idfm/lines', async (req, res) => {
+      const send = (status, payload) => {
+        if (res.headersSent) return;
+        res.writeHead(status, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': status === 200 ? 'private, max-age=3600' : 'no-store',
+        });
+        res.end(JSON.stringify(payload));
+      };
+      if (req.method !== 'GET') { send(405, { error: 'Method Not Allowed' }); return; }
+      if (!_addressRateLimiter(clientKey(req))) {
+        res.setHeader('Retry-After', '5');
+        send(429, { error: 'Rate limit exceeded' });
+        return;
+      }
+      try {
+        const { promise } = coalesceProxyRequest(_addressInFlight, 'idfm-lines', loadLines);
+        const payload = await promise;
+        if (!payload) { send(502, { error: 'idfm lines upstream unavailable' }); return; }
+        send(200, { ...payload, fetchedAt: linesCache?.at ?? Date.now(), stale: false });
+      } catch (error) {
+        console.error('[address-proxy] /api/idfm/lines', error?.message || error);
+        send(502, { error: 'idfm proxy error' });
+      }
+    });
+
+    installAddressRoute(middlewares, '/api/idfm/stops', (url) => {
+      const bbox = String(url.searchParams.get('bbox') || '').split(',').map(Number);
+      if (bbox.length === 4 && bbox.every(Number.isFinite)) {
+        const [west, south, east, north] = bbox;
+        // A whole-country box would ask for 37,956 stops one page at a time.
+        if (Math.abs(east - west) > 1 || Math.abs(north - south) > 1) {
+          throw new Error('bbox too large: at most 1 degree per side');
+        }
+        const limit = Number.parseInt(url.searchParams.get('limit') || '', 10) || IDFM_PAGE_LIMIT;
+        return {
+          key: `idfm-stops|${bbox.map((v) => v.toFixed(4)).join(',')}|${limit}`,
+          load: async () => {
+            const payload = await fetchAddressSource(
+              buildStopsBboxUrl({ west, south, east, north, limit }),
+            );
+            return payload ? projectStops(payload) : null;
+          },
+        };
+      }
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const radiusM = Number.parseInt(url.searchParams.get('radius') || '', 10) || 500;
+      const limit = Number.parseInt(url.searchParams.get('limit') || '', 10) || IDFM_PAGE_LIMIT;
+      return {
+        key: addressCacheKey('idfm-stops', point, radiusM, limit),
+        load: async () => {
+          const payload = await fetchAddressSource(
+            buildStopsRadiusUrl({ ...point, radiusM, limit }),
+          );
+          return payload ? projectStops(payload, point) : null;
+        },
+      };
+    });
+  }
+  return {
+    name: 'idfm-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
 /**
  * Main Vite configuration factory.
  *
@@ -11442,6 +12087,12 @@ export default defineConfig(({ mode }) => {
       openAiRealtimeProxy(),
       googlePlacesContextProxy(),
       keylessGeocodeProxy(),
+      georisquesProxy(),
+      dvfProxy(),
+      dpeProxy(),
+      isochroneProxy(),
+      gpuProxy(),
+      idfmProxy(),
     ],
     server: {
       host: env.HOST || 'localhost',

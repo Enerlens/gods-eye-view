@@ -753,7 +753,17 @@ export function createHubeauHydrometryLayer({
     /** Manager-driven idle refresh; camera motion refreshes separately. */
     async update() {
       if (!_enabled) return false;
-      return load();
+      const loaded = await load();
+      // A camera wider than the gate fetched nothing and failed at nothing: the
+      // layer asked for a zoom, which is guidance, not a fault. Reporting it as
+      // a rejected refresh tore the layer back down on enable. Only the
+      // unavailable state is a failed refresh.
+      //
+      // No `ensureViewGate` here, unlike the layers gated at city scale: this
+      // gate is 20°, so the only camera it refuses is a global one, and the
+      // zoom that satisfies it over the mid-Pacific still finds no French river
+      // gauge. "Zoom in" is the honest answer there; flying somewhere is not.
+      return loaded || _status !== 'unavailable';
     },
 
     destroy(viewer) {

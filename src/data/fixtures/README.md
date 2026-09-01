@@ -144,3 +144,65 @@
   of 1,173 buildings and Paris for 0 of 2,067, which is the asymmetry every
   seating rule in `bdtopoBuildingsFeed.js` exists to handle. Used by
   `src/data/bdtopoBuildingsFeed.test.mjs`. © IGN, Licence Ouverte 2.0.
+
+- `georisques-{rapport,icpe,radon}-sample.json` — three real answers for one
+  Paris 13e point (2.3760,48.8300), captured 2026-09-01. The report is verbatim;
+  the ICPE page keeps 5 of its 30 rows with `results: 30` left honest, so the
+  truncation path is exercised. The trap they hold is the one the layer is built
+  on: the hazard families are **objects keyed by hazard, not arrays**, and each
+  hazard carries TWO verdicts — `libelleStatutCommune` and
+  `libelleStatutAdresse` — which on this point DISAGREE for ICPE ("Risque
+  Concerne" against "Risque non Concerne"). A projection that collapsed them
+  would manufacture a certainty the source declined to make. The report also
+  echoes `codeInsee: "75056"` — Paris whole, not the arrondissement — which is
+  the code that breaks DVF. Licence Ouverte 2.0, BRGM.
+
+- `dvf-75113-2024-sample.csv` — 194 of the 3,975 rows of the 2024 Paris 13e
+  edition (752,768 bytes whole), captured 2026-09-01. Every trap in it is real
+  and is the point. It keeps mutation `2024-1225294` **entire — all 179 rows**,
+  one building sold for €32,000,000 with the price restated on every row: the
+  naive column sum inflates the fixture more than ninefold and the full edition
+  from €0.89 bn to €15.33 bn, and dividing the first row's price by its 25 m²
+  flat gives €1.28 million per square metre. Beside it are a mutation with no
+  coordinate, one with no `valeur_fonciere`, three ordinary Appartement +
+  Dépendance sales (the case that must stay comparable — requiring a bare
+  dwelling drops 35 comparables to 10), a flat sold with a shop (which must
+  not), two Maisons, and an **Echange declared at €2,295** that divides to
+  66 €/m² and would drag any thin-radius median through the floor. Licence
+  Ouverte, DGFiP via Etalab.
+
+- `ademe-dpe-existant-sample.json` — 6 rows of `dpe03existant` (15,476,290 rows
+  whole), captured 2026-09-01 through the exact URL `buildDpeUrl()` produces, so
+  the projection under test reads what the proxy reads. `total: 2805` is kept
+  against 6 served rows, which is the gap the layer exists to be honest about.
+  Two upstream behaviours are pinned by it: `_geopoint` is `"lat,lon"` — the
+  inverse of the `geo_distance` argument order — and data-fair **omits null
+  columns entirely** rather than sending null, so the absent `annee_construction`
+  is data, not a schema change. Licence Ouverte, ADEME.
+
+- `ign-isochrone-{pedestrian,car}-sample.json` — two rings from the same point
+  and the same 600 seconds, captured 2026-09-01. The PAIR is the fixture: 0.97 km²
+  on foot against 16 km² by car, 24 vertices against 437. `resourceVersion` is
+  deliberately not asserted on — it moved between two probes on the same day
+  (2026-08-26, then 2026-08-25). Licence Ouverte 2.0, IGN.
+
+- `gpu-{zone-urba,assiette-sup-s}-sample.json` — one APIcarto answer per
+  endpoint for the same Paris 13e point, captured 2026-09-01. Inner rings are
+  dropped (the projection reads outer rings only) and the largest easement is
+  trimmed from 759 polygons to 30, which still exceeds the 24-ring per-feature
+  budget so both simplification paths stay exercised. The live figures they
+  stand for: 1,396,720 bytes for ONE point, of which a single `pm1` feature is
+  50,669 vertices across 759 polygons published to 8 decimal places — a
+  millimetre. They also pin that a servitude has **no `categorie` field**; the
+  type is `suptype` (`ac1`, `t1`, `pm1`, `t5`…). Licence Ouverte 2.0, IGN.
+
+- `idfm-{arrets,lignes}-sample.json` — 12 of 43 stops from a box around the same
+  point, and 12 of 2,121 lines, captured 2026-09-01. The stops keep all four
+  published accessibility values (`true`, `false`, `partial`, `unknown`), which
+  all appeared inside that one box; `unknown` must project to null, because a
+  stop nobody surveyed is not a stop known to be inaccessible. They also pin
+  that `arrgeopoint` is an **object** `{lon, lat}` (unlike the ADEME string) and
+  that the arrondissement INSEE code lives in `arrpostalregion` (`"75113"`) —
+  the code DVF needs and that every commune-level source answers 75056 for. The
+  lines carry their **official liveries**: metro 5 is `#ff5a00` with black text.
+  ODbL 1.0, Île-de-France Mobilités.

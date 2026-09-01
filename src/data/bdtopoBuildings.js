@@ -15,6 +15,7 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { boxKey, snapBoxOutward } from './viewportBox.js';
+import { applyViewGate } from './viewGate.js';
 import {
   BASE_SINK_M,
   BDTOPO_LAYER_NAME,
@@ -867,11 +868,41 @@ const bdtopoBuildingsLayer = {
     _status = 'idle';
   },
 
+  /**
+   * Bring the camera inside the box this layer loads behind, on the way in.
+   *
+   * Only the WIDTH is worth flying for. Off coverage is a different answer —
+   * Berlin does not become French at 2 km — and a camera with no rectangle at
+   * all has nothing to aim at. Both keep their guidance state instead.
+   * @param {?Cesium.Viewer} viewer
+   * @param {{signal?: ?AbortSignal}} [options]
+   * @returns {Promise<boolean>} Whether the camera ended inside the gate.
+   */
+  async ensureViewGate(viewer, { signal } = {}) {
+    const target = viewer || _viewer;
+    if (!target) return false;
+    const { box, reason } = bdtopoViewportBox(target);
+    if (reason !== 'too-wide') return Boolean(box);
+    return applyViewGate(target, {
+      fits: () => Boolean(bdtopoViewportBox(target).box),
+      maxDeg: BDTOPO_MAX_BOX_DEG,
+      coverage: BDTOPO_COVERAGE,
+      signal,
+      reason: 'bdtopo-view-gate',
+    });
+  },
+
   async update() {
     if (!_enabled) return false;
     // An idle refresh has to actually refetch, so drop the box memo first.
     _loadedKey = null;
-    return load();
+    const loaded = await load();
+    // `load()` answers "did this tick fetch anything", which is not the question
+    // the manager asks. A guidance state — too wide, off coverage, superseded by
+    // a newer camera — fetched nothing and failed at nothing, and reporting it
+    // as false made the manager tear a freshly enabled layer back down with
+    // "could not start cleanly". Only a recorded error is a failed refresh.
+    return loaded || !_error;
   },
 
   /**

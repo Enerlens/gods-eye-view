@@ -3,6 +3,127 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
+## [Unreleased] — 2026-09-01
+
+### Added
+
+- **Six French public registers, read from a coordinate.** Géorisques, DVF,
+  the ADEME DPE register, the IGN isochrone service, the Géoportail de
+  l'urbanisme and Île-de-France Mobilités are now integrated end to end —
+  keyless, Licence Ouverte or ODbL, behind six new proxies with unit-tested
+  projections. Five new layers scan around the ground point the camera is
+  looking at: **Risques (Géorisques)**, **Ventes immobilières (DVF)**,
+  **Performance énergétique (DPE)**, **Urbanisme (PLU & servitudes)** and
+  **Réseau IDFM (Paris)**. Measured over avenue de France, Paris 13e: 30
+  classified installations, 153 recorded sales with a median of **9 063 €/m²**,
+  915 energy diagnostics within 200 m, a railway protection strip and two risk-
+  prevention envelopes, and 36 transport stops including a métro entrance 30 m
+  from the door.
+- **Reachable area instead of a circle.** `/api/isochrone` serves IGN's Valhalla
+  rings over BD TOPO®: a 15-minute walk from that address covers **2.16 km²**,
+  a 15-minute drive **56.96 km²**. Only walking and driving exist — the service
+  rejects `bicycle` with HTTP 400 and no cycling ring is modelled in its place.
+- **The Paris transit blank is answered.** IDFM publishes no GTFS-Realtime
+  vehicle positions at all, so the live-transit layer is empty over the city
+  this fork opens on. The new IDFM layer draws the network OFFER — 37 956 stops,
+  2 121 lines with their official liveries, step-free status where surveyed —
+  and reports the live-vehicle absence in its own stats rather than looking
+  broken.
+
+### Fixed
+
+- **"Bâti 3D could not start cleanly" was a camera, not a fault.** Turning the
+  layer on from a wide view failed outright: the toggle flipped straight back
+  to OFF under an error toast, with a perfectly healthy IGN feed behind it. Two
+  faults, one symptom. The layer refuses a request box wider than **0.08°** and
+  returned that refusal as `false` out of its first `update()` — which the data
+  manager reads as the module REJECTING its lifecycle, so it tore the layer
+  down and said so. A load that fetched nothing because it was asked for
+  nothing is now not a failed load, in Bâti 3D, the mapped grid and Hub'Eau
+  alike. And the guidance it replaces is now carried out instead of announced:
+  an explicit enable **flies the camera to the view the layer needs** and loads
+  it. Measured over France at 420 km: 420 000 m → 2 900 m, buildings drawn, no
+  error published anywhere. The flight only answers explicit intent — a share
+  link or a Context restore keeps its own camera — it zooms in and never out,
+  it steepens a horizon-facing pitch (no altitude alone can shrink a view that
+  reaches the horizon), and it refuses to fly at all when the coverage in shot
+  is a sliver at the edge of a camera aimed somewhere else: 400 km over Berlin
+  clipping Alsace stays over Berlin. New harness: `npm run qa:view-gate`.
+
+- **A scan with no coordinates no longer answers about the Gulf of Guinea.**
+  `searchParams.get('lon')` is `null` when absent, `Number(null)` is `0`, and
+  `Number.isFinite(0)` is true, so `GET /api/gpu` with no query string returned
+  HTTP 200 and an empty result for 0°N 0°E — indistinguishable from "there is
+  nothing at your address". Now HTTP 400. Pinned by `addressProxy.test.mjs`.
+
+- **The address markers were unclickable, and half of each one was eaten by the
+  ground.** Two separate faults, both invisible to a unit test. The app runs
+  with `infoBox: false`, so an entity's `description` displays nothing on its
+  own — every layer must own a `LEFT_CLICK` handler, and these five did not, so
+  clicking a marker did nothing at all. Separately, `disableDepthTestDistance`
+  was a finite 2 500 m, which re-enables depth testing the moment the camera is
+  further off than that: at city zoom the terrain clipped the lower half of
+  every disc. Markers now draw always-on-top, own a click handler, and open the
+  same world-overlay card as their sibling layers.
+- **Five registers over one building, drawn as five identical dots.** Turn on
+  Ventes immobilières and Performance énergétique together and both painted
+  coloured discs over the same roofs, with nothing to say which register a dot
+  came from. Size and hue were already spoken for — DVF spends its colour on
+  the price against the local median, DPE on the official A–G scale — so SHAPE
+  was the only channel left, and it is the right one anyway: it survives at
+  16 px and it survives colour blindness. Each register now draws what it is
+  about: a **€** for a sale, **the A–G letter in a frame** for a diagnostic (so
+  the grade no longer needs a click), a **hazard triangle** for Géorisques, a
+  **plan sheet** for the PLU, and **the mode's own pictogram** for an IDFM
+  stop. Every glyph is white line-art over a dark halo and carries no hue of
+  its own, so `billboard.color` still delivers each layer's value channel
+  untouched.
+
+- **The address markers slid across the city as you moved the camera.**
+  `Cartesian3.fromDegrees(lon, lat)` puts a marker on the ELLIPSOID, at height
+  0, and the globe draws avenue de France at **79 to 83 m** — so every DVF sale,
+  every DPE diagnostic, every risk site and every IDFM stop stood eighty metres
+  under the street it describes, painted anyway because depth testing is off.
+  Under an oblique camera a vertical error is a HORIZONTAL error on screen, and
+  it changes with every camera pose: measured at 700 m and a pitch of −35°, a
+  DVF dot landed **83 px** from its own address, and turning the camera moved
+  that error **62 px sideways**. The reported symptom was exactly that — the
+  dots are not fixed, they move when you nudge the map. Markers are now placed
+  at the height of the terrain the globe is actually rendering, and re-seated as
+  terrain streams in and as the LOD refines. Measured after the fix: 0 px, from
+  both poses, on all five layers.
+- **The address layers only noticed you had moved every five minutes.** They
+  are camera-driven, but their refresh cadence is the manager's tick — 5 to 15
+  minutes, right for registers that change in weeks and useless for someone
+  flying across a city. Navigating to a new address left the previous
+  neighbourhood's answer on screen until the timer happened to fire, which reads
+  exactly as "the layer has trouble refreshing". All five now listen to
+  `camera.moveEnd` with a 450 ms settle, matching the BD TOPO layer, behind a
+  single-flight guard so a fly-through queues one repeat rather than a request
+  per frame. They also request a repaint explicitly: the render governor runs in
+  `requestRenderMode`, so a redraw nobody asks to paint never reaches the screen.
+- **`HeightReference.CLAMP_TO_GROUND` makes a point unpickable.** It reads like
+  the right answer for an annotation that belongs to a building; measured in the
+  running app it produced 30 drawn Géorisques points where `scene.pick` and
+  `scene.drillPick` both returned nothing. No point layer in this repo uses it,
+  and these no longer do either.
+- **Zoning outlines are not click targets, and no longer pretend to be.**
+  Clamped polylines render as ground primitives and are not pickable here — 62
+  vertices of one easement ring on screen, `scene.pick` null at every one.
+  Widening the stroke did not help. The urbanism layer now plants a marker at
+  the point it scanned, carrying the zone, its approval date and the easements
+  crossing it, because a zoning rule describes the ground under an address
+  rather than a particular line on a map.
+
+### Notes
+
+- Every price per square metre this release computes is deliberately absent for
+  multi-lot sales, swaps and auctions. One captured Paris mutation is
+  €32 000 000 spread over **179 rows**: summing the column inflates the 2024
+  edition of the 13ᵉ from €0.89 bn to €15.33 bn, and dividing the first row by
+  its 25 m² flat gives €1.28 million per square metre. The register does not say
+  how such a sale was split, so neither does the layer.
+
 ## [Unreleased] — 2026-08-31
 
 ### Added

@@ -286,6 +286,15 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
+  // THE LAST FIVE TOKENS, claimed together by the five French address layers.
+  // a–y are taken, `z` is the canonical UNKNOWN token two existing tests assert
+  // on, and 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants
+  // and bdtopo-buildings. `0` and `6`–`9` are all that remain. The next layer
+  // after these has no single-character token left and will need the codec
+  // widened — a deliberate design decision, not something to discover at a
+  // merge. A duplicate here is a BOOT failure, not a review nit.
+  Object.freeze({ id: 'dpe-fr', token: '8', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'dvf-sales', token: '7', disposition: 'enabled-only' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
   Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
@@ -302,7 +311,9 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // existing tests use as their canonical UNKNOWN token — claiming it would
   // silently turn "reject an unknown link" into "enable the gas layer".
   Object.freeze({ id: 'gas-fr', token: '1', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'georisques', token: '6', disposition: 'enabled-only' }),
   Object.freeze({ id: 'hubeau-hydro', token: 'h', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'idfm-network', token: '0', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-dams', token: 'q', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-datacenters', token: 'd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-firms', token: 'w', disposition: 'enabled-only' }),
@@ -337,6 +348,7 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),
   Object.freeze({ id: 'transit-fr', token: 'p', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'urbanisme-gpu', token: '9', disposition: 'enabled-only' }),
   Object.freeze({ id: 'vigicrues', token: 'v', disposition: 'enabled-only' }),
 ]);
 

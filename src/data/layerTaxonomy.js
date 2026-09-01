@@ -230,6 +230,18 @@ export const LAYER_TAXONOMY = Object.freeze([
   // "Véhicules partagés" would say that; "Stations vélos" describes what the
   // row draws. Left as-is until it is decided, and nothing reads `label` yet.
   Object.freeze({
+    id: 'idfm-network',
+    category: 'ground-mobility',
+    // `cities` and not `fr`: Île-de-France only, and saying so in the facet is
+    // the difference between a layer that looks broken elsewhere and one that
+    // declares its own edge.
+    coverage: 'cities',
+    label: 'Réseau IDFM (Paris)',
+    kind: 'dataset',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
     id: 'bikeshare',
     category: 'ground-mobility',
     label: 'Stations vélos',
@@ -361,6 +373,17 @@ export const LAYER_TAXONOMY = Object.freeze([
     cadence: 'periodic',
   }),
   Object.freeze({
+    id: 'georisques',
+    category: 'hazards',
+    label: 'Risques (Géorisques)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    // `periodic` and not `static`: the register moves in weeks, but the layer
+    // refetches because it is keyed on a POINT, not on a bundle it could hold.
+    cadence: 'periodic',
+  }),
+  Object.freeze({
     id: 'meteofrance-vigilance',
     category: 'hazards',
     label: 'Vigilance météo',
@@ -415,6 +438,33 @@ export const LAYER_TAXONOMY = Object.freeze([
   // layer refetches per viewport because no bundle could hold 47 million of
   // them. The cadence facet describes how the app ACQUIRES the data, not how
   // fast the subject changes.
+  Object.freeze({
+    id: 'dvf-sales',
+    category: 'built-environment',
+    label: 'Ventes immobilières (DVF)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'dpe-fr',
+    category: 'built-environment',
+    label: 'Performance énergétique (DPE)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  Object.freeze({
+    id: 'urbanisme-gpu',
+    category: 'built-environment',
+    label: 'Urbanisme (PLU & servitudes)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'bdtopo-buildings',
     category: 'built-environment',

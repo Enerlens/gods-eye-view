@@ -1901,6 +1901,118 @@ report into, so they instead refuse to memoize a failure —
 load after a doubling cooldown (5 s → 5 min), which keeps one bad load from
 silently demoting every later lookup for the session.
 
+#### Viewport-gated layers and the view gate (September 2026)
+
+Three layers refuse a request box above a ceiling — Bâti 3D at **0.08°**, the
+mapped grid at **0.8°**, Hub'Eau at **20°** — because one click from a
+continental camera would otherwise ask a public service for half a country.
+
+Two rules keep that ceiling from reading as a broken layer:
+
+- **A gated load is not a failed load.** `load()` answers "did this tick fetch
+  anything"; `update()` answers the manager's different question, and only a
+  recorded error is a failed refresh. Returning the guidance state as `false`
+  made the manager treat it as the module rejecting its lifecycle: the layer was
+  torn back down on enable, the toggle flipped to OFF, and the operator got
+  `<layer> could not start cleanly` over a healthy feed.
+- **The zoom a layer needs is applied, not announced.** A layer may expose
+  `ensureViewGate(viewer, { signal })`; the manager awaits it after `enable()`
+  and before the first `update()`, for **explicit intent only** (`user`,
+  `voice`, `tool`) — a share link or a Context restore carries a camera of its
+  own. A gate that throws or cannot be satisfied is not a failure: the layer
+  stays ON with its own guidance text.
+
+`src/data/viewGate.js` solves the camera: it sizes the metre budget off
+**longitude** (the tighter axis off the equator — sizing off latitude overshoots
+by 45% in France), steepens a pitch shallower than **−55°** (a horizon-facing
+camera sees to the horizon at any altitude, so altitude alone cannot satisfy a
+box ceiling), never flies UP, seats the result on `globe.getHeight()`, then
+re-asks the layer's own gate after the flight and tightens twice more before
+giving up. The focus is the centre of the current view, pulled onto the layer's
+coverage only when that coverage fills ≥5% of the view or the camera is holding
+more than 30° (aimed at nothing in particular); a 400 km camera over Berlin that
+clips 0.1° of Alsace is looking at Berlin and is left there. Bâti 3D flies only
+for `too-wide`, never for `off-coverage`. Hub'Eau has no `ensureViewGate` on
+purpose: its gate is 20°, so the only camera it refuses is a global one, and the
+zoom that satisfies it over the mid-Pacific still finds no French river gauge.
+
+Proved by `npm run qa:view-gate` in a real browser (420 000 m → ~2 900 m over
+France, buildings drawn, no lifecycle failure published) and by
+`src/data/viewGate.test.mjs`, which flies the solved camera in an independent
+model of what a camera sees and asserts the box lands under the ceiling —
+including non-cardinal headings, where the axis-aligned rectangle has to contain
+a rotated trapezoid.
+
+#### French address layers (September 2026)
+
+Five layers scan around the ground point the camera is LOOKING AT — via
+`deriveFetchCenter()`, shared with the traffic layer — rather than over the
+viewport, because all four of their upstreams take a coordinate and a radius,
+not a box. They go dormant and clear their draw above 12 km (`idfm-network`:
+20 km), and report `dormant` in `getStats()` so an empty screen is never
+ambiguous between "too high to scan" and "this address is clear".
+
+| Layer | Token | Proxy | Upstream |
+|---|---|---|---|
+| `georisques` | `6` | `/api/georisques` | Géorisques (BRGM) — 3 endpoints fanned out per scan |
+| `dvf-sales` | `7` | `/api/dvf` | geo-DVF CSV per commune-year, parsed and cached server-side |
+| `dpe-fr` | `8` | `/api/dpe` | ADEME `dpe03existant`, `geo_distance` query |
+| `urbanisme-gpu` | `9` | `/api/gpu` | APIcarto `zone-urba` + `assiette-sup-s` |
+| `idfm-network` | `0` | `/api/idfm/stops`, `/api/idfm/lines` | Île-de-France Mobilités Opendatasoft |
+
+`/api/isochrone` (IGN Valhalla over BD TOPO®) is a SERVICE, not a layer: an
+isochrone has no meaning without a chosen point, so it is not in the layer
+registry and carries no share token. Walking and driving only.
+
+These five take the last five single-character share tokens. `a`–`y` are taken,
+`z` is the canonical UNKNOWN token two tests assert on, and `1`–`5` belong to
+earlier layers. **The next layer added has no token left and will need the v2
+codec widened.**
+
+**One silhouette per register** (`addressMarkerIcons.js`). All five layers
+answer a question about the same building, and drawn as discs they were
+indistinguishable from each other on screen. Colour could not carry the source
+— DVF spends it on the price ratio, DPE on the official A–G scale, Géorisques
+on severity, IDFM on the mode family — so the shape does: **€** for a sale,
+**the A–G letter framed** for a diagnostic, a **hazard triangle**, a **plan
+sheet**, and the **mode pictogram** (reused from `transitVehicleIcons.js`,
+because a stop is signed in the street with its mode's own symbol). The DPE
+marker being the label itself means a grade is readable without a click.
+
+Glyphs are SVG data URIs, cached per kind and raster size, drawn as white
+line-art over a dark halo and carrying no hue of their own — Cesium multiplies
+`billboard.color` into the texture, so white takes the value colour exactly
+while black survives the multiply. That is the same tint-safe discipline
+`sharedMobilityIcons.js` and `transitVehicleIcons.js` record, and it is why one
+image per shape serves every colour. Drawn here rather than vendored from
+Material Symbols: that pack was taken for vehicles because a tram in plan view
+is hard to invent recognisably, which is not true of a euro sign, so these
+carry no third-party licence obligation. `scripts/qa-address-layers.mjs` proves
+no two registers ever resolve to the same image, and that clicking a billboard
+still opens its card — a billboard is not a point, and pickability had to be
+re-measured rather than assumed.
+
+**Markers are seated on the rendered terrain, not on the ellipsoid.**
+`Cartesian3.fromDegrees(lon, lat)` places a marker at height 0, and the globe
+draws avenue de France at 79–83 m of ellipsoidal height — so every marker sat
+eighty metres under its own street, painted anyway because depth testing is
+disabled. Under an oblique camera a vertical error is a HORIZONTAL error on
+screen, and one that changes with the camera pose: measured at 700 m and −35°,
+a DVF dot landed 83 px from its address, and turning 40° moved the error
+sideways. The dots therefore slid across the city as the camera moved. Every
+marker is now placed at `globe.getHeight()` — the height of the terrain
+triangle actually being rendered, the same call `bdtopoBuildings.js` uses — and
+re-seated when terrain finishes streaming (`tileLoadProgressEvent`) and when
+the camera settles, because the LOD under a point refines as you fly toward it.
+While terrain has not answered for a marker, the scan centre's height stands in
+for it and `getStats().seatPending` says so. `scripts/qa-address-layers.mjs`
+measures the residual offset in pixels from two camera poses; a unit test
+covers the seating arithmetic. Clamped polylines carry no `position` and are
+skipped — they were already on the ground.
+
+Licence note: IDFM is **ODbL 1.0** — attribution and share-alike on derived
+databases — while the other five are Licence Ouverte. See `DATA_SOURCES.md`.
+
 ### Context / Contacts coordinator (July 2026)
 
 - The internal Context coordinator is available in every visual style. Its dedicated right-side `CONTEXT` chooser exposes the neutral shell; the coordinator is not duplicated in Data Layers and does not enable a live-data dependency until a mode is selected.
@@ -2698,6 +2810,11 @@ Replay transport uses one Play/Pause toggle plus Cancel. During ascent only the 
   (`QA_BASE_URL=http://localhost:4173 npm run qa:map-source-tray`). Add
   `-- --keyless` to force the no-ion-token expectations on a keyed server; both
   invocations are gates.
+- `scripts/qa-view-gate.mjs`: browser proof that a layer gated on a close camera
+  is FLOWN there rather than told to zoom (`npm run qa:view-gate --
+  --url http://localhost:4173`). Covers Bâti 3D and the mapped grid from a
+  420 km camera, the share-restore origin that must keep its own camera, and
+  the off-coverage view that must not be flown anywhere.
 - `scripts/qa-l9-matrix.mjs`: the L9 release-candidate QA matrix in one command
   (`node scripts/qa-l9-matrix.mjs --url http://localhost:4173`). Orchestrates
   the `qa-*.mjs` fleet plus `track-regression` as subprocesses and adds

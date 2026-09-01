@@ -368,6 +368,60 @@ export const DATA_CREDITS = [
       '<a href="https://www.submarinecablemap.com" target="_blank" rel="noopener">submarinecablemap.com</a> ' +
       '(CC BY-NC-SA 3.0 — NonCommercial)',
   },
+  // ── Address-scan sources (France) ───────────────────────────────
+  {
+    key: 'georisques',
+    html:
+      'French natural and technological risk register (flood, clay shrinkage, seismicity, ' +
+      'radon, classified industrial sites, polluted soil, hazardous pipelines): ' +
+      '<a href="https://www.georisques.gouv.fr/" target="_blank" rel="noopener">G&eacute;orisques</a> &mdash; ' +
+      'BRGM for the Minist&egrave;re de la Transition &eacute;cologique ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The commune verdict and the address verdict are reported separately, as the source publishes them.',
+  },
+  {
+    key: 'dvf',
+    html:
+      'French property transactions: ' +
+      '<a href="https://www.data.gouv.fr/datasets/demandes-de-valeurs-foncieres-geolocalisees/" target="_blank" rel="noopener">Demandes de valeurs fonci&egrave;res g&eacute;olocalis&eacute;es</a> &mdash; ' +
+      'DGFiP, published by Etalab (<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'A price per square metre is shown only for the sale of a single dwelling; the register does not say ' +
+      'how a multi-lot sale was split.',
+  },
+  {
+    key: 'ademe-dpe',
+    html:
+      'French energy-performance diagnostics (DPE): ' +
+      '<a href="https://data.ademe.fr/datasets/dpe03existant" target="_blank" rel="noopener">ADEME &mdash; DPE logements existants</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'Labels are shown as a distribution, never averaged into a neighbourhood grade.',
+  },
+  {
+    key: 'ign-isochrone',
+    html:
+      'Reachable-area rings: IGN G&eacute;oplateforme ' +
+      '<a href="https://geoservices.ign.fr/documentation/services/services-geoplateforme/itineraire" target="_blank" rel="noopener">isochrone service</a>, ' +
+      'Valhalla over BD TOPO&reg; (<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'Walking and driving only &mdash; the service publishes no cycling profile, and none is modelled here.',
+  },
+  {
+    key: 'gpu',
+    html:
+      'French zoning and public-utility easements: ' +
+      '<a href="https://www.geoportail-urbanisme.gouv.fr/" target="_blank" rel="noopener">G&eacute;oportail de l\'urbanisme</a>, ' +
+      'read through <a href="https://apicarto.ign.fr/api/doc/gpu" target="_blank" rel="noopener">APIcarto</a> &mdash; IGN ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'Outlines are decimated for drawing and flagged as simplified; they are not surveyed boundaries, and each ' +
+      'easement links to its own regulation document.',
+  },
+  {
+    key: 'idfm',
+    html:
+      'Paris-region transport network (stops, lines, official line colours): ' +
+      '<a href="https://data.iledefrance-mobilites.fr/" target="_blank" rel="noopener">&Icirc;le-de-France Mobilit&eacute;s open data</a> ' +
+      '(<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL 1.0</a> &mdash; attribution, and share-alike on derived databases). ' +
+      'IDFM publishes no real-time vehicle positions; this layer draws the network offer and never a simulated vehicle.',
+  },
 ];
 
 /**
