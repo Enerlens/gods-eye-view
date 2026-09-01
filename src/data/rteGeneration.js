@@ -6,9 +6,11 @@ import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   RTE_CLASS_ORDER,
   RTE_GENERATION_CLASSES,
@@ -112,6 +114,8 @@ export const RTE_GEN_OUTPUT_SUFFIX = ':out';
 export const RTE_GEN_OVERLAY_SOURCE_ID = 'rte-generation';
 /** Selected-object card, on its own protected source. */
 export const RTE_GEN_SELECTED_OVERLAY_SOURCE_ID = 'rte-generation-selected';
+/** Ambient-label entry-id prefix — the click surface the station's NAME provides. */
+export const RTE_GEN_LABEL_PREFIX = 'rte-gen-label:';
 /** 108 stations; the label cohort is the handful worth naming at a glance. */
 export const RTE_GEN_OVERLAY_COHORT_LIMIT = 14;
 /** Shared ambient-label paint budget, matching the sibling French sources. */
@@ -170,6 +174,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 /** Human caption for each placement anchor, printed on every card. */
@@ -396,7 +401,7 @@ export function createRteStationOverlayEntry(site, position) {
     ? `${formatGenMw(site.mw)} / ${formatGenMw(site.installedMw)}`
     : `${formatGenMw(site.installedMw)} installed`;
   return {
-    id: `rte-gen-label:${site.id}`,
+    id: `${RTE_GEN_LABEL_PREFIX}${site.id}`,
     position,
     variant: 'label',
     title: `${site.name} · ${value}`,
@@ -405,7 +410,9 @@ export function createRteStationOverlayEntry(site, position) {
     priority: Math.round(Number.isFinite(site.installedMw) ? site.installedMw : 0),
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The station's name is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -699,6 +706,15 @@ function installClickHandler(viewer) {
   _clickHandler.setInputAction((click) => {
     const id = resolveRtePickId(viewer.scene.pick(click.position));
     if (id) { selectObject(id); return; }
+    // The label plane the depth buffer knows nothing about, resolved after the
+    // native pick so a name drawn across a neighbouring site cannot steal it.
+    const labelled = pickOverlayLabelId(click.position, {
+      sourceId: RTE_GEN_OVERLAY_SOURCE_ID,
+      prefix: RTE_GEN_LABEL_PREFIX,
+      has: (recordId) => _records.has(recordId),
+      hitTest: _overlayHost.hitTest,
+    });
+    if (labelled) { selectObject(labelled); return; }
     if (_selectedId) clearSelection();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);

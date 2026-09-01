@@ -27,6 +27,11 @@ import {
   damTier,
   damTierLegend,
   damTierVisible,
+  DAM_STRUCTURE_CHIPS,
+  damGroupKey,
+  damGroupParts,
+  damStructureKind,
+  isDamStructureKind,
 } from './damsPack.js';
 
 const PACK = new URL('./local_data/dams/dams.geojsonl', import.meta.url);
@@ -188,6 +193,9 @@ test('the shipped properties are an allowlist — free text never rides along', 
   assert.deepEqual(properties, {
     name: 'Barrage de Serre-Ponçon',
     osm: 'w80671354',
+    // The one field emitted for its own sake: what the structure IS. It comes
+    // from the tag that SELECTED the feature, which the build used to discard.
+    kind: 'dam',
     operator: 'EDF',
     heightM: 124,
     spanM: 699,
@@ -203,11 +211,14 @@ test('a span below the floor, and every absent field, is omitted rather than emi
     spanM: DAM_MIN_SPAN_M - 1,
     tags: { waterway: 'dam' },
   });
-  assert.deepEqual(properties, { osm: 'n42' });
+  assert.deepEqual(properties, { osm: 'n42', kind: 'dam' });
   assert.equal(Object.hasOwn(properties, 'name'), false);
   assert.equal(Object.hasOwn(properties, 'spanM'), false);
 
   // A node has no geometry to measure, and null must not become 0.
+  // `kind` is absent here on purpose: `abandoned=yes` alone says nothing about
+  // what the structure IS, and an unclassified feature must stay unclassified
+  // rather than defaulting to 'dam'.
   assert.deepEqual(
     damFeatureProperties({ osm: 'n43', spanM: null, tags: { abandoned: 'yes' } }),
     { osm: 'n43', abandoned: true },
@@ -240,12 +251,21 @@ test('every tier has a style, a floor that keeps it, and a shrinking card range'
   const keys = DAM_TIERS.map((tier) => tier.key);
   assert.deepEqual(keys, ['major', 'named', 'minor'], 'the array order IS the ranking');
 
+  // Styles are keyed by the COMPOSITE `kind:tier` now: colour says WHAT the
+  // structure is, everything else says how much it matters. A dyke and a dam
+  // of the same size draw the same size, in different colours.
   for (const tier of DAM_TIERS) {
-    const style = DAM_TIER_STYLES[tier.key];
-    assert.ok(style, `${tier.key} has no style`);
-    assert.equal(style.color, tier.color);
-    assert.equal(style.pixelSize, tier.pixelSize);
-    assert.equal(style.cardMaxDistance, tier.cardMaxDistance);
+    const colours = new Set();
+    for (const kind of ['dam', 'dyke', 'dam+dyke', '']) {
+      const style = DAM_TIER_STYLES[`${kind}:${tier.key}`];
+      assert.ok(style, `${kind}:${tier.key} has no style`);
+      assert.equal(style.pixelSize, tier.pixelSize, `${kind}:${tier.key} size`);
+      assert.equal(style.cardMaxDistance, tier.cardMaxDistance, `${kind}:${tier.key} range`);
+      colours.add(style.color);
+    }
+    assert.equal(colours.size, 4, `${tier.key}: the four structures must not share a colour`);
+    // The dam ramp keeps the blues this layer has always used.
+    assert.equal(DAM_TIER_STYLES[`dam:${tier.key}`].color, tier.color);
     assert.ok(tier.blurb.length > 0, `${tier.key} has no blurb`);
   }
 
@@ -280,19 +300,85 @@ test('a display floor hides the tiers below it and falls back to showing everyth
 });
 
 test('the legend counts what is DRAWN and names what it is hiding', () => {
+  // The tally arrives keyed by the composite key and is folded twice — once by
+  // structure, once by importance. Both answer a question the panel is asked,
+  // and neither can be read off the other.
   const legend = damTierLegend(new Map([
-    ['major', { total: 1060, visible: 1060 }],
-    ['named', { total: 550, visible: 550 }],
-    ['minor', { total: 4579, visible: 0 }],
+    ['dam:major', { total: 1000, visible: 1000 }],
+    ['dam:named', { total: 500, visible: 500 }],
+    ['dam:minor', { total: 4579, visible: 0 }],
+    ['dyke:major', { total: 60, visible: 60 }],
+    ['dyke:named', { total: 50, visible: 50 }],
   ]));
+  const byLabel = new Map(legend.map((row) => [row.label, row]));
 
-  assert.deepEqual(legend.map((row) => row.count), [1060, 550, 0]);
-  assert.match(legend[2].blurb, /4579 masqués/);
-  assert.doesNotMatch(legend[0].blurb, /masqué/);
+  assert.equal(byLabel.get('Barrage').count, 1500, 'structure rows fold every tier');
+  assert.match(byLabel.get('Barrage').blurb, /4579 masqués/);
+  assert.equal(byLabel.get('Digue').count, 110);
+  assert.doesNotMatch(byLabel.get('Digue').blurb, /masqué/);
+  // …and the importance rows fold every structure.
+  assert.equal(byLabel.get('Grand barrage').count, 1060);
+  assert.equal(byLabel.get('Barrage nommé').count, 550);
+  assert.equal(byLabel.get('Petit ouvrage').count, 0);
 
-  // A tier with nothing in it is absent, not a zero row.
-  assert.deepEqual(damTierLegend({ major: { total: 0, visible: 0 } }), []);
+  // A group with nothing in it is absent, not a zero row.
+  assert.deepEqual(damTierLegend({ 'dam:major': { total: 0, visible: 0 } }), []);
   assert.deepEqual(damTierLegend(null), []);
+});
+
+test('the two chip rows are orthogonal, and neither hides what it claims to keep', () => {
+  // Importance and structure are independent facts, so their filters AND
+  // together and their params merge rather than replace.
+  assert.equal(damTierVisible('dam:major', {}), true, 'no params shows everything');
+  assert.equal(damTierVisible('dyke:minor', { floor: 'major' }), false, 'the floor still applies');
+  assert.equal(damTierVisible('dyke:major', { kinds: 'dams' }), false);
+  assert.equal(damTierVisible('dam:major', { kinds: 'dykes' }), false);
+  assert.equal(damTierVisible('dyke:major', { kinds: 'dykes' }), true);
+  // Both filters at once.
+  assert.equal(damTierVisible('dyke:major', { floor: 'major', kinds: 'dykes' }), true);
+  assert.equal(damTierVisible('dyke:named', { floor: 'major', kinds: 'dykes' }), false);
+
+  // The 25 double-tagged features are kept by BOTH chips: they genuinely are
+  // both, and hiding them from either view would make a filter lie.
+  assert.equal(damTierVisible('dam+dyke:major', { kinds: 'dams' }), true);
+  assert.equal(damTierVisible('dam+dyke:major', { kinds: 'dykes' }), true);
+
+  // The unclassified world half rides with BARRAGES rather than vanishing.
+  assert.equal(damTierVisible(':major', { kinds: 'dams' }), true);
+  assert.equal(damTierVisible(':major', { kinds: 'dykes' }), false);
+
+  // An unknown chip shows everything rather than emptying the map.
+  assert.equal(damTierVisible('dyke:major', { kinds: 'nope' }), true);
+});
+
+test('the group key carries both axes, and survives a missing one', () => {
+  assert.equal(damGroupKey({ kind: 'dyke', name: 'Digue de Lazer', spanM: 1180 }), 'dyke:major');
+  assert.equal(damGroupKey({ kind: 'dam', heightM: 120 }), 'dam:major');
+  assert.equal(damGroupKey({ name: 'quelque chose' }), ':named', 'no kind is not "dam"');
+  assert.equal(damGroupKey({ kind: 'nonsense' }), ':minor', 'an unknown kind is unclassified');
+  assert.deepEqual(damGroupParts('dam+dyke:major'), { kind: 'dam+dyke', tier: 'major' });
+  assert.deepEqual(damGroupParts(':minor'), { kind: '', tier: 'minor' });
+});
+
+test('a dyke is not a dam, and a feature tagged both is neither silently', () => {
+  // THE REPORTED BUG. 25 features in the shipped pack carry man_made=dyke and
+  // waterway=dam at once, 26 are named "Digue …", and seven of those are
+  // promoted to the top tier and labelled "Grand barrage" — because the
+  // `name AND span >= 300 m` clause cannot tell a 1 106 m dyke from a dam.
+  assert.equal(damStructureKind({ waterway: 'dam' }), 'dam');
+  assert.equal(damStructureKind({ man_made: 'dam' }), 'dam');
+  assert.equal(damStructureKind({ building: 'dam' }), 'dam');
+  assert.equal(damStructureKind({ man_made: 'dyke' }), 'dyke');
+  assert.equal(damStructureKind({ embankment: 'dyke' }), 'dyke');
+  assert.equal(damStructureKind({ man_made: 'dyke', waterway: 'dam' }), 'dam+dyke');
+  // Unclassified, and NOT 'dam': the carried-over world half has no tags left,
+  // and defaulting it to dam would recreate the conflation outside France
+  // where nobody would notice.
+  for (const tags of [{}, { abandoned: 'yes' }, null, undefined, 'tags']) {
+    assert.equal(damStructureKind(tags), '', JSON.stringify(tags));
+  }
+  assert.equal(isDamStructureKind('dyke'), true);
+  assert.equal(isDamStructureKind(''), false);
 });
 
 test('label priority runs on the same scale as the ports and airports ladders', () => {
@@ -350,19 +436,23 @@ test('the shipped pack is French-complete, graded, and carries nothing it should
   const features = readFileSync(PACK, 'utf8')
     .split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
 
-  // Rebuilt 2026-09-01: 6,189 features, 5,529 of them in France. Floors, not
-  // equalities — OSM growing is upstream working; the pack HALVING is a broken
-  // extraction, and only the second should fail here.
-  assert.ok(features.length > 5800, `pack shrank unexpectedly (${features.length})`);
+  // Rebuilt 2026-09-01 with dykes: 7,432 features, 6,771 of them in France.
+  // Floors, not equalities — OSM growing is upstream working; the pack HALVING
+  // is a broken extraction, and only the second should fail here.
+  assert.ok(features.length > 6800, `pack shrank unexpectedly (${features.length})`);
 
   const ALLOWED = new Set([
     'name', 'osm', 'operator', 'river', 'heightM', 'spanM',
     'material', 'builtYear', 'outputMw', 'hydro', 'abandoned',
+    // What the structure IS. The one field emitted for its own sake.
+    'kind',
   ]);
   const MATERIALS = new Set(Object.values(DAM_MATERIAL_FAMILIES));
   const tally = { major: 0, named: 0, minor: 0 };
   const ids = new Set();
   let french = 0;
+  let dykes = 0;
+  let unclassified = 0;
 
   for (const feature of features) {
     const props = feature.properties;
@@ -389,9 +479,23 @@ test('the shipped pack is French-complete, graded, and carries nothing it should
     assert.ok(!ids.has(feature.id), `duplicate feature id ${feature.id}`);
     ids.add(feature.id);
 
+    if (props.kind !== undefined) {
+      assert.ok(isDamStructureKind(props.kind), `${feature.id} ships an unknown kind: ${props.kind}`);
+    }
     tally[damTier(props)] += 1;
     if (inFrance([lon, lat])) french += 1;
+    if (props.kind === 'dyke' || props.kind === 'dam+dyke') dykes += 1;
+    if (props.kind === undefined) unclassified += 1;
   }
+
+  // THE REPORTED BUG, asserted against the shipped file. Before this rebuild
+  // the pack held 25 dykes and could not say so — they were filed as dams,
+  // and seven features named "Digue …" were labelled "Grand barrage".
+  assert.ok(dykes > 800, `the dykes did not survive the rebuild (${dykes})`);
+  // …and the carried-over world half stays UNCLASSIFIED rather than defaulting
+  // to dam, which would recreate the conflation where nobody would notice.
+  assert.ok(unclassified > 400, `the world half lost its honest blank (${unclassified})`);
+  assert.ok(unclassified < 1000, `too much of the pack is unclassified (${unclassified})`);
 
   // The whole point of the rebuild: France used to hold 44 of 704 features.
   assert.ok(french > 5000, `French coverage collapsed (${french})`);

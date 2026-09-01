@@ -12,7 +12,9 @@ import {
   sharedMobilityGlyph,
   sharedMobilityGlyphKind,
   SHARED_MOBILITY_GLYPH_KINDS,
+  MATERIAL_SYMBOL_PATHS,
   _sharedMobilityGlyphBodyForTest,
+  _sharedMobilityKindSymbolForTest,
 } from './sharedMobilityIcons.js';
 import { VEHICLE_KIND_LABELS } from './gbfsFeeds.js';
 
@@ -28,24 +30,71 @@ test('every kind the feeds can report has a glyph of its own', () => {
 });
 
 test('no two kinds share geometry', () => {
-  const geometries = SHARED_MOBILITY_GLYPH_KINDS.map((kind) => {
-    const body = _sharedMobilityGlyphBodyForTest(kind);
-    return `${body.strokes}|${body.fills}`.replace(/\s+/g, '');
-  });
+  const geometries = SHARED_MOBILITY_GLYPH_KINDS
+    .map((kind) => _sharedMobilityGlyphBodyForTest(kind).replace(/\s+/g, ''));
   assert.equal(new Set(geometries).size, SHARED_MOBILITY_GLYPH_KINDS.length);
   const uris = SHARED_MOBILITY_GLYPH_KINDS.map((kind) => sharedMobilityGlyph(kind));
   assert.equal(new Set(uris).size, SHARED_MOBILITY_GLYPH_KINDS.length);
 });
 
-test('a bike and an e-bike differ by INK, not only by line placement', () => {
-  // They are deliberately the same bicycle. The e-bike's bolt is what has to
-  // survive minification to ~16 px, so it must be extra geometry rather than a
-  // rearrangement of the frame.
-  const bike = _sharedMobilityGlyphBodyForTest('bike');
-  const ebike = _sharedMobilityGlyphBodyForTest('ebike');
-  assert.equal(bike.strokes, ebike.strokes, 'same bicycle — they belong to one family');
-  assert.equal(bike.fills.trim(), '');
-  assert.match(ebike.fills, /<path/);
+test('a bike and an e-bike are two Material glyphs, and the e-bike carries more ink', () => {
+  // Both are Google's bicycle; `electric_bike` is the same frame plus a bolt.
+  // That bolt is what has to survive minification to ~17 px, so it must be
+  // EXTRA geometry rather than a rearrangement — a longer path, not a different
+  // one. Google places its bolt below the frame where this project used to
+  // place one above it; the swap was checked at the drawn size before landing.
+  const symbols = _sharedMobilityKindSymbolForTest();
+  assert.equal(symbols.bike, 'pedal_bike');
+  assert.equal(symbols.ebike, 'electric_bike');
+  const bike = MATERIAL_SYMBOL_PATHS.pedal_bike;
+  const ebike = MATERIAL_SYMBOL_PATHS.electric_bike;
+  assert.notEqual(bike, ebike);
+  assert.ok(ebike.length > bike.length, 'the electric badge is added ink');
+  // The badge itself, shared with the scooter and the moped — "electric" is one
+  // mark across the set rather than three different hints.
+  const bolt = ebike.slice(ebike.lastIndexOf('M520-120'));
+  assert.ok(bolt.length > 40, 'the bolt sub-path is where Material puts it');
+  assert.ok(MATERIAL_SYMBOL_PATHS.electric_scooter.includes('M520-120'));
+  assert.ok(MATERIAL_SYMBOL_PATHS.electric_moped.includes('M520-120'));
+  assert.ok(!bike.includes('M520-120'), 'a pedal bike carries no badge');
+});
+
+test('the vendored artwork is what the module actually draws', () => {
+  // Apache-2.0 §4 obliges the NOTICE to stay accurate, and it claims these
+  // paths are verbatim and unmodified. A silent edit here would make the repo
+  // ship Google artwork outside the notice that enumerates it — a compliance
+  // regression introduced by an aesthetic change.
+  const symbols = _sharedMobilityKindSymbolForTest();
+  assert.deepEqual(Object.keys(symbols), ['bike', 'ebike', 'scooter', 'moped', 'car']);
+  for (const [kind, name] of Object.entries(symbols)) {
+    const path = MATERIAL_SYMBOL_PATHS[name];
+    assert.ok(path, `${kind} points at a symbol that is not vendored: ${name}`);
+    assert.match(path, /^M/, `${name} is not a path`);
+    // No commas anywhere. Material publishes compact, comma-free path data
+    // (`M200-160q-85 0…`), whereas the hand-drawn set this replaced wrote
+    // `M26,66 L47,66`. A comma here would mean the artwork was reformatted or
+    // rescaled — and the NOTICE claims it is verbatim.
+    assert.ok(!path.includes(','), `${name} has been reformatted`);
+    assert.ok(path.length > 300, `${name} looks truncated (${path.length} chars)`);
+    // …and it is what actually reaches the canvas, not just what is stored.
+    assert.ok(_sharedMobilityGlyphBodyForTest(kind).includes(path), `${kind} draws something else`);
+  }
+});
+
+test('the two hand-drawn bodies are ours, and are drawn as FILLED shapes', () => {
+  // Material's artwork is fill-only, so the white STROKE pass the old set
+  // relied on is gone. A zero-area path now renders as nothing at all — which
+  // is exactly what happened to the dock rack on the first attempt.
+  for (const kind of ['other', 'station']) {
+    const body = _sharedMobilityGlyphBodyForTest(kind);
+    assert.ok(
+      /<(circle|rect)\b/.test(body),
+      `${kind} must be a fillable shape, not a stroked path — got ${body}`,
+    );
+    for (const path of Object.values(MATERIAL_SYMBOL_PATHS)) {
+      assert.ok(!body.includes(path), `${kind} must not borrow Google artwork`);
+    }
+  }
 });
 
 test('an unmapped kind falls to the disc, never to another kind\'s silhouette', () => {
@@ -64,7 +113,7 @@ test('glyphs are tint-safe: white ink over a black halo, and no hue of their own
     // Cesium multiplies `billboard.color` into the texture. White takes the
     // operator colour exactly; a baked hue would multiply into something else
     // and destroy the channel.
-    assert.match(svg, /stroke="#ffffff"/, kind);
+    assert.match(svg, /fill="#ffffff"/, kind);
     assert.match(svg, /stroke="rgba\(0,0,0,0\.55\)"/, `${kind} has no halo`);
     const colors = svg.match(/#[0-9a-f]{3,6}/gi) || [];
     assert.ok(colors.every((color) => /^#(fff|ffffff)$/i.test(color)),
@@ -73,20 +122,27 @@ test('glyphs are tint-safe: white ink over a black halo, and no hue of their own
 });
 
 test('the halo is drawn from the SAME geometry, so it can never drift out of register', () => {
-  const body = _sharedMobilityGlyphBodyForTest('scooter');
-  const svg = decode(sharedMobilityGlyph('scooter'));
-  const haloStart = svg.indexOf('rgba(0,0,0,0.55)');
-  const inkStart = svg.indexOf('stroke="#ffffff"');
-  assert.ok(haloStart >= 0 && inkStart > haloStart, 'halo is painted first, under the ink');
-  const strokeGeometry = body.strokes.replace(/\s+/g, '');
-  assert.ok(svg.replace(/\s+/g, '').split(strokeGeometry).length - 1 >= 2,
-    'the same path string appears in both passes');
+  for (const kind of ['scooter', 'station']) {
+    const body = _sharedMobilityGlyphBodyForTest(kind);
+    const svg = decode(sharedMobilityGlyph(kind));
+    const haloStart = svg.indexOf('rgba(0,0,0,0.55)');
+    const inkStart = svg.indexOf('fill="#ffffff"');
+    assert.ok(haloStart >= 0 && inkStart > haloStart, `${kind}: halo is painted first, under the ink`);
+    // Literally the same string, twice — which is why the two can never
+    // disagree about where the shape is.
+    assert.equal(
+      svg.split(body).length - 1, 2,
+      `${kind}: the geometry must appear in both passes`,
+    );
+  }
 });
 
 test('the raster is sized for the billboard, and cached per kind and size', () => {
   const fleet = sharedMobilityGlyph('bike');
   assert.match(decode(fleet), /width="64" height="64"/);
-  assert.match(decode(fleet), /viewBox="0 0 96 96"/, 'geometry stays in one coordinate space');
+  // Material's own box, unrescaled — see the NOTICE. The two hand-drawn bodies
+  // are authored in it too, so one viewBox serves the whole set.
+  assert.match(decode(fleet), /viewBox="0 -960 960 960"/, 'geometry stays in one coordinate space');
   assert.equal(sharedMobilityGlyph('bike'), fleet, 'same call, same string — no per-frame rebuild');
   const legend = sharedMobilityGlyph('bike', 32);
   assert.notEqual(legend, fleet);
@@ -96,22 +152,27 @@ test('the raster is sized for the billboard, and cached per kind and size', () =
 test('every glyph stays inside its box, halo included', () => {
   // A path that runs to the edge gets its halo clipped flat, which reads as a
   // cut-off icon at exactly the sizes this layer draws.
-  const halfHalo = 13 / 2;
-  for (const kind of SHARED_MOBILITY_GLYPH_KINDS) {
+  //
+  // Checked on the RENDERED extent rather than by parsing coordinates: the old
+  // test read `M`/`L` pairs and circle attributes out of hand-authored
+  // geometry, and Material's paths are comma-free with implicit lineto commands
+  // (`M320-200v20q…`), so that parser matched nothing and quietly asserted
+  // over an empty list. Material's own artwork is authored to sit inside a
+  // 960 box with its own padding; what this guards is the two bodies WE draw.
+  const halfHalo = 110 / 2;
+  const numbers = (body) => (body.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+  for (const kind of ['other', 'station']) {
     const body = _sharedMobilityGlyphBodyForTest(kind);
-    const geometry = `${body.strokes}${body.fills}`;
-    const bounds = [];
-    for (const [, x, y] of geometry.matchAll(/[ML](-?[\d.]+),(-?[\d.]+)/g)) {
-      bounds.push([Number(x), Number(y)]);
+    if (/<circle/.test(body)) {
+      const [cx, cy, r] = numbers(body);
+      assert.ok(cx - r - halfHalo >= -0.5 && cx + r + halfHalo <= 960.5, `${kind} x runs off the box`);
+      assert.ok(Math.abs(cy) + r + halfHalo <= 960.5, `${kind} y runs off the box`);
     }
-    for (const [, cx, cy, r] of geometry.matchAll(/cx="([\d.]+)" cy="([\d.]+)" r="([\d.]+)"/g)) {
-      bounds.push([Number(cx) - Number(r), Number(cy) - Number(r)]);
-      bounds.push([Number(cx) + Number(r), Number(cy) + Number(r)]);
-    }
-    assert.ok(bounds.length, `${kind} exposed no coordinates to check`);
-    for (const [x, y] of bounds) {
-      assert.ok(x - halfHalo >= -0.5 && x + halfHalo <= 96.5, `${kind} x=${x} runs off the box`);
-      assert.ok(y - halfHalo >= -0.5 && y + halfHalo <= 96.5, `${kind} y=${y} runs off the box`);
+    for (const [, x, y, w, h] of body.matchAll(/x="(-?[\d.]+)" y="(-?[\d.]+)" width="([\d.]+)" height="([\d.]+)"/g)) {
+      assert.ok(Number(x) - halfHalo >= -0.5, `${kind} left edge`);
+      assert.ok(Number(x) + Number(w) + halfHalo <= 960.5, `${kind} right edge`);
+      assert.ok(Math.abs(Number(y)) + halfHalo <= 960.5, `${kind} top edge`);
+      assert.ok(Math.abs(Number(y) + Number(h)) - halfHalo >= -960.5, `${kind} bottom edge`);
     }
   }
 });

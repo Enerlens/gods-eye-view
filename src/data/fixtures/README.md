@@ -208,6 +208,18 @@
   millimetre. They also pin that a servitude has **no `categorie` field**; the
   type is `suptype` (`ac1`, `t1`, `pm1`, `t5`…). Licence Ouverte 2.0, IGN.
 
+- `gpu-zone-urba-enclaves-sample.json` — the WHOLE, untrimmed `zone-urba`
+  answer for one point in the centre of Ustaritz (64547), captured 2026-09-01
+  (19,999 bytes). One feature, zone `UB`, one polygon, and **two interior
+  rings** — 6,646 m² that the same PLU zones `UE` (the school) and 50,686 m²
+  that it zones `UYc` (the industrial estate). It is here because the two Paris
+  fixtures above were captured with their inner rings STRIPPED, back when the
+  projection read outer rings only: they cannot fail if holes are dropped
+  again, and this one can. It is the answer behind the operator's question —
+  "how can one house be in two PLU zones at once?" — which was this layer
+  filling both enclaves with a rule that does not apply to them. Licence
+  Ouverte 2.0, IGN.
+
 - `idfm-{arrets,lignes}-sample.json` — 12 of 43 stops from a box around the same
   point, and 12 of 2,121 lines, captured 2026-09-01. The stops keep all four
   published accessibility values (`true`, `false`, `partial`, `unknown`), which
@@ -251,3 +263,29 @@
   coordinate is south of Madagascar, Mac-Roman mojibake in `condition_acces`,
   and four spellings of a boolean in one file. Licence Ouverte 2.0,
   transport.data.gouv.fr via ODRÉ.
+
+- `cadastre-parcelle-sample.json` — nine real parcels and the nine cadastral
+  sheets they sit on, captured 2026-09-01 from `apicarto.ign.fr/api/cadastre`
+  (`parcelle` and `feuille`), kept as the two raw FeatureCollections the proxy
+  itself fetches so the projection under test reads exactly what the proxy
+  reads; each envelope's totals are restated to the trimmed feature count so the
+  truncation check still sees a whole answer. Geometry is verbatim — it is the
+  thing under test. Every parcel is one trap and each is real. **`69382000AL0005`
+  and `69385000AL0005`** are the pair the whole sheet join exists for: same
+  commune (Lyon, 69123), same section `AL`, same feuille `1`, different
+  arrondissement — and one is drawn at **1:500** while the other is at
+  **1:1000**, so a four-part join gives them a coin-flipped tolerance.
+  **`75103000AP0045`** is prefixed `75103` while its `code_insee` is `75056` —
+  the arrondissement-coded IDU that 38% of urban France carries.
+  **`75101000AJ0002`** is the Palais-Royal, whose interior ring is the
+  difference between matching its declared contenance inside 1% and missing it
+  by more than 5%. **`132038120D0037`** is one identifier over two disjoint
+  polygons, with a digit-prefixed section and a non-zero préfixe.
+  **`97611000AY1015`** publishes `contenance: null` and **`67365000220739`** an
+  Alsace-Moselle numeric section `22` with `contenance: 0` over a real 0,109 m²
+  spike — the two values `Number(null) === 0` would make indistinguishable.
+  **`31555815AB0207`** draws 494 m² against 153 m² declared, and
+  **`401340000D0049`** is 26,7 ha of Landes forest on a 1:5000 sheet, the
+  coarse end of a twentyfold spread. Used by `src/data/cadastreFeed.test.mjs`
+  and `src/data/cadastreParcels.test.mjs`. PCI vecteur © DGFiP via IGN Api
+  Carto, Licence Ouverte 2.0.

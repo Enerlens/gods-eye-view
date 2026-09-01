@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { airportCardDetails, airportLabelPriority } from './airportsPack.js';
+import { datacenterCardDetails, geometryAreaM2 } from './datacentersPack.js';
 import { damCardDetails, damLabelPriority } from './damsPack.js';
 import {
   clearSelectedEntityContextForLayer,
@@ -53,34 +54,69 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
 });
 
 /**
+ * Footprint of one Cesium polygon hierarchy, in m².
+ *
+ * The adapter, and deliberately the ONLY Cesium-aware half of the measurement:
+ * `geometryAreaM2()` in `datacentersPack.js` takes lon/lat rings and is unit
+ * tested without a scene, so the arithmetic that decides whether a card claims
+ * 21 022 m² or 2 033 401 m² is not locked behind a WebGL context.
+ *
+ * Cesium has already parsed the GeoJSON by the time a record is built, so the
+ * source rings are gone; what remains is `PolygonHierarchy`, whose `positions`
+ * are the shell and whose `holes` nest. Converting back costs one cartographic
+ * per vertex over a pack that totals 46 596 of them, once, at load.
+ *
+ * @param {object|null|undefined} hierarchy Cesium PolygonHierarchy.
+ * @returns {number} Area in m², 0 when the hierarchy is unusable.
+ */
+export function polygonHierarchyAreaM2(hierarchy) {
+  const ring = (positions) => {
+    if (!Array.isArray(positions) || positions.length < 3) return null;
+    const out = [];
+    for (const position of positions) {
+      const carto = Cesium.Cartographic.fromCartesian(position);
+      if (!carto) return null;
+      out.push([
+        Cesium.Math.toDegrees(carto.longitude),
+        Cesium.Math.toDegrees(carto.latitude),
+      ]);
+    }
+    return out;
+  };
+  const shell = ring(hierarchy?.positions);
+  if (!shell) return 0;
+  const rings = [shell];
+  for (const hole of (Array.isArray(hierarchy?.holes) ? hierarchy.holes : [])) {
+    const inner = ring(hole?.positions);
+    if (inner) rings.push(inner);
+  }
+  return geometryAreaM2({ type: 'Polygon', coordinates: rings });
+}
+
+/**
  * Build the validated local-infrastructure card copy.
  * @param {object} properties Unwrapped GeoJSON feature properties.
  * @param {string} layerId Local layer id.
+ * @param {{areaM2?: number}} [measured] Facts derived from the GEOMETRY rather
+ *   than the tags. Only the footprint so far, and only the datacenter pack
+ *   reads it: the size of a hall is the most discriminating thing that pack
+ *   holds and the only one no tag carries.
  * @returns {{title:string,details:string[]}}
  */
-export function localInfrastructureOverlayCopy(properties, layerId) {
+export function localInfrastructureOverlayCopy(properties, layerId, measured = {}) {
   const props = unwrapProperties(properties) || {};
   const tags = props.tags || {};
   const title = featureLabelFromProperties(props, layerId);
   const details = [];
 
   if (layerId === 'local-datacenters') {
-    const operator = firstClean([
-      tags.operator,
-      props.operator,
-      tags['operator:short'],
-    ]);
-    const capacity = firstClean([
-      tags['capacity:it_load'],
-      tags.it_load,
-      tags.capacity,
-      props.capacity,
-    ]);
-    const line = [operator, capacity]
-      .filter((value, index, values) => value && values.indexOf(value) === index)
-      .filter((value) => value.toLocaleLowerCase() !== title.toLocaleLowerCase())
-      .join(' · ');
-    if (line) details.push(clampCardLine(line));
+    // Owned by `datacentersPack.js` now, for the same reason as the dam and
+    // airport packs below. What it replaced read an operator plus a capacity
+    // chain that matches THREE features in a 4 351-feature pack, so 55.8% of
+    // these cards rendered as a bare title.
+    for (const line of datacenterCardDetails(props, { areaM2: measured?.areaM2 })) {
+      details.push(clampCardLine(line));
+    }
   } else if (layerId === 'local-dams') {
     // The dam pack owns its own copy, like the airport pack below: the module
     // that decides what the build emits also writes the lines, so a dropped
@@ -142,9 +178,10 @@ export function createLocalInfrastructureOverlayEntry({
   properties,
   priority,
   accent,
+  areaM2 = 0,
   maxDistance = LOCAL_OVERLAY_MAX_DISTANCE_M,
 }) {
-  const copy = localInfrastructureOverlayCopy(properties, layerId);
+  const copy = localInfrastructureOverlayCopy(properties, layerId, { areaM2 });
   const range = Number.isFinite(maxDistance) && maxDistance > 0
     ? maxDistance
     : LOCAL_OVERLAY_MAX_DISTANCE_M;
@@ -603,6 +640,11 @@ export function createLocalGeoJsonLayer({
             
             let pos = feature.position?.getValue(Cesium.JulianDate.now());
             
+            // Footprint, measured off the same hierarchy the stem anchor is
+            // read from — 0 for the 834 point features, which then simply get
+            // no size line. See `datacentersPack.js` for why the number alone
+            // is not enough and the `building` tag decides how it is worded.
+            let areaM2 = 0;
             if (!pos) {
               // It's a polygon or line
               if (feature.polygon) {
@@ -613,6 +655,7 @@ export function createLocalGeoJsonLayer({
                 const hierarchy = feature.polygon.hierarchy?.getValue(Cesium.JulianDate.now());
                 if (hierarchy && hierarchy.positions && hierarchy.positions.length > 0) {
                   pos = Cesium.BoundingSphere.fromPoints(hierarchy.positions).center;
+                  areaM2 = polygonHierarchyAreaM2(hierarchy);
                 }
               }
             }
@@ -701,6 +744,7 @@ export function createLocalGeoJsonLayer({
                 properties,
                 priority,
                 accent,
+                areaM2,
                 maxDistance: groupStyle?.cardMaxDistance,
               }) : null,
             });

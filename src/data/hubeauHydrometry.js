@@ -1,9 +1,14 @@
 import * as Cesium from 'cesium';
+import { governorRequestRender } from '../renderGovernor.js';
+import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
+import { bucketSeries, textSparkline } from './sparkline.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 
 /**
  * Hub'Eau Hydrométrie — France's live river-gauge mesh.
@@ -68,6 +73,8 @@ import {
 const STATIONS_URL = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/referentiel/stations';
 const OBSERVATIONS_URL = 'https://hubeau.eaufrance.fr/api/v2/hydrometrie/observations_tr';
 
+/** Layer id — also the pick-registry key. */
+export const HUBEAU_LAYER_ID = 'hubeau-hydro';
 /** Shared world-overlay source id (matches the layer id). */
 export const HUBEAU_OVERLAY_SOURCE_ID = 'hubeau-hydro';
 /** Bounded label cohort offered to the shared overlay host. */
@@ -121,6 +128,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 /**
@@ -176,7 +184,35 @@ export function hubeauStationsRequestUrl(box, baseUrl = STATIONS_URL) {
     en_service: 'true',
     format: 'geojson',
     size: String(STATION_PAGE_SIZE),
-    fields: 'code_station,libelle_station,libelle_cours_eau,longitude_station,latitude_station',
+    // MEASURED cost of this list, gzipped, over the national bbox: 207 KB with
+    // the five fields it used to carry, 310 KB with these, 685 KB with no
+    // `fields` at all. +103 KB once per bbox is what turns a card that says
+    // "717 m³/s" into one that says which river, which commune, and since when.
+    //
+    // Two fields are load-bearing for reasons that are not about the card:
+    // the coordinates must stay or the API returns `"geometry": null` for every
+    // feature and silently empties the layer, and `code_site` is the join key to
+    // `referentiel/sites`, which is where catchment area actually lives.
+    //
+    // Deliberately ABSENT: `type_station` (91.7 % of active stations are the
+    // single value STD, and the documented enum does not match the data) and
+    // `descriptif_station` (33.9 %-filled free text whose commonest values are
+    // 'Aval', 'Pont', '2' and 'Historique' — not an operator, whatever it looks
+    // like).
+    fields: [
+      'code_station',
+      'libelle_station',
+      'libelle_cours_eau',
+      'longitude_station',
+      'latitude_station',
+      'code_site',
+      'libelle_commune',
+      'libelle_departement',
+      'date_ouverture_station',
+      'influence_locale_station',
+      'qualification_donnees_station',
+      'altitude_ref_alti_station',
+    ].join(','),
   });
   return `${baseUrl}?${params}`;
 }
@@ -209,19 +245,47 @@ export function hubeauObservationsRequestUrl(box, sinceMs, baseUrl = OBSERVATION
 
 /**
  * Parse a station-reference GeoJSON page into a code → metadata map.
+ *
+ * Everything here is optional except the name. Measured fill rates over the
+ * 4 151 active stations: commune and département 99.1 %, opening date 99.9 %,
+ * river 93.3 %, local influence 79.3 %, gauge-zero altitude 65.3 %. A field
+ * that is absent stays `null` and simply produces no card line — the sparse-
+ * network rule the rest of this module already follows for readings.
+ *
+ * `openedYear` is reduced to a YEAR on the way in. The API publishes a full
+ * timestamp, and "gauging since 1994" is the claim the field supports; a day
+ * and an hour would suggest the record is continuous from that instant, which
+ * for a hydrometric station it is not.
  * @param {object|null|undefined} geojson
- * @returns {Map<string, {name:string, river:string|null}>}
+ * @returns {Map<string, object>}
  */
 export function parseHubeauStations(geojson) {
   const features = Array.isArray(geojson?.features) ? geojson.features : [];
   const stations = new Map();
+  const text = (value) => {
+    const cleaned = String(value ?? '').trim();
+    return cleaned || null;
+  };
   for (const feature of features) {
     const properties = feature?.properties || {};
     const code = String(properties.code_station ?? '').trim();
     if (!code) continue;
+    const opened = /^(\d{4})/.exec(String(properties.date_ouverture_station ?? ''));
+    const altitude = Number(properties.altitude_ref_alti_station);
     stations.set(code, {
-      name: String(properties.libelle_station ?? '').trim() || code,
-      river: String(properties.libelle_cours_eau ?? '').trim() || null,
+      name: text(properties.libelle_station) || code,
+      river: text(properties.libelle_cours_eau),
+      siteCode: text(properties.code_site),
+      commune: text(properties.libelle_commune),
+      departement: text(properties.libelle_departement),
+      openedYear: opened ? Number(opened[1]) : null,
+      influence: text(properties.influence_locale_station),
+      qualification: text(properties.qualification_donnees_station),
+      // Gauge zero, metres. Carried for the CARD, never used to convert a stage
+      // to an absolute altitude: cross-checked against the site altitude over
+      // 1 756 stations that disagreement is a median 1.1 m but a p90 of 30.8 m
+      // and a max of 20 km, across at least six altimetric systems.
+      gaugeZeroM: Number.isFinite(altitude) ? altitude : null,
     });
   }
   return stations;
@@ -423,6 +487,16 @@ export function buildHubeauRecords(observations, stations, nowMs) {
       code: entry.code,
       name: meta?.name || entry.code,
       river: meta?.river || null,
+      // The reference half of the record. Every one of these is optional and
+      // every one of them was already on the wire before this layer asked for
+      // it — see `hubeauStationsRequestUrl`.
+      siteCode: meta?.siteCode || null,
+      commune: meta?.commune || null,
+      departement: meta?.departement || null,
+      openedYear: Number.isFinite(meta?.openedYear) ? meta.openedYear : null,
+      influence: meta?.influence || null,
+      qualification: meta?.qualification || null,
+      gaugeZeroM: Number.isFinite(meta?.gaugeZeroM) ? meta.gaugeZeroM : null,
       lon: entry.lon,
       lat: entry.lat,
       reading,
@@ -472,13 +546,249 @@ export function createHubeauOverlayEntry(record, position) {
       : 500,
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The station's NAME is a click surface, not a caption. A gauge dot is
+    // 5–15 px across and floats under a label five times its width; asking
+    // people to hit the dot when the name is what they read is a target they
+    // will miss. See `overlayLabelPick.js` for the host mechanism and the
+    // pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
     gapPx: 14,
     verticalOnly: true,
     placement: 'above',
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * SELECTION — the click this layer never had
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * The layer drew up to 900 dots and every one of them was inert: it registered
+ * no pick owner and installed no click handler, so the only thing a station
+ * could ever tell you was the one number already printed beside it. The point
+ * primitives have carried a stable `hubeau:<code>` id all along, so the hit
+ * target existed; nothing listened for it.
+ *
+ * The NAME is now a click surface too, and it is the one people actually aim
+ * at: it says which river this is and it is several times the dot's target
+ * area. The ambient label carries the same `hubeau:<code>` id as the dot, so
+ * one string identifies a station across the native drill pick, the overlay
+ * hit test and the pick registry. See `overlayLabelPick.js` for the shared
+ * mechanism and the pick-ordering rule.
+ */
+
+/** Selected-station card, on its own protected overlay source. */
+export const HUBEAU_SELECTED_OVERLAY_SOURCE_ID = 'hubeau-hydro-selected';
+export const HUBEAU_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
+  cohortLimit: 1,
+  collisionCapacity: 1,
+  moving: false,
+});
+/** Accent for the selected dot and its card. */
+export const HUBEAU_SELECTED_COLOR = '#7ee8fa';
+/** Pixels the selected dot gains, so the click reads as a click. */
+const SELECTED_POINT_BONUS_PX = 5;
+/** How far back the per-click hydrograph reaches. */
+export const HUBEAU_HISTORY_WINDOW_MS = 24 * 60 * 60_000;
+/** Glyphs in the drawn hydrograph. 48 is a bar every half hour over 24 h. */
+export const HUBEAU_SPARK_WIDTH = 48;
+/** Page cap for one station's 24 h series — 288 rows at the 5-minute cadence. */
+const HISTORY_PAGE_SIZE = 500;
+/** One station's history must never hold the card hostage. */
+const HISTORY_TIMEOUT_MS = 12_000;
+/** How deep to look for one of our dots under a click. */
+const DRILL_PICK_LIMIT = 8;
+
+/**
+ * Build the per-station history request.
+ *
+ * Deliberately no `fields`, for the same measured reason the observation
+ * request above gives: trimming this call costs 17 KB instead of 146 KB and
+ * takes 2.18 s instead of 0.49 s. Bandwidth is not the scarce thing here.
+ *
+ * `sort=asc` because a hydrograph is read left to right, and `date_debut_obs`
+ * because the endpoint keeps a rolling ~30-day archive per station — without a
+ * lower bound this would page through a month to show a day.
+ * @param {string} code Station code.
+ * @param {string} kind `'Q'` or `'H'` — the grandeur already on the dot.
+ * @param {number} sinceMs
+ * @param {string} [baseUrl]
+ * @returns {string}
+ */
+export function hubeauHistoryRequestUrl(code, kind, sinceMs, baseUrl = OBSERVATIONS_URL) {
+  const params = new URLSearchParams({
+    code_entite: String(code),
+    grandeur_hydro: kind === 'H' ? 'H' : 'Q',
+    date_debut_obs: new Date(sinceMs).toISOString(),
+    size: String(HISTORY_PAGE_SIZE),
+    sort: 'asc',
+  });
+  return `${baseUrl}?${params}`;
+}
+
+/**
+ * Reduce a history page to an ordered series in the reading's own unit.
+ *
+ * The API publishes discharge in litres per second and stage in millimetres,
+ * exactly as the live census does, so the same two converters apply — a series
+ * left in raw units would draw the right SHAPE under a wrong axis, and the
+ * min/max printed beside it would be nonsense.
+ * @param {object|null|undefined} payload
+ * @param {string} kind
+ * @returns {{values:Array<number|null>, min:number|null, max:number|null, count:number}}
+ */
+export function parseHubeauHistory(payload, kind) {
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  const convert = kind === 'H' ? hubeauStageM : hubeauDischargeM3s;
+  const values = [];
+  let min = null;
+  let max = null;
+  let count = 0;
+  for (const row of rows) {
+    const published = row?.resultat_obs;
+    // A null result is a published GAP, not a zero — and `Number(null)` is 0,
+    // which is finite, so testing the COERCED value alone turns every gap into
+    // a river that briefly stopped flowing. Checked before the coercion, not
+    // after.
+    if (published === null || published === undefined || published === '') {
+      values.push(null);
+      continue;
+    }
+    const raw = Number(published);
+    if (!Number.isFinite(raw)) { values.push(null); continue; }
+    const value = convert(raw);
+    if (!Number.isFinite(value)) { values.push(null); continue; }
+    values.push(value);
+    count += 1;
+    if (min === null || value < min) min = value;
+    if (max === null || value > max) max = value;
+  }
+  return { values, min, max, count };
+}
+
+/**
+ * The card for one station.
+ *
+ * Tiered on purpose. Everything above the hydrograph comes from data the layer
+ * already had on the wire and is therefore always present; the hydrograph is
+ * one extra request and the card renders completely without it.
+ *
+ * WHAT THIS CARD DELIBERATELY DOES NOT SAY:
+ *
+ * • **An absolute water altitude.** `altitude_ref_alti_station` is published
+ *   for 81.6 % of stage stations and its documented purpose is exactly this
+ *   conversion, but checked against the site's own altitude over 1 756
+ *   stations the two disagree by a median 1.1 m, a p90 of 30.8 m and a max of
+ *   20 km, across at least six altimetric systems. The gauge zero is shown as
+ *   what it is — the datum the stage is counted from — and the addition is
+ *   left to a reader who knows which system their station uses.
+ *
+ * • **A historical percentile.** It is reachable in two 526-byte requests and
+ *   it would compare an INSTANTANEOUS reading against a distribution of DAILY
+ *   MEANS across all seasons, so a September low would read as an extreme
+ *   partly because September is always low. Half the active network has no
+ *   recent daily series either, so the line would appear for some stations and
+ *   not others and read as a bug.
+ *
+ * • **Anything resembling a flood warning.** These values are raw and
+ *   unqualified, 23 % of live discharge readings carry the producer's own
+ *   `Douteuse` flag, and Vigicrues is the official channel. The module header
+ *   has always said so; the card now has room to repeat it where it matters.
+ *
+ * @param {object} record
+ * @param {{values?:Array, min?:number|null, max?:number|null, count?:number}|null} [history]
+ * @returns {string} Newline-separated; the first line is the title.
+ */
+export function buildHubeauCard(record, history = null) {
+  const lines = [String(record?.name ?? '').trim() || String(record?.code ?? 'Station')];
+  const reading = record?.reading || {};
+  const unit = reading.kind === 'H' ? 'm' : 'm³/s';
+
+  const measured = reading.kind === 'H' ? 'hauteur' : 'débit';
+  lines.push(`◈ ${reading.text || '—'} · ${measured}${reading.freshness === 'stale' ? ' · relevé ancien' : ''}`);
+
+  if (record?.river) lines.push(`≈ ${record.river}`);
+
+  const where = [record?.commune, record?.departement]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .join(' · ');
+  if (where) lines.push(`📍 ${where}`);
+
+  if (history?.count) {
+    const spark = textSparkline(bucketSeries(history.values, HUBEAU_SPARK_WIDTH));
+    if (spark) lines.push(`↻ 24 h ${spark}`);
+    if (Number.isFinite(history.min) && Number.isFinite(history.max)) {
+      const fmt = (value) => (reading.kind === 'H'
+        ? formatHubeauStage(value)
+        : formatHubeauDischarge(value));
+      // The sparkline is drawn from ZERO, so a flat river reads flat — which is
+      // true, and hides the amplitude. This line is where the amplitude goes.
+      lines.push(history.min === history.max
+        ? `   ${fmt(history.min)} sur 24 h`
+        : `   de ${fmt(history.min)} à ${fmt(history.max)} sur 24 h`);
+    }
+  } else if (history?.pending) {
+    lines.push('↻ 24 h …');
+  } else if (history?.failed) {
+    lines.push('↻ historique 24 h indisponible');
+  }
+
+  if (Number.isFinite(record?.openedYear)) {
+    lines.push(`🕐 station ouverte en ${record.openedYear}`);
+  }
+  if (reading.kind === 'H' && Number.isFinite(record?.gaugeZeroM)) {
+    // NOT added to the stage. See the header of this function.
+    lines.push(`↧ zéro de l'échelle à ${record.gaugeZeroM} m`);
+  }
+  const influence = String(record?.influence ?? '').trim();
+  // 'Nulle' is the majority value and says nothing; anything else is a caveat
+  // the producer chose to publish about their own measurement.
+  if (influence && !/^nulle$/i.test(influence)) lines.push(`⚠ influence locale : ${influence}`);
+
+  const unqualified = /non\s*qualifi/i.test(String(record?.qualification ?? ''));
+  if (reading.doubtful) {
+    lines.push('⚠ relevé signalé douteux par le producteur');
+  } else if (unqualified) {
+    lines.push('⚠ données non qualifiées — Vigicrues reste le canal officiel');
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * The protected card entry for the selected station.
+ * @param {object} record
+ * @param {object} position Cesium.Cartesian3.
+ * @param {object|null} [history]
+ * @returns {object|null}
+ */
+export function createHubeauSelectedOverlayEntry(record, position, history = null) {
+  if (!record || !position) return null;
+  const [title, ...details] = buildHubeauCard(record, history).split('\n');
+  return {
+    id: `hubeau:${record.code}`,
+    position,
+    variant: 'selected',
+    selected: true,
+    protected: true,
+    paintLane: 'selected',
+    collisionGroup: 'ambient-card',
+    priority: Number.MAX_SAFE_INTEGER,
+    title,
+    details,
+    accent: HUBEAU_SELECTED_COLOR,
+    interactive: false,
+    anchorRadiusPx: 9,
+    minAnchorGapPx: 11,
+    verticalOnly: true,
+    placement: 'above',
+    edgeFade: 'keyhole',
+    horizonCull: true,
+    terrainOcclusion: false,
   };
 }
 
@@ -526,6 +836,13 @@ export function createHubeauHydrometryLayer({
   stationsUrl = STATIONS_URL,
   observationsUrl = OBSERVATIONS_URL,
   now = () => Date.now(),
+  // Cesium registers DOM listeners in the ScreenSpaceEventHandler constructor,
+  // and this layer's lifecycle is exercised headless. The factory is the seam
+  // that keeps the click ORDER — dot, then name, then empty space — under test
+  // off-browser; the Escape listener still needs a real `document`.
+  screenSpaceEventHandlerFactory = (viewer) => (
+    new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas)
+  ),
 } = {}) {
   let _viewer = null;
   let _pointCollection = null;
@@ -548,6 +865,15 @@ export function createHubeauHydrometryLayer({
   let _moveEndRemove = null;
   let _debounceTimer = null;
   let _generation = 0;
+  /** Rendered dots by pick id, so a click resolves to a record and a position. */
+  let _drawn = new Map();
+  let _selectedId = null;
+  let _clickHandler = null;
+  /** 24 h series for the selected station: {pending}|{failed}|{values,min,max,count}. */
+  let _history = null;
+  let _historyAbort = null;
+  /** Guards a landing history against a selection the visitor has since changed. */
+  let _historyGeneration = 0;
 
   function setStatus(status, error = null) {
     _status = status;
@@ -567,23 +893,187 @@ export function createHubeauHydrometryLayer({
     });
   }
 
+  /** Republish the selected card, e.g. once its history lands. */
+  function publishSelected() {
+    const drawn = _selectedId ? _drawn.get(_selectedId) : null;
+    if (!drawn) return;
+    const entry = createHubeauSelectedOverlayEntry(drawn.record, drawn.position, _history);
+    if (!entry) return;
+    overlayHost.setEntries(
+      HUBEAU_SELECTED_OVERLAY_SOURCE_ID,
+      [entry],
+      HUBEAU_SELECTED_OVERLAY_SOURCE_OPTIONS,
+    );
+    governorRequestRender('hubeau-select');
+  }
+
+  /**
+   * Fetch the selected station's last 24 hours.
+   *
+   * Its own abort and its own generation counter, separate from the layer's:
+   * a visitor clicking three dots in a second must not have the first station's
+   * hydrograph land on the third station's card, and a history still in flight
+   * must not cancel the viewport census that shares `_abort`.
+   *
+   * Every failure path lands on `{failed:true}` rather than throwing, because
+   * the card above it is already complete and correct without this. Two of
+   * twenty sampled single-station requests to this endpoint timed out at 30 s;
+   * Hub'Eau publishes the API "sans garantie sur leur disponibilité".
+   * @param {object} record
+   */
+  async function loadHistory(record) {
+    const kind = record?.reading?.kind;
+    if (!kind || typeof fetchImpl !== 'function') {
+      _history = null;
+      return;
+    }
+    _historyAbort?.abort();
+    const abort = new AbortController();
+    _historyAbort = abort;
+    const generation = ++_historyGeneration;
+    const owns = () => generation === _historyGeneration && !abort.signal.aborted;
+    _history = { pending: true };
+    const timer = setTimeout(() => abort.abort(), HISTORY_TIMEOUT_MS);
+    try {
+      const url = hubeauHistoryRequestUrl(
+        record.code,
+        kind,
+        now() - HUBEAU_HISTORY_WINDOW_MS,
+        observationsUrl,
+      );
+      const response = await fetchImpl(url, { signal: abort.signal });
+      if (!owns()) return;
+      // A capped page comes back as 206 Partial Content, which is a success:
+      // the request asks for a bounded page on purpose.
+      if (!response.ok && response.status !== 206) {
+        _history = { failed: true };
+        publishSelected();
+        return;
+      }
+      const body = await response.json();
+      if (!owns()) return;
+      const parsed = parseHubeauHistory(body, kind);
+      _history = parsed.count ? parsed : { failed: true };
+      publishSelected();
+    } catch {
+      if (!owns()) return;
+      _history = { failed: true };
+      publishSelected();
+    } finally {
+      clearTimeout(timer);
+      if (_historyAbort === abort) _historyAbort = null;
+    }
+  }
+
+  function clearSelection() {
+    const drawn = _selectedId ? _drawn.get(_selectedId) : null;
+    if (drawn?.point) {
+      drawn.point.outlineColor = COLOR_OUTLINE;
+      drawn.point.pixelSize = drawn.basePixelSize;
+    }
+    _selectedId = null;
+    _history = null;
+    _historyAbort?.abort();
+    _historyAbort = null;
+    _historyGeneration += 1;
+    overlayHost.clearSource(HUBEAU_SELECTED_OVERLAY_SOURCE_ID);
+  }
+
+  function selectObject(pickId) {
+    const drawn = _drawn.get(pickId);
+    clearSelection();
+    if (!drawn) return;
+    _selectedId = pickId;
+    if (drawn.point) {
+      drawn.point.outlineColor = Cesium.Color.fromCssColorString(HUBEAU_SELECTED_COLOR);
+      drawn.point.pixelSize = drawn.basePixelSize + SELECTED_POINT_BONUS_PX;
+    }
+    // Paint the complete card FIRST, then let the hydrograph arrive into it.
+    // The other order would show an empty card for up to a second on a service
+    // that has no availability guarantee.
+    publishSelected();
+    void loadHistory(drawn.record);
+  }
+
+  function onKeyDown(event) {
+    if (event.key === 'Escape' && _selectedId) {
+      clearSelection();
+      governorRequestRender('hubeau-deselect');
+    }
+  }
+
+  /**
+   * Install the click-to-select handler.
+   *
+   * `drillPick`, not `pick`: these dots draw at `disableDepthTestDistance:
+   * 2500` while several sibling French layers use `Number.POSITIVE_INFINITY`,
+   * so on a river running past a charging point or a production group a plain
+   * pick would return the neighbour and this layer would look dead — the same
+   * contention measured on the EDF discs.
+   *
+   * The default handler factory touches the DOM in its constructor, so it is
+   * injectable; the Escape listener below is skipped when there is no
+   * `document` rather than skipping the whole install.
+   */
+  function installClickHandler(viewer) {
+    if (_clickHandler || !viewer?.scene?.canvas) return;
+    _clickHandler = screenSpaceEventHandlerFactory(viewer);
+    _clickHandler.setInputAction((click) => {
+      if (!_enabled) return;
+      const drilled = viewer.scene.drillPick(click.position, DRILL_PICK_LIMIT) || [];
+      for (const hit of drilled) {
+        const id = typeof hit?.primitive?.id === 'string' ? hit.primitive.id : null;
+        if (id && _drawn.has(id)) {
+          selectObject(id);
+          return;
+        }
+      }
+      // The label plane the depth buffer knows nothing about, resolved after
+      // the drill pick so a name drawn across a neighbouring gauge cannot
+      // steal that gauge's click. The label id IS the dot's render id.
+      const labelled = pickOverlayLabelId(click.position, {
+        sourceId: HUBEAU_OVERLAY_SOURCE_ID,
+        has: (renderId) => _drawn.has(renderId),
+        hitTest: overlayHost.hitTest,
+      });
+      if (labelled) {
+        selectObject(labelled);
+        return;
+      }
+      clearSelection();
+      governorRequestRender('hubeau-deselect');
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
+  }
+
+  function removeClickHandler() {
+    if (_clickHandler) {
+      _clickHandler.destroy();
+      _clickHandler = null;
+    }
+    if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
+  }
+
   function repaint() {
     if (!_pointCollection) return;
     _pointCollection.removeAll();
     const entries = [];
     for (const record of _records) {
       const position = Cesium.Cartesian3.fromDegrees(record.lon, record.lat);
-      _pointCollection.add({
+      const pickId = `hubeau:${record.code}`;
+      const basePixelSize = hubeauPixelSize(record.reading);
+      const point = _pointCollection.add({
         position,
-        pixelSize: hubeauPixelSize(record.reading),
+        pixelSize: basePixelSize,
         color: hubeauPointColor(record.reading),
         outlineColor: COLOR_OUTLINE,
         outlineWidth: 1,
         scaleByDistance: new Cesium.NearFarScalar(2000, 1.3, 900000, 0.45),
         translucencyByDistance: new Cesium.NearFarScalar(2000, 1, 1400000, 0.25),
         disableDepthTestDistance: 2500,
-        id: `hubeau:${record.code}`,
+        id: pickId,
       });
+      _drawn.set(pickId, { record, position, point, basePixelSize });
       entries.push(createHubeauOverlayEntry(record, position));
     }
     if (_enabled) {
@@ -602,6 +1092,7 @@ export function createHubeauHydrometryLayer({
 
   function clearRendered() {
     _pointCollection?.removeAll();
+    _drawn.clear();
     _records = [];
     _summary = summarizeHubeauRecords([]);
     _activeInView = 0;
@@ -704,7 +1195,7 @@ export function createHubeauHydrometryLayer({
   }
 
   const layer = {
-    id: 'hubeau-hydro',
+    id: HUBEAU_LAYER_ID,
     name: "Hub'Eau Gauges (FR)",
     icon: '◉',
     source: "Hub'Eau / Eaufrance",
@@ -722,23 +1213,34 @@ export function createHubeauHydrometryLayer({
       _stationCacheKey = null;
       _lastUpdate = null;
       _enabled = false;
+      _selectedId = null;
+      _history = null;
       setStatus('idle', null);
       overlayHost.setVisible(HUBEAU_OVERLAY_SOURCE_ID, false);
+      overlayHost.setVisible(HUBEAU_SELECTED_OVERLAY_SOURCE_ID, false);
+      // Registered for as long as the collection exists, so the shared pick
+      // registry knows these ids belong to this layer even while it is off.
+      registerPickOwner(HUBEAU_LAYER_ID, (id) => _drawn.has(id));
       console.log('[Data:Hubeau] Initialized');
     },
 
     enable(viewer) {
       _enabled = true;
+      if (viewer) _viewer = viewer;
       if (_pointCollection) _pointCollection.show = true;
       overlayHost.setVisible(HUBEAU_OVERLAY_SOURCE_ID, true);
+      overlayHost.setVisible(HUBEAU_SELECTED_OVERLAY_SOURCE_ID, true);
       if (!_moveEndRemove && viewer?.camera?.moveEnd?.addEventListener) {
         _moveEndRemove = viewer.camera.moveEnd.addEventListener(scheduleLoad);
       }
+      installClickHandler(_viewer);
       load();
     },
 
     disable() {
       _enabled = false;
+      clearSelection();
+      removeClickHandler();
       clearTimeout(_debounceTimer);
       _debounceTimer = null;
       _abort?.abort();
@@ -748,6 +1250,7 @@ export function createHubeauHydrometryLayer({
       if (_pointCollection) _pointCollection.show = false;
       overlayHost.clearSource(HUBEAU_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(HUBEAU_OVERLAY_SOURCE_ID, false);
+      overlayHost.setVisible(HUBEAU_SELECTED_OVERLAY_SOURCE_ID, false);
     },
 
     /** Manager-driven idle refresh; camera motion refreshes separately. */
@@ -768,6 +1271,9 @@ export function createHubeauHydrometryLayer({
 
     destroy(viewer) {
       _enabled = false;
+      clearSelection();
+      removeClickHandler();
+      unregisterPickOwner(HUBEAU_LAYER_ID);
       clearTimeout(_debounceTimer);
       _debounceTimer = null;
       _abort?.abort();
@@ -776,6 +1282,7 @@ export function createHubeauHydrometryLayer({
       _moveEndRemove = null;
       overlayHost.clearSource(HUBEAU_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(HUBEAU_OVERLAY_SOURCE_ID, false);
+      overlayHost.setVisible(HUBEAU_SELECTED_OVERLAY_SOURCE_ID, false);
       if (_pointCollection) {
         viewer?.scene?.primitives?.remove?.(_pointCollection);
         _pointCollection = null;

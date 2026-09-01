@@ -110,6 +110,8 @@
  * `powerGridFeed.js` established.
  */
 
+import { textSparkline } from './sparkline.js';
+
 /** RTE's OAuth2 token endpoint. HTTP Basic over `client_id:client_secret`. */
 export const RTE_TOKEN_URL = 'https://digital.iservices.rte-france.com/token/oauth/';
 
@@ -1331,19 +1333,10 @@ export function joinGenerationToRegistry(registry, liveUnits) {
  * @returns {string}
  */
 export function generationSparkline(history, referenceMw) {
-  const bars = '▁▂▃▄▅▆▇█';
-  const reference = Number.isFinite(referenceMw) && referenceMw > 0 ? referenceMw : null;
-  if (!Array.isArray(history) || !history.length) return '';
-  const fallback = reference
-    || Math.max(...history.map((value) => (Number.isFinite(value) ? Math.abs(value) : 0)), 0);
-  if (!fallback) return history.map((value) => (Number.isFinite(value) ? '▁' : '·')).join('');
-  let out = '';
-  for (const value of history) {
-    if (!Number.isFinite(value)) { out += '·'; continue; }
-    if (value < 0) { out += '▽'; continue; }
-    if (value === 0) { out += '▁'; continue; }
-    const ratio = Math.min(1, value / fallback);
-    out += bars[Math.min(bars.length - 1, Math.max(1, Math.round(ratio * (bars.length - 1))))];
-  }
-  return out;
+  // The drawing moved to `./sparkline.js` when the Hub'Eau layer needed the
+  // same picture for a river. Kept as a named wrapper because "reference" here
+  // means something specific — the group's nameplate, so two groups of
+  // different sizes are comparable bar for bar — which a generic parameter name
+  // would lose. See that module for why a gap is `·` and not `▁`.
+  return textSparkline(history, Number.isFinite(referenceMw) && referenceMw > 0 ? referenceMw : null);
 }

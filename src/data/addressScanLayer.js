@@ -377,6 +377,10 @@ export function scanShiftNeeded(last, next, minShiftKm = ADDRESS_SCAN_MIN_SHIFT_
  *   config.render Draws the payload and returns how many entities it created.
  * @param {(payload: object) => Record<string, unknown>} [config.summarize]
  *   Extra fields merged into `getStats()`.
+ * @param {(point: object, viewer: ?object) => Record<string, string>} [config.params]
+ *   Extra query parameters. Takes the viewer as well as the point because a
+ *   layer may ask a different question depending on the CAMERA — the urbanism
+ *   layer asks for a box close in and a point higher up.
  * @param {number} [config.maxAltitudeM]
  * @param {number} [config.minShiftKm]
  * @param {typeof fetch} [config.fetchImpl] Injection seam for tests.
@@ -391,6 +395,13 @@ export function createAddressScanLayer(config) {
     maxAltitudeM = ADDRESS_SCAN_MAX_ALTITUDE_M,
     minShiftKm = ADDRESS_SCAN_MIN_SHIFT_KM,
     fetchImpl = (...args) => fetch(...args),
+    // OFF for the four layers that draw billboards: a marker is a billboard
+    // wherever the basemap came from, and rebuilding one on every map-stack
+    // change would be work for nothing. ON for the layer that draws GROUND
+    // CLASSIFICATION geometry, which reads its classification surface once,
+    // when the primitive is built — see `urbanismeGpu.js`.
+    redrawOnMapStack = false,
+    mapStackEventTarget = typeof window === 'undefined' ? null : window,
   } = config;
 
   let _dataSource = null;
@@ -413,6 +424,9 @@ export function createAddressScanLayer(config) {
   let _tileProgressRemover = null;
   let _seatTimer = null;
   let _seatPending = false;
+  let _mapStackListener = null;
+  /** The exact query the drawn answer came from, for change detection. */
+  let _lastQuery = null;
   const _cards = new Map();
 
   /** Restore the marker a selection had enlarged. */
@@ -473,6 +487,12 @@ export function createAddressScanLayer(config) {
       if (_selectedId && !picked) clearSelection();
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     document.addEventListener('keydown', onKeyDown);
+  }
+
+  function removeMapStackListener() {
+    if (!_mapStackListener) return;
+    mapStackEventTarget?.removeEventListener?.('gev:map-stack-changed', _mapStackListener);
+    _mapStackListener = null;
   }
 
   function removeClickHandler() {
@@ -538,6 +558,31 @@ export function createAddressScanLayer(config) {
   }
 
   /**
+   * Redraw the answer ALREADY IN HAND onto a new map stack.
+   *
+   * Not a rescan: the register has not changed, the ground under it has. A
+   * layer that draws ground-classification geometry chooses its classification
+   * surface when the primitive is BUILT, so switching from IGN ortho to the
+   * Google photoreal tileset — which hides the globe — leaves a wash addressed
+   * to terrain that is no longer being drawn, and the layer silently shows
+   * nothing. Rebuilding from `_payload` costs no request and no rate limit.
+   *
+   * @returns {boolean} True when something was redrawn.
+   */
+  function redrawForMapStack() {
+    if (!_dataSource || !_payload || !_lastPoint || _dormant) return false;
+    clearSelection();
+    _dataSource.entities.removeAll();
+    _count = render({
+      payload: _payload, dataSource: _dataSource, point: _lastPoint, viewer: _viewer,
+    }) || 0;
+    seatMarkers(_lastPoint);
+    indexCards();
+    governorRequestRender(`${id}-map-stack`);
+    return true;
+  }
+
+  /**
    * Scan around the camera's ground point and redraw.
    *
    * Shared by the manager's periodic tick and by the `moveEnd` listener, with a
@@ -570,6 +615,7 @@ export function createAddressScanLayer(config) {
           _payload = null;
           _dormant = true;
           _lastPoint = null;
+          _lastQuery = null;
           _seatPending = false;
         }
         _lastError = null;
@@ -577,15 +623,25 @@ export function createAddressScanLayer(config) {
         return true;
       }
       _dormant = false;
-      if (!scanShiftNeeded(_lastPoint, point, minShiftKm)) return true;
 
       const query = new URLSearchParams({
         lat: point.lat.toFixed(6),
         lon: point.lon.toFixed(6),
-        ...params(point),
+        ...params(point, _viewer),
       });
+      const queryString = String(query);
+      // TWO reasons to rescan, and the movement one is not sufficient on its
+      // own. A layer whose params depend on the camera — the urbanism layer
+      // asks for a BOX below its own altitude and a point above it — changes
+      // the question it is asking without the scan centre moving at all: zoom
+      // straight down through that altitude and the shift is zero while the
+      // answer that is on screen is now the wrong kind. Comparing the query
+      // covers both, because the point is in it.
+      if (!scanShiftNeeded(_lastPoint, point, minShiftKm) && queryString === _lastQuery) {
+        return true;
+      }
       try {
-        const response = await fetchImpl(`${endpoint}?${query}`, signal ? { signal } : undefined);
+        const response = await fetchImpl(`${endpoint}?${queryString}`, signal ? { signal } : undefined);
         if (!response.ok) {
           _lastError = `${name} HTTP ${response.status}`;
           return false;
@@ -597,13 +653,16 @@ export function createAddressScanLayer(config) {
         }
         clearSelection();
         _dataSource.entities.removeAll();
-        _count = render({ payload, dataSource: _dataSource, point }) || 0;
+        _count = render({
+          payload, dataSource: _dataSource, point, viewer: _viewer,
+        }) || 0;
         // Before the index, so a card is built from the seated position rather
         // than from the ellipsoid one it was drawn at.
         seatMarkers(point);
         indexCards();
         _payload = payload;
         _lastPoint = point;
+        _lastQuery = queryString;
         _lastUpdate = Date.now();
         _stale = payload.stale === true;
         _lastError = null;
@@ -663,6 +722,7 @@ export function createAddressScanLayer(config) {
       setOverlaySourceVisible(id, false);
       _enabled = false;
       _lastPoint = null;
+      _lastQuery = null;
       _lastUpdate = null;
       _lastError = null;
       _count = 0;
@@ -689,9 +749,14 @@ export function createAddressScanLayer(config) {
           if (queued === 0 || _seatPending) scheduleSeat();
         });
       }
+      if (redrawOnMapStack && !_mapStackListener && mapStackEventTarget?.addEventListener) {
+        _mapStackListener = () => { redrawForMapStack(); };
+        mapStackEventTarget.addEventListener('gev:map-stack-changed', _mapStackListener);
+      }
       // Force the next update to scan: the camera may have travelled a
       // continent while the layer was off.
       _lastPoint = null;
+      _lastQuery = null;
     },
 
     disable() {
@@ -704,6 +769,7 @@ export function createAddressScanLayer(config) {
       clearTimeout(_seatTimer);
       if (_moveEndRemover) { _moveEndRemover(); _moveEndRemover = null; }
       if (_tileProgressRemover) { _tileProgressRemover(); _tileProgressRemover = null; }
+      removeMapStackListener();
     },
 
     destroy(viewer) {
@@ -711,6 +777,7 @@ export function createAddressScanLayer(config) {
       clearTimeout(_seatTimer);
       if (_moveEndRemover) { _moveEndRemover(); _moveEndRemover = null; }
       if (_tileProgressRemover) { _tileProgressRemover(); _tileProgressRemover = null; }
+      removeMapStackListener();
       removeClickHandler();
       clearOverlaySource(id);
       if (_dataSource) {

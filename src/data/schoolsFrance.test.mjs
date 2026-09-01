@@ -22,7 +22,9 @@ import schoolsFranceLayer, {
   schoolsDepartementAlpha,
   schoolsDepartementBinLabels,
   schoolsDepartementColor,
+  schoolCalloutText,
   schoolsMeshPointSize,
+  pickMeshSite,
   selectSchoolsLabelCohort,
   _clearSchoolsSelectionForTest,
   _schoolsRowControlsForTest,
@@ -201,12 +203,32 @@ test('the card never throws on a missing or empty record', () => {
 
 // --- The mesh card ----------------------------------------------------------
 
-test('a maillage card admits it has no name and points at the zoom that does', () => {
-  const copy = buildSchoolsMeshLabel({ mesh: true, site: { level: 'lycee', enrolled: 1200 } });
+test('a maillage card being resolved says the name is on its way', () => {
+  const copy = buildSchoolsMeshLabel({
+    mesh: true, resolving: true, site: { level: 'lycee', enrolled: 1200 },
+  });
   assert.match(norm(copy), /1 200 élèves/);
-  assert.match(copy, /zoomez/i);
+  assert.match(copy, /lecture du nom/i);
   // It must not invent a title it does not have.
   assert.equal(copy.split('\n')[0], 'Établissement');
+});
+
+test('a maillage card whose lookup found nothing says so, and does not blame the zoom', () => {
+  const copy = buildSchoolsMeshLabel({ mesh: true, site: { level: 'lycee', enrolled: 1200 } });
+  assert.match(copy, /introuvable dans le registre/i);
+  assert.doesNotMatch(copy, /zoom/i);
+  assert.equal(copy.split('\n')[0], 'Établissement');
+});
+
+test('a maillage card that HAS its name is the same card the exact regime draws', () => {
+  const resolved = {
+    name: 'Collège Jean Moulin', level: 'college', nature: 'COLLEGE', sector: 'public',
+    enrolled: 612, commune: 'Lyon', uai: '0690123X',
+  };
+  const copy = buildSchoolsMeshLabel({ mesh: true, resolved, site: { level: 'college', enrolled: 612 } });
+  assert.equal(copy, buildSchoolSelectionLabel({ site: resolved }));
+  // The whole point: the title is the school, at every altitude that draws it.
+  assert.equal(copy.split('\n')[0], 'Collège Jean Moulin');
 });
 
 test('a maillage card with no roll makes the same distinction as the site card', () => {
@@ -410,4 +432,82 @@ test('level labels are French and every level has one', () => {
     assert.ok(schoolLevelLabel(level).length > 0);
   }
   assert.equal(schoolLevelLabel('inconnu'), schoolLevelLabel('autre'));
+});
+
+// --- Naming a maillage dot --------------------------------------------------
+//
+// The maillage ships coordinates, not UAIs, so a click resolves the register
+// by POSITION — and several UAIs legitimately share one. These are the rules
+// that decide which of them the card is about.
+
+test('a lookup picks the establishment at the clicked coordinate and ignores its neighbours', () => {
+  const here = { lat: 45.76052, lon: 4.82371, level: 'college', name: 'Collège Jean Moulin', enrolled: 612 };
+  const nextDoor = { lat: 45.76233, lon: 4.82410, level: 'ecole', name: 'École Jules Ferry', enrolled: 210 };
+  const { site, sharing } = pickMeshSite([nextDoor, here], '45.76052,4.82371', 'college');
+  assert.equal(site.name, 'Collège Jean Moulin');
+  assert.equal(sharing, 0);
+});
+
+test('when a SEGPA shares its collège\'s address, the tuple\'s own level decides', () => {
+  // Trap 1 in schoolsFeed.js: 2 212 sections sit at their parent's coordinate.
+  const college = { lat: 45.76052, lon: 4.82371, level: 'college', name: 'Collège Jean Moulin', enrolled: 612 };
+  const segpa = { lat: 45.76052, lon: 4.82371, level: 'adapte', name: 'SEGPA du collège Jean Moulin', enrolled: null };
+  const picked = pickMeshSite([segpa, college], '45.76052,4.82371', 'college');
+  assert.equal(picked.site.name, 'Collège Jean Moulin');
+  // The other UAI is not discarded quietly — the card gets to say it is there.
+  assert.equal(picked.sharing, 1);
+});
+
+test('with no level match the largest roll wins, never the array order', () => {
+  const small = { lat: 1.00000, lon: 2.00000, level: 'ecole', name: 'Annexe', enrolled: 40 };
+  const large = { lat: 1.00000, lon: 2.00000, level: 'ecole', name: 'Groupe scolaire', enrolled: 400 };
+  assert.equal(pickMeshSite([small, large], '1.00000,2.00000', 'lycee').site.name, 'Groupe scolaire');
+  assert.equal(pickMeshSite([large, small], '1.00000,2.00000', 'lycee').site.name, 'Groupe scolaire');
+});
+
+test('a coordinate the register does not know resolves to nothing, not to a neighbour', () => {
+  const elsewhere = { lat: 48.85660, lon: 2.35220, level: 'ecole', name: 'École du coin', enrolled: 120 };
+  assert.deepEqual(pickMeshSite([elsewhere], '45.76052,4.82371', 'ecole'), { site: null, sharing: 0 });
+  assert.deepEqual(pickMeshSite(null, '45.76052,4.82371', 'ecole'), { site: null, sharing: 0 });
+});
+
+test('a card whose position is shared says how many other UAIs are on it', () => {
+  const copy = buildSchoolSelectionLabel({
+    site: { name: 'Collège Jean Moulin', level: 'college', enrolled: 612, sharing: 2 },
+  });
+  assert.match(norm(copy), /2 autres UAI/);
+  assert.doesNotMatch(buildSchoolSelectionLabel({
+    site: { name: 'Collège Jean Moulin', level: 'college', enrolled: 612, sharing: 0 },
+  }), /UAI enregistr/);
+});
+
+// --- The DETECT callout -----------------------------------------------------
+
+test('a detected school is named, not counted', () => {
+  assert.equal(
+    schoolCalloutText({ site: { name: 'Collège Jean Moulin', level: 'college', enrolled: 612 } }),
+    'Collège Jean Moulin',
+  );
+});
+
+test('a resolved maillage dot is named in DETECT too, from the same lookup', () => {
+  assert.equal(
+    schoolCalloutText({
+      mesh: true,
+      resolved: { name: 'Lycée du Parc', level: 'lycee', enrolled: 1800 },
+      site: { level: 'lycee', enrolled: 1800 },
+    }),
+    'Lycée du Parc',
+  );
+});
+
+test('an unnamed dot falls back to what the pack actually shipped', () => {
+  assert.equal(
+    norm(schoolCalloutText({ mesh: true, site: { level: 'ecole', enrolled: 1200 } })),
+    'École · 1 200 élèves',
+  );
+  assert.equal(
+    schoolCalloutText({ mesh: true, site: { level: 'ecole', enrolled: null } }),
+    'École',
+  );
 });

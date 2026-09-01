@@ -109,13 +109,26 @@ const EARTH_RADIUS_KM = 6371.0088;
  * pixel count can (see `scripts/qa-gas-fr.mjs`). Violet and orchid occur in no
  * basemap, and neither collides with the orange power stations or the green
  * injection points.
+ *
+ * BOTH WERE THEN RAISED, AND THE HUE CHOICE IS WHY THEY ONLY NEEDED RAISING.
+ * The first pair (`#9d7ae6` violet, `#e87ad0` orchid) cleared the river test
+ * and still lost to IGN ortho: a mid-chroma pastel over aerial imagery has
+ * nothing to be lighter or darker than, because the imagery supplies every
+ * value at once. The answer is not another hue — the hue reasoning above still
+ * holds, and the violet band is now crowded anyway (submarine cables at
+ * `#b388ff`, road obstacles at `#b06bff`) — it is more chroma HERE plus the
+ * dark casing the layer now strokes under every pipe. See `gasFrance.js`.
+ *
+ * The pair below therefore keeps both hues and pushes each one out: violet
+ * stays violet, orchid stays orchid, and the operator channel a reader has
+ * already learned survives the change.
  */
 export const GAS_NETWORK_OPERATORS = Object.freeze({
   natran: Object.freeze({
     id: 'natran',
     label: 'NaTran (ex-GRTgaz)',
     dataset: 'trace-du-reseau-grt-250',
-    color: '#9d7ae6',
+    color: '#c08bff',
     depField: 'departement',
     regionField: 'nom_region',
   }),
@@ -123,7 +136,7 @@ export const GAS_NETWORK_OPERATORS = Object.freeze({
     id: 'terega',
     label: 'Teréga',
     dataset: 'terega-trace-du-reseau',
-    color: '#e87ad0',
+    color: '#ff6ad5',
     depField: 'nom_du_departement',
     regionField: 'region',
   }),

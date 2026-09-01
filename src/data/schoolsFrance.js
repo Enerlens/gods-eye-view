@@ -58,14 +58,18 @@ import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   SCHOOLS_MAX_BOX_DEG,
   SCHOOL_LEVELS,
   SCHOOL_LEVEL_LABELS,
   SCHOOL_PRECISION_LABELS,
+  schoolDisplayName,
+  schoolSiteKey,
 } from './schoolsFeed.js';
 import {
   meshSchoolId,
@@ -85,6 +89,8 @@ export const SCHOOLS_FR_OVERLAY_SOURCE_OPTIONS = Object.freeze({
   moving: false,
 });
 export const SCHOOLS_FR_LABEL_SOURCE_ID = 'schools-fr-departements';
+/** Ambient-label entry-id prefix — the click surface the département NAME provides. */
+export const SCHOOLS_FR_DEP_LABEL_PREFIX = 'schools-fr:dep:';
 export const SCHOOLS_FR_LABEL_COHORT_LIMIT = 14;
 export const SCHOOLS_FR_LABEL_COLLISION_CAPACITY = 12;
 
@@ -120,6 +126,21 @@ const REQUEST_TIMEOUT_MS = 45_000;
 const NATIONAL_TIMEOUT_MS = 120_000;
 /** Hard cap on rendered schools, independent of what the proxy returns. */
 const MAX_RENDERED_SITES = 6_000;
+/**
+ * Half-width (degrees, ~550 m) of the box a MAILLAGE click asks the register
+ * about.
+ *
+ * The national pack ships no names — carrying them would take it from 1.66 MB
+ * to 5.42 MB for two fields the maillage never draws (see `schoolsMesh.js`).
+ * But a card that says "Établissement" at one altitude and "Collège Jean
+ * Moulin" at the next is the pack's wire budget leaking into what a reader is
+ * told, so the name is fetched for the ONE dot that was clicked instead. The
+ * proxy snaps the box outward onto its 0.02° cache grid anyway, so a second
+ * click on a neighbouring school is a cache hit both here and there.
+ */
+const MESH_LOOKUP_PAD_DEG = 0.005;
+/** A mesh lookup is one click's worth of patience, not a viewport's. */
+const MESH_LOOKUP_TIMEOUT_MS = 15_000;
 const POINT_LIFT_M = 2.5;
 const GROUND_WARM_LIMIT = 600;
 
@@ -183,6 +204,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 let _overlayHost = DEFAULT_OVERLAY_HOST;
 
@@ -220,6 +242,14 @@ let _mesh = null;
 let _meshPromise = null;
 let _meshError = null;
 let _meshPick = null;
+/**
+ * Coordinate id → the register's answer for that dot.
+ *
+ * `'pending'` while a lookup is in flight, a projected site once it lands,
+ * `null` when the register has nothing there. Session-scoped and never
+ * invalidated: the annuaire is rebuilt daily and a name does not move.
+ */
+let _meshNames = new Map();
 
 // --- Colour and size --------------------------------------------------------
 
@@ -397,7 +427,7 @@ function fr(value) {
 export function buildSchoolSelectionLabel(record) {
   const site = record?.site || {};
   const details = [];
-  const title = site.name || site.commune || 'Établissement scolaire';
+  const title = site.name ? schoolDisplayName(site) : (site.commune || 'Établissement scolaire');
 
   const kind = [site.nature || schoolLevelLabel(site.level)];
   if (site.sector === 'public') kind.push('public');
@@ -435,6 +465,11 @@ export function buildSchoolSelectionLabel(record) {
 
   // Two dots at one address is the register's unit showing through, not a
   // duplicate. Naming the parent is what makes it legible.
+  if (site.sharing > 0) {
+    details.push(site.sharing === 1
+      ? '1 autre UAI enregistré à cette position'
+      : `${fr(site.sharing)} autres UAI enregistrés à cette position`);
+  }
   if (site.motherUai) details.push(`Rattaché à l'UAI ${site.motherUai}`);
   if (site.uai) details.push(`UAI ${site.uai}`);
 
@@ -445,16 +480,31 @@ export function buildSchoolSelectionLabel(record) {
  * Card copy for a school picked in the MAILLAGE.
  *
  * A mesh record carries four numbers and no name, because the national pack
- * ships no names — so the card says what it has and says what it does not,
- * rather than showing a blank where a reader expects a title.
+ * ships no names. It used to stop there and title the card "Établissement",
+ * which made the ONE thing a reader wants — which school is this — a property
+ * of how far they had zoomed. So a click now asks the register for that single
+ * coordinate (`resolveMeshSite`), and this function reports whichever of the
+ * three states the answer is in:
+ *
+ *   resolved  → the full card, identical to the one the exact regime draws;
+ *   pending   → the tuple's own facts, and that the name is being fetched;
+ *   refused   → the tuple's own facts, and that the lookup failed.
+ *
+ * The middle and last states are still honest cards, not placeholders: the
+ * level and the roll come from the pack and are true whether or not the name
+ * ever arrives.
  */
 export function buildSchoolsMeshLabel(record) {
+  if (record?.resolved) return buildSchoolSelectionLabel({ site: record.resolved });
+
   const site = record?.site || {};
   const details = [schoolLevelLabel(site.level)];
   details.push(Number.isFinite(site.enrolled) && site.enrolled > 0
     ? `${fr(site.enrolled)} élèves — rentrée 2025`
     : 'Effectif non publié pour cet UAI');
-  details.push('Position réelle, échantillonnée — zoomez pour le nom et la fiche');
+  details.push(record?.resolving
+    ? 'Position réelle, échantillonnée — lecture du nom dans le registre…'
+    : 'Position réelle, échantillonnée — nom introuvable dans le registre');
   return ['Établissement', ...details].join('\n');
 }
 
@@ -512,7 +562,7 @@ export function createSchoolSelectedOverlayEntry(record) {
 /** Ambient label for one département at national altitude. */
 export function createSchoolsDepartementOverlayEntry(row, position) {
   return {
-    id: `schools-fr:dep:${row.code}`,
+    id: `${SCHOOLS_FR_DEP_LABEL_PREFIX}${row.code}`,
     position,
     variant: 'label',
     title: `${row.name} · ${fr(row.schools)}`,
@@ -520,7 +570,9 @@ export function createSchoolsDepartementOverlayEntry(row, position) {
     priority: Number(row.schools) || 0,
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The département's name is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -575,6 +627,114 @@ function clearSelection() {
   governorRequestRender('schools-fr-deselect');
 }
 
+/**
+ * Choose which of the register's rows IS the dot that was clicked.
+ *
+ * A mesh id is a coordinate, and a coordinate is not a UAI: SEGPA and SEP
+ * sections sit at the exact address of the collège or lycée that contains them
+ * (2 212 of them nationally — `schoolsFeed.js`, Trap 1), so a lookup can come
+ * back with two or three establishments on the same 5-decimal point.
+ *
+ * The tuple's own level breaks the tie, because that is the one thing the mesh
+ * dot already claimed to be and the reader has been looking at. Failing that,
+ * the largest roll — the parent establishment rather than the section inside
+ * it. Nothing here invents a preference the pack did not already express.
+ *
+ * @param {Array<object>} sites Register rows for the lookup box.
+ * @param {string} id The clicked dot's coordinate id.
+ * @param {?string} level The level the mesh tuple carried.
+ * @returns {{site: ?object, sharing: number}} `sharing` counts the OTHER UAIs
+ *   at the same coordinate, so the card can say why two dots sit on one roof.
+ */
+export function pickMeshSite(sites, id, level) {
+  const here = (Array.isArray(sites) ? sites : []).filter(
+    (site) => Number.isFinite(site?.lat) && Number.isFinite(site?.lon)
+      && schoolSiteKey(site.lat, site.lon) === id,
+  );
+  if (!here.length) return { site: null, sharing: 0 };
+  const sameLevel = here.filter((site) => site.level === level);
+  const pool = sameLevel.length ? sameLevel : here;
+  const best = pool.slice().sort(
+    (a, b) => (Number(b.enrolled) || 0) - (Number(a.enrolled) || 0)
+      || String(a.uai || a.id).localeCompare(String(b.uai || b.id)),
+  )[0];
+  return { site: best, sharing: here.length - 1 };
+}
+
+/**
+ * Ask the register for the establishment under one mesh dot.
+ *
+ * One request per clicked dot, memoized for the session — the annuaire is
+ * rebuilt daily and a school's name does not move between two clicks. The
+ * request is deliberately NOT abortable on camera movement: the reader asked
+ * for this name, and a pan while it is in flight should not silently cancel
+ * the answer to their question.
+ * @param {object} record The mesh record that was selected.
+ */
+async function resolveMeshSite(record) {
+  const id = record?.id;
+  if (!id || !record.mesh) return;
+
+  const cached = _meshNames.get(id);
+  if (cached === 'pending') return;
+  if (cached !== undefined) {
+    record.resolved = cached;
+    record.resolving = false;
+    return;
+  }
+
+  _meshNames.set(id, 'pending');
+  record.resolving = true;
+  repaintSelectedCard(id);
+
+  const { lat, lon } = record.site || {};
+  const params = new URLSearchParams({
+    south: (lat - MESH_LOOKUP_PAD_DEG).toFixed(5),
+    west: (lon - MESH_LOOKUP_PAD_DEG).toFixed(5),
+    north: (lat + MESH_LOOKUP_PAD_DEG).toFixed(5),
+    east: (lon + MESH_LOOKUP_PAD_DEG).toFixed(5),
+  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), MESH_LOOKUP_TIMEOUT_MS);
+  try {
+    const response = await fetch(`/api/schools-fr/sites?${params}`, { signal: controller.signal });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    const { site, sharing } = pickMeshSite(payload?.sites, id, record.site?.level);
+    // A lookup that found nothing is CACHED as nothing. The alternative is a
+    // fresh round trip on every click of a dot the register cannot name — the
+    // same answer, paid for again each time.
+    const resolved = site ? { ...site, sharing } : null;
+    _meshNames.set(id, resolved);
+    record.resolved = resolved;
+  } catch (error) {
+    // Not cached: a timeout or an offline moment is not the register's answer,
+    // and the next click should be allowed to ask again.
+    _meshNames.delete(id);
+    if (error?.name !== 'AbortError') {
+      console.warn('[Data:Schools-FR] mesh name lookup failed:', error?.message || error);
+    }
+  } finally {
+    clearTimeout(timer);
+    record.resolving = false;
+    repaintSelectedCard(id);
+  }
+}
+
+/** Redraw the selected card in place, if `id` is still what is selected. */
+function repaintSelectedCard(id) {
+  if (_selectedId !== id) return;
+  const entry = createSchoolSelectedOverlayEntry(_records.get(id));
+  if (entry) {
+    _overlayHost.setEntries(
+      SCHOOLS_FR_OVERLAY_SOURCE_ID,
+      [entry],
+      SCHOOLS_FR_OVERLAY_SOURCE_OPTIONS,
+    );
+  }
+  governorRequestRender('schools-fr-name');
+}
+
 function selectSite(id) {
   const record = _records.get(id);
   if (!record) return;
@@ -584,6 +744,10 @@ function selectSite(id) {
     record.point.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
     record.point.pixelSize = SELECTED_POINT_PX;
   }
+  // A maillage dot knows its level and its roll but not its name — ask the
+  // register for it, and paint the card twice rather than making the reader
+  // zoom in to find out what they clicked on.
+  if (record.mesh && !record.resolved) void resolveMeshSite(record);
   const entry = createSchoolSelectedOverlayEntry(record);
   if (entry) {
     _overlayHost.setEntries(
@@ -642,6 +806,19 @@ function installClickHandler(viewer) {
       const code = pickedDepartementCode(picked);
       if (code && _depEntities.has(code)) {
         selectDepartement(code);
+        return;
+      }
+      // The label plane the depth buffer knows nothing about, resolved after
+      // the polygon pick. At national altitude the name floats clear of the
+      // shape it belongs to, so it is often the only thing under the cursor.
+      const labelled = pickOverlayLabelId(movement.position, {
+        sourceId: SCHOOLS_FR_LABEL_SOURCE_ID,
+        prefix: SCHOOLS_FR_DEP_LABEL_PREFIX,
+        has: (depCode) => _depEntities.has(depCode),
+        hitTest: _overlayHost.hitTest,
+      });
+      if (labelled) {
+        selectDepartement(labelled);
         return;
       }
     }
@@ -901,12 +1078,18 @@ function reconcileMesh(box) {
       outlineWidth: 1,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
     });
+    // A dot this session has already named keeps its name across pans and
+    // zooms — the lookup is memoized, so re-entering a city redraws the cards
+    // it earned rather than re-asking for them.
+    const known = _meshNames.get(id);
     _records.set(id, {
       id,
       // A mesh record carries only what the national pack knows: no name, no
       // UAI. The flag is what lets the card say so instead of implying the
-      // rest is absent.
+      // rest is absent — and what sends a click to the register for the rest.
       mesh: true,
+      resolved: known && known !== 'pending' ? known : null,
+      resolving: known === 'pending',
       site: { id, lat, lon, level, enrolled: pupils > 0 ? pupils : null },
       point,
       position,
@@ -1092,17 +1275,36 @@ function collectDetectableObjects(options = {}) {
   const result = [];
   for (let i = start; i < records.length; i += stride) {
     const record = records[i];
-    const pupils = Number(record.site?.enrolled) || 0;
     result.push({
       position: record.position,
       sourceId: record.id,
-      id: pupils > 0 ? `${pupils} élèves` : schoolLevelLabel(record.site?.level),
+      id: schoolCalloutText(record),
       type: 'School',
       skipLabel: record.id === _selectedId,
     });
     if (result.length >= maxCount) break;
   }
   return result;
+}
+
+/**
+ * The one line a DETECT callout gets for a school.
+ *
+ * The name first, because that is what identifies the thing on screen — a
+ * reader scanning a district wants "Collège Jean Moulin", not "412 élèves",
+ * which names nothing and repeats a number the dot's size already carries.
+ * Where no name is known (an un-clicked maillage dot) the level is the honest
+ * fallback: it is what the pack actually shipped.
+ * @param {object} record
+ * @returns {string}
+ */
+export function schoolCalloutText(record) {
+  const site = record?.resolved || record?.site || {};
+  if (site.name) return schoolDisplayName(site);
+  const pupils = Number(site.enrolled) || 0;
+  return pupils > 0
+    ? `${schoolLevelLabel(site.level)} · ${fr(pupils)} élèves`
+    : schoolLevelLabel(site.level);
 }
 
 /** One line under the layer's toggle: what this view actually contains. */
@@ -1174,6 +1376,7 @@ const schoolsFranceLayer = {
     _regime = 'national';
     _nationalPainted = false;
     _meshPick = null;
+    _meshNames = new Map();
     _lastBox = null;
 
     _overlayHost.setVisible(SCHOOLS_FR_OVERLAY_SOURCE_ID, false);
@@ -1364,6 +1567,7 @@ const schoolsFranceLayer = {
       _points = null;
     }
     _records.clear();
+    _meshNames = new Map();
     _viewer = null;
   },
 };

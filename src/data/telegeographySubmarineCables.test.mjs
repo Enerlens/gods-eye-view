@@ -64,7 +64,9 @@ test('cable overlay entries satisfy the shared presentation contract', () => {
   assert.equal(entry.accent, '#39d5ff');
   assert.equal(entry.collisionGroup, 'ambient-label');
   assert.equal(entry.paintLane, 'ambient-label');
-  assert.equal(entry.interactive, false, 'point/stem/line picking remains Cesium-native');
+  // The name is a click surface too: the stem tip is a 7 px dot at the end of
+  // a hairline, often out over open ocean. Native picking still resolves first.
+  assert.equal(entry.interactive, true, 'the cable NAME is a click surface');
   assert.equal(entry.maxDistance, 9_000_000);
   assert.equal(entry.distanceFadeStartRatio, 0.7);
   assert.deepEqual(entry.distanceScale, {
@@ -87,7 +89,7 @@ test('cable overlay entries satisfy the shared presentation contract', () => {
     distanceM: 100_000,
   });
   assert.equal(landing.accent, '#8fffd2', 'landing points keep their mint accent');
-  assert.equal(landing.interactive, false);
+  assert.equal(landing.interactive, true);
 });
 
 test('cable reference priority is nearest-first and sweep-stable', () => {

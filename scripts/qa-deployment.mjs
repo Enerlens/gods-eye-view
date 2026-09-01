@@ -36,6 +36,7 @@ const PROBES = [
   '/api/edf-plants',
   '/api/rte-generation',
   '/api/schools-fr/departements',
+  '/api/sup-fr/departements',
   '/api/irve-fr/departements',
   '/api/gas-fr/sites',
   '/api/bison-fute/events',

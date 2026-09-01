@@ -4,9 +4,11 @@ import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { cachedGroundFloor, resolveGroundFloorCellsBounded } from './groundFloor.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   HYDRO_TECHNOLOGIES,
   HYDRO_TECHNOLOGY_ORDER,
@@ -122,6 +124,13 @@ export const FR_HYDRO_RENDER_PREFIX = 'fr-hydro:';
 export const FR_HYDRO_OVERLAY_SOURCE_ID = 'fr-hydro-plants';
 /** Selected-object card, on its own protected source. */
 export const FR_HYDRO_SELECTED_OVERLAY_SOURCE_ID = 'fr-hydro-plants-selected';
+/**
+ * Ambient-label entry-id prefix — the click surface the plant's NAME provides.
+ * It is deliberately NOT `FR_HYDRO_RENDER_PREFIX`: the label names the upstream
+ * plant id, the record map is keyed by the render id, and the click path
+ * converts between them rather than assuming they are the same string.
+ */
+export const FR_HYDRO_LABEL_PREFIX = 'fr-hydro-label:';
 /** 2 742 installations; the label cohort is the handful worth naming at a glance. */
 export const FR_HYDRO_OVERLAY_COHORT_LIMIT = 22;
 /** Shared ambient-label paint budget, matching the sibling French sources. */
@@ -601,6 +610,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 /**
@@ -691,7 +701,7 @@ export function createFrHydroPlantsLayer({
       };
       _records.set(id, record);
       record.labelEntry = {
-        id: `fr-hydro-label:${plant.id}`,
+        id: `${FR_HYDRO_LABEL_PREFIX}${plant.id}`,
         position,
         // Carried on the entry so the viewport filter needs no second lookup;
         // the overlay host ignores keys it does not know.
@@ -702,7 +712,9 @@ export function createFrHydroPlantsLayer({
         priority: Math.round(plant.kw ?? 0),
         collisionGroup: 'ambient-label',
         paintLane: 'ambient-label',
-        interactive: false,
+        // The plant's name is a click surface, not a caption — see
+        // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+        interactive: true,
         edgeFade: 'keyhole',
         horizonCull: true,
         terrainOcclusion: false,
@@ -928,8 +940,18 @@ export function createFrHydroPlantsLayer({
       if (!_enabled) return;
       const picked = viewer.scene.pick(click.position);
       const id = typeof picked?.primitive?.id === 'string' ? picked.primitive.id : null;
-      if (id && _records.has(id)) selectObject(id);
-      else if (!id || !id.startsWith(FR_HYDRO_RENDER_PREFIX)) clearSelection();
+      if (id && _records.has(id)) { selectObject(id); return; }
+      // The label plane the depth buffer knows nothing about, resolved after
+      // the native pick so a name drawn across a neighbouring plant cannot
+      // steal it. The label carries the upstream plant id, not the render id.
+      const labelled = pickOverlayLabelId(click.position, {
+        sourceId: FR_HYDRO_OVERLAY_SOURCE_ID,
+        prefix: FR_HYDRO_LABEL_PREFIX,
+        has: (plantId) => _records.has(renderId(plantId)),
+        hitTest: overlayHost.hitTest,
+      });
+      if (labelled) { selectObject(renderId(labelled)); return; }
+      if (!id || !id.startsWith(FR_HYDRO_RENDER_PREFIX)) clearSelection();
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     document.addEventListener('keydown', onKeyDown);
   }

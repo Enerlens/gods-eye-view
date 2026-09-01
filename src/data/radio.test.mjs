@@ -1524,7 +1524,10 @@ test('Radio text uses protected selected and bounded ambient WorldOverlay entrie
   assert.equal(singleton.title, '100.3 FM — The River');
   assert.equal(singleton.paintLane, 'ambient-label');
   assert.equal(singleton.collisionGroup, 'ambient-label');
-  assert.equal(singleton.interactive, false);
+  // The name is a click surface — tuning a station should not require hitting
+  // the dot under it. Cluster badges stay non-interactive: a count is not a
+  // station, so there is nothing to tune to.
+  assert.equal(singleton.interactive, true);
   assert.equal(singleton.horizonCull, true);
   assert.equal(singleton.maxDistance, RADIO_GLOBE_INTERACTION_MAX_DISTANCE_M);
   assert.equal(singleton.distanceScale.far, RADIO_GLOBE_INTERACTION_MAX_DISTANCE_M);

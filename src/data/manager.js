@@ -65,6 +65,24 @@ function refreshFailureFromStats(stats, label) {
 }
 
 /**
+ * Statuses that ask the VISITOR to act rather than report a fault.
+ *
+ * "Zoom in below 0.8°", "nothing mapped in this view", "idle" — a layer in one
+ * of these is working exactly as designed. Two different readers of `getStats()`
+ * have to agree on that or the row contradicts itself: `layerFeedState()` below
+ * decides the chip, `_buildMetaText()` decides the line under it, and until this
+ * set was shared the second one had no carve-out at all. A layer that put its
+ * zoom prompt in `stats.error` therefore rendered a green ON chip over a line
+ * that read like a failure — which is precisely how "Sites militaires" and
+ * "Réseau électrique" came to look broken while behaving correctly.
+ *
+ * `off-coverage` is deliberately absent: "this layer has no data for this part
+ * of the world" is not something the visitor can act on by moving the camera
+ * closer, and the layers that use it already word it for themselves.
+ */
+const GUIDANCE_STATUSES = Object.freeze(new Set(['zoom-in', 'empty', 'idle']));
+
+/**
  * Normalize heterogeneous layer stats into one honest control-chip state.
  * @param {object|null} stats Layer getStats() result.
  * @returns {'nominal'|'loading'|'degraded'|'stale'|'fallback'|'unavailable'} Feed state.
@@ -80,7 +98,7 @@ export function layerFeedState(stats = {}) {
   if (
     (presentedError || state.unavailable === true || state.available === false)
     && !hasPriorData
-    && !['zoom-in', 'empty', 'idle'].includes(status)
+    && !GUIDANCE_STATUSES.has(status)
   ) {
     return 'unavailable';
   }
@@ -89,7 +107,7 @@ export function layerFeedState(stats = {}) {
   // operation, not feed faults. One honesty carve-out: layers keep their
   // rendered records through the guidance state, so a genuinely stale cache
   // still reads STALE; a guidance prompt alone never reads DEGRADED.
-  if (['zoom-in', 'empty', 'idle'].includes(status)) {
+  if (GUIDANCE_STATUSES.has(status)) {
     return state.stale ? 'stale' : 'nominal';
   }
   if (
@@ -969,25 +987,6 @@ export class DataLayerManager {
         return finishFailedEnable('enable', e);
       }
       if (signal?.aborted) return finishCancelledEnable('enable');
-
-      // A layer that only answers for a close camera gets one, before its first
-      // load rather than instead of it. Explicit intent only: the operator who
-      // just asked for this layer is asking to see it, while a share link or a
-      // Context restore carries a camera of its own that must not be overruled.
-      // A gate that cannot be satisfied is not a failure — the layer keeps its
-      // own guidance state and stays ON, saying what it needs.
-      if (
-        isExplicitLayerIntentOrigin(origin)
-        && typeof entry.module.ensureViewGate === 'function'
-      ) {
-        this._setVisibilityIntentPhase(entry, intentEpoch, 'view-gate');
-        try {
-          await entry.module.ensureViewGate(this.viewer, { signal });
-        } catch (error) {
-          console.warn(`[Data] ${layerId} view gate error:`, error);
-        }
-        if (signal?.aborted) return finishCancelledEnable('view-gate');
-      }
 
       // First update immediately
       this._setVisibilityIntentPhase(entry, intentEpoch, 'update');
@@ -2523,7 +2522,26 @@ export class DataLayerManager {
     if (layer.lifecycleUncertain) {
       return `UNCERTAIN · ${source} · lifecycle state requires reconciliation`;
     }
+    // GUIDANCE BEFORE FAULT — the same carve-out `layerFeedState()` makes for
+    // the chip. A layer at its zoom gate is not failing, and the two halves of
+    // one row must not disagree about that. Without this, a zoom prompt that a
+    // layer happened to put in `stats.error` printed in the fault slot under a
+    // green ON chip, and the row read as broken while the layer was fine.
+    //
+    // The guidance TEXT is read from `loadingLabel` first — that is where the
+    // layers which got this right already put it (`roadStatusFrance`,
+    // `transitFrance`, `sharedMobilityFrance`) — and falls back to whatever the
+    // layer left in `error`, so a layer is never silenced for having stored its
+    // prompt in the wrong field. It is presented as a prompt either way.
+    const status = typeof stats.status === 'string' ? stats.status.toLowerCase() : '';
+    const guidanceLabel = typeof stats.loadingLabel === 'string' && stats.loadingLabel.trim()
+      ? stats.loadingLabel.trim()
+      : '';
     const presentedError = stats.error || stats.lastError || stats.managerRefreshError;
+    if (GUIDANCE_STATUSES.has(status) && !stats.loading) {
+      const prompt = guidanceLabel || (presentedError ? String(presentedError) : '');
+      if (prompt) return `${source} · ${prompt}`;
+    }
     if (presentedError) {
       if (typeof stats.retryInSec === 'number' && stats.retryInSec > 0) {
         return `${stateLabel} · ${source} · ${presentedError} · retry ${stats.retryInSec}s`;

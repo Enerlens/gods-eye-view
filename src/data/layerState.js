@@ -294,6 +294,19 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // a duplicate here is a BOOT failure, not a review nit.
   Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
+  // TWO CHARACTERS, because the single-character scheme is spent: a-y are taken,
+  // `z` is the canonical UNKNOWN token two existing tests assert on, and 0-9
+  // belong to schools-fr, gas-fr, power-grid, rte-generation, fr-hydro-plants,
+  // bdtopo-buildings, local-airports, road-status-fr, road-events-fr and
+  // irve-fr. This branch had claimed `0` while `schools-fr` was claiming the
+  // same character on main, which is exactly the silent collision the
+  // duplicate-token assertion exists to catch — and it caught it, at the merge,
+  // as a BOOT failure. `schools-fr` keeps `0` because it has already shipped
+  // and links carrying it exist; the unshipped layer is the one that moves.
+  // The field is dot-separated, so a wider token costs one character and needs
+  // no codec change — `dp`, `dv`, `gr` and `if` already read this way.
+  // `enabled-only`: the layer has no runtime option to serialize.
+  Object.freeze({ id: 'cadastre-fr', token: 'cd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   // THE LAST FIVE TOKENS, claimed together by the five French address layers.
   // a–y are taken, `z` is the canonical UNKNOWN token two existing tests assert
@@ -402,6 +415,15 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // this comment exists to hand over rather than leave as a surprise.
   Object.freeze({ id: 'schools-fr', token: '0', disposition: 'enabled-only' }),
   Object.freeze({ id: 'shared-mobility-fr', token: 'k', disposition: 'enabled-only' }),
+  // TWO CHARACTERS, and the comment above `schools-fr` is the reason: it
+  // predicted that the next layer would have to widen the grammar, the five
+  // French address layers did exactly that, and this is the first layer to
+  // arrive with the widened space already available rather than to discover
+  // the problem. `su` for supérieur; `s` is satellites and `0` is schools-fr.
+  // A duplicate here is a BOOT failure (`validateLayerStateRegistry` throws),
+  // not a review nit — two layers on one token is a share link that silently
+  // enables the wrong one.
+  Object.freeze({ id: 'sup-fr', token: 'su', disposition: 'enabled-only' }),
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),
   Object.freeze({ id: 'transit-fr', token: 'p', disposition: 'enabled-only' }),

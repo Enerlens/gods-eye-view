@@ -345,6 +345,8 @@ export const DATA_CREDITS = [
       'The publication\u2019s own timestamp is reported by the layer as its data timestamp. ' +
       'Coverage is the r&eacute;seau routier national NON CONC&Eacute;D&Eacute; only &mdash; the conceded motorways are not in this feed. ' +
       'A segment is drawn as the straight line between the two endpoints DATEX II publishes; the road\u2019s real geometry is not part of the feed.',
+  },
+  {
     key: 'irve-charge-points',
     html:
       'EV charge points (France): <em>fichier consolid&eacute; des bornes de recharge pour v&eacute;hicules ' +
@@ -355,6 +357,27 @@ export const DATA_CREDITS = [
       '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
       '&copy; each am&eacute;nageur / op&eacute;rateur. Installed capacity only &mdash; the file publishes no ' +
       'availability, and each site&rsquo;s own <code>date_maj</code> is reported as its data timestamp.',
+  },
+  {
+    key: 'cadastre-pci',
+    html:
+      'French cadastral parcels: <em>Plan Cadastral Informatis&eacute; (PCI vecteur)</em>, ' +
+      '&copy; Direction g&eacute;n&eacute;rale des Finances publiques, served through ' +
+      '<a href="https://apicarto.ign.fr/api/doc/cadastre" target="_blank" rel="noopener">IGN Api Carto</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'A FISCAL document: cadastral limits carry no legal force, and a property boundary in France is ' +
+      'fixed by bornage under article 646 of the Code civil. Each parcel\u2019s tolerance is derived from the ' +
+      'published scale of the feuille it was drawn on, at 0,5 mm of line; the <code>contenance</code> is the ' +
+      'DGFiP\u2019s registered surface and is shown beside the drawn one, never merged with it.',
+  },
+  {
+    key: 'ban-adresse',
+    html:
+      'Addresses on a selected cadastral parcel: ' +
+      '<a href="https://adresse.data.gouv.fr" target="_blank" rel="noopener">Base Adresse Nationale (BAN)</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The NEAREST address point to the parcel\u2019s centroid, not a published parcel-to-address relation: the card prints the ' +
+      'distance BAN itself reports whenever it exceeds 10 m, and drops the answer entirely beyond 60 m.',
   },
   {
     key: 'schools-fr',
@@ -381,6 +404,20 @@ export const DATA_CREDITS = [
       '<a href="https://www.data.gouv.fr/datasets/accessibilite-potentielle-localisee-apl-aux-professionnels-de-sante" target="_blank" rel="noopener">DREES</a> ' +
       '(Licence Ouverte 2.0), France hors Mayotte. The register carries no identifier, so counts are distinct ' +
       'practitioner names, not a headcount &mdash; measured 5 % above the CNAM&rsquo;s own 2024 figure.',
+  },
+  {
+    key: 'sup-fr',
+    html:
+      'French higher education: <em>Effectifs d&rsquo;&eacute;tudiants inscrits &mdash; d&eacute;tail par '
+      + '&eacute;tablissements</em>, published by the '
+      + '<a href="https://data.enseignementsup-recherche.gouv.fr/explore/dataset/fr-esr-atlas_regional-effectifs-d-etudiants-inscrits-detail_etablissements/" target="_blank" rel="noopener">Minist&egrave;re de l&rsquo;Enseignement sup&eacute;rieur et de la Recherche</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), '
+      + 'read at the newest published rentr&eacute;e. 1 665 of its 6 294 establishments carry no '
+      + 'coordinate; 977 of those are placed from the same ministry&rsquo;s '
+      + '<a href="https://data.enseignementsup-recherche.gouv.fr/explore/dataset/fr-esr-cartographie_formations_parcoursup/" target="_blank" rel="noopener"><em>Cartographie des formations Parcoursup</em></a> '
+      + '(same licence), which also supplies the establishment names and the list of formations on '
+      + 'each card. A borrowed coordinate says so on its card, and the 688 establishments neither '
+      + 'file can place are reported rather than invented.',
   },
   {
     key: 'radio-browser',

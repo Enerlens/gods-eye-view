@@ -45,6 +45,242 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   than one département (summing per-department distinct names answers 130 330
   for a country holding 117 922).
 
+- **Urbanisme (PLU) — it draws the block now, not the dot.** The layer answered
+  one point, which is the wrong question: "could the car park opposite become
+  twenty-five metres of construction?" is about the plot OPPOSITE. Below
+  1 500 m the zoning half is asked for over a BOX around what the camera is
+  looking at — clipped to the view, so nothing off screen is fetched — and each
+  zone is drawn in its family's colour with **its code written on the ground**,
+  the way the paper document does it. Above 1 500 m it falls back to the point
+  answer, which is still correct and much cheaper. The enclaves that were blank
+  islands are now named: the school reads `UE`, the industrial estate `UYc`.
+- **The servitude half stays a point, and the measurement is why.** One 390 m
+  box over Lyon's Presqu'île answers **210 easement features and 2.3 MB**. At
+  the zoning ceiling a full-box regime cost 4 MB upstream, 1.8 MB on the wire
+  and 1 182 entities, against the hybrid's 888 KB, 506 KB and 218 — four times
+  the payload for the half of the answer a point already gets right.
+- **It costs bytes, not frames.** Measured in the browser on the shipped build,
+  both regimes, IGN ortho: median frame **0.6–1.4 ms**, worst frame after a
+  redraw **1.4–2.2 ms**, and **zero frames over 16 ms** in either. Cesium
+  batches ground fills by material and there are only eight zone colours.
+  Upstream, the box costs +13% to +27% in a city (the easements already
+  dominate) and 17× in a rural commune, where the point answer was 30 KB.
+- **`zone-urba` truncates at 5 000 features, HTTP 200, silently — same trap as
+  the cadastre.** Measured 2026-09-01: a 0.15° box over Paris returns 4 105 of
+  4 105 whole; a 0.40° box returns **5 000 of 17 182**, and a 1.0°
+  Île-de-France box **5 000 of 46 500**. A zoning map missing four fifths of
+  itself is not visibly incomplete — it looks like a commune with genuinely
+  mixed zoning — so a box over the ceiling is refused whole and the true count
+  printed. At the layer's own 0.02° ceiling the densest measured box answers 55
+  zones, so the refusal is the exception.
+- **A label that might sit outside its own zone would be worse than no label.**
+  Anchors are the midpoint of the longest interior chord, not the centroid: a
+  PLU zone is routinely a meander along a village street or a ring around a
+  hamlet, and the centroid of either lands on ground the rule does not cover.
+  Verified against all 55 zones of a real answer — every anchor inside its own
+  drawn shape. A zone too narrow to hold text is drawn and coloured but
+  unlabelled; its card still names it.
+- **Which zone you are standing in is decided by whoever was asked.** Under a
+  point query APIcarto has already answered it, and re-deciding can only
+  disagree; under a box query the layer decides, against the ring as PUBLISHED
+  rather than the one it draws. That is not academic: Ustaritz's `UB` ring is
+  521 vertices, decimated to 400 for drawing, and the coordinate APIcarto
+  itself answers `UB` for falls OUTSIDE the decimated ring. The drawn shape is
+  a simplification and must never decide which rule applies to a house.
+- The card separates the block from the address: the zone under the marker, how
+  many others are on screen, and — when two communes disagree at their shared
+  limit — that several zonings claim the same ground. A neighbouring zone's own
+  card says it is a neighbour.
+- A scan now refetches when the QUESTION changes, not only when the scan centre
+  moves 250 m. Zooming straight down through the box altitude moves the centre
+  by nothing at all while changing the kind of answer that belongs on screen.
+- `viewportBox.focusedViewBox` and a new `ringGeometry.js` hold the box
+  derivation and the point-in-polygon the cadastre layer had already paid for;
+  the cadastre keeps its own names and ceilings and delegates the arithmetic.
+
+- **Urbanisme (PLU) — the zone is now a wash on the ground, with its enclaves
+  cut out of it.** The layer drew bare outlines, and an operator asked the
+  right question of them: how can one house be in two PLU zones at once? An
+  outline has no inside. Nothing on screen said which side of a line the rule
+  applied to, and a building between two lines belonged to both as far as the
+  eye could tell. Each zone is now filled — ground-classified, so it drapes on
+  IGN ortho, on Bing and on the photoreal tileset alike — with the stroke kept
+  on top: the wash says where, the stroke says exactly where.
+- **The enclaves were ours, and they are fixed.** The projection kept outer
+  rings only, on the reasoning that a hole in an outline is invisible. It is —
+  and it is the whole point of a fill. Measured at Ustaritz on 2026-09-01, the
+  zone returned for the village centre is `UB`, one polygon, **two interior
+  rings**: 6 646 m² the same PLU zones `UE` (the school) and 50 686 m² it
+  zones `UYc` (the industrial estate). Filled without them, `UB` painted
+  57 332 m² of ground with a rule that does not reach it — and across the
+  commune, 14 rings and 299 441 m². Interior rings are now carried, spent out
+  of the vertex budget *with* the ring they perforate so a hole can never be
+  what a budget drops, and stroked in their own right.
+- **A point really can be in two zones, and the layer now says so.** Sampled
+  on a 35 m grid over a 9 × 6 km box around Ustaritz: **17 of 34 126 points
+  (0,05 %) fall inside two zoning polygons, every one of them at a commune
+  limit**. Seven urbanism documents overlap in that box across 73 polygon
+  pairs and 5,3 ha — including 525 m² that Jatxou zones `UD` (urbaine) while
+  Halsou zones the same ground `A` (agricole). Each commune digitises its own
+  PLU against its own idea of where the limit runs, and the Géoportail stacks
+  the documents without reconciling them. `zoneCount` is reported so the case
+  reads as the register disagreeing with itself, not as a broken answer.
+- **`typezone` has seven values, and the table had four — so the family this
+  layer exists for was drawn in the unknown-value grey.** Measured across
+  twelve APIcarto boxes (Paris, Lyon, Lille, Toulouse, Marseille, Rennes, five
+  peri-urban boxes, Ustaritz): **4 216 zoning features and not one plain
+  `AU`.** Every à-urbaniser zone published `AUc` or `AUs`. And that letter is
+  the most decision-changing thing in the layer: **`AUc` is open** — the plot
+  opposite can be built under the PLU as it stands — while **`AUs` is closed
+  until the document is modified or revised**. Same magenta family, cooled and
+  quieter. `Ah` and `Nh`, the built pockets inside the agricultural and
+  natural zones, take their family's hue brightened.
+- **The wash weights are measured, not felt.** The same polygon repainted at
+  five alphas over an IGN orthophoto, each frame differenced against the
+  unpainted one across the ~380 000 pixels the zone covers: **0.18 moved the
+  picture by a mean of 3/255 in red and could not be seen at all**; 0.22 by 5,
+  0.28 by 11, 0.33 by 17, 0.40 by 24. Shipped: `AUc` 0.42, the exceptions
+  0.34, `U` 0.30, and `A`/`N` 0.22 — they are most of the country, and at the
+  urban weight a natural zone washes a whole valley teal.
+- **Servitudes stay lines, and the lines are dashed.** They are not zoning, and
+  a solid stroke said they were. They are also the wrong size to fill: one
+  measured `pm1` risk envelope is 759 polygons spanning kilometres, so a wash
+  of it tints the view rather than a plot.
+- Each zone card now names its family in words — *zone urbaine — déjà bâtie et
+  équipée*, *zone à urbaniser OUVERTE* — and says how many enclaves were cut,
+  so an unpainted island inside a painted zone reads as the register's, not as
+  a gap in the draw.
+- The five point-scan layers hand their renderer the viewer, and the urbanism
+  layer redraws on a map-stack change. A ground-classification surface is read
+  once, when the primitive is built, so a wash addressed to terrain drew
+  nothing at all once the photoreal tileset hid the globe — the layer looked
+  switched off. It rebuilds from the answer already in hand, with no refetch.
+
+- Added the **Parcelles cadastrales** layer — the lines France taxes land
+  along, keyless. IGN's **Api Carto** serves the DGFiP's *Plan Cadastral
+  Informatisé* (PCI vecteur) under Licence Ouverte 2.0 with no key and no
+  account: one polygon per parcel, with its section, its 14-character national
+  `idu`, and the surface the tax administration has registered against it.
+  Loaded per viewport, ground-clamped so it drapes on IGN ortho, on Bing and on
+  the Google photoreal tileset alike.
+- **A cadastral line is a fiscal line, not a legal one, and every card ends by
+  saying so.** In France a property limit is fixed by *bornage* — a
+  géomètre-expert's survey under article 646 of the Code civil — and the
+  cadastre has no authority over it. A crisp polygon on a photorealistic globe
+  is exactly the thing a reader takes for a surveyed limit.
+- **How approximate each line is, is published, and nobody draws it.** Every
+  parcel belongs to a *feuille*, and the feuille carries the scale of the plan
+  it was drawn on. Measured across 673 sheets on 2026-09-01: **1:250** in
+  central Strasbourg, **1:5000** over the Landes forest, a twentyfold spread
+  with zero nulls. At the conventional 0,5 mm of drawn line that is ±0,13 m
+  against ±2,5 m for the same word "boundary". Parcels are coloured by that
+  band, and the card prints the figure with the assumption attached — a bare
+  "±0,25 m" reads as a survey result.
+- **The holes are the streets, and the row says how many.** The cadastre
+  parcels private land, not the public domain, so a correct answer over a city
+  centre is full of gaps. Clipped to the view and measured: **45,7 % of Lyon's
+  Presqu'île** is cadastred, 32,7 % around the Champ-de-Mars, 80,9 % in the
+  Marais — against 95,0 % of a Cantal block and 98,6 % of a Landes forest one.
+  The layer reports the fraction so the gaps read as the public realm rather
+  than as a broken feed.
+- The service disagrees with itself in ways a naive read gets visibly wrong, so
+  six of them are absorbed server-side and pinned against a captured answer:
+  - **Api Carto caps every request at 5,000 features and says so only in
+    `totalFeatures`.** `_limit=10000` over Paris returns exactly 5,000 of
+    12,483, HTTP 200, no warning — and paging with `_start` walks an internal
+    order that mixes arrondissements, so a truncated answer is a cadastre with
+    *scattered* holes, which is precisely what a complete one looks like over
+    the public domain. A box over the cap is refused whole and the true count
+    is printed. At the layer's own 0.02° ceiling the densest French cities
+    answer 2,100–2,400 parcels, so the refusal is the exception.
+  - **A sheet is not identified by (commune, section, feuille).** Lyon
+    publishes section `AL` feuille 1 in five arrondissements, and the 5e's copy
+    is drawn at 1:1000 while the others are at 1:500 — a four-part join gives
+    those parcels a coin-flipped tolerance. With `code_arr` in the key there
+    were 0 collisions across 27,595 parcels and 450 sheets.
+  - **`idu` does not start with `code_insee` for 38 % of urban France.** The
+    first five characters are the *arrondissement* code: a Marais parcel is
+    `75103000AP0045` while its `code_insee` is `75056`. Reassembling the key
+    joins to nothing in DVF for Paris, Lyon and Marseille, so the published
+    `idu` is carried verbatim and never rebuilt.
+  - **`contenance` is a fiscal declaration, not a measurement of the polygon.**
+    Mamoudzou publishes it as `null` and Ostwald as `0` — and `Number(null)` is
+    `0`, which would turn "not published" into "declares zero square metres".
+    Where both figures exist, 7,2 % of parcels differ by more than 5 % and
+    1,0 % by more than 20 %. Both numbers are on the card and neither is
+    averaged into the other.
+  - **Courtyards are holes and a parcel can be in two pieces.** Dropping the
+    Palais-Royal's interior ring moves its area from inside 1 % of the declared
+    contenance to outside 5 %; a Marseille parcel is one identifier over two
+    disjoint polygons.
+  - **A section is not always letters.** Alsace-Moselle numbers its sections
+    (`22`), Marseille prefixes with a digit (`0D`), and `com_abs` — the API's
+    "commune absorbée" — runs 801–842 across Toulouse, a commune with no
+    arrondissements at all. All are carried as opaque strings.
+
+- Added the **Bornes IRVE** layer — every public EV charge point France has
+- **Enseignement supérieur (FR) — the level the schools layer stops before.**
+  The *Annuaire de l'éducation* ends at the baccalauréat: measured 2026-09-01,
+  its `type_etablissement` has eight values and not one of them is a
+  university, an IUT, an école d'ingénieurs, an école de commerce, an IFSI or a
+  school of architecture. Joining the two registers on the UAI measures the
+  hole — of the 6 509 establishments the ministry's Parcoursup cartography
+  lists for the 2026 session, **3 492 appear nowhere in the Annuaire**. The new
+  layer draws the MESR's own *Effectifs d'étudiants inscrits — détail par
+  établissements* (Licence Ouverte 2.0, rentrée 2024): **6 294 establishments,
+  6 914 sites, 2 960 012 students placed**, coloured by seven bands folded from
+  the register's 14 published categories and sized by the students counted at
+  that campus.
+- **No thinning and no sampling, because the whole register fits.** Resolved to
+  sites it is **0.62 MB gzipped with every name, band, roll, cycle mix, campus
+  count, formation list and website on it** — what the `schools-fr` maillage
+  costs (0.63 MB gzipped) while carrying no names at all. So there is no bbox endpoint,
+  no ceiling and no spatial thinning: `/api/sup-fr/sites` hands the browser the
+  register once and every zoom is answered from it. `/api/sup-fr/departements`
+  is the ~30 KB national rollup built by the same sweep. Cold build, measured
+  end to end against the live portal: **2.9 s**.
+- **1 665 establishments have no coordinate, and the fix is a second register.**
+  `geo` is null on 3 442 of the register's 22 068 rows — the Université de la
+  Nouvelle-Calédonie and the Université de la Polynésie française among them.
+  Nothing is placed at a commune centroid. The layer reads the ministry's
+  *Cartographie des formations Parcoursup* (session 2026, 25 831 formations,
+  every one geolocated) and borrows a coordinate ONLY where that file gives
+  exactly one point for the UAI: **977 establishments and 82 200 students**,
+  lifting placed enrolment from 95.69% to **98.41%**. The borrow was checked
+  rather than assumed — where both files give one point, the median
+  disagreement is **74 m** and 90% agree within 1 km. Polynésie is recovered
+  this way; New Caledonia is not, so all 18 of its establishments are reported
+  as unplaced instead of being invented into the Pacific. A borrowed coordinate
+  says so on its card.
+- **The choropleth counts students, not dots — and says why.** Counting sites,
+  Paris (484) leads the Nord (292) by 1.66× and the top ten départements hold
+  35%. Counting students, Paris (394 788) leads the Rhône (192 964) by 2.05×
+  and the top ten hold **49.8%**. The site count is flatter because 2 800 of
+  the 6 914 sites are lycées running a BTS — and a map of where BTS sections
+  are is a map of where lycées are, which **Établissements scolaires** already
+  draws. Those 2 800 shared addresses get their own legend band, and the two
+  layers use deliberately different palettes (deep hues and a white dot outline
+  here, pastels and a black one there) so a stacked dot reads as the overlap it
+  is rather than as a duplicate.
+- **The name on the globe is now a click surface.** Every label the shared
+  overlay paints — the river gauge's name, the substation's, the power
+  station's, the cable's — selects its object exactly as the dot does. It never
+  did: labels are painted onto a `pointer-events: none` canvas stacked over the
+  viewport, so `scene.pick()` under one returns the globe, and a click aimed at
+  a name reached the terrain behind it and DISMISSED the selection instead. The
+  name is what says which object this is, and it is five to twenty times the
+  target area of the 5–15 px dot it floats above, so it is what people aim at.
+  Wired into twelve layers — Hub'Eau, Réseau électrique, Réseau gaz, Production
+  RTE, Petite hydro, Événements routiers, Écoles and Bornes IRVE (their
+  département names at national altitude), Radio (station names only — a
+  cluster badge names a count, not a station), Câbles sous-marins, the ISS
+  label and the rocket-mission markers. The depth-tested primitive is still
+  resolved first, so a name drawn across a NEIGHBOURING object can never steal
+  that object's click, a pick a sibling layer owns is left alone, and a click on
+  empty space still clears the selection. Proved in a real browser by
+  `npm run qa:label-click`, which reads where the host painted a label,
+  dispatches a real pointer event at its centre — nowhere near the dot — and
+  asserts the layer's card starts painting.
 - **Six French public registers, read from a coordinate.** Géorisques, DVF,
   the ADEME DPE register, the IGN isochrone service, the Géoportail de
   l'urbanisme and Île-de-France Mobilités are now integrated end to end —
@@ -69,6 +305,36 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   broken.
 
 ### Fixed
+
+- **"Sites militaires — Error loading" was one mirror refusing, and three
+  healthy ones never asked.** Every viewport answered HTTP 503, and the layer
+  was right to say so: `/api/military-installations` reads `status >= 400` as a
+  failure. The failure was underneath it. `overpass-api.de` scores requests for
+  abuse at its Apache front-end and was returning a bare **406 Not Acceptable**
+  to the proxy's agent string — a plain HTML page matching neither the
+  rate-limit nor the runtime-error sniffer. Measured 2026-09-01, same query,
+  interleaved to control for server load: the old
+  `gods-eye-view-overpass-proxy/1.0` drew a 406 on **8 of 11** attempts, an
+  OSM-conventional `app/version (+contact)` agent on **0 of 11**. That alone was
+  survivable; what made it fatal is that `fetchOverpassPayload` rotated to the
+  next mirror only on 429/5xx, so a 4xx ended the chain at mirror 1 with three
+  mirrors untried below it. A 4xx is a MIRROR verdict, not a query verdict, and
+  now rotates — the same rule the mapped-camera and power-grid probes already
+  applied, which is why those layers stayed up through the same outage. A
+  genuinely malformed query still surfaces: every mirror rejects it, nothing
+  outranks it, the caller gets the 4xx back. Third fault, and the one that would
+  have outlived the other two: `/api/overpass` cached anything under `< 500`, so
+  the refusal was written to memory AND to disk under a **7-to-30-day TTL** and
+  re-served as a `HIT` without asking upstream again — one bad minute upstream
+  taking every Overpass-backed layer down for a month. Success only, now, and a
+  4xx joins 5xx in serving last-good from disk at any age. Measured back to back
+  on the same server, fresh cache keys: Lyon, Marseille and Nantes went 503 →
+  200 with 21, 23 and 4 installations; in the browser the layer reports `ready`
+  with BA107 Villacoublay, le Mont-Valérien and le Fort de Rosny drawn. Six
+  regression tests in `overpassProxy.test.mjs` pin the rotation. Worth knowing
+  separately: the other three mirrors were all answering 502/504 that day, so
+  `overpass-api.de` was the only healthy one — which is why this filter hit so
+  hard.
 
 - **"Bâti 3D could not start cleanly" was a camera, not a fault.** Turning the
   layer on from a wide view failed outright: the toggle flipped straight back
@@ -353,6 +619,93 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   one. Links written before this lands never carried an IRVE token at all, so
   nothing in the wild changes meaning.
 
+- **Clicking a parcel now answers what is on it, not only where it is.** The
+  card leads with the **address** (Base Adresse Nationale, keyless, Licence
+  Ouverte 2.0) and carries **what is built there** from IGN BD TOPO — the
+  building count, their footprint, the share of the parcel they cover, the
+  tallest, the storeys, the dwellings and the dominant use — plus the parcel's
+  own longest dimension. `24 Rue Paul Valéry 75116 Paris · 1 bâtiment · 1 026 m²
+  au sol · 83 % de la parcelle · R+7 · 25 logements`.
+  - **Neither join is published, and both lines say so.** BD TOPO and the PCI
+    are two products with two lineages and no key between them, so a building
+    belongs to the parcel its footprint centre falls on — a stated rule the card
+    names, wrong in both directions at a boundary. BAN answers with the NEAREST
+    address point, so the distance it publishes is printed beside the address
+    past 10 m and the answer is dropped entirely past 60 m: on a card whose
+    subject is which piece of ground you are looking at, a confidently wrong
+    address does more damage than a missing line.
+  - **A building near a tile edge is in both tiles.** Measured over Paris 16e: a
+    naive join of two z15 tiles reported 25 buildings on a parcel that has 14,
+    with one identifier appearing three times at 2 983, 13 and 5 042 m². Vector
+    tiles carry a buffer. Deduplicating on `cleabs` — present on 100% of the
+    1 202 features in a sampled tile — is the difference between 89% built and
+    56%.
+  - Both lookups run only on a click, are memoised per parcel, and fail as
+    absences: the cadastre's own card is complete and correct without either.
+
+### Fixed
+
+- **Clicking a parcel highlighted a shape somewhere else.** Selection asked
+  Cesium what was under the cursor, and `scene.pick` against ground-
+  classification geometry answers with whichever shadow volume the ray enters
+  first — which at the grazing angles this globe is normally flown at is not
+  reliably the parcel visible under the pointer. The polygons are already in
+  memory, so a click is now resolved against them directly: exact, independent
+  of the classification pass, and testable without WebGL. Clicking a courtyard
+  or a street selects nothing, which is the honest answer — the gaps in this
+  layer are the public domain, and answering with the nearest parcel would
+  invent one where France publishes none.
+- **A pan dropped the selection and left the card behind.** Rebuilding the
+  records on a new viewport cleared `_selectedId` without clearing the overlay,
+  so the card stayed on screen describing a parcel that was no longer drawn,
+  no longer highlighted and no longer clickable. The selection is now matched
+  back by IDU after a redraw, and cleared with the records when the parcel has
+  genuinely left the box.
+- **The layer would not load at street level on a tilted camera.** The viewport
+  gate read the span of `computeViewRectangle`, which on a TILTED camera returns
+  everything the lens can see down to the horizon — a statement about the pitch
+  far more than about how close the operator is. Measured in the app at 240 m
+  over Paris: 0.0038° of longitude looking straight down, 0.0084° at 45°, and
+  **0.0397° at 25°** — the same altitude, a tenfold spread. This globe defaults
+  to an oblique view, so the layer refused to draw while the operator stood in
+  the street with the parcels in front of them, and the row told them to zoom in
+  when they already had.
+  - The gate is now the camera's **altitude** (≤ 1 500 m), which is stable under
+    pitch, and the row says "Descends sous 1 500 m" rather than naming a span
+    the operator cannot see.
+  - The request is a ≤ 0.02° box anchored on the point the **middle of the
+    screen** meets the globe, clipped to the view. Under a nadir camera the view
+    is the smaller of the two and the box IS the view, so nothing off-screen is
+    ever requested; under a tilt it is the near and middle ground around what is
+    being looked at, and the far half of the screen — where a parcel is well
+    under a pixel — is not asked for. Anchoring on the camera's own position
+    instead would load the ground behind the operator's shoulder.
+- **And the proxy then rejected its own client.** Because the anchored box is
+  exactly the client ceiling on both axes above a few hundred metres,
+  `snapBoxOutward` — which moves all four edges out by up to a full grid step —
+  reliably pushed it past a proxy bound that only allowed one step of growth.
+  The layer 400'd at 400 m, 800 m and 1 200 m over Paris while working at 240 m,
+  which is the shape of a bug that a span-sized box had been hiding. The bound
+  now allows two steps for the snap and a third for floating point.
+
+Verified over Paris 16e on the oblique view that reported it: 2 393 parcelles at
+239 m, 4 426 at 800 m, 3 736 at 1 400 m, and the guidance line above that.
+
+- **The Événementiel-DIR road-events attribution was never rendered** — the
+  same merge shape that erased the power grid's ODbL notice a week earlier.
+  Two branches each appended a credit at the same point in `DATA_CREDITS`, and
+  the three-way merge kept both bodies but lost the `},\n  {` between them, so
+  `bison-fute-events` and `irve-charge-points` shared one object literal and the
+  second `key`/`html` pair silently overwrote the first. The road events layer
+  has been drawing Licence Ouverte data with no entry in the attribution
+  popover. Both are now separate objects.
+- **And the shape is now caught rather than found by accident.** Twice it took
+  someone adding an unrelated credit next to it to notice, because every
+  runtime invariant still holds: the array is well formed, every entry has a
+  key, no key is duplicated — it is simply one entry shorter.
+  `src/data/dataCredits.test.mjs` reads the source and asserts the number of
+  `key:` and `html:` properties matches the array length, which is the only
+  place the evidence survives.
 ### Fixed
 
 - **234 road-status "segments" were points wearing a segment's shape.** Their
@@ -368,6 +721,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   Rennes, Saint-Brieuc and Lorient–Vannes on a day nothing about them had changed. It
   now counts from the committed record, and the assertion that guards those four cities
   survives a re-run.
+- **One refused tile took the whole Bâti 3D layer down.** A city-sized viewport is 24–60
+  separate requests to the Géoplateforme, a free service that rate-limits at 400 req/min
+  and answers 5xx under load; they were gathered with `Promise.all`, so a single refusal
+  rejected the entire load, blanked the buildings and put the layer into a 20 s→4 min
+  backoff with fifty-nine good tiles in hand. This is why the layer failed to load on
+  the hosted deployment and not on a laptop. A refusal is now per-tile: the squares that
+  answered are drawn, the shortfall is counted, the row reads *"N tuiles BD TOPO refusées
+  sur M — bâti incomplet, nouvelle tentative"*, and the layer asks again. Only every tile
+  refusing is still a failure — there is nothing to draw then. A partial answer is marked
+  DEGRADED and never passes as a whole city.
+- **A school's name depended on how far you had zoomed.** The national *maillage* pack
+  ships coordinates and not names on purpose — carrying them takes it from 1.66 MB to
+  5.42 MB — so a dot clicked at region scale produced a card titled "Établissement" and
+  an instruction to zoom in, while the same school two zoom steps closer was "Collège
+  Jean Moulin". A click now asks the register for that one coordinate and the card
+  becomes the full one, name included; the answer is remembered for the session, so
+  re-clicking costs nothing. Where several UAIs share an address — 2,212 SEGPA and SEP
+  sections nationally sit at their parent's coordinate — the dot's own level picks
+  between them and the card says how many others are there.
+- **DETECT described schools by their level or their roll, never by their name.** A
+  callout read "412 élèves", which names nothing, or "École", of which a district has
+  hundreds. It now reads the establishment's published name — "Collège Jean Moulin" —
+  prefixed with its level only for the 2.6% of register names that do not already state
+  one ("Lycée · Institution Saint-Pierre").
 
 ## [Unreleased] — 2026-08-31
 

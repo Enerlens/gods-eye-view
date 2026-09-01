@@ -55,7 +55,27 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { damFeatureProperties, damOverpassQuery, damTier } from '../src/data/damsPack.js';
+import {
+  DAM_STRUCTURES,
+  DAM_TAG_FILTERS,
+  damFeatureProperties,
+  damTier,
+} from '../src/data/damsPack.js';
+
+/**
+ * Overpass refuses a request that carries no `User-Agent`, with HTTP 406.
+ *
+ * Not a guess: measured 2026-09-01 against overpass-api.de, same query, same
+ * moment — bare 406, an explicit catch-all Accept 406, a User-Agent **200**. Node's
+ * `fetch` sends no User-Agent by default and curl sends one, which is why this
+ * script failed eight consecutive rounds while the identical query pasted into
+ * a terminal answered immediately, and why the failure read as load.
+ *
+ * Every other Overpass caller in this repo already sends one — the
+ * `/api/overpass` proxy, the hydro registry, the RTE unit registry, the grid
+ * audit. This script was the only one that did not.
+ */
+const OVERPASS_USER_AGENT = 'gods-eye-view-dams-pack/1.0 (+https://github.com/Enerlens/gods-eye-view)';
 
 /** Same mirrors, same order, as the app's `/api/overpass` proxy. */
 const OVERPASS_UPSTREAMS = [
@@ -81,6 +101,12 @@ const OUT_GEOJSON = path.join(OUT_DIR, 'dams.geojson');
 const DECIMALS = 6;
 const EARTH_RADIUS_M = 6371008.8;
 const QUERY_TIMEOUT_S = 600;
+/** How many times to walk the whole mirror list before giving up. */
+const OVERPASS_ROUNDS = 5;
+/** Base wait between rounds; multiplied by the round number. */
+const OVERPASS_BACKOFF_MS = 60_000;
+/** Client-side ceiling per request, above the server's own 600 s. */
+const OVERPASS_TIMEOUT_MS = 660_000;
 
 /** Round to DECIMALS without the `-0` and `4.20000000001` artifacts of toFixed. */
 function round(value) {
@@ -203,6 +229,17 @@ function isClosedRing(points) {
  */
 function toFeature(element) {
   const tags = element.tags || {};
+  // HALF of France's `man_made=dyke` is roads. 1 428 of the 2 661 elements
+  // carry `highway=*` — 49 of them are ways of the Levée de la Loire alone —
+  // and the OSM wiki is explicit that a road ON a dyke belongs on the highway
+  // as `embankment=dyke`, not as `man_made=dyke`. Importing them would draw
+  // the D-road along the Loire as a barrage.
+  //
+  // The cost is stated rather than hidden: where a levée is mapped ONLY as a
+  // road, this pack does not hold it, and a French reader looking for the
+  // Loire levées will not find them here. Drawing a road instead would be a
+  // worse answer to the same question.
+  if (tags.highway && (tags.man_made === 'dyke' || tags.embankment === 'dyke')) return null;
   let points = [];
   let geometry = null;
 
@@ -248,30 +285,59 @@ function toFeature(element) {
 }
 
 /**
- * POST one Overpass query, walking the mirror list until one answers.
+ * POST one Overpass query, walking the mirror list until one answers — and
+ * walking it again, more slowly, when they all refuse at once.
+ *
+ * ONE PASS IS NOT ENOUGH, and that is a fact about the service rather than a
+ * defensive habit. Measured 2026-09-01 while rebuilding this pack: every
+ * mirror answered 406/500/502 for the whole national extraction, and the
+ * IDENTICAL query sent by hand a minute later returned 504 — a gateway
+ * timeout, not a rejection. Overpass is a shared public instance whose load
+ * varies minute to minute, and a build that gives up after four requests
+ * reports "every mirror refused" for what is really "come back shortly".
+ *
+ * The backoff is deliberately long. There is no point retrying a saturated
+ * instance in two seconds; the wait is what the retry is FOR.
+ *
  * @param {string} query Overpass QL program.
  * @returns {Promise<object>} Parsed Overpass answer.
  */
 async function runOverpass(query) {
   const failures = [];
-  for (const endpoint of OVERPASS_UPSTREAMS) {
-    process.stderr.write(`Querying ${endpoint}\n`);
-    try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'content-type': 'text/plain;charset=UTF-8' },
-        body: query,
-      });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json();
-      if (!Array.isArray(payload?.elements)) throw new Error('no elements array');
-      return payload;
-    } catch (error) {
-      failures.push(`${endpoint}: ${error?.message || error}`);
-      process.stderr.write(`  ↳ ${error?.message || error}\n`);
+  for (let round = 0; round < OVERPASS_ROUNDS; round += 1) {
+    if (round > 0) {
+      const waitMs = OVERPASS_BACKOFF_MS * round;
+      process.stderr.write(`  … all mirrors busy, waiting ${Math.round(waitMs / 1000)}s\n`);
+      await new Promise((resolve) => { setTimeout(resolve, waitMs); });
+      failures.length = 0;
+    }
+    for (const endpoint of OVERPASS_UPSTREAMS) {
+      process.stderr.write(`Querying ${endpoint}\n`);
+      try {
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'content-type': 'text/plain;charset=UTF-8',
+            'User-Agent': OVERPASS_USER_AGENT,
+          },
+          body: query,
+          signal: AbortSignal.timeout(OVERPASS_TIMEOUT_MS),
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (!Array.isArray(payload?.elements)) throw new Error('no elements array');
+        return payload;
+      } catch (error) {
+        failures.push(`${endpoint}: ${error?.message || error}`);
+        process.stderr.write(`  ↳ ${error?.message || error}\n`);
+      }
     }
   }
-  throw new Error(`every Overpass mirror refused the query —\n  ${failures.join('\n  ')}`);
+  throw new Error(
+    `every Overpass mirror refused the query, ${OVERPASS_ROUNDS} rounds apart —\n  ${failures.join('\n  ')}`
+    + '\n\nThis is usually load, not the query. Try again later, or pass a saved'
+    + ' answer: node scripts/build-osm-dams.mjs ./raw-fr.json',
+  );
 }
 
 /**
@@ -363,12 +429,61 @@ function carryOverWorld(freshIds) {
   return { kept, migrated, superseded, doubled };
 }
 
+/**
+ * Fetch the extraction ONE TAG FILTER AT A TIME, and merge by OSM id.
+ *
+ * The five filters in `DAM_TAG_FILTERS` used to go out as one union, and that
+ * stopped working when dykes joined them: every mirror answered 406 or 500 for
+ * the union, while the same filters asked separately answer 200 — measured
+ * 2026-09-01, `waterway=dam` 5 519 in 200 OK and `embankment=dyke` 521 in
+ * 200 OK, with only `man_made=dyke` needing a retry of its own. A union query
+ * is one expensive statement to an Overpass instance that bills by the whole
+ * statement; five cheap ones cost more round trips and actually complete.
+ *
+ * Merging by id is not just deduplication — it is what makes the double-tagged
+ * features work. 25 French structures carry `man_made=dyke` AND `waterway=dam`,
+ * so they come back from two different filters, and `damStructureKind` needs
+ * BOTH tags present on the merged element to answer `dam+dyke` rather than
+ * silently picking whichever filter ran first.
+ *
+ * @returns {Promise<{elements: Array<object>}>}
+ */
+async function runOverpassPerFilter() {
+  const merged = new Map();
+  for (const [key, value] of DAM_TAG_FILTERS) {
+    const query = [
+      `[out:json][timeout:${QUERY_TIMEOUT_S}];`,
+      `area${FRANCE_AREA}->.scope;`,
+      `nwr["${key}"="${value}"](area.scope);`,
+      'out geom;',
+      '',
+    ].join('\n');
+    process.stderr.write(`\n${key}=${value}\n`);
+    const answer = await runOverpass(query);
+    let seen = 0;
+    for (const element of answer.elements || []) {
+      if (element.type === 'count') continue;
+      seen += 1;
+      const id = `${element.type}/${element.id}`;
+      const existing = merged.get(id);
+      if (existing) {
+        // Same object, second filter: keep the geometry already read and fold
+        // the tags together, so a dyke that is also a dam says so.
+        existing.tags = { ...(existing.tags || {}), ...(element.tags || {}) };
+      } else {
+        merged.set(id, element);
+      }
+    }
+    process.stderr.write(`  ${seen} elements (${merged.size} distinct so far)\n`);
+  }
+  return { elements: [...merged.values()] };
+}
+
 async function main() {
   const rawPath = process.argv[2];
-  const query = damOverpassQuery(FRANCE_AREA, QUERY_TIMEOUT_S);
   const answer = rawPath
     ? JSON.parse(fs.readFileSync(rawPath, 'utf8'))
-    : await runOverpass(query);
+    : await runOverpassPerFilter();
 
   const french = [];
   let droppedForGeometry = 0;
@@ -405,6 +520,9 @@ async function main() {
 
   // ── Summary, so a rebuild's effect is visible without reading the diff ──
   const tally = { major: 0, named: 0, minor: 0 };
+  // The second axis. A rebuild that changed how many digues the pack holds
+  // without saying so would be exactly the silence this field exists to end.
+  const kinds = {};
   const shape = { Point: 0, Polygon: 0 };
   let named = 0;
   let hydro = 0;
@@ -412,6 +530,8 @@ async function main() {
   let withSpan = 0;
   for (const feature of features) {
     tally[damTier(feature.properties)] += 1;
+    const kind = feature.properties.kind || '(non classé)';
+    kinds[kind] = (kinds[kind] || 0) + 1;
     shape[feature.geometry.type] = (shape[feature.geometry.type] || 0) + 1;
     if (feature.properties.name) named += 1;
     if (feature.properties.hydro) hydro += 1;
@@ -429,9 +549,15 @@ async function main() {
       + `extraction, ${doubled} dropped as a second decoding of the same OSM object)`,
     `Written           ${features.length.toLocaleString('en-US')} features → ${OUT_JSONL} (${(bytes / 1e6).toFixed(2)} MB)`,
     '',
+    ...DAM_STRUCTURES.map((structure) => (
+      `  ${structure.label.padEnd(15)} ${(kinds[structure.key] || 0).toLocaleString('en-US')}`
+    )),
+    `  ${'Non classé'.padEnd(15)} ${(kinds['(non classé)'] || 0).toLocaleString('en-US')}`
+      + '  (the carried-over world half — no tags left to classify)',
+    '',
     `  Grand barrage   ${tally.major.toLocaleString('en-US')}`,
     `  Barrage nommé   ${tally.named.toLocaleString('en-US')}`,
-    `  Seuil & petit   ${tally.minor.toLocaleString('en-US')}`,
+    `  Petit ouvrage   ${tally.minor.toLocaleString('en-US')}`,
     '',
     `  named           ${named.toLocaleString('en-US')} (${pct(named)})`,
     `  hydroélectrique ${hydro.toLocaleString('en-US')} (${pct(hydro)})`,

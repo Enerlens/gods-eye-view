@@ -5,6 +5,7 @@ import * as Cesium from 'cesium';
 import {
   SEAT_EPSILON_M,
   cardFromEntity,
+  createAddressScanLayer,
   renderedGroundM,
   scanShiftNeeded,
   seatEntitiesOnGround,
@@ -184,4 +185,180 @@ test('the scan threshold still gates on ground distance, not on height', () => {
   assert.equal(scanShiftNeeded(null, ADDRESS), true);
   assert.equal(scanShiftNeeded(ADDRESS, ADDRESS), false);
   assert.equal(scanShiftNeeded(ADDRESS, { lon: ADDRESS.lon, lat: ADDRESS.lat + 0.01 }), true);
+});
+
+/**
+ * A viewer with no canvas: `cameraScanPoint` falls back to the nadir and the
+ * click handler declines to install, which is exactly the surface these two
+ * tests want — the shell's redraw contract, with no DOM in it.
+ */
+function headlessViewer(lon, lat, altitudeM) {
+  const added = [];
+  return {
+    added,
+    viewer: {
+      camera: {
+        positionCartographic: new Cesium.Cartographic(
+          Cesium.Math.toRadians(lon), Cesium.Math.toRadians(lat), altitudeM,
+        ),
+        moveEnd: { addEventListener: () => () => {} },
+      },
+      scene: { globe: { show: true }, requestRender() {} },
+      dataSources: { add(source) { added.push(source); return source; } },
+    },
+  };
+}
+
+function stackEventTarget() {
+  const listeners = new Set();
+  return {
+    size: () => listeners.size,
+    fire() { for (const listener of listeners) listener(); },
+    addEventListener(type, listener) { listeners.add(listener); },
+    removeEventListener(type, listener) { listeners.delete(listener); },
+  };
+}
+
+async function scannedLayer(overrides) {
+  const renders = [];
+  const { viewer } = headlessViewer(ADDRESS.lon, ADDRESS.lat, 900);
+  const layer = createAddressScanLayer({
+    id: 'scan-test',
+    name: 'Scan test',
+    icon: '▦',
+    source: 'test',
+    endpoint: '/api/test',
+    updateInterval: 900_000,
+    render({ payload, dataSource, viewer: seen }) {
+      renders.push({ payload, classified: seen?.scene?.globe?.show });
+      dataSource.entities.add({ id: `drawn-${renders.length}` });
+      return 1;
+    },
+    fetchImpl: async () => ({ ok: true, json: async () => ({ zones: ['one'] }) }),
+    ...overrides,
+  });
+  layer.init(viewer);
+  layer.enable(viewer);
+  await layer.update(viewer);
+  return { layer, renders, viewer };
+}
+
+/**
+ * The wash the urbanism layer draws is ground-classification geometry, and a
+ * classification surface is read ONCE, when the primitive is built. Switch the
+ * basemap to the photoreal tileset — which hides the globe — and a wash built
+ * for terrain draws nothing at all: the layer reads as switched off.
+ */
+test('a map-stack change redraws the answer already in hand, without refetching', async () => {
+  let fetches = 0;
+  const events = stackEventTarget();
+  const { renders } = await scannedLayer({
+    redrawOnMapStack: true,
+    mapStackEventTarget: events,
+    fetchImpl: async () => {
+      fetches += 1;
+      return { ok: true, json: async () => ({ zones: ['one'] }) };
+    },
+  });
+  assert.equal(renders.length, 1);
+  assert.equal(fetches, 1);
+
+  events.fire();
+  assert.equal(renders.length, 2, 'the ground changed, so the draw is rebuilt');
+  assert.equal(fetches, 1, 'the register did not change, so nothing is refetched');
+  assert.equal(renders[1].classified, true, 'the render is handed the viewer it must classify for');
+});
+
+test('the four billboard layers do not subscribe, and unsubscribe on disable', async (t) => {
+  // `disable()` detaches the layer's Escape-to-dismiss handler from `document`,
+  // which only exists in the browser this runs in.
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const events = stackEventTarget();
+  const { layer } = await scannedLayer({ mapStackEventTarget: events });
+  assert.equal(events.size(), 0, 'a marker is a marker whatever the basemap is');
+
+  const listening = stackEventTarget();
+  const draped = await scannedLayer({ redrawOnMapStack: true, mapStackEventTarget: listening });
+  assert.equal(listening.size(), 1);
+  draped.layer.disable();
+  assert.equal(listening.size(), 0);
+  layer.disable();
+});
+
+/**
+ * A layer whose question depends on the CAMERA, not only on where it points —
+ * which is the urbanism layer, asking for a box close in and a point higher up.
+ */
+async function regimeLayer() {
+  const queries = [];
+  const { viewer } = headlessViewer(ADDRESS.lon, ADDRESS.lat, 900);
+  let altitude = 900;
+  const layer = createAddressScanLayer({
+    id: 'regime-test',
+    name: 'Regime test',
+    icon: '▦',
+    source: 'test',
+    endpoint: '/api/test',
+    updateInterval: 900_000,
+    // Below 1 500 m it asks for a box; above it, only the point.
+    params: () => (altitude <= 1500 ? { box: '1' } : {}),
+    render: ({ dataSource }) => { dataSource.entities.add({ id: `d${queries.length}` }); return 1; },
+    fetchImpl: async (url) => {
+      queries.push(String(url));
+      return { ok: true, json: async () => ({ zones: [] }) };
+    },
+  });
+  layer.init(viewer);
+  layer.enable(viewer);
+  return {
+    layer,
+    viewer,
+    queries,
+    setAltitude(next) {
+      altitude = next;
+      viewer.camera.positionCartographic.height = next;
+    },
+  };
+}
+
+/**
+ * The scan-shift guard watches the CENTRE and nothing else. Zoom straight down
+ * through the altitude where the urbanism layer switches from a box to a point
+ * and the centre has not moved a metre, while the answer on screen is now the
+ * wrong KIND of answer — a block of zoning left standing at 9 km, or one
+ * polygon where the neighbourhood should be.
+ */
+test('a params change rescans even when the scan centre has not moved', async (t) => {
+  // `disable()` detaches the Escape-to-dismiss handler from `document`, which
+  // only exists in the browser this runs in.
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer, viewer, queries, setAltitude } = await regimeLayer();
+  await layer.update(viewer);
+  assert.equal(queries.length, 1);
+  assert.ok(queries[0].includes('box=1'), 'close in, it asks for the block');
+
+  // Same point, same everything, except the question.
+  setAltitude(9000);
+  await layer.update(viewer);
+  assert.equal(queries.length, 2, 'the regime changed, so the answer is refetched');
+  assert.ok(!queries[1].includes('box=1'), 'higher up, it asks about the point');
+  layer.disable();
+});
+
+test('an unchanged question at an unchanged point still costs nothing', async (t) => {
+  // `disable()` detaches the Escape-to-dismiss handler from `document`, which
+  // only exists in the browser this runs in.
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer, viewer, queries } = await regimeLayer();
+  await layer.update(viewer);
+  await layer.update(viewer);
+  await layer.update(viewer);
+  assert.equal(queries.length, 1, 'the guard still holds when nothing changed');
+  layer.disable();
 });

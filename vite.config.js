@@ -29,6 +29,8 @@
  *      (accidents, closures, roadworks, diversions)
  *  23. transport.data.gouv.fr / ODRÉ — French EV charge points (IRVE): per viewport,
  *      per département, and the thinned national mesh between the two
+ *  24. IGN Api Carto — French cadastral parcels (PCI vecteur) joined to the scale
+ *      of the sheet each one was drawn on
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -83,6 +85,12 @@ import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js'
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
 import { projectRoadEvents } from './src/data/bisonFuteFeed.js';
 import {
+  indexCarriagewayPack,
+  traceBetweenPr,
+} from './scripts/lib/rrnCarriageway.mjs';
+import { simplifyPolyline, CENTRELINE_SIMPLIFY_M } from './scripts/lib/rrnCentreline.mjs';
+import { lambert93ToWgs84 } from './scripts/lib/lambert93.mjs';
+import {
   powerGridBoxKey,
   powerGridIncludesTowers,
   powerGridQuery,
@@ -119,7 +127,15 @@ import {
   projectIsochrone,
   resolveProfile as resolveIsochroneProfile,
 } from './src/data/isochroneFeed.js';
-import { buildGpuUrl, projectGpu } from './src/data/gpuFeed.js';
+import {
+  GPU_BOX_STEP_DEG,
+  GPU_REQUEST_MAX_BOX_DEG,
+  GPU_UPSTREAM_LIMIT,
+  buildGpuBoxUrl,
+  buildGpuUrl,
+  gpuTruncation,
+  projectGpu,
+} from './src/data/gpuFeed.js';
 import {
   IDFM_PAGE_LIMIT,
   buildLinesUrl,
@@ -157,6 +173,17 @@ import {
   IRVE_SOURCE,
 } from './src/data/irveFeed.js';
 import {
+  projectCadastreParcels,
+  CADASTRE_API_BASE,
+  CADASTRE_BOX_STEP_DEG,
+  CADASTRE_DATASET_PAGE,
+  CADASTRE_LICENCE,
+  CADASTRE_MAX_BOX_DEG,
+  CADASTRE_REQUEST_MAX_BOX_DEG,
+  CADASTRE_SOURCE,
+  CADASTRE_UPSTREAM_LIMIT,
+} from './src/data/cadastreFeed.js';
+import {
   SCHOOLS_BOX_STEP_DEG,
   SCHOOLS_DATASET,
   SCHOOLS_MAX_BOX_DEG,
@@ -174,6 +201,22 @@ import {
   SCHOOLS_SWEEP_FIELDS,
   projectSchoolsDepartements,
 } from './src/data/schoolsDepartements.js';
+import {
+  SUP_ATLAS_FIELDS,
+  SUP_DATASET,
+  SUP_OFFER_DATASET,
+  SUP_OFFER_FIELDS,
+  SUP_PORTAL,
+  SUP_RENTREE_FLOOR,
+  SUP_SESSION_FLOOR,
+  SUP_SOURCE,
+  indexSupOffers,
+  newestYear,
+  projectSupSites,
+  supAtlasWhere,
+  supOfferWhere,
+} from './src/data/supFeed.js';
+import { projectSupDepartements } from './src/data/supDepartements.js';
 import {
   gbfsBoxKey,
   gbfsBoxContains,
@@ -334,6 +377,19 @@ const OVERPASS_UPSTREAMS = [
   // Verified: planet coverage (Texas query), CORS *, ~5-20 s cold latency.
   'https://overpass.private.coffee/api/interpreter',
 ];
+/**
+ * Agent string for every Overpass request.
+ *
+ * The OSM convention is `app/version (+contact)`, and it is not decorative:
+ * overpass-api.de scores requests for abuse at its Apache front-end and answers
+ * a bare `406 Not Acceptable` to the ones it dislikes. Measured 2026-09-01 from
+ * one dev machine, same query, interleaved to control for server load: the old
+ * `gods-eye-view-overpass-proxy/1.0` drew 406 on 8 of 11 attempts, this string
+ * on 0 of 11. The rotation fix below is what makes a 406 survivable; this is
+ * what makes it rare, and it gives the operators someone to contact instead of
+ * an anonymous robot to ban.
+ */
+const OVERPASS_USER_AGENT = 'gods-eye-view/1.0 (+https://github.com/bilawalsidhu/gods-eye-view)';
 /**
  * TTL for FRESH cached Overpass responses (ms). Road geometry is static for
  * months — the original 45 s TTL forced a public-mirror round-trip on nearly
@@ -4011,6 +4067,283 @@ function schoolsFranceProxy() {
 }
 
 /**
+ * French higher-education proxy — keyless, Licence Ouverte 2.0.
+ *
+ *   GET /api/sup-fr/sites        — the whole national register, once
+ *   GET /api/sup-fr/departements — national rollup, 96 départements
+ *   GET /api/sup-fr/status       — dataset provenance + cache state
+ *
+ * WHY A PROXY, when the portal sends CORS headers and a direct browser fetch
+ * works: this layer is a JOIN of two files that disagree about their unit. The
+ * register publishes one row per (établissement × composante × degré) and
+ * geolocates only 80% of them; the Parcoursup cartography publishes one row per
+ * formation and geolocates all of them. Resolving 22 068 + 25 831 rows into
+ * 6 914 sites in the client would mean every open tab downloading both
+ * national files and re-deriving the same map. The join happens once, on a
+ * server, under test (`supFeed.js`, `supDepartements.js`).
+ *
+ * WHY THERE IS NO VIEWPORT ENDPOINT, unlike `/api/schools-fr/sites` next door:
+ * the resolved register is 6 914 sites and **0.62 MB gzipped with every name
+ * on it**. A bbox query would be a round trip to avoid a download the size of
+ * the one the schools maillage already makes. The browser gets the register.
+ *
+ * WHY THE YEARS ARE DISCOVERED AND NOT PINNED: the Atlas gains a rentrée every
+ * spring and Parcoursup a session every winter. Hard-coding either would serve
+ * a quietly stale map forever, so both are read from the portal's own grouping
+ * and floored at the values this was measured against — a discovery that comes
+ * back OLDER than the floor is a malformed answer, not a new fact.
+ */
+const SUP_BASE = `https://${SUP_PORTAL}/api/explore/v2.1/catalog/datasets`;
+/**
+ * The register is published ONCE A YEAR. A week in memory is already four
+ * hundred times faster than the data changes; the disk cache below is what
+ * actually spares the portal across restarts.
+ */
+const SUP_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling. A register a month old is still this year's register. */
+const SUP_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+const SUP_TIMEOUT_MS = 60_000;
+/** The Atlas export is ~9 MB, the cartography ~15 MB. */
+const SUP_MAX_BYTES = 64 * 1024 * 1024;
+const SUP_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'sup-fr');
+const SUP_CACHE_PATH = path.join(SUP_DISK_DIR, 'register.json');
+/**
+ * Shape version of the cached register. Bump whenever `projectSupSites` or
+ * `projectSupDepartements` changes what it returns — the cache lives for a
+ * WEEK on disk, so without it a projection edit is invisible until next month.
+ */
+const SUP_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _supRegister = null;
+/** @type {?Promise<object>} */
+let _supInFlight = null;
+let _supDiskChecked = false;
+const _supRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 90 });
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchSupJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(SUP_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, SUP_MAX_BYTES);
+}
+
+/**
+ * Newest published year for one dataset's year column.
+ *
+ * A failed discovery is not a failed build: it falls back to the floor, which
+ * is the year this layer was measured against and is guaranteed to exist.
+ */
+async function discoverSupYear(dataset, field, floor) {
+  try {
+    const params = new URLSearchParams({
+      select: field, group_by: field, order_by: `${field} desc`, limit: '1',
+    });
+    const body = await fetchSupJson(`${SUP_BASE}/${dataset}/records?${params}`);
+    return newestYear(body?.results, field, floor);
+  } catch (error) {
+    console.warn(`[Sup Proxy] ${field} discovery failed:`, error?.message || error);
+    return floor;
+  }
+}
+
+/**
+ * Build the whole layer: two exports, one join, one fold onto the polygons.
+ *
+ * The three upstream calls run in PARALLEL and mean different things. The
+ * Atlas export is the register; the `limit=0` call is the portal's own count
+ * for the same `where`, and exists only so `projectSupSites` can prove the
+ * export was not silently short; the cartography is the complement.
+ *
+ * The cartography failing is NOT fatal and is deliberately not treated as
+ * such: losing it costs the 977 borrowed coordinates, the names and the
+ * formation lists, and the layer degrades to the register alone — which is
+ * still 95.7% of French students. Losing the register itself is fatal,
+ * because there is nothing left to draw.
+ */
+async function refreshSupRegister() {
+  const started = Date.now();
+  const [rentree, session] = await Promise.all([
+    discoverSupYear(SUP_DATASET, 'rentree', SUP_RENTREE_FLOOR),
+    discoverSupYear(SUP_OFFER_DATASET, 'annee', SUP_SESSION_FLOOR),
+  ]);
+
+  const atlasWhere = supAtlasWhere(rentree);
+  const atlasParams = new URLSearchParams({
+    select: SUP_ATLAS_FIELDS.join(','), where: atlasWhere, limit: '-1',
+  });
+  const offerParams = new URLSearchParams({
+    select: SUP_OFFER_FIELDS.join(','), where: supOfferWhere(session), limit: '-1',
+  });
+  const countParams = new URLSearchParams({ where: atlasWhere, limit: '0' });
+
+  const [index, exported, counted, offered] = await Promise.all([
+    loadSchoolsDepartementIndex(),
+    fetchSupJson(`${SUP_BASE}/${SUP_DATASET}/exports/json?${atlasParams}`),
+    fetchSupJson(`${SUP_BASE}/${SUP_DATASET}/records?${countParams}`).catch((error) => {
+      // The count is a completeness PROOF, not the data. Losing it degrades
+      // the guarantee to "unknown" rather than blanking the layer.
+      console.warn('[Sup Proxy] register count unavailable:', error?.message || error);
+      return null;
+    }),
+    fetchSupJson(`${SUP_BASE}/${SUP_OFFER_DATASET}/exports/json?${offerParams}`).catch((error) => {
+      console.warn('[Sup Proxy] Parcoursup cartography unavailable:', error?.message || error);
+      return null;
+    }),
+  ]);
+
+  const projected = projectSupSites({
+    records: Array.isArray(exported) ? exported : [],
+    offers: indexSupOffers(Array.isArray(offered) ? offered : []),
+    rentree,
+    session,
+    totalCount: counted?.total_count ?? null,
+  });
+  if (!projected.complete) {
+    console.warn(`[Sup Proxy] register export short: ${projected.rowsSwept}/${projected.rowsTotal} rows`);
+  }
+
+  const rollup = projectSupDepartements({ sites: projected.sites, index });
+  // The two documents are cached together because one build makes both, and
+  // served apart because they are read at different moments and at different
+  // sizes: the rollup is ~30 KB and arrives with the layer, the register is
+  // 0.62 MB gzipped and is only fetched if the operator leaves the choropleth.
+  const { sites, ...summary } = projected;
+  return {
+    register: { ...summary, sites, complementAvailable: Array.isArray(offered) },
+    rollup: {
+      ...rollup,
+      rentree,
+      session,
+      builtInMs: Date.now() - started,
+    },
+  };
+}
+
+async function readSupDisk() {
+  if (_supDiskChecked) return;
+  _supDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(SUP_CACHE_PATH, 'utf8'));
+    if (entry?.version === SUP_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.register?.sites)
+      && Array.isArray(entry.payload?.rollup?.departements)) {
+      _supRegister = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeSupDisk(entry) {
+  fsp.mkdir(SUP_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(SUP_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Sup Proxy] cache write failed:', err?.message || err));
+}
+
+/** Shared build, so `/sites` and `/departements` never sweep twice. */
+function ensureSupRegister() {
+  if (!_supInFlight) {
+    _supInFlight = refreshSupRegister()
+      .then((payload) => {
+        const entry = { version: SUP_CACHE_VERSION, at: Date.now(), payload };
+        _supRegister = entry;
+        writeSupDisk(entry);
+        return entry;
+      })
+      .finally(() => { _supInFlight = null; });
+  }
+  return _supInFlight;
+}
+
+/**
+ * Vite plugin: French higher-education register proxy.
+ * @returns {import('vite').Plugin}
+ */
+function supFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/sup-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_supRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readSupDisk();
+        json(200, {
+          source: SUP_SOURCE,
+          dataset: SUP_DATASET,
+          offerDataset: SUP_OFFER_DATASET,
+          ttlMs: SUP_TTL_MS,
+          register: _supRegister
+            ? {
+              at: _supRegister.at,
+              rentree: _supRegister.payload.rollup.rentree,
+              session: _supRegister.payload.rollup.session,
+              sites: _supRegister.payload.register.count,
+              establishments: _supRegister.payload.register.establishments,
+              students: _supRegister.payload.register.students,
+              borrowed: _supRegister.payload.register.borrowed,
+              unplaced: _supRegister.payload.register.unplaced,
+              painted: _supRegister.payload.rollup.painted,
+              unassigned: _supRegister.payload.rollup.unassigned,
+              complementAvailable: _supRegister.payload.register.complementAvailable,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/sites' && route !== '/departements') {
+        json(404, { error: 'Unknown higher-education endpoint' });
+        return;
+      }
+
+      const pick = (payload) => (route === '/sites' ? payload.register : payload.rollup);
+      await readSupDisk();
+      const now = Date.now();
+      if (_supRegister && now - _supRegister.at <= SUP_TTL_MS) {
+        json(200, { ...pick(_supRegister.payload), fetchedAt: _supRegister.at, stale: false }, { 'X-SUP-FR': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensureSupRegister();
+        json(200, { ...pick(entry.payload), fetchedAt: entry.at, stale: false }, { 'X-SUP-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[Sup Proxy] register build unavailable:', error?.message || error);
+        // A register a month old is still a true picture of a file that is
+        // rebuilt once a year — serving it beats blanking the layer.
+        if (_supRegister && now - _supRegister.at <= SUP_STALE_MS) {
+          json(200, { ...pick(_supRegister.payload), fetchedAt: _supRegister.at, stale: true }, { 'X-SUP-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French higher-education register is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'sup-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
  * French doctor register — served from the shipped pack, not from a network.
  *
  *   GET /api/medecins-fr/national                     — départements + APL, once
@@ -4661,6 +4994,68 @@ function gasFranceProxy() {
  *
  * @returns {import('vite').Plugin}
  */
+/**
+ * The RRN carriageway pack, read once per process.
+ *
+ * `config/rrn_centreline.json` is 3.16 MB and turns a road event's two
+ * point-repère addresses into the stretch of tarmac they name. It is loaded
+ * HERE and not in the browser for the obvious reason: shipping 3 MB to every
+ * tab to save 48 KB on a 200 KB response is backwards, and the projection this
+ * feeds already runs server-side on every serve.
+ *
+ * A missing or broken pack is not fatal. `traceCarriageway` then returns null
+ * for every event and the layer draws exactly what it drew before — a chord —
+ * which is the same graceful floor `loadRoadStatusSites` gives its sibling.
+ */
+const RRN_CENTRELINE_PATH = path.join(process.cwd(), 'config', 'rrn_centreline.json');
+let _rrnCarriageway = null;
+let _rrnCarriagewayPromise = null;
+let _rrnCarriagewayFailed = false;
+
+function loadRrnCarriageway() {
+  if (_rrnCarriageway || _rrnCarriagewayFailed) return Promise.resolve(_rrnCarriageway);
+  if (!_rrnCarriagewayPromise) {
+    _rrnCarriagewayPromise = fsp.readFile(RRN_CENTRELINE_PATH, 'utf8')
+      .then((text) => {
+        const parsed = JSON.parse(text);
+        if (!parsed?.posts || !parsed?.lines) throw new Error('pack has no posts/lines');
+        _rrnCarriageway = indexCarriagewayPack(parsed);
+        console.log(
+          `[bison-fute-proxy] RRN carriageway pack: ${parsed.stats?.posts ?? '?'} posts,`
+          + ` ${parsed.stats?.carriageways ?? '?'} carriageways`
+          + ` (bornage ${parsed.bornageEdition}, liaisons ${parsed.centrelineEdition})`,
+        );
+        return _rrnCarriageway;
+      })
+      .catch((error) => {
+        // Once, then never again: a rebuild is a restart, and retrying a
+        // missing file on every serve would log the same line hourly forever.
+        _rrnCarriagewayFailed = true;
+        console.warn(
+          `[bison-fute-proxy] no RRN carriageway pack (${error?.message || error})`
+          + ' — segments stay chords. Run `npm run rrn:pack`.',
+        );
+        return null;
+      });
+  }
+  return _rrnCarriagewayPromise;
+}
+
+/**
+ * The tracer handed to `projectRoadEvents`, or null when there is no pack.
+ * @param {object|null} index
+ * @returns {?(request: object) => object}
+ */
+function carriagewayTracer(index) {
+  if (!index) return null;
+  return (request) => traceBetweenPr(index, {
+    ...request,
+    toWgs84: lambert93ToWgs84,
+    simplify: simplifyPolyline,
+    toleranceM: CENTRELINE_SIMPLIFY_M,
+  });
+}
+
 function bisonFuteProxy() {
   const BASE = 'https://tipi.bison-fute.gouv.fr/bison-fute-ouvert/publicationsDIR';
   const EVENTS_URL = `${BASE}/Evenementiel-DIR/grt/RRN/content.xml`;
@@ -4728,10 +5123,16 @@ function bisonFuteProxy() {
   /** Refresh and project the road-event document. */
   async function refreshEvents(previous) {
     const changed = await refreshDocument(EVENTS_URL, upstream.events);
+    // Loaded before the projection, not during it: `traceBetweenPr` is
+    // synchronous by design, so the pack has to be in hand first. After the
+    // first serve this is a resolved promise.
+    const carriageway = await loadRrnCarriageway();
     // Unchanged upstream, but `state` is time-dependent: roadworks ordered for
     // 08:30 become active at 08:30 whether or not the file moved. Re-project
     // from the retained body rather than serving a stale "planned".
-    const projected = projectRoadEvents(upstream.events.body);
+    const projected = projectRoadEvents(upstream.events.body, {
+      traceCarriageway: carriagewayTracer(carriageway),
+    });
     if (!changed && previous) {
       return { ...previous, at: Date.now(), ...projected };
     }
@@ -5750,30 +6151,68 @@ function sendOverpassResponse(res, payload, cacheStatus = 'MISS') {
 }
 
 /**
+ * What one mirror's answer means for the rotation: keep it, or try the next.
+ *
+ * A 4xx is a MIRROR verdict, not a query verdict. overpass-api.de's front-end
+ * answers `406 Not Acceptable` to requests its abuse filter dislikes — a plain
+ * Apache HTML page, matching neither the rate-limit nor the runtime-error
+ * sniffer — and field test 2026-09-01 caught it doing so on the majority of
+ * requests carrying the old `…-overpass-proxy/1.0` agent. Accepting that as a
+ * terminal answer stopped the rotation dead at mirror 1 and handed the caller a
+ * 406, which is exactly what "Sites militaires — Error loading" was: the layer
+ * treats `status >= 400` as a failure, while three healthy mirrors sat untried
+ * below. The cameras and power-grid probes already rotate on `>= 400`; this is
+ * the same rule, and it is why those layers kept working through the same
+ * outage.
+ *
+ * A genuinely malformed query still surfaces: every mirror rejects it, no
+ * rate-limit answer exists to outrank it, and the caller gets the 4xx back.
+ * @param {{status:number, rateLimited:boolean, runtimeError:boolean}} attempt
+ * @returns {'accept'|'rate-limited'|'runtime-error'|'server-error'|'client-error'}
+ */
+export function overpassAttemptDisposition({ status, rateLimited, runtimeError }) {
+  if (rateLimited) return 'rate-limited';
+  // A 200 body carrying a runtime error / timeout is a transient upstream
+  // failure — skip to the next mirror rather than returning or caching it.
+  if (runtimeError) return 'runtime-error';
+  if (status >= 500) return 'server-error';
+  if (status >= 400) return 'client-error';
+  return 'accept';
+}
+
+/**
  * Try each Overpass upstream in order until one succeeds.
  *
- * Skips rate-limited or 5xx responses and falls through to the next
- * mirror. If all mirrors fail, returns the last rate-limited payload
- * (if any) or throws the last error.
+ * Skips rate-limited, 4xx and 5xx responses and falls through to the next
+ * mirror. If all mirrors fail, returns the last rate-limited payload, else the
+ * last 4xx payload, else throws the last error.
  *
  * @param {string} body - URL-encoded Overpass QL query body.
  * @param {number} [maxResponseBytes] Endpoint-specific response cap.
+ * @param {object} [deps] Injection seam for tests.
+ * @param {Array<string>} [deps.endpoints] Mirrors to try, in order.
+ * @param {typeof fetch} [deps.fetchImpl] Fetch implementation.
  * @returns {Promise<{status:number,body:string,contentType:string,endpoint:string,rateLimited:boolean}>}
  */
-async function fetchOverpassPayload(body, maxResponseBytes = OVERPASS_MAX_RESPONSE_BYTES) {
+export async function fetchOverpassPayload(
+  body,
+  maxResponseBytes = OVERPASS_MAX_RESPONSE_BYTES,
+  { endpoints = OVERPASS_UPSTREAMS, fetchImpl = fetch } = {},
+) {
   let lastError = null;
   let lastRateLimitPayload = null;
+  let lastClientErrorPayload = null;
 
-  for (const endpoint of OVERPASS_UPSTREAMS) {
+  for (const endpoint of endpoints) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
 
     try {
-      const upstream = await fetch(endpoint, {
+      const upstream = await fetchImpl(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'gods-eye-view-overpass-proxy/1.0',
+          'User-Agent': OVERPASS_USER_AGENT,
         },
         body,
         signal: controller.signal,
@@ -5793,17 +6232,21 @@ async function fetchOverpassPayload(body, maxResponseBytes = OVERPASS_MAX_RESPON
         runtimeError,
       };
 
-      if (rateLimited) {
+      const disposition = overpassAttemptDisposition(payload);
+      if (disposition === 'rate-limited') {
         lastRateLimitPayload = payload;
         continue;
       }
-      // A 200 body carrying a runtime error / timeout is a transient upstream
-      // failure — skip to the next mirror rather than returning or caching it.
-      if (runtimeError) {
+      if (disposition === 'runtime-error') {
         lastError = new Error(`Overpass runtime error (${endpoint})`);
         continue;
       }
-      if (status >= 500) {
+      if (disposition === 'client-error') {
+        lastClientErrorPayload = payload;
+        lastError = new Error(`Overpass upstream refused with ${status} (${endpoint})`);
+        continue;
+      }
+      if (disposition === 'server-error') {
         lastError = new Error(`Overpass upstream returned ${status} (${endpoint})`);
         continue;
       }
@@ -5819,7 +6262,11 @@ async function fetchOverpassPayload(body, maxResponseBytes = OVERPASS_MAX_RESPON
     }
   }
 
+  // Every mirror refused. A rate-limit answer is the most actionable thing the
+  // caller can be told; a 4xx is next (it is the only shape that can carry a
+  // real query error); a bare throw is the last resort.
   if (lastRateLimitPayload) return lastRateLimitPayload;
+  if (lastClientErrorPayload) return lastClientErrorPayload;
   throw lastError || new Error('All Overpass upstreams failed');
 }
 
@@ -5912,7 +6359,12 @@ function overpassProxy() {
           _overpassConcurrent += 1;
           const requestPromise = fetchOverpassPayload(safeBody)
             .then((payload) => {
-              if (payload.status < 500 && !payload.rateLimited && !payload.runtimeError) {
+              // Cache SUCCESS only. The old `< 500` test admitted 4xx, so a
+              // front-end refusal (the 406 above) was written to memory AND to
+              // disk under a 7-to-30-day TTL — one bad minute upstream took
+              // every Overpass-backed layer down for a month, and re-serving it
+              // as a HIT meant the mirrors were never even asked again.
+              if (payload.status < 400 && !payload.rateLimited && !payload.runtimeError) {
                 const entry = { ...payload, cachedAt: Date.now() };
                 _overpassCache.set(cacheKey, entry);
                 trimOverpassCache();
@@ -5927,10 +6379,10 @@ function overpassProxy() {
 
           _overpassInFlight.set(cacheKey, requestPromise);
           const payload = await requestPromise;
-          // Degraded upstream (rate-limited on every mirror / 5xx / runtime
-          // error): last-good roads beat an empty layer — serve stale from
-          // memory or disk at ANY age before surfacing the failure.
-          if (payload.rateLimited || payload.runtimeError || payload.status >= 500) {
+          // Degraded upstream (rate-limited on every mirror / 4xx / 5xx /
+          // runtime error): last-good roads beat an empty layer — serve stale
+          // from memory or disk at ANY age before surfacing the failure.
+          if (payload.rateLimited || payload.runtimeError || payload.status >= 400) {
             const stale = _overpassCache.get(cacheKey) || await readOverpassDisk(cacheKey, Infinity);
             if (stale) {
               sendOverpassResponse(res, stale, 'STALE');
@@ -9115,7 +9567,7 @@ async function fetchOsmCameraElements(ql, deadline) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'gods-eye-view-cctv-proxy/1.0',
+          'User-Agent': OVERPASS_USER_AGENT,
         },
         body: `data=${encodeURIComponent(ql)}`,
         signal: AbortSignal.timeout(Math.min(remainingMs, attemptMs)),
@@ -12575,7 +13027,7 @@ async function fetchPowerGridElements(ql, deadline) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': 'gods-eye-view-power-grid-proxy/1.0',
+          'User-Agent': OVERPASS_USER_AGENT,
         },
         body: `data=${encodeURIComponent(ql)}`,
         signal: AbortSignal.timeout(Math.min(remainingMs, attemptMs)),
@@ -14017,6 +14469,251 @@ function roadStatusFranceProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Cadastre proxy (France's parcel plan, PCI vecteur, through IGN Api Carto)
+// ---------------------------------------------------------------------------
+/**
+ * A parcel outlives the people who own it and the PCI is republished monthly,
+ * so a day is a short cache for this data, not a long one. It is set by what
+ * changes upstream, not by how fresh the answer feels.
+ */
+const CADASTRE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling when Api Carto is down. A plan a month old is still the plan. */
+const CADASTRE_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+const CADASTRE_TIMEOUT_MS = 45_000;
+/**
+ * Byte cap on ONE upstream answer. The densest measured box — Marseille at
+ * 0.034°, truncated at Api Carto's own 5 000 — is 3.5 MB, and a full 5 000
+ * rural parcels with 32 vertices each would be larger; 32 MB is comfortably
+ * clear of both and still bounded.
+ */
+const CADASTRE_MAX_BYTES = 32 * 1024 * 1024;
+const CADASTRE_VIEWPORT_CACHE_MAX = 48;
+const CADASTRE_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'cadastre');
+
+/** box key -> {at:number, payload:object} */
+const _cadastreViewportCache = new Map();
+const _cadastreViewportInFlight = new Map();
+const _cadastreRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+function trimCadastreViewportCache() {
+  while (_cadastreViewportCache.size > CADASTRE_VIEWPORT_CACHE_MAX) {
+    const oldest = _cadastreViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _cadastreViewportCache.delete(oldest);
+  }
+}
+
+/** Snapped box key -> stable disk-cache file path. */
+function cadastreDiskPath(key) {
+  return path.join(CADASTRE_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+/** Read a disk-cached viewport answer. `maxAgeMs` Infinity = any age. */
+async function readCadastreDisk(key, maxAgeMs) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(cadastreDiskPath(key), 'utf8'));
+    if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.parcels)) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/** Fire-and-forget disk write for a successful viewport answer. */
+function writeCadastreDisk(key, entry) {
+  fsp.mkdir(CADASTRE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(cadastreDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Cadastre Proxy] disk cache write failed:', err?.message || err));
+}
+
+/** One Api Carto GeoJSON call, under a timeout and a byte cap. */
+async function fetchCadastreCollection(route, box, limit) {
+  const geom = JSON.stringify({
+    type: 'Polygon',
+    coordinates: [[
+      [box.west, box.south], [box.east, box.south],
+      [box.east, box.north], [box.west, box.north], [box.west, box.south],
+    ]],
+  });
+  const params = new URLSearchParams({ geom, _limit: String(limit) });
+  const response = await fetch(`${CADASTRE_API_BASE}/${route}?${params}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(CADASTRE_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream ${route} HTTP ${response.status}`);
+  return readResponseJsonCapped(response, CADASTRE_MAX_BYTES);
+}
+
+/**
+ * Fetch one viewport and fold it into the client payload.
+ *
+ * The two calls run in PARALLEL and answer different questions. `parcelle` is
+ * the map; `feuille` is the SCALE each of those parcels was drawn at, which is
+ * the layer's whole subject and which the parcel records do not carry. The join
+ * is five parts wide (see `sheetKey`) because Lyon publishes one section number
+ * across five arrondissements at two different scales.
+ *
+ * @param {{south:number, west:number, north:number, east:number}} box Snapped box.
+ * @returns {Promise<object>} Client payload.
+ */
+async function refreshCadastreViewport(box) {
+  const [parcelle, feuille] = await Promise.all([
+    fetchCadastreCollection('parcelle', box, CADASTRE_UPSTREAM_LIMIT),
+    // Sheets are two orders of magnitude rarer than parcels — 214 was the most
+    // ever measured in a box four times this one — so the same ceiling is far
+    // more headroom than it is for the parcels, and truncation here degrades
+    // (some parcels lose their scale) rather than lying.
+    fetchCadastreCollection('feuille', box, CADASTRE_UPSTREAM_LIMIT)
+      .catch((error) => {
+        // A sheet failure costs tolerances, not the map. Parcels still draw, in
+        // the UNKNOWN band, which says exactly that on its own legend row.
+        console.warn('[Cadastre Proxy] sheet join unavailable:', error?.message || error);
+        return null;
+      }),
+  ]);
+  return projectCadastreParcels({ parcelle, feuille, box });
+}
+
+/**
+ * Vite plugin: French cadastral parcels through IGN's Api Carto.
+ *
+ *   GET /api/cadastre-fr/parcelles?south&west&north&east — parcels in one box
+ *   GET /api/cadastre-fr/status                         — provenance + cache state
+ *
+ * WHY A PROXY at all, when Api Carto reflects the Origin header and a browser
+ * could fetch this directly: the service answers `Cache-Control: private,
+ * no-cache, no-store, must-revalidate`, so the browser cache is forbidden from
+ * helping and every pan would be a fresh round trip to a free public service
+ * for data that changes monthly; one viewport is TWO upstream calls that are
+ * worth sharing across clients and across restarts; the five-part sheet join
+ * and the truncation check in `cadastreFeed.js` are absorbed once, server-side,
+ * under test, instead of in every client; and the shape changes on the way
+ * through — 3.3 MB of GeoJSON scaffolding folds to 1.8 MB of parcels.
+ *
+ * Keyless, Licence Ouverte 2.0.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function cadastreFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/cadastre-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_cadastreRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        let newest = null;
+        for (const entry of _cadastreViewportCache.values()) {
+          if (!newest || entry.at > newest) newest = entry.at;
+        }
+        json(200, {
+          source: CADASTRE_SOURCE,
+          licence: CADASTRE_LICENCE,
+          datasetPage: CADASTRE_DATASET_PAGE,
+          lastFetch: newest,
+          cachedBoxes: _cadastreViewportCache.size,
+          ttlMs: CADASTRE_TTL_MS,
+          maxBoxDeg: CADASTRE_MAX_BOX_DEG,
+          requestMaxBoxDeg: CADASTRE_REQUEST_MAX_BOX_DEG,
+          upstreamLimit: CADASTRE_UPSTREAM_LIMIT,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+      if (route !== '/parcelles') {
+        json(404, { error: 'Unknown cadastre endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, CADASTRE_REQUEST_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${CADASTRE_REQUEST_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: CADASTRE_REQUEST_MAX_BOX_DEG,
+          layerMaxBoxDeg: CADASTRE_MAX_BOX_DEG,
+        });
+        return;
+      }
+
+      // Snapped OUTWARD, so the box sent upstream is up to two grid steps wider
+      // than the one that was validated — 0.024° against a 0.02° ceiling, worst
+      // case. That widening is the cache doing its job and is NOT re-checked
+      // against the ceiling here: an outward snap of a box that only just
+      // passed always lands over it, so re-checking would 400 every request at
+      // the layer's own maximum zoom. The upstream bound is `validBox` above
+      // plus this known, constant margin.
+      const box = snapBoxOutward(requested, CADASTRE_BOX_STEP_DEG);
+      const key = boxKey(box, 3);
+      const now = Date.now();
+
+      const cached = _cadastreViewportCache.get(key);
+      if (cached && now - cached.at <= CADASTRE_TTL_MS) {
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-Cadastre-FR': 'HIT' });
+        return;
+      }
+      const onDisk = await readCadastreDisk(key, CADASTRE_TTL_MS);
+      if (onDisk) {
+        _cadastreViewportCache.set(key, onDisk);
+        trimCadastreViewportCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-Cadastre-FR': 'DISK' });
+        return;
+      }
+
+      const request = coalesceProxyRequest(_cadastreViewportInFlight, key, async () => {
+        const payload = await refreshCadastreViewport(box);
+        const entry = { at: Date.now(), payload };
+        _cadastreViewportCache.set(key, entry);
+        trimCadastreViewportCache();
+        // A refusal is cached like any other answer. It is not an error and it
+        // is not going to change until the operator zooms: re-asking Api Carto
+        // for 15 977 parcels it will not send is a round trip spent to be told
+        // the same thing twice.
+        writeCadastreDisk(key, entry);
+        return entry;
+      });
+      try {
+        const entry = await request.promise;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, {
+          'X-Cadastre-FR': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+      } catch (error) {
+        console.warn('[Cadastre Proxy] viewport unavailable:', error?.message || error);
+        const stale = cached || await readCadastreDisk(key, CADASTRE_STALE_MS);
+        if (stale) {
+          json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-Cadastre-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'The French cadastre is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'cadastre-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
 function parseJsonEnv(key, fallback) {
   const value = process.env[key];
   if (!value) return fallback;
@@ -14563,21 +15260,101 @@ function isochroneProxy() {
  * `GET /api/gpu?lat=&lon=`
  * @returns {import('vite').Plugin}
  */
+/**
+ * Zoning answers keyed on the SNAPPED BOX, so panning a street does not buy the
+ * same 300 KB twice.
+ *
+ * A second cache, next to the route's own, because the two halves of a GPU
+ * answer have different keys and merging them would break whichever one loses.
+ * The zoning half depends on the BOX; the servitude half and the `atPoint`
+ * marking depend on the POINT. Keying the whole payload on the box would tell
+ * two different addresses in one block that they stand in the same zone, which
+ * is the exact question this layer exists to answer correctly.
+ */
+const _gpuZoningCache = new Map();
+const GPU_ZONING_CACHE_MAX_ENTRIES = 120;
+
+function gpuZoningCacheSet(key, payload) {
+  _gpuZoningCache.set(key, { payload, at: Date.now() });
+  while (_gpuZoningCache.size > GPU_ZONING_CACHE_MAX_ENTRIES) {
+    _gpuZoningCache.delete(_gpuZoningCache.keys().next().value);
+  }
+}
+
+/**
+ * Read the optional bbox off a GPU request.
+ *
+ * Absent is not an error: no box is the POINT regime, which is what the layer
+ * falls back to above its own box altitude. A PARTIAL box is an error, because
+ * silently answering a different question than the one asked is how a layer
+ * ends up drawing the wrong block.
+ *
+ * @param {URLSearchParams} searchParams
+ * @returns {?object} Validated box, or null for the point regime.
+ * @throws {Error} On a malformed or over-wide box; `installAddressRoute` turns
+ *   that into a 400 with the message.
+ */
+export function gpuRequestBox(searchParams) {
+  const edges = ['south', 'west', 'north', 'east'].map((k) => searchParams.get(k));
+  if (edges.every((v) => v === null || v.trim() === '')) return null;
+  const [south, west, north, east] = edges;
+  const box = validBox({ south, west, north, east }, GPU_REQUEST_MAX_BOX_DEG);
+  if (!box) {
+    // Rounded for the message only: `0.02 + 3 * 0.002` is
+    // `0.026000000000000002` in binary floating point, and an error string is
+    // read by a person.
+    throw new Error(
+      `A complete non-dateline bbox no larger than ${GPU_REQUEST_MAX_BOX_DEG.toFixed(3)} degrees is required`,
+    );
+  }
+  return box;
+}
+
 function gpuProxy() {
   function install(middlewares) {
     installAddressRoute(middlewares, '/api/gpu', (url) => {
       const point = addressPoint(url.searchParams);
       if (!point) return null;
+      // Snapped OUTWARD onto the shared grid, so the box sent upstream is up to
+      // two steps wider than the one that was validated. That widening is the
+      // cache doing its job and is deliberately NOT re-checked against the
+      // ceiling — an outward snap of a box that only just passed always lands
+      // over it, and re-checking would 400 every request at the layer's own
+      // maximum zoom. `GPU_REQUEST_MAX_BOX_DEG` already carries the margin.
+      const asked = gpuRequestBox(url.searchParams);
+      const box = asked ? snapBoxOutward(asked, GPU_BOX_STEP_DEG) : null;
+      const boxTag = box ? boxKey(box, 3) : 'pt';
       return {
-        key: addressCacheKey('gpu', point),
+        key: addressCacheKey('gpu', point, boxTag),
         load: async () => {
+          const zoningKey = box ? boxTag : null;
+          const cachedZoning = zoningKey ? _gpuZoningCache.get(zoningKey) : null;
           const [zoning, servitudes] = await Promise.all([
-            fetchAddressSource(buildGpuUrl('zone-urba', point)),
-            // The measured worst case for a single point is 1.4 MB.
+            cachedZoning
+              ? Promise.resolve(cachedZoning.payload)
+              : fetchAddressSource(
+                box ? buildGpuBoxUrl('zone-urba', box) : buildGpuUrl('zone-urba', point),
+                // A box answers a neighbourhood: 405 KB over Paris at the
+                // layer's ceiling, against 90 KB for one point.
+                box ? { maxBytes: 32 * 1024 * 1024 } : undefined,
+              ),
+            // The measured worst case for a single point is 1.4 MB. Always a
+            // POINT: one 390 m box over Lyon's Presqu'île answers 210 easement
+            // features and 2.3 MB, four times the payload for the half of the
+            // answer a point already gets right.
             fetchAddressSource(buildGpuUrl('assiette-sup-s', point), { maxBytes: 32 * 1024 * 1024 }),
           ]);
           if (!zoning && !servitudes) return null;
-          return projectGpu({ zoning, servitudes });
+          if (zoning && zoningKey && !cachedZoning) gpuZoningCacheSet(zoningKey, zoning);
+          // APIcarto caps at 5 000 features, HTTP 200, and says so only in
+          // `totalFeatures`. A zoning map missing four fifths of itself is not
+          // visibly incomplete — it looks like a commune with mixed zoning — so
+          // the whole half is refused and the true count printed.
+          const truncation = zoning ? gpuTruncation(zoning) : null;
+          const zoningRefused = truncation?.truncated
+            ? { found: truncation.total, limit: GPU_UPSTREAM_LIMIT }
+            : null;
+          return projectGpu({ zoning, servitudes, point, box, zoningRefused });
         },
       };
     });
@@ -14845,8 +15622,10 @@ export default defineConfig(({ mode }) => {
       roadStatusFranceProxy(),
       gbfsFranceProxy(),
       irveFranceProxy(),
+      cadastreFranceProxy(),
       schoolsFranceProxy(),
       medecinsFranceProxy(),
+      supFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),
