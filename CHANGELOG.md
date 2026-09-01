@@ -7,6 +7,75 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Bison Futé, both open feeds of it: what the road operators declared, and
+  what their loops measured.** Two new layers in **MOBILITÉ TERRESTRE**, both
+  keyless, both Licence Ouverte 2.0, both through one new `/api/bison-fute`
+  proxy.
+
+  **Événements routiers (FR)** draws `Événementiel-DIR` — the national DATEX II
+  aggregate every Direction interdépartementale des routes publishes its event
+  log into. On the snapshot this was built against that was **286 situations
+  holding 600 records**: nine accidents, one queue, 48 obstructions, 184
+  roadworks orders, four closures and the diversions posted around them, across
+  eight categories with their own legend.
+
+  Three decisions are the layer:
+
+  - **One situation, one marker.** DATEX II nests up to twelve records inside a
+    single situation — the accident, the two lanes it blocked, the four exits
+    now closed. Drawing them all would put one crash on the map twelve times,
+    so the CAUSE is drawn and the consequences are counted on its card
+    (`+ 5 déviations`). An accident outranks the lane closure it caused; a
+    diversion only wins when a situation is nothing but diversions.
+  - **Planned is not happening.** 68 of the 286 had not started yet — works
+    ordered for October. They are hidden by default, drawn dimmer and smaller
+    under the `+ À venir` chip, and a globe that painted next month's roadworks
+    over tonight's traffic would be saying something false about now.
+  - **Ended means ended.** A rockfall opened on 31 January, cleared in March,
+    and published with **no end time at all** — only the operator's lifecycle
+    flag says it is over. Read on its validity window it has been blocking the
+    N20 for seven months. The flag wins.
+
+  **Capteurs trafic (FR)** draws `QTV-DIR`: ~1 200 measurement stations
+  reporting average speed and hourly flow every six minutes, ~840 of them
+  placeable, joined to the publisher's Lambert-93 station referential and
+  converted to WGS84. A chip colours by either quantity.
+
+  It is deliberately **not** a congestion map. QTV publishes a speed and
+  nothing to compare it against — no free-flow reference, no limit, and a lane
+  count that reads `0` ("not stated") for 922 of the referential's 1 206 rows —
+  so the legend is labelled in km/h and never in words like *fluide* or
+  *congestionné*. The one derived reading it does make is arithmetic: a station
+  counting **vehicles at zero km/h** is a queue.
+
+  And one trap is the reason half of this layer's code exists. **A zero
+  computed from zero samples is not a zero.** `numberOfInputValuesUsed="0"` was
+  attached to 206 of the 2 412 values in the captured snapshot and published as
+  `0`; station MYK69.K1 on the N346 counted **7 114 vehicles an hour** beside a
+  `0.0` km/h built from no samples at all. Drawn literally that is a motorway at
+  a standstill that is not at a standstill. Those values are dropped and drawn
+  grey — "pas de mesure" — while the flow beside them keeps its own colour,
+  which is the one thing that station actually measured. Every card carries the
+  reading's **age**: measured against the live feed, a QTV file lands ~11
+  minutes after the publication instant it carries, so a value is already ~12
+  minutes old before a browser can ask for it.
+
+  Both layers cover the **réseau routier national non concédé** and say so. The
+  conceded motorways — the whole ASF/APRR/Sanef network — are not in these
+  feeds at all; Bison Futé serves them under the credentialed *Action b* /
+  *Action c* licences, and their absence is a property of the source rather
+  than a gap the layers hide.
+
+  Under the hood: `bisonFuteFeed.js` holds a ~90-line DATEX II reader (no new
+  dependency — these are the only two XML documents the app reads), the
+  situation classifier, the Lambert-93 inverse and the referential repair for a
+  CSV published with a 20-column header over 19-column rows. It is pinned by 31
+  unit tests against real captured documents, including the 7 114 véh/h station
+  and the rockfall with no end time. The proxy refreshes with `If-None-Match`:
+  both origins serve ETag and gzip (3.3 MB → 165 KB for the events, 1.25 MB →
+  27 KB for the measurements) and answer a conditional GET with a 304, which is
+  what makes a five-minute poll of a 3.3 MB document affordable.
+  `npm run qa:bison-fute` proves the rest in a real browser.
 - **Every data layer now knows what it is.** A new `src/data/layerTaxonomy.js`
   gives all 28 registered layers a category — **AIR & ESPACE**, **DÉFENSE**,
   **MARITIME**, **MOBILITÉ TERRESTRE**, **ÉNERGIE**, **RISQUES &
