@@ -53,7 +53,16 @@ ssh vps 'docker logs -n 50 gev'                # why the app misbehaves
 ```
 
 A failed build leaves the previous container running: staging never goes dark
-because a PR does not compile.
+because a PR does not compile. A ref cut before the access gate existed is
+refused outright rather than deployed open.
+
+To check the deployment the way a browser meets it — bundle boots, canvas
+draws, layer proxies answer from that origin — rather than by trusting a
+`200` from `/healthz`:
+
+```bash
+node scripts/qa-deployment.mjs --url https://gev.enerlens.com/ --auth gev:<password>
+```
 
 ### Installing it somewhere else
 
