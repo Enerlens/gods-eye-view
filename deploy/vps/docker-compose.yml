@@ -1,0 +1,32 @@
+# God's Eye View — staging on the Enerlens VPS.
+#
+# Installed at /opt/gev/docker-compose.yml. The checkout it builds lives at
+# /opt/gev/src and is moved around by gev-deploy.sh; this file never changes.
+services:
+  gev:
+    build:
+      context: ./src
+      args:
+        # Inlined into the browser bundle at build time, so they are build
+        # args and not only runtime env (see `define` in vite.config.js).
+        GOOGLE_MAPS_API_KEY: ${GOOGLE_MAPS_API_KEY:-}
+        CESIUM_ION_TOKEN: ${CESIUM_ION_TOKEN:-}
+    image: gev:staging
+    container_name: gev
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # Loopback for the Cloudflare tunnel, tailnet address for direct access.
+      - "127.0.0.1:${GEV_PORT:-4173}:4173"
+      - "${GEV_TAILSCALE_IP:-127.0.0.1}:${GEV_PORT:-4173}:4173"
+    volumes:
+      # Upstream response caches (Overpass, IRVE, schools…) survive redeploys.
+      - gev-cache:/app/.gev-cache
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  gev-cache:

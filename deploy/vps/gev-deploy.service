@@ -1,0 +1,10 @@
+[Unit]
+Description=God's Eye View — deploy the branch staging should be showing
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/gev/gev-deploy.sh
+# A cold `npm ci` + vite build takes a couple of minutes.
+TimeoutStartSec=1800
