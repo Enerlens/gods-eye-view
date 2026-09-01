@@ -946,7 +946,7 @@ This is the current runtime/source-of-truth snapshot for the project.
 >   still releases tracking in place. The 200 px feel needs close-range field
 >   verification; fleet model sizing remains unchanged.
 > - **Deterministic sprite stacking:** contact collections reassert the stable
->   bottom-to-top order CCTV, FIRMS, Établissements scolaires, Bornes IRVE, Réseau gaz, Power Grid, Groupes de prod,
+>   bottom-to-top order CCTV, FIRMS, Établissements scolaires, Enseignement supérieur, Bornes IRVE, Réseau gaz, Power Grid, Groupes de prod,
 >   bikeshare, Shared Mobility FR, Transit FR, AIS,
 >   military, then civilian
 >   — Shared Mobility FR occupies its slot with TWO collections (station dots
@@ -1613,6 +1613,7 @@ its criteria cannot be silently ignored.
 | Shared Mobility FR 🛴 | transport.data.gouv.fr GBFS (135 distinct systems after de-duplication; observed footprints in `config/gbfs_fr_systems.json`; per-kind silhouettes in `src/data/sharedMobilityIcons.js`, per-operator hues in `src/data/mobilityOperators.js`) | `src/data/sharedMobilityFrance.js` | `/api/shared-mobility-fr/objects`, `/api/shared-mobility-fr/systems` | 60s, viewport-driven below ~80 km |
 | Bornes IRVE 🇫🇷 🔌 | *fichier consolidé des bornes IRVE* (transport.data.gouv.fr, via ODRÉ) — 231,079 points de charge measured 2026-08-27, rebuilt daily, folded to one site per coordinate. Three regimes by view span: 96 départements in quantile bins (≥ 9.5° lat), a grid-thinned maillage of real positions (9.5°–0.35°), every site with full detail (≤ 0.35°) | `src/data/irveFrance.js`, `src/data/irveFeed.js`, `src/data/irveDepartements.js`, `src/data/irveMesh.js` | `/api/irve-fr/sites`, `/api/irve-fr/departements`, `/api/irve-fr/mesh`, `/api/irve-fr/status` | 30 min (viewport TTL 6 h, national TTL 24 h; upstream consolidation is daily) |
 | Établissements scolaires 🇫🇷 🎓 | *Annuaire de l'éducation* (data.education.gouv.fr, MENJ) — 68,939 rows measured 2026-09-01, rebuilt daily, of which 68,158 are open and geolocated. Pupil rolls joined on the UAI from four per-level *effectifs* datasets at rentrée 2025 (91.7% of teaching establishments). Three regimes by view span: 96 départements in quantile bins (≥ 9.5° lat), a grid-thinned maillage of real positions (9.5°–0.35°), every establishment with full detail (≤ 0.35°). Coloured by level, sized by roll; 2,762 overseas schools are outside the bundled metropolitan polygons and are reported rather than painted | `src/data/schoolsFrance.js`, `src/data/schoolsFeed.js`, `src/data/schoolsDepartements.js`, `src/data/schoolsMesh.js` | `/api/schools-fr/sites`, `/api/schools-fr/departements`, `/api/schools-fr/mesh`, `/api/schools-fr/status` | 30 min (viewport TTL 6 h, national TTL 24 h; upstream rebuild is daily) |
+| Enseignement supérieur 🇫🇷 🏛 | *Effectifs d'étudiants inscrits — détail par établissements* (data.enseignementsup-recherche.gouv.fr, MESR) — 22,068 rows at rentrée 2024, resolved to **6,294 establishments and 6,914 sites** holding 2,960,012 students. The rentrée and the Parcoursup session are DISCOVERED at build time and floored at 2024/2026. 1,665 establishments carry no `geo`; 977 are placed from *Cartographie des formations Parcoursup* (session 2026) where it gives exactly one point for the UAI, which also supplies 5,705 establishment names and the per-card formation lists — a borrowed coordinate is flagged on its card, and the 688 neither file places are reported. **Two regimes, not three**: 96 départements in quantile bins over STUDENTS (≥ 9.5° lat), then every site in view drawn straight from the national pack — no bbox query, no ceiling and no thinning, because the pack is 6,914 sites and 0.62 MB gzipped with every name on it. Coloured by seven bands folded from the register's 14 categories, sized by the enrolment at that site; 214 overseas sites are outside the bundled metropolitan polygons and are reported rather than painted | `src/data/supFrance.js`, `src/data/supFeed.js`, `src/data/supDepartements.js` | `/api/sup-fr/sites`, `/api/sup-fr/departements`, `/api/sup-fr/status` | 6 h (proxy TTL 7 d, serve-stale 30 d; the register is published once a year at the rentrée) |
 | Mix élec 🇫🇷 ⚡ | éCO2mix national + 12 régions (RTE, via ODRÉ) — région balances painted on département geometry, five commercial border flows as arcs | `src/data/franceEnergy.js` | `/api/energy-fr` | 3 min (proxy TTL 4 min; product steps every 15 min) |
 | Réseau gaz 🇫🇷 ⬡ | NaTran + Teréga transmission traces (36,106 km, clamped ground polylines), 14 gas-fired power stations, 850 renewable-methane injection points (ODRÉ) | `src/data/gasFrance.js`, `src/data/gasFranceFeed.js` | `/api/gas-fr/network`, `/api/gas-fr/sites`, `/api/gas-fr/status` | 30 min (proxy TTL 7 d for the traces, 12 h for the registers; both are quasi-static) |
 | Centrales EDF 🇫🇷 ◈ | EDF Open Data — 3 datasets (nuclear 56 reactors → 18 sites, hydraulic 51 plants, thermal 19 units → 10 sites), 79 site discs sized by installed capacity | `src/data/edfPowerPlants.js` | `/api/edf-plants` | 30 min (proxy TTL 24 h; the files are republished annually) |
@@ -2108,6 +2109,72 @@ hand, with no request and no rate limit spent.
 
 Licence note: IDFM is **ODbL 1.0** — attribution and share-alike on derived
 databases — while the other five are Licence Ouverte. See `DATA_SOURCES.md`.
+
+#### Ambient labels are a click surface (September 2026)
+
+The name floating above an object on the globe now selects that object, exactly
+as its dot does. It did not before, and the reason was mechanical rather than a
+policy: the shared world overlay paints every label onto a
+`pointer-events: none` canvas stacked over the Cesium viewport, so
+`scene.pick()` under a label returns whatever is behind it — usually the globe,
+i.e. nothing. A click aimed at a station's name therefore read as *empty space*
+and DISMISSED the selection, which is the opposite of the intent. And the name
+is what people aim at: it is what says which river or which yard this is, and
+it is five to twenty times the target area of the 5–15 px dot it belongs to.
+
+The host already had the two halves — entries flagged `interactive` publish a
+screen-space hit rectangle each painted frame, and `hitTestWorldOverlay()`
+resolves the topmost one. What was missing was the resolution step in each
+layer's click handler. `src/data/overlayLabelPick.js` is that step written once:
+it fences the hit test to the asking layer's own overlay source, strips the
+entry-id prefix each layer publishes under, and re-checks the id against the
+layer's live record map — hit rectangles are pooled and published per painted
+frame, so one can name a record that left the viewport a frame ago, and that is
+a miss rather than a selection.
+
+**The resolution order is the load-bearing part, and it is the same everywhere:**
+
+1. `scene.pick()` — a native primitive under the cursor wins. Labels float
+   above their anchor, so the two rarely overlap; when they do, the thing the
+   depth buffer says you are pointing at is the honest answer, and it is also
+   the one the pick registry can arbitrate between layers.
+2. the label plane, which the depth buffer knows nothing about.
+3. only then, empty space → clear the selection.
+
+Putting the label test first would let a label drawn across a NEIGHBOURING
+object's dot steal that object's click.
+
+Wired into twelve layers: **Hub'Eau Gauges**, **Réseau électrique**, **Réseau
+gaz**, **Production RTE**, **Petite hydro**, **Événements routiers**,
+**Écoles (FR)** and **Bornes IRVE (FR)** (both on their département names at
+national altitude), **Radio** (station names only — a cluster badge names a
+count, not a station), **Câbles sous-marins** (whose stem tip is a 7 px dot at
+the end of a hairline, often out over open ocean), **Satellites** (the ISS
+label, where the point is a few pixels of a target moving at orbital speed) and
+**Rocket Launches** (the ambient mission markers). Selected-object CARDS stay
+non-interactive: a card names what is already selected, so a rectangle there
+would do nothing but cover the ambient labels behind it.
+
+Layers deliberately left alone: Vigicrues, Météo-France Vigilance, séismes,
+bouées marines, Mix élec and les itinéraires transit all paint ambient labels
+but have no selection to trigger — a click surface with nothing behind it would
+be a lie. Mobilité partagée, Transit (FR), État du réseau and Bâti 3D publish
+only selected-object cards and no ambient labels, so there is nothing to make
+clickable.
+
+Hub'Eau is the layer the request came from and the one where the gap was
+widest: its dots draw at `disableDepthTestDistance: 2500` against siblings that
+use infinity, so the click handler already has to `drillPick` eight deep just
+to find its own dot under a charging point — while the name beside it was inert.
+Its ambient label carries the same `hubeau:<code>` id as the dot, so one string
+identifies a station across the drill pick, the overlay hit test and the pick
+registry, and the label branch resolves straight into the existing
+`selectObject()`.
+
+Proved in a real scene by `npm run qa:label-click`, which reads where the host
+painted a label, dispatches a real pointer event at its centre — nowhere near
+the dot — and asserts the layer's selected-card source started painting; and
+that a click on empty space still clears it.
 
 ### Context / Contacts coordinator (July 2026)
 

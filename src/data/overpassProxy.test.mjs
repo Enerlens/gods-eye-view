@@ -12,6 +12,8 @@ import {
   simplifyOverpassPayloadBody,
   isOverpassBoundaryQuery,
   resolveOverpassPreflight,
+  overpassAttemptDisposition,
+  fetchOverpassPayload,
 } from '../../vite.config.js';
 
 test('preflight checks memory, in-flight, then disk before consuming limiter quota', async () => {
@@ -199,3 +201,97 @@ function pointSegDistDeg(p, a, b) {
   const t = c1 / c2;
   return Math.hypot(wx - t * vx, wy - t * vy);
 }
+
+// ---------------------------------------------------------------------------
+// Mirror rotation (field test 2026-09-01: "Sites militaires — Error loading")
+//
+// overpass-api.de's front-end answered 406 Not Acceptable to the proxy's old
+// agent string on most requests. The rotation accepted 4xx as a final answer,
+// so mirrors 2-4 were never tried and the mapped-installations layer — which
+// reads `status >= 400` as a failure — went dark while three mirrors were fine.
+// ---------------------------------------------------------------------------
+
+/** One Overpass mirror answer, shaped for the injected fetch below. */
+function mirrorResponse(status, body = '{"elements":[]}') {
+  return new Response(body, { status, headers: { 'content-type': 'application/json' } });
+}
+
+const FOUR_MIRRORS = ['https://a.test/i', 'https://b.test/i', 'https://c.test/i', 'https://d.test/i'];
+
+test('disposition: a 4xx refusal is a mirror verdict, not a query verdict', () => {
+  const at = (status, extra = {}) => overpassAttemptDisposition({
+    status, rateLimited: false, runtimeError: false, ...extra,
+  });
+  assert.equal(at(200), 'accept');
+  assert.equal(at(406), 'client-error', '406 must rotate, not terminate');
+  assert.equal(at(403), 'client-error');
+  assert.equal(at(400), 'client-error');
+  assert.equal(at(502), 'server-error');
+  assert.equal(at(200, { runtimeError: true }), 'runtime-error');
+  assert.equal(at(429, { rateLimited: true }), 'rate-limited');
+  // Rate limiting outranks the status code: a mirror can rate-limit inside a 200.
+  assert.equal(at(200, { rateLimited: true }), 'rate-limited');
+});
+
+test('a 406 from the first mirror falls through to a healthy one', async () => {
+  const tried = [];
+  const payload = await fetchOverpassPayload('data=[out:json];out;', 1024, {
+    endpoints: FOUR_MIRRORS,
+    fetchImpl: async (endpoint) => {
+      tried.push(endpoint);
+      return endpoint === FOUR_MIRRORS[0]
+        ? mirrorResponse(406, '<html><title>406 Not Acceptable</title></html>')
+        : mirrorResponse(200, '{"elements":[{"type":"node","id":1}]}');
+    },
+  });
+  assert.deepEqual(tried, FOUR_MIRRORS.slice(0, 2), 'must try mirror 2 after the 406');
+  assert.equal(payload.status, 200);
+  assert.equal(payload.endpoint, FOUR_MIRRORS[1]);
+  assert.match(payload.body, /"id":1/);
+});
+
+test('every mirror refusing surfaces the 4xx, so a malformed query is still reported', async () => {
+  const tried = [];
+  const payload = await fetchOverpassPayload('data=nonsense', 1024, {
+    endpoints: FOUR_MIRRORS,
+    fetchImpl: async (endpoint) => {
+      tried.push(endpoint);
+      return mirrorResponse(400, 'line 1: parse error');
+    },
+  });
+  assert.equal(tried.length, 4, 'all mirrors get a turn before giving up');
+  assert.equal(payload.status, 400);
+  assert.equal(payload.body, 'line 1: parse error');
+});
+
+test('a rate-limited mirror outranks a refusing one when all fail', async () => {
+  const payload = await fetchOverpassPayload('data=[out:json];out;', 1024, {
+    endpoints: FOUR_MIRRORS,
+    fetchImpl: async (endpoint) => (endpoint === FOUR_MIRRORS[3]
+      ? mirrorResponse(429, 'rate_limited')
+      : mirrorResponse(406, '<html>406 Not Acceptable</html>')),
+  });
+  assert.equal(payload.status, 429, 'the actionable answer wins over the opaque refusal');
+  assert.equal(payload.rateLimited, true);
+});
+
+test('a mirror that throws does not end the rotation', async () => {
+  const payload = await fetchOverpassPayload('data=[out:json];out;', 1024, {
+    endpoints: FOUR_MIRRORS,
+    fetchImpl: async (endpoint) => {
+      if (endpoint !== FOUR_MIRRORS[2]) throw new Error('ECONNREFUSED');
+      return mirrorResponse(200, '{"elements":[]}');
+    },
+  });
+  assert.equal(payload.endpoint, FOUR_MIRRORS[2]);
+});
+
+test('all mirrors unreachable still throws rather than inventing an answer', async () => {
+  await assert.rejects(
+    fetchOverpassPayload('data=[out:json];out;', 1024, {
+      endpoints: FOUR_MIRRORS,
+      fetchImpl: async () => { throw new Error('ECONNREFUSED'); },
+    }),
+    /ECONNREFUSED/,
+  );
+});

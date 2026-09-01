@@ -724,6 +724,28 @@ test('the unavailable retry backs off 30s to a 240s ceiling and restarts clean',
   assert.equal(installationRetryDelayMs(-5), 30000, 'garbage restarts at the minimum');
 });
 
+test('the zoom prompt travels as guidance, never as an error', () => {
+  // THE REPORTED BUG, as a source assertion — the same technique the retry
+  // wiring next door uses, and for the same reason: this is about which
+  // ARGUMENT a call passes, which no amount of stubbing a viewer would show.
+  //
+  // `setInstallationStatus(status, error)` writes its second argument straight
+  // to `state.error`, and the Data Layers row prints a non-empty `error` in its
+  // fault slot. Passing the zoom prompt there was the whole of "Sites
+  // militaires shows Loaded Error": the layer was correctly zoom-gated at a
+  // country-wide camera and looked broken for it.
+  assert.match(installationsSource,
+    /setInstallationStatus\('zoom-in', null\)/,
+    'the zoom gate must not write a prompt into state.error');
+  assert.doesNotMatch(installationsSource,
+    /setInstallationStatus\('zoom-in', ['"`]/,
+    'no string may be passed as the error argument of the zoom gate');
+  // And the prompt still has somewhere to be seen.
+  assert.match(installationsSource,
+    /function installationLoadingLabel\(\)[^]*?status === 'zoom-in'[^]*?return '[^']*zoom in/i,
+    'the prompt lives in the guidance slot the row reads');
+});
+
 test('the retry is wired to every lifecycle edge, not just declared', () => {
   assert.match(installationsSource,
     /setInstallationStatus\('unavailable',[^]*?\);\n\s*scheduleUnavailableRetry\(\);/,

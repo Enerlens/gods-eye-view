@@ -3,9 +3,11 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 
 /**
  * Événements routiers (FR) — what the road operators themselves have declared.
@@ -31,13 +33,21 @@ import {
  *   the CAUSE is drawn and the consequences are counted on its card. The rule
  *   and its ordering live in `bisonFuteFeed.js`, under test.
  *
- * • **A segment is a chord, not a route.** A `Linear` location publishes only
- *   its two endpoints — the shape of the road between them is not in this feed
- *   at all, and reconstructing it needs the RRN référentiel Bison Futé supplies
- *   separately. Measured on the same snapshot: 409 segments, median chord
- *   1.77 km, and only 21 longer than 10 km. At the median the chord and the
- *   road are one line; past that the card says so rather than the map implying
- *   a path nobody published.
+ * • **A segment is the ROAD where the record says enough to find it, and a
+ *   chord where it does not.** A `Linear` location publishes its two endpoints
+ *   as coordinates — the shape between them is not in this feed — but it ALSO
+ *   publishes a point-repère address pair on a named route, which is a real
+ *   linear reference. The proxy resolves that pair against the State's own
+ *   survey of the carriageway (`config/rrn_centreline.json`, built by
+ *   `scripts/build-rrn-centreline-pack.mjs`) and hands the layer the tarmac.
+ *   Measured on the 2026-09-01 feed: 168 of 210 segments (80 %) are drawn on
+ *   the road, and the traced line runs a median 1.02× its own chord.
+ *
+ *   The rest keep the chord, and the card keeps saying so. That is the honest
+ *   split — the N126 roadworks near Castres were 37 km of straight line across
+ *   open country for 40 km of road, which is what this fixes; a rockfall whose
+ *   PR addresses disagree with its coordinates is still drawn as the line
+ *   between two published points, because guessing would be worse.
  *
  * • **Planned is not happening.** 68 of the 286 situations had not started yet
  *   — roadworks ordered weeks ahead. They are drawn dimmer, sized smaller, and
@@ -60,6 +70,8 @@ const EVENTS_URL = '/api/bison-fute/events';
 export const ROAD_EVENTS_FR_LAYER_ID = 'road-events-fr';
 const OVERLAY_SOURCE_ID = ROAD_EVENTS_FR_LAYER_ID;
 const SELECTED_OVERLAY_SOURCE_ID = `${ROAD_EVENTS_FR_LAYER_ID}-selected`;
+/** Ambient-label entry-id prefix — the click surface the event's TITLE provides. */
+export const ROAD_EVENT_LABEL_PREFIX = 'road-event-label:';
 /** Bounded ambient-label cohort, matching the sibling alert sources. */
 export const ROAD_EVENTS_FR_OVERLAY_COHORT_LIMIT = 40;
 /** Shared ambient-label paint budget. */
@@ -297,6 +309,33 @@ export function roadEventChordKm(coordinates) {
   return Math.hypot(dx, dy);
 }
 
+/**
+ * Length ALONG a drawn segment, in km.
+ *
+ * `roadEventChordKm` above measures the straight line between the first and
+ * last vertex, which is the right number for a chord and the wrong one for a
+ * traced road: the N126 roadworks are 37 km of chord and 40 km of tarmac, and
+ * a card that printed the chord over a drawing of the road would be describing
+ * a different line than the one on screen.
+ * @param {Array<number>} coordinates Flat `[lon, lat, …]`.
+ * @returns {number}
+ */
+export function roadEventPathKm(coordinates) {
+  if (!Array.isArray(coordinates) || coordinates.length < 4) return 0;
+  let total = 0;
+  for (let i = 2; i < coordinates.length; i += 2) {
+    const lat1 = Number(coordinates[i - 1]);
+    const lat2 = Number(coordinates[i + 1]);
+    const lon1 = Number(coordinates[i - 2]);
+    const lon2 = Number(coordinates[i]);
+    if (![lon1, lat1, lon2, lat2].every(Number.isFinite)) continue;
+    const dy = (lat1 - lat2) * 111.32;
+    const dx = (lon1 - lon2) * 111.32 * Math.cos((lat1 * Math.PI) / 180);
+    total += Math.hypot(dx, dy);
+  }
+  return total;
+}
+
 /** Past this, a straight chord stops being a fair drawing of a road. */
 export const ROAD_EVENT_LONG_CHORD_KM = 10;
 
@@ -401,11 +440,25 @@ export function roadEventDetails(event, nowMs = Date.now()) {
   if (also) lines.push(`Conséquences déclarées : ${also}`);
 
   if (event?.geometry?.kind === 'segment') {
-    const km = roadEventChordKm(event.geometry.coordinates);
-    lines.push(km >= ROAD_EVENT_LONG_CHORD_KM
+    const shaped = event.geometry.shaped === 'carriageway';
+    // Along the road when the road is what is drawn; across the chord when it
+    // is not. Printing one over a drawing of the other describes a line that
+    // is not on the screen.
+    const km = shaped
+      ? roadEventPathKm(event.geometry.coordinates)
+      : roadEventChordKm(event.geometry.coordinates);
+    const distance = km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(km >= 10 ? 0 : 1)} km`;
+    if (shaped) {
+      // The provenance matters as much as the number: this line follows the
+      // State's own survey of the carriageway, resolved from the point-repère
+      // addresses the record publishes. It is not a guess at a route.
+      lines.push(`Section de ${distance} — tracé relevé sur la chaussée`);
+    } else {
       // The honest caveat, and only where it is actually needed.
-      ? `Section de ${km.toFixed(0)} km — extrémités publiées, tracé non fourni`
-      : `Section de ${km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`}`);
+      lines.push(km >= ROAD_EVENT_LONG_CHORD_KM
+        ? `Section de ${distance} — extrémités publiées, tracé non fourni`
+        : `Section de ${distance}`);
+    }
   }
   if (event?.operator) lines.push(`Source : ${event.operator}`);
   if (event?.safety) lines.push('Message lié à la sécurité');
@@ -482,7 +535,7 @@ export function createRoadEventOverlayEntry({ id, position, event }) {
   const category = roadEventCategory(event?.category);
   const severity = ROAD_EVENT_SEVERITIES[String(event?.severity)]?.weight ?? 2;
   return {
-    id: `road-event-label:${id}`,
+    id: `${ROAD_EVENT_LABEL_PREFIX}${id}`,
     position,
     variant: 'label',
     title: roadEventTitle(event),
@@ -492,7 +545,9 @@ export function createRoadEventOverlayEntry({ id, position, event }) {
     priority: category.priority * 1000 + severity * 100 + (event?.safety ? 10 : 0),
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The event's title is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -570,6 +625,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 /**
@@ -752,8 +808,18 @@ export function createRoadEventsFranceLayer({
     _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
     _clickHandler.setInputAction((click) => {
       const id = resolvePick(viewer.scene.pick(click.position));
-      if (id) selectEvent(id);
-      else if (_selectedId) clearSelection();
+      if (id) { selectEvent(id); return; }
+      // The label plane the depth buffer knows nothing about, resolved after
+      // the native pick so a title drawn across a neighbouring event cannot
+      // steal it.
+      const labelled = pickOverlayLabelId(click.position, {
+        sourceId: OVERLAY_SOURCE_ID,
+        prefix: ROAD_EVENT_LABEL_PREFIX,
+        has: (recordId) => _byRenderId.has(recordId),
+        hitTest: overlayHost.hitTest,
+      });
+      if (labelled) { selectEvent(labelled); return; }
+      if (_selectedId) clearSelection();
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
   }

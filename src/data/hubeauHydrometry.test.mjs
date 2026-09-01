@@ -31,6 +31,15 @@ import {
   parseHubeauStations,
   selectHubeauOverlayCohort,
   summarizeHubeauRecords,
+  HUBEAU_HISTORY_WINDOW_MS,
+  HUBEAU_LAYER_ID,
+  HUBEAU_SELECTED_OVERLAY_SOURCE_ID,
+  HUBEAU_SELECTED_OVERLAY_SOURCE_OPTIONS,
+  HUBEAU_SELECTED_COLOR,
+  buildHubeauCard,
+  createHubeauSelectedOverlayEntry,
+  hubeauHistoryRequestUrl,
+  parseHubeauHistory,
 } from './hubeauHydrometry.js';
 
 const OBSERVATIONS = JSON.parse(readFileSync(
@@ -265,7 +274,10 @@ test('overlay entry ranks big rivers above doubtful and stage-only stations', ()
   );
   assert.equal(big.title, 'Le Rhône · 717 m³/s');
   assert.ok(big.priority > gauge.priority);
-  assert.equal(big.interactive, false);
+  // The name is a click surface: without a published hit rectangle, clicking
+  // the label lands on the terrain behind the overlay canvas and dismisses the
+  // selection instead of opening the card.
+  assert.equal(big.interactive, true);
   assert.equal(big.paintLane, 'ambient-label');
   assert.equal(big.id, 'hubeau:A');
 });
@@ -325,15 +337,40 @@ function createHarness({ rectangle, responses } = {}) {
   const hostCalls = [];
   const fetchUrls = [];
   const moveEndListeners = new Set();
+  // The label plane the host would publish hit rectangles for: an entry id
+  // keyed by click position, in the shape `hitTestWorldOverlay` returns.
+  const labelPlane = new Map();
   const overlayHost = {
     setEntries: (...args) => hostCalls.push(['entries', ...args]),
     setVisible: (...args) => hostCalls.push(['visible', ...args]),
     clearSource: (...args) => hostCalls.push(['clear', ...args]),
+    hitTest: (x, y, options = {}) => {
+      const entryId = labelPlane.get(`${x},${y}`);
+      if (!entryId) return null;
+      if (options.sourceId && options.sourceId !== 'hubeau-hydro') return null;
+      return { sourceId: 'hubeau-hydro', entryId, entry: { id: entryId }, rect: { x, y, w: 1, h: 1 } };
+    },
   };
+  let clickListener = null;
+  const clickHandlers = [];
+  const screenSpaceEventHandlerFactory = () => {
+    const handler = {
+      destroyed: false,
+      setInputAction(action, type) {
+        if (type === Cesium.ScreenSpaceEventType.LEFT_CLICK) clickListener = action;
+      },
+      destroy() { handler.destroyed = true; clickListener = null; },
+    };
+    clickHandlers.push(handler);
+    return handler;
+  };
+  let drillPicked = () => [];
   const viewer = {
     scene: {
       globe: { ellipsoid: Cesium.Ellipsoid.WGS84 },
+      canvas: {},
       requestRender() {},
+      drillPick: (position, limit) => drillPicked(position, limit),
       primitives: {
         add(primitive) { primitives.push(primitive); return primitive; },
         remove(primitive) {
@@ -363,7 +400,11 @@ function createHarness({ rectangle, responses } = {}) {
     if (typeof payload?.status === 'number') return { ok: false, status: payload.status };
     return { ok: true, status: 206, json: async () => payload };
   };
-  const layer = createHubeauHydrometryLayer({ overlayHost, now: () => CAPTURE_MS });
+  const layer = createHubeauHydrometryLayer({
+    overlayHost,
+    now: () => CAPTURE_MS,
+    screenSpaceEventHandlerFactory,
+  });
   return {
     layer,
     viewer,
@@ -371,6 +412,20 @@ function createHarness({ rectangle, responses } = {}) {
     hostCalls,
     fetchUrls,
     moveEndListeners,
+    clickHandlers,
+    /** Put one label's hit rectangle at a click position. */
+    placeLabel(x, y, entryId) { labelPlane.set(`${x},${y}`, entryId); },
+    /** What `scene.drillPick()` answers for the next click. */
+    setDrillPick(fn) { drillPicked = fn; },
+    click(x, y) { clickListener?.({ position: { x, y } }); },
+    /** The card currently published on the selected source, or null. */
+    selectionCard() {
+      const last = hostCalls.filter(
+        ([type, source]) => source === 'hubeau-hydro-selected'
+          && (type === 'entries' || type === 'clear'),
+      ).pop();
+      return last?.[0] === 'entries' ? last[2]?.[0] || null : null;
+    },
     restore() { globalThis.fetch = originalFetch; },
   };
 }
@@ -497,13 +552,22 @@ test('camera motion refreshes through a debounce, and disable unsubscribes', asy
     h.layer.init(h.viewer);
     h.layer.enable(h.viewer);
     assert.equal(h.moveEndListeners.size, 1, 'enable subscribes to camera settle');
+    const disableFrom = h.hostCalls.length;
     h.layer.disable(h.viewer);
     assert.equal(h.moveEndListeners.size, 0, 'disable unsubscribes');
     assert.equal(h.primitives[0].show, false);
-    assert.deepEqual(h.hostCalls.slice(-2), [
-      ['clear', 'hubeau-hydro'],
-      ['visible', 'hubeau-hydro', false],
-    ]);
+    // Asserted by INTENT rather than by tail position: disable now also tears
+    // down the selected-card source, so "the last two calls" stopped being a
+    // stable way to say "the layer let go of the overlay". What matters is that
+    // both sources end up cleared and hidden, in any order.
+    const onDisable = h.hostCalls.slice(disableFrom).map((call) => call.join(':'));
+    assert.ok(onDisable.includes('clear:hubeau-hydro'), onDisable.join(' | '));
+    assert.ok(onDisable.includes('visible:hubeau-hydro:false'), onDisable.join(' | '));
+    assert.ok(
+      onDisable.includes('clear:hubeau-hydro-selected'),
+      `the selected card must not survive a disabled layer — ${onDisable.join(' | ')}`,
+    );
+    assert.ok(onDisable.includes('visible:hubeau-hydro-selected:false'), onDisable.join(' | '));
   } finally {
     h.restore();
   }
@@ -524,6 +588,284 @@ test('analyst records follow the enabled state, and destroy tears the layer down
     h.layer.destroy(h.viewer);
     assert.equal(h.primitives.length, 0);
     assert.deepEqual(h.layer.getAnalystRecords(), []);
+  } finally {
+    h.restore();
+  }
+});
+
+// ── The card the layer never had ────────────────────────────────────────────
+
+const TARASCON = Object.freeze({
+  code: 'V720001002',
+  name: 'Le Rhône à Tarascon',
+  river: 'Le Rhône',
+  commune: 'TARASCON',
+  departement: 'BOUCHES-DU-RHONE',
+  openedYear: 1994,
+  influence: 'Nulle',
+  qualification: 'Donnée brute / Non qualifiée',
+  gaugeZeroM: null,
+  reading: { kind: 'Q', value: 617, text: '617 m³/s', freshness: 'live', doubtful: false },
+});
+
+test('the reference request asks for the fields a card needs, and none it must not show', () => {
+  const url = hubeauStationsRequestUrl({ south: 48, west: 2, north: 49, east: 3 });
+  const fields = new URL(url).searchParams.get('fields').split(',');
+  // Without the two coordinate fields the API returns geometry:null for every
+  // feature and silently empties the layer.
+  assert.ok(fields.includes('longitude_station') && fields.includes('latitude_station'));
+  for (const needed of [
+    'code_site', 'libelle_commune', 'libelle_departement', 'date_ouverture_station',
+  ]) {
+    assert.ok(fields.includes(needed), `missing ${needed}`);
+  }
+  // `type_station` is 91.7% the single value STD and its documented enum does
+  // not match the data; `descriptif_station` is 33.9%-filled free text whose
+  // commonest values are 'Aval', 'Pont' and '2'. Neither is an operator or a
+  // hardware description, however much they look like one.
+  assert.ok(!fields.includes('type_station'));
+  assert.ok(!fields.includes('descriptif_station'));
+});
+
+test('the station parser carries the new reference fields, and tolerates their absence', () => {
+  const parsed = parseHubeauStations({
+    features: [
+      {
+        properties: {
+          code_station: 'V720001002',
+          libelle_station: 'Le Rhône à Tarascon',
+          libelle_cours_eau: 'Le Rhône',
+          code_site: 'V7200010',
+          libelle_commune: 'TARASCON',
+          libelle_departement: 'BOUCHES-DU-RHONE',
+          date_ouverture_station: '1994-03-01T00:00:00Z',
+          influence_locale_station: 'Nulle',
+          altitude_ref_alti_station: 6.5,
+        },
+      },
+      { properties: { code_station: 'BARE' } },
+    ],
+  });
+  const full = parsed.get('V720001002');
+  assert.equal(full.commune, 'TARASCON');
+  assert.equal(full.siteCode, 'V7200010');
+  // A YEAR, not a timestamp: "gauging since 1994" is the claim the field
+  // supports; a day and an hour would suggest an unbroken record from that
+  // instant, which a hydrometric station does not have.
+  assert.equal(full.openedYear, 1994);
+  assert.equal(full.gaugeZeroM, 6.5);
+  const bare = parsed.get('BARE');
+  assert.equal(bare.name, 'BARE', 'a nameless station falls back to its code');
+  for (const key of ['river', 'commune', 'departement', 'openedYear', 'gaugeZeroM']) {
+    assert.equal(bare[key], null, key);
+  }
+});
+
+test('the history request is bounded, ordered, and asks for no field list', () => {
+  const since = Date.UTC(2026, 7, 31, 15, 0, 0);
+  const url = new URL(hubeauHistoryRequestUrl('V720001002', 'Q', since));
+  assert.equal(url.searchParams.get('code_entite'), 'V720001002');
+  assert.equal(url.searchParams.get('grandeur_hydro'), 'Q');
+  // Left to right, like a hydrograph.
+  assert.equal(url.searchParams.get('sort'), 'asc');
+  // The endpoint keeps a rolling ~30-day archive per station; without a lower
+  // bound this pages through a month to show a day.
+  assert.equal(url.searchParams.get('date_debut_obs'), new Date(since).toISOString());
+  // `fields` measured 2.18 s / 17 KB against 0.49 s / 146 KB without it —
+  // bandwidth is not the scarce thing on this call.
+  assert.equal(url.searchParams.get('fields'), null);
+  // Anything that is not H is discharge.
+  assert.equal(new URL(hubeauHistoryRequestUrl('X', 'H', since)).searchParams.get('grandeur_hydro'), 'H');
+  assert.equal(new URL(hubeauHistoryRequestUrl('X', null, since)).searchParams.get('grandeur_hydro'), 'Q');
+});
+
+test('history is converted into the reading own unit, and a null stays a gap', () => {
+  // The API publishes discharge in litres per second and stage in millimetres,
+  // exactly as the live census does. A series left raw would draw the right
+  // SHAPE under a wrong axis and print nonsense either side of it.
+  const q = parseHubeauHistory({
+    data: [
+      { resultat_obs: 617000 },
+      { resultat_obs: null },
+      { resultat_obs: 683000 },
+      { resultat_obs: 'nope' },
+    ],
+  }, 'Q');
+  assert.deepEqual(q.values, [617, null, 683, null]);
+  assert.equal(q.min, 617);
+  assert.equal(q.max, 683);
+  assert.equal(q.count, 2, 'gaps are kept in place but never counted as readings');
+  const h = parseHubeauHistory({ data: [{ resultat_obs: 1500 }] }, 'H');
+  assert.deepEqual(h.values, [1.5]);
+  for (const bad of [null, undefined, {}, { data: 'rows' }]) {
+    assert.deepEqual(parseHubeauHistory(bad, 'Q'), { values: [], min: null, max: null, count: 0 });
+  }
+});
+
+test('the card answers more than the one number it used to', () => {
+  const lines = buildHubeauCard(TARASCON).split('\n');
+  assert.equal(lines[0], 'Le Rhône à Tarascon');
+  const body = lines.slice(1).join('\n');
+  assert.match(body, /617 m³\/s · débit/);
+  assert.match(body, /Le Rhône/);
+  assert.match(body, /TARASCON · BOUCHES-DU-RHONE/);
+  assert.match(body, /station ouverte en 1994/);
+  // Raw and unqualified, and Vigicrues is the official channel — the module
+  // header has always said so, and now the card says it where it matters.
+  assert.match(body, /Vigicrues reste le canal officiel/);
+});
+
+test('the hydrograph arrives into a card that was already complete without it', () => {
+  const values = Array.from({ length: 144 }, (_, i) => 600 + i);
+  const withHistory = buildHubeauCard(TARASCON, {
+    values, min: 600, max: 743, count: 144,
+  });
+  assert.match(withHistory, /↻ 24 h [▁-█·▽]+/u);
+  // The sparkline is zero-based, so a flat river reads flat and hides its
+  // amplitude. This line is where the amplitude goes.
+  assert.match(withHistory, /de 600 m³\/s à 743 m³\/s sur 24 h/);
+  // Pending and failed are both states a reader can act on, and neither
+  // removes anything above them.
+  assert.match(buildHubeauCard(TARASCON, { pending: true }), /↻ 24 h …/);
+  assert.match(buildHubeauCard(TARASCON, { failed: true }), /historique 24 h indisponible/);
+  for (const history of [null, { pending: true }, { failed: true }]) {
+    assert.match(buildHubeauCard(TARASCON, history), /station ouverte en 1994/);
+  }
+});
+
+test('the card refuses an absolute altitude and a historical percentile', () => {
+  const stage = buildHubeauCard({
+    ...TARASCON,
+    gaugeZeroM: 6.5,
+    reading: { kind: 'H', value: 2.4, text: '2,40 m', freshness: 'live', doubtful: false },
+  });
+  // The gauge zero is shown as the DATUM the stage is counted from, never
+  // added to it: checked over 1 756 stations, gauge zero + stage disagrees with
+  // the site altitude by a median 1.1 m but a p90 of 30.8 m and a max of 20 km,
+  // across at least six altimetric systems.
+  assert.match(stage, /zéro de l'échelle à 6\.5 m/);
+  assert.doesNotMatch(stage, /altitude absolue|au-dessus du niveau de la mer/i);
+  // A percentile is two cheap requests away and would compare an INSTANTANEOUS
+  // reading against a distribution of DAILY MEANS across all seasons.
+  assert.doesNotMatch(stage, /percentile|centile|record|plus haut depuis/i);
+  // A discharge station is not asked about its stage datum.
+  assert.doesNotMatch(buildHubeauCard({ ...TARASCON, gaugeZeroM: 6.5 }), /zéro de l'échelle/);
+});
+
+test('the producer own doubt and its own caveats reach the card', () => {
+  const doubtful = buildHubeauCard({
+    ...TARASCON,
+    reading: { ...TARASCON.reading, doubtful: true },
+  });
+  assert.match(doubtful, /signalé douteux par le producteur/);
+  const influenced = buildHubeauCard({ ...TARASCON, influence: 'Forte' });
+  assert.match(influenced, /influence locale : Forte/);
+  // 'Nulle' is the majority value and says nothing.
+  assert.doesNotMatch(buildHubeauCard(TARASCON), /influence locale/);
+});
+
+test('a station with nothing but a code still yields a card', () => {
+  const lines = buildHubeauCard({ code: 'X000000001', reading: {} }).split('\n');
+  assert.equal(lines[0], 'X000000001');
+  for (const line of lines) assert.ok(!/undefined|null|NaN/.test(line), line);
+  assert.ok(buildHubeauCard(null).length > 0);
+});
+
+test('the selected entry is protected, on its own source, and one card deep', () => {
+  const position = Cesium.Cartesian3.fromDegrees(4.66, 43.79);
+  const entry = createHubeauSelectedOverlayEntry(TARASCON, position);
+  assert.equal(entry.id, 'hubeau:V720001002');
+  assert.equal(entry.variant, 'selected');
+  assert.equal(entry.protected, true);
+  assert.equal(entry.priority, Number.MAX_SAFE_INTEGER);
+  assert.equal(entry.accent, HUBEAU_SELECTED_COLOR);
+  assert.equal(entry.title, 'Le Rhône à Tarascon');
+  assert.ok(entry.details.length >= 3);
+  assert.equal(createHubeauSelectedOverlayEntry(null, position), null);
+  assert.equal(createHubeauSelectedOverlayEntry(TARASCON, null), null);
+  assert.equal(HUBEAU_SELECTED_OVERLAY_SOURCE_ID, 'hubeau-hydro-selected');
+  assert.deepEqual({ ...HUBEAU_SELECTED_OVERLAY_SOURCE_OPTIONS }, {
+    cohortLimit: 1, collisionCapacity: 1, moving: false,
+  });
+  assert.equal(HUBEAU_LAYER_ID, 'hubeau-hydro');
+  assert.equal(HUBEAU_HISTORY_WINDOW_MS, 24 * 60 * 60_000);
+});
+
+// ── The name is a click surface ─────────────────────────────────────────────
+//
+// A gauge dot is 5–15 px across; the name floating above it is several times
+// that, and it is what says which river this is. Labels paint onto a
+// `pointer-events: none` canvas, so before they published a hit rectangle
+// every click aimed at a name landed on the terrain behind it and dismissed
+// the selection — the opposite of the intent.
+
+async function clickableHarness() {
+  const h = createHarness({
+    rectangle: IDF,
+    responses: { stations: STATIONS_GEOJSON, observations: OBSERVATIONS },
+  });
+  h.layer.init(h.viewer);
+  h.layer.enable(h.viewer);
+  await h.layer.update(h.viewer);
+  return h;
+}
+
+test('clicking a station NAME selects it, not just the dot', async () => {
+  const h = await clickableHarness();
+  try {
+    h.placeLabel(640, 320, 'hubeau:F447000302');
+    h.click(640, 320);
+    const card = h.selectionCard();
+    assert.ok(card, 'a label click must open the station card');
+    assert.equal(card.title, "L'Yerres à Courtomer");
+    assert.equal(card.variant, 'selected');
+    // The card is not a second click surface stacked over the labels behind it.
+    assert.equal(card.interactive, false);
+  } finally {
+    h.restore();
+  }
+});
+
+test('the dot under the cursor wins over a label drawn across it', async () => {
+  const h = await clickableHarness();
+  try {
+    // A neighbour's name painted over this station's dot must not steal the
+    // click: the depth-tested drill pick is resolved first, on purpose.
+    h.placeLabel(400, 200, 'hubeau:F459000101');
+    h.setDrillPick(() => [{ primitive: { id: 'hubeau:F447000302' } }]);
+    h.click(400, 200);
+    assert.equal(h.selectionCard()?.title, "L'Yerres à Courtomer");
+  } finally {
+    h.restore();
+  }
+});
+
+test('a label left over from a station that is gone selects nothing', async () => {
+  const h = await clickableHarness();
+  try {
+    h.placeLabel(500, 250, 'hubeau:F447000302');
+    h.click(500, 250);
+    assert.ok(h.selectionCard());
+    // Hit rectangles are pooled and published per painted frame, so one can
+    // outlive its record by a frame. That is a miss, not a selection.
+    h.placeLabel(500, 250, 'hubeau:NOT-REPORTING');
+    h.click(500, 250);
+    assert.equal(h.selectionCard(), null, 'and a miss still clears, like empty space');
+  } finally {
+    h.restore();
+  }
+});
+
+test('a click on nothing still clears the card, and disable drops the handler', async () => {
+  const h = await clickableHarness();
+  try {
+    h.placeLabel(640, 320, 'hubeau:F447000302');
+    h.click(640, 320);
+    assert.ok(h.selectionCard());
+    h.click(12, 12);
+    assert.equal(h.selectionCard(), null);
+    h.layer.disable(h.viewer);
+    assert.equal(h.clickHandlers.at(-1).destroyed, true);
   } finally {
     h.restore();
   }

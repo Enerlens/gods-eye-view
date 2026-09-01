@@ -21,9 +21,11 @@ import {
 } from './satelliteClass.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   clearTrackedSubjectContext,
   getContextStore,
@@ -57,6 +59,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 let _overlayHost = DEFAULT_OVERLAY_HOST;
 const ORBIT_PATH_STEPS = 180;  // points per orbital path
@@ -319,7 +322,10 @@ export function createIssOverlayEntry(position) {
     priority: 1000,
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // "ISS" is a click surface, not a caption. The station's point is a few
+    // pixels of a moving target at orbital speed; the word beside it is the
+    // one thing on screen anyone can actually hit. See `overlayLabelPick.js`.
+    interactive: true,
     distanceScale: {
       near: 1_000_000,
       nearValue: 1,
@@ -2240,6 +2246,19 @@ function _installClickHandler(viewer) {
     if (picked) {
       const pickedId = resolvePickId(picked);
       if (pickedId && isOwnedByOtherLayer('satellites', pickedId)) return;
+    }
+
+    // The label plane, which the depth buffer knows nothing about. Resolved
+    // after the native pick so a satellite under the cursor still wins.
+    const labelled = pickOverlayLabelId(click.position, {
+      sourceId: ISS_OVERLAY_SOURCE_ID,
+      has: (noradId) => _catalog.has(Number(noradId)),
+      hitTest: _overlayHost.hitTest,
+    });
+    if (labelled !== null) {
+      _cancelPendingTrackingRestore();
+      _trackSatellite(Number(labelled), { origin: 'user' });
+      return;
     }
 
     // Clicked empty space — deselect

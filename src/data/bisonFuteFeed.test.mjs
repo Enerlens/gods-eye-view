@@ -173,6 +173,9 @@ test('roadworks ordered for October are planned, not happening now', () => {
   assert.deepEqual(projected.counts, {
     situations: 9, records: 16, undrawable: 0, points: 6, segments: 3,
     active: 4, planned: 2, ended: 3, safety: 4,
+    // Zero here on purpose: this fixture is projected WITHOUT a carriageway
+    // tracer, so every segment is still the chord between its published ends.
+    shaped: 0,
   });
 });
 

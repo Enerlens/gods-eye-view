@@ -392,6 +392,20 @@ export const DATA_CREDITS = [
       'geocoded only to their commune, and their cards say that too.',
   },
   {
+    key: 'sup-fr',
+    html:
+      'French higher education: <em>Effectifs d&rsquo;&eacute;tudiants inscrits &mdash; d&eacute;tail par '
+      + '&eacute;tablissements</em>, published by the '
+      + '<a href="https://data.enseignementsup-recherche.gouv.fr/explore/dataset/fr-esr-atlas_regional-effectifs-d-etudiants-inscrits-detail_etablissements/" target="_blank" rel="noopener">Minist&egrave;re de l&rsquo;Enseignement sup&eacute;rieur et de la Recherche</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), '
+      + 'read at the newest published rentr&eacute;e. 1 665 of its 6 294 establishments carry no '
+      + 'coordinate; 977 of those are placed from the same ministry&rsquo;s '
+      + '<a href="https://data.enseignementsup-recherche.gouv.fr/explore/dataset/fr-esr-cartographie_formations_parcoursup/" target="_blank" rel="noopener"><em>Cartographie des formations Parcoursup</em></a> '
+      + '(same licence), which also supplies the establishment names and the list of formations on '
+      + 'each card. A borrowed coordinate says so on its card, and the 688 establishments neither '
+      + 'file can place are reported rather than invented.',
+  },
+  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +

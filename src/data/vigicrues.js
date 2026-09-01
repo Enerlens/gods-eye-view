@@ -63,12 +63,49 @@ export const VIGICRUES_OVERLAY_COLLISION_CAPACITY = 48;
 const UPDATE_INTERVAL_MS = 300000;
 
 /**
+ * VISIBILITY WITHOUT RECOLOURING — WHICH LEAVES EXACTLY TWO LEVERS.
+ * ----------------------------------------------------------------
+ * The reaches were drawn as flat 1.4–6 px lines at alphas as low as 0.5, and
+ * disappeared into every basemap we ship: the dark official green over IGN
+ * ortho's dark vegetation, and all four hues over Plan IGN's pale hydrography
+ * — which is drawn in the same blues and greens, in the same places, because
+ * it is the same rivers.
+ *
+ * The four colours below cannot move. They are the swatches the service itself
+ * publishes, and Licence Ouverte 2.0 forbids distorting the meaning of the
+ * information it covers — recolouring a public-safety signal is exactly that.
+ * `vigicrues.test.mjs` pins the four hex values for this reason.
+ *
+ * A dark casing under each reach would have been the third lever, and the gas
+ * layer next door built and measured one first. It scored WORSE than simply
+ * widening the flat stroke: `msaaSamples: 4` under Cesium's FXAA stage leaves
+ * a cased core largely edge-blend, and a hue leaves a ±24 tolerance at only
+ * ~10 % casing contamination. Applied here that is not merely a worse render,
+ * it is a licence problem — a casing that dims a vigilance colour toward black
+ * is the distortion the licence prohibits, reached through a rendering side
+ * door. See the measured table in `gasFrance.js`.
+ *
+ * So the two levers that survive are ALPHA and WIDTH, and both are used below.
+ */
+
+/**
  * The four vigilance levels, in the state's own vocabulary and colours.
  * `NivInfViCr` carries the level as a small integer; anything outside 1..4
  * (including the `null` the feed has been observed to emit for a reach with
  * no current assessment) is UNKNOWN and is not drawn as green — inventing a
  * reassuring colour for missing data is the one failure mode a vigilance map
  * must not have.
+ *
+ * The ladder stays strictly monotonic in `width`: severity is legible from
+ * weight alone, before any colour is read, which is what a colour-blind
+ * visitor and a screenshot at low zoom both depend on.
+ *
+ * GREEN IS DELIBERATELY THE QUIETEST THING THAT IS STILL VISIBLE. It is the
+ * overwhelming majority of the feed on an ordinary day — 337 of 337 reaches in
+ * the snapshot this was tuned against — so it gets the alpha that makes it
+ * findable and none of the weight that would make a calm country look like an
+ * episode. The gap between green and yellow is therefore the widest step on
+ * the ladder, on purpose: "something is happening" has to break the pattern.
  */
 export const VIGICRUES_LEVELS = Object.freeze({
   1: Object.freeze({
@@ -77,8 +114,12 @@ export const VIGICRUES_LEVELS = Object.freeze({
     label: 'VERT',
     meaning: 'Pas de vigilance particulière requise',
     color: '#009245',
-    alpha: 0.5,
-    width: 1.6,
+    // Was 0.5, which halved the contrast of the darkest hue in the set
+    // against the darkest basemap we ship — a dark green at half opacity over
+    // IGN ortho is not a quiet signal, it is an absent one. Quietness is the
+    // job of the WIDTH here, which stays the narrowest on the ladder.
+    alpha: 0.88,
+    width: 3.2,
   }),
   2: Object.freeze({
     level: 2,
@@ -86,8 +127,8 @@ export const VIGICRUES_LEVELS = Object.freeze({
     label: 'JAUNE',
     meaning: 'Risque de crue ou de montée rapide et dangereuse des eaux',
     color: '#fcff19',
-    alpha: 0.95,
-    width: 3,
+    alpha: 1,
+    width: 5,
   }),
   3: Object.freeze({
     level: 3,
@@ -95,8 +136,8 @@ export const VIGICRUES_LEVELS = Object.freeze({
     label: 'ORANGE',
     meaning: 'Risque de crue génératrice de débordements importants',
     color: '#ee5e2e',
-    alpha: 0.97,
-    width: 4.5,
+    alpha: 1,
+    width: 6.2,
   }),
   4: Object.freeze({
     level: 4,
@@ -105,19 +146,24 @@ export const VIGICRUES_LEVELS = Object.freeze({
     meaning: 'Risque de crue majeure — menace directe et généralisée',
     color: '#ff0000',
     alpha: 1,
-    width: 6,
+    width: 7.4,
   }),
 });
 
-/** Presentation for a reach whose level the feed did not supply. */
+/**
+ * Presentation for a reach whose level the feed did not supply.
+ *
+ * Stays the narrowest and faintest thing on the map — narrower than green —
+ * because "not published" must never out-shout "published as calm".
+ */
 export const VIGICRUES_UNKNOWN_LEVEL = Object.freeze({
   level: null,
   key: 'unknown',
   label: 'INCONNU',
   meaning: 'Niveau non publié',
   color: '#8a93a6',
-  alpha: 0.45,
-  width: 1.4,
+  alpha: 0.7,
+  width: 2.2,
 });
 
 /** A reach at or above this level is an ALERT: wider stroke, label, counted. */
@@ -437,15 +483,28 @@ export function createVigicruesLayer({
     _viewer?.scene?.requestRender?.();
   }
 
+  /**
+   * The material for one level, built once and shared by every reach at that
+   * level — five objects per session rather than one per reach per rebuild.
+   */
+  const levelMaterials = new Map();
+  function levelMaterialFor(level) {
+    const existing = levelMaterials.get(level.key);
+    if (existing) return existing;
+    const material = new Cesium.ColorMaterialProperty(
+      Cesium.Color.fromCssColorString(level.color).withAlpha(level.alpha),
+    );
+    levelMaterials.set(level.key, material);
+    return material;
+  }
+
   /** Rebuild every reach entity from `_records`. */
   function rebuildEntities() {
     if (!_dataSource) return;
     _dataSource.entities.removeAll();
     for (const record of _records) {
       const { level } = record;
-      const material = Cesium.Color
-        .fromCssColorString(level.color)
-        .withAlpha(level.alpha);
+      const material = levelMaterialFor(level);
       for (let part = 0; part < record.parts.length; part++) {
         const coordinates = record.parts[part];
         if (!Array.isArray(coordinates) || coordinates.length < 2) continue;
@@ -460,7 +519,7 @@ export function createVigicruesLayer({
             // clamped ground geometry re-tessellates it every frame, the
             // lesson the earthquake layer paid for in measured milliseconds.
             width: level.width,
-            material: new Cesium.ColorMaterialProperty(material),
+            material,
             clampToGround: true,
             classificationType: _classificationType,
           },

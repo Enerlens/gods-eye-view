@@ -247,6 +247,27 @@ const LAYER_ALIASES = new Map([
   ['colleges', 'schools-fr'],
   ['lycees', 'schools-fr'],
   ['education', 'schools-fr'],
+  ['universities', 'sup-fr'],
+  ['university', 'sup-fr'],
+  ['universites', 'sup-fr'],
+  ['universités', 'sup-fr'],
+  ['fac', 'sup-fr'],
+  ['facs', 'sup-fr'],
+  ['campus', 'sup-fr'],
+  ['higher education', 'sup-fr'],
+  ['enseignement superieur', 'sup-fr'],
+  ['enseignement supérieur', 'sup-fr'],
+  ['superieur', 'sup-fr'],
+  ['supérieur', 'sup-fr'],
+  ['students', 'sup-fr'],
+  ['etudiants', 'sup-fr'],
+  ['étudiants', 'sup-fr'],
+  ['grandes ecoles', 'sup-fr'],
+  ['grandes écoles', 'sup-fr'],
+  ['bts', 'sup-fr'],
+  ['cpge', 'sup-fr'],
+  ['prepas', 'sup-fr'],
+  ['prépas', 'sup-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -3404,6 +3425,7 @@ function layerTitle(layerId) {
   if (layerId === 'irve-fr') return 'Charge Point';
   if (layerId === 'cadastre-fr') return 'Parcel';
   if (layerId === 'schools-fr') return 'School';
+  if (layerId === 'sup-fr') return 'Campus';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';

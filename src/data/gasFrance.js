@@ -6,9 +6,11 @@ import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   GAS_INJECTION_COLOR,
   GAS_NETWORK_OPERATORS,
@@ -76,6 +78,8 @@ export const GAS_FR_LAYER_ID = 'gas-fr';
 export const GAS_FR_OVERLAY_SOURCE_ID = 'gas-fr';
 /** Selected-object card, on its own protected source. */
 export const GAS_FR_SELECTED_OVERLAY_SOURCE_ID = 'gas-fr-selected';
+/** Ambient-label entry-id prefix — the click surface the station's NAME provides. */
+export const GAS_FR_LABEL_PREFIX = 'gas-fr-label:';
 /** There are 14 stations; the cohort limit is the whole set, not a sample. */
 export const GAS_FR_OVERLAY_COHORT_LIMIT = 16;
 /** Shared ambient-label paint budget, matching the sibling French sources. */
@@ -119,10 +123,63 @@ const SELECTED_POINT_PX = 20;
 /** Transmission-connected injection points draw solid; distribution ones dim. */
 const TIER_ALPHA = Object.freeze({ transport: 1, distribution: 0.55 });
 
-/** Stroke widths — quiet infrastructure, not a warning. */
-const STROKE_WIDTH = 1.8;
-const STROKE_ALPHA = 0.85;
-const SELECTED_STROKE_WIDTH = 4;
+/**
+ * WHY THE TRACE IS WIDER AND LOUDER, AND WHY IT IS STILL FLAT.
+ *
+ * A 1.8 px stroke at 0.85 alpha in a mid-chroma pastel is legible against a
+ * basemap you control and against nothing else. This layer draws over four
+ * surfaces we do not control — OSM, Plan IGN, IGN ortho and Bing aerial — and
+ * ortho is the one that beats a pastel outright: aerial imagery supplies every
+ * value in the frame at once, so the colour has nothing to be lighter or
+ * darker than, and 36 106 km of network reads as a faint tint on trees.
+ *
+ * ── A DARK CASING WAS BUILT AND MEASURED AGAINST THIS ───────────────────────
+ *
+ * The obvious fix is the one a printed map uses: a near-black casing under the
+ * colour, so the pipe's neighbour is a known dark whatever it is drawn over.
+ * `PolylineOutlineMaterialProperty` does that and DOES work on clamped ground
+ * polylines — Cesium detects the `v_width` varying and defines `WIDTH_VARYING`
+ * for the shadow-volume shader — so this was a real option, not a dead end.
+ *
+ * It was measured with `scripts/qa-gas-fr.mjs` §ii-bis, which counts how many
+ * pixels of an operator's OWN colour reach the canvas. Teréga, same view, same
+ * machine, headless SwiftShader:
+ *
+ *     baseline (1.8 px pastel)          0 px
+ *     cased, 1.8 px casing in 4.4 px   16 px
+ *     cased, 1.6 px casing in 6.0 px   84 px
+ *     FLAT, 5 px, brighter hue        127 px
+ *
+ * Flat wins, and the reason is mechanical: this scene runs `msaaSamples: 4`
+ * under Cesium's FXAA stage, so a core pinned between two near-black edges is
+ * largely edge-blend — and both operator hues fall outside that harness's ±24
+ * tolerance once a pixel is only ~10 % contaminated by the casing colour. The
+ * casing buys contrast against the basemap and spends it against the colour.
+ *
+ * NOTE ON THAT HARNESS: §ii-bis does not currently PASS on this machine in any
+ * configuration, baseline included — it reports 0 → 0 for both operators
+ * before any of this changed. It is a pre-existing headless failure, so the
+ * numbers above are used as a RELATIVE measure between variants, which is what
+ * they are good for, and not as a claim that the section is green.
+ *
+ * Flat also keeps the whole network in ONE ground-polyline primitive: Cesium
+ * exempts `ColorMaterialProperty` from per-material batching and carries the
+ * colour as a per-instance attribute, where an outline material splits it per
+ * operator. So the two levers used here are the two that survived measurement
+ * — more chroma (see `GAS_NETWORK_OPERATORS`) and more width.
+ */
+
+/**
+ * Stroke width — quiet infrastructure, not a warning, but present.
+ *
+ * 5 px against the 1.8 px it replaces. Exported because the selected stroke has
+ * to stay strictly above it or a picked pipe stops reading as picked, and that
+ * invariant is asserted rather than commented.
+ */
+export const GAS_STROKE_WIDTH_PX = 5;
+const STROKE_ALPHA = 0.95;
+/** Comfortably clear of GAS_STROKE_WIDTH_PX, so a picked pipe reads as picked. */
+const SELECTED_STROKE_WIDTH = 8;
 
 /**
  * `MAP_STACKS` ids that render imagery on the SHOWN Cesium globe. An explicit
@@ -160,6 +217,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 /**
@@ -303,7 +361,7 @@ export function createGasSelectedOverlayEntry(record) {
  */
 export function createGasPlantOverlayEntry(plant, position) {
   return {
-    id: `gas-fr-label:${plant.id}`,
+    id: `${GAS_FR_LABEL_PREFIX}${plant.id}`,
     position,
     variant: 'label',
     title: `${plant.name} · ${formatMw(plant.mw)}`,
@@ -312,7 +370,9 @@ export function createGasPlantOverlayEntry(plant, position) {
     priority: Math.round(Number.isFinite(plant.mw) ? plant.mw : 0),
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The station's name is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -417,6 +477,30 @@ function sitePosition(site) {
   return Cesium.Cartesian3.fromDegrees(site.lon, site.lat, height);
 }
 
+/** The selected-pipe material, built once. */
+const SELECTED_PIPE_MATERIAL = new Cesium.ColorMaterialProperty(
+  Cesium.Color.fromCssColorString(SELECTED_COLOR),
+);
+
+/**
+ * ONE material per operator, for the whole session.
+ *
+ * Built at module load rather than per rebuild because the palette is frozen
+ * at import: `GAS_NETWORK_OPERATORS` is `Object.freeze`d, so there is nothing a
+ * later rebuild could produce that this map does not already hold. Exported so
+ * the drawing contract — one material per operator, each carrying that
+ * operator's published hue unmodified — is assertable without a viewer.
+ * @type {ReadonlyMap<string, Cesium.ColorMaterialProperty>}
+ */
+export const GAS_OPERATOR_MATERIALS = new Map(
+  Object.keys(GAS_NETWORK_OPERATORS).map((id) => [
+    id,
+    new Cesium.ColorMaterialProperty(
+      Cesium.Color.fromCssColorString(GAS_NETWORK_OPERATORS[id].color).withAlpha(STROKE_ALPHA),
+    ),
+  ]),
+);
+
 /**
  * Build the clamped ground strokes, ONCE.
  *
@@ -433,12 +517,7 @@ function buildNetwork(payload) {
   const strokes = Array.isArray(payload?.strokes) ? payload.strokes : [];
   // One material per operator, shared by every stroke it owns: they are one
   // network, not six thousand independently coloured lines.
-  const materials = new Map();
-  for (const id of Object.keys(GAS_NETWORK_OPERATORS)) {
-    materials.set(id, new Cesium.ColorMaterialProperty(
-      Cesium.Color.fromCssColorString(GAS_NETWORK_OPERATORS[id].color).withAlpha(STROKE_ALPHA),
-    ));
-  }
+  const materials = GAS_OPERATOR_MATERIALS;
   // 7 199 adds against a live entity collection is 7 199 collection-changed
   // events, each one waking the geometry visualizer for a single stroke.
   // Suspended, the whole network lands as one batch.
@@ -456,7 +535,7 @@ function buildNetwork(payload) {
       id,
       polyline: {
         positions: Cesium.Cartesian3.fromDegreesArray(coordinates),
-        width: STROKE_WIDTH,
+        width: GAS_STROKE_WIDTH_PX,
         material,
         clampToGround: true,
         classificationType: _classificationType,
@@ -588,7 +667,7 @@ function restoreRecordStyle(record) {
   if (record.kind === 'pipe') {
     if (record.entity?.polyline) {
       record.entity.polyline.material = record.baseMaterial;
-      record.entity.polyline.width = STROKE_WIDTH;
+      record.entity.polyline.width = GAS_STROKE_WIDTH_PX;
     }
     return;
   }
@@ -611,7 +690,7 @@ function selectObject(id) {
   const selected = Cesium.Color.fromCssColorString(SELECTED_COLOR);
   if (record.kind === 'pipe') {
     if (record.entity?.polyline) {
-      record.entity.polyline.material = new Cesium.ColorMaterialProperty(selected);
+      record.entity.polyline.material = SELECTED_PIPE_MATERIAL;
       record.entity.polyline.width = SELECTED_STROKE_WIDTH;
     }
   } else if (record.point) {
@@ -663,6 +742,18 @@ function installClickHandler(viewer) {
         if (!record.position) return;
       }
       selectObject(id);
+      return;
+    }
+    // The label plane the depth buffer knows nothing about, resolved after the
+    // native pick so a name drawn across a neighbouring site cannot steal it.
+    const labelled = pickOverlayLabelId(click.position, {
+      sourceId: GAS_FR_OVERLAY_SOURCE_ID,
+      prefix: GAS_FR_LABEL_PREFIX,
+      has: (recordId) => _records.has(recordId),
+      hitTest: _overlayHost.hitTest,
+    });
+    if (labelled) {
+      selectObject(labelled);
       return;
     }
     if (_selectedId) clearSelection();

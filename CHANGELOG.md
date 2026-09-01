@@ -181,6 +181,68 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
     arrondissements at all. All are carried as opaque strings.
 
 - Added the **Bornes IRVE** layer — every public EV charge point France has
+- **Enseignement supérieur (FR) — the level the schools layer stops before.**
+  The *Annuaire de l'éducation* ends at the baccalauréat: measured 2026-09-01,
+  its `type_etablissement` has eight values and not one of them is a
+  university, an IUT, an école d'ingénieurs, an école de commerce, an IFSI or a
+  school of architecture. Joining the two registers on the UAI measures the
+  hole — of the 6 509 establishments the ministry's Parcoursup cartography
+  lists for the 2026 session, **3 492 appear nowhere in the Annuaire**. The new
+  layer draws the MESR's own *Effectifs d'étudiants inscrits — détail par
+  établissements* (Licence Ouverte 2.0, rentrée 2024): **6 294 establishments,
+  6 914 sites, 2 960 012 students placed**, coloured by seven bands folded from
+  the register's 14 published categories and sized by the students counted at
+  that campus.
+- **No thinning and no sampling, because the whole register fits.** Resolved to
+  sites it is **0.62 MB gzipped with every name, band, roll, cycle mix, campus
+  count, formation list and website on it** — what the `schools-fr` maillage
+  costs (0.63 MB gzipped) while carrying no names at all. So there is no bbox endpoint,
+  no ceiling and no spatial thinning: `/api/sup-fr/sites` hands the browser the
+  register once and every zoom is answered from it. `/api/sup-fr/departements`
+  is the ~30 KB national rollup built by the same sweep. Cold build, measured
+  end to end against the live portal: **2.9 s**.
+- **1 665 establishments have no coordinate, and the fix is a second register.**
+  `geo` is null on 3 442 of the register's 22 068 rows — the Université de la
+  Nouvelle-Calédonie and the Université de la Polynésie française among them.
+  Nothing is placed at a commune centroid. The layer reads the ministry's
+  *Cartographie des formations Parcoursup* (session 2026, 25 831 formations,
+  every one geolocated) and borrows a coordinate ONLY where that file gives
+  exactly one point for the UAI: **977 establishments and 82 200 students**,
+  lifting placed enrolment from 95.69% to **98.41%**. The borrow was checked
+  rather than assumed — where both files give one point, the median
+  disagreement is **74 m** and 90% agree within 1 km. Polynésie is recovered
+  this way; New Caledonia is not, so all 18 of its establishments are reported
+  as unplaced instead of being invented into the Pacific. A borrowed coordinate
+  says so on its card.
+- **The choropleth counts students, not dots — and says why.** Counting sites,
+  Paris (484) leads the Nord (292) by 1.66× and the top ten départements hold
+  35%. Counting students, Paris (394 788) leads the Rhône (192 964) by 2.05×
+  and the top ten hold **49.8%**. The site count is flatter because 2 800 of
+  the 6 914 sites are lycées running a BTS — and a map of where BTS sections
+  are is a map of where lycées are, which **Établissements scolaires** already
+  draws. Those 2 800 shared addresses get their own legend band, and the two
+  layers use deliberately different palettes (deep hues and a white dot outline
+  here, pastels and a black one there) so a stacked dot reads as the overlap it
+  is rather than as a duplicate.
+- **The name on the globe is now a click surface.** Every label the shared
+  overlay paints — the river gauge's name, the substation's, the power
+  station's, the cable's — selects its object exactly as the dot does. It never
+  did: labels are painted onto a `pointer-events: none` canvas stacked over the
+  viewport, so `scene.pick()` under one returns the globe, and a click aimed at
+  a name reached the terrain behind it and DISMISSED the selection instead. The
+  name is what says which object this is, and it is five to twenty times the
+  target area of the 5–15 px dot it floats above, so it is what people aim at.
+  Wired into twelve layers — Hub'Eau, Réseau électrique, Réseau gaz, Production
+  RTE, Petite hydro, Événements routiers, Écoles and Bornes IRVE (their
+  département names at national altitude), Radio (station names only — a
+  cluster badge names a count, not a station), Câbles sous-marins, the ISS
+  label and the rocket-mission markers. The depth-tested primitive is still
+  resolved first, so a name drawn across a NEIGHBOURING object can never steal
+  that object's click, a pick a sibling layer owns is left alone, and a click on
+  empty space still clears the selection. Proved in a real browser by
+  `npm run qa:label-click`, which reads where the host painted a label,
+  dispatches a real pointer event at its centre — nowhere near the dot — and
+  asserts the layer's card starts painting.
 - **Six French public registers, read from a coordinate.** Géorisques, DVF,
   the ADEME DPE register, the IGN isochrone service, the Géoportail de
   l'urbanisme and Île-de-France Mobilités are now integrated end to end —
@@ -205,6 +267,36 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   broken.
 
 ### Fixed
+
+- **"Sites militaires — Error loading" was one mirror refusing, and three
+  healthy ones never asked.** Every viewport answered HTTP 503, and the layer
+  was right to say so: `/api/military-installations` reads `status >= 400` as a
+  failure. The failure was underneath it. `overpass-api.de` scores requests for
+  abuse at its Apache front-end and was returning a bare **406 Not Acceptable**
+  to the proxy's agent string — a plain HTML page matching neither the
+  rate-limit nor the runtime-error sniffer. Measured 2026-09-01, same query,
+  interleaved to control for server load: the old
+  `gods-eye-view-overpass-proxy/1.0` drew a 406 on **8 of 11** attempts, an
+  OSM-conventional `app/version (+contact)` agent on **0 of 11**. That alone was
+  survivable; what made it fatal is that `fetchOverpassPayload` rotated to the
+  next mirror only on 429/5xx, so a 4xx ended the chain at mirror 1 with three
+  mirrors untried below it. A 4xx is a MIRROR verdict, not a query verdict, and
+  now rotates — the same rule the mapped-camera and power-grid probes already
+  applied, which is why those layers stayed up through the same outage. A
+  genuinely malformed query still surfaces: every mirror rejects it, nothing
+  outranks it, the caller gets the 4xx back. Third fault, and the one that would
+  have outlived the other two: `/api/overpass` cached anything under `< 500`, so
+  the refusal was written to memory AND to disk under a **7-to-30-day TTL** and
+  re-served as a `HIT` without asking upstream again — one bad minute upstream
+  taking every Overpass-backed layer down for a month. Success only, now, and a
+  4xx joins 5xx in serving last-good from disk at any age. Measured back to back
+  on the same server, fresh cache keys: Lyon, Marseille and Nantes went 503 →
+  200 with 21, 23 and 4 installations; in the browser the layer reports `ready`
+  with BA107 Villacoublay, le Mont-Valérien and le Fort de Rosny drawn. Six
+  regression tests in `overpassProxy.test.mjs` pin the rotation. Worth knowing
+  separately: the other three mirrors were all answering 502/504 that day, so
+  `overpass-api.de` was the only healthy one — which is why this filter hit so
+  hard.
 
 - **"Bâti 3D could not start cleanly" was a camera, not a fault.** Turning the
   layer on from a wide view failed outright: the toggle flipped straight back

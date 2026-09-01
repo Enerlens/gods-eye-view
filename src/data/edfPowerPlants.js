@@ -1,4 +1,6 @@
 import * as Cesium from 'cesium';
+import { governorRequestRender } from '../renderGovernor.js';
+import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -81,14 +83,22 @@ import {
  *   dropping one publisher's figure would hide that they disagree.
  *
  * • **A dam is not a power station.** The bundled Dams layer draws OSM dam
- *   structures; measured, only 3 of these 51 hydro plants sit within 3 km of
- *   one. Nothing is de-duplicated between them, because a barrage and the
- *   usine it feeds are different objects.
+ *   structures. Nothing is de-duplicated between the two, because a barrage
+ *   and the usine it feeds are different objects — and the overlap is now
+ *   large: re-measured on 2026-09-01 against the rebuilt dam pack (6 189
+ *   features, 44 441 vertices), 37 of these 51 hydro plants have a mapped dam
+ *   vertex within 3 km and 22 within 1 km. The figure this line used to carry
+ *   — "only 3 of 51" — was true against the 704-feature pack that shipped when
+ *   this layer landed, and became wrong the day the dams pack was rebuilt.
+ *   Proximity is not identity: a plant sitting 300 m from a barrage is the
+ *   usine that barrage feeds, drawn as the separate object it is.
  */
 
 const API_URL = '/api/edf-plants';
 
 /** Shared world-overlay source id (matches the layer id). */
+/** Layer id — also the share-link registry key and the pick-owner key. */
+export const EDF_PLANTS_LAYER_ID = 'edf-power-plants';
 export const EDF_PLANTS_OVERLAY_SOURCE_ID = 'edf-power-plants';
 /** Bounded label cohort offered to the shared overlay host. */
 export const EDF_PLANTS_OVERLAY_COHORT_LIMIT = 60;
@@ -331,9 +341,12 @@ export function referenceDateRange(datasets) {
  * @param {Cesium.Cartesian3} position
  * @returns {object}
  */
-export function createPlantOverlayEntry(record, position) {
+export function createPlantOverlayEntry(record, position, { skipLabel = false } = {}) {
   return {
     id: `edf-plants:${record.id}`,
+    // A selected site is drawn by the protected card instead; leaving its
+    // ambient label up would have the site competing with itself for the slot.
+    skipLabel,
     position,
     variant: 'label',
     title: plantLabelText(record),
@@ -350,6 +363,157 @@ export function createPlantOverlayEntry(record, position) {
     gapPx: 14,
     verticalOnly: true,
     placement: 'above',
+  };
+}
+
+/**
+ * Selected-site card, on its own protected overlay source.
+ *
+ * The layer drew 79 discs and clicking one did nothing: it registered no pick
+ * owner, no click handler and no keydown listener, so twenty published fields
+ * per site reached the browser and none of them reached a reader. This is the
+ * house arrangement (`frHydroPlants`, `gasFrance`, `irveFrance`), ported rather
+ * than reinvented.
+ */
+export const EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID = 'edf-power-plants-selected';
+export const EDF_PLANTS_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
+  cohortLimit: 1,
+  collisionCapacity: 1,
+  moving: false,
+});
+/** Accent for the selected disc and its card. */
+export const EDF_SELECTED_COLOR = '#7ee8fa';
+/** Extra pixels the selected disc gains, so the click reads as a click. */
+const SELECTED_POINT_BONUS_PX = 5;
+/**
+ * How deep to drill for one of our discs.
+ *
+ * Measured worst case is 3 (an RTE output disc and its ring stacked over the
+ * EDF disc); 8 leaves room for a third layer to arrive on the same pixel
+ * without silently reintroducing the dead-click this exists to prevent.
+ */
+const DRILL_PICK_LIMIT = 8;
+
+/**
+ * A commissioning span, as the file publishes it.
+ *
+ * The two fields are a RANGE across the site's units — Gravelines' six
+ * reactors came online between 1980 and 1985 — so a single date would be a
+ * different claim about a different object. Equal ends collapse to one year,
+ * which is what a single-unit site actually is.
+ * @param {?number} from
+ * @param {?number} to
+ * @returns {string}
+ */
+export function commissioningText(from, to) {
+  const start = Number.isFinite(from) ? Math.round(from) : null;
+  const end = Number.isFinite(to) ? Math.round(to) : null;
+  if (start === null && end === null) return '';
+  if (start === null || end === null) return String(start ?? end);
+  return start === end ? String(start) : `${start}–${end}`;
+}
+
+/**
+ * The card for one site.
+ *
+ * Every line is built from a field the payload ALREADY carries and that no
+ * surface rendered: `secondaryReserveMw` reached the client record and was
+ * shown nowhere at all, and the commissioning span, the fuel, the operator and
+ * the site's own reference date were in the same position.
+ *
+ * WHAT THIS CARD DELIBERATELY DOES NOT SAY: live output. The join to RTE's
+ * production units is exact and already shipped — `units.json` keys 69 of the
+ * 79 sites on `'edf:' + site.id`, 1:1, every ring within 10 m of its disc — and
+ * it is still the wrong thing to print here. Three reasons, each measured:
+ * this layer is `auth: 'none'` in the taxonomy and RTE needs a credential, so
+ * the line would be blank on a keyless deploy; only 42 of the 69 have a
+ * reporting unit at any moment, so it would be blank again on a third of the
+ * rest; and the two files disagree about capacity on 24 sites, most loudly at
+ * Flamanville, where EDF's 31/12/2025 vision predates the EPR and a live
+ * 3 583 MW against its 2 660 MW nameplate would print as 135 %. The layer that
+ * owns live output is `Groupes de prod`, drawn on the identical pixel.
+ *
+ * @param {object} record A record from `buildPlantRecords`.
+ * @returns {string} Newline-separated; the first line is the title.
+ */
+export function buildEdfPlantCard(record) {
+  const style = FILIERE_STYLES[String(record?.filiere ?? '')] || null;
+  const lines = [String(record?.name ?? '').trim() || 'Centrale'];
+
+  lines.push(`⚡ ${formatMegawatts(record?.mw)} installés · ${plantKindText(record)}`);
+
+  // The publisher's own words for the machine, never merged with the filière
+  // label above — "Thermique à flamme · charbon" says two different things.
+  const machine = [record?.tech, record?.fuel]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .join(' · ');
+  if (machine) lines.push(`◈ ${machine}`);
+
+  // Secondary reserve is the site's contracted contribution to frequency
+  // containment. It is published for 56 of the 79 sites and, until now,
+  // travelled all the way into the client record to be rendered nowhere.
+  if (Number.isFinite(record?.secondaryReserveMw) && record.secondaryReserveMw > 0) {
+    lines.push(`↻ ${formatMegawatts(record.secondaryReserveMw)} de réserve secondaire`);
+  }
+
+  const where = [record?.commune, record?.departement, record?.region]
+    .map((value) => String(value ?? '').trim())
+    .filter(Boolean)
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .join(' · ');
+  if (where) lines.push(`📍 ${where}`);
+
+  const commissioned = commissioningText(record?.commissionedFrom, record?.commissionedTo);
+  if (commissioned) {
+    const plural = commissioned.includes('–');
+    lines.push(`🕐 ${plural ? 'tranches couplées' : 'couplée'} ${commissioned}`);
+  }
+
+  const operator = String(record?.operator ?? '').trim();
+  // Every published row currently says EDF SA, so naming it adds nothing on its
+  // own — it earns a line only if a future edition names somebody else.
+  if (operator && !/^edf\b/i.test(operator)) lines.push(`⌁ exploitant : ${operator}`);
+
+  // The vintage is per FILE, not per fleet: the three EDF datasets are three
+  // editions, and a card that quoted one date for all of them would invent a
+  // snapshot that never existed.
+  const reference = String(record?.referenceDate ?? '').trim();
+  if (reference) lines.push(`# ${style?.label || 'EDF'} — situation au ${reference}`);
+
+  return lines.join('\n');
+}
+
+/**
+ * The protected card entry for the selected site.
+ * @param {object} record
+ * @param {object} position Cesium.Cartesian3 for the disc.
+ * @returns {object|null}
+ */
+export function createEdfSelectedOverlayEntry(record, position) {
+  if (!record || !position) return null;
+  const [title, ...details] = buildEdfPlantCard(record).split('\n');
+  return {
+    id: `edf-plants:${record.id}`,
+    position,
+    variant: 'selected',
+    selected: true,
+    protected: true,
+    paintLane: 'selected',
+    collisionGroup: 'ambient-card',
+    priority: Number.MAX_SAFE_INTEGER,
+    title,
+    details,
+    accent: EDF_SELECTED_COLOR,
+    interactive: false,
+    anchorRadiusPx: 9,
+    minAnchorGapPx: 11,
+    verticalOnly: true,
+    placement: 'above',
+    edgeFade: 'keyhole',
+    horizonCull: true,
+    terrainOcclusion: false,
   };
 }
 
@@ -442,6 +606,10 @@ export function createEdfPowerPlantsLayer({
   let _viewer = null;
   let _pointCollection = null;
   let _records = [];
+  /** Rendered discs by render id, so a pick resolves to a record and a position. */
+  let _drawn = new Map();
+  let _selectedId = null;
+  let _clickHandler = null;
   let _summary = summarizePlants([]);
   let _datasets = [];
   let _vintages = referenceDateRange([]);
@@ -456,24 +624,117 @@ export function createEdfPowerPlantsLayer({
   function repaint() {
     if (!_pointCollection) return;
     _pointCollection.removeAll();
+    _drawn.clear();
     const entries = [];
     for (const record of _records) {
       const position = Cesium.Cartesian3.fromDegrees(record.lon, record.lat);
-      _pointCollection.add({
+      const renderId = `edf-plants:${record.id}`;
+      const basePixelSize = plantPixelSize(record.mw);
+      const point = _pointCollection.add({
         position,
-        pixelSize: plantPixelSize(record.mw),
+        pixelSize: basePixelSize,
         color: plantColor(record.filiere),
         outlineColor: COLOR_OUTLINE,
         outlineWidth: 1,
         scaleByDistance: new Cesium.NearFarScalar(20_000, 1.25, 3_000_000, 0.55),
         translucencyByDistance: new Cesium.NearFarScalar(20_000, 1, 5_000_000, 0.35),
         disableDepthTestDistance: 5000,
-        id: `edf-plants:${record.id}`,
+        id: renderId,
       });
-      entries.push(createPlantOverlayEntry(record, position));
+      _drawn.set(renderId, { record, position, point, basePixelSize });
+      entries.push(createPlantOverlayEntry(record, position, {
+        skipLabel: renderId === _selectedId,
+      }));
     }
+    // A repaint rebuilds every primitive, so a live selection has just lost the
+    // object it was styling. Re-apply it against the new disc rather than
+    // leaving a card anchored to a released primitive.
+    if (_selectedId && _drawn.has(_selectedId)) selectObject(_selectedId);
+    else if (_selectedId) clearSelection();
     publishOverlay(entries);
     _viewer?.scene?.requestRender?.();
+  }
+
+  function clearSelection() {
+    const drawn = _selectedId ? _drawn.get(_selectedId) : null;
+    if (drawn?.point) {
+      drawn.point.outlineColor = COLOR_OUTLINE;
+      drawn.point.pixelSize = drawn.basePixelSize;
+    }
+    _selectedId = null;
+    overlayHost.clearSource(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID);
+  }
+
+  function selectObject(renderId) {
+    const drawn = _drawn.get(renderId);
+    clearSelection();
+    if (!drawn) return;
+    _selectedId = renderId;
+    if (drawn.point) {
+      drawn.point.outlineColor = Cesium.Color.fromCssColorString(EDF_SELECTED_COLOR);
+      drawn.point.pixelSize = drawn.basePixelSize + SELECTED_POINT_BONUS_PX;
+    }
+    const entry = createEdfSelectedOverlayEntry(drawn.record, drawn.position);
+    if (entry) {
+      overlayHost.setEntries(
+        EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID,
+        [entry],
+        EDF_PLANTS_SELECTED_OVERLAY_SOURCE_OPTIONS,
+      );
+    }
+    governorRequestRender('edf-plants-select');
+  }
+
+  function onKeyDown(event) {
+    if (event.key === 'Escape' && _selectedId) {
+      clearSelection();
+      governorRequestRender('edf-plants-deselect');
+    }
+  }
+
+  /**
+   * Install the click-to-select handler.
+   *
+   * `drillPick`, NOT `pick`, and that is measured rather than defensive. 69 of
+   * the 79 sites have an RTE production-unit ring from the `Groupes de prod`
+   * layer within 10 m of their disc, and those rings draw with
+   * `disableDepthTestDistance: Number.POSITIVE_INFINITY` where these discs use
+   * 5 000 — so with that sibling layer on, `scene.pick` over Gravelines returns
+   * `rte-gen:GRAV5:out` and the EDF disc is THIRD in the drill. A plain `pick`
+   * handler would therefore look dead on the nine largest nuclear sites, which
+   * is a worse bug than the one being fixed.
+   *
+   * Guarded on `document` because Cesium's `ScreenSpaceEventHandler` registers
+   * DOM listeners in its constructor and this layer's lifecycle runs headless
+   * under test.
+   */
+  function installClickHandler(viewer) {
+    if (_clickHandler || typeof document === 'undefined') return;
+    _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
+    _clickHandler.setInputAction((click) => {
+      if (!_enabled) return;
+      const drilled = viewer.scene.drillPick(click.position, DRILL_PICK_LIMIT) || [];
+      for (const hit of drilled) {
+        const id = typeof hit?.primitive?.id === 'string' ? hit.primitive.id : null;
+        if (id && _drawn.has(id)) {
+          selectObject(id);
+          return;
+        }
+      }
+      // Nothing of ours under the cursor: a click on empty globe dismisses,
+      // and a click on another layer's object leaves that layer to answer.
+      clearSelection();
+      governorRequestRender('edf-plants-deselect');
+    }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
+    document.addEventListener('keydown', onKeyDown);
+  }
+
+  function removeClickHandler() {
+    if (_clickHandler) {
+      _clickHandler.destroy();
+      _clickHandler = null;
+    }
+    if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
   }
 
   function publishOverlay(entries) {
@@ -495,7 +756,7 @@ export function createEdfPowerPlantsLayer({
   }
 
   const layer = {
-    id: 'edf-power-plants',
+    id: EDF_PLANTS_LAYER_ID,
     name: 'Centrales EDF (FR)',
     icon: '◈',
     source: 'EDF Open Data',
@@ -519,14 +780,24 @@ export function createEdfPowerPlantsLayer({
       _enabled = false;
       _loading = false;
       _feedSource = null;
+      _drawn.clear();
+      _selectedId = null;
       overlayHost.setVisible(EDF_PLANTS_OVERLAY_SOURCE_ID, false);
+      overlayHost.setVisible(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID, false);
+      // Registered here rather than in enable(), so the shared pick registry
+      // knows these ids exist for as long as the collection does — the same
+      // choice frHydroPlants makes for the same reason.
+      registerPickOwner(EDF_PLANTS_LAYER_ID, (id) => _drawn.has(id));
       console.log('[Data:EDF Plants] Initialized');
     },
 
-    enable() {
+    enable(viewer) {
       _enabled = true;
+      if (viewer) _viewer = viewer;
       if (_pointCollection) _pointCollection.show = true;
       overlayHost.setVisible(EDF_PLANTS_OVERLAY_SOURCE_ID, true);
+      overlayHost.setVisible(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID, true);
+      if (_viewer) installClickHandler(_viewer);
       // The fleet is already drawn if a previous session loaded it; republish
       // the labels the overlay host dropped on disable.
       if (_records.length) repaint();
@@ -534,9 +805,12 @@ export function createEdfPowerPlantsLayer({
 
     disable() {
       _enabled = false;
+      clearSelection();
+      removeClickHandler();
       if (_pointCollection) _pointCollection.show = false;
       overlayHost.clearSource(EDF_PLANTS_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(EDF_PLANTS_OVERLAY_SOURCE_ID, false);
+      overlayHost.setVisible(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID, false);
     },
 
     async update() {
@@ -587,8 +861,13 @@ export function createEdfPowerPlantsLayer({
 
     destroy(viewer) {
       _enabled = false;
+      clearSelection();
+      removeClickHandler();
+      unregisterPickOwner(EDF_PLANTS_LAYER_ID);
+      _drawn.clear();
       overlayHost.clearSource(EDF_PLANTS_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(EDF_PLANTS_OVERLAY_SOURCE_ID, false);
+      overlayHost.setVisible(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID, false);
       if (_pointCollection) {
         viewer?.scene?.primitives?.remove?.(_pointCollection);
         _pointCollection = null;

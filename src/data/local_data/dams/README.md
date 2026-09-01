@@ -1,6 +1,6 @@
 # Barrages
 
-Bundled dam pack behind the `local-dams` layer. **6 189 features**, rebuilt
+Bundled dam pack behind the `local-dams` layer. **7 432 features**, rebuilt
 2026-09-01 with `npm run dams:pack`
 ([scripts/build-osm-dams.mjs](../../../../scripts/build-osm-dams.mjs)).
 
@@ -8,8 +8,8 @@ Two halves, one shape:
 
 | Half | Features | Source | Geometry |
 |---|---|---|---|
-| France — métropole + outre-mer | 5 529 | OpenStreetMap, extracted directly via the Overpass API on 2026-09-01 | dam structures |
-| Rest of the world | 660 | the older Open Infrastructure Map / PostGIS snapshot the pack shipped before | power-station outlines carrying a dam tag |
+| France — métropole + outre-mer | 6 771 | OpenStreetMap, extracted directly via the Overpass API on 2026-09-01 | dam AND dyke structures |
+| Rest of the world | 661 | the older Open Infrastructure Map / PostGIS snapshot the pack shipped before | power-station outlines carrying a dam tag |
 
 The French half is why this file exists. The pack used to be 704 features for
 the entire planet, and **44** of them were in France — so in a France fork
@@ -21,12 +21,48 @@ committed geometry for a fork whose subject is France. The taxonomy says so:
 
 ## Selection
 
-`waterway=dam`, `man_made=dam` or `building=dam`, anywhere inside
-`ISO3166-1=FR` — which in Overpass is the whole French Republic, so Réunion,
-Guyane, the Antilles, Mayotte, Nouvelle-Calédonie and Polynésie are in. The
-query is the whole selection policy and it lives in
+`waterway=dam`, `man_made=dam`, `building=dam`, `man_made=dyke` or
+`embankment=dyke`, anywhere inside `ISO3166-1=FR` — which in Overpass is the
+whole French Republic, so Réunion, Guyane, the Antilles, Mayotte,
+Nouvelle-Calédonie and Polynésie are in. The filters live in
 [`src/data/damsPack.js`](../../damsPack.js) beside the code that reads the
-result back.
+result back; the build adds exactly one exclusion, documented below.
+
+### A digue is not a barrage
+
+The pack used to hold both and could not say which was which. Every feature now
+carries `kind`:
+
+| `kind` | Features | What it is |
+|---|---|---|
+| `dam` | 5 504 | a barrier ACROSS the watercourse, holding it back |
+| `dyke` | 1 243 | an embankment ALONGSIDE the water, containing it |
+| `dam+dyke` | 24 | tagged both in OSM — the mapper did not choose, and neither does this pack |
+| *absent* | 661 | the carried-over world half, whose raw tags are long gone |
+
+An **absent** `kind` means unclassified, never "dam". Defaulting it would
+recreate the exact conflation the field exists to end, outside France where
+nobody would notice.
+
+**Weirs are deliberately out.** France has 7 704 `waterway=weir` against 5 519
+`waterway=dam`; adding them would more than double a layer called "Barrages"
+with objects most readers would not call one, and the dam-versus-weir boundary
+is a mapper's judgement about overtopping rather than a survey. Separate
+decision, separate rebuild.
+
+**Road-carrying dykes are excluded**, and the cost is real. Half of France's
+`man_made=dyke` — 1 428 of 2 661 elements — also carries `highway=*`, and the
+OSM wiki is explicit that a road on a dyke belongs on the highway as
+`embankment=dyke`. Importing them would draw the D-road along the Loire as a
+barrage. Where a levée is mapped ONLY as a road, this pack therefore does not
+hold it: 49 ways of the Levée de la Loire are absent for that reason.
+
+**What OSM cannot say.** There is no tag anywhere that separates a digue de
+protection contre les inondations from a digue d'étang — `dyke:type` has one
+use worldwide. The register that does cover French flood dykes is SIOUH
+(décret n° 2015-526, classes A/B/C, ~9 000 km), and it is not open bulk data.
+The layer's own legend says so rather than implying a distinction it cannot
+make.
 
 This is OpenStreetMap's idea of a dam — a volunteer's judgement about a
 structure, not a national register. France's own ROE register lists ~100 000
@@ -36,14 +72,27 @@ obstacles à l'écoulement and is an order of magnitude larger.
 
 | | |
 |---|---|
-| Grand barrage | 1 060 (≥ 15 m high, or hydroelectric, or named and ≥ 300 m long) |
-| Barrage nommé | 550 |
-| Seuil & petit ouvrage | 4 579 |
-| Named | 1 439 (23%) |
-| Hydroelectric | 972 (16%) |
-| With a height | 148 (2%) |
-| With a measured span | 4 254 (69%) |
-| Footprint polygons / points | 1 792 / 4 393 |
+Two independent axes. **Colour says what the structure is, size says how much
+it matters** — a 1 106 m dyke and a 1 106 m barrage draw the same size, in
+different colours, because they are the same size and different objects.
+
+| Importance | | |
+|---|---|---|
+| Grand barrage | 1 086 | ≥ 15 m high, or hydroelectric, or named and ≥ 300 m long |
+| Barrage nommé | 570 | |
+| Petit ouvrage | 5 776 | no name, no height, no operator |
+
+The bottom tier used to be called *"Seuil & petit ouvrage"*. It never contained
+a single OSM-tagged weir — `waterway=weir` has never been in the filters — so
+the label named a thing the pack does not hold. It names the rule instead.
+
+| | |
+|---|---|
+| Named | 1 484 (20%) |
+| Hydroelectric | 972 (13%) |
+| With a height | 171 (2%) |
+| With a measured span | 5 328 (72%) |
+| Footprint polygons / points | 1 845 / 5 583 |
 
 Geometry, and why most dams ship as a point: nodes and closed ways keep what
 OSM has (Point, Polygon); an **open** way ships as a Point at the middle of its
