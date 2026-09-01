@@ -316,7 +316,13 @@ export const DATA_CREDITS = [
       '<a href="https://www.bison-fute.gouv.fr" target="_blank" rel="noopener">Directions Interdépartementales des Routes via Bison Futé</a> — ' +
       '<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a>. ' +
       'Non-conceded national network only: no coverage in Île-de-France, and no département or city road. ' +
-      'Flow and speed are six-minute averages, not instantaneous readings.',
+      'Flow and speed are six-minute averages, not instantaneous readings. ' +
+      'Sites the DIRs publish without a coordinate are placed from their point repère against the ' +
+      '<a href="https://www.data.gouv.fr/datasets/bornage-du-reseau-routier-national" target="_blank" rel="noopener">Bornage du réseau routier national</a> ' +
+      '(DGITM — Licence Ouverte 2.0), which agrees with the published positions to a median of 4 m. ' +
+      'Segments are drawn along the surveyed centre of their own carriageway, from ' +
+      '<a href="https://www.data.gouv.fr/datasets/liaisons-du-reseau-routier-national" target="_blank" rel="noopener">Liaisons du réseau routier national</a> ' +
+      '(DGITM — Licence Ouverte 2.0), rather than as the straight line between their two ends.',
   },
   {
     key: 'pan-shared-mobility',

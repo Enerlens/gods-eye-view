@@ -13444,6 +13444,10 @@ async function refreshRoadStatusSnapshot() {
       d: site.d || null,
       a: site.a || null,
       z: site.z || null,
+      // How this segment knows where it is: `xy` from a coordinate the DIR
+      // published, `pr` from a kilometre post this app resolved. The card says
+      // which, because they are not the same claim.
+      g: site.g || null,
       src: reading?.sources || [],
       at: reading?.at || null,
       f: measurement?.flowVehH ?? null,
@@ -13468,6 +13472,7 @@ async function refreshRoadStatusSnapshot() {
     sitesTotal: sitesDoc.stats?.sites ?? null,
     sitesLocated: sitesDoc.stats?.located ?? null,
     sitesUnlocated: sitesDoc.stats?.unlocated ?? null,
+    sitesFromPointRepere: sitesDoc.stats?.geometry?.pointRepere ?? null,
     lengthKm: sitesDoc.stats?.lengthKm ?? null,
     licence: sitesDoc.licence || null,
     attribution: sitesDoc.attribution || null,
@@ -13554,6 +13559,7 @@ function roadStatusFranceProxy() {
           geometryGeneratedAt: sitesDoc.generatedAt || null,
           cycles: sitesDoc.cycles || null,
           referential: sitesDoc.referential || null,
+          bornage: sitesDoc.bornage || null,
           stats: sitesDoc.stats || null,
           coverage: sitesDoc.coverage || [],
         }, { 'Cache-Control': 'public, max-age=300' });
@@ -13626,6 +13632,7 @@ function roadStatusFranceProxy() {
         sitesTotal: snapshot.sitesTotal,
         sitesLocated: snapshot.sitesLocated,
         sitesUnlocated: snapshot.sitesUnlocated,
+        sitesFromPointRepere: snapshot.sitesFromPointRepere,
         lengthKm: snapshot.lengthKm,
         flow: snapshot.flow,
         licence: snapshot.licence,
