@@ -201,6 +201,24 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **"Bâti 3D could not start cleanly" was a camera, not a fault.** Turning the
+  layer on from a wide view failed outright: the toggle flipped straight back
+  to OFF under an error toast, with a perfectly healthy IGN feed behind it. Two
+  faults, one symptom. The layer refuses a request box wider than **0.08°** and
+  returned that refusal as `false` out of its first `update()` — which the data
+  manager reads as the module REJECTING its lifecycle, so it tore the layer
+  down and said so. A load that fetched nothing because it was asked for
+  nothing is now not a failed load, in Bâti 3D, the mapped grid and Hub'Eau
+  alike. And the guidance it replaces is now carried out instead of announced:
+  an explicit enable **flies the camera to the view the layer needs** and loads
+  it. Measured over France at 420 km: 420 000 m → 2 900 m, buildings drawn, no
+  error published anywhere. The flight only answers explicit intent — a share
+  link or a Context restore keeps its own camera — it zooms in and never out,
+  it steepens a horizon-facing pitch (no altitude alone can shrink a view that
+  reaches the horizon), and it refuses to fly at all when the coverage in shot
+  is a sliver at the edge of a camera aimed somewhere else: 400 km over Berlin
+  clipping Alsace stays over Berlin. New harness: `npm run qa:view-gate`.
+
 - **234 road-status "segments" were points wearing a segment's shape.** Their
   referential row publishes a start equal to its end, and they were being written as
   four-number segments and handed to Cesium as zero-length ground polylines — geometry

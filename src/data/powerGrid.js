@@ -18,6 +18,7 @@ import {
   powerBoxTooWide,
   powerTierById,
 } from './powerGridFeed.js';
+import { applyViewGate } from './viewGate.js';
 
 /**
  * Power Grid — the high-voltage network as OpenStreetMap has mapped it, for the
@@ -1105,9 +1106,32 @@ const powerGridLayer = {
     _status = 'idle';
   },
 
+  /**
+   * Bring the camera inside the box this layer loads behind, on the way in.
+   * The grid is wherever the camera is, so the view centre is the target and
+   * there is no coverage table to pull it towards.
+   * @param {?Cesium.Viewer} viewer
+   * @param {{signal?: ?AbortSignal}} [options]
+   * @returns {Promise<boolean>} Whether the camera ended inside the gate.
+   */
+  async ensureViewGate(viewer, { signal } = {}) {
+    const target = viewer || _viewer;
+    if (!target) return false;
+    return applyViewGate(target, {
+      fits: () => Boolean(powerViewportBox(target)),
+      maxDeg: POWER_GRID_MAX_BOX_DEG,
+      signal,
+      reason: 'power-grid-view-gate',
+    });
+  },
+
   async update() {
     if (!_enabled) return false;
-    return load();
+    const loaded = await load();
+    // A load that fetched nothing because the camera is too wide asked for a
+    // zoom, and asking is not failing. Only the error state is a failed refresh
+    // — reporting the guidance state as one tore the layer back down on enable.
+    return loaded || _status !== 'error';
   },
 
   getDetectableObjects(options = {}) {

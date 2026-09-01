@@ -441,3 +441,50 @@ test('the overlay source ids stay distinct so a card cannot evict its own labels
   assert.notEqual(POWER_GRID_OVERLAY_SOURCE_ID, POWER_GRID_SELECTED_OVERLAY_SOURCE_ID);
   assert.equal(POWER_GRID_OVERLAY_SOURCE_ID, 'power-grid');
 });
+
+test('a camera too wide for the grid is flown in, not told off', async () => {
+  // The bug this replaces: enabling the layer from a continental view returned
+  // false from update(), which the manager reads as the layer REJECTING its
+  // lifecycle — the toggle flipped straight back to OFF under "could not start
+  // cleanly", with a perfectly healthy feed behind it.
+  const state = { box: { south: 40, west: -6, north: 52, east: 10 } };
+  const flights = [];
+  const viewer = {
+    scene: { globe: { ellipsoid: Cesium.Ellipsoid.WGS84, getHeight: () => 0 } },
+    camera: {
+      frustum: { fov: Math.PI / 3, aspectRatio: 1.7 },
+      heading: 0,
+      pitch: -Math.PI / 2,
+      positionCartographic: { height: 4_000_000 },
+      computeViewRectangle: () => Cesium.Rectangle.fromDegrees(
+        state.box.west, state.box.south, state.box.east, state.box.north,
+      ),
+      flyTo(options) {
+        const carto = Cesium.Cartographic.fromCartesian(options.destination);
+        const lat = Cesium.Math.toDegrees(carto.latitude);
+        const lon = Cesium.Math.toDegrees(carto.longitude);
+        flights.push({ lat, lon, heightM: carto.height });
+        // Whatever the solve asked for, the camera arrives somewhere bounded.
+        state.box = { south: lat - 0.1, west: lon - 0.1, north: lat + 0.1, east: lon + 0.1 };
+        options.complete?.();
+      },
+    },
+  };
+
+  const fetchBefore = globalThis.fetch;
+  globalThis.fetch = async () => { throw new Error('the gate must run before any request'); };
+  try {
+    _setPowerGridStateForTest({ viewer, payload: null, enabled: true });
+    assert.equal(powerViewportBox(viewer), null, 'the continental view is outside the gate');
+    assert.equal(await powerGridLayer.update(), true,
+      'a load that only wanted a zoom is not a failed refresh');
+    assert.equal(powerGridLayer.getStats().status, 'zoom-in');
+
+    assert.equal(await powerGridLayer.ensureViewGate(viewer), true);
+    assert.equal(flights.length, 1, 'one flight, straight to a box the proxy will answer');
+    assert.ok(powerViewportBox(viewer), 'and the camera lands inside the gate');
+  } finally {
+    globalThis.fetch = fetchBefore;
+    _setPowerGridStateForTest({ viewer: null, payload: null, enabled: false });
+  }
+});
