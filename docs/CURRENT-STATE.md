@@ -1958,11 +1958,11 @@ ambiguous between "too high to scan" and "this address is clear".
 
 | Layer | Token | Proxy | Upstream |
 |---|---|---|---|
-| `georisques` | `6` | `/api/georisques` | Géorisques (BRGM) — 3 endpoints fanned out per scan |
-| `dvf-sales` | `7` | `/api/dvf` | geo-DVF CSV per commune-year, parsed and cached server-side |
-| `dpe-fr` | `8` | `/api/dpe` | ADEME `dpe03existant`, `geo_distance` query |
-| `urbanisme-gpu` | `9` | `/api/gpu` | APIcarto `zone-urba` + `assiette-sup-s` |
-| `idfm-network` | `0` | `/api/idfm/stops`, `/api/idfm/lines` | Île-de-France Mobilités Opendatasoft |
+| `georisques` | `gr` | `/api/georisques` | Géorisques (BRGM) — 3 endpoints fanned out per scan |
+| `dvf-sales` | `dv` | `/api/dvf` | geo-DVF CSV per commune-year, parsed and cached server-side |
+| `dpe-fr` | `dp` | `/api/dpe` | ADEME `dpe03existant`, `geo_distance` query |
+| `urbanisme-gpu` | `ur` | `/api/gpu` | APIcarto `zone-urba` + `assiette-sup-s` |
+| `idfm-network` | `if` | `/api/idfm/stops`, `/api/idfm/lines` | Île-de-France Mobilités Opendatasoft |
 
 `/api/isochrone` (IGN Valhalla over BD TOPO®) is a SERVICE, not a layer: an
 isochrone has no meaning without a chosen point, so it is not in the layer
