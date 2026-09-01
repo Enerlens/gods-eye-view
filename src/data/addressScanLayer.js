@@ -391,6 +391,13 @@ export function createAddressScanLayer(config) {
     maxAltitudeM = ADDRESS_SCAN_MAX_ALTITUDE_M,
     minShiftKm = ADDRESS_SCAN_MIN_SHIFT_KM,
     fetchImpl = (...args) => fetch(...args),
+    // OFF for the four layers that draw billboards: a marker is a billboard
+    // wherever the basemap came from, and rebuilding one on every map-stack
+    // change would be work for nothing. ON for the layer that draws GROUND
+    // CLASSIFICATION geometry, which reads its classification surface once,
+    // when the primitive is built — see `urbanismeGpu.js`.
+    redrawOnMapStack = false,
+    mapStackEventTarget = typeof window === 'undefined' ? null : window,
   } = config;
 
   let _dataSource = null;
@@ -413,6 +420,7 @@ export function createAddressScanLayer(config) {
   let _tileProgressRemover = null;
   let _seatTimer = null;
   let _seatPending = false;
+  let _mapStackListener = null;
   const _cards = new Map();
 
   /** Restore the marker a selection had enlarged. */
@@ -473,6 +481,12 @@ export function createAddressScanLayer(config) {
       if (_selectedId && !picked) clearSelection();
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     document.addEventListener('keydown', onKeyDown);
+  }
+
+  function removeMapStackListener() {
+    if (!_mapStackListener) return;
+    mapStackEventTarget?.removeEventListener?.('gev:map-stack-changed', _mapStackListener);
+    _mapStackListener = null;
   }
 
   function removeClickHandler() {
@@ -538,6 +552,31 @@ export function createAddressScanLayer(config) {
   }
 
   /**
+   * Redraw the answer ALREADY IN HAND onto a new map stack.
+   *
+   * Not a rescan: the register has not changed, the ground under it has. A
+   * layer that draws ground-classification geometry chooses its classification
+   * surface when the primitive is BUILT, so switching from IGN ortho to the
+   * Google photoreal tileset — which hides the globe — leaves a wash addressed
+   * to terrain that is no longer being drawn, and the layer silently shows
+   * nothing. Rebuilding from `_payload` costs no request and no rate limit.
+   *
+   * @returns {boolean} True when something was redrawn.
+   */
+  function redrawForMapStack() {
+    if (!_dataSource || !_payload || !_lastPoint || _dormant) return false;
+    clearSelection();
+    _dataSource.entities.removeAll();
+    _count = render({
+      payload: _payload, dataSource: _dataSource, point: _lastPoint, viewer: _viewer,
+    }) || 0;
+    seatMarkers(_lastPoint);
+    indexCards();
+    governorRequestRender(`${id}-map-stack`);
+    return true;
+  }
+
+  /**
    * Scan around the camera's ground point and redraw.
    *
    * Shared by the manager's periodic tick and by the `moveEnd` listener, with a
@@ -597,7 +636,9 @@ export function createAddressScanLayer(config) {
         }
         clearSelection();
         _dataSource.entities.removeAll();
-        _count = render({ payload, dataSource: _dataSource, point }) || 0;
+        _count = render({
+          payload, dataSource: _dataSource, point, viewer: _viewer,
+        }) || 0;
         // Before the index, so a card is built from the seated position rather
         // than from the ellipsoid one it was drawn at.
         seatMarkers(point);
@@ -689,6 +730,10 @@ export function createAddressScanLayer(config) {
           if (queued === 0 || _seatPending) scheduleSeat();
         });
       }
+      if (redrawOnMapStack && !_mapStackListener && mapStackEventTarget?.addEventListener) {
+        _mapStackListener = () => { redrawForMapStack(); };
+        mapStackEventTarget.addEventListener('gev:map-stack-changed', _mapStackListener);
+      }
       // Force the next update to scan: the camera may have travelled a
       // continent while the layer was off.
       _lastPoint = null;
@@ -704,6 +749,7 @@ export function createAddressScanLayer(config) {
       clearTimeout(_seatTimer);
       if (_moveEndRemover) { _moveEndRemover(); _moveEndRemover = null; }
       if (_tileProgressRemover) { _tileProgressRemover(); _tileProgressRemover = null; }
+      removeMapStackListener();
     },
 
     destroy(viewer) {
@@ -711,6 +757,7 @@ export function createAddressScanLayer(config) {
       clearTimeout(_seatTimer);
       if (_moveEndRemover) { _moveEndRemover(); _moveEndRemover = null; }
       if (_tileProgressRemover) { _tileProgressRemover(); _tileProgressRemover = null; }
+      removeMapStackListener();
       removeClickHandler();
       clearOverlaySource(id);
       if (_dataSource) {

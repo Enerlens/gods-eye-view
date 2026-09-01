@@ -7,6 +7,64 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Urbanisme (PLU) — the zone is now a wash on the ground, with its enclaves
+  cut out of it.** The layer drew bare outlines, and an operator asked the
+  right question of them: how can one house be in two PLU zones at once? An
+  outline has no inside. Nothing on screen said which side of a line the rule
+  applied to, and a building between two lines belonged to both as far as the
+  eye could tell. Each zone is now filled — ground-classified, so it drapes on
+  IGN ortho, on Bing and on the photoreal tileset alike — with the stroke kept
+  on top: the wash says where, the stroke says exactly where.
+- **The enclaves were ours, and they are fixed.** The projection kept outer
+  rings only, on the reasoning that a hole in an outline is invisible. It is —
+  and it is the whole point of a fill. Measured at Ustaritz on 2026-09-01, the
+  zone returned for the village centre is `UB`, one polygon, **two interior
+  rings**: 6 646 m² the same PLU zones `UE` (the school) and 50 686 m² it
+  zones `UYc` (the industrial estate). Filled without them, `UB` painted
+  57 332 m² of ground with a rule that does not reach it — and across the
+  commune, 14 rings and 299 441 m². Interior rings are now carried, spent out
+  of the vertex budget *with* the ring they perforate so a hole can never be
+  what a budget drops, and stroked in their own right.
+- **A point really can be in two zones, and the layer now says so.** Sampled
+  on a 35 m grid over a 9 × 6 km box around Ustaritz: **17 of 34 126 points
+  (0,05 %) fall inside two zoning polygons, every one of them at a commune
+  limit**. Seven urbanism documents overlap in that box across 73 polygon
+  pairs and 5,3 ha — including 525 m² that Jatxou zones `UD` (urbaine) while
+  Halsou zones the same ground `A` (agricole). Each commune digitises its own
+  PLU against its own idea of where the limit runs, and the Géoportail stacks
+  the documents without reconciling them. `zoneCount` is reported so the case
+  reads as the register disagreeing with itself, not as a broken answer.
+- **`typezone` has seven values, and the table had four — so the family this
+  layer exists for was drawn in the unknown-value grey.** Measured across
+  twelve APIcarto boxes (Paris, Lyon, Lille, Toulouse, Marseille, Rennes, five
+  peri-urban boxes, Ustaritz): **4 216 zoning features and not one plain
+  `AU`.** Every à-urbaniser zone published `AUc` or `AUs`. And that letter is
+  the most decision-changing thing in the layer: **`AUc` is open** — the plot
+  opposite can be built under the PLU as it stands — while **`AUs` is closed
+  until the document is modified or revised**. Same magenta family, cooled and
+  quieter. `Ah` and `Nh`, the built pockets inside the agricultural and
+  natural zones, take their family's hue brightened.
+- **The wash weights are measured, not felt.** The same polygon repainted at
+  five alphas over an IGN orthophoto, each frame differenced against the
+  unpainted one across the ~380 000 pixels the zone covers: **0.18 moved the
+  picture by a mean of 3/255 in red and could not be seen at all**; 0.22 by 5,
+  0.28 by 11, 0.33 by 17, 0.40 by 24. Shipped: `AUc` 0.42, the exceptions
+  0.34, `U` 0.30, and `A`/`N` 0.22 — they are most of the country, and at the
+  urban weight a natural zone washes a whole valley teal.
+- **Servitudes stay lines, and the lines are dashed.** They are not zoning, and
+  a solid stroke said they were. They are also the wrong size to fill: one
+  measured `pm1` risk envelope is 759 polygons spanning kilometres, so a wash
+  of it tints the view rather than a plot.
+- Each zone card now names its family in words — *zone urbaine — déjà bâtie et
+  équipée*, *zone à urbaniser OUVERTE* — and says how many enclaves were cut,
+  so an unpainted island inside a painted zone reads as the register's, not as
+  a gap in the draw.
+- The five point-scan layers hand their renderer the viewer, and the urbanism
+  layer redraws on a map-stack change. A ground-classification surface is read
+  once, when the primitive is built, so a wash addressed to terrain drew
+  nothing at all once the photoreal tileset hid the globe — the layer looked
+  switched off. It rebuilds from the answer already in hand, with no refetch.
+
 - Added the **Parcelles cadastrales** layer — the lines France taxes land
   along, keyless. IGN's **Api Carto** serves the DGFiP's *Plan Cadastral
   Informatisé* (PCI vecteur) under Licence Ouverte 2.0 with no key and no

@@ -48,16 +48,20 @@ export const GPU_COORDINATE_DECIMALS = 5;
  */
 export const GPU_MAX_RING_VERTICES = 400;
 /**
- * Rings kept per feature, largest first.
+ * Separate PIECES of one feature kept, largest first.
  *
  * A per-ring cap alone is not enough and the measurement says why: the 50,669-
  * vertex `pm1` envelope is a MultiPolygon of roughly a hundred separate
  * polygons, every one of them comfortably under the per-ring cap. Capping only
  * rings left 37,983 points standing — a 25% saving on a shape that needed a
- * 98% one. The rings dropped are slivers of a few points each, invisible at
+ * 98% one. The pieces dropped are slivers of a few points each, invisible at
  * the zoom this is ever drawn at.
+ *
+ * Counted in PIECES rather than in rings since interior rings started being
+ * carried: a hole belongs to its outer ring and is spent out of the vertex
+ * budget with it, so an enclave can never be the thing a budget drops.
  */
-export const GPU_MAX_FEATURE_RINGS = 24;
+export const GPU_MAX_FEATURE_PARTS = 24;
 /** Total vertices kept per feature, across all its rings. */
 export const GPU_MAX_FEATURE_VERTICES = 1200;
 
@@ -149,10 +153,28 @@ export function decimateRing(ring) {
 }
 
 /**
- * Flatten a Polygon or MultiPolygon into decimated outer rings.
+ * Flatten a Polygon or MultiPolygon into decimated PARTS — an outer ring and
+ * the interior rings it encloses, in GeoJSON order.
+ *
+ * THE HOLES ARE NOT DECORATION, AND DROPPING THEM PUT HOUSES IN THE WRONG
+ * ZONE. This function used to keep `polygon[0]` and nothing else, on the
+ * reasoning that an interior ring is invisible once a shape is drawn as an
+ * outline. Both halves of that were wrong. Measured against Ustaritz (64547)
+ * on 2026-09-01, the answer for one point in the village centre: zone `UB`,
+ * ONE polygon, TWO interior rings — 6 646 m² that the same PLU zones `UE`
+ * (the school and its grounds) and 50 686 m² that it zones `UYc` (the
+ * industrial estate). Keeping the outer ring alone draws UB as a solid blob
+ * that swallows both, so every building inside them is shown inside a zone it
+ * is not in. Across the whole commune: 14 interior rings, 299 441 m² — thirty
+ * hectares of ground attributed to the wrong rule.
+ *
+ * A hole is never dropped while its outer ring survives, which is why the
+ * budget below is spent per PART rather than per ring: half a donut is not a
+ * cheaper donut, it is a different shape that says something false.
+ *
  * @param {object|null|undefined} geometry
- * @returns {{rings: Array<Array<number[]>>, simplified: boolean, sourceVertices: number,
- *   sourceRings: number, servedRings: number}}
+ * @returns {{parts: Array<Array<Array<number[]>>>, simplified: boolean, sourceVertices: number,
+ *   sourceRings: number, sourceParts: number, servedParts: number, holes: number}}
  */
 export function projectGeometry(geometry) {
   const polygons = geometry?.type === 'Polygon' ? [geometry.coordinates]
@@ -162,29 +184,46 @@ export function projectGeometry(geometry) {
   let simplified = false;
   let sourceVertices = 0;
   let sourceRings = 0;
+  let sourceParts = 0;
   for (const polygon of polygons) {
-    // Outer ring only. Holes in an administrative envelope are rare and, drawn
-    // as an outline rather than a fill, invisible — carrying them would cost
-    // bytes for nothing.
     const outer = Array.isArray(polygon) ? polygon[0] : null;
     if (!Array.isArray(outer)) continue;
+    const decimatedOuter = decimateRing(outer);
     sourceVertices += outer.length;
     sourceRings += 1;
-    const decimated = decimateRing(outer);
-    if (decimated.ring.length >= 3) candidates.push(decimated.ring);
-    if (decimated.simplified) simplified = true;
+    sourceParts += 1;
+    if (decimatedOuter.simplified) simplified = true;
+    if (decimatedOuter.ring.length < 3) continue;
+    const rings = [decimatedOuter.ring];
+    for (let index = 1; index < polygon.length; index += 1) {
+      const hole = polygon[index];
+      if (!Array.isArray(hole)) continue;
+      sourceVertices += hole.length;
+      sourceRings += 1;
+      const decimatedHole = decimateRing(hole);
+      if (decimatedHole.simplified) simplified = true;
+      // A ring that decimates below a triangle cannot be a hole; it is also
+      // too small to be one at the zoom this is drawn at.
+      if (decimatedHole.ring.length >= 3) rings.push(decimatedHole.ring);
+    }
+    candidates.push(rings);
   }
   // Largest first, so what survives a budget is the part of the envelope a
-  // reader can actually see.
-  candidates.sort((a, b) => b.length - a.length);
-  const rings = [];
+  // reader can actually see. Ranked on the OUTER ring: a part is as visible as
+  // its outline, and its holes are inside that outline by construction.
+  candidates.sort((a, b) => b[0].length - a[0].length);
+  const parts = [];
+  let holes = 0;
   let budget = GPU_MAX_FEATURE_VERTICES;
-  for (const ring of candidates) {
-    if (rings.length >= GPU_MAX_FEATURE_RINGS || budget <= 0) { simplified = true; break; }
-    rings.push(ring);
-    budget -= ring.length;
+  for (const rings of candidates) {
+    if (parts.length >= GPU_MAX_FEATURE_PARTS || budget <= 0) { simplified = true; break; }
+    parts.push(rings);
+    holes += rings.length - 1;
+    for (const ring of rings) budget -= ring.length;
   }
-  return { rings, simplified, sourceVertices, sourceRings, servedRings: rings.length };
+  return {
+    parts, simplified, sourceVertices, sourceRings, sourceParts, servedParts: parts.length, holes,
+  };
 }
 
 /**
@@ -198,7 +237,7 @@ export function projectZones(payload) {
   for (const feature of features) {
     const properties = feature?.properties || {};
     const geometry = projectGeometry(feature?.geometry);
-    if (!geometry.rings.length) continue;
+    if (!geometry.parts.length) continue;
     zones.push({
       id: String(properties.gid ?? `zone-${zones.length}`),
       code: properties.libelle ?? null,
@@ -210,11 +249,13 @@ export function projectZones(payload) {
       approvedOn: properties.datvalid ?? properties.datappro ?? null,
       regulationFile: properties.nomfic || null,
       regulationUrl: properties.urlfic || null,
-      rings: geometry.rings,
+      parts: geometry.parts,
+      holes: geometry.holes,
       simplified: geometry.simplified,
       sourceVertices: geometry.sourceVertices,
       sourceRings: geometry.sourceRings,
-      servedRings: geometry.servedRings,
+      sourceParts: geometry.sourceParts,
+      servedParts: geometry.servedParts,
     });
   }
   return zones;
@@ -231,7 +272,7 @@ export function projectServitudes(payload) {
   for (const feature of features) {
     const properties = feature?.properties || {};
     const geometry = projectGeometry(feature?.geometry);
-    if (!geometry.rings.length) continue;
+    if (!geometry.parts.length) continue;
     const code = String(properties.suptype ?? '').trim().toLowerCase();
     servitudes.push({
       id: String(properties.idass ?? properties.gid ?? `sup-${servitudes.length}`),
@@ -246,11 +287,13 @@ export function projectServitudes(payload) {
       regulationName: properties.nomreg ?? null,
       regulationUrl: properties.urlreg || null,
       documentFile: properties.fichier ?? null,
-      rings: geometry.rings,
+      parts: geometry.parts,
+      holes: geometry.holes,
       simplified: geometry.simplified,
       sourceVertices: geometry.sourceVertices,
       sourceRings: geometry.sourceRings,
-      servedRings: geometry.servedRings,
+      sourceParts: geometry.sourceParts,
+      servedParts: geometry.servedParts,
     });
   }
   // Named families first so a reader meets "airport noise plan" before "PT2".

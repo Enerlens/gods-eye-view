@@ -208,6 +208,18 @@
   millimetre. They also pin that a servitude has **no `categorie` field**; the
   type is `suptype` (`ac1`, `t1`, `pm1`, `t5`…). Licence Ouverte 2.0, IGN.
 
+- `gpu-zone-urba-enclaves-sample.json` — the WHOLE, untrimmed `zone-urba`
+  answer for one point in the centre of Ustaritz (64547), captured 2026-09-01
+  (19,999 bytes). One feature, zone `UB`, one polygon, and **two interior
+  rings** — 6,646 m² that the same PLU zones `UE` (the school) and 50,686 m²
+  that it zones `UYc` (the industrial estate). It is here because the two Paris
+  fixtures above were captured with their inner rings STRIPPED, back when the
+  projection read outer rings only: they cannot fail if holes are dropped
+  again, and this one can. It is the answer behind the operator's question —
+  "how can one house be in two PLU zones at once?" — which was this layer
+  filling both enclaves with a rule that does not apply to them. Licence
+  Ouverte 2.0, IGN.
+
 - `idfm-{arrets,lignes}-sample.json` — 12 of 43 stops from a box around the same
   point, and 12 of 2,121 lines, captured 2026-09-01. The stops keep all four
   published accessibility values (`true`, `false`, `partial`, `unknown`), which

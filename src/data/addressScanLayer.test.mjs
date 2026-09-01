@@ -5,6 +5,7 @@ import * as Cesium from 'cesium';
 import {
   SEAT_EPSILON_M,
   cardFromEntity,
+  createAddressScanLayer,
   renderedGroundM,
   scanShiftNeeded,
   seatEntitiesOnGround,
@@ -184,4 +185,104 @@ test('the scan threshold still gates on ground distance, not on height', () => {
   assert.equal(scanShiftNeeded(null, ADDRESS), true);
   assert.equal(scanShiftNeeded(ADDRESS, ADDRESS), false);
   assert.equal(scanShiftNeeded(ADDRESS, { lon: ADDRESS.lon, lat: ADDRESS.lat + 0.01 }), true);
+});
+
+/**
+ * A viewer with no canvas: `cameraScanPoint` falls back to the nadir and the
+ * click handler declines to install, which is exactly the surface these two
+ * tests want — the shell's redraw contract, with no DOM in it.
+ */
+function headlessViewer(lon, lat, altitudeM) {
+  const added = [];
+  return {
+    added,
+    viewer: {
+      camera: {
+        positionCartographic: new Cesium.Cartographic(
+          Cesium.Math.toRadians(lon), Cesium.Math.toRadians(lat), altitudeM,
+        ),
+        moveEnd: { addEventListener: () => () => {} },
+      },
+      scene: { globe: { show: true }, requestRender() {} },
+      dataSources: { add(source) { added.push(source); return source; } },
+    },
+  };
+}
+
+function stackEventTarget() {
+  const listeners = new Set();
+  return {
+    size: () => listeners.size,
+    fire() { for (const listener of listeners) listener(); },
+    addEventListener(type, listener) { listeners.add(listener); },
+    removeEventListener(type, listener) { listeners.delete(listener); },
+  };
+}
+
+async function scannedLayer(overrides) {
+  const renders = [];
+  const { viewer } = headlessViewer(ADDRESS.lon, ADDRESS.lat, 900);
+  const layer = createAddressScanLayer({
+    id: 'scan-test',
+    name: 'Scan test',
+    icon: '▦',
+    source: 'test',
+    endpoint: '/api/test',
+    updateInterval: 900_000,
+    render({ payload, dataSource, viewer: seen }) {
+      renders.push({ payload, classified: seen?.scene?.globe?.show });
+      dataSource.entities.add({ id: `drawn-${renders.length}` });
+      return 1;
+    },
+    fetchImpl: async () => ({ ok: true, json: async () => ({ zones: ['one'] }) }),
+    ...overrides,
+  });
+  layer.init(viewer);
+  layer.enable(viewer);
+  await layer.update(viewer);
+  return { layer, renders, viewer };
+}
+
+/**
+ * The wash the urbanism layer draws is ground-classification geometry, and a
+ * classification surface is read ONCE, when the primitive is built. Switch the
+ * basemap to the photoreal tileset — which hides the globe — and a wash built
+ * for terrain draws nothing at all: the layer reads as switched off.
+ */
+test('a map-stack change redraws the answer already in hand, without refetching', async () => {
+  let fetches = 0;
+  const events = stackEventTarget();
+  const { renders } = await scannedLayer({
+    redrawOnMapStack: true,
+    mapStackEventTarget: events,
+    fetchImpl: async () => {
+      fetches += 1;
+      return { ok: true, json: async () => ({ zones: ['one'] }) };
+    },
+  });
+  assert.equal(renders.length, 1);
+  assert.equal(fetches, 1);
+
+  events.fire();
+  assert.equal(renders.length, 2, 'the ground changed, so the draw is rebuilt');
+  assert.equal(fetches, 1, 'the register did not change, so nothing is refetched');
+  assert.equal(renders[1].classified, true, 'the render is handed the viewer it must classify for');
+});
+
+test('the four billboard layers do not subscribe, and unsubscribe on disable', async (t) => {
+  // `disable()` detaches the layer's Escape-to-dismiss handler from `document`,
+  // which only exists in the browser this runs in.
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const events = stackEventTarget();
+  const { layer } = await scannedLayer({ mapStackEventTarget: events });
+  assert.equal(events.size(), 0, 'a marker is a marker whatever the basemap is');
+
+  const listening = stackEventTarget();
+  const draped = await scannedLayer({ redrawOnMapStack: true, mapStackEventTarget: listening });
+  assert.equal(listening.size(), 1);
+  draped.layer.disable();
+  assert.equal(listening.size(), 0);
+  layer.disable();
 });

@@ -1970,9 +1970,14 @@ isochrone has no meaning without a chosen point, so it is not in the layer
 registry and carries no share token. Walking and driving only.
 
 These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
-`ur`, `if`. The single-character space ran out exactly where this file kept
-predicting it would: by the time this branch met main, `0`–`9` and `a`–`y` were
-all claimed and `z` is the canonical UNKNOWN token two tests assert on. Widening
+`ur`, `if` — and `cadastre-fr` is the sixth, `cd`. The single-character space
+ran out exactly where this file kept predicting it would: by the time this
+branch met main, `0`–`9` and `a`–`y` were all claimed and `z` is the canonical
+UNKNOWN token two tests assert on. `cadastre-fr` and `schools-fr` both claimed
+`0` on separate branches, and the duplicate-token assertion turned that into a
+BOOT failure at the merge rather than a share link that silently enabled the
+wrong layer; `schools-fr` kept `0` because it had already shipped and links
+carrying it exist, and the unshipped layer moved. Widening
 cost nothing on the wire, because `l=` has always been DOT-SEPARATED: `l=f.dv.p`
 parses by the same split that read `l=f.7.p`, every link ever issued still
 decodes to exactly what it decoded to before, and a two-character token can
@@ -2022,6 +2027,45 @@ for it and `getStats().seatPending` says so. `scripts/qa-address-layers.mjs`
 measures the residual offset in pixels from two camera poses; a unit test
 covers the seating arithmetic. Clamped polylines carry no `position` and are
 skipped — they were already on the ground.
+
+**Urbanisme draws GROUND, and the other four draw points.** A PLU zone is not a
+place, it is a rule over an area, so `urbanisme-gpu` is the one address layer
+that fills: each zone is a translucent, ground-classified wash with its
+interior rings CUT OUT, and the stroke on top of it. The wash says where, the
+stroke says exactly where — and the enclave is the part that matters. The
+projection kept outer rings only until 2026-09-01, on the reasoning that a hole
+in an outline is invisible; it is, and it is the entire point of a fill.
+Measured at Ustaritz: the `UB` zone under the village centre is one polygon
+with two interior rings, 6 646 m² the same document zones `UE` and 50 686 m²
+it zones `UYc`, so the filled-without-holes version painted 57 332 m² of ground
+with a rule that does not reach it. Rings are spent out of the vertex budget
+WITH the ring they perforate, so a hole is never what a budget drops.
+
+`typezone` carries SEVEN values and the colour table had four. A census over
+twelve APIcarto boxes on 2026-09-01 — 4 216 zoning features — found **zero
+occurrences of plain `AU`**: every à-urbaniser zone publishes `AUc` (open under
+the PLU as it stands) or `AUs` (closed until the document is modified or
+revised), so the family this layer exists for was the one drawn in the
+unknown-value grey. Both are now coloured, `AUs` cooled and quieter, and
+`Ah`/`Nh` take their family's hue brightened. Fill weights were measured rather
+than chosen: differenced against an unpainted frame over an IGN orthophoto,
+0.18 moved the picture by a mean of 3/255 in red and was invisible, which is
+why the shipped ladder runs 0.22 (`A`/`N`) to 0.42 (`AUc`). Servitudes stay
+lines and are DASHED — they are not zoning, and one measured `pm1` envelope is
+759 polygons spanning kilometres, so a wash of it tints the view, not a plot.
+
+More than one zone under one point is not a bug and `zoneCount` reports it: on
+a 35 m grid over a 9 × 6 km box around Ustaritz, 17 of 34 126 points fall in
+two zoning polygons, every one at a commune limit where two independently
+digitised PLU documents overlap — 73 polygon pairs and 5,3 ha in that box
+alone.
+
+Because the wash is ground-classification geometry, and a classification
+surface is read once when the primitive is BUILT, `urbanisme-gpu` is also the
+one address layer that sets `redrawOnMapStack`. Switching to the photoreal
+tileset hides the globe, and a wash addressed to terrain then draws nothing at
+all — the layer reads as switched off. It rebuilds from the payload already in
+hand, with no request and no rate limit spent.
 
 Licence note: IDFM is **ODbL 1.0** — attribution and share-alike on derived
 databases — while the other five are Licence Ouverte. See `DATA_SOURCES.md`.

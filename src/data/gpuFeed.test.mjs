@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   GPU_COORDINATE_DECIMALS,
-  GPU_MAX_FEATURE_RINGS,
+  GPU_MAX_FEATURE_PARTS,
   GPU_MAX_RING_VERTICES,
   SUP_TYPE_LABELS,
   buildGpuUrl,
@@ -20,6 +20,7 @@ import {
 
 const read = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 const ZONING = read('gpu-zone-urba-sample.json');
+const ENCLAVES = read('gpu-zone-urba-enclaves-sample.json');
 const SERVITUDES = read('gpu-assiette-sup-s-sample.json');
 
 test('the captured answers still carry every field the projection reads', () => {
@@ -81,7 +82,7 @@ test('an unmapped code keeps its code rather than disappearing', () => {
 test('a ring over the per-ring cap is decimated, and says so', () => {
   const railway = projectServitudes(SERVITUDES).find((entry) => entry.code === 't1');
   assert.equal(railway.sourceVertices, 1394);
-  assert.ok(railway.rings.flat().length <= GPU_MAX_RING_VERTICES);
+  assert.ok(railway.parts.flat(2).length <= GPU_MAX_RING_VERTICES);
   assert.equal(railway.simplified, true);
 });
 
@@ -92,17 +93,17 @@ test('a per-ring cap alone is not enough, and the measurement is why', () => {
   // still has something to bite on.
   const wide = projectServitudes(SERVITUDES)
     .filter((entry) => entry.code === 'pm1')
-    .find((entry) => entry.sourceRings > GPU_MAX_FEATURE_RINGS);
-  assert.equal(wide.sourceRings, 30);
-  assert.equal(wide.servedRings, GPU_MAX_FEATURE_RINGS);
+    .find((entry) => entry.sourceParts > GPU_MAX_FEATURE_PARTS);
+  assert.equal(wide.sourceParts, 30);
+  assert.equal(wide.servedParts, GPU_MAX_FEATURE_PARTS);
   assert.equal(wide.simplified, true);
 });
 
 test('a feature within both budgets is served whole and unflagged', () => {
   const intact = projectServitudes(SERVITUDES)
     .filter((entry) => entry.code === 'pm1')
-    .find((entry) => entry.sourceRings === 23);
-  assert.equal(intact.servedRings, 23);
+    .find((entry) => entry.sourceParts === 23);
+  assert.equal(intact.servedParts, 23);
   assert.equal(intact.simplified, false, 'nothing was dropped, so nothing is claimed');
 });
 
@@ -136,4 +137,66 @@ test('one failed endpoint leaves the other standing', () => {
   assert.equal(projected.zones.length, 1);
   assert.deepEqual(projected.servitudes, []);
   assert.equal(projected.available.servitudes, false);
+});
+
+// The reported symptom, in the operator's own words: "comment c'est possible
+// qu'une maison puisse se retrouver en même temps dans deux zones de PLU ?"
+// The register was right and the projection was wrong — it kept outer rings
+// and threw the enclaves away, so a filled UB swallowed a school and an
+// industrial estate. These pin the real answer for the real point.
+test('an enclave inside a zone survives the projection', () => {
+  const [zone] = projectZones(ENCLAVES);
+  assert.equal(zone.code, 'UB');
+  assert.equal(zone.kind, 'U');
+  assert.equal(zone.parts.length, 1, 'one piece of ground');
+  assert.equal(zone.parts[0].length, 3, 'an outer ring and TWO interior rings');
+  assert.equal(zone.holes, 2);
+});
+
+test('the enclave rings are inside the outer ring, not beside it', () => {
+  const [zone] = projectZones(ENCLAVES);
+  const [outer, ...holes] = zone.parts[0];
+  const bounds = (ring) => ring.reduce((box, [lon, lat]) => ({
+    west: Math.min(box.west, lon),
+    east: Math.max(box.east, lon),
+    south: Math.min(box.south, lat),
+    north: Math.max(box.north, lat),
+  }), {
+    west: Infinity, east: -Infinity, south: Infinity, north: -Infinity,
+  });
+  const outerBox = bounds(outer);
+  for (const hole of holes) {
+    const box = bounds(hole);
+    assert.ok(box.west >= outerBox.west && box.east <= outerBox.east
+      && box.south >= outerBox.south && box.north <= outerBox.north,
+    'a hole this projection keeps must lie within the ring it perforates');
+  }
+});
+
+test('a hole is never dropped while the ring it perforates survives', () => {
+  // Half a donut is not a cheaper donut. Rebuilt with an outer ring far over
+  // the vertex budget, so the part is taken and its holes must come with it.
+  const ring = (cx, cy, r, n) => Array.from({ length: n }, (unused, i) => [
+    Number((cx + (r * Math.cos((2 * Math.PI * i) / n))).toFixed(5)),
+    Number((cy + (r * Math.sin((2 * Math.PI * i) / n))).toFixed(5)),
+  ]);
+  const [zone] = projectZones({
+    features: [{
+      properties: { gid: 1, libelle: 'UB', typezone: 'U' },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [ring(2, 48, 0.02, 5000), ring(2, 48, 0.004, 900), ring(2.01, 48, 0.002, 40)],
+      },
+    }],
+  });
+  assert.equal(zone.holes, 2);
+  assert.equal(zone.parts[0][0].length <= GPU_MAX_RING_VERTICES + 1, true);
+  assert.equal(zone.simplified, true, 'the outer ring was decimated and says so');
+});
+
+test('the enclaves cost bytes, and the projection still pays for itself', () => {
+  const projected = projectGpu({ zoning: ENCLAVES, servitudes: null });
+  const after = JSON.stringify(projected).length;
+  assert.ok(after * 2 < JSON.stringify(ENCLAVES).length,
+    `${after} must still be well under half of the captured answer`);
 });
