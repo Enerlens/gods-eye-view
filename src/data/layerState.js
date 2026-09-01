@@ -285,6 +285,14 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // a duplicate here is a BOOT failure, not a review nit.
   Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
+  // `0`, the LAST free character in the scheme: a-y are all taken, `z` is the
+  // canonical UNKNOWN token two existing tests assert on, and 1-9 belong to
+  // gas-fr, power-grid, rte-generation, fr-hydro-plants, bdtopo-buildings,
+  // local-airports, road-status-fr, road-events-fr and irve-fr. The next layer
+  // after this one cannot be a single character and the scheme will have to
+  // grow; that is a real decision to make then, not a reason to squat on `z`
+  // now. `enabled-only`: the layer has no runtime option to serialize.
+  Object.freeze({ id: 'cadastre-fr', token: '0', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
   Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),

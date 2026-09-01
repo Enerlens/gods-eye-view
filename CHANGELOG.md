@@ -7,6 +7,68 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- Added the **Parcelles cadastrales** layer — the lines France taxes land
+  along, keyless. IGN's **Api Carto** serves the DGFiP's *Plan Cadastral
+  Informatisé* (PCI vecteur) under Licence Ouverte 2.0 with no key and no
+  account: one polygon per parcel, with its section, its 14-character national
+  `idu`, and the surface the tax administration has registered against it.
+  Loaded per viewport, ground-clamped so it drapes on IGN ortho, on Bing and on
+  the Google photoreal tileset alike.
+- **A cadastral line is a fiscal line, not a legal one, and every card ends by
+  saying so.** In France a property limit is fixed by *bornage* — a
+  géomètre-expert's survey under article 646 of the Code civil — and the
+  cadastre has no authority over it. A crisp polygon on a photorealistic globe
+  is exactly the thing a reader takes for a surveyed limit.
+- **How approximate each line is, is published, and nobody draws it.** Every
+  parcel belongs to a *feuille*, and the feuille carries the scale of the plan
+  it was drawn on. Measured across 673 sheets on 2026-09-01: **1:250** in
+  central Strasbourg, **1:5000** over the Landes forest, a twentyfold spread
+  with zero nulls. At the conventional 0,5 mm of drawn line that is ±0,13 m
+  against ±2,5 m for the same word "boundary". Parcels are coloured by that
+  band, and the card prints the figure with the assumption attached — a bare
+  "±0,25 m" reads as a survey result.
+- **The holes are the streets, and the row says how many.** The cadastre
+  parcels private land, not the public domain, so a correct answer over a city
+  centre is full of gaps. Clipped to the view and measured: **45,7 % of Lyon's
+  Presqu'île** is cadastred, 32,7 % around the Champ-de-Mars, 80,9 % in the
+  Marais — against 95,0 % of a Cantal block and 98,6 % of a Landes forest one.
+  The layer reports the fraction so the gaps read as the public realm rather
+  than as a broken feed.
+- The service disagrees with itself in ways a naive read gets visibly wrong, so
+  six of them are absorbed server-side and pinned against a captured answer:
+  - **Api Carto caps every request at 5,000 features and says so only in
+    `totalFeatures`.** `_limit=10000` over Paris returns exactly 5,000 of
+    12,483, HTTP 200, no warning — and paging with `_start` walks an internal
+    order that mixes arrondissements, so a truncated answer is a cadastre with
+    *scattered* holes, which is precisely what a complete one looks like over
+    the public domain. A box over the cap is refused whole and the true count
+    is printed. At the layer's own 0.02° ceiling the densest French cities
+    answer 2,100–2,400 parcels, so the refusal is the exception.
+  - **A sheet is not identified by (commune, section, feuille).** Lyon
+    publishes section `AL` feuille 1 in five arrondissements, and the 5e's copy
+    is drawn at 1:1000 while the others are at 1:500 — a four-part join gives
+    those parcels a coin-flipped tolerance. With `code_arr` in the key there
+    were 0 collisions across 27,595 parcels and 450 sheets.
+  - **`idu` does not start with `code_insee` for 38 % of urban France.** The
+    first five characters are the *arrondissement* code: a Marais parcel is
+    `75103000AP0045` while its `code_insee` is `75056`. Reassembling the key
+    joins to nothing in DVF for Paris, Lyon and Marseille, so the published
+    `idu` is carried verbatim and never rebuilt.
+  - **`contenance` is a fiscal declaration, not a measurement of the polygon.**
+    Mamoudzou publishes it as `null` and Ostwald as `0` — and `Number(null)` is
+    `0`, which would turn "not published" into "declares zero square metres".
+    Where both figures exist, 7,2 % of parcels differ by more than 5 % and
+    1,0 % by more than 20 %. Both numbers are on the card and neither is
+    averaged into the other.
+  - **Courtyards are holes and a parcel can be in two pieces.** Dropping the
+    Palais-Royal's interior ring moves its area from inside 1 % of the declared
+    contenance to outside 5 %; a Marseille parcel is one identifier over two
+    disjoint polygons.
+  - **A section is not always letters.** Alsace-Moselle numbers its sections
+    (`22`), Marseille prefixes with a digit (`0D`), and `com_abs` — the API's
+    "commune absorbée" — runs 801–842 across Toulouse, a commune with no
+    arrondissements at all. All are carried as opaque strings.
+
 - Added the **Bornes IRVE** layer — every public EV charge point France has
   declared, keyless. The *fichier consolidé des bornes de recharge pour
   véhicules électriques* is assembled daily by transport.data.gouv.fr from the
@@ -72,6 +134,24 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   and two layers on one token is a share link that silently enables the wrong
   one. Links written before this lands never carried an IRVE token at all, so
   nothing in the wild changes meaning.
+
+### Fixed
+
+- **The Événementiel-DIR road-events attribution was never rendered** — the
+  same merge shape that erased the power grid's ODbL notice a week earlier.
+  Two branches each appended a credit at the same point in `DATA_CREDITS`, and
+  the three-way merge kept both bodies but lost the `},\n  {` between them, so
+  `bison-fute-events` and `irve-charge-points` shared one object literal and the
+  second `key`/`html` pair silently overwrote the first. The road events layer
+  has been drawing Licence Ouverte data with no entry in the attribution
+  popover. Both are now separate objects.
+- **And the shape is now caught rather than found by accident.** Twice it took
+  someone adding an unrelated credit next to it to notice, because every
+  runtime invariant still holds: the array is well formed, every entry has a
+  key, no key is duplicated — it is simply one entry shorter.
+  `src/data/dataCredits.test.mjs` reads the source and asserts the number of
+  `key:` and `html:` properties matches the array length, which is the only
+  place the evidence survives.
 
 ## [Unreleased] — 2026-08-31
 

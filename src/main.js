@@ -14,6 +14,7 @@ import edfPowerPlantsLayer from './data/edfPowerPlants.js';
 import frHydroPlantsLayer from './data/frHydroPlants.js';
 import powerGridLayer from './data/powerGrid.js';
 import bdtopoBuildingsLayer from './data/bdtopoBuildings.js';
+import cadastreParcelsLayer from './data/cadastreParcels.js';
 import rteGenerationLayer from './data/rteGeneration.js';
 import satellitesLayer from './data/satellites.js';
 import rocketLaunchesLayer from './data/rocketLaunches.js';
@@ -291,6 +292,7 @@ async function init() {
     dataManager.register(frHydroPlantsLayer);
     dataManager.register(powerGridLayer);
     dataManager.register(bdtopoBuildingsLayer);
+    dataManager.register(cadastreParcelsLayer);
     dataManager.register(rteGenerationLayer);
     dataManager.register(satellitesLayer);
     dataManager.register(rocketLaunchesLayer);
