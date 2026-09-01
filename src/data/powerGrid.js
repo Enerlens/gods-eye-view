@@ -6,9 +6,11 @@ import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   POWER_GRID_MAX_BOX_DEG,
   POWER_GRID_TIERS,
@@ -77,6 +79,8 @@ export const POWER_GRID_LAYER_ID = 'power-grid';
 export const POWER_GRID_OVERLAY_SOURCE_ID = 'power-grid';
 /** Selected-object card, on its own protected source. */
 export const POWER_GRID_SELECTED_OVERLAY_SOURCE_ID = 'power-grid-selected';
+/** Ambient-label entry-id prefix — the click surface the yard's NAME provides. */
+export const POWER_GRID_LABEL_PREFIX = 'power-grid-label:';
 /** Ambient-label cohort ceiling — the grid nodes worth naming at a glance. */
 export const POWER_GRID_OVERLAY_COHORT_LIMIT = 14;
 /** Shared ambient-label paint budget, matching the sibling infrastructure layers. */
@@ -159,6 +163,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 /**
@@ -318,7 +323,7 @@ export function createSubstationOverlayEntry(substation, position, payload = {})
   const tier = powerTierById(voltage.tier);
   const name = substation.name || `Poste ${substation.ref || ''}`.trim();
   return {
-    id: `power-grid-label:${substation.id}`,
+    id: `${POWER_GRID_LABEL_PREFIX}${substation.id}`,
     position,
     variant: 'label',
     title: `${name} · ${formatKilovolts(voltage.v)}`,
@@ -327,7 +332,9 @@ export function createSubstationOverlayEntry(substation, position, payload = {})
     priority: Number.isFinite(voltage.v) ? Math.round(voltage.v) : 0,
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The yard's name is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -767,6 +774,18 @@ function installClickHandler(viewer) {
         if (!record.position) return;
       }
       selectObject(id);
+      return;
+    }
+    // The label plane the depth buffer knows nothing about, resolved after the
+    // native pick so a name drawn across a neighbouring yard cannot steal it.
+    const labelled = pickOverlayLabelId(click.position, {
+      sourceId: POWER_GRID_OVERLAY_SOURCE_ID,
+      prefix: POWER_GRID_LABEL_PREFIX,
+      has: (recordId) => _records.has(recordId),
+      hitTest: _overlayHost.hitTest,
+    });
+    if (labelled) {
+      selectObject(labelled);
       return;
     }
     if (_selectedId) clearSelection();

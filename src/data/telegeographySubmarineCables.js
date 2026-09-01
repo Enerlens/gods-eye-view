@@ -1,9 +1,11 @@
 import * as Cesium from 'cesium';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 
 // TeleGeography submarine-cable data is bundled for an out-of-the-box
 // experience. IMPORTANT: it is CC BY-NC-SA 3.0 (NonCommercial + ShareAlike),
@@ -68,6 +70,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   clearSource: clearOverlaySource,
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
+  hitTest: hitTestWorldOverlay,
 });
 
 export default createTeleGeographySubmarineCableLayer();
@@ -114,9 +117,13 @@ export function cableReferencePriority(distanceM) {
  * Build one shared-host ambient label for a cable or landing-point reference.
  * The entry stays attached to the record's mutable stem-tip Cartesian and is
  * created once per record; only `priority` is refreshed per sweep.
- * `interactive: false` follows the infrastructure precedent — the depth-tested
- * native point/stem/line remains the click surface, and a non-interactive
- * label keeps the host's per-frame accessibility/hit sync allocation-free.
+ * `interactive: true` because the CABLE NAME is what identifies the object:
+ * the stem tip it belongs to is a 7 px dot at the end of a hairline, often out
+ * over open ocean, and the name floating beside it is what anyone aims at. The
+ * depth-tested point/stem/line remains the first thing resolved (see the
+ * ordering rule in `overlayLabelPick.js`); the label is the fallback. The cost
+ * is one pooled array store per painted label per frame — the rectangle itself
+ * is published either way.
  * @param {object} record Reference record ({ id, kind, label, tip }).
  * @returns {object}
  */
@@ -131,7 +138,7 @@ export function createCableOverlayEntry(record) {
     priority: cableReferencePriority(record?.distanceM),
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    interactive: true,
     minDistance: 0,
     maxDistance: CABLE_REFERENCE_LABEL_MAX_DISTANCE_M,
     distanceFadeStartRatio: 0.7,
@@ -495,6 +502,8 @@ export function createTeleGeographySubmarineCableLayer({
   let _landingDataSource = null;
   let _referenceDataSource = null;
   let _referenceRecords = [];
+  /** Reference id → record, for resolving a click on the cable's NAME. */
+  let _referenceById = new Map();
   let _surfaceRecords = [];
   let _clickHandler = null;
   let _preRenderRemover = null;
@@ -629,6 +638,7 @@ export function createTeleGeographySubmarineCableLayer({
       const landingEntities = _landingDataSource.entities.values;
       _pickByEntity = new WeakMap();
       _referenceRecords = [];
+      _referenceById = new Map();
       _surfaceRecords = [];
 
       cableEntities.forEach((entity, index) => {
@@ -838,6 +848,7 @@ export function createTeleGeographySubmarineCableLayer({
     };
     record.entry = createCableOverlayEntry(record);
     _referenceRecords.push(record);
+    _referenceById.set(record.id, record);
   }
 
   function updateReferenceVisibility() {
@@ -901,8 +912,19 @@ export function createTeleGeographySubmarineCableLayer({
       if (!_enabled) return;
       const picked = viewer.scene.pick(click.position);
       const record = resolvePickRecord(picked);
-      if (!record?.reference) return;
-      flyToReference(viewer, record.reference);
+      if (record?.reference) {
+        flyToReference(viewer, record.reference);
+        return;
+      }
+      // The label plane, which the depth buffer knows nothing about, resolved
+      // after the native pick so a stem tip under the cursor still wins.
+      const labelledId = pickOverlayLabelId(click.position, {
+        sourceId: CABLE_OVERLAY_SOURCE_ID,
+        has: (referenceId) => _referenceById.has(referenceId),
+        hitTest: overlayHost.hitTest,
+      });
+      const labelled = labelledId ? _referenceById.get(labelledId) : null;
+      if (labelled?.reference) flyToReference(viewer, labelled.reference);
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   }
 

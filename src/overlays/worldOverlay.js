@@ -2183,7 +2183,15 @@ function drawWorldOverlay() {
 
 function createDevFacade() {
   if (typeof window === 'undefined' || import.meta.env?.DEV !== true) return;
-  window.__gevWorldOverlay = { getDiagnostics: getWorldOverlayDiagnostics };
+  // `getPaintRect` and `hitTest` are what a browser harness needs to prove
+  // that a NAME is a click surface: entries paint to a canvas, so the only way
+  // to aim at one is to ask the host where it put the rectangle, and the only
+  // way to prove the click resolves is to ask the host what is under it.
+  window.__gevWorldOverlay = {
+    getDiagnostics: getWorldOverlayDiagnostics,
+    getPaintRect: getOverlayPaintRect,
+    hitTest: hitTestWorldOverlay,
+  };
 }
 
 /**

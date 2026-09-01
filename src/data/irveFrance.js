@@ -70,9 +70,11 @@ import { horizonOccluder } from './iconOrientation.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   IRVE_BAND_KEYS,
   IRVE_BAND_LABELS,
@@ -99,6 +101,8 @@ export const IRVE_FR_OVERLAY_SOURCE_OPTIONS = Object.freeze({
 });
 /** Ambient département labels at national altitude. */
 export const IRVE_FR_LABEL_SOURCE_ID = 'irve-fr-departements';
+/** Ambient-label entry-id prefix — the click surface the département NAME provides. */
+export const IRVE_FR_DEP_LABEL_PREFIX = 'irve-fr:dep:';
 /**
  * Bounded label cohort. There are 96 départements and no reading of the map
  * wants 96 labels — this names the leaders and lets the fill carry the rest.
@@ -259,6 +263,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 let _overlayHost = DEFAULT_OVERLAY_HOST;
 
@@ -671,7 +676,7 @@ export function createIrveSelectedOverlayEntry(record) {
  */
 export function createIrveDepartementOverlayEntry(row, position) {
   return {
-    id: `irve-fr:dep:${row.code}`,
+    id: `${IRVE_FR_DEP_LABEL_PREFIX}${row.code}`,
     position,
     variant: 'label',
     title: `${row.name} · ${fr(row.pdc)}`,
@@ -681,7 +686,9 @@ export function createIrveDepartementOverlayEntry(row, position) {
     priority: Number(row.pdc) || 0,
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The département's name is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -787,6 +794,21 @@ function installClickHandler(viewer) {
           selectDepartement(code);
           return;
         }
+      }
+    }
+    if (_regime === 'national') {
+      // The label plane the depth buffer knows nothing about. At national
+      // altitude the name floats clear of the shape it belongs to, so it is
+      // often the only thing under the cursor.
+      const labelled = pickOverlayLabelId(click.position, {
+        sourceId: IRVE_FR_LABEL_SOURCE_ID,
+        prefix: IRVE_FR_DEP_LABEL_PREFIX,
+        has: (depCode) => _depEntities.has(depCode),
+        hitTest: _overlayHost.hitTest,
+      });
+      if (labelled) {
+        selectDepartement(labelled);
+        return;
       }
     }
     if (_selectedId) clearSelection();

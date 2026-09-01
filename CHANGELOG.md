@@ -50,6 +50,25 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   layers use deliberately different palettes (deep hues and a white dot outline
   here, pastels and a black one there) so a stacked dot reads as the overlap it
   is rather than as a duplicate.
+- **The name on the globe is now a click surface.** Every label the shared
+  overlay paints — the river gauge's name, the substation's, the power
+  station's, the cable's — selects its object exactly as the dot does. It never
+  did: labels are painted onto a `pointer-events: none` canvas stacked over the
+  viewport, so `scene.pick()` under one returns the globe, and a click aimed at
+  a name reached the terrain behind it and DISMISSED the selection instead. The
+  name is what says which object this is, and it is five to twenty times the
+  target area of the 5–15 px dot it floats above, so it is what people aim at.
+  Wired into twelve layers — Hub'Eau, Réseau électrique, Réseau gaz, Production
+  RTE, Petite hydro, Événements routiers, Écoles and Bornes IRVE (their
+  département names at national altitude), Radio (station names only — a
+  cluster badge names a count, not a station), Câbles sous-marins, the ISS
+  label and the rocket-mission markers. The depth-tested primitive is still
+  resolved first, so a name drawn across a NEIGHBOURING object can never steal
+  that object's click, a pick a sibling layer owns is left alone, and a click on
+  empty space still clears the selection. Proved in a real browser by
+  `npm run qa:label-click`, which reads where the host painted a label,
+  dispatches a real pointer event at its centre — nowhere near the dot — and
+  asserts the layer's card starts painting.
 - **Six French public registers, read from a coordinate.** Géorisques, DVF,
   the ADEME DPE register, the IGN isochrone service, the Géoportail de
   l'urbanisme and Île-de-France Mobilités are now integrated end to end —

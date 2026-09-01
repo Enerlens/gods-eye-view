@@ -2026,6 +2026,72 @@ skipped — they were already on the ground.
 Licence note: IDFM is **ODbL 1.0** — attribution and share-alike on derived
 databases — while the other five are Licence Ouverte. See `DATA_SOURCES.md`.
 
+#### Ambient labels are a click surface (September 2026)
+
+The name floating above an object on the globe now selects that object, exactly
+as its dot does. It did not before, and the reason was mechanical rather than a
+policy: the shared world overlay paints every label onto a
+`pointer-events: none` canvas stacked over the Cesium viewport, so
+`scene.pick()` under a label returns whatever is behind it — usually the globe,
+i.e. nothing. A click aimed at a station's name therefore read as *empty space*
+and DISMISSED the selection, which is the opposite of the intent. And the name
+is what people aim at: it is what says which river or which yard this is, and
+it is five to twenty times the target area of the 5–15 px dot it belongs to.
+
+The host already had the two halves — entries flagged `interactive` publish a
+screen-space hit rectangle each painted frame, and `hitTestWorldOverlay()`
+resolves the topmost one. What was missing was the resolution step in each
+layer's click handler. `src/data/overlayLabelPick.js` is that step written once:
+it fences the hit test to the asking layer's own overlay source, strips the
+entry-id prefix each layer publishes under, and re-checks the id against the
+layer's live record map — hit rectangles are pooled and published per painted
+frame, so one can name a record that left the viewport a frame ago, and that is
+a miss rather than a selection.
+
+**The resolution order is the load-bearing part, and it is the same everywhere:**
+
+1. `scene.pick()` — a native primitive under the cursor wins. Labels float
+   above their anchor, so the two rarely overlap; when they do, the thing the
+   depth buffer says you are pointing at is the honest answer, and it is also
+   the one the pick registry can arbitrate between layers.
+2. the label plane, which the depth buffer knows nothing about.
+3. only then, empty space → clear the selection.
+
+Putting the label test first would let a label drawn across a NEIGHBOURING
+object's dot steal that object's click.
+
+Wired into twelve layers: **Hub'Eau Gauges**, **Réseau électrique**, **Réseau
+gaz**, **Production RTE**, **Petite hydro**, **Événements routiers**,
+**Écoles (FR)** and **Bornes IRVE (FR)** (both on their département names at
+national altitude), **Radio** (station names only — a cluster badge names a
+count, not a station), **Câbles sous-marins** (whose stem tip is a 7 px dot at
+the end of a hairline, often out over open ocean), **Satellites** (the ISS
+label, where the point is a few pixels of a target moving at orbital speed) and
+**Rocket Launches** (the ambient mission markers). Selected-object CARDS stay
+non-interactive: a card names what is already selected, so a rectangle there
+would do nothing but cover the ambient labels behind it.
+
+Layers deliberately left alone: Vigicrues, Météo-France Vigilance, séismes,
+bouées marines, Mix élec and les itinéraires transit all paint ambient labels
+but have no selection to trigger — a click surface with nothing behind it would
+be a lie. Mobilité partagée, Transit (FR), État du réseau and Bâti 3D publish
+only selected-object cards and no ambient labels, so there is nothing to make
+clickable.
+
+Hub'Eau is the layer the request came from and the one where the gap was
+widest: its dots draw at `disableDepthTestDistance: 2500` against siblings that
+use infinity, so the click handler already has to `drillPick` eight deep just
+to find its own dot under a charging point — while the name beside it was inert.
+Its ambient label carries the same `hubeau:<code>` id as the dot, so one string
+identifies a station across the drill pick, the overlay hit test and the pick
+registry, and the label branch resolves straight into the existing
+`selectObject()`.
+
+Proved in a real scene by `npm run qa:label-click`, which reads where the host
+painted a label, dispatches a real pointer event at its centre — nowhere near
+the dot — and asserts the layer's selected-card source started painting; and
+that a click on empty space still clears it.
+
 ### Context / Contacts coordinator (July 2026)
 
 - The internal Context coordinator is available in every visual style. Its dedicated right-side `CONTEXT` chooser exposes the neutral shell; the coordinator is not duplicated in Data Layers and does not enable a live-data dependency until a mode is selected.

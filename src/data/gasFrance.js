@@ -6,9 +6,11 @@ import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   GAS_INJECTION_COLOR,
   GAS_NETWORK_OPERATORS,
@@ -76,6 +78,8 @@ export const GAS_FR_LAYER_ID = 'gas-fr';
 export const GAS_FR_OVERLAY_SOURCE_ID = 'gas-fr';
 /** Selected-object card, on its own protected source. */
 export const GAS_FR_SELECTED_OVERLAY_SOURCE_ID = 'gas-fr-selected';
+/** Ambient-label entry-id prefix — the click surface the station's NAME provides. */
+export const GAS_FR_LABEL_PREFIX = 'gas-fr-label:';
 /** There are 14 stations; the cohort limit is the whole set, not a sample. */
 export const GAS_FR_OVERLAY_COHORT_LIMIT = 16;
 /** Shared ambient-label paint budget, matching the sibling French sources. */
@@ -213,6 +217,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
   clearSource: clearOverlaySource,
+  hitTest: hitTestWorldOverlay,
 });
 
 /**
@@ -356,7 +361,7 @@ export function createGasSelectedOverlayEntry(record) {
  */
 export function createGasPlantOverlayEntry(plant, position) {
   return {
-    id: `gas-fr-label:${plant.id}`,
+    id: `${GAS_FR_LABEL_PREFIX}${plant.id}`,
     position,
     variant: 'label',
     title: `${plant.name} · ${formatMw(plant.mw)}`,
@@ -365,7 +370,9 @@ export function createGasPlantOverlayEntry(plant, position) {
     priority: Math.round(Number.isFinite(plant.mw) ? plant.mw : 0),
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
-    interactive: false,
+    // The station's name is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -735,6 +742,18 @@ function installClickHandler(viewer) {
         if (!record.position) return;
       }
       selectObject(id);
+      return;
+    }
+    // The label plane the depth buffer knows nothing about, resolved after the
+    // native pick so a name drawn across a neighbouring site cannot steal it.
+    const labelled = pickOverlayLabelId(click.position, {
+      sourceId: GAS_FR_OVERLAY_SOURCE_ID,
+      prefix: GAS_FR_LABEL_PREFIX,
+      has: (recordId) => _records.has(recordId),
+      hitTest: _overlayHost.hitTest,
+    });
+    if (labelled) {
+      selectObject(labelled);
       return;
     }
     if (_selectedId) clearSelection();
