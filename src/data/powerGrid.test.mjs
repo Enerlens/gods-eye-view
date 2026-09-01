@@ -488,3 +488,47 @@ test('a camera too wide for the grid is flown in, not told off', async () => {
     _setPowerGridStateForTest({ viewer: null, payload: null, enabled: false });
   }
 });
+
+test('the zoom gate asks for a zoom — it does not fail the lifecycle or raise an error', async () => {
+  // THE REPORTED BUG, as a unit. Switching this layer on from a country-wide
+  // camera produced "power-grid could not start cleanly" and left the toggle
+  // off: `update()` returned `load()`'s answer, `load()` answers "did I fetch",
+  // and DataLayerManager reads a literal `false` as a refusal of the lifecycle
+  // transition. The gate is a normal state, not a refusal.
+  const overlayHost = { setEntries() {}, setVisible() {}, clearSource() {} };
+  // Wider than POWER_GRID_MAX_BOX_DEG in both axes — the country-wide view the
+  // bug was reported from.
+  const wide = Cesium.Rectangle.fromDegrees(-5, 42, 9, 51);
+  const viewer = {
+    camera: { computeViewRectangle: () => wide },
+    scene: { globe: { ellipsoid: Cesium.Ellipsoid.WGS84 }, requestRender() {} },
+  };
+  _setPowerGridStateForTest({ viewer, records: new Map(), payload: null, overlayHost });
+
+  assert.equal(powerViewportBox(viewer), null, 'the fixture really is past the gate');
+  assert.equal(
+    await powerGridLayer.update(viewer),
+    true,
+    'a zoom gate must not read as a refused lifecycle transition',
+  );
+
+  const stats = powerGridLayer.getStats();
+  assert.equal(stats.status, 'zoom-in');
+  // `getStats()` omits the key entirely when there is nothing wrong, so this
+  // asserts ABSENCE rather than a particular empty value — the row's fault slot
+  // keys off truthiness, and that is what must stay unlit.
+  assert.ok(!stats.error, `a zoom prompt must not reach the fault slot, got ${stats.error}`);
+  assert.match(
+    stats.loadingLabel,
+    /zoom in below/i,
+    'the prompt travels in the guidance slot, where the row can print it',
+  );
+  assert.match(stats.loadingLabel, new RegExp(String(POWER_GRID_MAX_BOX_DEG)),
+    'and it names the actual threshold rather than a vague hint');
+});
+
+test('a disabled layer is the only thing that refuses the transition', async () => {
+  const overlayHost = { setEntries() {}, setVisible() {}, clearSource() {} };
+  _setPowerGridStateForTest({ viewer: null, records: new Map(), overlayHost, enabled: false });
+  assert.equal(await powerGridLayer.update(null), false);
+});
