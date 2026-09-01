@@ -144,3 +144,41 @@
   of 1,173 buildings and Paris for 0 of 2,067, which is the asymmetry every
   seating rule in `bdtopoBuildingsFeed.js` exists to handle. Used by
   `src/data/bdtopoBuildingsFeed.test.mjs`. © IGN, Licence Ouverte 2.0.
+
+- `bison-fute-evenementiel-sample.xml` — 9 real situations (16 records) of the
+  national DATEX II road-event aggregate
+  `tipi.bison-fute.gouv.fr/.../Evenementiel-DIR/grt/RRN/content.xml`, captured
+  2026-08-31 at its own `publicationTime` of 21:13:26.825+02:00, with the SOAP
+  envelope and publication header kept verbatim so the projection under test
+  reads exactly what the proxy reads. Nine of 286, chosen to hold every trap
+  and seven of the eight drawn categories. Each is one thing the projection
+  exists for: **260830-002035**, an accident on the N94 that also publishes the
+  lane closure it caused — the situation that proves one incident must not be
+  drawn twice; **260131-000090**, a rockfall opened on 31 January whose validity
+  window has **no end time at all** and which only `lifeCycleManagement/end`
+  closes, so reading the window alone leaves a landslide on the N20 for seven
+  months; **260122-001698**, roadworks ordered for **1 October** that carry a
+  closure and a diversion of their own; **260722-001613**, a `roadClosed`
+  segment, which is the only way to tell a closure from a restriction inside
+  one DATEX II class; **260113-001342**, a situation that is nothing but
+  diversions *and* publishes an `internalNote` comment — the operator's message
+  to their own district, which the projection reads and drops; plus a queue at
+  Calais, snow closing the col du Glandon, a landslide cutting the D21, and
+  live roadworks. Licence Ouverte 2.0, DIR via Bison Futé / Tipi.
+
+- `bison-fute-qtv-sample.xml` / `bison-fute-qtv-referentiel-sample.csv` — 9 real
+  `siteMeasurements` of `QTV-DIR/qtvDir.xml` with the matching 8 rows of
+  `refDir.csv`, captured 2026-08-31 (publication 21:54, measurement label 22:00,
+  file written 22:11:52 — the ~12-minute lag the layer reports as an age). The
+  CSV keeps the file's real defect: a **20-column header over 19-column rows**,
+  `code_insee_commune` absent from every one. Every station is a trap the
+  projection exists for: **MYK69.K1** counted **7 114 véh/h** beside a `0.0`
+  km/h computed from **zero samples** — the row that proves a zero is not always
+  a zero; **MYL42.U2** measured 0 km/h with 600 véh/h from 60 real samples,
+  which is a genuine queue; **MY269.C4** measured 0 and 0 from 420 samples on
+  the A42 at 22:00, which is an empty road, *and* publishes `x_deb === x_fin`,
+  so its "segment" has no length; **MM713.O1** published both values from zero
+  samples; **MB333.O1** publishes only one endpoint; **MWO56.J1** has a
+  referential row with no coordinates at all; and **`#MZo57.2`** is measured
+  every six minutes with no referential row behind it. Coordinates are
+  Lambert-93 (EPSG:2154). Licence Ouverte 2.0, DIR via Bison Futé / Tipi.

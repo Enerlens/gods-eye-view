@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<d2LogicalModel modelBaseVersion="2" xmlns="http://datex2.eu/schema/2/2_0">
+    <exchange>
+        <supplierIdentification>
+            <country>fr</country>
+            <nationalIdentifier>TIPI</nationalIdentifier>
+        </supplierIdentification>
+        <subscription>
+            <operatingMode>operatingMode3</operatingMode>
+            <subscriptionStartTime>2026-08-31T21:54:00.000+02:00</subscriptionStartTime>
+            <subscriptionState>active</subscriptionState>
+            <subscriptionStopTime>2026-08-31T22:00:00.000+02:00</subscriptionStopTime>
+            <updateMethod>snapshot</updateMethod>
+            <target>
+                <address></address>
+                <protocol></protocol>
+            </target>
+        </subscription>
+    </exchange>
+    <payloadPublication xsi:type="MeasuredDataPublication" lang="fre" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+        <publicationTime>2026-08-31T21:54:00.000+02:00</publicationTime>
+        <publicationCreator>
+            <country>fr</country>
+            <nationalIdentifier>TIPI</nationalIdentifier>
+        </publicationCreator>
+        <measurementSiteTableReference targetClass="MeasurementSiteTable" id="" version="1"/>
+        <headerInformation>
+            <confidentiality>noRestriction</confidentiality>
+            <informationStatus>real</informationStatus>
+        </headerInformation>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MUM76.h1" version="1.0"/>
+            <measurementTimeDefault>2026-08-31T22:00:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficFlow">
+                        <vehicleFlow numberOfInputValuesUsed="11">
+                            <vehicleFlowRate>110</vehicleFlowRate>
+                        </vehicleFlow>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficSpeed">
+                        <averageVehicleSpeed numberOfInputValuesUsed="11">
+                            <speed>108.0</speed>
+                        </averageVehicleSpeed>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MYK69.K1" version="1.0"/>
+            <measurementTimeDefault>2026-08-31T22:00:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficFlow">
+                        <vehicleFlow numberOfInputValuesUsed="420">
+                            <vehicleFlowRate>7114</vehicleFlowRate>
+                        </vehicleFlow>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficSpeed">
+                        <averageVehicleSpeed numberOfInputValuesUsed="0">
+                            <speed>0.0</speed>
+                        </averageVehicleSpeed>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MYL42.U2" version="1.0"/>
+            <measurementTimeDefault>2026-08-31T22:00:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficFlow">
+                        <vehicleFlow numberOfInputValuesUsed="60">
+                            <vehicleFlowRate>600</vehicleFlowRate>
+                        </vehicleFlow>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficSpeed">
+                        <averageVehicleSpeed numberOfInputValuesUsed="60">
+                            <speed>0.0</speed>
+                        </averageVehicleSpeed>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MY269.D1" version="1.0"/>
+            <measurementTimeDefault>2026-08-31T22:00:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficFlow">
+                        <vehicleFlow numberOfInputValuesUsed="420">
+                            <vehicleFlowRate>9171</vehicleFlowRate>
+                        </vehicleFlow>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficSpeed">
+                        <averageVehicleSpeed numberOfInputValuesUsed="420">
+                            <speed>83.85714</speed>
+                        </averageVehicleSpeed>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MY269.C4" version="1.0"/>
+            <measurementTimeDefault>2026-08-31T22:00:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficFlow">
+                        <vehicleFlow numberOfInputValuesUsed="420">
+                            <vehicleFlowRate>0</vehicleFlowRate>
+                        </vehicleFlow>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficSpeed">
+                        <averageVehicleSpeed numberOfInputValuesUsed="420">
+                            <speed>0.0</speed>
+                        </averageVehicleSpeed>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MM713.O1" version="1.0"/>
+            <measurementTimeDefault>2026-08-31T22:00:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficFlow">
+                        <vehicleFlow numberOfInputValuesUsed="0">
+                            <vehicleFlowRate>0</vehicleFlowRate>
+                        </vehicleFlow>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficSpeed">
+                        <averageVehicleSpeed numberOfInputValuesUsed="0">
+                            <speed>0.0</speed>
+                        </averageVehicleSpeed>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MB333.O1" version="1.0"/>
+            <measurementTimeDefault>2026-08-31T22:00:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficFlow">
+                        <vehicleFlow numberOfInputValuesUsed="45">
+                            <vehicleFlowRate>720</vehicleFlowRate>
+                        </vehicleFlow>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficSpeed">
+                        <averageVehicleSpeed numberOfInputValuesUsed="45">
+                            <speed>78.333336</speed>
+                        </averageVehicleSpeed>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="MWO56.J1" version="1.0"/>
+            <measurementTimeDefault>2026-08-31T22:00:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficFlow">
+                        <vehicleFlow numberOfInputValuesUsed="40">
+                            <vehicleFlowRate>400</vehicleFlowRate>
+                        </vehicleFlow>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficSpeed">
+                        <averageVehicleSpeed numberOfInputValuesUsed="40">
+                            <speed>106.0</speed>
+                        </averageVehicleSpeed>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+        <siteMeasurements>
+            <measurementSiteReference targetClass="MeasurementSiteRecord" id="#MZo57.2" version="1.0"/>
+            <measurementTimeDefault>2026-08-31T22:00:00.000+02:00</measurementTimeDefault>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficFlow">
+                        <vehicleFlow numberOfInputValuesUsed="53">
+                            <vehicleFlowRate>660</vehicleFlowRate>
+                        </vehicleFlow>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+            <measuredValue index="0">
+                <measuredValue>
+                    <basicData xsi:type="TrafficSpeed">
+                        <averageVehicleSpeed numberOfInputValuesUsed="53">
+                            <speed>53.5</speed>
+                        </averageVehicleSpeed>
+                    </basicData>
+                </measuredValue>
+            </measuredValue>
+        </siteMeasurements>
+    </payloadPublication>
+</d2LogicalModel>
