@@ -7,6 +7,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Accueil du jeune enfant (FR) — the indicator, because the register does not
+  exist.** The question "can we add a crèche dataset?" was answered by
+  measurement, not assumption, and the answer is no: the Cnaf publishes 210
+  open datasets and **not one is an establishment**; FINESS holds 174 621
+  establishments of which only **183** have a crèche-shaped name, and those are
+  incidental (EAJE are authorised by the département's PMI, not an ARS);
+  INSEE's BPE has the right object but its only API millésimes are 2016 and
+  **2021**; and Sirene's NAF 88.91A silently drops the entire public sector —
+  `nature_juridique` 7210 with that APE returns **zero rows**, while a
+  municipal crèche is really there as an establishment of the commune's SIREN.
+  So the new layer draws what the State does publish: **places of formal
+  childcare per 100 children under three**, at the three scales the Cnaf
+  publishes them — 102 départements, 1 251 EPCI, 1 061 communes.
+- **The colour is a ratio to France, not a quantile.** This layer paints three
+  nested scales, and a quantile band means "the top sixth of what is on
+  screen" — so the same colour would mean different things at different zooms
+  and an area would change colour without anything changing about it. Every
+  scale is anchored on the one national figure (**60,9** in 2023, which
+  cross-checks exactly against the ONAPE 2024 report), on a diverging ramp
+  whose break falls where the ratio crosses 1. The map then says something
+  immediately: the Atlantic west is well above France, the Paris ring and the
+  Mediterranean south well below.
+- **The omission is the finding.** The bundled polygons are metropolitan, so 6
+  of the Cnaf's 102 rows cannot be painted — Guyane 13,4, Saint-Martin 30,2,
+  La Réunion 38,5, Guadeloupe 44,1, Saint-Barthélemy 47,5, Martinique 55,2.
+  **Every one is below the national rate, Guyane at 22% of it**, while not one
+  metropolitan département reaches the lowest band. A map stopping at the
+  coastline would delete the whole bottom of the distribution, so the six are
+  carried with their rates and named on the national card.
+- **Two placeholder rows that are not spelled alike.** The EPCI file publishes
+  `numepci = "XX"` carrying a real and extreme 195,8 — the national maximum,
+  drawn nowhere, anchoring any ramp — and the département places file spells
+  the same idea `XXX`. Matching a literal would have caught one of the two.
+  With it gone the real EPCI range is 2,7 to 160,5.
 - **Enseignement supérieur (FR) — the level the schools layer stops before.**
   The *Annuaire de l'éducation* ends at the baccalauréat: measured 2026-09-01,
   its `type_etablissement` has eight values and not one of them is a
