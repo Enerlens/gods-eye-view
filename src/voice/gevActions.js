@@ -224,6 +224,15 @@ const LAYER_ALIASES = new Map([
   ['ev charging', 'irve-fr'],
   ['irve', 'irve-fr'],
   ['bornes', 'irve-fr'],
+  ['schools', 'schools-fr'],
+  ['school', 'schools-fr'],
+  ['ecoles', 'schools-fr'],
+  ['écoles', 'schools-fr'],
+  ['etablissements scolaires', 'schools-fr'],
+  ['établissements scolaires', 'schools-fr'],
+  ['colleges', 'schools-fr'],
+  ['lycees', 'schools-fr'],
+  ['education', 'schools-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -3379,6 +3388,7 @@ function layerTitle(layerId) {
   if (layerId === 'bdtopo-buildings') return 'Building';
   if (layerId === 'rte-generation') return 'Power Station';
   if (layerId === 'irve-fr') return 'Charge Point';
+  if (layerId === 'schools-fr') return 'School';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';

@@ -1,5 +1,17 @@
 # Test fixtures
 
+- `schools-annuaire-sample.json` — 15 real rows from
+  `data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-annuaire-education`,
+  captured 2026-09-01 with the projection's own field selection. Chosen so that
+  each row is awkward in a different way: two REP+ écoles, a lycée under the
+  ministry of Agriculture, an EREA, a médico-social, a service administratif
+  with a parent UAI, two rows geocoded only to `Ville` (the commune centroid),
+  two sub-UAI SECTIONS (SEGPA and SEP) that share a coordinate with their
+  parent, a La Réunion maternelle the metropolitan polygons cannot hold, and
+  one row with no `type_etablissement` at all. Used by `schoolsFeed.test.mjs`
+  and `schoolsDepartements.test.mjs`; a synthetic fixture would have none of
+  those and would pass regardless of what the modules do. Licence Ouverte 2.0.
+
 - `tomtom-flow-austin-12-935-1686.pbf` — one real TomTom traffic-flow vector
   tile (Mapbox Vector Tile protobuf, layer `"Traffic flow"`), downtown Austin
   z12 x935 y1686, captured 2026-07-16 from
