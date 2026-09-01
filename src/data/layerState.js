@@ -354,6 +354,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // claimed by `edf-power-plants` before this branch merged. A share link that
   // silently enabled the wrong layer is exactly what the duplicate-token
   // assertion in this file exists to prevent.
+  // TWO CHARACTERS, in the space the five French address layers widened.
+  // `pe` for petite enfance; `p` is transit-fr and every other single letter
+  // is taken. A duplicate here is a BOOT failure, not a review nit.
+  Object.freeze({ id: 'petite-enfance-fr', token: 'pe', disposition: 'enabled-only' }),
   Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
   // Two road layers, and the digits are how they are told apart in a share

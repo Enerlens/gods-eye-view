@@ -113,6 +113,7 @@ const LAYER_WEIGHTS = Object.freeze({
   'irve-fr': 0.8,
   'schools-fr': 0.85,
   'sup-fr': 0.85,
+  'petite-enfance-fr': 0.6,
   'ais-live-vessels': 1,
 });
 

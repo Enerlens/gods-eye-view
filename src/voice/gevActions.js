@@ -253,6 +253,18 @@ const LAYER_ALIASES = new Map([
   ['bts', 'sup-fr'],
   ['cpge', 'sup-fr'],
   ['prepas', 'sup-fr'],
+  ['creches', 'petite-enfance-fr'],
+  ['crèches', 'petite-enfance-fr'],
+  ['creche', 'petite-enfance-fr'],
+  ['crèche', 'petite-enfance-fr'],
+  ['petite enfance', 'petite-enfance-fr'],
+  ['accueil du jeune enfant', 'petite-enfance-fr'],
+  ['jeune enfant', 'petite-enfance-fr'],
+  ['childcare', 'petite-enfance-fr'],
+  ['daycare', 'petite-enfance-fr'],
+  ['nurseries', 'petite-enfance-fr'],
+  ['taux de couverture', 'petite-enfance-fr'],
+  ['assistantes maternelles', 'petite-enfance-fr'],
   ['prépas', 'sup-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
@@ -3411,6 +3423,7 @@ function layerTitle(layerId) {
   if (layerId === 'irve-fr') return 'Charge Point';
   if (layerId === 'schools-fr') return 'School';
   if (layerId === 'sup-fr') return 'Campus';
+  if (layerId === 'petite-enfance-fr') return 'Childcare Area';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
