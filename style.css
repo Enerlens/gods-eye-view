@@ -4394,7 +4394,15 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
 }
 
 #data-panel {
-  --panel-expanded-width: 280px;
+  /* 320, not the 280 this panel carried when its rows were English. The French
+     names are longer ("Groupes de production" for "Groupes de prod (FR)"), and
+     at 280 fourteen of the 31 rows wrapped — two of them onto three lines — a
+     ragged column that reads as broken rather than dense. At 320 five rows
+     still wrap onto two lines, which is the point where more width stops
+     paying: the next fix would be an 11px name, and that costs more than the
+     raggedness it buys back. Still a narrow panel; DISPLAY is 272 and the two
+     lightboxes are 360. */
+  --panel-expanded-width: 320px;
   position: fixed;
   top: calc(var(--left-stack-top) + var(--left-stack-gap));
   left: var(--left-stack-x);
@@ -4478,6 +4486,109 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
 
 .data-toggle-row:hover {
   background: rgba(255, 255, 255, 0.03);
+}
+
+/* One thematic group of data layers. The header is a real <button> so the
+   accordion is reachable by keyboard and announces its own state; the group
+   opens by default and only closes if the visitor asked for it. */
+.data-category {
+  display: flex;
+  flex-direction: column;
+}
+
+.data-category + .data-category {
+  margin-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 6px;
+}
+
+.data-category-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 10px 5px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  /* 2px, not the 3px .panel-title uses. "RISQUES & ENVIRONNEMENT" is the
+     longest label and renders 170px wide here against ~174px of room; at 3px it
+     would wrap. A longer category name than that one needs a shorter label, not
+     a smaller number — nowrap below makes that failure visible immediately. */
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.data-category-header:hover,
+.data-category-header:focus-visible {
+  color: var(--text-secondary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.data-category.has-active .data-category-header {
+  color: rgba(0, 212, 255, 0.62);
+}
+
+.data-category-caret {
+  font-size: 8px;
+  line-height: 1;
+  transition: transform var(--transition-fast);
+}
+
+.data-category.collapsed .data-category-caret {
+  transform: rotate(-90deg);
+}
+
+.data-category-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.data-category-label {
+  white-space: nowrap;
+}
+
+.data-category-count {
+  margin-left: auto;
+  font-size: 8px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.data-category.has-active .data-category-count {
+  color: rgba(0, 212, 255, 0.5);
+}
+
+.data-category-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.data-category-body[hidden] {
+  display: none;
+}
+
+/* Where a layer has data, for the layers where that is not "everywhere". Global
+   layers carry no chip on purpose — see COVERAGE_CHIPS in layerTaxonomy.js. */
+.data-scope-chip {
+  flex: none;
+  padding: 1px 4px;
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  border-radius: 3px;
+  background: rgba(0, 212, 255, 0.07);
+  color: rgba(0, 212, 255, 0.72);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 0.8px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 /* Selected-only, provenance-first proximity results. This is intentionally a
@@ -5809,7 +5920,8 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
 .data-toggle-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-width: 0;
 }
 
 .data-icon {
@@ -5828,7 +5940,10 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
 .data-toggle-right {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  /* The state chip must not be squeezed by a long name: it is the control, the
+     name is the label. What gives is the name, which wraps. */
+  flex: none;
 }
 
 .data-count {
