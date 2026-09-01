@@ -5,6 +5,7 @@
  * Usage: node scripts/qa-cables-shot.mjs [--url http://localhost:4214] [--tag before]
  */
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import { mkdirSync } from 'node:fs';
 
 const argv = process.argv;
@@ -23,7 +24,7 @@ const browser = await puppeteer.launch({
   ],
 });
 try {
-  const page = await browser.newPage();
+  const page = await newQaPage(browser);
   await page.setViewport({ width: 1440, height: 860 });
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => !!window.__godsEyeView?.viewer, { timeout: 90_000 });

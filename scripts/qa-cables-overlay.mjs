@@ -20,6 +20,7 @@
  * frame clock is honest (hidden-pane gotcha).
  */
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const argv = process.argv;
 const url = argv.includes('--url') ? argv[argv.indexOf('--url') + 1] : 'http://localhost:4214';
@@ -53,7 +54,7 @@ const browser = await puppeteer.launch({
 });
 
 try {
-  const page = await browser.newPage();
+  const page = await newQaPage(browser);
   await page.setViewport({ width: 1440, height: 860 });
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForFunction(() => !!window.__godsEyeView?.viewer, { timeout: 90_000 });

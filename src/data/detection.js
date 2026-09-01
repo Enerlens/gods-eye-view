@@ -107,6 +107,9 @@ const LAYER_WEIGHTS = Object.freeze({
   bikeshare: 0.9,
   'transit-fr': 0.95,
   'shared-mobility-fr': 0.85,
+  'gas-fr': 0.7,
+  'power-grid': 0.7,
+  'rte-generation': 0.7,
   'irve-fr': 0.8,
   'ais-live-vessels': 1,
 });

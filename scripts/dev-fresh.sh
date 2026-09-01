@@ -76,9 +76,15 @@ else
   GOOGLE_MAPS_API_KEY=""
 fi
 if [[ -z "${GOOGLE_MAPS_API_KEY}" ]]; then
-  echo "error: Google Maps API key missing."
-  echo "set GOOGLE_MAPS_API_KEY in env, or add Keychain item: service=google-maps-api account=api-key"
-  exit 1
+  # Keyless is a SUPPORTED configuration, not an error. The app boots onto the
+  # keyless globe stacks (OSM worldwide, IGN Ortho / Plan IGN over France) and
+  # reports the missing key wherever it matters. Exiting here used to make this
+  # launcher unusable for exactly the checkout the keyless build is for.
+  echo "note: no Google Maps API key — starting KEYLESS."
+  echo "      Google 3D Tiles and place search are off; OSM and the IGN France basemaps are on."
+  echo "      To enable them: set GOOGLE_MAPS_API_KEY in env or .env, or add the Keychain item"
+  echo "      service=google-maps-api account=api-key"
+  GOOGLE_MAPS_API_KEY_SOURCE="none (keyless)"
 fi
 
 read_keychain_secret() {
@@ -273,6 +279,10 @@ case "${HOST}" in
     ;;
 esac
 echo "Google Maps key source: ${GOOGLE_MAPS_API_KEY_SOURCE}"
+# The first-run mission card returns every fresh browser session by design, so
+# it lands on top of QA. `?welcome=0` is the app's own suppression switch —
+# same thing scripts/lib/qa-first-run.mjs does for the headless harnesses.
+echo "QA URL (skips the welcome card): http://localhost:${PORT}/?welcome=0"
 echo "Tip: after server starts, hard refresh browser (Cmd+Shift+R)."
 echo "If panels are still missing, run this once in browser console:"
 echo "localStorage.removeItem('godsEyeView.v6.panelPos.cctv-panel'); location.reload();"
@@ -339,7 +349,9 @@ put_env_if_set() {
   fi
 }
 
-put_env GOOGLE_MAPS_API_KEY "${GOOGLE_MAPS_API_KEY}"
+# `put_env_if_set`, not `put_env`: exporting an EMPTY value would shadow a key
+# the user did configure in .env, per the note above. Keyless must mean unset.
+put_env_if_set GOOGLE_MAPS_API_KEY "${GOOGLE_MAPS_API_KEY}"
 put_env CCTV_AUSTIN_MAX_SOURCES "${CCTV_AUSTIN_MAX_SOURCES}"
 # Empty is the documented Caltrans kill switch, so this one is passed as-is.
 put_env CCTV_CALTRANS_DISTRICTS "${CCTV_CALTRANS_DISTRICTS}"

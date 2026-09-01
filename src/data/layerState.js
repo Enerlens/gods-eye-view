@@ -276,13 +276,45 @@ export const SHARE_TRACKING_RESTORE_POLICIES = Object.freeze({
  */
 export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'ais-live-vessels', token: 'a', disposition: 'enabled-only' }),
+  // A DIGIT for the same reason as `gas-fr` and `power-grid` below: every
+  // letter is taken and `z` is the canonical UNKNOWN token two tests assert on.
+  // `5` and not `4`: this branch claimed `4` while `fr-hydro-plants` claimed it
+  // too on main, and the two only met at the merge. That is exactly the failure
+  // the duplicate-token assertion exists to catch — a silent collision would
+  // make one share link enable the wrong layer — so it is worth restating that
+  // a duplicate here is a BOOT failure, not a review nit.
+  Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
+  // A DIGIT, for the third time and the same reason: a–y are all taken, `z` is
+  // the canonical UNKNOWN token two existing tests assert on, and 1–3 belong to
+  // gas-fr, power-grid and rte-generation. `enabled-only` rather than
+  // `enabled+options`: the layer's one runtime param is a display floor, and a
+  // shared link that silently hid two thousand plants would be a worse surprise
+  // than one that shows the register whole.
+  Object.freeze({ id: 'fr-hydro-plants', token: '4', disposition: 'enabled-only' }),
   Object.freeze({ id: 'france-energy', token: 'j', disposition: 'enabled-only' }),
+  // A DIGIT, not a letter: every letter of "gas" is taken (g by
+  // military-awareness, a by AIS, s by satellites), and `z` is the token two
+  // existing tests use as their canonical UNKNOWN token — claiming it would
+  // silently turn "reject an unknown link" into "enable the gas layer".
+  Object.freeze({ id: 'gas-fr', token: '1', disposition: 'enabled-only' }),
   Object.freeze({ id: 'hubeau-hydro', token: 'h', disposition: 'enabled-only' }),
-  Object.freeze({ id: 'irve-fr', token: 'l', disposition: 'enabled-only' }),
+  // A DIGIT, and NOT the `l` this layer was written against: `l` went to
+  // edf-power-plants while this branch sat unmerged. Two layers on one token is
+  // precisely the share link that silently enables the wrong one, so IRVE takes
+  // the next free digit — 1-7 belong to gas-fr, power-grid, rte-generation,
+  // fr-hydro-plants, bdtopo-buildings, local-airports and road-status-fr.
+  Object.freeze({ id: 'irve-fr', token: '8', disposition: 'enabled-only' }),
+  // A DIGIT, for the sixth time and always for the same reason: a–y are all
+  // taken and `z` is the canonical UNKNOWN token two tests assert on. `6`
+  // because 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants
+  // and bdtopo-buildings. Not `a` for "airports" — that is the AIS layer, and a
+  // duplicate token is a share link that silently enables the wrong one.
+  Object.freeze({ id: 'local-airports', token: '6', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-dams', token: 'q', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-datacenters', token: 'd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-firms', token: 'w', disposition: 'enabled-only' }),
@@ -292,8 +324,31 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'military', token: 'm', disposition: 'enabled+mirrored-options', optionOwner: 'flights' }),
   Object.freeze({ id: 'military-awareness', token: 'g', disposition: 'enabled-only' }),
   Object.freeze({ id: 'military-installations', token: 'i', disposition: 'enabled-only' }),
+  // A DIGIT, following `gas-fr` above, and for the same reason twice over:
+  // every letter of "power"/"grid" is taken (p by transit-fr, g by
+  // military-awareness, r by radio, i by military-installations, d by
+  // datacenters), `z` is the canonical UNKNOWN token two existing tests assert
+  // on, and `l` — the last free letter when this layer was written — was
+  // claimed by `edf-power-plants` before this branch merged. A share link that
+  // silently enabled the wrong layer is exactly what the duplicate-token
+  // assertion in this file exists to prevent.
+  Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
+  // `7`, continuing the digit overflow below: every letter of "road"/"status"
+  // is taken (r by radio, o by ports, a by ais-live-vessels, d by datacenters,
+  // s by satellites, t by traffic, u by cables), `1`–`6` are claimed (`6` by
+  // the airports pack), and `z` is the canonical UNKNOWN token.
+  Object.freeze({ id: 'road-status-fr', token: '7', disposition: 'enabled-only' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
+  // A DIGIT, because the letters ran out: a–y are all taken (every letter of
+  // "rte"/"gen"/"prod" among them — r by radio, t by traffic, e by earthquakes,
+  // g by military-awareness, n by meteofrance-vigilance, p by transit-fr, d by
+  // datacenters, o by ports), and `z` is the canonical UNKNOWN token two
+  // existing tests assert on. `1` is the gas layer's; `2` is deliberately
+  // skipped because the power-grid layer's open pull request already claims it,
+  // and a duplicate token is a boot failure (`validateLayerStateRegistry`
+  // throws), not a merge conflict anyone would notice.
+  Object.freeze({ id: 'rte-generation', token: '3', disposition: 'enabled-only' }),
   Object.freeze({ id: 'satellites', token: 's', disposition: 'enabled+options', optionOwner: 'satellites' }),
   Object.freeze({ id: 'shared-mobility-fr', token: 'k', disposition: 'enabled-only' }),
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),

@@ -37,6 +37,7 @@
  * Exit codes: 0 = no FAILs · 1 = at least one FAIL · 2 = target unreachable.
  */
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -1215,7 +1216,7 @@ async function runBrowserGroup(record) {
       '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream'],
   });
   env.browserVersion = await browser.version();
-  const page = await browser.newPage();
+  const page = await newQaPage(browser);
   await page.setViewport({ width: 1440, height: 900, deviceScaleFactor: 1 });
 
   const pageErrors = [];

@@ -40,6 +40,110 @@
   sum to its physical one (−3 633 MW), which is the point. Licence Ouverte 2.0,
   RTE via ODRÉ.
 
+- `gas-fr-network-sample.json` — 5 NaTran and 4 Teréga rows of the two ODRÉ
+  transmission traces, captured 2026-08-27 through the same `exports/json`
+  endpoint the proxy uses, kept as raw rows so the projection under test reads
+  exactly what the proxy reads. Every trap in it is real and is the point: two
+  Moselle segments that share an endpoint exactly (so chaining is provable), a
+  3.5 mm "line" published to 15 decimals, a row with no département at all, and
+  from Teréga a `geo_shape: null` row that still carries a `geo_point_2d`, a
+  `MultiLineString` in a file that is otherwise all `LineString`, and a Béarn
+  line whose third ordinate reaches −705.5 m. Licence Ouverte 2.0, NaTran and
+  Teréga via ODRÉ.
+
+- `gas-fr-sites-sample.json` — all 7 annual editions of 2 of the 14 centralised
+  gas-fired power stations, and 10 renewable-methane injection points, captured
+  2026-08-27. Landivisiau is in there because it is `En projet` in the 2019 and
+  2020 editions and `En service` from 2021: it is the row that proves "take the
+  first row per site" is a coin flip. The injection slice holds all 3 closed
+  sites from a file titled *en service* (each with `site_ouvert: "False"`, the
+  string JavaScript coerces to `true`), the one site that publishes no
+  coordinates, both network tiers, and both spellings of the planned-increase
+  flag. Licence Ouverte 2.0, NaTran / Teréga via ODRÉ.
+- `edf-plants-{hydraulique,nucleaire,thermique}-sample.json` — 19 of the 126
+  rows of EDF Open Data's three generating-fleet datasets, captured
+  2026-08-27 from the portal's `data-fair/api/v1/datasets/{slug}/lines`
+  route. Kept as the raw envelope (`{total, results}`) so the projection under
+  test reads exactly what the proxy reads; `total` is restated to the trimmed
+  row count so the completeness check still sees a whole page. The rows are
+  chosen to hold every trap the projection exists for: all six GRAVELINES
+  reactor rows (one site, 5 460 MW, one coordinate and one 40 MW reserve
+  repeated six times), SAINTE-CROIX's fractional 132.27 MW, GRANDVAL below the
+  file's own 100 MW threshold, RANCE with no région at all, KEMBS from 1932,
+  and MONTEREAU's single `Gaz naturel/Fioul Domestique` string for two fuels.
+  Licence Ouverte 2.0, EDF SA.
+- `edf-plants-{hydraulique,nucleaire,thermique}-dataset.json` — the matching
+  dataset DESCRIPTORS from the same API, trimmed to the top-level keys the
+  projection reads plus their context (`title`, `description`, `license`,
+  `temporal`, `spatial`, `bbox`, `count`, `frequency`, `dataUpdatedAt`,
+  `page`); the platform bookkeeping around them (permissions, storage, file
+  digests, publication sites, and the ~10 KB `schema` array) is removed. They
+  preserve the fact the layer is built around — nuclear is a vision consolidée
+  au **31/12/2025** while the other two are au **31/12/2023**, so the three
+  files are three vintages. Licence Ouverte 2.0, EDF SA.
+
+- `power-grid-osm-sample.json` — a real Overpass answer for the Saclay plateau
+  (48.66,2.12 → 48.76,2.26), captured 2026-08-27, trimmed to one way per
+  distinct `power`/`voltage` combination plus every substation in the box and a
+  spread of pylons. It is kept as a raw Overpass response so the projection
+  under test reads exactly what the proxy reads. Every oddity in it is real and
+  is the point: the `voltage` tag arrives as a `;` list carrying junk
+  (`225000;0`, `63000;0`, `225000;225000;225000;63000`, `400000;225000;90000`),
+  RTE's own 225 kV Villeras yard is tagged `substation=industrial` and its 90 kV
+  Provence yard carries no `substation` tag at all, an Enedis yard is literally
+  named "Poste source Enedis", an SNCF `traction` substation steps 225 kV to
+  25 kV, and the Haute-Borne yard is a **multipolygon relation with no `lat`/`lon`
+  of its own** — only Overpass's computed `center`. © OpenStreetMap
+  contributors, ODbL 1.0.
+- `rte-registre-units-sample.json` — 16 real rows of ODRÉ's *Registre national
+  des installations de production et de stockage d'électricité* (edition
+  30/06/2026), captured 2026-08-28 through the same `records` endpoint
+  `scripts/build-rte-units-registry.mjs` pages, kept as the raw Opendatasoft
+  envelope. Every trap in it is real and is the point: `puismaxinstallee` is in
+  **kilowatts** (1 310 000 for a 1 310 MW reactor) and carries three decimals
+  where one plant is split across two groups (Brommat 180 357.261 + 225 642.739
+  = 406 000 exactly); a 132 MW **photovoltaic** farm at Ajaccio is filed under
+  `filiere: "Thermique non renouvelable"`, so classifying on the filière alone
+  paints a solar farm as a thermal station; the Rance **tidal** barrage is named
+  `CENTRALE HYDRAULIQUE DE RANCE`; six overseas and Corsican units publish the
+  literal name `Confidentiel` with no `postesource`; Brommat and Sarrans are two
+  different plants in the SAME commune with two different `postesource` codes;
+  Émile-Huchet is one `postesource` holding both coal and gas groups; and the
+  names arrive in four grammars, with the article parked at the end
+  (`TRICASTIN (LE)`, `AIGLE (L )`, `MORANDES (LES)`), a group ordinal glued to
+  the site (`BROMMAT-7`), an accented `FERME ÉOLIENNE`, and a `STOCKAGE N0 01`
+  that hides its ordinal inside the introducer. Licence Ouverte 2.0, ODRÉ.
+
+- `rte-actual-generation-sample.json` — a **real capture** of RTE's
+  `actual_generations_per_unit` v1.1, taken 2026-08-28 through a free account,
+  trimmed to 8 of the 152 published units and to the last six published hours of
+  each. Every field and every value is verbatim. It replaced a fixture written
+  by hand against the contract, and the swap corrected the record: the live
+  resource sends **no nulls at all** (0 of 6 992 rows — it simply stops at the
+  last published hour, all units in lockstep) and **no `installed_capacity`**
+  (0 of 152), so two documented "traps" were reclassified as defensive guards.
+  The eight units kept are each one thing the projection exists for: **CHOOZ 1
+  at −58 MW** — a shut-down REACTOR buying back its own coolant pumps, which is
+  what the negative readings actually are and not the pumped storage the
+  hand-written fixture assumed; **GRAVELINES 5 at exactly 0 MW**, an outage and
+  the reading `value || 0` erases; **PALUEL 4** at full output; **GRAND MAISON
+  10 and 11**, two of the twelve turbine groups RTE publishes inside a plant the
+  register carries as one row with a different EIC entirely (trap 9, which cost
+  36% of the fleet before it was found); **EMILE HUCHET 6**, joined by EIC like
+  every nuclear and thermal unit; **CERNAY**, a grid battery published as
+  `production_type: OTHER`; and **DIRINON 1**, a unit the register has never
+  heard of by code or by name. RTE, free account required.
+
+- `bdtopo-batiment-sample.json` — three real IGN BD TOPO vector tiles at z15
+  (Fourvière `15/16823/11688`, Montmartre `15/16597/11268`, La Défense
+  `15/16587/11268`), captured 2026-08-31 from
+  `data.geopf.fr/tms/1.0.0/BDTOPO` and trimmed to one feature per distinct
+  (`usage_1`, altimetric method, has-roof-altitude, no-Z) combination — 66
+  buildings out of 3,240 — with each tile's FULL counts kept beside them. The
+  counts are the point: Fourvière publishes `altitude_maximale_toit` for 1,143
+  of 1,173 buildings and Paris for 0 of 2,067, which is the asymmetry every
+  seating rule in `bdtopoBuildingsFeed.js` exists to handle. Used by
+  `src/data/bdtopoBuildingsFeed.test.mjs`. © IGN, Licence Ouverte 2.0.
 - `irve-bornes-grouped-sample.json` — 31 grouped rows of ODRÉ's `bornes-irve`,
   captured 2026-08-27 through the same `group_by` the proxy uses, holding 311
   real points de charge across 12 coordinates. Kept as the raw Opendatasoft

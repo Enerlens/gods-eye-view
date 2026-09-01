@@ -34,6 +34,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -389,7 +390,7 @@ async function runBehaviorLayer() {
     ],
     protocolTimeout: 180000,
   });
-  const page = await browser.newPage();
+  const page = await newQaPage(browser);
   await page.setViewport({ width: 1500, height: 950 });
   page.on('pageerror', (e) => console.log(`  [page error] ${String(e).slice(0, 140)}`));
 

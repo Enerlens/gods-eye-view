@@ -21,6 +21,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import puppeteer from 'puppeteer';
+import { newQaPage } from './lib/qa-first-run.mjs';
 
 const argv = process.argv.slice(2);
 const getOpt = (name, fallback = null) => {
@@ -34,7 +35,7 @@ const JSON_PATH = path.resolve(getOpt('--json', 'qa-shots/focus-evidence/report.
 const SCREENSHOTS_DIR = path.resolve(getOpt('--screenshots-dir', 'qa-shots/focus-evidence'));
 const HEADFUL = hasFlag('--headful');
 const SMOKE = hasFlag('--smoke');
-const MAP_STACK_IDS = Object.freeze(['photoreal', 'bing-aerial', 'bing-labels', 'osm']);
+const MAP_STACK_IDS = Object.freeze(['photoreal', 'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan']);
 const BASEMAP = getOpt('--basemap', 'photoreal');
 const VIEWPORT = Object.freeze({ width: 1440, height: 900 });
 const FRAME_COUNT = SMOKE ? 6 : 30;
@@ -650,7 +651,7 @@ async function main() {
       `--window-size=${VIEWPORT.width},${VIEWPORT.height}`,
     ],
   });
-  const page = await browser.newPage();
+  const page = await newQaPage(browser);
   await page.setViewport(VIEWPORT);
   const consoleMessages = [];
   page.on('console', (message) => {

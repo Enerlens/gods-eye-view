@@ -175,6 +175,47 @@ const LAYER_ALIASES = new Map([
   ['shared bikes', 'shared-mobility-fr'],
   ['car sharing', 'shared-mobility-fr'],
   ['carsharing', 'shared-mobility-fr'],
+  ['gas', 'gas-fr'],
+  ['gas network', 'gas-fr'],
+  ['gas grid', 'gas-fr'],
+  ['gas pipelines', 'gas-fr'],
+  ['pipelines', 'gas-fr'],
+  ['natran', 'gas-fr'],
+  ['grtgaz', 'gas-fr'],
+  ['terega', 'gas-fr'],
+  ['biomethane', 'gas-fr'],
+  ['biogas', 'gas-fr'],
+  ['buildings', 'bdtopo-buildings'],
+  ['building', 'bdtopo-buildings'],
+  ['3d buildings', 'bdtopo-buildings'],
+  ['bd topo', 'bdtopo-buildings'],
+  ['bdtopo', 'bdtopo-buildings'],
+  ['bati', 'bdtopo-buildings'],
+  ['french buildings', 'bdtopo-buildings'],
+  ['power grid', 'power-grid'],
+  ['power lines', 'power-grid'],
+  ['power line', 'power-grid'],
+  ['electricity grid', 'power-grid'],
+  ['electric grid', 'power-grid'],
+  ['transmission lines', 'power-grid'],
+  ['high voltage', 'power-grid'],
+  ['pylons', 'power-grid'],
+  ['substations', 'power-grid'],
+  ['rte', 'power-grid'],
+  ['rte', 'rte-generation'],
+  ['reactors', 'rte-generation'],
+  ['reactor', 'rte-generation'],
+  ['nuclear', 'rte-generation'],
+  ['nuclear reactors', 'rte-generation'],
+  ['nuclear plants', 'rte-generation'],
+  ['power plants', 'rte-generation'],
+  ['power stations', 'rte-generation'],
+  ['power station', 'rte-generation'],
+  ['generation', 'rte-generation'],
+  ['generating units', 'rte-generation'],
+  ['production units', 'rte-generation'],
+  ['groupes de production', 'rte-generation'],
+  ['centrales', 'rte-generation'],
   ['charge points', 'irve-fr'],
   ['charging points', 'irve-fr'],
   ['charging stations', 'irve-fr'],
@@ -201,6 +242,14 @@ const LAYER_ALIASES = new Map([
   ['harbors', 'local-ports'],
   ['harbours', 'local-ports'],
   ['seaports', 'local-ports'],
+  ['airports', 'local-airports'],
+  ['airport', 'local-airports'],
+  ['aeroports', 'local-airports'],
+  ['aéroports', 'local-airports'],
+  ['aerodromes', 'local-airports'],
+  ['aérodromes', 'local-airports'],
+  ['airfields', 'local-airports'],
+  ['runways', 'local-airports'],
   ['buoys', 'marine-buoys'],
   ['marine buoys', 'marine-buoys'],
   ['ndbc', 'marine-buoys'],
@@ -244,6 +293,17 @@ const STACK_ALIASES = new Map([
   ['road', 'osm'],
   ['roads', 'osm'],
   ['road map', 'osm'],
+  ['ign-ortho', 'ign-ortho'],
+  ['ign ortho', 'ign-ortho'],
+  ['ign', 'ign-ortho'],
+  ['ign aerial', 'ign-ortho'],
+  ['ign satellite', 'ign-ortho'],
+  ['orthophoto', 'ign-ortho'],
+  ['france aerial', 'ign-ortho'],
+  ['ign-plan', 'ign-plan'],
+  ['ign plan', 'ign-plan'],
+  ['plan ign', 'ign-plan'],
+  ['france map', 'ign-plan'],
 ]);
 
 /** Search order for track_entity across entity layer families. */
@@ -3074,6 +3134,16 @@ async function fetchNearbyPlaces(latitude, longitude, cameraHeightM) {
   if (nearbyPlacesCache.has(cacheKey)) return nearbyPlacesCache.get(cacheKey);
   if (nearbyPlacesInFlight.has(cacheKey)) return nearbyPlacesInFlight.get(cacheKey);
 
+  // `/api/google/nearby-places` is brokered by the dev server from the SAME
+  // `GOOGLE_MAPS_API_KEY` this bundle was built with, so a keyless build can
+  // never get an answer — it only gets a 503 the browser logs as a failed
+  // resource on every camera move. The caller already treats an empty list as
+  // "no viewport places", so not asking is the same result without the noise.
+  if (!(window.__GOOGLE_MAPS_API_KEY__ || import.meta.env.GOOGLE_MAPS_API_KEY)) {
+    nearbyPlacesCache.set(cacheKey, []);
+    return [];
+  }
+
   const request = (async () => {
     try {
       const params = new URLSearchParams({
@@ -3301,8 +3371,13 @@ function layerTitle(layerId) {
   if (layerId === 'local-firms') return 'Active Fire';
   if (layerId === 'transit-fr') return 'Transit Vehicle';
   if (layerId === 'shared-mobility-fr') return 'Shared Vehicle';
+  if (layerId === 'gas-fr') return 'Gas Site';
+  if (layerId === 'power-grid') return 'Grid Node';
+  if (layerId === 'bdtopo-buildings') return 'Building';
+  if (layerId === 'rte-generation') return 'Power Station';
   if (layerId === 'irve-fr') return 'Charge Point';
   if (layerId === 'local-ports') return 'Port';
+  if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
   return layerId || 'Entity';
 }
