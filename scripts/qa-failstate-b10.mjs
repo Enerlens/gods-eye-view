@@ -33,6 +33,7 @@
 
 import puppeteer from 'puppeteer';
 import { newQaPage } from './lib/qa-first-run.mjs';
+import { layerTaxonomyFor } from '../src/data/layerTaxonomy.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -313,10 +314,16 @@ async function main() {
       return outcomes;
     });
     for (const outcome of refreshFeedback) {
+      // The banner names the layer the way the PANEL does — its French `label`
+      // — while `outcome.name` is the module's own English string. Asking the
+      // taxonomy keeps this assertion about the feedback being present and
+      // attributed, which is the point, instead of about which language it is
+      // written in.
+      const displayName = layerTaxonomyFor(outcome.id)?.label || outcome.name;
       const passed = !outcome.missing
         && outcome.working.hidden === false
         && outcome.working.label === 'REFRESHING LIVE DATA'
-        && outcome.working.detail.includes(outcome.name)
+        && outcome.working.detail.includes(displayName)
         && outcome.failed.hidden === false
         && outcome.failed.label === 'LOAD FAILED'
         && outcome.failed.state === 'error'
@@ -325,7 +332,7 @@ async function main() {
         && outcome.lifecycleState === 'enabled'
         && outcome.enabled === true;
       record(
-        `${outcome.name || outcome.id}: periodic refresh reports work, failure, and recovery`,
+        `${displayName || outcome.id}: periodic refresh reports work, failure, and recovery`,
         passed,
         JSON.stringify(outcome),
       );
@@ -360,8 +367,13 @@ async function main() {
       if (!hasError) exitCode = 1;
     }
     const aisControl = await readLayerControl(page, 'ais-live-vessels', 'UNAVAILABLE');
+    // Read the expected name from the taxonomy rather than pinning the string:
+    // the panel renders the French `label`, and a harness that hard-codes it
+    // fails the next time the product renames a row instead of proving anything
+    // about fail-state honesty, which is what this check is for.
+    const aisName = layerTaxonomyFor('ais-live-vessels')?.label || 'Live AIS Vessels';
     const aisChipHonest = aisControl.feedState === 'unavailable'
-      && aisControl.ariaLabel === 'Live AIS Vessels: UNAVAILABLE';
+      && aisControl.ariaLabel === `${aisName}: UNAVAILABLE`;
     const aisMetaHonest = /^UNAVAILABLE · AISStream · /i.test(aisControl.meta)
       && aisStats.error
       && aisControl.meta.includes(aisStats.error);

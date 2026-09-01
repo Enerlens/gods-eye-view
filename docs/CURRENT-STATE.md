@@ -946,7 +946,7 @@ This is the current runtime/source-of-truth snapshot for the project.
 >   still releases tracking in place. The 200 px feel needs close-range field
 >   verification; fleet model sizing remains unchanged.
 > - **Deterministic sprite stacking:** contact collections reassert the stable
->   bottom-to-top order CCTV, FIRMS, Bornes IRVE, Réseau gaz, Power Grid, Groupes de prod,
+>   bottom-to-top order CCTV, FIRMS, Établissements scolaires, Bornes IRVE, Réseau gaz, Power Grid, Groupes de prod,
 >   bikeshare, Shared Mobility FR, Transit FR, AIS,
 >   military, then civilian
 >   — Shared Mobility FR occupies its slot with TWO collections (station dots
@@ -1609,9 +1609,10 @@ its criteria cannot be silently ignored.
 | Radio | Radio Browser (public-domain station directory) | `src/data/radio.js` | `/api/radio/stations`, `/api/radio/click/:uuid` | 45 min directory refresh |
 | Bikeshare 🚲 | GBFS (Lyft + BCycle) | `src/data/bikeshare.js` | `/api/gbfs` | 60s |
 | Transit FR 🚌 | transport.data.gouv.fr GTFS-Realtime vehicle positions (~150 French networks; observed footprints in `config/pan_gtfs_rt_feeds.json`), enriched per vehicle with the same networks' `TripUpdate` deviations (150 feeds, 63 in the same body) and `Alert` disruptions (60 feeds) — join rules in `src/data/transitSchedule.js`, companion resources measured into the index — plus, for the SELECTED vehicle, that network's static GTFS GeoJSON conversion for the line's trace and the ordered stops of the run (`config/pan_gtfs_static.json`) | `src/data/transitFrance.js`, `src/data/transitRouteView.js` | `/api/transit-fr/vehicles`, `/api/transit-fr/feeds`, `/api/transit-fr/trip` | 15s fleet, viewport-driven below ~300 km; 25s for the selected run; trip-update bodies cached 45 s and shared by both, alerts 5 min |
-| Road Status FR 🇫🇷 🛣 | Bison Futé DATEX II — live `trafficStatusValue` from 16 DIR traffic centres (`TRAFICOLOR-DIR`, 60–360 s) joined to the counting-station geometry in `config/datex_traficolor_sites.json` (1 195 sites, 832 located, 830 segments, 918 km), plus the six-minute national flow/speed snapshot (`QTV-DIR`) | `src/data/roadStatusFrance.js`, `src/data/datexRoadStatus.js`, `src/data/roadStatusCoverage.js` | `/api/road-status-fr/segments`, `/api/road-status-fr/sources` | 60s, viewport-driven below ~2 000 km; proxy holds ONE national snapshot (TTL 60 s status / 6 min flow, serve-stale 30 min) and filters it per box |
+| Road Status FR 🇫🇷 🛣 | Bison Futé DATEX II — live `trafficStatusValue` from 16 DIR traffic centres (`TRAFICOLOR-DIR`, 60–360 s) joined to the site geometry in `config/datex_traficolor_sites.json` (1 958 sites, 1 587 located — 844 from a DIR-published coordinate and 743 resolved from a point repère against the Bornage RRN — 608 segments, 975 km, 589 of them drawn along the surveyed centre of their own carriageway from Liaisons RRN), plus the six-minute national flow/speed snapshot (`QTV-DIR`) | `src/data/roadStatusFrance.js`, `src/data/datexRoadStatus.js`, `src/data/roadStatusCoverage.js`, `scripts/lib/rrnBornage.mjs`, `scripts/lib/rrnCentreline.mjs` | `/api/road-status-fr/segments`, `/api/road-status-fr/sources` | 60s, viewport-driven below ~2 000 km; proxy holds ONE national snapshot (TTL 60 s status / 6 min flow, serve-stale 30 min) and filters it per box |
 | Shared Mobility FR 🛴 | transport.data.gouv.fr GBFS (135 distinct systems after de-duplication; observed footprints in `config/gbfs_fr_systems.json`; per-kind silhouettes in `src/data/sharedMobilityIcons.js`, per-operator hues in `src/data/mobilityOperators.js`) | `src/data/sharedMobilityFrance.js` | `/api/shared-mobility-fr/objects`, `/api/shared-mobility-fr/systems` | 60s, viewport-driven below ~80 km |
 | Bornes IRVE 🇫🇷 🔌 | *fichier consolidé des bornes IRVE* (transport.data.gouv.fr, via ODRÉ) — 231,079 points de charge measured 2026-08-27, rebuilt daily, folded to one site per coordinate. Three regimes by view span: 96 départements in quantile bins (≥ 9.5° lat), a grid-thinned maillage of real positions (9.5°–0.35°), every site with full detail (≤ 0.35°) | `src/data/irveFrance.js`, `src/data/irveFeed.js`, `src/data/irveDepartements.js`, `src/data/irveMesh.js` | `/api/irve-fr/sites`, `/api/irve-fr/departements`, `/api/irve-fr/mesh`, `/api/irve-fr/status` | 30 min (viewport TTL 6 h, national TTL 24 h; upstream consolidation is daily) |
+| Établissements scolaires 🇫🇷 🎓 | *Annuaire de l'éducation* (data.education.gouv.fr, MENJ) — 68,939 rows measured 2026-09-01, rebuilt daily, of which 68,158 are open and geolocated. Pupil rolls joined on the UAI from four per-level *effectifs* datasets at rentrée 2025 (91.7% of teaching establishments). Three regimes by view span: 96 départements in quantile bins (≥ 9.5° lat), a grid-thinned maillage of real positions (9.5°–0.35°), every establishment with full detail (≤ 0.35°). Coloured by level, sized by roll; 2,762 overseas schools are outside the bundled metropolitan polygons and are reported rather than painted | `src/data/schoolsFrance.js`, `src/data/schoolsFeed.js`, `src/data/schoolsDepartements.js`, `src/data/schoolsMesh.js` | `/api/schools-fr/sites`, `/api/schools-fr/departements`, `/api/schools-fr/mesh`, `/api/schools-fr/status` | 30 min (viewport TTL 6 h, national TTL 24 h; upstream rebuild is daily) |
 | Mix élec 🇫🇷 ⚡ | éCO2mix national + 12 régions (RTE, via ODRÉ) — région balances painted on département geometry, five commercial border flows as arcs | `src/data/franceEnergy.js` | `/api/energy-fr` | 3 min (proxy TTL 4 min; product steps every 15 min) |
 | Réseau gaz 🇫🇷 ⬡ | NaTran + Teréga transmission traces (36,106 km, clamped ground polylines), 14 gas-fired power stations, 850 renewable-methane injection points (ODRÉ) | `src/data/gasFrance.js`, `src/data/gasFranceFeed.js` | `/api/gas-fr/network`, `/api/gas-fr/sites`, `/api/gas-fr/status` | 30 min (proxy TTL 7 d for the traces, 12 h for the registers; both are quasi-static) |
 | Centrales EDF 🇫🇷 ◈ | EDF Open Data — 3 datasets (nuclear 56 reactors → 18 sites, hydraulic 51 plants, thermal 19 units → 10 sites), 79 site discs sized by installed capacity | `src/data/edfPowerPlants.js` | `/api/edf-plants` | 30 min (proxy TTL 24 h; the files are republished annually) |
@@ -1620,7 +1621,7 @@ its criteria cannot be silently ignored.
 | Parcelles 🇫🇷 ▦ | IGN Api Carto `cadastre/parcelle` (PCI vecteur, DGFiP), per viewport — ground-clamped classification fills coloured by the SCALE of the `feuille` each parcel was drawn on (four bands from 1:250/1:500 to 1:4000/1:5000, joined on a FIVE-part key incl. `code_arr`), plus a `GroundPolylinePrimitive` outline per ring. Reports the fraction of the view that is cadastred at all — the rest is public domain. A box over Api Carto's own 5,000-feature ceiling is REFUSED whole (the truncation is scattered, not cropped, so a short draw is indistinguishable from the public-domain gaps) | `src/data/cadastreParcels.js`, `src/data/cadastreFeed.js` | `/api/cadastre-fr/parcelles`, `/api/cadastre-fr/status` | viewport-driven (450 ms debounce, gated on camera ALTITUDE ≤ 1 500 m — not on the view rectangle's span, which on a tilted camera reaches the horizon — and requesting a ≤ 0.02° box anchored on the screen-centre ground point, clipped to the view, 0.002° cache snap) + 60 min idle; proxy TTL 24 h memory + `.gev-cache/cadastre/`, serve-stale 30 d; the PCI is republished monthly |
 | Groupes de prod 🇫🇷 ☢ | RTE `actual_generations_per_unit` (171 units ≥ 100 MW, hourly) joined by EIC code to ODRÉ's *Registre national des installations de production et de stockage d'électricité*, shipped as a file (positions anchored on EDF Open Data, then OpenStreetMap, then commune centres); 108 stations drawn as a capacity ring plus an output disc | `src/data/rteGeneration.js`, `src/data/rteGenerationFeed.js`, `src/data/local_data/rte_production_units/units.json` | `/api/rte-generation`, `/api/rte-generation/status` | 3 min (proxy TTL 5 min; resource publishes hourly). Needs `RTE_CLIENT_ID`/`RTE_CLIENT_SECRET` for output; the fleet draws keyless |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
-| Dams ▰ | OpenInfraMap/OSM extract (bundled) | `src/data/localLayers.js` | — | static |
+| Barrages ▰ | OSM via Overpass for France + OpenInfraMap snapshot elsewhere (bundled, 6 189) | `src/data/localLayers.js`, `src/data/damsPack.js` | — | static |
 | Submarine Cables ◠ | TeleGeography public map (bundled) | `src/data/telegeographySubmarineCables.js` | — | static |
 | FIRMS Active Fires ▲ | NASA FIRMS live (VIIRS ×3 NRT, trailing 24h) | `src/data/firmsHeatmap.js` | `/api/firms` (`FIRMS_MAP_KEY`) | 10 min (proxy TTL 30 min) |
 
@@ -1904,6 +1905,126 @@ report into, so they instead refuse to memoize a failure —
 `src/data/retryableLoad.js` caches success permanently and retries a failed
 load after a doubling cooldown (5 s → 5 min), which keeps one bad load from
 silently demoting every later lookup for the session.
+
+#### Viewport-gated layers and the view gate (September 2026)
+
+Three layers refuse a request box above a ceiling — Bâti 3D at **0.08°**, the
+mapped grid at **0.8°**, Hub'Eau at **20°** — because one click from a
+continental camera would otherwise ask a public service for half a country.
+
+Two rules keep that ceiling from reading as a broken layer:
+
+- **A gated load is not a failed load.** `load()` answers "did this tick fetch
+  anything"; `update()` answers the manager's different question, and only a
+  recorded error is a failed refresh. Returning the guidance state as `false`
+  made the manager treat it as the module rejecting its lifecycle: the layer was
+  torn back down on enable, the toggle flipped to OFF, and the operator got
+  `<layer> could not start cleanly` over a healthy feed.
+- **The zoom a layer needs is applied, not announced.** A layer may expose
+  `ensureViewGate(viewer, { signal })`; the manager awaits it after `enable()`
+  and before the first `update()`, for **explicit intent only** (`user`,
+  `voice`, `tool`) — a share link or a Context restore carries a camera of its
+  own. A gate that throws or cannot be satisfied is not a failure: the layer
+  stays ON with its own guidance text.
+
+`src/data/viewGate.js` solves the camera: it sizes the metre budget off
+**longitude** (the tighter axis off the equator — sizing off latitude overshoots
+by 45% in France), steepens a pitch shallower than **−55°** (a horizon-facing
+camera sees to the horizon at any altitude, so altitude alone cannot satisfy a
+box ceiling), never flies UP, seats the result on `globe.getHeight()`, then
+re-asks the layer's own gate after the flight and tightens twice more before
+giving up. The focus is the centre of the current view, pulled onto the layer's
+coverage only when that coverage fills ≥5% of the view or the camera is holding
+more than 30° (aimed at nothing in particular); a 400 km camera over Berlin that
+clips 0.1° of Alsace is looking at Berlin and is left there. Bâti 3D flies only
+for `too-wide`, never for `off-coverage`. Hub'Eau has no `ensureViewGate` on
+purpose: its gate is 20°, so the only camera it refuses is a global one, and the
+zoom that satisfies it over the mid-Pacific still finds no French river gauge.
+
+Proved by `npm run qa:view-gate` in a real browser (420 000 m → ~2 900 m over
+France, buildings drawn, no lifecycle failure published) and by
+`src/data/viewGate.test.mjs`, which flies the solved camera in an independent
+model of what a camera sees and asserts the box lands under the ceiling —
+including non-cardinal headings, where the axis-aligned rectangle has to contain
+a rotated trapezoid.
+
+#### French address layers (September 2026)
+
+Five layers scan around the ground point the camera is LOOKING AT — via
+`deriveFetchCenter()`, shared with the traffic layer — rather than over the
+viewport, because all four of their upstreams take a coordinate and a radius,
+not a box. They go dormant and clear their draw above 12 km (`idfm-network`:
+20 km), and report `dormant` in `getStats()` so an empty screen is never
+ambiguous between "too high to scan" and "this address is clear".
+
+| Layer | Token | Proxy | Upstream |
+|---|---|---|---|
+| `georisques` | `gr` | `/api/georisques` | Géorisques (BRGM) — 3 endpoints fanned out per scan |
+| `dvf-sales` | `dv` | `/api/dvf` | geo-DVF CSV per commune-year, parsed and cached server-side |
+| `dpe-fr` | `dp` | `/api/dpe` | ADEME `dpe03existant`, `geo_distance` query |
+| `urbanisme-gpu` | `ur` | `/api/gpu` | APIcarto `zone-urba` + `assiette-sup-s` |
+| `idfm-network` | `if` | `/api/idfm/stops`, `/api/idfm/lines` | Île-de-France Mobilités Opendatasoft |
+
+`/api/isochrone` (IGN Valhalla over BD TOPO®) is a SERVICE, not a layer: an
+isochrone has no meaning without a chosen point, so it is not in the layer
+registry and carries no share token. Walking and driving only.
+
+These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
+`ur`, `if`. The single-character space ran out exactly where this file kept
+predicting it would: by the time this branch met main, `0`–`9` and `a`–`y` were
+all claimed and `z` is the canonical UNKNOWN token two tests assert on. Widening
+cost nothing on the wire, because `l=` has always been DOT-SEPARATED: `l=f.dv.p`
+parses by the same split that read `l=f.7.p`, every link ever issued still
+decodes to exactly what it decoded to before, and a two-character token can
+never collide with a one-character one. `MAX_ENABLED_LAYERS_CHARS` was raised
+from 64 in the same change — it had quietly stopped covering the everything-on
+link at 35 layers (69 characters), so sharing every layer at once produced a
+link that decoded to `null`; `layerState.test.mjs` now derives that assertion
+from the registry instead of a number someone has to remember to update.
+
+**One silhouette per register** (`addressMarkerIcons.js`). All five layers
+answer a question about the same building, and drawn as discs they were
+indistinguishable from each other on screen. Colour could not carry the source
+— DVF spends it on the price ratio, DPE on the official A–G scale, Géorisques
+on severity, IDFM on the mode family — so the shape does: **€** for a sale,
+**the A–G letter framed** for a diagnostic, a **hazard triangle**, a **plan
+sheet**, and the **mode pictogram** (reused from `transitVehicleIcons.js`,
+because a stop is signed in the street with its mode's own symbol). The DPE
+marker being the label itself means a grade is readable without a click.
+
+Glyphs are SVG data URIs, cached per kind and raster size, drawn as white
+line-art over a dark halo and carrying no hue of their own — Cesium multiplies
+`billboard.color` into the texture, so white takes the value colour exactly
+while black survives the multiply. That is the same tint-safe discipline
+`sharedMobilityIcons.js` and `transitVehicleIcons.js` record, and it is why one
+image per shape serves every colour. Drawn here rather than vendored from
+Material Symbols: that pack was taken for vehicles because a tram in plan view
+is hard to invent recognisably, which is not true of a euro sign, so these
+carry no third-party licence obligation. `scripts/qa-address-layers.mjs` proves
+no two registers ever resolve to the same image, and that clicking a billboard
+still opens its card — a billboard is not a point, and pickability had to be
+re-measured rather than assumed.
+
+**Markers are seated on the rendered terrain, not on the ellipsoid.**
+`Cartesian3.fromDegrees(lon, lat)` places a marker at height 0, and the globe
+draws avenue de France at 79–83 m of ellipsoidal height — so every marker sat
+eighty metres under its own street, painted anyway because depth testing is
+disabled. Under an oblique camera a vertical error is a HORIZONTAL error on
+screen, and one that changes with the camera pose: measured at 700 m and −35°,
+a DVF dot landed 83 px from its address, and turning 40° moved the error
+sideways. The dots therefore slid across the city as the camera moved. Every
+marker is now placed at `globe.getHeight()` — the height of the terrain
+triangle actually being rendered, the same call `bdtopoBuildings.js` uses — and
+re-seated when terrain finishes streaming (`tileLoadProgressEvent`) and when
+the camera settles, because the LOD under a point refines as you fly toward it.
+While terrain has not answered for a marker, the scan centre's height stands in
+for it and `getStats().seatPending` says so. `scripts/qa-address-layers.mjs`
+measures the residual offset in pixels from two camera poses; a unit test
+covers the seating arithmetic. Clamped polylines carry no `position` and are
+skipped — they were already on the ground.
+
+Licence note: IDFM is **ODbL 1.0** — attribution and share-alike on derived
+databases — while the other five are Licence Ouverte. See `DATA_SOURCES.md`.
 
 ### Context / Contacts coordinator (July 2026)
 
@@ -2702,6 +2823,11 @@ Replay transport uses one Play/Pause toggle plus Cancel. During ascent only the 
   (`QA_BASE_URL=http://localhost:4173 npm run qa:map-source-tray`). Add
   `-- --keyless` to force the no-ion-token expectations on a keyed server; both
   invocations are gates.
+- `scripts/qa-view-gate.mjs`: browser proof that a layer gated on a close camera
+  is FLOWN there rather than told to zoom (`npm run qa:view-gate --
+  --url http://localhost:4173`). Covers Bâti 3D and the mapped grid from a
+  420 km camera, the share-restore origin that must keep its own camera, and
+  the off-coverage view that must not be flown anywhere.
 - `scripts/qa-l9-matrix.mjs`: the L9 release-candidate QA matrix in one command
   (`node scripts/qa-l9-matrix.mjs --url http://localhost:4173`). Orchestrates
   the `qa-*.mjs` fleet plus `track-regression` as subprocesses and adds

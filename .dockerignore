@@ -1,0 +1,15 @@
+.git
+node_modules
+dist
+.env
+.env.*
+*.log
+.gev-logs
+.gev-cache
+.context
+.gstack
+screenshots
+qa-shots
+output
+3d-models
+docs/media

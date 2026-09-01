@@ -238,6 +238,15 @@ const LAYER_ALIASES = new Map([
   ['property boundaries', 'cadastre-fr'],
   ['lot lines', 'cadastre-fr'],
   ['land registry', 'cadastre-fr'],
+  ['schools', 'schools-fr'],
+  ['school', 'schools-fr'],
+  ['ecoles', 'schools-fr'],
+  ['écoles', 'schools-fr'],
+  ['etablissements scolaires', 'schools-fr'],
+  ['établissements scolaires', 'schools-fr'],
+  ['colleges', 'schools-fr'],
+  ['lycees', 'schools-fr'],
+  ['education', 'schools-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -246,6 +255,9 @@ const LAYER_ALIASES = new Map([
   ['data centers', 'local-datacenters'],
   ['data centres', 'local-datacenters'],
   ['dams', 'local-dams'],
+  ['dam', 'local-dams'],
+  ['barrages', 'local-dams'],
+  ['barrage', 'local-dams'],
   ['submarine cables', 'telegeography-submarine-cables'],
   ['cables', 'telegeography-submarine-cables'],
   ['telegeography', 'telegeography-submarine-cables'],
@@ -3391,6 +3403,7 @@ function layerTitle(layerId) {
   if (layerId === 'rte-generation') return 'Power Station';
   if (layerId === 'irve-fr') return 'Charge Point';
   if (layerId === 'cadastre-fr') return 'Parcel';
+  if (layerId === 'schools-fr') return 'School';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';

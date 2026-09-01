@@ -84,6 +84,37 @@ test('a located station nobody watches is drawn, and the card does not invent a 
   assert.match(label, /410 veh\/h/);
 });
 
+test('a card on a curving segment is anchored to its middle, not to its first hop', () => {
+  // 180 segments now thread the kilometre posts of a bend. Taking the first
+  // pair would pin the A75's card 2 km up the road from the sensor.
+  const straight = segmentMidpoint([-0.62269, 44.8835, -0.63265, 44.87688]);
+  assert.ok(Math.abs(straight.lon - -0.62767) < 1e-6);
+
+  // Five vertices: the middle one is the answer, exactly.
+  const odd = segmentMidpoint([0, 0, 1, 1, 2, 2, 3, 3, 4, 4]);
+  assert.deepEqual(odd, { lon: 2, lat: 2 });
+  // Four vertices: the midpoint of the middle hop.
+  const even = segmentMidpoint([0, 0, 1, 1, 3, 3, 4, 4]);
+  assert.deepEqual(even, { lon: 2, lat: 2 });
+  // A one-point site is still its own midpoint.
+  assert.deepEqual(segmentMidpoint([5, 6]), { lon: 5, lat: 6 });
+  assert.equal(segmentMidpoint([]), null);
+});
+
+test('a position resolved from a kilometre post says so; a published one does not', () => {
+  // The two are drawn identically and are not the same claim. A viewer told
+  // "A84 · 35A0084T096_00D, congested" over Rennes deserves to know that dot
+  // came from the national bornage, because no DIR published it.
+  assert.equal(/kilometre post/.test(buildRoadStatusSelectionLabel(makeRecord())), false);
+  const derived = buildRoadStatusSelectionLabel(makeRecord({
+    id: '35A0084T096_00D', a: 'A84', d: null, g: 'pr', src: ['TraficBreizhRennes'],
+  }));
+  assert.match(derived, /position resolved from its kilometre post \(PR\), median 4 m/);
+  assert.match(derived, /⌖ Rennes/);
+  // And it does not claim an operator the referential never named.
+  assert.equal(/Operator/.test(derived), false);
+});
+
 test('the age printed is the age of the reported state', () => {
   const label = buildRoadStatusSelectionLabel(makeRecord());
   const age = /state reported (\d+)s ago/.exec(label);

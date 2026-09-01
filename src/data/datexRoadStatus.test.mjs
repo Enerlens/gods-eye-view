@@ -149,6 +149,30 @@ test('the referential is read positionally, because its header is off by one', (
   assert.equal(toulouse.xEnd, 572552.9);
 });
 
+test('the point-repère columns are read, because for 153 rows they are the only geometry', () => {
+  const [rouen, toulouse] = parseStationReferential(REFERENTIAL_CSV).stations;
+  assert.equal(rouen.prStart, '76PR91D');
+  assert.equal(rouen.abscisseStartM, 800);
+  assert.equal(rouen.prEnd, '76PR94D');
+  assert.equal(rouen.abscisseEndM, 840);
+  assert.equal(toulouse.prStart, '31PR1G');
+  assert.equal(toulouse.abscisseStartM, 751);
+
+  // DIR Ouest's shape: no coordinate at all, and a bare PR with the route
+  // already written the way the national bornage writes it. This row is why
+  // the columns are read — it is 115 of the file's rows, and until they were,
+  // Brittany had no geometry.
+  const dirOuest = 'MWO56.J1;DIRO;535656251;N0165;39;0;;;1;;;;0;2;;;;;';
+  const parsed = parseStationReferential(`${REFERENTIAL_DECLARED_COLUMNS.join(';')}\n${dirOuest}`);
+  assert.equal(parsed.skipped, 0);
+  const [ouest] = parsed.stations;
+  assert.equal(ouest.xStart, null);
+  assert.equal(ouest.axis, 'N0165');
+  assert.equal(ouest.prStart, '39');
+  assert.equal(ouest.abscisseStartM, 0);
+  assert.equal(ouest.prEnd, null);
+});
+
 test('a row that honours the declared twenty columns still parses', () => {
   // If the publisher ever starts sending `code_insee_commune`, the reader must
   // not silently stop working — the shift is detected per row, not assumed.

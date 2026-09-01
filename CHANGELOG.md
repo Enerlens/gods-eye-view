@@ -70,6 +70,249 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
     arrondissements at all. All are carried as opaque strings.
 
 - Added the **Bornes IRVE** layer — every public EV charge point France has
+- **Six French public registers, read from a coordinate.** Géorisques, DVF,
+  the ADEME DPE register, the IGN isochrone service, the Géoportail de
+  l'urbanisme and Île-de-France Mobilités are now integrated end to end —
+  keyless, Licence Ouverte or ODbL, behind six new proxies with unit-tested
+  projections. Five new layers scan around the ground point the camera is
+  looking at: **Risques (Géorisques)**, **Ventes immobilières (DVF)**,
+  **Performance énergétique (DPE)**, **Urbanisme (PLU & servitudes)** and
+  **Réseau IDFM (Paris)**. Measured over avenue de France, Paris 13e: 30
+  classified installations, 153 recorded sales with a median of **9 063 €/m²**,
+  915 energy diagnostics within 200 m, a railway protection strip and two risk-
+  prevention envelopes, and 36 transport stops including a métro entrance 30 m
+  from the door.
+- **Reachable area instead of a circle.** `/api/isochrone` serves IGN's Valhalla
+  rings over BD TOPO®: a 15-minute walk from that address covers **2.16 km²**,
+  a 15-minute drive **56.96 km²**. Only walking and driving exist — the service
+  rejects `bicycle` with HTTP 400 and no cycling ring is modelled in its place.
+- **The Paris transit blank is answered.** IDFM publishes no GTFS-Realtime
+  vehicle positions at all, so the live-transit layer is empty over the city
+  this fork opens on. The new IDFM layer draws the network OFFER — 37 956 stops,
+  2 121 lines with their official liveries, step-free status where surveyed —
+  and reports the live-vehicle absence in its own stats rather than looking
+  broken.
+
+### Fixed
+
+- **"Bâti 3D could not start cleanly" was a camera, not a fault.** Turning the
+  layer on from a wide view failed outright: the toggle flipped straight back
+  to OFF under an error toast, with a perfectly healthy IGN feed behind it. Two
+  faults, one symptom. The layer refuses a request box wider than **0.08°** and
+  returned that refusal as `false` out of its first `update()` — which the data
+  manager reads as the module REJECTING its lifecycle, so it tore the layer
+  down and said so. A load that fetched nothing because it was asked for
+  nothing is now not a failed load, in Bâti 3D, the mapped grid and Hub'Eau
+  alike. And the guidance it replaces is now carried out instead of announced:
+  an explicit enable **flies the camera to the view the layer needs** and loads
+  it. Measured over France at 420 km: 420 000 m → 2 900 m, buildings drawn, no
+  error published anywhere. The flight only answers explicit intent — a share
+  link or a Context restore keeps its own camera — it zooms in and never out,
+  it steepens a horizon-facing pitch (no altitude alone can shrink a view that
+  reaches the horizon), and it refuses to fly at all when the coverage in shot
+  is a sliver at the edge of a camera aimed somewhere else: 400 km over Berlin
+  clipping Alsace stays over Berlin. New harness: `npm run qa:view-gate`.
+
+- **A scan with no coordinates no longer answers about the Gulf of Guinea.**
+  `searchParams.get('lon')` is `null` when absent, `Number(null)` is `0`, and
+  `Number.isFinite(0)` is true, so `GET /api/gpu` with no query string returned
+  HTTP 200 and an empty result for 0°N 0°E — indistinguishable from "there is
+  nothing at your address". Now HTTP 400. Pinned by `addressProxy.test.mjs`.
+
+- **The address markers were unclickable, and half of each one was eaten by the
+  ground.** Two separate faults, both invisible to a unit test. The app runs
+  with `infoBox: false`, so an entity's `description` displays nothing on its
+  own — every layer must own a `LEFT_CLICK` handler, and these five did not, so
+  clicking a marker did nothing at all. Separately, `disableDepthTestDistance`
+  was a finite 2 500 m, which re-enables depth testing the moment the camera is
+  further off than that: at city zoom the terrain clipped the lower half of
+  every disc. Markers now draw always-on-top, own a click handler, and open the
+  same world-overlay card as their sibling layers.
+- **Five registers over one building, drawn as five identical dots.** Turn on
+  Ventes immobilières and Performance énergétique together and both painted
+  coloured discs over the same roofs, with nothing to say which register a dot
+  came from. Size and hue were already spoken for — DVF spends its colour on
+  the price against the local median, DPE on the official A–G scale — so SHAPE
+  was the only channel left, and it is the right one anyway: it survives at
+  16 px and it survives colour blindness. Each register now draws what it is
+  about: a **€** for a sale, **the A–G letter in a frame** for a diagnostic (so
+  the grade no longer needs a click), a **hazard triangle** for Géorisques, a
+  **plan sheet** for the PLU, and **the mode's own pictogram** for an IDFM
+  stop. Every glyph is white line-art over a dark halo and carries no hue of
+  its own, so `billboard.color` still delivers each layer's value channel
+  untouched.
+
+- **The address markers slid across the city as you moved the camera.**
+  `Cartesian3.fromDegrees(lon, lat)` puts a marker on the ELLIPSOID, at height
+  0, and the globe draws avenue de France at **79 to 83 m** — so every DVF sale,
+  every DPE diagnostic, every risk site and every IDFM stop stood eighty metres
+  under the street it describes, painted anyway because depth testing is off.
+  Under an oblique camera a vertical error is a HORIZONTAL error on screen, and
+  it changes with every camera pose: measured at 700 m and a pitch of −35°, a
+  DVF dot landed **83 px** from its own address, and turning the camera moved
+  that error **62 px sideways**. The reported symptom was exactly that — the
+  dots are not fixed, they move when you nudge the map. Markers are now placed
+  at the height of the terrain the globe is actually rendering, and re-seated as
+  terrain streams in and as the LOD refines. Measured after the fix: 0 px, from
+  both poses, on all five layers.
+- **The address layers only noticed you had moved every five minutes.** They
+  are camera-driven, but their refresh cadence is the manager's tick — 5 to 15
+  minutes, right for registers that change in weeks and useless for someone
+  flying across a city. Navigating to a new address left the previous
+  neighbourhood's answer on screen until the timer happened to fire, which reads
+  exactly as "the layer has trouble refreshing". All five now listen to
+  `camera.moveEnd` with a 450 ms settle, matching the BD TOPO layer, behind a
+  single-flight guard so a fly-through queues one repeat rather than a request
+  per frame. They also request a repaint explicitly: the render governor runs in
+  `requestRenderMode`, so a redraw nobody asks to paint never reaches the screen.
+- **`HeightReference.CLAMP_TO_GROUND` makes a point unpickable.** It reads like
+  the right answer for an annotation that belongs to a building; measured in the
+  running app it produced 30 drawn Géorisques points where `scene.pick` and
+  `scene.drillPick` both returned nothing. No point layer in this repo uses it,
+  and these no longer do either.
+- **Zoning outlines are not click targets, and no longer pretend to be.**
+  Clamped polylines render as ground primitives and are not pickable here — 62
+  vertices of one easement ring on screen, `scene.pick` null at every one.
+  Widening the stroke did not help. The urbanism layer now plants a marker at
+  the point it scanned, carrying the zone, its approval date and the easements
+  crossing it, because a zoning rule describes the ground under an address
+  rather than a particular line on a map.
+
+### Notes
+
+- Every price per square metre this release computes is deliberately absent for
+  multi-lot sales, swaps and auctions. One captured Paris mutation is
+  €32 000 000 spread over **179 rows**: summing the column inflates the 2024
+  edition of the 13ᵉ from €0.89 bn to €15.33 bn, and dividing the first row by
+  its 25 m² flat gives €1.28 million per square metre. The register does not say
+  how such a sale was split, so neither does the layer.
+- Added the **Établissements scolaires** layer — every school France
+  registers, keyless. The *Annuaire de l'éducation* is published by the
+  Ministère de l'Éducation nationale on data.education.gouv.fr under Licence
+  Ouverte 2.0 and rebuilt daily: 68,939 rows on 2026-09-01, of which 68,557 are
+  open and **68,158 are open and carry a coordinate** — the set the layer
+  draws. Three regimes by view span, as the IRVE layer: the 96 départements
+  with the country in view, a spatially thinned *maillage* of real positions in
+  between, and every establishment with its card over a city. Coloured by
+  school level, sized by pupils.
+- The register holds no roll, so the roll is a join, and its completeness is
+  stated rather than assumed. Dot size comes from the ministry's four per-level
+  *effectifs* datasets at rentrée 2025, joined on the UAI: **57,683 of the
+  62,918 open, geolocated teaching establishments get one (91.7%)**,
+  11,237,267 pupils in total. The 5,235 that do not are named — 2,212 are
+  sub-UAI SEGPA and SEP *sections* whose pupils are already counted inside the
+  collège or lycée at the same coordinate, and 455 are under the ministry of
+  Agriculture. A school with no roll draws at the base size and its card says
+  *effectif non publié*; it is never drawn as, or described as, a school with
+  no pupils.
+- The register's own uncertainties are surfaced instead of flattened:
+  - `precision_localisation` is its account of its own geocoding, and it is not
+    uniform — **2,159 rows are placed at their commune's centroid, not at the
+    school**. Those cards say so. The 22 published spellings fold onto a
+    four-step ladder, and an unrecognised one resolves to *unknown* rather than
+    inheriting "exact address".
+  - **399 open establishments have no coordinate at all**, and 332 of them are
+    one place: French Polynesia's 311 and Wallis-et-Futuna's 21 are ungeocoded
+    in their entirety. They are excluded at the query rather than placed at a
+    commune centroid, and the shortfall is carried to the client.
+  - A UAI is an administrative unit, not a building, so two dots can share one
+    address. Every site carries its `etablissement_mere`, and the card names
+    the parent.
+  - `restauration`, `hebergement`, `ulis`, `segpa` and `apprentissage` publish
+    1, 0 **and null**, where null means "not declared". The card lists what is
+    declared present rather than denying what was never stated.
+- The national choropleth is metropolitan and admits it. The bundled
+  département polygons are 96 features with no overseas geometry, so **2,762
+  open, geolocated schools cannot be painted** — La Réunion's 855, Guadeloupe's
+  448, Martinique's 403 and the rest, plus 9 island schools the simplified
+  outlines drop. They are counted, named, and reported on the national row
+  line; the other two regimes draw positions and show all of them. Assignment
+  is point-in-polygon and never a code join, because the register spells
+  Corsica `02A` where the IGN outlines say `2A`.
+
+- **The roads the State measures but never says where.** Bison Futé's counting-station
+  referential publishes a position for 843 of its 1 367 stations. The other 525 are
+  not positionless — 153 of them publish an ADDRESS, the point repère that the French
+  road network is actually numbered by, and every kilometre post of the non-conceded
+  network is published with its Lambert-93 coordinates in a second open dataset, the
+  [Bornage du réseau routier national](https://www.data.gouv.fr/datasets/bornage-du-reseau-routier-national)
+  (51 940 posts, Licence Ouverte 2.0, keyless). Joining the two recovers **all 115
+  stations of DIR Ouest**, which had never been drawn, plus 26 of DIR Atlantique, 10 of
+  DIR Centre-Est and 2 of DIR Est. The join is **calibrated on every build rather than
+  trusted**: 831 stations publish an address *and* a coordinate, and resolving theirs
+  disagrees with the DIRs' own answer by a **median of 3.8 m** (p90 7.2 m, max 64 m,
+  99.8 % within 25 m) — because the DIRs derive the coordinates they publish from this
+  very referential. The number is recomputed and stored in the committed index each
+  run, so an edition that stopped agreeing would move it in the build log before it
+  moved a station on screen.
+- **Nantes, Rennes, Saint-Brieuc and Lorient–Vannes are on the map.** The four Breton
+  traffic centres publish 619 live road states under identifiers that appear in no
+  referential row — which is why the layer drew nothing over a quarter of Brittany.
+  Those identifiers turned out to be point-repère addresses themselves:
+  `35A0084T096_00D` is département 35, route A84, PR 96, abscissa 0, right-hand
+  carriageway. **602 of them resolve**, four cities move from the layer's "state
+  published, position withheld" table to its showcase list, and the committed geometry
+  goes from **1 195 sites / 832 located** to **1 958 / 1 587**, 608 of them full
+  segments over **975 km**. A site placed this way says so on its card — *"position
+  resolved from its kilometre post (PR), median 4 m"* — because a derived position and
+  a published one are not the same claim.
+- **Segments follow the surveyed centre of their own carriageway.** The referential
+  gives a counting station two endpoints and nothing in between, so every segment was
+  drawn as a straight chord. Threading the kilometre posts between the two ends was the
+  first answer and it could not carry the layer: **the median segment is 948 m long and
+  the median post interval 1 000 m**, so 643 of 842 segments contained no post at all
+  and stayed straight. The drawn line sat a median **56 m** from its own tarmac, 142 m
+  at p90, **411 segments past 25 m** — on the Bordeaux rocade, a green line cutting the
+  inside of every curve. The shape now comes from the dataset next door:
+  [Liaisons du réseau routier national](https://www.data.gouv.fr/datasets/liaisons-du-reseau-routier-national)
+  (DGITM, Licence Ouverte 2.0, keyless) publishes **56 205 polylines, 1.66 M vertices,
+  one per point-repère interval, at a mean 26 m between vertices** — against the
+  1 000 m the posts offered. **The join needs no geometry at all**: every section NAMES
+  the two posts it runs between, in the address grammar this build already reads, so it
+  is placed in the same cumulative-distance space the bornage is sorted by — and the
+  coordinates are then free to be checked rather than trusted. Over 33 483 joined
+  sections the polylines' own ends sit **0 m from the posts they name at p50, p90 and
+  p99**: the two files are cut from the same survey. **589 of the 608 real segments
+  trace** (96.9 %), simplified at 4 m — under the width of a traffic lane — for a
+  committed file of 485 KB against 364 KB. The 19 that do not are slip roads and
+  unnumbered axes the point-repère referential does not address; they keep the post
+  threading, or the chord, exactly as before. Three guards refuse to shape rather than
+  guess: a section drawn more than 50 m from the posts it names, an endpoint more than
+  150 m from any post of the road it names, and a trace running more than three times
+  the straight line between its ends — the ring-road case, where shaping would wrap a
+  segment around the whole of Bordeaux.
+- **Lille stays dark, and that is a measurement, not a gap.** DIR Nord's 357 site ids
+  were tested against the bornage both ways they can be read: three digits as the PR
+  fits 24 % of them, two digits fits 75 % — but the two-digit reading puts DIR Nord's
+  A1 sensors at PR 12–30, which is département 95, inside Île-de-France and 150 km
+  outside its territory. A grammar that has to be wrong to parse is not the grammar,
+  so the empty-state sentence over Lille now reads "under site ids that are neither a
+  referential row nor an address" and the city keeps its explanation.
+
+### Changed
+
+- The maillage thinning and the point-in-département lookup now live in
+  `src/data/geoMeshThinning.js` and `src/data/franceDepartements.js`, shared by
+  the charge-point and schools layers instead of duplicated. `irveMesh.js` and
+  `irveDepartements.js` keep their full export surface and their measurements;
+  their unchanged test suites are what prove the extraction was faithful.
+
+- **The Data Layers panel is grouped and in French.** Thirty-four datasets no
+  longer arrive as one flat list ordered by the accident of which PR merged
+  first. They sit in **eight thematic groups** — *Air & espace, Défense,
+  Maritime, Mobilité terrestre, Énergie, Risques & environnement, Réseaux &
+  capteurs, Bâti & territoire* — each a collapsible section whose header carries
+  its own tally (*"2/8 ON"*) and turns cyan while anything in it is live. Every
+  group opens by default; a group you close is remembered, per group, across
+  reloads.
+- **Every row now reads in French.** *Live Flights* is **Vols en direct**, *Live
+  AIS Vessels* is **Navires en direct**, *Mapped Installations* is **Sites
+  militaires**, *Street Traffic* is **Trafic routier**, *Groupes de prod (FR)*
+  is **Groupes de production**. The five `(FR)` suffixes are gone: a small
+  **FR** / **US** / **VILLES** chip now says where a layer has data, once, on
+  the sixteen rows where the answer is not "everywhere" — and nothing at all on
+  a global layer, because a badge on every row is a badge on none. The panel
+  widened from 280 to 320 px to hold the longer names on one line.- Added the **Bornes IRVE** layer — every public EV charge point France has
   declared, keyless. The *fichier consolidé des bornes de recharge pour
   véhicules électriques* is assembled daily by transport.data.gouv.fr from the
   operators' own filings and republished by **ODRÉ** under Licence Ouverte 2.0:
@@ -222,6 +465,21 @@ Verified over Paris 16e on the oblique view that reported it: 2 393 parcelles at
   `src/data/dataCredits.test.mjs` reads the source and asserts the number of
   `key:` and `html:` properties matches the array length, which is the only
   place the evidence survives.
+### Fixed
+
+- **234 road-status "segments" were points wearing a segment's shape.** Their
+  referential row publishes a start equal to its end, and they were being written as
+  four-number segments and handed to Cesium as zero-length ground polylines — geometry
+  it cannot stroke. They are now written as single points, which is what makes the
+  renderer draw them as the 25 m stub a positioned station with no extent deserves.
+  The segment count falls from 842 to 608 and nothing is lost: the difference was never
+  234 roads.
+- **A rebuild of the road-status index reported Brittany as unlit.** The coverage table's
+  `fromPointRepere` counted what a run had newly placed rather than what the file held,
+  so the second build against an already-complete index reported zero for Nantes,
+  Rennes, Saint-Brieuc and Lorient–Vannes on a day nothing about them had changed. It
+  now counts from the committed record, and the assertion that guards those four cities
+  survives a re-run.
 
 ## [Unreleased] — 2026-08-31
 

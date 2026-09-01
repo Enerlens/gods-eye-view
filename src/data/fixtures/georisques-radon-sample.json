@@ -1,0 +1,16 @@
+{
+ "results": 1,
+ "page": 1,
+ "total_pages": 1,
+ "data": [
+  {
+   "classe_potentiel": "1",
+   "code_insee": "75113",
+   "libelle_commune": null
+  }
+ ],
+ "response_code": 200,
+ "message": null,
+ "next": null,
+ "previous": null
+}

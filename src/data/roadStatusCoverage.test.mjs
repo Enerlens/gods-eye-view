@@ -48,7 +48,7 @@ test('Lille is dark for the opposite reason, and the sentence does not conflate 
   // The number matters: saying "no data" over a city publishing 357 live
   // states would be false.
   assert.match(notice.text, /357 live road states/);
-  assert.match(notice.text, /no national referential row/);
+  assert.match(notice.text, /neither a referential row nor an address/);
 });
 
 test('a viewport with segments in it is not an empty state, however green', () => {
@@ -107,10 +107,12 @@ test('every showcase claim matches the committed geometry', () => {
   }
 });
 
-test('every "state published, position withheld" area still has no geometry', () => {
+test('every "state published, position withheld" area still has the geometry it claims', () => {
   // The claim that would age first, and the one worth failing on: the day a
-  // DIR starts publishing Lille's coordinates, this city stops being dark and
-  // this table has to say so.
+  // DIR starts publishing Lille's coordinates — or the day someone reads its
+  // site ids as the addresses the Breton ones turned out to be — this city
+  // stops being dark and this table has to say so. Exact equality, because
+  // "still zero" and "now four" are the whole content of the entry.
   const byLabel = new Map((SITES.coverage || []).map((row) => [row.label, row]));
   for (const area of ROAD_STATUS_DARK_AREAS) {
     if (area.kind !== 'no-geometry') continue;
@@ -118,10 +120,94 @@ test('every "state published, position withheld" area still has no geometry', ()
     if (!row) continue;
     assert.equal(
       row.located,
-      0,
-      `${area.name} now has ${row.located} locatable sites — move it out of ROAD_STATUS_DARK_AREAS`,
+      area.located,
+      `${area.name} now has ${row.located} locatable sites, not ${area.located}`
+      + ' — re-measure it, and move it out of ROAD_STATUS_DARK_AREAS if it is lit',
     );
   }
+});
+
+test('the four cities the point-repère join lit are drawn from the bornage, not from a DIR', () => {
+  // The regression that would silently undo this work: a build that stops
+  // joining the kilometre-post referential still produces a valid file, with
+  // Brittany dark again and no error anywhere.
+  assert.ok(SITES.bornage, 'the committed index records the bornage it was joined to');
+  assert.ok(SITES.bornage.calibration.n > 500, 'the join is calibrated on the stations that answer both ways');
+  assert.ok(
+    SITES.bornage.calibration.p50 < 25,
+    `the join disagrees with the DIRs' own coordinates by ${SITES.bornage.calibration.p50} m at the median`,
+  );
+  const byLabel = new Map((SITES.coverage || []).map((row) => [row.label, row]));
+  for (const id of ['nantes', 'rennes', 'saint-brieuc', 'lorient-vannes']) {
+    const showcase = ROAD_STATUS_SHOWCASES.find((s) => s.id === id);
+    assert.ok(showcase, `${id} is a showcase`);
+    const row = byLabel.get(showcase.name);
+    assert.ok(row, `${showcase.name} is in the built coverage table`);
+    assert.ok(
+      row.fromPointRepere > 0,
+      `${showcase.name} is only drawable because its site ids are point-repère addresses`,
+    );
+    // Nothing here came from a DIR-published coordinate: every one of these
+    // sites carries `g: 'pr'`. A city shows fewer than its total only where
+    // the identifier is not an address the bornage holds.
+    assert.ok(
+      row.fromPointRepere <= row.located,
+      `${showcase.name}: ${row.fromPointRepere} placed from a PR but only ${row.located} drawable`,
+    );
+  }
+});
+
+test('the committed segments follow the road, and no segment is a point in disguise', () => {
+  // The regression this catches: a build that loses the RRN centreline still
+  // writes a valid file — every segment reverts to the chord between its ends
+  // and the layer goes back to cutting the inside of every curve, with nothing
+  // in the output saying so.
+  assert.ok(SITES.centreline, 'the committed file records the survey it was shaped from');
+  assert.equal(SITES.centreline.licence, 'Licence Ouverte 2.0');
+  assert.ok(
+    SITES.centreline.sections > 30000,
+    `only ${SITES.centreline.sections} sections joined the bornage — the centreline key has moved`,
+  );
+
+  const segments = Object.values(SITES.sites).filter((s) => Array.isArray(s.c) && s.c.length >= 4);
+  const shaped = segments.filter((s) => s.c.length > 4);
+  assert.ok(
+    shaped.length / segments.length > 0.9,
+    `only ${shaped.length} of ${segments.length} segments carry a shape between their ends`,
+  );
+  assert.equal(SITES.stats.shapedFromCentreline, SITES.centreline.shaped);
+
+  // A start equal to its end is a position, not a road. Writing it as a
+  // four-number segment asks Cesium to stroke a zero-length ground polyline.
+  const degenerate = segments.filter((s) => s.c.length === 4 && s.c[0] === s.c[2] && s.c[1] === s.c[3]);
+  assert.equal(degenerate.length, 0, `${degenerate.length} segments start where they end`);
+});
+
+test('a shaped segment bends further than the straight line between its ends', () => {
+  // The number that made this work worth doing: how far the drawn line sits
+  // from the tarmac. Measured here the other way round — a shaped segment must
+  // be measurably LONGER than its chord, because the road is.
+  const shaped = Object.values(SITES.sites)
+    .filter((s) => Array.isArray(s.c) && s.c.length > 4);
+  const metres = (aLon, aLat, bLon, bLat) => {
+    const meanLat = ((aLat + bLat) / 2) * (Math.PI / 180);
+    return Math.hypot((bLon - aLon) * 111320 * Math.cos(meanLat), (bLat - aLat) * 110570);
+  };
+  let bent = 0;
+  for (const site of shaped) {
+    const { c } = site;
+    let along = 0;
+    for (let i = 0; i + 3 < c.length; i += 2) along += metres(c[i], c[i + 1], c[i + 2], c[i + 3]);
+    const chord = metres(c[0], c[1], c[c.length - 2], c[c.length - 1]);
+    // The ring-road guard is the other side of this: a segment may not run
+    // more than three times its chord either.
+    assert.ok(along <= 3 * chord + 500, 'a segment wraps the long way round the road');
+    if (along > chord * 1.001) bent += 1;
+  }
+  assert.ok(
+    bent / shaped.length > 0.8,
+    `only ${bent} of ${shaped.length} shaped segments are longer than their own chord`,
+  );
 });
 
 test('Île-de-France really has no station in the committed geometry', () => {

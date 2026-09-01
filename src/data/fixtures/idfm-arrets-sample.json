@@ -1,0 +1,257 @@
+{
+ "total_count": 43,
+ "results": [
+  {
+   "arrid": "463686",
+   "arrversion": "1599330-45302",
+   "arrcreated": "2019-02-12T09:29:35+00:00",
+   "arrchanged": "2026-05-13T13:09:21+00:00",
+   "arrname": "Pont de Tolbiac",
+   "arrtype": "bus",
+   "arrxepsg2154": 654447,
+   "arryepsg2154": 6859346,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "unknown",
+   "arraudiblesignals": "unknown",
+   "arrvisualsigns": "unknown",
+   "arrfarezone": "1",
+   "zdaid": "45302",
+   "arrgeopoint": {
+    "lon": 2.3794447674388772,
+    "lat": 48.83255831158184
+   }
+  },
+  {
+   "arrid": "488226",
+   "arrversion": "1489196-1489557",
+   "arrcreated": "2023-07-13T15:00:56+00:00",
+   "arrchanged": "2023-07-18T09:51:34+00:00",
+   "arrname": "Avenue de France",
+   "arrtype": "bus",
+   "arrxepsg2154": 654614,
+   "arryepsg2154": 6858626,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "true",
+   "arraudiblesignals": "unknown",
+   "arrvisualsigns": "unknown",
+   "arrfarezone": "1",
+   "zdaid": "488247",
+   "arrgeopoint": {
+    "lon": 2.3817964553819233,
+    "lat": 48.82609502277254
+   }
+  },
+  {
+   "arrid": "463112",
+   "arrversion": "1834768-1087364",
+   "arrcreated": "2019-01-29T00:00:00+00:00",
+   "arrchanged": "2026-08-21T13:52:18+00:00",
+   "arrname": "Bibliothèque François Mitterrand",
+   "arrtype": "metro",
+   "arrxepsg2154": 654213,
+   "arryepsg2154": 6859086,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "true",
+   "arraudiblesignals": "true",
+   "arrvisualsigns": "true",
+   "arrfarezone": "1",
+   "zdaid": "473111",
+   "arrgeopoint": {
+    "lon": 2.376285162431935,
+    "lat": 48.830203516356654
+   }
+  },
+  {
+   "arrid": "24013",
+   "arrversion": "24013-1087444",
+   "arrcreated": "2014-12-29T15:31:51+00:00",
+   "arrchanged": "2026-06-24T16:31:53+00:00",
+   "arrname": "Bibliothèque Rue Mann",
+   "arrtype": "bus",
+   "arrxepsg2154": 654350,
+   "arryepsg2154": 6858920,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "false",
+   "arraudiblesignals": "unknown",
+   "arrvisualsigns": "unknown",
+   "arrfarezone": "1",
+   "zdaid": "473113",
+   "arrgeopoint": {
+    "lon": 2.37816911925068,
+    "lat": 48.82872037118311
+   }
+  },
+  {
+   "arrid": "41515",
+   "arrversion": "1639724-1639720",
+   "arrcreated": "2014-12-29T00:00:00+00:00",
+   "arrchanged": "2026-06-24T16:31:53+00:00",
+   "arrname": "Bibliothèque Chevaleret / François Mitterrand",
+   "arrtype": "bus",
+   "arrxepsg2154": 654180,
+   "arryepsg2154": 6859062,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "partial",
+   "arraudiblesignals": "partial",
+   "arrvisualsigns": "partial",
+   "arrfarezone": "1",
+   "zdaid": "473112",
+   "arrgeopoint": {
+    "lon": 2.3758382362124553,
+    "lat": 48.82998533588256
+   }
+  },
+  {
+   "arrid": "24137",
+   "arrversion": "1348441-1722456",
+   "arrcreated": "2014-12-29T00:00:00+00:00",
+   "arrchanged": "2021-10-27T17:25:35+00:00",
+   "arrname": "Avenue de France",
+   "arrtype": "tram",
+   "arrxepsg2154": 654548,
+   "arryepsg2154": 6858567,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "true",
+   "arraudiblesignals": "true",
+   "arrvisualsigns": "true",
+   "arrfarezone": "1",
+   "zdaid": "45305",
+   "arrgeopoint": {
+    "lon": 2.3809038056961693,
+    "lat": 48.82555977469957
+   }
+  },
+  {
+   "arrid": "472490",
+   "arrversion": "1080484-45301",
+   "arrcreated": "2019-03-07T20:12:24+00:00",
+   "arrchanged": "2019-03-11T14:40:13+00:00",
+   "arrname": "Bibliothèque François Mitterrand",
+   "arrtype": "rail",
+   "arrxepsg2154": 654310,
+   "arryepsg2154": 6858933,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "unknown",
+   "arraudiblesignals": "unknown",
+   "arrvisualsigns": "unknown",
+   "arrfarezone": "1",
+   "zdaid": "45301",
+   "arrgeopoint": {
+    "lon": 2.377622877843936,
+    "lat": 48.82883444803402
+   }
+  },
+  {
+   "arrid": "41128",
+   "arrversion": "1087498-45301",
+   "arrcreated": "2014-12-29T00:00:00+00:00",
+   "arrchanged": "2019-03-11T14:41:53+00:00",
+   "arrname": "Bibliothèque François Mitterrand",
+   "arrtype": "rail",
+   "arrxepsg2154": 654311,
+   "arryepsg2154": 6858943,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "partial",
+   "arraudiblesignals": "partial",
+   "arrvisualsigns": "partial",
+   "arrfarezone": "1",
+   "zdaid": "45301",
+   "arrgeopoint": {
+    "lon": 2.3776430532727013,
+    "lat": 48.82892449014367
+   }
+  },
+  {
+   "arrid": "21955",
+   "arrversion": "1832965-1087364",
+   "arrcreated": "2014-12-29T00:00:00+00:00",
+   "arrchanged": "2026-08-21T13:41:06+00:00",
+   "arrname": "Bibliothèque François Mitterrand",
+   "arrtype": "metro",
+   "arrxepsg2154": 654208,
+   "arryepsg2154": 6859089,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "true",
+   "arraudiblesignals": "true",
+   "arrvisualsigns": "true",
+   "arrfarezone": "1",
+   "zdaid": "473111",
+   "arrgeopoint": {
+    "lon": 2.376216731966815,
+    "lat": 48.83023014057458
+   }
+  },
+  {
+   "arrid": "37164",
+   "arrversion": "1681996-1639712",
+   "arrcreated": "2014-12-29T00:00:00+00:00",
+   "arrchanged": "2026-06-24T16:31:53+00:00",
+   "arrname": "Bibliothèque François Mitterrand",
+   "arrtype": "bus",
+   "arrxepsg2154": 654299,
+   "arryepsg2154": 6859152,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "true",
+   "arraudiblesignals": "unknown",
+   "arrvisualsigns": "unknown",
+   "arrfarezone": "1",
+   "zdaid": "473115",
+   "arrgeopoint": {
+    "lon": 2.377449525815182,
+    "lat": 48.83080316705086
+   }
+  },
+  {
+   "arrid": "37225",
+   "arrversion": "1549655-45302",
+   "arrcreated": "2014-12-29T15:31:51+00:00",
+   "arrchanged": "2026-06-24T16:31:53+00:00",
+   "arrname": "Pont de Tolbiac",
+   "arrtype": "bus",
+   "arrxepsg2154": 654418,
+   "arryepsg2154": 6859273,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "true",
+   "arraudiblesignals": "unknown",
+   "arrvisualsigns": "unknown",
+   "arrfarezone": "1",
+   "zdaid": "45302",
+   "arrgeopoint": {
+    "lon": 2.3790575452013933,
+    "lat": 48.83189976298331
+   }
+  },
+  {
+   "arrid": "37404",
+   "arrversion": "1353572-1353567",
+   "arrcreated": "2014-12-29T00:00:00+00:00",
+   "arrchanged": "2026-06-24T16:31:53+00:00",
+   "arrname": "Oudiné",
+   "arrtype": "bus",
+   "arrxepsg2154": 653984,
+   "arryepsg2154": 6858681,
+   "arrtown": "Paris 13e",
+   "arrpostalregion": "75113",
+   "arraccessibility": "true",
+   "arraudiblesignals": "unknown",
+   "arrvisualsigns": "unknown",
+   "arrfarezone": "1",
+   "zdaid": "45299",
+   "arrgeopoint": {
+    "lon": 2.3732096251843373,
+    "lat": 48.826544981111844
+   }
+  }
+ ]
+}

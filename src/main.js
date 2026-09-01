@@ -15,6 +15,11 @@ import frHydroPlantsLayer from './data/frHydroPlants.js';
 import powerGridLayer from './data/powerGrid.js';
 import bdtopoBuildingsLayer from './data/bdtopoBuildings.js';
 import cadastreParcelsLayer from './data/cadastreParcels.js';
+import georisquesLayer from './data/georisques.js';
+import dvfSalesLayer from './data/dvfSales.js';
+import dpeFranceLayer from './data/dpeFrance.js';
+import urbanismeGpuLayer from './data/urbanismeGpu.js';
+import idfmNetworkLayer from './data/idfmNetwork.js';
 import rteGenerationLayer from './data/rteGeneration.js';
 import satellitesLayer from './data/satellites.js';
 import rocketLaunchesLayer from './data/rocketLaunches.js';
@@ -27,13 +32,14 @@ import transitFranceLayer from './data/transitFrance.js';
 import roadStatusFranceLayer from './data/roadStatusFrance.js';
 import sharedMobilityFranceLayer from './data/sharedMobilityFrance.js';
 import irveFranceLayer from './data/irveFrance.js';
+import schoolsFranceLayer from './data/schoolsFrance.js';
 import aisLiveVesselsLayer from './data/aisLiveVessels.js';
 import militaryInstallationsLayer from './data/militaryInstallations.js';
 import militaryAwarenessLayer from './data/militaryAwareness.js';
 import marineBuoysLayer from './data/marineBuoys.js';
 import localDataLayers from './data/localLayers.js';
 import { LAYER_STATE_REGISTRY } from './data/layerState.js';
-import { LAYER_TAXONOMY } from './data/layerTaxonomy.js';
+import { LAYER_CATEGORIES, LAYER_TAXONOMY } from './data/layerTaxonomy.js';
 import { registerDataCredits } from './data/dataCredits.js';
 import { SceneDirector } from './scenes/director.js';
 import { initGevVoiceCommands } from './voice/gevRealtime.js';
@@ -293,6 +299,11 @@ async function init() {
     dataManager.register(powerGridLayer);
     dataManager.register(bdtopoBuildingsLayer);
     dataManager.register(cadastreParcelsLayer);
+    dataManager.register(georisquesLayer);
+    dataManager.register(dvfSalesLayer);
+    dataManager.register(dpeFranceLayer);
+    dataManager.register(urbanismeGpuLayer);
+    dataManager.register(idfmNetworkLayer);
     dataManager.register(rteGenerationLayer);
     dataManager.register(satellitesLayer);
     dataManager.register(rocketLaunchesLayer);
@@ -306,6 +317,7 @@ async function init() {
     dataManager.register(roadStatusFranceLayer);
     dataManager.register(sharedMobilityFranceLayer);
     dataManager.register(irveFranceLayer);
+    dataManager.register(schoolsFranceLayer);
     dataManager.register(aisLiveVesselsLayer);
     dataManager.register(militaryInstallationsLayer);
     dataManager.register(militaryAwarenessLayer);
@@ -315,7 +327,7 @@ async function init() {
       dataManager.register(layer);
     }
     // Restoration starts only after the complete production registry is sealed.
-    dataManager.finalizeRegistrations(LAYER_STATE_REGISTRY, LAYER_TAXONOMY);
+    dataManager.finalizeRegistrations(LAYER_STATE_REGISTRY, LAYER_TAXONOMY, LAYER_CATEGORIES);
     if (import.meta.env.DEV) {
       window.__gevQaRegisterLayer = (targetManager, layerModule) => {
         if (targetManager !== dataManager) throw new Error('QA layer manager mismatch');

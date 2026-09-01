@@ -20,7 +20,7 @@
  *
  * ── WHY THIS IS NOT A REPLACEMENT FOR THE TOMTOM FLOW LAYER ─────────────────
  *
- * It covers 904 km of segments on motorways and trunk roads only, it is blind
+ * It covers 936 km of segments on motorways and trunk roads only, it is blind
  * in Île-de-France (the DIRIF publishes nothing here — no station, no status,
  * no agglomeration feed), and its cadence is a minute at best. What it is, and
  * TomTom is not, is open: no key, no quota, no redistribution clause, and a
@@ -362,6 +362,13 @@ function finiteOrNull(text) {
  * must never see a metre, and the projection lives in the build script that
  * does the conversion once (`scripts/lib/lambert93.mjs`).
  *
+ * The point-repère columns are read even though most rows that carry them
+ * carry a coordinate too, because the rows that DON'T are the interesting
+ * ones: 525 of 1 368 rows publish no `x_deb` at all (2026-09-01) and 153 of
+ * those publish a PR, which `scripts/lib/rrnBornage.mjs` resolves against the
+ * State's kilometre-post referential to a median 3.9 m of where the DIRs put
+ * the stations that publish both.
+ *
  * Rows whose field count is neither the declared 20 nor the published 19 are
  * skipped and counted — a third shape would mean the publisher changed the
  * file, and guessing which column is which at that point is how a station ends
@@ -399,6 +406,14 @@ export function parseStationReferential(csv) {
       id,
       dir: fields[1]?.trim() || null,
       axis: fields[3 + offset]?.trim() || null,
+      // The point-repère address, kept verbatim: it is the only geometry 525
+      // of today's 1 368 rows publish, and the four DIRs that write it each
+      // write it differently. Interpretation belongs to the build script's
+      // `scripts/lib/rrnBornage.mjs`, not here.
+      prStart: fields[4 + offset]?.trim() || null,
+      abscisseStartM: Number(fields[5 + offset]) || 0,
+      prEnd: fields[6 + offset]?.trim() || null,
+      abscisseEndM: Number(fields[7 + offset]) || 0,
       lanes: Number(fields[13 + offset]) || null,
       lengthM: Number(fields[12 + offset]) || null,
       xStart: finiteOrNull(fields[14 + offset]),

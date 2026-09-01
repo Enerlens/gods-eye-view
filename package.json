@@ -37,6 +37,7 @@
     "opensky:import": "./scripts/opensky-import-client.sh",
     "build": "vite build",
     "preview": "vite preview",
+    "start": "vite preview --host ${HOST:-0.0.0.0} --port ${PORT:-4173}",
     "test": "node scripts/run-unit-tests.mjs",
     "test:track": "node scripts/track-regression.mjs",
     "qa:keyless-boot": "node scripts/qa-keyless-boot.mjs",
@@ -51,6 +52,7 @@
     "qa:gas-fr": "node scripts/qa-gas-fr.mjs",
     "qa:power-grid": "node scripts/qa-power-grid.mjs",
     "qa:bdtopo": "node scripts/qa-bdtopo-buildings.mjs",
+    "qa:view-gate": "node scripts/qa-view-gate.mjs",
     "qa:power-grid-coverage": "node scripts/grid-audit/audit-substations.mjs",
     "qa:power-grid-coverage:lines": "node scripts/grid-audit/audit-lines.mjs",
     "qa:rte-generation": "node scripts/qa-rte-generation.mjs",
@@ -58,6 +60,7 @@
     "qa:airports": "node scripts/qa-airports.mjs",
     "qa:bison-fute": "node scripts/qa-bison-fute.mjs",
     "qa:irve-fr": "node scripts/qa-irve-fr.mjs",
+    "qa:dams": "node scripts/qa-dams.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
     "transit:route-types": "node scripts/build-pan-route-types.mjs",
     "transit:static": "node scripts/build-pan-static-index.mjs",
@@ -65,7 +68,9 @@
     "road-status:index": "node scripts/build-datex-traficolor-sites.mjs",
     "rte:units": "node scripts/build-rte-units-registry.mjs",
     "hydro:registry": "node scripts/build-fr-hydro-registry.mjs",
-    "airports:pack": "node scripts/build-ourairports.mjs"
+    "qa:address-layers": "node scripts/qa-address-layers.mjs",
+    "airports:pack": "node scripts/build-ourairports.mjs",
+    "dams:pack": "node scripts/build-osm-dams.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",

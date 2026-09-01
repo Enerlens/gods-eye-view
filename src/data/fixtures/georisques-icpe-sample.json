@@ -1,0 +1,298 @@
+{
+ "results": 30,
+ "page": 1,
+ "total_pages": 6,
+ "data": [
+  {
+   "raisonSociale": "ETABLISSEMENTS DARTY ET FILS",
+   "adresse1": "29 RUE NEUVE TOLBIAC",
+   "adresse2": "112 AV DE FRANCE ZAC PARIS RIVE GAUCHE",
+   "adresse3": null,
+   "codePostal": "75013",
+   "codeInsee": "75056",
+   "commune": "PARIS",
+   "codeNaf": "46",
+   "longitude": 2.377643,
+   "latitude": 48.83057,
+   "bovins": false,
+   "porcs": false,
+   "volailles": false,
+   "carriere": false,
+   "eolienne": false,
+   "industrie": false,
+   "prioriteNationale": false,
+   "statutSeveso": null,
+   "ied": false,
+   "etatActivite": null,
+   "codeAIOT": "0006514645",
+   "siret": "54208661601397",
+   "coordonneeXAIOT": 654313,
+   "coordonneeYAIOT": 6859126,
+   "systemeCoordonneesAIOT": "2154",
+   "serviceAIOT": "DRIEAT IdF",
+   "regime": "Non ICPE",
+   "date_maj": "2025-07-16/13-48-35",
+   "inspections": [
+    {
+     "dateInspection": "2024-11-28",
+     "fichierInspection": null
+    }
+   ],
+   "documentsHorsInspection": [],
+   "rubriques": []
+  },
+  {
+   "raisonSociale": "FRAICHEUR DE PARIS BNF",
+   "adresse1": "QUAI FRANCOIS MAURIAC",
+   "adresse2": "BIBLIOTHEQUE NATIONALE DE FRANCE",
+   "adresse3": "75706 PARIS CEDEX 13",
+   "codePostal": "75013",
+   "codeInsee": "75056",
+   "commune": "Paris",
+   "codeNaf": "43",
+   "longitude": 2.376028,
+   "latitude": 48.833458,
+   "bovins": false,
+   "porcs": false,
+   "volailles": false,
+   "carriere": false,
+   "eolienne": false,
+   "industrie": true,
+   "prioriteNationale": false,
+   "statutSeveso": "Non Seveso",
+   "ied": false,
+   "etatActivite": "En exploitation avec titre",
+   "codeAIOT": "0006518202",
+   "siret": "90922662300033",
+   "coordonneeXAIOT": 654197,
+   "coordonneeYAIOT": 6859448,
+   "systemeCoordonneesAIOT": "2154",
+   "serviceAIOT": "DRIEAT IdF",
+   "regime": "Enregistrement",
+   "date_maj": "2026-02-13/09-00-50",
+   "inspections": [
+    {
+     "dateInspection": "2024-04-23",
+     "fichierInspection": null
+    },
+    {
+     "dateInspection": "2024-04-23",
+     "fichierInspection": {
+      "identifiantFichier": "e7trqZz9iHBk8VXSUBzhNGuCY7uI5Tyu",
+      "nomFichier": "250424_P13_FRDP BNF_rpt insp_Georisques",
+      "typeFichier": "Rapport d'inspection publiable",
+      "dateFichier": null,
+      "urlFichier": "https://www.georisques.gouv.fr/webappReport/ws/installations/inspection/e7trqZz9iHBk8VXSUBzhNGuCY7uI5Tyu"
+     }
+    },
+    {
+     "dateInspection": "2024-04-23",
+     "fichierInspection": {
+      "identifiantFichier": "jGtcuaoFMW3ZqFufawgfxYK6OWvynoQk",
+      "nomFichier": "241115_P13_FRDP BNF_#ARESP2024_rpt insp_Georisques",
+      "typeFichier": "Rapport d'inspection publiable",
+      "dateFichier": null,
+      "urlFichier": "https://www.georisques.gouv.fr/webappReport/ws/installations/inspection/jGtcuaoFMW3ZqFufawgfxYK6OWvynoQk"
+     }
+    },
+    {
+     "dateInspection": "2024-04-23",
+     "fichierInspection": null
+    }
+   ],
+   "documentsHorsInspection": [],
+   "rubriques": [
+    {
+     "numeroRubrique": "1185",
+     "nature": "Quantité susceptible d'être présente",
+     "alinea": "2.a",
+     "regimeAutoriseAlinea": "Déclaration avec contrôle",
+     "quantiteTotale": "5100.000",
+     "unite": "kg",
+     "dateMotif": "05/05/2022"
+    },
+    {
+     "numeroRubrique": "2921",
+     "nature": "Installations de refroidissement évaporatif",
+     "alinea": "1.a",
+     "regimeAutoriseAlinea": "Enregistrement",
+     "quantiteTotale": "28000.000",
+     "unite": "kW",
+     "dateMotif": "05/05/2022"
+    }
+   ]
+  },
+  {
+   "raisonSociale": "GNVERT",
+   "adresse1": "39 RUE BRUNESEAU",
+   "adresse2": null,
+   "adresse3": null,
+   "codePostal": "75013",
+   "codeInsee": "75056",
+   "commune": "Paris",
+   "codeNaf": "35",
+   "longitude": 2.38562,
+   "latitude": 48.824091,
+   "bovins": false,
+   "porcs": false,
+   "volailles": false,
+   "carriere": false,
+   "eolienne": false,
+   "industrie": true,
+   "prioriteNationale": false,
+   "statutSeveso": "Non Seveso",
+   "ied": false,
+   "etatActivite": "En exploitation avec titre",
+   "codeAIOT": "0006518539",
+   "siret": "41985346001053",
+   "coordonneeXAIOT": 654893,
+   "coordonneeYAIOT": 6858401,
+   "systemeCoordonneesAIOT": "2154",
+   "serviceAIOT": "DRIEAT IdF",
+   "regime": "Autorisation",
+   "date_maj": "2026-07-23/12-02-27",
+   "inspections": [
+    {
+     "dateInspection": "2022-06-08",
+     "fichierInspection": {
+      "identifiantFichier": "ALZPtU1Pxtb4ZeGkCIxt9vwSsuowRQI3",
+      "nomFichier": "220708_P13_GNVERT BRUNESEAU_Rpt PPC 2022_publiable",
+      "typeFichier": "Rapport d'inspection publiable",
+      "dateFichier": null,
+      "urlFichier": "https://www.georisques.gouv.fr/webappReport/ws/installations/inspection/ALZPtU1Pxtb4ZeGkCIxt9vwSsuowRQI3"
+     }
+    }
+   ],
+   "documentsHorsInspection": [],
+   "rubriques": [
+    {
+     "numeroRubrique": "1413",
+     "nature": "Installation de remplissage de gaz naturel - débit > 2000 m3/h",
+     "alinea": "1.a",
+     "regimeAutoriseAlinea": "Autorisation",
+     "quantiteTotale": "2320.000",
+     "unite": "m3/h",
+     "dateMotif": "31/05/2006"
+    }
+   ]
+  },
+  {
+   "raisonSociale": "SITA SUEZ",
+   "adresse1": "43 RUE BRUNESEAU",
+   "adresse2": "ENTREE PARIS XIII 75013  PARIS 13",
+   "adresse3": null,
+   "codePostal": "94200",
+   "codeInsee": "75056",
+   "commune": "Ivry-sur-Seine",
+   "codeNaf": "38",
+   "longitude": 2.385063,
+   "latitude": 48.824043,
+   "bovins": false,
+   "porcs": false,
+   "volailles": false,
+   "carriere": false,
+   "eolienne": false,
+   "industrie": false,
+   "prioriteNationale": false,
+   "statutSeveso": null,
+   "ied": false,
+   "etatActivite": null,
+   "codeAIOT": "0007403617",
+   "siret": "66201448900758",
+   "coordonneeXAIOT": 654852,
+   "coordonneeYAIOT": 6858396,
+   "systemeCoordonneesAIOT": "2154",
+   "serviceAIOT": "DRIEAT IdF",
+   "regime": "Autres régimes",
+   "date_maj": "2026-04-26/10-21-48",
+   "inspections": [
+    {
+     "dateInspection": "2018-02-15",
+     "fichierInspection": null
+    }
+   ],
+   "documentsHorsInspection": [],
+   "rubriques": []
+  },
+  {
+   "raisonSociale": "LAFARGE BERCY",
+   "adresse1": "PORT DE BERCY AMONT",
+   "adresse2": null,
+   "adresse3": null,
+   "codePostal": "75012",
+   "codeInsee": "75056",
+   "commune": "Paris",
+   "codeNaf": "23",
+   "longitude": 2.385532,
+   "latitude": 48.830404,
+   "bovins": false,
+   "porcs": false,
+   "volailles": false,
+   "carriere": false,
+   "eolienne": false,
+   "industrie": true,
+   "prioriteNationale": false,
+   "statutSeveso": "Non Seveso",
+   "ied": false,
+   "etatActivite": "En exploitation avec titre",
+   "codeAIOT": "0007404101",
+   "siret": "41481504300404",
+   "coordonneeXAIOT": 654892,
+   "coordonneeYAIOT": 6859103,
+   "systemeCoordonneesAIOT": "2154",
+   "serviceAIOT": "DRIEAT IdF",
+   "regime": "Enregistrement",
+   "date_maj": "2026-07-23/11-51-29",
+   "inspections": [
+    {
+     "dateInspection": "2023-05-30",
+     "fichierInspection": {
+      "identifiantFichier": "RiJBejOTL55dupaUwh1fBnWakf3EQbhq",
+      "nomFichier": "231020_P12_LAFARGE BETONS_Rpt insp #ANsécheresse2023_Georisques",
+      "typeFichier": "Rapport d'inspection publiable",
+      "dateFichier": null,
+      "urlFichier": "https://www.georisques.gouv.fr/webappReport/ws/installations/inspection/RiJBejOTL55dupaUwh1fBnWakf3EQbhq"
+     }
+    },
+    {
+     "dateInspection": "2024-06-21",
+     "fichierInspection": null
+    },
+    {
+     "dateInspection": "2024-08-22",
+     "fichierInspection": {
+      "identifiantFichier": "z24qi37O8movCVgZgrbeiNYJBiku2GWv",
+      "nomFichier": "240830_P12_LAFARGE_BERCY_rpt_Georisques",
+      "typeFichier": "Rapport d'inspection publiable",
+      "dateFichier": null,
+      "urlFichier": "https://www.georisques.gouv.fr/webappReport/ws/installations/inspection/z24qi37O8movCVgZgrbeiNYJBiku2GWv"
+     }
+    }
+   ],
+   "documentsHorsInspection": [
+    {
+     "identifiantFichier": "DCtaHCHKS5VdODsmWOqIoSHeIyYewUiJ",
+     "nomFichier": "241018_APMED-DUPA-2024-1429",
+     "typeFichier": "AP mise en demeure",
+     "dateFichier": "2024-10-18",
+     "urlFichier": "https://www.georisques.gouv.fr/webappReport/ws/installations/document/DCtaHCHKS5VdODsmWOqIoSHeIyYewUiJ"
+    }
+   ],
+   "rubriques": [
+    {
+     "numeroRubrique": "2518",
+     "nature": "Installation de production de béton prêt à l'emploi",
+     "alinea": "a",
+     "regimeAutoriseAlinea": "Enregistrement",
+     "quantiteTotale": "7.000",
+     "unite": "m3",
+     "dateMotif": "19/02/1990"
+    }
+   ]
+  }
+ ],
+ "response_code": 200,
+ "message": null,
+ "next": "http://api-georisques.bike-prod.brgm.fr/api/v1/installations_classees?latlon=2.3760,48.8300&rayon=1000&page_size=5&page=2",
+ "previous": null
+}

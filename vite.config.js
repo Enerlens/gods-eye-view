@@ -40,7 +40,7 @@
 
 import fs from 'node:fs';
 import { promises as fsp } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import https from 'node:https';
@@ -97,6 +97,37 @@ import {
   projectActualGenerations,
   rteGenerationWindow,
 } from './src/data/rteGenerationFeed.js';
+// Address-scan feed projections. Each module is pure and unit-tested against a
+// captured upstream response; the proxies below are the only importers.
+import {
+  buildGeorisquesUrls,
+  clampRadius as clampGeorisquesRadius,
+  projectGeorisques,
+} from './src/data/georisquesFeed.js';
+import {
+  DVF_FIRST_YEAR,
+  buildDvfUrl,
+  clampDvfRadius,
+  groupMutations,
+  parseDvfCsv,
+  selectNearbySales,
+} from './src/data/dvfFeed.js';
+import { buildDpeUrl, clampDpeRadius, projectDpe } from './src/data/dpeFeed.js';
+import {
+  buildIsochroneUrl,
+  clampSeconds as clampIsochroneSeconds,
+  projectIsochrone,
+  resolveProfile as resolveIsochroneProfile,
+} from './src/data/isochroneFeed.js';
+import { buildGpuUrl, projectGpu } from './src/data/gpuFeed.js';
+import {
+  IDFM_PAGE_LIMIT,
+  buildLinesUrl,
+  buildStopsBboxUrl,
+  buildStopsRadiusUrl,
+  projectLines,
+  projectStops,
+} from './src/data/idfmFeed.js';
 import {
   alertIsActive,
   alertsFromBytes,
@@ -105,8 +136,8 @@ import {
   vehiclePositionsFromBytes,
 } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints, boxKey, snapBoxOutward, validBox } from './src/data/viewportBox.js';
+import { buildDepartementIndex } from './src/data/franceDepartements.js';
 import {
-  buildDepartementIndex,
   projectIrveDepartements,
   sweepStripeTruncated,
   IRVE_SWEEP_FIELDS,
@@ -136,6 +167,24 @@ import {
   CADASTRE_SOURCE,
   CADASTRE_UPSTREAM_LIMIT,
 } from './src/data/cadastreFeed.js';
+import {
+  SCHOOLS_BOX_STEP_DEG,
+  SCHOOLS_DATASET,
+  SCHOOLS_MAX_BOX_DEG,
+  SCHOOLS_OPEN_WHERE,
+  SCHOOLS_PORTAL,
+  SCHOOLS_ROLL_DATASETS,
+  SCHOOLS_ROLL_YEAR,
+  SCHOOLS_SITE_FIELDS,
+  SCHOOLS_SOURCE,
+  SCHOOL_LEVELS,
+  projectSchoolSites,
+  schoolsBboxWhere,
+} from './src/data/schoolsFeed.js';
+import {
+  SCHOOLS_SWEEP_FIELDS,
+  projectSchoolsDepartements,
+} from './src/data/schoolsDepartements.js';
 import {
   gbfsBoxKey,
   gbfsBoxContains,
@@ -3521,6 +3570,452 @@ function irveFranceProxy() {
 
   return {
     name: 'irve-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Annuaire de l'éducation proxy — keyless, Licence Ouverte 2.0.
+ *
+ *   GET /api/schools-fr/sites?south&west&north&east — schools in one box
+ *   GET /api/schools-fr/departements                — national rollup, 96 départements
+ *   GET /api/schools-fr/mesh                        — the national point set, once
+ *   GET /api/schools-fr/status                      — dataset provenance + cache state
+ *
+ * WHY A PROXY, when data.education.gouv.fr sends CORS headers and a direct
+ * browser fetch works: the roll is not in the register. Sizing a school by its
+ * pupils means joining FOUR further datasets on the UAI, and doing that in the
+ * client would mean every open tab downloading four national files and
+ * re-deriving the same map. The join happens once, on a server, under test
+ * (`schoolsFeed.js`, `schoolsDepartements.js`), and is cached for a day beside
+ * the rollup the same sweep already builds.
+ *
+ * WHY `exports/json` AND NOT `records`: the Explore v2.1 `records` endpoint
+ * caps a page at 100 rows, so the densest viewport (Paris at 0.35°, 5 506
+ * schools — measured) would be 56 round trips. `exports/json` streams the
+ * whole filtered set in one: 3.26 MB in 0.57 s for that same box. `records` is
+ * still called alongside it, with `limit=0`, purely for its `total_count` —
+ * that number is the completeness proof, and a short export is the one failure
+ * Opendatasoft returns as HTTP 200.
+ */
+const SCHOOLS_BASE = `https://${SCHOOLS_PORTAL}/api/explore/v2.1/catalog/datasets`;
+const SCHOOLS_RECORDS_URL = `${SCHOOLS_BASE}/${SCHOOLS_DATASET}/records`;
+const SCHOOLS_EXPORT_URL = `${SCHOOLS_BASE}/${SCHOOLS_DATASET}/exports/json`;
+/** The register is rebuilt daily; a cold viewport is paid for at most 4× a day. */
+const SCHOOLS_TTL_MS = 6 * 60 * 60 * 1000;
+/** Serve-stale ceiling. A register a week old is still a register. */
+const SCHOOLS_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+/** The national rollup is rebuilt daily upstream; a 24-hour cache matches it. */
+const SCHOOLS_NATIONAL_TTL_MS = 24 * 60 * 60 * 1000;
+const SCHOOLS_TIMEOUT_MS = 45_000;
+/** The national export is 8.5 MB; the densest viewport 3.3 MB. */
+const SCHOOLS_MAX_BYTES = 64 * 1024 * 1024;
+const SCHOOLS_VIEWPORT_CACHE_MAX = 24;
+const SCHOOLS_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'schools-fr');
+const SCHOOLS_NATIONAL_CACHE_PATH = path.join(SCHOOLS_DISK_DIR, 'departements.json');
+/**
+ * Shape version of the cached national rollup. Bump whenever
+ * `projectSchoolsDepartements` changes what it returns — the cache lives for a
+ * day on disk, so without it a projection edit is invisible until tomorrow.
+ */
+const SCHOOLS_NATIONAL_CACHE_VERSION = 1;
+
+/** box key -> {at:number, payload:object} */
+const _schoolsViewportCache = new Map();
+const _schoolsViewportInFlight = new Map();
+const _schoolsRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/** @type {?{at:number, payload:object}} */
+let _schoolsNational = null;
+/** @type {?Promise<object>} */
+let _schoolsNationalInFlight = null;
+let _schoolsNationalDiskChecked = false;
+/** @type {?Promise<Map<string, number>>} UAI → pupils, built once per process. */
+let _schoolsRollsPromise = null;
+
+function trimSchoolsViewportCache() {
+  while (_schoolsViewportCache.size > SCHOOLS_VIEWPORT_CACHE_MAX) {
+    const oldest = _schoolsViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _schoolsViewportCache.delete(oldest);
+  }
+}
+
+function schoolsDiskPath(key) {
+  return path.join(SCHOOLS_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+async function readSchoolsDisk(key, maxAgeMs) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(schoolsDiskPath(key), 'utf8'));
+    if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.sites)) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeSchoolsDisk(key, entry) {
+  fsp.mkdir(SCHOOLS_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(schoolsDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Schools Proxy] disk cache write failed:', err?.message || err));
+}
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchSchoolsJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(SCHOOLS_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, SCHOOLS_MAX_BYTES);
+}
+
+/**
+ * Build the UAI → pupils map from the four per-level roll datasets.
+ *
+ * Fetched once per process and never invalidated: a rentrée's rolls are
+ * published once and do not move during a school year, so re-reading them on
+ * the register's daily cadence would be four national downloads a day for a
+ * file that changes in September.
+ *
+ * A level that fails to load is WARNED and skipped rather than failing the
+ * whole join — losing the lycée rolls should cost lycée dot sizes, not the
+ * entire layer. The count that survives travels to the client so the shortfall
+ * is visible instead of looking like a country of small schools.
+ */
+async function loadSchoolsRolls() {
+  if (_schoolsRollsPromise) return _schoolsRollsPromise;
+  _schoolsRollsPromise = (async () => {
+    const rolls = new Map();
+    const results = await Promise.allSettled(SCHOOLS_ROLL_DATASETS.map(async (spec) => {
+      const params = new URLSearchParams({
+        select: `${spec.key},${spec.total}`,
+        where: `year(rentree_scolaire)=${SCHOOLS_ROLL_YEAR}`,
+        limit: '-1',
+      });
+      const rows = await fetchSchoolsJson(`${SCHOOLS_BASE}/${spec.dataset}/exports/json?${params}`);
+      return { spec, rows: Array.isArray(rows) ? rows : [] };
+    }));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.warn('[Schools Proxy] roll dataset unavailable:', result.reason?.message || result.reason);
+        continue;
+      }
+      const { spec, rows } = result.value;
+      for (const row of rows) {
+        const uai = String(row?.[spec.key] || '').trim();
+        const total = Number(row?.[spec.total]);
+        if (!uai || !Number.isFinite(total)) continue;
+        // Last writer wins, and the order is fixed by SCHOOLS_ROLL_DATASETS:
+        // a lycée polyvalent appears in BOTH lycée files, and the professional
+        // roll is the one that lands second. That is a real ambiguity in the
+        // upstream and it is resolved deterministically rather than by
+        // whichever request happened to finish first.
+        rolls.set(uai, total);
+      }
+    }
+    return rolls;
+  })().catch((error) => {
+    console.warn('[Schools Proxy] roll join failed:', error?.message || error);
+    _schoolsRollsPromise = null;
+    return new Map();
+  });
+  return _schoolsRollsPromise;
+}
+
+/**
+ * Fetch one viewport and project it.
+ *
+ * The two calls run in PARALLEL and mean different things. The export is the
+ * answer; the `limit=0` call is the dataset's own count for the same `where`,
+ * and exists only so `projectSchoolSites` can prove the export was complete.
+ */
+async function refreshSchoolsViewport(box) {
+  const where = schoolsBboxWhere(box);
+  const exportParams = new URLSearchParams({
+    select: SCHOOLS_SITE_FIELDS.join(','),
+    where,
+    limit: '-1',
+  });
+  const countParams = new URLSearchParams({ where, limit: '0' });
+
+  const [exported, counted, rolls] = await Promise.all([
+    fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
+    fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${countParams}`).catch((error) => {
+      // The count is a completeness PROOF, not the data. Losing it degrades
+      // the guarantee to "unknown" rather than blanking a viewport.
+      console.warn('[Schools Proxy] box count unavailable:', error?.message || error);
+      return null;
+    }),
+    loadSchoolsRolls(),
+  ]);
+
+  const projected = projectSchoolSites({
+    records: Array.isArray(exported) ? exported : [],
+    rolls,
+    totalCount: counted?.total_count ?? null,
+  });
+  return {
+    ...projected,
+    box,
+    maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
+  };
+}
+
+/**
+ * Bundled département polygons, read once from disk.
+ *
+ * The dev-server proxy reads the same file the browser layer fetches, so the
+ * national rollup and the shapes it is painted on can never come from two
+ * different vintages.
+ */
+let _schoolsDepartementIndex = null;
+async function loadSchoolsDepartementIndex() {
+  if (_schoolsDepartementIndex) return _schoolsDepartementIndex;
+  const file = path.join(process.cwd(), 'src', 'data', 'local_data', 'france_departements', 'departements.geojson');
+  _schoolsDepartementIndex = buildDepartementIndex(JSON.parse(await fsp.readFile(file, 'utf8')));
+  return _schoolsDepartementIndex;
+}
+
+/**
+ * Build the national rollup: one export, the roll join, then fold onto the
+ * polygons.
+ *
+ * No latitude striping and no truncation recursion, unlike the charge-point
+ * sweep next door: this is not a grouped query, so Opendatasoft applies no
+ * aggregation cap to it and the whole filtered register arrives in one
+ * response. The completeness check is therefore a direct comparison against
+ * the portal's own count rather than a per-stripe limit probe.
+ */
+async function refreshSchoolsNational() {
+  const started = Date.now();
+  const exportParams = new URLSearchParams({
+    select: SCHOOLS_SWEEP_FIELDS.join(','),
+    where: SCHOOLS_OPEN_WHERE,
+    limit: '-1',
+  });
+  const [index, counted, exported, rolls] = await Promise.all([
+    loadSchoolsDepartementIndex(),
+    fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${new URLSearchParams({ where: SCHOOLS_OPEN_WHERE, limit: '0' })}`)
+      .catch((error) => {
+        console.warn('[Schools Proxy] national count unavailable:', error?.message || error);
+        return null;
+      }),
+    fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
+    loadSchoolsRolls(),
+  ]);
+
+  const projected = projectSchoolsDepartements({
+    records: Array.isArray(exported) ? exported : [],
+    index,
+    rolls,
+    totalCount: counted?.total_count ?? null,
+  });
+  if (projected.truncated) {
+    console.warn(
+      `[Schools Proxy] national export short: ${projected.schoolsSwept}/${projected.schoolsTotal} rows`,
+    );
+  }
+  // The two documents are cached together because one sweep builds both, and
+  // served apart because they are read at different moments and at different
+  // sizes: the rollup is ~20 KB and arrives with the layer, the mesh is
+  // ~0.7 MB gzipped and is only fetched if the operator leaves the choropleth.
+  const { mesh, ...rollup } = projected;
+  return {
+    rollup: {
+      ...rollup,
+      sweptInMs: Date.now() - started,
+    },
+    mesh: {
+      sites: mesh,
+      siteCount: mesh.length,
+      levels: SCHOOL_LEVELS,
+      dataset: SCHOOLS_DATASET,
+      source: SCHOOLS_SOURCE,
+    },
+  };
+}
+
+async function readSchoolsNationalDisk() {
+  if (_schoolsNationalDiskChecked) return;
+  _schoolsNationalDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(SCHOOLS_NATIONAL_CACHE_PATH, 'utf8'));
+    if (entry?.version === SCHOOLS_NATIONAL_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.rollup?.departements)
+      && Array.isArray(entry.payload?.mesh?.sites)) {
+      _schoolsNational = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeSchoolsNationalDisk(entry) {
+  fsp.mkdir(SCHOOLS_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(SCHOOLS_NATIONAL_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Schools Proxy] national cache write failed:', err?.message || err));
+}
+
+/** Shared national build, so `/departements` and `/mesh` never sweep twice. */
+function ensureSchoolsNational() {
+  if (!_schoolsNationalInFlight) {
+    _schoolsNationalInFlight = refreshSchoolsNational()
+      .then((payload) => {
+        const entry = { version: SCHOOLS_NATIONAL_CACHE_VERSION, at: Date.now(), payload };
+        _schoolsNational = entry;
+        writeSchoolsNationalDisk(entry);
+        return entry;
+      })
+      .finally(() => { _schoolsNationalInFlight = null; });
+  }
+  return _schoolsNationalInFlight;
+}
+
+/**
+ * Vite plugin: viewport-bounded French school-register proxy.
+ * @returns {import('vite').Plugin}
+ */
+function schoolsFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/schools-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_schoolsRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        let newest = null;
+        for (const entry of _schoolsViewportCache.values()) {
+          if (!newest || entry.at > newest) newest = entry.at;
+        }
+        json(200, {
+          source: SCHOOLS_SOURCE,
+          dataset: SCHOOLS_DATASET,
+          lastFetch: newest,
+          cachedBoxes: _schoolsViewportCache.size,
+          ttlMs: SCHOOLS_TTL_MS,
+          maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
+          rollYear: SCHOOLS_ROLL_YEAR,
+          national: _schoolsNational
+            ? {
+              at: _schoolsNational.at,
+              painted: _schoolsNational.payload.rollup.painted,
+              schools: _schoolsNational.payload.rollup.assigned,
+              unassigned: _schoolsNational.payload.rollup.unassigned,
+              meshSites: _schoolsNational.payload.mesh.siteCount,
+            }
+            : null,
+          nationalTtlMs: SCHOOLS_NATIONAL_TTL_MS,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route === '/departements' || route === '/mesh') {
+        const pick = (payload) => (route === '/mesh' ? payload.mesh : payload.rollup);
+        await readSchoolsNationalDisk();
+        const now = Date.now();
+        if (_schoolsNational && now - _schoolsNational.at <= SCHOOLS_NATIONAL_TTL_MS) {
+          json(200, { ...pick(_schoolsNational.payload), fetchedAt: _schoolsNational.at, stale: false }, { 'X-SCHOOLS-FR': 'HIT' });
+          return;
+        }
+        try {
+          const entry = await ensureSchoolsNational();
+          json(200, { ...pick(entry.payload), fetchedAt: entry.at, stale: false }, { 'X-SCHOOLS-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[Schools Proxy] national build unavailable:', error?.message || error);
+          // A rollup a week old is still a true picture of a register that is
+          // rebuilt daily — serving it beats blanking the national view.
+          if (_schoolsNational) {
+            json(200, { ...pick(_schoolsNational.payload), fetchedAt: _schoolsNational.at, stale: true }, { 'X-SCHOOLS-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'French school register is temporarily unavailable' });
+        }
+        return;
+      }
+
+      if (route !== '/sites') {
+        json(404, { error: 'Unknown schools endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, SCHOOLS_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${SCHOOLS_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
+        });
+        return;
+      }
+
+      const box = snapBoxOutward(requested, SCHOOLS_BOX_STEP_DEG);
+      const key = boxKey(box);
+      const now = Date.now();
+
+      const fresh = _schoolsViewportCache.get(key);
+      if (fresh && now - fresh.at <= SCHOOLS_TTL_MS) {
+        json(200, { ...fresh.payload, fetchedAt: fresh.at, stale: false }, { 'X-SCHOOLS-FR': 'HIT' });
+        return;
+      }
+      const onDisk = await readSchoolsDisk(key, SCHOOLS_TTL_MS);
+      if (onDisk) {
+        _schoolsViewportCache.set(key, onDisk);
+        trimSchoolsViewportCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-SCHOOLS-FR': 'DISK' });
+        return;
+      }
+
+      let pending = _schoolsViewportInFlight.get(key);
+      if (!pending) {
+        pending = refreshSchoolsViewport(box)
+          .then((payload) => {
+            const entry = { at: Date.now(), payload };
+            _schoolsViewportCache.set(key, entry);
+            trimSchoolsViewportCache();
+            writeSchoolsDisk(key, entry);
+            return entry;
+          })
+          .finally(() => { _schoolsViewportInFlight.delete(key); });
+        _schoolsViewportInFlight.set(key, pending);
+      }
+
+      try {
+        const entry = await pending;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-SCHOOLS-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[Schools Proxy] viewport unavailable:', error?.message || error);
+        const stale = _schoolsViewportCache.get(key) || await readSchoolsDisk(key, SCHOOLS_STALE_MS);
+        if (stale) {
+          json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-SCHOOLS-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French school register is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'schools-france-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -12993,6 +13488,10 @@ async function refreshRoadStatusSnapshot() {
       d: site.d || null,
       a: site.a || null,
       z: site.z || null,
+      // How this segment knows where it is: `xy` from a coordinate the DIR
+      // published, `pr` from a kilometre post this app resolved. The card says
+      // which, because they are not the same claim.
+      g: site.g || null,
       src: reading?.sources || [],
       at: reading?.at || null,
       f: measurement?.flowVehH ?? null,
@@ -13017,6 +13516,7 @@ async function refreshRoadStatusSnapshot() {
     sitesTotal: sitesDoc.stats?.sites ?? null,
     sitesLocated: sitesDoc.stats?.located ?? null,
     sitesUnlocated: sitesDoc.stats?.unlocated ?? null,
+    sitesFromPointRepere: sitesDoc.stats?.geometry?.pointRepere ?? null,
     lengthKm: sitesDoc.stats?.lengthKm ?? null,
     licence: sitesDoc.licence || null,
     attribution: sitesDoc.attribution || null,
@@ -13103,6 +13603,7 @@ function roadStatusFranceProxy() {
           geometryGeneratedAt: sitesDoc.generatedAt || null,
           cycles: sitesDoc.cycles || null,
           referential: sitesDoc.referential || null,
+          bornage: sitesDoc.bornage || null,
           stats: sitesDoc.stats || null,
           coverage: sitesDoc.coverage || [],
         }, { 'Cache-Control': 'public, max-age=300' });
@@ -13175,6 +13676,7 @@ function roadStatusFranceProxy() {
         sitesTotal: snapshot.sitesTotal,
         sitesLocated: snapshot.sitesLocated,
         sitesUnlocated: snapshot.sitesUnlocated,
+        sitesFromPointRepere: snapshot.sitesFromPointRepere,
         lengthKm: snapshot.lengthKm,
         flow: snapshot.flow,
         licence: snapshot.licence,
@@ -13493,6 +13995,729 @@ function normalizeAisTimestamp(value) {
   return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
 }
 
+
+// ---------------------------------------------------------------------------
+// Address-scan proxies — Géorisques, DVF, DPE, isochrone, GPU, IDFM
+// ---------------------------------------------------------------------------
+/**
+ * Six French public sources, read from a single coordinate, behind one shared
+ * cache discipline.
+ *
+ * NONE of these exists to bypass CORS: every one of them sends
+ * `access-control-allow-origin: *` (APIcarto echoes the origin), and a browser
+ * could call them directly. They are proxied for reasons measured per source
+ * on 2026-09-01 and recorded in each `src/data/*Feed.js` header:
+ *
+ *   - **GPU** — 1,396,720 bytes of servitude geometry for ONE point, one
+ *     feature of which is 759 polygons and 50,669 vertices. Projected: 96%
+ *     smaller. This is the strongest case of the six.
+ *   - **DVF** — 752,768 bytes of CSV per commune-year, of which a 300 m radius
+ *     needs a few dozen rows, and the arithmetic on it is wrong by 17× if done
+ *     naively (see `dvfFeed.js`). Parsed once, server-side, cached to disk.
+ *   - **Géorisques** — three endpoints fanned out per scan, upstream
+ *     `cache-control: no-store`, so the per-address cache has to live here.
+ *   - **DPE** — small, but the 230-field surface answers HTTP 400 for an
+ *     unknown column; the field list belongs somewhere pinned by a unit test.
+ *   - **Isochrone** — small, cacheable for weeks upstream, but a routing engine
+ *     is the one upstream here that a loop could hammer; rate-limited.
+ *   - **IDFM** — small, but the line referential is 2,121 rows that do not
+ *     change during a session.
+ *
+ * Every route answers `{ fetchedAt, stale, ... }` and exposes `/status`.
+ * A partial upstream failure degrades one field and leaves the rest standing —
+ * the mission design's rule that no single slow source may take down a scan.
+ */
+const ADDRESS_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'address');
+const ADDRESS_FETCH_TIMEOUT_MS = 20_000;
+/** One retry, for transport-level failures only. See `fetchAddressSource`. */
+const ADDRESS_FETCH_ATTEMPTS = 2;
+const ADDRESS_RETRY_DELAY_MS = 400;
+const ADDRESS_MAX_RESPONSE_BYTES = 24 * 1024 * 1024;
+/** Scans are cheap to repeat and the underlying registers move slowly. */
+const ADDRESS_MEMORY_TTL_MS = 30 * 60 * 1000;
+/** A commune-year of DVF is a published file: it does not change at all. */
+const DVF_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const IDFM_LINES_TTL_MS = 12 * 60 * 60 * 1000;
+const _addressRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 90, globalMax: 400 });
+const _addressInFlight = new Map();
+
+/**
+ * Bounded JSON fetch shared by the address proxies.
+ *
+ * Resolves to `null` rather than throwing on any failure — HTTP error, timeout,
+ * oversized body, unparseable JSON. Every caller of this treats a null as "this
+ * one source did not answer" and continues, which is only safe because the
+ * failure cannot arrive as an exception from somewhere else.
+ *
+ * @param {string} url
+ * @param {{timeoutMs?: number, maxBytes?: number, text?: boolean}} [options]
+ * @returns {Promise<any|null>}
+ */
+async function fetchAddressSource(url, options = {}) {
+  const {
+    timeoutMs = ADDRESS_FETCH_TIMEOUT_MS,
+    maxBytes = ADDRESS_MAX_RESPONSE_BYTES,
+    text = false,
+    attempts = ADDRESS_FETCH_ATTEMPTS,
+  } = options;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const result = await fetchAddressSourceOnce(url, { timeoutMs, maxBytes, text });
+    if (result.ok) return result.value;
+    // Retry ONLY a transport-level failure, and only once. Measured: Géorisques
+    // resets the connection (ECONNRESET) on roughly one call in four while
+    // answering the very same URL from curl, so a scan that gave up on the
+    // first reset reported "no risks at this address" for a live register. An
+    // HTTP error or an oversized body is a real answer and is never retried.
+    if (!result.retryable || attempt === attempts) return null;
+    await new Promise((resolve) => { setTimeout(resolve, ADDRESS_RETRY_DELAY_MS); });
+  }
+  return null;
+}
+
+/**
+ * One attempt of {@link fetchAddressSource}.
+ * @param {string} url
+ * @param {{timeoutMs: number, maxBytes: number, text: boolean}} options
+ * @returns {Promise<{ok: boolean, value?: any, retryable?: boolean}>}
+ */
+async function fetchAddressSourceOnce(url, options) {
+  const { timeoutMs, maxBytes, text } = options;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'GodsEyeView/1.0 (address scan; +https://github.com/bilawalsidhu/gods-eye-view)' },
+    });
+    if (!response.ok) {
+      console.warn(`[address-proxy] ${response.status} from ${new URL(url).host}`);
+      // A 5xx is the server saying "not now"; a 4xx is it saying "not this".
+      return { ok: false, retryable: response.status >= 500 };
+    }
+    // Refuse on the declared size before buffering it. The measured worst case
+    // is 1.4 MB of servitude geometry, so anything past the cap is a changed
+    // upstream, not a big answer — and reading it to find out is the cost this
+    // check exists to avoid.
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > maxBytes) {
+      console.warn(`[address-proxy] declared ${declared} bytes from ${new URL(url).host}, over cap`);
+      return { ok: false, retryable: false };
+    }
+    const body = await response.text();
+    if (body.length > maxBytes) {
+      console.warn(`[address-proxy] oversized body (${body.length}) from ${new URL(url).host}`);
+      return { ok: false, retryable: false };
+    }
+    return { ok: true, value: text ? body : JSON.parse(body) };
+  } catch (error) {
+    if (error?.name !== 'AbortError') {
+      // The cause, not just the message: undici reports every transport-level
+      // failure as the same opaque "fetch failed", and the code underneath
+      // (ECONNRESET, ENOTFOUND, UND_ERR_CONNECT_TIMEOUT…) is the only thing
+      // that distinguishes a flaky upstream from a broken request.
+      const cause = error?.cause?.code || error?.cause?.message || null;
+      console.warn(`[address-proxy] ${new URL(url).host}: ${error?.message || error}`
+        + (cause ? ` (${cause})` : ''));
+      // A transport failure (ECONNRESET, socket hang up) or a bad body. Only
+      // the former is worth another go; a SyntaxError from JSON.parse is not.
+      return { ok: false, retryable: !(error instanceof SyntaxError) };
+    }
+    // Aborted: the caller's deadline, not the upstream's fault, but retrying
+    // would blow the same deadline again.
+    return { ok: false, retryable: false };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Read one coordinate pair from a request, or null when either is unusable.
+ *
+ * The presence check is not redundant with the finite check, and the bug it
+ * prevents was found live: `searchParams.get('lon')` returns `null` for an
+ * absent parameter, `Number(null)` is `0`, and `Number.isFinite(0)` is true.
+ * A request with no coordinates at all therefore scanned 0°N 0°E — a point in
+ * the Gulf of Guinea — and returned HTTP 200 with an empty result, which reads
+ * as "there is nothing at your address" rather than as a malformed request.
+ */
+export function addressPoint(searchParams) {
+  const rawLon = searchParams.get('lon');
+  const rawLat = searchParams.get('lat');
+  if (rawLon === null || rawLat === null || rawLon.trim() === '' || rawLat.trim() === '') return null;
+  const lon = Number(rawLon);
+  const lat = Number(rawLat);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lon, lat };
+}
+
+/**
+ * Cache key for a point, rounded to ~11 m.
+ *
+ * Four decimals, not the full precision: two clicks on the same doorway must
+ * share one cache entry, or the cache never hits for the one workload it was
+ * built for.
+ */
+export function addressCacheKey(prefix, { lon, lat }, ...rest) {
+  return `${prefix}|${lon.toFixed(4)},${lat.toFixed(4)}|${rest.join('|')}`;
+}
+
+/** Shared in-memory cache for every address route. */
+const _addressCache = new Map();
+const ADDRESS_CACHE_MAX_ENTRIES = 300;
+
+function addressCacheGet(key, ttlMs = ADDRESS_MEMORY_TTL_MS) {
+  const entry = _addressCache.get(key);
+  if (!entry) return null;
+  return { payload: entry.payload, stale: Date.now() - entry.cachedAt >= ttlMs, cachedAt: entry.cachedAt };
+}
+
+function addressCacheSet(key, payload) {
+  _addressCache.set(key, { payload, cachedAt: Date.now() });
+  while (_addressCache.size > ADDRESS_CACHE_MAX_ENTRIES) {
+    _addressCache.delete(_addressCache.keys().next().value);
+  }
+}
+
+/**
+ * Install one address route with the shared cache, limiter and error shape.
+ *
+ * @param {object} middlewares Vite middleware stack.
+ * @param {string} route Mount path, e.g. `/api/dvf`.
+ * @param {(url: URL, req: object) => {key: string, load: () => Promise<object|null>}|null} plan
+ *   Returns the cache key and the loader, or null when the request is invalid.
+ * @param {{ttlMs?: number}} [options]
+ */
+function installAddressRoute(middlewares, route, plan, options = {}) {
+  const ttlMs = options.ttlMs ?? ADDRESS_MEMORY_TTL_MS;
+  middlewares.use(route, async (req, res) => {
+    const send = (status, payload) => {
+      if (res.headersSent) return;
+      res.writeHead(status, {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': status === 200 ? 'private, max-age=300' : 'no-store',
+      });
+      res.end(JSON.stringify(payload));
+    };
+    if (req.method !== 'GET') {
+      send(405, { error: 'Method Not Allowed' });
+      return;
+    }
+    const url = new URL(req.url || '', 'http://localhost');
+    if (url.pathname === '/status' || url.pathname.endsWith('/status')) {
+      send(200, { route, entries: _addressCache.size, ttlMs });
+      return;
+    }
+    let planned;
+    try {
+      planned = plan(url, req);
+    } catch (error) {
+      send(400, { error: error?.message || 'invalid request' });
+      return;
+    }
+    if (!planned) {
+      send(400, { error: 'lat and lon are required' });
+      return;
+    }
+    // Cache before limiter: a repeat of a scan already answered costs nothing
+    // upstream, so it should not spend a slot either.
+    const cached = addressCacheGet(planned.key, ttlMs);
+    if (cached && !cached.stale) {
+      send(200, { ...cached.payload, fetchedAt: cached.cachedAt, stale: false });
+      return;
+    }
+    if (!_addressRateLimiter(clientKey(req))) {
+      res.setHeader('Retry-After', '5');
+      send(429, { error: 'Rate limit exceeded' });
+      return;
+    }
+    try {
+      const { promise } = coalesceProxyRequest(_addressInFlight, planned.key, planned.load);
+      const payload = await promise;
+      if (!payload) {
+        // Serve a stale answer rather than nothing: an outage must not read as
+        // "there is nothing here".
+        if (cached) {
+          send(200, { ...cached.payload, fetchedAt: cached.cachedAt, stale: true });
+          return;
+        }
+        send(502, { error: `${route} upstream unavailable` });
+        return;
+      }
+      addressCacheSet(planned.key, payload);
+      send(200, { ...payload, fetchedAt: Date.now(), stale: false });
+    } catch (error) {
+      console.error(`[address-proxy] ${route}`, error?.message || error);
+      send(502, { error: `${route} proxy error` });
+    }
+  });
+}
+
+/**
+ * Resolve the ARRONDISSEMENT-level INSEE code for a point, via the BAN.
+ *
+ * The BAN reverse geocoder, and only it. `geo.api.gouv.fr` answers **75056** —
+ * Paris as one commune — for every Paris point, and so does the `codeInsee`
+ * Géorisques echoes back; DVF publishes its files as **75113**. Two consumers
+ * need this now (DVF for its file path, Géorisques for its radon lookup), which
+ * is why it is shared rather than copied.
+ *
+ * Memoised on a ~11 m grid: it is the same call for every scan of a block.
+ *
+ * @param {number} lon @param {number} lat
+ * @returns {Promise<{code: string, name: string|null}|null>}
+ */
+const _communeCodeCache = new Map();
+async function resolveCommuneCode(lon, lat) {
+  const key = `${lon.toFixed(4)},${lat.toFixed(4)}`;
+  if (_communeCodeCache.has(key)) return _communeCodeCache.get(key);
+  const body = await fetchAddressSource(
+    `https://api-adresse.data.gouv.fr/reverse/?lon=${lon}&lat=${lat}`,
+    { maxBytes: 256 * 1024 },
+  );
+  const properties = body?.features?.[0]?.properties;
+  const code = String(properties?.citycode || '').toUpperCase();
+  const resolved = /^[0-9][0-9AB][0-9]{3}$/.test(code)
+    ? { code, name: properties?.city || null }
+    : null;
+  // A failed lookup is NOT cached: it is usually a reset, not a coordinate
+  // without a commune, and caching it would make one blip permanent.
+  if (resolved) {
+    _communeCodeCache.set(key, resolved);
+    while (_communeCodeCache.size > 500) {
+      _communeCodeCache.delete(_communeCodeCache.keys().next().value);
+    }
+  }
+  return resolved;
+}
+
+/**
+ * Géorisques — the state's own risk register, read from a coordinate.
+ * `GET /api/georisques?lat=&lon=&radius=&insee=`
+ * @returns {import('vite').Plugin}
+ */
+function georisquesProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/georisques', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const radiusM = clampGeorisquesRadius(url.searchParams.get('radius'));
+      const rawInsee = String(url.searchParams.get('insee') || '').trim().toUpperCase();
+      const givenInsee = /^[0-9][0-9AB][0-9]{3}$/.test(rawInsee) ? rawInsee : null;
+      return {
+        key: addressCacheKey('georisques', point, radiusM),
+        load: async () => {
+          // Radon is published per commune and keyed by INSEE code, which the
+          // report itself does NOT supply at arrondissement level. Resolving it
+          // here rather than demanding it from the caller is what makes radon —
+          // one of the items on the statutory état des risques — actually
+          // reachable from a bare coordinate.
+          const inseeCode = givenInsee ?? (await resolveCommuneCode(point.lon, point.lat))?.code ?? null;
+          const urls = buildGeorisquesUrls({ ...point, radiusM, inseeCode });
+          const [report, icpe, radon] = await Promise.all([
+            fetchAddressSource(urls.report),
+            fetchAddressSource(urls.icpe),
+            urls.radon ? fetchAddressSource(urls.radon) : Promise.resolve(null),
+          ]);
+          // All three failing is an outage; any one answering is a scan.
+          if (!report && !icpe && !radon) return null;
+          return projectGeorisques({ report, icpe, radon, origin: point, radiusM });
+        },
+      };
+    });
+  }
+  return {
+    name: 'georisques-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * DVF — what property actually sold for, per commune-year, parsed server-side.
+ * `GET /api/dvf?lat=&lon=&radius=&years=2024,2023`
+ * @returns {import('vite').Plugin}
+ */
+function dvfProxy() {
+  /**
+   * Parsed mutations per commune-year, memoised for the process.
+   *
+   * BOUNDED, because it is the one structure here that a user can grow just by
+   * panning: one entry per commune-year, and a Paris arrondissement year is
+   * ~1,700 mutations. A tour of France would otherwise accumulate every commune
+   * it crossed for the life of the dev server. The disk cache underneath makes
+   * eviction cheap — a re-read is a file, not a download.
+   */
+  const editions = new Map();
+  const EDITION_MEMORY_MAX = 40;
+
+  function rememberEdition(key, mutations) {
+    editions.set(key, mutations);
+    while (editions.size > EDITION_MEMORY_MAX) {
+      editions.delete(editions.keys().next().value);
+    }
+    return mutations;
+  }
+
+  async function loadEdition(year, communeCode) {
+    const cacheKey = `${year}-${communeCode}`;
+    if (editions.has(cacheKey)) return editions.get(cacheKey);
+    const diskPath = path.join(ADDRESS_CACHE_DIR, `dvf-${cacheKey}.json`);
+    try {
+      const stat = await fsp.stat(diskPath);
+      if (Date.now() - stat.mtimeMs < DVF_DISK_TTL_MS) {
+        return rememberEdition(cacheKey, JSON.parse(await fsp.readFile(diskPath, 'utf8')));
+      }
+    } catch { /* no disk copy yet */ }
+    const csv = await fetchAddressSource(buildDvfUrl({ year, communeCode }), { text: true });
+    // A commune with no edition for a year is a 404, which is data, not an
+    // error: an empty list is cached so the miss is not re-fetched every scan.
+    const mutations = csv ? groupMutations(parseDvfCsv(csv)) : [];
+    rememberEdition(cacheKey, mutations);
+    try {
+      await fsp.mkdir(ADDRESS_CACHE_DIR, { recursive: true });
+      await fsp.writeFile(diskPath, JSON.stringify(mutations));
+    } catch { /* cache is an optimisation, never a requirement */ }
+    return mutations;
+  }
+
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/dvf', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const radiusM = clampDvfRadius(url.searchParams.get('radius'));
+      const thisYear = new Date().getFullYear();
+      const requested = String(url.searchParams.get('years') || '')
+        .split(',').map((value) => Number.parseInt(value.trim(), 10))
+        .filter((year) => Number.isFinite(year) && year >= DVF_FIRST_YEAR && year <= thisYear);
+      // Default to the three most recent editions that can exist. The newest
+      // is published with a lag, so an empty answer for it is normal.
+      const years = (requested.length ? requested : [thisYear - 1, thisYear - 2, thisYear - 3])
+        .filter((year) => year >= DVF_FIRST_YEAR)
+        .slice(0, 5)
+        .sort((a, b) => b - a);
+      return {
+        key: addressCacheKey('dvf', point, radiusM, years.join('-')),
+        load: async () => {
+          const commune = await resolveCommuneCode(point.lon, point.lat);
+          if (!commune) return null;
+          const all = [];
+          for (const year of years) {
+            // Sequential on purpose: three 750 KB downloads in parallel for one
+            // click is a burst the file host has no reason to absorb.
+            all.push(...await loadEdition(year, commune.code));
+          }
+          const { sales, summary } = selectNearbySales(all, point, radiusM);
+          return { commune, years, sales, summary };
+        },
+      };
+    });
+  }
+  return {
+    name: 'dvf-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * ADEME DPE — the energy label of a building and of its neighbours.
+ * `GET /api/dpe?lat=&lon=&radius=&limit=`
+ * @returns {import('vite').Plugin}
+ */
+function dpeProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/dpe', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const radiusM = clampDpeRadius(url.searchParams.get('radius'));
+      const limit = Number.parseInt(url.searchParams.get('limit') || '', 10) || 100;
+      return {
+        key: addressCacheKey('dpe', point, radiusM, limit),
+        load: async () => {
+          const payload = await fetchAddressSource(buildDpeUrl({ ...point, radiusM, limit }));
+          return payload ? projectDpe(payload, { radiusM }) : null;
+        },
+      };
+    });
+  }
+  return {
+    name: 'dpe-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * IGN isochrone — the area actually reachable, rather than a circle.
+ * `GET /api/isochrone?lat=&lon=&profile=foot|car&seconds=900`
+ * @returns {import('vite').Plugin}
+ */
+function isochroneProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/isochrone', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const profile = url.searchParams.get('profile') || 'foot';
+      if (!resolveIsochroneProfile(profile)) {
+        // Cycling is the one the mission design asked for and this service does
+        // not have; failing loudly beats drawing a walking ring labelled bike.
+        throw new Error(`unsupported profile: ${profile} (foot or car)`);
+      }
+      const seconds = clampIsochroneSeconds(url.searchParams.get('seconds'));
+      return {
+        key: addressCacheKey('isochrone', point, profile, seconds),
+        load: async () => {
+          const payload = await fetchAddressSource(
+            buildIsochroneUrl({ ...point, profile, seconds }),
+            { maxBytes: 4 * 1024 * 1024 },
+          );
+          return payload ? projectIsochrone(payload) : null;
+        },
+      };
+    });
+  }
+  return {
+    name: 'isochrone-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Géoportail de l'urbanisme — zoning and servitudes, decimated to an outline.
+ * `GET /api/gpu?lat=&lon=`
+ * @returns {import('vite').Plugin}
+ */
+function gpuProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/gpu', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      return {
+        key: addressCacheKey('gpu', point),
+        load: async () => {
+          const [zoning, servitudes] = await Promise.all([
+            fetchAddressSource(buildGpuUrl('zone-urba', point)),
+            // The measured worst case for a single point is 1.4 MB.
+            fetchAddressSource(buildGpuUrl('assiette-sup-s', point), { maxBytes: 32 * 1024 * 1024 }),
+          ]);
+          if (!zoning && !servitudes) return null;
+          return projectGpu({ zoning, servitudes });
+        },
+      };
+    });
+  }
+  return {
+    name: 'gpu-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Île-de-France Mobilités — the Paris network as an offer.
+ * `GET /api/idfm/stops?bbox=W,S,E,N` or `?lat=&lon=&radius=`
+ * `GET /api/idfm/lines`
+ * @returns {import('vite').Plugin}
+ */
+function idfmProxy() {
+  let linesCache = null;
+
+  async function loadLines() {
+    if (linesCache && Date.now() - linesCache.at < IDFM_LINES_TTL_MS) return linesCache.payload;
+    const pages = [];
+    // 2,121 lines at 100 per page. Bounded hard: a referential that grew by an
+    // order of magnitude must not turn one click into 200 requests.
+    for (let offset = 0; offset < 2600; offset += IDFM_PAGE_LIMIT) {
+      const page = await fetchAddressSource(buildLinesUrl({ offset, limit: IDFM_PAGE_LIMIT }));
+      if (!page?.results?.length) break;
+      pages.push(...projectLines(page).lines);
+      if (pages.length >= (page.total_count ?? 0)) break;
+    }
+    if (!pages.length) return linesCache?.payload ?? null;
+    const payload = { count: pages.length, lines: pages };
+    linesCache = { at: Date.now(), payload };
+    return payload;
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/idfm/lines', async (req, res) => {
+      const send = (status, payload) => {
+        if (res.headersSent) return;
+        res.writeHead(status, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': status === 200 ? 'private, max-age=3600' : 'no-store',
+        });
+        res.end(JSON.stringify(payload));
+      };
+      if (req.method !== 'GET') { send(405, { error: 'Method Not Allowed' }); return; }
+      if (!_addressRateLimiter(clientKey(req))) {
+        res.setHeader('Retry-After', '5');
+        send(429, { error: 'Rate limit exceeded' });
+        return;
+      }
+      try {
+        const { promise } = coalesceProxyRequest(_addressInFlight, 'idfm-lines', loadLines);
+        const payload = await promise;
+        if (!payload) { send(502, { error: 'idfm lines upstream unavailable' }); return; }
+        send(200, { ...payload, fetchedAt: linesCache?.at ?? Date.now(), stale: false });
+      } catch (error) {
+        console.error('[address-proxy] /api/idfm/lines', error?.message || error);
+        send(502, { error: 'idfm proxy error' });
+      }
+    });
+
+    installAddressRoute(middlewares, '/api/idfm/stops', (url) => {
+      const bbox = String(url.searchParams.get('bbox') || '').split(',').map(Number);
+      if (bbox.length === 4 && bbox.every(Number.isFinite)) {
+        const [west, south, east, north] = bbox;
+        // A whole-country box would ask for 37,956 stops one page at a time.
+        if (Math.abs(east - west) > 1 || Math.abs(north - south) > 1) {
+          throw new Error('bbox too large: at most 1 degree per side');
+        }
+        const limit = Number.parseInt(url.searchParams.get('limit') || '', 10) || IDFM_PAGE_LIMIT;
+        return {
+          key: `idfm-stops|${bbox.map((v) => v.toFixed(4)).join(',')}|${limit}`,
+          load: async () => {
+            const payload = await fetchAddressSource(
+              buildStopsBboxUrl({ west, south, east, north, limit }),
+            );
+            return payload ? projectStops(payload) : null;
+          },
+        };
+      }
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const radiusM = Number.parseInt(url.searchParams.get('radius') || '', 10) || 500;
+      const limit = Number.parseInt(url.searchParams.get('limit') || '', 10) || IDFM_PAGE_LIMIT;
+      return {
+        key: addressCacheKey('idfm-stops', point, radiusM, limit),
+        load: async () => {
+          const payload = await fetchAddressSource(
+            buildStopsRadiusUrl({ ...point, radiusM, limit }),
+          );
+          return payload ? projectStops(payload, point) : null;
+        },
+      };
+    });
+  }
+  return {
+    name: 'idfm-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Hosted-deployment plumbing (access gate + preview parity)
+// ---------------------------------------------------------------------------
+/**
+ * HTTP Basic gate for the whole origin.
+ *
+ * Every proxy in this file brokers a key somebody pays for, so a reachable
+ * origin is a spendable wallet. When GEV_ACCESS_PASSWORD is set this
+ * middleware fronts everything — app shell, assets and /api/* alike — and
+ * nothing downstream runs until the request authenticates. Unset (the local
+ * default) it is a no-op, so `npm run dev` is unchanged.
+ *
+ * GEV_ACCESS_USER is optional: leave it empty to accept any username.
+ * /healthz stays open so a platform health check needs no password.
+ *
+ * @returns {import('vite').Plugin} Vite plugin.
+ */
+function accessGatePlugin() {
+  let warnedOpen = false;
+
+  /**
+   * Constant-time string compare via fixed-width digests (the raw strings
+   * differ in length, which timingSafeEqual rejects outright).
+   * @param {string} received - Value from the request.
+   * @param {string} expected - Configured value.
+   * @returns {boolean} True when equal.
+   */
+  const secretEquals = (received, expected) => timingSafeEqual(
+    createHash('sha256').update(String(received), 'utf8').digest(),
+    createHash('sha256').update(String(expected), 'utf8').digest(),
+  );
+
+  /**
+   * @param {import('connect').Server} middlewares - Middleware stack.
+   * @param {boolean} hosted - True on the preview server (a real deployment).
+   */
+  const install = (middlewares, hosted) => {
+    middlewares.use('/healthz', (req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, gated: Boolean(process.env.GEV_ACCESS_PASSWORD) }));
+    });
+
+    middlewares.use((req, res, next) => {
+      const expectedUser = String(process.env.GEV_ACCESS_USER || '').trim();
+      const expectedPassword = String(process.env.GEV_ACCESS_PASSWORD || '');
+      if (!expectedPassword) {
+        if (hosted && !warnedOpen) {
+          warnedOpen = true;
+          console.warn(
+            '[access-gate] GEV_ACCESS_PASSWORD is unset — this origin is OPEN, and every keyed proxy on it is spendable by anyone who finds the URL.',
+          );
+        }
+        next();
+        return;
+      }
+
+      const [scheme, encoded] = String(req.headers.authorization || '').split(' ');
+      let authorized = false;
+      if (/^basic$/i.test(scheme || '') && encoded) {
+        const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+        const split = decoded.indexOf(':');
+        if (split >= 0) {
+          const user = decoded.slice(0, split);
+          const password = decoded.slice(split + 1);
+          authorized = secretEquals(password, expectedPassword)
+            && (!expectedUser || secretEquals(user, expectedUser));
+        }
+      }
+      if (authorized) {
+        next();
+        return;
+      }
+
+      res.writeHead(401, {
+        'WWW-Authenticate': 'Basic realm="God\'s Eye View", charset="UTF-8"',
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end('401 — God\'s Eye View is private.\n');
+    });
+  };
+
+  return {
+    name: 'gev-access-gate',
+    configureServer(server) { install(server.middlewares, false); },
+    configurePreviewServer(server) { install(server.middlewares, true); },
+  };
+}
+
+/**
+ * Mirrors a dev-only middleware plugin onto the preview server.
+ *
+ * The proxies above were written against `vite dev`; a deployment serves the
+ * built bundle through `vite preview`, a different server that installs none
+ * of them — so without this the hosted app boots with a third of its /api
+ * surface missing. Every mirrored plugin touches only `server.middlewares`
+ * (the three that also need `server.httpServer` already declare their own
+ * preview hook, and are left untouched here).
+ *
+ * @param {import('vite').Plugin} plugin - Proxy plugin to mirror.
+ * @returns {import('vite').Plugin} The plugin, with preview parity.
+ */
+function withPreviewParity(plugin) {
+  if (!plugin || typeof plugin !== 'object') return plugin;
+  if (typeof plugin.configureServer !== 'function') return plugin;
+  if (plugin.configurePreviewServer) return plugin;
+  return { ...plugin, configurePreviewServer: plugin.configureServer };
+}
+
 /**
  * Main Vite configuration factory.
  *
@@ -13508,9 +14733,16 @@ export default defineConfig(({ mode }) => {
     if (process.env[key] === undefined) process.env[key] = val;
   }
   const env = { ...process.env };
+  const publicHosts = String(env.GEV_PUBLIC_HOST || '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter(Boolean);
   return {
     plugins: [
+      // First in the list so the gate's middleware lands ahead of every proxy.
+      accessGatePlugin(),
       cesium(),
+      ...[
       openSkyProxy(),
       celestrakProxy(),
       tomtomProxy(),
@@ -13540,12 +14772,20 @@ export default defineConfig(({ mode }) => {
       gbfsFranceProxy(),
       irveFranceProxy(),
       cadastreFranceProxy(),
+      schoolsFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),
       openAiRealtimeProxy(),
       googlePlacesContextProxy(),
       keylessGeocodeProxy(),
+      georisquesProxy(),
+      dvfProxy(),
+      dpeProxy(),
+      isochroneProxy(),
+      gpuProxy(),
+      idfmProxy(),
+      ].map(withPreviewParity),
     ],
     server: {
       host: env.HOST || 'localhost',
@@ -13554,6 +14794,19 @@ export default defineConfig(({ mode }) => {
       allowedHosts: (env.HOST === '0.0.0.0' || env.HOST === '::')
         ? true
         : ['localhost', '127.0.0.1', '.local'],
+    },
+    // `vite preview` is what a deployment runs: the built bundle plus the
+    // proxies above. A hosted origin answers on a name this checkout cannot
+    // guess, so GEV_PUBLIC_HOST names it (comma-separated for several);
+    // without it the preview server stays as locked down as the dev one.
+    preview: {
+      host: env.HOST || 'localhost',
+      port: parseInt(env.PORT, 10) || 4173,
+      allowedHosts: publicHosts.length
+        ? ['localhost', '127.0.0.1', '.local', ...publicHosts]
+        : ((env.HOST === '0.0.0.0' || env.HOST === '::')
+          ? true
+          : ['localhost', '127.0.0.1', '.local']),
     },
     // Expose selected API keys to the browser via import.meta.env.*
     define: {

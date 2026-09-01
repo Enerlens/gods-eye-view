@@ -22,14 +22,23 @@
  *   inside the region's bounding box, `TRAFICOLOR-DIR` has no directory for
  *   it, and data.gouv.fr's only DIRIF dataset is a 2008–2011 count archive.
  *
- *   **State published, position withheld.** Lille, Nantes, Rennes,
- *   Saint-Brieuc, Lorient–Vannes, Nancy–Metz. These centres publish a live
- *   colour for hundreds of sites — 357 for Lille alone — under identifiers
- *   that either appear in no referential row (the four Breton feeds) or appear
- *   with every coordinate field empty (DIR Ouest's 117 stations, DIR Est's
- *   72). The traffic is measured, it is published, and nobody says where it
- *   is. Drawing nothing there is correct; implying nothing is happening there
- *   is not.
+ *   **State published, position withheld.** Lille, and all but two sites of
+ *   Nancy–Metz. These centres publish a live colour for hundreds of sites —
+ *   357 for Lille alone — under identifiers that appear in no referential row
+ *   and are not addresses either. The traffic is measured, it is published,
+ *   and nobody says where it is. Drawing nothing there is correct; implying
+ *   nothing is happening there is not.
+ *
+ *   **And one kind of nothing that turned out to be something.** Nantes,
+ *   Rennes, Saint-Brieuc and Lorient–Vannes were in that second list until
+ *   2026-09-01, on the same evidence: 615 live states under identifiers no
+ *   referential row mentions. They were not unlocatable — they were addressed
+ *   rather than positioned. `35A0084T096_00D` is département 35, route A84,
+ *   PR 96, and every point repère of the national network is published with
+ *   its coordinates in the open `Bornage du réseau routier national`. Joining
+ *   the two placed 602 of them, and moved four cities from this table's dark
+ *   list to its showcase list. DIR Ouest's 115 counting stations came back the
+ *   same way, from the PR their own referential rows carry.
  *
  *   **Off the national network.** Everywhere else. This dataset covers the
  *   non-conceded RRN — motorways and trunk roads the State operates directly.
@@ -37,8 +46,9 @@
  *   motorway (Vinci, APRR, Sanef) are all outside it by definition.
  *
  * MAINTENANCE. Every figure here is a measurement with a date on it, and it
- * will age: a DIR that starts publishing coordinates moves a city from the
- * second list to the showcase list. `npm run road-status:index` re-measures,
+ * will age: a DIR that starts publishing coordinates — or a grammar that turns
+ * out to be an address after all — moves a city from the second list to the
+ * showcase list. `npm run road-status:index` re-measures,
  * and `roadStatusCoverage.test.mjs` checks this table against the built
  * `config/datex_traficolor_sites.json` so a city that has gained geometry
  * fails the build rather than staying wrongly dark.
@@ -48,7 +58,7 @@
 import { boxContains, boxesIntersect } from './viewportBox.js';
 
 /** The date every figure in this module was measured. */
-export const ROAD_STATUS_COVERAGE_MEASURED_AT = '2026-08-31';
+export const ROAD_STATUS_COVERAGE_MEASURED_AT = '2026-09-01';
 
 /**
  * Areas where the layer draws nothing, and exactly why.
@@ -56,6 +66,12 @@ export const ROAD_STATUS_COVERAGE_MEASURED_AT = '2026-08-31';
  * `kind` separates the two failures: `no-publisher` means the state is not
  * measured, `no-geometry` means it is measured and published without a
  * position. `reason` is what the source says, not an interpretation.
+ *
+ * `located` is how many of that centre's sites the committed geometry can
+ * nonetheless place, and it is checked against the built index exactly. It is
+ * not always zero: two of DIR Est's stations publish a point repère where the
+ * other seventy do not, so Nancy–Metz is dark in the way a city with two lit
+ * windows is dark, and the table says two rather than none.
  */
 export const ROAD_STATUS_DARK_AREAS = Object.freeze([
   Object.freeze({
@@ -63,6 +79,7 @@ export const ROAD_STATUS_DARK_AREAS = Object.freeze([
     name: 'Île-de-France',
     operator: 'DIRIF',
     kind: 'no-publisher',
+    located: 0,
     reason: 'publishes neither counting stations nor a traffic-status feed',
     bbox: Object.freeze({ south: 48.55, west: 1.85, north: 49.15, east: 3.05 }),
   }),
@@ -72,44 +89,13 @@ export const ROAD_STATUS_DARK_AREAS = Object.freeze([
     operator: 'DIR Nord',
     kind: 'no-geometry',
     sites: 357,
-    reason: 'publishes 357 live road states under site ids that are in no national referential row',
+    located: 0,
+    // Not for want of trying: the identifiers were tested against the national
+    // kilometre-post referential both ways they could be read, and the only
+    // reading that fits puts A1 sensors in département 95, 150 km outside DIR
+    // Nord's territory. An address that has to be wrong to parse is not one.
+    reason: 'publishes 357 live road states under site ids that are neither a referential row nor an address',
     bbox: Object.freeze({ south: 50.45, west: 2.75, north: 50.85, east: 3.35 }),
-  }),
-  Object.freeze({
-    id: 'nantes',
-    name: 'Nantes',
-    operator: 'DIR Ouest',
-    kind: 'no-geometry',
-    sites: 194,
-    reason: 'publishes live road states, and 117 stations whose coordinate fields are all empty',
-    bbox: Object.freeze({ south: 47.10, west: -1.75, north: 47.35, east: -1.35 }),
-  }),
-  Object.freeze({
-    id: 'rennes',
-    name: 'Rennes',
-    operator: 'DIR Ouest',
-    kind: 'no-geometry',
-    sites: 177,
-    reason: 'publishes live road states, and 117 stations whose coordinate fields are all empty',
-    bbox: Object.freeze({ south: 48.00, west: -1.85, north: 48.20, east: -1.50 }),
-  }),
-  Object.freeze({
-    id: 'saint-brieuc',
-    name: 'Saint-Brieuc',
-    operator: 'DIR Ouest',
-    kind: 'no-geometry',
-    sites: 91,
-    reason: 'publishes live road states under site ids that are in no national referential row',
-    bbox: Object.freeze({ south: 48.42, west: -2.90, north: 48.58, east: -2.65 }),
-  }),
-  Object.freeze({
-    id: 'lorient-vannes',
-    name: 'Lorient – Vannes',
-    operator: 'DIR Ouest',
-    kind: 'no-geometry',
-    sites: 153,
-    reason: 'publishes live road states under site ids that are in no national referential row',
-    bbox: Object.freeze({ south: 47.60, west: -3.45, north: 47.85, east: -2.65 }),
   }),
   Object.freeze({
     id: 'nancy-metz',
@@ -117,7 +103,8 @@ export const ROAD_STATUS_DARK_AREAS = Object.freeze([
     operator: 'DIR Est',
     kind: 'no-geometry',
     sites: 74,
-    reason: 'publishes live road states, and 72 stations whose coordinate fields are all empty',
+    located: 2,
+    reason: 'publishes 74 live road states, and 70 of its 72 stations carry neither a coordinate nor a point repère',
     bbox: Object.freeze({ south: 48.60, west: 5.95, north: 49.25, east: 6.40 }),
   }),
 ]);
@@ -126,37 +113,52 @@ export const ROAD_STATUS_DARK_AREAS = Object.freeze([
  * Where the layer is at its best, with the drawable segment count measured on
  * {@link ROAD_STATUS_COVERAGE_MEASURED_AT}.
  *
- * `segments` is how many of that centre's published sites the referential can
- * actually place — not how many it publishes. Marseille leads because DIR
- * Méditerranée is the one DIR that geolocates 100% of its stations.
+ * `segments` is how many of that centre's published sites the committed
+ * geometry can actually place — not how many it publishes. Marseille leads
+ * because DIR Méditerranée is the one DIR that geolocates 100 % of its
+ * stations; Nantes, Rennes, Lorient–Vannes and Saint-Brieuc are here at all
+ * because their identifiers are point-repère addresses, and every one of their
+ * positions comes from the national bornage rather than from a DIR.
  */
 export const ROAD_STATUS_SHOWCASES = Object.freeze([
   Object.freeze({
-    id: 'marseille', name: 'Marseille', centre: 'MARIUS', lat: 43.2965, lon: 5.3698, segments: 186, cadenceS: 360,
+    id: 'marseille', name: 'Marseille', centre: 'MARIUS', lat: 43.2965, lon: 5.3698, segments: 192, cadenceS: 360,
   }),
   Object.freeze({
-    id: 'bordeaux', name: 'Bordeaux', centre: 'ALIENOR', lat: 44.8378, lon: -0.5792, segments: 144, cadenceS: 60,
+    id: 'nantes', name: 'Nantes', centre: 'Breizh Nantes', lat: 47.2184, lon: -1.5536, segments: 184, cadenceS: 180,
   }),
   Object.freeze({
-    id: 'toulouse', name: 'Toulouse', centre: 'ERATO', lat: 43.6047, lon: 1.4442, segments: 127, cadenceS: 60,
+    id: 'rennes', name: 'Rennes', centre: 'Breizh Rennes', lat: 48.1173, lon: -1.6778, segments: 177, cadenceS: 180,
   }),
   Object.freeze({
-    id: 'lyon', name: 'Lyon', centre: 'Trafic Lyon', lat: 45.7640, lon: 4.8357, segments: 106, cadenceS: 60,
+    id: 'bordeaux', name: 'Bordeaux', centre: 'ALIENOR', lat: 44.8378, lon: -0.5792, segments: 169, cadenceS: 60,
+  }),
+  Object.freeze({
+    id: 'lorient-vannes', name: 'Lorient – Vannes', centre: 'Triskell 56', lat: 47.7482, lon: -3.0700, segments: 153, cadenceS: 180,
+  }),
+  Object.freeze({
+    id: 'toulouse', name: 'Toulouse', centre: 'ERATO', lat: 43.6047, lon: 1.4442, segments: 128, cadenceS: 60,
+  }),
+  Object.freeze({
+    id: 'lyon', name: 'Lyon', centre: 'Trafic Lyon', lat: 45.7640, lon: 4.8357, segments: 109, cadenceS: 60,
   }),
   Object.freeze({
     id: 'saint-etienne', name: 'Saint-Étienne', centre: 'HYRONDELLE', lat: 45.4397, lon: 4.3872, segments: 100, cadenceS: 360,
   }),
   Object.freeze({
-    id: 'rouen', name: 'Rouen', centre: 'Trafic Rouen', lat: 49.4432, lon: 1.0999, segments: 62, cadenceS: 120,
+    id: 'saint-brieuc', name: 'Saint-Brieuc', centre: 'Trafic St-Brieuc', lat: 48.5136, lon: -2.7653, segments: 88, cadenceS: 180,
+  }),
+  Object.freeze({
+    id: 'rouen', name: 'Rouen', centre: 'Trafic Rouen', lat: 49.4432, lon: 1.0999, segments: 63, cadenceS: 120,
   }),
   Object.freeze({
     id: 'limoges', name: 'Limoges', centre: 'Trafic Limoges', lat: 45.8336, lon: 1.2611, segments: 53, cadenceS: 60,
   }),
   Object.freeze({
-    id: 'caen', name: 'Caen', centre: 'Trafic Caen', lat: 49.1829, lon: -0.3707, segments: 42, cadenceS: 120,
+    id: 'caen', name: 'Caen', centre: 'Trafic Caen', lat: 49.1829, lon: -0.3707, segments: 44, cadenceS: 120,
   }),
   Object.freeze({
-    id: 'grenoble', name: 'Grenoble', centre: 'GENTIANE', lat: 45.1885, lon: 5.7245, segments: 13, cadenceS: 180,
+    id: 'grenoble', name: 'Grenoble', centre: 'GENTIANE', lat: 45.1885, lon: 5.7245, segments: 16, cadenceS: 180,
   }),
 ]);
 

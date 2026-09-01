@@ -3143,3 +3143,433 @@ test('a layer that surrenders its row controls hides the block entirely', async 
     else globalThis.document = originalDocument;
   }
 });
+
+// ─── Grouped panel (categories + French labels + scope chips) ────────────────
+//
+// The panel used to be a flat list in registration order. It now draws one
+// collapsible group per category, using the taxonomy handed to
+// finalizeRegistrations(). These tests use SYNTHETIC tables on purpose: what is
+// asserted here is the renderer's contract — order, grouping, counts, collapse,
+// which field becomes the visible name — not this fork's product copy, which
+// layerTaxonomy.test.mjs pins separately.
+
+/** Match the selector subset the panel actually uses: `.class` and `[attr="v"]`. */
+function matchesSelector(node, selector) {
+  const classes = String(node.className || '').split(/\s+/).filter(Boolean);
+  for (const part of selector.match(/\.[a-z0-9-]+|\[[a-z-]+="[^"]*"\]/gi) || []) {
+    if (part.startsWith('.')) {
+      if (!classes.includes(part.slice(1))) return false;
+    } else {
+      const [, attr, value] = part.match(/\[([a-z-]+)="([^"]*)"\]/i);
+      const key = attr.replace(/^data-/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      if (String(node.dataset?.[key] ?? '') !== value) return false;
+    }
+  }
+  return true;
+}
+
+function findAll(root, selector, out = []) {
+  for (const child of root.children || []) {
+    if (matchesSelector(child, selector)) out.push(child);
+    findAll(child, selector, out);
+  }
+  return out;
+}
+
+/** A DOM stub deep enough for the grouped renderer: nesting, classes, events. */
+function makePanelElement() {
+  const element = {
+    children: [],
+    className: '',
+    id: '',
+    type: '',
+    hidden: false,
+    dataset: {},
+    textContent: '',
+    disabled: false,
+    attributes: {},
+    listeners: new Map(),
+    html: '',
+    classList: {
+      toggle(name, force) {
+        const set = new Set(String(element.className).split(/\s+/).filter(Boolean));
+        const on = force === undefined ? !set.has(name) : Boolean(force);
+        if (on) set.add(name); else set.delete(name);
+        element.className = [...set].join(' ');
+        return on;
+      },
+      contains(name) { return String(element.className).split(/\s+/).filter(Boolean).includes(name); },
+    },
+    appendChild(child) { this.children.push(child); return child; },
+    addEventListener(type, handler) {
+      if (!this.listeners.has(type)) this.listeners.set(type, []);
+      this.listeners.get(type).push(handler);
+    },
+    click() { for (const handler of this.listeners.get('click') || []) handler(); },
+    setAttribute(name, value) { this.attributes[name] = String(value); },
+    getAttribute(name) { return this.attributes[name] ?? null; },
+    querySelector(selector) { return findAll(this, selector)[0] || null; },
+    querySelectorAll(selector) { return findAll(this, selector); },
+    set innerHTML(value) { if (value === '') this.children = []; this.html = String(value); },
+    get innerHTML() { return this.html; },
+  };
+  return element;
+}
+
+function makeMemoryStorage(seed = {}) {
+  const store = new Map(Object.entries(seed));
+  return {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => { store.set(key, String(value)); },
+    removeItem: (key) => { store.delete(key); },
+    _store: store,
+  };
+}
+
+const PANEL_CATEGORIES = Object.freeze([
+  { id: 'air-space', label: 'AIR & ESPACE', icon: '✈️' },
+  { id: 'maritime', label: 'MARITIME', icon: '⚓' },
+  { id: 'energy', label: 'ÉNERGIE', icon: '⚡' },
+]);
+
+const PANEL_TAXONOMY = Object.freeze([
+  { id: 'satellites', category: 'air-space', label: 'Satellites', kind: 'dataset', coverage: 'global', scopeChip: null },
+  { id: 'flights', category: 'air-space', label: 'Vols en direct', kind: 'dataset', coverage: 'global', scopeChip: null },
+  { id: 'military-awareness', category: 'air-space', label: 'Contexte global', kind: 'coordinator', coverage: 'global', scopeChip: null },
+  { id: 'ais-live-vessels', category: 'maritime', label: 'Navires en direct', kind: 'dataset', coverage: 'global', scopeChip: null },
+  { id: 'france-energy', category: 'energy', label: 'Mix électrique', kind: 'dataset', coverage: 'fr', scopeChip: 'FR' },
+]);
+
+const PANEL_DISPOSITIONS = PANEL_TAXONOMY.map(({ id }) => ({ id, disposition: 'enabled-only' }));
+
+/**
+ * Build a manager sealed with the synthetic tables above, its panel already
+ * painted into a stub container.
+ */
+function makeGroupedPanel({ storage = makeMemoryStorage() } = {}) {
+  const originalDocument = globalThis.document;
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  globalThis.document = { createElement: makePanelElement };
+  Object.defineProperty(globalThis, 'localStorage', { value: storage, configurable: true, writable: true });
+
+  const mgr = new DataLayerManager({});
+  for (const { id } of PANEL_TAXONOMY) {
+    const layer = makeSlowLayer(id, { updateInterval: -1 });
+    if (id === 'military-awareness') layer.module.showInTogglePanel = false;
+    mgr.register(layer.module);
+  }
+  mgr.finalizeRegistrations(PANEL_DISPOSITIONS, PANEL_TAXONOMY, PANEL_CATEGORIES);
+  const container = makePanelElement();
+  mgr.buildTogglePanel(container);
+
+  return {
+    mgr,
+    container,
+    storage,
+    sections: () => findAll(container, '.data-category'),
+    async restore() {
+      await mgr.destroyAll();
+      if (originalDocument === undefined) delete globalThis.document;
+      else globalThis.document = originalDocument;
+      if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+      else delete globalThis.localStorage;
+    },
+  };
+}
+
+test('the panel draws one group per category, in category order', async () => {
+  const panel = makeGroupedPanel();
+  try {
+    assert.deepEqual(
+      panel.sections().map((section) => section.dataset.categoryId),
+      ['air-space', 'maritime', 'energy'],
+    );
+    const headers = panel.sections().map((section) => section.querySelector('.data-category-header').innerHTML);
+    assert.match(headers[0], /<span class="data-category-label">AIR &amp; ESPACE<\/span>|<span class="data-category-label">AIR & ESPACE<\/span>/);
+    assert.match(headers[2], /<span class="data-category-label">ÉNERGIE<\/span>/);
+    // Accented capitals are typed accented, never left to text-transform.
+    assert.ok(!headers.some((html) => /ENERGIE|DEFENSE/.test(html)));
+    for (const section of panel.sections()) {
+      const header = section.querySelector('.data-category-header');
+      assert.equal(header.type, 'button', 'the header must be focusable and keyboard-operable');
+      assert.equal(
+        header.getAttribute('aria-controls'),
+        section.querySelector('.data-category-body').id,
+      );
+    }
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('rows sit in taxonomy order inside their group, not registration order', async () => {
+  const panel = makeGroupedPanel();
+  try {
+    const airSpace = panel.container.querySelector('.data-category[data-category-id="air-space"]');
+    assert.deepEqual(
+      findAll(airSpace, '.data-toggle-row').map((row) => row.dataset.layerId),
+      ['satellites', 'flights'],
+      'the taxonomy lists satellites first; registration order is not consulted',
+    );
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a coordinator gets no row and inflates no group count', async () => {
+  const panel = makeGroupedPanel();
+  try {
+    assert.equal(panel.container.querySelector('[data-layer-id="military-awareness"]'), null);
+    const airSpace = panel.container.querySelector('.data-category[data-category-id="air-space"]');
+    assert.equal(airSpace.querySelector('.data-category-count').textContent, '0/2 ON');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a row shows its French label and, when it is not global, a scope chip', async () => {
+  const panel = makeGroupedPanel();
+  try {
+    const french = panel.container.querySelector('[data-layer-id="france-energy"]');
+    const left = french.querySelector('.data-toggle-left');
+    assert.match(left.innerHTML, /<span class="data-name">Mix électrique<\/span>/);
+    assert.match(left.innerHTML, /class="data-scope-chip"[^>]*>FR</);
+    // The chip must stay OUTSIDE .data-name — the voice layer reads that
+    // element's text back as the layer's spoken name.
+    assert.doesNotMatch(left.innerHTML, /<span class="data-name">[^<]*FR/);
+
+    const global = panel.container.querySelector('[data-layer-id="flights"]');
+    assert.match(global.querySelector('.data-toggle-left').innerHTML, /<span class="data-name">Vols en direct<\/span>/);
+    assert.doesNotMatch(global.querySelector('.data-toggle-left').innerHTML, /data-scope-chip/);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('the toggle aria-label announces the French name', async () => {
+  const panel = makeGroupedPanel();
+  try {
+    const button = panel.container
+      .querySelector('[data-layer-id="ais-live-vessels"]')
+      .querySelector('.data-toggle-btn');
+    assert.equal(button.getAttribute('aria-label'), 'Navires en direct: OFF');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('group tallies follow live layer state on refresh', async () => {
+  const panel = makeGroupedPanel();
+  try {
+    const airSpace = panel.container.querySelector('.data-category[data-category-id="air-space"]');
+    assert.equal(airSpace.querySelector('.data-category-count').textContent, '0/2 ON');
+    assert.ok(!airSpace.classList.contains('has-active'));
+
+    await panel.mgr.setEnabled('flights', true, { origin: 'programmatic' });
+    panel.mgr._refreshTogglePanel();
+
+    assert.equal(airSpace.querySelector('.data-category-count').textContent, '1/2 ON');
+    assert.ok(airSpace.classList.contains('has-active'));
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('every group opens by default, and a collapse is remembered', async () => {
+  const panel = makeGroupedPanel();
+  try {
+    for (const section of panel.sections()) {
+      assert.equal(section.querySelector('.data-category-body').hidden, false);
+      assert.equal(section.querySelector('.data-category-header').getAttribute('aria-expanded'), 'true');
+    }
+
+    const energy = panel.container.querySelector('.data-category[data-category-id="energy"]');
+    energy.querySelector('.data-category-header').click();
+
+    assert.equal(energy.querySelector('.data-category-body').hidden, true);
+    assert.equal(energy.querySelector('.data-category-header').getAttribute('aria-expanded'), 'false');
+    assert.ok(energy.classList.contains('collapsed'));
+    assert.deepEqual(
+      JSON.parse(panel.storage.getItem('godsEyeView.v1.dataLayerCategoriesCollapsed')),
+      ['energy'],
+    );
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a group the visitor closed last time comes back closed', async () => {
+  const seeded = makeMemoryStorage({
+    'godsEyeView.v1.dataLayerCategoriesCollapsed': JSON.stringify(['maritime']),
+  });
+  const panel = makeGroupedPanel({ storage: seeded });
+  try {
+    const maritime = panel.container.querySelector('.data-category[data-category-id="maritime"]');
+    assert.equal(maritime.querySelector('.data-category-body').hidden, true);
+    assert.ok(maritime.classList.contains('collapsed'));
+    // The row still exists in the DOM — collapsed, not unrendered — so a
+    // deep link or a QA selector can still reach it.
+    assert.ok(maritime.querySelector('[data-layer-id="ais-live-vessels"]'));
+
+    const airSpace = panel.container.querySelector('.data-category[data-category-id="air-space"]');
+    assert.equal(airSpace.querySelector('.data-category-body').hidden, false);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('corrupt collapse storage opens every group instead of throwing', async () => {
+  const panel = makeGroupedPanel({
+    storage: makeMemoryStorage({ 'godsEyeView.v1.dataLayerCategoriesCollapsed': '{not json' }),
+  });
+  try {
+    for (const section of panel.sections()) {
+      assert.equal(section.querySelector('.data-category-body').hidden, false);
+    }
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('categories naming no group, or arriving without a taxonomy, are refused', async () => {
+  const mgr = new DataLayerManager({});
+  mgr.register(makeSlowLayer('flights', { updateInterval: -1 }).module);
+  const dispositions = [{ id: 'flights', disposition: 'enabled-only' }];
+  assert.throws(
+    () => mgr.finalizeRegistrations(dispositions, null, PANEL_CATEGORIES),
+    /categories require a taxonomy/,
+  );
+  assert.throws(
+    () => mgr.finalizeRegistrations(
+      dispositions,
+      [{ id: 'flights', category: 'nowhere', label: 'Vols en direct', kind: 'dataset' }],
+      PANEL_CATEGORIES,
+    ),
+    /missing groups for: flights/,
+  );
+  assert.equal(
+    mgr.finalizeRegistrations(
+      dispositions,
+      [{ id: 'flights', category: 'air-space', label: 'Vols en direct', kind: 'dataset' }],
+      PANEL_CATEGORIES,
+    ),
+    true,
+  );
+  await mgr.destroyAll();
+});
+
+/** A layer that only answers for a close camera, with a gate someone has to satisfy. */
+function makeGatedLayer(id = 'bdtopo-buildings') {
+  const calls = { gate: [], update: 0, disable: 0 };
+  const state = { fits: false, satisfiable: true };
+  return {
+    calls,
+    state,
+    module: {
+      id,
+      name: id,
+      icon: '',
+      source: 'test',
+      updateInterval: -1,
+      init() {},
+      enable() {},
+      disable() { calls.disable += 1; },
+      async ensureViewGate(viewer, options) {
+        calls.gate.push({ viewer, signal: options?.signal || null });
+        await Promise.resolve();
+        if (state.satisfiable) state.fits = true;
+        return state.fits;
+      },
+      async update() {
+        calls.update += 1;
+        // The layer's own honest contract: a camera outside the gate fetched
+        // nothing and failed at nothing.
+        return true;
+      },
+      getStats() {
+        return {
+          count: state.fits ? 1200 : 0,
+          status: state.fits ? 'ok' : 'zoom-in',
+          loadingLabel: state.fits ? '' : 'Zoome sous 0.08° pour charger le bâti',
+        };
+      },
+    },
+  };
+}
+
+test('an explicit enable applies the zoom a gated layer needs before its first load', async () => {
+  const viewer = { camera: {} };
+  const mgr = new DataLayerManager(viewer);
+  const layer = makeGatedLayer();
+  mgr.register(layer.module);
+
+  assert.equal(await mgr.setEnabled('bdtopo-buildings', true, { origin: 'user' }), true);
+  assert.equal(layer.calls.gate.length, 1, 'the gate ran');
+  assert.equal(layer.calls.gate[0].viewer, viewer, 'against the manager\'s own viewer');
+  assert.equal(layer.calls.update, 1, 'and the first load followed it, once');
+  assert.equal(layer.state.fits, true);
+  assert.equal(mgr.isEnabled('bdtopo-buildings'), true);
+  assert.equal(layer.calls.disable, 0, 'nothing was torn back down');
+  await mgr.destroyAll();
+});
+
+test('a gate that cannot be satisfied leaves the layer ON with its guidance', async () => {
+  const mgr = new DataLayerManager({ camera: {} });
+  const layer = makeGatedLayer();
+  layer.state.satisfiable = false;
+  mgr.register(layer.module);
+
+  assert.equal(await mgr.setEnabled('bdtopo-buildings', true, { origin: 'user' }), true);
+  assert.equal(mgr.isEnabled('bdtopo-buildings'), true, 'ON, because it is on');
+  const stats = mgr.getAll()[0].stats;
+  assert.equal(layerFeedState(stats), 'nominal', 'guidance is not a fault');
+  assert.equal(stats.status, 'zoom-in');
+  await mgr.destroyAll();
+});
+
+test('a gate that throws never costs the operator the layer', async () => {
+  const mgr = new DataLayerManager({ camera: {} });
+  const layer = makeGatedLayer();
+  layer.module.ensureViewGate = async () => { throw new Error('camera busy'); };
+  mgr.register(layer.module);
+
+  assert.equal(await mgr.setEnabled('bdtopo-buildings', true, { origin: 'user' }), true);
+  assert.equal(layer.calls.update, 1, 'the load still ran');
+  assert.equal(mgr.isEnabled('bdtopo-buildings'), true);
+  await mgr.destroyAll();
+});
+
+test('a restored camera is never overruled by a view gate', async () => {
+  // Share links and Context restores carry a camera of their own. Only the
+  // operator asking for the layer asks for the flight.
+  const mgr = new DataLayerManager({ camera: {} });
+  const layer = makeGatedLayer();
+  mgr.register(layer.module);
+
+  assert.equal(await mgr.setEnabled('bdtopo-buildings', true, { origin: 'share' }), true);
+  assert.equal(layer.calls.gate.length, 0, 'no flight');
+  assert.equal(layer.calls.update, 1, 'the layer still loads what it can see');
+  assert.equal(mgr.isEnabled('bdtopo-buildings'), true);
+  await mgr.destroyAll();
+});
+
+test('turning a gated layer off mid-flight settles as OFF, not as a failure', async () => {
+  const mgr = new DataLayerManager({ camera: {} });
+  const layer = makeGatedLayer();
+  let releaseGate;
+  layer.module.ensureViewGate = (viewer, options) => {
+    layer.calls.gate.push({ viewer, signal: options?.signal || null });
+    return new Promise((resolve) => { releaseGate = resolve; });
+  };
+  mgr.register(layer.module);
+
+  const enabling = mgr.setEnabled('bdtopo-buildings', true, { origin: 'user' });
+  await Promise.resolve();
+  const disabling = mgr.setEnabled('bdtopo-buildings', false, { origin: 'user' });
+  releaseGate?.(false);
+  await enabling;
+  await disabling;
+  assert.equal(mgr.isEnabled('bdtopo-buildings'), false);
+  assert.equal(layer.calls.update, 0, 'the load the operator cancelled never ran');
+  await mgr.destroyAll();
+});
