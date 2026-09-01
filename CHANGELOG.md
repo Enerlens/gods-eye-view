@@ -51,6 +51,65 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   is point-in-polygon and never a code join, because the register spells
   Corsica `02A` where the IGN outlines say `2A`.
 
+- **The roads the State measures but never says where.** Bison Futé's counting-station
+  referential publishes a position for 843 of its 1 367 stations. The other 525 are
+  not positionless — 153 of them publish an ADDRESS, the point repère that the French
+  road network is actually numbered by, and every kilometre post of the non-conceded
+  network is published with its Lambert-93 coordinates in a second open dataset, the
+  [Bornage du réseau routier national](https://www.data.gouv.fr/datasets/bornage-du-reseau-routier-national)
+  (51 940 posts, Licence Ouverte 2.0, keyless). Joining the two recovers **all 115
+  stations of DIR Ouest**, which had never been drawn, plus 26 of DIR Atlantique, 10 of
+  DIR Centre-Est and 2 of DIR Est. The join is **calibrated on every build rather than
+  trusted**: 831 stations publish an address *and* a coordinate, and resolving theirs
+  disagrees with the DIRs' own answer by a **median of 3.8 m** (p90 7.2 m, max 64 m,
+  99.8 % within 25 m) — because the DIRs derive the coordinates they publish from this
+  very referential. The number is recomputed and stored in the committed index each
+  run, so an edition that stopped agreeing would move it in the build log before it
+  moved a station on screen.
+- **Nantes, Rennes, Saint-Brieuc and Lorient–Vannes are on the map.** The four Breton
+  traffic centres publish 619 live road states under identifiers that appear in no
+  referential row — which is why the layer drew nothing over a quarter of Brittany.
+  Those identifiers turned out to be point-repère addresses themselves:
+  `35A0084T096_00D` is département 35, route A84, PR 96, abscissa 0, right-hand
+  carriageway. **602 of them resolve**, four cities move from the layer's "state
+  published, position withheld" table to its showcase list, and the committed geometry
+  goes from **1 195 sites / 832 located** to **1 958 / 1 587**, 608 of them full
+  segments over **975 km**. A site placed this way says so on its card — *"position
+  resolved from its kilometre post (PR), median 4 m"* — because a derived position and
+  a published one are not the same claim.
+- **Segments follow the surveyed centre of their own carriageway.** The referential
+  gives a counting station two endpoints and nothing in between, so every segment was
+  drawn as a straight chord. Threading the kilometre posts between the two ends was the
+  first answer and it could not carry the layer: **the median segment is 948 m long and
+  the median post interval 1 000 m**, so 643 of 842 segments contained no post at all
+  and stayed straight. The drawn line sat a median **56 m** from its own tarmac, 142 m
+  at p90, **411 segments past 25 m** — on the Bordeaux rocade, a green line cutting the
+  inside of every curve. The shape now comes from the dataset next door:
+  [Liaisons du réseau routier national](https://www.data.gouv.fr/datasets/liaisons-du-reseau-routier-national)
+  (DGITM, Licence Ouverte 2.0, keyless) publishes **56 205 polylines, 1.66 M vertices,
+  one per point-repère interval, at a mean 26 m between vertices** — against the
+  1 000 m the posts offered. **The join needs no geometry at all**: every section NAMES
+  the two posts it runs between, in the address grammar this build already reads, so it
+  is placed in the same cumulative-distance space the bornage is sorted by — and the
+  coordinates are then free to be checked rather than trusted. Over 33 483 joined
+  sections the polylines' own ends sit **0 m from the posts they name at p50, p90 and
+  p99**: the two files are cut from the same survey. **589 of the 608 real segments
+  trace** (96.9 %), simplified at 4 m — under the width of a traffic lane — for a
+  committed file of 485 KB against 364 KB. The 19 that do not are slip roads and
+  unnumbered axes the point-repère referential does not address; they keep the post
+  threading, or the chord, exactly as before. Three guards refuse to shape rather than
+  guess: a section drawn more than 50 m from the posts it names, an endpoint more than
+  150 m from any post of the road it names, and a trace running more than three times
+  the straight line between its ends — the ring-road case, where shaping would wrap a
+  segment around the whole of Bordeaux.
+- **Lille stays dark, and that is a measurement, not a gap.** DIR Nord's 357 site ids
+  were tested against the bornage both ways they can be read: three digits as the PR
+  fits 24 % of them, two digits fits 75 % — but the two-digit reading puts DIR Nord's
+  A1 sensors at PR 12–30, which is département 95, inside Île-de-France and 150 km
+  outside its territory. A grammar that has to be wrong to parse is not the grammar,
+  so the empty-state sentence over Lille now reads "under site ids that are neither a
+  referential row nor an address" and the city keeps its explanation.
+
 ### Changed
 
 - The maillage thinning and the point-in-département lookup now live in
@@ -139,6 +198,22 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   and two layers on one token is a share link that silently enables the wrong
   one. Links written before this lands never carried an IRVE token at all, so
   nothing in the wild changes meaning.
+
+### Fixed
+
+- **234 road-status "segments" were points wearing a segment's shape.** Their
+  referential row publishes a start equal to its end, and they were being written as
+  four-number segments and handed to Cesium as zero-length ground polylines — geometry
+  it cannot stroke. They are now written as single points, which is what makes the
+  renderer draw them as the 25 m stub a positioned station with no extent deserves.
+  The segment count falls from 842 to 608 and nothing is lost: the difference was never
+  234 roads.
+- **A rebuild of the road-status index reported Brittany as unlit.** The coverage table's
+  `fromPointRepere` counted what a run had newly placed rather than what the file held,
+  so the second build against an already-complete index reported zero for Nantes,
+  Rennes, Saint-Brieuc and Lorient–Vannes on a day nothing about them had changed. It
+  now counts from the committed record, and the assertion that guards those four cities
+  survives a re-run.
 
 ## [Unreleased] — 2026-08-31
 

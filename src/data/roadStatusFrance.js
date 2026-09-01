@@ -16,8 +16,20 @@
  *
  * WHAT IT DRAWS, AND WHAT EACH THING IS:
  *   - A SEGMENT is one counting station's own extent — start and end pruned
- *     from the national referential, median 979 m — not a point and not a
- *     whole motorway. 830 of them, 918 km, measured 2026-08-31.
+ *     from the national referential — not a point and not a whole motorway.
+ *     608 of them, 975 km, measured 2026-09-01, among 1 587 located sites.
+ *     589 FOLLOW THE ROAD: the referential publishes two ends and nothing
+ *     between, so a segment was a chord — sitting a median 56 m from its own
+ *     tarmac and 142 m at p90, which on the Bordeaux rocade cut the inside of
+ *     every curve. Each is now drawn along the SURVEYED CENTRE of its own
+ *     carriageway (`scripts/lib/rrnCentreline.mjs`, a 26 m-resolution survey
+ *     joined by the kilometre posts each of its sections names). A station
+ *     published with a start equal to its end is a POINT, not a one-metre
+ *     road, and is drawn as the 25 m stub `segmentPositions` gives it.
+ *   - Its POSITION is a coordinate the DIR published (844 sites) or one
+ *     resolved from the kilometre post the DIR published instead (743 sites,
+ *     agreeing with the published ones to a median of 3.8 m where both exist).
+ *     The card says which, because they are not the same claim.
  *   - Its COLOUR is the traffic-management centre's own `trafficStatusValue`,
  *     refreshed every 60 s at Bordeaux, Toulouse, Lyon and Limoges and every
  *     360 s at Marseille and Saint-Étienne. It is never derived from the
@@ -27,15 +39,17 @@
  *     AVERAGE and the card says so; they are not a live speedometer.
  *
  * WHAT IT CANNOT DRAW, AND SAYS SO. Île-de-France has no publisher at all,
- * and Lille, Nantes, Rennes, Saint-Brieuc, Lorient–Vannes and Nancy–Metz
- * publish a live colour for 1 046 sites whose position nobody publishes. Those
- * are two different kinds of nothing and `roadStatusCoverage.js` keeps them
- * apart, so an empty view over Lille reads "357 states published without a
- * position" rather than looking like a bug.
+ * and Lille and Nancy–Metz publish a live colour for 431 sites whose position
+ * nobody publishes and no address recovers. Those are two different kinds of
+ * nothing and `roadStatusCoverage.js` keeps them apart, so an empty view over
+ * Lille reads "357 states published without a position" rather than looking
+ * like a bug. Nantes, Rennes, Saint-Brieuc and Lorient–Vannes were in that
+ * sentence until 2026-09-01, when their site identifiers turned out to be
+ * point-repère addresses rather than opaque codes.
  *
  * THE COMPLEMENT WORTH KNOWING. This layer is brightest exactly where
  * `transitFrance.js` is dark — Marseille, Toulouse, Lyon, Saint-Étienne
- * publish no live bus and 519 road segments between them — and blind exactly
+ * publish no live bus and 529 road sites between them — and blind exactly
  * where that layer has its one Parisian shuttle. Neither covers urban France;
  * together they nearly do.
  */
@@ -190,11 +204,25 @@ function updateAltitudeGate(viewer) {
   return _altitudeGateOpen;
 }
 
-/** Midpoint of a segment, in degrees. */
+/**
+ * Midpoint of a segment, in degrees — where its card is anchored.
+ *
+ * Taken across the WHOLE vertex list rather than the first pair, because 180
+ * segments now thread the kilometre posts of a curving road: anchoring a card
+ * to the midpoint of the first hop would pin it near one end of a 5 km bend
+ * and point the leader line at the wrong kilometre.
+ */
 export function segmentMidpoint(coords) {
   if (!Array.isArray(coords) || coords.length < 2) return null;
   if (coords.length < 4) return { lon: coords[0], lat: coords[1] };
-  return { lon: (coords[0] + coords[2]) / 2, lat: (coords[1] + coords[3]) / 2 };
+  const vertices = coords.length / 2;
+  const half = Math.floor(vertices / 2);
+  if (vertices % 2) return { lon: coords[half * 2], lat: coords[half * 2 + 1] };
+  const a = (half - 1) * 2;
+  return {
+    lon: (coords[a] + coords[a + 2]) / 2,
+    lat: (coords[a + 1] + coords[a + 3]) / 2,
+  };
 }
 
 /**
@@ -343,6 +371,10 @@ export function buildRoadStatusSelectionLabel(record, payload = null) {
   const reporters = Array.isArray(segment.src) ? segment.src.map(agglomerationLabel) : [];
   if (reporters.length) details.push(`⌖ ${reporters.join(' · ')}`);
   if (segment.d) details.push(`Operator ${segment.d}`);
+  // Where the dot on the globe comes from. A published coordinate needs no
+  // sentence; one this app resolved from a kilometre post does, because the
+  // reader is entitled to know the position is derived and to how much.
+  if (segment.g === 'pr') details.push('position resolved from its kilometre post (PR), median 4 m');
   if (segment.at) {
     const age = Math.max(0, Math.round((Date.now() - new Date(segment.at).getTime()) / 1000));
     details.push(`state reported ${age}s ago`);
@@ -623,6 +655,7 @@ const roadStatusFranceLayer = {
       nationalSegments: _payload?.nationalSegments ?? null,
       sitesLocated: _payload?.sitesLocated ?? null,
       sitesUnlocated: _payload?.sitesUnlocated ?? null,
+      sitesFromPointRepere: _payload?.sitesFromPointRepere ?? null,
       lengthKm: _payload?.lengthKm ?? null,
       feedsFailed: _payload?.feedsFailed ?? null,
       flowWindowEnd: _payload?.flow?.windowEnd ?? null,
