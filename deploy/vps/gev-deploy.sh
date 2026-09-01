@@ -73,6 +73,16 @@ git -C "$SRC" fetch --quiet --prune origin "+refs/heads/$branch:refs/remotes/ori
 git -C "$SRC" checkout --quiet --detach "$sha"
 git -C "$SRC" clean -qfd
 
+# The gate lives in the ref, not on the box: a branch cut before it was added
+# ignores GEV_ACCESS_PASSWORD entirely and would put an OPEN origin — every
+# keyed proxy included — on a URL that is reachable. Refuse, and leave the
+# previous container serving.
+if grep -q '^GEV_ACCESS_PASSWORD=.' "$ROOT/.env" 2>/dev/null \
+   && ! grep -qF 'gev-access-gate' "$SRC/vite.config.js"; then
+  LOG "REFUSING $want: this ref predates the access gate, so staging would be open. Rebase the branch onto main."
+  exit 1
+fi
+
 cd "$ROOT"
 if ! docker compose up -d --build; then
   LOG "build/start FAILED for $want — previous container left as-is"
