@@ -21,8 +21,11 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   CADASTRE_AREA_TOLERANCE,
+  CADASTRE_BOX_STEP_DEG,
+  CADASTRE_MAX_ALTITUDE_M,
   CADASTRE_MAX_BOX_DEG,
   CADASTRE_PEN_MM,
+  CADASTRE_REQUEST_MAX_BOX_DEG,
   CADASTRE_SCALE_BANDS,
   CADASTRE_UNKNOWN_BAND,
   CADASTRE_UPSTREAM_LIMIT,
@@ -34,6 +37,7 @@ import {
   cadastreCoverageIntersects,
   cadastreLoadingLabel,
   cadastreParcelTitle,
+  cadastreRequestBox,
   cadastreScaleBand,
   cadastreSheetLine,
   cadastreToleranceLine,
@@ -51,6 +55,7 @@ import {
   sheetKey,
   summarizeCadastreParcels,
 } from './cadastreFeed.js';
+import { snapBoxOutward, validBox } from './viewportBox.js';
 
 const FIXTURE = JSON.parse(readFileSync(
   fileURLToPath(new URL('./fixtures/cadastre-parcelle-sample.json', import.meta.url)),
@@ -454,6 +459,43 @@ test('the cadastred fraction is null when there is no box to divide by', () => {
 
 // ── Box gates and coverage ──────────────────────────────────────────────────
 
+test('the proxy ceiling survives an outward snap of a box at the client ceiling', () => {
+  // The request box is anchored and clipped, so above a few hundred metres it
+  // is EXACTLY the client ceiling on both axes — and `snapBoxOutward` then
+  // moves all four edges out by up to a full step each. A proxy bound that only
+  // allowed one step of growth 400'd the layer at 400 m and 800 m over Paris.
+  const atCeiling = {
+    south: 48.8701, west: 2.2801, north: 48.8901, east: 2.3001,
+  };
+  const snapped = snapBoxOutward(atCeiling, CADASTRE_BOX_STEP_DEG);
+  const latSpan = snapped.north - snapped.south;
+  const lonSpan = snapped.east - snapped.west;
+  assert.ok(latSpan > CADASTRE_MAX_BOX_DEG, 'the snap should genuinely widen it');
+  assert.ok(
+    validBox(snapped, CADASTRE_REQUEST_MAX_BOX_DEG),
+    `snapped to ${latSpan.toFixed(6)} x ${lonSpan.toFixed(6)}, over the ${CADASTRE_REQUEST_MAX_BOX_DEG} proxy bound`,
+  );
+});
+
+test('the anchored box is bounded, and its snap never exceeds the proxy bound', () => {
+  // Swept across the grid so no single lucky alignment carries the assertion.
+  const view = {
+    south: 48.80, west: 2.20, north: 48.95, east: 2.45,
+  };
+  for (let i = 0; i < 40; i += 1) {
+    const focus = { lat: 48.85 + i * 0.0007, lon: 2.30 + i * 0.0011 };
+    const box = cadastreRequestBox(view, focus);
+    assert.ok(box, `no box at ${JSON.stringify(focus)}`);
+    assert.ok(box.north - box.south <= CADASTRE_MAX_BOX_DEG + 1e-9);
+    assert.ok(box.east - box.west <= CADASTRE_MAX_BOX_DEG + 1e-9);
+    const snapped = snapBoxOutward(box, CADASTRE_BOX_STEP_DEG);
+    assert.ok(
+      validBox(snapped, CADASTRE_REQUEST_MAX_BOX_DEG),
+      `snap of ${JSON.stringify(box)} rejected by the proxy bound`,
+    );
+  }
+});
+
 test('either span over the ceiling is too wide', () => {
   // Built from zero so the spans are exactly the ceiling. Offsetting by a real
   // latitude would not be: `48.85 + 0.02 - 48.85` is 0.020000000000004547 in
@@ -546,8 +588,8 @@ test('percentage precision scales so a strong agreement never prints as −0,0 %
 
 test('each refusal explains itself in its own terms', () => {
   assert.match(
-    cadastreLoadingLabel({ status: 'too-wide' }),
-    new RegExp(`Zoome sous ${CADASTRE_MAX_BOX_DEG}°`),
+    flat(cadastreLoadingLabel({ status: 'too-high' })),
+    new RegExp(`Descends sous ${CADASTRE_MAX_ALTITUDE_M.toLocaleString('en-US').replace(',', ' ')} m`),
   );
   assert.match(cadastreLoadingLabel({ status: 'off-coverage' }), /Hors couverture PCI vecteur/);
   const dense = flat(cadastreLoadingLabel({ status: 'too-dense', totalInBox: 15977 }));

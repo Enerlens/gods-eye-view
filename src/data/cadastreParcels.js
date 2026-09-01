@@ -10,15 +10,16 @@ import { boxKey, snapBoxOutward } from './viewportBox.js';
 import {
   CADASTRE_AREA_TOLERANCE,
   CADASTRE_BOX_STEP_DEG,
+  CADASTRE_MAX_ALTITUDE_M,
   CADASTRE_MAX_BOX_DEG,
   CADASTRE_SCALE_BANDS,
   CADASTRE_UNKNOWN_BAND,
   cadastreAreaLines,
-  cadastreBoxTooWide,
   cadastreCommuneLine,
   cadastreCoverageIntersects,
   cadastreLoadingLabel,
   cadastreParcelTitle,
+  cadastreRequestBox,
   cadastreScaleBand,
   cadastreSheetLine,
   cadastreToleranceLine,
@@ -186,29 +187,74 @@ export function cadastreClassificationTypeForScene(scene) {
 }
 
 /**
+ * The point on the globe the middle of the screen is looking at.
+ *
+ * `pickEllipsoid` and not `globe.pick`: the ellipsoid always answers, terrain
+ * may not have streamed yet, and a request box does not need centimetres — it
+ * needs to be in the right kilometre. Null when the middle of the screen is
+ * sky, which the caller handles rather than guessing.
+ * @param {?Cesium.Viewer} viewer
+ * @returns {?{lat:number, lon:number}}
+ */
+export function cadastreFocusPoint(viewer) {
+  const scene = viewer?.scene;
+  const camera = viewer?.camera;
+  if (!scene || typeof camera?.pickEllipsoid !== 'function') return null;
+  const width = scene.canvas?.clientWidth;
+  const height = scene.canvas?.clientHeight;
+  if (!width || !height) return null;
+  const ellipsoid = scene.globe?.ellipsoid || Cesium.Ellipsoid.WGS84;
+  const hit = camera.pickEllipsoid(new Cesium.Cartesian2(width / 2, height / 2), ellipsoid);
+  if (!hit) return null;
+  const carto = ellipsoid.cartesianToCartographic(hit);
+  if (!carto) return null;
+  const lat = Cesium.Math.toDegrees(carto.latitude);
+  const lon = Cesium.Math.toDegrees(carto.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : null;
+}
+
+/**
  * The viewport this layer will ask for, or null when there is nothing to ask.
  *
- * Three distinct "no" answers, kept distinct because each needs a different
- * thing said to the operator: no camera rectangle at all, a view too wide for a
- * parcel to be worth a pixel, and a view outside the country this data
- * describes. Coverage is checked BEFORE width, or a wide view of the Atlantic
- * is told to zoom in — advice that would still find nothing at any altitude.
+ * The gate is the camera's ALTITUDE and the request is a box around what the
+ * camera is looking AT — deliberately, and it took a bug report to get here.
+ * The first version gated on the span of `computeViewRectangle`, which on a
+ * TILTED camera reaches the horizon: measured at 240 m over Paris, the same
+ * altitude yields 0.0038° of longitude looking straight down and 0.0397° at a
+ * 25° pitch. This globe defaults to an oblique view, so the layer refused to
+ * load while the operator stood in the street with the parcels in front of
+ * them, and the row told them to zoom in when they already had.
+ *
+ * Four distinct "no" answers, kept distinct because each needs a different
+ * thing said: no camera rectangle at all, a camera too high for a parcel to be
+ * worth a pixel, a view outside the country this data describes, and a
+ * degenerate camera whose focus point falls outside its own view. Coverage is
+ * checked BEFORE altitude, or a high view of the Atlantic is told to descend —
+ * advice that would still find nothing at sea level.
  * @param {?Cesium.Viewer} viewer
  * @returns {{box: ?object, reason: ?string}}
  */
 export function cadastreViewportBox(viewer) {
   const rectangle = viewer?.camera?.computeViewRectangle?.(viewer?.scene?.globe?.ellipsoid);
   if (!rectangle) return { box: null, reason: 'no-view' };
-  const box = {
+  const view = {
     south: Cesium.Math.toDegrees(rectangle.south),
     north: Cesium.Math.toDegrees(rectangle.north),
     west: Cesium.Math.toDegrees(rectangle.west),
     east: Cesium.Math.toDegrees(rectangle.east),
   };
-  if (![box.south, box.west, box.north, box.east].every(Number.isFinite)) return { box: null, reason: 'no-view' };
-  if (box.west >= box.east || box.south >= box.north) return { box: null, reason: 'no-view' };
-  if (!cadastreCoverageIntersects(box)) return { box: null, reason: 'off-coverage' };
-  if (cadastreBoxTooWide(box)) return { box: null, reason: 'too-wide' };
+  if (![view.south, view.west, view.north, view.east].every(Number.isFinite)) {
+    return { box: null, reason: 'no-view' };
+  }
+  if (view.west >= view.east || view.south >= view.north) return { box: null, reason: 'no-view' };
+  if (!cadastreCoverageIntersects(view)) return { box: null, reason: 'off-coverage' };
+
+  const altitude = viewer?.camera?.positionCartographic?.height;
+  if (!Number.isFinite(altitude)) return { box: null, reason: 'no-view' };
+  if (altitude > CADASTRE_MAX_ALTITUDE_M) return { box: null, reason: 'too-high' };
+
+  const box = cadastreRequestBox(view, cadastreFocusPoint(viewer));
+  if (!box) return { box: null, reason: 'no-view' };
   return { box, reason: null };
 }
 
@@ -535,11 +581,11 @@ async function load() {
     _payload = null;
     _loadedKey = null;
     _error = null;
-    _status = reason === 'too-wide' ? 'too-wide' : (reason === 'off-coverage' ? 'off-coverage' : 'idle');
+    _status = reason === 'too-high' ? 'too-high' : (reason === 'off-coverage' ? 'off-coverage' : 'idle');
     governorRequestRender('cadastre-clear');
     // `no-view` is the ONE gate that resolves without the operator doing
     // anything: the camera is mid-flight and Cesium cannot give a rectangle
-    // yet. Everything else here — too wide, off coverage — is a stable state a
+    // yet. Everything else here — too high, off coverage — is a stable state a
     // camera move re-triggers through `moveEnd`, but a flight can END before
     // this layer is ever asked, so enabling during a fly-to would otherwise
     // leave the layer silently idle until something else moved. Voice does
@@ -838,7 +884,7 @@ const cadastreParcelsLayer = {
     // reads `zoom-in`/`empty`/`idle` as nominal, so a refusal to draw has to
     // present as one of those with its reason in the label rather than as a
     // status the chip would paint DEGRADED.
-    if (_status === 'too-wide' || _status === 'too-dense') {
+    if (_status === 'too-high' || _status === 'too-dense') {
       result.status = 'zoom-in';
       result.loadingLabel = cadastreLoadingLabel({
         status: _status,

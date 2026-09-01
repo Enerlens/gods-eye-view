@@ -30,6 +30,7 @@ import cadastreParcelsLayer, {
   _setCadastreStateForTest,
 } from './cadastreParcels.js';
 import {
+  CADASTRE_MAX_ALTITUDE_M,
   CADASTRE_MAX_BOX_DEG,
   CADASTRE_SCALE_BANDS,
   CADASTRE_UNKNOWN_BAND,
@@ -62,13 +63,30 @@ function recordFor(idu) {
   return found;
 }
 
-function viewerWithView(degrees) {
+/**
+ * A camera stub. `altitude` and `focus` are separate inputs from the view
+ * rectangle on purpose — that they can disagree IS the bug this gate was
+ * rewritten for, and a stub that derived one from the other could not express
+ * the oblique case at all.
+ */
+function viewerWithView(degrees, { altitude = 400, focus } = {}) {
+  const centre = degrees
+    ? { lat: (degrees.south + degrees.north) / 2, lon: (degrees.west + degrees.east) / 2 }
+    : null;
+  const at = focus === undefined ? centre : focus;
   return {
-    scene: { globe: { ellipsoid: Cesium.Ellipsoid.WGS84 } },
+    scene: {
+      globe: { ellipsoid: Cesium.Ellipsoid.WGS84 },
+      canvas: { clientWidth: 1440, clientHeight: 900 },
+    },
     camera: {
+      positionCartographic: { height: altitude },
       computeViewRectangle: () => (degrees ? Cesium.Rectangle.fromDegrees(
         degrees.west, degrees.south, degrees.east, degrees.north,
       ) : undefined),
+      pickEllipsoid: () => (at
+        ? Cesium.Cartesian3.fromDegrees(at.lon, at.lat)
+        : undefined),
     },
   };
 }
@@ -268,28 +286,110 @@ test('a pick resolves through both the flat and the nested Cesium id shapes', ()
 
 // ── The viewport gate ───────────────────────────────────────────────────────
 
-test('the viewport gate names each refusal separately', () => {
-  const half = CADASTRE_MAX_BOX_DEG / 2;
-  const paris = {
-    south: 48.85, west: 2.35, north: 48.85 + half, east: 2.35 + half,
-  };
-  assert.deepEqual(cadastreViewportBox(viewerWithView(paris)).reason, null);
-
-  assert.equal(cadastreViewportBox(viewerWithView(null)).reason, 'no-view');
-  assert.equal(cadastreViewportBox(null).reason, 'no-view');
-  assert.equal(cadastreViewportBox(viewerWithView({
-    south: 48.8, west: 2.2, north: 48.9, east: 2.5,
-  })).reason, 'too-wide');
+test('the gate is the camera ALTITUDE, not the span of a tilted view rectangle', () => {
+  // The bug this replaced: `computeViewRectangle` on a tilted camera reaches
+  // the horizon. Measured in the app at 240 m over Paris — 0.0038° of longitude
+  // looking straight down, 0.0397° at a 25° pitch. Gating on the span refused
+  // the layer at street level on the oblique view this globe defaults to, and
+  // told the operator to zoom in when they were already 240 m up.
+  const oblique = {
+    south: 48.8700, west: 2.2748, north: 48.8918, east: 2.3145,
+  }; // the real 240 m / 25° rectangle: 0.0218 x 0.0397
+  const result = cadastreViewportBox(viewerWithView(oblique, { altitude: 240 }));
+  assert.equal(result.reason, null, 'a 240 m oblique view must load');
+  assert.ok(result.box, 'a 240 m oblique view must produce a box');
+  // And what it asks for is BOUNDED, however far the lens can see.
+  assert.ok(result.box.north - result.box.south <= CADASTRE_MAX_BOX_DEG + 1e-9);
+  assert.ok(result.box.east - result.box.west <= CADASTRE_MAX_BOX_DEG + 1e-9);
 });
 
-test('coverage is checked BEFORE width, so mid-ocean is never told to zoom in', () => {
-  // A wide view of the Atlantic fails both gates. Reporting `too-wide` would
-  // send the operator zooming toward an answer that does not exist at any
+test('the request box holds what the camera looks AT, not where it is', () => {
+  // On a tilted camera those are different places — 515 m apart at 240 m and a
+  // 25° pitch. Asking around the camera would load the ground behind the
+  // operator's shoulder and miss what is in front of them.
+  //
+  // Containment rather than an exact centre: the box is anchored on the focus
+  // and THEN clipped to the view, so a focus point near the edge of the screen
+  // legitimately shifts it. Requesting ground that is not on screen would be
+  // the worse answer.
+  const view = {
+    south: 48.870, west: 2.274, north: 48.892, east: 2.315,
+  };
+  const focus = { lat: 48.8746, lon: 2.2945 };
+  const camera = { lat: 48.8700, lon: 2.2945 };
+  const { box } = cadastreViewportBox(viewerWithView(view, { altitude: 240, focus }));
+  assert.ok(
+    focus.lat >= box.south && focus.lat <= box.north
+    && focus.lon >= box.west && focus.lon <= box.east,
+    `focus ${JSON.stringify(focus)} outside ${JSON.stringify(box)}`,
+  );
+  // The far half of the screen — kilometres away, where a parcel is well under
+  // a pixel — is not requested at all.
+  assert.ok(box.north < view.north, 'the horizon end of the view should be trimmed');
+  // And the box stays on the looked-at side of the camera.
+  assert.ok(Math.abs(((box.south + box.north) / 2) - focus.lat)
+    < Math.abs(((box.south + box.north) / 2) - camera.lat) + 1e-9);
+});
+
+test('a nadir view smaller than the ceiling is requested whole, not padded out', () => {
+  // Nothing is asked for that is not on screen: the clip to the view is what
+  // keeps the request honest at low altitude.
+  const small = {
+    south: 48.8700, west: 2.2926, north: 48.8716, east: 2.2964,
+  }; // the real 240 m nadir rectangle
+  const { box, reason } = cadastreViewportBox(viewerWithView(small, { altitude: 240 }));
+  assert.equal(reason, null);
+  assert.ok(Math.abs(box.south - small.south) < 1e-9);
+  assert.ok(Math.abs(box.east - small.east) < 1e-9);
+});
+
+test('above the altitude ceiling nothing is requested', () => {
+  const view = {
+    south: 48.86, west: 2.28, north: 48.88, east: 2.31,
+  };
+  assert.equal(
+    cadastreViewportBox(viewerWithView(view, { altitude: CADASTRE_MAX_ALTITUDE_M + 1 })).reason,
+    'too-high',
+  );
+  assert.equal(
+    cadastreViewportBox(viewerWithView(view, { altitude: CADASTRE_MAX_ALTITUDE_M })).reason,
+    null,
+  );
+});
+
+test('the gate names each refusal separately', () => {
+  assert.equal(cadastreViewportBox(viewerWithView(null)).reason, 'no-view');
+  assert.equal(cadastreViewportBox(null).reason, 'no-view');
+  // A camera with a rectangle but no altitude cannot be gated, and guessing one
+  // would answer the question this layer exists to be careful about.
+  const view = {
+    south: 48.86, west: 2.28, north: 48.88, east: 2.31,
+  };
+  assert.equal(cadastreViewportBox(viewerWithView(view, { altitude: NaN })).reason, 'no-view');
+});
+
+test('a camera looking at the sky falls back to the view, and only if it fits', () => {
+  // `pickEllipsoid` returns nothing when the middle of the screen is not the
+  // globe. A small view is still usable; a horizon-wide one is not, and is
+  // refused rather than cropped to an arbitrary corner of itself.
+  const small = {
+    south: 48.8700, west: 2.2926, north: 48.8716, east: 2.2964,
+  };
+  assert.ok(cadastreViewportBox(viewerWithView(small, { altitude: 240, focus: null })).box);
+  const wide = {
+    south: 48.80, west: 2.20, north: 48.95, east: 2.45,
+  };
+  assert.equal(cadastreViewportBox(viewerWithView(wide, { altitude: 240, focus: null })).reason, 'no-view');
+});
+
+test('coverage is checked BEFORE altitude, so mid-ocean is never told to descend', () => {
+  // A high view of the Atlantic fails both gates. Reporting `too-high` would
+  // send the operator down toward an answer that does not exist at any
   // altitude; `off-coverage` is the one that is actually true.
   const atlantic = {
     south: 39, west: -31, north: 41, east: -29,
   };
-  assert.equal(cadastreViewportBox(viewerWithView(atlantic)).reason, 'off-coverage');
+  assert.equal(cadastreViewportBox(viewerWithView(atlantic, { altitude: 900000 })).reason, 'off-coverage');
 });
 
 // ── Ground classification ───────────────────────────────────────────────────
@@ -362,7 +462,7 @@ test('a refused box reads as guidance, not as a broken feed', () => {
   // UNAVAILABLE. A refusal to draw is normal operation, so it has to present as
   // one of the guidance states with its reason in the label.
   for (const [status, pattern] of [
-    ['too-wide', /Zoome sous 0\.02°/],
+    ['too-high', /Descends sous 1 500 m/],
     ['too-dense', /15 977 parcelles ici/],
   ]) {
     _setCadastreStateForTest({

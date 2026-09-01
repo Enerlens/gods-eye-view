@@ -137,6 +137,36 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **The layer would not load at street level on a tilted camera.** The viewport
+  gate read the span of `computeViewRectangle`, which on a TILTED camera returns
+  everything the lens can see down to the horizon — a statement about the pitch
+  far more than about how close the operator is. Measured in the app at 240 m
+  over Paris: 0.0038° of longitude looking straight down, 0.0084° at 45°, and
+  **0.0397° at 25°** — the same altitude, a tenfold spread. This globe defaults
+  to an oblique view, so the layer refused to draw while the operator stood in
+  the street with the parcels in front of them, and the row told them to zoom in
+  when they already had.
+  - The gate is now the camera's **altitude** (≤ 1 500 m), which is stable under
+    pitch, and the row says "Descends sous 1 500 m" rather than naming a span
+    the operator cannot see.
+  - The request is a ≤ 0.02° box anchored on the point the **middle of the
+    screen** meets the globe, clipped to the view. Under a nadir camera the view
+    is the smaller of the two and the box IS the view, so nothing off-screen is
+    ever requested; under a tilt it is the near and middle ground around what is
+    being looked at, and the far half of the screen — where a parcel is well
+    under a pixel — is not asked for. Anchoring on the camera's own position
+    instead would load the ground behind the operator's shoulder.
+- **And the proxy then rejected its own client.** Because the anchored box is
+  exactly the client ceiling on both axes above a few hundred metres,
+  `snapBoxOutward` — which moves all four edges out by up to a full grid step —
+  reliably pushed it past a proxy bound that only allowed one step of growth.
+  The layer 400'd at 400 m, 800 m and 1 200 m over Paris while working at 240 m,
+  which is the shape of a bug that a span-sized box had been hiding. The bound
+  now allows two steps for the snap and a third for floating point.
+
+Verified over Paris 16e on the oblique view that reported it: 2 393 parcelles at
+239 m, 4 426 at 800 m, 3 736 at 1 400 m, and the guidance line above that.
+
 - **The Événementiel-DIR road-events attribution was never rendered** — the
   same merge shape that erased the power grid's ODbL notice a week earlier.
   Two branches each appended a credit at the same point in `DATA_CREDITS`, and

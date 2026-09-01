@@ -88,6 +88,25 @@ export const CADASTRE_LICENCE = 'Licence Ouverte 2.0';
 export const CADASTRE_MAX_BOX_DEG = 0.02;
 
 /**
+ * Camera altitude above which parcels are not drawn at all, in metres.
+ *
+ * The gate is ALTITUDE and not the view rectangle's span, and that distinction
+ * is the whole reason this constant exists. `computeViewRectangle` on a TILTED
+ * camera returns everything the lens can see down to the horizon, which is a
+ * statement about the pitch far more than about how close the operator is.
+ * Measured in the app at 240 m over Paris on 2026-09-01: 0.0038° of longitude
+ * looking straight down, 0.0084° at 45°, and 0.0397° at 25° — the same 240 m,
+ * a tenfold spread, and the last one is over any span ceiling worth setting.
+ * Gating on it refused the layer at street level on exactly the oblique view
+ * this globe defaults to.
+ *
+ * 1 500 m is where a 0.02° box stops covering a nadir view (0.0157° of
+ * longitude at 1 000 m, 0.0315° at 2 000 m), so below it the drawn window is
+ * most of what is on screen rather than a patch in the middle of it.
+ */
+export const CADASTRE_MAX_ALTITUDE_M = 1500;
+
+/**
  * Cache grid the request box is snapped onto. 0.002° ≈ 220 m: panning a street
  * re-uses the cached answer instead of minting a fresh upstream call for every
  * camera nudge. Three decimals of {@link boxKey} resolve this exactly.
@@ -97,16 +116,25 @@ export const CADASTRE_BOX_STEP_DEG = 0.002;
 /**
  * The ceiling the PROXY enforces, deliberately NOT the one the client gates on.
  *
- * The two numbers do different jobs. {@link CADASTRE_MAX_BOX_DEG} is a product
- * decision — "this layer does not load above two kilometres" — applied to a
- * camera rectangle. This one is an abuse bound: "no caller gets to ask for a
- * département". Setting them equal looks tidy and is a bug, because a camera
- * sitting exactly at the product ceiling produces spans like
- * `43.31 - 43.29 = 0.020000000000004547`, and floating-point noise then decides
- * which requests at the layer's own maximum zoom get a 400. One snap step of
- * headroom is far below anything that matters upstream and far above the noise.
+ * The two numbers do different jobs. {@link CADASTRE_MAX_BOX_DEG} bounds what
+ * the client ASKS FOR. This one is an abuse bound on what the server ACCEPTS,
+ * and it has to leave room for everything that happens to a box between those
+ * two points — which is more than it looks.
+ *
+ * `snapBoxOutward` moves each of the four edges outward by up to a full grid
+ * step, so a box already at the client ceiling arrives up to TWO steps wider.
+ * That is not a corner case: the request box is now anchored on the focus point
+ * and clipped to the view, so above a few hundred metres it is EXACTLY
+ * `CADASTRE_MAX_BOX_DEG` on both axes and the snap always pushes it over. A
+ * one-step margin passed every test and then 400'd the layer at 400 m and
+ * 800 m over Paris — the altitudes where the box first stops being view-sized.
+ *
+ * Two steps for the snap and a third for floating point, which is the other
+ * half of this: a snapped edge is rounded to six decimals, and comparing the
+ * difference of two such values against an exact ceiling is decided by noise
+ * (`43.31 - 43.29` is `0.020000000000004547`).
  */
-export const CADASTRE_REQUEST_MAX_BOX_DEG = CADASTRE_MAX_BOX_DEG + CADASTRE_BOX_STEP_DEG;
+export const CADASTRE_REQUEST_MAX_BOX_DEG = CADASTRE_MAX_BOX_DEG + 3 * CADASTRE_BOX_STEP_DEG;
 
 /**
  * Api Carto's own per-request ceiling, measured rather than documented.
@@ -275,6 +303,49 @@ export function cadastreBoxTooWide(box) {
   if (!box) return true;
   return (box.north - box.south) > CADASTRE_MAX_BOX_DEG
     || (box.east - box.west) > CADASTRE_MAX_BOX_DEG;
+}
+
+/**
+ * The box to actually request: what the operator is looking AT, bounded.
+ *
+ * Two inputs, and neither is sufficient alone. The view rectangle knows what is
+ * on screen but on a tilted camera that reaches the horizon, which is far more
+ * ground than Api Carto will answer for and far more than carries a legible
+ * parcel. The focus point — where the middle of the screen meets the globe —
+ * knows WHERE the operator is looking but nothing about how much of it fits.
+ *
+ * So: a `maxDeg` box centred on the focus point, clipped to the view. Under a
+ * nadir camera at low altitude the view is the smaller of the two and the
+ * result IS the view, so nothing is requested that is not on screen. Under a
+ * strong tilt the result is the near and middle ground around the point being
+ * looked at, and the far half of the screen — where a parcel is well under a
+ * pixel anyway — is simply not asked for.
+ *
+ * @param {?{south:number, west:number, north:number, east:number}} view
+ * @param {?{lat:number, lon:number}} focus Screen-centre point on the globe.
+ * @param {number} [maxDeg]
+ * @returns {?{south:number, west:number, north:number, east:number}}
+ */
+export function cadastreRequestBox(view, focus, maxDeg = CADASTRE_MAX_BOX_DEG) {
+  if (!view) return null;
+  const lat = finiteOrNull(focus?.lat);
+  const lon = finiteOrNull(focus?.lon);
+  // No focus point at all — the middle of the screen is sky. The view is then
+  // the only thing known, and it is used only if it already fits.
+  if (lat === null || lon === null) {
+    return cadastreBoxTooWide(view) ? null : { ...view };
+  }
+  const half = maxDeg / 2;
+  const box = {
+    south: Math.max(view.south, lat - half),
+    north: Math.min(view.north, lat + half),
+    west: Math.max(view.west, lon - half),
+    east: Math.min(view.east, lon + half),
+  };
+  // A focus point outside its own view rectangle is possible for a degenerate
+  // camera; an inverted box is not a small request, it is a broken one.
+  if (box.south >= box.north || box.west >= box.east) return null;
+  return box;
 }
 
 /**
@@ -956,10 +1027,10 @@ export function cadastreAreaLines(parcel) {
  * @param {object} state
  * @returns {?string}
  */
-export function cadastreLoadingLabel({
-  status, totalInBox, maxBoxDeg = CADASTRE_MAX_BOX_DEG,
-} = {}) {
-  if (status === 'too-wide') return `Zoome sous ${maxBoxDeg}° pour charger le parcellaire`;
+export function cadastreLoadingLabel({ status, totalInBox } = {}) {
+  if (status === 'too-high') {
+    return `Descends sous ${CADASTRE_MAX_ALTITUDE_M.toLocaleString('fr-FR')} m pour charger le parcellaire`;
+  }
   if (status === 'off-coverage') return 'Hors couverture PCI vecteur (France et DROM)';
   if (status === 'too-dense') {
     const count = finiteOrNull(totalInBox);
