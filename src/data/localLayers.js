@@ -8,6 +8,13 @@ import {
   airportTierLegend,
   airportTierVisible,
 } from './airportsPack.js';
+import {
+  DAM_DISPLAY_FLOORS,
+  DAM_TIER_STYLES,
+  damTier,
+  damTierLegend,
+  damTierVisible,
+} from './damsPack.js';
 
 // Use Vite's ?url import to properly resolve these assets in dev and build
 import airportsUrl from './local_data/airports/airports.geojsonl?url';
@@ -31,16 +38,49 @@ const datacenters = createLocalGeoJsonLayer({
   labelGridPx: 138,
 });
 
+// OpenStreetMap dams — ODbL, bundled. France (métropole + outre-mer) is a full
+// extraction of the dam STRUCTURES, 5 529 of them; the rest of the world is the
+// older Open Infrastructure Map snapshot the pack shipped before, kept so the
+// layer is not empty outside France. `source` said "USACE" for a year and never
+// was: nothing here has ever come from the US Army Corps of Engineers.
 const dams = createLocalGeoJsonLayer({
   id: 'local-dams',
   url: damsUrl,
-  name: 'Dams',
-  color: '#0088ff', // Blue
+  name: 'Barrages',
+  color: '#0088ff', // Blue — the polygon footprints; points are graded below.
   icon: '▰',
-  source: 'USACE',
+  source: 'OpenStreetMap',
   labels: true,
-  labelMax: 900,
-  labelGridPx: 132,
+  // Tighter than the old 900/132: the French half clusters hard along the
+  // Alpine and Massif Central valleys, where a dozen ouvrages share one
+  // watershed and the grid would hand every cell to a nameless seuil.
+  labelMax: 700,
+  labelGridPx: 140,
+
+  // ── Importance is the map channel, not just card text ─────────────────
+  // 4 579 of the 6 189 features carry no name, no height and no operator —
+  // pond outlets and river weirs. Drawn identically to Serre-Ponçon they are a
+  // wall. `damTier` grades each feature once and that single answer drives the
+  // dot size, the colour, the label ladder, the display floors and the legend
+  // — see the ladder in ./damsPack.js.
+  groupOf: damTier,
+  groupStyles: DAM_TIER_STYLES,
+  groupVisible: damTierVisible,
+  // Opens on TOUS, like the airports pack: someone who switches the layer on
+  // asked to see the barrages, and hiding four fifths of them before being
+  // asked would answer a question nobody put.
+  defaultParams: { floor: DAM_DISPLAY_FLOORS[0].id },
+  rowControls: (params, tally) => ({
+    chips: DAM_DISPLAY_FLOORS.map((floor) => ({
+      id: floor.id,
+      label: floor.label,
+      active: params.floor === floor.id,
+      state: params.floor === floor.id ? 'active' : 'idle',
+      title: floor.title,
+      params: { floor: floor.id },
+    })),
+    legend: damTierLegend(tally),
+  }),
 });
 
 // NGA World Port Index (Pub. 150) — US public domain, bundled. Depth values

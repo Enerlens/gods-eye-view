@@ -372,12 +372,19 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // `fr` and no longer `us` — which was never true of a pack whose 704 features
+  // were spread over six continents and only 44 of them in France. The pack is
+  // now a complete OSM extraction of the French dam structures (métropole and
+  // outre-mer, 5 529 of them) plus the 660 world features the old Open
+  // Infrastructure Map snapshot had, kept so the layer is not empty elsewhere.
+  // The chip says where the layer can be TRUSTED to have the set, and that is
+  // France; the world tail is a bonus nobody should read as coverage.
   Object.freeze({
     id: 'local-dams',
     category: 'energy',
     label: 'Barrages',
     kind: 'dataset',
-    coverage: 'us',
+    coverage: 'fr',
     auth: 'none',
     cadence: 'static',
   }),

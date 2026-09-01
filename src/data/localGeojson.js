@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { airportCardDetails, airportLabelPriority } from './airportsPack.js';
+import { damCardDetails, damLabelPriority } from './damsPack.js';
 import {
   clearSelectedEntityContextForLayer,
   registerEntityContext,
@@ -81,16 +82,11 @@ export function localInfrastructureOverlayCopy(properties, layerId) {
       .join(' · ');
     if (line) details.push(clampCardLine(line));
   } else if (layerId === 'local-dams') {
-    const river = firstClean([
-      tags.associated_river,
-      props.associated_river,
-      tags.river,
-      props.river,
-      tags['river:name'],
-    ]);
-    if (river && river.toLocaleLowerCase() !== title.toLocaleLowerCase()) {
-      details.push(clampCardLine(river));
-    }
+    // The dam pack owns its own copy, like the airport pack below: the module
+    // that decides what the build emits also writes the lines, so a dropped
+    // field is a failing test rather than a blank line. The host still owns the
+    // width, hence the clamp on the way out.
+    for (const line of damCardDetails(props)) details.push(clampCardLine(line));
   } else if (layerId === 'local-ports') {
     // Harbor size and type come pre-decoded from the build script; a port
     // whose WPI row coded them 'U' simply has no line here.
@@ -1000,7 +996,6 @@ function labelPriorityFromProperties(props, layerId) {
   if (cleanLabel(tags['name:en'])) score += 700;
   if (cleanLabel(tags.operator) || cleanLabel(props.operator)) score += 180;
   if (props.output || tags['plant:output:electricity']) score += 120;
-  if (layerId === 'local-dams') score += 80;
   if (layerId === 'local-datacenters') score += 60;
   // Large harbours outrank very small ones when the label grid is crowded.
   if (layerId === 'local-ports') {
@@ -1010,9 +1005,10 @@ function labelPriorityFromProperties(props, layerId) {
     else if (size === 'medium') score += 160;
     else if (size === 'small') score += 80;
   }
-  // Same idea for airports, but the ladder lives with the pack that writes the
-  // `type`/`scheduled` fields it reads — see src/data/airportsPack.js.
+  // Same idea for airports and dams, but each ladder lives with the pack that
+  // writes the fields it reads — src/data/airportsPack.js, src/data/damsPack.js.
   if (layerId === 'local-airports') score += airportLabelPriority(props);
+  if (layerId === 'local-dams') score += damLabelPriority(props);
   return score;
 }
 
@@ -1058,7 +1054,7 @@ function clampCardLine(value) {
 
 function layerTitle(layerId) {
   if (layerId === 'local-datacenters') return 'Datacenter';
-  if (layerId === 'local-dams') return 'Dam';
+  if (layerId === 'local-dams') return 'Barrage';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Aérodrome';
   return 'Feature';
