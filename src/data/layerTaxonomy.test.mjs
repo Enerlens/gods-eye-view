@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 
 import { REGISTERED_LAYER_IDS } from './layerState.js';
 import {
+  COVERAGE_CHIPS,
   LAYER_CATEGORIES,
   LAYER_TAXONOMY,
+  coverageChip,
   groupLayerIdsByCategory,
   layerTaxonomyFor,
   validateLayerTaxonomy,
@@ -104,9 +106,9 @@ test('layerTaxonomyFor resolves registered ids and refuses unknown ones', () => 
   assert.equal(layerTaxonomyFor('not-a-layer'), null);
 });
 
-test('the French display names are recorded but not yet consumed', () => {
-  // Phase 3 flips the panel from `layer.name` to this field. Until it does, the
-  // labels living here must not be mistaken for what the UI renders today.
+test('the French display names are what the panel renders', () => {
+  // DataLayerManager reads this field for every row, its aria-label and the
+  // loading toast. A missing or suffixed label is therefore a visible defect.
   for (const entry of LAYER_TAXONOMY) {
     assert.equal(typeof entry.label, 'string');
     assert.ok(entry.label.length > 0, `${entry.id} has no label`);
@@ -116,4 +118,37 @@ test('the French display names are recorded but not yet consumed', () => {
   assert.equal(layerTaxonomyFor('military-installations').label, 'Sites militaires');
   assert.equal(layerTaxonomyFor('shared-mobility-fr').label, 'Véhicules partagés');
   assert.equal(layerTaxonomyFor('local-datacenters').label, 'Datacenters');
+});
+
+test('the scope chip marks the exceptions and leaves the default bare', () => {
+  // A chip on every row is a chip on none: `global` is the majority case, so it
+  // gets no badge and the FR/US/city layers stand out by carrying one.
+  assert.equal(coverageChip('global'), null);
+  assert.equal(coverageChip('fr'), 'FR');
+  assert.equal(coverageChip('us'), 'US');
+  assert.equal(coverageChip('cities'), 'VILLES');
+  assert.equal(coverageChip('not-a-coverage'), null);
+});
+
+test('every entry resolves its own chip, and the majority carries none', () => {
+  for (const entry of LAYER_TAXONOMY) {
+    assert.equal(entry.scopeChip, COVERAGE_CHIPS[entry.coverage] ?? null, entry.id);
+  }
+  // The invariant is not a ratio, it is a rule: chipped means "not global".
+  const chipped = LAYER_TAXONOMY.filter((entry) => entry.scopeChip !== null);
+  const nonGlobal = LAYER_TAXONOMY.filter((entry) => entry.coverage !== 'global');
+  assert.ok(chipped.length > 0, 'no layer carries a scope chip');
+  assert.deepEqual(chipped.map((entry) => entry.id), nonGlobal.map((entry) => entry.id));
+  assert.equal(layerTaxonomyFor('france-energy').scopeChip, 'FR');
+  assert.equal(layerTaxonomyFor('flights').scopeChip, null);
+  assert.equal(layerTaxonomyFor('bikeshare').scopeChip, 'VILLES');
+});
+
+test('a coverage value with no chip mapping is rejected at import time', () => {
+  // The chip table is checked against the coverage vocabulary, not the other way
+  // round: an unmapped value would render an empty badge, which reads as a bug.
+  const mapped = new Set(Object.keys(COVERAGE_CHIPS));
+  for (const entry of LAYER_TAXONOMY) {
+    assert.ok(mapped.has(entry.coverage), `${entry.id} has an unmapped coverage`);
+  }
 });

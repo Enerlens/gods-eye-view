@@ -42,9 +42,12 @@ import { interruptCameraMotion, prefersReducedMotion } from '../cameraVerbs.js';
  *   worse answer than the guidance it replaces.
  *
  * • **It aims at what the operator is looking at.** The focus is the centre of
- *   the current view, pulled into the layer's coverage only when that centre
- *   falls outside it — a camera framing France with its centre in the Bay of
- *   Biscay should land on France, not on water.
+ *   the current view, pulled onto the layer's coverage when that centre falls
+ *   outside it and the coverage is a real part of the shot — a camera framing
+ *   France with its centre in the Bay of Biscay should land on France, not on
+ *   water. A sliver at the edge of a camera aimed somewhere else is not, and
+ *   the gate declines to fly at all rather than teleport away from the subject
+ *   (see `viewGateFocus`).
  */
 
 /** Degrees ↔ radians, kept local so the geometry stays Cesium-free and testable. */

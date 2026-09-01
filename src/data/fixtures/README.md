@@ -1,5 +1,17 @@
 # Test fixtures
 
+- `schools-annuaire-sample.json` — 15 real rows from
+  `data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-annuaire-education`,
+  captured 2026-09-01 with the projection's own field selection. Chosen so that
+  each row is awkward in a different way: two REP+ écoles, a lycée under the
+  ministry of Agriculture, an EREA, a médico-social, a service administratif
+  with a parent UAI, two rows geocoded only to `Ville` (the commune centroid),
+  two sub-UAI SECTIONS (SEGPA and SEP) that share a coordinate with their
+  parent, a La Réunion maternelle the metropolitan polygons cannot hold, and
+  one row with no `type_etablissement` at all. Used by `schoolsFeed.test.mjs`
+  and `schoolsDepartements.test.mjs`; a synthetic fixture would have none of
+  those and would pass regardless of what the modules do. Licence Ouverte 2.0.
+
 - `tomtom-flow-austin-12-935-1686.pbf` — one real TomTom traffic-flow vector
   tile (Mapbox Vector Tile protobuf, layer `"Traffic flow"`), downtown Austin
   z12 x935 y1686, captured 2026-07-16 from
@@ -206,3 +218,36 @@
   the code DVF needs and that every commune-level source answers 75056 for. The
   lines carry their **official liveries**: metro 5 is `#ff5a00` with black text.
   ODbL 1.0, Île-de-France Mobilités.
+- `bison-fute-evenementiel-sample.xml` — 9 real situations (16 records) of the
+  national DATEX II road-event aggregate
+  `tipi.bison-fute.gouv.fr/.../Evenementiel-DIR/grt/RRN/content.xml`, captured
+  2026-08-31 at its own `publicationTime` of 21:13:26.825+02:00, with the SOAP
+  envelope and publication header kept verbatim so the projection under test
+  reads exactly what the proxy reads. Nine of 286, chosen to hold every trap
+  and seven of the eight drawn categories. Each is one thing the projection
+  exists for: **260830-002035**, an accident on the N94 that also publishes the
+  lane closure it caused — the situation that proves one incident must not be
+  drawn twice; **260131-000090**, a rockfall opened on 31 January whose validity
+  window has **no end time at all** and which only `lifeCycleManagement/end`
+  closes, so reading the window alone leaves a landslide on the N20 for seven
+  months; **260122-001698**, roadworks ordered for **1 October** that carry a
+  closure and a diversion of their own; **260722-001613**, a `roadClosed`
+  segment, which is the only way to tell a closure from a restriction inside
+  one DATEX II class; **260113-001342**, a situation that is nothing but
+  diversions *and* publishes an `internalNote` comment — the operator's message
+  to their own district, which the projection reads and drops; plus a queue at
+  Calais, snow closing the col du Glandon, a landslide cutting the D21, and
+  live roadworks. Licence Ouverte 2.0, DIR via Bison Futé / Tipi.
+- `irve-bornes-grouped-sample.json` — 31 grouped rows of ODRÉ's `bornes-irve`,
+  captured 2026-08-27 through the same `group_by` the proxy uses, holding 311
+  real points de charge across 12 coordinates. Kept as the raw Opendatasoft
+  envelope (`{total_count, results}`) so the projection under test reads exactly
+  what the proxy reads. Every trap in it is real and is the point: Q-Park's
+  Grande Arche car park (224 charge points on one coordinate), the same Belib'
+  and ENGIE Vianeo sites published twice under a second operator name, a
+  Brétigny-sur-Orge site published at six decimals by one feed and seven by
+  another, `puissance_nominale` of 7 360 in a kilowatt column, a 0 kW row at
+  exactly (0, 0), a QOVOLTIS site whose verified commune is Le Porge but whose
+  coordinate is south of Madagascar, Mac-Roman mojibake in `condition_acces`,
+  and four spellings of a boolean in one file. Licence Ouverte 2.0,
+  transport.data.gouv.fr via ODRÉ.

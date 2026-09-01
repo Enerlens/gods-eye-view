@@ -49,6 +49,32 @@ export const PAN_GTFS_RT_FORMAT = 'gtfs-rt';
 /** Declared feature that means "this resource has VehiclePosition entities". */
 export const PAN_VEHICLE_POSITIONS_FEATURE = 'vehicle_positions';
 
+/**
+ * Declared feature that means "this resource has TripUpdate entities".
+ *
+ * Measured 2026-08-31: every one of the 150 vehicle-position feeds has a
+ * trip-update companion in its own dataset, and 63 of them ARE that companion
+ * — one resource id serving both. That is what carries the ordered stops of the trip a
+ * selected vehicle is running — and how far off the timetable the operator
+ * says it is — without touching the 223 MB `stop_times.txt` of the static
+ * archive, and it is what makes both an enrichment of the fleet already on
+ * screen rather than a second layer.
+ */
+export const PAN_TRIP_UPDATES_FEATURE = 'trip_updates';
+
+/**
+ * Declared feature that means "this resource has Alert entities".
+ *
+ * Thinner: 60 of the 150 (measured 2026-08-31). An alert is the operator's own
+ * sentence about a line — works, a strike, a diversion — and is the only
+ * source in GTFS-Realtime for the disruption a rider would be told about at
+ * the stop.
+ */
+export const PAN_SERVICE_ALERTS_FEATURE = 'service_alerts';
+
+/** Resource format that carries static GTFS archives. */
+export const PAN_GTFS_FORMAT = 'GTFS';
+
 /** Human labels for the licence codes the PAN publishes on these datasets. */
 export const PAN_LICENCE_LABELS = Object.freeze({
   lov2: 'Licence Ouverte 2.0',
@@ -216,6 +242,124 @@ export function isVehiclePositionResource(resource) {
   if (resource.is_available === false) return false;
   const features = Array.isArray(resource.features) ? resource.features : [];
   return features.includes(PAN_VEHICLE_POSITIONS_FEATURE);
+}
+
+/**
+ * Whether a resource is a GTFS-RT body that declares a given feature.
+ *
+ * Same availability rule as {@link isVehiclePositionResource}: a resource the
+ * catalog already flags as unreachable is not one to poll.
+ *
+ * @param {Object} resource One entry of `dataset.resources`.
+ * @param {string} feature One of the `PAN_*_FEATURE` constants.
+ * @returns {boolean}
+ */
+export function isRealtimeResourceWith(resource, feature) {
+  if (!resource || resource.format !== PAN_GTFS_RT_FORMAT) return false;
+  if (resource.is_available === false) return false;
+  if (!String(resource.url ?? '').trim()) return false;
+  const features = Array.isArray(resource.features) ? resource.features : [];
+  return features.includes(feature);
+}
+
+/**
+ * The dataset's resources carrying `feature`, ranked by how likely each is to
+ * be the COMPANION of one particular vehicle-position resource.
+ *
+ * Ranking, in order:
+ *
+ *   1. The vehicle-position resource ITSELF, when it declares the feature too.
+ *      63 of the 150 French position feeds do (measured 2026-08-31), and for
+ *      those the companion body is bytes already fetched — the same
+ *      `FeedMessage` read a second way, at zero network cost.
+ *   2. Nearest resource id. The PAN mints a network's paired resources in one
+ *      go, so a pair sits on adjacent ids: TBM is 83026/83025, TaM's urban set
+ *      81755/81757 and its suburban set 83780/83779. Adjacency is a strong
+ *      hint precisely where it is needed — a dataset that publishes SEVERAL
+ *      position feeds (TaM splits urban from suburban, Astuce splits three
+ *      operators) and would otherwise pair every one of them to the same body.
+ *   3. Id order, so the result never depends on catalog ordering.
+ *
+ * It is a RANKING, not a verdict: `scripts/build-pan-gtfs-rt-index.mjs` probes
+ * the candidates and keeps the one whose trips actually join the feed's own
+ * vehicles, because the id-adjacency hint is wrong for at least one network
+ * (Astuce's three operators interleave). Nothing downstream guesses.
+ *
+ * @param {Object} dataset PAN dataset record.
+ * @param {Object} vehicleResource The dataset's vehicle-position resource.
+ * @param {string} feature One of the `PAN_*_FEATURE` constants.
+ * @returns {Array<Object>} Candidate resources, best first.
+ */
+export function companionResources(dataset, vehicleResource, feature) {
+  const resources = Array.isArray(dataset?.resources) ? dataset.resources : [];
+  const anchor = Number(vehicleResource?.id);
+  return resources
+    .filter((resource) => isRealtimeResourceWith(resource, feature))
+    .map((resource) => ({
+      resource,
+      self: resource.id === vehicleResource?.id ? 0 : 1,
+      distance: Number.isFinite(anchor) && Number.isFinite(Number(resource.id))
+        ? Math.abs(Number(resource.id) - anchor)
+        : Number.MAX_SAFE_INTEGER,
+    }))
+    .sort((a, b) => (
+      a.self - b.self
+      || a.distance - b.distance
+      || String(a.resource.id).localeCompare(String(b.resource.id))
+    ))
+    .map((entry) => entry.resource);
+}
+
+/**
+ * Whether a resource is a GTFS-RT body that declares trip updates.
+ *
+ * Same availability rule as {@link isVehiclePositionResource}: a resource the
+ * catalog already flags as unreachable is not one to poll on a click.
+ *
+ * @param {Object} resource One entry of `dataset.resources`.
+ * @returns {boolean}
+ */
+export function isTripUpdateResource(resource) {
+  return isRealtimeResourceWith(resource, PAN_TRIP_UPDATES_FEATURE);
+}
+
+/**
+ * Static GTFS resources of one dataset, in catalog order.
+ *
+ * Kept as a LIST rather than reduced to a guess: several datasets ship more
+ * than one archive — STAR Rennes publishes "version en cours" and "version à
+ * venir" — and which of them carries usable geometry is answered by trying
+ * them, not by picking the first.
+ *
+ * @param {Object} dataset PAN dataset record.
+ * @returns {Array<Object>} The `format: 'GTFS'` resources.
+ */
+export function staticGtfsResources(dataset) {
+  const resources = Array.isArray(dataset?.resources) ? dataset.resources : [];
+  return resources.filter((resource) => resource?.format === PAN_GTFS_FORMAT && resource?.url);
+}
+
+/**
+ * Stable URL of the PAN's own GeoJSON conversion of a static GTFS resource.
+ *
+ * The PAN converts every GTFS it hosts to GeoJSON and serves the result from a
+ * URL derived from the RESOURCE id, refreshed whenever the archive is. That
+ * conversion is what makes a line's trace drawable at all: it carries the
+ * `shapes.txt` geometry already joined to `routes.txt` (`route_id`,
+ * `route_short_name`, `route_color`), and the stop points with their ids — the
+ * two members that, read raw, are the largest in the archive (36 MB and 13 MB
+ * compressed for Normandy, measured 2026-08-31).
+ *
+ * The URL is DERIVED, not published in the bulk catalog: only the per-dataset
+ * endpoint carries `conversions.GeoJSON`, which the index builder reads to
+ * learn whether a conversion exists and how big it is.
+ *
+ * @param {number|string} resourceId PAN resource id of the static GTFS.
+ * @returns {string}
+ */
+export function panGeoJsonConversionUrl(resourceId) {
+  return `https://transport.data.gouv.fr/resources/conversions/${resourceId}/GeoJSON`;
+
 }
 
 /**

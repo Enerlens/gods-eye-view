@@ -1,14 +1,17 @@
 {
   "source": "https://transport.data.gouv.fr/api/datasets",
-  "generatedAt": "2026-08-31T16:39:25.168Z",
+  "generatedAt": "2026-08-31T18:48:20.123Z",
   "generator": "scripts/build-pan-gtfs-rt-index.mjs",
   "note": "bbox values are OBSERVED vehicle bounds at probe time, not published coverage areas",
   "datasetCount": 784,
   "feedCount": 150,
-  "feedsWithBounds": 143,
-  "feedsQueryable": 148,
+  "feedsWithBounds": 144,
+  "feedsQueryable": 147,
   "feedsQuarantined": 0,
-  "feedsDuplicate": 2,
+  "feedsDuplicate": 3,
+  "feedsWithTripUpdates": 150,
+  "feedsWithAlerts": 60,
+  "feedsSharingOneBody": 63,
   "feeds": [
     {
       "id": "pan-10231",
@@ -32,13 +35,13 @@
         "north": 44.8345,
         "east": -0.5412
       },
-      "vehicleSample": 3,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 303,
-        "vehicles": 3,
+        "ms": 291,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -46,9 +49,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 10231,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/372463bd-d7b4-4668-a9b5-bd71a28f389d",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.939Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-12600",
@@ -72,13 +85,13 @@
         "north": 45.7483,
         "east": -0.6265
       },
-      "vehicleSample": 7,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 308,
-        "vehicles": 7,
+        "ms": 292,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -86,9 +99,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 12600,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/47aa1c93-4868-47da-ae43-e2fcbce3575f",
+        "sameResource": true,
+        "tripCount": 2,
+        "joinRate": null,
+        "bytes": 333,
+        "measuredAt": "2026-08-31T18:48:17.940Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-12609",
@@ -108,17 +131,17 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-maybus-mayenne-gtfs-gtfs-rt",
       "bbox": {
         "south": 48.2939,
-        "west": -0.643,
+        "west": -0.6434,
         "north": 48.3112,
         "east": -0.6123
       },
-      "vehicleSample": 2,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
         "ms": 298,
-        "vehicles": 2,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -126,9 +149,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 12609,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/6a1ef3cc-13cc-4770-a347-f183dc6accd6",
+        "sameResource": true,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 959,
+        "measuredAt": "2026-08-31T18:48:17.940Z"
+      },
+      "alerts": {
+        "resourceId": 12609,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/6a1ef3cc-13cc-4770-a347-f183dc6accd6",
+        "sameResource": true,
+        "alertCount": 2,
+        "routeMatch": 0,
+        "bytes": 959,
+        "measuredAt": "2026-08-31T18:48:17.942Z"
+      }
     },
     {
       "id": "pan-12617",
@@ -146,14 +187,19 @@
       "url": "https://www.data.gouv.fr/api/1/datasets/r/136b953f-2b70-4c01-85ef-eb71169d0656",
       "pageUrl": "https://transport.data.gouv.fr/resources/12617",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-de-la-station-de-ski-valmorel-gtfs-gtfs-rt",
-      "bbox": null,
-      "vehicleSample": 0,
-      "observedAt": null,
+      "bbox": {
+        "south": 45.4646,
+        "west": 6.4427,
+        "north": 45.4646,
+        "east": 6.4427
+      },
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 299,
-        "vehicles": 0,
+        "ms": 290,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -161,9 +207,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 12617,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/136b953f-2b70-4c01-85ef-eb71169d0656",
+        "sameResource": true,
+        "tripCount": 2,
+        "joinRate": 1,
+        "bytes": 1243,
+        "measuredAt": "2026-08-31T18:48:17.941Z"
+      },
+      "alerts": {
+        "resourceId": 12617,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/136b953f-2b70-4c01-85ef-eb71169d0656",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": 0,
+        "bytes": 1243,
+        "measuredAt": "2026-08-31T18:48:17.942Z"
+      }
     },
     {
       "id": "pan-15449",
@@ -187,13 +251,13 @@
         "north": 48.6022,
         "east": 6.5112
       },
-      "vehicleSample": 3,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 284,
-        "vehicles": 3,
+        "ms": 287,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -201,9 +265,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 15449,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/0e17b681-e017-46e2-a792-b3b6ead2c06c",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 911,
+        "measuredAt": "2026-08-31T18:48:17.941Z"
+      },
+      "alerts": {
+        "resourceId": 15449,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/0e17b681-e017-46e2-a792-b3b6ead2c06c",
+        "sameResource": true,
+        "alertCount": 2,
+        "routeMatch": null,
+        "bytes": 911,
+        "measuredAt": "2026-08-31T18:48:17.942Z"
+      }
     },
     {
       "id": "pan-25678",
@@ -227,13 +309,13 @@
         "north": 44.6108,
         "east": 2.0446
       },
-      "vehicleSample": 3,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 262,
-        "vehicles": 3,
+        "ms": 287,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -241,9 +323,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 25678,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/0057d63f-cf69-4d67-8c44-3c546ec7d403",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.941Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-34266",
@@ -267,13 +359,13 @@
         "north": 43.19,
         "east": -0.6079
       },
-      "vehicleSample": 2,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 298,
-        "vehicles": 2,
+        "ms": 98,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -281,9 +373,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 34266,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/afee6b6e-2c3f-4317-9d0a-d70540acf8d8",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.942Z"
+      },
+      "alerts": {
+        "resourceId": 34266,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/afee6b6e-2c3f-4317-9d0a-d70540acf8d8",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.943Z"
+      }
     },
     {
       "id": "pan-36515",
@@ -307,13 +417,13 @@
         "north": -20.874,
         "east": 55.6534
       },
-      "vehicleSample": 17,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 302,
-        "vehicles": 17,
+        "ms": 233,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -321,9 +431,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 36515,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c0a17be1-e89a-48a3-aca1-d8eb8e89a55e",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 57850,
+        "measuredAt": "2026-08-31T18:48:17.942Z"
+      },
+      "alerts": {
+        "resourceId": 36515,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c0a17be1-e89a-48a3-aca1-d8eb8e89a55e",
+        "sameResource": true,
+        "alertCount": 5,
+        "routeMatch": null,
+        "bytes": 57850,
+        "measuredAt": "2026-08-31T18:48:17.943Z"
+      }
     },
     {
       "id": "pan-38878",
@@ -350,9 +478,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 273,
+        "ms": 89,
         "vehicles": 0,
         "error": null
       },
@@ -361,9 +489,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 38878,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/dd56dfc5-85b6-43f9-8b1b-8eebd4cb2c2e",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.943Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-40392",
@@ -387,13 +525,13 @@
         "north": 48.3191,
         "east": 0.8191
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 281,
-        "vehicles": 1,
+        "ms": 144,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -401,9 +539,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 40392,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/8bd532f4-8813-4313-be7c-304b8f8f47a7",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 196,
+        "measuredAt": "2026-08-31T18:48:17.943Z"
+      },
+      "alerts": {
+        "resourceId": 40392,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/8bd532f4-8813-4313-be7c-304b8f8f47a7",
+        "sameResource": true,
+        "alertCount": 1,
+        "routeMatch": null,
+        "bytes": 196,
+        "measuredAt": "2026-08-31T18:48:17.945Z"
+      }
     },
     {
       "id": "pan-40623",
@@ -425,15 +581,15 @@
         "south": 43.2739,
         "west": 3.4136,
         "north": 43.4535,
-        "east": 3.5174
+        "east": 3.522
       },
-      "vehicleSample": 10,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 89,
-        "vehicles": 10,
+        "ms": 106,
+        "vehicles": 5,
         "error": null
       },
       "health": {
@@ -441,9 +597,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 40623,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/7dab24f0-3114-49b9-827d-376d10a4b193",
+        "sameResource": true,
+        "tripCount": 6,
+        "joinRate": 1,
+        "bytes": 6616,
+        "measuredAt": "2026-08-31T18:48:17.943Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-52582",
@@ -467,13 +633,13 @@
         "north": 47.8386,
         "east": -0.3425
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 1731,
-        "vehicles": 1,
+        "ms": 133,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -481,9 +647,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 52582,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/0fbf9dc8-d2db-405d-ade4-fdd04a6f8272",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.944Z"
+      },
+      "alerts": {
+        "resourceId": 52582,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/0fbf9dc8-d2db-405d-ade4-fdd04a6f8272",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.945Z"
+      }
     },
     {
       "id": "pan-52918",
@@ -505,15 +689,15 @@
         "south": 45.5014,
         "west": 4.7707,
         "north": 45.591,
-        "east": 4.9183
+        "east": 4.9185
       },
-      "vehicleSample": 16,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 186,
-        "vehicles": 16,
+        "ms": 196,
+        "vehicles": 5,
         "error": null
       },
       "health": {
@@ -521,9 +705,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 52918,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/4e87a135-b46e-46b3-8aaa-0233ec3c242a",
+        "sameResource": true,
+        "tripCount": 5,
+        "joinRate": 1,
+        "bytes": 4063,
+        "measuredAt": "2026-08-31T18:48:17.944Z"
+      },
+      "alerts": {
+        "resourceId": 79280,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/1d919c39-41d4-4453-998c-9417c45b2f28",
+        "sameResource": false,
+        "alertCount": 9,
+        "routeMatch": 0.5,
+        "bytes": 2376,
+        "measuredAt": "2026-08-31T18:48:18.159Z"
+      }
     },
     {
       "id": "pan-67153",
@@ -547,13 +749,13 @@
         "north": 49.5754,
         "east": 0.4876
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 452,
-        "vehicles": 1,
+        "ms": 154,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -561,9 +763,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 67153,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ea44be8d-36ef-4aac-b56f-98b78eb54382",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 1011,
+        "measuredAt": "2026-08-31T18:48:17.945Z"
+      },
+      "alerts": {
+        "resourceId": 67153,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ea44be8d-36ef-4aac-b56f-98b78eb54382",
+        "sameResource": true,
+        "alertCount": 3,
+        "routeMatch": null,
+        "bytes": 1011,
+        "measuredAt": "2026-08-31T18:48:17.945Z"
+      }
     },
     {
       "id": "pan-67732",
@@ -587,13 +807,13 @@
         "north": 47.3652,
         "east": 5.1802
       },
-      "vehicleSample": 139,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 62,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 67,
-        "vehicles": 139,
+        "ms": 65,
+        "vehicles": 62,
         "error": null
       },
       "health": {
@@ -601,9 +821,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 50828,
+        "url": "https://proxy.transport.data.gouv.fr/resource/divia-dijon-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 142,
+        "joinRate": 0.742,
+        "bytes": 132600,
+        "measuredAt": "2026-08-31T18:48:17.996Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-74509",
@@ -624,16 +854,16 @@
       "bbox": {
         "south": 48.3604,
         "west": -4.6223,
-        "north": 48.4531,
-        "east": -4.3638
+        "north": 48.4565,
+        "east": -4.3494
       },
-      "vehicleSample": 79,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 76,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
         "ms": 70,
-        "vehicles": 79,
+        "vehicles": 76,
         "error": null
       },
       "health": {
@@ -641,9 +871,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 67924,
+        "url": "https://proxy.transport.data.gouv.fr/resource/bibus-brest-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 165,
+        "joinRate": 0.671,
+        "bytes": 107801,
+        "measuredAt": "2026-08-31T18:48:17.994Z"
+      },
+      "alerts": {
+        "resourceId": 49675,
+        "url": "https://proxy.transport.data.gouv.fr/resource/bibus-brest-gtfs-rt-alerts",
+        "sameResource": false,
+        "alertCount": 19,
+        "routeMatch": 1,
+        "bytes": 10124,
+        "measuredAt": "2026-08-31T18:48:18.015Z"
+      }
     },
     {
       "id": "pan-78388",
@@ -668,11 +916,11 @@
         "east": 6.0771
       },
       "vehicleSample": 1,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 85,
+        "ms": 377,
         "vehicles": 1,
         "error": null
       },
@@ -681,9 +929,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 78388,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/8b8b8c8b-58a7-4c9e-97da-8c21d10ecb54",
+        "sameResource": true,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 655,
+        "measuredAt": "2026-08-31T18:48:17.945Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-79015",
@@ -707,13 +965,13 @@
         "north": 48.8528,
         "east": 7.8645
       },
-      "vehicleSample": 20,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 6,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 103,
-        "vehicles": 20,
+        "ms": 88,
+        "vehicles": 6,
         "error": null
       },
       "health": {
@@ -721,9 +979,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 79015,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ae8b5fd2-283a-462c-aa34-27e02f6fc4a5",
+        "sameResource": true,
+        "tripCount": 6,
+        "joinRate": 1,
+        "bytes": 6857,
+        "measuredAt": "2026-08-31T18:48:17.945Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-79036",
@@ -747,13 +1015,13 @@
         "north": 45.6448,
         "east": 5.3186
       },
-      "vehicleSample": 17,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 4,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 121,
-        "vehicles": 17,
+        "ms": 130,
+        "vehicles": 4,
         "error": null
       },
       "health": {
@@ -761,9 +1029,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 79036,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/120182b0-e338-4917-b2bb-ee37b60de1ba",
+        "sameResource": true,
+        "tripCount": 4,
+        "joinRate": 1,
+        "bytes": 4984,
+        "measuredAt": "2026-08-31T18:48:17.945Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-79742",
@@ -787,13 +1065,13 @@
         "north": 48.3587,
         "east": -1.1931
       },
-      "vehicleSample": 7,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 69,
-        "vehicles": 7,
+        "ms": 293,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -801,9 +1079,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 79743,
+        "url": "https://proxy.transport.data.gouv.fr/resource/surf-fougeres-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.967Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-79746",
@@ -831,9 +1119,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 68,
+        "ms": 19,
         "vehicles": 0,
         "error": null
       },
@@ -842,9 +1130,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 79745,
+        "url": "https://proxy.transport.data.gouv.fr/resource/axeo-guingamp-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.969Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-79830",
@@ -868,13 +1166,13 @@
         "north": 49.6933,
         "east": -1.4216
       },
-      "vehicleSample": 47,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 24,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 157,
-        "vehicles": 47,
+        "ms": 96,
+        "vehicles": 24,
         "error": null
       },
       "health": {
@@ -882,9 +1180,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 79830,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c94af528-293f-406f-a96f-bf847bcb252a",
+        "sameResource": true,
+        "tripCount": 24,
+        "joinRate": 1,
+        "bytes": 28985,
+        "measuredAt": "2026-08-31T18:48:17.946Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-79993",
@@ -908,13 +1216,13 @@
         "north": 44.8874,
         "east": 1.2223
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 87,
-        "vehicles": 1,
+        "ms": 108,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -922,9 +1230,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 79993,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/1bffdcb5-1839-4725-90da-ca69d1ee05e6",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:17.946Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-80184",
@@ -948,13 +1266,13 @@
         "north": 43.6243,
         "east": 7.055
       },
-      "vehicleSample": 80,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 17,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 80,
+        "ms": 21,
+        "vehicles": 17,
         "error": null
       },
       "health": {
@@ -962,9 +1280,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80185,
+        "url": "https://proxy.transport.data.gouv.fr/resource/palmbus-cannes-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 34,
+        "joinRate": 1,
+        "bytes": 11356,
+        "measuredAt": "2026-08-31T18:48:18.019Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-80381",
@@ -988,13 +1316,13 @@
         "north": 47.8221,
         "east": 1.0754
       },
-      "vehicleSample": 4,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 94,
-        "vehicles": 4,
+        "ms": 74,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -1002,9 +1330,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80381,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/68fc6b99-b51c-4a3c-9740-2edbc4a705bf",
+        "sameResource": true,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 1234,
+        "measuredAt": "2026-08-31T18:48:17.967Z"
+      },
+      "alerts": {
+        "resourceId": 80381,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/68fc6b99-b51c-4a3c-9740-2edbc4a705bf",
+        "sameResource": true,
+        "alertCount": 1,
+        "routeMatch": 1,
+        "bytes": 1234,
+        "measuredAt": "2026-08-31T18:48:17.968Z"
+      }
     },
     {
       "id": "pan-80382",
@@ -1029,13 +1375,13 @@
         "north": 47.0176,
         "east": -2.1743
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 206,
-        "vehicles": 5,
+        "ms": 72,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -1043,9 +1389,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80382,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/e3f2ac4c-758b-4dbd-9854-aa4d95c27d16",
+        "sameResource": true,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 685,
+        "measuredAt": "2026-08-31T18:48:17.968Z"
+      },
+      "alerts": {
+        "resourceId": 80382,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/e3f2ac4c-758b-4dbd-9854-aa4d95c27d16",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": 0,
+        "bytes": 685,
+        "measuredAt": "2026-08-31T18:48:17.968Z"
+      }
     },
     {
       "id": "pan-80662",
@@ -1070,11 +1434,11 @@
         "east": 55.3541
       },
       "vehicleSample": 1,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 23,
+        "ms": 21,
         "vehicles": 1,
         "error": null
       },
@@ -1083,9 +1447,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80663,
+        "url": "https://proxy.transport.data.gouv.fr/resource/alterneo-civis-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 1377,
+        "measuredAt": "2026-08-31T18:48:18.041Z"
+      },
+      "alerts": {
+        "resourceId": 80664,
+        "url": "https://proxy.transport.data.gouv.fr/resource/alterneo-civis-gtfs-rt-service-alert",
+        "sameResource": false,
+        "alertCount": 0,
+        "routeMatch": 0,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.062Z"
+      }
     },
     {
       "id": "pan-80699",
@@ -1109,13 +1491,13 @@
         "north": 47.4758,
         "east": 0.8461
       },
-      "vehicleSample": 152,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 59,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 229,
-        "vehicles": 152,
+        "ms": 194,
+        "vehicles": 59,
         "error": null
       },
       "health": {
@@ -1123,9 +1505,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80700,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c3351c35-b2ab-441b-9829-0c0bb8b77f30",
+        "sameResource": false,
+        "tripCount": 50,
+        "joinRate": 0.831,
+        "bytes": 38824,
+        "measuredAt": "2026-08-31T18:48:18.078Z"
+      },
+      "alerts": {
+        "resourceId": 80706,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/32646037-a138-4c45-86a0-4e44fbbcfd1c",
+        "sameResource": false,
+        "alertCount": 0,
+        "routeMatch": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.168Z"
+      }
     },
     {
       "id": "pan-80710",
@@ -1149,13 +1549,13 @@
         "north": 49.9705,
         "east": 2.4212
       },
-      "vehicleSample": 93,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 34,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 93,
+        "ms": 69,
+        "vehicles": 34,
         "error": null
       },
       "health": {
@@ -1163,9 +1563,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80708,
+        "url": "https://proxy.transport.data.gouv.fr/resource/ametis-amiens-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 43,
+        "joinRate": 0.618,
+        "bytes": 56833,
+        "measuredAt": "2026-08-31T18:48:18.097Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-80723",
@@ -1189,13 +1599,13 @@
         "north": 48.2865,
         "east": 0.7328
       },
-      "vehicleSample": 187,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 46,
-        "vehicles": 187,
+        "ms": 20,
+        "vehicles": 5,
         "error": null
       },
       "health": {
@@ -1203,9 +1613,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80724,
+        "url": "https://proxy.transport.data.gouv.fr/resource/aleop-pdl-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 64,
+        "joinRate": 0.6,
+        "bytes": 30368,
+        "measuredAt": "2026-08-31T18:48:18.040Z"
+      },
+      "alerts": {
+        "resourceId": 80722,
+        "url": "https://proxy.transport.data.gouv.fr/resource/aleop-pdl-gtfs-rt-alerts",
+        "sameResource": false,
+        "alertCount": 48,
+        "routeMatch": 0.667,
+        "bytes": 20530,
+        "measuredAt": "2026-08-31T18:48:18.101Z"
+      }
     },
     {
       "id": "pan-80732",
@@ -1229,13 +1657,13 @@
         "north": 43.9173,
         "east": 4.4961
       },
-      "vehicleSample": 97,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 18,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 182,
-        "vehicles": 97,
+        "ms": 157,
+        "vehicles": 18,
         "error": null
       },
       "health": {
@@ -1243,9 +1671,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80731,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/dba43a34-366d-4bef-aed1-b48c0e31c863",
+        "sameResource": false,
+        "tripCount": 26,
+        "joinRate": 1,
+        "bytes": 17948,
+        "measuredAt": "2026-08-31T18:48:18.131Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-80939",
@@ -1269,13 +1707,13 @@
         "north": 48.1952,
         "east": 0.2868
       },
-      "vehicleSample": 4,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 148,
-        "vehicles": 4,
+        "ms": 112,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1283,9 +1721,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80939,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/476d53cd-374b-41b7-b11a-a158cc9abfaa",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.062Z"
+      },
+      "alerts": {
+        "resourceId": 80939,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/476d53cd-374b-41b7-b11a-a158cc9abfaa",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.062Z"
+      }
     },
     {
       "id": "pan-81017",
@@ -1309,13 +1765,13 @@
         "north": 44.6476,
         "east": 4.4084
       },
-      "vehicleSample": 3,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 233,
-        "vehicles": 3,
+        "ms": 146,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1323,9 +1779,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81017,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/af576ebf-d3a4-4a0f-b692-8ee580cb1877",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 503,
+        "measuredAt": "2026-08-31T18:48:18.062Z"
+      },
+      "alerts": {
+        "resourceId": 81017,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/af576ebf-d3a4-4a0f-b692-8ee580cb1877",
+        "sameResource": true,
+        "alertCount": 1,
+        "routeMatch": null,
+        "bytes": 503,
+        "measuredAt": "2026-08-31T18:48:18.062Z"
+      }
     },
     {
       "id": "pan-81036",
@@ -1344,17 +1818,17 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81036",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-tohm-communaute-de-communes-des-pays-doise-et-dhalatte",
       "bbox": {
-        "south": 49.294,
+        "south": 49.2931,
         "west": 2.5206,
         "north": 49.3527,
-        "east": 2.6564
+        "east": 2.6832
       },
       "vehicleSample": 6,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 217,
+        "ms": 180,
         "vehicles": 6,
         "error": null
       },
@@ -1363,9 +1837,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81038,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/4605100a-7121-4530-87e0-8d7f2d611727",
+        "sameResource": false,
+        "tripCount": 13,
+        "joinRate": 1,
+        "bytes": 4768,
+        "measuredAt": "2026-08-31T18:48:18.142Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81044",
@@ -1389,13 +1873,13 @@
         "north": 49.2006,
         "east": 2.5434
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 209,
-        "vehicles": 3,
+        "ms": 192,
+        "vehicles": 2,
         "error": null
       },
       "health": {
@@ -1403,9 +1887,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81046,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/1f78d701-f1f1-4093-ba11-45134d544cdf",
+        "sameResource": false,
+        "tripCount": 7,
+        "joinRate": 1,
+        "bytes": 1392,
+        "measuredAt": "2026-08-31T18:48:18.177Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81060",
@@ -1429,13 +1923,13 @@
         "north": 49.2346,
         "east": 2.8998
       },
-      "vehicleSample": 5,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 207,
-        "vehicles": 5,
+        "ms": 178,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1443,9 +1937,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81062,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/a67e47a4-f718-49c9-b763-be81f91e15ce",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.181Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81122",
@@ -1468,15 +1972,15 @@
         "south": 49.1883,
         "west": 2.4055,
         "north": 49.2883,
-        "east": 2.4874
+        "east": 2.503
       },
-      "vehicleSample": 26,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 16,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 193,
-        "vehicles": 26,
+        "ms": 148,
+        "vehicles": 16,
         "error": null
       },
       "health": {
@@ -1484,9 +1988,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81120,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/353eac69-85e8-47ee-9e2c-a17a6146f966",
+        "sameResource": false,
+        "tripCount": 29,
+        "joinRate": 1,
+        "bytes": 28888,
+        "measuredAt": "2026-08-31T18:48:18.237Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81126",
@@ -1506,17 +2020,17 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-corolis-urbain-communaute-dagglomeration-du-beauvaisis",
       "bbox": {
         "south": 49.4082,
-        "west": 2.0699,
+        "west": 2.0512,
         "north": 49.4599,
         "east": 2.1191
       },
-      "vehicleSample": 23,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 10,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 174,
-        "vehicles": 23,
+        "ms": 167,
+        "vehicles": 10,
         "error": null
       },
       "health": {
@@ -1524,9 +2038,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81128,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/aedbd2be-1ffb-45c4-88c2-7639712612aa",
+        "sameResource": false,
+        "tripCount": 22,
+        "joinRate": 1,
+        "bytes": 14267,
+        "measuredAt": "2026-08-31T18:48:18.212Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81134",
@@ -1547,16 +2071,16 @@
       "bbox": {
         "south": 49.3863,
         "west": 2.7678,
-        "north": 49.4264,
-        "east": 2.8286
+        "north": 49.4346,
+        "east": 2.834
       },
-      "vehicleSample": 12,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 11,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 158,
-        "vehicles": 12,
+        "ms": 172,
+        "vehicles": 11,
         "error": null
       },
       "health": {
@@ -1564,9 +2088,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81132,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/cb580163-d9f8-4ba3-9abe-7d10a1a03691",
+        "sameResource": false,
+        "tripCount": 22,
+        "joinRate": 1,
+        "bytes": 14430,
+        "measuredAt": "2026-08-31T18:48:18.227Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81140",
@@ -1592,13 +2126,13 @@
         "north": 49.4268,
         "east": 2.0865
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 176,
-        "vehicles": 1,
+        "ms": 70,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1606,9 +2140,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81139,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/774a4d3c-3af0-4233-907e-b01543adb47c",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.240Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81150",
@@ -1632,13 +2176,13 @@
         "north": 49.4222,
         "east": 2.8239
       },
-      "vehicleSample": 3,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 92,
-        "vehicles": 3,
+        "ms": 72,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1646,9 +2190,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81148,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/cc142542-5ceb-4685-a5d8-0f9a690a24c0",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.245Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-8118",
@@ -1672,13 +2226,13 @@
         "north": 43.6682,
         "east": 0.6049
       },
-      "vehicleSample": 8,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 93,
-        "vehicles": 8,
+        "ms": 90,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -1686,9 +2240,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 8118,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ee7325a5-172f-430e-afe7-4072e0cf1321",
+        "sameResource": true,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 2087,
+        "measuredAt": "2026-08-31T18:48:18.182Z"
+      },
+      "alerts": {
+        "resourceId": 8118,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ee7325a5-172f-430e-afe7-4072e0cf1321",
+        "sameResource": true,
+        "alertCount": 4,
+        "routeMatch": 0,
+        "bytes": 2087,
+        "measuredAt": "2026-08-31T18:48:18.182Z"
+      }
     },
     {
       "id": "pan-81256",
@@ -1712,13 +2284,13 @@
         "north": 48.0874,
         "east": -2.9137
       },
-      "vehicleSample": 2,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 422,
-        "vehicles": 2,
+        "ms": 85,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1726,9 +2298,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81256,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/365ca136-0b94-4c28-9931-a812e792e108",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.182Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81290",
@@ -1750,9 +2332,9 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 21,
+        "ms": 22,
         "vehicles": 0,
         "error": null
       },
@@ -1761,9 +2343,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81290,
+        "url": "https://proxy.transport.data.gouv.fr/resource/giverny-vernon-gtfs-rt",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.182Z"
+      },
+      "alerts": {
+        "resourceId": 81290,
+        "url": "https://proxy.transport.data.gouv.fr/resource/giverny-vernon-gtfs-rt",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.182Z"
+      }
     },
     {
       "id": "pan-81300",
@@ -1788,13 +2388,13 @@
         "north": 49.3988,
         "east": 2.4852
       },
-      "vehicleSample": 5,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 109,
-        "vehicles": 5,
+        "ms": 89,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1802,9 +2402,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81298,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ad1dd49f-5a24-4ba6-8313-940aa55f89b4",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.250Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81306",
@@ -1828,13 +2438,13 @@
         "north": 49.5812,
         "east": 3.0119
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 109,
-        "vehicles": 1,
+        "ms": 80,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1842,9 +2452,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81304,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/0610565a-91a6-4d83-8e2d-bd9c0cd241a8",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.287Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81312",
@@ -1872,9 +2492,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 86,
+        "ms": 73,
         "vehicles": 0,
         "error": null
       },
@@ -1883,9 +2503,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81310,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/7f983f50-d0e8-441a-9e31-24affa02efe5",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.294Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81324",
@@ -1910,13 +2540,13 @@
         "north": 49.2427,
         "east": 2.1273
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 77,
-        "vehicles": 1,
+        "ms": 73,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1924,9 +2554,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81322,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/15c9ecd8-c077-4694-8cf2-11d575c3f571",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.306Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81335",
@@ -1950,13 +2590,13 @@
         "north": 47.6522,
         "east": 6.1794
       },
-      "vehicleSample": 8,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 40,
-        "vehicles": 8,
+        "ms": 20,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -1964,9 +2604,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81334,
+        "url": "https://proxy.transport.data.gouv.fr/resource/moova-vesoul-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 9,
+        "joinRate": null,
+        "bytes": 3424,
+        "measuredAt": "2026-08-31T18:48:18.260Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81341",
@@ -1985,18 +2635,18 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/81341",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-du-grand-dole",
       "bbox": {
-        "south": 47.0657,
-        "west": 5.4576,
+        "south": 47.0564,
+        "west": 5.4139,
         "north": 47.0976,
         "east": 5.5098
       },
-      "vehicleSample": 4,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 41,
-        "vehicles": 4,
+        "ms": 22,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -2004,9 +2654,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81340,
+        "url": "https://proxy.transport.data.gouv.fr/resource/tgd-dole-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 607,
+        "measuredAt": "2026-08-31T18:48:18.266Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81420",
@@ -2030,13 +2690,13 @@
         "north": 43.9439,
         "east": 7.5503
       },
-      "vehicleSample": 23,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 4,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
         "ms": 21,
-        "vehicles": 23,
+        "vehicles": 4,
         "error": null
       },
       "health": {
@@ -2044,9 +2704,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81360,
+        "url": "https://proxy.transport.data.gouv.fr/resource/zest-menton-riviera-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 17,
+        "joinRate": 1,
+        "bytes": 19283,
+        "measuredAt": "2026-08-31T18:48:18.271Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81512",
@@ -2070,13 +2740,13 @@
         "north": 49.2036,
         "east": 6.276
       },
-      "vehicleSample": 129,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 50,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
         "ms": 24,
-        "vehicles": 129,
+        "vehicles": 50,
         "error": null
       },
       "health": {
@@ -2084,9 +2754,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81511,
+        "url": "https://proxy.transport.data.gouv.fr/resource/lemet-metz-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 80,
+        "joinRate": 0.98,
+        "bytes": 57774,
+        "measuredAt": "2026-08-31T18:48:18.285Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81543",
@@ -2110,13 +2790,13 @@
         "north": 48.3381,
         "east": 4.1363
       },
-      "vehicleSample": 42,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 121,
-        "vehicles": 42,
+        "ms": 89,
+        "vehicles": 5,
         "error": null
       },
       "health": {
@@ -2124,9 +2804,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81544,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/8dc66569-b744-4d22-95df-f8496e8eddb6",
+        "sameResource": false,
+        "tripCount": 5,
+        "joinRate": 1,
+        "bytes": 2268,
+        "measuredAt": "2026-08-31T18:48:18.328Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81579",
@@ -2151,11 +2841,11 @@
         "east": 3.8665
       },
       "vehicleSample": 49,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 124,
+        "ms": 127,
         "vehicles": 49,
         "error": null
       },
@@ -2164,9 +2854,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81577,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c417d4b1-323d-48f1-814a-b299bf4adfba",
+        "sameResource": false,
+        "tripCount": 12,
+        "joinRate": 0.224,
+        "bytes": 5732,
+        "measuredAt": "2026-08-31T18:48:18.323Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81626",
@@ -2190,13 +2890,13 @@
         "north": 44.5712,
         "east": 6.0852
       },
-      "vehicleSample": 8,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 61,
-        "vehicles": 8,
+        "ms": 54,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -2204,9 +2904,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81626,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/11f653e9-0d6a-4e87-8cda-3069b3c6b441",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.285Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81697",
@@ -2230,13 +2940,13 @@
         "north": 49.09,
         "east": 0.601
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 96,
-        "vehicles": 1,
+        "ms": 108,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -2244,9 +2954,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81697,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/622b4abe-e029-4a6b-bd59-ef849e9b005f",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 162,
+        "measuredAt": "2026-08-31T18:48:18.286Z"
+      },
+      "alerts": {
+        "resourceId": 81697,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/622b4abe-e029-4a6b-bd59-ef849e9b005f",
+        "sameResource": true,
+        "alertCount": 1,
+        "routeMatch": null,
+        "bytes": 162,
+        "measuredAt": "2026-08-31T18:48:18.286Z"
+      }
     },
     {
       "id": "pan-81698",
@@ -2270,13 +2998,13 @@
         "north": 45.5496,
         "east": 3.2667
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 98,
-        "vehicles": 1,
+        "ms": 474,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -2284,9 +3012,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81698,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/bbc60d61-bf8f-40ec-9e3b-9c040cc2b06e",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 830,
+        "measuredAt": "2026-08-31T18:48:18.286Z"
+      },
+      "alerts": {
+        "resourceId": 81698,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/bbc60d61-bf8f-40ec-9e3b-9c040cc2b06e",
+        "sameResource": true,
+        "alertCount": 3,
+        "routeMatch": null,
+        "bytes": 830,
+        "measuredAt": "2026-08-31T18:48:18.286Z"
+      }
     },
     {
       "id": "pan-81755",
@@ -2310,13 +3056,13 @@
         "north": 43.6546,
         "east": 3.9574
       },
-      "vehicleSample": 167,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 80,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 793,
-        "vehicles": 167,
+        "ms": 299,
+        "vehicles": 80,
         "error": null
       },
       "health": {
@@ -2324,9 +3070,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81757,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/297e8061-5435-409a-aa94-4170f215ef69",
+        "sameResource": false,
+        "tripCount": 178,
+        "joinRate": 0.975,
+        "bytes": 134527,
+        "measuredAt": "2026-08-31T18:48:18.502Z"
+      },
+      "alerts": {
+        "resourceId": 81756,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/8d83572e-0b49-4dba-9691-c25aec6b5b5b",
+        "sameResource": false,
+        "alertCount": 2,
+        "routeMatch": 0.063,
+        "bytes": 934,
+        "measuredAt": "2026-08-31T18:48:18.695Z"
+      }
     },
     {
       "id": "pan-81786",
@@ -2350,13 +3114,13 @@
         "north": 47.6117,
         "east": -0.3406
       },
-      "vehicleSample": 142,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 52,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 124,
-        "vehicles": 142,
+        "ms": 170,
+        "vehicles": 52,
         "error": null
       },
       "health": {
@@ -2364,9 +3128,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80728,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/0a6d20c5-19b4-4e72-80bf-3875c2555a45",
+        "sameResource": false,
+        "tripCount": 81,
+        "joinRate": 0.923,
+        "bytes": 48710,
+        "measuredAt": "2026-08-31T18:48:18.402Z"
+      },
+      "alerts": {
+        "resourceId": 80032,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/3349a69a-bc9a-4de4-a2c2-9f9d32e4923c",
+        "sameResource": false,
+        "alertCount": 27,
+        "routeMatch": 0.941,
+        "bytes": 11418,
+        "measuredAt": "2026-08-31T18:48:18.548Z"
+      }
     },
     {
       "id": "pan-81808",
@@ -2390,13 +3172,13 @@
         "north": 41.606,
         "east": 9.2839
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 1172,
-        "vehicles": 3,
+        "ms": 144,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -2404,9 +3186,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81808,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/a792a365-b5bc-48b8-81eb-512e8e83af08",
+        "sameResource": true,
+        "tripCount": 66,
+        "joinRate": 1,
+        "bytes": 70239,
+        "measuredAt": "2026-08-31T18:48:18.295Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81908",
@@ -2430,13 +3222,13 @@
         "north": 43.5484,
         "east": 6.4873
       },
-      "vehicleSample": 8,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 126,
-        "vehicles": 8,
+        "ms": 141,
+        "vehicles": 2,
         "error": null
       },
       "health": {
@@ -2444,9 +3236,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81908,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/f32c61d5-30b7-4e06-a05e-a2fc934ba7d9",
+        "sameResource": true,
+        "tripCount": 2,
+        "joinRate": 1,
+        "bytes": 1654,
+        "measuredAt": "2026-08-31T18:48:18.295Z"
+      },
+      "alerts": {
+        "resourceId": 81908,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/f32c61d5-30b7-4e06-a05e-a2fc934ba7d9",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": 0,
+        "bytes": 1654,
+        "measuredAt": "2026-08-31T18:48:18.295Z"
+      }
     },
     {
       "id": "pan-81925",
@@ -2468,15 +3278,15 @@
         "south": 43.5264,
         "west": 3.9224,
         "north": 43.6402,
-        "east": 4.0857
+        "east": 4.0912
       },
-      "vehicleSample": 9,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 4,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 9,
+        "ms": 496,
+        "vehicles": 4,
         "error": null
       },
       "health": {
@@ -2484,9 +3294,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81926,
+        "url": "https://proxy.transport.data.gouv.fr/resource/transpor-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 4,
+        "joinRate": 1,
+        "bytes": 2672,
+        "measuredAt": "2026-08-31T18:48:18.314Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81953",
@@ -2513,9 +3333,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 573,
+        "ms": 555,
         "vehicles": 0,
         "error": null
       },
@@ -2524,9 +3344,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81953,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/37b144db-2013-49ff-9a24-b8396f19655d",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.306Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81967",
@@ -2550,13 +3380,13 @@
         "north": -21.2935,
         "east": 55.5028
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 230,
-        "vehicles": 1,
+        "ms": 272,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -2564,9 +3394,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81967,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/146fe36f-16c5-44bc-ac1a-06c0fedcc4dd",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.306Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81988",
@@ -2590,13 +3430,13 @@
         "north": 49.5313,
         "east": 5.9275
       },
-      "vehicleSample": 7,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 7,
+        "ms": 21,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -2604,9 +3444,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81987,
+        "url": "https://proxy.transport.data.gouv.fr/resource/tgl-longwy-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.324Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-81998",
@@ -2630,13 +3480,13 @@
         "north": 43.2907,
         "east": 0.1003
       },
-      "vehicleSample": 24,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 165,
-        "vehicles": 24,
+        "ms": 305,
+        "vehicles": 5,
         "error": null
       },
       "health": {
@@ -2644,9 +3494,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81998,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/38611abb-fb76-4072-8be9-514fdbc4b13a",
+        "sameResource": true,
+        "tripCount": 5,
+        "joinRate": 1,
+        "bytes": 3760,
+        "measuredAt": "2026-08-31T18:48:18.314Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-8202",
@@ -2670,13 +3530,13 @@
         "north": 48.8797,
         "east": 2.5006
       },
-      "vehicleSample": 3,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 149,
-        "vehicles": 3,
+        "ms": 82,
+        "vehicles": 2,
         "error": null
       },
       "health": {
@@ -2684,9 +3544,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 8202,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/7dd97f96-2fb2-4647-8498-ef234ed0faaa",
+        "sameResource": true,
+        "tripCount": 3,
+        "joinRate": 1,
+        "bytes": 5577,
+        "measuredAt": "2026-08-31T18:48:18.315Z"
+      },
+      "alerts": {
+        "resourceId": 8202,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/7dd97f96-2fb2-4647-8498-ef234ed0faaa",
+        "sameResource": true,
+        "alertCount": 3,
+        "routeMatch": 1,
+        "bytes": 5577,
+        "measuredAt": "2026-08-31T18:48:18.315Z"
+      }
     },
     {
       "id": "pan-82095",
@@ -2710,13 +3588,13 @@
         "north": 47.6989,
         "east": -2.6861
       },
-      "vehicleSample": 59,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 23,
-        "vehicles": 59,
+        "ms": 20,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -2724,9 +3602,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82096,
+        "url": "https://proxy.transport.data.gouv.fr/resource/kiceo-vannes-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 3,
+        "joinRate": null,
+        "bytes": 192,
+        "measuredAt": "2026-08-31T18:48:18.399Z"
+      },
+      "alerts": {
+        "resourceId": 84047,
+        "url": "https://proxy.transport.data.gouv.fr/resource/kiceo-vannes-gtfs-rt",
+        "sameResource": false,
+        "alertCount": 5,
+        "routeMatch": null,
+        "bytes": 3851,
+        "measuredAt": "2026-08-31T18:48:18.399Z"
+      }
     },
     {
       "id": "pan-82142",
@@ -2750,13 +3646,13 @@
         "north": 49.1671,
         "east": 0.5454
       },
-      "vehicleSample": 5,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 5,
+        "ms": 34,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -2764,9 +3660,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82141,
+        "url": "https://proxy.transport.data.gouv.fr/resource/astrobus-lisieux-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.399Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82163",
@@ -2790,13 +3696,13 @@
         "north": 48.2797,
         "east": -1.4793
       },
-      "vehicleSample": 292,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 106,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 23,
-        "vehicles": 292,
+        "ms": 29,
+        "vehicles": 106,
         "error": null
       },
       "health": {
@@ -2804,9 +3710,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82161,
+        "url": "https://proxy.transport.data.gouv.fr/resource/star-rennes-integration-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 169,
+        "joinRate": 1,
+        "bytes": 153575,
+        "measuredAt": "2026-08-31T18:48:18.429Z"
+      },
+      "alerts": {
+        "resourceId": 82162,
+        "url": "https://proxy.transport.data.gouv.fr/resource/star-rennes-integration-gtfs-rt-alerts",
+        "sameResource": false,
+        "alertCount": 3,
+        "routeMatch": 0,
+        "bytes": 1114,
+        "measuredAt": "2026-08-31T18:48:18.448Z"
+      }
     },
     {
       "id": "pan-82186",
@@ -2830,13 +3754,13 @@
         "north": 47.2248,
         "east": 2.0665
       },
-      "vehicleSample": 2,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 23,
-        "vehicles": 2,
+        "ms": 22,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -2844,9 +3768,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82185,
+        "url": "https://proxy.transport.data.gouv.fr/resource/le-vib-vierzon-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.415Z"
+      },
+      "alerts": {
+        "resourceId": 82184,
+        "url": "https://proxy.transport.data.gouv.fr/resource/le-vib-vierzon-gtfs-rt-alerts",
+        "sameResource": false,
+        "alertCount": 4,
+        "routeMatch": null,
+        "bytes": 1534,
+        "measuredAt": "2026-08-31T18:48:18.435Z"
+      }
     },
     {
       "id": "pan-82278",
@@ -2870,13 +3812,13 @@
         "north": 50.965,
         "east": 1.9647
       },
-      "vehicleSample": 38,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 174,
-        "vehicles": 38,
+        "ms": 93,
+        "vehicles": 2,
         "error": null
       },
       "health": {
@@ -2884,9 +3826,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82278,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/a6086d6b-049b-4fe8-b52a-4bdcf863db83",
+        "sameResource": true,
+        "tripCount": 2,
+        "joinRate": 1,
+        "bytes": 1564,
+        "measuredAt": "2026-08-31T18:48:18.400Z"
+      },
+      "alerts": {
+        "resourceId": 82278,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/a6086d6b-049b-4fe8-b52a-4bdcf863db83",
+        "sameResource": true,
+        "alertCount": 1,
+        "routeMatch": 0,
+        "bytes": 1564,
+        "measuredAt": "2026-08-31T18:48:18.400Z"
+      }
     },
     {
       "id": "pan-82296",
@@ -2911,13 +3871,13 @@
         "north": 49.9265,
         "east": 1.4895
       },
-      "vehicleSample": 171,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 92,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 113,
-        "vehicles": 171,
+        "ms": 39,
+        "vehicles": 92,
         "error": null
       },
       "health": {
@@ -2925,9 +3885,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82297,
+        "url": "https://proxy.transport.data.gouv.fr/resource/atoumod-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 408,
+        "joinRate": 1,
+        "bytes": 447964,
+        "measuredAt": "2026-08-31T18:48:18.514Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82474",
@@ -2951,13 +3921,13 @@
         "north": 43.1706,
         "east": 6.188
       },
-      "vehicleSample": 188,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 63,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 253,
-        "vehicles": 188,
+        "ms": 230,
+        "vehicles": 63,
         "error": null
       },
       "health": {
@@ -2965,9 +3935,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82475,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/10f2e5d4-6a1b-45e2-897a-5b9044ebb6b3",
+        "sameResource": false,
+        "tripCount": 93,
+        "joinRate": 0.857,
+        "bytes": 142622,
+        "measuredAt": "2026-08-31T18:48:18.681Z"
+      },
+      "alerts": {
+        "resourceId": 82473,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/f30614b3-a35b-4c9f-98c9-7450585d3941",
+        "sameResource": false,
+        "alertCount": 5,
+        "routeMatch": 0,
+        "bytes": 2247,
+        "measuredAt": "2026-08-31T18:48:18.809Z"
+      }
     },
     {
       "id": "pan-82549",
@@ -2991,13 +3979,13 @@
         "north": 48.7588,
         "east": -0.562
       },
-      "vehicleSample": 5,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 323,
-        "vehicles": 5,
+        "ms": 307,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3005,9 +3993,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82548,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/f8d5faf0-7662-41c1-97e2-dca45f77a3d6",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.646Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82578",
@@ -3031,13 +4029,13 @@
         "north": 45.919,
         "east": 3.2195
       },
-      "vehicleSample": 6,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 6,
+        "ms": 41,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -3045,9 +4043,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82579,
+        "url": "https://proxy.transport.data.gouv.fr/resource/riom-rlv-mobilites-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 20,
+        "joinRate": 1,
+        "bytes": 20509,
+        "measuredAt": "2026-08-31T18:48:18.535Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82596",
@@ -3071,13 +4079,13 @@
         "north": 48.4738,
         "east": -2.4977
       },
-      "vehicleSample": 4,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 108,
-        "vehicles": 4,
+        "ms": 147,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3085,9 +4093,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82597,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/9c744022-049a-4bb9-a97f-acfe6425d60a",
+        "sameResource": false,
+        "tripCount": 3,
+        "joinRate": null,
+        "bytes": 1081,
+        "measuredAt": "2026-08-31T18:48:18.603Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82620",
@@ -3111,13 +4129,13 @@
         "north": 47.0176,
         "east": -2.1743
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 74,
-        "vehicles": 5,
+        "ms": 113,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -3125,9 +4143,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": "pan-80382"
+      "duplicateOf": "pan-80382",
+      "tripUpdates": {
+        "resourceId": 82620,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ab934941-2bd2-49e2-a83c-0dcddf95b1b9",
+        "sameResource": true,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 685,
+        "measuredAt": "2026-08-31T18:48:18.548Z"
+      },
+      "alerts": {
+        "resourceId": 82620,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ab934941-2bd2-49e2-a83c-0dcddf95b1b9",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": 0,
+        "bytes": 685,
+        "measuredAt": "2026-08-31T18:48:18.548Z"
+      }
     },
     {
       "id": "pan-82630",
@@ -3151,13 +4187,13 @@
         "north": 49.5551,
         "east": 0.9397
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 23,
-        "vehicles": 1,
+        "ms": 21,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3165,9 +4201,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82630,
+        "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 148,
+        "measuredAt": "2026-08-31T18:48:18.548Z"
+      },
+      "alerts": {
+        "resourceId": 82630,
+        "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt",
+        "sameResource": true,
+        "alertCount": 1,
+        "routeMatch": null,
+        "bytes": 148,
+        "measuredAt": "2026-08-31T18:48:18.568Z"
+      }
     },
     {
       "id": "pan-82632",
@@ -3191,13 +4245,13 @@
         "north": 49.5553,
         "east": 0.9391
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 1,
+        "ms": 81,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3205,9 +4259,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82633,
+        "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.572Z"
+      },
+      "alerts": {
+        "resourceId": 82631,
+        "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt-alert",
+        "sameResource": false,
+        "alertCount": 1,
+        "routeMatch": null,
+        "bytes": 148,
+        "measuredAt": "2026-08-31T18:48:18.588Z"
+      }
     },
     {
       "id": "pan-82677",
@@ -3226,18 +4298,18 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/82677",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-temps-reel-du-reseau-astuce-metropole-rouen-normandie",
       "bbox": {
-        "south": 49.3283,
+        "south": 49.3282,
         "west": 1.0157,
         "north": 49.5312,
-        "east": 1.168
+        "east": 1.1726
       },
-      "vehicleSample": 187,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 95,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 153,
-        "vehicles": 187,
+        "ms": 132,
+        "vehicles": 95,
         "error": null
       },
       "health": {
@@ -3245,9 +4317,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82678,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/178700bf-570a-4a5e-95a2-59ac5857c622",
+        "sameResource": false,
+        "tripCount": 175,
+        "joinRate": 0.905,
+        "bytes": 120307,
+        "measuredAt": "2026-08-31T18:48:18.690Z"
+      },
+      "alerts": {
+        "resourceId": 83902,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/4e1dd875-8a01-4636-9f32-7f7f60a79d1f",
+        "sameResource": false,
+        "alertCount": 50,
+        "routeMatch": 0.65,
+        "bytes": 22953,
+        "measuredAt": "2026-08-31T18:48:19.451Z"
+      }
     },
     {
       "id": "pan-82713",
@@ -3271,13 +4361,13 @@
         "north": 49.418,
         "east": 0.2509
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 1,
+        "ms": 21,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3285,9 +4375,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82714,
+        "url": "https://proxy.transport.data.gouv.fr/resource/hobus-honfleur-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.611Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82719",
@@ -3311,13 +4411,13 @@
         "north": 49.2378,
         "east": 6.991
       },
-      "vehicleSample": 11,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 7,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 11,
+        "ms": 44,
+        "vehicles": 7,
         "error": null
       },
       "health": {
@@ -3325,9 +4425,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82720,
+        "url": "https://proxy.transport.data.gouv.fr/resource/fluo-forbus-forbach-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 8,
+        "joinRate": 1,
+        "bytes": 13111,
+        "measuredAt": "2026-08-31T18:48:18.667Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82723",
@@ -3354,9 +4464,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 40,
+        "ms": 86,
         "vehicles": 0,
         "error": null
       },
@@ -3365,9 +4475,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82724,
+        "url": "https://proxy.transport.data.gouv.fr/resource/neva-granville-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.633Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82731",
@@ -3394,9 +4514,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 21,
+        "ms": 24,
         "vehicles": 0,
         "error": null
       },
@@ -3405,9 +4525,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82732,
+        "url": "https://proxy.transport.data.gouv.fr/resource/transurbain-evreux-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.654Z"
+      },
+      "alerts": {
+        "resourceId": 82730,
+        "url": "https://proxy.transport.data.gouv.fr/resource/transurbain-evreux-gtfs-rt-service-alert",
+        "sameResource": false,
+        "alertCount": 2,
+        "routeMatch": null,
+        "bytes": 764,
+        "measuredAt": "2026-08-31T18:48:18.675Z"
+      }
     },
     {
       "id": "pan-82783",
@@ -3431,13 +4569,13 @@
         "north": 43.4123,
         "east": 3.3146
       },
-      "vehicleSample": 36,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 10,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 266,
-        "vehicles": 36,
+        "ms": 286,
+        "vehicles": 10,
         "error": null
       },
       "health": {
@@ -3445,9 +4583,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82782,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/8bb0c50e-5407-4362-8acd-d863ddb4bf6a",
+        "sameResource": false,
+        "tripCount": 21,
+        "joinRate": 1,
+        "bytes": 31091,
+        "measuredAt": "2026-08-31T18:48:18.926Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82875",
@@ -3469,9 +4617,9 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 743,
+        "ms": 100,
         "vehicles": 0,
         "error": null
       },
@@ -3480,9 +4628,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82875,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/807dd36f-5813-487a-b410-20032bfbe3ad",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.667Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82889",
@@ -3506,13 +4664,13 @@
         "north": 48.0736,
         "east": 0.3451
       },
-      "vehicleSample": 102,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 42,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 102,
+        "ms": 24,
+        "vehicles": 42,
         "error": null
       },
       "health": {
@@ -3520,9 +4678,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81226,
+        "url": "https://proxy.transport.data.gouv.fr/resource/setram-lemans-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 81,
+        "joinRate": 0.786,
+        "bytes": 71383,
+        "measuredAt": "2026-08-31T18:48:18.692Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-82896",
@@ -3543,16 +4711,16 @@
       "bbox": {
         "south": 49.4783,
         "west": 0.0691,
-        "north": 49.6371,
+        "north": 49.6514,
         "east": 0.3389
       },
-      "vehicleSample": 136,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 91,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 150,
-        "vehicles": 136,
+        "ms": 117,
+        "vehicles": 91,
         "error": null
       },
       "health": {
@@ -3560,9 +4728,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82895,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/80da0245-2ec7-4afb-bc7e-5b74f33e3f94",
+        "sameResource": false,
+        "tripCount": 108,
+        "joinRate": 0.747,
+        "bytes": 72725,
+        "measuredAt": "2026-08-31T18:48:18.763Z"
+      },
+      "alerts": {
+        "resourceId": 84040,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/06f3c928-b460-4bb9-bfb8-bd298279a5a1",
+        "sameResource": false,
+        "alertCount": 1,
+        "routeMatch": 0,
+        "bytes": 2708,
+        "measuredAt": "2026-08-31T18:48:19.036Z"
+      }
     },
     {
       "id": "pan-82909",
@@ -3586,13 +4772,13 @@
         "north": 48.6201,
         "east": 6.3508
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 1,
+        "ms": 22,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3600,9 +4786,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82910,
+        "url": "https://proxy.transport.data.gouv.fr/resource/fluo-sel-et-vermois-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 1,
+        "joinRate": null,
+        "bytes": 926,
+        "measuredAt": "2026-08-31T18:48:18.711Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83026",
@@ -3624,16 +4820,16 @@
       "bbox": {
         "south": 44.7549,
         "west": -0.7987,
-        "north": 44.9653,
+        "north": 45.0077,
         "east": -0.4624
       },
-      "vehicleSample": 452,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 266,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 186,
-        "vehicles": 452,
+        "ms": 154,
+        "vehicles": 266,
         "error": null
       },
       "health": {
@@ -3641,9 +4837,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83025,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/bd01907f-4756-43f4-8eb3-6a9650d6e4b5",
+        "sameResource": false,
+        "tripCount": 827,
+        "joinRate": 0.992,
+        "bytes": 1135216,
+        "measuredAt": "2026-08-31T18:48:19.076Z"
+      },
+      "alerts": {
+        "resourceId": 83027,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/a635ff4f-7515-4e4c-a755-7523bbdbe7c9",
+        "sameResource": false,
+        "alertCount": 91,
+        "routeMatch": 0.709,
+        "bytes": 49806,
+        "measuredAt": "2026-08-31T18:48:19.164Z"
+      }
     },
     {
       "id": "pan-83078",
@@ -3667,13 +4881,13 @@
         "north": 49.1153,
         "east": 1.5072
       },
-      "vehicleSample": 5,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 24,
-        "vehicles": 5,
+        "ms": 22,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3681,9 +4895,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80656,
+        "url": "https://proxy.transport.data.gouv.fr/resource/sngo-vernon-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 22,
+        "joinRate": null,
+        "bytes": 12128,
+        "measuredAt": "2026-08-31T18:48:18.733Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83079",
@@ -3707,13 +4931,13 @@
         "north": 43.7203,
         "east": 4.8149
       },
-      "vehicleSample": 16,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 261,
-        "vehicles": 16,
+        "ms": 395,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3721,9 +4945,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82869,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/af998ded-046f-458c-abb6-34eb110cad14",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.928Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83118",
@@ -3747,13 +4981,13 @@
         "north": 45.0691,
         "east": 5.1369
       },
-      "vehicleSample": 86,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 5,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 21,
-        "vehicles": 86,
+        "ms": 20,
+        "vehicles": 5,
         "error": null
       },
       "health": {
@@ -3761,9 +4995,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83117,
+        "url": "https://proxy.transport.data.gouv.fr/resource/citea-valence-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 11,
+        "joinRate": 1,
+        "bytes": 7333,
+        "measuredAt": "2026-08-31T18:48:18.831Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83139",
@@ -3787,13 +5031,13 @@
         "north": 47.0237,
         "east": 4.8472
       },
-      "vehicleSample": 2,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 24,
-        "vehicles": 2,
+        "ms": 21,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3801,9 +5045,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83140,
+        "url": "https://proxy.transport.data.gouv.fr/resource/beaune-cote-et-bus-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 15,
+        "joinRate": null,
+        "bytes": 9472,
+        "measuredAt": "2026-08-31T18:48:18.850Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83150",
@@ -3827,13 +5081,13 @@
         "north": 49.6219,
         "east": 0.7648
       },
-      "vehicleSample": 3,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 20,
-        "vehicles": 3,
+        "ms": 19,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -3841,9 +5095,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83151,
+        "url": "https://proxy.transport.data.gouv.fr/resource/vikibus-yvetot-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:18.942Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83190",
@@ -3870,9 +5134,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 539,
+        "ms": 91,
         "vehicles": 0,
         "error": null
       },
@@ -3881,9 +5145,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83190,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/82608db8-ab62-48d8-83de-decaed8828b3",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:18.926Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83192",
@@ -3907,13 +5181,13 @@
         "north": 47.2427,
         "east": 0.2573
       },
-      "vehicleSample": 5,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 354,
-        "vehicles": 5,
+        "ms": 351,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -3921,9 +5195,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83191,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/2c2bf555-2861-4e4e-8aa0-6636787cb2f9",
+        "sameResource": false,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 222,
+        "measuredAt": "2026-08-31T18:48:19.160Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83201",
@@ -3947,13 +5231,13 @@
         "north": 50.7572,
         "east": 2.8413
       },
-      "vehicleSample": 9,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 156,
-        "vehicles": 9,
+        "ms": 63,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -3961,9 +5245,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83201,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/131da43c-d324-4f98-8481-0c7b20327df1",
+        "sameResource": true,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 673,
+        "measuredAt": "2026-08-31T18:48:18.942Z"
+      },
+      "alerts": {
+        "resourceId": 83201,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/131da43c-d324-4f98-8481-0c7b20327df1",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": 0,
+        "bytes": 673,
+        "measuredAt": "2026-08-31T18:48:18.942Z"
+      }
     },
     {
       "id": "pan-83285",
@@ -3990,9 +5292,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 41,
+        "ms": 24,
         "vehicles": 0,
         "error": null
       },
@@ -4001,9 +5303,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83286,
+        "url": "https://proxy.transport.data.gouv.fr/resource/seine-eure-semo-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 18,
+        "joinRate": null,
+        "bytes": 14681,
+        "measuredAt": "2026-08-31T18:48:18.976Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83297",
@@ -4027,13 +5339,13 @@
         "north": 49.5313,
         "east": 1.1762
       },
-      "vehicleSample": 199,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 99,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 219,
-        "vehicles": 199,
+        "ms": 195,
+        "vehicles": 99,
         "error": null
       },
       "health": {
@@ -4041,9 +5353,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 82678,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/178700bf-570a-4a5e-95a2-59ac5857c622",
+        "sameResource": false,
+        "tripCount": 175,
+        "joinRate": 0.899,
+        "bytes": 120307,
+        "measuredAt": "2026-08-31T18:48:18.978Z"
+      },
+      "alerts": {
+        "resourceId": 83902,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/4e1dd875-8a01-4636-9f32-7f7f60a79d1f",
+        "sameResource": false,
+        "alertCount": 50,
+        "routeMatch": 0.65,
+        "bytes": 22953,
+        "measuredAt": "2026-08-31T18:48:19.451Z"
+      }
     },
     {
       "id": "pan-83298",
@@ -4063,17 +5393,17 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-statiques-et-temps-reel-du-reseau-astuce-metropole-rouen-normandie",
       "bbox": {
         "south": 49.4401,
-        "west": 0.8953,
+        "west": 0.8314,
         "north": 49.4862,
         "east": 1.0887
       },
-      "vehicleSample": 4,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 209,
-        "vehicles": 4,
+        "ms": 260,
+        "vehicles": 2,
         "error": null
       },
       "health": {
@@ -4081,9 +5411,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83186,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/544afe29-c195-40b1-a52d-c5d654b98f75",
+        "sameResource": false,
+        "tripCount": 14,
+        "joinRate": 1,
+        "bytes": 9570,
+        "measuredAt": "2026-08-31T18:48:19.036Z"
+      },
+      "alerts": {
+        "resourceId": 83902,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/4e1dd875-8a01-4636-9f32-7f7f60a79d1f",
+        "sameResource": false,
+        "alertCount": 50,
+        "routeMatch": 0,
+        "bytes": 22953,
+        "measuredAt": "2026-08-31T18:48:19.451Z"
+      }
     },
     {
       "id": "pan-83319",
@@ -4107,13 +5455,13 @@
         "north": 43.8607,
         "east": 7.3811
       },
-      "vehicleSample": 218,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 115,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 83,
-        "vehicles": 218,
+        "ms": 69,
+        "vehicles": 115,
         "error": null
       },
       "health": {
@@ -4121,9 +5469,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83303,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/af3f0734-ef07-468e-b8c9-aed97e4c8a32",
+        "sameResource": false,
+        "tripCount": 245,
+        "joinRate": 0.73,
+        "bytes": 149597,
+        "measuredAt": "2026-08-31T18:48:19.278Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83331",
@@ -4147,13 +5505,13 @@
         "north": 44.2069,
         "east": 4.1657
       },
-      "vehicleSample": 15,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 300,
-        "vehicles": 15,
+        "ms": 319,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -4161,9 +5519,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 81985,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/68e3fd78-f72a-45cc-a43a-e02290550c7b",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.449Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83365",
@@ -4182,18 +5550,18 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83365",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-urbain-glazgo",
       "bbox": {
-        "south": 47.4808,
+        "south": 47.4744,
         "west": -3.1481,
         "north": 47.6862,
         "east": -2.962
       },
-      "vehicleSample": 15,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 135,
-        "vehicles": 15,
+        "ms": 86,
+        "vehicles": 2,
         "error": null
       },
       "health": {
@@ -4201,9 +5569,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83365,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/db7ab07b-daf3-4423-9884-d8d5c659dd13",
+        "sameResource": true,
+        "tripCount": 2,
+        "joinRate": 1,
+        "bytes": 3592,
+        "measuredAt": "2026-08-31T18:48:19.224Z"
+      },
+      "alerts": {
+        "resourceId": 83365,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/db7ab07b-daf3-4423-9884-d8d5c659dd13",
+        "sameResource": true,
+        "alertCount": 4,
+        "routeMatch": 0,
+        "bytes": 3592,
+        "measuredAt": "2026-08-31T18:48:19.224Z"
+      }
     },
     {
       "id": "pan-83386",
@@ -4227,13 +5613,13 @@
         "north": 5.0138,
         "east": -52.2596
       },
-      "vehicleSample": 33,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 32,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 301,
-        "vehicles": 33,
+        "ms": 360,
+        "vehicles": 32,
         "error": null
       },
       "health": {
@@ -4241,9 +5627,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83387,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/04d16002-0d63-4ee2-ae09-b67f24a8f652",
+        "sameResource": false,
+        "tripCount": 38,
+        "joinRate": 1,
+        "bytes": 39046,
+        "measuredAt": "2026-08-31T18:48:19.472Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83392",
@@ -4270,9 +5666,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 21,
+        "ms": 87,
         "vehicles": 0,
         "error": null
       },
@@ -4281,9 +5677,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 80729,
+        "url": "https://proxy.transport.data.gouv.fr/resource/deepmob-dieppe-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:19.298Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83395",
@@ -4307,13 +5713,13 @@
         "north": 43.8529,
         "east": 5.0815
       },
-      "vehicleSample": 6,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 316,
-        "vehicles": 6,
+        "ms": 88,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -4321,9 +5727,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83395,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/cc043d19-1258-433c-9d55-5c62fef2d038",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 2392,
+        "measuredAt": "2026-08-31T18:48:19.298Z"
+      },
+      "alerts": {
+        "resourceId": 83395,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/cc043d19-1258-433c-9d55-5c62fef2d038",
+        "sameResource": true,
+        "alertCount": 3,
+        "routeMatch": null,
+        "bytes": 2392,
+        "measuredAt": "2026-08-31T18:48:19.299Z"
+      }
     },
     {
       "id": "pan-83414",
@@ -4347,13 +5771,13 @@
         "north": 47.624,
         "east": 1.3733
       },
-      "vehicleSample": 18,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 123,
-        "vehicles": 18,
+        "ms": 111,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -4361,9 +5785,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83413,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/61d5a03f-311d-4fb1-9c14-dd0c8856af32",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.353Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83468",
@@ -4385,9 +5819,9 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 82,
+        "ms": 77,
         "vehicles": 0,
         "error": null
       },
@@ -4396,9 +5830,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83468,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/252fd29f-4a13-4e38-9e9e-6d3c09e9bb5a",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.353Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83523",
@@ -4422,13 +5866,13 @@
         "north": 49.759,
         "east": 0.3987
       },
-      "vehicleSample": 2,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 70,
-        "vehicles": 2,
+        "ms": 71,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -4436,9 +5880,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83524,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/b30879dc-089f-4213-8cf6-5f51afb28e4f",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.483Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83538",
@@ -4462,13 +5916,13 @@
         "north": 44.7225,
         "east": 4.8202
       },
-      "vehicleSample": 8,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 40,
-        "vehicles": 8,
+        "ms": 21,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -4476,9 +5930,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83537,
+        "url": "https://proxy.transport.data.gouv.fr/resource/montelibus-montelimar-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 4,
+        "joinRate": null,
+        "bytes": 3125,
+        "measuredAt": "2026-08-31T18:48:19.471Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83628",
@@ -4502,13 +5966,13 @@
         "north": 45.501,
         "east": 6.9279
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 103,
-        "vehicles": 1,
+        "ms": 89,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -4516,9 +5980,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83628,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/a93d2e49-c4c3-4f8c-8e03-ce346c2d53b2",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.451Z"
+      },
+      "alerts": {
+        "resourceId": 83628,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/a93d2e49-c4c3-4f8c-8e03-ce346c2d53b2",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.451Z"
+      }
     },
     {
       "id": "pan-83630",
@@ -4545,9 +6027,9 @@
       "vehicleSample": 0,
       "observedAt": "2026-08-26T17:35:12.482Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 91,
+        "ms": 77,
         "vehicles": 0,
         "error": null
       },
@@ -4556,9 +6038,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83630,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/28c1bf4a-90d8-4360-baf3-ceaea2a1941f",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.451Z"
+      },
+      "alerts": {
+        "resourceId": 83630,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/28c1bf4a-90d8-4360-baf3-ceaea2a1941f",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.451Z"
+      }
     },
     {
       "id": "pan-83714",
@@ -4582,13 +6082,13 @@
         "north": 48.1594,
         "east": 7.5901
       },
-      "vehicleSample": 53,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
         "ms": 23,
-        "vehicles": 53,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -4596,9 +6096,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83715,
+        "url": "https://proxy.transport.data.gouv.fr/resource/fluo-haut-rhin-68-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": 0,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:19.472Z"
+      },
+      "alerts": {
+        "resourceId": 83713,
+        "url": "https://proxy.transport.data.gouv.fr/resource/fluo-haut-rhin-68-gtfs-rt-alerts",
+        "sameResource": false,
+        "alertCount": 14,
+        "routeMatch": 0,
+        "bytes": 8573,
+        "measuredAt": "2026-08-31T18:48:19.515Z"
+      }
     },
     {
       "id": "pan-83743",
@@ -4622,13 +6140,13 @@
         "north": 43.246,
         "east": 3.1944
       },
-      "vehicleSample": 35,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 12,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 247,
-        "vehicles": 35,
+        "ms": 204,
+        "vehicles": 12,
         "error": null
       },
       "health": {
@@ -4636,9 +6154,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83743,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/1fc16ad0-4aef-402d-9faa-da04ddd61fd2",
+        "sameResource": true,
+        "tripCount": 17,
+        "joinRate": 1,
+        "bytes": 8155,
+        "measuredAt": "2026-08-31T18:48:19.451Z"
+      },
+      "alerts": {
+        "resourceId": 83742,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/b0e4dade-42ce-4a36-b93d-1137a2c34094",
+        "sameResource": false,
+        "alertCount": 1,
+        "routeMatch": 0.167,
+        "bytes": 119,
+        "measuredAt": "2026-08-31T18:48:19.659Z"
+      }
     },
     {
       "id": "pan-83748",
@@ -4662,13 +6198,13 @@
         "north": 48.1014,
         "east": -3.9126
       },
-      "vehicleSample": 39,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 4,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 343,
-        "vehicles": 39,
+        "ms": 282,
+        "vehicles": 4,
         "error": null
       },
       "health": {
@@ -4676,9 +6212,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83741,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/d3b095ca-4c32-43b4-bc34-c339c91a7b24",
+        "sameResource": false,
+        "tripCount": 12,
+        "joinRate": 1,
+        "bytes": 11871,
+        "measuredAt": "2026-08-31T18:48:19.674Z"
+      },
+      "alerts": {
+        "resourceId": 83470,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c7d65730-5726-4003-af58-9080017287dc",
+        "sameResource": false,
+        "alertCount": 3,
+        "routeMatch": 0.5,
+        "bytes": 1889,
+        "measuredAt": "2026-08-31T18:48:19.810Z"
+      }
     },
     {
       "id": "pan-83764",
@@ -4703,13 +6257,13 @@
         "north": 47.4149,
         "east": -2.2258
       },
-      "vehicleSample": 13,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 221,
-        "vehicles": 13,
+        "ms": 22,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -4717,9 +6271,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83765,
+        "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 225,
+        "measuredAt": "2026-08-31T18:48:19.492Z"
+      },
+      "alerts": {
+        "resourceId": 83763,
+        "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt-service-alert",
+        "sameResource": false,
+        "alertCount": 0,
+        "routeMatch": 0,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.495Z"
+      }
     },
     {
       "id": "pan-83766",
@@ -4744,13 +6316,13 @@
         "north": 47.4149,
         "east": -2.2277
       },
-      "vehicleSample": 13,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 24,
-        "vehicles": 13,
+        "ms": 21,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -4758,9 +6330,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83766,
+        "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt",
+        "sameResource": true,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 313,
+        "measuredAt": "2026-08-31T18:48:19.472Z"
+      },
+      "alerts": {
+        "resourceId": 83766,
+        "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": 0,
+        "bytes": 313,
+        "measuredAt": "2026-08-31T18:48:19.472Z"
+      }
     },
     {
       "id": "pan-83780",
@@ -4780,17 +6370,17 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-tam-en-temps-reel-gtfs-rt-urbain-et-suburbain",
       "bbox": {
         "south": 43.5332,
-        "west": 3.7024,
-        "north": 43.6771,
+        "west": 3.702,
+        "north": 43.7496,
         "east": 4.0401
       },
-      "vehicleSample": 40,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 19,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 159,
-        "vehicles": 40,
+        "ms": 125,
+        "vehicles": 19,
         "error": null
       },
       "health": {
@@ -4798,9 +6388,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83779,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/4f7aa71d-a7e5-4c03-8074-03a233304266",
+        "sameResource": false,
+        "tripCount": 32,
+        "joinRate": 1,
+        "bytes": 11381,
+        "measuredAt": "2026-08-31T18:48:19.495Z"
+      },
+      "alerts": {
+        "resourceId": 81756,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/8d83572e-0b49-4dba-9691-c25aec6b5b5b",
+        "sameResource": false,
+        "alertCount": 2,
+        "routeMatch": 0.067,
+        "bytes": 934,
+        "measuredAt": "2026-08-31T18:48:19.495Z"
+      }
     },
     {
       "id": "pan-83796",
@@ -4824,13 +6432,13 @@
         "north": 48.6873,
         "east": -1.8498
       },
-      "vehicleSample": 24,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 8,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 24,
+        "ms": 23,
+        "vehicles": 8,
         "error": null
       },
       "health": {
@@ -4838,9 +6446,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83796,
+        "url": "https://proxy.transport.data.gouv.fr/resource/mat-st-malo-gtfs-rt",
+        "sameResource": true,
+        "tripCount": 12,
+        "joinRate": 1,
+        "bytes": 7398,
+        "measuredAt": "2026-08-31T18:48:19.495Z"
+      },
+      "alerts": {
+        "resourceId": 83796,
+        "url": "https://proxy.transport.data.gouv.fr/resource/mat-st-malo-gtfs-rt",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": 0,
+        "bytes": 7398,
+        "measuredAt": "2026-08-31T18:48:19.495Z"
+      }
     },
     {
       "id": "pan-83840",
@@ -4864,13 +6490,13 @@
         "north": 46.5909,
         "east": 3.3621
       },
-      "vehicleSample": 9,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 80,
-        "vehicles": 9,
+        "ms": 70,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -4878,9 +6504,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83840,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/7c1a4aee-6445-4a2e-90aa-250ade5b9e80",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.495Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83843",
@@ -4904,13 +6540,13 @@
         "north": 46.3215,
         "east": 5.3299
       },
-      "vehicleSample": 24,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 22,
-        "vehicles": 24,
+        "ms": 27,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -4918,9 +6554,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83844,
+        "url": "https://proxy.transport.data.gouv.fr/resource/rubis-bourg-en-bresse-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 1,
+        "joinRate": null,
+        "bytes": 824,
+        "measuredAt": "2026-08-31T18:48:19.516Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83851",
@@ -4944,13 +6590,13 @@
         "north": 48.4763,
         "east": 1.565
       },
-      "vehicleSample": 51,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 14,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 219,
-        "vehicles": 51,
+        "ms": 120,
+        "vehicles": 14,
         "error": null
       },
       "health": {
@@ -4958,9 +6604,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83851,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/7e4b9d82-0863-4eaa-8051-a1dcf5e086f5",
+        "sameResource": true,
+        "tripCount": 18,
+        "joinRate": 1,
+        "bytes": 3328,
+        "measuredAt": "2026-08-31T18:48:19.495Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83855",
@@ -4984,13 +6640,13 @@
         "north": 43.7574,
         "east": 4.1374
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 350,
-        "vehicles": 1,
+        "ms": 299,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -4998,9 +6654,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83856,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/693715b8-992c-43c3-a0e4-24666b713a40",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.694Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83857",
@@ -5019,18 +6685,18 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/83857",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transports-reseau-dk-bus-de-la-communaute-urbaine-de-dunkerque-gtfs",
       "bbox": {
-        "south": 50.9551,
-        "west": 2.1066,
+        "south": 50.9522,
+        "west": 2.0998,
         "north": 51.0797,
         "east": 2.5781
       },
-      "vehicleSample": 92,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 34,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 139,
-        "vehicles": 92,
+        "ms": 100,
+        "vehicles": 34,
         "error": null
       },
       "health": {
@@ -5038,9 +6704,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83857,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/39f7ea92-6ad5-4a02-ad14-4019ce4a8ecb",
+        "sameResource": true,
+        "tripCount": 190,
+        "joinRate": 0.794,
+        "bytes": 101315,
+        "measuredAt": "2026-08-31T18:48:19.504Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83860",
@@ -5062,9 +6738,9 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 331,
+        "ms": 68,
         "vehicles": 0,
         "error": null
       },
@@ -5073,9 +6749,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83860,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/60dde12f-09d6-49ec-86c5-300a59119488",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 473,
+        "measuredAt": "2026-08-31T18:48:19.504Z"
+      },
+      "alerts": {
+        "resourceId": 83860,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/60dde12f-09d6-49ec-86c5-300a59119488",
+        "sameResource": true,
+        "alertCount": 1,
+        "routeMatch": null,
+        "bytes": 473,
+        "measuredAt": "2026-08-31T18:48:19.504Z"
+      }
     },
     {
       "id": "pan-83868",
@@ -5099,13 +6793,13 @@
         "north": 48.8833,
         "east": 1.479
       },
-      "vehicleSample": 19,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 1,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 157,
-        "vehicles": 19,
+        "ms": 73,
+        "vehicles": 1,
         "error": null
       },
       "health": {
@@ -5113,9 +6807,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83868,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/cf98048e-7419-46ec-a1e3-36a34e1e11a9",
+        "sameResource": true,
+        "tripCount": 1,
+        "joinRate": 1,
+        "bytes": 652,
+        "measuredAt": "2026-08-31T18:48:19.504Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83889",
@@ -5139,13 +6843,13 @@
         "north": 45.9215,
         "east": 6.0463
       },
-      "vehicleSample": 5,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 92,
-        "vehicles": 5,
+        "ms": 20,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -5153,9 +6857,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83890,
+        "url": "https://proxy.transport.data.gouv.fr/resource/jybus-rumilly-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.523Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83924",
@@ -5176,16 +6890,16 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-et-temps-reel-du-reseau-le-libellule-communaute-du-liancourtois-la-vallee-doree",
       "bbox": {
         "south": 49.3148,
-        "west": 2.4587,
+        "west": 2.4373,
         "north": 49.328,
         "east": 2.4709
       },
       "vehicleSample": 1,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 81,
+        "ms": 169,
         "vehicles": 1,
         "error": null
       },
@@ -5194,9 +6908,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83923,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/9262efc1-5835-4877-9329-57d369c5763d",
+        "sameResource": false,
+        "tripCount": 2,
+        "joinRate": 1,
+        "bytes": 1006,
+        "measuredAt": "2026-08-31T18:48:19.587Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-83928",
@@ -5220,13 +6944,13 @@
         "north": 50.8701,
         "east": 2.3965
       },
-      "vehicleSample": 14,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 23,
-        "vehicles": 14,
+        "ms": 22,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -5234,9 +6958,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 83929,
+        "url": "https://proxy.transport.data.gouv.fr/resource/mouveo-saint-omer-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.789Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84015",
@@ -5260,13 +6994,13 @@
         "north": 46.393,
         "east": 2.6224
       },
-      "vehicleSample": 11,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
         "ms": 21,
-        "vehicles": 11,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -5274,9 +7008,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84016,
+        "url": "https://proxy.transport.data.gouv.fr/resource/maelis-montlucon-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 13,
+        "measuredAt": "2026-08-31T18:48:19.543Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84017",
@@ -5300,13 +7044,13 @@
         "north": 43.491,
         "east": 6.8567
       },
-      "vehicleSample": 26,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 397,
-        "vehicles": 26,
+        "ms": 437,
+        "vehicles": 2,
         "error": null
       },
       "health": {
@@ -5314,9 +7058,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84017,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/24e2ecf9-82a3-4bfc-bf86-db6ec81c480f",
+        "sameResource": true,
+        "tripCount": 496,
+        "joinRate": 1,
+        "bytes": 363591,
+        "measuredAt": "2026-08-31T18:48:19.546Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84038",
@@ -5340,13 +7094,13 @@
         "north": 49.6933,
         "east": 0.3389
       },
-      "vehicleSample": 102,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 42,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 109,
-        "vehicles": 102,
+        "ms": 195,
+        "vehicles": 42,
         "error": null
       },
       "health": {
@@ -5354,9 +7108,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84039,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ef4eb4af-71ed-4878-8c2b-d77604037799",
+        "sameResource": false,
+        "tripCount": 175,
+        "joinRate": 1,
+        "bytes": 114343,
+        "measuredAt": "2026-08-31T18:48:19.547Z"
+      },
+      "alerts": {
+        "resourceId": 84040,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/06f3c928-b460-4bb9-bfb8-bd298279a5a1",
+        "sameResource": false,
+        "alertCount": 1,
+        "routeMatch": 0,
+        "bytes": 2708,
+        "measuredAt": "2026-08-31T18:48:19.547Z"
+      }
     },
     {
       "id": "pan-84047",
@@ -5380,13 +7152,13 @@
         "north": 47.6989,
         "east": -2.6861
       },
-      "vehicleSample": 59,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 42,
-        "vehicles": 59,
+        "ms": 22,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -5394,9 +7166,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": "pan-82095"
+      "duplicateOf": "pan-82095",
+      "tripUpdates": {
+        "resourceId": 84047,
+        "url": "https://proxy.transport.data.gouv.fr/resource/kiceo-vannes-gtfs-rt",
+        "sameResource": true,
+        "tripCount": 3,
+        "joinRate": null,
+        "bytes": 3851,
+        "measuredAt": "2026-08-31T18:48:19.547Z"
+      },
+      "alerts": {
+        "resourceId": 84047,
+        "url": "https://proxy.transport.data.gouv.fr/resource/kiceo-vannes-gtfs-rt",
+        "sameResource": true,
+        "alertCount": 5,
+        "routeMatch": null,
+        "bytes": 3851,
+        "measuredAt": "2026-08-31T18:48:19.547Z"
+      }
     },
     {
       "id": "pan-84050",
@@ -5418,15 +7208,15 @@
         "south": 50.3737,
         "west": 2.4516,
         "north": 50.5913,
-        "east": 3.0602
+        "east": 3.068
       },
-      "vehicleSample": 133,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 64,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 117,
-        "vehicles": 133,
+        "ms": 121,
+        "vehicles": 64,
         "error": null
       },
       "health": {
@@ -5434,9 +7224,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84050,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c4563dcc-f547-489a-b63a-efb4dbb37262",
+        "sameResource": true,
+        "tripCount": 57,
+        "joinRate": 0.563,
+        "bytes": 37455,
+        "measuredAt": "2026-08-31T18:48:19.548Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84054",
@@ -5460,13 +7260,13 @@
         "north": 48.8674,
         "east": 1.956
       },
-      "vehicleSample": 37,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 3,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 161,
-        "vehicles": 37,
+        "ms": 237,
+        "vehicles": 3,
         "error": null
       },
       "health": {
@@ -5474,9 +7274,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84053,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/6b6b3744-331f-4353-b93e-c6db1ea0b503",
+        "sameResource": false,
+        "tripCount": 22,
+        "joinRate": 1,
+        "bytes": 16450,
+        "measuredAt": "2026-08-31T18:48:19.732Z"
+      },
+      "alerts": {
+        "resourceId": 83814,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/ddccec19-1f3d-4201-86a7-0d22b40a2d49",
+        "sameResource": false,
+        "alertCount": 1,
+        "routeMatch": 0,
+        "bytes": 690,
+        "measuredAt": "2026-08-31T18:48:19.869Z"
+      }
     },
     {
       "id": "pan-84058",
@@ -5500,13 +7318,13 @@
         "north": 44.0066,
         "east": 4.9656
       },
-      "vehicleSample": 91,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 54,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 171,
-        "vehicles": 91,
+        "ms": 149,
+        "vehicles": 54,
         "error": null
       },
       "health": {
@@ -5514,9 +7332,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84059,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/91b75e0a-4fed-4aad-a21c-0eafc76c58f5",
+        "sameResource": false,
+        "tripCount": 90,
+        "joinRate": 0.833,
+        "bytes": 60234,
+        "measuredAt": "2026-08-31T18:48:19.695Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84067",
@@ -5540,13 +7368,13 @@
         "north": 46.0039,
         "east": 6.9466
       },
-      "vehicleSample": 12,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 6,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 128,
-        "vehicles": 12,
+        "ms": 123,
+        "vehicles": 6,
         "error": null
       },
       "health": {
@@ -5554,9 +7382,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84067,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c447183d-c831-42f6-b85f-5789978398d8",
+        "sameResource": true,
+        "tripCount": 6,
+        "joinRate": 1,
+        "bytes": 11758,
+        "measuredAt": "2026-08-31T18:48:19.659Z"
+      },
+      "alerts": {
+        "resourceId": 84067,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c447183d-c831-42f6-b85f-5789978398d8",
+        "sameResource": true,
+        "alertCount": 3,
+        "routeMatch": 0.25,
+        "bytes": 11758,
+        "measuredAt": "2026-08-31T18:48:19.659Z"
+      }
     },
     {
       "id": "pan-84069",
@@ -5580,13 +7426,13 @@
         "north": 42.1274,
         "east": 8.7048
       },
-      "vehicleSample": 1,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 106,
-        "vehicles": 1,
+        "ms": 81,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -5594,9 +7440,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84069,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c854a422-f68a-469b-af72-b35c2d4dc84c",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.659Z"
+      },
+      "alerts": {
+        "resourceId": 84069,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/c854a422-f68a-469b-af72-b35c2d4dc84c",
+        "sameResource": true,
+        "alertCount": 0,
+        "routeMatch": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.659Z"
+      }
     },
     {
       "id": "pan-84080",
@@ -5615,18 +7479,18 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84080",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-urbain-de-la-zone-sud",
       "bbox": {
-        "south": 14.4322,
-        "west": -61.0657,
-        "north": 14.6388,
+        "south": 14.4308,
+        "west": -61.0669,
+        "north": 14.6453,
         "east": -60.8336
       },
-      "vehicleSample": 39,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 52,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 137,
-        "vehicles": 39,
+        "ms": 139,
+        "vehicles": 52,
         "error": null
       },
       "health": {
@@ -5634,9 +7498,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84080,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/092ad091-b0c1-4094-9897-198a3c78faa7",
+        "sameResource": true,
+        "tripCount": 516,
+        "joinRate": 1,
+        "bytes": 66738,
+        "measuredAt": "2026-08-31T18:48:19.660Z"
+      },
+      "alerts": {
+        "resourceId": 84080,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/092ad091-b0c1-4094-9897-198a3c78faa7",
+        "sameResource": true,
+        "alertCount": 13,
+        "routeMatch": 0.149,
+        "bytes": 66738,
+        "measuredAt": "2026-08-31T18:48:19.661Z"
+      }
     },
     {
       "id": "pan-84081",
@@ -5655,18 +7537,18 @@
       "pageUrl": "https://transport.data.gouv.fr/resources/84081",
       "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-urbain-de-la-zone-centre",
       "bbox": {
-        "south": 14.5958,
+        "south": 14.5956,
         "west": -61.1036,
         "north": 14.6795,
-        "east": -60.9839
+        "east": -60.9836
       },
-      "vehicleSample": 27,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 31,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 534,
-        "vehicles": 27,
+        "ms": 482,
+        "vehicles": 31,
         "error": null
       },
       "health": {
@@ -5674,9 +7556,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84082,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/1b7e14e1-ebac-427b-a09f-2968b75a7fa8",
+        "sameResource": false,
+        "tripCount": 170,
+        "joinRate": 0.871,
+        "bytes": 96225,
+        "measuredAt": "2026-08-31T18:48:20.123Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84086",
@@ -5698,9 +7590,9 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 899,
+        "ms": 456,
         "vehicles": 0,
         "error": null
       },
@@ -5709,9 +7601,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84084,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/9c12856f-6303-49a9-bbd8-ed30c52414b4",
+        "sameResource": false,
+        "tripCount": 87,
+        "joinRate": null,
+        "bytes": 20191,
+        "measuredAt": "2026-08-31T18:48:20.007Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84088",
@@ -5733,9 +7635,9 @@
       "vehicleSample": 0,
       "observedAt": null,
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 84,
+        "ms": 73,
         "vehicles": 0,
         "error": null
       },
@@ -5744,9 +7646,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84088,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/eb530fc3-b08f-42a2-a669-0eeeeecee32d",
+        "sameResource": true,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 867,
+        "measuredAt": "2026-08-31T18:48:19.695Z"
+      },
+      "alerts": {
+        "resourceId": 84088,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/eb530fc3-b08f-42a2-a669-0eeeeecee32d",
+        "sameResource": true,
+        "alertCount": 3,
+        "routeMatch": null,
+        "bytes": 867,
+        "measuredAt": "2026-08-31T18:48:19.695Z"
+      }
     },
     {
       "id": "pan-84094",
@@ -5768,15 +7688,15 @@
         "south": 42.4076,
         "west": -0.3596,
         "north": 45.7194,
-        "east": 4.8059
+        "east": 4.806
       },
-      "vehicleSample": 253,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 14,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 359,
-        "vehicles": 253,
+        "ms": 300,
+        "vehicles": 14,
         "error": null
       },
       "health": {
@@ -5784,9 +7704,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84095,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/5bcc6b45-c538-4410-a752-8f32b54eb857",
+        "sameResource": false,
+        "tripCount": 16,
+        "joinRate": 1,
+        "bytes": 15154,
+        "measuredAt": "2026-08-31T18:48:19.999Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84122",
@@ -5810,13 +7740,13 @@
         "north": 50.4776,
         "east": 3.6648
       },
-      "vehicleSample": 83,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 81,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 81,
-        "vehicles": 83,
+        "ms": 68,
+        "vehicles": 81,
         "error": null
       },
       "health": {
@@ -5824,9 +7754,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84122,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/74975bc9-525c-4ecd-b6cb-d1ca08863ba8",
+        "sameResource": true,
+        "tripCount": 18,
+        "joinRate": 0.173,
+        "bytes": 25032,
+        "measuredAt": "2026-08-31T18:48:19.789Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84125",
@@ -5850,13 +7790,13 @@
         "north": 43.9141,
         "east": 4.4961
       },
-      "vehicleSample": 99,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 18,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 72,
-        "vehicles": 99,
+        "ms": 69,
+        "vehicles": 18,
         "error": null
       },
       "health": {
@@ -5864,9 +7804,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": "pan-80732",
+      "tripUpdates": {
+        "resourceId": 84126,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/9be4a7ae-6436-4aab-bdb7-a81e09fa3233",
+        "sameResource": false,
+        "tripCount": 26,
+        "joinRate": 1,
+        "bytes": 17653,
+        "measuredAt": "2026-08-31T18:48:19.862Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84138",
@@ -5890,13 +7840,13 @@
         "north": 46.1581,
         "east": 3.4565
       },
-      "vehicleSample": 12,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
         "ms": 22,
-        "vehicles": 12,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -5904,9 +7854,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84139,
+        "url": "https://proxy.transport.data.gouv.fr/resource/mobivie-vichy-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.833Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-84157",
@@ -5930,13 +7890,13 @@
         "north": 43.2492,
         "east": 2.4426
       },
-      "vehicleSample": 16,
+      "vehicleSample": 0,
       "observedAt": "2026-08-31T16:39:25.168Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 36,
-        "vehicles": 16,
+        "ms": 19,
+        "vehicles": 0,
         "error": null
       },
       "health": {
@@ -5944,9 +7904,19 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 84158,
+        "url": "https://proxy.transport.data.gouv.fr/resource/rtca-carcassonne-gtfs-rt-trip-update",
+        "sameResource": false,
+        "tripCount": 0,
+        "joinRate": null,
+        "bytes": 15,
+        "measuredAt": "2026-08-31T18:48:19.866Z"
+      },
+      "alerts": null
     },
     {
       "id": "pan-8598",
@@ -5970,13 +7940,13 @@
         "north": 46.2406,
         "east": -1.2144
       },
-      "vehicleSample": 11,
-      "observedAt": "2026-08-31T16:39:25.168Z",
+      "vehicleSample": 2,
+      "observedAt": "2026-08-31T18:48:20.123Z",
       "lastProbe": {
-        "at": "2026-08-31T16:39:25.168Z",
+        "at": "2026-08-31T18:48:20.123Z",
         "ok": true,
-        "ms": 137,
-        "vehicles": 11,
+        "ms": 84,
+        "vehicles": 2,
         "error": null
       },
       "health": {
@@ -5984,9 +7954,27 @@
         "quarantined": false,
         "quarantinedSince": null,
         "lastError": null,
-        "lastOkAt": "2026-08-31T16:39:25.168Z"
+        "lastOkAt": "2026-08-31T18:48:20.123Z"
       },
-      "duplicateOf": null
+      "duplicateOf": null,
+      "tripUpdates": {
+        "resourceId": 8598,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/89a81efd-a8f4-4558-9988-9e7c56ab15fe",
+        "sameResource": true,
+        "tripCount": 2,
+        "joinRate": 1,
+        "bytes": 1179,
+        "measuredAt": "2026-08-31T18:48:19.862Z"
+      },
+      "alerts": {
+        "resourceId": 8598,
+        "url": "https://www.data.gouv.fr/api/1/datasets/r/89a81efd-a8f4-4558-9988-9e7c56ab15fe",
+        "sameResource": true,
+        "alertCount": 1,
+        "routeMatch": 0.5,
+        "bytes": 1179,
+        "measuredAt": "2026-08-31T18:48:19.862Z"
+      }
     }
   ]
 }

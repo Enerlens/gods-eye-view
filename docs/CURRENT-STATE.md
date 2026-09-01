@@ -946,7 +946,8 @@ This is the current runtime/source-of-truth snapshot for the project.
 >   still releases tracking in place. The 200 px feel needs close-range field
 >   verification; fleet model sizing remains unchanged.
 > - **Deterministic sprite stacking:** contact collections reassert the stable
->   bottom-to-top order CCTV, FIRMS, Réseau gaz, Power Grid, bikeshare, Shared Mobility FR, Transit FR, AIS,
+>   bottom-to-top order CCTV, FIRMS, Établissements scolaires, Bornes IRVE, Réseau gaz, Power Grid, Groupes de prod,
+>   bikeshare, Shared Mobility FR, Transit FR, AIS,
 >   military, then civilian
 >   — Shared Mobility FR occupies its slot with TWO collections (station dots
 >   below, vehicle glyphs above), registered in that order, so a parked scooter
@@ -1607,8 +1608,11 @@ its criteria cannot be silently ignored.
 | CCTV | Austin + Caltrans (CA) + TfL London + Métropole de Lyon Open Data (+ opt-in viewport-loaded OSM mapped positions) + Street View fallback | `src/data/cctv.js` | `/api/cctv` + `/api/osm-cameras` | 10s (active) |
 | Radio | Radio Browser (public-domain station directory) | `src/data/radio.js` | `/api/radio/stations`, `/api/radio/click/:uuid` | 45 min directory refresh |
 | Bikeshare 🚲 | GBFS (Lyft + BCycle) | `src/data/bikeshare.js` | `/api/gbfs` | 60s |
-| Transit FR 🚌 | transport.data.gouv.fr GTFS-Realtime vehicle positions (~150 French networks; observed footprints in `config/pan_gtfs_rt_feeds.json`) | `src/data/transitFrance.js` | `/api/transit-fr/vehicles`, `/api/transit-fr/feeds` | 15s, viewport-driven below ~300 km |
+| Transit FR 🚌 | transport.data.gouv.fr GTFS-Realtime vehicle positions (~150 French networks; observed footprints in `config/pan_gtfs_rt_feeds.json`), enriched per vehicle with the same networks' `TripUpdate` deviations (150 feeds, 63 in the same body) and `Alert` disruptions (60 feeds) — join rules in `src/data/transitSchedule.js`, companion resources measured into the index — plus, for the SELECTED vehicle, that network's static GTFS GeoJSON conversion for the line's trace and the ordered stops of the run (`config/pan_gtfs_static.json`) | `src/data/transitFrance.js`, `src/data/transitRouteView.js` | `/api/transit-fr/vehicles`, `/api/transit-fr/feeds`, `/api/transit-fr/trip` | 15s fleet, viewport-driven below ~300 km; 25s for the selected run; trip-update bodies cached 45 s and shared by both, alerts 5 min |
+| Road Status FR 🇫🇷 🛣 | Bison Futé DATEX II — live `trafficStatusValue` from 16 DIR traffic centres (`TRAFICOLOR-DIR`, 60–360 s) joined to the site geometry in `config/datex_traficolor_sites.json` (1 958 sites, 1 587 located — 844 from a DIR-published coordinate and 743 resolved from a point repère against the Bornage RRN — 608 segments, 975 km, 589 of them drawn along the surveyed centre of their own carriageway from Liaisons RRN), plus the six-minute national flow/speed snapshot (`QTV-DIR`) | `src/data/roadStatusFrance.js`, `src/data/datexRoadStatus.js`, `src/data/roadStatusCoverage.js`, `scripts/lib/rrnBornage.mjs`, `scripts/lib/rrnCentreline.mjs` | `/api/road-status-fr/segments`, `/api/road-status-fr/sources` | 60s, viewport-driven below ~2 000 km; proxy holds ONE national snapshot (TTL 60 s status / 6 min flow, serve-stale 30 min) and filters it per box |
 | Shared Mobility FR 🛴 | transport.data.gouv.fr GBFS (135 distinct systems after de-duplication; observed footprints in `config/gbfs_fr_systems.json`; per-kind silhouettes in `src/data/sharedMobilityIcons.js`, per-operator hues in `src/data/mobilityOperators.js`) | `src/data/sharedMobilityFrance.js` | `/api/shared-mobility-fr/objects`, `/api/shared-mobility-fr/systems` | 60s, viewport-driven below ~80 km |
+| Bornes IRVE 🇫🇷 🔌 | *fichier consolidé des bornes IRVE* (transport.data.gouv.fr, via ODRÉ) — 231,079 points de charge measured 2026-08-27, rebuilt daily, folded to one site per coordinate. Three regimes by view span: 96 départements in quantile bins (≥ 9.5° lat), a grid-thinned maillage of real positions (9.5°–0.35°), every site with full detail (≤ 0.35°) | `src/data/irveFrance.js`, `src/data/irveFeed.js`, `src/data/irveDepartements.js`, `src/data/irveMesh.js` | `/api/irve-fr/sites`, `/api/irve-fr/departements`, `/api/irve-fr/mesh`, `/api/irve-fr/status` | 30 min (viewport TTL 6 h, national TTL 24 h; upstream consolidation is daily) |
+| Établissements scolaires 🇫🇷 🎓 | *Annuaire de l'éducation* (data.education.gouv.fr, MENJ) — 68,939 rows measured 2026-09-01, rebuilt daily, of which 68,158 are open and geolocated. Pupil rolls joined on the UAI from four per-level *effectifs* datasets at rentrée 2025 (91.7% of teaching establishments). Three regimes by view span: 96 départements in quantile bins (≥ 9.5° lat), a grid-thinned maillage of real positions (9.5°–0.35°), every establishment with full detail (≤ 0.35°). Coloured by level, sized by roll; 2,762 overseas schools are outside the bundled metropolitan polygons and are reported rather than painted | `src/data/schoolsFrance.js`, `src/data/schoolsFeed.js`, `src/data/schoolsDepartements.js`, `src/data/schoolsMesh.js` | `/api/schools-fr/sites`, `/api/schools-fr/departements`, `/api/schools-fr/mesh`, `/api/schools-fr/status` | 30 min (viewport TTL 6 h, national TTL 24 h; upstream rebuild is daily) |
 | Mix élec 🇫🇷 ⚡ | éCO2mix national + 12 régions (RTE, via ODRÉ) — région balances painted on département geometry, five commercial border flows as arcs | `src/data/franceEnergy.js` | `/api/energy-fr` | 3 min (proxy TTL 4 min; product steps every 15 min) |
 | Réseau gaz 🇫🇷 ⬡ | NaTran + Teréga transmission traces (36,106 km, clamped ground polylines), 14 gas-fired power stations, 850 renewable-methane injection points (ODRÉ) | `src/data/gasFrance.js`, `src/data/gasFranceFeed.js` | `/api/gas-fr/network`, `/api/gas-fr/sites`, `/api/gas-fr/status` | 30 min (proxy TTL 7 d for the traces, 12 h for the registers; both are quasi-static) |
 | Centrales EDF 🇫🇷 ◈ | EDF Open Data — 3 datasets (nuclear 56 reactors → 18 sites, hydraulic 51 plants, thermal 19 units → 10 sites), 79 site discs sized by installed capacity | `src/data/edfPowerPlants.js` | `/api/edf-plants` | 30 min (proxy TTL 24 h; the files are republished annually) |
@@ -1616,7 +1620,7 @@ its criteria cannot be silently ignored.
 | Bâti 3D 🇫🇷 ▤ | IGN BD TOPO® `batiment`, Géoplateforme vector tiles at z15, per viewport — extruded volumes coloured by `usage_1`, seated on their own NGF-IGN69 altitudes (h = H + N), re-anchored by a per-~1.1 km-cell median of the rendered surface measured UNDER EACH BUILDING (`globe.getHeight`), each volume then reaching down to the lowest ground under its footprint | `src/data/bdtopoBuildings.js`, `src/data/bdtopoBuildingsFeed.js` | none — keyless, CORS-open, `max-age` 21 d, straight from `data.geopf.fr/tms` | viewport-driven (450 ms debounce, ≤ 0.08° box, ≤ 64 tiles, ≤ 14,000 volumes) + 30 min idle; one re-seat 3 s after a load where the terrain was not yet resident under every building |
 | Groupes de prod 🇫🇷 ☢ | RTE `actual_generations_per_unit` (171 units ≥ 100 MW, hourly) joined by EIC code to ODRÉ's *Registre national des installations de production et de stockage d'électricité*, shipped as a file (positions anchored on EDF Open Data, then OpenStreetMap, then commune centres); 108 stations drawn as a capacity ring plus an output disc | `src/data/rteGeneration.js`, `src/data/rteGenerationFeed.js`, `src/data/local_data/rte_production_units/units.json` | `/api/rte-generation`, `/api/rte-generation/status` | 3 min (proxy TTL 5 min; resource publishes hourly). Needs `RTE_CLIENT_ID`/`RTE_CLIENT_SECRET` for output; the fleet draws keyless |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
-| Dams ▰ | OpenInfraMap/OSM extract (bundled) | `src/data/localLayers.js` | — | static |
+| Barrages ▰ | OSM via Overpass for France + OpenInfraMap snapshot elsewhere (bundled, 6 189) | `src/data/localLayers.js`, `src/data/damsPack.js` | — | static |
 | Submarine Cables ◠ | TeleGeography public map (bundled) | `src/data/telegeographySubmarineCables.js` | — | static |
 | FIRMS Active Fires ▲ | NASA FIRMS live (VIIRS ×3 NRT, trailing 24h) | `src/data/firmsHeatmap.js` | `/api/firms` (`FIRMS_MAP_KEY`) | 10 min (proxy TTL 30 min) |
 
@@ -1964,10 +1968,18 @@ ambiguous between "too high to scan" and "this address is clear".
 isochrone has no meaning without a chosen point, so it is not in the layer
 registry and carries no share token. Walking and driving only.
 
-These five take the last five single-character share tokens. `a`–`y` are taken,
-`z` is the canonical UNKNOWN token two tests assert on, and `1`–`5` belong to
-earlier layers. **The next layer added has no token left and will need the v2
-codec widened.**
+These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
+`ur`, `if`. The single-character space ran out exactly where this file kept
+predicting it would: by the time this branch met main, `0`–`9` and `a`–`y` were
+all claimed and `z` is the canonical UNKNOWN token two tests assert on. Widening
+cost nothing on the wire, because `l=` has always been DOT-SEPARATED: `l=f.dv.p`
+parses by the same split that read `l=f.7.p`, every link ever issued still
+decodes to exactly what it decoded to before, and a two-character token can
+never collide with a one-character one. `MAX_ENABLED_LAYERS_CHARS` was raised
+from 64 in the same change — it had quietly stopped covering the everything-on
+link at 35 layers (69 characters), so sharing every layer at once produced a
+link that decoded to `null`; `layerState.test.mjs` now derives that assertion
+from the registry instead of a number someone has to remember to update.
 
 **One silhouette per register** (`addressMarkerIcons.js`). All five layers
 answer a question about the same building, and drawn as discs they were

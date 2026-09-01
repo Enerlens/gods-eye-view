@@ -26,7 +26,9 @@ export function normalizeLayerLoading(layer = {}) {
   const accepted = Boolean(stats.lastUpdate) || count > 0;
   return {
     id: String(layer.id || ''),
-    label: String(layer.name || layer.id || 'Layer'),
+    // The toast names the same row the visitor just clicked, so it uses the
+    // same display name the panel does — `label` when the taxonomy gave one.
+    label: String(layer.label || layer.name || layer.id || 'Layer'),
     loading,
     disabling,
     refresh: loading && layer.enabled && (stats.refreshing === true || accepted),

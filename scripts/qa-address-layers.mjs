@@ -265,6 +265,29 @@ async function readSymbols(page, ids) {
 }
 
 /**
+ * Take a screenshot, and never let one end the run.
+ *
+ * `Page.captureScreenshot` waits for the page to commit a NEW frame. The app
+ * runs its render governor in `requestRenderMode`, so a settled scene commits
+ * nothing and the call sits there until the protocol timeout — measured at a
+ * full 60 s against a scene that was perfectly healthy, with all five layers
+ * drawn and zero renders in the preceding eight idle seconds. The app was fine;
+ * the harness was asking for a frame nobody was going to draw.
+ *
+ * So: pump a frame first, and treat the picture as best-effort. A screenshot is
+ * evidence for a human, never a check — losing one must not cost the 91 checks
+ * that come after it.
+ */
+async function shoot(page, name) {
+  try {
+    await pump(page, 2, 60);
+    await page.screenshot({ path: path.join(SHOTS_DIR, name), timeout: 20_000 });
+  } catch (error) {
+    console.log(`  ·    screenshot ${name} skipped: ${String(error.message).split('\n')[0]}`);
+  }
+}
+
+/**
  * Ask the manager to refresh these layers now.
  *
  * Their own cadences are 5 to 15 minutes — correct for registers that move in
@@ -345,7 +368,7 @@ const note = (ok, message) => {
       await sleep(3000);
     }
     const scanned = await readLayers(page, LAYERS);
-    await page.screenshot({ path: path.join(SHOTS_DIR, 'address-close.png') });
+    await shoot(page, 'address-close.png');
 
     for (const id of LAYERS) {
       const layer = scanned[id];
@@ -439,7 +462,7 @@ const note = (ok, message) => {
         `${id}: marker sits ${pixelsA.toFixed(1)} px from its address head-on`
         + ` and ${pixelsB.toFixed(1)} px turned 40° — it does not slide`);
     }
-    await page.screenshot({ path: path.join(SHOTS_DIR, 'address-anchored.png') });
+    await shoot(page, 'address-anchored.png');
 
     // Shape is the only channel left to say WHICH register a marker came from,
     // and it is the one the operator actually asked for: "on ne sait pas
@@ -593,7 +616,7 @@ const note = (ok, message) => {
       await sleep(1500);
     }
     const high = await readLayers(page, LAYERS);
-    await page.screenshot({ path: path.join(SHOTS_DIR, 'address-region.png') });
+    await shoot(page, 'address-region.png');
     for (const id of LAYERS) {
       const layer = high[id];
       note(layer.stats?.dormant === true && (layer.entities ?? 0) === 0,

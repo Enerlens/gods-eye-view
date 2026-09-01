@@ -123,11 +123,381 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   edition of the 13ᵉ from €0.89 bn to €15.33 bn, and dividing the first row by
   its 25 m² flat gives €1.28 million per square metre. The register does not say
   how such a sale was split, so neither does the layer.
+- Added the **Établissements scolaires** layer — every school France
+  registers, keyless. The *Annuaire de l'éducation* is published by the
+  Ministère de l'Éducation nationale on data.education.gouv.fr under Licence
+  Ouverte 2.0 and rebuilt daily: 68,939 rows on 2026-09-01, of which 68,557 are
+  open and **68,158 are open and carry a coordinate** — the set the layer
+  draws. Three regimes by view span, as the IRVE layer: the 96 départements
+  with the country in view, a spatially thinned *maillage* of real positions in
+  between, and every establishment with its card over a city. Coloured by
+  school level, sized by pupils.
+- The register holds no roll, so the roll is a join, and its completeness is
+  stated rather than assumed. Dot size comes from the ministry's four per-level
+  *effectifs* datasets at rentrée 2025, joined on the UAI: **57,683 of the
+  62,918 open, geolocated teaching establishments get one (91.7%)**,
+  11,237,267 pupils in total. The 5,235 that do not are named — 2,212 are
+  sub-UAI SEGPA and SEP *sections* whose pupils are already counted inside the
+  collège or lycée at the same coordinate, and 455 are under the ministry of
+  Agriculture. A school with no roll draws at the base size and its card says
+  *effectif non publié*; it is never drawn as, or described as, a school with
+  no pupils.
+- The register's own uncertainties are surfaced instead of flattened:
+  - `precision_localisation` is its account of its own geocoding, and it is not
+    uniform — **2,159 rows are placed at their commune's centroid, not at the
+    school**. Those cards say so. The 22 published spellings fold onto a
+    four-step ladder, and an unrecognised one resolves to *unknown* rather than
+    inheriting "exact address".
+  - **399 open establishments have no coordinate at all**, and 332 of them are
+    one place: French Polynesia's 311 and Wallis-et-Futuna's 21 are ungeocoded
+    in their entirety. They are excluded at the query rather than placed at a
+    commune centroid, and the shortfall is carried to the client.
+  - A UAI is an administrative unit, not a building, so two dots can share one
+    address. Every site carries its `etablissement_mere`, and the card names
+    the parent.
+  - `restauration`, `hebergement`, `ulis`, `segpa` and `apprentissage` publish
+    1, 0 **and null**, where null means "not declared". The card lists what is
+    declared present rather than denying what was never stated.
+- The national choropleth is metropolitan and admits it. The bundled
+  département polygons are 96 features with no overseas geometry, so **2,762
+  open, geolocated schools cannot be painted** — La Réunion's 855, Guadeloupe's
+  448, Martinique's 403 and the rest, plus 9 island schools the simplified
+  outlines drop. They are counted, named, and reported on the national row
+  line; the other two regimes draw positions and show all of them. Assignment
+  is point-in-polygon and never a code join, because the register spells
+  Corsica `02A` where the IGN outlines say `2A`.
+
+- **The roads the State measures but never says where.** Bison Futé's counting-station
+  referential publishes a position for 843 of its 1 367 stations. The other 525 are
+  not positionless — 153 of them publish an ADDRESS, the point repère that the French
+  road network is actually numbered by, and every kilometre post of the non-conceded
+  network is published with its Lambert-93 coordinates in a second open dataset, the
+  [Bornage du réseau routier national](https://www.data.gouv.fr/datasets/bornage-du-reseau-routier-national)
+  (51 940 posts, Licence Ouverte 2.0, keyless). Joining the two recovers **all 115
+  stations of DIR Ouest**, which had never been drawn, plus 26 of DIR Atlantique, 10 of
+  DIR Centre-Est and 2 of DIR Est. The join is **calibrated on every build rather than
+  trusted**: 831 stations publish an address *and* a coordinate, and resolving theirs
+  disagrees with the DIRs' own answer by a **median of 3.8 m** (p90 7.2 m, max 64 m,
+  99.8 % within 25 m) — because the DIRs derive the coordinates they publish from this
+  very referential. The number is recomputed and stored in the committed index each
+  run, so an edition that stopped agreeing would move it in the build log before it
+  moved a station on screen.
+- **Nantes, Rennes, Saint-Brieuc and Lorient–Vannes are on the map.** The four Breton
+  traffic centres publish 619 live road states under identifiers that appear in no
+  referential row — which is why the layer drew nothing over a quarter of Brittany.
+  Those identifiers turned out to be point-repère addresses themselves:
+  `35A0084T096_00D` is département 35, route A84, PR 96, abscissa 0, right-hand
+  carriageway. **602 of them resolve**, four cities move from the layer's "state
+  published, position withheld" table to its showcase list, and the committed geometry
+  goes from **1 195 sites / 832 located** to **1 958 / 1 587**, 608 of them full
+  segments over **975 km**. A site placed this way says so on its card — *"position
+  resolved from its kilometre post (PR), median 4 m"* — because a derived position and
+  a published one are not the same claim.
+- **Segments follow the surveyed centre of their own carriageway.** The referential
+  gives a counting station two endpoints and nothing in between, so every segment was
+  drawn as a straight chord. Threading the kilometre posts between the two ends was the
+  first answer and it could not carry the layer: **the median segment is 948 m long and
+  the median post interval 1 000 m**, so 643 of 842 segments contained no post at all
+  and stayed straight. The drawn line sat a median **56 m** from its own tarmac, 142 m
+  at p90, **411 segments past 25 m** — on the Bordeaux rocade, a green line cutting the
+  inside of every curve. The shape now comes from the dataset next door:
+  [Liaisons du réseau routier national](https://www.data.gouv.fr/datasets/liaisons-du-reseau-routier-national)
+  (DGITM, Licence Ouverte 2.0, keyless) publishes **56 205 polylines, 1.66 M vertices,
+  one per point-repère interval, at a mean 26 m between vertices** — against the
+  1 000 m the posts offered. **The join needs no geometry at all**: every section NAMES
+  the two posts it runs between, in the address grammar this build already reads, so it
+  is placed in the same cumulative-distance space the bornage is sorted by — and the
+  coordinates are then free to be checked rather than trusted. Over 33 483 joined
+  sections the polylines' own ends sit **0 m from the posts they name at p50, p90 and
+  p99**: the two files are cut from the same survey. **589 of the 608 real segments
+  trace** (96.9 %), simplified at 4 m — under the width of a traffic lane — for a
+  committed file of 485 KB against 364 KB. The 19 that do not are slip roads and
+  unnumbered axes the point-repère referential does not address; they keep the post
+  threading, or the chord, exactly as before. Three guards refuse to shape rather than
+  guess: a section drawn more than 50 m from the posts it names, an endpoint more than
+  150 m from any post of the road it names, and a trace running more than three times
+  the straight line between its ends — the ring-road case, where shaping would wrap a
+  segment around the whole of Bordeaux.
+- **Lille stays dark, and that is a measurement, not a gap.** DIR Nord's 357 site ids
+  were tested against the bornage both ways they can be read: three digits as the PR
+  fits 24 % of them, two digits fits 75 % — but the two-digit reading puts DIR Nord's
+  A1 sensors at PR 12–30, which is département 95, inside Île-de-France and 150 km
+  outside its territory. A grammar that has to be wrong to parse is not the grammar,
+  so the empty-state sentence over Lille now reads "under site ids that are neither a
+  referential row nor an address" and the city keeps its explanation.
+
+### Changed
+
+- The maillage thinning and the point-in-département lookup now live in
+  `src/data/geoMeshThinning.js` and `src/data/franceDepartements.js`, shared by
+  the charge-point and schools layers instead of duplicated. `irveMesh.js` and
+  `irveDepartements.js` keep their full export surface and their measurements;
+  their unchanged test suites are what prove the extraction was faithful.
+
+- **The Data Layers panel is grouped and in French.** Thirty-four datasets no
+  longer arrive as one flat list ordered by the accident of which PR merged
+  first. They sit in **eight thematic groups** — *Air & espace, Défense,
+  Maritime, Mobilité terrestre, Énergie, Risques & environnement, Réseaux &
+  capteurs, Bâti & territoire* — each a collapsible section whose header carries
+  its own tally (*"2/8 ON"*) and turns cyan while anything in it is live. Every
+  group opens by default; a group you close is remembered, per group, across
+  reloads.
+- **Every row now reads in French.** *Live Flights* is **Vols en direct**, *Live
+  AIS Vessels* is **Navires en direct**, *Mapped Installations* is **Sites
+  militaires**, *Street Traffic* is **Trafic routier**, *Groupes de prod (FR)*
+  is **Groupes de production**. The five `(FR)` suffixes are gone: a small
+  **FR** / **US** / **VILLES** chip now says where a layer has data, once, on
+  the sixteen rows where the answer is not "everywhere" — and nothing at all on
+  a global layer, because a badge on every row is a badge on none. The panel
+  widened from 280 to 320 px to hold the longer names on one line.- Added the **Bornes IRVE** layer — every public EV charge point France has
+  declared, keyless. The *fichier consolidé des bornes de recharge pour
+  véhicules électriques* is assembled daily by transport.data.gouv.fr from the
+  operators' own filings and republished by **ODRÉ** under Licence Ouverte 2.0:
+  231,079 points de charge, loaded per viewport, drawn as one dot per *site*,
+  coloured by the highest power band installed there and sized by how many
+  charge points are there. Clicking one gives the split by power, the
+  connectors, the access conditions, the operators — and the span of that
+  site's own declarations rather than the age of the poll.
+- It is installed capacity, not availability, and says so. The register
+  publishes where the charge points are, never whether any of them is free, so
+  the layer draws no availability colour and prints no "libre" count.
+- The register disagrees with itself in ways that a naive read gets visibly
+  wrong, so seven of them are absorbed server-side and pinned against a
+  captured payload:
+  - `coordonneesxy` is **labelled backwards** — its `lon` key holds the
+    latitude — on every row checked, and `geo_point_borne` is null on all
+    231,079, so Opendatasoft's own geo filter matches nothing. Only the
+    consolidated columns are read.
+  - The station id fragments the station: Q-Park's Grande Arche car park
+    publishes **127 station ids at one coordinate**, and 1,192 rows nationally
+    publish the literal string `"Non concerné"`. The render unit is the
+    coordinate, rounded to ~1.1 m.
+  - 442 of 3,812 Île-de-France sites carry two "operators" publishing an
+    **identical** power profile at the same point — 7.5% of the area's charge
+    points, counted twice by any plain sum. Identical profiles collapse;
+    overlapping ones never do; both totals travel to the client.
+  - 3.0% of rows publish a power no charge point can have (771 rows at 7,360 —
+    watts in a kilowatt column — and 5,315 at ≤ 0). Those are counted in an
+    explicit *puissance non exploitable* band rather than rescaled by a guess
+    that would turn a real 600 kW bank into 0.6 kW.
+  - `consolidated_is_lon_lat_correct` is False for two different reasons. False
+    with no verified commune (80,545 rows) means *unverifiable* and is kept;
+    False with one (5,361 rows) means the position contradicts its own commune
+    and is withheld and counted. Reading the flag as one thing would either
+    discard a third of France or leave a Gironde site drawn south of Madagascar.
+  - Booleans arrive in nine forms including `"False"`, which JavaScript coerces
+    to `true` — that alone would report every paid site as free.
+  - Some publishers ship Mac-Roman accents decoded as Latin-1, which would
+    split one legend row into four.
+
+- **Bornes IRVE** gained its middle regime — the *maillage*. The layer now
+  answers at three scales instead of two: the 96 départements while the whole
+  country is in view, real site positions thinned onto a 30 × 20 grid once
+  France is cropped, and every site with full detail over a city. Only one is
+  ever drawn, and each carries its own legend.
+- The thinning is spatial, not by rank: every occupied grid cell gets a dot
+  before any cell gets a second, so the Massif Central stays visible as sparse
+  rather than vanishing. Taking the biggest N instead would have collapsed
+  France to a dozen conurbations.
+- And each cell is represented by its most common band rather than its biggest
+  site. Picking the largest drew **46.2% of the dots as high-power DC when
+  12.2% of the sites in view were** — the biggest site in a rural cell is the
+  motorway bank — which made the map say France runs on 300 kW chargers when
+  it runs on 22 kW ones. The modal rule brings that to 8.7% against 12.2%
+  true. The residual (`normale` at ~46% against 36%) is stated in the legend
+  rather than hidden.
+- The national point set is served once (`/api/irve-fr/mesh`, 39 579 tuples,
+  0.9 MB, cached a day) and picked in the client, so panning the maillage
+  costs no round trip.
+- The layer's share-link token is **`8`**, not the `l` this work was originally
+  written against: `l` went to **Centrales EDF** while the branch sat unmerged,
+  and two layers on one token is a share link that silently enables the wrong
+  one. Links written before this lands never carried an IRVE token at all, so
+  nothing in the wild changes meaning.
+
+### Fixed
+
+- **234 road-status "segments" were points wearing a segment's shape.** Their
+  referential row publishes a start equal to its end, and they were being written as
+  four-number segments and handed to Cesium as zero-length ground polylines — geometry
+  it cannot stroke. They are now written as single points, which is what makes the
+  renderer draw them as the 25 m stub a positioned station with no extent deserves.
+  The segment count falls from 842 to 608 and nothing is lost: the difference was never
+  234 roads.
+- **A rebuild of the road-status index reported Brittany as unlit.** The coverage table's
+  `fromPointRepere` counted what a run had newly placed rather than what the file held,
+  so the second build against an already-complete index reported zero for Nantes,
+  Rennes, Saint-Brieuc and Lorient–Vannes on a day nothing about them had changed. It
+  now counts from the committed record, and the assertion that guards those four cities
+  survives a re-run.
 
 ## [Unreleased] — 2026-08-31
 
 ### Added
 
+- **Every live transit vehicle now carries the operator's own delay and
+  disruption.** All 150 French vehicle-position feeds have a `TripUpdate`
+  companion in their own dataset — and **63 of them ARE that companion**,
+  publishing both in one protobuf body, so for those the delay is bytes already fetched rather than a
+  second request. The dev-server proxy joins that prediction to the vehicle
+  already on screen and sends four things with it: how far off the timetable the
+  operator says the run is, whether the run has been **cancelled**, which of its
+  remaining stops it will **skip**, and the operator's own sentence about its
+  line from `Alert` (60 feeds carry them). The card reads *"🕘 9 min late"* and
+  *"⚠ Bordeaux : travaux quai de Paludate (this line · detour)"*, the ambient
+  contact label reads *"LN 15 +9m"*, and the control-panel row says *"1 network ·
+  25 late"* without a click. Measured 2026-08-31 over the 30 largest live
+  networks (1,865 vehicles): **67% of vehicles join a trip update** by `trip_id`,
+  a further 2% only by vehicle id, and **38% end up with a deviation**. The gap
+  is not a join failure — 17 of those 30 networks publish an absolute predicted
+  `time` and never a `delay`, and converting one to the other needs the 223 MB
+  `stop_times.txt` this project refuses to load. Those vehicles read *"run
+  tracked · no delay published"* instead of showing zero, because a viewer must
+  be able to tell "on time" from "nobody said".
+- **A bus parked at its terminus is not fifty-six minutes early.** A vehicle
+  waiting for a departure an hour away publishes a predicted arrival of "about
+  now" against a scheduled arrival an hour ahead, and the deviation the operator
+  computes is −3,361 s. Printed as punctuality that reads *56 minutes early*,
+  which is not a thing a bus can be. `transitSchedule.awaitingDeparture` catches
+  it — stopped at the first stop of its own run, ahead of schedule — and reports
+  *"🕘 waiting to depart · due out 22:46"* instead. Over one Bordeaux viewport
+  that is the difference between a summary claiming **28 early** and one saying
+  **7 early, 13 waiting**. The rule is deliberately one-sided: a vehicle at its
+  first stop running LATE has an overdue departure, which is real lateness.
+- **Which resource carries a network's delays is now measured, not guessed.**
+  The PAN catalog never says which trip-update resource pairs with which
+  position feed, and a dataset can publish several of each — Astuce ships three
+  position feeds and four trip-update feeds, one per operator, on interleaved
+  ids. `scripts/build-pan-gtfs-rt-index.mjs` now probes the candidates and keeps
+  the one whose trips actually **join this feed's own vehicles**, committing the
+  measured join rate alongside. Adjacent resource ids are only the ranking hint:
+  they pair TaM's urban and suburban feeds correctly and get Astuce wrong, where
+  measurement scores the right body at 90%. Mean measured join rate across the
+  79 networks with vehicles running at build time: **0.92**.
+- **Aéroports: 7 464 places to land, France in full.** A new bundled layer
+  draws the world's airports and aerodromes from **OurAirports**, the open
+  catalogue its volunteer editors dedicate to the public domain. Cards carry the
+  **ICAO and IATA codes**, the class, the **longest open runway** in metres with
+  its surface family, and the commune — Roissy at 4 215 m of asphalt, an 82 m
+  strip at La Tour-du-Pin, and 7 462 more in between. Bundled with the build, so
+  it draws with **no key and no network**.
+
+  The pack is a **selection, and the selection is asymmetric on purpose**:
+  worldwide it is every large and medium airport plus everything that sells a
+  scheduled seat (which is what keeps Monaco's heliport and the Greenland
+  shuttles), while **France and the overseas territories carry the whole long
+  tail** — 1 335 fields, altiports, hydrobases and one balloon field included.
+  Shipped whole, the catalogue is 86 002 rows and roughly 25 MB of committed
+  JSON, 23 196 of them heliports, and in France almost every one of those is a
+  hospital landing pad with no ICAO code. The four clauses that decide what
+  survives live in `src/data/airportsPack.js` — the same module the layer reads
+  back when it writes a card, so the build and the globe cannot disagree about a
+  field — and `airports/README.md` states the limit plainly: a small airfield
+  missing outside France was **not selected**, and is not evidence of an empty
+  sky.
+
+  **Importance is a map channel, not a footnote.** Seven thousand identical dots
+  is a wall, and this pack is the opposite of uniform. Two independent fields
+  decide how much an airfield matters — OurAirports' editorial **size** class,
+  and the hard fact of whether a **timetabled service** calls there — so
+  crossing them gives four tiers: **Grand aéroport** (1 172), **Aéroport de
+  ligne** (3 175), **Aéroport sans ligne** (1 991) and **Aérodrome & aéroclub**
+  (1 126, all of them French, because the clause that admits them is). The tier
+  is decided once and then drives everything: the dot size (14 → 6 px), the
+  colour ramp, the label ladder, the legend, and **how far out the card stays
+  readable** (14 000 km → 200 km). That last channel is the one that fixed the
+  real problem: over Île-de-France the shared label grid was awarding fifteen
+  cells to aéroclubs and three to Roissy, Orly and Le Bourget, because cells are
+  awarded *locally* and a grass strip with no competition always wins its own.
+  Priority cannot fix that; range can. The marker is always drawn — only its
+  name waits until you come closer.
+
+  Four chips on the layer row cut to the tier you want — `TOUS`, `AÉROPORTS`
+  (drops the aéroclubs), `LIGNES` (only what a ticket is sold to), `GRANDS`.
+  They are runtime params, **not** share-link state, and the layer keeps
+  reporting all 7 464 features while a floor is on: a chip hides markers without
+  losing them, the same contract the hydro layer's `floorKw` already follows.
+  The legend counts what is **drawn**, not what is loaded, so a hidden tier
+  reads 0 and says how many it is holding back rather than quietly overstating
+  the picture. The grading itself is generic — `createLocalGeoJsonLayer` now
+  takes an optional group/style/filter/legend contract, and the three other
+  bundled packs are untouched by it.
+
+  Three values in the pack are easy to misread and are labelled rather than
+  cleaned up. `runways.count` counts upstream runway *records*, helicopter lanes
+  included — Charles de Gaulle reports 5, of which four are its paved runways.
+  `type` is OurAirports' editorial **size** bucket and does **not** map onto the
+  French regulatory ladder. And `runways.surface` is a three-value family
+  (`revêtue` / `non revêtue` / `eau`) collapsed from 557 free-text spellings
+  across 48 203 runways; 22% of features carry no surface at all rather than a
+  guess.
+
+- **Click a live bus and see the line it is running.** Selecting a vehicle in
+  **Transit FR** now draws its **route trace on the ground in the operator's own
+  colour**, marks **every stop of the run it is on**, and adds to the card the
+  line's public name, the stop it is heading for with a countdown and schedule
+  deviation, and its terminus. Bordeaux's Lianes 35 draws as a 32 km loop with
+  its 82 stops and reads *"▸ Avenue de l'Europe · due · 5 min late / ⇥ Gare
+  Saint-Jean · 67 stops"*. Escape puts it all away again.
+- **The two halves of that answer come from two feeds, and degrade separately.**
+  The **trace, the line's name and its colour** come from the network's static
+  GTFS — through the PAN's own **GeoJSON conversion** of it, so `shapes.txt`
+  (36.7 MB compressed for Normandie) is never downloaded; the **ordered stops
+  and their predicted times** come from the network's live **GTFS-RT
+  TripUpdates** feed, which every one of the 142 datasets publishing vehicle
+  positions also publishes. A network with no usable trip update still gets its
+  line drawn, from `route_id` alone, and the card says the stops are not listed.
+- **Which of a line's traces the run is on is measured, not guessed.** A French
+  line publishes several shape variants and the conversion drops `shape_id`, so
+  the layer picks the variant that carries **every one of the trip's own stops**
+  — measured against all 897 of TBM's running trips on 2026-08-31, all 897
+  matched at a median stop-to-trace offset of 3 m. When no variant fits, the
+  **whole line** is drawn instead of one run of it and the card says so.
+- **`npm run transit:static`** builds `config/pan_gtfs_static.json` (196 KB,
+  URLs only): for each of the 148 queryable vehicle feeds, its TripUpdates
+  sibling and its static GTFS's GeoJSON conversion. Geometry itself is fetched
+  on demand and cached under `.gev-cache/pan-gtfs-geo/` — a first click on a
+  network costs 0.87 s, every later one 18 ms.
+- **A new layer: the State's own traffic sensors on the French national road
+  network.** `Road Status FR` (`road-status-fr`) draws **830 segments, 918 km**
+  of the non-conceded RRN, coloured every 60–360 s by the sixteen DIR
+  traffic-management centres' own DATEX II `trafficStatusValue`, and carries the
+  one measurement TomTom has no equivalent of at any price: a **vehicle count**
+  — veh/h and average km/h per station, from Bison Futé's six-minute national
+  snapshot. Keyless and Licence Ouverte 2.0, so on a build with no
+  `TOMTOM_API_KEY` — where the traffic layer runs its simulation — this is the
+  only measured congestion data on the globe. It is brightest exactly where
+  `Transit FR` is dark: Marseille (186 segments), Toulouse (127), Lyon (106) and
+  Saint-Étienne (100) publish no live bus at all.
+- **The geometry is built offline, because the published referential is three
+  traps.** `npm run road-status:index` commits
+  `config/datex_traficolor_sites.json` (178 KB, 1 195 sites, 832 located).
+  `refDir.csv` is in **Lambert-93**, so `scripts/lib/lambert93.mjs` reprojects
+  it — deriving the projection constants from its defining parameters and
+  asserting them against IGN's published NTG_71 values rather than pasting
+  numbers a typo would turn into a silent kilometre. It is **regenerated every
+  six-minute cycle with a moving row set** (1 197 stations in one cycle, 1 192
+  in the next), so the build UNIONS successive cycles instead of trusting one.
+  And it **declares twenty columns while publishing nineteen** on every row, so
+  the parser reads positionally: a header-zipped read puts `nb_voies` in the
+  easting and makes most of the network look unlocatable, which it is not.
+- **Two different kinds of empty, kept apart.** Île-de-France has no publisher
+  at all — the DIRIF appears in neither publication, verified three ways — while
+  Lille, Nantes, Rennes, Saint-Brieuc, Lorient–Vannes and Nancy–Metz publish a
+  live colour for **1 046 sites whose position nobody publishes**. A viewport
+  over Lille now reads "357 live road states published under site ids that are
+  in no national referential row" instead of a blank that looks like a bug, and
+  `roadStatusCoverage.test.mjs` cross-checks every such claim against the built
+  index so a DIR that starts publishing coordinates fails the suite rather than
+  leaving a city wrongly dark.
+- **Nothing is inferred from the count.** A located station no traffic centre
+  watches stays grey and reads `Not reported` rather than being folded into free
+  flow; where two centres report one site the WORSE state wins; flow and speed
+  are labelled **6-min average**, never as an instantaneous reading; and a
+  station that counted nothing says so instead of printing "0 km/h" — 114 of
+  1 192 stations at 22:30 CEST, which is a fact about the hour, not a jam.
+  Proven end-to-end by `npm run qa:road-status-fr` (18 checks) and 44 new unit
+  tests.
 - **Live French transit vehicles now say what they ARE.** GTFS-Realtime carries
   no vehicle class, so `npm run transit:route-types` joins each network's static
   GTFS `route_type` and commits `config/pan_route_types.json` — 147 feeds, 7,044
@@ -176,6 +546,55 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   of viewport selection without deleting it, and any success revives it.
   `/api/transit-fr/feeds` now reports shipped and queryable counts side by side.
 
+- **Événements routiers (FR): what the road operators themselves declared.** A
+  new layer in **MOBILITÉ TERRESTRE**, keyless, Licence Ouverte 2.0, through a
+  new `/api/bison-fute` proxy. It draws `Événementiel-DIR` — the national DATEX
+  II aggregate every Direction interdépartementale des routes publishes its
+  event log into. On the snapshot it was built against that was **286 situations
+  holding 600 records**: nine accidents, one queue, 48 obstructions, 184
+  roadworks orders, four closures and the diversions posted around them, across
+  eight categories with their own legend.
+
+  It is the companion to **Road Status FR**, which landed the same week and
+  reads this publisher's OTHER product: that layer draws how the network is
+  *flowing* (Traficolor status, veh/h, km/h), this one draws what has been
+  *declared to have happened on it*. Neither reads the other's feed.
+
+  Three decisions are the layer:
+
+  - **One situation, one marker.** DATEX II nests up to twelve records inside a
+    single situation — the accident, the two lanes it blocked, the four exits
+    now closed. Drawing them all would put one crash on the map twelve times,
+    so the CAUSE is drawn and the consequences are counted on its card
+    (`+ 5 déviations`). An accident outranks the lane closure it caused; a
+    diversion only wins when a situation is nothing but diversions.
+  - **Planned is not happening.** 68 of the 286 had not started yet — works
+    ordered for October. They are hidden by default, drawn dimmer and smaller
+    under the `+ À venir` chip, and a globe that painted next month's roadworks
+    over tonight's traffic would be saying something false about now.
+  - **Ended means ended.** A rockfall opened on 31 January, cleared in March,
+    and published with **no end time at all** — only the operator's lifecycle
+    flag says it is over. Read on its validity window it has been blocking the
+    N20 for seven months. The flag wins.
+
+  The layer covers the **réseau routier national non concédé** and says so. The
+  conceded motorways — the whole ASF/APRR/Sanef network — are not in this feed
+  at all; Bison Futé serves them under the credentialed *Action b* / *Action c*
+  licences, and their absence is a property of the source rather than a gap the
+  layer hides. Two further caveats are stated rather than hidden: a `Linear`
+  event publishes only its two endpoints, so a segment is the straight chord
+  between them (median 1.77 km on the capture; the card says so past 10 km), and
+  records the feed marks `probable` or `riskOf` are labelled unconfirmed.
+
+  Under the hood: `bisonFuteFeed.js` holds a ~90-line DATEX II reader (no new
+  dependency), the situation classifier and the primacy ordering, pinned by 17
+  unit tests against a real captured document — including the rockfall with no
+  end time and the situation whose internal operator notes must not reach a
+  public globe. The proxy refreshes with `If-None-Match`: the origin serves ETag
+  and gzip (3.3 MB → 165 KB) and answers a conditional GET with a 304, which is
+  what makes a five-minute poll of a 3.3 MB document affordable.
+  `npm run qa:bison-fute` proves the rest in a real browser.
+
 - **Every data layer now knows what it is.** A new `src/data/layerTaxonomy.js`
   gives all 28 registered layers a category — **AIR & ESPACE**, **DÉFENSE**,
   **MARITIME**, **MOBILITÉ TERRESTRE**, **ÉNERGIE**, **RISQUES &
@@ -211,6 +630,14 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   calibrated against.
 
 ### Fixed
+
+- **The power grid's OpenStreetMap attribution was never rendered.** Its entry
+  in `DATA_CREDITS` was missing its object boundary, so `power-grid-osm` and
+  `rte-actual-generation` shared one object literal and the second `key`/`html`
+  pair silently overwrote the first — the ODbL credit for a layer that draws
+  volunteer-mapped geometry simply did not appear in the Data attribution
+  popover. Both entries are now separate objects, and 42 credits are registered
+  where 41 were. Found while adding the Bison Futé credit next to it.
 
 - **`npm run qa:traffic` could not boot at all.** It waited on
   `window.__godsEyeView` with puppeteer's default animation-frame polling, and

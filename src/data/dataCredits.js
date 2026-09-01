@@ -88,6 +88,8 @@ export const DATA_CREDITS = [
       '(ODbL 1.0). Volunteer mapping, not a grid register: coverage varies by country, ' +
       'only features OSM gives a voltage of 50 kV or more are drawn, and routes are the ' +
       'mapped ground route &mdash; not the conductor height, which OpenStreetMap does not publish.',
+  },
+  {
     key: 'rte-actual-generation',
     html:
       'Per-unit electricity generation (France): ' +
@@ -308,6 +310,21 @@ export const DATA_CREDITS = [
       '© each transport authority / operator',
   },
   {
+    key: 'datex-road-status-fr',
+    html:
+      'Live French road status, flow and speed: DATEX II published by the ' +
+      '<a href="https://www.bison-fute.gouv.fr" target="_blank" rel="noopener">Directions Interdépartementales des Routes via Bison Futé</a> — ' +
+      '<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a>. ' +
+      'Non-conceded national network only: no coverage in Île-de-France, and no département or city road. ' +
+      'Flow and speed are six-minute averages, not instantaneous readings. ' +
+      'Sites the DIRs publish without a coordinate are placed from their point repère against the ' +
+      '<a href="https://www.data.gouv.fr/datasets/bornage-du-reseau-routier-national" target="_blank" rel="noopener">Bornage du réseau routier national</a> ' +
+      '(DGITM — Licence Ouverte 2.0), which agrees with the published positions to a median of 4 m. ' +
+      'Segments are drawn along the surveyed centre of their own carriageway, from ' +
+      '<a href="https://www.data.gouv.fr/datasets/liaisons-du-reseau-routier-national" target="_blank" rel="noopener">Liaisons du réseau routier national</a> ' +
+      '(DGITM — Licence Ouverte 2.0), rather than as the straight line between their two ends.',
+  },
+  {
     key: 'pan-shared-mobility',
     html:
       'Shared vehicles in France (bikes, scooters, mopeds, car-sharing): GBFS feeds published on the ' +
@@ -316,6 +333,40 @@ export const DATA_CREDITS = [
       '<a href="https://www.etalab.gouv.fr/licence-ouverte-open-licence" target="_blank" rel="noopener">Licence Ouverte 2.0</a> ' +
       'and <a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL 1.0</a>, ' +
       '© each operator / mobility authority',
+  },
+  {
+    key: 'bison-fute-events',
+    html:
+      'French road events (accidents, closures, roadworks, diversions, restrictions): ' +
+      '<a href="https://transport.data.gouv.fr/datasets/evenements-routiers-sur-le-reseau-routier-national-non-concede" target="_blank" rel="noopener">' +
+      '&Eacute;v&eacute;nementiel-DIR</a>, published as DATEX II by the Directions interd&eacute;partementales des routes ' +
+      'through Bison Fut&eacute; / Tipi for the DGITM ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The publication\u2019s own timestamp is reported by the layer as its data timestamp. ' +
+      'Coverage is the r&eacute;seau routier national NON CONC&Eacute;D&Eacute; only &mdash; the conceded motorways are not in this feed. ' +
+      'A segment is drawn as the straight line between the two endpoints DATEX II publishes; the road\u2019s real geometry is not part of the feed.',
+    key: 'irve-charge-points',
+    html:
+      'EV charge points (France): <em>fichier consolid&eacute; des bornes de recharge pour v&eacute;hicules ' +
+      '&eacute;lectriques</em>, assembled by ' +
+      '<a href="https://transport.data.gouv.fr" target="_blank" rel="noopener">transport.data.gouv.fr</a> ' +
+      'from the operators&rsquo; own IRVE filings and republished by ' +
+      '<a href="https://odre.opendatasoft.com/explore/dataset/bornes-irve/" target="_blank" rel="noopener">ODR&Eacute; — Open Data R&eacute;seaux &Eacute;nergies</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
+      '&copy; each am&eacute;nageur / op&eacute;rateur. Installed capacity only &mdash; the file publishes no ' +
+      'availability, and each site&rsquo;s own <code>date_maj</code> is reported as its data timestamp.',
+  },
+  {
+    key: 'schools-fr',
+    html:
+      'French schools: <em>Annuaire de l&rsquo;&eacute;ducation</em>, published by the ' +
+      '<a href="https://data.education.gouv.fr/explore/dataset/fr-en-annuaire-education/" target="_blank" rel="noopener">Minist&egrave;re de l&rsquo;&Eacute;ducation nationale</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
+      'rebuilt daily. Pupil numbers are joined on the UAI from the ministry&rsquo;s four ' +
+      'per-level <em>effectifs</em> datasets at rentr&eacute;e 2025 and cover 91.7% of teaching ' +
+      'establishments &mdash; a site with no published roll is drawn at the base size and says so. ' +
+      'Coordinates carry the register&rsquo;s own <code>precision_localisation</code>; 2 159 rows are ' +
+      'geocoded only to their commune, and their cards say that too.',
   },
   {
     key: 'radio-browser',
@@ -342,9 +393,11 @@ export const DATA_CREDITS = [
   {
     key: 'dams',
     html:
-      'Dams: ' +
+      'Barrages: ' +
       '<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">© OpenStreetMap contributors</a> ' +
-      '(ODbL 1.0) + Open Infrastructure Map',
+      '(ODbL 1.0) — France extracted via the ' +
+      '<a href="https://overpass-api.de" target="_blank" rel="noopener">Overpass API</a>, ' +
+      'rest of the world from Open Infrastructure Map',
   },
   {
     key: 'ports',
@@ -352,6 +405,15 @@ export const DATA_CREDITS = [
       'Ports: NGA World Port Index (Pub. 150) — ' +
       '<a href="https://msi.nga.mil/Publications/WPI" target="_blank" rel="noopener">msi.nga.mil</a> ' +
       '— U.S. public domain. Harbour depths are WPI range bins, not surveyed soundings.',
+  },
+  {
+    key: 'ourairports',
+    html:
+      'Airports &amp; aerodromes: ' +
+      '<a href="https://ourairports.com/data/" target="_blank" rel="noopener">OurAirports</a> ' +
+      '— dedicated to the public domain by its volunteer editors. Bundled as a ' +
+      'selection, not the whole catalogue: every large/medium airport and every ' +
+      'scheduled-service field worldwide, plus the full French long tail.',
   },
   {
     key: 'firms',

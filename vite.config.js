@@ -24,6 +24,11 @@
  *  18. ODRÉ éCO2mix — French live electricity mix, national + 12 regions
  *  19. ODRÉ gas system — NaTran/Teréga transmission traces, gas power stations, biomethane injection
  *  20. Power grid — viewport-bounded OpenStreetMap high-voltage lines, substations and pylons
+ *  21. Bison Futé DATEX II — live status, flow and speed on the French national road network
+ *  22. Bison Futé Événementiel-DIR — the road events the DIRs declare on that same network
+ *      (accidents, closures, roadworks, diversions)
+ *  23. transport.data.gouv.fr / ODRÉ — French EV charge points (IRVE): per viewport,
+ *      per département, and the thinned national mesh between the two
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -33,7 +38,7 @@
 
 import fs from 'node:fs';
 import { promises as fsp } from 'node:fs';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import https from 'node:https';
@@ -54,12 +59,27 @@ import {
   normalizeBudget as normalizeTomTomBudget,
   isOverBudget as isTomTomOverBudget,
 } from './src/data/tomtomTiles.js';
+import {
+  QTV_MEASUREMENTS_URL,
+  ROAD_STATUS_MAX_BOX_DEG,
+  ROAD_STATUS_MAX_SEGMENTS,
+  TRAFICOLOR_INDEX_URL,
+  agglomerationLabel,
+  latestPublicationFile,
+  parseIndexDirectories,
+  parseQtvMeasurements,
+  parseTraficolorStatuses,
+  segmentIntersectsBox,
+  validRoadStatusBox,
+  worseRoadStatus,
+} from './src/data/datexRoadStatus.js';
 import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
 import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
+import { projectRoadEvents } from './src/data/bisonFuteFeed.js';
 import {
   powerGridBoxKey,
   powerGridIncludesTowers,
@@ -75,8 +95,6 @@ import {
   projectActualGenerations,
   rteGenerationWindow,
 } from './src/data/rteGenerationFeed.js';
-import { boundsOfVehicles, vehiclePositionsFromBytes } from './src/data/gtfsRealtime.js';
-import { boundsOfPoints } from './src/data/viewportBox.js';
 // Address-scan feed projections. Each module is pure and unit-tested against a
 // captured upstream response; the proxies below are the only importers.
 import {
@@ -109,6 +127,52 @@ import {
   projectStops,
 } from './src/data/idfmFeed.js';
 import {
+  alertIsActive,
+  alertsFromBytes,
+  boundsOfVehicles,
+  tripUpdatesFromBytes,
+  vehiclePositionsFromBytes,
+} from './src/data/gtfsRealtime.js';
+import { boundsOfPoints, boxKey, snapBoxOutward, validBox } from './src/data/viewportBox.js';
+import { buildDepartementIndex } from './src/data/franceDepartements.js';
+import {
+  projectIrveDepartements,
+  sweepStripeTruncated,
+  IRVE_SWEEP_FIELDS,
+  IRVE_SWEEP_LIMIT,
+  IRVE_SWEEP_MIN_SPAN_DEG,
+  IRVE_SWEEP_SEED_SPAN_DEG,
+} from './src/data/irveDepartements.js';
+import {
+  irveBboxWhere,
+  projectIrveSites,
+  IRVE_BAND_KEYS,
+  IRVE_BOX_STEP_DEG,
+  IRVE_DATASET,
+  IRVE_GROUP_FIELDS,
+  IRVE_GROUP_LIMIT,
+  IRVE_MAX_BOX_DEG,
+  IRVE_SOURCE,
+} from './src/data/irveFeed.js';
+import {
+  SCHOOLS_BOX_STEP_DEG,
+  SCHOOLS_DATASET,
+  SCHOOLS_MAX_BOX_DEG,
+  SCHOOLS_OPEN_WHERE,
+  SCHOOLS_PORTAL,
+  SCHOOLS_ROLL_DATASETS,
+  SCHOOLS_ROLL_YEAR,
+  SCHOOLS_SITE_FIELDS,
+  SCHOOLS_SOURCE,
+  SCHOOL_LEVELS,
+  projectSchoolSites,
+  schoolsBboxWhere,
+} from './src/data/schoolsFeed.js';
+import {
+  SCHOOLS_SWEEP_FIELDS,
+  projectSchoolsDepartements,
+} from './src/data/schoolsDepartements.js';
+import {
   gbfsBoxKey,
   gbfsBoxContains,
   mergeGbfsBounds,
@@ -139,6 +203,19 @@ import {
 } from './src/data/panFeeds.js';
 import { partitionFeedsByHealth } from './src/data/panFeedHealth.js';
 import { resolveVehicleKind } from './src/data/transitVehicleKind.js';
+import {
+  chooseTripShape,
+  indexGtfsGeoJson,
+  pathLengthMeters,
+} from './src/data/transitRouteShape.js';
+import {
+  alertForVehicle,
+  alertWireRecord,
+  indexAlerts,
+  indexTripUpdates,
+  scheduleForVehicle,
+  summarizeSchedule,
+} from './src/data/transitSchedule.js';
 import {
   filterFreshObservations,
   parseNdbcLatestObservations,
@@ -3004,6 +3081,933 @@ function eco2mixProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// IRVE charge-point proxy (France's public EV charging register)
+// ---------------------------------------------------------------------------
+/**
+ * The consolidation runs once a day, so a 6-hour cache costs nothing real and
+ * a cold viewport is paid for at most four times a day.
+ */
+const IRVE_TTL_MS = 6 * 60 * 60 * 1000;
+/** Serve-stale ceiling when ODRÉ is down. A register a week old is still a register. */
+const IRVE_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+const IRVE_TIMEOUT_MS = 30_000;
+/** Byte cap on one grouped answer. The densest measured box (Paris, 0.35°) is 3.3 MB. */
+const IRVE_MAX_BYTES = 24 * 1024 * 1024;
+const IRVE_VIEWPORT_CACHE_MAX = 24;
+const IRVE_RECORDS_URL = `https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/${IRVE_DATASET}/records`;
+const IRVE_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'irve');
+
+/** box key -> {at:number, payload:object} */
+const _irveViewportCache = new Map();
+const _irveViewportInFlight = new Map();
+const _irveRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+function trimIrveViewportCache() {
+  while (_irveViewportCache.size > IRVE_VIEWPORT_CACHE_MAX) {
+    const oldest = _irveViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _irveViewportCache.delete(oldest);
+  }
+}
+
+/** Snapped box key -> stable disk-cache file path. */
+function irveDiskPath(key) {
+  return path.join(IRVE_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+/** Read a disk-cached viewport answer. `maxAgeMs` Infinity = any age. */
+async function readIrveDisk(key, maxAgeMs) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(irveDiskPath(key), 'utf8'));
+    if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.sites)) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+/** Fire-and-forget disk write for a successful viewport answer. */
+function writeIrveDisk(key, entry) {
+  fsp.mkdir(IRVE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(irveDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[IRVE Proxy] disk cache write failed:', err?.message || err));
+}
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchIrveJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(IRVE_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, IRVE_MAX_BYTES);
+}
+
+/**
+ * Fetch one viewport and fold it into sites.
+ *
+ * The two calls run in PARALLEL and mean different things. The grouped call is
+ * the answer; the `limit=0` call is the dataset's own count for the same box,
+ * and exists only so `projectIrveSites` can prove the grouped answer was
+ * complete. A silent aggregation cap is the one failure mode Opendatasoft
+ * would not report as an error, and it would look exactly like a quiet city.
+ *
+ * @param {{south:number, west:number, north:number, east:number}} box Snapped box.
+ * @returns {Promise<object>} Client payload.
+ */
+async function refreshIrveViewport(box) {
+  const where = irveBboxWhere(box);
+  const fields = IRVE_GROUP_FIELDS.join(',');
+  const grouped = new URLSearchParams({
+    where,
+    group_by: fields,
+    select: `${fields},count(*) as pdc`,
+    limit: String(IRVE_GROUP_LIMIT),
+  });
+  const counted = new URLSearchParams({ where, limit: '0' });
+
+  const [groupedResult, countResult] = await Promise.allSettled([
+    fetchIrveJson(`${IRVE_RECORDS_URL}?${grouped}`),
+    fetchIrveJson(`${IRVE_RECORDS_URL}?${counted}`),
+  ]);
+  if (groupedResult.status === 'rejected') {
+    throw new Error(groupedResult.reason?.message || 'grouped query failed');
+  }
+  if (countResult.status === 'rejected') {
+    // The count is a completeness PROOF, not the data. Losing it degrades the
+    // guarantee to "unknown" rather than blanking a viewport that arrived.
+    console.warn('[IRVE Proxy] box count unavailable:', countResult.reason?.message || countResult.reason);
+  }
+
+  const projected = projectIrveSites({
+    groups: groupedResult.value?.results,
+    totalCount: countResult.status === 'fulfilled' ? countResult.value?.total_count : null,
+  });
+  return {
+    ...projected,
+    box,
+    dataset: IRVE_DATASET,
+    maxBoxDeg: IRVE_MAX_BOX_DEG,
+  };
+}
+
+
+/**
+ * Bundled département polygons, read once from disk.
+ *
+ * The dev-server proxy reads the same file the browser layer fetches
+ * (`src/data/local_data/france_departements/`), so the national rollup and the
+ * shapes it is painted on can never come from two different vintages.
+ */
+let _irveDepartementIndex = null;
+async function loadIrveDepartementIndex() {
+  if (_irveDepartementIndex) return _irveDepartementIndex;
+  const file = path.join(process.cwd(), 'src', 'data', 'local_data', 'france_departements', 'departements.geojson');
+  _irveDepartementIndex = buildDepartementIndex(JSON.parse(await fsp.readFile(file, 'utf8')));
+  return _irveDepartementIndex;
+}
+
+/** Grouped stripes are answered concurrently, but politely — this is one anonymous quota. */
+const IRVE_SWEEP_CONCURRENCY = 5;
+/** The national rollup is rebuilt daily upstream; a 24-hour cache matches it. */
+const IRVE_NATIONAL_TTL_MS = 24 * 60 * 60 * 1000;
+const IRVE_NATIONAL_CACHE_PATH = path.join(IRVE_DISK_DIR, 'departements.json');
+/**
+ * Shape version of the cached national rollup.
+ *
+ * Bump this whenever `projectIrveDepartements` changes what it returns. The
+ * cache lives for a day on disk, so without it an edit to the projection is
+ * invisible until tomorrow — and the version that caught this was a coastal
+ * snap that the served payload silently did not have.
+ */
+const IRVE_NATIONAL_CACHE_VERSION = 3;
+
+/** @type {?{at:number, payload:object}} */
+let _irveNational = null;
+/** @type {?Promise<object>} */
+let _irveNationalInFlight = null;
+let _irveNationalDiskChecked = false;
+
+/** Fetch one latitude stripe of the national sweep, grouped. */
+async function fetchIrveStripe(lo, hi) {
+  const fields = IRVE_SWEEP_FIELDS.join(',');
+  const params = new URLSearchParams({
+    where: `consolidated_latitude>=${lo} AND consolidated_latitude<${hi}`,
+    group_by: fields,
+    select: `${fields},count(*) as pdc`,
+    limit: String(IRVE_SWEEP_LIMIT),
+  });
+  const payload = await fetchIrveJson(`${IRVE_RECORDS_URL}?${params}`);
+  return Array.isArray(payload?.results) ? payload.results : [];
+}
+
+/**
+ * Sweep the whole dataset in latitude stripes, splitting any stripe that comes
+ * back at the aggregation limit.
+ *
+ * The split is the only defence against a truncation Opendatasoft does not
+ * report: an over-limit aggregated query returns exactly `limit` rows with
+ * HTTP 200 and no error field, so "did this stripe reach the limit" is the
+ * single available signal. `IRVE_SWEEP_MIN_SPAN_DEG` bounds the recursion,
+ * because the value being split on is upstream-controlled; a stripe still at
+ * the limit down there is returned as `stalled` and surfaces in the payload
+ * rather than halving for ever.
+ *
+ * @returns {Promise<{rows:Array<object>, calls:number, stalled:Array<object>}>}
+ */
+async function sweepIrveNational() {
+  let queue = [];
+  for (let lo = -90; lo < 90; lo += IRVE_SWEEP_SEED_SPAN_DEG) {
+    queue.push({ lo, hi: Math.min(90, lo + IRVE_SWEEP_SEED_SPAN_DEG) });
+  }
+  const rows = [];
+  const stalled = [];
+  let calls = 0;
+
+  while (queue.length) {
+    const batch = queue.splice(0, IRVE_SWEEP_CONCURRENCY);
+    const answers = await Promise.all(batch.map(async (stripe) => {
+      calls += 1;
+      return { stripe, results: await fetchIrveStripe(stripe.lo, stripe.hi) };
+    }));
+    const next = [];
+    for (const { stripe, results } of answers) {
+      if (!sweepStripeTruncated(results.length)) {
+        rows.push(...results);
+        continue;
+      }
+      const span = stripe.hi - stripe.lo;
+      if (span <= IRVE_SWEEP_MIN_SPAN_DEG) {
+        // Keep what came back and say it is short, rather than pretend.
+        rows.push(...results);
+        stalled.push(stripe);
+        continue;
+      }
+      const mid = stripe.lo + span / 2;
+      next.push({ lo: stripe.lo, hi: mid }, { lo: mid, hi: stripe.hi });
+    }
+    queue = next.concat(queue);
+  }
+  return { rows, calls, stalled };
+}
+
+/** Build the national rollup: sweep, verify, then fold onto the polygons. */
+async function refreshIrveNational() {
+  const started = Date.now();
+  const [index, counted, swept] = await Promise.all([
+    loadIrveDepartementIndex(),
+    fetchIrveJson(`${IRVE_RECORDS_URL}?${new URLSearchParams({ limit: '0' })}`)
+      .catch((error) => {
+        console.warn('[IRVE Proxy] national count unavailable:', error?.message || error);
+        return null;
+      }),
+    sweepIrveNational(),
+  ]);
+
+  const projected = projectIrveDepartements({
+    groups: swept.rows,
+    index,
+    totalCount: counted?.total_count ?? null,
+  });
+  if (projected.truncated || swept.stalled.length) {
+    console.warn(
+      `[IRVE Proxy] national sweep incomplete: ${projected.pdcSwept}/${projected.pdcTotal} charge points`
+      + `${swept.stalled.length ? `, ${swept.stalled.length} stripe(s) still at the limit` : ''}`,
+    );
+  }
+  // The two documents are cached together because one sweep builds both, and
+  // served apart because they are read at different moments and at wildly
+  // different sizes: the rollup is 18 KB and arrives with the layer, the mesh
+  // is ~0.9 MB and is only fetched if the operator zooms past the choropleth.
+  const { mesh, ...rollup } = projected;
+  return {
+    rollup: {
+      ...rollup,
+      stalledStripes: swept.stalled.length,
+      upstreamCalls: swept.calls,
+      sweptInMs: Date.now() - started,
+      dataset: IRVE_DATASET,
+      source: IRVE_SOURCE,
+    },
+    mesh: {
+      sites: mesh,
+      siteCount: mesh.length,
+      pdc: rollup.pdcAssigned,
+      bands: IRVE_BAND_KEYS,
+      dataset: IRVE_DATASET,
+      source: IRVE_SOURCE,
+    },
+  };
+}
+
+/** Load the national rollup from disk once, lazily. */
+async function readIrveNationalDisk() {
+  if (_irveNationalDiskChecked) return;
+  _irveNationalDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(IRVE_NATIONAL_CACHE_PATH, 'utf8'));
+    if (entry?.version === IRVE_NATIONAL_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.rollup?.departements)
+      && Array.isArray(entry.payload?.mesh?.sites)) {
+      _irveNational = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeIrveNationalDisk(entry) {
+  fsp.mkdir(IRVE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(IRVE_NATIONAL_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[IRVE Proxy] national cache write failed:', err?.message || err));
+}
+
+/**
+ * Vite plugin: viewport-bounded French charge-point proxy.
+ *
+ *   GET /api/irve-fr/sites?south&west&north&east — charging sites in one box
+ *   GET /api/irve-fr/departements                — national rollup, 96 départements
+ *   GET /api/irve-fr/mesh                        — the national point set, once
+ *   GET /api/irve-fr/status                      — dataset provenance + cache state
+ *
+ * WHY A PROXY at all, when Opendatasoft sends CORS headers and a browser could
+ * fetch this directly: the anonymous ODRÉ quota is per-IP, so N open tabs
+ * would each bill their own calls; the traps in `irveFeed.js` are absorbed
+ * once, server-side, under test, instead of in every client; and the shape
+ * changes completely on the way through. The densest real viewport is 22 348
+ * charge points, which Opendatasoft's own `group_by` collapses to 4 996 rows
+ * (3.3 MB) and this proxy folds again to ~2 700 sites — the browser is served
+ * the sites, never the 17 MB of charge points behind them.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function irveFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/irve-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_irveRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        let newest = null;
+        for (const entry of _irveViewportCache.values()) {
+          if (!newest || entry.at > newest) newest = entry.at;
+        }
+        json(200, {
+          source: IRVE_SOURCE,
+          dataset: IRVE_DATASET,
+          lastFetch: newest,
+          cachedBoxes: _irveViewportCache.size,
+          ttlMs: IRVE_TTL_MS,
+          maxBoxDeg: IRVE_MAX_BOX_DEG,
+          national: _irveNational
+            ? {
+              at: _irveNational.at,
+              painted: _irveNational.payload.rollup.painted,
+              pdc: _irveNational.payload.rollup.pdcAssigned,
+              meshSites: _irveNational.payload.mesh.siteCount,
+            }
+            : null,
+          nationalTtlMs: IRVE_NATIONAL_TTL_MS,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+      if (route === '/departements') {
+        await readIrveNationalDisk();
+        const now = Date.now();
+        if (_irveNational && now - _irveNational.at <= IRVE_NATIONAL_TTL_MS) {
+          json(200, { ..._irveNational.payload.rollup, fetchedAt: _irveNational.at, stale: false }, { 'X-IRVE-FR': 'HIT' });
+          return;
+        }
+        if (!_irveNationalInFlight) {
+          _irveNationalInFlight = refreshIrveNational()
+            .then((payload) => {
+              const entry = { version: IRVE_NATIONAL_CACHE_VERSION, at: Date.now(), payload };
+              _irveNational = entry;
+              writeIrveNationalDisk(entry);
+              return entry;
+            })
+            .finally(() => { _irveNationalInFlight = null; });
+        }
+        try {
+          const entry = await _irveNationalInFlight;
+          json(200, { ...entry.payload.rollup, fetchedAt: entry.at, stale: false }, { 'X-IRVE-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[IRVE Proxy] national rollup unavailable:', error?.message || error);
+          // A rollup a week old is still a true picture of a register that is
+          // rebuilt daily — serving it beats blanking the national view.
+          if (_irveNational) {
+            json(200, { ..._irveNational.payload.rollup, fetchedAt: _irveNational.at, stale: true }, { 'X-IRVE-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'French charge-point register is temporarily unavailable' });
+        }
+        return;
+      }
+      if (route === '/mesh') {
+        // The whole national point set, once. It is served entire and thinned
+        // in the CLIENT (`irveMesh.js`) rather than per request, because the
+        // thinning is a function of the viewport and a round trip on every
+        // pan would make the middle regime feel worse than either of the two
+        // it sits between. ~0.9 MB, cached for a day, fetched at most once a
+        // session — and only if the operator leaves the choropleth.
+        await readIrveNationalDisk();
+        const now = Date.now();
+        if (_irveNational && now - _irveNational.at <= IRVE_NATIONAL_TTL_MS) {
+          json(200, { ..._irveNational.payload.mesh, fetchedAt: _irveNational.at, stale: false }, { 'X-IRVE-FR': 'HIT' });
+          return;
+        }
+        if (!_irveNationalInFlight) {
+          _irveNationalInFlight = refreshIrveNational()
+            .then((payload) => {
+              const entry = { version: IRVE_NATIONAL_CACHE_VERSION, at: Date.now(), payload };
+              _irveNational = entry;
+              writeIrveNationalDisk(entry);
+              return entry;
+            })
+            .finally(() => { _irveNationalInFlight = null; });
+        }
+        try {
+          const entry = await _irveNationalInFlight;
+          json(200, { ...entry.payload.mesh, fetchedAt: entry.at, stale: false }, { 'X-IRVE-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[IRVE Proxy] national mesh unavailable:', error?.message || error);
+          if (_irveNational) {
+            json(200, { ..._irveNational.payload.mesh, fetchedAt: _irveNational.at, stale: true }, { 'X-IRVE-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'French charge-point register is temporarily unavailable' });
+        }
+        return;
+      }
+      if (route !== '/sites') {
+        json(404, { error: 'Unknown IRVE endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, IRVE_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${IRVE_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: IRVE_MAX_BOX_DEG,
+        });
+        return;
+      }
+
+      const box = snapBoxOutward(requested, IRVE_BOX_STEP_DEG);
+      const key = boxKey(box);
+      const now = Date.now();
+
+      const cached = _irveViewportCache.get(key);
+      if (cached && now - cached.at <= IRVE_TTL_MS) {
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-IRVE-FR': 'HIT' });
+        return;
+      }
+      const onDisk = await readIrveDisk(key, IRVE_TTL_MS);
+      if (onDisk) {
+        _irveViewportCache.set(key, onDisk);
+        trimIrveViewportCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-IRVE-FR': 'DISK' });
+        return;
+      }
+
+      const request = coalesceProxyRequest(_irveViewportInFlight, key, async () => {
+        const payload = await refreshIrveViewport(box);
+        const entry = { at: Date.now(), payload };
+        _irveViewportCache.set(key, entry);
+        trimIrveViewportCache();
+        writeIrveDisk(key, entry);
+        return entry;
+      });
+      try {
+        const entry = await request.promise;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, {
+          'X-IRVE-FR': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+      } catch (error) {
+        console.warn('[IRVE Proxy] viewport unavailable:', error?.message || error);
+        const stale = cached || await readIrveDisk(key, IRVE_STALE_MS);
+        if (stale) {
+          json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-IRVE-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French charge-point register is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'irve-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Annuaire de l'éducation proxy — keyless, Licence Ouverte 2.0.
+ *
+ *   GET /api/schools-fr/sites?south&west&north&east — schools in one box
+ *   GET /api/schools-fr/departements                — national rollup, 96 départements
+ *   GET /api/schools-fr/mesh                        — the national point set, once
+ *   GET /api/schools-fr/status                      — dataset provenance + cache state
+ *
+ * WHY A PROXY, when data.education.gouv.fr sends CORS headers and a direct
+ * browser fetch works: the roll is not in the register. Sizing a school by its
+ * pupils means joining FOUR further datasets on the UAI, and doing that in the
+ * client would mean every open tab downloading four national files and
+ * re-deriving the same map. The join happens once, on a server, under test
+ * (`schoolsFeed.js`, `schoolsDepartements.js`), and is cached for a day beside
+ * the rollup the same sweep already builds.
+ *
+ * WHY `exports/json` AND NOT `records`: the Explore v2.1 `records` endpoint
+ * caps a page at 100 rows, so the densest viewport (Paris at 0.35°, 5 506
+ * schools — measured) would be 56 round trips. `exports/json` streams the
+ * whole filtered set in one: 3.26 MB in 0.57 s for that same box. `records` is
+ * still called alongside it, with `limit=0`, purely for its `total_count` —
+ * that number is the completeness proof, and a short export is the one failure
+ * Opendatasoft returns as HTTP 200.
+ */
+const SCHOOLS_BASE = `https://${SCHOOLS_PORTAL}/api/explore/v2.1/catalog/datasets`;
+const SCHOOLS_RECORDS_URL = `${SCHOOLS_BASE}/${SCHOOLS_DATASET}/records`;
+const SCHOOLS_EXPORT_URL = `${SCHOOLS_BASE}/${SCHOOLS_DATASET}/exports/json`;
+/** The register is rebuilt daily; a cold viewport is paid for at most 4× a day. */
+const SCHOOLS_TTL_MS = 6 * 60 * 60 * 1000;
+/** Serve-stale ceiling. A register a week old is still a register. */
+const SCHOOLS_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+/** The national rollup is rebuilt daily upstream; a 24-hour cache matches it. */
+const SCHOOLS_NATIONAL_TTL_MS = 24 * 60 * 60 * 1000;
+const SCHOOLS_TIMEOUT_MS = 45_000;
+/** The national export is 8.5 MB; the densest viewport 3.3 MB. */
+const SCHOOLS_MAX_BYTES = 64 * 1024 * 1024;
+const SCHOOLS_VIEWPORT_CACHE_MAX = 24;
+const SCHOOLS_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'schools-fr');
+const SCHOOLS_NATIONAL_CACHE_PATH = path.join(SCHOOLS_DISK_DIR, 'departements.json');
+/**
+ * Shape version of the cached national rollup. Bump whenever
+ * `projectSchoolsDepartements` changes what it returns — the cache lives for a
+ * day on disk, so without it a projection edit is invisible until tomorrow.
+ */
+const SCHOOLS_NATIONAL_CACHE_VERSION = 1;
+
+/** box key -> {at:number, payload:object} */
+const _schoolsViewportCache = new Map();
+const _schoolsViewportInFlight = new Map();
+const _schoolsRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/** @type {?{at:number, payload:object}} */
+let _schoolsNational = null;
+/** @type {?Promise<object>} */
+let _schoolsNationalInFlight = null;
+let _schoolsNationalDiskChecked = false;
+/** @type {?Promise<Map<string, number>>} UAI → pupils, built once per process. */
+let _schoolsRollsPromise = null;
+
+function trimSchoolsViewportCache() {
+  while (_schoolsViewportCache.size > SCHOOLS_VIEWPORT_CACHE_MAX) {
+    const oldest = _schoolsViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _schoolsViewportCache.delete(oldest);
+  }
+}
+
+function schoolsDiskPath(key) {
+  return path.join(SCHOOLS_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+async function readSchoolsDisk(key, maxAgeMs) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(schoolsDiskPath(key), 'utf8'));
+    if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.sites)) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeSchoolsDisk(key, entry) {
+  fsp.mkdir(SCHOOLS_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(schoolsDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Schools Proxy] disk cache write failed:', err?.message || err));
+}
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchSchoolsJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(SCHOOLS_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, SCHOOLS_MAX_BYTES);
+}
+
+/**
+ * Build the UAI → pupils map from the four per-level roll datasets.
+ *
+ * Fetched once per process and never invalidated: a rentrée's rolls are
+ * published once and do not move during a school year, so re-reading them on
+ * the register's daily cadence would be four national downloads a day for a
+ * file that changes in September.
+ *
+ * A level that fails to load is WARNED and skipped rather than failing the
+ * whole join — losing the lycée rolls should cost lycée dot sizes, not the
+ * entire layer. The count that survives travels to the client so the shortfall
+ * is visible instead of looking like a country of small schools.
+ */
+async function loadSchoolsRolls() {
+  if (_schoolsRollsPromise) return _schoolsRollsPromise;
+  _schoolsRollsPromise = (async () => {
+    const rolls = new Map();
+    const results = await Promise.allSettled(SCHOOLS_ROLL_DATASETS.map(async (spec) => {
+      const params = new URLSearchParams({
+        select: `${spec.key},${spec.total}`,
+        where: `year(rentree_scolaire)=${SCHOOLS_ROLL_YEAR}`,
+        limit: '-1',
+      });
+      const rows = await fetchSchoolsJson(`${SCHOOLS_BASE}/${spec.dataset}/exports/json?${params}`);
+      return { spec, rows: Array.isArray(rows) ? rows : [] };
+    }));
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        console.warn('[Schools Proxy] roll dataset unavailable:', result.reason?.message || result.reason);
+        continue;
+      }
+      const { spec, rows } = result.value;
+      for (const row of rows) {
+        const uai = String(row?.[spec.key] || '').trim();
+        const total = Number(row?.[spec.total]);
+        if (!uai || !Number.isFinite(total)) continue;
+        // Last writer wins, and the order is fixed by SCHOOLS_ROLL_DATASETS:
+        // a lycée polyvalent appears in BOTH lycée files, and the professional
+        // roll is the one that lands second. That is a real ambiguity in the
+        // upstream and it is resolved deterministically rather than by
+        // whichever request happened to finish first.
+        rolls.set(uai, total);
+      }
+    }
+    return rolls;
+  })().catch((error) => {
+    console.warn('[Schools Proxy] roll join failed:', error?.message || error);
+    _schoolsRollsPromise = null;
+    return new Map();
+  });
+  return _schoolsRollsPromise;
+}
+
+/**
+ * Fetch one viewport and project it.
+ *
+ * The two calls run in PARALLEL and mean different things. The export is the
+ * answer; the `limit=0` call is the dataset's own count for the same `where`,
+ * and exists only so `projectSchoolSites` can prove the export was complete.
+ */
+async function refreshSchoolsViewport(box) {
+  const where = schoolsBboxWhere(box);
+  const exportParams = new URLSearchParams({
+    select: SCHOOLS_SITE_FIELDS.join(','),
+    where,
+    limit: '-1',
+  });
+  const countParams = new URLSearchParams({ where, limit: '0' });
+
+  const [exported, counted, rolls] = await Promise.all([
+    fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
+    fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${countParams}`).catch((error) => {
+      // The count is a completeness PROOF, not the data. Losing it degrades
+      // the guarantee to "unknown" rather than blanking a viewport.
+      console.warn('[Schools Proxy] box count unavailable:', error?.message || error);
+      return null;
+    }),
+    loadSchoolsRolls(),
+  ]);
+
+  const projected = projectSchoolSites({
+    records: Array.isArray(exported) ? exported : [],
+    rolls,
+    totalCount: counted?.total_count ?? null,
+  });
+  return {
+    ...projected,
+    box,
+    maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
+  };
+}
+
+/**
+ * Bundled département polygons, read once from disk.
+ *
+ * The dev-server proxy reads the same file the browser layer fetches, so the
+ * national rollup and the shapes it is painted on can never come from two
+ * different vintages.
+ */
+let _schoolsDepartementIndex = null;
+async function loadSchoolsDepartementIndex() {
+  if (_schoolsDepartementIndex) return _schoolsDepartementIndex;
+  const file = path.join(process.cwd(), 'src', 'data', 'local_data', 'france_departements', 'departements.geojson');
+  _schoolsDepartementIndex = buildDepartementIndex(JSON.parse(await fsp.readFile(file, 'utf8')));
+  return _schoolsDepartementIndex;
+}
+
+/**
+ * Build the national rollup: one export, the roll join, then fold onto the
+ * polygons.
+ *
+ * No latitude striping and no truncation recursion, unlike the charge-point
+ * sweep next door: this is not a grouped query, so Opendatasoft applies no
+ * aggregation cap to it and the whole filtered register arrives in one
+ * response. The completeness check is therefore a direct comparison against
+ * the portal's own count rather than a per-stripe limit probe.
+ */
+async function refreshSchoolsNational() {
+  const started = Date.now();
+  const exportParams = new URLSearchParams({
+    select: SCHOOLS_SWEEP_FIELDS.join(','),
+    where: SCHOOLS_OPEN_WHERE,
+    limit: '-1',
+  });
+  const [index, counted, exported, rolls] = await Promise.all([
+    loadSchoolsDepartementIndex(),
+    fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${new URLSearchParams({ where: SCHOOLS_OPEN_WHERE, limit: '0' })}`)
+      .catch((error) => {
+        console.warn('[Schools Proxy] national count unavailable:', error?.message || error);
+        return null;
+      }),
+    fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
+    loadSchoolsRolls(),
+  ]);
+
+  const projected = projectSchoolsDepartements({
+    records: Array.isArray(exported) ? exported : [],
+    index,
+    rolls,
+    totalCount: counted?.total_count ?? null,
+  });
+  if (projected.truncated) {
+    console.warn(
+      `[Schools Proxy] national export short: ${projected.schoolsSwept}/${projected.schoolsTotal} rows`,
+    );
+  }
+  // The two documents are cached together because one sweep builds both, and
+  // served apart because they are read at different moments and at different
+  // sizes: the rollup is ~20 KB and arrives with the layer, the mesh is
+  // ~0.7 MB gzipped and is only fetched if the operator leaves the choropleth.
+  const { mesh, ...rollup } = projected;
+  return {
+    rollup: {
+      ...rollup,
+      sweptInMs: Date.now() - started,
+    },
+    mesh: {
+      sites: mesh,
+      siteCount: mesh.length,
+      levels: SCHOOL_LEVELS,
+      dataset: SCHOOLS_DATASET,
+      source: SCHOOLS_SOURCE,
+    },
+  };
+}
+
+async function readSchoolsNationalDisk() {
+  if (_schoolsNationalDiskChecked) return;
+  _schoolsNationalDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(SCHOOLS_NATIONAL_CACHE_PATH, 'utf8'));
+    if (entry?.version === SCHOOLS_NATIONAL_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.rollup?.departements)
+      && Array.isArray(entry.payload?.mesh?.sites)) {
+      _schoolsNational = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeSchoolsNationalDisk(entry) {
+  fsp.mkdir(SCHOOLS_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(SCHOOLS_NATIONAL_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Schools Proxy] national cache write failed:', err?.message || err));
+}
+
+/** Shared national build, so `/departements` and `/mesh` never sweep twice. */
+function ensureSchoolsNational() {
+  if (!_schoolsNationalInFlight) {
+    _schoolsNationalInFlight = refreshSchoolsNational()
+      .then((payload) => {
+        const entry = { version: SCHOOLS_NATIONAL_CACHE_VERSION, at: Date.now(), payload };
+        _schoolsNational = entry;
+        writeSchoolsNationalDisk(entry);
+        return entry;
+      })
+      .finally(() => { _schoolsNationalInFlight = null; });
+  }
+  return _schoolsNationalInFlight;
+}
+
+/**
+ * Vite plugin: viewport-bounded French school-register proxy.
+ * @returns {import('vite').Plugin}
+ */
+function schoolsFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/schools-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_schoolsRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        let newest = null;
+        for (const entry of _schoolsViewportCache.values()) {
+          if (!newest || entry.at > newest) newest = entry.at;
+        }
+        json(200, {
+          source: SCHOOLS_SOURCE,
+          dataset: SCHOOLS_DATASET,
+          lastFetch: newest,
+          cachedBoxes: _schoolsViewportCache.size,
+          ttlMs: SCHOOLS_TTL_MS,
+          maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
+          rollYear: SCHOOLS_ROLL_YEAR,
+          national: _schoolsNational
+            ? {
+              at: _schoolsNational.at,
+              painted: _schoolsNational.payload.rollup.painted,
+              schools: _schoolsNational.payload.rollup.assigned,
+              unassigned: _schoolsNational.payload.rollup.unassigned,
+              meshSites: _schoolsNational.payload.mesh.siteCount,
+            }
+            : null,
+          nationalTtlMs: SCHOOLS_NATIONAL_TTL_MS,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route === '/departements' || route === '/mesh') {
+        const pick = (payload) => (route === '/mesh' ? payload.mesh : payload.rollup);
+        await readSchoolsNationalDisk();
+        const now = Date.now();
+        if (_schoolsNational && now - _schoolsNational.at <= SCHOOLS_NATIONAL_TTL_MS) {
+          json(200, { ...pick(_schoolsNational.payload), fetchedAt: _schoolsNational.at, stale: false }, { 'X-SCHOOLS-FR': 'HIT' });
+          return;
+        }
+        try {
+          const entry = await ensureSchoolsNational();
+          json(200, { ...pick(entry.payload), fetchedAt: entry.at, stale: false }, { 'X-SCHOOLS-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[Schools Proxy] national build unavailable:', error?.message || error);
+          // A rollup a week old is still a true picture of a register that is
+          // rebuilt daily — serving it beats blanking the national view.
+          if (_schoolsNational) {
+            json(200, { ...pick(_schoolsNational.payload), fetchedAt: _schoolsNational.at, stale: true }, { 'X-SCHOOLS-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'French school register is temporarily unavailable' });
+        }
+        return;
+      }
+
+      if (route !== '/sites') {
+        json(404, { error: 'Unknown schools endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, SCHOOLS_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${SCHOOLS_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
+        });
+        return;
+      }
+
+      const box = snapBoxOutward(requested, SCHOOLS_BOX_STEP_DEG);
+      const key = boxKey(box);
+      const now = Date.now();
+
+      const fresh = _schoolsViewportCache.get(key);
+      if (fresh && now - fresh.at <= SCHOOLS_TTL_MS) {
+        json(200, { ...fresh.payload, fetchedAt: fresh.at, stale: false }, { 'X-SCHOOLS-FR': 'HIT' });
+        return;
+      }
+      const onDisk = await readSchoolsDisk(key, SCHOOLS_TTL_MS);
+      if (onDisk) {
+        _schoolsViewportCache.set(key, onDisk);
+        trimSchoolsViewportCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-SCHOOLS-FR': 'DISK' });
+        return;
+      }
+
+      let pending = _schoolsViewportInFlight.get(key);
+      if (!pending) {
+        pending = refreshSchoolsViewport(box)
+          .then((payload) => {
+            const entry = { at: Date.now(), payload };
+            _schoolsViewportCache.set(key, entry);
+            trimSchoolsViewportCache();
+            writeSchoolsDisk(key, entry);
+            return entry;
+          })
+          .finally(() => { _schoolsViewportInFlight.delete(key); });
+        _schoolsViewportInFlight.set(key, pending);
+      }
+
+      try {
+        const entry = await pending;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-SCHOOLS-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[Schools Proxy] viewport unavailable:', error?.message || error);
+        const stale = _schoolsViewportCache.get(key) || await readSchoolsDisk(key, SCHOOLS_STALE_MS);
+        if (stale) {
+          json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-SCHOOLS-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French school register is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'schools-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
 /**
  * ODRÉ French gas-system proxy — keyless, Licence Ouverte 2.0.
  *
@@ -3288,6 +4292,223 @@ function gasFranceProxy() {
   };
 }
 
+
+/**
+ * Bison Futé proxy (the road events France's DIRs declare) with a memory + disk
+ * cache and a conditional-GET refresh.
+ *
+ * ONE keyless upstream, published by Tipi for the DGITM under Licence Ouverte
+ * 2.0, covering the réseau routier national **non concédé** only:
+ *   `Evenementiel-DIR/grt/RRN/content.xml` — every incident, roadworks order,
+ *     closure, diversion and restriction the DIRs have declared, DATEX II v2
+ *
+ * The SIBLING product on the same host — QTV-DIR's six-minute speed and flow
+ * snapshot — has its own proxy in `roadStatusFranceProxy()`, which also serves
+ * Traficolor to the `road-status-fr` layer. Two proxies rather than one
+ * deliberately: they poll on different clocks (hourly against six-minutely) and
+ * one shared cache would tie the slower product's TTL to the faster one's.
+ *
+ * WHY A PROXY when the origin sends no CORS restriction a dev server cannot work
+ * around: the document is 3.3 MB, and every open tab would parse it for itself.
+ * Projected once, server-side, under test, it becomes ~190 KB of JSON the globe
+ * can draw directly — and the DATEX II parsing lives in `bisonFuteFeed.js` where
+ * a unit test can point at a real captured response instead of at a browser.
+ *
+ * WHY CONDITIONAL GET and not a plain poll. MEASURED 2026-08-31: the origin
+ * serves `ETag`, `Last-Modified` AND gzip (3,365,501 → 165,296 bytes) and
+ * answers `If-None-Match` with a 304. The aggregate is republished HOURLY at
+ * HH:13, so a naive 5-minute poll would re-download and re-parse an unchanged
+ * 3.3 MB document eleven times an hour. With `If-None-Match` the same cadence
+ * costs one 304 per poll, and the projection runs only when the file has
+ * genuinely moved — which is what makes the layer affordable at a cadence worth
+ * having.
+ *
+ * Routes:
+ *   GET /api/bison-fute/events → {fetchedAt, stale, publishedAt, events, counts}
+ *   GET /api/bison-fute/status → the cache state
+ *
+ * @returns {import('vite').Plugin}
+ */
+function bisonFuteProxy() {
+  const BASE = 'https://tipi.bison-fute.gouv.fr/bison-fute-ouvert/publicationsDIR';
+  const EVENTS_URL = `${BASE}/Evenementiel-DIR/grt/RRN/content.xml`;
+  // Bounded well inside the product's own cadence, because a 304 is nearly
+  // free: the file moves hourly, and this catches a republication within five
+  // minutes for the cost of eleven conditional GETs an hour.
+  const EVENTS_TTL_MS = 5 * 60_000;
+  // 3.3 MB gzipped to 165 KB, from a government origin: generous, still bounded.
+  const UPSTREAM_TIMEOUT_MS = 45_000;
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'bison-fute');
+  const SOURCE = 'Bison Futé / Tipi (tipi.bison-fute.gouv.fr)';
+
+  /**
+   * One conditionally-refreshed upstream document.
+   *
+   * `etag` and `lastModified` are what make the poll cheap; `body` is retained
+   * so a 304 can re-run the projection without a download — which matters
+   * because `state` is time-dependent even when the document is not: roadworks
+   * ordered for 08:30 become active at 08:30 whether or not the file moved.
+   */
+  const makeSlot = () => ({ etag: null, lastModified: null, body: null, at: 0 });
+  const upstream = { events: makeSlot() };
+
+  /** @type {{events: ?object}} */
+  const mem = { events: null };
+  const diskChecked = { events: false };
+  /** @type {{events: ?Promise<?object>}} */
+  const inflight = { events: null };
+
+  /**
+   * Conditionally fetch one upstream document into its slot.
+   *
+   * Returns whether the body CHANGED, so a caller can skip re-projecting an
+   * unchanged document. A 304 refreshes the slot's timestamp and nothing else.
+   * @param {string} url
+   * @param {{etag:?string,lastModified:?string,body:?string,at:number}} slot
+   * @returns {Promise<boolean>} True when a new body was read.
+   */
+  async function refreshDocument(url, slot) {
+    const headers = { Accept: 'application/xml,text/csv,*/*' };
+    // Only offer validators when there is a body they could validate: after a
+    // cache eviction an `If-None-Match` hit would leave nothing to project.
+    if (slot.body !== null) {
+      if (slot.etag) headers['If-None-Match'] = slot.etag;
+      if (slot.lastModified) headers['If-Modified-Since'] = slot.lastModified;
+    }
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (response.status === 304) {
+      slot.at = Date.now();
+      return false;
+    }
+    if (!response.ok) throw new Error(`${url} HTTP ${response.status}`);
+    const body = await response.text();
+    if (!body.trim()) throw new Error(`${url} returned an empty body`);
+    slot.etag = response.headers.get('etag');
+    slot.lastModified = response.headers.get('last-modified');
+    slot.body = body;
+    slot.at = Date.now();
+    return true;
+  }
+
+  /** Refresh and project the road-event document. */
+  async function refreshEvents(previous) {
+    const changed = await refreshDocument(EVENTS_URL, upstream.events);
+    // Unchanged upstream, but `state` is time-dependent: roadworks ordered for
+    // 08:30 become active at 08:30 whether or not the file moved. Re-project
+    // from the retained body rather than serving a stale "planned".
+    const projected = projectRoadEvents(upstream.events.body);
+    if (!changed && previous) {
+      return { ...previous, at: Date.now(), ...projected };
+    }
+    return { at: Date.now(), source: SOURCE, ...projected };
+  }
+
+  const cachePath = (key) => path.join(CACHE_DIR, `${key}.json`);
+
+  async function readDiskOnce(key, valid) {
+    if (diskChecked[key]) return;
+    diskChecked[key] = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(cachePath(key), 'utf8'));
+      if (Number.isFinite(parsed?.at) && valid(parsed)) mem[key] = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(key, entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(cachePath(key), JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[bison-fute-proxy] ${key} cache write failed (${err?.message || err})`);
+    }
+  }
+
+  /**
+   * Serve one of the two documents, refreshing it when its TTL has expired and
+   * falling back to the last good copy when the origin is down.
+   * @param {'events'} key
+   * @param {number} ttlMs
+   * @param {(previous:?object)=>Promise<object>} refresh
+   * @returns {Promise<{served:?object, stale:boolean}>}
+   */
+  async function serve(key, ttlMs, refresh) {
+    const entry = mem[key];
+    let current = entry && Date.now() - entry.at < ttlMs ? entry : null;
+    if (!current) {
+      if (!inflight[key]) {
+        inflight[key] = refresh(entry)
+          .then(async (next) => {
+            mem[key] = next;
+            await writeDisk(key, next);
+            return next;
+          })
+          .catch((err) => {
+            console.warn(`[bison-fute-proxy] ${key} refresh failed (${err?.message || err}) — serving cache if any`);
+            return null;
+          })
+          .finally(() => { inflight[key] = null; });
+      }
+      current = await inflight[key];
+    }
+    return { served: current || entry, stale: !current && Boolean(entry) };
+  }
+
+  function install(middlewares) {
+    middlewares.use('/api/bison-fute', async (req, res) => {
+      const sendJson = (status, obj) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+        res.end(JSON.stringify(obj));
+      };
+      try {
+        const subPath = String(req.url || '').split('?')[0];
+        await readDiskOnce('events', (parsed) => Array.isArray(parsed?.events));
+
+        if (subPath === '/status') {
+          sendJson(200, {
+            source: SOURCE,
+            events: mem.events
+              ? { lastFetch: mem.events.at, publishedAt: mem.events.publishedAt, count: mem.events.events.length }
+              : null,
+            ttlMs: EVENTS_TTL_MS,
+          });
+          return;
+        }
+
+        if (subPath === '/events' || subPath === '/events/') {
+          const { served, stale } = await serve('events', EVENTS_TTL_MS, refreshEvents);
+          if (!served) { sendJson(502, { error: 'Bison Futé events fetch failed and no cache available' }); return; }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: EVENTS_TTL_MS,
+            source: served.source,
+            publishedAt: served.publishedAt,
+            publishedAtMs: served.publishedAtMs,
+            supplier: served.supplier,
+            counts: served.counts,
+            events: served.events,
+          });
+          return;
+        }
+
+        sendJson(404, { error: 'unknown Bison Futé route' });
+      } catch (err) {
+        console.warn('[bison-fute-proxy] error:', err?.message || err);
+        sendJson(500, { error: 'Bison Futé proxy error' });
+      }
+    });
+  }
+
+  return {
+    name: 'bison-fute-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
 
 /**
  * EDF generating-fleet proxy (hydraulic + nuclear + fossil-fired) with a
@@ -5051,7 +6272,8 @@ function gbfsProxy() {
 }
 
 // ---------------------------------------------------------------------------
-// transport.data.gouv.fr — French GTFS-Realtime vehicle positions
+// transport.data.gouv.fr — French GTFS-Realtime vehicle positions, and the
+// delays and disruptions published alongside them
 // ---------------------------------------------------------------------------
 /**
  * Shipped feed index (see `scripts/build-pan-gtfs-rt-index.mjs`). Read once per
@@ -5084,6 +6306,39 @@ const PAN_FEED_BACKOFF_MS = 90_000;
 const PAN_FEED_STALE_MS = 90_000;
 const PAN_FEED_TIMEOUT_MS = 9_000;
 const PAN_FEED_MAX_BYTES = 8 * 1024 * 1024;
+/**
+ * Trip-update body cache, ms — shared by the viewport pass and the click.
+ *
+ * Four times the position cache, and deliberately: a trip update is the
+ * operator's PREDICTION, recomputed every 20-60 s and rarely by more than a
+ * few seconds; TBM's body is 1.2 MB against 37 KB for its positions, so
+ * refreshing it on the position cadence would spend 32x the bandwidth to
+ * restate the same "4 min late". A delay 45 s old is still that delay.
+ *
+ * One window for both surfaces, because they read the same bytes: a click on
+ * a bus whose fleet was just enriched answers from the entry that enrichment
+ * populated, instead of re-downloading a megabyte the server already has.
+ */
+const PAN_TRIP_CACHE_MS = 45_000;
+/**
+ * Alert body cache, ms. An alert is written by a person and lives for hours or
+ * days; five minutes is already far finer than the thing it describes changes.
+ */
+const PAN_ALERT_CACHE_MS = 5 * 60_000;
+/**
+ * Timeout for one companion body, ms — shorter than the position timeout on
+ * purpose. Positions are the layer; delays are an enrichment, and a slow
+ * trip-update server must never be able to hold up the fleet behind it.
+ */
+const PAN_COMPANION_TIMEOUT_MS = 6_000;
+/** A companion that just failed is left alone for this long. */
+const PAN_COMPANION_BACKOFF_MS = 120_000;
+/**
+ * Ceiling on one companion body. Trip updates are the largest GTFS-RT bodies
+ * a French network publishes — TBM's is 1.2 MB — and the cap is four times the
+ * position cap so that an aggregate régional feed has room to grow into it.
+ */
+const PAN_COMPANION_MAX_BYTES = 32 * 1024 * 1024;
 /** Margin kept around the viewport so vehicles enter from off-screen. */
 const PAN_VIEWPORT_PAD_DEG = 0.06;
 /** How often learned footprints are flushed to disk. */
@@ -5095,9 +6350,43 @@ let _panIndex = null;
 let _panIndexPromise = null;
 /** feedId -> {routes, uniformKind}; empty when the route-type index is absent. */
 let _panRouteTypes = new Map();
-/** feedId -> {at:number, vehicles:Array, error:?string, failedAt:?number} */
+/**
+ * feedId -> {at, vehicles, trips, alerts, error, failedAt}. `trips`/`alerts`
+ * are set only for the 63 feeds whose companion IS this body.
+ */
 const _panFeedCache = new Map();
 const _panFeedInFlight = new Map();
+/**
+ * Companion body cache, keyed `kind:url`.
+ *
+ * By URL and not by feed id, because a dataset can point several position
+ * feeds at one trip-update resource — Astuce's three operator feeds do — and
+ * because 63 feeds read their companion out of their OWN body, which never
+ * reaches this map at all.
+ *
+ * @type {Map<string, {at:number, value:Array, error:?string, failedAt:?number}>}
+ */
+const _panCompanionCache = new Map();
+const _panCompanionInFlight = new Map();
+/**
+ * Cap on cached companion bodies.
+ *
+ * Lower than it looks: one viewport touches at most
+ * {@link PAN_MAX_FEEDS_PER_REQUEST} feeds, and a decoded trip-update body is
+ * the biggest thing this proxy holds — TBM's is 900 trips of 36 stops each.
+ * The map is kept in least-recently-USED order (a refresh re-inserts its key)
+ * so panning across France evicts the city that was left behind, not the one
+ * on screen.
+ */
+const PAN_COMPANION_CACHE_MAX = 32;
+
+function trimPanCompanionCache() {
+  while (_panCompanionCache.size > PAN_COMPANION_CACHE_MAX) {
+    const oldest = _panCompanionCache.keys().next().value;
+    if (oldest === undefined) break;
+    _panCompanionCache.delete(oldest);
+  }
+}
 /** viewport key -> {at:number, payload:object} */
 const _panViewportCache = new Map();
 const _panViewportInFlight = new Map();
@@ -5144,6 +6433,12 @@ async function loadPanIndex() {
       `[PAN Transit] ${feeds.length} GTFS-RT vehicle-position feeds `
       + `(${feeds.filter((feed) => feed.bbox).length} with a footprint, ${selectable.length} queryable — `
       + `${duplicates} duplicate, ${quarantined} quarantined), index built ${raw?.generatedAt || 'unknown'}`,
+    );
+    const withTrips = feeds.filter((feed) => feed.tripUpdates?.url).length;
+    const shared = feeds.filter((feed) => feed.tripUpdates?.sameResource).length;
+    console.log(
+      `[PAN Transit] schedule companions: ${withTrips} feeds carry trip updates `
+      + `(${shared} in the same body, so free), ${feeds.filter((feed) => feed.alerts?.url).length} carry alerts`,
     );
 
     await loadPanRouteTypes();
@@ -5214,7 +6509,10 @@ async function panFeedVehicles(feed) {
   const now = Date.now();
   const cached = _panFeedCache.get(feed.id);
   if (cached && now - cached.at <= PAN_FEED_CACHE_MS) {
-    return { vehicles: cached.vehicles, at: cached.at, error: cached.error, stale: false };
+    return {
+      vehicles: cached.vehicles, trips: cached.trips, alerts: cached.alerts,
+      at: cached.at, error: cached.error, stale: false,
+    };
   }
   // A feed that just failed is left alone; its last-good fixes keep serving
   // until they age out, then it reports empty with the reason attached.
@@ -5222,6 +6520,8 @@ async function panFeedVehicles(feed) {
     const stale = now - cached.at <= PAN_FEED_STALE_MS;
     return {
       vehicles: stale ? cached.vehicles : [],
+      trips: stale ? cached.trips : null,
+      alerts: stale ? cached.alerts : null,
       at: cached.at,
       error: cached.error,
       stale: stale && cached.vehicles.length > 0,
@@ -5248,6 +6548,12 @@ async function panFeedVehicles(feed) {
       const bytes = new Uint8Array(await response.arrayBuffer());
       if (bytes.byteLength > PAN_FEED_MAX_BYTES) throw new Error('feed body too large');
       const { vehicles } = vehiclePositionsFromBytes(bytes, { feedId: feed.id });
+      // 63 of the 150 feeds publish positions, predictions and alerts as one
+      // `FeedMessage` under one resource id. For those the delay of every bus
+      // on screen is already in hand — the same bytes read a second way, at no
+      // extra request. `sameResource` was measured by the index builder.
+      const trips = feed.tripUpdates?.sameResource ? tripUpdatesFromBytes(bytes).trips : null;
+      const alerts = feed.alerts?.sameResource ? alertsFromBytes(bytes).alerts : null;
       // Learn the footprint from what actually arrived. Bounds only grow, and
       // junk fixes are fenced out before they can widen a city into a country.
       const observed = boundsOfVehicles(vehicles, { rejectOutliers: true });
@@ -5256,9 +6562,12 @@ async function panFeedVehicles(feed) {
         feed.bbox = merged;
         _panBoundsDirty = true;
       }
-      const entry = { at: Date.now(), vehicles, error: null, failedAt: null };
+      const entry = { at: Date.now(), vehicles, trips, alerts, error: null, failedAt: null };
       _panFeedCache.set(feed.id, entry);
-      return { vehicles: entry.vehicles, at: entry.at, error: null, stale: false };
+      return {
+        vehicles: entry.vehicles, trips: entry.trips, alerts: entry.alerts,
+        at: entry.at, error: null, stale: false,
+      };
     } catch (error) {
       const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
       const previous = _panFeedCache.get(feed.id);
@@ -5266,12 +6575,16 @@ async function panFeedVehicles(feed) {
       const entry = {
         at: keepStale ? previous.at : Date.now(),
         vehicles: keepStale ? previous.vehicles : [],
+        trips: keepStale ? previous.trips : null,
+        alerts: keepStale ? previous.alerts : null,
         error: message,
         failedAt: Date.now(),
       };
       _panFeedCache.set(feed.id, entry);
       return {
         vehicles: entry.vehicles,
+        trips: entry.trips,
+        alerts: entry.alerts,
         at: entry.at,
         error: message,
         stale: keepStale && entry.vehicles.length > 0,
@@ -5283,8 +6596,135 @@ async function panFeedVehicles(feed) {
   return request.promise;
 }
 
+/**
+ * Fetch and decode ONE companion body — a network's trip updates or its alerts.
+ *
+ * Keyed by URL rather than by feed so a resource shared by several position
+ * feeds is downloaded once, and given a cache window of its own because the
+ * two answer questions that change at different speeds (see
+ * {@link PAN_TRIP_CACHE_MS} and {@link PAN_ALERT_CACHE_MS}).
+ *
+ * Never throws and never serves stale: a failure returns an empty list with
+ * the reason attached, and the vehicles simply arrive without a delay on them.
+ * The enrichment is allowed to be absent; the fleet is not.
+ *
+ * @param {string} url Companion resource URL.
+ * @param {'trips'|'alerts'} kind Which decoder to run.
+ * @param {number} cacheMs Freshness window for this kind.
+ * @returns {Promise<{value: Array<Object>, at: number, error: ?string}>}
+ */
+async function panCompanionBody(url, kind, cacheMs) {
+  const key = `${kind}:${url}`;
+  const now = Date.now();
+  const cached = _panCompanionCache.get(key);
+  if (cached && now - cached.at <= cacheMs) {
+    // Re-insert to mark it as the most recently used; Map preserves insertion
+    // order and a plain `get` does not move it.
+    _panCompanionCache.delete(key);
+    _panCompanionCache.set(key, cached);
+    return { value: cached.value, at: cached.at, headerMs: cached.headerMs, error: cached.error };
+  }
+  if (cached?.failedAt && now - cached.failedAt < PAN_COMPANION_BACKOFF_MS) {
+    return { value: cached.value || [], at: cached.at, headerMs: cached.headerMs, error: cached.error };
+  }
+
+  const request = coalesceProxyRequest(_panCompanionInFlight, key, async () => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PAN_COMPANION_TIMEOUT_MS);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          Accept: 'application/x-protobuf,application/octet-stream;q=0.9,*/*;q=0.8',
+          'User-Agent': PAN_USER_AGENT,
+        },
+        signal: controller.signal,
+        redirect: 'follow',
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const declared = Number(response.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > PAN_COMPANION_MAX_BYTES) {
+        throw new Error('companion body too large');
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength > PAN_COMPANION_MAX_BYTES) throw new Error('companion body too large');
+      const decoded = kind === 'trips' ? tripUpdatesFromBytes(bytes) : alertsFromBytes(bytes);
+      const value = kind === 'trips' ? decoded.trips : decoded.alerts;
+      // The publisher's own stamp on the body, which the click endpoint reports
+      // beside the stop times so a viewer can see how old the prediction is.
+      const entry = {
+        at: Date.now(), value, headerMs: decoded.headerTimestampMs || null, error: null, failedAt: null,
+      };
+      _panCompanionCache.delete(key);
+      _panCompanionCache.set(key, entry);
+      trimPanCompanionCache();
+      return { value: entry.value, at: entry.at, headerMs: entry.headerMs, error: null };
+    } catch (error) {
+      const message = error?.name === 'AbortError' ? 'timeout' : (error?.message || String(error));
+      // Keep the last good body rather than blanking it: a prediction 90 s old
+      // beats no prediction, and the error travels with it.
+      const previous = _panCompanionCache.get(key);
+      _panCompanionCache.delete(key);
+      _panCompanionCache.set(key, {
+        at: previous?.at || Date.now(),
+        value: previous?.value || [],
+        headerMs: previous?.headerMs || null,
+        error: message,
+        failedAt: Date.now(),
+      });
+      trimPanCompanionCache();
+      return { value: previous?.value || [], at: previous?.at || Date.now(), headerMs: previous?.headerMs || null, error: message };
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+  return request.promise;
+}
+
+/**
+ * The schedule context for one feed: its trips indexed by join key, and its
+ * active alerts indexed by what they inform.
+ *
+ * Reads the companion out of the position body when the index measured them to
+ * be the same resource, and otherwise fetches it. Both are optional — a feed
+ * with no measured companion, or a companion that failed, yields empty indexes
+ * and the vehicles render exactly as they did before this existed.
+ *
+ * @param {Object} feed Index entry.
+ * @param {Object} outcome The result of {@link panFeedVehicles} for this feed.
+ * @returns {Promise<Object>} Indexes plus the provenance the summary reports.
+ */
+async function panFeedSchedule(feed, outcome) {
+  const nowMs = Date.now();
+  let trips = outcome?.trips || null;
+  let tripsError = null;
+  if (!trips && feed.tripUpdates?.url) {
+    const body = await panCompanionBody(feed.tripUpdates.url, 'trips', PAN_TRIP_CACHE_MS);
+    trips = body.value;
+    tripsError = body.error;
+  }
+
+  let alerts = outcome?.alerts || null;
+  let alertsError = null;
+  if (!alerts && feed.alerts?.url) {
+    const body = await panCompanionBody(feed.alerts.url, 'alerts', PAN_ALERT_CACHE_MS);
+    alerts = body.value;
+    alertsError = body.error;
+  }
+
+  return {
+    nowMs,
+    tripIndex: trips?.length ? indexTripUpdates(trips) : null,
+    tripCount: trips?.length || 0,
+    alertIndex: alerts?.length ? indexAlerts(alerts, { nowMs, isActive: alertIsActive }) : null,
+    // The count BEFORE the active-period filter, so "12 published, 3 in force"
+    // stays sayable rather than collapsing to one number.
+    alertsPublished: alerts?.length || 0,
+    error: tripsError || alertsError || null,
+  };
+}
+
 /** Trim a decoded record to the fields the layer renders, dropping empties. */
-function panWireVehicle(vehicle, feed) {
+function panWireVehicle(vehicle, feed, schedule = null) {
   // `mode` is the NETWORK's declared service class (urban, school, …).
   // `kind` is the VEHICLE's class, joined from the network's static GTFS.
   // They answer different questions and both are sent, with the provenance of
@@ -5302,10 +6742,51 @@ function panWireVehicle(vehicle, feed) {
   if (vehicle.bearing !== null) wire.bearing = Number(vehicle.bearing.toFixed(1));
   if (vehicle.speedMps !== null) wire.speedMps = Number(vehicle.speedMps.toFixed(2));
   if (vehicle.route) wire.route = vehicle.route;
+  // The raw ids, alongside the display label: `route` is unwrapped from its
+  // NeTEx envelope for reading, and the geometry and trip-stop joins need the
+  // key the operator actually published. Both are small and both are the only
+  // way a click can ask "which line is this, and where does this run go".
+  if (vehicle.routeId) wire.routeId = vehicle.routeId;
+  if (vehicle.tripId) wire.tripId = vehicle.tripId;
+  // Where the operator says the vehicle is ON its run. This is what makes the
+  // approached stop the approached stop, rather than the first one whose
+  // predicted time has not yet passed.
+  if (Number.isFinite(vehicle.stopSequence)) wire.stopSequence = vehicle.stopSequence;
+  if (vehicle.stopId) wire.stopId = vehicle.stopId;
   if (vehicle.label) wire.label = vehicle.label;
   if (vehicle.status) wire.status = vehicle.status;
   if (vehicle.occupancy) wire.occupancy = vehicle.occupancy;
   if (vehicle.timestampMs) wire.timestampMs = vehicle.timestampMs;
+
+  // --- The enrichment -------------------------------------------------------
+  // Everything below is a claim from the operator's OWN prediction for the run
+  // this vehicle is on, joined HERE and not in the browser: the companion body
+  // it is joined against is up to 1.2 MB, and it would have to cross the wire
+  // once per client to answer a question that is the same for all of them.
+  // Every field is omitted when the feed said nothing; none is defaulted.
+  const state = scheduleForVehicle(vehicle, schedule?.tripIndex, { nowMs: schedule?.nowMs });
+  if (state) {
+    if (Number.isFinite(state.delaySec)) {
+      wire.delaySec = state.delaySec;
+      wire.delayFrom = state.delayFrom;
+    }
+    if (state.awaitingDeparture) {
+      wire.awaitingDeparture = true;
+      if (state.scheduledDepartureMs) wire.scheduledDepartureMs = state.scheduledDepartureMs;
+    }
+    if (state.tripState) wire.tripState = state.tripState;
+    if (state.skippedStops) {
+      wire.skippedStops = state.skippedStops;
+      wire.skippedAhead = state.skippedAhead;
+    }
+    if (state.nextStopEtaMs) wire.nextStopEtaMs = state.nextStopEtaMs;
+    if (state.matchedBy) wire.tripMatch = state.matchedBy;
+  }
+  const alert = schedule?.alertIndex ? alertForVehicle(vehicle, schedule.alertIndex) : null;
+  if (alert) {
+    wire.alert = alertWireRecord(alert.alert, alert.scope);
+    if (alert.count > 1) wire.alertCount = alert.count;
+  }
   return wire;
 }
 
@@ -5318,18 +6799,20 @@ async function refreshPanViewport(box, key) {
 
   const results = await Promise.all(selection.selected.map(async (feed) => {
     const outcome = await panFeedVehicles(feed);
-    const vehicles = [];
-    for (const vehicle of outcome.vehicles) {
-      if (!boxContains(clip, vehicle.lat, vehicle.lon)) continue;
-      vehicles.push(panWireVehicle(vehicle, feed));
-    }
-    return { feed, outcome, vehicles };
+    const inBox = outcome.vehicles.filter((vehicle) => boxContains(clip, vehicle.lat, vehicle.lon));
+    // The delay fetch is gated on the box, not on the selection. A feed earns
+    // a slot by OVERLAPPING the viewport, which is not the same as having a
+    // bus in it — and TBM's trip updates are 1.2 MB, which is not a thing to
+    // download because the camera is near Bordeaux.
+    const schedule = inBox.length ? await panFeedSchedule(feed, outcome) : null;
+    const vehicles = inBox.map((vehicle) => panWireVehicle(vehicle, feed, schedule));
+    return { feed, outcome, vehicles, schedule };
   }));
 
   const vehicles = [];
   const feeds = [];
   let vehiclesTruncated = false;
-  for (const { feed, outcome, vehicles: inBox } of results) {
+  for (const { feed, outcome, vehicles: inBox, schedule } of results) {
     for (const vehicle of inBox) {
       if (vehicles.length >= PAN_MAX_VEHICLES) { vehiclesTruncated = true; break; }
       vehicles.push(vehicle);
@@ -5348,6 +6831,13 @@ async function refreshPanViewport(box, key) {
       retrievedAt: outcome.at ? new Date(outcome.at).toISOString() : null,
       stale: outcome.stale || false,
       error: outcome.error || null,
+      // How much of this network's fleet the schedule feed could speak for.
+      // `delayed` counts vehicles that got a NUMBER, not vehicles running late.
+      trips: schedule?.tripCount || 0,
+      delayed: inBox.filter((vehicle) => Number.isFinite(vehicle.delaySec)).length,
+      alertsPublished: schedule?.alertsPublished || 0,
+      alertsActive: schedule?.alertIndex?.count || 0,
+      scheduleError: schedule?.error || null,
     });
   }
 
@@ -5365,6 +6855,9 @@ async function refreshPanViewport(box, key) {
     // polled, or the vehicle cap cut the answer.
     feedsTruncated: selection.truncated,
     vehiclesTruncated,
+    // Punctuality of what is actually being returned, so the layer can say
+    // what is happening without every client re-tallying the same array.
+    schedule: summarizeSchedule(vehicles),
     indexGeneratedAt: index.generatedAt || null,
   };
 
@@ -5374,11 +6867,373 @@ async function refreshPanViewport(box, key) {
   return payload;
 }
 
+
+// ---------------------------------------------------------------------------
+// The line under a vehicle: its trace, and the stops of the run it is on
+// ---------------------------------------------------------------------------
+/**
+ * Companion resources per live feed — the TripUpdates sibling and the PAN's
+ * GeoJSON conversion of the static GTFS (see
+ * `scripts/build-pan-static-index.mjs`). URLs only; the geometry itself is
+ * fetched on demand and cached under `.gev-cache/`.
+ */
+const PAN_STATIC_INDEX_PATH = path.join(process.cwd(), 'config', 'pan_gtfs_static.json');
+const PAN_GEO_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'pan-gtfs-geo');
+/**
+ * Ceiling on one conversion body.
+ *
+ * Measured 2026-08-31 the largest of the 148 is Normandy's aggregate at
+ * 68.9 MB and the median is 1.4 MB, so the cap refuses nothing that exists
+ * today; it is here so that a publisher who one day serves something
+ * pathological gets an error rather than the dev server's heap.
+ */
+const PAN_GEOJSON_MAX_BYTES = 96 * 1024 * 1024;
+const PAN_GEOJSON_TIMEOUT_MS = 45_000;
+/**
+ * How long an indexed conversion is served from disk before it is re-fetched.
+ *
+ * French networks republish their static GTFS every few days — Bordeaux's was
+ * 26 hours old when this was written — but the shape of a line changes with a
+ * timetable, not with a bus. A week is short enough that a re-routed line
+ * corrects itself without anyone clearing a cache, and long enough that a
+ * fortnight of clicking costs two fetches.
+ */
+const PAN_GEO_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Indexed networks held in memory. Bordeaux's index is 2.4 MB. */
+const PAN_GEO_MEMORY_MAX = 3;
+
+/** @type {?{feeds: Object, generatedAt: string}} */
+let _panStaticIndex = null;
+let _panStaticIndexPromise = null;
+/** feedId -> {index, source, fetchedAt} — insertion-ordered, oldest evicted. */
+const _panGeoMemory = new Map();
+const _panGeoInFlight = new Map();
+
+/**
+ * Load the companion index once. Absent is not fatal: the layer keeps drawing
+ * vehicles and only the line panel goes dark, with the build command named.
+ */
+async function loadPanStaticIndex() {
+  if (_panStaticIndex) return _panStaticIndex;
+  if (_panStaticIndexPromise) return _panStaticIndexPromise;
+  _panStaticIndexPromise = (async () => {
+    const raw = JSON.parse(await fsp.readFile(PAN_STATIC_INDEX_PATH, 'utf8'));
+    _panStaticIndex = { feeds: raw?.feeds || {}, generatedAt: raw?.generatedAt || null };
+    return _panStaticIndex;
+  })().finally(() => { _panStaticIndexPromise = null; });
+  return _panStaticIndexPromise;
+}
+
+/**
+ * The static resource whose conversion should be tried for a feed.
+ *
+ * Same rule as the builder's: a conversion that answered the build-time probe
+ * wins, then one that was never probed; a conversion known dead is skipped
+ * rather than fetched to rediscover that it is dead.
+ */
+function panGeoResource(entry) {
+  const statics = Array.isArray(entry?.statics) ? entry.statics : [];
+  const usable = statics.filter((resource) => resource?.geojson?.url);
+  return usable.find((resource) => resource.geojson.reachable === true)
+    || usable.find((resource) => resource.geojson.reachable !== false)
+    || null;
+}
+
+/** Disk path for one network's indexed geometry. */
+function panGeoCachePath(feedId) {
+  return path.join(PAN_GEO_CACHE_DIR, `${String(feedId).replace(/[^\w.-]/g, '_')}.json`);
+}
+
+/** Keep the newest {@link PAN_GEO_MEMORY_MAX} networks resident. */
+function trimPanGeoMemory() {
+  while (_panGeoMemory.size > PAN_GEO_MEMORY_MAX) {
+    const oldest = _panGeoMemory.keys().next().value;
+    if (oldest === undefined) break;
+    _panGeoMemory.delete(oldest);
+  }
+}
+
+/**
+ * One network's line geometry, indexed: memory, then disk, then the PAN.
+ *
+ * The network fetch is the expensive one — 13 MB and ~0.7 s for Bordeaux, of
+ * which 0.2 s is parsing and indexing — and it happens at most once a week per
+ * network per checkout. Concurrent clicks on two buses of the same network
+ * share one fetch.
+ *
+ * @param {string} feedId
+ * @param {Object} entry Companion-index entry for the feed.
+ * @returns {Promise<{index: Object, source: Object, fetchedAt: number}>}
+ */
+async function panRouteGeometry(feedId, entry) {
+  const resident = _panGeoMemory.get(feedId);
+  if (resident) return resident;
+
+  const resource = panGeoResource(entry);
+  if (!resource) {
+    const error = new Error('this network publishes no converted line geometry');
+    error.code = 'NO_GEOMETRY';
+    throw error;
+  }
+
+  const request = coalesceProxyRequest(_panGeoInFlight, feedId, async () => {
+    const cachePath = panGeoCachePath(feedId);
+    try {
+      const cached = JSON.parse(await fsp.readFile(cachePath, 'utf8'));
+      const fresh = Date.now() - Number(cached.fetchedAt || 0) < PAN_GEO_DISK_TTL_MS;
+      // The conversion timestamp is the PAN's own statement about the archive
+      // behind it: a cache built from an older conversion is rebuilt even when
+      // it is inside the TTL.
+      const sameConversion = (cached.source?.checkedAt || null) === (resource.geojson.checkedAt || null);
+      if (fresh && sameConversion && cached.index?.routes && cached.index?.stops) {
+        const record = { index: cached.index, source: cached.source, fetchedAt: cached.fetchedAt };
+        _panGeoMemory.set(feedId, record);
+        trimPanGeoMemory();
+        return record;
+      }
+    } catch { /* no usable cache — fetch it */ }
+
+    const startedAt = Date.now();
+    const response = await fetch(resource.geojson.url, {
+      // `Accept: */*` deliberately. The conversion URL is a redirect the PAN
+      // serves from its own application, and asking it for
+      // `application/geo+json` makes it answer HTTP 500 — measured against
+      // resource 83024 on 2026-08-31, where the same request with `*/*`
+      // returns the file.
+      headers: { Accept: '*/*', 'User-Agent': PAN_USER_AGENT },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(PAN_GEOJSON_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`conversion HTTP ${response.status}`);
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > PAN_GEOJSON_MAX_BYTES) {
+      await response.arrayBuffer().catch(() => {});
+      throw new Error('converted geometry exceeds the size cap');
+    }
+    const document = await readResponseJsonCapped(response, PAN_GEOJSON_MAX_BYTES);
+    const index = indexGtfsGeoJson(document);
+    const source = {
+      url: resource.geojson.url,
+      resourceId: resource.resourceId,
+      pageUrl: resource.pageUrl || null,
+      declared: resource.geojson.declared === true,
+      checkedAt: resource.geojson.checkedAt || null,
+      bytes: Number.isFinite(resource.geojson.bytes) ? resource.geojson.bytes : null,
+    };
+    const record = { index, source, fetchedAt: Date.now() };
+    console.log(
+      `[PAN Transit] ${feedId} line geometry — ${index.stats.routeCount} routes, `
+      + `${index.stats.shapeCount} traces, ${index.stats.stopCount} stops, `
+      + `${index.stats.rawPoints} points kept as ${index.stats.keptPoints} in ${Date.now() - startedAt} ms`,
+    );
+
+    _panGeoMemory.set(feedId, record);
+    trimPanGeoMemory();
+    try {
+      await fsp.mkdir(PAN_GEO_CACHE_DIR, { recursive: true });
+      await fsp.writeFile(cachePath, JSON.stringify(record), 'utf8');
+    } catch (error) {
+      // A cache that cannot be written costs a re-fetch, nothing else.
+      console.warn('[PAN Transit] geometry cache write failed:', error?.message || error);
+    }
+    return record;
+  });
+  return request.promise;
+}
+
+/**
+ * One network's live trip updates, keyed by `trip_id`.
+ *
+ * The body is fetched by {@link panCompanionBody}, which is also what the
+ * VIEWPORT pass uses to put a delay on every vehicle on screen — so a click on
+ * a Bordeaux bus normally costs nothing at all: the 1.2 MB its network
+ * publishes was already read for the fleet the viewer is looking at, and both
+ * surfaces answer from one cache entry.
+ *
+ * WHICH resource is asked for is the measured one. `pan_gtfs_rt_feeds.json`
+ * records the trip-update companion whose trips actually JOIN each feed's own
+ * vehicles (see `scripts/build-pan-gtfs-rt-index.mjs`); the companion index's
+ * first declared resource is the fallback for a feed that predates that
+ * measurement. It matters: Rouen Astuce publishes three position feeds and
+ * four trip-update feeds on interleaved ids, and the declared order pairs them
+ * wrongly.
+ *
+ * @param {string} feedId
+ * @param {Object} entry Companion-index entry for the feed.
+ * @returns {Promise<{byTrip: Map<string, Object>, at: number, headerMs: ?number, error: ?string}>}
+ */
+async function panTripUpdates(feedId, entry) {
+  let measured = null;
+  try {
+    const index = await loadPanIndex();
+    measured = index.feeds.find((feed) => feed.id === feedId)?.tripUpdates?.url || null;
+  } catch { /* the live index is optional here; the companion index answers */ }
+  const url = measured || (Array.isArray(entry?.tripUpdates) ? entry.tripUpdates : [])[0]?.url;
+  if (!url) {
+    return { byTrip: new Map(), at: Date.now(), headerMs: null, error: 'no trip-update feed published' };
+  }
+
+  const body = await panCompanionBody(url, 'trips', PAN_TRIP_CACHE_MS);
+  const byTrip = new Map();
+  for (const trip of body.value) byTrip.set(trip.tripId, trip);
+  return { byTrip, at: body.at, headerMs: body.headerMs || null, error: body.error };
+}
+
+/**
+ * Build the answer for one click: the line, its trace, and the ordered stops
+ * of the run the vehicle is on.
+ *
+ * The three come from three different places and each is reported with its
+ * own provenance, because a viewer is entitled to know that the trace is
+ * yesterday's timetable and the stop times are ninety seconds old:
+ *
+ *   - the LINE and its TRACE from the network's static GTFS, via the PAN's
+ *     GeoJSON conversion of it;
+ *   - the STOPS of this run, in order, from the live TripUpdates feed;
+ *   - each stop's POSITION from the same conversion, joined on `stop_id`.
+ *
+ * @param {Object} params
+ * @returns {Promise<Object>} Wire document for `/api/transit-fr/trip`.
+ */
+async function buildPanTripAnswer({ feedId, tripId, routeId }) {
+  const index = await loadPanStaticIndex();
+  const entry = index.feeds?.[feedId];
+  if (!entry) {
+    const error = new Error('unknown transit feed');
+    error.code = 'UNKNOWN_FEED';
+    throw error;
+  }
+
+  const notes = [];
+  const [geometry, updates] = await Promise.all([
+    panRouteGeometry(feedId, entry).catch((error) => {
+      notes.push(error?.code === 'NO_GEOMETRY'
+        ? 'This network publishes no converted line geometry, so no trace is drawn.'
+        : `Line geometry unavailable: ${error?.message || error}`);
+      return null;
+    }),
+    tripId
+      ? panTripUpdates(feedId, entry)
+      : Promise.resolve({ byTrip: new Map(), at: Date.now(), headerMs: null, error: null }),
+  ]);
+
+  const trip = tripId ? geometryTripUpdate(updates, tripId) : null;
+  if (tripId && !trip) {
+    notes.push(updates.error
+      ? `The network's trip-update feed is unavailable (${updates.error}), so this run's stops are not listed.`
+      : 'The trip-update feed does not carry this run, so its stops are not listed.');
+  }
+
+  // The vehicle's own route id wins; a trip update that carries one is only
+  // the fallback, because the two come from the same operator and the vehicle
+  // feed is the one the contact on screen was drawn from.
+  const resolvedRouteId = routeId || trip?.routeId || null;
+  const route = resolvedRouteId ? geometry?.index.routes?.[resolvedRouteId] || null : null;
+  if (resolvedRouteId && geometry && !route) {
+    notes.push(`The static feed publishes no route "${resolvedRouteId}", so no trace is drawn.`);
+  }
+
+  const stops = [];
+  let unlocated = 0;
+  for (const stop of trip?.stops || []) {
+    const point = stop.stopId ? geometry?.index.stops?.[stop.stopId] : null;
+    if (!point) {
+      unlocated += 1;
+      continue;
+    }
+    stops.push({
+      id: stop.stopId,
+      name: point[2] || stop.stopId,
+      code: point[3] || null,
+      lon: point[0],
+      lat: point[1],
+      sequence: stop.sequence,
+      arrivalMs: stop.arrivalMs,
+      departureMs: stop.departureMs,
+      delaySec: stop.delaySec,
+      relationship: stop.relationship,
+    });
+  }
+  if (unlocated) {
+    notes.push(`${unlocated} stop${unlocated === 1 ? '' : 's'} of this run `
+      + `${unlocated === 1 ? 'is' : 'are'} not in the static feed and cannot be placed.`);
+  }
+
+  // Which of the line's traces this run is on, decided against this run's own
+  // stops. With no stops there is no evidence, so every variant is returned
+  // and the answer says so.
+  const variants = route?.shapes || [];
+  const match = stops.length
+    ? chooseTripShape(variants, stops.map((stop) => [stop.lon, stop.lat]))
+    : { index: null, maxDeviationM: null, medianDeviationM: null };
+  const shapes = match.index === null ? variants : [variants[match.index]];
+  if (variants.length > 1 && match.index === null && stops.length) {
+    notes.push(`None of the ${variants.length} published traces for this line holds every `
+      + 'stop of this run, so the whole line is drawn rather than one run of it.');
+  }
+
+  return {
+    status: 'ready',
+    feed: feedId,
+    network: entry.network || null,
+    licence: entry.licenceLabel || null,
+    datasetUrl: entry.datasetUrl || null,
+    route: route
+      ? {
+        id: resolvedRouteId,
+        shortName: route.shortName,
+        longName: route.longName,
+        color: route.color,
+        textColor: route.textColor,
+        variantCount: variants.length,
+      }
+      : (resolvedRouteId ? { id: resolvedRouteId, shortName: null, longName: null, color: null, textColor: null, variantCount: 0 } : null),
+    shapes,
+    shapeLengthM: shapes.length === 1 ? Math.round(pathLengthMeters(shapes[0])) : null,
+    shapeMatch: {
+      matched: match.index !== null,
+      variants: variants.length,
+      maxDeviationM: match.maxDeviationM,
+      medianDeviationM: match.medianDeviationM,
+    },
+    trip: trip
+      ? {
+        id: trip.tripId,
+        headsign: trip.vehicleLabel,
+        directionId: trip.directionId,
+        startDate: trip.startDate,
+        startTime: trip.startTime,
+        delaySec: trip.delaySec,
+        timestampMs: trip.timestampMs,
+      }
+      : (tripId ? { id: tripId, headsign: null, directionId: null, startDate: null, startTime: null, delaySec: null, timestampMs: null } : null),
+    stops,
+    stopsSource: stops.length ? 'trip_updates' : 'none',
+    stopsReported: trip?.stops?.length || 0,
+    tripUpdatesAt: updates.headerMs || updates.at || null,
+    geometry: geometry
+      ? { ...geometry.source, fetchedAt: new Date(geometry.fetchedAt).toISOString() }
+      : null,
+    notes,
+    retrievedAt: new Date().toISOString(),
+  };
+}
+
+/** The trip a click asked about, or null when the feed is not carrying it. */
+function geometryTripUpdate(updates, tripId) {
+  return updates?.byTrip?.get(String(tripId)) || null;
+}
+
 /**
  * Vite plugin: viewport-bounded French real-time transit proxy.
  *
  *   GET /api/transit-fr/feeds                          — index summary
- *   GET /api/transit-fr/vehicles?south&west&north&east — live positions in box
+ *   GET /api/transit-fr/vehicles?south&west&north&east — live positions in box,
+ *       each carrying the operator's own delay and disruption for the run it
+ *       is on
+ *   GET /api/transit-fr/trip?feed&trip&route           — one vehicle's line:
+ *       its trace, the ordered stops of the run it is on, and when the
+ *       operator expects it at each of them
  *
  * The browser never talks to transport.data.gouv.fr directly, for three
  * reasons: the feeds are Protocol Buffers (decoded here, so the client bundle
@@ -5437,6 +7292,11 @@ function panTransitProxy() {
           generatedAt: index.generatedAt || null,
           feedCount: index.feeds.length,
           feedsWithBounds: index.feeds.filter((feed) => feed.bbox).length,
+          // Which of the queryable feeds can answer "how late is this bus",
+          // and how many of those cost no second request to ask.
+          feedsWithTripUpdates: selectable.filter((feed) => feed.tripUpdates?.url).length,
+          feedsWithAlerts: selectable.filter((feed) => feed.alerts?.url).length,
+          feedsSharingOneBody: selectable.filter((feed) => feed.tripUpdates?.sameResource).length,
           // Shipped ≠ queryable, and the difference is named rather than hidden.
           feedsQueryable: selectable.length,
           feedsDuplicate: duplicates,
@@ -5445,6 +7305,41 @@ function panTransitProxy() {
           maxBoxDeg: PAN_MAX_BOX_DEG,
           maxFeedsPerRequest: PAN_MAX_FEEDS_PER_REQUEST,
         }, { 'Cache-Control': 'public, max-age=300' });
+        return;
+      }
+
+      if (route === '/trip') {
+        // What line is this, where does it go, and which stops does this run
+        // serve. Three sources, one answer — see `buildPanTripAnswer`.
+        const feedId = String(url.searchParams.get('feed') || '').trim();
+        const tripId = String(url.searchParams.get('trip') || '').trim();
+        const routeId = String(url.searchParams.get('route') || '').trim();
+        if (!feedId || (!tripId && !routeId)) {
+          json(400, { error: 'A feed id and at least one of trip / route is required' });
+          return;
+        }
+        try {
+          const payload = await buildPanTripAnswer({
+            feedId,
+            tripId: tripId || null,
+            routeId: routeId || null,
+          });
+          json(200, payload);
+        } catch (error) {
+          if (error?.code === 'UNKNOWN_FEED') {
+            json(404, { error: 'Unknown transit feed' });
+            return;
+          }
+          if (error?.code === 'ENOENT' || /pan_gtfs_static/.test(error?.message || '')) {
+            json(503, {
+              error: 'The line-geometry index is missing — run `node scripts/build-pan-static-index.mjs`',
+              missingIndex: true,
+            });
+            return;
+          }
+          console.warn('[PAN Transit] line unavailable:', error?.message || error);
+          json(503, { error: 'Line geometry is temporarily unavailable' });
+        }
         return;
       }
 
@@ -8958,7 +10853,7 @@ const GEV_REALTIME_TOOLS = [
         layerId: {
           type: 'string',
           description:
-            'Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS); ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; ports/harbors/seaports → local-ports; buoys/sea state/wave height → marine-buoys; bikes/bike share → bikeshare; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio.',
+            'Common-name mapping for the non-obvious ids: space mission(s) → rocket-launches; fires/wildfires/active fires → local-firms (NASA FIRMS); ships/vessels/boats → ais-live-vessels; undersea/submarine cables → telegeography-submarine-cables; datacenters → local-datacenters; dams → local-dams; ports/harbors/seaports → local-ports; airports/aerodromes/airfields/aéroports → local-airports; buoys/sea state/wave height → marine-buoys; bikes/bike share → bikeshare; street traffic/congestion → traffic; traffic cameras → cctv; internet radio/stations → radio.',
           enum: [
             'flights',
             'military',
@@ -8973,6 +10868,7 @@ const GEV_REALTIME_TOOLS = [
             'local-datacenters',
             'local-dams',
             'local-ports',
+            'local-airports',
             'telegeography-submarine-cables',
             'local-firms',
             'marine-buoys',
@@ -9006,6 +10902,7 @@ const GEV_REALTIME_TOOLS = [
             'local-datacenters',
             'local-dams',
             'local-ports',
+            'local-airports',
             'telegeography-submarine-cables',
             'local-firms',
             'marine-buoys',
@@ -9110,6 +11007,7 @@ const GEV_REALTIME_TOOLS = [
             'local-datacenters',
             'local-dams',
             'local-ports',
+            'local-airports',
             'telegeography-submarine-cables',
             'local-firms',
           ],
@@ -11372,6 +13270,421 @@ function weatherEffectsProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Bison Futé DATEX II — live status of the French national road network
+// ---------------------------------------------------------------------------
+/** Committed geometry (see `scripts/build-datex-traficolor-sites.mjs`). */
+const ROAD_STATUS_SITES_PATH = path.join(process.cwd(), 'config', 'datex_traficolor_sites.json');
+/**
+ * Snapshot TTL. The fastest agglomeration (Bordeaux, Toulouse, Lyon, Limoges)
+ * writes a new file every 60 s and the slowest every 360 s, so asking more
+ * often than a minute cannot return anything new — it only costs the publisher
+ * bandwidth.
+ */
+const ROAD_STATUS_SNAPSHOT_TTL_MS = 60_000;
+/**
+ * The flow/speed snapshot has a strict six-minute cycle: `publicationTime`
+ * 22:24 covers the window 22:24–22:30, the next is 22:30 covering 22:30–22:36.
+ * Re-fetching 1.2 MB inside that window returns the identical document.
+ */
+const ROAD_STATUS_QTV_TTL_MS = 6 * 60_000;
+/** Longest a stale snapshot is still served while upstream is unreachable. */
+const ROAD_STATUS_STALE_MS = 30 * 60_000;
+const ROAD_STATUS_TIMEOUT_MS = 20_000;
+/** The national flow snapshot is 1.2 MB; this is headroom, not an expectation. */
+const ROAD_STATUS_MAX_BYTES = 24 * 1024 * 1024;
+/** How many agglomeration directories are read at once. */
+const ROAD_STATUS_CONCURRENCY = 6;
+const ROAD_STATUS_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'road-status-fr');
+const ROAD_STATUS_CACHE_PATH = path.join(ROAD_STATUS_CACHE_DIR, 'snapshot.json');
+const ROAD_STATUS_USER_AGENT = 'GodsEyeView/1.0 (+https://github.com/bilawalsidhu/gods-eye-view)';
+const _roadStatusRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 90, globalMax: 240 });
+
+/** @type {?object} Parsed `config/datex_traficolor_sites.json`. */
+let _roadStatusSites = null;
+/** @type {?Promise<object>} */
+let _roadStatusSitesPromise = null;
+/** @type {?{at:number, publishedAt:?string, windowStart:?string, windowEnd:?string, measurements:Map}} */
+let _roadStatusQtv = null;
+/** @type {?{at:number, segments:Array<object>, feeds:Array<object>, counts:object}} */
+let _roadStatusSnapshot = null;
+let _roadStatusDiskChecked = false;
+/** @type {Map<string, Promise<object>>} */
+const _roadStatusInFlight = new Map();
+
+/** Load the committed site geometry once per process. */
+function loadRoadStatusSites() {
+  if (_roadStatusSites) return Promise.resolve(_roadStatusSites);
+  if (!_roadStatusSitesPromise) {
+    _roadStatusSitesPromise = fsp.readFile(ROAD_STATUS_SITES_PATH, 'utf8')
+      .then((text) => {
+        const parsed = JSON.parse(text);
+        if (!parsed?.sites || typeof parsed.sites !== 'object') {
+          throw new Error('site index has no `sites` map');
+        }
+        _roadStatusSites = parsed;
+        return parsed;
+      })
+      .catch((error) => {
+        _roadStatusSitesPromise = null;
+        throw error;
+      });
+  }
+  return _roadStatusSitesPromise;
+}
+
+async function fetchRoadStatusText(url) {
+  const response = await fetch(url, {
+    headers: { 'User-Agent': ROAD_STATUS_USER_AGENT, Accept: '*/*' },
+    signal: AbortSignal.timeout(ROAD_STATUS_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return readResponseTextCapped(response, ROAD_STATUS_MAX_BYTES);
+}
+
+/** Run `worker` over `items` with a fixed number of concurrent slots. */
+async function mapWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= items.length) return;
+      results[index] = await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
+
+/**
+ * Refresh the six-minute national flow/speed snapshot, if its window elapsed.
+ *
+ * Failure is NOT fatal to the status snapshot: the colour of a road and the
+ * count on it come from two independent publications, and losing the count
+ * must not blank the colour. The previous measurements are kept and their own
+ * timestamps go out with them, so the client can see they are the last cycle's.
+ */
+async function refreshRoadStatusQtv() {
+  const now = Date.now();
+  if (_roadStatusQtv && now - _roadStatusQtv.at < ROAD_STATUS_QTV_TTL_MS) return _roadStatusQtv;
+  try {
+    const xml = await fetchRoadStatusText(QTV_MEASUREMENTS_URL);
+    const parsed = parseQtvMeasurements(xml);
+    _roadStatusQtv = { at: now, ...parsed };
+  } catch (error) {
+    console.warn('[road-status-fr] flow snapshot unavailable:', error?.message || error);
+    if (!_roadStatusQtv) {
+      _roadStatusQtv = {
+        at: now, publishedAt: null, windowStart: null, windowEnd: null, measurements: new Map(),
+      };
+    }
+  }
+  return _roadStatusQtv;
+}
+
+/**
+ * Read every agglomeration status feed and join it to the committed geometry.
+ *
+ * ONE NATIONAL SNAPSHOT, not one fetch per viewport. The whole country is
+ * ~2 000 status sites and ~830 drawable segments — small enough to hold, and
+ * far cheaper to hold than to re-derive per camera box. Viewport filtering is
+ * therefore a pass over an array, which is why the box ceiling on the endpoint
+ * is 20° rather than the 6° the transit proxy has to enforce.
+ *
+ * SETTLED PER FEED. Sixteen directories, each a separate traffic-management
+ * centre; one being down is one city going grey, not the country going blank.
+ * Every failure is named in the `feeds` array the client renders.
+ *
+ * A SITE IS DRAWN IF EITHER PUBLICATION SPEAKS FOR IT. A located station with
+ * a flow reading and no colour is drawn in the `unknown` grey and carries its
+ * count; a site with a colour and no count is drawn coloured. Requiring both
+ * would silently drop the stations no traffic centre watches.
+ */
+async function refreshRoadStatusSnapshot() {
+  const sitesDoc = await loadRoadStatusSites();
+  const qtv = await refreshRoadStatusQtv();
+  const index = await fetchRoadStatusText(TRAFICOLOR_INDEX_URL);
+  const directories = parseIndexDirectories(index);
+
+  const outcomes = await mapWithConcurrency(directories, ROAD_STATUS_CONCURRENCY, async (directory) => {
+    const base = `${TRAFICOLOR_INDEX_URL}${directory}/`;
+    try {
+      const listing = await fetchRoadStatusText(base);
+      const latest = latestPublicationFile(listing);
+      if (!latest) return { directory, statuses: new Map(), error: 'no publication file' };
+      const body = await fetchRoadStatusText(base + latest);
+      const parsed = parseTraficolorStatuses(body);
+      return {
+        directory, statuses: parsed.statuses, publishedAt: parsed.publishedAt, file: latest, error: null,
+      };
+    } catch (error) {
+      console.warn(`[road-status-fr] ${directory}: ${error?.message || error}`);
+      return { directory, statuses: new Map(), error: String(error?.message || error) };
+    }
+  });
+
+  /** @type {Map<string, {status:string, at:?string, sources:Array<string>}>} */
+  const merged = new Map();
+  const feeds = [];
+  for (const outcome of outcomes) {
+    let drawable = 0;
+    for (const [id, reading] of outcome.statuses) {
+      if (sitesDoc.sites[id]?.c) drawable += 1;
+      const existing = merged.get(id);
+      if (existing) {
+        // Two centres watching one site: keep the worse state, and record both
+        // so the card can say who is reporting it.
+        existing.status = worseRoadStatus(existing.status, reading.status);
+        if (!existing.sources.includes(outcome.directory)) existing.sources.push(outcome.directory);
+        if (reading.at && (!existing.at || reading.at > existing.at)) existing.at = reading.at;
+      } else {
+        merged.set(id, { status: reading.status, at: reading.at, sources: [outcome.directory] });
+      }
+    }
+    feeds.push({
+      directory: outcome.directory,
+      label: agglomerationLabel(outcome.directory),
+      sites: outcome.statuses.size,
+      drawable,
+      publishedAt: outcome.publishedAt || null,
+      file: outcome.file || null,
+      error: outcome.error,
+    });
+  }
+  feeds.sort((a, b) => b.drawable - a.drawable || a.label.localeCompare(b.label));
+
+  const segments = [];
+  const counts = {
+    freeFlow: 0, heavy: 0, congested: 0, impossible: 0, unknown: 0,
+  };
+  let measured = 0;
+  for (const [id, site] of Object.entries(sitesDoc.sites)) {
+    if (!site?.c) continue;
+    const reading = merged.get(id);
+    const measurement = qtv.measurements.get(id);
+    if (!reading && !measurement) continue;
+    const status = reading?.status || 'unknown';
+    counts[status] = (counts[status] || 0) + 1;
+    if (measurement) measured += 1;
+    segments.push({
+      id,
+      c: site.c,
+      s: status,
+      d: site.d || null,
+      a: site.a || null,
+      z: site.z || null,
+      // How this segment knows where it is: `xy` from a coordinate the DIR
+      // published, `pr` from a kilometre post this app resolved. The card says
+      // which, because they are not the same claim.
+      g: site.g || null,
+      src: reading?.sources || [],
+      at: reading?.at || null,
+      f: measurement?.flowVehH ?? null,
+      v: measurement?.speedKph ?? null,
+      n: measurement?.samples ?? null,
+    });
+  }
+
+  const failed = feeds.filter((feed) => feed.error).length;
+  const snapshot = {
+    at: Date.now(),
+    status: failed && failed === feeds.length ? 'degraded' : 'ready',
+    retrievedAt: new Date().toISOString(),
+    segments,
+    feeds,
+    counts,
+    measured,
+    feedsFailed: failed,
+    statusSites: merged.size,
+    // The two numbers the honesty of this layer rests on: how many sites the
+    // country publishes a position for, and how many it does not.
+    sitesTotal: sitesDoc.stats?.sites ?? null,
+    sitesLocated: sitesDoc.stats?.located ?? null,
+    sitesUnlocated: sitesDoc.stats?.unlocated ?? null,
+    sitesFromPointRepere: sitesDoc.stats?.geometry?.pointRepere ?? null,
+    lengthKm: sitesDoc.stats?.lengthKm ?? null,
+    licence: sitesDoc.licence || null,
+    attribution: sitesDoc.attribution || null,
+    datasetPage: sitesDoc.datasetPage || null,
+    geometryGeneratedAt: sitesDoc.generatedAt || null,
+    flow: {
+      publishedAt: qtv.publishedAt,
+      windowStart: qtv.windowStart,
+      windowEnd: qtv.windowEnd,
+      stations: qtv.measurements.size,
+    },
+  };
+  _roadStatusSnapshot = snapshot;
+  void fsp.mkdir(ROAD_STATUS_CACHE_DIR, { recursive: true })
+    .then(() => fsp.writeFile(ROAD_STATUS_CACHE_PATH, JSON.stringify(snapshot), 'utf8'))
+    .catch((error) => console.warn('[road-status-fr] cache write failed:', error?.message || error));
+  return snapshot;
+}
+
+/** Warm the in-memory snapshot from disk once, so a restart is not a cold map. */
+async function readRoadStatusDiskCache() {
+  if (_roadStatusDiskChecked) return;
+  _roadStatusDiskChecked = true;
+  try {
+    const parsed = JSON.parse(await fsp.readFile(ROAD_STATUS_CACHE_PATH, 'utf8'));
+    if (Number.isFinite(parsed?.at) && Array.isArray(parsed?.segments)) _roadStatusSnapshot = parsed;
+  } catch { /* no disk cache yet */ }
+}
+
+/**
+ * Vite plugin: live French national road status.
+ *
+ *   GET /api/road-status-fr/sources                          — publishers and coverage
+ *   GET /api/road-status-fr/segments?south&west&north&east   — coloured segments in box
+ *
+ * The browser never talks to `tipi.bison-fute.gouv.fr` directly: the host is
+ * plain HTTP with no CORS header and no TLS at all, so a page served over
+ * https could not read it even if it were allowed to; one viewport needs
+ * seventeen upstream requests that are worth sharing across clients; and the
+ * geometry join happens against a file the browser has no reason to hold.
+ *
+ * Keyless, Licence Ouverte 2.0.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function roadStatusFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/road-status-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_roadStatusRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      let sitesDoc;
+      try {
+        sitesDoc = await loadRoadStatusSites();
+      } catch (error) {
+        console.warn('[road-status-fr] site index unavailable:', error?.message || error);
+        json(503, {
+          error: 'French road-status geometry is missing — run `npm run road-status:index`',
+          missingIndex: true,
+        });
+        return;
+      }
+
+      if (route === '/sources') {
+        json(200, {
+          source: sitesDoc.statusSource || TRAFICOLOR_INDEX_URL,
+          referentialSource: sitesDoc.source || null,
+          datasetPage: sitesDoc.datasetPage || null,
+          licence: sitesDoc.licence || null,
+          attribution: sitesDoc.attribution || null,
+          geometryGeneratedAt: sitesDoc.generatedAt || null,
+          cycles: sitesDoc.cycles || null,
+          referential: sitesDoc.referential || null,
+          bornage: sitesDoc.bornage || null,
+          stats: sitesDoc.stats || null,
+          coverage: sitesDoc.coverage || [],
+        }, { 'Cache-Control': 'public, max-age=300' });
+        return;
+      }
+
+      if (route !== '/segments') {
+        json(404, { error: 'Unknown road-status endpoint' });
+        return;
+      }
+
+      const box = validRoadStatusBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      });
+      if (!box) {
+        json(400, { error: `A non-dateline bbox no larger than ${ROAD_STATUS_MAX_BOX_DEG} degrees is required` });
+        return;
+      }
+
+      await readRoadStatusDiskCache();
+      const now = Date.now();
+      const fresh = _roadStatusSnapshot && now - _roadStatusSnapshot.at <= ROAD_STATUS_SNAPSHOT_TTL_MS;
+      let snapshot = fresh ? _roadStatusSnapshot : null;
+      let cacheState = 'HIT';
+      if (!snapshot) {
+        const request = coalesceProxyRequest(_roadStatusInFlight, 'national', refreshRoadStatusSnapshot);
+        cacheState = request.shared ? 'INFLIGHT' : 'MISS';
+        try {
+          snapshot = await request.promise;
+        } catch (error) {
+          console.warn('[road-status-fr] refresh failed:', error?.message || error);
+          const stale = _roadStatusSnapshot;
+          if (!stale || now - stale.at > ROAD_STATUS_STALE_MS) {
+            json(503, { error: 'Live French road status is temporarily unavailable' });
+            return;
+          }
+          snapshot = stale;
+          cacheState = 'STALE';
+        }
+      }
+
+      const inBox = [];
+      const counts = {
+        freeFlow: 0, heavy: 0, congested: 0, impossible: 0, unknown: 0,
+      };
+      let truncated = false;
+      for (const segment of snapshot.segments) {
+        if (!segmentIntersectsBox(segment, box)) continue;
+        if (inBox.length >= ROAD_STATUS_MAX_SEGMENTS) { truncated = true; break; }
+        inBox.push(segment);
+        counts[segment.s] = (counts[segment.s] || 0) + 1;
+      }
+
+      json(200, {
+        status: cacheState === 'STALE' ? 'stale' : snapshot.status,
+        retrievedAt: snapshot.retrievedAt,
+        stale: cacheState === 'STALE',
+        box,
+        segments: inBox,
+        counts,
+        segmentsTruncated: truncated,
+        nationalSegments: snapshot.segments.length,
+        nationalCounts: snapshot.counts,
+        measured: snapshot.measured,
+        feeds: snapshot.feeds,
+        feedsFailed: snapshot.feedsFailed,
+        sitesTotal: snapshot.sitesTotal,
+        sitesLocated: snapshot.sitesLocated,
+        sitesUnlocated: snapshot.sitesUnlocated,
+        sitesFromPointRepere: snapshot.sitesFromPointRepere,
+        lengthKm: snapshot.lengthKm,
+        flow: snapshot.flow,
+        licence: snapshot.licence,
+        attribution: snapshot.attribution,
+        datasetPage: snapshot.datasetPage,
+        geometryGeneratedAt: snapshot.geometryGeneratedAt,
+      }, { 'X-Road-Status-FR': cacheState });
+    });
+  }
+
+  return {
+    name: 'road-status-fr-proxy',
+    configureServer(server) {
+      install(server.middlewares);
+    },
+    configurePreviewServer(server) {
+      install(server.middlewares);
+    },
+  };
+}
+
 function parseJsonEnv(key, fallback) {
   const value = process.env[key];
   if (!value) return fallback;
@@ -12038,6 +14351,115 @@ function idfmProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Hosted-deployment plumbing (access gate + preview parity)
+// ---------------------------------------------------------------------------
+/**
+ * HTTP Basic gate for the whole origin.
+ *
+ * Every proxy in this file brokers a key somebody pays for, so a reachable
+ * origin is a spendable wallet. When GEV_ACCESS_PASSWORD is set this
+ * middleware fronts everything — app shell, assets and /api/* alike — and
+ * nothing downstream runs until the request authenticates. Unset (the local
+ * default) it is a no-op, so `npm run dev` is unchanged.
+ *
+ * GEV_ACCESS_USER is optional: leave it empty to accept any username.
+ * /healthz stays open so a platform health check needs no password.
+ *
+ * @returns {import('vite').Plugin} Vite plugin.
+ */
+function accessGatePlugin() {
+  let warnedOpen = false;
+
+  /**
+   * Constant-time string compare via fixed-width digests (the raw strings
+   * differ in length, which timingSafeEqual rejects outright).
+   * @param {string} received - Value from the request.
+   * @param {string} expected - Configured value.
+   * @returns {boolean} True when equal.
+   */
+  const secretEquals = (received, expected) => timingSafeEqual(
+    createHash('sha256').update(String(received), 'utf8').digest(),
+    createHash('sha256').update(String(expected), 'utf8').digest(),
+  );
+
+  /**
+   * @param {import('connect').Server} middlewares - Middleware stack.
+   * @param {boolean} hosted - True on the preview server (a real deployment).
+   */
+  const install = (middlewares, hosted) => {
+    middlewares.use('/healthz', (req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, gated: Boolean(process.env.GEV_ACCESS_PASSWORD) }));
+    });
+
+    middlewares.use((req, res, next) => {
+      const expectedUser = String(process.env.GEV_ACCESS_USER || '').trim();
+      const expectedPassword = String(process.env.GEV_ACCESS_PASSWORD || '');
+      if (!expectedPassword) {
+        if (hosted && !warnedOpen) {
+          warnedOpen = true;
+          console.warn(
+            '[access-gate] GEV_ACCESS_PASSWORD is unset — this origin is OPEN, and every keyed proxy on it is spendable by anyone who finds the URL.',
+          );
+        }
+        next();
+        return;
+      }
+
+      const [scheme, encoded] = String(req.headers.authorization || '').split(' ');
+      let authorized = false;
+      if (/^basic$/i.test(scheme || '') && encoded) {
+        const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+        const split = decoded.indexOf(':');
+        if (split >= 0) {
+          const user = decoded.slice(0, split);
+          const password = decoded.slice(split + 1);
+          authorized = secretEquals(password, expectedPassword)
+            && (!expectedUser || secretEquals(user, expectedUser));
+        }
+      }
+      if (authorized) {
+        next();
+        return;
+      }
+
+      res.writeHead(401, {
+        'WWW-Authenticate': 'Basic realm="God\'s Eye View", charset="UTF-8"',
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-store',
+      });
+      res.end('401 — God\'s Eye View is private.\n');
+    });
+  };
+
+  return {
+    name: 'gev-access-gate',
+    configureServer(server) { install(server.middlewares, false); },
+    configurePreviewServer(server) { install(server.middlewares, true); },
+  };
+}
+
+/**
+ * Mirrors a dev-only middleware plugin onto the preview server.
+ *
+ * The proxies above were written against `vite dev`; a deployment serves the
+ * built bundle through `vite preview`, a different server that installs none
+ * of them — so without this the hosted app boots with a third of its /api
+ * surface missing. Every mirrored plugin touches only `server.middlewares`
+ * (the three that also need `server.httpServer` already declare their own
+ * preview hook, and are left untouched here).
+ *
+ * @param {import('vite').Plugin} plugin - Proxy plugin to mirror.
+ * @returns {import('vite').Plugin} The plugin, with preview parity.
+ */
+function withPreviewParity(plugin) {
+  if (!plugin || typeof plugin !== 'object') return plugin;
+  if (typeof plugin.configureServer !== 'function') return plugin;
+  if (plugin.configurePreviewServer) return plugin;
+  return { ...plugin, configurePreviewServer: plugin.configureServer };
+}
+
 /**
  * Main Vite configuration factory.
  *
@@ -12053,9 +14475,16 @@ export default defineConfig(({ mode }) => {
     if (process.env[key] === undefined) process.env[key] = val;
   }
   const env = { ...process.env };
+  const publicHosts = String(env.GEV_PUBLIC_HOST || '')
+    .split(',')
+    .map((host) => host.trim())
+    .filter(Boolean);
   return {
     plugins: [
+      // First in the list so the gate's middleware lands ahead of every proxy.
+      accessGatePlugin(),
       cesium(),
+      ...[
       openSkyProxy(),
       celestrakProxy(),
       tomtomProxy(),
@@ -12065,6 +14494,7 @@ export default defineConfig(({ mode }) => {
       eco2mixProxy(),
       gasFranceProxy(),
       edfPlantsProxy(),
+      bisonFuteProxy(),
       rteGenerationProxy(),
       ndbcProxy(),
       rocketLaunchesProxy(),
@@ -12080,7 +14510,10 @@ export default defineConfig(({ mode }) => {
       radioBrowserProxy(),
       gbfsProxy(),
       panTransitProxy(),
+      roadStatusFranceProxy(),
       gbfsFranceProxy(),
+      irveFranceProxy(),
+      schoolsFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),
@@ -12093,6 +14526,7 @@ export default defineConfig(({ mode }) => {
       isochroneProxy(),
       gpuProxy(),
       idfmProxy(),
+      ].map(withPreviewParity),
     ],
     server: {
       host: env.HOST || 'localhost',
@@ -12101,6 +14535,19 @@ export default defineConfig(({ mode }) => {
       allowedHosts: (env.HOST === '0.0.0.0' || env.HOST === '::')
         ? true
         : ['localhost', '127.0.0.1', '.local'],
+    },
+    // `vite preview` is what a deployment runs: the built bundle plus the
+    // proxies above. A hosted origin answers on a name this checkout cannot
+    // guess, so GEV_PUBLIC_HOST names it (comma-separated for several);
+    // without it the preview server stays as locked down as the dev one.
+    preview: {
+      host: env.HOST || 'localhost',
+      port: parseInt(env.PORT, 10) || 4173,
+      allowedHosts: publicHosts.length
+        ? ['localhost', '127.0.0.1', '.local', ...publicHosts]
+        : ((env.HOST === '0.0.0.0' || env.HOST === '::')
+          ? true
+          : ['localhost', '127.0.0.1', '.local']),
     },
     // Expose selected API keys to the browser via import.meta.env.*
     define: {

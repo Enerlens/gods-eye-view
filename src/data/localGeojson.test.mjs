@@ -149,6 +149,164 @@ async function createRealLocalLayerHarness({
   };
 }
 
+/**
+ * A three-point graded layer: one feature per group plus a second `minor`, so
+ * a filter that hides a group can be told apart from one that hides a feature.
+ * @param {object} [options]
+ * @param {string} [options.floor] Initial display floor.
+ */
+async function createGradedLayerHarness({ floor = 'all' } = {}) {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const preRender = new MockLayerEvent();
+  const moveEnd = new MockLayerEvent();
+  const hostCalls = [];
+  const features = [
+    { rank: 'major', name: 'Major One', lon: -97.70, lat: 30.20 },
+    { rank: 'minor', name: 'Minor One', lon: -97.69, lat: 30.21 },
+    { rank: 'minor', name: 'Minor Two', lon: -97.68, lat: 30.22 },
+  ];
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    // Polygons, not Points, for the same reason the dam harness uses one:
+    // Cesium's GeoJSON loader builds a PIN BILLBOARD for every Point, and the
+    // pin builder needs `document`. The layer treats both identically from the
+    // stem down — it takes the polygon's centre and then assigns exactly the
+    // same point/polyline graphics — so grading is exercised either way.
+    text: async () => features.map((feature, index) => JSON.stringify({
+      type: 'Feature',
+      id: `graded-${index}`,
+      properties: { name: feature.name, rank: feature.rank },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [feature.lon, feature.lat],
+          [feature.lon + 0.005, feature.lat],
+          [feature.lon + 0.005, feature.lat + 0.005],
+          [feature.lon, feature.lat],
+        ]],
+      },
+    })).join('\n'),
+  });
+  globalThis.window = { dispatchEvent() {} };
+  const viewer = {
+    selectedEntity: undefined,
+    dataSources: { add(dataSource) { return dataSource; }, remove() { return true; } },
+    camera: {
+      positionWC: Cesium.Cartesian3.fromDegrees(-97.695, 30.205, 100_000),
+      frustum: { fov: Math.PI / 3 },
+      moveEnd,
+      flyTo() {},
+    },
+    scene: {
+      canvas: { clientWidth: 800, clientHeight: 600 },
+      preRender,
+      sampleHeightSupported: false,
+      screenSpaceCameraController: { enableInputs: true },
+      pick() { return null; },
+      requestRender() {},
+    },
+  };
+  const layer = createLocalGeoJsonLayer({
+    id: 'local-ports',
+    url: '/graded.geojsonl',
+    name: 'Graded',
+    color: '#0088ff',
+    overlayHost: {
+      setVisible: (...args) => hostCalls.push(['visible', ...args]),
+      setEntries: (...args) => hostCalls.push(['entries', ...args]),
+      clearSource: (...args) => hostCalls.push(['clear', ...args]),
+    },
+    projectToWindow: () => ({ x: 400, y: 300 }),
+    screenSpaceEventHandlerFactory: () => ({ setInputAction() {}, destroy() {} }),
+    groupOf: (props) => props.rank,
+    groupStyles: {
+      major: { color: '#ff0000', pixelSize: 14, stemWidth: 4 },
+      minor: { color: '#00ff00', pixelSize: 6, stemWidth: 2 },
+    },
+    groupVisible: (key, params) => params.floor === 'all' || key === 'major',
+    defaultParams: { floor },
+    rowControls: (params, tally) => ({
+      chips: [{ id: 'all', label: 'ALL', active: params.floor === 'all', params: { floor: 'all' } }],
+      legend: [...tally.entries()].map(([key, bucket]) => ({
+        label: key, color: '#fff', count: bucket.visible, total: bucket.total,
+      })),
+    }),
+  });
+  try {
+    await layer.enable(viewer);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  return {
+    layer,
+    viewer,
+    preRender,
+    hostCalls,
+    cleanup() {
+      if (originalWindow === undefined) delete globalThis.window;
+      else globalThis.window = originalWindow;
+    },
+  };
+}
+
+test('a graded local pack styles, tallies and filters by group', async () => {
+  const harness = await createGradedLayerHarness();
+  try {
+    const { layer, preRender } = harness;
+    assert.equal(layer.getStats().count, 3);
+
+    // Every tier is drawn at its own size and colour — the whole point of
+    // grading. Read off the live Cesium graphics, not off the options object.
+    const controls = layer.getRowControls();
+    assert.deepEqual(controls.legend, [
+      { label: 'major', color: '#fff', count: 1, total: 1 },
+      { label: 'minor', color: '#fff', count: 2, total: 2 },
+    ], 'the tally counts loaded and drawn features per group');
+
+    // One walk to let the pre-render visibility pass settle `show`.
+    preRender.raise();
+    const shows = () => layer.getRowControls().legend.map((entry) => entry.count);
+    assert.deepEqual(shows(), [1, 2], 'everything is drawn under the open floor');
+
+    // Narrow the floor: the minor group must leave the globe AND the legend,
+    // while `getStats().count` keeps reporting the whole loaded pack.
+    assert.equal(layer.setParams({ floor: 'majors' }), true);
+    assert.deepEqual(shows(), [1, 0], 'the filtered group drops to zero drawn');
+    assert.equal(layer.getStats().count, 3,
+      'a display floor hides markers without losing them');
+
+    // Re-applying the same floor is a no-op, so the panel does not repaint on
+    // every refresh tick.
+    assert.equal(layer.setParams({ floor: 'majors' }), false);
+
+    // ...and it is reversible.
+    assert.equal(layer.setParams({ floor: 'all' }), true);
+    assert.deepEqual(shows(), [1, 2]);
+  } finally {
+    // destroy() reaches the context store, which reads `window` — so the layer
+    // has to come down BEFORE the harness removes the global.
+    await harness.layer.destroy?.(harness.viewer);
+    harness.cleanup();
+  }
+});
+
+test('an UNGRADED local pack exposes no row controls at all', async () => {
+  // The manager decides whether to build a row's control strip by testing for
+  // this method. Defining it unconditionally would give ports, dams and
+  // datacenters an empty strip.
+  const layer = createLocalGeoJsonLayer({
+    id: 'local-dams',
+    url: '/none.geojsonl',
+    name: 'Ungraded',
+    color: '#0088ff',
+  });
+  assert.equal(typeof layer.getRowControls, 'undefined');
+  assert.equal(typeof layer.setParams, 'undefined');
+  assert.equal(typeof layer.setRowControlsListener, 'undefined');
+});
+
 test('local infrastructure card copy uses the validated source fields', () => {
   assert.deepEqual(localInfrastructureOverlayCopy({
     tags: {
@@ -161,12 +319,18 @@ test('local infrastructure card copy uses the validated source fields', () => {
     details: ['Example Cloud · 27 MW'],
   });
 
+  // Dams read the FLAT shipped shape written by scripts/build-osm-dams.mjs, not
+  // raw OSM tags: the card lines live in src/data/damsPack.js beside the
+  // projection that emits the fields, so the two cannot drift.
   assert.deepEqual(localInfrastructureOverlayCopy({
     name: 'Barrage Bin el Ouidane',
-    tags: { associated_river: 'El Abid' },
+    river: 'El Abid',
+    heightM: 133,
+    hydro: true,
+    outputMw: 135,
   }, 'local-dams'), {
     title: 'Barrage Bin el Ouidane',
-    details: ['El Abid'],
+    details: ['hydroélectrique · 135 MW', '133 m de haut', 'El Abid'],
   });
 
   assert.deepEqual(localInfrastructureOverlayCopy({
@@ -175,6 +339,39 @@ test('local infrastructure card copy uses the validated source fields', () => {
     title: 'Amazon Web Services',
     details: [],
   });
+});
+
+test('airport cards come from the pack module, clamped to the host width', () => {
+  assert.deepEqual(localInfrastructureOverlayCopy({
+    name: 'Nice-Côte d’Azur Airport',
+    type: 'large_airport',
+    icao: 'LFMN',
+    iata: 'NCE',
+    municipality: 'Nice',
+    country: 'France',
+    scheduled: true,
+    runways: { count: 2, longestM: 2963, surface: 'revêtue' },
+  }, 'local-airports'), {
+    title: 'Nice-Côte d’Azur Airport',
+    details: [
+      'LFMN · NCE · vols réguliers',
+      'Grand aéroport · piste 2 963 m revêtue',
+      'France',
+    ],
+  });
+
+  // The host, not the pack, owns the 48-character card width — a long French
+  // commune name must be truncated here rather than overflow the card.
+  const [, , place] = localInfrastructureOverlayCopy({
+    name: 'Somewhere Airfield',
+    type: 'small_airport',
+    icao: 'LFXX',
+    municipality: 'Saint-Remy-en-Bouzemont-Saint-Genest-et-Isson',
+    country: 'France',
+    runways: { count: 1, longestM: 800 },
+  }, 'local-airports').details;
+  assert.equal(place.length, 48);
+  assert.ok(place.endsWith('...'), `expected a clamped place line, got "${place}"`);
 });
 
 test('local infrastructure entries satisfy the shared presentation contract', () => {
@@ -208,6 +405,45 @@ test('local infrastructure entries satisfy the shared presentation contract', ()
   assert.equal(entry.edgeFade, 'keyhole');
   assert.equal(entry.horizonCull, true);
   assert.equal(entry.terrainOcclusion, false);
+});
+
+test('a short-range card fades inside its own range, never before it', () => {
+  const position = Cesium.Cartesian3.fromDegrees(2.4, 48.7, 2000);
+  const near = createLocalInfrastructureOverlayEntry({
+    id: 'lfxx',
+    layerId: 'local-airports',
+    position,
+    properties: { name: 'Aéroclub', type: 'small_airport' },
+    priority: 100,
+    accent: '#6d5a94',
+    maxDistance: 200_000,
+  });
+  assert.equal(near.maxDistance, 200_000);
+  // The shared 250 km fade start lies BEYOND this card's whole range; reusing
+  // it would have made the card born already faded out. Half its range instead.
+  assert.equal(near.distanceFadeStartRatio, 0.5);
+
+  // A long-range card keeps the shared 250 km fade start, expressed as a ratio.
+  const far = createLocalInfrastructureOverlayEntry({
+    id: 'lfpg',
+    layerId: 'local-airports',
+    position,
+    properties: { name: 'Roissy', type: 'large_airport' },
+    priority: 310,
+    accent: '#f0e6ff',
+    maxDistance: 14_000_000,
+  });
+  assert.equal(far.distanceFadeStartRatio * far.maxDistance, 250_000);
+
+  // A missing or nonsense range falls back to the shared ceiling rather than
+  // producing a card nothing could ever see.
+  for (const bad of [undefined, 0, -1, NaN, 'lots']) {
+    const entry = createLocalInfrastructureOverlayEntry({
+      id: 'x', layerId: 'local-ports', position, properties: {}, priority: 1, accent: '#fff',
+      maxDistance: bad,
+    });
+    assert.equal(entry.maxDistance, 14_000_000, String(bad));
+  }
 });
 
 test('shipped local cohorts keep one grid winner plus bounded surplus contenders', () => {
@@ -477,7 +713,7 @@ async function enableLayerWithFetch(fetchImpl, { dataSources, windowStub } = {})
   const layer = createLocalGeoJsonLayer({
     id: 'local-dams',
     url: '/missing.geojsonl',
-    name: 'Dams',
+    name: 'Barrages',
     color: '#0088ff',
     overlayHost: { setVisible() {}, setEntries() {}, clearSource() {} },
     screenSpaceEventHandlerFactory: () => ({ setInputAction() {}, destroy() {} }),

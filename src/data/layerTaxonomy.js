@@ -1,11 +1,11 @@
 /*
  * LAYER TAXONOMY — the one place that says what each dataset IS.
  *
- * The Data Layers panel renders `getAll()` in registration order, which is the
- * order the layers were merged in. That is an accident, not a decision: the
- * French energy layers sit together because their PRs landed back to back, and
- * Marine Buoys sits between Mapped Installations and Datacenters for no reason
- * at all. This file replaces that accident with a stated grouping.
+ * The Data Layers panel used to render `getAll()` in registration order, which
+ * is the order the layers were merged in. That was an accident, not a decision:
+ * the French energy layers sat together because their PRs landed back to back,
+ * and Marine Buoys sat between Mapped Installations and Datacenters for no
+ * reason at all. This file replaces that accident with a stated grouping.
  *
  * WHY A CENTRAL FILE AND NOT A `category:` FIELD ON EACH LAYER MODULE
  *
@@ -23,19 +23,24 @@
  * whatever group it was appended next to. Same contract, same reason, as the
  * duplicate-token assertion next door.
  *
- * WHAT IS NOT WIRED YET (deliberate)
+ * WHAT READS THIS
  *
- * `label` carries the agreed French name for every layer, but NOTHING reads it
- * yet — the panel still renders `layer.name` from the module. Recording the
- * names here keeps the naming decision reviewable in the same diff as the
- * grouping it belongs to; switching the panel over is a separate change, and a
- * one-line one. Until then `name` remains the only display name in the app.
+ * `main.js` hands both tables to `finalizeRegistrations()`, and the Data Layers
+ * panel renders one collapsible group per category, each row showing `label`
+ * (the French name) plus a scope chip derived from `coverage`. `name` — the
+ * English string on the layer module — stays the canonical id-adjacent name and
+ * is what the voice layer and the LLM scene context still report; only the
+ * human-facing surfaces moved to `label`.
+ *
+ * A manager sealed WITHOUT these tables still renders the old flat list. That
+ * is not dead code: `getAll()` already documents "null when sealed without a
+ * taxonomy", and the unit tests build bare managers that way.
  */
 
 import { REGISTERED_LAYER_IDS } from './layerState.js';
 
 /**
- * The seven groups, in panel order. Ordering is a product decision: the flagship
+ * The groups, in panel order. Ordering is a product decision: the flagship
  * live-tracking layers open the panel, the bundled reference sets close it.
  *
  * Labels are French and UPPERCASE. They are stored ACCENTED (`ÉNERGIE`, not
@@ -81,6 +86,32 @@ const VALID_KINDS = new Set(['dataset', 'coordinator']);
 /** Where the layer has data at all. Drives the per-row scope chip. */
 const VALID_COVERAGE = new Set(['global', 'fr', 'us', 'cities']);
 
+/**
+ * The scope chip text for each coverage value — and the reason the `(FR)`
+ * suffixes could leave the names.
+ *
+ * `global` maps to null ON PURPOSE. It is the default case, and a badge on
+ * every row is a badge on none: chipping the global layers too would leave the
+ * exceptional rows no louder than the ordinary ones. The chip answers one
+ * question — "does this layer have anything where I am looking?" — and only a
+ * non-global layer can ever answer it "no".
+ */
+export const COVERAGE_CHIPS = Object.freeze({
+  global: null,
+  fr: 'FR',
+  us: 'US',
+  cities: 'VILLES',
+});
+
+/**
+ * Chip text for a coverage value.
+ * @param {string} coverage One of VALID_COVERAGE.
+ * @returns {string|null} Chip text, or null when the row needs no chip.
+ */
+export function coverageChip(coverage) {
+  return COVERAGE_CHIPS[coverage] ?? null;
+}
+
 /** What it costs to see it — the README's 🟢 / 🟡 / 🔴 ladder, as data. */
 const VALID_AUTH = new Set(['none', 'free-key', 'metered']);
 
@@ -97,15 +128,15 @@ const VALID_CATEGORY_IDS = new Set(LAYER_CATEGORIES.map((entry) => entry.id));
  * Category, display name and facets for every registered layer.
  *
  * Ordered by category, then by intended within-group order — this array IS the
- * panel order once the grouped renderer lands, so a layer's position here is
- * the decision, not an artifact of where it was appended.
+ * panel order, so a layer's position here is the decision, not an artifact of
+ * where it was appended.
  *
  * The `(FR)` suffixes that five names carry today are gone on purpose: the
  * `coverage: 'fr'` facet renders as a scope chip on the row, which says the same
  * thing once instead of five times, and frees the width for a readable name
  * ("Groupes de production" rather than "Groupes de prod (FR)").
  */
-export const LAYER_TAXONOMY = Object.freeze([
+const LAYER_TAXONOMY_TABLE = Object.freeze([
   // ── AIR & ESPACE ──────────────────────────────────────────────────────────
   Object.freeze({
     id: 'flights',
@@ -124,6 +155,21 @@ export const LAYER_TAXONOMY = Object.freeze([
     coverage: 'global',
     auth: 'none',
     cadence: 'live',
+  }),
+  // The ground half of AIR & ESPACE, and the only static row in the group: the
+  // other three move. `coverage: 'global'` is the honest facet even though the
+  // pack is denser over France — the scope chip says where a layer HAS data,
+  // and this one has data everywhere. What it does NOT have everywhere is the
+  // grass-strip long tail, which is a completeness claim the row's source line
+  // and the dataset README carry, not a two-word chip.
+  Object.freeze({
+    id: 'local-airports',
+    category: 'air-space',
+    label: 'Aéroports',
+    kind: 'dataset',
+    coverage: 'global',
+    auth: 'none',
+    cadence: 'static',
   }),
   // "(30d)" is dropped from the name: the rolling window is a property of the
   // feed, and the row's meta line already reports it.
@@ -214,6 +260,18 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'live',
   }),
+  // Directly under "Trafic routier" because it is the same subject measured a
+  // different way — TomTom's modelled ratio above, the State's own loop
+  // detectors here — and a viewer comparing them should not have to hunt.
+  Object.freeze({
+    id: 'road-status-fr',
+    category: 'ground-mobility',
+    label: 'État du réseau routier',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'live',
+  }),
   Object.freeze({
     id: 'transit-fr',
     category: 'ground-mobility',
@@ -258,6 +316,25 @@ export const LAYER_TAXONOMY = Object.freeze([
     id: 'shared-mobility-fr',
     category: 'ground-mobility',
     label: 'Véhicules partagés',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  // `periodic` and not `live`: the event aggregate is republished hourly, so it
+  // does not stream — it is a polled snapshot, and calling it live would
+  // promise a cadence the source does not have. (Its sibling `road-status-fr`
+  // IS `live`: the Traficolor status it draws moves every 60-360 s.)
+  //
+  // It keeps no `(FR)` in the label, like the rest of the table: the `coverage: 'fr'` facet renders as a scope chip on the row and
+  // says it once instead of twice. It cannot say the sharper truth — that the
+  // coverage is the RRN *non concédé*, without the conceded motorways — so the
+  // row's source line and each card carry that, and `getStats().coverage`
+  // states it in one string.
+  Object.freeze({
+    id: 'road-events-fr',
+    category: 'ground-mobility',
+    label: 'Événements routiers',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -325,12 +402,32 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // The hinge between ÉNERGIE and MOBILITÉ TERRESTRE, filed under energy because
+  // what it publishes is installed capacity — kW per point de charge — and never
+  // whether one is free. `periodic`, like its neighbours: the register is
+  // consolidated daily upstream and this layer refetches per viewport.
+  Object.freeze({
+    id: 'irve-fr',
+    category: 'energy',
+    label: 'Bornes de recharge',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  // `fr` and no longer `us` — which was never true of a pack whose 704 features
+  // were spread over six continents and only 44 of them in France. The pack is
+  // now a complete OSM extraction of the French dam structures (métropole and
+  // outre-mer, 5 529 of them) plus the 660 world features the old Open
+  // Infrastructure Map snapshot had, kept so the layer is not empty elsewhere.
+  // The chip says where the layer can be TRUSTED to have the set, and that is
+  // France; the world tail is a bonus nobody should read as coverage.
   Object.freeze({
     id: 'local-dams',
     category: 'energy',
     label: 'Barrages',
     kind: 'dataset',
-    coverage: 'us',
+    coverage: 'fr',
     auth: 'none',
     cadence: 'static',
   }),
@@ -474,7 +571,37 @@ export const LAYER_TAXONOMY = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Joins the eighth group rather than founding a ninth. The header above says
+  // this is where "a cadastre, a land-use or a population layer would join",
+  // and 68 158 schools are a population layer wearing an address: the register
+  // is the State's account of where its pupils are put, which is base
+  // reference data in exactly the sense `bdtopo-buildings` is. It is not
+  // mobility, not energy, and not a hazard.
+  Object.freeze({
+    id: 'schools-fr',
+    category: 'built-environment',
+    label: 'Établissements scolaires',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
 ]);
+
+/**
+ * The table as everything else sees it, with the scope chip resolved once here
+ * rather than by whoever renders a row.
+ *
+ * The chip is display copy, and display copy belongs next to the names it sits
+ * beside — not inside DataLayerManager, which is handed its registries
+ * precisely so it stays free of this fork's product decisions. Deriving it
+ * instead of typing it into all 32 rows also means `coverage` and the badge can
+ * never drift apart.
+ */
+export const LAYER_TAXONOMY = Object.freeze(LAYER_TAXONOMY_TABLE.map((entry) => Object.freeze({
+  ...entry,
+  scopeChip: coverageChip(entry.coverage),
+})));
 
 const TAXONOMY_BY_ID = new Map(LAYER_TAXONOMY.map((entry) => [entry.id, entry]));
 
@@ -505,6 +632,14 @@ export function validateLayerTaxonomy(
       throw new Error(`Layer category missing label: ${category.id}`);
     }
     categoryIds.add(category.id);
+  }
+
+  // A coverage value with no chip entry would render as an empty badge rather
+  // than no badge, so the chip table is checked against its own vocabulary.
+  for (const coverage of VALID_COVERAGE) {
+    if (!Object.hasOwn(COVERAGE_CHIPS, coverage)) {
+      throw new Error(`Coverage has no scope chip mapping: ${coverage}`);
+    }
   }
 
   const seen = new Set();

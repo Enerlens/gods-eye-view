@@ -216,6 +216,23 @@ const LAYER_ALIASES = new Map([
   ['production units', 'rte-generation'],
   ['groupes de production', 'rte-generation'],
   ['centrales', 'rte-generation'],
+  ['charge points', 'irve-fr'],
+  ['charging points', 'irve-fr'],
+  ['charging stations', 'irve-fr'],
+  ['chargers', 'irve-fr'],
+  ['ev chargers', 'irve-fr'],
+  ['ev charging', 'irve-fr'],
+  ['irve', 'irve-fr'],
+  ['bornes', 'irve-fr'],
+  ['schools', 'schools-fr'],
+  ['school', 'schools-fr'],
+  ['ecoles', 'schools-fr'],
+  ['écoles', 'schools-fr'],
+  ['etablissements scolaires', 'schools-fr'],
+  ['établissements scolaires', 'schools-fr'],
+  ['colleges', 'schools-fr'],
+  ['lycees', 'schools-fr'],
+  ['education', 'schools-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -224,6 +241,9 @@ const LAYER_ALIASES = new Map([
   ['data centers', 'local-datacenters'],
   ['data centres', 'local-datacenters'],
   ['dams', 'local-dams'],
+  ['dam', 'local-dams'],
+  ['barrages', 'local-dams'],
+  ['barrage', 'local-dams'],
   ['submarine cables', 'telegeography-submarine-cables'],
   ['cables', 'telegeography-submarine-cables'],
   ['telegeography', 'telegeography-submarine-cables'],
@@ -234,6 +254,14 @@ const LAYER_ALIASES = new Map([
   ['harbors', 'local-ports'],
   ['harbours', 'local-ports'],
   ['seaports', 'local-ports'],
+  ['airports', 'local-airports'],
+  ['airport', 'local-airports'],
+  ['aeroports', 'local-airports'],
+  ['aéroports', 'local-airports'],
+  ['aerodromes', 'local-airports'],
+  ['aérodromes', 'local-airports'],
+  ['airfields', 'local-airports'],
+  ['runways', 'local-airports'],
   ['buoys', 'marine-buoys'],
   ['marine buoys', 'marine-buoys'],
   ['ndbc', 'marine-buoys'],
@@ -3359,7 +3387,10 @@ function layerTitle(layerId) {
   if (layerId === 'power-grid') return 'Grid Node';
   if (layerId === 'bdtopo-buildings') return 'Building';
   if (layerId === 'rte-generation') return 'Power Station';
+  if (layerId === 'irve-fr') return 'Charge Point';
+  if (layerId === 'schools-fr') return 'School';
   if (layerId === 'local-ports') return 'Port';
+  if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
   return layerId || 'Entity';
 }

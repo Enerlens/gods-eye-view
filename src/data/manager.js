@@ -129,6 +129,11 @@ export class DataLayerManager {
     // for any manager sealed without one — getAll() reports that as absent
     // taxonomy rather than inventing a default group.
     this._registrationTaxonomy = null;
+    // The ordered category list behind the grouped panel, supplied alongside the
+    // taxonomy. Null keeps _renderToggles() on the flat list it has always
+    // drawn — which is what a bare manager in a unit test gets.
+    this._registrationCategories = null;
+    this._collapsedCategories = new Set();
     this._allowQaRegistration = allowQaRegistration === true;
     this._qaLayerIds = new Set();
   }
@@ -228,11 +233,19 @@ export class DataLayerManager {
    * It stays OPTIONAL because the manager is deliberately given its registries
    * rather than importing them, and the QA/unit managers seal partial sets that
    * have no taxonomy of their own.
+   *
+   * `categories` is the ordered group list the panel draws. It is separate from
+   * the taxonomy because it answers a different question — the taxonomy says
+   * which group a layer belongs to, this says which groups exist and in what
+   * order — and because supplying it is what switches the panel from the flat
+   * list to the grouped one. Passing it without a taxonomy is a programming
+   * error: there would be nothing to put in the groups.
    * @param {ReadonlyArray<object>} serializationRegistry Share dispositions.
    * @param {ReadonlyArray<object>|null} [taxonomy] Category + facet table.
+   * @param {ReadonlyArray<object>|null} [categories] Ordered group list.
    * @returns {true} When sealed.
    */
-  finalizeRegistrations(serializationRegistry, taxonomy = null) {
+  finalizeRegistrations(serializationRegistry, taxonomy = null, categories = null) {
     if (this._registrationsFinalized) throw new Error('Data-layer registrations are already finalized');
     if (!Array.isArray(serializationRegistry)) throw new Error('Layer serialization registry must be an array');
     const dispositions = new Map();
@@ -264,6 +277,30 @@ export class DataLayerManager {
         throw new Error(`Layer taxonomy mismatch (uncategorized: ${uncategorized.join(', ') || 'none'}; unknown: ${unknown.join(', ') || 'none'})`);
       }
       this._registrationTaxonomy = entries;
+    }
+    if (categories !== null) {
+      if (!Array.isArray(categories) || categories.length === 0) {
+        throw new Error('Layer categories must be a non-empty array');
+      }
+      if (this._registrationTaxonomy === null) {
+        throw new Error('Layer categories require a taxonomy');
+      }
+      const categoryIds = new Set();
+      for (const category of categories) {
+        if (!category?.id || !category?.label) throw new Error('Layer category is incomplete');
+        if (categoryIds.has(category.id)) throw new Error(`Duplicate layer category: ${category.id}`);
+        categoryIds.add(category.id);
+      }
+      // Every categorized layer must land in a group that exists, or the panel
+      // would silently drop its row — the one failure mode a grouped renderer
+      // has that a flat list does not.
+      const orphaned = [...this._registrationTaxonomy.values()]
+        .filter((entry) => !categoryIds.has(entry.category))
+        .map((entry) => entry.id);
+      if (orphaned.length) {
+        throw new Error(`Layer categories missing groups for: ${orphaned.join(', ')}`);
+      }
+      this._registrationCategories = categories;
     }
     this._registrationDispositions = dispositions;
     this._registrationsFinalized = true;
@@ -1973,6 +2010,11 @@ export class DataLayerManager {
       result.push({
         id,
         name: entry.module.name,
+        // The human-facing name, when a taxonomy supplied one. Kept beside
+        // `name` rather than replacing it: `name` is what the layer module
+        // calls itself and what the voice layer and LLM context still report,
+        // so a consumer that needs the canonical string keeps having one.
+        label: taxonomy?.label || null,
         icon: entry.module.icon,
         source: entry.module.source,
         showInTogglePanel: entry.module.showInTogglePanel !== false,
@@ -1981,6 +2023,9 @@ export class DataLayerManager {
         tags: taxonomy
           ? Object.freeze({
             coverage: taxonomy.coverage,
+            // Resolved by the taxonomy module, not here: which coverage values
+            // deserve a badge is product copy, and the manager owns none.
+            scopeChip: taxonomy.scopeChip ?? null,
             auth: taxonomy.auth,
             cadence: taxonomy.cadence,
           })
@@ -2077,85 +2122,259 @@ export class DataLayerManager {
    */
   buildTogglePanel(container) {
     this._toggleContainer = container;
+    this._restoreCollapsedCategories();
     this._renderToggles();
   }
 
+  /**
+   * Paint the panel: one collapsible group per category when the manager was
+   * sealed with a category list, the historical flat list otherwise.
+   *
+   * The flat branch is not a leftover. `getAll()` already contracts that a
+   * manager sealed without a taxonomy reports no category, and the unit tests
+   * build exactly such managers; a renderer that assumed groups would make an
+   * ungrouped manager unrenderable rather than unstyled.
+   * @returns {void}
+   */
   _renderToggles() {
     if (!this._toggleContainer) return;
     this._toggleContainer.innerHTML = '';
 
-    for (const layer of this.getAll()) {
-      if (!layer.showInTogglePanel) continue;
-      const row = document.createElement('div');
-      row.className = 'data-toggle-row';
-      row.dataset.layerId = layer.id;
+    const categories = this._registrationCategories;
+    if (!categories) {
+      for (const layer of this.getAll()) {
+        if (!layer.showInTogglePanel) continue;
+        this._toggleContainer.appendChild(this._buildToggleRow(layer));
+      }
+      return;
+    }
 
-      const topRow = document.createElement('div');
-      topRow.className = 'data-toggle-top';
+    for (const group of this._groupedPanelLayers()) {
+      // A group whose every member is hidden — a coordinator-only category, or
+      // one whose layers all opted out — draws no header. An empty accordion
+      // section is a promise of content that is not there.
+      if (!group.layers.length) continue;
 
-      const left = document.createElement('div');
-      left.className = 'data-toggle-left';
-      left.innerHTML = `<span class="data-icon">${layer.icon}</span><span class="data-name">${layer.name}</span>`;
+      const collapsed = this._collapsedCategories.has(group.id);
+      const bodyId = `data-category-body-${group.id}`;
 
-      const right = document.createElement('div');
-      right.className = 'data-toggle-right';
+      const section = document.createElement('div');
+      section.className = collapsed ? 'data-category collapsed' : 'data-category';
+      section.dataset.categoryId = group.id;
 
-      const count = document.createElement('span');
-      count.className = 'data-count';
-      count.textContent = layer.stats.count ? this._formatCount(layer.stats.count) : '—';
+      // The caret glyph is in the markup rather than a CSS pseudo-element so
+      // the header still reads as expandable if the stylesheet fails to load;
+      // CSS only rotates it.
+      const header = document.createElement('button');
+      header.className = 'data-category-header';
+      header.type = 'button';
+      header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      header.setAttribute('aria-controls', bodyId);
+      header.innerHTML = '<span class="data-category-caret" aria-hidden="true">▾</span>'
+        + `<span class="data-category-icon" aria-hidden="true">${group.icon || ''}</span>`
+        + `<span class="data-category-label">${group.label}</span>`;
 
-      const toggle = document.createElement('button');
-      toggle.className = `data-toggle-btn${layer.enabled ? ' active' : ''}`;
-      this._syncToggleButton(toggle, layer);
-      toggle.addEventListener('click', async () => {
-        toggle.disabled = true;
-        try {
-          await this.setEnabled(layer.id, !this.isEnabled(layer.id), { origin: 'user' });
-        } catch (error) {
-          console.warn(`[Data] ${layer.id} toggle error:`, error);
-        } finally {
-          toggle.disabled = false;
-        }
+      const headerCount = document.createElement('span');
+      headerCount.className = 'data-category-count';
+      header.appendChild(headerCount);
+
+      const body = document.createElement('div');
+      body.className = 'data-category-body';
+      body.id = bodyId;
+      body.hidden = collapsed;
+      for (const layer of group.layers) body.appendChild(this._buildToggleRow(layer));
+
+      header.addEventListener('click', () => {
+        const nowCollapsed = !this._collapsedCategories.has(group.id);
+        if (nowCollapsed) this._collapsedCategories.add(group.id);
+        else this._collapsedCategories.delete(group.id);
+        header.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+        section.classList.toggle('collapsed', nowCollapsed);
+        body.hidden = nowCollapsed;
+        this._saveCollapsedCategories();
       });
 
-      right.appendChild(count);
-      right.appendChild(toggle);
-      topRow.appendChild(left);
-      topRow.appendChild(right);
-
-      const bottomRow = document.createElement('div');
-      bottomRow.className = 'data-toggle-meta';
-      bottomRow.textContent = this._buildMetaText(layer);
-
-      row.appendChild(topRow);
-      row.appendChild(bottomRow);
-
-      // Optional per-layer sub-controls (chips + color legend). The click
-      // listener is delegated and attached once here, so it survives
-      // _refreshTogglePanel — which only rewrites the container's contents.
-      const rowModule = this.layers.get(layer.id)?.module;
-      if (typeof rowModule?.getRowControls === 'function') {
-        // A layer whose controls settle asynchronously (a chunked catalog load
-        // that can also fail) pushes a re-render through this; nothing else
-        // would repaint the row before its next scheduled refresh.
-        rowModule.setRowControlsListener?.(() => this._refreshTogglePanel());
-        const controls = document.createElement('div');
-        controls.className = 'data-toggle-controls';
-        controls.addEventListener('click', (event) => {
-          const button = event.target?.closest?.('.data-toggle-chip');
-          if (!button || button.disabled) return;
-          // Re-read the live descriptor rather than trusting the rendered
-          // chip, so a stale row can never apply an inverted toggle.
-          const chip = this._rowControlsFor(layer.id)?.chips
-            ?.find((entry) => entry.id === button.dataset.chipId);
-          if (chip?.params) this.setLayerParams(layer.id, chip.params, { origin: 'user' });
-        });
-        row.appendChild(controls);
-        this._syncRowControls(controls, layer);
-      }
-
-      this._toggleContainer.appendChild(row);
+      section.appendChild(header);
+      section.appendChild(body);
+      this._syncCategoryHeader(section, group);
+      this._toggleContainer.appendChild(section);
     }
+  }
+
+  /**
+   * Project the panel-visible layers into their categories, in category order
+   * and — within a group — in taxonomy order rather than registration order.
+   *
+   * Registration order is the accident the taxonomy exists to replace, so
+   * reading it back here would reintroduce it inside every group.
+   * @returns {Array<{id: string, label: string, icon: string, layers: object[]}>} Groups.
+   */
+  _groupedPanelLayers() {
+    const categories = this._registrationCategories || [];
+    const byId = new Map(this.getAll().map((layer) => [layer.id, layer]));
+    const buckets = new Map(categories.map((category) => [category.id, []]));
+    for (const [id, entry] of this._registrationTaxonomy || []) {
+      const layer = byId.get(id);
+      // `showInTogglePanel` stays the single gate, exactly as in the flat path:
+      // the module decides whether it has a row, the taxonomy decides where.
+      if (!layer?.showInTogglePanel) continue;
+      buckets.get(entry.category)?.push(layer);
+    }
+    return categories.map((category) => ({
+      id: category.id,
+      label: category.label,
+      icon: category.icon,
+      layers: buckets.get(category.id) || [],
+    }));
+  }
+
+  /**
+   * Update one group header's "n/m ON" tally from live layer state.
+   * @param {object} section Group element.
+   * @param {{id: string, layers: object[]}} group Group projection.
+   * @returns {void}
+   */
+  _syncCategoryHeader(section, group) {
+    const countEl = section?.querySelector?.('.data-category-count');
+    if (!countEl) return;
+    const enabled = group.layers.filter((layer) => layer.enabled).length;
+    countEl.textContent = `${enabled}/${group.layers.length} ON`;
+    section.classList?.toggle?.('has-active', enabled > 0);
+  }
+
+  /** @returns {string} Versioned storage key for the collapsed-group set. */
+  _collapsedCategoriesStorageKey() {
+    return 'godsEyeView.v1.dataLayerCategoriesCollapsed';
+  }
+
+  /**
+   * Restore which groups the visitor last left closed.
+   *
+   * Every group opens by default. A first visit that showed eight closed
+   * headers would hide all 31 datasets behind a second click and read as an
+   * empty product; the grouping is there to make a long list scannable, not to
+   * make it disappear.
+   * @returns {void}
+   */
+  _restoreCollapsedCategories() {
+    this._collapsedCategories = new Set();
+    try {
+      const raw = globalThis.localStorage?.getItem(this._collapsedCategoriesStorageKey());
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        for (const id of parsed) if (typeof id === 'string') this._collapsedCategories.add(id);
+      }
+    } catch {
+      // Storage unavailable or corrupt: every group opens, which is the default.
+    }
+  }
+
+  /** @returns {void} */
+  _saveCollapsedCategories() {
+    try {
+      globalThis.localStorage?.setItem(
+        this._collapsedCategoriesStorageKey(),
+        JSON.stringify([...this._collapsedCategories]),
+      );
+    } catch {
+      // Best effort — a collapsed group that does not survive a reload is a
+      // smaller failure than a panel that throws while painting.
+    }
+  }
+
+  /**
+   * Build one layer's row, identically in the flat and grouped renderers.
+   * @param {object} layer `getAll()` projection for the layer.
+   * @returns {object} The row element.
+   */
+  _buildToggleRow(layer) {
+    const row = document.createElement('div');
+    row.className = 'data-toggle-row';
+    row.dataset.layerId = layer.id;
+
+    const topRow = document.createElement('div');
+    topRow.className = 'data-toggle-top';
+
+    const left = document.createElement('div');
+    left.className = 'data-toggle-left';
+    // The chip is a SIBLING of .data-name, not part of it: the voice layer
+    // reads that element's textContent back as the layer's spoken name, and
+    // "Mix électrique FR" is not what anyone calls it.
+    const scopeChip = layer.tags?.scopeChip
+      ? `<span class="data-scope-chip" title="Couverture : ${layer.tags.scopeChip}">${layer.tags.scopeChip}</span>`
+      : '';
+    left.innerHTML = `<span class="data-icon">${layer.icon}</span>`
+      + `<span class="data-name">${this._displayName(layer)}</span>${scopeChip}`;
+
+    const right = document.createElement('div');
+    right.className = 'data-toggle-right';
+
+    const count = document.createElement('span');
+    count.className = 'data-count';
+    count.textContent = layer.stats.count ? this._formatCount(layer.stats.count) : '—';
+
+    const toggle = document.createElement('button');
+    toggle.className = `data-toggle-btn${layer.enabled ? ' active' : ''}`;
+    this._syncToggleButton(toggle, layer);
+    toggle.addEventListener('click', async () => {
+      toggle.disabled = true;
+      try {
+        await this.setEnabled(layer.id, !this.isEnabled(layer.id), { origin: 'user' });
+      } catch (error) {
+        console.warn(`[Data] ${layer.id} toggle error:`, error);
+      } finally {
+        toggle.disabled = false;
+      }
+    });
+
+    right.appendChild(count);
+    right.appendChild(toggle);
+    topRow.appendChild(left);
+    topRow.appendChild(right);
+
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'data-toggle-meta';
+    bottomRow.textContent = this._buildMetaText(layer);
+
+    row.appendChild(topRow);
+    row.appendChild(bottomRow);
+
+    // Optional per-layer sub-controls (chips + color legend). The click
+    // listener is delegated and attached once here, so it survives
+    // _refreshTogglePanel — which only rewrites the container's contents.
+    const rowModule = this.layers.get(layer.id)?.module;
+    if (typeof rowModule?.getRowControls === 'function') {
+      // A layer whose controls settle asynchronously (a chunked catalog load
+      // that can also fail) pushes a re-render through this; nothing else
+      // would repaint the row before its next scheduled refresh.
+      rowModule.setRowControlsListener?.(() => this._refreshTogglePanel());
+      const controls = document.createElement('div');
+      controls.className = 'data-toggle-controls';
+      controls.addEventListener('click', (event) => {
+        const button = event.target?.closest?.('.data-toggle-chip');
+        if (!button || button.disabled) return;
+        // Re-read the live descriptor rather than trusting the rendered
+        // chip, so a stale row can never apply an inverted toggle.
+        const chip = this._rowControlsFor(layer.id)?.chips
+          ?.find((entry) => entry.id === button.dataset.chipId);
+        if (chip?.params) this.setLayerParams(layer.id, chip.params, { origin: 'user' });
+      });
+      row.appendChild(controls);
+      this._syncRowControls(controls, layer);
+    }
+
+    return row;
+  }
+
+  /**
+   * The name a human reads. `label` when the taxonomy supplied one, the layer
+   * module's own `name` otherwise.
+   * @param {object} layer `getAll()` projection.
+   * @returns {string} Display name.
+   */
+  _displayName(layer) {
+    return layer.label || layer.name;
   }
 
   /**
@@ -2278,6 +2497,18 @@ export class DataLayerManager {
 
       this._syncRowControls(row.querySelector('.data-toggle-controls'), layer);
     }
+
+    // Group tallies read live enabled state, so they have to be recomputed on
+    // the same tick as the rows — a header still reading "0/6 ON" under six
+    // green rows is worse than no header at all.
+    if (this._registrationCategories) {
+      for (const group of this._groupedPanelLayers()) {
+        if (!group.layers.length) continue;
+        const section = this._toggleContainer
+          .querySelector(`.data-category[data-category-id="${group.id}"]`);
+        if (section) this._syncCategoryHeader(section, group);
+      }
+    }
   }
 
   _buildMetaText(layer) {
@@ -2343,7 +2574,7 @@ export class DataLayerManager {
     button.textContent = transitioning
       ? layer.lifecycleState.toUpperCase()
       : (uncertain ? 'UNCERTAIN' : (layer.enabled ? FEED_STATE_LABELS[feedState] : 'OFF'));
-    button.setAttribute('aria-label', `${layer.name}: ${button.textContent}`);
+    button.setAttribute('aria-label', `${this._displayName(layer)}: ${button.textContent}`);
   }
 
   _formatCount(n) {

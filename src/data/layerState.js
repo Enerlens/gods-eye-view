@@ -18,11 +18,20 @@ const PENDING_TRACKING_POLL_MS = 1_000;
 const TRACKING_ID_GRAMMAR = /^[0-9a-z~_-]{1,16}$/;
 /**
  * Ceilings for the untrusted v2 layer fields. Both are far above any legitimate
- * payload (16 one-character tokens; a dozen short option assignments), so a
- * value past them is malformed or hostile. Reject the WHOLE payload, matching
- * the unknown-token rule — never salvage a prefix.
+ * payload, so a value past them is malformed or hostile. Reject the WHOLE
+ * payload, matching the unknown-token rule — never salvage a prefix.
+ *
+ * 64 WAS NOT ABOVE A LEGITIMATE PAYLOAD ANY MORE, and had quietly stopped
+ * being so before this branch touched it: the comment was written against 16
+ * layers, and at 35 the everything-on link was already 69 characters. A user
+ * who turned on every layer and shared the result got a link that decoded to
+ * `null` — the failure the ceiling exists to produce, aimed at the one payload
+ * it should never fire on. 40 two-character tokens and their separators is
+ * 119, so the number is now DERIVED from the registry with room to grow, and
+ * `layerState.test.mjs` asserts the whole registry still fits rather than
+ * leaving the next person to find out by sharing a link.
  */
-const MAX_ENABLED_LAYERS_CHARS = 64;
+const MAX_ENABLED_LAYERS_CHARS = 256;
 const MAX_LAYER_OPTIONS_CHARS = 512;
 export const LAYER_STATE_STORAGE_KEY = 'gev:layer-state:v2';
 export const LAYER_RESTORE_ORIGINS = Object.freeze({
@@ -293,8 +302,8 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // after these has no single-character token left and will need the codec
   // widened — a deliberate design decision, not something to discover at a
   // merge. A duplicate here is a BOOT failure, not a review nit.
-  Object.freeze({ id: 'dpe-fr', token: '8', disposition: 'enabled-only' }),
-  Object.freeze({ id: 'dvf-sales', token: '7', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'dpe-fr', token: 'dp', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'dvf-sales', token: 'dv', disposition: 'enabled-only' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
   Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
@@ -311,9 +320,23 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // existing tests use as their canonical UNKNOWN token — claiming it would
   // silently turn "reject an unknown link" into "enable the gas layer".
   Object.freeze({ id: 'gas-fr', token: '1', disposition: 'enabled-only' }),
-  Object.freeze({ id: 'georisques', token: '6', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'georisques', token: 'gr', disposition: 'enabled-only' }),
   Object.freeze({ id: 'hubeau-hydro', token: 'h', disposition: 'enabled-only' }),
-  Object.freeze({ id: 'idfm-network', token: '0', disposition: 'enabled-only' }),
+  // A DIGIT, and NOT the `l` this layer was written against: `l` went to
+  // edf-power-plants while this branch sat unmerged, and `8` — this layer's
+  // first re-pick — went to road-events-fr in the days it stayed unmerged
+  // after that. Twice, the same lesson: two layers on one token is a share
+  // link that silently enables the wrong one. 1-8 are gas-fr, power-grid,
+  // rte-generation, fr-hydro-plants, bdtopo-buildings, local-airports,
+  // road-status-fr and road-events-fr, so IRVE takes `9`.
+  Object.freeze({ id: 'idfm-network', token: 'if', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'irve-fr', token: '9', disposition: 'enabled-only' }),
+  // A DIGIT, for the sixth time and always for the same reason: a–y are all
+  // taken and `z` is the canonical UNKNOWN token two tests assert on. `6`
+  // because 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants
+  // and bdtopo-buildings. Not `a` for "airports" — that is the AIS layer, and a
+  // duplicate token is a share link that silently enables the wrong one.
+  Object.freeze({ id: 'local-airports', token: '6', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-dams', token: 'q', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-datacenters', token: 'd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-firms', token: 'w', disposition: 'enabled-only' }),
@@ -333,6 +356,21 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // assertion in this file exists to prevent.
   Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
+  // Two road layers, and the digits are how they are told apart in a share
+  // link. `road-status-fr` keeps `7`: it is already on `main`, so links
+  // carrying that token exist, and re-lettering it would silently enable a
+  // DIFFERENT layer for whoever opens one. `road-events-fr` landed after it and
+  // is unreleased, so it takes the next free digit — `1`-`5` are gas-fr,
+  // power-grid, rte-generation, fr-hydro-plants and bdtopo-buildings, `6` is
+  // the airports pack, and `z` is the canonical UNKNOWN token two existing
+  // tests assert on.
+  //
+  // `enabled-only`, although the events layer owns a runtime chip. The chip
+  // selects which temporal scope the row SHOWS, and a share link that silently
+  // hid every planned closure from its recipient would be a worse surprise than
+  // one that opens on the default its author saw.
+  Object.freeze({ id: 'road-events-fr', token: '8', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'road-status-fr', token: '7', disposition: 'enabled-only' }),
   Object.freeze({ id: 'rocket-launches', token: 'x', disposition: 'enabled-only' }),
   // A DIGIT, because the letters ran out: a–y are all taken (every letter of
   // "rte"/"gen"/"prod" among them — r by radio, t by traffic, e by earthquakes,
@@ -344,11 +382,19 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // throws), not a merge conflict anyone would notice.
   Object.freeze({ id: 'rte-generation', token: '3', disposition: 'enabled-only' }),
   Object.freeze({ id: 'satellites', token: 's', disposition: 'enabled+options', optionOwner: 'satellites' }),
+  // `0`, and it is the LAST free token in the alphabet-plus-digits space: a–y
+  // are taken, `z` is the canonical UNKNOWN token two tests assert on, and
+  // 1–9 went to gas-fr, power-grid, rte-generation, fr-hydro-plants,
+  // bdtopo-buildings, local-airports, road-status-fr, road-events-fr and
+  // irve-fr. The next layer to land here cannot take a single character and
+  // will have to widen the token grammar — which is a real decision, and one
+  // this comment exists to hand over rather than leave as a surprise.
+  Object.freeze({ id: 'schools-fr', token: '0', disposition: 'enabled-only' }),
   Object.freeze({ id: 'shared-mobility-fr', token: 'k', disposition: 'enabled-only' }),
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),
   Object.freeze({ id: 'transit-fr', token: 'p', disposition: 'enabled-only' }),
-  Object.freeze({ id: 'urbanisme-gpu', token: '9', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'urbanisme-gpu', token: 'ur', disposition: 'enabled-only' }),
   Object.freeze({ id: 'vigicrues', token: 'v', disposition: 'enabled-only' }),
 ]);
 
@@ -395,7 +441,16 @@ export function validateLayerStateRegistry(registry = LAYER_STATE_REGISTRY) {
     if (!/^[a-z0-9-]+$/.test(entry.id)) throw new Error(`Invalid layer-state id: ${entry.id}`);
     if (ids.has(entry.id)) throw new Error(`Duplicate layer-state id: ${entry.id}`);
     ids.add(entry.id);
-    if (!/^[a-z0-9]$/.test(entry.token || '')) throw new Error(`Invalid layer-state token: ${entry.id}`);
+    // ONE OR TWO CHARACTERS. The single-character space ran out exactly where
+    // this file kept predicting it would: 0-9 and a-y are all claimed and `z`
+    // is the canonical UNKNOWN token two tests assert on, so the five French
+    // address layers had nowhere left to go. Widening costs nothing on the
+    // wire — `l=` has always been DOT-SEPARATED, so `l=f.dv.p` parses by the
+    // same split that read `l=f.7.p`, and every link ever issued still decodes
+    // to exactly what it decoded to before. A two-character token can never
+    // collide with a one-character one, which is what makes this safe to
+    // settle at a merge rather than a thing to schedule.
+    if (!/^[a-z0-9]{1,2}$/.test(entry.token || '')) throw new Error(`Invalid layer-state token: ${entry.id}`);
     if (tokens.has(entry.token)) throw new Error(`Duplicate layer-state token: ${entry.token}`);
     tokens.add(entry.token);
     if (!VALID_DISPOSITIONS.has(entry.disposition)) {

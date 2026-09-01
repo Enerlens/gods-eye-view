@@ -50,6 +50,21 @@
  *     2026-08-31 (Palm Bus, SudLib and TCAT essentially alone). SPEED by half
  *     of it. Both are drawn only when the operator sent them, and neither is
  *     advertised as a feature of the layer.
+ *   - DELAY and DISRUPTION are the same 150 networks' OTHER two GTFS-Realtime
+ *     messages, joined to the vehicle already on screen rather than drawn as a
+ *     layer of their own: how far off the timetable the operator says this run
+ *     is, whether it has been cancelled, which of its remaining stops it will
+ *     skip, and what has been written about its line. The proxy does the join
+ *     (one companion body is up to 1.2 MB, and it would otherwise cross the
+ *     wire per client to answer the same question); `transitSchedule.js` holds
+ *     the rules. Measured
+ *     2026-08-31 over the 30 largest live networks: 67% of vehicles join a
+ *     trip update, 38% end up with a deviation — the rest run on networks that
+ *     publish an absolute predicted TIME and never a delay, which cannot be
+ *     converted without the 223 MB `stop_times.txt` this layer refuses to
+ *     load. A vehicle with no published deviation says so instead of showing
+ *     zero, and a bus parked at its terminus waiting for a departure an hour
+ *     away is reported as waiting rather than as an hour early.
  */
 import * as Cesium from 'cesium';
 import {
@@ -71,9 +86,17 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { PAN_MAX_BOX_DEG, PAN_MODE_LABELS } from './panFeeds.js';
+import { formatDelay } from './transitSchedule.js';
 import { vehicleKindColor, vehicleKindLabel } from './transitVehicleKind.js';
 import { transitHeadingPointer, transitVehicleGlyph } from './transitVehicleIcons.js';
 import { transitCoverageNotice } from './transitCoverage.js';
+import {
+  clearTransitRoute,
+  destroyTransitRouteView,
+  initTransitRouteView,
+  showTransitRoute,
+  transitRouteCardLines,
+} from './transitRouteView.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
 export const TRANSIT_FR_LAYER_ID = 'transit-fr';
@@ -115,6 +138,17 @@ const MAX_FIX_AGE_MS = 10 * 60 * 1000;
 const MAX_RENDERED_VEHICLES = 4_000;
 /** Metres above the resolved ground floor the glyph sits. */
 const GLYPH_LIFT_M = 4;
+/**
+ * How often the selected vehicle's RUN is re-read, ms.
+ *
+ * Slower than the fleet poll on purpose: the trace does not move and the stop
+ * predictions are republished every 20–30 s, so asking faster would re-serve
+ * the same answer. Slow enough that a card left open on a bus keeps counting
+ * down honestly rather than freezing on the arrival it was opened with.
+ */
+const ROUTE_REFRESH_MS = 25_000;
+/** Request timeout (ms) for one line lookup. */
+const ROUTE_TIMEOUT_MS = 30_000;
 
 // --- Presentation -----------------------------------------------------------
 /**
@@ -233,6 +267,9 @@ let _cameraDebounceTimer = null;
 let _preRenderRemover = null;
 let _lastCameraPoseSignature = '';
 let _selectedId = null;
+let _routeInFlight = null;
+let _routeGeneration = 0;
+let _routeTimer = null;
 let _inFlight = null;
 let _requestGeneration = 0;
 let _loading = false;
@@ -241,6 +278,8 @@ let _status = 'idle';
 let _count = 0;
 let _lastUpdate = null;
 let _feedSummaries = [];
+/** Punctuality tally of the last viewport answer — see `summarizeSchedule`. */
+let _schedule = null;
 let _feedsMatched = 0;
 let _feedsTruncated = false;
 let _vehiclesTruncated = false;
@@ -375,6 +414,124 @@ function vehiclePosition(vehicle) {
 }
 
 /**
+ * How a deviation was read, when that is worth saying.
+ *
+ * The strongest case — the stop the vehicle is heading for, matched on its own
+ * `current_stop_sequence` — is left unqualified, because qualifying it would
+ * make the default case the noisy one. The three weaker readings say so.
+ */
+const DELAY_SOURCE_QUALIFIER = Object.freeze({
+  ahead: 'next predicted stop',
+  behind: 'last measured stop',
+  trip: 'whole run',
+});
+
+/** What an alert was matched ON. See `transitSchedule.alertForVehicle`. */
+const ALERT_SCOPE_LABELS = Object.freeze({
+  trip: 'this run',
+  route: 'this line',
+  network: 'network-wide',
+});
+
+/** Local wall-clock HH:MM — the form a departure board uses. */
+function clockTime(ms) {
+  const date = new Date(ms);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+}
+
+/** Cut a publisher's sentence to card width without cutting mid-word. */
+function clip(text, max = 58) {
+  const value = String(text || '').replace(/\s+/g, ' ').trim();
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
+
+/**
+ * The schedule line: how far off the timetable the operator says this vehicle
+ * is running, or why there is no such number.
+ *
+ * Four outcomes, and the fourth is the point. 62% of the national fleet is
+ * carried by networks that publish an absolute predicted TIME and never a
+ * deviation, so a card that simply omitted the line would leave a viewer
+ * unable to tell "on time" from "this network does not say". A vehicle whose
+ * run was matched but whose feed published no deviation says exactly that.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {?string}
+ */
+export function transitScheduleReadout(vehicle) {
+  if (!vehicle) return null;
+  if (vehicle.awaitingDeparture) {
+    const due = Number.isFinite(vehicle.scheduledDepartureMs)
+      ? clockTime(vehicle.scheduledDepartureMs)
+      : null;
+    return due ? `🕘 waiting to depart · due out ${due}` : '🕘 waiting to depart';
+  }
+  const text = formatDelay(vehicle.delaySec);
+  if (text) {
+    const qualifier = DELAY_SOURCE_QUALIFIER[vehicle.delayFrom];
+    return qualifier ? `🕘 ${text} · ${qualifier}` : `🕘 ${text}`;
+  }
+  if (vehicle.tripMatch) return '🕘 run tracked · no delay published';
+  return null;
+}
+
+/**
+ * The disruption line: what the operator has changed about this RUN.
+ *
+ * Cancellations and skipped stops come from the trip update rather than from
+ * an alert, which makes them the operator acting rather than the operator
+ * writing. `skippedAhead` decides the wording: a stop already behind the
+ * vehicle is not one anybody is still waiting at, and the count is only
+ * narrowed to the ones ahead when both the vehicle and the update numbered
+ * their stops.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {?string}
+ */
+export function transitDisruptionReadout(vehicle) {
+  if (!vehicle) return null;
+  const parts = [];
+  if (vehicle.tripState === 'canceled') parts.push('run cancelled');
+  else if (vehicle.tripState === 'added') parts.push('extra run');
+  else if (vehicle.tripState) parts.push(`run ${vehicle.tripState}`);
+  const skipped = Number(vehicle.skippedStops) || 0;
+  if (skipped > 0) {
+    parts.push(
+      `${skipped} stop${skipped === 1 ? '' : 's'} skipped ${vehicle.skippedAhead ? 'ahead' : 'on this run'}`,
+    );
+  }
+  return parts.length ? `⚠ ${parts.join(' · ')}` : null;
+}
+
+/**
+ * The alert line: the operator's own sentence, with what it is about.
+ *
+ * The scope is never dropped. "Your bus is diverted" and "this line is
+ * diverted somewhere today" are different claims, and an alert matched on the
+ * LINE — which is how almost all French alerts are published — is the second
+ * one. The effect is appended only when the feed named one that says more than
+ * the text already does.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {?string}
+ */
+export function transitAlertReadout(vehicle) {
+  const alert = vehicle?.alert;
+  if (!alert?.text) return null;
+  const scope = ALERT_SCOPE_LABELS[alert.scope] || alert.scope;
+  const context = [scope];
+  if (alert.effect && alert.effect !== 'other effect' && alert.effect !== 'no effect') {
+    context.push(alert.effect);
+  }
+  const more = Number(vehicle.alertCount) > 1 ? ` +${Number(vehicle.alertCount) - 1} more` : '';
+  return `⚠ ${clip(alert.text)} (${context.join(' · ')})${more}`;
+}
+
+/**
  * Build the multi-line label for the selected vehicle's card.
  * Every line is a value the feed published; nothing is inferred.
  *
@@ -385,10 +542,18 @@ function vehiclePosition(vehicle) {
 export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
   const vehicle = record?.vehicle || {};
   const feed = record?.feed || {};
-  const route = vehicle.route ? `LINE ${vehicle.route}` : 'LINE —';
-  const title = vehicle.label ? `${route} · ${vehicle.label}` : route;
+  // The line's PUBLIC name when the static feed has been read for it — "7" is
+  // what is written on the front of the bus, where `route_id` "07" is the
+  // operator's key. Until then, and for a network with no resolvable line, the
+  // feed's own label stands unchanged.
+  const shortName = record?.route?.route?.shortName || vehicle.route;
+  const route = shortName ? `LINE ${shortName}` : 'LINE —';
+  const headsign = record?.route?.trip?.headsign || vehicle.label;
+  const title = headsign ? `${route} · ${headsign}` : route;
 
   const details = [];
+  const longName = record?.route?.route?.longName;
+  if (longName && longName !== shortName) details.push(longName);
   if (feed.network) details.push(`🚍 ${feed.network}`);
 
   const motion = [];
@@ -407,6 +572,17 @@ export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
     details.push(`👥 ${OCCUPANCY_LABELS[vehicle.occupancy] || vehicle.occupancy}`);
   }
 
+  // What the operator says about the RUN, not the vehicle: how far off the
+  // timetable it is, what it has stopped doing, and what has been written
+  // about its line. All three come from the same networks' own trip updates
+  // and alerts — see `transitSchedule.js`.
+  const schedule = transitScheduleReadout(vehicle);
+  if (schedule) details.push(schedule);
+  const disruption = transitDisruptionReadout(vehicle);
+  if (disruption) details.push(disruption);
+  const alert = transitAlertReadout(vehicle);
+  if (alert) details.push(alert);
+
   // Fix age, not render age: the glyph is mid-glide between two real fixes, and
   // the card must report the newest one the operator actually published.
   if (Number.isFinite(vehicle.timestampMs)) {
@@ -421,6 +597,14 @@ export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
   const provenance = [kind.qualifier ? `${kind.label} (${kind.qualifier})` : kind.label];
   if (hasText(feed.licence)) provenance.push(feed.licence);
   details.push(provenance.join(' · '));
+
+  // Where this run goes next, from the network's trip updates. Appended after
+  // the provenance rather than woven into it: these lines answer a different
+  // question and arrive one request later than the rest of the card.
+  details.push(...transitRouteCardLines(record?.route, {
+    vehicleStopSequence: vehicle.stopSequence,
+    nowMs,
+  }));
 
   return [title, ...details].join('\n');
 }
@@ -484,6 +668,69 @@ function clearSelection() {
   }
   _selectedId = null;
   _overlayHost.clearSource(TRANSIT_FR_OVERLAY_SOURCE_ID);
+  clearSelectedRoute();
+}
+
+/** Abort any line lookup and take the drawn run off the globe. */
+function clearSelectedRoute() {
+  _routeGeneration += 1;
+  _routeInFlight?.abort?.();
+  _routeInFlight = null;
+  clearTimeout(_routeTimer);
+  _routeTimer = null;
+  clearTransitRoute();
+}
+
+/**
+ * Ask the proxy what line the selected vehicle is on, and draw the answer.
+ *
+ * A vehicle whose feed publishes no `trip_id` and no `route_id` is not asked
+ * about: there is nothing to join on, and a request that can only fail is not
+ * a request worth making. Its card keeps saying exactly what it said before.
+ *
+ * @param {Object} record Render record for the selected vehicle.
+ * @returns {Promise<void>}
+ */
+async function loadSelectedRoute(record) {
+  const vehicle = record?.vehicle;
+  if (!vehicle?.feed || (!vehicle.tripId && !vehicle.routeId)) return;
+
+  const generation = ++_routeGeneration;
+  _routeInFlight?.abort?.();
+  const controller = new AbortController();
+  _routeInFlight = controller;
+  const timer = setTimeout(() => controller.abort(), ROUTE_TIMEOUT_MS);
+
+  try {
+    const params = new URLSearchParams({ feed: vehicle.feed });
+    if (vehicle.tripId) params.set('trip', vehicle.tripId);
+    if (vehicle.routeId) params.set('route', vehicle.routeId);
+    const response = await fetch(`/api/transit-fr/trip?${params}`, { signal: controller.signal });
+    if (generation !== _routeGeneration || record.id !== _selectedId) return;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const payload = await response.json();
+    if (generation !== _routeGeneration || record.id !== _selectedId) return;
+
+    record.route = payload;
+    showTransitRoute(payload, {
+      vehicleStopSequence: vehicle.stopSequence,
+      fallbackColor: transitVehicleColor(vehicle),
+    });
+    publishSelectionCard(record);
+    // Stop predictions age; the trace does not. Re-reading on a slow cadence
+    // keeps the countdown on the card true without re-fetching geometry the
+    // proxy already has in memory.
+    _routeTimer = setTimeout(() => {
+      if (record.id === _selectedId) void loadSelectedRoute(record);
+    }, ROUTE_REFRESH_MS);
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+    if (generation !== _routeGeneration) return;
+    console.warn('[Data:TransitFR] line lookup failed:', error?.message || error);
+  } finally {
+    clearTimeout(timer);
+    if (generation === _routeGeneration) _routeInFlight = null;
+  }
 }
 
 /** Select a vehicle by render id. */
@@ -504,6 +751,7 @@ function selectVehicle(id) {
   }
   publishSelectionCard(record);
   governorRequestRender('transit-fr-select');
+  void loadSelectedRoute(record);
 }
 
 /** Push (or refresh) the selected card. Called on select and on every glide tick. */
@@ -736,6 +984,14 @@ function reconcile(vehicles, feedsById, nowMs) {
     // And the pointer tracks the HEADING, which a feed can start or stop
     // publishing between two polls.
     syncHeadingPointer(record, id === _selectedId ? POINTER_SELECTED_PX : POINTER_PX);
+    // A selected vehicle that has been given a new trip is running a
+    // different line, or the same line the other way. The drawn run follows
+    // it rather than staying on the one that was open when it was clicked.
+    if (id === _selectedId && record.route && record.route.trip?.id
+      && vehicle.tripId && record.route.trip.id !== vehicle.tripId) {
+      record.route = null;
+      void loadSelectedRoute(record);
+    }
     if (id !== _selectedId) {
       const color = Cesium.Color.fromCssColorString(transitVehicleColor(vehicle));
       record.billboard.color = color;
@@ -840,6 +1096,7 @@ async function loadViewport({ force = false } = {}) {
     reconcile(Array.isArray(payload.vehicles) ? payload.vehicles : [], feedsById, Date.now());
 
     _feedSummaries = payload.feeds || [];
+    _schedule = payload.schedule || null;
     _feedsMatched = Number(payload.feedsMatched) || 0;
     _feedsTruncated = payload.feedsTruncated === true;
     _vehiclesTruncated = payload.vehiclesTruncated === true;
@@ -867,6 +1124,24 @@ function onCameraChanged() {
   _cameraDebounceTimer = setTimeout(() => { void loadViewport(); }, CAMERA_DEBOUNCE_MS);
 }
 
+/**
+ * Ambient label for one vehicle: the line, plus its deviation when it has one.
+ *
+ * `+4m` / `-2m` rather than words, because this string is drawn at the size a
+ * radar contact gets. Routed through {@link formatDelay}'s own banding so a
+ * vehicle the card calls on time never carries a number here.
+ *
+ * @param {Object} vehicle Wire record.
+ * @returns {string}
+ */
+export function detectionLabelFor(vehicle) {
+  const line = vehicle?.route ? `LN ${vehicle.route}` : 'TRANSIT';
+  const text = formatDelay(vehicle?.delaySec);
+  if (!text || text === 'on time') return line;
+  const minutes = Math.max(1, Math.round(Math.abs(vehicle.delaySec) / 60));
+  return `${line} ${vehicle.delaySec > 0 ? '+' : '-'}${minutes}m`;
+}
+
 /** Deterministic subsample of rendered vehicles for the detection overlay. */
 function collectDetectableVehicles(options = {}) {
   if (!_enabled || !_billboards?.show || !_records.size) return [];
@@ -890,7 +1165,11 @@ function collectDetectableVehicles(options = {}) {
     result.push({
       position: record.renderPosition,
       sourceId: record.id,
-      id: record.vehicle.route ? `LN ${record.vehicle.route}` : 'TRANSIT',
+      // The line, and — only when the operator published one and it is outside
+      // the on-time band — the deviation in minutes. Two extra characters is
+      // all an ambient label can spare, and they are the ones that turn a
+      // swarm of line numbers into a picture of a network running late.
+      id: detectionLabelFor(record.vehicle),
       type: 'VEH',
       skipLabel: record.id === _selectedId,
     });
@@ -915,6 +1194,16 @@ function buildLoadingLabel() {
   }
   const networks = _feedSummaries.filter((feed) => feed.inView > 0).length;
   const parts = [`${networks} network${networks === 1 ? '' : 's'}`];
+  // The one number worth a row of the control panel: how much of what is on
+  // screen is running behind. Only ever shown when a network in view actually
+  // published deviations — a silent "0 late" over a fleet that never said
+  // would be the layer claiming punctuality it cannot see.
+  if (_schedule?.late) parts.push(`${_schedule.late} late`);
+  if (_schedule?.canceled) parts.push(`${_schedule.canceled} cancelled`);
+  // The disruption a network can report even when it publishes no deviation
+  // at all: Rennes types 27 vehicles, gives a delay for none of them, and says
+  // 16 of their runs will skip a stop.
+  if (_schedule?.skipped) parts.push(`${_schedule.skipped} skipping stops`);
   if (_feedsTruncated) parts.push(`${_feedsMatched} in range`);
   if (_vehiclesTruncated || _renderTruncated) parts.push('capped');
   const stale = _feedSummaries.filter((feed) => feed.stale).length;
@@ -961,6 +1250,7 @@ const transitFranceLayer = {
     _error = null;
     _status = 'idle';
     _feedSummaries = [];
+    _schedule = null;
     _feedsMatched = 0;
     _feedsTruncated = false;
     _vehiclesTruncated = false;
@@ -970,6 +1260,8 @@ const transitFranceLayer = {
     _altitudeGateOpen = false;
 
     _overlayHost.setVisible(TRANSIT_FR_OVERLAY_SOURCE_ID, false);
+    // The drawn run belongs to the selected vehicle and shares its lifecycle.
+    initTransitRouteView(viewer);
     restoreSpriteOrder(viewer);
   },
 
@@ -1037,6 +1329,7 @@ const transitFranceLayer = {
     _loading = false;
     _status = 'idle';
     _feedSummaries = [];
+    _schedule = null;
     _lastBox = null;
     _lastBoxBounds = null;
     releaseContinuousRender('transit-fr');
@@ -1137,6 +1430,7 @@ const transitFranceLayer = {
       viewer.scene.primitives.remove(_pointers);
       _pointers = null;
     }
+    destroyTransitRouteView(viewer);
     releaseContinuousRender('transit-fr');
     _records.clear();
     _viewer = null;
