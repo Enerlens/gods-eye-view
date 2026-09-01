@@ -32,6 +32,12 @@ import irveFranceLayer, {
   IRVE_FR_LABEL_COHORT_LIMIT,
   IRVE_FR_OVERLAY_SOURCE_ID,
   IRVE_FR_OVERLAY_SOURCE_OPTIONS,
+  IRVE_BEAM_MAX_PX,
+  IRVE_BEAM_MIN_PX,
+  IRVE_BEAM_SPARSE_COUNT,
+  IRVE_BEAM_DENSE_COUNT,
+  irveBeamHeightM,
+  irveBeamTargetPx,
 } from './irveFrance.js';
 import { IRVE_BAND_KEYS, IRVE_MAX_BOX_DEG } from './irveFeed.js';
 
@@ -532,4 +538,57 @@ test('the label cohort is capped and stable under ties', () => {
   assert.deepEqual(cohort.map((entry) => entry.id), [...cohort].map((entry) => entry.id));
   assert.deepEqual(selectIrveLabelCohort(entries, 0), []);
   assert.deepEqual(selectIrveLabelCohort(null), []);
+});
+
+// ── The beams ───────────────────────────────────────────────────────────────
+
+test('the beam budget only ever gets shorter as a view gets busier', () => {
+  // The shape of the curve is not the point; the monotonicity is. A layer that
+  // could make a dense view taller than a sparse one would turn central Paris
+  // into a wall on exactly the pan that needs it least.
+  let previous = Infinity;
+  for (let n = 0; n <= 5000; n += 25) {
+    const px = irveBeamTargetPx(n);
+    assert.ok(px <= previous + 1e-9, `${n} markers went back up: ${px} after ${previous}`);
+    assert.ok(px >= IRVE_BEAM_MIN_PX && px <= IRVE_BEAM_MAX_PX, `${n} → ${px}px is outside the band`);
+    previous = px;
+  }
+  assert.equal(irveBeamTargetPx(0), IRVE_BEAM_MAX_PX);
+  assert.equal(irveBeamTargetPx(IRVE_BEAM_SPARSE_COUNT), IRVE_BEAM_MAX_PX);
+  assert.equal(irveBeamTargetPx(IRVE_BEAM_DENSE_COUNT), IRVE_BEAM_MIN_PX);
+  assert.equal(irveBeamTargetPx(1e9), IRVE_BEAM_MIN_PX);
+  // Garbage is a sparse view, not a NaN-tall beam.
+  for (const bad of [NaN, null, undefined, 'lots']) {
+    assert.equal(irveBeamTargetPx(bad), IRVE_BEAM_MAX_PX, String(bad));
+  }
+});
+
+test('the mesh regime does not sit on the floor of the budget', () => {
+  // The first calibration put the saturation point at 1 600 markers, below the
+  // 2 200 the mesh regime is capped at — so every mesh view drew the minimum,
+  // which measured ~406 m over Paris and read as nothing at all. The budget has
+  // to leave the mesh cap somewhere in the middle of the band.
+  const meshCap = 2200;
+  assert.ok(IRVE_BEAM_DENSE_COUNT > meshCap, 'the mesh cap must not saturate the budget');
+  const atCap = irveBeamTargetPx(meshCap);
+  assert.ok(atCap > IRVE_BEAM_MIN_PX, `a full mesh view draws the floor (${atCap}px)`);
+  assert.ok(atCap < IRVE_BEAM_MAX_PX, `a full mesh view draws the ceiling (${atCap}px)`);
+});
+
+test('a beam is clamped in metres, whatever the pixel budget asks for', () => {
+  // The layer spans a 45 km national view down to a street, so an unclamped
+  // pixel target is a needle at one end and a skyscraper at the other.
+  const factor = (2 * Math.tan(Math.PI / 6)) / 800;
+  const near = irveBeamHeightM(500, IRVE_BEAM_MAX_PX, factor);
+  const far = irveBeamHeightM(4_000_000, IRVE_BEAM_MAX_PX, factor);
+  assert.ok(near >= 60, `${near} m is below the floor`);
+  assert.ok(far <= 40_000, `${far} m is above the ceiling`);
+  // Inside the band it tracks distance, so a beam holds its on-screen length.
+  const a = irveBeamHeightM(10_000, 40, factor);
+  const b = irveBeamHeightM(20_000, 40, factor);
+  assert.ok(b > a, 'a beam twice as far away must be twice as tall');
+  assert.ok(Math.abs(b / a - 2) < 0.01, `${b / a}`);
+  // Nonsense in, floor out — never NaN, which would blank the geometry.
+  assert.equal(irveBeamHeightM(NaN, 40, factor), irveBeamHeightM(0, 40, factor));
+  assert.ok(Number.isFinite(irveBeamHeightM(1000, 40, NaN)));
 });

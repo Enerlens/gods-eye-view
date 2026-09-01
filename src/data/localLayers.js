@@ -10,8 +10,9 @@ import {
 } from './airportsPack.js';
 import {
   DAM_DISPLAY_FLOORS,
+  DAM_STRUCTURE_CHIPS,
   DAM_TIER_STYLES,
-  damTier,
+  damGroupKey,
   damTierLegend,
   damTierVisible,
 } from './damsPack.js';
@@ -63,22 +64,39 @@ const dams = createLocalGeoJsonLayer({
   // wall. `damTier` grades each feature once and that single answer drives the
   // dot size, the colour, the label ladder, the display floors and the legend
   // — see the ladder in ./damsPack.js.
-  groupOf: damTier,
+  // TWO axes, one key: colour says WHAT the structure is (a digue is not a
+  // barrage — the distinction this layer used to lose), size says how much it
+  // matters. They have to travel together because the renderer resolves one
+  // group key per feature at load and bakes its style into the primitives.
+  groupOf: damGroupKey,
   groupStyles: DAM_TIER_STYLES,
   groupVisible: damTierVisible,
-  // Opens on TOUS, like the airports pack: someone who switches the layer on
-  // asked to see the barrages, and hiding four fifths of them before being
+  // Opens on TOUS/TOUS, like the airports pack: someone who switches the layer
+  // on asked to see the barrages, and hiding four fifths of them before being
   // asked would answer a question nobody put.
-  defaultParams: { floor: DAM_DISPLAY_FLOORS[0].id },
+  defaultParams: { floor: DAM_DISPLAY_FLOORS[0].id, kinds: DAM_STRUCTURE_CHIPS[0].id },
   rowControls: (params, tally) => ({
-    chips: DAM_DISPLAY_FLOORS.map((floor) => ({
-      id: floor.id,
-      label: floor.label,
-      active: params.floor === floor.id,
-      state: params.floor === floor.id ? 'active' : 'idle',
-      title: floor.title,
-      params: { floor: floor.id },
-    })),
+    // Two rows in the one array the panel renders. Runtime params MERGE, so
+    // the two axes stay independent and neither touches the share-link
+    // grammar — `local-dams` keeps its single token.
+    chips: [
+      ...DAM_STRUCTURE_CHIPS.map((chip) => ({
+        id: `kinds:${chip.id}`,
+        label: chip.label,
+        active: (params.kinds || DAM_STRUCTURE_CHIPS[0].id) === chip.id,
+        state: (params.kinds || DAM_STRUCTURE_CHIPS[0].id) === chip.id ? 'active' : 'idle',
+        title: chip.title,
+        params: { kinds: chip.id },
+      })),
+      ...DAM_DISPLAY_FLOORS.map((floor) => ({
+        id: floor.id,
+        label: floor.label,
+        active: params.floor === floor.id,
+        state: params.floor === floor.id ? 'active' : 'idle',
+        title: floor.title,
+        params: { floor: floor.id },
+      })),
+    ],
     legend: damTierLegend(tally),
   }),
 });

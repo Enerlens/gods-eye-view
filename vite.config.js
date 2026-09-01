@@ -81,6 +81,12 @@ import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js'
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
 import { projectRoadEvents } from './src/data/bisonFuteFeed.js';
 import {
+  indexCarriagewayPack,
+  traceBetweenPr,
+} from './scripts/lib/rrnCarriageway.mjs';
+import { simplifyPolyline, CENTRELINE_SIMPLIFY_M } from './scripts/lib/rrnCentreline.mjs';
+import { lambert93ToWgs84 } from './scripts/lib/lambert93.mjs';
+import {
   powerGridBoxKey,
   powerGridIncludesTowers,
   powerGridQuery,
@@ -4622,6 +4628,68 @@ function gasFranceProxy() {
  *
  * @returns {import('vite').Plugin}
  */
+/**
+ * The RRN carriageway pack, read once per process.
+ *
+ * `config/rrn_centreline.json` is 3.16 MB and turns a road event's two
+ * point-repère addresses into the stretch of tarmac they name. It is loaded
+ * HERE and not in the browser for the obvious reason: shipping 3 MB to every
+ * tab to save 48 KB on a 200 KB response is backwards, and the projection this
+ * feeds already runs server-side on every serve.
+ *
+ * A missing or broken pack is not fatal. `traceCarriageway` then returns null
+ * for every event and the layer draws exactly what it drew before — a chord —
+ * which is the same graceful floor `loadRoadStatusSites` gives its sibling.
+ */
+const RRN_CENTRELINE_PATH = path.join(process.cwd(), 'config', 'rrn_centreline.json');
+let _rrnCarriageway = null;
+let _rrnCarriagewayPromise = null;
+let _rrnCarriagewayFailed = false;
+
+function loadRrnCarriageway() {
+  if (_rrnCarriageway || _rrnCarriagewayFailed) return Promise.resolve(_rrnCarriageway);
+  if (!_rrnCarriagewayPromise) {
+    _rrnCarriagewayPromise = fsp.readFile(RRN_CENTRELINE_PATH, 'utf8')
+      .then((text) => {
+        const parsed = JSON.parse(text);
+        if (!parsed?.posts || !parsed?.lines) throw new Error('pack has no posts/lines');
+        _rrnCarriageway = indexCarriagewayPack(parsed);
+        console.log(
+          `[bison-fute-proxy] RRN carriageway pack: ${parsed.stats?.posts ?? '?'} posts,`
+          + ` ${parsed.stats?.carriageways ?? '?'} carriageways`
+          + ` (bornage ${parsed.bornageEdition}, liaisons ${parsed.centrelineEdition})`,
+        );
+        return _rrnCarriageway;
+      })
+      .catch((error) => {
+        // Once, then never again: a rebuild is a restart, and retrying a
+        // missing file on every serve would log the same line hourly forever.
+        _rrnCarriagewayFailed = true;
+        console.warn(
+          `[bison-fute-proxy] no RRN carriageway pack (${error?.message || error})`
+          + ' — segments stay chords. Run `npm run rrn:pack`.',
+        );
+        return null;
+      });
+  }
+  return _rrnCarriagewayPromise;
+}
+
+/**
+ * The tracer handed to `projectRoadEvents`, or null when there is no pack.
+ * @param {object|null} index
+ * @returns {?(request: object) => object}
+ */
+function carriagewayTracer(index) {
+  if (!index) return null;
+  return (request) => traceBetweenPr(index, {
+    ...request,
+    toWgs84: lambert93ToWgs84,
+    simplify: simplifyPolyline,
+    toleranceM: CENTRELINE_SIMPLIFY_M,
+  });
+}
+
 function bisonFuteProxy() {
   const BASE = 'https://tipi.bison-fute.gouv.fr/bison-fute-ouvert/publicationsDIR';
   const EVENTS_URL = `${BASE}/Evenementiel-DIR/grt/RRN/content.xml`;
@@ -4689,10 +4757,16 @@ function bisonFuteProxy() {
   /** Refresh and project the road-event document. */
   async function refreshEvents(previous) {
     const changed = await refreshDocument(EVENTS_URL, upstream.events);
+    // Loaded before the projection, not during it: `traceBetweenPr` is
+    // synchronous by design, so the pack has to be in hand first. After the
+    // first serve this is a resolved promise.
+    const carriageway = await loadRrnCarriageway();
     // Unchanged upstream, but `state` is time-dependent: roadworks ordered for
     // 08:30 become active at 08:30 whether or not the file moved. Re-project
     // from the retained body rather than serving a stale "planned".
-    const projected = projectRoadEvents(upstream.events.body);
+    const projected = projectRoadEvents(upstream.events.body, {
+      traceCarriageway: carriagewayTracer(carriageway),
+    });
     if (!changed && previous) {
       return { ...previous, at: Date.now(), ...projected };
     }

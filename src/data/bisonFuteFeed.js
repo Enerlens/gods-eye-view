@@ -420,7 +420,7 @@ export function classifyEventRecord(type, subtype) {
  * @param {XmlElement} record
  * @returns {{kind:'point'|'segment', coordinates:number[]}|null}
  */
-function readGeometry(record) {
+function readGeometry(record, traceCarriageway = null) {
   const group = child(record, 'groupOfLocations');
   if (!group) return null;
 
@@ -438,7 +438,20 @@ function readGeometry(record) {
   if (linear) {
     const from = readPoint(child(linear, 'from'));
     const to = readPoint(child(linear, 'to'));
-    if (from && to) return { kind: 'segment', coordinates: [...from, ...to] };
+    if (from && to) {
+      // Prefer the ROAD to the line between its ends, when the record says
+      // enough to find it and the caller can. The tracer is injected rather
+      // than imported: it needs a 3 MB national referential that belongs on
+      // the server, and this module has to stay loadable without one.
+      const reference = traceCarriageway ? readLinearReference(record) : null;
+      if (reference) {
+        const traced = traceCarriageway({ ...reference, chord: [...from, ...to] });
+        if (Array.isArray(traced?.coordinates) && traced.coordinates.length >= 4) {
+          return { kind: 'segment', shaped: 'carriageway', coordinates: traced.coordinates };
+        }
+      }
+      return { kind: 'segment', coordinates: [...from, ...to] };
+    }
     // A half-published segment is still a real location. Drawing its one known
     // end as a point beats dropping the event off the map entirely.
     const single = from || to;
@@ -546,7 +559,7 @@ export function resolveEventState({ ended, start, end, nowMs }) {
  * @returns {{publishedAt:string|null, publishedAtMs:number|null,
  *   supplier:string|null, events:object[], counts:object}}
  */
-export function projectRoadEvents(xml, { nowMs = Date.now() } = {}) {
+export function projectRoadEvents(xml, { nowMs = Date.now(), traceCarriageway = null } = {}) {
   const root = parseXml(xml);
   const publication = findAll(root, 'payloadPublication')[0] || root;
   const publishedAt = textAt(publication, 'publicationTime');
@@ -556,6 +569,9 @@ export function projectRoadEvents(xml, { nowMs = Date.now() } = {}) {
   const counts = {
     situations: 0, records: 0, undrawable: 0, points: 0, segments: 0,
     active: 0, planned: 0, ended: 0, safety: 0,
+    // How many segments were drawn on the road rather than as a chord. Counted
+    // so the layer can say which it is showing instead of implying all of them.
+    shaped: 0,
   };
 
   for (const situation of findAll(publication, 'situation')) {
@@ -582,11 +598,11 @@ export function projectRoadEvents(xml, { nowMs = Date.now() } = {}) {
       (CATEGORY_PRIMACY[a.category] ?? 99) - (CATEGORY_PRIMACY[b.category] ?? 99)
     ));
     const primary = ordered[0];
-    const geometry = readGeometry(primary.record)
+    const geometry = readGeometry(primary.record, traceCarriageway)
       // The winning record is the one whose MEANING is the event; if its own
       // location failed to parse, any sibling's location still puts the incident
       // on the right kilometre of the right road.
-      || ordered.map((entry) => readGeometry(entry.record)).find(Boolean)
+      || ordered.map((entry) => readGeometry(entry.record, traceCarriageway)).find(Boolean)
       || null;
     if (!geometry) { counts.undrawable += 1; continue; }
 
@@ -610,6 +626,7 @@ export function projectRoadEvents(xml, { nowMs = Date.now() } = {}) {
     counts[state] += 1;
     if (safety) counts.safety += 1;
     if (geometry.kind === 'segment') counts.segments += 1; else counts.points += 1;
+    if (geometry.shaped === 'carriageway') counts.shaped += 1;
 
     events.push({
       id: situationId,
@@ -639,7 +656,13 @@ export function projectRoadEvents(xml, { nowMs = Date.now() } = {}) {
       lanes: restricted !== null || total !== null
         ? { restricted, total }
         : null,
-      geometry: { kind: geometry.kind, coordinates: geometry.coordinates },
+      geometry: {
+        kind: geometry.kind,
+        // 'carriageway' when this is the surveyed road, absent when it is the
+        // chord between the two published ends. The card says which.
+        ...(geometry.shaped ? { shaped: geometry.shaped } : {}),
+        coordinates: geometry.coordinates,
+      },
       // What else this situation declares, as a tally by category. The
       // consequences are not drawn, but "+ 5 déviations" is the difference
       // between a closed road and a closed road somebody has already routed
@@ -670,6 +693,47 @@ function tallyCategories(entries) {
   const tally = {};
   for (const entry of entries) tally[entry.category] = (tally[entry.category] || 0) + 1;
   return tally;
+}
+
+/**
+ * Read a record's LINEAR REFERENCE — the route and the two point-repère
+ * addresses that bound the event along it.
+ *
+ * This is the half of a DATEX location the layer used to throw away. Every
+ * `Linear` event publishes its extent twice: as two TPEG coordinates (the two
+ * ENDS, and nothing between them, which is why a segment was drawn as a
+ * chord), and as an address on a named road:
+ *
+ *     <linearElement><roadNumber>N0126</roadNumber></linearElement>
+ *     <fromPoint>  81PR47U + 394 m
+ *     <toPoint>    81PR5U  +   0 m
+ *
+ * The second is a real linear reference and it is what lets a 37 km chord
+ * across open country become 40 km of the road it is actually on. Read here,
+ * used by `readGeometry` when the caller supplies a tracer, and reported
+ * verbatim to nobody: `readMarker` below still owns the human-facing string.
+ *
+ * @param {XmlElement} record
+ * @returns {{roadNumber:string, from:object, to:object}|null}
+ */
+export function readLinearReference(record) {
+  const lwle = descend(child(record, 'groupOfLocations'), 'linearWithinLinearElement');
+  if (!lwle) return null;
+  const roadNumber = textAt(descend(lwle, 'linearElement'), 'roadNumber');
+  if (!roadNumber) return null;
+  const address = (node) => {
+    if (!node) return null;
+    const referent = textAt(descend(node, 'fromReferent'), 'referentIdentifier');
+    if (!referent) return null;
+    const along = numberAt(node, 'distanceAlong');
+    return { referent, distanceAlong: Number.isFinite(along) ? along : 0 };
+  };
+  const from = address(child(lwle, 'fromPoint'));
+  const to = address(child(lwle, 'toPoint'));
+  // BOTH ends or nothing: a single PR address bounds no stretch, and guessing
+  // the other end from the chord would reintroduce the error being fixed.
+  if (!from || !to) return null;
+  return { roadNumber, from, to };
 }
 
 /**
