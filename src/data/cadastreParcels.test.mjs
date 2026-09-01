@@ -420,6 +420,41 @@ test('the layer registers under the id the share registry and voice tool use', (
   assert.ok(cadastreParcelsLayer.updateInterval > 0);
 });
 
+test('update() never refuses the lifecycle just because it had nothing to fetch', async () => {
+  // `DataLayerManager` reads a literal `false` from update() as a rejection: it
+  // fails the enable, throws LifecycleRejectedError and leaves the layer
+  // switched OFF. This layer refuses any view wider than 0.02°, so returning
+  // the load's own boolean meant that switching it on from anywhere but street
+  // level turned itself straight back off — which is what the operator saw as
+  // "échec de chargement".
+  //
+  // Every gate is exercised, because each one is a different `false` from
+  // `load()`: too wide, off coverage, and a camera with no rectangle at all.
+  const wide = { south: 48.8, west: 2.2, north: 48.9, east: 2.5 };
+  const atlantic = { south: 39, west: -31, north: 41, east: -29 };
+  for (const view of [wide, atlantic, null]) {
+    _setCadastreStateForTest({
+      viewer: viewerWithView(view),
+      records: new Map(),
+      payload: null,
+      overlayHost: recordingOverlayHost(),
+      enabled: true,
+      // No fetch is reachable from any of these: a `false` here would come from
+      // the gate, which is exactly the case under test.
+      fetchImpl: () => { throw new Error('update() must not reach the network at a closed gate'); },
+    });
+    const result = await cadastreParcelsLayer.update();
+    assert.notEqual(result, false, `update() refused the lifecycle for ${JSON.stringify(view)}`);
+  }
+});
+
+test('a DISABLED layer is the one thing update() does refuse', async () => {
+  // The distinction the manager actually needs: "there was nothing to load" is
+  // not "this layer will not come on".
+  _setCadastreStateForTest({ payload: null, records: new Map(), enabled: false });
+  assert.equal(await cadastreParcelsLayer.update(), false);
+});
+
 test('parcels are not detectable contacts', () => {
   // A detection reticle over every plot in Lyon would drown every layer that
   // does have something moving to report.

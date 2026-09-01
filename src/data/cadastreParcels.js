@@ -708,7 +708,17 @@ const cadastreParcelsLayer = {
     if (!_enabled) return false;
     // An idle refresh has to actually refetch, so drop the box memo first.
     _loadedKey = null;
-    return load();
+    await load();
+    // `load()` answers "did I fetch", which is false at BOTH gates, on an
+    // unchanged viewport, and on an aborted request. None of those is a refusal
+    // of the lifecycle transition — but `DataLayerManager` reads a literal
+    // `false` from update() as exactly that, fails the enable, and leaves the
+    // layer switched off with a LifecycleRejectedError the operator sees as
+    // "échec de chargement". Since this layer refuses any view wider than
+    // 0.02°, returning `load()` directly meant switching it on from anywhere
+    // but street level turned itself back off. Only a disabled layer refuses
+    // here; the load's own outcome is reported through `getStats()`.
+    return true;
   },
 
   /**
