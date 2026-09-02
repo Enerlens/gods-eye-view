@@ -28,9 +28,12 @@ import {
   damTierLegend,
   damTierVisible,
   DAM_STRUCTURE_CHIPS,
+  DAM_STRUCTURES,
+  UNCLASSIFIED_STRUCTURE_LABEL,
   damGroupKey,
   damGroupParts,
   damStructureKind,
+  damStructureTitle,
   isDamStructureKind,
 } from './damsPack.js';
 
@@ -379,6 +382,25 @@ test('a dyke is not a dam, and a feature tagged both is neither silently', () =>
   }
   assert.equal(isDamStructureKind('dyke'), true);
   assert.equal(isDamStructureKind(''), false);
+});
+
+test('a nameless structure is titled by its kind, never by the layer', () => {
+  // The reported sighting: OSM w860215522 at Octeville-sur-Mer is `man_made=dyke`
+  // and nothing else — a 159 m anti-ruissellement bund with no water within
+  // 250 m — and the card titled it "Barrage 159 m de long". `kind` was already
+  // in the properties; the title just never read it.
+  assert.equal(damStructureTitle({ kind: 'dyke', spanM: 159 }), 'Digue');
+  assert.equal(damStructureTitle({ kind: 'dam' }), 'Barrage');
+  assert.equal(damStructureTitle({ kind: 'dam+dyke' }), 'Barrage-digue');
+  // The carried-over world half has no kind, and 'Ouvrage' is the whole of what
+  // is known about it. Same rule as the grey ramp: unclassified is not 'dam'.
+  for (const props of [{}, { kind: '' }, { kind: 'weir' }, null, undefined, 'props']) {
+    assert.equal(damStructureTitle(props), UNCLASSIFIED_STRUCTURE_LABEL, JSON.stringify(props));
+  }
+  // Every title is one a chip or the legend already shows, so the card and the
+  // filter row cannot name the same structure two different ways.
+  const shown = new Set(DAM_STRUCTURES.map((entry) => entry.label));
+  for (const key of ['dam', 'dyke', 'dam+dyke']) assert.ok(shown.has(damStructureTitle({ kind: key })));
 });
 
 test('label priority runs on the same scale as the ports and airports ladders', () => {
