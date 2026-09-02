@@ -16,6 +16,7 @@ import {
   equivalentRadiusM,
   parseSteps,
   projectIsochrone,
+  rawRingAreaKm2,
   resolveProfile,
   ringAreaKm2,
   ringExpansion,
@@ -219,4 +220,90 @@ test('the captured rings project and then compare as a set', () => {
   assert.ok(walk.areaKm2 > 0 && drive.areaKm2 > 0);
   assert.ok(drive.areaKm2 > walk.areaKm2, 'a car reaches further than a walk in the same time');
   assert.ok(equivalentRadiusM(drive.areaKm2) > equivalentRadiusM(walk.areaKm2));
+});
+
+// ── The rings the service can send that the projection used to mishandle ─────
+
+/** A closed square ring in degrees. */
+const square = (lon, lat, half) => [
+  [lon - half, lat - half], [lon + half, lat - half],
+  [lon + half, lat + half], [lon - half, lat + half],
+];
+
+test('a hole is kept, and taken off the area rather than sold as catchment', () => {
+  // THE BUG THIS TEST EXISTS FOR. The projection read `coordinates[0]` and
+  // dropped every interior ring, so a fenced railway yard or a courtyard with
+  // no way in was counted as ground you can walk to — in the area printed on
+  // the card, and in the population the fiche joins against it.
+  const donut = {
+    costValue: 900,
+    geometry: { type: 'Polygon', coordinates: [square(4.85, 45.75, 0.05), square(4.85, 45.75, 0.02)] },
+  };
+  const projected = projectIsochrone(donut);
+  assert.equal(projected.holes.length, 1, 'the hole survives the projection');
+  assert.equal(projected.ring.length, 4);
+  const outer = rawRingAreaKm2(square(4.85, 45.75, 0.05));
+  const inner = rawRingAreaKm2(square(4.85, 45.75, 0.02));
+  assert.equal(projected.areaKm2, Math.round((outer - inner) * 100) / 100);
+  assert.ok(projected.areaKm2 < ringAreaKm2(square(4.85, 45.75, 0.05)), 'strictly less than the exterior');
+});
+
+test('a hole too small to round to a hundredth is still subtracted', () => {
+  // Rounding each ring before subtracting would make every small courtyard
+  // vanish: `ringAreaKm2` rounds to 0,00 well before a hole stops mattering.
+  const tiny = square(4.85, 45.75, 0.0001);
+  assert.equal(ringAreaKm2(tiny), 0, 'rounds away on its own');
+  assert.ok(rawRingAreaKm2(tiny) > 0, 'but it is not zero');
+});
+
+test('one bad vertex refuses the ring instead of bridging across it', () => {
+  // THE OTHER HALF OF THE BUG. The old loop `continue`d past unusable vertices
+  // and joined their neighbours, redrawing the shape across whatever was
+  // wrong. Worse, it parsed with `Number()`: `Number(null)` is 0 and passes
+  // `Number.isFinite`, so a null longitude planted a vertex at 0°E and the ring
+  // was drawn out into the Atlantic and back.
+  const withNull = {
+    costValue: 900,
+    geometry: {
+      type: 'Polygon',
+      coordinates: [[[4.8, 45.7], [4.9, 45.7], [null, 45.75], [4.9, 45.8], [4.8, 45.8]]],
+    },
+  };
+  assert.equal(projectIsochrone(withNull), null, 'a ring with a hole in its data is not a ring');
+  for (const bad of [[undefined, 45.7], ['4.8', 45.7], [4.8, NaN], [200, 45.7], [4.8, 95]]) {
+    assert.equal(
+      projectIsochrone({
+        costValue: 900,
+        geometry: { type: 'Polygon', coordinates: [[[4.8, 45.7], [4.9, 45.7], bad, [4.8, 45.8]]] },
+      }),
+      null,
+      JSON.stringify(bad),
+    );
+  }
+});
+
+test('a catchment in two pieces is two pieces, not a refusal', () => {
+  // The old code answered null for a MultiPolygon and the layer reported a
+  // missing ring. Refusing is safe; it is not an answer.
+  const islands = {
+    costValue: 900,
+    geometry: {
+      type: 'MultiPolygon',
+      coordinates: [[square(4.85, 45.75, 0.01)], [square(4.95, 45.75, 0.03)]],
+    },
+  };
+  const projected = projectIsochrone(islands);
+  assert.equal(projected.parts.length, 2);
+  assert.equal(projected.ring[0][0], 4.92, 'the largest piece leads, whatever order it arrived in');
+  const total = rawRingAreaKm2(square(4.85, 45.75, 0.01)) + rawRingAreaKm2(square(4.95, 45.75, 0.03));
+  assert.equal(projected.areaKm2, Math.round(total * 100) / 100, 'the area is the sum');
+  // A geometry that is not an area at all is still refused.
+  assert.equal(projectIsochrone({ costValue: 900, geometry: { type: 'LineString', coordinates: [[4.8, 45.7]] } }), null);
+});
+
+test('an ordinary polygon still projects to one part with no holes', () => {
+  const walk = projectIsochrone(WALK);
+  assert.equal(walk.holes.length, 0);
+  assert.equal(walk.parts.length, 1);
+  assert.equal(walk.parts[0].ring, walk.ring);
 });

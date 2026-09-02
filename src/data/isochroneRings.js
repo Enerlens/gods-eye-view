@@ -201,12 +201,40 @@ export function expansionSentence(step) {
  * @param {object} context
  * @returns {number} Entities that carry a card.
  */
+/**
+ * The unreachable pockets inside the shape, as a sentence — or nothing.
+ * @param {Array<{holes: Array<Array<number[]>>}>} parts
+ * @returns {string|null}
+ */
+export function holesSentence(parts) {
+  const holes = (parts || []).reduce((total, part) => total + (part.holes?.length || 0), 0);
+  if (!holes) return null;
+  return holes > 1
+    ? `${holes} poches intérieures non atteignables, déjà retirées de la surface`
+    : 'une poche intérieure non atteignable, déjà retirée de la surface';
+}
+
+/**
+ * A catchment in several disconnected pieces, as a sentence — or nothing.
+ * @param {Array<object>} parts
+ * @returns {string|null}
+ */
+export function partsSentence(parts) {
+  const count = (parts || []).length;
+  return count > 1 ? `${count} morceaux disjoints — la surface est leur somme` : null;
+}
+
+/** One ring of `[lon, lat]` as Cesium positions, bad vertices dropped. */
+function cartesianRing(ring) {
+  return (Array.isArray(ring) ? ring : [])
+    .filter((point) => Number.isFinite(point?.[0]) && Number.isFinite(point?.[1]))
+    .map(([lon, lat]) => Cesium.Cartesian3.fromDegrees(lon, lat));
+}
+
 export function drawRing(dataSource, ring, {
   mode, expansion = [], classificationType, index = 0,
 }) {
-  const positions = ring.ring
-    .filter((point) => Number.isFinite(point?.[0]) && Number.isFinite(point?.[1]))
-    .map(([lon, lat]) => Cesium.Cartesian3.fromDegrees(lon, lat));
+  const positions = cartesianRing(ring.ring);
   if (positions.length < 3) return 0;
   const style = ringStyle(ring.seconds);
   const css = Cesium.Color.fromCssColorString(style.color);
@@ -214,24 +242,57 @@ export function drawRing(dataSource, ring, {
   const radiusM = equivalentRadiusM(ring.areaKm2);
   const step = expansion.find((entry) => entry.toSeconds === ring.seconds) || null;
 
-  dataSource.entities.add({
-    id: `isochrone:${ring.seconds}:fill`,
-    polygon: {
-      hierarchy: new Cesium.PolygonHierarchy(positions),
-      material: css.withAlpha(style.fillAlpha),
-      classificationType,
-      outline: false,
-    },
-  });
-  dataSource.entities.add({
-    id: `isochrone:${ring.seconds}:outline`,
-    polyline: {
-      positions: [...positions, positions[0]],
-      width: style.widthPx,
-      material: new Cesium.ColorMaterialProperty(css.withAlpha(0.95)),
-      clampToGround: true,
-      classificationType,
-    },
+  // Every piece of the shape, holes and all. `parts` is present whenever the
+  // service answered a MultiPolygon; a plain Polygon is one part, which is the
+  // ordinary case and the loop's own default. Drawing only `ring` here while
+  // the card printed an area computed over the whole thing would put a number
+  // on screen that the picture contradicts.
+  const parts = Array.isArray(ring.parts) && ring.parts.length
+    ? ring.parts
+    : [{ ring: ring.ring, holes: ring.holes || [] }];
+  parts.forEach((part, partIndex) => {
+    const outer = partIndex === 0 ? positions : cartesianRing(part.ring);
+    if (outer.length < 3) return;
+    const holes = (part.holes || [])
+      .map((hole) => cartesianRing(hole))
+      .filter((hole) => hole.length >= 3)
+      .map((hole) => new Cesium.PolygonHierarchy(hole));
+    const suffix = partIndex === 0 ? '' : `:${partIndex}`;
+    dataSource.entities.add({
+      id: `isochrone:${ring.seconds}:fill${suffix}`,
+      polygon: {
+        hierarchy: new Cesium.PolygonHierarchy(outer, holes),
+        material: css.withAlpha(style.fillAlpha),
+        classificationType,
+        outline: false,
+      },
+    });
+    dataSource.entities.add({
+      id: `isochrone:${ring.seconds}:outline${suffix}`,
+      polyline: {
+        positions: [...outer, outer[0]],
+        width: style.widthPx,
+        material: new Cesium.ColorMaterialProperty(css.withAlpha(0.95)),
+        clampToGround: true,
+        classificationType,
+      },
+    });
+    // A hole gets its own outline, thinner: an unfilled patch inside a fill
+    // reads as a rendering glitch unless something draws its edge.
+    (part.holes || []).forEach((hole, holeIndex) => {
+      const edge = cartesianRing(hole);
+      if (edge.length < 3) return;
+      dataSource.entities.add({
+        id: `isochrone:${ring.seconds}:hole${suffix}:${holeIndex}`,
+        polyline: {
+          positions: [...edge, edge[0]],
+          width: Math.max(1, style.widthPx - 1),
+          material: new Cesium.ColorMaterialProperty(css.withAlpha(0.6)),
+          clampToGround: true,
+          classificationType,
+        },
+      });
+    });
   });
 
   const anchor = ringLabelAnchor(ring.ring);
@@ -262,6 +323,11 @@ export function drawRing(dataSource, ring, {
       // AREA — rather than letting them keep the straight-line one.
       `soit un cercle équivalent de ${radiusM} m — mais ce n’est pas un cercle`,
       expansionSentence(step),
+      // Said out loud, because a hole is the one part of the shape a reader
+      // cannot infer from the outline, and it is ground the area has ALREADY
+      // been reduced by. Same for a shape in several pieces.
+      holesSentence(parts),
+      partsSentence(parts),
       ring.resourceVersion ? `BD TOPO ${ring.resourceVersion}` : null,
     ].filter(Boolean).join(' · '),
   });
