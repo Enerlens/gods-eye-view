@@ -380,6 +380,23 @@ export const DATA_CREDITS = [
       'distance BAN itself reports whenever it exceeds 10 m, and drops the answer entirely beyond 60 m.',
   },
   {
+    key: 'ads-fr',
+    html:
+      'French building permits: <em>Sitadel</em>, published by the '
+      + '<a href="https://www.data.gouv.fr/datasets/liste-des-permis-de-construire-et-autres-autorisations-durbanisme" target="_blank" rel="noopener">SDES</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte</a>), '
+      + 'republished monthly and running about six weeks behind the counter. It holds authorisations that were '
+      + 'GRANTED only &mdash; there is no national open feed of applications under instruction. Dossiers still being '
+      + 'instructed come from three m&eacute;tropole portals, merged on the dossier number: '
+      + '<a href="https://opendata.paris.fr/explore/dataset/dossiers-recents-durbanisme/" target="_blank" rel="noopener">Ville de Paris</a> '
+      + '(<a href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">ODbL 1.0</a>, rolling six months), '
+      + '<a href="https://opendata.bordeaux-metropole.fr/explore/dataset/u_dosaos_s/" target="_blank" rel="noopener">Bordeaux M&eacute;tropole</a> '
+      + 'and <a href="https://nantesmetropole.outscale-euw2.opendatasoft.com/explore/dataset/244400404_demandes-autorisations-decisions-urbanisme-nantes-metropole/" target="_blank" rel="noopener">Nantes M&eacute;tropole</a> '
+      + '(Licence Ouverte). Sitadel carries no coordinate: its rows are placed by address through the '
+      + '<a href="https://adresse.data.gouv.fr" target="_blank" rel="noopener">Base Adresse Nationale</a> '
+      + '(Licence Ouverte), and every dot geocoded to a street rather than a house number says so on its card.',
+  },
+  {
     key: 'schools-fr',
     html:
       'French schools: <em>Annuaire de l&rsquo;&eacute;ducation</em>, published by the ' +

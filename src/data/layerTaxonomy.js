@@ -586,6 +586,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Beside the PLU rather than beside DVF, and `periodic` although a Paris
+  // dossier can be a week old: the layer's floor is Sitadel, republished
+  // monthly. The three métropole portals underneath it refresh daily, but a
+  // cadence facet that claimed `live` because three communes out of 34 969 are
+  // would describe the exception rather than the layer.
+  Object.freeze({
+    id: 'ads-fr',
+    category: 'built-environment',
+    label: 'Autorisations d’urbanisme',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'bdtopo-buildings',
     category: 'built-environment',

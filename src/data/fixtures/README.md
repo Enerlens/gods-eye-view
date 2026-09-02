@@ -1,5 +1,37 @@
 # Test fixtures
 
+- `sitadel-12202-sample.json` — real rows from the SDES's DiDo API for Rodez
+  (INSEE 12202), captured 2026-09-02 with the projection's own per-file column
+  selection. Two families, deliberately: six `logements` rows chosen so that
+  all four `ETAT_DAU` values appear (2 autorisé, 4 annulé, 5 commencé,
+  6 terminé) alongside a row with no house number, a row with no parcel
+  reference and a row carrying two, plus three `demolir` rows — which exist to
+  pin the trap that the four Sitadel files DO NOT share their key column names
+  (`NUM_PD`/`ETAT_PD` here, and no site-progress columns at all). Used by
+  `adsFeed.test.mjs`; a synthetic fixture would agree with whatever the module
+  assumed. Licence Ouverte.
+
+- `ads-portals-sample.json` — real rows from the three métropole ADS portals,
+  captured 2026-09-02, each chosen for a different way of being awkward. Paris:
+  a dossier published at Lambert-93 `(0, 0)` — whose `geo_point_2d` reprojects
+  to a well-formed coordinate off São Tomé — plus one under instruction, one
+  refused, one accorded and one modificatif. Bordeaux: a PC, a *certificat
+  d'urbanisme* (which the layer excludes on principle) and a PD, all with the
+  array-valued `refcad` only this portal uses, and none with a decision column
+  because the file has none. Nantes: a row with `<br/>` inside a plain-text
+  field, one under instruction, one decided — and an INTEGER commune code.
+  Used by `adsFeed.test.mjs`. Paris rows are **ODbL 1.0**; the other two are
+  Licence Ouverte.
+
+- `ban-geocode-12202-sample.csv` — the real answer the BAN's bulk
+  `search/csv/` endpoint returned for the nine `sitadel-12202-sample.json`
+  addresses, captured 2026-09-02: three `housenumber`, four `street`, two
+  `not-found`, and a quoted `result_context` containing commas — which is what
+  makes it a test of the quote-aware parser rather than of `split(',')`. Its
+  `ref` column carries the SERIES-qualified ids (`sitadel:DAU:…`,
+  `sitadel:PD:…`) the projection actually sends, so the join it pins is the one
+  the proxy performs. Licence Ouverte.
+
 - `schools-annuaire-sample.json` — 15 real rows from
   `data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-annuaire-education`,
   captured 2026-09-01 with the projection's own field selection. Chosen so that

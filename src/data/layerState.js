@@ -284,6 +284,13 @@ export const SHARE_TRACKING_RESTORE_POLICIES = Object.freeze({
  * owns stable URL ordering.
  */
 export const LAYER_STATE_REGISTRY = Object.freeze([
+  // TWO CHARACTERS, in the space `sup-fr` and the five address layers opened.
+  // `au` for *autorisations d'urbanisme*: `a` is AIS and `u` is the submarine
+  // cables, and `ur` next door is the GPU/PLU layer this one sits beside —
+  // near enough to read as a pair, distinct enough that a share link cannot
+  // enable one for the other. A duplicate here is a BOOT failure
+  // (`validateLayerStateRegistry` throws), not a review nit.
+  Object.freeze({ id: 'ads-fr', token: 'au', disposition: 'enabled-only' }),
   Object.freeze({ id: 'ais-live-vessels', token: 'a', disposition: 'enabled-only' }),
   // A DIGIT for the same reason as `gas-fr` and `power-grid` below: every
   // letter is taken and `z` is the canonical UNKNOWN token two tests assert on.

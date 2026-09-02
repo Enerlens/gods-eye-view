@@ -3,6 +3,77 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
+## [Unreleased] — 2026-09-02
+
+### Added
+
+- **Autorisations d'urbanisme — what has not been built yet.** Every other
+  French register here draws what stands: the cadastre the ground, BD TOPO the
+  roofs, DPE their energy, DVF what they last sold for. This one draws the
+  permits — granted, under construction, and in three métropoles, **still being
+  instructed at the counter this week**. Scan a block and the cranes on it are
+  cyan for a file still open, amber for granted, hot orange for a chantier
+  running, green for finished.
+- **The national register only holds permits that were GRANTED, and that is the
+  whole reason the layer reads two.** Sitadel's own SDES dictionary says it in
+  as many words. There is no national open feed of applications under
+  instruction — Plat'AU, where every dematerialised file transits, is closed to
+  accredited actors. So the layer reads Sitadel for the country (3 020 749 rows
+  across four datafiles, republished monthly, running about six weeks behind
+  the counter) and the ADS portals of **Paris, Bordeaux Métropole and Nantes
+  Métropole** for the half Sitadel cannot publish. Measured 2026-09-02: 2 296
+  Paris dossiers under instruction, deposits two days old.
+- **The two registers merge on the dossier number rather than layering.** Both
+  number a file the same way underneath — département, commune, year, sequence
+  — Sitadel closed up (`07510826V0143`), the portals spaced and prefixed
+  (`DP 075 108 26 V0143`). So one card says *"en cours d'instruction, déposé le
+  6 mars"* from the counter and *"12 logements, 940 m²"* from the State,
+  instead of drawing the same permit twice. Measured on a 400 m Nantes scan:
+  **107 of 116 dossiers carried both halves**.
+- **Sitadel carries no coordinate at all, and the layer says how sure each dot
+  is.** Rows are placed by address through one bulk BAN call per commune.
+  Measured on 211 Nantes authorisations: 167 resolve to a house number, 33 only
+  to a street, 11 not at all. A permit geocoded to the middle of a street says
+  so on its card; one the BAN can place no better than its commune is **dropped
+  rather than drawn at the centroid**, and the count travels with the answer.
+- **Sitadel keys Paris, Lyon and Marseille at COMMUNE level — the exact inverse
+  of DVF.** `COMM=eq:75113` answers *"Le fichier est vide"*, `75056` answers
+  the whole of Paris. Both layers resolve a point through the same BAN reverse
+  call and then bend the answer in opposite directions. Getting it backwards
+  yields an empty layer over the three densest cities in France, with no error.
+- **Paris spells "no coordinate" as Lambert-93 (0, 0), and Opendatasoft
+  reprojects it faithfully.** 19 rows, measured — and their `geo_point_2d`
+  comes back as a perfectly well-formed pair off São Tomé. Nothing about the
+  WGS84 coordinate reveals it; only the published `x`/`y` do, so that is what
+  the guard reads.
+- **DiDo rate-limits concurrent requests, and the failure is silent.** Firing
+  the four Sitadel families in parallel returned **HTTP 429 on three of four**
+  for Nantes while the same URLs answered 200 one at a time — a 429 becomes a
+  null becomes an empty family, so the layer drew a city with no housing
+  permits rather than reporting an outage. The families are sequential, and a
+  family that fails is reported as failed, never as empty.
+- **The Sitadel number series are PER FAMILY, and two of the files share one.**
+  A mixed operation — flats over a shop — is filed once and listed in BOTH
+  permis-de-construire files: 151 such pairs over Paris in three years, plus 12
+  dossiers listed twice inside the non-residential file alone. They are folded
+  into the one operation they are. But `NUM_PA` and `NUM_PD` are their own
+  counters, and **271 numbers collide across series at completely different
+  addresses** — folding on the bare number would have glued 271 unrelated Paris
+  dossiers together, each inheriting the other's address and dwellings. Identity
+  is series + number, never the number alone.
+- **Three rows claiming one entity id is a render Cesium abandons half-way.**
+  Found in the browser, not in a unit test: twelve markers drawn and the layer
+  then frozen — no payload, no scan centre, no clickable cards, and no error
+  anyone would connect to a data shape. The browser harness that caught it now
+  covers this layer, and its click probe verifies a marker owns its own pixel
+  before aiming at it — with six point layers over one block, clicking a
+  covered marker tested Cesium's stacking rather than the layer's handler.
+- **A certificat d'urbanisme is not permission to build, so it is not drawn.**
+  Only Bordeaux publishes them — 174 662 of its 309 094 rows — and keeping them
+  would make one métropole look three times busier than Paris for a category no
+  other source has. They are counted and reported, so the exclusion is a stated
+  line rather than a missing number.
+
 ## [Unreleased] — 2026-09-01
 
 ### Added

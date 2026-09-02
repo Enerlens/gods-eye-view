@@ -1951,12 +1951,13 @@ a rotated trapezoid.
 
 #### French address layers (September 2026)
 
-Five layers scan around the ground point the camera is LOOKING AT — via
+Six layers scan around the ground point the camera is LOOKING AT — via
 `deriveFetchCenter()`, shared with the traffic layer — rather than over the
-viewport, because all four of their upstreams take a coordinate and a radius,
-not a box. They go dormant and clear their draw above 12 km (`idfm-network`:
-20 km), and report `dormant` in `getStats()` so an empty screen is never
-ambiguous between "too high to scan" and "this address is clear".
+viewport, because all of their upstreams take a coordinate and a radius, not a
+box; the permit registers go further and are published per COMMUNE, which a box
+cannot even name. They go dormant and clear their draw above 12 km
+(`idfm-network`: 20 km), and report `dormant` in `getStats()` so an empty screen
+is never ambiguous between "too high to scan" and "this address is clear".
 
 | Layer | Token | Proxy | Upstream |
 |---|---|---|---|
@@ -1965,13 +1966,24 @@ ambiguous between "too high to scan" and "this address is clear".
 | `dpe-fr` | `dp` | `/api/dpe` | ADEME `dpe03existant`, `geo_distance` query |
 | `urbanisme-gpu` | `ur` | `/api/gpu` | APIcarto `zone-urba` + `assiette-sup-s` |
 | `idfm-network` | `if` | `/api/idfm/stops`, `/api/idfm/lines` | Île-de-France Mobilités Opendatasoft |
+| `ads-fr` | `au` | `/api/ads-fr` | Sitadel (SDES DiDo, 4 datafiles) + Paris / Bordeaux / Nantes ADS portals + BAN bulk geocoder |
+
+`ads-fr` is the only one of the six that reads TWO registers and merges them on
+the dossier number. Sitadel is national, monthly, about six weeks behind, and
+holds authorisations that were GRANTED only — the SDES dictionary says so, and
+there is no national open feed of applications under instruction because
+Plat'AU is closed. The three métropole portals supply exactly that missing
+half, daily. Both halves are cached per commune-window on disk for a week: a
+cold commune costs four sequential DiDo calls (parallel ones are rate-limited
+to HTTP 429) plus one bulk BAN geocode — measured at 13-15 s for Paris — and
+every scan inside that commune afterwards is served from cache.
 
 `/api/isochrone` (IGN Valhalla over BD TOPO®) is a SERVICE, not a layer: an
 isochrone has no meaning without a chosen point, so it is not in the layer
 registry and carries no share token. Walking and driving only.
 
 These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
-`ur`, `if` — and `cadastre-fr` is the sixth, `cd`. The single-character space
+`ur`, `if` — `cadastre-fr` is the sixth, `cd`, and `ads-fr` later took `au`. The single-character space
 ran out exactly where this file kept predicting it would: by the time this
 branch met main, `0`–`9` and `a`–`y` were all claimed and `z` is the canonical
 UNKNOWN token two tests assert on. `cadastre-fr` and `schools-fr` both claimed

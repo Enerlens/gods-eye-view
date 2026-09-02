@@ -1,0 +1,183 @@
+{
+ "paris": [
+  {
+   "nom_dossier": "PC 075 114 21 V0034 M02",
+   "type_dossier": "Permis de construire",
+   "demandeur": "Paris et Métropole aménagement",
+   "adresse": "72 P AVENUE DENFERT-ROCHEREAU 75014 PARIS",
+   "objet": "Réhabilitation du bâtiment PINARD de la ZAC saint Vincent de PAUL :  aménagement et construction d’équipements publics mutualisés comprenant une crèche, un groupe scolaire, un gymnase et des locaux d’activités\r\nSurface de plancher créée: 2282.0 m².\r\nDemande de permis modificatif au permis PC 075 114 21 V0034 portant sur : - Mise aux normes de sécurité incendie : Modification du dispositif de désenfumage de la grande salle du gymnase\r\nDemande de permis modificatif au permis PC 075 114 21 V0034 M01 autorisé le 02/02/2024 portant sur la modification des façades, aménagement de la cour d'école, adaptation de la gestion des eaux pluviales, intégration d'un groupe de froid, modification du dispositif de désenfumage et des essences végétales",
+   "date_depot": "2026-08-06",
+   "date_decision": null,
+   "etat": "En cours d'instruction",
+   "type_decision": null,
+   "x": 0.0,
+   "y": 0.0,
+   "geo_point_2d": {
+    "lon": -1.3630812101178986,
+    "lat": -5.983856309013353
+   }
+  },
+  {
+   "nom_dossier": "PC 075 120 26 V0019",
+   "type_dossier": "Permis de construire",
+   "demandeur": "karim dehmous",
+   "adresse": "78 RUE D'AVRON 75020 PARIS",
+   "objet": "Changement de destination avec modification d’aspect extérieur d'une construction à R+3 sur 1 niveau de sous-sol.\r\nChangement de destination des locaux existant à usage d'activités de service avec accueil de clientèle, en activités de restauration\r\nSurface changeant de destination: 46.0 m².",
+   "date_depot": "2026-06-07",
+   "date_decision": null,
+   "etat": "En cours d'instruction",
+   "type_decision": null,
+   "x": 656312.90110715,
+   "y": 6861529.12126593,
+   "geo_point_2d": {
+    "lon": 2.4046381792120326,
+    "lat": 48.85232044070424
+   }
+  },
+  {
+   "nom_dossier": "PC 075 120 17 V0070 M02",
+   "type_dossier": "Permis de construire",
+   "demandeur": "Christophe Christian Maurice ROUSSELLE",
+   "adresse": "100 RUE DES MARAICHERS 75020 PARIS",
+   "objet": "Construction d'un bâtiment de R+4 avec un niveau de sous-sol à usage de commerce à rez-de-chaussée et d'habitation (6 logements créés) avec terrasse végétalisée et reconstruction, après démolition, du muret sur rue.\r\nSurface créée : 358 m².\r\nST : 104 m².\r\nDemande de permis modificatif au permis PC 075 120 17 V0070 portant sur : - Modification du tableau des surfaces Changement de destination de 6 appartements à usage d’habitation en 6 locaux d’hébergement touristique, avec un effectif maximal de 15 personnes simultanément (5 appartements de deux personnes et 1 appartement de quatre personnes).\r\n\r\nLe projet ne prévoit aucune modification architecturale, ni de l’implantation, ni du volume, ni de la hauteur, ni de l’aspect extérieur, ni des plans du pc original. En effet, compte tenu du fait que l’effectif est inférieur à seize visiteurs, le projet reste soumis aux normes applicables aux logements et ne relève pas de la réglementation des établissements recevant du public (ERP).",
+   "date_depot": "2026-02-04",
+   "date_decision": "2026-04-24",
+   "etat": "Refusé",
+   "type_decision": "Défavorable",
+   "x": 656438.0,
+   "y": 6861821.5,
+   "geo_point_2d": {
+    "lon": 2.406312989672446,
+    "lat": 48.85495826925169
+   }
+  },
+  {
+   "nom_dossier": "DP 075 120 26 V0181",
+   "type_dossier": "Déclarations préalables",
+   "demandeur": "Laurent Pierre Yves SIGAL",
+   "adresse": "88 RUE DE LA MARE 75020 PARIS",
+   "objet": "Travaux portant sur une construction existante et comprenant notamment: une modification d’aspect extérieur\r\nL’objet de la présente demande concerne la rénovation et le réaménagement d’une terrasse privative d’un logement situé au sein de la copropriété du 88-90 rue de la Mare, 75020 Paris.",
+   "date_depot": "2026-04-20",
+   "date_decision": "2026-05-20",
+   "etat": "Accordé",
+   "type_decision": "FavorableTacite",
+   "x": 655188.61893283,
+   "y": 6863875.87895146,
+   "geo_point_2d": {
+    "lon": 2.3890697877335327,
+    "lat": 48.87334736180086
+   }
+  },
+  {
+   "nom_dossier": "PC 075 120 20 V0066 M01",
+   "type_dossier": "Permis de construire",
+   "demandeur": "BE MENILMONTANT",
+   "adresse": "62 BOULEVARD DE MENILMONTANT 75020 PARIS",
+   "objet": "Construction d’un bâtiment à R+6 sur 1 niveau(x) de sous-sol à destination de commerce, d'habitation\r\nSurface créée: 944.7 m².\r\n\r\n\r\nDemande de permis modificatif au permis PC 075 120 20 V0066 portant sur : - Modification d'aspect extérieur - Modification du tableau des surfaces - Modification du nombre ou typologie de logements Cette demande de PCM sur la base du PC 12020V0066 porte exclusivement :\r\n- sur le changement de sous-destination d’un immeuble d’habitation à immeuble d’habitation en sous-destination logement-foyers.\r\n- Le changement du mode de chauffe avec passage d’une chaufferie au gaz à un système de PAC double service\r\n- l’ajout d’un pavillon dans le jardin\r\n- l’aggrandissement du sous-sol (toujours dans l’emprise du bâtiment sans modification des espaces libres)\r\n- la modification de la surface de pleine terre\r\n- la suppression de l’édicule d’ascenseur sur la façade sur rue\r\n- la modification de la cellule commerciale ERP à RDC",
+   "date_depot": "2026-03-30",
+   "date_decision": null,
+   "etat": "En cours d'instruction",
+   "type_decision": null,
+   "x": 655036.53384864,
+   "y": 6862825.84816447,
+   "geo_point_2d": {
+    "lon": 2.3871075513657884,
+    "lat": 48.86389400065177
+   }
+  }
+ ],
+ "bordeaux": [
+  {
+   "ident": "PC 033 550 26 00064",
+   "type_libelle": "Permis de construire",
+   "nom": "Villenave-d'Ornon",
+   "insee": "33550",
+   "date_depot": "2026-06-11",
+   "refcad": [
+    "550AH697"
+   ],
+   "superficie": 251.0,
+   "surf_creee": null,
+   "surf_demolie": null,
+   "geo_point_2d": {
+    "lon": -0.5699984553851979,
+    "lat": 44.79120392774191
+   }
+  },
+  {
+   "ident": "CU 033 522 26 00108",
+   "type_libelle": "Certificat d'urbanisme",
+   "nom": "Talence",
+   "insee": "33522",
+   "date_depot": "2026-02-19",
+   "refcad": [
+    "522AO210"
+   ],
+   "superficie": 145.0,
+   "surf_creee": null,
+   "surf_demolie": null,
+   "geo_point_2d": {
+    "lon": -0.5931817227689126,
+    "lat": 44.82111726287022
+   }
+  },
+  {
+   "ident": "PD 033 069 25 00001",
+   "type_libelle": "Permis de démolir",
+   "nom": "Le Bouscat",
+   "insee": "33069",
+   "date_depot": "2025-01-07",
+   "refcad": [
+    "069AB200"
+   ],
+   "superficie": 130.0,
+   "surf_creee": null,
+   "surf_demolie": null,
+   "geo_point_2d": {
+    "lon": -0.6006674779521702,
+    "lat": 44.863349712749304
+   }
+  }
+ ],
+ "nantes": [
+  {
+   "numero_de_dossier": "DP0441662600106",
+   "type_dossier": "Déclaration préalable",
+   "commune": "Saint-Jean-de-Boiseau",
+   "code_insee_commune": 44166,
+   "date_de_depot": "2026-08-25",
+   "date_decision": null,
+   "details_du_projet": "changement porte d'entrée et porte de garage<br/>peinture des volets",
+   "surface_de_plancher": 0,
+   "demandeur": "PINEAU Gérard",
+   "adresse_du_terrain": "1 Impasse des Chênes Rouges",
+   "etat_dossier": "Dossier déposé (en cours d'instruction)"
+  },
+  {
+   "numero_de_dossier": "DP0441662600106",
+   "type_dossier": "Déclaration préalable",
+   "commune": "Saint-Jean-de-Boiseau",
+   "code_insee_commune": 44166,
+   "date_de_depot": "2026-08-25",
+   "date_decision": null,
+   "details_du_projet": "changement porte d'entrée et porte de garage<br/>peinture des volets",
+   "surface_de_plancher": 0,
+   "demandeur": "PINEAU Gérard",
+   "adresse_du_terrain": "1 Impasse des Chênes Rouges",
+   "etat_dossier": "Dossier déposé (en cours d'instruction)"
+  },
+  {
+   "numero_de_dossier": "DP0441092601777",
+   "type_dossier": "Déclaration préalable",
+   "commune": "Nantes",
+   "code_insee_commune": 44109,
+   "date_de_depot": "2026-08-12",
+   "date_decision": "2026-08-26",
+   "details_du_projet": "modification de façade : <br/>- remplacement d'une porte simple battant et d'une fenêtre par une porte double battant, s'ouvrant sur l'extérieur<br/>- remplacement d'un panneau amovible de bardage par une porte simple battant, s'ouvrant sur l'intérieur<br/>- création de 2 rampes béton pour chaque porte",
+   "surface_de_plancher": 0,
+   "demandeur": "Microchip Technology Nantes Microchip Technology Nantes",
+   "adresse_du_terrain": "30 Route de Gachet",
+   "etat_dossier": "Dossier avec décision (- de 2 mois)"
+  }
+ ]
+}
