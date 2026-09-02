@@ -251,12 +251,6 @@ const OPTION_GROUPS = Object.freeze({
   // the encoder throws the moment a non-default option is set. Every other
   // group here — `flights`, `satellites`, `cctv`, `radio` — is a layer id for
   // exactly this reason.
-  // Only the two modes the SERVICE can answer are in this enum. `bike` is a
-  // real mode of the layer's UI — a disabled chip carrying the reason IGN
-  // rejects it — and deliberately NOT encodable: a share link must not be able
-  // to carry a state the service cannot produce, and a hand-edited `is.p.b`
-  // decodes to null and falls back to walking rather than restoring a cycling
-  // ring that was never measured.
   // WHICH RING the fiche is computed on. Serialized because the number on the
   // card is a function of it: "9 700 habitants" at ten minutes and at fifteen
   // are two different claims about the same door, and a link that dropped the
@@ -271,8 +265,19 @@ const OPTION_GROUPS = Object.freeze({
   'velo-pulse-fr': Object.freeze([
     enumOption('mode', 'm', 'now', ['now', 'week', 'peak'], { now: 'n', week: 'w', peak: 'p' }),
   ]),
+  // All three modes the layer can MEASURE. `bike` joined the enum on
+  // 2026-09-02, when cycling stopped being an unanswerable question: IGN still
+  // rejects the profile, so a cycling ring is measured on the OSM cycling
+  // network instead and comes back flagged as an envelope. The token is `b`,
+  // and it is frozen from the moment the first link carrying it is copied.
+  //
+  // The centre is deliberately NOT here. A pinned centre is a coordinate, every
+  // option in this file is an enum, and a link that carried a pin would also
+  // have to carry the promise that the same pin still means the same thing —
+  // so a shared link reopens following the camera, which lands on the view the
+  // sender was looking at anyway.
   'isochrone-fr': Object.freeze([
-    enumOption('profile', 'p', 'foot', ['foot', 'car'], { foot: 'f', car: 'c' }),
+    enumOption('profile', 'p', 'foot', ['foot', 'car', 'bike'], { foot: 'f', car: 'c', bike: 'b' }),
   ]),
   'filosofi-fr': Object.freeze([
     enumOption('metric', 'm', 'niveau', [

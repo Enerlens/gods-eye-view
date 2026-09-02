@@ -444,8 +444,20 @@ export function scanShiftNeeded(last, next, minShiftKm = ADDRESS_SCAN_MIN_SHIFT_
  *   force and the current summary. The manager turns a click into
  *   `setLayerParams`, so a chip's `params` must be values `runtimeParams`
  *   accepts — the two are one mechanism seen from its two ends.
- * @param {number} [config.maxAltitudeM]
- * @param {number} [config.minShiftKm]
+ * @param {number|(() => number)} [config.maxAltitudeM] Ceiling above which a
+ *   camera-following scan goes dormant. A FUNCTION when the ceiling depends on
+ *   what the layer is currently asking for — a fifteen-minute drive is two
+ *   orders of magnitude bigger on the ground than a five-minute walk, and one
+ *   constant for both either wastes requests or hides the answer.
+ * @param {number|(() => number)} [config.minShiftKm] Distance the scan centre
+ *   must move before the question is asked again. Also a function for the same
+ *   reason: 250 m redraws a walking ring and is noise against a driving one.
+ * @param {(context: {lon: number, lat: number, viewer: ?object}) => boolean}
+ *   [config.groundClick]
+ *   What this layer does with a click on bare ground that opened no card.
+ *   Returning true consumes the click. Called even while the layer is DORMANT,
+ *   which is the whole point for a layer whose click PINS the scan centre: the
+ *   reader is up too high to scan and is asking to scan here anyway.
  * @param {typeof fetch} [config.fetchImpl] Injection seam for tests.
  * @returns {object} A layer module.
  */
@@ -458,6 +470,7 @@ export function createAddressScanLayer(config) {
     render,
     summarize = () => ({}),
     groundCard = null,
+    groundClick = null,
     maxAltitudeM = ADDRESS_SCAN_MAX_ALTITUDE_M,
     minShiftKm = ADDRESS_SCAN_MIN_SHIFT_KM,
     fetchImpl = (...args) => fetch(...args),
@@ -473,6 +486,10 @@ export function createAddressScanLayer(config) {
   const _runtime = Object.fromEntries(
     Object.entries(runtimeParams).map(([key, spec]) => [key, spec.defaultValue]),
   );
+
+  /** The ceiling and the movement threshold in force right now. */
+  const altitudeCeilingM = () => (typeof maxAltitudeM === 'function' ? maxAltitudeM() : maxAltitudeM);
+  const shiftThresholdKm = () => (typeof minShiftKm === 'function' ? minShiftKm() : minShiftKm);
 
   let _dataSource = null;
   let _enabled = false;
@@ -495,8 +512,32 @@ export function createAddressScanLayer(config) {
   let _seatTimer = null;
   let _seatPending = false;
   let _mapStackListener = null;
-  /** The exact query the drawn answer came from, for change detection. */
-  let _lastQuery = null;
+  /**
+   * The scan centre the READER chose, or null while the scan follows the camera.
+   *
+   * A pinned centre changes two things and only two. The scan is taken there
+   * instead of under the camera, so flying away no longer moves the answer —
+   * and the altitude ceiling stops applying, because the ceiling exists to stop
+   * a camera-driven layer from firing a request per nudge across a country, and
+   * a pin fires nothing at all when the camera moves. That is what lets a
+   * reader pull back far enough to see a whole driving catchment, which no
+   * ceiling generous enough to allow from the camera could do safely.
+   */
+  let _pin = null;
+  /**
+   * The drawn answer's query WITHOUT its coordinate, for change detection.
+   *
+   * Without the coordinate on purpose. The point is compared separately, by
+   * distance, and folding it into this string made the distance comparison dead
+   * code: `lat` is written to six decimals, so a camera settling one metre away
+   * produced a different string and refetched, and `ADDRESS_SCAN_MIN_SHIFT_KM`
+   * — 250 m, documented as the distance below which the previous answer still
+   * describes the same block — never once suppressed a request. Found while
+   * raising the isochrone layer's ceiling to 45 km, where a lazy pan clears
+   * 250 m without the view meaningfully changing and every one of those was
+   * buying the same answer again.
+   */
+  let _lastParamsSignature = null;
   const _cards = new Map();
   /**
    * The card opened for a bare ground point, which belongs to no entity.
@@ -589,6 +630,24 @@ export function createAddressScanLayer(config) {
     return true;
   }
 
+  /**
+   * Hand a click on bare ground to the layer, when it has no card to open there.
+   *
+   * Deliberately NOT gated on `_dormant` or on `_payload`, unlike
+   * `openGroundCard`: a card can only describe an answer already in hand, but
+   * a click that CHOOSES where to ask is exactly what a reader does when
+   * nothing is drawn yet.
+   *
+   * @param {{x: number, y: number}} windowPosition
+   * @returns {boolean} True when the layer consumed the click.
+   */
+  function handleGroundClick(windowPosition) {
+    if (!groundClick || !_viewer) return false;
+    const ground = sceneGroundPoint(_viewer, windowPosition);
+    if (!ground) return false;
+    return groundClick({ lon: ground.lon, lat: ground.lat, viewer: _viewer }) === true;
+  }
+
   function onKeyDown(event) {
     if (event.key === 'Escape' && _selectedId) clearSelection();
   }
@@ -619,14 +678,20 @@ export function createAddressScanLayer(config) {
         isCard: typeof pickedId === 'string' && _cards.has(pickedId),
         isOwn: typeof pickedId === 'string'
           && Boolean(_dataSource?.entities?.getById?.(pickedId)),
-        answersGround: Boolean(groundCard),
+        answersGround: Boolean(groundCard || groundClick),
         selected: Boolean(_selectedId),
       });
       if (intent === 'select') { selectEntity(pickedId); return; }
       // A ground answer that declines — nothing scanned yet, or a ray that met
       // no globe — is not a card and must not swallow the click either, so the
       // click falls through to what it always was: on empty globe, a dismissal.
-      if (intent === 'ground' && openGroundCard(click.position)) return;
+      // The card is offered first: a layer that both describes a point and
+      // re-centres on one must not silently move under a reader who was asking
+      // what is there.
+      if (intent === 'ground') {
+        if (openGroundCard(click.position)) return;
+        if (handleGroundClick(click.position)) return;
+      }
       if (!picked && _selectedId) clearSelection();
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     document.addEventListener('keydown', onKeyDown);
@@ -767,12 +832,18 @@ export function createAddressScanLayer(config) {
     _scanning = true;
     try {
       if (!_enabled || !_dataSource) return false;
-      const point = cameraScanPoint(viewer);
+      const camera = cameraScanPoint(viewer);
+      // A pin still reports the CAMERA's altitude, because that is what the
+      // altitude means to everything downstream — how far away the reader is
+      // standing — and it is only the gate below that stops consulting it.
+      const point = _pin
+        ? { lat: _pin.lat, lon: _pin.lon, altitudeM: camera?.altitudeM ?? 0, pinned: true }
+        : camera;
       if (!point) {
         _lastError = 'No ground point under the camera';
         return false;
       }
-      if (point.altitudeM > maxAltitudeM) {
+      if (!_pin && point.altitudeM > altitudeCeilingM()) {
         // Dormant, not broken. Clearing the draw is deliberate: a scan of a
         // block left on screen from 40 km up invites reading it as a scan of
         // the region.
@@ -784,7 +855,7 @@ export function createAddressScanLayer(config) {
           _payload = null;
           _dormant = true;
           _lastPoint = null;
-          _lastQuery = null;
+          _lastParamsSignature = null;
           _seatPending = false;
         }
         _lastError = null;
@@ -793,20 +864,22 @@ export function createAddressScanLayer(config) {
       }
       _dormant = false;
 
-      const query = new URLSearchParams({
+      const extraParams = params(point, _viewer, { ..._runtime });
+      const paramsSignature = String(new URLSearchParams(extraParams));
+      const queryString = String(new URLSearchParams({
         lat: point.lat.toFixed(6),
         lon: point.lon.toFixed(6),
-        ...params(point, _viewer, { ..._runtime }),
-      });
-      const queryString = String(query);
+        ...extraParams,
+      }));
       // TWO reasons to rescan, and the movement one is not sufficient on its
       // own. A layer whose params depend on the camera — the urbanism layer
       // asks for a BOX below its own altitude and a point above it — changes
       // the question it is asking without the scan centre moving at all: zoom
       // straight down through that altitude and the shift is zero while the
-      // answer that is on screen is now the wrong kind. Comparing the query
-      // covers both, because the point is in it.
-      if (!scanShiftNeeded(_lastPoint, point, minShiftKm) && queryString === _lastQuery) {
+      // answer that is on screen is now the wrong kind. So the two halves are
+      // compared SEPARATELY: the centre by distance, everything else by string.
+      if (!scanShiftNeeded(_lastPoint, point, shiftThresholdKm())
+          && paramsSignature === _lastParamsSignature) {
         return true;
       }
       try {
@@ -831,7 +904,7 @@ export function createAddressScanLayer(config) {
         indexCards();
         _payload = payload;
         _lastPoint = point;
-        _lastQuery = queryString;
+        _lastParamsSignature = paramsSignature;
         _lastUpdate = Date.now();
         _stale = payload.stale === true;
         _lastError = null;
@@ -891,7 +964,7 @@ export function createAddressScanLayer(config) {
       setOverlaySourceVisible(id, false);
       _enabled = false;
       _lastPoint = null;
-      _lastQuery = null;
+      _lastParamsSignature = null;
       _lastUpdate = null;
       _lastError = null;
       _count = 0;
@@ -899,6 +972,7 @@ export function createAddressScanLayer(config) {
       _dormant = false;
       _payload = null;
       _seatPending = false;
+      _pin = null;
     },
 
     enable(viewer) {
@@ -925,7 +999,7 @@ export function createAddressScanLayer(config) {
       // Force the next update to scan: the camera may have travelled a
       // continent while the layer was off.
       _lastPoint = null;
-      _lastQuery = null;
+      _lastParamsSignature = null;
     },
 
     disable() {
@@ -959,11 +1033,39 @@ export function createAddressScanLayer(config) {
       _dataSource = null;
       _payload = null;
       _viewer = null;
+      _pin = null;
     },
 
     async update(viewer, { signal } = {}) {
       if (viewer) _viewer = viewer;
       return runScan(viewer || _viewer, signal);
+    },
+
+    /**
+     * Pin the scan centre to a coordinate, or release it back to the camera.
+     *
+     * @param {{lat: number, lon: number}|null} pin
+     * @returns {boolean} True when the pin actually moved.
+     */
+    setScanPin(pin) {
+      const next = pin && Number.isFinite(pin.lat) && Number.isFinite(pin.lon)
+        ? { lat: pin.lat, lon: pin.lon }
+        : null;
+      if (!next && !_pin) return false;
+      if (next && _pin && next.lat === _pin.lat && next.lon === _pin.lon) return false;
+      _pin = next;
+      // Lifted HERE rather than left to the next camera move, which may never
+      // come: a reader who pins from 60 km up has just asked for an answer at a
+      // height this layer had switched itself off at, and waiting for them to
+      // nudge the camera to get it would read as the click doing nothing.
+      if (next) _dormant = false;
+      if (_enabled) void runScan(_viewer);
+      return true;
+    },
+
+    /** @returns {{lat: number, lon: number}|null} The pinned centre, if any. */
+    getScanPin() {
+      return _pin ? { ..._pin } : null;
     },
 
     /**
@@ -1047,6 +1149,10 @@ export function createAddressScanLayer(config) {
         // only state in which a marker can still drift as the camera turns.
         seatPending: _seatPending,
         scanCentre: _lastPoint ? { lat: _lastPoint.lat, lon: _lastPoint.lon } : null,
+        // Where the centre came from. Reported apart from `scanCentre` because
+        // the two agree in both states and only this one says whether flying
+        // away will move the answer.
+        scanPin: _pin ? { lat: _pin.lat, lon: _pin.lon } : null,
         ...(_payload ? summarize(_payload) : {}),
       };
     },
