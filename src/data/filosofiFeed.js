@@ -117,8 +117,21 @@ export const FILOSOFI_FIELDS = Object.freeze({
 /** The imputation flag each grid publishes under its own name. */
 export const FILOSOFI_IMPUTED_FIELD = Object.freeze({ 200: 'i_car_est', 1000: 'i_est_1km' });
 
-/** Row ceiling per request. Above this the layer says it truncated. */
-export const FILOSOFI_MAX_CELLS = 6000;
+/**
+ * Row ceiling per request — THE SERVICE'S OWN, not a choice.
+ *
+ * Measured 2026-09-02 against a 1.2° × 0.9° box over Île-de-France holding
+ * 6 283 cells at 1 km: `COUNT=4000` returns 4 000, and `COUNT=5000`, `6000` and
+ * `10000` all return exactly **5 000**. The Géoplateforme caps a page at five
+ * thousand features whatever is asked for, so a larger number here would be a
+ * ceiling the layer reports on `/status` and the service never honours — the
+ * map would truncate 1 283 cells earlier than every comment claimed.
+ *
+ * `numberMatched` is still published on a capped answer (6 283 against 5 000
+ * returned), which is what keeps the truncation flag honest rather than a
+ * guess from the row count.
+ */
+export const FILOSOFI_MAX_CELLS = 5000;
 
 // ---------------------------------------------------------------------------
 // EPSG:3035 — ETRS89-extended / LAEA Europe, inverted

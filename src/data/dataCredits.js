@@ -647,6 +647,20 @@ export const DATA_CREDITS = [
       'Labels are shown as a distribution, never averaged into a neighbourhood grade.',
   },
   {
+    key: 'implantation-fiche',
+    html:
+      'Fiche implantation: a JOIN, not a source. It composes the IGN isochrone, the INSEE Filosofi carroyage, '
+      + 'the G&eacute;oportail de l&rsquo;urbanisme and DVF &mdash; each credited separately above &mdash; around one '
+      + 'clicked point, plus the '
+      + '<a href="https://adresse.data.gouv.fr/" target="_blank" rel="noopener">Base Adresse Nationale</a> '
+      + 'reverse geocoder for the address line '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
+      + '<strong>The population figure is a bracket</strong>: a 200&nbsp;m carreau sits inside the reachable ring, '
+      + 'outside it, or across its edge, so the card prints the centroid count between the population of the squares '
+      + 'entirely inside and of every square the ring touches. Cells are never scaled by the fraction of them inside &mdash; '
+      + 'that would assume people are spread evenly across a square, which INSEE&rsquo;s own imputation flag exists to deny.',
+  },
+  {
     key: 'ign-isochrone',
     html:
       'Reachable-area rings: IGN G&eacute;oplateforme ' +

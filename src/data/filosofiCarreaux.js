@@ -112,7 +112,7 @@ const IMPUTED_INSET = 0.6;
 /** Selection accent, matching the app's other selected-object cards. */
 const SELECTED_COLOR = '#00ffff';
 
-/** Reused so a 6 000-cell payload does not mint 6 000 Cartographics. */
+/** Reused so a 5 000-cell payload does not mint 5 000 Cartographics. */
 const _groundScratch = new Cesium.Cartographic();
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({

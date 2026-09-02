@@ -2048,6 +2048,22 @@ outside, fourteen lie partly outside because they share an edge with the outer
 ring, and the three largest of them are courtyards of 787, 754 and 249 m²
 that the rule would have silently filled in.
 | `isochrone-fr` | `is` | `/api/isochrone` | IGN Géoplateforme, Valhalla over BD TOPO® — three rings per scan |
+| `implantation-fr` | `im` | *(none of its own)* | Fans out across `/api/isochrone`, `/api/filosofi/carreaux`, `/api/gpu`, `/api/dvf` and the BAN reverse geocoder, and joins them in the browser |
+
+`implantation-fr` is the only layer in the app with NO SOURCE OF ITS OWN. It
+uses the shared address-scan factory's `fetchImpl` seam to fan out across four
+routes this server already has — all already cached, all already tested — and
+does the spatial join locally: which 200 m carreaux fall inside the reachable
+ring. A fifth proxy route would have had to duplicate their load logic
+server-side and would have missed their caches. The join reports a BRACKET
+rather than a number (squares entirely inside, squares the ring touches, and the
+centroid convention between them), because at 200 m a ten-minute walk is mostly
+boundary — measured at place Bellecour, 24 of the 35 squares the ring touches
+are across its edge. It never scales a square by the fraction inside it: that is
+areal interpolation and it assumes an even spread INSEE's imputation flag exists
+to deny. The `ficheLines()` output is unit-tested for one thing above all — no
+line may contain ' · ', which is the separator `cardFromEntity()` splits on, and
+a line carrying one arrives on screen in two halves.
 
 `/api/isochrone` (IGN Valhalla over BD TOPO®) WAS a service with no surface —
 in the repository since 2026-09-01 and drawn by nothing. It is now the

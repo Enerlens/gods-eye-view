@@ -244,6 +244,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `road-status-fr`'s 🛣, because the whole point is that it is a different
   quantity. `REGISTERED_LAYER_IDS.length` moves 42 → 43.
 
+- **Fiche implantation (FR) — le chiffre qu'un outil de géomarketing vend, avec
+  sa barre d'erreur.** Click a door: how many people live within ten minutes'
+  walk of it, what do they earn, what may be built on the plot, what did the
+  ground around it last sell for. Every half of that was already on this globe —
+  the reachable shape, the INSEE carroyage, the PLU, DVF — and nothing had ever
+  joined them. The join is the product.
+
+  **The headline is a bracket, not a number.** A 200 m carreau sits inside the
+  ring, outside it, or across its edge. Every commercial tool picks a convention
+  and prints one figure; this one prints the centroid count between two
+  countable bounds — the population of the squares entirely inside, and of every
+  square the ring touches. Measured at place Bellecour, ten minutes on foot:
+  **9 703 habitants, entre 5 643 et 15 694** on 0,96 km². Place de la
+  République: **28 878, entre 21 988 et 50 074** on 0,95 km².
+
+  **That bracket is wide because the grid is coarse relative to the question,
+  and the card says so out loud.** A ten-minute walk is about 1,1 km across and
+  a carreau is 200 m, so most of the squares the ring touches ARE its border —
+  24 of 35 at Bellecour. Without that sentence a reader meeting a ±100 % bracket
+  assumes a bug rather than a resolution. And the four counts are printed as a
+  partition that adds up: retenus au centre, touchés, entiers, à cheval.
+
+  It never scales a square by the fraction of it inside the ring. That is areal
+  interpolation, it assumes people are spread evenly across a square, and
+  INSEE's own imputation flag exists precisely because they are not.
+
+  **No new proxy.** The layer fans out across four routes this server already
+  has — all cached, all tested — through the shared address-scan factory's
+  `fetchImpl` seam, and joins them in the browser. A fifth route would have
+  duplicated their load logic server-side and missed their caches. One source
+  going quiet degrades the fiche rather than killing it, and the card names
+  which one.
+
+  Share token `im`, carrying the duration: "9 703 habitants" at ten minutes and
+  at fifteen are two different claims about the same door. `npm run
+  qa:implantation` proves it in a browser over Lyon and Paris — and it asserts
+  on the WORDS, because this is the one layer whose product is a sentence.
+
 - **Zone de chalandise (FR) — le service isochrone avait un proxy et aucune
   surface.** `/api/isochrone` has been in this repository since 2026-09-01,
   wired, cached, unit-tested — and drawn by nothing. It is now a layer.

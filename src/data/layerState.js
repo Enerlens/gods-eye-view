@@ -242,6 +242,13 @@ const OPTION_GROUPS = Object.freeze({
   // to carry a state the service cannot produce, and a hand-edited `is.p.b`
   // decodes to null and falls back to walking rather than restoring a cycling
   // ring that was never measured.
+  // WHICH RING the fiche is computed on. Serialized because the number on the
+  // card is a function of it: "9 700 habitants" at ten minutes and at fifteen
+  // are two different claims about the same door, and a link that dropped the
+  // duration would restore the wrong one under the right headline.
+  'implantation-fr': Object.freeze([
+    enumOption('seconds', 's', 600, [300, 600, 900], { 300: '5', 600: '0', 900: '9' }),
+  ]),
   'isochrone-fr': Object.freeze([
     enumOption('profile', 'p', 'foot', ['foot', 'car'], { foot: 'f', car: 'c' }),
   ]),
@@ -421,6 +428,9 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // that enabled the wrong one of a stacked pair would be invisible.
   Object.freeze({ id: 'idfm-frequency', token: 'fq', disposition: 'enabled-only' }),
   Object.freeze({ id: 'idfm-network', token: 'if', disposition: 'enabled-only' }),
+  // `im`, alphabetically between `idfm-network` and `irve-fr`. The registry is
+  // asserted sorted, so position here is not a preference.
+  Object.freeze({ id: 'implantation-fr', token: 'im', disposition: 'enabled+options', optionOwner: 'implantation-fr' }),
   Object.freeze({ id: 'irve-fr', token: '9', disposition: 'enabled-only' }),
   // TWO CHARACTERS, and `is` rather than `i`: `i` is `military-installations`
   // and has shipped in links since the beginning. `enabled+options`, because

@@ -726,6 +726,21 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // The only row in the whole taxonomy that is not a SOURCE. It fetches nothing
+  // of its own: it joins four layers that are already here — the reachable
+  // shape, the carroyage, the zoning and the sales — into the single card a
+  // geomarketing tool exists to print. `dataset` all the same, because a
+  // visitor turns it on and off like any other and it draws its own geometry;
+  // `coordinator` is reserved for the roster that draws nothing.
+  Object.freeze({
+    id: 'implantation-fr',
+    category: 'built-environment',
+    label: 'Fiche implantation',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'bdtopo-buildings',
     category: 'built-environment',

@@ -162,8 +162,8 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   // `filosofi-fr`, `isochrone-fr`, `implantation-fr`, `velo-pulse-fr`. The
   // number below is COUNTED off the registry at each step of the rebase, never
   // taken from either side.
-  assert.equal(REGISTERED_LAYER_IDS.length, 56);
-  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 56);
+  assert.equal(REGISTERED_LAYER_IDS.length, 57);
+  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 57);
   assert.deepEqual(REGISTERED_LAYER_IDS, [...REGISTERED_LAYER_IDS].sort());
   assert.throws(
     () => validateLayerStateRegistry([...LAYER_STATE_REGISTRY, LAYER_STATE_REGISTRY[0]]),

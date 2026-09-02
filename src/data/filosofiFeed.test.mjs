@@ -335,6 +335,18 @@ test('the missing 18-24 band is recovered as a residual, and only when it can be
 
 // ── The pinned figures ──────────────────────────────────────────────────────
 
+test('the row ceiling is the service\'s own cap, not a number we chose', () => {
+  // Measured 2026-09-02 over a 1.2° × 0.9° box holding 6 283 cells at 1 km:
+  // COUNT=4000 returns 4 000, and COUNT=5000/6000/10000 all return 5 000.
+  // Asking for more than the service will send would make `/status` advertise a
+  // ceiling that does not exist and truncate the map earlier than documented.
+  assert.equal(FILOSOFI_MAX_CELLS, 5000);
+  const url = new URL(buildCarreauxUrl({
+    box: { south: 45.75, west: 4.83, north: 45.77, east: 4.86 },
+  }));
+  assert.equal(url.searchParams.get('COUNT'), '5000');
+});
+
 test('the published cell counts are pinned so a thinner relay is a failure', () => {
   assert.equal(FILOSOFI_PUBLISHED_CELLS[200], 2_314_836);
   assert.equal(FILOSOFI_PUBLISHED_CELLS[1000], 377_234);

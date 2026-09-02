@@ -82,6 +82,7 @@
     "filosofi:ramp": "node scripts/build-filosofi-ramp.mjs",
     "qa:filosofi": "node scripts/qa-filosofi.mjs",
     "qa:isochrone": "node scripts/qa-isochrone.mjs",
+    "qa:implantation": "node scripts/qa-implantation.mjs",
     "qa:meteo-stations-fr": "node scripts/qa-meteo-stations-fr.mjs"
   },
   "dependencies": {
