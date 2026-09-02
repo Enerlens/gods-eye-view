@@ -1,0 +1,84 @@
+{
+ "txcouv": [
+  {
+   "annee": 2023,
+   "numcom": "13108",
+   "nomcom": "TARASCON",
+   "txcouv_psu_col_com": 17.9,
+   "txcouv_hors_psu_col_com": 0.0,
+   "txcouv_eaje_com": 17.9,
+   "txcouv_prescol_com": 1.7,
+   "txcouv_am_ind_com": 7.3,
+   "txcouv_gad_ind_com": 0.2,
+   "txcouv_ind_com": 7.5,
+   "txcouv_com": 27.1
+  },
+  {
+   "annee": 2023,
+   "numcom": "92033",
+   "nomcom": "GARCHES",
+   "txcouv_psu_col_com": 77.3,
+   "txcouv_hors_psu_col_com": 4.8,
+   "txcouv_eaje_com": 82.1,
+   "txcouv_prescol_com": 0.2,
+   "txcouv_am_ind_com": 12.2,
+   "txcouv_gad_ind_com": 16.5,
+   "txcouv_ind_com": 28.7,
+   "txcouv_com": 111.0
+  },
+  {
+   "annee": 2023,
+   "numcom": "13201",
+   "nomcom": "MARSEILLE 1ER ARRONDISSEMENT",
+   "txcouv_psu_col_com": 21.2,
+   "txcouv_hors_psu_col_com": 1.6,
+   "txcouv_eaje_com": 22.7,
+   "txcouv_prescol_com": 0.9,
+   "txcouv_am_ind_com": 8.4,
+   "txcouv_gad_ind_com": 2.5,
+   "txcouv_ind_com": 10.8,
+   "txcouv_com": 34.4
+  }
+ ],
+ "nbpla": [
+  {
+   "annee": 2023,
+   "numcom": "92033",
+   "nomcom": "GARCHES",
+   "pl_psu_col_com": 379,
+   "pl_hors_psu_col_com": 23,
+   "pl_eaje_com": 402.0,
+   "pl_prescol_com": 1,
+   "pl_am_ind_com": 60,
+   "pl_gad_ind_com": 81,
+   "pl_ind_com": 141.0,
+   "tot_offre_com": 544
+  },
+  {
+   "annee": 2023,
+   "numcom": "13201",
+   "nomcom": "MARSEILLE 1ER ARRONDISSEMENT",
+   "pl_psu_col_com": 318,
+   "pl_hors_psu_col_com": 23,
+   "pl_eaje_com": 341.0,
+   "pl_prescol_com": 13,
+   "pl_am_ind_com": 126,
+   "pl_gad_ind_com": 37,
+   "pl_ind_com": 163.0,
+   "tot_offre_com": 517
+  },
+  {
+   "annee": 2023,
+   "numcom": "13108",
+   "nomcom": "TARASCON",
+   "pl_psu_col_com": 94,
+   "pl_hors_psu_col_com": 0,
+   "pl_eaje_com": 94.0,
+   "pl_prescol_com": 9,
+   "pl_am_ind_com": 38,
+   "pl_gad_ind_com": 1,
+   "pl_ind_com": 39.0,
+   "tot_offre_com": 142
+  }
+ ]
+}

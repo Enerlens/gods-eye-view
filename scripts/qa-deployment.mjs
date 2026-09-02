@@ -37,6 +37,7 @@ const PROBES = [
   '/api/rte-generation',
   '/api/schools-fr/departements',
   '/api/sup-fr/departements',
+  '/api/petite-enfance-fr/departements',
   '/api/irve-fr/departements',
   '/api/gas-fr/sites',
   '/api/bison-fute/events',
