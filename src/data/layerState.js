@@ -292,6 +292,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // the duplicate-token assertion exists to catch — a silent collision would
   // make one share link enable the wrong layer — so it is worth restating that
   // a duplicate here is a BOOT failure, not a review nit.
+  // `an` for ANFR. The agency's own initials; `a` is airports. The `radio`
+  // layer next door is radio-browser.info AUDIO streams and shares nothing with
+  // this but a word, which is exactly why the token had to be unmistakable.
+  Object.freeze({ id: 'anfr-fr', token: 'an', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   // TWO CHARACTERS, because the single-character scheme is spent: a-y are taken,
@@ -335,6 +339,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // shared link that silently hid two thousand plants would be a worse surprise
   // than one that shows the register whole.
   Object.freeze({ id: 'fr-hydro-plants', token: '4', disposition: 'enabled-only' }),
+  // `fh` for fraîcheur. `f` is flights and `fr` would read as the country
+  // suffix every other French layer carries, which is the one thing a share
+  // token must never look like.
+  Object.freeze({ id: 'fraicheur-fr', token: 'fh', disposition: 'enabled-only' }),
   Object.freeze({ id: 'france-energy', token: 'j', disposition: 'enabled-only' }),
   // A DIGIT, not a letter: every letter of "gas" is taken (g by
   // military-awareness, a by AIS, s by satellites), and `z` is the token two

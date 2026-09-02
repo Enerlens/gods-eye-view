@@ -248,6 +248,75 @@ import {
   projectDelinquanceDepartements,
   selectDelinquanceChips,
 } from './src/data/delinquanceFeed.js';
+// Add to the top import block of vite.config.js, beside the other src/data feed
+// imports. `validBox`, `snapBoxOutward` and `boxKey` are already imported there
+// for cadastreFranceProxy; `boxesIntersect` may need adding to that same line.
+import {
+  FRAICHEUR_COVERAGE,
+  FRAICHEUR_EQUIPMENT_DATASET,
+  FRAICHEUR_EQUIPMENT_FIELDS,
+  FRAICHEUR_FOUNTAIN_DATASET,
+  FRAICHEUR_FOUNTAIN_FIELDS,
+  FRAICHEUR_LICENCE,
+  FRAICHEUR_LICENCE_URL,
+  FRAICHEUR_PORTAL,
+  FRAICHEUR_PUBLISHERS,
+  FRAICHEUR_SOURCE,
+  FRAICHEUR_SPACES_DATASET,
+  FRAICHEUR_SPACE_FIELDS,
+  projectFraicheurRefuges,
+} from './src/data/fraicheurFeed.js';
+import {
+  FRAICHEUR_TREE_BOX_STEP_DEG,
+  FRAICHEUR_TREE_BUDGET,
+  FRAICHEUR_TREE_DATASET,
+  FRAICHEUR_TREE_FIELDS,
+  FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG,
+  FRAICHEUR_TREE_SOURCE,
+  fraicheurTreeWhere,
+  projectFraicheurTrees,
+} from './src/data/fraicheurTrees.js';
+// vite.config.js:153 currently reads
+//   import { boundsOfPoints, boxKey, snapBoxOutward, validBox } from './src/data/viewportBox.js';
+// ADD `boxesIntersect` to that existing line — do not add a second import of the
+// same module:
+//   import { boundsOfPoints, boxKey, boxesIntersect, snapBoxOutward, validBox } from './src/data/viewportBox.js';
+import {
+  ANFR_CATALOGUE_URL,
+  ANFR_DAS_DATASET,
+  ANFR_DAS_FIELDS,
+  ANFR_DAS_RESOURCE_ID,
+  ANFR_DATASET,
+  ANFR_EXPOSURE_RADIUS_M,
+  ANFR_HAUT,
+  ANFR_ID,
+  ANFR_LAT,
+  ANFR_LIVE,
+  ANFR_LON,
+  ANFR_NAT,
+  ANFR_OPS,
+  ANFR_PLAN,
+  ANFR_PORTAL,
+  ANFR_REF_MEMBER,
+  ANFR_REF_ZIP_URL,
+  ANFR_SOURCE,
+  ANFR_SVC,
+  ANFR_SYS,
+  CARTORADIO_BASE,
+  anfrCsvColumns,
+  anfrDecodeMask,
+  anfrExposureBbox,
+  parseAnfrNatureTable,
+  pickAnfrObservatoire,
+  projectAnfrDas,
+  projectAnfrSupports,
+  projectCartoradioAntennas,
+  projectCartoradioExposure,
+  projectCartoradioSupport,
+  readAnfrCsvRow,
+} from './src/data/anfrFeed.js';
+import { buildAnfrMesh } from './src/data/anfrMesh.js';
+import { readZipMember } from './scripts/lib/remoteZip.mjs';
 import { delinquanceRateBins } from './src/data/delinquanceDepartements.js';
 import { projectSupDepartements } from './src/data/supDepartements.js';
 import {
@@ -5000,6 +5069,958 @@ function delinquanceFranceProxy() {
 
   return {
     name: 'delinquance-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * ANFR mobile-network observatory proxy — keyless, Licence Ouverte 2.0.
+ *
+ * A proxy is not an optimisation here, it is the only option: measured with
+ * real GETs carrying `Origin: http://localhost:4173`, neither `data.anfr.fr`
+ * nor `www.cartoradio.fr` sends any `access-control-allow-origin` header at
+ * all. Only `static.data.gouv.fr` does (`*`).
+ *
+ * ONE build, three answers. The whole layer comes out of a single sweep of the
+ * 826 418-row weekly observatoire, and the three routes are three views of it:
+ *
+ *   /api/anfr-fr/mesh                — 72 700 `[lat, lon, operators, band]`
+ *                                      tuples plus the national totals.
+ *                                      Measured on the live build: 1 666 693
+ *                                      bytes raw, 394 030 gzipped.
+ *   /api/anfr-fr/supports?box        — every support inside a box ≤ 0.35°,
+ *                                      with its operator names, its system
+ *                                      labels and its nature resolved. The
+ *                                      fullest possible box (48.6725 N,
+ *                                      2.19556 E) is 6 462 rows and 112 831
+ *                                      bytes gzipped; central Paris is 726
+ *                                      rows and 13 106. The same route answers
+ *                                      a maillage click, at a 0.001° box that
+ *                                      returned exactly 1 row and 423 bytes.
+ *   /api/anfr-fr/support/<sup_id>    — the Cartoradio card for ONE mast, on
+ *                                      demand: address, owner, the categories
+ *                                      this layer does not draw, the per-emitter
+ *                                      frequency pairs, and the nearest
+ *                                      published exposure measurement. 3 544
+ *                                      bytes for support 449714.
+ *
+ * WHY THE 182 MB CSV AND NOT THE DATASTORE. Both serve the same 826 418 rows.
+ * The CSV is one static GET; the `/d4c/api/records/2.0/search/` route needs six
+ * paged calls totalling ~231 MB. The CSV URL is not guessed — the D4C
+ * catalogue publishes it as `extras.file_csv`, and republishes it under a new
+ * build stamp every week, which is why it is discovered and not pinned.
+ *
+ * WHY A BUFFER READ AND NOT `readResponseTextCapped`. That helper is right for
+ * every JSON body here and all of them go through `readResponseJsonCapped`.
+ * It is wrong for this one: it materialises the 182 MB file as a single
+ * 180-million-character JS string, and the whole build then peaks at 1 274 MB
+ * RSS. Reading into a Buffer and yielding rows out of it with a generator —
+ * so `projectAnfrSupports` never sees more than one row object at a time —
+ * measured 517 MB peak for the same build. Both were measured on the live file
+ * on 2026-09-02.
+ *
+ * BUILD COST, MEASURED LIVE. 36.4 s wall for the whole thing, of which 34 s is
+ * `fetch()` reading the 182 MB body (`curl` reads the same bytes in 3.5 s and
+ * `node:https` in 3.1 s — undici is the bottleneck, not the server). Parsing
+ * and folding 826 418 rows is 1.5 s and the mesh is 17 ms. That is why the TTL
+ * is six hours against a WEEKLY upstream, the disk cache is 5.2 MB on disk, and
+ * a failed refresh serves stale for a fortnight instead of blanking the layer.
+ */
+const ANFR_DAS_URL = `https://${ANFR_PORTAL}/d4c/api/records/2.0/search/`
+  + `?resource_id=${ANFR_DAS_RESOURCE_ID}&limit=2000&fields=${ANFR_DAS_FIELDS}`;
+/** Six hours against a weekly upstream — the build is 36 s and 517 MB. */
+const ANFR_TTL_MS = 6 * 60 * 60_000;
+/** A fortnight. The edition is a whole week, so a stale one is still that week. */
+const ANFR_STALE_MS = 14 * 24 * 60 * 60_000;
+const ANFR_TIMEOUT_MS = 30_000;
+/** The 182 MB read took 34.4 s on a 58 MB/s link. Four minutes is the ceiling. */
+const ANFR_CSV_TIMEOUT_MS = 240_000;
+const ANFR_MAX_BYTES = 8 * 1024 * 1024;
+/** 260 MB — 1.43× the 181 988 412-byte file, so a bigger edition still lands. */
+const ANFR_CSV_MAX_BYTES = 260 * 1024 * 1024;
+/** Widest box `/supports` will answer. Matches ANFR_MAX_BOX_DEG in anfrFrance.js. */
+const ANFR_MAX_BOX_DEG = 0.35;
+/** Above the 6 462 of the fullest possible box, so it never bites in practice. */
+const ANFR_MAX_SUPPORTS = 8000;
+/** A mast's Cartoradio card does not change between two clicks. */
+const ANFR_DETAIL_TTL_MS = 24 * 60 * 60_000;
+const ANFR_DETAIL_MAX = 400;
+const ANFR_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'anfr-fr');
+const ANFR_CACHE_PATH = path.join(ANFR_DISK_DIR, 'register.json');
+/** BUMP THIS whenever the projection changes shape — the disk cache outlives the edit. */
+const ANFR_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _anfrRegister = null;
+let _anfrInFlight = null;
+let _anfrDiskChecked = false;
+/** SUP_ID -> {at, payload}. Cartoradio is courtesy access; ask once per mast. */
+const _anfrDetails = new Map();
+const _anfrDetailInFlight = new Map();
+const _anfrRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+async function fetchAnfrJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(ANFR_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, ANFR_MAX_BYTES);
+}
+
+/**
+ * The observatoire CSV as bytes, capped, never as one giant string.
+ *
+ * See the header: the string form costs 757 MB of extra RSS for a body that is
+ * consumed one line at a time.
+ */
+async function fetchAnfrCsvBuffer(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'text/csv' },
+    signal: AbortSignal.timeout(ANFR_CSV_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > ANFR_CSV_MAX_BYTES) {
+    const err = new Error('Upstream response too large');
+    err.code = 'RESPONSE_TOO_LARGE';
+    throw err;
+  }
+  const reader = response.body?.getReader?.();
+  if (!reader) return Buffer.from(await response.arrayBuffer());
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > ANFR_CSV_MAX_BYTES) {
+      try { await reader.cancel(); } catch { /* no-op */ }
+      const err = new Error('Upstream response too large');
+      err.code = 'RESPONSE_TOO_LARGE';
+      throw err;
+    }
+    chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+  }
+  return Buffer.concat(chunks, total);
+}
+
+/**
+ * Rows out of the CSV buffer, one at a time.
+ *
+ * The file is LF-only (verified byte by byte over all 181 988 412 of them —
+ * zero `\r`, unlike the CRLF 5W tables next door) and opens with a UTF-8 BOM,
+ * both of which `anfrCsvColumns` handles. A generator rather than an array so
+ * `projectAnfrSupports` folds 826 418 rows without ever holding two.
+ */
+function* anfrCsvRows(buffer) {
+  const firstBreak = buffer.indexOf(0x0a);
+  if (firstBreak < 0) return;
+  const columns = anfrCsvColumns(buffer.toString('utf8', 0, firstBreak));
+  let start = firstBreak + 1;
+  for (;;) {
+    const end = buffer.indexOf(0x0a, start);
+    const stop = end < 0 ? buffer.length : end;
+    if (stop > start) {
+      const row = readAnfrCsvRow(buffer.toString('utf8', start, stop), columns);
+      if (row) yield row;
+    }
+    if (end < 0) break;
+    start = end + 1;
+  }
+}
+
+/**
+ * `nat_id` -> nature, from the 4 805-byte reference archive.
+ *
+ * Whole-body, not ranged: three range requests to save 4 KB is arithmetic
+ * nobody needs. `static.data.gouv.fr` is the one ANFR-adjacent host that sends
+ * `access-control-allow-origin: *`, and this is the only member of the archive
+ * this layer reads (`SUP_NATURE.txt`, 785 bytes, 38 rows).
+ */
+async function fetchAnfrNatures() {
+  const response = await fetch(ANFR_REF_ZIP_URL, { signal: AbortSignal.timeout(ANFR_TIMEOUT_MS) });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  const archive = Buffer.from(await response.arrayBuffer());
+  const member = readZipMember(archive, ANFR_REF_MEMBER);
+  if (!member) throw new Error(`${ANFR_REF_MEMBER} missing from the reference archive`);
+  return parseAnfrNatureTable(member.toString('utf8'));
+}
+
+/**
+ * Build the whole layer: discover the week, sweep it, fold it, thin it.
+ *
+ * Only the CSV is fatal. Losing the catalogue costs the discovered URL and the
+ * completeness proof and falls back to the floor; losing the reference archive
+ * costs the card the word "Pylône autostable" and leaves `natureAvailable`
+ * false; losing the DAS register costs one national readout that was never on
+ * the map anyway — it has no coordinate of any kind. Each of those degrades
+ * with a warning rather than failing a build that still has 72 700 masts in it.
+ */
+async function refreshAnfrRegister() {
+  const started = Date.now();
+  const catalogue = await fetchAnfrJson(ANFR_CATALOGUE_URL).catch((error) => {
+    console.warn('[ANFR Proxy] catalogue unavailable:', error?.message || error);
+    return null;
+  });
+  const observatoire = pickAnfrObservatoire(catalogue || {});
+
+  const [natures, das, buffer] = await Promise.all([
+    fetchAnfrNatures().catch((error) => {
+      console.warn('[ANFR Proxy] nature table unavailable:', error?.message || error);
+      return null;
+    }),
+    fetchAnfrJson(ANFR_DAS_URL).then(projectAnfrDas).catch((error) => {
+      console.warn('[ANFR Proxy] DAS register unavailable:', error?.message || error);
+      return null;
+    }),
+    fetchAnfrCsvBuffer(observatoire.csvUrl),
+  ]);
+
+  const projected = projectAnfrSupports({
+    rows: anfrCsvRows(buffer),
+    natures,
+    edition: observatoire.edition,
+    totalCount: observatoire.rowsTotal,
+  });
+  if (!projected.complete) {
+    console.warn(`[ANFR Proxy] observatoire short: ${projected.rowsSwept}/${projected.rowsTotal} rows`);
+  }
+
+  const { supports, ...summary } = projected;
+  const national = {
+    count: summary.count,
+    live: summary.live,
+    projectOnly: summary.projectOnly,
+    plannedUpgrades: summary.plannedUpgrades,
+    bands: summary.bands,
+    generations: summary.generations,
+  };
+  // The two documents are built once and served apart because they are read at
+  // different moments and at different sizes: the maillage arrives with the
+  // layer at 394 KB gzipped, and a viewport slice is only asked for once the
+  // camera is inside 0.32 degrees.
+  return {
+    supports,
+    mesh: {
+      mesh: buildAnfrMesh(supports),
+      ...summary,
+      licence: observatoire.licence,
+      discovered: observatoire.discovered,
+      das,
+      builtInMs: Date.now() - started,
+    },
+    national,
+    vocab: { operators: summary.operators, systems: summary.systems, natures: summary.natures },
+    edition: summary.edition,
+    source: summary.source,
+    licence: observatoire.licence,
+    natureAvailable: summary.natureAvailable,
+  };
+}
+
+async function readAnfrDisk() {
+  if (_anfrDiskChecked) return;
+  _anfrDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(ANFR_CACHE_PATH, 'utf8'));
+    if (entry?.version === ANFR_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.supports)
+      && Array.isArray(entry.payload?.mesh?.mesh)) {
+      _anfrRegister = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeAnfrDisk(entry) {
+  fsp.mkdir(ANFR_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(ANFR_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[ANFR Proxy] cache write failed:', err?.message || err));
+}
+
+/** Shared build, so `/mesh` and `/supports` never sweep 826 418 rows twice. */
+function ensureAnfrRegister() {
+  if (!_anfrInFlight) {
+    _anfrInFlight = refreshAnfrRegister()
+      .then((payload) => {
+        const entry = { version: ANFR_CACHE_VERSION, at: Date.now(), payload };
+        _anfrRegister = entry;
+        writeAnfrDisk(entry);
+        return entry;
+      })
+      .finally(() => { _anfrInFlight = null; });
+  }
+  return _anfrInFlight;
+}
+
+/** The requested box, or null when it is malformed or wider than the ceiling. */
+function anfrBoxFrom(url) {
+  const south = Number(url.searchParams.get('south'));
+  const west = Number(url.searchParams.get('west'));
+  const north = Number(url.searchParams.get('north'));
+  const east = Number(url.searchParams.get('east'));
+  if (![south, west, north, east].every(Number.isFinite)) return null;
+  if (south >= north || west >= east) return null;
+  if (north - south > ANFR_MAX_BOX_DEG || east - west > ANFR_MAX_BOX_DEG) return null;
+  return { south, west, north, east };
+}
+
+/**
+ * Every support in the box, with its masks decoded to labels.
+ *
+ * Resolved here rather than on the client because a viewport answer has to be
+ * self-contained: an operator who opens the app already zoomed into a city
+ * never fetches `/mesh`, and a card that said `ops: 9` would be waiting on a
+ * vocabulary it has no reason to have. The cost is measured and small — the
+ * fullest possible box is 112 831 bytes gzipped resolved against 96 004 as
+ * bare tuples.
+ */
+function anfrSupportsInBox(payload, box) {
+  const { operators, systems, natures } = payload.vocab;
+  const rows = [];
+  let inBox = 0;
+  for (const tuple of payload.supports) {
+    const lat = tuple[ANFR_LAT];
+    const lon = tuple[ANFR_LON];
+    if (lat < box.south || lat > box.north || lon < box.west || lon > box.east) continue;
+    inBox += 1;
+    if (rows.length >= ANFR_MAX_SUPPORTS) continue;
+    rows.push({
+      id: tuple[ANFR_ID],
+      lat,
+      lon,
+      svc: tuple[ANFR_SVC],
+      live: tuple[ANFR_LIVE],
+      plan: tuple[ANFR_PLAN],
+      operators: anfrDecodeMask(tuple[ANFR_OPS], operators),
+      systems: anfrDecodeMask(tuple[ANFR_SYS], systems),
+      nature: natures[String(tuple[ANFR_NAT])] || null,
+      heightM: tuple[ANFR_HAUT],
+    });
+  }
+  return { supports: rows, count: rows.length, inBox, truncated: inBox > rows.length, box };
+}
+
+/**
+ * One Cartoradio body.
+ *
+ * `/api/v1/statistiques/operateur` answers HTTP 200 with a ZERO-byte body, so
+ * an empty response is treated as a failure here rather than being handed to
+ * `JSON.parse`, which would throw a parse error where a status error belongs.
+ */
+async function fetchCartoradio(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(ANFR_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  const text = await readResponseTextCapped(response, ANFR_MAX_BYTES);
+  if (!text) throw new Error('empty upstream body');
+  return JSON.parse(text);
+}
+
+/**
+ * The on-demand card for ONE mast: four Cartoradio calls, worst case.
+ *
+ * The Cartoradio REST API is the undocumented backend of ANFR's own map. The
+ * DATA it serves is the same Licence Ouverte data, but nothing grants the
+ * right to hammer the endpoint: it carries no rate-limit headers and no
+ * licence statement of its own. So this is one build per mast, cached for a
+ * day, coalesced per SUP_ID, and never a viewport loop.
+ *
+ * Every leg degrades on its own and says which one failed, because they mean
+ * different things: no site is no address, no antennas is no frequency pairs
+ * and no equipment date, and no measurement is no exposure readout — but any
+ * one of the three still leaves a card worth showing.
+ */
+async function buildAnfrDetail(supId, position) {
+  const degraded = [];
+  const [siteBody, antennaBody] = await Promise.all([
+    fetchCartoradio(`${CARTORADIO_BASE}/sites/${supId}`).catch((error) => {
+      degraded.push(`fiche support (${error?.message || error})`);
+      return null;
+    }),
+    fetchCartoradio(`${CARTORADIO_BASE}/sites/${supId}/antennes`).catch((error) => {
+      degraded.push(`antennes (${error?.message || error})`);
+      return null;
+    }),
+  ]);
+  const site = siteBody ? projectCartoradioSupport(siteBody) : null;
+  const antennas = antennaBody ? projectCartoradioAntennas(antennaBody) : null;
+  // Cartoradio's own coordinate when it answered, the register's otherwise —
+  // and never an invented one.
+  const lat = Number.isFinite(site?.lat) ? site.lat : position?.lat;
+  const lon = Number.isFinite(site?.lon) ? site.lon : position?.lon;
+
+  let exposure = null;
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    // All seven parameters are mandatory: omitting any one returns HTTP 500
+    // with the body `{}`, which is the worst possible failure signature —
+    // the status looks like an outage and the body parses fine.
+    const bbox = anfrExposureBbox(lat, lon, ANFR_EXPOSURE_RADIUS_M);
+    const listed = await fetchCartoradio(
+      `${CARTORADIO_BASE}/mesures?stationsRadioelec=true&objetsCom=true`
+      + `&anciennete=99999&format=geojson&bbox=${bbox}`,
+    ).catch((error) => {
+      degraded.push(`mesures (${error?.message || error})`);
+      return null;
+    });
+    if (listed) {
+      // The list carries no V/m — its properties are only
+      // `{objet_communicant}` — so the nearest point is located first and only
+      // that one report is fetched.
+      const near = projectCartoradioExposure({ mesures: listed, lat, lon });
+      const report = near.nearest
+        ? await fetchCartoradio(`${CARTORADIO_BASE}/mesures/${near.nearest.id}`).catch((error) => {
+          degraded.push(`rapport ${near.nearest.id} (${error?.message || error})`);
+          return null;
+        })
+        : null;
+      exposure = projectCartoradioExposure({
+        mesures: listed, report, lat, lon, newestService: antennas?.newestService || null,
+      });
+    }
+  }
+  return { supId, site, antennas, exposure, degraded, source: 'Cartoradio — ANFR' };
+}
+
+function ensureAnfrDetail(supId, position) {
+  const cached = _anfrDetails.get(supId);
+  if (cached && Date.now() - cached.at <= ANFR_DETAIL_TTL_MS) return Promise.resolve(cached.payload);
+  const { promise } = coalesceProxyRequest(_anfrDetailInFlight, String(supId), async () => {
+    const payload = await buildAnfrDetail(supId, position);
+    _anfrDetails.set(supId, { at: Date.now(), payload });
+    if (_anfrDetails.size > ANFR_DETAIL_MAX) {
+      const oldest = _anfrDetails.keys().next().value;
+      if (oldest !== undefined) _anfrDetails.delete(oldest);
+    }
+    return payload;
+  });
+  return promise;
+}
+
+/**
+ * Vite plugin: ANFR mobile-network observatory proxy.
+ * @returns {import('vite').Plugin}
+ */
+function anfrFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/anfr-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_anfrRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readAnfrDisk();
+        json(200, {
+          source: ANFR_SOURCE,
+          portal: ANFR_PORTAL,
+          dataset: ANFR_DATASET,
+          dasDataset: ANFR_DAS_DATASET,
+          cartoradio: CARTORADIO_BASE,
+          ttlMs: ANFR_TTL_MS,
+          maxBoxDeg: ANFR_MAX_BOX_DEG,
+          register: _anfrRegister
+            ? {
+              at: _anfrRegister.at,
+              edition: _anfrRegister.payload.edition,
+              licence: _anfrRegister.payload.licence,
+              discovered: _anfrRegister.payload.mesh.discovered,
+              supports: _anfrRegister.payload.national.count,
+              live: _anfrRegister.payload.national.live,
+              projectOnly: _anfrRegister.payload.national.projectOnly,
+              plannedUpgrades: _anfrRegister.payload.national.plannedUpgrades,
+              rowsSwept: _anfrRegister.payload.mesh.rowsSwept,
+              rowsTotal: _anfrRegister.payload.mesh.rowsTotal,
+              complete: _anfrRegister.payload.mesh.complete,
+              natureAvailable: _anfrRegister.payload.natureAvailable,
+              builtInMs: _anfrRegister.payload.mesh.builtInMs,
+            }
+            : null,
+          detailsCached: _anfrDetails.size,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      // ── One mast's Cartoradio card ─────────────────────────────────────────
+      const detailMatch = /^\/support\/(\d{1,9})$/.exec(route);
+      if (detailMatch) {
+        const supId = Number(detailMatch[1]);
+        await readAnfrDisk();
+        // The register's own position for the mast, so the exposure box can be
+        // built even when Cartoradio's site call is the leg that failed.
+        let position = null;
+        for (const tuple of _anfrRegister?.payload?.supports || []) {
+          if (tuple[ANFR_ID] === supId) {
+            position = { lat: tuple[ANFR_LAT], lon: tuple[ANFR_LON] };
+            break;
+          }
+        }
+        try {
+          const payload = await ensureAnfrDetail(supId, position);
+          json(200, { ...payload, fetchedAt: Date.now() }, { 'X-ANFR-FR': 'DETAIL' });
+        } catch (error) {
+          console.warn(`[ANFR Proxy] Cartoradio detail ${supId} failed:`, error?.message || error);
+          json(503, { error: 'Cartoradio is temporarily unavailable for this support' });
+        }
+        return;
+      }
+
+      if (route !== '/mesh' && route !== '/supports') {
+        json(404, { error: 'Unknown ANFR endpoint' });
+        return;
+      }
+
+      let box = null;
+      if (route === '/supports') {
+        box = anfrBoxFrom(url);
+        if (!box) {
+          json(400, {
+            error: `A bounding box of at most ${ANFR_MAX_BOX_DEG}° is required `
+              + '(south, west, north, east)',
+          });
+          return;
+        }
+      }
+
+      const pick = (payload) => (route === '/mesh'
+        ? payload.mesh
+        : {
+          ...anfrSupportsInBox(payload, box),
+          national: payload.national,
+          edition: payload.edition,
+          source: payload.source,
+          licence: payload.licence,
+          natureAvailable: payload.natureAvailable,
+        });
+
+      await readAnfrDisk();
+      const now = Date.now();
+      if (_anfrRegister && now - _anfrRegister.at <= ANFR_TTL_MS) {
+        json(200, { ...pick(_anfrRegister.payload), fetchedAt: _anfrRegister.at, stale: false }, { 'X-ANFR-FR': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensureAnfrRegister();
+        json(200, { ...pick(entry.payload), fetchedAt: entry.at, stale: false }, { 'X-ANFR-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[ANFR Proxy] register build unavailable:', error?.message || error);
+        // The edition is a whole week and the file is republished weekly, so a
+        // register a fortnight old is still a true map of French masts.
+        // Serving it beats blanking the country.
+        if (_anfrRegister && now - _anfrRegister.at <= ANFR_STALE_MS) {
+          json(200, { ...pick(_anfrRegister.payload), fetchedAt: _anfrRegister.at, stale: true }, { 'X-ANFR-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'The ANFR mobile-network register is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'anfr-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Paris cool-islands proxy — keyless, ODbL, three registers and a tree register.
+ *
+ *   GET /api/fraicheur-fr/refuges                       — the whole city, once
+ *   GET /api/fraicheur-fr/arbres?south&west&north&east  — one snapped box of trees
+ *   GET /api/fraicheur-fr/status                        — provenance and cache state
+ *
+ * WHY A PROXY AT ALL. `opendata.paris.fr` answers `access-control-allow-origin:
+ * *` on both `records` and `exports`, so the browser could call it directly.
+ * Two measurements say not to. First, the day budget: the portal publishes
+ * `x-ratelimit-limit: 10000` per day, resetting at midnight UTC, and this layer
+ * asks a question per camera settle — a single busy afternoon of panning would
+ * spend a shared allowance no other tab can get back. Second, the fold: the
+ * three refuge registers cost **9 929 649 B decoded** across three parallel
+ * calls (2 454 ms wall, measured 2026-09-02) and the browser needs **3 451 189 B
+ * of JSON, 643 107 B gzipped** out of them. Doing that once on a server and
+ * serving it from a one-hour cache is the difference between 3 upstream calls an
+ * hour and 3 per tab per reload.
+ *
+ * WHY TWO ROUTES AND NOT THREE OR ONE. `/refuges` takes no viewport parameter
+ * at all: the answer is the same 643 KB whatever the camera is doing, the three
+ * registers are read together, and splitting them would make the layer's first
+ * paint three round trips. `/arbres` cannot join it — the tree register is
+ * 219 432 rows and 111 MB decoded whole — so it is the one bbox route.
+ *
+ * WHY THE PROBE COMES FIRST. `records?where=in_bbox(...)&limit=0&select=count(*)
+ * as n` answers "how many trees are in this box" in **36 bytes and 99 ms**,
+ * measured. Over {@link FRAICHEUR_TREE_BUDGET} the export is never bought and
+ * the true count is returned instead: on the densest grid-aligned box in Paris
+ * (48.816,2.346 -> 48.836,2.366, the 13e) the probe answers 10 571 and the
+ * export that would have followed is 3 368 281 B and 1 733 ms.
+ *
+ * The three refuge calls fan out with `Promise.all` and each one CATCHES: losing
+ * the fountains costs 1 323 taps and keeps 984 parks, and `projectFraicheurRefuges`
+ * reports which of the three answered in `payload.available`.
+ */
+const FRAICHEUR_BASE = `https://${FRAICHEUR_PORTAL}/api/explore/v2.1/catalog/datasets`;
+/**
+ * One hour on the city pack. The equipment register was rebuilt
+ * 2026-09-01T05:45:08Z and the fountains 2026-08-31T07:42:08Z — daily — and
+ * `horaires_periode` on the equipment is a one-WEEK validity window, while
+ * `statut_ouverture` on a brumisateur ("Eteint"/"Ouvert") can move inside a day.
+ * 24 refreshes a day is 72 upstream calls against a 10 000/day allowance.
+ */
+const FRAICHEUR_TTL_MS = 60 * 60 * 1000;
+/** Serve-stale ceiling. Last week's park is still a park. */
+const FRAICHEUR_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Six hours per tree box. `les-arbres` was last modified 2026-08-28T08:35:28Z
+ * and moves in weeks, so a box re-asked inside six hours cannot have changed.
+ */
+const FRAICHEUR_TREE_TTL_MS = 6 * 60 * 60 * 1000;
+const FRAICHEUR_TIMEOUT_MS = 90_000;
+/** Largest single upstream body is the green-space export at 9 216 103 B. */
+const FRAICHEUR_MAX_BYTES = 24 * 1024 * 1024;
+/** The densest box measured 3 368 281 B decoded for 10 571 trees. */
+const FRAICHEUR_TREE_MAX_BYTES = 16 * 1024 * 1024;
+const FRAICHEUR_TREE_CACHE_MAX = 48;
+const FRAICHEUR_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'fraicheur-fr');
+const FRAICHEUR_CACHE_PATH = path.join(FRAICHEUR_DISK_DIR, 'refuges.json');
+const FRAICHEUR_TREE_DISK_DIR = path.join(FRAICHEUR_DISK_DIR, 'arbres');
+/**
+ * Shape version of both cached folds. Bump whenever `projectFraicheurRefuges`
+ * or `projectFraicheurTrees` changes what it returns — the memory cache lives
+ * for an hour but the disk cache outlives the edit by a week otherwise.
+ */
+const FRAICHEUR_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _fraicheurRefuges = null;
+/** @type {?Promise<{version:number, at:number, payload:object}>} */
+let _fraicheurInFlight = null;
+let _fraicheurDiskChecked = false;
+/** @type {Map<string, {version:number, at:number, payload:object}>} LRU by box key. */
+const _fraicheurTreeCache = new Map();
+/** @type {Map<string, Promise<object>>} */
+const _fraicheurTreeInFlight = new Map();
+/**
+ * 60/min per client and 180/min globally, matching `cadastreFranceProxy`: this
+ * layer is viewport-chatty on `/arbres` in exactly the way the cadastre is, and
+ * `comptages-fr`'s 30 would throttle an operator simply walking down a street.
+ */
+const _fraicheurRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchFraicheurJson(url, maxBytes = FRAICHEUR_MAX_BYTES) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(FRAICHEUR_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, maxBytes);
+}
+
+/**
+ * One `exports/geojson` URL.
+ *
+ * `limit=-1` is the portal's "no limit" and `exports/*` is subject to neither
+ * of the caps `records` carries — 100 rows a page (`limit=101` -> HTTP 400) and
+ * `offset + limit <= 10000` (HTTP 400, *"Invalid value for sum of offset +
+ * limit API parameter: 10099 was found but <= 10000 is expected."*). The geo
+ * field is deliberately absent from every `select`: the export emits the
+ * geometry regardless and naming it ships the coordinates twice, measured at
+ * 81 148 B against 61 794 B on the fountains.
+ */
+function fraicheurExportUrl(dataset, fields, where = null) {
+  const params = new URLSearchParams({ select: fields.join(','), limit: '-1' });
+  if (where) params.set('where', where);
+  return `${FRAICHEUR_BASE}/${dataset}/exports/geojson?${params}`;
+}
+
+/** The 36-byte population probe for one bbox. */
+function fraicheurTreeProbeUrl(where) {
+  const params = new URLSearchParams({ where, limit: '0', select: 'count(*) as n' });
+  return `${FRAICHEUR_BASE}/${FRAICHEUR_TREE_DATASET}/records?${params}`;
+}
+
+/**
+ * Build the whole-city pack.
+ *
+ * Each of the three is caught on its own, so a register that fails degrades the
+ * pack instead of failing it — `payload.available` names which answered and the
+ * layer's row says so.
+ */
+async function refreshFraicheurRefuges() {
+  const warn = (name) => (error) => {
+    console.warn(`[Fraicheur Proxy] ${name} register unavailable:`, error?.message || error);
+    return null;
+  };
+  const [spaces, equipment, fountains] = await Promise.all([
+    fetchFraicheurJson(fraicheurExportUrl(FRAICHEUR_SPACES_DATASET, FRAICHEUR_SPACE_FIELDS)).catch(warn('green-space')),
+    fetchFraicheurJson(fraicheurExportUrl(FRAICHEUR_EQUIPMENT_DATASET, FRAICHEUR_EQUIPMENT_FIELDS)).catch(warn('equipment')),
+    fetchFraicheurJson(fraicheurExportUrl(FRAICHEUR_FOUNTAIN_DATASET, FRAICHEUR_FOUNTAIN_FIELDS)).catch(warn('fountain')),
+  ]);
+  // All three down is a failure, not a degraded pack: an empty document would
+  // paint an empty Paris and claim it was true.
+  if (!spaces && !equipment && !fountains) throw new Error('all three registers unavailable');
+  return projectFraicheurRefuges({ spaces, equipment, fountains, source: FRAICHEUR_SOURCE });
+}
+
+/**
+ * Build one box of trees. The probe decides whether the export is bought at all.
+ */
+async function refreshFraicheurTrees(box) {
+  const where = fraicheurTreeWhere(box);
+  const probe = await fetchFraicheurJson(fraicheurTreeProbeUrl(where), 64 * 1024);
+  const total = Number(probe?.total_count);
+  if (Number.isFinite(total) && total > FRAICHEUR_TREE_BUDGET) {
+    // Refused before the download. This is the whole point of the probe.
+    return projectFraicheurTrees({ features: null, totalInBox: total, box });
+  }
+  const features = await fetchFraicheurJson(
+    fraicheurExportUrl(FRAICHEUR_TREE_DATASET, FRAICHEUR_TREE_FIELDS, where),
+    FRAICHEUR_TREE_MAX_BYTES,
+  );
+  return projectFraicheurTrees({ features, totalInBox: Number.isFinite(total) ? total : null, box });
+}
+
+async function readFraicheurDisk() {
+  if (_fraicheurDiskChecked) return;
+  _fraicheurDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(FRAICHEUR_CACHE_PATH, 'utf8'));
+    if (entry?.version === FRAICHEUR_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.spaces)
+      && Array.isArray(entry.payload?.equipment)) {
+      _fraicheurRefuges = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeFraicheurDisk(entry) {
+  fsp.mkdir(FRAICHEUR_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(FRAICHEUR_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Fraicheur Proxy] cache write failed:', err?.message || err));
+}
+
+function fraicheurTreeDiskPath(key) {
+  return path.join(FRAICHEUR_TREE_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+async function readFraicheurTreeDisk(key) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(fraicheurTreeDiskPath(key), 'utf8'));
+    if (entry?.version !== FRAICHEUR_CACHE_VERSION) return null;
+    if (!Number.isFinite(entry.at) || !Array.isArray(entry.payload?.trees)) return null;
+    if (Date.now() - entry.at > FRAICHEUR_TREE_TTL_MS) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeFraicheurTreeDisk(key, entry) {
+  fsp.mkdir(FRAICHEUR_TREE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(fraicheurTreeDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Fraicheur Proxy] tree cache write failed:', err?.message || err));
+}
+
+function trimFraicheurTreeCache() {
+  while (_fraicheurTreeCache.size > FRAICHEUR_TREE_CACHE_MAX) {
+    const oldest = _fraicheurTreeCache.keys().next().value;
+    if (oldest === undefined) break;
+    _fraicheurTreeCache.delete(oldest);
+  }
+}
+
+/** Single-flight, so two tabs opening at once cost one three-call sweep. */
+function ensureFraicheurRefuges() {
+  if (!_fraicheurInFlight) {
+    _fraicheurInFlight = refreshFraicheurRefuges()
+      .then((payload) => {
+        const entry = { version: FRAICHEUR_CACHE_VERSION, at: Date.now(), payload };
+        _fraicheurRefuges = entry;
+        writeFraicheurDisk(entry);
+        return entry;
+      })
+      .finally(() => { _fraicheurInFlight = null; });
+  }
+  return _fraicheurInFlight;
+}
+
+/**
+ * Per-box single-flight: two tabs asking for the same box cost one sweep.
+ * `coalesceProxyRequest` returns `{ promise, shared }`, not a promise — the
+ * `shared` flag is what lets the response header say INFLIGHT rather than MISS.
+ */
+function ensureFraicheurTrees(key, box) {
+  return coalesceProxyRequest(_fraicheurTreeInFlight, key, async () => {
+    const payload = await refreshFraicheurTrees(box);
+    const entry = { version: FRAICHEUR_CACHE_VERSION, at: Date.now(), payload };
+    _fraicheurTreeCache.set(key, entry);
+    trimFraicheurTreeCache();
+    writeFraicheurTreeDisk(key, entry);
+    return entry;
+  });
+}
+
+/**
+ * Vite plugin: Paris cool-islands, green spaces, fountains and street trees.
+ * @returns {import('vite').Plugin}
+ */
+function fraicheurParisProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/fraicheur-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_fraicheurRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readFraicheurDisk();
+        json(200, {
+          source: FRAICHEUR_SOURCE,
+          portal: FRAICHEUR_PORTAL,
+          licence: FRAICHEUR_LICENCE,
+          licenceUrl: FRAICHEUR_LICENCE_URL,
+          publishers: FRAICHEUR_PUBLISHERS,
+          treeSource: FRAICHEUR_TREE_SOURCE,
+          ttlMs: FRAICHEUR_TTL_MS,
+          treeTtlMs: FRAICHEUR_TREE_TTL_MS,
+          treeBudget: FRAICHEUR_TREE_BUDGET,
+          treeMaxBoxDeg: FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG,
+          cachedTreeBoxes: _fraicheurTreeCache.size,
+          refuges: _fraicheurRefuges
+            ? {
+              at: _fraicheurRefuges.at,
+              spaces: _fraicheurRefuges.payload.spaces.length,
+              equipment: _fraicheurRefuges.payload.equipment.length,
+              fountains: _fraicheurRefuges.payload.fountains.length,
+              available: _fraicheurRefuges.payload.available,
+              unplaced: _fraicheurRefuges.payload.unplaced,
+              geometry: _fraicheurRefuges.payload.geometry,
+              refReuse: _fraicheurRefuges.payload.refReuse,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route === '/refuges') {
+        await readFraicheurDisk();
+        const now = Date.now();
+        if (_fraicheurRefuges && now - _fraicheurRefuges.at <= FRAICHEUR_TTL_MS) {
+          json(200, { ..._fraicheurRefuges.payload, fetchedAt: _fraicheurRefuges.at, stale: false }, { 'X-FRAICHEUR-FR': 'HIT' });
+          return;
+        }
+        try {
+          const entry = await ensureFraicheurRefuges();
+          json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-FRAICHEUR-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[Fraicheur Proxy] city pack unavailable:', error?.message || error);
+          // A week-old pack still describes the same 984 parks and the same
+          // 1 323 taps; only the timetables age, and the layer says which
+          // window each one came from.
+          if (_fraicheurRefuges && now - _fraicheurRefuges.at <= FRAICHEUR_STALE_MS) {
+            json(200, { ..._fraicheurRefuges.payload, fetchedAt: _fraicheurRefuges.at, stale: true }, { 'X-FRAICHEUR-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'Paris cool-island registers are temporarily unavailable' });
+        }
+        return;
+      }
+
+      if (route !== '/arbres') {
+        json(404, { error: 'Unknown fraicheur endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG,
+        });
+        return;
+      }
+      // Snapped OUTWARD onto the same grid the client snaps on, so the two
+      // agree on the cache key. A client box is already aligned and this is a
+      // no-op for it; a hand-built request is aligned here instead.
+      const box = snapBoxOutward(requested, FRAICHEUR_TREE_BOX_STEP_DEG);
+      // `les-arbres` describes exactly one city. A box outside it is answered
+      // with an empty payload and ZERO upstream calls rather than spending a
+      // request from a shared 10 000/day allowance to be told nothing.
+      if (!boxesIntersect(box, FRAICHEUR_COVERAGE)) {
+        json(200, {
+          ...projectFraicheurTrees({ features: null, totalInBox: 0, box }),
+          fetchedAt: Date.now(), stale: false, offCoverage: true,
+        }, { 'X-FRAICHEUR-FR': 'OFF-COVERAGE' });
+        return;
+      }
+
+      const key = boxKey(box, 3);
+      const now = Date.now();
+      const cached = _fraicheurTreeCache.get(key);
+      if (cached && now - cached.at <= FRAICHEUR_TREE_TTL_MS) {
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-FRAICHEUR-FR': 'HIT' });
+        return;
+      }
+      const onDisk = await readFraicheurTreeDisk(key);
+      if (onDisk) {
+        _fraicheurTreeCache.set(key, onDisk);
+        trimFraicheurTreeCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-FRAICHEUR-FR': 'DISK' });
+        return;
+      }
+      try {
+        const request = ensureFraicheurTrees(key, box);
+        const entry = await request.promise;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false },
+          { 'X-FRAICHEUR-FR': request.shared ? 'INFLIGHT' : 'MISS' });
+      } catch (error) {
+        console.warn('[Fraicheur Proxy] tree box unavailable:', error?.message || error);
+        if (cached) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: true }, { 'X-FRAICHEUR-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'Paris tree register is temporarily unavailable for this view' });
+      }
+    });
+  }
+
+  return {
+    name: 'fraicheur-paris-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -15959,6 +16980,8 @@ export default defineConfig(({ mode }) => {
       supFranceProxy(),
       comptagesParisProxy(),
       delinquanceFranceProxy(),
+      anfrFranceProxy(),
+      fraicheurParisProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),

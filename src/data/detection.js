@@ -117,6 +117,8 @@ const LAYER_WEIGHTS = Object.freeze({
   // midpoint. Weighted with the road layers rather than the registers because a
   // reader scanning a street wants the street, not the school on it.
   'comptages-fr': 0.75,
+  'anfr-fr': 0.85,
+  'fraicheur-fr': 0.85,
   'ais-live-vessels': 1,
 });
 

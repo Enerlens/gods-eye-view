@@ -434,6 +434,16 @@ export const DATA_CREDITS = [
       + 'number at all, is excluded from every quantile, and is never drawn as a zero or as a low value.',
   },
   {
+    key: 'anfr-fr',
+    html:
+      "&laquo;&nbsp;Observatoire des r&eacute;seaux mobiles 2G/3G/4G/5G&nbsp;&raquo; &mdash; <a href=\"https://data.anfr.fr/\" target=\"_blank\" rel=\"noopener\">Agence nationale des fr&eacute;quences (data.anfr.fr)</a>, &eacute;dition hebdomadaire du 27/08/2026, 826&nbsp;418 lignes sur 72&nbsp;700 supports. Nature des supports&nbsp;: &laquo;&nbsp;Donn&eacute;es sur les installations radio&eacute;lectriques de plus de 5 watts&nbsp;&raquo; &mdash; <a href=\"https://www.data.gouv.fr/fr/datasets/donnees-sur-les-installations-radioelectriques-de-plus-de-5-watts-1/\" target=\"_blank\" rel=\"noopener\">ANFR via data.gouv.fr</a>. Fiche support, bandes et mesures d'exposition&nbsp;: <a href=\"https://www.cartoradio.fr/\" target=\"_blank\" rel=\"noopener\">Cartoradio (ANFR)</a>. <a href=\"https://github.com/etalab/licence-ouverte/blob/master/LO.md\" target=\"_blank\" rel=\"noopener\">Licence Ouverte 2.0</a>. Hors champ par la loi&nbsp;: Aviation Civile, minist&egrave;res de la D&eacute;fense et de l'Int&eacute;rieur.",
+  },
+  {
+    key: 'fraicheur-fr',
+    html:
+      "Paris cool islands, cool green spaces and trees: <em>Îlots de fraîcheur — équipements et activités</em>, <em>Îlots de fraîcheur — espaces verts frais</em> and <em>Les arbres</em>, published by the <a href=\"https://opendata.paris.fr/explore/dataset/ilots-de-fraicheur-espaces-verts-frais/\" target=\"_blank\" rel=\"noopener\">Ville de Paris</a> (Direction de la Transition &Eacute;cologique et du Climat; Direction des Espaces Verts et de l&rsquo;Environnement), and drinking fountains: <em>Fontaines &agrave; boire</em>, published separately by <a href=\"https://opendata.paris.fr/explore/dataset/fontaines-a-boire/\" target=\"_blank\" rel=\"noopener\">Eau de Paris</a> &mdash; all four under the <a href=\"http://opendatacommons.org/licenses/odbl/\" target=\"_blank\" rel=\"noopener\">Open Database License (ODbL)</a>. Green spaces are coloured by <code>indice_veget_sup8m_2024</code>, the share of ground under vegetation taller than 8 m at the 2024 survey; the register also publishes <code>p_vegetation_h</code>, a DIFFERENT number on 903 of the 953 rows carrying both, and the card shows both rather than calling either a correction. Opening hours are drawn from the seven weekday columns and are always shown with the validity window they came from, because 682 of the 984 green spaces publish a window that has already expired. A tree whose <code>hauteurenm</code> is 0 is drawn as unmeasured, never as short.",
+  },
+  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +

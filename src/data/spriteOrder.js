@@ -1,10 +1,12 @@
 /** Bottom-to-top order for near-plane-clamped contact sprite collections. */
 export const SPRITE_LAYER_ORDER = Object.freeze([
   'cctv',
+  'fraicheur-fr',
   'firms',
   'schools-fr',
   'sup-fr',
   'irve-fr',
+  'anfr-fr',
   'gas-fr',
   'power-grid',
   'rte-generation',

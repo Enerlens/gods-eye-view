@@ -540,6 +540,19 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // live. `georisques` sits here for the same reason. `cadence: 'static'`
   // because the base is republished about once a year, and calling it anything
   // faster would suggest the map tracks events, which it does not.
+  // Beside `delinquance-fr` in RISQUES & ENVIRONNEMENT rather than in
+  // BÂTI & TERRITOIRE, because the subject is not the street furniture: it is
+  // heat, and where a city keeps somewhere to escape it.
+  Object.freeze({
+    id: 'fraicheur-fr',
+    category: 'hazards',
+    label: 'Îlots de fraîcheur',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
   Object.freeze({
     id: 'delinquance-fr',
     category: 'hazards',
@@ -588,6 +601,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     coverage: 'global',
     auth: 'none',
     cadence: 'live',
+  }),
+
+  // In RÉSEAUX & CAPTEURS beside `radio` and `cctv`, and the neighbour is the
+  // reason the icon is 📡 and not a wave glyph: `radio` is radio-browser.info
+  // INTERNET AUDIO, and the two rows share nothing but the word "radio". A
+  // reader must be able to tell them apart in the panel without opening either.
+  Object.freeze({
+    id: 'anfr-fr',
+    category: 'comms-sensors',
+    label: 'Antennes mobiles',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
   }),
 
   // ── BÂTI & TERRITOIRE ─────────────────────────────────────────────────────

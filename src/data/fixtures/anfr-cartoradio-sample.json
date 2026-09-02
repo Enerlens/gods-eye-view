@@ -1,0 +1,3368 @@
+{
+ "capturedAt": "2026-09-01",
+ "supId": 449714,
+ "site": {
+  "url": "https://www.cartoradio.fr/api/v1/sites/449714",
+  "body": {
+   "data": {
+    "numero": 449714,
+    "description": {
+     "nature": "Immeuble",
+     "hauteur": 65,
+     "proprietaire": "Ets public , Minist, Synd mixt"
+    },
+    "adresse": {
+     "adresse": "43-45 R DES STS PÈRES FACULTÉ DE MÉDECINE DE PARIS V",
+     "code_postal": "75006",
+     "commune": "PARIS 6E ARRONDISSEMENT"
+    },
+    "categories": [
+     {
+      "nom": "FH",
+      "code": "FH",
+      "exploitants": [
+       {
+        "id": 6,
+        "nom": "BOUYGUES TELECOM",
+        "systemes": [
+         "Faisceau hertzien"
+        ]
+       }
+      ]
+     },
+     {
+      "nom": "Téléphonie",
+      "code": "TEL",
+      "exploitants": [
+       {
+        "id": 6,
+        "nom": "BOUYGUES TELECOM",
+        "systemes": [
+         "4G",
+         "5G"
+        ]
+       },
+       {
+        "id": 23,
+        "nom": "ORANGE",
+        "systemes": [
+         "2G",
+         "3G",
+         "4G",
+         "5G"
+        ]
+       },
+       {
+        "id": 137,
+        "nom": "SFR",
+        "systemes": [
+         "2G",
+         "3G",
+         "4G",
+         "5G"
+        ]
+       },
+       {
+        "id": 240,
+        "nom": "FREE MOBILE",
+        "systemes": [
+         "4G",
+         "5G"
+        ]
+       }
+      ]
+     }
+    ],
+    "coordonnees": {
+     "coord_x": 48.85528,
+     "coord_y": 2.33167
+    }
+   }
+  }
+ },
+ "antennes": {
+  "url": "https://www.cartoradio.fr/api/v1/sites/449714/antennes",
+  "body": {
+   "data": [
+    {
+     "station": {
+      "anfr": "0750990002",
+      "service": "28/11/2013",
+      "modification": "12/12/2025",
+      "exploitant": "FREE MOBILE"
+     },
+     "adresse": {
+      "adresse": "43-45 R DES STS PÈRES FACULTÉ DE MÉDECINE DE PARIS V",
+      "code_postal": "75006",
+      "commune": "PARIS 6E ARRONDISSEMENT"
+     },
+     "categorie": {
+      "nom": "Téléphonie",
+      "code": "TEL"
+     },
+     "installations": [
+      {
+       "hauteur": 46.8,
+       "antennes": [
+        {
+         "id": 1900451,
+         "orientation": 270,
+         "emetteurs": [
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6623928,
+           "ordre": 150,
+           "date_service": "20/07/2016",
+           "bandes": [
+            {
+             "debut": 1845,
+             "fin": 1860,
+             "unite": "M"
+            },
+            {
+             "debut": 1750,
+             "fin": 1765,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 900 (4G)",
+           "id": 28462140,
+           "date_service": "18/07/2025",
+           "bandes": [
+            {
+             "debut": 942.5,
+             "fin": 951.2,
+             "unite": "M"
+            },
+            {
+             "debut": 897.5,
+             "fin": 906.2,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 6623930,
+           "ordre": 130,
+           "date_service": "22/08/2016",
+           "bandes": [
+            {
+             "debut": 778,
+             "fin": 788,
+             "unite": "M"
+            },
+            {
+             "debut": 723,
+             "fin": 733,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3111136,
+           "ordre": 170,
+           "date_service": "28/11/2013",
+           "bandes": [
+            {
+             "debut": 2670,
+             "fin": 2690,
+             "unite": "M"
+            },
+            {
+             "debut": 2550,
+             "fin": 2570,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 17596251,
+           "ordre": 160,
+           "date_service": "07/07/2025",
+           "bandes": [
+            {
+             "debut": 1950.1,
+             "fin": 1964.9,
+             "unite": "M"
+            },
+            {
+             "debut": 2140.1,
+             "fin": 2154.9,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 700 (5G)",
+           "id": 14681107,
+           "ordre": 180,
+           "date_service": "28/05/2021",
+           "bandes": [
+            {
+             "debut": 778,
+             "fin": 788,
+             "unite": "M"
+            },
+            {
+             "debut": 723,
+             "fin": 733,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 1900449,
+         "orientation": 180,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 700 (5G)",
+           "id": 14681105,
+           "ordre": 180,
+           "date_service": "28/05/2021",
+           "bandes": [
+            {
+             "debut": 778,
+             "fin": 788,
+             "unite": "M"
+            },
+            {
+             "debut": 723,
+             "fin": 733,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6623924,
+           "ordre": 150,
+           "date_service": "20/07/2016",
+           "bandes": [
+            {
+             "debut": 1845,
+             "fin": 1860,
+             "unite": "M"
+            },
+            {
+             "debut": 1750,
+             "fin": 1765,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 17596249,
+           "ordre": 160,
+           "date_service": "07/07/2025",
+           "bandes": [
+            {
+             "debut": 1950.1,
+             "fin": 1964.9,
+             "unite": "M"
+            },
+            {
+             "debut": 2140.1,
+             "fin": 2154.9,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3111134,
+           "ordre": 170,
+           "date_service": "28/11/2013",
+           "bandes": [
+            {
+             "debut": 2670,
+             "fin": 2690,
+             "unite": "M"
+            },
+            {
+             "debut": 2550,
+             "fin": 2570,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 6623926,
+           "ordre": 130,
+           "date_service": "22/08/2016",
+           "bandes": [
+            {
+             "debut": 723,
+             "fin": 733,
+             "unite": "M"
+            },
+            {
+             "debut": 778,
+             "fin": 788,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 900 (4G)",
+           "id": 28462138,
+           "date_service": "18/07/2025",
+           "bandes": [
+            {
+             "debut": 942.5,
+             "fin": 951.2,
+             "unite": "M"
+            },
+            {
+             "debut": 897.5,
+             "fin": 906.2,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 47.7,
+       "antennes": [
+        {
+         "id": 1900445,
+         "orientation": 0,
+         "emetteurs": [
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6623916,
+           "ordre": 150,
+           "date_service": "20/07/2016",
+           "bandes": [
+            {
+             "debut": 1845,
+             "fin": 1860,
+             "unite": "M"
+            },
+            {
+             "debut": 1750,
+             "fin": 1765,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 17596245,
+           "ordre": 160,
+           "date_service": "07/07/2025",
+           "bandes": [
+            {
+             "debut": 2140.1,
+             "fin": 2154.9,
+             "unite": "M"
+            },
+            {
+             "debut": 1950.1,
+             "fin": 1964.9,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3111130,
+           "ordre": 170,
+           "date_service": "28/11/2013",
+           "bandes": [
+            {
+             "debut": 2550,
+             "fin": 2570,
+             "unite": "M"
+            },
+            {
+             "debut": 2670,
+             "fin": 2690,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 700 (5G)",
+           "id": 14681101,
+           "ordre": 180,
+           "date_service": "28/05/2021",
+           "bandes": [
+            {
+             "debut": 723,
+             "fin": 733,
+             "unite": "M"
+            },
+            {
+             "debut": 778,
+             "fin": 788,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 6623918,
+           "ordre": 130,
+           "date_service": "22/08/2016",
+           "bandes": [
+            {
+             "debut": 723,
+             "fin": 733,
+             "unite": "M"
+            },
+            {
+             "debut": 778,
+             "fin": 788,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 900 (4G)",
+           "id": 28462134,
+           "date_service": "18/07/2025",
+           "bandes": [
+            {
+             "debut": 897.5,
+             "fin": 906.2,
+             "unite": "M"
+            },
+            {
+             "debut": 942.5,
+             "fin": 951.2,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 1900447,
+         "orientation": 90,
+         "emetteurs": [
+          {
+           "systeme": "LTE 900 (4G)",
+           "id": 28462136,
+           "date_service": "18/07/2025",
+           "bandes": [
+            {
+             "debut": 942.5,
+             "fin": 951.2,
+             "unite": "M"
+            },
+            {
+             "debut": 897.5,
+             "fin": 906.2,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 700 (5G)",
+           "id": 14681103,
+           "ordre": 180,
+           "date_service": "28/05/2021",
+           "bandes": [
+            {
+             "debut": 723,
+             "fin": 733,
+             "unite": "M"
+            },
+            {
+             "debut": 778,
+             "fin": 788,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6623920,
+           "ordre": 150,
+           "date_service": "20/07/2016",
+           "bandes": [
+            {
+             "debut": 1845,
+             "fin": 1860,
+             "unite": "M"
+            },
+            {
+             "debut": 1750,
+             "fin": 1765,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 17596247,
+           "ordre": 160,
+           "date_service": "07/07/2025",
+           "bandes": [
+            {
+             "debut": 1950.1,
+             "fin": 1964.9,
+             "unite": "M"
+            },
+            {
+             "debut": 2140.1,
+             "fin": 2154.9,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3111132,
+           "ordre": 170,
+           "date_service": "28/11/2013",
+           "bandes": [
+            {
+             "debut": 2670,
+             "fin": 2690,
+             "unite": "M"
+            },
+            {
+             "debut": 2550,
+             "fin": 2570,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 6623922,
+           "ordre": 130,
+           "date_service": "22/08/2016",
+           "bandes": [
+            {
+             "debut": 723,
+             "fin": 733,
+             "unite": "M"
+            },
+            {
+             "debut": 778,
+             "fin": 788,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 47.6,
+       "antennes": [
+        {
+         "id": 7954156,
+         "orientation": 270,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 20591611,
+           "ordre": 210,
+           "date_service": "30/06/2025",
+           "bandes": [
+            {
+             "debut": 3640,
+             "fin": 3710,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 7954154,
+         "orientation": 180,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 20591609,
+           "ordre": 210,
+           "date_service": "30/06/2025",
+           "bandes": [
+            {
+             "debut": 3640,
+             "fin": 3710,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 48.4,
+       "antennes": [
+        {
+         "id": 7954160,
+         "orientation": 90,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 20591615,
+           "ordre": 210,
+           "date_service": "30/06/2025",
+           "bandes": [
+            {
+             "debut": 3640,
+             "fin": 3710,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 7954158,
+         "orientation": 0,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 20591613,
+           "ordre": 210,
+           "date_service": "30/06/2025",
+           "bandes": [
+            {
+             "debut": 3640,
+             "fin": 3710,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "station": {
+      "anfr": "0752290019",
+      "service": "03/02/1999",
+      "modification": "13/09/2024",
+      "exploitant": "ORANGE"
+     },
+     "adresse": {
+      "adresse": "43-45 R DES STS PÈRES FACULTÉ DE MÉDECINE DE PARIS V",
+      "code_postal": "75006",
+      "commune": "PARIS 6E ARRONDISSEMENT"
+     },
+     "categorie": {
+      "nom": "Téléphonie",
+      "code": "TEL"
+     },
+     "installations": [
+      {
+       "hauteur": 44.7,
+       "antennes": [
+        {
+         "id": 5091676,
+         "orientation": 210,
+         "emetteurs": [
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 9653297,
+           "ordre": 140,
+           "date_service": "26/04/2018",
+           "bandes": [
+            {
+             "debut": 811,
+             "fin": 821,
+             "unite": "M"
+            },
+            {
+             "debut": 852,
+             "fin": 862,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 13274729,
+           "ordre": 160,
+           "date_service": "20/01/2020",
+           "bandes": [
+            {
+             "debut": 2154.9,
+             "fin": 2169.7,
+             "unite": "M"
+            },
+            {
+             "debut": 1964.9,
+             "fin": 1979.7,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 9653299,
+           "ordre": 150,
+           "date_service": "26/04/2018",
+           "bandes": [
+            {
+             "debut": 1805,
+             "fin": 1825,
+             "unite": "M"
+            },
+            {
+             "debut": 1710,
+             "fin": 1730,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "GSM 900 (2G)",
+           "id": 9653289,
+           "ordre": 10,
+           "date_service": "27/04/2018",
+           "bandes": [
+            {
+             "debut": 934.9,
+             "fin": 943.6,
+             "unite": "M"
+            },
+            {
+             "debut": 889.9,
+             "fin": 898.6,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 700 (5G)",
+           "id": 26472244,
+           "ordre": 180,
+           "date_service": "14/01/2025",
+           "bandes": [
+            {
+             "debut": 708,
+             "fin": 718,
+             "unite": "M"
+            },
+            {
+             "debut": 763,
+             "fin": 773,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 9653295,
+           "ordre": 170,
+           "date_service": "26/04/2018",
+           "bandes": [
+            {
+             "debut": 2515,
+             "fin": 2535,
+             "unite": "M"
+            },
+            {
+             "debut": 2635,
+             "fin": 2655,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "UMTS 900 (3G)",
+           "id": 9653291,
+           "ordre": 110,
+           "date_service": "27/04/2018",
+           "bandes": [
+            {
+             "debut": 934.9,
+             "fin": 943.6,
+             "unite": "M"
+            },
+            {
+             "debut": 889.9,
+             "fin": 898.6,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 13274731,
+           "ordre": 130,
+           "date_service": "16/04/2020",
+           "bandes": [
+            {
+             "debut": 708,
+             "fin": 718,
+             "unite": "M"
+            },
+            {
+             "debut": 763,
+             "fin": 773,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 48.8,
+       "antennes": [
+        {
+         "id": 6534744,
+         "orientation": 35,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15164066,
+           "ordre": 210,
+           "date_service": "19/03/2021",
+           "bandes": [
+            {
+             "debut": 3710,
+             "fin": 3800,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 47.8,
+       "antennes": [
+        {
+         "id": 187198,
+         "orientation": 35,
+         "emetteurs": [
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6878894,
+           "ordre": 150,
+           "date_service": "12/07/2016",
+           "bandes": [
+            {
+             "debut": 1805,
+             "fin": 1825,
+             "unite": "M"
+            },
+            {
+             "debut": 1710,
+             "fin": 1730,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "UMTS 900 (3G)",
+           "id": 5478363,
+           "ordre": 110,
+           "date_service": "25/11/2014",
+           "bandes": [
+            {
+             "debut": 889.9,
+             "fin": 898.6,
+             "unite": "M"
+            },
+            {
+             "debut": 934.9,
+             "fin": 943.6,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 3010126,
+           "ordre": 140,
+           "date_service": "10/06/2013",
+           "bandes": [
+            {
+             "debut": 852,
+             "fin": 862,
+             "unite": "M"
+            },
+            {
+             "debut": 811,
+             "fin": 821,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 13274719,
+           "ordre": 130,
+           "date_service": "16/04/2020",
+           "bandes": [
+            {
+             "debut": 763,
+             "fin": 773,
+             "unite": "M"
+            },
+            {
+             "debut": 708,
+             "fin": 718,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3010138,
+           "ordre": 170,
+           "date_service": "28/03/2013",
+           "bandes": [
+            {
+             "debut": 2515,
+             "fin": 2535,
+             "unite": "M"
+            },
+            {
+             "debut": 2635,
+             "fin": 2655,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 700 (5G)",
+           "id": 26472238,
+           "ordre": 180,
+           "date_service": "14/01/2025",
+           "bandes": [
+            {
+             "debut": 763,
+             "fin": 773,
+             "unite": "M"
+            },
+            {
+             "debut": 708,
+             "fin": 718,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "GSM 900 (2G)",
+           "id": 192178,
+           "ordre": 10,
+           "date_service": "03/02/1999",
+           "bandes": [
+            {
+             "debut": 889.9,
+             "fin": 898.6,
+             "unite": "M"
+            },
+            {
+             "debut": 934.9,
+             "fin": 943.6,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 13274717,
+           "ordre": 160,
+           "date_service": "20/01/2020",
+           "bandes": [
+            {
+             "debut": 1964.9,
+             "fin": 1979.7,
+             "unite": "M"
+            },
+            {
+             "debut": 2154.9,
+             "fin": 2169.7,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 45.7,
+       "antennes": [
+        {
+         "id": 187201,
+         "orientation": 271,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 700 (5G)",
+           "id": 26472242,
+           "ordre": 180,
+           "date_service": "14/01/2025",
+           "bandes": [
+            {
+             "debut": 708,
+             "fin": 718,
+             "unite": "M"
+            },
+            {
+             "debut": 763,
+             "fin": 773,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "GSM 900 (2G)",
+           "id": 192182,
+           "ordre": 10,
+           "date_service": "03/02/1999",
+           "bandes": [
+            {
+             "debut": 889.9,
+             "fin": 898.6,
+             "unite": "M"
+            },
+            {
+             "debut": 934.9,
+             "fin": 943.6,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "UMTS 900 (3G)",
+           "id": 5478365,
+           "ordre": 110,
+           "date_service": "25/11/2014",
+           "bandes": [
+            {
+             "debut": 934.9,
+             "fin": 943.6,
+             "unite": "M"
+            },
+            {
+             "debut": 889.9,
+             "fin": 898.6,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 3010134,
+           "ordre": 140,
+           "date_service": "10/06/2013",
+           "bandes": [
+            {
+             "debut": 852,
+             "fin": 862,
+             "unite": "M"
+            },
+            {
+             "debut": 811,
+             "fin": 821,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 13274727,
+           "ordre": 130,
+           "date_service": "16/04/2020",
+           "bandes": [
+            {
+             "debut": 708,
+             "fin": 718,
+             "unite": "M"
+            },
+            {
+             "debut": 763,
+             "fin": 773,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3010146,
+           "ordre": 170,
+           "date_service": "28/03/2013",
+           "bandes": [
+            {
+             "debut": 2515,
+             "fin": 2535,
+             "unite": "M"
+            },
+            {
+             "debut": 2635,
+             "fin": 2655,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 13274725,
+           "ordre": 160,
+           "date_service": "20/01/2020",
+           "bandes": [
+            {
+             "debut": 2154.9,
+             "fin": 2169.7,
+             "unite": "M"
+            },
+            {
+             "debut": 1964.9,
+             "fin": 1979.7,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6878898,
+           "ordre": 150,
+           "date_service": "12/07/2016",
+           "bandes": [
+            {
+             "debut": 1805,
+             "fin": 1825,
+             "unite": "M"
+            },
+            {
+             "debut": 1710,
+             "fin": 1730,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 187200,
+         "orientation": 143,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 700 (5G)",
+           "id": 26472240,
+           "ordre": 180,
+           "date_service": "14/01/2025",
+           "bandes": [
+            {
+             "debut": 763,
+             "fin": 773,
+             "unite": "M"
+            },
+            {
+             "debut": 708,
+             "fin": 718,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "UMTS 900 (3G)",
+           "id": 5478367,
+           "ordre": 110,
+           "date_service": "25/11/2014",
+           "bandes": [
+            {
+             "debut": 934.9,
+             "fin": 943.6,
+             "unite": "M"
+            },
+            {
+             "debut": 889.9,
+             "fin": 898.6,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 3010144,
+           "ordre": 140,
+           "date_service": "10/06/2013",
+           "bandes": [
+            {
+             "debut": 852,
+             "fin": 862,
+             "unite": "M"
+            },
+            {
+             "debut": 811,
+             "fin": 821,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 13274721,
+           "ordre": 160,
+           "date_service": "20/01/2020",
+           "bandes": [
+            {
+             "debut": 1964.9,
+             "fin": 1979.7,
+             "unite": "M"
+            },
+            {
+             "debut": 2154.9,
+             "fin": 2169.7,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6878896,
+           "ordre": 150,
+           "date_service": "12/07/2016",
+           "bandes": [
+            {
+             "debut": 1805,
+             "fin": 1825,
+             "unite": "M"
+            },
+            {
+             "debut": 1710,
+             "fin": 1730,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "GSM 900 (2G)",
+           "id": 3010140,
+           "ordre": 10,
+           "date_service": "03/02/1999",
+           "bandes": [
+            {
+             "debut": 889.9,
+             "fin": 898.6,
+             "unite": "M"
+            },
+            {
+             "debut": 934.9,
+             "fin": 943.6,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3010132,
+           "ordre": 170,
+           "date_service": "28/03/2013",
+           "bandes": [
+            {
+             "debut": 2515,
+             "fin": 2535,
+             "unite": "M"
+            },
+            {
+             "debut": 2635,
+             "fin": 2655,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 13274723,
+           "ordre": 130,
+           "date_service": "16/04/2020",
+           "bandes": [
+            {
+             "debut": 763,
+             "fin": 773,
+             "unite": "M"
+            },
+            {
+             "debut": 708,
+             "fin": 718,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 45.1,
+       "antennes": [
+        {
+         "id": 6534748,
+         "orientation": 210,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15164070,
+           "ordre": 210,
+           "date_service": "19/03/2021",
+           "bandes": [
+            {
+             "debut": 3710,
+             "fin": 3800,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 46.7,
+       "antennes": [
+        {
+         "id": 6534746,
+         "orientation": 143,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15164068,
+           "ordre": 210,
+           "date_service": "19/03/2021",
+           "bandes": [
+            {
+             "debut": 3710,
+             "fin": 3800,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 6534750,
+         "orientation": 271,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15164072,
+           "ordre": 210,
+           "date_service": "19/03/2021",
+           "bandes": [
+            {
+             "debut": 3710,
+             "fin": 3800,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "station": {
+      "anfr": "0752700034",
+      "service": "22/11/2002",
+      "modification": "27/03/2026",
+      "exploitant": "SFR"
+     },
+     "adresse": {
+      "adresse": "43-45 R DES STS PÈRES FACULTÉ DE MÉDECINE DE PARIS V",
+      "code_postal": "75006",
+      "commune": "PARIS 6E ARRONDISSEMENT"
+     },
+     "categorie": {
+      "nom": "Téléphonie",
+      "code": "TEL"
+     },
+     "installations": [
+      {
+       "hauteur": 43.4,
+       "antennes": [
+        {
+         "id": 2933011,
+         "orientation": 0,
+         "emetteurs": [
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6269136,
+           "ordre": 150,
+           "date_service": "12/10/2016",
+           "bandes": [
+            {
+             "debut": 1825,
+             "fin": 1845,
+             "unite": "M"
+            },
+            {
+             "debut": 1730,
+             "fin": 1750,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 10266086,
+           "ordre": 160,
+           "date_service": "20/07/2018",
+           "bandes": [
+            {
+             "debut": 1920.5,
+             "fin": 1935.3,
+             "unite": "M"
+            },
+            {
+             "debut": 2110.5,
+             "fin": 2125.3,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3522537,
+           "ordre": 170,
+           "date_service": "09/01/2015",
+           "bandes": [
+            {
+             "debut": 2500,
+             "fin": 2515,
+             "unite": "M"
+            },
+            {
+             "debut": 2620,
+             "fin": 2635,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 13819074,
+           "ordre": 130,
+           "date_service": "23/04/2021",
+           "bandes": [
+            {
+             "debut": 703,
+             "fin": 708,
+             "unite": "M"
+            },
+            {
+             "debut": 758,
+             "fin": 763,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "GSM 900 (2G)",
+           "id": 3522529,
+           "ordre": 10,
+           "date_service": "22/11/2002",
+           "bandes": [
+            {
+             "debut": 951.2,
+             "fin": 959.9,
+             "unite": "M"
+            },
+            {
+             "debut": 906.2,
+             "fin": 914.9,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 3522539,
+           "ordre": 140,
+           "date_service": "09/01/2015",
+           "bandes": [
+            {
+             "debut": 801,
+             "fin": 811,
+             "unite": "M"
+            },
+            {
+             "debut": 842,
+             "fin": 852,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "UMTS 900 (3G)",
+           "id": 3522531,
+           "ordre": 110,
+           "date_service": "25/02/2015",
+           "bandes": [
+            {
+             "debut": 951.2,
+             "fin": 959.9,
+             "unite": "M"
+            },
+            {
+             "debut": 906.2,
+             "fin": 914.9,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 2100 (5G)",
+           "id": 20076175,
+           "ordre": 190,
+           "bandes": [
+            {
+             "debut": 2110.5,
+             "fin": 2125.3,
+             "unite": "M"
+            },
+            {
+             "debut": 1920.5,
+             "fin": 1935.3,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 2933015,
+         "orientation": 240,
+         "emetteurs": [
+          {
+           "systeme": "GSM 900 (2G)",
+           "id": 3522553,
+           "ordre": 10,
+           "date_service": "22/11/2002",
+           "bandes": [
+            {
+             "debut": 951.2,
+             "fin": 959.9,
+             "unite": "M"
+            },
+            {
+             "debut": 906.2,
+             "fin": 914.9,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 2100 (5G)",
+           "id": 20076179,
+           "ordre": 190,
+           "bandes": [
+            {
+             "debut": 1920.5,
+             "fin": 1935.3,
+             "unite": "M"
+            },
+            {
+             "debut": 2110.5,
+             "fin": 2125.3,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6269140,
+           "ordre": 150,
+           "date_service": "12/10/2016",
+           "bandes": [
+            {
+             "debut": 1730,
+             "fin": 1750,
+             "unite": "M"
+            },
+            {
+             "debut": 1825,
+             "fin": 1845,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 10266090,
+           "ordre": 160,
+           "date_service": "20/07/2018",
+           "bandes": [
+            {
+             "debut": 2110.5,
+             "fin": 2125.3,
+             "unite": "M"
+            },
+            {
+             "debut": 1920.5,
+             "fin": 1935.3,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3522561,
+           "ordre": 170,
+           "date_service": "09/01/2015",
+           "bandes": [
+            {
+             "debut": 2500,
+             "fin": 2515,
+             "unite": "M"
+            },
+            {
+             "debut": 2620,
+             "fin": 2635,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 13819078,
+           "ordre": 130,
+           "date_service": "23/04/2021",
+           "bandes": [
+            {
+             "debut": 758,
+             "fin": 763,
+             "unite": "M"
+            },
+            {
+             "debut": 703,
+             "fin": 708,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 3522563,
+           "ordre": 140,
+           "date_service": "09/01/2015",
+           "bandes": [
+            {
+             "debut": 842,
+             "fin": 852,
+             "unite": "M"
+            },
+            {
+             "debut": 801,
+             "fin": 811,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "UMTS 900 (3G)",
+           "id": 3522555,
+           "ordre": 110,
+           "date_service": "25/02/2015",
+           "bandes": [
+            {
+             "debut": 906.2,
+             "fin": 914.9,
+             "unite": "M"
+            },
+            {
+             "debut": 951.2,
+             "fin": 959.9,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 2933013,
+         "orientation": 120,
+         "emetteurs": [
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 6269138,
+           "ordre": 150,
+           "date_service": "12/10/2016",
+           "bandes": [
+            {
+             "debut": 1825,
+             "fin": 1845,
+             "unite": "M"
+            },
+            {
+             "debut": 1730,
+             "fin": 1750,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "UMTS 900 (3G)",
+           "id": 3522543,
+           "ordre": 110,
+           "date_service": "25/02/2015",
+           "bandes": [
+            {
+             "debut": 906.2,
+             "fin": 914.9,
+             "unite": "M"
+            },
+            {
+             "debut": 951.2,
+             "fin": 959.9,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "GSM 900 (2G)",
+           "id": 3522541,
+           "ordre": 10,
+           "date_service": "22/11/2002",
+           "bandes": [
+            {
+             "debut": 906.2,
+             "fin": 914.9,
+             "unite": "M"
+            },
+            {
+             "debut": 951.2,
+             "fin": 959.9,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 2100 (5G)",
+           "id": 20076177,
+           "ordre": 190,
+           "bandes": [
+            {
+             "debut": 1920.5,
+             "fin": 1935.3,
+             "unite": "M"
+            },
+            {
+             "debut": 2110.5,
+             "fin": 2125.3,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 3522551,
+           "ordre": 140,
+           "date_service": "09/01/2015",
+           "bandes": [
+            {
+             "debut": 842,
+             "fin": 852,
+             "unite": "M"
+            },
+            {
+             "debut": 801,
+             "fin": 811,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 3522549,
+           "ordre": 170,
+           "date_service": "09/01/2015",
+           "bandes": [
+            {
+             "debut": 2500,
+             "fin": 2515,
+             "unite": "M"
+            },
+            {
+             "debut": 2620,
+             "fin": 2635,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 13819076,
+           "ordre": 130,
+           "date_service": "23/04/2021",
+           "bandes": [
+            {
+             "debut": 703,
+             "fin": 708,
+             "unite": "M"
+            },
+            {
+             "debut": 758,
+             "fin": 763,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 10266088,
+           "ordre": 160,
+           "date_service": "20/07/2018",
+           "bandes": [
+            {
+             "debut": 2110.5,
+             "fin": 2125.3,
+             "unite": "M"
+            },
+            {
+             "debut": 1920.5,
+             "fin": 1935.3,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 41.2,
+       "antennes": [
+        {
+         "id": 6565484,
+         "orientation": 0,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15293205,
+           "ordre": 210,
+           "date_service": "14/06/2021",
+           "bandes": [
+            {
+             "debut": 3490,
+             "fin": 3570,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 6565486,
+         "orientation": 120,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15293207,
+           "ordre": 210,
+           "date_service": "14/06/2021",
+           "bandes": [
+            {
+             "debut": 3490,
+             "fin": 3570,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 6565488,
+         "orientation": 240,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15293209,
+           "ordre": 210,
+           "date_service": "14/06/2021",
+           "bandes": [
+            {
+             "debut": 3490,
+             "fin": 3570,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "station": {
+      "anfr": "0752750759",
+      "service": "04/10/2013",
+      "modification": "17/07/2026",
+      "exploitant": "BOUYGUES TELECOM"
+     },
+     "adresse": {
+      "adresse": "43-45 R DES STS PÈRES FACULTÉ DE MÉDECINE DE PARIS V",
+      "code_postal": "75006",
+      "commune": "PARIS 6E ARRONDISSEMENT"
+     },
+     "categorie": {
+      "nom": "FH",
+      "code": "FH"
+     },
+     "installations": [
+      {
+       "hauteur": 50,
+       "antennes": [
+        {
+         "id": 5685115,
+         "orientation": 125,
+         "emetteurs": [
+          {
+           "systeme": "FH (Faisceau hertzien)",
+           "id": 11891470,
+           "date_service": "03/04/2020",
+           "bandes": [
+            {
+             "debut": 33,
+             "fin": 33.4,
+             "unite": "G"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 8914724,
+         "orientation": 305,
+         "emetteurs": [
+          {
+           "systeme": "FH (Faisceau hertzien)",
+           "id": 24542467,
+           "date_service": "22/01/2024",
+           "bandes": [
+            {
+             "debut": 81,
+             "fin": 84,
+             "unite": "G"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 49,
+       "antennes": [
+        {
+         "id": 4581434,
+         "orientation": 116,
+         "emetteurs": [
+          {
+           "systeme": "FH (Faisceau hertzien)",
+           "id": 7971010,
+           "date_service": "09/10/2020",
+           "bandes": [
+            {
+             "debut": 38.5,
+             "fin": 39.5,
+             "unite": "G"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "station": {
+      "anfr": "0752750759",
+      "service": "04/10/2013",
+      "modification": "17/07/2026",
+      "exploitant": "BOUYGUES TELECOM"
+     },
+     "adresse": {
+      "adresse": "43-45 R DES STS PÈRES FACULTÉ DE MÉDECINE DE PARIS V",
+      "code_postal": "75006",
+      "commune": "PARIS 6E ARRONDISSEMENT"
+     },
+     "categorie": {
+      "nom": "Téléphonie",
+      "code": "TEL"
+     },
+     "installations": [
+      {
+       "hauteur": 43.9,
+       "antennes": [
+        {
+         "id": 240916,
+         "orientation": 120,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 2100 (5G)",
+           "id": 18234412,
+           "ordre": 190,
+           "date_service": "26/11/2021",
+           "bandes": [
+            {
+             "debut": 2125.3,
+             "fin": 2140.1,
+             "unite": "M"
+            },
+            {
+             "debut": 1935.3,
+             "fin": 1950.1,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 20593385,
+           "ordre": 130,
+           "date_service": "13/06/2024",
+           "bandes": [
+            {
+             "debut": 718,
+             "fin": 723,
+             "unite": "M"
+            },
+            {
+             "debut": 773,
+             "fin": 778,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 4716995,
+           "ordre": 140,
+           "date_service": "29/08/2018",
+           "bandes": [
+            {
+             "debut": 832,
+             "fin": 842,
+             "unite": "M"
+            },
+            {
+             "debut": 791,
+             "fin": 801,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 7971012,
+           "ordre": 170,
+           "date_service": "23/05/2019",
+           "bandes": [
+            {
+             "debut": 2535,
+             "fin": 2550,
+             "unite": "M"
+            },
+            {
+             "debut": 2655,
+             "fin": 2670,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 10784800,
+           "ordre": 160,
+           "date_service": "05/02/2024",
+           "bandes": [
+            {
+             "debut": 1935.3,
+             "fin": 1950.1,
+             "unite": "M"
+            },
+            {
+             "debut": 2125.3,
+             "fin": 2140.1,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 3612103,
+           "ordre": 150,
+           "date_service": "04/10/2013",
+           "bandes": [
+            {
+             "debut": 1765,
+             "fin": 1785,
+             "unite": "M"
+            },
+            {
+             "debut": 1860,
+             "fin": 1880,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 240918,
+         "orientation": 240,
+         "emetteurs": [
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 3612107,
+           "ordre": 150,
+           "date_service": "04/10/2013",
+           "bandes": [
+            {
+             "debut": 1765,
+             "fin": 1785,
+             "unite": "M"
+            },
+            {
+             "debut": 1860,
+             "fin": 1880,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 7971014,
+           "ordre": 170,
+           "date_service": "23/05/2019",
+           "bandes": [
+            {
+             "debut": 2655,
+             "fin": 2670,
+             "unite": "M"
+            },
+            {
+             "debut": 2535,
+             "fin": 2550,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 2100 (5G)",
+           "id": 18234414,
+           "ordre": 190,
+           "date_service": "26/11/2021",
+           "bandes": [
+            {
+             "debut": 2125.3,
+             "fin": 2140.1,
+             "unite": "M"
+            },
+            {
+             "debut": 1935.3,
+             "fin": 1950.1,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 20593387,
+           "ordre": 130,
+           "date_service": "13/06/2024",
+           "bandes": [
+            {
+             "debut": 773,
+             "fin": 778,
+             "unite": "M"
+            },
+            {
+             "debut": 718,
+             "fin": 723,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 10784802,
+           "ordre": 160,
+           "date_service": "05/02/2024",
+           "bandes": [
+            {
+             "debut": 2125.3,
+             "fin": 2140.1,
+             "unite": "M"
+            },
+            {
+             "debut": 1935.3,
+             "fin": 1950.1,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 4716997,
+           "ordre": 140,
+           "date_service": "29/08/2018",
+           "bandes": [
+            {
+             "debut": 791,
+             "fin": 801,
+             "unite": "M"
+            },
+            {
+             "debut": 832,
+             "fin": 842,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 44.6,
+       "antennes": [
+        {
+         "id": 6617375,
+         "orientation": 120,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15496673,
+           "ordre": 210,
+           "date_service": "12/06/2024",
+           "bandes": [
+            {
+             "debut": 3570,
+             "fin": 3640,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 6617373,
+         "orientation": 240,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15496671,
+           "ordre": 210,
+           "date_service": "12/06/2024",
+           "bandes": [
+            {
+             "debut": 3570,
+             "fin": 3640,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 31.6,
+       "antennes": [
+        {
+         "id": 6617371,
+         "orientation": 300,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15496669,
+           "ordre": 210,
+           "date_service": "12/06/2024",
+           "bandes": [
+            {
+             "debut": 3570,
+             "fin": 3640,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 6617369,
+         "orientation": 10,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 3500 (5G)",
+           "id": 15496667,
+           "ordre": 210,
+           "date_service": "12/06/2024",
+           "bandes": [
+            {
+             "debut": 3570,
+             "fin": 3640,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      },
+      {
+       "hauteur": 30.9,
+       "antennes": [
+        {
+         "id": 1488181,
+         "orientation": 10,
+         "emetteurs": [
+          {
+           "systeme": "5G NR 2100 (5G)",
+           "id": 18234418,
+           "ordre": 190,
+           "date_service": "26/11/2021",
+           "bandes": [
+            {
+             "debut": 2125.3,
+             "fin": 2140.1,
+             "unite": "M"
+            },
+            {
+             "debut": 1935.3,
+             "fin": 1950.1,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 10784806,
+           "ordre": 160,
+           "date_service": "05/02/2024",
+           "bandes": [
+            {
+             "debut": 2125.3,
+             "fin": 2140.1,
+             "unite": "M"
+            },
+            {
+             "debut": 1935.3,
+             "fin": 1950.1,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 4717005,
+           "ordre": 150,
+           "date_service": "04/10/2013",
+           "bandes": [
+            {
+             "debut": 1860,
+             "fin": 1880,
+             "unite": "M"
+            },
+            {
+             "debut": 1765,
+             "fin": 1785,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 7971020,
+           "ordre": 170,
+           "date_service": "23/05/2019",
+           "bandes": [
+            {
+             "debut": 2535,
+             "fin": 2550,
+             "unite": "M"
+            },
+            {
+             "debut": 2655,
+             "fin": 2670,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 20593391,
+           "ordre": 130,
+           "date_service": "13/06/2024",
+           "bandes": [
+            {
+             "debut": 773,
+             "fin": 778,
+             "unite": "M"
+            },
+            {
+             "debut": 718,
+             "fin": 723,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 4717003,
+           "ordre": 140,
+           "date_service": "29/08/2018",
+           "bandes": [
+            {
+             "debut": 832,
+             "fin": 842,
+             "unite": "M"
+            },
+            {
+             "debut": 791,
+             "fin": 801,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        },
+        {
+         "id": 1488179,
+         "orientation": 300,
+         "emetteurs": [
+          {
+           "systeme": "LTE 800 (4G)",
+           "id": 4716999,
+           "ordre": 140,
+           "date_service": "29/08/2018",
+           "bandes": [
+            {
+             "debut": 832,
+             "fin": 842,
+             "unite": "M"
+            },
+            {
+             "debut": 791,
+             "fin": 801,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 700 (4G)",
+           "id": 20593389,
+           "ordre": 130,
+           "date_service": "13/06/2024",
+           "bandes": [
+            {
+             "debut": 773,
+             "fin": 778,
+             "unite": "M"
+            },
+            {
+             "debut": 718,
+             "fin": 723,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2600 (4G)",
+           "id": 7971016,
+           "ordre": 170,
+           "date_service": "23/05/2019",
+           "bandes": [
+            {
+             "debut": 2535,
+             "fin": 2550,
+             "unite": "M"
+            },
+            {
+             "debut": 2655,
+             "fin": 2670,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 2100 (4G)",
+           "id": 10784804,
+           "ordre": 160,
+           "date_service": "05/02/2024",
+           "bandes": [
+            {
+             "debut": 1935.3,
+             "fin": 1950.1,
+             "unite": "M"
+            },
+            {
+             "debut": 2125.3,
+             "fin": 2140.1,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "LTE 1800 (4G)",
+           "id": 4717001,
+           "ordre": 150,
+           "date_service": "04/10/2013",
+           "bandes": [
+            {
+             "debut": 1860,
+             "fin": 1880,
+             "unite": "M"
+            },
+            {
+             "debut": 1765,
+             "fin": 1785,
+             "unite": "M"
+            }
+           ]
+          },
+          {
+           "systeme": "5G NR 2100 (5G)",
+           "id": 18234416,
+           "ordre": 190,
+           "date_service": "26/11/2021",
+           "bandes": [
+            {
+             "debut": 2125.3,
+             "fin": 2140.1,
+             "unite": "M"
+            },
+            {
+             "debut": 1935.3,
+             "fin": 1950.1,
+             "unite": "M"
+            }
+           ]
+          }
+         ]
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ },
+ "mesures": {
+  "url": "https://www.cartoradio.fr/api/v1/mesures?stationsRadioelec=true&objetsCom=true&anciennete=99999&format=geojson&bbox=2.327574,48.852585,2.335766,48.857975",
+  "body": {
+   "type": "FeatureCollection",
+   "features": [
+    {
+     "type": "Feature",
+     "id": 4176,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.3325,
+       48.855278
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 9573,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.331944,
+       48.853889
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 10220,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.333056,
+       48.855278
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 11233,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.329167,
+       48.857222
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 15410,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.332222,
+       48.855278
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 15411,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.3325,
+       48.855
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 15424,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.333056,
+       48.855
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 22463,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.335278,
+       48.855833
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 102095,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.333083,
+       48.855083
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 114452,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.330158,
+       48.856163
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 119343,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.330343,
+       48.85596
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 120609,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.335696,
+       48.855732
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 122122,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.335696,
+       48.855732
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 123933,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.330432,
+       48.857494
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 126200,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.332835,
+       48.854847
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 126205,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.332985,
+       48.85508
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 135080,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.333007,
+       48.855108
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 135096,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.330239,
+       48.857339
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 135174,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.332857,
+       48.854762
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 136201,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.335496,
+       48.855736
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 156155,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.33305,
+       48.855101
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 156175,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.332878,
+       48.854882
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 156177,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.330303,
+       48.857381
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 160580,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.333157,
+       48.855694
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 161212,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.335539,
+       48.855722
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 161880,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.329268,
+       48.852716
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 166245,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.330947,
+       48.85443
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 169521,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.330941,
+       48.854446
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 175575,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.330941,
+       48.854446
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 178919,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.330941,
+       48.854446
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 180572,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.331943,
+       48.853936
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 181022,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.333028,
+       48.855136
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 181234,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.332792,
+       48.854812
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 188341,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.335533,
+       48.855694
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    },
+    {
+     "type": "Feature",
+     "id": 191368,
+     "geometry": {
+      "type": "Point",
+      "coordinates": [
+       2.329123,
+       48.852814
+      ]
+     },
+     "properties": {
+      "objet_communicant": [
+       false
+      ]
+     }
+    }
+   ]
+  }
+ },
+ "mesure": {
+  "url": "https://www.cartoradio.fr/api/v1/mesures/15410",
+  "body": {
+   "data": {
+    "numero": 15410,
+    "laboratoire": "AEXPERTISE",
+    "date": "04/02/2009",
+    "heure": "09h30",
+    "typedemande": 4,
+    "adresse": {
+     "numero": "16",
+     "voie": "Rue Saint Benoît",
+     "code_postal": "75006",
+     "commune": "PARIS 6E ARRONDISSEMENT"
+    },
+    "milieu": "interieur",
+    "environnement": "Lieu d'habitation",
+    "protocole": "ANFR/DR 15-2.1",
+    "emetteurs": [
+     {
+      "libelle": "Autres",
+      "hauteur": 30,
+      "distance": 29
+     },
+     {
+      "libelle": "Radiotéléphonie",
+      "hauteur": 43,
+      "distance": 39
+     },
+     {
+      "libelle": "Radiotéléphonie",
+      "hauteur": 46,
+      "distance": 42
+     },
+     {
+      "libelle": "Radiotéléphonie",
+      "hauteur": 49,
+      "distance": 44
+     },
+     {
+      "libelle": "Radiotéléphonie",
+      "hauteur": 51,
+      "distance": 46
+     }
+    ],
+    "conformite": "true",
+    "mesureglobale": "0.0",
+    "services": [
+     {
+      "libelle": "Services HF",
+      "bande": "0,1-30",
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "PMR - balises",
+      "bande": "108– 880/921–925",
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "TM 1800",
+      "bande": "1805-1880",
+      "extrapolation": 0.15,
+      "limite": "58 V/m"
+     },
+     {
+      "libelle": "DECT (Téléphone domestique)",
+      "bande": "1880-1900",
+      "limite": "59 V/m"
+     },
+     {
+      "libelle": "TM 2100",
+      "bande": "2100-2170",
+      "limite": "61 V/m"
+     },
+     {
+      "libelle": "Radar - BLR (Wimax)- FH",
+      "bande": "2200-6000 (hors Wi-Fi et TM)",
+      "limite": "61 V/m"
+     },
+     {
+      "libelle": "PMR (Réseaux radio mobile professionnels)",
+      "bande": "30-87,5 (hors TV)",
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "TV",
+      "bande": "47-68/470-790",
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "Radiodiffusion sonore (FM – RNT)",
+      "bande": "87,5-108/174-223",
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "TM 900",
+      "bande": "925-960",
+      "extrapolation": 0.08,
+      "limite": "41 V/m"
+     },
+     {
+      "libelle": "Radars - balises - FH",
+      "bande": "960-1710",
+      "limite": "42 V/m"
+     }
+    ],
+    "rapport": "FicheMesure15410.pdf"
+   }
+  }
+ },
+ "mesureRecente": {
+  "url": "https://www.cartoradio.fr/api/v1/mesures/191368",
+  "body": {
+   "data": {
+    "numero": 191368,
+    "laboratoire": "EXEM",
+    "date": "06/11/2024",
+    "heure": "12h43",
+    "typedemande": 3,
+    "adresse": {
+     "numero": "9",
+     "voie": "Rue de Grenelle",
+     "code_postal": "75007",
+     "commune": "PARIS 7E ARRONDISSEMENT"
+    },
+    "milieu": "interieur",
+    "environnement": "Lieu d'habitation",
+    "protocole": "ANFR/DR 15-4",
+    "emetteurs": [
+     {
+      "libelle": null,
+      "hauteur": null,
+      "distance": null
+     }
+    ],
+    "conformite": "true",
+    "mesureglobale": "0.55",
+    "services": [
+     {
+      "libelle": "Services HF",
+      "bande": "0,1-30",
+      "mesure": 0.08,
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "PMR - balises",
+      "bande": "108– 880/921–925",
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "TM 1800",
+      "bande": "1805-1880",
+      "mesure": 0.2,
+      "limite": "58 V/m"
+     },
+     {
+      "libelle": "DECT (Téléphone domestique)",
+      "bande": "1880-1900",
+      "limite": "59 V/m"
+     },
+     {
+      "libelle": "TM 2100",
+      "bande": "2100-2170",
+      "mesure": 0.1,
+      "limite": "61 V/m"
+     },
+     {
+      "libelle": "Radar - BLR (Wimax)- FH",
+      "bande": "2200-6000 (hors Wi-Fi et TM)",
+      "limite": "61 V/m"
+     },
+     {
+      "libelle": "Réseaux locaux radioélectriques ou Wifi",
+      "bande": "2400-2483/5150-5350/5470-5725",
+      "limite": "61 V/m"
+     },
+     {
+      "libelle": "TM 2600",
+      "bande": "2620-2690",
+      "mesure": 0.15,
+      "limite": "61 V/m"
+     },
+     {
+      "libelle": "PMR (Réseaux radio mobile professionnels)",
+      "bande": "30-87,5 (hors TV)",
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "TM 3600",
+      "bande": "3400-3800",
+      "mesure": 0.14,
+      "limite": "61 V/m"
+     },
+     {
+      "libelle": "TV",
+      "bande": "47-68/470-790",
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "TM 700 (Téléphonie Mobile en 700 MHz)",
+      "bande": "703-788",
+      "mesure": 0.22,
+      "limite": "36 V/m"
+     },
+     {
+      "libelle": "TM 800",
+      "bande": "791-821",
+      "mesure": 0.18,
+      "limite": "39 V/m"
+     },
+     {
+      "libelle": "Radiodiffusion sonore (FM – RNT)",
+      "bande": "87,5-108/174-223",
+      "limite": "28 V/m"
+     },
+     {
+      "libelle": "TM 900",
+      "bande": "925-960",
+      "mesure": 0.19,
+      "limite": "41 V/m"
+     },
+     {
+      "libelle": "Radars - balises - FH",
+      "bande": "960-1710",
+      "limite": "42 V/m"
+     }
+    ],
+    "rapport": "RPUB_164399.pdf"
+   }
+  }
+ }
+}

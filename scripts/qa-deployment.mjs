@@ -39,6 +39,8 @@ const PROBES = [
   '/api/sup-fr/departements',
   '/api/comptages-fr/status',
   '/api/delinquance-fr/status',
+  '/api/anfr-fr/status',
+  '/api/fraicheur-fr/status',
   '/api/irve-fr/departements',
   '/api/gas-fr/sites',
   '/api/bison-fute/events',
