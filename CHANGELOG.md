@@ -244,6 +244,60 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `road-status-fr`'s 🛣, because the whole point is that it is a different
   quantity. `REGISTERED_LAYER_IDS.length` moves 42 → 43.
 
+- **Pouls vélo (FR) — une semaine type à Lyon et à Paris, et pourquoi les deux
+  ne se dessinent pas pareil.** The globe already showed Vélib' and Vélo'v as
+  they are *right now*. This shows how they are *usually*: 168 hours of a
+  typical week, from the two cities' own archives.
+
+  **The finding is the layer.** The Métropole de Lyon publishes the availability
+  of every Vélo'v station continuously since 2023-03-27 — filterable per station
+  and per date, the only archive of its kind in France. **Paris publishes no
+  Vélib' equivalent at all.** Checked four ways on 2026-09-02: opendata.paris.fr
+  carries two Vélib' datasets and both are real-time only; data.gouv.fr has no
+  availability history; transport.data.gouv.fr's `history` array for the Vélib'
+  dataset is empty; and `lovasoa/historique-velib-opendata`, the community
+  mirror everyone cites, was last pushed 2023-04-04 with release assets dated
+  2021.
+
+  So the two cities answer through different instruments, and the layer says so
+  on every card instead of quietly averaging them:
+
+  - **Lyon — STOCKS.** How full each of 422 docks is. A station that empties
+    every weekday morning and refills every evening is a commuter origin; the
+    reverse is a destination.
+  - **Paris — FLOWS.** How many cyclists pass each of 111 permanent counters.
+    People going by, not bicycles standing still.
+
+  Nothing puts the two on one scale. What is compared is each site against
+  **itself** — its share of its own weekly maximum — which means the same thing
+  in both cities while the height keeps each city's own unit.
+
+  **Three ways to look at it.** MAINTENANT shows the hour of the week it
+  currently is, so a reader opening the globe on a Tuesday morning sees a
+  Tuesday morning. SEMAINE runs all 168 hours in 37 seconds — the morning peak
+  fills, the city drains, the weekend flattens. POINTE freezes on the network's
+  busiest hour.
+
+  **Two traps the build had to survive, both measured.** Paris timestamps are
+  UTC and a typical week is local: grouping without `timezone=Europe/Paris`
+  puts the morning peak at 04:00, and counter 100003096's 04:00 bucket reads 38
+  without the timezone and 4 with it. And Lyon's archive does not write every
+  station every minute — a 5-minute window returned 332 of 454 stations in one
+  probe — so the build samples five minutes per hour and leans on four weeks to
+  fill the gaps, records how many of the four landed in each slot, and **drops
+  and counts** a station sampled in fewer than half the week's hours rather than
+  drawing it with holes in it. A CLOSED station is skipped rather than averaged
+  in as 0 %: a maintenance outage is not an empty dock.
+
+  **One fixed window, both cities: four weeks of June 2026.** A typical week in
+  June is not a typical week in January, and averaging thirteen months would
+  hide that rather than solve it. It is stated in the pack, on the row and on
+  every card. Cost: 672 requests and ~215 MB for Lyon, paced at 300 ms; 113
+  server-side aggregations and about a megabyte for Paris.
+
+  Share token `vp`, carrying the mode. `npm run velo:pulse` rebuilds the pack,
+  `npm run qa:velo-pulse` proves it in a browser over both cities.
+
 - **Fiche implantation (FR) — le chiffre qu'un outil de géomarketing vend, avec
   sa barre d'erreur.** Click a door: how many people live within ten minutes'
   walk of it, what do they earn, what may be built on the plot, what did the

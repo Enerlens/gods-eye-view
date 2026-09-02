@@ -19,6 +19,7 @@ import cadastreParcelsLayer from './data/cadastreParcels.js';
 import filosofiCarreauxLayer from './data/filosofiCarreaux.js';
 import isochroneRingsLayer from './data/isochroneRings.js';
 import implantationFicheLayer from './data/implantationFiche.js';
+import veloPulseLayer from './data/veloPulse.js';
 import georisquesLayer from './data/georisques.js';
 import dvfSalesLayer from './data/dvfSales.js';
 import dpeFranceLayer from './data/dpeFrance.js';
@@ -319,6 +320,7 @@ async function init() {
     dataManager.register(filosofiCarreauxLayer);
     dataManager.register(isochroneRingsLayer);
     dataManager.register(implantationFicheLayer);
+    dataManager.register(veloPulseLayer);
     dataManager.register(georisquesLayer);
     dataManager.register(dvfSalesLayer);
     dataManager.register(dpeFranceLayer);

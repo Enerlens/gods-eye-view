@@ -83,6 +83,8 @@
     "qa:filosofi": "node scripts/qa-filosofi.mjs",
     "qa:isochrone": "node scripts/qa-isochrone.mjs",
     "qa:implantation": "node scripts/qa-implantation.mjs",
+    "velo:pulse": "node scripts/build-velo-pulse.mjs",
+    "qa:velo-pulse": "node scripts/qa-velo-pulse.mjs",
     "qa:meteo-stations-fr": "node scripts/qa-meteo-stations-fr.mjs"
   },
   "dependencies": {

@@ -249,6 +249,13 @@ const OPTION_GROUPS = Object.freeze({
   'implantation-fr': Object.freeze([
     enumOption('seconds', 's', 600, [300, 600, 900], { 300: '5', 600: '0', 900: '9' }),
   ]),
+  // `now` is the DEFAULT and it is deliberately not frozen in time: it means
+  // "the hour of the week it currently is", so a link shared on a Tuesday
+  // morning opens on a Tuesday morning for its reader too, whenever they read
+  // it. Only `week` and `peak` are absolute states, and both encode.
+  'velo-pulse-fr': Object.freeze([
+    enumOption('mode', 'm', 'now', ['now', 'week', 'peak'], { now: 'n', week: 'w', peak: 'p' }),
+  ]),
   'isochrone-fr': Object.freeze([
     enumOption('profile', 'p', 'foot', ['foot', 'car'], { foot: 'f', car: 'c' }),
   ]),
@@ -542,6 +549,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),
   Object.freeze({ id: 'transit-fr', token: 'p', disposition: 'enabled-only' }),
   Object.freeze({ id: 'urbanisme-gpu', token: 'ur', disposition: 'enabled-only' }),
+  // `vp`, and `enabled+options` because the MODE is what the layer is showing:
+  // the same 533 columns at Tuesday 08:00 and at Sunday 04:00 are two different
+  // pictures, and a link that dropped the hour would restore the wrong one.
+  Object.freeze({ id: 'velo-pulse-fr', token: 'vp', disposition: 'enabled+options', optionOwner: 'velo-pulse-fr' }),
   Object.freeze({ id: 'vigicrues', token: 'v', disposition: 'enabled-only' }),
 ]);
 

@@ -647,6 +647,22 @@ export const DATA_CREDITS = [
       'Labels are shown as a distribution, never averaged into a neighbourhood grade.',
   },
   {
+    key: 'velo-pulse-fr',
+    html:
+      'Pouls v&eacute;lo &mdash; a typical week, built from two archives that do not measure the same thing. '
+      + 'Lyon: <em>Historique des disponibilit&eacute;s des stations V&eacute;lo&rsquo;v</em>, '
+      + '<a href="https://data.grandlyon.com/portail/fr/jeux-de-donnees/historique-disponibilites-stations-velo-v-metropole-lyon/donnees" target="_blank" rel="noopener">M&eacute;tropole de Lyon / JCDecaux</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>) &mdash; '
+      + 'dock occupancy, a STOCK. Paris: <em>Comptage v&eacute;lo, donn&eacute;es compteurs</em>, '
+      + '<a href="https://opendata.paris.fr/explore/dataset/comptage-velo-donnees-compteurs/" target="_blank" rel="noopener">Ville de Paris</a> '
+      + '(<a href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">ODbL</a>) &mdash; '
+      + 'cyclists counted, a FLOW. <strong>Paris publishes no V&eacute;lib&rsquo; availability archive at all</strong> '
+      + '(checked 2026-09-02 against opendata.paris.fr, data.gouv.fr, transport.data.gouv.fr and the community mirror), '
+      + 'which is why the two cities are shown through different instruments and why every card names which one. '
+      + 'Both cities are read over the same four weeks of June 2026, hour by hour; the colour is each site&rsquo;s share '
+      + 'of its OWN weekly maximum, never a shared absolute scale.',
+  },
+  {
     key: 'implantation-fiche',
     html:
       'Fiche implantation: a JOIN, not a source. It composes the IGN isochrone, the INSEE Filosofi carroyage, '

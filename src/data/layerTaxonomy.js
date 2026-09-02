@@ -345,6 +345,22 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Next to `bikeshare` and `shared-mobility-fr`, and the only one of the three
+  // that is not about NOW. Those two answer "how many bikes are at this dock
+  // this minute"; this one answers "how full is it on a Tuesday at eight",
+  // which is a different question about the same street furniture. `static`
+  // because the week is a shipped file: it changes when someone rebuilds it,
+  // not on a poll — and `cities`, not `fr`, because the archives it is built
+  // from exist in exactly two of them.
+  Object.freeze({
+    id: 'velo-pulse-fr',
+    category: 'ground-mobility',
+    label: 'Pouls vélo (semaine type)',
+    kind: 'dataset',
+    coverage: 'cities',
+    auth: 'none',
+    cadence: 'static',
+  }),
   // `periodic` and not `live`: the event aggregate is republished hourly, so it
   // does not stream — it is a polled snapshot, and calling it live would
   // promise a cadence the source does not have. (Its sibling `road-status-fr`
