@@ -7,13 +7,10 @@ export const SPRITE_LAYER_ORDER = Object.freeze([
   'schools-fr',
   'medecins-fr',
   'sup-fr',
-  // Les deux couches voulaient ce créneau, juste au-dessus de `sup-fr`, et
-  // elles y tiennent toutes les deux — mais pas dans n'importe quel ordre.
-  // `amenities-fr` dessine 95 406 points nationaux et `petite-enfance-fr`
-  // un indicateur bien plus rare : la dense passe DESSOUS, sinon elle
-  // enterre l'autre partout où les deux sont allumées.
+  // `petite-enfance-fr` occupait le créneau juste au-dessus : elle ne dessine
+  // plus de sprite du tout depuis qu'elle remplit les territoires eux-mêmes,
+  // et une couche sans collection n'a rien à ordonner ici.
   'amenities-fr',
-  'petite-enfance-fr',
   'irve-fr',
   'anfr-fr',
   'gas-fr',

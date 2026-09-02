@@ -168,6 +168,14 @@
  * `node --test`.
  */
 
+import {
+  COMMUNE_COORDINATE_DECIMALS,
+  COMMUNE_MAX_PARTS,
+  COMMUNE_MAX_RING_VERTICES,
+  GEO_API_ROOT,
+  communeContoursUrl,
+} from './communeContours.js';
+
 // ---------------------------------------------------------------------------
 // Provenance
 // ---------------------------------------------------------------------------
@@ -316,16 +324,21 @@ export const DELINQUANCE_YEAR_FLOOR = '2025';
  * Marseille** — whose parent communes 75056, 69123 and 13055 are present and
  * carry the same totals. 34 920 = 34 875 + 45, and nothing is lost.
  */
-export const DELINQUANCE_CONTOURS_ROOT = 'https://geo.api.gouv.fr/departements';
+export const DELINQUANCE_CONTOURS_ROOT = `${GEO_API_ROOT}/departements`;
 
-/** Build the commune-contour URL for one département. */
+/**
+ * Build the commune-contour URL for one département.
+ *
+ * The guard and the template live in `communeContours.js`; what stays here is
+ * the message, because a bad code reaching this function is a délinquance bug
+ * and the log has to say which layer asked.
+ */
 export function delinquanceContoursUrl(departement) {
-  const code = String(departement || '').trim().toUpperCase();
-  if (!/^(?:[0-9][0-9AB]|97[1-6])$/.test(code)) {
-    throw new Error(`delinquance: invalid département code ${departement}`);
+  try {
+    return communeContoursUrl(departement);
+  } catch (error) {
+    throw new Error(`delinquance: invalid département code ${departement}`, { cause: error });
   }
-  return `${DELINQUANCE_CONTOURS_ROOT}/${code}/communes`
-    + '?format=geojson&geometry=contour&fields=code,nom,population';
 }
 
 // ---------------------------------------------------------------------------
@@ -998,8 +1011,20 @@ export function selectDelinquanceChips(census, limit = 6) {
 // Commune contours
 // ---------------------------------------------------------------------------
 
+/**
+ * The contour machinery lives in `communeContours.js`, which this layer used
+ * to own outright. It moved out when the childcare layer became the second
+ * caller — nothing in a ring's decimation is about recorded crime. The
+ * measurements that justify the constants were made here, on the real SSMSI
+ * geography, and stay here as the layer's own record of them.
+ */
+export {
+  decimateCommuneRing,
+  projectCommuneContours,
+} from './communeContours.js';
+
 /** Coordinate precision kept on a commune ring. 4 dp is ~11 m of latitude. */
-export const DELINQUANCE_COORDINATE_DECIMALS = 4;
+export const DELINQUANCE_COORDINATE_DECIMALS = COMMUNE_COORDINATE_DECIMALS;
 /**
  * Vertices kept per commune ring.
  *
@@ -1010,103 +1035,13 @@ export const DELINQUANCE_COORDINATE_DECIMALS = 4;
  * this regime is entered at, so the extra 64 vertices buy nothing a reader can
  * see and cost 57% more payload on the largest département in France.
  */
-export const DELINQUANCE_MAX_RING_VERTICES = 64;
+export const DELINQUANCE_MAX_RING_VERTICES = COMMUNE_MAX_RING_VERTICES;
 /**
  * Separate PIECES of one commune kept, largest first. Islands and exclaves
  * beyond the third are dropped; the count of what was dropped is reported so
  * the simplification is visible rather than silent.
  */
-export const DELINQUANCE_MAX_PARTS = 3;
-
-/**
- * Round, dedupe and stride one ring down to a drawable outline.
- *
- * Returns `simplified` per ring rather than pretending the result is an
- * administrative boundary: it is not, and a commune limit is a legal object.
- *
- * @param {Array<Array<number>>} ring `[lon, lat]` pairs.
- * @param {{maxVertices?:number, decimals?:number}} [options]
- * @returns {{ring:Array<number>, simplified:boolean}} Flat `[lon, lat, …]`.
- */
-export function decimateCommuneRing(ring, {
-  maxVertices = DELINQUANCE_MAX_RING_VERTICES,
-  decimals = DELINQUANCE_COORDINATE_DECIMALS,
-} = {}) {
-  const scale = 10 ** decimals;
-  const points = [];
-  let previousLon = NaN;
-  let previousLat = NaN;
-  for (const point of Array.isArray(ring) ? ring : []) {
-    const lon = Math.round(Number(point?.[0]) * scale) / scale;
-    const lat = Math.round(Number(point?.[1]) * scale) / scale;
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-    if (lon === previousLon && lat === previousLat) continue;
-    points.push([lon, lat]);
-    previousLon = lon;
-    previousLat = lat;
-  }
-  if (points.length < 4) return { ring: [], simplified: false };
-  if (points.length <= maxVertices) return { ring: points.flat(), simplified: false };
-  const stride = Math.ceil(points.length / maxVertices);
-  const kept = [];
-  for (let i = 0; i < points.length; i += stride) kept.push(points[i]);
-  // A stride can drop the closing vertex, and an unclosed ring is the one
-  // simplification whose failure mode is a visible gash across the commune.
-  const last = points[points.length - 1];
-  const tail = kept[kept.length - 1];
-  if (tail[0] !== last[0] || tail[1] !== last[1]) kept.push(last);
-  return { ring: kept.flat(), simplified: true };
-}
-
-/**
- * Project one département's commune contours into the wire shape.
- *
- * Outer rings only: a commune's interior rings are enclaves of ANOTHER
- * commune, which is drawn in its own right at the same time, so cutting the
- * hole would leave a gap where a polygon already sits.
- *
- * @param {object} geojson `geo.api.gouv.fr` FeatureCollection.
- * @returns {{communes:Array<object>, vertices:number, simplified:number, droppedParts:number}}
- */
-export function projectCommuneContours(geojson, options = {}) {
-  const features = Array.isArray(geojson?.features) ? geojson.features : [];
-  const communes = [];
-  let vertices = 0;
-  let simplified = 0;
-  let droppedParts = 0;
-  for (const feature of features) {
-    const code = ssmsiText(feature?.properties?.code);
-    if (!code) continue;
-    const geometry = feature?.geometry;
-    const polygons = geometry?.type === 'Polygon'
-      ? [geometry.coordinates]
-      : (geometry?.type === 'MultiPolygon' ? geometry.coordinates : []);
-    const ordered = polygons
-      .filter((polygon) => Array.isArray(polygon?.[0]))
-      .sort((a, b) => b[0].length - a[0].length);
-    if (ordered.length > DELINQUANCE_MAX_PARTS) droppedParts += ordered.length - DELINQUANCE_MAX_PARTS;
-    const parts = [];
-    let anySimplified = false;
-    for (const polygon of ordered.slice(0, DELINQUANCE_MAX_PARTS)) {
-      const result = decimateCommuneRing(polygon[0], options);
-      if (result.ring.length < 8) continue;
-      parts.push(result.ring);
-      vertices += result.ring.length / 2;
-      anySimplified = anySimplified || result.simplified;
-    }
-    if (!parts.length) continue;
-    if (anySimplified) simplified += 1;
-    communes.push({
-      code,
-      name: ssmsiText(feature?.properties?.nom) || code,
-      population: Number(feature?.properties?.population) || null,
-      parts,
-      simplified: anySimplified,
-    });
-  }
-  communes.sort((a, b) => a.code.localeCompare(b.code));
-  return { communes, vertices, simplified, droppedParts };
-}
+export const DELINQUANCE_MAX_PARTS = COMMUNE_MAX_PARTS;
 
 /**
  * Join one département's contours to its folded commune cells.

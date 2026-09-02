@@ -162,7 +162,7 @@ import {
   vehiclePositionsFromBytes,
 } from './src/data/gtfsRealtime.js';
 import { boundsOfPoints, boxKey, boxesIntersect, snapBoxOutward, validBox } from './src/data/viewportBox.js';
-import { buildDepartementIndex } from './src/data/franceDepartements.js';
+import { buildDepartementIndex, departementsInBox } from './src/data/franceDepartements.js';
 import {
   projectIrveDepartements,
   sweepStripeTruncated,
@@ -433,7 +433,13 @@ import {
   peYearWhere,
   placePeAreas,
   projectPeAreas,
+  projectPeTerritoires,
+  peContourUrls,
+  peTerritoiresInBox,
   readNational as peReadNational,
+  PE_MAX_BOX_COMMUNES,
+  PE_MAX_BOX_DEG,
+  PE_MAX_BOX_DEPARTEMENTS,
 } from './src/data/petiteEnfanceFeed.js';
 import { projectPeDepartements } from './src/data/petiteEnfanceDepartements.js';
 import {
@@ -4985,9 +4991,10 @@ function supFranceProxy() {
 /**
  * CNAF childcare-coverage proxy — keyless, Licence Ouverte 2.0.
  *
- *   GET /api/petite-enfance-fr/departements — national rollup, 96 départements
- *   GET /api/petite-enfance-fr/areas        — 1 250 EPCI + 1 061 commune points
- *   GET /api/petite-enfance-fr/status       — provenance + cache state
+ *   GET /api/petite-enfance-fr/departements   — national rollup, 96 départements
+ *   GET /api/petite-enfance-fr/areas          — 1 250 EPCI + 1 061 commune rates
+ *   GET /api/petite-enfance-fr/contours?box   — the commune outlines a view can see
+ *   GET /api/petite-enfance-fr/status         — provenance + cache state
  *
  * WHY A PROXY, when data.caf.fr sends CORS headers: this layer is SEVEN files
  * from one producer joined to THREE centroid files from another. Each scale
@@ -5001,11 +5008,22 @@ function supFranceProxy() {
  * year would serve a quietly stale map forever, so it is read from the
  * portal's own grouping and floored at the edition this was measured against.
  *
- * WHY CENTROIDS AND NOT CONTOURS: geo.api.gouv.fr refuses an unfiltered
- * contour request, so EPCI polygons would be 1 255 separate calls, 66 MB and
- * 3.1 million vertices (measured) before simplification. The centroids are ONE
- * 198 KB call. The layer says on every card that its point is the centre of an
- * area rather than a place, which is the honest form of that trade.
+ * WHY THE CONTOURS ARE PER-DÉPARTEMENT AND THE CENTROIDS ARE NATIONAL. Both
+ * are needed and they answer different questions. The centroids are ONE 198 KB
+ * call and they are what lets `/areas` say WHERE each of the 2 311 rates
+ * belongs, cheaply, for the whole country at once — the box filter and the
+ * card anchor both run off them. The OUTLINES are what the layer actually
+ * draws, and geo.api.gouv.fr refuses an unfiltered contour request: asking for
+ * EPCI territory nationally would be 1 255 separate calls, 66 MB and 3.1
+ * million vertices (measured). So contours are fetched a département at a time
+ * — memoized here, so ten tabs over Lyon cost one upstream call — and SERVED
+ * by view box, because a view is not shaped like a département: measured over
+ * five cities, one 0,9° box clips 4 to 18 of them, and shipping whole packs
+ * would send Pas-de-Calais because a corner of it caught the screen edge.
+ *
+ * An EPCI has no contour of its own on that API. `codeEpci` rides along with
+ * the commune geometry at no extra cost, and the browser fills an EPCI as its
+ * member communes under one colour. See `projectPeTerritoires`.
  */
 const PE_BASE = `https://${PE_PORTAL}/api/explore/v2.1/catalog/datasets`;
 const PE_GEO_BASE = 'https://geo.api.gouv.fr';
@@ -5031,6 +5049,32 @@ let _peCoverage = null;
 let _peInFlight = null;
 let _peDiskChecked = false;
 const _peRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 90 });
+/** dep -> projected commune outlines, memoized for the process. */
+const _peContours = new Map();
+/** dep -> in-flight contour promise, so ten tabs cost one upstream call. */
+const _peContourInFlight = new Map();
+/**
+ * Byte cap on ONE département of raw outlines. Measured on the live API: the
+ * Rhône is 1 911 440 bytes for 266 communes and Pas-de-Calais — the worst case
+ * in France, 887 communes — is 4 135 420. 24 MB is six times the worst case
+ * and still refuses a runaway.
+ */
+const PE_CONTOUR_MAX_BYTES = 24 * 1024 * 1024;
+const PE_CONTOUR_TIMEOUT_MS = 60_000;
+/** Départements fetched at once for one box. See `peContoursForBox`. */
+const PE_CONTOUR_CONCURRENCY = 4;
+/** @type {?Promise<{list:Array<object>, byCode:Map}>} */
+let _peDepIndex = null;
+
+/** GET one contour document, under its own (larger) timeout and cap. */
+async function fetchPeContourJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(PE_CONTOUR_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, PE_CONTOUR_MAX_BYTES);
+}
 
 /** GET one JSON document, under a timeout and a byte cap. */
 async function fetchPeJson(url) {
@@ -5187,6 +5231,118 @@ async function refreshPeCoverage() {
   };
 }
 
+/**
+ * Commune outlines for one département, memoized and coalesced.
+ *
+ * Held for the life of the process and never written to disk: the geography
+ * changes once a year at most, the payloads are small enough to keep, and the
+ * coverage cache next door is the one that has to survive a restart because
+ * rebuilding IT costs eleven upstream documents.
+ *
+ * `coalesceProxyRequest` returns `{promise, shared}` and not a promise, so the
+ * `.promise` is unwrapped here — awaiting the wrapper yields the wrapper, and
+ * every commune in the département would then arrive without geometry.
+ */
+async function ensurePeContours(dep) {
+  if (_peContours.has(dep)) return _peContours.get(dep);
+  const request = coalesceProxyRequest(_peContourInFlight, dep, async () => {
+    const urls = peContourUrls(dep);
+    const [communes, arrondissements] = await Promise.all([
+      fetchPeContourJson(urls.communes),
+      // The second call is only made for 75, 69 and 13, and a failure on it is
+      // not fatal: the parent commune is already in hand, so Paris loses its
+      // twenty arrondissement rates and keeps its EPCI ground rather than
+      // going blank.
+      urls.arrondissements
+        ? fetchPeContourJson(urls.arrondissements).catch((error) => {
+          console.warn(`[PetiteEnfance Proxy] arrondissements ${dep} unavailable:`, error?.message || error);
+          return null;
+        })
+        : Promise.resolve(null),
+    ]);
+    const pack = projectPeTerritoires({ communes, arrondissements, departement: dep });
+    _peContours.set(dep, pack);
+    return pack;
+  });
+  return request.promise;
+}
+
+/**
+ * The view box a request is asking about, or null when it is not one.
+ *
+ * A box wider than `PE_MAX_BOX_DEG` is REFUSED rather than clamped: clamping
+ * would answer a question nobody asked and leave the browser drawing a strip
+ * of the view it did not request, which reads exactly like missing data.
+ */
+function peQueryBox(params) {
+  const box = {
+    south: Number(params.get('south')),
+    west: Number(params.get('west')),
+    north: Number(params.get('north')),
+    east: Number(params.get('east')),
+  };
+  if (![box.south, box.west, box.north, box.east].every(Number.isFinite)) return null;
+  if (box.north <= box.south || box.east <= box.west) return null;
+  if (box.north - box.south > PE_MAX_BOX_DEG) return null;
+  return box;
+}
+
+/**
+ * The bundled département outlines, indexed once, for resolving a box.
+ *
+ * The SAME file the browser draws the choropleth from — so the proxy and the
+ * renderer can never disagree about which départements a box touches.
+ */
+function ensurePeDepIndex() {
+  if (!_peDepIndex) {
+    _peDepIndex = fsp
+      .readFile(path.join(process.cwd(), 'src', 'data', 'local_data', 'france_departements', 'departements.geojson'), 'utf8')
+      .then((text) => buildDepartementIndex(JSON.parse(text)))
+      .catch((error) => {
+        _peDepIndex = null;
+        throw error;
+      });
+  }
+  return _peDepIndex;
+}
+
+/**
+ * Commune outlines for one view box.
+ *
+ * The upstream fetches are per DÉPARTEMENT and memoized whole; only the answer
+ * is cut to the box. A département whose outlines cannot be fetched is named
+ * in `unavailable` rather than dropped silently — the browser says so on its
+ * own row, because ground with no outline and ground with no rate look
+ * identical on a map and mean completely different things.
+ */
+async function peContoursForBox(box) {
+  const index = await ensurePeDepIndex();
+  const deps = departementsInBox(index, box, PE_MAX_BOX_DEPARTEMENTS);
+  const unavailable = [];
+  const packs = [];
+  // Four at a time. Twelve parallel requests to a public keyless API for one
+  // camera move is not a thing to do to geo.api.gouv.fr, and the first view
+  // over a region is the only one that pays this at all.
+  for (let i = 0; i < deps.length; i += PE_CONTOUR_CONCURRENCY) {
+    const slice = deps.slice(i, i + PE_CONTOUR_CONCURRENCY);
+    const settled = await Promise.all(slice.map((dep) => ensurePeContours(dep).catch((error) => {
+      console.warn(`[PetiteEnfance Proxy] contours ${dep} unavailable:`, error?.message || error);
+      unavailable.push(dep);
+      return null;
+    })));
+    for (const pack of settled) if (pack) packs.push(pack);
+  }
+  if (!packs.length && deps.length) throw new Error('no département answered');
+  const cut = peTerritoiresInBox({ packs, box, limit: PE_MAX_BOX_COMMUNES });
+  return {
+    box,
+    ...cut,
+    unavailable,
+    limit: PE_MAX_BOX_COMMUNES,
+    fetchedAt: Date.now(),
+  };
+}
+
 async function readPeDisk() {
   if (_peDiskChecked) return;
   _peDiskChecked = true;
@@ -5269,6 +5425,25 @@ function petiteEnfanceFranceProxy() {
             }
             : null,
         }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      // Outlines are their own answer: they carry no rate at all, so they do
+      // not wait on — and are not invalidated by — the eleven-document CNAF
+      // build next door. The browser already holds the rates from `/areas` and
+      // joins the two by INSEE code.
+      if (route === '/contours') {
+        const box = peQueryBox(url.searchParams);
+        if (!box) {
+          json(400, { error: `A view box is required, at most ${PE_MAX_BOX_DEG}° tall` });
+          return;
+        }
+        try {
+          json(200, await peContoursForBox(box), { 'X-PETITE-ENFANCE-FR': 'BOX' });
+        } catch (error) {
+          console.warn('[PetiteEnfance Proxy] contours unavailable:', error?.message || error);
+          json(503, { error: 'Commune outlines are temporarily unavailable' });
+        }
         return;
       }
 

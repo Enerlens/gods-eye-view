@@ -52,9 +52,10 @@
  * The CNAF publishes the communal breakdown **only for communes of more than
  * 10 000 inhabitants**. That is 1 061 of France's ~34 875 communes. It is a
  * city-scale detail, never a national mesh, and a choropleth built from it
- * would be 97% holes. The layer therefore draws communes as POINTS at their
- * centre, next to the EPCI point that always exists, and says which scale a
- * card is reporting. The EPCI scale is the one that tiles the whole country.
+ * would be 97% holes. So the two grains are drawn NESTED rather than side by
+ * side: the EPCI territory — which does tile the whole country — is the wash,
+ * and the 1 061 communes the CNAF breaks out are cut out of it and filled with
+ * their own rate. Every card says which scale it is reporting.
  *
  * ── Trap 2: some rows are not areas, and they are not spelled alike ─────────
  * `numepci = "XX"`, `nomepci = "XX"` — a placeholder for the communes that
@@ -94,6 +95,13 @@
  * identically in the browser, in the Vite dev-server proxy, and under
  * `node --test`.
  */
+
+import {
+  arrondissementContoursUrl,
+  communeContoursUrl,
+  hasArrondissements,
+  projectCommuneContours,
+} from './communeContours.js';
 
 /** Portal every one of the seven datasets lives on. */
 export const PE_PORTAL = 'data.caf.fr';
@@ -495,4 +503,285 @@ export function placePeAreas(areas, centroids) {
     });
   }
   return { placed, unplaced };
+}
+
+// ---------------------------------------------------------------------------
+// Territories
+// ---------------------------------------------------------------------------
+
+/**
+ * ── Why the layer draws ground and not a dot ───────────────────────────────
+ *
+ * A coverage rate is a property of a TERRITORY. Drawn as a point it becomes a
+ * property of a coordinate, and the coordinate is the area's administrative
+ * centre — a field outside the seat commune for a rural intercommunalité, or
+ * a spot in the 5th for a Métropole. Readers correctly refused to read that as
+ * "this rate holds here and up to that ridge"; nothing on screen said where
+ * "here" ended.
+ *
+ * So the areas are filled instead, from the only source that publishes French
+ * communal limits openly: `geo.api.gouv.fr`, one département per call, which
+ * is what `communeContours.js` wraps. Two consequences follow and both are
+ * deliberate:
+ *
+ *   · An EPCI has NO contour of its own on that API. Its territory is drawn as
+ *     its member communes, sharing one fill and carrying no internal outline,
+ *     so the wash reads as one area rather than as a mosaic. Membership comes
+ *     from `codeEpci`, which rides along with the geometry at no extra call.
+ *   · The commune grain is only fetchable a département at a time, so the
+ *     territory regime is entered LOW — see `PE_TERRITORY_ENTER_SPAN_DEG` in
+ *     the render module. Above it the département choropleth answers, which is
+ *     also a territory, only coarser. There is no zoom at which this layer
+ *     puts a number on a spot again.
+ */
+
+/**
+ * Properties asked of `geo.api.gouv.fr` with the geometry.
+ *
+ * `codeEpci` is the whole reason the EPCI scale can be drawn at all — it turns
+ * one commune request into both grains this layer publishes.
+ */
+export const PE_CONTOUR_FIELDS = 'code,nom,population,codeEpci';
+
+/**
+ * The parent commune of each département that publishes arrondissements
+ * municipaux — the only three in France.
+ *
+ * The CNAF breaks Paris, Lyon and Marseille down by arrondissement, so 45 of
+ * its 1 061 commune rows have no commune-level contour: `geo.api.gouv.fr`
+ * answers Paris as ONE polygon. The arrondissement outlines are a second call,
+ * and the parent is named here so a pack can say which ground the finer
+ * outlines replace.
+ */
+export const PE_ARRONDISSEMENT_PARENTS = Object.freeze({
+  75: '75056',
+  69: '69123',
+  13: '13055',
+});
+
+/** Parent commune code for a département's arrondissements, or null. */
+export function peArrondissementParent(departement) {
+  return PE_ARRONDISSEMENT_PARENTS[String(departement || '').trim().toUpperCase()] || null;
+}
+
+/**
+ * The one or two contour requests one département needs.
+ *
+ * @param {string} departement
+ * @returns {{communes:string, arrondissements:?string}}
+ */
+export function peContourUrls(departement) {
+  return {
+    communes: communeContoursUrl(departement, { fields: PE_CONTOUR_FIELDS }),
+    arrondissements: hasArrondissements(departement)
+      ? arrondissementContoursUrl(departement, { fields: PE_CONTOUR_FIELDS })
+      : null,
+  };
+}
+
+/**
+ * The widest box the contour endpoint will answer, in degrees of latitude.
+ *
+ * Measured on the real geography 2026-09-02, at 1400×900: a 0,9° view is
+ * 110×110 km, and France's 34 875 communes over 550 000 km² put roughly
+ * **1 450 communes** inside one. That is the same order as the parcel and
+ * commune batches this app already draws, and twice it is not. The renderer
+ * enters the territory regime at that span for this reason and no other.
+ */
+export const PE_MAX_BOX_DEG = 1.3;
+/**
+ * Cache grid the browser snaps its box to before asking.
+ *
+ * 0,1° is about 11 km, so panning across a city re-asks once every few
+ * screens instead of once per camera settle, and two operators looking at the
+ * same place send the same request.
+ */
+export const PE_BOX_STEP_DEG = 0.1;
+/**
+ * Communes one answer may carry.
+ *
+ * A ceiling on the pathological box rather than a policy: 2 400 is well past
+ * the ~1 450 a full-width view holds. What it drops is REPORTED, and it drops
+ * from the EDGES first — see `peTerritoiresInBox`.
+ */
+export const PE_MAX_BOX_COMMUNES = 2400;
+/**
+ * Départements one answer may read.
+ *
+ * Measured over five cities: a 0,9° box touches 4 to 18 départements — Paris
+ * being the worst because its are the smallest — so this has to be generous
+ * where the pack cap is strict. It costs upstream calls the FIRST time a
+ * region is looked at and nothing after that, because each département's
+ * outlines are memoized whole.
+ */
+export const PE_MAX_BOX_DEPARTEMENTS = 20;
+
+/** Bounding box `[west, south, east, north]` of a flat `[lon, lat, …]` ring. */
+export function ringBox(flat) {
+  if (!Array.isArray(flat) || flat.length < 4) return null;
+  let west = Infinity;
+  let south = Infinity;
+  let east = -Infinity;
+  let north = -Infinity;
+  for (let i = 0; i < flat.length; i += 2) {
+    const lon = flat[i];
+    const lat = flat[i + 1];
+    if (lon < west) west = lon;
+    if (lon > east) east = lon;
+    if (lat < south) south = lat;
+    if (lat > north) north = lat;
+  }
+  return Number.isFinite(west) ? [west, south, east, north] : null;
+}
+
+/** The box covering every part of one commune. */
+function communeBox(parts) {
+  let box = null;
+  for (const part of parts || []) {
+    const partBox = ringBox(part);
+    if (!partBox) continue;
+    if (!box) box = partBox.slice();
+    else {
+      box[0] = Math.min(box[0], partBox[0]);
+      box[1] = Math.min(box[1], partBox[1]);
+      box[2] = Math.max(box[2], partBox[2]);
+      box[3] = Math.max(box[3], partBox[3]);
+    }
+  }
+  return box;
+}
+
+/**
+ * Cut the départements in hand down to the communes a view can see.
+ *
+ * WHY THE ANSWER IS BOXED AND THE FETCH IS NOT. `geo.api.gouv.fr` only
+ * publishes contours a département at a time, so that is how they are fetched
+ * and memoized — once each, whole, for the life of the process. But a view is
+ * not shaped like a département: measured over five cities, a 0,9° box clips
+ * 4 to 18 of them, and sending whole packs would mean shipping Pas-de-Calais
+ * because a corner of it caught the edge of the screen. Serving the box costs
+ * nothing upstream and turns a megabyte of off-screen geometry into none.
+ *
+ * The cap drops from the EDGES, by distance from the centre of the view: a
+ * truncated answer is then complete where the operator is looking and thin at
+ * the margins, rather than complete in whatever order a département's file
+ * happened to arrive in.
+ *
+ * @param {object} input
+ * @param {Array<object>} input.packs From `projectPeTerritoires`.
+ * @param {{south:number, west:number, north:number, east:number}} input.box
+ * @param {number} [input.limit]
+ * @returns {{communes:Array<object>, departements:Array<string>, dropped:number, vertices:number}}
+ */
+export function peTerritoiresInBox({ packs, box, limit = PE_MAX_BOX_COMMUNES } = {}) {
+  const hits = [];
+  const departements = [];
+  if (!box || ![box.south, box.west, box.north, box.east].every(Number.isFinite)) {
+    return {
+      communes: [], departements, dropped: 0, vertices: 0,
+    };
+  }
+  const midLon = (box.west + box.east) / 2;
+  const midLat = (box.south + box.north) / 2;
+  for (const pack of Array.isArray(packs) ? packs : []) {
+    const rows = Array.isArray(pack?.communes) ? pack.communes : [];
+    const boxes = Array.isArray(pack?.bboxes) ? pack.bboxes : [];
+    let any = false;
+    for (let i = 0; i < rows.length; i += 1) {
+      const bounds = boxes[i];
+      if (!bounds) continue;
+      if (bounds[2] < box.west || bounds[0] > box.east
+        || bounds[3] < box.south || bounds[1] > box.north) continue;
+      any = true;
+      hits.push({
+        row: rows[i],
+        distance: Math.hypot(
+          (bounds[0] + bounds[2]) / 2 - midLon,
+          (bounds[1] + bounds[3]) / 2 - midLat,
+        ),
+      });
+    }
+    if (any && pack.departement) departements.push(pack.departement);
+  }
+  hits.sort((a, b) => a.distance - b.distance
+    || String(a.row.c).localeCompare(String(b.row.c)));
+  const cap = Math.max(1, Math.floor(limit));
+  const kept = hits.slice(0, cap);
+  let vertices = 0;
+  for (const hit of kept) {
+    for (const part of hit.row.p) vertices += part.length / 2;
+  }
+  departements.sort();
+  return {
+    communes: kept.map((hit) => hit.row),
+    departements,
+    dropped: Math.max(0, hits.length - kept.length),
+    vertices,
+  };
+}
+
+/** One projected contour as a wire row. Short keys: this is the heavy payload. */
+function peContourRow(commune, extra = {}) {
+  const row = { c: commune.code, n: commune.name, p: commune.parts };
+  if (commune.epci) row.e = commune.epci;
+  if (commune.simplified) row.s = 1;
+  return Object.assign(row, extra);
+}
+
+/**
+ * Fold one département's contours into the pack the browser draws.
+ *
+ * Arrondissements are appended to the commune list rather than replacing their
+ * parent, and BOTH are marked: `a` names the parent an arrondissement
+ * subdivides, `x` flags that parent as subdivided. The renderer picks — the
+ * parent carries the EPCI wash, the
+ * arrondissements carry the rates the CNAF actually publishes for that ground
+ * — and neither can be drawn without knowing that the other exists, which is
+ * exactly the double-paint this marking prevents.
+ *
+ * An arrondissement inherits its parent's `codeEpci`, which the API does not
+ * send for it. Without that, dropping the parent at commune grain would leave
+ * any arrondissement the CNAF happens not to publish as a hole in the map
+ * rather than as the EPCI ground it is.
+ *
+ * @param {object} input
+ * @param {object} input.communes `geo.api.gouv.fr` FeatureCollection.
+ * @param {?object} [input.arrondissements] The second call, for 75/69/13.
+ * @param {string} input.departement
+ * @returns {object} Wire pack.
+ */
+export function projectPeTerritoires({ communes, arrondissements = null, departement } = {}) {
+  const base = projectCommuneContours(communes);
+  const parent = peArrondissementParent(departement);
+  const sub = parent ? projectCommuneContours(arrondissements) : null;
+  const parentEpci = parent
+    ? base.communes.find((commune) => commune.code === parent)?.epci || null
+    : null;
+
+  const rows = base.communes.map((commune) => peContourRow(
+    commune,
+    parent && commune.code === parent && sub?.communes.length ? { x: 1 } : {},
+  ));
+  for (const commune of sub?.communes || []) {
+    rows.push(peContourRow(
+      { ...commune, epci: commune.epci || parentEpci },
+      { a: parent },
+    ));
+  }
+
+  return {
+    departement: String(departement || '').trim().toUpperCase(),
+    communes: rows,
+    // Parallel to `communes`, and deliberately NOT a field on the row: the
+    // rows go out on the wire and a bounding box the browser never reads
+    // would be 4% of the payload spent on nothing.
+    bboxes: rows.map((row) => communeBox(row.p)),
+    // Geometry cost, reported rather than hidden — the rings are decimated and
+    // multi-part communes are capped, and a card that says "contour simplifié"
+    // has to be able to prove it.
+    vertices: base.vertices + (sub?.vertices || 0),
+    simplified: base.simplified + (sub?.simplified || 0),
+    droppedParts: base.droppedParts + (sub?.droppedParts || 0),
+    arrondissements: sub?.communes.length || 0,
+  };
 }
