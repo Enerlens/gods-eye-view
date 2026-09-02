@@ -155,8 +155,14 @@ function encode(state) {
 
 test('production registry is exact, canonical, and rejects incomplete contracts', async () => {
   assert.equal(validateLayerStateRegistry(), true);
-  assert.equal(REGISTERED_LAYER_IDS.length, 43);
-  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 43);
+  // RECOUNT this at every layer merge, never take either side's number: each
+  // layer branch bumps it on its own branch, so a merge always leaves it at
+  // whichever side won and the correct answer is neither. Proven three times
+  // now. THIS merge: the common base was 42, `main` had reached 53, and this
+  // branch reached 43 with its one (`ads-fr`), so the answer is 54 — again a
+  // number neither side ever wrote down.
+  assert.equal(REGISTERED_LAYER_IDS.length, 54);
+  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 54);
   assert.deepEqual(REGISTERED_LAYER_IDS, [...REGISTERED_LAYER_IDS].sort());
   assert.throws(
     () => validateLayerStateRegistry([...LAYER_STATE_REGISTRY, LAYER_STATE_REGISTRY[0]]),

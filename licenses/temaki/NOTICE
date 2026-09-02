@@ -1,0 +1,52 @@
+Temaki
+Bryan Housel and the Temaki contributors
+
+Dedicated to the public domain under CC0 1.0 Universal. The full dedication is
+in the `LICENSE` file next to this notice, or at
+
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+Source: https://github.com/rapideditor/temaki
+        icons/<name>.svg
+        Retrieved 2026-09-02 at commit 6d9ac860d1d6.
+
+CC0 IMPOSES NO CONDITIONS. There is no attribution requirement, no notice to
+propagate, and no obligation to state modifications. This file exists because
+recording the provenance of vendored artwork is this project's own discipline —
+the same reason `DATA_SOURCES.md` records where every feed comes from — and
+because it lets a reader audit the claims below without cloning the upstream
+repository.
+
+WHAT WAS TAKEN. One glyph, in one module.
+
+`src/data/mapIcons.js` holds the artwork; `src/data/cctv.js` draws it:
+
+    security_camera — the surveillance-camera billboard.
+
+Temaki is the icon set of the OpenStreetMap iD editor and covers subjects no
+interface icon set does; a wall-mounted surveillance camera is one of them.
+Material Symbols has no such glyph, and the drawing it replaced was this
+project's own.
+
+WHY IT REPLACED THAT DRAWING. Not taste — a colour bug.
+
+The old camera baked cyan into the artwork (`#75e7ff` strokes over dark fills)
+while the layer tints the billboard to mark state: `#6be8ff` at rest, `#ffd97a`
+for the ACTIVE camera. Cesium multiplies `billboard.color` into the texture, so
+the selected camera rendered #75e7ff × #ffd97a = **#75c57a**, a green. White
+artwork makes that multiply an identity and the active camera is amber, as the
+layer always intended.
+
+WHAT WAS CHANGED. No coordinate.
+
+Only the `d` path strings are vendored, in Temaki's own `0 0 15 15` space, NOT
+rescaled. Temaki publishes this icon as three sibling paths — a body, a wall
+bracket, and a hood whose lens is a counter-wound subpath — and they are kept
+whole, in order, and are never merged: merging them would fill the lens.
+
+At render time each path is drawn TWICE by this project: once as a wide dark
+stroke (a halo, so the glyph stays readable over pale terrain) and once as a
+white fill (so Cesium's per-billboard colour multiply can tint it). The viewBox
+is padded to `-1 -1 17 17` so that halo is not clipped — this glyph spans the
+full published box, from x=0 to x=15. The path geometry itself is untouched, and
+`src/data/mapIcons.test.mjs` pins it.

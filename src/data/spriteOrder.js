@@ -1,13 +1,22 @@
 /** Bottom-to-top order for near-plane-clamped contact sprite collections. */
 export const SPRITE_LAYER_ORDER = Object.freeze([
   'cctv',
+  'fraicheur-fr',
+  'sitadel-fr',
   'firms',
   'schools-fr',
+  'medecins-fr',
   'sup-fr',
+  // `petite-enfance-fr` occupait le créneau juste au-dessus : elle ne dessine
+  // plus de sprite du tout depuis qu'elle remplit les territoires eux-mêmes,
+  // et une couche sans collection n'a rien à ordonner ici.
+  'amenities-fr',
   'irve-fr',
+  'anfr-fr',
   'gas-fr',
   'power-grid',
   'rte-generation',
+  'idfm-frequency',
   'bikeshare',
   'shared-mobility-fr',
   'transit-fr',

@@ -6,7 +6,6 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-02
 
 ### Added
-
 - **Autorisations d'urbanisme — what has not been built yet.** Every other
   French register here draws what stands: the cadastre the ground, BD TOPO the
   roofs, DPE their energy, DVF what they last sold for. This one draws the
@@ -107,10 +106,290 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   vertex twice in a row. Requiring a hole to sit inside its outer ring was
   written, measured and removed: it would have silently filled in three genuine
   courtyards of 787, 754 and 249 m², none of them flagged by the publisher.
+- **IPS des écoles — le dernier point du brief, et ce n'est pas une couche.** L'*indice de position sociale* de la DEPP ne publie aucune coordonnée : ses 43 322 lignes sont clés sur l'UAI et rien d'autre, donc une couche devrait emprunter sa géométrie à `schools-fr` — c'est-à-dire qu'elle SERAIT `schools-fr`. L'indice arrive donc comme la cinquième jointure sur l'UAI de ce fichier, à côté des quatre fichiers d'effectifs qui donnent déjà la taille des points. Sans clé, Licence Ouverte 2.0, via le proxy `/api/schools-fr` existant.
+- **La couleur veut toujours dire NIVEAU et la taille toujours EFFECTIF.** Rien de ce qui est à l'écran ne change quand on active la couche. Il n'y a pas d'échelle de couleur IPS, même optionnelle : le canal couleur porte déjà un sens, et un second sens caché derrière un interrupteur ferait dire deux choses différentes à deux captures de la même couche sans que rien à l'écran ne les distingue. L'indice arrive là où il peut être qualifié — sur la fiche, et sur la ligne sous l'interrupteur.
+- **Un établissement sur trois n'a pas d'IPS, et sa fiche le dit.** Mesuré le 2026-09-02 contre les fichiers vivants : `schools-fr` dessine 68 158 lignes ouvertes et géolocalisées sur **68 083 UAI distincts**, dont **62 857 peuvent porter un indice** (Ecole 48 169 · Collège 9 055 · Lycée 5 547 · EREA 79, plus 7 que l'annuaire laisse sans type et que la DEPP indexe quand même). **42 974 trouvent une ligne IPS (68,4 %)** et **40 529 en rapportent un nombre (64,5 %)** : Ecole 66,9 % / 61,8 %, Collège 77,8 % / 77,7 %, Lycée 65,4 % / 65,4 %, EREA 97,5 % / 97,5 %. Les 22 328 autres portent *IPS non publié pour cet UAI* — jamais dessinés, jamais colorés, jamais lus comme moyens.
+- **Quatre fichiers, quatre rentrées différentes : un `max()` global efface 32 494 écoles.** `fr-en-ips-ecoles-ap2022` s'arrête à **2024-2025 (32 494 lignes)** là où les collèges (7 089), les lycées (3 662) et les EREA (77) atteignent **2025-2026**. Chaque jeu découvre donc SA propre rentrée par son `group_by=rentree_scolaire`, plancher à la valeur mesurée, comparée comme chaîne `YYYY-YYYY` derrière un garde de format — `Number('2024-2025')` vaut NaN, un max numérique rendrait le plancher pour toujours. Les fichiers sont en plus cumulatifs (97 080 lignes écoles = trois années empilées), donc la rentrée est épinglée dans le `where`.
+- **Les lycées n'ont pas de colonne `ips`, et leur chiffre d'établissement mélange deux populations que le fichier publie séparément.** Ils publient `ips_voie_gt`, `ips_voie_pro`, `ips_post_bac` et `ips_etab` avec `type_de_lycee` ∈ {LEGT 1 565, LP 1 097, LPO 1 000} — une jointure écrite contre `ips` en perd 3 662. `ips_etab` est le chiffre retenu (seule colonne définie sur 3 661 des 3 662, seule comparable entre les trois types), mais la fiche le nomme comme chiffre d'établissement puis nomme les voies dessous : sur les **931 LPO qui portent les deux, l'écart médian GT / pro est de 18,1 points, le neuvième décile 27,9, et le plus large est 0312746S à GT 140,1 contre pro 92,4** — 47,7 points dans un `ips_etab` de 126,3. Ce n'est pas non plus une copie d'une voie unique : 2 042 lignes portent `ips_post_bac`, replié dans `ips_etab` et nulle part ailleurs.
+- **`fr-en-ips-erea-ap2022` écrit mal le nom de sa propre colonne, et c'est un HTTP 400.** `nom_de_l_etablissment`, sans le second « e ». Vérifié dans les deux sens le 2026-09-02 : l'orthographe correcte renvoie `ODSQL query is malformed: Unknown field: nom_de_l_etablissement. Clause(s) containing the error(s): select.` sur les EREA, et la faute renvoie la même chose sur les écoles. Le `select` est construit par jeu de données, jamais partagé.
+- **La référence est par type pour les lycées : LEGT 120,2, LPO 104,4, LP 89,9.** 30 points d'un bout à l'autre — comparer un LP à la référence LEGT n'est pas un arrondi, c'est un mauvais chiffre. La fiche porte la référence départementale et nationale du type de l'établissement, et l'écart au département. Deux cas mesurés renvoient l'écart à la référence nationale : la référence départementale manque (2 LEGT, 10 LPO, 3 LP) ou elle ÉGALE l'indice de l'école, donc elle la contient et presque rien d'autre — **184 lignes, dont 49 des 77 EREA**, puisqu'il y a au plus un EREA par département. Avec ni l'une ni l'autre (94 collèges et 39 lycées n'ont pas d'`ips_national`), la fiche donne les ancrages qu'elle a et aucun écart.
+- **« NS » est une valeur publiée, et `Number('NS')` vaut NaN.** Le fichier écoles écrit littéralement `"NS"` — *non significatif*, le marqueur de secret statistique de la DEPP — dans **2 504 de ses 32 494 lignes (7,7 %)**. `Number(ligne.ips) || 0` en ferait 2 504 IPS de **0** sur une échelle dont l'étendue mesurée est 54,9 à 162,7. Elles sont lues comme sentinelle et la fiche dit *IPS non significatif (« NS ») — effectif trop faible*, ce qui n'est pas la même chose qu'une école que la DEPP n'a jamais examinée. Deux autres vides existent : 2 collèges publient `ips = null` et 1 lycée publie toutes ses colonnes IPS nulles. Au total **2 445 établissements dessinés sont DANS les fichiers de la DEPP et n'ont quand même pas d'indice**.
+- **L'écart-type a fallu sa propre fenêtre de vraisemblance, et réutiliser celle de l'indice en mangeait 162.** La dispersion intra-établissement va de **7,9** (0752954D) à 46,2, donc un plancher d'indice à 20 supprimait en silence 102 collèges, 39 lycées et 21 des 77 EREA. Ce n'est pas la même grandeur que l'indice qu'elle disperse.
+- **Le maillage ne porte pas un octet d'IPS.** Ce paquet expédie des coordonnées SANS les noms pour tenir à 1,66 Mo contre 5,42 Mo ; un indice par tuple l'y ramènerait. L'indice emprunte donc le chemin de clic que le NOM paie déjà : une lecture du registre pour une coordonnée, mémorisée pour la session, et la fiche produite est exactement celle du régime exact, IPS compris. Coût mesuré ailleurs : huit requêtes une fois par processus (**7 598 242 octets bruts / 750 413 gzippés, 3,4 s à froid, 0,64 s à chaud** ; les quatre exports toutes colonnes feraient 33 040 379 / 1 587 950), et sur la vue la plus dense de France (0,34° sur Paris, 4 725 établissements) **+473 636 octets bruts (+17,0 %) et +30 741 sur le fil (+8,8 %)**.
+- **Perdre la DEPP ne casse pas la couche.** Vérifié de bout en bout en pointant le portail IPS sur un hôte inexistant : la vue rend toujours ses 195 établissements, 169 portent *Indice de position sociale indisponible — fichier DEPP injoignable* et zéro porte « non publié », le rollup national reste intact avec `ips.status: unavailable`. Un seul fichier en panne ne coûte son indice qu'à son niveau. Les deux caches disque sont versionnés pour l'occasion (`SCHOOLS_NATIONAL_CACHE_VERSION` 1 → 2, et un `SCHOOLS_VIEWPORT_CACHE_VERSION` neuf à 2), sans quoi une boîte mise en cache dans les six dernières heures aurait continué à servir des fiches muettes sur l'indice.
+- **Équipements du quotidien — les sept choses qu'une vie quotidienne touche, et les cinq que la carte refuse de redessiner.** Nouvelle couche `amenities-fr` (🏪, jeton `bq`, catégorie BÂTI & TERRITOIRE) sur la Base permanente des équipements 2025 de l'Insee et le registre FINESS : 126 859 lignes de registre repliées en **95 406 points** — 30 215 médecins généralistes, 19 354 commerces alimentaires, 19 216 pharmacies, 16 832 guichets La Poste, 3 953 gendarmeries et commissariats, 3 625 bassins de natation, 2 211 hôpitaux. Sans clé, Licence Ouverte, via le proxy `/api/amenities-fr`.
+- **Aucune école, et c'est le premier choix de conception.** Le brief demandait « écoles » en tête de ligne ; la couche n'en dessine pas une. `schools-fr` trace déjà les 68 158 établissements ouverts et géolocalisés de l'Annuaire du ministère, clé UAI, et `sup-fr` 6 914 sites du supérieur — tandis que les 79 743 lignes DOM=C de la BPE (C1 écoles 48 661, C2 collèges 7 532, C3 lycées 5 872) **ne portent aucune colonne UAI** : les 95 colonnes livrées ont été vérifiées une à une, aucune ne permet de rapprocher une école BPE d'une école déjà tracée autrement que par appariement d'adresses. Son géocodage est en plus mesurablement moins bon (79,2 % de `QUALITE_XY = B` sur tout le fichier, 124 107 lignes sans latitude). La légende porte donc une ligne « Écoles — non dessinées ici » avec le compte et la destination, parce qu'un lecteur qui ne les trouve pas doit être renseigné, pas laissé à conclure qu'il manque des données.
+- **insee.fr renvoie 200 sans en-tête `Origin` et 403 avec.** Vérifié deux fois le 2026-09-02 depuis `http://localhost:4173`, sur la page, sur `BPE25.zip` et sur `BPE25.parquet`, en GET comme en HEAD — un HEAD nu renvoie 200, ce qui fait croire à l'absence de blocage. Le serveur ignore aussi `Range` (200 et non 206, et il commence à diffuser les 142 Mo) et ne renvoie pas de `Content-Length`. Aucun navigateur ne peut lire ce fichier, aucune clé n'y change rien : le pliage se fait dans le proxy ou pas du tout. Build à froid mesuré de bout en bout sur les amonts réels : **52,9 s**, dont 51 s de téléchargement ; l'inflation des 1 515 251 530 octets et la lecture des 2 921 770 lignes prennent **8,7 s**.
+- **Un point que le registre avoue avoir inventé n'est pas dessiné — et les deux registres l'avouent différemment.** La BPE publie `QUALITE_GEOLOC = 33`, que l'Insee traduit mot pour mot par « Voie inconnue, Position aléatoire dans la commune » : **1 284 lignes** sur les dix codes retenus, et le mot « aléatoire » est littéral — sur les 207 communes portant plus d'une de ces lignes (724 lignes), **3 seulement** contiennent une coordonnée répétée. FINESS le dit autrement : **4 646 lignes sont géocodées sur `ADMIN-EXPRESS-2023`** avec un score `.` au lieu d'un nombre, et la partition est exacte (BAN 88 737 et BDADRESSE 9 535 ont un score, ADMIN-EXPRESS 4 646 et MAPS 19 n'en ont pas). Ce sont des centroïdes de commune, prouvés et non supposés : **2 612 des 2 619 lignes ADMIN-EXPRESS partageant une commune avec une autre sont sur une coordonnée identique à l'octet près**, contre 1 608 sur 84 561 pour le témoin BAN — quatre établissements de Bourg-en-Bresse sont tous à 5,224702 / 46,205283. Au total **2 182 positions refusées**, comptées par famille sur la fiche, plus 170 lignes sans aucune coordonnée.
+- **Les 100 équipements quotidiens de Mayotte existent comme comptage et pas comme lieux.** Les 40 médecins, 14 bureaux de poste, 5 supermarchés, 7 gendarmeries et 3 bassins que la BPE recense dans le 976 ont **LATITUDE, LONGITUDE, LAMBERT_X et LAMBERT_Y vides** tout en déclarant `EPSG=4471`. C'est 100 des 170 lignes sans coordonnée de toute la sélection. L'île ne porte donc aucun équipement BPE sur cette carte, et la fiche le dit ; ce qu'on y voit vient de FINESS, qui place ses 189 établissements de santé dont 28 pharmacies et 7 hôpitaux.
+- **FINESS ne publie pas de latitude : des mètres projetés dans cinq CRS, nommés dans un champ libre.** `coordxet`/`coordyet` sont en mètres et la projection est le **cinquième jeton séparé par virgule** de `sourcecoordet`. Sur les 103 032 lignes, les 102 937 valeurs non vides se coupent **toutes** en exactement cinq jetons avec le CRS en position 4 — y compris les deux lignes `4,ATLASANTE,.,MAPS 06-11-2024,WGS84/UTM zone 1S (Wallis-et-Futuna)` dont on dit souvent que les jetons se décalent, et dont ils ne se décalent pas. Une expression régulière sur `EPSG:(\d+)` perdrait en silence **18 lignes sans préfixe** (16 à Saint-Pierre-et-Miquelon, 2 à Wallis-et-Futuna). Passer les 2 659 lignes non métropolitaines dans l'inverse Lambert-93 les déplace de **6 990 km en médiane** (4 632 km au minimum, 21 004 km au maximum : l'Hôpital de Sia, à Wallis, atterrit à 0,88 E / 63,57 N, en mer de Norvège). Tous les datums ultramarins étant GRS80, une seule inverse UTM paramétrée par fuseau et hémisphère couvre les sept cas.
+- **Le point dessiné est une ADRESSE, pas une ligne de registre — parce que la BPE n'a aucune clé.** IDEQUIP, IDSOURCE et SOU sont documentés dans le dessin de fichier et ne sont pas livrés, et le SIRET est vide sur tout équipement hors Sirene. Or les lignes s'empilent : **60 270 médecins généralistes occupent 30 215 coordonnées distinctes**, dont 12 084 en portent plusieurs et une en porte **146** (Paris 14e). 126 859 lignes deviennent donc 95 406 points, chacun disant combien d'établissements il représente et nommant les quatre premiers, le reste étant compté. Les familles ne fusionnent jamais entre elles : 1 137 positions portent deux familles différentes, et une pharmacie dans un supermarché, ce sont deux choses.
+- **La vue nationale peint une PART, pas un compte — et c'est le compte qui le décide.** Le nombre d'équipements par département va de 186 (Territoire de Belfort) et 221 (Lozère) à 3 560 (Nord) et 3 710 (Paris), soit à trois chiffres près l'ordre de la population. La couche peint donc quelque chose d'indépendant de la population, tiré du même fichier : la BPE liste **34 915 codes DEPCOM** (la commune, et l'arrondissement municipal pour Paris, Lyon et Marseille), dont **34 778 se replient sur un polygone métropolitain**, et la teinte dit combien d'entre eux portent au moins un des cinq équipements que la BPE fournit. Nationalement **15 196 sur 34 778 = 43,7 %** ; par département de 21,6 % (Gers), 22,0 % (Hautes-Pyrénées), 22,5 % (Somme) et 22,6 % (Ardennes, Meuse) à 100 % (Paris, Hauts-de-Seine, Seine-Saint-Denis, Val-de-Marne), médiane 48,8 %. Les deux familles FINESS sont volontairement hors du ratio et la fiche le dit : FINESS publie une ligne d'acheminement postal, pas un code commune Insee.
+- **Le maillage éclaircit famille par famille, parce que les familles vont de 1 à 13,7.** Sur une seule passe globale au budget national de 1 100 points, la répartition mesurée est médecin 414 · commerce 179 · pharmacie 139 · poste 284 · bassin 25 · gendarmerie 45 · **hôpital 14** — quatorze hôpitaux pour un pays qui en compte 2 211. Sept passes séparées avec un plancher de `budget / (4 × familles)` donnent médecin 331 · commerce 223 · pharmacie 222 · poste 197 · bassin 42 · gendarmerie 46 · **hôpital 39**, et la légende imprime tracés-sur-en-vue par famille, parce que le mélange à l'écran n'est alors plus le mélange réel. Le poids que la sélection classe est la **précision de géocodage** : quand une cellule ne garde qu'un point, elle garde celui dont le registre est le plus sûr.
+- **La taille d'un point ne veut rien dire, et c'est écrit.** `schools-fr` dimensionne par effectif, `sup-fr` par inscrits, `irve-fr` par puissance ; ici aucun des deux registres ne publie de magnitude. La taille est donc une règle de lisibilité inverse à l'effectif national (médecin 6,5 px pour 30 215 points, hôpital 12 px pour 2 211) et aucune fiche ne la relit comme un nombre. Le second canal est celui que les registres publient vraiment : **108 573 des 126 859 lignes retenues sont au numéro de voirie** (`QUALITE_GEOLOC = 11` ou score FINESS ≥ 95) et portent un halo sable ; 12 990 sont à la voie, 912 en « voie probable » et 4 384 sans aucune précision publiée — dont **3 626 bassins de natation, le recensement sportif n'étant pas géocodé par la chaîne d'adressage de la BPE** (3 632 de ses 3 633 lignes sont `_Z`). Les deux bandes basses perdent le halo et 40 à 50 % de leur opacité.
+- **Quatre autres refus, chacun avec sa mesure.** B326 stations de recharge (28 819) : `irve-fr` lit le même fait en direct sur 39 579 coordonnées, montrer un instantané 2025 à côté serait un second avis périmé. DOM=E transports (99 280) : 96 253 sont des adresses d'exploitants de taxis et VTC, et les 2 938 gares et 89 aéroports appartiennent à `transit-fr` et `local-airports`. D307 pharmacies (20 334) : FINESS répond pour cette famille, avec `nofinesset` unique sur 103 032 lignes sans un seul doublon et une actualisation mensuelle. D106 urgences (695) : mesuré et non supposé — **547 des 694 géolocalisées sont à moins de 200 m d'un hôpital FINESS déjà dessiné, 665 à moins de 1 km, médiane 79 m** ; ce sont des services à l'intérieur des bâtiments déjà tracés.
+- **Trois vocabulaires pour les mêmes départements, donc aucune jointure par code.** La BPE écrit `971 972 973 974 976` et la Corse `2A`/`2B` ; FINESS écrit `9A 9B 9C 9D 9F`, plus `9E` pour Saint-Pierre-et-Miquelon et `9J` pour Wallis-et-Futuna ; les contours IGN embarqués en utilisent un troisième. Chaque point et chaque commune est placé par point-dans-polygone avec l'accroche côtière partagée de 2 km : **92 725 des 95 406 points rattachés, dont 307 accrochés à la côte, et 2 681 hors de tout polygone métropolitain**, signalés plutôt que traînés sur l'un d'eux.
+- **Sitadel — the only forward-looking layer on the globe, drawn on the parcels the permits were granted for.** France publishes every building authorisation since 2013 — 3 020 749 across four files — and not one of them carries a coordinate: 94 columns on the housing register, 33 on the demolitions, `geoFields: ["REG","DEP"]` on both. The new layer reads the two files that answer "what will be here" (1 917 260 + 202 895 permits, 70,2 % of the corpus) and turns each one into the exact cadastral parcel it was granted for, by joining `SEC_CADASTRE1..3`/`NUM_CADASTRE1..3` to the same Etalab cadastre `cadastre-fr` draws.
+- **The join rate travels with every object, because it is the finding.** Measured 2026-09-02 over six communes and both files against cadastre edition 2026-06-01: 21 271 permits, **9 744 placed (45,8 %)** — Paris 91,3 %, Nantes 75,6 %, Ustaritz 55,1 %, Beaupréau-en-Mauges 54,5 %, Marseille 20,1 %, Toulouse 7,6 %. For calibration, DREAL Auvergne-Rhône-Alpes published the same join officially and placed 162 171 of 362 038 (44,8 %). Every card prints its commune's rate AND its year's, and the row line prints the count that was not placed.
+- **Two different failures, kept apart, because a reader can act on the difference.** *Missing* means the parcel was divided and renumbered — which is what happens when somebody builds on it, so Nantes places 60 % of 2013 and 97 % of 2026, and its single largest permit (553 dwellings, 2015) is one of the losses. *Ambiguous* means the commune publishes section préfixes Sitadel has no column for: Toulouse's 46 préfixes put 34 different parcels under the key `31555AB0069`, so a last-writer-wins index "places" 97,7 % of its permits and is wrong about nearly all of them, while refusing the tie places 9,5 % and is right.
+- **The declared plot surface audits the join independently, and ranks the communes the same way.** `SUPERFICIE_TERRAIN` places nothing; compared with the area actually drawn it agrees within a factor of two for 98,4 % of Paris' placed permits, 94,2 % of Nantes', 86,4 % of Beaupréau's, 84,7 % of Ustaritz', 68,6 % of Marseille's and **51,5 % of Toulouse's**. Each card carries its own ratio and the word CONCORDANT or DISCORDANT.
+- **Three real dates, not one — which is what makes this different from `dvf-sales`.** `ETAT_DAU` and the three dates give four states of a project and they are the colour: `Autorisé` (nothing further reported), `Chantier ouvert` (a DATE_REELLE_DOC exists), `Travaux achevés` (a DATE_REELLE_DAACT exists), `Annulé`. Demolitions get a fifth band of their own rather than being coloured by `ETAT_PD`, which carries no information — 1 497 of Nantes' 1 587 and 1 582 of Paris' 1 609 sit at *Autorisé*. Dot size is dwellings CREATED, square-rooted, capped at 200.
+- **ONE commune at a time, and the arithmetic is the reason.** DiDo answers a filtered, column-projected query by scanning an 889 MB CSV: 3,57–5,01 s regardless of the answer's size, so a national pass would be 39 hours. The layer resolves the commune under the middle of the screen through `geo.api.gouv.fr`, gates at 12 000 m of camera altitude (2·h·tan 30° = 13,86 km of ground, against communes 12,1–17,9 km wide, measured from their own parcel bounds), and draws the commune contour so the neighbouring commune reads as *never asked* rather than *nothing here*.
+- **DiDo refuses a fourth simultaneous request, and nothing upstream of this said so.** Six parallel queries returned three HTTP 200 and three HTTP 429 within 145 ms, body `max connections reached: 3` — with no `content-type`, no `retry-after` and no CORS header. The proxy holds a global semaphore of two; three simultaneous commune builds (six queries) complete in 10,5 s at peak concurrency 2 with no refusal.
+- **Panning is free.** `/api/sitadel-fr/commune` takes `have=<insee>` and answers an unchanged commune in **53 bytes** instead of the 2 085 535-byte Nantes pack or the 3 144 667-byte Paris one. Cold build 5,9–7,6 s, warm 8,6 ms from memory, 126 ms from the disk cache under `.gev-cache/sitadel-fr/`.
+- **No coverage rectangle, on purpose.** Sitadel and the Etalab cadastre both cover the DROM — Saint-Denis de La Réunion answers with 2 849 permits and a 10,4 MB parcel file — so a metropolitan box would have refused them while claiming national coverage. A point with no French commune under it is a real answer that clears the map instead of leaving the last commune's permits drawn over ground they do not cover.
+- **`idfm-frequency` — the first time-of-day dimension in God's Eye View.** Île-de-France Mobilités' own *Offre hebdomadaire moyenne hors vacances*: **1,311,578 rows** of average departures per stop, per line and per one-hour band for a term-time week of 2025, Licence Ouverte v2.0. `transit-fr` consumes zero IDFM data because IDFM publishes no vehicle positions (0 in Paris intra-muros against 453 in Bordeaux) and `idfm-network` draws the offer as a static referential, so "how often does anything stop here at 08:00 versus 22:00" was previously unanswerable on this globe.
+- **One number moves as you scrub the clock, on a FIXED ladder.** Six steps at 2/4/8/16/32 departures an hour, never a quantile, so a colour means the same wait everywhere and at every hour. Measured on the 805 stops of a 4 km box on Châtelet, on an average Tuesday: **115 stops above 32/h at 08:00 and exactly 1 at 22:00; at 01:00, 397 of the 805 run nothing at all.** Saint-Lazare (métro) is 37/h at 08:00 and 8.7/h at 22:00.
+- **Silence is measured, so it is not grey.** A stop that publishes a profile and has no course in the selected band was measured and the published answer is zero, so it keeps its own colour, its own size, its own legend row and its own card sentence — and `fraicheur-fr`'s repo-wide grey `#8a93a6` ("the register did not measure this") is deliberately not borrowed for it. A silent stop is also never offered to DETECT.
+- **The operating day is 04:00 → 03:59, and the night bands are kept.** `min/max(tranche_horaire)` is 4 and 27; band 25 is 01:00–01:59. Validating 0..23 would delete the half of the day that separates two addresses, and it is where the largest signal is: **band 25 is 15,904 courses region-wide on a Monday and 31,585 on a Friday, +98.6 %**. 01:30 on a Wednesday is mapped onto TUESDAY's band 25.
+- **A wide view gets the same ladder in the same unit.** 356 aggregate rows and 17 enumerated stop censuses fold to **14,719 bytes raw / 5,864 gzipped** in 54 ms, painting 8 départements by departures per hour PER STOP: Paris **13.22** at 08:00 against Seine-et-Marne's **3.00**, and **7.13 against 0.61** at 22:00 — the gap more than doubles after dark. The divisor is enumerated, not counted, because Opendatasoft's `count(distinct id_arret)` is an estimator that answers 3,452 for Paris where enumerating returns 3,506.
+- **Designed around a deliberate overlap with `idfm-network`.** 34,903 of these 36,502 stops (95.6 %) join `arrets.arrid` and another 518 join `zdaid` — 97.0 % in all — so both layers mark the same coordinate. Measured on the 805-stop box: median nearest-neighbour **24.2 m**, 463 stops with a neighbour inside 30 m. So the rate disc is 4.5–13 px, strictly under `idfm-network`'s smallest pictogram (14 px), its interior is translucent so the mode glyph reads through whichever paints last, the ramp is a desaturated cold→warm ladder holding none of that layer's five saturated mode hues, and record ids are namespaced `idfm-freq:` so a click on a stacked stop is never ambiguous to `pickRegistry`.
+- **549 stops (1.50 %) publish no coordinate and are counted, never placed.** They are exactly the null-`code_departement` bucket — and `where=code_departement="None"` returns HTTP 200 with zero rows, so the predicate has to be `is null` or all 549 vanish without an error. 473 Train, 69 Bus, 7 Tramway, carrying **84,768 of the 3,071,759 average-Tuesday courses (2.76 %)**. 518 join a stop ZONE in the referential, but 512 of those zones have two or more platform coordinates, so there is no single published point to borrow.
+- **Eight départements outside Île-de-France hold 235 stops between them and stay unpainted.** 60 (87 stops) · 28 (82) · 27 (36) · 89 (11) · 02 (9) · 45 (7) · 10 (2) · 51 (1). The paint threshold is 1,000 stops and it is not tuned: the smallest painted bucket has 2,971 and the largest unpainted one 87, a 2,884-stop gap.
+- **The published département code and the IGN outlines disagree on 542 of 35,953 stops (1.51 %), and the layer says so instead of correcting it.** 35,411 agree, 0 fall outside all 96 polygons, 0 need a coast snap; the largest single flow is 49 stops published as 75 that sit inside 92. The courses are only published per code, so repartitioning the divisor by polygon would divide one partition by another.
+- **A box past the ceiling is refused after ONE call.** The identity query asks for 1,201 rows so a full page is the signal. Measured at Châtelet on square boxes: 4 km 802 stops, 5 km 1,133, and every box from 5.5 km up returns exactly 1,201 rows — so the refusal tests page saturation, not the distinct count, which is always under the ceiling on a truncated page. Refusals cost 531 bytes and 194–422 ms instead of four heavy pages.
+- **One failed band window is a hole in the DAY, not a hole in the map, and it is named.** The viewport's profiles arrive as four pages split on the band axis; the proxy reports `windows: {asked, answered}` and both the row and the card say how many are missing, because an unnamed hole in the sparkline reads as "no service between 16:00 and 21:00".
+- **Two defects fixed in `idfmFrequencyFeed.js`, both of the coercion class.** `bandLabel(null)` printed `00:00–00:59` — a real, readable clock face for a band the publisher does not have — because `Math.trunc(Number(null))` is 0 and `Number.isFinite(0)` is true; and `clampBand(null)` returned band 4 while `clampBand(undefined)` returned the documented default of 8, from the same function, for the same absence. `num('')` also returned 0 rather than null. All three now guard before the coercion, and 22 assertions in `idfmFrequencyFeed.test.mjs` hold them to it.
+- **Provenance.** Edition discovered from the portal's own `data_processed` and floored at 2026-08-18T15:54:55+00:00; an older discovery is a malformed answer, not a new fact. Licence Ouverte v2.0 for the frequency figures, and the layer ships its own credit line rather than sharing `idfm-network`'s ODbL 1.0 one, because the two obligations are not the same.
+- **Aircraft-noise plans, and a layer that refuses to guess which zone you are in.** New `bruit-fr` layer (token `bz`, 🔊, RISQUES & ENVIRONNEMENT): the DGAC's *plan d'exposition au bruit* and *plan de gêne sonore* read under the point the camera is looking at, from the keyless Géoplateforme WMS-V. 224 aerodromes carry a PEB; 215 of them answer with geometry at their own published point.
+- **The dB label is fabricated on a third of French aerodromes if you print the register as published — so this layer prints the index instead.** `indldenext`/`indldenint` mix the *indice psophique* France abandoned in 2002 with Lden dB(A). Measured over the 298 zone rows one probe at each of the 224 aerodromes returns: **75 rows on a pre-2002 arrêté with values 78 … 96, and 223 on a later one with values 50 … 70**, two ranges that do not overlap. The unit is taken from the LATER of `date_arret` and the date inside the arrêté PDF — LFNA (Gap-Tallard) publishes 1985-07-01 on a plan reissued 11/04/2017 — and where the date rule and the value range disagree the unit is SUPPRESSED, not guessed. Nothing converts psophique to decibels: the correspondence is a regulatory table, not a formula.
+- **34% of probes return more than one polygon, so the layer ranks them and says on the card which clause won.** Features per probe over 224 aerodromes: 0 → 9, 1 → 141, 2 → 67, 3 → 5, 4 → 2. Taking `features[0]` would be a coin toss on a third of France. A band the point is not inside (measured at Les Mureaux: 4 features, 2 of them containing the probe) is drawn DASHED as context and can never be the answer; the same band published twice (LFPV, LFXU, LFGQ, LFPZ — where the two copies disagree about `producteur` and `date_maj`) is merged with its piece count; and where two zones genuinely both cover the point the **strictest** wins, because the PEB's restrictions are cumulative-strictest. At Saint-Cyr-l'École zone B has no hole cut where zone A sits, so 48,81025 / 2,07712 is inside both — the card reads “2 zones sous le repère — retenue : la plus exposée des zones sous le repère” and names zone B underneath it.
+- **Two airports at one point are two facts.** At Le Bourget the probe returns Le Bourget's own zone A (arrêté 2017) and Roissy's zone D (arrêté 2007) — 15 041 bytes, 742 vertices, the heaviest response in the register — and the card names both rather than folding twelve years of arrêtés into one answer.
+- **The probe scale is pinned, because the service goes silent with HTTP 200.** `dgac_peb_plan_wmsv` stops rendering below ~1:25 000 and answers a 137-byte empty FeatureCollection, which reads exactly like “no noise plan here”. The probe is fixed at 1e-4° per pixel (1:39 757, a 59% margin) and never derived from the camera. At that scale 9 aerodromes answer nothing at their own reference point; six of them do answer at a coarser probe and every one of those features is OUTSIDE the point, and the remaining three — Toussus-le-Noble, Coulommiers, Pontoise — have an arrêté and no polygon at any scale.
+- **An empty probe gets a sentence, not a blank.** The national arrêté register (224 points, 66 355 B, disk-cached for 7 days) turns “nothing here” into “the nearest aerodrome with a PEB is LFPG — P. CH. DE GAULLE, 39,4 km away, arrêté du 03/04/2007”, from the register's own published coordinate and never a commune centroid. Standing ON an aerodrome that answers nothing, it says that instead. And a register that came back short says so on the card, because “the nearest” out of a truncated index is confidently wrong.
+- **“The service did not answer” and “there is nothing here” are different sentences.** Both are zero features downstream; only `available` tells them apart, and the card leads with the outage rather than reporting a clean bill of health.
+- **Enclaves are cut out of the fill, because a PEB zone is a RING.** Its interior rings are exactly where the LOUDER zone begins — Roissy's zone C arrives with two, Les Mureaux's zone B with six per piece, one band at Saint-Denis de la Réunion with thirteen. Filled without them, zone C is painted over zone B and zone A and the map shows the quiet number on the loudest ground. Every ring is stroked, the interior ones included.
+- **There is NO strategic noise map on the Géoplateforme, and the layer says so on every card.** Its WMS-V capabilities are 1 009 124 B and declare 915 layer names; exactly four mention bruit, and all four are DGAC aviation. The EU directive's CBS isophones exist only as ~76 per-DDT Géo-IDE ATOM shapefile zips — EPSG:2154, ISO-8859-1, no `access-control-allow-origin` header at all, four distinct HTTP-200 failure modes on the live OGC services, and Tarn shipping MapInfo TAB with no shapefile inside. That harvest is deferred; road, rail and industrial noise are absent from this layer and the cards read « avions seulement » rather than letting quiet ground beside a motorway be inferred.
+- **`data.geopf.fr` rate-limits in HTML.** A 240-point grid sweep at three concurrent probes returned HTTP 429 with `content-type: text/html` and a 134-byte nginx page on 190 of 240 points; `response.json()` on that throws `Unexpected token '<'`. The proxy checks the content type before parsing, retries a 429 twice, and caches per ~11 m.
+- **Three coercion defects fixed in the noise feed before it shipped.** `Number(null)` is 0, so `projectPebArretes` PLACED an aerodrome whose coordinates arrived as `[null, null]` at 0°N 0°E and made it “the nearest aerodrome with a noise plan” for the Gulf of Guinea, `projectRings` turned a null vertex into a ring point there, and `threshold(false)` returned a fabricated 0 dB. All three now type-check before parsing.
+- **Antennes mobiles (ANFR) — 72 700 supports, colorés par ce qui émet vraiment.** Nouvelle couche `anfr-fr` (📡, jeton `an`, catégorie RÉSEAUX & CAPTEURS) sur l'observatoire hebdomadaire de l'Agence nationale des fréquences : 826 418 lignes de l'édition 2026-08-27 (181 988 412 octets de CSV) repliées sur 72 700 supports répartis sur 107 codes département, DOM et COM compris. Sans clé, Licence Ouverte 2.0, via le proxy `/api/anfr-fr`.
+- **Un projet approuvé n'est pas un mât — et c'est 8,05 % du fichier.** Recompté le 2026-09-02 sur les `refine.statut` du portail : `En service` 639 019, `Techniquement opérationnel` 120 891, `Projet approuvé` 66 508. Replié sur les supports, **3 638 (5,00 %) n'émettent rien du tout** et sont dessinés en anneau creux, jamais comme une génération ; 15 606 supports émetteurs portent un dossier approuvé, dont **3 776 seulement ajouteraient une génération** qu'ils n'ont pas — les 11 830 autres rouvrent une bande déjà à l'antenne. Le registre se confirme lui-même : `emr_dt` est nul sur 66 321 lignes et toutes sont des projets approuvés.
+- **« Techniquement opérationnel » décrit la 5G, pas un mât.** Croisement sur les 826 418 lignes : les 120 891 lignes techniquement opérationnelles sont **toutes** de la 5G, et **aucune ligne 5G de cette édition n'est jamais « en service »** ; les 639 019 lignes « en service » sont toutes 2G/3G/4G. La fiche dit quelle génération est dans quel statut, et la puce du panneau explique une fois pourquoi la réponse est toujours la même.
+- **La couleur dit la génération qui émet, la taille dit les opérateurs, l'anneau dit le dossier.** Bandes mesurées sur les 72 700 supports : 5G 50 148 · 4G 18 698 · 3G 127 · 2G 89 · rien 3 638. Les deux échelons du milieu sont presque vides et c'est le constat, pas un bug : 54 757 mâts émettent de la 3G mais 54 630 émettent aussi de la 4G ou de la 5G, donc 127 mâts seulement ont la 3G pour meilleure génération. Le nuancier a donc deux ancres et non cinq échelons. Taille = opérateurs distincts : 36 671 supports en portent un, 16 786 deux, 8 230 trois, 11 012 quatre, et **exactement un en porte cinq** (SUP_ID 506104, Saint-Barthélemy).
+- **Pas de choroplèthe départementale, et c'est une mesure qui le décide.** Les polygones embarqués sont les 96 départements métropolitains. La part des supports dont la meilleure génération émettrice est la 5G est presque plate en métropole — interquartile **59,7 % → 75,5 %** sur les 101 départements d'au moins 200 supports — alors que tout l'écart est outre-mer : Nouvelle-Calédonie **1,0 %**, Polynésie française 8,7 %, Martinique 28,8 %, Guadeloupe 29,8 %, contre 84,1 % dans le Val-d'Oise. Une choroplèthe métropolitaine peindrait la bande plate et perdrait les 3 822 supports où se trouve le constat. La vue nationale est donc le maillage : de vraies positions, éclaircies à 1 100 points, dans les 107 codes département.
+- **Les supports se superposent, donc la couche est indexée par SUP_ID.** L'ANFR dérive ses coordonnées de degrés/minutes/**secondes entières**, soit une quantification à 1/3600° (~31 m de longitude à 48°N) : les 72 700 supports n'occupent que **71 748 positions distinctes à cinq décimales**, 895 positions sont occupées deux fois ou plus et une en porte six. Une table indexée par coordonnée perdrait 952 mâts. Le maillage, lui, ne connaît qu'une position : un clic y interroge le registre dans une boîte de ~110 m et la fiche dit combien de supports partagent le point.
+- **La fiche Cartoradio, à la demande et une seule fois par mât.** Adresse, propriétaire, catégories que la couche ne dessine pas (FH, TNT, PMR), nombre d'antennes et de stations, systèmes avec leurs **paires de fréquences publiées** (la 5G NR 700 du support 449714 revient en 708–718 / 723–733 / 763–773 / 778–788 MHz, jamais additionnées en une largeur de bande que l'ANFR n'a pas publiée), et la mesure d'exposition publiée la plus proche dans 300 m avec sa distance, son laboratoire, son protocole et **sa date**. Sur le support 449714 : 33 mesures dans 300 m, la plus proche à 40 m, **0,0 V/m mesurés le 04/02/2009 sous protocole ANFR/DR 15-2.1** — un rapport sans aucune bande 5G, à côté d'un mât dont le dernier émetteur est entré en service le 18/07/2025. La fiche affiche l'avertissement plutôt que le seul chiffre.
+- **Le registre DAS existe, il est réel, et il n'est pas géographique.** `das-telephonie-mobile` compte 1 230 lignes (1 150 conformes, 80 non conformes, 136 marques, prélèvements de 2012-01-03 à 2025-07-02) et **aucune coordonnée** : c'est un registre de produits, pas de lieux. Il est résumé une fois sur la charge nationale et jamais joint à un mât. Le portail se contredit sur sa taille — le catalogue D4C annonce 1 232 pour la même ressource là où le datastore en renvoie 1 230 ; la projection lit le datastore.
+- **Les pièges du fichier, refusés plutôt que devinés.** Le CSV est en LF pur (zéro `\r` sur 181 988 412 octets) là où les tables 5 W voisines sont en CRLF — un analyseur écrit pour l'une laisse un retour chariot sur `statut` et transforme toute la carte en projets ; il commence par un BOM UTF-8, qui fait disparaître `id` d'un index de colonnes naïf ; `coordonnees` est en LATITUDE d'abord chez l'ANFR et en LONGITUDE d'abord dans la republication clermontoise du même schéma, donc une valeur qui ne se coupe pas sur exactement une virgule est refusée ; `sup_nm_haut` porte une virgule décimale sur 243 889 lignes et vaut `0` sur 551 supports, ce qui n'est pas une hauteur et sort en « non publiée » (médiane 30 m, 95ᵉ centile 48 m, maximum 343,3 m).
+- **Collision de NOM, pas de données.** La couche `radio` de ce dépôt est radio-browser.info : des flux audio Internet identifiés par un UUID de station. Celle-ci est constituée de mâts physiques identifiés par le `SUP_ID` de l'ANFR. Elles partagent une étagère de panneau et rien d'autre : aucun champ, aucun identifiant, aucune source commune. Les deux libellés sont voisins dans le panneau exprès.
+- **Hors champ par la loi, et la couche le dit.** Cité mot pour mot du jeu de données : *« Installations radioélectriques de plus de 5 watts, hormis celles de l'Aviation Civile et des ministères de la Défense et de l'Intérieur. »* Un vide au-dessus d'une base ou d'un aéroport est une politique publique, pas un trou de données.
+- **🌳 Îlots de fraîcheur (Paris) — a new keyless ODbL layer over four Ville de Paris / Eau de Paris registers.** 535 cool spots as points, 984 cool green spaces as real footprints (584 Polygon + 400 MultiPolygon, 219 832 published vertices), 1 323 drinking fountains, and the 219 432 trees of the city loaded per viewport. Two regimes and the split is by SIZE, not by zoom: the three refuge registers fold server-side into one 643 107 B gzipped document and ship whole, the trees cannot (111 MB decoded for the whole file) and are a bbox query.
+- **Only 23 of the 984 cool green spaces stay open during a heatwave, and the layer draws all 23 in their own hot stroke.** Verified directly — `where=canicule_ouverture="Oui"` answers `{"total_count": 23}` — because the cross-facet returns three `Oui` rows, (Oui,null)=3, (Oui,Non)=11, (Oui,Oui)=9, and adding two of the three gives the 20 an earlier reading of this dataset reported. Nine are also 24 h. **Eleven of the twenty-three publish `indice_veget_sup8m_2024 = 0`** — no measured vegetation over 8 m at all — with a median canopy share of 0,0280 against 0,3197 across all 983 spaces carrying the metric; eight of those eleven are `categorie: "Jardiniere"`, five of them on the Porte Maillot roundabout.
+- **The equipment register is coloured by mechanism, not by building type, because the building types ARE the finding.** 127 ombrières pérennes, 125 lieux de culte, 87 brumisateurs, 65 musées, 39 piscines, 19 mairies d'arrondissement, 17 bains-douches, 16 bibliothèques, 13 terrains de boules, 12 ombrières temporaires, 11 baignades extérieures, 4 découverte et initiation. 225 of the 535 are cold stone you go inside — the biggest family and the one nobody guesses — and the five families (pierre, ombre, brume, bain, plein air) name why each thing is on a heat list.
+- **Green spaces are coloured by a measured canopy metric, not by area.** `indice_veget_sup8m_2024` is the share of ground under vegetation taller than 8 m at the 2024 survey; seven fixed bands on the measured distribution (p25 0,1083, p50 0,3197, p75 0,5366), with `= 0` its own band (66 spaces) and `null` grey (1 space) because “nothing was found here” and “nobody looked” are different statements. The register also publishes `p_vegetation_h`, a DIFFERENT number on 903 of the 953 rows carrying both (SQUARE D'ANVERS: 0,10921619 against 0,12799286); the card prints both and calls neither a correction. Total measured canopy: 8 734 377 m², of which the two bois hold 6 159 289 m².
+- **682 of the 984 green spaces publish opening hours whose own validity window had already expired**, 638 of them the same `du 01/05/26 au 31/08/26`, in a file last modified 2026-08-28. The window is printed on the SAME line as the open/closed answer on every card, never in a footnote. 214 spaces and 423 cool spots publish no readable weekday hours at all and are reported as *unknown*, never as *closed*.
+- **“Open right now” is recomputed in the browser, on Europe/Paris, every minute.** The proxy caches its fold for an hour and its summary is unusable for this question: measured over the real registers, 757 green spaces and 93 cool spots are open at 14 h 00 Paris against 367 and 0 at 01 h 30. The local re-fold costs 5,0 ms over the whole pack. The zone is `Europe/Paris` and not the browser's, because an operator in Denver would otherwise be shown a Paris park as open eight hours after it shut.
+- **The tree half is a viewport query with a 36-byte gate.** `exports/geojson` honours `where=in_bbox(geo_point_2d,…)` and is subject to neither cap `records` carries — 100 rows a page, and `offset + limit <= 10000` with *“Invalid value for sum of offset + limit API parameter: 10099 was found but <= 10000 is expected.”* Before any download, `records?…&limit=0&select=count(*) as n` answers the box's population in 36 B and 99 ms; over budget nothing is fetched and the true count is printed. Measured: 5 287 trees for 1 690 170 B decoded on a central box; 10 571 trees for 3 368 281 B on the densest box in Paris.
+- **The tree budget is 12 500, set on the widest box the PROXY accepts rather than the widest the client asks for.** Every grid-aligned window was scored over all 219 432 published coordinates (downloaded through `exports/json?select=geo_point_2d`, 15 737 120 B): the densest 0,020° window holds **10 571** trees at 48.816,2.346 → 48.836,2.366 — the 13e — confirmed against the portal's own count probe, and the densest 0,022° one holds 12 269. A budget set at 10 000 would have refused the arrondissement with the most trees in it.
+- **A tree height of 0 means “not surveyed”, and 19 407 of the 219 432 trees carry it** (with `circonferenceencm = 0` on 16 250; 16 123 carry both). Those dots take their own grey and the minimum size and are never scaled. The size ceiling is 25 m, the 99th percentile of the 200 025 published heights, not the 65 m maximum that exactly two trees reach. `remarquable` is three-state — NON 205 726, null 13 523, OUI 183 — and the null is not a no. `stadedeveloppement` carries `"Jeune (arbre)Adulte"`, two states concatenated upstream, on 41 526 trees (18,9 %), labelled as unreadable rather than mapped to either.
+- **One palette across three modules, and grey means exactly one thing.** Grey `#8a93a6` is reserved for “the register did not measure this” — the space with no canopy index, the 19 407 trees with no surveyed height, and any fountain that stops publishing `dispo` — and no other channel may take it. Two collisions were caught and fixed on the way in: the measured-tree band was exactly `#2f8b43`, which is the canopy ramp's 40–55 % fill, so a measured tree standing on any of those 164 parks was painted in its own background; and the residual equipment family was amber, which the 183 remarkable trees own. A test now forbids both.
+- **Nothing is placed that was not published.** All 535 equipment rows, all 1 323 fountains and all 219 432 trees carry a real coordinate; 984 of 984 green spaces keep at least one usable ring, and the 22 rings (of 3 439) that fall below a triangle at one metre are dropped and counted. Coordinates are rounded to 5 decimal places — 0,73 m of longitude at 48,86° N — which alone takes 219 832 published vertices to 127 465, because 42,0 % of them were duplicates of their neighbour once 16 decimal places of noise came off. No stride, no Douglas-Peucker: a park's outline is its published outline, moved by at most a metre.
+- **`identifiant` is a key on neither refuge register, and `count(distinct)` on this portal lies.** 533 distinct identifiers over 535 equipment rows and 955 over 984 green spaces, 24 of which publish none at all; render ids carry the published key AND the geometry, and every reuse is counted onto the row. Separately, `count(distinct idbase)` answers 211 523 for a 219 432-row register — a HyperLogLog approximation — while `exports/json?select=idbase` settles it at 219 432 distinct, 0 duplicates.
+- **Délinquance enregistrée (FR) — the SSMSI's recorded-crime bases, drawn with the publisher's caution rather than around it.** 34,920 communes, 101 départements, 18 indicators at département grain and 15 at commune grain, 2016–2025, keyless under Licence Ouverte 2.0. Two regimes: a 96-polygon département choropleth on `taux_pour_mille`, and per-département commune packs below a 0.75° view span.
+- **Fixed a false gloss of the suppression rule that a card was printing to readers.** The layer described a withheld cell as « entre 1 et 5 faits ». The rule (« Les données diffusées sont limitées aux communes pour lesquelles plus de 5 faits ont été enregistrés pendant 3 années successives ») is a three-year condition on the series, not a ceiling on the displayed year, and the register refutes the gloss: measured 2026-09-02, **4,735 of the 251,145 withheld 2025 cells belong to a (commune, indicateur) pair that published more than 5 facts in 2023 or 2024** — Cessy (01071) published 16 *Vols de véhicule* in 2023 — and **36 (département, indicateur) pairs carry a withheld-commune mean above 5**, topping out at 22.33 in Seine-Saint-Denis. Every surface now quotes the SSMSI verbatim.
+- **Fixed a dead branch in `delinquanceCellState` that made the whole three-state model accidental.** The register quotes its fields, so the flag arrives as `"ndiff"` with the quotes attached and a bare `String()` comparison never matched. Classification was falling through to the numeric branch and landing on the right answer only because a withheld row also carries `nombre = NA`; an edition that ever wrote a number beside a `ndiff` flag would have painted a withheld commune as measured.
+- **`formatDelinquanceRate(null)` printed « 0,000 ».** `Number(null)` is 0, so an absent rate formatted as a measured zero — the exact sentence the three-state model exists to prevent. It now returns an em dash, while a genuine published zero (Ardèche recorded no homicide in 2025) still formats as `0,000`.
+- **A withheld cell is not a zero and is not a low value, and 63 tests now hold that line.** A withheld cell takes no colour from the six-band ramp for any bin index including bogus ones, contributes to no quantile threshold, is never averaged, arrives on the wire as a bare `[state]` with no number to paint, and appears in the legend under its own name with its own count. The national withheld count reaches the row legend even at département zoom, where nothing is withheld and the map otherwise looks complete.
+- **The quantile cut is taken on faits per MILLION, because the shared `countBins` rounds to integers.** Measured over the 96 metropolitan polygons on the 2025 edition, `Cambriolages de logement`: the real quantiles are 3.641, 4.769, 5.491, 5.926 and 6.569 per 1,000 dwellings and `countBins` on the raw rates returns **[4, 5, 6, 7, 8]**, moving the top boundary from 6.57 to 8.00. On `Homicides` the 93 real quantiles run 0.0071 to 0.0178 and it returns **[0, 1, 2, 3, 4]**, putting every département in band 0.
+- **Rate, not count, and the Cher is the whole argument.** On the 2025 cambriolages, by count the leaders are Bouches-du-Rhône 8,586, Nord 8,501, Rhône 7,153 and Paris 7,072, and the eight biggest hold 55,198 of 211,596 facts (26.1%) — very nearly a list of the eight biggest départements. By rate per 1,000 dwellings the leaders are Guyane 9.80, **Cher 9.28**, Ain 8.67 and Isère 8.36, and the Nord drops from 2nd to 17th.
+- **Real SSMSI rows, captured through the exact URLs the proxy builds.** `ssmsi-communes-sample.csv` (300 rows, 18 communes) and `ssmsi-departements-sample.csv` (504 rows, 14 départements) plus the geo.api.gouv.fr contours for Paris and five Haute-Corse communes and the trimmed data.gouv.fr dataset payload. Every row is a distinct trap: the withheld-but-not-small commune, the all-fifteen-withheld commune, the zero-population village détruit whose published zero carries a `NA` rate, the Paris arrondissement withheld to block subtraction, the Marseille arrondissements whose departmental mean is 11.0, the 2,897-vertex outline, the five-part island commune, and the enclave ring.
 
-## [Unreleased] — 2026-09-01
+- **Comptages routiers (Paris) — the first road layer here that has counted a
+  vehicle.** `traffic` is TomTom flow, bring-your-own-key, and its own header
+  says a keyless build runs a SIMULATION; `road-status-fr` is DATEX incident
+  reporting whose own header says Île-de-France has no publisher at all. Neither
+  has ever counted a car inside Paris. This draws `q` — whose field description
+  is verbatim *"Débit (nombre de véhicules comptés pendant l'heure)"* — from the
+  city's own permanent loops, on the arc that measured it. **2,977 arcs, 500,136
+  hourly readings**, folded from a dataset of **27,772,889**.
+- **It is J-2, and the word "live" appears nowhere in it.** Measured
+  2026-09-01T21:02Z: `data_processed` 2026-09-01T01:02:50Z, cadence
+  *Quotidienne*, granularity *Horaire*, and `max(t_1h)` 2026-08-30T22:00:00Z —
+  a nightly batch ~46 h behind the wall clock. So the unit is not a moment but
+  the last COMPLETE local Monday–Sunday week, **discovered** from the data's own
+  newest hour and floored at the week this was measured against. A discovery
+  older than the floor is a malformed answer, not a new fact. `comptagesWeekLabel`
+  is asserted to contain no clock time and no claim of liveness.
+- **891 of the 2,977 arcs measured nothing, and they are drawn as silence.** The
+  live build reports 1,730 arcs counting vehicles, 356 publishing occupancy but
+  no count, and 891 publishing neither in any of the 168 hours — with the city's
+  own `etat_barre` explaining them as 724 *Invalide*, 141 *Ouvert* and 26
+  *Barré*, so 141 arcs are declared open and still silent. A silent arc gets
+  `bin: null` and a colour that is **not a member of the flow ramp**; giving it
+  the ramp's quietest step would assert a measurement on 891 real streets.
+- **A null bin no longer prints as "< 100 véh/h".** `comptagesFlowBandLabel()`
+  guarded with `Number(bin)`, and `Number(null)`, `Number('')`, `Number(false)`
+  and `Number([])` are all `0` — so an unmeasured arc rendered as the bottom
+  band on the legend and the card. It now guards on `typeof bin !== 'number'`.
+  This is the exact conflation the module header forbids, reaching a user-facing
+  surface; `comptagesFlowBin()` had always refused it.
+- **The geometry comes from the measurement, not from the referential.**
+  `referentiel-comptages-routiers` publishes **3,739 rows for only 3,348
+  distinct `iu_ac`** — 338 repeated with no usable tiebreak, `date_fin` maxing
+  at 2023-01-01 on 3,303 arcs that are demonstrably still counting in 2026 —
+  and it misses 31 arcs that ARE counting while carrying 402 that are not. The
+  counts export carries `geo_shape` on every row: 2,977 features for 2,977 ids,
+  fresher, and 0.27 s against 7.7 s. The referential is never fetched.
+- **31 arcs publish no geometry and 19 of them are measuring.** They are counted
+  on the card and named in the loading line rather than dropped or pinned to a
+  street they might not be on.
+- **Ten upstream calls, folded once, in 3.1 s.** One `max(t_1h)`, one GeoJSON
+  export pinned to the week's closing hour, eight grouped aggregations (the
+  clock six hours at a time, because the grouped endpoint caps `offset + limit`
+  at 30,000 and one day-type is 71,448 cells), and one `etat_barre` roll-up
+  whose loss is explicitly not fatal. Payload 1,374,165 B raw, **305,250 B
+  gzipped**. Cached six hours in memory, a fortnight on disk under
+  `.gev-cache/comptages-fr/`.
+- Share token `cr`, panel icon 🚦 — deliberately neither `traffic`'s 🚗 nor
+  `road-status-fr`'s 🛣, because the whole point is that it is a different
+  quantity. `REGISTERED_LAYER_IDS.length` moves 42 → 43.
 
-### Added
+- **Stations météo (FR) — where France measures the weather, and what each
+  instrument can actually tell you.** All **2 144 stations** of Météo-France's
+  real-time observation network, from the tide line to the **Aiguille du Midi at
+  3 845 m**. The globe already showed the weather three times — Open-Meteo in the
+  cockpit, Vigilance météo per département, Vigicrues on the rivers — and never
+  once showed where the numbers come from. A vigilance map is an interpretation
+  of readings taken somewhere; this is the somewhere.
+- **Colour is capability, because a French weather station usually is not one.**
+  A reader expects 2 144 identical instruments knowing temperature, wind,
+  pressure and humidity. Against Météo-France's own per-station inventory:
+  **1 254 of the 2 144 — 58 % — measure temperature and rain and nothing else**,
+  only **845 can tell you which way the wind is blowing**, and only **234** have
+  a barometer. **228** measure all five. So the palette is what each dot can
+  answer, the disc is sized by how many of the fourteen instrument families it
+  carries, and the **VENT** chip deletes 60 % of the map on purpose.
+- **190 stations publish their readings in the open — and Météo-France's own
+  list names 62.** A ring means a station whose last hour is readable without a
+  key, and clicking one fetches it: temperature, wind and gust in km/h, pressure,
+  humidity, rain, visibility, snow. Boulogne-sur-Mer, Le Touquet, Dunkerque,
+  Dieppe, Beauvais-Tillé, Ouessant-Stiff and 123 others publish hourly without
+  appearing on the list that is supposed to name them; **CAP CEPET is on the list
+  and has written nothing all year**. The layer counts the archive, never the
+  list. The other 1 954 stations are measuring right now and publishing nothing
+  a visitor can read — the card says that, rather than showing an empty reading.
+- **Every station's records, with the window they stand in.** 1 230 postes
+  publish a *fiche climatologique*, and a click brings back the hottest and
+  coldest day ever recorded there plus the period the record was established
+  over — Toulouse-Blagnac's 42,4 °C in 2023 against observations back to 1947,
+  Arbent's 39,2 °C against 2004. The window is printed with the number because
+  without it the two read the same.
+- **The instrument inventory, joined from a 191 MB file no browser can fetch.**
+  The station list is eight columns and says nothing about what anything
+  measures; that lives in Météo-France's per-parameter inventory, dated one
+  instrument at a time. `npm run meteo:stations` joins four of the publisher's
+  files into a 644 KB pack. Families are anchored on hourly base readings, never
+  keyword-matched: matching on "VENT" would count a decadal wind average —
+  present on 879 stations — as an anemometer when only 845 have one.
+- **Seven stations in the live list are closed, and six exist in no metadata at
+  all.** MARSILLARGUES since 2026-01-01, DESHAIES GENDARMERIE since 2024-10-01,
+  ST JOSEPH-CIRAD and TAN ROUGE-CIRAD since 2023-03-29, and three more —
+  Météo-France's own metadata records the closure and its own real-time list
+  still carries the station. They are drawn hollow and the card leads with the
+  date. ALBA LA ROMAINE, SOULAINES, TARASCON, PIOGGIOLA, QUERCITELLO and MURAT
+  SUR VEBRE are drawn in the neutral grey this project uses for "the publisher
+  did not say" — never as stations that measure nothing.
+- **Urbanisme (PLU) — click anywhere on the map, not on the marker.** The layer
+  drew a whole block of zoning and put every word of the answer on one 26-pixel
+  glyph, so the plot opposite could be SEEN and not READ: knowing what the
+  magenta polygon across the street means meant flying the camera over it.
+  A click on the wash, on an outline, or on the bare globe between them now
+  opens a card for that spot — which zone, what the family means, which
+  easements reach it, when the PLU was approved and under which document.
+  Measured at Ustaritz at 900 m: four clicks across one screen answer `UB`,
+  `UA`, `A` and `UB`. No request and no wait: the answer is read out of the map
+  already in hand. The scan marker keeps its own card, which is the scan-level
+  summary.
+- **The register outranks the drawing, within 30 m of the marker.** The shapes
+  on screen are decimated by up to 96%, and this layer's own rule is that a
+  simplified outline must never decide which rule applies to a house: measured
+  at Ustaritz, the point APIcarto itself answers `UB` for falls OUTSIDE the
+  drawn `UB` ring — 571 sampled points do. At the scan point the register has
+  already answered, so it is used and the geometry is not consulted; further
+  out the drawn map answers and the card says its outlines are simplified.
+- **Four ways to have no zoning, said apart.** The answer was refused whole,
+  the box never covered this spot, the camera is above 1 500 m so only the
+  marker was asked about, or the published document genuinely stops here.
+  A card printing "aucun zonage" for all four would report three of the layer's
+  own limits as facts about the plot. Easements the same: "aucune servitude à
+  ce point" only where the register answered that point, and "aucune des N
+  servitudes du repère n'atteint ce point" everywhere else — because "this
+  ground is clear" is a survey, and the easement half is only ever asked at the
+  marker.
+- **An approval date is a date.** The same national schema publishes `datvalid`
+  as `20240323` at Ustaritz and `2026-06-16` in Paris; both now read
+  `23/03/2024` and `16/06/2026` on every card.
+- **Accueil du jeune enfant (FR) — the indicator, because the register does not
+  exist.** The question "can we add a crèche dataset?" was answered by
+  measurement, not assumption, and the answer is no: the Cnaf publishes 210
+  open datasets and **not one is an establishment**; FINESS holds 174 621
+  establishments of which only **183** have a crèche-shaped name, and those are
+  incidental (EAJE are authorised by the département's PMI, not an ARS);
+  INSEE's BPE has the right object but its only API millésimes are 2016 and
+  **2021**; and Sirene's NAF 88.91A silently drops the entire public sector —
+  `nature_juridique` 7210 with that APE returns **zero rows**, while a
+  municipal crèche is really there as an establishment of the commune's SIREN.
+  So the new layer draws what the State does publish: **places of formal
+  childcare per 100 children under three**, at the three scales the Cnaf
+  publishes them — 102 départements, 1 251 EPCI, 1 061 communes.
+- **The colour is a ratio to France, not a quantile.** This layer paints three
+  nested scales, and a quantile band means "the top sixth of what is on
+  screen" — so the same colour would mean different things at different zooms
+  and an area would change colour without anything changing about it. Every
+  scale is anchored on the one national figure (**60,9** in 2023, which
+  cross-checks exactly against the ONAPE 2024 report), on a diverging ramp
+  whose break falls where the ratio crosses 1. The map then says something
+  immediately: the Atlantic west is well above France, the Paris ring and the
+  Mediterranean south well below.
+- **The omission is the finding.** The bundled polygons are metropolitan, so 6
+  of the Cnaf's 102 rows cannot be painted — Guyane 13,4, Saint-Martin 30,2,
+  La Réunion 38,5, Guadeloupe 44,1, Saint-Barthélemy 47,5, Martinique 55,2.
+  **Every one is below the national rate, Guyane at 22% of it**, while not one
+  metropolitan département reaches the lowest band. A map stopping at the
+  coastline would delete the whole bottom of the distribution, so the six are
+  carried with their rates and named on the national card.
+- **Two placeholder rows that are not spelled alike.** The EPCI file publishes
+  `numepci = "XX"` carrying a real and extreme 195,8 — the national maximum,
+  drawn nowhere, anchoring any ramp — and the département places file spells
+  the same idea `XXX`. Matching a literal would have caught one of the two.
+  With it gone the real EPCI range is 2,7 to 160,5.
+- **Médecins (FR) — where doctors are, and where access runs out.** 64 232
+  practice addresses, 117 922 named doctors and what each of them charges,
+  drawn at three scales. The national view paints the DREES's **accessibilité
+  potentielle localisée** rather than a headcount, and that is a measured
+  choice: the median French person lives **0.7 km from a general practitioner**
+  and only 0.49 % of the population is beyond 10 km, so a map of counts would
+  say "France is covered" and be useless. What is scarce is capacity — 18 % of
+  the population lives in a commune the ARS class as under-served. Closer in,
+  colour is the family of medicine and dot size is the number of distinct
+  doctors at the address; a click names them, says what each costs (94 % of GP
+  entries are secteur 1 against 18 % of ophthalmologists, 63 % of whom set
+  their own fees), places the commune in the national tenth, and shows what
+  the neighbourhood loses when its over-62s retire — **−22 % nationally**.
+- **The register that publishes no coordinates, geocoded.** The CNAM's
+  *Annuaire santé Ameli* is the only nationwide list of conventioned doctors
+  and it contains **not one latitude**: its address block is named
+  `coordonnees_*` in the sense of *contact details*. Every ready-geocoded copy
+  in circulation descends from the previous CNAM directory, deprecated in
+  December 2025, and still speaks of the *contrat d'accès aux soins* — closed
+  to new signatures on 2016-12-31. The one daily-geocoded national register,
+  Atlasanté's, answers HTTP 403 outside the ARS network. So
+  `npm run medecins:registry` geocodes the register against the Base Adresse
+  Nationale in three passes and ships the result: **64 232 of 64 625 addresses
+  placed, 99.4 %**, 82.7 % at the exact door, 1.1 % at a commune centre that
+  says so on its card, and 393 named rather than quietly dropped.
+- **Checked against the CNAM's own headcount, and it holds.** The same
+  publisher counts the same population a second way; `--verifier` replays the
+  comparison. **117 922 named doctors against 112 159**, +5.1 % — the gap a
+  directory should show over an activity count taken two years earlier — with
+  23 professions between −1.5 % and +15.1 %, and per DÉPARTEMENT a median gap
+  of **+2.1 %, 97 of 101 inside [−10 %, +15 %]**, so the geocoding moved nobody
+  between departments. Three register traps are neutralised on the way: a
+  radiologist is listed at every imaging site they cover (5.53 entries per name
+  against 1.18 for a GP), three separate codes read `Médecin généraliste`
+  (grouping by code loses 11 % of them), and 9 328 doctors practise in more
+  than one département (summing per-department distinct names answers 130 330
+  for a country holding 117 922).
 
 - **Urbanisme (PLU) — it draws the block now, not the dot.** The layer answered
   one point, which is the wrong question: "could the car park opposite become
@@ -373,6 +652,68 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **Une caméra sélectionnée rendait VERTE au lieu d'ambre, parce que son icône avait sa propre couleur cuite dedans.** Cesium multiplie `billboard.color` dans la texture. La couche CCTV s'en sert pour dire laquelle des caméras l'opérateur a sélectionnée — `#6be8ff` au repos, `#ffd97a` pour l'active — mais le dessin portait du cyan en dur (`#75e7ff` sur des aplats sombres, plus un dégradé de lentille). #75e7ff × #ffd97a = **#75c57a** : la seule caméra que l'ambre devait isoler était la seule à ne pas être ambre. Le cyan de repos sortait lui aussi faux, sursaturé à #31d2ff. L'icône est maintenant `temaki/security_camera` en tracé blanc sur halo sombre, comme tous les autres jeux de ce dépôt le documentent depuis le début : le blanc rend la multiplication neutre, le noir y survit (0 × c = 0) et garde le glyphe lisible sur une orthophoto claire. Au passage, un détail de caméra murale dessiné pour 36 px cesse d'être bouilli en un pâté bleu à 15. Une teinte cuite est un bug, pas un parti pris — `mapIcons.test.mjs` refuse désormais tout glyphe portant un dégradé, une opacité ou un hexadécimal autre que `#ffffff`.
+- **"Sites militaires — Context is temporarily unavailable", while Overpass was
+  merely busy.** The layer went dark under normal panning and the server log
+  said nothing, so the failure was indistinguishable from a dead upstream. It
+  was a rate limit this app manufactured itself. `GET /api/status` on
+  overpass-api.de answers **"Rate limit: 2"** — two concurrent slots per IP —
+  and the rotation was never four mirrors wide — it was **four hostnames over
+  two machines**. `lz4.overpass-api.de` resolves to `65.109.112.52`, one of the
+  two addresses `overpass-api.de` itself answers with, and both facades report
+  `Announced endpoint: lambert.openstreetmap.de/`; `overpass.kumi.systems` is a
+  CNAME onto `overpass.private.coffee` (both land on `193.219.97.30`), and that
+  host answered a bodyless **502 in ~3 s** on every probe. So half the list
+  bought no redundancy and simply paid the same dead host's timeout twice.
+  `overpass.kumi.systems` has been dropped. Nothing paced the requests: the installations proxy
+  called straight through with no gate at all, and the generic Overpass proxy
+  allowed six in flight against a budget of two. A burst of eight drew **429 on
+  requests 6 and 8** — and a 429 is a verdict on the **IP**, not on the mirror,
+  so "try the next one" collected the same 429, then six seconds of dead
+  community mirrors, then surfaced a bare 503. Sequentially, **two of six**
+  requests failed that way.
+  Upstream requests are now queued at the budget the mirrors actually publish —
+  two in flight, waiting rather than failing, proceeding ungated after 20 s so a
+  busy moment can never become an error — and a reported rate limit is **waited
+  out** (1.5 s, then 4 s) instead of rotated away, since waiting is the only
+  move a per-IP limit responds to. The two healthy facades lead the rotation so
+  the ~6 s of dead weight is only ever paid after the mirrors that answer have
+  failed, and the installations proxy now **names the cause** in the server log
+  — rate limit, server-side timeout, or refusal — because the three need
+  different fixes and looked identical before.
+- **A blocked IP made the globe feel hung, not degraded.** overpass-api.de does
+  not only rate-limit an IP it dislikes; it stops answering it. Provoked while
+  testing the fix above, the block outlasted **four minutes** of polling,
+  `/api/status` included — and every rotation during it spent **47 s** of
+  timeouts to learn the same thing, once per camera move, while still sending
+  the traffic that caused it. A rotation where no mirror answers at all now
+  parks the whole Overpass path for a minute, so the next caller fails in
+  **1.7 ms** instead of 47 s and lands straight on its stale cache (measured
+  live during that block). A rate limit is deliberately excluded — it is the
+  recoverable case, and parking it would trade a two-second wait for a minute of
+  blindness. The layer's disk cache, meanwhile, kept serving previously visited
+  ground throughout the outage in **9 ms**.
+
+- **Clicking a parcel highlighted a wedge with the NEIGHBOUR's corners.** The
+  cadastral outline under the cursor was square and correct, and the cyan fill
+  poured into it was a diagonal blob with two edges that belonged to no parcel
+  at all. Measured over Ustaritz on parcel AN 0512: **41% of the plot filled**,
+  and the two straight cuts through the highlight sat on parcel AN 0511's east
+  and north **bounding-box** edges to within one pixel. That is the tell. A
+  batched `GroundPrimitive` does not colour a ground pixel by the polygon that
+  contains it — Cesium classifies the whole batch in ONE stencil pass, which
+  records only "some instance here", and the colour pass then keeps the first
+  instance whose kilometres-tall shadow volume reaches the pixel and whose own
+  axis-aligned bounding rectangle contains it. Parcel bounding rectangles
+  overlap their neighbours' constantly, so inside one batch neighbours repaint
+  each other along rectangle edges. It was invisible while every parcel in the
+  batch shared a band colour, and glaring the moment selection made one differ.
+  Fills are now batched **by band colour** — five primitives at most, against
+  one before and one-per-parcel never — and the selected parcel is drawn as a
+  primitive of its own laid over the batch. The highlight now matches the
+  parcel's own polygon to an intersection-over-union of **0.98 nadir and 0.98
+  oblique**, against 0.44 and 0.14 before, proved on pixels by the new
+  `npm run qa:cadastre-highlight`.
 - **A digue titled "Barrage" — the pack knew better than the card.** Reported
   from the map: a "Barrage · 159 m de long" at Octeville-sur-Mer where no
   barrage is visible. Checked against OpenStreetMap: `w860215522` carries the
@@ -617,6 +958,17 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Changed
 
+- **Les lettres A–G du DPE sont maintenant celles d'Inter, la police de l'interface — plus des tracés faits à la main.** Les huit badges étaient sept chemins tracés au trait dans ce fichier, plus un point d'interrogation : épaisseur constante, des arcs là où une police a des courbes, et aucun rapport entre une lettre et la suivante au-delà d'une boîte englobante commune. Ça se lisait comme une **calligraphie approximative**, pas comme du texte composé — le B et le G le disaient le plus fort. Tout le reste de l'iconographie de ce projet est l'image d'un OBJET ; une lettre, non : c'est un caractère, et les caractères sont le métier des dessinateurs de caractères. Les contours viennent donc d'**Inter** (SIL OFL 1.1), extraits une fois au build avec fontkit à l'instance `wght 700, opsz 14` — l'axe de taille optique réglé sur 14 et pas 32 exprès, parce qu'il ouvre les contreformes pour les petits corps et que ça s'affiche à 15 px. Inter précisément parce que l'application compose déjà toute son interface avec (`--font-sans`) : un badge sur le globe et la même note imprimée sur la fiche sont désormais les mêmes lettres. **Aucun point de contrôle n'est déplacé** : chaque `d` est stocké tel que la police le contient, dans son espace em de 2048 unités, et le placement dans la boîte de 96 — hauteur de capitale à 42, ligne de base à y=70, centrage sur la boîte propre de la lettre, y inversé — est un `transform` SVG appliqué au rendu, donc vérifiable. Le halo de la lettre est volontairement plus fin que celui du reste du pack (5 au lieu de 12) : un contour strié grossit vers l'intérieur autant que vers l'extérieur, et à 12 la panse du A se referme et le badge se lit comme un triangle. Aucun fichier de police n'est redistribué, seulement huit contours.
+- **Maki et Temaki — deux jeux d'icônes CARTOGRAPHIQUES à côté de Material Symbols, et un téléphérique qui cesse de ressembler à un immeuble.** Material Symbols est dessiné pour 24 px dans un menu ; Maki (Mapbox) et Temaki (l'éditeur iD d'OpenStreetMap) sont dessinés dans une boîte de 15 unités pour une étiquette posée sur de l'imagerie — soit exactement la bande où ces couches dessinent, 15 à 29 px CSS. Ce n'est pas une migration : Material garde les douze classes qu'il dessine bien. `aerial` passe à `maki/aerialway`, une cabine suspendue à son câble, là où `cable_car` est une cabine à pieds qui se lit comme un bâtiment à 22 px. Les deux jeux sont en **CC0 1.0** — dédicace au domaine public, donc aucune obligation d'attribution, contrairement à l'Apache-2.0 de Material et à son NOTICE à propager. `licenses/maki/` et `licenses/temaki/` existent quand même : consigner d'où vient une œuvre reprise est la discipline de ce dépôt, pas une contrainte de licence. Seule la chaîne `d` de chaque tracé est reprise, verbatim, dans la boîte de 15 unités de chaque jeu — jamais remise à l'échelle, ce qui serait un redessin. `cable_car` est retiré du dépôt, pas seulement laissé inutilisé, et le NOTICE de Material le dit.
+- **Accueil du jeune enfant — le taux se lit sur le territoire, plus sur un point posé au milieu.** La couche dessinait ses deux échelles locales en pastilles au centre administratif de chaque zone. Un taux de couverture est une propriété d'un TERRITOIRE : posé sur une coordonnée il devient la propriété d'un centroïde — un champ à l'écart de la commune-siège pour une intercommunalité rurale, un point du 5e pour une Métropole — et rien à l'écran ne disait où le chiffre cessait de s'appliquer. Les 1 250 intercommunalités et les 1 061 communes sont désormais REMPLIES, en classification au sol, à partir des contours communaux de `geo.api.gouv.fr`.
+- **Une intercommunalité n'a aucun contour publié : elle est peinte comme ses communes membres.** `geo.api.gouv.fr` ne publie pas de polygone d'EPCI et refuse une requête de contours non filtrée — 1 255 appels, 66 Mo, 3,1 millions de sommets (mesuré). Mais il publie `codeEpci` à côté de chaque commune, sans appel supplémentaire : le territoire d'une EPCI est donc dessiné comme ses communes membres, sous UNE seule couleur et sans liseré intérieur, pour se lire comme une zone et non comme une mosaïque. Ce qui manque est le trait extérieur de l'union, et rien ne l'invente.
+- **Les deux échelles pavent le sol, elles ne se superposent jamais.** Sous 0,45° d'ouverture, chacune des 1 061 communes que la Cnaf publie est DÉCOUPÉE dans le lavis de son EPCI et remplie de son propre taux : chaque parcelle de sol porte exactement un chiffre, le plus fin publié pour elle, et le liseré blanc dit lequel. Deux fonds translucides ne peuvent donc plus se mélanger en une troisième couleur qui ne veut rien dire. Paris, Lyon et Marseille sont le cas dur — la Cnaf publie par arrondissement, `geo.api.gouv.fr` répond une commune unique — et l'arrondissement remplace sa commune-mère au lieu de s'y ajouter, la mère disparaissant entièrement du lavis.
+- **Le service répond par BOÎTE, pas par département.** Les contours ne se récupèrent qu'un département à la fois en amont ; ils sont donc mémorisés entiers côté proxy et DÉCOUPÉS à la vue. Mesuré sur cinq villes, une boîte de 0,9° recoupe 4 à 18 départements — Paris étant le pire, ses départements étant les plus petits — donc servir les paquets entiers enverrait le Pas-de-Calais parce qu'un coin de l'écran l'a effleuré. Coût mesuré : **111 Ko pour une vue sur Lyon (32 Ko gzippés)**, et 2,03 Mo / 636 Ko dans le pire cas mesuré (1,3° sur l'Île-de-France, 2 261 communes, 4,5 s à froid et 9 ms à chaud). La boîte est calée sur une grille de 0,1° avant d'être demandée, donc un panoramique ne repose la question que toutes les quelques largeurs d'écran.
+- **Le choroplèthe départemental descend jusqu'à la relève, il n'y a plus aucun zoom sans territoire.** Il répondait au-dessus de 9,5° parce que les pastilles prenaient le relais en dessous ; il tient maintenant jusqu'à 0,9°, où les territoires prennent la main. Le plafond est mesuré et non choisi : une boîte de 0,9° contient environ 1 450 communes, du même ordre que les lots de parcelles que cette application dessine déjà.
+- **Un lot groupé de `GroundPrimitive` porte UNE couleur.** Cesium classe tout un lot en une passe de stencil, puis garde le premier instance dont le RECTANGLE ENGLOBANT contient le pixel — jamais le polygone. Les rectangles de communes voisines se chevauchent en permanence, donc un lot est constitué par couleur de bande (six au plus) et la sélection est un couple de primitives à elle, posé par-dessus. `npm run qa:petite-enfance-fr` le garde sur les pixels : le sol sous un territoire prend bien la couleur de SA bande, aucun anneau n'est dessiné deux fois, et le choroplèthe ne laisse aucune primitive derrière lui.
+- **Ce que la carte ne dit plus.** La taille des pastilles portait le nombre de places, donc la couche répondait à deux questions à la fois. Un remplissage n'a qu'un canal et il va au taux — la question que l'indicateur existe pour poser. Le nombre de places reste sur chaque fiche, et l'alternative était une pastille flottant au-dessus de son propre territoire.
+- Le découpage des contours communaux et la recherche « quels départements dans cette boîte » vivent maintenant dans `src/data/communeContours.js` et `src/data/franceDepartements.js`, partagés par la couche délinquance et la couche petite enfance au lieu d'être dupliqués. `delinquanceFeed.js` garde sa surface d'export et ses mesures ; ses suites de tests inchangées sont ce qui prouve que l'extraction est fidèle.
+
 - The maillage thinning and the point-in-département lookup now live in
   `src/data/geoMeshThinning.js` and `src/data/franceDepartements.js`, shared by
   the charge-point and schools layers instead of duplicated. `irveMesh.js` and
@@ -830,6 +1182,51 @@ Verified over Paris 16e on the oblique view that reported it: 2 393 parcelles at
   hundreds. It now reads the establishment's published name — "Collège Jean Moulin" —
   prefixed with its level only for the 2.6% of register names that do not already state
   one ("Lycée · Institution Saint-Pierre").
+- **Deux satellites FIRMS sur trois disparaissaient les jours de grande activité, et la
+  couche avait l'air en bonne santé.** `fires.push(...records)` passe un ARGUMENT par
+  détection, et V8 refuse au-delà d'environ 124 300 (mesuré ici sur Node 26.0.0, le
+  seuil exact dépendant de l'état de la pile). Un tirage `world/2` en rend ~131 000 pour
+  NOAA20 et SNPP : les deux levaient `RangeError`, attrapé juste en dessous comme une
+  panne d'amont, et seul NOAA21 — 114 000, sous la limite — survivait. Compte mondial
+  mesuré en amont : **113 996 → 377 169**. La boucle passe par `appendAll`, et l'entrée
+  `ok:true` n'est plus écrite qu'une fois les détections effectivement rangées : elle
+  partait AVANT, donc une source qui échouait était listée deux fois, `ok:true` avec son
+  vrai compte puis `ok:false`, et `/api/firms` annonçait des détections qu'il n'avait
+  pas gardées. Correctif d'amont repris et étendu (bilawalsidhu/gods-eye-view#93).
+- **Six plafonds de réponse comptaient des caractères là où ils annonçaient des octets.**
+  `body.length` compte des unités de code UTF-16 : trois octets d'euro en valent un, donc
+  un corps non latin pouvait tenir à près du triple d'un plafond et le passer. Pire, le
+  test arrivait APRÈS `await response.text()`, c'est-à-dire après l'allocation qu'il
+  existe pour empêcher. Les six sites — GBFS, le lecteur partagé des six scans d'adresse
+  (Géorisques, DVF, DPE, GPU, isochrones, IDFM), NDBC, et le repli non diffusé de CCTV —
+  passent par `readResponseTextCapped`, qui refuse sur `Content-Length`, compte en octets
+  pendant la lecture et annule le flux au dépassement. Il servait déjà 14 appels dans le
+  même fichier. Il relâche aussi la socket quand il refuse sur l'en-tête, au lieu de la
+  laisser ouverte jusqu'au GC. Le repli CCTV était une seconde implémentation presque
+  identique de ce lecteur, portant le bug que la version partagée n'a pas ; il n'en est
+  plus qu'un adaptateur.
+- **Un tirage FIRMS n'avait aucun plafond du tout.** `res.text()` lisait le CSV mondial
+  sans limite. Il est plafonné à 256 Mo — un ordre de grandeur au-dessus des ~13 Mo que
+  pèsent 100 000 détections, donc il ne peut se déclencher que sur un amont qui a changé
+  de forme.
+- **Les paquets Natural Earth et quartiers chargeaient par deux chemins selon le
+  runtime.** Une branche `isNode` importait dynamiquement `node:fs`, ce que Vite
+  externalisait avec un avertissement à chaque build de production. L'attribut d'import
+  fait le même travail dans les deux runtimes et la branche disparaît, avec un test de
+  frontière qui empêche un import `node:` de revenir dans un module construit pour le
+  navigateur. Correctif d'amont repris tel quel (bilawalsidhu/gods-eye-view#83).
+
+### Security
+
+- **Le proxy GBFS validait une URL, puis en récupérait une autre.** L'hôte, le chemin et
+  le protocole étaient vérifiés sur l'URL demandée par le client — puis `fetch()` suivait
+  les redirections tout seul. Un flux de la liste blanche répondant
+  `302 Location: http://169.254.169.254/…` suffisait à faire récupérer cette adresse par
+  le serveur et à en renvoyer le corps, tous les contrôles ayant déjà été dépensés. Le
+  proxy suit désormais les redirections à la main, en réappliquant la liste blanche à
+  chaque saut (`gbfsRedirectTarget`), avec trois sauts au maximum et une seule échéance
+  pour toute la chaîne — un flux ne peut pas gagner du temps en rebondissant. Même
+  posture que le proxy Radio Browser, qui refusait déjà les redirections.
 
 ## [Unreleased] — 2026-08-31
 

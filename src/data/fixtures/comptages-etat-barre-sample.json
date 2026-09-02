@@ -1,0 +1,90 @@
+{
+ "total_count": 17,
+ "results": [
+  {
+   "iu_ac": "1",
+   "etat_barre": "Ouvert",
+   "n": 167
+  },
+  {
+   "iu_ac": "1",
+   "etat_barre": "Invalide",
+   "n": 1
+  },
+  {
+   "iu_ac": "5",
+   "etat_barre": "Invalide",
+   "n": 168
+  },
+  {
+   "iu_ac": "23",
+   "etat_barre": "Barré",
+   "n": 168
+  },
+  {
+   "iu_ac": "25",
+   "etat_barre": "Barré",
+   "n": 168
+  },
+  {
+   "iu_ac": "30",
+   "etat_barre": "Barré",
+   "n": 168
+  },
+  {
+   "iu_ac": "228",
+   "etat_barre": "Ouvert",
+   "n": 139
+  },
+  {
+   "iu_ac": "228",
+   "etat_barre": "Invalide",
+   "n": 29
+  },
+  {
+   "iu_ac": "257",
+   "etat_barre": "Invalide",
+   "n": 168
+  },
+  {
+   "iu_ac": "284",
+   "etat_barre": "Ouvert",
+   "n": 168
+  },
+  {
+   "iu_ac": "525",
+   "etat_barre": "Invalide",
+   "n": 156
+  },
+  {
+   "iu_ac": "525",
+   "etat_barre": "Ouvert",
+   "n": 12
+  },
+  {
+   "iu_ac": "5201",
+   "etat_barre": "Ouvert",
+   "n": 163
+  },
+  {
+   "iu_ac": "5201",
+   "etat_barre": "Invalide",
+   "n": 5
+  },
+  {
+   "iu_ac": "5266",
+   "etat_barre": "Ouvert",
+   "n": 168
+  },
+  {
+   "iu_ac": "5298",
+   "etat_barre": "Ouvert",
+   "n": 168
+  },
+  {
+   "iu_ac": "7279",
+   "etat_barre": "Ouvert",
+   "n": 168
+  }
+ ]
+}

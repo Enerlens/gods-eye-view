@@ -1,0 +1,9 @@
+{
+ "url": "https://static.data.gouv.fr/resources/donnees-sur-les-installations-radioelectriques-de-plus-de-5-watts-1/20260824-081936/20260731-export-etalab-ref.zip",
+ "capturedAt": "2026-09-01",
+ "archiveBytes": 4805,
+ "member": "SUP_NATURE.txt",
+ "memberBytes": 785,
+ "rows": 38,
+ "text": "NAT_ID;NAT_LB_NOM\r\n0;Sans nature\r\n40;Sémaphore\r\n41;Phare\r\n4;Château d'eau - réservoir\r\n38;Immeuble\r\n39;Local technique\r\n42;Mât\r\n8;Intérieur galerie\r\n9;Intérieur sous-terrain\r\n10;Tunnel\r\n11;Mât béton\r\n12;Mât métallique\r\n21;Pylône\r\n17;Bâtiment\r\n19;Monument historique\r\n20;Monument religieux\r\n22;Pylône autoportant\r\n23;Pylône autostable\r\n24;Pylône haubané\r\n25;Pylône treillis\r\n26;Pylône tubulaire\r\n31;Silo\r\n32;Ouvrage d'art (pont, viaduc)\r\n33;Tour hertzienne\r\n34;Dalle en béton\r\n999999999;Support non décrit\r\n43;Fût\r\n44;Tour de contrôle\r\n45;Contre-poids au sol\r\n46;Contre-poids sur shelter\r\n47;Support DEFENSE\r\n48;pylône arbre\r\n49;Ouvrage de signalisation (portique routier, panneau routier)\r\n50;Balise ou bouée\r\n51;XXX\r\n52;Eolienne\r\n55;Mobilier urbain\r\n56;Roche\r\n"
+}

@@ -5,6 +5,7 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { governorRequestRender } from '../renderGovernor.js';
+import { sceneGroundPoint } from './groundPick.js';
 import { deriveFetchCenter, greatCircleKm } from './trafficBounds.js';
 
 /**
@@ -317,6 +318,42 @@ export function cardFromEntity(entity) {
 }
 
 /**
+ * What a click means, decided before anything is drawn for it.
+ *
+ * WHY THIS IS A FUNCTION AND NOT FOUR LINES INSIDE THE HANDLER. The rule has
+ * four outcomes and three of them are easy to get subtly wrong, so it is
+ * written once, named, and tested — the handler then only has to obey it.
+ *
+ * `ground` is the answer that matters here, and it exists because THE GROUND
+ * IS NOT A BACKGROUND. For a layer that describes a plot — what may be built
+ * on it, what the state has encumbered it with — the plot IS the subject, and
+ * requiring the operator to find the one marker the scan happened to plant is
+ * asking them to click the legend instead of the map. So a click that lands on
+ * bare globe, or on this layer's OWN wash and outlines, is a question about
+ * that spot.
+ *
+ * A click on ANOTHER layer's object is not. That object is about to open a
+ * card of its own, and two cards for one click is how a sibling layer's
+ * selection gets silently talked over.
+ *
+ * @param {object} input
+ * @param {*} [input.picked] Raw `scene.pick` result; only its presence matters.
+ * @param {boolean} [input.isCard] The pick is an entity of ours with a card.
+ * @param {boolean} [input.isOwn] The pick is an entity of ours, card or not.
+ * @param {boolean} [input.answersGround] This layer can answer a bare point.
+ * @param {boolean} [input.selected] A card of ours is currently open.
+ * @returns {'select'|'ground'|'dismiss'|'ignore'}
+ */
+export function addressScanClickIntent({
+  picked = null, isCard = false, isOwn = false, answersGround = false, selected = false,
+} = {}) {
+  if (picked && isCard) return 'select';
+  if (answersGround && (!picked || isOwn)) return 'ground';
+  if (selected && !picked) return 'dismiss';
+  return 'ignore';
+}
+
+/**
  * Read the ground point the camera is looking at.
  * @param {object} viewer Cesium viewer.
  * @returns {{lat: number, lon: number, altitudeM: number}|null}
@@ -379,6 +416,12 @@ export function scanShiftNeeded(last, next, minShiftKm = ADDRESS_SCAN_MIN_SHIFT_
  *   config.render Draws the payload and returns how many entities it created.
  * @param {(payload: object) => Record<string, unknown>} [config.summarize]
  *   Extra fields merged into `getStats()`.
+ * @param {(context: {lon: number, lat: number, payload: object, point: object})
+ *   => ?{title: string, details: string[]}} [config.groundCard]
+ *   What this layer has to say about an arbitrary ground point, read out of
+ *   the answer already in hand. Present it and a click anywhere on the layer's
+ *   own ground opens a card; absent, only markers are clickable. Returning
+ *   null declines the click, which then falls through to dismissal.
  * @param {(point: object, viewer: ?object) => Record<string, string>} [config.params]
  *   Extra query parameters. Takes the viewer as well as the point because a
  *   layer may ask a different question depending on the CAMERA — the urbanism
@@ -394,6 +437,7 @@ export function createAddressScanLayer(config) {
     params = () => ({}),
     render,
     summarize = () => ({}),
+    groundCard = null,
     maxAltitudeM = ADDRESS_SCAN_MAX_ALTITUDE_M,
     minShiftKm = ADDRESS_SCAN_MIN_SHIFT_KM,
     fetchImpl = (...args) => fetch(...args),
@@ -430,6 +474,21 @@ export function createAddressScanLayer(config) {
   /** The exact query the drawn answer came from, for change detection. */
   let _lastQuery = null;
   const _cards = new Map();
+  /**
+   * The card opened for a bare ground point, which belongs to no entity.
+   *
+   * Held apart from `_cards` rather than dropped into it, because that index is
+   * rebuilt from the entities on every redraw and every re-seat: a ground card
+   * filed there would be evicted the moment terrain settled, which is a card
+   * that vanishes a quarter of a second after it opens.
+   */
+  let _groundCard = null;
+
+  /** The open card, whether it belongs to a marker or to a bare point. */
+  function cardById(cardId) {
+    if (_groundCard && _groundCard.id === cardId) return _groundCard;
+    return _cards.get(cardId) || null;
+  }
 
   /** Restore the marker a selection had enlarged. */
   function restoreSelectedStyle() {
@@ -441,8 +500,57 @@ export function createAddressScanLayer(config) {
   function clearSelection() {
     restoreSelectedStyle();
     _selectedId = null;
+    _groundCard = null;
     clearOverlaySource(id);
     governorRequestRender(`${id}-deselect`);
+  }
+
+  /** Paint one card, whatever it was built from. */
+  function paintCard(card) {
+    const entry = createAddressScanOverlayEntry(card);
+    if (!entry) return false;
+    setOverlaySourceVisible(id, true);
+    setOverlayEntries(id, [entry], ADDRESS_SCAN_OVERLAY_OPTIONS);
+    return true;
+  }
+
+  /**
+   * Answer for the ground under a click.
+   *
+   * Seated on the terrain the globe is DRAWING, for the same reason the markers
+   * are: a card anchored on the ellipsoid hangs eighty metres under the street
+   * it describes and slides across the city as the camera turns.
+   *
+   * @param {{x: number, y: number}} windowPosition
+   * @returns {boolean} True when a card was opened.
+   */
+  function openGroundCard(windowPosition) {
+    if (!groundCard || !_payload || _dormant || !_viewer) return false;
+    const ground = sceneGroundPoint(_viewer, windowPosition);
+    if (!ground) return false;
+    const body = groundCard({
+      lon: ground.lon, lat: ground.lat, payload: _payload, point: _lastPoint,
+    });
+    if (!body?.title) return false;
+    clearSelection();
+    const height = renderedGroundM(
+      _viewer.scene?.globe,
+      Cesium.Math.toRadians(ground.lon),
+      Cesium.Math.toRadians(ground.lat),
+    ) ?? 0;
+    const card = {
+      id: `${id}:ground`,
+      title: body.title,
+      details: Array.isArray(body.details) ? body.details : [],
+      position: Cesium.Cartesian3.fromDegrees(ground.lon, ground.lat, height),
+      lon: ground.lon,
+      lat: ground.lat,
+    };
+    _groundCard = card;
+    _selectedId = card.id;
+    paintCard(card);
+    governorRequestRender(`${id}-ground`);
+    return true;
   }
 
   function selectEntity(entityId) {
@@ -452,11 +560,7 @@ export function createAddressScanLayer(config) {
     clearSelection();
     _selectedBase = emphasiseAddressMarker(_dataSource?.entities?.getById(entityId));
     _selectedId = entityId;
-    const entry = createAddressScanOverlayEntry(card);
-    if (entry) {
-      setOverlaySourceVisible(id, true);
-      setOverlayEntries(id, [entry], ADDRESS_SCAN_OVERLAY_OPTIONS);
-    }
+    paintCard(card);
     governorRequestRender(`${id}-select`);
     return true;
   }
@@ -472,6 +576,12 @@ export function createAddressScanLayer(config) {
    * Cesium opens nothing by itself: without this, a marker with a perfectly
    * good `description` is simply inert under the cursor. Every sibling layer
    * owns its own LEFT_CLICK handler for the same reason.
+   *
+   * The pick is used to say WHOSE click this is, never to say where it landed.
+   * A layer that answers a ground point resolves the coordinate geometrically
+   * instead — see `groundPick.js`: ground-classification geometry answers a
+   * pick with whichever shadow volume the ray enters first, which at a grazing
+   * angle is routinely not the shape under the pointer.
    */
   function installClickHandler(viewer) {
     if (_clickHandler || !viewer?.scene?.canvas) return;
@@ -480,13 +590,20 @@ export function createAddressScanLayer(config) {
       const picked = viewer.scene.pick(click.position);
       // Entity-backed primitives hand back the Entity itself as `picked.id`.
       const pickedId = typeof picked?.id === 'string' ? picked.id : picked?.id?.id;
-      if (typeof pickedId === 'string' && _cards.has(pickedId)) {
-        selectEntity(pickedId);
-        return;
-      }
-      // A click on empty globe dismisses, but a click on ANOTHER layer's
-      // object does not — that layer is about to open its own card.
-      if (_selectedId && !picked) clearSelection();
+      const intent = addressScanClickIntent({
+        picked,
+        isCard: typeof pickedId === 'string' && _cards.has(pickedId),
+        isOwn: typeof pickedId === 'string'
+          && Boolean(_dataSource?.entities?.getById?.(pickedId)),
+        answersGround: Boolean(groundCard),
+        selected: Boolean(_selectedId),
+      });
+      if (intent === 'select') { selectEntity(pickedId); return; }
+      // A ground answer that declines — nothing scanned yet, or a ray that met
+      // no globe — is not a card and must not swallow the click either, so the
+      // click falls through to what it always was: on empty globe, a dismissal.
+      if (intent === 'ground' && openGroundCard(click.position)) return;
+      if (!picked && _selectedId) clearSelection();
     }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     document.addEventListener('keydown', onKeyDown);
   }
@@ -524,10 +641,31 @@ export function createAddressScanLayer(config) {
    */
   function refreshSelectionAnchor() {
     if (!_selectedId) return;
-    const card = _cards.get(_selectedId);
+    const card = cardById(_selectedId);
     if (!card) { clearSelection(); return; }
     const entry = createAddressScanOverlayEntry(card);
     if (entry) setOverlayEntries(id, [entry], ADDRESS_SCAN_OVERLAY_OPTIONS);
+  }
+
+  /**
+   * Move the open ground card onto the terrain now resident under it.
+   * @param {object} globe
+   * @returns {boolean} True when the card's anchor changed.
+   */
+  function reseatGroundCard(globe) {
+    if (!_groundCard) return false;
+    const height = renderedGroundM(
+      globe,
+      Cesium.Math.toRadians(_groundCard.lon),
+      Cesium.Math.toRadians(_groundCard.lat),
+    );
+    if (!Number.isFinite(height)) return false;
+    const carto = Cesium.Cartographic.fromCartesian(_groundCard.position);
+    if (carto && Math.abs(height - carto.height) <= SEAT_EPSILON_M) return false;
+    _groundCard.position = Cesium.Cartesian3.fromDegrees(
+      _groundCard.lon, _groundCard.lat, height,
+    );
+    return true;
   }
 
   /**
@@ -545,8 +683,13 @@ export function createAddressScanLayer(config) {
       : null;
     const { moved, pending } = seatEntitiesOnGround(_dataSource.entities.values, globe, fallback);
     _seatPending = pending > 0;
-    if (moved > 0) {
-      indexCards();
+    // The ground card is not an entity and so is not in that sweep, but it has
+    // the same problem: it was anchored on whatever terrain LOD was resident
+    // when the click landed, and the tile under it refines as the camera flies
+    // in. Left alone, the card slides off the plot it names.
+    const cardMoved = reseatGroundCard(globe);
+    if (moved > 0) indexCards();
+    if (moved > 0 || cardMoved) {
       refreshSelectionAnchor();
       governorRequestRender(`${id}-seat`);
     }
@@ -787,6 +930,8 @@ export function createAddressScanLayer(config) {
         viewer?.dataSources?.remove(_dataSource, true);
       }
       _cards.clear();
+      _groundCard = null;
+      _selectedId = null;
       _dataSource = null;
       _payload = null;
       _viewer = null;
@@ -807,6 +952,14 @@ export function createAddressScanLayer(config) {
         dormant: _dormant,
         selectedId: _selectedId,
         clickableCount: _cards.size,
+        // The card opened for a bare point rather than for a marker. Reported
+        // because "the whole ground is clickable" is otherwise invisible from
+        // outside: `clickableCount` counts markers, and a layer answering
+        // every pixel would still report the same three.
+        groundCard: _groundCard
+          ? { lon: _groundCard.lon, lat: _groundCard.lat, title: _groundCard.title }
+          : null,
+        answersGround: Boolean(groundCard),
         // True while at least one marker is still standing on the scan
         // centre's height rather than on a terrain reading of its own — the
         // only state in which a marker can still drift as the camera turns.

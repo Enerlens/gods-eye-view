@@ -48,6 +48,25 @@
  * coordinate at all** — every single one — as do 49 in New Caledonia. They are
  * 332 of the register's 399 uncoordinated rows, and they are not on this map
  * anywhere. Only 18 uncoordinated rows are metropolitan.
+ *
+ * ── What the IPS does NOT change ────────────────────────────────────────────
+ * The DEPP's *indice de position sociale* is joined onto this layer on the UAI
+ * (`ipsFeed.js`), and it moves NEITHER map channel. Colour still means level,
+ * size still means roll, and enabling the layer looks exactly as it did. That
+ * is a decision and not an omission: the colour channel already carries a
+ * meaning, and a second one behind a toggle would make two screenshots of this
+ * layer say different things with nothing on screen to tell them apart. The
+ * index arrives where it can be qualified — on the card, and in the one line
+ * under the toggle — because **40 529 of the 62 857 drawn schools that can
+ * carry an index have a published one (64.5%)** and the third that do not
+ * must read as "non publié", never as the middle of a ramp.
+ *
+ * The maillage is deliberately untouched by it. The national pack ships
+ * coordinates without names to stay at 1.66 MB against 5.42 MB, and an IPS
+ * per tuple would put it back where the names did. So the index rides the
+ * click path the NAME already uses: one register lookup for one coordinate,
+ * memoised for the session, and the resulting card is the same card the exact
+ * regime draws — IPS included.
  */
 
 import * as Cesium from 'cesium';
@@ -71,6 +90,7 @@ import {
   schoolDisplayName,
   schoolSiteKey,
 } from './schoolsFeed.js';
+import { ipsCardLines, ipsCoverageClause } from './ipsFeed.js';
 import {
   meshSchoolId,
   selectSchoolsMesh,
@@ -441,6 +461,15 @@ export function buildSchoolSelectionLabel(record) {
   details.push(Number.isFinite(site.enrolled) && site.enrolled > 0
     ? `${fr(site.enrolled)} élèves — rentrée 2025`
     : 'Effectif non publié pour cet UAI');
+
+  // The IPS sits directly under the roll because it is the second number a
+  // reader will treat as a headline, and its absence has to be as loud as the
+  // roll's. `ipsCardLines` returns NOTHING for an establishment the index does
+  // not cover — a rectorat, a CIO — and one explicit line for each of the four
+  // ways it can be missing. The rentrée it names is its OWN: the écoles file
+  // is a year behind the roll's, and printing one year for both would be a
+  // claim neither source makes.
+  details.push(...ipsCardLines(site.ips));
 
   if (site.ep) details.push(`Éducation prioritaire : ${site.ep}`);
 
@@ -1337,6 +1366,12 @@ export function buildSchoolsLoadingLabel({
     if (national.unassigned > 0) {
       parts.push(`${fr(national.unassigned)} hors métropole non cartographiés`);
     }
+    // The national IPS coverage, and this is the only place it can honestly
+    // be given: the choropleth bins establishment COUNTS, and an index the
+    // fill does not carry has to be reported as a rate rather than implied by
+    // a colour nobody painted.
+    const nationalIps = ipsCoverageClause(national.ips);
+    if (nationalIps) parts.push(nationalIps);
     return parts.join(' · ');
   }
   if (loading) return 'lecture du registre...';
@@ -1344,6 +1379,10 @@ export function buildSchoolsLoadingLabel({
   if (!count) return 'aucun établissement dans cette vue';
   const parts = [`${fr(count)} établissements`];
   if (summary?.pupils > 0) parts.push(`${fr(summary.pupils)} élèves`);
+  // The box's own coverage, over the schools in THIS view — so a reader who
+  // clicks three dots and finds two without an index can see it was expected.
+  const boxIps = ipsCoverageClause(summary?.ips);
+  if (boxIps) parts.push(boxIps);
   if (summary && summary.complete === false) parts.push('réponse tronquée en amont');
   return parts.join(' · ');
 }
@@ -1531,7 +1570,11 @@ const schoolsFranceLayer = {
         blurb: meshRegime
           // Naming the sample is the point: this mix is what the thinning
           // drew, close to the real one but not it. See `schoolsMesh.js`.
-          ? `${LEVEL_BLURBS[level]} Compté sur le maillage échantillonné — un échantillon du mélange en vue, pas le chiffre national.`
+          // The IPS clause is here and not in the status line because the
+          // maillage ships no index at all — it is fetched per click, with the
+          // name, and a reader has to be told that before they conclude the
+          // index is missing.
+          ? `${LEVEL_BLURBS[level]} Compté sur le maillage échantillonné — un échantillon du mélange en vue, pas le chiffre national. L’IPS arrive au clic, avec le nom.`
           : LEVEL_BLURBS[level],
       }));
     return { chips: [], legend };

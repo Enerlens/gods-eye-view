@@ -26,6 +26,7 @@ import {
   schoolSiteKey,
   schoolsBboxWhere,
 } from './schoolsFeed.js';
+import { IPS_UNAVAILABLE } from './ipsFeed.js';
 
 const SAMPLE = JSON.parse(readFileSync(
   new URL('./fixtures/schools-annuaire-sample.json', import.meta.url),
@@ -330,4 +331,118 @@ test('every projected site can be named without inventing anything', () => {
     assert.ok(display.length > 0);
     if (site.name) assert.ok(display.includes(site.name), site.name);
   }
+});
+
+// --- The IPS join -----------------------------------------------------------
+//
+// The second attribute join, and the one whose gaps are the story: two thirds
+// of the schools that could carry an index do, so the THIRD that cannot must
+// be distinguishable at the site level — not merely absent from a card.
+
+/** One IPS record shaped as `indexIps` produces them. */
+const ipsRecord = (over = {}) => ({
+  kind: 'ecole', rentree: '2024-2025', status: 'ok', value: 105.4, sentinel: null,
+  spread: null, lyceeType: null, voies: null, national: 105.8, departemental: 108.7, ...over,
+});
+
+test('the IPS joins on the same UAI the roll does', () => {
+  const out = projectSchoolSites({
+    records: SAMPLE,
+    ips: new Map([['0450922H', ipsRecord({ value: 97.2 })]]),
+    ipsStatus: 'ok',
+  });
+  assert.equal(out.sites.find((site) => site.uai === '0450922H').ips.value, 97.2);
+});
+
+test('a school the index does not hold gets null, which is a stated absence', () => {
+  const out = projectSchoolSites({ records: SAMPLE, ips: new Map(), ipsStatus: 'ok' });
+  const ecole = out.sites.find((site) => site.level === 'ecole');
+  assert.equal(ecole.ips, null);
+  // `null` and "no key" are different claims and must not collapse.
+  assert.ok('ips' in ecole);
+});
+
+test('an establishment outside the scheme carries NO ips key at all', () => {
+  // A rectorat, a CIO and a médico-social are in the register and are not
+  // schools the DEPP indexes. Reporting them as "IPS non publié" would invent
+  // a gap, and would put 2 300 médico-social rows into a denominator.
+  const out = projectSchoolSites({ records: SAMPLE, ips: new Map(), ipsStatus: 'ok' });
+  const outside = out.sites.filter((site) => !('ips' in site));
+  assert.ok(outside.length > 0, 'the fixture holds a service administratif');
+  // Every one of them is a type the DEPP does not index — the check has to be
+  // on the published type, because `schoolLevel()` folds EREA (indexed) in
+  // with médico-social (not indexed).
+  for (const site of outside) {
+    assert.ok(!['ecole', 'college', 'lycee'].includes(site.level), site.level);
+  }
+});
+
+test('an indexed school the register never typed still gets its index', () => {
+  // 7 nationally: the Annuaire publishes no `type_etablissement` and the DEPP
+  // publishes an index anyway.
+  const untyped = SAMPLE.find((row) => row.type_etablissement === null);
+  const uai = untyped.identifiant_de_l_etablissement;
+  const out = projectSchoolSites({
+    records: SAMPLE,
+    ips: new Map([[uai, ipsRecord({ value: 91.1 })]]),
+    ipsStatus: 'ok',
+  });
+  const site = out.sites.find((entry) => entry.uai === uai);
+  assert.equal(site.ips.value, 91.1);
+  assert.ok(out.ips.eligible >= out.ips.joined);
+  assert.ok(out.ips.joined >= out.ips.valued);
+});
+
+test('a dead upstream says "unavailable", never "not published"', () => {
+  // The single most important distinction on the degraded path: losing the
+  // DEPP files must not turn two thirds of France into schools with no index.
+  const out = projectSchoolSites({ records: SAMPLE, ipsStatus: 'unavailable' });
+  const ecole = out.sites.find((site) => site.level === 'ecole');
+  assert.equal(ecole.ips, IPS_UNAVAILABLE);
+  assert.equal(ecole.ips.status, 'unavailable');
+  assert.equal(out.ips.status, 'unavailable');
+  // Nothing is claimed as COVERED while the source is down, but the
+  // denominator survives: how many schools in this box could carry an index is
+  // a fact about the register, not about the DEPP's uptime.
+  assert.equal(out.ips.joined, 0);
+  assert.equal(out.ips.valued, 0);
+  assert.ok(out.ips.eligible > 0);
+});
+
+test('one dead file costs one level its index and leaves the rest alone', () => {
+  const out = projectSchoolSites({
+    records: SAMPLE,
+    ips: new Map([['0450922H', ipsRecord()]]),
+    ipsStatus: 'partial',
+    ipsMissing: ['lycee'],
+  });
+  assert.equal(out.sites.find((site) => site.uai === '0450922H').ips.value, 105.4);
+  for (const site of out.sites) {
+    if (site.level !== 'lycee') continue;
+    assert.equal(site.ips.status, 'unavailable');
+  }
+  assert.deepEqual(out.ips.missing, ['lycee']);
+});
+
+test('the payload states the box coverage, over eligible schools only', () => {
+  const out = projectSchoolSites({
+    records: SAMPLE,
+    ips: new Map([
+      ['0450922H', ipsRecord()],
+      ['0170111D', ipsRecord({ status: 'ns', value: null, sentinel: 'NS' })],
+    ]),
+    ipsStatus: 'ok',
+  });
+  assert.equal(out.ips.joined, 2);
+  assert.equal(out.ips.valued, 1, 'the NS row joined and has no number');
+  assert.ok(out.ips.eligible >= out.ips.joined);
+  assert.ok(out.ips.eligible < out.count, 'non-teaching rows are not a denominator');
+});
+
+test('a payload built without the index carries no coverage claim', () => {
+  // An older cached answer and an answer that found nothing must not look the
+  // same. `null` is "never asked"; a zeroed block would be "asked and empty".
+  const out = projectSchoolSites({ records: SAMPLE });
+  assert.equal(out.ips, null);
+  for (const site of out.sites) assert.equal('ips' in site, false);
 });

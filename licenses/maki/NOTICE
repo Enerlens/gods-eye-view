@@ -1,0 +1,49 @@
+Maki
+Mapbox
+
+Dedicated to the public domain under CC0 1.0 Universal. The full dedication is
+in the `LICENSE` file next to this notice, or at
+
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+Source: https://github.com/mapbox/maki
+        icons/<name>.svg
+        Retrieved 2026-09-02 at commit 28e2a3602e4b.
+
+CC0 IMPOSES NO CONDITIONS. There is no attribution requirement, no notice to
+propagate, and no obligation to state modifications. This file exists because
+recording the provenance of vendored artwork is this project's own discipline —
+the same reason `DATA_SOURCES.md` records where every feed comes from — and
+because it lets a reader audit the claims below without cloning the upstream
+repository.
+
+WHAT WAS TAKEN. One glyph, in one module.
+
+`src/data/mapIcons.js` holds the artwork; `src/data/transitVehicleIcons.js`
+draws it:
+
+    aerialway — the `aerial` transit class (téléphérique, télécabine).
+
+It replaced Material Symbols' `cable_car`, which is an interface glyph: a boxed
+cabin on stubby legs that reads as a building at the 22 CSS px this layer draws
+at. Maki authors for map labels in a 15-unit box, and its cabin hangs from a
+cable, which is the one feature that says "aerial" rather than "tram".
+
+WHAT WAS CHANGED. No coordinate.
+
+Only the `d` path string is vendored, in Maki's own `0 0 15 15` space, NOT
+rescaled — rescaling is a redraw, and a redraw is no longer the artwork that was
+evaluated.
+
+One mechanical normalisation, which changes no number: Maki's published SVG
+breaks long `d` attributes with XML character escapes (`&#xA;&#x9;`, a newline
+plus a tab). Those are whitespace to an SVG path parser and are resolved to
+single spaces so the string can live in JavaScript source. Every command letter,
+every coordinate and their order are untouched, and
+`src/data/mapIcons.test.mjs` pins them.
+
+At render time the path is drawn TWICE by this project: once as a wide dark
+stroke (a halo, so the glyph stays readable over pale terrain) and once as a
+white fill (so Cesium's per-billboard colour multiply can tint it). The viewBox
+is padded to `-1 -1 17 17` so that halo is not clipped by the canvas edge. The
+path geometry itself is untouched.

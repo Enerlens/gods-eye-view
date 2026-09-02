@@ -1,6 +1,8 @@
 node_modules
 dist
 .env
+.env.*
+!.env.example
 *.log
 screenshots/
 qa-shots/
@@ -10,3 +12,4 @@ output/
 .DS_Store
 .gstack/
 3d-models/
+.env.bak*

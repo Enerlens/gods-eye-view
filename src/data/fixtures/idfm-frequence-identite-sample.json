@@ -1,0 +1,68 @@
+{
+ "total_count": 7,
+ "results": [
+  {
+   "id_arret": "22154",
+   "nom_arret": "Alésia",
+   "nom_commune": "Paris",
+   "code_departement": "75",
+   "libelle_mode_ligne": "Métro",
+   "latitude_arret": 48.82820106421924,
+   "longitude_arret": 2.3270932349484528
+  },
+  {
+   "id_arret": "23611",
+   "nom_arret": "Les Plantes",
+   "nom_commune": "Paris",
+   "code_departement": "75",
+   "libelle_mode_ligne": "Bus",
+   "latitude_arret": 48.82907738995223,
+   "longitude_arret": 2.323008898894961
+  },
+  {
+   "id_arret": "23613",
+   "nom_arret": "Alésia - Général Leclerc",
+   "nom_commune": "Paris",
+   "code_departement": "75",
+   "libelle_mode_ligne": "Bus",
+   "latitude_arret": 48.82957575668455,
+   "longitude_arret": 2.3220761112834034
+  },
+  {
+   "id_arret": "23613",
+   "nom_arret": "Les Plantes",
+   "nom_commune": "Paris",
+   "code_departement": "75",
+   "libelle_mode_ligne": "Bus",
+   "latitude_arret": 48.82957575668455,
+   "longitude_arret": 2.3220761112834034
+  },
+  {
+   "id_arret": "23997",
+   "nom_arret": "Rue Benard",
+   "nom_commune": "Paris",
+   "code_departement": "75",
+   "libelle_mode_ligne": "Bus",
+   "latitude_arret": 48.83113351668096,
+   "longitude_arret": 2.3239902763134754
+  },
+  {
+   "id_arret": "36547",
+   "nom_arret": "Alésia - Général Leclerc",
+   "nom_commune": "Paris",
+   "code_departement": "75",
+   "libelle_mode_ligne": "Bus",
+   "latitude_arret": 48.82735371830587,
+   "longitude_arret": 2.326750007592742
+  },
+  {
+   "id_arret": "463118",
+   "nom_arret": "Alésia",
+   "nom_commune": "Paris",
+   "code_departement": "75",
+   "libelle_mode_ligne": "Métro",
+   "latitude_arret": 48.82815215770352,
+   "longitude_arret": 2.3271926250651647
+  }
+ ]
+}

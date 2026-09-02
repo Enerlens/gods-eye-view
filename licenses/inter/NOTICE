@@ -1,0 +1,56 @@
+Inter
+Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)
+
+Licensed under the SIL Open Font License, Version 1.1. The full text is in the
+`LICENSE` file next to this notice, or at
+
+    https://openfontlicense.org/
+
+Source: https://github.com/google/fonts
+        ofl/inter/Inter[opsz,wght].ttf
+        Retrieved 2026-09-02 at google/fonts commit f6b2b7e8545e.
+
+WHAT WAS TAKEN. Eight glyph outlines, in one module.
+
+`src/data/addressMarkerIcons.js` draws the ADEME energy-performance grade of a
+building as a letter in a frame. The letters are Inter's:
+
+    A B C D E F G   — the seven grades of the official DPE ladder
+    ?               — the case the register publishes with no grade at all
+
+Extracted with fontkit from the variable font at the named instance
+**wght 700, opsz 14**. The optical-size axis is set to 14 rather than 32 on
+purpose: Inter's small-size design opens the counters, and these draw at 15 CSS
+px on the globe, where a closed bowl turns an A into a triangle.
+
+WHY A TYPEFACE AND NOT A DRAWING. The eight used to be stroked paths authored in
+that module — even line weight, arcs where a typeface has curves, no relation
+between one letter and the next beyond a shared bounding box. They read as
+traced rather than set. Everything else in this project's iconography is a
+picture of an object; a letter is not. It is a character, and characters are the
+work of type designers.
+
+Inter specifically because this application already sets its whole interface in
+it (`--font-sans` in `style.css`, loaded from Google Fonts in `index.html`), so
+a grade badge on the globe and the same grade printed on its card are now the
+same letterforms.
+
+WHAT WAS CHANGED. No control point.
+
+Each glyph's `d` is stored exactly as the font contains it, in Inter's own
+2048-unit em space. The placement into this project's 96-unit box — cap height
+to 42 units, baseline at y=70, centred on the glyph's own bounding box, y
+flipped because a font measures upward and SVG downward — is applied at render
+time as an SVG `transform`, NOT baked into the path data. That is what keeps the
+claim above checkable, and `src/data/addressMarkerIcons.test.mjs` checks it.
+
+At render time each outline is drawn TWICE by this project: once filled and
+stroked dark (a halo, so the letter stays readable over pale terrain) and once
+filled white (so Cesium's per-billboard colour multiply can tint it to the
+official DPE scale). The halo is deliberately narrower than the rest of the
+pack's, because a stroke on an outline grows inward as well as outward.
+
+NO FONT FILE IS REDISTRIBUTED. Only outline data for eight glyphs is vendored,
+as path strings inside a JavaScript module. OFL 1.1 §1 permits this; the
+reserved-font-name clause (§5) is not engaged, because nothing here is
+distributed as a font or under the name Inter.

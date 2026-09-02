@@ -1,0 +1,26 @@
+[
+ {
+  "annee": "2022",
+  "national": "FRANCE ENTIERE HORS MAYOTTE",
+  "txcouv_psu_col_nat": 19.3,
+  "txcouv_hors_psu_col_nat": 3.1,
+  "txcouv_eaje_nat": 22.5,
+  "txcouv_prescol_nat": 3.3,
+  "txcouv_am_ind_nat": 31.5,
+  "txcouv_gad_ind_nat": 2.2,
+  "txcouv_ind_nat": 33.7,
+  "txcouv_nat": 59.5
+ },
+ {
+  "annee": "2023",
+  "national": "FRANCE ENTIERE HORS MAYOTTE",
+  "txcouv_psu_col_nat": 19.9,
+  "txcouv_hors_psu_col_nat": 3.6,
+  "txcouv_eaje_nat": 23.5,
+  "txcouv_prescol_nat": 3.3,
+  "txcouv_am_ind_nat": 31.9,
+  "txcouv_gad_ind_nat": 2.2,
+  "txcouv_ind_nat": 34.2,
+  "txcouv_nat": 60.9
+ }
+]

@@ -112,7 +112,19 @@ const LAYER_WEIGHTS = Object.freeze({
   'rte-generation': 0.7,
   'irve-fr': 0.8,
   'schools-fr': 0.85,
+  'medecins-fr': 0.85,
   'sup-fr': 0.85,
+  // A counting arc is a line, not a point, and the detect box is drawn at its
+  // midpoint. Weighted with the road layers rather than the registers because a
+  // reader scanning a street wants the street, not the school on it.
+  'comptages-fr': 0.75,
+  'anfr-fr': 0.85,
+  'fraicheur-fr': 0.85,
+  'sitadel-fr': 0.8,
+  'idfm-frequency': 0.8,
+  'amenities-fr': 0.85,
+  'meteo-stations-fr': 0.85,
+  'petite-enfance-fr': 0.6,
   'ais-live-vessels': 1,
 });
 
