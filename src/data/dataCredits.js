@@ -406,6 +406,21 @@ export const DATA_CREDITS = [
       + 'file can place are reported rather than invented.',
   },
   {
+    key: 'comptages-fr',
+    html:
+      'Paris road counts: <em>Comptages routiers &mdash; donn&eacute;es trafic issues des capteurs '
+      + 'permanents</em>, published by the '
+      + '<a href="https://opendata.paris.fr/explore/dataset/comptages-routiers-permanents/" target="_blank" rel="noopener">Ville de Paris</a> '
+      + '(<a href="http://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">Open Database License, ODbL</a>). '
+      + 'The layer draws the last COMPLETE local Monday&ndash;Sunday week, discovered from the '
+      + 'dataset&rsquo;s own newest hour, because the feed is a nightly batch that lands the day '
+      + 'before yesterday &mdash; it is never presented as live. Geometry and street names are taken '
+      + 'from the measurement export itself and not from '
+      + '<em>referentiel-comptages-routiers</em>, which publishes 3 739 rows for only 3 348 distinct '
+      + 'arcs. An arc that measured nothing is drawn as silent and is never given the bottom of the '
+      + 'flow ramp, which would claim a count that was not made.',
+  },
+  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +

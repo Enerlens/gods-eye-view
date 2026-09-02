@@ -214,6 +214,22 @@ import {
   supAtlasWhere,
   supOfferWhere,
 } from './src/data/supFeed.js';
+import {
+  COMPTAGES_BARRE_GROUP_BY,
+  COMPTAGES_DATASET,
+  COMPTAGES_GROUP_LIMIT,
+  COMPTAGES_HOUR_BLOCKS,
+  COMPTAGES_PORTAL,
+  COMPTAGES_PROFILE_GROUP_BY,
+  COMPTAGES_PROFILE_SELECT,
+  COMPTAGES_SOURCE,
+  COMPTAGES_WEEK_FLOOR,
+  comptagesStampWhere,
+  comptagesWeekWindows,
+  comptagesWindowWhere,
+  newestComptagesWeek,
+  projectComptagesArcs,
+} from './src/data/comptagesFeed.js';
 import { projectSupDepartements } from './src/data/supDepartements.js';
 import {
   gbfsBoxKey,
@@ -4336,6 +4352,266 @@ function supFranceProxy() {
 
   return {
     name: 'sup-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Paris permanent road-count proxy — keyless, ODbL.
+ *
+ *   GET /api/comptages-fr/arcs   — the whole measured week, one document
+ *   GET /api/comptages-fr/status — edition + cache state
+ *
+ * WHY A PROXY, when opendata.paris.fr sends `access-control-allow-origin: *`
+ * and a browser could call it directly: the answer this layer draws is a fold
+ * of **500 136 hourly rows** into 2 977 arcs, and it takes TEN upstream calls
+ * to assemble — one to discover the edition, one GeoJSON export for geometry
+ * and names, eight grouped aggregations for the day profiles, and one for the
+ * open/closed state. Doing that in the client would mean every open tab
+ * re-deriving the same 24-hour profile from the same 27.7-million-row dataset.
+ * The fold happens once, on a server, under test (`comptagesFeed.js`).
+ *
+ * WHY THE EDITION IS A WEEK, NOT A TIMESTAMP: the feed is J-2 (a nightly batch
+ * that lands the day before yesterday), so it has no "now" worth drawing. The
+ * unit is the last COMPLETE local Monday–Sunday week, DISCOVERED from
+ * `max(t_1h)` and floored at `COMPTAGES_WEEK_FLOOR` — the week this was
+ * measured against. A discovery older than the floor is a malformed answer,
+ * not a new fact, so the floor is used.
+ *
+ * WHY THE CLOCK IS SPLIT INTO FOUR BLOCKS: the grouped endpoint caps
+ * `offset + limit` at 30 000 and one day-type is 2 977 arcs x 24 h = 71 448
+ * cells. Six hours at a time is 17 862 — inside the ceiling with room for the
+ * network to grow by two thirds before a block has to be split again.
+ */
+const COMPTAGES_BASE = `https://${COMPTAGES_PORTAL}/api/explore/v2.1/catalog/datasets`;
+/**
+ * Six hours. The upstream is rebuilt ONCE A NIGHT and is already two days
+ * behind, so anything faster re-asks a question whose answer cannot have
+ * changed. The disk cache below is what actually spares the portal the
+ * ten-call sweep across restarts.
+ */
+const COMPTAGES_TTL_MS = 6 * 60 * 60 * 1000;
+/** Serve-stale ceiling. Last week's measured week is still a true week. */
+const COMPTAGES_STALE_MS = 14 * 24 * 60 * 60 * 1000;
+const COMPTAGES_TIMEOUT_MS = 90_000;
+/** The GeoJSON export is ~1.67 MB raw; the eight grouped calls ~10.2 MB total. */
+const COMPTAGES_MAX_BYTES = 48 * 1024 * 1024;
+const COMPTAGES_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'comptages-fr');
+const COMPTAGES_CACHE_PATH = path.join(COMPTAGES_DISK_DIR, 'week.json');
+/**
+ * Shape version of the cached fold. Bump whenever `projectComptagesArcs`
+ * changes what it returns — the cache lives for six hours in memory but two
+ * weeks on disk, so without it a projection edit stays invisible.
+ */
+const COMPTAGES_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _comptagesWeek = null;
+/** @type {?Promise<object>} */
+let _comptagesInFlight = null;
+let _comptagesDiskChecked = false;
+const _comptagesRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 90 });
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchComptagesJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(COMPTAGES_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, COMPTAGES_MAX_BYTES);
+}
+
+/**
+ * Newest complete local week, discovered from the dataset's own newest stamp.
+ *
+ * A failed discovery is not a failed build: it falls back to the floor, which
+ * is the week this layer was measured against and is guaranteed to exist.
+ */
+async function discoverComptagesWeek() {
+  try {
+    const params = new URLSearchParams({ select: 'max(t_1h) as newest', limit: '1' });
+    const body = await fetchComptagesJson(`${COMPTAGES_BASE}/${COMPTAGES_DATASET}/records?${params}`);
+    return newestComptagesWeek(body?.results?.[0]?.newest);
+  } catch (error) {
+    console.warn('[Comptages Proxy] week discovery failed:', error?.message || error);
+    return newestComptagesWeek(null);
+  }
+}
+
+/** One grouped aggregation page. */
+async function fetchComptagesGroup(where, groupBy, select) {
+  const params = new URLSearchParams({
+    select, where, group_by: groupBy, limit: String(COMPTAGES_GROUP_LIMIT),
+  });
+  const body = await fetchComptagesJson(`${COMPTAGES_BASE}/${COMPTAGES_DATASET}/records?${params}`);
+  return Array.isArray(body?.results) ? body.results : [];
+}
+
+/** Every (arc x hour) cell for one window, four calls over the clock. */
+async function fetchComptagesProfile(window) {
+  const blocks = await Promise.all(COMPTAGES_HOUR_BLOCKS.map((block) => fetchComptagesGroup(
+    comptagesWindowWhere(window, block),
+    COMPTAGES_PROFILE_GROUP_BY,
+    COMPTAGES_PROFILE_SELECT,
+  )));
+  return blocks.flat();
+}
+
+/**
+ * Build the whole layer: geometry from the measurement itself, then the week.
+ *
+ * The geometry deliberately does NOT come from `referentiel-comptages-routiers`
+ * — see Trap 1 in `comptagesFeed.js`: the referential holds 3 739 rows for only
+ * 3 348 distinct `iu_ac`, misses 31 arcs that ARE counting and carries 402 that
+ * are not. The counts export carries its own `geo_shape` on every row, one row
+ * per arc, fresher, and faster.
+ *
+ * The `etat_barre` roll-up failing is NOT fatal: it costs the reason a silent
+ * arc is silent, and the layer degrades to "silent, reason unpublished" rather
+ * than blanking. Losing the geometry export IS fatal — there is nothing to draw.
+ */
+async function refreshComptagesWeek() {
+  const week = await discoverComptagesWeek();
+  const windows = comptagesWeekWindows(week);
+
+  const geoParams = new URLSearchParams({ where: comptagesStampWhere(windows.stamp) });
+  const [features, weekday, weekend, barre] = await Promise.all([
+    fetchComptagesJson(`${COMPTAGES_BASE}/${COMPTAGES_DATASET}/exports/geojson?${geoParams}`),
+    fetchComptagesProfile(windows.weekday),
+    fetchComptagesProfile(windows.weekend),
+    fetchComptagesGroup(
+      comptagesWindowWhere(windows.week),
+      COMPTAGES_BARRE_GROUP_BY,
+      'count(*) as n',
+    ).catch((error) => {
+      console.warn('[Comptages Proxy] etat_barre roll-up unavailable:', error?.message || error);
+      return [];
+    }),
+  ]);
+
+  return projectComptagesArcs({
+    features: Array.isArray(features?.features) ? features.features : [],
+    weekday,
+    weekend,
+    barre,
+    week,
+    source: COMPTAGES_SOURCE,
+  });
+}
+
+async function readComptagesDisk() {
+  if (_comptagesDiskChecked) return;
+  _comptagesDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(COMPTAGES_CACHE_PATH, 'utf8'));
+    if (entry?.version === COMPTAGES_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.arcs)) {
+      _comptagesWeek = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeComptagesDisk(entry) {
+  fsp.mkdir(COMPTAGES_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(COMPTAGES_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Comptages Proxy] cache write failed:', err?.message || err));
+}
+
+/** Single-flight, so two tabs opening at once cost one ten-call sweep. */
+function ensureComptagesWeek() {
+  if (!_comptagesInFlight) {
+    _comptagesInFlight = refreshComptagesWeek()
+      .then((payload) => {
+        const entry = { version: COMPTAGES_CACHE_VERSION, at: Date.now(), payload };
+        _comptagesWeek = entry;
+        writeComptagesDisk(entry);
+        return entry;
+      })
+      .finally(() => { _comptagesInFlight = null; });
+  }
+  return _comptagesInFlight;
+}
+
+/**
+ * Vite plugin: Paris permanent road-count proxy.
+ * @returns {import('vite').Plugin}
+ */
+function comptagesParisProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/comptages-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_comptagesRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readComptagesDisk();
+        json(200, {
+          source: COMPTAGES_SOURCE,
+          dataset: COMPTAGES_DATASET,
+          portal: COMPTAGES_PORTAL,
+          weekFloor: COMPTAGES_WEEK_FLOOR,
+          ttlMs: COMPTAGES_TTL_MS,
+          week: _comptagesWeek
+            ? {
+              at: _comptagesWeek.at,
+              week: _comptagesWeek.payload.week,
+              arcs: _comptagesWeek.payload.count,
+              states: _comptagesWeek.payload.states,
+              unplaced: _comptagesWeek.payload.unplaced,
+              unplacedMeasuring: _comptagesWeek.payload.unplacedMeasuring,
+              duplicates: _comptagesWeek.payload.duplicates,
+              phantom: _comptagesWeek.payload.phantom,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/arcs') {
+        json(404, { error: 'Unknown comptages endpoint' });
+        return;
+      }
+
+      await readComptagesDisk();
+      const now = Date.now();
+      if (_comptagesWeek && now - _comptagesWeek.at <= COMPTAGES_TTL_MS) {
+        json(200, { ..._comptagesWeek.payload, fetchedAt: _comptagesWeek.at, stale: false }, { 'X-COMPTAGES-FR': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensureComptagesWeek();
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-COMPTAGES-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[Comptages Proxy] week build unavailable:', error?.message || error);
+        // A fortnight-old measured week is still a true picture of a feed that
+        // is already two days behind — serving it beats blanking the layer.
+        if (_comptagesWeek && now - _comptagesWeek.at <= COMPTAGES_STALE_MS) {
+          json(200, { ..._comptagesWeek.payload, fetchedAt: _comptagesWeek.at, stale: true }, { 'X-COMPTAGES-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'Paris road-count week is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'comptages-paris-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -15293,6 +15569,7 @@ export default defineConfig(({ mode }) => {
       cadastreFranceProxy(),
       schoolsFranceProxy(),
       supFranceProxy(),
+      comptagesParisProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),

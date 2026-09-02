@@ -308,6 +308,11 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // `enabled-only`: the layer has no runtime option to serialize.
   Object.freeze({ id: 'cadastre-fr', token: 'cd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
+  // `cr` for comptages routiers. `c` is cctv and `co` reads like a prefix of
+  // nothing in particular; `cr` says what the layer counts. Two characters
+  // because there is no single one left — see the block below, which predicted
+  // exactly this and has now been true for every layer added since.
+  Object.freeze({ id: 'comptages-fr', token: 'cr', disposition: 'enabled-only' }),
   // THE LAST FIVE TOKENS, claimed together by the five French address layers.
   // a–y are taken, `z` is the canonical UNKNOWN token two existing tests assert
   // on, and 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants

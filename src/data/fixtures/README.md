@@ -289,3 +289,26 @@
   coarse end of a twentyfold spread. Used by `src/data/cadastreFeed.test.mjs`
   and `src/data/cadastreParcels.test.mjs`. PCI vecteur © DGFiP via IGN Api
   Carto, Licence Ouverte 2.0.
+
+- `comptages-hour-geojson-sample.json`, `comptages-profil-semaine-sample.json`,
+  `comptages-profil-weekend-sample.json`, `comptages-etat-barre-sample.json`,
+  `comptages-arcs-sans-filtre-sample.json` — thirteen real Paris counting arcs of
+  the week 2026-08-24 → 2026-08-30, captured 2026-09-01 through the exact URLs
+  `comptagesParisProxy()` builds against
+  `https://opendata.paris.fr/api/explore/v2.1/catalog/datasets/comptages-routiers-permanents`
+  (the GeoJSON export pinned to the week's closing hour, the two
+  `group_by=iu_ac,hour(t_1h)` profiles, and the `group_by=iu_ac,etat_barre`
+  roll-up), kept in the raw Opendatasoft envelope with totals restated to the
+  trimmed row count. Every arc is a distinct trap: **8 counted** (5298 busier at
+  the weekend than on a weekday, so the two sparklines must share one scale;
+  5266 the longest geometry at 12 vertices; 525 carrying both an unmeasured hour
+  and a measured zero in the same 24; **7279 and 5201 counting with
+  `"geometry": null`**, the case that must be reported rather than placed),
+  **1 occupancy-only** (arc 1, which publishes `k` and never `q` — the state
+  that must not be given a flow band), and **4 silent** (25, 284 and 5 declared
+  *Invalide*, 257 silent *and* unplaced). `comptages-arcs-sans-filtre-sample.json`
+  additionally carries the literal `iu_ac: "*"` junk group that
+  `group_by=iu_ac` returns, so the phantom filter is tested against the real
+  thing. Used by `src/data/comptagesFeed.test.mjs`,
+  `src/data/comptagesRhythm.test.mjs` and `src/data/comptagesParis.test.mjs`.
+  © Ville de Paris, Open Database License (ODbL).

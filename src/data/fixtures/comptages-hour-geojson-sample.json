@@ -1,0 +1,490 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.3334197551070197,
+      48.86002976674308
+     ],
+     [
+      2.3350638786248012,
+      48.859647147550476
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "1",
+    "libelle": "Quai_du_Louvre",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": null,
+    "k": 6.74389,
+    "etat_trafic": "Fluide",
+    "iu_nd_amont": "1",
+    "libelle_nd_amont": "Pt_Carrousel_Droite",
+    "iu_nd_aval": "0",
+    "libelle_nd_aval": "Quai_du_Louvre_(Musee)",
+    "etat_barre": "Ouvert",
+    "date_debut": "1996-10-03",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.3342418168659105,
+     "lat": 48.85983845714678
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.3425512375187663,
+      48.858464231257095
+     ],
+     [
+      2.3443433041098194,
+      48.857963430208095
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "5",
+    "libelle": "Quai_de_la_Megisserie",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": null,
+    "k": null,
+    "etat_trafic": "Inconnu",
+    "iu_nd_amont": "4",
+    "libelle_nd_amont": "Pt_Neuf_Droite",
+    "iu_nd_aval": "5",
+    "libelle_nd_aval": "Megisserie-Bertin_Poiree",
+    "etat_barre": "Invalide",
+    "date_debut": "1996-10-03",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.343447270814293,
+     "lat": 48.858213830732595
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.353728955689322,
+      48.85695256115408
+     ],
+     [
+      2.3523857637496035,
+      48.85729034424052
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "23",
+    "libelle": "Rue de Rivoli",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": 169.0,
+    "k": 1.64333,
+    "etat_trafic": "Fluide",
+    "iu_nd_amont": "22",
+    "libelle_nd_amont": "Rivoli-Lobau",
+    "iu_nd_aval": "23",
+    "libelle_nd_aval": "Rivoli-Temple",
+    "etat_barre": "Barré",
+    "date_debut": "1996-10-03",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.353057359719463,
+     "lat": 48.8571214526973
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.351413021260308,
+      48.85753495140736
+     ],
+     [
+      2.3495301566806632,
+      48.85808263439786
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "25",
+    "libelle": "Rivoli",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": null,
+    "k": null,
+    "etat_trafic": "Inconnu",
+    "iu_nd_amont": "24",
+    "libelle_nd_amont": "Rivoli-Renard",
+    "iu_nd_aval": "25",
+    "libelle_nd_aval": "Rivoli-St_Martin",
+    "etat_barre": "Barré",
+    "date_debut": "1996-10-03",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.3504715889704855,
+     "lat": 48.85780879290261
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.344821417296726,
+      48.85963495483541
+     ],
+     [
+      2.343908768097719,
+      48.85992424876816
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "30",
+    "libelle": "Rivoli",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": 207.0,
+    "k": null,
+    "etat_trafic": "Inconnu",
+    "iu_nd_amont": "28",
+    "libelle_nd_amont": "Rivoli-Bourdonnais",
+    "iu_nd_aval": "30",
+    "libelle_nd_aval": "Rivoli-Pt_Neuf",
+    "etat_barre": "Barré",
+    "date_debut": "1996-10-03",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.3443650926972226,
+     "lat": 48.85977960180178
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.3219219684543457,
+      48.866699330300804
+     ],
+     [
+      2.3215968152432214,
+      48.866294445770144
+     ],
+     [
+      2.3211129999767404,
+      48.866210158678626
+     ],
+     [
+      2.3207315036426612,
+      48.86569854124636
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "228",
+    "libelle": "Concorde_Ouest",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": 1359.0,
+    "k": null,
+    "etat_trafic": "Inconnu",
+    "iu_nd_amont": "140",
+    "libelle_nd_amont": "Concorde-Royale",
+    "iu_nd_aval": "139",
+    "libelle_nd_aval": "Concorde_Ouest",
+    "etat_barre": "Ouvert",
+    "date_debut": "1996-10-03",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.321314826985553,
+     "lat": 48.86621400148793
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "iu_ac": "257",
+    "libelle": "Seze",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": null,
+    "k": null,
+    "etat_trafic": "Inconnu",
+    "iu_nd_amont": "153",
+    "libelle_nd_amont": "Bd_Capucines-Cambon",
+    "iu_nd_aval": "155",
+    "libelle_nd_aval": "Seze-Godot_De_Mauroy",
+    "etat_barre": "Invalide",
+    "date_debut": null,
+    "date_fin": null,
+    "geo_point_2d": null,
+    "geo_shape": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.3303353988079354,
+      48.860793029691926
+     ],
+     [
+      2.3302002051488593,
+      48.86113283884527
+     ],
+     [
+      2.3310209291822073,
+      48.86234913148615
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "284",
+    "libelle": "Lemonnier",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": null,
+    "k": null,
+    "etat_trafic": "Inconnu",
+    "iu_nd_amont": "126",
+    "libelle_nd_amont": "Pt_Royal_Droite",
+    "iu_nd_aval": "170",
+    "libelle_nd_aval": "Souterrain_Lemonier",
+    "etat_barre": "Ouvert",
+    "date_debut": "1996-10-03",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.330542179981936,
+     "lat": 48.86158575146187
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.353472548130112,
+      48.86792514369761
+     ],
+     [
+      2.3540049194528643,
+      48.86887900883386
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "525",
+    "libelle": "Bd_Sebastopol",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": null,
+    "k": null,
+    "etat_trafic": "Inconnu",
+    "iu_nd_amont": "312",
+    "libelle_nd_amont": "Bd_Sebastopol-Tracy",
+    "iu_nd_aval": "311",
+    "libelle_nd_aval": "Bd_Sebastopol-Ste_Apolline",
+    "etat_barre": "Invalide",
+    "date_debut": "1996-10-03",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.353738733791488,
+     "lat": 48.86840207626574
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "iu_ac": "5201",
+    "libelle": "Av_Mallarme",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": 20.0,
+    "k": 0.955,
+    "etat_trafic": "Fluide",
+    "iu_nd_amont": "2750",
+    "libelle_nd_amont": "Mallarme_Samain",
+    "iu_nd_aval": "2748",
+    "libelle_nd_aval": "Pl_Stuart_Merrill",
+    "etat_barre": "Ouvert",
+    "date_debut": null,
+    "date_fin": null,
+    "geo_point_2d": null,
+    "geo_shape": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.3464715081625283,
+      48.81630312661665
+     ],
+     [
+      2.3470157322432095,
+      48.81640832403151
+     ],
+     [
+      2.3474927728354933,
+      48.81653668919965
+     ],
+     [
+      2.348324682658665,
+      48.81689283132846
+     ],
+     [
+      2.3494224511469994,
+      48.817363277930475
+     ],
+     [
+      2.3503831851288175,
+      48.81769523827172
+     ],
+     [
+      2.3511710929586354,
+      48.81783866885138
+     ],
+     [
+      2.3520528344688416,
+      48.81792457457674
+     ],
+     [
+      2.352859776324636,
+      48.8178803510705
+     ],
+     [
+      2.3534902413628815,
+      48.817775556986064
+     ],
+     [
+      2.3541409857805817,
+      48.81756055987929
+     ],
+     [
+      2.3546434466576884,
+      48.817276846586324
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "5266",
+    "libelle": "PE_Poterne",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": 2298.0,
+    "k": 8.4,
+    "etat_trafic": "Fluide",
+    "iu_nd_amont": "457",
+    "libelle_nd_amont": "AE_Gentilly",
+    "iu_nd_aval": "478",
+    "libelle_nd_aval": "SE_Italie",
+    "etat_barre": "Ouvert",
+    "date_debut": "1996-10-28",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.3505509197385477,
+     "lat": 48.8173701069734
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     [
+      2.3845162220980205,
+      48.82499058995869
+     ],
+     [
+      2.383277346147867,
+      48.82428166125521
+     ],
+     [
+      2.381715709703138,
+      48.823352079878525
+     ],
+     [
+      2.3791075962516453,
+      48.82175682474323
+     ],
+     [
+      2.3784488658778975,
+      48.82142015643048
+     ],
+     [
+      2.3773778390977767,
+      48.8210458848154
+     ],
+     [
+      2.3760541407969678,
+      48.82063038882603
+     ]
+    ],
+    "type": "LineString"
+   },
+   "properties": {
+    "iu_ac": "5298",
+    "libelle": "PI_Haubans",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": 4488.0,
+    "k": 13.05,
+    "etat_trafic": "Fluide",
+    "iu_nd_amont": "549",
+    "libelle_nd_amont": "AI_Quai_Ivry",
+    "iu_nd_aval": "551",
+    "libelle_nd_aval": "SI_Ivry",
+    "etat_barre": "Ouvert",
+    "date_debut": "1996-10-28",
+    "date_fin": "2023-01-01",
+    "geo_point_2d": {
+     "lon": 2.3803691491633705,
+     "lat": 48.82262457297385
+    }
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "iu_ac": "7279",
+    "libelle": "CF1424->CF0181",
+    "t_1h": "2026-08-30T22:00:00+00:00",
+    "q": 98.0,
+    "k": 0.54834,
+    "etat_trafic": "Fluide",
+    "iu_nd_amont": "3760",
+    "libelle_nd_amont": "Panhard_Jean_Antoine_de_Baif",
+    "iu_nd_aval": "559",
+    "libelle_nd_aval": "Panhard-Levassor_J-A-Baif",
+    "etat_barre": "Ouvert",
+    "date_debut": null,
+    "date_fin": null,
+    "geo_point_2d": null,
+    "geo_shape": null
+   }
+  }
+ ]
+}

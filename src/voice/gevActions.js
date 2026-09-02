@@ -268,6 +268,24 @@ const LAYER_ALIASES = new Map([
   ['cpge', 'sup-fr'],
   ['prepas', 'sup-fr'],
   ['prépas', 'sup-fr'],
+  ['counts', 'comptages-fr'],
+  ['traffic counts', 'comptages-fr'],
+  ['road counts', 'comptages-fr'],
+  ['vehicle counts', 'comptages-fr'],
+  ['comptages', 'comptages-fr'],
+  ['comptages routiers', 'comptages-fr'],
+  ['comptage', 'comptages-fr'],
+  ['trafic mesure', 'comptages-fr'],
+  ['trafic mesuré', 'comptages-fr'],
+  ['debit', 'comptages-fr'],
+  ['débit', 'comptages-fr'],
+  ['vehicles counted', 'comptages-fr'],
+  ['vehicules comptes', 'comptages-fr'],
+  ['véhicules comptés', 'comptages-fr'],
+  ['counting loops', 'comptages-fr'],
+  ['boucles', 'comptages-fr'],
+  ['capteurs routiers', 'comptages-fr'],
+  ['road sensors', 'comptages-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -3426,6 +3444,7 @@ function layerTitle(layerId) {
   if (layerId === 'cadastre-fr') return 'Parcel';
   if (layerId === 'schools-fr') return 'School';
   if (layerId === 'sup-fr') return 'Campus';
+  if (layerId === 'comptages-fr') return 'Counting Arc';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';

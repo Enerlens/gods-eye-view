@@ -365,6 +365,24 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     cadence: 'periodic',
   }),
 
+  // Last in the road block, and beside `traffic` and `road-status-fr` on
+  // purpose: the three are the same subject seen three ways, and the panel
+  // should let a reader compare them rather than hide the difference. The other
+  // two draw CONGESTION — a ratio, modelled or declared. This one draws a
+  // COUNT, measured by the city's own loops. `cadence: 'periodic'` and not
+  // 'live' is load-bearing: the feed is a nightly batch that lands the day
+  // before yesterday, and calling it live anywhere would be the layer's first
+  // lie.
+  Object.freeze({
+    id: 'comptages-fr',
+    category: 'ground-mobility',
+    label: 'Comptages routiers',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
   // ── ÉNERGIE ───────────────────────────────────────────────────────────────
   Object.freeze({
     id: 'france-energy',

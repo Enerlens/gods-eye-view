@@ -7,6 +7,56 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Comptages routiers (Paris) — the first road layer here that has counted a
+  vehicle.** `traffic` is TomTom flow, bring-your-own-key, and its own header
+  says a keyless build runs a SIMULATION; `road-status-fr` is DATEX incident
+  reporting whose own header says Île-de-France has no publisher at all. Neither
+  has ever counted a car inside Paris. This draws `q` — whose field description
+  is verbatim *"Débit (nombre de véhicules comptés pendant l'heure)"* — from the
+  city's own permanent loops, on the arc that measured it. **2,977 arcs, 500,136
+  hourly readings**, folded from a dataset of **27,772,889**.
+- **It is J-2, and the word "live" appears nowhere in it.** Measured
+  2026-09-01T21:02Z: `data_processed` 2026-09-01T01:02:50Z, cadence
+  *Quotidienne*, granularity *Horaire*, and `max(t_1h)` 2026-08-30T22:00:00Z —
+  a nightly batch ~46 h behind the wall clock. So the unit is not a moment but
+  the last COMPLETE local Monday–Sunday week, **discovered** from the data's own
+  newest hour and floored at the week this was measured against. A discovery
+  older than the floor is a malformed answer, not a new fact. `comptagesWeekLabel`
+  is asserted to contain no clock time and no claim of liveness.
+- **891 of the 2,977 arcs measured nothing, and they are drawn as silence.** The
+  live build reports 1,730 arcs counting vehicles, 356 publishing occupancy but
+  no count, and 891 publishing neither in any of the 168 hours — with the city's
+  own `etat_barre` explaining them as 724 *Invalide*, 141 *Ouvert* and 26
+  *Barré*, so 141 arcs are declared open and still silent. A silent arc gets
+  `bin: null` and a colour that is **not a member of the flow ramp**; giving it
+  the ramp's quietest step would assert a measurement on 891 real streets.
+- **A null bin no longer prints as "< 100 véh/h".** `comptagesFlowBandLabel()`
+  guarded with `Number(bin)`, and `Number(null)`, `Number('')`, `Number(false)`
+  and `Number([])` are all `0` — so an unmeasured arc rendered as the bottom
+  band on the legend and the card. It now guards on `typeof bin !== 'number'`.
+  This is the exact conflation the module header forbids, reaching a user-facing
+  surface; `comptagesFlowBin()` had always refused it.
+- **The geometry comes from the measurement, not from the referential.**
+  `referentiel-comptages-routiers` publishes **3,739 rows for only 3,348
+  distinct `iu_ac`** — 338 repeated with no usable tiebreak, `date_fin` maxing
+  at 2023-01-01 on 3,303 arcs that are demonstrably still counting in 2026 —
+  and it misses 31 arcs that ARE counting while carrying 402 that are not. The
+  counts export carries `geo_shape` on every row: 2,977 features for 2,977 ids,
+  fresher, and 0.27 s against 7.7 s. The referential is never fetched.
+- **31 arcs publish no geometry and 19 of them are measuring.** They are counted
+  on the card and named in the loading line rather than dropped or pinned to a
+  street they might not be on.
+- **Ten upstream calls, folded once, in 3.1 s.** One `max(t_1h)`, one GeoJSON
+  export pinned to the week's closing hour, eight grouped aggregations (the
+  clock six hours at a time, because the grouped endpoint caps `offset + limit`
+  at 30,000 and one day-type is 71,448 cells), and one `etat_barre` roll-up
+  whose loss is explicitly not fatal. Payload 1,374,165 B raw, **305,250 B
+  gzipped**. Cached six hours in memory, a fortnight on disk under
+  `.gev-cache/comptages-fr/`.
+- Share token `cr`, panel icon 🚦 — deliberately neither `traffic`'s 🚗 nor
+  `road-status-fr`'s 🛣, because the whole point is that it is a different
+  quantity. `REGISTERED_LAYER_IDS.length` moves 42 → 43.
+
 - **Urbanisme (PLU) — it draws the block now, not the dot.** The layer answered
   one point, which is the wrong question: "could the car park opposite become
   twenty-five metres of construction?" is about the plot OPPOSITE. Below
