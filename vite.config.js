@@ -1274,6 +1274,10 @@ async function readRequestBodyCapped(req, maxBytes) {
 export async function readResponseTextCapped(response, maxBytes) {
   const declared = Number(response.headers.get('content-length'));
   if (Number.isFinite(declared) && declared > maxBytes) {
+    // Release the socket. Refusing on the header and then walking away leaves
+    // undici holding an open connection until GC gets to it, which is the
+    // resource this cap exists to protect.
+    try { await response.body?.cancel?.(); } catch { /* no-op */ }
     const err = new Error('Upstream response too large');
     err.code = 'RESPONSE_TOO_LARGE';
     throw err;
@@ -1310,6 +1314,29 @@ export async function readResponseTextCapped(response, maxBytes) {
 /** Parse a fetch() JSON response only after enforcing a hard byte cap. */
 export async function readResponseJsonCapped(response, maxBytes) {
   return JSON.parse(await readResponseTextCapped(response, maxBytes));
+}
+
+/**
+ * Append every element of `items` to `target`, in place.
+ *
+ * Deliberately NOT `target.push(...items)`. A spread passes one ARGUMENT per
+ * element, and V8 throws `RangeError: too many arguments` past roughly 124k of
+ * them (measured on the Node 26 in `engines`). Every accumulator here is fed by
+ * an upstream whose size we do not control: FIRMS alone is queried for the
+ * whole planet over two days, and the renderer downstream already budgets for
+ * "200k+ detections can be live" (src/data/firmsHeatmap.js). The spread form
+ * does not degrade at that size, it throws — and because these loops are inside
+ * a try/catch, the throw is indistinguishable from an upstream outage. The
+ * layer goes quiet on exactly the days it matters most.
+ *
+ * @template T
+ * @param {Array<T>} target
+ * @param {Iterable<T>} items
+ * @returns {Array<T>} `target`, for chaining.
+ */
+export function appendAll(target, items) {
+  for (const item of items) target.push(item);
+  return target;
 }
 
 /**
@@ -1858,6 +1885,13 @@ function radioBrowserProxy() {
 // ---------------------------------------------------------------------------
 /** Upstream fetch timeout for GBFS requests (ms). */
 const GBFS_PROXY_TIMEOUT_MS = 12000;
+const GBFS_MAX_BODY_BYTES = 5 * 1024 * 1024;
+/**
+ * Redirect hops the GBFS proxy will follow itself. Three is enough for the
+ * http→https and trailing-slash hops real feeds use; a chain longer than that
+ * is a feed that has moved, not one that is answering.
+ */
+const GBFS_MAX_REDIRECTS = 3;
 /** Allowlisted GBFS hostnames; wildcard *.publicbikesystem.net also accepted. */
 const GBFS_ALLOWED_HOSTS = new Set([
   'gbfs.lyft.com',
@@ -2576,6 +2610,13 @@ function firmsProxy() {
   const SOURCES = ['VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT', 'VIIRS_SNPP_NRT'];
   const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
   const CACHE_PATH = path.join(CACHE_DIR, 'firms.json');
+  /**
+   * Ceiling on one source's CSV. A global two-day pull at the observed density
+   * (~100k detections ≈ 13 MB) leaves this an order of magnitude of headroom,
+   * so it can only fire on an upstream that has changed shape — never on a bad
+   * fire season. Same intent as ANFR's 260 MB CSV cap.
+   */
+  const CSV_MAX_BYTES = 256 * 1024 * 1024;
 
   /** @type {?{at: number, sources: Array<object>, fires: Array<object>}} */
   let mem = null;
@@ -2618,7 +2659,7 @@ function firmsProxy() {
     const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(key)}/${source}/world/2`;
     const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const records = parseFirmsCsv(await res.text());
+    const records = parseFirmsCsv(await readResponseTextCapped(res, CSV_MAX_BYTES));
     if (records === null) throw new Error('non-CSV upstream response');
     return records;
   }
@@ -2636,8 +2677,16 @@ function firmsProxy() {
     for (const source of SOURCES) {
       try {
         const records = filterTrailing24h(await fetchSource(key, source), now);
+        // appendAll, not push(...records): a world/2 VIIRS pull returns ~131k
+        // records for NOAA20 and SNPP, past V8's argument limit, and the throw
+        // was caught below as "this satellite is down". Two of three sources
+        // vanished while the layer read healthy.
+        appendAll(fires, records);
+        // Recorded only once the records are actually in. The other half of
+        // that bug: the ok:true entry went in FIRST, so a source that then
+        // threw was listed twice — ok:true with its real count, ok:false right
+        // after — and /api/firms reported a count it had not kept.
         sources.push({ source, count: records.length, ok: true });
-        fires.push(...records);
       } catch (err) {
         console.warn(`[firms-proxy] ${source} fetch failed:`, err?.message || err);
         sources.push({ source, count: 0, ok: false });
@@ -2843,12 +2892,11 @@ function ndbcProxy() {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-    const declared = Number(res.headers.get('content-length'));
-    if (Number.isFinite(declared) && declared > MAX_BYTES) {
-      throw new Error(`oversized body (${declared} bytes)`);
-    }
-    const text = await res.text();
-    if (text.length > MAX_BYTES) throw new Error('oversized body');
+    // Byte cap enforced during the read. The `text.length > MAX_BYTES` check
+    // this replaces ran on an already-buffered body and counted UTF-16 code
+    // units, so it neither measured the right quantity nor prevented the
+    // allocation it existed to prevent.
+    const text = await readResponseTextCapped(res, MAX_BYTES);
 
     const parsed = parseNdbcLatestObservations(text);
     if (parsed === null) throw new Error('upstream body is not an NDBC report');
@@ -11720,6 +11768,36 @@ function isAllowedGbfsPath(pathname) {
 }
 
 /**
+ * Resolve one GBFS redirect hop and re-apply the allowlist to its destination.
+ *
+ * The host, path and protocol checks above vet the URL the CLIENT asked for.
+ * `fetch()` follows redirects on its own, so without this they vet nothing:
+ * any allowlisted feed that answers `302 Location: http://169.254.169.254/…`
+ * turns this proxy into an SSRF relay, and undici would fetch that address and
+ * hand back the body before a single check ran again. So the proxy follows
+ * redirects by hand and re-validates every hop against the same rules. Mirrors
+ * the `redirect: 'manual'` stance the Radio Browser proxy already takes.
+ *
+ * @param {URL} currentUrl - the URL that produced this redirect.
+ * @param {string|null} location - raw `Location` header, absolute or relative.
+ * @returns {URL|null} the vetted next URL, or null when the hop is refused.
+ */
+export function gbfsRedirectTarget(currentUrl, location) {
+  const raw = String(location || '').trim();
+  if (!raw) return null;
+  let next = null;
+  try {
+    next = new URL(raw, currentUrl);
+  } catch {
+    return null;
+  }
+  if (next.protocol !== 'https:') return null;
+  if (!isAllowedGbfsHost(next.hostname)) return null;
+  if (!isAllowedGbfsPath(next.pathname)) return null;
+  return next;
+}
+
+/**
  * Return an appropriate Cache-Control header for a GBFS endpoint.
  *
  * station_information is semi-static (5 min cache); station_status is
@@ -11803,30 +11881,47 @@ function gbfsProxy() {
 
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), GBFS_PROXY_TIMEOUT_MS);
+          // One deadline covers the whole redirect chain, not each hop, so a
+          // feed cannot buy extra time by bouncing.
           let upstream;
+          let finalUrl = upstreamUrl;
           try {
-            upstream = await fetch(upstreamUrl.toString(), {
-              method: 'GET',
-              headers: {
-                Accept: 'application/json',
-                'User-Agent': 'gods-eye-view-gbfs-proxy/1.0',
-              },
-              signal: controller.signal,
-            });
+            for (let hop = 0; ; hop += 1) {
+              upstream = await fetch(finalUrl.toString(), {
+                method: 'GET',
+                headers: {
+                  Accept: 'application/json',
+                  'User-Agent': 'gods-eye-view-gbfs-proxy/1.0',
+                },
+                signal: controller.signal,
+                redirect: 'manual',
+              });
+              if (upstream.status < 300 || upstream.status >= 400) break;
+              try { await upstream.body?.cancel?.(); } catch { /* no-op */ }
+              const next = hop < GBFS_MAX_REDIRECTS
+                ? gbfsRedirectTarget(finalUrl, upstream.headers.get('location'))
+                : null;
+              if (!next) {
+                res.writeHead(502, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+                res.end(JSON.stringify({ error: 'GBFS upstream redirect refused' }));
+                return;
+              }
+              finalUrl = next;
+            }
           } finally {
             clearTimeout(timeoutId);
           }
 
-          // Limit response size to prevent memory exhaustion from malicious upstream
-          const GBFS_MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB
-          const contentLength = Number(upstream.headers.get('content-length'));
-          if (Number.isFinite(contentLength) && contentLength > GBFS_MAX_BODY_BYTES) {
-            res.writeHead(502, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-            res.end(JSON.stringify({ error: 'GBFS upstream response too large' }));
-            return;
-          }
-          const body = await upstream.text();
-          if (body.length > GBFS_MAX_BODY_BYTES) {
+          // Cap the body during the read, not after it. `readResponseTextCapped`
+          // checks Content-Length, then streams with a running BYTE count and
+          // cancels the moment the cap is crossed — where the string `.length`
+          // this used to compare is UTF-16 code units, so a 15 MB CJK body
+          // measured under 5 MB and was relayed whole.
+          let body;
+          try {
+            body = await readResponseTextCapped(upstream, GBFS_MAX_BODY_BYTES);
+          } catch (error) {
+            if (error?.code !== 'RESPONSE_TOO_LARGE') throw error;
             res.writeHead(502, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
             res.end(JSON.stringify({ error: 'GBFS upstream response too large' }));
             return;
@@ -11834,8 +11929,8 @@ function gbfsProxy() {
           const contentType = upstream.headers.get('content-type') || 'application/json';
           res.writeHead(upstream.status, {
             'Content-Type': contentType,
-            'Cache-Control': gbfsCacheControl(upstreamUrl.pathname),
-            'X-GBFS-Upstream': upstreamUrl.hostname,
+            'Cache-Control': gbfsCacheControl(finalUrl.pathname),
+            'X-GBFS-Upstream': finalUrl.hostname,
             'X-GBFS-Cache': 'MISS',
           });
           res.end(body);
@@ -15014,37 +15109,25 @@ function toReadable(body) {
  * @param {string} [opts.sourceHeader='upstream'] - Value for X-CCTV-Source header.
  */
 /**
- * Read a fetch Response body as text while enforcing a hard byte cap during
- * the read — so a malicious or buggy upstream that streams an unbounded body
- * (no/oversized Content-Length, chunked) can't OOM the proxy. Returns
- * { tooLarge, text }. Cancels the stream as soon as the cap is crossed.
+ * {@link readResponseTextCapped} in the shape this caller wants: a flag rather
+ * than a throw.
+ *
+ * This used to be a second, near-identical implementation of the same cap, and
+ * it carried the bug the shared one does not: its non-streaming fallback
+ * compared `text.length`, which counts UTF-16 code units, against a limit
+ * expressed in bytes.
+ *
  * @param {Response} upstream - fetch() response.
  * @param {number} maxBytes - hard ceiling on decoded bytes.
  * @returns {Promise<{tooLarge: boolean, text: string}>}
  */
 async function readCappedResponseText(upstream, maxBytes) {
-  const declared = Number(upstream.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > maxBytes) {
-    try { await upstream.body?.cancel(); } catch { /* no-op */ }
+  try {
+    return { tooLarge: false, text: await readResponseTextCapped(upstream, maxBytes) };
+  } catch (error) {
+    if (error?.code !== 'RESPONSE_TOO_LARGE') throw error;
     return { tooLarge: true, text: '' };
   }
-  if (!upstream.body || typeof upstream.body[Symbol.asyncIterator] !== 'function') {
-    const text = await upstream.text();
-    return text.length > maxBytes ? { tooLarge: true, text: '' } : { tooLarge: false, text };
-  }
-  const decoder = new TextDecoder();
-  let text = '';
-  let total = 0;
-  for await (const chunk of upstream.body) {
-    total += chunk.length;
-    if (total > maxBytes) {
-      try { await upstream.body.cancel(); } catch { /* no-op */ }
-      return { tooLarge: true, text: '' };
-    }
-    text += decoder.decode(chunk, { stream: true });
-  }
-  text += decoder.decode();
-  return { tooLarge: false, text };
 }
 
 async function proxyMediaResponse(res, upstream, { sourceHeader = 'upstream' } = {}) {
@@ -19678,18 +19761,22 @@ async function fetchAddressSourceOnce(url, options) {
       // A 5xx is the server saying "not now"; a 4xx is it saying "not this".
       return { ok: false, retryable: response.status >= 500 };
     }
-    // Refuse on the declared size before buffering it. The measured worst case
-    // is 1.4 MB of servitude geometry, so anything past the cap is a changed
-    // upstream, not a big answer — and reading it to find out is the cost this
-    // check exists to avoid.
-    const declared = Number(response.headers.get('content-length'));
-    if (Number.isFinite(declared) && declared > maxBytes) {
-      console.warn(`[address-proxy] declared ${declared} bytes from ${new URL(url).host}, over cap`);
-      return { ok: false, retryable: false };
-    }
-    const body = await response.text();
-    if (body.length > maxBytes) {
-      console.warn(`[address-proxy] oversized body (${body.length}) from ${new URL(url).host}`);
+    // Refuse on the declared size before buffering it, then keep counting
+    // while the body streams. The measured worst case is 1.4 MB of servitude
+    // geometry, so anything past the cap is a changed upstream, not a big
+    // answer — and reading it to find out is the cost this check exists to
+    // avoid. `readResponseTextCapped` does both halves; the `body.length` test
+    // it replaces ran AFTER the whole body was already in memory, and counted
+    // UTF-16 code units, so an accented French register could sit at nearly
+    // twice the cap in bytes and still measure under it. This helper feeds all
+    // six address scans — Géorisques, DVF, DPE, GPU, isochrones, IDFM.
+    let body;
+    try {
+      body = await readResponseTextCapped(response, maxBytes);
+    } catch (error) {
+      if (error?.code !== 'RESPONSE_TOO_LARGE') throw error;
+      console.warn(`[address-proxy] oversized body from ${new URL(url).host}, over ${maxBytes} bytes`);
+      // Not retryable: an upstream that outgrew the cap will do it again.
       return { ok: false, retryable: false };
     }
     return { ok: true, value: text ? body : JSON.parse(body) };
