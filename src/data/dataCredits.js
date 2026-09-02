@@ -406,6 +406,21 @@ export const DATA_CREDITS = [
       'practitioner names, not a headcount &mdash; measured 5 % above the CNAM&rsquo;s own 2024 figure.',
   },
   {
+    key: 'meteo-stations-fr',
+    html:
+      'French weather stations: <em>R&eacute;seau d&rsquo;observation temps r&eacute;el</em>, '
+      + '<em>Informations sur les stations</em>, <em>Postes</em> and <em>Donn&eacute;es SYNOP essentielles OMM</em>, '
+      + 'published by <a href="https://meteo.data.gouv.fr/" target="_blank" rel="noopener">M&eacute;t&eacute;o-France</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
+      + '2 144 stations, rebuilt from the network list joined to M&eacute;t&eacute;o-France&rsquo;s own 191 MB per-station '
+      + 'parameter inventory &mdash; which is where the instrument classes come from: 1 254 of the 2 144 measure only '
+      + 'temperature and rain, 845 measure wind, 234 measure pressure. Live observations are the running-year SYNOP '
+      + 'archive, refreshed hourly; <strong>it carries 190 stations where M&eacute;t&eacute;o-France&rsquo;s own SYNOP '
+      + 'station list names 62</strong>, so the layer counts the archive. Station records come from each '
+      + 'poste&rsquo;s <em>fiche climatologique</em>, fetched per card. Seven stations in the real-time list are '
+      + 'recorded as closed by the same publisher and are drawn hollow rather than dropped.',
+  },
+  {
     key: 'sup-fr',
     html:
       'French higher education: <em>Effectifs d&rsquo;&eacute;tudiants inscrits &mdash; d&eacute;tail par '
