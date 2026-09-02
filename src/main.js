@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { StyleManager } from './ui.js';
 import { DEFAULT_CITY_VIEW, flyToDefaultCity } from './camera.js';
+import { installGlobeDetailGovernor } from './globeDetailGovernor.js';
 import { DataLayerManager } from './data/manager.js';
 import flightsLayer from './data/flights.js';
 import militaryFlightsLayer from './data/militaryFlights.js';
@@ -398,6 +399,12 @@ async function init() {
     // nothing animates per frame. Installed AFTER every module above has had
     // its chance to register pre-install holds. (perf wave 2)
     installRenderGovernor(viewer);
+
+    // Coarser imagery/terrain while the camera moves, full detail the moment it
+    // settles. The intro fly-to descends through the whole zoom pyramid over
+    // one point, refining every level it passes and discarding it a frame
+    // later; this declines that work without touching a still frame.
+    installGlobeDetailGovernor(viewer);
 
     // The explicit scope mask replaces the emergent six-pass artifact —
     // see src/scopeMask.js. Installed before the UI so the DISPLAY-rail
