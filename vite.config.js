@@ -44,8 +44,10 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import https from 'node:https';
+import zlib from 'node:zlib';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { directionToHeading } from './src/data/directionText.js';
+import { MEDECIN_FAMILY_INDEX, sitePrimaryFamily } from './src/data/medecinsFrFeed.js';
 import {
   osmCameraBboxQuery,
   osmCameraBoxKey,
@@ -4336,6 +4338,336 @@ function supFranceProxy() {
 
   return {
     name: 'sup-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * French doctor register — served from the shipped pack, not from a network.
+ *
+ *   GET /api/medecins-fr/national                     — départements + APL, once
+ *   GET /api/medecins-fr/mesh                         — the national point set, once
+ *   GET /api/medecins-fr/sites?south&west&north&east  — sites in one box, with names
+ *   GET /api/medecins-fr/status                       — provenance + what is loaded
+ *
+ * WHY A PROXY FOR A LOCAL FILE, when `plants.json` is simply fetched by its
+ * layer: size and shape. The pack is 8.6 MB of sites plus 7.2 MB of named
+ * practitioners, and a browser needs neither in full. It needs 100 kB of
+ * national rollup to paint 96 départements, 1.3 MB of thinned points to draw
+ * the middle zooms, and the forty sites under the current viewport — with
+ * their doctors' names — only once someone looks. Slicing here costs one
+ * `readFile` at boot and keeps every one of those three answers small.
+ *
+ * There is no TTL and no stale window on purpose. The upstream is a file in
+ * this repository, rebuilt by `npm run medecins:registry`; it cannot go stale
+ * between two requests, and pretending otherwise would be theatre.
+ */
+const MEDECINS_DIR = path.join(process.cwd(), 'src', 'data', 'local_data', 'medecins_fr');
+const MEDECINS_PACK_PATH = path.join(MEDECINS_DIR, 'medecins.json');
+const MEDECINS_PRACTITIONERS_PATH = path.join(MEDECINS_DIR, 'praticiens.jsonl');
+/** Paris at 0.6° holds ~4 500 sites; wider than that is a smear, not a map. */
+const MEDECINS_MAX_BOX_DEG = 0.6;
+const MEDECINS_SITES_CAP = 6000;
+const _medecinsRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 120, globalMax: 360 });
+
+/**
+ * Grid cell size for the site index, in degrees.
+ *
+ * 0.25° is a little over the widest box the `/sites` route accepts, so a
+ * viewport touches at most a handful of cells and the scan is bounded by what
+ * is on screen rather than by the size of France. Measured on the linear scan
+ * it replaces: 2 ms per request over 64 232 sites — small, but paid on every
+ * camera move by every open tab.
+ */
+const MEDECINS_GRID_DEG = 0.25;
+
+/** @type {?{pack:object, practitioners:{length:number, line:(i:number)=>string}, grid:Map<string, number[]>, loadedAt:number}} */
+let _medecinsPack = null;
+/** @type {?Promise<object>} */
+let _medecinsPackInFlight = null;
+/** route → {raw:Buffer, gzip:Buffer} for the two payloads that never vary. */
+const _medecinsStatic = new Map();
+
+function medecinsGridKey(lat, lon) {
+  return `${Math.floor(lat / MEDECINS_GRID_DEG)}:${Math.floor(lon / MEDECINS_GRID_DEG)}`;
+}
+
+/**
+ * Send JSON, gzipped when the caller accepts it.
+ *
+ * WHY IT IS WORTH THE FIVE LINES: Vite compresses the module graph it serves
+ * and nothing else, so before this every one of these routes went out raw.
+ * Measured on one session over central Paris — national + mesh + two site
+ * boxes — **3 360 kio uncompressed against 900 kio gzipped**. The mesh alone
+ * is 1 445 kio and compresses to 430.
+ */
+function medecinsSend(req, res, status, body, { cacheSeconds = 3600, cacheKey = null } = {}) {
+  const accepts = /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
+  let raw = null;
+  let gzipped = null;
+  // gzip has a ~20-byte header and trailer, so below this it makes the answer
+  // BIGGER — measured: a 68-byte `/praticiens` body came back as 82. The
+  // per-card route is the one that hits this.
+  const GZIP_FLOOR_BYTES = 1024;
+  if (cacheKey && _medecinsStatic.has(cacheKey)) {
+    ({ raw, gzip: gzipped } = _medecinsStatic.get(cacheKey));
+  } else {
+    raw = Buffer.from(JSON.stringify(body));
+    // Level 6, not 9: on the 1.4 MB mesh, 9 costs ~3× the CPU for under 2 %
+    // more compression, and this buffer is built once and served forever.
+    gzipped = raw.length >= GZIP_FLOOR_BYTES ? zlib.gzipSync(raw, { level: 6 }) : raw;
+    if (cacheKey) _medecinsStatic.set(cacheKey, { raw, gzip: gzipped });
+  }
+  const useGzip = accepts && raw.length >= GZIP_FLOOR_BYTES && gzipped.length < raw.length;
+  const payload = useGzip ? gzipped : raw;
+  const headers = {
+    'Content-Type': 'application/json',
+    'Content-Length': String(payload.length),
+    'Cache-Control': `public, max-age=${cacheSeconds}`,
+  };
+  if (useGzip) headers['Content-Encoding'] = 'gzip';
+  res.writeHead(status, headers);
+  res.end(payload);
+}
+
+/**
+ * Read one shipped artifact, gzipped or plain, whichever the build wrote.
+ *
+ * The `.gz` is the default — 3.67 MB in the repository against 16.18 MB — and
+ * `npm run medecins:registry -- --plain` writes the other for anyone who wants
+ * to grep the dataset. Measured cost of the compressed path: **15 ms of
+ * `gunzipSync` for both files, once per process.**
+ */
+async function readMedecinsArtifact(file, { optional = false } = {}) {
+  const gz = await fsp.readFile(`${file}.gz`).catch(() => null);
+  if (gz) return zlib.gunzipSync(gz).toString('utf8');
+  const plain = await fsp.readFile(file, 'utf8').catch(() => null);
+  if (plain !== null) return plain;
+  if (optional) return '';
+  throw new Error(`neither ${path.basename(file)}.gz nor ${path.basename(file)} is present`);
+}
+
+async function loadMedecinsPack() {
+  if (_medecinsPack) return _medecinsPack;
+  if (_medecinsPackInFlight) return _medecinsPackInFlight;
+  _medecinsPackInFlight = (async () => {
+    const [packText, practitionersText] = await Promise.all([
+      readMedecinsArtifact(MEDECINS_PACK_PATH),
+      readMedecinsArtifact(MEDECINS_PRACTITIONERS_PATH, { optional: true }),
+    ]);
+    const pack = JSON.parse(packText);
+    // Line N of the practitioner file describes site N. If the two files ever
+    // disagree the join is meaningless, so refuse it rather than serve names
+    // attached to the wrong address.
+    //
+    // Kept as ONE buffer plus an offset index rather than 64 232 JavaScript
+    // strings: the array of strings retains roughly twice the bytes for a file
+    // whose lines are read one at a time, on a click, and never all together.
+    const practitionerBuffer = Buffer.from(practitionersText, 'utf8');
+    const practitionerOffsets = [];
+    if (practitionerBuffer.length) {
+      let start = 0;
+      for (let i = 0; i < practitionerBuffer.length; i += 1) {
+        if (practitionerBuffer[i] !== 0x0a) continue;
+        if (i > start) practitionerOffsets.push([start, i]);
+        start = i + 1;
+      }
+      if (start < practitionerBuffer.length) practitionerOffsets.push([start, practitionerBuffer.length]);
+    }
+    const practitioners = {
+      length: practitionerOffsets.length,
+      line(index) {
+        const span = practitionerOffsets[index];
+        return span ? practitionerBuffer.toString('utf8', span[0], span[1]) : '';
+      },
+    };
+    if (practitioners.length && practitioners.length !== pack.sites.length) {
+      throw new Error(
+        `praticiens.jsonl has ${practitioners.length} lines for ${pack.sites.length} sites — `
+        + 'rebuild with `npm run medecins:registry`',
+      );
+    }
+    const grid = new Map();
+    for (let index = 0; index < pack.sites.length; index += 1) {
+      const site = pack.sites[index];
+      const key = medecinsGridKey(site[0], site[1]);
+      const bucket = grid.get(key);
+      if (bucket) bucket.push(index);
+      else grid.set(key, [index]);
+    }
+    _medecinsPack = { pack, practitioners, grid, loadedAt: Date.now() };
+    return _medecinsPack;
+  })().finally(() => { _medecinsPackInFlight = null; });
+  return _medecinsPackInFlight;
+}
+
+/** Vite plugin: the shipped French doctor register, sliced. */
+function medecinsFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/medecins-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') { json(405, { error: 'Method Not Allowed' }); return; }
+      if (!_medecinsRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      let loaded;
+      try {
+        loaded = await loadMedecinsPack();
+      } catch (error) {
+        json(503, { error: `medecins-fr pack unavailable: ${error.message}` });
+        return;
+      }
+      const { pack } = loaded;
+
+      if (route === '/status') {
+        json(200, {
+          source: pack.sources,
+          generated: pack.generated,
+          edition: pack.source?.ps?.modified ?? null,
+          stats: pack.stats,
+          apl: pack.apl ? { millesime: pack.apl.millesime, national: pack.apl.national, champ: pack.apl.champ } : null,
+          loadedAt: loaded.loadedAt,
+          practitionerLines: loaded.practitioners.length,
+          maxBoxDeg: MEDECINS_MAX_BOX_DEG,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route === '/national') {
+        medecinsSend(req, res, 200, {
+          generated: pack.generated,
+          sources: pack.sources,
+          source: pack.source,
+          stats: pack.stats,
+          precision: pack.precision,
+          specialites: pack.specialites,
+          secteurs: pack.secteurs,
+          optionsTarifaires: pack.optionsTarifaires,
+          departements: pack.departements,
+          apl: pack.apl
+            ? {
+              millesime: pack.apl.millesime,
+              indicateur: pack.apl.indicateur,
+              unite: pack.apl.unite,
+              champ: pack.apl.champ,
+              seuils: pack.apl.seuils,
+              national: pack.apl.national,
+              dixiemes: pack.apl.dixiemes,
+              bornes: pack.apl.bornes,
+              population: pack.apl.population,
+              departements: pack.apl.departements,
+              jointure: pack.apl.jointure,
+            }
+            : null,
+          nonLocalisees: pack.nonLocalisees.length,
+        }, { cacheKey: 'national' });
+        return;
+      }
+
+      if (route === '/mesh') {
+        // `[lat, lon, praticiens, familleIndex]` — the thinner's tuple, and the
+        // family resolved HERE rather than shipped as a specialty list. Sending
+        // each site's `[[code, n], …]` instead measured 2.35 MB against 1.5 MB
+        // for the index, for a number the browser would derive from the same
+        // table anyway — which is why that table is imported rather than
+        // copied.
+        medecinsSend(req, res, 200, {
+          generated: pack.generated,
+          sites: pack.sites.map((site) => [
+            // FOUR decimals, not five. The mesh is only ever drawn at spans
+            // wider than 0.6°, where 11 m and 1 m are the same pixel — and the
+            // shorter numbers compress better: 1 445 kio → 1 268, and 430 kio
+            // → 384 once gzipped.
+            Math.round(site[0] * 1e4) / 1e4,
+            Math.round(site[1] * 1e4) / 1e4,
+            site[10] || 1,
+            MEDECIN_FAMILY_INDEX[sitePrimaryFamily(site)] ?? MEDECIN_FAMILY_INDEX.specialiste,
+          ]),
+          siteCount: pack.sites.length,
+        }, { cacheKey: 'mesh' });
+        return;
+      }
+
+      /**
+       * The names for ONE address, fetched when a card opens.
+       *
+       * They used to ride along with `/sites`, and over central Paris that was
+       * **40 % of a 1 451 kio response** — 16 069 practitioner names shipped to
+       * draw 5 907 dots, of which a reader opens one. Splitting them out takes
+       * the same box to 789 kio raw and 162 gzipped, and moves the names to the
+       * click that actually wants them.
+       */
+      if (route === '/praticiens') {
+        const index = Number.parseInt(url.searchParams.get('index') ?? '', 10);
+        if (!Number.isInteger(index) || index < 0 || index >= pack.sites.length) {
+          json(400, { error: 'index required, within the site range' });
+          return;
+        }
+        let praticiens = [];
+        const line = loaded.practitioners.line(index);
+        if (line) { try { praticiens = JSON.parse(line); } catch { praticiens = []; } }
+        medecinsSend(req, res, 200, { index, praticiens });
+        return;
+      }
+
+      if (route === '/sites') {
+        const num = (key) => Number.parseFloat(url.searchParams.get(key) ?? '');
+        const box = { south: num('south'), west: num('west'), north: num('north'), east: num('east') };
+        if (!Object.values(box).every(Number.isFinite) || box.north <= box.south || box.east <= box.west) {
+          json(400, { error: 'south/west/north/east required, and north>south, east>west' });
+          return;
+        }
+        if (box.north - box.south > MEDECINS_MAX_BOX_DEG || box.east - box.west > MEDECINS_MAX_BOX_DEG) {
+          json(413, { error: `box wider than ${MEDECINS_MAX_BOX_DEG}°`, maxBoxDeg: MEDECINS_MAX_BOX_DEG });
+          return;
+        }
+        // Only the grid cells the box touches, never the whole register.
+        const sites = [];
+        let truncated = false;
+        const minRow = Math.floor(box.south / MEDECINS_GRID_DEG);
+        const maxRow = Math.floor(box.north / MEDECINS_GRID_DEG);
+        const minCol = Math.floor(box.west / MEDECINS_GRID_DEG);
+        const maxCol = Math.floor(box.east / MEDECINS_GRID_DEG);
+        outer:
+        for (let row = minRow; row <= maxRow; row += 1) {
+          for (let col = minCol; col <= maxCol; col += 1) {
+            for (const index of loaded.grid.get(`${row}:${col}`) ?? []) {
+              const site = pack.sites[index];
+              if (site[0] < box.south || site[0] > box.north || site[1] < box.west || site[1] > box.east) continue;
+              if (sites.length >= MEDECINS_SITES_CAP) { truncated = true; break outer; }
+              sites.push({ index, site });
+            }
+          }
+        }
+        medecinsSend(req, res, 200, {
+          generated: pack.generated,
+          box,
+          sites,
+          count: sites.length,
+          // Said, never silent: a capped box is a partial answer and the layer
+          // has to be able to say so on the card.
+          truncated,
+          cap: MEDECINS_SITES_CAP,
+        }, { cacheSeconds: 600 });
+        return;
+      }
+
+      json(404, { error: 'Not Found' });
+    });
+  }
+
+  return {
+    name: 'medecins-france-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -15292,6 +15624,7 @@ export default defineConfig(({ mode }) => {
       irveFranceProxy(),
       cadastreFranceProxy(),
       schoolsFranceProxy(),
+      medecinsFranceProxy(),
       supFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),

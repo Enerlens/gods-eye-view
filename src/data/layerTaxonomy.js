@@ -601,6 +601,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // is the State's account of where its pupils are put, which is base
   // reference data in exactly the sense `bdtopo-buildings` is. It is not
   // mobility, not energy, and not a hazard.
+  // BÂTI & TERRITOIRE for the same reason the school register is: 64 232
+  // practice addresses are where a public service is physically put, which is
+  // base reference data about the territory. It is not a hazard — a shortage
+  // of doctors is a durable structural fact, not an event — and it is not a
+  // sensor network.
+  Object.freeze({
+    id: 'medecins-fr',
+    category: 'built-environment',
+    label: 'Médecins',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'schools-fr',
     category: 'built-environment',

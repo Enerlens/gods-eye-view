@@ -392,6 +392,20 @@ export const DATA_CREDITS = [
       'geocoded only to their commune, and their cards say that too.',
   },
   {
+    key: 'medecins-fr',
+    html:
+      'French doctors: <em>Annuaire sant&eacute; Ameli</em>, published by the ' +
+      '<a href="https://www.data.gouv.fr/datasets/annuaire-sante-ameli" target="_blank" rel="noopener">Caisse nationale de l&rsquo;Assurance Maladie</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
+      'edition of 17/08/2026, rebuilt weekly. <strong>The register publishes no coordinates</strong> &mdash; ' +
+      'positions are geocoded against the <a href="https://adresse.data.gouv.fr/" target="_blank" rel="noopener">Base Adresse Nationale</a> ' +
+      '(Licence Ouverte 2.0) and each site carries the precision BAN returned; 716 are placed at their commune centre and say so. ' +
+      'Accessibility is the <em>accessibilit&eacute; potentielle localis&eacute;e</em> (APL) 2024 to general practitioners aged 65 or under, ' +
+      '<a href="https://www.data.gouv.fr/datasets/accessibilite-potentielle-localisee-apl-aux-professionnels-de-sante" target="_blank" rel="noopener">DREES</a> ' +
+      '(Licence Ouverte 2.0), France hors Mayotte. The register carries no identifier, so counts are distinct ' +
+      'practitioner names, not a headcount &mdash; measured 5 % above the CNAM&rsquo;s own 2024 figure.',
+  },
+  {
     key: 'sup-fr',
     html:
       'French higher education: <em>Effectifs d&rsquo;&eacute;tudiants inscrits &mdash; d&eacute;tail par '
