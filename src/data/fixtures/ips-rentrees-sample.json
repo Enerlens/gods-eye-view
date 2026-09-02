@@ -1,0 +1,90 @@
+[
+  {
+    "dataset": "fr-en-ips-ecoles-ap2022",
+    "url": "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-ips-ecoles-ap2022/records?group_by=rentree_scolaire&select=count%28*%29+as+rows&order_by=rentree_scolaire+desc&limit=20",
+    "response": {
+      "total_count": 3,
+      "results": [
+        {
+          "rentree_scolaire": "2024-2025",
+          "rows": 32494
+        },
+        {
+          "rentree_scolaire": "2023-2024",
+          "rows": 32610
+        },
+        {
+          "rentree_scolaire": "2022-2023",
+          "rows": 31976
+        }
+      ]
+    }
+  },
+  {
+    "dataset": "fr-en-ips-colleges-ap2023",
+    "url": "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-ips-colleges-ap2023/records?group_by=rentree_scolaire&select=count%28*%29+as+rows&order_by=rentree_scolaire+desc&limit=20",
+    "response": {
+      "total_count": 3,
+      "results": [
+        {
+          "rentree_scolaire": "2025-2026",
+          "rows": 7089
+        },
+        {
+          "rentree_scolaire": "2024-2025",
+          "rows": 6987
+        },
+        {
+          "rentree_scolaire": "2023-2024",
+          "rows": 6985
+        }
+      ]
+    }
+  },
+  {
+    "dataset": "fr-en-ips-lycees-ap2023",
+    "url": "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-ips-lycees-ap2023/records?group_by=rentree_scolaire&select=count%28*%29+as+rows&order_by=rentree_scolaire+desc&limit=20",
+    "response": {
+      "total_count": 3,
+      "results": [
+        {
+          "rentree_scolaire": "2025-2026",
+          "rows": 3662
+        },
+        {
+          "rentree_scolaire": "2024-2025",
+          "rows": 3631
+        },
+        {
+          "rentree_scolaire": "2023-2024",
+          "rows": 3612
+        }
+      ]
+    }
+  },
+  {
+    "dataset": "fr-en-ips-erea-ap2022",
+    "url": "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-ips-erea-ap2022/records?group_by=rentree_scolaire&select=count%28*%29+as+rows&order_by=rentree_scolaire+desc&limit=20",
+    "response": {
+      "total_count": 4,
+      "results": [
+        {
+          "rentree_scolaire": "2025-2026",
+          "rows": 77
+        },
+        {
+          "rentree_scolaire": "2024-2025",
+          "rows": 77
+        },
+        {
+          "rentree_scolaire": "2023-2024",
+          "rows": 78
+        },
+        {
+          "rentree_scolaire": "2022-2023",
+          "rows": 78
+        }
+      ]
+    }
+  }
+]

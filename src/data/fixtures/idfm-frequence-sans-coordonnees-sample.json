@@ -1,0 +1,45 @@
+{
+ "total_count": 8,
+ "results": [
+  {
+   "id_arret": "4431",
+   "latitude_arret": null,
+   "longitude_arret": null
+  },
+  {
+   "id_arret": "11278",
+   "latitude_arret": null,
+   "longitude_arret": null
+  },
+  {
+   "id_arret": "11279",
+   "latitude_arret": null,
+   "longitude_arret": null
+  },
+  {
+   "id_arret": "33045",
+   "latitude_arret": null,
+   "longitude_arret": null
+  },
+  {
+   "id_arret": "33047",
+   "latitude_arret": null,
+   "longitude_arret": null
+  },
+  {
+   "id_arret": "33152",
+   "latitude_arret": null,
+   "longitude_arret": null
+  },
+  {
+   "id_arret": "493617",
+   "latitude_arret": null,
+   "longitude_arret": null
+  },
+  {
+   "id_arret": "494242",
+   "latitude_arret": null,
+   "longitude_arret": null
+  }
+ ]
+}

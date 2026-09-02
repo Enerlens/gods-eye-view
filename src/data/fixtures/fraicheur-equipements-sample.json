@@ -1,0 +1,572 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3590444436535285,
+     48.85514613490426
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "MU75",
+    "nom": "Maison Européenne de la Photographie",
+    "type": "Musée",
+    "payant": "Oui",
+    "adresse": "5 RUE DE FOURCY",
+    "arrondissement": "75004",
+    "statut_ouverture": null,
+    "horaires_periode": "Les horaires étant dépendants de sa programmation, visitez son site internet pour en savoir plus",
+    "horaires_lundi": null,
+    "horaires_mardi": null,
+    "horaires_mercredi": null,
+    "horaires_jeudi": null,
+    "horaires_vendredi": null,
+    "horaires_samedi": null,
+    "horaires_dimanche": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3707563308505737,
+     48.890121363198475
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "MU75",
+    "nom": "Le CENTQUATRE - PARIS",
+    "type": "Musée",
+    "payant": "Oui",
+    "adresse": "5 rue Curial",
+    "arrondissement": "75019",
+    "statut_ouverture": null,
+    "horaires_periode": "Fermeture du 09 au 23 août inclus",
+    "horaires_lundi": "Fermé",
+    "horaires_mardi": "12h-19h",
+    "horaires_mercredi": "12h-19h",
+    "horaires_jeudi": "12h-19h",
+    "horaires_vendredi": "12h-19h",
+    "horaires_samedi": "11h-19h",
+    "horaires_dimanche": "11h-19h"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.360771953887445,
+     48.861024288440674
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "LC143",
+    "nom": "Cathédrale Sainte-Croix de Paris des Arméniens",
+    "type": "Lieux de culte",
+    "payant": "Non",
+    "adresse": "13 RUE DU PERCHE",
+    "arrondissement": "75003",
+    "statut_ouverture": null,
+    "horaires_periode": null,
+    "horaires_lundi": "Les horaires étant susceptibles d'évoluer, merci d",
+    "horaires_mardi": null,
+    "horaires_mercredi": null,
+    "horaires_jeudi": null,
+    "horaires_vendredi": null,
+    "horaires_samedi": null,
+    "horaires_dimanche": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.326198442572983,
+     48.83182185862016
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "PI16",
+    "nom": "Piscine Aspirant Dunand",
+    "type": "Piscine",
+    "payant": "Oui",
+    "adresse": "20 Rue Saillard",
+    "arrondissement": "75014",
+    "statut_ouverture": null,
+    "horaires_periode": "du 25/06/26 au 04/09/26",
+    "horaires_lundi": "-",
+    "horaires_mardi": "-",
+    "horaires_mercredi": "-",
+    "horaires_jeudi": "-",
+    "horaires_vendredi": "-",
+    "horaires_samedi": "-",
+    "horaires_dimanche": "-"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.389397786339199,
+     48.84214720818325
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "PI29",
+    "nom": "Piscine Jean Boiteux ex Reuilly",
+    "type": "Piscine",
+    "payant": "Oui",
+    "adresse": "13, rue Hénard",
+    "arrondissement": "75012",
+    "statut_ouverture": null,
+    "horaires_periode": "du 31/08/26 au 06/09/26",
+    "horaires_lundi": "-",
+    "horaires_mardi": "07h00 - 08h30 / 11h30 - 13h45",
+    "horaires_mercredi": "12h00 - 16h30",
+    "horaires_jeudi": "07h00 - 08h30 / 11h30 - 13h45 / 16h45 - 22h00",
+    "horaires_vendredi": "10h00 - 13h45",
+    "horaires_samedi": "10h00 - 17h30",
+    "horaires_dimanche": "08h00 - 17h30"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3554219599266557,
+     48.86651952583102
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "MU77",
+    "nom": "Musée des Arts et Métiers",
+    "type": "Musée",
+    "payant": "Oui",
+    "adresse": "60 RUE REAUMUR",
+    "arrondissement": "75003",
+    "statut_ouverture": null,
+    "horaires_periode": null,
+    "horaires_lundi": "Fermé",
+    "horaires_mardi": "10h – 18h",
+    "horaires_mercredi": "10h – 18h",
+    "horaires_jeudi": "10h – 18h",
+    "horaires_vendredi": "10h – 21h",
+    "horaires_samedi": "10h – 18h",
+    "horaires_dimanche": "10h – 18h"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3365847574056557,
+     48.86082536284186
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "MU10",
+    "nom": "Musée du Louvre",
+    "type": "Musée",
+    "payant": "Oui",
+    "adresse": "Rue de Rivoli",
+    "arrondissement": "75001",
+    "statut_ouverture": null,
+    "horaires_periode": null,
+    "horaires_lundi": "09:00 - 18:00",
+    "horaires_mardi": "Fermé",
+    "horaires_mercredi": "09:00 - 18:00",
+    "horaires_jeudi": "09:00 - 18:00",
+    "horaires_vendredi": "09:00 - 18:00",
+    "horaires_samedi": "09:00 - 18:00",
+    "horaires_dimanche": "09:00 - 18:00"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3404918920670306,
+     48.86683217016895
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "DI02",
+    "nom": "Fabrique de la Solidarité  / Service Social de Proximité",
+    "type": "Découverte et Initiation",
+    "payant": "Non",
+    "adresse": "8 RUE DE LA BANQUE",
+    "arrondissement": "75002",
+    "statut_ouverture": null,
+    "horaires_periode": null,
+    "horaires_lundi": "Fermé",
+    "horaires_mardi": "9H30 - 17H",
+    "horaires_mercredi": "9H30 - 17H",
+    "horaires_jeudi": "9H30 - 17H",
+    "horaires_vendredi": "9H30 - 17H",
+    "horaires_samedi": "Fermé",
+    "horaires_dimanche": "Fermé"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3359655972749604,
+     48.880984929334396
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "MA1",
+    "nom": "Maison de la Vie Associative et Citoyenne du 9e",
+    "type": "Mairie d'arrondissement",
+    "payant": "Non",
+    "adresse": "54 rue Jean-Baptiste Pigalle",
+    "arrondissement": "75009",
+    "statut_ouverture": null,
+    "horaires_periode": "Fermeture du 3 au 20 août inclus",
+    "horaires_lundi": "Fermé",
+    "horaires_mardi": "10h00 -18h30",
+    "horaires_mercredi": "10h00 -18h30",
+    "horaires_jeudi": "10h00 -19h00",
+    "horaires_vendredi": "10h00 -18h30",
+    "horaires_samedi": "10h00 - 14h00",
+    "horaires_dimanche": "Fermé"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.2942904300665803,
+     48.866394719991206
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "MU25",
+    "nom": "Musée National Guimet (annexe)",
+    "type": "Musée",
+    "payant": "Oui",
+    "adresse": "6 PLACE D'IENA",
+    "arrondissement": "75016",
+    "statut_ouverture": null,
+    "horaires_periode": null,
+    "horaires_lundi": null,
+    "horaires_mardi": "10:00 - 18:00",
+    "horaires_mercredi": "Fermé",
+    "horaires_jeudi": "10:00 - 18:00",
+    "horaires_vendredi": "10:00 - 18:00",
+    "horaires_samedi": "10:00 - 18:00",
+    "horaires_dimanche": "10:00 - 18:00"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3480903334007937,
+     48.82196473440876
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "BR8",
+    "nom": "Brumisateur Charles Trénet",
+    "type": "Brumisateur",
+    "payant": "Non",
+    "adresse": "31 rue Brillat-Savarin",
+    "arrondissement": "75013",
+    "statut_ouverture": "Eteint",
+    "horaires_periode": "Horaires d'ouvertures du parc",
+    "horaires_lundi": null,
+    "horaires_mardi": null,
+    "horaires_mercredi": null,
+    "horaires_jeudi": null,
+    "horaires_vendredi": null,
+    "horaires_samedi": null,
+    "horaires_dimanche": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3005876556468787,
+     48.84024431176974
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "OM50",
+    "nom": "KIOSQUE A MUSIQUE SQUARE JEAN CHERIOUX",
+    "type": "Ombrière pérenne",
+    "payant": "Non",
+    "adresse": "260  RUE DE VAUGIRARD",
+    "arrondissement": "75015",
+    "statut_ouverture": null,
+    "horaires_periode": "Horaires d'ouverture de l'espace vert",
+    "horaires_lundi": null,
+    "horaires_mardi": null,
+    "horaires_mercredi": null,
+    "horaires_jeudi": null,
+    "horaires_vendredi": null,
+    "horaires_samedi": null,
+    "horaires_dimanche": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.305013903156183,
+     48.884914071189634
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "LC35",
+    "nom": "Eglise Saint-François de Sales",
+    "type": "Lieux de culte",
+    "payant": "Non",
+    "adresse": "15  RUE AMPERE",
+    "arrondissement": "75017",
+    "statut_ouverture": null,
+    "horaires_periode": "Les horaires étant susceptibles d'évoluer, merci de vous renseigner directement sur place.",
+    "horaires_lundi": null,
+    "horaires_mardi": null,
+    "horaires_mercredi": null,
+    "horaires_jeudi": null,
+    "horaires_vendredi": null,
+    "horaires_samedi": null,
+    "horaires_dimanche": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.2832800002775255,
+     48.85578999918807
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "BR66",
+    "nom": "Brumisateur Parc de Passy n°2",
+    "type": "Brumisateur",
+    "payant": "Non",
+    "adresse": "32 avenue du Président Kennedy",
+    "arrondissement": "75016",
+    "statut_ouverture": "Ouvert",
+    "horaires_periode": "Horaires d'ouvertures du parc",
+    "horaires_lundi": null,
+    "horaires_mardi": null,
+    "horaires_mercredi": null,
+    "horaires_jeudi": null,
+    "horaires_vendredi": null,
+    "horaires_samedi": null,
+    "horaires_dimanche": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.307503743399791,
+     48.84330516195563
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "BD3",
+    "nom": "Bain-douche Blomet",
+    "type": "Bains-douches",
+    "payant": "Non",
+    "adresse": "17, rue Blomet",
+    "arrondissement": "75015",
+    "statut_ouverture": null,
+    "horaires_periode": "du 01/01/20 au 01/01/32",
+    "horaires_lundi": "07h30 - 13h00",
+    "horaires_mardi": "-",
+    "horaires_mercredi": "07h30 - 13h00",
+    "horaires_jeudi": "07h30 - 13h00",
+    "horaires_vendredi": "07h30 - 13h00",
+    "horaires_samedi": "07h30 - 13h00",
+    "horaires_dimanche": "08h00 - 12h30"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3877403212424415,
+     48.87960867786999
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "TB11",
+    "nom": "Terrain de boules Botzaris",
+    "type": "Terrain de boules",
+    "payant": "Non",
+    "adresse": "72 rue Botzaris",
+    "arrondissement": "75019",
+    "statut_ouverture": null,
+    "horaires_periode": null,
+    "horaires_lundi": null,
+    "horaires_mardi": null,
+    "horaires_mercredi": null,
+    "horaires_jeudi": null,
+    "horaires_vendredi": null,
+    "horaires_samedi": null,
+    "horaires_dimanche": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.2856942450787106,
+     48.8529726796973
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "BE13",
+    "nom": "Baignade en Seine Grenelle",
+    "type": "Baignade extérieure",
+    "payant": "Non",
+    "adresse": "Port de Grenelle",
+    "arrondissement": "75015",
+    "statut_ouverture": null,
+    "horaires_periode": "du 05/07/25 au 31/08/25",
+    "horaires_lundi": "10h - 17h30",
+    "horaires_mardi": "10h - 17h30",
+    "horaires_mercredi": "10h - 17h30",
+    "horaires_jeudi": "10h - 17h30",
+    "horaires_vendredi": "10h - 17h30",
+    "horaires_samedi": "10h - 16h45",
+    "horaires_dimanche": "10h - 12h / 12h30 - 14h15 / 14h45 - 17h30"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.392512398545936,
+     48.87649693425629
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "BD13",
+    "nom": "Bain-douche Petitot",
+    "type": "Bains-douches",
+    "payant": "Non",
+    "adresse": "1, rue Petitot",
+    "arrondissement": "75019",
+    "statut_ouverture": null,
+    "horaires_periode": "à partir du 01/02/26",
+    "horaires_lundi": "-",
+    "horaires_mardi": "12h00 - 18h00",
+    "horaires_mercredi": "12h00 - 18h00",
+    "horaires_jeudi": "12h00 - 18h00",
+    "horaires_vendredi": "12h00 - 18h00",
+    "horaires_samedi": "-",
+    "horaires_dimanche": "-"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.289772488194873,
+     48.85472933886124
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "MU74",
+    "nom": "Maison du Japon",
+    "type": "Musée",
+    "payant": "Oui",
+    "adresse": "101Bis Quai Branly",
+    "arrondissement": "75015",
+    "statut_ouverture": null,
+    "horaires_periode": null,
+    "horaires_lundi": null,
+    "horaires_mardi": null,
+    "horaires_mercredi": null,
+    "horaires_jeudi": null,
+    "horaires_vendredi": null,
+    "horaires_samedi": null,
+    "horaires_dimanche": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.313756839270356,
+     48.850798814418525
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "LC144",
+    "nom": "Eglise Saint-François-Xavier",
+    "type": "Lieux de culte",
+    "payant": null,
+    "adresse": "13 PL du PRESIDENT MITHOUARD",
+    "arrondissement": "75007",
+    "statut_ouverture": null,
+    "horaires_periode": "Les horaires étant susceptibles d'évoluer, merci de vous renseigner directement sur place.",
+    "horaires_lundi": null,
+    "horaires_mardi": null,
+    "horaires_mercredi": null,
+    "horaires_jeudi": null,
+    "horaires_vendredi": null,
+    "horaires_samedi": null,
+    "horaires_dimanche": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3608995204544083,
+     48.85152550687346
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "identifiant": "BE10",
+    "nom": "Baignade en Seine Bras Marie",
+    "type": "Baignade extérieure",
+    "payant": "Non",
+    "adresse": "Bras Marie",
+    "arrondissement": "75004",
+    "statut_ouverture": null,
+    "horaires_periode": "du 05/07/25 au 31/08/25",
+    "horaires_lundi": "8h - 11h30",
+    "horaires_mardi": "8h - 11h30",
+    "horaires_mercredi": "8h - 11h30",
+    "horaires_jeudi": "8h - 11h30",
+    "horaires_vendredi": "8h - 11h30",
+    "horaires_samedi": "8h - 11h30",
+    "horaires_dimanche": "8h - 17h30"
+   }
+  }
+ ]
+}

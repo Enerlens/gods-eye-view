@@ -1,0 +1,425 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3520674152311063,
+     48.84453013136159
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450024988",
+    "type_objet": "BORNE_FONTAINE",
+    "modele": "Murale Ecoulement Permanent",
+    "voie": "RUE ROLLIN",
+    "commune": "PARIS 5EME ARRONDISSEMENT",
+    "dispo": "NON",
+    "debut_ind": "2025-12-26T01:00:00+00:00",
+    "fin_ind": "2026-05-18T02:00:00+00:00",
+    "motif_ind": "FERME DEMANDE TIERS"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3360677090462167,
+     48.83729003881578
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450024987",
+    "type_objet": "BORNE_FONTAINE",
+    "modele": "GHM Ville de Paris",
+    "voie": "AVENUE DE L OBSERVATOIRE",
+    "commune": "PARIS 14EME ARRONDISSEMENT",
+    "dispo": "NON",
+    "debut_ind": "2026-04-20T02:00:00+00:00",
+    "fin_ind": "2026-10-30T01:00:00+00:00",
+    "motif_ind": "APP A REPARER"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.299503146284392,
+     48.87261686010172
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450085267",
+    "type_objet": "FONTAINE_2EN1",
+    "modele": "Mât source",
+    "voie": "AVENUE DES CHAMPS ELYSEES",
+    "commune": "PARIS 8EME ARRONDISSEMENT",
+    "dispo": "NON",
+    "debut_ind": "2026-08-06T02:00:00+00:00",
+    "fin_ind": null,
+    "motif_ind": "FERME DEMANDE SSQ"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3967574101529565,
+     48.86056615741
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450077743",
+    "type_objet": "FONTAINE_BOIS",
+    "modele": "Bayard D1",
+    "voie": "AVENUE TRANSVERSALE 2",
+    "commune": "PARIS 20EME ARRONDISSEMENT",
+    "dispo": "NON",
+    "debut_ind": "2025-11-24T01:00:00+00:00",
+    "fin_ind": null,
+    "motif_ind": "FERMETURE HIVERNALE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.29143017339468,
+     48.841551659960714
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450024976",
+    "type_objet": "FONTNE_WALLACE",
+    "modele": "Brumisante",
+    "voie": "RUE DES FRERES MORANE",
+    "commune": "PARIS 15EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3658262163109134,
+     48.886022711011734
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450071499",
+    "type_objet": "FTNE_PETILLANTE",
+    "modele": "Fontaine pétillante",
+    "voie": "RUE D AUBERVILLIERS",
+    "commune": "PARIS 19EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.410778593697449,
+     48.853917075708694
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450071238",
+    "type_objet": "FTNE_POING_EAU",
+    "modele": "Fontaine Poing d'Eau",
+    "voie": "BOULEVARD DAVOUT",
+    "commune": "PARIS 20EME ARRONDISSEMENT",
+    "dispo": "NON",
+    "debut_ind": "2023-12-20T01:00:00+00:00",
+    "fin_ind": null,
+    "motif_ind": "APP SANS EAU"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3438518658763745,
+     48.85366004955323
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450024992",
+    "type_objet": "FTNE_MILLENAIRE",
+    "modele": "Fontaine du Millénaire",
+    "voie": "PLACE SAINT MICHEL",
+    "commune": "PARIS 6EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.2753608239013485,
+     48.86523500868814
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450071493",
+    "type_objet": "FONTAINE_ALBIEN",
+    "modele": "Fontaine à l'albien",
+    "voie": "SQUARE LAMARTINE",
+    "commune": "PARIS 16EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.400579814741705,
+     48.90554817914073
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450080231",
+    "type_objet": "FONTAINE_BOIS",
+    "modele": null,
+    "voie": "CIMETIERE PARISIEN DE PANTIN-BOBIGNY",
+    "commune": "PANTIN",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3761462078673756,
+     48.845522302366454
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450085477",
+    "type_objet": "FONTAINE_2EN1",
+    "modele": "Brumisation basse pression",
+    "voie": "PLACE HENRI FRENAY",
+    "commune": "PARIS 12EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.369041520026404,
+     48.852658714287095
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450085371",
+    "type_objet": "FONTAINE_2EN1",
+    "modele": "Brumisation haute pression",
+    "voie": "PLACE DE LA BASTILLE",
+    "commune": "PARIS 12EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3756611881984284,
+     48.76020339724288
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450080166",
+    "type_objet": "FONTAINE_BOIS",
+    "modele": "Fontaine des Bois, Parcs et Jardins",
+    "voie": "CIMETIERE PARISIEN DE THIAIS",
+    "commune": "THIAIS",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.409334718885129,
+     48.90400516966207
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450080242",
+    "type_objet": "FONTAINE_BOIS",
+    "modele": null,
+    "voie": "CIMETIERE PARISIEN DE PANTIN-BOBIGNY",
+    "commune": "PANTIN",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3457972139781273,
+     48.90893591566026
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450080215",
+    "type_objet": "FONTAINE_BOIS",
+    "modele": null,
+    "voie": "CIMETIERE PARISIEN DE SAINT-OUEN",
+    "commune": "SAINT-OUEN",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3152380182920953,
+     48.83558883761192
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450072309",
+    "type_objet": "FONTAINE_BOIS",
+    "modele": "Bayard D1",
+    "voie": "JARDIN DE L ABBE LEMIRE",
+    "commune": "PARIS 14EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3329359876396127,
+     48.81775175753544
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450085315",
+    "type_objet": "FONTAINE_TOTEM",
+    "modele": "Fontaine Totem sur PEI",
+    "voie": "AVENUE PAUL VAILLANT COUTURIER",
+    "commune": "PARIS 14EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3453969832890365,
+     48.847017762172186
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450080320",
+    "type_objet": "FONTAINE_ARCEAU",
+    "modele": "Fontaine Arceau",
+    "voie": "PLACE DU PANTHEON",
+    "commune": "PARIS 5EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.3896907874285245,
+     48.87378920134511
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450080520",
+    "type_objet": "BORNE_FONTAINE",
+    "modele": "GHM Ville de Paris",
+    "voie": "RUE DES RIGOLES",
+    "commune": "PARIS 20EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "coordinates": [
+     2.2898925039174176,
+     48.855602411748905
+    ],
+    "type": "Point"
+   },
+   "properties": {
+    "gid": "450085108",
+    "type_objet": "FONTAINE_2EN1",
+    "modele": "Mât source",
+    "voie": "QUAI BRANLY",
+    "commune": "PARIS 15EME ARRONDISSEMENT",
+    "dispo": "OUI",
+    "debut_ind": null,
+    "fin_ind": null,
+    "motif_ind": null
+   }
+  }
+ ]
+}

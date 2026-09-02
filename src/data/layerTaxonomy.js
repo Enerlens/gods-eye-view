@@ -365,6 +365,38 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     cadence: 'periodic',
   }),
 
+  // Last in the road block, and beside `traffic` and `road-status-fr` on
+  // purpose: the three are the same subject seen three ways, and the panel
+  // should let a reader compare them rather than hide the difference. The other
+  // two draw CONGESTION — a ratio, modelled or declared. This one draws a
+  // COUNT, measured by the city's own loops. `cadence: 'periodic'` and not
+  // 'live' is load-bearing: the feed is a nightly batch that lands the day
+  // before yesterday, and calling it live anywhere would be the layer's first
+  // lie.
+  // Beside `idfm-network`, which draws the same 37 956 stops as a static
+  // referential. That layer says WHAT serves a stop; this one says HOW MUCH,
+  // which is the dimension this repo did not have at all. The two are adjacent
+  // so the panel makes the pairing obvious rather than hiding it.
+  Object.freeze({
+    id: 'idfm-frequency',
+    category: 'ground-mobility',
+    label: "Fréquence des transports (Paris)",
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
+  Object.freeze({
+    id: 'comptages-fr',
+    category: 'ground-mobility',
+    label: 'Comptages routiers',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
   // ── ÉNERGIE ───────────────────────────────────────────────────────────────
   Object.freeze({
     id: 'france-energy',
@@ -514,6 +546,51 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     cadence: 'periodic',
   }),
 
+  // Placed in RISQUES & ENVIRONNEMENT rather than anywhere near the registers,
+  // and the reasoning is worth stating because the alternative is tempting:
+  // this is not a fact about a PLACE the way a school or a charge point is, it
+  // is a rate attached to a polygon, and it shares its failure mode with the
+  // other layers in this group — it is read as a property of somewhere people
+  // live. `georisques` sits here for the same reason. `cadence: 'static'`
+  // because the base is republished about once a year, and calling it anything
+  // faster would suggest the map tracks events, which it does not.
+  // Beside `delinquance-fr` in RISQUES & ENVIRONNEMENT rather than in
+  // BÂTI & TERRITOIRE, because the subject is not the street furniture: it is
+  // heat, and where a city keeps somewhere to escape it.
+  // In RISQUES & ENVIRONNEMENT because a noise-exposure zone is a constraint on
+  // where people may live, which is what the rest of this group describes. It is
+  // NOT in BÂTI & TERRITOIRE beside the cadastre: the polygon is about the
+  // aircraft, not about the ground under it.
+  Object.freeze({
+    id: 'bruit-fr',
+    category: 'hazards',
+    label: "Bruit des aéroports",
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
+  Object.freeze({
+    id: 'fraicheur-fr',
+    category: 'hazards',
+    label: 'Îlots de fraîcheur',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
+  Object.freeze({
+    id: 'delinquance-fr',
+    category: 'hazards',
+    label: 'Délinquance enregistrée',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'static',
+  }),
+
   // ── RÉSEAUX & CAPTEURS ────────────────────────────────────────────────────
   Object.freeze({
     id: 'telegeography-submarine-cables',
@@ -567,6 +644,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     id: 'meteo-stations-fr',
     category: 'comms-sensors',
     label: 'Stations météo',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
+  // In RÉSEAUX & CAPTEURS beside `radio` and `cctv`, and the neighbour is the
+  // reason the icon is 📡 and not a wave glyph: `radio` is radio-browser.info
+  // INTERNET AUDIO, and the two rows share nothing but the word "radio". A
+  // reader must be able to tell them apart in the panel without opening either.
+  Object.freeze({
+    id: 'anfr-fr',
+    category: 'comms-sensors',
+    label: 'Antennes mobiles',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -643,6 +734,35 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Beside `schools-fr` and `sup-fr` because the first thing this layer does is
+  // REFUSE their subject: the BPE's enseignement domain is 79 743 rows over the
+  // same buildings from a worse source, and it is excluded. Putting the row next
+  // to the two registers it defers to is how the panel shows that decision
+  // instead of hiding it.
+  Object.freeze({
+    id: 'amenities-fr',
+    category: 'built-environment',
+    label: "Équipements du quotidien",
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
+  // Last in BÂTI & TERRITOIRE and beside `cadastre-fr` on purpose: it is the
+  // only forward-looking layer in the stack. Everything else here describes what
+  // EXISTS; this describes what someone has been given permission to build, and
+  // it lands on the cadastral parcel that `cadastre-fr` already draws.
+  Object.freeze({
+    id: 'sitadel-fr',
+    category: 'built-environment',
+    label: "Autorisations d’urbanisme (Sitadel)",
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
   // Beside `schools-fr` and not in a group of its own, because it is the same
   // kind of fact about the same country: the State's account of where it puts
   // the people it educates. `schools-fr` covers the register up to the

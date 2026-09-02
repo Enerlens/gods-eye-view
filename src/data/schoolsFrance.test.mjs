@@ -511,3 +511,144 @@ test('an unnamed dot falls back to what the pack actually shipped', () => {
     'École',
   );
 });
+
+// --- The IPS on the card ----------------------------------------------------
+//
+// The layer's honesty rule, applied to the second attribute: 40 529 of the
+// 62 857 drawn schools that can carry an index have one. The dot
+// says nothing about the other 22 328 (62 857 - 40 529) — its colour is the level and its size
+// is the roll — so the CARD is the only surface that can, and it has to make
+// four different absences read as four different sentences.
+
+/** An IPS record shaped as `indexIps` produces them. */
+const ips = (over = {}) => ({
+  kind: 'ecole', rentree: '2024-2025', status: 'ok', value: 97.2, sentinel: null,
+  spread: null, lyceeType: null, voies: null, national: 105.8, departemental: 108.7, ...over,
+});
+
+test('the IPS sits under the roll, and names its own rentrée', () => {
+  // The écoles file is a year behind the roll files. One year printed for both
+  // would be a claim neither source makes.
+  const copy = buildSchoolSelectionLabel(record({ site: site({ ips: ips() }) })).split('\n');
+  const roll = copy.findIndex((line) => /élèves/.test(line));
+  const index = copy.findIndex((line) => /^IPS /.test(line));
+  assert.ok(roll >= 0 && index === roll + 1);
+  assert.match(copy[index], /IPS 97,2 — rentrée 2024-2025/);
+  assert.match(norm(copy[roll]), /rentrée 2025/);
+});
+
+test('a school with no published IPS says so, and is never read as average', () => {
+  const copy = buildSchoolSelectionLabel(record({ site: site({ ips: null }) }));
+  assert.match(copy, /IPS non publié pour cet UAI/);
+  // The one failure this join exists to make impossible.
+  assert.equal(/IPS 0/.test(copy), false);
+  assert.equal(/IPS 10/.test(copy), false);
+});
+
+test('a school the index does not cover says nothing about the index', () => {
+  // A rectorat is in the register and is not a school. Reporting "IPS non
+  // publié" on its card invents a gap.
+  const copy = buildSchoolSelectionLabel(record({ site: site({ level: 'autre', ips: undefined }) }));
+  assert.equal(/IPS/.test(copy), false);
+});
+
+test('a dead DEPP file reads as a broken pipe, not as a country of gaps', () => {
+  const copy = buildSchoolSelectionLabel(record({ site: site({ ips: { status: 'unavailable', value: null } }) }));
+  assert.match(copy, /indisponible/);
+  assert.equal(/non publié/.test(copy), false);
+});
+
+test('a withheld index is distinguishable from an absent one, on the card', () => {
+  const withheld = buildSchoolSelectionLabel(record({
+    site: site({ ips: ips({ status: 'ns', value: null, sentinel: 'NS' }) }),
+  }));
+  const absent = buildSchoolSelectionLabel(record({ site: site({ ips: null }) }));
+  assert.match(withheld, /non significatif/);
+  assert.notEqual(withheld, absent);
+});
+
+test('a lycée card names the voies its establishment index blends', () => {
+  const copy = buildSchoolSelectionLabel(record({
+    site: site({
+      level: 'lycee',
+      ips: ips({
+        kind: 'lycee', rentree: '2025-2026', value: 126.3, spread: 40.5, lyceeType: 'LPO',
+        voies: { gt: 140.1, pro: 92.4 }, national: 104.4, departemental: 118.3,
+      }),
+    }),
+  }));
+  assert.match(copy, /établissement entier \(LPO\)/);
+  assert.match(copy, /voie générale et technologique 140,1/);
+  assert.match(copy, /voie professionnelle 92,4/);
+  // And the baseline is the LPO one, not the LEGT one 15.8 points above it.
+  assert.match(copy, /Réf. LPO/);
+});
+
+test('a maillage card that has been resolved carries the index too', () => {
+  // The pack ships no IPS — a click fetches the register for one coordinate,
+  // and the card it produces is the same card the exact regime draws.
+  const resolved = { ...site({ ips: ips({ value: 88.4 }) }) };
+  const copy = buildSchoolsMeshLabel({ mesh: true, resolved, site: { level: 'ecole', enrolled: 214 } });
+  assert.equal(copy, buildSchoolSelectionLabel({ site: resolved }));
+  assert.match(copy, /IPS 88,4/);
+});
+
+test('an unresolved maillage dot claims no index rather than an empty one', () => {
+  const copy = buildSchoolsMeshLabel({ mesh: true, resolving: true, site: { level: 'ecole', enrolled: 214 } });
+  assert.equal(/IPS/.test(copy), false);
+});
+
+test('the site status line states the coverage of THIS view', () => {
+  const label = buildSchoolsLoadingLabel({
+    regime: 'sites', status: 'ready', loading: false, count: 537,
+    summary: { pupils: 108175, complete: true, ips: { eligible: 498, joined: 350, valued: 341, status: 'ok' } },
+  });
+  assert.match(norm(label), /537 établissements/);
+  assert.match(norm(label), /IPS publié pour 341 des 498 établissements concernés/);
+});
+
+test('the national line states the coverage the choropleth cannot colour', () => {
+  const label = buildSchoolsLoadingLabel({
+    regime: 'national', status: 'ready', loading: false,
+    national: {
+      assigned: 65396, painted: 96, unassigned: 2762,
+      ips: { eligible: 62857, joined: 42974, valued: 40529, status: 'ok' },
+    },
+  });
+  assert.match(norm(label), /65 396/);
+  assert.match(norm(label), /IPS publié pour 40 529 des 62 857 établissements concernés/);
+});
+
+test('a payload with no IPS block prints no IPS clause at all', () => {
+  // An older cached answer must not be reported as a view with no indices.
+  const label = buildSchoolsLoadingLabel({
+    regime: 'sites', status: 'ready', loading: false, count: 537,
+    summary: { pupils: 108175, complete: true, ips: null },
+  });
+  assert.equal(/IPS/.test(label), false);
+});
+
+test('the maillage legend says where the index comes from in that regime', () => {
+  _setSchoolsStateForTest({
+    regime: 'mesh',
+    records: [record({ id: 'a', mesh: true, site: site({ level: 'ecole' }) })],
+  });
+  const { legend } = _schoolsRowControlsForTest();
+  assert.match(legend[0].blurb, /IPS arrive au clic/);
+});
+
+test('the level ladder and the dot sizes are untouched by the IPS join', () => {
+  // The layer is SHIPPED. Its colour means level and its size means roll, and
+  // adding an attribute may not quietly move either.
+  const withIps = site({ ips: ips({ value: 60 }) });
+  const without = site();
+  assert.equal(schoolPointSize(withIps.enrolled), schoolPointSize(without.enrolled));
+  assert.equal(schoolLevelColor(withIps.level), schoolLevelColor(without.level));
+  _setSchoolsStateForTest({
+    regime: 'sites',
+    records: [record({ id: 'a', site: withIps }), record({ id: 'b', site: without })],
+  });
+  const { legend } = _schoolsRowControlsForTest();
+  assert.deepEqual(legend.map((row) => row.label), ['École']);
+  assert.deepEqual(legend.map((row) => row.count), [2]);
+});
