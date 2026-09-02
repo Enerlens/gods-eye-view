@@ -3,6 +3,7 @@ import { PbfReader } from 'pbf';
 import { VectorTile } from '@mapbox/vector-tile';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
+import { sceneGroundPoint } from './groundPick.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -672,53 +673,6 @@ export function resolveCadastrePickId(picked, has = (id) => _records.has(id)) {
 }
 
 /**
- * Where on the globe a screen point lands, in degrees.
- *
- * Three sources, in the order of how well each answers "what is the operator
- * pointing at". The rendered terrain first, because that is the surface the
- * parcels are draped on and it is exact. The depth buffer second, which is what
- * answers on the photoreal stack where the globe is hidden. The bare ellipsoid
- * last, which ignores relief and is wrong by the local terrain height times the
- * tangent of the view angle — acceptable as a floor, never as a first choice.
- * @param {?Cesium.Viewer} viewer
- * @param {{x:number, y:number}} windowPosition
- * @returns {?{lon:number, lat:number}}
- */
-export function cadastreGroundPoint(viewer, windowPosition) {
-  const scene = viewer?.scene;
-  if (!scene || !windowPosition) return null;
-  const ellipsoid = scene.globe?.ellipsoid || Cesium.Ellipsoid.WGS84;
-  const toDegrees = (cartesian) => {
-    if (!cartesian) return null;
-    const carto = ellipsoid.cartesianToCartographic(cartesian);
-    if (!carto) return null;
-    const lon = Cesium.Math.toDegrees(carto.longitude);
-    const lat = Cesium.Math.toDegrees(carto.latitude);
-    return Number.isFinite(lon) && Number.isFinite(lat) ? { lon, lat } : null;
-  };
-
-  if (scene.globe?.show !== false) {
-    try {
-      const ray = scene.camera?.getPickRay?.(windowPosition);
-      const hit = ray ? scene.globe.pick(ray, scene) : null;
-      const point = toDegrees(hit);
-      if (point) return point;
-    } catch { /* no terrain resident under this pixel */ }
-  }
-  try {
-    if (scene.pickPositionSupported) {
-      const point = toDegrees(scene.pickPosition(windowPosition));
-      if (point) return point;
-    }
-  } catch { /* no depth texture */ }
-  try {
-    return toDegrees(scene.camera?.pickEllipsoid?.(windowPosition, ellipsoid));
-  } catch {
-    return null;
-  }
-}
-
-/**
  * The drawn parcel under a ground point, or null.
  *
  * Smallest-first on a tie. Cadastral parcels do not overlap by construction, so
@@ -763,7 +717,7 @@ function installClickHandler(viewer) {
     //
     // A click that lands on no parcel clears the selection, and that is a real
     // answer rather than a miss: the gaps in this layer are the street.
-    const point = cadastreGroundPoint(viewer, click.position);
+    const point = sceneGroundPoint(viewer, click.position);
     const id = point ? cadastreRecordAt(point.lon, point.lat) : null;
     if (id) selectParcel(id);
     else if (_selectedId) clearSelection();

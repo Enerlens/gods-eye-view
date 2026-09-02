@@ -658,6 +658,21 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Third of the education trio, and the only one that is not a register. It
+  // draws an INDICATOR — places per 100 children under three — because no
+  // national list of crèches is published as open data (the measurement behind
+  // that claim is in `petiteEnfanceFeed.js`). Same group all the same: it is
+  // the State's account of what it provides for the people it educates, at the
+  // age before `schools-fr` starts.
+  Object.freeze({
+    id: 'petite-enfance-fr',
+    category: 'built-environment',
+    label: 'Accueil du jeune enfant',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   // Below the buildings, and last in the panel, because it is the most basic
   // reference data the app carries: the division of the ground itself. Same
   // `periodic` reasoning as its neighbour, and more so — 103 million parcels

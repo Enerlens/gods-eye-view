@@ -115,6 +115,7 @@ const LAYER_WEIGHTS = Object.freeze({
   'medecins-fr': 0.85,
   'sup-fr': 0.85,
   'meteo-stations-fr': 0.85,
+  'petite-enfance-fr': 0.6,
   'ais-live-vessels': 1,
 });
 

@@ -52,11 +52,70 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   date. ALBA LA ROMAINE, SOULAINES, TARASCON, PIOGGIOLA, QUERCITELLO and MURAT
   SUR VEBRE are drawn in the neutral grey this project uses for "the publisher
   did not say" — never as stations that measure nothing.
-
-## [Unreleased] — 2026-09-01
-
-### Added
-
+- **Urbanisme (PLU) — click anywhere on the map, not on the marker.** The layer
+  drew a whole block of zoning and put every word of the answer on one 26-pixel
+  glyph, so the plot opposite could be SEEN and not READ: knowing what the
+  magenta polygon across the street means meant flying the camera over it.
+  A click on the wash, on an outline, or on the bare globe between them now
+  opens a card for that spot — which zone, what the family means, which
+  easements reach it, when the PLU was approved and under which document.
+  Measured at Ustaritz at 900 m: four clicks across one screen answer `UB`,
+  `UA`, `A` and `UB`. No request and no wait: the answer is read out of the map
+  already in hand. The scan marker keeps its own card, which is the scan-level
+  summary.
+- **The register outranks the drawing, within 30 m of the marker.** The shapes
+  on screen are decimated by up to 96%, and this layer's own rule is that a
+  simplified outline must never decide which rule applies to a house: measured
+  at Ustaritz, the point APIcarto itself answers `UB` for falls OUTSIDE the
+  drawn `UB` ring — 571 sampled points do. At the scan point the register has
+  already answered, so it is used and the geometry is not consulted; further
+  out the drawn map answers and the card says its outlines are simplified.
+- **Four ways to have no zoning, said apart.** The answer was refused whole,
+  the box never covered this spot, the camera is above 1 500 m so only the
+  marker was asked about, or the published document genuinely stops here.
+  A card printing "aucun zonage" for all four would report three of the layer's
+  own limits as facts about the plot. Easements the same: "aucune servitude à
+  ce point" only where the register answered that point, and "aucune des N
+  servitudes du repère n'atteint ce point" everywhere else — because "this
+  ground is clear" is a survey, and the easement half is only ever asked at the
+  marker.
+- **An approval date is a date.** The same national schema publishes `datvalid`
+  as `20240323` at Ustaritz and `2026-06-16` in Paris; both now read
+  `23/03/2024` and `16/06/2026` on every card.
+- **Accueil du jeune enfant (FR) — the indicator, because the register does not
+  exist.** The question "can we add a crèche dataset?" was answered by
+  measurement, not assumption, and the answer is no: the Cnaf publishes 210
+  open datasets and **not one is an establishment**; FINESS holds 174 621
+  establishments of which only **183** have a crèche-shaped name, and those are
+  incidental (EAJE are authorised by the département's PMI, not an ARS);
+  INSEE's BPE has the right object but its only API millésimes are 2016 and
+  **2021**; and Sirene's NAF 88.91A silently drops the entire public sector —
+  `nature_juridique` 7210 with that APE returns **zero rows**, while a
+  municipal crèche is really there as an establishment of the commune's SIREN.
+  So the new layer draws what the State does publish: **places of formal
+  childcare per 100 children under three**, at the three scales the Cnaf
+  publishes them — 102 départements, 1 251 EPCI, 1 061 communes.
+- **The colour is a ratio to France, not a quantile.** This layer paints three
+  nested scales, and a quantile band means "the top sixth of what is on
+  screen" — so the same colour would mean different things at different zooms
+  and an area would change colour without anything changing about it. Every
+  scale is anchored on the one national figure (**60,9** in 2023, which
+  cross-checks exactly against the ONAPE 2024 report), on a diverging ramp
+  whose break falls where the ratio crosses 1. The map then says something
+  immediately: the Atlantic west is well above France, the Paris ring and the
+  Mediterranean south well below.
+- **The omission is the finding.** The bundled polygons are metropolitan, so 6
+  of the Cnaf's 102 rows cannot be painted — Guyane 13,4, Saint-Martin 30,2,
+  La Réunion 38,5, Guadeloupe 44,1, Saint-Barthélemy 47,5, Martinique 55,2.
+  **Every one is below the national rate, Guyane at 22% of it**, while not one
+  metropolitan département reaches the lowest band. A map stopping at the
+  coastline would delete the whole bottom of the distribution, so the six are
+  carried with their rates and named on the national card.
+- **Two placeholder rows that are not spelled alike.** The EPCI file publishes
+  `numepci = "XX"` carrying a real and extreme 195,8 — the national maximum,
+  drawn nowhere, anchoring any ramp — and the département places file spells
+  the same idea `XXX`. Matching a literal would have caught one of the two.
+  With it gone the real EPCI range is 2,7 to 160,5.
 - **Médecins (FR) — where doctors are, and where access runs out.** 64 232
   practice addresses, 117 922 named doctors and what each of them charges,
   drawn at three scales. The national view paints the DREES's **accessibilité

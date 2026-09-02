@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
 import {
   SEAT_EPSILON_M,
+  addressScanClickIntent,
   cardFromEntity,
   createAddressScanLayer,
   renderedGroundM,
@@ -361,4 +362,60 @@ test('an unchanged question at an unchanged point still costs nothing', async (t
   await layer.update(viewer);
   assert.equal(queries.length, 1, 'the guard still holds when nothing changed');
   layer.disable();
+});
+
+// ── Whose click is it ────────────────────────────────────────────────────────
+//
+// Four outcomes, and the layer that answers a ground point has to reach three
+// of them without ever taking a click that belongs to a sibling. The rule is
+// tested here rather than in the handler because the handler needs a canvas,
+// a scene and a real Cesium event to run at all — which is how a routing bug
+// ships green.
+
+test('a marker of ours is selected, whatever else the layer can answer', () => {
+  const entity = { id: 'dvf:1' };
+  assert.equal(addressScanClickIntent({ picked: entity, isCard: true, isOwn: true }), 'select');
+  assert.equal(
+    addressScanClickIntent({
+      picked: entity, isCard: true, isOwn: true, answersGround: true,
+    }),
+    'select',
+    'the marker carries a card of its own and it wins',
+  );
+});
+
+test('bare globe is a question about the ground, and used to be a dismissal', () => {
+  assert.equal(addressScanClickIntent({ picked: null, answersGround: true }), 'ground');
+  assert.equal(
+    addressScanClickIntent({ picked: null, answersGround: true, selected: true }),
+    'ground',
+    'a click elsewhere moves the answer rather than closing it',
+  );
+  assert.equal(
+    addressScanClickIntent({ picked: null, selected: true }),
+    'dismiss',
+    'a layer with nothing to say about bare ground still closes on it',
+  );
+  assert.equal(addressScanClickIntent({ picked: null }), 'ignore');
+});
+
+test('our own wash is ground, because it describes the plot rather than standing on it', () => {
+  // The failure this exists to stop: the zone fill covers most of the screen
+  // when the layer is on, so treating any pick as "something else is there"
+  // would leave the ground unclickable exactly where the layer is working.
+  const fill = { id: { id: 'gpu:zone:1:fill:0' } };
+  assert.equal(
+    addressScanClickIntent({ picked: fill, isOwn: true, answersGround: true }),
+    'ground',
+  );
+});
+
+test('another layer`s object is another layer`s click', () => {
+  const foreign = { id: { id: 'schools-fr:0651234U' } };
+  assert.equal(
+    addressScanClickIntent({ picked: foreign, answersGround: true, selected: true }),
+    'ignore',
+    'that layer is about to open a card of its own; two cards for one click is the bug',
+  );
+  assert.equal(addressScanClickIntent({ picked: foreign, selected: true }), 'ignore');
 });
