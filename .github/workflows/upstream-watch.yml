@@ -1,0 +1,117 @@
+# Reports how far this fork has drifted from bilawalsidhu/gods-eye-view.
+#
+# It exists because the fork had NO upstream remote at all: two upstream
+# releases and twelve commits landed without anyone here being able to see
+# them, and two of those commits were fixes for bugs this tree still had. A
+# remote alone would not have helped — nobody types `git fetch upstream` on a
+# schedule. So the schedule is the point, and the issue is the delivery.
+#
+# Deliberately read-only toward the code: it never merges, cherry-picks, or
+# opens a PR. It reports, and a human decides. Integrating upstream is a
+# judgement call about conflicts, not a thing to automate.
+name: upstream-watch
+
+on:
+  schedule:
+    # Mondays, 06:00 UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the merge-base with upstream is 50+ commits back, and
+          # a shallow clone cannot find it.
+          fetch-depth: 0
+
+      - name: Measure drift against upstream
+        id: drift
+        run: |
+          set -euo pipefail
+          git remote add upstream https://github.com/bilawalsidhu/gods-eye-view.git
+          git fetch --quiet upstream --tags
+          BEHIND=$(git rev-list --count HEAD..upstream/main)
+          AHEAD=$(git rev-list --count upstream/main..HEAD)
+          BASE=$(git merge-base HEAD upstream/main)
+          {
+            echo "behind=$BEHIND"
+            echo "ahead=$AHEAD"
+            echo "base=$BASE"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "Fork is **$BEHIND commits behind** and **$AHEAD ahead** of"
+            echo "\`bilawalsidhu/gods-eye-view@main\`, diverging at \`$BASE\`."
+            echo
+            echo "### New upstream commits"
+            echo
+            git log --reverse --format='- \`%h\` %s' HEAD..upstream/main
+            echo
+            TAGS=$(git tag --contains "$BASE" --no-contains HEAD 2>/dev/null || true)
+            if [ -n "$TAGS" ]; then
+              echo "### Upstream tags not in this fork"
+              echo
+              printf -- '- `%s`\n' $TAGS
+              echo
+            fi
+            echo "### Files that would conflict on a merge"
+            echo
+            # merge-tree names the collisions without touching the working
+            # tree, which is the number that decides whether this is an
+            # afternoon or a week. Its output is: tree OID, the conflicted
+            # paths, a blank line, then human-readable merge chatter — so stop
+            # at the blank line rather than printing the chatter as filenames.
+            # It also exits non-zero when there ARE conflicts, which is the
+            # normal case here.
+            CONFLICTS=$(git merge-tree --write-tree --name-only HEAD upstream/main 2>/dev/null \
+              | awk 'NR > 1 { if ($0 == "") exit; print }' || true)
+            if [ -n "$CONFLICTS" ]; then
+              echo '```'
+              printf '%s\n' "$CONFLICTS"
+              echo '```'
+            else
+              echo "None — this would merge clean."
+            fi
+            echo
+            echo "_Reported by \`.github/workflows/upstream-watch.yml\`. Nothing was merged._"
+          } > drift.md
+
+      - name: Open or update the tracking issue
+        if: steps.drift.outputs.behind != '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BEHIND: ${{ steps.drift.outputs.behind }}
+        run: |
+          set -euo pipefail
+          TITLE="Amont : $BEHIND commits d'avance sur ce fork"
+          gh label create upstream-drift \
+            --color 0E8A16 \
+            --description "Écart avec bilawalsidhu/gods-eye-view" 2>/dev/null || true
+          # One issue, reused. A new issue every Monday would be noise, and the
+          # drift is one fact, not a weekly event.
+          EXISTING=$(gh issue list --label upstream-drift --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue edit "$EXISTING" --title "$TITLE" --body-file drift.md
+          else
+            gh issue create --title "$TITLE" --label upstream-drift --body-file drift.md
+          fi
+
+      - name: Close the tracking issue when the fork has caught up
+        if: steps.drift.outputs.behind == '0'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh issue list --label upstream-drift --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+          if [ -n "$EXISTING" ]; then
+            gh issue close "$EXISTING" --comment "Fork is level with upstream/main."
+          fi
