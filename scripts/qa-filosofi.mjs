@@ -11,9 +11,9 @@
  *   i.    from national altitude the layer draws NOTHING and says to zoom —
  *         2.3 million squares sampled down to 6 000 would be a picture of the
  *         sample, not of the country, and it would look like a map
- *   ii.   over a city the grid appears, at 200 m, extruded, with a real
- *         population behind it — checked against both Lyon and Paris, because
- *         the two are the layer's own test of whether the ramp travels
+ *   ii.   over a city the grid appears, at 200 m, as proportional discs with a
+ *         real population behind them — checked against both Lyon and Paris,
+ *         because the two are the layer's own test of whether the ramp travels
  *   iii.  pulling back coarsens the grid to 1 km rather than thinning it
  *   iv.   switching the indicator chip recolours WITHOUT a new request: every
  *         indicator arrived in the same answer, and refetching would buy the
@@ -148,7 +148,9 @@ function probe(page) {
     return {
       stats,
       chips: controls.chips.map((chip) => ({ id: chip.id, active: chip.active })),
-      legend: controls.legend.map((row) => ({ label: row.label, count: row.count })),
+      legend: controls.legend.map((row) => ({
+        label: row.label, count: row.count, shape: Boolean(row.glyph),
+      })),
     };
   }, LAYER);
 }
@@ -212,11 +214,11 @@ async function main() {
     await shoot(page, '01-national-refusal.png');
 
     // ── ii. Lyon ──────────────────────────────────────────────────────────
-    console.log('\n[2] Over Lyon: the 200 m grid, extruded, with a real population');
+    console.log('\n[2] Over Lyon: the 200 m grid, as discs, with a real population');
     await setView(page, LYON);
     await pump(page, 10);
     const lyon = await probe(page);
-    check('squares are drawn', lyon.stats.count > 50, `count=${lyon.stats.count}`);
+    check('discs are drawn', lyon.stats.count > 50, `count=${lyon.stats.count}`);
     check('at 200 m', lyon.stats.resolution === 200, `resolution=${lyon.stats.resolution}`);
     check('with a plausible population behind them',
       // A 9 km view over the Presqu'île covers most of the Métropole's core:
@@ -227,11 +229,23 @@ async function main() {
       lyon.stats.niveau > 10_000 && lyon.stats.niveau < 60_000, `niveau=${lyon.stats.niveau}`);
     check('the imputed share is reported next to the totals',
       Number.isFinite(lyon.stats.imputedShare), `imputedShare=${lyon.stats.imputedShare}`);
+    // The colour rows only. The layer has three channels and the legend has a
+    // row for each: the two SHAPE rows count people and modelled cells, not
+    // bands, and summing them into the band total would be adding a population
+    // to a number of squares.
+    const bands = lyon.legend.filter((row) => !row.shape);
     check('the legend carries six bands plus any unpublished row',
-      lyon.legend.length >= 6, `${lyon.legend.length} rows`);
+      bands.length >= 6, `${bands.length} rows`);
     check('the legend counts add up to the cells in view',
-      lyon.legend.reduce((sum, row) => sum + row.count, 0) === lyon.stats.cells,
-      `${lyon.legend.reduce((sum, row) => sum + row.count, 0)} vs ${lyon.stats.cells}`);
+      bands.reduce((sum, row) => sum + row.count, 0) === lyon.stats.cells,
+      `${bands.reduce((sum, row) => sum + row.count, 0)} vs ${lyon.stats.cells}`);
+    // And the shape channels are explained, because a disc that stops short of
+    // its cell and a ring that is hollow are both claims a colour ramp cannot
+    // make.
+    const shapes = lyon.legend.filter((row) => row.shape);
+    check('the size and the hollow are on the legend, not only on the map',
+      shapes.length === 2 && /Aire = /.test(shapes[0].label) && /imput/i.test(shapes[1].label),
+      shapes.map((row) => row.label).join(' · '));
     await shoot(page, '02-lyon-niveau-de-vie.png');
     console.log(`      ${lyon.stats.cells} carreaux · ${lyon.stats.people} habitants`
       + ` · ${lyon.stats.niveau} €/an · ${lyon.stats.imputedShare}% imputés`);
@@ -246,7 +260,7 @@ async function main() {
     const poverty = await probe(page);
     check('the active chip moved', poverty.chips.find((chip) => chip.active)?.id === 'pauvrete',
       poverty.chips.find((chip) => chip.active)?.id);
-    check('the same squares are still drawn', poverty.stats.count === lyon.stats.count,
+    check('the same cells are still drawn', poverty.stats.count === lyon.stats.count,
       `${poverty.stats.count} vs ${lyon.stats.count}`);
     check('no request was spent on it', carreauRequests === beforeChip,
       `${carreauRequests - beforeChip} extra requests`);
@@ -261,7 +275,7 @@ async function main() {
     await setView(page, PARIS);
     await pump(page, 10);
     const paris = await probe(page);
-    check('squares are drawn over Paris', paris.stats.count > 50, `count=${paris.stats.count}`);
+    check('discs are drawn over Paris', paris.stats.count > 50, `count=${paris.stats.count}`);
     check('at 200 m', paris.stats.resolution === 200, `resolution=${paris.stats.resolution}`);
     check('Paris is denser than the Lyon view',
       paris.stats.people > 0, `people=${paris.stats.people}`);
@@ -278,7 +292,7 @@ async function main() {
     await pump(page, 10);
     const wide = await probe(page);
     check('the 1 km grid took over', wide.stats.resolution === 1000, `resolution=${wide.stats.resolution}`);
-    check('and it still draws squares', wide.stats.count > 20, `count=${wide.stats.count}`);
+    check('and it still draws discs', wide.stats.count > 20, `count=${wide.stats.count}`);
     check('covering more people than the city view',
       wide.stats.people > lyon.stats.people, `${wide.stats.people} vs ${lyon.stats.people}`);
     await shoot(page, '05-lyon-1km.png');

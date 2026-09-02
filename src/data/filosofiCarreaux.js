@@ -11,12 +11,14 @@ import { applyViewGate } from './viewGate.js';
 import {
   FILOSOFI_METRICS,
   FILOSOFI_RAMPS,
+  FILOSOFI_SIZE_BREAKS,
   FILOSOFI_RAMP_SAMPLE,
   FILOSOFI_VINTAGE,
   cellCentre,
+  cellClearanceM,
   cellColor,
-  cellCorners,
-  cellHeightM,
+  cellDisc,
+  cellSymbol,
   metricBand,
   resolutionForBox,
   resolveMetric,
@@ -34,22 +36,45 @@ import {
  * smaller than the administration, and INSEE's 200 m carroyage is the only
  * national grid that is.
  *
- * TWO CHANNELS, AND THE HEIGHT IS NOT THE INDICATOR. Colour carries the chosen
- * indicator; height carries the COUNT that indicator was computed on. That is
- * the whole design and it is a correctness decision, not a style one: a stack
- * of "27 100 € per person" has no volume, and the eye reads volume as quantity.
- * A block whose volume is its population is a true statement; the same block
- * scaled by an average is a picture of nothing. The consequence is on screen
- * and on every card — a brilliantly coloured square one pixel tall is four
- * households, and switching indicators recolours the city without relaying it.
+ * A CELL IS A PLACE TO PUT A SYMBOL, NOT A TILE TO PAINT, AND THAT IS THE FIRST
+ * RULE. The carroyage is 2.3 million contiguous squares; drawing each one edge
+ * to edge turns a populated département into an opaque quilt with the map
+ * underneath it — no streets, no place names, no marker from any other layer,
+ * nothing to locate the statistic against. A layer that hides the map is not a
+ * layer, it is a replacement. So each cell carries one flat translucent DISC at
+ * its centre, capped at `FILOSOFI_MAX_FILL` of the cell, and both the gap
+ * around it and the alpha through it are the map. See `cellSymbol` in
+ * `filosofiFeed.js` for the ceiling and its price.
  *
- * THE PERFORATED SQUARES ARE IMPUTED. INSEE publishes a flag meaning "this
- * cell's figures were modelled, because publishing the observation would have
- * broken confidentiality". In the 80 105-cell national sample the ramps were
- * measured on, 39 % of cells carry it. Drawing those identically to observed
- * cells would be drawing a model and calling it a census, so they are drawn as
- * a smaller square inside their own footprint — the grid visibly loses its
- * mortar where the data is inferred — and the legend says so.
+ * FLAT, AND THAT WAS A CORRECTION. The count was the EXTRUSION first, which
+ * failed three ways: a camera looking down reads no height at all, paying for
+ * the tower with the cell's whole footprint cost the basemap, and a field of
+ * prisms stands in front of the streets it is describing. Nothing here stands
+ * up. The discs are laid a few metres clear of the terrain, which is all the
+ * third dimension a statistic about people needs.
+ *
+ * TWO CHANNELS, AND THE SIZE IS NOT THE INDICATOR. Colour carries the chosen
+ * indicator; AREA carries the COUNT that indicator was computed on. That is the
+ * whole design and it is a correctness decision, not a style one: "27 100 € per
+ * person" has no extent, and the eye reads extent as quantity, so a symbol
+ * sized by an average is a picture of nothing.
+ *
+ * SIX SIZE CLASSES, on national quantiles of the count — the same shape as the
+ * six-band colour ramp, and the same argument: the eye cannot read a continuous
+ * magnitude back into a number, and the card carries the number anyway. A
+ * strictly proportional scale was tried first and it cannot survive the range —
+ * see `FILOSOFI_SIZE_BREAKS`, where the arithmetic is written down against a
+ * measured viewport.
+ *
+ * THE HOLLOW DISCS ARE IMPUTED. INSEE publishes a flag meaning "this cell's
+ * figures were modelled, because publishing the observation would have broken
+ * confidentiality". In the 80 105-cell national sample the ramps were measured
+ * on, 39 % of cells carry it. Drawing those identically to observed cells would
+ * be drawing a model and calling it a census, so an imputed cell is drawn as a
+ * RING — the map shows through where the data was inferred — and the legend
+ * says so. The ring is grown to keep the area it loses to its hole, because the
+ * hollow is a claim about PROVENANCE and must not double as a quieter claim
+ * about the count.
  *
  * THE BREAKS ARE NATIONAL AND ABSOLUTE. A viewport-relative ramp would make
  * Neuilly and Roubaix the same picture, which is the opposite of the point.
@@ -71,7 +96,7 @@ export const FILOSOFI_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
 });
 
 /**
- * Widest view that still draws squares, in degrees of latitude.
+ * Widest view that still draws symbols, in degrees of latitude.
  *
  * Beyond this the 1 km grid hits its row ceiling and the map becomes a SAMPLE
  * of the country wearing the clothes of a picture of it. Refusing is the
@@ -100,17 +125,25 @@ const UPDATE_INTERVAL_MS = 60 * 60_000;
 /** Cache grid the box is snapped onto — matches the proxy's own step. */
 const BOX_SNAP_DEG = 0.01;
 
-/**
- * How much of its own footprint an imputed cell keeps.
- *
- * 0.6 rather than something subtler: at 200 m and a city-wide zoom a cell is a
- * few pixels across, and a 10 % inset is invisible. At 0.6 the grid reads as
- * perforated at every altitude the layer draws at.
- */
-const IMPUTED_INSET = 0.6;
-
 /** Selection accent, matching the app's other selected-object cards. */
 const SELECTED_COLOR = '#00ffff';
+
+/**
+ * How opaque a disc is drawn.
+ *
+ * The second half of "never hide the map": the gaps let it through BETWEEN the
+ * discs, this lets it through UNDER them. 0.7 is where the band still reads as
+ * its own colour over a busy basemap — much below it and the ramp starts
+ * borrowing the hue of whatever it is lying on, which would make the indicator
+ * a function of the map style.
+ *
+ * The cost is real and worth knowing: translucent geometry does not write
+ * depth, so two symbols overlapping on screen blend in whatever order they were
+ * batched. Flat discs on a shared plane never overlap from above and barely do
+ * at a grazing angle, which is what makes the alpha affordable here and made it
+ * unaffordable when every cell was an extruded tower.
+ */
+const DISC_ALPHA = 0.7;
 
 /** Reused so a 5 000-cell payload does not mint 5 000 Cartographics. */
 const _groundScratch = new Cesium.Cartographic();
@@ -203,26 +236,18 @@ function renderedGroundM(lat, lon) {
 }
 
 /**
- * The corners a cell is drawn with — its own, or an inset square when the
- * figures were imputed.
+ * The outline of one drawn symbol, concentric with its cell.
  *
- * The inset is applied in EPSG:3035 metres, BEFORE the projection, so the
- * smaller square is concentric with the real one at every latitude. Insetting
- * after projection would shear it, because a LAEA square is not axis-aligned
- * in WGS84.
+ * Serves both the disc and the hole an imputed disc carries: they differ only
+ * by the fraction handed in.
  *
  * @param {object} cell
  * @param {number} resolution
+ * @param {number} fraction Diameter as a share of the cell's side.
  * @returns {Array<[number, number]>}
  */
-export function drawnCorners(cell, resolution) {
-  if (cell.est !== 1) return cellCorners({ res: resolution, n: cell.n, e: cell.e });
-  const inset = (resolution * (1 - IMPUTED_INSET)) / 2;
-  return cellCorners({
-    res: resolution * IMPUTED_INSET,
-    n: cell.n + inset,
-    e: cell.e + inset,
-  });
+export function drawnOutline(cell, resolution, fraction) {
+  return cellDisc({ res: resolution, n: cell.n, e: cell.e }, fraction);
 }
 
 /** A stable, human-readable id for one drawn cell. */
@@ -238,12 +263,11 @@ function clearPrimitive() {
 }
 
 /**
- * The base every square stands on.
+ * What the layer draws, one record per populated cell.
  *
- * Terrain under a city is not flat — Fourvière is 130 m above the Rhône — and a
- * grid drawn on the ellipsoid would bury half of Lyon. Sampled per cell where
- * the globe can answer, falling back to the viewport's own first answer so a
- * cold tile does not drop a square to sea level next to its neighbours.
+ * Falls back to the viewport's own first answer where the globe has no tile
+ * yet, so a cold tile does not drop one symbol to sea level next to its
+ * neighbours.
  *
  * @param {Array<object>} cells
  * @param {number} resolution
@@ -254,32 +278,59 @@ function buildRecords(cells, resolution) {
   let coldGround = 0;
   let fallbackM = null;
   for (const cell of cells) {
-    const height = cellHeightM(cell, _metric, { resolution });
-    if (height <= 0) continue;
+    const symbol = cellSymbol(cell, _metric, { resolution });
+    if (symbol.fill <= 0) continue;
     const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e });
-    let baseM = renderedGroundM(lat, lon);
-    if (baseM === null) {
+    // ONE sample, at the centre. Probing the footprint instead was measured at
+    // 400 ms per redraw against 85 ms for the same 484 cells; the clearance
+    // below absorbs the relief that costs.
+    let groundM = renderedGroundM(lat, lon);
+    if (groundM === null) {
       coldGround += 1;
-      baseM = fallbackM ?? 0;
+      groundM = fallbackM ?? 0;
     } else if (fallbackM === null) {
-      fallbackM = baseM;
+      fallbackM = groundM;
     }
     const color = cellColor(cell, _metric);
     if (!color) continue;
+    const baseM = groundM + cellClearanceM(resolution, symbol.fill);
     records.push({
       id: cellId(cell, resolution),
       cell,
       resolution,
       color,
-      heightM: height,
+      fill: symbol.fill,
       baseM,
       lon,
       lat,
-      corners: drawnCorners(cell, resolution),
-      position: Cesium.Cartesian3.fromDegrees(lon, lat, baseM + height),
+      corners: drawnOutline(cell, resolution, symbol.fill),
+      holeCorners: symbol.hole > 0 ? drawnOutline(cell, resolution, symbol.hole) : null,
+      position: Cesium.Cartesian3.fromDegrees(lon, lat, baseM),
     });
   }
   return { records, coldGround };
+}
+
+/**
+ * The polygon one record draws: its disc, with the hole an imputed cell has.
+ *
+ * A hole rather than a second, smaller instance in the basemap's colour: the
+ * ring has to be genuinely open, or the map does not show through it and the
+ * hollow means nothing.
+ *
+ * @param {object} record
+ * @returns {Cesium.PolygonHierarchy}
+ */
+function symbolHierarchy(record) {
+  const ring = [];
+  for (const [lon, lat] of record.corners) ring.push(lon, lat);
+  const positions = Cesium.Cartesian3.fromDegreesArray(ring);
+  if (!record.holeCorners) return new Cesium.PolygonHierarchy(positions);
+  const hole = [];
+  for (const [lon, lat] of record.holeCorners) hole.push(lon, lat);
+  return new Cesium.PolygonHierarchy(positions, [
+    new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(hole)),
+  ]);
 }
 
 /** Build one batched primitive for the whole viewport. */
@@ -290,19 +341,15 @@ function drawRecords(records) {
   const instances = [];
   for (const record of records) {
     _records.set(record.id, record);
-    const degrees = [];
-    for (const [lon, lat] of record.corners) degrees.push(lon, lat);
     instances.push(new Cesium.GeometryInstance({
       id: record.id,
       geometry: new Cesium.PolygonGeometry({
-        polygonHierarchy: new Cesium.PolygonHierarchy(
-          Cesium.Cartesian3.fromDegreesArray(degrees),
-        ),
+        polygonHierarchy: symbolHierarchy(record),
+        // FLAT, and at one height: no extrusion, no walls, nothing standing up
+        // off the map. The count is the disc's area; a prism would say it twice
+        // and stand in front of the streets it is describing.
         height: record.baseM,
-        extrudedHeight: record.baseM + record.heightM,
-        vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
-        closeTop: true,
-        closeBottom: false,
+        vertexFormat: Cesium.PerInstanceColorAppearance.FLAT_VERTEX_FORMAT,
       }),
       attributes: {
         color: Cesium.ColorGeometryInstanceAttribute.fromColor(instanceColor(record)),
@@ -312,10 +359,12 @@ function drawRecords(records) {
 
   _primitive = new Cesium.Primitive({
     geometryInstances: instances,
-    // Lit rather than flat, for the same reason the building layer is: without
-    // normals a field of one-colour boxes reads as a single mass and the shape
-    // — which is half the information — disappears.
-    appearance: new Cesium.PerInstanceColorAppearance({ closed: false, translucent: false }),
+    // Flat shading, because there is no form left to shade and a headlight on a
+    // horizontal disc only tints it: `flat` puts the exact band colour on the
+    // map, which is what the panel's legend swatch promises.
+    appearance: new Cesium.PerInstanceColorAppearance({
+      flat: true, closed: false, translucent: true,
+    }),
     asynchronous: true,
     releaseGeometryInstances: false,
   });
@@ -325,25 +374,22 @@ function drawRecords(records) {
 }
 
 /**
- * A cell's drawn colour: its band, darkened towards the ground.
+ * A cell's drawn colour: its band, at the layer's one alpha.
  *
- * Opaque, always. An alpha below 1 moves the geometry into Cesium's translucent
- * pass, which does not write depth, and the grid then renders as one sheet with
- * everything showing through everything.
+ * The brightness used to carry the extrusion, to separate two neighbours in the
+ * same band that shared an edge. Nothing shares an edge now: every symbol
+ * stands inside its own cell with a gutter around it, so the band can be the
+ * band, and two cells of the same colour are two cells with the same value.
  *
- * The brightness carries HEIGHT because the band does not carry enough: a
- * quartier is usually one band wide, so two neighbours almost always share a
- * hue and with no outline between them a whole arrondissement reads as one
- * polygon. Population varies between adjacent squares and is the channel that
- * separates them.
+ * One alpha for every disc, and that matters: varying it per cell would make
+ * transparency a third data channel nobody declared, and the map underneath
+ * would read as part of the statistic.
  *
  * @param {object} record
  * @returns {Cesium.Color}
  */
 export function instanceColor(record) {
-  const base = Cesium.Color.fromCssColorString(record.color);
-  const t = Math.min(Math.max(record.heightM / 120, 0), 1);
-  return base.darken(0.35 * (1 - t), new Cesium.Color());
+  return Cesium.Color.fromCssColorString(record.color).withAlpha(DISC_ALPHA);
 }
 
 function applyInstanceColor(id, color) {
@@ -388,7 +434,7 @@ function measure(value, unit) {
 }
 
 /**
- * The card for one selected square.
+ * The card for one selected cell.
  *
  * Every line is either a published value or an explicit statement that the
  * value is absent — and the imputation line is never omitted, because a
@@ -430,9 +476,11 @@ export function createFilosofiSelectedOverlayEntry(record, communes = {}) {
     details.push('Imputation non renseignée par l’INSEE pour ce carreau');
   }
   details.push(`Carreau ${side} · revenus ${FILOSOFI_VINTAGE} · INSEE Filosofi`);
-  // Height is the count, not the indicator — stated on the card because it is
-  // the one thing a viewer cannot read off the picture.
-  details.push(`Hauteur = ${_metric.weight === 'men' ? 'ménages' : 'habitants'}, couleur = ${_metric.label.toLowerCase()}`);
+  // Size is the count, not the indicator — stated on the card because it is the
+  // one thing a viewer cannot read off the picture, and because a disc that
+  // stops short of its cell must say what the space around it means: nobody
+  // there, not no data there.
+  details.push(`Aire du disque = ${_metric.weight === 'men' ? 'ménages' : 'habitants'}, couleur = ${_metric.label.toLowerCase()}`);
 
   return {
     id: String(record.id),
@@ -468,7 +516,7 @@ function selectCell(id) {
   if (!record) return false;
   clearSelection();
   _selectedId = id;
-  applyInstanceColor(id, Cesium.Color.fromCssColorString(SELECTED_COLOR));
+  applyInstanceColor(id, Cesium.Color.fromCssColorString(SELECTED_COLOR).withAlpha(DISC_ALPHA));
   const entry = createFilosofiSelectedOverlayEntry(record, _payload?.communes || {});
   if (entry) {
     _overlayHost.setVisible(FILOSOFI_SELECTED_OVERLAY_SOURCE_ID, true);
@@ -582,9 +630,9 @@ async function load() {
 /**
  * Redraw the payload ALREADY IN HAND under a new indicator.
  *
- * Not a refetch: the same 146 squares carry every indicator at once, and the
+ * Not a refetch: the same 146 cells carry every indicator at once, and the
  * only thing that changed is which column drives the colour and which count
- * drives the height. Asking the proxy again would buy the same bytes twice.
+ * drives the size. Asking the proxy again would buy the same bytes twice.
  *
  * @returns {boolean}
  */
@@ -601,6 +649,30 @@ function redrawForMetric() {
 // The legend
 // ---------------------------------------------------------------------------
 /**
+ * The two rows whose channel is SHAPE, drawn as the glyph they describe.
+ *
+ * Colour is the only channel a colour legend can explain, and this layer has
+ * three. Without these rows the size of a disc — the population, the whole
+ * denominator — is a thing the map states and the panel never mentions, and the
+ * rings look like a rendering fault.
+ */
+const SHAPE_LEGEND_TINT = '#9ec8e0';
+const svgGlyph = (body) => `data:image/svg+xml,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 13">${body}</svg>`,
+)}`;
+/** Three discs, small to large: the size channel, shown as itself. */
+const SIZE_GLYPH = svgGlyph(
+  '<circle cx="1.6" cy="10.4" r="1.6"/>'
+  + '<circle cx="5.6" cy="9.4" r="2.6"/>'
+  + '<circle cx="11.3" cy="8" r="4"/>',
+);
+/** A ring: an imputed cell, shown as itself. */
+const HOLLOW_GLYPH = svgGlyph(
+  '<path fill-rule="evenodd" d="M6.5 0.8a5.7 5.7 0 1 0 0 11.4a5.7 5.7 0 1 0 0-11.4z'
+  + 'M6.5 3.65a2.85 2.85 0 1 1 0 5.7a2.85 2.85 0 1 1 0-5.7z"/>',
+);
+
+/**
  * The six bands, with the break that opens each and how many cells are in it.
  *
  * The break VALUES are on the legend rather than "faible / élevé", because the
@@ -610,7 +682,7 @@ function redrawForMetric() {
  * @param {Array<object>} cells
  * @returns {Array<object>}
  */
-export function filosofiLegend(metric, cells = []) {
+export function filosofiLegend(metric, cells = [], resolution = 200) {
   const breaks = FILOSOFI_RAMPS[metric.id === 'population' ? 'population' : metric.id];
   const counts = new Array(metric.ramp.length).fill(0);
   let unknown = 0;
@@ -645,6 +717,50 @@ export function filosofiLegend(metric, cells = []) {
       color: '#4a5568',
       count: unknown,
       blurb: 'Le carreau existe mais l’indicateur n’y est pas diffusé.',
+    });
+  }
+
+  // The shape channels, after the colour ramp they qualify. Each carries the
+  // count it is a legend FOR — the people the discs are sized on, and the
+  // cells whose figures were modelled — so neither row is a caption without a
+  // number.
+  const weightField = metric.weight === 'men' ? 'men' : 'ind';
+  let weightTotal = 0;
+  let imputed = 0;
+  for (const cell of cells) {
+    if (Number.isFinite(cell?.[weightField])) weightTotal += cell[weightField];
+    if (cell?.est === 1) imputed += 1;
+  }
+  // The class breaks, in words, because "six sizes" without the numbers is a
+  // scale nobody can read back. Fine grid unless the payload says otherwise —
+  // the legend is drawn before the first answer arrives.
+  const sizeBreaks = (FILOSOFI_SIZE_BREAKS[resolution] || FILOSOFI_SIZE_BREAKS[200])[
+    metric.weight === 'men' ? 'men' : 'ind'
+  ];
+  const unit = metric.weight === 'men' ? 'ménages' : 'habitants';
+  const gridLabel = resolution === 1000 ? '1 km' : '200 m';
+  legend.push({
+    label: metric.weight === 'men' ? 'Aire = ménages' : 'Aire = habitants',
+    color: SHAPE_LEGEND_TINT,
+    glyph: SIZE_GLYPH,
+    count: Math.round(weightTotal),
+    blurb: `Six tailles, sur les quantiles nationaux du carroyage ${gridLabel} :`
+      + ` ${sizeBreaks.map((edge) => _fr.format(edge)).join(' · ')} ${unit}.`
+      + ' Six paliers et pas une échelle continue, pour la raison qui donne six'
+      + ' paliers à la couleur : l’œil ne relit pas une grandeur continue en'
+      + ' nombre, et la fiche porte le chiffre exact. Le disque ne remplit jamais'
+      + ' son carreau : le vide autour de lui est le fond de carte, pas une'
+      + ' absence de données.',
+  });
+  if (imputed > 0) {
+    legend.push({
+      label: 'Évidé = imputé',
+      color: SHAPE_LEGEND_TINT,
+      glyph: HOLLOW_GLYPH,
+      count: imputed,
+      blurb: 'Valeurs modélisées par l’INSEE au titre du secret statistique, pas'
+        + ' observées. L’anneau garde l’aire que son trou lui enlève : l’évidement dit'
+        + ' d’où vient le chiffre, pas combien il vaut.',
     });
   }
   return legend;
@@ -759,7 +875,7 @@ const filosofiCarreauxLayer = {
    * Without this the manager has nothing to serialize and `lo=` comes back
    * empty: the link would restore the carroyage coloured by niveau de vie
    * whatever the sender was looking at, which is a different map with the same
-   * squares. Measured in `scripts/qa-filosofi.mjs`, which reads the hash.
+   * cells. Measured in `scripts/qa-filosofi.mjs`, which reads the hash.
    * @returns {{metric: string}}
    */
   getParams() {
@@ -767,7 +883,7 @@ const filosofiCarreauxLayer = {
   },
 
   /**
-   * A square is not a contact. Nothing here moves, and a detection reticle over
+   * A carreau is not a contact. Nothing here moves, and a detection reticle over
    * every carreau in Paris would drown every layer that does.
    * @returns {Array}
    */
@@ -785,7 +901,7 @@ const filosofiCarreauxLayer = {
       title: `${metric.label} — ${metric.blurb} (${metric.unit})`,
       params: { metric: metric.id },
     }));
-    return { chips, legend: filosofiLegend(_metric, cells) };
+    return { chips, legend: filosofiLegend(_metric, cells, _payload?.resolution || 200) };
   },
 
   getStats() {

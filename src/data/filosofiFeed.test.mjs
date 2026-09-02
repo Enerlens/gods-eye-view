@@ -11,18 +11,21 @@ import {
   FILOSOFI_FIELDS,
   FILOSOFI_IMPUTED_FIELD,
   FILOSOFI_MAX_CELLS,
+  FILOSOFI_DISC_DIAMETER,
+  FILOSOFI_MAX_FILL,
   FILOSOFI_METRICS,
-  FILOSOFI_METRES_PER_HOUSEHOLD,
-  FILOSOFI_METRES_PER_PERSON,
-  FILOSOFI_MIN_EXTRUSION_M,
+  FILOSOFI_MIN_FILL,
   FILOSOFI_PUBLISHED_CELLS,
+  FILOSOFI_SIZE_BREAKS,
   FILOSOFI_RAMPS,
   FILOSOFI_TYPENAMES,
   buildCarreauxUrl,
   cellCentre,
   cellColor,
+  cellClearanceM,
   cellCorners,
-  cellHeightM,
+  cellDisc,
+  cellSymbol,
   laeaToWgs84,
   metricBand,
   parseCellId,
@@ -328,7 +331,7 @@ test('a box that fits exactly is not reported as truncated', () => {
 
 // ── The indicators ──────────────────────────────────────────────────────────
 
-test('every metric has a ramp, a unit and a weight the extrusion can read', () => {
+test('every metric has a ramp, a unit and a weight the symbol can be sized on', () => {
   for (const metric of FILOSOFI_METRICS) {
     const key = metric.id === 'population' ? 'population' : metric.id;
     assert.ok(FILOSOFI_RAMPS[key], `${metric.id} needs measured breaks`);
@@ -362,31 +365,142 @@ test('a cell with no value for the metric gets no colour at all', () => {
   assert.equal(typeof cellColor({ niveau: 24_000, ind: 40 }, metric), 'string');
 });
 
-test('the extrusion is the denominator, never the indicator', () => {
+test('the size is the denominator, never the indicator', () => {
   const niveau = resolveMetric('niveau');
   const pauvrete = resolveMetric('pauvrete');
-  const rich = { ind: 100, men: 40, niveau: 60_000, pauvrete: 2 };
-  const poor = { ind: 100, men: 40, niveau: 11_000, pauvrete: 45 };
-  // Same population, wildly different indicator: the same height.
-  assert.equal(cellHeightM(rich, niveau), cellHeightM(poor, niveau));
-  assert.equal(cellHeightM(rich, niveau), 100 * FILOSOFI_METRES_PER_PERSON);
-  // A household metric stands on households.
-  assert.equal(cellHeightM(rich, pauvrete), 40 * FILOSOFI_METRES_PER_HOUSEHOLD);
+  const rich = { ind: 100, men: 40, niveau: 60_000, pauvrete: 2, est: 0 };
+  const poor = { ind: 100, men: 40, niveau: 11_000, pauvrete: 45, est: 0 };
+  // Same population, wildly different indicator: the same disc.
+  assert.equal(cellSymbol(rich, niveau).fill, cellSymbol(poor, niveau).fill);
+  // A household metric is classed on households, against their own measured
+  // breaks — otherwise switching from a per-person indicator to a per-household
+  // one would relayout the city and read as a change in the country.
+  const breaks = FILOSOFI_SIZE_BREAKS[200];
+  assert.equal(cellSymbol({ ind: breaks.ind.at(-1), men: 40, est: 0 }, niveau).fill,
+    FILOSOFI_MAX_FILL, 'the national p90 of people opens the top class');
+  assert.equal(cellSymbol({ ind: 900, men: breaks.men.at(-1), est: 0 }, pauvrete).fill,
+    FILOSOFI_MAX_FILL, 'and the p90 of households does the same on its own scale');
+});
+
+test('six size classes, evenly stepped and each visibly bigger than the last', () => {
+  const metric = resolveMetric('niveau');
+  const breaks = FILOSOFI_SIZE_BREAKS[200].ind;
+  // One count just inside each class, from below the first break to above the
+  // last one.
+  const fills = [breaks[0] - 1, ...breaks].map(
+    (ind) => cellSymbol({ ind, men: ind / 2.2, est: 0 }, metric).fill,
+  );
+  assert.equal(fills.length, 6, 'five breaks make six classes');
+  assert.equal(fills[0], FILOSOFI_MIN_FILL);
+  assert.equal(fills.at(-1), FILOSOFI_MAX_FILL);
+  for (let index = 1; index < fills.length; index += 1) {
+    const grew = (fills[index] / fills[index - 1]) ** 2;
+    // Each step is at least a quarter more ink than the one below it. Below
+    // about that, two discs read as noise rather than as different sizes —
+    // which is the whole reason the scale is classed and not proportional.
+    assert.ok(grew > 1.25, `class ${index} is only ${grew.toFixed(2)}× the ink of ${index - 1}`);
+  }
+});
+
+test('the coarse grid is classed on its own measured distribution', () => {
+  const metric = resolveMetric('niveau');
+  const coarse = FILOSOFI_SIZE_BREAKS[1000].ind;
+  // Not the fine breaks times 25: the 200 m cells inside a dense square are not
+  // all dense, and the measured coarse p90 is 33 % below that arithmetic.
+  assert.ok(coarse.at(-1) < FILOSOFI_SIZE_BREAKS[200].ind.at(-1) * 25 * 0.8);
+  assert.equal(
+    cellSymbol({ ind: coarse.at(-1), men: 9_000, est: 0 }, metric, { resolution: 1000 }).fill,
+    FILOSOFI_MAX_FILL,
+  );
+  // A median coarse carreau — 109 people over Bordeaux — is the bottom class,
+  // and the bottom class is still drawn.
+  assert.equal(
+    cellSymbol({ ind: 109, men: 48, est: 0 }, metric, { resolution: 1000 }).fill,
+    FILOSOFI_MIN_FILL,
+  );
+});
+
+test('more people is never a smaller disc', () => {
+  const metric = resolveMetric('niveau');
+  let previous = 0;
+  for (const ind of [1, 50, 90, 200, 430, 900, 1_530, 5_000, 56_360]) {
+    const { fill } = cellSymbol({ ind, men: ind / 2.2, est: 0 }, metric);
+    assert.ok(fill >= previous, `${ind} people must not shrink the symbol`);
+    previous = fill;
+  }
+});
+
+test('a symbol never fills its own cell, however many people are in it', () => {
+  const metric = resolveMetric('niveau');
+  // The densest carreau measured anywhere in France, and then twenty times it.
+  for (const ind of [2_818, 56_360]) {
+    const { fill } = cellSymbol({ ind, men: ind / 2.2, est: 0 }, metric);
+    assert.ok(fill <= FILOSOFI_MAX_FILL, `${ind} people must not fill the cell`);
+  }
+  // An imputed cell is grown to keep the area its hole costs it — and even
+  // that, drawn as a disc, has to stay inside the square it belongs to.
+  const hollow = cellSymbol({ ind: 56_360, men: 25_000, est: 1 }, metric);
+  assert.ok(hollow.fill * FILOSOFI_DISC_DIAMETER < 1, 'a ring stays inside its cell');
+  assert.ok(hollow.fill > FILOSOFI_MAX_FILL, 'the ring is grown, not shrunk');
+});
+
+test('the disc covers the ground its fraction promises, not π/4 of it', () => {
+  // The scale is quoted in squares and drawn in circles; reading the fraction
+  // as a diameter would understate every count by 21 %.
+  const side = 200 * 0.5;
+  const radius = (side * FILOSOFI_DISC_DIAMETER) / 2;
+  assert.ok(Math.abs((Math.PI * radius * radius) / (side * side) - 1) < 1e-12);
+
+  const cell = { res: 200, n: 2_531_400, e: 3_918_600 };
+  const outline = cellDisc(cell, 0.5);
+  assert.equal(outline.length, 32, 'a visibly polygonal disc is also the wrong size');
+  // The drawn ring really is that wide on the ground: north–south extent, where
+  // a degree is 111 132 m everywhere and needs no cosine.
+  const lats = outline.map(([, lat]) => lat);
+  const spanM = (Math.max(...lats) - Math.min(...lats)) * 111_132;
+  // A 32-gon measured across flats is cos(π/32) of its circle — 0.5 % short.
+  assert.ok(Math.abs(spanM / (side * FILOSOFI_DISC_DIAMETER) - 1) < 0.01, `${spanM} m`);
+  // Concentric with the cell it belongs to, like the squares were.
+  const centre = cellCentre(cell);
+  const mean = (axis) => outline.reduce((sum, point) => sum + point[axis], 0) / outline.length;
+  assert.ok(Math.abs(mean(0) - centre[0]) < 1e-7, 'concentric in longitude');
+  assert.ok(Math.abs(mean(1) - centre[1]) < 1e-7, 'concentric in latitude');
 });
 
 test('a four-household cell is still visible, and still four households', () => {
   const metric = resolveMetric('niveau');
-  assert.equal(cellHeightM({ ind: 1, men: 1, niveau: 90_000 }, metric), FILOSOFI_MIN_EXTRUSION_M);
-  assert.equal(cellHeightM({ ind: 0, men: 0 }, metric), 0, 'an empty cell has no volume');
-  assert.equal(cellHeightM({ ind: null, men: null }, metric), 0);
+  assert.equal(cellSymbol({ ind: 1, men: 1, niveau: 90_000, est: 0 }, metric).fill, FILOSOFI_MIN_FILL);
+  assert.equal(cellSymbol({ ind: 0, men: 0 }, metric).fill, 0, 'an empty cell has no extent');
+  assert.equal(cellSymbol({ ind: null, men: null }, metric).fill, 0);
 });
 
-test('the coarse grid does not tower over the fine one', () => {
+test('an imputed square is hollow, and the hollow costs it no area', () => {
   const metric = resolveMetric('niveau');
-  // Same density: 25 times the people over 25 times the area.
-  const fine = cellHeightM({ ind: 400, men: 160 }, metric, { resolution: 200 });
-  const coarse = cellHeightM({ ind: 10_000, men: 4_000 }, metric, { resolution: 1000 });
-  assert.equal(fine, coarse);
+  const cell = { ind: 300, men: 130, niveau: 21_000 };
+  const observed = cellSymbol({ ...cell, est: 0 }, metric);
+  const imputed = cellSymbol({ ...cell, est: 1 }, metric);
+  assert.equal(observed.hole, 0);
+  assert.ok(imputed.hole > 0);
+  // The frame covers exactly what the solid square covers: the hollow is a
+  // claim about provenance, and must not double as a quieter claim about the
+  // count.
+  const framed = imputed.fill ** 2 - imputed.hole ** 2;
+  assert.ok(Math.abs(framed - observed.fill ** 2) < 1e-12);
+});
+
+test('the clearance scales with the disc, and the symbol has no other height', () => {
+  // Nothing stands up: the count is the area, and extruding it a second time
+  // would make volume grow as count^1.5. What is left is enough clearance to
+  // keep a flat disc out of the hillside it is describing, on ONE terrain
+  // sample — five per cell was measured five times slower per redraw.
+  assert.ok(cellClearanceM(200, FILOSOFI_MIN_FILL) > 0, 'a speck still clears the imagery');
+  assert.ok(cellClearanceM(200, FILOSOFI_MAX_FILL) > cellClearanceM(200, FILOSOFI_MIN_FILL),
+    'a wider disc spans more relief and has to be lifted further');
+  assert.ok(cellClearanceM(1000, FILOSOFI_MAX_FILL) > cellClearanceM(200, FILOSOFI_MAX_FILL));
+  // A 20 % slope is the contract: at the ceiling on the 200 m grid the disc is
+  // 162 m across, and its uphill edge rises 16 m over the centre sample.
+  const radius = (200 * FILOSOFI_MAX_FILL * FILOSOFI_DISC_DIAMETER) / 2;
+  assert.ok(cellClearanceM(200, FILOSOFI_MAX_FILL) >= radius * 0.2 - 1e-9);
 });
 
 // ── The summary ─────────────────────────────────────────────────────────────

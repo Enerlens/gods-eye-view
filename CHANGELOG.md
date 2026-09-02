@@ -869,6 +869,54 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   and reports the live-vehicle absence in its own stats rather than looking
   broken.
 
+### Changed
+- **Le carroyage INSEE ne recouvre plus la carte : un disque par carreau, à
+  plat, translucide.** Le calque dessinait chaque carreau EN ENTIER, bord à
+  bord, extrudé selon sa population — et 2 109 carreaux sur l'agglomération
+  bordelaise faisaient un patchwork opaque : plus une rue, plus un nom de lieu,
+  plus un repère des autres calques. Le pire était que la hauteur, seul canal
+  portant le compte, est invisible pour une caméra qui regarde vers le bas,
+  c'est-à-dire la vue par défaut de cette application : on payait le fond de
+  carte pour une information qu'on ne pouvait pas lire.
+- **Le compte est désormais l'AIRE du disque, plus jamais une tour.** L'argument
+  reste le même — « 27 100 € par personne » n'a pas d'étendue, la population
+  s'additionne, donc c'est elle que la géométrie porte — mais l'aire se lit dans
+  la projection que l'opérateur regarde vraiment. Un carreau de quatre ménages
+  est un point, et il doit se lire comme quatre ménages.
+- **Six tailles, pas une proportion continue — et c'est un calcul, pas un
+  goût.** À l'écran, un carreau du maillage 1 km fait ~35 px : un symbole doit
+  faire au moins 8 px pour être vu et au plus ~28 px pour rester dans sa case,
+  soit 3:1 de diamètre disponible. La donnée, elle, va de 1 à 100 en effectif
+  (médiane 109 habitants par km², contre 11 690 dans le carré le plus dense de
+  la vue bordelaise). Une échelle strictement proportionnelle doit dépenser cet
+  écart quelque part, et elle l'a fait : **65 % des 1 907 carreaux de cette vue
+  se sont retrouvés au plancher**, le canal s'est aplati et une région d'un
+  million d'habitants s'affichait vide. Six paliers le dépensent volontairement,
+  et chaque palier se voit. C'est exactement le choix que la rampe de couleur
+  fait déjà, pour la même raison : l'œil ne relit pas une grandeur continue en
+  nombre, et la fiche porte le chiffre exact.
+- **Les paliers de taille sont mesurés, un jeu par maillage.** Les quantiles
+  nationaux de l'effectif : ceux du carroyage 200 m sont ceux de la rampe
+  « population » (89 · 193 · 426 · 895 · 1 522 habitants), et
+  `build-filosofi-ramp.mjs --resolution 1000` mesure enfin les siens pour le
+  maillage grossier — **6 727 carreaux dans les mêmes 42 boîtes, 12 941 533
+  habitants**, p90 à 28 652. Multiplier les paliers fins par 25 aurait été
+  l'arithmétique évidente et se trompe de 33 % en haut : les carreaux de 200 m
+  qui composent un kilomètre dense ne sont pas tous denses. La légende publie
+  les six seuils, sinon c'est une échelle que personne ne peut relire.
+- **Deux garde-fous, écrits comme des règles et testés comme telles :** un
+  symbole ne dépasse jamais 0,68 du côté de son carreau — 36 % de sa surface —
+  et il est tracé à 70 % d'opacité. Le fond passe donc ENTRE les disques et À
+  TRAVERS. Dans le 2e arrondissement de Paris, le cas le plus dense du pays,
+  les boulevards, la Seine et les noms d'arrondissement restent lisibles.
+- **Un carreau imputé est un ANNEAU, plus un carré rentré.** Le canal « rentré »
+  servait à distinguer les valeurs modélisées ; il porte maintenant le compte,
+  donc l'imputation passe sur la forme. L'anneau est agrandi pour récupérer
+  exactement l'aire que son trou lui enlève : l'évidement dit d'où vient le
+  chiffre, jamais combien il vaut. Et la légende porte enfin ses trois canaux —
+  la rampe, l'aire (avec la population qu'elle totalise) et l'anneau (avec le
+  nombre de carreaux modélisés).
+
 ### Fixed
 
 - **Une caméra sélectionnée rendait VERTE au lieu d'ambre, parce que son icône avait sa propre couleur cuite dedans.** Cesium multiplie `billboard.color` dans la texture. La couche CCTV s'en sert pour dire laquelle des caméras l'opérateur a sélectionnée — `#6be8ff` au repos, `#ffd97a` pour l'active — mais le dessin portait du cyan en dur (`#75e7ff` sur des aplats sombres, plus un dégradé de lentille). #75e7ff × #ffd97a = **#75c57a** : la seule caméra que l'ambre devait isoler était la seule à ne pas être ambre. Le cyan de repos sortait lui aussi faux, sursaturé à #31d2ff. L'icône est maintenant `temaki/security_camera` en tracé blanc sur halo sombre, comme tous les autres jeux de ce dépôt le documentent depuis le début : le blanc rend la multiplication neutre, le noir y survit (0 × c = 0) et garde le glyphe lisible sur une orthophoto claire. Au passage, un détail de caméra murale dessiné pour 36 px cesse d'être bouilli en un pâté bleu à 15. Une teinte cuite est un bug, pas un parti pris — `mapIcons.test.mjs` refuse désormais tout glyphe portant un dégradé, une opacité ou un hexadécimal autre que `#ffffff`.
