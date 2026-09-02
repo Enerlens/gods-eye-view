@@ -138,6 +138,18 @@ const OUTLINE_COLOR = '#0b1a24';
 const OUTLINE_ALPHA = 0.85;
 const OUTLINE_WIDTH_PX = 1.2;
 const SELECTED_COLOR = '#00ffff';
+/**
+ * Highlight opacity. Higher than `FILL_ALPHA` because the selected parcel keeps
+ * its band fill underneath — see `drawRecords` for why the highlight is a
+ * primitive of its own rather than a recoloured instance.
+ */
+const SELECTED_FILL_ALPHA = 0.55;
+/**
+ * How many frames the fallback highlight may ask for before giving up. Four
+ * seconds at 60 fps, against the six frames a `Primitive` build actually costs
+ * — see `pumpUntilReady`.
+ */
+const SELECTION_BUILD_FRAME_CAP = 240;
 
 /**
  * `MAP_STACKS` ids that render imagery on the SHOWN Cesium globe. An explicit
@@ -156,8 +168,12 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
 let _viewer = null;
 let _overlayHost = DEFAULT_OVERLAY_HOST;
 let _enabled = false;
-let _fills = null;
+/** @type {Array<object>} One `GroundPrimitive` per band colour — see `drawRecords`. */
+let _fills = [];
 let _outlines = null;
+/** The selected parcel's own fill and outline, drawn over the batches. */
+let _selectedFill = null;
+let _selectedOutline = null;
 /** @type {Map<string, object>} render id → parcel record. */
 let _records = new Map();
 let _payload = null;
@@ -359,18 +375,53 @@ export function createCadastreSelectedOverlayEntry(record, communes = {}, sheets
  * by clicking away because nothing under it answers.
  */
 function clearPrimitives() {
+  clearSelectionPrimitives();
   const primitives = _viewer?.scene?.primitives;
   if (primitives) {
-    if (_fills) primitives.remove(_fills);
+    for (const fill of _fills) primitives.remove(fill);
     if (_outlines) primitives.remove(_outlines);
   }
-  _fills = null;
+  _fills = [];
   _outlines = null;
   _records = new Map();
   if (_selectedId) {
+    // The address and building lookups go with the selection, exactly as they
+    // do in `clearSelection`. Every teardown that skips this — a pan, a refused
+    // box, a stack switch — otherwise leaves up to `BUILDING_TILE_CAP` BD TOPO
+    // tile requests plus a BAN call running for a parcel nobody is looking at,
+    // against two keyless third-party services, once per camera move.
+    _detailAbort?.abort();
+    _detailAbort = null;
     _selectedId = null;
     _overlayHost.clearSource(CADASTRE_SELECTED_OVERLAY_SOURCE_ID);
   }
+}
+
+/** Drop the two primitives that exist only while a parcel is selected. */
+function clearSelectionPrimitives() {
+  const primitives = _viewer?.scene?.primitives;
+  if (primitives) {
+    if (_selectedFill) primitives.remove(_selectedFill);
+    if (_selectedOutline) primitives.remove(_selectedOutline);
+  }
+  _selectedFill = null;
+  _selectedOutline = null;
+}
+
+/**
+ * Show or hide every primitive this layer owns.
+ *
+ * The selection pair is covered too, and today that is belt and braces rather
+ * than a live path: both callers drop the selection before they get here —
+ * `disable()` through `clearSelection()`, and `enable()` because a disabled
+ * layer has none. Kept so a third caller cannot leave a cyan parcel lit over a
+ * layer the operator has switched off.
+ */
+function setPrimitiveVisibility(visible) {
+  for (const fill of _fills) fill.show = visible;
+  if (_outlines) _outlines.show = visible;
+  if (_selectedFill) _selectedFill.show = visible;
+  if (_selectedOutline) _selectedOutline.show = visible;
 }
 
 /** Cesium positions for one ring, dropping the repeated closing vertex. */
@@ -390,12 +441,129 @@ function ringPositions(ring) {
 }
 
 /**
- * Build both primitives for the whole payload.
+ * The fill instances for one parcel, as `PolygonGeometry` — one per part.
+ * @param {object} record
+ * @param {Cesium.Color} color
+ * @returns {Array<object>}
+ */
+function fillInstancesFor(record, color) {
+  const instances = [];
+  for (const polygon of record.polygons) {
+    const outer = ringPositions(polygon[0]);
+    if (!outer) continue;
+    const holes = [];
+    for (let h = 1; h < polygon.length; h += 1) {
+      const hole = ringPositions(polygon[h]);
+      // Interior rings are courtyards and light wells. Dropped, they are
+      // filled in, and the card's area stops matching what is on screen.
+      if (hole) holes.push(new Cesium.PolygonHierarchy(hole));
+    }
+    instances.push(new Cesium.GeometryInstance({
+      id: record.id,
+      geometry: new Cesium.PolygonGeometry({
+        polygonHierarchy: new Cesium.PolygonHierarchy(outer, holes),
+        vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
+      }),
+      attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
+    }));
+  }
+  return instances;
+}
+
+/**
+ * The outline instances for one parcel — every ring, interior ones included,
+ * because a courtyard has a boundary too.
+ * @param {object} record
+ * @param {Cesium.Color} color
+ * @returns {Array<object>}
+ */
+function outlineInstancesFor(record, color) {
+  const instances = [];
+  for (const polygon of record.polygons) {
+    for (const ring of polygon) {
+      const positions = ringPositions(ring);
+      if (!positions) continue;
+      instances.push(new Cesium.GeometryInstance({
+        id: record.id,
+        geometry: new Cesium.GroundPolylineGeometry({
+          positions: [...positions, positions[0]],
+          width: OUTLINE_WIDTH_PX,
+        }),
+        attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
+      }));
+    }
+  }
+  return instances;
+}
+
+/**
+ * One classification `GroundPrimitive`, or null when it would hold nothing.
  *
- * One `GroundPrimitive` and one `GroundPolylinePrimitive` for the entire box,
- * not one per parcel: at two thousand parcels the per-primitive overhead is the
- * whole cost, and a batched primitive still supports per-instance picking and
- * per-instance recolouring, which is how selection works without a second draw.
+ * `asynchronous` is a per-call decision and not a constant, because the two
+ * callers are not the same size of job. Tessellating two thousand
+ * classification polygons on the render thread drops frames for most of a
+ * second, so a BATCH goes to Cesium's worker pool. One parcel does not: see
+ * `drawSelectionPrimitives` for why the highlight cannot afford to wait.
+ * @param {Array<object>} instances
+ * @param {{asynchronous?: boolean}} [options]
+ */
+function buildFillPrimitive(instances, { asynchronous = true } = {}) {
+  if (!instances.length) return null;
+  return new Cesium.GroundPrimitive({
+    geometryInstances: instances,
+    appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
+    classificationType: _classificationType,
+    asynchronous,
+  });
+}
+
+/**
+ * One ground-clamped `GroundPolylinePrimitive`, or null when it would hold
+ * nothing. The outline counterpart of `buildFillPrimitive`, and shared with it
+ * for the same reason: the batch and the highlight must not drift apart on the
+ * classification surface they drape onto.
+ * @param {Array<object>} instances
+ * @param {{asynchronous?: boolean}} [options]
+ */
+function buildOutlinePrimitive(instances, { asynchronous = true } = {}) {
+  if (!instances.length) return null;
+  return new Cesium.GroundPolylinePrimitive({
+    geometryInstances: instances,
+    appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
+    classificationType: _classificationType,
+    asynchronous,
+  });
+}
+
+/**
+ * Build the primitives for the whole payload.
+ *
+ * ── Why the fills are grouped by COLOUR, and the selection is its own draw ──
+ *
+ * A batched `GroundPrimitive` does NOT colour a pixel by the polygon that
+ * contains it. Cesium classifies the whole batch in one stencil pass — that
+ * pass only records "some instance in this batch covers this ground pixel" —
+ * and then the colour pass keeps the FIRST instance whose 8 km-tall shadow
+ * volume rasterises over the pixel and whose own *axis-aligned bounding
+ * rectangle* contains it (`ShadowVolumeAppearanceFS.glsl`, `CULL_FRAGMENTS`).
+ * A parcel's bounding rectangle overlaps its neighbours' constantly, so within
+ * one batch neighbours repaint each other along rectangle edges.
+ *
+ * That is invisible while every instance in a batch carries the SAME colour —
+ * whichever one wins the pixel, the answer is identical, and the stencil still
+ * confines the union to the real polygons. It is glaring the moment one
+ * instance differs, which is exactly what selection used to do: recolouring
+ * the clicked parcel in place drew a cyan wedge with vertical and horizontal
+ * edges belonging to the NEIGHBOUR's bounding box, on a parcel whose outline
+ * beside it was perfectly square. Measured over Ustaritz on 2026-09-02, parcel
+ * AN 0512: the two cuts through the highlight sat on AN 0511's east and north
+ * bounding-box edges to within one pixel.
+ *
+ * So: one primitive per band colour — four scale bands plus the unknown one,
+ * so at most five for a viewport that today holds two thousand parcels — and
+ * the selected parcel gets a single-instance primitive of its own, laid over
+ * the batch it belongs to. Still not one primitive per parcel, which is the
+ * cost this batching exists to avoid.
  * @param {Array<object>} records
  */
 function drawRecords(records) {
@@ -407,80 +575,39 @@ function drawRecords(records) {
   clearPrimitives();
   if (!records.length || !_viewer) return;
 
-  const fillInstances = [];
+  /** @type {Map<string, Array<object>>} band colour → its fill instances. */
+  const fillsByColor = new Map();
   const outlineInstances = [];
+  const outlineColor = Cesium.Color.fromCssColorString(OUTLINE_COLOR).withAlpha(OUTLINE_ALPHA);
   for (const record of records) {
     _records.set(record.id, record);
     const color = Cesium.Color.fromCssColorString(record.color).withAlpha(FILL_ALPHA);
-    for (const polygon of record.polygons) {
-      const outer = ringPositions(polygon[0]);
-      if (!outer) continue;
-      const holes = [];
-      for (let h = 1; h < polygon.length; h += 1) {
-        const hole = ringPositions(polygon[h]);
-        // Interior rings are courtyards and light wells. Dropped, they are
-        // filled in, and the card's area stops matching what is on screen.
-        if (hole) holes.push(new Cesium.PolygonHierarchy(hole));
-      }
-      fillInstances.push(new Cesium.GeometryInstance({
-        id: record.id,
-        geometry: new Cesium.PolygonGeometry({
-          polygonHierarchy: new Cesium.PolygonHierarchy(outer, holes),
-          vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
-        }),
-        attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
-      }));
-      // Every ring, interior ones included — a courtyard has a boundary too.
-      for (const ring of polygon) {
-        const positions = ringPositions(ring);
-        if (!positions) continue;
-        outlineInstances.push(new Cesium.GeometryInstance({
-          id: record.id,
-          geometry: new Cesium.GroundPolylineGeometry({
-            positions: [...positions, positions[0]],
-            width: OUTLINE_WIDTH_PX,
-          }),
-          attributes: {
-            color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-              Cesium.Color.fromCssColorString(OUTLINE_COLOR).withAlpha(OUTLINE_ALPHA),
-            ),
-          },
-        }));
-      }
-    }
+    const bucket = fillsByColor.get(record.color);
+    const instances = fillInstancesFor(record, color);
+    if (bucket) bucket.push(...instances);
+    else fillsByColor.set(record.color, instances);
+    outlineInstances.push(...outlineInstancesFor(record, outlineColor));
   }
-  if (!fillInstances.length) return;
 
-  _fills = new Cesium.GroundPrimitive({
-    geometryInstances: fillInstances,
-    appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
-    classificationType: _classificationType,
-    // Tessellating two thousand classification polygons on the render thread
-    // drops frames for most of a second; Cesium's worker pool does it without.
-    asynchronous: true,
-    // Selection recolours one instance in place, which needs the per-instance
-    // attribute table to survive the build.
-    releaseGeometryInstances: false,
-  });
-  _fills.show = _enabled;
-  _viewer.scene.primitives.add(_fills);
+  for (const instances of fillsByColor.values()) {
+    const primitive = buildFillPrimitive(instances);
+    if (!primitive) continue;
+    primitive.show = _enabled;
+    _fills.push(primitive);
+    _viewer.scene.primitives.add(primitive);
+  }
 
-  if (outlineInstances.length) {
-    _outlines = new Cesium.GroundPolylinePrimitive({
-      geometryInstances: outlineInstances,
-      appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
-      classificationType: _classificationType,
-      asynchronous: true,
-      releaseGeometryInstances: false,
-    });
+  _outlines = buildOutlinePrimitive(outlineInstances);
+  if (_outlines) {
     _outlines.show = _enabled;
     _viewer.scene.primitives.add(_outlines);
   }
   governorRequestRender('cadastre-draw');
 
-  // Restored AFTER the primitives exist, so the highlight lands on the new
-  // instance table rather than on the one that was just thrown away. A parcel
-  // that panned out of the box is not restored, and its card is already gone.
+  // Restored AFTER the batches exist, so the highlight is laid over the draw
+  // that is actually on screen rather than over one that was just thrown away.
+  // A parcel that panned out of the box is not restored, and its card is
+  // already gone.
   if (selectedIdu) {
     for (const [id, record] of _records) {
       if (record.parcel?.u !== selectedIdu) continue;
@@ -502,42 +629,100 @@ function applyClassification(next) {
 }
 
 /**
- * Recolour one instance inside a batched primitive.
+ * Draw the highlight for one parcel, as two primitives of its own.
  *
- * Safe only because `releaseGeometryInstances: false` keeps the per-instance
- * attribute table alive after the build. Before the primitive is ready there is
- * no table, which is a no-op rather than an error.
- * @param {Cesium.Primitive} primitive
- * @param {string} id
- * @param {?Cesium.Color} color
- * @returns {boolean}
+ * Its own primitives and not a recolour of the batch — see `drawRecords` for
+ * the whole of why. The short version: a lone differently-coloured instance
+ * inside a batched `GroundPrimitive` is painted over its neighbours' bounding
+ * rectangles rather than over its own polygon.
+ * @param {object} record
  */
-function applyInstanceColor(primitive, id, color) {
-  if (!primitive || !primitive.ready || !color) return false;
-  try {
-    const attributes = primitive.getGeometryInstanceAttributes(id);
-    if (!attributes) return false;
-    attributes.color = Cesium.ColorGeometryInstanceAttribute.toValue(color);
-    return true;
-  } catch {
-    return false;
+function drawSelectionPrimitives(record) {
+  clearSelectionPrimitives();
+  if (!_viewer || !record) return;
+  const highlight = Cesium.Color.fromCssColorString(SELECTED_COLOR);
+  // SYNCHRONOUS where Cesium allows it, unlike the batches. A `Primitive`
+  // advances one step of its build per RENDERED frame, and this globe renders
+  // on request: the click below asks for exactly one. An asynchronous
+  // highlight therefore waits on frames nothing is asking for, and lands only
+  // because the card's 150 ms fade-in happens to pump the scene next door — a
+  // highlight whose latency is an accident of another module's animation. One
+  // parcel is a handful of triangles, so the render thread swallows it inside
+  // the frame the click already pays for; the worker pool exists for the
+  // two-thousand-polygon batch, not for this.
+  //
+  // The gate is not defensive noise. A synchronous ground primitive refuses to
+  // build until `ApproximateTerrainHeights` has loaded — `DeveloperError` in the
+  // dev build, a silent early return in the release one — and nothing here can
+  // promise that: it resolves off the first ground primitive's own update. In
+  // practice the batches have long since triggered it by the time a parcel can
+  // be clicked, so this reads `true` and the highlight is immediate.
+  //
+  // When it does NOT, the fallback is not merely slower — see `pumpUntilReady`,
+  // which is what makes it land at all.
+  const immediate = Cesium.ApproximateTerrainHeights?.initialized === true;
+  const scenePrimitives = _viewer.scene?.primitives;
+  if (!scenePrimitives) return;
+  // Published only once the scene has actually taken it. Assigning first would
+  // leave `_selectedFill` holding a primitive no `remove()` can ever reach if
+  // the collection rejects it — a highlight that leaks and that
+  // `getPrimitiveShapeForQa` would report as drawn.
+  const fill = buildFillPrimitive(
+    fillInstancesFor(record, highlight.withAlpha(SELECTED_FILL_ALPHA)),
+    { asynchronous: !immediate },
+  );
+  if (fill) {
+    fill.show = _enabled;
+    scenePrimitives.add(fill);
+    _selectedFill = fill;
   }
+  const outline = buildOutlinePrimitive(outlineInstancesFor(record, highlight), { asynchronous: !immediate });
+  if (outline) {
+    outline.show = _enabled;
+    scenePrimitives.add(outline);
+    _selectedOutline = outline;
+  }
+  if (!immediate) pumpUntilReady();
+}
+
+/**
+ * Draw frames until the selection has finished building itself.
+ *
+ * Only the fallback path needs this, and it is the difference between a slow
+ * highlight and no highlight. A Cesium `Primitive` advances exactly ONE step of
+ * its build per RENDERED frame — ready, creating, created, combining, combined,
+ * vertex arrays — and it requests none of those frames itself. On a globe in
+ * `requestRenderMode` the build therefore stops wherever the last render left
+ * it: asking once, when the terrain heights resolve, buys one step of six.
+ *
+ * So this rides `postRender` and asks for the next frame until both primitives
+ * report ready, then takes itself off. The cap is not decoration — a primitive
+ * that never becomes ready (a scene torn down mid-build, a Cesium state this
+ * code has not anticipated) would otherwise hold the render loop open forever,
+ * which on a laptop is a fan spinning for a parcel nobody selected any more.
+ * At 60 fps the cap is four seconds; the real path takes six frames.
+ */
+function pumpUntilReady() {
+  const scene = _viewer?.scene;
+  if (!scene?.postRender) return;
+  let framesLeft = SELECTION_BUILD_FRAME_CAP;
+  const stop = scene.postRender.addEventListener(() => {
+    const pending = (_selectedFill && !_selectedFill.ready)
+      || (_selectedOutline && !_selectedOutline.ready);
+    framesLeft -= 1;
+    if (!pending || framesLeft <= 0) {
+      stop();
+      return;
+    }
+    governorRequestRender('cadastre-select-build');
+  });
+  governorRequestRender('cadastre-select-build');
 }
 
 function clearSelection() {
   _detailAbort?.abort();
   _detailAbort = null;
-  if (_selectedId) {
-    const record = _records.get(_selectedId);
-    if (record) {
-      applyInstanceColor(_fills, _selectedId, Cesium.Color.fromCssColorString(record.color).withAlpha(FILL_ALPHA));
-      applyInstanceColor(
-        _outlines,
-        _selectedId,
-        Cesium.Color.fromCssColorString(OUTLINE_COLOR).withAlpha(OUTLINE_ALPHA),
-      );
-    }
-  }
+  clearSelectionPrimitives();
   _selectedId = null;
   _overlayHost.clearSource(CADASTRE_SELECTED_OVERLAY_SOURCE_ID);
 }
@@ -628,9 +813,8 @@ function selectParcel(id) {
   const record = _records.get(id);
   if (!record) return;
   _selectedId = id;
-  const highlight = Cesium.Color.fromCssColorString(SELECTED_COLOR);
-  applyInstanceColor(_fills, id, highlight.withAlpha(0.55));
-  applyInstanceColor(_outlines, id, highlight);
+  drawSelectionPrimitives(record);
+  governorRequestRender('cadastre-select-draw');
 
   // The parcel's own card goes up IMMEDIATELY. Everything the cadastre itself
   // publishes is already in hand, and holding it back behind two network calls
@@ -898,6 +1082,11 @@ const cadastreParcelsLayer = {
     _loadedKey = null;
     _retryDelayMs = 0;
     _classificationType = cadastreClassificationTypeForScene(viewer?.scene);
+    // Started here rather than waited for. The selection highlight is drawn
+    // synchronously only once this has resolved, and starting it at init means
+    // the answer is almost always yes by the time a parcel can be clicked —
+    // which turns `pumpUntilReady` into the exception it is written as.
+    try { Cesium.GroundPrimitive.initializeTerrainHeights(); } catch { /* Cesium decides when */ }
 
     if (typeof window !== 'undefined' && !_mapStackListener) {
       _mapStackListener = (event) => applyClassification(
@@ -918,8 +1107,7 @@ const cadastreParcelsLayer = {
     // The boot-time stack settle fires no event, so re-derive from the scene
     // rather than trusting whatever the last event left behind.
     applyClassification(cadastreClassificationTypeForScene(viewer?.scene));
-    if (_fills) _fills.show = true;
-    if (_outlines) _outlines.show = true;
+    setPrimitiveVisibility(true);
     _overlayHost.setVisible(CADASTRE_SELECTED_OVERLAY_SOURCE_ID, true);
     installClickHandler(viewer);
     registerPickOwner(CADASTRE_LAYER_ID, (pickedId) => _records.has(pickedId));
@@ -941,8 +1129,7 @@ const cadastreParcelsLayer = {
     _debounceTimer = null;
     _abort?.abort();
     _abort = null;
-    if (_fills) _fills.show = false;
-    if (_outlines) _outlines.show = false;
+    setPrimitiveVisibility(false);
     _overlayHost.setVisible(CADASTRE_SELECTED_OVERLAY_SOURCE_ID, false);
     if (_clickHandler) { _clickHandler.destroy(); _clickHandler = null; }
     if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
@@ -1086,6 +1273,46 @@ const cadastreParcelsLayer = {
   },
 
   /**
+   * How the draw is SHAPED, not what it contains.
+   *
+   * The seam `scripts/qa-cadastre-highlight.mjs` checks the batching against.
+   * A highlight can be made pixel-perfect by giving every parcel a primitive of
+   * its own, which is the one fix that would cost the frame rate this layer is
+   * built around; a shape check is what tells those two apart.
+   * @returns {{fills:number, outlines:number, records:number,
+   *   selectedFill:boolean, selectedOutline:boolean, classification:number}}
+   */
+  getPrimitiveShapeForQa() {
+    return {
+      fills: _fills.length,
+      outlines: _outlines ? 1 : 0,
+      records: _records.size,
+      selectedFill: Boolean(_selectedFill),
+      selectedOutline: Boolean(_selectedOutline),
+      // The surface everything above drapes onto. A primitive that classifies
+      // the wrong one draws NOTHING, which on screen is indistinguishable from
+      // a layer that fetched nothing — so the harness has to be able to see it.
+      classification: _classificationType,
+    };
+  },
+
+  /**
+   * One DRAWN parcel's rings as `[lon, lat]`, by IDU — selected or not.
+   *
+   * For a harness that has to project them itself. Verbatim from the record, so
+   * a check written against this compares the pixels to the SOURCE geometry and
+   * not to the layer's own idea of it.
+   * @param {string} idu
+   * @returns {?Array<Array<Array<number[]>>>}
+   */
+  getParcelPolygonsForQa(idu) {
+    for (const record of _records.values()) {
+      if (record.parcel?.u === idu) return record.polygons;
+    }
+    return null;
+  },
+
+  /**
    * The legend: the four scale bands and the unknown one, in tolerance order.
    * @returns {{chips: Array<object>, legend: Array<object>}}
    */
@@ -1191,8 +1418,15 @@ export function _setCadastreStateForTest({
   _selectedId = null;
   _status = status;
   _fetchImpl = fetchImpl || null;
-  _fills = null;
+  _fills = [];
   _outlines = null;
+  _selectedFill = null;
+  _selectedOutline = null;
+  // Back to the module's own starting surface. `enable()` derives this from the
+  // scene it is handed, so a test that enables the layer would otherwise leave
+  // the next one classifying whatever ITS viewer implied — module state leaking
+  // between tests as a wrong-surface draw, which is the hardest kind to read.
+  _classificationType = Cesium.ClassificationType.BOTH;
   _error = null;
   _loading = false;
 }
