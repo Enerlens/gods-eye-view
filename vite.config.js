@@ -249,6 +249,34 @@ import {
   projectDelinquanceDepartements,
   selectDelinquanceChips,
 } from './src/data/delinquanceFeed.js';
+import {
+  AMENITIES_MAX_BOX_DEG,
+  AMENITY_FAMILIES,
+  BPE_COLUMN_COUNT,
+  BPE_DATAGOUV_URL,
+  BPE_EDITION_FLOOR,
+  BPE_LANDING_URL,
+  BPE_ROW_FLOOR,
+  FINESS_COLUMN_COUNT,
+  FINESS_CSV_URL,
+  FINESS_ROW_FLOOR,
+  buildAmenityMeshRows,
+  bpeArchiveFromHtml,
+  bpeLandingFromDataset,
+  bpeSubPagesFromHtml,
+  csvHeaderIndex,
+  foldAmenitySites,
+  newAmenityTally,
+  newestBpeArchive,
+  orderAmenitySites,
+  readBpeRow,
+  readFinessRow,
+  splitSemicolonRow,
+  sumByFamily,
+  tallyAmenityOutcome,
+  trimAmenityRecord,
+} from './src/data/amenitiesFeed.js';
+import { projectAmenitiesDepartements } from './src/data/amenitiesDepartements.js';
 // Add to the top import block of vite.config.js, beside the other src/data feed
 // imports. Nothing else is needed: this proxy reuses `makeRateLimiter`,
 // `clientKey`, `readResponseJsonCapped`, `coalesceProxyRequest`,
@@ -7458,6 +7486,519 @@ function bruitFranceProxy() {
   }
   return {
     name: 'bruit-fr-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Everyday amenities (FR) — INSEE BPE 2025 + FINESS
+// ---------------------------------------------------------------------------
+/**
+ * Keyless national amenity proxy.
+ *
+ *   GET /api/amenities-fr/status       — provenance, discovered edition, tallies
+ *   GET /api/amenities-fr/departements — 96-département rollup, ~21 KB
+ *   GET /api/amenities-fr/mesh         — the national tuple pack, 640 980 B gzipped
+ *   GET /api/amenities-fr/sites?bbox   — named amenities inside a 0.35° box
+ *
+ * WHY A PROXY, and it is not the usual reason. Measured twice on 2026-09-02:
+ * `https://www.insee.fr/fr/statistiques/8217525` returns HTTP 200 with no
+ * `Origin` header and HTTP 403 with one (tested `http://localhost:4173`), on the
+ * page, on `BPE25.zip` and on `BPE25.parquet`, for GET and for HEAD. It also
+ * ignores `Range` — `curl -r 0-2000` gets 200, not 206, and starts streaming the
+ * whole file. A browser cannot fetch this at all, ever, and no key changes that.
+ *
+ * WHAT THE BUILD COSTS, measured end to end against the live upstreams on
+ * 2026-09-02: **52.9 s**, of which 51 s is the 142 884 474-byte download.
+ * Inflating that to 1 515 251 530 bytes of semicolon CSV and reading all
+ * 2 921 770 rows takes **8.7 s**; FINESS is 44 053 043 bytes in 2.7 s and
+ * 103 032 rows; the fold, the mesh and the 34 778-commune point-in-polygon
+ * rollup are the rest. It happens once per month and is written to
+ * `.gev-cache/amenities-fr/`. That is still why `/status` is the deployment
+ * probe and `/departements` is not: a health check meant to answer in
+ * milliseconds should not be the thing that triggers a minute of work.
+ *
+ * WHY THE ARCHIVE IS STREAMED AND NEVER BUFFERED: 1.5 GB does not belong in a
+ * Buffer. The single member's local header is read, the rest is piped through
+ * `zlib.createInflateRaw`, and lines are handed to `readBpeRow` one at a time.
+ * Nothing larger than one line is held except the 126 859 selected rows.
+ *
+ * WHY THE EDITION IS DISCOVERED: BPE gains an edition every August at a NEW
+ * INSEE page id, and the only stable pointer to it is INSEE's own data.gouv
+ * entry, whose single resource url is the current landing page. Three hops
+ * (data.gouv → landing → sub-pages), floored at BPE25 — a discovery older than
+ * the floor is a malformed answer, not a new fact, and is refused.
+ */
+const AMENITIES_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AMENITIES_STALE_MS = 120 * 24 * 60 * 60 * 1000;
+const AMENITIES_META_TIMEOUT_MS = 30_000;
+const AMENITIES_BULK_TIMEOUT_MS = 15 * 60_000;
+const AMENITIES_META_MAX_BYTES = 4 * 1024 * 1024;
+const AMENITIES_BPE_MAX_BYTES = 400 * 1024 * 1024;
+const AMENITIES_FINESS_MAX_BYTES = 160 * 1024 * 1024;
+const AMENITIES_SITE_CAP = 12_000;
+const AMENITIES_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'amenities-fr');
+const AMENITIES_CACHE_PATH = path.join(AMENITIES_DISK_DIR, 'pack.json');
+/**
+ * Shape version of the cached pack. BUMP IT whenever `readBpeRow`,
+ * `readFinessRow`, `foldAmenitySites`, `buildAmenityMeshRows` or
+ * `projectAmenitiesDepartements` changes what it returns: the cache lives for a
+ * MONTH on disk and costs ninety seconds to rebuild, so without a bump a
+ * projection edit stays invisible until October.
+ */
+const AMENITIES_CACHE_VERSION = 1;
+
+let _amenities = null;
+let _amenitiesInFlight = new Map();
+let _amenitiesDiskChecked = false;
+const _amenitiesRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/** One small JSON document (data.gouv). */
+async function fetchAmenitiesJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(AMENITIES_META_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+  return readResponseJsonCapped(response, AMENITIES_META_MAX_BYTES);
+}
+
+/** One INSEE HTML page. No Origin header is sent, which is the whole point. */
+async function fetchAmenitiesHtml(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'text/html' },
+    signal: AbortSignal.timeout(AMENITIES_META_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+  return readResponseTextCapped(response, AMENITIES_META_MAX_BYTES);
+}
+
+/**
+ * Resolve the current BPE archive URL.
+ *
+ * data.gouv is the stable root and the two INSEE hops are what actually name
+ * the file. If data.gouv is unreachable the landing page measured against is
+ * used instead, which is a degradation and not a guess: it is the edition every
+ * number in `amenitiesFeed.js` was measured on.
+ */
+async function discoverBpeArchive() {
+  let landing = BPE_LANDING_URL;
+  let discovered = false;
+  try {
+    const dataset = await fetchAmenitiesJson(BPE_DATAGOUV_URL);
+    const fromDataset = bpeLandingFromDataset(dataset);
+    if (fromDataset) {
+      landing = fromDataset;
+      discovered = true;
+    }
+  } catch (error) {
+    console.warn('[Amenities Proxy] data.gouv landing lookup failed:', error?.message || error);
+  }
+  const html = await fetchAmenitiesHtml(landing);
+  const base = landing.replace(/\/fr\/statistiques\/\d+.*$/, '');
+  const pages = bpeSubPagesFromHtml(html);
+  const candidates = [bpeArchiveFromHtml(html)];
+  for (const page of pages) {
+    try {
+      candidates.push(bpeArchiveFromHtml(await fetchAmenitiesHtml(`${base}/fr/statistiques/${page}`)));
+    } catch (error) {
+      console.warn(`[Amenities Proxy] BPE sub-page ${page} unreadable:`, error?.message || error);
+    }
+  }
+  const newest = newestBpeArchive(candidates, BPE_EDITION_FLOOR);
+  if (!newest) {
+    throw new Error(`no BPE archive at or above edition ${BPE_EDITION_FLOOR} on ${landing}`);
+  }
+  return { ...newest, landing, discovered };
+}
+
+/**
+ * Stream one line at a time out of a fetch body, optionally through the single
+ * member of a ZIP.
+ *
+ * The archive's local file header is 30 fixed bytes plus a name and an extra
+ * field; everything after it is the raw deflate stream, which `inflateRaw`
+ * consumes without ever materialising the 1.5 GB it expands to. Nothing bigger
+ * than one inflate chunk is ever held.
+ *
+ * TWO THINGS HERE ARE PERFORMANCE AND NOT STYLE, both measured on the real
+ * 1 515 251 530-byte member. Splitting each decoded chunk with `split('\n')`
+ * rather than walking `indexOf` and re-slicing the carry took the parse from
+ * **340 s to 8.7 s** — a 500-byte line inside a 1 MB chunk makes the
+ * slice-per-line version copy the chunk's tail two thousand times, and there
+ * are 2 921 770 lines. The inflate is also given a 1 MB `chunkSize`, because
+ * the 16 KB default turns the same archive into ninety thousand generator
+ * round-trips.
+ */
+async function* amenitiesCsvLines(response, { zipped, maxBytes }) {
+  let downloaded = 0;
+  const source = (async function* pull() {
+    const reader = response.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      downloaded += value.byteLength;
+      if (downloaded > maxBytes) {
+        try { await reader.cancel(); } catch { /* already closed */ }
+        throw new Error('Upstream response too large');
+      }
+      yield Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    }
+  })();
+
+  let stream = source;
+  if (zipped) {
+    stream = (async function* unzip() {
+      const inflate = zlib.createInflateRaw({ chunkSize: 1024 * 1024 });
+      const pending = [];
+      let failure = null;
+      let header = Buffer.alloc(0);
+      let started = false;
+      inflate.on('data', (chunk) => pending.push(chunk));
+      inflate.on('error', (error) => { failure = error; });
+      for await (const chunk of source) {
+        let body = chunk;
+        if (!started) {
+          header = header.length ? Buffer.concat([header, chunk]) : chunk;
+          if (header.length < 30) continue;
+          if (header.readUInt32LE(0) !== 0x04034b50) throw new Error('not a ZIP local header');
+          const method = header.readUInt16LE(8);
+          if (method !== 8) throw new Error(`unsupported ZIP compression method ${method}`);
+          const offset = 30 + header.readUInt16LE(26) + header.readUInt16LE(28);
+          if (header.length < offset) continue;
+          body = header.subarray(offset);
+          started = true;
+        }
+        if (failure) throw failure;
+        if (!inflate.write(body)) {
+          await new Promise((resolve) => inflate.once('drain', resolve));
+        }
+        while (pending.length) yield pending.shift();
+      }
+      await new Promise((resolve) => inflate.end(resolve));
+      if (failure) throw failure;
+      while (pending.length) yield pending.shift();
+    })();
+  }
+
+  const decoder = new TextDecoder('utf-8');
+  let carry = '';
+  for await (const chunk of stream) {
+    const parts = (carry + decoder.decode(chunk, { stream: true })).split('\n');
+    carry = parts.pop();
+    for (const part of parts) {
+      yield part.charCodeAt(part.length - 1) === 13 ? part.slice(0, -1) : part;
+    }
+  }
+  if (carry) yield carry;
+}
+
+/** Fold the whole BPE archive: the drawn rows, and one point per commune. */
+async function refreshAmenitiesBpe(tally) {
+  const archive = await discoverBpeArchive();
+  const response = await fetch(archive.url, {
+    headers: { Accept: 'application/zip' },
+    signal: AbortSignal.timeout(AMENITIES_BULK_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${archive.url}`);
+
+  const sites = [];
+  const communes = new Map();
+  let index = null;
+  let scanned = 0;
+  for await (const line of amenitiesCsvLines(response, { zipped: true, maxBytes: AMENITIES_BPE_MAX_BYTES })) {
+    if (!index) {
+      index = csvHeaderIndex(line);
+      if (Object.keys(index).length !== BPE_COLUMN_COUNT) {
+        throw new Error(`BPE header has ${Object.keys(index).length} columns, expected ${BPE_COLUMN_COUNT}`);
+      }
+      continue;
+    }
+    if (!line) continue;
+    scanned += 1;
+    const fields = splitSemicolonRow(line);
+    const outcome = readBpeRow(fields, index);
+    tallyAmenityOutcome(tally, outcome);
+    const depcom = String(fields[index.DEPCOM] ?? '').replace(/^"|"$/g, '').trim();
+    if (depcom) {
+      let commune = communes.get(depcom);
+      if (!commune) {
+        commune = { depcom, lat: undefined, lon: undefined, covered: false };
+        communes.set(depcom, commune);
+      }
+      if (outcome.kind === 'site') {
+        commune.covered = true;
+        if (commune.lat === undefined) {
+          commune.lat = outcome.site.lat;
+          commune.lon = outcome.site.lon;
+        }
+      } else if (commune.lat === undefined) {
+        const lat = Number(String(fields[index.LATITUDE] ?? '').replace(/^"|"$/g, ''));
+        const lon = Number(String(fields[index.LONGITUDE] ?? '').replace(/^"|"$/g, ''));
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          commune.lat = Number(lat.toFixed(5));
+          commune.lon = Number(lon.toFixed(5));
+        }
+      }
+    }
+    if (outcome.kind === 'site') sites.push(outcome.site);
+  }
+  if (scanned < BPE_ROW_FLOOR * 0.9) {
+    throw new Error(`BPE read only ${scanned} rows against a floor of ${BPE_ROW_FLOOR}`);
+  }
+  if (scanned !== BPE_ROW_FLOOR) {
+    console.warn(`[Amenities Proxy] BPE drifted: ${scanned} rows against the measured ${BPE_ROW_FLOOR}`);
+  }
+  return { archive, sites, communes: [...communes.values()], scanned };
+}
+
+/** Fold the FINESS establishment extract. */
+async function refreshAmenitiesFiness(tally) {
+  const response = await fetch(FINESS_CSV_URL, {
+    headers: { Accept: 'text/csv' },
+    signal: AbortSignal.timeout(AMENITIES_BULK_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${FINESS_CSV_URL}`);
+  const updated = response.headers.get('last-modified') || null;
+  const sites = [];
+  let index = null;
+  let scanned = 0;
+  for await (const line of amenitiesCsvLines(response, { zipped: false, maxBytes: AMENITIES_FINESS_MAX_BYTES })) {
+    if (!index) {
+      index = csvHeaderIndex(line);
+      if (Object.keys(index).length !== FINESS_COLUMN_COUNT) {
+        throw new Error(`FINESS header has ${Object.keys(index).length} columns, expected ${FINESS_COLUMN_COUNT}`);
+      }
+      continue;
+    }
+    if (!line) continue;
+    scanned += 1;
+    const outcome = readFinessRow(splitSemicolonRow(line), index);
+    tallyAmenityOutcome(tally, outcome);
+    if (outcome.kind === 'site') sites.push(outcome.site);
+  }
+  if (scanned < FINESS_ROW_FLOOR * 0.9) {
+    throw new Error(`FINESS read only ${scanned} rows against a floor of ${FINESS_ROW_FLOOR}`);
+  }
+  return { sites, scanned, updated };
+}
+
+/**
+ * The whole national build.
+ *
+ * FINESS is fetched in parallel with the BPE archive but is NOT allowed to fail
+ * silently: it is the only register behind two of the seven families, so losing
+ * it would quietly delete every pharmacy and every hospital in France. The
+ * layer degrades on a whole failure, with a sentence, rather than on half of
+ * one without.
+ */
+async function refreshAmenities() {
+  const started = Date.now();
+  const index = await loadSchoolsDepartementIndex();
+  const tally = newAmenityTally();
+  const [bpe, finess] = await Promise.all([
+    refreshAmenitiesBpe(tally),
+    refreshAmenitiesFiness(tally),
+  ]);
+  const records = foldAmenitySites([...bpe.sites, ...finess.sites]);
+  const mesh = buildAmenityMeshRows(records);
+  const rollup = projectAmenitiesDepartements({ records, communes: bpe.communes, index });
+  const perFamily = Object.fromEntries(AMENITY_FAMILIES.map((family) => [family, 0]));
+  for (const record of records) perFamily[record.family] += 1;
+  return {
+    records,
+    mesh,
+    rollup,
+    provenance: {
+      edition: bpe.archive.edition,
+      year: bpe.archive.year,
+      archive: bpe.archive.url,
+      landing: bpe.archive.landing,
+      editionDiscovered: bpe.archive.discovered,
+      finessUpdated: finess.updated,
+      bpeRows: bpe.scanned,
+      finessRows: finess.scanned,
+      communes: bpe.communes.length,
+      drawn: sumByFamily(tally.drawn),
+      dots: records.length,
+      perFamily,
+      refusedNoCoordinate: tally.refusedNoCoordinate,
+      refusedInvented: tally.refusedInvented,
+      refusedCrs: tally.refusedCrs,
+      precision: tally.precision,
+      builtInMs: Date.now() - started,
+    },
+  };
+}
+
+async function readAmenitiesDisk() {
+  if (_amenitiesDiskChecked) return;
+  _amenitiesDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(AMENITIES_CACHE_PATH, 'utf8'));
+    if (entry?.version === AMENITIES_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.records)
+      && Array.isArray(entry.payload?.mesh)
+      && Array.isArray(entry.payload?.rollup?.departements)) {
+      _amenities = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeAmenitiesDisk(entry) {
+  fsp.mkdir(AMENITIES_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(AMENITIES_CACHE_PATH, JSON.stringify(entry)))
+    .catch((error) => console.warn('[Amenities Proxy] cache write failed:', error?.message || error));
+}
+
+/** Single-flight: `/departements`, `/mesh` and `/sites` all share one build. */
+function ensureAmenities() {
+  const { promise } = coalesceProxyRequest(_amenitiesInFlight, 'national', async () => {
+    const payload = await refreshAmenities();
+    const entry = { version: AMENITIES_CACHE_VERSION, at: Date.now(), payload };
+    _amenities = entry;
+    writeAmenitiesDisk(entry);
+    return entry;
+  });
+  return promise;
+}
+
+/**
+ * Vite plugin: keyless national everyday-amenity proxy.
+ * @returns {import('vite').Plugin}
+ */
+function amenitiesFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/amenities-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_amenitiesRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readAmenitiesDisk();
+        json(200, {
+          source: 'BPE 2025 — Insee · FINESS — ARS/ANS',
+          editionFloor: BPE_EDITION_FLOOR,
+          rowFloor: { bpe: BPE_ROW_FLOOR, finess: FINESS_ROW_FLOOR },
+          maxBoxDeg: AMENITIES_MAX_BOX_DEG,
+          ttlMs: AMENITIES_TTL_MS,
+          staleMs: AMENITIES_STALE_MS,
+          building: _amenitiesInFlight.size > 0,
+          pack: _amenities
+            ? { at: _amenities.at, ..._amenities.payload.provenance }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/departements' && route !== '/mesh' && route !== '/sites') {
+        json(404, { error: 'Unknown amenities endpoint' });
+        return;
+      }
+
+      let box = null;
+      if (route === '/sites') {
+        box = validBox({
+          south: url.searchParams.get('south'),
+          west: url.searchParams.get('west'),
+          north: url.searchParams.get('north'),
+          east: url.searchParams.get('east'),
+        }, AMENITIES_MAX_BOX_DEG);
+        if (!box) {
+          json(400, {
+            error: `A non-dateline bbox no larger than ${AMENITIES_MAX_BOX_DEG} degrees is required`,
+            maxBoxDeg: AMENITIES_MAX_BOX_DEG,
+          });
+          return;
+        }
+      }
+
+      const answer = (entry, cacheState, stale) => {
+        const payload = entry.payload;
+        if (route === '/departements') {
+          json(200, {
+            ...payload.rollup,
+            provenance: payload.provenance,
+            fetchedAt: entry.at,
+            stale,
+          }, { 'X-AMENITIES-FR': cacheState });
+          return;
+        }
+        if (route === '/mesh') {
+          json(200, {
+            rows: payload.mesh,
+            rowCount: payload.mesh.length,
+            families: AMENITY_FAMILIES,
+            provenance: payload.provenance,
+            fetchedAt: entry.at,
+            stale,
+          }, { 'X-AMENITIES-FR': cacheState });
+          return;
+        }
+        const inBox = [];
+        let rows = 0;
+        for (const record of payload.records) {
+          if (record.lat < box.south || record.lat > box.north) continue;
+          if (record.lon < box.west || record.lon > box.east) continue;
+          inBox.push(record);
+          rows += record.count;
+        }
+        // Rarest family first, so the cap below drops médecins généralistes and
+        // never the hôpitaux a reader is most likely to be looking for.
+        const ordered = orderAmenitySites(inBox);
+        json(200, {
+          sites: ordered.slice(0, AMENITIES_SITE_CAP).map(trimAmenityRecord),
+          dots: inBox.length,
+          rows,
+          capped: Math.max(0, inBox.length - AMENITIES_SITE_CAP),
+          box,
+          maxBoxDeg: AMENITIES_MAX_BOX_DEG,
+          provenance: payload.provenance,
+          fetchedAt: entry.at,
+          stale,
+        }, { 'X-AMENITIES-FR': cacheState });
+      };
+
+      await readAmenitiesDisk();
+      const now = Date.now();
+      if (_amenities && now - _amenities.at <= AMENITIES_TTL_MS) {
+        answer(_amenities, 'HIT', false);
+        return;
+      }
+      try {
+        answer(await ensureAmenities(), 'MISS', false);
+      } catch (error) {
+        console.warn('[Amenities Proxy] national build unavailable:', error?.message || error);
+        // A pack a month old is still this edition of a register published once
+        // a year — serving it beats blanking every amenity in France.
+        if (_amenities && now - _amenities.at <= AMENITIES_STALE_MS) {
+          answer(_amenities, 'STALE', true);
+          return;
+        }
+        json(503, {
+          error: 'La base permanente des équipements et le registre FINESS sont momentanément indisponibles ; le pack national n’a pas pu être construit.',
+        });
+      }
+    });
+  }
+
+  return {
+    name: 'amenities-france-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -18419,6 +18960,7 @@ export default defineConfig(({ mode }) => {
       delinquanceFranceProxy(),
       anfrFranceProxy(),
       fraicheurParisProxy(),
+      amenitiesFranceProxy(),
       bruitFranceProxy(),
       idfmFrequencyProxy(),
       sitadelFranceProxy(),

@@ -701,6 +701,21 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Beside `schools-fr` and `sup-fr` because the first thing this layer does is
+  // REFUSE their subject: the BPE's enseignement domain is 79 743 rows over the
+  // same buildings from a worse source, and it is excluded. Putting the row next
+  // to the two registers it defers to is how the panel shows that decision
+  // instead of hiding it.
+  Object.freeze({
+    id: 'amenities-fr',
+    category: 'built-environment',
+    label: "Équipements du quotidien",
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
   // Last in BÂTI & TERRITOIRE and beside `cadastre-fr` on purpose: it is the
   // only forward-looking layer in the stack. Everything else here describes what
   // EXISTS; this describes what someone has been given permission to build, and

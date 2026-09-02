@@ -41,6 +41,7 @@ import fraicheurParisLayer from './data/fraicheurParis.js';
 import sitadelFranceLayer from './data/sitadelFrance.js';
 import idfmFrequencyLayer from './data/idfmFrequency.js';
 import bruitFranceLayer from './data/bruitFrance.js';
+import amenitiesFranceLayer from './data/amenitiesFrance.js';
 import aisLiveVesselsLayer from './data/aisLiveVessels.js';
 import militaryInstallationsLayer from './data/militaryInstallations.js';
 import militaryAwarenessLayer from './data/militaryAwareness.js';
@@ -334,6 +335,7 @@ async function init() {
     dataManager.register(sitadelFranceLayer);
     dataManager.register(idfmFrequencyLayer);
     dataManager.register(bruitFranceLayer);
+    dataManager.register(amenitiesFranceLayer);
     dataManager.register(aisLiveVesselsLayer);
     dataManager.register(militaryInstallationsLayer);
     dataManager.register(militaryAwarenessLayer);

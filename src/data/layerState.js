@@ -292,6 +292,9 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // the duplicate-token assertion exists to catch — a silent collision would
   // make one share link enable the wrong layer — so it is worth restating that
   // a duplicate here is a BOOT failure, not a review nit.
+  // `bq` for base des équipements. `b` is bikeshare, `bz` is bruit-fr, and `be`
+  // reads like a word; `bq` is unmistakable and unused.
+  Object.freeze({ id: 'amenities-fr', token: 'bq', disposition: 'enabled-only' }),
   // `an` for ANFR. The agency's own initials; `a` is airports. The `radio`
   // layer next door is radio-browser.info AUDIO streams and shares nothing with
   // this but a word, which is exactly why the token had to be unmistakable.
