@@ -17,7 +17,12 @@ import * as Cesium from 'cesium';
 import { forward as toMGRS } from 'mgrs';
 import { CITY_POIS } from './locations.js';
 import { composeLocalityTag } from './hudLocality.js';
-import { ellipsoidalToMslDisplayM, ensureGeoidReady, geoidHeight } from './data/geoid.js';
+import {
+  cachedGeoidHeight,
+  ellipsoidalToMslDisplayM,
+  fetchGeoidHeight,
+  geoidCell,
+} from './data/geoid.js';
 import { getBasemapLabelContext } from './voice/gevActions.js';
 
 /** Color palettes keyed by shader mode; applied as CSS custom properties. */
@@ -35,13 +40,6 @@ const MILITARY_STYLES = new Set(['retro', 'surveillance', 'thermal']);
 const HUD_VARIANTS = new Set(['tactical', 'operator', 'minimal']);
 const HUD_SUMMARY_INTERVAL_MS = 15000;
 const HUD_SUMMARY_URL = '/api/openai/hud-summary';
-
-/**
- * Cell size (degrees) for the ALT readout's geoid-undulation cache. N changes
- * by well under a metre across 0.01° (~1.1 km), so one lookup per cell keeps
- * the 4 Hz telemetry tick off the EGM96 grid without a visible step.
- */
-const HUD_GEOID_CELL_DEG = 0.01;
 
 /** Flattened list of all city POIs for nearest-point lookups. */
 const NEARBY_POINTS = Object.values(CITY_POIS)
@@ -92,13 +90,14 @@ export class IntelHUD {
     this._firstMetricsShown = false;
     this._firstSummaryKicked = false;
     // ALT readout datum: the camera height Cesium reports is ELLIPSOIDAL, the
-    // number a viewer reads is MSL. N comes from the same lazy ~2.7 MB EGM96
-    // chunk the flight layers use — requested on the first telemetry tick of a
-    // VISIBLE HUD, never at construction, so a hidden HUD costs nothing — and
-    // cached per coarse cell. Until it resolves, or if it never does,
-    // `ellipsoidalToMslDisplayM` passes the raw height straight through.
-    this._geoidRequested = false;
-    this._geoidReady = false;
+    // number a viewer reads is MSL. N comes from `/api/geoid`, one coarse cell
+    // at a time, requested on the first telemetry tick of a VISIBLE HUD and
+    // never at construction — so a hidden HUD still costs nothing, and a
+    // visible one no longer drags the 2.77 MB EGM96 grid into the boot to
+    // correct a single number. The answer is the same one the grid would have
+    // given: same package, computed server-side. Until the first cell arrives,
+    // or if it never does, `ellipsoidalToMslDisplayM` passes the raw height
+    // straight through.
     this._geoidCellKey = null;
     this._geoidN = null;
     // Whether the LAST painted tick actually had N. The grid resolves mid-
@@ -254,29 +253,33 @@ export class IntelHUD {
   }
 
   /**
-   * Geoid undulation N at the camera subpoint, memoized per coarse cell.
+   * Geoid undulation N at the camera subpoint, memoized per coarse cell and
+   * fetched one cell at a time from `/api/geoid`.
    * @param {number} latDeg - Camera latitude in decimal degrees.
    * @param {number} lonDeg - Camera longitude in decimal degrees.
-   * @returns {number|null} N in metres, or null while the grid is unavailable.
+   * @returns {number|null} N in metres, or null before the first cell answers.
    */
   _geoidUndulationM(latDeg, lonDeg) {
-    if (!this._geoidReady) {
-      if (!this._geoidRequested) {
-        this._geoidRequested = true;
-        ensureGeoidReady()
-          .then(() => { this._geoidReady = true; })
+    const { key } = geoidCell(latDeg, lonDeg);
+    if (key !== this._geoidCellKey) {
+      this._geoidCellKey = key;
+      const known = cachedGeoidHeight(latDeg, lonDeg);
+      if (Number.isFinite(known)) {
+        this._geoidN = known;
+      } else {
+        // Deliberately NOT clearing `_geoidN` here. Neighbouring cells differ
+        // by centimetres, so holding the previous cell's N across the fetch
+        // keeps the readout within a few centimetres of the truth; blanking it
+        // would drop the correction entirely and jump the number by tens of
+        // metres for a tick, which is the artefact this datum exists to remove.
+        fetchGeoidHeight(latDeg, lonDeg)
+          .then((n) => {
+            // The camera may have crossed into another cell while this was in
+            // flight; only the request for the cell still on screen may write.
+            if (Number.isFinite(n) && this._geoidCellKey === key) this._geoidN = n;
+          })
           .catch(() => { /* readout falls back to the uncorrected height */ });
       }
-      return null;
-    }
-    const key = `${Math.round(latDeg / HUD_GEOID_CELL_DEG)}:${Math.round(lonDeg / HUD_GEOID_CELL_DEG)}`;
-    if (key !== this._geoidCellKey) {
-      try {
-        this._geoidN = geoidHeight(latDeg, lonDeg);
-      } catch {
-        this._geoidN = null;
-      }
-      this._geoidCellKey = key;
     }
     return Number.isFinite(this._geoidN) ? this._geoidN : null;
   }

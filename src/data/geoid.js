@@ -96,3 +96,108 @@ export function ellipsoidalToMslDisplayM(hEllipsoidalM, geoidUndulationM) {
   if (!Number.isFinite(geoidUndulationM)) return hEllipsoidalM;
   return hEllipsoidalM - geoidUndulationM;
 }
+
+// ── One value at a time, without the grid ───────────────────────────────────
+//
+// The grid above is 2.77 MB (1.77 MB over the wire) and six layer modules
+// genuinely need it in-process — flights, militaryFlights, aisLiveVessels,
+// bdtopoBuildings, terrainHeights and ignBilTerrain. The heaviest of them,
+// ignBilTerrain, does thousands of SYNCHRONOUS lookups per terrain tile, which
+// no network can serve. What they have in common is that none of them exists
+// until its layer is switched on — which is exactly when paying for the grid
+// is honest.
+//
+// The other consumer is a readout. The HUD's ALT line wants ONE undulation,
+// memoized per coarse cell, refreshed as the camera drifts — and asking for it
+// used to drag the whole grid into every visitor's cold boot, because the HUD
+// is visible by default. `/api/geoid` answers that question from the same
+// package, server-side, so the number is bit-for-bit the one the browser would
+// have computed and the visitor pays ~50 bytes for it instead of 1.77 MB.
+//
+// The failure mode is deliberately the one this module already had: an
+// unreachable endpoint resolves to `null`, `ellipsoidalToMslDisplayM` passes
+// the raw ellipsoidal height through, and the readout is uncorrected rather
+// than wrong or blank.
+
+/**
+ * Cell size (degrees) the remote lookup quantizes to. Matches the HUD's own
+ * memo granularity: N moves by well under a metre across 0.01° (~1.1 km), and
+ * quantizing keeps the URL space small enough for a cache to hold — the
+ * response is `immutable`, so a cell asked for once need never be asked again.
+ */
+export const GEOID_CELL_DEG = 0.01;
+
+/** Bound on the per-session cell cache; a session crosses far fewer. */
+const REMOTE_CACHE_MAX = 512;
+/** @type {Map<string, number>} cell key -> N in metres. */
+const remoteCache = new Map();
+/** @type {Map<string, Promise<number|null>>} single-flight per cell. */
+const remoteInflight = new Map();
+
+/**
+ * The cell a point falls in, as the canonical key AND the representative
+ * coordinates the endpoint is asked about. Two points in the same cell produce
+ * the same key, so they share one request and one cached answer.
+ * @param {number} latDeg
+ * @param {number} lonDeg
+ * @returns {{key: string, lat: number, lon: number}}
+ */
+export function geoidCell(latDeg, lonDeg) {
+  const lat = Math.round(latDeg / GEOID_CELL_DEG) * GEOID_CELL_DEG;
+  const lon = Math.round(lonDeg / GEOID_CELL_DEG) * GEOID_CELL_DEG;
+  // Fixed precision, so 0.30000000000000004 and 0.3 are never two cells.
+  const key = `${lat.toFixed(2)}:${lon.toFixed(2)}`;
+  return { key, lat: Number(lat.toFixed(2)), lon: Number(lon.toFixed(2)) };
+}
+
+/**
+ * N at a point's cell, if it is already known to this session. Synchronous and
+ * side-effect free, so a readout can call it every tick.
+ * @param {number} latDeg
+ * @param {number} lonDeg
+ * @returns {number|null} N in metres, or null when the cell is not cached yet.
+ */
+export function cachedGeoidHeight(latDeg, lonDeg) {
+  const { key } = geoidCell(latDeg, lonDeg);
+  return remoteCache.has(key) ? remoteCache.get(key) : null;
+}
+
+/**
+ * Fetch N for a point's cell, once. Concurrent callers for the same cell share
+ * one request, and a resolved cell is never requested again.
+ * @param {number} latDeg
+ * @param {number} lonDeg
+ * @param {(input: string) => Promise<Response>} [fetchImpl] Test seam.
+ * @returns {Promise<number|null>} N in metres, or null if it could not be had.
+ */
+export function fetchGeoidHeight(latDeg, lonDeg, fetchImpl) {
+  const { key, lat, lon } = geoidCell(latDeg, lonDeg);
+  if (remoteCache.has(key)) return Promise.resolve(remoteCache.get(key));
+  const pending = remoteInflight.get(key);
+  if (pending) return pending;
+
+  const doFetch = fetchImpl || ((input) => fetch(input));
+  const request = doFetch(`/api/geoid?lat=${lat}&lon=${lon}`)
+    .then((response) => (response?.ok ? response.json() : null))
+    .then((body) => {
+      const n = Number(body?.n);
+      if (!Number.isFinite(n)) return null;
+      if (remoteCache.size >= REMOTE_CACHE_MAX) {
+        remoteCache.delete(remoteCache.keys().next().value);
+      }
+      remoteCache.set(key, n);
+      return n;
+    })
+    .catch(() => null)
+    .finally(() => {
+      if (remoteInflight.get(key) === request) remoteInflight.delete(key);
+    });
+  remoteInflight.set(key, request);
+  return request;
+}
+
+/** Test seam: drop every cached and in-flight cell. */
+export function _resetRemoteGeoidForTest() {
+  remoteCache.clear();
+  remoteInflight.clear();
+}
