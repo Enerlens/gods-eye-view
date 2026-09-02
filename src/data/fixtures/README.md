@@ -11,6 +11,19 @@
   `adsFeed.test.mjs`; a synthetic fixture would agree with whatever the module
   assumed. Licence Ouverte.
 
+- `cadastre-64547-lineage-sample.json` — the real division this chain was
+  written from: Ustaritz (INSEE 64547), parcel **AN 221**, captured 2026-09-02
+  from `cadastre.data.gouv.fr`. Carries the parent as the 2021-02-01 edition
+  published it, today's AN 511 / 512 / 513 that came out of it, and — this is
+  the part a synthetic fixture would get wrong — **five neighbours that must
+  NOT be collected**: AN 222, AN 224, AN 514, AN 515 and AN 516 sit metres away
+  and every one of them is caught by a polygon-intersection test, because the
+  archived outline and the current one share no vertices. Also the buildings of
+  both editions over those three lots (two before, three after: AN 512 goes
+  from zero to one) and the commune's BAL numbers for the impasse, which is
+  where `18 → AN 0512` comes from. 7,5 KB. Used by `cadastreLineage.test.mjs`.
+  Licence Ouverte.
+
 - `ads-portals-sample.json` — real rows from the three métropole ADS portals,
   captured 2026-09-02, each chosen for a different way of being awkward. Paris:
   a dossier published at Lambert-93 `(0, 0)` — whose `geo_point_2d` reprojects

@@ -42,6 +42,7 @@ function paramsForLayer(id) {
       calibration: { cameraId: 'secret-camera', values: { heading: 12 } },
     };
   }
+  if (id === 'ads-fr') return { months: '36' };
   if (id === 'radio') {
     return {
       filter: 'all',
@@ -1640,4 +1641,51 @@ test('one- and two-character tokens coexist, and old links still decode', () => 
   const legacy = new URLSearchParams({ v: '2', l: 'f.p.c' });
   assert.deepEqual([...decodeLayerStateParams(legacy).enabledLayerIds].sort(),
     ['cctv', 'flights', 'transit-fr']);
+});
+
+/**
+ * The permit window is the first option any of the six ADDRESS layers owns,
+ * and it is an option rather than a layer-local setting for one reason: a
+ * window is a question. A link that reopens the same block over six years
+ * instead of three is a different answer, and `au.w.6` is the whole of it.
+ */
+test('the permit window rides the share link and comes back as itself', () => {
+  const defaults = createDefaultLayerState();
+  assert.deepEqual(defaults.options['ads-fr'], { months: '36' });
+
+  const params = new URLSearchParams({ v: '2' });
+  encodeLayerStateParams(params, {
+    ...defaults,
+    enabledLayerIds: ['ads-fr'],
+    options: { ...defaults.options, 'ads-fr': { months: '72' } },
+  });
+  assert.equal(params.get('lo'), 'au.w.6_f.e.1');
+  assert.deepEqual(decodeLayerStateParams(params).options['ads-fr'], { months: '72' });
+});
+
+test('a link that names no window means the default, not the widest', () => {
+  // The absent token has to keep meaning three years for every link already
+  // written, which is why the default must never move without an
+  // `absentValue` — `models3d` next door is the cautionary tale.
+  const decoded = decodeLayerStateParams(new URLSearchParams('v=2&l=au'));
+  assert.deepEqual(decoded.options['ads-fr'], { months: '36' });
+  // …and the default is therefore omitted from the link rather than spelled.
+  const params = new URLSearchParams({ v: '2' });
+  encodeLayerStateParams(params, {
+    ...createDefaultLayerState(), enabledLayerIds: ['ads-fr'],
+  });
+  assert.ok(!String(params.get('lo') || '').includes('au.w'));
+});
+
+test('a window this build does not offer is dropped, never rounded to a neighbour', () => {
+  // `au.w.9` is a link from a build that offered a fourth rung, or a hand-typed
+  // one. Snapping it to the nearest legal window would answer a question nobody
+  // asked while looking exactly like the one they did.
+  const decoded = decodeLayerStateParams(new URLSearchParams('v=2&l=au&lo=au.w.9'));
+  assert.deepEqual(decoded.options['ads-fr'], { months: '36' });
+  assert.deepEqual(
+    normalizeLayerState({ enabledLayerIds: ['ads-fr'], options: { 'ads-fr': { months: '24' } } })
+      .options['ads-fr'],
+    { months: '36' },
+  );
 });

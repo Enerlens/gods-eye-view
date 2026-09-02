@@ -133,6 +133,7 @@ import { buildDpeUrl, clampDpeRadius, projectDpe } from './src/data/dpeFeed.js';
 import {
   adsSince,
   applyGeocoding,
+  applyLineage,
   buildGeocodeCsv,
   buildLocalAdsExcludedCountUrl,
   buildLocalAdsUrl,
@@ -142,6 +143,7 @@ import {
   mergeRegisters,
   normaliseLocalRow,
   normaliseSitadelRow,
+  placeOnParcels,
   portalsForCommune,
   projectAdsPermits,
   ADS_DEFAULT_MONTHS,
@@ -151,6 +153,18 @@ import {
   BAN_CSV_URL,
   SITADEL_FILES,
 } from './src/data/adsFeed.js';
+import {
+  anchorParcels,
+  assignDivision,
+  balParcelsForNumber,
+  cadastreArchiveUrl,
+  childrenOf,
+  childrenThatBuilt,
+  indexByIdu,
+  millesimeLadder,
+  parseCadastreMillesimes,
+  LINEAGE_MILLESIMES,
+} from './src/data/cadastreLineage.js';
 import {
   buildIsochroneUrl,
   clampSeconds as clampIsochroneSeconds,
@@ -20175,6 +20189,401 @@ function adsFranceProxy() {
   const ADS_GEOCODE_TIMEOUT_MS = 60_000;
   /** A commune's worth of permits, not a département's. */
   const ADS_GEOCODE_MAX_ROWS = 4_000;
+  /** Bumped whenever an edition's SHAPE changes; see `loadEdition`. */
+  const ADS_EDITION_SCHEMA = 2;
+
+  // --- Cadastre, and what a permit's parcel became -------------------------
+  /**
+   * Etalab snapshots live in their own directory and outlive everything else
+   * in `.gev-cache`: a DATED edition is immutable, so it is written once and
+   * never revalidated. Only `latest` carries a TTL, and a quarter is shorter
+   * than Etalab's own cadence.
+   */
+  const CADASTRE_CACHE_DIR = path.join(process.cwd(), '.gev-cache', 'cadastre');
+  const CADASTRE_LATEST_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+  /** 676 KB gzipped for Ustaritz's parcels; a Paris arrondissement is larger. */
+  const CADASTRE_MAX_BYTES = 64 * 1024 * 1024;
+  const CADASTRE_TIMEOUT_MS = 60_000;
+  /** Ceiling on the snapshot cache. A dated edition never expires, so size is
+   *  the only bound there can be — see `pruneCadastreCache`. */
+  const CADASTRE_CACHE_MAX_BYTES = 256 * 1024 * 1024;
+  /** How many commune snapshots are downloaded at once. Etalab is a static
+   *  file host; this is the same wave size the sibling Sitadel proxy uses. */
+  const CADASTRE_PREFETCH = 8;
+  /**
+   * How many archived editions one permit may cost.
+   *
+   * Each rung is a parcel file AND a building file — 915 KB together for
+   * Ustaritz. Three rungs walk back nine months, which covers a division that
+   * happened between the filing and the decision, and that is the common case:
+   * AN 221 was split three months before its permit was granted.
+   */
+  const CADASTRE_LADDER = 3;
+  /**
+   * How many DISTINCT dead parcels one commune edition will chase.
+   *
+   * Distinct, because a lotissement's permits all name the same parent and the
+   * expensive parts — the archive rungs, the indexing, the anchoring — are
+   * shared by every permit standing on it. Ustaritz carries 211 dead
+   * references over thirteen years and rather fewer parents; the ceiling is
+   * there for the commune that is not Ustaritz, it is spent newest-first, and
+   * `truncated` reports it rather than letting the shortfall round off.
+   */
+  const CADASTRE_MAX_PARENTS = 200;
+  /** The BAL, only ever consulted for a street a dead-parcel permit names. */
+  const BAL_LOOKUP = 'https://plateforme.adresse.data.gouv.fr/lookup';
+  const CADASTRE_INDEX_URL = 'https://cadastre.data.gouv.fr/data/etalab-cadastre/';
+
+  /** Discovered once per process, over the pinned list. */
+  let _millesimes = null;
+  /** insee → BAL voie listing; insee|voieId → that voie's numbers. */
+  const _bal = new Map();
+
+  /**
+   * One Etalab snapshot, decompressed and cached on disk.
+   *
+   * The body is raw gzip served as `application/octet-stream` with no
+   * `content-encoding`, so `fetch` does NOT decompress it and `zlib` has to —
+   * the same trap `fetchSitadelParcels` documents for the sibling layer, which
+   * reads `latest` only and could not be reused for a dated edition.
+   *
+   * Every failure is a null and never an exception: a commune with no
+   * published cadastre (Etalab publishes none for Saint-Barthélemy) and a
+   * commune whose archive is briefly down look the same to a scan, and both
+   * mean "place these permits by address instead".
+   */
+  async function fetchCadastre(insee, millesime, kind) {
+    const dated = millesime && millesime !== 'latest';
+    // HELD AS THE GZIP IT ARRIVED AS. The first cut of this wrote the parsed
+    // JSON and one commune's thirteen years of history took 186 MB of disk —
+    // 59 files at 4 MB each. The bytes on the wire are already compressed, so
+    // storing them verbatim costs nothing to write, is 6× smaller, and skips
+    // re-serialising a four-megabyte object on every miss.
+    const file = path.join(CADASTRE_CACHE_DIR, `${insee}-${millesime}-${kind}.json.gz`);
+    try {
+      const stat = await fsp.stat(file);
+      if (dated || Date.now() - stat.mtimeMs < CADASTRE_LATEST_TTL_MS) {
+        return readCadastre(await fsp.readFile(file));
+      }
+    } catch { /* not on disk yet */ }
+    try {
+      const response = await fetch(cadastreArchiveUrl(insee, millesime, kind), {
+        signal: AbortSignal.timeout(CADASTRE_TIMEOUT_MS),
+      });
+      // A 404 is a REAL answer — not every commune has every edition — and it
+      // is cached as one so the same miss is not re-fetched every scan.
+      if (response.status === 404) {
+        const empty = { type: 'FeatureCollection', features: [] };
+        await writeCadastre(file, zlib.gzipSync(Buffer.from(JSON.stringify(empty))));
+        return empty;
+      }
+      if (!response.ok) return null;
+      const gz = Buffer.from(await response.arrayBuffer());
+      const collection = readCadastre(gz);
+      if (collection) await writeCadastre(file, gz);
+      return collection;
+    } catch (error) {
+      console.warn(`[ADS Proxy] cadastre ${insee}/${millesime}/${kind}:`, error?.message || error);
+      return null;
+    }
+  }
+
+  function readCadastre(gz) {
+    return JSON.parse(zlib.gunzipSync(gz, { maxOutputLength: CADASTRE_MAX_BYTES }).toString('utf8'));
+  }
+
+  async function writeCadastre(file, gz) {
+    try {
+      await fsp.mkdir(CADASTRE_CACHE_DIR, { recursive: true });
+      await fsp.writeFile(file, gz);
+      await pruneCadastreCache();
+    } catch { /* cache is an optimisation, never a requirement */ }
+  }
+
+  /**
+   * Keep the snapshot cache under its ceiling, oldest-read first.
+   *
+   * A dated edition never expires — that is the point of caching it — so the
+   * only thing that can bound this directory is its size. Ustaritz's full
+   * thirteen years is 30 MB gzipped, so the ceiling holds a handful of
+   * communes explored that deeply, or a great many explored at the layer's
+   * default window, which touches one or two editions each.
+   */
+  async function pruneCadastreCache() {
+    const names = await fsp.readdir(CADASTRE_CACHE_DIR);
+    const files = [];
+    let total = 0;
+    for (const name of names) {
+      const full = path.join(CADASTRE_CACHE_DIR, name);
+      try {
+        const stat = await fsp.stat(full);
+        files.push({ full, at: stat.mtimeMs, size: stat.size });
+        total += stat.size;
+      } catch { /* vanished under us */ }
+    }
+    if (total <= CADASTRE_CACHE_MAX_BYTES) return;
+    files.sort((a, b) => a.at - b.at);
+    for (const file of files) {
+      if (total <= CADASTRE_CACHE_MAX_BYTES) break;
+      try { await fsp.unlink(file.full); total -= file.size; } catch { /* already gone */ }
+    }
+  }
+
+  /**
+   * The editions Etalab actually publishes, discovered over the pinned list.
+   *
+   * The cadence is irregular enough that it cannot be computed
+   * (`cadastreLineage.js` says which dates break which rule), so the list is
+   * pinned as a fallback and the live index is preferred when it answers. A
+   * pinned list going stale costs the newest editions, which is exactly the
+   * half a scan of recent permits needs.
+   */
+  async function millesimes() {
+    if (_millesimes) return _millesimes;
+    const html = await fetchAddressSource(CADASTRE_INDEX_URL, { text: true });
+    const found = parseCadastreMillesimes(html || '');
+    _millesimes = found.length >= LINEAGE_MILLESIMES.length ? found : LINEAGE_MILLESIMES;
+    return _millesimes;
+  }
+
+  /** Fold a street name to what both registers agree on. */
+  function foldStreet(name) {
+    return String(name ?? '')
+      .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+      .toUpperCase().replace(/['’]/g, ' ')
+      .split(/[^A-Z0-9]+/).filter(Boolean)
+      // The particles the counter drops and the BAL keeps — "IMPASSE
+      // D'HAROZTEGIA" against "Impasse de Haroztegia" is the same street.
+      .filter((word) => !['D', 'DE', 'DU', 'DES', 'LA', 'LE', 'LES', 'L'].includes(word))
+      .join(' ');
+  }
+
+  /**
+   * The BAL numbers of the street a permit names.
+   *
+   * Two passes, and the second one is deliberately loose: Sitadel abbreviates
+   * the type word (`CHEM D ALDABEA`, `IMP`, `LOT`) where the BAL spells it out,
+   * so a failed exact match retries on the name with its FIRST word dropped —
+   * and accepts the answer only when exactly one voie in the commune matches,
+   * because "Rue du Jeu de Paume" and "Impasse du Jeu de Paume" both exist in
+   * France and picking between them is not something a fold can do.
+   */
+  async function balForStreet(insee, street) {
+    const wanted = foldStreet(street);
+    if (!wanted || !insee) return null;
+    let commune = _bal.get(insee);
+    if (commune === undefined) {
+      commune = await fetchAddressSource(`${BAL_LOOKUP}/${insee}`);
+      _bal.set(insee, commune || null);
+    }
+    const voies = commune?.voies || [];
+    let match = voies.filter((voie) => foldStreet(voie.nomVoie) === wanted);
+    if (!match.length) {
+      const tail = wanted.split(' ').slice(1).join(' ');
+      if (!tail) return null;
+      match = voies.filter((voie) => foldStreet(voie.nomVoie).split(' ').slice(1).join(' ') === tail);
+    }
+    if (match.length !== 1) return null;
+    const key = `${insee}|${match[0].id}`;
+    if (!_bal.has(key)) _bal.set(key, await fetchAddressSource(`${BAL_LOOKUP}/${match[0].id}`) || null);
+    return _bal.get(key);
+  }
+
+  /**
+   * Walk the archive until a dead parcel is found alive, then read the division.
+   *
+   * Returns the verdict `applyLineage` applies: the child when one can be
+   * named, the parent when none can, and nothing at all when the parcel died
+   * before the archive begins or the children do not add up to it.
+   */
+  async function resolveDivision(permits, ctx) {
+    const refs = permits[0]?.parcelIdus || [];
+    // Every permit on this parent gets a say in how far back to look: they
+    // were not all granted the same year, and the parent only has to be alive
+    // in ONE of the rungs for the division to be read.
+    const dates = permits.map((permit) => permit.decidedOn).filter(Boolean).sort();
+    const ladder = millesimeLadder(ctx.editions, dates.at(-1), CADASTRE_LADDER);
+    for (const millesime of ladder) {
+      const index = await archiveIndex(ctx, millesime);
+      if (!index) continue;
+      const parent = refs.map((ref) => index.get(ref.idu)).find(Boolean);
+      if (!parent) continue;
+      const { children, agrees } = childrenOf(parent, ctx.anchored);
+      // The area guard failing means the anchor test lost lots to a boundary
+      // that moved, not that the division is unusual. Drawing the parent
+      // anyway would draw a plot we have just failed to account for.
+      if (!agrees) return null;
+      // Buildings are only worth downloading when there is a choice to make.
+      let built = [];
+      if (children.length > 1) {
+        const [before, after] = await Promise.all([
+          anchoredBuildings(ctx, millesime),
+          anchoredBuildings(ctx, 'latest'),
+        ]);
+        if (before && after) built = childrenThatBuilt(children, before, after);
+      }
+      return { parent, children, built, millesime };
+    }
+    return null;
+  }
+
+  /**
+   * The lots the BAL ties to the number written on one permit.
+   *
+   * Only ever asked when there is a choice to make — a division of one needs no
+   * tie-breaker — and only ever for a permit that carries a number, which is
+   * 45% of them.
+   */
+  async function numberedFor(permit, ctx, division) {
+    if (division.children.length < 2 || !permit.address) return [];
+    const number = (/^\s*(\d+)/.exec(permit.address) || [])[1];
+    if (!number) return [];
+    const bal = await balForStreet(ctx.insee, permit.address.replace(/^\s*\d+\s*/, ''));
+    return bal ? balParcelsForNumber(bal, number) : [];
+  }
+
+  /**
+   * One archived edition, indexed once and held for the whole pass.
+   *
+   * Permits of the same year climb the same rungs, so a commune with two
+   * hundred dead references reads a handful of editions and rebuilds an
+   * 8 000-entry Map for each of them exactly once.
+   */
+  async function archiveIndex(ctx, millesime) {
+    if (ctx.indexes.has(millesime)) return ctx.indexes.get(millesime);
+    const collection = await fetchCadastre(ctx.insee, millesime, 'parcelles');
+    const index = collection ? indexByIdu(collection) : null;
+    ctx.indexes.set(millesime, index);
+    return index;
+  }
+
+  /**
+   * One edition's buildings, anchored once and held for the whole pass.
+   *
+   * Anchoring is the expensive half of a lineage pass (`anchorParcels` says
+   * why), and every parent in a commune tests against the same two building
+   * editions. Doing it per parent would run the scanline over a commune's
+   * whole building stock once per dead reference.
+   */
+  async function anchoredBuildings(ctx, millesime) {
+    if (ctx.buildings.has(millesime)) return ctx.buildings.get(millesime);
+    const collection = await fetchCadastre(ctx.insee, millesime, 'batiments');
+    const anchored = collection ? anchorParcels(collection) : null;
+    ctx.buildings.set(millesime, anchored);
+    return anchored;
+  }
+
+  /**
+   * Place a commune edition's permits on the ground before geocoding them.
+   *
+   * ORDER MATTERS AND IT IS THIS WAY ROUND. A permit resolved to its parcel
+   * never enters the BAN batch, so the cadastre both places it better and
+   * makes the geocode smaller; running the geocoder first would spend a call
+   * on every row and then overwrite the good answers with the cheap ones.
+   */
+  async function placeOnGround(permits) {
+    const byCommune = new Map();
+    for (const permit of permits) {
+      if (permit.lon !== null || !permit.parcelIdus?.length) continue;
+      const insee = permit.cadastreCommune;
+      if (!insee) continue;
+      if (!byCommune.has(insee)) byCommune.set(insee, []);
+      byCommune.get(insee).push(permit);
+    }
+    if (!byCommune.size) return { permits, cadastre: null };
+
+    // WARM THE DOWNLOADS FIRST, THEN DO THE WORK SERIALLY. A Paris edition is
+    // commune-wide and Sitadel keys it at 75056, so its permits resolve across
+    // all twenty arrondissement cadastres — twenty files fetched one after the
+    // other took 58 s on a cold scan, which reads as a hung layer. The waves
+    // below only fill the disk cache; the pass afterwards is unchanged and
+    // still sequential, because the expensive part of IT is CPU and racing
+    // that buys nothing.
+    const codes = [...byCommune.keys()];
+    for (let i = 0; i < codes.length; i += CADASTRE_PREFETCH) {
+      await Promise.all(codes.slice(i, i + CADASTRE_PREFETCH)
+        .map((insee) => fetchCadastre(insee, 'latest', 'parcelles')));
+    }
+
+    let placed = 0;
+    let out = permits;
+    const verdicts = new Map();
+    let dead = 0;
+    let chased = 0;
+    let resolved = 0;
+    for (const [insee, rows] of byCommune) {
+      const collection = await fetchCadastre(insee, 'latest', 'parcelles');
+      if (!collection) continue;
+      const step = placeOnParcels(out, indexByIdu(collection));
+      out = step.permits;
+      placed += step.placed;
+      // Only the dead parcels of THIS commune, newest permit first: the budget
+      // below is spent in the order a reader is most likely to be reading.
+      const divided = step.divided
+        .filter((permit) => rows.includes(permit))
+        .sort((a, b) => String(b.decidedOn ?? '').localeCompare(String(a.decidedOn ?? '')));
+      dead += divided.length;
+      if (!divided.length) continue;
+      const ctx = {
+        insee,
+        editions: await millesimes(),
+        // The commune's parcels, anchored ONCE for every parent in this pass.
+        anchored: anchorParcels(collection),
+        indexes: new Map(),
+        buildings: new Map(),
+      };
+      // ONE PARENT, ONE WALK, AND ONE VERDICT FOR EVERYBODY STANDING ON IT.
+      // A lotissement's permits all name the same parcel, so the budget counts
+      // DISTINCT parents and the expensive parts — the archive rungs, the
+      // indexing, the anchoring — are paid once per plot rather than once per
+      // dossier. It is also the only way to see that two dossiers are
+      // competing for the same lot, which `assignDivision` needs to know.
+      const groups = new Map();
+      for (const permit of divided) {
+        const key = (permit.parcelIdus || []).map((ref) => ref.idu).join('+');
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(permit);
+      }
+      for (const group of [...groups.values()].slice(0, CADASTRE_MAX_PARENTS)) {
+        chased += group.length;
+        const division = await resolveDivision(group, ctx);
+        if (!division) continue;
+        const entries = [];
+        for (const permit of group) {
+          entries.push({
+            id: permit.id,
+            kind: permit.kind,
+            numbered: await numberedFor(permit, ctx, division),
+          });
+        }
+        for (const [id, verdict] of assignDivision(entries, division)) {
+          verdicts.set(id, {
+            ...verdict,
+            parent: division.parent,
+            millesime: division.millesime,
+            children: division.children.length,
+          });
+          resolved += 1;
+        }
+      }
+    }
+    const lineage = applyLineage(out, verdicts);
+    return {
+      permits: lineage.permits,
+      cadastre: {
+        placed,
+        // The three numbers that make the shortfall readable: how many rows
+        // named a parcel that is gone, how many of those were chased inside
+        // the budget, and how many of those the archive could answer.
+        divided: dead,
+        chased,
+        resolved,
+        onChild: lineage.children,
+        onParent: lineage.parents,
+        truncated: dead > chased,
+      },
+    };
+  }
 
   function rememberEdition(key, permits) {
     communeEditions.set(key, permits);
@@ -20284,21 +20693,51 @@ function adsFranceProxy() {
       portals.push({ key: portal.key, label: portal.label, licence: portal.licence, ok: true, count: kept });
     }
 
-    const all = [...permits, ...local];
+    // The cadastre FIRST, the geocoder for what it could not place. See
+    // `placeOnGround`: a row drawn on its own parcel never enters the BAN
+    // batch, so this is both the better placement and the smaller call.
+    const ground = await placeOnGround([...permits, ...local]);
+    const all = ground.permits;
+    const { cadastre } = ground;
     const csv = buildGeocodeCsv(all.slice(0, ADS_GEOCODE_MAX_ROWS));
-    if (!csv) return { permits: all, families, portals, geocoded: 0, unplaced: 0 };
+    if (!csv) return { permits: all, families, portals, cadastre, geocoded: 0, unplaced: 0 };
     const answer = await geocodeBatch(csv);
-    if (!answer) return { permits: [], families, portals, geocoded: 0, unplaced: all.length };
+    if (!answer) {
+      // A GEOCODER OUTAGE NO LONGER EMPTIES THE SCAN. Before the cadastre ran
+      // first, every permit here depended on one BAN call and a failed one
+      // returned a block with nothing on it; the rows already standing on
+      // their own plot are unaffected by it and are served.
+      const standing = all.filter((permit) => permit.lon !== null);
+      return {
+        permits: standing,
+        families,
+        portals,
+        cadastre,
+        geocoded: 0,
+        unplaced: all.length - standing.length,
+      };
+    }
     const placed = applyGeocoding(all, answer);
     return {
-      permits: placed.permits, families, portals, geocoded: placed.geocoded, unplaced: placed.unplaced,
+      permits: placed.permits,
+      families,
+      portals,
+      cadastre,
+      geocoded: placed.geocoded,
+      unplaced: placed.unplaced,
     };
   }
 
   async function loadEdition(communeCode, since) {
     const cacheKey = `${communeCode}-${since}`;
     if (communeEditions.has(cacheKey)) return communeEditions.get(cacheKey);
-    const diskPath = path.join(ADDRESS_CACHE_DIR, `ads-${cacheKey}.json`);
+    // THE SCHEMA IS PART OF THE KEY. An edition on disk is a projection, not a
+    // download, and this cache outlives the code that wrote it by a week — so
+    // the first run after the cadastre chain landed served editions built
+    // before it existed and reported no cadastre at all, in Paris, looking
+    // exactly like a chain that does not work there. Bumping the version
+    // retires them instead of asking anyone to remember to clear a directory.
+    const diskPath = path.join(ADDRESS_CACHE_DIR, `ads${ADS_EDITION_SCHEMA}-${cacheKey}.json`);
     try {
       const stat = await fsp.stat(diskPath);
       if (Date.now() - stat.mtimeMs < ADS_DISK_TTL_MS) {
@@ -20428,6 +20867,12 @@ function adsFranceProxy() {
               // it as "58 permits missing from this block".
               geocoded: edition.geocoded,
               unplacedInCommune: edition.unplaced,
+              // How much of this commune's register is drawn as GROUND rather
+              // than as a geocoded dot, and how much of the rest the archive
+              // could still account for. Commune-wide like `unplacedInCommune`
+              // and for the same reason: it is a property of the register, not
+              // of the circle the reader happens to be looking at.
+              cadastre: edition.cadastre ?? null,
             },
           });
         },

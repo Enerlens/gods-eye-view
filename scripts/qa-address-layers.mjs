@@ -462,11 +462,54 @@ const note = (ok, message) => {
       `ADS merged ${ads.merged} dossiers across both registers, ${ads.housing} dwellings authorised`);
     note(Number.isFinite(ads.unplacedInCommune),
       `ADS states its geocoding shortfall: ${ads.unplacedInCommune} rows unplaced commune-wide`);
-    // PARIS PUBLISHES A POINT AND NOTHING ELSE. Zero outlines here is the
-    // register's property, not a failure, and this check exists so that a
-    // later "fix" for the missing washes has to argue with a measurement.
-    note(ads.emprises === 0 && ads.withEmprise === 0,
-      `ADS draws no emprise in Paris (${ads.emprises} plots) — that portal publishes points`);
+    // PARIS PUBLISHES A POINT AND NOTHING ELSE — and the ground under these
+    // dossiers is now drawn anyway, from the cadastre rather than from the
+    // portal. This check used to assert ZERO outlines here and it was right to
+    // until `cadastreLineage.js` landed: Sitadel names a parcel on most rows,
+    // Etalab publishes that parcel, and a permit that names living ground is
+    // drawn on it. What is pinned now is that the ground came from somewhere —
+    // a scan that outlines nothing in Paris means the cadastre join broke.
+    note(ads.emprises > 0 && ads.withEmprise > 0,
+      `ADS outlined ${ads.emprises} Paris plots from the cadastre, under ${ads.withEmprise} dossiers`);
+    note(ads.onParcel > 0,
+      `ADS placed ${ads.onParcel} commune rows on their own parcel rather than on a geocoded address`);
+    // The dead references, and how many of them the archive could still
+    // account for. A zero `divided` would mean the detection stopped working,
+    // not that Paris has stopped dividing parcels.
+    note(ads.dividedInCommune > 0,
+      `ADS: ${ads.dividedInCommune} rows name a parcel that has been divided since`
+      + ` — ${ads.lineageResolved} resolved (${ads.lineageOnChild} onto a lot,`
+      + ` ${ads.lineageOnParent} onto the parent)`);
+
+    // THE WINDOW IS A CONTROL, and this is the only address layer that has one.
+    // The chips and the parameter gate are one mechanism seen from two ends, so
+    // what is checked here is that they still agree: every chip offers a value
+    // the layer accepts, exactly one is lit, and it is the one in force. The
+    // rescan itself is pinned in `addressScanLayer.test.mjs`, where it costs
+    // nothing — switching the window here would refetch a cold Paris
+    // commune-window for a behaviour a unit test already owns.
+    const windowState = await page.evaluate(() => {
+      const dm = window.__godsEyeView.dataManager;
+      const module = dm.layers.get('ads-fr')?.module;
+      return {
+        params: dm.getLayerParams('ads-fr'),
+        chips: (module?.getRowControls?.()?.chips || [])
+          .map((chip) => ({ label: chip.label, active: chip.active, months: chip.params?.months })),
+        // A window this build does not offer must be REFUSED, not snapped to a
+        // neighbour: everything reachable here is reachable from a share link.
+        rejected: dm.setLayerParams('ads-fr', { months: '24' }, { origin: 'user' }),
+        rejectedKey: dm.setLayerParams('ads-fr', { radius: '1200' }, { origin: 'user' }),
+      };
+    });
+    note(windowState.chips.length === 3,
+      `ADS offers ${windowState.chips.length} window chips: `
+      + `${windowState.chips.map((chip) => chip.label).join(' / ') || 'none'}`);
+    note(windowState.chips.filter((chip) => chip.active).length === 1,
+      'ADS lights exactly one window chip');
+    note(windowState.chips.find((chip) => chip.active)?.months === windowState.params?.months,
+      `ADS's lit chip is the window in force (${windowState.params?.months} months)`);
+    note(windowState.rejected === false && windowState.rejectedKey === false,
+      'ADS refuses an unlisted window and an unknown key rather than clamping them');
 
     // The reported symptom, measured: "the dots move when I nudge the map".
     // `Cartesian3.fromDegrees(lon, lat)` puts a marker on the ELLIPSOID, and
