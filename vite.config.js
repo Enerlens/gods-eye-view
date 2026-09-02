@@ -20682,6 +20682,126 @@ function idfmProxy() {
   };
 }
 
+/**
+ * EGM96 geoid undulation for one point, computed here instead of in the browser.
+ *
+ * WHY THIS EXISTS. `h = H + N`: Cesium reports the camera's ELLIPSOIDAL height
+ * and the HUD's ALT readout has to print MSL, so it needs N. The grid that
+ * yields N is `egm96-universal`, and it is 2.77 MB — 1.77 MB over the wire, and
+ * barely compressible. The HUD is visible by default, so its first telemetry
+ * tick used to pull that whole grid into every visitor's cold boot to correct
+ * one number by a few tens of metres. Measured against the app's own origin,
+ * it was 1.77 MB of a 5.06 MB first visit: the single largest thing we ship,
+ * larger than the Cesium engine.
+ *
+ * The grid still ships — six layer modules need it in-process (flights,
+ * militaryFlights, aisLiveVessels, bdtopoBuildings, terrainHeights and
+ * ignBilTerrain, the last doing thousands of SYNCHRONOUS lookups per terrain
+ * tile, which no network could serve). None of them exists until its layer is
+ * switched on, which is exactly when paying for the grid is honest. This
+ * endpoint serves the remaining consumer, which wants one value at a time.
+ *
+ * The answer is bit-for-bit what the browser would have computed: same package,
+ * same grid, same function. Nothing is approximated by moving it here.
+ *
+ * A point's undulation is a mathematical constant — it does not expire, and it
+ * cannot go stale — so the response is `immutable` and every layer of cache
+ * between here and the reader is allowed to keep it forever. The client asks on
+ * the CELL grid it already memoizes on, which keeps the URL space small enough
+ * for an edge cache to actually hold it.
+ *
+ * @returns {import('vite').Plugin} Vite plugin.
+ */
+/**
+ * The point a `/api/geoid` request is asking about, or null when it is not
+ * asking about one.
+ *
+ * Pulled out of the middleware because every way this endpoint can be misused
+ * is a parsing question, and `Number('')` is 0 — a missing `lat` would
+ * otherwise be answered confidently as the equator rather than refused. The
+ * latitude bound is real (the grid is undefined past the poles); longitude is
+ * not bounded here because `meanSeaLevel` normalizes it itself.
+ *
+ * @param {string|undefined} url
+ * @returns {{lat: number, lon: number, key: string}|null}
+ */
+export function parseGeoidQuery(url) {
+  const params = new URL(String(url || ''), 'http://internal').searchParams;
+  const rawLat = params.get('lat');
+  const rawLon = params.get('lon');
+  if (rawLat === null || rawLon === null || rawLat === '' || rawLon === '') return null;
+  const lat = Number(rawLat);
+  const lon = Number(rawLon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90) return null;
+  return { lat, lon, key: `${lat}:${lon}` };
+}
+
+function geoidProxyPlugin() {
+  /** Bound on the in-process memo. A session crosses far fewer cells. */
+  const MAX_MEMO = 4096;
+  /** @type {Map<string, number>} cell key -> N in metres. */
+  const memo = new Map();
+  /** @type {Promise<{meanSeaLevel: (lat: number, lon: number) => number}>|null} */
+  let gridPromise = null;
+
+  // Deliberately lazy: an origin whose visitors never open the HUD never pays
+  // the ~116 ms import, and the module is held for the process lifetime once
+  // one of them does.
+  const loadGrid = () => (gridPromise ??= import('egm96-universal'));
+
+  return {
+    name: 'gev-geoid-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+
+  /** @param {import('connect').Server} middlewares */
+  function install(middlewares) {
+    middlewares.use('/api/geoid', async (req, res) => {
+      const send = (status, body, cacheable = false) => {
+        if (res.headersSent) return;
+        res.writeHead(status, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': cacheable
+            ? 'public, max-age=31536000, immutable'
+            : 'no-store',
+        });
+        res.end(JSON.stringify(body));
+      };
+
+      try {
+        const point = parseGeoidQuery(req.url);
+        if (!point) {
+          send(400, { error: 'lat and lon must be finite degrees, lat within ±90' });
+          return;
+        }
+        const { lat, lon, key } = point;
+        if (memo.has(key)) {
+          send(200, { n: memo.get(key) }, true);
+          return;
+        }
+
+        const grid = await loadGrid();
+        const n = grid.meanSeaLevel(lat, lon);
+        if (!Number.isFinite(n)) {
+          // The readout's contract is "uncorrected, never wrong": a
+          // non-numeric undulation must not reach it as a number.
+          send(502, { error: 'geoid lookup produced no finite undulation' });
+          return;
+        }
+        // Oldest-first eviction. Insertion order is Map's iteration order, and
+        // a session's cells arrive roughly along its flight path, so the entry
+        // dropped is the one furthest behind the camera.
+        if (memo.size >= MAX_MEMO) memo.delete(memo.keys().next().value);
+        memo.set(key, n);
+        send(200, { n }, true);
+      } catch (err) {
+        send(500, { error: String(err?.message || err) });
+      }
+    });
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Hosted-deployment plumbing (access gate + preview parity)
 // ---------------------------------------------------------------------------
@@ -20772,6 +20892,176 @@ function accessGatePlugin() {
 }
 
 /**
+ * Base directory for the Cesium payload, pinned to the installed engine.
+ *
+ * `vite-plugin-cesium` copies Cesium's build output verbatim under one base
+ * path, and not one of those filenames carries a content hash — so
+ * `/cesium/Cesium.js` names a different 6 MB after every engine upgrade. That
+ * is exactly the property a long cache lifetime cannot survive, and it is the
+ * reason a hosted deployment has to choose between a stale engine and no
+ * caching at all. Pinning the directory to the version resolves the dilemma:
+ * the URL now changes when its bytes change, which is what lets
+ * `staticCachePolicyPlugin` promise a year instead of guessing a max-age.
+ *
+ * Nothing in this tree spells the path out. The plugin defines
+ * `CESIUM_BASE_URL` for the Workers/Assets loader, mounts the dev route at the
+ * same place, and writes the tag it injects into index.html from the same
+ * value — so this constant is the single point of truth.
+ */
+const CESIUM_BASE_DIR = `cesium-${JSON.parse(
+  fs.readFileSync(path.join(__dirname, 'node_modules/cesium/package.json'), 'utf8'),
+).version}`;
+
+/** `CESIUM_BASE_DIR` as a regex literal — the version dots are not wildcards. */
+const CESIUM_BASE_DIR_RE = CESIUM_BASE_DIR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Cache and compression policy for the built static assets, on the preview
+ * server that a deployment actually runs.
+ *
+ * `vite preview` serves every file with a hardcoded `Cache-Control: no-cache`
+ * (it hands sirv `dev: true`). Behind the Cloudflare tunnel that is not a
+ * nuance — measured on gev.enerlens.com, every asset comes back
+ * `cf-cache-status: BYPASS`, so the edge stores nothing and each cold visitor
+ * drags 5.06 MB over 28 requests out of the Paris origin no matter where in
+ * the world they are. A returning visitor is fine either way (their disk cache
+ * absorbs it); this is entirely about the first visit and the origin's egress.
+ *
+ * Two families of URL are immutable by construction, and this says so:
+ *   - `/assets/*` — Vite writes a content hash into every filename.
+ *   - `/${CESIUM_BASE_DIR}/*` — pinned above, so the path moves on upgrade.
+ *
+ * Everything else keeps vite's `no-cache`, `index.html` above all: it is the
+ * map from those hashed names to content, and a stale copy would pin a visitor
+ * to a bundle that no longer exists. The rule is deliberately a short allowlist
+ * rather than an exclusion, so a future asset is uncached until someone has
+ * thought about it, never silently frozen for a year.
+ *
+ * Setting the header before the static middleware runs is enough: sirv's
+ * `send()` keeps any header already on the response rather than overwriting it
+ * with its own.
+ *
+ * The same pass closes two gaps in vite's compression middleware, both of
+ * which only start to matter once responses are cacheable:
+ *
+ *   - It sets `Content-Encoding` and never `Vary: Accept-Encoding`. Harmless
+ *     while nothing caches; with an edge cache in front it invites a shared
+ *     cache to hand a gzip body to a client that never asked for one.
+ *   - It tests the content type against /text|javascript|\/json|xml/i, and
+ *     mrmime types `.geojson` as `application/geo+json` — `+json`, not
+ *     `/json`, so it fails the test and the file goes out raw (measured: 254 kB
+ *     for departements.geojson). These files are handed to `JSON.parse` and
+ *     nothing else, so calling them `application/json` costs no meaning and
+ *     buys the compression back.
+ *
+ * @returns {import('vite').Plugin}
+ */
+const IMMUTABLE_ASSET_RE = new RegExp(`^/(?:assets|${CESIUM_BASE_DIR_RE})/`);
+const JSON_BODY_PATH_RE = /\.geojsonl?$/;
+
+/**
+ * The headers one static request should carry, as a pure function of its path.
+ *
+ * Split out of the middleware so the policy can be asserted directly rather
+ * than through a server: the interesting cases here are all path judgements
+ * (is this URL content-addressed? does this extension compress?) and none of
+ * them need a socket to be true.
+ *
+ * @param {string} url - Request URL, query string and all.
+ * @returns {{'Cache-Control'?: string, 'Content-Type'?: string, Vary: string}}
+ */
+export function staticAssetHeaders(url) {
+  const pathname = String(url || '').split('?')[0];
+  const headers = {
+    // Unconditional: the middleware that negotiates the encoding does not
+    // announce that it negotiated, and only a response nobody caches can
+    // afford that.
+    Vary: 'Accept-Encoding',
+  };
+  if (IMMUTABLE_ASSET_RE.test(pathname)) {
+    headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+  }
+  if (JSON_BODY_PATH_RE.test(pathname)) {
+    headers['Content-Type'] = 'application/json; charset=utf-8';
+  }
+  return headers;
+}
+
+function staticCachePolicyPlugin() {
+  return {
+    name: 'gev-static-cache-policy',
+    // Preview only. `vite dev` serves unhashed source URLs whose bytes change
+    // on every keystroke, and a year-long promise there would be a footgun.
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        for (const [name, value] of Object.entries(staticAssetHeaders(req.url))) {
+          res.setHeader(name, value);
+        }
+        next();
+      });
+    },
+  };
+}
+
+/**
+ * Takes the Cesium engine off the HTML parser's critical path.
+ *
+ * `vite-plugin-cesium` injects the engine as a plain blocking script in
+ * `<head>`. It is by far the largest thing on the page — 1.63 MB over the wire,
+ * 6 MB parsed — and the parser stops dead at it, so the 55 kB of markup below
+ * and the stylesheet behind it wait for the whole download and execution.
+ *
+ * `defer` moves it onto the same execute-after-parsing list the module bundle
+ * already sits on, and that list runs in document order. The injected tag sits
+ * above `/assets/index-*.js`, so `window.Cesium` is still defined by the time
+ * the app's first line reads it — which matters, because the build externalises
+ * `cesium` to that global rather than bundling it.
+ *
+ * A post-order transform is what sees the tag: vite injects each hook's tags
+ * into the HTML before running the next hook.
+ *
+ * @returns {import('vite').Plugin}
+ */
+const CESIUM_SCRIPT_TAG_RE = new RegExp(
+  `<script src="([^"]*${CESIUM_BASE_DIR_RE}/Cesium\\.js)"></script>`,
+);
+
+/**
+ * Add `defer` to the injected Cesium script tag.
+ *
+ * Returns `changed` alongside the HTML so the caller can tell "already
+ * deferred / nothing to do" apart from "the tag I expected is not there",
+ * which is the case that must be loud: silently returning the input would hand
+ * the blocking script back and the page would get slower with no signal.
+ *
+ * @param {string} html
+ * @returns {{html: string, changed: boolean}}
+ */
+export function deferCesiumScriptTag(html) {
+  const source = String(html || '');
+  if (!CESIUM_SCRIPT_TAG_RE.test(source)) return { html: source, changed: false };
+  return { html: source.replace(CESIUM_SCRIPT_TAG_RE, '<script defer src="$1"></script>'), changed: true };
+}
+
+function deferCesiumBundlePlugin() {
+  return {
+    name: 'gev-defer-cesium-bundle',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html) {
+        const { html: out, changed } = deferCesiumScriptTag(html);
+        if (!changed) {
+          // Only reachable if vite-plugin-cesium changes how it injects the
+          // tag. Silence would mean quietly giving the blocking script back.
+          console.warn('[gev-defer-cesium-bundle] no Cesium script tag to defer — did vite-plugin-cesium change its injection?');
+        }
+        return out;
+      },
+    },
+  };
+}
+
+/**
  * Mirrors a dev-only middleware plugin onto the preview server.
  *
  * The proxies above were written against `vite dev`; a deployment serves the
@@ -20814,7 +21104,9 @@ export default defineConfig(({ mode }) => {
     plugins: [
       // First in the list so the gate's middleware lands ahead of every proxy.
       accessGatePlugin(),
-      cesium(),
+      staticCachePolicyPlugin(),
+      cesium({ cesiumBaseUrl: `${CESIUM_BASE_DIR}/` }),
+      deferCesiumBundlePlugin(),
       ...[
       openSkyProxy(),
       celestrakProxy(),
@@ -20871,6 +21163,7 @@ export default defineConfig(({ mode }) => {
       isochroneProxy(),
       gpuProxy(),
       idfmProxy(),
+      geoidProxyPlugin(),
       ].map(withPreviewParity),
     ],
     server: {
