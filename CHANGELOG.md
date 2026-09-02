@@ -268,6 +268,26 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **Clicking a parcel highlighted a wedge with the NEIGHBOUR's corners.** The
+  cadastral outline under the cursor was square and correct, and the cyan fill
+  poured into it was a diagonal blob with two edges that belonged to no parcel
+  at all. Measured over Ustaritz on parcel AN 0512: **41% of the plot filled**,
+  and the two straight cuts through the highlight sat on parcel AN 0511's east
+  and north **bounding-box** edges to within one pixel. That is the tell. A
+  batched `GroundPrimitive` does not colour a ground pixel by the polygon that
+  contains it — Cesium classifies the whole batch in ONE stencil pass, which
+  records only "some instance here", and the colour pass then keeps the first
+  instance whose kilometres-tall shadow volume reaches the pixel and whose own
+  axis-aligned bounding rectangle contains it. Parcel bounding rectangles
+  overlap their neighbours' constantly, so inside one batch neighbours repaint
+  each other along rectangle edges. It was invisible while every parcel in the
+  batch shared a band colour, and glaring the moment selection made one differ.
+  Fills are now batched **by band colour** — five primitives at most, against
+  one before and one-per-parcel never — and the selected parcel is drawn as a
+  primitive of its own laid over the batch. The highlight now matches the
+  parcel's own polygon to an intersection-over-union of **0.98 nadir and 0.98
+  oblique**, against 0.44 and 0.14 before, proved on pixels by the new
+  `npm run qa:cadastre-highlight`.
 - **"Sites militaires — Error loading" was one mirror refusing, and three
   healthy ones never asked.** Every viewport answered HTTP 503, and the layer
   was right to say so: `/api/military-installations` reads `status >= 400` as a
