@@ -191,6 +191,18 @@ const BODIES = Object.freeze({
     // what stops the drop reading as a stray tick.
     fills: '<rect x="61" y="56" width="15" height="10" rx="2"/>',
   },
+
+  // ── Isochrone: two concentric rings and four ticks. The only glyph in this
+  //    pack that marks the ORIGIN of a measurement rather than a thing found
+  //    at an address, and its shape is the layer's own subject — reach that
+  //    grows outward in steps. Two rings and not three: at 16 px a third ring
+  //    closes the gap between the other two into a filled disc, measured on the
+  //    same rasteriser the euro's coin outline failed on.
+  target: {
+    strokes: 'M48,20 A28,28 0 1 1 47.9,20 M48,34 A14,14 0 1 1 47.9,34 '
+      + 'M48,8 L48,18 M48,78 L48,88 M8,48 L18,48 M78,48 L88,48',
+    fills: '<circle cx="48" cy="48" r="4.5"/>',
+  },
 });
 
 /**

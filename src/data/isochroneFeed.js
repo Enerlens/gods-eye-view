@@ -128,6 +128,21 @@ export function buildIsochroneUrl({ lon, lat, profile, seconds }) {
  * @returns {number} Area in km², rounded to two decimals.
  */
 export function ringAreaKm2(ring) {
+  return Math.round(rawRingAreaKm2(ring) * 100) / 100;
+}
+
+/**
+ * The same area, unrounded, for arithmetic that happens BEFORE the rounding.
+ *
+ * A polygon's area is its exterior less its holes, and a courtyard of 0,004 km²
+ * rounds to 0,00 on its own — so subtracting rounded holes from a rounded
+ * exterior silently keeps every small hole in the catchment. Round once, at the
+ * end.
+ *
+ * @param {Array<number[]>} ring
+ * @returns {number}
+ */
+export function rawRingAreaKm2(ring) {
   if (!Array.isArray(ring) || ring.length < 3) return 0;
   const R = 6371.0088;
   const toRad = Math.PI / 180;
@@ -137,7 +152,140 @@ export function ringAreaKm2(ring) {
     const [lon2, lat2] = ring[(i + 1) % ring.length];
     total += (lon2 - lon1) * toRad * (2 + Math.sin(lat1 * toRad) + Math.sin(lat2 * toRad));
   }
-  return Math.round(Math.abs(total * R * R / 2) * 100) / 100;
+  return Math.abs(total * R * R / 2);
+}
+
+/**
+ * The three durations a catchment area is read at, in seconds.
+ *
+ * Five, ten and fifteen minutes because that is the vocabulary the question is
+ * asked in — a retail brief says "dix minutes à pied", never "800 metres" — and
+ * three rings are the most that stay legible nested inside one another.
+ */
+export const ISOCHRONE_STEPS = Object.freeze([300, 600, 900]);
+
+/** How many rings one request may ask for. Each is an upstream round trip. */
+export const ISOCHRONE_MAX_RINGS = 4;
+
+/**
+ * Parse a `seconds=300,600,900` list into the durations to fetch.
+ *
+ * A SINGLE value is still valid and still answers a single ring: the route
+ * shipped that way first and a caller reading the old shape must not break.
+ *
+ * @param {unknown} value
+ * @returns {number[]} Sorted, de-duplicated, clamped, never empty.
+ */
+export function parseSteps(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return [...ISOCHRONE_STEPS];
+  const seen = new Set();
+  for (const part of text.split(',')) {
+    if (part.trim() === '') continue;
+    seen.add(clampSeconds(part));
+    if (seen.size >= ISOCHRONE_MAX_RINGS) break;
+  }
+  return seen.size ? [...seen].sort((a, b) => a - b) : [...ISOCHRONE_STEPS];
+}
+
+/**
+ * How much of the free-space expansion a ring actually achieved.
+ *
+ * In open ground a reachable area grows with the SQUARE of time, so doubling
+ * the budget quadruples the area. Every shortfall is the network: a river with
+ * one bridge, a railway, a motorway, a cul-de-sac. The ratio of the measured
+ * growth to that 4× is therefore an obstruction reading that needs NO assumed
+ * speed and no model — it is two measured areas divided by each other, which
+ * is the only reason it is on the card.
+ *
+ * Reported per consecutive pair, so a 5→10 that is fine and a 10→15 that is not
+ * are two different sentences.
+ *
+ * @param {Array<{seconds: number|null, areaKm2: number}>} rings Ascending.
+ * @returns {Array<{fromSeconds: number, toSeconds: number, ratio: number,
+ *   freeSpaceRatio: number, share: number}>}
+ */
+export function ringExpansion(rings) {
+  const usable = (Array.isArray(rings) ? rings : [])
+    .filter((ring) => Number.isFinite(ring?.seconds) && ring.seconds > 0 && ring.areaKm2 > 0)
+    .sort((a, b) => a.seconds - b.seconds);
+  const out = [];
+  for (let i = 1; i < usable.length; i += 1) {
+    const previous = usable[i - 1];
+    const ring = usable[i];
+    const ratio = ring.areaKm2 / previous.areaKm2;
+    const freeSpaceRatio = (ring.seconds / previous.seconds) ** 2;
+    out.push({
+      fromSeconds: previous.seconds,
+      toSeconds: ring.seconds,
+      ratio: Math.round(ratio * 100) / 100,
+      freeSpaceRatio: Math.round(freeSpaceRatio * 100) / 100,
+      share: Math.round((ratio / freeSpaceRatio) * 1000) / 10,
+    });
+  }
+  return out;
+}
+
+/**
+ * The radius of the circle with the same area as a ring.
+ *
+ * On the card BESIDE the outline, never instead of it: it is the honest way to
+ * say "how big" in one number, and it is exactly the circle this layer exists
+ * to refuse — an address whose fifteen-minute walk covers 1.9 km² and one
+ * whose covers 0.6 km² read identically as "1 km away".
+ *
+ * @param {number} areaKm2
+ * @returns {number} Metres, rounded to ten.
+ */
+export function equivalentRadiusM(areaKm2) {
+  if (!Number.isFinite(areaKm2) || areaKm2 <= 0) return 0;
+  return Math.round(Math.sqrt((areaKm2 * 1e6) / Math.PI) / 10) * 10;
+}
+
+/**
+ * A GeoJSON geometry as a list of polygons, each a list of rings.
+ *
+ * `Polygon` and `MultiPolygon` only. A `GeometryCollection` or a line is not an
+ * isochrone and is refused rather than coerced into one.
+ *
+ * @param {object|null|undefined} geometry
+ * @returns {Array<Array<Array<number[]>>>}
+ */
+function geometryPolygons(geometry) {
+  const coordinates = geometry?.coordinates;
+  if (geometry?.type === 'Polygon' && Array.isArray(coordinates?.[0])) return [coordinates];
+  if (geometry?.type === 'MultiPolygon' && Array.isArray(coordinates)) {
+    return coordinates.filter((polygon) => Array.isArray(polygon?.[0]));
+  }
+  return [];
+}
+
+/**
+ * One ring, rounded to five decimals — or null if any vertex is unusable.
+ *
+ * Five decimals is about a metre, which is finer than BD TOPO's own geometry
+ * and coarse enough to halve the payload.
+ *
+ * `Number()` is deliberately NOT used to parse: `Number(null)` is 0 and
+ * `Number([])` is 0, so a coordinate that is missing or malformed passes
+ * `Number.isFinite` as a point on the null island. Only an actual number is
+ * accepted.
+ *
+ * @param {unknown} raw
+ * @returns {Array<number[]>|null}
+ */
+function cleanRing(raw) {
+  if (!Array.isArray(raw) || raw.length < 3) return null;
+  const ring = [];
+  for (const point of raw) {
+    if (!Array.isArray(point)) return null;
+    const [lon, lat] = point;
+    if (typeof lon !== 'number' || typeof lat !== 'number') return null;
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+    if (lon < -180 || lon > 180 || lat < -90 || lat > 90) return null;
+    ring.push([Math.round(lon * 1e5) / 1e5, Math.round(lat * 1e5) / 1e5]);
+  }
+  return ring.length >= 3 ? ring : null;
 }
 
 /**
@@ -150,25 +298,58 @@ export function ringAreaKm2(ring) {
  *
  * @param {object|null|undefined} payload
  * @returns {{profile: string|null, seconds: number|null, resourceVersion: string|null,
- *   ring: Array<number[]>, areaKm2: number}|null} Null when unusable.
+ *   ring: Array<number[]>, holes: Array<Array<number[]>>,
+ *   parts: Array<{ring: Array<number[]>, holes: Array<Array<number[]>>}>,
+ *   areaKm2: number}|null} Null when unusable.
  */
 export function projectIsochrone(payload) {
   const geometry = payload?.geometry;
-  if (geometry?.type !== 'Polygon' || !Array.isArray(geometry.coordinates?.[0])) return null;
-  const ring = [];
-  for (const point of geometry.coordinates[0]) {
-    const lon = Number(point?.[0]);
-    const lat = Number(point?.[1]);
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-    ring.push([Math.round(lon * 1e5) / 1e5, Math.round(lat * 1e5) / 1e5]);
+  const polygons = geometryPolygons(geometry);
+  if (!polygons.length) return null;
+
+  const parts = [];
+  for (const polygon of polygons) {
+    const rings = [];
+    for (const raw of polygon) {
+      const ring = cleanRing(raw);
+      // A RING IS ALL OR NOTHING. The old loop skipped bad vertices and closed
+      // the gap by joining their neighbours, which silently redraws the shape
+      // across whatever was wrong — and `Number(null)` is 0, so a null
+      // longitude did not even get skipped: it planted a vertex in the Gulf of
+      // Guinea and the ring was drawn to it and back.
+      if (!ring) return null;
+      rings.push(ring);
+    }
+    if (!rings.length) continue;
+    parts.push({ ring: rings[0], holes: rings.slice(1) });
   }
-  if (ring.length < 3) return null;
+  if (!parts.length) return null;
+
+  // Largest part first, so the single `ring` a renderer or a card reads is the
+  // main body of the shape rather than whichever piece the service listed
+  // first. The area, however, is the WHOLE thing, holes subtracted.
+  parts.sort((a, b) => rawRingAreaKm2(b.ring) - rawRingAreaKm2(a.ring));
+  const areaKm2 = parts.reduce(
+    (total, part) => total + rawRingAreaKm2(part.ring)
+      - part.holes.reduce((cut, hole) => cut + rawRingAreaKm2(hole), 0),
+    0,
+  );
+
   const seconds = Number(payload?.costValue);
   return {
     profile: payload?.profile ?? null,
     seconds: Number.isFinite(seconds) ? seconds : null,
     resourceVersion: payload?.resourceVersion ?? null,
-    ring,
-    areaKm2: ringAreaKm2(ring),
+    ring: parts[0].ring,
+    // The interior rings, kept rather than dropped: a courtyard with no way in,
+    // a fenced railway yard and a walled works are ground the isochrone does
+    // NOT reach, and `coordinates[0]` alone sells them as catchment. The fiche
+    // joins population against these too.
+    holes: parts[0].holes,
+    // Every piece, when the reachable ground comes in more than one. The old
+    // code refused a MultiPolygon outright and the layer reported a missing
+    // ring; refusing is safe but it is not an answer.
+    parts,
+    areaKm2: Math.round(areaKm2 * 100) / 100,
   };
 }

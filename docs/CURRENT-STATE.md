@@ -1637,6 +1637,8 @@ its criteria cannot be silently ignored.
 | Vigilance MF 🇫🇷 ⚠ | Météo-France *Vigilance météorologique* — 9 phenomena assessed twice a day per département and published as a 4-colour level; only raised départements are painted. Served from Météo-France's own data.gouv.fr mirror unless `METEOFRANCE_API_KEY` is set, in which case the contracted API is preferred and the mirror stays the fallback | `src/data/meteoFranceVigilance.js`, `src/data/meteoFranceVigilanceFeed.js` | `/api/vigilance` (keyless mirror; `METEOFRANCE_API_KEY` optional) | 5 min (proxy TTL 5 min) |
 | Stations météo 🇫🇷 🌡 | Météo-France's real-time observation network — **2,144 stations** bundled as `local_data/meteo_stations_fr/stations.json`, joined at build time to the publisher's 191 MB per-parameter inventory. Colour is what each station CAN measure: **1,254 of the 2,144 measure only temperature and rain**, 845 have an anemometer, 234 a barometer, 228 all five. A ring marks the **190** that publish openly — Météo-France's own SYNOP list names 62 — and a click fetches the last hour plus the station's records. 7 stations in the live list are closed and 6 have no published inventory; both are drawn and said, never dropped | `src/data/meteoStationsFrance.js`, `src/data/meteoStationsFrFeed.js` | `/api/meteo-stations/observations`, `/api/meteo-stations/normals`, `/api/meteo-stations/status` (keyless, lazy) | 30 min (pack); observations 1 h proxy TTL |
 | Bâti 3D 🇫🇷 ▤ | IGN BD TOPO® `batiment`, Géoplateforme vector tiles at z15, per viewport — extruded volumes coloured by `usage_1`, seated on their own NGF-IGN69 altitudes (h = H + N), re-anchored by a per-~1.1 km-cell median of the rendered surface measured UNDER EACH BUILDING (`globe.getHeight`), each volume then reaching down to the lowest ground under its footprint | `src/data/bdtopoBuildings.js`, `src/data/bdtopoBuildingsFeed.js` | none — keyless, CORS-open, `max-age` 21 d, straight from `data.geopf.fr/tms` | viewport-driven (450 ms debounce, ≤ 0.08° box, ≤ 64 tiles, ≤ 14,000 volumes) + 30 min idle; one re-seat 3 s after a load where the terrain was not yet resident under every building |
+| Pouls vélo 🇫🇷 ◷ | A typical week of cycling in Lyon and Paris, bundled as `local_data/velo_pulse/pulse.json` — 168 numbers per site, averaged over four weeks of June 2026, read in LOCAL wall-clock hours in both cities. **Two instruments, never one scale**: Lyon is Vélo'v dock occupancy (a STOCK, 422 stations) because the Métropole publishes an availability archive since 2023-03-27; Paris is permanent bike counters (a FLOW, 111 sites) because **no Vélib' availability archive exists anywhere public**. Colour is each site's share of its OWN weekly maximum; height keeps each city's unit. Three modes — the current hour of the week, a 37-second animation of all 168, and the network's busiest hour | `src/data/veloPulse.js`, `src/data/veloPulseFeed.js` | — (bundled; `npm run velo:pulse` rebuilds) | static; the animation redraws every 220 ms while it runs |
+| Carroyage INSEE 🇫🇷 ▩ | INSEE *Filosofi* gridded income and population, relayed as WFS by the Géoplateforme — **2,314,836 carreaux at 200 m and 377,234 at 1 km**, per viewport, extruded. **No geometry is transported**: each square is rebuilt from its own INSPIRE identifier by inverting EPSG:3035, which reproduces the published polygon to eight decimals and cuts a Lyon viewport from 1.63 MB to 0.31 MB. Colour is one of eight indicators on absolute national quantile bands; height is the count each indicator is computed on (`ind` or `men`), never the indicator. Imputed cells are drawn as an inset square. The two grids disagree about their own column names — `i_car_est` at 200 m, `i_est_1km` at 1 km, and no commune at all on the coarse one | `src/data/filosofiCarreaux.js`, `src/data/filosofiFeed.js` | `/api/filosofi/carreaux`, `/api/filosofi/status` (keyless, 30 d disk cache, serve-stale) | viewport-driven (450 ms debounce, ≤ 0.9° box, ≤ 6,000 cells) + 60 min idle |
 | Parcelles 🇫🇷 ▦ | IGN Api Carto `cadastre/parcelle` (PCI vecteur, DGFiP), per viewport — ground-clamped classification fills coloured by the SCALE of the `feuille` each parcel was drawn on (four bands from 1:250/1:500 to 1:4000/1:5000, joined on a FIVE-part key incl. `code_arr`), batched ONE `GroundPrimitive` PER BAND COLOUR — a batch mixing colours has each instance repaint its neighbours inside its own bounding rectangle, which is Cesium's classification shader, not a bug here — with the selected parcel drawn as its OWN PAIR of primitives, fill and outline, over the batch (`scripts/qa-cadastre-highlight.mjs` proves the highlight against the polygon on pixels), plus a `GroundPolylinePrimitive` outline per ring. Reports the fraction of the view that is cadastred at all — the rest is public domain. A box over Api Carto's own 5,000-feature ceiling is REFUSED whole (the truncation is scattered, not cropped, so a short draw is indistinguishable from the public-domain gaps) | `src/data/cadastreParcels.js`, `src/data/cadastreFeed.js` | `/api/cadastre-fr/parcelles`, `/api/cadastre-fr/status` | viewport-driven (450 ms debounce, gated on camera ALTITUDE ≤ 1 500 m — not on the view rectangle's span, which on a tilted camera reaches the horizon — and requesting a ≤ 0.02° box anchored on the screen-centre ground point, clipped to the view, 0.002° cache snap) + 60 min idle; proxy TTL 24 h memory + `.gev-cache/cadastre/`, serve-stale 30 d; the PCI is republished monthly |
 | Groupes de prod 🇫🇷 ☢ | RTE `actual_generations_per_unit` (171 units ≥ 100 MW, hourly) joined by EIC code to ODRÉ's *Registre national des installations de production et de stockage d'électricité*, shipped as a file (positions anchored on EDF Open Data, then OpenStreetMap, then commune centres); 108 stations drawn as a capacity ring plus an output disc | `src/data/rteGeneration.js`, `src/data/rteGenerationFeed.js`, `src/data/local_data/rte_production_units/units.json` | `/api/rte-generation`, `/api/rte-generation/status` | 3 min (proxy TTL 5 min; resource publishes hourly). Needs `RTE_CLIENT_ID`/`RTE_CLIENT_SECRET` for output; the fleet draws keyless |
 | Petite hydro 🇫🇷 ≈ | ODRÉ *Registre national des installations de production et de stockage d'électricité*, hydraulic filière entire — **2,742 installations for 26.02 GW**, shipped as a file because the register publishes NO coordinate, only an INSEE code. 998 placed where they physically are (589 on an IGN BD TOPO® building footprint), the other 1,744 rolled into 1,147 commune rings that claim a count and never a position | `src/data/frHydroPlants.js`, `src/data/frHydroFeed.js` | — (bundled; `npm run hydro:registry` rebuilds) | 30 min |
@@ -2121,10 +2123,39 @@ written and measured out: none of the file's 1 346 inner rings lies entirely
 outside, fourteen lie partly outside because they share an edge with the outer
 ring, and the three largest of them are courtyards of 787, 754 and 249 m²
 that the rule would have silently filled in.
+| `isochrone-fr` | `is` | `/api/isochrone` | IGN Géoplateforme, Valhalla over BD TOPO® — three rings per scan |
+| `implantation-fr` | `im` | *(none of its own)* | Fans out across `/api/isochrone`, `/api/filosofi/carreaux`, `/api/gpu`, `/api/dvf` and the BAN reverse geocoder, and joins them in the browser |
 
-`/api/isochrone` (IGN Valhalla over BD TOPO®) is a SERVICE, not a layer: an
-isochrone has no meaning without a chosen point, so it is not in the layer
-registry and carries no share token. Walking and driving only.
+`implantation-fr` is the only layer in the app with NO SOURCE OF ITS OWN. It
+uses the shared address-scan factory's `fetchImpl` seam to fan out across four
+routes this server already has — all already cached, all already tested — and
+does the spatial join locally: which 200 m carreaux fall inside the reachable
+ring. A fifth proxy route would have had to duplicate their load logic
+server-side and would have missed their caches. The join reports a BRACKET
+rather than a number (squares entirely inside, squares the ring touches, and the
+centroid convention between them), because at 200 m a ten-minute walk is mostly
+boundary — measured at place Bellecour, 24 of the 35 squares the ring touches
+are across its edge. It never scales a square by the fraction inside it: that is
+areal interpolation and it assumes an even spread INSEE's imputation flag exists
+to deny. The `ficheLines()` output is unit-tested for one thing above all — no
+line may contain ' · ', which is the separator `cardFromEntity()` splits on, and
+a line carrying one arrives on screen in two halves.
+
+`/api/isochrone` (IGN Valhalla over BD TOPO®) WAS a service with no surface —
+in the repository since 2026-09-01 and drawn by nothing. It is now the
+`isochrone-fr` layer, and it is a point-centred layer for the same reason the
+five above are: an isochrone has no meaning without a chosen point, so it scans
+around the ground the camera is looking at rather than filling a viewport. The
+route takes a COMMA LIST of durations and answers one payload holding every
+ring — `seconds=300,600,900` — fetched one at a time upstream, because the
+Géoplateforme publishes 5 requests per second per IP with no SLA and an explicit
+right to cut a client off. Walking and driving only: the service rejects the
+cycling profile with HTTP 400, so the layer draws a DISABLED cycling chip
+carrying that reason and models nothing in its place. Its own altitude ceiling
+is 8 km rather than the shared 12 km — a 2 km² ring seen from 12 km up is a
+smudge — and it reports, per consecutive pair of rings, the measured area growth
+against the ×4 that free space would give, which is an obstruction reading that
+needs no assumed speed.
 
 These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
 `ur`, `if` — `cadastre-fr` is the sixth, `cd`, and `ads-fr` later took `au`. The single-character space

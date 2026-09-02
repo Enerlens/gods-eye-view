@@ -167,10 +167,19 @@ import {
 } from './src/data/cadastreLineage.js';
 import {
   buildIsochroneUrl,
-  clampSeconds as clampIsochroneSeconds,
+  parseSteps as parseIsochroneSteps,
   projectIsochrone,
   resolveProfile as resolveIsochroneProfile,
+  ringExpansion,
 } from './src/data/isochroneFeed.js';
+import {
+  FILOSOFI_MAX_CELLS,
+  FILOSOFI_PUBLISHED_CELLS,
+  FILOSOFI_VINTAGE,
+  buildCarreauxUrl,
+  projectCarreaux,
+  summarizeCells,
+} from './src/data/filosofiFeed.js';
 import {
   GPU_BOX_STEP_DEG,
   GPU_REQUEST_MAX_BOX_DEG,
@@ -19967,6 +19976,250 @@ function cadastreFranceProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// INSEE Filosofi carroyage proxy (the demand side, as 200 m and 1 km squares)
+// ---------------------------------------------------------------------------
+/**
+ * A statistical millésime does not move between two page loads: the 2019
+ * carroyage will be the 2019 carroyage until INSEE ships 2021. Thirty days is
+ * still short for it, and the disk cache is what makes panning a city free
+ * after the first sweep.
+ */
+const FILOSOFI_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling. A year-old copy of a 2019 census is still 2019. */
+const FILOSOFI_STALE_MS = 365 * 24 * 60 * 60 * 1000;
+const FILOSOFI_TIMEOUT_MS = 45_000;
+/**
+ * Byte cap on ONE upstream answer. Measured 2026-09-02: the densest realistic
+ * box — 0.12° × 0.07° over Paris, 1 655 cells — is 2.05 MB with geometry and
+ * 0.31 MB without. This proxy asks without. 24 MB is far above the ceiling
+ * `COUNT` already imposes and still bounded.
+ */
+const FILOSOFI_MAX_BYTES = 24 * 1024 * 1024;
+/**
+ * Widest box the proxy will relay, in degrees.
+ *
+ * Not a performance limit — the service answers a France-wide `hits` in 0.6 s —
+ * but a truthfulness one: past this the 1 km grid returns its `COUNT` ceiling
+ * and the map silently becomes a sample of the country rather than a picture of
+ * it. The layer refuses first; this refuses again for anyone calling the route
+ * by hand.
+ */
+const FILOSOFI_REQUEST_MAX_BOX_DEG = 1.2;
+/** Snap step, so panning a street re-uses the neighbour's answer. */
+const FILOSOFI_BOX_STEP_DEG = 0.01;
+const FILOSOFI_VIEWPORT_CACHE_MAX = 64;
+const FILOSOFI_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'filosofi');
+
+/** box key -> {at:number, payload:object} */
+const _filosofiViewportCache = new Map();
+const _filosofiViewportInFlight = new Map();
+const _filosofiRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 90, globalMax: 300 });
+
+function trimFilosofiViewportCache() {
+  while (_filosofiViewportCache.size > FILOSOFI_VIEWPORT_CACHE_MAX) {
+    const oldest = _filosofiViewportCache.keys().next().value;
+    if (oldest === undefined) break;
+    _filosofiViewportCache.delete(oldest);
+  }
+}
+
+function filosofiDiskPath(key) {
+  return path.join(FILOSOFI_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+/** Read a disk-cached viewport answer. */
+async function readFilosofiDisk(key, maxAgeMs) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(filosofiDiskPath(key), 'utf8'));
+    if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.cells)) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeFilosofiDisk(key, entry) {
+  fsp.mkdir(FILOSOFI_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(filosofiDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Filosofi Proxy] disk cache write failed:', err?.message || err));
+}
+
+/**
+ * One WFS call for one box, projected to the wire shape.
+ * @param {object} box
+ * @param {number} resolution
+ * @returns {Promise<object>}
+ */
+async function refreshFilosofiViewport(box, resolution) {
+  const url = buildCarreauxUrl({ box, resolution, count: FILOSOFI_MAX_CELLS });
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(FILOSOFI_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream carreaux_${resolution} HTTP ${response.status}`);
+  const length = Number(response.headers.get('content-length'));
+  if (Number.isFinite(length) && length > FILOSOFI_MAX_BYTES) {
+    throw new Error(`carreaux_${resolution} answer too large (${length} bytes)`);
+  }
+  const raw = await response.json();
+  // The ceiling travels with the answer: `projectCarreaux()` cannot tell a full
+  // page from a complete one without knowing what was asked for, and the
+  // Géoplateforme does not always publish `numberMatched`.
+  const projected = projectCarreaux(raw, { resolution, count: FILOSOFI_MAX_CELLS });
+  return {
+    resolution,
+    box,
+    vintage: FILOSOFI_VINTAGE,
+    publishedCells: FILOSOFI_PUBLISHED_CELLS[resolution] ?? null,
+    ...projected,
+    summary: summarizeCells(projected.cells),
+  };
+}
+
+/**
+ * Vite plugin: the INSEE carroyage, one viewport at a time.
+ *
+ *   GET /api/filosofi/carreaux?south&west&north&east&resolution — cells in a box
+ *   GET /api/filosofi/status                                   — provenance + cache
+ *
+ * WHY A PROXY, when `data.geopf.fr` sends `access-control-allow-origin: *` and
+ * a browser could call it directly:
+ *
+ *   - **The shape changes on the way through.** The WFS answer is a GeoJSON
+ *     FeatureCollection carrying a MultiPolygon per cell. The cell identifier
+ *     already encodes that polygon exactly (see `filosofiFeed.js`), so the
+ *     geometry is redundant transport: 1.63 MB becomes 0.31 MB for the same
+ *     1 329 Lyon cells, and the commune name is dictionary-encoded on top.
+ *   - **The two grids disagree about their column names.** `i_car_est` at
+ *     200 m, `i_est_1km` at 1 km, and no commune at all on the coarse grid.
+ *     Getting that wrong is an HTTP 400, and the rule belongs in one tested
+ *     module rather than in every client.
+ *   - **A statistical millésime is the ideal thing to cache.** It does not
+ *     change for two years at a time, so the disk cache turns a city-wide pan
+ *     into one round trip per box, ever.
+ *
+ * Keyless, Licence Ouverte / INSEE.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function filosofiProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/filosofi', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_filosofiRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        let newest = null;
+        for (const entry of _filosofiViewportCache.values()) {
+          if (!newest || entry.at > newest) newest = entry.at;
+        }
+        json(200, {
+          source: 'INSEE Filosofi — carroyage 200 m et 1 km (Géoplateforme WFS)',
+          licence: 'Licence Ouverte 2.0 — INSEE',
+          datasetPage: 'https://www.insee.fr/fr/statistiques/7655475',
+          vintage: FILOSOFI_VINTAGE,
+          publishedCells: FILOSOFI_PUBLISHED_CELLS,
+          lastFetch: newest,
+          cachedBoxes: _filosofiViewportCache.size,
+          ttlMs: FILOSOFI_TTL_MS,
+          maxBoxDeg: FILOSOFI_REQUEST_MAX_BOX_DEG,
+          maxCells: FILOSOFI_MAX_CELLS,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+      if (route !== '/carreaux') {
+        json(404, { error: 'Unknown filosofi endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, FILOSOFI_REQUEST_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${FILOSOFI_REQUEST_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: FILOSOFI_REQUEST_MAX_BOX_DEG,
+        });
+        return;
+      }
+      // The grid is the CALLER's decision, not the box's: the layer already
+      // knows whether it is drawing detail or an overview, and deriving it here
+      // from the box would give two different answers for the same viewport
+      // depending on which of us rounded first.
+      const requestedResolution = Number(url.searchParams.get('resolution'));
+      const resolution = requestedResolution === 1000 ? 1000 : 200;
+
+      const box = snapBoxOutward(requested, FILOSOFI_BOX_STEP_DEG);
+      const key = `${resolution}:${boxKey(box, 3)}`;
+      const now = Date.now();
+
+      const cached = _filosofiViewportCache.get(key);
+      if (cached && now - cached.at <= FILOSOFI_TTL_MS) {
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-Filosofi': 'HIT' });
+        return;
+      }
+      const onDisk = await readFilosofiDisk(key, FILOSOFI_TTL_MS);
+      if (onDisk) {
+        _filosofiViewportCache.set(key, onDisk);
+        trimFilosofiViewportCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-Filosofi': 'DISK' });
+        return;
+      }
+
+      const request = coalesceProxyRequest(_filosofiViewportInFlight, key, async () => {
+        const payload = await refreshFilosofiViewport(box, resolution);
+        const entry = { at: Date.now(), payload };
+        _filosofiViewportCache.set(key, entry);
+        trimFilosofiViewportCache();
+        // An EMPTY box is cached like any other answer, and deliberately: the
+        // Atlantic and the Ardennes both answer zero cells, and re-asking for
+        // that on every pan is the traffic this cache exists to stop.
+        writeFilosofiDisk(key, entry);
+        return entry;
+      });
+      try {
+        const entry = await request.promise;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, {
+          'X-Filosofi': request.shared ? 'INFLIGHT' : 'MISS',
+        });
+      } catch (error) {
+        console.warn('[Filosofi Proxy] viewport unavailable:', error?.message || error);
+        const stale = cached || await readFilosofiDisk(key, FILOSOFI_STALE_MS);
+        if (stale) {
+          json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-Filosofi': 'STALE' });
+          return;
+        }
+        json(503, { error: 'Le carroyage INSEE est temporairement indisponible' });
+      }
+    });
+  }
+
+  return {
+    name: 'filosofi-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
 function parseJsonEnv(key, fallback) {
   const value = process.env[key];
   if (!value) return fallback;
@@ -21210,7 +21463,17 @@ function adsFranceProxy() {
 
 /**
  * IGN isochrone — the area actually reachable, rather than a circle.
- * `GET /api/isochrone?lat=&lon=&profile=foot|car&seconds=900`
+ *
+ * `GET /api/isochrone?lat=&lon=&profile=foot|car&seconds=300,600,900`
+ *
+ * `seconds` takes a COMMA LIST and answers one payload holding every ring, in
+ * ascending order, plus the expansion between consecutive pairs. A single value
+ * is still accepted and still answers one ring, because that is the shape the
+ * route shipped with. Three rings is the default because the question is asked
+ * in minutes — a brief says "dix minutes à pied", never "800 metres" — and
+ * three nested outlines are the most that stay legible over a city block.
+ *
+ * The rings are fetched ONE AT A TIME. See the loop for why.
  * @returns {import('vite').Plugin}
  */
 function isochroneProxy() {
@@ -21224,15 +21487,41 @@ function isochroneProxy() {
         // not have; failing loudly beats drawing a walking ring labelled bike.
         throw new Error(`unsupported profile: ${profile} (foot or car)`);
       }
-      const seconds = clampIsochroneSeconds(url.searchParams.get('seconds'));
+      const steps = parseIsochroneSteps(url.searchParams.get('seconds'));
       return {
-        key: addressCacheKey('isochrone', point, profile, seconds),
+        key: addressCacheKey('isochrone', point, profile, steps.join('-')),
         load: async () => {
-          const payload = await fetchAddressSource(
-            buildIsochroneUrl({ ...point, profile, seconds }),
-            { maxBytes: 4 * 1024 * 1024 },
-          );
-          return payload ? projectIsochrone(payload) : null;
+          // SEQUENTIAL, not Promise.all. The Géoplateforme publishes 5 requests
+          // per second per IP with no SLA and an explicit right to cut a client
+          // off; three parallel rings per scan, multiplied by every visitor of
+          // a deployed instance, is the shape of traffic that gets an open
+          // service to stop being open. One ring at a time costs a reader about
+          // half a second more and costs the publisher a third of the burst.
+          const rings = [];
+          for (const seconds of steps) {
+            // eslint-disable-next-line no-await-in-loop -- deliberate: see above.
+            const payload = await fetchAddressSource(
+              buildIsochroneUrl({ ...point, profile, seconds }),
+              { maxBytes: 4 * 1024 * 1024 },
+            );
+            const ring = payload ? projectIsochrone(payload) : null;
+            // A ring that failed is DROPPED, not zeroed: two good rings and a
+            // missing one still answer "where can I get to", and a ring of area
+            // 0 drawn between two real ones would read as a severed address.
+            if (ring) rings.push({ ...ring, seconds: ring.seconds ?? seconds });
+          }
+          if (!rings.length) return null;
+          rings.sort((a, b) => a.seconds - b.seconds);
+          return {
+            profile,
+            requestedSteps: steps,
+            rings,
+            // Reported so the client can say "two of the three rings arrived"
+            // rather than silently drawing a smaller catchment area.
+            missing: steps.length - rings.length,
+            expansion: ringExpansion(rings),
+            resourceVersion: rings[0]?.resourceVersion ?? null,
+          };
         },
       };
     });
@@ -21905,6 +22194,7 @@ export default defineConfig(({ mode }) => {
       gbfsFranceProxy(),
       irveFranceProxy(),
       cadastreFranceProxy(),
+      filosofiProxy(),
       schoolsFranceProxy(),
       medecinsFranceProxy(),
       petiteEnfanceFranceProxy(),

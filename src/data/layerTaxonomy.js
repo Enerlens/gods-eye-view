@@ -345,6 +345,22 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Next to `bikeshare` and `shared-mobility-fr`, and the only one of the three
+  // that is not about NOW. Those two answer "how many bikes are at this dock
+  // this minute"; this one answers "how full is it on a Tuesday at eight",
+  // which is a different question about the same street furniture. `static`
+  // because the week is a shipped file: it changes when someone rebuilds it,
+  // not on a poll — and `cities`, not `fr`, because the archives it is built
+  // from exist in exactly two of them.
+  Object.freeze({
+    id: 'velo-pulse-fr',
+    category: 'ground-mobility',
+    label: 'Pouls vélo (semaine type)',
+    kind: 'dataset',
+    coverage: 'cities',
+    auth: 'none',
+    cadence: 'static',
+  }),
   // `periodic` and not `live`: the event aggregate is republished hourly, so it
   // does not stream — it is a polled snapshot, and calling it live would
   // promise a cadence the source does not have. (Its sibling `road-status-fr`
@@ -710,6 +726,37 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // The one row in this group that is not a REGISTER. Every neighbour reports
+  // something the State has written down about a place; this one MEASURES a
+  // property of the place itself — how far the network actually reaches from
+  // it — by running a routing engine over IGN's own road and path graph. It
+  // sits with the address layers because it answers the same question they do,
+  // about the same clicked point, and because a catchment area is only ever
+  // read next to what is inside it.
+  Object.freeze({
+    id: 'isochrone-fr',
+    category: 'built-environment',
+    label: 'Zone de chalandise (isochrone)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  // The only row in the whole taxonomy that is not a SOURCE. It fetches nothing
+  // of its own: it joins four layers that are already here — the reachable
+  // shape, the carroyage, the zoning and the sales — into the single card a
+  // geomarketing tool exists to print. `dataset` all the same, because a
+  // visitor turns it on and off like any other and it draws its own geometry;
+  // `coordinator` is reserved for the roster that draws nothing.
+  Object.freeze({
+    id: 'implantation-fr',
+    category: 'built-environment',
+    label: 'Fiche implantation',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'bdtopo-buildings',
     category: 'built-environment',
@@ -717,6 +764,24 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
+    cadence: 'periodic',
+  }),
+  // The population layer the group header above reserved a place for, and the
+  // first row here that is not an inventory of THINGS. Every neighbour answers
+  // where something was built; this one answers who lives in it. It sits
+  // directly under `bdtopo-buildings` because the two are read together — a
+  // volume and the people inside it — and because a carreau is base reference
+  // data in exactly the sense a building is.
+  Object.freeze({
+    id: 'filosofi-fr',
+    category: 'built-environment',
+    label: 'Carroyage INSEE (revenus & population)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    // `periodic` and not `static`, though the millésime is frozen for two years
+    // at a time: 2.3 million carreaux could not be bundled at any size, so the
+    // layer fetches the viewport it is looking at, exactly like the cadastre.
     cadence: 'periodic',
   }),
   // Joins the eighth group rather than founding a ninth. The header above says

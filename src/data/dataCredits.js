@@ -426,6 +426,22 @@ export const DATA_CREDITS = [
       'practitioner names, not a headcount &mdash; measured 5 % above the CNAM&rsquo;s own 2024 figure.',
   },
   {
+    key: 'filosofi-fr',
+    html:
+      'INSEE <em>Filosofi</em> gridded income and population &mdash; <em>Revenus, pauvret&eacute; et niveau de vie</em>, '
+      + 'carreaux de 200 m et de 1 km, relayed by the '
+      + '<a href="https://data.geopf.fr/" target="_blank" rel="noopener">G&eacute;oplateforme</a> WFS '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>, '
+      + '<a href="https://www.insee.fr/fr/statistiques/7655475" target="_blank" rel="noopener">INSEE</a>). '
+      + '2 314 836 squares at 200 m and 377 234 at 1 km, covering metropolitan France, Martinique and La R&eacute;union; '
+      + 'incomes are those received in 2019. Cell outlines are not transported: every square is rebuilt from its own '
+      + 'INSPIRE identifier by inverting EPSG:3035, which reproduces the published geometry to eight decimals. '
+      + '<strong>Perforated squares are imputed</strong> &mdash; INSEE models a cell rather than publishing it when the '
+      + 'observation would breach statistical confidentiality, and 39 % of cells in a national sample carry that flag. '
+      + 'Colour bands are population-weighted national quantiles measured over 80 105 carreaux, so a colour means the '
+      + 'same thing everywhere; height is the count each indicator is computed on, never the indicator itself.',
+  },
+  {
     key: 'meteo-stations-fr',
     html:
       'French weather stations: <em>R&eacute;seau d&rsquo;observation temps r&eacute;el</em>, '
@@ -631,12 +647,46 @@ export const DATA_CREDITS = [
       'Labels are shown as a distribution, never averaged into a neighbourhood grade.',
   },
   {
+    key: 'velo-pulse-fr',
+    html:
+      'Pouls v&eacute;lo &mdash; a typical week, built from two archives that do not measure the same thing. '
+      + 'Lyon: <em>Historique des disponibilit&eacute;s des stations V&eacute;lo&rsquo;v</em>, '
+      + '<a href="https://data.grandlyon.com/portail/fr/jeux-de-donnees/historique-disponibilites-stations-velo-v-metropole-lyon/donnees" target="_blank" rel="noopener">M&eacute;tropole de Lyon / JCDecaux</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>) &mdash; '
+      + 'dock occupancy, a STOCK. Paris: <em>Comptage v&eacute;lo, donn&eacute;es compteurs</em>, '
+      + '<a href="https://opendata.paris.fr/explore/dataset/comptage-velo-donnees-compteurs/" target="_blank" rel="noopener">Ville de Paris</a> '
+      + '(<a href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">ODbL</a>) &mdash; '
+      + 'cyclists counted, a FLOW. <strong>Paris publishes no V&eacute;lib&rsquo; availability archive at all</strong> '
+      + '(checked 2026-09-02 against opendata.paris.fr, data.gouv.fr, transport.data.gouv.fr and the community mirror), '
+      + 'which is why the two cities are shown through different instruments and why every card names which one. '
+      + 'Both cities are read over the same four weeks of June 2026, hour by hour; the colour is each site&rsquo;s share '
+      + 'of its OWN weekly maximum, never a shared absolute scale.',
+  },
+  {
+    key: 'implantation-fiche',
+    html:
+      'Fiche implantation: a JOIN, not a source. It composes the IGN isochrone, the INSEE Filosofi carroyage, '
+      + 'the G&eacute;oportail de l&rsquo;urbanisme and DVF &mdash; each credited separately above &mdash; around one '
+      + 'clicked point, plus the '
+      + '<a href="https://adresse.data.gouv.fr/" target="_blank" rel="noopener">Base Adresse Nationale</a> '
+      + 'reverse geocoder for the address line '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
+      + '<strong>The population figure is a bracket</strong>: a 200&nbsp;m carreau sits inside the reachable ring, '
+      + 'outside it, or across its edge, so the card prints the centroid count between the population of the squares '
+      + 'entirely inside and of every square the ring touches. Cells are never scaled by the fraction of them inside &mdash; '
+      + 'that would assume people are spread evenly across a square, which INSEE&rsquo;s own imputation flag exists to deny.',
+  },
+  {
     key: 'ign-isochrone',
     html:
       'Reachable-area rings: IGN G&eacute;oplateforme ' +
       '<a href="https://geoservices.ign.fr/documentation/services/services-geoplateforme/itineraire" target="_blank" rel="noopener">isochrone service</a>, ' +
       'Valhalla over BD TOPO&reg; (<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
-      'Walking and driving only &mdash; the service publishes no cycling profile, and none is modelled here.',
+      'Three nested rings &mdash; 5, 10 and 15 minutes &mdash; each fetched as its own request and reported with the '
+      + 'area it actually covers, so a fifteen-minute walk of 2.16&nbsp;km&sup2; and one of 0.6&nbsp;km&sup2; stop reading '
+      + 'as the same address. The BD TOPO edition each ring was cut from is relayed on its card. '
+      + '<strong>Walking and driving only</strong> &mdash; the service rejects the cycling profile with HTTP 400, so the '
+      + 'cycling chip is drawn disabled with that reason on it, and no cycling ring is modelled in its place.',
   },
   {
     key: 'gpu',

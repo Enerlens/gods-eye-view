@@ -277,6 +277,192 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `road-status-fr`'s 🛣, because the whole point is that it is a different
   quantity. `REGISTERED_LAYER_IDS.length` moves 42 → 43.
 
+- **Pouls vélo (FR) — une semaine type à Lyon et à Paris, et pourquoi les deux
+  ne se dessinent pas pareil.** The globe already showed Vélib' and Vélo'v as
+  they are *right now*. This shows how they are *usually*: 168 hours of a
+  typical week, from the two cities' own archives.
+
+  **The finding is the layer.** The Métropole de Lyon publishes the availability
+  of every Vélo'v station continuously since 2023-03-27 — filterable per station
+  and per date, the only archive of its kind in France. **Paris publishes no
+  Vélib' equivalent at all.** Checked four ways on 2026-09-02: opendata.paris.fr
+  carries two Vélib' datasets and both are real-time only; data.gouv.fr has no
+  availability history; transport.data.gouv.fr's `history` array for the Vélib'
+  dataset is empty; and `lovasoa/historique-velib-opendata`, the community
+  mirror everyone cites, was last pushed 2023-04-04 with release assets dated
+  2021.
+
+  So the two cities answer through different instruments, and the layer says so
+  on every card instead of quietly averaging them:
+
+  - **Lyon — STOCKS.** How full each of 422 docks is. A station that empties
+    every weekday morning and refills every evening is a commuter origin; the
+    reverse is a destination.
+  - **Paris — FLOWS.** How many cyclists pass each of 111 permanent counters.
+    People going by, not bicycles standing still.
+
+  Nothing puts the two on one scale. What is compared is each site against
+  **itself** — its share of its own weekly maximum — which means the same thing
+  in both cities while the height keeps each city's own unit.
+
+  **Three ways to look at it.** MAINTENANT shows the hour of the week it
+  currently is, so a reader opening the globe on a Tuesday morning sees a
+  Tuesday morning. SEMAINE runs all 168 hours in 37 seconds — the morning peak
+  fills, the city drains, the weekend flattens. POINTE freezes on the network's
+  busiest hour.
+
+  **Two traps the build had to survive, both measured.** Paris timestamps are
+  UTC and a typical week is local: grouping without `timezone=Europe/Paris`
+  puts the morning peak at 04:00, and counter 100003096's 04:00 bucket reads 38
+  without the timezone and 4 with it. And Lyon's archive does not write every
+  station every minute — a 5-minute window returned 332 of 454 stations in one
+  probe — so the build samples five minutes per hour and leans on four weeks to
+  fill the gaps, records how many of the four landed in each slot, and **drops
+  and counts** a station sampled in fewer than half the week's hours rather than
+  drawing it with holes in it. A CLOSED station is skipped rather than averaged
+  in as 0 %: a maintenance outage is not an empty dock.
+
+  **One fixed window, both cities: four weeks of June 2026.** A typical week in
+  June is not a typical week in January, and averaging thirteen months would
+  hide that rather than solve it. It is stated in the pack, on the row and on
+  every card. Cost: 672 requests and ~215 MB for Lyon, paced at 300 ms; 113
+  server-side aggregations and about a megabyte for Paris.
+
+  Share token `vp`, carrying the mode. `npm run velo:pulse` rebuilds the pack,
+  `npm run qa:velo-pulse` proves it in a browser over both cities.
+
+- **Fiche implantation (FR) — le chiffre qu'un outil de géomarketing vend, avec
+  sa barre d'erreur.** Click a door: how many people live within ten minutes'
+  walk of it, what do they earn, what may be built on the plot, what did the
+  ground around it last sell for. Every half of that was already on this globe —
+  the reachable shape, the INSEE carroyage, the PLU, DVF — and nothing had ever
+  joined them. The join is the product.
+
+  **The headline is a bracket, not a number.** A 200 m carreau sits inside the
+  ring, outside it, or across its edge. Every commercial tool picks a convention
+  and prints one figure; this one prints the centroid count between two
+  countable bounds — the population of the squares entirely inside, and of every
+  square the ring touches. Measured at place Bellecour, ten minutes on foot:
+  **9 703 habitants, entre 5 643 et 15 694** on 0,96 km². Place de la
+  République: **28 878, entre 21 988 et 50 074** on 0,95 km².
+
+  **That bracket is wide because the grid is coarse relative to the question,
+  and the card says so out loud.** A ten-minute walk is about 1,1 km across and
+  a carreau is 200 m, so most of the squares the ring touches ARE its border —
+  24 of 35 at Bellecour. Without that sentence a reader meeting a ±100 % bracket
+  assumes a bug rather than a resolution. And the four counts are printed as a
+  partition that adds up: retenus au centre, touchés, entiers, à cheval.
+
+  It never scales a square by the fraction of it inside the ring. That is areal
+  interpolation, it assumes people are spread evenly across a square, and
+  INSEE's own imputation flag exists precisely because they are not.
+
+  **No new proxy.** The layer fans out across four routes this server already
+  has — all cached, all tested — through the shared address-scan factory's
+  `fetchImpl` seam, and joins them in the browser. A fifth route would have
+  duplicated their load logic server-side and missed their caches. One source
+  going quiet degrades the fiche rather than killing it, and the card names
+  which one.
+
+  Share token `im`, carrying the duration: "9 703 habitants" at ten minutes and
+  at fifteen are two different claims about the same door. `npm run
+  qa:implantation` proves it in a browser over Lyon and Paris — and it asserts
+  on the WORDS, because this is the one layer whose product is a sentence.
+
+- **Zone de chalandise (FR) — le service isochrone avait un proxy et aucune
+  surface.** `/api/isochrone` has been in this repository since 2026-09-01,
+  wired, cached, unit-tested — and drawn by nothing. It is now a layer.
+
+  **A circle at 800 m is a lie a map tells.** It crosses railways, rivers and
+  motorways as if they were pavement. IGN runs Valhalla over its own BD TOPO
+  road and path network and answers the polygon actually reachable, and the
+  difference is the entire product: from place Bellecour, a fifteen-minute walk
+  is **2,19 km²** and stops dead at the Rhône and the Saône except where a
+  bridge crosses; the same doorstep by car reaches **32,41 km²**.
+
+  Three nested rings — 5, 10, 15 minutes — in one request. The route now takes a
+  comma list and fetches the rings **one at a time** upstream: the Géoplateforme
+  publishes 5 requests per second per IP with no SLA and an explicit right to
+  cut a client off, and three parallel rings per scan across a deployed
+  instance's visitors is the traffic shape that closes an open service. A ring
+  that fails is dropped rather than zeroed, and the layer says how many are
+  missing — a smaller catchment area drawn with full confidence is the one way
+  this layer could quietly mislead.
+
+  **Two numbers no competitor's map carries.** Each ring reports the radius of
+  the circle with the SAME AREA — the honest version of the number a reader was
+  going to use anyway, printed immediately before "mais ce n'est pas un cercle".
+  And between consecutive rings, the **expansion**: in open ground a reachable
+  area grows with the square of time, so doubling the budget quadruples it, and
+  every shortfall is the network. The measured growth against that ×4 needs no
+  assumed walking speed and no model — it is two measured areas divided by each
+  other. Bellecour's outer band reads 107 %, place de la République 104,5 %: two
+  cities that open up past the first block, and the number would say so just as
+  clearly if they did not.
+
+  **There is no cycling ring, and the chip says why.** The service accepts
+  `pedestrian` and `car` and rejects `bicycle` with HTTP 400. So VÉLO is drawn
+  as a **disabled chip carrying that reason**, `setParams` refuses the value
+  even from a hand-edited share link, and the codec cannot encode it at all — a
+  link must not be able to carry a state the service cannot produce. Mapping
+  bike onto pedestrian would have drawn a walking ring and labelled it cycling.
+
+  The layer's own altitude ceiling is 8 km rather than the shared 12 km, because
+  a 2 km² ring seen from 12 km up is a smudge, and a smudge that looks like an
+  answer is worse than none. A clamped outline answers `scene.pick` with null,
+  so each ring plants one label — the only reachable card path — and the centre
+  carries the summary. Share token `is`, carrying the mode. `npm run
+  qa:isochrone` proves it in a browser over Lyon and Paris.
+
+- **Carroyage INSEE (FR) — qui habite là, en carrés de 200 mètres.** The globe
+  already drew everything France has BUILT — the buildings, the schools, the
+  doctors, what sold, what the PLU allows — and nothing about who lives in it.
+  A commune average cannot answer that: Lyon 7e is one code covering both the
+  Guillotière and Gerland. This is INSEE's Filosofi carroyage, **2 314 836
+  squares of 200 m** and **377 234 of 1 km** over métropole, Martinique and La
+  Réunion, extruded on the globe for the viewport you are looking at.
+
+  **Colour is the indicator; height is the count it was computed on.** That is
+  the layer's one real design decision and it is a correctness one: a stack of
+  "27 100 € par personne" has no volume, and the eye reads volume as quantity.
+  A block whose volume is its population is a true statement — so switching
+  between the eight indicators recolours the city without relaying it, and a
+  brilliantly coloured square one pixel tall is four households and reads as
+  one. Every card says so in words, because it cannot be read off the picture.
+
+  **The bands are national and absolute, and they were measured.** There is no
+  scale to borrow — INSEE publishes deciles of niveau de vie per PERSON, and a
+  carreau carries a mean over its inhabitants, a much narrower distribution.
+  `npm run filosofi:ramp` samples 42 boxes across urban, peri-urban, rural and
+  overseas France — **80 105 carreaux, 12 285 745 habitants** — and takes the
+  population-weighted quantiles, weighted because a 6-person square in the
+  Cantal and a 2 818-person square in Paris 19e answer for very different
+  numbers of people. A colour therefore means the same thing in Neuilly and in
+  Roubaix, which is the whole point of drawing it.
+
+  **Two cells in five are modelled, not observed** — 31 351 of the 80 105
+  sampled carry INSEE's `i_car_est`, meaning the figures were imputed because
+  publishing the observation would have breached statistical confidentiality.
+  They are drawn as a smaller square inside their own footprint, so the grid is
+  visibly perforated where the data is inferred, and the card names it.
+
+  **No geometry crosses the wire.** Each cell is named
+  `CRS3035RES200mN2529400E3919200` — its own south-west corner in EPSG:3035 —
+  so inverting that projection rebuilds the exact polygon the service would
+  have sent, verified against captured fixtures to eight decimals. A Lyon
+  viewport costs **311 KB instead of 1.63 MB**. The two grids do not share
+  their column names (`i_car_est` against `i_est_1km`, and no commune at all at
+  1 km), and asking one for the other's column is an HTTP 400 rather than an
+  empty column.
+
+  The layer refuses a view wider than 0.9° instead of drawing a sample of the
+  country that would look like a picture of it, and flies the camera in. Share
+  token `fi`, and the link carries the chosen indicator: the same squares
+  coloured by wealth and by poverty are two different maps, and a link that
+  dropped the choice would restore the wrong one. Keyless, Licence Ouverte 2.0,
+  30-day disk cache. `npm run qa:filosofi` proves it in a browser over Lyon and
+  Paris.
+
 - **Stations météo (FR) — where France measures the weather, and what each
   instrument can actually tell you.** All **2 144 stations** of Météo-France's
   real-time observation network, from the tide line to the **Aiguille du Midi at

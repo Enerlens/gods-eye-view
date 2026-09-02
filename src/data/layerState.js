@@ -238,6 +238,57 @@ const OPTION_GROUPS = Object.freeze({
     enumOption('catalog', 'c', 'core', ['core', 'dense'], { core: 'c', dense: 'd' }),
     integerOption('selectedSatTrackingId', 't', null),
   ]),
+  // WHICH INDICATOR THE CARROYAGE IS COLOURED BY. Serialized because it is not
+  // a preference, it is what the map SAYS: the same 146 squares over Lyon are a
+  // wealth map, a poverty map or an age map depending on this one token, and a
+  // share link that dropped it would send the reader a different argument than
+  // the one that was shared. One letter each, and the codes are frozen — they
+  // are in URLs the moment the first link is copied, so renaming `n` later
+  // would silently re-colour every link already sent.
+  // Keyed by the LAYER ID, not by a friendly name: `encodeLayerStateParams`
+  // resolves the owner's share token with `REGISTRY_BY_ID.get(ownerId)`, so an
+  // owner that is not itself a registered layer id resolves to undefined and
+  // the encoder throws the moment a non-default option is set. Every other
+  // group here — `flights`, `satellites`, `cctv`, `radio` — is a layer id for
+  // exactly this reason.
+  // Only the two modes the SERVICE can answer are in this enum. `bike` is a
+  // real mode of the layer's UI — a disabled chip carrying the reason IGN
+  // rejects it — and deliberately NOT encodable: a share link must not be able
+  // to carry a state the service cannot produce, and a hand-edited `is.p.b`
+  // decodes to null and falls back to walking rather than restoring a cycling
+  // ring that was never measured.
+  // WHICH RING the fiche is computed on. Serialized because the number on the
+  // card is a function of it: "9 700 habitants" at ten minutes and at fifteen
+  // are two different claims about the same door, and a link that dropped the
+  // duration would restore the wrong one under the right headline.
+  'implantation-fr': Object.freeze([
+    enumOption('seconds', 's', 600, [300, 600, 900], { 300: '5', 600: '0', 900: '9' }),
+  ]),
+  // `now` is the DEFAULT and it is deliberately not frozen in time: it means
+  // "the hour of the week it currently is", so a link shared on a Tuesday
+  // morning opens on a Tuesday morning for its reader too, whenever they read
+  // it. Only `week` and `peak` are absolute states, and both encode.
+  'velo-pulse-fr': Object.freeze([
+    enumOption('mode', 'm', 'now', ['now', 'week', 'peak'], { now: 'n', week: 'w', peak: 'p' }),
+  ]),
+  'isochrone-fr': Object.freeze([
+    enumOption('profile', 'p', 'foot', ['foot', 'car'], { foot: 'f', car: 'c' }),
+  ]),
+  'filosofi-fr': Object.freeze([
+    enumOption('metric', 'm', 'niveau', [
+      'niveau', 'pauvrete', 'population', 'social',
+      'jeunes', 'aines', 'proprietaires', 'solo',
+    ], {
+      niveau: 'n',
+      pauvrete: 'p',
+      population: 'h',
+      social: 's',
+      jeunes: 'j',
+      aines: 'a',
+      proprietaires: 'o',
+      solo: '1',
+    }),
+  ]),
   cctv: Object.freeze([
     enumOption('coverageMode', 'c', 'on', ['off', 'on', 'viewshed'], {
       off: '0',
@@ -360,6 +411,13 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'dvf-sales', token: 'dv', disposition: 'enabled-only' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
   Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),
+  // TWO CHARACTERS, like every layer added since the single-character scheme
+  // ran out. `fi` and not `f`: `f` is `flights` and has shipped in links since
+  // the beginning. `enabled+options`, because the chosen INDICATOR is part of
+  // what a share link means here — a carroyage coloured by niveau de vie and
+  // the same carroyage coloured by poverty are two different maps, and a link
+  // that dropped the choice would restore the wrong one.
+  Object.freeze({ id: 'filosofi-fr', token: 'fi', disposition: 'enabled+options', optionOwner: 'filosofi-fr' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
   // A DIGIT, for the third time and the same reason: a–y are all taken, `z` is
   // the canonical UNKNOWN token two existing tests assert on, and 1–3 belong to
@@ -392,7 +450,16 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // that enabled the wrong one of a stacked pair would be invisible.
   Object.freeze({ id: 'idfm-frequency', token: 'fq', disposition: 'enabled-only' }),
   Object.freeze({ id: 'idfm-network', token: 'if', disposition: 'enabled-only' }),
+  // `im`, alphabetically between `idfm-network` and `irve-fr`. The registry is
+  // asserted sorted, so position here is not a preference.
+  Object.freeze({ id: 'implantation-fr', token: 'im', disposition: 'enabled+options', optionOwner: 'implantation-fr' }),
   Object.freeze({ id: 'irve-fr', token: '9', disposition: 'enabled-only' }),
+  // TWO CHARACTERS, and `is` rather than `i`: `i` is `military-installations`
+  // and has shipped in links since the beginning. `enabled+options`, because
+  // the travel MODE is what the map claims — a fifteen-minute drive and a
+  // fifteen-minute walk from the same address are different arguments about
+  // the same plot, and a link that dropped the mode would restore the wrong one.
+  Object.freeze({ id: 'isochrone-fr', token: 'is', disposition: 'enabled+options', optionOwner: 'isochrone-fr' }),
   // A DIGIT, for the sixth time and always for the same reason: a–y are all
   // taken and `z` is the canonical UNKNOWN token two tests assert on. `6`
   // because 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants
@@ -497,6 +564,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),
   Object.freeze({ id: 'transit-fr', token: 'p', disposition: 'enabled-only' }),
   Object.freeze({ id: 'urbanisme-gpu', token: 'ur', disposition: 'enabled-only' }),
+  // `vp`, and `enabled+options` because the MODE is what the layer is showing:
+  // the same 533 columns at Tuesday 08:00 and at Sunday 04:00 are two different
+  // pictures, and a link that dropped the hour would restore the wrong one.
+  Object.freeze({ id: 'velo-pulse-fr', token: 'vp', disposition: 'enabled+options', optionOwner: 'velo-pulse-fr' }),
   Object.freeze({ id: 'vigicrues', token: 'v', disposition: 'enabled-only' }),
 ]);
 
