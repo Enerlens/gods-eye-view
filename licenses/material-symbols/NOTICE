@@ -11,12 +11,17 @@ Source: https://github.com/google/material-design-icons
         symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg
         (Material Symbols Rounded, filled, weight 400)
 
-WHAT WAS TAKEN. Eighteen glyphs, across two modules.
+WHAT WAS TAKEN. Seventeen glyphs, across two modules.
 
 `src/data/transitVehicleIcons.js` draws live French transit vehicles by class
-(retrieved 2026-08-31): airport_shuttle, cable_car, directions_boat,
-directions_bus, directions_railway, flight, funicular, local_taxi, monorail,
-subway, train, tram, trolley.
+(retrieved 2026-08-31): airport_shuttle, directions_boat, directions_bus,
+directions_railway, flight, funicular, local_taxi, monorail, subway, train,
+tram, trolley.
+
+`cable_car` was taken on the same date and has since been REMOVED, not merely
+left unused: the `aerial` class now draws Maki's `aerialway` instead, for the
+legibility reason `src/data/transitVehicleIcons.js` records. Its path data is
+gone from this project, so nothing under this notice is claimed for it.
 
 `src/data/sharedMobilityIcons.js` draws shared vehicles by form factor
 (retrieved 2026-09-01): pedal_bike, electric_bike, electric_scooter,
