@@ -177,10 +177,17 @@ async function main() {
 
     // ── ii. "now" is really now ────────────────────────────────────────────
     console.log('\n[2] MAINTENANT shows the hour of the week it actually is');
+    // PARIS TIME, not the machine's. The harness runs on whatever zone the
+    // laptop is set to; asserting against `getHours()` would have passed
+    // everywhere and hidden the very bug the layer had.
     const expected = await page.evaluate(() => {
-      const now = new Date();
-      const isoDay = now.getDay() === 0 ? 6 : now.getDay() - 1;
-      return isoDay * 24 + now.getHours();
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Europe/Paris', weekday: 'short', hour: '2-digit', hourCycle: 'h23',
+      }).formatToParts(new Date());
+      const days = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+      const day = days[parts.find((part) => part.type === 'weekday')?.value] ?? 0;
+      const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0);
+      return day * 24 + (hour % 24);
     });
     check('the slot is the current hour of the week', first.stats.slot === expected,
       `${first.stats.slot} vs ${expected}`);

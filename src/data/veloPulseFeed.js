@@ -43,20 +43,71 @@ export const PULSE_DAYS = Object.freeze([
 ]);
 
 /**
- * The hour-of-week slot for a moment, in LOCAL time.
+ * The wall clock the pack is written in. Not the reader's.
  *
- * Local, never UTC: a typical week is a local phenomenon and the pack was built
- * from local wall-clock hours in both cities. Reading it back in UTC would
- * shift the whole picture by an hour or two depending on the season — which is
- * precisely the trap the build script documents for the Paris counters.
+ * Both cities' profiles are averages over PARIS wall-clock hours — that is what
+ * "Tuesday 08:00" means in the pack — so reading them back needs the same
+ * clock. `Europe/Paris` also carries the DST rules, which is why a fixed +01:00
+ * or +02:00 offset would be wrong for half the year.
+ */
+export const PULSE_TIMEZONE = 'Europe/Paris';
+
+/** `Mon`..`Sun` to slot 0..6. */
+const WEEKDAY_INDEX = Object.freeze({
+  Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6,
+});
+
+/**
+ * A formatter pinned to Paris, built once.
+ *
+ * Guarded, because a JS runtime built without the full time-zone database
+ * throws on an IANA name. That is not a case worth crashing a layer over, so
+ * the fallback below reads the host clock and the layer is no worse off than it
+ * was — but the guard is here rather than an assumption that it cannot happen.
+ */
+const PARIS_CLOCK = (() => {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: PULSE_TIMEZONE, weekday: 'short', hour: '2-digit', hourCycle: 'h23',
+    });
+  } catch {
+    return null;
+  }
+})();
+
+/**
+ * The hour-of-week slot for a moment, ON PARIS TIME.
+ *
+ * THIS USED TO READ THE BROWSER'S CLOCK. `getDay()` and `getHours()` answer in
+ * whatever zone the reader's computer is set to, so a reader in New York asking
+ * for "MAINTENANT" at Paris Tuesday 08:00 was shown Tuesday 02:00 — a different
+ * hour of a week they were not looking at, with every bike figure on screen
+ * belonging to it. The comment above the old code said "local, never UTC" and
+ * was true; it just meant the wrong local.
+ *
+ * A typical week is a local phenomenon OF THE CITY, and both cities are in one
+ * zone, so there is exactly one right clock and it is not the reader's.
  *
  * @param {Date} [date]
  * @returns {number} 0..167
  */
 export function slotForDate(date = new Date()) {
-  const weekday = date.getDay();
-  const isoDay = weekday === 0 ? 6 : weekday - 1;
-  return isoDay * 24 + date.getHours();
+  const when = date instanceof Date ? date : new Date(date);
+  if (!Number.isFinite(when.getTime())) return 0;
+  if (!PARIS_CLOCK) {
+    const weekday = when.getDay();
+    return (weekday === 0 ? 6 : weekday - 1) * 24 + when.getHours();
+  }
+  let day = null;
+  let hour = null;
+  for (const part of PARIS_CLOCK.formatToParts(when)) {
+    if (part.type === 'weekday') day = WEEKDAY_INDEX[part.value] ?? null;
+    else if (part.type === 'hour') hour = Number(part.value);
+  }
+  if (day === null || !Number.isFinite(hour)) return 0;
+  // `hourCycle: 'h23'` is asked for above; the modulo is the belt to its
+  // braces, because some ICU builds still answer 24 for midnight.
+  return day * 24 + (hour % 24);
 }
 
 /**
@@ -111,6 +162,17 @@ export function sitePeak(site) {
 }
 
 /**
+ * How much of a city has to have reported at an hour for that hour to be
+ * comparable with the others.
+ *
+ * Half. Measured on the shipped pack, Lyon's worst-sampled slot still carries
+ * 70,2 % of its 450 stations and Paris' 111 counters are complete, so this
+ * disqualifies nothing today — it is the guard against the archive outage that
+ * would otherwise hand "POINTE" to whichever hour happened to be measured.
+ */
+export const PULSE_MIN_COVERAGE = 0.5;
+
+/**
  * The hour at which the networks are most IN USE — which is not the same
  * arithmetic for a stock as for a flow.
  *
@@ -120,11 +182,14 @@ export function sitePeak(site) {
  * because a dock is at its fullest when nobody is riding. The stock is the
  * COMPLEMENT of the use: an empty dock is a bike out on the road.
  *
- * So a stock is inverted before it is summed, and each site is normalised
- * against its own weekly maximum first so a 40-stand station and a 15-stand one
- * count the same and a 900-cyclist counter does not drown a 40-cyclist one.
- * Each city is then divided by its own site count, so 450 Lyon stations and 111
- * Paris counters weigh equally.
+ * So a stock is inverted before it is summed — against the dock's OWN CAPACITY,
+ * which is what "full" means for a stock, and never against the highest filling
+ * that station happened to reach. A flow has no natural full scale, so a flow
+ * IS normalised against its own weekly maximum, which is what keeps a
+ * 900-cyclist counter from drowning a 40-cyclist one. Each city is then divided
+ * by the number of sites that ACTUALLY REPORTED at that hour, so 450 Lyon
+ * stations and 111 Paris counters weigh equally and an outage reads as an
+ * outage rather than as a quiet hour.
  *
  * With that correction the two cities agree, through two different instruments:
  * Lyon's docks are emptiest and Paris' counters busiest on a weekday evening.
@@ -132,39 +197,82 @@ export function sitePeak(site) {
  * read the right way round.
  *
  * @param {object} cities The pack's `cities` map, or one city's entry.
- * @returns {{slot: number, score: number}|null}
+ * @returns {{slot: number, score: number, coverage: number}|null}
  */
 export function networkBusiest(cities) {
   const entries = Array.isArray(cities?.sites) ? [cities] : Object.values(cities || {});
   const totals = new Array(PULSE_SLOTS).fill(0);
+  // A slot is comparable only if every contributing city was well enough
+  // sampled there. See `PULSE_MIN_COVERAGE`.
+  const eligible = new Array(PULSE_SLOTS).fill(true);
+  const coverage = new Array(PULSE_SLOTS).fill(1);
   let contributing = 0;
   for (const city of entries) {
     const sites = Array.isArray(city?.sites) ? city.sites : [];
     if (!sites.length) continue;
     const invert = city.instrument === 'stock';
+    // Full is 100 % of the dock, in whatever units the pack stores it: Lyon
+    // keeps occupancy in tenths of a percent so `scale` is 1 000.
+    const fullScale = Number.isFinite(city.scale) && city.scale > 0 ? city.scale : 100;
     const cityTotals = new Array(PULSE_SLOTS).fill(0);
+    const citySamples = new Array(PULSE_SLOTS).fill(0);
     let counted = 0;
     for (const site of sites) {
       const peak = sitePeak(site);
-      if (!peak || peak.value <= 0) continue;
+      // A stock only needs A reading to be usable; a flow needs a positive peak
+      // to divide by. Requiring a positive peak of a stock would drop exactly
+      // the stations that are always empty — which under the inversion are the
+      // most used ones there are.
+      if (!peak || (!invert && peak.value <= 0)) continue;
       counted += 1;
       for (let slot = 0; slot < PULSE_SLOTS; slot += 1) {
         const value = site.profile?.[slot];
         if (!Number.isFinite(value)) continue;
-        const share = value / peak.value;
-        cityTotals[slot] += invert ? 1 - share : share;
+        const share = invert
+          // Against the DOCK'S OWN CAPACITY, never its observed maximum. A
+          // station whose weekly high is 38,8 % full — Gorge de Loup, in the
+          // shipped pack — scored zero activity at that hour under the old
+          // normalisation, while 61,2 % of its bikes were out on the road. Three
+          // Lyon stations never pass 50 % and 49 never pass 80 %, so the bias
+          // was not a corner case.
+          ? Math.min(1, Math.max(0, 1 - (value / fullScale)))
+          : value / peak.value;
+        cityTotals[slot] += share;
+        citySamples[slot] += 1;
       }
     }
     if (!counted) continue;
     contributing += 1;
-    for (let slot = 0; slot < PULSE_SLOTS; slot += 1) totals[slot] += cityTotals[slot] / counted;
+    const floor = Math.max(1, Math.ceil(counted * PULSE_MIN_COVERAGE));
+    for (let slot = 0; slot < PULSE_SLOTS; slot += 1) {
+      // DIVIDE BY WHAT ANSWERED, NOT BY WHAT EXISTS. The old code divided every
+      // slot by the whole site count, so an archive outage during Monday rush
+      // hour looked exactly like a quiet Monday: the missing stations added
+      // nothing to the numerator and stayed in the denominator, and sample
+      // coverage rather than cycling could pick the busiest hour.
+      if (citySamples[slot] < floor) {
+        eligible[slot] = false;
+        continue;
+      }
+      totals[slot] += cityTotals[slot] / citySamples[slot];
+      const share = citySamples[slot] / counted;
+      if (share < coverage[slot]) coverage[slot] = share;
+    }
   }
   if (!contributing) return null;
-  let best = 0;
-  for (let slot = 1; slot < PULSE_SLOTS; slot += 1) {
-    if (totals[slot] > totals[best]) best = slot;
+  let best = -1;
+  for (let slot = 0; slot < PULSE_SLOTS; slot += 1) {
+    if (!eligible[slot]) continue;
+    if (best < 0 || totals[slot] > totals[best]) best = slot;
   }
-  return { slot: best, score: Math.round(totals[best] * 1000) / 1000 };
+  // Every slot under-sampled in some city means there is no hour the pack can
+  // honestly call the busiest. Null, not slot 0.
+  if (best < 0) return null;
+  return {
+    slot: best,
+    score: Math.round(totals[best] * 1000) / 1000,
+    coverage: Math.round(coverage[best] * 1000) / 1000,
+  };
 }
 
 /**

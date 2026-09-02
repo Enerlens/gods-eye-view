@@ -55,15 +55,39 @@ const PACK = Object.freeze({
 
 // ── Slots ───────────────────────────────────────────────────────────────────
 
-test('slot 0 is Monday midnight, local time', () => {
-  // 2026-06-01 is a Monday. Constructed with local components on purpose: the
-  // pack was built from local wall-clock hours in both cities, and reading it
-  // back in UTC would shift the whole picture by an hour or two by season.
-  assert.equal(slotForDate(new Date(2026, 5, 1, 0, 30)), 0);
-  assert.equal(slotForDate(new Date(2026, 5, 1, 8, 59)), 8);
-  assert.equal(slotForDate(new Date(2026, 5, 2, 8, 0)), 24 + 8, 'Tuesday 08:00');
+test('slot 0 is Monday midnight in PARIS, whatever clock the reader is on', () => {
+  // 2026-06-01 is a Monday. Every instant below is written with an explicit
+  // offset rather than local components, because "local" is the whole point:
+  // the pack averages PARIS wall-clock hours, and the reader's computer is not
+  // the instrument.
+  assert.equal(slotForDate(new Date('2026-06-01T00:30:00+02:00')), 0);
+  assert.equal(slotForDate(new Date('2026-06-01T08:59:00+02:00')), 8);
+  assert.equal(slotForDate(new Date('2026-06-02T08:00:00+02:00')), 24 + 8, 'Tuesday 08:00');
   // Sunday must land at the END of the week, not the start.
-  assert.equal(slotForDate(new Date(2026, 5, 7, 23, 0)), 6 * 24 + 23);
+  assert.equal(slotForDate(new Date('2026-06-07T23:00:00+02:00')), 6 * 24 + 23);
+  // And winter, where the offset is +01:00 — a fixed offset would be wrong for
+  // half the year, which is why the zone is named rather than numbered.
+  assert.equal(slotForDate(new Date('2026-01-13T08:00:00+01:00')), 24 + 8);
+});
+
+test('the same instant reads as the same Paris hour from any time zone', () => {
+  // THE BUG THIS TEST EXISTS FOR. `getDay()`/`getHours()` answer in the
+  // reader's zone, so "MAINTENANT" showed a New York reader Tuesday 02:00 when
+  // Paris was at Tuesday 08:00 — a different hour of the week, with every bike
+  // figure on screen belonging to it.
+  const instant = new Date('2026-06-02T08:00:00+02:00');
+  assert.equal(slotForDate(instant), 24 + 8);
+  // Proved against the formatter directly, since a unit test cannot change the
+  // process time zone once `Intl` has been constructed: whatever the host is
+  // set to, the slot is derived from the Paris hour and nothing else.
+  const parisHour = Number(new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Paris', hour: '2-digit', hourCycle: 'h23',
+  }).format(instant));
+  assert.equal(parisHour, 8);
+  assert.equal(slotForDate(instant) % 24, parisHour);
+  // A junk date is slot 0 rather than NaN, which would index a profile with
+  // `undefined` and paint a whole network grey.
+  assert.equal(slotForDate(new Date('nonsense')), 0);
 });
 
 test('a slot reads back as a day and an hour a French reader recognises', () => {
@@ -120,6 +144,52 @@ test('a STOCK network is busiest when its docks are EMPTIEST', () => {
   assert.equal(station.profile[busiest.slot], 20, 'it lands on an empty hour');
   // And the same profile read as a flow gives the opposite answer.
   assert.equal(networkBusiest({ instrument: 'flow', sites: [station] }).slot, 3);
+});
+
+test('a dock is read against its capacity, not against how full it ever got', () => {
+  // THE BUG THIS TEST EXISTS FOR. Normalising a stock against the station's own
+  // observed maximum makes every station reach "zero activity" at its own high
+  // point, however low that high point is. Gorge de Loup tops out at 38,8 %
+  // full all week in the shipped pack: under the old arithmetic its busiest
+  // hour scored zero while 61,2 % of its bikes were out on the road.
+  const capped = { profile: profile(3, 388, 100) }; // never more than 38,8 % full
+  const city = { instrument: 'stock', scale: 1000, sites: [capped] };
+  const busiest = networkBusiest(city);
+  // Its fullest hour is its least active, but it is not a zero: 61,2 % of the
+  // dock is empty even then.
+  assert.equal(busiest.slot === 3, false, 'the fullest hour is still the least busy');
+  assert.ok(busiest.score > 0.6, `a station that is never full is never idle either (${busiest.score})`);
+
+  // And a station that is always empty is maximally used, not unusable data.
+  const drained = { instrument: 'stock', scale: 1000, sites: [{ profile: profile(3, 0, 0) }] };
+  assert.equal(networkBusiest(drained)?.score, 1);
+});
+
+test('an hour nobody reported is not an hour nobody cycled', () => {
+  // THE BUG THIS TEST EXISTS FOR. The old code divided every slot by the whole
+  // site count, so stations missing from an hour contributed nothing to the
+  // numerator and stayed in the denominator: an archive outage during Monday
+  // rush hour looked exactly like a quiet Monday.
+  const busy = new Array(PULSE_SLOTS).fill(10);
+  busy[40] = 500;
+  const silent = new Array(PULSE_SLOTS).fill(10);
+  silent[40] = null; // this counter missed the busiest hour entirely
+  const city = { instrument: 'flow', sites: [{ profile: busy }, { profile: silent }] };
+  const busiest = networkBusiest(city);
+  assert.equal(busiest.slot, 40, 'the hour that was measured is still the busiest');
+  assert.equal(busiest.coverage, 0.5, 'and the card can see only half of it reported');
+
+  // Below the coverage floor a slot is not comparable at all, and cannot win.
+  const sparse = Array.from({ length: 10 }, (_, i) => {
+    const p = new Array(PULSE_SLOTS).fill(10);
+    p[40] = i === 0 ? 5000 : null; // one site alone claims a spectacular hour
+    return { profile: p };
+  });
+  assert.notEqual(
+    networkBusiest({ instrument: 'flow', sites: sparse }).slot,
+    40,
+    'one site out of ten does not get to name the busiest hour of the network',
+  );
 });
 
 test('each city weighs the same however many sites it has', () => {
