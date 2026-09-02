@@ -1620,6 +1620,7 @@ its criteria cannot be silently ignored.
 | Centrales EDF 🇫🇷 ◈ | EDF Open Data — 3 datasets (nuclear 56 reactors → 18 sites, hydraulic 51 plants, thermal 19 units → 10 sites), 79 site discs sized by installed capacity | `src/data/edfPowerPlants.js` | `/api/edf-plants` | 30 min (proxy TTL 24 h; the files are republished annually) |
 | Power Grid ⌁ | OpenStreetMap `power=line`/`cable`/`substation`/`tower` at ≥ 50 kV, per viewport (batched `GroundPolylinePrimitive` strokes by voltage band, dashed underground) | `src/data/powerGrid.js`, `src/data/powerGridFeed.js` | `/api/power-grid` | viewport-driven (500 ms debounce, ≤ 0.8° box, pylons ≤ 0.25°) + 20 min idle; proxy TTL 10 min memory / 7 d disk; while failing, auto-retry 20 s → 240 s backoff |
 | Bâti 3D 🇫🇷 ▤ | IGN BD TOPO® `batiment`, Géoplateforme vector tiles at z15, per viewport — extruded volumes coloured by `usage_1`, seated on their own NGF-IGN69 altitudes (h = H + N), re-anchored by a per-~1.1 km-cell median of the rendered surface measured UNDER EACH BUILDING (`globe.getHeight`), each volume then reaching down to the lowest ground under its footprint | `src/data/bdtopoBuildings.js`, `src/data/bdtopoBuildingsFeed.js` | none — keyless, CORS-open, `max-age` 21 d, straight from `data.geopf.fr/tms` | viewport-driven (450 ms debounce, ≤ 0.08° box, ≤ 64 tiles, ≤ 14,000 volumes) + 30 min idle; one re-seat 3 s after a load where the terrain was not yet resident under every building |
+| Parcelles 🇫🇷 ▦ | IGN Api Carto `cadastre/parcelle` (PCI vecteur, DGFiP), per viewport — ground-clamped classification fills coloured by the SCALE of the `feuille` each parcel was drawn on (four bands from 1:250/1:500 to 1:4000/1:5000, joined on a FIVE-part key incl. `code_arr`), plus a `GroundPolylinePrimitive` outline per ring. Reports the fraction of the view that is cadastred at all — the rest is public domain. A box over Api Carto's own 5,000-feature ceiling is REFUSED whole (the truncation is scattered, not cropped, so a short draw is indistinguishable from the public-domain gaps) | `src/data/cadastreParcels.js`, `src/data/cadastreFeed.js` | `/api/cadastre-fr/parcelles`, `/api/cadastre-fr/status` | viewport-driven (450 ms debounce, gated on camera ALTITUDE ≤ 1 500 m — not on the view rectangle's span, which on a tilted camera reaches the horizon — and requesting a ≤ 0.02° box anchored on the screen-centre ground point, clipped to the view, 0.002° cache snap) + 60 min idle; proxy TTL 24 h memory + `.gev-cache/cadastre/`, serve-stale 30 d; the PCI is republished monthly |
 | Groupes de prod 🇫🇷 ☢ | RTE `actual_generations_per_unit` (171 units ≥ 100 MW, hourly) joined by EIC code to ODRÉ's *Registre national des installations de production et de stockage d'électricité*, shipped as a file (positions anchored on EDF Open Data, then OpenStreetMap, then commune centres); 108 stations drawn as a capacity ring plus an output disc | `src/data/rteGeneration.js`, `src/data/rteGenerationFeed.js`, `src/data/local_data/rte_production_units/units.json` | `/api/rte-generation`, `/api/rte-generation/status` | 3 min (proxy TTL 5 min; resource publishes hourly). Needs `RTE_CLIENT_ID`/`RTE_CLIENT_SECRET` for output; the fleet draws keyless |
 | Datacenters ▣ | OSM extract (bundled) | `src/data/localLayers.js` | — | static |
 | Barrages ▰ | OSM via Overpass for France + OpenInfraMap snapshot elsewhere (bundled, 6 189) | `src/data/localLayers.js`, `src/data/damsPack.js` | — | static |
@@ -1971,9 +1972,14 @@ isochrone has no meaning without a chosen point, so it is not in the layer
 registry and carries no share token. Walking and driving only.
 
 These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
-`ur`, `if`. The single-character space ran out exactly where this file kept
-predicting it would: by the time this branch met main, `0`–`9` and `a`–`y` were
-all claimed and `z` is the canonical UNKNOWN token two tests assert on. Widening
+`ur`, `if` — and `cadastre-fr` is the sixth, `cd`. The single-character space
+ran out exactly where this file kept predicting it would: by the time this
+branch met main, `0`–`9` and `a`–`y` were all claimed and `z` is the canonical
+UNKNOWN token two tests assert on. `cadastre-fr` and `schools-fr` both claimed
+`0` on separate branches, and the duplicate-token assertion turned that into a
+BOOT failure at the merge rather than a share link that silently enabled the
+wrong layer; `schools-fr` kept `0` because it had already shipped and links
+carrying it exist, and the unshipped layer moved. Widening
 cost nothing on the wire, because `l=` has always been DOT-SEPARATED: `l=f.dv.p`
 parses by the same split that read `l=f.7.p`, every link ever issued still
 decodes to exactly what it decoded to before, and a two-character token can
@@ -2024,8 +2030,152 @@ measures the residual offset in pixels from two camera poses; a unit test
 covers the seating arithmetic. Clamped polylines carry no `position` and are
 skipped — they were already on the ground.
 
+**Urbanisme answers a BLOCK below 1 500 m and a POINT above it.** It is the one
+layer of the five whose question depends on the camera as well as on where the
+camera points, because its own question is about the plot OPPOSITE: "could the
+car park across the street become twenty-five metres of construction?" cannot
+be answered by a query about the ground underfoot. Below
+`GPU_BOX_MAX_ALTITUDE_M` the zoning half is asked for over a box around the
+camera's ground point — `focusedViewBox`, clipped to the view so nothing off
+screen is fetched, capped at `GPU_MAX_BOX_DEG` (0.02°, the cadastre's number
+for the cadastre's reason: at twice that side Paris answers 243 zones and
+1.2 MB against 52 and 405 KB). The gate is ALTITUDE, never the span of the view
+rectangle, which on a tilted camera reaches the horizon. Above it, the point
+regime is unchanged.
+
+The EASEMENT half is always a point, and one measurement decides it: a 390 m
+box over Lyon's Presqu'île answers 210 easement features and 2.3 MB. At the
+zoning ceiling, upstream / on the wire / entities: Lyon point 725 KB / 409 KB /
+153, full box 4 004 KB / 1 823 KB / 1 182, hybrid 888 KB / 506 KB / 218.
+
+It costs bytes, not frames. Measured on the shipped build over IGN ortho in
+both regimes: median frame 0.6–1.4 ms, worst frame after a redraw 1.4–2.2 ms,
+zero frames over 16 ms. `zone-urba` carries the SAME silent 5 000-feature cap
+as `cadastre/parcelle` — a 0.40° Paris box returns 5 000 of 17 182 at HTTP 200
+— so a box over it is refused whole and the true count printed; at 0.02° the
+densest measured box answers 55 zones.
+
+`atPoint` marks the zone under the operator, and WHO decides it depends on who
+was asked. Under a point query APIcarto has already answered — every returned
+feature intersects that point by construction — so the flag is simply true.
+Under a box query the layer decides, against the ring as PUBLISHED and never
+the one it draws: Ustaritz's `UB` ring is 521 vertices decimated to 400, and
+the coordinate the service itself answers `UB` for falls outside the decimated
+ring. Each zone also carries a label anchor — the midpoint of its longest
+interior chord, not its centroid, which for a zone shaped like a meander or a
+ring around a hamlet lands outside the zone entirely — and its code is written
+on the ground there, because hue gives the family but not `UB` against `UYc`.
+
+The shell rescans when the QUERY changes, not only when the scan centre moves
+250 m: zooming straight down through the box altitude moves the centre by
+nothing while changing the kind of answer that belongs on screen.
+
+**A PLU zone is not a place, it is a rule over an area,** so `urbanisme-gpu` is
+also the one address layer that fills: each zone is a translucent, ground-classified wash with its
+interior rings CUT OUT, and the stroke on top of it. The wash says where, the
+stroke says exactly where — and the enclave is the part that matters. The
+projection kept outer rings only until 2026-09-01, on the reasoning that a hole
+in an outline is invisible; it is, and it is the entire point of a fill.
+Measured at Ustaritz: the `UB` zone under the village centre is one polygon
+with two interior rings, 6 646 m² the same document zones `UE` and 50 686 m²
+it zones `UYc`, so the filled-without-holes version painted 57 332 m² of ground
+with a rule that does not reach it. Rings are spent out of the vertex budget
+WITH the ring they perforate, so a hole is never what a budget drops.
+
+`typezone` carries SEVEN values and the colour table had four. A census over
+twelve APIcarto boxes on 2026-09-01 — 4 216 zoning features — found **zero
+occurrences of plain `AU`**: every à-urbaniser zone publishes `AUc` (open under
+the PLU as it stands) or `AUs` (closed until the document is modified or
+revised), so the family this layer exists for was the one drawn in the
+unknown-value grey. Both are now coloured, `AUs` cooled and quieter, and
+`Ah`/`Nh` take their family's hue brightened. Fill weights were measured rather
+than chosen: differenced against an unpainted frame over an IGN orthophoto,
+0.18 moved the picture by a mean of 3/255 in red and was invisible, which is
+why the shipped ladder runs 0.22 (`A`/`N`) to 0.42 (`AUc`). Servitudes stay
+lines and are DASHED — they are not zoning, and one measured `pm1` envelope is
+759 polygons spanning kilometres, so a wash of it tints the view, not a plot.
+
+More than one zone under one point is not a bug and `zoneCount` reports it: on
+a 35 m grid over a 9 × 6 km box around Ustaritz, 17 of 34 126 points fall in
+two zoning polygons, every one at a commune limit where two independently
+digitised PLU documents overlap — 73 polygon pairs and 5,3 ha in that box
+alone.
+
+Because the wash is ground-classification geometry, and a classification
+surface is read once when the primitive is BUILT, `urbanisme-gpu` is also the
+one address layer that sets `redrawOnMapStack`. Switching to the photoreal
+tileset hides the globe, and a wash addressed to terrain then draws nothing at
+all — the layer reads as switched off. It rebuilds from the payload already in
+hand, with no request and no rate limit spent.
+
 Licence note: IDFM is **ODbL 1.0** — attribution and share-alike on derived
 databases — while the other five are Licence Ouverte. See `DATA_SOURCES.md`.
+
+#### Ambient labels are a click surface (September 2026)
+
+The name floating above an object on the globe now selects that object, exactly
+as its dot does. It did not before, and the reason was mechanical rather than a
+policy: the shared world overlay paints every label onto a
+`pointer-events: none` canvas stacked over the Cesium viewport, so
+`scene.pick()` under a label returns whatever is behind it — usually the globe,
+i.e. nothing. A click aimed at a station's name therefore read as *empty space*
+and DISMISSED the selection, which is the opposite of the intent. And the name
+is what people aim at: it is what says which river or which yard this is, and
+it is five to twenty times the target area of the 5–15 px dot it belongs to.
+
+The host already had the two halves — entries flagged `interactive` publish a
+screen-space hit rectangle each painted frame, and `hitTestWorldOverlay()`
+resolves the topmost one. What was missing was the resolution step in each
+layer's click handler. `src/data/overlayLabelPick.js` is that step written once:
+it fences the hit test to the asking layer's own overlay source, strips the
+entry-id prefix each layer publishes under, and re-checks the id against the
+layer's live record map — hit rectangles are pooled and published per painted
+frame, so one can name a record that left the viewport a frame ago, and that is
+a miss rather than a selection.
+
+**The resolution order is the load-bearing part, and it is the same everywhere:**
+
+1. `scene.pick()` — a native primitive under the cursor wins. Labels float
+   above their anchor, so the two rarely overlap; when they do, the thing the
+   depth buffer says you are pointing at is the honest answer, and it is also
+   the one the pick registry can arbitrate between layers.
+2. the label plane, which the depth buffer knows nothing about.
+3. only then, empty space → clear the selection.
+
+Putting the label test first would let a label drawn across a NEIGHBOURING
+object's dot steal that object's click.
+
+Wired into twelve layers: **Hub'Eau Gauges**, **Réseau électrique**, **Réseau
+gaz**, **Production RTE**, **Petite hydro**, **Événements routiers**,
+**Écoles (FR)** and **Bornes IRVE (FR)** (both on their département names at
+national altitude), **Radio** (station names only — a cluster badge names a
+count, not a station), **Câbles sous-marins** (whose stem tip is a 7 px dot at
+the end of a hairline, often out over open ocean), **Satellites** (the ISS
+label, where the point is a few pixels of a target moving at orbital speed) and
+**Rocket Launches** (the ambient mission markers). Selected-object CARDS stay
+non-interactive: a card names what is already selected, so a rectangle there
+would do nothing but cover the ambient labels behind it.
+
+Layers deliberately left alone: Vigicrues, Météo-France Vigilance, séismes,
+bouées marines, Mix élec and les itinéraires transit all paint ambient labels
+but have no selection to trigger — a click surface with nothing behind it would
+be a lie. Mobilité partagée, Transit (FR), État du réseau and Bâti 3D publish
+only selected-object cards and no ambient labels, so there is nothing to make
+clickable.
+
+Hub'Eau is the layer the request came from and the one where the gap was
+widest: its dots draw at `disableDepthTestDistance: 2500` against siblings that
+use infinity, so the click handler already has to `drillPick` eight deep just
+to find its own dot under a charging point — while the name beside it was inert.
+Its ambient label carries the same `hubeau:<code>` id as the dot, so one string
+identifies a station across the drill pick, the overlay hit test and the pick
+registry, and the label branch resolves straight into the existing
+`selectObject()`.
+
+Proved in a real scene by `npm run qa:label-click`, which reads where the host
+painted a label, dispatches a real pointer event at its centre — nowhere near
+the dot — and asserts the layer's selected-card source started painting; and
+that a click on empty space still clears it.
 
 ### Context / Contacts coordinator (July 2026)
 

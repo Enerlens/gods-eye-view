@@ -57,9 +57,11 @@
     "qa:power-grid-coverage:lines": "node scripts/grid-audit/audit-lines.mjs",
     "qa:rte-generation": "node scripts/qa-rte-generation.mjs",
     "qa:fr-hydro": "node scripts/qa-fr-hydro.mjs",
+    "qa:label-click": "node scripts/qa-label-click.mjs",
     "qa:airports": "node scripts/qa-airports.mjs",
     "qa:bison-fute": "node scripts/qa-bison-fute.mjs",
     "qa:irve-fr": "node scripts/qa-irve-fr.mjs",
+    "qa:schools-fr": "node scripts/qa-schools-fr.mjs",
     "qa:dams": "node scripts/qa-dams.mjs",
     "rrn:pack": "node scripts/build-rrn-centreline-pack.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
@@ -71,7 +73,9 @@
     "hydro:registry": "node scripts/build-fr-hydro-registry.mjs",
     "qa:address-layers": "node scripts/qa-address-layers.mjs",
     "airports:pack": "node scripts/build-ourairports.mjs",
-    "dams:pack": "node scripts/build-osm-dams.mjs"
+    "dams:pack": "node scripts/build-osm-dams.mjs",
+    "medecins:registry": "node scripts/build-medecins-fr.mjs",
+    "qa:medecins-fr": "node scripts/qa-medecins-fr.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",

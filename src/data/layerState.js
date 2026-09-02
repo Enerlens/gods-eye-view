@@ -294,6 +294,19 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // a duplicate here is a BOOT failure, not a review nit.
   Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
+  // TWO CHARACTERS, because the single-character scheme is spent: a-y are taken,
+  // `z` is the canonical UNKNOWN token two existing tests assert on, and 0-9
+  // belong to schools-fr, gas-fr, power-grid, rte-generation, fr-hydro-plants,
+  // bdtopo-buildings, local-airports, road-status-fr, road-events-fr and
+  // irve-fr. This branch had claimed `0` while `schools-fr` was claiming the
+  // same character on main, which is exactly the silent collision the
+  // duplicate-token assertion exists to catch — and it caught it, at the merge,
+  // as a BOOT failure. `schools-fr` keeps `0` because it has already shipped
+  // and links carrying it exist; the unshipped layer is the one that moves.
+  // The field is dot-separated, so a wider token costs one character and needs
+  // no codec change — `dp`, `dv`, `gr` and `if` already read this way.
+  // `enabled-only`: the layer has no runtime option to serialize.
+  Object.freeze({ id: 'cadastre-fr', token: 'cd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   // THE LAST FIVE TOKENS, claimed together by the five French address layers.
   // a–y are taken, `z` is the canonical UNKNOWN token two existing tests assert
@@ -342,6 +355,17 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'local-firms', token: 'w', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-ports', token: 'o', disposition: 'enabled-only' }),
   Object.freeze({ id: 'marine-buoys', token: 'y', disposition: 'enabled-only' }),
+  // Two characters, and the grammar was widened for exactly this before the
+  // five address layers landed (`gr`, `dv`, `dp`, `ur`, `if`). Every single
+  // character is taken: a–y, `z` is the canonical UNKNOWN token two tests
+  // assert on, and 0–9 went to schools-fr, gas-fr, power-grid, rte-generation,
+  // fr-hydro-plants, bdtopo-buildings, local-airports, road-status-fr,
+  // road-events-fr and irve-fr. `md` for médecins.
+  //
+  // `enabled-only`, although the layer owns a paint chip: the chip changes
+  // WHICH value the national choropleth carries, never what is hidden, so a
+  // shared link that opens on the author's default surprises nobody.
+  Object.freeze({ id: 'medecins-fr', token: 'md', disposition: 'enabled-only' }),
   Object.freeze({ id: 'meteofrance-vigilance', token: 'n', disposition: 'enabled-only' }),
   Object.freeze({ id: 'military', token: 'm', disposition: 'enabled+mirrored-options', optionOwner: 'flights' }),
   Object.freeze({ id: 'military-awareness', token: 'g', disposition: 'enabled-only' }),

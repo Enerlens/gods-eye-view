@@ -66,8 +66,9 @@ export const LAYER_CATEGORIES = Object.freeze([
   // the seven. It fits none of them: a building is not energy, not a hazard,
   // not mobility, and putting it in "RÉSEAUX & CAPTEURS" beside CCTV and radio
   // would say it is a network, which it is not. It closes the panel because it
-  // is base reference data — the ground everything else stands on — and it is
-  // where a cadastre, a land-use or a population layer would join.
+  // is base reference data — the ground everything else stands on. The cadastre
+  // this comment reserved a place for has since joined it; a land-use or a
+  // population layer would land here too.
   Object.freeze({ id: 'built-environment', label: 'BÂTI & TERRITOIRE', icon: '▤' }),
 ]);
 
@@ -600,6 +601,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // is the State's account of where its pupils are put, which is base
   // reference data in exactly the sense `bdtopo-buildings` is. It is not
   // mobility, not energy, and not a hazard.
+  // BÂTI & TERRITOIRE for the same reason the school register is: 64 232
+  // practice addresses are where a public service is physically put, which is
+  // base reference data about the territory. It is not a hazard — a shortage
+  // of doctors is a durable structural fact, not an event — and it is not a
+  // sensor network.
+  Object.freeze({
+    id: 'medecins-fr',
+    category: 'built-environment',
+    label: 'Médecins',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'schools-fr',
     category: 'built-environment',
@@ -634,6 +649,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     id: 'petite-enfance-fr',
     category: 'built-environment',
     label: 'Accueil du jeune enfant',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  // Below the buildings, and last in the panel, because it is the most basic
+  // reference data the app carries: the division of the ground itself. Same
+  // `periodic` reasoning as its neighbour, and more so — 103 million parcels
+  // could not be bundled at any size, and the layer refuses any view wider than
+  // two kilometres rather than pretend otherwise.
+  Object.freeze({
+    id: 'cadastre-fr',
+    category: 'built-environment',
+    label: 'Parcelles cadastrales',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',

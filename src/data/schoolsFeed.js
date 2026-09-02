@@ -192,6 +192,73 @@ export const SCHOOL_LEVEL_INDEX = Object.freeze(
 );
 
 /**
+ * Words that mean a published name ALREADY states its level.
+ *
+ * `nom_etablissement` is the register's own name for the establishment and it
+ * usually opens with the type — "Collège Jean Moulin", "Lycée du Parc", "Ecole
+ * élémentaire publique Jules Ferry". Measured over the 68 557 open rows,
+ * **97.4% already contain their own type word**; prefixing those would produce
+ * "Collège · Collège Jean Moulin".
+ *
+ * The other 2 467 do not — "Groupe scolaire Saint Exupéry", "Institution
+ * Saint-Pierre", "Campus la Providence" — and there the level is exactly what
+ * a reader is missing. So the level is prefixed only when the name does not
+ * already carry it.
+ *
+ * `autre` has no hints and never takes a prefix: its band label
+ * ("Administratif & orientation") names a legend row, not a kind of building,
+ * and gluing it in front of "Rectorat de l'académie de Lyon" states nothing.
+ */
+const LEVEL_NAME_HINTS = Object.freeze({
+  ecole: Object.freeze(['ecole', 'maternelle', 'elementaire', 'primaire', 'groupe scolaire']),
+  college: Object.freeze(['college']),
+  lycee: Object.freeze(['lycee']),
+  adapte: Object.freeze(['erea', 'enseignement adapte', 'medico', 'regional adapte']),
+  autre: Object.freeze([]),
+});
+
+/** Strip accents and lower-case, so "Lycée" matches "LYCEE". */
+function nameKey(value) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+/**
+ * Whether a published name already says what kind of establishment it is.
+ * @param {?string} name
+ * @param {?string} level
+ * @returns {boolean}
+ */
+export function schoolNameStatesLevel(name, level) {
+  const hints = LEVEL_NAME_HINTS[level];
+  if (!hints || !hints.length) return true;
+  const key = nameKey(name);
+  return hints.some((hint) => key.includes(hint));
+}
+
+/**
+ * The one line that names an establishment: its published name, with its level
+ * in front when the name does not already state one.
+ *
+ * Used wherever a school gets ONE line and not a card — the DETECT callout, the
+ * card title — so "Collège Jean Moulin" reads the same everywhere it appears
+ * and never degrades into the bare word "Établissement" at some zooms and a
+ * name at others.
+ *
+ * @param {?object} site A projected site, or a mesh site with only a level.
+ * @returns {string}
+ */
+export function schoolDisplayName(site) {
+  const name = typeof site?.name === 'string' ? site.name.trim() : '';
+  const level = SCHOOL_LEVEL_LABELS[site?.level] || null;
+  if (!name) return level || 'Établissement';
+  if (schoolNameStatesLevel(name, site?.level)) return name;
+  return level ? `${level} · ${name}` : name;
+}
+
+/**
  * `type_etablissement` → band.
  *
  * `EREA` (80 rows) joins `Médico-social` (2 312) rather than standing alone:

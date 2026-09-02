@@ -274,7 +274,10 @@ test('overlay entry ranks big rivers above doubtful and stage-only stations', ()
   );
   assert.equal(big.title, 'Le Rhône · 717 m³/s');
   assert.ok(big.priority > gauge.priority);
-  assert.equal(big.interactive, false);
+  // The name is a click surface: without a published hit rectangle, clicking
+  // the label lands on the terrain behind the overlay canvas and dismisses the
+  // selection instead of opening the card.
+  assert.equal(big.interactive, true);
   assert.equal(big.paintLane, 'ambient-label');
   assert.equal(big.id, 'hubeau:A');
 });
@@ -334,15 +337,40 @@ function createHarness({ rectangle, responses } = {}) {
   const hostCalls = [];
   const fetchUrls = [];
   const moveEndListeners = new Set();
+  // The label plane the host would publish hit rectangles for: an entry id
+  // keyed by click position, in the shape `hitTestWorldOverlay` returns.
+  const labelPlane = new Map();
   const overlayHost = {
     setEntries: (...args) => hostCalls.push(['entries', ...args]),
     setVisible: (...args) => hostCalls.push(['visible', ...args]),
     clearSource: (...args) => hostCalls.push(['clear', ...args]),
+    hitTest: (x, y, options = {}) => {
+      const entryId = labelPlane.get(`${x},${y}`);
+      if (!entryId) return null;
+      if (options.sourceId && options.sourceId !== 'hubeau-hydro') return null;
+      return { sourceId: 'hubeau-hydro', entryId, entry: { id: entryId }, rect: { x, y, w: 1, h: 1 } };
+    },
   };
+  let clickListener = null;
+  const clickHandlers = [];
+  const screenSpaceEventHandlerFactory = () => {
+    const handler = {
+      destroyed: false,
+      setInputAction(action, type) {
+        if (type === Cesium.ScreenSpaceEventType.LEFT_CLICK) clickListener = action;
+      },
+      destroy() { handler.destroyed = true; clickListener = null; },
+    };
+    clickHandlers.push(handler);
+    return handler;
+  };
+  let drillPicked = () => [];
   const viewer = {
     scene: {
       globe: { ellipsoid: Cesium.Ellipsoid.WGS84 },
+      canvas: {},
       requestRender() {},
+      drillPick: (position, limit) => drillPicked(position, limit),
       primitives: {
         add(primitive) { primitives.push(primitive); return primitive; },
         remove(primitive) {
@@ -372,7 +400,11 @@ function createHarness({ rectangle, responses } = {}) {
     if (typeof payload?.status === 'number') return { ok: false, status: payload.status };
     return { ok: true, status: 206, json: async () => payload };
   };
-  const layer = createHubeauHydrometryLayer({ overlayHost, now: () => CAPTURE_MS });
+  const layer = createHubeauHydrometryLayer({
+    overlayHost,
+    now: () => CAPTURE_MS,
+    screenSpaceEventHandlerFactory,
+  });
   return {
     layer,
     viewer,
@@ -380,6 +412,20 @@ function createHarness({ rectangle, responses } = {}) {
     hostCalls,
     fetchUrls,
     moveEndListeners,
+    clickHandlers,
+    /** Put one label's hit rectangle at a click position. */
+    placeLabel(x, y, entryId) { labelPlane.set(`${x},${y}`, entryId); },
+    /** What `scene.drillPick()` answers for the next click. */
+    setDrillPick(fn) { drillPicked = fn; },
+    click(x, y) { clickListener?.({ position: { x, y } }); },
+    /** The card currently published on the selected source, or null. */
+    selectionCard() {
+      const last = hostCalls.filter(
+        ([type, source]) => source === 'hubeau-hydro-selected'
+          && (type === 'entries' || type === 'clear'),
+      ).pop();
+      return last?.[0] === 'entries' ? last[2]?.[0] || null : null;
+    },
     restore() { globalThis.fetch = originalFetch; },
   };
 }
@@ -743,4 +789,84 @@ test('the selected entry is protected, on its own source, and one card deep', ()
   });
   assert.equal(HUBEAU_LAYER_ID, 'hubeau-hydro');
   assert.equal(HUBEAU_HISTORY_WINDOW_MS, 24 * 60 * 60_000);
+});
+
+// ── The name is a click surface ─────────────────────────────────────────────
+//
+// A gauge dot is 5–15 px across; the name floating above it is several times
+// that, and it is what says which river this is. Labels paint onto a
+// `pointer-events: none` canvas, so before they published a hit rectangle
+// every click aimed at a name landed on the terrain behind it and dismissed
+// the selection — the opposite of the intent.
+
+async function clickableHarness() {
+  const h = createHarness({
+    rectangle: IDF,
+    responses: { stations: STATIONS_GEOJSON, observations: OBSERVATIONS },
+  });
+  h.layer.init(h.viewer);
+  h.layer.enable(h.viewer);
+  await h.layer.update(h.viewer);
+  return h;
+}
+
+test('clicking a station NAME selects it, not just the dot', async () => {
+  const h = await clickableHarness();
+  try {
+    h.placeLabel(640, 320, 'hubeau:F447000302');
+    h.click(640, 320);
+    const card = h.selectionCard();
+    assert.ok(card, 'a label click must open the station card');
+    assert.equal(card.title, "L'Yerres à Courtomer");
+    assert.equal(card.variant, 'selected');
+    // The card is not a second click surface stacked over the labels behind it.
+    assert.equal(card.interactive, false);
+  } finally {
+    h.restore();
+  }
+});
+
+test('the dot under the cursor wins over a label drawn across it', async () => {
+  const h = await clickableHarness();
+  try {
+    // A neighbour's name painted over this station's dot must not steal the
+    // click: the depth-tested drill pick is resolved first, on purpose.
+    h.placeLabel(400, 200, 'hubeau:F459000101');
+    h.setDrillPick(() => [{ primitive: { id: 'hubeau:F447000302' } }]);
+    h.click(400, 200);
+    assert.equal(h.selectionCard()?.title, "L'Yerres à Courtomer");
+  } finally {
+    h.restore();
+  }
+});
+
+test('a label left over from a station that is gone selects nothing', async () => {
+  const h = await clickableHarness();
+  try {
+    h.placeLabel(500, 250, 'hubeau:F447000302');
+    h.click(500, 250);
+    assert.ok(h.selectionCard());
+    // Hit rectangles are pooled and published per painted frame, so one can
+    // outlive its record by a frame. That is a miss, not a selection.
+    h.placeLabel(500, 250, 'hubeau:NOT-REPORTING');
+    h.click(500, 250);
+    assert.equal(h.selectionCard(), null, 'and a miss still clears, like empty space');
+  } finally {
+    h.restore();
+  }
+});
+
+test('a click on nothing still clears the card, and disable drops the handler', async () => {
+  const h = await clickableHarness();
+  try {
+    h.placeLabel(640, 320, 'hubeau:F447000302');
+    h.click(640, 320);
+    assert.ok(h.selectionCard());
+    h.click(12, 12);
+    assert.equal(h.selectionCard(), null);
+    h.layer.disable(h.viewer);
+    assert.equal(h.clickHandlers.at(-1).destroyed, true);
+  } finally {
+    h.restore();
+  }
 });

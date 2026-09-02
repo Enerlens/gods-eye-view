@@ -332,6 +332,43 @@ async function fetchTile(tile, signal) {
 }
 
 /**
+ * Fetch every tile of one viewport, tolerating the ones that refuse.
+ *
+ * A city-sized box is 30–60 separate tile requests, and the Géoplateforme is a
+ * free public service that rate-limits (400 req/min) and occasionally answers
+ * 5xx under load. `Promise.all` turns any ONE of those into a rejection, which
+ * is how a layer that had 59 good tiles in hand ended up reporting itself
+ * UNAVAILABLE on the hosted deployment and backing off for four minutes.
+ *
+ * So a refusal is now per-tile: the squares that arrived are drawn, the ones
+ * that did not are COUNTED and reported, and the layer asks again shortly. The
+ * one case that is still a genuine failure is every tile refusing — there is
+ * nothing to draw then, and saying so is the honest answer.
+ *
+ * `AbortError` is never a tile fault: it is this layer superseding its own
+ * request, and it is rethrown so `load()` can drop the whole attempt.
+ * @param {Array<object>} wanted
+ * @param {AbortSignal} signal
+ * @returns {Promise<{fetched: Array<object>, failed: number, firstError: ?Error}>}
+ */
+async function fetchTiles(wanted, signal) {
+  const settled = await Promise.all(wanted.map((tile) => fetchTile(tile, signal).then(
+    (value) => ({ ok: true, value }),
+    (error) => ({ ok: false, error }),
+  )));
+
+  const aborted = settled.find((entry) => !entry.ok && entry.error?.name === 'AbortError');
+  if (aborted) throw aborted.error;
+
+  const failures = settled.filter((entry) => !entry.ok);
+  return {
+    fetched: settled.filter((entry) => entry.ok).map((entry) => entry.value).filter(Boolean),
+    failed: failures.length,
+    firstError: failures[0]?.error || null,
+  };
+}
+
+/**
  * The height of the surface the globe is DRAWING at a point, in ellipsoidal
  * metres, or null.
  *
@@ -735,8 +772,11 @@ async function load() {
     await ensureGeoidReady();
     const { tiles: wanted, overflow } = bdtopoTiles(snapped, BDTOPO_ZOOM);
     const started = performance.now();
-    const fetched = (await Promise.all(wanted.map((tile) => fetchTile(tile, signal)))).filter(Boolean);
+    const { fetched, failed, firstError } = await fetchTiles(wanted, signal);
     if (signal.aborted) return false;
+    // Nothing came back at all — that is the service being down, not a gap in
+    // the coverage, and it is the one case that still fails the whole load.
+    if (failed > 0 && failed === wanted.length) throw firstError;
 
     const bytes = fetched.reduce((total, entry) => total + entry.bytes, 0);
     const { records, saturated, offsets, requestedCells, coldGround } = await buildRecords(fetched);
@@ -748,6 +788,7 @@ async function load() {
       volumes: records.length,
       tiles: fetched.length,
       requestedTiles: wanted.length,
+      missingTiles: failed,
       bytes,
       saturated: saturated || overflow,
       offsetM: offsets.medianM,
@@ -757,11 +798,21 @@ async function load() {
       elapsedMs: performance.now() - started,
       box: snapped,
     });
-    _loadedKey = key;
     _lastUpdate = Date.now();
     _status = 'ready';
-    _retryDelayMs = 0;
-    clearRetry();
+
+    if (failed > 0) {
+      // Some squares of this viewport are missing, so what is drawn is a real
+      // but INCOMPLETE city — the same shape a straight edge through Marseille
+      // has, and it must not read as "this is all there is". The box is not
+      // memoized, so the retry actually refetches rather than short-circuiting.
+      _loadedKey = null;
+      scheduleRetry();
+    } else {
+      _loadedKey = key;
+      _retryDelayMs = 0;
+      clearRetry();
+    }
 
     // Drawn against ground that was not all there: terrain still streaming into
     // a freshly entered area, and for those buildings the seating fell back to
@@ -948,11 +999,20 @@ const bdtopoBuildingsLayer = {
       groundGapMedianM: _payload?.groundGapMedianM ?? null,
       groundGapWorstM: _payload?.groundGapWorstM ?? null,
       saturated: Boolean(_payload?.saturated),
+      missingTiles: _payload?.missingTiles ?? 0,
       lastUpdate: _lastUpdate,
       loading: _loading,
       status: _status === 'ready' ? 'ok' : _status,
       feedSource: 'IGN BD TOPO — Licence Ouverte 2.0',
     };
+    // Buildings are drawn and some squares are not. DEGRADED rather than an
+    // error string: there IS a city on screen, it is simply short of a few
+    // tiles, and the row has to say which of the two it is looking at.
+    const missing = Number(_payload?.missingTiles) || 0;
+    if (missing > 0 && !_photoreal) {
+      result.degraded = true;
+      result.loadingLabel = `${missing} tuile${missing > 1 ? 's' : ''} BD TOPO refusée${missing > 1 ? 's' : ''} sur ${formatCount(_payload?.requestedTiles ?? 0)} — bâti incomplet, nouvelle tentative`;
+    }
     if (_photoreal) {
       result.status = 'ok';
       result.loadingLabel = 'Masqué : Google 3D dessine déjà ce bâti';
@@ -1026,6 +1086,16 @@ export function _bdtopoStatsForTest() {
 
 export function _bdtopoApplyMapStackForTest(activeId) {
   applyMapStack(activeId);
+}
+
+/** The per-tile failure tolerance, without a viewport or a globe. */
+export function _fetchBdtopoTilesForTest(wanted, signal) {
+  return fetchTiles(wanted, signal);
+}
+
+/** Seed a payload so `getStats()` can be read for a partial load. */
+export function _setBdtopoPayloadForTest(payload) {
+  _payload = payload;
 }
 
 export default bdtopoBuildingsLayer;

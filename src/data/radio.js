@@ -21,9 +21,11 @@ import {
 } from './pickRegistry.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   earthDiscScreenRadius,
   getKeyholeGeometry,
@@ -48,6 +50,12 @@ const RADIO_DIRECTORY_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 const RADIO_DIRECTORY_FUTURE_SKEW_MS = 5 * 60 * 1000;
 const RADIO_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const RADIO_OVERLAY_SOURCE_ID = 'radio';
+/**
+ * Ambient singleton-label entry-id prefix — the click surface the station's
+ * NAME provides. Cluster badges (`cluster:`) are deliberately left out: a
+ * badge names a count, not a station, and there is nothing to tune to.
+ */
+export const RADIO_STATION_LABEL_PREFIX = 'station:';
 export const RADIO_OVERLAY_COHORT_LIMIT = 64;
 export const RADIO_SINGLETON_GLOBAL_LIMIT = 16;
 export const RADIO_SINGLETON_MID_LIMIT = 32;
@@ -461,7 +469,7 @@ export function createRadioClusterOverlayEntry({ id, position, text, accent, sta
 export function createRadioSingletonOverlayEntry({ station, position, priority = 1 }) {
   if (!station?.id || !station?.name || !position) return null;
   return {
-    id: `station:${station.id}`,
+    id: `${RADIO_STATION_LABEL_PREFIX}${station.id}`,
     position,
     variant: 'label',
     paintLane: 'ambient-label',
@@ -469,7 +477,9 @@ export function createRadioSingletonOverlayEntry({ station, position, priority =
     priority: Math.max(1, Number(priority) || 1),
     title: radioGlobeLabel(station),
     accent: radioCategoryColor(radioStationCategoryId(station)),
-    interactive: false,
+    // The station's name is a click surface, not a caption — see
+    // `overlayLabelPick.js` for the mechanism and the pick-ordering rule.
+    interactive: true,
     anchorRadiusPx: 9,
     minAnchorGapPx: 4,
     verticalOnly: true,
@@ -2515,6 +2525,17 @@ function pickedRadioStationAt(position) {
       if (stationId) return stationId;
     }
   }
+
+  // The label plane, which the depth buffer knows nothing about. An exact hit
+  // on a painted name outranks the fuzzy ±8 px sweep below, which is a guess
+  // about what the pointer was near rather than what it was on.
+  const labelled = pickOverlayLabelId(position, {
+    sourceId: RADIO_OVERLAY_SOURCE_ID,
+    prefix: RADIO_STATION_LABEL_PREFIX,
+    has: (stationId) => _stationById.has(stationId),
+    hitTest: hitTestWorldOverlay,
+  });
+  if (labelled) return labelled;
 
   for (const [offsetX, offsetY] of RADIO_PICK_OFFSETS) {
     const offsetPosition = new Cesium.Cartesian2(position.x + offsetX, position.y + offsetY);
