@@ -373,6 +373,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // 'live' is load-bearing: the feed is a nightly batch that lands the day
   // before yesterday, and calling it live anywhere would be the layer's first
   // lie.
+  // Beside `idfm-network`, which draws the same 37 956 stops as a static
+  // referential. That layer says WHAT serves a stop; this one says HOW MUCH,
+  // which is the dimension this repo did not have at all. The two are adjacent
+  // so the panel makes the pairing obvious rather than hiding it.
+  Object.freeze({
+    id: 'idfm-frequency',
+    category: 'ground-mobility',
+    label: "Fréquence des transports (Paris)",
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
   Object.freeze({
     id: 'comptages-fr',
     category: 'ground-mobility',
@@ -543,6 +557,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // Beside `delinquance-fr` in RISQUES & ENVIRONNEMENT rather than in
   // BÂTI & TERRITOIRE, because the subject is not the street furniture: it is
   // heat, and where a city keeps somewhere to escape it.
+  // In RISQUES & ENVIRONNEMENT because a noise-exposure zone is a constraint on
+  // where people may live, which is what the rest of this group describes. It is
+  // NOT in BÂTI & TERRITOIRE beside the cadastre: the polygon is about the
+  // aircraft, not about the ground under it.
+  Object.freeze({
+    id: 'bruit-fr',
+    category: 'hazards',
+    label: "Bruit des aéroports",
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
   Object.freeze({
     id: 'fraicheur-fr',
     category: 'hazards',
@@ -673,6 +701,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Last in BÂTI & TERRITOIRE and beside `cadastre-fr` on purpose: it is the
+  // only forward-looking layer in the stack. Everything else here describes what
+  // EXISTS; this describes what someone has been given permission to build, and
+  // it lands on the cadastral parcel that `cadastre-fr` already draws.
+  Object.freeze({
+    id: 'sitadel-fr',
+    category: 'built-environment',
+    label: "Autorisations d’urbanisme (Sitadel)",
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+
   // Beside `schools-fr` and not in a group of its own, because it is the same
   // kind of fact about the same country: the State's account of where it puts
   // the people it educates. `schools-fr` covers the register up to the

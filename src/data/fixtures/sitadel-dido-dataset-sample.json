@@ -1,0 +1,462 @@
+{
+ "id": "6513f0189d7d312c80ec5b5b",
+ "title": "Liste des permis de construire et autres autorisations d’urbanisme",
+ "description": "Dans le cadre de l’ouverture des données publiques, le service des données et études statistiques, SDES, met à disposition une large partie des informations concernant les autorisations d’urbanisme renseignées dans la base de données Sitadel. L’essentiel des données de cette base, alimentée par les collectivités territoriales et les directions départementales du territoire, est diffusé chaque mois en même temps que les statistiques sur la construction neuve (logements et locaux). Sont mises à disposition les autorisations d’urbanisme délivrées depuis 2013, qu’il s’agisse de permis de construire (PC) et de déclarations préalables (DP) créant au moins un logement, de permis de construire et de déclarations préalables de création ou d’extension de locaux non résidentiels, de permis d’aménager (PA) ou encore de permis de démolir (PD).",
+ "topic": "Logement",
+ "tags": [
+  "construction-neuve",
+  "logement-neuf",
+  "sitadel"
+ ],
+ "license": "fr-lo",
+ "frequency": "monthly",
+ "frequency_date": "2026-09-29",
+ "spatial": {
+  "zones": [
+   "country:fr"
+  ],
+  "granularity": "fr:commune"
+ },
+ "temporal_coverage": {
+  "start": "2013-01-01",
+  "end": "2026-07-31"
+ },
+ "created_at": "2023-09-27T09:04:24.833Z",
+ "last_modified": "2026-08-28T16:05:37.148Z",
+ "last_update": "2026-08-28T16:05:37.148Z",
+ "organization": {
+  "id": "6273cf16ed00fe6d5495e145",
+  "title": "Bureau des statistiques de l'offre du logement et locaux",
+  "description": "Bureau des statistiques de l'offre du logement et locaux",
+  "acronym": "CGDD/SDES/SDSLC/BSOLL"
+ },
+ "weburl": "https://www.statistiques.developpement-durable.gouv.fr/catalogue?page=dataset&datasetId=6513f0189d7d312c80ec5b5b",
+ "views": 758026,
+ "attachments": [
+  {
+   "rid": "6a73fdde-02b1-4c7f-a81c-3c02da6bc4f6",
+   "type": "documentation",
+   "title": "Dictionnaire des variables des permis d’aménager",
+   "description": "Dictionnaire des variables des permis d’aménager",
+   "published": "2023-09-27T09:07:53.000Z",
+   "url": "https://data.statistiques.developpement-durable.gouv.fr/dido/api/files/6a73fdde-02b1-4c7f-a81c-3c02da6bc4f6",
+   "created_at": "2023-09-27T09:07:54.354Z",
+   "last_modified": "2026-06-12T12:33:55.136Z",
+   "downloads": 7994
+  },
+  {
+   "rid": "38ca96c1-c8af-42db-bba1-13cd4bc713f3",
+   "type": "documentation",
+   "title": "Dictionnaire des variables des permis de construire des locaux",
+   "description": "Dictionnaire des variables des permis de construire des locaux",
+   "published": "2023-09-27T09:07:38.000Z",
+   "url": "https://data.statistiques.developpement-durable.gouv.fr/dido/api/files/38ca96c1-c8af-42db-bba1-13cd4bc713f3",
+   "created_at": "2023-09-27T09:07:39.156Z",
+   "last_modified": "2026-06-12T12:35:14.723Z",
+   "downloads": 10362
+  },
+  {
+   "rid": "ab799b04-0b03-4f96-949c-eb23c478a8e8",
+   "type": "documentation",
+   "title": "Dictionnaire des variables des permis de construire des logements",
+   "description": "Dictionnaire des variables des permis de construire des logements",
+   "published": "2023-09-27T09:07:47.000Z",
+   "url": "https://data.statistiques.developpement-durable.gouv.fr/dido/api/files/ab799b04-0b03-4f96-949c-eb23c478a8e8",
+   "created_at": "2023-09-27T09:07:48.542Z",
+   "last_modified": "2026-06-12T12:36:12.077Z",
+   "downloads": 13973
+  },
+  {
+   "rid": "fafd6542-ecc2-4ee3-9130-f17f7de8da09",
+   "type": "documentation",
+   "title": "Dictionnaire des variables des permis de démolir",
+   "description": "Dictionnaire des variables des permis de démolir",
+   "published": "2023-09-27T09:07:29.000Z",
+   "url": "https://data.statistiques.developpement-durable.gouv.fr/dido/api/files/fafd6542-ecc2-4ee3-9130-f17f7de8da09",
+   "created_at": "2023-09-27T09:07:29.694Z",
+   "last_modified": "2026-06-12T12:38:01.616Z",
+   "downloads": 5554
+  },
+  {
+   "rid": "52ce326b-45b2-42ce-a2e7-4a60554ef559",
+   "type": "documentation",
+   "title": "Note de présentation de la base ouverte Sitadel",
+   "description": "Note de présentation de la base ouverte Sitadel",
+   "published": "2023-09-27T09:07:59.000Z",
+   "url": "https://data.statistiques.developpement-durable.gouv.fr/dido/api/files/52ce326b-45b2-42ce-a2e7-4a60554ef559",
+   "created_at": "2023-09-27T09:08:00.148Z",
+   "last_modified": "2023-09-27T09:08:00.523Z",
+   "downloads": 8420
+  }
+ ],
+ "datafiles": [
+  {
+   "rid": "f8f0700f-806c-40a7-83b1-f21cf507e7c4",
+   "title": "Liste des autorisations d'urbanisme créant des locaux non résidentiels",
+   "description": "Données relatives aux permis de construire et déclarations préalables de création ou extension de locaux non résidentiels (y compris par transformation ou réhabilitation de locaux préexistants).\n  - Le fichier contient les données depuis 2013.\n  - Pour en savoir plus sur les  variables du fichier de données, voir le dictionnaire de variables (dictionnaire_variables locaux_permis_construire.xls).",
+   "created_at": "2023-09-29T08:16:10.028Z",
+   "last_modified": "2026-08-28T16:05:05.279Z",
+   "published": "2026-08-28T06:45:00.000Z",
+   "temporal_coverage": {
+    "start": "2013-01-01",
+    "end": "2026-07-31"
+   },
+   "legal_notice": "SDES",
+   "weburl": "https://www.statistiques.developpement-durable.gouv.fr/catalogue?page=datafile&datafileRid=f8f0700f-806c-40a7-83b1-f21cf507e7c4",
+   "millesimes": [
+    {
+     "millesime": "2026-08",
+     "date_diffusion": "2026-08-28T06:45:00.000Z",
+     "weburl": "https://www.statistiques.developpement-durable.gouv.fr/catalogue?page=datafile&datafileRid=f8f0700f-806c-40a7-83b1-f21cf507e7c4&datafileMillesime=2026-08",
+     "rows": 792588,
+     "extendedFilters": [
+      {
+       "name": "REG",
+       "columns": [
+        "REG_CODE",
+        "REG_LIBELLE"
+       ],
+       "filters": [
+        "withinCogZones",
+        "withinGeometry"
+       ]
+      },
+      {
+       "name": "DEP",
+       "columns": [
+        "DEP_CODE",
+        "DEP_LIBELLE"
+       ],
+       "filters": [
+        "withinCogZones",
+        "withinGeometry"
+       ]
+      }
+     ],
+     "geoFields": [
+      "REG",
+      "DEP"
+     ],
+     "refs": [
+      {
+       "name": "referentiels/cog",
+       "filters": [
+        {
+         "field": "LEVEL",
+         "filter": "eq",
+         "value": "region"
+        },
+        {
+         "field": "MILLESIME",
+         "filter": "eq",
+         "value": "2022"
+        }
+       ],
+       "labelFilters": [
+        "LEVEL=region",
+        "MILLESIME=2022"
+       ]
+      },
+      {
+       "name": "referentiels/cog",
+       "filters": [
+        {
+         "field": "LEVEL",
+         "filter": "eq",
+         "value": "departement"
+        },
+        {
+         "field": "MILLESIME",
+         "filter": "eq",
+         "value": "2022"
+        }
+       ],
+       "labelFilters": [
+        "LEVEL=departement",
+        "MILLESIME=2022"
+       ]
+      }
+     ]
+    }
+   ],
+   "views": 125130,
+   "downloads": 203180
+  },
+  {
+   "rid": "8b35affb-55fc-4c1f-915b-7750f974446a",
+   "title": "Liste des autorisations d'urbanisme créant des logements",
+   "description": "Données relatives aux permis de construire (PC) et déclarations préalables (DP) pour la création de logements (y compris par transformation ou réhabilitation de locaux préexistants).\n- Le fichier contient les données depuis 2013.\n- Pour en savoir plus sur les variables du fichier de données, voir le dictionnaire de variables (dictionnaire_variables logements_permis_construire.xls).",
+   "created_at": "2023-09-29T08:19:33.556Z",
+   "last_modified": "2026-08-28T16:05:33.044Z",
+   "published": "2026-08-28T06:45:00.000Z",
+   "temporal_coverage": {
+    "start": "2013-01-01",
+    "end": "2026-07-31"
+   },
+   "legal_notice": "SDES",
+   "weburl": "https://www.statistiques.developpement-durable.gouv.fr/catalogue?page=datafile&datafileRid=8b35affb-55fc-4c1f-915b-7750f974446a",
+   "millesimes": [
+    {
+     "millesime": "2026-08",
+     "date_diffusion": "2026-08-28T06:45:00.000Z",
+     "weburl": "https://www.statistiques.developpement-durable.gouv.fr/catalogue?page=datafile&datafileRid=8b35affb-55fc-4c1f-915b-7750f974446a&datafileMillesime=2026-08",
+     "rows": 1917260,
+     "extendedFilters": [
+      {
+       "name": "REG",
+       "columns": [
+        "REG_CODE",
+        "REG_LIBELLE"
+       ],
+       "filters": [
+        "withinCogZones",
+        "withinGeometry"
+       ]
+      },
+      {
+       "name": "DEP",
+       "columns": [
+        "DEP_CODE",
+        "DEP_LIBELLE"
+       ],
+       "filters": [
+        "withinCogZones",
+        "withinGeometry"
+       ]
+      }
+     ],
+     "geoFields": [
+      "REG",
+      "DEP"
+     ],
+     "refs": [
+      {
+       "name": "referentiels/cog",
+       "filters": [
+        {
+         "field": "LEVEL",
+         "filter": "eq",
+         "value": "region"
+        },
+        {
+         "field": "MILLESIME",
+         "filter": "eq",
+         "value": "2022"
+        }
+       ],
+       "labelFilters": [
+        "LEVEL=region",
+        "MILLESIME=2022"
+       ]
+      },
+      {
+       "name": "referentiels/cog",
+       "filters": [
+        {
+         "field": "LEVEL",
+         "filter": "eq",
+         "value": "departement"
+        },
+        {
+         "field": "MILLESIME",
+         "filter": "eq",
+         "value": "2022"
+        }
+       ],
+       "labelFilters": [
+        "LEVEL=departement",
+        "MILLESIME=2022"
+       ]
+      }
+     ]
+    }
+   ],
+   "views": 142831,
+   "downloads": 1109169
+  },
+  {
+   "rid": "96883f50-538b-41f9-a059-c6eb97e6a23a",
+   "title": "Liste des permis d'aménager",
+   "description": "Données relatives aux permis d’aménager (PA) depuis 2013.\n  - Pour en savoir plus sur les variables du fichier de données, voir le dictionnaire de variables (dictionnaire_variables_permis_amenager.xls).",
+   "created_at": "2023-09-29T08:14:10.415Z",
+   "last_modified": "2026-08-28T16:05:34.581Z",
+   "published": "2026-08-28T06:45:00.000Z",
+   "temporal_coverage": {
+    "start": "1996-01-01",
+    "end": "2026-07-31"
+   },
+   "legal_notice": "SDES",
+   "weburl": "https://www.statistiques.developpement-durable.gouv.fr/catalogue?page=datafile&datafileRid=96883f50-538b-41f9-a059-c6eb97e6a23a",
+   "millesimes": [
+    {
+     "millesime": "2026-08",
+     "date_diffusion": "2026-08-28T06:45:00.000Z",
+     "weburl": "https://www.statistiques.developpement-durable.gouv.fr/catalogue?page=datafile&datafileRid=96883f50-538b-41f9-a059-c6eb97e6a23a&datafileMillesime=2026-08",
+     "rows": 108006,
+     "extendedFilters": [
+      {
+       "name": "REG",
+       "columns": [
+        "REG_CODE",
+        "REG_LIBELLE"
+       ],
+       "filters": [
+        "withinCogZones",
+        "withinGeometry"
+       ]
+      },
+      {
+       "name": "DEP",
+       "columns": [
+        "DEP_CODE",
+        "DEP_LIBELLE"
+       ],
+       "filters": [
+        "withinCogZones",
+        "withinGeometry"
+       ]
+      }
+     ],
+     "geoFields": [
+      "REG",
+      "DEP"
+     ],
+     "refs": [
+      {
+       "name": "referentiels/cog",
+       "filters": [
+        {
+         "field": "LEVEL",
+         "filter": "eq",
+         "value": "region"
+        },
+        {
+         "field": "MILLESIME",
+         "filter": "eq",
+         "value": "2022"
+        }
+       ],
+       "labelFilters": [
+        "LEVEL=region",
+        "MILLESIME=2022"
+       ]
+      },
+      {
+       "name": "referentiels/cog",
+       "filters": [
+        {
+         "field": "LEVEL",
+         "filter": "eq",
+         "value": "departement"
+        },
+        {
+         "field": "MILLESIME",
+         "filter": "eq",
+         "value": "2022"
+        }
+       ],
+       "labelFilters": [
+        "LEVEL=departement",
+        "MILLESIME=2022"
+       ]
+      }
+     ]
+    }
+   ],
+   "views": 35644,
+   "downloads": 66471
+  },
+  {
+   "rid": "1a9a2f0c-56fe-4e69-84a7-fbbda2121f02",
+   "title": "Liste des permis de démolir",
+   "description": "Données relatives aux permis de démolir (PD) depuis 2013.\n  - Pour en savoir plus sur les variables du fichier de données : voir le dictionnaire de variables (dictionnaire_variables_permis_demolir.xls).",
+   "created_at": "2023-09-29T08:14:31.558Z",
+   "last_modified": "2026-08-28T16:05:37.132Z",
+   "published": "2026-08-28T06:45:00.000Z",
+   "temporal_coverage": {
+    "start": "1996-01-01",
+    "end": "2026-07-31"
+   },
+   "legal_notice": "SDES",
+   "weburl": "https://www.statistiques.developpement-durable.gouv.fr/catalogue?page=datafile&datafileRid=1a9a2f0c-56fe-4e69-84a7-fbbda2121f02",
+   "millesimes": [
+    {
+     "millesime": "2026-08",
+     "date_diffusion": "2026-08-28T06:45:00.000Z",
+     "weburl": "https://www.statistiques.developpement-durable.gouv.fr/catalogue?page=datafile&datafileRid=1a9a2f0c-56fe-4e69-84a7-fbbda2121f02&datafileMillesime=2026-08",
+     "rows": 202895,
+     "extendedFilters": [
+      {
+       "name": "REG",
+       "columns": [
+        "REG_CODE",
+        "REG_LIBELLE"
+       ],
+       "filters": [
+        "withinCogZones",
+        "withinGeometry"
+       ]
+      },
+      {
+       "name": "DEP",
+       "columns": [
+        "DEP_CODE",
+        "DEP_LIBELLE"
+       ],
+       "filters": [
+        "withinCogZones",
+        "withinGeometry"
+       ]
+      }
+     ],
+     "geoFields": [
+      "REG",
+      "DEP"
+     ],
+     "refs": [
+      {
+       "name": "referentiels/cog",
+       "filters": [
+        {
+         "field": "LEVEL",
+         "filter": "eq",
+         "value": "region"
+        },
+        {
+         "field": "MILLESIME",
+         "filter": "eq",
+         "value": "2022"
+        }
+       ],
+       "labelFilters": [
+        "LEVEL=region",
+        "MILLESIME=2022"
+       ]
+      },
+      {
+       "name": "referentiels/cog",
+       "filters": [
+        {
+         "field": "LEVEL",
+         "filter": "eq",
+         "value": "departement"
+        },
+        {
+         "field": "MILLESIME",
+         "filter": "eq",
+         "value": "2022"
+        }
+       ],
+       "labelFilters": [
+        "LEVEL=departement",
+        "MILLESIME=2022"
+       ]
+      }
+     ]
+    }
+   ],
+   "views": 18120,
+   "downloads": 46577
+  }
+ ]
+}

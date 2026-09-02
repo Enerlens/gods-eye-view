@@ -133,6 +133,7 @@ import {
   buildGpuBoxUrl,
   buildGpuUrl,
   gpuTruncation,
+  projectGeometry,
   projectGpu,
 } from './src/data/gpuFeed.js';
 import {
@@ -150,7 +151,7 @@ import {
   tripUpdatesFromBytes,
   vehiclePositionsFromBytes,
 } from './src/data/gtfsRealtime.js';
-import { boundsOfPoints, boxKey, snapBoxOutward, validBox } from './src/data/viewportBox.js';
+import { boundsOfPoints, boxKey, boxesIntersect, snapBoxOutward, validBox } from './src/data/viewportBox.js';
 import { buildDepartementIndex } from './src/data/franceDepartements.js';
 import {
   projectIrveDepartements,
@@ -249,8 +250,67 @@ import {
   selectDelinquanceChips,
 } from './src/data/delinquanceFeed.js';
 // Add to the top import block of vite.config.js, beside the other src/data feed
-// imports. `validBox`, `snapBoxOutward` and `boxKey` are already imported there
-// for cadastreFranceProxy; `boxesIntersect` may need adding to that same line.
+// imports. Nothing else is needed: this proxy reuses `makeRateLimiter`,
+// `clientKey`, `readResponseJsonCapped`, `coalesceProxyRequest`,
+// `installAddressRoute`, `addressPoint` and `addressCacheKey`, all already
+// defined in the file.
+import {
+  BRUIT_SOURCE,
+  buildBruitProbeUrl,
+  projectBruit,
+} from './src/data/bruitFeed.js';
+import {
+  BRUIT_ARRETE_FLOOR,
+  BRUIT_NEAREST_MAX_KM,
+  buildPebArreteIndexUrl,
+  nearestArrete,
+  projectPebArretes,
+} from './src/data/bruitArretes.js';
+import {
+  IDFM_FREQ_BAND_WINDOWS,
+  IDFM_FREQ_BOX_STEP_DEG,
+  IDFM_FREQ_DATASET,
+  IDFM_FREQ_EDITION_FLOOR,
+  IDFM_FREQ_MAX_BOX_DEG,
+  IDFM_FREQ_MAX_STOPS,
+  IDFM_FREQ_PORTAL,
+  IDFM_FREQ_SOURCE,
+  buildIdentityUrl,
+  buildMetadataUrl,
+  buildProfileUrl,
+  buildRegionBandsUrl,
+  buildRegionStopsUrl,
+  newestEdition,
+  projectFrequencyStops,
+} from './src/data/idfmFrequencyFeed.js';
+import {
+  IDFM_FREQ_BUCKETS,
+  foldFrequencyRegion,
+} from './src/data/idfmFrequencyDepartements.js';
+
+import {
+  SITADEL_DATASET_PAGE,
+  SITADEL_DEMOLITION_COLUMNS,
+  SITADEL_DEMOLITION_RID,
+  SITADEL_DEMOLITION_TITLE,
+  SITADEL_DIDO_BASE,
+  SITADEL_DIDO_DATASET,
+  SITADEL_HOUSING_COLUMNS,
+  SITADEL_HOUSING_RID,
+  SITADEL_HOUSING_TITLE,
+  SITADEL_LICENCE,
+  SITADEL_MILLESIME_FLOOR,
+  SITADEL_SOURCE,
+  cadastreCommuneUrl,
+  communeCadastreCodes,
+  discoverSitadelRid,
+  geoCommuneUrl,
+  indexCadastreParcels,
+  newestCadastreEdition,
+  newestMillesime,
+  projectSitadelCommune,
+  sitadelDatafileUrl,
+} from './src/data/sitadelFeed.js';
 import {
   FRAICHEUR_COVERAGE,
   FRAICHEUR_EQUIPMENT_DATASET,
@@ -276,11 +336,6 @@ import {
   fraicheurTreeWhere,
   projectFraicheurTrees,
 } from './src/data/fraicheurTrees.js';
-// vite.config.js:153 currently reads
-//   import { boundsOfPoints, boxKey, snapBoxOutward, validBox } from './src/data/viewportBox.js';
-// ADD `boxesIntersect` to that existing line — do not add a second import of the
-// same module:
-//   import { boundsOfPoints, boxKey, boxesIntersect, snapBoxOutward, validBox } from './src/data/viewportBox.js';
 import {
   ANFR_CATALOGUE_URL,
   ANFR_DAS_DATASET,
@@ -6021,6 +6076,1388 @@ function fraicheurParisProxy() {
 
   return {
     name: 'fraicheur-paris-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Sitadel — one commune of building permits, joined to its own cadastral
+ * parcels, because the file publishes no coordinate at all.
+ *
+ * Three upstreams, and the ORDER of the constants below is the order they are
+ * called in:
+ *
+ *   1. `geo.api.gouv.fr/communes?lat=&lon=` — which commune is under the point.
+ *      This is the only service entitled to answer that question, and it is why
+ *      the layer has no coverage rectangle: Sitadel and the Etalab cadastre both
+ *      cover the DROM (Saint-Denis de La Réunion, 97411, answers with 2 849
+ *      permits and a 10 449 654-byte parcel file), so a metropolitan box would
+ *      have refused them while claiming national coverage.
+ *   2. DiDo `/datafiles/<rid>/json?COMM=eq:<insee>&columns=…` — the permits.
+ *   3. `cadastre.data.gouv.fr/.../latest/...json.gz` — the parcels to join to.
+ *      Not browser-reachable: the 302 from `latest` carries no
+ *      `access-control-allow-origin`, so this has to be server-side. Its target
+ *      does serve CORS, but the Fetch spec applies the check to the redirect.
+ *
+ * ── The measurement that shapes this whole file ─────────────────────────────
+ *
+ * **DiDo refuses a fourth simultaneous request.** Measured 2026-09-02: six
+ * parallel queries returned three HTTP 200 and three HTTP 429 within 145 ms,
+ * body `max connections reached: 3` — 26 bytes of plain text, with no
+ * `content-type`, no `retry-after` and no `access-control-allow-origin`. Three
+ * at once are all served, across different datafiles, so the cap is per client
+ * and not per file. `withSitadelDidoSlot` is a global semaphore of
+ * {@link SITADEL_DIDO_CONCURRENCY} = 2, which leaves one slot of headroom for
+ * anything else sharing this egress address, and it is why the two permit
+ * queries of one build cannot collide with the two of another.
+ *
+ * The 429 body is not JSON, so it is detected on the status code BEFORE any
+ * parse: `readResponseJsonCapped` on it would report a SyntaxError and the
+ * degraded sentence would name the wrong problem.
+ *
+ * ── Why the cache is a day and the stale window a month ─────────────────────
+ *
+ * DiDo publishes monthly: dataset 6513f0189d7d312c80ec5b5b returns
+ * `frequency: "monthly"` and `frequency_date: "2026-09-29"`, and the four
+ * datafiles all carry `millesime: "2026-08"`. The Etalab cadastre republishes
+ * about quarterly — `latest` resolved to the 2026-06-01 edition on 2026-09-02.
+ * Nothing in this pack can move inside a day, and a month-old pack is still the
+ * same commune, so a failure serves stale rather than blanking a city.
+ *
+ * ── Cold-build cost, measured end to end on 2026-09-02 ──────────────────────
+ *
+ *   Nantes  44109  6 567 ms  — geocode 270, meta 1 089, permits 4 008
+ *                              (2 049 + 1 587 rows), 1 cadastre file
+ *                              5 176 390 B gz, index 21 ms, project 59 ms;
+ *                              payload 2 085 427 B / 461 277 B gzipped
+ *   Paris   75056  5 870 ms  — geocode 46, meta 855, permits 4 204
+ *                              (3 595 + 1 609 rows), 20 cadastre files
+ *                              6 306 789 B gz in 663 ms, index 18 ms,
+ *                              project 21 ms; payload 3 144 667 B / 676 149 B
+ *
+ * The 4 s is DiDo scanning an 889 MB CSV and is size-independent: a
+ * single-column probe of the same commune took 3.57 s. Everything this proxy
+ * does itself is under 100 ms.
+ */
+const SITADEL_GEO_BASE = 'https://geo.api.gouv.fr';
+/** A day. DiDo is monthly and the cadastre quarterly; see the header. */
+const SITADEL_TTL_MS = 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling — a month-old pack is still the same commune. */
+const SITADEL_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Rid + millésime discovery. Six hours: the next publication is 2026-09-29. */
+const SITADEL_META_TTL_MS = 6 * 60 * 60 * 1000;
+/** Reverse geocode. A commune boundary moves on 1 January and not otherwise. */
+const SITADEL_GEO_TTL_MS = 24 * 60 * 60 * 1000;
+/** A cold build is 5.9–6.6 s and DiDo alone owns 4 of them. */
+const SITADEL_TIMEOUT_MS = 120_000;
+/** Largest measured permit answer: Toulouse, 2 067 554 B for 3 846 rows. */
+const SITADEL_PERMITS_MAX_BYTES = 24 * 1024 * 1024;
+/** Largest measured single decompressed parcel file: Nantes, 36 468 916 B. */
+const SITADEL_CADASTRE_MAX_BYTES = 96 * 1024 * 1024;
+/** The DiDo dataset record is 143 422 B; the geocode with a contour, 153 821 B for Marseille. */
+const SITADEL_META_MAX_BYTES = 4 * 1024 * 1024;
+/**
+ * Etalab files fetched at once. 20 for Paris and 16 for Marseille came back in
+ * 663 ms at full fan-out; 8 is polite to a mirror that is doing us a favour and
+ * still finishes the widest commune in three waves.
+ */
+const SITADEL_CADASTRE_CONCURRENCY = 8;
+/**
+ * Simultaneous DiDo requests. Three is the documented ceiling (measured, see
+ * the header); two leaves one slot of headroom.
+ */
+const SITADEL_DIDO_CONCURRENCY = 2;
+/**
+ * Communes kept in memory. Paris' pack is 3 144 667 B, so eight is at most
+ * ~25 MB and covers a session that walks a metropolitan area; the rest is on
+ * disk, one file per INSEE code.
+ */
+const SITADEL_COMMUNE_CACHE_MAX = 8;
+/** Commune answers per lat/lon cell kept in memory, including the negative ones. */
+const SITADEL_GEO_CACHE_MAX = 512;
+/** Decimals the reverse-geocode cache key is rounded to. 4 ≈ 11 m. */
+const SITADEL_GEO_KEY_DECIMALS = 4;
+const SITADEL_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'sitadel-fr');
+const SITADEL_COMMUNE_DISK_DIR = path.join(SITADEL_DISK_DIR, 'communes');
+/**
+ * Shape version of the cached fold. Bump whenever `projectSitadelCommune`
+ * changes what it returns, or whenever the column projection changes — the
+ * memory cache lives for a day but the disk cache outlives the edit by a month
+ * otherwise, and a pack whose `permits[].px` no longer indexes `parcels[]`
+ * draws the wrong plots rather than failing.
+ */
+const SITADEL_CACHE_VERSION = 1;
+
+/** @type {Map<string, {version:number, at:number, payload:object}>} LRU by INSEE. */
+const _sitadelCommunes = new Map();
+/** @type {Map<string, Promise<object>>} */
+const _sitadelInFlight = new Map();
+/** @type {Map<string, {at:number, commune:?object}>} LRU by rounded lat/lon; null is a real answer. */
+const _sitadelGeo = new Map();
+/** @type {?{at:number, housingRid:string, demolitionRid:string, millesime:string}} */
+let _sitadelMeta = null;
+/** @type {?Promise<object>} */
+let _sitadelMetaInFlight = null;
+/** Cadastre edition named by the last `latest` redirect that answered. */
+let _sitadelCadastreEdition = null;
+/** DiDo semaphore. See the header — a fourth concurrent request is a 429. */
+let _sitadelDidoActive = 0;
+/** @type {Array<() => void>} */
+const _sitadelDidoWaiting = [];
+/**
+ * 60/min per client and 180/min globally, matching `cadastreFranceProxy` and
+ * `fraicheurParisProxy`. The layer asks once per 0.01° camera cell and most of
+ * those answers are the 200-byte `unchanged` reply, so an operator walking a
+ * city never approaches this; a script sweeping communes does.
+ */
+const _sitadelRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/**
+ * Run one DiDo request under the global concurrency semaphore.
+ *
+ * FIFO, so a request that has been waiting is not starved by a fresh one, and
+ * the slot is released in a `finally`, because a thrown fetch that kept its
+ * slot would deadlock the proxy after two failures.
+ *
+ * The slot is HANDED OVER rather than decremented and re-taken: when somebody
+ * is waiting the counter never drops, so the cap cannot depend on microtask
+ * ordering at all. The decrement-first spelling looks like it could let a fresh
+ * caller slip into the window between `next()` and the woken waiter resuming —
+ * I could NOT build an interleaving where it actually does, because a fresh
+ * caller only ever arrives from an I/O macrotask and the microtask queue has
+ * drained by then, and both spellings held at 2 over 200 staggered tasks with
+ * 29 synthetic throws. This one is written the way that needs no such argument.
+ * Verified against three simultaneous commune builds — six DiDo queries,
+ * Toulouse + Ustaritz + Beaupréau-en-Mauges: peak concurrency 2, no refusal,
+ * 10.5 s, and the counter back at zero.
+ * @param {() => Promise<any>} task
+ * @returns {Promise<any>}
+ */
+async function withSitadelDidoSlot(task) {
+  if (_sitadelDidoActive >= SITADEL_DIDO_CONCURRENCY) {
+    // Woken by a releasing task that handed its slot over; already counted.
+    await new Promise((resolve) => { _sitadelDidoWaiting.push(resolve); });
+  } else {
+    _sitadelDidoActive += 1;
+  }
+  try {
+    return await task();
+  } finally {
+    const next = _sitadelDidoWaiting.shift();
+    if (next) next();
+    else _sitadelDidoActive -= 1;
+  }
+}
+
+/**
+ * GET one JSON body under a timeout and a byte cap.
+ *
+ * The 429 is named explicitly: DiDo answers it with 26 bytes of plain text
+ * (`max connections reached: 3`) and no content-type, so parsing first would
+ * turn a concurrency refusal into "malformed JSON" and send the operator
+ * looking in the wrong place.
+ * @param {string} url
+ * @param {number} maxBytes
+ * @returns {Promise<any>}
+ */
+async function fetchSitadelJson(url, maxBytes) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(SITADEL_TIMEOUT_MS),
+  });
+  if (response.status === 429) {
+    const error = new Error('DiDo concurrency limit (max connections reached: 3)');
+    error.code = 'DIDO_BUSY';
+    throw error;
+  }
+  if (!response.ok) throw new Error(`HTTP ${response.status} from ${new URL(url).host}`);
+  return readResponseJsonCapped(response, maxBytes);
+}
+
+/**
+ * The rids and the millésime, from DiDo's own dataset record.
+ *
+ * ONE request answers both: `datafiles[].title` carries the rid discovery and
+ * `datafiles[].millesimes[].millesime` the edition. Pinned rids are the
+ * fallback and never the reverse — a discovery that returns nothing keeps the
+ * layer on the rids every measurement in `sitadelFeed.js` was made against.
+ * @returns {Promise<{housingRid:string, demolitionRid:string, millesime:string}>}
+ */
+async function refreshSitadelMeta() {
+  let datafiles = [];
+  try {
+    const dataset = await withSitadelDidoSlot(() => fetchSitadelJson(
+      `${SITADEL_DIDO_BASE}/datasets/${SITADEL_DIDO_DATASET}`, SITADEL_META_MAX_BYTES,
+    ));
+    datafiles = Array.isArray(dataset?.datafiles) ? dataset.datafiles : [];
+  } catch (error) {
+    // Not fatal. The pinned rids and the millésime floor are what this layer
+    // was measured against, so a discovery failure costs the edition label and
+    // nothing else.
+    console.warn('[Sitadel Proxy] datafile discovery failed, using pinned rids:', error?.message || error);
+  }
+  return {
+    housingRid: discoverSitadelRid(datafiles, SITADEL_HOUSING_TITLE, SITADEL_HOUSING_RID),
+    demolitionRid: discoverSitadelRid(datafiles, SITADEL_DEMOLITION_TITLE, SITADEL_DEMOLITION_RID),
+    millesime: newestMillesime(
+      datafiles.flatMap((file) => (file?.millesimes || []).map((entry) => entry?.millesime)),
+      SITADEL_MILLESIME_FLOOR,
+    ),
+  };
+}
+
+/** Single-flight, TTL'd rid/millésime discovery. */
+function ensureSitadelMeta() {
+  const now = Date.now();
+  if (_sitadelMeta && now - _sitadelMeta.at <= SITADEL_META_TTL_MS) return Promise.resolve(_sitadelMeta);
+  if (!_sitadelMetaInFlight) {
+    _sitadelMetaInFlight = refreshSitadelMeta()
+      .then((meta) => {
+        _sitadelMeta = { ...meta, at: Date.now() };
+        return _sitadelMeta;
+      })
+      .finally(() => { _sitadelMetaInFlight = null; });
+  }
+  return _sitadelMetaInFlight;
+}
+
+/**
+ * The commune under one point, or null when there is no French commune there.
+ *
+ * `null` is a REAL answer and it is cached as one: `geo.api.gouv.fr` returns
+ * `[]` over Lausanne and over the sea, and re-asking every time the camera
+ * crosses a cell out there would be a request per pan for an answer that
+ * cannot change.
+ *
+ * The `contour` field is also the input guard. Measured 2026-09-02, an
+ * out-of-range latitude on this exact URL answers HTTP 400 with the plain-text
+ * body *"This endpoint does not support an unfiltered API call with a geojson
+ * format output or a field with contour"* rather than the whole 34 945-commune
+ * list — but the numeric validation below happens first anyway, because the
+ * cheapest upstream call is the one not made.
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {Promise<?object>}
+ */
+async function locateSitadelCommune(lat, lon) {
+  const key = `${lat.toFixed(SITADEL_GEO_KEY_DECIMALS)},${lon.toFixed(SITADEL_GEO_KEY_DECIMALS)}`;
+  const cached = _sitadelGeo.get(key);
+  if (cached && Date.now() - cached.at <= SITADEL_GEO_TTL_MS) return cached.commune;
+  const communes = await fetchSitadelJson(geoCommuneUrl(lat, lon), SITADEL_META_MAX_BYTES);
+  // A point falls in one commune. Anything longer than a handful is not an
+  // answer to "what is here", it is an unfiltered listing, and taking [0] of it
+  // would put the operator in L'Abergement-Clémenciat.
+  const commune = Array.isArray(communes) && communes.length > 0 && communes.length <= 4
+    ? communes[0] : null;
+  _sitadelGeo.set(key, { at: Date.now(), commune: commune || null });
+  while (_sitadelGeo.size > SITADEL_GEO_CACHE_MAX) {
+    const oldest = _sitadelGeo.keys().next().value;
+    if (oldest === undefined) break;
+    _sitadelGeo.delete(oldest);
+  }
+  return commune || null;
+}
+
+/**
+ * One Etalab parcel file, decompressed.
+ *
+ * The body is raw gzip served as `application/octet-stream` with no
+ * `content-encoding`, so `fetch` does NOT decompress it and `zlib` has to.
+ * A 404 is a real answer — Etalab publishes no parcels for Saint-Barthélemy
+ * (97701) — and it returns null so the build proceeds with a smaller cadastre
+ * and honestly counts the permits as `missing`. Any other failure throws,
+ * because a partial cadastre silently converts placed permits into missing ones.
+ * @param {string} insee
+ * @returns {Promise<?object>}
+ */
+async function fetchSitadelParcels(insee) {
+  const response = await fetch(cadastreCommuneUrl(insee), {
+    signal: AbortSignal.timeout(SITADEL_TIMEOUT_MS),
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`HTTP ${response.status} from cadastre.data.gouv.fr for ${insee}`);
+  // `latest` is a symlink and the redirect names the real edition — the
+  // cheapest possible discovery, because it costs the request we were making.
+  _sitadelCadastreEdition = newestCadastreEdition(response.url, _sitadelCadastreEdition || undefined);
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > SITADEL_CADASTRE_MAX_BYTES) {
+    throw new Error(`Parcel file for ${insee} too large`);
+  }
+  const gz = Buffer.from(await response.arrayBuffer());
+  const raw = zlib.gunzipSync(gz, { maxOutputLength: SITADEL_CADASTRE_MAX_BYTES });
+  return JSON.parse(raw.toString('utf8'));
+}
+
+/** Fetch the commune's parcel files, at most SITADEL_CADASTRE_CONCURRENCY at a time. */
+async function fetchSitadelCadastre(codes) {
+  const collections = [];
+  const served = [];
+  for (let i = 0; i < codes.length; i += SITADEL_CADASTRE_CONCURRENCY) {
+    const wave = codes.slice(i, i + SITADEL_CADASTRE_CONCURRENCY);
+    const answers = await Promise.all(wave.map(async (code) => [code, await fetchSitadelParcels(code)]));
+    for (const [code, collection] of answers) {
+      if (!collection) continue;
+      served.push(code);
+      collections.push(collection);
+    }
+  }
+  return { collections, served };
+}
+
+/**
+ * Build one commune's pack.
+ *
+ * The housing register IS the layer, so its failure fails the build. The
+ * demolition file is not: losing it costs the fifth band, and
+ * `demolitionAvailable: false` puts that on the row rather than showing a
+ * commune that never knocks anything down.
+ * @param {object} commune From `geo.api.gouv.fr`.
+ * @returns {Promise<object>}
+ */
+async function refreshSitadelCommune(commune) {
+  const insee = String(commune.code);
+  const meta = await ensureSitadelMeta();
+  const [housing, demolition] = await Promise.all([
+    withSitadelDidoSlot(() => fetchSitadelJson(
+      sitadelDatafileUrl(meta.housingRid, insee, SITADEL_HOUSING_COLUMNS), SITADEL_PERMITS_MAX_BYTES,
+    )),
+    withSitadelDidoSlot(() => fetchSitadelJson(
+      sitadelDatafileUrl(meta.demolitionRid, insee, SITADEL_DEMOLITION_COLUMNS), SITADEL_PERMITS_MAX_BYTES,
+    )).catch((error) => {
+      console.warn('[Sitadel Proxy] demolition file unavailable:', error?.message || error);
+      return null;
+    }),
+  ]);
+  if (!Array.isArray(housing)) throw new Error('DiDo returned no housing permits');
+
+  const codes = communeCadastreCodes(insee);
+  const { collections, served } = await fetchSitadelCadastre(codes);
+  const { index, parcels } = indexCadastreParcels(collections);
+  return projectSitadelCommune({
+    housing,
+    demolition: Array.isArray(demolition) ? demolition : [],
+    index,
+    commune,
+    // The scope of the answer, decimated by the same reader the PLU zones use.
+    // The layer says "contour communal simplifié" on its own row.
+    outline: projectGeometry(commune.contour),
+    millesime: meta.millesime,
+    cadastreEdition: _sitadelCadastreEdition || undefined,
+    cadastreCommunes: served,
+    cadastreParcels: parcels,
+    demolitionAvailable: Array.isArray(demolition),
+  });
+}
+
+function sitadelDiskPath(insee) {
+  return path.join(SITADEL_COMMUNE_DISK_DIR, `${createHash('sha1').update(insee).digest('hex')}.json`);
+}
+
+async function readSitadelDisk(insee) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(sitadelDiskPath(insee), 'utf8'));
+    if (entry?.version !== SITADEL_CACHE_VERSION) return null;
+    if (!Number.isFinite(entry.at)) return null;
+    if (!Array.isArray(entry.payload?.permits) || !Array.isArray(entry.payload?.parcels)) return null;
+    if (entry.payload.insee !== insee) return null;
+    if (Date.now() - entry.at > SITADEL_STALE_MS) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeSitadelDisk(insee, entry) {
+  fsp.mkdir(SITADEL_COMMUNE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(sitadelDiskPath(insee), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Sitadel Proxy] cache write failed:', err?.message || err));
+}
+
+function trimSitadelCache() {
+  while (_sitadelCommunes.size > SITADEL_COMMUNE_CACHE_MAX) {
+    const oldest = _sitadelCommunes.keys().next().value;
+    if (oldest === undefined) break;
+    _sitadelCommunes.delete(oldest);
+  }
+}
+
+/**
+ * Per-commune single-flight: two tabs on the same city cost one 6 s build.
+ * `coalesceProxyRequest` returns `{ promise, shared }` and NOT a promise — the
+ * `shared` flag is what lets the response header say INFLIGHT rather than MISS.
+ */
+function ensureSitadelCommune(commune) {
+  const insee = String(commune.code);
+  return coalesceProxyRequest(_sitadelInFlight, insee, async () => {
+    const payload = await refreshSitadelCommune(commune);
+    const entry = { version: SITADEL_CACHE_VERSION, at: Date.now(), payload };
+    _sitadelCommunes.set(insee, entry);
+    trimSitadelCache();
+    writeSitadelDisk(insee, entry);
+    return entry;
+  });
+}
+
+/**
+ * Vite plugin: French building and demolition permits, on the parcels they
+ * were granted for.
+ * @returns {import('vite').Plugin}
+ */
+function sitadelFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/sitadel-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_sitadelRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        json(200, {
+          source: SITADEL_SOURCE,
+          licence: SITADEL_LICENCE,
+          datasetPage: SITADEL_DATASET_PAGE,
+          portal: SITADEL_DIDO_BASE,
+          millesime: _sitadelMeta?.millesime || SITADEL_MILLESIME_FLOOR,
+          housingRid: _sitadelMeta?.housingRid || SITADEL_HOUSING_RID,
+          demolitionRid: _sitadelMeta?.demolitionRid || SITADEL_DEMOLITION_RID,
+          cadastreEdition: _sitadelCadastreEdition,
+          ttlMs: SITADEL_TTL_MS,
+          staleMs: SITADEL_STALE_MS,
+          didoConcurrency: SITADEL_DIDO_CONCURRENCY,
+          didoActive: _sitadelDidoActive,
+          didoWaiting: _sitadelDidoWaiting.length,
+          cachedCommunes: [..._sitadelCommunes.entries()].map(([insee, entry]) => ({
+            insee,
+            commune: entry.payload.commune,
+            at: entry.at,
+            permits: entry.payload.summary?.permits ?? null,
+            placed: entry.payload.summary?.placed ?? null,
+            parcels: entry.payload.parcels.length,
+          })),
+          cachedPoints: _sitadelGeo.size,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/commune') {
+        json(404, { error: 'Unknown sitadel endpoint' });
+        return;
+      }
+
+      const lat = Number(url.searchParams.get('lat'));
+      const lon = Number(url.searchParams.get('lon'));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)
+        || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        json(400, { error: 'lat and lon are required, in degrees' });
+        return;
+      }
+
+      let commune = null;
+      try {
+        commune = await locateSitadelCommune(lat, lon);
+      } catch (error) {
+        console.warn('[Sitadel Proxy] commune lookup failed:', error?.message || error);
+        json(503, { error: 'Le référentiel des communes est momentanément indisponible' });
+        return;
+      }
+      if (!commune?.code) {
+        // Not an error. The operator is over the sea, over a neighbour, or over
+        // a lake. Said explicitly so the layer clears its map instead of
+        // leaving the last commune's permits drawn over ground they do not
+        // cover.
+        json(200, { insee: null, reason: 'off-coverage' }, { 'X-SITADEL-FR': 'NO-COMMUNE' });
+        return;
+      }
+      const insee = String(commune.code);
+
+      // The client already holds this commune. 200 bytes instead of 676 149,
+      // and not one upstream call — this is what makes panning free.
+      if (url.searchParams.get('have') === insee) {
+        json(200, { insee, commune: commune.nom, unchanged: true }, { 'X-SITADEL-FR': 'UNCHANGED' });
+        return;
+      }
+
+      const now = Date.now();
+      const cached = _sitadelCommunes.get(insee) || await readSitadelDisk(insee);
+      if (cached && !_sitadelCommunes.has(insee)) {
+        _sitadelCommunes.set(insee, cached);
+        trimSitadelCache();
+      }
+      if (cached && now - cached.at <= SITADEL_TTL_MS) {
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-SITADEL-FR': 'HIT' });
+        return;
+      }
+
+      try {
+        const request = ensureSitadelCommune(commune);
+        const entry = await request.promise;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false },
+          { 'X-SITADEL-FR': request.shared ? 'INFLIGHT' : 'MISS' });
+      } catch (error) {
+        const busy = error?.code === 'DIDO_BUSY';
+        console.warn('[Sitadel Proxy] commune build failed:', error?.message || error);
+        // A month-old pack still describes the same commune: DiDo publishes
+        // monthly and a parcel outlives most of the people who own it.
+        if (cached && now - cached.at <= SITADEL_STALE_MS) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: true }, { 'X-SITADEL-FR': 'STALE' });
+          return;
+        }
+        json(busy ? 429 : 503, {
+          error: busy
+            ? 'DiDo n’accepte que 3 requêtes simultanées — réessaie dans quelques secondes'
+            : `Les autorisations d’urbanisme de ${commune.nom} sont momentanément indisponibles`,
+          insee,
+        }, busy ? { 'Retry-After': '5' } : {});
+      }
+    });
+  }
+
+  return {
+    name: 'sitadel-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Île-de-France service-frequency proxy — keyless, Licence Ouverte v2.0.
+ *
+ *   GET /api/idfm-frequency/stops?south=&west=&north=&east=
+ *                                — one viewport, full 7 × 24 profiles
+ *   GET /api/idfm-frequency/region — the région folded onto 8 départements
+ *   GET /api/idfm-frequency/status — provenance + cache state
+ *
+ * WHY A PROXY, when the portal sends `access-control-allow-origin: *` and a
+ * browser could call it directly (measured 2026-09-02, with
+ * `x-ratelimit-limit: 1000000` a day): both products are FOLDS of several calls
+ * that no client should re-derive.
+ *
+ * The viewport product is FIVE upstream calls. One identity call (which stop,
+ * where, what name, what mode) and FOUR profile pages, because a stop's 24
+ * bands are 24 ROWS — Opendatasoft's aggregate grammar takes arithmetic but not
+ * conditionals, so the band axis cannot be pivoted into columns
+ * (`sum(if(tranche_horaire=8,…))` is HTTP 400 `ODSQLSyntaxError`) — and
+ * `offset + limit <= 20000` is a hard cap under `group_by`. Measured on the
+ * 4 km Châtelet box: **3 303 162 bytes in 2.42 s** upstream, folding to
+ * **540 404 bytes raw / 87 143 gzipped** for 805 stops. Every open tab doing
+ * that itself would move 3.3 MB to publish 87 KB.
+ *
+ * The regional product is EIGHTEEN calls: one grouped aggregate over all
+ * 1 311 578 rows (**356 rows, 73 723 bytes, 0.62 s**) and seventeen stop
+ * enumerations for the divisor (**36 502 stops, 3 582 652 bytes, 3.67 s**). It
+ * folds to **14 719 bytes raw / 5 864 gzipped** in 54 ms. A 244-to-1 reduction
+ * is exactly what a proxy is for.
+ *
+ * WHY THE DIVISOR IS ENUMERATED AND NOT COUNTED: Opendatasoft's
+ * `count(distinct id_arret)` is an estimator. It answers **3 452** for
+ * département 75 where enumerating returns **3 506**, and 37 078 region-wide
+ * against 36 502. A 1.5 % error in the divisor is a 1.5 % error in every colour
+ * on the choropleth, so the lists are walked.
+ *
+ * WHY A DENSE BOX IS REFUSED AFTER ONE CALL: the identity query asks for
+ * `IDFM_FREQ_MAX_STOPS + 1` rows precisely so a full page is the signal that
+ * the box is too dense. Measured at Châtelet, the densest part of the network,
+ * on square boxes by side length: 1.2 km 87 stops, 2 km 204, 3 km 436, 4 km
+ * 802, 5 km 1 133 (1 139 rows), and from 5.5 km up the page comes back at
+ * exactly 1 201 rows however wide the box gets. Saturated, this answers 200
+ * with `tooDense` and the count it can honestly claim rather than buying four
+ * heavy pages for a stop list the API already truncated.
+ *
+ * WHY ONE FAILED PROFILE PAGE IS NOT A FAILED BUILD: losing one of the four
+ * windows is a hole in the DAY, not a hole in the map. The build reports
+ * `windows: {asked, answered}` and the layer names the hole on the row and on
+ * the card, because an unnamed hole reads as "no service between 16:00 and
+ * 21:00". Losing the identity call IS fatal: there is nothing left to place.
+ *
+ * WHY THE EDITION IS DISCOVERED AND FLOORED: the dataset id is stable, so the
+ * edition is the portal's own `data_processed` timestamp. It is read at build
+ * time and floored at `IDFM_FREQ_EDITION_FLOOR` — the edition this layer was
+ * measured against — because a discovery OLDER than the floor is a malformed
+ * answer, not a new fact, and the card prints it as provenance.
+ */
+const IDFM_FREQ_STOPS_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Serve-stale ceiling. The file is a yearly average of a term-time week that
+ * the publisher reprocesses a few times a year (`data_processed`
+ * 2026-08-18T15:54:55+00:00 against `modified` 2026-03-31T13:43:29+00:00), so a
+ * month-old fold is still a true picture of the same week.
+ */
+const IDFM_FREQ_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+/** The régional product is rebuilt weekly; its inputs change even less often. */
+const IDFM_FREQ_REGION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Slowest measured build is the régional one at 4.8 s; 60 s is 12× headroom. */
+const IDFM_FREQ_TIMEOUT_MS = 60_000;
+/**
+ * Per-response byte cap. The largest single upstream response measured is
+ * 906 342 B (one profile window on a 4 km box); an 8 km box pushes one page to
+ * roughly 3 MB. 24 MB refuses a runaway without ever refusing a real answer.
+ */
+const IDFM_FREQ_MAX_BYTES = 24 * 1024 * 1024;
+/**
+ * Viewport packs held in memory. Twelve × ~540 KB at the 4 km worst case is
+ * about 6.5 MB, and twelve snapped boxes is more panning than one session does.
+ */
+const IDFM_FREQ_BOX_CACHE = 12;
+const IDFM_FREQ_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'idfm-frequency');
+const IDFM_FREQ_REGION_CACHE_PATH = path.join(IDFM_FREQ_DISK_DIR, 'region.json');
+/**
+ * Shape version of everything cached under `.gev-cache/idfm-frequency/`. BUMP
+ * IT whenever `projectFrequencyStops` or `foldFrequencyRegion` changes what it
+ * returns: the régional document lives for a WEEK on disk and a viewport pack
+ * for a DAY, so without a bump a projection edit is invisible until the cache
+ * expires on its own.
+ */
+const IDFM_FREQ_CACHE_VERSION = 1;
+
+/** @type {Map<string, {version:number, at:number, payload:object}>} LRU by insertion. */
+const _idfmFreqBoxes = new Map();
+/** @type {Map<string, Promise<object>>} */
+const _idfmFreqInFlight = new Map();
+/** @type {?{version:number, at:number, payload:object}} */
+const _idfmFreqRegionState = { entry: null };
+/** @type {?Promise<object>} */
+let _idfmFreqRegionInFlight = null;
+let _idfmFreqRegionDiskChecked = false;
+/**
+ * 30 requests a minute per client. A MISS costs five upstream calls, so the
+ * worst case is 150 upstream requests a minute against a published daily quota
+ * of 1 000 000 — and every HIT costs zero.
+ */
+const _idfmFreqRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 90 });
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchIdfmFreqJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(IDFM_FREQ_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, IDFM_FREQ_MAX_BYTES);
+}
+
+/**
+ * The portal's own edition stamp, floored.
+ *
+ * A failed discovery is not a failed build: it falls back to the floor, which
+ * is the edition this layer was measured against and is guaranteed to exist.
+ */
+async function discoverIdfmFreqEdition() {
+  try {
+    const body = await fetchIdfmFreqJson(buildMetadataUrl({}));
+    return newestEdition(body);
+  } catch (error) {
+    console.warn('[IDFM Fréquence Proxy] edition discovery failed:', error?.message || error);
+    return newestEdition(null);
+  }
+}
+
+/**
+ * Build one viewport: the identity call, then four profile pages.
+ *
+ * The identity call goes FIRST and ALONE for two reasons measured on the 4 km
+ * Châtelet box: it is the exact stop count, so a box over the whole of Paris is
+ * refused after one cheap call instead of after five expensive ones; and taking
+ * the seven identity columns out of the profile `group_by` is what makes the
+ * profile rows small — carrying identity inside the band grouping cost
+ * 6 313 751 bytes in 2.66 s against 3 291 332 in 1.84 s for the same answer.
+ */
+async function refreshIdfmFreqBox(box) {
+  const started = Date.now();
+  const [edition, identity] = await Promise.all([
+    discoverIdfmFreqEdition(),
+    fetchIdfmFreqJson(buildIdentityUrl({ box })),
+  ]);
+
+  const identityRows = Array.isArray(identity?.results) ? identity.results : [];
+  const stopsInBox = new Set(identityRows.map((row) => String(row?.id_arret ?? ''))).size;
+  // A FULL PAGE is the refusal signal, not the distinct count, and the
+  // difference is not pedantry. `buildIdentityUrl` asks for MAX + 1 rows, so a
+  // box holding 1 300 stops and a box holding 30 000 both come back as exactly
+  // 1 201 rows, and the DISTINCT count of a saturated page is always under the
+  // ceiling — 1 194 to 1 198 in every saturated box measured. Testing the
+  // distinct count would therefore never refuse anything and would buy four
+  // heavy pages for a stop list the API already truncated. Measured at
+  // Châtelet on square boxes: 4 km → 802 rows, 5 km → 1 139, and every box
+  // from 5.5 km up → exactly 1 201.
+  if (identityRows.length > IDFM_FREQ_MAX_STOPS) {
+    // Refused, with the number it can honestly claim, before the four heavy
+    // pages are bought.
+    return {
+      stops: [],
+      count: 0,
+      stopsInBox,
+      stopsAtLeast: true,
+      refused: stopsInBox,
+      tooDense: true,
+      maxStops: IDFM_FREQ_MAX_STOPS,
+      windows: { asked: IDFM_FREQ_BAND_WINDOWS.length, answered: 0 },
+      box: { ...box },
+      dataset: IDFM_FREQ_DATASET,
+      edition: edition.edition,
+      editionDiscovered: edition.discovered,
+      licence: edition.licence,
+      source: IDFM_FREQ_SOURCE,
+      builtInMs: Date.now() - started,
+    };
+  }
+
+  const profiles = await Promise.all(IDFM_FREQ_BAND_WINDOWS.map(([bandLo, bandHi]) => (
+    fetchIdfmFreqJson(buildProfileUrl({ box, bandLo, bandHi })).catch((error) => {
+      // A hole in the DAY, not a hole in the map. The fold survives it and
+      // `windows` is what lets the layer say so out loud.
+      console.warn(`[IDFM Fréquence Proxy] band window ${bandLo}-${bandHi} unavailable:`, error?.message || error);
+      return null;
+    })
+  )));
+  const answered = profiles.filter(Boolean);
+
+  const projected = projectFrequencyStops({
+    identity,
+    profiles: answered,
+    box,
+    maxStops: IDFM_FREQ_MAX_STOPS,
+    edition: edition.edition,
+    source: IDFM_FREQ_SOURCE,
+  });
+  return {
+    ...projected,
+    tooDense: false,
+    stopsAtLeast: false,
+    maxStops: IDFM_FREQ_MAX_STOPS,
+    windows: { asked: IDFM_FREQ_BAND_WINDOWS.length, answered: answered.length },
+    editionDiscovered: edition.discovered,
+    licence: edition.licence,
+    builtInMs: Date.now() - started,
+  };
+}
+
+/**
+ * Build the whole région: one aggregate, seventeen enumerations, one fold.
+ *
+ * A bucket whose enumeration fails is NOT fatal and is deliberately not treated
+ * as such: `foldFrequencyRegion` gives it `stops: null`, which produces no rate
+ * and no fill, rather than a divisor of zero that would paint it as the busiest
+ * place in France. Losing the aggregate itself is fatal — there is nothing left
+ * to divide.
+ */
+async function refreshIdfmFreqRegion() {
+  const started = Date.now();
+  const [edition, index, bands, ...enumerations] = await Promise.all([
+    discoverIdfmFreqEdition(),
+    // THE shared loader. The proxy reads the same 96 polygons the browser
+    // layer fetches, memoized once for the whole process.
+    loadSchoolsDepartementIndex(),
+    fetchIdfmFreqJson(buildRegionBandsUrl({})),
+    ...IDFM_FREQ_BUCKETS.map((code) => (
+      fetchIdfmFreqJson(buildRegionStopsUrl({ code })).catch((error) => {
+        console.warn(`[IDFM Fréquence Proxy] stop census ${code ?? 'null'} unavailable:`, error?.message || error);
+        return null;
+      })
+    )),
+  ]);
+
+  const stops = IDFM_FREQ_BUCKETS
+    .map((code, i) => ({ code, envelope: enumerations[i] }))
+    .filter((bucket) => bucket.envelope);
+
+  const folded = foldFrequencyRegion({
+    bands,
+    stops,
+    index,
+    edition: edition.edition,
+    licence: edition.licence,
+    source: IDFM_FREQ_SOURCE,
+  });
+  if (stops.length < IDFM_FREQ_BUCKETS.length) {
+    console.warn(`[IDFM Fréquence Proxy] stop census short: ${stops.length}/${IDFM_FREQ_BUCKETS.length} buckets`);
+  }
+  return {
+    ...folded,
+    editionDiscovered: edition.discovered,
+    census: { asked: IDFM_FREQ_BUCKETS.length, answered: stops.length },
+    builtInMs: Date.now() - started,
+  };
+}
+
+function idfmFreqBoxDiskPath(key) {
+  return path.join(IDFM_FREQ_DISK_DIR, `box-${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+/** Read one cached viewport pack. Any shape mismatch is a miss, never a crash. */
+async function readIdfmFreqBoxDisk(key) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(idfmFreqBoxDiskPath(key), 'utf8'));
+    if (entry?.version === IDFM_FREQ_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.stops)) {
+      return entry;
+    }
+  } catch { /* no disk cache yet */ }
+  return null;
+}
+
+function writeIdfmFreqBoxDisk(key, entry) {
+  fsp.mkdir(IDFM_FREQ_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(idfmFreqBoxDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[IDFM Fréquence Proxy] box cache write failed:', err?.message || err));
+}
+
+async function readIdfmFreqRegionDisk() {
+  if (_idfmFreqRegionDiskChecked) return;
+  _idfmFreqRegionDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(IDFM_FREQ_REGION_CACHE_PATH, 'utf8'));
+    if (entry?.version === IDFM_FREQ_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.departements)) {
+      _idfmFreqRegionState.entry = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeIdfmFreqRegionDisk(entry) {
+  fsp.mkdir(IDFM_FREQ_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(IDFM_FREQ_REGION_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[IDFM Fréquence Proxy] region cache write failed:', err?.message || err));
+}
+
+/** Keep the newest `IDFM_FREQ_BOX_CACHE` packs; Map preserves insertion order. */
+function rememberIdfmFreqBox(key, entry) {
+  _idfmFreqBoxes.delete(key);
+  _idfmFreqBoxes.set(key, entry);
+  while (_idfmFreqBoxes.size > IDFM_FREQ_BOX_CACHE) {
+    const oldest = _idfmFreqBoxes.keys().next().value;
+    if (oldest === undefined) break;
+    _idfmFreqBoxes.delete(oldest);
+  }
+}
+
+/**
+ * One build per box, however many tabs ask at once.
+ *
+ * `coalesceProxyRequest` returns `{promise, shared}` and NOT a promise — the
+ * `.promise` unwrap is the whole point of reusing it, and forgetting it awaits
+ * an object that resolves instantly to itself.
+ */
+function ensureIdfmFreqBox(key, box) {
+  const { promise } = coalesceProxyRequest(_idfmFreqInFlight, key, async () => {
+    const payload = await refreshIdfmFreqBox(box);
+    const entry = { version: IDFM_FREQ_CACHE_VERSION, at: Date.now(), payload };
+    rememberIdfmFreqBox(key, entry);
+    writeIdfmFreqBoxDisk(key, entry);
+    return entry;
+  });
+  return promise;
+}
+
+/** Shared régional build, so a cold start with several tabs sweeps once. */
+function ensureIdfmFreqRegion() {
+  if (!_idfmFreqRegionInFlight) {
+    _idfmFreqRegionInFlight = refreshIdfmFreqRegion()
+      .then((payload) => {
+        const entry = { version: IDFM_FREQ_CACHE_VERSION, at: Date.now(), payload };
+        _idfmFreqRegionState.entry = entry;
+        writeIdfmFreqRegionDisk(entry);
+        return entry;
+      })
+      .finally(() => { _idfmFreqRegionInFlight = null; });
+  }
+  return _idfmFreqRegionInFlight;
+}
+
+/**
+ * Vite plugin: Île-de-France service-frequency proxy.
+ * @returns {import('vite').Plugin}
+ */
+function idfmFrequencyProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/idfm-frequency', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_idfmFreqRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readIdfmFreqRegionDisk();
+        const region = _idfmFreqRegionState.entry;
+        json(200, {
+          source: IDFM_FREQ_SOURCE,
+          portal: IDFM_FREQ_PORTAL,
+          dataset: IDFM_FREQ_DATASET,
+          editionFloor: IDFM_FREQ_EDITION_FLOOR,
+          maxStops: IDFM_FREQ_MAX_STOPS,
+          maxBoxDeg: IDFM_FREQ_MAX_BOX_DEG,
+          boxStepDeg: IDFM_FREQ_BOX_STEP_DEG,
+          stopsTtlMs: IDFM_FREQ_STOPS_TTL_MS,
+          regionTtlMs: IDFM_FREQ_REGION_TTL_MS,
+          boxesCached: _idfmFreqBoxes.size,
+          region: region
+            ? {
+              at: region.at,
+              edition: region.payload.edition,
+              editionDiscovered: region.payload.editionDiscovered,
+              painted: region.payload.paintedCodes?.length ?? null,
+              fringe: region.payload.fringeCodes?.length ?? null,
+              stops: region.payload.totals?.stops ?? null,
+              placed: region.payload.totals?.placed ?? null,
+              unplaced: region.payload.totals?.unplaced ?? null,
+              crosscheck: region.payload.crosscheck ?? null,
+              census: region.payload.census ?? null,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route === '/region') {
+        await readIdfmFreqRegionDisk();
+        const now = Date.now();
+        const cached = _idfmFreqRegionState.entry;
+        if (cached && now - cached.at <= IDFM_FREQ_REGION_TTL_MS) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-IDFM-FREQUENCY': 'HIT' });
+          return;
+        }
+        try {
+          const entry = await ensureIdfmFreqRegion();
+          json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-IDFM-FREQUENCY': 'MISS' });
+        } catch (error) {
+          console.warn('[IDFM Fréquence Proxy] region build unavailable:', error?.message || error);
+          if (cached && now - cached.at <= IDFM_FREQ_STALE_MS) {
+            json(200, { ...cached.payload, fetchedAt: cached.at, stale: true }, { 'X-IDFM-FREQUENCY': 'STALE' });
+            return;
+          }
+          json(503, { error: 'L’offre régionale Île-de-France Mobilités est momentanément indisponible' });
+        }
+        return;
+      }
+
+      if (route !== '/stops') {
+        json(404, { error: 'Unknown IDFM frequency endpoint' });
+        return;
+      }
+
+      // A MISSING parameter must not become a coordinate. `searchParams.get`
+      // answers `null` for an absent key and `Number(null)` is 0, which is a
+      // perfectly valid latitude off the coast of Ghana — so the parse refuses
+      // an absent or blank value outright and lets NaN reach `validBox`.
+      const coord = (name) => {
+        const raw = url.searchParams.get(name);
+        return raw === null || raw.trim() === '' ? NaN : Number(raw);
+      };
+      // Snapped OUTWARD onto the same 0.005° grid the browser layer snaps to,
+      // so a pan of a few streets reuses one cache entry and a cached answer
+      // always covers at least what was asked for.
+      const box = validBox(snapBoxOutward({
+        south: coord('south'),
+        west: coord('west'),
+        north: coord('north'),
+        east: coord('east'),
+      }, IDFM_FREQ_BOX_STEP_DEG), IDFM_FREQ_MAX_BOX_DEG);
+      if (!box) {
+        json(400, {
+          error: `A bounding box is required, no wider than ${IDFM_FREQ_MAX_BOX_DEG}° on either axis`,
+        });
+        return;
+      }
+
+      const key = boxKey(box, 4);
+      const now = Date.now();
+      const cached = _idfmFreqBoxes.get(key) || await readIdfmFreqBoxDisk(key);
+      if (cached && now - cached.at <= IDFM_FREQ_STOPS_TTL_MS) {
+        rememberIdfmFreqBox(key, cached);
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-IDFM-FREQUENCY': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensureIdfmFreqBox(key, box);
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-IDFM-FREQUENCY': 'MISS' });
+      } catch (error) {
+        console.warn('[IDFM Fréquence Proxy] viewport build unavailable:', error?.message || error);
+        // A month-old fold of a yearly average is still a true picture of the
+        // same week — serving it beats blanking the map.
+        if (cached && now - cached.at <= IDFM_FREQ_STALE_MS) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: true }, { 'X-IDFM-FREQUENCY': 'STALE' });
+          return;
+        }
+        json(503, { error: 'L’offre horaire Île-de-France Mobilités est momentanément indisponible' });
+      }
+    });
+  }
+
+  return {
+    name: 'idfm-frequency-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Aircraft-noise plans (PEB / PGS) proxy — keyless DGAC via the Géoplateforme
+// ---------------------------------------------------------------------------
+/**
+ * `GET /api/bruit-fr?lat=&lon=`  — the two plans under one point, plus the
+ *                                  nearest aerodrome that has one.
+ * `GET /api/bruit-fr/index`      — the national arrêté register, 224 points.
+ * `GET /api/bruit-fr/status`     — provenance and cache state.
+ *
+ * WHY A PROXY AT ALL, when `data.geopf.fr` answers `access-control-allow-origin:
+ * *` and needs no key. Three measurements, all taken on 2026-09-02.
+ *
+ *  1. **THE SERVICE RATE-LIMITS, AND IT DOES IT IN HTML.** Sweeping a 240-point
+ *     grid over Île-de-France at three concurrent requests, 190 of 240 came back
+ *     **HTTP 429 with `content-type: text/html` and a 134-byte nginx page**
+ *     (`<html>\r\n<head><title>429 Too Many Requests</title>…`). In the browser
+ *     that is `response.json()` throwing `Unexpected token '<'`, from a layer
+ *     that is doing nothing more aggressive than following a camera. The same
+ *     sweep with one retry per point and a 1.5 s back-off completed 240 of 240.
+ *     A per-address cache in front of it is what turns a pan back over the same
+ *     block into zero upstream calls.
+ *  2. **ONE SCAN IS THREE FACTS FROM TWO PROTOCOLS.** The PEB polygons and the
+ *     PGS polygons are two WMS GetFeatureInfo calls on two different layers, and
+ *     "the nearest aerodrome that HAS a plan" comes from a WFS index that is a
+ *     different service entirely. Fanned out here, that is one round trip for
+ *     the browser instead of three, and the register is fetched once per week
+ *     rather than once per tab.
+ *  3. **THE REGISTER IS A DISK ARTEFACT.** 66,355 bytes, `numberMatched` 224,
+ *     and the arrêtés it lists move on the order of a handful a year — 8 in the
+ *     whole of the 2020s, 3 in 2022. Re-downloading it per process start is
+ *     waste; it belongs on disk with a version stamp.
+ *
+ * WHAT IS DELIBERATELY NOT HERE. No CBS (carte de bruit stratégique): the EU
+ * directive's isophones are not on the Géoplateforme at all — grepping the
+ * wms-v, wms-r and wfs capabilities for bruit/noise/classement returns these
+ * four DGAC aviation layers and nothing else — and the real thing is ~76
+ * per-DDT Géo-IDE ATOM shapefile zips with no CORS header, EPSG:2154,
+ * ISO-8859-1, four distinct HTTP-200 failure modes on the live OGC services and
+ * one département (Tarn) shipping MapInfo TAB with no shapefile inside. That is
+ * a server-side harvest of several hundred archives and it is out of scope for
+ * this route. No Bruitparif either: `raster.bruitparif.fr` is technically
+ * perfect and its mentions légales forbid exactly this ("l'utilisation d'un
+ * système ou d'un logiciel automatique pour extraire des données de ce site web
+ * … est interdit"), so it needs a written convention, not a client.
+ */
+const BRUIT_WMS_HOST = 'data.geopf.fr';
+/** The scan answer is cheap to rebuild and the plans move once a decade. */
+const BRUIT_SCAN_TTL_MS = 6 * 60 * 60 * 1000;
+/** The national arrêté register, on disk. */
+const BRUIT_INDEX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * How stale a register may get before it stops being served at all.
+ *
+ * 90 days. The register gained 8 arrêtés in six years, so a three-month-old
+ * copy is materially the same document — and the alternative to serving it is
+ * dropping the one sentence that makes an empty probe honest ("the nearest
+ * aerodrome that has a plan is 12.4 km away").
+ */
+const BRUIT_INDEX_STALE_MS = 90 * 24 * 60 * 60 * 1000;
+const BRUIT_TIMEOUT_MS = 20_000;
+/**
+ * Byte cap.
+ *
+ * Measured: the heaviest single probe in the whole 224-airport sweep is 15,041
+ * bytes (Le Bourget, where Roissy's 664-vertex zone D overlaps) and the national
+ * register is 66,355. 2 MB is two orders of magnitude of headroom, which means
+ * anything past it is a changed upstream and not a big answer.
+ */
+const BRUIT_MAX_BYTES = 2 * 1024 * 1024;
+/**
+ * Retries on the HTML 429, and the back-off between them.
+ *
+ * Measured: at three concurrent probes the service starts refusing after a few
+ * hundred requests and recovers within a couple of seconds. Two extra attempts
+ * at 1.5 s and 3 s cleared 240 of 240 points; a third would only lengthen a
+ * scan the camera has already moved away from.
+ */
+const BRUIT_RETRY_ATTEMPTS = 3;
+const BRUIT_RETRY_BASE_MS = 1500;
+const BRUIT_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'bruit-fr');
+const BRUIT_CACHE_PATH = path.join(BRUIT_DISK_DIR, 'arretes.json');
+/**
+ * BUMP THIS whenever `projectPebArretes` changes the shape it returns. The disk
+ * cache outlives the edit otherwise, and a 90-day stale window is a long time
+ * to serve a projection nothing reads any more.
+ */
+const BRUIT_CACHE_VERSION = 1;
+
+/** @type {?{version: number, at: number, payload: object}} */
+let _bruitIndex = null;
+let _bruitIndexInFlight = null;
+let _bruitDiskChecked = false;
+const _bruitInFlight = new Map();
+/**
+ * Its own limiter, not the shared address one.
+ *
+ * The four address layers answer about a building and are hit once per camera
+ * settle; this one is hit twice (PEB and PGS) and its upstream is the single
+ * host that has been measured refusing. 40 a minute per client is roughly one
+ * scan every three seconds, which is faster than a human can settle a camera,
+ * and 150 globally keeps one tab from spending the whole allowance.
+ */
+const _bruitRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 40, globalMax: 150 });
+
+/**
+ * One Géoplateforme JSON read, with the two failure modes this host actually
+ * has.
+ *
+ * `fetchAddressSource` is not used here for one reason: it swallows the status
+ * code, and a 429 from this host must be RETRIED while a 400 must not. It also
+ * calls `JSON.parse` on whatever came back, and what comes back from an
+ * overloaded `data.geopf.fr` is a 134-byte HTML page — the content-type check
+ * below is what turns that into a retry rather than a `SyntaxError` in a log.
+ *
+ * @param {string} url
+ * @returns {Promise<object|null>} null when the upstream did not answer usefully.
+ */
+async function fetchBruitJson(url) {
+  for (let attempt = 1; attempt <= BRUIT_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(BRUIT_TIMEOUT_MS),
+      });
+      if (response.status === 429 || response.status >= 500) {
+        // "Not now", not "not this". Back off and come back.
+        if (attempt < BRUIT_RETRY_ATTEMPTS) {
+          await new Promise((resolve) => { setTimeout(resolve, BRUIT_RETRY_BASE_MS * attempt); });
+          continue;
+        }
+        console.warn(`[Bruit Proxy] ${response.status} from ${BRUIT_WMS_HOST} after ${attempt} attempts`);
+        return null;
+      }
+      if (!response.ok) {
+        console.warn(`[Bruit Proxy] ${response.status} from ${BRUIT_WMS_HOST}`);
+        return null;
+      }
+      // The rate limiter's page is HTML with an HTTP 200 in some paths and a
+      // 429 in others; either way it is not JSON, and parsing it is how a
+      // throttle turns into a stack trace.
+      const contentType = String(response.headers.get('content-type') || '');
+      if (!/json/i.test(contentType)) {
+        console.warn(`[Bruit Proxy] non-JSON ${contentType || 'body'} from ${BRUIT_WMS_HOST}`);
+        if (attempt < BRUIT_RETRY_ATTEMPTS) {
+          await new Promise((resolve) => { setTimeout(resolve, BRUIT_RETRY_BASE_MS * attempt); });
+          continue;
+        }
+        return null;
+      }
+      return await readResponseJsonCapped(response, BRUIT_MAX_BYTES);
+    } catch (error) {
+      const cause = error?.cause?.code || error?.cause?.message || null;
+      console.warn(`[Bruit Proxy] ${BRUIT_WMS_HOST}: ${error?.message || error}${cause ? ` (${cause})` : ''}`);
+      // A parse failure is not worth a second go; a socket reset is.
+      if (error instanceof SyntaxError || attempt === BRUIT_RETRY_ATTEMPTS) return null;
+      await new Promise((resolve) => { setTimeout(resolve, BRUIT_RETRY_BASE_MS * attempt); });
+    }
+  }
+  return null;
+}
+
+/** Read the register off disk once per process, and only if it is well formed. */
+async function readBruitDisk() {
+  if (_bruitDiskChecked) return;
+  _bruitDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(BRUIT_CACHE_PATH, 'utf8'));
+    if (entry?.version === BRUIT_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.airports)
+      && entry.payload.airports.length > 0) {
+      _bruitIndex = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeBruitDisk(entry) {
+  fsp.mkdir(BRUIT_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(BRUIT_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Bruit Proxy] cache write failed:', err?.message || err));
+}
+
+/**
+ * The national arrêté register, from memory, then disk, then the WFS.
+ *
+ * A refusal NEVER clears what is already held. The register is the only thing
+ * that can tell an empty probe ("no plan covers this ground") apart from a
+ * broken one, and losing it to a five-minute outage would make every scan in
+ * France answer "aucun plan" with nothing to qualify it.
+ *
+ * @returns {Promise<?{version: number, at: number, payload: object}>}
+ */
+async function ensureBruitIndex() {
+  await readBruitDisk();
+  if (_bruitIndex && Date.now() - _bruitIndex.at < BRUIT_INDEX_TTL_MS) return _bruitIndex;
+  if (!_bruitIndexInFlight) {
+    _bruitIndexInFlight = (async () => {
+      const raw = await fetchBruitJson(buildPebArreteIndexUrl());
+      if (!raw) return _bruitIndex;
+      const payload = projectPebArretes(raw);
+      if (!payload.airports.length) {
+        console.warn('[Bruit Proxy] arrêté index came back empty; keeping the previous copy');
+        return _bruitIndex;
+      }
+      if (payload.short) {
+        // Kept and USED, but the flag rides all the way to the card: a short
+        // register still answers "the nearest aerodrome", just not reliably.
+        console.warn(`[Bruit Proxy] arrêté index short: ${payload.airports.length} rows against a floor of ${BRUIT_ARRETE_FLOOR}`);
+      }
+      const entry = { version: BRUIT_CACHE_VERSION, at: Date.now(), payload };
+      _bruitIndex = entry;
+      writeBruitDisk(entry);
+      return entry;
+    })().finally(() => { _bruitIndexInFlight = null; });
+  }
+  return _bruitIndexInFlight;
+}
+
+/**
+ * Build one scan: both plans, plus what the register says about the emptiness.
+ *
+ * The two probes are fanned out with `Promise.all` and each carries its own
+ * `catch` inside `fetchBruitJson`, so a PGS outage degrades ONE field and the
+ * PEB answer still lands. `available` is what the layer reads to tell "no zone
+ * here" from "no answer here" — the two look identical downstream, and getting
+ * that wrong turns an outage into a clean bill of health.
+ *
+ * @param {{lat: number, lon: number}} point
+ * @returns {Promise<object|null>}
+ */
+async function buildBruitScan(point) {
+  const [peb, pgs, index] = await Promise.all([
+    fetchBruitJson(buildBruitProbeUrl('peb', point)),
+    fetchBruitJson(buildBruitProbeUrl('pgs', point)),
+    ensureBruitIndex().catch((err) => {
+      console.warn('[Bruit Proxy] arrêté index:', err?.message || err);
+      return null;
+    }),
+  ]);
+  // Both halves down is not an answer at all. One down is a degraded answer and
+  // the card says which half.
+  if (!peb && !pgs) return null;
+  const register = index?.payload ?? null;
+  const nearest = register
+    ? nearestArrete(register.airports, point.lat, point.lon, BRUIT_NEAREST_MAX_KM)
+    : null;
+  return {
+    ...projectBruit({ peb, pgs, point, nearest }),
+    source: BRUIT_SOURCE,
+    register: register
+      ? {
+        count: register.count,
+        total: register.total,
+        short: register.short,
+        truncated: register.truncated,
+        psophique: register.psophique,
+        lden: register.lden,
+        oldest: register.oldest,
+        newest: register.newest,
+        // The register's own age, so a 90-day-old copy can say so rather than
+        // passing as today's.
+        fetchedAt: index?.at ?? null,
+      }
+      : null,
+    // `null` and `false` are different states and the layer prints them
+    // differently: no register at all, against a register that answered.
+    nearestReach: register ? BRUIT_NEAREST_MAX_KM : null,
+  };
+}
+
+/**
+ * Vite plugin: French aircraft-noise plans proxy.
+ * @returns {import('vite').Plugin}
+ */
+function bruitFranceProxy() {
+  function install(middlewares) {
+    // MOUNTED FIRST, and the order is load-bearing: connect matches by prefix,
+    // so `/api/bruit-fr` installed ahead of this would swallow
+    // `/api/bruit-fr/index` and try to read a lat/lon off it.
+    middlewares.use('/api/bruit-fr/index', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') { json(405, { error: 'Method Not Allowed' }); return; }
+      if (!_bruitRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+      try {
+        // `coalesceProxyRequest` returns `{ promise, shared }` and NOT a
+        // promise — awaiting the object itself resolves to the object.
+        const { promise } = coalesceProxyRequest(_bruitInFlight, 'index', ensureBruitIndex);
+        const entry = await promise;
+        if (!entry) {
+          json(503, {
+            error: 'Le registre des arrêtés PEB (Géoplateforme WFS) n’a pas répondu et aucune copie locale n’existe.',
+          });
+          return;
+        }
+        const age = Date.now() - entry.at;
+        if (age > BRUIT_INDEX_STALE_MS) {
+          json(503, {
+            error: `La copie locale du registre des arrêtés PEB a ${Math.round(age / 86_400_000)} jours et l’amont ne répond pas.`,
+          });
+          return;
+        }
+        json(200, {
+          ...entry.payload,
+          source: BRUIT_SOURCE,
+          fetchedAt: entry.at,
+          stale: age > BRUIT_INDEX_TTL_MS,
+        }, {
+          'X-BRUIT-FR': age > BRUIT_INDEX_TTL_MS ? 'STALE' : 'HIT',
+          'Cache-Control': 'public, max-age=3600',
+        });
+      } catch (error) {
+        console.error('[Bruit Proxy] /index', error?.message || error);
+        json(502, { error: 'bruit-fr index proxy error' });
+      }
+    });
+
+    // The scan itself, on the shared address-route machinery: the per-point
+    // memory cache, the serve-stale-on-failure branch, the `/status` route and
+    // the `{ fetchedAt, stale }` envelope are the same ones the four sibling
+    // address layers already answer with, and a second copy of them here would
+    // be a second place for the same bug.
+    installAddressRoute(middlewares, '/api/bruit-fr', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      return {
+        // Four decimals, ~11 m: two nudges of the same camera share one entry.
+        // The probe geometry is PINNED, so nothing else varies the answer and
+        // nothing else belongs in the key.
+        key: addressCacheKey('bruit-fr', point),
+        load: () => buildBruitScan(point),
+      };
+    }, { ttlMs: BRUIT_SCAN_TTL_MS });
+  }
+  return {
+    name: 'bruit-fr-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -16982,6 +18419,9 @@ export default defineConfig(({ mode }) => {
       delinquanceFranceProxy(),
       anfrFranceProxy(),
       fraicheurParisProxy(),
+      bruitFranceProxy(),
+      idfmFrequencyProxy(),
+      sitadelFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),

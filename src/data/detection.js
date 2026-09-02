@@ -119,6 +119,8 @@ const LAYER_WEIGHTS = Object.freeze({
   'comptages-fr': 0.75,
   'anfr-fr': 0.85,
   'fraicheur-fr': 0.85,
+  'sitadel-fr': 0.8,
+  'idfm-frequency': 0.8,
   'ais-live-vessels': 1,
 });
 

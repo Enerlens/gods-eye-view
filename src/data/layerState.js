@@ -310,6 +310,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // The field is dot-separated, so a wider token costs one character and needs
   // no codec change — `dp`, `dv`, `gr` and `if` already read this way.
   // `enabled-only`: the layer has no runtime option to serialize.
+  // `bz` for bruit. `b` is bikeshare and `br` would collide with nothing today
+  // but reads as an abbreviation of the word rather than a token; `bz` is the
+  // one nobody will guess wrong.
+  Object.freeze({ id: 'bruit-fr', token: 'bz', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cadastre-fr', token: 'cd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
   // `cr` for comptages routiers. `c` is cctv and `co` reads like a prefix of
@@ -358,6 +362,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // link that silently enables the wrong one. 1-8 are gas-fr, power-grid,
   // rte-generation, fr-hydro-plants, bdtopo-buildings, local-airports,
   // road-status-fr and road-events-fr, so IRVE takes `9`.
+  // `fq` for fréquence. `if` next door is idfm-network, and these two draw the
+  // SAME stops — so the tokens are deliberately unalike, because a share link
+  // that enabled the wrong one of a stacked pair would be invisible.
+  Object.freeze({ id: 'idfm-frequency', token: 'fq', disposition: 'enabled-only' }),
   Object.freeze({ id: 'idfm-network', token: 'if', disposition: 'enabled-only' }),
   Object.freeze({ id: 'irve-fr', token: '9', disposition: 'enabled-only' }),
   // A DIGIT, for the sixth time and always for the same reason: a–y are all
@@ -428,6 +436,9 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // A duplicate here is a BOOT failure (`validateLayerStateRegistry` throws),
   // not a review nit — two layers on one token is a share link that silently
   // enables the wrong one.
+  // `sd` for Sitadel. `s` is satellites, `su` is sup-fr — the third `s` layer,
+  // and the last one that could still take two characters comfortably.
+  Object.freeze({ id: 'sitadel-fr', token: 'sd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'sup-fr', token: 'su', disposition: 'enabled-only' }),
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),
