@@ -415,6 +415,47 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **"Sites militaires — Context is temporarily unavailable", while Overpass was
+  merely busy.** The layer went dark under normal panning and the server log
+  said nothing, so the failure was indistinguishable from a dead upstream. It
+  was a rate limit this app manufactured itself. `GET /api/status` on
+  overpass-api.de answers **"Rate limit: 2"** — two concurrent slots per IP —
+  and the rotation was never four mirrors wide — it was **four hostnames over
+  two machines**. `lz4.overpass-api.de` resolves to `65.109.112.52`, one of the
+  two addresses `overpass-api.de` itself answers with, and both facades report
+  `Announced endpoint: lambert.openstreetmap.de/`; `overpass.kumi.systems` is a
+  CNAME onto `overpass.private.coffee` (both land on `193.219.97.30`), and that
+  host answered a bodyless **502 in ~3 s** on every probe. So half the list
+  bought no redundancy and simply paid the same dead host's timeout twice.
+  `overpass.kumi.systems` has been dropped. Nothing paced the requests: the installations proxy
+  called straight through with no gate at all, and the generic Overpass proxy
+  allowed six in flight against a budget of two. A burst of eight drew **429 on
+  requests 6 and 8** — and a 429 is a verdict on the **IP**, not on the mirror,
+  so "try the next one" collected the same 429, then six seconds of dead
+  community mirrors, then surfaced a bare 503. Sequentially, **two of six**
+  requests failed that way.
+  Upstream requests are now queued at the budget the mirrors actually publish —
+  two in flight, waiting rather than failing, proceeding ungated after 20 s so a
+  busy moment can never become an error — and a reported rate limit is **waited
+  out** (1.5 s, then 4 s) instead of rotated away, since waiting is the only
+  move a per-IP limit responds to. The two healthy facades lead the rotation so
+  the ~6 s of dead weight is only ever paid after the mirrors that answer have
+  failed, and the installations proxy now **names the cause** in the server log
+  — rate limit, server-side timeout, or refusal — because the three need
+  different fixes and looked identical before.
+- **A blocked IP made the globe feel hung, not degraded.** overpass-api.de does
+  not only rate-limit an IP it dislikes; it stops answering it. Provoked while
+  testing the fix above, the block outlasted **four minutes** of polling,
+  `/api/status` included — and every rotation during it spent **47 s** of
+  timeouts to learn the same thing, once per camera move, while still sending
+  the traffic that caused it. A rotation where no mirror answers at all now
+  parks the whole Overpass path for a minute, so the next caller fails in
+  **1.7 ms** instead of 47 s and lands straight on its stale cache (measured
+  live during that block). A rate limit is deliberately excluded — it is the
+  recoverable case, and parking it would trade a two-second wait for a minute of
+  blindness. The layer's disk cache, meanwhile, kept serving previously visited
+  ground throughout the outage in **9 ms**.
+
 - **Clicking a parcel highlighted a wedge with the NEIGHBOUR's corners.** The
   cadastral outline under the cursor was square and correct, and the cyan fill
   poured into it was a diagonal blob with two edges that belonged to no parcel
