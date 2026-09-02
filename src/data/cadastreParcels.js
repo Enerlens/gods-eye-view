@@ -394,7 +394,15 @@ function clearSelectionPrimitives() {
   _selectedOutline = null;
 }
 
-/** Show or hide every primitive this layer owns, the selection included. */
+/**
+ * Show or hide every primitive this layer owns.
+ *
+ * The selection pair is covered too, and today that is belt and braces rather
+ * than a live path: both callers drop the selection before they get here —
+ * `disable()` through `clearSelection()`, and `enable()` because a disabled
+ * layer has none. Kept so a third caller cannot leave a cyan parcel lit over a
+ * layer the operator has switched off.
+ */
 function setPrimitiveVisibility(visible) {
   for (const fill of _fills) fill.show = visible;
   if (_outlines) _outlines.show = visible;
@@ -1219,7 +1227,8 @@ const cadastreParcelsLayer = {
    * A highlight can be made pixel-perfect by giving every parcel a primitive of
    * its own, which is the one fix that would cost the frame rate this layer is
    * built around; a shape check is what tells those two apart.
-   * @returns {{fills:number, records:number, selectedFill:boolean, selectedOutline:boolean}}
+   * @returns {{fills:number, outlines:number, records:number,
+   *   selectedFill:boolean, selectedOutline:boolean}}
    */
   getPrimitiveShapeForQa() {
     return {

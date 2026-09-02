@@ -116,6 +116,66 @@ function seed(overlayHost, extra = {}) {
   });
 }
 
+
+/**
+ * Cesium builds a `GroundPolylinePrimitive`'s render state against the LIVE
+ * WebGL line-width limits, which are zero with no context — so the outline half
+ * of every draw throws under `node --test` unless they are seeded. Nothing else
+ * in the draw path needs a GPU: the layer only CONSTRUCTS its primitives, and
+ * what tessellates and rasterises them is `scripts/qa-cadastre-highlight.mjs`.
+ */
+Cesium.ContextLimits._minimumAliasedLineWidth = 1;
+Cesium.ContextLimits._maximumAliasedLineWidth = 4;
+
+/**
+ * A viewer that can be DRAWN into, not merely gated against.
+ *
+ * `viewerWithView` answers the viewport gate; this one also owns a primitive
+ * collection that records every add and remove, which is the only way to see
+ * the shape of the draw — how many primitives, carrying whose geometry, and
+ * whether the last selection was taken back off the scene.
+ */
+function drawingViewer() {
+  const viewer = viewerWithView(
+    { south: 48.8700, west: 2.2926, north: 48.8716, east: 2.2964 },
+    { altitude: 240 },
+  );
+  viewer.added = [];
+  viewer.removed = [];
+  viewer.scene.primitives = {
+    add: (primitive) => { viewer.added.push(primitive); return primitive; },
+    remove: (primitive) => { viewer.removed.push(primitive); return true; },
+  };
+  return viewer;
+}
+
+/**
+ * Run one real load-and-draw against a payload, and hand back the viewer.
+ *
+ * `viewer.payload` stays writable so a test can answer the NEXT `update()` with
+ * a different box — which is what a pan is, and the only way to reach the
+ * redraw paths from here.
+ */
+async function drawn(payload = PAYLOAD) {
+  const viewer = drawingViewer();
+  viewer.payload = payload;
+  viewer.overlay = recordingOverlayHost();
+  _setCadastreStateForTest({
+    viewer,
+    records: new Map(),
+    payload: null,
+    overlayHost: viewer.overlay,
+    fetchImpl: async () => ({ ok: true, json: async () => viewer.payload }),
+  });
+  await cadastreParcelsLayer.update();
+  return viewer;
+}
+
+/** How many primitives the layer still has on the scene. */
+function live(viewer) {
+  return viewer.added.length - viewer.removed.length;
+}
+
 test.afterEach(() => {
   _setCadastreStateForTest({ payload: null, records: new Map(), enabled: false });
 });
@@ -416,6 +476,275 @@ test('an unresolved parcel still gets a complete, correct card', () => {
   assert.equal(returned.details[0], 'Paris 3ᵉ · INSEE 75056');
   assert.equal(returned.details.at(-1), 'Document fiscal — la limite de propriété se fixe par bornage');
   assert.ok(!returned.details.some((l) => /BD TOPO|point adresse/.test(l)));
+});
+
+// ── The draw ────────────────────────────────────────────────────────────────
+
+test('the fills are batched one primitive per band COLOUR, never one per parcel', async () => {
+  // Colour is the only axis this batch may be split on, and both directions are
+  // a bug. One batch for every colour has each instance repaint its neighbours
+  // inside its own bounding rectangle — Cesium classifies a batch in one
+  // stencil pass and then keeps the first instance whose bounding RECTANGLE
+  // holds the pixel — and one primitive per parcel costs the frame rate the
+  // batching exists for.
+  const viewer = await drawn();
+  const colors = new Set(RECORDS.map((record) => record.color));
+  const shape = cadastreParcelsLayer.getPrimitiveShapeForQa();
+  assert.equal(shape.fills, colors.size, 'one fill primitive per band colour');
+  assert.ok(shape.fills < shape.records, 'a primitive per parcel is the other regression');
+  assert.equal(shape.records, RECORDS.length);
+  assert.equal(shape.outlines, 1, 'every ring in the box still shares ONE polyline primitive');
+  assert.equal(shape.selectedFill, false);
+  assert.equal(shape.selectedOutline, false);
+  assert.equal(viewer.added.length, colors.size + 1);
+  assert.equal(viewer.removed.length, 0);
+});
+
+test('the highlight is the parcel\'s OWN geometry, drawn over the batch it belongs to', async () => {
+  // The fix, stated as geometry: the selected parcel is not a recoloured
+  // instance inside a batch whose bounding rectangles overlap its neighbours',
+  // it is its own pair of primitives holding its own rings and nothing else.
+  // The split parcel is the honest case — a highlight that carried one part
+  // would look correct in a screenshot of the other.
+  const viewer = await drawn();
+  const target = recordFor('132038120D0037');
+  const batch = viewer.added.length;
+  _selectCadastreParcelForTest(target.id);
+
+  const shape = cadastreParcelsLayer.getPrimitiveShapeForQa();
+  assert.equal(shape.selectedFill, true);
+  assert.equal(shape.selectedOutline, true);
+  assert.equal(shape.fills, batch - 1, 'the batch is laid under the highlight, not rebuilt');
+  assert.equal(viewer.added.length, batch + 2, 'a highlight is exactly two primitives');
+  assert.equal(viewer.removed.length, 0);
+
+  const [fill, outline] = viewer.added.slice(-2);
+  const rings = target.polygons.reduce((total, polygon) => total + polygon.length, 0);
+  assert.deepEqual(
+    fill.geometryInstances.map((instance) => instance.id),
+    target.polygons.map(() => target.id),
+    'the highlight fills every part of the parcel and no neighbour',
+  );
+  assert.equal(outline.geometryInstances.length, rings, 'every ring, courtyards included');
+  assert.ok(outline.geometryInstances.every((instance) => instance.id === target.id));
+
+  // The seam the pixel harness measures against reads the SAME rings, verbatim,
+  // so an IoU written against it compares pixels to the source geometry.
+  assert.equal(cadastreParcelsLayer.getSelectedParcelPolygonsForQa('132038120D0037'), target.polygons);
+  assert.equal(cadastreParcelsLayer.getSelectedParcelPolygonsForQa('00000000AA0000'), null);
+});
+
+test('deselecting takes the two highlight primitives back off the scene', async () => {
+  const viewer = await drawn();
+  _selectCadastreParcelForTest(recordFor('69385000AL0005').id);
+  const [fill, outline] = viewer.added.slice(-2);
+
+  _clearCadastreSelectionForTest();
+  const shape = cadastreParcelsLayer.getPrimitiveShapeForQa();
+  assert.equal(shape.selectedFill, false);
+  assert.equal(shape.selectedOutline, false);
+  assert.equal(shape.fills, viewer.added.length - 3, 'the band batches survive the deselect');
+  assert.equal(shape.outlines, 1);
+  assert.equal(viewer.removed.length, 2);
+  assert.ok(viewer.removed.includes(fill) && viewer.removed.includes(outline));
+});
+
+test('neither clicking nor panning ever leaves a primitive behind', async () => {
+  // The two ways this scene could grow without bound. A click costs two
+  // primitives, so a leak there is a cyan trail across every parcel the
+  // operator has ever touched; a pan rebuilds the whole box, so a leak there
+  // stacks a fresh set of band batches on top of the last ones every 450 ms of
+  // movement. Both end at the same number: the batch, plus one highlight.
+  const viewer = await drawn();
+  const colors = new Set(RECORDS.map((record) => record.color));
+  const batch = colors.size + 1;
+  for (const record of RECORDS.slice(0, 4)) _selectCadastreParcelForTest(record.id);
+
+  assert.equal(live(viewer), batch + 2, 'the batch, plus exactly one highlight');
+  assert.equal(viewer.added.length, batch + 8);
+  assert.equal(viewer.removed.length, 6, 'three superseded highlights, two primitives each');
+
+  // The pan. `update()` drops the box memo and redraws from the same payload,
+  // which is what a moveEnd does — and the selection is matched back by IDU
+  // afterwards, so the highlight is laid over the batch that is now on screen
+  // rather than over the one just thrown away.
+  const selected = _cadastreSelectedIdForTest();
+  await cadastreParcelsLayer.update();
+
+  assert.equal(live(viewer), batch + 2, 'the redraw replaced the batch, it did not stack on it');
+  assert.equal(viewer.added.length, (batch + 8) + batch + 2);
+  assert.equal(viewer.removed.length, 6 + batch + 2, 'the old batch AND the old highlight came off');
+  assert.equal(_cadastreSelectedIdForTest(), selected, 'the parcel has not moved, so neither has the card');
+  const shape = cadastreParcelsLayer.getPrimitiveShapeForQa();
+  assert.equal(shape.fills, colors.size);
+  assert.equal(shape.records, RECORDS.length);
+  assert.equal(shape.selectedFill, true);
+  assert.equal(shape.selectedOutline, true);
+});
+
+test('switching the layer off hides the batches and drops the highlight', async () => {
+  // `show` and not `remove`, for the batches: the payload is still in hand and
+  // rebuilding two thousand classification polygons to switch a row back on is
+  // the cost this layer is arranged to avoid. The highlight is different — it
+  // goes with the selection, because the card goes with it too.
+  const viewer = await drawn();
+  _selectCadastreParcelForTest(recordFor('69385000AL0005').id);
+  const highlight = viewer.added.slice(-2);
+
+  cadastreParcelsLayer.disable();
+
+  const shape = cadastreParcelsLayer.getPrimitiveShapeForQa();
+  assert.equal(shape.selectedFill, false);
+  assert.equal(shape.selectedOutline, false);
+  assert.equal(shape.records, RECORDS.length, 'the records outlive the switch');
+  assert.equal(shape.fills, new Set(RECORDS.map((record) => record.color)).size);
+  for (const primitive of highlight) assert.ok(viewer.removed.includes(primitive));
+  const kept = viewer.added.filter((primitive) => !viewer.removed.includes(primitive));
+  assert.equal(kept.length, shape.fills + 1);
+  for (const primitive of kept) assert.equal(primitive.show, false, 'a primitive was left on screen');
+  assert.equal(_cadastreSelectedIdForTest(), null);
+});
+
+test('a parcel whose rings cannot be built costs a primitive, not the draw', async () => {
+  // `ringPositions` refuses fewer than three points, so a colour bucket can come
+  // out empty — and an empty `GroundPrimitive` is a Cesium throw rather than a
+  // blank draw. The parcel stays a record either way: it is still in the count
+  // the row reports, and the card still answers for it.
+  const viewer = await drawn({
+    parcels: [{
+      g: [[[[2.3, 48.86], [2.301, 48.86]]]], m: '75056', u: '751060000A0001', p: [2.3, 48.86],
+    }],
+    sheets: {},
+  });
+  const shape = cadastreParcelsLayer.getPrimitiveShapeForQa();
+  assert.equal(shape.records, 1);
+  assert.equal(shape.fills, 0, 'no instances, so no primitive to hold them');
+  assert.equal(shape.outlines, 0);
+  assert.equal(viewer.added.length, 0);
+
+  _selectCadastreParcelForTest('cadastre:751060000A0001');
+  assert.equal(_cadastreSelectedIdForTest(), 'cadastre:751060000A0001', 'still selectable');
+  const selected = cadastreParcelsLayer.getPrimitiveShapeForQa();
+  assert.equal(selected.selectedFill, false);
+  assert.equal(selected.selectedOutline, false);
+  assert.equal(viewer.added.length, 0);
+});
+
+test('a courtyard survives into the fill as a HOLE, and into the outline as a ring', async () => {
+  // Interior rings are courtyards and light wells. Dropped from the fill they
+  // are filled in and the card's area stops matching what is on screen; dropped
+  // from the outline the courtyard loses the boundary it actually has. The
+  // Palais-Royal fixture parcel is the one that carries one.
+  const viewer = await drawn();
+  const palaisRoyal = recordFor('75101000AJ0002');
+  const [outer, courtyard] = palaisRoyal.polygons[0];
+  assert.ok(courtyard, 'the fixture parcel should carry a hole');
+  _selectCadastreParcelForTest(palaisRoyal.id);
+
+  const [fill, outline] = viewer.added.slice(-2);
+  // `_polygonHierarchy` is the only readable seam Cesium leaves on a built
+  // `PolygonGeometry`. What it renders to is the pixel harness's question; what
+  // is asserted here is that the ring the cadastre published is the ring handed
+  // over, hole and all.
+  const hierarchy = fill.geometryInstances[0].geometry._polygonHierarchy;
+  assert.equal(hierarchy.positions.length, outer.length - 1, 'the closing vertex is dropped, once');
+  assert.equal(hierarchy.holes.length, 1, 'the courtyard is a hole, not a filled-in yard');
+  assert.equal(hierarchy.holes[0].positions.length, courtyard.length - 1);
+  assert.equal(outline.geometryInstances.length, 2, 'the outer boundary AND the courtyard\'s');
+});
+
+test('a hole too small to be a ring is dropped without taking the parcel with it', async () => {
+  // `ringPositions` refuses fewer than three points. A malformed interior ring
+  // must cost the hole and nothing else — refusing the whole parcel would erase
+  // land that is genuinely there, which is the more expensive wrong answer.
+  const viewer = await drawn({
+    parcels: [{
+      g: [[
+        [[2.30, 48.86], [2.302, 48.86], [2.302, 48.862], [2.30, 48.862], [2.30, 48.86]],
+        [[2.3005, 48.8605], [2.3015, 48.8605]],
+      ]],
+      m: '75056',
+      u: '751060000B0002',
+      p: [2.301, 48.861],
+    }],
+    sheets: {},
+  });
+  assert.equal(cadastreParcelsLayer.getPrimitiveShapeForQa().fills, 1, 'the parcel still draws');
+
+  _selectCadastreParcelForTest('cadastre:751060000B0002');
+  const [fill, outline] = viewer.added.slice(-2);
+  const hierarchy = fill.geometryInstances[0].geometry._polygonHierarchy;
+  assert.equal(hierarchy.positions.length, 4, 'the outer ring built');
+  assert.equal(hierarchy.holes.length, 0, 'and the unusable hole was dropped');
+  assert.equal(outline.geometryInstances.length, 1, 'no ring to draw for a hole that is not one');
+});
+
+test('panning into a box with no parcels tears the draw down and adds nothing', async () => {
+  // The gaps in this layer are the public domain, and a view of nothing but
+  // street is a real answer. It has to leave an empty globe rather than the
+  // previous box's cadastre under a row that says `empty`.
+  const viewer = await drawn();
+  _selectCadastreParcelForTest(recordFor('69385000AL0005').id);
+  const beforeAdds = viewer.added.length;
+
+  viewer.payload = { parcels: [], sheets: {} };
+  await cadastreParcelsLayer.update();
+
+  assert.equal(viewer.added.length, beforeAdds, 'an empty box builds nothing at all');
+  assert.equal(live(viewer), 0, 'and leaves nothing behind either');
+  assert.deepEqual(cadastreParcelsLayer.getPrimitiveShapeForQa(), {
+    fills: 0, outlines: 0, records: 0, selectedFill: false, selectedOutline: false,
+  });
+  assert.equal(cadastreParcelsLayer.getSelectedParcel(), null);
+  assert.equal(_cadastreStatsForTest().status, 'empty');
+});
+
+test('a parcel that pans OUT of the box is not restored, and its card goes with it', async () => {
+  // The selection is matched back by IDU after every rebuild, because a pan
+  // must not cost the operator the card they were reading. The other half of
+  // that rule is this one: a parcel that is no longer in the box is no longer
+  // an answer, and a highlight left on the last place it was seen would be
+  // pointing at a neighbour.
+  const viewer = await drawn();
+  const target = recordFor('69385000AL0005');
+  _selectCadastreParcelForTest(target.id);
+  assert.equal(cadastreParcelsLayer.getPrimitiveShapeForQa().selectedFill, true);
+  viewer.overlay.calls.cleared.length = 0;
+
+  viewer.payload = {
+    ...PAYLOAD,
+    parcels: PAYLOAD.parcels.filter((parcel) => parcel.u !== '69385000AL0005'),
+  };
+  await cadastreParcelsLayer.update();
+
+  const shape = cadastreParcelsLayer.getPrimitiveShapeForQa();
+  assert.equal(shape.records, RECORDS.length - 1, 'the rest of the box redrew');
+  assert.ok(shape.fills > 0);
+  assert.equal(shape.selectedFill, false, 'no highlight over a parcel that is not there');
+  assert.equal(shape.selectedOutline, false);
+  assert.equal(_cadastreSelectedIdForTest(), null);
+  assert.equal(cadastreParcelsLayer.getSelectedParcel(), null);
+  assert.ok(
+    viewer.overlay.calls.cleared.includes(CADASTRE_SELECTED_OVERLAY_SOURCE_ID),
+    'the card was left on screen describing a parcel that is no longer drawn',
+  );
+});
+
+test('destroy() takes every primitive off the scene, the highlight included', async () => {
+  // The teardown a re-init runs through. `_fills` is a fresh array afterwards,
+  // so anything still on the scene at this point is unreachable and permanent —
+  // five ground primitives that no longer answer to any layer.
+  const viewer = await drawn();
+  _selectCadastreParcelForTest(recordFor('69385000AL0005').id);
+  assert.ok(live(viewer) > 0);
+
+  cadastreParcelsLayer.destroy(viewer);
+
+  assert.equal(live(viewer), 0, 'a primitive outlived the layer that owned it');
+  assert.deepEqual(cadastreParcelsLayer.getPrimitiveShapeForQa(), {
+    fills: 0, outlines: 0, records: 0, selectedFill: false, selectedOutline: false,
+  });
+  assert.equal(_cadastreSelectedIdForTest(), null);
 });
 
 // ── The viewport gate ───────────────────────────────────────────────────────
