@@ -19,6 +19,7 @@ import georisquesLayer from './data/georisques.js';
 import dvfSalesLayer from './data/dvfSales.js';
 import dpeFranceLayer from './data/dpeFrance.js';
 import urbanismeGpuLayer from './data/urbanismeGpu.js';
+import adsUrbanismeLayer from './data/adsUrbanisme.js';
 import idfmNetworkLayer from './data/idfmNetwork.js';
 import rteGenerationLayer from './data/rteGeneration.js';
 import satellitesLayer from './data/satellites.js';
@@ -315,6 +316,7 @@ async function init() {
     dataManager.register(dvfSalesLayer);
     dataManager.register(dpeFranceLayer);
     dataManager.register(urbanismeGpuLayer);
+    dataManager.register(adsUrbanismeLayer);
     dataManager.register(idfmNetworkLayer);
     dataManager.register(rteGenerationLayer);
     dataManager.register(satellitesLayer);

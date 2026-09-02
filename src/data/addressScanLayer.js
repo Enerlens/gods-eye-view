@@ -11,19 +11,21 @@ import { deriveFetchCenter, greatCircleKm } from './trafficBounds.js';
 /**
  * Shared shell for the point-centred French address layers.
  *
- * WHY THESE FOUR LAYERS ARE NOT VIEWPORT LAYERS. Géorisques, DVF, the ADEME
- * DPE register and the Géoportail de l'urbanisme all answer a question about a
- * POINT — "what reaches this address" — and every one of their APIs takes a
- * coordinate and a radius, not a bounding box. Fitting them to the viewport
- * would mean inventing a centre anyway, so the centre is made explicit: each
- * layer scans around the ground point the camera is looking at, and refetches
- * when that point moves far enough to change the answer.
+ * WHY THESE LAYERS ARE NOT VIEWPORT LAYERS. Géorisques, DVF, the ADEME DPE
+ * register, the Géoportail de l'urbanisme, the IDFM network and the ADS permit
+ * registers all answer a question about a POINT — "what reaches this address"
+ * — and every one of their APIs takes a coordinate and a radius, not a
+ * bounding box. The permits go further and are published per COMMUNE, which a
+ * box cannot even name. Fitting them to the viewport would mean inventing a
+ * centre anyway, so the centre is made explicit: each layer scans around the
+ * ground point the camera is looking at, and refetches when that point moves
+ * far enough to change the answer.
  *
  * WHY THERE IS A SHARED FACTORY AT ALL, against the one-self-contained-module
- * convention. The four layers differ only in their endpoint and in how they
- * draw; the camera-centre derivation, the altitude gate, the movement
- * threshold, the abort handling and the error reporting are identical, and
- * four copies of that would be four places for the same bug. Each layer is
+ * convention. The layers differ only in their endpoint and in how they draw;
+ * the camera-centre derivation, the altitude gate, the movement threshold, the
+ * abort handling and the error reporting are identical, and six copies of that
+ * would be six places for the same bug. Each layer is
  * still one module with one default export implementing the manager's
  * interface — this file is a helper they share, like `worldOverlay.js`.
  *

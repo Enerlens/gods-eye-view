@@ -1,5 +1,52 @@
 # Test fixtures
 
+- `sitadel-12202-sample.json` — real rows from the SDES's DiDo API for Rodez
+  (INSEE 12202), captured 2026-09-02 with the projection's own per-file column
+  selection. Two families, deliberately: six `logements` rows chosen so that
+  all four `ETAT_DAU` values appear (2 autorisé, 4 annulé, 5 commencé,
+  6 terminé) alongside a row with no house number, a row with no parcel
+  reference and a row carrying two, plus three `demolir` rows — which exist to
+  pin the trap that the four Sitadel files DO NOT share their key column names
+  (`NUM_PD`/`ETAT_PD` here, and no site-progress columns at all). Used by
+  `adsFeed.test.mjs`; a synthetic fixture would agree with whatever the module
+  assumed. Licence Ouverte.
+
+- `ads-portals-sample.json` — real rows from the three métropole ADS portals,
+  captured 2026-09-02, each chosen for a different way of being awkward. Paris:
+  a dossier published at Lambert-93 `(0, 0)` — whose `geo_point_2d` reprojects
+  to a well-formed coordinate off São Tomé — plus one under instruction, one
+  refused, one accorded and one modificatif. Nantes: a row with `<br/>` inside
+  a plain-text field, one under instruction, one decided — and an INTEGER
+  commune code.
+
+  Seven of the eight **Bordeaux** rows carry `geo_shape`, the only published
+  geometry in this layer, and each is a different way for a polygon to be
+  awkward: a clean single-parcel PC and a PD; a *certificat d'urbanisme* whose
+  outline must never be drawn because the projection excludes the kind; the
+  three dossiers `DP 033 281 24 Z0785`, `DP 033 281 26 00295` and its `M01`,
+  which name the same three parcels and publish **byte-identical geometry** —
+  they are the deduplication test, and they each carry a second ring of
+  11 cm² (`ORA-13349`) that the sanitiser deliberately KEEPS, because it is
+  genuinely inside the parcel and no rule here throws away a shape for being
+  small; `PC 033 119 22 Z1055` (`ORA-13356`), which writes four of its fourteen
+  vertices twice in a row; and `PC 033 063 24 Z0140`, flagged and published
+  with **no geometry at all but a valid point**, which is the fallback. Their
+  `refcad` is array-valued as only this portal's is, and none carries a
+  decision column because the file has none.
+
+  Used by `adsFeed.test.mjs`, `adsUrbanisme.test.mjs` and
+  `ringGeometry.test.mjs`. Paris rows are **ODbL 1.0**; the other two are
+  Licence Ouverte.
+
+- `ban-geocode-12202-sample.csv` — the real answer the BAN's bulk
+  `search/csv/` endpoint returned for the nine `sitadel-12202-sample.json`
+  addresses, captured 2026-09-02: three `housenumber`, four `street`, two
+  `not-found`, and a quoted `result_context` containing commas — which is what
+  makes it a test of the quote-aware parser rather than of `split(',')`. Its
+  `ref` column carries the SERIES-qualified ids (`sitadel:DAU:…`,
+  `sitadel:PD:…`) the projection actually sends, so the join it pins is the one
+  the proxy performs. Licence Ouverte.
+
 - `schools-annuaire-sample.json` — 15 real rows from
   `data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-annuaire-education`,
   captured 2026-09-01 with the projection's own field selection. Chosen so that

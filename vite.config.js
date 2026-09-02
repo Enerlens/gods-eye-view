@@ -131,6 +131,27 @@ import {
 } from './src/data/dvfFeed.js';
 import { buildDpeUrl, clampDpeRadius, projectDpe } from './src/data/dpeFeed.js';
 import {
+  adsSince,
+  applyGeocoding,
+  buildGeocodeCsv,
+  buildLocalAdsExcludedCountUrl,
+  buildLocalAdsUrl,
+  buildSitadelUrl,
+  foldToSitadelCommune,
+  foldSitadelFamilies,
+  mergeRegisters,
+  normaliseLocalRow,
+  normaliseSitadelRow,
+  portalsForCommune,
+  projectAdsPermits,
+  ADS_DEFAULT_MONTHS,
+  ADS_DEFAULT_RADIUS_M,
+  ADS_MAX_MONTHS,
+  ADS_MAX_RADIUS_M,
+  BAN_CSV_URL,
+  SITADEL_FILES,
+} from './src/data/adsFeed.js';
+import {
   buildIsochroneUrl,
   clampSeconds as clampIsochroneSeconds,
   projectIsochrone,
@@ -20120,6 +20141,307 @@ function dpeProxy() {
 }
 
 /**
+ * ADS — the building permits on this block, from both registers at once.
+ * `GET /api/ads-fr?lat=&lon=&radius=&months=`
+ *
+ * WHY A PROXY, when every upstream here sends `access-control-allow-origin: *`
+ * and a browser could reach all of them: one scan is up to SIX upstream calls —
+ * four Sitadel families, a métropole portal, and a bulk geocode — against four
+ * different free public services, and the expensive half of that answer is
+ * per-COMMUNE while the question is per-POINT. Resolving it server-side means a
+ * pan across an arrondissement re-uses one commune edition instead of
+ * re-downloading it and re-geocoding several hundred addresses per nudge. The
+ * merge between the two registers is absorbed here too, under test
+ * (`adsFeed.js`), rather than in every open tab.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function adsFranceProxy() {
+  /**
+   * Geocoded permits per commune-window, memoised for the process.
+   *
+   * BOUNDED for the same reason DVF's editions map is: a tour of France would
+   * otherwise accumulate every commune it crossed for the life of the dev
+   * server. A commune-window is the four Sitadel families plus, where one
+   * exists, the coordinate-less métropole file — Nantes (44109) measured 2 049
+   * housing authorisations since 2013, of which 211 since 2024-01-01.
+   */
+  const communeEditions = new Map();
+  const ADS_EDITION_MEMORY_MAX = 24;
+  /** Sitadel republishes monthly; a week on disk never serves a stale edition
+   *  for more than the lag the register already has. */
+  const ADS_DISK_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+  /** The BAN's bulk endpoint is generous but not free; one commune at a time. */
+  const ADS_GEOCODE_TIMEOUT_MS = 60_000;
+  /** A commune's worth of permits, not a département's. */
+  const ADS_GEOCODE_MAX_ROWS = 4_000;
+
+  function rememberEdition(key, permits) {
+    communeEditions.set(key, permits);
+    while (communeEditions.size > ADS_EDITION_MEMORY_MAX) {
+      communeEditions.delete(communeEditions.keys().next().value);
+    }
+    return permits;
+  }
+
+  /**
+   * POST one commune's addresses to the BAN and read the CSV back.
+   *
+   * `fetchAddressSource` next door is GET-only, and this is the one call in
+   * the address family that has to send a body. Failure returns null and the
+   * caller keeps the un-geocoded permits — which then get dropped at
+   * projection, visibly, rather than the whole scan failing.
+   */
+  async function geocodeBatch(csv) {
+    const body = new FormData();
+    body.append('data', new Blob([csv], { type: 'text/csv' }), 'ads.csv');
+    body.append('columns', 'adresse');
+    body.append('postcode', 'codepostal');
+    body.append('citycode', 'citycode');
+    try {
+      const response = await fetch(BAN_CSV_URL, {
+        method: 'POST',
+        body,
+        signal: AbortSignal.timeout(ADS_GEOCODE_TIMEOUT_MS),
+        headers: { 'User-Agent': 'GodsEyeView/1.0 (ads scan; +https://github.com/bilawalsidhu/gods-eye-view)' },
+      });
+      if (!response.ok) {
+        console.warn(`[ADS Proxy] BAN ${response.status}`);
+        return null;
+      }
+      return await response.text();
+    } catch (error) {
+      console.warn('[ADS Proxy] geocode unavailable:', error?.message || error);
+      return null;
+    }
+  }
+
+  /**
+   * Build one commune-window: four Sitadel families, the coordinate-less
+   * portal if this commune has one, and the single geocode that places them.
+   *
+   * THE FOUR SITADEL CALLS ARE SEQUENTIAL, AND THAT IS NOT POLITENESS. DiDo
+   * rate-limits per client and four concurrent requests trip it: measured
+   * 2026-09-02, firing the families in parallel returned **HTTP 429 on three
+   * of the four** for Nantes while the very same URLs answered 200 one at a
+   * time from curl. The failure is quiet in the worst way — a 429 becomes a
+   * null becomes an empty family — so the layer drew a city with no housing
+   * permits at all rather than reporting an outage. Sequential, one host, one
+   * request in flight.
+   *
+   * A family that fails is reported as `ok: false`, NEVER as an empty one. An
+   * empty answer and a refused one look identical once they are both `[]`, and
+   * the difference is "nothing was built here" against "we could not ask".
+   * Losing the permis de démolir should cost demolitions, not the layer, and
+   * what survived travels to the client in `families` so a partial answer says
+   * so instead of reading as a quiet block.
+   */
+  async function buildEdition(communeCode, since) {
+    const families = [];
+    const permits = [];
+    for (const file of SITADEL_FILES) {
+      let rows = null;
+      try {
+        rows = await fetchAddressSource(buildSitadelUrl(file, { communeCode, since }));
+      } catch (error) {
+        console.warn(`[ADS Proxy] ${file.key} unavailable:`, error?.message || error);
+      }
+      if (!Array.isArray(rows)) {
+        console.warn(`[ADS Proxy] ${file.key} refused for commune ${communeCode}`);
+        families.push({ key: file.key, label: file.label, ok: false, count: 0 });
+        continue;
+      }
+      let kept = 0;
+      for (const row of rows) {
+        const permit = normaliseSitadelRow(file, row);
+        if (permit) { permits.push(permit); kept += 1; }
+      }
+      families.push({ key: file.key, label: file.label, ok: true, count: kept });
+    }
+
+    // The coordinate-less portal, if this commune has one. Its rows are placed
+    // by the same BAN batch as the Sitadel rows below, which is the whole
+    // reason it is queried per commune rather than per radius.
+    const local = [];
+    const portals = [];
+    for (const portal of portalsForCommune(communeCode)) {
+      if (portal.geoColumn) continue;
+      const rows = await fetchAddressSource(buildLocalAdsUrl(portal, { communeCode, since }));
+      if (!Array.isArray(rows)) {
+        console.warn(`[ADS Proxy] ${portal.key} commune query unavailable`);
+        portals.push({ key: portal.key, label: portal.label, licence: portal.licence, ok: false, count: 0 });
+        continue;
+      }
+      let kept = 0;
+      for (const row of rows) {
+        const permit = normaliseLocalRow(portal, row);
+        if (permit) { local.push(permit); kept += 1; }
+      }
+      // Reported alongside the radius-queried portals, not swallowed by the
+      // commune cache: without this a Nantes scan showed an empty `portals`
+      // list while drawing that portal's dossiers, which reads as "this
+      // commune has no live source" on the one commune where it does.
+      portals.push({ key: portal.key, label: portal.label, licence: portal.licence, ok: true, count: kept });
+    }
+
+    const all = [...permits, ...local];
+    const csv = buildGeocodeCsv(all.slice(0, ADS_GEOCODE_MAX_ROWS));
+    if (!csv) return { permits: all, families, portals, geocoded: 0, unplaced: 0 };
+    const answer = await geocodeBatch(csv);
+    if (!answer) return { permits: [], families, portals, geocoded: 0, unplaced: all.length };
+    const placed = applyGeocoding(all, answer);
+    return {
+      permits: placed.permits, families, portals, geocoded: placed.geocoded, unplaced: placed.unplaced,
+    };
+  }
+
+  async function loadEdition(communeCode, since) {
+    const cacheKey = `${communeCode}-${since}`;
+    if (communeEditions.has(cacheKey)) return communeEditions.get(cacheKey);
+    const diskPath = path.join(ADDRESS_CACHE_DIR, `ads-${cacheKey}.json`);
+    try {
+      const stat = await fsp.stat(diskPath);
+      if (Date.now() - stat.mtimeMs < ADS_DISK_TTL_MS) {
+        return rememberEdition(cacheKey, JSON.parse(await fsp.readFile(diskPath, 'utf8')));
+      }
+    } catch { /* no disk copy yet */ }
+    const edition = await buildEdition(communeCode, since);
+    rememberEdition(cacheKey, edition);
+    try {
+      await fsp.mkdir(ADDRESS_CACHE_DIR, { recursive: true });
+      await fsp.writeFile(diskPath, JSON.stringify(edition));
+    } catch { /* cache is an optimisation, never a requirement */ }
+    return edition;
+  }
+
+  /** The portals that ship their own coordinate, asked by radius, not cached
+   *  per commune: a distance query is cheap and its answer is already placed. */
+  async function loadPlacedPortals(communeCode, point, radiusM, since) {
+    const out = [];
+    const asked = [];
+    let certificatesUpstream = null;
+    let certificatesAsked = false;
+    for (const portal of portalsForCommune(communeCode)) {
+      if (!portal.geoColumn) continue;
+      const query = { ...point, radiusM, since };
+      // The tally of what the portal was told to leave out. Sequential rather
+      // than raced with the row query on purpose: this is the same host, and
+      // the four Sitadel families already taught this proxy what a burst of
+      // parallel requests to one open service buys (HTTP 429, silently, as an
+      // empty family). It answers a single row.
+      const countUrl = buildLocalAdsExcludedCountUrl(portal, query);
+      const rows = await fetchAddressSource(buildLocalAdsUrl(portal, query));
+      if (!Array.isArray(rows)) {
+        console.warn(`[ADS Proxy] ${portal.key} radius query unavailable`);
+        asked.push({ key: portal.key, label: portal.label, licence: portal.licence, ok: false, count: 0 });
+        continue;
+      }
+      if (countUrl) {
+        certificatesAsked = true;
+        const answer = await fetchAddressSource(countUrl);
+        const n = Number(answer?.results?.[0]?.n);
+        // A failed count stays null rather than becoming zero: "no certificats
+        // here" and "nobody answered" are different facts, and the layer
+        // reports them apart (`certificates` + `certificatesCounted`).
+        if (Number.isFinite(n)) certificatesUpstream = (certificatesUpstream ?? 0) + n;
+      }
+      let kept = 0;
+      for (const row of rows) {
+        const permit = normaliseLocalRow(portal, row);
+        // TRAP 5: a Paris row at the origin is a null spelled as a coordinate.
+        if (permit && permit.lon !== null) { out.push(permit); kept += 1; }
+      }
+      asked.push({ key: portal.key, label: portal.label, licence: portal.licence, ok: true, count: kept });
+    }
+    // Asked but unanswered stays UNDEFINED, which is the third state
+    // `certificateTally` reads: not asked (null) falls back to counting the
+    // rows that did arrive, asked-and-unanswered reports no number at all.
+    return {
+      permits: out,
+      portals: asked,
+      certificatesUpstream: certificatesAsked && certificatesUpstream === null
+        ? undefined
+        : certificatesUpstream,
+      certificatesAsked,
+    };
+  }
+
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/ads-fr', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      const requestedRadius = Number.parseInt(url.searchParams.get('radius') || '', 10);
+      const radiusM = Number.isFinite(requestedRadius)
+        ? Math.max(50, Math.min(ADS_MAX_RADIUS_M, requestedRadius))
+        : ADS_DEFAULT_RADIUS_M;
+      const requestedMonths = Number.parseInt(url.searchParams.get('months') || '', 10);
+      const months = Number.isFinite(requestedMonths)
+        ? Math.max(1, Math.min(ADS_MAX_MONTHS, requestedMonths))
+        : ADS_DEFAULT_MONTHS;
+      const since = adsSince(months);
+      return {
+        key: addressCacheKey('ads-fr', point, radiusM, since),
+        load: async () => {
+          // The BAN's arrondissement-level answer, folded to the commune
+          // Sitadel keys — see TRAP 1 in `adsFeed.js`. The unfolded code is
+          // kept because it is what gates the Paris portal.
+          const commune = await resolveCommuneCode(point.lon, point.lat);
+          if (!commune) return null;
+          const sitadelCommune = foldToSitadelCommune(commune.code);
+          if (!sitadelCommune) return null;
+          const [edition, placed] = await Promise.all([
+            loadEdition(sitadelCommune, since),
+            loadPlacedPortals(commune.code, point, radiusM, since),
+          ]);
+          // TRAP 6: fold BEFORE merging. One operation filed once can appear
+          // in three of the four Sitadel files, and three entities claiming
+          // one id is a render Cesium abandons half-finished.
+          const { permits: fromState, folded } = foldSitadelFamilies(
+            edition.permits.filter((permit) => permit.source === 'sitadel'),
+          );
+          const fromCounter = [
+            ...edition.permits.filter((permit) => permit.source !== 'sitadel'),
+            ...placed.permits,
+          ];
+          const { permits, merged } = mergeRegisters(fromState, fromCounter);
+          return projectAdsPermits({
+            permits,
+            origin: point,
+            radiusM,
+            context: {
+              commune: { code: sitadelCommune, name: commune.name },
+              since,
+              months,
+              // Counted by the portal, never fetched. See `loadPlacedPortals`.
+              certificatesUpstream: placed.certificatesUpstream,
+              certificatesAsked: placed.certificatesAsked,
+              families: edition.families,
+              // Multi-family dossiers collapsed into the one operation they are.
+              folded,
+              portals: [...(edition.portals || []), ...placed.portals],
+              merged,
+              // The shortfall, stated rather than hidden: rows the BAN could
+              // not place better than their commune are not drawn at all.
+              // COMMUNE-WIDE, not radius-wide — an unplaced row has no
+              // position, so there is no way to know whether it fell inside
+              // the circle. Named for what it counts so the card cannot read
+              // it as "58 permits missing from this block".
+              geocoded: edition.geocoded,
+              unplacedInCommune: edition.unplaced,
+            },
+          });
+        },
+      };
+    });
+  }
+  return {
+    name: 'ads-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
  * IGN isochrone — the area actually reachable, rather than a circle.
  * `GET /api/isochrone?lat=&lon=&profile=foot|car&seconds=900`
  * @returns {import('vite').Plugin}
@@ -20545,6 +20867,7 @@ export default defineConfig(({ mode }) => {
       georisquesProxy(),
       dvfProxy(),
       dpeProxy(),
+      adsFranceProxy(),
       isochroneProxy(),
       gpuProxy(),
       idfmProxy(),

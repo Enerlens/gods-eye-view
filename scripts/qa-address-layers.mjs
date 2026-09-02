@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Deterministic browser proof for the five French address layers.
+ * Deterministic browser proof for the six French address layers.
  *
- * `georisques`, `dvf-sales`, `dpe-fr`, `urbanisme-gpu` and `idfm-network` are
- * the only layers in the app that scan around the point the camera is LOOKING
- * AT rather than over the viewport, and four of them draw nothing at all above
- * 12 km. Both behaviours are invisible to a unit test and both fail silently:
- * a scan centred on the wrong block, or a dormant layer, looks exactly like a
- * layer with no data.
+ * `georisques`, `dvf-sales`, `dpe-fr`, `urbanisme-gpu`, `idfm-network` and
+ * `ads-fr` are the only layers in the app that scan around the point the
+ * camera is LOOKING AT rather than over the viewport, and they draw nothing at
+ * all above 12 km. Both behaviours are invisible to a unit test and both fail
+ * silently: a scan centred on the wrong block, or a dormant layer, looks
+ * exactly like a layer with no data.
  *
- * So this harness proves the five things only a real Cesium scene can:
+ * So this harness proves the things only a real Cesium scene can:
  *
  *   i.   each layer draws entities over the reference address (avenue de
  *        France, Paris 13e) — the address the mission storyboard is built on
@@ -38,6 +38,12 @@
  *        read. Only a real scene can prove this: it needs a pick to say the
  *        pixel belongs to nobody, a geometric resolve of the coordinate, and a
  *        point-in-polygon against what is actually drawn
+ *   ix.  over BORDEAUX, the one address in France where a permit has a
+ *        published SHAPE, that the ground is drawn once per PLOT rather than
+ *        once per dossier standing on it, and that clicking the ground opens
+ *        the plot's own card. A duplicate wash is not a visible defect — it is
+ *        a plot painted darker than its neighbours for having a thicker file —
+ *        so nothing but a count catches it
  *
  * Screenshots are written under the gitignored `qa-shots/address-layers/`.
  *
@@ -80,12 +86,21 @@ const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
  */
 const ADDRESS = { lon: 2.3760, lat: 48.8300 };
 const CLOSE_VIEW = { ...ADDRESS, height: 900 };
+/**
+ * Place Pey-Berland, Bordeaux. The one address in France where this layer can
+ * be asked to draw GROUND: Bordeaux Métropole is the only ADS portal here that
+ * publishes the emprise of the parcels a dossier names, and a 400 m circle on
+ * this square held 469 non-certificat dossiers over 300 distinct plots when
+ * this was measured (2026-09-02).
+ */
+const BORDEAUX_ADDRESS = { lon: -0.5792, lat: 44.8378 };
+const BORDEAUX_VIEW = { ...BORDEAUX_ADDRESS, height: 900 };
 /** A second Paris address, 5.7 km north — far enough to be a different scan. */
 const SECOND_ADDRESS = { lon: 2.3553, lat: 48.8809 };
 const SECOND_VIEW = { ...SECOND_ADDRESS, height: 900 };
 const REGION_VIEW = { ...ADDRESS, height: 60_000 };
 
-const LAYERS = ['georisques', 'dvf-sales', 'dpe-fr', 'urbanisme-gpu', 'idfm-network'];
+const LAYERS = ['georisques', 'dvf-sales', 'dpe-fr', 'urbanisme-gpu', 'idfm-network', 'ads-fr'];
 
 /** Metres between two coordinates. */
 function metresApart(a, b) {
@@ -425,6 +440,34 @@ const note = (ok, message) => {
       'IDFM reports its own live-vehicle absence rather than looking broken');
     note(Object.keys(idfm.byMode || {}).length > 0, `IDFM modes in view: ${JSON.stringify(idfm.byMode)}`);
 
+    // The ADS layer is the only one here that merges TWO registers, and the
+    // two halves fail in opposite ways: the national one can go quietly empty
+    // when DiDo rate-limits, the local one when the commune has no portal. So
+    // the check is not "did it draw" — it is "did BOTH halves arrive", and in
+    // Paris the answer must include dossiers the national register cannot hold.
+    const ads = scanned['ads-fr'].stats || {};
+    note(Number.isFinite(ads.permitsFound) && ads.permitsFound > 0,
+      `ADS found ${ads.permitsFound} permits of ${ads.permitsInRadius} in radius`);
+    note(ads.permitsInRadius >= ads.permitsFound,
+      `ADS reports truncated=${ads.truncated} (${ads.permitsFound}/${ads.permitsInRadius})`);
+    note((ads.portals || []).includes('paris'),
+      `ADS reached the Paris ADS portal (portals: ${(ads.portals || []).join(', ') || 'none'})`);
+    // Sitadel structurally cannot publish these. A zero here at this address
+    // means the local half is missing, not that Paris has stopped building.
+    note(ads.underInstruction > 0,
+      `ADS: ${ads.underInstruction} dossiers still under instruction — the half Sitadel cannot publish`);
+    // …and the merge is what proves the national half arrived too, since a
+    // merged dossier by definition carries a row from each register.
+    note(ads.merged > 0 || ads.housing > 0,
+      `ADS merged ${ads.merged} dossiers across both registers, ${ads.housing} dwellings authorised`);
+    note(Number.isFinite(ads.unplacedInCommune),
+      `ADS states its geocoding shortfall: ${ads.unplacedInCommune} rows unplaced commune-wide`);
+    // PARIS PUBLISHES A POINT AND NOTHING ELSE. Zero outlines here is the
+    // register's property, not a failure, and this check exists so that a
+    // later "fix" for the missing washes has to argue with a measurement.
+    note(ads.emprises === 0 && ads.withEmprise === 0,
+      `ADS draws no emprise in Paris (${ads.emprises} plots) — that portal publishes points`);
+
     // The reported symptom, measured: "the dots move when I nudge the map".
     // `Cartesian3.fromDegrees(lon, lat)` puts a marker on the ELLIPSOID, and
     // the globe draws avenue de France at 79 to 83 m — so the marker was
@@ -551,6 +594,22 @@ const note = (ok, message) => {
     // needs no layout round trip, unlike `page.click`.
     const clicked = {};
     for (const id of LAYERS) {
+      // ISOLATE THE LAYER UNDER TEST. Six point layers over one block means a
+      // marker's pixel is routinely owned by another register's marker drawn
+      // on top of it — every one of these layers disables depth testing, so
+      // z-order is draw order and it changes with which layer answered first.
+      // Clicking such a pixel tests Cesium's stacking, not the handler, and it
+      // reported a working layer as unclickable. Hiding the siblings for the
+      // duration makes the probe deterministic; which of two markers sharing a
+      // pixel wins is explicitly not a contract (see the note below).
+      await page.evaluate((layerId, all) => {
+        for (const other of all) {
+          const source = window.__godsEyeView.viewer.dataSources.getByName(other)?.[0];
+          if (source) source.show = other === layerId;
+        }
+        window.__godsEyeView.viewer.scene.requestRender?.();
+      }, id, LAYERS);
+      await pump(page, 4, 80);
       const target = await page.evaluate((layerId) => {
         const gev = window.__godsEyeView;
         const source = gev.viewer.dataSources.getByName(layerId)?.[0];
@@ -566,9 +625,25 @@ const note = (ok, message) => {
           if (screen.x > canvas.clientWidth - 4 || screen.y > canvas.clientHeight - 4) return null;
           return { x: rect.left + screen.x, y: rect.top + screen.y };
         };
+        // Verify the candidate owns its own pixel before aiming at it. With
+        // the sibling layers hidden this is usually true, but the basemap,
+        // the 3D tiles and this layer's OWN overlapping markers can still take
+        // the pick — and a click that lands on none of them would be reported
+        // as a broken handler rather than as a bad guess by the harness.
+        const ownsPixel = (screenX, screenY) => {
+          const picked = scene.pick({ x: screenX, y: screenY });
+          const pickedId = typeof picked?.id === 'string' ? picked.id : picked?.id?.id;
+          return typeof pickedId === 'string'
+            && Boolean(source?.entities?.getById?.(pickedId));
+        };
         for (const entity of source?.entities?.values || []) {
-          const point = onScreen(entity.position?.getValue?.(time));
-          if (point) return { entityId: entity.id, ...point };
+          const position = entity.position?.getValue?.(time);
+          const point = onScreen(position);
+          if (point) {
+            const screen = scene.cartesianToCanvasCoordinates(position);
+            if (ownsPixel(screen.x, screen.y)) return { entityId: entity.id, ...point };
+            continue;
+          }
           // A zoning ring can be kilometres across while the camera sees a
           // block, so its MIDPOINT is usually off-canvas even though the line
           // crosses the view. Scan the vertices for one that is actually
@@ -591,6 +666,16 @@ const note = (ok, message) => {
       );
       clicked[id] = { attempted: true, dispatched: true, entityId: target.entityId, after };
     }
+    // Every layer visible again, so the overlay-paint check below sees the app
+    // in the state an operator would have it in.
+    await page.evaluate((all) => {
+      for (const other of all) {
+        const source = window.__godsEyeView.viewer.dataSources.getByName(other)?.[0];
+        if (source) source.show = true;
+      }
+      window.__godsEyeView.viewer.scene.requestRender?.();
+    }, LAYERS);
+    await pump(page, 4, 80);
     for (const id of LAYERS) {
       const result = clicked[id];
       note(Boolean(result?.attempted), `${id}: found an on-screen marker to click`);
@@ -601,7 +686,7 @@ const note = (ok, message) => {
       // must hold is that a click on a marker selects a marker.
       const ENTITY_PREFIX = {
         georisques: 'georisques:', 'dvf-sales': 'dvf:', 'dpe-fr': 'dpe:',
-        'urbanisme-gpu': 'gpu:', 'idfm-network': 'idfm:',
+        'urbanisme-gpu': 'gpu:', 'idfm-network': 'idfm:', 'ads-fr': 'ads:',
       };
       const prefix = ENTITY_PREFIX[id];
       note(typeof result.after === 'string' && result.after.startsWith(prefix),
@@ -680,6 +765,137 @@ const note = (ok, message) => {
         `the ground card reached the screen (${JSON.stringify(groundPainted)})`);
       await shoot(page, 'address-ground-card.png');
     }
+
+    // ── Bordeaux: the only ground in this layer ────────────────────────────
+    // One French portal publishes the emprise of the parcels a dossier names,
+    // and it repeats that outline once per file standing on the plot. Both
+    // halves of that are invisible to a unit test: whether the polygons reach
+    // a real Cesium scene, and whether one plot carrying nine dossiers is one
+    // wash or nine stacked ones — nine translucent copies read as the busiest
+    // ground on the block when what they are is a thick file.
+    console.log('\n— Bordeaux: the emprise, drawn once per plot —');
+    await flyTo(page, BORDEAUX_VIEW);
+    let bdx = {};
+    for (let i = 0; i < 12; i += 1) {
+      await refresh(page, ['ads-fr']);
+      bdx = (await readLayers(page, ['ads-fr']))['ads-fr'];
+      if ((bdx.stats?.emprises ?? 0) > 0) break;
+      await sleep(1500);
+    }
+    await shoot(page, 'ads-bordeaux-emprises.png');
+    const stats = bdx.stats || {};
+    note((stats.emprises ?? 0) > 0,
+      `ADS outlined ${stats.emprises} plots in Bordeaux under ${stats.withEmprise} dossiers`);
+    // The dedupe, measured in the browser: more dossiers carry an outline than
+    // there are outlines. Equal counts mean the geometry shipped once per row.
+    note(stats.withEmprise > stats.emprises,
+      `ADS collapsed ${stats.withEmprise} dossiers onto ${stats.emprises} plots`);
+    note((stats.portals || []).includes('bordeaux'),
+      `ADS reached the Bordeaux portal (portals: ${(stats.portals || []).join(', ') || 'none'})`);
+    // The certificats are left UPSTREAM now — the portal counts them instead
+    // of sending their outlines. A null here means the tally was asked for and
+    // did not come back, which is not the same as a block with none.
+    note(stats.certificatesCounted === true && stats.certificates > 0,
+      `ADS counted ${stats.certificates} certificats without fetching their outlines`);
+
+    const drawnPlots = await page.evaluate(() => {
+      const source = window.__godsEyeView.viewer.dataSources.getByName('ads-fr')?.[0];
+      const time = window.__godsEyeView.viewer.clock.currentTime;
+      // Keyed by PLOT, not by entity: an emprise made of two detached parcels
+      // draws two washes and must still open exactly one card.
+      const plots = new Map();
+      let strokes = 0;
+      for (const entity of source?.entities?.values || []) {
+        const id = String(entity.id);
+        if (!id.startsWith('ads-emprise:')) continue;
+        if (entity.polyline) { strokes += 1; continue; }
+        if (!entity.polygon) continue;
+        const plot = id.split(':')[1];
+        const seen = plots.get(plot) || { fills: 0, anchors: 0 };
+        seen.fills += 1;
+        const hierarchy = entity.polygon.hierarchy?.getValue?.(time);
+        if (entity.position?.getValue?.(time) && hierarchy?.positions?.length) seen.anchors += 1;
+        plots.set(plot, seen);
+      }
+      const counts = [...plots.values()];
+      return {
+        plots: plots.size,
+        fills: counts.reduce((sum, plot) => sum + plot.fills, 0),
+        strokes,
+        anchored: counts.filter((plot) => plot.anchors === 1).length,
+        multiAnchor: counts.filter((plot) => plot.anchors !== 1).length,
+      };
+    });
+    note(drawnPlots.plots === stats.emprises,
+      `ADS drew ${drawnPlots.plots} plots as ${drawnPlots.fills} washes and ${drawnPlots.strokes} strokes`);
+    // A polygon entity carries no position of its own, and `cardFromEntity`
+    // needs one — without it the plots draw and not one of them is clickable.
+    // Exactly one per PLOT: two anchors on a two-part emprise would put the
+    // same plot in the click index twice, under two ids.
+    note(drawnPlots.anchored === drawnPlots.plots && drawnPlots.multiAnchor === 0,
+      `ADS gave each of ${drawnPlots.anchored} plots exactly one card anchor`);
+
+    // Click the GROUND, not the crane on it. Aim at the anchor, which is by
+    // construction strictly inside the widest part of the plot.
+    await page.evaluate(() => {
+      for (const other of ['georisques', 'dvf-sales', 'dpe-fr', 'urbanisme-gpu', 'idfm-network']) {
+        const source = window.__godsEyeView.viewer.dataSources.getByName(other)?.[0];
+        if (source) source.show = false;
+      }
+      // Hide this layer's OWN markers too: a crane sits on its plot and would
+      // take the pick, which would test Cesium's stacking and not the handler.
+      const ads = window.__godsEyeView.viewer.dataSources.getByName('ads-fr')?.[0];
+      for (const entity of ads?.entities?.values || []) {
+        if (String(entity.id).startsWith('ads:')) entity.show = false;
+      }
+      window.__godsEyeView.viewer.scene.requestRender?.();
+    });
+    await pump(page, 6, 80);
+    const plotTarget = await page.evaluate(() => {
+      const gev = window.__godsEyeView;
+      const scene = gev.viewer.scene;
+      const source = gev.viewer.dataSources.getByName('ads-fr')?.[0];
+      const time = gev.viewer.clock.currentTime;
+      const canvas = scene.canvas;
+      const rect = canvas.getBoundingClientRect();
+      for (const entity of source?.entities?.values || []) {
+        if (!entity.polygon || !String(entity.id).startsWith('ads-emprise:')) continue;
+        const position = entity.position?.getValue?.(time);
+        if (!position) continue;
+        const screen = scene.cartesianToCanvasCoordinates(position);
+        if (!screen || screen.x < 4 || screen.y < 4) continue;
+        if (screen.x > canvas.clientWidth - 4 || screen.y > canvas.clientHeight - 4) continue;
+        const picked = scene.pick({ x: screen.x, y: screen.y });
+        const pickedId = typeof picked?.id === 'string' ? picked.id : picked?.id?.id;
+        if (pickedId !== entity.id) continue;
+        return { entityId: entity.id, x: rect.left + screen.x, y: rect.top + screen.y };
+      }
+      return null;
+    });
+    note(Boolean(plotTarget), `ADS found a plot owning its own pixel (${plotTarget?.entityId ?? 'none'})`);
+    if (plotTarget) {
+      await page.mouse.click(plotTarget.x, plotTarget.y);
+      await sleep(350);
+      const selected = await page.evaluate(
+        () => window.__godsEyeView.dataManager.layers.get('ads-fr')?.module?.getStats?.()?.selectedId ?? null,
+      );
+      note(typeof selected === 'string' && selected.startsWith('ads-emprise:'),
+        `ADS click on the ground selected ${selected ?? 'nothing'}`);
+      const plotCards = await page.evaluate(
+        () => window.__gevWorldOverlay?.getDiagnostics?.()?.paintedBySource || {},
+      );
+      note(Object.keys(plotCards).length > 0,
+        `ADS painted a plot card (${JSON.stringify(plotCards)})`);
+    }
+    await page.evaluate(() => {
+      const ads = window.__godsEyeView.viewer.dataSources.getByName('ads-fr')?.[0];
+      for (const entity of ads?.entities?.values || []) entity.show = true;
+      for (const other of ['georisques', 'dvf-sales', 'dpe-fr', 'urbanisme-gpu', 'idfm-network']) {
+        const source = window.__godsEyeView.viewer.dataSources.getByName(other)?.[0];
+        if (source) source.show = true;
+      }
+    });
+    await flyTo(page, CLOSE_VIEW);
 
     console.log('\n— dormancy above the ceiling —');
     await flyTo(page, REGION_VIEW);

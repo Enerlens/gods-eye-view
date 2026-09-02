@@ -3,7 +3,7 @@
  *
  * WHICH REGISTER a marker comes from, drawn as a silhouette.
  *
- * The five French address layers all answer a question about the SAME
+ * The six French address layers all answer a question about the SAME
  * building. Turn on Ventes immobilières and Performance énergétique together
  * and, until this module existed, you got two clouds of coloured discs over
  * the same roofs with nothing to tell them apart — the reported symptom, in
@@ -23,6 +23,8 @@
  *   - **A warning triangle** for Géorisques.
  *   - **A plan sheet** for the Géoportail de l'urbanisme: a zoning rule is a
  *     drawing about ground, not a place.
+ *   - **A tower crane** for the autorisations d'urbanisme. The sheet is the
+ *     rule; the crane is what turns up when someone is allowed to act on it.
  *   - **The mode's own pictogram** for IDFM stops, borrowed from
  *     `transitVehicleIcons.js` — see {@link idfmStopGlyphKind}.
  *
@@ -167,6 +169,27 @@ const BODIES = Object.freeze({
   plan: {
     strokes: 'M16,20 L80,20 L80,76 L16,76 Z M16,45 L80,45 M47,45 L47,76',
     fills: '',
+  },
+
+  // ── ADS: a tower crane. The urbanism layer next door already owns the sheet
+  //    (`plan`), and a permit is not a rule about ground — it is the thing
+  //    that arrives on it.
+  //
+  //    STRONGLY ASYMMETRIC, and that is the whole design. The first version
+  //    centred the mast under a full-width jib and added a base bar; measured
+  //    in the running app at 17 px it read as a serif **T** — the base
+  //    vanished into the mast, and a symmetrical cross-bar is a letter, not a
+  //    machine. So the jib now overhangs the mast by 8 units on one side and
+  //    60 on the other, the mast carries on ABOVE it as a cathead, and the
+  //    hoist drops a third of the glyph's height. What survives at marker size
+  //    is a Γ with something hanging off it, which nothing else in this pack
+  //    or in the transit pack looks like.
+  crane: {
+    strokes: 'M26,88 L26,16 M18,24 L86,24 M68,24 L68,56',
+    // The hook block as a fill: a stroked stub of this length closes up into
+    // the hoist line at raster size, and the weight on the end of the cable is
+    // what stops the drop reading as a stray tick.
+    fills: '<rect x="61" y="56" width="15" height="10" rx="2"/>',
   },
 });
 
