@@ -24,10 +24,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 
-import { projectBruit } from './bruitFeed.js';
+import { BRUIT_AREA_SCALE_DENOMINATOR, projectBruit, projectBruitArea } from './bruitFeed.js';
 import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
 import bruitFranceLayer, {
   ADDRESS_SCAN_CEILING_M,
+  BRUIT_OVERVIEW_CEILING_M,
   BRUIT_FILL_ALPHA,
   BRUIT_ARRETE_UNDER_MARKER_KM,
   BRUIT_FR_ENDPOINT,
@@ -38,8 +39,16 @@ import bruitFranceLayer, {
   BRUIT_WINNER_RULES,
   PEB_ZONE_COLORS,
   PGS_ZONE_COLORS,
+  bruitAerodromeDescription,
+  bruitAerodromeTitle,
+  bruitAreaEmphasis,
+  bruitAreaRadiusKm,
+  bruitAreaSummary,
+  BRUIT_CARD_MAX_LINES,
   bruitBandDescription,
   bruitBandLabel,
+  bruitCardDetails,
+  bruitGroundCard,
   bruitDayText,
   bruitDrawOrder,
   bruitEmphasis,
@@ -49,6 +58,7 @@ import bruitFranceLayer, {
   bruitMarkerTitle,
   bruitNearestSentence,
   bruitScanDescription,
+  bruitScanParams,
   bruitStatus,
   bruitZoneColorCss,
   bruitZoneRank,
@@ -588,9 +598,13 @@ test('the zoom prompt is GUIDANCE, and never an error', () => {
   assert.equal(bruitStatus({ dormant: false, lastUpdate: null }), 'idle');
   assert.equal(bruitStatus({ dormant: false, lastUpdate: 1, available: { peb: false } }), 'unavailable');
   assert.equal(bruitStatus(null), 'idle');
+  // The ceiling the prompt names is the OVERVIEW one: below it the layer is
+  // never dormant, it has switched question. Naming 12 km here would tell a
+  // reader at 40 km to descend while their answer is already on screen.
   const dormant = norm(bruitGuidanceLabel({ dormant: true }));
-  assert.ok(dormant.includes('12 km'), dormant);
+  assert.ok(dormant.includes('250 km'), dormant);
   assert.equal(ADDRESS_SCAN_CEILING_M, 12_000);
+  assert.equal(BRUIT_OVERVIEW_CEILING_M, 250_000);
   assert.ok(norm(bruitGuidanceLabel({ lastUpdate: 1, zonesHere: 0, nearestKm: 39.4 }))
     .includes('le plus proche est à 39,4 km'));
   assert.equal(bruitGuidanceLabel({ lastUpdate: 1, zonesHere: 1 }), null);
@@ -636,4 +650,258 @@ test('the marker glyph is tint-safe line art with no hue of its own', () => {
   assert.equal(/#(?!ffffff)[0-9a-f]{6}/i.test(svg), false, 'no colour of its own');
   assert.equal(bruitMarkerGlyph(), uri, 'cached, not rebuilt per frame');
   assert.notEqual(bruitMarkerGlyph(44), uri);
+});
+
+// ── THE OVERVIEW, ON SCREEN ─────────────────────────────────────────────────
+// The defect this half of the layer exists to fix: a PEB's bands are nested
+// rings, a point probe returns the one the pixel is in, and the ceiling above
+// which the layer cleared itself was 12 km — under a fifth of the width of the
+// widest plan in France. The zone could not be on screen whole at any altitude
+// the layer would answer at. Everything below pins that the wider answer does
+// not smuggle the point-mode vocabulary along with it: no winner, no
+// runner-up, no dashes and no sentence about a marker that is not there.
+
+const AREA = {
+  ...projectBruitArea({
+    peb: [read('bruit-peb-area-cdg-sample.json'), read('bruit-peb-area-lebourget-sample.json')],
+    pgs: [read('bruit-pgs-area-cdg-sample.json')],
+    probed: [
+      { oaci: 'LFPG', name: 'PARIS CHARLES DE GAULLE', lat: 49.0097, lon: 2.5479 },
+      { oaci: 'LFPB', name: 'PARIS LE BOURGET', lat: 48.9694, lon: 2.4414 },
+    ],
+    centre: { lat: 48.99, lon: 2.5 },
+    radiusKm: 50,
+    candidates: 9,
+  }),
+  dropped: 0,
+  register: { count: 224, total: 224, short: false, truncated: false },
+};
+
+test('the mode is chosen by altitude, and the ladder it asks on is coarse on purpose', () => {
+  // Below the point ceiling: no `km`, so the proxy answers about the coordinate
+  // and everything the rest of this file tests is unchanged.
+  assert.deepEqual(bruitScanParams({ altitudeM: 300 }), {});
+  assert.deepEqual(bruitScanParams({ altitudeM: ADDRESS_SCAN_CEILING_M }), {});
+  assert.deepEqual(bruitScanParams({}), {}, 'no altitude is not an overview');
+  // Above it: the radius rides in the query, which is what makes the shared
+  // shell rescan as the camera crosses the boundary — it compares the QUERY,
+  // not just the centre.
+  assert.deepEqual(bruitScanParams({ altitudeM: 12_001 }), { km: '25' });
+  assert.deepEqual(bruitScanParams({ altitudeM: 100_000 }), { km: '75' });
+  assert.deepEqual(bruitScanParams({ altitudeM: BRUIT_OVERVIEW_CEILING_M }), { km: '175' });
+  // A 25 km ladder, because the radius is part of the proxy's cache key: a
+  // continuously varying one mints a fresh entry on every turn of the wheel.
+  assert.equal(bruitAreaRadiusKm(40_000), 50);
+  assert.equal(bruitAreaRadiusKm(41_000), 50);
+  assert.equal(bruitAreaRadiusKm(0), 25, 'the floor is one rung, never zero');
+  const ladder = [10, 50, 100, 150, 200, 250].map((km) => bruitAreaRadiusKm(km * 1000));
+  assert.deepEqual([...new Set(ladder.map((km) => km % 25))], [0]);
+});
+
+test('an overview draws every band of every aerodrome, and not one of them dashed', () => {
+  const { dataSource } = _drawBruitForTest(AREA, null);
+  const values = dataSource.entities.values;
+  const lines = values.filter((entity) => entity.polyline);
+  assert.ok(lines.length > 0);
+  // THE DASH IS THE POINT-MODE CHANNEL for "the service found this near your
+  // pixel, you are not standing in it". There is no pixel, so a dashed ring
+  // would be an answer to a question nobody asked.
+  for (const line of lines) {
+    assert.ok(line.polyline.material instanceof Cesium.ColorMaterialProperty, 'never dashed');
+    assert.equal(line.polyline.width.getValue(now()), BRUIT_OUTLINE_WIDTH_PX.inside);
+  }
+  // Four bands each at two aerodromes, plus Roissy's three PGS zones.
+  const fills = values.filter((entity) => entity.polygon);
+  assert.ok(fills.length >= 11, `${fills.length} washes drawn`);
+  // One marker per aerodrome, named by the register and carrying the whole
+  // plan on its card — the overview's equivalent of the scan point.
+  const markers = values.filter((entity) => entity.billboard);
+  assert.deepEqual(markers.map((entity) => entity.name).sort(), [
+    'LFPB — PARIS LE BOURGET', 'LFPG — PARIS CHARLES DE GAULLE',
+  ]);
+  assert.equal(values.some((entity) => entity.id === 'bruit:scan-point'), false,
+    'no scan point: there is no point');
+  // The most exposed band of each aerodrome carries the strongest wash — the
+  // one distinction the document itself makes, and not a verdict about ground.
+  const cdg = AREA.aerodromes.find((entry) => entry.oaci === 'LFPG');
+  assert.equal(bruitAreaEmphasis(cdg.top, cdg), 'winner');
+  assert.equal(bruitAreaEmphasis(cdg.bands[3], cdg), 'inside');
+  assert.deepEqual([...new Set(AREA.peb.map((band) => bruitEmphasis(band, null)))], ['nearby'],
+    'point-mode emphasis would call every overview band context — hence the second function');
+});
+
+test('nothing in an overview card mentions a marker, and the scale it names is its own', () => {
+  const cdg = AREA.aerodromes.find((entry) => entry.oaci === 'LFPG');
+  const band = norm(bruitBandDescription(cdg.bands[1], null, { area: true }));
+  assert.equal(/le repère/.test(band), false, band);
+  assert.equal(/retenue/.test(band), false);
+  // The point-mode call on the very same band still says it, because there the
+  // sentence is true.
+  assert.ok(/le repère n’est pas dedans/.test(norm(bruitBandDescription(cdg.bands[1]))));
+  const card = norm(bruitAerodromeDescription(cdg, AREA));
+  assert.ok(card.includes('4 zones publiées'), card);
+  assert.ok(card.includes('zone A'), card);
+  assert.ok(card.split(' · ').length <= 6, 'the shell paints six lines and no more');
+  assert.ok(card.includes('Lden'), card);
+  // A HUNDRED TIMES COARSER THAN A POINT SCAN, and the card prints the number
+  // the payload carries rather than the module constant — the two modes must
+  // never be able to claim each other's precision.
+  assert.ok(card.includes('1:3 975 696'), card);
+  assert.equal(card.includes('1:39 757'), false, 'never the point probe’s denominator');
+  assert.ok(card.includes('avions seulement'), 'the road-and-rail caveat is on every card');
+  // And the sentence that sends a reader who needs a verdict back down.
+  assert.ok(card.includes('descendez sous 12 km'), card);
+  assert.equal(bruitAerodromeTitle({ oaci: null, name: null }), 'Aérodrome sans code');
+});
+
+test('an overview that is capped, silent or empty says which, on the row and on a card', () => {
+  const capped = { ...AREA, dropped: 3 };
+  assert.ok(norm(bruitAreaSummary(capped)).includes('3 aérodromes de plus dans le cadre'));
+  // `lastUpdate` comes from the shell, which merges its own state over
+  // `summarizeBruit`'s; without it the row is still `idle` and says nothing.
+  assert.ok(norm(bruitGuidanceLabel({ ...summarizeBruit(capped), lastUpdate: 1 }))
+    .includes('3 de plus dans le cadre'));
+  // Silent is not empty: four aerodromes asked and none answering leaves holes
+  // that look exactly like ground with no plan on it.
+  const degraded = { ...AREA, missing: 4, available: { peb: false, pgs: false } };
+  assert.equal(bruitStatus({ ...summarizeBruit(degraded), lastUpdate: 1 }), 'unavailable');
+  assert.ok(norm(bruitGuidanceLabel({ ...summarizeBruit(degraded), lastUpdate: 1 }))
+    .includes('4 aérodromes — la vue est incomplète'));
+  // Empty, with nothing to click: the nearest-aerodrome sentence still needs
+  // somewhere to live, so the centre of the view carries it.
+  const empty = {
+    ...projectBruitArea({
+      peb: [], pgs: [], probed: [], centre: { lat: 47, lon: 3 }, radiusKm: 100,
+      nearest: {
+        oaci: 'LFLN', name: 'SAINT-YAN', lat: 46.41, lon: 4.01,
+        arreteDate: '1998-06-15', index: 'psophique', distanceKm: 84.2,
+      },
+    }),
+    dropped: 0,
+  };
+  const { dataSource, drawn } = _drawBruitForTest(empty, null);
+  assert.equal(drawn, 1);
+  const [marker] = dataSource.entities.values;
+  assert.equal(marker.id, 'bruit:area-centre');
+  assert.ok(norm(marker.description.getValue(now())).includes('à 84,2 km'));
+  assert.equal(bruitStatus({ ...summarizeBruit(empty), lastUpdate: 1 }), 'empty');
+  assert.ok(norm(bruitGuidanceLabel({ ...summarizeBruit(empty), lastUpdate: 1 }))
+    .includes('le plus proche est à 84,2 km'));
+});
+
+test('the overview legend explains colours, and never dashes that are not drawn', () => {
+  const legend = bruitLegend(AREA);
+  const labels = legend.map((row) => row.label);
+  assert.deepEqual(labels, [
+    'PEB zone A', 'PEB zone B', 'PEB zone C', 'PEB zone D',
+    'PGS zone 1', 'PGS zone 2', 'PGS zone 3',
+  ]);
+  // `atPoint` is false on every overview band. The point-mode blurb would read
+  // that as "returned beside the marker" and explain dashes nobody can see.
+  for (const row of legend) {
+    assert.equal(/en tirets/.test(row.blurb), false, row.blurb);
+    assert.ok(row.blurb.length > 0);
+  }
+  assert.equal(legend[0].count, 2, 'two aerodromes publish a zone A here');
+  // The point-mode legend still explains its dashes, on the same function.
+  assert.ok(bruitLegend(LFMD).some((row) => /en tirets/.test(row.blurb)));
+});
+
+test('getStats in an overview counts aerodromes, not bands under a marker', () => {
+  const stats = summarizeBruit(AREA);
+  assert.equal(stats.area, true);
+  assert.equal(stats.aerodromes, 2);
+  assert.equal(stats.zonesDrawn, 11, 'eight PEB bands and three PGS zones');
+  // `zonesHere` is the count of bands the marker is inside, and there is no
+  // marker — so it is zero, and `bruitStatus` must not read it here or every
+  // dezoomed view would report itself as empty with a dozen plans on screen.
+  assert.equal(stats.zonesHere, 0);
+  assert.equal(bruitStatus({ ...stats, lastUpdate: 1 }), 'ok');
+  assert.equal(stats.scaleDenominator, BRUIT_AREA_SCALE_DENOMINATOR);
+  assert.equal(stats.radiusKm, 50);
+});
+
+test('the INSIDE of a band answers a click, and an enclave answers that it does not', () => {
+  // THE DEFECT: the wash is a ground-classification polygon, a polygon entity
+  // carries no `position`, and the shell builds its click index from positions
+  // — so every pixel inside a band was inert while its outline was clickable.
+  // Measured in the running app at 60 km over Roissy, a pick on the aerodrome
+  // marker's own pixel returns `bruit:peb:566:fill:0` and the marker is only
+  // SECOND in the drill list.
+  const inside = bruitGroundCard({ ...LFPZ_POINT, payload: LFPZ });
+  assert.ok(inside, 'a point inside a drawn band answers');
+  // The strictest band containing the click leads, on the same ranking the
+  // marker uses — at Saint-Cyr the point is in both A and B.
+  assert.ok(inside.title.startsWith('Zone A'), inside.title);
+  assert.ok(inside.details.some((line) => /aussi sur ce point/.test(line)));
+  assert.ok(inside.details.some((line) => /avions seulement/.test(line)));
+
+  // A click on ground no band covers declines, which the shell reads as "not
+  // mine" and turns into a dismissal — never a card saying nothing.
+  assert.equal(bruitGroundCard({ lon: 0, lat: 0, payload: LFPZ }), null);
+  assert.equal(bruitGroundCard({ lon: 2, lat: 48, payload: null }), null);
+  assert.equal(bruitGroundCard({ lon: Number.NaN, lat: 48, payload: LFPZ }), null);
+
+  // THE ANSWER IS RE-DERIVED, NOT LOOKED UP. `atPoint` describes the coordinate
+  // the SCAN was aimed at; a click lands somewhere else. At Cannes the scan
+  // point is in zone B and zone C was returned beside it — a click inside that
+  // zone C must answer zone C, not "the scan's winner".
+  const cannesC = LFMD.peb.find((band) => band.zone === 'C' && band.atPoint === false);
+  assert.ok(cannesC, 'the fixture has a band the scan point is NOT in');
+  const anchor = cannesC.anchor;
+  const onC = bruitGroundCard({ lon: anchor.lon, lat: anchor.lat, payload: LFMD });
+  assert.ok(onC.title.startsWith('Zone C'), onC.title);
+});
+
+test('an overview ground card says it was read off a generalised outline', () => {
+  const cdg = AREA.aerodromes.find((entry) => entry.oaci === 'LFPG');
+  const anchor = cdg.bands.find((band) => band.zone === 'C').anchor;
+  const card = bruitGroundCard({ lon: anchor.lon, lat: anchor.lat, payload: AREA });
+  assert.ok(card.title.includes('LFPG'), card.title);
+  // A hundred metres of boundary is well under one vertex at 1:3,975,696, so
+  // near an edge this answer is a guess — and it says so rather than letting a
+  // coloured pixel pass for a legal limit.
+  assert.ok(card.details.some((line) => /descendez sous 12 km/.test(line)), JSON.stringify(card.details));
+  assert.ok(card.details.some((line) => line.includes('1:3 975 696'.replace(/ /g, ' '))
+    || /1:3\s?975\s?696/.test(line)));
+  // The point-mode card says no such thing: its outline is a hundred times
+  // finer and the sentence would be noise.
+  const point = bruitGroundCard({ ...LFPZ_POINT, payload: LFPZ });
+  assert.equal(point.details.some((line) => /descendez sous 12 km/.test(line)), false);
+});
+
+test('a card is six lines, so the caveat is placed rather than pushed', () => {
+  // `createAddressScanOverlayEntry` slices details to six. A card built by
+  // pushing every true sentence does not say more — it drops its tail, and the
+  // tail of a description like this one is its caveats. Measured on the
+  // aerodrome card at Roissy before this was fixed, the two lines that fell off
+  // the bottom were "avions seulement" and the generalisation scale.
+  assert.equal(BRUIT_CARD_MAX_LINES, 6);
+  const overflowing = bruitCardDetails(
+    ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'], { area: true, scaleDenominator: 3_975_696 },
+  );
+  assert.equal(overflowing.length, BRUIT_CARD_MAX_LINES);
+  assert.deepEqual(overflowing.slice(0, 5), ['a', 'b', 'c', 'd', 'e']);
+  assert.ok(norm(overflowing[5]).includes('avions seulement'));
+  assert.ok(norm(overflowing[5]).includes('1:3 975 696'));
+  // Nulls cost nothing, and a short card is still capped by its own content.
+  assert.deepEqual(bruitCardDetails([null, 'a', undefined, ''], { scaleDenominator: 39_757 }).length, 2);
+
+  // Both cards this layer added stay inside the budget on real data, and both
+  // keep the caveat.
+  const cdg = AREA.aerodromes.find((entry) => entry.oaci === 'LFPG');
+  // Split the way the SHELL splits it — `cardFromEntity` cuts a description on
+  // ' · ' — so the count here is the count of lines that reach the screen. This
+  // is why the band list inside line one is joined with a semicolon: joined on
+  // ' · ' it would arrive as four lines and take the whole budget.
+  const aerodrome = bruitAerodromeDescription(cdg, AREA).split(' · ');
+  assert.ok(aerodrome.length <= BRUIT_CARD_MAX_LINES,
+    `the aerodrome card is ${aerodrome.length} lines: ${JSON.stringify(aerodrome)}`);
+  assert.ok(aerodrome[0].includes('4 zones publiées'), aerodrome[0]);
+  assert.ok(aerodrome[0].includes('zone D'), 'all four bands are on ONE line');
+  assert.ok(norm(aerodrome[aerodrome.length - 1]).includes('avions seulement'));
+  const anchor = cdg.bands.find((band) => band.zone === 'C').anchor;
+  const ground = bruitGroundCard({ lon: anchor.lon, lat: anchor.lat, payload: AREA });
+  assert.ok(ground.details.length <= BRUIT_CARD_MAX_LINES, `${ground.details.length} lines`);
+  assert.ok(norm(ground.details[ground.details.length - 1]).includes('avions seulement'));
 });

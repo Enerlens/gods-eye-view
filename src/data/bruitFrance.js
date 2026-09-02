@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { createAddressScanLayer } from './addressScanLayer.js';
 import {
+  BRUIT_AREA_SCALE_DENOMINATOR,
   BRUIT_INDEX_LABELS,
   BRUIT_INDEX_SENTENCES,
   BRUIT_PROBE_SCALE_DENOMINATOR,
@@ -11,6 +12,7 @@ import {
   PGS_ZONE_ORDER,
   bandText,
 } from './bruitFeed.js';
+import { pointInPolygons } from './ringGeometry.js';
 import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
 
 /**
@@ -116,11 +118,39 @@ import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
  * card says "avions seulement" rather than letting a reader infer that the
  * quiet ground beside a motorway is quiet.
  *
- * ── DRAWN AT A FIXED GENERALISATION, AND SAYING SO ──────────────────────────
+ * ── TWO MODES, BECAUSE A DEZOOMED CAMERA ASKS A DIFFERENT QUESTION ──────────
+ * A PEB is a set of NESTED RINGS and a point probe returns the one the pixel
+ * is in — normally zone A, at the aerodrome — because GetFeatureInfo answers
+ * within a few pixels of the coordinate. That is the right answer to "what
+ * applies to this address" and the wrong answer to "show me the noise around
+ * this airport": zones B, C and D are donuts the point is not inside, so from
+ * a dezoomed camera the layer drew one band out of four and then, above 12 km,
+ * nothing at all. The plans themselves are up to 65.8 km across; the ceiling
+ * was under a fifth of that, so the shape could never be on screen whole.
+ *
+ * So above {@link ADDRESS_SCAN_CEILING_M} the layer switches question:
+ *
+ *   POINT MODE, below 12 km — unchanged. One probe at the camera's coordinate,
+ *     pinned at 1:{@link BRUIT_PROBE_SCALE_DENOMINATOR}, `atPoint` re-tested,
+ *     the winner rule, the runner-up, the dashes, the marker. Everything the
+ *     rest of this header is about.
+ *   OVERVIEW MODE, 12 km to {@link BRUIT_OVERVIEW_CEILING_M} — one probe per
+ *     AERODROME in view, at its own published reference point, at
+ *     1:{@link BRUIT_AREA_SCALE_DENOMINATOR}, whose buffer is wide enough that
+ *     the whole plan comes back. No marker, so no winner, no runner-up and no
+ *     dashes: `atPoint` is false on every band because nothing was tested
+ *     against a point, and drawing that as "you are not standing in it" would
+ *     be an answer to a question nobody asked.
+ *
+ * ── DRAWN AT A STATED GENERALISATION, AND IT IS NOT THE SAME ONE ────────────
  * The outline the service returns is generalised to the requested rendering
- * scale, which `bruitFeed.js` pins at 1:{@link BRUIT_PROBE_SCALE_DENOMINATOR}
- * so the answer does not change with the camera. Nothing drawn here is a
- * surveyed limit; the arrêté PDF on the card is the document that is.
+ * scale — 1:39,757 for a point probe, 1:3,975,696 for an overview, a hundred
+ * times coarser. The overview is therefore WIDER, not finer: it is the whole
+ * plan at the detail a shape being read from a hundred kilometres up needs, and
+ * descending under 12 km re-reads the band underfoot at the fine scale. The
+ * card prints whichever denominator the payload actually carries, never a
+ * constant, so the two can never be confused. Nothing drawn here is a surveyed
+ * limit; the arrêté PDF on the card is the document that is.
  *
  * ── WHY IT SITS ON `createAddressScanLayer` ─────────────────────────────────
  * The upstream takes a coordinate, not a bounding box, exactly like the four
@@ -129,6 +159,13 @@ import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
  * seating and the click-to-card index — about eight hundred lines this layer
  * would otherwise own a second copy of. What is added on top is the row legend
  * and the zoom guidance the shell does not have.
+ *
+ * THE OVERVIEW NEEDED NO CHANGE TO THAT SHELL, and that is not a coincidence.
+ * The shell already refetches whenever the QUERY changes rather than only when
+ * the centre moves — written for the urbanism layer, which asks for a box close
+ * in and a point higher up — so a mode that adds one `km=` parameter above an
+ * altitude switches itself, and the proxy reads that parameter to decide which
+ * of the two questions it is being asked.
  */
 
 /** Layer id — matches LAYER_STATE_REGISTRY, LAYER_TAXONOMY and the proxy route. */
@@ -309,6 +346,27 @@ export function bruitEmphasis(band, winner) {
 }
 
 /**
+ * Which wash an OVERVIEW band gets — and there is no 'nearby' here.
+ *
+ * The point-mode ladder has three rungs because a probe answers about a marker:
+ * the band the rule chose, another band under it, and a band the buffer found
+ * beside it. An overview has no marker, so the third rung has nothing to mean
+ * and the dash — which says "you are not standing in this one" — would be a
+ * claim about a reader who is not standing anywhere.
+ *
+ * What is left is the one distinction the plan itself makes: the most exposed
+ * band of each aerodrome, and the rest. That is `top` from `foldAerodromes`,
+ * which is a fact about the document rather than a verdict about ground.
+ *
+ * @param {object} band
+ * @param {?object} aerodrome The folded entry this band belongs to.
+ * @returns {'winner'|'inside'}
+ */
+export function bruitAreaEmphasis(band, aerodrome) {
+  return aerodrome?.top && band?.id === aerodrome.top.id ? 'winner' : 'inside';
+}
+
+/**
  * Rank two eligible bands. Exported so the ordering itself can be tested
  * without going through the whole selection.
  *
@@ -402,14 +460,17 @@ export function bruitDayText(iso) {
  * letter written on it, because they are the same band and must not tell a
  * reader three different things.
  */
-export function bruitBandDescription(band, answer = null) {
+export function bruitBandDescription(band, answer = null, { area = false } = {}) {
   const isWinner = Boolean(answer?.winner && answer.winner.id === band?.id);
   const arrete = bruitDayText(band?.effectiveDate);
   return [
     bandText(band),
     bruitZoneSentence(band?.kind, band?.zone),
     BRUIT_INDEX_SENTENCES[band?.index ?? 'unknown'],
-    band?.atPoint === true ? null : 'zone voisine — le repère n’est pas dedans',
+    // `atPoint` is false on EVERY overview band, because nothing was tested
+    // against a point. Printing the point-mode sentence there would invent a
+    // marker the reader does not have and then tell them they are outside it.
+    area || band?.atPoint === true ? null : 'zone voisine — le repère n’est pas dedans',
     isWinner && answer?.ruleLabel ? `retenue : ${answer.ruleLabel}` : null,
     arrete ? `arrêté du ${arrete}` : null,
     // The register keeping a 1985 date on a plan reissued in Lden. Said on the
@@ -544,12 +605,231 @@ export function bruitScanDescription(payload, peb, pgs) {
   if (payload?.disputed) {
     lines.push('indice non déterminé : la date de l’arrêté et les seuils publiés ne concordent pas');
   }
-  lines.push('avions seulement — ni route, ni fer, ni industrie : la carte de bruit stratégique n’est pas publiée ici');
-  lines.push(`contours généralisés au 1:${(payload?.scaleDenominator ?? BRUIT_PROBE_SCALE_DENOMINATOR).toLocaleString('fr-FR')} — ce n’est pas un relevé`);
+  lines.push(...bruitCommonCaveats(payload));
   if (payload?.register?.short === true) {
     lines.push('registre des arrêtés incomplet : « le plus proche » peut en manquer un');
   }
   return lines.filter(Boolean).join(' · ');
+}
+
+/**
+ * The scale the outlines on screen were generalised at — READ, never assumed.
+ *
+ * The two modes differ by a factor of a hundred, so a card that reached for a
+ * module constant instead of the payload's own number would print a point
+ * scan's precision over an overview's outline exactly once, in the case where
+ * the payload happens to be missing the field. One function, so the several
+ * places that print it cannot drift apart.
+ *
+ * @param {object} payload
+ * @returns {number}
+ */
+export function bruitScaleDenominator(payload) {
+  return payload?.scaleDenominator
+    ?? (payload?.area === true ? BRUIT_AREA_SCALE_DENOMINATOR : BRUIT_PROBE_SCALE_DENOMINATOR);
+}
+
+/**
+ * The caveats that belong on EVERY card this layer draws, in both modes.
+ *
+ * Pulled out of {@link bruitScanDescription} rather than copied into the
+ * overview: "avions seulement" and the generalisation scale are true of every
+ * shape on screen whatever question produced it, and a reader who clicks a band
+ * in the overview is owed exactly the same two sentences as one who clicks a
+ * band at an address. The scale is READ FROM THE PAYLOAD and never assumed —
+ * the two modes differ by a factor of a hundred.
+ *
+ * @param {object} payload
+ * @returns {string[]}
+ */
+export function bruitCommonCaveats(payload) {
+  const denominator = bruitScaleDenominator(payload);
+  return [
+    'avions seulement — ni route, ni fer, ni industrie : la carte de bruit stratégique n’est pas publiée ici',
+    `contours généralisés au 1:${denominator.toLocaleString('fr-FR')} — ce n’est pas un relevé`,
+  ];
+}
+
+/**
+ * The card the world overlay actually paints, and it is SIX LINES.
+ *
+ * `createAddressScanOverlayEntry` slices a card's details to six — a shell
+ * constant, shared by five layers, and not this layer's to widen. So a card
+ * built by pushing every true sentence onto a list does not "say more", it
+ * silently DROPS its tail, and what a description like this one puts at the end
+ * is its caveats: the generalisation, and the fact that road and rail noise are
+ * not in this layer at all. Measured on the aerodrome card at Roissy, the two
+ * lines that fell off the bottom were exactly those.
+ *
+ * So the tail is not a tail. Five lines of answer, then the caveat, always —
+ * and the caveat is the two sentences of {@link bruitCommonCaveats} condensed
+ * into one, because at six lines the cost of a second one is the fifth fact.
+ *
+ * @param {Array<?string>} lines Most load-bearing first.
+ * @param {object} payload
+ * @returns {string[]}
+ */
+export function bruitCardDetails(lines, payload) {
+  const denominator = bruitScaleDenominator(payload);
+  return [
+    ...lines.filter(Boolean).slice(0, BRUIT_CARD_MAX_LINES - 1),
+    `avions seulement — contours généralisés au 1:${denominator.toLocaleString('fr-FR')}, ce n’est pas un relevé`,
+  ];
+}
+
+/** What `createAddressScanOverlayEntry` paints. Restated so the two cannot drift. */
+export const BRUIT_CARD_MAX_LINES = 6;
+
+/** The headline over one aerodrome's plan in the overview. */
+export function bruitAerodromeTitle(aerodrome) {
+  const who = [aerodrome?.oaci, aerodrome?.name].filter(Boolean).join(' — ');
+  return who || 'Aérodrome sans code';
+}
+
+/**
+ * One aerodrome's whole plan, on one card.
+ *
+ * NO WINNER SENTENCE, and the omission is the point. `top` is the most exposed
+ * band the document publishes, not the band that applies to any particular
+ * ground, and the overview has no ground under a marker to apply it to. The
+ * card lists the bands in order and says how many there are; deciding which one
+ * governs an address is what descending under 12 km is for, and the last line
+ * says so.
+ *
+ * @param {object} aerodrome A `foldAerodromes` entry.
+ * @param {object} payload
+ * @param {?object} [pgs] The same aerodrome's PGS entry, when it has one.
+ * @returns {string}
+ */
+export function bruitAerodromeDescription(aerodrome, payload, pgs = null) {
+  const count = aerodrome?.zones ?? 0;
+  const arrete = bruitDayText(aerodrome?.top?.effectiveDate);
+  return bruitCardDetails([
+    // The whole plan on ONE line, thresholds and units included, because the
+    // plan is what this card is for and the budget is six.
+    // JOINED WITH A SEMICOLON, NOT ' · '. The shell splits a description on
+    // ' · ' to make the card's lines, so a band list joined that way is not one
+    // line carrying four bands — it is four lines, and four lines out of a
+    // budget of six is the caveat pushed off the bottom.
+    `${count} zone${count > 1 ? 's' : ''} publiée${count > 1 ? 's' : ''} : `
+      + (aerodrome?.bands || []).map((band) => bruitBandLabel(band)).join(' ; '),
+    arrete
+      ? `arrêté du ${arrete}${aerodrome?.top?.revisedDocument ? ' (date reprise du document, le registre affiche l’ancienne)' : ''}`
+      : BRUIT_INDEX_SENTENCES[aerodrome?.top?.index ?? 'unknown'],
+    pgs?.zones
+      ? `plan de gêne sonore : ${pgs.zones} zone${pgs.zones > 1 ? 's' : ''} — aide à l’insonorisation`
+      : null,
+    // An aerodrome nobody aimed at. Its plan is whatever fell inside a
+    // neighbour's buffer, which is not a promise that the plan is complete.
+    aerodrome?.probed === false
+      ? 'renvoyé par la sonde d’un aérodrome voisin — son plan peut être incomplet ici'
+      : null,
+    'descendez sous 12 km pour savoir quelle zone s’applique à une adresse',
+    aerodrome?.top?.documentUrl ? `arrêté : ${aerodrome.top.documentUrl}` : null,
+  ], payload).join(' · ');
+}
+
+/**
+ * What the overview says about itself, as the row's own sentence.
+ *
+ * Three numbers and never fewer: how many aerodromes were drawn, how many were
+ * in reach and left out by the request budget, and how many were asked and did
+ * not answer. A map that quietly stops at twelve and a map that is complete
+ * look identical, and only the second one is a statement about France.
+ *
+ * @param {object} payload
+ * @returns {string}
+ */
+export function bruitAreaSummary(payload) {
+  const drawn = payload?.aerodromes?.length || 0;
+  const lines = [];
+  if (payload?.available?.peb === false) {
+    lines.push(`${payload.missing} aérodrome${payload.missing > 1 ? 's' : ''} n’${payload.missing > 1 ? 'ont' : 'a'} pas répondu — la vue est incomplète`);
+  }
+  lines.push(drawn > 0
+    ? `${drawn} aérodrome${drawn > 1 ? 's' : ''} avec un plan dans un rayon de ${payload?.radiusKm} km`
+    : 'aucun plan de bruit aérien dans ce cadre');
+  if (!drawn) lines.push(bruitNearestSentence(payload?.nearest));
+  if (payload?.dropped > 0) {
+    lines.push(`${payload.dropped} aérodrome${payload.dropped > 1 ? 's' : ''} de plus dans le cadre, non demandé${payload.dropped > 1 ? 's' : ''}`);
+  }
+  // Normal here, unlike at a point: a region spans several arrêtés by
+  // construction, and the two scales are still not comparable to each other.
+  if (payload?.mixedIndex) {
+    lines.push('plusieurs indices dans ce cadre — les seuils ne se comparent pas d’un aérodrome à l’autre');
+  }
+  // Through the same six-line budget as the other two overview cards: this one
+  // is painted on an entity too, and its tail is its caveat.
+  return bruitCardDetails(lines, payload).join(' · ');
+}
+
+/**
+ * What this layer has to say about an arbitrary point of ground.
+ *
+ * WITHOUT THIS, THE INSIDE OF A ZONE IS NOT CLICKABLE — and that is not a
+ * nicety, it is most of the layer. The wash is a ground-classification POLYGON,
+ * and a polygon entity carries no `position`, so `cardFromEntity` cannot build
+ * a card for it and `scene.pick` at any pixel inside a band returns an entity
+ * the click index has never heard of. Measured in the running app at 60 km over
+ * Roissy: a pick on the aerodrome marker's own pixel returns
+ * `bruit:peb:566:fill:0`, with the marker only SECOND in the drill list. So the
+ * bands' outlines answered a click and their interiors — the whole coloured
+ * surface a reader is looking at — answered nothing at all.
+ *
+ * THE ANSWER IS RE-DERIVED, NOT LOOKED UP. `atPoint` on a band is about the
+ * coordinate the SCAN was aimed at, which is not where this click landed, and
+ * in the overview it is false on every band because there was no scan point at
+ * all. So every band is re-tested against the clicked coordinate with the same
+ * `pointInPolygons` the feed uses, holes included — an enclave cut out of zone C
+ * is ground where zone C does NOT apply, and answering "zone C" there would be
+ * exactly the error the holes exist to prevent.
+ *
+ * AND IT SAYS WHAT IT WAS MEASURED AGAINST. This is a test against the drawn
+ * outline, which is generalised — to 1:39,757 under a point scan and to
+ * 1:3,975,696 in an overview, where a hundred metres of boundary is well under
+ * a vertex. Near an edge that is a guess, and the card says so rather than
+ * letting a coloured pixel pass for a legal limit.
+ *
+ * Returns null when no band contains the point, which the shell reads as
+ * "declined": the click then falls through to dismissing whatever card is open,
+ * because "there is no zone here" is not worth taking over the screen for.
+ *
+ * @param {{lon: number, lat: number, payload: object}} context
+ * @returns {?{title: string, details: string[]}}
+ */
+export function bruitGroundCard({ lon, lat, payload }) {
+  if (!payload || !Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  const hit = (kind) => (payload[kind] || [])
+    .filter((band) => pointInPolygons(band.parts, lon, lat))
+    .sort(bruitBandComparator(kind));
+  const peb = hit('peb');
+  const pgs = hit('pgs');
+  const lead = peb[0] || pgs[0] || null;
+  if (!lead) return null;
+  const area = payload.area === true;
+  const who = [lead.oaci, lead.airport].filter(Boolean).join(' — ');
+  const arrete = bruitDayText(lead.effectiveDate);
+  const others = (lead.kind === 'peb' ? peb : pgs).slice(1);
+  return {
+    title: `Zone ${String(lead.zone ?? '?')}${who ? ` · ${who}` : ''}`,
+    details: bruitCardDetails([
+      bandText(lead),
+      bruitZoneSentence(lead.kind, lead.zone),
+      arrete ? `arrêté du ${arrete}` : BRUIT_INDEX_SENTENCES[lead.index ?? 'unknown'],
+      // Two bands over one piece of ground is a real state of the register —
+      // measured at Saint-Cyr and at Cannes — and the strictest is the headline.
+      others.length
+        ? `aussi sur ce point : ${others.map((band) => bruitBandLabel(band)).join(' ; ')}`
+        : null,
+      peb.length && pgs.length ? `plan de gêne sonore : ${bruitBandLabel(pgs[0])}` : null,
+      // The sentence that stops a coloured pixel from passing for a legal
+      // limit. At 1:3,975,696 a hundred metres of boundary is well under one
+      // vertex, so near an edge this answer is a guess.
+      area
+        ? 'lu sur le contour d’ensemble : près d’une limite, descendez sous 12 km pour la version fine'
+        : (lead.documentUrl ? `arrêté : ${lead.documentUrl}` : null),
+    ], payload),
+  };
 }
 
 /** @type {Map<number, string>} raster size → data URI. */
@@ -714,14 +994,18 @@ export function bruitLegend(payload) {
       const rows = bands.filter((band) => String(band?.zone ?? '').trim().toUpperCase() === zone);
       if (!rows.length) continue;
       const here = rows.filter((band) => band.atPoint === true).length;
+      // `atPoint` is false on every overview band by construction, so the
+      // point-mode blurb would report all of them as "returned beside the
+      // marker" — an explanation of dashes that are not on screen.
+      const aside = payload.area === true ? 0 : rows.length - here;
       legend.push({
         label: kind === 'pgs' ? `PGS zone ${zone}` : `PEB zone ${zone}`,
         color: bruitZoneColorCss(kind, zone),
         count: rows.length,
         blurb: [
           bruitZoneSentence(kind, zone),
-          here === rows.length ? null
-            : `${rows.length - here} dessinée${rows.length - here > 1 ? 's' : ''} en tirets : renvoyée${rows.length - here > 1 ? 's' : ''} par le service à côté du repère, pas dessous`,
+          aside === 0 ? null
+            : `${aside} dessinée${aside > 1 ? 's' : ''} en tirets : renvoyée${aside > 1 ? 's' : ''} par le service à côté du repère, pas dessous`,
         ].filter(Boolean).join(' — '),
       });
     }
@@ -752,6 +1036,10 @@ export function bruitStatus(stats) {
   if (stats.dormant === true) return 'zoom-in';
   if (stats.available?.peb === false) return 'unavailable';
   if (!stats.lastUpdate) return 'idle';
+  // `zonesHere` counts the bands under a MARKER, and the overview has none —
+  // reading it there would report every dezoomed view as empty while a dozen
+  // plans are on screen.
+  if (stats.area === true) return stats.zonesDrawn > 0 ? 'ok' : 'empty';
   return stats.zonesHere > 0 ? 'ok' : 'empty';
 }
 
@@ -771,15 +1059,88 @@ export function bruitStatus(stats) {
 export const ADDRESS_SCAN_CEILING_M = 12_000;
 
 /**
+ * Where the OVERVIEW stops, and the number is the widest plan in France.
+ *
+ * 250 km. Le Bourget's zone D is 65.8 km across — the national outlier, and
+ * precisely the shape a reader dezooms to see. Cesium's default frustum spends
+ * 60° on the wider screen dimension, so the ground half-width under the camera
+ * is `altitude × tan 30°` and the view is about 1.15 × 250 km tall: that band
+ * spans roughly a quarter of the screen at this ceiling, which is a shape, and
+ * a twentieth at a thousand kilometres, which is a smudge. Above it the layer
+ * goes dormant exactly as it did before — but at twenty times the altitude, and
+ * for the honest reason that there is nothing left to see rather than because
+ * the probe stopped meaning anything.
+ */
+export const BRUIT_OVERVIEW_CEILING_M = 250_000;
+
+/**
+ * Radius the overview asks for, in km, from the camera's altitude.
+ *
+ * `tan 30° = 0.577` is the ground half-width under a default Cesium frustum;
+ * the half-DIAGONAL of a 16:9 canvas is 1.147 × that, so 0.7 × the altitude
+ * covers the corners of the screen rather than the middle of its edges. The
+ * proxy then reaches another 35 km past whatever is asked for, because a plan
+ * is drawn around its aerodrome and the aerodrome can be off-screen while its
+ * zone D is not.
+ *
+ * ROUNDED UP TO A 25 KM LADDER, and that is a cache decision, not a geometric
+ * one. The radius is part of the proxy's cache key, so a continuously varying
+ * one would mint a fresh entry on every scroll of the wheel; twelve possible
+ * values means a reader who flies up and back down is answered from memory.
+ *
+ * @param {number} altitudeM
+ * @returns {number}
+ */
+export const BRUIT_AREA_RADIUS_STEP_KM = 25;
+export function bruitAreaRadiusKm(altitudeM) {
+  const km = (Number(altitudeM) || 0) / 1000 * 0.7;
+  const stepped = Math.ceil(km / BRUIT_AREA_RADIUS_STEP_KM) * BRUIT_AREA_RADIUS_STEP_KM;
+  return Math.max(BRUIT_AREA_RADIUS_STEP_KM, stepped);
+}
+
+/**
+ * The extra query parameters that choose the mode.
+ *
+ * `km` present is the overview; absent is the point scan. Nothing else changes
+ * — same route, same shell — and because the shared shell rescans whenever the
+ * query string changes, crossing {@link ADDRESS_SCAN_CEILING_M} in either
+ * direction re-asks the question by itself.
+ *
+ * @param {{altitudeM: number}} point
+ * @returns {Record<string, string>}
+ */
+export function bruitScanParams(point) {
+  const altitudeM = Number(point?.altitudeM);
+  if (!Number.isFinite(altitudeM) || altitudeM <= ADDRESS_SCAN_CEILING_M) return {};
+  return { km: String(bruitAreaRadiusKm(altitudeM)) };
+}
+
+/**
  * The loading / guidance line the panel shows beside the row.
  * @param {object} stats
  * @returns {?string}
  */
 export function bruitGuidanceLabel(stats) {
   if (stats?.dormant === true) {
-    return `Descendez sous ${(ADDRESS_SCAN_CEILING_M / 1000).toLocaleString('fr-FR')} km : le plan est lu sous le point visé`;
+    return `Descendez sous ${(BRUIT_OVERVIEW_CEILING_M / 1000).toLocaleString('fr-FR')} km : au-delà, les zones ne font plus une forme à l’écran`;
   }
-  if (stats?.available?.peb === false) return 'Le service DGAC n’a pas répondu — ce n’est pas « aucune zone ici »';
+  if (stats?.available?.peb === false) {
+    return stats?.area === true
+      ? `Le service DGAC n’a pas répondu pour ${stats.missing} aérodrome${stats.missing > 1 ? 's' : ''} — la vue est incomplète`
+      : 'Le service DGAC n’a pas répondu — ce n’est pas « aucune zone ici »';
+  }
+  if (stats?.area === true) {
+    if (!stats.lastUpdate) return null;
+    if (!(stats.aerodromes > 0)) {
+      return stats.nearestKm != null
+        ? `Aucun plan dans ce cadre — le plus proche est à ${Number(stats.nearestKm).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km`
+        : 'Aucun plan de bruit aérien dans ce cadre';
+    }
+    // The line that keeps a capped map from reading as a complete one.
+    return stats.dropped > 0
+      ? `${stats.aerodromes} aérodromes dessinés · ${stats.dropped} de plus dans le cadre, non demandés`
+      : null;
+  }
   if (stats?.lastUpdate && !(stats.zonesHere > 0)) {
     return stats.nearestKm != null
       ? `Aucun plan sur ce point — le plus proche est à ${Number(stats.nearestKm).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} km`
@@ -802,9 +1163,14 @@ let _pgs = null;
  */
 export function renderBruit({ payload, dataSource, point, viewer }) {
   const classificationType = bruitClassificationTypeForScene(viewer?.scene);
+  _payload = payload;
+  if (payload?.area === true) {
+    _peb = null;
+    _pgs = null;
+    return renderBruitArea({ payload, dataSource, classificationType });
+  }
   const peb = chooseBruitAnswer(payload?.peb, 'peb');
   const pgs = chooseBruitAnswer(payload?.pgs, 'pgs');
-  _payload = payload;
   _peb = peb;
   _pgs = pgs;
   let drawn = 0;
@@ -883,6 +1249,136 @@ export function renderBruit({ payload, dataSource, point, viewer }) {
 }
 
 /**
+ * Where a zone letter is legible in the overview, and where it is litter.
+ *
+ * Visible from 10 km — just under the mode boundary, so the letters are already
+ * on screen as a reader climbs through it — and gone by 200 km, where a dozen
+ * plans' worth of letters would be a cloud of characters over shapes a few
+ * pixels across. The aerodrome markers do NOT fade with them: past that
+ * distance the marker is the only thing left that names what is on screen.
+ */
+export const BRUIT_AREA_LABEL_SCALE = Object.freeze({ near: 10_000, far: 150_000 });
+export const BRUIT_AREA_LABEL_FADE = Object.freeze({ near: 100_000, far: 200_000 });
+
+/**
+ * Draw an overview: every band of every aerodrome in view, plus one marker per
+ * aerodrome.
+ *
+ * DRAW ORDER IS THE SAME ARGUMENT AS POINT MODE and it matters more here. Two
+ * ground-classification polygons over the same ground blend, and an overview
+ * puts every band of every plan on screen at once — including, at Saint-Cyr and
+ * Cannes, the two the register publishes overlapping with no hole cut between
+ * them. Quietest first, so the strictest zone stays legible on the ground its
+ * rule applies to.
+ *
+ * @returns {number} Entities created.
+ */
+export function renderBruitArea({ payload, dataSource, classificationType }) {
+  let drawn = 0;
+  const byBand = new Map();
+  for (const kind of ['peb', 'pgs']) {
+    const entries = kind === 'pgs' ? payload?.pgsAerodromes : payload?.aerodromes;
+    for (const aerodrome of entries || []) {
+      for (const band of aerodrome.bands || []) byBand.set(band.id, aerodrome);
+    }
+  }
+  for (const kind of ['peb', 'pgs']) {
+    for (const band of bruitDrawOrder(payload?.[kind], kind)) {
+      const aerodrome = byBand.get(band.id) || null;
+      const emphasis = bruitAreaEmphasis(band, aerodrome);
+      const css = bruitZoneColorCss(kind, band.zone);
+      const description = bruitBandDescription(band, null, { area: true });
+      const name = bruitBandLabel(band);
+      if (band.anchor && band.anchor.widthDeg >= BRUIT_LABEL_MIN_WIDTH_DEG) {
+        dataSource.entities.add({
+          id: `bruit:${band.id}:label`,
+          position: Cesium.Cartesian3.fromDegrees(band.anchor.lon, band.anchor.lat),
+          name,
+          description,
+          properties: { kind: `${kind}-zone-label`, zone: band.zone, area: true },
+          label: {
+            text: String(band.zone ?? '?'),
+            font: 'bold 15px "Roboto Mono", monospace',
+            fillColor: Cesium.Color.fromCssColorString(css),
+            outlineColor: Cesium.Color.BLACK.withAlpha(0.85),
+            outlineWidth: 3,
+            style: Cesium.LabelStyle.FILL_AND_OUTLINE,
+            disableDepthTestDistance: Number.POSITIVE_INFINITY,
+            scaleByDistance: new Cesium.NearFarScalar(
+              BRUIT_AREA_LABEL_SCALE.near, 1.0, BRUIT_AREA_LABEL_SCALE.far, 0.65,
+            ),
+            translucencyByDistance: new Cesium.NearFarScalar(
+              BRUIT_AREA_LABEL_FADE.near, 1.0, BRUIT_AREA_LABEL_FADE.far, 0.0,
+            ),
+          },
+        });
+      }
+      drawn += drawBruitParts(dataSource, `bruit:${band.id}`, band.parts, {
+        css,
+        fillAlpha: BRUIT_FILL_ALPHA[emphasis],
+        // Never `nearby`: there is no marker to be beside. See
+        // `bruitAreaEmphasis`.
+        width: BRUIT_OUTLINE_WIDTH_PX.inside,
+        dashed: false,
+        classificationType,
+        name,
+        description,
+        properties: { kind: `${kind}-zone`, zone: band.zone, area: true, emphasis },
+      });
+    }
+  }
+
+  const pgsByOaci = new Map((payload?.pgsAerodromes || [])
+    .filter((entry) => entry.oaci).map((entry) => [entry.oaci, entry]));
+  for (const aerodrome of payload?.aerodromes || []) {
+    if (!Number.isFinite(aerodrome.lat) || !Number.isFinite(aerodrome.lon)) continue;
+    dataSource.entities.add({
+      id: `bruit:aerodrome:${aerodrome.oaci ?? aerodrome.bands?.[0]?.id ?? drawn}`,
+      position: Cesium.Cartesian3.fromDegrees(aerodrome.lon, aerodrome.lat),
+      billboard: {
+        image: bruitMarkerGlyph(),
+        width: 24,
+        height: 24,
+        color: Cesium.Color.fromCssColorString(
+          bruitZoneColorCss('peb', aerodrome.top?.zone),
+        ),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      properties: { kind: 'bruit-aerodrome', oaci: aerodrome.oaci, area: true },
+      name: bruitAerodromeTitle(aerodrome),
+      description: bruitAerodromeDescription(
+        aerodrome, payload, aerodrome.oaci ? pgsByOaci.get(aerodrome.oaci) ?? null : null,
+      ),
+    });
+    drawn += 1;
+  }
+
+  // THE EMPTY OVERVIEW STILL NEEDS SOMEWHERE TO SAY SO. With no aerodrome in
+  // reach there is no marker, no band and nothing to click, and the sentence a
+  // reader came for — "the nearest plan is 84 km away" — would have nothing to
+  // hang on. It goes on the centre of the view, which is the only point the
+  // overview has.
+  if (!(payload?.aerodromes?.length) && payload?.centre) {
+    dataSource.entities.add({
+      id: 'bruit:area-centre',
+      position: Cesium.Cartesian3.fromDegrees(payload.centre.lon, payload.centre.lat),
+      billboard: {
+        image: bruitMarkerGlyph(),
+        width: 22,
+        height: 22,
+        color: Cesium.Color.fromCssColorString(BRUIT_UNKNOWN_ZONE_COLOR),
+        disableDepthTestDistance: Number.POSITIVE_INFINITY,
+      },
+      properties: { kind: 'bruit-area-centre', area: true },
+      name: 'Aucun plan de bruit aérien dans ce cadre',
+      description: bruitAreaSummary(payload),
+    });
+    drawn += 1;
+  }
+  return drawn;
+}
+
+/**
  * Extra fields merged into `getStats()`.
  *
  * `zonesHere` and `zonesDrawn` are deliberately two numbers. Under a probe that
@@ -891,6 +1387,31 @@ export function renderBruit({ payload, dataSource, point, viewer }) {
  * marker carries four rules.
  */
 export function summarizeBruit(payload) {
+  if (payload?.area === true) {
+    return {
+      area: true,
+      // How many aerodromes are DRAWN, how many were left out by the request
+      // budget, and how many were asked and did not answer. `bruitStatus` reads
+      // `zonesDrawn` here rather than `zonesHere`, which counts bands under a
+      // marker the overview does not have.
+      aerodromes: payload.aerodromes?.length || 0,
+      zonesHere: 0,
+      zonesDrawn: (payload.peb?.length || 0) + (payload.pgs?.length || 0),
+      dropped: payload.dropped ?? 0,
+      missing: payload.missing ?? 0,
+      radiusKm: payload.radiusKm ?? null,
+      nearbyCount: 0,
+      pgsAerodromes: payload.pgsAerodromes?.length || 0,
+      mixedIndex: payload.mixedIndex === true,
+      disputed: payload.disputed === true,
+      revised: payload.revised === true,
+      nearestKm: Number.isFinite(payload?.nearest?.distanceKm) ? payload.nearest.distanceKm : null,
+      nearestOaci: payload?.nearest?.oaci ?? null,
+      register: payload?.register ?? null,
+      scaleDenominator: payload?.scaleDenominator ?? BRUIT_AREA_SCALE_DENOMINATOR,
+      available: payload?.available ?? null,
+    };
+  }
   const peb = chooseBruitAnswer(payload?.peb, 'peb');
   const pgs = chooseBruitAnswer(payload?.pgs, 'pgs');
   const airports = new Set((payload?.peb || [])
@@ -926,7 +1447,12 @@ const bruitScanLayer = createAddressScanLayer({
   source: BRUIT_SOURCE,
   endpoint: BRUIT_FR_ENDPOINT,
   updateInterval: UPDATE_INTERVAL_MS,
-  maxAltitudeM: ADDRESS_SCAN_CEILING_M,
+  // The OVERVIEW ceiling, not the point one. Below `ADDRESS_SCAN_CEILING_M`
+  // `bruitScanParams` sends no `km` and the proxy answers a point scan; above
+  // it, the same route answers about the aerodromes in view. Only past 250 km
+  // does the shell go dormant and clear the draw.
+  maxAltitudeM: BRUIT_OVERVIEW_CEILING_M,
+  params: bruitScanParams,
   // The wash is ground-classification geometry and a classification type is
   // read once, when the primitive is built. Switching to the Google photoreal
   // tileset hides the globe, and a wash addressed to terrain then draws
@@ -934,6 +1460,10 @@ const bruitScanLayer = createAddressScanLayer({
   redrawOnMapStack: true,
   render: renderBruit,
   summarize: summarizeBruit,
+  // The wash is a polygon, and a polygon entity has no position to hang a card
+  // on. Without this hook the interior of every band is inert — see
+  // `bruitGroundCard`.
+  groundCard: bruitGroundCard,
 });
 
 /**

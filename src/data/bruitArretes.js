@@ -266,3 +266,80 @@ export function nearestArrete(airports, lat, lon, maxKm = BRUIT_NEAREST_MAX_KM) 
   // point is an aerodrome reference point, not the end of a runway.
   return { ...best, distanceKm: Math.round(best.distanceKm * 10) / 10 };
 }
+
+/**
+ * How far a plan reaches past the aerodrome's own published point, in km.
+ *
+ * 35. The register publishes a REFERENCE POINT and the plan is drawn around it,
+ * so an aerodrome outside the view can still paint ground inside it — and an
+ * overview that selected only the points inside the rectangle would clip the
+ * biggest plans in France off the edge of the screen while drawing the small
+ * ones whole. Measured over the 293 bands the national sweep returned, the
+ * widest band is Le Bourget's zone D at 65.8 km across and the runner-up is
+ * Roissy's zone C at 41.5 km, so half of the widest is 33 km; 35 is that,
+ * rounded up to a number that is not a measurement pretending to be a limit.
+ */
+export const BRUIT_AREA_PLAN_REACH_KM = 35;
+
+/**
+ * How many aerodromes one overview may probe.
+ *
+ * 24, and the number was chosen against the densest ground in the register.
+ * Measured 2026-09-02 over Notre-Dame, counting register rows within the
+ * requested radius plus the 35 km reach above:
+ *
+ *   25 km  16 candidates      75 km  23 candidates
+ *  175 km  48 candidates     300 km  77 candidates
+ *
+ * So 24 draws a COMPLETE map out to a 75 km radius — the camera altitude at
+ * which one aerodrome's plan and its neighbours' fill the screen, which is what
+ * a reader dezooming to see a noise zone is doing — and starts capping only at
+ * the national view, where a 10 km plan is a few pixels wide either way.
+ *
+ * The cost is bounded twice over. Each aerodrome is at most two upstream calls,
+ * issued three at a time, so a cold 24 is 48 calls and was measured at about a
+ * second; and the answers are held per aerodrome for 30 days, against a
+ * register that gained 8 documents in six years. The worst case a client can
+ * ever inflict on the service is therefore the whole register once — 224
+ * aerodromes, 448 calls — and not 448 calls per view.
+ *
+ * What is dropped is REPORTED rather than assumed away: {@link arretesWithin}
+ * returns the number of candidates it found, and the layer says "36 aérodromes
+ * de plus dans le cadre" rather than drawing a map that quietly stops at 24.
+ */
+export const BRUIT_AREA_MAX_AERODROMES = 24;
+
+/**
+ * The aerodromes with a plan whose ground can appear within `radiusKm` of a
+ * point, nearest first, capped.
+ *
+ * @param {Array<object>} airports Projected register.
+ * @param {number} lat @param {number} lon
+ * @param {number} radiusKm Radius the camera is looking at.
+ * @param {number} [max]
+ * @returns {{selected: Array<object>, candidates: number, dropped: number}}
+ */
+export function arretesWithin(airports, lat, lon, radiusKm, max = BRUIT_AREA_MAX_AERODROMES) {
+  if (!Array.isArray(airports) || !Number.isFinite(lat) || !Number.isFinite(lon)
+    || !Number.isFinite(radiusKm)) {
+    return { selected: [], candidates: 0, dropped: 0 };
+  }
+  const reach = radiusKm + BRUIT_AREA_PLAN_REACH_KM;
+  const inReach = [];
+  for (const airport of airports) {
+    if (!Number.isFinite(airport?.lat) || !Number.isFinite(airport?.lon)) continue;
+    const distanceKm = greatCircleKm(lat, lon, airport.lat, airport.lon);
+    if (!Number.isFinite(distanceKm) || distanceKm > reach) continue;
+    inReach.push({ ...airport, distanceKm: Math.round(distanceKm * 10) / 10 });
+  }
+  // Nearest to the centre of the view first, then the OACI code — so the same
+  // camera never drops a different aerodrome from one scan to the next because
+  // two of them are equidistant.
+  inReach.sort((a, b) => a.distanceKm - b.distanceKm
+    || String(a.oaci ?? '￿').localeCompare(String(b.oaci ?? '￿')));
+  return {
+    selected: inReach.slice(0, Math.max(0, max)),
+    candidates: inReach.length,
+    dropped: Math.max(0, inReach.length - Math.max(0, max)),
+  };
+}
