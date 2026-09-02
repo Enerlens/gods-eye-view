@@ -586,16 +586,146 @@ const OPENSKY_SOURCE_STALE_MS = 120_000;
 // Overpass API proxy constants and cache state
 // ---------------------------------------------------------------------------
 /** Ordered list of Overpass API mirrors; tried sequentially on failure/rate-limit. */
+// This list is THREE HOSTNAMES OVER TWO MACHINES, not three mirrors. Resolved
+// 2026-09-02: lz4.overpass-api.de is 65.109.112.52, one of the two addresses
+// overpass-api.de itself answers with, and both facades report
+// `Announced endpoint: lambert.openstreetmap.de/` on /api/status. So the
+// redundancy here is far thinner than the length of the list suggests, and the
+// 2-slot budget below is shared across the whole first pair.
 const OVERPASS_UPSTREAMS = [
+  // FOSSGIS, the only host measured healthy on 2026-09-02. The second facade is
+  // kept adjacent deliberately: a runtime error is per-QUERY, so re-asking the
+  // same backend is a real retry for that, while a rate limit is per-IP and no
+  // mirror order can help (only waiting can, hence the backoff below).
   'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
   'https://lz4.overpass-api.de/api/interpreter',
   // Community full-planet instance (privateforge nonprofit) — added 2026-07-30
-  // when all three mirrors above refused this IP (likely a dev-traffic rate
-  // ban; refused connections fail in ms, so healthy mirrors above still win).
-  // Verified: planet coverage (Texas query), CORS *, ~5-20 s cold latency.
+  // when FOSSGIS refused this IP. Verified then: planet coverage (Texas query),
+  // CORS *, ~5-20 s cold latency; answering a bodyless 502 in ~3 s throughout
+  // 2026-09-02. Demoted behind FOSSGIS so that dead weight is only ever paid
+  // after the host that answers has already failed.
+  //
+  // overpass.kumi.systems was REMOVED from this list on 2026-09-02: it is a
+  // CNAME onto overpass.private.coffee (both resolve to
+  // flanders.servers.private.coffee, 193.219.97.30), so listing it bought no
+  // redundancy at all and simply paid the same dead host's ~3 s timeout twice
+  // per rotation. Do not re-add it without re-resolving it first.
   'https://overpass.private.coffee/api/interpreter',
+  // DO NOT add a REGIONAL Overpass instance here, however healthy it probes.
+  // The rotation accepts the first 200, and a regional instance answers 200
+  // with an EMPTY element list for everything outside its extract — which this
+  // proxy cannot tell from "there is genuinely nothing here", so it would cache
+  // the void and serve it for the 7-to-30-day disk TTL. Measured 2026-09-02,
+  // overpass.osm.ch on a Toulon bbox: 200, `elements: []`, in 0.3 s, where
+  // overpass-api.de returns 43. It is the fastest mirror in the list and the
+  // most dangerous. maps.mail.ru DOES carry the planet (same 43) and announces
+  // no slot limit, but it is operated by VK, and the queries this rotation
+  // carries include "where are the military installations near here" — so
+  // adding it is an operator's call to make deliberately, not a latency fix.
 ];
+/**
+ * Concurrent upstream Overpass requests, matching what the mirrors grant one IP.
+ *
+ * `GET https://overpass-api.de/api/status` answers "Rate limit: 2", and the
+ * whole rotation resolves to that single 2-slot budget (see the note above).
+ * Nothing enforced it: the generic /api/overpass proxy allowed six in flight
+ * and the installations proxy called straight through with no gate at all, so
+ * panning the globe with that layer on burst-fired past the budget and drew a
+ * 429. Measured 2026-09-02, an 8-request burst: requests 6 and 8 came back 429.
+ *
+ * A 429 is then unrecoverable by rotation — it is a verdict on the IP, not the
+ * mirror — so the caller got a bare 503 ("Mapped installation context is
+ * temporarily unavailable") while the upstream was merely busy. Queueing at the
+ * budget stops manufacturing the 429; the backoff below survives the ones that
+ * still land (another tab, another workspace, a shared IP).
+ */
+export const OVERPASS_SLOT_LIMIT = 2;
+/**
+ * Longest a queued request waits for a slot. On expiry it proceeds UNGATED
+ * rather than failing: the queue exists to pace a burst, and turning a busy
+ * moment into an error is the exact failure it was added to prevent.
+ */
+const OVERPASS_SLOT_WAIT_MS = 20_000;
+/**
+ * Waits before re-running the rotation when a mirror reported a rate limit.
+ * Sized against how long a slot is actually held — these queries return in a
+ * few seconds — so one short wait usually converts a 429 into an answer.
+ */
+const OVERPASS_RATE_LIMIT_BACKOFF_MS = Object.freeze([1_500, 4_000]);
+/**
+ * How long to stop calling Overpass after EVERY mirror failed to answer at all.
+ *
+ * overpass-api.de does not just rate-limit a noisy IP, it stops answering it —
+ * measured 2026-09-02, a burst of test traffic drew a block that outlasted four
+ * minutes of polling, `/api/status` included. While that block is on, each new
+ * rotation costs ~45 s of timeouts to learn the same thing, makes the layer feel
+ * hung rather than degraded, and keeps the offending traffic flowing at exactly
+ * the wrong moment. So a total failure parks the rotation for a minute and the
+ * callers fall through to their serve-stale paths immediately instead.
+ *
+ * Deliberately NOT applied to a rate limit: that is the recoverable case the
+ * backoff above already handles, and parking it would turn a two-second wait
+ * into a minute of blindness.
+ */
+const OVERPASS_OUTAGE_COOLDOWN_MS = 60_000;
+/** @type {{until: number}} Epoch-ms before which no mirror is contacted. */
+const _overpassOutage = { until: 0 };
+/** @type {number} Slots currently held by in-flight rotations. */
+let _overpassSlotsInUse = 0;
+/** @type {Array<{settled: boolean, timer: ?ReturnType<typeof setTimeout>, grant: () => boolean}>} */
+const _overpassSlotWaiters = [];
+
+/** Promise that settles after `ms`, the only timing seam these helpers need. */
+function overpassSleep(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+/**
+ * Take one upstream slot, waiting when both are busy.
+ * @param {number} [waitMs] Queue budget before giving up on a slot.
+ * @returns {Promise<boolean>} Whether a slot is HELD (and so must be released).
+ */
+function acquireOverpassSlot(waitMs = OVERPASS_SLOT_WAIT_MS) {
+  if (_overpassSlotsInUse < OVERPASS_SLOT_LIMIT) {
+    _overpassSlotsInUse += 1;
+    return Promise.resolve(true);
+  }
+  return new Promise((resolve) => {
+    const waiter = { settled: false, timer: null, grant: null };
+    waiter.grant = () => {
+      if (waiter.settled) return false;
+      waiter.settled = true;
+      clearTimeout(waiter.timer);
+      resolve(true);
+      return true;
+    };
+    waiter.timer = setTimeout(() => {
+      if (waiter.settled) return;
+      waiter.settled = true;
+      const at = _overpassSlotWaiters.indexOf(waiter);
+      if (at >= 0) _overpassSlotWaiters.splice(at, 1);
+      resolve(false);
+    }, waitMs);
+    _overpassSlotWaiters.push(waiter);
+  });
+}
+
+/**
+ * Release a held slot, handing it DIRECTLY to the next waiter when there is
+ * one. Passing the slot along rather than decrementing and re-incrementing is
+ * what keeps the budget from being briefly overshot by a racing acquire.
+ */
+function releaseOverpassSlot() {
+  for (;;) {
+    const waiter = _overpassSlotWaiters.shift();
+    if (!waiter) {
+      _overpassSlotsInUse = Math.max(0, _overpassSlotsInUse - 1);
+      return;
+    }
+    // A waiter that already timed out owns no slot; keep looking for a live one.
+    if (waiter.grant()) return;
+  }
+}
 /**
  * Agent string for every Overpass request.
  *
@@ -10638,69 +10768,108 @@ export function overpassAttemptDisposition({ status, rateLimited, runtimeError }
 export async function fetchOverpassPayload(
   body,
   maxResponseBytes = OVERPASS_MAX_RESPONSE_BYTES,
-  { endpoints = OVERPASS_UPSTREAMS, fetchImpl = fetch } = {},
+  {
+    endpoints = OVERPASS_UPSTREAMS,
+    fetchImpl = fetch,
+    sleep = overpassSleep,
+    rateLimitBackoffMs = OVERPASS_RATE_LIMIT_BACKOFF_MS,
+    outage = _overpassOutage,
+    now = Date.now,
+    outageCooldownMs = OVERPASS_OUTAGE_COOLDOWN_MS,
+  } = {},
 ) {
+  if (now() < outage.until) {
+    throw new Error(
+      `Overpass is in cooldown for another ${Math.ceil((outage.until - now()) / 1000)}s after every mirror stopped answering`,
+    );
+  }
   let lastError = null;
   let lastRateLimitPayload = null;
   let lastClientErrorPayload = null;
+  // Did any mirror JUDGE the query rather than ignore us? A runtime error is the
+  // server saying "this query was too big for me" — the infrastructure is fine
+  // and the fault is this one request, so it must not park every other layer.
+  let sawServerJudgement = false;
 
-  for (const endpoint of endpoints) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
-
+  // One pass over every mirror per attempt. A second attempt only happens when
+  // a mirror reported a RATE LIMIT, because that is the one verdict a fresh
+  // rotation cannot fix and a short wait can (the mirrors share a per-IP slot
+  // budget, so "try the next one" answers the same 429).
+  for (let attempt = 0; ; attempt += 1) {
+    let rateLimitedThisRound = false;
+    // False = the queue budget expired; proceed ungated rather than fail, and
+    // release nothing on the way out.
+    const holdsSlot = await acquireOverpassSlot();
     try {
-      const upstream = await fetchImpl(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': OVERPASS_USER_AGENT,
-        },
-        body,
-        signal: controller.signal,
-      });
+      for (const endpoint of endpoints) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), OVERPASS_TIMEOUT_MS);
 
-      const responseBody = await readResponseTextCapped(upstream, maxResponseBytes);
-      const contentType = upstream.headers.get('content-type') || 'application/json';
-      const status = upstream.status;
-      const rateLimited = status === 429 || overpassLooksRateLimited(responseBody);
-      const runtimeError = overpassLooksRuntimeError(responseBody);
-      const payload = {
-        status,
-        body: responseBody,
-        contentType,
-        endpoint,
-        rateLimited,
-        runtimeError,
-      };
+        try {
+          const upstream = await fetchImpl(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'User-Agent': OVERPASS_USER_AGENT,
+            },
+            body,
+            signal: controller.signal,
+          });
 
-      const disposition = overpassAttemptDisposition(payload);
-      if (disposition === 'rate-limited') {
-        lastRateLimitPayload = payload;
-        continue;
-      }
-      if (disposition === 'runtime-error') {
-        lastError = new Error(`Overpass runtime error (${endpoint})`);
-        continue;
-      }
-      if (disposition === 'client-error') {
-        lastClientErrorPayload = payload;
-        lastError = new Error(`Overpass upstream refused with ${status} (${endpoint})`);
-        continue;
-      }
-      if (disposition === 'server-error') {
-        lastError = new Error(`Overpass upstream returned ${status} (${endpoint})`);
-        continue;
-      }
+          const responseBody = await readResponseTextCapped(upstream, maxResponseBytes);
+          const contentType = upstream.headers.get('content-type') || 'application/json';
+          const status = upstream.status;
+          const rateLimited = status === 429 || overpassLooksRateLimited(responseBody);
+          const runtimeError = overpassLooksRuntimeError(responseBody);
+          const payload = {
+            status,
+            body: responseBody,
+            contentType,
+            endpoint,
+            rateLimited,
+            runtimeError,
+          };
 
-      // Success: decimate giant boundary geometry before it reaches the cache,
-      // the disk, or the client (what makes the 32 MB read cap safe to hold).
-      payload.body = simplifyOverpassPayloadBody(payload.body);
-      return payload;
-    } catch (error) {
-      lastError = error;
+          const disposition = overpassAttemptDisposition(payload);
+          if (disposition === 'rate-limited') {
+            lastRateLimitPayload = payload;
+            rateLimitedThisRound = true;
+            continue;
+          }
+          if (disposition === 'runtime-error') {
+            sawServerJudgement = true;
+            lastError = new Error(`Overpass runtime error (${endpoint})`);
+            continue;
+          }
+          if (disposition === 'client-error') {
+            lastClientErrorPayload = payload;
+            lastError = new Error(`Overpass upstream refused with ${status} (${endpoint})`);
+            continue;
+          }
+          if (disposition === 'server-error') {
+            lastError = new Error(`Overpass upstream returned ${status} (${endpoint})`);
+            continue;
+          }
+
+          // Success: decimate giant boundary geometry before it reaches the cache,
+          // the disk, or the client (what makes the 32 MB read cap safe to hold).
+          payload.body = simplifyOverpassPayloadBody(payload.body);
+          outage.until = 0;
+          return payload;
+        } catch (error) {
+          lastError = error;
+        } finally {
+          clearTimeout(timeoutId);
+        }
+      }
     } finally {
-      clearTimeout(timeoutId);
+      if (holdsSlot) releaseOverpassSlot();
     }
+
+    // Hold no slot while waiting — the point of the wait is to let the budget
+    // recover, which cannot happen if this rotation is still occupying it.
+    if (!rateLimitedThisRound || attempt >= rateLimitBackoffMs.length) break;
+    await sleep(rateLimitBackoffMs[attempt]);
   }
 
   // Every mirror refused. A rate-limit answer is the most actionable thing the
@@ -10708,7 +10877,21 @@ export async function fetchOverpassPayload(
   // real query error); a bare throw is the last resort.
   if (lastRateLimitPayload) return lastRateLimitPayload;
   if (lastClientErrorPayload) return lastClientErrorPayload;
-  throw lastError || new Error('All Overpass upstreams failed');
+  // Nothing usable came back from any mirror: park the rotation (see
+  // OVERPASS_OUTAGE_COOLDOWN_MS) so the next caller fails in microseconds and
+  // reaches its stale cache, rather than paying the same 45 s of timeouts over.
+  // Unless a mirror answered with a runtime error — then the mirrors are alive
+  // and only THIS query was too heavy, which is nobody else's problem.
+  if (!sawServerJudgement) outage.until = now() + outageCooldownMs;
+  if (!lastError) throw new Error('All Overpass upstreams failed');
+  // Name the rotation in the message. Callers log what they catch, and the bare
+  // cause a dead mirror leaves behind ("This operation was aborted") names no
+  // subsystem at all — which is what an operator reads when every mirror is
+  // down and they most need to know it was Overpass.
+  throw new Error(
+    `All ${endpoints.length} Overpass mirrors failed — last: ${lastError.message || lastError}`,
+    { cause: lastError },
+  );
 }
 
 /**
@@ -17225,7 +17408,15 @@ function militaryInstallationsProxy() {
       MILITARY_INSTALLATION_MAX_RESPONSE_BYTES,
     );
     if (upstream.status >= 400 || upstream.rateLimited || upstream.runtimeError) {
-      throw new Error('Mapped installation upstream unavailable');
+      // Name the cause. This proxy used to fail silently, so a layer stuck on
+      // "Context is temporarily unavailable" looked identical whether Overpass
+      // was rate-limiting this IP, timing the query out, or refusing outright —
+      // and the server log said nothing at all. The three need different fixes.
+      const cause = upstream.rateLimited
+        ? 'rate-limited (the mirrors grant one IP 2 concurrent slots)'
+        : (upstream.runtimeError ? 'runtime error / server-side timeout' : `HTTP ${upstream.status}`);
+      console.warn(`[Installations Proxy] upstream ${cause} via ${upstream.endpoint}`);
+      throw new Error(`Mapped installation upstream unavailable: ${cause}`);
     }
     const parsed = JSON.parse(upstream.body);
     const elements = Array.isArray(parsed?.elements)
@@ -17310,6 +17501,12 @@ function militaryInstallationsProxy() {
         });
         res.end(JSON.stringify(payload));
       } catch (error) {
+        // Every mirror unreachable throws out of the rotation rather than
+        // returning a payload, so this is the ONLY place that case can be
+        // named. Without it the log stayed empty exactly when the layer was
+        // darkest, and a total upstream outage was indistinguishable from a bug
+        // in here.
+        console.warn(`[Installations Proxy] ${error?.message || error}`);
         if (cached && now - cached.cachedAt <= MILITARY_INSTALLATION_STALE_MS) {
           res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Military-Installations': 'STALE' });
           res.end(JSON.stringify({ ...cached.payload, status: 'stale' }));

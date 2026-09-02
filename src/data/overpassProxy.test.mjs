@@ -14,6 +14,7 @@ import {
   resolveOverpassPreflight,
   overpassAttemptDisposition,
   fetchOverpassPayload,
+  OVERPASS_SLOT_LIMIT,
 } from '../../vite.config.js';
 
 test('preflight checks memory, in-flight, then disk before consuming limiter quota', async () => {
@@ -237,6 +238,7 @@ test('a 406 from the first mirror falls through to a healthy one', async () => {
   const tried = [];
   const payload = await fetchOverpassPayload('data=[out:json];out;', 1024, {
     endpoints: FOUR_MIRRORS,
+    outage: { until: 0 },
     fetchImpl: async (endpoint) => {
       tried.push(endpoint);
       return endpoint === FOUR_MIRRORS[0]
@@ -254,6 +256,7 @@ test('every mirror refusing surfaces the 4xx, so a malformed query is still repo
   const tried = [];
   const payload = await fetchOverpassPayload('data=nonsense', 1024, {
     endpoints: FOUR_MIRRORS,
+    outage: { until: 0 },
     fetchImpl: async (endpoint) => {
       tried.push(endpoint);
       return mirrorResponse(400, 'line 1: parse error');
@@ -267,6 +270,8 @@ test('every mirror refusing surfaces the 4xx, so a malformed query is still repo
 test('a rate-limited mirror outranks a refusing one when all fail', async () => {
   const payload = await fetchOverpassPayload('data=[out:json];out;', 1024, {
     endpoints: FOUR_MIRRORS,
+    outage: { until: 0 },
+    sleep: async () => {},
     fetchImpl: async (endpoint) => (endpoint === FOUR_MIRRORS[3]
       ? mirrorResponse(429, 'rate_limited')
       : mirrorResponse(406, '<html>406 Not Acceptable</html>')),
@@ -278,6 +283,7 @@ test('a rate-limited mirror outranks a refusing one when all fail', async () => 
 test('a mirror that throws does not end the rotation', async () => {
   const payload = await fetchOverpassPayload('data=[out:json];out;', 1024, {
     endpoints: FOUR_MIRRORS,
+    outage: { until: 0 },
     fetchImpl: async (endpoint) => {
       if (endpoint !== FOUR_MIRRORS[2]) throw new Error('ECONNREFUSED');
       return mirrorResponse(200, '{"elements":[]}');
@@ -290,8 +296,191 @@ test('all mirrors unreachable still throws rather than inventing an answer', asy
   await assert.rejects(
     fetchOverpassPayload('data=[out:json];out;', 1024, {
       endpoints: FOUR_MIRRORS,
+      outage: { until: 0 },
       fetchImpl: async () => { throw new Error('ECONNREFUSED'); },
     }),
     /ECONNREFUSED/,
   );
+});
+
+// A 429 is a verdict on the IP, not on the mirror: every mirror in the rotation
+// resolves to one per-IP slot budget (overpass-api.de and lz4 even announce the
+// same backend), so walking to the next one answers the same 429. Waiting is
+// the only move that works, and not making it was what turned a busy upstream
+// into "Mapped installation context is temporarily unavailable".
+test('a rate limit is waited out, not rotated away', async () => {
+  const rounds = [];
+  const waits = [];
+  let round = 0;
+  const payload = await fetchOverpassPayload('data=[out:json];out;', 1024, {
+    endpoints: FOUR_MIRRORS,
+    outage: { until: 0 },
+    sleep: async (ms) => { waits.push(ms); round += 1; },
+    fetchImpl: async (endpoint) => {
+      rounds.push(`${round}:${endpoint}`);
+      // Busy for the whole first pass, answering once the wait has happened.
+      return round === 0
+        ? mirrorResponse(429, 'rate_limited')
+        : mirrorResponse(200, '{"elements":[{"type":"node","id":7}]}');
+    },
+  });
+  assert.equal(waits.length, 1, 'one wait was enough; no further rotation');
+  assert.ok(waits[0] > 0, 'the retry actually waits rather than spinning');
+  assert.equal(rounds.filter((r) => r.startsWith('0:')).length, 4, 'first pass tries every mirror');
+  assert.equal(payload.status, 200);
+  assert.match(payload.body, /"id":7/);
+});
+
+test('a rotation with no rate limit is never re-run', async () => {
+  let waited = 0;
+  let attempts = 0;
+  await assert.rejects(
+    fetchOverpassPayload('data=[out:json];out;', 1024, {
+      endpoints: FOUR_MIRRORS,
+      outage: { until: 0 },
+      sleep: async () => { waited += 1; },
+      fetchImpl: async () => { attempts += 1; throw new Error('ECONNREFUSED'); },
+    }),
+    /ECONNREFUSED/,
+  );
+  assert.equal(waited, 0, 'unreachable mirrors are not a rate limit — no backoff');
+  assert.equal(attempts, 4, 'exactly one pass over the rotation');
+});
+
+test('a rate limit that never clears still gives back the actionable 429', async () => {
+  const waits = [];
+  const payload = await fetchOverpassPayload('data=[out:json];out;', 1024, {
+    endpoints: FOUR_MIRRORS,
+    outage: { until: 0 },
+    sleep: async (ms) => { waits.push(ms); },
+    fetchImpl: async () => mirrorResponse(429, 'rate_limited'),
+  });
+  assert.ok(waits.length >= 1, 'it retried before giving up');
+  assert.ok(
+    waits.every((ms, i) => i === 0 || ms >= waits[i - 1]),
+    'each wait is at least as long as the one before it',
+  );
+  assert.equal(payload.status, 429, 'the caller still learns it was rate-limited');
+  assert.equal(payload.rateLimited, true);
+});
+
+// The queue is what stops the 429 being manufactured in the first place: panning
+// the globe with the installations layer on fired a burst straight past the
+// mirrors' 2-slot budget, because that proxy called through with no gate at all.
+test('concurrent requests never exceed the mirrors\' slot budget', async () => {
+  let live = 0;
+  let peak = 0;
+  const oneRequest = () => fetchOverpassPayload('data=[out:json];out;', 1024, {
+    endpoints: FOUR_MIRRORS,
+    outage: { until: 0 },
+    fetchImpl: async () => {
+      live += 1;
+      peak = Math.max(peak, live);
+      await new Promise((resolve) => { setTimeout(resolve, 5); });
+      live -= 1;
+      return mirrorResponse(200, '{"elements":[]}');
+    },
+  });
+  const answers = await Promise.all(Array.from({ length: 6 }, oneRequest));
+  assert.equal(peak, OVERPASS_SLOT_LIMIT, 'the gate holds the burst at the budget');
+  assert.equal(answers.length, 6, 'and every queued request is still served');
+  assert.ok(answers.every((a) => a.status === 200));
+});
+
+// A slot leaked on the failure path starves every later request — the layer would
+// go quiet minutes after one bad rotation rather than at the moment of failure.
+test('a failed rotation releases its slot', async () => {
+  await assert.rejects(
+    fetchOverpassPayload('data=[out:json];out;', 1024, {
+      endpoints: FOUR_MIRRORS,
+      outage: { until: 0 },
+      fetchImpl: async () => { throw new Error('ECONNREFUSED'); },
+    }),
+    /ECONNREFUSED/,
+  );
+  let live = 0;
+  let peak = 0;
+  const answers = await Promise.all(Array.from({ length: 4 }, () => fetchOverpassPayload(
+    'data=[out:json];out;',
+    1024,
+    {
+      endpoints: FOUR_MIRRORS,
+      outage: { until: 0 },
+      fetchImpl: async () => {
+        live += 1;
+        peak = Math.max(peak, live);
+        await new Promise((resolve) => { setTimeout(resolve, 5); });
+        live -= 1;
+        return mirrorResponse(200, '{"elements":[]}');
+      },
+    },
+  )));
+  assert.equal(peak, OVERPASS_SLOT_LIMIT, 'the budget survived the failure intact');
+  assert.ok(answers.every((a) => a.status === 200));
+});
+
+// The cooldown exists because overpass-api.de answers a noisy IP with silence,
+// not a 429: every mirror times out, and each fresh rotation spends ~45 s
+// relearning that while keeping the offending traffic flowing.
+test('a total outage parks the rotation instead of re-timing-out', async () => {
+  const outage = { until: 0 };
+  let clock = 1_000;
+  const call = (fetchImpl) => fetchOverpassPayload('data=[out:json];out;', 1024, {
+    endpoints: FOUR_MIRRORS,
+    outage,
+    now: () => clock,
+    outageCooldownMs: 60_000,
+    fetchImpl,
+  });
+
+  let attempts = 0;
+  await assert.rejects(call(async () => { attempts += 1; throw new Error('ETIMEDOUT'); }), /ETIMEDOUT/);
+  assert.equal(attempts, 4, 'the first caller pays for the full rotation');
+
+  // Second caller, one second later: no mirror is touched at all.
+  clock += 1_000;
+  let touched = 0;
+  await assert.rejects(
+    call(async () => { touched += 1; return mirrorResponse(200); }),
+    /cooldown for another 59s/,
+  );
+  assert.equal(touched, 0, 'the parked rotation contacts nobody');
+
+  // Once it lapses, a healthy mirror is reached again and clears the park.
+  clock += 60_000;
+  const payload = await call(async () => mirrorResponse(200, '{"elements":[{"type":"node","id":3}]}'));
+  assert.equal(payload.status, 200);
+  assert.equal(outage.until, 0, 'success un-parks the rotation');
+});
+
+test('a rate limit is not treated as an outage', async () => {
+  const outage = { until: 0 };
+  const payload = await fetchOverpassPayload('data=[out:json];out;', 1024, {
+    endpoints: FOUR_MIRRORS,
+    outage,
+    sleep: async () => {},
+    fetchImpl: async () => mirrorResponse(429, 'rate_limited'),
+  });
+  assert.equal(payload.status, 429);
+  assert.equal(outage.until, 0, 'a recoverable wait must not blind the layer for a minute');
+});
+
+// A heavy query times out INSIDE a healthy mirror, which answers 200 with a
+// `remark`. Parking the whole Overpass path on that would let one over-broad
+// boundary pivot blind every other layer for a minute.
+test('a query too heavy for the mirrors does not park them', async () => {
+  const outage = { until: 0 };
+  await assert.rejects(
+    fetchOverpassPayload('data=[out:json];out;', 1024, {
+      endpoints: FOUR_MIRRORS,
+      outage,
+      now: () => 1_000,
+      fetchImpl: async () => mirrorResponse(
+        200,
+        '{"version":0.6,"remark":"runtime error: Query timed out in \"query\" at line 1"}',
+      ),
+    }),
+    /runtime error/,
+  );
+  assert.equal(outage.until, 0, 'the mirrors answered — they are not down');
 });
