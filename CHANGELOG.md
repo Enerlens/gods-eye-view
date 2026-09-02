@@ -268,6 +268,24 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **A digue titled "Barrage" — the pack knew better than the card.** Reported
+  from the map: a "Barrage · 159 m de long" at Octeville-sur-Mer where no
+  barrage is visible. Checked against OpenStreetMap: `w860215522` carries the
+  single tag `man_made=dyke`, four nodes, no water body within 250 m — an
+  anti-ruissellement bund on the Rouelles watershed, not a dam. The 159 m was
+  never wrong; it is `spanM`, measured off the drawn geometry, and it
+  recomputes to 159 m from the raw nodes. The word was wrong. The pack has
+  stored `kind` since the two-axis rebuild and colours digues ochre, but the
+  card title fell through to the LAYER's name whenever a feature had none of
+  its own — which titled **1 198 digues, 24 barrage-digues and 88 unclassified
+  world features "Barrage"**, out of 5 948 nameless features in a pack of
+  7 432. Nameless features are now titled by what they ARE, in the same words
+  the chips and the legend already use: Barrage, Digue, Barrage-digue, or
+  Ouvrage for the world half that has no `kind` left to read. The second
+  reported sighting settles what these actually are: `w849340116` is the bund
+  of `w849340115`, tagged `natural=water` + `water=basin` + `intermittent=yes`
+  — the embankment of a dry retention basin.
+
 - **"Sites militaires — Error loading" was one mirror refusing, and three
   healthy ones never asked.** Every viewport answered HTTP 503, and the layer
   was right to say so: `/api/military-installations` reads `status >= 400` as a

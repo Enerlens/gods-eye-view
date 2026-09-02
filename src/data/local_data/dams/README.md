@@ -44,6 +44,15 @@ An **absent** `kind` means unclassified, never "dam". Defaulting it would
 recreate the exact conflation the field exists to end, outside France where
 nobody would notice.
 
+`kind` also writes the TITLE of the 5 948 features OpenStreetMap never named —
+80% of the pack, so this is what most cards and globe labels actually say.
+Colouring a digue ochre and then titling its card "Barrage" loses the
+distinction on the one surface a reader reads: `w860215522` is a 159 m
+anti-ruissellement bund at Octeville-sur-Mer with no water body within 250 m,
+and it read as a 159 m barrage. Nameless features are titled **Barrage**,
+**Digue**, **Barrage-digue** — the same words the chips and the legend use — or
+**Ouvrage** for the world half, which has no `kind` left to read.
+
 **Weirs are deliberately out.** France has 7 704 `waterway=weir` against 5 519
 `waterway=dam`; adding them would more than double a layer called "Barrages"
 with objects most readers would not call one, and the dam-versus-weir boundary
