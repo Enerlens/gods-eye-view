@@ -2,7 +2,7 @@ import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { airportCardDetails, airportLabelPriority } from './airportsPack.js';
 import { datacenterCardDetails, geometryAreaM2 } from './datacentersPack.js';
-import { damCardDetails, damLabelPriority } from './damsPack.js';
+import { damCardDetails, damLabelPriority, damStructureTitle } from './damsPack.js';
 import {
   clearSelectedEntityContextForLayer,
   registerEntityContext,
@@ -1029,7 +1029,24 @@ function featureLabelFromProperties(props, layerId) {
   ];
 
   const text = candidates.map(cleanLabel).find(Boolean);
-  return clampLabel(text || layerTitle(layerId));
+  return clampLabel(text || namelessTitle(props, layerId));
+}
+
+/**
+ * What a feature with no name of its own is called.
+ *
+ * The layer's title is the right answer only for a pack whose features are all
+ * one thing. A GRADED pack that already knows what each feature IS answers per
+ * feature instead, or its own classification stops at the card border — see
+ * `damStructureTitle` in ./damsPack.js.
+ *
+ * @param {object} props Unwrapped feature properties.
+ * @param {string} layerId Local layer id.
+ * @returns {string} Title for a nameless feature.
+ */
+function namelessTitle(props, layerId) {
+  if (layerId === 'local-dams') return damStructureTitle(props);
+  return layerTitle(layerId);
 }
 
 function labelPriorityFromProperties(props, layerId) {

@@ -74,7 +74,9 @@
     "hydro:registry": "node scripts/build-fr-hydro-registry.mjs",
     "qa:address-layers": "node scripts/qa-address-layers.mjs",
     "airports:pack": "node scripts/build-ourairports.mjs",
-    "dams:pack": "node scripts/build-osm-dams.mjs"
+    "dams:pack": "node scripts/build-osm-dams.mjs",
+    "medecins:registry": "node scripts/build-medecins-fr.mjs",
+    "qa:medecins-fr": "node scripts/qa-medecins-fr.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",
