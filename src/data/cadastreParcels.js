@@ -483,16 +483,42 @@ function outlineInstancesFor(record, color) {
   return instances;
 }
 
-/** One classification `GroundPrimitive`, or null when it would hold nothing. */
-function buildFillPrimitive(instances) {
+/**
+ * One classification `GroundPrimitive`, or null when it would hold nothing.
+ *
+ * `asynchronous` is a per-call decision and not a constant, because the two
+ * callers are not the same size of job. Tessellating two thousand
+ * classification polygons on the render thread drops frames for most of a
+ * second, so a BATCH goes to Cesium's worker pool. One parcel does not: see
+ * `drawSelectionPrimitives` for why the highlight cannot afford to wait.
+ * @param {Array<object>} instances
+ * @param {{asynchronous?: boolean}} [options]
+ */
+function buildFillPrimitive(instances, { asynchronous = true } = {}) {
   if (!instances.length) return null;
   return new Cesium.GroundPrimitive({
     geometryInstances: instances,
     appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
     classificationType: _classificationType,
-    // Tessellating two thousand classification polygons on the render thread
-    // drops frames for most of a second; Cesium's worker pool does it without.
-    asynchronous: true,
+    asynchronous,
+  });
+}
+
+/**
+ * One ground-clamped `GroundPolylinePrimitive`, or null when it would hold
+ * nothing. The outline counterpart of `buildFillPrimitive`, and shared with it
+ * for the same reason: the batch and the highlight must not drift apart on the
+ * classification surface they drape onto.
+ * @param {Array<object>} instances
+ * @param {{asynchronous?: boolean}} [options]
+ */
+function buildOutlinePrimitive(instances, { asynchronous = true } = {}) {
+  if (!instances.length) return null;
+  return new Cesium.GroundPolylinePrimitive({
+    geometryInstances: instances,
+    appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
+    classificationType: _classificationType,
+    asynchronous,
   });
 }
 
@@ -558,13 +584,8 @@ function drawRecords(records) {
     _viewer.scene.primitives.add(primitive);
   }
 
-  if (outlineInstances.length) {
-    _outlines = new Cesium.GroundPolylinePrimitive({
-      geometryInstances: outlineInstances,
-      appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
-      classificationType: _classificationType,
-      asynchronous: true,
-    });
+  _outlines = buildOutlinePrimitive(outlineInstances);
+  if (_outlines) {
     _outlines.show = _enabled;
     _viewer.scene.primitives.add(_outlines);
   }
@@ -607,22 +628,39 @@ function drawSelectionPrimitives(record) {
   clearSelectionPrimitives();
   if (!_viewer || !record) return;
   const highlight = Cesium.Color.fromCssColorString(SELECTED_COLOR);
-  const fill = buildFillPrimitive(fillInstancesFor(record, highlight.withAlpha(SELECTED_FILL_ALPHA)));
+  // SYNCHRONOUS where Cesium allows it, unlike the batches. A `Primitive`
+  // advances one step of its build per RENDERED frame, and this globe renders
+  // on request: the click below asks for exactly one. An asynchronous
+  // highlight therefore waits on frames nothing is asking for, and lands only
+  // because the card's 150 ms fade-in happens to pump the scene next door — a
+  // highlight whose latency is an accident of another module's animation. One
+  // parcel is a handful of triangles, so the render thread swallows it inside
+  // the frame the click already pays for; the worker pool exists for the
+  // two-thousand-polygon batch, not for this.
+  //
+  // The gate is not defensive noise. A synchronous ground primitive THROWS
+  // outright — `DeveloperError`, in the dev build the app is developed in —
+  // until `ApproximateTerrainHeights` has loaded, and nothing here can promise
+  // that: it resolves off the first ground primitive's own update. In practice
+  // the batches have long since triggered it by the time a parcel can be
+  // clicked, so this reads `true` and the highlight is immediate; when it does
+  // not, falling back to the worker costs latency, which is the thing worth
+  // losing of the two.
+  const immediate = Cesium.ApproximateTerrainHeights?.initialized === true;
+  const fill = buildFillPrimitive(
+    fillInstancesFor(record, highlight.withAlpha(SELECTED_FILL_ALPHA)),
+    { asynchronous: !immediate },
+  );
   if (fill) {
     fill.show = _enabled;
     _selectedFill = fill;
     _viewer.scene.primitives.add(fill);
   }
-  const outlineInstances = outlineInstancesFor(record, highlight);
-  if (outlineInstances.length) {
-    _selectedOutline = new Cesium.GroundPolylinePrimitive({
-      geometryInstances: outlineInstances,
-      appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
-      classificationType: _classificationType,
-      asynchronous: true,
-    });
-    _selectedOutline.show = _enabled;
-    _viewer.scene.primitives.add(_selectedOutline);
+  const outline = buildOutlinePrimitive(outlineInstancesFor(record, highlight), { asynchronous: !immediate });
+  if (outline) {
+    outline.show = _enabled;
+    _selectedOutline = outline;
+    _viewer.scene.primitives.add(outline);
   }
 }
 
@@ -1182,7 +1220,7 @@ const cadastreParcelsLayer = {
    * its own, which is the one fix that would cost the frame rate this layer is
    * built around; a shape check is what tells those two apart.
    * @returns {{fills:number, outlines:number, records:number,
-   *   selectedFill:boolean, selectedOutline:boolean}}
+   *   selectedFill:boolean, selectedOutline:boolean, classification:number}}
    */
   getPrimitiveShapeForQa() {
     return {
@@ -1191,17 +1229,23 @@ const cadastreParcelsLayer = {
       records: _records.size,
       selectedFill: Boolean(_selectedFill),
       selectedOutline: Boolean(_selectedOutline),
+      // The surface everything above drapes onto. A primitive that classifies
+      // the wrong one draws NOTHING, which on screen is indistinguishable from
+      // a layer that fetched nothing — so the harness has to be able to see it.
+      classification: _classificationType,
     };
   },
 
   /**
-   * One parcel's rings as `[lon, lat]`, for a harness that has to project them
-   * itself. Verbatim from the record, so a check written against this compares
-   * the pixels to the SOURCE geometry and not to the layer's own idea of it.
+   * One DRAWN parcel's rings as `[lon, lat]`, by IDU — selected or not.
+   *
+   * For a harness that has to project them itself. Verbatim from the record, so
+   * a check written against this compares the pixels to the SOURCE geometry and
+   * not to the layer's own idea of it.
    * @param {string} idu
    * @returns {?Array<Array<Array<number[]>>>}
    */
-  getSelectedParcelPolygonsForQa(idu) {
+  getParcelPolygonsForQa(idu) {
     for (const record of _records.values()) {
       if (record.parcel?.u === idu) return record.polygons;
     }
@@ -1318,6 +1362,11 @@ export function _setCadastreStateForTest({
   _outlines = null;
   _selectedFill = null;
   _selectedOutline = null;
+  // Back to the module's own starting surface. `enable()` derives this from the
+  // scene it is handed, so a test that enables the layer would otherwise leave
+  // the next one classifying whatever ITS viewer implied — module state leaking
+  // between tests as a wrong-surface draw, which is the hardest kind to read.
+  _classificationType = Cesium.ClassificationType.BOTH;
   _error = null;
   _loading = false;
 }

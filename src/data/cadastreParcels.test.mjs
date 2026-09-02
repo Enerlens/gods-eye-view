@@ -528,10 +528,35 @@ test('the highlight is the parcel\'s OWN geometry, drawn over the batch it belon
   assert.equal(outline.geometryInstances.length, rings, 'every ring, courtyards included');
   assert.ok(outline.geometryInstances.every((instance) => instance.id === target.id));
 
+  // COLOUR, not just geometry. A highlight built from the band colour instead
+  // of cyan is invisible against the wash it is laid over — which is the exact
+  // symptom this whole change exists to fix, and the one a shape assertion
+  // cannot see. Only the pixel harness caught it before this line, and the
+  // pixel harness is not part of `npm test`.
+  const cyan = Cesium.Color.fromCssColorString('#00ffff');
+  assert.deepEqual(
+    Array.from(fill.geometryInstances[0].attributes.color.value),
+    Array.from(Cesium.ColorGeometryInstanceAttribute.fromColor(cyan.withAlpha(0.55)).value),
+    'the highlight fill must be cyan over the band, not the band again',
+  );
+  assert.deepEqual(
+    Array.from(outline.geometryInstances[0].attributes.color.value),
+    Array.from(Cesium.ColorGeometryInstanceAttribute.fromColor(cyan).value),
+  );
+
+  // The SURFACE all of it drapes onto. A primitive that classifies the wrong
+  // one draws nothing at all, and nothing on screen distinguishes that from a
+  // layer that fetched nothing — so the highlight must classify whatever its
+  // batch classifies, and both must be what the map stack asked for.
+  const classification = cadastreParcelsLayer.getPrimitiveShapeForQa().classification;
+  for (const primitive of viewer.added) {
+    assert.equal(primitive.classificationType, classification);
+  }
+
   // The seam the pixel harness measures against reads the SAME rings, verbatim,
   // so an IoU written against it compares pixels to the source geometry.
-  assert.equal(cadastreParcelsLayer.getSelectedParcelPolygonsForQa('132038120D0037'), target.polygons);
-  assert.equal(cadastreParcelsLayer.getSelectedParcelPolygonsForQa('00000000AA0000'), null);
+  assert.equal(cadastreParcelsLayer.getParcelPolygonsForQa('132038120D0037'), target.polygons);
+  assert.equal(cadastreParcelsLayer.getParcelPolygonsForQa('00000000AA0000'), null);
 });
 
 test('deselecting takes the two highlight primitives back off the scene', async () => {
@@ -603,6 +628,43 @@ test('switching the layer off hides the batches and drops the highlight', async 
   assert.equal(kept.length, shape.fills + 1);
   for (const primitive of kept) assert.equal(primitive.show, false, 'a primitive was left on screen');
   assert.equal(_cadastreSelectedIdForTest(), null);
+});
+
+test('switching it back ON shows the batches again rather than rebuilding them', async () => {
+  // The other half of the row toggle, and the half a `show = false` can hide a
+  // regression in: a layer that comes back invisible looks exactly like a layer
+  // whose feed went quiet. `enable()` must restore the flag on every primitive
+  // it left standing, and must NOT pay for a second tessellation to do it —
+  // that is the whole reason `disable()` hides rather than removes.
+  const noop = () => {};
+  const previousDocument = globalThis.document;
+  globalThis.document = { addEventListener: noop, removeEventListener: noop };
+  const viewer = await drawn();
+  viewer.scene.canvas = {
+    clientWidth: 1440, clientHeight: 900, addEventListener: noop, removeEventListener: noop,
+    setAttribute: noop, style: {}, ownerDocument: globalThis.document,
+  };
+  viewer.camera.moveEnd = { addEventListener: () => noop };
+  try {
+    // The first enable settles the classification surface, so the second one
+    // exercises the `show` restore rather than `applyClassification`'s rebuild.
+    cadastreParcelsLayer.enable(viewer);
+    cadastreParcelsLayer.disable();
+    const kept = viewer.added.filter((primitive) => !viewer.removed.includes(primitive));
+    const built = viewer.added.length;
+    for (const primitive of kept) assert.equal(primitive.show, false);
+
+    cadastreParcelsLayer.enable(viewer);
+
+    assert.equal(viewer.added.length, built, 'the row came back on a re-tessellation, not on show');
+    for (const primitive of kept) {
+      assert.equal(primitive.show, true, 'the layer is switched on and drawing nothing');
+    }
+  } finally {
+    cadastreParcelsLayer.disable();
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
 });
 
 test('a parcel whose rings cannot be built costs a primitive, not the draw', async () => {
@@ -694,6 +756,7 @@ test('panning into a box with no parcels tears the draw down and adds nothing', 
   assert.equal(live(viewer), 0, 'and leaves nothing behind either');
   assert.deepEqual(cadastreParcelsLayer.getPrimitiveShapeForQa(), {
     fills: 0, outlines: 0, records: 0, selectedFill: false, selectedOutline: false,
+    classification: Cesium.ClassificationType.BOTH,
   });
   assert.equal(cadastreParcelsLayer.getSelectedParcel(), null);
   assert.equal(_cadastreStatsForTest().status, 'empty');
@@ -743,6 +806,7 @@ test('destroy() takes every primitive off the scene, the highlight included', as
   assert.equal(live(viewer), 0, 'a primitive outlived the layer that owned it');
   assert.deepEqual(cadastreParcelsLayer.getPrimitiveShapeForQa(), {
     fills: 0, outlines: 0, records: 0, selectedFill: false, selectedOutline: false,
+    classification: Cesium.ClassificationType.BOTH,
   });
   assert.equal(_cadastreSelectedIdForTest(), null);
 });
