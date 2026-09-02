@@ -1,0 +1,264 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "id": "dgac_pgs_2d9a8c04-f9fb-4221-a050-e1c25af642a5.22",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        2.647,
+        48.997
+       ],
+       [
+        2.551,
+        48.99
+       ],
+       [
+        2.526,
+        48.994
+       ],
+       [
+        2.647,
+        48.997
+       ]
+      ]
+     ],
+     [
+      [
+       [
+        2.596,
+        49.028
+       ],
+       [
+        2.571,
+        49.019
+       ],
+       [
+        2.488,
+        49.019
+       ],
+       [
+        2.596,
+        49.028
+       ]
+      ]
+     ]
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "zone": "1",
+    "indice_lde": 70,
+    "indice_l_1": 70,
+    "code_oaci": "LFPG",
+    "nom": "P. CH. DE GAULLE",
+    "date_arrete": "2013-12-11Z",
+    "producteur": "ADP",
+    "date_maj": "2018-10-05Z",
+    "ref_doc": "http://piece-jointe-carto.developpement-durable.gouv.fr/NAT003/PGS/PGS_LFPG_11_12_2013.pdf",
+    "id_map": 28
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "dgac_pgs_2d9a8c04-f9fb-4221-a050-e1c25af642a5.23",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        2.716,
+        49.002
+       ],
+       [
+        2.551,
+        48.988
+       ],
+       [
+        2.467,
+        48.989
+       ],
+       [
+        2.611,
+        49.006
+       ],
+       [
+        2.716,
+        49.002
+       ]
+      ]
+     ],
+     [
+      [
+       [
+        2.634,
+        49.03
+       ],
+       [
+        2.513,
+        49.013
+       ],
+       [
+        2.441,
+        49.019
+       ],
+       [
+        2.634,
+        49.03
+       ]
+      ]
+     ]
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "zone": "2",
+    "indice_lde": 65,
+    "indice_l_1": 70,
+    "code_oaci": "LFPG",
+    "nom": "P. CH. DE GAULLE",
+    "date_arrete": "2013-12-11Z",
+    "producteur": "ADP",
+    "date_maj": "2018-10-05Z",
+    "ref_doc": "http://piece-jointe-carto.developpement-durable.gouv.fr/NAT003/PGS/PGS_LFPG_11_12_2013.pdf",
+    "id_map": 29
+   }
+  },
+  {
+   "type": "Feature",
+   "id": "dgac_pgs_2d9a8c04-f9fb-4221-a050-e1c25af642a5.24",
+   "geometry": {
+    "type": "MultiPolygon",
+    "coordinates": [
+     [
+      [
+       [
+        2.292,
+        48.98
+       ],
+       [
+        2.348,
+        49.001
+       ],
+       [
+        2.305,
+        49.014
+       ],
+       [
+        2.371,
+        49.03
+       ],
+       [
+        2.353,
+        49.075
+       ],
+       [
+        2.361,
+        49.081
+       ],
+       [
+        2.44,
+        49.035
+       ],
+       [
+        2.757,
+        49.045
+       ],
+       [
+        2.8,
+        49.038
+       ],
+       [
+        2.773,
+        49.024
+       ],
+       [
+        2.885,
+        49.008
+       ],
+       [
+        2.558,
+        48.976
+       ],
+       [
+        2.292,
+        48.98
+       ],
+       [
+        2.292,
+        48.98
+       ]
+      ],
+      [
+       [
+        2.634,
+        49.03
+       ],
+       [
+        2.441,
+        49.019
+       ],
+       [
+        2.513,
+        49.013
+       ],
+       [
+        2.634,
+        49.03
+       ]
+      ],
+      [
+       [
+        2.716,
+        49.002
+       ],
+       [
+        2.611,
+        49.006
+       ],
+       [
+        2.467,
+        48.989
+       ],
+       [
+        2.716,
+        49.002
+       ],
+       [
+        2.716,
+        49.002
+       ]
+      ]
+     ]
+    ]
+   },
+   "geometry_name": "geom",
+   "properties": {
+    "zone": "3",
+    "indice_lde": 55,
+    "indice_l_1": 65,
+    "code_oaci": "LFPG",
+    "nom": "P. CH. DE GAULLE",
+    "date_arrete": "2013-12-11Z",
+    "producteur": "ADP",
+    "date_maj": "2018-10-05Z",
+    "ref_doc": "http://piece-jointe-carto.developpement-durable.gouv.fr/NAT003/PGS/PGS_LFPG_11_12_2013.pdf",
+    "id_map": 30
+   }
+  }
+ ],
+ "totalFeatures": "unknown",
+ "numberReturned": 3,
+ "timeStamp": "2026-09-02T19:10:21.732Z",
+ "crs": {
+  "type": "name",
+  "properties": {
+   "name": "urn:ogc:def:crs:EPSG::4326"
+  }
+ }
+}

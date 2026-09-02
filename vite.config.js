@@ -323,13 +323,18 @@ import { projectAmenitiesDepartements } from './src/data/amenitiesDepartements.j
 // `installAddressRoute`, `addressPoint` and `addressCacheKey`, all already
 // defined in the file.
 import {
+  BRUIT_AREA_PIXEL_DEG,
+  BRUIT_PROBE_PIXELS,
   BRUIT_SOURCE,
   buildBruitProbeUrl,
   projectBruit,
+  projectBruitArea,
 } from './src/data/bruitFeed.js';
 import {
+  BRUIT_AREA_MAX_AERODROMES,
   BRUIT_ARRETE_FLOOR,
   BRUIT_NEAREST_MAX_KM,
+  arretesWithin,
   buildPebArreteIndexUrl,
   nearestArrete,
   projectPebArretes,
@@ -8710,11 +8715,104 @@ const BRUIT_RETRY_BASE_MS = 1500;
 const BRUIT_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'bruit-fr');
 const BRUIT_CACHE_PATH = path.join(BRUIT_DISK_DIR, 'arretes.json');
 /**
+ * The overview's per-aerodrome zone cache, on disk beside the register.
+ *
+ * A SEPARATE ARTEFACT FROM THE SCAN CACHE, and the reason is the workload. The
+ * point scan is keyed on an 11 m grid of wherever the camera was looking, which
+ * is unbounded; this is keyed on the OACI code, of which there are 224, and its
+ * contents change when an arrêté is revised — 8 documents in the whole of the
+ * 2020s. So it is worth writing down, and a national overview assembled from it
+ * costs nothing upstream at all.
+ *
+ * It also fills in the direction people actually look: whoever zooms out over
+ * Paris pays for the Paris basin once, and every later view of it — theirs or
+ * anyone else's on this server — is free.
+ */
+const BRUIT_ZONES_CACHE_PATH = path.join(BRUIT_DISK_DIR, 'zones.json');
+/**
  * BUMP THIS whenever `projectPebArretes` changes the shape it returns. The disk
  * cache outlives the edit otherwise, and a 90-day stale window is a long time
  * to serve a projection nothing reads any more.
  */
 const BRUIT_CACHE_VERSION = 1;
+
+/**
+ * How long one aerodrome's overview zones are kept.
+ *
+ * 30 days. The plans move on the order of a handful a decade — measured, the
+ * register gained 8 arrêtés in six years — so a month-old polygon is the same
+ * polygon, and the alternative is re-probing 224 aerodromes for nothing. The
+ * register itself is refreshed weekly and is what would first show a revision.
+ */
+const BRUIT_ZONES_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/**
+ * Upstream probes in flight at once, across the whole overview.
+ *
+ * THREE, and it is the number the service was measured tolerating. A 240-point
+ * sweep at three concurrent with one retry and a 1.5 s back-off completed
+ * 240 of 240; the same sweep with no back-off came back **190 of 240 as HTTP
+ * 429 in a 134-byte HTML page**. A 24-aerodrome overview is at most 48 calls,
+ * which at three at a time was measured at about a second on a cold cache and
+ * is zero on a warm one.
+ */
+const BRUIT_AREA_CONCURRENCY = 3;
+/**
+ * The widest overview one request may ask for, in km.
+ *
+ * 300. The layer stops asking at 250 km of altitude — the altitude at which the
+ * widest plan in France, Le Bourget's 65.8 km zone D, still spans about a
+ * quarter of the screen — and the radius it derives from that is 225 km. 300 is
+ * that with room, and it is a CAP rather than a validation: a request for
+ * 5,000 km is answered about the 300 km around the point instead of being
+ * refused, because the alternative is a blank layer over a typo.
+ */
+const BRUIT_AREA_MAX_RADIUS_KM = 300;
+/**
+ * The grid the overview's centre is snapped to, in degrees.
+ *
+ * 0.05°, about 5.5 km. THE OVERVIEW IS NOT A QUESTION ABOUT A COORDINATE — it
+ * is "which aerodromes' plans are on this piece of France" — so answering it
+ * about the camera's exact centre is precision with nothing behind it, and it
+ * is expensive: the shared address cache keys on an 11 m grid, so a reader
+ * panning at altitude mints a new entry every few metres, misses the cache on
+ * every one of them, and spends a rate-limiter slot each time.
+ *
+ * The snap is safe because the selection already carries a margin far larger
+ * than the grid: {@link arretesWithin} reaches {@link BRUIT_AREA_PLAN_REACH_KM}
+ * — 35 km — past the requested radius, so moving the centre by up to 2.8 km
+ * cannot drop an aerodrome whose plan is on screen.
+ */
+const BRUIT_AREA_CENTRE_GRID_DEG = 0.05;
+
+/** The overview centre, on that grid. */
+function bruitAreaCentre({ lat, lon }) {
+  const snap = (value) => Math.round(value / BRUIT_AREA_CENTRE_GRID_DEG) * BRUIT_AREA_CENTRE_GRID_DEG;
+  // Rounded back to 4 decimals: 48.85 / 0.05 * 0.05 is 48.849999999999994 in
+  // binary floating point, and that lands in the cache key as its own string.
+  return { lat: Number(snap(lat).toFixed(4)), lon: Number(snap(lon).toFixed(4)) };
+}
+/** Bump when the shape one cached aerodrome holds changes. */
+const BRUIT_ZONES_CACHE_VERSION = 1;
+/**
+ * The declared footprint of `dgac_pgs_plan_wmsv`, from its own capabilities
+ * document on 2026-09-02 — and the one probe the overview is allowed to skip.
+ *
+ * The PGS exists at the ten-odd airports funding an insulation scheme, and the
+ * layer says where: `EX_GeographicBoundingBox` is -1.648 … 7.559 E, 43.348 …
+ * 49.493 N, against the PEB layer's -61.6 … 55.6 E, -21.4 … 50.7 N. So for an
+ * aerodrome in Brittany, in Normandy or overseas the PGS call is a round trip
+ * whose answer the service has already published as empty, and skipping it
+ * halves the overview's request count over most of France.
+ *
+ * Widened by a probe half-box (0.51°) rather than used raw: the GetFeatureInfo
+ * buffer reaches past the point it is aimed at, so an aerodrome just outside
+ * the declared box can still be the one that returns a zone inside it. Nantes
+ * (LFRS, 1.611° W) sits 0.037° inside the western edge and does answer.
+ */
+const BRUIT_PGS_BBOX = Object.freeze({
+  west: -1.647949219, east: 7.55859375, south: 43.34777832, north: 49.493286133,
+});
+const BRUIT_PGS_BBOX_MARGIN_DEG = (BRUIT_PROBE_PIXELS * BRUIT_AREA_PIXEL_DEG) / 2;
 
 /** @type {?{version: number, at: number, payload: object}} */
 let _bruitIndex = null;
@@ -8898,6 +8996,212 @@ async function buildBruitScan(point) {
   };
 }
 
+/** @type {Map<string, {at: number, peb: ?object, pgs: ?object}>} One aerodrome's overview zones. */
+const _bruitZones = new Map();
+let _bruitZonesDiskChecked = false;
+let _bruitZonesDirty = false;
+
+/** Read the per-aerodrome zone cache off disk once per process. */
+async function readBruitZonesDisk() {
+  if (_bruitZonesDiskChecked) return;
+  _bruitZonesDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(BRUIT_ZONES_CACHE_PATH, 'utf8'));
+    if (entry?.version !== BRUIT_ZONES_CACHE_VERSION || !entry?.aerodromes) return;
+    for (const [oaci, held] of Object.entries(entry.aerodromes)) {
+      if (Number.isFinite(held?.at)) _bruitZones.set(oaci, held);
+    }
+  } catch { /* no zone cache yet */ }
+}
+
+/**
+ * Write the zone cache back, coalesced.
+ *
+ * Debounced rather than written per aerodrome: one overview fills up to twelve
+ * entries within a couple of seconds, and twelve serialisations of the whole
+ * map is eleven more than the answer is worth.
+ */
+let _bruitZonesWriteTimer = null;
+function scheduleBruitZonesWrite() {
+  _bruitZonesDirty = true;
+  if (_bruitZonesWriteTimer) return;
+  _bruitZonesWriteTimer = setTimeout(() => {
+    _bruitZonesWriteTimer = null;
+    if (!_bruitZonesDirty) return;
+    _bruitZonesDirty = false;
+    const aerodromes = Object.fromEntries(_bruitZones);
+    fsp.mkdir(BRUIT_DISK_DIR, { recursive: true })
+      .then(() => fsp.writeFile(
+        BRUIT_ZONES_CACHE_PATH,
+        JSON.stringify({ version: BRUIT_ZONES_CACHE_VERSION, aerodromes }),
+      ))
+      .catch((err) => console.warn('[Bruit Proxy] zone cache write failed:', err?.message || err));
+  }, 2000);
+  // A cache write must never hold the dev server open.
+  if (typeof _bruitZonesWriteTimer?.unref === 'function') _bruitZonesWriteTimer.unref();
+}
+
+/** Whether the PGS layer declares any ground at this aerodrome — see {@link BRUIT_PGS_BBOX}. */
+function bruitPgsInFootprint(airport) {
+  const m = BRUIT_PGS_BBOX_MARGIN_DEG;
+  return airport.lon >= BRUIT_PGS_BBOX.west - m && airport.lon <= BRUIT_PGS_BBOX.east + m
+    && airport.lat >= BRUIT_PGS_BBOX.south - m && airport.lat <= BRUIT_PGS_BBOX.north + m;
+}
+
+/**
+ * One aerodrome's whole plan, at overview scale, from cache or the service.
+ *
+ * A FAILED PROBE IS NOT CACHED AND NOT SILENT. `fetchBruitJson` returns null
+ * both for "the service refused" and for "the request was wrong", and holding
+ * either as an answer would pin an outage on an aerodrome for thirty days. The
+ * caller counts the nulls and the payload reports them, because an aerodrome
+ * missing from an overview looks exactly like ground with no plan on it.
+ *
+ * @param {{oaci: ?string, lat: number, lon: number}} airport
+ * @returns {Promise<{oaci: string, peb: ?object, pgs: ?object, cached: boolean,
+ *   failed: boolean}>}
+ */
+async function bruitAerodromeZones(airport) {
+  const oaci = String(airport?.oaci ?? '').trim().toUpperCase()
+    || `${airport.lat.toFixed(3)},${airport.lon.toFixed(3)}`;
+  const held = _bruitZones.get(oaci);
+  if (held && Date.now() - held.at < BRUIT_ZONES_TTL_MS) {
+    return { oaci, peb: held.peb, pgs: held.pgs, cached: true, failed: false };
+  }
+  const wantsPgs = bruitPgsInFootprint(airport);
+  const [peb, pgs] = await Promise.all([
+    fetchBruitJson(buildBruitProbeUrl('peb', airport, BRUIT_AREA_PIXEL_DEG)),
+    wantsPgs
+      ? fetchBruitJson(buildBruitProbeUrl('pgs', airport, BRUIT_AREA_PIXEL_DEG))
+      : Promise.resolve({ type: 'FeatureCollection', features: [] }),
+  ]);
+  if (!peb) {
+    // Serve whatever is held rather than a hole, and say it is old.
+    if (held) return { oaci, peb: held.peb, pgs: held.pgs, cached: true, failed: false };
+    return { oaci, peb: null, pgs: pgs ?? null, cached: false, failed: true };
+  }
+  const entry = { at: Date.now(), peb, pgs: pgs ?? null };
+  _bruitZones.set(oaci, entry);
+  scheduleBruitZonesWrite();
+  return { oaci, peb, pgs: entry.pgs, cached: false, failed: false };
+}
+
+/**
+ * Run one job per item, at most {@link BRUIT_AREA_CONCURRENCY} at a time.
+ *
+ * `Promise.all` over twelve aerodromes is twenty-four simultaneous calls at the
+ * one upstream this file has measured refusing under load. Written here rather
+ * than reached for from a helper because it is six lines and the alternative is
+ * a dependency for six lines.
+ */
+async function bruitMapLimited(items, limit, job) {
+  const out = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    for (let i = next; i < items.length; i = next) {
+      next = i + 1;
+      out[i] = await job(items[i], i);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
+/**
+ * Build one OVERVIEW: the whole plans of the aerodromes around a point.
+ *
+ * The point scan asks the service about the camera's own coordinate; this asks
+ * it about each AERODROME'S published reference point, once per aerodrome, at
+ * a scale whose buffer reaches the outermost ring. That is the only way the
+ * bands a dezoomed reader came to see — B, C and D, the donuts the reference
+ * point is not inside — come back at all; see `BRUIT_AREA_PIXEL_DEG`.
+ *
+ * @param {{lat: number, lon: number}} centre
+ * @param {number} radiusKm
+ * @returns {Promise<object|null>}
+ */
+async function buildBruitArea(centre, radiusKm) {
+  const index = await ensureBruitIndex().catch((err) => {
+    console.warn('[Bruit Proxy] arrêté index:', err?.message || err);
+    return null;
+  });
+  const register = index?.payload ?? null;
+  // WITHOUT THE REGISTER THERE IS NO OVERVIEW AT ALL, and that is a refusal
+  // rather than an empty map. The register is the list of aerodromes to probe;
+  // with none of it there is nothing to aim at, and answering "no plan in this
+  // view" would be a statement about France made from a failed lookup.
+  if (!register?.airports?.length) return null;
+  await readBruitZonesDisk();
+  const { selected, candidates, dropped } = arretesWithin(
+    register.airports, centre.lat, centre.lon, radiusKm, BRUIT_AREA_MAX_AERODROMES,
+  );
+  const probes = await bruitMapLimited(
+    selected, BRUIT_AREA_CONCURRENCY, (airport) => bruitAerodromeZones(airport),
+  );
+  const answered = probes.filter((probe) => !probe.failed);
+  // Every aerodrome refusing is an outage, not an empty region.
+  if (selected.length > 0 && answered.length === 0) return null;
+  const missing = probes.length - answered.length;
+  return {
+    ...projectBruitArea({
+      peb: answered.map((probe) => probe.peb),
+      pgs: answered.map((probe) => probe.pgs),
+      probed: selected.filter((airport, i) => !probes[i].failed),
+      centre,
+      radiusKm,
+      candidates,
+      missing,
+      // The empty overview still names the aerodrome that would have answered,
+      // for the same reason the empty point scan does.
+      nearest: selected.length ? null
+        : nearestArrete(register.airports, centre.lat, centre.lon, BRUIT_NEAREST_MAX_KM),
+      available: { peb: missing === 0, pgs: missing === 0 },
+    }),
+    // Aerodromes in reach that the request budget dropped. Reported so the
+    // layer can say so rather than drawing a map that stops at twelve.
+    dropped,
+    source: BRUIT_SOURCE,
+    register: {
+      count: register.count,
+      total: register.total,
+      short: register.short,
+      truncated: register.truncated,
+      psophique: register.psophique,
+      lden: register.lden,
+      oldest: register.oldest,
+      newest: register.newest,
+      fetchedAt: index?.at ?? null,
+    },
+    nearestReach: BRUIT_NEAREST_MAX_KM,
+  };
+}
+
+/**
+ * The overview radius a request asked for, in km, or null for a point scan.
+ *
+ * ABSENT AND UNUSABLE ARE DIFFERENT, and the difference is the whole reason
+ * this is a function. No `km` at all is the point scan — the layer's own
+ * behaviour under 12 km, and the four sibling routes' behaviour always. A `km`
+ * that IS there and is not a positive number is a caller bug, and answering it
+ * with a point scan would return HTTP 200 to a request for the whole Paris
+ * basin carrying one band of one aerodrome — the wrong answer to a question
+ * nobody can see was misread. It throws, and `installAddressRoute` turns that
+ * into a 400.
+ *
+ * `Number(null)` is 0 and `Number('')` is 0, which is why the presence check is
+ * separate from the parse and neither can stand in for the other.
+ *
+ * Clamped at the top rather than refused: a radius past the ceiling is a
+ * reader who flew higher than the layer draws, not a malformed request.
+ */
+function bruitAreaRadius(searchParams) {
+  const raw = searchParams.get('km');
+  if (raw === null || raw.trim() === '') return null;
+  const km = Number(raw);
+  if (!Number.isFinite(km) || km <= 0) throw new Error('km must be a positive number of kilometres');
+  return Math.min(km, BRUIT_AREA_MAX_RADIUS_KM);
+}
+
 /**
  * Vite plugin: French aircraft-noise plans proxy.
  * @returns {import('vite').Plugin}
@@ -8959,6 +9263,24 @@ function bruitFranceProxy() {
     installAddressRoute(middlewares, '/api/bruit-fr', (url) => {
       const point = addressPoint(url.searchParams);
       if (!point) return null;
+      // ONE ROUTE, TWO QUESTIONS, and `km` is which one. Below the layer's
+      // point ceiling the camera asks about its own coordinate; above it, about
+      // the aerodromes around it. Splitting them across two routes would mean a
+      // second copy of the cache, the limiter, the stale-on-failure branch and
+      // the `{ fetchedAt, stale }` envelope for a request that differs by one
+      // parameter — and the shared shell in `addressScanLayer.js` already
+      // rescans whenever the QUERY changes, so the mode switch costs nothing.
+      const radiusKm = bruitAreaRadius(url.searchParams);
+      if (radiusKm !== null) {
+        const centre = bruitAreaCentre(point);
+        return {
+          // The radius is in the key: the same centre read at 40 km and at
+          // 200 km are two different answers with two different aerodrome
+          // lists, and sharing an entry would serve one for the other.
+          key: addressCacheKey('bruit-fr-area', centre, radiusKm),
+          load: () => buildBruitArea(centre, radiusKm),
+        };
+      }
       return {
         // Four decimals, ~11 m: two nudges of the same camera share one entry.
         // The probe geometry is PINNED, so nothing else varies the answer and

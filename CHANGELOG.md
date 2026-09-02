@@ -6,6 +6,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-02
 
 ### Added
+- **Le bruit des aéroports se lit enfin de loin.** Le calque tirait UNE bande sur
+  les quatre d'un plan et s'effaçait au-dessus de 12 km — alors que le plan le
+  plus large de France, la zone D du Bourget, fait 65,8 km de côté : la forme ne
+  pouvait être entière à l'écran à aucune altitude où le calque répondait. Un
+  PEB est un jeu d'anneaux emboîtés, le point de référence de l'aérodrome est
+  dans la zone A, et B, C et D sont des couronnes qui ne le contiennent pas. Le
+  service ne renvoie que ce qui touche le pixel demandé, donc à l'échelle fine
+  il ne renvoyait que le cœur.
+- **Au-dessus de 12 km, le calque change de question.** Il ne demande plus « dans
+  quelle zone est ce point » mais « quels plans couvrent ce cadre » : une sonde
+  par AÉRODROME en vue, sur son propre point publié, à une échelle dont le tampon
+  ramène le plan complet. Mesuré sur 25 aérodromes du registre : 37 bandes à
+  l'échelle fine, **88 à l'échelle d'ensemble**. Roissy sort ses quatre zones
+  d'un coup, et Toussus, Pontoise et Coulommiers — qui ne répondaient à aucune
+  échelle fine — répondent. Jusqu'à 24 aérodromes à la fois, ce qui couvre tout
+  le bassin parisien ; ce qui dépasse est compté et annoncé, jamais coupé en
+  silence.
+- **L'intérieur d'une zone répond au clic, plus seulement son contour.** Le
+  lavis est un polygone, un polygone n'a pas de position, et l'index de cartes de
+  la coque se construit sur des positions : tout pixel à l'intérieur d'une bande
+  était inerte. Mesuré à 60 km sur Roissy, un clic sur le repère de l'aérodrome
+  lui-même renvoyait le lavis en dessous. Le clic répond désormais pour le sol
+  visé — bande, seuils, arrêté — retesté point-dans-polygone contre les
+  découpes, et il dit qu'il a été lu sur un contour généralisé.
 - **Autorisations d'urbanisme — what has not been built yet.** Every other
   French register here draws what stands: the cadastre the ground, BD TOPO the
   roofs, DPE their energy, DVF what they last sold for. This one draws the

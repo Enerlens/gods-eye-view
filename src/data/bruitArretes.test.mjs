@@ -22,12 +22,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  BRUIT_AREA_MAX_AERODROMES,
+  BRUIT_AREA_PLAN_REACH_KM,
   BRUIT_ARRETE_COUNT,
   BRUIT_ARRETE_FLOOR,
   BRUIT_ARRETE_TYPENAME,
   BRUIT_NEAREST_MAX_KM,
   BRUIT_WFS_BASE,
   arreteName,
+  arretesWithin,
   buildPebArreteIndexUrl,
   nearestArrete,
   projectPebArretes,
@@ -198,4 +201,58 @@ test('the register names an aerodrome that has an arrêté and NO drawable zone'
   assert.equal(toussus.index, 'psophique');
   assert.ok(toussus.documentUrl.endsWith('PEB_LFPN_03_07_1985.pdf'));
   assert.ok(Number.isFinite(toussus.lat) && Number.isFinite(toussus.lon));
+});
+
+// ── WHICH AERODROMES AN OVERVIEW PROBES ─────────────────────────────────────
+// The overview does not probe the camera's coordinate, it probes each
+// aerodrome's own published reference point — so the register stops being the
+// source of one sentence about the nearest plan and becomes the list of places
+// to ask. Two things then have to be true, and neither is obvious: the
+// selection has to reach PAST the view, because a plan is drawn around a point
+// that can be off-screen while its zone D is not, and what the request budget
+// drops has to be counted rather than quietly missing.
+
+test('the selection reaches past the view, because a plan is wider than its point', () => {
+  const PARIS = { lat: 48.8566, lon: 2.3522 };
+  // Nothing but the reach margin: a radius of zero still finds the aerodromes
+  // whose plans can paint ground at the centre. Roissy's reference point is
+  // 23 km from Notre-Dame and its zone D reaches far past that.
+  const tight = arretesWithin(PROJECTED.airports, PARIS.lat, PARIS.lon, 0);
+  assert.ok(tight.selected.some((row) => row.oaci === 'LFPG'), 'Roissy is within the 35 km margin');
+  assert.equal(BRUIT_AREA_PLAN_REACH_KM, 35);
+  // Nearest to the centre of the view first — so a capped list drops the ones
+  // furthest from what the reader is looking at, not an arbitrary tail.
+  const distances = tight.selected.map((row) => row.distanceKm);
+  assert.deepEqual(distances, [...distances].sort((a, b) => a - b));
+  assert.ok(distances.every((km) => km <= 35));
+  // Réunion and Cayenne are in the register and nowhere near Paris.
+  assert.equal(tight.selected.some((row) => row.oaci === 'FMEE'), false);
+});
+
+test('what the request budget drops is counted, not quietly missing', () => {
+  const PARIS = { lat: 48.8566, lon: 2.3522 };
+  const wide = arretesWithin(PROJECTED.airports, PARIS.lat, PARIS.lon, 200, 2);
+  assert.equal(wide.selected.length, 2);
+  assert.ok(wide.candidates > 2);
+  // A map that stops at the cap and a complete one look identical on screen.
+  assert.equal(wide.dropped, wide.candidates - 2);
+  const uncapped = arretesWithin(PROJECTED.airports, PARIS.lat, PARIS.lon, 200);
+  assert.equal(uncapped.dropped, 0);
+  assert.equal(uncapped.selected.length, uncapped.candidates);
+  assert.equal(BRUIT_AREA_MAX_AERODROMES, 24);
+});
+
+test('a selection cannot be made from a coordinate that is not one', () => {
+  // Same trap the whole register module is built around: `Number(null)` is 0,
+  // and an unguarded call would select the aerodromes nearest 0°N 0°E.
+  for (const bad of [
+    [Number.NaN, 2, 50], [48, Number.NaN, 50], [48, 2, Number.NaN],
+  ]) {
+    assert.deepEqual(arretesWithin(PROJECTED.airports, ...bad).selected, []);
+  }
+  assert.deepEqual(arretesWithin(null, 48, 2, 50).selected, []);
+  // A row the register could not place is skipped rather than put at 0°N 0°E.
+  assert.deepEqual(
+    arretesWithin([{ oaci: 'LFXX', lat: null, lon: null }], 48, 2, 500).selected, [],
+  );
 });

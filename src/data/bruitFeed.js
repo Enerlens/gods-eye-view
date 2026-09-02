@@ -175,6 +175,61 @@ export const BRUIT_PROBE_SCALE_DENOMINATOR = Math.round(
 export const BRUIT_PEB_MIN_SCALE_DENOMINATOR = 25_000;
 
 /**
+ * Degrees per pixel for an OVERVIEW probe — the scale at which ONE probe
+ * returns a whole plan instead of the band underfoot.
+ *
+ * THE PINNED SCALE ABOVE ANSWERS THE WRONG QUESTION FROM A DEZOOMED CAMERA,
+ * and the reason is the same buffer that made `atPoint` necessary. A PEB is a
+ * set of NESTED RINGS: the reference point sits inside zone A, and zones B, C
+ * and D are donuts that do not contain it. GetFeatureInfo returns what is
+ * within a few pixels of the queried one, so at 1e-4°/pixel — 11 m of ground
+ * per pixel — the buffer reaches about thirty metres and only zone A comes
+ * back. Fly up and the answer does not get wider; it stays one band while the
+ * three that surround it, the ones a reader zoomed out to see, are never asked
+ * for.
+ *
+ * Measured 2026-09-02, one probe at each aerodrome's own published point,
+ * counting DISTINCT bands (`code_oaci` + `zone`) returned, over the same
+ * 25-aerodrome sample of the register:
+ *
+ *   1e-4°/px  1:39,757     37 bands   (the pinned scale — the band underfoot)
+ *   1e-3°/px  1:397,570    79 bands   1,569 vertices
+ *   3e-3°/px  1:1,192,709  88 bands   1,284 vertices
+ *   5e-3°/px  1:1,987,848  88 bands   1,055 vertices
+ *   1e-2°/px  1:3,975,696  88 bands     883 vertices
+ *
+ * 88 is the whole sample's plans, and 3e-3 already reaches it — SO WHY 1e-2.
+ * Because the sample does not contain the two aerodromes the register itself
+ * makes hardest, and they were probed separately:
+ *
+ *   · **LFPG (Roissy)** answers A, B, C at 3e-3, 5e-3 and 7e-3, and only picks
+ *     up **zone D at 1e-2**. Its zone D is the national outlier — 65.8 km
+ *     across — so its inner boundary is further from the reference point than
+ *     any other in France, and it is exactly the ring a dezoomed view is for.
+ *   · **LFPN (Toussus)** answers zone C alone at 3e-3 and gains **zone B at
+ *     5e-3**. It is one of the three aerodromes the module header records as
+ *     answering NOTHING at the pinned scale; at overview scale all three —
+ *     LFPN, LFPK, LFPT — answer.
+ *
+ * The price is generalisation, and it is paid knowingly: 883 vertices against
+ * 1,284 at 3e-3, about 30% fewer, for outlines drawn at 1:3,975,696. That is
+ * what the service generalises to at this scale and it is the right amount of
+ * detail for a shape being read from a hundred kilometres up — but it is NOT a
+ * finer answer than the pinned probe, it is a wider one, and the card says
+ * which scale it is looking at rather than letting the two be confused.
+ *
+ * Going coarser buys nothing and costs bands: at 3e-2 the sample still returns
+ * 88 of its own bands plus its neighbours' (which the overview fetches anyway,
+ * one probe per aerodrome), and LFEL LOSES one — 4 bands at 1e-2, 3 at 3e-2.
+ */
+export const BRUIT_AREA_PIXEL_DEG = 1e-2;
+
+/** The OGC scale denominator {@link BRUIT_AREA_PIXEL_DEG} produces. */
+export const BRUIT_AREA_SCALE_DENOMINATOR = Math.round(
+  (BRUIT_AREA_PIXEL_DEG * 111319.4907932736) / 0.00028,
+);
+
+/**
  * First year of Lden.
  *
  * Décret n° 2002-626 replaced the *indice psophique* with Lden for the PEB.
@@ -286,9 +341,14 @@ const FIELD_MAP = Object.freeze({
  *
  * @param {'peb'|'pgs'} kind
  * @param {{lat: number, lon: number}} point
+ * @param {number} [pixelDeg] Ground degrees per rendered pixel. The default is
+ *   the PINNED probe scale; {@link BRUIT_AREA_PIXEL_DEG} is the overview one.
+ *   Nothing else is a legal value: these are the only two scales this module
+ *   has measured the service's answer at, and the scale decides both how many
+ *   bands come back and how generalised they are.
  * @returns {string}
  */
-export function buildBruitProbeUrl(kind, { lat, lon } = {}) {
+export function buildBruitProbeUrl(kind, { lat, lon } = {}, pixelDeg = BRUIT_PROBE_PIXEL_DEG) {
   const layer = kind === 'pgs' ? BRUIT_PGS_LAYER : BRUIT_PEB_LAYER;
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     throw new Error('bruit: lat/lon must be finite numbers');
@@ -296,7 +356,10 @@ export function buildBruitProbeUrl(kind, { lat, lon } = {}) {
   if (Math.abs(lat) > 90 || Math.abs(lon) > 180) {
     throw new Error('bruit: lat/lon out of range');
   }
-  const half = (BRUIT_PROBE_PIXELS * BRUIT_PROBE_PIXEL_DEG) / 2;
+  if (!Number.isFinite(pixelDeg) || pixelDeg <= 0) {
+    throw new Error('bruit: pixelDeg must be a positive number');
+  }
+  const half = (BRUIT_PROBE_PIXELS * pixelDeg) / 2;
   const centre = (BRUIT_PROBE_PIXELS - 1) / 2;
   const params = new URLSearchParams({
     SERVICE: 'WMS',
@@ -681,5 +744,196 @@ export function projectBruit({
     // it rather than implying a survey.
     scaleDenominator: BRUIT_PROBE_SCALE_DENOMINATOR,
     available: { peb: Boolean(peb), pgs: Boolean(pgs) },
+  };
+}
+
+/**
+ * Fold several overview probes into ONE feature collection, without counting a
+ * polygon twice.
+ *
+ * THE DEDUPLICATION IS NOT DEFENSIVE, IT IS MEASURED. At overview scale the
+ * GetFeatureInfo buffer is about three kilometres wide, so a probe aimed at one
+ * aerodrome routinely returns a neighbour's bands as well: on 2026-09-02 the
+ * probe at Roissy's reference point returned `id_map` 564–567 (LFPG A/B/C/D)
+ * and the probe at Le Bourget's, nine kilometres away, returned LFPB's own four
+ * bands AND `id_map` 566 and 567 — the same two LFPG polygons, byte for byte.
+ *
+ * Left in, {@link projectBruitZones} merges them on the band's identity and
+ * concludes the zone is "publiée en 2 polygones, fusionnés": a card sentence
+ * invented by the fetch pattern, over geometry drawn twice at twice the alpha.
+ * Keyed on the FEATURE id — the service's own `dgac_peb_….563` — falling back
+ * to `id_map`, which is unique in the same way and is what survives a service
+ * that stops publishing GeoJSON ids.
+ *
+ * @param {Array<object|null|undefined>} collections GetFeatureInfo answers.
+ * @returns {{type: string, features: Array<object>, duplicates: number}}
+ */
+export function mergeBruitCollections(collections) {
+  const seen = new Set();
+  const features = [];
+  let duplicates = 0;
+  for (const collection of collections || []) {
+    for (const feature of (Array.isArray(collection?.features) ? collection.features : [])) {
+      const id = feature?.id ?? feature?.properties?.id_map ?? null;
+      // A feature with NO identity at all is kept rather than dropped: the
+      // alternative is a silently missing zone, and `projectBruitZones` still
+      // merges it on the band's own identity if it really is a repeat.
+      if (id === null || id === undefined) { features.push(feature); continue; }
+      const key = String(id);
+      if (seen.has(key)) { duplicates += 1; continue; }
+      seen.add(key);
+      features.push(feature);
+    }
+  }
+  return { type: 'FeatureCollection', features, duplicates };
+}
+
+/**
+ * One entry per aerodrome, from bands that belong to no point.
+ *
+ * The overview has no marker to be inside of, so {@link foldByAirport} — which
+ * keeps only `atPoint` bands — folds every plan to nothing here. This is its
+ * counterpart: it groups on the OACI code the band itself carries, orders each
+ * aerodrome's bands most-exposed first, and names the most exposed one `top`.
+ *
+ * `top` is NOT the winner of {@link chooseBruitAnswer}'s rule and must never be
+ * described as one. That rule answers "which zone applies to the ground under
+ * this marker", and there is no marker. This is only "the most exposed band
+ * this aerodrome publishes", which is what decides how the plan is emphasised
+ * on screen and nothing else.
+ *
+ * @param {Array<object>} bands
+ * @param {'peb'|'pgs'} kind
+ * @param {Array<{oaci: ?string, name: ?string, lat: number, lon: number}>} [known]
+ *   The register rows that were probed, for the aerodrome's own published
+ *   point. A band whose aerodrome is not among them still gets an entry — it
+ *   was returned by a neighbour's probe — placed on its widest band's anchor.
+ * @returns {Array<object>}
+ */
+export function foldAerodromes(bands, kind = 'peb', known = []) {
+  const points = new Map();
+  for (const airport of known || []) {
+    const key = String(airport?.oaci ?? '').trim().toUpperCase();
+    if (key && Number.isFinite(airport?.lat) && Number.isFinite(airport?.lon)) {
+      points.set(key, airport);
+    }
+  }
+  const order = kind === 'pgs' ? PGS_ZONE_ORDER : PEB_ZONE_ORDER;
+  const rank = (zone) => {
+    const index = order.indexOf(String(zone ?? '').trim().toUpperCase());
+    return index === -1 ? order.length : index;
+  };
+  const grouped = new Map();
+  for (const band of bands || []) {
+    const key = String(band?.oaci ?? '').trim().toUpperCase() || `?${band?.id ?? ''}`;
+    const entry = grouped.get(key);
+    if (entry) { entry.bands.push(band); continue; }
+    const registered = points.get(key) || null;
+    grouped.set(key, {
+      kind,
+      oaci: band?.oaci ?? null,
+      // The register's name is the authority; the plan layer's `nom` is the
+      // fallback for an aerodrome only a neighbour's probe reached.
+      name: registered?.name ?? band?.airport ?? null,
+      lat: registered?.lat ?? null,
+      lon: registered?.lon ?? null,
+      // Whether this aerodrome was ASKED, or merely turned up in someone
+      // else's buffer. An aerodrome that was never probed may be showing only
+      // the part of its plan that reached the neighbour's pixel.
+      probed: Boolean(registered),
+      bands: [band],
+    });
+  }
+  const aerodromes = [];
+  for (const entry of grouped.values()) {
+    entry.bands.sort((a, b) => rank(a?.zone) - rank(b?.zone));
+    const [top] = entry.bands;
+    if (entry.lat === null || entry.lon === null) {
+      // No register point: fall back to the widest band's own label anchor,
+      // which `projectBruitZones` already computed from the rings.
+      const anchor = entry.bands
+        .map((band) => band?.anchor).filter(Boolean)
+        .sort((a, b) => b.widthDeg - a.widthDeg)[0] || null;
+      entry.lat = anchor ? anchor.lat : null;
+      entry.lon = anchor ? anchor.lon : null;
+    }
+    aerodromes.push({ ...entry, top: top || null, zones: entry.bands.length });
+  }
+  // Most exposed first, then most bands, then the code — so the list reads the
+  // same way twice for the same answer.
+  aerodromes.sort((a, b) => rank(a.top?.zone) - rank(b.top?.zone)
+    || b.zones - a.zones
+    || String(a.oaci ?? '￿').localeCompare(String(b.oaci ?? '￿')));
+  return aerodromes;
+}
+
+/**
+ * Assemble an OVERVIEW answer: the whole plans of the aerodromes in view.
+ *
+ * A DIFFERENT QUESTION FROM {@link projectBruit}, AND THE FIELDS SAY SO. The
+ * point scan answers "which zone is this ground in", and every honest sentence
+ * it produces — the winner, the runner-up, `atPoint`, the dashes, the nearest
+ * aerodrome that would have answered — is anchored on a marker. From a hundred
+ * kilometres up there is no marker to anchor on: the question is "what plans
+ * are on this piece of France", and the answer is a set of plans, not a verdict
+ * about a coordinate. So `area` is true, every band carries `atPoint: false`
+ * because it is true — nothing was tested against a point — and the consumer is
+ * expected to stop asking about one.
+ *
+ * `missing` is the field that keeps an incomplete overview from reading as a
+ * quiet one: an aerodrome whose probe failed leaves no polygon behind, and a
+ * map with a hole in it looks exactly like a map of ground with no plan on it.
+ *
+ * @param {object} input
+ * @param {Array<object|null>} [input.peb] PEB GetFeatureInfo answers.
+ * @param {Array<object|null>} [input.pgs] PGS answers.
+ * @param {Array<object>} [input.probed] Register rows the probes were aimed at.
+ * @param {{lat: number, lon: number}} input.centre Camera centre the view was read around.
+ * @param {number} input.radiusKm Radius the aerodromes were selected within.
+ * @param {number} [input.candidates] Aerodromes in reach before the cap.
+ * @param {number} [input.missing] Aerodromes whose probes did not answer.
+ * @param {?object} [input.nearest] Nearest aerodrome with a plan, for an empty view.
+ * @param {{peb: boolean, pgs: boolean}} [input.available]
+ * @returns {object}
+ */
+export function projectBruitArea({
+  peb = [], pgs = [], probed = [], centre, radiusKm,
+  candidates = 0, missing = 0, nearest = null,
+  available = { peb: true, pgs: true },
+} = {}) {
+  const pebMerged = mergeBruitCollections(peb);
+  const pgsMerged = mergeBruitCollections(pgs);
+  // `point: null` on purpose — see the docstring. Every band comes back
+  // `atPoint: false`, which is the truth about a band nothing was tested
+  // against, and the renderer must not read it as "beside the marker".
+  const pebBands = projectBruitZones(pebMerged, { kind: 'peb', point: null });
+  const pgsBands = projectBruitZones(pgsMerged, { kind: 'pgs', point: null });
+  const all = [...pebBands, ...pgsBands];
+  const indices = [...new Set(all.map((band) => band.index))];
+  return {
+    area: true,
+    peb: pebBands,
+    pgs: pgsBands,
+    aerodromes: foldAerodromes(pebBands, 'peb', probed),
+    pgsAerodromes: foldAerodromes(pgsBands, 'pgs', probed),
+    centre: { lat: centre.lat, lon: centre.lon },
+    radiusKm,
+    // What was asked, what answered, and what did not. Three numbers because
+    // "12 aerodromes in view, 12 probed, 2 silent" and "12 in view, 12 probed,
+    // 0 silent" are the difference between a map with holes and a whole one.
+    candidates,
+    probed: probed.length,
+    missing,
+    duplicates: pebMerged.duplicates + pgsMerged.duplicates,
+    // A dezoomed view spans several arrêtés by construction — Roissy is Lden
+    // and half the aerodromes around it are still psophique — so this is
+    // NORMAL here, unlike at a point, and the card words it that way.
+    mixedIndex: indices.length > 1,
+    indices,
+    disputed: all.some((band) => band.indexDisputed),
+    revised: all.some((band) => band.revisedDocument),
+    nearest: nearest ? { ...nearest } : null,
+    scaleDenominator: BRUIT_AREA_SCALE_DENOMINATOR,
+    available: { peb: available.peb !== false, pgs: available.pgs !== false },
   };
 }
