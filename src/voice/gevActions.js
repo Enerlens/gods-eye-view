@@ -247,6 +247,38 @@ const LAYER_ALIASES = new Map([
   ['colleges', 'schools-fr'],
   ['lycees', 'schools-fr'],
   ['education', 'schools-fr'],
+  ['doctors', 'medecins-fr'],
+  ['doctor', 'medecins-fr'],
+  ['medecins', 'medecins-fr'],
+  ['médecins', 'medecins-fr'],
+  ['medecin', 'medecins-fr'],
+  ['médecin', 'medecins-fr'],
+  ['physicians', 'medecins-fr'],
+  ['gp', 'medecins-fr'],
+  ['generalistes', 'medecins-fr'],
+  ['généralistes', 'medecins-fr'],
+  ['deserts medicaux', 'medecins-fr'],
+  ['déserts médicaux', 'medecins-fr'],
+  ['medical deserts', 'medecins-fr'],
+  ['healthcare', 'medecins-fr'],
+  ['sante', 'medecins-fr'],
+  ['santé', 'medecins-fr'],
+  ['weather stations', 'meteo-stations-fr'],
+  ['weather station', 'meteo-stations-fr'],
+  ['stations meteo', 'meteo-stations-fr'],
+  ['stations météo', 'meteo-stations-fr'],
+  ['station meteo', 'meteo-stations-fr'],
+  ['station météo', 'meteo-stations-fr'],
+  ['meteo france', 'meteo-stations-fr'],
+  ['météo france', 'meteo-stations-fr'],
+  ['radome', 'meteo-stations-fr'],
+  ['synop', 'meteo-stations-fr'],
+  ['pluviometres', 'meteo-stations-fr'],
+  ['pluviomètres', 'meteo-stations-fr'],
+  ['anemometres', 'meteo-stations-fr'],
+  ['anémomètres', 'meteo-stations-fr'],
+  ['observations meteo', 'meteo-stations-fr'],
+  ['observations météo', 'meteo-stations-fr'],
   ['universities', 'sup-fr'],
   ['university', 'sup-fr'],
   ['universites', 'sup-fr'],
@@ -267,6 +299,18 @@ const LAYER_ALIASES = new Map([
   ['bts', 'sup-fr'],
   ['cpge', 'sup-fr'],
   ['prepas', 'sup-fr'],
+  ['creches', 'petite-enfance-fr'],
+  ['crèches', 'petite-enfance-fr'],
+  ['creche', 'petite-enfance-fr'],
+  ['crèche', 'petite-enfance-fr'],
+  ['petite enfance', 'petite-enfance-fr'],
+  ['accueil du jeune enfant', 'petite-enfance-fr'],
+  ['jeune enfant', 'petite-enfance-fr'],
+  ['childcare', 'petite-enfance-fr'],
+  ['daycare', 'petite-enfance-fr'],
+  ['nurseries', 'petite-enfance-fr'],
+  ['taux de couverture', 'petite-enfance-fr'],
+  ['assistantes maternelles', 'petite-enfance-fr'],
   ['prépas', 'sup-fr'],
   ['counts', 'comptages-fr'],
   ['traffic counts', 'comptages-fr'],
@@ -3689,6 +3733,7 @@ function layerTitle(layerId) {
   if (layerId === 'irve-fr') return 'Charge Point';
   if (layerId === 'cadastre-fr') return 'Parcel';
   if (layerId === 'schools-fr') return 'School';
+  if (layerId === 'medecins-fr') return 'Medical Practice';
   if (layerId === 'sup-fr') return 'Campus';
   if (layerId === 'comptages-fr') return 'Counting Arc';
   if (layerId === 'delinquance-fr') return 'Commune';
@@ -3698,8 +3743,10 @@ function layerTitle(layerId) {
   if (layerId === 'idfm-frequency') return "Stop";
   if (layerId === 'bruit-fr') return "Noise zone";
   if (layerId === 'amenities-fr') return "Amenity";
+  if (layerId === 'petite-enfance-fr') return 'Childcare Area';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
+  if (layerId === 'meteo-stations-fr') return 'Weather Station';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
   return layerId || 'Entity';
 }

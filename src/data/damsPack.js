@@ -116,7 +116,8 @@ export const DAM_STRUCTURES = Object.freeze([
   }),
 ]);
 
-const STRUCTURE_KEYS = new Set(DAM_STRUCTURES.map((entry) => entry.key));
+/** One index, two jobs: membership for `isDamStructureKind`, label for the title. */
+const STRUCTURE_BY_KEY = new Map(DAM_STRUCTURES.map((entry) => [entry.key, entry]));
 
 /**
  * The structure one element's tags describe.
@@ -142,7 +143,33 @@ export function damStructureKind(tags) {
 
 /** Whether a `kind` string is one this pack knows. */
 export function isDamStructureKind(value) {
-  return STRUCTURE_KEYS.has(String(value ?? ''));
+  return STRUCTURE_BY_KEY.has(String(value ?? ''));
+}
+
+/**
+ * What a feature carrying no `kind` is called: an ouvrage, and nothing more
+ * precise. Same reasoning as the grey ramp in {@link STRUCTURE_RAMPS} —
+ * unclassified must not read as "dam".
+ */
+export const UNCLASSIFIED_STRUCTURE_LABEL = 'Ouvrage';
+
+/**
+ * The title for one packed structure that OpenStreetMap never named.
+ *
+ * 5 948 of the pack's 7 432 features have no `name`, so this string — not the
+ * mapper's — is what 80% of the cards and globe labels actually say. The host
+ * used to fall through to the LAYER's title there, which titled 1 198 digues,
+ * 24 `dam+dyke` and 88 unclassified world features "Barrage": the same
+ * conflation `kind` was added to end, re-created one layer downstream, on the
+ * one surface a reader reads. `kind` already decides the colour and the chips;
+ * it decides the word too.
+ *
+ * @param {object} props Shipped feature properties.
+ * @returns {string} A {@link DAM_STRUCTURES} label, or `Ouvrage`.
+ */
+export function damStructureTitle(props) {
+  const kind = props && typeof props === 'object' ? props.kind : null;
+  return STRUCTURE_BY_KEY.get(String(kind ?? ''))?.label || UNCLASSIFIED_STRUCTURE_LABEL;
 }
 
 /**

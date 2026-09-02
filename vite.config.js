@@ -43,7 +43,9 @@ import { promises as fsp } from 'node:fs';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import readline from 'node:readline';
 import zlib from 'node:zlib';
+import { MEDECIN_FAMILY_INDEX, sitePrimaryFamily } from './src/data/medecinsFrFeed.js';
 import https from 'node:https';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { directionToHeading } from './src/data/directionText.js';
@@ -79,6 +81,14 @@ import {
 import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
 import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
+import {
+  FICHECLIM_URL,
+  NORMALS_CACHE_MS,
+  SYNOP_ARCHIVE_URL,
+  SYNOP_CACHE_MS,
+  createSynopReducer,
+  parseFicheClim,
+} from './src/data/meteoStationsFrFeed.js';
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
@@ -411,6 +421,21 @@ import { buildAnfrMesh } from './src/data/anfrMesh.js';
 import { readZipMember } from './scripts/lib/remoteZip.mjs';
 import { delinquanceRateBins } from './src/data/delinquanceDepartements.js';
 import { projectSupDepartements } from './src/data/supDepartements.js';
+import {
+  PE_GEO_SOURCE,
+  PE_NATIONAL_DATASET,
+  PE_PORTAL,
+  PE_SOURCE,
+  PE_SCALES,
+  PE_YEAR_FLOOR,
+  newestYear as peNewestYear,
+  peScaleSpec,
+  peYearWhere,
+  placePeAreas,
+  projectPeAreas,
+  readNational as peReadNational,
+} from './src/data/petiteEnfanceFeed.js';
+import { projectPeDepartements } from './src/data/petiteEnfanceDepartements.js';
 import {
   gbfsBoxKey,
   gbfsBoxContains,
@@ -3144,6 +3169,286 @@ function meteoFranceVigilanceProxy() {
 }
 
 /**
+ * Weather-station readings proxy — the two things the shipped pack cannot hold.
+ *
+ * The station network itself is a committed file
+ * (`local_data/meteo_stations_fr/stations.json`, 2 144 stations). What is NOT
+ * in it is anything that changes: the current observation, and the records each
+ * station holds. Both are keyless, and both are shaped in a way a browser
+ * cannot use directly.
+ *
+ * ── Route 1: the observations, and why 22 MB is the cheap option ────────────
+ *
+ * Météo-France retired `donneespubliques.meteofrance.fr` and every
+ * OpenDataSoft mirror of *Données SYNOP essentielles OMM* froze on
+ * **2026-01-15T09:00Z** — measured on both `public.opendatasoft.com` and the
+ * Toulouse Métropole instance data.gouv itself links to, on 2026-09-02.
+ * Anything still reading a mirror for "current French weather" has been serving
+ * a seven-month-old number since January.
+ *
+ * What is still written is `OBS/SYNOP/synop_<year>.csv.gz` on Météo-France's own
+ * S3 — the running year in one file, refreshed hourly, 22 MB gzipped, and a
+ * SINGLE gzip member, so no range request can reach its tail. There is no
+ * smaller live product without an API key.
+ *
+ * So the fetch is whole, and three things make that affordable:
+ *   • it is LAZY — nothing is fetched until a reader opens a station card, so a
+ *     visitor who never clicks costs nothing;
+ *   • it is reduced in flight — 364 444 rows are streamed through
+ *     `createSynopReducer` and 190 survive, so the response is 38 kB, not 22 MB;
+ *   • it is cached for an hour, which is the upstream's own write cadence.
+ *
+ * The archive carries **190 stations**, not the 62 Météo-France's own station
+ * list names. See `meteoStationsFrFeed.js`, trap 3.
+ *
+ * ── Route 2: the records ────────────────────────────────────────────────────
+ *
+ * `REF_STATION/FICHECLIM_<id>.data` is a station's *fiche climatologique* —
+ * 1991-2020 normals and the records held there, with the period each was
+ * established over. ~6 kB of human-readable French report per station, published
+ * for 1 578 postes of which 1 230 are in this network. Fetched per card because
+ * 1 230 × 6 kB is 7 MB to answer a question most readers never ask, and parsed
+ * server-side because the file is a report, not a data product.
+ *
+ * WHY A PROXY AT ALL: the S3 bucket sends no CORS header, so neither URL is
+ * reachable from the browser however small it is.
+ *
+ * Routes:
+ *   GET /api/meteo-stations/observations → {fetchedAt, stale, ttlMs, newest,
+ *                                           stations, observations}
+ *   GET /api/meteo-stations/normals?id=… → {id, fiche:{station, edited, period,
+ *                                           high:{value,date}, low:{value,date}}|null}
+ *   GET /api/meteo-stations/status       → {lastFetch, stale, ttlMs, stations, normals}
+ *
+ * @returns {import('vite').Plugin}
+ */
+function meteoStationsProxy() {
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_PATH = path.join(CACHE_DIR, 'meteo-stations-synop.json');
+  /**
+   * Ceiling on the parsed fiches held in memory.
+   *
+   * 1 230 × ~200 bytes of parsed result is trivial, but the map is keyed by a
+   * request parameter, so it is bounded on principle: an unbounded cache keyed
+   * by user input is a memory leak wearing a cache's clothes. The key grammar
+   * below already rejects anything that is not an eight-digit poste number, so
+   * the ceiling can never be reached by a real client.
+   */
+  const NORMALS_MAX = 2048;
+
+  /** @type {?{at:number, newest:?string, rows:number, observations:object}} */
+  let mem = null;
+  let diskChecked = false;
+  /** @type {?Promise<?object>} */
+  let inflight = null;
+  /** @type {Map<string, {at:number, value:?object}>} */
+  const normals = new Map();
+
+  /**
+   * A poste number, or null.
+   *
+   * Eight digits and nothing else. The value is interpolated into an upstream
+   * URL, so anything looser is a path-traversal surface — and every real id in
+   * the shipped pack matches this exactly.
+   * @param {unknown} value
+   * @returns {?string}
+   */
+  function posteId(value) {
+    const raw = String(value ?? '').trim();
+    return /^\d{8}$/.test(raw) ? raw : null;
+  }
+
+  /**
+   * How long into January the PREVIOUS year's archive may still be read.
+   *
+   * The archive is a calendar-year file, so for the first hours of 1 January
+   * the new one exists and holds no rows yet, and the newest French observation
+   * in the world is the last line of last year's. Two days is generous slack
+   * for that and nothing else.
+   *
+   * IT IS A DATE GATE AND NOT AN ERROR FALLBACK, and the difference is the
+   * whole point: falling back on ANY failure would mean that one transient S3
+   * error in July serves 31 December's readings as if they were this hour's.
+   * The card prints the observation's own time, so a reader could eventually
+   * catch it — but the layer would have asserted it, which is worse than
+   * showing nothing.
+   */
+  const NEW_YEAR_GRACE_DAYS = 2;
+
+  /**
+   * Stream the running-year archive down to the newest observation per station.
+   * @returns {Promise<object>}
+   */
+  async function refreshUpstream() {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const inNewYearGrace = now.getUTCMonth() === 0 && now.getUTCDate() <= NEW_YEAR_GRACE_DAYS;
+    const years = inNewYearGrace ? [year, year - 1] : [year];
+    let lastError = null;
+    for (const attemptYear of years) {
+      const url = SYNOP_ARCHIVE_URL.replace('%YEAR%', String(attemptYear));
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(180_000) });
+        if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+        const lines = readline.createInterface({
+          input: Readable.fromWeb(response.body).pipe(zlib.createGunzip()),
+          crlfDelay: Infinity,
+        });
+        // A readline interface is ASYNC-iterable, and the reducer's array form
+        // is not — feeding one to the other is what produced
+        // `lines is not iterable` and an hour of silently empty cards. Both
+        // paths now share one accumulator; see `createSynopReducer`.
+        const reducer = createSynopReducer();
+        for await (const line of lines) reducer.push(line);
+        const { observations, rows, newest } = reducer.result();
+        if (!newest) throw new Error('archive carried no observation');
+        return { at: Date.now(), newest, rows, observations };
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('no SYNOP archive available');
+  }
+
+  async function readDiskOnce() {
+    if (diskChecked) return;
+    diskChecked = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
+      if (Number.isFinite(parsed?.at) && parsed?.observations) mem = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(CACHE_PATH, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[meteo-stations-proxy] cache write failed (${err?.message || err})`);
+    }
+  }
+
+  /**
+   * A station's parsed fiche climatologique, or null when it has none.
+   *
+   * A 404 is a NEGATIVE RESULT, not an error: 348 of the 1 578 published fiches
+   * belong to postes outside this network, and 914 stations in the network have
+   * no fiche at all. It is cached like any other answer so a reader clicking the
+   * same fiche-less station twice does not cost two upstream requests.
+   * @param {string} id
+   * @returns {Promise<?object>}
+   */
+  async function fetchNormals(id) {
+    const cached = normals.get(id);
+    if (cached && Date.now() - cached.at < NORMALS_CACHE_MS) return cached.value;
+    let value = null;
+    try {
+      const response = await fetch(FICHECLIM_URL.replace('%ID%', id), {
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (response.ok) value = parseFicheClim(await response.text());
+      else if (response.status !== 404) throw new Error(`upstream HTTP ${response.status}`);
+    } catch (err) {
+      console.warn(`[meteo-stations-proxy] fiche ${id} failed (${err?.message || err})`);
+      // Not cached: a timeout is not evidence that the fiche does not exist,
+      // and caching it would hide the station's records for a day.
+      return null;
+    }
+    if (normals.size >= NORMALS_MAX) normals.clear();
+    normals.set(id, { at: Date.now(), value });
+    return value;
+  }
+
+  return {
+    name: 'meteo-stations-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/meteo-stations', async (req, res) => {
+        const sendJson = (status, obj) => {
+          if (res.headersSent) return;
+          res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify(obj));
+        };
+        try {
+          const [rawPath, rawQuery] = String(req.url || '').split('?');
+          const subPath = rawPath || '/';
+          const query = new URLSearchParams(rawQuery || '');
+
+          // Routed explicitly rather than by fall-through: an unknown path
+          // under this prefix used to be served the observation set, which
+          // turns every typo into a silent 22 MB fetch that looks like it
+          // worked.
+          if (subPath !== '/' && subPath !== '/observations'
+            && subPath !== '/normals' && subPath !== '/status') {
+            sendJson(404, { error: `unknown route ${subPath}` });
+            return;
+          }
+
+          if (subPath === '/normals') {
+            const id = posteId(query.get('id'));
+            if (!id) { sendJson(400, { error: 'id must be an 8-digit poste number' }); return; }
+            const fiche = await fetchNormals(id);
+            // 200 with `fiche: null` and not 404: "this station publishes no
+            // fiche" is an answer about the network, and the card says so.
+            sendJson(200, { id, fiche });
+            return;
+          }
+
+          await readDiskOnce();
+
+          if (subPath === '/status') {
+            // Reports the cache, never fills it. `/status` is the route a
+            // health check and a QA harness poll, and letting an introspection
+            // route trigger a 22 MB upstream fetch would turn "is the proxy
+            // alive?" into the most expensive question anyone can ask it.
+            sendJson(200, {
+              lastFetch: mem ? mem.at : null,
+              newest: mem ? mem.newest : null,
+              stale: Boolean(mem) && Date.now() - mem.at >= SYNOP_CACHE_MS,
+              ttlMs: SYNOP_CACHE_MS,
+              stations: mem ? Object.keys(mem.observations).length : 0,
+              normals: normals.size,
+            });
+            return;
+          }
+
+          const entry = mem;
+          let current = entry && Date.now() - entry.at < SYNOP_CACHE_MS ? entry : null;
+          if (!current) {
+            if (!inflight) {
+              inflight = refreshUpstream()
+                .then(async (next) => { mem = next; await writeDisk(next); return next; })
+                .catch((err) => {
+                  console.warn(`[meteo-stations-proxy] refresh failed (${err?.message || err}) — serving cache if any`);
+                  return null;
+                })
+                .finally(() => { inflight = null; });
+            }
+            current = await inflight;
+          }
+          const served = current || entry;
+          const stale = !current && Boolean(entry);
+          if (!served) {
+            sendJson(502, { error: 'SYNOP fetch failed and no cache available' });
+            return;
+          }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: SYNOP_CACHE_MS,
+            newest: served.newest,
+            stations: Object.keys(served.observations).length,
+            observations: served.observations,
+          });
+        } catch (err) {
+          console.warn('[meteo-stations-proxy] error:', err?.message || err);
+          sendJson(500, { error: 'meteo stations proxy error' });
+        }
+      });
+    },
+  };
+}
+
+/**
  * éCO2mix proxy (France's live electricity mix) with a memory + disk cache.
  *
  * ONE keyless upstream, and deliberately not the obvious one: RTE's own
@@ -4672,6 +4977,662 @@ function supFranceProxy() {
 
   return {
     name: 'sup-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * CNAF childcare-coverage proxy — keyless, Licence Ouverte 2.0.
+ *
+ *   GET /api/petite-enfance-fr/departements — national rollup, 96 départements
+ *   GET /api/petite-enfance-fr/areas        — 1 250 EPCI + 1 061 commune points
+ *   GET /api/petite-enfance-fr/status       — provenance + cache state
+ *
+ * WHY A PROXY, when data.caf.fr sends CORS headers: this layer is SEVEN files
+ * from one producer joined to THREE centroid files from another. Each scale
+ * publishes its rates and its place counts separately (`txcouv_pe_*` and
+ * `nbpla_pe_*`), the national reference is an eighth file whose `annee` column
+ * has a different TYPE from the other six, and none of the eight carries a
+ * coordinate — those come from geo.api.gouv.fr. Doing that in the client would
+ * mean every open tab fetching eleven documents and re-deriving the same join.
+ *
+ * WHY THE YEAR IS DISCOVERED: the CNAF adds an edition each January. A pinned
+ * year would serve a quietly stale map forever, so it is read from the
+ * portal's own grouping and floored at the edition this was measured against.
+ *
+ * WHY CENTROIDS AND NOT CONTOURS: geo.api.gouv.fr refuses an unfiltered
+ * contour request, so EPCI polygons would be 1 255 separate calls, 66 MB and
+ * 3.1 million vertices (measured) before simplification. The centroids are ONE
+ * 198 KB call. The layer says on every card that its point is the centre of an
+ * area rather than a place, which is the honest form of that trade.
+ */
+const PE_BASE = `https://${PE_PORTAL}/api/explore/v2.1/catalog/datasets`;
+const PE_GEO_BASE = 'https://geo.api.gouv.fr';
+/** Published once a year, in January. A week in memory is already generous. */
+const PE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling. A rate a month old is still this edition's rate. */
+const PE_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+const PE_TIMEOUT_MS = 60_000;
+/** The commune centroid file is 3.9 MB; every CNAF export is under 0.4 MB. */
+const PE_MAX_BYTES = 32 * 1024 * 1024;
+const PE_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'petite-enfance-fr');
+const PE_CACHE_PATH = path.join(PE_DISK_DIR, 'coverage.json');
+/**
+ * Shape version of the cached payload. Bump whenever `projectPeAreas` or
+ * `projectPeDepartements` changes what it returns — the cache lives a WEEK on
+ * disk, so without it a projection edit is invisible until next month.
+ */
+const PE_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _peCoverage = null;
+/** @type {?Promise<object>} */
+let _peInFlight = null;
+let _peDiskChecked = false;
+const _peRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 90 });
+
+/** GET one JSON document, under a timeout and a byte cap. */
+async function fetchPeJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(PE_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, PE_MAX_BYTES);
+}
+
+/**
+ * Newest reference year the CNAF publishes.
+ *
+ * Read off the DÉPARTEMENT file rather than the national one, because that is
+ * where `annee` is an int — see Trap 3 in `petiteEnfanceFeed.js`. A failed
+ * discovery falls back to the floor, which is guaranteed to exist.
+ */
+async function discoverPeYear() {
+  try {
+    const params = new URLSearchParams({
+      select: 'annee', group_by: 'annee', order_by: 'annee desc', limit: '1',
+    });
+    const body = await fetchPeJson(`${PE_BASE}/txcouv_pe_dep/records?${params}`);
+    return peNewestYear(body?.results, PE_YEAR_FLOOR);
+  } catch (error) {
+    console.warn('[PetiteEnfance Proxy] year discovery failed:', error?.message || error);
+    return PE_YEAR_FLOOR;
+  }
+}
+
+/**
+ * EPCI, commune and municipal-arrondissement centres, indexed by INSEE code.
+ *
+ * Three calls, and the third is not optional: the CNAF breaks Paris, Lyon and
+ * Marseille down by arrondissement municipal, and `geo.api.gouv.fr/communes`
+ * omits those by default. Without it the commune scale loses 45 of its 1 061
+ * rows — every one of them in the three largest cities in France, which is
+ * precisely where a reader zooms first.
+ */
+async function loadPeCentroids() {
+  const read = async (url) => {
+    try {
+      return await fetchPeJson(url);
+    } catch (error) {
+      console.warn('[PetiteEnfance Proxy] centroid source unavailable:', error?.message || error);
+      return [];
+    }
+  };
+  const [epcis, communes, arrondissements] = await Promise.all([
+    read(`${PE_GEO_BASE}/epcis?fields=code,nom,centre,population&format=json`),
+    read(`${PE_GEO_BASE}/communes?fields=code,nom,centre,population&format=json`),
+    read(`${PE_GEO_BASE}/communes?type=arrondissement-municipal&fields=code,nom,centre,population&format=json`),
+  ]);
+  const index = new Map();
+  for (const rows of [epcis, communes, arrondissements]) {
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const code = String(row?.code || '').trim().toUpperCase();
+      const point = row?.centre?.coordinates;
+      if (!code || !Array.isArray(point)) continue;
+      const lon = Number(point[0]);
+      const lat = Number(point[1]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+      index.set(code, { lat, lon, population: Number(row?.population) || null });
+    }
+  }
+  return index;
+}
+
+/**
+ * Build the whole layer: eight CNAF documents, three centroid files, one fold.
+ *
+ * The national reference is fetched WITHOUT a `where` clause, because its
+ * `annee` column is a date where the other six publish an int and the filter
+ * answers HTTP 400. It is two rows.
+ */
+async function refreshPeCoverage() {
+  const started = Date.now();
+  const year = await discoverPeYear();
+  const where = peYearWhere(year);
+
+  const scaleFetches = PE_SCALES.map(async (scale) => {
+    const spec = peScaleSpec(scale);
+    const q = new URLSearchParams({ where });
+    const [taux, places] = await Promise.all([
+      fetchPeJson(`${PE_BASE}/${spec.taux}/exports/json?${q}`),
+      fetchPeJson(`${PE_BASE}/${spec.places}/exports/json?${q}`).catch((error) => {
+        // Losing a place file costs dot SIZES and the per-mode place counts on
+        // a card. It must not cost the rate, which is the whole layer.
+        console.warn(`[PetiteEnfance Proxy] ${spec.places} unavailable:`, error?.message || error);
+        return null;
+      }),
+    ]);
+    return { scale, taux, places };
+  });
+
+  const [nationalRows, centroids, index, ...scaled] = await Promise.all([
+    fetchPeJson(`${PE_BASE}/${PE_NATIONAL_DATASET}/exports/json`),
+    loadPeCentroids(),
+    loadSchoolsDepartementIndex(),
+    ...scaleFetches,
+  ]);
+
+  const national = peReadNational(nationalRows, year);
+  const byScale = new Map(scaled.map((entry) => [entry.scale, entry]));
+
+  const dep = projectPeAreas({
+    scale: 'dep',
+    taux: byScale.get('dep')?.taux,
+    places: byScale.get('dep')?.places,
+    national: national?.rate ?? null,
+    year,
+  });
+  const rollup = projectPeDepartements({
+    areas: dep.areas, index, national: national?.rate ?? null, year,
+  });
+
+  const areas = [];
+  let unplaced = 0;
+  let dropped = dep.dropped;
+  for (const scale of ['epci', 'com']) {
+    const projected = projectPeAreas({
+      scale,
+      taux: byScale.get(scale)?.taux,
+      places: byScale.get(scale)?.places,
+      national: national?.rate ?? null,
+      year,
+    });
+    dropped += projected.dropped;
+    const placed = placePeAreas(projected.areas, centroids);
+    unplaced += placed.unplaced;
+    areas.push(...placed.placed);
+  }
+
+  return {
+    rollup: {
+      ...rollup,
+      perimeter: national?.perimeter ?? null,
+      nationalModes: national?.modes ?? null,
+      builtInMs: Date.now() - started,
+    },
+    areas: {
+      areas,
+      count: areas.length,
+      epci: areas.filter((area) => area.scale === 'epci').length,
+      communes: areas.filter((area) => area.scale === 'com').length,
+      unplaced,
+      dropped,
+      national: national?.rate ?? null,
+      year,
+      source: PE_SOURCE,
+      geoSource: PE_GEO_SOURCE,
+    },
+  };
+}
+
+async function readPeDisk() {
+  if (_peDiskChecked) return;
+  _peDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(PE_CACHE_PATH, 'utf8'));
+    if (entry?.version === PE_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.rollup?.departements)
+      && Array.isArray(entry.payload?.areas?.areas)) {
+      _peCoverage = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writePeDisk(entry) {
+  fsp.mkdir(PE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(PE_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[PetiteEnfance Proxy] cache write failed:', err?.message || err));
+}
+
+/** Shared build, so `/areas` and `/departements` never sweep twice. */
+function ensurePeCoverage() {
+  if (!_peInFlight) {
+    _peInFlight = refreshPeCoverage()
+      .then((payload) => {
+        const entry = { version: PE_CACHE_VERSION, at: Date.now(), payload };
+        _peCoverage = entry;
+        writePeDisk(entry);
+        return entry;
+      })
+      .finally(() => { _peInFlight = null; });
+  }
+  return _peInFlight;
+}
+
+/**
+ * Vite plugin: CNAF childcare-coverage proxy.
+ * @returns {import('vite').Plugin}
+ */
+function petiteEnfanceFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/petite-enfance-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_peRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readPeDisk();
+        json(200, {
+          source: PE_SOURCE,
+          geoSource: PE_GEO_SOURCE,
+          portal: PE_PORTAL,
+          ttlMs: PE_TTL_MS,
+          coverage: _peCoverage
+            ? {
+              at: _peCoverage.at,
+              year: _peCoverage.payload.rollup.year,
+              national: _peCoverage.payload.rollup.national,
+              perimeter: _peCoverage.payload.rollup.perimeter,
+              painted: _peCoverage.payload.rollup.painted,
+              published: _peCoverage.payload.rollup.published,
+              unpainted: _peCoverage.payload.rollup.unpainted.length,
+              epci: _peCoverage.payload.areas.epci,
+              communes: _peCoverage.payload.areas.communes,
+              unplaced: _peCoverage.payload.areas.unplaced,
+              dropped: _peCoverage.payload.areas.dropped,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/areas' && route !== '/departements') {
+        json(404, { error: 'Unknown childcare-coverage endpoint' });
+        return;
+      }
+
+      const pick = (payload) => (route === '/areas' ? payload.areas : payload.rollup);
+      await readPeDisk();
+      const now = Date.now();
+      if (_peCoverage && now - _peCoverage.at <= PE_TTL_MS) {
+        json(200, { ...pick(_peCoverage.payload), fetchedAt: _peCoverage.at, stale: false }, { 'X-PETITE-ENFANCE-FR': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensurePeCoverage();
+        json(200, { ...pick(entry.payload), fetchedAt: entry.at, stale: false }, { 'X-PETITE-ENFANCE-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[PetiteEnfance Proxy] build unavailable:', error?.message || error);
+        // A rate a month old is still this edition's rate — serving it beats
+        // blanking a layer whose source is republished once a year.
+        if (_peCoverage && now - _peCoverage.at <= PE_STALE_MS) {
+          json(200, { ...pick(_peCoverage.payload), fetchedAt: _peCoverage.at, stale: true }, { 'X-PETITE-ENFANCE-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'French childcare-coverage data is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'petite-enfance-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+
+/**
+ * French doctor register — served from the shipped pack, not from a network.
+ *
+ *   GET /api/medecins-fr/national                     — départements + APL, once
+ *   GET /api/medecins-fr/mesh                         — the national point set, once
+ *   GET /api/medecins-fr/sites?south&west&north&east  — sites in one box, with names
+ *   GET /api/medecins-fr/status                       — provenance + what is loaded
+ *
+ * WHY A PROXY FOR A LOCAL FILE, when `plants.json` is simply fetched by its
+ * layer: size and shape. The pack is 8.6 MB of sites plus 7.2 MB of named
+ * practitioners, and a browser needs neither in full. It needs 100 kB of
+ * national rollup to paint 96 départements, 1.3 MB of thinned points to draw
+ * the middle zooms, and the forty sites under the current viewport — with
+ * their doctors' names — only once someone looks. Slicing here costs one
+ * `readFile` at boot and keeps every one of those three answers small.
+ *
+ * There is no TTL and no stale window on purpose. The upstream is a file in
+ * this repository, rebuilt by `npm run medecins:registry`; it cannot go stale
+ * between two requests, and pretending otherwise would be theatre.
+ */
+const MEDECINS_DIR = path.join(process.cwd(), 'src', 'data', 'local_data', 'medecins_fr');
+const MEDECINS_PACK_PATH = path.join(MEDECINS_DIR, 'medecins.json');
+const MEDECINS_PRACTITIONERS_PATH = path.join(MEDECINS_DIR, 'praticiens.jsonl');
+/** Paris at 0.6° holds ~4 500 sites; wider than that is a smear, not a map. */
+const MEDECINS_MAX_BOX_DEG = 0.6;
+const MEDECINS_SITES_CAP = 6000;
+const _medecinsRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 120, globalMax: 360 });
+
+/**
+ * Grid cell size for the site index, in degrees.
+ *
+ * 0.25° is a little over the widest box the `/sites` route accepts, so a
+ * viewport touches at most a handful of cells and the scan is bounded by what
+ * is on screen rather than by the size of France. Measured on the linear scan
+ * it replaces: 2 ms per request over 64 232 sites — small, but paid on every
+ * camera move by every open tab.
+ */
+const MEDECINS_GRID_DEG = 0.25;
+
+/** @type {?{pack:object, practitioners:{length:number, line:(i:number)=>string}, grid:Map<string, number[]>, loadedAt:number}} */
+let _medecinsPack = null;
+/** @type {?Promise<object>} */
+let _medecinsPackInFlight = null;
+/** route → {raw:Buffer, gzip:Buffer} for the two payloads that never vary. */
+const _medecinsStatic = new Map();
+
+function medecinsGridKey(lat, lon) {
+  return `${Math.floor(lat / MEDECINS_GRID_DEG)}:${Math.floor(lon / MEDECINS_GRID_DEG)}`;
+}
+
+/**
+ * Send JSON, gzipped when the caller accepts it.
+ *
+ * WHY IT IS WORTH THE FIVE LINES: Vite compresses the module graph it serves
+ * and nothing else, so before this every one of these routes went out raw.
+ * Measured on one session over central Paris — national + mesh + two site
+ * boxes — **3 360 kio uncompressed against 900 kio gzipped**. The mesh alone
+ * is 1 445 kio and compresses to 430.
+ */
+function medecinsSend(req, res, status, body, { cacheSeconds = 3600, cacheKey = null } = {}) {
+  const accepts = /\bgzip\b/.test(String(req.headers['accept-encoding'] || ''));
+  let raw = null;
+  let gzipped = null;
+  // gzip has a ~20-byte header and trailer, so below this it makes the answer
+  // BIGGER — measured: a 68-byte `/praticiens` body came back as 82. The
+  // per-card route is the one that hits this.
+  const GZIP_FLOOR_BYTES = 1024;
+  if (cacheKey && _medecinsStatic.has(cacheKey)) {
+    ({ raw, gzip: gzipped } = _medecinsStatic.get(cacheKey));
+  } else {
+    raw = Buffer.from(JSON.stringify(body));
+    // Level 6, not 9: on the 1.4 MB mesh, 9 costs ~3× the CPU for under 2 %
+    // more compression, and this buffer is built once and served forever.
+    gzipped = raw.length >= GZIP_FLOOR_BYTES ? zlib.gzipSync(raw, { level: 6 }) : raw;
+    if (cacheKey) _medecinsStatic.set(cacheKey, { raw, gzip: gzipped });
+  }
+  const useGzip = accepts && raw.length >= GZIP_FLOOR_BYTES && gzipped.length < raw.length;
+  const payload = useGzip ? gzipped : raw;
+  const headers = {
+    'Content-Type': 'application/json',
+    'Content-Length': String(payload.length),
+    'Cache-Control': `public, max-age=${cacheSeconds}`,
+  };
+  if (useGzip) headers['Content-Encoding'] = 'gzip';
+  res.writeHead(status, headers);
+  res.end(payload);
+}
+
+/**
+ * Read one shipped artifact, gzipped or plain, whichever the build wrote.
+ *
+ * The `.gz` is the default — 3.67 MB in the repository against 16.18 MB — and
+ * `npm run medecins:registry -- --plain` writes the other for anyone who wants
+ * to grep the dataset. Measured cost of the compressed path: **15 ms of
+ * `gunzipSync` for both files, once per process.**
+ */
+async function readMedecinsArtifact(file, { optional = false } = {}) {
+  const gz = await fsp.readFile(`${file}.gz`).catch(() => null);
+  if (gz) return zlib.gunzipSync(gz).toString('utf8');
+  const plain = await fsp.readFile(file, 'utf8').catch(() => null);
+  if (plain !== null) return plain;
+  if (optional) return '';
+  throw new Error(`neither ${path.basename(file)}.gz nor ${path.basename(file)} is present`);
+}
+
+async function loadMedecinsPack() {
+  if (_medecinsPack) return _medecinsPack;
+  if (_medecinsPackInFlight) return _medecinsPackInFlight;
+  _medecinsPackInFlight = (async () => {
+    const [packText, practitionersText] = await Promise.all([
+      readMedecinsArtifact(MEDECINS_PACK_PATH),
+      readMedecinsArtifact(MEDECINS_PRACTITIONERS_PATH, { optional: true }),
+    ]);
+    const pack = JSON.parse(packText);
+    // Line N of the practitioner file describes site N. If the two files ever
+    // disagree the join is meaningless, so refuse it rather than serve names
+    // attached to the wrong address.
+    //
+    // Kept as ONE buffer plus an offset index rather than 64 232 JavaScript
+    // strings: the array of strings retains roughly twice the bytes for a file
+    // whose lines are read one at a time, on a click, and never all together.
+    const practitionerBuffer = Buffer.from(practitionersText, 'utf8');
+    const practitionerOffsets = [];
+    if (practitionerBuffer.length) {
+      let start = 0;
+      for (let i = 0; i < practitionerBuffer.length; i += 1) {
+        if (practitionerBuffer[i] !== 0x0a) continue;
+        if (i > start) practitionerOffsets.push([start, i]);
+        start = i + 1;
+      }
+      if (start < practitionerBuffer.length) practitionerOffsets.push([start, practitionerBuffer.length]);
+    }
+    const practitioners = {
+      length: practitionerOffsets.length,
+      line(index) {
+        const span = practitionerOffsets[index];
+        return span ? practitionerBuffer.toString('utf8', span[0], span[1]) : '';
+      },
+    };
+    if (practitioners.length && practitioners.length !== pack.sites.length) {
+      throw new Error(
+        `praticiens.jsonl has ${practitioners.length} lines for ${pack.sites.length} sites — `
+        + 'rebuild with `npm run medecins:registry`',
+      );
+    }
+    const grid = new Map();
+    for (let index = 0; index < pack.sites.length; index += 1) {
+      const site = pack.sites[index];
+      const key = medecinsGridKey(site[0], site[1]);
+      const bucket = grid.get(key);
+      if (bucket) bucket.push(index);
+      else grid.set(key, [index]);
+    }
+    _medecinsPack = { pack, practitioners, grid, loadedAt: Date.now() };
+    return _medecinsPack;
+  })().finally(() => { _medecinsPackInFlight = null; });
+  return _medecinsPackInFlight;
+}
+
+/** Vite plugin: the shipped French doctor register, sliced. */
+function medecinsFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/medecins-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') { json(405, { error: 'Method Not Allowed' }); return; }
+      if (!_medecinsRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      let loaded;
+      try {
+        loaded = await loadMedecinsPack();
+      } catch (error) {
+        json(503, { error: `medecins-fr pack unavailable: ${error.message}` });
+        return;
+      }
+      const { pack } = loaded;
+
+      if (route === '/status') {
+        json(200, {
+          source: pack.sources,
+          generated: pack.generated,
+          edition: pack.source?.ps?.modified ?? null,
+          stats: pack.stats,
+          apl: pack.apl ? { millesime: pack.apl.millesime, national: pack.apl.national, champ: pack.apl.champ } : null,
+          loadedAt: loaded.loadedAt,
+          practitionerLines: loaded.practitioners.length,
+          maxBoxDeg: MEDECINS_MAX_BOX_DEG,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route === '/national') {
+        medecinsSend(req, res, 200, {
+          generated: pack.generated,
+          sources: pack.sources,
+          source: pack.source,
+          stats: pack.stats,
+          precision: pack.precision,
+          specialites: pack.specialites,
+          secteurs: pack.secteurs,
+          optionsTarifaires: pack.optionsTarifaires,
+          departements: pack.departements,
+          apl: pack.apl
+            ? {
+              millesime: pack.apl.millesime,
+              indicateur: pack.apl.indicateur,
+              unite: pack.apl.unite,
+              champ: pack.apl.champ,
+              seuils: pack.apl.seuils,
+              national: pack.apl.national,
+              dixiemes: pack.apl.dixiemes,
+              bornes: pack.apl.bornes,
+              population: pack.apl.population,
+              departements: pack.apl.departements,
+              jointure: pack.apl.jointure,
+            }
+            : null,
+          nonLocalisees: pack.nonLocalisees.length,
+        }, { cacheKey: 'national' });
+        return;
+      }
+
+      if (route === '/mesh') {
+        // `[lat, lon, praticiens, familleIndex]` — the thinner's tuple, and the
+        // family resolved HERE rather than shipped as a specialty list. Sending
+        // each site's `[[code, n], …]` instead measured 2.35 MB against 1.5 MB
+        // for the index, for a number the browser would derive from the same
+        // table anyway — which is why that table is imported rather than
+        // copied.
+        medecinsSend(req, res, 200, {
+          generated: pack.generated,
+          sites: pack.sites.map((site) => [
+            // FOUR decimals, not five. The mesh is only ever drawn at spans
+            // wider than 0.6°, where 11 m and 1 m are the same pixel — and the
+            // shorter numbers compress better: 1 445 kio → 1 268, and 430 kio
+            // → 384 once gzipped.
+            Math.round(site[0] * 1e4) / 1e4,
+            Math.round(site[1] * 1e4) / 1e4,
+            site[10] || 1,
+            MEDECIN_FAMILY_INDEX[sitePrimaryFamily(site)] ?? MEDECIN_FAMILY_INDEX.specialiste,
+          ]),
+          siteCount: pack.sites.length,
+        }, { cacheKey: 'mesh' });
+        return;
+      }
+
+      /**
+       * The names for ONE address, fetched when a card opens.
+       *
+       * They used to ride along with `/sites`, and over central Paris that was
+       * **40 % of a 1 451 kio response** — 16 069 practitioner names shipped to
+       * draw 5 907 dots, of which a reader opens one. Splitting them out takes
+       * the same box to 789 kio raw and 162 gzipped, and moves the names to the
+       * click that actually wants them.
+       */
+      if (route === '/praticiens') {
+        const index = Number.parseInt(url.searchParams.get('index') ?? '', 10);
+        if (!Number.isInteger(index) || index < 0 || index >= pack.sites.length) {
+          json(400, { error: 'index required, within the site range' });
+          return;
+        }
+        let praticiens = [];
+        const line = loaded.practitioners.line(index);
+        if (line) { try { praticiens = JSON.parse(line); } catch { praticiens = []; } }
+        medecinsSend(req, res, 200, { index, praticiens });
+        return;
+      }
+
+      if (route === '/sites') {
+        const num = (key) => Number.parseFloat(url.searchParams.get(key) ?? '');
+        const box = { south: num('south'), west: num('west'), north: num('north'), east: num('east') };
+        if (!Object.values(box).every(Number.isFinite) || box.north <= box.south || box.east <= box.west) {
+          json(400, { error: 'south/west/north/east required, and north>south, east>west' });
+          return;
+        }
+        if (box.north - box.south > MEDECINS_MAX_BOX_DEG || box.east - box.west > MEDECINS_MAX_BOX_DEG) {
+          json(413, { error: `box wider than ${MEDECINS_MAX_BOX_DEG}°`, maxBoxDeg: MEDECINS_MAX_BOX_DEG });
+          return;
+        }
+        // Only the grid cells the box touches, never the whole register.
+        const sites = [];
+        let truncated = false;
+        const minRow = Math.floor(box.south / MEDECINS_GRID_DEG);
+        const maxRow = Math.floor(box.north / MEDECINS_GRID_DEG);
+        const minCol = Math.floor(box.west / MEDECINS_GRID_DEG);
+        const maxCol = Math.floor(box.east / MEDECINS_GRID_DEG);
+        outer:
+        for (let row = minRow; row <= maxRow; row += 1) {
+          for (let col = minCol; col <= maxCol; col += 1) {
+            for (const index of loaded.grid.get(`${row}:${col}`) ?? []) {
+              const site = pack.sites[index];
+              if (site[0] < box.south || site[0] > box.north || site[1] < box.west || site[1] > box.east) continue;
+              if (sites.length >= MEDECINS_SITES_CAP) { truncated = true; break outer; }
+              sites.push({ index, site });
+            }
+          }
+        }
+        medecinsSend(req, res, 200, {
+          generated: pack.generated,
+          box,
+          sites,
+          count: sites.length,
+          // Said, never silent: a capped box is a partial answer and the layer
+          // has to be able to say so on the card.
+          truncated,
+          cap: MEDECINS_SITES_CAP,
+        }, { cacheSeconds: 600 });
+        return;
+      }
+
+      json(404, { error: 'Not Found' });
+    });
+  }
+
+  return {
+    name: 'medecins-france-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -19080,6 +20041,7 @@ export default defineConfig(({ mode }) => {
       firmsProxy(),
       vigicruesProxy(),
       meteoFranceVigilanceProxy(),
+      meteoStationsProxy(),
       eco2mixProxy(),
       gasFranceProxy(),
       edfPlantsProxy(),
@@ -19104,6 +20066,8 @@ export default defineConfig(({ mode }) => {
       irveFranceProxy(),
       cadastreFranceProxy(),
       schoolsFranceProxy(),
+      medecinsFranceProxy(),
+      petiteEnfanceFranceProxy(),
       supFranceProxy(),
       comptagesParisProxy(),
       delinquanceFranceProxy(),

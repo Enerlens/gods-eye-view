@@ -11,13 +11,22 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
-import { GPU_BOX_MAX_ALTITUDE_M, GPU_MAX_BOX_DEG, projectZones } from './gpuFeed.js';
 import {
+  GPU_BOX_MAX_ALTITUDE_M, GPU_MAX_BOX_DEG, projectGpu, projectZones,
+} from './gpuFeed.js';
+import { pointInPolygons } from './ringGeometry.js';
+import {
+  ZONE_FAMILY_SENTENCES,
   ZONE_FILL_MAX_ALPHA,
   drawGpuParts,
+  gpuAnswerAt,
   gpuClassificationTypeForScene,
+  gpuGroundCard,
   gpuScanBox,
   gpuScanParams,
+  servitudeLines,
+  servitudeSentence,
+  zoneApprovalDate,
   zoneDescription,
   zoneColorCss,
   zoneFamilySentence,
@@ -26,6 +35,12 @@ import {
 
 const ENCLAVES = JSON.parse(readFileSync(
   new URL('./fixtures/gpu-zone-urba-enclaves-sample.json', import.meta.url), 'utf8',
+));
+const PARIS_ZONING = JSON.parse(readFileSync(
+  new URL('./fixtures/gpu-zone-urba-sample.json', import.meta.url), 'utf8',
+));
+const SERVITUDES = JSON.parse(readFileSync(
+  new URL('./fixtures/gpu-assiette-sup-s-sample.json', import.meta.url), 'utf8',
 ));
 
 const now = () => Cesium.JulianDate.now();
@@ -245,4 +260,190 @@ test('a neighbouring zone says it is a neighbour, on its own card', () => {
   assert.ok(zoneDescription({ kind: 'U', code: 'UB', atPoint: true }).length > 0);
   assert.ok(!zoneDescription({ kind: 'U', code: 'UB', atPoint: true }).includes('voisine'));
   assert.ok(zoneDescription({ kind: 'A', code: 'A', atPoint: false }).includes('voisine'));
+});
+
+// ── Clicking the ground, not the marker ──────────────────────────────────────
+//
+// The reported symptom, in the operator's own words: "j'aimerais que lorsque
+// l'on clique n'importe où sur la carte, cela vienne ouvrir une fenêtre
+// informative … et que l'on n'ait pas l'obligation d'aller trouver le petit
+// symbole pour aller cliquer dessus". The map was already drawing the answer
+// for a whole block and putting the only words on one 26-pixel glyph, so the
+// plot OPPOSITE — the plot this layer exists for — could be seen and not read.
+//
+// These pin the four regimes the answer has, and the two places where reading
+// it off the drawn shapes would be a lie.
+
+/** Avenue de France, Paris 13e — the address both Paris fixtures answer for. */
+const PARIS = { lon: 2.3760, lat: 48.8300 };
+const USTARITZ_BOX = {
+  south: 43.388, west: -1.470, north: 43.402, east: -1.450,
+};
+/**
+ * A point APIcarto itself answers `UB` for that falls OUTSIDE the drawn `UB`
+ * ring. Not invented: sampling the fixture's published outer ring against the
+ * decimated one on a 400×400 grid finds 571 such points, which is the 521→400
+ * vertex decimation showing up as ground.
+ */
+const DECIMATION_GAP = { lon: -1.462153, lat: 43.39983 };
+/** Inside the village-centre zone, 400 m from the gap and well clear of it. */
+const IN_THE_ZONE = { lon: -1.45702, lat: 43.39632 };
+/** The school enclave: `UE` in the document, a hole punched out of `UB`. */
+const THE_SCHOOL = { lon: -1.45669, lat: 43.39522 };
+
+const boxedPayload = (point) => projectGpu({
+  zoning: ENCLAVES, servitudes: null, point, box: USTARITZ_BOX,
+});
+
+test('a click on the ground answers for the ground, with no marker involved', () => {
+  const payload = boxedPayload(DECIMATION_GAP);
+  const card = gpuGroundCard({ payload, ...IN_THE_ZONE, point: DECIMATION_GAP });
+  assert.match(card.title, /^UB — /);
+  assert.ok(card.details.includes('zone urbaine — déjà bâtie et équipée'),
+    'the family is spelled out, not left as a letter');
+});
+
+test('the enclave is a hole in the answer too, not only in the wash', () => {
+  // The whole reason the holes were cut: a card that answered `UB` over the
+  // school would put a building in a zone it is not in, which is the bug this
+  // module's own tests were written for — wearing the card's clothes.
+  const payload = boxedPayload(DECIMATION_GAP);
+  const card = gpuGroundCard({ payload, ...THE_SCHOOL, point: DECIMATION_GAP });
+  assert.ok(!card.title.includes('UB'), `the school is not UB, got ${card.title}`);
+});
+
+test('at the marker the register answers, and a decimated ring cannot overrule it', () => {
+  // The measured trap: APIcarto answers `UB` for this point, and the ring this
+  // module draws — straightened from 521 vertices to 400 — excludes it. Read
+  // off the drawn shape, clicking the marker's own ground would report no
+  // zoning at the one point where the register has actually spoken.
+  const payload = boxedPayload(DECIMATION_GAP);
+  assert.ok(!pointInPolygons(payload.zones[0].parts, DECIMATION_GAP.lon, DECIMATION_GAP.lat),
+    'the fixture still holds the decimation gap this test exists for');
+  const answer = gpuAnswerAt(payload, DECIMATION_GAP.lon, DECIMATION_GAP.lat, DECIMATION_GAP);
+  assert.equal(answer.fromRegister, true);
+  assert.equal(answer.zones.length, 1, 'the register said UB, so the card says UB');
+  assert.match(gpuGroundCard({ payload, ...DECIMATION_GAP, point: DECIMATION_GAP }).title, /^UB — /);
+});
+
+test('the register only answers its own patch of ground', () => {
+  const payload = boxedPayload(DECIMATION_GAP);
+  const near = gpuAnswerAt(payload, DECIMATION_GAP.lon, DECIMATION_GAP.lat + 0.0001, DECIMATION_GAP);
+  const far = gpuAnswerAt(payload, IN_THE_ZONE.lon, IN_THE_ZONE.lat, DECIMATION_GAP);
+  assert.equal(near.fromRegister, true, '11 m away is still the marker`s own ground');
+  assert.equal(far.fromRegister, false, '400 m away the drawn map answers');
+  assert.equal(far.zones.length, 1, 'and it answers correctly, inside the zone');
+});
+
+test('four ways to have no zoning, and only one of them is about the ground', () => {
+  const point = DECIMATION_GAP;
+  const boxed = boxedPayload(point);
+  const outside = gpuGroundCard({ payload: boxed, lon: -1.44, lat: 43.39, point });
+  assert.equal(outside.title, 'Hors du bloc interrogé');
+  assert.ok(outside.details.some((line) => line.includes('bloc dessiné')));
+
+  const pointRegime = projectGpu({ zoning: ENCLAVES, servitudes: null, point, box: null });
+  const away = gpuGroundCard({ payload: pointRegime, lon: -1.44, lat: 43.39, point });
+  assert.equal(away.title, 'Zonage non interrogé ici');
+  assert.ok(away.details.some((line) => line.includes('repère')));
+
+  const refused = projectGpu({
+    zoning: ENCLAVES, servitudes: null, point, box: USTARITZ_BOX,
+    zoningRefused: { found: 17182, limit: 5000 },
+  });
+  assert.equal(gpuGroundCard({ payload: refused, ...IN_THE_ZONE, point }).title, 'Zonage non dessiné');
+
+  const covered = gpuGroundCard({ payload: boxed, ...THE_SCHOOL, point });
+  assert.equal(covered.title, 'Aucun zonage à ce point');
+  assert.ok(covered.details.some((line) => line.includes('bien été interrogé')),
+    'the one case that IS about the ground says so, rather than blaming the layer');
+});
+
+test('an easement absence names what was checked, because "clear" is a claim', () => {
+  const point = PARIS;
+  const payload = projectGpu({ zoning: PARIS_ZONING, servitudes: SERVITUDES, point, box: null });
+  assert.equal(payload.servitudes.length, 5);
+
+  const atMarker = gpuGroundCard({ payload, ...point, point });
+  assert.ok(atMarker.details.some((line) => line.startsWith('5 servitudes ici :')),
+    'every easement the register returned reaches the point it was asked about');
+
+  // Somewhere none of the five envelopes reaches. The register was never asked
+  // about it, and saying "aucune servitude" there would be a survey this layer
+  // has not done.
+  const elsewhere = gpuAnswerAt(payload, 2.30, 48.90, point);
+  assert.equal(elsewhere.servitudes.length, 0);
+  const sentence = servitudeSentence(elsewhere);
+  assert.ok(sentence.includes('5 servitudes du repère'), sentence);
+  assert.ok(!sentence.includes('aucune servitude à ce point'),
+    'that sentence is reserved for the point the register actually answered');
+});
+
+test('an approval date is a date, not eight digits', () => {
+  // The same national schema, two spellings, measured: Ustaritz publishes
+  // `20240323` and Paris `2026-06-16`.
+  assert.equal(zoneApprovalDate('20240323'), '23/03/2024');
+  assert.equal(zoneApprovalDate('2026-06-16'), '16/06/2026');
+  assert.equal(zoneApprovalDate(''), null);
+  assert.equal(zoneApprovalDate('en cours'), 'en cours', 'anything else is passed through');
+});
+
+test('the card fits the box the overlay paints, in both directions', () => {
+  // Six lines because that is what `createAddressScanOverlayEntry` keeps, and
+  // a bounded WIDTH because the overlay neither wraps nor truncates: a card is
+  // exactly as wide as its longest detail, so one unbounded list of easement
+  // labels is a card two thirds of the screen across.
+  const widest = Math.max(...Object.values(ZONE_FAMILY_SENTENCES).map((line) => line.length));
+  const seen = [];
+  for (const [zoning, servitudes, point, box] of [
+    [PARIS_ZONING, SERVITUDES, PARIS, null],
+    [ENCLAVES, null, DECIMATION_GAP, USTARITZ_BOX],
+  ]) {
+    const payload = projectGpu({ zoning, servitudes, point, box });
+    for (const at of [point, IN_THE_ZONE, THE_SCHOOL, { lon: 2.30, lat: 48.90 }]) {
+      const card = gpuGroundCard({ payload, ...at, point });
+      seen.push(card);
+      assert.ok(card.details.length <= 6, `${card.title}: ${card.details.length} lines`);
+      for (const line of [card.title, ...card.details]) {
+        assert.ok(typeof line === 'string' && line.length > 0, `empty line on ${card.title}`);
+        assert.ok(line.length <= widest, `${line.length} chars, over ${widest}: ${line}`);
+      }
+    }
+  }
+  // The Paris address answers five easements under three family names, which
+  // is the case that used to compose a 108-character line.
+  const listed = seen.find((card) => card.details.includes('5 servitudes ici :'));
+  assert.ok(listed, 'a list too wide for one line is given a row per family');
+  assert.equal(listed.details.filter((line) => line.startsWith('· ')).length, 3);
+});
+
+test('the easement list yields its rows to the zone, never the other way round', () => {
+  // Six rows is the whole card, and the rule the operator came for — which
+  // zone, approved when, under which document — is not the half that should
+  // lose one. A card with no room to list counts instead.
+  const point = PARIS;
+  const payload = projectGpu({ zoning: PARIS_ZONING, servitudes: SERVITUDES, point, box: null });
+  const answer = gpuAnswerAt(payload, point.lon, point.lat, point);
+  assert.deepEqual(servitudeLines(answer, 4), [
+    '5 servitudes ici :',
+    '· Abords d\'un monument historique',
+    '· Voie ferrée — zone de protection',
+    '· Plan de prévention des risques (naturels ou technologiques)',
+  ]);
+  assert.deepEqual(servitudeLines(answer, 3), [
+    '5 servitudes ici :',
+    '· Abords d\'un monument historique',
+    '· et 2 autres',
+  ]);
+  assert.deepEqual(servitudeLines(answer, 2), [servitudeSentence(answer)],
+    'with one row to spare it is a sentence, not a list of one');
+  for (const budget of [2, 3, 4, 5]) {
+    assert.ok(servitudeLines(answer, budget).length <= budget, `overran ${budget}`);
+  }
+});
+
+test('with nothing scanned there is nothing to answer, and no empty card', () => {
+  assert.equal(gpuAnswerAt(null, 2, 48, null), null);
+  assert.equal(gpuAnswerAt({ zones: [] }, NaN, 48, null), null);
+  assert.equal(gpuGroundCard({ payload: null, lon: 2, lat: 48 }), null);
 });

@@ -392,6 +392,35 @@ export const DATA_CREDITS = [
       'geocoded only to their commune, and their cards say that too.',
   },
   {
+    key: 'medecins-fr',
+    html:
+      'French doctors: <em>Annuaire sant&eacute; Ameli</em>, published by the ' +
+      '<a href="https://www.data.gouv.fr/datasets/annuaire-sante-ameli" target="_blank" rel="noopener">Caisse nationale de l&rsquo;Assurance Maladie</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
+      'edition of 17/08/2026, rebuilt weekly. <strong>The register publishes no coordinates</strong> &mdash; ' +
+      'positions are geocoded against the <a href="https://adresse.data.gouv.fr/" target="_blank" rel="noopener">Base Adresse Nationale</a> ' +
+      '(Licence Ouverte 2.0) and each site carries the precision BAN returned; 716 are placed at their commune centre and say so. ' +
+      'Accessibility is the <em>accessibilit&eacute; potentielle localis&eacute;e</em> (APL) 2024 to general practitioners aged 65 or under, ' +
+      '<a href="https://www.data.gouv.fr/datasets/accessibilite-potentielle-localisee-apl-aux-professionnels-de-sante" target="_blank" rel="noopener">DREES</a> ' +
+      '(Licence Ouverte 2.0), France hors Mayotte. The register carries no identifier, so counts are distinct ' +
+      'practitioner names, not a headcount &mdash; measured 5 % above the CNAM&rsquo;s own 2024 figure.',
+  },
+  {
+    key: 'meteo-stations-fr',
+    html:
+      'French weather stations: <em>R&eacute;seau d&rsquo;observation temps r&eacute;el</em>, '
+      + '<em>Informations sur les stations</em>, <em>Postes</em> and <em>Donn&eacute;es SYNOP essentielles OMM</em>, '
+      + 'published by <a href="https://meteo.data.gouv.fr/" target="_blank" rel="noopener">M&eacute;t&eacute;o-France</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
+      + '2 144 stations, rebuilt from the network list joined to M&eacute;t&eacute;o-France&rsquo;s own 191 MB per-station '
+      + 'parameter inventory &mdash; which is where the instrument classes come from: 1 254 of the 2 144 measure only '
+      + 'temperature and rain, 845 measure wind, 234 measure pressure. Live observations are the running-year SYNOP '
+      + 'archive, refreshed hourly; <strong>it carries 190 stations where M&eacute;t&eacute;o-France&rsquo;s own SYNOP '
+      + 'station list names 62</strong>, so the layer counts the archive. Station records come from each '
+      + 'poste&rsquo;s <em>fiche climatologique</em>, fetched per card. Seven stations in the real-time list are '
+      + 'recorded as closed by the same publisher and are drawn hollow rather than dropped.',
+  },
+  {
     key: 'sup-fr',
     html:
       'French higher education: <em>Effectifs d&rsquo;&eacute;tudiants inscrits &mdash; d&eacute;tail par '
@@ -475,6 +504,21 @@ export const DATA_CREDITS = [
       'could carry an index (64.5%); the rest say <em>IPS non publi&eacute;</em>, including the 2&nbsp;504 the DEPP itself marks ' +
       '<code>NS</code> as too small to publish. A lyc&eacute;e&rsquo;s <code>ips_etab</code> covers the whole establishment, so its card ' +
       'also names the voies the file publishes apart.',
+  },
+  {
+    key: 'petite-enfance-fr',
+    html:
+      'French childcare coverage: <em>Taux de couverture d&rsquo;accueil du jeune enfant</em> and '
+      + '<em>Nombre de places offertes pour les enfants de moins de 3 ans</em>, published by the '
+      + '<a href="https://data.caf.fr/explore/dataset/txcouv_pe_dep/" target="_blank" rel="noopener">Caisse nationale des allocations familiales</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), '
+      + 'read at the newest published edition across d&eacute;partement, EPCI and commune. This is an '
+      + 'INDICATOR, not a register: no national list of cr&egrave;ches is published as open data, so '
+      + 'the layer draws places per 100 children under three rather than establishments. The commune '
+      + 'breakdown exists only for communes over 10&nbsp;000 inhabitants (1&nbsp;061 of ~34&nbsp;875), '
+      + 'and EPCI and commune points are placed at their administrative centre from '
+      + '<a href="https://geo.api.gouv.fr" target="_blank" rel="noopener">geo.api.gouv.fr</a> '
+      + '(&Eacute;talab, same licence) &mdash; a centre, never a boundary, and the cards say so.',
   },
   {
     key: 'radio-browser',

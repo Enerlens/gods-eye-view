@@ -630,6 +630,25 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'live',
   }),
+  // RÉSEAUX & CAPTEURS and not RISQUES & ENVIRONNEMENT, which is where its two
+  // obvious neighbours sit. Vigilance météo is in `hazards` because it paints a
+  // WARNING, and Stations Hub'Eau is there because it paints river flow read as
+  // a flood signal. This layer paints neither: it is 2 144 instruments and what
+  // each one can measure — the sensor network itself, which is the group this
+  // category exists to name. A reader asking "where does the weather data come
+  // from" is not asking about a hazard.
+  //
+  // `periodic` rather than `static`: the network is a bundled file, but the
+  // card fetches an hourly observation and a station's records on click.
+  Object.freeze({
+    id: 'meteo-stations-fr',
+    category: 'comms-sensors',
+    label: 'Stations météo',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
 
   // In RÉSEAUX & CAPTEURS beside `radio` and `cctv`, and the neighbour is the
   // reason the icon is 📡 and not a wave glyph: `radio` is radio-browser.info
@@ -692,6 +711,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   // is the State's account of where its pupils are put, which is base
   // reference data in exactly the sense `bdtopo-buildings` is. It is not
   // mobility, not energy, and not a hazard.
+  // BÂTI & TERRITOIRE for the same reason the school register is: 64 232
+  // practice addresses are where a public service is physically put, which is
+  // base reference data about the territory. It is not a hazard — a shortage
+  // of doctors is a durable structural fact, not an event — and it is not a
+  // sensor network.
+  Object.freeze({
+    id: 'medecins-fr',
+    category: 'built-environment',
+    label: 'Médecins',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'schools-fr',
     category: 'built-environment',
@@ -740,6 +773,21 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     id: 'sup-fr',
     category: 'built-environment',
     label: 'Enseignement supérieur',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
+  // Third of the education trio, and the only one that is not a register. It
+  // draws an INDICATOR — places per 100 children under three — because no
+  // national list of crèches is published as open data (the measurement behind
+  // that claim is in `petiteEnfanceFeed.js`). Same group all the same: it is
+  // the State's account of what it provides for the people it educates, at the
+  // age before `schools-fr` starts.
+  Object.freeze({
+    id: 'petite-enfance-fr',
+    category: 'built-environment',
+    label: 'Accueil du jeune enfant',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',

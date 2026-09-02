@@ -3,7 +3,7 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
-## [Unreleased] — 2026-09-01
+## [Unreleased] — 2026-09-02
 
 ### Added
 - **IPS des écoles — le dernier point du brief, et ce n'est pas une couche.** L'*indice de position sociale* de la DEPP ne publie aucune coordonnée : ses 43 322 lignes sont clés sur l'UAI et rien d'autre, donc une couche devrait emprunter sa géométrie à `schools-fr` — c'est-à-dire qu'elle SERAIT `schools-fr`. L'indice arrive donc comme la cinquième jointure sur l'UAI de ce fichier, à côté des quatre fichiers d'effectifs qui donnent déjà la taille des points. Sans clé, Licence Ouverte 2.0, via le proxy `/api/schools-fr` existant.
@@ -143,6 +143,153 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 - Share token `cr`, panel icon 🚦 — deliberately neither `traffic`'s 🚗 nor
   `road-status-fr`'s 🛣, because the whole point is that it is a different
   quantity. `REGISTERED_LAYER_IDS.length` moves 42 → 43.
+
+- **Stations météo (FR) — where France measures the weather, and what each
+  instrument can actually tell you.** All **2 144 stations** of Météo-France's
+  real-time observation network, from the tide line to the **Aiguille du Midi at
+  3 845 m**. The globe already showed the weather three times — Open-Meteo in the
+  cockpit, Vigilance météo per département, Vigicrues on the rivers — and never
+  once showed where the numbers come from. A vigilance map is an interpretation
+  of readings taken somewhere; this is the somewhere.
+- **Colour is capability, because a French weather station usually is not one.**
+  A reader expects 2 144 identical instruments knowing temperature, wind,
+  pressure and humidity. Against Météo-France's own per-station inventory:
+  **1 254 of the 2 144 — 58 % — measure temperature and rain and nothing else**,
+  only **845 can tell you which way the wind is blowing**, and only **234** have
+  a barometer. **228** measure all five. So the palette is what each dot can
+  answer, the disc is sized by how many of the fourteen instrument families it
+  carries, and the **VENT** chip deletes 60 % of the map on purpose.
+- **190 stations publish their readings in the open — and Météo-France's own
+  list names 62.** A ring means a station whose last hour is readable without a
+  key, and clicking one fetches it: temperature, wind and gust in km/h, pressure,
+  humidity, rain, visibility, snow. Boulogne-sur-Mer, Le Touquet, Dunkerque,
+  Dieppe, Beauvais-Tillé, Ouessant-Stiff and 123 others publish hourly without
+  appearing on the list that is supposed to name them; **CAP CEPET is on the list
+  and has written nothing all year**. The layer counts the archive, never the
+  list. The other 1 954 stations are measuring right now and publishing nothing
+  a visitor can read — the card says that, rather than showing an empty reading.
+- **Every station's records, with the window they stand in.** 1 230 postes
+  publish a *fiche climatologique*, and a click brings back the hottest and
+  coldest day ever recorded there plus the period the record was established
+  over — Toulouse-Blagnac's 42,4 °C in 2023 against observations back to 1947,
+  Arbent's 39,2 °C against 2004. The window is printed with the number because
+  without it the two read the same.
+- **The instrument inventory, joined from a 191 MB file no browser can fetch.**
+  The station list is eight columns and says nothing about what anything
+  measures; that lives in Météo-France's per-parameter inventory, dated one
+  instrument at a time. `npm run meteo:stations` joins four of the publisher's
+  files into a 644 KB pack. Families are anchored on hourly base readings, never
+  keyword-matched: matching on "VENT" would count a decadal wind average —
+  present on 879 stations — as an anemometer when only 845 have one.
+- **Seven stations in the live list are closed, and six exist in no metadata at
+  all.** MARSILLARGUES since 2026-01-01, DESHAIES GENDARMERIE since 2024-10-01,
+  ST JOSEPH-CIRAD and TAN ROUGE-CIRAD since 2023-03-29, and three more —
+  Météo-France's own metadata records the closure and its own real-time list
+  still carries the station. They are drawn hollow and the card leads with the
+  date. ALBA LA ROMAINE, SOULAINES, TARASCON, PIOGGIOLA, QUERCITELLO and MURAT
+  SUR VEBRE are drawn in the neutral grey this project uses for "the publisher
+  did not say" — never as stations that measure nothing.
+- **Urbanisme (PLU) — click anywhere on the map, not on the marker.** The layer
+  drew a whole block of zoning and put every word of the answer on one 26-pixel
+  glyph, so the plot opposite could be SEEN and not READ: knowing what the
+  magenta polygon across the street means meant flying the camera over it.
+  A click on the wash, on an outline, or on the bare globe between them now
+  opens a card for that spot — which zone, what the family means, which
+  easements reach it, when the PLU was approved and under which document.
+  Measured at Ustaritz at 900 m: four clicks across one screen answer `UB`,
+  `UA`, `A` and `UB`. No request and no wait: the answer is read out of the map
+  already in hand. The scan marker keeps its own card, which is the scan-level
+  summary.
+- **The register outranks the drawing, within 30 m of the marker.** The shapes
+  on screen are decimated by up to 96%, and this layer's own rule is that a
+  simplified outline must never decide which rule applies to a house: measured
+  at Ustaritz, the point APIcarto itself answers `UB` for falls OUTSIDE the
+  drawn `UB` ring — 571 sampled points do. At the scan point the register has
+  already answered, so it is used and the geometry is not consulted; further
+  out the drawn map answers and the card says its outlines are simplified.
+- **Four ways to have no zoning, said apart.** The answer was refused whole,
+  the box never covered this spot, the camera is above 1 500 m so only the
+  marker was asked about, or the published document genuinely stops here.
+  A card printing "aucun zonage" for all four would report three of the layer's
+  own limits as facts about the plot. Easements the same: "aucune servitude à
+  ce point" only where the register answered that point, and "aucune des N
+  servitudes du repère n'atteint ce point" everywhere else — because "this
+  ground is clear" is a survey, and the easement half is only ever asked at the
+  marker.
+- **An approval date is a date.** The same national schema publishes `datvalid`
+  as `20240323` at Ustaritz and `2026-06-16` in Paris; both now read
+  `23/03/2024` and `16/06/2026` on every card.
+- **Accueil du jeune enfant (FR) — the indicator, because the register does not
+  exist.** The question "can we add a crèche dataset?" was answered by
+  measurement, not assumption, and the answer is no: the Cnaf publishes 210
+  open datasets and **not one is an establishment**; FINESS holds 174 621
+  establishments of which only **183** have a crèche-shaped name, and those are
+  incidental (EAJE are authorised by the département's PMI, not an ARS);
+  INSEE's BPE has the right object but its only API millésimes are 2016 and
+  **2021**; and Sirene's NAF 88.91A silently drops the entire public sector —
+  `nature_juridique` 7210 with that APE returns **zero rows**, while a
+  municipal crèche is really there as an establishment of the commune's SIREN.
+  So the new layer draws what the State does publish: **places of formal
+  childcare per 100 children under three**, at the three scales the Cnaf
+  publishes them — 102 départements, 1 251 EPCI, 1 061 communes.
+- **The colour is a ratio to France, not a quantile.** This layer paints three
+  nested scales, and a quantile band means "the top sixth of what is on
+  screen" — so the same colour would mean different things at different zooms
+  and an area would change colour without anything changing about it. Every
+  scale is anchored on the one national figure (**60,9** in 2023, which
+  cross-checks exactly against the ONAPE 2024 report), on a diverging ramp
+  whose break falls where the ratio crosses 1. The map then says something
+  immediately: the Atlantic west is well above France, the Paris ring and the
+  Mediterranean south well below.
+- **The omission is the finding.** The bundled polygons are metropolitan, so 6
+  of the Cnaf's 102 rows cannot be painted — Guyane 13,4, Saint-Martin 30,2,
+  La Réunion 38,5, Guadeloupe 44,1, Saint-Barthélemy 47,5, Martinique 55,2.
+  **Every one is below the national rate, Guyane at 22% of it**, while not one
+  metropolitan département reaches the lowest band. A map stopping at the
+  coastline would delete the whole bottom of the distribution, so the six are
+  carried with their rates and named on the national card.
+- **Two placeholder rows that are not spelled alike.** The EPCI file publishes
+  `numepci = "XX"` carrying a real and extreme 195,8 — the national maximum,
+  drawn nowhere, anchoring any ramp — and the département places file spells
+  the same idea `XXX`. Matching a literal would have caught one of the two.
+  With it gone the real EPCI range is 2,7 to 160,5.
+- **Médecins (FR) — where doctors are, and where access runs out.** 64 232
+  practice addresses, 117 922 named doctors and what each of them charges,
+  drawn at three scales. The national view paints the DREES's **accessibilité
+  potentielle localisée** rather than a headcount, and that is a measured
+  choice: the median French person lives **0.7 km from a general practitioner**
+  and only 0.49 % of the population is beyond 10 km, so a map of counts would
+  say "France is covered" and be useless. What is scarce is capacity — 18 % of
+  the population lives in a commune the ARS class as under-served. Closer in,
+  colour is the family of medicine and dot size is the number of distinct
+  doctors at the address; a click names them, says what each costs (94 % of GP
+  entries are secteur 1 against 18 % of ophthalmologists, 63 % of whom set
+  their own fees), places the commune in the national tenth, and shows what
+  the neighbourhood loses when its over-62s retire — **−22 % nationally**.
+- **The register that publishes no coordinates, geocoded.** The CNAM's
+  *Annuaire santé Ameli* is the only nationwide list of conventioned doctors
+  and it contains **not one latitude**: its address block is named
+  `coordonnees_*` in the sense of *contact details*. Every ready-geocoded copy
+  in circulation descends from the previous CNAM directory, deprecated in
+  December 2025, and still speaks of the *contrat d'accès aux soins* — closed
+  to new signatures on 2016-12-31. The one daily-geocoded national register,
+  Atlasanté's, answers HTTP 403 outside the ARS network. So
+  `npm run medecins:registry` geocodes the register against the Base Adresse
+  Nationale in three passes and ships the result: **64 232 of 64 625 addresses
+  placed, 99.4 %**, 82.7 % at the exact door, 1.1 % at a commune centre that
+  says so on its card, and 393 named rather than quietly dropped.
+- **Checked against the CNAM's own headcount, and it holds.** The same
+  publisher counts the same population a second way; `--verifier` replays the
+  comparison. **117 922 named doctors against 112 159**, +5.1 % — the gap a
+  directory should show over an activity count taken two years earlier — with
+  23 professions between −1.5 % and +15.1 %, and per DÉPARTEMENT a median gap
+  of **+2.1 %, 97 of 101 inside [−10 %, +15 %]**, so the geocoding moved nobody
+  between departments. Three register traps are neutralised on the way: a
+  radiologist is listed at every imaging site they cover (5.53 entries per name
+  against 1.18 for a GP), three separate codes read `Médecin généraliste`
+  (grouping by code loses 11 % of them), and 9 328 doctors practise in more
+  than one département (summing per-department distinct names answers 130 330
+  for a country holding 117 922).
 
 - **Urbanisme (PLU) — it draws the block now, not the dot.** The layer answered
   one point, which is the wrong question: "could the car park opposite become
@@ -404,6 +551,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   broken.
 
 ### Fixed
+
+- **Clicking a parcel highlighted a wedge with the NEIGHBOUR's corners.** The
+  cadastral outline under the cursor was square and correct, and the cyan fill
+  poured into it was a diagonal blob with two edges that belonged to no parcel
+  at all. Measured over Ustaritz on parcel AN 0512: **41% of the plot filled**,
+  and the two straight cuts through the highlight sat on parcel AN 0511's east
+  and north **bounding-box** edges to within one pixel. That is the tell. A
+  batched `GroundPrimitive` does not colour a ground pixel by the polygon that
+  contains it — Cesium classifies the whole batch in ONE stencil pass, which
+  records only "some instance here", and the colour pass then keeps the first
+  instance whose kilometres-tall shadow volume reaches the pixel and whose own
+  axis-aligned bounding rectangle contains it. Parcel bounding rectangles
+  overlap their neighbours' constantly, so inside one batch neighbours repaint
+  each other along rectangle edges. It was invisible while every parcel in the
+  batch shared a band colour, and glaring the moment selection made one differ.
+  Fills are now batched **by band colour** — five primitives at most, against
+  one before and one-per-parcel never — and the selected parcel is drawn as a
+  primitive of its own laid over the batch. The highlight now matches the
+  parcel's own polygon to an intersection-over-union of **0.98 nadir and 0.98
+  oblique**, against 0.44 and 0.14 before, proved on pixels by the new
+  `npm run qa:cadastre-highlight`.
+- **A digue titled "Barrage" — the pack knew better than the card.** Reported
+  from the map: a "Barrage · 159 m de long" at Octeville-sur-Mer where no
+  barrage is visible. Checked against OpenStreetMap: `w860215522` carries the
+  single tag `man_made=dyke`, four nodes, no water body within 250 m — an
+  anti-ruissellement bund on the Rouelles watershed, not a dam. The 159 m was
+  never wrong; it is `spanM`, measured off the drawn geometry, and it
+  recomputes to 159 m from the raw nodes. The word was wrong. The pack has
+  stored `kind` since the two-axis rebuild and colours digues ochre, but the
+  card title fell through to the LAYER's name whenever a feature had none of
+  its own — which titled **1 198 digues, 24 barrage-digues and 88 unclassified
+  world features "Barrage"**, out of 5 948 nameless features in a pack of
+  7 432. Nameless features are now titled by what they ARE, in the same words
+  the chips and the legend already use: Barrage, Digue, Barrage-digue, or
+  Ouvrage for the world half that has no `kind` left to read. The second
+  reported sighting settles what these actually are: `w849340116` is the bund
+  of `w849340115`, tagged `natural=water` + `water=basin` + `intermittent=yes`
+  — the embankment of a dry retention basin.
 
 - **"Sites militaires — Error loading" was one mirror refusing, and three
   healthy ones never asked.** Every viewport answered HTTP 503, and the layer

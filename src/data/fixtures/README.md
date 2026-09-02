@@ -334,3 +334,41 @@
 - `amenities-bpe25-sample.csv` / `amenities-finess-sample.csv` — 26 + 17 lignes réelles capturées le 2026-09-02, dans l'enveloppe brute des deux amonts (point-virgule, 95 et 35 colonnes, en-tête verbatim). BPE : `https://www.insee.fr/fr/statistiques/fichier/8217525/BPE25.zip` (142 884 474 octets, membre unique `BPE25.csv` de 1 515 251 530 octets, 2 921 770 lignes) ; FINESS : `https://data-pipeline-open.s3.sbg.io.cloud.ovh.net/finess/finess_etablissements.csv` (44 053 043 octets, 103 032 lignes). Chaque ligne porte un piège distinct. Côté BPE : les quatre modalités de `QUALITE_GEOLOC` (11, 12, 21, 22) plus **33 « position aléatoire dans la commune » refusée**, une gendarmerie antillaise en `_Z` partout, un bassin de natation en `QUALITE_XY = _U`, une ligne de **Mayotte sans aucune coordonnée mais avec `EPSG=4471`**, un médecin réunionnais, et un exemplaire de chacun des six codes refusés (B326 irve-fr, C108 schools-fr, C501 sup-fr, D307 FINESS, D106 doublon d'hôpital, E107 transit-fr) plus A504 hors brief — et **trois médecins à la coordonnée identique 48,83801 / 2,34276**, qui est le cas que le repliage par adresse existe pour traiter. Côté FINESS : les cinq CRS EPSG (2154, 5490, 2975, 2972, 4471), les **deux jetons sans préfixe `EPSG:`** (Saint-Pierre UTM 21N, Wallis UTM 1S avec le géocodeur `MAPS 06-11-2024` et un score `.`), une officine géocodée à la commune (refusée), un établissement sans `sourcecoordet`, un CH avec `numuai`, une officine à score < 80, plus un EHPAD et un CHS hors des deux familles. Licence Ouverte (Insee) et Licence Ouverte 2.0 (FINESS). Lus par `src/data/amenitiesFeed.test.mjs`.
 
 - `ips-rentrees-sample.json`, `ips-ecoles-sample.json`, `ips-colleges-sample.json`, `ips-lycees-sample.json`, `ips-erea-sample.json` — the DEPP's *indice de position sociale*, captured 2026-09-02 through the exact URLs the schools-fr proxy builds (`https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/<id>/records?group_by=rentree_scolaire&…` for the discovery and `…/exports/json?select=<ipsSelectFields(spec)>&where=rentree_scolaire="<year>"&limit=-1` for the exports), Licence Ouverte v2.0 (Etalab), publisher « DEPP – Ministère chargé de l'éducation nationale ». **`ips-rentrees-sample.json`** (2 449 B) holds the four datasets' verbatim, untrimmed `{total_count, results}` envelopes side by side with the URL each came from — that is the fixture for the trap, because they DISAGREE: `fr-en-ips-ecoles-ap2022` newest is **2024-2025 (32 494 rows)** where `fr-en-ips-colleges-ap2023` (7 089), `fr-en-ips-lycees-ap2023` (3 662) and `fr-en-ips-erea-ap2022` (77) all reach **2025-2026**, so a single global `max()` returns 2025-2026 and drops every école. The four export fixtures are bare JSON arrays (what `exports/json` returns), trimmed from 32 494 / 7 089 / 3 662 / 77 rows to 4 / 4 / 6 / 2, one distinct trap each. **écoles**: `0010108M` publishes the literal string `"NS"` — the secrecy sentinel on 2 504 rows that `Number() || 0` would draw as an IPS of 0; `0930327A` (Bondy) publishes `"72"`, an integer as TEXT, 22.9 points under its Seine-Saint-Denis reference of 94.9; `0010093W` is a plain `"119.5"`; `0070945P` is in IPS and **absent from the Annuaire**. **collèges**: `0010018P` publishes `ips` as a NUMBER (96.3) where the écoles file publishes text; `0752954D` carries an `ecart_type_de_l_ips` of **7.9**, below the index's own plausibility floor of 20, which is the row that proves the dispersion needs its own window (162 published écarts-types nationally are under 20); `9750025D` (Saint-Pierre-et-Miquelon) publishes `ips: null` AND `ips_national: null` — a row that exists with an empty index and no baseline; `9830313Y` is New Caledonian, absent from the Annuaire, and has a départemental reference but no national one. **lycées** (no `ips` column exists at all): `0312746S` is the widest LPO in France, GT 140.1 against pro 92.4 inside one `ips_etab` of 126.3; `0010099C` is an LP with `ips_voie_gt: null`; `0020031Y` is a LEGT whose `ips_etab` (95.4) is NOT its only voie (GT 97.4) because post-bac is folded in; `0132922F` is a LEGT whose only published voie figure is post-bac; `0754089M` publishes every IPS column null; `1300023U` is the Lycée Comte de Foix in **Andorra la Vella**, in IPS and absent from the Annuaire. **EREA**: both rows carry `nom_de_l_etablissment` (no second 'e') and NOT `nom_de_l_etablissement` — the misspelling that makes a shared `select` list an HTTP 400 rather than a null column — and both have a départemental reference exactly equal to their own index, because there is at most one EREA per département. Read by `src/data/ipsFeed.test.mjs`.
+## `meteo-stations-fr-sample.json` — 13 stations from the shipped network
+
+One station for every trap the *Stations météo (FR)* layer is built around, cut
+from `local_data/meteo_stations_fr/stations.json`. **TOULOUSE-BLAGNAC** is a
+complete synoptic station and **VERIZIEU** is the majority case — temperature
+and rain, no wind, no pressure. **ALBA LA ROMAINE** appears in Météo-France's
+real-time list and in no metadata file at all, so its `fam` is `null` rather
+than `[]`; **MARSILLARGUES** was closed on 2026-01-01 and is still in that same
+list. **BOULOGNE-SEM** publishes an open hourly observation and is absent from
+Météo-France's SYNOP station list, while **CAP CEPET** is named on that list and
+has written nothing all year — the pair that forces `synop` and `live` to stay
+separate fields. **AIGUILLE DU MIDI** at 3 845 m and **LA MEIJE-NIVOSE** at
+3 093 m are the terrain-clamp cases, **BREIL SUR ROYA** is a rain-only poste,
+and **AJACCIO** carries a Corsican `NUM_POSTE` on département `20`. Used by
+`src/data/meteoStationsFrFeed.test.mjs`. © Météo-France, Licence Ouverte 2.0.
+
+## `meteo-synop-archive-sample.csv` — 12 rows of the SYNOP archive
+
+Header plus three observations each for four stations, **interleaved** so
+"newest wins" cannot pass by accidentally keeping the last row of the file. The
+column set is the real one (60+ fields), and the units are the trap: every
+temperature is in **kelvin** (`t = 277.05`) and pressure is in **pascals**
+(`pmer = 102010`), so a card that printed the published number would be exactly
+correct and unreadable. `NOUVELLE AMSTERDAM` is in the sample because the
+archive is not metropolitan-only. Used by
+`src/data/meteoStationsFrFeed.test.mjs`. © Météo-France, Licence Ouverte 2.0.
+
+## `meteo-ficheclim-31069001-sample.data` — one fiche climatologique
+
+Toulouse-Blagnac's, verbatim. It is a **human-readable French report, not a data
+product**: semicolon-padded columns under prose headings, `.` where a month has
+no value, and a date row under each record row whose last cell — the annual
+column, the one that is read — is a bare year while the twelve monthly cells
+carry `DD-YYYY`. The two facts extracted are the records (**42,4 °C in 2023,
+−19,2 °C in 1956**) and the window they stand in (**since 1947**), because
+without the window the same number means something different at a station opened
+in 2004. Used by `src/data/meteoStationsFrFeed.test.mjs`. © Météo-France,
+Licence Ouverte 2.0.

@@ -5,8 +5,15 @@ export const SPRITE_LAYER_ORDER = Object.freeze([
   'sitadel-fr',
   'firms',
   'schools-fr',
+  'medecins-fr',
   'sup-fr',
+  // Les deux couches voulaient ce créneau, juste au-dessus de `sup-fr`, et
+  // elles y tiennent toutes les deux — mais pas dans n'importe quel ordre.
+  // `amenities-fr` dessine 95 406 points nationaux et `petite-enfance-fr`
+  // un indicateur bien plus rare : la dense passe DESSOUS, sinon elle
+  // enterre l'autre partout où les deux sont allumées.
   'amenities-fr',
+  'petite-enfance-fr',
   'irve-fr',
   'anfr-fr',
   'gas-fr',
