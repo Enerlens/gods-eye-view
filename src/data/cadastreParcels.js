@@ -144,6 +144,12 @@ const SELECTED_COLOR = '#00ffff';
  * primitive of its own rather than a recoloured instance.
  */
 const SELECTED_FILL_ALPHA = 0.55;
+/**
+ * How many frames the fallback highlight may ask for before giving up. Four
+ * seconds at 60 fps, against the six frames a `Primitive` build actually costs
+ * — see `pumpUntilReady`.
+ */
+const SELECTION_BUILD_FRAME_CAP = 240;
 
 /**
  * `MAP_STACKS` ids that render imagery on the SHOWN Cesium globe. An explicit
@@ -652,18 +658,9 @@ function drawSelectionPrimitives(record) {
   // practice the batches have long since triggered it by the time a parcel can
   // be clicked, so this reads `true` and the highlight is immediate.
   //
-  // When it does NOT, the fallback is not merely slower. Cesium's early return
-  // pushes nothing onto `frameState.afterRender`, so no frame is requested when
-  // the heights finally land, and on a globe that renders on request the
-  // highlight would simply never appear — the card up, the parcel unlit, until
-  // some unrelated camera move happened to pump the scene. So the fallback asks
-  // for the frame itself once the load resolves.
+  // When it does NOT, the fallback is not merely slower — see `pumpUntilReady`,
+  // which is what makes it land at all.
   const immediate = Cesium.ApproximateTerrainHeights?.initialized === true;
-  if (!immediate) {
-    Promise.resolve(Cesium.GroundPrimitive.initializeTerrainHeights())
-      .then(() => governorRequestRender('cadastre-terrain-heights'))
-      .catch(() => { /* no heights, no highlight — the card still answers */ });
-  }
   const scenePrimitives = _viewer.scene?.primitives;
   if (!scenePrimitives) return;
   // Published only once the scene has actually taken it. Assigning first would
@@ -685,6 +682,41 @@ function drawSelectionPrimitives(record) {
     scenePrimitives.add(outline);
     _selectedOutline = outline;
   }
+  if (!immediate) pumpUntilReady();
+}
+
+/**
+ * Draw frames until the selection has finished building itself.
+ *
+ * Only the fallback path needs this, and it is the difference between a slow
+ * highlight and no highlight. A Cesium `Primitive` advances exactly ONE step of
+ * its build per RENDERED frame — ready, creating, created, combining, combined,
+ * vertex arrays — and it requests none of those frames itself. On a globe in
+ * `requestRenderMode` the build therefore stops wherever the last render left
+ * it: asking once, when the terrain heights resolve, buys one step of six.
+ *
+ * So this rides `postRender` and asks for the next frame until both primitives
+ * report ready, then takes itself off. The cap is not decoration — a primitive
+ * that never becomes ready (a scene torn down mid-build, a Cesium state this
+ * code has not anticipated) would otherwise hold the render loop open forever,
+ * which on a laptop is a fan spinning for a parcel nobody selected any more.
+ * At 60 fps the cap is four seconds; the real path takes six frames.
+ */
+function pumpUntilReady() {
+  const scene = _viewer?.scene;
+  if (!scene?.postRender) return;
+  let framesLeft = SELECTION_BUILD_FRAME_CAP;
+  const stop = scene.postRender.addEventListener(() => {
+    const pending = (_selectedFill && !_selectedFill.ready)
+      || (_selectedOutline && !_selectedOutline.ready);
+    framesLeft -= 1;
+    if (!pending || framesLeft <= 0) {
+      stop();
+      return;
+    }
+    governorRequestRender('cadastre-select-build');
+  });
+  governorRequestRender('cadastre-select-build');
 }
 
 function clearSelection() {
@@ -1050,6 +1082,11 @@ const cadastreParcelsLayer = {
     _loadedKey = null;
     _retryDelayMs = 0;
     _classificationType = cadastreClassificationTypeForScene(viewer?.scene);
+    // Started here rather than waited for. The selection highlight is drawn
+    // synchronously only once this has resolved, and starting it at init means
+    // the answer is almost always yes by the time a parcel can be clicked —
+    // which turns `pumpUntilReady` into the exception it is written as.
+    try { Cesium.GroundPrimitive.initializeTerrainHeights(); } catch { /* Cesium decides when */ }
 
     if (typeof window !== 'undefined' && !_mapStackListener) {
       _mapStackListener = (event) => applyClassification(

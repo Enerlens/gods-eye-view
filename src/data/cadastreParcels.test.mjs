@@ -559,6 +559,51 @@ test('the highlight is the parcel\'s OWN geometry, drawn over the batch it belon
   assert.equal(cadastreParcelsLayer.getParcelPolygonsForQa('00000000AA0000'), null);
 });
 
+test('a highlight built before the terrain heights keeps asking for frames', async () => {
+  // The fallback path, and the one the pixel harness structurally cannot reach:
+  // it pumps frames by hand around every selection, so a highlight that never
+  // asks for its own would still measure green there. A Cesium `Primitive`
+  // advances ONE build step per rendered frame and requests none of them, so on
+  // a render-on-demand globe asking once leaves the build stalled five steps
+  // short — the card up, the parcel unlit.
+  // `initialized` is a read-only getter over `_terrainHeights`, so the honest
+  // way to stand in the fallback's shoes is to empty the field it reads.
+  const heights = Cesium.ApproximateTerrainHeights._terrainHeights;
+  const listeners = [];
+  const viewer = await drawn();
+  viewer.scene.postRender = {
+    addEventListener: (callback) => {
+      listeners.push(callback);
+      return () => { listeners.splice(listeners.indexOf(callback), 1); };
+    },
+  };
+  try {
+    Cesium.ApproximateTerrainHeights._terrainHeights = undefined;
+    assert.equal(Cesium.ApproximateTerrainHeights.initialized, false);
+    _selectCadastreParcelForTest(recordFor('69385000AL0005').id);
+
+    assert.equal(listeners.length, 1, 'the fallback never asked for a second frame');
+    const [fill, outline] = viewer.added.slice(-2);
+    assert.equal(fill.asynchronous, true, 'a synchronous build here throws in the dev build');
+    assert.equal(outline.asynchronous, true);
+
+    // Still building — `ready` is a getter over `_ready`, and a primitive that
+    // has never been updated starts there on its own.
+    assert.equal(fill.ready, false);
+    assert.equal(outline.ready, false);
+    listeners[0]();
+    assert.equal(listeners.length, 1, 'the pump gave up while the build was unfinished');
+
+    // Built: it takes itself off rather than holding the render loop open.
+    fill._ready = true;
+    outline._ready = true;
+    listeners[0]();
+    assert.equal(listeners.length, 0, 'the pump outlived the build it was waiting for');
+  } finally {
+    Cesium.ApproximateTerrainHeights._terrainHeights = heights;
+  }
+});
+
 test('deselecting takes the two highlight primitives back off the scene', async () => {
   const viewer = await drawn();
   _selectCadastreParcelForTest(recordFor('69385000AL0005').id);
