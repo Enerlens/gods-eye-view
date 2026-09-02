@@ -430,3 +430,21 @@ carry `DD-YYYY`. The two facts extracted are the records (**42,4 °C in 2023,
 without the window the same number means something different at a station opened
 in 2004. Used by `src/data/meteoStationsFrFeed.test.mjs`. © Météo-France,
 Licence Ouverte 2.0.
+
+## `filosofi-carreaux-200m-sample.json`, `filosofi-carreaux-1km-sample.json`
+
+Two live answers from the Géoplateforme WFS relaying INSEE's Filosofi carroyage,
+captured 2026-09-02: six 200 m cells over Lyon and four 1 km cells over Paris.
+
+They still carry their `geometry`, **which the layer never asks for** — and that
+is exactly what makes them the right fixture. The claim under test is that a
+cell's INSPIRE identifier reproduces the polygon the service would have sent, so
+the fixture has to hold both halves: the identifier the projection reads and the
+geometry it must reproduce. `filosofiFeed.test.mjs` compares them to eight
+decimals, about a millimetre on the ground.
+
+The pair also pins the difference between the two grids, which is not
+documented anywhere upstream: 45 fields in common, five not. `depcom`,
+`nom_com` and `i_car_est` exist only at 200 m; `i_est_1km` only at 1 km. Asking
+one grid for the other's column is an HTTP 400, so a test that lets the two
+drift is a layer that dies at half its altitudes.

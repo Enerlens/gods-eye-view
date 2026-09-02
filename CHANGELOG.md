@@ -244,6 +244,55 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `road-status-fr`'s 🛣, because the whole point is that it is a different
   quantity. `REGISTERED_LAYER_IDS.length` moves 42 → 43.
 
+- **Carroyage INSEE (FR) — qui habite là, en carrés de 200 mètres.** The globe
+  already drew everything France has BUILT — the buildings, the schools, the
+  doctors, what sold, what the PLU allows — and nothing about who lives in it.
+  A commune average cannot answer that: Lyon 7e is one code covering both the
+  Guillotière and Gerland. This is INSEE's Filosofi carroyage, **2 314 836
+  squares of 200 m** and **377 234 of 1 km** over métropole, Martinique and La
+  Réunion, extruded on the globe for the viewport you are looking at.
+
+  **Colour is the indicator; height is the count it was computed on.** That is
+  the layer's one real design decision and it is a correctness one: a stack of
+  "27 100 € par personne" has no volume, and the eye reads volume as quantity.
+  A block whose volume is its population is a true statement — so switching
+  between the eight indicators recolours the city without relaying it, and a
+  brilliantly coloured square one pixel tall is four households and reads as
+  one. Every card says so in words, because it cannot be read off the picture.
+
+  **The bands are national and absolute, and they were measured.** There is no
+  scale to borrow — INSEE publishes deciles of niveau de vie per PERSON, and a
+  carreau carries a mean over its inhabitants, a much narrower distribution.
+  `npm run filosofi:ramp` samples 42 boxes across urban, peri-urban, rural and
+  overseas France — **80 105 carreaux, 12 285 745 habitants** — and takes the
+  population-weighted quantiles, weighted because a 6-person square in the
+  Cantal and a 2 818-person square in Paris 19e answer for very different
+  numbers of people. A colour therefore means the same thing in Neuilly and in
+  Roubaix, which is the whole point of drawing it.
+
+  **Two cells in five are modelled, not observed** — 31 351 of the 80 105
+  sampled carry INSEE's `i_car_est`, meaning the figures were imputed because
+  publishing the observation would have breached statistical confidentiality.
+  They are drawn as a smaller square inside their own footprint, so the grid is
+  visibly perforated where the data is inferred, and the card names it.
+
+  **No geometry crosses the wire.** Each cell is named
+  `CRS3035RES200mN2529400E3919200` — its own south-west corner in EPSG:3035 —
+  so inverting that projection rebuilds the exact polygon the service would
+  have sent, verified against captured fixtures to eight decimals. A Lyon
+  viewport costs **311 KB instead of 1.63 MB**. The two grids do not share
+  their column names (`i_car_est` against `i_est_1km`, and no commune at all at
+  1 km), and asking one for the other's column is an HTTP 400 rather than an
+  empty column.
+
+  The layer refuses a view wider than 0.9° instead of drawing a sample of the
+  country that would look like a picture of it, and flies the camera in. Share
+  token `fi`, and the link carries the chosen indicator: the same squares
+  coloured by wealth and by poverty are two different maps, and a link that
+  dropped the choice would restore the wrong one. Keyless, Licence Ouverte 2.0,
+  30-day disk cache. `npm run qa:filosofi` proves it in a browser over Lyon and
+  Paris.
+
 - **Stations météo (FR) — where France measures the weather, and what each
   instrument can actually tell you.** All **2 144 stations** of Météo-France's
   real-time observation network, from the tide line to the **Aiguille du Midi at

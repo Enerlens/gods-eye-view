@@ -223,6 +223,34 @@ const OPTION_GROUPS = Object.freeze({
     enumOption('catalog', 'c', 'core', ['core', 'dense'], { core: 'c', dense: 'd' }),
     integerOption('selectedSatTrackingId', 't', null),
   ]),
+  // WHICH INDICATOR THE CARROYAGE IS COLOURED BY. Serialized because it is not
+  // a preference, it is what the map SAYS: the same 146 squares over Lyon are a
+  // wealth map, a poverty map or an age map depending on this one token, and a
+  // share link that dropped it would send the reader a different argument than
+  // the one that was shared. One letter each, and the codes are frozen — they
+  // are in URLs the moment the first link is copied, so renaming `n` later
+  // would silently re-colour every link already sent.
+  // Keyed by the LAYER ID, not by a friendly name: `encodeLayerStateParams`
+  // resolves the owner's share token with `REGISTRY_BY_ID.get(ownerId)`, so an
+  // owner that is not itself a registered layer id resolves to undefined and
+  // the encoder throws the moment a non-default option is set. Every other
+  // group here — `flights`, `satellites`, `cctv`, `radio` — is a layer id for
+  // exactly this reason.
+  'filosofi-fr': Object.freeze([
+    enumOption('metric', 'm', 'niveau', [
+      'niveau', 'pauvrete', 'population', 'social',
+      'jeunes', 'aines', 'proprietaires', 'solo',
+    ], {
+      niveau: 'n',
+      pauvrete: 'p',
+      population: 'h',
+      social: 's',
+      jeunes: 'j',
+      aines: 'a',
+      proprietaires: 'o',
+      solo: '1',
+    }),
+  ]),
   cctv: Object.freeze([
     enumOption('coverageMode', 'c', 'on', ['off', 'on', 'viewshed'], {
       off: '0',
@@ -345,6 +373,13 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'dvf-sales', token: 'dv', disposition: 'enabled-only' }),
   Object.freeze({ id: 'earthquakes', token: 'e', disposition: 'enabled-only' }),
   Object.freeze({ id: 'edf-power-plants', token: 'l', disposition: 'enabled-only' }),
+  // TWO CHARACTERS, like every layer added since the single-character scheme
+  // ran out. `fi` and not `f`: `f` is `flights` and has shipped in links since
+  // the beginning. `enabled+options`, because the chosen INDICATOR is part of
+  // what a share link means here — a carroyage coloured by niveau de vie and
+  // the same carroyage coloured by poverty are two different maps, and a link
+  // that dropped the choice would restore the wrong one.
+  Object.freeze({ id: 'filosofi-fr', token: 'fi', disposition: 'enabled+options', optionOwner: 'filosofi-fr' }),
   Object.freeze({ id: 'flights', token: 'f', disposition: 'enabled+options', optionOwner: 'flights' }),
   // A DIGIT, for the third time and the same reason: a–y are all taken, `z` is
   // the canonical UNKNOWN token two existing tests assert on, and 1–3 belong to

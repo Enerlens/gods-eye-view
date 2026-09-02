@@ -719,6 +719,24 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // The population layer the group header above reserved a place for, and the
+  // first row here that is not an inventory of THINGS. Every neighbour answers
+  // where something was built; this one answers who lives in it. It sits
+  // directly under `bdtopo-buildings` because the two are read together — a
+  // volume and the people inside it — and because a carreau is base reference
+  // data in exactly the sense a building is.
+  Object.freeze({
+    id: 'filosofi-fr',
+    category: 'built-environment',
+    label: 'Carroyage INSEE (revenus & population)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    // `periodic` and not `static`, though the millésime is frozen for two years
+    // at a time: 2.3 million carreaux could not be bundled at any size, so the
+    // layer fetches the viewport it is looking at, exactly like the cadastre.
+    cadence: 'periodic',
+  }),
   // Joins the eighth group rather than founding a ninth. The header above says
   // this is where "a cadastre, a land-use or a population layer would join",
   // and 68 158 schools are a population layer wearing an address: the register

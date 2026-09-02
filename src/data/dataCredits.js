@@ -426,6 +426,22 @@ export const DATA_CREDITS = [
       'practitioner names, not a headcount &mdash; measured 5 % above the CNAM&rsquo;s own 2024 figure.',
   },
   {
+    key: 'filosofi-fr',
+    html:
+      'INSEE <em>Filosofi</em> gridded income and population &mdash; <em>Revenus, pauvret&eacute; et niveau de vie</em>, '
+      + 'carreaux de 200 m et de 1 km, relayed by the '
+      + '<a href="https://data.geopf.fr/" target="_blank" rel="noopener">G&eacute;oplateforme</a> WFS '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>, '
+      + '<a href="https://www.insee.fr/fr/statistiques/7655475" target="_blank" rel="noopener">INSEE</a>). '
+      + '2 314 836 squares at 200 m and 377 234 at 1 km, covering metropolitan France, Martinique and La R&eacute;union; '
+      + 'incomes are those received in 2019. Cell outlines are not transported: every square is rebuilt from its own '
+      + 'INSPIRE identifier by inverting EPSG:3035, which reproduces the published geometry to eight decimals. '
+      + '<strong>Perforated squares are imputed</strong> &mdash; INSEE models a cell rather than publishing it when the '
+      + 'observation would breach statistical confidentiality, and 39 % of cells in a national sample carry that flag. '
+      + 'Colour bands are population-weighted national quantiles measured over 80 105 carreaux, so a colour means the '
+      + 'same thing everywhere; height is the count each indicator is computed on, never the indicator itself.',
+  },
+  {
     key: 'meteo-stations-fr',
     html:
       'French weather stations: <em>R&eacute;seau d&rsquo;observation temps r&eacute;el</em>, '

@@ -16,6 +16,7 @@ import frHydroPlantsLayer from './data/frHydroPlants.js';
 import powerGridLayer from './data/powerGrid.js';
 import bdtopoBuildingsLayer from './data/bdtopoBuildings.js';
 import cadastreParcelsLayer from './data/cadastreParcels.js';
+import filosofiCarreauxLayer from './data/filosofiCarreaux.js';
 import georisquesLayer from './data/georisques.js';
 import dvfSalesLayer from './data/dvfSales.js';
 import dpeFranceLayer from './data/dpeFrance.js';
@@ -313,6 +314,7 @@ async function init() {
     dataManager.register(powerGridLayer);
     dataManager.register(bdtopoBuildingsLayer);
     dataManager.register(cadastreParcelsLayer);
+    dataManager.register(filosofiCarreauxLayer);
     dataManager.register(georisquesLayer);
     dataManager.register(dvfSalesLayer);
     dataManager.register(dpeFranceLayer);
