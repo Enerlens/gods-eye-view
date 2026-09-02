@@ -1,10 +1,10 @@
-// The rendering decisions: what a colour claims, what a dot's size claims, and
-// what the cards have to say that neither channel can.
+// The rendering decisions: what a colour claims, which ground a number covers,
+// and what the cards have to say that neither channel can.
 //
 // The recurring property under test is that this layer paints THREE nested
 // scales with one ramp. A colour must therefore mean the same thing at every
-// zoom, a nested pair of dots must stay tellable apart, and a card must name
-// which of the three areas under the cursor it is reporting.
+// zoom, the three scales must never paint the same ground twice, and a card
+// must name which of the areas under the cursor it is reporting.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -16,19 +16,24 @@ import petiteEnfanceFranceLayer, {
   buildPeSelectionLabel,
   cameraPeBox,
   createPeDepartementOverlayEntry,
-  peAreaInBox,
   peBandAlpha,
   peBandColor,
   peBandLabel,
   peBandRangeLabels,
-  pePointSize,
+  peTerritoryAlpha,
   peViewSpanDeg,
+  buildPeTerritoryRecords,
+  indexPeAreas,
   selectPeLabelCohort,
+  COMMUNE_SPAN_DEG,
+  NATIONAL_ENTER_SPAN_DEG,
+  NATIONAL_EXIT_SPAN_DEG,
+  peContourBox,
   _clearPeSelectionForTest,
   _peRowControlsForTest,
   _setPeStateForTest,
 } from './petiteEnfanceFrance.js';
-import { PE_BANDS } from './petiteEnfanceFeed.js';
+import { PE_BANDS, PE_BOX_STEP_DEG } from './petiteEnfanceFeed.js';
 import { schoolLevelColor } from './schoolsFrance.js';
 import { SCHOOL_LEVELS } from './schoolsFeed.js';
 
@@ -123,27 +128,163 @@ test('legend ranges are derived from the national rate, not typed in', () => {
   assert.match(peBandRangeLabels(null)[0], /%/);
 });
 
-// --- Size -------------------------------------------------------------------
+// --- The fill weight --------------------------------------------------------
 
-test('more places is a bigger dot, sub-linearly', () => {
-  assert.ok(pePointSize(20000) > pePointSize(2000));
-  assert.ok(pePointSize(2000) > pePointSize(200));
-  assert.ok(pePointSize(20000) / pePointSize(200) < 3);
-});
-
-test('a commune dot is always smaller than the EPCI dot it sits inside', () => {
-  // At city zoom the two are nested, and if they could tie, a reader could not
-  // tell which of the two numbers they were reading.
-  for (const places of [0, 100, 1000, 20000, 1e6]) {
-    assert.ok(pePointSize(places, 'com') < pePointSize(places, 'epci'), `at ${places}`);
+test('a territory fill is lighter than the choropleth but keeps its ramp', () => {
+  // The département fill is read from 500 km up with nothing under it; an EPCI
+  // fill sits over streets. Same ordering, less lid.
+  for (const band of PE_BANDS) {
+    assert.ok(peTerritoryAlpha(band) < peBandAlpha(band), band);
+    assert.ok(peTerritoryAlpha(band) > 0.2, band);
   }
+  // The extremes still carry more weight than the middle, both ways round.
+  assert.ok(peTerritoryAlpha('tres-bas') > peTerritoryAlpha('sous-moyenne'));
+  assert.ok(peTerritoryAlpha('tres-haut') > peTerritoryAlpha('sur-moyenne'));
+  // A band that does not exist has no fill at all rather than a default one.
+  assert.equal(peTerritoryAlpha(null), 0);
+  assert.equal(peTerritoryAlpha('invented'), 0);
 });
 
-test('the size is bounded and never vanishes', () => {
-  assert.equal(pePointSize(40000), pePointSize(1e9));
-  assert.equal(pePointSize(null), pePointSize(0));
-  assert.equal(pePointSize(-5), pePointSize(0));
-  assert.ok(pePointSize(0) > 0);
+// --- The territories --------------------------------------------------------
+
+const ring = (lon, lat) => [lon, lat, lon + 0.1, lat, lon + 0.1, lat + 0.1, lon, lat + 0.1];
+
+/** Two communes of one EPCI, one of which the CNAF also publishes on its own. */
+const PACK = {
+  departement: '01',
+  communes: [
+    { c: '01001', n: 'Aulnay', e: '200070555', p: [ring(4.9, 46.1)] },
+    { c: '01002', n: 'Ville', e: '200070555', p: [ring(5.0, 46.1)], s: 1 },
+  ],
+};
+
+const AREAS = [
+  area(),
+  area({
+    id: 'com:01002', scale: 'com', code: '01002', name: 'Ville', band: 'bas',
+  }),
+];
+
+test('above the commune span the whole EPCI is one wash', () => {
+  const built = buildPeTerritoryRecords({ packs: [PACK], areas: AREAS, withCommunes: false });
+  assert.equal(built.records.length, 1);
+  assert.equal(built.epci, 1);
+  assert.equal(built.communes, 0);
+  // Both member communes, under ONE colour and one record — an EPCI has no
+  // contour of its own, so its territory IS its members.
+  assert.equal(built.records[0].parts.length, 2);
+  assert.equal(built.records[0].color, peBandColor('haut'));
+});
+
+test('below it the published commune is CUT OUT of its own EPCI', () => {
+  const built = buildPeTerritoryRecords({ packs: [PACK], areas: AREAS, withCommunes: true });
+  assert.equal(built.records.length, 2);
+  assert.equal(built.epci, 1);
+  assert.equal(built.communes, 1);
+  const byId = new Map(built.records.map((r) => [r.id, r]));
+  // The EPCI keeps only the commune the CNAF does NOT break out. The two fills
+  // never overlap, so two translucent colours can never blend into a third.
+  assert.equal(byId.get('epci:200070555').parts.length, 1);
+  assert.equal(byId.get('com:01002').parts.length, 1);
+  assert.equal(byId.get('com:01002').color, peBandColor('bas'));
+  // The simplification travels with the shape it happened to.
+  assert.equal(byId.get('com:01002').simplified, true);
+  assert.equal(byId.get('epci:200070555').simplified, false);
+});
+
+test('an arrondissement replaces its parent commune, never doubles it', () => {
+  // The CNAF publishes Paris by arrondissement; geo.api.gouv.fr publishes it
+  // as ONE polygon. Drawing both would paint the same ground twice.
+  const paris = {
+    departement: '75',
+    communes: [
+      { c: '75056', n: 'Paris', e: '200054781', p: [ring(2.3, 48.85)], x: 1 },
+      { c: '75101', n: 'Paris 1er', e: '200054781', p: [ring(2.33, 48.86)], a: '75056' },
+      { c: '75102', n: 'Paris 2e', e: '200054781', p: [ring(2.34, 48.87)], a: '75056' },
+    ],
+  };
+  const areas = [
+    area({ id: 'epci:200054781', code: '200054781', name: 'MGP' }),
+    area({
+      id: 'com:75101', scale: 'com', code: '75101', name: 'Paris 1er', band: 'bas',
+    }),
+  ];
+  const built = buildPeTerritoryRecords({ packs: [paris], areas, withCommunes: true });
+  const byId = new Map(built.records.map((r) => [r.id, r]));
+  assert.equal(byId.has('com:75101'), true);
+  // The parent is gone entirely — not drawn under its own arrondissements.
+  assert.equal(byId.get('epci:200054781').parts.length, 1);
+  // …and the arrondissement the CNAF did not publish is the one that is left,
+  // as EPCI ground rather than as a hole. That is why the pack carries the
+  // parent's `codeEpci` on it.
+  assert.deepEqual(byId.get('epci:200054781').parts[0], ring(2.34, 48.87));
+
+  // Above the commune span nothing is subdivided: the parent draws, the
+  // arrondissements do not, and the ground is covered exactly once.
+  const wide = buildPeTerritoryRecords({ packs: [paris], areas, withCommunes: false });
+  assert.equal(wide.records.length, 1);
+  assert.deepEqual(wide.records[0].parts, [ring(2.3, 48.85)]);
+});
+
+test('ground with no published rate is left empty and counted, not coloured', () => {
+  const built = buildPeTerritoryRecords({
+    packs: [{
+      departement: '01',
+      communes: [
+        { c: '01001', n: 'Aulnay', e: '200070555', p: [ring(4.9, 46.1)] },
+        // An EPCI the CNAF row set does not carry at all.
+        { c: '01003', n: 'Ailleurs', e: '999999999', p: [ring(5.2, 46.1)] },
+        // …and one whose rate was never published: both ends of a diverging
+        // ramp are strong claims, so absence is drawn as absence.
+        { c: '01004', n: 'Sansrate', e: '200070556', p: [ring(5.3, 46.1)] },
+      ],
+    }],
+    areas: [area(), area({ id: 'epci:200070556', code: '200070556', band: null })],
+  });
+  assert.equal(built.records.length, 1);
+  assert.equal(built.unmatched, 1);
+  assert.equal(built.unrated, 1);
+});
+
+test('a territory anchors its card on the shape drawn, not on a centroid', () => {
+  const built = buildPeTerritoryRecords({ packs: [PACK], areas: AREAS, withCommunes: false });
+  const [lon, lat] = built.records[0].anchor;
+  // Inside the rings it was built from — and NOT the area's own `lat`/`lon`,
+  // which is the administrative centre the layer stopped drawing.
+  assert.ok(lon > 4.9 && lon < 5.2, `lon ${lon}`);
+  assert.ok(lat > 46 && lat < 46.3, `lat ${lat}`);
+  assert.notEqual(lon, area().lon);
+});
+
+test('the same département arriving twice is drawn once', () => {
+  const built = buildPeTerritoryRecords({ packs: [PACK, PACK], areas: AREAS, withCommunes: true });
+  assert.equal(built.records.length, 2);
+  assert.equal(built.records[0].parts.length, 1);
+});
+
+test('the run-away guard drops territories rather than the frame rate', () => {
+  const built = buildPeTerritoryRecords({
+    packs: [PACK], areas: AREAS, withCommunes: true, limit: 1,
+  });
+  assert.equal(built.records.length, 1);
+  assert.equal(built.unmatched, 1);
+});
+
+test('an empty or malformed input paints nothing and throws nothing', () => {
+  for (const input of [undefined, {}, { packs: null, areas: null }, { packs: [null], areas: [] }]) {
+    assert.deepEqual(buildPeTerritoryRecords(input).records, []);
+  }
+  assert.equal(indexPeAreas(null).size, 0);
+  assert.equal(indexPeAreas([{ noId: true }]).size, 0);
+});
+
+test('the regimes hand over with hysteresis, and the commune grain is inside', () => {
+  // A camera resting on the boundary must not swap the whole map back and
+  // forth on sub-pixel drift.
+  assert.ok(NATIONAL_EXIT_SPAN_DEG < NATIONAL_ENTER_SPAN_DEG);
+  // The commune grain turns on strictly INSIDE the local regime: it is a
+  // detail of a view that is already drawing territories.
+  assert.ok(COMMUNE_SPAN_DEG < NATIONAL_EXIT_SPAN_DEG);
 });
 
 // --- The selection card -----------------------------------------------------
@@ -195,8 +336,12 @@ test('the commune scale carries its own coverage warning', () => {
   const copy = buildPeSelectionLabel(record({ area: area({ scale: 'com', code: '13201' }) }));
   assert.match(copy, /⚠/);
   assert.match(copy, /plus de 10 000 habitants/);
-  // And the EPCI card says its point is a centre, not a place.
-  assert.match(buildPeSelectionLabel(record()), /centre de l’intercommunalité/);
+  // And the EPCI card says how its territory was drawn, because no EPCI
+  // contour is published anywhere.
+  assert.match(buildPeSelectionLabel(record()), /communes membres/);
+  // A decimated outline says so on the card that hangs off it.
+  assert.match(buildPeSelectionLabel(record({ simplified: true })), /Contour communal simplifié/);
+  assert.equal(/Contour communal simplifié/.test(buildPeSelectionLabel(record())), false);
 });
 
 test('the card never throws on a missing or empty record', () => {
@@ -261,20 +406,32 @@ test('a département label carries its rate and its own band colour', () => {
 
 // --- The view box -----------------------------------------------------------
 
-test('an area inside the box is drawn, one outside is not, and edges count', () => {
-  const box = {
-    south: 46, north: 47, west: 4, east: 5,
-  };
-  assert.equal(peAreaInBox({ lat: 46.5, lon: 4.5 }, box), true);
-  assert.equal(peAreaInBox({ lat: 46, lon: 4 }, box), true);
-  assert.equal(peAreaInBox({ lat: 45.9, lon: 4.5 }, box), false);
-  assert.equal(peAreaInBox({ lat: 46.5, lon: 4.5 }, null), false);
-});
-
 test('a camera past the limb reports an infinite span, so the layer stays national', () => {
   assert.equal(peViewSpanDeg({}), Infinity);
   assert.equal(peViewSpanDeg({ camera: { computeViewRectangle: () => null } }), Infinity);
   assert.equal(cameraPeBox({}), null);
+  assert.equal(peContourBox({}), null);
+});
+
+test('the box asked about is snapped outward, so a pan re-asks rarely', () => {
+  const viewer = {
+    camera: {
+      computeViewRectangle: () => ({
+        south: 45.7231 * (Math.PI / 180),
+        north: 45.8117 * (Math.PI / 180),
+        west: 4.8012 * (Math.PI / 180),
+        east: 4.9334 * (Math.PI / 180),
+      }),
+    },
+  };
+  const box = peContourBox(viewer);
+  // Every edge moved OUTWARD to the grid: a snapped box that cut inside the
+  // view would leave a strip of screen with no outlines in it at all.
+  assert.ok(box.south <= 45.7231 && box.north >= 45.8117);
+  assert.ok(box.west <= 4.8012 && box.east >= 4.9334);
+  for (const edge of [box.south, box.north, box.west, box.east]) {
+    assert.ok(Math.abs(edge / PE_BOX_STEP_DEG - Math.round(edge / PE_BOX_STEP_DEG)) < 1e-6, `${edge}`);
+  }
 });
 
 // --- The row legend ---------------------------------------------------------
@@ -326,7 +483,23 @@ test('the local line separates the two scales it is drawing', () => {
   });
   assert.match(norm(label), /28 intercommunalités/);
   assert.match(norm(label), /12 communes/);
-  assert.equal(/non tracées/.test(label), false);
+  assert.equal(/sans taux publié/.test(label), false);
+  assert.equal(/hors plafond/.test(label), false);
+});
+
+test('the local line names both silences: unrated ground and the dropped cap', () => {
+  const label = buildPeLoadingLabel({
+    regime: 'local',
+    status: 'ready',
+    loading: false,
+    count: 40,
+    inView: 40,
+    communes: 12,
+    unpainted: 7,
+    dropped: 15,
+  });
+  assert.match(norm(label), /7 communes sans taux publié/);
+  assert.match(norm(label), /15 contours hors plafond/);
 });
 
 test('an empty view says so rather than going quiet', () => {

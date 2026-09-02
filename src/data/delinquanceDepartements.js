@@ -160,32 +160,12 @@ export function locateDelinquanceDepartement(index, lat, lon, snapKm = DELINQUAN
 /**
  * Every département whose outline intersects a view box.
  *
- * Bounding-box overlap only, deliberately: this decides which contour packs to
- * FETCH, and asking for one département too many costs a cached request while
- * missing one leaves a hole in the map. The exact answer is what
- * {@link locateDelinquanceDepartement} is for.
- *
- * @param {{list:Array<object>}} index
- * @param {{south:number, west:number, north:number, east:number}} box
- * @param {number} [limit] Hard cap on how many packs one view may ask for.
- * @returns {Array<string>}
+ * Generic over the bundled outlines, so it lives in `franceDepartements.js`
+ * alongside the index it reads — the childcare layer fetches per-département
+ * packs on exactly the same rule. Re-exported here under the name this
+ * layer's callers and tests already use.
  */
-export function departementsInBox(index, box, limit = 6) {
-  if (!box || ![box.south, box.west, box.north, box.east].every(Number.isFinite)) return [];
-  const hits = [];
-  for (const entry of index?.list || []) {
-    const [west, south, east, north] = entry.bbox;
-    if (east < box.west || west > box.east || north < box.south || south > box.north) continue;
-    // Ranked by how much of the view each covers, so a capped list keeps the
-    // départements the operator is actually looking at rather than the first
-    // ones in code order.
-    const overlapLon = Math.min(east, box.east) - Math.max(west, box.west);
-    const overlapLat = Math.min(north, box.north) - Math.max(south, box.south);
-    hits.push({ code: entry.code, area: Math.max(0, overlapLon) * Math.max(0, overlapLat) });
-  }
-  hits.sort((a, b) => b.area - a.area || a.code.localeCompare(b.code));
-  return hits.slice(0, Math.max(1, Math.floor(limit))).map((entry) => entry.code);
-}
+export { departementsInBox } from './franceDepartements.js';
 
 /**
  * Fold one indicator-year of the département base onto the bundled polygons.

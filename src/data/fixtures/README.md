@@ -12,6 +12,17 @@
   and `schoolsDepartements.test.mjs`; a synthetic fixture would have none of
   those and would pass regardless of what the modules do. Licence Ouverte 2.0.
 
+- `geoapi-communes-75-epci-sample.json` / `geoapi-arrondissements-75-sample.json`
+  — the two halves of the one case that breaks a naive commune join, captured
+  2026-09-02 from `geo.api.gouv.fr`. The first is Paris as
+  `/departements/75/communes` answers it: ONE polygon, carrying `codeEpci`
+  (200054781, the Métropole du Grand Paris), its 532-vertex ring kept every
+  twelfth point and closed. The second is `?type=arrondissement-municipal`,
+  which is a SEPARATE request and the only way the arrondissements exist at
+  all — with their real 55- and 40-vertex rings and, crucially, **no
+  `codeEpci` at all**, which is why `projectPeTerritoires` has to lend them
+  their parent's. Used by `petiteEnfanceFeed.test.mjs`. Licence Ouverte 2.0.
+
 - `tomtom-flow-austin-12-935-1686.pbf` — one real TomTom traffic-flow vector
   tile (Mapbox Vector Tile protobuf, layer `"Traffic flow"`), downtown Austin
   z12 x935 y1686, captured 2026-07-16 from

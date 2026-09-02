@@ -8,6 +8,7 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { buildDepartementIndex } from './franceDepartements.js';
+import { ringAnchor } from './communeContours.js';
 import {
   CELL_PUBLISHED,
   CELL_SUPPRESSED,
@@ -859,19 +860,6 @@ function clearCommunePrimitives() {
 function ringPositions(flat) {
   if (!Array.isArray(flat) || flat.length < 8) return null;
   return Cesium.Cartesian3.fromDegreesArray(flat);
-}
-
-/** Centroid of the first ring, for the card anchor. */
-function ringAnchor(flat) {
-  if (!Array.isArray(flat) || flat.length < 6) return null;
-  let lon = 0;
-  let lat = 0;
-  const points = flat.length / 2;
-  for (let i = 0; i < flat.length; i += 2) {
-    lon += flat[i];
-    lat += flat[i + 1];
-  }
-  return [lon / points, lat / points];
 }
 
 /**

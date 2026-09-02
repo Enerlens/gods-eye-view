@@ -25,7 +25,13 @@ import {
   peYearWhere,
   placePeAreas,
   projectPeAreas,
+  projectPeTerritoires,
+  peArrondissementParent,
+  peContourUrls,
+  peTerritoiresInBox,
+  ringBox,
   readNational,
+  PE_ARRONDISSEMENT_PARENTS,
 } from './petiteEnfanceFeed.js';
 
 const load = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
@@ -33,6 +39,8 @@ const DEP = load('cnaf-petite-enfance-dep-sample.json');
 const EPCI = load('cnaf-petite-enfance-epci-sample.json');
 const COM = load('cnaf-petite-enfance-com-sample.json');
 const NAT = load('cnaf-petite-enfance-nat-sample.json');
+const COM_75 = load('geoapi-communes-75-epci-sample.json');
+const ARR_75 = load('geoapi-arrondissements-75-sample.json');
 
 const NATIONAL_2023 = 60.9;
 
@@ -295,4 +303,127 @@ test('an area whose rate the CNAF does not publish is unbanded, not worst-in-Fra
   assert.equal(out.areas[0].band, null);
   assert.equal(out.areas[0].ratio, null);
   assert.equal(PE_BANDS.reduce((t, b) => t + out.bands[b], 0), 0);
+});
+
+// --- The territories --------------------------------------------------------
+
+test('one département needs one call, and Paris needs two', () => {
+  const plain = peContourUrls('01');
+  assert.match(plain.communes, /departements\/01\/communes\?/);
+  assert.match(plain.communes, /geometry=contour/);
+  // `codeEpci` is what makes the EPCI scale drawable without a second request:
+  // geo.api.gouv.fr publishes no EPCI contour at all.
+  assert.match(plain.communes, /fields=code,nom,population,codeEpci/);
+  assert.equal(plain.arrondissements, null);
+
+  for (const dep of ['75', '69', '13']) {
+    const split = peContourUrls(dep);
+    assert.match(split.arrondissements, /type=arrondissement-municipal/);
+    assert.match(split.arrondissements, new RegExp(`codeDepartement=${dep}`));
+    assert.equal(peArrondissementParent(dep), PE_ARRONDISSEMENT_PARENTS[dep]);
+  }
+  assert.equal(peArrondissementParent('01'), null);
+  // A code the API would refuse never leaves this process.
+  for (const bad of ['', '9', '999', '../etc', '75056', null]) {
+    assert.throws(() => peContourUrls(bad), /invalid département code/);
+  }
+});
+
+test('an arrondissement inherits the EPCI its parent carries', () => {
+  // geo.api.gouv.fr sends `codeEpci` with a commune and NOT with an
+  // arrondissement — verified on the fixtures themselves, which is why this
+  // has to be lent rather than read.
+  assert.equal(ARR_75.features.every((f) => f.properties.codeEpci === undefined), true);
+
+  const pack = projectPeTerritoires({
+    communes: COM_75, arrondissements: ARR_75, departement: '75',
+  });
+  const byCode = new Map(pack.communes.map((row) => [row.c, row]));
+  assert.equal(pack.arrondissements, 2);
+  assert.equal(byCode.get('75056').e, '200054781');
+  assert.equal(byCode.get('75101').e, '200054781');
+  // Both grains travel, each marked, and neither can be drawn without knowing
+  // the other exists: `x` says "subdivided here", `a` names the parent.
+  assert.equal(byCode.get('75056').x, 1);
+  assert.equal(byCode.get('75101').a, '75056');
+  assert.equal(byCode.get('75056').a, undefined);
+});
+
+test('a département with no arrondissements is one plain pass', () => {
+  const pack = projectPeTerritoires({ communes: COM_75, departement: '01' });
+  assert.equal(pack.arrondissements, 0);
+  assert.equal(pack.departement, '01');
+  // Nothing is marked as subdivided when nothing subdivides it.
+  assert.equal(pack.communes.every((row) => !row.a && !row.x), true);
+  // The simplification is reported rather than hidden: the fixture's ring is
+  // already under the ceiling, so nothing was decimated here.
+  assert.equal(pack.simplified, 0);
+  assert.ok(pack.vertices > 0);
+});
+
+test('a failed arrondissement call costs the finer grain, never the map', () => {
+  // The parent commune is already in hand, so Paris keeps its EPCI ground.
+  const pack = projectPeTerritoires({
+    communes: COM_75, arrondissements: null, departement: '75',
+  });
+  assert.equal(pack.arrondissements, 0);
+  assert.equal(pack.communes.length, 1);
+  assert.equal(pack.communes[0].x, undefined);
+  assert.deepEqual(projectPeTerritoires().communes, []);
+});
+
+test('a box answer carries the communes a view can see and nothing else', () => {
+  const pack = projectPeTerritoires({
+    communes: COM_75, arrondissements: ARR_75, departement: '75',
+  });
+  // The bounding boxes ride ALONGSIDE the rows, never on them: they exist to
+  // cut the answer and the browser never reads one.
+  assert.equal(pack.bboxes.length, pack.communes.length);
+  assert.equal(pack.communes.every((row) => row.b === undefined), true);
+
+  const inside = peTerritoiresInBox({
+    packs: [pack],
+    box: {
+      south: 48.8, west: 2.3, north: 48.88, east: 2.36,
+    },
+  });
+  assert.equal(inside.communes.length > 0, true);
+  assert.deepEqual(inside.departements, ['75']);
+  assert.equal(inside.dropped, 0);
+  assert.ok(inside.vertices > 0);
+
+  // A box over the Atlantic answers nothing rather than everything.
+  const away = peTerritoiresInBox({
+    packs: [pack],
+    box: {
+      south: 46, west: -6, north: 47, east: -5,
+    },
+  });
+  assert.deepEqual(away.communes, []);
+  assert.deepEqual(away.departements, []);
+  assert.deepEqual(peTerritoiresInBox().communes, []);
+  assert.deepEqual(peTerritoiresInBox({ packs: [pack], box: null }).communes, []);
+});
+
+test('a capped box keeps the middle of the view and says what it dropped', () => {
+  const pack = projectPeTerritoires({
+    communes: COM_75, arrondissements: ARR_75, departement: '75',
+  });
+  const box = {
+    south: 48.8, west: 2.25, north: 48.9, east: 2.42,
+  };
+  const full = peTerritoiresInBox({ packs: [pack], box });
+  const capped = peTerritoiresInBox({ packs: [pack], box, limit: 1 });
+  assert.equal(capped.communes.length, 1);
+  assert.equal(capped.dropped, full.communes.length - 1);
+  // What survives is the shape nearest the CENTRE of the view — a truncated
+  // answer is complete where the operator is looking and thin at the margins.
+  const centre = ringBox(capped.communes[0].p[0]);
+  assert.ok(Math.abs((centre[0] + centre[2]) / 2 - (box.west + box.east) / 2) < 0.05);
+});
+
+test('a ring box is the ring, not a guess at it', () => {
+  assert.deepEqual(ringBox([1, 2, 3, 4, 0, 9]), [0, 2, 3, 9]);
+  assert.equal(ringBox([1]), null);
+  assert.equal(ringBox(null), null);
 });

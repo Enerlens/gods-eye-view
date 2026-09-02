@@ -11,27 +11,44 @@
  * and not a shortcut. `petiteEnfanceDepartements.js` holds the national fold.
  * This file is the rendering.
  *
- * ── Two regimes, and one of them draws points on purpose ────────────────────
+ * ── Two regimes, and neither of them draws a point ──────────────────────────
  *   national — the 96 bundled metropolitan département polygons, filled by
- *              how the département compares with France. Entered on the view's
- *              LATITUDE span (≥ 9.5°, metropolitan France being 9.8° tall).
- *   local    — the 1 250 intercommunalités as points at their administrative
- *              centre, plus the 1 061 communes the CNAF breaks out, below a
- *              closer altitude.
+ *              how the département compares with France. It holds from orbit
+ *              all the way down to {@link NATIONAL_EXIT_SPAN_DEG}.
+ *   local    — the intercommunalité and commune TERRITORIES themselves, from
+ *              `geo.api.gouv.fr` commune outlines, fetched a département at a
+ *              time for the départements in view.
  *
- * The local regime draws POINTS and not a choropleth, and that is a stated
- * limit rather than an oversight. A rate belongs in an area fill, so the
- * honest thing would be EPCI polygons — but they are not bundled and not
- * free: `geo.api.gouv.fr` refuses an unfiltered contour request, so the pack
- * would be 1 255 separate calls, **66 MB and 3,1 million vertices** (measured),
- * simplified down to a new ~1,5 MB asset whose vintage drifts away from the
- * data's every January. Until that pack exists, this layer puts the number at
- * the area's centre and says on the card which area it belongs to, rather than
- * inventing a boundary or pretending the EPCI scale does not exist.
+ * This layer used to draw the local scales as dots at each area's
+ * administrative centre, and that was wrong in a way worth recording. A
+ * coverage rate is a property of a TERRITORY; drawn as a dot it becomes a
+ * property of a coordinate, and the coordinate is a centroid — a field outside
+ * the seat commune of a rural intercommunalité, a spot in the 5th for a
+ * Métropole. Nothing on screen said where the number stopped applying.
  *
- * The commune scale is points for a second, harder reason: the CNAF publishes
- * it only for communes over 10 000 inhabitants — **1 061 of France's ~34 875**
- * — so a commune choropleth would be 97% holes.
+ * ── How an EPCI is drawn when it has no contour ─────────────────────────────
+ * `geo.api.gouv.fr` publishes no EPCI outline and refuses an unfiltered
+ * contour request. It does publish `codeEpci` alongside every commune, at no
+ * extra call — so an intercommunalité is filled as its MEMBER COMMUNES, all
+ * carrying one colour and no internal outline, which reads as one territory
+ * rather than as a mosaic. What is missing is the union's outer stroke, and
+ * nothing here fakes one.
+ *
+ * ── Where the two grains meet ───────────────────────────────────────────────
+ * The CNAF publishes the commune scale only above 10 000 inhabitants —
+ * **1 061 of France's ~34 875** — so it can never tile anything. Below
+ * {@link COMMUNE_SPAN_DEG} those 1 061 communes are CUT OUT of their EPCI's
+ * wash and filled with their own rate instead. The two grains therefore never
+ * overlap: every piece of ground carries exactly one number, the finest one
+ * published for it, and the outline says which. Above that span the EPCI wash
+ * is continuous.
+ *
+ * ── What the map no longer says, and why that is the right trade ────────────
+ * The dots were sized by total places, so the layer used to answer "how much
+ * childcare is here?" and "how much per child?" at once. A fill has one
+ * channel and it is spent on the rate — the question the indicator exists to
+ * answer. The places count is on every card, and the alternative (a dot
+ * floating over its own territory) is exactly the thing this regime removed.
  *
  * ── What the colour means ───────────────────────────────────────────────────
  * How the area compares with France, as a ratio to the national rate of the
@@ -41,19 +58,17 @@
  * as you zoomed without anything changing about it. Anchoring on the one
  * national figure makes a colour mean the same thing at every zoom.
  *
- * ── What the size means, and the one number it is not ───────────────────────
- * Places. A dot's area is the total number of formal childcare places offered
- * in that area, so a big dot is a lot of childcare and a pale dot is not
- * enough of it per child — the two channels answer different questions on
- * purpose. Neither is a count of crèches: nothing in open data is.
+ * And it is never a count of crèches: nothing in open data is one. The
+ * measurement behind that sentence — 210 CNAF datasets, FINESS, the BPE and
+ * Sirene, all checked — is in `petiteEnfanceFeed.js`.
  */
 
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
-import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
-import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
+import { ringAnchor } from './communeContours.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
+import { boxKey, snapBoxOutward } from './viewportBox.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -61,6 +76,9 @@ import {
 } from '../overlays/worldOverlay.js';
 import {
   PE_BANDS,
+  PE_BOX_STEP_DEG,
+  PE_GEO_SOURCE,
+  PE_MAX_BOX_DEG,
   PE_BAND_LABELS,
   PE_BAND_RATIOS,
   PE_MODES,
@@ -87,15 +105,31 @@ const DEPARTEMENTS_URL = new URL(
 ).href;
 
 // --- Activation / load gating ----------------------------------------------
-/** View LATITUDE span (degrees) at or above which the choropleth answers. */
-const NATIONAL_ENTER_SPAN_DEG = 9.5;
-const NATIONAL_EXIT_SPAN_DEG = 8;
 /**
- * View latitude span below which communes are drawn alongside their EPCI.
- * ~1.1° is a large metropolitan area on screen, which is the first zoom at
- * which "which commune" is a question a reader can even ask.
+ * View LATITUDE span (degrees) at or above which the choropleth answers.
+ *
+ * It used to be 9,5° — the height of metropolitan France — because below it
+ * the dots took over. What is below it now is real geometry, and the ceiling
+ * is how much of it a view can hold: measured on the ground, a 0,9° box holds
+ * about 1 450 communes, which is the same order as the parcel batches this
+ * app already draws. So the choropleth answers everything above that and the
+ * territories take over below it.
+ *
+ * The exit threshold is lower than the entry one so a camera resting on the
+ * boundary does not swap the whole map back and forth on sub-pixel drift.
  */
-const COMMUNE_SPAN_DEG = 1.1;
+export const NATIONAL_ENTER_SPAN_DEG = PE_MAX_BOX_DEG;
+export const NATIONAL_EXIT_SPAN_DEG = 0.9;
+/**
+ * View latitude span below which communes are cut out of their EPCI's wash.
+ *
+ * 0,45° is about 50 km of France — a metropolitan area and its ring — which
+ * is the first zoom at which "which commune" is a question a reader can act
+ * on, and comfortably inside the regime that is already drawing territory.
+ */
+export const COMMUNE_SPAN_DEG = 0.45;
+/** Box answers kept in the browser between views, LRU. */
+export const PE_BOX_CACHE = 6;
 const CAMERA_DEBOUNCE_MS = 450;
 /**
  * Poll cadence (ms). The CNAF publishes this once a year, in January, so
@@ -103,10 +137,14 @@ const CAMERA_DEBOUNCE_MS = 450;
  */
 const POLL_INTERVAL_MS = 6 * 60 * 60_000;
 const REQUEST_TIMEOUT_MS = 120_000;
-/** Above the whole register (1 250 + 1 061), so it never bites in production. */
+/**
+ * Territories one view may fill.
+ *
+ * Well above what the proxy will send — `PE_MAX_BOX_COMMUNES` caps one answer
+ * at 2 400 communes, and several of those share an EPCI — which makes this a
+ * runaway guard rather than a policy. What it drops is reported on the row.
+ */
 const MAX_RENDERED_AREAS = 4_000;
-const POINT_LIFT_M = 2.5;
-const GROUND_WARM_LIMIT = 400;
 
 // --- Presentation -----------------------------------------------------------
 /**
@@ -140,28 +178,42 @@ const BAND_ALPHA = Object.freeze({
   'tres-haut': 0.68,
 });
 
+/**
+ * Fill alpha per band in the LOCAL regime.
+ *
+ * The choropleth's own alphas, scaled to 55%. A département fill covers ground
+ * a reader is looking at from 500 km up, where there is nothing underneath it
+ * to lose; an EPCI fill sits over streets and buildings at city zoom, and at
+ * the choropleth's weight it stops being a highlight and becomes a lid. The
+ * RATIO between the bands is preserved exactly, so the extremes still carry
+ * more weight than the middle, both ways.
+ */
+const TERRITORY_ALPHA = Object.freeze({
+  'tres-bas': 0.374,
+  bas: 0.330,
+  'sous-moyenne': 0.275,
+  'sur-moyenne': 0.275,
+  haut: 0.330,
+  'tres-haut': 0.374,
+});
+
 const SELECTED_COLOR = '#00ffff';
 /**
- * EPCI dots outline in white, commune dots in black — the two scales are
- * nested, so at city zoom a commune dot sits inside its own EPCI dot, and the
- * ring is what tells a reader which of the two numbers they are reading.
- */
-const EPCI_OUTLINE = Cesium.Color.WHITE.withAlpha(0.75);
-const COMMUNE_OUTLINE = Cesium.Color.BLACK.withAlpha(0.55);
-const EPCI_POINT_MIN_PX = 7;
-const EPCI_POINT_MAX_PX = 22;
-const COMMUNE_POINT_MIN_PX = 5;
-const COMMUNE_POINT_MAX_PX = 15;
-const SELECTED_POINT_PX = 24;
-/**
- * Places at which a dot reaches full size.
+ * The commune grain outlines, the EPCI grain does not.
  *
- * 40 000, measured rather than rounded to taste: the largest single EPCI
- * offer in the file is the Métropole de Lyon, and a ceiling at the maximum
- * would spend the whole top of the scale on one dot. Square-rooted, because
- * the eye reads area.
+ * The two never overlap — a commune the CNAF publishes is cut out of its
+ * EPCI's wash — so the hairline is not a border between two fills, it is the
+ * one mark that says "this piece carries its own number". Drawing the EPCI's
+ * member communes with the same hairline would turn one territory into a
+ * mosaic of thirty, which is precisely the reading this regime exists to
+ * prevent.
  */
-const SIZE_CEILING_PLACES = 40_000;
+const COMMUNE_OUTLINE_COLOR = '#ffffff';
+const COMMUNE_OUTLINE_ALPHA = 0.34;
+const COMMUNE_OUTLINE_WIDTH_PX = 1.4;
+const SELECTED_OUTLINE_WIDTH_PX = 3;
+/** The selected territory's own wash, laid over the band fill it belongs to. */
+const SELECTED_FILL_ALPHA = 0.16;
 
 /** One-line explanations behind each band swatch. */
 const BAND_BLURBS = Object.freeze({
@@ -182,13 +234,11 @@ let _overlayHost = DEFAULT_OVERLAY_HOST;
 
 // --- Runtime state ----------------------------------------------------------
 let _viewer = null;
-let _points = null;
 let _records = new Map();
 let _enabled = false;
 let _clickHandler = null;
 let _cameraChangedAttached = false;
 let _cameraDebounceTimer = null;
-let _preRenderRemover = null;
 let _selectedId = null;
 let _count = 0;
 let _lastUpdate = null;
@@ -212,6 +262,23 @@ let _packPromise = null;
 let _packError = null;
 let _inView = 0;
 let _communesShown = 0;
+let _unpainted = 0;
+
+/** INSEE code → the CNAF area drawn for it, rebuilt whenever the pack lands. */
+let _areaIndex = new Map();
+/** snapped box key → the outlines it answered, LRU-capped at `PE_BOX_CACHE`. */
+const _contourPacks = new Map();
+const _contourPromises = new Map();
+let _contourError = null;
+let _visibleDeps = [];
+let _dropped = 0;
+/** The box+grain currently drawn, so a camera nudge is not a rebuild. */
+let _drawKey = null;
+/** One `GroundPrimitive` per band colour — never one per territory. */
+let _fills = [];
+let _outlines = null;
+let _selectionFill = null;
+let _selectionOutline = null;
 
 // --- Colour and size --------------------------------------------------------
 
@@ -252,20 +319,13 @@ export function peBandRangeLabels(national) {
 }
 
 /**
- * Dot size for one area, by the number of places it offers.
+ * Fill alpha for one band in the LOCAL regime.
  *
- * Square-rooted and capped — see `SIZE_CEILING_PLACES`. Communes draw on a
- * strictly smaller scale than the EPCI they sit inside, so a nested pair never
- * reads as one dot.
+ * Derived from the choropleth's alpha rather than typed independently, so the
+ * two regimes can never disagree about which end of the ramp carries weight.
  */
-export function pePointSize(places, scale = 'epci') {
-  const commune = scale === 'com';
-  const min = commune ? COMMUNE_POINT_MIN_PX : EPCI_POINT_MIN_PX;
-  const max = commune ? COMMUNE_POINT_MAX_PX : EPCI_POINT_MAX_PX;
-  const count = Number(places);
-  if (!Number.isFinite(count) || count <= 0) return min;
-  const scaled = Math.sqrt(Math.min(count, SIZE_CEILING_PLACES)) / Math.sqrt(SIZE_CEILING_PLACES);
-  return min + (max - min) * scaled;
+export function peTerritoryAlpha(band) {
+  return TERRITORY_ALPHA[band] ?? 0;
 }
 
 // --- Camera -----------------------------------------------------------------
@@ -298,13 +358,6 @@ export function peViewSpanDeg(viewer) {
   return Number.isFinite(lat) ? lat : Infinity;
 }
 
-/** Whether one area falls inside a box (edges count). */
-export function peAreaInBox(area, box) {
-  if (!box) return false;
-  return area.lat >= box.south && area.lat <= box.north
-    && area.lon >= box.west && area.lon <= box.east;
-}
-
 /** Which regime the camera is in, with hysteresis at the boundary. */
 function updateRegime(viewer) {
   const span = peViewSpanDeg(viewer);
@@ -316,10 +369,19 @@ function updateRegime(viewer) {
   return _regime;
 }
 
-function areaPosition(area) {
-  const floor = cachedGroundFloor(area.lat, area.lon);
-  const height = (Number.isFinite(floor) ? floor : 0) + POINT_LIFT_M;
-  return Cesium.Cartesian3.fromDegrees(area.lon, area.lat, height);
+/**
+ * Where a territory's card hangs.
+ *
+ * The centroid of its biggest drawn ring, and NOT the administrative centre
+ * the `/areas` pack carries: the card must point at the shape on screen, and
+ * for a multi-part area those two can be tens of kilometres apart. The centre
+ * is still the fallback for an area whose outline never arrived.
+ */
+function territoryAnchor(record) {
+  const anchor = record?.anchor
+    || (Number.isFinite(record?.area?.lon) ? [record.area.lon, record.area.lat] : null);
+  if (!anchor) return null;
+  return Cesium.Cartesian3.fromDegrees(anchor[0], anchor[1]);
 }
 
 /** French thousands separator, matching the rest of the French packs. */
@@ -407,8 +469,9 @@ export function buildPeSelectionLabel(record) {
     details.push('⚠ Échelle communale publiée seulement pour les communes de plus de 10 000 habitants');
   }
   if (area.scale === 'epci') {
-    details.push('Point placé au centre de l’intercommunalité — le taux vaut pour tout son territoire');
+    details.push('Territoire dessiné : les communes membres, sous une seule couleur — geo.api.gouv.fr ne publie pas de contour d’EPCI');
   }
+  if (record?.simplified) details.push('Contour communal simplifié');
 
   if (area.code) details.push(`Code ${area.code}`);
   return [title, ...details].join('\n');
@@ -454,7 +517,7 @@ function selectedOverlayEntry(id, position, copy) {
 
 /** Protected selected-area entry for the shared overlay host. */
 export function createPeSelectedOverlayEntry(record) {
-  const position = record?.position;
+  const position = record?.position || territoryAnchor(record);
   if (!record?.id || !position) return null;
   return selectedOverlayEntry(record.id, position, buildPeSelectionLabel(record));
 }
@@ -493,12 +556,6 @@ export function selectPeLabelCohort(entries, limit = PE_FR_LABEL_COHORT_LIMIT) {
 
 // --- Selection --------------------------------------------------------------
 
-function restoreRecordStyle(record) {
-  if (!record?.point) return;
-  record.point.color = Cesium.Color.fromCssColorString(record.baseColor);
-  record.point.pixelSize = record.baseSize;
-}
-
 function highlightSelectedDepartement() {
   if (!_selectedId?.startsWith('dep:')) return;
   const highlight = new Cesium.ColorMaterialProperty(
@@ -517,11 +574,8 @@ function dropDepartementSelection() {
 }
 
 function clearSelection() {
-  if (_selectedId?.startsWith?.('dep:')) {
-    repaintDepartements();
-  } else if (_selectedId) {
-    restoreRecordStyle(_records.get(_selectedId));
-  }
+  if (_selectedId?.startsWith?.('dep:')) repaintDepartements();
+  else clearSelectionPrimitives();
   _selectedId = null;
   _overlayHost.clearSource(PE_FR_OVERLAY_SOURCE_ID);
   governorRequestRender('petite-enfance-fr-deselect');
@@ -532,10 +586,7 @@ function selectArea(id) {
   if (!record) return;
   if (_selectedId && _selectedId !== id) clearSelection();
   _selectedId = id;
-  if (record.point) {
-    record.point.color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
-    record.point.pixelSize = SELECTED_POINT_PX;
-  }
+  drawSelectionPrimitives(record);
   const entry = createPeSelectedOverlayEntry(record);
   if (entry) {
     _overlayHost.setEntries(PE_FR_OVERLAY_SOURCE_ID, [entry], PE_FR_OVERLAY_SOURCE_OPTIONS);
@@ -592,17 +643,6 @@ function installClickHandler(viewer) {
     if (_selectedId) clearSelection();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   document.addEventListener('keydown', onKeyDown);
-}
-
-/** Keep the selected card pinned to its dot as the camera moves. */
-function onPreRender() {
-  if (!_enabled || !_selectedId || _selectedId.startsWith('dep:')) return;
-  const record = _records.get(_selectedId);
-  if (!record) return;
-  const entry = createPeSelectedOverlayEntry(record);
-  if (entry) {
-    _overlayHost.setEntries(PE_FR_OVERLAY_SOURCE_ID, [entry], PE_FR_OVERLAY_SOURCE_OPTIONS);
-  }
 }
 
 // --- National regime --------------------------------------------------------
@@ -807,94 +847,445 @@ async function ensurePack() {
 }
 
 /**
- * Draw the areas in view.
+ * Commune outlines for one snapped view box.
  *
- * EPCI always; communes only below `COMMUNE_SPAN_DEG`, because a commune point
- * at regional zoom is a dot inside a dot that says nothing the EPCI has not
- * already said, and because the commune scale is a city-level detail by
- * construction.
+ * The box is snapped OUTWARD to a 0,1° grid before it is asked about, so
+ * panning across a city re-asks once every few screens instead of once per
+ * camera settle, and the answers are worth keeping in an LRU at all. The pack
+ * carries no rate — the browser already holds those from `/areas` — so it is
+ * fetched independently of the coverage build and never invalidated by it.
+ * Geography does not change between two camera moves.
  */
-function reconcile(box, span) {
-  clearSelection();
-  _points.removeAll();
-  _records.clear();
+async function ensureContours(box) {
+  const key = boxKey(box);
+  if (_contourPacks.has(key)) return _contourPacks.get(key);
+  if (_contourPromises.has(key)) return _contourPromises.get(key);
+  const params = new URLSearchParams({
+    south: box.south.toFixed(4),
+    west: box.west.toFixed(4),
+    north: box.north.toFixed(4),
+    east: box.east.toFixed(4),
+  });
+  const promise = fetchJson(`/api/petite-enfance-fr/contours?${params}`, (p) => Array.isArray(p?.communes))
+    .then((payload) => {
+      _contourPacks.set(key, payload);
+      _contourError = null;
+      // LRU by insertion order: a Map preserves it, so the oldest key is first.
+      while (_contourPacks.size > PE_BOX_CACHE) {
+        const oldest = _contourPacks.keys().next().value;
+        if (oldest === undefined) break;
+        _contourPacks.delete(oldest);
+      }
+      return payload;
+    })
+    .catch((error) => {
+      if (error?.name !== 'AbortError') {
+        console.warn('[Data:PetiteEnfance-FR] contours unavailable:', error?.message || error);
+        _contourError = error?.message || 'indisponible';
+      }
+      return null;
+    })
+    .finally(() => { _contourPromises.delete(key); });
+  _contourPromises.set(key, promise);
+  return promise;
+}
 
-  const withCommunes = Number.isFinite(span) && span <= COMMUNE_SPAN_DEG;
-  const national = _pack?.national ?? null;
-  const year = _pack?.year ?? null;
-  const warm = [];
-  let inView = 0;
-  let communes = 0;
+/** The view box this layer asks about: the camera's, snapped to the cache grid. */
+export function peContourBox(viewer) {
+  const box = cameraPeBox(viewer, 0);
+  return box ? snapBoxOutward(box, PE_BOX_STEP_DEG) : null;
+}
 
-  for (const area of _pack?.areas || []) {
-    if (!Number.isFinite(area?.lat) || !Number.isFinite(area?.lon)) continue;
-    if (area.scale === 'com' && !withCommunes) continue;
-    if (!peAreaInBox(area, box)) continue;
-    inView += 1;
-    if (_records.size >= MAX_RENDERED_AREAS) continue;
-    const id = area.id;
-    if (!id || _records.has(id)) continue;
-    const color = peBandColor(area.band) || '#9aa4ad';
-    const size = pePointSize(area.totalPlaces, area.scale);
-    const position = areaPosition(area);
-    const point = _points.add({
-      id,
-      position,
-      color: Cesium.Color.fromCssColorString(color),
-      pixelSize: size,
-      outlineColor: area.scale === 'com' ? COMMUNE_OUTLINE : EPCI_OUTLINE,
-      outlineWidth: area.scale === 'com' ? 1 : 2,
-      disableDepthTestDistance: Number.POSITIVE_INFINITY,
-      translucencyByDistance: new Cesium.NearFarScalar(500, 1.0, 600_000, 0.45),
-    });
-    if (area.scale === 'com') communes += 1;
-    _records.set(id, {
-      id, area, national, year, point, position, baseColor: color, baseSize: size,
-    });
-    warm.push(area);
+/** The `/areas` pack indexed by its own `scale:code` id. */
+export function indexPeAreas(areas) {
+  const index = new Map();
+  for (const area of Array.isArray(areas) ? areas : []) {
+    if (area?.id) index.set(area.id, area);
+  }
+  return index;
+}
+
+/**
+ * Turn contour packs plus published rates into the territories to fill.
+ *
+ * Exported and pure so the whole nesting decision can be tested without a
+ * viewer: given outlines and rates, this is exactly what would be painted.
+ *
+ * ── The one rule ────────────────────────────────────────────────────────────
+ * Every piece of ground goes to the FINEST scale the CNAF published for it,
+ * and to exactly one scale. Below `COMMUNE_SPAN_DEG` a commune with its own
+ * row takes its ground out of the EPCI's wash; above it, or where no commune
+ * row exists, the ground belongs to the EPCI. So the two fills never overlap,
+ * two translucent colours never blend into a third that means nothing, and a
+ * reader clicking anywhere gets the number that actually covers that spot.
+ *
+ * ── The arrondissements ─────────────────────────────────────────────────────
+ * Paris, Lyon and Marseille are published by arrondissement municipal, and
+ * their parent commune is the same ground. Where an arrondissement carries a
+ * row, the parent is dropped entirely — drawing both would paint Paris twice,
+ * once in its EPCI's colour and once in twenty of its own. An arrondissement
+ * the CNAF did not publish falls back to its parent's EPCI, which is why the
+ * pack carries `codeEpci` on it.
+ *
+ * Ground whose area has no published rate is drawn as ABSENCE and counted, not
+ * as one end of the ramp: both ends of a diverging ramp are strong claims.
+ *
+ * @param {object} input
+ * @param {Array<object>} input.packs Contour packs, one per département.
+ * @param {Array<object>|Map<string,object>} input.areas The `/areas` rows.
+ * @param {boolean} [input.withCommunes] Whether the commune grain is on.
+ * @param {?number} [input.national] National rate, for the cards.
+ * @param {?number} [input.year]
+ * @param {number} [input.limit]
+ * @returns {{records:Array<object>, epci:number, communes:number, unmatched:number, unrated:number}}
+ */
+export function buildPeTerritoryRecords({
+  packs, areas, withCommunes = false, national = null, year = null, limit = MAX_RENDERED_AREAS,
+} = {}) {
+  const byId = areas instanceof Map ? areas : indexPeAreas(areas);
+  const pieces = new Map();
+  const order = [];
+  const seen = new Set();
+  let unmatched = 0;
+  let unrated = 0;
+
+  for (const pack of Array.isArray(packs) ? packs : []) {
+    const rows = Array.isArray(pack?.communes) ? pack.communes : [];
+    // Which parent communes their own arrondissements replace in this pack.
+    // Computed over the WHOLE pack first: the parent row can be read before
+    // the arrondissement that supersedes it.
+    const replaced = new Set();
+    if (withCommunes) {
+      for (const row of rows) {
+        if (row?.a && byId.has(`com:${row.c}`)) replaced.add(row.a);
+      }
+    }
+    for (const row of rows) {
+      if (!Array.isArray(row?.p) || !row.p.length) continue;
+      if (row.a ? !replaced.has(row.a) : replaced.has(row.c)) continue;
+      if (seen.has(row.c)) continue;
+      seen.add(row.c);
+      const area = (withCommunes ? byId.get(`com:${row.c}`) : null)
+        || (row.e ? byId.get(`epci:${row.e}`) : null);
+      if (!area) {
+        unmatched += 1;
+        continue;
+      }
+      if (!area.band) {
+        unrated += 1;
+        continue;
+      }
+      let piece = pieces.get(area.id);
+      if (!piece) {
+        if (pieces.size >= limit) {
+          unmatched += 1;
+          continue;
+        }
+        piece = { area, parts: [], simplified: false };
+        pieces.set(area.id, piece);
+        order.push(piece);
+      }
+      for (const part of row.p) piece.parts.push(part);
+      if (row.s) piece.simplified = true;
+    }
   }
 
-  _inView = inView;
-  _communesShown = communes;
-  _count = _records.size;
-  warmGroundFloor(warm.slice(0, GROUND_WARM_LIMIT));
-  governorRequestRender('petite-enfance-fr-reconcile');
+  let epci = 0;
+  let communes = 0;
+  const records = [];
+  for (const piece of order) {
+    if (!piece.parts.length) continue;
+    if (piece.area.scale === 'com') communes += 1;
+    else epci += 1;
+    let biggest = piece.parts[0];
+    for (const part of piece.parts) if (part.length > biggest.length) biggest = part;
+    records.push({
+      id: piece.area.id,
+      area: piece.area,
+      scale: piece.area.scale,
+      parts: piece.parts,
+      simplified: piece.simplified,
+      anchor: ringAnchor(biggest),
+      color: peBandColor(piece.area.band),
+      alpha: peTerritoryAlpha(piece.area.band),
+      national,
+      year,
+    });
+  }
+  return { records, epci, communes, unmatched, unrated };
+}
+
+/** Flat `[lon, lat, …]` to Cartesian positions. */
+function ringPositions(flat) {
+  if (!Array.isArray(flat) || flat.length < 8) return null;
+  return Cesium.Cartesian3.fromDegreesArray(flat);
+}
+
+/** One filled ring, as a ground-classified instance. */
+function fillInstance(id, positions, color) {
+  return new Cesium.GeometryInstance({
+    id,
+    geometry: new Cesium.PolygonGeometry({
+      // Outer rings only: a commune's interior ring is another commune, and
+      // that one is drawn in its own right at the same moment.
+      polygonHierarchy: new Cesium.PolygonHierarchy(positions),
+      vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
+    }),
+    attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
+  });
+}
+
+/** One ring's outline, as a ground-classified polyline instance. */
+function outlineInstance(id, positions, color, width) {
+  return new Cesium.GeometryInstance({
+    id,
+    geometry: new Cesium.GroundPolylineGeometry({ positions: [...positions, positions[0]], width }),
+    attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
+  });
+}
+
+function buildFillPrimitive(instances) {
+  if (!instances.length) return null;
+  return new Cesium.GroundPrimitive({
+    geometryInstances: instances,
+    appearance: new Cesium.PerInstanceColorAppearance({ flat: true, translucent: true }),
+    classificationType: Cesium.ClassificationType.BOTH,
+    asynchronous: true,
+    releaseGeometryInstances: false,
+  });
+}
+
+function buildOutlinePrimitive(instances) {
+  if (!instances.length) return null;
+  return new Cesium.GroundPolylinePrimitive({
+    geometryInstances: instances,
+    appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
+    classificationType: Cesium.ClassificationType.BOTH,
+    asynchronous: true,
+    releaseGeometryInstances: false,
+  });
+}
+
+function clearSelectionPrimitives() {
+  const primitives = _viewer?.scene?.primitives;
+  for (const primitive of [_selectionFill, _selectionOutline]) {
+    if (primitive && primitives) primitives.remove(primitive);
+  }
+  _selectionFill = null;
+  _selectionOutline = null;
+}
+
+/** Show or hide every drawn territory, without rebuilding any of them. */
+function showTerritories(show) {
+  for (const primitive of [..._fills, _outlines, _selectionFill, _selectionOutline]) {
+    if (primitive) primitive.show = show;
+  }
+}
+
+function clearTerritoryPrimitives() {
+  const primitives = _viewer?.scene?.primitives;
+  clearSelectionPrimitives();
+  for (const primitive of [..._fills, _outlines]) {
+    if (primitive && primitives) primitives.remove(primitive);
+  }
+  _fills = [];
+  _outlines = null;
+}
+
+/**
+ * Draw the highlight for one territory, as two primitives of its own.
+ *
+ * Its own primitives and NOT a recolour of the batch. A batched
+ * `GroundPrimitive` does not colour a pixel by the polygon that contains it:
+ * Cesium classifies the whole batch in one stencil pass, then keeps the first
+ * instance whose shadow volume covers the pixel and whose axis-aligned
+ * BOUNDING RECTANGLE contains it (`ShadowVolumeAppearanceFS.glsl`,
+ * `CULL_FRAGMENTS`). Communes' bounding rectangles overlap constantly, so a
+ * lone differently-coloured instance inside a batch is painted over its
+ * neighbours' boxes — a highlight with straight cuts through it belonging to
+ * the commune next door. Measured on `cadastre-fr` in September 2026, which is
+ * where this rule was written down.
+ */
+function drawSelectionPrimitives(record) {
+  clearSelectionPrimitives();
+  if (!record?.parts?.length || !_viewer?.scene?.primitives) return;
+  const color = Cesium.Color.fromCssColorString(SELECTED_COLOR);
+  const fills = [];
+  const outlines = [];
+  for (const part of record.parts) {
+    const positions = ringPositions(part);
+    if (!positions) continue;
+    fills.push(fillInstance(record.id, positions, color.withAlpha(SELECTED_FILL_ALPHA)));
+    outlines.push(outlineInstance(record.id, positions, color, SELECTED_OUTLINE_WIDTH_PX));
+  }
+  _selectionFill = buildFillPrimitive(fills);
+  _selectionOutline = buildOutlinePrimitive(outlines);
+  for (const primitive of [_selectionFill, _selectionOutline]) {
+    if (!primitive) continue;
+    primitive.show = _enabled;
+    _viewer.scene.primitives.add(primitive);
+  }
+}
+
+/**
+ * Draw the territories currently in view.
+ *
+ * ONE primitive per band colour, never one per territory and never one batch
+ * carrying several colours — the first is the frame-rate cost batching exists
+ * to avoid and the second draws the wrong shapes outright. See
+ * `drawSelectionPrimitives` for the whole of why.
+ */
+function drawTerritories(records) {
+  clearTerritoryPrimitives();
+  _records.clear();
+  if (!records.length || !_viewer?.scene?.primitives) return;
+
+  /** @type {Map<string, Array<object>>} band colour → its fill instances. */
+  const fillsByColor = new Map();
+  const outlineInstances = [];
+  const outlineColor = Cesium.Color
+    .fromCssColorString(COMMUNE_OUTLINE_COLOR).withAlpha(COMMUNE_OUTLINE_ALPHA);
+
+  for (const record of records) {
+    _records.set(record.id, record);
+    const color = Cesium.Color.fromCssColorString(record.color).withAlpha(record.alpha);
+    const key = `${record.color}|${record.alpha}`;
+    let bucket = fillsByColor.get(key);
+    if (!bucket) {
+      bucket = [];
+      fillsByColor.set(key, bucket);
+    }
+    for (const part of record.parts) {
+      const positions = ringPositions(part);
+      if (!positions) continue;
+      bucket.push(fillInstance(record.id, positions, color));
+      // Only the commune grain is outlined — the EPCI's member communes share
+      // one wash and must not read as thirty separate areas.
+      if (record.scale === 'com') {
+        outlineInstances.push(outlineInstance(
+          record.id, positions, outlineColor, COMMUNE_OUTLINE_WIDTH_PX,
+        ));
+      }
+    }
+  }
+
+  for (const instances of fillsByColor.values()) {
+    const primitive = buildFillPrimitive(instances);
+    if (!primitive) continue;
+    primitive.show = _enabled;
+    _fills.push(primitive);
+    _viewer.scene.primitives.add(primitive);
+  }
+  _outlines = buildOutlinePrimitive(outlineInstances);
+  if (_outlines) {
+    _outlines.show = _enabled;
+    _viewer.scene.primitives.add(_outlines);
+  }
+  governorRequestRender('petite-enfance-fr-territories');
 }
 
 function clearAreas() {
   if (_selectedId && !_selectedId.startsWith('dep:')) clearSelection();
-  if (_points) _points.removeAll();
+  clearTerritoryPrimitives();
+  _drawKey = null;
   _records.clear();
   _count = 0;
   _inView = 0;
   _communesShown = 0;
+  _unpainted = 0;
+  _dropped = 0;
+  _visibleDeps = [];
 }
 
+/**
+ * Fill the départements in view.
+ *
+ * The rates come once, nationally; the outlines come per département and only
+ * for the ones on screen. A département whose outlines fail to arrive leaves
+ * its ground unfilled and says so on the row — it is never filled from a
+ * neighbour's pack, and the rest of the view is still drawn.
+ */
 async function loadLocal(box, span, { force = false } = {}) {
   hideDepartements();
   _nationalPainted = false;
   dropDepartementSelection();
-  _error = null;
-  if (force) _pack = null;
+  // `_error` is NOT cleared here. It describes the drawing that is on screen,
+  // and a settle that changes nothing must not quietly retract the sentence
+  // explaining a département whose outlines never arrived. Every path below
+  // sets it, including to null.
+  if (force) {
+    _pack = null;
+    _contourPacks.clear();
+    _contourError = null;
+    _drawKey = null;
+  }
   _loading = !_pack;
   const generation = ++_requestGeneration;
   await ensurePack();
   if (generation !== _requestGeneration || !_enabled || _regime !== 'local') return;
-  _loading = false;
   if (!_pack) {
+    _loading = false;
     _error = _packError || 'area pack unavailable';
     _status = 'error';
     return;
   }
-  reconcile(box, span);
+  if (!_areaIndex.size) _areaIndex = indexPeAreas(_pack.areas);
+
+  const withCommunes = Number.isFinite(span) && span <= COMMUNE_SPAN_DEG;
+  // A camera settle that lands on the same snapped box, at the same grain, is
+  // the same drawing — rebuilding it would re-tessellate every polygon and
+  // drop the card the operator is reading, once per nudge of the mouse.
+  const drawKey = `${boxKey(box)}|${withCommunes ? 'com' : 'epci'}`;
+  if (!force && drawKey === _drawKey && _records.size) {
+    _loading = false;
+    _status = 'ready';
+    return;
+  }
+
+  _loading = !_contourPacks.has(boxKey(box));
+  const pack = await ensureContours(box);
+  if (generation !== _requestGeneration || !_enabled || _regime !== 'local') return;
+  _loading = false;
+  if (!pack) {
+    // The rates are still in hand and the choropleth above is untouched; what
+    // failed is the geometry, and the row says exactly that.
+    clearAreas();
+    _error = _contourError
+      ? `contours communaux indisponibles (${_contourError})`
+      : 'contours communaux indisponibles';
+    _status = 'error';
+    return;
+  }
+
+  const { records, epci, communes, unmatched, unrated } = buildPeTerritoryRecords({
+    packs: [pack],
+    areas: _areaIndex,
+    withCommunes,
+    national: _pack.national ?? null,
+    year: _pack.year ?? null,
+  });
+  clearSelection();
+  drawTerritories(records);
+  _drawKey = drawKey;
+  _count = records.length;
+  _inView = epci + communes;
+  _communesShown = communes;
+  _unpainted = unmatched + unrated;
+  _visibleDeps = Array.isArray(pack.departements) ? pack.departements : [];
+  _dropped = Number(pack.dropped) || 0;
   _lastUpdate = Number(_pack.fetchedAt) || Date.now();
+  // A département whose outlines never arrived is ground with no shape, which
+  // looks exactly like ground with no rate and means something else entirely.
+  _error = pack.unavailable?.length
+    ? `contours indisponibles : ${pack.unavailable.join(', ')}`
+    : null;
   _status = _count > 0 ? 'ready' : 'empty';
 }
 
 async function loadViewport({ force = false } = {}) {
   if (!_enabled || !_viewer) return;
   const regime = updateRegime(_viewer);
-  const box = regime === 'national' ? null : cameraPeBox(_viewer);
+  const box = regime === 'national' ? null : peContourBox(_viewer);
   // A camera inside the local regime that gives no usable rectangle has
   // nothing to filter against; the choropleth is the honest fallback.
   if (regime === 'national' || !box) {
@@ -913,7 +1304,7 @@ function onCameraChanged() {
 }
 
 function collectDetectableObjects(options = {}) {
-  if (!_enabled || !_points?.show || !_records.size) return [];
+  if (!_enabled || _regime !== 'local' || !_records.size) return [];
   const records = [...dispatchable()];
   if (!records.length) return [];
 
@@ -927,8 +1318,10 @@ function collectDetectableObjects(options = {}) {
   const result = [];
   for (let i = start; i < records.length; i += stride) {
     const record = records[i];
+    const position = territoryAnchor(record);
+    if (!position) continue;
     result.push({
-      position: record.position,
+      position,
       sourceId: record.id,
       id: Number.isFinite(record.area?.rate) ? `${rate(record.area.rate)} / 100` : (record.area?.name || ''),
       type: 'Childcare Area',
@@ -941,7 +1334,9 @@ function collectDetectableObjects(options = {}) {
 
 function* dispatchable() {
   for (const record of _records.values()) {
-    if (!record.point?.show && record.id !== _selectedId) continue;
+    // A territory with no drawn ring has no place to put a callout — it is not
+    // on screen in any sense a reader could act on.
+    if (!record.parts?.length && record.id !== _selectedId) continue;
     yield record;
   }
 }
@@ -954,6 +1349,8 @@ export function buildPeLoadingLabel({
   count = _count,
   inView = _inView,
   communes = _communesShown,
+  unpainted = _unpainted,
+  dropped = _dropped,
   national = _national,
 } = {}) {
   if (regime === 'national') {
@@ -968,12 +1365,15 @@ export function buildPeLoadingLabel({
     }
     return parts.join(' · ');
   }
-  if (loading) return 'lecture du registre national...';
+  if (loading) return 'lecture des contours communaux...';
   if (status === 'error') return '';
   if (!inView) return 'aucune zone dans cette vue';
   const parts = [`${fr(count - communes)} intercommunalités`];
   if (communes > 0) parts.push(`${fr(communes)} communes`);
-  if (inView > count) parts.push(`${fr(inView - count)} non tracées`);
+  // The two silences this regime can produce, named where it is read: ground
+  // whose area publishes no rate, and départements the pack cap left out.
+  if (unpainted > 0) parts.push(`${fr(unpainted)} communes sans taux publié`);
+  if (dropped > 0) parts.push(`${fr(dropped)} contours hors plafond`);
   return parts.join(' · ');
 }
 
@@ -988,10 +1388,6 @@ const petiteEnfanceFranceLayer = {
 
   init(viewer) {
     _viewer = viewer;
-    _points = new Cesium.PointPrimitiveCollection({ blendOption: Cesium.BlendOption.TRANSLUCENT });
-    _points.show = false;
-    viewer.scene.primitives.add(_points);
-    registerSpriteCollection(PE_FR_LAYER_ID, _points);
 
     _enabled = false;
     _records = new Map();
@@ -999,6 +1395,8 @@ const petiteEnfanceFranceLayer = {
     _count = 0;
     _inView = 0;
     _communesShown = 0;
+    _unpainted = 0;
+    _visibleDeps = [];
     _lastUpdate = null;
     _loading = false;
     _error = null;
@@ -1008,13 +1406,12 @@ const petiteEnfanceFranceLayer = {
 
     _overlayHost.setVisible(PE_FR_OVERLAY_SOURCE_ID, false);
     _overlayHost.setVisible(PE_FR_LABEL_SOURCE_ID, false);
-    restoreSpriteOrder(viewer);
   },
 
   enable(viewer) {
     _enabled = true;
     _error = null;
-    _points.show = true;
+    showTerritories(true);
     if (_depDataSource) _depDataSource.show = true;
     _overlayHost.setVisible(PE_FR_OVERLAY_SOURCE_ID, true);
     _overlayHost.setVisible(PE_FR_LABEL_SOURCE_ID, true);
@@ -1026,11 +1423,7 @@ const petiteEnfanceFranceLayer = {
       viewer.camera.percentageChanged = Math.min(viewer.camera.percentageChanged || 1, 0.05);
       _cameraChangedAttached = true;
     }
-    if (!_preRenderRemover) {
-      _preRenderRemover = viewer.scene.preRender.addEventListener(onPreRender);
-    }
     void loadViewport({ force: true });
-    restoreSpriteOrder(viewer);
   },
 
   disable(viewer) {
@@ -1059,12 +1452,7 @@ const petiteEnfanceFranceLayer = {
       viewer.camera.changed.removeEventListener(onCameraChanged);
       _cameraChangedAttached = false;
     }
-    if (_preRenderRemover) {
-      _preRenderRemover();
-      _preRenderRemover = null;
-    }
 
-    _points.show = false;
     _loading = false;
     _status = 'idle';
   },
@@ -1097,8 +1485,56 @@ const petiteEnfanceFranceLayer = {
     if (!_pack) return null;
     const { areas, ...summary } = _pack;
     return {
-      ...summary, inView: _inView, drawn: _count, communes: _communesShown,
+      ...summary,
+      inView: _inView,
+      drawn: _count,
+      communes: _communesShown,
+      unpainted: _unpainted,
+      departements: _visibleDeps.slice(),
+      contourSource: PE_GEO_SOURCE,
     };
+  },
+
+  /**
+   * The territories as they are actually drawn, for a harness.
+   *
+   * Verbatim from the records — the same rings that were handed to Cesium —
+   * so a pixel check written against this compares the screen with the SOURCE
+   * geometry rather than with the layer's own idea of it. `parts` is flat
+   * `[lon, lat, …]`, exactly as it arrived on the wire.
+   * @returns {{regime:string, selected:?string, territories:Array<object>}}
+   */
+  getTerritoriesForQa() {
+    return {
+      regime: _regime,
+      selected: _selectedId,
+      // One entry per FILL primitive, so a harness can assert the batching
+      // rule (one colour per primitive, never one primitive per territory)
+      // without reaching into Cesium's scene graph for the colours.
+      fills: _fills.length,
+      outlines: _outlines ? 1 : 0,
+      selectionPrimitives: (_selectionFill ? 1 : 0) + (_selectionOutline ? 1 : 0),
+      territories: [..._records.values()].map((record) => ({
+        id: record.id,
+        scale: record.scale,
+        code: record.area?.code ?? null,
+        band: record.area?.band ?? null,
+        color: record.color,
+        alpha: record.alpha,
+        anchor: record.anchor,
+        parts: record.parts,
+      })),
+    };
+  },
+
+  /**
+   * Select one territory by id, for a harness that cannot click a pixel it is
+   * about to measure — the card is painted over the very ground the check
+   * reads. The production path, not a copy of it.
+   * @param {string} id
+   */
+  selectAreaForQa(id) {
+    selectArea(id);
   },
 
   /** National rollup, for the analyst and for tests. */
@@ -1147,10 +1583,7 @@ const petiteEnfanceFranceLayer = {
       document.removeEventListener('keydown', onKeyDown);
       unregisterPickOwner(PE_FR_LAYER_ID);
     }
-    if (_preRenderRemover) {
-      _preRenderRemover();
-      _preRenderRemover = null;
-    }
+    clearTerritoryPrimitives();
     if (_depDataSource) {
       viewer.dataSources?.remove?.(_depDataSource, true);
       _depDataSource = null;
@@ -1158,11 +1591,10 @@ const petiteEnfanceFranceLayer = {
     _depEntities.clear();
     _depMeta = new Map();
     _depShapesPromise = null;
-    if (_points) {
-      unregisterSpriteCollection(PE_FR_LAYER_ID, _points);
-      viewer.scene.primitives.remove(_points);
-      _points = null;
-    }
+    _contourPacks.clear();
+    _contourPromises.clear();
+    _contourError = null;
+    _areaIndex = new Map();
     _records.clear();
     _viewer = null;
   },
@@ -1171,7 +1603,7 @@ const petiteEnfanceFranceLayer = {
 /** Seed rendered records so selection/card/legend paths run without WebGL. */
 export function _setPeStateForTest({
   viewer, records, overlayHost, status, count, regime, national, depEntities, depMeta,
-  pack, inView, communes,
+  pack, inView, communes, unpainted, dropped, visibleDeps,
 } = {}) {
   _viewer = viewer || null;
   _records = new Map((records || []).map((record) => [record.id, record]));
@@ -1181,6 +1613,9 @@ export function _setPeStateForTest({
   _count = Number.isFinite(count) ? count : _records.size;
   _inView = Number.isFinite(inView) ? inView : _count;
   _communesShown = Number.isFinite(communes) ? communes : 0;
+  _unpainted = Number.isFinite(unpainted) ? unpainted : 0;
+  _visibleDeps = visibleDeps || [];
+  _dropped = Number.isFinite(dropped) ? dropped : 0;
   _loading = false;
   _regime = regime || 'local';
   _national = national || null;
@@ -1209,6 +1644,12 @@ export function _clearPeSelectionForTest() {
   _pack = null;
   _depEntities = new Map();
   _depMeta = new Map();
+  _areaIndex = new Map();
+  _contourPacks.clear();
+  _visibleDeps = [];
+  _unpainted = 0;
+  _dropped = 0;
+  _drawKey = null;
   _regime = 'local';
   _enabled = false;
 }
