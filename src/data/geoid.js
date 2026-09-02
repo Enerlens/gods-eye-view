@@ -99,10 +99,13 @@ export function ellipsoidalToMslDisplayM(hEllipsoidalM, geoidUndulationM) {
 
 // ── One value at a time, without the grid ───────────────────────────────────
 //
-// The grid above is 2.77 MB (1.77 MB over the wire) and `ignBilTerrain.js`
-// genuinely needs it in-process: it does thousands of SYNCHRONOUS lookups per
-// terrain tile, which no network can serve. But that only happens once IGN
-// terrain is switched on.
+// The grid above is 2.77 MB (1.77 MB over the wire) and six layer modules
+// genuinely need it in-process — flights, militaryFlights, aisLiveVessels,
+// bdtopoBuildings, terrainHeights and ignBilTerrain. The heaviest of them,
+// ignBilTerrain, does thousands of SYNCHRONOUS lookups per terrain tile, which
+// no network can serve. What they have in common is that none of them exists
+// until its layer is switched on — which is exactly when paying for the grid
+// is honest.
 //
 // The other consumer is a readout. The HUD's ALT line wants ONE undulation,
 // memoized per coarse cell, refreshed as the camera drifts — and asking for it

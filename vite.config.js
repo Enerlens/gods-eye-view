@@ -20372,11 +20372,12 @@ function idfmProxy() {
  * it was 1.77 MB of a 5.06 MB first visit: the single largest thing we ship,
  * larger than the Cesium engine.
  *
- * The grid still ships — `src/data/ignBilTerrain.js` does thousands of
- * SYNCHRONOUS lookups per terrain tile and could never do that over a network.
- * But that consumer only exists once IGN terrain is switched on, which is
- * exactly when paying for the grid is honest. This endpoint serves the other
- * consumer, which wants one value at a time.
+ * The grid still ships — six layer modules need it in-process (flights,
+ * militaryFlights, aisLiveVessels, bdtopoBuildings, terrainHeights and
+ * ignBilTerrain, the last doing thousands of SYNCHRONOUS lookups per terrain
+ * tile, which no network could serve). None of them exists until its layer is
+ * switched on, which is exactly when paying for the grid is honest. This
+ * endpoint serves the remaining consumer, which wants one value at a time.
  *
  * The answer is bit-for-bit what the browser would have computed: same package,
  * same grid, same function. Nothing is approximated by moving it here.

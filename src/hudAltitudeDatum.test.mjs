@@ -16,9 +16,11 @@
 // HUD is visible by default, so every visitor downloaded all of it to correct
 // one readout. N now comes from `/api/geoid`, one coarse cell at a time,
 // computed server-side by the same package: bit-for-bit the same number for
-// ~50 bytes. The grid still ships for `src/data/ignBilTerrain.js`, which does
-// thousands of synchronous lookups per terrain tile and loads it only when IGN
-// terrain is switched on.
+// ~50 bytes. The grid still ships for the six layer modules that need it
+// in-process (flights, militaryFlights, aisLiveVessels, bdtopoBuildings,
+// terrainHeights, ignBilTerrain — the last doing thousands of synchronous
+// lookups per terrain tile). None of them loads until its layer is switched on,
+// so none of them is on the boot path.
 //
 // The four intents below did not change with the mechanism, and each probe
 // still names one: the correction comes from ./data/geoid.js and is not
@@ -168,7 +170,7 @@ test('hud.js corrects the camera height to MSL through the geoid module', () => 
   assert.equal(
     has(/ensureGeoidReady|geoidHeight\(/),
     false,
-    'the readout must not pull the 2.77 MB grid — that path belongs to ignBilTerrain',
+    'the readout must not pull the 2.77 MB grid — that path belongs to the layer modules',
   );
   assert.equal(
     has(/\.catch\(\(\) => \{ \/\* readout falls back to the uncorrected height \*\/ \}\)/),
