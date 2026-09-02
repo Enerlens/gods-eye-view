@@ -34,6 +34,7 @@ import sharedMobilityFranceLayer from './data/sharedMobilityFrance.js';
 import irveFranceLayer from './data/irveFrance.js';
 import schoolsFranceLayer from './data/schoolsFrance.js';
 import medecinsFranceLayer from './data/medecinsFrance.js';
+import meteoStationsFranceLayer from './data/meteoStationsFrance.js';
 import supFranceLayer from './data/supFrance.js';
 import petiteEnfanceFranceLayer from './data/petiteEnfanceFrance.js';
 import aisLiveVesselsLayer from './data/aisLiveVessels.js';
@@ -322,6 +323,7 @@ async function init() {
     dataManager.register(irveFranceLayer);
     dataManager.register(schoolsFranceLayer);
     dataManager.register(medecinsFranceLayer);
+    dataManager.register(meteoStationsFranceLayer);
     dataManager.register(supFranceLayer);
     dataManager.register(petiteEnfanceFranceLayer);
     dataManager.register(aisLiveVesselsLayer);

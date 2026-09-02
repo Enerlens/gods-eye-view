@@ -263,6 +263,22 @@ const LAYER_ALIASES = new Map([
   ['healthcare', 'medecins-fr'],
   ['sante', 'medecins-fr'],
   ['santé', 'medecins-fr'],
+  ['weather stations', 'meteo-stations-fr'],
+  ['weather station', 'meteo-stations-fr'],
+  ['stations meteo', 'meteo-stations-fr'],
+  ['stations météo', 'meteo-stations-fr'],
+  ['station meteo', 'meteo-stations-fr'],
+  ['station météo', 'meteo-stations-fr'],
+  ['meteo france', 'meteo-stations-fr'],
+  ['météo france', 'meteo-stations-fr'],
+  ['radome', 'meteo-stations-fr'],
+  ['synop', 'meteo-stations-fr'],
+  ['pluviometres', 'meteo-stations-fr'],
+  ['pluviomètres', 'meteo-stations-fr'],
+  ['anemometres', 'meteo-stations-fr'],
+  ['anémomètres', 'meteo-stations-fr'],
+  ['observations meteo', 'meteo-stations-fr'],
+  ['observations météo', 'meteo-stations-fr'],
   ['universities', 'sup-fr'],
   ['university', 'sup-fr'],
   ['universites', 'sup-fr'],
@@ -3458,6 +3474,7 @@ function layerTitle(layerId) {
   if (layerId === 'petite-enfance-fr') return 'Childcare Area';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
+  if (layerId === 'meteo-stations-fr') return 'Weather Station';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
   return layerId || 'Entity';
 }

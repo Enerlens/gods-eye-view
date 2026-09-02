@@ -7,6 +7,51 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Added
 
+- **Stations météo (FR) — where France measures the weather, and what each
+  instrument can actually tell you.** All **2 144 stations** of Météo-France's
+  real-time observation network, from the tide line to the **Aiguille du Midi at
+  3 845 m**. The globe already showed the weather three times — Open-Meteo in the
+  cockpit, Vigilance météo per département, Vigicrues on the rivers — and never
+  once showed where the numbers come from. A vigilance map is an interpretation
+  of readings taken somewhere; this is the somewhere.
+- **Colour is capability, because a French weather station usually is not one.**
+  A reader expects 2 144 identical instruments knowing temperature, wind,
+  pressure and humidity. Against Météo-France's own per-station inventory:
+  **1 254 of the 2 144 — 58 % — measure temperature and rain and nothing else**,
+  only **845 can tell you which way the wind is blowing**, and only **234** have
+  a barometer. **228** measure all five. So the palette is what each dot can
+  answer, the disc is sized by how many of the fourteen instrument families it
+  carries, and the **VENT** chip deletes 60 % of the map on purpose.
+- **190 stations publish their readings in the open — and Météo-France's own
+  list names 62.** A ring means a station whose last hour is readable without a
+  key, and clicking one fetches it: temperature, wind and gust in km/h, pressure,
+  humidity, rain, visibility, snow. Boulogne-sur-Mer, Le Touquet, Dunkerque,
+  Dieppe, Beauvais-Tillé, Ouessant-Stiff and 123 others publish hourly without
+  appearing on the list that is supposed to name them; **CAP CEPET is on the list
+  and has written nothing all year**. The layer counts the archive, never the
+  list. The other 1 954 stations are measuring right now and publishing nothing
+  a visitor can read — the card says that, rather than showing an empty reading.
+- **Every station's records, with the window they stand in.** 1 230 postes
+  publish a *fiche climatologique*, and a click brings back the hottest and
+  coldest day ever recorded there plus the period the record was established
+  over — Toulouse-Blagnac's 42,4 °C in 2023 against observations back to 1947,
+  Arbent's 39,2 °C against 2004. The window is printed with the number because
+  without it the two read the same.
+- **The instrument inventory, joined from a 191 MB file no browser can fetch.**
+  The station list is eight columns and says nothing about what anything
+  measures; that lives in Météo-France's per-parameter inventory, dated one
+  instrument at a time. `npm run meteo:stations` joins four of the publisher's
+  files into a 644 KB pack. Families are anchored on hourly base readings, never
+  keyword-matched: matching on "VENT" would count a decadal wind average —
+  present on 879 stations — as an anemometer when only 845 have one.
+- **Seven stations in the live list are closed, and six exist in no metadata at
+  all.** MARSILLARGUES since 2026-01-01, DESHAIES GENDARMERIE since 2024-10-01,
+  ST JOSEPH-CIRAD and TAN ROUGE-CIRAD since 2023-03-29, and three more —
+  Météo-France's own metadata records the closure and its own real-time list
+  still carries the station. They are drawn hollow and the card leads with the
+  date. ALBA LA ROMAINE, SOULAINES, TARASCON, PIOGGIOLA, QUERCITELLO and MURAT
+  SUR VEBRE are drawn in the neutral grey this project uses for "the publisher
+  did not say" — never as stations that measure nothing.
 - **Urbanisme (PLU) — click anywhere on the map, not on the marker.** The layer
   drew a whole block of zoning and put every word of the answer on one 26-pixel
   glyph, so the plot opposite could be SEEN and not READ: knowing what the
