@@ -553,6 +553,25 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'live',
   }),
+  // RÉSEAUX & CAPTEURS and not RISQUES & ENVIRONNEMENT, which is where its two
+  // obvious neighbours sit. Vigilance météo is in `hazards` because it paints a
+  // WARNING, and Stations Hub'Eau is there because it paints river flow read as
+  // a flood signal. This layer paints neither: it is 2 144 instruments and what
+  // each one can measure — the sensor network itself, which is the group this
+  // category exists to name. A reader asking "where does the weather data come
+  // from" is not asking about a hazard.
+  //
+  // `periodic` rather than `static`: the network is a bundled file, but the
+  // card fetches an hourly observation and a station's records on click.
+  Object.freeze({
+    id: 'meteo-stations-fr',
+    category: 'comms-sensors',
+    label: 'Stations météo',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
 
   // ── BÂTI & TERRITOIRE ─────────────────────────────────────────────────────
   // `periodic` rather than `static`: nothing about a building moves, but the

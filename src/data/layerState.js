@@ -366,6 +366,19 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // WHICH value the national choropleth carries, never what is hidden, so a
   // shared link that opens on the author's default surprises nobody.
   Object.freeze({ id: 'medecins-fr', token: 'md', disposition: 'enabled-only' }),
+  // Two characters, like its four neighbours, and NOT `m` or `n`: `m` is the
+  // military fleet and `n` is Vigilance météo — the layer this one is most
+  // likely to be confused with and the one it must never be swapped for in a
+  // share link. `mt` for météo. There were no open pull requests claiming a
+  // token when this landed, which is the only thing that makes a two-character
+  // pick safe: a duplicate here is a BOOT failure, not a merge conflict anyone
+  // would notice.
+  //
+  // `enabled-only`, although the layer owns four filter chips: a chip selects
+  // WHICH stations are shown, so a shared link opening on `VENT` would hide
+  // 60 % of the network from its recipient with no way to know it had. The
+  // author's filter is a view, not a fact about France.
+  Object.freeze({ id: 'meteo-stations-fr', token: 'mt', disposition: 'enabled-only' }),
   Object.freeze({ id: 'meteofrance-vigilance', token: 'n', disposition: 'enabled-only' }),
   Object.freeze({ id: 'military', token: 'm', disposition: 'enabled+mirrored-options', optionOwner: 'flights' }),
   Object.freeze({ id: 'military-awareness', token: 'g', disposition: 'enabled-only' }),

@@ -43,6 +43,7 @@ import { promises as fsp } from 'node:fs';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import readline from 'node:readline';
 import https from 'node:https';
 import zlib from 'node:zlib';
 import { lookup as lookupDns } from 'node:dns/promises';
@@ -80,6 +81,14 @@ import {
 import { filterTrailing24h, parseFirmsCsv } from './src/data/firmsCsv.js';
 import { projectVigicruesFeed } from './src/data/vigicruesFeed.js';
 import { projectVigilanceProduct } from './src/data/meteoFranceVigilanceFeed.js';
+import {
+  FICHECLIM_URL,
+  NORMALS_CACHE_MS,
+  SYNOP_ARCHIVE_URL,
+  SYNOP_CACHE_MS,
+  createSynopReducer,
+  parseFicheClim,
+} from './src/data/meteoStationsFrFeed.js';
 import { projectEco2mix } from './src/data/eco2mixFeed.js';
 import { projectGasNetwork, projectGasSites } from './src/data/gasFranceFeed.js';
 import { EDF_DATASETS, projectEdfPlants } from './src/data/edfPlantsFeed.js';
@@ -2943,6 +2952,286 @@ function meteoFranceVigilanceProxy() {
         } catch (err) {
           console.warn('[vigilance-proxy] error:', err?.message || err);
           sendJson(500, { error: 'vigilance proxy error' });
+        }
+      });
+    },
+  };
+}
+
+/**
+ * Weather-station readings proxy — the two things the shipped pack cannot hold.
+ *
+ * The station network itself is a committed file
+ * (`local_data/meteo_stations_fr/stations.json`, 2 144 stations). What is NOT
+ * in it is anything that changes: the current observation, and the records each
+ * station holds. Both are keyless, and both are shaped in a way a browser
+ * cannot use directly.
+ *
+ * ── Route 1: the observations, and why 22 MB is the cheap option ────────────
+ *
+ * Météo-France retired `donneespubliques.meteofrance.fr` and every
+ * OpenDataSoft mirror of *Données SYNOP essentielles OMM* froze on
+ * **2026-01-15T09:00Z** — measured on both `public.opendatasoft.com` and the
+ * Toulouse Métropole instance data.gouv itself links to, on 2026-09-02.
+ * Anything still reading a mirror for "current French weather" has been serving
+ * a seven-month-old number since January.
+ *
+ * What is still written is `OBS/SYNOP/synop_<year>.csv.gz` on Météo-France's own
+ * S3 — the running year in one file, refreshed hourly, 22 MB gzipped, and a
+ * SINGLE gzip member, so no range request can reach its tail. There is no
+ * smaller live product without an API key.
+ *
+ * So the fetch is whole, and three things make that affordable:
+ *   • it is LAZY — nothing is fetched until a reader opens a station card, so a
+ *     visitor who never clicks costs nothing;
+ *   • it is reduced in flight — 364 444 rows are streamed through
+ *     `createSynopReducer` and 190 survive, so the response is 38 kB, not 22 MB;
+ *   • it is cached for an hour, which is the upstream's own write cadence.
+ *
+ * The archive carries **190 stations**, not the 62 Météo-France's own station
+ * list names. See `meteoStationsFrFeed.js`, trap 3.
+ *
+ * ── Route 2: the records ────────────────────────────────────────────────────
+ *
+ * `REF_STATION/FICHECLIM_<id>.data` is a station's *fiche climatologique* —
+ * 1991-2020 normals and the records held there, with the period each was
+ * established over. ~6 kB of human-readable French report per station, published
+ * for 1 578 postes of which 1 230 are in this network. Fetched per card because
+ * 1 230 × 6 kB is 7 MB to answer a question most readers never ask, and parsed
+ * server-side because the file is a report, not a data product.
+ *
+ * WHY A PROXY AT ALL: the S3 bucket sends no CORS header, so neither URL is
+ * reachable from the browser however small it is.
+ *
+ * Routes:
+ *   GET /api/meteo-stations/observations → {fetchedAt, stale, ttlMs, newest,
+ *                                           stations, observations}
+ *   GET /api/meteo-stations/normals?id=… → {id, fiche:{station, edited, period,
+ *                                           high:{value,date}, low:{value,date}}|null}
+ *   GET /api/meteo-stations/status       → {lastFetch, stale, ttlMs, stations, normals}
+ *
+ * @returns {import('vite').Plugin}
+ */
+function meteoStationsProxy() {
+  const CACHE_DIR = path.join(process.cwd(), '.gev-cache');
+  const CACHE_PATH = path.join(CACHE_DIR, 'meteo-stations-synop.json');
+  /**
+   * Ceiling on the parsed fiches held in memory.
+   *
+   * 1 230 × ~200 bytes of parsed result is trivial, but the map is keyed by a
+   * request parameter, so it is bounded on principle: an unbounded cache keyed
+   * by user input is a memory leak wearing a cache's clothes. The key grammar
+   * below already rejects anything that is not an eight-digit poste number, so
+   * the ceiling can never be reached by a real client.
+   */
+  const NORMALS_MAX = 2048;
+
+  /** @type {?{at:number, newest:?string, rows:number, observations:object}} */
+  let mem = null;
+  let diskChecked = false;
+  /** @type {?Promise<?object>} */
+  let inflight = null;
+  /** @type {Map<string, {at:number, value:?object}>} */
+  const normals = new Map();
+
+  /**
+   * A poste number, or null.
+   *
+   * Eight digits and nothing else. The value is interpolated into an upstream
+   * URL, so anything looser is a path-traversal surface — and every real id in
+   * the shipped pack matches this exactly.
+   * @param {unknown} value
+   * @returns {?string}
+   */
+  function posteId(value) {
+    const raw = String(value ?? '').trim();
+    return /^\d{8}$/.test(raw) ? raw : null;
+  }
+
+  /**
+   * How long into January the PREVIOUS year's archive may still be read.
+   *
+   * The archive is a calendar-year file, so for the first hours of 1 January
+   * the new one exists and holds no rows yet, and the newest French observation
+   * in the world is the last line of last year's. Two days is generous slack
+   * for that and nothing else.
+   *
+   * IT IS A DATE GATE AND NOT AN ERROR FALLBACK, and the difference is the
+   * whole point: falling back on ANY failure would mean that one transient S3
+   * error in July serves 31 December's readings as if they were this hour's.
+   * The card prints the observation's own time, so a reader could eventually
+   * catch it — but the layer would have asserted it, which is worse than
+   * showing nothing.
+   */
+  const NEW_YEAR_GRACE_DAYS = 2;
+
+  /**
+   * Stream the running-year archive down to the newest observation per station.
+   * @returns {Promise<object>}
+   */
+  async function refreshUpstream() {
+    const now = new Date();
+    const year = now.getUTCFullYear();
+    const inNewYearGrace = now.getUTCMonth() === 0 && now.getUTCDate() <= NEW_YEAR_GRACE_DAYS;
+    const years = inNewYearGrace ? [year, year - 1] : [year];
+    let lastError = null;
+    for (const attemptYear of years) {
+      const url = SYNOP_ARCHIVE_URL.replace('%YEAR%', String(attemptYear));
+      try {
+        const response = await fetch(url, { signal: AbortSignal.timeout(180_000) });
+        if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+        const lines = readline.createInterface({
+          input: Readable.fromWeb(response.body).pipe(zlib.createGunzip()),
+          crlfDelay: Infinity,
+        });
+        // A readline interface is ASYNC-iterable, and the reducer's array form
+        // is not — feeding one to the other is what produced
+        // `lines is not iterable` and an hour of silently empty cards. Both
+        // paths now share one accumulator; see `createSynopReducer`.
+        const reducer = createSynopReducer();
+        for await (const line of lines) reducer.push(line);
+        const { observations, rows, newest } = reducer.result();
+        if (!newest) throw new Error('archive carried no observation');
+        return { at: Date.now(), newest, rows, observations };
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error('no SYNOP archive available');
+  }
+
+  async function readDiskOnce() {
+    if (diskChecked) return;
+    diskChecked = true;
+    try {
+      const parsed = JSON.parse(await fsp.readFile(CACHE_PATH, 'utf8'));
+      if (Number.isFinite(parsed?.at) && parsed?.observations) mem = parsed;
+    } catch { /* no disk cache yet */ }
+  }
+
+  async function writeDisk(entry) {
+    try {
+      await fsp.mkdir(CACHE_DIR, { recursive: true });
+      await fsp.writeFile(CACHE_PATH, JSON.stringify(entry), 'utf8');
+    } catch (err) {
+      console.warn(`[meteo-stations-proxy] cache write failed (${err?.message || err})`);
+    }
+  }
+
+  /**
+   * A station's parsed fiche climatologique, or null when it has none.
+   *
+   * A 404 is a NEGATIVE RESULT, not an error: 348 of the 1 578 published fiches
+   * belong to postes outside this network, and 914 stations in the network have
+   * no fiche at all. It is cached like any other answer so a reader clicking the
+   * same fiche-less station twice does not cost two upstream requests.
+   * @param {string} id
+   * @returns {Promise<?object>}
+   */
+  async function fetchNormals(id) {
+    const cached = normals.get(id);
+    if (cached && Date.now() - cached.at < NORMALS_CACHE_MS) return cached.value;
+    let value = null;
+    try {
+      const response = await fetch(FICHECLIM_URL.replace('%ID%', id), {
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (response.ok) value = parseFicheClim(await response.text());
+      else if (response.status !== 404) throw new Error(`upstream HTTP ${response.status}`);
+    } catch (err) {
+      console.warn(`[meteo-stations-proxy] fiche ${id} failed (${err?.message || err})`);
+      // Not cached: a timeout is not evidence that the fiche does not exist,
+      // and caching it would hide the station's records for a day.
+      return null;
+    }
+    if (normals.size >= NORMALS_MAX) normals.clear();
+    normals.set(id, { at: Date.now(), value });
+    return value;
+  }
+
+  return {
+    name: 'meteo-stations-proxy',
+    configureServer(server) {
+      server.middlewares.use('/api/meteo-stations', async (req, res) => {
+        const sendJson = (status, obj) => {
+          if (res.headersSent) return;
+          res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify(obj));
+        };
+        try {
+          const [rawPath, rawQuery] = String(req.url || '').split('?');
+          const subPath = rawPath || '/';
+          const query = new URLSearchParams(rawQuery || '');
+
+          // Routed explicitly rather than by fall-through: an unknown path
+          // under this prefix used to be served the observation set, which
+          // turns every typo into a silent 22 MB fetch that looks like it
+          // worked.
+          if (subPath !== '/' && subPath !== '/observations'
+            && subPath !== '/normals' && subPath !== '/status') {
+            sendJson(404, { error: `unknown route ${subPath}` });
+            return;
+          }
+
+          if (subPath === '/normals') {
+            const id = posteId(query.get('id'));
+            if (!id) { sendJson(400, { error: 'id must be an 8-digit poste number' }); return; }
+            const fiche = await fetchNormals(id);
+            // 200 with `fiche: null` and not 404: "this station publishes no
+            // fiche" is an answer about the network, and the card says so.
+            sendJson(200, { id, fiche });
+            return;
+          }
+
+          await readDiskOnce();
+
+          if (subPath === '/status') {
+            // Reports the cache, never fills it. `/status` is the route a
+            // health check and a QA harness poll, and letting an introspection
+            // route trigger a 22 MB upstream fetch would turn "is the proxy
+            // alive?" into the most expensive question anyone can ask it.
+            sendJson(200, {
+              lastFetch: mem ? mem.at : null,
+              newest: mem ? mem.newest : null,
+              stale: Boolean(mem) && Date.now() - mem.at >= SYNOP_CACHE_MS,
+              ttlMs: SYNOP_CACHE_MS,
+              stations: mem ? Object.keys(mem.observations).length : 0,
+              normals: normals.size,
+            });
+            return;
+          }
+
+          const entry = mem;
+          let current = entry && Date.now() - entry.at < SYNOP_CACHE_MS ? entry : null;
+          if (!current) {
+            if (!inflight) {
+              inflight = refreshUpstream()
+                .then(async (next) => { mem = next; await writeDisk(next); return next; })
+                .catch((err) => {
+                  console.warn(`[meteo-stations-proxy] refresh failed (${err?.message || err}) — serving cache if any`);
+                  return null;
+                })
+                .finally(() => { inflight = null; });
+            }
+            current = await inflight;
+          }
+          const served = current || entry;
+          const stale = !current && Boolean(entry);
+          if (!served) {
+            sendJson(502, { error: 'SYNOP fetch failed and no cache available' });
+            return;
+          }
+          sendJson(200, {
+            fetchedAt: served.at,
+            stale,
+            ttlMs: SYNOP_CACHE_MS,
+            newest: served.newest,
+            stations: Object.keys(served.observations).length,
+            observations: served.observations,
+          });
+        } catch (err) {
+          console.warn('[meteo-stations-proxy] error:', err?.message || err);
+          sendJson(500, { error: 'meteo stations proxy error' });
         }
       });
     },
@@ -15600,6 +15889,7 @@ export default defineConfig(({ mode }) => {
       firmsProxy(),
       vigicruesProxy(),
       meteoFranceVigilanceProxy(),
+      meteoStationsProxy(),
       eco2mixProxy(),
       gasFranceProxy(),
       edfPlantsProxy(),
