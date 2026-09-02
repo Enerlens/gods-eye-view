@@ -2,6 +2,8 @@ import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
 import { createAddressScanLayer } from './addressScanLayer.js';
 import { GPU_BOX_MAX_ALTITUDE_M, GPU_MAX_BOX_DEG } from './gpuFeed.js';
+import { pointInPolygons } from './ringGeometry.js';
+import { greatCircleKm } from './trafficBounds.js';
 import { cameraViewBox } from './viewGate.js';
 import { focusedViewBox } from './viewportBox.js';
 
@@ -71,6 +73,27 @@ import { focusedViewBox } from './viewportBox.js';
  * the GROUND UNDER THE ADDRESS, not a particular line on a map. So the layer
  * plants one marker at the point it scanned, carrying the whole answer, and the
  * outlines stay as the context that shows how far each rule reaches.
+ *
+ * AND THEN THE WHOLE GROUND IS THE ANSWER, NOT THE MARKER. One marker per scan
+ * makes the map's own colours ornamental: the reader can see that the plot
+ * opposite is magenta and still has to fly the camera over it to be told what
+ * magenta means there, because the only thing carrying words is a 26-pixel
+ * glyph somewhere else. So a click ANYWHERE on this layer's ground — the wash,
+ * the outlines, the bare globe between them — is read as a question about that
+ * spot and answered from the map already in hand: see {@link gpuAnswerAt}. No
+ * request, no wait, and it works on the plot opposite, which is the plot this
+ * layer exists for.
+ *
+ * THE ANSWER IS READ OFF THE DRAWN SHAPES, AND WITHIN 30 M OF THE MARKER IT IS
+ * NOT. Those shapes are decimated by up to 96%, and the module's own rule is
+ * that a simplified outline must never be what decides which rule applies to a
+ * house: measured at Ustaritz, the scan point APIcarto itself answers `UB` for
+ * falls OUTSIDE the decimated `UB` ring. At the scan point the register has
+ * already answered — `atPoint` for the zoning, and every servitude returned by
+ * construction, since that half is always a point query — so within
+ * {@link GPU_REGISTER_RADIUS_M} the register's answer is used and the geometry
+ * is not consulted. Further out the drawn map answers, and the card says that
+ * the outline it answered from is simplified.
  *
  * DRAWN AS SIMPLIFIED SHAPES, AND SAYING SO. The measured upstream is
  * 1,396,720 bytes for one point, one feature of which is 759 polygons and
@@ -211,7 +234,7 @@ const ZONE_LABEL_MIN_WIDTH_DEG = 0.0004;
  * national grammar that IS standard across every commune, so it is the one
  * part that can be spelled out without inventing.
  */
-const ZONE_FAMILY_SENTENCES = Object.freeze({
+export const ZONE_FAMILY_SENTENCES = Object.freeze({
   U: 'zone urbaine — déjà bâtie et équipée',
   AU: 'zone à urbaniser — constructible, aujourd\'hui non bâtie',
   AUc: 'zone à urbaniser OUVERTE — constructible sous le PLU en vigueur',
@@ -256,6 +279,26 @@ export function zoneFillAlpha(kind) {
  */
 export function zoneFamilySentence(kind) {
   return ZONE_SENTENCE_INDEX[String(kind || '').toUpperCase()] ?? null;
+}
+
+/**
+ * An approval date as a person writes one.
+ *
+ * The register publishes `datvalid` two ways in the same national schema —
+ * `20240323` at Ustaritz, `2026-06-16` in Paris — and the first is not a date
+ * on a card, it is eight digits. Anything that is neither is passed through
+ * untouched rather than mangled into a guess.
+ * @param {string|null} raw
+ * @returns {?string}
+ */
+export function zoneApprovalDate(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  const compact = /^(\d{4})(\d{2})(\d{2})$/.exec(text);
+  if (compact) return `${compact[3]}/${compact[2]}/${compact[1]}`;
+  const dashed = /^(\d{4})-(\d{2})-(\d{2})/.exec(text);
+  if (dashed) return `${dashed[3]}/${dashed[2]}/${dashed[1]}`;
+  return text;
 }
 
 /**
@@ -364,13 +407,288 @@ export function zoneDescription(entry) {
     zoneFamilySentence(entry?.kind),
     entry?.atPoint === false ? 'zone voisine — pas celle sous le repère' : null,
     entry?.label,
-    entry?.approvedOn ? `PLU approuvé le ${entry.approvedOn}` : null,
+    entry?.approvedOn ? `PLU approuvé le ${zoneApprovalDate(entry.approvedOn)}` : null,
     entry?.regulationFile,
     entry?.holes
       ? `${entry.holes} enclave${entry.holes > 1 ? 's' : ''} découpée${entry.holes > 1 ? 's' : ''} dans la zone`
       : null,
     entry?.simplified ? `contour simplifié (${entry.sourceVertices} sommets à l'amont)` : null,
   ].filter(Boolean).join(' · ');
+}
+
+/**
+ * How near the scan point a click has to be for the REGISTER's own answer to
+ * be used instead of the drawn one, in metres.
+ *
+ * TWO THINGS SET THIS NUMBER AND THEY AGREE. The first is honesty: at the scan
+ * point APIcarto answered the question itself — `atPoint` on the zoning, and
+ * every servitude in the payload, since that half is always a point query —
+ * and a ring this module decimated by up to 96% must not be allowed to
+ * contradict it. Measured at Ustaritz: the point the service answers `UB` for
+ * falls outside the drawn `UB` ring, because a straightened edge cut across it.
+ * The second is what a click MEANS: the marker glyph is 26 px, and at the
+ * altitudes this layer works at — 900 m gives roughly a metre per pixel — 30 m
+ * is "the operator clicked the marker's own patch of ground".
+ */
+export const GPU_REGISTER_RADIUS_M = 30;
+
+/**
+ * Longest line a ground card composes, in characters.
+ *
+ * A CARD IS EXACTLY AS WIDE AS ITS LONGEST DETAIL. The overlay neither wraps
+ * nor truncates — measured in `worldOverlayDraw.js`, the box is the widest of
+ * its title and details plus padding — so the one unbounded line here, the
+ * list of easement families, is also the one that can push the card across two
+ * thirds of the screen: Paris 13e answers "Abords d'un monument historique"
+ * and "Plan de prévention des risques (naturels ou technologiques)" at the
+ * same address, 108 characters together.
+ *
+ * The bound is not a taste call. It is the widest sentence this layer ALREADY
+ * has to fit — the closed-à-urbaniser explanation, which every card over an
+ * `AUs` zone shows anyway — so a ground card is never wider than the layer's
+ * own existing worst case.
+ */
+const GROUND_CARD_MAX_LINE_CHARS = Math.max(
+  ...Object.values(ZONE_FAMILY_SENTENCES).map((sentence) => sentence.length),
+);
+
+/**
+ * Rows a ground card may fill.
+ *
+ * Not a preference: `createAddressScanOverlayEntry` keeps the first six
+ * details and silently drops the rest, so a card that composes seven loses its
+ * last line — which, in the order these are written, is the one saying the
+ * outline the answer came from is simplified.
+ */
+const GROUND_CARD_MAX_DETAILS = 6;
+
+/**
+ * Whether a point falls inside the box the zoning half was asked for.
+ * @param {?{south:number, west:number, north:number, east:number}} box
+ * @param {number} lon
+ * @param {number} lat
+ * @returns {?boolean} Null when there was no box — the point regime, where the
+ *   zoning answer covers the scan point and nothing else.
+ */
+export function insideScanBox(box, lon, lat) {
+  if (!box || !Number.isFinite(box.south)) return null;
+  return lat >= box.south && lat <= box.north && lon >= box.west && lon <= box.east;
+}
+
+/**
+ * What this layer knows about one point of ground, out of the answer in hand.
+ *
+ * Pure, and deliberately so: it is the whole of the click behaviour, it has
+ * four regimes to get right, and none of them is observable in a screenshot.
+ *
+ * @param {?object} payload The projected GPU answer currently drawn.
+ * @param {number} lon
+ * @param {number} lat
+ * @param {?{lat:number, lon:number}} [scanPoint] Where the register was asked.
+ * @returns {?object} Null when there is no answer to read.
+ */
+export function gpuAnswerAt(payload, lon, lat, scanPoint = null) {
+  if (!payload || !Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  const zones = payload.zones || [];
+  const servitudes = payload.servitudes || [];
+  const fromRegister = Number.isFinite(scanPoint?.lat) && Number.isFinite(scanPoint?.lon)
+    && greatCircleKm(scanPoint.lat, scanPoint.lon, lat, lon) * 1000 <= GPU_REGISTER_RADIUS_M;
+  const registerZones = zones.filter((zone) => zone.atPoint);
+  // The register first where it has spoken, the drawn map everywhere else.
+  const answerZones = fromRegister && registerZones.length
+    ? registerZones
+    : zones.filter((zone) => pointInPolygons(zone.parts, lon, lat));
+  // Under a point query every servitude returned reaches that point BY
+  // CONSTRUCTION — the service selected them with it — so at the scan point
+  // they are all reported, decimation and dropped pieces notwithstanding.
+  const answerServitudes = fromRegister
+    ? servitudes
+    : servitudes.filter((entry) => pointInPolygons(entry.parts, lon, lat));
+  return {
+    lon,
+    lat,
+    zones: answerZones,
+    servitudes: answerServitudes,
+    fromRegister,
+    // Whether the zoning half was ever asked about this ground. `false` and
+    // "no zone here" are completely different answers and the card says which.
+    insideBox: insideScanBox(payload.box, lon, lat),
+    regime: payload.regime ?? 'point',
+    // How many easements the register returned for the scan point, so an
+    // absence can name what was actually checked.
+    servitudesScanned: servitudes.length,
+    zoningRefused: payload.zoningRefused ?? null,
+    simplified: [...answerZones, ...answerServitudes].some((entry) => entry.simplified),
+  };
+}
+
+/**
+ * The easement half of a ground card, in one sentence.
+ *
+ * THE ABSENCES ARE THREE DIFFERENT SENTENCES AND THAT IS THE POINT. "No
+ * easement here" is a strong claim from a layer whose reason to exist is that
+ * the state has quietly encumbered ground, and it is only true where the
+ * register was asked. Everywhere else the honest answer names what WAS checked
+ * — the easements returned for the marker — and says the question was never
+ * put for this spot.
+ * @param {object} answer
+ * @returns {string}
+ */
+export function servitudeSentence(answer) {
+  const found = answer?.servitudes || [];
+  if (found.length) {
+    const labels = [...new Set(found.map((entry) => entry.label || entry.code).filter(Boolean))];
+    const head = `${found.length} servitude${found.length > 1 ? 's' : ''} ici`;
+    // Named until the line reaches the layer's own widest sentence, then
+    // counted. The first family is always named even when it alone overruns:
+    // "et 5 autres" on its own names nothing at all.
+    const named = [];
+    let width = head.length + 2;
+    for (const label of labels) {
+      if (named.length && width + label.length + 2 > GROUND_CARD_MAX_LINE_CHARS) break;
+      named.push(label);
+      width += label.length + 2;
+    }
+    const rest = labels.length - named.length;
+    return `${head} : ${named.join(', ')}`
+      + (rest > 0 ? ` et ${rest} autre${rest > 1 ? 's' : ''}` : '');
+  }
+  if (answer?.fromRegister) return 'aucune servitude à ce point';
+  if (answer?.servitudesScanned) {
+    // "du repère" carries the whole caveat: these are the easements the
+    // register returned for the marker, and they are the only ones that have
+    // been looked for anywhere.
+    return `aucune des ${answer.servitudesScanned} servitudes du repère n'atteint ce point`;
+  }
+  return 'aucune servitude relevée au repère — elles ne sont interrogées qu\'au repère';
+}
+
+/**
+ * The easement half of a ground card, as one line or as a short list.
+ *
+ * ONE LINE IS THE DEFAULT AND A LIST IS THE FALLBACK, which is the opposite of
+ * how it reads. A card of six short lines is a card; a card of three lines one
+ * of which runs 108 characters is a banner, because the overlay sizes the box
+ * on its widest line. So the families go one per line exactly when naming them
+ * on a single line would be too wide — and only while the card has rows to
+ * spare, since `createAddressScanOverlayEntry` keeps six and the ones this
+ * would push off are the zone's own.
+ *
+ * @param {object} answer
+ * @param {number} [budget] Rows this half may use.
+ * @returns {string[]}
+ */
+export function servitudeLines(answer, budget = 3) {
+  const sentence = servitudeSentence(answer);
+  const found = answer?.servitudes || [];
+  const labels = [...new Set(found.map((entry) => entry.label || entry.code).filter(Boolean))];
+  const head = `${found.length} servitude${found.length > 1 ? 's' : ''} ici`;
+  const oneLine = `${head} : ${labels.join(', ')}`;
+  // Rows for the families themselves, the count line taken off the top. Under
+  // two there is no list worth making, and the counted sentence already fits.
+  const room = budget - 1;
+  if (labels.length < 2 || room < 2 || oneLine.length <= GROUND_CARD_MAX_LINE_CHARS) {
+    return [sentence];
+  }
+  if (labels.length <= room) return [`${head} :`, ...labels.map((label) => `· ${label}`)];
+  const shown = labels.slice(0, room - 1);
+  const rest = labels.length - shown.length;
+  return [
+    `${head} :`,
+    ...shown.map((label) => `· ${label}`),
+    `· et ${rest} autre${rest > 1 ? 's' : ''}`,
+  ];
+}
+
+/**
+ * Why a point has no zoning, which is never just "it has none".
+ *
+ * Four reasons, and only one of them is about the ground: the answer was
+ * refused whole, the box never covered this spot, the camera is high enough
+ * that only the marker was asked about, or the published document genuinely
+ * stops here. A card that printed "aucun zonage" for all four would report
+ * three of this layer's own limits as facts about the plot.
+ * @param {object} answer
+ * @returns {{title: string, detail: ?string}}
+ */
+export function zoningGapSentence(answer) {
+  /** Grouped the way France writes a number: 1 500, not 1500. */
+  const grouped = (value) => Number(value).toLocaleString('fr-FR');
+  if (answer?.zoningRefused) {
+    return {
+      title: 'Zonage non dessiné',
+      detail: `${grouped(answer.zoningRefused.found)} zones dans ce cadre, au-delà des `
+        + `${grouped(answer.zoningRefused.limit)} que le service renvoie — rapprochez-vous`,
+    };
+  }
+  if (answer?.insideBox === false) {
+    return {
+      title: 'Hors du bloc interrogé',
+      detail: 'le zonage n\'a été demandé que pour le bloc dessiné — recentrez la vue sur ce point',
+    };
+  }
+  if (answer?.insideBox === null) {
+    return {
+      title: 'Zonage non interrogé ici',
+      detail: `au-dessus de ${grouped(GPU_BOX_MAX_ALTITUDE_M)} m le zonage n'est demandé`
+        + ' que pour le repère',
+    };
+  }
+  return {
+    title: 'Aucun zonage à ce point',
+    detail: 'le bloc a bien été interrogé : le document publié ne couvre pas ce point',
+  };
+}
+
+/**
+ * The card for a click on bare ground.
+ *
+ * Signature is the shell's `groundCard` contract — see `addressScanLayer.js`.
+ * @param {{payload: object, lon: number, lat: number, point: ?object}} context
+ * @returns {?{title: string, details: string[]}}
+ */
+export function gpuGroundCard({
+  payload, lon, lat, point = null,
+} = {}) {
+  const answer = gpuAnswerAt(payload, lon, lat, point);
+  if (!answer) return null;
+  const zone = answer.zones[0] || null;
+  const gap = zone ? null : zoningGapSentence(answer);
+  const overlapping = answer.zones.length;
+  // The zone's own rows, decided first: the easements then take what is left of
+  // the six the overlay paints, rather than pushing the rule off the card.
+  const family = zone ? zoneFamilySentence(zone.kind) : null;
+  const rest = [
+    // The register contradicting itself, at the point the operator asked about
+    // rather than at the marker: two communes digitise their shared limit
+    // independently and the Géoportail stacks both documents.
+    overlapping > 1
+      ? `${overlapping} zonages se superposent ici — deux communes, deux tracés de la limite`
+      : null,
+    gap?.detail ?? null,
+    zone
+      ? [
+        zone.approvedOn ? `PLU approuvé le ${zoneApprovalDate(zone.approvedOn)}` : null,
+        zone.regulationFile,
+      ].filter(Boolean).join(' · ') || null
+      : null,
+    // Said here rather than in the header because THIS is where it bites: the
+    // answer above was read off a decimated outline, and near a limit that
+    // outline is wrong by exactly the tolerance the layer declares.
+    answer.simplified && !answer.fromRegister
+      ? 'contours simplifiés — près d\'une limite, c\'est le document qui fait foi'
+      : null,
+  ].filter(Boolean);
+  const servitudes = servitudeLines(
+    answer,
+    GROUND_CARD_MAX_DETAILS - rest.length - (family ? 1 : 0),
+  );
+  return {
+    title: zone
+      ? `${zone.code || 'Zone'} — ${zone.label || 'zonage PLU'}`
+      : gap.title,
+    details: [family, ...servitudes, ...rest].filter(Boolean),
+  };
 }
 
 /**
@@ -425,6 +743,11 @@ const urbanismeGpuLayer = createAddressScanLayer({
   // then draws nothing — the layer looks switched off. Redrawing is what keeps
   // it on the ground the operator just chose.
   redrawOnMapStack: true,
+  // A click anywhere on this layer's ground is a question about that ground.
+  // The only layer of the six that answers one, because it is the only one
+  // whose subject IS the ground: the other four describe things standing on it
+  // — a sale, a diagnostic, a hazard record — and those have addresses.
+  groundCard: gpuGroundCard,
 
   render({ payload, dataSource, point, viewer }) {
     const classificationType = gpuClassificationTypeForScene(viewer?.scene);
@@ -457,7 +780,7 @@ const urbanismeGpuLayer = createAddressScanLayer({
         name: zone ? `${zone.code || 'Zone'} — ${zone.label || 'zonage PLU'}` : 'Servitudes à cette adresse',
         description: [
           zoneFamilySentence(zone?.kind),
-          zone?.approvedOn ? `PLU approuvé le ${zone.approvedOn}` : null,
+          zone?.approvedOn ? `PLU approuvé le ${zoneApprovalDate(zone.approvedOn)}` : null,
           zone?.regulationFile,
           // The register contradicting itself, said plainly. Two communes
           // digitise their shared limit independently and the Géoportail

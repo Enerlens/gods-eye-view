@@ -2100,6 +2100,35 @@ two zoning polygons, every one at a commune limit where two independently
 digitised PLU documents overlap — 73 polygon pairs and 5,3 ha in that box
 alone.
 
+**A click anywhere on that ground answers for that ground.** `urbanisme-gpu` is
+the only address layer with a `groundCard` — the other four describe things
+STANDING on the ground (a sale, a diagnostic, a hazard record) and those have
+addresses, while a zoning rule and an easement are properties of the plot
+itself. Clicking the wash, an outline, or the bare globe between them resolves
+the coordinate geometrically (`groundPick.js`: rendered terrain, then the depth
+buffer, then the ellipsoid — `scene.pick` is used only to say WHOSE click it
+is, because classification geometry answers a pick with whichever shadow volume
+the ray enters first) and reads the answer out of the payload already in hand.
+No request, no wait, and it works on the plot OPPOSITE — which is the plot the
+layer exists for. Measured at Ustaritz at 900 m: four clicks across one screen
+answer `UB`, `UA`, `A` and `UB`. The scan marker keeps its own card, which is
+the scan-level summary; every other click is a question about a point.
+
+The answer is read off the DRAWN shapes, and within 30 m of the marker it
+deliberately is not: those shapes are decimated by up to 96%, and at the scan
+point the register has already answered — `atPoint` for the zoning, and every
+easement in the payload by construction, since that half is always a point
+query. So near the marker the register wins and the geometry is not consulted;
+further out the drawn map answers and the card says its outlines are
+simplified. The card also distinguishes the four ways a point can have no
+zoning — the answer was refused whole, the box never covered this spot, the
+camera is above 1 500 m so only the marker was asked about, or the published
+document genuinely stops here — because printing "aucun zonage" for all four
+would report three of this layer's own limits as facts about the plot. Easement
+absence is worded the same way: "aucune servitude à ce point" only where the
+register answered that point, and "aucune des N servitudes du repère n'atteint
+ce point" everywhere else.
+
 Because the wash is ground-classification geometry, and a classification
 surface is read once when the primitive is BUILT, `urbanisme-gpu` is also the
 one address layer that sets `redrawOnMapStack`. Switching to the photoreal
