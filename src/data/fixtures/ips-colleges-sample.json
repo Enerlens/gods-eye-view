@@ -1,0 +1,34 @@
+[
+  {
+    "uai": "0010018P",
+    "nom_de_l_etablissement": "COLLEGE DU REVERMONT",
+    "ips": 96.3,
+    "ecart_type_de_l_ips": 34.3,
+    "ips_national": 106.2,
+    "ips_departemental": 109.8
+  },
+  {
+    "uai": "0752954D",
+    "nom_de_l_etablissement": "COLLEGE PRIVE POUR HANDICAPES VOTRE ECOLE CHEZ VOUS",
+    "ips": 155.8,
+    "ecart_type_de_l_ips": 7.9,
+    "ips_national": 106.2,
+    "ips_departemental": 129.6
+  },
+  {
+    "uai": "9750025D",
+    "nom_de_l_etablissement": "COLLEGE EMILE LETOURNEL SAINT PIERRE",
+    "ips": null,
+    "ecart_type_de_l_ips": null,
+    "ips_national": null,
+    "ips_departemental": 110.3
+  },
+  {
+    "uai": "9830313Y",
+    "nom_de_l_etablissement": "COLLEGE PRIVE YVES MARIE HILY",
+    "ips": 76.7,
+    "ecart_type_de_l_ips": 25.8,
+    "ips_national": null,
+    "ips_departemental": 82
+  }
+]

@@ -464,6 +464,19 @@ export const DATA_CREDITS = [
       "&laquo;&nbsp;Base permanente des &eacute;quipements 2025 &mdash; &Eacute;quipements g&eacute;olocalis&eacute;s&nbsp;&raquo;, parue le 04/08/2026 &mdash; <a href=\"https://www.insee.fr/fr/statistiques/8217525\" target=\"_blank\" rel=\"noopener\">Insee</a>, 2&nbsp;921&nbsp;770 lignes sur 95 colonnes, <a href=\"https://github.com/etalab/licence-ouverte/blob/master/LO.md\" target=\"_blank\" rel=\"noopener\">Licence Ouverte</a>. Fichier actualis&eacute; mensuellement pour tenir compte des oppositions &agrave; la diffusion sur sirene.fr&nbsp;; certaines donn&eacute;es nominatives, d'adressage et de g&eacute;olocalisation sont anonymis&eacute;es (arr&ecirc;t&eacute; du 3 janvier 2024). Pharmacies et h&ocirc;pitaux&nbsp;: &laquo;&nbsp;R&eacute;exposition des donn&eacute;es Finess&nbsp;&raquo; &mdash; <a href=\"https://www.data.gouv.fr/fr/datasets/reexposition-des-donnees-finess/\" target=\"_blank\" rel=\"noopener\">ARS / Agence du Num&eacute;rique en Sant&eacute;, via data.gouv.fr</a>, extrait du 02/07/2026, 103&nbsp;032 &eacute;tablissements, <a href=\"https://github.com/etalab/licence-ouverte/blob/master/LO.md\" target=\"_blank\" rel=\"noopener\">Licence Ouverte 2.0</a>&nbsp;; g&eacute;ocodage ATLASANTE sur la Base Adresse Nationale.",
   },
   {
+    key: 'ips-fr',
+    html:
+      'French school social-position index (IPS): <em>Indice de position sociale</em>, published by the ' +
+      '<a href="https://data.education.gouv.fr/explore/?q=ips&sort=modified" target="_blank" rel="noopener">DEPP &mdash; Minist&egrave;re charg&eacute; de l&rsquo;&Eacute;ducation nationale</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>) ' +
+      'in four datasets read at four different rentr&eacute;es &mdash; &eacute;coles at 2024-2025, coll&egrave;ges, lyc&eacute;es and EREA at 2025-2026. ' +
+      'Joined onto <code>schools-fr</code> on the UAI and shown only on a school&rsquo;s card: it changes neither the colour, ' +
+      'which is the level, nor the size, which is the roll. It reaches 40&nbsp;529 of the 62&nbsp;857 drawn establishments that ' +
+      'could carry an index (64.5%); the rest say <em>IPS non publi&eacute;</em>, including the 2&nbsp;504 the DEPP itself marks ' +
+      '<code>NS</code> as too small to publish. A lyc&eacute;e&rsquo;s <code>ips_etab</code> covers the whole establishment, so its card ' +
+      'also names the voies the file publishes apart.',
+  },
+  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +

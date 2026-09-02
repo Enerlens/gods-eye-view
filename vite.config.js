@@ -202,6 +202,15 @@ import {
   projectSchoolsDepartements,
 } from './src/data/schoolsDepartements.js';
 import {
+  IPS_DATASETS,
+  IPS_PORTAL,
+  indexIps,
+  ipsRentreeWhere,
+  ipsSelectFields,
+  newestIpsRentree,
+  summariseIpsCoverage,
+} from './src/data/ipsFeed.js';
+import {
   SUP_ATLAS_FIELDS,
   SUP_DATASET,
   SUP_OFFER_DATASET,
@@ -3814,12 +3823,15 @@ function irveFranceProxy() {
  *   GET /api/schools-fr/status                      — dataset provenance + cache state
  *
  * WHY A PROXY, when data.education.gouv.fr sends CORS headers and a direct
- * browser fetch works: the roll is not in the register. Sizing a school by its
- * pupils means joining FOUR further datasets on the UAI, and doing that in the
- * client would mean every open tab downloading four national files and
- * re-deriving the same map. The join happens once, on a server, under test
- * (`schoolsFeed.js`, `schoolsDepartements.js`), and is cached for a day beside
- * the rollup the same sweep already builds.
+ * browser fetch works: the roll is not in the register, and neither is the
+ * IPS. Sizing a school by its pupils means joining FOUR further datasets on
+ * the UAI, and stating its social-position index means joining FOUR MORE —
+ * eight national files whose combined newest-rentrée slices this proxy pulls
+ * once per process. Doing that in the client would mean every open tab
+ * downloading all of them and re-deriving the same map. The joins happen once,
+ * on a server, under test (`schoolsFeed.js`, `schoolsDepartements.js`,
+ * `ipsFeed.js`), and are cached for a day beside the rollup the same sweep
+ * already builds.
  *
  * WHY `exports/json` AND NOT `records`: the Explore v2.1 `records` endpoint
  * caps a page at 100 rows, so the densest viewport (Paris at 0.35°, 5 506
@@ -3849,7 +3861,17 @@ const SCHOOLS_NATIONAL_CACHE_PATH = path.join(SCHOOLS_DISK_DIR, 'departements.js
  * `projectSchoolsDepartements` changes what it returns — the cache lives for a
  * day on disk, so without it a projection edit is invisible until tomorrow.
  */
-const SCHOOLS_NATIONAL_CACHE_VERSION = 1;
+const SCHOOLS_NATIONAL_CACHE_VERSION = 2;
+/**
+ * Shape version of a cached VIEWPORT answer.
+ *
+ * Added with the IPS join, and it starts at 2 on purpose: version 1 is the
+ * unversioned shape that predates it, which carries no `version` key and so
+ * fails this check and is refetched. Without it a box cached in the last six
+ * hours would keep serving sites with no `ips` attribute at all, and every
+ * card in it would silently go back to saying nothing about the index.
+ */
+const SCHOOLS_VIEWPORT_CACHE_VERSION = 2;
 
 /** box key -> {at:number, payload:object} */
 const _schoolsViewportCache = new Map();
@@ -3863,6 +3885,14 @@ let _schoolsNationalInFlight = null;
 let _schoolsNationalDiskChecked = false;
 /** @type {?Promise<Map<string, number>>} UAI → pupils, built once per process. */
 let _schoolsRollsPromise = null;
+/**
+ * @type {?Promise<{index:Map<string,object>, names:Map<string,string>,
+ *   rentrees:object, counts:object, missing:Array<string>, status:string}>}
+ * UAI → IPS record, built once per process.
+ */
+let _schoolsIpsPromise = null;
+/** Base for the four DEPP IPS datasets. Same portal as the register itself. */
+const IPS_BASE = `https://${IPS_PORTAL}/api/explore/v2.1/catalog/datasets`;
 
 function trimSchoolsViewportCache() {
   while (_schoolsViewportCache.size > SCHOOLS_VIEWPORT_CACHE_MAX) {
@@ -3879,6 +3909,7 @@ function schoolsDiskPath(key) {
 async function readSchoolsDisk(key, maxAgeMs) {
   try {
     const entry = JSON.parse(await fsp.readFile(schoolsDiskPath(key), 'utf8'));
+    if (entry?.version !== SCHOOLS_VIEWPORT_CACHE_VERSION) return null;
     if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.sites)) return null;
     if (Date.now() - entry.at > maxAgeMs) return null;
     return entry;
@@ -3957,11 +3988,90 @@ async function loadSchoolsRolls() {
 }
 
 /**
+ * Build the UAI → IPS index from the four DEPP files.
+ *
+ * TWO round trips per dataset, and the first one is not optional. Each file
+ * publishes several rentrées stacked (97 080 école rows are three school years
+ * of the same schools), and the newest differs BETWEEN files — écoles stop at
+ * 2024-2025 where the other three reach 2025-2026. So each dataset is asked
+ * for its own `group_by=rentree_scolaire` first, floored at the value
+ * `ipsFeed.js` was measured against, and only then exported at that year.
+ * A shared `max()` across the four would drop all 32 494 écoles.
+ *
+ * Fetched once per process and never invalidated, exactly as the rolls are: a
+ * rentrée's indices are published once a year and do not move.
+ *
+ * A file that fails is WARNED and its KIND is reported as missing rather than
+ * failing the join — losing the lycée file must cost lycée cards their index,
+ * not cost every school its card. `projectSchoolSites` then marks those
+ * schools `unavailable` instead of `null`, which is the difference between
+ * "the DEPP is down" and "this school has no published index".
+ *
+ * Measured 2026-09-02, end to end through this function: 8 requests,
+ * 7 598 242 bytes raw / 750 413 gzipped, **3.4 s cold and 0.64 s warm**,
+ * producing 43 322 UAI of which 40 815 carry a number. The écoles export is
+ * 4 841 947 of those bytes and 3.2 s of that cold time on its own.
+ */
+async function loadSchoolsIps() {
+  if (_schoolsIpsPromise) return _schoolsIpsPromise;
+  _schoolsIpsPromise = (async () => {
+    const results = await Promise.allSettled(IPS_DATASETS.map(async (spec) => {
+      const groupParams = new URLSearchParams({
+        group_by: 'rentree_scolaire',
+        select: 'count(*) as rows',
+        order_by: 'rentree_scolaire desc',
+        limit: '20',
+      });
+      const grouped = await fetchSchoolsJson(`${IPS_BASE}/${spec.dataset}/records?${groupParams}`)
+        .catch((error) => {
+          // A failed discovery is not a failed dataset: the floor is the year
+          // this module was measured against and is still true today.
+          console.warn(`[Schools Proxy] IPS rentrée discovery failed for ${spec.dataset}:`, error?.message || error);
+          return null;
+        });
+      const rentree = newestIpsRentree(grouped?.results, spec.rentreeFloor);
+      const exportParams = new URLSearchParams({
+        select: ipsSelectFields(spec).join(','),
+        where: ipsRentreeWhere(rentree),
+        limit: '-1',
+      });
+      const rows = await fetchSchoolsJson(`${IPS_BASE}/${spec.dataset}/exports/json?${exportParams}`);
+      return { spec, rentree, rows: Array.isArray(rows) ? rows : [] };
+    }));
+
+    const batches = [];
+    for (let i = 0; i < results.length; i += 1) {
+      const result = results[i];
+      if (result.status === 'rejected') {
+        console.warn(
+          `[Schools Proxy] IPS dataset unavailable (${IPS_DATASETS[i].dataset}):`,
+          result.reason?.message || result.reason,
+        );
+        continue;
+      }
+      batches.push(result.value);
+    }
+    const built = indexIps(batches);
+    if (built.missing.length) {
+      console.warn(`[Schools Proxy] IPS index is partial — missing: ${built.missing.join(', ')}`);
+    }
+    return built;
+  })().catch((error) => {
+    console.warn('[Schools Proxy] IPS join failed:', error?.message || error);
+    _schoolsIpsPromise = null;
+    return indexIps([]);
+  });
+  return _schoolsIpsPromise;
+}
+
+/**
  * Fetch one viewport and project it.
  *
- * The two calls run in PARALLEL and mean different things. The export is the
- * answer; the `limit=0` call is the dataset's own count for the same `where`,
- * and exists only so `projectSchoolSites` can prove the export was complete.
+ * The two upstream calls run in PARALLEL and mean different things. The export
+ * is the answer; the `limit=0` call is the dataset's own count for the same
+ * `where`, and exists only so `projectSchoolSites` can prove the export was
+ * complete. The roll and IPS joins are process-wide memoised documents, so
+ * they cost a Map lookup here and not a request.
  */
 async function refreshSchoolsViewport(box) {
   const where = schoolsBboxWhere(box);
@@ -3972,7 +4082,7 @@ async function refreshSchoolsViewport(box) {
   });
   const countParams = new URLSearchParams({ where, limit: '0' });
 
-  const [exported, counted, rolls] = await Promise.all([
+  const [exported, counted, rolls, ips] = await Promise.all([
     fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
     fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${countParams}`).catch((error) => {
       // The count is a completeness PROOF, not the data. Losing it degrades
@@ -3981,15 +4091,20 @@ async function refreshSchoolsViewport(box) {
       return null;
     }),
     loadSchoolsRolls(),
+    loadSchoolsIps(),
   ]);
 
   const projected = projectSchoolSites({
     records: Array.isArray(exported) ? exported : [],
     rolls,
+    ips: ips.index,
+    ipsStatus: ips.status,
+    ipsMissing: ips.missing,
     totalCount: counted?.total_count ?? null,
   });
   return {
     ...projected,
+    ipsRentrees: ips.rentrees,
     box,
     maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
   };
@@ -4027,7 +4142,7 @@ async function refreshSchoolsNational() {
     where: SCHOOLS_OPEN_WHERE,
     limit: '-1',
   });
-  const [index, counted, exported, rolls] = await Promise.all([
+  const [index, counted, exported, rolls, ips] = await Promise.all([
     loadSchoolsDepartementIndex(),
     fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${new URLSearchParams({ where: SCHOOLS_OPEN_WHERE, limit: '0' })}`)
       .catch((error) => {
@@ -4036,6 +4151,7 @@ async function refreshSchoolsNational() {
       }),
     fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
     loadSchoolsRolls(),
+    loadSchoolsIps(),
   ]);
 
   const projected = projectSchoolsDepartements({
@@ -4043,6 +4159,20 @@ async function refreshSchoolsNational() {
     index,
     rolls,
     totalCount: counted?.total_count ?? null,
+  });
+  // The IPS coverage is folded in HERE and not inside
+  // `projectSchoolsDepartements`, on purpose. That function paints a
+  // choropleth of establishment COUNTS by point-in-polygon, and the index is
+  // not a count and cannot be painted; making it a second pass over the same
+  // rows in this file keeps the rollup's own contract untouched and costs one
+  // linear scan of an array that is already in memory.
+  const ipsCoverage = summariseIpsCoverage({
+    records: Array.isArray(exported) ? exported : [],
+    index: ips.index,
+    names: ips.names,
+    rentrees: ips.rentrees,
+    missing: ips.missing,
+    status: ips.status,
   });
   if (projected.truncated) {
     console.warn(
@@ -4053,10 +4183,16 @@ async function refreshSchoolsNational() {
   // served apart because they are read at different moments and at different
   // sizes: the rollup is ~20 KB and arrives with the layer, the mesh is
   // ~0.7 MB gzipped and is only fetched if the operator leaves the choropleth.
+  //
+  // The mesh carries NO IPS, and that is a size decision made once and kept:
+  // the pack ships coordinates without names precisely to stay at 1.66 MB
+  // against 5.42 MB, and an index per tuple would put it back. The index rides
+  // the per-click register lookup the name already pays for.
   const { mesh, ...rollup } = projected;
   return {
     rollup: {
       ...rollup,
+      ips: ipsCoverage,
       sweptInMs: Date.now() - started,
     },
     mesh: {
@@ -4141,6 +4277,19 @@ function schoolsFranceProxy() {
           ttlMs: SCHOOLS_TTL_MS,
           maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
           rollYear: SCHOOLS_ROLL_YEAR,
+          // Reported without BUILDING it: `/status` must stay a cheap read,
+          // and forcing the eight-request IPS join here would make a health
+          // probe the most expensive route on the proxy.
+          ips: _schoolsNational?.payload?.rollup?.ips
+            ? {
+              rentrees: _schoolsNational.payload.rollup.ips.rentrees,
+              indexed: _schoolsNational.payload.rollup.ips.indexed,
+              eligible: _schoolsNational.payload.rollup.ips.eligible,
+              valued: _schoolsNational.payload.rollup.ips.valued,
+              status: _schoolsNational.payload.rollup.ips.status,
+              missing: _schoolsNational.payload.rollup.ips.missing,
+            }
+            : null,
           national: _schoolsNational
             ? {
               at: _schoolsNational.at,
@@ -4219,7 +4368,7 @@ function schoolsFranceProxy() {
       if (!pending) {
         pending = refreshSchoolsViewport(box)
           .then((payload) => {
-            const entry = { at: Date.now(), payload };
+            const entry = { version: SCHOOLS_VIEWPORT_CACHE_VERSION, at: Date.now(), payload };
             _schoolsViewportCache.set(key, entry);
             trimSchoolsViewportCache();
             writeSchoolsDisk(key, entry);

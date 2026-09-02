@@ -1,0 +1,18 @@
+[
+  {
+    "uai": "0010966V",
+    "nom_de_l_etablissment": "ETABLISSEMENT REGIONAL D ENSEIGNEMENT ADAPTE PHILIBERT COMMERSON",
+    "ips": 77.3,
+    "ecart_type_de_l_ips": 21.5,
+    "ips_national": 82.1,
+    "ips_departemental": 77.3
+  },
+  {
+    "uai": "0090481Z",
+    "nom_de_l_etablissment": "ETABLISSEMENT REGIONAL D ENSEIGNEMENT ADAPTE GUY VILLEROUX",
+    "ips": 79.9,
+    "ecart_type_de_l_ips": 25.3,
+    "ips_national": 82.1,
+    "ips_departemental": 79.9
+  }
+]
