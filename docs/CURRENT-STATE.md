@@ -1985,7 +1985,33 @@ is never ambiguous between "too high to scan" and "this address is clear".
 | `dpe-fr` | `dp` | `/api/dpe` | ADEME `dpe03existant`, `geo_distance` query |
 | `urbanisme-gpu` | `ur` | `/api/gpu` | APIcarto `zone-urba` + `assiette-sup-s` |
 | `idfm-network` | `if` | `/api/idfm/stops`, `/api/idfm/lines` | Île-de-France Mobilités Opendatasoft |
-| `ads-fr` | `au` | `/api/ads-fr` | Sitadel (SDES DiDo, 4 datafiles) + Paris / Bordeaux / Nantes ADS portals + BAN bulk geocoder |
+| `ads-fr` | `au` | `/api/ads-fr` | Sitadel (SDES DiDo, 4 datafiles) + Paris / Bordeaux / Nantes ADS portals + Etalab cadastre (current and dated editions) + BAL + BAN bulk geocoder |
+
+`ads-fr` is also the only one of the six that carries a CONTROL. Its row shows
+three chips — **3 ANS / 6 ANS / 13 ANS** — where the query used to carry two
+frozen constants, and the default stays at three years so nothing moves for a
+reader who touches nothing. The other two rungs are not symmetry: 13 years is
+Sitadel's whole span (`ADS_MAX_MONTHS`), and **6 years is the shortest rung that
+reaches a finished house** — Ustaritz's `06454721B0009` was authorised
+2021-07-20 and read in 2026-09, so a 36-month floor of 2023-09-01 hides the
+permit that built it. A chantier outlives the window that shows it.
+
+The choice rides the share link as `lo=au.w.6`, which makes `ads-fr` the first
+of the six address layers to own a layer-state option: a window is a question,
+and reopening the same block over six years is a different answer. The values
+are a CLOSED SET and `setParams` REJECTS anything outside it rather than
+clamping — everything reachable through that path is reachable from a
+stranger's URL, and snapping a stale link's window to the nearest legal value
+would answer a question nobody asked while looking exactly like the one they
+did. The chips and the parameter gate are one mechanism seen from two ends;
+`addressScanLayer.js` grew `runtimeParams`, `rowControls`, `getParams` and
+`setParams` for it, so the other five layers can take controls later without a
+second mechanism.
+
+The ACTIVE chip carries the truncation warning, because widening the window is
+what causes it: `ADS_MAX_PERMITS` serves the 400 nearest dossiers, so on a dense
+block a longer window does not add history — it trades the far edge of the
+circle for it, and nothing on screen says so.
 
 `ads-fr` is the only one of the six that reads TWO registers and merges them on
 the dossier number. Sitadel is national, monthly, about six weeks behind, and
@@ -1999,10 +2025,59 @@ every scan inside that commune afterwards is served from cache.
 
 **Bordeaux is the only one of them that publishes the GROUND**, and the layer
 draws it: the emprise of the parcels a dossier names, clamped onto the terrain
-under the crane that marks the dossier itself. Everywhere else in France, and
-in Paris and Nantes too, the register has no shape to give and the marker is
-the whole answer — the scan reports `emprises: 0` there, which is a property of
-those files rather than of the block.
+under the crane that marks the dossier itself.
+
+Everywhere else the ground is RESOLVED rather than published, and
+`cadastreLineage.js` is what does it. Sitadel carries no coordinate but names up
+to three cadastral parcels per dossier, and Etalab publishes the cadastre — so
+the permit is placed on its own plot before the geocoder is asked anything.
+Measured 2026-09-02: **58,1 % of Ustaritz's 543 rows** and **2 307 rows of
+Paris** resolve to a parcel that still exists, which is a placement no address
+lookup can match and which shrinks the BAN batch by the same amount. A permit
+placed this way also survives a geocoder outage, where before this the whole
+commune came back empty.
+
+**37,3 % of those rows name a parcel that is gone, and that is the register
+working rather than failing**: you file on a field, the field is divided, you
+build on a lot. Etalab has published DATED editions of the whole cadastre since
+2017-07-06, so the layer walks back at most three editions from the decision
+date, finds the parent alive, intersects it with today's parcels and reads the
+division off the ground. The area of the children has to account for the parent
+to within 12 % or the lineage is refused — a redraw moves vertices by
+centimetres, a wrong parent moves them by lots. On `06454721B0009` at Ustaritz:
+AN 221 alive at 2021-04-01 and gone at 2021-07-01, three months before the
+permit was granted, into AN 511 (811 m²) + AN 512 (527) + AN 513 (34) —
+**1 372 m² against the parent's 1 372, to the square metre**.
+
+Which of the lots was built on comes from the same archive's BUILDING files,
+and which lot carries which number comes from the commune's *Base Adresse
+Locale* — the only published join between a house number and a parcel, and one
+that contradicts the counter where they disagree (two Ustaritz dossiers are
+filed at "67 impasse d'Haroztegia" and name AN 515, which the BAL numbers 63).
+Neither is a guess and neither always answers: over the 125 ambiguous divisions
+of Ustaritz since 2018 the building diff names a single lot in **29,6 %** of
+cases, 45,6 % have several children built and 24,8 % have none. The rest are
+drawn on the PARENT, labelled *emprise avant division*, because a polygon that
+certainly contains the site beats a confident dot in the road. A permis
+d'aménager always stays on the parent — it is the act of drawing the lots, not
+a project on one — and two dossiers competing for the same built lot both fall
+back to the parent unless their own BAL numbers separate them.
+
+The limits are counted rather than hidden. The archive floor is July 2017, so
+permits authorised 2013-2016 lose 61 of 161 against 5 of 227 for 2018-2021; a
+reference with a letter suffix (`255P`, *partie de parcelle*) is flagged as
+provisional instead of being padded into a number that does not exist; and the
+scan reports `placed`, `divided`, `resolved`, `onChild` and `onParent`
+commune-wide, alongside the geocoding shortfall it already reported.
+
+The snapshots are cached in `.gev-cache/cadastre` as the gzip they arrived as —
+676 KB for a commune's parcels, 239 KB for its buildings — because a DATED
+edition is immutable and never needs revalidating; only `latest` carries a TTL,
+of a month. The first cut stored parsed JSON and one commune's thirteen years
+took 186 MB, against 27 MB gzipped, under a 256 MB LRU ceiling. A cold Paris
+commune-window costs about 45 s, most of it the twenty arrondissement cadastres
+its permits resolve across, downloaded eight at a time; every scan inside that
+commune afterwards is served from cache in milliseconds.
 
 The outline belongs to the PLOT, not to the file, and `liftEmprises` in
 `adsFeed.js` is what enforces that. Bordeaux repeats the same emprise once per

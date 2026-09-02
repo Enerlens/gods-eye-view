@@ -419,3 +419,119 @@ test('another layer`s object is another layer`s click', () => {
   );
   assert.equal(addressScanClickIntent({ picked: foreign, selected: true }), 'ignore');
 });
+
+/**
+ * A layer that takes a runtime parameter — which, of the six address layers, is
+ * the ADS one and its permit window. The values are a CLOSED SET because
+ * everything reachable through `setParams` is also reachable from a share link,
+ * so this is where a stranger's URL either gets rejected or gets to choose what
+ * this browser asks an upstream API for.
+ */
+async function windowedLayer() {
+  const queries = [];
+  const { viewer } = headlessViewer(ADDRESS.lon, ADDRESS.lat, 900);
+  const layer = createAddressScanLayer({
+    id: 'window-test',
+    name: 'Window test',
+    icon: '▦',
+    source: 'test',
+    endpoint: '/api/test',
+    updateInterval: 900_000,
+    runtimeParams: { months: { values: ['36', '72', '156'], defaultValue: '36' } },
+    params: (point, seen, runtime) => ({ months: runtime.months }),
+    rowControls: (runtime, summary) => ({
+      chips: [{ id: 'w', label: runtime.months, active: true, count: summary?.count ?? null }],
+    }),
+    summarize: (payload) => ({ count: payload.rows?.length ?? 0 }),
+    render: ({ dataSource }) => { dataSource.entities.add({ id: `d${queries.length}` }); return 1; },
+    fetchImpl: async (url) => {
+      queries.push(String(url));
+      return { ok: true, json: async () => ({ rows: [1, 2] }) };
+    },
+  });
+  layer.init(viewer);
+  layer.enable(viewer);
+  return { layer, viewer, queries };
+}
+
+/** The manager reads `getParams()` to decide what a `params` event carried; a
+ *  layer answering null there cannot have a choice persisted or shared. */
+test('a runtime parameter starts at its default and is readable', async (t) => {
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer } = await windowedLayer();
+  assert.deepEqual(layer.getParams(), { months: '36' });
+  layer.disable();
+});
+
+test('a listed value is accepted and rescans without the camera moving', async (t) => {
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer, viewer, queries } = await windowedLayer();
+  await layer.update(viewer);
+  assert.equal(queries.length, 1);
+  assert.ok(queries[0].includes('months=36'));
+
+  assert.equal(layer.setParams({ months: '72' }, { origin: 'user' }), true);
+  assert.deepEqual(layer.getParams(), { months: '72' });
+  // `setParams` fires the scan itself rather than waiting for the camera or the
+  // ten-minute tick, which would leave the old window under the new label.
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  assert.equal(queries.length, 2, 'the window changed, so the answer is refetched');
+  assert.ok(queries[1].includes('months=72'));
+  layer.disable();
+});
+
+/**
+ * REJECT, DO NOT CLAMP. A stale share link carrying a window this build no
+ * longer offers must not be snapped to the nearest legal value: that answers a
+ * question nobody asked while looking exactly like the one they did.
+ */
+test('an unlisted value and an unknown key are both refused outright', async (t) => {
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer } = await windowedLayer();
+  assert.equal(layer.setParams({ months: '999' }), false);
+  assert.equal(layer.setParams({ months: '24' }), false);
+  assert.equal(layer.setParams({ radius: '1200' }), false);
+  assert.deepEqual(layer.getParams(), { months: '36' }, 'nothing moved');
+  layer.disable();
+});
+
+test('setting the value it already has is accepted and costs no scan', async (t) => {
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer, viewer, queries } = await windowedLayer();
+  await layer.update(viewer);
+  assert.equal(layer.setParams({ months: '36' }), true);
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  assert.equal(queries.length, 1);
+  layer.disable();
+});
+
+test('the row chips are built from the runtime params and the SUMMARY', async (t) => {
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer, viewer } = await windowedLayer();
+  // Before any scan there is no summary to read, and the chips still build.
+  assert.deepEqual(layer.getRowControls().chips[0], {
+    id: 'w', label: '36', active: true, count: null,
+  });
+  await layer.update(viewer);
+  assert.equal(layer.getRowControls().chips[0].count, 2);
+  layer.disable();
+});
+
+test('a layer that declares no row controls does not pretend to have any', async (t) => {
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const { layer } = await regimeLayer();
+  assert.equal(layer.getRowControls, undefined);
+  layer.disable();
+});

@@ -219,6 +219,21 @@ const OPTION_GROUPS = Object.freeze({
     trackingIdOption('selectedFlightsTrackingId', 't', null),
     trackingIdOption('selectedMilitaryTrackingId', 'u', null),
   ]),
+  // The permit window, and the FIRST option on any of the six address layers.
+  // It is here rather than in the layer because a window is a question, and a
+  // link that reopens the same block on a different question is a different
+  // answer — `au.w.6` is the whole of "this street, over six years".
+  //
+  // The codes are the years and not the months: `3`, `6`, `d` for a decade,
+  // chosen so a link stays legible to the person pasting it. The months are
+  // what the layer and the proxy speak, and `adsUrbanisme.js` owns the mapping.
+  //
+  // Keyed by the LAYER ID and not by a family name: `encodeLayerStateParams`
+  // looks the owner up in the layer registry to find the token it writes into
+  // the link, so an owner that is not a registered layer id throws at boot.
+  'ads-fr': Object.freeze([
+    enumOption('months', 'w', '36', ['36', '72', '156'], { 36: '3', 72: '6', 156: 'd' }),
+  ]),
   satellites: Object.freeze([
     enumOption('catalog', 'c', 'core', ['core', 'dense'], { core: 'c', dense: 'd' }),
     integerOption('selectedSatTrackingId', 't', null),
@@ -290,7 +305,7 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // near enough to read as a pair, distinct enough that a share link cannot
   // enable one for the other. A duplicate here is a BOOT failure
   // (`validateLayerStateRegistry` throws), not a review nit.
-  Object.freeze({ id: 'ads-fr', token: 'au', disposition: 'enabled-only' }),
+  Object.freeze({ id: 'ads-fr', token: 'au', disposition: 'enabled+options', optionOwner: 'ads-fr' }),
   Object.freeze({ id: 'ais-live-vessels', token: 'a', disposition: 'enabled-only' }),
   // A DIGIT for the same reason as `gas-fr` and `power-grid` below: every
   // letter is taken and `z` is the canonical UNKNOWN token two tests assert on.

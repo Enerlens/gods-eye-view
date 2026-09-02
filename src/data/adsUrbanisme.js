@@ -1,7 +1,7 @@
 import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
 import { createAddressScanLayer } from './addressScanLayer.js';
-import { ADS_DEFAULT_MONTHS, ADS_DEFAULT_RADIUS_M } from './adsFeed.js';
+import { ADS_DEFAULT_MONTHS, ADS_DEFAULT_RADIUS_M, ADS_MAX_MONTHS } from './adsFeed.js';
 // The third urbanism layer takes the second one's surface rule rather than
 // writing a third copy of it; `urbanismeGpu.test.mjs` already pins it.
 import { gpuClassificationTypeForScene } from './urbanismeGpu.js';
@@ -35,6 +35,76 @@ import { gpuClassificationTypeForScene } from './urbanismeGpu.js';
 
 /** Refresh cadence. Sitadel moves monthly; this is about camera movement. */
 const UPDATE_INTERVAL_MS = 600_000;
+
+/**
+ * How far back a scan looks, as the three rungs a reader can choose between.
+ *
+ * THREE, AND THESE THREE, because each answers a different question and the
+ * middle one exists for a measured reason rather than for symmetry:
+ *
+ * - **3 ans** is the default and it stays the default. A block's current
+ *   pipeline — what is being instructed, what is granted, what has a crane on
+ *   it — is a three-year story, and it is the window under which
+ *   `ADS_MAX_PERMITS` does not bite in a dense arrondissement.
+ * - **6 ans** is the shortest rung that reaches a FINISHED house. Ustaritz's
+ *   `06454721B0009` was authorised 2021-07-20 and read 2026-09; at 36 months
+ *   the floor is 2023-09-01 and the permit that built the house is invisible,
+ *   at 72 it is not. A permit's chantier outlives the window that shows it.
+ * - **13 ans** is the whole of Sitadel — `ADS_MAX_MONTHS`, the register's own
+ *   2013 start — for reading a plot's entire paperwork history.
+ *
+ * NOT a free number, and `addressScanLayer.js` says why: everything reachable
+ * here is reachable from a share link too.
+ */
+export const ADS_WINDOWS = Object.freeze([
+  Object.freeze({ months: '36', label: '3 ANS' }),
+  Object.freeze({ months: '72', label: '6 ANS' }),
+  Object.freeze({ months: String(ADS_MAX_MONTHS), label: '13 ANS' }),
+]);
+
+/** The rung a reader who has chosen nothing is on. Unchanged from before. */
+export const ADS_WINDOW_DEFAULT = String(ADS_DEFAULT_MONTHS);
+
+/**
+ * The three chips on the layer's row, and what each one warns about.
+ *
+ * THE ACTIVE CHIP CARRIES THE TRUNCATION, because widening the window is the
+ * thing that causes it. `ADS_MAX_PERMITS` serves the 400 nearest dossiers, so
+ * on a dense block a longer window does not add history — it TRADES the far
+ * edge of the circle for it, and the swap is invisible on screen. The scan
+ * already reports `found` against `count`; this is where a reader can see it
+ * at the moment they are choosing.
+ *
+ * @param {?string} months The window in force.
+ * @param {?object} summary The layer's own `summarize()` output, if any.
+ * @returns {Array<object>} Chip descriptors for the manager's row renderer.
+ */
+export function adsWindowChips(months, summary = null) {
+  const current = String(months ?? ADS_WINDOW_DEFAULT);
+  return ADS_WINDOWS.map((window) => {
+    const active = window.months === current;
+    const years = Math.round(Number(window.months) / 12);
+    let title = `Autorisations des ${years} dernières années`;
+    if (active && summary?.truncated) {
+      title += ` — ${summary.permitsFound} dossiers servis sur `
+        + `${summary.permitsInRadius} dans le rayon, les plus proches d’abord`;
+    } else if (active && Number.isFinite(summary?.permitsFound)) {
+      title += ` — ${summary.permitsFound} dossiers sur ce bloc`;
+    } else if (window.months === ADS_WINDOW_DEFAULT) {
+      title += ' — le pipeline en cours';
+    } else {
+      title += ', chantiers achevés compris';
+    }
+    return {
+      id: `months:${window.months}`,
+      label: window.label,
+      active,
+      state: active ? 'active' : 'idle',
+      title,
+      params: { months: window.months },
+    };
+  });
+}
 
 /**
  * Marker size, in CSS px.
@@ -162,6 +232,27 @@ export function adsDateLine(permit) {
 export function adsPrecisionLine(permit) {
   if (permit.precision === 'published') return null;
   if (permit.precision === 'housenumber') return null;
+  // The dossier named this parcel and the cadastre still has it. The shape
+  // under the marker is the claim, and it needs no caveat.
+  if (permit.precision === 'parcelle') return null;
+  // AN INFERENCE, AND IT SAYS WHICH ONE. The parcel the dossier named has been
+  // divided since, and this lot was picked out of the division — by the BAL's
+  // own numbering, by being the only one that has been built on since, or by
+  // being the only one there is. Which of the three is the difference between
+  // a record and a deduction, so the basis is printed rather than averaged
+  // into a single confident sentence.
+  if (permit.precision === 'enfant') {
+    const basis = permit.lineage?.basisLabel;
+    return basis ? `lot déduit — ${basis}` : 'lot déduit après division de la parcelle';
+  }
+  // No lot could be told from its siblings: two thirds of divisions, measured.
+  // The parent is drawn instead, which is a true statement about the ground.
+  if (permit.precision === 'mere') {
+    const siblings = permit.lineage?.siblings;
+    return siblings > 1
+      ? `emprise avant division — ${siblings} lots depuis, non départagés`
+      : 'emprise avant division — le lot exact n’est pas déterminé';
+  }
   if (permit.precision === 'street') return 'position approchée — géocodée à la rue';
   if (permit.precision === 'locality') return 'position approchée — géocodée au lieu-dit';
   return null;
@@ -352,9 +443,13 @@ const adsUrbanismeLayer = createAddressScanLayer({
   source: 'Sitadel — SDES + portails ADS',
   endpoint: '/api/ads-fr',
   updateInterval: UPDATE_INTERVAL_MS,
-  params: () => ({
+  runtimeParams: {
+    months: { values: ADS_WINDOWS.map((window) => window.months), defaultValue: ADS_WINDOW_DEFAULT },
+  },
+  rowControls: (runtime, summary) => ({ chips: adsWindowChips(runtime.months, summary) }),
+  params: (point, viewer, runtime) => ({
     radius: String(ADS_DEFAULT_RADIUS_M),
-    months: String(ADS_DEFAULT_MONTHS),
+    months: runtime.months ?? ADS_WINDOW_DEFAULT,
   }),
 
   render({ payload, dataSource, viewer }) {
@@ -457,6 +552,18 @@ const adsUrbanismeLayer = createAddressScanLayer({
       // WHOLE commune: an unplaced row has no position, so it cannot be
       // attributed to this circle or to any other.
       unplacedInCommune: payload.unplacedInCommune ?? 0,
+      // How much of the commune's register stands on published ground rather
+      // than on a geocoded address. `divided` is the rows whose parcel has been
+      // split since they were filed — 37% of Ustaritz's — and `resolved` is how
+      // many of those the dated cadastre could still account for. The gap
+      // between the two is the archive floor of 2017 and the per-scan budget,
+      // both of which are limits of the method and are reported as such.
+      onParcel: payload.cadastre?.placed ?? 0,
+      dividedInCommune: payload.cadastre?.divided ?? 0,
+      lineageResolved: payload.cadastre?.resolved ?? 0,
+      lineageOnChild: payload.cadastre?.onChild ?? 0,
+      lineageOnParent: payload.cadastre?.onParent ?? 0,
+      lineageTruncated: payload.cadastre?.truncated ?? false,
       portals: (payload.portals || []).filter((portal) => portal.ok).map((portal) => portal.key),
     };
   },

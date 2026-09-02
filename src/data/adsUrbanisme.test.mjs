@@ -9,8 +9,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
-import { LOCAL_ADS_PORTALS, normaliseLocalRow, projectAdsPermits } from './adsFeed.js';
-import { drawAdsEmprises, empriseCard, empriseStyle } from './adsUrbanisme.js';
+import {
+  ADS_MAX_MONTHS,
+  LOCAL_ADS_PORTALS,
+  normaliseLocalRow,
+  projectAdsPermits,
+} from './adsFeed.js';
+import {
+  ADS_WINDOWS,
+  ADS_WINDOW_DEFAULT,
+  adsWindowChips,
+  drawAdsEmprises,
+  empriseCard,
+  empriseStyle,
+} from './adsUrbanisme.js';
 
 const PORTALS = JSON.parse(readFileSync(
   new URL('./fixtures/ads-portals-sample.json', import.meta.url), 'utf8',
@@ -178,4 +190,69 @@ test('a plot whose every dossier fell outside the cut is not drawn', () => {
 
   // And a payload from a register with no shapes at all draws no ground.
   assert.equal(drawAdsEmprises(source, { permits: [] }, Cesium.ClassificationType.BOTH), 0);
+});
+
+test('the three windows are the register`s own span, and the middle one is not decoration', () => {
+  assert.deepEqual(ADS_WINDOWS.map((window) => window.months), ['36', '72', '156']);
+  // 36 stays the default — nobody who touches nothing sees a different map.
+  assert.equal(ADS_WINDOW_DEFAULT, '36');
+  // 156 is Sitadel's whole span and the proxy's own ceiling; a fourth rung
+  // beyond it would be a window the register cannot fill.
+  assert.equal(ADS_WINDOWS.at(-1).months, String(ADS_MAX_MONTHS));
+  // And 72 exists because a finished house outlives the window that shows it:
+  // Ustaritz's `06454721B0009` was authorised 2021-07-20 and read 2026-09, so
+  // 36 months floors at 2023-09-01 and hides the permit that built it.
+  const monthsSince = (2026 - 2021) * 12 + (9 - 7);
+  assert.ok(Number(ADS_WINDOWS[0].months) < monthsSince, 'three years does not reach it');
+  assert.ok(Number(ADS_WINDOWS[1].months) > monthsSince, 'six years does');
+});
+
+test('the chips mark the window in force and hand back what a click would set', () => {
+  const chips = adsWindowChips('72');
+  assert.deepEqual(chips.map((chip) => chip.label), ['3 ANS', '6 ANS', '13 ANS']);
+  assert.deepEqual(chips.map((chip) => chip.active), [false, true, false]);
+  assert.deepEqual(chips.map((chip) => chip.state), ['idle', 'active', 'idle']);
+  // The chip's params must be values the layer's `runtimeParams` accepts —
+  // the row control and the parameter gate are one mechanism from two ends.
+  assert.deepEqual(chips.map((chip) => chip.params), [
+    { months: '36' }, { months: '72' }, { months: '156' },
+  ]);
+});
+
+test('a window nobody chose falls back to the default rather than lighting nothing', () => {
+  const chips = adsWindowChips(null);
+  assert.deepEqual(chips.map((chip) => chip.active), [true, false, false]);
+  // A value from a build that offered something else lights no chip, which is
+  // honest: the layer refused it too, so no chip describes what is on screen.
+  assert.deepEqual(adsWindowChips('24').map((chip) => chip.active), [false, false, false]);
+});
+
+/**
+ * WIDENING THE WINDOW IS WHAT CAUSES THE TRUNCATION, so the warning belongs on
+ * the control that causes it. `ADS_MAX_PERMITS` serves the 400 nearest
+ * dossiers: on a dense block a longer window does not add history, it TRADES
+ * the far edge of the circle for it, and nothing on screen says so.
+ */
+test('the active chip carries the truncation the window would cause', () => {
+  const truncated = adsWindowChips('156', {
+    truncated: true, permitsFound: 400, permitsInRadius: 913,
+  });
+  assert.match(truncated[2].title, /400 dossiers servis sur 913/);
+  assert.match(truncated[2].title, /les plus proches d’abord/);
+  // An untruncated scan says what it found instead of warning about nothing.
+  const whole = adsWindowChips('156', { truncated: false, permitsFound: 38 });
+  assert.match(whole[2].title, /38 dossiers sur ce bloc/);
+  // And the inactive chips describe what choosing them would mean.
+  assert.match(whole[0].title, /3 dernières années/);
+  assert.match(whole[1].title, /chantiers achevés compris/);
+});
+
+test('a chip title never invents a count the scan did not report', () => {
+  for (const chip of adsWindowChips('36', null)) {
+    assert.ok(!/\d+ dossiers/.test(chip.title), chip.title);
+  }
+  // A summary that arrived without a count is the same case as no summary.
+  for (const chip of adsWindowChips('36', { truncated: false })) {
+    assert.ok(!/\d+ dossiers/.test(chip.title), chip.title);
+  }
 });

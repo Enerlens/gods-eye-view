@@ -129,6 +129,8 @@
  */
 
 import { ringAreaM2, ringLabelAnchor, sanitisePolygonParts } from './ringGeometry.js';
+import { ARRONDISSEMENT_COMMUNES, parcelParts, sitadelJoinCommune } from './sitadelFeed.js';
+import { ADS_LINEAGE_BASIS, insidePoint, sitadelParcelRefs } from './cadastreLineage.js';
 
 /** Attribution carried on every payload (see DATA_SOURCES.md). */
 export const ADS_SOURCE = 'Sitadel — SDES, + portails ADS métropolitains';
@@ -399,13 +401,29 @@ export const ADS_MAX_PERMITS = 400;
 export const BAN_CSV_URL = 'https://api-adresse.data.gouv.fr/search/csv/';
 
 /**
- * Geocoding outcomes, worst to best, with what each one licenses a reader to
+ * Placement outcomes, worst to best, with what each one licenses a reader to
  * believe. `published` is for the two portals that ship their own coordinate:
  * it did not come from an address at all.
+ *
+ * THE TOP TWO ARE POLYGONS AND THAT IS WHY THEY OUTRANK A PUBLISHED POINT. A
+ * portal's `geo_point_2d` is somebody's chosen point on a plot; the parcel the
+ * dossier NAMES is the plot. `cadastreLineage.js` resolves both from the open
+ * cadastre, so 58.1% of Sitadel rows — measured over Ustaritz — can be drawn
+ * as ground rather than geocoded as an address, everywhere in France and not
+ * only in the one métropole that publishes shapes.
+ *
+ * `mere` sits between a house number and a street on purpose. It is a plot
+ * that CERTAINLY contains the site, which street level never is, and it is not
+ * the lot, which a house number claims to be. A permit filed on a parcel that
+ * has since been divided is a real, common thing — 37.3% of the same rows —
+ * and the honest drawing of it is the parent, labelled as divided.
  */
 export const ADS_PRECISION = Object.freeze({
-  published: { rank: 4, label: 'coordonnée publiée' },
-  housenumber: { rank: 3, label: 'au numéro' },
+  parcelle: { rank: 7, label: 'parcelle cadastrale' },
+  enfant: { rank: 6, label: 'lot issu de la parcelle citée' },
+  published: { rank: 5, label: 'coordonnée publiée' },
+  housenumber: { rank: 4, label: 'au numéro' },
+  mere: { rank: 3, label: 'parcelle divisée depuis' },
   street: { rank: 2, label: 'à la rue' },
   locality: { rank: 1, label: 'au lieu-dit' },
   municipality: { rank: 0, label: 'à la commune' },
@@ -695,6 +713,13 @@ export function normaliseSitadelRow(file, row) {
   const status = SITADEL_STATES[row[file.stateColumn]] ?? null;
   const street = text(row.ADR_LIBVOIE_TER) || text(row.ADR_LIEUDIT_TER);
   const houseNumber = text(row.ADR_NUM_TER);
+  // WHICH CADASTRE FILE THIS ROW'S PARCEL LIVES IN, which is not `COMM` in the
+  // three cities that have arrondissements: Sitadel writes 75056 and Etalab
+  // publishes no cadastre under it. `sitadelJoinCommune` reads the
+  // arrondissement out of the dossier number, falling back to the postcode —
+  // the same resolution the sibling `sitadel-fr` layer uses, so a permit is
+  // never looked up in one commune's parcels and drawn in another's.
+  const cadastreCommune = sitadelJoinCommune(row, ARRONDISSEMENT_COMMUNES[text(row.COMM)] ?? null);
   return {
     // Keyed on the SERIES and the RAW number. The series because three
     // counters collide (TRAP 6); the raw number because this id is the CSV
@@ -719,7 +744,11 @@ export function normaliseSitadelRow(file, row) {
     postcode: text(row.ADR_CODPOST_TER),
     commune: text(row.ADR_LOCALITE_TER),
     communeCode: text(row.COMM),
+    cadastreCommune,
     parcels: parcelRefs(row),
+    // The same references as `parcels`, in the 14-character form the cadastre
+    // is keyed by. Both are kept: one is printed on the card, the other joins.
+    parcelIdus: sitadelParcelRefs(row, cadastreCommune),
     landAreaM2: number(row.SUPERFICIE_TERRAIN),
     housing: number(row.NB_LGT_TOT_CREES),
     surfaceCreatedM2: number(row.SURF_HAB_CREEE) ?? number(row.SURF_LOC_CREEE),
@@ -909,6 +938,11 @@ export function normaliseLocalRow(portal, record) {
     postcode: null,
     commune: text(record.commune ?? record.nom),
     communeCode: inseeCode(record.insee ?? record.code_insee_commune),
+    // A portal's `refcad` is a parcel reference too, but it is not resolved
+    // against the cadastre: Bordeaux is the only portal that publishes one and
+    // it publishes the OUTLINE beside it, so there is nothing left to look up.
+    cadastreCommune: null,
+    parcelIdus: [],
     parcels: Array.isArray(refcad) ? refcad.map(text).filter(Boolean) : [text(refcad)].filter(Boolean),
     landAreaM2: number(record.superficie),
     housing: null,
@@ -925,6 +959,113 @@ export function normaliseLocalRow(portal, record) {
     source: portal.key,
     sourceLabel: portal.label,
   };
+}
+
+/**
+ * Draw the permits that name a parcel the cadastre still has.
+ *
+ * THE CHEAP HALF OF THE WHOLE IDEA, and it runs before the geocoder rather
+ * than after it: a row placed here never enters the BAN batch, so this both
+ * improves the placement and shrinks the call. Measured over Ustaritz's 543
+ * Sitadel rows, 58.1% name a parcel that is alive today — those stop being an
+ * address to be guessed at and become the plot the dossier was filed on.
+ *
+ * Several parcels on one dossier become ONE emprise, not several: a permit
+ * filed on three adjoining lots is one operation on one piece of ground, and
+ * `liftEmprises` downstream will key it by that geometry.
+ *
+ * @param {Array<object>} permits Normalised permits.
+ * @param {Map<string, object>} index Today's cadastre, IDU → GeoJSON feature.
+ * @returns {{permits: Array<object>, placed: number, divided: Array<object>}}
+ *   `divided` are the rows that named a parcel and found none — the input to
+ *   {@link applyLineage}, and the reason this function reports them.
+ */
+export function placeOnParcels(permits, index) {
+  const out = [];
+  const divided = [];
+  let placed = 0;
+  for (const permit of permits) {
+    const refs = permit.parcelIdus || [];
+    if (permit.lon !== null || !refs.length) { out.push(permit); continue; }
+    const features = refs.map((ref) => index?.get(ref.idu)).filter(Boolean);
+    if (!features.length) {
+      divided.push(permit);
+      out.push(permit);
+      continue;
+    }
+    const parts = sanitisePolygonParts(features.flatMap((feature) => parcelParts(feature.geometry)));
+    const point = parts.length ? insidePoint(parts) : null;
+    // A parcel whose rings did not survive the sanitiser is not a placement.
+    // It falls through to the geocoder rather than being drawn at a NaN.
+    if (!point) { out.push(permit); continue; }
+    placed += 1;
+    out.push({
+      ...permit,
+      lon: point.lon,
+      lat: point.lat,
+      parts,
+      precision: 'parcelle',
+      geocodeScore: null,
+    });
+  }
+  return { permits: out, placed, divided };
+}
+
+/**
+ * Draw the permits whose parcel was divided out from under them.
+ *
+ * The resolution itself lives in `cadastreLineage.js` and is done by the proxy,
+ * which is the half that needs the network; this applies the verdict. Two
+ * different verdicts arrive here and they are drawn differently on purpose:
+ *
+ * - a CHILD was identified — by the BAL's own number, by being the only lot
+ *   that gained a building, or by being the only lot at all — and the permit
+ *   is drawn on it as `enfant`;
+ * - no child could be told from its siblings, and the permit is drawn on the
+ *   PARENT as `mere`. That is the honest answer two thirds of the time and it
+ *   is still a plot rather than a point on a road.
+ *
+ * The basis travels with the permit so the card can say which of the two it is
+ * looking at. An inference drawn identically to a record is the failure this
+ * whole module exists to avoid.
+ *
+ * @param {Array<object>} permits Normalised permits.
+ * @param {Map<string, object>} verdicts Permit id → the resolution.
+ * @returns {{permits: Array<object>, children: number, parents: number}}
+ */
+export function applyLineage(permits, verdicts) {
+  const out = [];
+  let children = 0;
+  let parents = 0;
+  for (const permit of permits) {
+    const verdict = verdicts?.get(permit.id);
+    if (permit.lon !== null || !verdict) { out.push(permit); continue; }
+    const feature = verdict.feature ?? verdict.parent ?? null;
+    const parts = sanitisePolygonParts(parcelParts(feature?.geometry));
+    const point = parts.length ? insidePoint(parts) : null;
+    if (!point) { out.push(permit); continue; }
+    const onChild = Boolean(verdict.feature);
+    if (onChild) children += 1; else parents += 1;
+    out.push({
+      ...permit,
+      lon: point.lon,
+      lat: point.lat,
+      parts,
+      precision: onChild ? 'enfant' : 'mere',
+      geocodeScore: null,
+      lineage: {
+        basis: verdict.basis,
+        basisLabel: ADS_LINEAGE_BASIS[verdict.basis]?.label ?? null,
+        // The edition the parent was found in, which is also the date before
+        // which the division had not happened yet.
+        millesime: verdict.millesime ?? null,
+        parcel: feature?.properties?.id ?? null,
+        parent: verdict.parent?.properties?.id ?? null,
+        siblings: Number.isFinite(verdict.children) ? verdict.children : null,
+      },
+    });
+  }
+  return { permits: out, children, parents };
 }
 
 /**
@@ -1135,6 +1276,35 @@ export function foldSitadelFamilies(permits) {
  * @param {Array<object>} local Normalised métropole permits.
  * @returns {{permits: Array<object>, merged: number}}
  */
+/**
+ * What a métropole dossier inherits of its Sitadel twin's ground.
+ *
+ * The rank test is the whole rule and it runs in one direction only. A
+ * `parcelle` outranks a `published` point (see {@link ADS_PRECISION}), so a
+ * Paris or Nantes dossier whose twin resolved to a cadastral parcel is upgraded
+ * from a dot to a plot. A Bordeaux dossier is not: it arrives with the portal's
+ * own `geo_shape`, which is the same plot drawn by the publisher rather than
+ * inferred from a reference, and swapping one for the other would churn a
+ * tested behaviour to gain nothing.
+ *
+ * @param {object} permit The métropole row.
+ * @param {object} twin Its Sitadel twin.
+ * @returns {object} Fields to spread, empty when nothing is worth grafting.
+ */
+function graftEmprise(permit, twin) {
+  if (permit.parts?.length || !twin.parts?.length) return {};
+  const here = ADS_PRECISION[permit.precision]?.rank ?? -1;
+  const there = ADS_PRECISION[twin.precision]?.rank ?? -1;
+  if (there <= here) return { parts: twin.parts };
+  return {
+    parts: twin.parts,
+    lon: twin.lon,
+    lat: twin.lat,
+    precision: twin.precision,
+    ...(twin.lineage ? { lineage: twin.lineage } : {}),
+  };
+}
+
 export function mergeRegisters(sitadel, local) {
   const byKey = new Map();
   for (const permit of sitadel) {
@@ -1167,6 +1337,13 @@ export function mergeRegisters(sitadel, local) {
       applicant: permit.applicant ?? twin.applicant,
       postcode: permit.postcode ?? twin.postcode,
       parcels: permit.parcels.length ? permit.parcels : twin.parcels,
+      // THE GROUND, WHERE THE COUNTER PUBLISHED NONE. Bordeaux ships its own
+      // emprise and keeps it; Paris and Nantes ship no shape at all, so a
+      // dossier the State could resolve to a cadastral parcel hands its
+      // outline over here. Only ever ADDITIVE — a local row that already has a
+      // polygon is never overwritten by one resolved from a reference, because
+      // the portal drew the plot it meant and this side only inferred it.
+      ...graftEmprise(permit, twin),
       // The chantier ladder is Sitadel's alone; it never overwrites a live
       // instruction state, but it is what fills a blank Bordeaux row.
       state: permit.state ?? twin.state,

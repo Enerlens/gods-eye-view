@@ -422,10 +422,28 @@ export function scanShiftNeeded(last, next, minShiftKm = ADDRESS_SCAN_MIN_SHIFT_
  *   the answer already in hand. Present it and a click anywhere on the layer's
  *   own ground opens a card; absent, only markers are clickable. Returning
  *   null declines the click, which then falls through to dismissal.
- * @param {(point: object, viewer: ?object) => Record<string, string>} [config.params]
+ * @param {(point: object, viewer: ?object, runtime: Record<string, string>)
+ *   => Record<string, string>} [config.params]
  *   Extra query parameters. Takes the viewer as well as the point because a
  *   layer may ask a different question depending on the CAMERA — the urbanism
- *   layer asks for a box close in and a point higher up.
+ *   layer asks for a box close in and a point higher up — and the runtime
+ *   parameters because a layer may ask a different question because the READER
+ *   said so; see `config.runtimeParams`.
+ * @param {Record<string, {values: string[], defaultValue: string}>} [config.runtimeParams]
+ *   The parameters this layer accepts through `setLayerParams`, and the closed
+ *   set of values each one takes.
+ *
+ *   ENUMERATED, NEVER FREE. Everything reachable here is also reachable from a
+ *   share link, so an unvalidated parameter is a stranger's URL choosing what
+ *   this browser asks an upstream API for. A closed list means a hostile or
+ *   simply stale value is REJECTED — `setParams` returns false, the manager
+ *   reports `ParamsRejected`, and the layer keeps the question it was already
+ *   asking — rather than clamped into something plausible.
+ * @param {(runtime: Record<string, string>, summary: ?object) => object} [config.rowControls]
+ *   Chips for this layer's row in the panel, built from the runtime params in
+ *   force and the current summary. The manager turns a click into
+ *   `setLayerParams`, so a chip's `params` must be values `runtimeParams`
+ *   accepts — the two are one mechanism seen from its two ends.
  * @param {number} [config.maxAltitudeM]
  * @param {number} [config.minShiftKm]
  * @param {typeof fetch} [config.fetchImpl] Injection seam for tests.
@@ -435,6 +453,8 @@ export function createAddressScanLayer(config) {
   const {
     id, name, icon, source, endpoint, updateInterval,
     params = () => ({}),
+    runtimeParams = {},
+    rowControls = null,
     render,
     summarize = () => ({}),
     groundCard = null,
@@ -449,6 +469,10 @@ export function createAddressScanLayer(config) {
     redrawOnMapStack = false,
     mapStackEventTarget = typeof window === 'undefined' ? null : window,
   } = config;
+
+  const _runtime = Object.fromEntries(
+    Object.entries(runtimeParams).map(([key, spec]) => [key, spec.defaultValue]),
+  );
 
   let _dataSource = null;
   let _enabled = false;
@@ -772,7 +796,7 @@ export function createAddressScanLayer(config) {
       const query = new URLSearchParams({
         lat: point.lat.toFixed(6),
         lon: point.lon.toFixed(6),
-        ...params(point, _viewer),
+        ...params(point, _viewer, { ..._runtime }),
       });
       const queryString = String(query);
       // TWO reasons to rescan, and the movement one is not sufficient on its
@@ -940,6 +964,64 @@ export function createAddressScanLayer(config) {
     async update(viewer, { signal } = {}) {
       if (viewer) _viewer = viewer;
       return runScan(viewer || _viewer, signal);
+    },
+
+    /**
+     * Runtime params (DataLayerManager.setLayerParams path).
+     *
+     * Present on every address layer and empty for the five that declare no
+     * `runtimeParams`, because the manager reads `getParams()` to decide what
+     * a `params` event actually carried — a layer that answers `null` there
+     * cannot have a user choice persisted or shared.
+     */
+    getParams() {
+      return { ..._runtime };
+    },
+
+    /**
+     * The chips the manager draws on this layer's row.
+     *
+     * Fed the SUMMARY and not the raw payload: a chip's job is to say what
+     * choosing it would mean, and the answers to that are already computed by
+     * `summarize()` for the panel beside it. Absent when the layer declared no
+     * `rowControls`, which is the case for five of the six address layers.
+     */
+    ...(rowControls ? {
+      getRowControls() {
+        return rowControls({ ..._runtime }, _payload ? summarize(_payload) : null);
+      },
+    } : {}),
+
+    /**
+     * REJECT, DO NOT CLAMP. An unknown key or an unlisted value returns false,
+     * which the manager turns into `ParamsRejected` and the coordinator into a
+     * failed restore — and the layer goes on asking the question it was
+     * already asking. The alternative, snapping a stale share link's `months`
+     * to the nearest legal value, would answer a question nobody asked while
+     * looking exactly like the one they did.
+     */
+    setParams(next = {}, { origin = 'programmatic' } = {}) {
+      let changed = false;
+      for (const [key, value] of Object.entries(next)) {
+        const spec = runtimeParams[key];
+        if (!spec) return false;
+        const candidate = String(value);
+        if (!spec.values.includes(candidate)) return false;
+        if (_runtime[key] === candidate) continue;
+        _runtime[key] = candidate;
+        changed = true;
+      }
+      if (!changed) return true;
+      // The scan is not forced from here — `runScan` already refetches when
+      // the QUERY STRING changes, and the runtime params are in it. What this
+      // does is stop waiting for the camera or the update interval, which
+      // would otherwise leave the reader looking at the old window with the
+      // new label under it.
+      if (_enabled) {
+        console.log(`[Data:${id}] params (${origin}):`, { ..._runtime });
+        void runScan(_viewer);
+      }
+      return true;
     },
     getStats() {
       return {
