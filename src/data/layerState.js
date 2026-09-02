@@ -313,6 +313,9 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // because there is no single one left — see the block below, which predicted
   // exactly this and has now been true for every layer added since.
   Object.freeze({ id: 'comptages-fr', token: 'cr', disposition: 'enabled-only' }),
+  // `dl` for délinquance. `d` is dams and `dp`/`dv` are dpe-fr and dvf-sales, so
+  // the two-character space is where this had to land anyway.
+  Object.freeze({ id: 'delinquance-fr', token: 'dl', disposition: 'enabled-only' }),
   // THE LAST FIVE TOKENS, claimed together by the five French address layers.
   // a–y are taken, `z` is the canonical UNKNOWN token two existing tests assert
   // on, and 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants

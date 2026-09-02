@@ -1,0 +1,55 @@
+{
+ "id": "621df2954fa5a3b5a023e23c",
+ "title": "Bases statistiques communale, départementale et régionale de la délinquance enregistrée par la police et la gendarmerie nationales ",
+ "slug": "bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales",
+ "license": "lov2",
+ "frequency": "annual",
+ "last_update": "2026-07-09T12:01:37.058000+00:00",
+ "page": "https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales",
+ "organization": {
+  "name": "Ministère de l'intérieur",
+  "id": "534fff91a3a7292c64a77f53"
+ },
+ "resources": [
+  {
+   "id": "3e7cf5e1-a084-4a6a-9a55-7c36a4e72aaf",
+   "title": "Atlas départemental de la délinquance enregistrée en 2025 - Édition juillet 2026",
+   "format": "pdf",
+   "filesize": 174436049,
+   "last_modified": "2026-07-09T11:58:12.801000+00:00",
+   "url": "https://static.data.gouv.fr/resources/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/20260709-115756/atlas-2026.pdf",
+   "mime": "application/pdf"
+  },
+  {
+   "id": "5e6dd067-3bba-45e3-b7ad-ed8c673bea5b",
+   "title": "Documentation - Bases statistiques communale, départementale et régionale de la délinquance enregistrée par la police et la gendarmerie nationales",
+   "format": "pdf",
+   "filesize": 277329,
+   "last_modified": "2026-07-09T12:01:37.058000+00:00",
+   "url": "https://static.data.gouv.fr/resources/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/20260709-120136/fichier-metadonnees-data-gouv-geographie-delinquance-juillet2026.pdf",
+   "mime": "application/pdf"
+  },
+  {
+   "id": "44ef4323-1097-48d5-8719-3c544b55d294",
+   "title": "COM - Base statistique communale de la délinquance enregistrée par la police et la gendarmerie nationales (fichier csv compressé)",
+   "format": "csv.gz",
+   "filesize": 39932450,
+   "last_modified": "2026-07-09T11:59:52.049000+00:00",
+   "url": "https://static.data.gouv.fr/resources/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/20260709-115942/donnee-data.gouv-2025-geographie2026-produit-le2026-06-25.csv.gz",
+   "mime": "text/csv"
+  },
+  {
+   "id": "2b27a675-e3bf-41ef-a852-5fb9ab483967",
+   "title": "DEP - Base statistique départementale de la délinquance enregistrée par la police et la gendarmerie nationales",
+   "format": "csv",
+   "filesize": 2001231,
+   "last_modified": "2026-07-09T12:00:39.199000+00:00",
+   "url": "https://static.data.gouv.fr/resources/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/20260709-120038/donnee-dep-data.gouv-2025-geographie2026-produit-le2026-06-25.csv",
+   "mime": "text/csv"
+  }
+ ],
+ "_fixture": {
+  "upstreamResourceCount": 11,
+  "keptResourceCount": 4
+ }
+}

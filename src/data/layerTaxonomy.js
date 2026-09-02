@@ -532,6 +532,24 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     cadence: 'periodic',
   }),
 
+  // Placed in RISQUES & ENVIRONNEMENT rather than anywhere near the registers,
+  // and the reasoning is worth stating because the alternative is tempting:
+  // this is not a fact about a PLACE the way a school or a charge point is, it
+  // is a rate attached to a polygon, and it shares its failure mode with the
+  // other layers in this group — it is read as a property of somewhere people
+  // live. `georisques` sits here for the same reason. `cadence: 'static'`
+  // because the base is republished about once a year, and calling it anything
+  // faster would suggest the map tracks events, which it does not.
+  Object.freeze({
+    id: 'delinquance-fr',
+    category: 'hazards',
+    label: 'Délinquance enregistrée',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'static',
+  }),
+
   // ── RÉSEAUX & CAPTEURS ────────────────────────────────────────────────────
   Object.freeze({
     id: 'telegeography-submarine-cables',

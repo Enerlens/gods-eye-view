@@ -43,6 +43,7 @@ import { promises as fsp } from 'node:fs';
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
+import zlib from 'node:zlib';
 import https from 'node:https';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { directionToHeading } from './src/data/directionText.js';
@@ -230,6 +231,24 @@ import {
   newestComptagesWeek,
   projectComptagesArcs,
 } from './src/data/comptagesFeed.js';
+import {
+  DELINQUANCE_ATTRIBUTION,
+  DELINQUANCE_DATASET,
+  DELINQUANCE_DATASET_URL,
+  DELINQUANCE_LICENCE,
+  DELINQUANCE_SOURCE,
+  DELINQUANCE_YEAR_FLOOR,
+  createCommuneFold,
+  delinquanceContoursUrl,
+  joinCommuneCells,
+  newestDelinquanceYear,
+  parseSsmsiCsv,
+  pickDelinquanceResources,
+  projectCommuneContours,
+  projectDelinquanceDepartements,
+  selectDelinquanceChips,
+} from './src/data/delinquanceFeed.js';
+import { delinquanceRateBins } from './src/data/delinquanceDepartements.js';
 import { projectSupDepartements } from './src/data/supDepartements.js';
 import {
   gbfsBoxKey,
@@ -4612,6 +4631,375 @@ function comptagesParisProxy() {
 
   return {
     name: 'comptages-paris-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * SSMSI recorded-crime proxy — keyless, Licence Ouverte 2.0.
+ *
+ *   GET /api/delinquance-fr/departements   — the whole DEP base + the national census
+ *   GET /api/delinquance-fr/communes/:dep  — one département's communes, joined to contours
+ *   GET /api/delinquance-fr/status         — edition, licence and cache state
+ *
+ * WHY A PROXY. The commune base is a **39.9 MB gzipped CSV of 5.24 million
+ * rows** and it is not optional: the DEP base carries no `est_diffuse` column
+ * at all, so SUPPRESSION — the one thing this layer must never get wrong —
+ * only exists at commune grain. The fold streams that file ONCE, keeps the
+ * three cell states apart, and builds in the same pass the two things a browser
+ * holding one département cannot compute: the national census of published /
+ * zero / suppressed cells, and the national list of published rates the
+ * quantile ramp is cut from. Re-deriving that per tab is not a possibility.
+ *
+ * WHY THE COMMUNE PACK IS PER-DÉPARTEMENT. Contours come from geo.api.gouv.fr
+ * one département at a time, and the browser only ever draws the few it is
+ * looking at. The fold is held in memory whole; the pack is cut from it.
+ *
+ * WHAT IT REFUSES TO DO. It never fills a suppressed cell. A suppressed commune
+ * travels to the browser as the suppressed STATE plus, separately, the
+ * departmental mean the publisher attaches to it — hoisted out of the cell so
+ * that a departmental constant can never be read as a commune measurement.
+ */
+const DELINQUANCE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling. The base is republished about once a year. */
+const DELINQUANCE_STALE_MS = 120 * 24 * 60 * 60 * 1000;
+const DELINQUANCE_TIMEOUT_MS = 300_000;
+const DELINQUANCE_CONTOUR_TIMEOUT_MS = 60_000;
+/** The COM csv.gz is 39.9 MB compressed and inflates to roughly 1.1 GB of text. */
+const DELINQUANCE_MAX_BYTES = 96 * 1024 * 1024;
+const DELINQUANCE_CONTOUR_MAX_BYTES = 48 * 1024 * 1024;
+const DELINQUANCE_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'delinquance-fr');
+const DELINQUANCE_CACHE_PATH = path.join(DELINQUANCE_DISK_DIR, 'base.json');
+/**
+ * Shape version of the cached fold. Bump whenever `projectDelinquanceDepartements`
+ * or `createCommuneFold` changes what it returns — the cache lives for four
+ * months on disk, so without it a projection edit is invisible until next year.
+ */
+const DELINQUANCE_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _delinquanceBase = null;
+/** @type {?Promise<object>} */
+let _delinquanceInFlight = null;
+let _delinquanceDiskChecked = false;
+/** dep -> projected contour list, memoized for the process. */
+const _delinquanceContours = new Map();
+/** dep -> in-flight contour promise, so ten tabs cost one fetch. */
+const _delinquanceContourInFlight = new Map();
+const _delinquanceRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/** GET one URL as JSON, under a timeout and a byte cap. */
+async function fetchDelinquanceJson(url, { timeout = DELINQUANCE_TIMEOUT_MS, cap = DELINQUANCE_MAX_BYTES } = {}) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(timeout),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, cap);
+}
+
+/** GET one URL as text, under a timeout and a byte cap. */
+async function fetchDelinquanceText(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'text/csv, text/plain' },
+    signal: AbortSignal.timeout(DELINQUANCE_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseTextCapped(response, DELINQUANCE_MAX_BYTES);
+}
+
+/**
+ * Stream the gzipped commune base through the fold, one line at a time.
+ *
+ * Never buffered whole: the file inflates to roughly a gigabyte of text, and
+ * the fold only ever needs one line at a time. `zlib.createGunzip` does the
+ * decompression and the remainder is carried across chunk boundaries, because
+ * a chunk boundary lands mid-line about five million times.
+ */
+async function streamDelinquanceCommunes(url, fold) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(DELINQUANCE_TIMEOUT_MS) });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  if (!response.body) throw new Error('commune base returned no body');
+
+  const gunzip = zlib.createGunzip();
+  Readable.fromWeb(response.body).pipe(gunzip);
+
+  let remainder = '';
+  const decoder = new TextDecoder('utf-8');
+  for await (const chunk of gunzip) {
+    const text = remainder + decoder.decode(chunk, { stream: true });
+    const lines = text.split('\n');
+    // The last element is a partial line unless the chunk ended exactly on a
+    // newline; either way it is correct to carry it.
+    remainder = lines.pop() ?? '';
+    for (const line of lines) fold.push(line.endsWith('\r') ? line.slice(0, -1) : line);
+  }
+  if (remainder) fold.push(remainder.endsWith('\r') ? remainder.slice(0, -1) : remainder);
+  return fold.finish();
+}
+
+/**
+ * Build the whole base: the département table, then the commune fold.
+ *
+ * The two are NOT parallel. The département pass establishes the newest year
+ * present, and the commune fold is cut to that one year — folding ten years of
+ * 5.24 million rows to throw nine away would be minutes of work for nothing.
+ */
+async function refreshDelinquanceBase() {
+  const started = Date.now();
+  const dataset = await fetchDelinquanceJson(DELINQUANCE_DATASET_URL, { cap: 8 * 1024 * 1024 });
+  const picked = pickDelinquanceResources(dataset);
+
+  const depText = await fetchDelinquanceText(picked.departements.url);
+  const departements = projectDelinquanceDepartements({ rows: parseSsmsiCsv(depText) });
+  const year = newestDelinquanceYear(departements.years, DELINQUANCE_YEAR_FLOOR);
+
+  const communes = await streamDelinquanceCommunes(
+    picked.communes.url, createCommuneFold({ year }),
+  );
+
+  // Cut ONCE, over every published commune rate in France, and then handed
+  // unchanged to every département pack. Re-cutting per pack would rebin a
+  // quiet département against its own quiet neighbours and paint it like a
+  // busy one — the same colour would stop meaning the same rate as soon as the
+  // camera moved.
+  const thresholds = Object.fromEntries(
+    [...communes.rates].map(([slug, values]) => [slug, delinquanceRateBins(values)]),
+  );
+
+  return {
+    departements: departements.departements,
+    years: departements.years,
+    newestYear: year,
+    thresholds,
+    // The chip set is DERIVED from what the commune base actually publishes,
+    // not from a constant, so an indicator the SSMSI stops publishing stops
+    // being offered instead of becoming an empty map.
+    chips: selectDelinquanceChips(communes.census),
+    census: communes.census,
+    censusByDepartement: communes.censusByDepartement,
+    communes: communes.communeCount,
+    edition: picked.edition,
+    staleEdition: picked.staleEdition,
+    licence: picked.licence,
+    lastUpdate: picked.lastUpdate,
+    documentation: picked.documentation?.url || null,
+    source: DELINQUANCE_SOURCE,
+    attribution: DELINQUANCE_ATTRIBUTION,
+    rowsSwept: communes.rowsSwept,
+    rowsKept: communes.rowsKept,
+    slowLines: communes.slowLines,
+    zeroPopulation: communes.zeroPopulation,
+    unknownIndicators: communes.unknownIndicators,
+    builtInMs: Date.now() - started,
+    // Kept OUT of the wire payload by the handler below — it is the raw fold,
+    // the whole of France, and only the per-département cut is ever served.
+    _cells: communes.communes,
+    _rates: communes.rates,
+    _means: communes.departementMeans,
+  };
+}
+
+async function readDelinquanceDisk() {
+  if (_delinquanceDiskChecked) return;
+  _delinquanceDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(DELINQUANCE_CACHE_PATH, 'utf8'));
+    if (entry?.version === DELINQUANCE_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.departements)
+      && Array.isArray(entry.payload?.cells)) {
+      // `_cells` is a Map in memory and an array of pairs on disk.
+      entry.payload._cells = new Map(entry.payload.cells);
+      delete entry.payload.cells;
+      _delinquanceBase = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeDelinquanceDisk(entry) {
+  // The fold is a Map keyed by commune code; JSON cannot hold one, so it goes
+  // to disk as pairs and is rebuilt on read.
+  const { _cells, _rates, ...rest } = entry.payload;
+  const serialisable = {
+    version: entry.version,
+    at: entry.at,
+    payload: { ...rest, cells: [..._cells] },
+  };
+  fsp.mkdir(DELINQUANCE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(DELINQUANCE_CACHE_PATH, JSON.stringify(serialisable)))
+    .catch((err) => console.warn('[Delinquance Proxy] cache write failed:', err?.message || err));
+}
+
+/** Single-flight, so two tabs opening at once cost one 5.24-million-row sweep. */
+function ensureDelinquanceBase() {
+  if (!_delinquanceInFlight) {
+    _delinquanceInFlight = refreshDelinquanceBase()
+      .then((payload) => {
+        const entry = { version: DELINQUANCE_CACHE_VERSION, at: Date.now(), payload };
+        _delinquanceBase = entry;
+        writeDelinquanceDisk(entry);
+        return entry;
+      })
+      .finally(() => { _delinquanceInFlight = null; });
+  }
+  return _delinquanceInFlight;
+}
+
+/**
+ * Commune contours for one département, memoized and coalesced.
+ *
+ * `coalesceProxyRequest` returns `{ promise, shared }` and NOT a promise, so
+ * the `.promise` is unwrapped here — awaiting the wrapper yields the wrapper
+ * itself, whose `.communes` is `undefined`, and `joinCommuneCells` then reports
+ * every commune in the département as `unshaped`. That reads exactly like an
+ * upstream data problem and is not one.
+ */
+async function ensureDelinquanceContours(dep) {
+  if (_delinquanceContours.has(dep)) return _delinquanceContours.get(dep);
+  const request = coalesceProxyRequest(_delinquanceContourInFlight, dep, async () => {
+    const geojson = await fetchDelinquanceJson(delinquanceContoursUrl(dep), {
+      timeout: DELINQUANCE_CONTOUR_TIMEOUT_MS,
+      cap: DELINQUANCE_CONTOUR_MAX_BYTES,
+    });
+    // `projectCommuneContours` returns `{ communes, vertices, simplified,
+    // droppedParts }` — the SHAPES are `.communes`, and `joinCommuneCells`
+    // wants that array. Handing it the wrapper joins nothing and reports every
+    // commune as `unshaped`, which reads like a data problem and is not one.
+    const projected = projectCommuneContours(geojson);
+    _delinquanceContours.set(dep, projected);
+    return projected;
+  });
+  return request.promise;
+}
+
+/** The wire payload for `/departements` — the fold's internals stripped off. */
+function delinquanceBasePayload(entry, stale) {
+  const { _cells, _rates, _means, ...wire } = entry.payload;
+  return { ...wire, fetchedAt: entry.at, stale };
+}
+
+/**
+ * Vite plugin: SSMSI recorded-crime proxy.
+ * @returns {import('vite').Plugin}
+ */
+function delinquanceFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/delinquance-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_delinquanceRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readDelinquanceDisk();
+        json(200, {
+          source: DELINQUANCE_SOURCE,
+          dataset: DELINQUANCE_DATASET,
+          licence: DELINQUANCE_LICENCE,
+          attribution: DELINQUANCE_ATTRIBUTION,
+          ttlMs: DELINQUANCE_TTL_MS,
+          base: _delinquanceBase
+            ? {
+              at: _delinquanceBase.at,
+              edition: _delinquanceBase.payload.edition,
+              staleEdition: _delinquanceBase.payload.staleEdition,
+              newestYear: _delinquanceBase.payload.newestYear,
+              departements: _delinquanceBase.payload.departements.length,
+              communes: _delinquanceBase.payload.communes,
+              rowsSwept: _delinquanceBase.payload.rowsSwept,
+              builtInMs: _delinquanceBase.payload.builtInMs,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      const communeMatch = /^\/communes\/([0-9][0-9ABab]|97[1-6])$/.exec(route);
+      if (route !== '/departements' && !communeMatch) {
+        json(404, { error: 'Unknown delinquance endpoint' });
+        return;
+      }
+
+      await readDelinquanceDisk();
+      const now = Date.now();
+      let entry = _delinquanceBase && now - _delinquanceBase.at <= DELINQUANCE_TTL_MS
+        ? _delinquanceBase
+        : null;
+      let stale = false;
+      if (!entry) {
+        try {
+          entry = await ensureDelinquanceBase();
+        } catch (error) {
+          console.warn('[Delinquance Proxy] base build unavailable:', error?.message || error);
+          // A four-month-old edition is still THIS edition — the base is
+          // republished about once a year — so serving it beats blanking.
+          if (_delinquanceBase && now - _delinquanceBase.at <= DELINQUANCE_STALE_MS) {
+            entry = _delinquanceBase;
+            stale = true;
+          } else {
+            json(503, { error: 'French recorded-crime base is temporarily unavailable' });
+            return;
+          }
+        }
+      }
+
+      if (!communeMatch) {
+        json(200, delinquanceBasePayload(entry, stale), { 'X-DELINQUANCE-FR': stale ? 'STALE' : 'HIT' });
+        return;
+      }
+
+      const dep = communeMatch[1].toUpperCase();
+      try {
+        const contours = await ensureDelinquanceContours(dep);
+        const joined = joinCommuneCells({
+          contours: contours.communes,
+          cells: entry.payload._cells,
+          departement: dep,
+        });
+        json(200, {
+          departement: dep,
+          year: entry.payload.newestYear,
+          // The departmental means a suppressed row carries, kept OUT of the
+          // cells: they are a departmental constant, and a card that printed
+          // one inside a commune's row would be publishing a number about a
+          // place that never published one.
+          means: entry.payload._means?.[dep] || {},
+          // National, not per-pack — see `refreshDelinquanceBase`.
+          thresholds: entry.payload.thresholds,
+          census: entry.payload.censusByDepartement?.[dep] || {},
+          ...joined,
+          // Geometry cost, reported rather than hidden: rings are decimated to
+          // ~11 m and multi-part communes are capped, so the payload says how
+          // much was simplified and how many parts were dropped.
+          vertices: contours.vertices,
+          simplified: contours.simplified,
+          droppedParts: contours.droppedParts,
+          fetchedAt: entry.at,
+          stale,
+        }, { 'X-DELINQUANCE-FR': stale ? 'STALE' : 'HIT' });
+      } catch (error) {
+        console.warn(`[Delinquance Proxy] commune pack ${dep} unavailable:`, error?.message || error);
+        json(503, { error: `Commune contours for département ${dep} are temporarily unavailable` });
+      }
+    });
+  }
+
+  return {
+    name: 'delinquance-france-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -15570,6 +15958,7 @@ export default defineConfig(({ mode }) => {
       schoolsFranceProxy(),
       supFranceProxy(),
       comptagesParisProxy(),
+      delinquanceFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),

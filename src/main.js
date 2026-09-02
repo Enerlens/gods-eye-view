@@ -35,6 +35,7 @@ import irveFranceLayer from './data/irveFrance.js';
 import schoolsFranceLayer from './data/schoolsFrance.js';
 import supFranceLayer from './data/supFrance.js';
 import comptagesParisLayer from './data/comptagesParis.js';
+import delinquanceFranceLayer from './data/delinquanceFrance.js';
 import aisLiveVesselsLayer from './data/aisLiveVessels.js';
 import militaryInstallationsLayer from './data/militaryInstallations.js';
 import militaryAwarenessLayer from './data/militaryAwareness.js';
@@ -322,6 +323,7 @@ async function init() {
     dataManager.register(schoolsFranceLayer);
     dataManager.register(supFranceLayer);
     dataManager.register(comptagesParisLayer);
+    dataManager.register(delinquanceFranceLayer);
     dataManager.register(aisLiveVesselsLayer);
     dataManager.register(militaryInstallationsLayer);
     dataManager.register(militaryAwarenessLayer);

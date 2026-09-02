@@ -421,6 +421,19 @@ export const DATA_CREDITS = [
       + 'flow ramp, which would claim a count that was not made.',
   },
   {
+    key: 'delinquance-fr',
+    html:
+      'French recorded crime: <em>Bases statistiques communale, d&eacute;partementale et r&eacute;gionale '
+      + 'de la d&eacute;linquance enregistr&eacute;e par la police et la gendarmerie</em>, published by the '
+      + '<a href="https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/" target="_blank" rel="noopener">SSMSI &mdash; Service statistique minist&eacute;riel de la s&eacute;curit&eacute; int&eacute;rieure</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
+      + 'This is <strong>recorded</strong> crime &mdash; what police and gendarmerie registered, which tracks '
+      + 'reporting rates and force presence as much as offending. The publisher WITHHOLDS any commune count '
+      + 'small enough to identify someone: measured on the 2025 slice, that is 9.0% of the 34 920 communes '
+      + 'for vols avec armes and <strong>69.8% for escroqueries</strong>. A withheld cell arrives carrying no '
+      + 'number at all, is excluded from every quantile, and is never drawn as a zero or as a low value.',
+  },
+  {
     key: 'radio-browser',
     html:
       'Internet-radio station directory: ' +

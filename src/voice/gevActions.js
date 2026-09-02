@@ -286,6 +286,32 @@ const LAYER_ALIASES = new Map([
   ['boucles', 'comptages-fr'],
   ['capteurs routiers', 'comptages-fr'],
   ['road sensors', 'comptages-fr'],
+  ["delinquance", 'delinquance-fr'],
+  ["délinquance", 'delinquance-fr'],
+  ["delinquance enregistree", 'delinquance-fr'],
+  ["délinquance enregistrée", 'delinquance-fr'],
+  ["crime", 'delinquance-fr'],
+  ["crimes", 'delinquance-fr'],
+  ["recorded crime", 'delinquance-fr'],
+  ["crime map", 'delinquance-fr'],
+  ["carte de la delinquance", 'delinquance-fr'],
+  ["carte de la délinquance", 'delinquance-fr'],
+  ["criminalite", 'delinquance-fr'],
+  ["criminalité", 'delinquance-fr'],
+  ["insecurite", 'delinquance-fr'],
+  ["insécurité", 'delinquance-fr'],
+  ["ssmsi", 'delinquance-fr'],
+  ["cambriolages", 'delinquance-fr'],
+  ["burglaries", 'delinquance-fr'],
+  ["cambriolage", 'delinquance-fr'],
+  ["vols", 'delinquance-fr'],
+  ["police statistics", 'delinquance-fr'],
+  ["statistiques de la delinquance", 'delinquance-fr'],
+  ["statistiques de la délinquance", 'delinquance-fr'],
+  ["faits constates", 'delinquance-fr'],
+  ["faits constatés", 'delinquance-fr'],
+  ["securite interieure", 'delinquance-fr'],
+  ["sécurité intérieure", 'delinquance-fr'],
   ['ais', 'ais-live-vessels'],
   ['ships', 'ais-live-vessels'],
   ['vessels', 'ais-live-vessels'],
@@ -3445,6 +3471,7 @@ function layerTitle(layerId) {
   if (layerId === 'schools-fr') return 'School';
   if (layerId === 'sup-fr') return 'Campus';
   if (layerId === 'comptages-fr') return 'Counting Arc';
+  if (layerId === 'delinquance-fr') return 'Commune';
   if (layerId === 'local-ports') return 'Port';
   if (layerId === 'local-airports') return 'Airport';
   if (layerId === 'marine-buoys') return 'Marine Buoy';
