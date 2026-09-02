@@ -392,6 +392,20 @@ export const DATA_CREDITS = [
       'geocoded only to their commune, and their cards say that too.',
   },
   {
+    key: 'medecins-fr',
+    html:
+      'French doctors: <em>Annuaire sant&eacute; Ameli</em>, published by the ' +
+      '<a href="https://www.data.gouv.fr/datasets/annuaire-sante-ameli" target="_blank" rel="noopener">Caisse nationale de l&rsquo;Assurance Maladie</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), ' +
+      'edition of 17/08/2026, rebuilt weekly. <strong>The register publishes no coordinates</strong> &mdash; ' +
+      'positions are geocoded against the <a href="https://adresse.data.gouv.fr/" target="_blank" rel="noopener">Base Adresse Nationale</a> ' +
+      '(Licence Ouverte 2.0) and each site carries the precision BAN returned; 716 are placed at their commune centre and say so. ' +
+      'Accessibility is the <em>accessibilit&eacute; potentielle localis&eacute;e</em> (APL) 2024 to general practitioners aged 65 or under, ' +
+      '<a href="https://www.data.gouv.fr/datasets/accessibilite-potentielle-localisee-apl-aux-professionnels-de-sante" target="_blank" rel="noopener">DREES</a> ' +
+      '(Licence Ouverte 2.0), France hors Mayotte. The register carries no identifier, so counts are distinct ' +
+      'practitioner names, not a headcount &mdash; measured 5 % above the CNAM&rsquo;s own 2024 figure.',
+  },
+  {
     key: 'sup-fr',
     html:
       'French higher education: <em>Effectifs d&rsquo;&eacute;tudiants inscrits &mdash; d&eacute;tail par '
@@ -404,6 +418,21 @@ export const DATA_CREDITS = [
       + '(same licence), which also supplies the establishment names and the list of formations on '
       + 'each card. A borrowed coordinate says so on its card, and the 688 establishments neither '
       + 'file can place are reported rather than invented.',
+  },
+  {
+    key: 'petite-enfance-fr',
+    html:
+      'French childcare coverage: <em>Taux de couverture d&rsquo;accueil du jeune enfant</em> and '
+      + '<em>Nombre de places offertes pour les enfants de moins de 3 ans</em>, published by the '
+      + '<a href="https://data.caf.fr/explore/dataset/txcouv_pe_dep/" target="_blank" rel="noopener">Caisse nationale des allocations familiales</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>), '
+      + 'read at the newest published edition across d&eacute;partement, EPCI and commune. This is an '
+      + 'INDICATOR, not a register: no national list of cr&egrave;ches is published as open data, so '
+      + 'the layer draws places per 100 children under three rather than establishments. The commune '
+      + 'breakdown exists only for communes over 10&nbsp;000 inhabitants (1&nbsp;061 of ~34&nbsp;875), '
+      + 'and EPCI and commune points are placed at their administrative centre from '
+      + '<a href="https://geo.api.gouv.fr" target="_blank" rel="noopener">geo.api.gouv.fr</a> '
+      + '(&Eacute;talab, same licence) &mdash; a centre, never a boundary, and the cards say so.',
   },
   {
     key: 'radio-browser',

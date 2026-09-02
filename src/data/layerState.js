@@ -355,6 +355,17 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'local-firms', token: 'w', disposition: 'enabled-only' }),
   Object.freeze({ id: 'local-ports', token: 'o', disposition: 'enabled-only' }),
   Object.freeze({ id: 'marine-buoys', token: 'y', disposition: 'enabled-only' }),
+  // Two characters, and the grammar was widened for exactly this before the
+  // five address layers landed (`gr`, `dv`, `dp`, `ur`, `if`). Every single
+  // character is taken: a–y, `z` is the canonical UNKNOWN token two tests
+  // assert on, and 0–9 went to schools-fr, gas-fr, power-grid, rte-generation,
+  // fr-hydro-plants, bdtopo-buildings, local-airports, road-status-fr,
+  // road-events-fr and irve-fr. `md` for médecins.
+  //
+  // `enabled-only`, although the layer owns a paint chip: the chip changes
+  // WHICH value the national choropleth carries, never what is hidden, so a
+  // shared link that opens on the author's default surprises nobody.
+  Object.freeze({ id: 'medecins-fr', token: 'md', disposition: 'enabled-only' }),
   Object.freeze({ id: 'meteofrance-vigilance', token: 'n', disposition: 'enabled-only' }),
   Object.freeze({ id: 'military', token: 'm', disposition: 'enabled+mirrored-options', optionOwner: 'flights' }),
   Object.freeze({ id: 'military-awareness', token: 'g', disposition: 'enabled-only' }),
@@ -367,6 +378,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // claimed by `edf-power-plants` before this branch merged. A share link that
   // silently enabled the wrong layer is exactly what the duplicate-token
   // assertion in this file exists to prevent.
+  // TWO CHARACTERS, in the space the five French address layers widened.
+  // `pe` for petite enfance; `p` is transit-fr and every other single letter
+  // is taken. A duplicate here is a BOOT failure, not a review nit.
+  Object.freeze({ id: 'petite-enfance-fr', token: 'pe', disposition: 'enabled-only' }),
   Object.freeze({ id: 'power-grid', token: '2', disposition: 'enabled-only' }),
   Object.freeze({ id: 'radio', token: 'r', disposition: 'enabled+options', optionOwner: 'radio' }),
   // Two road layers, and the digits are how they are told apart in a share
