@@ -32,6 +32,12 @@
  *        inert until its layer owns a LEFT_CLICK handler — the first version of
  *        these layers shipped exactly that way and every other check still
  *        passed
+ *   viii. clicking BARE GROUND on the urbanism layer answers for that ground.
+ *        The zoning map is drawn for a whole block and used to carry its words
+ *        on one 26-pixel glyph, so the plot opposite could be seen and not
+ *        read. Only a real scene can prove this: it needs a pick to say the
+ *        pixel belongs to nobody, a geometric resolve of the coordinate, and a
+ *        point-in-polygon against what is actually drawn
  *
  * Screenshots are written under the gitignored `qa-shots/address-layers/`.
  *
@@ -606,6 +612,74 @@ const note = (ok, message) => {
     // The selection card must reach the SCREEN, not merely the layer's state:
     // `selectedId` can be set while the overlay paints nothing.
     note(Object.keys(painted).length > 0, `a selection card was painted (${JSON.stringify(painted)})`);
+
+    console.log('\n— clicking bare ground answers for that ground —');
+    // Aimed where the layer CLAIMS to work: a pixel whose pick is either
+    // nothing at all or one of the urbanism layer's own shapes. Aiming blindly
+    // would land on a DPE marker often enough — 2 805 diagnostics within 300 m
+    // of this address — that the check would fail for the one reason that is
+    // not a bug, another layer legitimately owning the click.
+    const groundTarget = await page.evaluate(() => {
+      const gev = window.__godsEyeView;
+      const scene = gev.viewer.scene;
+      const canvas = scene.canvas;
+      const rect = canvas.getBoundingClientRect();
+      const source = gev.viewer.dataSources.getByName('urbanisme-gpu')?.[0];
+      const owns = (picked) => {
+        const id = typeof picked?.id === 'string' ? picked.id : picked?.id?.id;
+        return typeof id === 'string' && Boolean(source?.entities?.getById?.(id));
+      };
+      // Plain `{x, y}` and the viewer's own ellipsoid, because the app
+      // publishes no global `Cesium` — every picking entry point reads only
+      // `.x` and `.y` off what it is handed.
+      const ellipsoid = scene.globe?.ellipsoid || scene.ellipsoid;
+      const r2d = 180 / Math.PI;
+      for (const fx of [0.68, 0.60, 0.75, 0.52, 0.82]) {
+        for (const fy of [0.42, 0.55, 0.32, 0.62]) {
+          const x = Math.round(canvas.clientWidth * fx);
+          const y = Math.round(canvas.clientHeight * fy);
+          const picked = scene.pick({ x, y });
+          if (picked && !owns(picked)) continue;
+          const ray = scene.camera.getPickRay({ x, y });
+          const hit = ray ? scene.globe.pick(ray, scene) : null;
+          if (!hit) continue;
+          const carto = ellipsoid.cartesianToCartographic(hit);
+          if (!carto) continue;
+          return {
+            x: rect.left + x,
+            y: rect.top + y,
+            lon: carto.longitude * r2d,
+            lat: carto.latitude * r2d,
+            onOwnShape: Boolean(picked),
+          };
+        }
+      }
+      return null;
+    });
+    note(Boolean(groundTarget), 'found a pixel of bare urbanism ground to click');
+    if (groundTarget) {
+      await page.mouse.click(groundTarget.x, groundTarget.y);
+      await sleep(350);
+      const stats = (await readLayers(page, ['urbanisme-gpu']))['urbanisme-gpu'].stats || {};
+      const card = stats.groundCard;
+      note(stats.selectedId === 'urbanisme-gpu:ground' && Boolean(card?.title),
+        `a click on ${groundTarget.onOwnShape ? 'the wash' : 'bare globe'} opened `
+        + `"${card?.title ?? 'nothing'}"`);
+      // The card must describe the pixel that was clicked, not the marker. A
+      // card that quietly re-reported the scan point would look identical on a
+      // screenshot and answer the wrong plot.
+      const offset = card ? Math.round(metresApart(groundTarget, card)) : Infinity;
+      note(offset < 30, `the answer is anchored on the clicked ground (${offset} m from it)`);
+      const centreOffset = stats.scanCentre
+        ? Math.round(metresApart(stats.scanCentre, groundTarget)) : 0;
+      console.log(`  ·    clicked ${centreOffset} m from the scan marker`);
+      const groundPainted = await page.evaluate(
+        () => window.__gevWorldOverlay?.getDiagnostics?.()?.paintedBySource || {},
+      );
+      note(Number(groundPainted['urbanisme-gpu'] ?? 0) > 0,
+        `the ground card reached the screen (${JSON.stringify(groundPainted)})`);
+      await shoot(page, 'address-ground-card.png');
+    }
 
     console.log('\n— dormancy above the ceiling —');
     await flyTo(page, REGION_VIEW);

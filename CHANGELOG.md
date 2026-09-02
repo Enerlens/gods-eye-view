@@ -3,10 +3,40 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
-## [Unreleased] — 2026-09-01
+## [Unreleased] — 2026-09-02
 
 ### Added
 
+- **Urbanisme (PLU) — click anywhere on the map, not on the marker.** The layer
+  drew a whole block of zoning and put every word of the answer on one 26-pixel
+  glyph, so the plot opposite could be SEEN and not READ: knowing what the
+  magenta polygon across the street means meant flying the camera over it.
+  A click on the wash, on an outline, or on the bare globe between them now
+  opens a card for that spot — which zone, what the family means, which
+  easements reach it, when the PLU was approved and under which document.
+  Measured at Ustaritz at 900 m: four clicks across one screen answer `UB`,
+  `UA`, `A` and `UB`. No request and no wait: the answer is read out of the map
+  already in hand. The scan marker keeps its own card, which is the scan-level
+  summary.
+- **The register outranks the drawing, within 30 m of the marker.** The shapes
+  on screen are decimated by up to 96%, and this layer's own rule is that a
+  simplified outline must never decide which rule applies to a house: measured
+  at Ustaritz, the point APIcarto itself answers `UB` for falls OUTSIDE the
+  drawn `UB` ring — 571 sampled points do. At the scan point the register has
+  already answered, so it is used and the geometry is not consulted; further
+  out the drawn map answers and the card says its outlines are simplified.
+- **Four ways to have no zoning, said apart.** The answer was refused whole,
+  the box never covered this spot, the camera is above 1 500 m so only the
+  marker was asked about, or the published document genuinely stops here.
+  A card printing "aucun zonage" for all four would report three of the layer's
+  own limits as facts about the plot. Easements the same: "aucune servitude à
+  ce point" only where the register answered that point, and "aucune des N
+  servitudes du repère n'atteint ce point" everywhere else — because "this
+  ground is clear" is a survey, and the easement half is only ever asked at the
+  marker.
+- **An approval date is a date.** The same national schema publishes `datvalid`
+  as `20240323` at Ustaritz and `2026-06-16` in Paris; both now read
+  `23/03/2024` and `16/06/2026` on every card.
 - **Accueil du jeune enfant (FR) — the indicator, because the register does not
   exist.** The question "can we add a crèche dataset?" was answered by
   measurement, not assumption, and the answer is no: the Cnaf publishes 210
