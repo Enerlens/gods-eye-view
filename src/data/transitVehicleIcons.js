@@ -8,8 +8,9 @@
  * silhouettes: a bus as a capsule with wheel stubs, a tram as an articulated
  * body with a pantograph. They were internally consistent and nobody could
  * tell what they were. Recognition beats invention, and Material Symbols
- * happens to cover the GTFS mode list almost exactly — including `funicular`
- * and `cable_car`, which almost no icon set carries.
+ * happens to cover the GTFS mode list almost exactly — including `funicular`,
+ * which almost no icon set carries. Almost: see the note on `aerial` below for
+ * the one mode a UI icon set does not draw well enough at map size.
  *
  * WHAT THAT COSTS, AND WHAT WAS DONE ABOUT IT. These glyphs are FRONT views: a
  * bus seen head-on, a tram with its pantograph above it, a ship on water. A
@@ -28,11 +29,21 @@
  * while black survives multiplication (0 × c = 0) and keeps the glyph readable
  * over pale terrain. Nothing carries a hue of its own.
  *
+ * ONE CLASS IS NOT GOOGLE'S. `aerial` draws Maki's `aerialway`, vendored in
+ * `mapIcons.js`. Material's `cable_car` is an interface glyph — a boxed cabin
+ * on stubby legs — and at the 22 CSS px this layer draws at it reads as a
+ * building, not as something hanging from a wire. Maki authors for map labels
+ * at exactly this size and draws the cable, which is the one feature that
+ * separates a téléphérique from a tram. That module records the rest.
+ *
  * ATTRIBUTION AND LICENCE. `licenses/material-symbols/` carries the Apache-2.0
  * text and a NOTICE recording exactly which glyphs are used and that only the
- * `d` path string of each is vendored, verbatim. The halo/fill treatment is
- * this project's; the geometry is Google's and is unmodified.
+ * `d` path string of each is vendored, verbatim. `licenses/maki/` does the same
+ * for the one Maki glyph, under CC0 — which imposes no conditions, so that
+ * notice is this project's discipline rather than an obligation. The halo/fill
+ * treatment is this project's; both sets' geometry is unmodified.
  */
+import { mapIconGlyph } from './mapIcons.js';
 
 /**
  * Vendored Material Symbols path data (Rounded, filled, weight 400).
@@ -51,7 +62,6 @@ const MATERIAL_SYMBOL_PATHS = Object.freeze({
   train: 'M160-340v-380q0-53 27.5-84.5t72.5-48q45-16.5 102.5-22T480-880q66 0 124.5 5.5t102 22q43.5 16.5 68.5 48t25 84.5v380q0 59-40.5 99.5T660-200l20 20q17 17 8 38.5T655-120q-7 0-13.5-2.5T630-130l-70-70H400l-70 70q-5 5-11.5 7.5T305-120q-23 0-32.5-21.5T280-180l20-20q-59 0-99.5-40.5T160-340Zm80-220h200v-120H240v120Zm280 0h200v-120H520v120ZM340-320q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17Zm280 0q26 0 43-17t17-43q0-26-17-43t-43-17q-26 0-43 17t-17 43q0 26 17 43t43 17Z',
   monorail: 'M280-80q-17 0-28.5-11.5T240-120q0-17 11.5-28.5T280-160h160v-80q0-17 11.5-28.5T480-280q17 0 28.5 11.5T520-240v80h160q17 0 28.5 11.5T720-120q0 17-11.5 28.5T680-80H280Zm40-800h320q66 0 113 47t47 113v380q0 58-41 99t-99 41h-60q-17 0-28.5-11.5T560-240q0-33-23.5-56.5T480-320q-33 0-56.5 23.5T400-240q0 17-11.5 28.5T360-200h-60q-58 0-99-41t-41-99v-380q0-66 47-113t113-47Zm-80 200v120h480v-120H240Z',
   directions_boat: 'M158-200 82-468q-3-12 2.5-28t23.5-22l52-18v-184q0-33 23.5-56.5T240-800h120v-80q0-17 11.5-28.5T400-920h160q17 0 28.5 11.5T600-880v80h120q33 0 56.5 23.5T800-720v184l52 18q21 8 25 23.5t1 26.5l-76 268q-40 0-74-15.5T666-255q-11-11-26-11t-26 11q-28 24-62 39.5T480-200q-10 0-19-1t-18-3q-29-6-55-21t-48-35q-8-8-20.5-8t-20.5 8q-28 27-65 43.5T158-200ZM480-40q-41 0-81.5-10T320-80q-38 20-78 30t-82 10h-40q-17 0-28.5-11.5T80-80q0-17 11.5-28.5T120-120h40q36 0 72-10t67-29q10-6 21-6t21 6q22 14 50.5 23t54.5 12q8 1 17 1.5t17 .5q36 0 72-9t67-28q10-6 21-6t21 6q31 20 67 29.5t72 9.5h40q17 0 28.5 11.5T880-80q0 17-11.5 28.5T840-40h-40q-42 0-82-10t-78-30q-38 20-78.5 30T480-40ZM240-562l215-70q12-4 25-4t25 4l215 70v-158H240v158Z',
-  cable_car: 'M160-160q-17 0-28.5-11.5T120-200q0-17 11.5-28.5T160-240v-480q-17 0-28.5-11.5T120-760q0-17 11.5-28.5T160-800h93l18-53q4-12 14.5-19.5T309-880h342q13 0 23.5 7.5T689-853l18 53h93q17 0 28.5 11.5T840-760q0 17-11.5 28.5T800-720v480q17 0 28.5 11.5T840-200q0 17-11.5 28.5T800-160H680q0 17-11.5 28.5T640-120H320q-17 0-28.5-11.5T280-160H160Zm80-360h120v-140q0-25-17.5-42.5T300-720q-25 0-42.5 17.5T240-660v140Zm180 0h120v-140q0-25-17.5-42.5T480-720q-25 0-42.5 17.5T420-660v140Zm180 0h120v-140q0-25-17.5-42.5T660-720q-25 0-42.5 17.5T600-660v140ZM480-280q25 0 42.5-17.5T540-340q0-25-17.5-42.5T480-400q-25 0-42.5 17.5T420-340q0 25 17.5 42.5T480-280Z',
   funicular: 'M89-53q-18 5-33.5-6.5T40-91q0-13 7.5-23T68-128l172-47v-105h-80q-17 0-28.5-11.5T120-320v-400q-17 0-28.5-11.5T80-760q0-17 11.5-28.5T120-800h80v-40q0-17 11.5-28.5T240-880h480q17 0 28.5 11.5T760-840v40h80q17 0 28.5 11.5T880-760q0 17-11.5 28.5T840-720v320q0 17-11.5 28.5T800-360h-80v55l151-42q18-5 33.5 6.5T920-309q0 13-7.5 23T892-272L89-53Zm271-154 240-66v-87h-80v40q0 17-11.5 28.5T480-280H360v73ZM200-480h240v-240H200v240Zm320-80h240v-160H520v160Z',
   local_taxi: 'M240-200v20q0 25-17.5 42.5T180-120q-25 0-42.5-17.5T120-180v-286q0-7 1-14t3-13l75-213q8-24 29-39t47-15h85v-40q0-17 11.5-28.5T400-840h160q17 0 28.5 11.5T600-800v40h85q26 0 47 15t29 39l75 213q2 6 3 13t1 14v286q0 25-17.5 42.5T780-120q-25 0-42.5-17.5T720-180v-20H240Zm-8-360h496l-42-120H274l-42 120Zm68 240q25 0 42.5-17.5T360-380q0-25-17.5-42.5T300-440q-25 0-42.5 17.5T240-380q0 25 17.5 42.5T300-320Zm360 0q25 0 42.5-17.5T720-380q0-25-17.5-42.5T660-440q-25 0-42.5 17.5T600-380q0 25 17.5 42.5T660-320Z',
   flight: 'M480-120 377-91q-14 4-25.5-4.5T340-118q0-12 3-19.5t8-11.5l69-51v-220l-291 86q-19 5-34-6t-15-31q0-15 5-25t14-15l321-189v-220q0-25 17.5-42.5T480-880q25 0 42.5 17.5T540-820v220l321 189q9 5 14 15t5 25q0 20-15 31t-34 6l-291-86v220l69 51q5 4 8 11.5t3 19.5q0 14-11.5 22.5T583-91l-103-29Z',
@@ -73,6 +83,9 @@ const VIEW_BOX = '0 -960 960 960';
  *   - `trolleybus` uses `directions_bus`. Material publishes no trolleybus
  *     glyph, and `trolley` is a luggage cart. A trolleybus IS a bus; the
  *     colour channel carries the rest. No French feed publishes one today.
+ *
+ * And one name here is not a Material Symbol at all: `aerialway` is Maki's.
+ * See {@link MAKI_SYMBOLS}.
  */
 const KIND_SYMBOL = Object.freeze({
   bus: 'directions_bus',
@@ -83,12 +96,28 @@ const KIND_SYMBOL = Object.freeze({
   rail: 'train',
   monorail: 'monorail',
   ferry: 'directions_boat',
-  aerial: 'cable_car',
+  aerial: 'aerialway',
   funicular: 'funicular',
   'cable-tram': 'directions_railway',
   taxi: 'local_taxi',
   air: 'flight',
 });
+
+/**
+ * The symbols this pack takes from Maki rather than from Material Symbols.
+ *
+ * Kept as an explicit set rather than inferred from "is it missing from the
+ * Material table": a symbol that vanished from that table by accident would
+ * then silently become a Maki lookup, fail, and fall through to the disc — the
+ * one outcome `transitVehicleGlyph` exists to prevent.
+ *
+ * These are drawn by `mapIcons.mapIconGlyph()` rather than by the renderer
+ * below, because they are authored in a 15-unit box and Material's glyphs are
+ * authored in a 960-unit one. Rescaling either set into the other's space would
+ * be a redraw of someone else's artwork for no benefit, and would falsify the
+ * "verbatim, not rescaled" claim both notices make.
+ */
+const MAKI_SYMBOLS = Object.freeze(new Set(['aerialway']));
 
 /**
  * Raster size. Cesium's billboard atlas has no mipmaps, so a texture much
@@ -137,15 +166,27 @@ export function transitSymbolName(kind) {
  */
 export function transitVehicleGlyph(kind, { px = TRANSIT_GLYPH_RASTER_PX } = {}) {
   const symbol = transitSymbolName(kind);
-  const cacheKey = `${symbol || 'disc'}@${px}`;
+  // Maki artwork lives in its own coordinate box, so it is drawn by the module
+  // that owns that box — which applies the same halo colour and white fill, so
+  // the two sets stay one look and one tint contract. A name listed there with
+  // no artwork behind it is a failing test, but at runtime it falls through to
+  // the disc below rather than handing Cesium a null image.
+  if (symbol && MAKI_SYMBOLS.has(symbol)) {
+    const drawn = mapIconGlyph('maki', symbol, { px });
+    if (drawn) return drawn;
+  }
+
+  // A class with no glyph gets a disc, not another class's vehicle: borrowing
+  // one would assert something the feed never said. Keyed on whether the
+  // ARTWORK exists rather than on whether the name does — a name with no path
+  // behind it used to render `<path d="undefined"/>`, an empty billboard that
+  // looks like a dropped vehicle rather than an unresolved class.
+  const path = symbol ? MATERIAL_SYMBOL_PATHS[symbol] : null;
+  const cacheKey = `${path ? symbol : 'disc'}@${px}`;
   const cached = _cache.get(cacheKey);
   if (cached) return cached;
 
-  // A class with no glyph gets a disc, not another class's vehicle: borrowing
-  // one would assert something the feed never said.
-  const geometry = symbol
-    ? `<path d="${MATERIAL_SYMBOL_PATHS[symbol]}"/>`
-    : FALLBACK_DISC;
+  const geometry = path ? `<path d="${path}"/>` : FALLBACK_DISC;
 
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="${VIEW_BOX}">`
     // Halo first: the same geometry, stroked wide and dark. Multiplying a tint
@@ -195,6 +236,18 @@ export function transitHeadingPointer(px = TRANSIT_GLYPH_RASTER_PX) {
   const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
   _cache.set(cacheKey, uri);
   return uri;
+}
+
+/**
+ * Which vendored set a symbol's artwork comes from, or null if it has none.
+ * The licence a glyph ships under depends on this, so the notices are testable.
+ * @param {?string} symbol
+ * @returns {?('maki'|'material-symbols')}
+ */
+export function transitSymbolSet(symbol) {
+  if (!symbol) return null;
+  if (MAKI_SYMBOLS.has(symbol)) return 'maki';
+  return MATERIAL_SYMBOL_PATHS[symbol] ? 'material-symbols' : null;
 }
 
 /** The vendored path table, for tests that assert the artwork is intact. */

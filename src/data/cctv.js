@@ -68,6 +68,7 @@ import { resolveEllipsoidalGround } from './terrainHeights.js';
 import { cachedGroundFloor, resolveGroundFloorCells, warmGroundFloor } from './groundFloor.js';
 import { sampleMeshFloorCells } from './meshFloorSampler.js';
 import { horizonOccluder } from './iconOrientation.js';
+import { mapIconGlyph } from './mapIcons.js';
 import { cameraHue, viewshedColors, createFrustumVolumePrimitive } from './cctvViewshed.js';
 import { createCalibrationGizmo, GIZMO_ID_PREFIX } from './cctvGizmo.js';
 import {
@@ -209,26 +210,27 @@ export function calibrationPatchMovesAnchor(patch) {
     Object.prototype.hasOwnProperty.call(patch, 'offsetEastM');
 }
 
-/** Base64-encoded SVG camera icon for billboard rendering. */
-const CAMERA_ICON = (() => {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
-    <defs>
-      <linearGradient id="lens" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stop-color="#c9f6ff"/>
-        <stop offset="45%" stop-color="#6fd9ff"/>
-        <stop offset="100%" stop-color="#1a5f78"/>
-      </linearGradient>
-    </defs>
-    <g transform="translate(4 6)">
-      <rect x="0" y="8" width="20" height="9" rx="2.5" fill="#0e1720" stroke="#75e7ff" stroke-width="1.2"/>
-      <rect x="17" y="10" width="10" height="5" rx="1.5" fill="#132433" stroke="#75e7ff" stroke-width="1"/>
-      <circle cx="24" cy="12.5" r="3.1" fill="url(#lens)" stroke="#dbfbff" stroke-width="0.8"/>
-      <rect x="6.4" y="17" width="4.2" height="8.5" rx="1.2" fill="#10212d" stroke="#75e7ff" stroke-width="1"/>
-      <rect x="4.2" y="24" width="8.6" height="2.5" rx="1.1" fill="#0b151d" stroke="#4ecde7" stroke-width="0.8"/>
-    </g>
-  </svg>`;
-  return 'data:image/svg+xml;base64,' + btoa(svg);
-})();
+/**
+ * The camera billboard: Temaki's `security_camera`, vendored in `mapIcons.js`.
+ *
+ * WHY NOT THE DRAWING THAT WAS HERE. The old glyph baked its own cyan into the
+ * artwork — `#75e7ff` strokes over dark fills, with a gradient lens — and that
+ * is a bug in a layer that TINTS. Cesium multiplies `billboard.color` into the
+ * texture, and this layer sets that colour to say which camera the operator has
+ * selected: {@link IDLE_CAMERA_COLOR} at rest, {@link ACTIVE_CAMERA_COLOR} for
+ * the active one. #75e7ff x #ffd97a is #75c57a, so the ONE camera the amber was
+ * meant to single out rendered green, and the idle cyan came out oversaturated
+ * at #31d2ff. White artwork makes the multiply an identity: idle is exactly the
+ * cyan asked for and active is exactly the amber.
+ *
+ * The dark halo survives the same multiply (0 x c = 0), which is what keeps the
+ * glyph readable over a pale orthophoto now that it carries no fill of its own.
+ *
+ * Drawn at 88 px for a 24 px billboard: Cesium's atlas has no mipmaps, so the
+ * source is oversampled rather than upscaled — the discipline every other icon
+ * pack here records.
+ */
+const CAMERA_ICON = mapIconGlyph('temaki', 'security_camera', { px: 88 });
 
 /**
  * Seed camera definitions used when no live sources are available.
