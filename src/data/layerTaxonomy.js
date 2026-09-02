@@ -710,6 +710,22 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // The one row in this group that is not a REGISTER. Every neighbour reports
+  // something the State has written down about a place; this one MEASURES a
+  // property of the place itself — how far the network actually reaches from
+  // it — by running a routing engine over IGN's own road and path graph. It
+  // sits with the address layers because it answers the same question they do,
+  // about the same clicked point, and because a catchment area is only ever
+  // read next to what is inside it.
+  Object.freeze({
+    id: 'isochrone-fr',
+    category: 'built-environment',
+    label: 'Zone de chalandise (isochrone)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'bdtopo-buildings',
     category: 'built-environment',

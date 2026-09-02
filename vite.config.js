@@ -153,9 +153,10 @@ import {
 } from './src/data/adsFeed.js';
 import {
   buildIsochroneUrl,
-  clampSeconds as clampIsochroneSeconds,
+  parseSteps as parseIsochroneSteps,
   projectIsochrone,
   resolveProfile as resolveIsochroneProfile,
+  ringExpansion,
 } from './src/data/isochroneFeed.js';
 import {
   FILOSOFI_MAX_CELLS,
@@ -20692,7 +20693,17 @@ function adsFranceProxy() {
 
 /**
  * IGN isochrone — the area actually reachable, rather than a circle.
- * `GET /api/isochrone?lat=&lon=&profile=foot|car&seconds=900`
+ *
+ * `GET /api/isochrone?lat=&lon=&profile=foot|car&seconds=300,600,900`
+ *
+ * `seconds` takes a COMMA LIST and answers one payload holding every ring, in
+ * ascending order, plus the expansion between consecutive pairs. A single value
+ * is still accepted and still answers one ring, because that is the shape the
+ * route shipped with. Three rings is the default because the question is asked
+ * in minutes — a brief says "dix minutes à pied", never "800 metres" — and
+ * three nested outlines are the most that stay legible over a city block.
+ *
+ * The rings are fetched ONE AT A TIME. See the loop for why.
  * @returns {import('vite').Plugin}
  */
 function isochroneProxy() {
@@ -20706,15 +20717,41 @@ function isochroneProxy() {
         // not have; failing loudly beats drawing a walking ring labelled bike.
         throw new Error(`unsupported profile: ${profile} (foot or car)`);
       }
-      const seconds = clampIsochroneSeconds(url.searchParams.get('seconds'));
+      const steps = parseIsochroneSteps(url.searchParams.get('seconds'));
       return {
-        key: addressCacheKey('isochrone', point, profile, seconds),
+        key: addressCacheKey('isochrone', point, profile, steps.join('-')),
         load: async () => {
-          const payload = await fetchAddressSource(
-            buildIsochroneUrl({ ...point, profile, seconds }),
-            { maxBytes: 4 * 1024 * 1024 },
-          );
-          return payload ? projectIsochrone(payload) : null;
+          // SEQUENTIAL, not Promise.all. The Géoplateforme publishes 5 requests
+          // per second per IP with no SLA and an explicit right to cut a client
+          // off; three parallel rings per scan, multiplied by every visitor of
+          // a deployed instance, is the shape of traffic that gets an open
+          // service to stop being open. One ring at a time costs a reader about
+          // half a second more and costs the publisher a third of the burst.
+          const rings = [];
+          for (const seconds of steps) {
+            // eslint-disable-next-line no-await-in-loop -- deliberate: see above.
+            const payload = await fetchAddressSource(
+              buildIsochroneUrl({ ...point, profile, seconds }),
+              { maxBytes: 4 * 1024 * 1024 },
+            );
+            const ring = payload ? projectIsochrone(payload) : null;
+            // A ring that failed is DROPPED, not zeroed: two good rings and a
+            // missing one still answer "where can I get to", and a ring of area
+            // 0 drawn between two real ones would read as a severed address.
+            if (ring) rings.push({ ...ring, seconds: ring.seconds ?? seconds });
+          }
+          if (!rings.length) return null;
+          rings.sort((a, b) => a.seconds - b.seconds);
+          return {
+            profile,
+            requestedSteps: steps,
+            rings,
+            // Reported so the client can say "two of the three rings arrived"
+            // rather than silently drawing a smaller catchment area.
+            missing: steps.length - rings.length,
+            expansion: ringExpansion(rings),
+            resourceVersion: rings[0]?.resourceVersion ?? null,
+          };
         },
       };
     });

@@ -141,6 +141,93 @@ export function ringAreaKm2(ring) {
 }
 
 /**
+ * The three durations a catchment area is read at, in seconds.
+ *
+ * Five, ten and fifteen minutes because that is the vocabulary the question is
+ * asked in — a retail brief says "dix minutes à pied", never "800 metres" — and
+ * three rings are the most that stay legible nested inside one another.
+ */
+export const ISOCHRONE_STEPS = Object.freeze([300, 600, 900]);
+
+/** How many rings one request may ask for. Each is an upstream round trip. */
+export const ISOCHRONE_MAX_RINGS = 4;
+
+/**
+ * Parse a `seconds=300,600,900` list into the durations to fetch.
+ *
+ * A SINGLE value is still valid and still answers a single ring: the route
+ * shipped that way first and a caller reading the old shape must not break.
+ *
+ * @param {unknown} value
+ * @returns {number[]} Sorted, de-duplicated, clamped, never empty.
+ */
+export function parseSteps(value) {
+  const text = String(value ?? '').trim();
+  if (!text) return [...ISOCHRONE_STEPS];
+  const seen = new Set();
+  for (const part of text.split(',')) {
+    if (part.trim() === '') continue;
+    seen.add(clampSeconds(part));
+    if (seen.size >= ISOCHRONE_MAX_RINGS) break;
+  }
+  return seen.size ? [...seen].sort((a, b) => a - b) : [...ISOCHRONE_STEPS];
+}
+
+/**
+ * How much of the free-space expansion a ring actually achieved.
+ *
+ * In open ground a reachable area grows with the SQUARE of time, so doubling
+ * the budget quadruples the area. Every shortfall is the network: a river with
+ * one bridge, a railway, a motorway, a cul-de-sac. The ratio of the measured
+ * growth to that 4× is therefore an obstruction reading that needs NO assumed
+ * speed and no model — it is two measured areas divided by each other, which
+ * is the only reason it is on the card.
+ *
+ * Reported per consecutive pair, so a 5→10 that is fine and a 10→15 that is not
+ * are two different sentences.
+ *
+ * @param {Array<{seconds: number|null, areaKm2: number}>} rings Ascending.
+ * @returns {Array<{fromSeconds: number, toSeconds: number, ratio: number,
+ *   freeSpaceRatio: number, share: number}>}
+ */
+export function ringExpansion(rings) {
+  const usable = (Array.isArray(rings) ? rings : [])
+    .filter((ring) => Number.isFinite(ring?.seconds) && ring.seconds > 0 && ring.areaKm2 > 0)
+    .sort((a, b) => a.seconds - b.seconds);
+  const out = [];
+  for (let i = 1; i < usable.length; i += 1) {
+    const previous = usable[i - 1];
+    const ring = usable[i];
+    const ratio = ring.areaKm2 / previous.areaKm2;
+    const freeSpaceRatio = (ring.seconds / previous.seconds) ** 2;
+    out.push({
+      fromSeconds: previous.seconds,
+      toSeconds: ring.seconds,
+      ratio: Math.round(ratio * 100) / 100,
+      freeSpaceRatio: Math.round(freeSpaceRatio * 100) / 100,
+      share: Math.round((ratio / freeSpaceRatio) * 1000) / 10,
+    });
+  }
+  return out;
+}
+
+/**
+ * The radius of the circle with the same area as a ring.
+ *
+ * On the card BESIDE the outline, never instead of it: it is the honest way to
+ * say "how big" in one number, and it is exactly the circle this layer exists
+ * to refuse — an address whose fifteen-minute walk covers 1.9 km² and one
+ * whose covers 0.6 km² read identically as "1 km away".
+ *
+ * @param {number} areaKm2
+ * @returns {number} Metres, rounded to ten.
+ */
+export function equivalentRadiusM(areaKm2) {
+  if (!Number.isFinite(areaKm2) || areaKm2 <= 0) return 0;
+  return Math.round(Math.sqrt((areaKm2 * 1e6) / Math.PI) / 10) * 10;
+}
+
+/**
  * Project the upstream answer into the ring the client draws.
  *
  * `resourceVersion` is relayed rather than pinned: it moved between two probes

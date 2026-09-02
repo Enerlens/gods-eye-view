@@ -652,7 +652,11 @@ export const DATA_CREDITS = [
       'Reachable-area rings: IGN G&eacute;oplateforme ' +
       '<a href="https://geoservices.ign.fr/documentation/services/services-geoplateforme/itineraire" target="_blank" rel="noopener">isochrone service</a>, ' +
       'Valhalla over BD TOPO&reg; (<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
-      'Walking and driving only &mdash; the service publishes no cycling profile, and none is modelled here.',
+      'Three nested rings &mdash; 5, 10 and 15 minutes &mdash; each fetched as its own request and reported with the '
+      + 'area it actually covers, so a fifteen-minute walk of 2.16&nbsp;km&sup2; and one of 0.6&nbsp;km&sup2; stop reading '
+      + 'as the same address. The BD TOPO edition each ring was cut from is relayed on its card. '
+      + '<strong>Walking and driving only</strong> &mdash; the service rejects the cycling profile with HTTP 400, so the '
+      + 'cycling chip is drawn disabled with that reason on it, and no cycling ring is modelled in its place.',
   },
   {
     key: 'gpu',

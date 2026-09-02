@@ -244,6 +244,51 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `road-status-fr`'s 🛣, because the whole point is that it is a different
   quantity. `REGISTERED_LAYER_IDS.length` moves 42 → 43.
 
+- **Zone de chalandise (FR) — le service isochrone avait un proxy et aucune
+  surface.** `/api/isochrone` has been in this repository since 2026-09-01,
+  wired, cached, unit-tested — and drawn by nothing. It is now a layer.
+
+  **A circle at 800 m is a lie a map tells.** It crosses railways, rivers and
+  motorways as if they were pavement. IGN runs Valhalla over its own BD TOPO
+  road and path network and answers the polygon actually reachable, and the
+  difference is the entire product: from place Bellecour, a fifteen-minute walk
+  is **2,19 km²** and stops dead at the Rhône and the Saône except where a
+  bridge crosses; the same doorstep by car reaches **32,41 km²**.
+
+  Three nested rings — 5, 10, 15 minutes — in one request. The route now takes a
+  comma list and fetches the rings **one at a time** upstream: the Géoplateforme
+  publishes 5 requests per second per IP with no SLA and an explicit right to
+  cut a client off, and three parallel rings per scan across a deployed
+  instance's visitors is the traffic shape that closes an open service. A ring
+  that fails is dropped rather than zeroed, and the layer says how many are
+  missing — a smaller catchment area drawn with full confidence is the one way
+  this layer could quietly mislead.
+
+  **Two numbers no competitor's map carries.** Each ring reports the radius of
+  the circle with the SAME AREA — the honest version of the number a reader was
+  going to use anyway, printed immediately before "mais ce n'est pas un cercle".
+  And between consecutive rings, the **expansion**: in open ground a reachable
+  area grows with the square of time, so doubling the budget quadruples it, and
+  every shortfall is the network. The measured growth against that ×4 needs no
+  assumed walking speed and no model — it is two measured areas divided by each
+  other. Bellecour's outer band reads 107 %, place de la République 104,5 %: two
+  cities that open up past the first block, and the number would say so just as
+  clearly if they did not.
+
+  **There is no cycling ring, and the chip says why.** The service accepts
+  `pedestrian` and `car` and rejects `bicycle` with HTTP 400. So VÉLO is drawn
+  as a **disabled chip carrying that reason**, `setParams` refuses the value
+  even from a hand-edited share link, and the codec cannot encode it at all — a
+  link must not be able to carry a state the service cannot produce. Mapping
+  bike onto pedestrian would have drawn a walking ring and labelled it cycling.
+
+  The layer's own altitude ceiling is 8 km rather than the shared 12 km, because
+  a 2 km² ring seen from 12 km up is a smudge, and a smudge that looks like an
+  answer is worse than none. A clamped outline answers `scene.pick` with null,
+  so each ring plants one label — the only reachable card path — and the centre
+  carries the summary. Share token `is`, carrying the mode. `npm run
+  qa:isochrone` proves it in a browser over Lyon and Paris.
+
 - **Carroyage INSEE (FR) — qui habite là, en carrés de 200 mètres.** The globe
   already drew everything France has BUILT — the buildings, the schools, the
   doctors, what sold, what the PLU allows — and nothing about who lives in it.

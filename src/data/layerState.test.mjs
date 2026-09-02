@@ -158,11 +158,12 @@ test('production registry is exact, canonical, and rejects incomplete contracts'
   // RECOUNT this at every layer merge, never take either side's number: each
   // layer branch bumps it on its own branch, so a merge always leaves it at
   // whichever side won and the correct answer is neither. Proven four times
-  // now. THIS merge: `main` had reached 54 and this branch adds the carroyage
-  // INSEE, so the answer is 55 — counted off the registry, not taken from
-  // either side.
-  assert.equal(REGISTERED_LAYER_IDS.length, 55);
-  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 55);
+  // now. THIS rebase: `main` had reached 54 and this branch adds four layers —
+  // `filosofi-fr`, `isochrone-fr`, `implantation-fr`, `velo-pulse-fr`. The
+  // number below is COUNTED off the registry at each step of the rebase, never
+  // taken from either side.
+  assert.equal(REGISTERED_LAYER_IDS.length, 56);
+  assert.equal(new Set(REGISTERED_LAYER_IDS).size, 56);
   assert.deepEqual(REGISTERED_LAYER_IDS, [...REGISTERED_LAYER_IDS].sort());
   assert.throws(
     () => validateLayerStateRegistry([...LAYER_STATE_REGISTRY, LAYER_STATE_REGISTRY[0]]),

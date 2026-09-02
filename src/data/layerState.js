@@ -236,6 +236,15 @@ const OPTION_GROUPS = Object.freeze({
   // the encoder throws the moment a non-default option is set. Every other
   // group here — `flights`, `satellites`, `cctv`, `radio` — is a layer id for
   // exactly this reason.
+  // Only the two modes the SERVICE can answer are in this enum. `bike` is a
+  // real mode of the layer's UI — a disabled chip carrying the reason IGN
+  // rejects it — and deliberately NOT encodable: a share link must not be able
+  // to carry a state the service cannot produce, and a hand-edited `is.p.b`
+  // decodes to null and falls back to walking rather than restoring a cycling
+  // ring that was never measured.
+  'isochrone-fr': Object.freeze([
+    enumOption('profile', 'p', 'foot', ['foot', 'car'], { foot: 'f', car: 'c' }),
+  ]),
   'filosofi-fr': Object.freeze([
     enumOption('metric', 'm', 'niveau', [
       'niveau', 'pauvrete', 'population', 'social',
@@ -413,6 +422,12 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'idfm-frequency', token: 'fq', disposition: 'enabled-only' }),
   Object.freeze({ id: 'idfm-network', token: 'if', disposition: 'enabled-only' }),
   Object.freeze({ id: 'irve-fr', token: '9', disposition: 'enabled-only' }),
+  // TWO CHARACTERS, and `is` rather than `i`: `i` is `military-installations`
+  // and has shipped in links since the beginning. `enabled+options`, because
+  // the travel MODE is what the map claims — a fifteen-minute drive and a
+  // fifteen-minute walk from the same address are different arguments about
+  // the same plot, and a link that dropped the mode would restore the wrong one.
+  Object.freeze({ id: 'isochrone-fr', token: 'is', disposition: 'enabled+options', optionOwner: 'isochrone-fr' }),
   // A DIGIT, for the sixth time and always for the same reason: a–y are all
   // taken and `z` is the canonical UNKNOWN token two tests assert on. `6`
   // because 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants

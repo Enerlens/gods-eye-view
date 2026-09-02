@@ -6,14 +6,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  ISOCHRONE_MAX_RINGS,
   ISOCHRONE_MAX_SECONDS,
   ISOCHRONE_MIN_SECONDS,
   ISOCHRONE_PROFILES,
+  ISOCHRONE_STEPS,
   buildIsochroneUrl,
   clampSeconds,
+  equivalentRadiusM,
+  parseSteps,
   projectIsochrone,
   resolveProfile,
   ringAreaKm2,
+  ringExpansion,
 } from './isochroneFeed.js';
 
 const read = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
@@ -111,4 +116,107 @@ test('an absent parameter takes the default, not the minimum', () => {
   assert.equal(clampSeconds(undefined), 600);
   // An EXPLICIT zero is still a request, and is still clamped to the floor.
   assert.equal(clampSeconds('0'), 120);
+});
+
+// ── The ring LIST, added when the service got a layer ───────────────────────
+
+test('an absent seconds parameter means the three rings a brief asks for', () => {
+  assert.deepEqual(parseSteps(undefined), [...ISOCHRONE_STEPS]);
+  assert.deepEqual(parseSteps(null), [...ISOCHRONE_STEPS]);
+  assert.deepEqual(parseSteps(''), [...ISOCHRONE_STEPS]);
+  assert.deepEqual(parseSteps('   '), [...ISOCHRONE_STEPS]);
+});
+
+test('a single value still answers a single ring, because that is what shipped first', () => {
+  // The route was a one-ring service before it had a layer, and a caller
+  // reading the old docs must not silently get three requests' worth.
+  assert.deepEqual(parseSteps('600'), [600]);
+  assert.deepEqual(parseSteps(900), [900]);
+});
+
+test('the list is sorted, de-duplicated, clamped and bounded', () => {
+  assert.deepEqual(parseSteps('900,300,600'), [300, 600, 900]);
+  assert.deepEqual(parseSteps('600,600,600'), [600]);
+  // Each ring is an upstream round trip against a service published at 5 req/s
+  // with an explicit right to cut a client off, so the ceiling is a real limit
+  // rather than a defensive one.
+  assert.equal(parseSteps('120,180,240,300,360,420,480').length, ISOCHRONE_MAX_RINGS);
+  // Out-of-range values are clamped rather than rejected, matching clampSeconds.
+  assert.deepEqual(parseSteps('1,999999'), [ISOCHRONE_MIN_SECONDS, ISOCHRONE_MAX_SECONDS]);
+  // Garbage clamps to the same default a bare `seconds=` would.
+  assert.deepEqual(parseSteps('abc'), [600]);
+  assert.deepEqual(parseSteps(',,,'), [...ISOCHRONE_STEPS]);
+});
+
+test('the expansion is measured area against measured area — no speed, no model', () => {
+  // Free space: area grows with the square of time, so 300 → 600 quadruples.
+  const free = ringExpansion([
+    { seconds: 300, areaKm2: 1 },
+    { seconds: 600, areaKm2: 4 },
+    { seconds: 900, areaKm2: 9 },
+  ]);
+  assert.equal(free.length, 2);
+  assert.equal(free[0].ratio, 4);
+  assert.equal(free[0].freeSpaceRatio, 4);
+  assert.equal(free[0].share, 100);
+  assert.equal(free[1].share, 100);
+});
+
+test('the two real Lyon rings report the obstruction they actually have', () => {
+  // Measured live over the Presqu'île, 2026-09-02: 0.28 / 0.94 / 2.16 km².
+  const lyon = ringExpansion([
+    { seconds: 300, areaKm2: 0.28 },
+    { seconds: 600, areaKm2: 0.94 },
+    { seconds: 900, areaKm2: 2.16 },
+  ]);
+  assert.equal(lyon[0].fromSeconds, 300);
+  assert.equal(lyon[0].toSeconds, 600);
+  assert.equal(lyon[0].share, 83.9, 'the first band frays — 84 % of free-space growth');
+  // Above 100 is a real and meaningful state: the network OPENS UP past the
+  // first block. It must not be clamped to 100, which would hide it.
+  assert.ok(lyon[1].share > 100, `expected the outer band to open up, got ${lyon[1].share}`);
+});
+
+test('the expansion refuses rings it cannot compare, rather than dividing by zero', () => {
+  assert.deepEqual(ringExpansion([]), []);
+  assert.deepEqual(ringExpansion(null), []);
+  assert.deepEqual(ringExpansion([{ seconds: 300, areaKm2: 1 }]), [], 'one ring is not a pair');
+  assert.deepEqual(ringExpansion([
+    { seconds: 300, areaKm2: 0 },
+    { seconds: 600, areaKm2: 4 },
+  ]), [], 'a zero-area ring is dropped, never used as a denominator');
+  assert.deepEqual(ringExpansion([
+    { seconds: null, areaKm2: 1 },
+    { seconds: 600, areaKm2: 4 },
+  ]), [], 'a ring with no duration cannot be placed in the sequence');
+});
+
+test('the expansion sorts what it is given, so a caller cannot invert it', () => {
+  const out = ringExpansion([
+    { seconds: 900, areaKm2: 9 },
+    { seconds: 300, areaKm2: 1 },
+    { seconds: 600, areaKm2: 4 },
+  ]);
+  assert.deepEqual(out.map((step) => step.fromSeconds), [300, 600]);
+});
+
+test('the equivalent radius is the circle this layer exists to refuse', () => {
+  // A circle of 1 km² has a radius of 564 m; rounded to ten, 560.
+  assert.equal(equivalentRadiusM(1), 560);
+  // The measured Lyon 15-minute walk, 2.16 km² → 829 m, rounded to 830.
+  assert.equal(equivalentRadiusM(2.16), 830);
+  assert.equal(equivalentRadiusM(0), 0);
+  assert.equal(equivalentRadiusM(-1), 0);
+  assert.equal(equivalentRadiusM(null), 0);
+});
+
+test('the captured rings project and then compare as a set', () => {
+  // The two fixtures are the SAME point and the SAME 600 s in two profiles, so
+  // they are not a nested pair — but they still have to survive the pipeline
+  // the layer runs them through.
+  const walk = projectIsochrone(WALK);
+  const drive = projectIsochrone(DRIVE);
+  assert.ok(walk.areaKm2 > 0 && drive.areaKm2 > 0);
+  assert.ok(drive.areaKm2 > walk.areaKm2, 'a car reaches further than a walk in the same time');
+  assert.ok(equivalentRadiusM(drive.areaKm2) > equivalentRadiusM(walk.areaKm2));
 });

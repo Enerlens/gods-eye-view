@@ -2047,10 +2047,23 @@ written and measured out: none of the file's 1 346 inner rings lies entirely
 outside, fourteen lie partly outside because they share an edge with the outer
 ring, and the three largest of them are courtyards of 787, 754 and 249 m²
 that the rule would have silently filled in.
+| `isochrone-fr` | `is` | `/api/isochrone` | IGN Géoplateforme, Valhalla over BD TOPO® — three rings per scan |
 
-`/api/isochrone` (IGN Valhalla over BD TOPO®) is a SERVICE, not a layer: an
-isochrone has no meaning without a chosen point, so it is not in the layer
-registry and carries no share token. Walking and driving only.
+`/api/isochrone` (IGN Valhalla over BD TOPO®) WAS a service with no surface —
+in the repository since 2026-09-01 and drawn by nothing. It is now the
+`isochrone-fr` layer, and it is a point-centred layer for the same reason the
+five above are: an isochrone has no meaning without a chosen point, so it scans
+around the ground the camera is looking at rather than filling a viewport. The
+route takes a COMMA LIST of durations and answers one payload holding every
+ring — `seconds=300,600,900` — fetched one at a time upstream, because the
+Géoplateforme publishes 5 requests per second per IP with no SLA and an explicit
+right to cut a client off. Walking and driving only: the service rejects the
+cycling profile with HTTP 400, so the layer draws a DISABLED cycling chip
+carrying that reason and models nothing in its place. Its own altitude ceiling
+is 8 km rather than the shared 12 km — a 2 km² ring seen from 12 km up is a
+smudge — and it reports, per consecutive pair of rings, the measured area growth
+against the ×4 that free space would give, which is an obstruction reading that
+needs no assumed speed.
 
 These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
 `ur`, `if` — `cadastre-fr` is the sixth, `cd`, and `ads-fr` later took `au`. The single-character space
