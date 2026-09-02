@@ -1079,6 +1079,51 @@ Verified over Paris 16e on the oblique view that reported it: 2 393 parcelles at
   hundreds. It now reads the establishment's published name — "Collège Jean Moulin" —
   prefixed with its level only for the 2.6% of register names that do not already state
   one ("Lycée · Institution Saint-Pierre").
+- **Deux satellites FIRMS sur trois disparaissaient les jours de grande activité, et la
+  couche avait l'air en bonne santé.** `fires.push(...records)` passe un ARGUMENT par
+  détection, et V8 refuse au-delà d'environ 124 300 (mesuré ici sur Node 26.0.0, le
+  seuil exact dépendant de l'état de la pile). Un tirage `world/2` en rend ~131 000 pour
+  NOAA20 et SNPP : les deux levaient `RangeError`, attrapé juste en dessous comme une
+  panne d'amont, et seul NOAA21 — 114 000, sous la limite — survivait. Compte mondial
+  mesuré en amont : **113 996 → 377 169**. La boucle passe par `appendAll`, et l'entrée
+  `ok:true` n'est plus écrite qu'une fois les détections effectivement rangées : elle
+  partait AVANT, donc une source qui échouait était listée deux fois, `ok:true` avec son
+  vrai compte puis `ok:false`, et `/api/firms` annonçait des détections qu'il n'avait
+  pas gardées. Correctif d'amont repris et étendu (bilawalsidhu/gods-eye-view#93).
+- **Six plafonds de réponse comptaient des caractères là où ils annonçaient des octets.**
+  `body.length` compte des unités de code UTF-16 : trois octets d'euro en valent un, donc
+  un corps non latin pouvait tenir à près du triple d'un plafond et le passer. Pire, le
+  test arrivait APRÈS `await response.text()`, c'est-à-dire après l'allocation qu'il
+  existe pour empêcher. Les six sites — GBFS, le lecteur partagé des six scans d'adresse
+  (Géorisques, DVF, DPE, GPU, isochrones, IDFM), NDBC, et le repli non diffusé de CCTV —
+  passent par `readResponseTextCapped`, qui refuse sur `Content-Length`, compte en octets
+  pendant la lecture et annule le flux au dépassement. Il servait déjà 14 appels dans le
+  même fichier. Il relâche aussi la socket quand il refuse sur l'en-tête, au lieu de la
+  laisser ouverte jusqu'au GC. Le repli CCTV était une seconde implémentation presque
+  identique de ce lecteur, portant le bug que la version partagée n'a pas ; il n'en est
+  plus qu'un adaptateur.
+- **Un tirage FIRMS n'avait aucun plafond du tout.** `res.text()` lisait le CSV mondial
+  sans limite. Il est plafonné à 256 Mo — un ordre de grandeur au-dessus des ~13 Mo que
+  pèsent 100 000 détections, donc il ne peut se déclencher que sur un amont qui a changé
+  de forme.
+- **Les paquets Natural Earth et quartiers chargeaient par deux chemins selon le
+  runtime.** Une branche `isNode` importait dynamiquement `node:fs`, ce que Vite
+  externalisait avec un avertissement à chaque build de production. L'attribut d'import
+  fait le même travail dans les deux runtimes et la branche disparaît, avec un test de
+  frontière qui empêche un import `node:` de revenir dans un module construit pour le
+  navigateur. Correctif d'amont repris tel quel (bilawalsidhu/gods-eye-view#83).
+
+### Security
+
+- **Le proxy GBFS validait une URL, puis en récupérait une autre.** L'hôte, le chemin et
+  le protocole étaient vérifiés sur l'URL demandée par le client — puis `fetch()` suivait
+  les redirections tout seul. Un flux de la liste blanche répondant
+  `302 Location: http://169.254.169.254/…` suffisait à faire récupérer cette adresse par
+  le serveur et à en renvoyer le corps, tous les contrôles ayant déjà été dépensés. Le
+  proxy suit désormais les redirections à la main, en réappliquant la liste blanche à
+  chaque saut (`gbfsRedirectTarget`), avec trois sauts au maximum et une seule échéance
+  pour toute la chaîne — un flux ne peut pas gagner du temps en rebondissant. Même
+  posture que le proxy Radio Browser, qui refusait déjà les redirections.
 
 ## [Unreleased] — 2026-08-31
 
