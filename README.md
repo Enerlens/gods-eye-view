@@ -167,7 +167,7 @@ Twenty-eight tools, four jobs — the commands below come straight from the prod
 
 ## 🛰️ What's on the Globe
 
-Twenty-four live layers. **Twenty of them need nothing at all** — no key, no account, no signup, and the newest one draws its whole subject without one too. (🟢 nothing · 🟡 free key · 🔴 metered.)
+Forty-nine live layers. **Forty-six of them need nothing at all** — no key, no account, no signup. Only three want a free key (Navires en direct, Groupes de production, Feux actifs), and the eight newest — road counts, recorded crime, mobile masts, cool refuges, building permits, transport frequency, aircraft noise and everyday amenities — draw their whole subject without one. (🟢 nothing · 🟡 free key · 🔴 metered.)
 
 | Layer | What you get | Source | Auth |
 |-------|--------------|--------|------|
