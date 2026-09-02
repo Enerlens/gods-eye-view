@@ -6,6 +6,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-02
 
 ### Added
+- **La zone de chalandise se dessine autour du point que vous choisissez.**
+  Jusqu'ici le centre était l'endroit que la caméra regardait — correct pour lire
+  une rue, inutile pour la seule question que ce calque pose : « qu'est-ce que
+  CETTE porte atteint ». Un clic sur la carte fixe désormais le centre. La
+  caméra ne le déplace plus, une puce **LIBÉRER** le rend au suivi automatique,
+  et le repère central dit lequel des deux états il est dans.
+- **Et fixer un point supprime le plafond d'altitude, ce qui est le seul moyen
+  de voir une zone de chalandise en voiture en entier.** Mesuré le 2026-09-02
+  sur cinq communes, à quinze minutes : une zone à pied fait au plus 1,8 × 1,9 km,
+  à vélo 4,1 × 7,2 km, en voiture **16,5 × 14,1 km** (Cantal rural). Cesium
+  montre environ 0,65 × l'altitude de sol sur le petit axe de l'écran au nadir :
+  avec un plafond unique à 8 km, le calque effaçait la zone qu'il venait de
+  mesurer au moment précis où on reculait pour la regarder. Les plafonds suivent
+  maintenant le mode — **8 / 20 / 45 km** — avec des seuils de déplacement de
+  0,25 / 0,6 / 1,5 km assortis ; et un centre fixé n'a plus de plafond du tout,
+  parce qu'un point fixe ne déclenche aucune requête quand la caméra bouge.
+- **Le vélo fonctionne, et il annonce qu'il n'est pas de la même nature.** L'IGN
+  ne publie aucun profil vélo, sur aucune ressource — resondé le 2026-09-02,
+  `bicycle`, `bike`, `cycle` et `cycling` répondent tous HTTP 400 sur
+  `bdtopo-valhalla` **et** sur `bdtopo-pgr`. La BD TOPO n'a pas de modèle de coût
+  cyclable : il n'y a rien à lui demander. L'anneau vélo est donc mesuré sur le
+  réseau cyclable OpenStreetMap via la table OSRM de FOSSGIS — **36 rayons de 11
+  échantillons**, une seule requête pour les trois anneaux, et la portée de
+  chaque rayon est l'endroit où la durée mesurée croise le budget.
+- **C'est une ENVELOPPE, et rien ne laisse croire le contraire.** Le trait entre
+  deux rayons voisins n'est mesuré par personne : une étoile ne sait pas dire une
+  poche inatteignable ni une zone en morceaux, elle les remplit. Sa surface est
+  donc un **majorant** — contour en tirets, « km² au plus », jamais « réellement
+  atteignables », et le nombre de rayons, l'écart des portées et le nom du réseau
+  sur chaque fiche. L'écart est mesuré, pas affirmé : la même méthode appliquée
+  au réseau piéton et comparée au polygone IGN au même point donne **+1 / +17 /
+  +19 %** à Lyon, **+14 / +11 / +14 %** à Paris 11e, **−24 / +2 / +9 %** à
+  Bordeaux, **−32 / −12 / +40 %** à Ustaritz et **+117 / +69 / +69 %** dans le
+  Cantal rural. C'est le pire cas honnête, et c'est pour lui que l'étiquette
+  existe : là où le réseau tient en trois routes, la vraie forme est une araignée
+  et toute enveloppe autour d'une araignée est surtout du sol inaccessible.
+  Ajouter des rayons n'y change rien — à 24, 32, 48 et 64 directions le chiffre
+  lyonnais reste à un point de +19 % : l'erreur est la FORME, pas la résolution.
 - **Le bruit des aéroports se lit enfin de loin.** Le calque tirait UNE bande sur
   les quatre d'un plan et s'effaçait au-dessus de 12 km — alors que le plan le
   plus large de France, la zone D du Bourget, fait 65,8 km de côté : la forme ne
@@ -870,7 +908,18 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   broken.
 
 ### Fixed
-
+- **Le seuil de déplacement des six calques d'adresse ne servait à rien.**
+  `ADDRESS_SCAN_MIN_SHIFT_KM` documente 250 m comme la distance en dessous de
+  laquelle la réponse en main décrit encore le même pâté de maisons — mais la
+  comparaison qui l'appliquait était liée par un ET à une comparaison de la
+  requête complète, coordonnées comprises, écrites à six décimales. Une caméra
+  qui se posait un mètre plus loin produisait une chaîne différente et
+  redemandait : le seuil n'a jamais supprimé une seule requête. Les deux moitiés
+  sont désormais comparées séparément — le centre par la distance, le reste par
+  la chaîne — ce qui préserve exactement la raison d'être de la seconde (le
+  calque d'urbanisme change de question sans que le centre bouge) et rend la
+  première effective. Trouvé en montant le plafond de la zone de chalandise à
+  45 km, où un panoramique tranquille franchit 250 m sans que la vue change.
 - **Une caméra sélectionnée rendait VERTE au lieu d'ambre, parce que son icône avait sa propre couleur cuite dedans.** Cesium multiplie `billboard.color` dans la texture. La couche CCTV s'en sert pour dire laquelle des caméras l'opérateur a sélectionnée — `#6be8ff` au repos, `#ffd97a` pour l'active — mais le dessin portait du cyan en dur (`#75e7ff` sur des aplats sombres, plus un dégradé de lentille). #75e7ff × #ffd97a = **#75c57a** : la seule caméra que l'ambre devait isoler était la seule à ne pas être ambre. Le cyan de repos sortait lui aussi faux, sursaturé à #31d2ff. L'icône est maintenant `temaki/security_camera` en tracé blanc sur halo sombre, comme tous les autres jeux de ce dépôt le documentent depuis le début : le blanc rend la multiplication neutre, le noir y survit (0 × c = 0) et garde le glyphe lisible sur une orthophoto claire. Au passage, un détail de caméra murale dessiné pour 36 px cesse d'être bouilli en un pâté bleu à 15. Une teinte cuite est un bug, pas un parti pris — `mapIcons.test.mjs` refuse désormais tout glyphe portant un dégradé, une opacité ou un hexadécimal autre que `#ffffff`.
 - **"Sites militaires — Context is temporarily unavailable", while Overpass was
   merely busy.** The layer went dark under normal panning and the server log

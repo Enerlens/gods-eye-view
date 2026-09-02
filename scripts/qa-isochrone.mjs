@@ -17,11 +17,14 @@
  *         obstruct differently, which is the whole point of measuring it
  *   iv.   switching to VOITURE refetches and the areas grow by an order of
  *         magnitude — a drive is not a recolouring of a walk
- *   v.    the VÉLO chip exists, is disabled, and carries the HTTP 400 reason
- *   vi.   a mode the service cannot answer cannot be forced in through
- *         setLayerParams either
- *   vii.  the share link carries the mode
- *   viii. every ring label is pickable and opens a card — the ONLY reachable
+ *   v.    the VÉLO chip works, and what it draws declares itself an ENVELOPE:
+ *         a second upstream (OSM/OSRM), a dashed outline, a majorant area
+ *   vi.   the ceiling follows the mode — 30 km is dormant on foot and drawing
+ *         by car, which is the whole point of measuring a driving catchment
+ *   vii.  a click on the globe PINS the centre, the camera stops moving it,
+ *         and the ceiling stops applying
+ *   viii. the share link carries the mode
+ *   ix.   every ring label is pickable and opens a card — the ONLY reachable
  *         card path, since a clamped outline answers scene.pick with null
  *
  * Run: node scripts/qa-isochrone.mjs --url http://localhost:4173
@@ -56,8 +59,10 @@ const chrome = chromeCandidates.find((candidate) => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Above the layer's own 8 km ceiling — the view it must refuse. */
+/** Above the walking ceiling of 8 km — the view it must refuse on foot. */
 const TOO_HIGH = { lon: 4.8357, lat: 45.764, height: 40_000 };
+/** Between the walking ceiling and the driving one: dormant on foot, live by car. */
+const HIGH_ENOUGH_TO_DRIVE = { lon: 4.8357, lat: 45.7578, height: 30_000 };
 /** Place Bellecour and place de la République: two dense, well-connected centres. */
 const LYON = { lon: 4.8357, lat: 45.7578, height: 2_400 };
 const PARIS = { lon: 2.3639, lat: 48.8674, height: 2_400 };
@@ -156,6 +161,13 @@ function probe(page) {
       cardIds: entities
         .filter((entity) => entity.position && entity.description)
         .map((entity) => String(entity.id)),
+      // The one visual difference between a polygon and an envelope that a
+      // harness can read: an envelope's outline is a dash material.
+      outlineMaterials: entities
+        .filter((entity) => String(entity.id).includes(':outline'))
+        .map((entity) => entity.polyline?.material?.constructor?.name || 'none'),
+      centreCard: entities.find((entity) => String(entity.id) === 'isochrone:centre')
+        ?.description?.getValue?.(window.__godsEyeView.viewer.clock.currentTime) || null,
     };
   }, LAYER);
 }
@@ -263,31 +275,154 @@ async function main() {
     await shoot(page, '03-lyon-voiture.png');
     console.log(`      ${carAreas.join(' / ')} km² · cercle équivalent ${lyonCar.stats.outerRadiusM} m`);
 
-    // ── v/vi. the mode that does not exist ────────────────────────────────
-    console.log('\n[5] The cycling chip exists, is disabled, and cannot be forced');
-    const bike = lyonCar.chips.find((chip) => chip.id === 'bike');
-    check('the chip is there', Boolean(bike));
-    check('it is disabled', bike?.disabled === true, JSON.stringify(bike));
-    check('it is never active', bike?.active === false);
-    check('it carries the measured reason', /400/.test(bike?.title || ''), bike?.title);
-    const forced = await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
+    // ── v. the cycling envelope ───────────────────────────────────────────
+    console.log('\n[5] VÉLO measures on a second network, and says so');
+    const bikeChip = lyonCar.chips.find((chip) => chip.id === 'bike');
+    check('the chip is there and can be pressed', bikeChip?.disabled === false,
+      JSON.stringify(bikeChip));
+    check('it names the other network before it is pressed',
+      /OSM|OSRM/.test(bikeChip?.title || ''), bikeChip?.title);
+    const beforeBike = isochroneRequests;
+    const tookBike = await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
       id, { profile: 'bike' }, { origin: 'user' },
     ), LAYER);
-    await pump(page, 6);
-    const afterForce = await probe(page);
-    check('setLayerParams refuses it', forced === false, String(forced));
-    check('and the driving rings are left alone, not relabelled',
-      afterForce.stats.mode === 'car', afterForce.stats.mode);
+    await waitForSettled(page);
+    await pump(page, 10);
+    const lyonBike = await probe(page);
+    check('setLayerParams accepts it', tookBike === true, String(tookBike));
+    check('a request was spent on it', isochroneRequests > beforeBike,
+      `${isochroneRequests - beforeBike} extra`);
+    check('three rings came back', lyonBike.stats.ringsDrawn === 3,
+      `ringsDrawn=${lyonBike.stats.ringsDrawn}`);
+    const bikeAreas = lyonBike.stats.areasKm2 || [];
+    check('cycling lands between walking and driving',
+      bikeAreas[2] > areas[2] && bikeAreas[2] < carAreas[2],
+      `${areas[2]} < ${bikeAreas[2]} < ${carAreas[2]} km²`);
+    check('the row says it is an envelope, not a polygon',
+      lyonBike.stats.envelope === true, String(lyonBike.stats.envelope));
+    check('and names the network it was measured on',
+      /ODbL|OSRM|OpenStreetMap/.test(lyonBike.stats.feedSource || ''), lyonBike.stats.feedSource);
+    check('every outline is drawn dashed, so the two kinds never look alike',
+      lyonBike.outlineMaterials.length === 3
+      && lyonBike.outlineMaterials.every((name) => /Dash/.test(name)),
+      lyonBike.outlineMaterials.join(','));
+    check('the centre card refuses to be read as the IGN polygon',
+      /majorée|enveloppe/i.test(lyonBike.centreCard || ''), (lyonBike.centreCard || '').slice(0, 120));
+    check('the legend calls the area a majorant',
+      /majorée/.test(await page.evaluate((id) => window.__godsEyeView.dataManager.layers
+        .get(id).module.getRowControls().legend[0].blurb, LAYER)));
+    await shoot(page, '05-lyon-velo.png');
+    console.log(`      ${bikeAreas.join(' / ')} km² · enveloppe sur 36 directions`);
 
-    // ── vii. the share link ───────────────────────────────────────────────
-    console.log('\n[6] The share link carries the mode');
+    // A ring label opened from the envelope has to carry the caveat too.
+    const bikeLabelCard = await page.evaluate((id) => {
+      const source = window.__godsEyeView.viewer.dataSources.getByName(id)[0];
+      const entity = [...source.entities.values].find((e) => String(e.id) === 'isochrone:900:label');
+      return entity?.description?.getValue?.(window.__godsEyeView.viewer.clock.currentTime) || null;
+    }, LAYER);
+    check('a ring card prints the spoke count and the reach spread',
+      /36 directions/.test(bikeLabelCard || '') && /portée mesurée/.test(bikeLabelCard || ''),
+      (bikeLabelCard || '').slice(0, 160));
+
+    // ── vi. the ceiling follows the mode ──────────────────────────────────
+    console.log('\n[6] 30 km up: dormant on foot, still measuring by car');
+    await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
+      id, { profile: 'foot' }, { origin: 'user' },
+    ), LAYER);
+    await setView(page, HIGH_ENOUGH_TO_DRIVE);
+    await pump(page, 8);
+    const highFoot = await probe(page);
+    check('on foot at 30 km the layer is dormant', highFoot.stats.dormant === true,
+      `dormant=${highFoot.stats.dormant}`);
+    check('and the sentence offers both ways out',
+      /descends/i.test(highFoot.stats.loadingLabel || '')
+      && /clique/i.test(highFoot.stats.loadingLabel || ''), highFoot.stats.loadingLabel);
+    await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
+      id, { profile: 'car' }, { origin: 'user' },
+    ), LAYER);
+    await waitForSettled(page);
+    await pump(page, 10);
+    const highCar = await probe(page);
+    check('by car at the same 30 km it measures', highCar.stats.dormant === false
+      && highCar.stats.ringsDrawn === 3, `dormant=${highCar.stats.dormant} rings=${highCar.stats.ringsDrawn}`);
+    check('the reported ceiling is the driving one',
+      highCar.stats.maxAltitudeM >= 30_000, `${highCar.stats.maxAltitudeM} m`);
+    await shoot(page, '06-voiture-30km.png');
+
+    // ── vii. the centre the reader chose ──────────────────────────────────
+    console.log('\n[7] A click pins the centre, and the camera stops owning it');
+    const clicked = await page.evaluate(() => {
+      const gev = window.__godsEyeView;
+      const canvas = gev.viewer.scene.canvas;
+      return { x: Math.round(canvas.clientWidth * 0.38), y: Math.round(canvas.clientHeight * 0.62) };
+    });
+    await page.mouse.click(clicked.x, clicked.y);
+    await waitForSettled(page);
+    await pump(page, 10);
+    const pinned = await probe(page);
+    check('a real canvas click set a pin', Boolean(pinned.stats.scanPin),
+      JSON.stringify(pinned.stats.scanPin));
+    check('the row reports it as pinned', pinned.stats.pinned === true);
+    check('the scan centre IS the pin',
+      Math.abs((pinned.stats.scanCentre?.lat ?? 0) - (pinned.stats.scanPin?.lat ?? 9)) < 1e-4
+      && Math.abs((pinned.stats.scanCentre?.lon ?? 0) - (pinned.stats.scanPin?.lon ?? 9)) < 1e-4,
+      JSON.stringify(pinned.stats.scanCentre));
+    check('the centre marker says so on its card',
+      /fixé/i.test(pinned.centreCard || ''), (pinned.centreCard || '').slice(0, 120));
+    check('a release chip appeared',
+      pinned.chips.some((chip) => chip.id === 'centre-camera'),
+      pinned.chips.map((chip) => chip.id).join(','));
+    await shoot(page, '07-point-fixe.png');
+
+    // The ceiling no longer applies: pull back past the driving ceiling and the
+    // catchment must still be on screen, which is the complaint this fixes.
+    const beforeFly = isochroneRequests;
+    await setView(page, { lon: 4.8357, lat: 45.7578, height: 90_000 });
+    await pump(page, 10);
+    const flown = await probe(page);
+    check('90 km up, a pinned catchment is still drawn', flown.stats.dormant === false
+      && flown.stats.ringsDrawn === 3, `dormant=${flown.stats.dormant} rings=${flown.stats.ringsDrawn}`);
+    check('and flying there spent no request', isochroneRequests === beforeFly,
+      `${isochroneRequests - beforeFly} extra`);
+    check('the pin did not follow the camera',
+      Math.abs((flown.stats.scanPin?.lat ?? 0) - (pinned.stats.scanPin?.lat ?? 9)) < 1e-9,
+      JSON.stringify(flown.stats.scanPin));
+    await shoot(page, '08-point-fixe-recul.png');
+
+    const released = await page.evaluate((id) => {
+      window.__godsEyeView.dataManager.setLayerParams(id, { centre: 'camera' }, { origin: 'user' });
+      return window.__godsEyeView.dataManager.layers.get(id).module.getStats();
+    }, LAYER);
+    await pump(page, 8);
+    const afterRelease = await probe(page);
+    check('releasing the pin brings the ceiling back',
+      afterRelease.stats.scanPin === null && afterRelease.stats.dormant === true,
+      `pin=${JSON.stringify(afterRelease.stats.scanPin)} dormant=${afterRelease.stats.dormant}`);
+    void released;
+
+    // ── viii. the share link ──────────────────────────────────────────────
+    console.log('\n[8] The share link carries the mode');
     const hash = await page.evaluate(() => window.location.hash || '');
     check('the hash enables the layer', /[?&]l=[^&]*\bis\b/.test(hash) || /(^|\.)is(\.|&|$)/.test(hash),
       hash.slice(0, 200));
     check('and carries the driving mode', /is\.p\.c/.test(hash), hash.slice(0, 200));
+    // Cycling encodes too, now that it is a state the app can actually produce.
+    await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
+      id, { profile: 'bike' }, { origin: 'user' },
+    ), LAYER);
+    // The share link is written on a 500 ms debounce, so this polls rather than
+    // guessing a frame count.
+    let bikeHash = '';
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      await sleep(150);
+      bikeHash = await page.evaluate(() => window.location.hash || '');
+      if (/is\.p\.b/.test(bikeHash)) break;
+    }
+    check('and the cycling mode too', /is\.p\.b/.test(bikeHash),
+      (bikeHash.match(/lo=[^&]*/) || ['no lo= in the hash'])[0]);
 
-    // ── viii. Paris ───────────────────────────────────────────────────────
-    console.log('\n[7] Place de la République, on foot: the same layer, a different city');
+    // ── ix. Paris ─────────────────────────────────────────────────────────
+    console.log('\n[9] Place de la République, on foot: the same layer, a different city');
     await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
       id, { profile: 'foot' }, { origin: 'user' },
     ), LAYER);

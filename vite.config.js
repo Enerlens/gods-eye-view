@@ -166,8 +166,11 @@ import {
   LINEAGE_MILLESIMES,
 } from './src/data/cadastreLineage.js';
 import {
+  bikeFanPoints,
+  buildBikeTableUrl,
   buildIsochroneUrl,
   parseSteps as parseIsochroneSteps,
+  projectBikeEnvelope,
   projectIsochrone,
   resolveProfile as resolveIsochroneProfile,
   ringExpansion,
@@ -21462,9 +21465,9 @@ function adsFranceProxy() {
 }
 
 /**
- * IGN isochrone — the area actually reachable, rather than a circle.
+ * Isochrone — the area actually reachable, rather than a circle.
  *
- * `GET /api/isochrone?lat=&lon=&profile=foot|car&seconds=300,600,900`
+ * `GET /api/isochrone?lat=&lon=&profile=foot|car|bike&seconds=300,600,900`
  *
  * `seconds` takes a COMMA LIST and answers one payload holding every ring, in
  * ascending order, plus the expansion between consecutive pairs. A single value
@@ -21473,7 +21476,16 @@ function adsFranceProxy() {
  * in minutes — a brief says "dix minutes à pied", never "800 metres" — and
  * three nested outlines are the most that stay legible over a city block.
  *
- * The rings are fetched ONE AT A TIME. See the loop for why.
+ * TWO UPSTREAMS BEHIND ONE ROUTE, and the payload says which one answered.
+ * Walking and driving are IGN polygons cut from BD TOPO. Cycling is not
+ * available from IGN at any resource — re-probed 2026-09-02, still HTTP 400 —
+ * so it is measured on the OSM cycling network through the FOSSGIS OSRM table
+ * and comes back flagged `envelope`. See `isochroneFeed.js` for what that flag
+ * costs the reader and why it is on the card rather than in a comment.
+ *
+ * The IGN rings are fetched ONE AT A TIME. See the loop for why. The cycling
+ * rings are all three read out of a SINGLE table request, because one request
+ * already carries every duration the three budgets are compared against.
  * @returns {import('vite').Plugin}
  */
 function isochroneProxy() {
@@ -21482,12 +21494,64 @@ function isochroneProxy() {
       const point = addressPoint(url.searchParams);
       if (!point) return null;
       const profile = url.searchParams.get('profile') || 'foot';
-      if (!resolveIsochroneProfile(profile)) {
-        // Cycling is the one the mission design asked for and this service does
-        // not have; failing loudly beats drawing a walking ring labelled bike.
-        throw new Error(`unsupported profile: ${profile} (foot or car)`);
+      const cycling = String(profile).trim().toLowerCase() === 'bike';
+      if (!cycling && !resolveIsochroneProfile(profile)) {
+        throw new Error(`unsupported profile: ${profile} (foot, car or bike)`);
       }
       const steps = parseIsochroneSteps(url.searchParams.get('seconds'));
+      if (cycling) {
+        return {
+          key: addressCacheKey('isochrone', point, 'bike', steps.join('-')),
+          load: async () => {
+            // ONE request for all three rings. The fan is sized to bracket the
+            // LONGEST budget; the shorter ones are read off the same durations,
+            // so a third ring costs nothing upstream. Sized down from `steps`
+            // rather than from a constant, so `seconds=300` does not send a
+            // reader a fan built for fifteen minutes and read it at five.
+            const fan = bikeFanPoints({ ...point, seconds: steps[steps.length - 1] });
+            // 25 s rather than the shared 20: measured against the FOSSGIS
+            // cluster on 2026-09-02, an isolated 397-point table answered in
+            // 0.6 s and a burst of them was throttled to a flat 10 s. The
+            // timeout has to sit above the throttle or every scan after the
+            // first in a session gives up on an upstream that was answering.
+            const table = await fetchAddressSource(buildBikeTableUrl(fan.points), {
+              timeoutMs: 25_000,
+              maxBytes: 4 * 1024 * 1024,
+            });
+            if (table?.code !== 'Ok' || !Array.isArray(table?.durations?.[0])) return null;
+            // The origin's own zero is dropped: `sources=0` puts it first in
+            // its own row, and every index downstream is bearing-major over the
+            // DESTINATIONS.
+            const rings = projectBikeEnvelope({
+              durations: table.durations[0].slice(1),
+              fan,
+              steps,
+              snapM: table.sources?.[0]?.distance ?? null,
+            });
+            if (!rings.length) return null;
+            return {
+              profile: 'bike',
+              requestedSteps: steps,
+              rings,
+              missing: steps.length - rings.length,
+              expansion: ringExpansion(rings),
+              resourceVersion: null,
+              // Named because the card has to attribute it, and because a
+              // reader comparing a cycling ring with a walking one is comparing
+              // two networks as well as two speeds.
+              feed: 'osm-osrm',
+              envelope: true,
+              bearings: fan.bearings,
+              // How far the pin had to move to land on something rideable. A
+              // pin dropped in a field or on water answers about the road it
+              // was snapped to, not about where it was dropped.
+              snapM: Number.isFinite(table.sources?.[0]?.distance)
+                ? Math.round(table.sources[0].distance)
+                : null,
+            };
+          },
+        };
+      }
       return {
         key: addressCacheKey('isochrone', point, profile, steps.join('-')),
         load: async () => {
@@ -21521,6 +21585,8 @@ function isochroneProxy() {
             missing: steps.length - rings.length,
             expansion: ringExpansion(rings),
             resourceVersion: rings[0]?.resourceVersion ?? null,
+            feed: 'ign-bdtopo',
+            envelope: false,
           };
         },
       };

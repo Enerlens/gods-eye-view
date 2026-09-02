@@ -353,3 +353,311 @@ export function projectIsochrone(payload) {
     areaKm2: Math.round(areaKm2 * 100) / 100,
   };
 }
+
+/* ========================================================================== *
+ * CYCLING — a second service, because the first one does not have the answer.
+ * ========================================================================== */
+
+/**
+ * WHY A CYCLING RING NEEDED A DIFFERENT SOURCE ENTIRELY.
+ *
+ * Re-probed 2026-09-02, and the refusal has not moved: `profile=bicycle`,
+ * `bike`, `cycle` and `cycling` all answer HTTP 400 from the Géoplateforme with
+ * `value should be one of car,pedestrian`, on `bdtopo-valhalla` and on
+ * `bdtopo-pgr` alike. BD TOPO has no cycling cost model, so there is nothing to
+ * ask it for. A cycling ring therefore has to come from a network that knows
+ * what a cycle track is, and in France that is OpenStreetMap.
+ *
+ * FOSSGIS runs the Valhalla instance that WOULD answer this in one call. It was
+ * unreachable from two networks on 2026-09-02 (TCP connect timeout to
+ * valhalla1.openstreetmap.de:443, twice, while DNS resolved), so it is not a
+ * dependency this can rest on. Its sibling — the OSRM cluster at
+ * `routing.openstreetmap.de/routed-bike` — answered in 0.6 s, and this
+ * repository already routes through it for `/api/route`.
+ *
+ * WHAT OSRM CAN AND CANNOT GIVE. OSRM has no isochrone endpoint. It has
+ * `/table`, which answers the travel time from one origin to up to ~400
+ * destinations in ONE request. So the ring is measured rather than modelled —
+ * every vertex is a real routed cycling duration on the OSM network — but it is
+ * measured ALONG SPOKES: 36 bearings, 11 samples each, and the reachable
+ * distance on each bearing is the point where the measured duration crosses the
+ * budget. What is drawn between two neighbouring spokes is a straight line
+ * nobody measured.
+ *
+ * SO IT IS AN ENVELOPE, AND IT IS LABELLED ONE. A star polygon cannot express
+ * the two things the IGN polygon can: a pocket you cannot reach, and a
+ * catchment in disconnected pieces. It fills them in, so its area is an UPPER
+ * BOUND, never the "surface réellement atteignable" the other two rings report.
+ * Measured 2026-09-02, running this exact method on the WALKING network and
+ * comparing it against the IGN walking polygon at the same point:
+ *
+ *   Lyon Presqu'île   5/10/15 min   +1 %   +17 %   +19 %
+ *   Paris 11e                       +14 %  +11 %   +14 %
+ *   Bordeaux centre                 −24 %  +2 %    +9 %
+ *   Ustaritz (64)                   −32 %  −12 %   +40 %
+ *   Cantal, rural                   +117 % +69 %   +69 %
+ *
+ * The rural row is the honest worst case and the reason the label matters:
+ * where the network is a handful of roads, the true shape is a spider and any
+ * envelope around it is mostly ground you cannot reach. That table is printed
+ * on the card, not buried here.
+ *
+ * The two figures also differ because the NETWORKS differ — OSM against BD
+ * TOPO — and the comparison deliberately does not try to separate the two: what
+ * a reader wants to know is whether the drawn shape is the right size, and that
+ * is the combined question.
+ */
+export const OSRM_BIKE_TABLE_URL = 'https://routing.openstreetmap.de/routed-bike/table/v1/driving';
+
+/**
+ * Spokes, and samples along each.
+ *
+ * 36 × 11 + the origin is 397 coordinates. Measured: 401 coordinates answer in
+ * 0.6 s; 601 answer HTTP 414, the URL being the limit rather than the engine.
+ * More bearings were tried and bought nothing — at 24, 32, 48 and 64 spokes the
+ * Lyon walking envelope stayed within a point of +19 %, because the error is
+ * the star SHAPE and not its angular resolution. 36 is where the drawn outline
+ * stops looking faceted: 10° is 600 m between vertices at a 3.5 km reach.
+ */
+export const BIKE_ENVELOPE_BEARINGS = 36;
+export const BIKE_ENVELOPE_SAMPLES = 11;
+
+/** Hard cap on one OSRM table request. See above: 601 coordinates is a 414. */
+export const OSRM_TABLE_MAX_POINTS = 400;
+
+/**
+ * The speed the SAMPLE LADDER is laid out with — not a speed anything is
+ * measured at.
+ *
+ * 22 km/h is deliberately faster than anyone rides: its only job is to put the
+ * outermost sample beyond the furthest reachable point, so the crossing is
+ * bracketed instead of clipped. Every duration in between comes from OSRM's own
+ * cycling cost model, gradients, one-ways and traffic signals included.
+ */
+export const BIKE_LADDER_KMH = 22;
+
+/**
+ * How the samples are spaced along a spoke.
+ *
+ * Above 1 they crowd the near end, where a five-minute ring lands, and spread
+ * at the far end, where the fifteen-minute crossing is found by interpolating
+ * between two measured durations rather than by the sample spacing.
+ */
+const BIKE_LADDER_CURVE = 1.3;
+
+const DEG = Math.PI / 180;
+const EARTH_KM = 6371.0088;
+
+/**
+ * The point `distanceKm` away from another on a given bearing.
+ *
+ * Spherical rather than the flat `dlat = km / 111.32` shortcut, which is off by
+ * the cosine of the latitude on the east-west axis and would draw an oval
+ * envelope over Dunkerque and a rounder one over Perpignan — a shape artefact
+ * that looks exactly like a finding.
+ *
+ * @param {number} lon Degrees.
+ * @param {number} lat Degrees.
+ * @param {number} bearingDeg Clockwise from north.
+ * @param {number} distanceKm
+ * @returns {number[]} `[lon, lat]`.
+ */
+export function destinationPoint(lon, lat, bearingDeg, distanceKm) {
+  const delta = distanceKm / EARTH_KM;
+  const theta = bearingDeg * DEG;
+  const phi1 = lat * DEG;
+  const lambda1 = lon * DEG;
+  const sinPhi2 = Math.sin(phi1) * Math.cos(delta)
+    + Math.cos(phi1) * Math.sin(delta) * Math.cos(theta);
+  const phi2 = Math.asin(Math.min(1, Math.max(-1, sinPhi2)));
+  const lambda2 = lambda1 + Math.atan2(
+    Math.sin(theta) * Math.sin(delta) * Math.cos(phi1),
+    Math.cos(delta) - Math.sin(phi1) * sinPhi2,
+  );
+  return [
+    Math.round((((lambda2 / DEG + 540) % 360) - 180) * 1e5) / 1e5,
+    Math.round((phi2 / DEG) * 1e5) / 1e5,
+  ];
+}
+
+/**
+ * The sample radii along one spoke, in kilometres, near to far.
+ * @param {number} maxSeconds The longest ring the fan has to bracket.
+ * @param {number} [samples]
+ * @returns {number[]}
+ */
+export function bikeLadderKm(maxSeconds, samples = BIKE_ENVELOPE_SAMPLES) {
+  const outerKm = Math.max(0.5, (BIKE_LADDER_KMH * clampSeconds(maxSeconds)) / 3600);
+  const out = [];
+  for (let i = 1; i <= samples; i += 1) {
+    out.push(Math.round(outerKm * ((i / samples) ** BIKE_LADDER_CURVE) * 1000) / 1000);
+  }
+  return out;
+}
+
+/**
+ * The fan of points one table request measures.
+ *
+ * The ORIGIN IS FIRST and is the table's only source, so the answer is one row
+ * of durations in exactly this order — bearing-major, near to far within each
+ * bearing.
+ *
+ * @param {{lon: number, lat: number, seconds: number, bearings?: number,
+ *   samples?: number}} query
+ * @returns {{origin: number[], bearings: number, radiiKm: number[], points: Array<number[]>}}
+ */
+export function bikeFanPoints({
+  lon, lat, seconds,
+  bearings = BIKE_ENVELOPE_BEARINGS,
+  samples = BIKE_ENVELOPE_SAMPLES,
+}) {
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+    throw new Error('isochrone: lon/lat must be finite numbers');
+  }
+  if (!Number.isInteger(bearings) || bearings < 8) throw new Error('isochrone: need at least 8 bearings');
+  const radiiKm = bikeLadderKm(seconds, samples);
+  const total = bearings * radiiKm.length + 1;
+  if (total > OSRM_TABLE_MAX_POINTS) {
+    throw new Error(`isochrone: fan of ${total} points exceeds the ${OSRM_TABLE_MAX_POINTS} the table accepts`);
+  }
+  const origin = [Math.round(lon * 1e5) / 1e5, Math.round(lat * 1e5) / 1e5];
+  const points = [origin];
+  for (let b = 0; b < bearings; b += 1) {
+    const bearingDeg = (b * 360) / bearings;
+    for (const km of radiiKm) points.push(destinationPoint(lon, lat, bearingDeg, km));
+  }
+  return { origin, bearings, radiiKm, points };
+}
+
+/**
+ * The OSRM table URL for a fan.
+ *
+ * `sources=0` asks for ONE row — the origin against everything — rather than
+ * the full 397² matrix, which is the difference between a 100 KB answer and an
+ * upstream that would rightly refuse.
+ *
+ * @param {Array<number[]>} points `[lon, lat]`, origin first.
+ * @returns {string}
+ */
+export function buildBikeTableUrl(points) {
+  if (!Array.isArray(points) || points.length < 2) {
+    throw new Error('isochrone: bike table needs an origin and at least one destination');
+  }
+  if (points.length > OSRM_TABLE_MAX_POINTS) {
+    throw new Error(`isochrone: bike table capped at ${OSRM_TABLE_MAX_POINTS} points`);
+  }
+  const coords = points.map((point) => {
+    const [lon, lat] = Array.isArray(point) ? point : [];
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) {
+      throw new Error('isochrone: bike table point must be a finite [lon, lat]');
+    }
+    return `${lon.toFixed(5)},${lat.toFixed(5)}`;
+  }).join(';');
+  return `${OSRM_BIKE_TABLE_URL}/${coords}?sources=0&annotations=duration`;
+}
+
+/**
+ * How far one spoke reaches inside a time budget.
+ *
+ * The furthest sample that CAME IN UNDER the budget wins, not the first one
+ * that went over — OSRM's answers are not monotonic along a ray, because a
+ * sample 200 m further out can snap onto a cycle track and come back quicker
+ * than its neighbour. Taking the first crossing would cut the spoke at that
+ * dip and report a catchment smaller than the one measured.
+ *
+ * The crossing itself is then interpolated between the last sample under and
+ * the next one over, in DURATION rather than in distance, so the answer is not
+ * quantised to the sample ladder.
+ *
+ * @param {Array<{km: number, sec: number|null}>} samples Ascending by km.
+ * @param {number} seconds Budget.
+ * @returns {{reachKm: number, clipped: boolean}} `clipped` when the ladder ran
+ *   out while the spoke was still inside the budget — the reach is a floor.
+ */
+export function bearingReachKm(samples, seconds) {
+  const usable = Array.isArray(samples) ? samples : [];
+  let anchor = { km: 0, sec: 0 };
+  for (const sample of usable) {
+    if (Number.isFinite(sample?.sec) && sample.sec <= seconds && sample.km > anchor.km) {
+      anchor = { km: sample.km, sec: sample.sec };
+    }
+  }
+  const beyond = usable.find(
+    (sample) => sample?.km > anchor.km && Number.isFinite(sample?.sec) && sample.sec > seconds,
+  );
+  if (beyond && beyond.sec > anchor.sec) {
+    const share = (seconds - anchor.sec) / (beyond.sec - anchor.sec);
+    return { reachKm: Math.round((anchor.km + share * (beyond.km - anchor.km)) * 1000) / 1000, clipped: false };
+  }
+  const outermost = usable.length ? usable[usable.length - 1].km : 0;
+  // No sample over the budget beyond the anchor: either the ladder ended while
+  // still inside it (clipped, and the ring is a floor), or everything further
+  // out was unroutable, which is a real edge and not a clip.
+  return { reachKm: anchor.km, clipped: anchor.km > 0 && anchor.km >= outermost };
+}
+
+/**
+ * Project one OSRM table row into the rings the client draws.
+ *
+ * Shaped exactly like {@link projectIsochrone}'s output — `ring`, `holes`,
+ * `parts`, `areaKm2` — so the renderer and the fiche need no second code path,
+ * plus the fields that say this one is an envelope and must not be read as the
+ * IGN polygon.
+ *
+ * @param {object} query
+ * @param {Array<number|null>} query.durations The table's first row, WITHOUT
+ *   the origin-to-origin zero.
+ * @param {{origin: number[], bearings: number, radiiKm: number[]}} query.fan
+ * @param {number[]} query.steps Ascending budgets, in seconds.
+ * @param {number|null} [query.snapM] Distance the origin was snapped onto the
+ *   cycling network, from the table's own `sources[0].distance`.
+ * @returns {Array<object>} One entry per step that produced a shape.
+ */
+export function projectBikeEnvelope({ durations, fan, steps, snapM = null }) {
+  const { origin, bearings, radiiKm } = fan || {};
+  const row = Array.isArray(durations) ? durations : [];
+  if (!Array.isArray(origin) || !bearings || !Array.isArray(radiiKm) || !radiiKm.length) return [];
+  if (row.length !== bearings * radiiKm.length) return [];
+
+  const rings = [];
+  for (const seconds of steps) {
+    const reaches = [];
+    let clippedBearings = 0;
+    for (let b = 0; b < bearings; b += 1) {
+      const samples = radiiKm.map((km, i) => {
+        const sec = row[b * radiiKm.length + i];
+        return { km, sec: typeof sec === 'number' && Number.isFinite(sec) ? sec : null };
+      });
+      const { reachKm, clipped } = bearingReachKm(samples, seconds);
+      if (clipped) clippedBearings += 1;
+      reaches.push(reachKm);
+    }
+    // Nothing reachable at all — an origin OSRM could not attach to the cycling
+    // network, most often a pin dropped on water. Dropped rather than drawn as
+    // a point, for the same reason a failed IGN ring is dropped.
+    if (!reaches.some((km) => km > 0)) continue;
+    const ring = reaches.map((km, b) => destinationPoint(origin[0], origin[1], (b * 360) / bearings, km));
+    const sorted = [...reaches].sort((a, b) => a - b);
+    rings.push({
+      profile: 'bike',
+      seconds,
+      resourceVersion: null,
+      ring,
+      holes: [],
+      parts: [{ ring, holes: [] }],
+      areaKm2: ringAreaKm2(ring),
+      // Everything below this line exists so the card can refuse to be read as
+      // an IGN measurement.
+      envelope: true,
+      bearings,
+      clippedBearings,
+      reachKm: {
+        min: Math.round(sorted[0] * 100) / 100,
+        median: Math.round(sorted[Math.floor(sorted.length / 2)] * 100) / 100,
+        max: Math.round(sorted[sorted.length - 1] * 100) / 100,
+      },
+      snapM: Number.isFinite(snapM) ? Math.round(snapM) : null,
+    });
+  }
+  return rings;
+}

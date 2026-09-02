@@ -1,7 +1,7 @@
 import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
 import { createAddressScanLayer } from './addressScanLayer.js';
-import { ISOCHRONE_STEPS, equivalentRadiusM } from './isochroneFeed.js';
+import { BIKE_ENVELOPE_BEARINGS, ISOCHRONE_STEPS, equivalentRadiusM } from './isochroneFeed.js';
 
 /**
  * Zone de chalandise — the ground you can actually reach, instead of a circle.
@@ -15,12 +15,26 @@ import { ISOCHRONE_STEPS, equivalentRadiusM } from './isochroneFeed.js';
  * reachable. Measured over the Lyon Presqu'île on 2026-09-02: five minutes on
  * foot is 0.28 km², ten is 0.94, fifteen is 2.16.
  *
- * THE CYCLING RING IS MISSING ON PURPOSE, AND THE CHIP SAYS SO. The service
- * accepts `pedestrian` and `car` and rejects `bicycle` with HTTP 400. A third
- * chip is drawn anyway, disabled, carrying the reason — because the alternative
- * is a reader wondering why a cycling city has no cycling ring, and because
- * mapping `bike` onto `pedestrian` would draw a walking ring and label it
- * cycling. A missing answer stated is worth more than a plausible one invented.
+ * THE CYCLING RING COMES FROM SOMEWHERE ELSE, AND IT IS DRAWN DIFFERENTLY. IGN
+ * has no cycling cost model at any resource — re-probed 2026-09-02, still
+ * `value should be one of car,pedestrian` — so a cycling ring is measured on
+ * the OSM cycling network through the FOSSGIS OSRM table, along 36 spokes. It
+ * is an ENVELOPE, not a polygon: every vertex is a real routed duration, and
+ * the straight line between two neighbouring vertices is not. It is therefore
+ * drawn with a DASHED outline and its area is called a majorant rather than a
+ * surface. `isochroneFeed.js` carries the measured divergence — up to +69 % of
+ * area in sparse rural networks — and the card prints it.
+ *
+ * WHY THE CEILING IS PER MODE, AND WHY A PIN HAS NONE. A fifteen-minute walk is
+ * 1.9 km across and a fifteen-minute drive is up to 16.5 km (measured over five
+ * French communes on 2026-09-02, rural Cantal being the widest). One ceiling
+ * for both meant the driving catchment the layer had just measured was cleared
+ * off the screen the moment the reader pulled back far enough to see it — the
+ * layer refusing to show its own answer. So the ceiling now follows the mode.
+ * And a reader who clicks the map PINS the centre, which removes the ceiling
+ * altogether: the ceiling exists to stop a camera-driven layer from firing a
+ * request per nudge across a country, and a pinned centre fires nothing when
+ * the camera moves.
  *
  * THE NUMBER THAT IS NOT ON ANY COMPETITOR'S MAP. In open ground a reachable
  * area grows with the SQUARE of time, so doubling the budget quadruples the
@@ -54,13 +68,42 @@ export const ISOCHRONE_LAYER_NAME = 'Zone de chalandise (isochrone)';
 const UPDATE_INTERVAL_MS = 900_000;
 
 /**
- * Above this the rings are smaller than a few pixels and the scan is noise.
+ * The altitude a camera-following scan gives up at, PER MODE.
  *
- * Lower than the shared address-scan ceiling of 12 km on purpose: a fifteen-
- * minute walk is about 2 km² — roughly 1.6 km across — and from 12 km up that
- * is a smudge. The layer says "descends" rather than drawing one.
+ * Derived from the ground the ring actually covers, measured against the live
+ * services on 2026-09-02 over Ustaritz, Paris 11e, Lyon, Bordeaux and rural
+ * Cantal, at fifteen minutes — the widest ring the layer draws:
+ *
+ *   walking   1.8 × 1.9 km at the widest (Lyon)
+ *   cycling   4.1 × 7.2 km (Ustaritz), 5.2 × 5.6 (Paris)
+ *   driving  16.5 × 14.1 km (Cantal), 10.2 × 13.2 (Ustaritz)
+ *
+ * Cesium's default frustum shows about 0.65 × altitude of ground on the SHORT
+ * screen axis at nadir, and less than that at the pitch anyone actually flies
+ * at. So the driving ceiling has to sit near 25 km before the widest ring even
+ * fits, and 45 km is that with room for the pitch. The walking ceiling is
+ * unchanged at 8 km, which was never the complaint.
  */
-const MAX_ALTITUDE_M = 8_000;
+export const ISOCHRONE_MAX_ALTITUDE_M = Object.freeze({
+  foot: 8_000,
+  bike: 20_000,
+  car: 45_000,
+});
+
+/**
+ * How far the camera has to move before the same question is asked again, per
+ * mode.
+ *
+ * The shared default of 250 m is right for a ring 1.8 km across and is noise
+ * against one 16 km across — and at a 45 km ceiling a lazy pan clears 250 m
+ * without the view meaningfully changing, which would spend a request per
+ * nudge on exactly the upstream this layer is most careful with.
+ */
+export const ISOCHRONE_MIN_SHIFT_KM = Object.freeze({
+  foot: 0.25,
+  bike: 0.6,
+  car: 1.5,
+});
 
 /**
  * The three rings, near to far, with the colour each is drawn in.
@@ -79,32 +122,49 @@ const STYLE_BY_SECONDS = new Map(ISOCHRONE_RING_STYLES.map((style) => [style.sec
 const FALLBACK_STYLE = ISOCHRONE_RING_STYLES[ISOCHRONE_RING_STYLES.length - 1];
 
 /**
- * The travel modes offered, and the one the service cannot answer.
+ * The travel modes offered, and which of them is a polygon and which an
+ * envelope.
  *
- * `bike` is `available: false` rather than absent. See the module header: the
- * refusal is the honest answer and it belongs on screen, not in a comment.
+ * `envelope` is not decoration: it changes the outline from solid to dashed,
+ * changes "surface atteignable" to "majorant", and puts the divergence on the
+ * card. Two rings drawn with the same confidence from two methods that do not
+ * deserve the same confidence is the one way this layer could quietly mislead.
  */
 export const ISOCHRONE_MODES = Object.freeze([
   Object.freeze({
     id: 'foot',
     label: 'PIÉTON',
     available: true,
-    blurb: 'Marche, sur le réseau piéton et routier de la BD TOPO.',
+    envelope: false,
+    feed: 'IGN Géoplateforme — Valhalla sur BD TOPO®',
+    blurb: 'Marche, sur le réseau piéton et routier de la BD TOPO. Polygone exact.',
   }),
   Object.freeze({
     id: 'car',
     label: 'VOITURE',
     available: true,
-    blurb: 'Voiture, sur le réseau routier de la BD TOPO.',
+    envelope: false,
+    feed: 'IGN Géoplateforme — Valhalla sur BD TOPO®',
+    blurb: 'Voiture, sur le réseau routier de la BD TOPO. Polygone exact.',
   }),
   Object.freeze({
     id: 'bike',
     label: 'VÉLO',
-    available: false,
-    blurb: 'Indisponible : le service IGN refuse le profil vélo (HTTP 400). '
-      + 'Dessiner un anneau piéton en l’appelant vélo serait une invention, pas une mesure.',
+    available: true,
+    envelope: true,
+    feed: 'OpenStreetMap — table OSRM cyclable (FOSSGIS)',
+    blurb: 'Vélo, sur le réseau cyclable OSM (OSRM) : IGN ne publie aucun profil vélo. '
+      + 'Enveloppe mesurée sur 36 directions — chaque sommet est un temps réel, '
+      + 'le trait entre deux sommets ne l’est pas. Surface majorée.',
   }),
 ]);
+
+const MODE_BY_ID = new Map(ISOCHRONE_MODES.map((mode) => [mode.id, mode]));
+
+/** The descriptor for a mode id, or the default one. */
+export function modeSpec(id) {
+  return MODE_BY_ID.get(id) || MODE_BY_ID.get('foot');
+}
 
 /** The mode the layer opens on, and the one every share link without a token means. */
 export const ISOCHRONE_DEFAULT_MODE = 'foot';
@@ -113,12 +173,13 @@ export const ISOCHRONE_DEFAULT_MODE = 'foot';
 let _mode = ISOCHRONE_DEFAULT_MODE;
 
 /**
- * Resolve a requested mode to one the service can answer.
+ * Resolve a requested mode to one that can actually be measured.
  *
  * An unavailable mode is REFUSED, not silently downgraded: `setParams` returns
- * false and the drawn rings stay what they were. A share link carrying `bike`
- * — which no encoder can produce, but a hand-edited URL can — therefore shows
- * the walking rings it already had, rather than walking rings relabelled.
+ * false and the drawn rings stay what they were. Nothing is unavailable today —
+ * cycling stopped being so on 2026-09-02 — but the gate stays, because the day
+ * an upstream withdraws a profile the right behaviour is to keep drawing the
+ * ring the reader already had rather than relabel a different one.
  *
  * @param {unknown} value
  * @returns {string|null} A supported mode id, or null.
@@ -143,7 +204,9 @@ export function minutesLabel(seconds) {
 
 /** The verb that goes with the mode, for a card written in French. */
 export function modeVerb(mode) {
-  return mode === 'car' ? 'en voiture' : 'à pied';
+  if (mode === 'car') return 'en voiture';
+  if (mode === 'bike') return 'à vélo';
+  return 'à pied';
 }
 
 /**
@@ -185,6 +248,42 @@ export function expansionSentence(step) {
   }
   return `${from} → ${to} : ${step.share} % de l’expansion libre `
     + `(×${step.ratio} au lieu de ×${step.freeSpaceRatio}) — le réseau freine`;
+}
+
+/** A number as a French reader writes it. */
+function fr(value, digits = 2) {
+  return Number(value).toLocaleString('fr-FR', { maximumFractionDigits: digits });
+}
+
+/**
+ * What an ENVELOPE ring has to say about itself. Empty for an IGN polygon.
+ *
+ * Four sentences and every one of them is a caveat, because an envelope drawn
+ * beside two exact polygons is the one thing on this layer a reader could take
+ * for more than it is. The spoke count says how coarse it is, the reach spread
+ * says how uneven, the clip count says when the drawn edge is a floor rather
+ * than an edge, and the last line names the network — because a cycling ring
+ * compared against a walking one is a comparison of two networks as well as two
+ * speeds.
+ *
+ * @param {object|null} ring
+ * @returns {string[]}
+ */
+export function envelopeSentences(ring) {
+  if (!ring?.envelope) return [];
+  const out = [];
+  out.push(`enveloppe sur ${ring.bearings || BIKE_ENVELOPE_BEARINGS} directions — `
+    + 'surface majorée, pas la surface exacte');
+  if (ring.reachKm && Number.isFinite(ring.reachKm.min)) {
+    out.push(`portée mesurée de ${fr(ring.reachKm.min)} à ${fr(ring.reachKm.max)} km `
+      + `(médiane ${fr(ring.reachKm.median)} km)`);
+  }
+  if (ring.clippedBearings) {
+    out.push(`${ring.clippedBearings} direction${ring.clippedBearings > 1 ? 's' : ''} `
+      + 'au-delà de l’échantillonnage — cette portée est un plancher');
+  }
+  out.push('réseau cyclable OpenStreetMap via OSRM (FOSSGIS) — pas la BD TOPO');
+  return out;
 }
 
 /**
@@ -272,7 +371,16 @@ export function drawRing(dataSource, ring, {
       polyline: {
         positions: [...outer, outer[0]],
         width: style.widthPx,
-        material: new Cesium.ColorMaterialProperty(css.withAlpha(0.95)),
+        // DASHED FOR AN ENVELOPE. The one visual difference that survives being
+        // looked at from across the room, and the reason it is a line style
+        // rather than a colour: the three colours are already carrying the
+        // duration ramp, and overloading them would cost the gradient.
+        material: ring.envelope
+          ? new Cesium.PolylineDashMaterialProperty({
+            color: css.withAlpha(0.95),
+            dashLength: 18,
+          })
+          : new Cesium.ColorMaterialProperty(css.withAlpha(0.95)),
         clampToGround: true,
         classificationType,
       },
@@ -316,19 +424,25 @@ export function drawRing(dataSource, ring, {
     properties: { kind: 'isochrone-ring', seconds: ring.seconds },
     name: `${label} ${modeVerb(mode)}`,
     description: [
-      `${ring.areaKm2} km² réellement atteignables`,
+      ring.envelope
+        ? `${fr(ring.areaKm2)} km² au plus — enveloppe, majorant`
+        : `${fr(ring.areaKm2)} km² réellement atteignables`,
       // The circle this layer exists to refuse, printed beside the shape that
       // refutes it. A reader who only remembers one number remembers a radius,
       // so give them the honest one — the radius of the circle with the SAME
       // AREA — rather than letting them keep the straight-line one.
       `soit un cercle équivalent de ${radiusM} m — mais ce n’est pas un cercle`,
       expansionSentence(step),
+      ...envelopeSentences(ring),
       // Said out loud, because a hole is the one part of the shape a reader
       // cannot infer from the outline, and it is ground the area has ALREADY
       // been reduced by. Same for a shape in several pieces.
       holesSentence(parts),
       partsSentence(parts),
       ring.resourceVersion ? `BD TOPO ${ring.resourceVersion}` : null,
+      Number.isFinite(ring.snapM) && ring.snapM > 25
+        ? `point rattaché au réseau à ${ring.snapM} m — la mesure part de là`
+        : null,
     ].filter(Boolean).join(' · '),
   });
   return 1;
@@ -338,10 +452,25 @@ const base = createAddressScanLayer({
   id: ISOCHRONE_LAYER_ID,
   name: ISOCHRONE_LAYER_NAME,
   icon: '◎',
-  source: 'IGN Géoplateforme — Valhalla sur BD TOPO®',
+  source: 'IGN Géoplateforme (BD TOPO®) · OpenStreetMap / OSRM pour le vélo',
   endpoint: '/api/isochrone',
   updateInterval: UPDATE_INTERVAL_MS,
-  maxAltitudeM: MAX_ALTITUDE_M,
+  // Functions, not constants: both depend on the mode, and the mode is a
+  // runtime choice. See `ISOCHRONE_MAX_ALTITUDE_M`.
+  maxAltitudeM: () => ISOCHRONE_MAX_ALTITUDE_M[_mode] ?? ISOCHRONE_MAX_ALTITUDE_M.foot,
+  minShiftKm: () => ISOCHRONE_MIN_SHIFT_KM[_mode] ?? ISOCHRONE_MIN_SHIFT_KM.foot,
+  // A click on bare globe, or on this layer's own wash, MOVES THE CENTRE. The
+  // layer answers a question about one point and until now that point was
+  // wherever the camera happened to look — which is fine for reading a street
+  // and useless for "what does THIS door reach", the question the layer is for.
+  groundClick: ({ lon, lat }) => {
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return false;
+    isochroneRingsLayer.setParams({ centre: `${lon},${lat}` });
+    // Consumed whether or not the pin MOVED. A second click on the same spot
+    // changes nothing and must still not fall through to the dismissal path,
+    // or clicking the map twice would close the card the first click opened.
+    return true;
+  },
   params: () => ({ profile: _mode, seconds: ISOCHRONE_STEPS.join(',') }),
   // The rings are ground-classification geometry and a classification type is
   // read once, when the primitive is built. Switching to the Google photoreal
@@ -384,10 +513,12 @@ const base = createAddressScanLayer({
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         properties: { kind: 'isochrone-centre' },
-        name: `Depuis ce point, ${modeVerb(mode)}`,
+        name: point.pinned
+          ? `Point fixé — ${modeVerb(mode)}`
+          : `Depuis ce point, ${modeVerb(mode)}`,
         description: [
           rings.length
-            ? rings.map((ring) => `${minutesLabel(ring.seconds)} : ${ring.areaKm2} km²`).join(' · ')
+            ? rings.map((ring) => `${minutesLabel(ring.seconds)} : ${fr(ring.areaKm2)} km²`).join(' · ')
             : 'aucun anneau renvoyé par le service',
           outer
             ? `cercle équivalent au plus grand anneau : ${equivalentRadiusM(outer.areaKm2)} m`
@@ -399,7 +530,15 @@ const base = createAddressScanLayer({
           payload.missing
             ? `${payload.missing} anneau${payload.missing > 1 ? 'x' : ''} non renvoyé${payload.missing > 1 ? 's' : ''} par le service`
             : null,
-          'Vélo indisponible : le service IGN refuse ce profil',
+          payload.envelope
+            ? 'Enveloppe OSM/OSRM sur 36 directions — surface majorée, pas le polygone IGN'
+            : null,
+          // Where the centre came from, on the marker that IS the centre. A
+          // reader who does not know whether flying away will move the answer
+          // cannot tell what they are looking at.
+          point.pinned
+            ? 'centre fixé par un clic — la caméra ne le déplace plus'
+            : 'centre suivi par la caméra — cliquez la carte pour le figer',
         ].filter(Boolean).join(' · '),
       });
       drawn += 1;
@@ -422,65 +561,141 @@ const base = createAddressScanLayer({
       // outermost band.
       expansionShare: (payload.expansion || []).at(-1)?.share ?? null,
       resourceVersion: payload.resourceVersion ?? null,
+      // Which of the two upstreams answered, and whether what is drawn is a
+      // polygon or an envelope. Both are read by the row and by the QA harness,
+      // and neither is derivable from the ring count.
+      feed: payload.feed ?? null,
+      envelope: payload.envelope === true,
+      snapM: Number.isFinite(payload.snapM) ? payload.snapM : null,
     };
   },
 });
+
+/**
+ * Parse the `centre` runtime parameter.
+ *
+ * Two spellings and nothing else. `camera` releases the pin; `lon,lat` sets it.
+ * A malformed value is REFUSED rather than snapped to anything, for the same
+ * reason an unknown mode is: the layer keeps answering the question it was
+ * already answering instead of silently answering a different one.
+ *
+ * @param {unknown} value
+ * @returns {{lat: number, lon: number}|'camera'|null} Null when unusable.
+ */
+export function resolveCentre(value) {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return null;
+  if (text === 'camera' || text === 'caméra' || text === 'auto') return 'camera';
+  const parts = text.split(',');
+  if (parts.length !== 2) return null;
+  const lon = Number(parts[0]);
+  const lat = Number(parts[1]);
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  // Five decimals, matching every other coordinate this layer relays: two
+  // clicks a metre apart must produce the same query, or the proxy cache never
+  // hits for the one workload it exists for.
+  return { lon: Math.round(lon * 1e5) / 1e5, lat: Math.round(lat * 1e5) / 1e5 };
+}
 
 /**
  * The layer, wrapping the shared address-scan factory with a mode control.
  *
  * Spread rather than subclassed: every method the factory returns is a closure
  * over its own state and none of them read `this`, so copying the references
- * onto a new object is exact. What is added is the three things the factory has
- * no opinion about — which travel mode is drawn, how that reaches a share link,
- * and the chips and legend that let a reader change it.
+ * onto a new object is exact. What is added is the four things the factory has
+ * no opinion about — which travel mode is drawn, where the centre is, how those
+ * reach a share link, and the chips and legend that let a reader change them.
  */
 const isochroneRingsLayer = {
   ...base,
 
   /**
-   * Runtime params. Changing the mode CHANGES THE QUESTION, so unlike the
-   * carroyage's indicator this one has to refetch: a driving ring is not a
-   * recolouring of a walking ring.
-   * @param {{profile?: string}} [params]
+   * Runtime params.
+   *
+   * `profile` CHANGES THE QUESTION, so unlike the carroyage's indicator it has
+   * to refetch: a driving ring is not a recolouring of a walking ring. `centre`
+   * changes WHERE the question is asked, which the shell refetches for.
+   *
+   * Both are handled in one call and independently: a chip sends one key, and
+   * a caller that sends both gets both, with the return value true when either
+   * moved.
+   *
+   * @param {{profile?: string, centre?: string}} [params]
    * @returns {boolean}
    */
   setParams(params = {}) {
-    if (params.profile === undefined) return false;
-    const next = resolveMode(params.profile);
-    // An unsupported mode is refused rather than downgraded — see `resolveMode`.
-    if (!next || next === _mode) return false;
-    _mode = next;
-    void base.update();
+    let changed = false;
+    if (params.profile !== undefined) {
+      const next = resolveMode(params.profile);
+      // An unsupported mode is refused rather than downgraded — see `resolveMode`.
+      if (!next) return false;
+      if (next !== _mode) {
+        _mode = next;
+        changed = true;
+      }
+    }
+    if (params.centre !== undefined) {
+      const centre = resolveCentre(params.centre);
+      if (!centre) return false;
+      if (base.setScanPin(centre === 'camera' ? null : centre)) changed = true;
+    }
+    if (!changed) return false;
+    // `setScanPin` already rescans when it moved the pin; a mode change has to
+    // ask for one, because nothing else in the shell knows the query changed.
+    if (params.profile !== undefined) void base.update();
     return true;
   },
 
   /**
-   * The mode a share link has to carry.
+   * What a share link, and the panel, have to carry.
    *
-   * Without this the link would restore the walking rings whatever the sender
-   * was looking at, and a driving catchment area is a different claim about the
-   * same address.
-   * @returns {{profile: string}}
+   * `profile` is encoded (see `layerState.js`). `centre` is NOT — the option
+   * encoders are enums and a coordinate is not one — so a shared link reopens
+   * following the camera, which lands on the same view the sender was looking
+   * at. Reported here anyway, because the row reads it to decide whether to
+   * offer the release chip.
+   *
+   * @returns {{profile: string, centre: string}}
    */
   getParams() {
-    return { profile: _mode };
+    const pin = base.getScanPin();
+    return {
+      profile: _mode,
+      centre: pin ? `${pin.lon},${pin.lat}` : 'camera',
+    };
   },
 
   getRowControls() {
     const stats = base.getStats();
     const areas = Array.isArray(stats.areasKm2) ? stats.areasKm2 : [];
+    const pin = base.getScanPin();
     const chips = ISOCHRONE_MODES.map((mode) => ({
       id: mode.id,
       label: mode.label,
       active: mode.available && _mode === mode.id,
       state: mode.available ? (_mode === mode.id ? 'active' : 'idle') : 'unavailable',
-      // A chip that cannot be pressed, carrying the reason. The alternative is
-      // a reader wondering why a cycling city has no cycling ring.
       disabled: !mode.available,
       title: mode.blurb,
       params: mode.available ? { profile: mode.id } : undefined,
     }));
+    // The release. Present ONLY while a pin is held, because a chip offering to
+    // release nothing is a chip that teaches a reader the wrong thing about
+    // what the layer is doing — and its absence is how the row says "this is
+    // following the camera" without spending a word on it.
+    if (pin) {
+      chips.push({
+        id: 'centre-camera',
+        label: 'LIBÉRER',
+        active: false,
+        state: 'idle',
+        disabled: false,
+        title: `Centre fixé à ${fr(pin.lat, 5)}, ${fr(pin.lon, 5)} — `
+          + 'relâcher pour resuivre la caméra.',
+        params: { centre: 'camera' },
+      });
+    }
+    const envelope = modeSpec(_mode).envelope;
     const legend = ISOCHRONE_RING_STYLES.map((style, index) => ({
       label: minutesLabel(style.seconds),
       color: style.color,
@@ -489,27 +704,37 @@ const isochroneRingsLayer = {
       // number of hectares' worth of precision, which is what the source's own
       // vertex resolution supports.
       count: Number.isFinite(areas[index]) ? areas[index] : 0,
-      blurb: `${minutesLabel(style.seconds)} ${modeVerb(_mode)} — surface réellement atteignable, en km²`,
+      blurb: `${minutesLabel(style.seconds)} ${modeVerb(_mode)} — `
+        + `${envelope ? 'surface majorée de l’enveloppe' : 'surface réellement atteignable'}, en km²`,
     }));
     return { chips, legend };
   },
 
   getStats() {
     const stats = base.getStats();
+    const spec = modeSpec(_mode);
+    const ceilingM = ISOCHRONE_MAX_ALTITUDE_M[_mode] ?? ISOCHRONE_MAX_ALTITUDE_M.foot;
     const result = {
       ...stats,
       mode: _mode,
-      // Reported so the row can say the refusal without a reader opening a card.
-      bikeUnavailable: true,
-      feedSource: 'IGN Géoplateforme (Valhalla / BD TOPO®) — Licence Ouverte 2.0',
+      // What the drawn shape IS, at the top level, so a reader of the row or of
+      // the QA harness never has to open a ring to find out.
+      envelope: spec.envelope,
+      pinned: Boolean(stats.scanPin),
+      maxAltitudeM: ceilingM,
+      feedSource: spec.envelope
+        ? 'OpenStreetMap via OSRM (FOSSGIS) — ODbL'
+        : 'IGN Géoplateforme (Valhalla / BD TOPO®) — Licence Ouverte 2.0',
     };
     if (stats.dormant) {
       result.status = 'ok';
-      result.loadingLabel = `Descends sous ${Math.round(MAX_ALTITUDE_M / 1000)} km `
-        + 'pour mesurer une zone de chalandise';
+      // Both ways out, because there are now two and the second one is the
+      // answer for a driving catchment too wide to fit under any ceiling.
+      result.loadingLabel = `Descends sous ${Math.round(ceilingM / 1000)} km, `
+        + 'ou clique un point pour l’y fixer';
     } else if (stats.ringsMissing) {
       result.degraded = true;
-      result.loadingLabel = `${stats.ringsMissing} anneau(x) non renvoyé(s) par le service IGN`;
+      result.loadingLabel = `${stats.ringsMissing} anneau(x) non renvoyé(s) par le service`;
     }
     return result;
   },

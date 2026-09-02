@@ -220,9 +220,9 @@ function stackEventTarget() {
   };
 }
 
-async function scannedLayer(overrides) {
+async function scannedLayer(overrides, { altitudeM = 900 } = {}) {
   const renders = [];
-  const { viewer } = headlessViewer(ADDRESS.lon, ADDRESS.lat, 900);
+  const { viewer } = headlessViewer(ADDRESS.lon, ADDRESS.lat, altitudeM);
   const layer = createAddressScanLayer({
     id: 'scan-test',
     name: 'Scan test',
@@ -533,5 +533,135 @@ test('a layer that declares no row controls does not pretend to have any', async
   t.after(() => { globalThis.document = originalDocument; });
   const { layer } = await regimeLayer();
   assert.equal(layer.getRowControls, undefined);
+  layer.disable();
+});
+
+
+/**
+ * `disable()` detaches the Escape-to-dismiss handler from `document`, which
+ * only exists in the browser these layers actually run in.
+ */
+function withDocument(t) {
+  const original = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = original; });
+}
+
+// ── A ceiling that follows what the layer is asking for ─────────────────────
+
+/**
+ * One constant for every question the layer can ask is one constant too few.
+ * The isochrone layer measures a walking ring 1.9 km across and a driving ring
+ * 16.5 km across; a ceiling generous enough to show the second cleared the
+ * first off the screen, and a ceiling tight enough for the first cleared the
+ * SECOND off the screen the moment the reader pulled back to look at it.
+ */
+test('a ceiling given as a function is consulted per scan, not captured once', async (t) => {
+  withDocument(t);
+  let ceilingM = 1_000;
+  const fetched = [];
+  const { layer } = await scannedLayer({
+    maxAltitudeM: () => ceilingM,
+    fetchImpl: async (url) => {
+      fetched.push(url);
+      return { ok: true, json: async () => ({ zones: ['one'] }) };
+    },
+  }, { altitudeM: 5_000 });
+
+  assert.equal(fetched.length, 0, 'above the ceiling, nothing is spent');
+  assert.equal(layer.getStats().dormant, true);
+
+  ceilingM = 45_000;
+  await layer.update();
+  assert.equal(fetched.length, 1, 'the same camera, a different question, a real answer');
+  assert.equal(layer.getStats().dormant, false);
+  layer.disable();
+});
+
+test('a movement threshold given as a function is consulted per scan too', async (t) => {
+  withDocument(t);
+  let thresholdKm = 50;
+  const fetched = [];
+  const { layer, viewer } = await scannedLayer({
+    minShiftKm: () => thresholdKm,
+    fetchImpl: async (url) => {
+      fetched.push(url);
+      return { ok: true, json: async () => ({ zones: ['one'] }) };
+    },
+  });
+  assert.equal(fetched.length, 1);
+
+  // A kilometre north — far past the shared 250 m default, nowhere near 50 km.
+  viewer.camera.positionCartographic.latitude = Cesium.Math.toRadians(ADDRESS.lat + 0.009);
+  await layer.update();
+  assert.equal(fetched.length, 1, 'the answer in hand still describes this catchment');
+
+  thresholdKm = 0.25;
+  await layer.update();
+  assert.equal(fetched.length, 2, 'and a tighter threshold asks again');
+  layer.disable();
+});
+
+// ── The centre the reader chose ─────────────────────────────────────────────
+
+test('a pinned centre survives the camera, and outranks the ceiling', async (t) => {
+  withDocument(t);
+  const fetched = [];
+  const { layer, viewer } = await scannedLayer({
+    maxAltitudeM: () => 1_000,
+    fetchImpl: async (url) => {
+      fetched.push(url);
+      return { ok: true, json: async () => ({ zones: ['one'] }) };
+    },
+  }, { altitudeM: 60_000 });
+
+  assert.equal(fetched.length, 0, 'sixty kilometres up, following the camera, nothing is spent');
+  assert.equal(layer.getStats().dormant, true);
+
+  // The reader clicks the map. The ceiling exists to stop a CAMERA-driven layer
+  // firing a request per nudge; a pin fires nothing when the camera moves, so
+  // it has nothing to protect against and the answer is drawn.
+  assert.equal(layer.setScanPin({ lat: 45.764, lon: 4.8357 }), true);
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  assert.equal(fetched.length, 1);
+  assert.match(fetched[0], /lat=45\.764000&lon=4\.835700/);
+  assert.equal(layer.getStats().dormant, false);
+  assert.deepEqual(layer.getStats().scanPin, { lat: 45.764, lon: 4.8357 });
+
+  // Flying the camera to another country does not move the answer.
+  viewer.camera.positionCartographic.latitude = Cesium.Math.toRadians(50.5);
+  viewer.camera.positionCartographic.longitude = Cesium.Math.toRadians(3.1);
+  await layer.update();
+  assert.equal(fetched.length, 1, 'the pin is the question now, and it did not change');
+  assert.deepEqual(layer.getStats().scanCentre, { lat: 45.764, lon: 4.8357 });
+
+  // The same pin twice is not a change and must not spend a request.
+  assert.equal(layer.setScanPin({ lat: 45.764, lon: 4.8357 }), false);
+  assert.equal(layer.setScanPin(null), true, 'released');
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  assert.equal(layer.getScanPin(), null);
+  assert.equal(layer.getStats().dormant, true, 'and the ceiling applies again');
+  assert.equal(layer.setScanPin(null), false, 'releasing nothing is not a change');
+  assert.equal(layer.setScanPin({ lat: NaN, lon: 4 }), false, 'and neither is a bad coordinate');
+  layer.disable();
+});
+
+test('the render is told whether the centre was chosen or merely looked at', async (t) => {
+  withDocument(t);
+  const seen = [];
+  const { layer } = await scannedLayer({
+    render({ point, dataSource }) {
+      seen.push(point);
+      dataSource.entities.add({ id: `drawn-${seen.length}` });
+      return 1;
+    },
+  });
+  assert.equal(seen[0].pinned, undefined, 'following the camera says nothing extra');
+  layer.setScanPin({ lat: 45.764, lon: 4.8357 });
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  assert.equal(seen.at(-1).pinned, true);
+  // The altitude is still the CAMERA's — how far away the reader is standing —
+  // because that is what it means to everything downstream.
+  assert.equal(seen.at(-1).altitudeM, 900);
   layer.disable();
 });

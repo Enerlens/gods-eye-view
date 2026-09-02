@@ -2123,7 +2123,7 @@ written and measured out: none of the file's 1 346 inner rings lies entirely
 outside, fourteen lie partly outside because they share an edge with the outer
 ring, and the three largest of them are courtyards of 787, 754 and 249 m²
 that the rule would have silently filled in.
-| `isochrone-fr` | `is` | `/api/isochrone` | IGN Géoplateforme, Valhalla over BD TOPO® — three rings per scan |
+| `isochrone-fr` | `is` | `/api/isochrone` | IGN Géoplateforme, Valhalla over BD TOPO® — three rings per scan; cycling instead from the FOSSGIS OSRM table over OSM |
 | `implantation-fr` | `im` | *(none of its own)* | Fans out across `/api/isochrone`, `/api/filosofi/carreaux`, `/api/gpu`, `/api/dvf` and the BAN reverse geocoder, and joins them in the browser |
 
 `implantation-fr` is the only layer in the app with NO SOURCE OF ITS OWN. It
@@ -2149,13 +2149,42 @@ around the ground the camera is looking at rather than filling a viewport. The
 route takes a COMMA LIST of durations and answers one payload holding every
 ring — `seconds=300,600,900` — fetched one at a time upstream, because the
 Géoplateforme publishes 5 requests per second per IP with no SLA and an explicit
-right to cut a client off. Walking and driving only: the service rejects the
-cycling profile with HTTP 400, so the layer draws a DISABLED cycling chip
-carrying that reason and models nothing in its place. Its own altitude ceiling
-is 8 km rather than the shared 12 km — a 2 km² ring seen from 12 km up is a
-smudge — and it reports, per consecutive pair of rings, the measured area growth
-against the ×4 that free space would give, which is an obstruction reading that
-needs no assumed speed.
+right to cut a client off. It reports, per consecutive pair of rings, the
+measured area growth against the ×4 that free space would give, which is an
+obstruction reading that needs no assumed speed.
+
+Three things about that layer changed on 2026-09-02, all of them because the
+same complaint kept arriving in different clothes: you could not see the
+catchment you had just measured.
+
+**The ceiling follows the mode.** One 8 km ceiling covered a walking ring 1.9 km
+across and a driving ring up to 16.5 km across (measured at fifteen minutes over
+Ustaritz, Paris 11e, Lyon, Bordeaux and rural Cantal), and Cesium shows about
+0.65 × altitude of ground on the short screen axis at nadir — so the layer
+cleared its own driving answer off the screen exactly when the reader pulled back
+to look at it. The ceilings are now 8 / 20 / 45 km for walking, cycling and
+driving, with movement thresholds of 0.25 / 0.6 / 1.5 km to match.
+
+**A click on the globe pins the centre, and a pinned centre has no ceiling at
+all.** The ceiling exists to stop a camera-driven layer from spending a request
+per nudge across a country; a pin spends nothing when the camera moves, so it has
+nothing to protect against. That is what lets a reader pull back far enough to
+see a whole driving catchment. The pin is a runtime parameter (`centre`), a chip
+releases it back to the camera, and it is deliberately NOT encoded into a share
+link — every option in `layerState.js` is an enum and a coordinate is not one.
+
+**Cycling is measured on OpenStreetMap, and drawn as an envelope.** IGN publishes
+no cycling profile at any resource — re-probed that day, HTTP 400 on
+`bdtopo-valhalla` and `bdtopo-pgr` alike — so the cycling ring comes from one
+FOSSGIS OSRM `/table` request: 36 bearings × 11 samples, and each bearing's reach
+is where the measured duration crosses the budget. Every vertex is a real routed
+duration; the straight line BETWEEN two vertices is not, so the shape cannot
+express an unreachable pocket or a catchment in pieces and its area is an upper
+bound. It is therefore drawn with a dashed outline, its area is called a
+majorant, and the same method run on the walking network and compared against the
+IGN walking polygon measured −32 % to +117 % of area across five communes — the
+worst case being rural, where the true shape is a spider. All of that is on the
+card, not only in this file.
 
 These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
 `ur`, `if` — `cadastre-fr` is the sixth, `cd`, and `ads-fr` later took `au`. The single-character space
