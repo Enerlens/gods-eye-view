@@ -15,12 +15,27 @@
   captured 2026-09-02, each chosen for a different way of being awkward. Paris:
   a dossier published at Lambert-93 `(0, 0)` — whose `geo_point_2d` reprojects
   to a well-formed coordinate off São Tomé — plus one under instruction, one
-  refused, one accorded and one modificatif. Bordeaux: a PC, a *certificat
-  d'urbanisme* (which the layer excludes on principle) and a PD, all with the
-  array-valued `refcad` only this portal uses, and none with a decision column
-  because the file has none. Nantes: a row with `<br/>` inside a plain-text
-  field, one under instruction, one decided — and an INTEGER commune code.
-  Used by `adsFeed.test.mjs`. Paris rows are **ODbL 1.0**; the other two are
+  refused, one accorded and one modificatif. Nantes: a row with `<br/>` inside
+  a plain-text field, one under instruction, one decided — and an INTEGER
+  commune code.
+
+  Seven of the eight **Bordeaux** rows carry `geo_shape`, the only published
+  geometry in this layer, and each is a different way for a polygon to be
+  awkward: a clean single-parcel PC and a PD; a *certificat d'urbanisme* whose
+  outline must never be drawn because the projection excludes the kind; the
+  three dossiers `DP 033 281 24 Z0785`, `DP 033 281 26 00295` and its `M01`,
+  which name the same three parcels and publish **byte-identical geometry** —
+  they are the deduplication test, and they each carry a second ring of
+  11 cm² (`ORA-13349`) that the sanitiser deliberately KEEPS, because it is
+  genuinely inside the parcel and no rule here throws away a shape for being
+  small; `PC 033 119 22 Z1055` (`ORA-13356`), which writes four of its fourteen
+  vertices twice in a row; and `PC 033 063 24 Z0140`, flagged and published
+  with **no geometry at all but a valid point**, which is the fallback. Their
+  `refcad` is array-valued as only this portal's is, and none carries a
+  decision column because the file has none.
+
+  Used by `adsFeed.test.mjs`, `adsUrbanisme.test.mjs` and
+  `ringGeometry.test.mjs`. Paris rows are **ODbL 1.0**; the other two are
   Licence Ouverte.
 
 - `ban-geocode-12202-sample.csv` — the real answer the BAN's bulk

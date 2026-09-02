@@ -73,6 +73,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   would make one métropole look three times busier than Paris for a category no
   other source has. They are counted and reported, so the exclusion is a stated
   line rather than a missing number.
+- **Bordeaux draws the ground, not a dot on it.** One ADS portal in France
+  publishes the emprise of the parcels a dossier names, and the layer now
+  clamps it onto the terrain under the crane. A permit stops being a point on a
+  street and becomes the plot it is about: the shape was checked against the
+  IGN cadastre, which returns the same ring to the seventh decimal for parcel
+  `33063000KD0112` — where the row's own `superficie` column says 5 471 m² and
+  both geometries say 45. Paris and Nantes publish no shape, and their scans
+  report zero plots rather than letting the absence look like a failure.
+- **The outline belongs to the plot, and one plot is drawn once.** Bordeaux
+  repeats the same emprise once per dossier standing on it: 392 dossiers over
+  **252 distinct plots** on a 400 m scan of place Pey-Berland, one plot
+  carrying nine. Drawn per dossier, translucent fills ADD — nine copies paint
+  that plot at 0.83 alpha where a single one reads 0.18, so the thickest FILE
+  on the block would have looked like the biggest project on it. The plot is
+  identified by its GEOMETRY and merely named by its parcel references, because
+  the same file writes those in two spellings and occasionally repeats one,
+  each of which would split one plot into two stacked washes.
+- **And the outlines cost less than nothing.** The certificats were being
+  downloaded — outlines and all — only to be discarded a function later. Moving
+  that exclusion into the query and asking the portal to COUNT them instead
+  turns a 400 m Bordeaux scan from 416 KB without any geometry into **391 KB
+  with all of it**; the naive version would have been 1 338 KB. ODSQL has no
+  `<>`, and the export endpoint answers a syntax error with HTTP 200 and a JSON
+  error object, which reads as a short answer rather than as a failure.
+- **A published polygon is not a valid one, and the publisher's own flag is not
+  the test.** Bordeaux ships its emprises out of Oracle Spatial with the
+  validation verdict attached: 428 rows are flagged, and 108 of those carry no
+  geometry at all — those keep their point. Dropping the other 320 was measured
+  and rejected: against each row's own stated area they draw at a median 0.997
+  of it. What is repaired instead is what a renderer cannot take — every ring
+  arrives closed and leaves open, and 45 rings across 134 413 rows write a
+  vertex twice in a row. Requiring a hole to sit inside its outer ring was
+  written, measured and removed: it would have silently filled in three genuine
+  courtyards of 787, 754 and 249 m², none of them flagged by the publisher.
 
 ## [Unreleased] — 2026-09-01
 

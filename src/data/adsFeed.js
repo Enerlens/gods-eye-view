@@ -128,6 +128,8 @@
  * it; nothing in the browser bundle does.
  */
 
+import { ringAreaM2, ringLabelAnchor, sanitisePolygonParts } from './ringGeometry.js';
+
 /** Attribution carried on every payload (see DATA_SOURCES.md). */
 export const ADS_SOURCE = 'Sitadel — SDES, + portails ADS métropolitains';
 
@@ -331,9 +333,22 @@ export const LOCAL_ADS_PORTALS = Object.freeze([
     // would paint as "state unknown". Where Sitadel has the same dossier, the
     // merge fills in what happened next.
     publishesDecision: false,
+    // THE ONLY SOURCE HERE THAT PUBLISHES THE GROUND ITSELF. Every other
+    // register in this layer answers with a coordinate at best; this one ships
+    // the parcel outline the dossier was filed on, as a GeoJSON MultiPolygon.
+    // 308 984 of its 309 094 rows carry one (measured 2026-09-02).
+    shapeColumn: 'geo_shape',
+    // Filtered UPSTREAM, not after the fact — see `buildLocalAdsUrl`. The
+    // projection has always dropped certificats d'urbanisme; asking the portal
+    // to leave them out is what pays for the geometry. `!=` and not an
+    // allowlist of the four kept kinds: a category Bordeaux adds later should
+    // arrive and be classified, even imperfectly, rather than vanish into a
+    // list nobody remembers to extend.
+    kindColumn: 'type',
+    excludedKind: 'CU',
     select: Object.freeze([
       'ident', 'type_libelle', 'nom', 'insee', 'date_depot', 'refcad',
-      'superficie', 'surf_creee', 'surf_demolie', 'geo_point_2d',
+      'superficie', 'surf_creee', 'surf_demolie', 'geo_point_2d', 'geo_shape',
     ]),
     dateColumn: 'date_depot',
   }),
@@ -473,11 +488,29 @@ export function buildSitadelUrl(file, { communeCode, since }) {
  * The date floor is never optional: Bordeaux's file starts in 2003 and a 300 m
  * circle in the centre holds 2 604 dossiers (measured 2026-09-02).
  *
+ * WHY THE KIND EXCLUSION IS UPSTREAM AND NOT IN THE PROJECTION. It always had
+ * to happen — `projectAdsPermits` has never drawn a certificat d'urbanisme —
+ * but doing it here is what makes Bordeaux's polygons affordable. Measured on
+ * the default scan (400 m, 36 months, place Pey-Berland):
+ *
+ *   points only, all kinds, as this shipped         416 KB   1 412 rows
+ *   + geo_shape, all kinds                        1 338 KB   1 412 rows
+ *   + geo_shape, certificats left upstream          391 KB     469 rows
+ *
+ * Two thirds of that circle are certificats, and their outlines were being
+ * downloaded only to be discarded a function later. Dropping them pays for
+ * every emprise the layer now draws, with 25 KB to spare against the version
+ * that drew none.
+ *
  * @param {object} portal One of {@link LOCAL_ADS_PORTALS}.
- * @param {{lon?: number, lat?: number, radiusM?: number, communeCode?: string, since: string}} query
+ * @param {{lon?: number, lat?: number, radiusM?: number, communeCode?: string,
+ *   since: string, onlyKind?: string}} query `onlyKind` INVERTS the exclusion,
+ *   which is how the excluded rows get counted without being fetched.
  * @returns {string}
  */
-export function buildLocalAdsUrl(portal, { lon, lat, radiusM, communeCode, since }) {
+export function buildLocalAdsUrl(portal, {
+  lon, lat, radiusM, communeCode, since, onlyKind = null,
+}) {
   const clauses = [`${portal.dateColumn} >= date'${since}'`];
   if (portal.geoColumn) {
     clauses.unshift(`distance(${portal.geoColumn}, geom'POINT(${lon} ${lat})', ${Math.round(radiusM)}m)`);
@@ -488,12 +521,44 @@ export function buildLocalAdsUrl(portal, { lon, lat, radiusM, communeCode, since
       ? `${portal.communeColumn} = ${Number.parseInt(code, 10)}`
       : `${portal.communeColumn} = "${code}"`);
   }
+  // ODSQL has no `<>`. Writing one is not a filter that misses: the export
+  // endpoint answers an ODSQL syntax error with a JSON error OBJECT and
+  // HTTP 200, which reads as a short answer rather than as a failure.
+  if (portal.kindColumn && (onlyKind || portal.excludedKind)) {
+    clauses.push(onlyKind
+      ? `${portal.kindColumn} = "${onlyKind}"`
+      : `${portal.kindColumn} != "${portal.excludedKind}"`);
+  }
   const params = new URLSearchParams({
     select: portal.select.join(','),
     where: clauses.join(' and '),
     limit: '-1',
   });
   return `https://${portal.portal}/api/explore/v2.1/catalog/datasets/${portal.dataset}/exports/json?${params}`;
+}
+
+/**
+ * Count the rows a portal was asked to leave out, without fetching them.
+ *
+ * The certificats are excluded from the map on principle, and the count of
+ * them is what keeps that an editorial line rather than a hole: a block whose
+ * scan says "0 permits, 47 certificats" is a block where somebody is asking
+ * questions, and that is worth a sentence. `records` rather than
+ * `exports/json`, so the answer is a number and not a file.
+ *
+ * @param {object} portal One of {@link LOCAL_ADS_PORTALS}.
+ * @param {object} query Same shape as {@link buildLocalAdsUrl}.
+ * @returns {?string} Null for a portal that excludes nothing.
+ */
+export function buildLocalAdsExcludedCountUrl(portal, query) {
+  if (!portal.kindColumn || !portal.excludedKind) return null;
+  const url = new URL(buildLocalAdsUrl(portal, { ...query, onlyKind: portal.excludedKind }));
+  const params = new URLSearchParams({
+    select: 'count(*) as n',
+    where: url.searchParams.get('where'),
+    limit: '1',
+  });
+  return `https://${portal.portal}/api/explore/v2.1/catalog/datasets/${portal.dataset}/records?${params}`;
 }
 
 /**
@@ -719,6 +784,45 @@ function localPoint(portal, record) {
 }
 
 /**
+ * Pull the parcel outline out of a portal row, cleaned and ready to draw.
+ *
+ * WHY BORDEAUX GETS A SHAPE AND THE OTHER TWO DO NOT. It is not a difference
+ * of effort, it is what the three files contain: Paris publishes a point per
+ * dossier, Nantes an address string, and only Bordeaux publishes the emprise —
+ * the outline of the parcels the dossier names. So this returns null for the
+ * other two and the layer keeps drawing them as points, which is the whole
+ * truth about them.
+ *
+ * WHAT THE OUTLINE IS. The parcels, not the project: it is the land the file
+ * concerns, and the building it authorises may cover a corner of it. The card
+ * says so. Verified against the IGN cadastre on 2026-09-02 — parcel
+ * `33063000KD0112` comes back from `apicarto.ign.fr` with the same ring to the
+ * seventh decimal — which is also how the shape was shown to be the reliable
+ * half of the row: that parcel's published `superficie` reads 5 471 m² where
+ * the cadastre and the polygon both say 45.
+ *
+ * @param {object} portal One of {@link LOCAL_ADS_PORTALS}.
+ * @param {object} record One raw row.
+ * @returns {?Array<Array<Array<number[]>>>} Parts, or null.
+ */
+export function localEmprise(portal, record) {
+  if (!portal.shapeColumn) return null;
+  const shape = record[portal.shapeColumn];
+  // Opendatasoft wraps `geo_shape` in a GeoJSON Feature, so the geometry is
+  // one level down; a bare geometry is accepted too rather than assumed away.
+  const geometry = shape?.geometry ?? shape;
+  const type = geometry?.type;
+  const coordinates = geometry?.coordinates;
+  if (!Array.isArray(coordinates)) return null;
+  let parts;
+  if (type === 'MultiPolygon') parts = coordinates;
+  else if (type === 'Polygon') parts = [coordinates];
+  else return null;
+  const clean = sanitisePolygonParts(parts);
+  return clean.length ? clean : null;
+}
+
+/**
  * Is this row's position the projected origin dressed up as a real coordinate?
  *
  * TRAP 5, and the reason it needs its own function: Paris writes a missing
@@ -813,6 +917,11 @@ export function normaliseLocalRow(portal, record) {
     lat: placed ? lat : null,
     precision: placed ? 'published' : null,
     geocodeScore: null,
+    // The parcel outline, where the portal publishes one. Stripped from the
+    // permit before it is served — see `projectAdsPermits`, which lifts it
+    // into a table of its own so one plot is sent once however many dossiers
+    // stand on it.
+    parts: localEmprise(portal, record),
     source: portal.key,
     sourceLabel: portal.label,
   };
@@ -1074,6 +1183,118 @@ export function mergeRegisters(sitadel, local) {
   return { permits: out, merged };
 }
 
+/**
+ * Lift the parcel outlines out of the permits into a table of their own.
+ *
+ * THE SHAPE BELONGS TO THE PLOT, NOT TO THE DOSSIER. This is the whole reason
+ * the function exists. Bordeaux ships the emprise on every row, and a plot
+ * with a long paperwork history repeats the same outline once per file: on the
+ * default scan of place Pey-Berland, 469 rows carry 300 distinct outlines, and
+ * before certificats were left upstream one parcel accounted for 81 of 1 412.
+ *
+ * Sending it once per dossier is wrong three times over, worst first:
+ *
+ * - **On screen, and this is the one that lies.** Translucent fills ADD. At
+ *   the wash alpha this layer uses, one copy of a plot reads at 0.18 and the
+ *   nine copies of the busiest plot in that scan read at 0.83 — four and a
+ *   half times the ink, on the plot with the thickest FILE rather than the
+ *   biggest project. Nothing on screen says why, and the reader has no way to
+ *   discount it.
+ * - **On the wire.** 202 KB of repeated geometry against 117 KB of distinct
+ *   geometry, for the same 469 dossiers.
+ * - **In Cesium.** `StaticGroundGeometryColorBatch` opens a NEW batch — a
+ *   `GroundPrimitive` of its own, tessellated and drawn separately — whenever
+ *   an incoming instance's bounding rectangle collides with one already in
+ *   that batch, and two copies of a parcel share a rectangle exactly. Modest
+ *   but real, and measured by replaying Cesium's own greedy first-fit over the
+ *   scan's rectangles: 469 instances fall into 12 batches, 300 into 7, and the
+ *   vertex count drops from 7 485 to 4 330.
+ *
+ * KEYED ON THE GEOMETRY, NAMED BY THE PARCELS. The obvious key is `refcad`,
+ * and it is wrong in two measured ways: it is written in the short
+ * `063KH215` form on 2026 deposits and occasionally in the full 14-character
+ * IDU form on older ones (47 of 3 927 rows in 2022 Q1), and one row in a few
+ * thousand lists the same parcel twice (`['063KN138', '063KN138']`). Either
+ * spelling difference splits one plot into two. The geometry has no such
+ * freedom: across 5 186 rows, 2 737 distinct parcel sets produced exactly
+ * 2 737 distinct outlines and no outline was shared by two different sets.
+ * So the outline is the identity and `refcad` is the label.
+ *
+ * @param {Array<object>} permits Permits already cut to the scan.
+ * @returns {{permits: Array<object>, emprises: Array<object>}} Permits with
+ *   `parts` replaced by an `empriseId`, and the outlines, once each.
+ */
+export function liftEmprises(permits) {
+  const emprises = [];
+  const byGeometry = new Map();
+  const out = [];
+  for (const permit of permits) {
+    const { parts, ...rest } = permit;
+    if (!Array.isArray(parts) || !parts.length) {
+      out.push({ ...rest, empriseId: null });
+      continue;
+    }
+    // The full coordinate text, not a hash: this Map lives for one scan and a
+    // few hundred keys, and an exact key cannot collide two neighbouring
+    // plots into one the way a truncated digest can.
+    const key = JSON.stringify(parts);
+    let id = byGeometry.get(key);
+    if (id === undefined) {
+      id = emprises.length;
+      byGeometry.set(key, id);
+      let areaM2 = 0;
+      for (const part of parts) {
+        areaM2 += ringAreaM2(part[0]);
+        for (let h = 1; h < part.length; h += 1) areaM2 -= ringAreaM2(part[h]);
+      }
+      // Somewhere strictly inside the widest part, for the card to hang on.
+      // The widest, because an emprise made of a house and its garage strip
+      // should be labelled on the house. `widthDeg` is how that choice is
+      // made and is dropped afterwards: it is a server-side comparison, and
+      // shipping it costs 5 KB a scan to say nothing the client reads.
+      const widest = parts
+        .map((part) => ringLabelAnchor(part))
+        .filter(Boolean)
+        .sort((a, b) => b.widthDeg - a.widthDeg)[0] ?? null;
+      emprises.push({
+        id,
+        parts,
+        anchor: widest ? { lon: widest.lon, lat: widest.lat } : null,
+        // Measured off the outline itself rather than copied from the row's
+        // `superficie`. The two agree within 10% on 97.9% of rows, and where
+        // they disagree the outline is the one that matches the IGN cadastre
+        // — parcel 33063000KD0112 is 45 m² in both, and 5 471 m² in the
+        // column. A number printed beside a shape has to be that shape's.
+        areaM2: Math.round(areaM2),
+        parcels: [],
+      });
+    }
+    const emprise = emprises[id];
+    for (const parcel of permit.parcels || []) {
+      if (parcel && !emprise.parcels.includes(parcel)) emprise.parcels.push(parcel);
+    }
+    // No list of dossiers here. Every permit already carries its own number
+    // and the `empriseId` that groups it, so a list on the plot would be the
+    // same 8.9 KB of a Bordeaux scan said twice — which is the exact mistake
+    // this function exists to undo, wearing different clothes.
+    out.push({ ...rest, empriseId: id });
+  }
+  return { permits: out, emprises };
+}
+
+/**
+ * How many certificats d'urbanisme this scan stepped over.
+ *
+ * @param {number} seen Certificats among the rows actually fetched.
+ * @param {object} context Projection context, carrying the upstream tally.
+ * @returns {?number} Null when a count was asked for and not answered.
+ */
+function certificateTally(seen, context) {
+  if (!context.certificatesAsked) return seen;
+  if (!Number.isFinite(context.certificatesUpstream)) return null;
+  return context.certificatesUpstream + seen;
+}
+
 /** Metres between two coordinates. Local, like `dvfFeed` and `georisquesFeed`. */
 function haversineM(lat1, lon1, lat2, lon2) {
   const R = 6_371_000;
@@ -1115,12 +1336,13 @@ export function projectAdsPermits({ permits, origin, radiusM, context = {} }) {
   }
   near.sort((a, b) => a.distanceM - b.distanceM);
   const kept = near.slice(0, ADS_MAX_PERMITS);
+  const { permits: drawn, emprises } = liftEmprises(kept);
 
   const byKind = {};
   const byState = {};
   let housing = 0;
   let underInstruction = 0;
-  for (const permit of kept) {
+  for (const permit of drawn) {
     byKind[permit.kind] = (byKind[permit.kind] ?? 0) + 1;
     if (permit.state) byState[permit.state] = (byState[permit.state] ?? 0) + 1;
     if (Number.isFinite(permit.housing)) housing += permit.housing;
@@ -1130,9 +1352,11 @@ export function projectAdsPermits({ permits, origin, radiusM, context = {} }) {
   return {
     origin,
     radiusM,
-    permits: kept,
+    permits: drawn,
+    // One entry per PLOT, not per dossier — see `liftEmprises`.
+    emprises,
     summary: {
-      count: kept.length,
+      count: drawn.length,
       // The gap between these two is the honesty of the radius: a truncated
       // scan is a scan that stopped, not a block with fewer permits on it.
       found: near.length,
@@ -1141,8 +1365,18 @@ export function projectAdsPermits({ permits, origin, radiusM, context = {} }) {
       byState,
       housing,
       underInstruction,
-      // Excluded from the map on purpose; see the loop above.
-      certificates,
+      // Excluded from the map on purpose; see the loop above. A portal asked
+      // to leave them out upstream answers with a COUNT instead of rows, and
+      // that count is added to whatever the loop still saw — the loop can only
+      // count what was fetched. Null, not zero, when the count was asked for
+      // and did not come back: "there are none here" and "nobody answered" are
+      // different sentences and the card prints one of them.
+      certificates: certificateTally(certificates, context),
+      // How much of the block the layer can actually outline. The gap between
+      // this and `count` is Sitadel, Paris and Nantes, none of which publish a
+      // shape — it is a property of the registers, not of the block.
+      empriseCount: emprises.length,
+      withEmprise: drawn.filter((permit) => permit.empriseId !== null).length,
     },
     ...context,
     source: ADS_SOURCE,

@@ -392,7 +392,10 @@ export const DATA_CREDITS = [
       + '(<a href="https://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">ODbL 1.0</a>, rolling six months), '
       + '<a href="https://opendata.bordeaux-metropole.fr/explore/dataset/u_dosaos_s/" target="_blank" rel="noopener">Bordeaux M&eacute;tropole</a> '
       + 'and <a href="https://nantesmetropole.outscale-euw2.opendatasoft.com/explore/dataset/244400404_demandes-autorisations-decisions-urbanisme-nantes-metropole/" target="_blank" rel="noopener">Nantes M&eacute;tropole</a> '
-      + '(Licence Ouverte). Sitadel carries no coordinate: its rows are placed by address through the '
+      + '(Licence Ouverte). Bordeaux is the only one of the three that publishes the GROUND &mdash; the emprise '
+      + 'of the parcels each dossier names &mdash; and that outline is what the layer draws there; elsewhere the '
+      + 'register has no shape to give and the marker is the whole answer. Sitadel carries no coordinate at all: '
+      + 'its rows are placed by address through the '
       + '<a href="https://adresse.data.gouv.fr" target="_blank" rel="noopener">Base Adresse Nationale</a> '
       + '(Licence Ouverte), and every dot geocoded to a street rather than a house number says so on its card.',
   },

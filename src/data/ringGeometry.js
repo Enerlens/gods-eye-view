@@ -177,3 +177,160 @@ export function ringLabelAnchor(rings) {
     widthDeg: Number(best.widthDeg.toFixed(6)),
   };
 }
+
+/**
+ * The AUTHALIC radius of WGS84, in metres — the radius of the sphere with the
+ * same surface area as the ellipsoid, which is the one an area formula wants.
+ * Not the equatorial 6 378 137, which is the semi-major axis and overstates
+ * every area here by 0.22%: on parcel `33063000KD0112`, whose legal cadastral
+ * `contenance` at the IGN is 45 m², this returns 45.04 and the equatorial
+ * radius returns 45.14.
+ */
+const EARTH_RADIUS_M = 6371007.181;
+
+/**
+ * The area a ring encloses, in square metres, unsigned.
+ *
+ * Spherical excess rather than a planar shoelace, so the same function is
+ * honest for a parcel in Bordeaux and a commune in Guyane without anyone
+ * choosing a projection first. At parcel scale the two agree to well under a
+ * square metre; the point of the spherical form is that it does not quietly
+ * stop agreeing as the shape or the latitude grows.
+ *
+ * Two callers, two uses. The permit layer prints it — the ground an emprise
+ * covers, measured off the outline actually drawn rather than copied from a
+ * column that disagrees with it on 2% of rows. {@link sanitisePolygonParts}
+ * uses it as a floor, to refuse a ring that encloses nothing.
+ *
+ * It is not a collinearity test and must not be used as one: three points on
+ * a lon/lat straight line still bound a real spherical area, because a
+ * lon/lat straight line is not a geodesic. At degree scale that is 1.9 km²;
+ * at the parcel scale this runs at it is two millionths of a square metre.
+ *
+ * @param {Array<number[]>} ring `[[lon, lat], …]`, open or closed.
+ * @returns {number} Square metres, 0 for anything degenerate.
+ */
+export function ringAreaM2(ring) {
+  if (!Array.isArray(ring) || ring.length < 3) return 0;
+  const toRad = Math.PI / 180;
+  let total = 0;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const a = ring[j];
+    const b = ring[i];
+    if (!Array.isArray(a) || !Array.isArray(b)) return 0;
+    const lon1 = Number(a[0]) * toRad;
+    const lat1 = Number(a[1]) * toRad;
+    const lon2 = Number(b[0]) * toRad;
+    const lat2 = Number(b[1]) * toRad;
+    if (!Number.isFinite(lon1) || !Number.isFinite(lat1)
+      || !Number.isFinite(lon2) || !Number.isFinite(lat2)) return 0;
+    total += (lon2 - lon1) * (2 + Math.sin(lat1) + Math.sin(lat2));
+  }
+  return Math.abs((total * EARTH_RADIUS_M * EARTH_RADIUS_M) / 2);
+}
+
+/**
+ * How close two published vertices have to be to be the same vertex, in
+ * degrees. 1e-9° is about 0.1 mm — below any cadastral survey, and far below
+ * the 1 cm the seven-decimal sources here publish at.
+ */
+const VERTEX_EPSILON_DEG = 1e-9;
+
+/**
+ * Drop a ring's repeated vertices, returning it open.
+ *
+ * @param {Array<number[]>} ring
+ * @returns {Array<number[]>} Possibly empty.
+ */
+function distinctVertices(ring) {
+  const out = [];
+  for (const point of ring || []) {
+    if (!Array.isArray(point)) continue;
+    const lon = Number(point[0]);
+    const lat = Number(point[1]);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    const last = out[out.length - 1];
+    if (last && Math.abs(last[0] - lon) < VERTEX_EPSILON_DEG
+      && Math.abs(last[1] - lat) < VERTEX_EPSILON_DEG) continue;
+    out.push([lon, lat]);
+  }
+  // GeoJSON closes its rings; an open ring is what the renderers here take.
+  while (out.length > 1) {
+    const first = out[0];
+    const last = out[out.length - 1];
+    if (Math.abs(first[0] - last[0]) >= VERTEX_EPSILON_DEG
+      || Math.abs(first[1] - last[1]) >= VERTEX_EPSILON_DEG) break;
+    out.pop();
+  }
+  return out;
+}
+
+/**
+ * Make published polygon parts safe to hand a renderer, or reject them.
+ *
+ * WHY THIS EXISTS AT ALL. A published polygon is not a valid one. Bordeaux
+ * Métropole's permit file ships its emprises straight out of Oracle Spatial
+ * and carries the validator's own verdict alongside them: 428 of its 309 094
+ * rows are flagged (`ORA-13349` boundary crosses itself, `13350` rings touch,
+ * `13356` adjacent points redundant), and 108 of those are published with no
+ * geometry at all. Measured 2026-09-02.
+ *
+ * WHAT THE FLAG IS NOT. It is tempting to drop every flagged row. Measured
+ * against each row's own published `superficie`, the 320 flagged rows that DO
+ * carry a geometry draw it at a median 0.997 of their stated area — they are
+ * very nearly all correct. Dropping them would discard three hundred true
+ * emprises to avoid a handful of bad ones. So the flag is not the test, and
+ * this function does not read it.
+ *
+ * WHAT IT DOES INSTEAD, measured over that file's 134 413 rows that carry a
+ * geometry — 136 570 parts, 137 916 rings, 2 736 112 vertices:
+ *
+ * - **Opens every ring.** GeoJSON closes its rings and all 137 916 here are
+ *   closed; the renderers in this repo take open ones and close them
+ *   themselves. That alone is most of the 5% of vertices this removes.
+ * - **Drops consecutive duplicates.** 45 rings, in 45 rows, repeat a vertex
+ *   back to back — 187 vertices in all. A zero-length segment is a degenerate
+ *   triangle in tessellation, and it is what makes a ring read as
+ *   "self-intersecting" to any test that does not special-case it. This is
+ *   what `ORA-13356` names.
+ * - **Refuses rings that enclose nothing**, as a floor rather than a filter —
+ *   fewer than three distinct vertices, or no area at all. No ring in that
+ *   file trips it: parts in and parts out are both 136 570, rings in and out
+ *   both 137 916, and not one row is left with no polygon. It is here for the
+ *   next publisher, not for this one.
+ *
+ * A REPAIR DELIBERATELY NOT MADE. Every ring after the first in a part IS a
+ * hole, so the obvious next check is that a hole lies inside its own outer
+ * ring — and it was written, measured, and removed. None of the file's 1 346
+ * inner rings lies entirely outside. Fourteen lie PARTLY outside, and they are
+ * not misplaced: they share an edge with the outer ring, which is a boundary
+ * case a point-in-ring test decides by floating-point luck. Three of the
+ * fourteen are courtyards of 787, 754 and 249 m², and the publisher flagged
+ * none of them. Requiring containment would have filled them in —
+ * silently, and looking exactly like a parcel with no courtyard.
+ *
+ * A part whose OUTER ring does not survive is dropped whole: a hole without
+ * the land around it is not a smaller truth, it is a different shape.
+ *
+ * @param {Array<Array<Array<number[]>>>} parts `[[outer, ...holes], …]`.
+ * @returns {Array<Array<Array<number[]>>>} The same shape, cleaned. Empty when
+ *   nothing survived, which callers must read as "no polygon" and fall back.
+ */
+export function sanitisePolygonParts(parts) {
+  const clean = [];
+  for (const part of parts || []) {
+    if (!Array.isArray(part) || !part.length) continue;
+    const outer = distinctVertices(part[0]);
+    // Three distinct vertices is the least that can enclose anything; the area
+    // is a second floor for the paths that get there with unusable numbers.
+    if (outer.length < 3 || ringAreaM2(outer) <= 0) continue;
+    const rings = [outer];
+    for (let h = 1; h < part.length; h += 1) {
+      const hole = distinctVertices(part[h]);
+      if (hole.length < 3 || ringAreaM2(hole) <= 0) continue;
+      rings.push(hole);
+    }
+    clean.push(rings);
+  }
+  return clean;
+}

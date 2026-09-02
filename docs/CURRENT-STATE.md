@@ -1978,6 +1978,56 @@ cold commune costs four sequential DiDo calls (parallel ones are rate-limited
 to HTTP 429) plus one bulk BAN geocode — measured at 13-15 s for Paris — and
 every scan inside that commune afterwards is served from cache.
 
+**Bordeaux is the only one of them that publishes the GROUND**, and the layer
+draws it: the emprise of the parcels a dossier names, clamped onto the terrain
+under the crane that marks the dossier itself. Everywhere else in France, and
+in Paris and Nantes too, the register has no shape to give and the marker is
+the whole answer — the scan reports `emprises: 0` there, which is a property of
+those files rather than of the block.
+
+The outline belongs to the PLOT, not to the file, and `liftEmprises` in
+`adsFeed.js` is what enforces that. Bordeaux repeats the same emprise once per
+dossier standing on it: measured on the default 400 m scan of place Pey-Berland
+on 2026-09-02, **392 dossiers over 252 distinct plots**, one of them carrying
+nine. Shipping it per dossier would be wrong three times over — 166 KB of
+repeated geometry against 94 KB of distinct geometry; nine translucent copies
+of one plot painting it at 0.83 alpha where a single copy reads 0.18, so the
+thickest FILE on the block looks like the biggest project on it; and Cesium's
+`StaticGroundGeometryColorBatch` opening a fresh `GroundPrimitive` for every
+instance whose bounding rectangle collides with one already batched, which two
+copies of a parcel always do. The plot is keyed on its GEOMETRY and merely
+NAMED by `refcad`: the same file writes a parcel reference in the short
+`063KH215` form and, on 47 of 3 927 rows in 2022 Q1, in the 14-character IDU
+form, and one row in a few thousand lists the same parcel twice — any of which
+splits one plot into two identical stacked washes. Across 5 186 rows, 2 737
+distinct parcel sets produced exactly 2 737 distinct outlines.
+
+**The emprises cost less than nothing.** The same change stopped fetching the
+certificats d'urbanisme the projection had always discarded — 174 662 of the
+file's 309 094 rows, two thirds of a central Bordeaux circle — by moving the
+exclusion into the ODSQL `where` and asking the portal to COUNT them instead.
+Measured on that scan: 416 KB as it shipped without outlines, 1 338 KB with
+outlines and certificats, **391 KB with outlines and without them**. ODSQL has
+no `<>`, and writing one is not a filter that misses — the export endpoint
+answers a syntax error with HTTP 200 and a JSON error object, which reads as a
+short answer rather than as a failure.
+
+**A published polygon is not a valid one.** Bordeaux ships its emprises out of
+Oracle Spatial with the validator's verdict attached: 428 rows carry a
+`geom_err` (`ORA-13349` boundary crosses itself, `13350` rings touch, `13356`
+adjacent points redundant) and 108 of those are published with no geometry at
+all — those keep their point, and their marker. Dropping the other 320 was
+tried and rejected: measured against each row's own `superficie` they draw at a
+median 0.997 of their stated area, so the flag is not the test.
+`sanitisePolygonParts` in `ringGeometry.js` repairs what is structurally
+unrenderable instead — it opens every ring (all 137 916 arrive closed) and
+removes consecutive duplicate vertices (45 rings, 187 vertices, across 134 413
+rows). It does NOT require a hole to lie inside its outer ring, which was also
+written and measured out: none of the file's 1 346 inner rings lies entirely
+outside, fourteen lie partly outside because they share an edge with the outer
+ring, and the three largest of them are courtyards of 787, 754 and 249 m²
+that the rule would have silently filled in.
+
 `/api/isochrone` (IGN Valhalla over BD TOPO®) is a SERVICE, not a layer: an
 isochrone has no meaning without a chosen point, so it is not in the layer
 registry and carries no share token. Walking and driving only.

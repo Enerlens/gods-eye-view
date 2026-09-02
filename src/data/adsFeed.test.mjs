@@ -18,12 +18,15 @@ import {
   adsSince,
   applyGeocoding,
   buildGeocodeCsv,
+  buildLocalAdsExcludedCountUrl,
   buildLocalAdsUrl,
   buildSitadelUrl,
   dossierKey,
   foldSitadelFamilies,
   foldToSitadelCommune,
   formatDossier,
+  liftEmprises,
+  localEmprise,
   localState,
   mergeRegisters,
   normaliseLocalRow,
@@ -269,8 +272,11 @@ test('Bordeaux publishes no decision column, so its rows say what they provably 
     assert.ok(permit.depositedOn);
     assert.equal(permit.precision, 'published');
   }
-  // The three families this portal spells in French all resolve.
-  assert.deepEqual(rows.map((permit) => permit.kind), ['PC', 'CU', 'PD']);
+  // The four families this portal spells in French all resolve.
+  assert.deepEqual(
+    [...new Set(rows.map((permit) => permit.kind))].sort(),
+    ['CU', 'DP', 'PC', 'PD'],
+  );
   // `refcad` is an ARRAY here, unlike everywhere else.
   assert.ok(Array.isArray(rows[0].parcels));
   assert.ok(rows[0].parcels.length >= 1);
@@ -545,4 +551,194 @@ test('a truncated scan says so rather than looking like a quiet block', () => {
   assert.equal(summary.count, ADS_MAX_PERMITS);
   assert.equal(summary.found, ADS_MAX_PERMITS + 25);
   assert.equal(summary.truncated, true);
+});
+
+// ── Bordeaux: the one register in this layer that publishes the ground ──────
+// Everything below is a way of getting a polygon wrong that still draws
+// something: an outline downloaded for a row about to be discarded, one plot
+// painted once per file standing on it, and a parcel reference spelled two
+// ways in the same file.
+
+test('the certificats are left upstream, and counted instead of fetched', () => {
+  const bordeaux = LOCAL_ADS_PORTALS.find((portal) => portal.key === 'bordeaux');
+  const query = { lon: -0.5792, lat: 44.8378, radiusM: 400, since: '2023-09-01' };
+  // `URLSearchParams` writes spaces as `+`; read the clause back as written.
+  const readable = (url) => decodeURIComponent(url).replace(/\+/g, ' ');
+  const rows = readable(buildLocalAdsUrl(bordeaux, query));
+  // Two thirds of a central Bordeaux circle are certificats — 943 of 1 412 —
+  // and the projection has never drawn one. Fetching their outlines anyway is
+  // what made the naive version of this 1 338 KB instead of 391 KB.
+  assert.match(rows, /type != "CU"/);
+  // `!=`, never `<>`: ODSQL has no `<>`, and the export endpoint answers a
+  // syntax error with HTTP 200 and a JSON error object, which reads as a
+  // short answer rather than as a failure.
+  assert.doesNotMatch(rows, /<>/);
+  assert.match(rows, /geo_shape/, 'and the room that buys pays for the emprise');
+
+  const count = readable(buildLocalAdsExcludedCountUrl(bordeaux, query));
+  // The SAME circle and window, inverted — otherwise the tally answers a
+  // different question than the one the rows answered.
+  assert.match(count, /type = "CU"/);
+  assert.match(count, /400m/);
+  assert.match(count, /date_depot >= date'2023-09-01'/);
+  assert.match(count, /\/records\?/, 'a number, not a file');
+  assert.match(count, /count\(\*\) as n/);
+
+  // A portal that excludes nothing is asked for nothing.
+  for (const portal of LOCAL_ADS_PORTALS.filter((p) => p.key !== 'bordeaux')) {
+    assert.equal(buildLocalAdsExcludedCountUrl(portal, query), null);
+  }
+});
+
+test('only Bordeaux publishes an emprise, and it arrives cleaned', () => {
+  const bordeaux = LOCAL_ADS_PORTALS.find((portal) => portal.key === 'bordeaux');
+  const paris = LOCAL_ADS_PORTALS.find((portal) => portal.key === 'paris');
+  const nantes = LOCAL_ADS_PORTALS.find((portal) => portal.key === 'nantes');
+  // A point is not an outline, and an address is not either.
+  assert.equal(localEmprise(paris, PORTALS.paris[0]), null);
+  assert.equal(localEmprise(nantes, PORTALS.nantes[0]), null);
+
+  const row = PORTALS.bordeaux.find((r) => r.ident === 'PC 033 550 26 00064');
+  const parts = localEmprise(bordeaux, row);
+  assert.equal(parts.length, 1);
+  assert.equal(parts[0].length, 1, 'one ring, no holes');
+  // Opendatasoft wraps the geometry in a Feature; reading the wrapper as the
+  // geometry gives `coordinates: undefined` and a layer with no outlines.
+  assert.equal(row.geo_shape.type, 'Feature');
+  assert.ok(parts[0][0].length >= 3);
+
+  // A row flagged by the publisher and published WITHOUT a geometry keeps its
+  // point: the fallback is the whole reason the marker is still drawn.
+  const noShape = PORTALS.bordeaux.find((r) => r.ident === 'PC 033 063 24 Z0140');
+  assert.equal(noShape.geo_shape, null);
+  const permit = normaliseLocalRow(bordeaux, noShape);
+  assert.equal(permit.parts, null);
+  assert.ok(Number.isFinite(permit.lon) && Number.isFinite(permit.lat));
+  assert.equal(permit.precision, 'published');
+});
+
+test('three dossiers on one plot are one plot, drawn once', () => {
+  const bordeaux = LOCAL_ADS_PORTALS.find((portal) => portal.key === 'bordeaux');
+  const trio = PORTALS.bordeaux
+    .filter((row) => row.ident.startsWith('DP 033 281'))
+    .map((row) => normaliseLocalRow(bordeaux, row));
+  assert.equal(trio.length, 3, 'fixture must carry the shared-parcel trio');
+
+  const { permits, emprises } = liftEmprises(trio);
+  assert.equal(emprises.length, 1, 'one piece of ground');
+  assert.deepEqual(permits.map((p) => p.empriseId), [0, 0, 0]);
+  // The geometry is lifted OUT of the permits, or it ships three times over.
+  for (const permit of permits) assert.equal(permit.parts, undefined);
+
+  const [plot] = emprises;
+  assert.deepEqual(plot.parcels, ['281BN1091', '281BN1092', '281BN1100']);
+  // The plot does NOT list its dossiers: each permit already carries its own
+  // number and the id that groups it, and saying it twice is the very
+  // duplication this function removes from the geometry.
+  assert.equal(plot.dossiers, undefined);
+  // Measured off the outline, not read from `superficie` — which these three
+  // rows spell 633, 631 and 631 for the same unchanged ground.
+  assert.equal(plot.areaM2, 621);
+  assert.notEqual(plot.areaM2, trio[0].landAreaM2);
+  // Somewhere a card can stand, strictly inside the shape — and nothing else:
+  // `widthDeg` chose which part it stands on and is not shipped.
+  assert.deepEqual(Object.keys(plot.anchor).sort(), ['lat', 'lon']);
+  assert.ok(Number.isFinite(plot.anchor.lon) && Number.isFinite(plot.anchor.lat));
+});
+
+test('the plot is identified by its outline, not by how its parcels are spelled', () => {
+  // Both spellings occur in the same file — the short `063KH215` form on 2026
+  // deposits, the 14-character IDU form on 47 of 3 927 rows in 2022 Q1 — and
+  // one row in a few thousand lists the same parcel twice. Keyed on `refcad`,
+  // any of those splits one plot into two identical stacked washes.
+  const ring = [[[[-0.6, 44.8], [-0.6, 44.801], [-0.599, 44.801], [-0.599, 44.8]]]];
+  const { emprises, permits } = liftEmprises([
+    { id: 'a', dossier: 'DP A', parcels: ['063KN138'], parts: ring },
+    { id: 'b', dossier: 'DP B', parcels: ['063KN138', '063KN138'], parts: ring },
+    { id: 'c', dossier: 'DP C', parcels: ['33063000KN0138'], parts: ring },
+  ]);
+  assert.equal(emprises.length, 1, 'one outline is one plot');
+  assert.deepEqual(permits.map((p) => p.empriseId), [0, 0, 0]);
+  // Every spelling seen is kept once, so the card names the plot the way its
+  // own dossiers do without repeating itself.
+  assert.deepEqual(emprises[0].parcels, ['063KN138', '33063000KN0138']);
+
+  // …and a different outline is a different plot, however it is labelled.
+  const other = [[[[-0.5, 44.8], [-0.5, 44.801], [-0.499, 44.801], [-0.499, 44.8]]]];
+  const split = liftEmprises([
+    { id: 'a', dossier: 'DP A', parcels: ['063KN138'], parts: ring },
+    { id: 'b', dossier: 'DP B', parcels: ['063KN138'], parts: other },
+  ]);
+  assert.equal(split.emprises.length, 2);
+});
+
+test('a permit with no outline says so rather than borrowing one', () => {
+  const { permits, emprises } = liftEmprises([
+    { id: 'sitadel', dossier: 'PC X', parcels: [] },
+    { id: 'paris', dossier: 'PC Y', parcels: [], parts: [] },
+  ]);
+  assert.equal(emprises.length, 0);
+  // NULL, not undefined and not 0: the renderer tests this to decide whether
+  // to print "emprise publiée", and index 0 is a real plot.
+  assert.deepEqual(permits.map((p) => p.empriseId), [null, null]);
+});
+
+test('the certificate tally distinguishes none from nobody answered', () => {
+  const origin = { lon: -0.5792, lat: 44.8378 };
+  const near = (extra = {}) => ({
+    id: 'p', kind: 'DP', state: 'depose', lon: origin.lon, lat: origin.lat, ...extra,
+  });
+  // Left upstream and counted: the rows never arrive, the number does.
+  const counted = projectAdsPermits({
+    permits: [near()],
+    origin,
+    radiusM: 400,
+    context: { certificatesAsked: true, certificatesUpstream: 943 },
+  });
+  assert.equal(counted.summary.certificates, 943);
+
+  // Asked for and not answered. Zero here would read as "no certificats on
+  // this block", which is a claim nobody made.
+  const unanswered = projectAdsPermits({
+    permits: [near()],
+    origin,
+    radiusM: 400,
+    context: { certificatesAsked: true, certificatesUpstream: undefined },
+  });
+  assert.equal(unanswered.summary.certificates, null);
+
+  // Never asked — a portal with nothing to exclude, or Sitadel. The rows are
+  // still filtered on arrival, so the loop's own count stands.
+  const local = projectAdsPermits({
+    permits: [near(), near({ id: 'cu', kind: 'CU' })],
+    origin,
+    radiusM: 400,
+  });
+  assert.equal(local.summary.certificates, 1);
+});
+
+test('the payload carries each outline once and says how much ground it drew', () => {
+  const bordeaux = LOCAL_ADS_PORTALS.find((portal) => portal.key === 'bordeaux');
+  const rows = PORTALS.bordeaux
+    .map((row) => normaliseLocalRow(bordeaux, row))
+    // The certificat is excluded upstream in production; here it is excluded
+    // by the projection, which is the second half of the same rule.
+    .filter(Boolean);
+  const origin = { lon: rows[0].lon, lat: rows[0].lat };
+  const payload = projectAdsPermits({ permits: rows, origin, radiusM: 200_000 });
+
+  const drawn = payload.permits.length;
+  assert.ok(drawn >= 5);
+  assert.equal(payload.summary.certificates, 1, 'the CU is counted, not drawn');
+  assert.ok(!payload.permits.some((p) => p.kind === 'CU'));
+  // Eight fixture rows: one certificat, one with no geometry, and a trio that
+  // shares one outline — so six drawn dossiers over four distinct plots.
+  assert.equal(payload.summary.empriseCount, payload.emprises.length);
+  assert.equal(payload.emprises.length, 4);
+  assert.equal(payload.summary.withEmprise, drawn - 1, 'all but the flagged, shapeless one');
+  for (const emprise of payload.emprises) {
+    assert.ok(emprise.areaM2 > 0);
+    assert.ok(emprise.parts.length >= 1);
+    assert.ok(payload.permits.some((permit) => permit.empriseId === emprise.id));
+  }
 });

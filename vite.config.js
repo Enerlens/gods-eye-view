@@ -123,6 +123,7 @@ import {
   adsSince,
   applyGeocoding,
   buildGeocodeCsv,
+  buildLocalAdsExcludedCountUrl,
   buildLocalAdsUrl,
   buildSitadelUrl,
   foldToSitadelCommune,
@@ -15086,15 +15087,31 @@ function adsFranceProxy() {
   async function loadPlacedPortals(communeCode, point, radiusM, since) {
     const out = [];
     const asked = [];
+    let certificatesUpstream = null;
+    let certificatesAsked = false;
     for (const portal of portalsForCommune(communeCode)) {
       if (!portal.geoColumn) continue;
-      const rows = await fetchAddressSource(
-        buildLocalAdsUrl(portal, { ...point, radiusM, since }),
-      );
+      const query = { ...point, radiusM, since };
+      // The tally of what the portal was told to leave out. Sequential rather
+      // than raced with the row query on purpose: this is the same host, and
+      // the four Sitadel families already taught this proxy what a burst of
+      // parallel requests to one open service buys (HTTP 429, silently, as an
+      // empty family). It answers a single row.
+      const countUrl = buildLocalAdsExcludedCountUrl(portal, query);
+      const rows = await fetchAddressSource(buildLocalAdsUrl(portal, query));
       if (!Array.isArray(rows)) {
         console.warn(`[ADS Proxy] ${portal.key} radius query unavailable`);
         asked.push({ key: portal.key, label: portal.label, licence: portal.licence, ok: false, count: 0 });
         continue;
+      }
+      if (countUrl) {
+        certificatesAsked = true;
+        const answer = await fetchAddressSource(countUrl);
+        const n = Number(answer?.results?.[0]?.n);
+        // A failed count stays null rather than becoming zero: "no certificats
+        // here" and "nobody answered" are different facts, and the layer
+        // reports them apart (`certificates` + `certificatesCounted`).
+        if (Number.isFinite(n)) certificatesUpstream = (certificatesUpstream ?? 0) + n;
       }
       let kept = 0;
       for (const row of rows) {
@@ -15104,7 +15121,17 @@ function adsFranceProxy() {
       }
       asked.push({ key: portal.key, label: portal.label, licence: portal.licence, ok: true, count: kept });
     }
-    return { permits: out, portals: asked };
+    // Asked but unanswered stays UNDEFINED, which is the third state
+    // `certificateTally` reads: not asked (null) falls back to counting the
+    // rows that did arrive, asked-and-unanswered reports no number at all.
+    return {
+      permits: out,
+      portals: asked,
+      certificatesUpstream: certificatesAsked && certificatesUpstream === null
+        ? undefined
+        : certificatesUpstream,
+      certificatesAsked,
+    };
   }
 
   function install(middlewares) {
@@ -15153,6 +15180,9 @@ function adsFranceProxy() {
               commune: { code: sitadelCommune, name: commune.name },
               since,
               months,
+              // Counted by the portal, never fetched. See `loadPlacedPortals`.
+              certificatesUpstream: placed.certificatesUpstream,
+              certificatesAsked: placed.certificatesAsked,
               families: edition.families,
               // Multi-family dossiers collapsed into the one operation they are.
               folded,
