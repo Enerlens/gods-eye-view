@@ -37,7 +37,7 @@ GitHub (public repo)
 | `/opt/gev/gev-deploy.sh` | the deploy agent (copy of `deploy/vps/gev-deploy.sh`) |
 | `/opt/gev/docker-compose.yml` | the stack (copy of `deploy/vps/docker-compose.yml`) |
 | `/opt/gev/.env` | keys + `GEV_ACCESS_PASSWORD`, `chmod 600` |
-| `/opt/gev/src` | detached checkout the agent moves around |
+| `/opt/gev/src` | the source tree the agent swaps out, unpacked from a tarball |
 | `/opt/gev/target` | `auto` (default), `main`, or a branch name to pin |
 | `/opt/gev/state/deployed` | `branch@sha` currently live |
 
@@ -55,6 +55,26 @@ ssh vps 'docker logs -n 50 gev'                # why the app misbehaves
 A failed build leaves the previous container running: staging never goes dark
 because a PR does not compile. A ref cut before the access gate existed is
 refused outright rather than deployed open.
+
+### Why the source arrives as a tarball and not a clone
+
+On 2026-09-02 every deploy started failing with `could not read Username for
+'https://github.com'`, three minutes apart, while the repository stayed public
+and cloned fine from a laptop. Tracing it with `GIT_CURL_VERBOSE=1` narrowed it
+to one request: GitHub answers this box's anonymous ref advertisement — a GET
+on `/info/refs` — with **200**, then returns **401** to `POST
+/git-upload-pack`. Every pack transfer goes through that POST, so `clone` and
+`fetch` are both unavailable here whatever the protocol version. Listing a ref
+still works, but only in **protocol v0**, which does not POST; the v2 default
+cannot resolve a branch head from this IP at all.
+
+So the agent resolves the head with `git -c protocol.version=0 ls-remote` and
+downloads the tree from `codeload.github.com`, a plain GET. Both are anonymous,
+which is the point: the alternative was a token, and this box deliberately
+holds no credential that GitHub would honour. The costs are real and accepted —
+the full tree every time instead of an incremental fetch, and `/opt/gev/src` is
+no longer a git repository, so `git -C /opt/gev/src log` no longer answers.
+Read `/opt/gev/state/deployed` instead; it carries the sha.
 
 To check the deployment the way a browser meets it — bundle boots, canvas
 draws, layer proxies answer from that origin — rather than by trusting a
