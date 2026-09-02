@@ -44,11 +44,11 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import path from 'node:path';
 import { Readable } from 'node:stream';
 import readline from 'node:readline';
-import https from 'node:https';
 import zlib from 'node:zlib';
+import { MEDECIN_FAMILY_INDEX, sitePrimaryFamily } from './src/data/medecinsFrFeed.js';
+import https from 'node:https';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { directionToHeading } from './src/data/directionText.js';
-import { MEDECIN_FAMILY_INDEX, sitePrimaryFamily } from './src/data/medecinsFrFeed.js';
 import {
   osmCameraBboxQuery,
   osmCameraBoxKey,
@@ -143,6 +143,7 @@ import {
   buildGpuBoxUrl,
   buildGpuUrl,
   gpuTruncation,
+  projectGeometry,
   projectGpu,
 } from './src/data/gpuFeed.js';
 import {
@@ -160,7 +161,7 @@ import {
   tripUpdatesFromBytes,
   vehiclePositionsFromBytes,
 } from './src/data/gtfsRealtime.js';
-import { boundsOfPoints, boxKey, snapBoxOutward, validBox } from './src/data/viewportBox.js';
+import { boundsOfPoints, boxKey, boxesIntersect, snapBoxOutward, validBox } from './src/data/viewportBox.js';
 import { buildDepartementIndex } from './src/data/franceDepartements.js';
 import {
   projectIrveDepartements,
@@ -211,6 +212,15 @@ import {
   projectSchoolsDepartements,
 } from './src/data/schoolsDepartements.js';
 import {
+  IPS_DATASETS,
+  IPS_PORTAL,
+  indexIps,
+  ipsRentreeWhere,
+  ipsSelectFields,
+  newestIpsRentree,
+  summariseIpsCoverage,
+} from './src/data/ipsFeed.js';
+import {
   SUP_ATLAS_FIELDS,
   SUP_DATASET,
   SUP_OFFER_DATASET,
@@ -225,6 +235,191 @@ import {
   supAtlasWhere,
   supOfferWhere,
 } from './src/data/supFeed.js';
+import {
+  COMPTAGES_BARRE_GROUP_BY,
+  COMPTAGES_DATASET,
+  COMPTAGES_GROUP_LIMIT,
+  COMPTAGES_HOUR_BLOCKS,
+  COMPTAGES_PORTAL,
+  COMPTAGES_PROFILE_GROUP_BY,
+  COMPTAGES_PROFILE_SELECT,
+  COMPTAGES_SOURCE,
+  COMPTAGES_WEEK_FLOOR,
+  comptagesStampWhere,
+  comptagesWeekWindows,
+  comptagesWindowWhere,
+  newestComptagesWeek,
+  projectComptagesArcs,
+} from './src/data/comptagesFeed.js';
+import {
+  DELINQUANCE_ATTRIBUTION,
+  DELINQUANCE_DATASET,
+  DELINQUANCE_DATASET_URL,
+  DELINQUANCE_LICENCE,
+  DELINQUANCE_SOURCE,
+  DELINQUANCE_YEAR_FLOOR,
+  createCommuneFold,
+  delinquanceContoursUrl,
+  joinCommuneCells,
+  newestDelinquanceYear,
+  parseSsmsiCsv,
+  pickDelinquanceResources,
+  projectCommuneContours,
+  projectDelinquanceDepartements,
+  selectDelinquanceChips,
+} from './src/data/delinquanceFeed.js';
+import {
+  AMENITIES_MAX_BOX_DEG,
+  AMENITY_FAMILIES,
+  BPE_COLUMN_COUNT,
+  BPE_DATAGOUV_URL,
+  BPE_EDITION_FLOOR,
+  BPE_LANDING_URL,
+  BPE_ROW_FLOOR,
+  FINESS_COLUMN_COUNT,
+  FINESS_CSV_URL,
+  FINESS_ROW_FLOOR,
+  buildAmenityMeshRows,
+  bpeArchiveFromHtml,
+  bpeLandingFromDataset,
+  bpeSubPagesFromHtml,
+  csvHeaderIndex,
+  foldAmenitySites,
+  newAmenityTally,
+  newestBpeArchive,
+  orderAmenitySites,
+  readBpeRow,
+  readFinessRow,
+  splitSemicolonRow,
+  sumByFamily,
+  tallyAmenityOutcome,
+  trimAmenityRecord,
+} from './src/data/amenitiesFeed.js';
+import { projectAmenitiesDepartements } from './src/data/amenitiesDepartements.js';
+// Add to the top import block of vite.config.js, beside the other src/data feed
+// imports. Nothing else is needed: this proxy reuses `makeRateLimiter`,
+// `clientKey`, `readResponseJsonCapped`, `coalesceProxyRequest`,
+// `installAddressRoute`, `addressPoint` and `addressCacheKey`, all already
+// defined in the file.
+import {
+  BRUIT_SOURCE,
+  buildBruitProbeUrl,
+  projectBruit,
+} from './src/data/bruitFeed.js';
+import {
+  BRUIT_ARRETE_FLOOR,
+  BRUIT_NEAREST_MAX_KM,
+  buildPebArreteIndexUrl,
+  nearestArrete,
+  projectPebArretes,
+} from './src/data/bruitArretes.js';
+import {
+  IDFM_FREQ_BAND_WINDOWS,
+  IDFM_FREQ_BOX_STEP_DEG,
+  IDFM_FREQ_DATASET,
+  IDFM_FREQ_EDITION_FLOOR,
+  IDFM_FREQ_MAX_BOX_DEG,
+  IDFM_FREQ_MAX_STOPS,
+  IDFM_FREQ_PORTAL,
+  IDFM_FREQ_SOURCE,
+  buildIdentityUrl,
+  buildMetadataUrl,
+  buildProfileUrl,
+  buildRegionBandsUrl,
+  buildRegionStopsUrl,
+  newestEdition,
+  projectFrequencyStops,
+} from './src/data/idfmFrequencyFeed.js';
+import {
+  IDFM_FREQ_BUCKETS,
+  foldFrequencyRegion,
+} from './src/data/idfmFrequencyDepartements.js';
+
+import {
+  SITADEL_DATASET_PAGE,
+  SITADEL_DEMOLITION_COLUMNS,
+  SITADEL_DEMOLITION_RID,
+  SITADEL_DEMOLITION_TITLE,
+  SITADEL_DIDO_BASE,
+  SITADEL_DIDO_DATASET,
+  SITADEL_HOUSING_COLUMNS,
+  SITADEL_HOUSING_RID,
+  SITADEL_HOUSING_TITLE,
+  SITADEL_LICENCE,
+  SITADEL_MILLESIME_FLOOR,
+  SITADEL_SOURCE,
+  cadastreCommuneUrl,
+  communeCadastreCodes,
+  discoverSitadelRid,
+  geoCommuneUrl,
+  indexCadastreParcels,
+  newestCadastreEdition,
+  newestMillesime,
+  projectSitadelCommune,
+  sitadelDatafileUrl,
+} from './src/data/sitadelFeed.js';
+import {
+  FRAICHEUR_COVERAGE,
+  FRAICHEUR_EQUIPMENT_DATASET,
+  FRAICHEUR_EQUIPMENT_FIELDS,
+  FRAICHEUR_FOUNTAIN_DATASET,
+  FRAICHEUR_FOUNTAIN_FIELDS,
+  FRAICHEUR_LICENCE,
+  FRAICHEUR_LICENCE_URL,
+  FRAICHEUR_PORTAL,
+  FRAICHEUR_PUBLISHERS,
+  FRAICHEUR_SOURCE,
+  FRAICHEUR_SPACES_DATASET,
+  FRAICHEUR_SPACE_FIELDS,
+  projectFraicheurRefuges,
+} from './src/data/fraicheurFeed.js';
+import {
+  FRAICHEUR_TREE_BOX_STEP_DEG,
+  FRAICHEUR_TREE_BUDGET,
+  FRAICHEUR_TREE_DATASET,
+  FRAICHEUR_TREE_FIELDS,
+  FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG,
+  FRAICHEUR_TREE_SOURCE,
+  fraicheurTreeWhere,
+  projectFraicheurTrees,
+} from './src/data/fraicheurTrees.js';
+import {
+  ANFR_CATALOGUE_URL,
+  ANFR_DAS_DATASET,
+  ANFR_DAS_FIELDS,
+  ANFR_DAS_RESOURCE_ID,
+  ANFR_DATASET,
+  ANFR_EXPOSURE_RADIUS_M,
+  ANFR_HAUT,
+  ANFR_ID,
+  ANFR_LAT,
+  ANFR_LIVE,
+  ANFR_LON,
+  ANFR_NAT,
+  ANFR_OPS,
+  ANFR_PLAN,
+  ANFR_PORTAL,
+  ANFR_REF_MEMBER,
+  ANFR_REF_ZIP_URL,
+  ANFR_SOURCE,
+  ANFR_SVC,
+  ANFR_SYS,
+  CARTORADIO_BASE,
+  anfrCsvColumns,
+  anfrDecodeMask,
+  anfrExposureBbox,
+  parseAnfrNatureTable,
+  pickAnfrObservatoire,
+  projectAnfrDas,
+  projectAnfrSupports,
+  projectCartoradioAntennas,
+  projectCartoradioExposure,
+  projectCartoradioSupport,
+  readAnfrCsvRow,
+} from './src/data/anfrFeed.js';
+import { buildAnfrMesh } from './src/data/anfrMesh.js';
+import { readZipMember } from './scripts/lib/remoteZip.mjs';
+import { delinquanceRateBins } from './src/data/delinquanceDepartements.js';
 import { projectSupDepartements } from './src/data/supDepartements.js';
 import {
   PE_GEO_SOURCE,
@@ -3933,12 +4128,15 @@ function irveFranceProxy() {
  *   GET /api/schools-fr/status                      — dataset provenance + cache state
  *
  * WHY A PROXY, when data.education.gouv.fr sends CORS headers and a direct
- * browser fetch works: the roll is not in the register. Sizing a school by its
- * pupils means joining FOUR further datasets on the UAI, and doing that in the
- * client would mean every open tab downloading four national files and
- * re-deriving the same map. The join happens once, on a server, under test
- * (`schoolsFeed.js`, `schoolsDepartements.js`), and is cached for a day beside
- * the rollup the same sweep already builds.
+ * browser fetch works: the roll is not in the register, and neither is the
+ * IPS. Sizing a school by its pupils means joining FOUR further datasets on
+ * the UAI, and stating its social-position index means joining FOUR MORE —
+ * eight national files whose combined newest-rentrée slices this proxy pulls
+ * once per process. Doing that in the client would mean every open tab
+ * downloading all of them and re-deriving the same map. The joins happen once,
+ * on a server, under test (`schoolsFeed.js`, `schoolsDepartements.js`,
+ * `ipsFeed.js`), and are cached for a day beside the rollup the same sweep
+ * already builds.
  *
  * WHY `exports/json` AND NOT `records`: the Explore v2.1 `records` endpoint
  * caps a page at 100 rows, so the densest viewport (Paris at 0.35°, 5 506
@@ -3968,7 +4166,17 @@ const SCHOOLS_NATIONAL_CACHE_PATH = path.join(SCHOOLS_DISK_DIR, 'departements.js
  * `projectSchoolsDepartements` changes what it returns — the cache lives for a
  * day on disk, so without it a projection edit is invisible until tomorrow.
  */
-const SCHOOLS_NATIONAL_CACHE_VERSION = 1;
+const SCHOOLS_NATIONAL_CACHE_VERSION = 2;
+/**
+ * Shape version of a cached VIEWPORT answer.
+ *
+ * Added with the IPS join, and it starts at 2 on purpose: version 1 is the
+ * unversioned shape that predates it, which carries no `version` key and so
+ * fails this check and is refetched. Without it a box cached in the last six
+ * hours would keep serving sites with no `ips` attribute at all, and every
+ * card in it would silently go back to saying nothing about the index.
+ */
+const SCHOOLS_VIEWPORT_CACHE_VERSION = 2;
 
 /** box key -> {at:number, payload:object} */
 const _schoolsViewportCache = new Map();
@@ -3982,6 +4190,14 @@ let _schoolsNationalInFlight = null;
 let _schoolsNationalDiskChecked = false;
 /** @type {?Promise<Map<string, number>>} UAI → pupils, built once per process. */
 let _schoolsRollsPromise = null;
+/**
+ * @type {?Promise<{index:Map<string,object>, names:Map<string,string>,
+ *   rentrees:object, counts:object, missing:Array<string>, status:string}>}
+ * UAI → IPS record, built once per process.
+ */
+let _schoolsIpsPromise = null;
+/** Base for the four DEPP IPS datasets. Same portal as the register itself. */
+const IPS_BASE = `https://${IPS_PORTAL}/api/explore/v2.1/catalog/datasets`;
 
 function trimSchoolsViewportCache() {
   while (_schoolsViewportCache.size > SCHOOLS_VIEWPORT_CACHE_MAX) {
@@ -3998,6 +4214,7 @@ function schoolsDiskPath(key) {
 async function readSchoolsDisk(key, maxAgeMs) {
   try {
     const entry = JSON.parse(await fsp.readFile(schoolsDiskPath(key), 'utf8'));
+    if (entry?.version !== SCHOOLS_VIEWPORT_CACHE_VERSION) return null;
     if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.sites)) return null;
     if (Date.now() - entry.at > maxAgeMs) return null;
     return entry;
@@ -4076,11 +4293,90 @@ async function loadSchoolsRolls() {
 }
 
 /**
+ * Build the UAI → IPS index from the four DEPP files.
+ *
+ * TWO round trips per dataset, and the first one is not optional. Each file
+ * publishes several rentrées stacked (97 080 école rows are three school years
+ * of the same schools), and the newest differs BETWEEN files — écoles stop at
+ * 2024-2025 where the other three reach 2025-2026. So each dataset is asked
+ * for its own `group_by=rentree_scolaire` first, floored at the value
+ * `ipsFeed.js` was measured against, and only then exported at that year.
+ * A shared `max()` across the four would drop all 32 494 écoles.
+ *
+ * Fetched once per process and never invalidated, exactly as the rolls are: a
+ * rentrée's indices are published once a year and do not move.
+ *
+ * A file that fails is WARNED and its KIND is reported as missing rather than
+ * failing the join — losing the lycée file must cost lycée cards their index,
+ * not cost every school its card. `projectSchoolSites` then marks those
+ * schools `unavailable` instead of `null`, which is the difference between
+ * "the DEPP is down" and "this school has no published index".
+ *
+ * Measured 2026-09-02, end to end through this function: 8 requests,
+ * 7 598 242 bytes raw / 750 413 gzipped, **3.4 s cold and 0.64 s warm**,
+ * producing 43 322 UAI of which 40 815 carry a number. The écoles export is
+ * 4 841 947 of those bytes and 3.2 s of that cold time on its own.
+ */
+async function loadSchoolsIps() {
+  if (_schoolsIpsPromise) return _schoolsIpsPromise;
+  _schoolsIpsPromise = (async () => {
+    const results = await Promise.allSettled(IPS_DATASETS.map(async (spec) => {
+      const groupParams = new URLSearchParams({
+        group_by: 'rentree_scolaire',
+        select: 'count(*) as rows',
+        order_by: 'rentree_scolaire desc',
+        limit: '20',
+      });
+      const grouped = await fetchSchoolsJson(`${IPS_BASE}/${spec.dataset}/records?${groupParams}`)
+        .catch((error) => {
+          // A failed discovery is not a failed dataset: the floor is the year
+          // this module was measured against and is still true today.
+          console.warn(`[Schools Proxy] IPS rentrée discovery failed for ${spec.dataset}:`, error?.message || error);
+          return null;
+        });
+      const rentree = newestIpsRentree(grouped?.results, spec.rentreeFloor);
+      const exportParams = new URLSearchParams({
+        select: ipsSelectFields(spec).join(','),
+        where: ipsRentreeWhere(rentree),
+        limit: '-1',
+      });
+      const rows = await fetchSchoolsJson(`${IPS_BASE}/${spec.dataset}/exports/json?${exportParams}`);
+      return { spec, rentree, rows: Array.isArray(rows) ? rows : [] };
+    }));
+
+    const batches = [];
+    for (let i = 0; i < results.length; i += 1) {
+      const result = results[i];
+      if (result.status === 'rejected') {
+        console.warn(
+          `[Schools Proxy] IPS dataset unavailable (${IPS_DATASETS[i].dataset}):`,
+          result.reason?.message || result.reason,
+        );
+        continue;
+      }
+      batches.push(result.value);
+    }
+    const built = indexIps(batches);
+    if (built.missing.length) {
+      console.warn(`[Schools Proxy] IPS index is partial — missing: ${built.missing.join(', ')}`);
+    }
+    return built;
+  })().catch((error) => {
+    console.warn('[Schools Proxy] IPS join failed:', error?.message || error);
+    _schoolsIpsPromise = null;
+    return indexIps([]);
+  });
+  return _schoolsIpsPromise;
+}
+
+/**
  * Fetch one viewport and project it.
  *
- * The two calls run in PARALLEL and mean different things. The export is the
- * answer; the `limit=0` call is the dataset's own count for the same `where`,
- * and exists only so `projectSchoolSites` can prove the export was complete.
+ * The two upstream calls run in PARALLEL and mean different things. The export
+ * is the answer; the `limit=0` call is the dataset's own count for the same
+ * `where`, and exists only so `projectSchoolSites` can prove the export was
+ * complete. The roll and IPS joins are process-wide memoised documents, so
+ * they cost a Map lookup here and not a request.
  */
 async function refreshSchoolsViewport(box) {
   const where = schoolsBboxWhere(box);
@@ -4091,7 +4387,7 @@ async function refreshSchoolsViewport(box) {
   });
   const countParams = new URLSearchParams({ where, limit: '0' });
 
-  const [exported, counted, rolls] = await Promise.all([
+  const [exported, counted, rolls, ips] = await Promise.all([
     fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
     fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${countParams}`).catch((error) => {
       // The count is a completeness PROOF, not the data. Losing it degrades
@@ -4100,15 +4396,20 @@ async function refreshSchoolsViewport(box) {
       return null;
     }),
     loadSchoolsRolls(),
+    loadSchoolsIps(),
   ]);
 
   const projected = projectSchoolSites({
     records: Array.isArray(exported) ? exported : [],
     rolls,
+    ips: ips.index,
+    ipsStatus: ips.status,
+    ipsMissing: ips.missing,
     totalCount: counted?.total_count ?? null,
   });
   return {
     ...projected,
+    ipsRentrees: ips.rentrees,
     box,
     maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
   };
@@ -4146,7 +4447,7 @@ async function refreshSchoolsNational() {
     where: SCHOOLS_OPEN_WHERE,
     limit: '-1',
   });
-  const [index, counted, exported, rolls] = await Promise.all([
+  const [index, counted, exported, rolls, ips] = await Promise.all([
     loadSchoolsDepartementIndex(),
     fetchSchoolsJson(`${SCHOOLS_RECORDS_URL}?${new URLSearchParams({ where: SCHOOLS_OPEN_WHERE, limit: '0' })}`)
       .catch((error) => {
@@ -4155,6 +4456,7 @@ async function refreshSchoolsNational() {
       }),
     fetchSchoolsJson(`${SCHOOLS_EXPORT_URL}?${exportParams}`),
     loadSchoolsRolls(),
+    loadSchoolsIps(),
   ]);
 
   const projected = projectSchoolsDepartements({
@@ -4162,6 +4464,20 @@ async function refreshSchoolsNational() {
     index,
     rolls,
     totalCount: counted?.total_count ?? null,
+  });
+  // The IPS coverage is folded in HERE and not inside
+  // `projectSchoolsDepartements`, on purpose. That function paints a
+  // choropleth of establishment COUNTS by point-in-polygon, and the index is
+  // not a count and cannot be painted; making it a second pass over the same
+  // rows in this file keeps the rollup's own contract untouched and costs one
+  // linear scan of an array that is already in memory.
+  const ipsCoverage = summariseIpsCoverage({
+    records: Array.isArray(exported) ? exported : [],
+    index: ips.index,
+    names: ips.names,
+    rentrees: ips.rentrees,
+    missing: ips.missing,
+    status: ips.status,
   });
   if (projected.truncated) {
     console.warn(
@@ -4172,10 +4488,16 @@ async function refreshSchoolsNational() {
   // served apart because they are read at different moments and at different
   // sizes: the rollup is ~20 KB and arrives with the layer, the mesh is
   // ~0.7 MB gzipped and is only fetched if the operator leaves the choropleth.
+  //
+  // The mesh carries NO IPS, and that is a size decision made once and kept:
+  // the pack ships coordinates without names precisely to stay at 1.66 MB
+  // against 5.42 MB, and an index per tuple would put it back. The index rides
+  // the per-click register lookup the name already pays for.
   const { mesh, ...rollup } = projected;
   return {
     rollup: {
       ...rollup,
+      ips: ipsCoverage,
       sweptInMs: Date.now() - started,
     },
     mesh: {
@@ -4260,6 +4582,19 @@ function schoolsFranceProxy() {
           ttlMs: SCHOOLS_TTL_MS,
           maxBoxDeg: SCHOOLS_MAX_BOX_DEG,
           rollYear: SCHOOLS_ROLL_YEAR,
+          // Reported without BUILDING it: `/status` must stay a cheap read,
+          // and forcing the eight-request IPS join here would make a health
+          // probe the most expensive route on the proxy.
+          ips: _schoolsNational?.payload?.rollup?.ips
+            ? {
+              rentrees: _schoolsNational.payload.rollup.ips.rentrees,
+              indexed: _schoolsNational.payload.rollup.ips.indexed,
+              eligible: _schoolsNational.payload.rollup.ips.eligible,
+              valued: _schoolsNational.payload.rollup.ips.valued,
+              status: _schoolsNational.payload.rollup.ips.status,
+              missing: _schoolsNational.payload.rollup.ips.missing,
+            }
+            : null,
           national: _schoolsNational
             ? {
               at: _schoolsNational.at,
@@ -4338,7 +4673,7 @@ function schoolsFranceProxy() {
       if (!pending) {
         pending = refreshSchoolsViewport(box)
           .then((payload) => {
-            const entry = { at: Date.now(), payload };
+            const entry = { version: SCHOOLS_VIEWPORT_CACHE_VERSION, at: Date.now(), payload };
             _schoolsViewportCache.set(key, entry);
             trimSchoolsViewportCache();
             writeSchoolsDisk(key, entry);
@@ -5298,6 +5633,3482 @@ function medecinsFranceProxy() {
 
   return {
     name: 'medecins-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Paris permanent road-count proxy — keyless, ODbL.
+ *
+ *   GET /api/comptages-fr/arcs   — the whole measured week, one document
+ *   GET /api/comptages-fr/status — edition + cache state
+ *
+ * WHY A PROXY, when opendata.paris.fr sends `access-control-allow-origin: *`
+ * and a browser could call it directly: the answer this layer draws is a fold
+ * of **500 136 hourly rows** into 2 977 arcs, and it takes TEN upstream calls
+ * to assemble — one to discover the edition, one GeoJSON export for geometry
+ * and names, eight grouped aggregations for the day profiles, and one for the
+ * open/closed state. Doing that in the client would mean every open tab
+ * re-deriving the same 24-hour profile from the same 27.7-million-row dataset.
+ * The fold happens once, on a server, under test (`comptagesFeed.js`).
+ *
+ * WHY THE EDITION IS A WEEK, NOT A TIMESTAMP: the feed is J-2 (a nightly batch
+ * that lands the day before yesterday), so it has no "now" worth drawing. The
+ * unit is the last COMPLETE local Monday–Sunday week, DISCOVERED from
+ * `max(t_1h)` and floored at `COMPTAGES_WEEK_FLOOR` — the week this was
+ * measured against. A discovery older than the floor is a malformed answer,
+ * not a new fact, so the floor is used.
+ *
+ * WHY THE CLOCK IS SPLIT INTO FOUR BLOCKS: the grouped endpoint caps
+ * `offset + limit` at 30 000 and one day-type is 2 977 arcs x 24 h = 71 448
+ * cells. Six hours at a time is 17 862 — inside the ceiling with room for the
+ * network to grow by two thirds before a block has to be split again.
+ */
+const COMPTAGES_BASE = `https://${COMPTAGES_PORTAL}/api/explore/v2.1/catalog/datasets`;
+/**
+ * Six hours. The upstream is rebuilt ONCE A NIGHT and is already two days
+ * behind, so anything faster re-asks a question whose answer cannot have
+ * changed. The disk cache below is what actually spares the portal the
+ * ten-call sweep across restarts.
+ */
+const COMPTAGES_TTL_MS = 6 * 60 * 60 * 1000;
+/** Serve-stale ceiling. Last week's measured week is still a true week. */
+const COMPTAGES_STALE_MS = 14 * 24 * 60 * 60 * 1000;
+const COMPTAGES_TIMEOUT_MS = 90_000;
+/** The GeoJSON export is ~1.67 MB raw; the eight grouped calls ~10.2 MB total. */
+const COMPTAGES_MAX_BYTES = 48 * 1024 * 1024;
+const COMPTAGES_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'comptages-fr');
+const COMPTAGES_CACHE_PATH = path.join(COMPTAGES_DISK_DIR, 'week.json');
+/**
+ * Shape version of the cached fold. Bump whenever `projectComptagesArcs`
+ * changes what it returns — the cache lives for six hours in memory but two
+ * weeks on disk, so without it a projection edit stays invisible.
+ */
+const COMPTAGES_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _comptagesWeek = null;
+/** @type {?Promise<object>} */
+let _comptagesInFlight = null;
+let _comptagesDiskChecked = false;
+const _comptagesRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 90 });
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchComptagesJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(COMPTAGES_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, COMPTAGES_MAX_BYTES);
+}
+
+/**
+ * Newest complete local week, discovered from the dataset's own newest stamp.
+ *
+ * A failed discovery is not a failed build: it falls back to the floor, which
+ * is the week this layer was measured against and is guaranteed to exist.
+ */
+async function discoverComptagesWeek() {
+  try {
+    const params = new URLSearchParams({ select: 'max(t_1h) as newest', limit: '1' });
+    const body = await fetchComptagesJson(`${COMPTAGES_BASE}/${COMPTAGES_DATASET}/records?${params}`);
+    return newestComptagesWeek(body?.results?.[0]?.newest);
+  } catch (error) {
+    console.warn('[Comptages Proxy] week discovery failed:', error?.message || error);
+    return newestComptagesWeek(null);
+  }
+}
+
+/** One grouped aggregation page. */
+async function fetchComptagesGroup(where, groupBy, select) {
+  const params = new URLSearchParams({
+    select, where, group_by: groupBy, limit: String(COMPTAGES_GROUP_LIMIT),
+  });
+  const body = await fetchComptagesJson(`${COMPTAGES_BASE}/${COMPTAGES_DATASET}/records?${params}`);
+  return Array.isArray(body?.results) ? body.results : [];
+}
+
+/** Every (arc x hour) cell for one window, four calls over the clock. */
+async function fetchComptagesProfile(window) {
+  const blocks = await Promise.all(COMPTAGES_HOUR_BLOCKS.map((block) => fetchComptagesGroup(
+    comptagesWindowWhere(window, block),
+    COMPTAGES_PROFILE_GROUP_BY,
+    COMPTAGES_PROFILE_SELECT,
+  )));
+  return blocks.flat();
+}
+
+/**
+ * Build the whole layer: geometry from the measurement itself, then the week.
+ *
+ * The geometry deliberately does NOT come from `referentiel-comptages-routiers`
+ * — see Trap 1 in `comptagesFeed.js`: the referential holds 3 739 rows for only
+ * 3 348 distinct `iu_ac`, misses 31 arcs that ARE counting and carries 402 that
+ * are not. The counts export carries its own `geo_shape` on every row, one row
+ * per arc, fresher, and faster.
+ *
+ * The `etat_barre` roll-up failing is NOT fatal: it costs the reason a silent
+ * arc is silent, and the layer degrades to "silent, reason unpublished" rather
+ * than blanking. Losing the geometry export IS fatal — there is nothing to draw.
+ */
+async function refreshComptagesWeek() {
+  const week = await discoverComptagesWeek();
+  const windows = comptagesWeekWindows(week);
+
+  const geoParams = new URLSearchParams({ where: comptagesStampWhere(windows.stamp) });
+  const [features, weekday, weekend, barre] = await Promise.all([
+    fetchComptagesJson(`${COMPTAGES_BASE}/${COMPTAGES_DATASET}/exports/geojson?${geoParams}`),
+    fetchComptagesProfile(windows.weekday),
+    fetchComptagesProfile(windows.weekend),
+    fetchComptagesGroup(
+      comptagesWindowWhere(windows.week),
+      COMPTAGES_BARRE_GROUP_BY,
+      'count(*) as n',
+    ).catch((error) => {
+      console.warn('[Comptages Proxy] etat_barre roll-up unavailable:', error?.message || error);
+      return [];
+    }),
+  ]);
+
+  return projectComptagesArcs({
+    features: Array.isArray(features?.features) ? features.features : [],
+    weekday,
+    weekend,
+    barre,
+    week,
+    source: COMPTAGES_SOURCE,
+  });
+}
+
+async function readComptagesDisk() {
+  if (_comptagesDiskChecked) return;
+  _comptagesDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(COMPTAGES_CACHE_PATH, 'utf8'));
+    if (entry?.version === COMPTAGES_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.arcs)) {
+      _comptagesWeek = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeComptagesDisk(entry) {
+  fsp.mkdir(COMPTAGES_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(COMPTAGES_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Comptages Proxy] cache write failed:', err?.message || err));
+}
+
+/** Single-flight, so two tabs opening at once cost one ten-call sweep. */
+function ensureComptagesWeek() {
+  if (!_comptagesInFlight) {
+    _comptagesInFlight = refreshComptagesWeek()
+      .then((payload) => {
+        const entry = { version: COMPTAGES_CACHE_VERSION, at: Date.now(), payload };
+        _comptagesWeek = entry;
+        writeComptagesDisk(entry);
+        return entry;
+      })
+      .finally(() => { _comptagesInFlight = null; });
+  }
+  return _comptagesInFlight;
+}
+
+/**
+ * Vite plugin: Paris permanent road-count proxy.
+ * @returns {import('vite').Plugin}
+ */
+function comptagesParisProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/comptages-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_comptagesRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readComptagesDisk();
+        json(200, {
+          source: COMPTAGES_SOURCE,
+          dataset: COMPTAGES_DATASET,
+          portal: COMPTAGES_PORTAL,
+          weekFloor: COMPTAGES_WEEK_FLOOR,
+          ttlMs: COMPTAGES_TTL_MS,
+          week: _comptagesWeek
+            ? {
+              at: _comptagesWeek.at,
+              week: _comptagesWeek.payload.week,
+              arcs: _comptagesWeek.payload.count,
+              states: _comptagesWeek.payload.states,
+              unplaced: _comptagesWeek.payload.unplaced,
+              unplacedMeasuring: _comptagesWeek.payload.unplacedMeasuring,
+              duplicates: _comptagesWeek.payload.duplicates,
+              phantom: _comptagesWeek.payload.phantom,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/arcs') {
+        json(404, { error: 'Unknown comptages endpoint' });
+        return;
+      }
+
+      await readComptagesDisk();
+      const now = Date.now();
+      if (_comptagesWeek && now - _comptagesWeek.at <= COMPTAGES_TTL_MS) {
+        json(200, { ..._comptagesWeek.payload, fetchedAt: _comptagesWeek.at, stale: false }, { 'X-COMPTAGES-FR': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensureComptagesWeek();
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-COMPTAGES-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[Comptages Proxy] week build unavailable:', error?.message || error);
+        // A fortnight-old measured week is still a true picture of a feed that
+        // is already two days behind — serving it beats blanking the layer.
+        if (_comptagesWeek && now - _comptagesWeek.at <= COMPTAGES_STALE_MS) {
+          json(200, { ..._comptagesWeek.payload, fetchedAt: _comptagesWeek.at, stale: true }, { 'X-COMPTAGES-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'Paris road-count week is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'comptages-paris-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * SSMSI recorded-crime proxy — keyless, Licence Ouverte 2.0.
+ *
+ *   GET /api/delinquance-fr/departements   — the whole DEP base + the national census
+ *   GET /api/delinquance-fr/communes/:dep  — one département's communes, joined to contours
+ *   GET /api/delinquance-fr/status         — edition, licence and cache state
+ *
+ * WHY A PROXY. The commune base is a **39.9 MB gzipped CSV of 5.24 million
+ * rows** and it is not optional: the DEP base carries no `est_diffuse` column
+ * at all, so SUPPRESSION — the one thing this layer must never get wrong —
+ * only exists at commune grain. The fold streams that file ONCE, keeps the
+ * three cell states apart, and builds in the same pass the two things a browser
+ * holding one département cannot compute: the national census of published /
+ * zero / suppressed cells, and the national list of published rates the
+ * quantile ramp is cut from. Re-deriving that per tab is not a possibility.
+ *
+ * WHY THE COMMUNE PACK IS PER-DÉPARTEMENT. Contours come from geo.api.gouv.fr
+ * one département at a time, and the browser only ever draws the few it is
+ * looking at. The fold is held in memory whole; the pack is cut from it.
+ *
+ * WHAT IT REFUSES TO DO. It never fills a suppressed cell. A suppressed commune
+ * travels to the browser as the suppressed STATE plus, separately, the
+ * departmental mean the publisher attaches to it — hoisted out of the cell so
+ * that a departmental constant can never be read as a commune measurement.
+ */
+const DELINQUANCE_TTL_MS = 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling. The base is republished about once a year. */
+const DELINQUANCE_STALE_MS = 120 * 24 * 60 * 60 * 1000;
+const DELINQUANCE_TIMEOUT_MS = 300_000;
+const DELINQUANCE_CONTOUR_TIMEOUT_MS = 60_000;
+/** The COM csv.gz is 39.9 MB compressed and inflates to roughly 1.1 GB of text. */
+const DELINQUANCE_MAX_BYTES = 96 * 1024 * 1024;
+const DELINQUANCE_CONTOUR_MAX_BYTES = 48 * 1024 * 1024;
+const DELINQUANCE_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'delinquance-fr');
+const DELINQUANCE_CACHE_PATH = path.join(DELINQUANCE_DISK_DIR, 'base.json');
+/**
+ * Shape version of the cached fold. Bump whenever `projectDelinquanceDepartements`
+ * or `createCommuneFold` changes what it returns — the cache lives for four
+ * months on disk, so without it a projection edit is invisible until next year.
+ */
+const DELINQUANCE_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _delinquanceBase = null;
+/** @type {?Promise<object>} */
+let _delinquanceInFlight = null;
+let _delinquanceDiskChecked = false;
+/** dep -> projected contour list, memoized for the process. */
+const _delinquanceContours = new Map();
+/** dep -> in-flight contour promise, so ten tabs cost one fetch. */
+const _delinquanceContourInFlight = new Map();
+const _delinquanceRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/** GET one URL as JSON, under a timeout and a byte cap. */
+async function fetchDelinquanceJson(url, { timeout = DELINQUANCE_TIMEOUT_MS, cap = DELINQUANCE_MAX_BYTES } = {}) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(timeout),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, cap);
+}
+
+/** GET one URL as text, under a timeout and a byte cap. */
+async function fetchDelinquanceText(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'text/csv, text/plain' },
+    signal: AbortSignal.timeout(DELINQUANCE_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseTextCapped(response, DELINQUANCE_MAX_BYTES);
+}
+
+/**
+ * Stream the gzipped commune base through the fold, one line at a time.
+ *
+ * Never buffered whole: the file inflates to roughly a gigabyte of text, and
+ * the fold only ever needs one line at a time. `zlib.createGunzip` does the
+ * decompression and the remainder is carried across chunk boundaries, because
+ * a chunk boundary lands mid-line about five million times.
+ */
+async function streamDelinquanceCommunes(url, fold) {
+  const response = await fetch(url, { signal: AbortSignal.timeout(DELINQUANCE_TIMEOUT_MS) });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  if (!response.body) throw new Error('commune base returned no body');
+
+  const gunzip = zlib.createGunzip();
+  Readable.fromWeb(response.body).pipe(gunzip);
+
+  let remainder = '';
+  const decoder = new TextDecoder('utf-8');
+  for await (const chunk of gunzip) {
+    const text = remainder + decoder.decode(chunk, { stream: true });
+    const lines = text.split('\n');
+    // The last element is a partial line unless the chunk ended exactly on a
+    // newline; either way it is correct to carry it.
+    remainder = lines.pop() ?? '';
+    for (const line of lines) fold.push(line.endsWith('\r') ? line.slice(0, -1) : line);
+  }
+  if (remainder) fold.push(remainder.endsWith('\r') ? remainder.slice(0, -1) : remainder);
+  return fold.finish();
+}
+
+/**
+ * Build the whole base: the département table, then the commune fold.
+ *
+ * The two are NOT parallel. The département pass establishes the newest year
+ * present, and the commune fold is cut to that one year — folding ten years of
+ * 5.24 million rows to throw nine away would be minutes of work for nothing.
+ */
+async function refreshDelinquanceBase() {
+  const started = Date.now();
+  const dataset = await fetchDelinquanceJson(DELINQUANCE_DATASET_URL, { cap: 8 * 1024 * 1024 });
+  const picked = pickDelinquanceResources(dataset);
+
+  const depText = await fetchDelinquanceText(picked.departements.url);
+  const departements = projectDelinquanceDepartements({ rows: parseSsmsiCsv(depText) });
+  const year = newestDelinquanceYear(departements.years, DELINQUANCE_YEAR_FLOOR);
+
+  const communes = await streamDelinquanceCommunes(
+    picked.communes.url, createCommuneFold({ year }),
+  );
+
+  // Cut ONCE, over every published commune rate in France, and then handed
+  // unchanged to every département pack. Re-cutting per pack would rebin a
+  // quiet département against its own quiet neighbours and paint it like a
+  // busy one — the same colour would stop meaning the same rate as soon as the
+  // camera moved.
+  const thresholds = Object.fromEntries(
+    [...communes.rates].map(([slug, values]) => [slug, delinquanceRateBins(values)]),
+  );
+
+  return {
+    departements: departements.departements,
+    years: departements.years,
+    newestYear: year,
+    thresholds,
+    // The chip set is DERIVED from what the commune base actually publishes,
+    // not from a constant, so an indicator the SSMSI stops publishing stops
+    // being offered instead of becoming an empty map.
+    chips: selectDelinquanceChips(communes.census),
+    census: communes.census,
+    censusByDepartement: communes.censusByDepartement,
+    communes: communes.communeCount,
+    edition: picked.edition,
+    staleEdition: picked.staleEdition,
+    licence: picked.licence,
+    lastUpdate: picked.lastUpdate,
+    documentation: picked.documentation?.url || null,
+    source: DELINQUANCE_SOURCE,
+    attribution: DELINQUANCE_ATTRIBUTION,
+    rowsSwept: communes.rowsSwept,
+    rowsKept: communes.rowsKept,
+    slowLines: communes.slowLines,
+    zeroPopulation: communes.zeroPopulation,
+    unknownIndicators: communes.unknownIndicators,
+    builtInMs: Date.now() - started,
+    // Kept OUT of the wire payload by the handler below — it is the raw fold,
+    // the whole of France, and only the per-département cut is ever served.
+    _cells: communes.communes,
+    _rates: communes.rates,
+    _means: communes.departementMeans,
+  };
+}
+
+async function readDelinquanceDisk() {
+  if (_delinquanceDiskChecked) return;
+  _delinquanceDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(DELINQUANCE_CACHE_PATH, 'utf8'));
+    if (entry?.version === DELINQUANCE_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.departements)
+      && Array.isArray(entry.payload?.cells)) {
+      // `_cells` is a Map in memory and an array of pairs on disk.
+      entry.payload._cells = new Map(entry.payload.cells);
+      delete entry.payload.cells;
+      _delinquanceBase = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeDelinquanceDisk(entry) {
+  // The fold is a Map keyed by commune code; JSON cannot hold one, so it goes
+  // to disk as pairs and is rebuilt on read.
+  const { _cells, _rates, ...rest } = entry.payload;
+  const serialisable = {
+    version: entry.version,
+    at: entry.at,
+    payload: { ...rest, cells: [..._cells] },
+  };
+  fsp.mkdir(DELINQUANCE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(DELINQUANCE_CACHE_PATH, JSON.stringify(serialisable)))
+    .catch((err) => console.warn('[Delinquance Proxy] cache write failed:', err?.message || err));
+}
+
+/** Single-flight, so two tabs opening at once cost one 5.24-million-row sweep. */
+function ensureDelinquanceBase() {
+  if (!_delinquanceInFlight) {
+    _delinquanceInFlight = refreshDelinquanceBase()
+      .then((payload) => {
+        const entry = { version: DELINQUANCE_CACHE_VERSION, at: Date.now(), payload };
+        _delinquanceBase = entry;
+        writeDelinquanceDisk(entry);
+        return entry;
+      })
+      .finally(() => { _delinquanceInFlight = null; });
+  }
+  return _delinquanceInFlight;
+}
+
+/**
+ * Commune contours for one département, memoized and coalesced.
+ *
+ * `coalesceProxyRequest` returns `{ promise, shared }` and NOT a promise, so
+ * the `.promise` is unwrapped here — awaiting the wrapper yields the wrapper
+ * itself, whose `.communes` is `undefined`, and `joinCommuneCells` then reports
+ * every commune in the département as `unshaped`. That reads exactly like an
+ * upstream data problem and is not one.
+ */
+async function ensureDelinquanceContours(dep) {
+  if (_delinquanceContours.has(dep)) return _delinquanceContours.get(dep);
+  const request = coalesceProxyRequest(_delinquanceContourInFlight, dep, async () => {
+    const geojson = await fetchDelinquanceJson(delinquanceContoursUrl(dep), {
+      timeout: DELINQUANCE_CONTOUR_TIMEOUT_MS,
+      cap: DELINQUANCE_CONTOUR_MAX_BYTES,
+    });
+    // `projectCommuneContours` returns `{ communes, vertices, simplified,
+    // droppedParts }` — the SHAPES are `.communes`, and `joinCommuneCells`
+    // wants that array. Handing it the wrapper joins nothing and reports every
+    // commune as `unshaped`, which reads like a data problem and is not one.
+    const projected = projectCommuneContours(geojson);
+    _delinquanceContours.set(dep, projected);
+    return projected;
+  });
+  return request.promise;
+}
+
+/** The wire payload for `/departements` — the fold's internals stripped off. */
+function delinquanceBasePayload(entry, stale) {
+  const { _cells, _rates, _means, ...wire } = entry.payload;
+  return { ...wire, fetchedAt: entry.at, stale };
+}
+
+/**
+ * Vite plugin: SSMSI recorded-crime proxy.
+ * @returns {import('vite').Plugin}
+ */
+function delinquanceFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/delinquance-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_delinquanceRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readDelinquanceDisk();
+        json(200, {
+          source: DELINQUANCE_SOURCE,
+          dataset: DELINQUANCE_DATASET,
+          licence: DELINQUANCE_LICENCE,
+          attribution: DELINQUANCE_ATTRIBUTION,
+          ttlMs: DELINQUANCE_TTL_MS,
+          base: _delinquanceBase
+            ? {
+              at: _delinquanceBase.at,
+              edition: _delinquanceBase.payload.edition,
+              staleEdition: _delinquanceBase.payload.staleEdition,
+              newestYear: _delinquanceBase.payload.newestYear,
+              departements: _delinquanceBase.payload.departements.length,
+              communes: _delinquanceBase.payload.communes,
+              rowsSwept: _delinquanceBase.payload.rowsSwept,
+              builtInMs: _delinquanceBase.payload.builtInMs,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      const communeMatch = /^\/communes\/([0-9][0-9ABab]|97[1-6])$/.exec(route);
+      if (route !== '/departements' && !communeMatch) {
+        json(404, { error: 'Unknown delinquance endpoint' });
+        return;
+      }
+
+      await readDelinquanceDisk();
+      const now = Date.now();
+      let entry = _delinquanceBase && now - _delinquanceBase.at <= DELINQUANCE_TTL_MS
+        ? _delinquanceBase
+        : null;
+      let stale = false;
+      if (!entry) {
+        try {
+          entry = await ensureDelinquanceBase();
+        } catch (error) {
+          console.warn('[Delinquance Proxy] base build unavailable:', error?.message || error);
+          // A four-month-old edition is still THIS edition — the base is
+          // republished about once a year — so serving it beats blanking.
+          if (_delinquanceBase && now - _delinquanceBase.at <= DELINQUANCE_STALE_MS) {
+            entry = _delinquanceBase;
+            stale = true;
+          } else {
+            json(503, { error: 'French recorded-crime base is temporarily unavailable' });
+            return;
+          }
+        }
+      }
+
+      if (!communeMatch) {
+        json(200, delinquanceBasePayload(entry, stale), { 'X-DELINQUANCE-FR': stale ? 'STALE' : 'HIT' });
+        return;
+      }
+
+      const dep = communeMatch[1].toUpperCase();
+      try {
+        const contours = await ensureDelinquanceContours(dep);
+        const joined = joinCommuneCells({
+          contours: contours.communes,
+          cells: entry.payload._cells,
+          departement: dep,
+        });
+        json(200, {
+          departement: dep,
+          year: entry.payload.newestYear,
+          // The departmental means a suppressed row carries, kept OUT of the
+          // cells: they are a departmental constant, and a card that printed
+          // one inside a commune's row would be publishing a number about a
+          // place that never published one.
+          means: entry.payload._means?.[dep] || {},
+          // National, not per-pack — see `refreshDelinquanceBase`.
+          thresholds: entry.payload.thresholds,
+          census: entry.payload.censusByDepartement?.[dep] || {},
+          ...joined,
+          // Geometry cost, reported rather than hidden: rings are decimated to
+          // ~11 m and multi-part communes are capped, so the payload says how
+          // much was simplified and how many parts were dropped.
+          vertices: contours.vertices,
+          simplified: contours.simplified,
+          droppedParts: contours.droppedParts,
+          fetchedAt: entry.at,
+          stale,
+        }, { 'X-DELINQUANCE-FR': stale ? 'STALE' : 'HIT' });
+      } catch (error) {
+        console.warn(`[Delinquance Proxy] commune pack ${dep} unavailable:`, error?.message || error);
+        json(503, { error: `Commune contours for département ${dep} are temporarily unavailable` });
+      }
+    });
+  }
+
+  return {
+    name: 'delinquance-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * ANFR mobile-network observatory proxy — keyless, Licence Ouverte 2.0.
+ *
+ * A proxy is not an optimisation here, it is the only option: measured with
+ * real GETs carrying `Origin: http://localhost:4173`, neither `data.anfr.fr`
+ * nor `www.cartoradio.fr` sends any `access-control-allow-origin` header at
+ * all. Only `static.data.gouv.fr` does (`*`).
+ *
+ * ONE build, three answers. The whole layer comes out of a single sweep of the
+ * 826 418-row weekly observatoire, and the three routes are three views of it:
+ *
+ *   /api/anfr-fr/mesh                — 72 700 `[lat, lon, operators, band]`
+ *                                      tuples plus the national totals.
+ *                                      Measured on the live build: 1 666 693
+ *                                      bytes raw, 394 030 gzipped.
+ *   /api/anfr-fr/supports?box        — every support inside a box ≤ 0.35°,
+ *                                      with its operator names, its system
+ *                                      labels and its nature resolved. The
+ *                                      fullest possible box (48.6725 N,
+ *                                      2.19556 E) is 6 462 rows and 112 831
+ *                                      bytes gzipped; central Paris is 726
+ *                                      rows and 13 106. The same route answers
+ *                                      a maillage click, at a 0.001° box that
+ *                                      returned exactly 1 row and 423 bytes.
+ *   /api/anfr-fr/support/<sup_id>    — the Cartoradio card for ONE mast, on
+ *                                      demand: address, owner, the categories
+ *                                      this layer does not draw, the per-emitter
+ *                                      frequency pairs, and the nearest
+ *                                      published exposure measurement. 3 544
+ *                                      bytes for support 449714.
+ *
+ * WHY THE 182 MB CSV AND NOT THE DATASTORE. Both serve the same 826 418 rows.
+ * The CSV is one static GET; the `/d4c/api/records/2.0/search/` route needs six
+ * paged calls totalling ~231 MB. The CSV URL is not guessed — the D4C
+ * catalogue publishes it as `extras.file_csv`, and republishes it under a new
+ * build stamp every week, which is why it is discovered and not pinned.
+ *
+ * WHY A BUFFER READ AND NOT `readResponseTextCapped`. That helper is right for
+ * every JSON body here and all of them go through `readResponseJsonCapped`.
+ * It is wrong for this one: it materialises the 182 MB file as a single
+ * 180-million-character JS string, and the whole build then peaks at 1 274 MB
+ * RSS. Reading into a Buffer and yielding rows out of it with a generator —
+ * so `projectAnfrSupports` never sees more than one row object at a time —
+ * measured 517 MB peak for the same build. Both were measured on the live file
+ * on 2026-09-02.
+ *
+ * BUILD COST, MEASURED LIVE. 36.4 s wall for the whole thing, of which 34 s is
+ * `fetch()` reading the 182 MB body (`curl` reads the same bytes in 3.5 s and
+ * `node:https` in 3.1 s — undici is the bottleneck, not the server). Parsing
+ * and folding 826 418 rows is 1.5 s and the mesh is 17 ms. That is why the TTL
+ * is six hours against a WEEKLY upstream, the disk cache is 5.2 MB on disk, and
+ * a failed refresh serves stale for a fortnight instead of blanking the layer.
+ */
+const ANFR_DAS_URL = `https://${ANFR_PORTAL}/d4c/api/records/2.0/search/`
+  + `?resource_id=${ANFR_DAS_RESOURCE_ID}&limit=2000&fields=${ANFR_DAS_FIELDS}`;
+/** Six hours against a weekly upstream — the build is 36 s and 517 MB. */
+const ANFR_TTL_MS = 6 * 60 * 60_000;
+/** A fortnight. The edition is a whole week, so a stale one is still that week. */
+const ANFR_STALE_MS = 14 * 24 * 60 * 60_000;
+const ANFR_TIMEOUT_MS = 30_000;
+/** The 182 MB read took 34.4 s on a 58 MB/s link. Four minutes is the ceiling. */
+const ANFR_CSV_TIMEOUT_MS = 240_000;
+const ANFR_MAX_BYTES = 8 * 1024 * 1024;
+/** 260 MB — 1.43× the 181 988 412-byte file, so a bigger edition still lands. */
+const ANFR_CSV_MAX_BYTES = 260 * 1024 * 1024;
+/** Widest box `/supports` will answer. Matches ANFR_MAX_BOX_DEG in anfrFrance.js. */
+const ANFR_MAX_BOX_DEG = 0.35;
+/** Above the 6 462 of the fullest possible box, so it never bites in practice. */
+const ANFR_MAX_SUPPORTS = 8000;
+/** A mast's Cartoradio card does not change between two clicks. */
+const ANFR_DETAIL_TTL_MS = 24 * 60 * 60_000;
+const ANFR_DETAIL_MAX = 400;
+const ANFR_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'anfr-fr');
+const ANFR_CACHE_PATH = path.join(ANFR_DISK_DIR, 'register.json');
+/** BUMP THIS whenever the projection changes shape — the disk cache outlives the edit. */
+const ANFR_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _anfrRegister = null;
+let _anfrInFlight = null;
+let _anfrDiskChecked = false;
+/** SUP_ID -> {at, payload}. Cartoradio is courtesy access; ask once per mast. */
+const _anfrDetails = new Map();
+const _anfrDetailInFlight = new Map();
+const _anfrRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+async function fetchAnfrJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(ANFR_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, ANFR_MAX_BYTES);
+}
+
+/**
+ * The observatoire CSV as bytes, capped, never as one giant string.
+ *
+ * See the header: the string form costs 757 MB of extra RSS for a body that is
+ * consumed one line at a time.
+ */
+async function fetchAnfrCsvBuffer(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'text/csv' },
+    signal: AbortSignal.timeout(ANFR_CSV_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > ANFR_CSV_MAX_BYTES) {
+    const err = new Error('Upstream response too large');
+    err.code = 'RESPONSE_TOO_LARGE';
+    throw err;
+  }
+  const reader = response.body?.getReader?.();
+  if (!reader) return Buffer.from(await response.arrayBuffer());
+  const chunks = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > ANFR_CSV_MAX_BYTES) {
+      try { await reader.cancel(); } catch { /* no-op */ }
+      const err = new Error('Upstream response too large');
+      err.code = 'RESPONSE_TOO_LARGE';
+      throw err;
+    }
+    chunks.push(Buffer.from(value.buffer, value.byteOffset, value.byteLength));
+  }
+  return Buffer.concat(chunks, total);
+}
+
+/**
+ * Rows out of the CSV buffer, one at a time.
+ *
+ * The file is LF-only (verified byte by byte over all 181 988 412 of them —
+ * zero `\r`, unlike the CRLF 5W tables next door) and opens with a UTF-8 BOM,
+ * both of which `anfrCsvColumns` handles. A generator rather than an array so
+ * `projectAnfrSupports` folds 826 418 rows without ever holding two.
+ */
+function* anfrCsvRows(buffer) {
+  const firstBreak = buffer.indexOf(0x0a);
+  if (firstBreak < 0) return;
+  const columns = anfrCsvColumns(buffer.toString('utf8', 0, firstBreak));
+  let start = firstBreak + 1;
+  for (;;) {
+    const end = buffer.indexOf(0x0a, start);
+    const stop = end < 0 ? buffer.length : end;
+    if (stop > start) {
+      const row = readAnfrCsvRow(buffer.toString('utf8', start, stop), columns);
+      if (row) yield row;
+    }
+    if (end < 0) break;
+    start = end + 1;
+  }
+}
+
+/**
+ * `nat_id` -> nature, from the 4 805-byte reference archive.
+ *
+ * Whole-body, not ranged: three range requests to save 4 KB is arithmetic
+ * nobody needs. `static.data.gouv.fr` is the one ANFR-adjacent host that sends
+ * `access-control-allow-origin: *`, and this is the only member of the archive
+ * this layer reads (`SUP_NATURE.txt`, 785 bytes, 38 rows).
+ */
+async function fetchAnfrNatures() {
+  const response = await fetch(ANFR_REF_ZIP_URL, { signal: AbortSignal.timeout(ANFR_TIMEOUT_MS) });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  const archive = Buffer.from(await response.arrayBuffer());
+  const member = readZipMember(archive, ANFR_REF_MEMBER);
+  if (!member) throw new Error(`${ANFR_REF_MEMBER} missing from the reference archive`);
+  return parseAnfrNatureTable(member.toString('utf8'));
+}
+
+/**
+ * Build the whole layer: discover the week, sweep it, fold it, thin it.
+ *
+ * Only the CSV is fatal. Losing the catalogue costs the discovered URL and the
+ * completeness proof and falls back to the floor; losing the reference archive
+ * costs the card the word "Pylône autostable" and leaves `natureAvailable`
+ * false; losing the DAS register costs one national readout that was never on
+ * the map anyway — it has no coordinate of any kind. Each of those degrades
+ * with a warning rather than failing a build that still has 72 700 masts in it.
+ */
+async function refreshAnfrRegister() {
+  const started = Date.now();
+  const catalogue = await fetchAnfrJson(ANFR_CATALOGUE_URL).catch((error) => {
+    console.warn('[ANFR Proxy] catalogue unavailable:', error?.message || error);
+    return null;
+  });
+  const observatoire = pickAnfrObservatoire(catalogue || {});
+
+  const [natures, das, buffer] = await Promise.all([
+    fetchAnfrNatures().catch((error) => {
+      console.warn('[ANFR Proxy] nature table unavailable:', error?.message || error);
+      return null;
+    }),
+    fetchAnfrJson(ANFR_DAS_URL).then(projectAnfrDas).catch((error) => {
+      console.warn('[ANFR Proxy] DAS register unavailable:', error?.message || error);
+      return null;
+    }),
+    fetchAnfrCsvBuffer(observatoire.csvUrl),
+  ]);
+
+  const projected = projectAnfrSupports({
+    rows: anfrCsvRows(buffer),
+    natures,
+    edition: observatoire.edition,
+    totalCount: observatoire.rowsTotal,
+  });
+  if (!projected.complete) {
+    console.warn(`[ANFR Proxy] observatoire short: ${projected.rowsSwept}/${projected.rowsTotal} rows`);
+  }
+
+  const { supports, ...summary } = projected;
+  const national = {
+    count: summary.count,
+    live: summary.live,
+    projectOnly: summary.projectOnly,
+    plannedUpgrades: summary.plannedUpgrades,
+    bands: summary.bands,
+    generations: summary.generations,
+  };
+  // The two documents are built once and served apart because they are read at
+  // different moments and at different sizes: the maillage arrives with the
+  // layer at 394 KB gzipped, and a viewport slice is only asked for once the
+  // camera is inside 0.32 degrees.
+  return {
+    supports,
+    mesh: {
+      mesh: buildAnfrMesh(supports),
+      ...summary,
+      licence: observatoire.licence,
+      discovered: observatoire.discovered,
+      das,
+      builtInMs: Date.now() - started,
+    },
+    national,
+    vocab: { operators: summary.operators, systems: summary.systems, natures: summary.natures },
+    edition: summary.edition,
+    source: summary.source,
+    licence: observatoire.licence,
+    natureAvailable: summary.natureAvailable,
+  };
+}
+
+async function readAnfrDisk() {
+  if (_anfrDiskChecked) return;
+  _anfrDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(ANFR_CACHE_PATH, 'utf8'));
+    if (entry?.version === ANFR_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.supports)
+      && Array.isArray(entry.payload?.mesh?.mesh)) {
+      _anfrRegister = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeAnfrDisk(entry) {
+  fsp.mkdir(ANFR_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(ANFR_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[ANFR Proxy] cache write failed:', err?.message || err));
+}
+
+/** Shared build, so `/mesh` and `/supports` never sweep 826 418 rows twice. */
+function ensureAnfrRegister() {
+  if (!_anfrInFlight) {
+    _anfrInFlight = refreshAnfrRegister()
+      .then((payload) => {
+        const entry = { version: ANFR_CACHE_VERSION, at: Date.now(), payload };
+        _anfrRegister = entry;
+        writeAnfrDisk(entry);
+        return entry;
+      })
+      .finally(() => { _anfrInFlight = null; });
+  }
+  return _anfrInFlight;
+}
+
+/** The requested box, or null when it is malformed or wider than the ceiling. */
+function anfrBoxFrom(url) {
+  const south = Number(url.searchParams.get('south'));
+  const west = Number(url.searchParams.get('west'));
+  const north = Number(url.searchParams.get('north'));
+  const east = Number(url.searchParams.get('east'));
+  if (![south, west, north, east].every(Number.isFinite)) return null;
+  if (south >= north || west >= east) return null;
+  if (north - south > ANFR_MAX_BOX_DEG || east - west > ANFR_MAX_BOX_DEG) return null;
+  return { south, west, north, east };
+}
+
+/**
+ * Every support in the box, with its masks decoded to labels.
+ *
+ * Resolved here rather than on the client because a viewport answer has to be
+ * self-contained: an operator who opens the app already zoomed into a city
+ * never fetches `/mesh`, and a card that said `ops: 9` would be waiting on a
+ * vocabulary it has no reason to have. The cost is measured and small — the
+ * fullest possible box is 112 831 bytes gzipped resolved against 96 004 as
+ * bare tuples.
+ */
+function anfrSupportsInBox(payload, box) {
+  const { operators, systems, natures } = payload.vocab;
+  const rows = [];
+  let inBox = 0;
+  for (const tuple of payload.supports) {
+    const lat = tuple[ANFR_LAT];
+    const lon = tuple[ANFR_LON];
+    if (lat < box.south || lat > box.north || lon < box.west || lon > box.east) continue;
+    inBox += 1;
+    if (rows.length >= ANFR_MAX_SUPPORTS) continue;
+    rows.push({
+      id: tuple[ANFR_ID],
+      lat,
+      lon,
+      svc: tuple[ANFR_SVC],
+      live: tuple[ANFR_LIVE],
+      plan: tuple[ANFR_PLAN],
+      operators: anfrDecodeMask(tuple[ANFR_OPS], operators),
+      systems: anfrDecodeMask(tuple[ANFR_SYS], systems),
+      nature: natures[String(tuple[ANFR_NAT])] || null,
+      heightM: tuple[ANFR_HAUT],
+    });
+  }
+  return { supports: rows, count: rows.length, inBox, truncated: inBox > rows.length, box };
+}
+
+/**
+ * One Cartoradio body.
+ *
+ * `/api/v1/statistiques/operateur` answers HTTP 200 with a ZERO-byte body, so
+ * an empty response is treated as a failure here rather than being handed to
+ * `JSON.parse`, which would throw a parse error where a status error belongs.
+ */
+async function fetchCartoradio(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(ANFR_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  const text = await readResponseTextCapped(response, ANFR_MAX_BYTES);
+  if (!text) throw new Error('empty upstream body');
+  return JSON.parse(text);
+}
+
+/**
+ * The on-demand card for ONE mast: four Cartoradio calls, worst case.
+ *
+ * The Cartoradio REST API is the undocumented backend of ANFR's own map. The
+ * DATA it serves is the same Licence Ouverte data, but nothing grants the
+ * right to hammer the endpoint: it carries no rate-limit headers and no
+ * licence statement of its own. So this is one build per mast, cached for a
+ * day, coalesced per SUP_ID, and never a viewport loop.
+ *
+ * Every leg degrades on its own and says which one failed, because they mean
+ * different things: no site is no address, no antennas is no frequency pairs
+ * and no equipment date, and no measurement is no exposure readout — but any
+ * one of the three still leaves a card worth showing.
+ */
+async function buildAnfrDetail(supId, position) {
+  const degraded = [];
+  const [siteBody, antennaBody] = await Promise.all([
+    fetchCartoradio(`${CARTORADIO_BASE}/sites/${supId}`).catch((error) => {
+      degraded.push(`fiche support (${error?.message || error})`);
+      return null;
+    }),
+    fetchCartoradio(`${CARTORADIO_BASE}/sites/${supId}/antennes`).catch((error) => {
+      degraded.push(`antennes (${error?.message || error})`);
+      return null;
+    }),
+  ]);
+  const site = siteBody ? projectCartoradioSupport(siteBody) : null;
+  const antennas = antennaBody ? projectCartoradioAntennas(antennaBody) : null;
+  // Cartoradio's own coordinate when it answered, the register's otherwise —
+  // and never an invented one.
+  const lat = Number.isFinite(site?.lat) ? site.lat : position?.lat;
+  const lon = Number.isFinite(site?.lon) ? site.lon : position?.lon;
+
+  let exposure = null;
+  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    // All seven parameters are mandatory: omitting any one returns HTTP 500
+    // with the body `{}`, which is the worst possible failure signature —
+    // the status looks like an outage and the body parses fine.
+    const bbox = anfrExposureBbox(lat, lon, ANFR_EXPOSURE_RADIUS_M);
+    const listed = await fetchCartoradio(
+      `${CARTORADIO_BASE}/mesures?stationsRadioelec=true&objetsCom=true`
+      + `&anciennete=99999&format=geojson&bbox=${bbox}`,
+    ).catch((error) => {
+      degraded.push(`mesures (${error?.message || error})`);
+      return null;
+    });
+    if (listed) {
+      // The list carries no V/m — its properties are only
+      // `{objet_communicant}` — so the nearest point is located first and only
+      // that one report is fetched.
+      const near = projectCartoradioExposure({ mesures: listed, lat, lon });
+      const report = near.nearest
+        ? await fetchCartoradio(`${CARTORADIO_BASE}/mesures/${near.nearest.id}`).catch((error) => {
+          degraded.push(`rapport ${near.nearest.id} (${error?.message || error})`);
+          return null;
+        })
+        : null;
+      exposure = projectCartoradioExposure({
+        mesures: listed, report, lat, lon, newestService: antennas?.newestService || null,
+      });
+    }
+  }
+  return { supId, site, antennas, exposure, degraded, source: 'Cartoradio — ANFR' };
+}
+
+function ensureAnfrDetail(supId, position) {
+  const cached = _anfrDetails.get(supId);
+  if (cached && Date.now() - cached.at <= ANFR_DETAIL_TTL_MS) return Promise.resolve(cached.payload);
+  const { promise } = coalesceProxyRequest(_anfrDetailInFlight, String(supId), async () => {
+    const payload = await buildAnfrDetail(supId, position);
+    _anfrDetails.set(supId, { at: Date.now(), payload });
+    if (_anfrDetails.size > ANFR_DETAIL_MAX) {
+      const oldest = _anfrDetails.keys().next().value;
+      if (oldest !== undefined) _anfrDetails.delete(oldest);
+    }
+    return payload;
+  });
+  return promise;
+}
+
+/**
+ * Vite plugin: ANFR mobile-network observatory proxy.
+ * @returns {import('vite').Plugin}
+ */
+function anfrFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/anfr-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_anfrRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readAnfrDisk();
+        json(200, {
+          source: ANFR_SOURCE,
+          portal: ANFR_PORTAL,
+          dataset: ANFR_DATASET,
+          dasDataset: ANFR_DAS_DATASET,
+          cartoradio: CARTORADIO_BASE,
+          ttlMs: ANFR_TTL_MS,
+          maxBoxDeg: ANFR_MAX_BOX_DEG,
+          register: _anfrRegister
+            ? {
+              at: _anfrRegister.at,
+              edition: _anfrRegister.payload.edition,
+              licence: _anfrRegister.payload.licence,
+              discovered: _anfrRegister.payload.mesh.discovered,
+              supports: _anfrRegister.payload.national.count,
+              live: _anfrRegister.payload.national.live,
+              projectOnly: _anfrRegister.payload.national.projectOnly,
+              plannedUpgrades: _anfrRegister.payload.national.plannedUpgrades,
+              rowsSwept: _anfrRegister.payload.mesh.rowsSwept,
+              rowsTotal: _anfrRegister.payload.mesh.rowsTotal,
+              complete: _anfrRegister.payload.mesh.complete,
+              natureAvailable: _anfrRegister.payload.natureAvailable,
+              builtInMs: _anfrRegister.payload.mesh.builtInMs,
+            }
+            : null,
+          detailsCached: _anfrDetails.size,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      // ── One mast's Cartoradio card ─────────────────────────────────────────
+      const detailMatch = /^\/support\/(\d{1,9})$/.exec(route);
+      if (detailMatch) {
+        const supId = Number(detailMatch[1]);
+        await readAnfrDisk();
+        // The register's own position for the mast, so the exposure box can be
+        // built even when Cartoradio's site call is the leg that failed.
+        let position = null;
+        for (const tuple of _anfrRegister?.payload?.supports || []) {
+          if (tuple[ANFR_ID] === supId) {
+            position = { lat: tuple[ANFR_LAT], lon: tuple[ANFR_LON] };
+            break;
+          }
+        }
+        try {
+          const payload = await ensureAnfrDetail(supId, position);
+          json(200, { ...payload, fetchedAt: Date.now() }, { 'X-ANFR-FR': 'DETAIL' });
+        } catch (error) {
+          console.warn(`[ANFR Proxy] Cartoradio detail ${supId} failed:`, error?.message || error);
+          json(503, { error: 'Cartoradio is temporarily unavailable for this support' });
+        }
+        return;
+      }
+
+      if (route !== '/mesh' && route !== '/supports') {
+        json(404, { error: 'Unknown ANFR endpoint' });
+        return;
+      }
+
+      let box = null;
+      if (route === '/supports') {
+        box = anfrBoxFrom(url);
+        if (!box) {
+          json(400, {
+            error: `A bounding box of at most ${ANFR_MAX_BOX_DEG}° is required `
+              + '(south, west, north, east)',
+          });
+          return;
+        }
+      }
+
+      const pick = (payload) => (route === '/mesh'
+        ? payload.mesh
+        : {
+          ...anfrSupportsInBox(payload, box),
+          national: payload.national,
+          edition: payload.edition,
+          source: payload.source,
+          licence: payload.licence,
+          natureAvailable: payload.natureAvailable,
+        });
+
+      await readAnfrDisk();
+      const now = Date.now();
+      if (_anfrRegister && now - _anfrRegister.at <= ANFR_TTL_MS) {
+        json(200, { ...pick(_anfrRegister.payload), fetchedAt: _anfrRegister.at, stale: false }, { 'X-ANFR-FR': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensureAnfrRegister();
+        json(200, { ...pick(entry.payload), fetchedAt: entry.at, stale: false }, { 'X-ANFR-FR': 'MISS' });
+      } catch (error) {
+        console.warn('[ANFR Proxy] register build unavailable:', error?.message || error);
+        // The edition is a whole week and the file is republished weekly, so a
+        // register a fortnight old is still a true map of French masts.
+        // Serving it beats blanking the country.
+        if (_anfrRegister && now - _anfrRegister.at <= ANFR_STALE_MS) {
+          json(200, { ...pick(_anfrRegister.payload), fetchedAt: _anfrRegister.at, stale: true }, { 'X-ANFR-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'The ANFR mobile-network register is temporarily unavailable' });
+      }
+    });
+  }
+
+  return {
+    name: 'anfr-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Paris cool-islands proxy — keyless, ODbL, three registers and a tree register.
+ *
+ *   GET /api/fraicheur-fr/refuges                       — the whole city, once
+ *   GET /api/fraicheur-fr/arbres?south&west&north&east  — one snapped box of trees
+ *   GET /api/fraicheur-fr/status                        — provenance and cache state
+ *
+ * WHY A PROXY AT ALL. `opendata.paris.fr` answers `access-control-allow-origin:
+ * *` on both `records` and `exports`, so the browser could call it directly.
+ * Two measurements say not to. First, the day budget: the portal publishes
+ * `x-ratelimit-limit: 10000` per day, resetting at midnight UTC, and this layer
+ * asks a question per camera settle — a single busy afternoon of panning would
+ * spend a shared allowance no other tab can get back. Second, the fold: the
+ * three refuge registers cost **9 929 649 B decoded** across three parallel
+ * calls (2 454 ms wall, measured 2026-09-02) and the browser needs **3 451 189 B
+ * of JSON, 643 107 B gzipped** out of them. Doing that once on a server and
+ * serving it from a one-hour cache is the difference between 3 upstream calls an
+ * hour and 3 per tab per reload.
+ *
+ * WHY TWO ROUTES AND NOT THREE OR ONE. `/refuges` takes no viewport parameter
+ * at all: the answer is the same 643 KB whatever the camera is doing, the three
+ * registers are read together, and splitting them would make the layer's first
+ * paint three round trips. `/arbres` cannot join it — the tree register is
+ * 219 432 rows and 111 MB decoded whole — so it is the one bbox route.
+ *
+ * WHY THE PROBE COMES FIRST. `records?where=in_bbox(...)&limit=0&select=count(*)
+ * as n` answers "how many trees are in this box" in **36 bytes and 99 ms**,
+ * measured. Over {@link FRAICHEUR_TREE_BUDGET} the export is never bought and
+ * the true count is returned instead: on the densest grid-aligned box in Paris
+ * (48.816,2.346 -> 48.836,2.366, the 13e) the probe answers 10 571 and the
+ * export that would have followed is 3 368 281 B and 1 733 ms.
+ *
+ * The three refuge calls fan out with `Promise.all` and each one CATCHES: losing
+ * the fountains costs 1 323 taps and keeps 984 parks, and `projectFraicheurRefuges`
+ * reports which of the three answered in `payload.available`.
+ */
+const FRAICHEUR_BASE = `https://${FRAICHEUR_PORTAL}/api/explore/v2.1/catalog/datasets`;
+/**
+ * One hour on the city pack. The equipment register was rebuilt
+ * 2026-09-01T05:45:08Z and the fountains 2026-08-31T07:42:08Z — daily — and
+ * `horaires_periode` on the equipment is a one-WEEK validity window, while
+ * `statut_ouverture` on a brumisateur ("Eteint"/"Ouvert") can move inside a day.
+ * 24 refreshes a day is 72 upstream calls against a 10 000/day allowance.
+ */
+const FRAICHEUR_TTL_MS = 60 * 60 * 1000;
+/** Serve-stale ceiling. Last week's park is still a park. */
+const FRAICHEUR_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Six hours per tree box. `les-arbres` was last modified 2026-08-28T08:35:28Z
+ * and moves in weeks, so a box re-asked inside six hours cannot have changed.
+ */
+const FRAICHEUR_TREE_TTL_MS = 6 * 60 * 60 * 1000;
+const FRAICHEUR_TIMEOUT_MS = 90_000;
+/** Largest single upstream body is the green-space export at 9 216 103 B. */
+const FRAICHEUR_MAX_BYTES = 24 * 1024 * 1024;
+/** The densest box measured 3 368 281 B decoded for 10 571 trees. */
+const FRAICHEUR_TREE_MAX_BYTES = 16 * 1024 * 1024;
+const FRAICHEUR_TREE_CACHE_MAX = 48;
+const FRAICHEUR_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'fraicheur-fr');
+const FRAICHEUR_CACHE_PATH = path.join(FRAICHEUR_DISK_DIR, 'refuges.json');
+const FRAICHEUR_TREE_DISK_DIR = path.join(FRAICHEUR_DISK_DIR, 'arbres');
+/**
+ * Shape version of both cached folds. Bump whenever `projectFraicheurRefuges`
+ * or `projectFraicheurTrees` changes what it returns — the memory cache lives
+ * for an hour but the disk cache outlives the edit by a week otherwise.
+ */
+const FRAICHEUR_CACHE_VERSION = 1;
+
+/** @type {?{version:number, at:number, payload:object}} */
+let _fraicheurRefuges = null;
+/** @type {?Promise<{version:number, at:number, payload:object}>} */
+let _fraicheurInFlight = null;
+let _fraicheurDiskChecked = false;
+/** @type {Map<string, {version:number, at:number, payload:object}>} LRU by box key. */
+const _fraicheurTreeCache = new Map();
+/** @type {Map<string, Promise<object>>} */
+const _fraicheurTreeInFlight = new Map();
+/**
+ * 60/min per client and 180/min globally, matching `cadastreFranceProxy`: this
+ * layer is viewport-chatty on `/arbres` in exactly the way the cadastre is, and
+ * `comptages-fr`'s 30 would throttle an operator simply walking down a street.
+ */
+const _fraicheurRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchFraicheurJson(url, maxBytes = FRAICHEUR_MAX_BYTES) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(FRAICHEUR_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, maxBytes);
+}
+
+/**
+ * One `exports/geojson` URL.
+ *
+ * `limit=-1` is the portal's "no limit" and `exports/*` is subject to neither
+ * of the caps `records` carries — 100 rows a page (`limit=101` -> HTTP 400) and
+ * `offset + limit <= 10000` (HTTP 400, *"Invalid value for sum of offset +
+ * limit API parameter: 10099 was found but <= 10000 is expected."*). The geo
+ * field is deliberately absent from every `select`: the export emits the
+ * geometry regardless and naming it ships the coordinates twice, measured at
+ * 81 148 B against 61 794 B on the fountains.
+ */
+function fraicheurExportUrl(dataset, fields, where = null) {
+  const params = new URLSearchParams({ select: fields.join(','), limit: '-1' });
+  if (where) params.set('where', where);
+  return `${FRAICHEUR_BASE}/${dataset}/exports/geojson?${params}`;
+}
+
+/** The 36-byte population probe for one bbox. */
+function fraicheurTreeProbeUrl(where) {
+  const params = new URLSearchParams({ where, limit: '0', select: 'count(*) as n' });
+  return `${FRAICHEUR_BASE}/${FRAICHEUR_TREE_DATASET}/records?${params}`;
+}
+
+/**
+ * Build the whole-city pack.
+ *
+ * Each of the three is caught on its own, so a register that fails degrades the
+ * pack instead of failing it — `payload.available` names which answered and the
+ * layer's row says so.
+ */
+async function refreshFraicheurRefuges() {
+  const warn = (name) => (error) => {
+    console.warn(`[Fraicheur Proxy] ${name} register unavailable:`, error?.message || error);
+    return null;
+  };
+  const [spaces, equipment, fountains] = await Promise.all([
+    fetchFraicheurJson(fraicheurExportUrl(FRAICHEUR_SPACES_DATASET, FRAICHEUR_SPACE_FIELDS)).catch(warn('green-space')),
+    fetchFraicheurJson(fraicheurExportUrl(FRAICHEUR_EQUIPMENT_DATASET, FRAICHEUR_EQUIPMENT_FIELDS)).catch(warn('equipment')),
+    fetchFraicheurJson(fraicheurExportUrl(FRAICHEUR_FOUNTAIN_DATASET, FRAICHEUR_FOUNTAIN_FIELDS)).catch(warn('fountain')),
+  ]);
+  // All three down is a failure, not a degraded pack: an empty document would
+  // paint an empty Paris and claim it was true.
+  if (!spaces && !equipment && !fountains) throw new Error('all three registers unavailable');
+  return projectFraicheurRefuges({ spaces, equipment, fountains, source: FRAICHEUR_SOURCE });
+}
+
+/**
+ * Build one box of trees. The probe decides whether the export is bought at all.
+ */
+async function refreshFraicheurTrees(box) {
+  const where = fraicheurTreeWhere(box);
+  const probe = await fetchFraicheurJson(fraicheurTreeProbeUrl(where), 64 * 1024);
+  const total = Number(probe?.total_count);
+  if (Number.isFinite(total) && total > FRAICHEUR_TREE_BUDGET) {
+    // Refused before the download. This is the whole point of the probe.
+    return projectFraicheurTrees({ features: null, totalInBox: total, box });
+  }
+  const features = await fetchFraicheurJson(
+    fraicheurExportUrl(FRAICHEUR_TREE_DATASET, FRAICHEUR_TREE_FIELDS, where),
+    FRAICHEUR_TREE_MAX_BYTES,
+  );
+  return projectFraicheurTrees({ features, totalInBox: Number.isFinite(total) ? total : null, box });
+}
+
+async function readFraicheurDisk() {
+  if (_fraicheurDiskChecked) return;
+  _fraicheurDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(FRAICHEUR_CACHE_PATH, 'utf8'));
+    if (entry?.version === FRAICHEUR_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.spaces)
+      && Array.isArray(entry.payload?.equipment)) {
+      _fraicheurRefuges = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeFraicheurDisk(entry) {
+  fsp.mkdir(FRAICHEUR_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(FRAICHEUR_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Fraicheur Proxy] cache write failed:', err?.message || err));
+}
+
+function fraicheurTreeDiskPath(key) {
+  return path.join(FRAICHEUR_TREE_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+async function readFraicheurTreeDisk(key) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(fraicheurTreeDiskPath(key), 'utf8'));
+    if (entry?.version !== FRAICHEUR_CACHE_VERSION) return null;
+    if (!Number.isFinite(entry.at) || !Array.isArray(entry.payload?.trees)) return null;
+    if (Date.now() - entry.at > FRAICHEUR_TREE_TTL_MS) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeFraicheurTreeDisk(key, entry) {
+  fsp.mkdir(FRAICHEUR_TREE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(fraicheurTreeDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Fraicheur Proxy] tree cache write failed:', err?.message || err));
+}
+
+function trimFraicheurTreeCache() {
+  while (_fraicheurTreeCache.size > FRAICHEUR_TREE_CACHE_MAX) {
+    const oldest = _fraicheurTreeCache.keys().next().value;
+    if (oldest === undefined) break;
+    _fraicheurTreeCache.delete(oldest);
+  }
+}
+
+/** Single-flight, so two tabs opening at once cost one three-call sweep. */
+function ensureFraicheurRefuges() {
+  if (!_fraicheurInFlight) {
+    _fraicheurInFlight = refreshFraicheurRefuges()
+      .then((payload) => {
+        const entry = { version: FRAICHEUR_CACHE_VERSION, at: Date.now(), payload };
+        _fraicheurRefuges = entry;
+        writeFraicheurDisk(entry);
+        return entry;
+      })
+      .finally(() => { _fraicheurInFlight = null; });
+  }
+  return _fraicheurInFlight;
+}
+
+/**
+ * Per-box single-flight: two tabs asking for the same box cost one sweep.
+ * `coalesceProxyRequest` returns `{ promise, shared }`, not a promise — the
+ * `shared` flag is what lets the response header say INFLIGHT rather than MISS.
+ */
+function ensureFraicheurTrees(key, box) {
+  return coalesceProxyRequest(_fraicheurTreeInFlight, key, async () => {
+    const payload = await refreshFraicheurTrees(box);
+    const entry = { version: FRAICHEUR_CACHE_VERSION, at: Date.now(), payload };
+    _fraicheurTreeCache.set(key, entry);
+    trimFraicheurTreeCache();
+    writeFraicheurTreeDisk(key, entry);
+    return entry;
+  });
+}
+
+/**
+ * Vite plugin: Paris cool-islands, green spaces, fountains and street trees.
+ * @returns {import('vite').Plugin}
+ */
+function fraicheurParisProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/fraicheur-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_fraicheurRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readFraicheurDisk();
+        json(200, {
+          source: FRAICHEUR_SOURCE,
+          portal: FRAICHEUR_PORTAL,
+          licence: FRAICHEUR_LICENCE,
+          licenceUrl: FRAICHEUR_LICENCE_URL,
+          publishers: FRAICHEUR_PUBLISHERS,
+          treeSource: FRAICHEUR_TREE_SOURCE,
+          ttlMs: FRAICHEUR_TTL_MS,
+          treeTtlMs: FRAICHEUR_TREE_TTL_MS,
+          treeBudget: FRAICHEUR_TREE_BUDGET,
+          treeMaxBoxDeg: FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG,
+          cachedTreeBoxes: _fraicheurTreeCache.size,
+          refuges: _fraicheurRefuges
+            ? {
+              at: _fraicheurRefuges.at,
+              spaces: _fraicheurRefuges.payload.spaces.length,
+              equipment: _fraicheurRefuges.payload.equipment.length,
+              fountains: _fraicheurRefuges.payload.fountains.length,
+              available: _fraicheurRefuges.payload.available,
+              unplaced: _fraicheurRefuges.payload.unplaced,
+              geometry: _fraicheurRefuges.payload.geometry,
+              refReuse: _fraicheurRefuges.payload.refReuse,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route === '/refuges') {
+        await readFraicheurDisk();
+        const now = Date.now();
+        if (_fraicheurRefuges && now - _fraicheurRefuges.at <= FRAICHEUR_TTL_MS) {
+          json(200, { ..._fraicheurRefuges.payload, fetchedAt: _fraicheurRefuges.at, stale: false }, { 'X-FRAICHEUR-FR': 'HIT' });
+          return;
+        }
+        try {
+          const entry = await ensureFraicheurRefuges();
+          json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-FRAICHEUR-FR': 'MISS' });
+        } catch (error) {
+          console.warn('[Fraicheur Proxy] city pack unavailable:', error?.message || error);
+          // A week-old pack still describes the same 984 parks and the same
+          // 1 323 taps; only the timetables age, and the layer says which
+          // window each one came from.
+          if (_fraicheurRefuges && now - _fraicheurRefuges.at <= FRAICHEUR_STALE_MS) {
+            json(200, { ..._fraicheurRefuges.payload, fetchedAt: _fraicheurRefuges.at, stale: true }, { 'X-FRAICHEUR-FR': 'STALE' });
+            return;
+          }
+          json(503, { error: 'Paris cool-island registers are temporarily unavailable' });
+        }
+        return;
+      }
+
+      if (route !== '/arbres') {
+        json(404, { error: 'Unknown fraicheur endpoint' });
+        return;
+      }
+
+      const requested = validBox({
+        south: url.searchParams.get('south'),
+        west: url.searchParams.get('west'),
+        north: url.searchParams.get('north'),
+        east: url.searchParams.get('east'),
+      }, FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG);
+      if (!requested) {
+        json(400, {
+          error: `A non-dateline bbox no larger than ${FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG} degrees is required`,
+          maxBoxDeg: FRAICHEUR_TREE_REQUEST_MAX_BOX_DEG,
+        });
+        return;
+      }
+      // Snapped OUTWARD onto the same grid the client snaps on, so the two
+      // agree on the cache key. A client box is already aligned and this is a
+      // no-op for it; a hand-built request is aligned here instead.
+      const box = snapBoxOutward(requested, FRAICHEUR_TREE_BOX_STEP_DEG);
+      // `les-arbres` describes exactly one city. A box outside it is answered
+      // with an empty payload and ZERO upstream calls rather than spending a
+      // request from a shared 10 000/day allowance to be told nothing.
+      if (!boxesIntersect(box, FRAICHEUR_COVERAGE)) {
+        json(200, {
+          ...projectFraicheurTrees({ features: null, totalInBox: 0, box }),
+          fetchedAt: Date.now(), stale: false, offCoverage: true,
+        }, { 'X-FRAICHEUR-FR': 'OFF-COVERAGE' });
+        return;
+      }
+
+      const key = boxKey(box, 3);
+      const now = Date.now();
+      const cached = _fraicheurTreeCache.get(key);
+      if (cached && now - cached.at <= FRAICHEUR_TREE_TTL_MS) {
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-FRAICHEUR-FR': 'HIT' });
+        return;
+      }
+      const onDisk = await readFraicheurTreeDisk(key);
+      if (onDisk) {
+        _fraicheurTreeCache.set(key, onDisk);
+        trimFraicheurTreeCache();
+        json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-FRAICHEUR-FR': 'DISK' });
+        return;
+      }
+      try {
+        const request = ensureFraicheurTrees(key, box);
+        const entry = await request.promise;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false },
+          { 'X-FRAICHEUR-FR': request.shared ? 'INFLIGHT' : 'MISS' });
+      } catch (error) {
+        console.warn('[Fraicheur Proxy] tree box unavailable:', error?.message || error);
+        if (cached) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: true }, { 'X-FRAICHEUR-FR': 'STALE' });
+          return;
+        }
+        json(503, { error: 'Paris tree register is temporarily unavailable for this view' });
+      }
+    });
+  }
+
+  return {
+    name: 'fraicheur-paris-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Sitadel — one commune of building permits, joined to its own cadastral
+ * parcels, because the file publishes no coordinate at all.
+ *
+ * Three upstreams, and the ORDER of the constants below is the order they are
+ * called in:
+ *
+ *   1. `geo.api.gouv.fr/communes?lat=&lon=` — which commune is under the point.
+ *      This is the only service entitled to answer that question, and it is why
+ *      the layer has no coverage rectangle: Sitadel and the Etalab cadastre both
+ *      cover the DROM (Saint-Denis de La Réunion, 97411, answers with 2 849
+ *      permits and a 10 449 654-byte parcel file), so a metropolitan box would
+ *      have refused them while claiming national coverage.
+ *   2. DiDo `/datafiles/<rid>/json?COMM=eq:<insee>&columns=…` — the permits.
+ *   3. `cadastre.data.gouv.fr/.../latest/...json.gz` — the parcels to join to.
+ *      Not browser-reachable: the 302 from `latest` carries no
+ *      `access-control-allow-origin`, so this has to be server-side. Its target
+ *      does serve CORS, but the Fetch spec applies the check to the redirect.
+ *
+ * ── The measurement that shapes this whole file ─────────────────────────────
+ *
+ * **DiDo refuses a fourth simultaneous request.** Measured 2026-09-02: six
+ * parallel queries returned three HTTP 200 and three HTTP 429 within 145 ms,
+ * body `max connections reached: 3` — 26 bytes of plain text, with no
+ * `content-type`, no `retry-after` and no `access-control-allow-origin`. Three
+ * at once are all served, across different datafiles, so the cap is per client
+ * and not per file. `withSitadelDidoSlot` is a global semaphore of
+ * {@link SITADEL_DIDO_CONCURRENCY} = 2, which leaves one slot of headroom for
+ * anything else sharing this egress address, and it is why the two permit
+ * queries of one build cannot collide with the two of another.
+ *
+ * The 429 body is not JSON, so it is detected on the status code BEFORE any
+ * parse: `readResponseJsonCapped` on it would report a SyntaxError and the
+ * degraded sentence would name the wrong problem.
+ *
+ * ── Why the cache is a day and the stale window a month ─────────────────────
+ *
+ * DiDo publishes monthly: dataset 6513f0189d7d312c80ec5b5b returns
+ * `frequency: "monthly"` and `frequency_date: "2026-09-29"`, and the four
+ * datafiles all carry `millesime: "2026-08"`. The Etalab cadastre republishes
+ * about quarterly — `latest` resolved to the 2026-06-01 edition on 2026-09-02.
+ * Nothing in this pack can move inside a day, and a month-old pack is still the
+ * same commune, so a failure serves stale rather than blanking a city.
+ *
+ * ── Cold-build cost, measured end to end on 2026-09-02 ──────────────────────
+ *
+ *   Nantes  44109  6 567 ms  — geocode 270, meta 1 089, permits 4 008
+ *                              (2 049 + 1 587 rows), 1 cadastre file
+ *                              5 176 390 B gz, index 21 ms, project 59 ms;
+ *                              payload 2 085 427 B / 461 277 B gzipped
+ *   Paris   75056  5 870 ms  — geocode 46, meta 855, permits 4 204
+ *                              (3 595 + 1 609 rows), 20 cadastre files
+ *                              6 306 789 B gz in 663 ms, index 18 ms,
+ *                              project 21 ms; payload 3 144 667 B / 676 149 B
+ *
+ * The 4 s is DiDo scanning an 889 MB CSV and is size-independent: a
+ * single-column probe of the same commune took 3.57 s. Everything this proxy
+ * does itself is under 100 ms.
+ */
+const SITADEL_GEO_BASE = 'https://geo.api.gouv.fr';
+/** A day. DiDo is monthly and the cadastre quarterly; see the header. */
+const SITADEL_TTL_MS = 24 * 60 * 60 * 1000;
+/** Serve-stale ceiling — a month-old pack is still the same commune. */
+const SITADEL_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Rid + millésime discovery. Six hours: the next publication is 2026-09-29. */
+const SITADEL_META_TTL_MS = 6 * 60 * 60 * 1000;
+/** Reverse geocode. A commune boundary moves on 1 January and not otherwise. */
+const SITADEL_GEO_TTL_MS = 24 * 60 * 60 * 1000;
+/** A cold build is 5.9–6.6 s and DiDo alone owns 4 of them. */
+const SITADEL_TIMEOUT_MS = 120_000;
+/** Largest measured permit answer: Toulouse, 2 067 554 B for 3 846 rows. */
+const SITADEL_PERMITS_MAX_BYTES = 24 * 1024 * 1024;
+/** Largest measured single decompressed parcel file: Nantes, 36 468 916 B. */
+const SITADEL_CADASTRE_MAX_BYTES = 96 * 1024 * 1024;
+/** The DiDo dataset record is 143 422 B; the geocode with a contour, 153 821 B for Marseille. */
+const SITADEL_META_MAX_BYTES = 4 * 1024 * 1024;
+/**
+ * Etalab files fetched at once. 20 for Paris and 16 for Marseille came back in
+ * 663 ms at full fan-out; 8 is polite to a mirror that is doing us a favour and
+ * still finishes the widest commune in three waves.
+ */
+const SITADEL_CADASTRE_CONCURRENCY = 8;
+/**
+ * Simultaneous DiDo requests. Three is the documented ceiling (measured, see
+ * the header); two leaves one slot of headroom.
+ */
+const SITADEL_DIDO_CONCURRENCY = 2;
+/**
+ * Communes kept in memory. Paris' pack is 3 144 667 B, so eight is at most
+ * ~25 MB and covers a session that walks a metropolitan area; the rest is on
+ * disk, one file per INSEE code.
+ */
+const SITADEL_COMMUNE_CACHE_MAX = 8;
+/** Commune answers per lat/lon cell kept in memory, including the negative ones. */
+const SITADEL_GEO_CACHE_MAX = 512;
+/** Decimals the reverse-geocode cache key is rounded to. 4 ≈ 11 m. */
+const SITADEL_GEO_KEY_DECIMALS = 4;
+const SITADEL_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'sitadel-fr');
+const SITADEL_COMMUNE_DISK_DIR = path.join(SITADEL_DISK_DIR, 'communes');
+/**
+ * Shape version of the cached fold. Bump whenever `projectSitadelCommune`
+ * changes what it returns, or whenever the column projection changes — the
+ * memory cache lives for a day but the disk cache outlives the edit by a month
+ * otherwise, and a pack whose `permits[].px` no longer indexes `parcels[]`
+ * draws the wrong plots rather than failing.
+ */
+const SITADEL_CACHE_VERSION = 1;
+
+/** @type {Map<string, {version:number, at:number, payload:object}>} LRU by INSEE. */
+const _sitadelCommunes = new Map();
+/** @type {Map<string, Promise<object>>} */
+const _sitadelInFlight = new Map();
+/** @type {Map<string, {at:number, commune:?object}>} LRU by rounded lat/lon; null is a real answer. */
+const _sitadelGeo = new Map();
+/** @type {?{at:number, housingRid:string, demolitionRid:string, millesime:string}} */
+let _sitadelMeta = null;
+/** @type {?Promise<object>} */
+let _sitadelMetaInFlight = null;
+/** Cadastre edition named by the last `latest` redirect that answered. */
+let _sitadelCadastreEdition = null;
+/** DiDo semaphore. See the header — a fourth concurrent request is a 429. */
+let _sitadelDidoActive = 0;
+/** @type {Array<() => void>} */
+const _sitadelDidoWaiting = [];
+/**
+ * 60/min per client and 180/min globally, matching `cadastreFranceProxy` and
+ * `fraicheurParisProxy`. The layer asks once per 0.01° camera cell and most of
+ * those answers are the 200-byte `unchanged` reply, so an operator walking a
+ * city never approaches this; a script sweeping communes does.
+ */
+const _sitadelRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/**
+ * Run one DiDo request under the global concurrency semaphore.
+ *
+ * FIFO, so a request that has been waiting is not starved by a fresh one, and
+ * the slot is released in a `finally`, because a thrown fetch that kept its
+ * slot would deadlock the proxy after two failures.
+ *
+ * The slot is HANDED OVER rather than decremented and re-taken: when somebody
+ * is waiting the counter never drops, so the cap cannot depend on microtask
+ * ordering at all. The decrement-first spelling looks like it could let a fresh
+ * caller slip into the window between `next()` and the woken waiter resuming —
+ * I could NOT build an interleaving where it actually does, because a fresh
+ * caller only ever arrives from an I/O macrotask and the microtask queue has
+ * drained by then, and both spellings held at 2 over 200 staggered tasks with
+ * 29 synthetic throws. This one is written the way that needs no such argument.
+ * Verified against three simultaneous commune builds — six DiDo queries,
+ * Toulouse + Ustaritz + Beaupréau-en-Mauges: peak concurrency 2, no refusal,
+ * 10.5 s, and the counter back at zero.
+ * @param {() => Promise<any>} task
+ * @returns {Promise<any>}
+ */
+async function withSitadelDidoSlot(task) {
+  if (_sitadelDidoActive >= SITADEL_DIDO_CONCURRENCY) {
+    // Woken by a releasing task that handed its slot over; already counted.
+    await new Promise((resolve) => { _sitadelDidoWaiting.push(resolve); });
+  } else {
+    _sitadelDidoActive += 1;
+  }
+  try {
+    return await task();
+  } finally {
+    const next = _sitadelDidoWaiting.shift();
+    if (next) next();
+    else _sitadelDidoActive -= 1;
+  }
+}
+
+/**
+ * GET one JSON body under a timeout and a byte cap.
+ *
+ * The 429 is named explicitly: DiDo answers it with 26 bytes of plain text
+ * (`max connections reached: 3`) and no content-type, so parsing first would
+ * turn a concurrency refusal into "malformed JSON" and send the operator
+ * looking in the wrong place.
+ * @param {string} url
+ * @param {number} maxBytes
+ * @returns {Promise<any>}
+ */
+async function fetchSitadelJson(url, maxBytes) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(SITADEL_TIMEOUT_MS),
+  });
+  if (response.status === 429) {
+    const error = new Error('DiDo concurrency limit (max connections reached: 3)');
+    error.code = 'DIDO_BUSY';
+    throw error;
+  }
+  if (!response.ok) throw new Error(`HTTP ${response.status} from ${new URL(url).host}`);
+  return readResponseJsonCapped(response, maxBytes);
+}
+
+/**
+ * The rids and the millésime, from DiDo's own dataset record.
+ *
+ * ONE request answers both: `datafiles[].title` carries the rid discovery and
+ * `datafiles[].millesimes[].millesime` the edition. Pinned rids are the
+ * fallback and never the reverse — a discovery that returns nothing keeps the
+ * layer on the rids every measurement in `sitadelFeed.js` was made against.
+ * @returns {Promise<{housingRid:string, demolitionRid:string, millesime:string}>}
+ */
+async function refreshSitadelMeta() {
+  let datafiles = [];
+  try {
+    const dataset = await withSitadelDidoSlot(() => fetchSitadelJson(
+      `${SITADEL_DIDO_BASE}/datasets/${SITADEL_DIDO_DATASET}`, SITADEL_META_MAX_BYTES,
+    ));
+    datafiles = Array.isArray(dataset?.datafiles) ? dataset.datafiles : [];
+  } catch (error) {
+    // Not fatal. The pinned rids and the millésime floor are what this layer
+    // was measured against, so a discovery failure costs the edition label and
+    // nothing else.
+    console.warn('[Sitadel Proxy] datafile discovery failed, using pinned rids:', error?.message || error);
+  }
+  return {
+    housingRid: discoverSitadelRid(datafiles, SITADEL_HOUSING_TITLE, SITADEL_HOUSING_RID),
+    demolitionRid: discoverSitadelRid(datafiles, SITADEL_DEMOLITION_TITLE, SITADEL_DEMOLITION_RID),
+    millesime: newestMillesime(
+      datafiles.flatMap((file) => (file?.millesimes || []).map((entry) => entry?.millesime)),
+      SITADEL_MILLESIME_FLOOR,
+    ),
+  };
+}
+
+/** Single-flight, TTL'd rid/millésime discovery. */
+function ensureSitadelMeta() {
+  const now = Date.now();
+  if (_sitadelMeta && now - _sitadelMeta.at <= SITADEL_META_TTL_MS) return Promise.resolve(_sitadelMeta);
+  if (!_sitadelMetaInFlight) {
+    _sitadelMetaInFlight = refreshSitadelMeta()
+      .then((meta) => {
+        _sitadelMeta = { ...meta, at: Date.now() };
+        return _sitadelMeta;
+      })
+      .finally(() => { _sitadelMetaInFlight = null; });
+  }
+  return _sitadelMetaInFlight;
+}
+
+/**
+ * The commune under one point, or null when there is no French commune there.
+ *
+ * `null` is a REAL answer and it is cached as one: `geo.api.gouv.fr` returns
+ * `[]` over Lausanne and over the sea, and re-asking every time the camera
+ * crosses a cell out there would be a request per pan for an answer that
+ * cannot change.
+ *
+ * The `contour` field is also the input guard. Measured 2026-09-02, an
+ * out-of-range latitude on this exact URL answers HTTP 400 with the plain-text
+ * body *"This endpoint does not support an unfiltered API call with a geojson
+ * format output or a field with contour"* rather than the whole 34 945-commune
+ * list — but the numeric validation below happens first anyway, because the
+ * cheapest upstream call is the one not made.
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {Promise<?object>}
+ */
+async function locateSitadelCommune(lat, lon) {
+  const key = `${lat.toFixed(SITADEL_GEO_KEY_DECIMALS)},${lon.toFixed(SITADEL_GEO_KEY_DECIMALS)}`;
+  const cached = _sitadelGeo.get(key);
+  if (cached && Date.now() - cached.at <= SITADEL_GEO_TTL_MS) return cached.commune;
+  const communes = await fetchSitadelJson(geoCommuneUrl(lat, lon), SITADEL_META_MAX_BYTES);
+  // A point falls in one commune. Anything longer than a handful is not an
+  // answer to "what is here", it is an unfiltered listing, and taking [0] of it
+  // would put the operator in L'Abergement-Clémenciat.
+  const commune = Array.isArray(communes) && communes.length > 0 && communes.length <= 4
+    ? communes[0] : null;
+  _sitadelGeo.set(key, { at: Date.now(), commune: commune || null });
+  while (_sitadelGeo.size > SITADEL_GEO_CACHE_MAX) {
+    const oldest = _sitadelGeo.keys().next().value;
+    if (oldest === undefined) break;
+    _sitadelGeo.delete(oldest);
+  }
+  return commune || null;
+}
+
+/**
+ * One Etalab parcel file, decompressed.
+ *
+ * The body is raw gzip served as `application/octet-stream` with no
+ * `content-encoding`, so `fetch` does NOT decompress it and `zlib` has to.
+ * A 404 is a real answer — Etalab publishes no parcels for Saint-Barthélemy
+ * (97701) — and it returns null so the build proceeds with a smaller cadastre
+ * and honestly counts the permits as `missing`. Any other failure throws,
+ * because a partial cadastre silently converts placed permits into missing ones.
+ * @param {string} insee
+ * @returns {Promise<?object>}
+ */
+async function fetchSitadelParcels(insee) {
+  const response = await fetch(cadastreCommuneUrl(insee), {
+    signal: AbortSignal.timeout(SITADEL_TIMEOUT_MS),
+  });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`HTTP ${response.status} from cadastre.data.gouv.fr for ${insee}`);
+  // `latest` is a symlink and the redirect names the real edition — the
+  // cheapest possible discovery, because it costs the request we were making.
+  _sitadelCadastreEdition = newestCadastreEdition(response.url, _sitadelCadastreEdition || undefined);
+  const declared = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > SITADEL_CADASTRE_MAX_BYTES) {
+    throw new Error(`Parcel file for ${insee} too large`);
+  }
+  const gz = Buffer.from(await response.arrayBuffer());
+  const raw = zlib.gunzipSync(gz, { maxOutputLength: SITADEL_CADASTRE_MAX_BYTES });
+  return JSON.parse(raw.toString('utf8'));
+}
+
+/** Fetch the commune's parcel files, at most SITADEL_CADASTRE_CONCURRENCY at a time. */
+async function fetchSitadelCadastre(codes) {
+  const collections = [];
+  const served = [];
+  for (let i = 0; i < codes.length; i += SITADEL_CADASTRE_CONCURRENCY) {
+    const wave = codes.slice(i, i + SITADEL_CADASTRE_CONCURRENCY);
+    const answers = await Promise.all(wave.map(async (code) => [code, await fetchSitadelParcels(code)]));
+    for (const [code, collection] of answers) {
+      if (!collection) continue;
+      served.push(code);
+      collections.push(collection);
+    }
+  }
+  return { collections, served };
+}
+
+/**
+ * Build one commune's pack.
+ *
+ * The housing register IS the layer, so its failure fails the build. The
+ * demolition file is not: losing it costs the fifth band, and
+ * `demolitionAvailable: false` puts that on the row rather than showing a
+ * commune that never knocks anything down.
+ * @param {object} commune From `geo.api.gouv.fr`.
+ * @returns {Promise<object>}
+ */
+async function refreshSitadelCommune(commune) {
+  const insee = String(commune.code);
+  const meta = await ensureSitadelMeta();
+  const [housing, demolition] = await Promise.all([
+    withSitadelDidoSlot(() => fetchSitadelJson(
+      sitadelDatafileUrl(meta.housingRid, insee, SITADEL_HOUSING_COLUMNS), SITADEL_PERMITS_MAX_BYTES,
+    )),
+    withSitadelDidoSlot(() => fetchSitadelJson(
+      sitadelDatafileUrl(meta.demolitionRid, insee, SITADEL_DEMOLITION_COLUMNS), SITADEL_PERMITS_MAX_BYTES,
+    )).catch((error) => {
+      console.warn('[Sitadel Proxy] demolition file unavailable:', error?.message || error);
+      return null;
+    }),
+  ]);
+  if (!Array.isArray(housing)) throw new Error('DiDo returned no housing permits');
+
+  const codes = communeCadastreCodes(insee);
+  const { collections, served } = await fetchSitadelCadastre(codes);
+  const { index, parcels } = indexCadastreParcels(collections);
+  return projectSitadelCommune({
+    housing,
+    demolition: Array.isArray(demolition) ? demolition : [],
+    index,
+    commune,
+    // The scope of the answer, decimated by the same reader the PLU zones use.
+    // The layer says "contour communal simplifié" on its own row.
+    outline: projectGeometry(commune.contour),
+    millesime: meta.millesime,
+    cadastreEdition: _sitadelCadastreEdition || undefined,
+    cadastreCommunes: served,
+    cadastreParcels: parcels,
+    demolitionAvailable: Array.isArray(demolition),
+  });
+}
+
+function sitadelDiskPath(insee) {
+  return path.join(SITADEL_COMMUNE_DISK_DIR, `${createHash('sha1').update(insee).digest('hex')}.json`);
+}
+
+async function readSitadelDisk(insee) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(sitadelDiskPath(insee), 'utf8'));
+    if (entry?.version !== SITADEL_CACHE_VERSION) return null;
+    if (!Number.isFinite(entry.at)) return null;
+    if (!Array.isArray(entry.payload?.permits) || !Array.isArray(entry.payload?.parcels)) return null;
+    if (entry.payload.insee !== insee) return null;
+    if (Date.now() - entry.at > SITADEL_STALE_MS) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeSitadelDisk(insee, entry) {
+  fsp.mkdir(SITADEL_COMMUNE_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(sitadelDiskPath(insee), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Sitadel Proxy] cache write failed:', err?.message || err));
+}
+
+function trimSitadelCache() {
+  while (_sitadelCommunes.size > SITADEL_COMMUNE_CACHE_MAX) {
+    const oldest = _sitadelCommunes.keys().next().value;
+    if (oldest === undefined) break;
+    _sitadelCommunes.delete(oldest);
+  }
+}
+
+/**
+ * Per-commune single-flight: two tabs on the same city cost one 6 s build.
+ * `coalesceProxyRequest` returns `{ promise, shared }` and NOT a promise — the
+ * `shared` flag is what lets the response header say INFLIGHT rather than MISS.
+ */
+function ensureSitadelCommune(commune) {
+  const insee = String(commune.code);
+  return coalesceProxyRequest(_sitadelInFlight, insee, async () => {
+    const payload = await refreshSitadelCommune(commune);
+    const entry = { version: SITADEL_CACHE_VERSION, at: Date.now(), payload };
+    _sitadelCommunes.set(insee, entry);
+    trimSitadelCache();
+    writeSitadelDisk(insee, entry);
+    return entry;
+  });
+}
+
+/**
+ * Vite plugin: French building and demolition permits, on the parcels they
+ * were granted for.
+ * @returns {import('vite').Plugin}
+ */
+function sitadelFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/sitadel-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_sitadelRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        json(200, {
+          source: SITADEL_SOURCE,
+          licence: SITADEL_LICENCE,
+          datasetPage: SITADEL_DATASET_PAGE,
+          portal: SITADEL_DIDO_BASE,
+          millesime: _sitadelMeta?.millesime || SITADEL_MILLESIME_FLOOR,
+          housingRid: _sitadelMeta?.housingRid || SITADEL_HOUSING_RID,
+          demolitionRid: _sitadelMeta?.demolitionRid || SITADEL_DEMOLITION_RID,
+          cadastreEdition: _sitadelCadastreEdition,
+          ttlMs: SITADEL_TTL_MS,
+          staleMs: SITADEL_STALE_MS,
+          didoConcurrency: SITADEL_DIDO_CONCURRENCY,
+          didoActive: _sitadelDidoActive,
+          didoWaiting: _sitadelDidoWaiting.length,
+          cachedCommunes: [..._sitadelCommunes.entries()].map(([insee, entry]) => ({
+            insee,
+            commune: entry.payload.commune,
+            at: entry.at,
+            permits: entry.payload.summary?.permits ?? null,
+            placed: entry.payload.summary?.placed ?? null,
+            parcels: entry.payload.parcels.length,
+          })),
+          cachedPoints: _sitadelGeo.size,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/commune') {
+        json(404, { error: 'Unknown sitadel endpoint' });
+        return;
+      }
+
+      const lat = Number(url.searchParams.get('lat'));
+      const lon = Number(url.searchParams.get('lon'));
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)
+        || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+        json(400, { error: 'lat and lon are required, in degrees' });
+        return;
+      }
+
+      let commune = null;
+      try {
+        commune = await locateSitadelCommune(lat, lon);
+      } catch (error) {
+        console.warn('[Sitadel Proxy] commune lookup failed:', error?.message || error);
+        json(503, { error: 'Le référentiel des communes est momentanément indisponible' });
+        return;
+      }
+      if (!commune?.code) {
+        // Not an error. The operator is over the sea, over a neighbour, or over
+        // a lake. Said explicitly so the layer clears its map instead of
+        // leaving the last commune's permits drawn over ground they do not
+        // cover.
+        json(200, { insee: null, reason: 'off-coverage' }, { 'X-SITADEL-FR': 'NO-COMMUNE' });
+        return;
+      }
+      const insee = String(commune.code);
+
+      // The client already holds this commune. 200 bytes instead of 676 149,
+      // and not one upstream call — this is what makes panning free.
+      if (url.searchParams.get('have') === insee) {
+        json(200, { insee, commune: commune.nom, unchanged: true }, { 'X-SITADEL-FR': 'UNCHANGED' });
+        return;
+      }
+
+      const now = Date.now();
+      const cached = _sitadelCommunes.get(insee) || await readSitadelDisk(insee);
+      if (cached && !_sitadelCommunes.has(insee)) {
+        _sitadelCommunes.set(insee, cached);
+        trimSitadelCache();
+      }
+      if (cached && now - cached.at <= SITADEL_TTL_MS) {
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-SITADEL-FR': 'HIT' });
+        return;
+      }
+
+      try {
+        const request = ensureSitadelCommune(commune);
+        const entry = await request.promise;
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false },
+          { 'X-SITADEL-FR': request.shared ? 'INFLIGHT' : 'MISS' });
+      } catch (error) {
+        const busy = error?.code === 'DIDO_BUSY';
+        console.warn('[Sitadel Proxy] commune build failed:', error?.message || error);
+        // A month-old pack still describes the same commune: DiDo publishes
+        // monthly and a parcel outlives most of the people who own it.
+        if (cached && now - cached.at <= SITADEL_STALE_MS) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: true }, { 'X-SITADEL-FR': 'STALE' });
+          return;
+        }
+        json(busy ? 429 : 503, {
+          error: busy
+            ? 'DiDo n’accepte que 3 requêtes simultanées — réessaie dans quelques secondes'
+            : `Les autorisations d’urbanisme de ${commune.nom} sont momentanément indisponibles`,
+          insee,
+        }, busy ? { 'Retry-After': '5' } : {});
+      }
+    });
+  }
+
+  return {
+    name: 'sitadel-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Île-de-France service-frequency proxy — keyless, Licence Ouverte v2.0.
+ *
+ *   GET /api/idfm-frequency/stops?south=&west=&north=&east=
+ *                                — one viewport, full 7 × 24 profiles
+ *   GET /api/idfm-frequency/region — the région folded onto 8 départements
+ *   GET /api/idfm-frequency/status — provenance + cache state
+ *
+ * WHY A PROXY, when the portal sends `access-control-allow-origin: *` and a
+ * browser could call it directly (measured 2026-09-02, with
+ * `x-ratelimit-limit: 1000000` a day): both products are FOLDS of several calls
+ * that no client should re-derive.
+ *
+ * The viewport product is FIVE upstream calls. One identity call (which stop,
+ * where, what name, what mode) and FOUR profile pages, because a stop's 24
+ * bands are 24 ROWS — Opendatasoft's aggregate grammar takes arithmetic but not
+ * conditionals, so the band axis cannot be pivoted into columns
+ * (`sum(if(tranche_horaire=8,…))` is HTTP 400 `ODSQLSyntaxError`) — and
+ * `offset + limit <= 20000` is a hard cap under `group_by`. Measured on the
+ * 4 km Châtelet box: **3 303 162 bytes in 2.42 s** upstream, folding to
+ * **540 404 bytes raw / 87 143 gzipped** for 805 stops. Every open tab doing
+ * that itself would move 3.3 MB to publish 87 KB.
+ *
+ * The regional product is EIGHTEEN calls: one grouped aggregate over all
+ * 1 311 578 rows (**356 rows, 73 723 bytes, 0.62 s**) and seventeen stop
+ * enumerations for the divisor (**36 502 stops, 3 582 652 bytes, 3.67 s**). It
+ * folds to **14 719 bytes raw / 5 864 gzipped** in 54 ms. A 244-to-1 reduction
+ * is exactly what a proxy is for.
+ *
+ * WHY THE DIVISOR IS ENUMERATED AND NOT COUNTED: Opendatasoft's
+ * `count(distinct id_arret)` is an estimator. It answers **3 452** for
+ * département 75 where enumerating returns **3 506**, and 37 078 region-wide
+ * against 36 502. A 1.5 % error in the divisor is a 1.5 % error in every colour
+ * on the choropleth, so the lists are walked.
+ *
+ * WHY A DENSE BOX IS REFUSED AFTER ONE CALL: the identity query asks for
+ * `IDFM_FREQ_MAX_STOPS + 1` rows precisely so a full page is the signal that
+ * the box is too dense. Measured at Châtelet, the densest part of the network,
+ * on square boxes by side length: 1.2 km 87 stops, 2 km 204, 3 km 436, 4 km
+ * 802, 5 km 1 133 (1 139 rows), and from 5.5 km up the page comes back at
+ * exactly 1 201 rows however wide the box gets. Saturated, this answers 200
+ * with `tooDense` and the count it can honestly claim rather than buying four
+ * heavy pages for a stop list the API already truncated.
+ *
+ * WHY ONE FAILED PROFILE PAGE IS NOT A FAILED BUILD: losing one of the four
+ * windows is a hole in the DAY, not a hole in the map. The build reports
+ * `windows: {asked, answered}` and the layer names the hole on the row and on
+ * the card, because an unnamed hole reads as "no service between 16:00 and
+ * 21:00". Losing the identity call IS fatal: there is nothing left to place.
+ *
+ * WHY THE EDITION IS DISCOVERED AND FLOORED: the dataset id is stable, so the
+ * edition is the portal's own `data_processed` timestamp. It is read at build
+ * time and floored at `IDFM_FREQ_EDITION_FLOOR` — the edition this layer was
+ * measured against — because a discovery OLDER than the floor is a malformed
+ * answer, not a new fact, and the card prints it as provenance.
+ */
+const IDFM_FREQ_STOPS_TTL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Serve-stale ceiling. The file is a yearly average of a term-time week that
+ * the publisher reprocesses a few times a year (`data_processed`
+ * 2026-08-18T15:54:55+00:00 against `modified` 2026-03-31T13:43:29+00:00), so a
+ * month-old fold is still a true picture of the same week.
+ */
+const IDFM_FREQ_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+/** The régional product is rebuilt weekly; its inputs change even less often. */
+const IDFM_FREQ_REGION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/** Slowest measured build is the régional one at 4.8 s; 60 s is 12× headroom. */
+const IDFM_FREQ_TIMEOUT_MS = 60_000;
+/**
+ * Per-response byte cap. The largest single upstream response measured is
+ * 906 342 B (one profile window on a 4 km box); an 8 km box pushes one page to
+ * roughly 3 MB. 24 MB refuses a runaway without ever refusing a real answer.
+ */
+const IDFM_FREQ_MAX_BYTES = 24 * 1024 * 1024;
+/**
+ * Viewport packs held in memory. Twelve × ~540 KB at the 4 km worst case is
+ * about 6.5 MB, and twelve snapped boxes is more panning than one session does.
+ */
+const IDFM_FREQ_BOX_CACHE = 12;
+const IDFM_FREQ_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'idfm-frequency');
+const IDFM_FREQ_REGION_CACHE_PATH = path.join(IDFM_FREQ_DISK_DIR, 'region.json');
+/**
+ * Shape version of everything cached under `.gev-cache/idfm-frequency/`. BUMP
+ * IT whenever `projectFrequencyStops` or `foldFrequencyRegion` changes what it
+ * returns: the régional document lives for a WEEK on disk and a viewport pack
+ * for a DAY, so without a bump a projection edit is invisible until the cache
+ * expires on its own.
+ */
+const IDFM_FREQ_CACHE_VERSION = 1;
+
+/** @type {Map<string, {version:number, at:number, payload:object}>} LRU by insertion. */
+const _idfmFreqBoxes = new Map();
+/** @type {Map<string, Promise<object>>} */
+const _idfmFreqInFlight = new Map();
+/** @type {?{version:number, at:number, payload:object}} */
+const _idfmFreqRegionState = { entry: null };
+/** @type {?Promise<object>} */
+let _idfmFreqRegionInFlight = null;
+let _idfmFreqRegionDiskChecked = false;
+/**
+ * 30 requests a minute per client. A MISS costs five upstream calls, so the
+ * worst case is 150 upstream requests a minute against a published daily quota
+ * of 1 000 000 — and every HIT costs zero.
+ */
+const _idfmFreqRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 30, globalMax: 90 });
+
+/** GET one Opendatasoft URL as JSON, under a timeout and a byte cap. */
+async function fetchIdfmFreqJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(IDFM_FREQ_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+  return readResponseJsonCapped(response, IDFM_FREQ_MAX_BYTES);
+}
+
+/**
+ * The portal's own edition stamp, floored.
+ *
+ * A failed discovery is not a failed build: it falls back to the floor, which
+ * is the edition this layer was measured against and is guaranteed to exist.
+ */
+async function discoverIdfmFreqEdition() {
+  try {
+    const body = await fetchIdfmFreqJson(buildMetadataUrl({}));
+    return newestEdition(body);
+  } catch (error) {
+    console.warn('[IDFM Fréquence Proxy] edition discovery failed:', error?.message || error);
+    return newestEdition(null);
+  }
+}
+
+/**
+ * Build one viewport: the identity call, then four profile pages.
+ *
+ * The identity call goes FIRST and ALONE for two reasons measured on the 4 km
+ * Châtelet box: it is the exact stop count, so a box over the whole of Paris is
+ * refused after one cheap call instead of after five expensive ones; and taking
+ * the seven identity columns out of the profile `group_by` is what makes the
+ * profile rows small — carrying identity inside the band grouping cost
+ * 6 313 751 bytes in 2.66 s against 3 291 332 in 1.84 s for the same answer.
+ */
+async function refreshIdfmFreqBox(box) {
+  const started = Date.now();
+  const [edition, identity] = await Promise.all([
+    discoverIdfmFreqEdition(),
+    fetchIdfmFreqJson(buildIdentityUrl({ box })),
+  ]);
+
+  const identityRows = Array.isArray(identity?.results) ? identity.results : [];
+  const stopsInBox = new Set(identityRows.map((row) => String(row?.id_arret ?? ''))).size;
+  // A FULL PAGE is the refusal signal, not the distinct count, and the
+  // difference is not pedantry. `buildIdentityUrl` asks for MAX + 1 rows, so a
+  // box holding 1 300 stops and a box holding 30 000 both come back as exactly
+  // 1 201 rows, and the DISTINCT count of a saturated page is always under the
+  // ceiling — 1 194 to 1 198 in every saturated box measured. Testing the
+  // distinct count would therefore never refuse anything and would buy four
+  // heavy pages for a stop list the API already truncated. Measured at
+  // Châtelet on square boxes: 4 km → 802 rows, 5 km → 1 139, and every box
+  // from 5.5 km up → exactly 1 201.
+  if (identityRows.length > IDFM_FREQ_MAX_STOPS) {
+    // Refused, with the number it can honestly claim, before the four heavy
+    // pages are bought.
+    return {
+      stops: [],
+      count: 0,
+      stopsInBox,
+      stopsAtLeast: true,
+      refused: stopsInBox,
+      tooDense: true,
+      maxStops: IDFM_FREQ_MAX_STOPS,
+      windows: { asked: IDFM_FREQ_BAND_WINDOWS.length, answered: 0 },
+      box: { ...box },
+      dataset: IDFM_FREQ_DATASET,
+      edition: edition.edition,
+      editionDiscovered: edition.discovered,
+      licence: edition.licence,
+      source: IDFM_FREQ_SOURCE,
+      builtInMs: Date.now() - started,
+    };
+  }
+
+  const profiles = await Promise.all(IDFM_FREQ_BAND_WINDOWS.map(([bandLo, bandHi]) => (
+    fetchIdfmFreqJson(buildProfileUrl({ box, bandLo, bandHi })).catch((error) => {
+      // A hole in the DAY, not a hole in the map. The fold survives it and
+      // `windows` is what lets the layer say so out loud.
+      console.warn(`[IDFM Fréquence Proxy] band window ${bandLo}-${bandHi} unavailable:`, error?.message || error);
+      return null;
+    })
+  )));
+  const answered = profiles.filter(Boolean);
+
+  const projected = projectFrequencyStops({
+    identity,
+    profiles: answered,
+    box,
+    maxStops: IDFM_FREQ_MAX_STOPS,
+    edition: edition.edition,
+    source: IDFM_FREQ_SOURCE,
+  });
+  return {
+    ...projected,
+    tooDense: false,
+    stopsAtLeast: false,
+    maxStops: IDFM_FREQ_MAX_STOPS,
+    windows: { asked: IDFM_FREQ_BAND_WINDOWS.length, answered: answered.length },
+    editionDiscovered: edition.discovered,
+    licence: edition.licence,
+    builtInMs: Date.now() - started,
+  };
+}
+
+/**
+ * Build the whole région: one aggregate, seventeen enumerations, one fold.
+ *
+ * A bucket whose enumeration fails is NOT fatal and is deliberately not treated
+ * as such: `foldFrequencyRegion` gives it `stops: null`, which produces no rate
+ * and no fill, rather than a divisor of zero that would paint it as the busiest
+ * place in France. Losing the aggregate itself is fatal — there is nothing left
+ * to divide.
+ */
+async function refreshIdfmFreqRegion() {
+  const started = Date.now();
+  const [edition, index, bands, ...enumerations] = await Promise.all([
+    discoverIdfmFreqEdition(),
+    // THE shared loader. The proxy reads the same 96 polygons the browser
+    // layer fetches, memoized once for the whole process.
+    loadSchoolsDepartementIndex(),
+    fetchIdfmFreqJson(buildRegionBandsUrl({})),
+    ...IDFM_FREQ_BUCKETS.map((code) => (
+      fetchIdfmFreqJson(buildRegionStopsUrl({ code })).catch((error) => {
+        console.warn(`[IDFM Fréquence Proxy] stop census ${code ?? 'null'} unavailable:`, error?.message || error);
+        return null;
+      })
+    )),
+  ]);
+
+  const stops = IDFM_FREQ_BUCKETS
+    .map((code, i) => ({ code, envelope: enumerations[i] }))
+    .filter((bucket) => bucket.envelope);
+
+  const folded = foldFrequencyRegion({
+    bands,
+    stops,
+    index,
+    edition: edition.edition,
+    licence: edition.licence,
+    source: IDFM_FREQ_SOURCE,
+  });
+  if (stops.length < IDFM_FREQ_BUCKETS.length) {
+    console.warn(`[IDFM Fréquence Proxy] stop census short: ${stops.length}/${IDFM_FREQ_BUCKETS.length} buckets`);
+  }
+  return {
+    ...folded,
+    editionDiscovered: edition.discovered,
+    census: { asked: IDFM_FREQ_BUCKETS.length, answered: stops.length },
+    builtInMs: Date.now() - started,
+  };
+}
+
+function idfmFreqBoxDiskPath(key) {
+  return path.join(IDFM_FREQ_DISK_DIR, `box-${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+/** Read one cached viewport pack. Any shape mismatch is a miss, never a crash. */
+async function readIdfmFreqBoxDisk(key) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(idfmFreqBoxDiskPath(key), 'utf8'));
+    if (entry?.version === IDFM_FREQ_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.stops)) {
+      return entry;
+    }
+  } catch { /* no disk cache yet */ }
+  return null;
+}
+
+function writeIdfmFreqBoxDisk(key, entry) {
+  fsp.mkdir(IDFM_FREQ_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(idfmFreqBoxDiskPath(key), JSON.stringify(entry)))
+    .catch((err) => console.warn('[IDFM Fréquence Proxy] box cache write failed:', err?.message || err));
+}
+
+async function readIdfmFreqRegionDisk() {
+  if (_idfmFreqRegionDiskChecked) return;
+  _idfmFreqRegionDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(IDFM_FREQ_REGION_CACHE_PATH, 'utf8'));
+    if (entry?.version === IDFM_FREQ_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.departements)) {
+      _idfmFreqRegionState.entry = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeIdfmFreqRegionDisk(entry) {
+  fsp.mkdir(IDFM_FREQ_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(IDFM_FREQ_REGION_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[IDFM Fréquence Proxy] region cache write failed:', err?.message || err));
+}
+
+/** Keep the newest `IDFM_FREQ_BOX_CACHE` packs; Map preserves insertion order. */
+function rememberIdfmFreqBox(key, entry) {
+  _idfmFreqBoxes.delete(key);
+  _idfmFreqBoxes.set(key, entry);
+  while (_idfmFreqBoxes.size > IDFM_FREQ_BOX_CACHE) {
+    const oldest = _idfmFreqBoxes.keys().next().value;
+    if (oldest === undefined) break;
+    _idfmFreqBoxes.delete(oldest);
+  }
+}
+
+/**
+ * One build per box, however many tabs ask at once.
+ *
+ * `coalesceProxyRequest` returns `{promise, shared}` and NOT a promise — the
+ * `.promise` unwrap is the whole point of reusing it, and forgetting it awaits
+ * an object that resolves instantly to itself.
+ */
+function ensureIdfmFreqBox(key, box) {
+  const { promise } = coalesceProxyRequest(_idfmFreqInFlight, key, async () => {
+    const payload = await refreshIdfmFreqBox(box);
+    const entry = { version: IDFM_FREQ_CACHE_VERSION, at: Date.now(), payload };
+    rememberIdfmFreqBox(key, entry);
+    writeIdfmFreqBoxDisk(key, entry);
+    return entry;
+  });
+  return promise;
+}
+
+/** Shared régional build, so a cold start with several tabs sweeps once. */
+function ensureIdfmFreqRegion() {
+  if (!_idfmFreqRegionInFlight) {
+    _idfmFreqRegionInFlight = refreshIdfmFreqRegion()
+      .then((payload) => {
+        const entry = { version: IDFM_FREQ_CACHE_VERSION, at: Date.now(), payload };
+        _idfmFreqRegionState.entry = entry;
+        writeIdfmFreqRegionDisk(entry);
+        return entry;
+      })
+      .finally(() => { _idfmFreqRegionInFlight = null; });
+  }
+  return _idfmFreqRegionInFlight;
+}
+
+/**
+ * Vite plugin: Île-de-France service-frequency proxy.
+ * @returns {import('vite').Plugin}
+ */
+function idfmFrequencyProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/idfm-frequency', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_idfmFreqRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readIdfmFreqRegionDisk();
+        const region = _idfmFreqRegionState.entry;
+        json(200, {
+          source: IDFM_FREQ_SOURCE,
+          portal: IDFM_FREQ_PORTAL,
+          dataset: IDFM_FREQ_DATASET,
+          editionFloor: IDFM_FREQ_EDITION_FLOOR,
+          maxStops: IDFM_FREQ_MAX_STOPS,
+          maxBoxDeg: IDFM_FREQ_MAX_BOX_DEG,
+          boxStepDeg: IDFM_FREQ_BOX_STEP_DEG,
+          stopsTtlMs: IDFM_FREQ_STOPS_TTL_MS,
+          regionTtlMs: IDFM_FREQ_REGION_TTL_MS,
+          boxesCached: _idfmFreqBoxes.size,
+          region: region
+            ? {
+              at: region.at,
+              edition: region.payload.edition,
+              editionDiscovered: region.payload.editionDiscovered,
+              painted: region.payload.paintedCodes?.length ?? null,
+              fringe: region.payload.fringeCodes?.length ?? null,
+              stops: region.payload.totals?.stops ?? null,
+              placed: region.payload.totals?.placed ?? null,
+              unplaced: region.payload.totals?.unplaced ?? null,
+              crosscheck: region.payload.crosscheck ?? null,
+              census: region.payload.census ?? null,
+            }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route === '/region') {
+        await readIdfmFreqRegionDisk();
+        const now = Date.now();
+        const cached = _idfmFreqRegionState.entry;
+        if (cached && now - cached.at <= IDFM_FREQ_REGION_TTL_MS) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-IDFM-FREQUENCY': 'HIT' });
+          return;
+        }
+        try {
+          const entry = await ensureIdfmFreqRegion();
+          json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-IDFM-FREQUENCY': 'MISS' });
+        } catch (error) {
+          console.warn('[IDFM Fréquence Proxy] region build unavailable:', error?.message || error);
+          if (cached && now - cached.at <= IDFM_FREQ_STALE_MS) {
+            json(200, { ...cached.payload, fetchedAt: cached.at, stale: true }, { 'X-IDFM-FREQUENCY': 'STALE' });
+            return;
+          }
+          json(503, { error: 'L’offre régionale Île-de-France Mobilités est momentanément indisponible' });
+        }
+        return;
+      }
+
+      if (route !== '/stops') {
+        json(404, { error: 'Unknown IDFM frequency endpoint' });
+        return;
+      }
+
+      // A MISSING parameter must not become a coordinate. `searchParams.get`
+      // answers `null` for an absent key and `Number(null)` is 0, which is a
+      // perfectly valid latitude off the coast of Ghana — so the parse refuses
+      // an absent or blank value outright and lets NaN reach `validBox`.
+      const coord = (name) => {
+        const raw = url.searchParams.get(name);
+        return raw === null || raw.trim() === '' ? NaN : Number(raw);
+      };
+      // Snapped OUTWARD onto the same 0.005° grid the browser layer snaps to,
+      // so a pan of a few streets reuses one cache entry and a cached answer
+      // always covers at least what was asked for.
+      const box = validBox(snapBoxOutward({
+        south: coord('south'),
+        west: coord('west'),
+        north: coord('north'),
+        east: coord('east'),
+      }, IDFM_FREQ_BOX_STEP_DEG), IDFM_FREQ_MAX_BOX_DEG);
+      if (!box) {
+        json(400, {
+          error: `A bounding box is required, no wider than ${IDFM_FREQ_MAX_BOX_DEG}° on either axis`,
+        });
+        return;
+      }
+
+      const key = boxKey(box, 4);
+      const now = Date.now();
+      const cached = _idfmFreqBoxes.get(key) || await readIdfmFreqBoxDisk(key);
+      if (cached && now - cached.at <= IDFM_FREQ_STOPS_TTL_MS) {
+        rememberIdfmFreqBox(key, cached);
+        json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-IDFM-FREQUENCY': 'HIT' });
+        return;
+      }
+      try {
+        const entry = await ensureIdfmFreqBox(key, box);
+        json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-IDFM-FREQUENCY': 'MISS' });
+      } catch (error) {
+        console.warn('[IDFM Fréquence Proxy] viewport build unavailable:', error?.message || error);
+        // A month-old fold of a yearly average is still a true picture of the
+        // same week — serving it beats blanking the map.
+        if (cached && now - cached.at <= IDFM_FREQ_STALE_MS) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: true }, { 'X-IDFM-FREQUENCY': 'STALE' });
+          return;
+        }
+        json(503, { error: 'L’offre horaire Île-de-France Mobilités est momentanément indisponible' });
+      }
+    });
+  }
+
+  return {
+    name: 'idfm-frequency-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Aircraft-noise plans (PEB / PGS) proxy — keyless DGAC via the Géoplateforme
+// ---------------------------------------------------------------------------
+/**
+ * `GET /api/bruit-fr?lat=&lon=`  — the two plans under one point, plus the
+ *                                  nearest aerodrome that has one.
+ * `GET /api/bruit-fr/index`      — the national arrêté register, 224 points.
+ * `GET /api/bruit-fr/status`     — provenance and cache state.
+ *
+ * WHY A PROXY AT ALL, when `data.geopf.fr` answers `access-control-allow-origin:
+ * *` and needs no key. Three measurements, all taken on 2026-09-02.
+ *
+ *  1. **THE SERVICE RATE-LIMITS, AND IT DOES IT IN HTML.** Sweeping a 240-point
+ *     grid over Île-de-France at three concurrent requests, 190 of 240 came back
+ *     **HTTP 429 with `content-type: text/html` and a 134-byte nginx page**
+ *     (`<html>\r\n<head><title>429 Too Many Requests</title>…`). In the browser
+ *     that is `response.json()` throwing `Unexpected token '<'`, from a layer
+ *     that is doing nothing more aggressive than following a camera. The same
+ *     sweep with one retry per point and a 1.5 s back-off completed 240 of 240.
+ *     A per-address cache in front of it is what turns a pan back over the same
+ *     block into zero upstream calls.
+ *  2. **ONE SCAN IS THREE FACTS FROM TWO PROTOCOLS.** The PEB polygons and the
+ *     PGS polygons are two WMS GetFeatureInfo calls on two different layers, and
+ *     "the nearest aerodrome that HAS a plan" comes from a WFS index that is a
+ *     different service entirely. Fanned out here, that is one round trip for
+ *     the browser instead of three, and the register is fetched once per week
+ *     rather than once per tab.
+ *  3. **THE REGISTER IS A DISK ARTEFACT.** 66,355 bytes, `numberMatched` 224,
+ *     and the arrêtés it lists move on the order of a handful a year — 8 in the
+ *     whole of the 2020s, 3 in 2022. Re-downloading it per process start is
+ *     waste; it belongs on disk with a version stamp.
+ *
+ * WHAT IS DELIBERATELY NOT HERE. No CBS (carte de bruit stratégique): the EU
+ * directive's isophones are not on the Géoplateforme at all — grepping the
+ * wms-v, wms-r and wfs capabilities for bruit/noise/classement returns these
+ * four DGAC aviation layers and nothing else — and the real thing is ~76
+ * per-DDT Géo-IDE ATOM shapefile zips with no CORS header, EPSG:2154,
+ * ISO-8859-1, four distinct HTTP-200 failure modes on the live OGC services and
+ * one département (Tarn) shipping MapInfo TAB with no shapefile inside. That is
+ * a server-side harvest of several hundred archives and it is out of scope for
+ * this route. No Bruitparif either: `raster.bruitparif.fr` is technically
+ * perfect and its mentions légales forbid exactly this ("l'utilisation d'un
+ * système ou d'un logiciel automatique pour extraire des données de ce site web
+ * … est interdit"), so it needs a written convention, not a client.
+ */
+const BRUIT_WMS_HOST = 'data.geopf.fr';
+/** The scan answer is cheap to rebuild and the plans move once a decade. */
+const BRUIT_SCAN_TTL_MS = 6 * 60 * 60 * 1000;
+/** The national arrêté register, on disk. */
+const BRUIT_INDEX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * How stale a register may get before it stops being served at all.
+ *
+ * 90 days. The register gained 8 arrêtés in six years, so a three-month-old
+ * copy is materially the same document — and the alternative to serving it is
+ * dropping the one sentence that makes an empty probe honest ("the nearest
+ * aerodrome that has a plan is 12.4 km away").
+ */
+const BRUIT_INDEX_STALE_MS = 90 * 24 * 60 * 60 * 1000;
+const BRUIT_TIMEOUT_MS = 20_000;
+/**
+ * Byte cap.
+ *
+ * Measured: the heaviest single probe in the whole 224-airport sweep is 15,041
+ * bytes (Le Bourget, where Roissy's 664-vertex zone D overlaps) and the national
+ * register is 66,355. 2 MB is two orders of magnitude of headroom, which means
+ * anything past it is a changed upstream and not a big answer.
+ */
+const BRUIT_MAX_BYTES = 2 * 1024 * 1024;
+/**
+ * Retries on the HTML 429, and the back-off between them.
+ *
+ * Measured: at three concurrent probes the service starts refusing after a few
+ * hundred requests and recovers within a couple of seconds. Two extra attempts
+ * at 1.5 s and 3 s cleared 240 of 240 points; a third would only lengthen a
+ * scan the camera has already moved away from.
+ */
+const BRUIT_RETRY_ATTEMPTS = 3;
+const BRUIT_RETRY_BASE_MS = 1500;
+const BRUIT_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'bruit-fr');
+const BRUIT_CACHE_PATH = path.join(BRUIT_DISK_DIR, 'arretes.json');
+/**
+ * BUMP THIS whenever `projectPebArretes` changes the shape it returns. The disk
+ * cache outlives the edit otherwise, and a 90-day stale window is a long time
+ * to serve a projection nothing reads any more.
+ */
+const BRUIT_CACHE_VERSION = 1;
+
+/** @type {?{version: number, at: number, payload: object}} */
+let _bruitIndex = null;
+let _bruitIndexInFlight = null;
+let _bruitDiskChecked = false;
+const _bruitInFlight = new Map();
+/**
+ * Its own limiter, not the shared address one.
+ *
+ * The four address layers answer about a building and are hit once per camera
+ * settle; this one is hit twice (PEB and PGS) and its upstream is the single
+ * host that has been measured refusing. 40 a minute per client is roughly one
+ * scan every three seconds, which is faster than a human can settle a camera,
+ * and 150 globally keeps one tab from spending the whole allowance.
+ */
+const _bruitRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 40, globalMax: 150 });
+
+/**
+ * One Géoplateforme JSON read, with the two failure modes this host actually
+ * has.
+ *
+ * `fetchAddressSource` is not used here for one reason: it swallows the status
+ * code, and a 429 from this host must be RETRIED while a 400 must not. It also
+ * calls `JSON.parse` on whatever came back, and what comes back from an
+ * overloaded `data.geopf.fr` is a 134-byte HTML page — the content-type check
+ * below is what turns that into a retry rather than a `SyntaxError` in a log.
+ *
+ * @param {string} url
+ * @returns {Promise<object|null>} null when the upstream did not answer usefully.
+ */
+async function fetchBruitJson(url) {
+  for (let attempt = 1; attempt <= BRUIT_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(BRUIT_TIMEOUT_MS),
+      });
+      if (response.status === 429 || response.status >= 500) {
+        // "Not now", not "not this". Back off and come back.
+        if (attempt < BRUIT_RETRY_ATTEMPTS) {
+          await new Promise((resolve) => { setTimeout(resolve, BRUIT_RETRY_BASE_MS * attempt); });
+          continue;
+        }
+        console.warn(`[Bruit Proxy] ${response.status} from ${BRUIT_WMS_HOST} after ${attempt} attempts`);
+        return null;
+      }
+      if (!response.ok) {
+        console.warn(`[Bruit Proxy] ${response.status} from ${BRUIT_WMS_HOST}`);
+        return null;
+      }
+      // The rate limiter's page is HTML with an HTTP 200 in some paths and a
+      // 429 in others; either way it is not JSON, and parsing it is how a
+      // throttle turns into a stack trace.
+      const contentType = String(response.headers.get('content-type') || '');
+      if (!/json/i.test(contentType)) {
+        console.warn(`[Bruit Proxy] non-JSON ${contentType || 'body'} from ${BRUIT_WMS_HOST}`);
+        if (attempt < BRUIT_RETRY_ATTEMPTS) {
+          await new Promise((resolve) => { setTimeout(resolve, BRUIT_RETRY_BASE_MS * attempt); });
+          continue;
+        }
+        return null;
+      }
+      return await readResponseJsonCapped(response, BRUIT_MAX_BYTES);
+    } catch (error) {
+      const cause = error?.cause?.code || error?.cause?.message || null;
+      console.warn(`[Bruit Proxy] ${BRUIT_WMS_HOST}: ${error?.message || error}${cause ? ` (${cause})` : ''}`);
+      // A parse failure is not worth a second go; a socket reset is.
+      if (error instanceof SyntaxError || attempt === BRUIT_RETRY_ATTEMPTS) return null;
+      await new Promise((resolve) => { setTimeout(resolve, BRUIT_RETRY_BASE_MS * attempt); });
+    }
+  }
+  return null;
+}
+
+/** Read the register off disk once per process, and only if it is well formed. */
+async function readBruitDisk() {
+  if (_bruitDiskChecked) return;
+  _bruitDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(BRUIT_CACHE_PATH, 'utf8'));
+    if (entry?.version === BRUIT_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.airports)
+      && entry.payload.airports.length > 0) {
+      _bruitIndex = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeBruitDisk(entry) {
+  fsp.mkdir(BRUIT_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(BRUIT_CACHE_PATH, JSON.stringify(entry)))
+    .catch((err) => console.warn('[Bruit Proxy] cache write failed:', err?.message || err));
+}
+
+/**
+ * The national arrêté register, from memory, then disk, then the WFS.
+ *
+ * A refusal NEVER clears what is already held. The register is the only thing
+ * that can tell an empty probe ("no plan covers this ground") apart from a
+ * broken one, and losing it to a five-minute outage would make every scan in
+ * France answer "aucun plan" with nothing to qualify it.
+ *
+ * @returns {Promise<?{version: number, at: number, payload: object}>}
+ */
+async function ensureBruitIndex() {
+  await readBruitDisk();
+  if (_bruitIndex && Date.now() - _bruitIndex.at < BRUIT_INDEX_TTL_MS) return _bruitIndex;
+  if (!_bruitIndexInFlight) {
+    _bruitIndexInFlight = (async () => {
+      const raw = await fetchBruitJson(buildPebArreteIndexUrl());
+      if (!raw) return _bruitIndex;
+      const payload = projectPebArretes(raw);
+      if (!payload.airports.length) {
+        console.warn('[Bruit Proxy] arrêté index came back empty; keeping the previous copy');
+        return _bruitIndex;
+      }
+      if (payload.short) {
+        // Kept and USED, but the flag rides all the way to the card: a short
+        // register still answers "the nearest aerodrome", just not reliably.
+        console.warn(`[Bruit Proxy] arrêté index short: ${payload.airports.length} rows against a floor of ${BRUIT_ARRETE_FLOOR}`);
+      }
+      const entry = { version: BRUIT_CACHE_VERSION, at: Date.now(), payload };
+      _bruitIndex = entry;
+      writeBruitDisk(entry);
+      return entry;
+    })().finally(() => { _bruitIndexInFlight = null; });
+  }
+  return _bruitIndexInFlight;
+}
+
+/**
+ * Build one scan: both plans, plus what the register says about the emptiness.
+ *
+ * The two probes are fanned out with `Promise.all` and each carries its own
+ * `catch` inside `fetchBruitJson`, so a PGS outage degrades ONE field and the
+ * PEB answer still lands. `available` is what the layer reads to tell "no zone
+ * here" from "no answer here" — the two look identical downstream, and getting
+ * that wrong turns an outage into a clean bill of health.
+ *
+ * @param {{lat: number, lon: number}} point
+ * @returns {Promise<object|null>}
+ */
+async function buildBruitScan(point) {
+  const [peb, pgs, index] = await Promise.all([
+    fetchBruitJson(buildBruitProbeUrl('peb', point)),
+    fetchBruitJson(buildBruitProbeUrl('pgs', point)),
+    ensureBruitIndex().catch((err) => {
+      console.warn('[Bruit Proxy] arrêté index:', err?.message || err);
+      return null;
+    }),
+  ]);
+  // Both halves down is not an answer at all. One down is a degraded answer and
+  // the card says which half.
+  if (!peb && !pgs) return null;
+  const register = index?.payload ?? null;
+  const nearest = register
+    ? nearestArrete(register.airports, point.lat, point.lon, BRUIT_NEAREST_MAX_KM)
+    : null;
+  return {
+    ...projectBruit({ peb, pgs, point, nearest }),
+    source: BRUIT_SOURCE,
+    register: register
+      ? {
+        count: register.count,
+        total: register.total,
+        short: register.short,
+        truncated: register.truncated,
+        psophique: register.psophique,
+        lden: register.lden,
+        oldest: register.oldest,
+        newest: register.newest,
+        // The register's own age, so a 90-day-old copy can say so rather than
+        // passing as today's.
+        fetchedAt: index?.at ?? null,
+      }
+      : null,
+    // `null` and `false` are different states and the layer prints them
+    // differently: no register at all, against a register that answered.
+    nearestReach: register ? BRUIT_NEAREST_MAX_KM : null,
+  };
+}
+
+/**
+ * Vite plugin: French aircraft-noise plans proxy.
+ * @returns {import('vite').Plugin}
+ */
+function bruitFranceProxy() {
+  function install(middlewares) {
+    // MOUNTED FIRST, and the order is load-bearing: connect matches by prefix,
+    // so `/api/bruit-fr` installed ahead of this would swallow
+    // `/api/bruit-fr/index` and try to read a lat/lon off it.
+    middlewares.use('/api/bruit-fr/index', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') { json(405, { error: 'Method Not Allowed' }); return; }
+      if (!_bruitRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+      try {
+        // `coalesceProxyRequest` returns `{ promise, shared }` and NOT a
+        // promise — awaiting the object itself resolves to the object.
+        const { promise } = coalesceProxyRequest(_bruitInFlight, 'index', ensureBruitIndex);
+        const entry = await promise;
+        if (!entry) {
+          json(503, {
+            error: 'Le registre des arrêtés PEB (Géoplateforme WFS) n’a pas répondu et aucune copie locale n’existe.',
+          });
+          return;
+        }
+        const age = Date.now() - entry.at;
+        if (age > BRUIT_INDEX_STALE_MS) {
+          json(503, {
+            error: `La copie locale du registre des arrêtés PEB a ${Math.round(age / 86_400_000)} jours et l’amont ne répond pas.`,
+          });
+          return;
+        }
+        json(200, {
+          ...entry.payload,
+          source: BRUIT_SOURCE,
+          fetchedAt: entry.at,
+          stale: age > BRUIT_INDEX_TTL_MS,
+        }, {
+          'X-BRUIT-FR': age > BRUIT_INDEX_TTL_MS ? 'STALE' : 'HIT',
+          'Cache-Control': 'public, max-age=3600',
+        });
+      } catch (error) {
+        console.error('[Bruit Proxy] /index', error?.message || error);
+        json(502, { error: 'bruit-fr index proxy error' });
+      }
+    });
+
+    // The scan itself, on the shared address-route machinery: the per-point
+    // memory cache, the serve-stale-on-failure branch, the `/status` route and
+    // the `{ fetchedAt, stale }` envelope are the same ones the four sibling
+    // address layers already answer with, and a second copy of them here would
+    // be a second place for the same bug.
+    installAddressRoute(middlewares, '/api/bruit-fr', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      return {
+        // Four decimals, ~11 m: two nudges of the same camera share one entry.
+        // The probe geometry is PINNED, so nothing else varies the answer and
+        // nothing else belongs in the key.
+        key: addressCacheKey('bruit-fr', point),
+        load: () => buildBruitScan(point),
+      };
+    }, { ttlMs: BRUIT_SCAN_TTL_MS });
+  }
+  return {
+    name: 'bruit-fr-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Everyday amenities (FR) — INSEE BPE 2025 + FINESS
+// ---------------------------------------------------------------------------
+/**
+ * Keyless national amenity proxy.
+ *
+ *   GET /api/amenities-fr/status       — provenance, discovered edition, tallies
+ *   GET /api/amenities-fr/departements — 96-département rollup, ~21 KB
+ *   GET /api/amenities-fr/mesh         — the national tuple pack, 640 980 B gzipped
+ *   GET /api/amenities-fr/sites?bbox   — named amenities inside a 0.35° box
+ *
+ * WHY A PROXY, and it is not the usual reason. Measured twice on 2026-09-02:
+ * `https://www.insee.fr/fr/statistiques/8217525` returns HTTP 200 with no
+ * `Origin` header and HTTP 403 with one (tested `http://localhost:4173`), on the
+ * page, on `BPE25.zip` and on `BPE25.parquet`, for GET and for HEAD. It also
+ * ignores `Range` — `curl -r 0-2000` gets 200, not 206, and starts streaming the
+ * whole file. A browser cannot fetch this at all, ever, and no key changes that.
+ *
+ * WHAT THE BUILD COSTS, measured end to end against the live upstreams on
+ * 2026-09-02: **52.9 s**, of which 51 s is the 142 884 474-byte download.
+ * Inflating that to 1 515 251 530 bytes of semicolon CSV and reading all
+ * 2 921 770 rows takes **8.7 s**; FINESS is 44 053 043 bytes in 2.7 s and
+ * 103 032 rows; the fold, the mesh and the 34 778-commune point-in-polygon
+ * rollup are the rest. It happens once per month and is written to
+ * `.gev-cache/amenities-fr/`. That is still why `/status` is the deployment
+ * probe and `/departements` is not: a health check meant to answer in
+ * milliseconds should not be the thing that triggers a minute of work.
+ *
+ * WHY THE ARCHIVE IS STREAMED AND NEVER BUFFERED: 1.5 GB does not belong in a
+ * Buffer. The single member's local header is read, the rest is piped through
+ * `zlib.createInflateRaw`, and lines are handed to `readBpeRow` one at a time.
+ * Nothing larger than one line is held except the 126 859 selected rows.
+ *
+ * WHY THE EDITION IS DISCOVERED: BPE gains an edition every August at a NEW
+ * INSEE page id, and the only stable pointer to it is INSEE's own data.gouv
+ * entry, whose single resource url is the current landing page. Three hops
+ * (data.gouv → landing → sub-pages), floored at BPE25 — a discovery older than
+ * the floor is a malformed answer, not a new fact, and is refused.
+ */
+const AMENITIES_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const AMENITIES_STALE_MS = 120 * 24 * 60 * 60 * 1000;
+const AMENITIES_META_TIMEOUT_MS = 30_000;
+const AMENITIES_BULK_TIMEOUT_MS = 15 * 60_000;
+const AMENITIES_META_MAX_BYTES = 4 * 1024 * 1024;
+const AMENITIES_BPE_MAX_BYTES = 400 * 1024 * 1024;
+const AMENITIES_FINESS_MAX_BYTES = 160 * 1024 * 1024;
+const AMENITIES_SITE_CAP = 12_000;
+const AMENITIES_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'amenities-fr');
+const AMENITIES_CACHE_PATH = path.join(AMENITIES_DISK_DIR, 'pack.json');
+/**
+ * Shape version of the cached pack. BUMP IT whenever `readBpeRow`,
+ * `readFinessRow`, `foldAmenitySites`, `buildAmenityMeshRows` or
+ * `projectAmenitiesDepartements` changes what it returns: the cache lives for a
+ * MONTH on disk and costs ninety seconds to rebuild, so without a bump a
+ * projection edit stays invisible until October.
+ */
+const AMENITIES_CACHE_VERSION = 1;
+
+let _amenities = null;
+let _amenitiesInFlight = new Map();
+let _amenitiesDiskChecked = false;
+const _amenitiesRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 180 });
+
+/** One small JSON document (data.gouv). */
+async function fetchAmenitiesJson(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(AMENITIES_META_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+  return readResponseJsonCapped(response, AMENITIES_META_MAX_BYTES);
+}
+
+/** One INSEE HTML page. No Origin header is sent, which is the whole point. */
+async function fetchAmenitiesHtml(url) {
+  const response = await fetch(url, {
+    headers: { Accept: 'text/html' },
+    signal: AbortSignal.timeout(AMENITIES_META_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+  return readResponseTextCapped(response, AMENITIES_META_MAX_BYTES);
+}
+
+/**
+ * Resolve the current BPE archive URL.
+ *
+ * data.gouv is the stable root and the two INSEE hops are what actually name
+ * the file. If data.gouv is unreachable the landing page measured against is
+ * used instead, which is a degradation and not a guess: it is the edition every
+ * number in `amenitiesFeed.js` was measured on.
+ */
+async function discoverBpeArchive() {
+  let landing = BPE_LANDING_URL;
+  let discovered = false;
+  try {
+    const dataset = await fetchAmenitiesJson(BPE_DATAGOUV_URL);
+    const fromDataset = bpeLandingFromDataset(dataset);
+    if (fromDataset) {
+      landing = fromDataset;
+      discovered = true;
+    }
+  } catch (error) {
+    console.warn('[Amenities Proxy] data.gouv landing lookup failed:', error?.message || error);
+  }
+  const html = await fetchAmenitiesHtml(landing);
+  const base = landing.replace(/\/fr\/statistiques\/\d+.*$/, '');
+  const pages = bpeSubPagesFromHtml(html);
+  const candidates = [bpeArchiveFromHtml(html)];
+  for (const page of pages) {
+    try {
+      candidates.push(bpeArchiveFromHtml(await fetchAmenitiesHtml(`${base}/fr/statistiques/${page}`)));
+    } catch (error) {
+      console.warn(`[Amenities Proxy] BPE sub-page ${page} unreadable:`, error?.message || error);
+    }
+  }
+  const newest = newestBpeArchive(candidates, BPE_EDITION_FLOOR);
+  if (!newest) {
+    throw new Error(`no BPE archive at or above edition ${BPE_EDITION_FLOOR} on ${landing}`);
+  }
+  return { ...newest, landing, discovered };
+}
+
+/**
+ * Stream one line at a time out of a fetch body, optionally through the single
+ * member of a ZIP.
+ *
+ * The archive's local file header is 30 fixed bytes plus a name and an extra
+ * field; everything after it is the raw deflate stream, which `inflateRaw`
+ * consumes without ever materialising the 1.5 GB it expands to. Nothing bigger
+ * than one inflate chunk is ever held.
+ *
+ * TWO THINGS HERE ARE PERFORMANCE AND NOT STYLE, both measured on the real
+ * 1 515 251 530-byte member. Splitting each decoded chunk with `split('\n')`
+ * rather than walking `indexOf` and re-slicing the carry took the parse from
+ * **340 s to 8.7 s** — a 500-byte line inside a 1 MB chunk makes the
+ * slice-per-line version copy the chunk's tail two thousand times, and there
+ * are 2 921 770 lines. The inflate is also given a 1 MB `chunkSize`, because
+ * the 16 KB default turns the same archive into ninety thousand generator
+ * round-trips.
+ */
+async function* amenitiesCsvLines(response, { zipped, maxBytes }) {
+  let downloaded = 0;
+  const source = (async function* pull() {
+    const reader = response.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      downloaded += value.byteLength;
+      if (downloaded > maxBytes) {
+        try { await reader.cancel(); } catch { /* already closed */ }
+        throw new Error('Upstream response too large');
+      }
+      yield Buffer.from(value.buffer, value.byteOffset, value.byteLength);
+    }
+  })();
+
+  let stream = source;
+  if (zipped) {
+    stream = (async function* unzip() {
+      const inflate = zlib.createInflateRaw({ chunkSize: 1024 * 1024 });
+      const pending = [];
+      let failure = null;
+      let header = Buffer.alloc(0);
+      let started = false;
+      inflate.on('data', (chunk) => pending.push(chunk));
+      inflate.on('error', (error) => { failure = error; });
+      for await (const chunk of source) {
+        let body = chunk;
+        if (!started) {
+          header = header.length ? Buffer.concat([header, chunk]) : chunk;
+          if (header.length < 30) continue;
+          if (header.readUInt32LE(0) !== 0x04034b50) throw new Error('not a ZIP local header');
+          const method = header.readUInt16LE(8);
+          if (method !== 8) throw new Error(`unsupported ZIP compression method ${method}`);
+          const offset = 30 + header.readUInt16LE(26) + header.readUInt16LE(28);
+          if (header.length < offset) continue;
+          body = header.subarray(offset);
+          started = true;
+        }
+        if (failure) throw failure;
+        if (!inflate.write(body)) {
+          await new Promise((resolve) => inflate.once('drain', resolve));
+        }
+        while (pending.length) yield pending.shift();
+      }
+      await new Promise((resolve) => inflate.end(resolve));
+      if (failure) throw failure;
+      while (pending.length) yield pending.shift();
+    })();
+  }
+
+  const decoder = new TextDecoder('utf-8');
+  let carry = '';
+  for await (const chunk of stream) {
+    const parts = (carry + decoder.decode(chunk, { stream: true })).split('\n');
+    carry = parts.pop();
+    for (const part of parts) {
+      yield part.charCodeAt(part.length - 1) === 13 ? part.slice(0, -1) : part;
+    }
+  }
+  if (carry) yield carry;
+}
+
+/** Fold the whole BPE archive: the drawn rows, and one point per commune. */
+async function refreshAmenitiesBpe(tally) {
+  const archive = await discoverBpeArchive();
+  const response = await fetch(archive.url, {
+    headers: { Accept: 'application/zip' },
+    signal: AbortSignal.timeout(AMENITIES_BULK_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${archive.url}`);
+
+  const sites = [];
+  const communes = new Map();
+  let index = null;
+  let scanned = 0;
+  for await (const line of amenitiesCsvLines(response, { zipped: true, maxBytes: AMENITIES_BPE_MAX_BYTES })) {
+    if (!index) {
+      index = csvHeaderIndex(line);
+      if (Object.keys(index).length !== BPE_COLUMN_COUNT) {
+        throw new Error(`BPE header has ${Object.keys(index).length} columns, expected ${BPE_COLUMN_COUNT}`);
+      }
+      continue;
+    }
+    if (!line) continue;
+    scanned += 1;
+    const fields = splitSemicolonRow(line);
+    const outcome = readBpeRow(fields, index);
+    tallyAmenityOutcome(tally, outcome);
+    const depcom = String(fields[index.DEPCOM] ?? '').replace(/^"|"$/g, '').trim();
+    if (depcom) {
+      let commune = communes.get(depcom);
+      if (!commune) {
+        commune = { depcom, lat: undefined, lon: undefined, covered: false };
+        communes.set(depcom, commune);
+      }
+      if (outcome.kind === 'site') {
+        commune.covered = true;
+        if (commune.lat === undefined) {
+          commune.lat = outcome.site.lat;
+          commune.lon = outcome.site.lon;
+        }
+      } else if (commune.lat === undefined) {
+        const lat = Number(String(fields[index.LATITUDE] ?? '').replace(/^"|"$/g, ''));
+        const lon = Number(String(fields[index.LONGITUDE] ?? '').replace(/^"|"$/g, ''));
+        if (Number.isFinite(lat) && Number.isFinite(lon)) {
+          commune.lat = Number(lat.toFixed(5));
+          commune.lon = Number(lon.toFixed(5));
+        }
+      }
+    }
+    if (outcome.kind === 'site') sites.push(outcome.site);
+  }
+  if (scanned < BPE_ROW_FLOOR * 0.9) {
+    throw new Error(`BPE read only ${scanned} rows against a floor of ${BPE_ROW_FLOOR}`);
+  }
+  if (scanned !== BPE_ROW_FLOOR) {
+    console.warn(`[Amenities Proxy] BPE drifted: ${scanned} rows against the measured ${BPE_ROW_FLOOR}`);
+  }
+  return { archive, sites, communes: [...communes.values()], scanned };
+}
+
+/** Fold the FINESS establishment extract. */
+async function refreshAmenitiesFiness(tally) {
+  const response = await fetch(FINESS_CSV_URL, {
+    headers: { Accept: 'text/csv' },
+    signal: AbortSignal.timeout(AMENITIES_BULK_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status} for ${FINESS_CSV_URL}`);
+  const updated = response.headers.get('last-modified') || null;
+  const sites = [];
+  let index = null;
+  let scanned = 0;
+  for await (const line of amenitiesCsvLines(response, { zipped: false, maxBytes: AMENITIES_FINESS_MAX_BYTES })) {
+    if (!index) {
+      index = csvHeaderIndex(line);
+      if (Object.keys(index).length !== FINESS_COLUMN_COUNT) {
+        throw new Error(`FINESS header has ${Object.keys(index).length} columns, expected ${FINESS_COLUMN_COUNT}`);
+      }
+      continue;
+    }
+    if (!line) continue;
+    scanned += 1;
+    const outcome = readFinessRow(splitSemicolonRow(line), index);
+    tallyAmenityOutcome(tally, outcome);
+    if (outcome.kind === 'site') sites.push(outcome.site);
+  }
+  if (scanned < FINESS_ROW_FLOOR * 0.9) {
+    throw new Error(`FINESS read only ${scanned} rows against a floor of ${FINESS_ROW_FLOOR}`);
+  }
+  return { sites, scanned, updated };
+}
+
+/**
+ * The whole national build.
+ *
+ * FINESS is fetched in parallel with the BPE archive but is NOT allowed to fail
+ * silently: it is the only register behind two of the seven families, so losing
+ * it would quietly delete every pharmacy and every hospital in France. The
+ * layer degrades on a whole failure, with a sentence, rather than on half of
+ * one without.
+ */
+async function refreshAmenities() {
+  const started = Date.now();
+  const index = await loadSchoolsDepartementIndex();
+  const tally = newAmenityTally();
+  const [bpe, finess] = await Promise.all([
+    refreshAmenitiesBpe(tally),
+    refreshAmenitiesFiness(tally),
+  ]);
+  const records = foldAmenitySites([...bpe.sites, ...finess.sites]);
+  const mesh = buildAmenityMeshRows(records);
+  const rollup = projectAmenitiesDepartements({ records, communes: bpe.communes, index });
+  const perFamily = Object.fromEntries(AMENITY_FAMILIES.map((family) => [family, 0]));
+  for (const record of records) perFamily[record.family] += 1;
+  return {
+    records,
+    mesh,
+    rollup,
+    provenance: {
+      edition: bpe.archive.edition,
+      year: bpe.archive.year,
+      archive: bpe.archive.url,
+      landing: bpe.archive.landing,
+      editionDiscovered: bpe.archive.discovered,
+      finessUpdated: finess.updated,
+      bpeRows: bpe.scanned,
+      finessRows: finess.scanned,
+      communes: bpe.communes.length,
+      drawn: sumByFamily(tally.drawn),
+      dots: records.length,
+      perFamily,
+      refusedNoCoordinate: tally.refusedNoCoordinate,
+      refusedInvented: tally.refusedInvented,
+      refusedCrs: tally.refusedCrs,
+      precision: tally.precision,
+      builtInMs: Date.now() - started,
+    },
+  };
+}
+
+async function readAmenitiesDisk() {
+  if (_amenitiesDiskChecked) return;
+  _amenitiesDiskChecked = true;
+  try {
+    const entry = JSON.parse(await fsp.readFile(AMENITIES_CACHE_PATH, 'utf8'));
+    if (entry?.version === AMENITIES_CACHE_VERSION
+      && Number.isFinite(entry.at)
+      && Array.isArray(entry.payload?.records)
+      && Array.isArray(entry.payload?.mesh)
+      && Array.isArray(entry.payload?.rollup?.departements)) {
+      _amenities = entry;
+    }
+  } catch { /* no disk cache yet */ }
+}
+
+function writeAmenitiesDisk(entry) {
+  fsp.mkdir(AMENITIES_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(AMENITIES_CACHE_PATH, JSON.stringify(entry)))
+    .catch((error) => console.warn('[Amenities Proxy] cache write failed:', error?.message || error));
+}
+
+/** Single-flight: `/departements`, `/mesh` and `/sites` all share one build. */
+function ensureAmenities() {
+  const { promise } = coalesceProxyRequest(_amenitiesInFlight, 'national', async () => {
+    const payload = await refreshAmenities();
+    const entry = { version: AMENITIES_CACHE_VERSION, at: Date.now(), payload };
+    _amenities = entry;
+    writeAmenitiesDisk(entry);
+    return entry;
+  });
+  return promise;
+}
+
+/**
+ * Vite plugin: keyless national everyday-amenity proxy.
+ * @returns {import('vite').Plugin}
+ */
+function amenitiesFranceProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/amenities-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...headers });
+        res.end(JSON.stringify(body));
+      };
+      if (req.method !== 'GET') {
+        json(405, { error: 'Method Not Allowed' });
+        return;
+      }
+      if (!_amenitiesRateLimiter(clientKey(req))) {
+        json(429, { error: 'Rate limit exceeded' }, { 'Retry-After': '5' });
+        return;
+      }
+
+      const url = new URL(req.url || '/', 'http://localhost');
+      const route = url.pathname.replace(/\/+$/, '') || '/';
+
+      if (route === '/status') {
+        await readAmenitiesDisk();
+        json(200, {
+          source: 'BPE 2025 — Insee · FINESS — ARS/ANS',
+          editionFloor: BPE_EDITION_FLOOR,
+          rowFloor: { bpe: BPE_ROW_FLOOR, finess: FINESS_ROW_FLOOR },
+          maxBoxDeg: AMENITIES_MAX_BOX_DEG,
+          ttlMs: AMENITIES_TTL_MS,
+          staleMs: AMENITIES_STALE_MS,
+          building: _amenitiesInFlight.size > 0,
+          pack: _amenities
+            ? { at: _amenities.at, ..._amenities.payload.provenance }
+            : null,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+
+      if (route !== '/departements' && route !== '/mesh' && route !== '/sites') {
+        json(404, { error: 'Unknown amenities endpoint' });
+        return;
+      }
+
+      let box = null;
+      if (route === '/sites') {
+        box = validBox({
+          south: url.searchParams.get('south'),
+          west: url.searchParams.get('west'),
+          north: url.searchParams.get('north'),
+          east: url.searchParams.get('east'),
+        }, AMENITIES_MAX_BOX_DEG);
+        if (!box) {
+          json(400, {
+            error: `A non-dateline bbox no larger than ${AMENITIES_MAX_BOX_DEG} degrees is required`,
+            maxBoxDeg: AMENITIES_MAX_BOX_DEG,
+          });
+          return;
+        }
+      }
+
+      const answer = (entry, cacheState, stale) => {
+        const payload = entry.payload;
+        if (route === '/departements') {
+          json(200, {
+            ...payload.rollup,
+            provenance: payload.provenance,
+            fetchedAt: entry.at,
+            stale,
+          }, { 'X-AMENITIES-FR': cacheState });
+          return;
+        }
+        if (route === '/mesh') {
+          json(200, {
+            rows: payload.mesh,
+            rowCount: payload.mesh.length,
+            families: AMENITY_FAMILIES,
+            provenance: payload.provenance,
+            fetchedAt: entry.at,
+            stale,
+          }, { 'X-AMENITIES-FR': cacheState });
+          return;
+        }
+        const inBox = [];
+        let rows = 0;
+        for (const record of payload.records) {
+          if (record.lat < box.south || record.lat > box.north) continue;
+          if (record.lon < box.west || record.lon > box.east) continue;
+          inBox.push(record);
+          rows += record.count;
+        }
+        // Rarest family first, so the cap below drops médecins généralistes and
+        // never the hôpitaux a reader is most likely to be looking for.
+        const ordered = orderAmenitySites(inBox);
+        json(200, {
+          sites: ordered.slice(0, AMENITIES_SITE_CAP).map(trimAmenityRecord),
+          dots: inBox.length,
+          rows,
+          capped: Math.max(0, inBox.length - AMENITIES_SITE_CAP),
+          box,
+          maxBoxDeg: AMENITIES_MAX_BOX_DEG,
+          provenance: payload.provenance,
+          fetchedAt: entry.at,
+          stale,
+        }, { 'X-AMENITIES-FR': cacheState });
+      };
+
+      await readAmenitiesDisk();
+      const now = Date.now();
+      if (_amenities && now - _amenities.at <= AMENITIES_TTL_MS) {
+        answer(_amenities, 'HIT', false);
+        return;
+      }
+      try {
+        answer(await ensureAmenities(), 'MISS', false);
+      } catch (error) {
+        console.warn('[Amenities Proxy] national build unavailable:', error?.message || error);
+        // A pack a month old is still this edition of a register published once
+        // a year — serving it beats blanking every amenity in France.
+        if (_amenities && now - _amenities.at <= AMENITIES_STALE_MS) {
+          answer(_amenities, 'STALE', true);
+          return;
+        }
+        json(503, {
+          error: 'La base permanente des équipements et le registre FINESS sont momentanément indisponibles ; le pack national n’a pas pu être construit.',
+        });
+      }
+    });
+  }
+
+  return {
+    name: 'amenities-france-proxy',
     configureServer(server) { install(server.middlewares); },
     configurePreviewServer(server) { install(server.middlewares); },
   };
@@ -16256,8 +20067,16 @@ export default defineConfig(({ mode }) => {
       cadastreFranceProxy(),
       schoolsFranceProxy(),
       medecinsFranceProxy(),
-      supFranceProxy(),
       petiteEnfanceFranceProxy(),
+      supFranceProxy(),
+      comptagesParisProxy(),
+      delinquanceFranceProxy(),
+      anfrFranceProxy(),
+      fraicheurParisProxy(),
+      amenitiesFranceProxy(),
+      bruitFranceProxy(),
+      idfmFrequencyProxy(),
+      sitadelFranceProxy(),
       adsbLolProxy(),
       aisLiveProxy(),
       trackBackfillProxies(),

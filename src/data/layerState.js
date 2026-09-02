@@ -292,6 +292,13 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // the duplicate-token assertion exists to catch — a silent collision would
   // make one share link enable the wrong layer — so it is worth restating that
   // a duplicate here is a BOOT failure, not a review nit.
+  // `bq` for base des équipements. `b` is bikeshare, `bz` is bruit-fr, and `be`
+  // reads like a word; `bq` is unmistakable and unused.
+  Object.freeze({ id: 'amenities-fr', token: 'bq', disposition: 'enabled-only' }),
+  // `an` for ANFR. The agency's own initials; `a` is airports. The `radio`
+  // layer next door is radio-browser.info AUDIO streams and shares nothing with
+  // this but a word, which is exactly why the token had to be unmistakable.
+  Object.freeze({ id: 'anfr-fr', token: 'an', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   // TWO CHARACTERS, because the single-character scheme is spent: a-y are taken,
@@ -306,8 +313,20 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // The field is dot-separated, so a wider token costs one character and needs
   // no codec change — `dp`, `dv`, `gr` and `if` already read this way.
   // `enabled-only`: the layer has no runtime option to serialize.
+  // `bz` for bruit. `b` is bikeshare and `br` would collide with nothing today
+  // but reads as an abbreviation of the word rather than a token; `bz` is the
+  // one nobody will guess wrong.
+  Object.freeze({ id: 'bruit-fr', token: 'bz', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cadastre-fr', token: 'cd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
+  // `cr` for comptages routiers. `c` is cctv and `co` reads like a prefix of
+  // nothing in particular; `cr` says what the layer counts. Two characters
+  // because there is no single one left — see the block below, which predicted
+  // exactly this and has now been true for every layer added since.
+  Object.freeze({ id: 'comptages-fr', token: 'cr', disposition: 'enabled-only' }),
+  // `dl` for délinquance. `d` is dams and `dp`/`dv` are dpe-fr and dvf-sales, so
+  // the two-character space is where this had to land anyway.
+  Object.freeze({ id: 'delinquance-fr', token: 'dl', disposition: 'enabled-only' }),
   // THE LAST FIVE TOKENS, claimed together by the five French address layers.
   // a–y are taken, `z` is the canonical UNKNOWN token two existing tests assert
   // on, and 1–5 belong to gas-fr, power-grid, rte-generation, fr-hydro-plants
@@ -327,6 +346,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // shared link that silently hid two thousand plants would be a worse surprise
   // than one that shows the register whole.
   Object.freeze({ id: 'fr-hydro-plants', token: '4', disposition: 'enabled-only' }),
+  // `fh` for fraîcheur. `f` is flights and `fr` would read as the country
+  // suffix every other French layer carries, which is the one thing a share
+  // token must never look like.
+  Object.freeze({ id: 'fraicheur-fr', token: 'fh', disposition: 'enabled-only' }),
   Object.freeze({ id: 'france-energy', token: 'j', disposition: 'enabled-only' }),
   // A DIGIT, not a letter: every letter of "gas" is taken (g by
   // military-awareness, a by AIS, s by satellites), and `z` is the token two
@@ -342,6 +365,10 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // link that silently enables the wrong one. 1-8 are gas-fr, power-grid,
   // rte-generation, fr-hydro-plants, bdtopo-buildings, local-airports,
   // road-status-fr and road-events-fr, so IRVE takes `9`.
+  // `fq` for fréquence. `if` next door is idfm-network, and these two draw the
+  // SAME stops — so the tokens are deliberately unalike, because a share link
+  // that enabled the wrong one of a stacked pair would be invisible.
+  Object.freeze({ id: 'idfm-frequency', token: 'fq', disposition: 'enabled-only' }),
   Object.freeze({ id: 'idfm-network', token: 'if', disposition: 'enabled-only' }),
   Object.freeze({ id: 'irve-fr', token: '9', disposition: 'enabled-only' }),
   // A DIGIT, for the sixth time and always for the same reason: a–y are all
@@ -440,6 +467,9 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // A duplicate here is a BOOT failure (`validateLayerStateRegistry` throws),
   // not a review nit — two layers on one token is a share link that silently
   // enables the wrong one.
+  // `sd` for Sitadel. `s` is satellites, `su` is sup-fr — the third `s` layer,
+  // and the last one that could still take two characters comfortably.
+  Object.freeze({ id: 'sitadel-fr', token: 'sd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'sup-fr', token: 'su', disposition: 'enabled-only' }),
   Object.freeze({ id: 'telegeography-submarine-cables', token: 'u', disposition: 'enabled-only' }),
   Object.freeze({ id: 'traffic', token: 't', disposition: 'enabled-only' }),

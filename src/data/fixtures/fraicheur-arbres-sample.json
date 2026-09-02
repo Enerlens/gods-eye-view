@@ -1,0 +1,383 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.392686328396791,
+     48.86307405493994
+    ]
+   },
+   "properties": {
+    "idbase": 142523,
+    "libellefrancais": "Erable",
+    "genre": "Acer",
+    "espece": "platanoides",
+    "hauteurenm": 8,
+    "circonferenceencm": 50,
+    "stadedeveloppement": "Jeune (arbre)Adulte",
+    "remarquable": "NON",
+    "domanialite": "CIMETIERE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.385602773897963,
+     48.85584299775182
+    ]
+   },
+   "properties": {
+    "idbase": 2048228,
+    "libellefrancais": "Charme",
+    "genre": "Carpinus",
+    "espece": "betulus",
+    "hauteurenm": 0,
+    "circonferenceencm": 0,
+    "stadedeveloppement": null,
+    "remarquable": "NON",
+    "domanialite": "Jardin"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.398907159063238,
+     48.85885344661963
+    ]
+   },
+   "properties": {
+    "idbase": 124119,
+    "libellefrancais": "Genévrier",
+    "genre": "Juniperus",
+    "espece": "communis",
+    "hauteurenm": 0,
+    "circonferenceencm": 12,
+    "stadedeveloppement": null,
+    "remarquable": null,
+    "domanialite": "Jardin"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.3862461640834245,
+     48.863869072298954
+    ]
+   },
+   "properties": {
+    "idbase": 230590,
+    "libellefrancais": null,
+    "genre": "Styphnolobium",
+    "espece": null,
+    "hauteurenm": 6,
+    "circonferenceencm": 60,
+    "stadedeveloppement": "Jeune (arbre)",
+    "remarquable": "NON",
+    "domanialite": "Alignement"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.398576914903438,
+     48.86208456875803
+    ]
+   },
+   "properties": {
+    "idbase": 155788,
+    "libellefrancais": "Plaqueminier",
+    "genre": "Diospyros",
+    "espece": "lotus",
+    "hauteurenm": 10,
+    "circonferenceencm": 115,
+    "stadedeveloppement": "Adulte",
+    "remarquable": "OUI",
+    "domanialite": "CIMETIERE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.392195126110152,
+     48.86287520786707
+    ]
+   },
+   "properties": {
+    "idbase": 140965,
+    "libellefrancais": "Erable",
+    "genre": "Acer",
+    "espece": "platanoides",
+    "hauteurenm": 15,
+    "circonferenceencm": 120,
+    "stadedeveloppement": null,
+    "remarquable": null,
+    "domanialite": "CIMETIERE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.398016812490138,
+     48.86426608281007
+    ]
+   },
+   "properties": {
+    "idbase": 238556,
+    "libellefrancais": "Erable",
+    "genre": "Acer",
+    "espece": "platanoides",
+    "hauteurenm": 5,
+    "circonferenceencm": 20,
+    "stadedeveloppement": null,
+    "remarquable": "NON",
+    "domanialite": "Alignement"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.39711537595251,
+     48.85923075574001
+    ]
+   },
+   "properties": {
+    "idbase": 147046,
+    "libellefrancais": "Marronnier",
+    "genre": "Aesculus",
+    "espece": "hippocastanum",
+    "hauteurenm": 16,
+    "circonferenceencm": 265,
+    "stadedeveloppement": "Mature",
+    "remarquable": "NON",
+    "domanialite": "CIMETIERE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.3941817360083526,
+     48.856656598547005
+    ]
+   },
+   "properties": {
+    "idbase": 233528,
+    "libellefrancais": "Erable",
+    "genre": "Acer",
+    "espece": "campestre",
+    "hauteurenm": 5,
+    "circonferenceencm": 25,
+    "stadedeveloppement": "Jeune (arbre)",
+    "remarquable": "NON",
+    "domanialite": "Alignement"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.3995655310991255,
+     48.85874258895474
+    ]
+   },
+   "properties": {
+    "idbase": 189851,
+    "libellefrancais": "Erable",
+    "genre": "Acer",
+    "espece": "campestre",
+    "hauteurenm": 4,
+    "circonferenceencm": 20,
+    "stadedeveloppement": "Jeune (arbre)",
+    "remarquable": "NON",
+    "domanialite": "DASCO"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.393194119950849,
+     48.85679922230302
+    ]
+   },
+   "properties": {
+    "idbase": 197755,
+    "libellefrancais": "Paulownia",
+    "genre": "Paulownia",
+    "espece": "tomentosa",
+    "hauteurenm": 12,
+    "circonferenceencm": 140,
+    "stadedeveloppement": "Adulte",
+    "remarquable": "NON",
+    "domanialite": "DJS"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.3999286192800957,
+     48.855925742064095
+    ]
+   },
+   "properties": {
+    "idbase": 185611,
+    "libellefrancais": "Frêne",
+    "genre": "Fraxinus",
+    "espece": "excelsior",
+    "hauteurenm": 4,
+    "circonferenceencm": 35,
+    "stadedeveloppement": "Jeune (arbre)Adulte",
+    "remarquable": "NON",
+    "domanialite": "DFPE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.397659771624649,
+     48.860665343289334
+    ]
+   },
+   "properties": {
+    "idbase": 151151,
+    "libellefrancais": "Ailante",
+    "genre": "Ailanthus",
+    "espece": "altissima",
+    "hauteurenm": 8,
+    "circonferenceencm": 220,
+    "stadedeveloppement": "Adulte",
+    "remarquable": "NON",
+    "domanialite": "CIMETIERE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.3899734083702353,
+     48.86276027254296
+    ]
+   },
+   "properties": {
+    "idbase": 147580,
+    "libellefrancais": "Marronnier",
+    "genre": "Aesculus",
+    "espece": "hippocastanum",
+    "hauteurenm": 20,
+    "circonferenceencm": 225,
+    "stadedeveloppement": "Adulte",
+    "remarquable": "NON",
+    "domanialite": "CIMETIERE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.3927437847924313,
+     48.85972236695846
+    ]
+   },
+   "properties": {
+    "idbase": 2014225,
+    "libellefrancais": "Sapin",
+    "genre": "Abies",
+    "espece": "nordmanniana",
+    "hauteurenm": 1,
+    "circonferenceencm": 10,
+    "stadedeveloppement": "Jeune (arbre)",
+    "remarquable": "NON",
+    "domanialite": "CIMETIERE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.390597193369303,
+     48.857149793209494
+    ]
+   },
+   "properties": {
+    "idbase": 268365,
+    "libellefrancais": "Platane",
+    "genre": "Platanus",
+    "espece": "x hispanica",
+    "hauteurenm": 5,
+    "circonferenceencm": 30,
+    "stadedeveloppement": "Jeune (arbre)",
+    "remarquable": "NON",
+    "domanialite": "Alignement"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.399831628252646,
+     48.86036575668784
+    ]
+   },
+   "properties": {
+    "idbase": 162884,
+    "libellefrancais": "Platane",
+    "genre": "Platanus",
+    "espece": "x hispanica",
+    "hauteurenm": 15,
+    "circonferenceencm": 125,
+    "stadedeveloppement": "Adulte",
+    "remarquable": "NON",
+    "domanialite": "CIMETIERE"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     2.3980001077553075,
+     48.855637725334866
+    ]
+   },
+   "properties": {
+    "idbase": 2018098,
+    "libellefrancais": "Cerisier à fleurs",
+    "genre": "Prunus",
+    "espece": null,
+    "hauteurenm": 5,
+    "circonferenceencm": 75,
+    "stadedeveloppement": "Jeune (arbre)Adulte",
+    "remarquable": "NON",
+    "domanialite": "Alignement"
+   }
+  }
+ ]
+}

@@ -1,0 +1,301 @@
+"CODGEO_2026";"annee";"indicateur";"unite_de_compte";"nombre";"taux_pour_mille";"est_diffuse";"insee_pop";"insee_pop_millesime";"insee_log";"insee_log_millesime";"complement_info_nombre";"complement_info_taux"
+"01071";"2023";"Violences physiques intrafamiliales";"Victime";"8";"1,3717421";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Violences physiques hors cadre familial";"Victime";"5";"0,8573388";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Violences sexuelles";"Victime";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"1,9527027";"1,2957724"
+"01071";"2023";"Vols avec armes";"Infraction";"0";"0,0000000";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Vols violents sans arme";"Infraction";"0";"0,0000000";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Vols sans violence contre des personnes";"Victime entendue";"16";"2,7434842";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Cambriolages de logement";"Infraction";"8";"3,1358380";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Vols de véhicule";"Véhicule";"16";"2,7434842";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Vols dans les véhicules";"Véhicule";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"2,5525292";"1,9347551"
+"01071";"2023";"Vols d'accessoires sur véhicules";"Véhicule";"9";"1,5432099";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Destructions et dégradations volontaires";"Infraction";"28";"4,8010974";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Usage de stupéfiants";"Mis en cause";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"2,1621622";"1,3634659"
+"01071";"2023";"Usage de stupéfiants (AFD)";"Mis en cause";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"2,0384615";"0,9982703"
+"01071";"2023";"Trafic de stupéfiants";"Mis en cause";"0";"0,0000000";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2023";"Escroqueries et fraudes aux moyens de paiement";"Victime";"39";"6,6872428";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2024";"Violences physiques intrafamiliales";"Victime";"15";"2,5720165";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2024";"Violences physiques hors cadre familial";"Victime";"10";"1,7146776";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2024";"Violences sexuelles";"Victime";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"1,9250814";"1,3785446"
+"01071";"2024";"Vols avec armes";"Infraction";"0";"0,0000000";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2024";"Vols violents sans arme";"Infraction";"0";"0,0000000";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2024";"Vols sans violence contre des personnes";"Victime entendue";"28";"4,8010974";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2024";"Cambriolages de logement";"Infraction";"27";"10,5834531";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2024";"Vols de véhicule";"Véhicule";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"1,9931507";"1,5856971"
+"01071";"2024";"Vols dans les véhicules";"Véhicule";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"2,6796875";"2,0675292"
+"01071";"2024";"Vols d'accessoires sur véhicules";"Véhicule";"7";"1,2002743";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2024";"Destructions et dégradations volontaires";"Infraction";"38";"6,5157750";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2024";"Usage de stupéfiants";"Mis en cause";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"1,6143498";"1,0229540"
+"01071";"2024";"Usage de stupéfiants (AFD)";"Mis en cause";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"1,5548780";"0,8085869"
+"01071";"2024";"Trafic de stupéfiants";"Mis en cause";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"1,1020408";"0,3509969"
+"01071";"2024";"Escroqueries et fraudes aux moyens de paiement";"Victime";"38";"6,5157750";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2025";"Violences physiques intrafamiliales";"Victime";"22";"3,7722908";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2025";"Violences physiques hors cadre familial";"Victime";"8";"1,3717421";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2025";"Violences sexuelles";"Victime";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"1,9464883";"1,4276393"
+"01071";"2025";"Vols avec armes";"Infraction";"0";"0,0000000";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2025";"Vols violents sans arme";"Infraction";"0";"0,0000000";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2025";"Vols sans violence contre des personnes";"Victime entendue";"33";"5,6584362";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2025";"Cambriolages de logement";"Infraction";"12";"4,7037569";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2025";"Vols de véhicule";"Véhicule";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"2,0508475";"1,6732537"
+"01071";"2025";"Vols dans les véhicules";"Véhicule";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"1,7170543";"1,3746963"
+"01071";"2025";"Vols d'accessoires sur véhicules";"Véhicule";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"2,2292490";"1,3085999"
+"01071";"2025";"Destructions et dégradations volontaires";"Infraction";"30";"5,1440329";"diff";"5832";"2023";"2551";"2022";NA;NA
+"01071";"2025";"Usage de stupéfiants";"Mis en cause";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"2,6556604";"1,7419285"
+"01071";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"2,9192547";"1,5792056"
+"01071";"2025";"Trafic de stupéfiants";"Mis en cause";NA;NA;"ndiff";"5832";"2023";"2551";"2022";"1,5769231";"0,5399248"
+"01071";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"41";"7,0301783";"diff";"5832";"2023";"2551";"2022";NA;NA
+"13002";"2025";"Violences physiques intrafamiliales";"Victime";"55";"2,5649396";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Violences physiques hors cadre familial";"Victime";"29";"1,3524227";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Violences sexuelles";"Victime";"15";"0,6995290";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Vols avec armes";"Infraction";NA;NA;"ndiff";"21443";"2023";"9948";"2022";"1,2096774";"0,1049460"
+"13002";"2025";"Vols violents sans arme";"Infraction";"6";"0,2798116";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Vols sans violence contre des personnes";"Victime entendue";"83";"3,8707270";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Cambriolages de logement";"Infraction";"71";"7,1367652";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Vols de véhicule";"Véhicule";"51";"2,3783985";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Vols dans les véhicules";"Véhicule";"49";"2,2851280";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"62";"2,8913865";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Destructions et dégradations volontaires";"Infraction";"176";"8,2078067";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Usage de stupéfiants";"Mis en cause";"12";"0,5596232";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13002";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";NA;NA;"ndiff";"21443";"2023";"9948";"2022";"3,2777778";"0,8324809"
+"13002";"2025";"Trafic de stupéfiants";"Mis en cause";NA;NA;"ndiff";"21443";"2023";"9948";"2022";"1,4197531";"0,1994987"
+"13002";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"146";"6,8087488";"diff";"21443";"2023";"9948";"2022";NA;NA
+"13055";"2025";"Violences physiques intrafamiliales";"Victime";"3823";"4,3147036";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Violences physiques hors cadre familial";"Victime";"4454";"5,0268611";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Violences sexuelles";"Victime";"1658";"1,8712473";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Vols avec armes";"Infraction";"391";"0,4412893";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Vols violents sans arme";"Infraction";"2556";"2,8847456";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Vols sans violence contre des personnes";"Victime entendue";"17122";"19,3241840";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Cambriolages de logement";"Infraction";"4346";"9,3206661";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Vols de véhicule";"Véhicule";"5716";"6,4511760";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Vols dans les véhicules";"Véhicule";"9163";"10,3415196";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"4284";"4,8349962";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Destructions et dégradations volontaires";"Infraction";"11834";"13,3560562";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Usage de stupéfiants";"Mis en cause";"13255";"14,9598212";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"12182";"13,7488150";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Trafic de stupéfiants";"Mis en cause";"3649";"4,1183242";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13055";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"6713";"7,5764074";"diff";"886040";"2023";"466276";"2022";NA;NA
+"13204";"2025";"Violences physiques intrafamiliales";"Victime";"264";"5,3481352";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Violences physiques hors cadre familial";"Victime";"197";"3,9908433";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Violences sexuelles";"Victime";"114";"2,3094220";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Vols avec armes";"Infraction";NA;NA;"ndiff";"49363";"2023";"29927";"2022";"11,0000000";"0,3287180"
+"13204";"2025";"Vols violents sans arme";"Infraction";"126";"2,5525191";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Vols sans violence contre des personnes";"Victime entendue";"874";"17,7055689";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Cambriolages de logement";"Infraction";"426";"14,2347849";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Vols de véhicule";"Véhicule";"288";"5,8343294";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Vols dans les véhicules";"Véhicule";"358";"7,2523955";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"163";"3,3020684";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Destructions et dégradations volontaires";"Infraction";"549";"11,1216903";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Usage de stupéfiants";"Mis en cause";"397";"8,0424610";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"381";"7,7183315";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Trafic de stupéfiants";"Mis en cause";"48";"0,9723882";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13204";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"524";"10,6152381";"diff";"49363";"2023";"29927";"2022";NA;NA
+"13207";"2025";"Violences physiques intrafamiliales";"Victime";"101";"2,8715208";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Violences physiques hors cadre familial";"Victime";"143";"4,0656185";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Violences sexuelles";"Victime";"69";"1,9617320";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Vols avec armes";"Infraction";NA;NA;"ndiff";"35173";"2023";"22744";"2022";"11,0000000";"0,3287180"
+"13207";"2025";"Vols violents sans arme";"Infraction";"98";"2,7862281";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Vols sans violence contre des personnes";"Victime entendue";"1050";"29,8524436";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Cambriolages de logement";"Infraction";"321";"14,1135189";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Vols de véhicule";"Véhicule";"318";"9,0410258";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Vols dans les véhicules";"Véhicule";"477";"13,5615387";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"187";"5,3165781";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Destructions et dégradations volontaires";"Infraction";"516";"14,6703437";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Usage de stupéfiants";"Mis en cause";"975";"27,7201262";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"951";"27,0377847";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Trafic de stupéfiants";"Mis en cause";"59";"1,6774230";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13207";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"344";"9,7802292";"diff";"35173";"2023";"22744";"2022";NA;NA
+"13216";"2025";"Violences physiques intrafamiliales";"Victime";"96";"6,0552542";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Violences physiques hors cadre familial";"Victime";"98";"6,1814053";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Violences sexuelles";"Victime";"18";"1,1353602";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Vols avec armes";"Infraction";NA;NA;"ndiff";"15854";"2023";"7796";"2022";"11,0000000";"0,3287180"
+"13216";"2025";"Vols violents sans arme";"Infraction";"45";"2,8384004";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Vols sans violence contre des personnes";"Victime entendue";"213";"13,4350952";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Cambriolages de logement";"Infraction";"72";"9,2354097";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Vols de véhicule";"Véhicule";"213";"13,4350952";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Vols dans les véhicules";"Véhicule";"284";"17,9134603";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"216";"13,6243219";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Destructions et dégradations volontaires";"Infraction";"250";"15,7688911";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Usage de stupéfiants";"Mis en cause";"273";"17,2196291";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"240";"15,1381355";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Trafic de stupéfiants";"Mis en cause";"71";"4,4783651";"diff";"15854";"2023";"7796";"2022";NA;NA
+"13216";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"139";"8,7675035";"diff";"15854";"2023";"7796";"2022";NA;NA
+"2A004";"2025";"Violences physiques intrafamiliales";"Victime";"144";"1,8867925";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Violences physiques hors cadre familial";"Victime";"175";"2,2929769";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Violences sexuelles";"Victime";"66";"0,8647799";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Vols avec armes";"Infraction";NA;NA;"ndiff";"76320";"2023";"36362";"2022";"0,3333333";"0,0290208"
+"2A004";"2025";"Vols violents sans arme";"Infraction";"16";"0,2096436";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Vols sans violence contre des personnes";"Victime entendue";"371";"4,8611111";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Cambriolages de logement";"Infraction";"38";"1,0450482";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Vols de véhicule";"Véhicule";"154";"2,0178197";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Vols dans les véhicules";"Véhicule";"43";"0,5634172";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"65";"0,8516771";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Destructions et dégradations volontaires";"Infraction";"648";"8,4905660";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Usage de stupéfiants";"Mis en cause";"267";"3,4984277";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"163";"2,1357442";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Trafic de stupéfiants";"Mis en cause";"70";"0,9171908";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2A004";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"214";"2,8039832";"diff";"76320";"2023";"36362";"2022";NA;NA
+"2B033";"2025";"Violences physiques intrafamiliales";"Victime";"165";"3,5206008";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Violences physiques hors cadre familial";"Victime";"133";"2,8378177";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Violences sexuelles";"Victime";"55";"1,1735336";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Vols avec armes";"Infraction";NA;NA;"ndiff";"46867";"2023";"21381";"2022";"0,5000000";"0,0541177"
+"2B033";"2025";"Vols violents sans arme";"Infraction";"17";"0,3627286";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Vols sans violence contre des personnes";"Victime entendue";"256";"5,4622656";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Cambriolages de logement";"Infraction";"26";"1,2160512";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Vols de véhicule";"Véhicule";"105";"2,2403824";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Vols dans les véhicules";"Véhicule";"62";"1,3228924";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"30";"0,6401092";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Destructions et dégradations volontaires";"Infraction";"411";"8,7694967";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Usage de stupéfiants";"Mis en cause";"182";"3,8833294";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"102";"2,1763714";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Trafic de stupéfiants";"Mis en cause";"36";"0,7681311";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B033";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"173";"3,6912966";"diff";"46867";"2023";"21381";"2022";NA;NA
+"2B049";"2025";"Violences physiques intrafamiliales";"Victime";"13";"4,8435171";"diff";"2684";"2023";"1999";"2022";NA;NA
+"2B049";"2025";"Violences physiques hors cadre familial";"Victime";NA;NA;"ndiff";"2684";"2023";"1999";"2022";"1,3103448";"1,8076014"
+"2B049";"2025";"Violences sexuelles";"Victime";NA;NA;"ndiff";"2684";"2023";"1999";"2022";"1,3417722";"1,3335682"
+"2B049";"2025";"Vols avec armes";"Infraction";"0";"0,0000000";"diff";"2684";"2023";"1999";"2022";NA;NA
+"2B049";"2025";"Vols violents sans arme";"Infraction";NA;NA;"ndiff";"2684";"2023";"1999";"2022";"0,5882353";"0,1518834"
+"2B049";"2025";"Vols sans violence contre des personnes";"Victime entendue";"6";"2,2354694";"diff";"2684";"2023";"1999";"2022";NA;NA
+"2B049";"2025";"Cambriolages de logement";"Infraction";NA;NA;"ndiff";"2684";"2023";"1999";"2022";"0,9673913";"0,9178062"
+"2B049";"2025";"Vols de véhicule";"Véhicule";NA;NA;"ndiff";"2684";"2023";"1999";"2022";"1,2903226";"1,3076311"
+"2B049";"2025";"Vols dans les véhicules";"Véhicule";NA;NA;"ndiff";"2684";"2023";"1999";"2022";"1,4000000";"1,0214046"
+"2B049";"2025";"Vols d'accessoires sur véhicules";"Véhicule";NA;NA;"ndiff";"2684";"2023";"1999";"2022";"1,0166667";"0,6598589"
+"2B049";"2025";"Destructions et dégradations volontaires";"Infraction";"13";"4,8435171";"diff";"2684";"2023";"1999";"2022";NA;NA
+"2B049";"2025";"Usage de stupéfiants";"Mis en cause";NA;NA;"ndiff";"2684";"2023";"1999";"2022";"2,1408451";"2,0169048"
+"2B049";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"0";"0,0000000";"diff";"2684";"2023";"1999";"2022";NA;NA
+"2B049";"2025";"Trafic de stupéfiants";"Mis en cause";"0";"0,0000000";"diff";"2684";"2023";"1999";"2022";NA;NA
+"2B049";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"15";"5,5886736";"diff";"2684";"2023";"1999";"2022";NA;NA
+"2B121";"2025";"Violences physiques intrafamiliales";"Victime";"0";"0,0000000";"diff";"395";"2023";"568";"2022";NA;NA
+"2B121";"2025";"Violences physiques hors cadre familial";"Victime";NA;NA;"ndiff";"395";"2023";"568";"2022";"1,3103448";"1,8076014"
+"2B121";"2025";"Violences sexuelles";"Victime";NA;NA;"ndiff";"395";"2023";"568";"2022";"1,3417722";"1,3335682"
+"2B121";"2025";"Vols avec armes";"Infraction";"0";"0,0000000";"diff";"395";"2023";"568";"2022";NA;NA
+"2B121";"2025";"Vols violents sans arme";"Infraction";"0";"0,0000000";"diff";"395";"2023";"568";"2022";NA;NA
+"2B121";"2025";"Vols sans violence contre des personnes";"Victime entendue";NA;NA;"ndiff";"395";"2023";"568";"2022";"1,2136752";"3,3401548"
+"2B121";"2025";"Cambriolages de logement";"Infraction";NA;NA;"ndiff";"395";"2023";"568";"2022";"0,9673913";"0,9178062"
+"2B121";"2025";"Vols de véhicule";"Véhicule";NA;NA;"ndiff";"395";"2023";"568";"2022";"1,2903226";"1,3076311"
+"2B121";"2025";"Vols dans les véhicules";"Véhicule";NA;NA;"ndiff";"395";"2023";"568";"2022";"1,4000000";"1,0214046"
+"2B121";"2025";"Vols d'accessoires sur véhicules";"Véhicule";NA;NA;"ndiff";"395";"2023";"568";"2022";"1,0166667";"0,6598589"
+"2B121";"2025";"Destructions et dégradations volontaires";"Infraction";NA;NA;"ndiff";"395";"2023";"568";"2022";"1,7682119";"7,7899344"
+"2B121";"2025";"Usage de stupéfiants";"Mis en cause";"0";"0,0000000";"diff";"395";"2023";"568";"2022";NA;NA
+"2B121";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"0";"0,0000000";"diff";"395";"2023";"568";"2022";NA;NA
+"2B121";"2025";"Trafic de stupéfiants";"Mis en cause";"0";"0,0000000";"diff";"395";"2023";"568";"2022";NA;NA
+"2B121";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";NA;NA;"ndiff";"395";"2023";"568";"2022";"1,3973510";"5,1892477"
+"2B134";"2025";"Violences physiques intrafamiliales";"Victime";"11";"3,4045187";"diff";"3231";"2023";"3417";"2022";NA;NA
+"2B134";"2025";"Violences physiques hors cadre familial";"Victime";"14";"4,3330238";"diff";"3231";"2023";"3417";"2022";NA;NA
+"2B134";"2025";"Violences sexuelles";"Victime";"8";"2,4760136";"diff";"3231";"2023";"3417";"2022";NA;NA
+"2B134";"2025";"Vols avec armes";"Infraction";"0";"0,0000000";"diff";"3231";"2023";"3417";"2022";NA;NA
+"2B134";"2025";"Vols violents sans arme";"Infraction";NA;NA;"ndiff";"3231";"2023";"3417";"2022";"0,5882353";"0,1518834"
+"2B134";"2025";"Vols sans violence contre des personnes";"Victime entendue";"17";"5,2615289";"diff";"3231";"2023";"3417";"2022";NA;NA
+"2B134";"2025";"Cambriolages de logement";"Infraction";NA;NA;"ndiff";"3231";"2023";"3417";"2022";"0,9673913";"0,9178062"
+"2B134";"2025";"Vols de véhicule";"Véhicule";NA;NA;"ndiff";"3231";"2023";"3417";"2022";"1,2903226";"1,3076311"
+"2B134";"2025";"Vols dans les véhicules";"Véhicule";NA;NA;"ndiff";"3231";"2023";"3417";"2022";"1,4000000";"1,0214046"
+"2B134";"2025";"Vols d'accessoires sur véhicules";"Véhicule";NA;NA;"ndiff";"3231";"2023";"3417";"2022";"1,0166667";"0,6598589"
+"2B134";"2025";"Destructions et dégradations volontaires";"Infraction";"40";"12,3800681";"diff";"3231";"2023";"3417";"2022";NA;NA
+"2B134";"2025";"Usage de stupéfiants";"Mis en cause";"18";"5,5710306";"diff";"3231";"2023";"3417";"2022";NA;NA
+"2B134";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"12";"3,7140204";"diff";"3231";"2023";"3417";"2022";NA;NA
+"2B134";"2025";"Trafic de stupéfiants";"Mis en cause";NA;NA;"ndiff";"3231";"2023";"3417";"2022";"3,1923077";"1,1603847"
+"2B134";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"21";"6,4995357";"diff";"3231";"2023";"3417";"2022";NA;NA
+"2B242";"2025";"Violences physiques intrafamiliales";"Victime";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,7843137";"3,1064912"
+"2B242";"2025";"Violences physiques hors cadre familial";"Victime";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,3103448";"1,8076014"
+"2B242";"2025";"Violences sexuelles";"Victime";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,3417722";"1,3335682"
+"2B242";"2025";"Vols avec armes";"Infraction";NA;NA;"ndiff";"885";"2023";"1438";"2022";"0,5000000";"0,0541177"
+"2B242";"2025";"Vols violents sans arme";"Infraction";NA;NA;"ndiff";"885";"2023";"1438";"2022";"0,5882353";"0,1518834"
+"2B242";"2025";"Vols sans violence contre des personnes";"Victime entendue";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,2136752";"3,3401548"
+"2B242";"2025";"Cambriolages de logement";"Infraction";NA;NA;"ndiff";"885";"2023";"1438";"2022";"0,9673913";"0,9178062"
+"2B242";"2025";"Vols de véhicule";"Véhicule";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,2903226";"1,3076311"
+"2B242";"2025";"Vols dans les véhicules";"Véhicule";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,4000000";"1,0214046"
+"2B242";"2025";"Vols d'accessoires sur véhicules";"Véhicule";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,0166667";"0,6598589"
+"2B242";"2025";"Destructions et dégradations volontaires";"Infraction";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,7682119";"7,7899344"
+"2B242";"2025";"Usage de stupéfiants";"Mis en cause";NA;NA;"ndiff";"885";"2023";"1438";"2022";"2,1408451";"2,0169048"
+"2B242";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,8378378";"0,8664849"
+"2B242";"2025";"Trafic de stupéfiants";"Mis en cause";NA;NA;"ndiff";"885";"2023";"1438";"2022";"3,1923077";"1,1603847"
+"2B242";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";NA;NA;"ndiff";"885";"2023";"1438";"2022";"1,3973510";"5,1892477"
+"55039";"2025";"Violences physiques intrafamiliales";"Victime";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Violences physiques hors cadre familial";"Victime";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Violences sexuelles";"Victime";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Vols avec armes";"Infraction";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Vols violents sans arme";"Infraction";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Vols sans violence contre des personnes";"Victime entendue";NA;NA;"ndiff";"0";"2023";"0";"2022";"0,8361775";"2,6702415"
+"55039";"2025";"Cambriolages de logement";"Infraction";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Vols de véhicule";"Véhicule";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Vols dans les véhicules";"Véhicule";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Destructions et dégradations volontaires";"Infraction";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Usage de stupéfiants";"Mis en cause";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Trafic de stupéfiants";"Mis en cause";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"55039";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"0";NA;"diff";"0";"2023";"0";"2022";NA;NA
+"75056";"2025";"Violences physiques intrafamiliales";"Victime";"6259";"2,9751238";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Violences physiques hors cadre familial";"Victime";"11095";"5,2738454";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Violences sexuelles";"Victime";"6320";"3,0041193";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Vols avec armes";"Infraction";"393";"0,1868068";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Vols violents sans arme";"Infraction";"7268";"3,4547371";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Vols sans violence contre des personnes";"Victime entendue";"94924";"45,1207304";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Cambriolages de logement";"Infraction";"7072";"5,0545976";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Vols de véhicule";"Véhicule";"3648";"1,7340233";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Vols dans les véhicules";"Véhicule";"13902";"6,6081117";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"2065";"0,9815674";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Destructions et dégradations volontaires";"Infraction";"18877";"8,9729049";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Usage de stupéfiants";"Mis en cause";"28485";"13,5399267";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"21176";"10,0657008";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Trafic de stupéfiants";"Mis en cause";"5570";"2,6476178";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75056";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"25014";"11,8900378";"diff";"2103778";"2023";"1399122";"2022";NA;NA
+"75104";"2025";"Violences physiques intrafamiliales";"Victime";"85";"3,1099078";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Violences physiques hors cadre familial";"Victime";"182";"6,6588614";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Violences sexuelles";"Victime";"123";"4,5002195";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Vols avec armes";"Infraction";NA;NA;"ndiff";"27332";"2023";"23031";"2022";"4,5000000";"0,1052705"
+"75104";"2025";"Vols violents sans arme";"Infraction";"134";"4,9026782";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Vols sans violence contre des personnes";"Victime entendue";"2542";"93,0045368";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Cambriolages de logement";"Infraction";"133";"5,7749062";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Vols de véhicule";"Véhicule";"38";"1,3903117";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Vols dans les véhicules";"Véhicule";"223";"8,1589346";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"26";"0,9512659";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Destructions et dégradations volontaires";"Infraction";"386";"14,1226401";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Usage de stupéfiants";"Mis en cause";"501";"18,3301624";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"420";"15,3666032";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Trafic de stupéfiants";"Mis en cause";"42";"1,5366603";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75104";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"617";"22,5742719";"diff";"27332";"2023";"23031";"2022";NA;NA
+"75108";"2025";"Violences physiques intrafamiliales";"Victime";"96";"2,7182377";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Violences physiques hors cadre familial";"Victime";"510";"14,4406377";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Violences sexuelles";"Victime";"304";"8,6077526";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Vols avec armes";"Infraction";"18";"0,5096696";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Vols violents sans arme";"Infraction";"253";"7,1636889";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Vols sans violence contre des personnes";"Victime entendue";"5095";"144,2648017";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Cambriolages de logement";"Infraction";"242";"8,8328051";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Vols de véhicule";"Véhicule";"122";"3,4544270";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Vols dans les véhicules";"Véhicule";"662";"18,7445140";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"76";"2,1519382";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Destructions et dégradations volontaires";"Infraction";"662";"18,7445140";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Usage de stupéfiants";"Mis en cause";"2321";"65,7190588";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"2116";"59,9144888";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Trafic de stupéfiants";"Mis en cause";"118";"3,3411671";"diff";"35317";"2023";"27398";"2022";NA;NA
+"75108";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"751";"21,2645468";"diff";"35317";"2023";"27398";"2022";NA;NA
+"93015";"2025";"Violences physiques intrafamiliales";"Victime";"16";"3,0917874";"diff";"5175";"2023";"2116";"2022";NA;NA
+"93015";"2025";"Violences physiques hors cadre familial";"Victime";"5";"0,9661836";"diff";"5175";"2023";"2116";"2022";NA;NA
+"93015";"2025";"Violences sexuelles";"Victime";NA;NA;"ndiff";"5175";"2023";"2116";"2022";"7,6666667";"1,1218418"
+"93015";"2025";"Vols avec armes";"Infraction";NA;NA;"ndiff";"5175";"2023";"2116";"2022";"2,8000000";"0,1121094"
+"93015";"2025";"Vols violents sans arme";"Infraction";NA;NA;"ndiff";"5175";"2023";"2116";"2022";"3,3333333";"0,4877573"
+"93015";"2025";"Vols sans violence contre des personnes";"Victime entendue";"26";"5,0241546";"diff";"5175";"2023";"2116";"2022";NA;NA
+"93015";"2025";"Cambriolages de logement";"Infraction";"16";"7,5613748";"diff";"5175";"2023";"2116";"2022";NA;NA
+"93015";"2025";"Vols de véhicule";"Véhicule";"13";"2,5120773";"diff";"5175";"2023";"2116";"2022";NA;NA
+"93015";"2025";"Vols dans les véhicules";"Véhicule";"10";"1,9323671";"diff";"5175";"2023";"2116";"2022";NA;NA
+"93015";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"12";"2,3188406";"diff";"5175";"2023";"2116";"2022";NA;NA
+"93015";"2025";"Destructions et dégradations volontaires";"Infraction";"44";"8,5024155";"diff";"5175";"2023";"2116";"2022";NA;NA
+"93015";"2025";"Usage de stupéfiants";"Mis en cause";"8";"1,5458937";"diff";"5175";"2023";"2116";"2022";NA;NA
+"93015";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";NA;NA;"ndiff";"5175";"2023";"2116";"2022";"22,3333333";"1,7185656"
+"93015";"2025";"Trafic de stupéfiants";"Mis en cause";NA;NA;"ndiff";"5175";"2023";"2116";"2022";"4,6666667";"0,4454201"
+"93015";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"31";"5,9903382";"diff";"5175";"2023";"2116";"2022";NA;NA
+"97101";"2025";"Violences physiques intrafamiliales";"Victime";"383";"7,5017138";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Violences physiques hors cadre familial";"Victime";"490";"9,5974929";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Violences sexuelles";"Victime";"119";"2,3308197";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Vols avec armes";"Infraction";"143";"2,8009010";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Vols violents sans arme";"Infraction";"91";"1,7823915";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Vols sans violence contre des personnes";"Victime entendue";"502";"9,8325335";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Cambriolages de logement";"Infraction";"217";"6,8572818";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Vols de véhicule";"Véhicule";"191";"3,7410636";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Vols dans les véhicules";"Véhicule";"309";"6,0522965";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Vols d'accessoires sur véhicules";"Véhicule";"91";"1,7823915";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Destructions et dégradations volontaires";"Infraction";"591";"11,5757516";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Usage de stupéfiants";"Mis en cause";"235";"4,6028792";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Usage de stupéfiants (AFD)";"Mis en cause";"142";"2,7813143";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Trafic de stupéfiants";"Mis en cause";"59";"1,1556165";"diff";"51055";"2023";"31645";"2022";NA;NA
+"97101";"2025";"Escroqueries et fraudes aux moyens de paiement";"Victime";"290";"5,6801489";"diff";"51055";"2023";"31645";"2022";NA;NA

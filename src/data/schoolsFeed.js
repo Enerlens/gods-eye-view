@@ -80,10 +80,28 @@
  * decision — and given their own band so the legend names them instead of
  * letting them pass as schools.
  *
+ * ── Trap 6: the second attribute join, and it covers two thirds ────────────
+ * The roll is not the only thing the register does not hold. The DEPP's
+ * *indice de position sociale* is published in four further files, keyed on
+ * the same UAI, and it is joined here the same way — see `ipsFeed.js`, which
+ * holds the four datasets, their four DIFFERENT newest rentrées, and the
+ * reasons an IPS is not a number you may default.
+ *
+ * The two joins fail differently and the site says which. A missing roll is
+ * one file not covering one establishment. A missing IPS is **62 857 drawn
+ * schools that could carry one against 40 529 with a published index
+ * (64.5%)** — a third of the map, and a third that must read as "not
+ * published" and never as average. `site.ips` therefore has three shapes and
+ * they are not interchangeable: absent (this kind of establishment has no IPS
+ * at all — a rectorat, a CIO), `null` (the index was consulted and has no row)
+ * and a record (which may itself say the DEPP withheld the value).
+ *
  * Dependency-free and side-effect-free (no Cesium, no DOM) so it runs
  * identically in the browser, in the Vite dev-server proxy, and under
  * `node --test`.
  */
+
+import { IPS_UNAVAILABLE, ipsKindForType } from './ipsFeed.js';
 
 /** Opendatasoft dataset id backing this layer. */
 export const SCHOOLS_DATASET = 'fr-en-annuaire-education';
@@ -421,6 +439,14 @@ export const SCHOOLS_OPEN_WHERE = 'etat="OUVERT" AND position is not null';
  * @param {object} options
  * @param {Array<object>} options.records Rows as Opendatasoft returned them.
  * @param {Map<string, number>|object} [options.rolls] UAI → pupils.
+ * @param {Map<string, object>|object} [options.ips] UAI → IPS record, from
+ *   `indexIps`. Omitted entirely — not passed as an empty map — when the
+ *   caller did not consult the index, so an old cached payload and a payload
+ *   that found nothing can never be confused.
+ * @param {?string} [options.ipsStatus] `'ok'`, `'partial'` or `'unavailable'`.
+ * @param {Array<string>} [options.ipsMissing] IPS kinds whose upstream file did
+ *   not load. Schools of those kinds are marked unavailable rather than
+ *   unpublished — the difference is the whole of the degradation story.
  * @param {?number} [options.totalCount] The portal's own count for the same
  *   box, used only to prove the answer was not silently capped.
  * @param {string} [options.source]
@@ -428,12 +454,26 @@ export const SCHOOLS_OPEN_WHERE = 'etat="OUVERT" AND position is not null';
  *   complete:boolean, dropped:number, levels:object, source:string}}
  */
 export function projectSchoolSites({
-  records, rolls = null, totalCount = null, source = SCHOOLS_SOURCE,
+  records, rolls = null, ips = null, ipsStatus = null, ipsMissing = null,
+  totalCount = null, source = SCHOOLS_SOURCE,
 } = {}) {
   const rows = Array.isArray(records) ? records : [];
   const roll = rolls instanceof Map
     ? rolls
     : new Map(Object.entries(rolls || {}));
+
+  const ipsIndex = ips instanceof Map
+    ? ips
+    : (ips ? new Map(Object.entries(ips)) : null);
+  const ipsOff = new Set(Array.isArray(ipsMissing) ? ipsMissing : []);
+  const ipsConsulted = Boolean(ipsIndex) || ipsStatus === 'unavailable';
+  // The box's own coverage, over DISTINCT UAI: the register publishes 70 of
+  // them twice nationally and the layer draws one dot for each, so counting
+  // rows would put a rate over a population the map does not show.
+  const ipsCounted = new Set();
+  let ipsEligible = 0;
+  let ipsJoined = 0;
+  let ipsValued = 0;
 
   const sites = [];
   const levels = Object.fromEntries(SCHOOL_LEVELS.map((level) => [level, 0]));
@@ -459,7 +499,37 @@ export function projectSchoolSites({
     }
     levels[level] += 1;
 
-    sites.push({
+    // `undefined` — and therefore no `ips` key at all — is a THIRD state and
+    // it is the common one: a médico-social, a rectorat or a CIO is not a
+    // school the DEPP indexes, and its card must say nothing rather than
+    // report a gap that was never a gap.
+    let ipsAttribute;
+    const ipsKind = ipsConsulted ? ipsKindForType(row?.type_etablissement) : null;
+    const ipsRecord = ipsConsulted && uai ? (ipsIndex?.get(uai) || null) : null;
+    // In scope if the register types it as something IPS covers, OR if the
+    // DEPP published an index for it regardless — 7 establishments nationally
+    // carry an index under a `type_etablissement` the register left null, and
+    // a card that stayed silent about a published index would be the exact
+    // failure this join exists to prevent.
+    if (ipsKind || ipsRecord) {
+      const off = ipsStatus === 'unavailable' || (ipsKind && ipsOff.has(ipsKind));
+      const record = off ? null : ipsRecord;
+      ipsAttribute = off ? IPS_UNAVAILABLE : record;
+      // `eligible` counts what COULD carry an index and is true whether or not
+      // the file loaded — it is the denominator the national rollup reports on
+      // the same terms, and zeroing it on the degraded path would make the two
+      // routes mean different things by the same key.
+      if (!uai || !ipsCounted.has(uai)) {
+        if (uai) ipsCounted.add(uai);
+        ipsEligible += 1;
+        if (record) {
+          ipsJoined += 1;
+          if (record.value !== null) ipsValued += 1;
+        }
+      }
+    }
+
+    const site = {
       id: uai || schoolSiteKey(lat, lon),
       uai,
       lat,
@@ -488,7 +558,9 @@ export function projectSchoolSites({
         segpa: parseSchoolFlag(row?.segpa),
         apprentissage: parseSchoolFlag(row?.apprentissage),
       },
-    });
+    };
+    if (ipsAttribute !== undefined) site.ips = ipsAttribute;
+    sites.push(site);
   }
 
   // The portal's own count for the same box. If it exceeds what arrived, the
@@ -505,6 +577,18 @@ export function projectSchoolSites({
     levels,
     pupils,
     withRoll,
+    // Null when the index was never consulted — an older cached payload, or a
+    // caller that only wanted the register. A zeroed block would read as
+    // "nothing in this box has an IPS", which is a different claim.
+    ips: ipsConsulted
+      ? {
+        eligible: ipsEligible,
+        joined: ipsJoined,
+        valued: ipsValued,
+        status: ipsStatus || 'ok',
+        missing: [...ipsOff],
+      }
+      : null,
     source,
     dataset: SCHOOLS_DATASET,
   };

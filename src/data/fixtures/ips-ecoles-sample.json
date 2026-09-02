@@ -1,0 +1,30 @@
+[
+  {
+    "uai": "0010093W",
+    "nom_de_l_etablissement": "ECOLE PRIMAIRE PRIVEE SAINTE MARIE",
+    "ips": "119.5",
+    "ips_national": "105.8",
+    "ips_departemental": "108.7"
+  },
+  {
+    "uai": "0010108M",
+    "nom_de_l_etablissement": "ECOLE PRIMAIRE",
+    "ips": "NS",
+    "ips_national": "105.8",
+    "ips_departemental": "108.7"
+  },
+  {
+    "uai": "0930327A",
+    "nom_de_l_etablissement": "ECOLE ELEMENTAIRE ALBERT CAMUS",
+    "ips": "72",
+    "ips_national": "105.8",
+    "ips_departemental": "94.9"
+  },
+  {
+    "uai": "0070945P",
+    "nom_de_l_etablissement": "ECOLE PRIMAIRE PRIVEE SACRE COEUR",
+    "ips": "109.8",
+    "ips_national": "105.8",
+    "ips_departemental": "103.9"
+  }
+]

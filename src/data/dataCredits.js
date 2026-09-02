@@ -435,6 +435,77 @@ export const DATA_CREDITS = [
       + 'file can place are reported rather than invented.',
   },
   {
+    key: 'comptages-fr',
+    html:
+      'Paris road counts: <em>Comptages routiers &mdash; donn&eacute;es trafic issues des capteurs '
+      + 'permanents</em>, published by the '
+      + '<a href="https://opendata.paris.fr/explore/dataset/comptages-routiers-permanents/" target="_blank" rel="noopener">Ville de Paris</a> '
+      + '(<a href="http://opendatacommons.org/licenses/odbl/" target="_blank" rel="noopener">Open Database License, ODbL</a>). '
+      + 'The layer draws the last COMPLETE local Monday&ndash;Sunday week, discovered from the '
+      + 'dataset&rsquo;s own newest hour, because the feed is a nightly batch that lands the day '
+      + 'before yesterday &mdash; it is never presented as live. Geometry and street names are taken '
+      + 'from the measurement export itself and not from '
+      + '<em>referentiel-comptages-routiers</em>, which publishes 3 739 rows for only 3 348 distinct '
+      + 'arcs. An arc that measured nothing is drawn as silent and is never given the bottom of the '
+      + 'flow ramp, which would claim a count that was not made.',
+  },
+  {
+    key: 'delinquance-fr',
+    html:
+      'French recorded crime: <em>Bases statistiques communale, d&eacute;partementale et r&eacute;gionale '
+      + 'de la d&eacute;linquance enregistr&eacute;e par la police et la gendarmerie</em>, published by the '
+      + '<a href="https://www.data.gouv.fr/datasets/bases-statistiques-communale-departementale-et-regionale-de-la-delinquance-enregistree-par-la-police-et-la-gendarmerie-nationales/" target="_blank" rel="noopener">SSMSI &mdash; Service statistique minist&eacute;riel de la s&eacute;curit&eacute; int&eacute;rieure</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
+      + 'This is <strong>recorded</strong> crime &mdash; what police and gendarmerie registered, which tracks '
+      + 'reporting rates and force presence as much as offending. The publisher WITHHOLDS any commune count '
+      + 'small enough to identify someone: measured on the 2025 slice, that is 9.0% of the 34 920 communes '
+      + 'for vols avec armes and <strong>69.8% for escroqueries</strong>. A withheld cell arrives carrying no '
+      + 'number at all, is excluded from every quantile, and is never drawn as a zero or as a low value.',
+  },
+  {
+    key: 'anfr-fr',
+    html:
+      "&laquo;&nbsp;Observatoire des r&eacute;seaux mobiles 2G/3G/4G/5G&nbsp;&raquo; &mdash; <a href=\"https://data.anfr.fr/\" target=\"_blank\" rel=\"noopener\">Agence nationale des fr&eacute;quences (data.anfr.fr)</a>, &eacute;dition hebdomadaire du 27/08/2026, 826&nbsp;418 lignes sur 72&nbsp;700 supports. Nature des supports&nbsp;: &laquo;&nbsp;Donn&eacute;es sur les installations radio&eacute;lectriques de plus de 5 watts&nbsp;&raquo; &mdash; <a href=\"https://www.data.gouv.fr/fr/datasets/donnees-sur-les-installations-radioelectriques-de-plus-de-5-watts-1/\" target=\"_blank\" rel=\"noopener\">ANFR via data.gouv.fr</a>. Fiche support, bandes et mesures d'exposition&nbsp;: <a href=\"https://www.cartoradio.fr/\" target=\"_blank\" rel=\"noopener\">Cartoradio (ANFR)</a>. <a href=\"https://github.com/etalab/licence-ouverte/blob/master/LO.md\" target=\"_blank\" rel=\"noopener\">Licence Ouverte 2.0</a>. Hors champ par la loi&nbsp;: Aviation Civile, minist&egrave;res de la D&eacute;fense et de l'Int&eacute;rieur.",
+  },
+  {
+    key: 'fraicheur-fr',
+    html:
+      "Paris cool islands, cool green spaces and trees: <em>Îlots de fraîcheur — équipements et activités</em>, <em>Îlots de fraîcheur — espaces verts frais</em> and <em>Les arbres</em>, published by the <a href=\"https://opendata.paris.fr/explore/dataset/ilots-de-fraicheur-espaces-verts-frais/\" target=\"_blank\" rel=\"noopener\">Ville de Paris</a> (Direction de la Transition &Eacute;cologique et du Climat; Direction des Espaces Verts et de l&rsquo;Environnement), and drinking fountains: <em>Fontaines &agrave; boire</em>, published separately by <a href=\"https://opendata.paris.fr/explore/dataset/fontaines-a-boire/\" target=\"_blank\" rel=\"noopener\">Eau de Paris</a> &mdash; all four under the <a href=\"http://opendatacommons.org/licenses/odbl/\" target=\"_blank\" rel=\"noopener\">Open Database License (ODbL)</a>. Green spaces are coloured by <code>indice_veget_sup8m_2024</code>, the share of ground under vegetation taller than 8 m at the 2024 survey; the register also publishes <code>p_vegetation_h</code>, a DIFFERENT number on 903 of the 953 rows carrying both, and the card shows both rather than calling either a correction. Opening hours are drawn from the seven weekday columns and are always shown with the validity window they came from, because 682 of the 984 green spaces publish a window that has already expired. A tree whose <code>hauteurenm</code> is 0 is drawn as unmeasured, never as short.",
+  },
+  {
+    key: 'sitadel-fr',
+    html:
+      "'French building and demolition permits: <em>Sitadel — liste des autorisations d\\u2019urbanisme cr\\u00e9ant des logements</em> (1 917 260 permits) and <em>liste des permis de d\\u00e9molir</em> (202 895), \\u00a9 SDES / CGDD, served through ' +\n      '<a href=\"https://www.data.gouv.fr/fr/datasets/689c42fa521ccf80ce954f83/\" target=\"_blank\" rel=\"noopener\">data.gouv.fr</a> and the ministry\\u2019s DiDo API ' +\n      '(<a href=\"https://github.com/etalab/licence-ouverte/blob/master/LO.md\" target=\"_blank\" rel=\"noopener\">Licence Ouverte</a>). ' +\n      'The file publishes NO coordinate \\u2014 94 columns on the housing register, 33 on the demolitions, and <code>geoFields: [\"REG\",\"DEP\"]</code> on both. ' +\n      'Every position drawn here was computed by joining the published cadastral reference to <em>Plan Cadastral Informatis\\u00e9 (PCI vecteur)</em>, ' +\n      '&copy; Direction g&eacute;n&eacute;rale des Finances publiques, via ' +\n      '<a href=\"https://cadastre.data.gouv.fr/datasets/cadastre-etalab\" target=\"_blank\" rel=\"noopener\">cadastre.data.gouv.fr</a> (Licence Ouverte), ' +\n      'with the commune resolved by <a href=\"https://geo.api.gouv.fr/decoupage-administratif\" target=\"_blank\" rel=\"noopener\">geo.api.gouv.fr</a>. ' +\n      'A permit whose reference does not resolve to exactly one parcel is COUNTED and never placed: measured over six communes on 2026-09-02, ' +\n      '9 744 of 21 271 permits (45,8 %) could be positioned. Each card publishes its own commune\\u2019s rate and its year\\u2019s.'",
+  },
+  {
+    key: 'idfm-frequency',
+    html:
+      "Paris-region service frequency (average departures per stop, per line and per one-hour band): <a href=\"https://data.iledefrance-mobilites.fr/explore/dataset/offre_hebdomadaire_moyenne_hors_vacances/\" target=\"_blank\" rel=\"noopener\">&Icirc;le-de-France Mobilit&eacute;s &mdash; Offre hebdomadaire moyenne hors vacances</a> (<a href=\"https://www.etalab.gouv.fr/wp-content/uploads/2017/04/ETALAB-Licence-Ouverte-v2.0.pdf\" target=\"_blank\" rel=\"noopener\">Licence Ouverte v2.0 &mdash; Etalab</a>). 1 311 578 rows, reference year 2025, edition 2026-08-18. A DIFFERENT licence from the ODbL 1.0 stop geometry credited above: the frequency figures are Licence Ouverte and carry no share-alike. D&eacute;partement outlines: <a href=\"https://geo.api.gouv.fr/decoupage-administratif\" target=\"_blank\" rel=\"noopener\">IGN / API D&eacute;coupage administratif</a>.",
+  },
+  {
+    key: 'bruit-fr',
+    html:
+      "French airport noise plans: <em>Plan d&rsquo;exposition au bruit</em> and <em>Plan de g&ecirc;ne sonore</em>, &copy; Direction g&eacute;n&eacute;rale de l&rsquo;Aviation civile, served through the <a href=\"https://data.geopf.fr/wms-v/ows?SERVICE=WMS&amp;REQUEST=GetCapabilities&amp;VERSION=1.3.0\" target=\"_blank\" rel=\"noopener\">G&eacute;oplateforme (IGN)</a> — <code>&lt;Fees&gt;none&lt;/Fees&gt;</code> under the <a href=\"https://cartes.gouv.fr/cgu\" target=\"_blank\" rel=\"noopener\">cartes.gouv.fr CGU</a>; the service declares no <code>MD_LegalConstraints</code>, so no open licence is claimed here. AIRCRAFT ONLY: the EU-directive strategic noise map (road, rail, industry) is not published on the G&eacute;oplateforme at all. Thresholds are printed in the index the arr&ecirc;t&eacute; is actually written in — Lden dB(A) from 2002, and the dimensionless <em>indice psophique</em> before it, which is NOT decibels — and outlines are generalised by the service to 1:39&nbsp;757, not surveyed.",
+  },
+  {
+    key: 'amenities-fr',
+    html:
+      "&laquo;&nbsp;Base permanente des &eacute;quipements 2025 &mdash; &Eacute;quipements g&eacute;olocalis&eacute;s&nbsp;&raquo;, parue le 04/08/2026 &mdash; <a href=\"https://www.insee.fr/fr/statistiques/8217525\" target=\"_blank\" rel=\"noopener\">Insee</a>, 2&nbsp;921&nbsp;770 lignes sur 95 colonnes, <a href=\"https://github.com/etalab/licence-ouverte/blob/master/LO.md\" target=\"_blank\" rel=\"noopener\">Licence Ouverte</a>. Fichier actualis&eacute; mensuellement pour tenir compte des oppositions &agrave; la diffusion sur sirene.fr&nbsp;; certaines donn&eacute;es nominatives, d'adressage et de g&eacute;olocalisation sont anonymis&eacute;es (arr&ecirc;t&eacute; du 3 janvier 2024). Pharmacies et h&ocirc;pitaux&nbsp;: &laquo;&nbsp;R&eacute;exposition des donn&eacute;es Finess&nbsp;&raquo; &mdash; <a href=\"https://www.data.gouv.fr/fr/datasets/reexposition-des-donnees-finess/\" target=\"_blank\" rel=\"noopener\">ARS / Agence du Num&eacute;rique en Sant&eacute;, via data.gouv.fr</a>, extrait du 02/07/2026, 103&nbsp;032 &eacute;tablissements, <a href=\"https://github.com/etalab/licence-ouverte/blob/master/LO.md\" target=\"_blank\" rel=\"noopener\">Licence Ouverte 2.0</a>&nbsp;; g&eacute;ocodage ATLASANTE sur la Base Adresse Nationale.",
+  },
+  {
+    key: 'ips-fr',
+    html:
+      'French school social-position index (IPS): <em>Indice de position sociale</em>, published by the ' +
+      '<a href="https://data.education.gouv.fr/explore/?q=ips&sort=modified" target="_blank" rel="noopener">DEPP &mdash; Minist&egrave;re charg&eacute; de l&rsquo;&Eacute;ducation nationale</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>) ' +
+      'in four datasets read at four different rentr&eacute;es &mdash; &eacute;coles at 2024-2025, coll&egrave;ges, lyc&eacute;es and EREA at 2025-2026. ' +
+      'Joined onto <code>schools-fr</code> on the UAI and shown only on a school&rsquo;s card: it changes neither the colour, ' +
+      'which is the level, nor the size, which is the roll. It reaches 40&nbsp;529 of the 62&nbsp;857 drawn establishments that ' +
+      'could carry an index (64.5%); the rest say <em>IPS non publi&eacute;</em>, including the 2&nbsp;504 the DEPP itself marks ' +
+      '<code>NS</code> as too small to publish. A lyc&eacute;e&rsquo;s <code>ips_etab</code> covers the whole establishment, so its card ' +
+      'also names the voies the file publishes apart.',
+  },
+  {
     key: 'petite-enfance-fr',
     html:
       'French childcare coverage: <em>Taux de couverture d&rsquo;accueil du jeune enfant</em> and '

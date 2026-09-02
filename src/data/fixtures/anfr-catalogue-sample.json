@@ -1,0 +1,956 @@
+{
+ "success": true,
+ "result": {
+  "count": 3,
+  "results": [
+   {
+    "author": "",
+    "author_email": "",
+    "creator_user_id": "b174327f-fde4-4518-9d00-3fec6d659778",
+    "id": "dd11fac6-4531-4a27-9c8c-a3a9e4ec2107",
+    "isopen": false,
+    "license_id": "licence-ouverte-v2-etalab",
+    "license_title": "Licence Ouverte v2.0 (Etalab)",
+    "license_url": "https://www.etalab.gouv.fr/wp-content/uploads/2017/04/ETALAB-Licence-Ouverte-v2.0.pdf",
+    "maintainer": "",
+    "maintainer_email": "",
+    "metadata_created": "2023-03-01T10:20:16.078620",
+    "metadata_modified": "2023-06-29T15:04:18.512365",
+    "name": "observatoire_2g_3g_4g",
+    "notes": "Données sur les installations des réseaux mobiles télécoms mises à jour hebdomadairement.",
+    "num_resources": 5,
+    "num_tags": 7,
+    "organization": {
+     "id": "d082fa89-3f5f-4250-a9a0-3729d9c62a55",
+     "name": "agence_nationale_des_frequences",
+     "title": "Agence nationale des fréquences",
+     "type": "organization",
+     "description": "",
+     "image_url": "https://dev.anfrd.data4citizen.com/sites/default/files/organization/logoANFRheader3_0.png",
+     "created": "2023-03-01T10:14:38.913939",
+     "is_organization": true,
+     "approval_status": "approved",
+     "state": "active"
+    },
+    "owner_org": "d082fa89-3f5f-4250-a9a0-3729d9c62a55",
+    "private": false,
+    "state": "active",
+    "title": "Données sur les réseaux mobiles",
+    "type": "dataset",
+    "url": "",
+    "version": "",
+    "extras": [
+     {
+      "key": "FTP_API",
+      "value": "FTP"
+     },
+     {
+      "key": "LinkedDataSet",
+      "value": "[\"\"]"
+     },
+     {
+      "key": "Picto",
+      "value": ""
+     },
+     {
+      "key": "allow_data_inputs",
+      "value": "0"
+     },
+     {
+      "key": "data_interop",
+      "value": "0"
+     },
+     {
+      "key": "data_rgpd",
+      "value": "false"
+     },
+     {
+      "key": "dataset-model",
+      "value": "[]"
+     },
+     {
+      "key": "dataset_not_visible",
+      "value": "0"
+     },
+     {
+      "key": "dataset_size",
+      "value": "516.6672420501709"
+     },
+     {
+      "key": "date_dataset",
+      "value": ""
+     },
+     {
+      "key": "date_deposit",
+      "value": "2023-11-24"
+     },
+     {
+      "key": "date_modification",
+      "value": "2026-08-27"
+     },
+     {
+      "key": "date_modification_data",
+      "value": "2026-08-27T18:17:01+00:00"
+     },
+     {
+      "key": "date_moissonnage_last_modification",
+      "value": "2023-06-29T15:04:18.512365"
+     },
+     {
+      "key": "default_visu",
+      "value": "0"
+     },
+     {
+      "key": "disable_export_type",
+      "value": "{\"flat_formats\":false,\"geographic_formats\":false,\"alternative_formats\":false,\"data_analysis_formats\":false,\"metadata\":false}"
+     },
+     {
+      "key": "donnees_source",
+      "value": ""
+     },
+     {
+      "key": "edition_security",
+      "value": "{\"roles\":[\"administrator\"],\"users\":[\"*78*\",\"*79*\",\"*80*\",\"*1*\",\"*1602*\",\"*1608*\"]}"
+     },
+     {
+      "key": "encoding",
+      "value": "UTF-8"
+     },
+     {
+      "key": "extent-begin",
+      "value": "2024-03-22"
+     },
+     {
+      "key": "features",
+      "value": "timeserie,analyze,geo,calendar,api,table,map_data"
+     },
+     {
+      "key": "file_csv",
+      "value": "https://data.anfr.fr/sites/default/files/dataset/20260827182212_observatoireod_20260827.csv"
+     },
+     {
+      "key": "file_geojson",
+      "value": ""
+     },
+     {
+      "key": "file_xlsx",
+      "value": "https://data.anfr.fr//sites/default/files/dataset/20260827182212_6a9080543e890.xlsx"
+     },
+     {
+      "key": "frequency",
+      "value": "weekly"
+     },
+     {
+      "key": "frequency-of-update",
+      "value": "weekly"
+     },
+     {
+      "key": "img_backgr",
+      "value": "https://data.anfr.fr/sites/default/files/datasets/shutterstock_2135915711.jpg"
+     },
+     {
+      "key": "map_color",
+      "value": ""
+     },
+     {
+      "key": "nb_download",
+      "value": "00014894"
+     },
+     {
+      "key": "nb_views",
+      "value": "00178463"
+     },
+     {
+      "key": "not_visible_in_chart_interface",
+      "value": "0"
+     },
+     {
+      "key": "not_visible_in_map_interface",
+      "value": "0"
+     },
+     {
+      "key": "producer",
+      "value": ""
+     },
+     {
+      "key": "records_count",
+      "value": "{\"88ef0887-6b0f-4d3f-8545-6d64c8f597da\":\"0000826418\"}"
+     },
+     {
+      "key": "themes",
+      "value": "[]"
+     },
+     {
+      "key": "tooltip",
+      "value": "{\"resources\":[{\"type\":\"html\",\"resource_id\":\"88ef0887-6b0f-4d3f-8545-6d64c8f597da\",\"value\":\"<div style=\\\"text-align: center;\\\" id=\\\"infobulle\\\" class=\\\"tooltipcustom\\\">\\r\\n\\t<img style=\\\"width: 64px;\\\" ng-if=\\\"record.fields.adm_lb_nom == 'FREE MOBILE'\\\" src=\\\"\\/sites\\/default\\/files\\/operateurs\\/free.jpg\\\"\\/>\\r\\n\\t<img style=\\\"width: 64px;\\\" ng-if=\\\"record.fields.adm_lb_nom == 'SFR'\\\" src=\\\"\\/sites\\/default\\/files\\/operateurs\\/sfr.svg\\\"\\/>\\r\\n\\t<img style=\\\"width: 64px;\\\" ng-if=\\\"record.fields.adm_lb_nom == 'ORANGE'\\\" src=\\\"\\/sites\\/default\\/files\\/operateurs\\/orange.png\\\"\\/>\\r\\n\\t<img style=\\\"width: 64px;\\\" ng-if=\\\"record.fields.adm_lb_nom == 'BOUYGUES TELECOM'\\\" src=\\\"\\/sites\\/default\\/files\\/operateurs\\/bouygues.svg\\\"\\/>\\r\\n\\t<h2 ng-if=\\\"['FREE MOBILE', 'SFR', 'ORANGE', 'BOUYGUES TELECOM'].indexOf(record.fields.adm_lb_nom) == -1\\\">{{record.fields.adm_lb_nom}}<\\/h2><br\\/>\\r\\n\\t<ul style=\\\"display: block; list-style-type: none; color: #2c3f56; padding: 0; margin: 0;\\\">\\r\\n\\t\\t<li><strong>Technologie<\\/strong> : {{record.fields.generation}}<\\/li>\\r\\n\\t\\t<li><strong>Syst&#xE8;me<\\/strong> : {{record.fields.emr_lb_systeme}}<\\/li>\\r\\n\\t\\t<li ng-if=\\\"record.fields.emr_dt | isBefore : datetime\\\" ods-datetime=\\\"datetime\\\">\\r\\n\\t\\t\\t<strong>Mise en service d&#xE9;clar&#xE9;e<\\/strong> : {{record.fields.emr_dt | moment:'DD\\/MM\\/YYYY'}}\\r\\n\\t\\t<\\/li>\\r\\n\\t\\t<li ng-if=\\\"!(record.fields.emr_dt | isBefore : datetime) && record.fields.emr_dt\\\" ods-datetime=\\\"datetime\\\">\\r\\n\\t\\t\\t<strong>Mise en service pr&#xE9;vue<\\/strong> : {{record.fields.emr_dt | moment:'DD\\/MM\\/YYYY'}}\\r\\n\\t\\t<\\/li>\\r\\n\\t\\t<li ng-if=\\\"!(record.fields.emr_dt | isBefore : datetime) && !record.fields.emr_dt\\\" ods-datetime=\\\"datetime\\\">\\r\\n\\t\\t\\t<strong>Mise en service non fournie<\\/strong>\\r\\n\\t\\t<\\/li>\\r\\n\\t\\t<li><strong>Coordonn&#xE9;es<\\/strong> : {{record.fields.coord}}<\\/li>\\r\\n\\t\\t<li><strong>ID Support<\\/strong> : {{record.fields.sup_id}}<\\/li>\\r\\n\\t<\\/ul>\\r\\n<\\/div>\"}]}"
+     },
+     {
+      "key": "uploader",
+      "value": "perros"
+     },
+     {
+      "key": "vanilla-hub-id",
+      "value": "1"
+     },
+     {
+      "key": "weight",
+      "value": "0"
+     },
+     {
+      "key": "wfs_link",
+      "value": ""
+     },
+     {
+      "key": "wms_link",
+      "value": ""
+     }
+    ],
+    "resources": [
+     {
+      "cache_last_updated": null,
+      "cache_url": null,
+      "created": "2023-03-01T10:21:11.631452",
+      "datastore_active": true,
+      "description": null,
+      "format": "CSV",
+      "hash": "cbee1e973c85c8f547c37e9165ed25bf",
+      "id": "88ef0887-6b0f-4d3f-8545-6d64c8f597da",
+      "last_modified": "2026-08-27T17:35:15",
+      "metadata_modified": "2026-08-27T17:54:29.306352",
+      "mimetype": "text/csv",
+      "mimetype_inner": null,
+      "name": "observatoireod_20260827.csv",
+      "package_id": "dd11fac6-4531-4a27-9c8c-a3a9e4ec2107",
+      "parent_id": null,
+      "position": 0,
+      "preview": true,
+      "preview_rows": 826418,
+      "resource_type": null,
+      "size": 17871,
+      "state": "active",
+      "total_record_count": 826418,
+      "url_type": "",
+      "uuid": "6a9075538a99a"
+     },
+     {
+      "cache_last_updated": null,
+      "cache_url": null,
+      "created": "2025-12-04T16:00:19.581173",
+      "datastore_active": true,
+      "description": null,
+      "format": "GeoJSON",
+      "hash": "",
+      "id": "c7aa714f-f72c-4929-bd2e-c66146cf0517",
+      "last_modified": "2026-08-27T18:16:57",
+      "metadata_modified": "2026-08-27T18:16:57.875748",
+      "mimetype": "application/json",
+      "mimetype_inner": null,
+      "name": "observatoireod_20260827.geojson",
+      "package_id": "dd11fac6-4531-4a27-9c8c-a3a9e4ec2107",
+      "parent_id": null,
+      "position": 1,
+      "resource_type": null,
+      "size": null,
+      "state": "active",
+      "url_type": "",
+      "uuid": "6a907f193a9ce"
+     },
+     {
+      "cache_last_updated": null,
+      "cache_url": null,
+      "created": "2024-01-08T14:17:50.311472",
+      "datastore_active": true,
+      "description": "",
+      "format": "TXT",
+      "hash": "",
+      "id": "cb10ddd1-c174-4634-8b85-0e868103be53",
+      "last_modified": "2025-10-20T08:09:15",
+      "metadata_modified": "2025-10-20T08:09:16.890345",
+      "mimetype": "text/plain",
+      "mimetype_inner": null,
+      "name": "TPO_ID.txt",
+      "package_id": "dd11fac6-4531-4a27-9c8c-a3a9e4ec2107",
+      "parent_id": null,
+      "position": 2,
+      "resource_type": null,
+      "size": 1507,
+      "state": "active",
+      "url_type": "",
+      "uuid": "68f5ee2b6a081"
+     },
+     {
+      "cache_last_updated": null,
+      "cache_url": null,
+      "created": "2024-01-08T14:18:03.915002",
+      "datastore_active": true,
+      "description": "",
+      "format": "TXT",
+      "hash": "",
+      "id": "a2cf2273-ba30-4c6e-ab0c-2b86f48720bd",
+      "last_modified": "2025-10-20T08:09:39",
+      "metadata_modified": "2025-10-20T08:09:40.520773",
+      "mimetype": "text/plain",
+      "mimetype_inner": null,
+      "name": "NAT_ID.txt",
+      "package_id": "dd11fac6-4531-4a27-9c8c-a3a9e4ec2107",
+      "parent_id": null,
+      "position": 3,
+      "resource_type": null,
+      "size": 775,
+      "state": "active",
+      "url_type": "",
+      "uuid": "68f5ee4358d27"
+     },
+     {
+      "cache_last_updated": null,
+      "cache_url": null,
+      "created": "2026-08-13T18:22:39.189668",
+      "datastore_active": true,
+      "description": null,
+      "dpp_spatial_extent": {
+       "type": "BoundingBox",
+       "coordinates": [
+        [
+         -178.17138888888888,
+         -27.618333333333332
+        ],
+        [
+         168.09833333333333,
+         51.08027777777778
+        ]
+       ]
+      },
+      "format": "GeoJSON",
+      "hash": "",
+      "id": "46d62884-97de-44ec-8491-f240e406a751",
+      "last_modified": null,
+      "metadata_modified": "2026-08-20T17:30:02.432471",
+      "mimetype": "application/json",
+      "mimetype_inner": null,
+      "name": "observatoireod_20260813_simplified.geojson",
+      "package_id": "dd11fac6-4531-4a27-9c8c-a3a9e4ec2107",
+      "position": 4,
+      "resource_type": null,
+      "size": null,
+      "state": "active",
+      "url_type": null
+     }
+    ],
+    "tags": [
+     {
+      "display_name": "2G",
+      "id": "d0e05f31-b674-4e53-9460-a1359a838bec",
+      "name": "2G",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "3G",
+      "id": "0689fb8d-9f53-405b-9de1-706fbc5b61ec",
+      "name": "3G",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "4G",
+      "id": "8041650f-b3f6-40fe-afc6-2208fcc7ee49",
+      "name": "4G",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "5G",
+      "id": "e9b3955f-db35-4f20-bb37-30d3d9dbad98",
+      "name": "5G",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "bandes de fréquences",
+      "id": "492568a6-1d23-4412-a642-76bddaae54e6",
+      "name": "bandes de fréquences",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "opérateurs",
+      "id": "4b1ab4fe-2588-466a-8af2-f7dfc1ec14ed",
+      "name": "opérateurs",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "stations",
+      "id": "bc6ebc8f-716e-42aa-9b38-02d29ecc39dd",
+      "name": "stations",
+      "state": "active",
+      "vocabulary_id": null
+     }
+    ],
+    "groups": [],
+    "relationships_as_subject": [],
+    "relationships_as_object": [],
+    "is_fav": false,
+    "metas": {
+     "dataset_not_visible": 0,
+     "not_visible_in_chart_interface": 0,
+     "not_visible_in_map_interface": 0,
+     "show_cube_tab": 0,
+     "weight": 0,
+     "records_count": 0,
+     "features": [
+      "timeserie",
+      "analyze",
+      "geo",
+      "calendar",
+      "api",
+      "table",
+      "map_data"
+     ],
+     "custom_view": null
+    },
+    "metadata_imported": "2026-09-01T20:39:15.290700",
+    "dataset_modification_date": "2026-08-27T18:17:01+00:00"
+   },
+   {
+    "author": "",
+    "author_email": "",
+    "creator_user_id": "b174327f-fde4-4518-9d00-3fec6d659778",
+    "id": "ad8014ec-f631-450e-a259-799188714ef9",
+    "isopen": false,
+    "license_id": "licence-ouverte-v2-etalab",
+    "license_title": "Licence Ouverte v2.0 (Etalab)",
+    "license_url": "https://www.etalab.gouv.fr/wp-content/uploads/2017/04/ETALAB-Licence-Ouverte-v2.0.pdf",
+    "maintainer": "",
+    "maintainer_email": "",
+    "metadata_created": "2023-03-01T19:31:09.106267",
+    "metadata_modified": "2023-03-10T11:14:10.366101",
+    "name": "das-telephonie-mobile",
+    "notes": "<p>Retrouvez ici toutes les mesures de DAS (débit d’absorption spécifique) réalisées depuis 2012. L’ANFR souhaite ainsi mieux informer le public de son activité de contrôle régulier de l’exposition aux ondes électromagnétiques. Nous publions semestriellement les mesures réalisées sur les appareils disponibles sur le marché français.</p>",
+    "num_resources": 1,
+    "num_tags": 5,
+    "organization": {
+     "id": "d082fa89-3f5f-4250-a9a0-3729d9c62a55",
+     "name": "agence_nationale_des_frequences",
+     "title": "Agence nationale des fréquences",
+     "type": "organization",
+     "description": "",
+     "image_url": "https://dev.anfrd.data4citizen.com/sites/default/files/organization/logoANFRheader3_0.png",
+     "created": "2023-03-01T10:14:38.913939",
+     "is_organization": true,
+     "approval_status": "approved",
+     "state": "active"
+    },
+    "owner_org": "d082fa89-3f5f-4250-a9a0-3729d9c62a55",
+    "private": false,
+    "state": "active",
+    "title": "DAS téléphonie mobile",
+    "type": "dataset",
+    "url": "",
+    "version": "",
+    "extras": [
+     {
+      "key": "DataSecurityPolicy",
+      "value": "{\"enabled\":false,\"columns\":[],\"rows\":[],\"masks\":[]}"
+     },
+     {
+      "key": "FTP_API",
+      "value": "FTP"
+     },
+     {
+      "key": "LinkedDataSet",
+      "value": "[\"\"]"
+     },
+     {
+      "key": "Picto",
+      "value": ""
+     },
+     {
+      "key": "allow_data_inputs",
+      "value": "0"
+     },
+     {
+      "key": "data_interop",
+      "value": "0"
+     },
+     {
+      "key": "data_rgpd",
+      "value": "false"
+     },
+     {
+      "key": "dataset-model",
+      "value": "[]"
+     },
+     {
+      "key": "dataset_not_visible",
+      "value": "0"
+     },
+     {
+      "key": "dataset_size",
+      "value": "0.1423511505126953"
+     },
+     {
+      "key": "date_dataset",
+      "value": ""
+     },
+     {
+      "key": "date_deposit",
+      "value": "2023-11-22"
+     },
+     {
+      "key": "date_modification",
+      "value": "2026-07-31"
+     },
+     {
+      "key": "date_modification_data",
+      "value": "2026-07-31T08:58:53+00:00"
+     },
+     {
+      "key": "date_moissonnage_last_modification",
+      "value": "2023-03-10T11:14:10.366101"
+     },
+     {
+      "key": "default_visu",
+      "value": "0"
+     },
+     {
+      "key": "disable_export_type",
+      "value": "{\"flat_formats\":false,\"geographic_formats\":false,\"alternative_formats\":false,\"data_analysis_formats\":false,\"metadata\":false}"
+     },
+     {
+      "key": "donnees_source",
+      "value": ""
+     },
+     {
+      "key": "edition_security",
+      "value": "{\"roles\":[\"administrator\"],\"users\":[\"*78*\",\"*79*\",\"*80*\",\"*1*\"]}"
+     },
+     {
+      "key": "encoding",
+      "value": "UTF-8"
+     },
+     {
+      "key": "features",
+      "value": "analyze,api,table,raw_data"
+     },
+     {
+      "key": "frequence",
+      "value": ""
+     },
+     {
+      "key": "initial-resources",
+      "value": "[{\"id\":\"ada0f4f9-01c6-4fab-b2db-6e0c8e1a9096\",\"filepath\":\"https:\\/\\/anfrd.data4citizen.com\\/sites\\/default\\/files\\/dataset\\/2025\\/04\\/22\\/ad8014ec-f631-450e-a259-799188714ef9\\/copy_das20250317_utf8.csv\"}]"
+     },
+     {
+      "key": "map_color",
+      "value": ""
+     },
+     {
+      "key": "mention_legales",
+      "value": ""
+     },
+     {
+      "key": "nb_download",
+      "value": "00002703"
+     },
+     {
+      "key": "nb_geo_features",
+      "value": "0"
+     },
+     {
+      "key": "nb_views",
+      "value": "00030207"
+     },
+     {
+      "key": "not_visible_in_chart_interface",
+      "value": "0"
+     },
+     {
+      "key": "not_visible_in_map_interface",
+      "value": "0"
+     },
+     {
+      "key": "producer",
+      "value": ""
+     },
+     {
+      "key": "records_count",
+      "value": "{\"ada0f4f9-01c6-4fab-b2db-6e0c8e1a9096\":\"0000001232\"}"
+     },
+     {
+      "key": "show_cube_tab",
+      "value": "0"
+     },
+     {
+      "key": "themes",
+      "value": "[]"
+     },
+     {
+      "key": "tooltip",
+      "value": "{\"resources\":[{\"type\":\"standard\",\"resource_id\":\"ada0f4f9-01c6-4fab-b2db-6e0c8e1a9096\",\"value\":{\"title\":\"\",\"fields\":\"_id,ref_dossier,marque,modele,date_prelevement,das_tete_norme_nf_en_50360,das_tronc_norme_nf_en_50566,distance_mesure_mm,das_membre_norme_en_50566,reglementation_applicable,das_tronc_a_5mm,das_tronc_au_contact,conformite_aux_normes,rapports\"}}]}"
+     },
+     {
+      "key": "uploader",
+      "value": "SALEMBIER"
+     },
+     {
+      "key": "weight",
+      "value": "0"
+     },
+     {
+      "key": "wfs_link",
+      "value": ""
+     },
+     {
+      "key": "wms_link",
+      "value": ""
+     }
+    ],
+    "resources": [
+     {
+      "cache_last_updated": null,
+      "cache_url": null,
+      "created": "2023-03-01T19:31:14.432330",
+      "datastore_active": true,
+      "description": "das20260731",
+      "format": "CSV",
+      "hash": "dc516ca2c2ca29f5844da26e59b56524",
+      "id": "ada0f4f9-01c6-4fab-b2db-6e0c8e1a9096",
+      "last_modified": "2026-07-31T08:58:50",
+      "metadata_modified": "2026-07-31T08:59:02.407666",
+      "mimetype": "text/csv",
+      "mimetype_inner": null,
+      "name": "das20260731.csv",
+      "package_id": "ad8014ec-f631-450e-a259-799188714ef9",
+      "parent_id": null,
+      "position": 0,
+      "preview": true,
+      "preview_rows": 1232,
+      "resource_type": null,
+      "size": 119147,
+      "state": "active",
+      "total_record_count": 1232,
+      "url_type": "",
+      "uuid": "6a6c63cad44f9"
+     }
+    ],
+    "tags": [
+     {
+      "display_name": "contrôle",
+      "id": "7c743a47-54bb-4dea-9578-db66c21613a0",
+      "name": "contrôle",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "das",
+      "id": "a73787f7-5304-409b-a68b-99f7dbaa2db3",
+      "name": "das",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "exposition aux ondes",
+      "id": "1c67186d-c12c-48c9-99fa-f959a459a579",
+      "name": "exposition aux ondes",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "mesures",
+      "id": "abce5d5d-9241-4586-80ed-ea71677f0033",
+      "name": "mesures",
+      "state": "active",
+      "vocabulary_id": null
+     },
+     {
+      "display_name": "téléphonie",
+      "id": "4d1c6816-dccc-43c7-88d7-76074137208f",
+      "name": "téléphonie",
+      "state": "active",
+      "vocabulary_id": null
+     }
+    ],
+    "groups": [],
+    "relationships_as_subject": [],
+    "relationships_as_object": [],
+    "is_fav": false,
+    "metas": {
+     "dataset_not_visible": 0,
+     "not_visible_in_chart_interface": 0,
+     "not_visible_in_map_interface": 0,
+     "show_cube_tab": "0",
+     "weight": 0,
+     "records_count": 0,
+     "features": [
+      "analyze",
+      "api",
+      "table",
+      "raw_data"
+     ],
+     "custom_view": null
+    },
+    "metadata_imported": "2026-09-01T17:35:51.598387",
+    "dataset_modification_date": "2026-07-31T08:58:53+00:00"
+   },
+   {
+    "author": "",
+    "author_email": "",
+    "creator_user_id": "b174327f-fde4-4518-9d00-3fec6d659778",
+    "id": "28d187a3-1e67-4aa6-970e-e787db97aa99",
+    "isopen": false,
+    "license_id": "licence-ouverte-v2-etalab",
+    "license_title": "Licence Ouverte v2.0 (Etalab)",
+    "license_url": "https://www.etalab.gouv.fr/wp-content/uploads/2017/04/ETALAB-Licence-Ouverte-v2.0.pdf",
+    "maintainer": "",
+    "maintainer_email": "",
+    "metadata_created": "2023-03-01T11:00:47.887322",
+    "metadata_modified": "2023-06-29T15:37:58.846390",
+    "name": "mesures-sondes-autonomes",
+    "notes": "Jeu de données des valeurs de l’exposition aux ondes électromagnétiques relevées par les sondes autonomes mis à jour hebdomadairement.",
+    "num_resources": 2,
+    "num_tags": 0,
+    "organization": {
+     "id": "d082fa89-3f5f-4250-a9a0-3729d9c62a55",
+     "name": "agence_nationale_des_frequences",
+     "title": "Agence nationale des fréquences",
+     "type": "organization",
+     "description": "",
+     "image_url": "https://dev.anfrd.data4citizen.com/sites/default/files/organization/logoANFRheader3_0.png",
+     "created": "2023-03-01T10:14:38.913939",
+     "is_organization": true,
+     "approval_status": "approved",
+     "state": "active"
+    },
+    "owner_org": "d082fa89-3f5f-4250-a9a0-3729d9c62a55",
+    "private": false,
+    "state": "active",
+    "title": "Mesures sondes autonomes",
+    "type": "dataset",
+    "url": "",
+    "version": "",
+    "extras": [
+     {
+      "key": "FTP_API",
+      "value": "FTP"
+     },
+     {
+      "key": "LinkedDataSet",
+      "value": "[\"\"]"
+     },
+     {
+      "key": "Picto",
+      "value": ""
+     },
+     {
+      "key": "allow_data_inputs",
+      "value": "0"
+     },
+     {
+      "key": "data_interop",
+      "value": "0"
+     },
+     {
+      "key": "data_rgpd",
+      "value": "false"
+     },
+     {
+      "key": "dataset-model",
+      "value": "[]"
+     },
+     {
+      "key": "dataset_not_visible",
+      "value": "1"
+     },
+     {
+      "key": "date_dataset",
+      "value": "2023-11-24"
+     },
+     {
+      "key": "date_deposit",
+      "value": "2023-11-24"
+     },
+     {
+      "key": "date_modification",
+      "value": "2025-10-07"
+     },
+     {
+      "key": "date_moissonnage_last_modification",
+      "value": "2023-06-29T15:37:58.846390"
+     },
+     {
+      "key": "default_visu",
+      "value": "0"
+     },
+     {
+      "key": "disable_export_type",
+      "value": "{\"flat_formats\":false,\"geographic_formats\":false,\"alternative_formats\":false,\"data_analysis_formats\":false,\"metadata\":false}"
+     },
+     {
+      "key": "donnees_source",
+      "value": ""
+     },
+     {
+      "key": "edition_security",
+      "value": "{\"roles\":[\"administrator\"],\"users\":[\"*78*\",\"*79*\",\"*80*\",\"*1*\",\"*1602*\",\"*1608*\"]}"
+     },
+     {
+      "key": "encoding",
+      "value": "UTF-8"
+     },
+     {
+      "key": "extent-begin",
+      "value": "2024-08-09"
+     },
+     {
+      "key": "extent-end",
+      "value": "2039-12-02"
+     },
+     {
+      "key": "features",
+      "value": "analyze,table"
+     },
+     {
+      "key": "file_csv",
+      "value": "https://data.anfr.fr/sites/default/files/dataset/20241220134538_mesures_sondes_autonomes.csv"
+     },
+     {
+      "key": "file_geojson",
+      "value": "https://data.anfr.fr/sites/default/files/dataset/2024/12/20/28d187a3-1e67-4aa6-970e-e787db97aa99/mesures_sondes_autonomes.geojson"
+     },
+     {
+      "key": "file_xlsx",
+      "value": "https://data.anfr.fr//sites/default/files/dataset/20241220134538_676566f28a187.xlsx"
+     },
+     {
+      "key": "frequency",
+      "value": "weekly"
+     },
+     {
+      "key": "frequency-of-update",
+      "value": "weekly"
+     },
+     {
+      "key": "map_color",
+      "value": ""
+     },
+     {
+      "key": "nb_download",
+      "value": "00000190"
+     },
+     {
+      "key": "nb_views",
+      "value": "00001457"
+     },
+     {
+      "key": "not_visible_in_chart_interface",
+      "value": "0"
+     },
+     {
+      "key": "not_visible_in_map_interface",
+      "value": "0"
+     },
+     {
+      "key": "producer",
+      "value": ""
+     },
+     {
+      "key": "records_count",
+      "value": "0001474010"
+     },
+     {
+      "key": "themes",
+      "value": "[]"
+     },
+     {
+      "key": "tooltip",
+      "value": "{\"type\":\"standard\",\"value\":{\"title\":\"\",\"fields\":\"_id,id,e_volt_par_metre,date,ville,code_postal,adresse,numero,latitude,longitude\"}}"
+     },
+     {
+      "key": "uploader",
+      "value": "perros"
+     },
+     {
+      "key": "weight",
+      "value": "0"
+     },
+     {
+      "key": "wfs_link",
+      "value": ""
+     },
+     {
+      "key": "wms_link",
+      "value": ""
+     }
+    ],
+    "resources": [
+     {
+      "cache_last_updated": null,
+      "cache_url": null,
+      "created": "2023-03-01T11:00:59.955422",
+      "datastore_active": true,
+      "description": "",
+      "format": "CSV",
+      "hash": "c23525fb46618cbcdc4079b951c2cbea",
+      "id": "bba1ee58-333f-4bde-84c3-0ab14145acc3",
+      "last_modified": "2025-10-07T12:02:36",
+      "metadata_modified": "2025-10-07T12:02:36.755215",
+      "mimetype": "text/csv",
+      "mimetype_inner": null,
+      "name": "mesures_sondes_autonomes.csv",
+      "package_id": "28d187a3-1e67-4aa6-970e-e787db97aa99",
+      "parent_id": "",
+      "position": 0,
+      "resource_type": null,
+      "size": 91571891,
+      "state": "active",
+      "url_type": "",
+      "uuid": "68e5015c9a6ca"
+     },
+     {
+      "cache_last_updated": null,
+      "cache_url": null,
+      "created": "2023-03-21T14:35:25.640565",
+      "datastore_active": false,
+      "description": null,
+      "format": "GeoJSON",
+      "hash": "",
+      "id": "899c5a42-7f5c-4d3d-8ca9-a39bc09df26f",
+      "last_modified": "2024-12-20T12:45:23",
+      "metadata_modified": "2024-12-20T12:45:24.085476",
+      "mimetype": null,
+      "mimetype_inner": null,
+      "name": "mesures_sondes_autonomes.geojson",
+      "package_id": "28d187a3-1e67-4aa6-970e-e787db97aa99",
+      "position": 1,
+      "resource_type": null,
+      "size": 234917132,
+      "state": "active",
+      "url_type": "",
+      "uuid": "676566e3e8a18"
+     }
+    ],
+    "tags": [],
+    "groups": [],
+    "relationships_as_subject": [],
+    "relationships_as_object": [],
+    "is_fav": false,
+    "metas": {
+     "dataset_not_visible": "1",
+     "not_visible_in_chart_interface": 0,
+     "not_visible_in_map_interface": 0,
+     "show_cube_tab": 0,
+     "weight": 0,
+     "records_count": 1474010,
+     "features": [
+      "analyze",
+      "table"
+     ],
+     "custom_view": null
+    },
+    "metadata_imported": "2026-08-31T09:14:49.525183",
+    "dataset_modification_date": "2025-10-07T00:00:00+00:00"
+   }
+  ]
+ }
+}
