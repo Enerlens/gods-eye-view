@@ -289,3 +289,42 @@
   coarse end of a twentyfold spread. Used by `src/data/cadastreFeed.test.mjs`
   and `src/data/cadastreParcels.test.mjs`. PCI vecteur © DGFiP via IGN Api
   Carto, Licence Ouverte 2.0.
+
+## `meteo-stations-fr-sample.json` — 13 stations from the shipped network
+
+One station for every trap the *Stations météo (FR)* layer is built around, cut
+from `local_data/meteo_stations_fr/stations.json`. **TOULOUSE-BLAGNAC** is a
+complete synoptic station and **VERIZIEU** is the majority case — temperature
+and rain, no wind, no pressure. **ALBA LA ROMAINE** appears in Météo-France's
+real-time list and in no metadata file at all, so its `fam` is `null` rather
+than `[]`; **MARSILLARGUES** was closed on 2026-01-01 and is still in that same
+list. **BOULOGNE-SEM** publishes an open hourly observation and is absent from
+Météo-France's SYNOP station list, while **CAP CEPET** is named on that list and
+has written nothing all year — the pair that forces `synop` and `live` to stay
+separate fields. **AIGUILLE DU MIDI** at 3 845 m and **LA MEIJE-NIVOSE** at
+3 093 m are the terrain-clamp cases, **BREIL SUR ROYA** is a rain-only poste,
+and **AJACCIO** carries a Corsican `NUM_POSTE` on département `20`. Used by
+`src/data/meteoStationsFrFeed.test.mjs`. © Météo-France, Licence Ouverte 2.0.
+
+## `meteo-synop-archive-sample.csv` — 12 rows of the SYNOP archive
+
+Header plus three observations each for four stations, **interleaved** so
+"newest wins" cannot pass by accidentally keeping the last row of the file. The
+column set is the real one (60+ fields), and the units are the trap: every
+temperature is in **kelvin** (`t = 277.05`) and pressure is in **pascals**
+(`pmer = 102010`), so a card that printed the published number would be exactly
+correct and unreadable. `NOUVELLE AMSTERDAM` is in the sample because the
+archive is not metropolitan-only. Used by
+`src/data/meteoStationsFrFeed.test.mjs`. © Météo-France, Licence Ouverte 2.0.
+
+## `meteo-ficheclim-31069001-sample.data` — one fiche climatologique
+
+Toulouse-Blagnac's, verbatim. It is a **human-readable French report, not a data
+product**: semicolon-padded columns under prose headings, `.` where a month has
+no value, and a date row under each record row whose last cell — the annual
+column, the one that is read — is a bare year while the twelve monthly cells
+carry `DD-YYYY`. The two facts extracted are the records (**42,4 °C in 2023,
+−19,2 °C in 1956**) and the window they stand in (**since 1947**), because
+without the window the same number means something different at a station opened
+in 2004. Used by `src/data/meteoStationsFrFeed.test.mjs`. © Météo-France,
+Licence Ouverte 2.0.
