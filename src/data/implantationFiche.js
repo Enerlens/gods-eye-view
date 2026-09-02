@@ -229,13 +229,27 @@ export async function ficheFetch(url, options = {}, { impl = fetch } = {}) {
     ).then((payload) => payload?.features?.[0] ?? null),
   ]);
 
+  // A page the WFS cut short is not a catchment. Named here so the card can say
+  // so, because summing 5 000 of an unknown number of squares and printing the
+  // total is the exact failure this layer was built to refuse.
   if (!carreaux) missing.push('carroyage');
+  else if (carreaux.truncated) missing.push('carroyage tronqué');
   if (!gpu) missing.push('urbanisme');
   if (!dvf) missing.push('marché');
   if (!banFeature) missing.push('adresse');
 
-  const demand = ring && carreaux
-    ? aggregateInRing(carreaux.cells || [], ring.ring, carreaux.resolution || 200)
+  const aggregate = ring && carreaux
+    ? aggregateInRing(
+      carreaux.cells || [],
+      ring.holes?.length ? [ring.ring, ...ring.holes] : ring.ring,
+      carreaux.resolution || 200,
+    )
+    : null;
+  // The truncation flag travels WITH the numbers it invalidates. Carried on the
+  // aggregate rather than left on the carroyage payload, because `ficheLines()`
+  // only ever sees the aggregate and that is where the sentence gets printed.
+  const demand = aggregate
+    ? { ...aggregate, truncated: Boolean(carreaux?.truncated), matched: carreaux?.matched ?? null }
     : null;
 
   return ok(composeFiche({
@@ -293,10 +307,22 @@ export function ficheLines(fiche) {
     const width = bracketWidthPercent(demand.people);
     // THE BRACKET, FIRST. It is the number a reader will quote, and quoting it
     // without its bounds is exactly what this layer refuses to let them do.
-    details.push(`${count(demand.people.count)} habitants`
-      + (width === null ? '' : ` (±${width} %)`));
-    details.push(`Entre ${count(demand.people.low)} et ${count(demand.people.high)}`
-      + ' selon qu’on compte les carreaux entiers ou tout carreau touché');
+    //
+    // Unless the carroyage page was CUT SHORT, in which case there is no
+    // bracket to print: squares are missing, every figure below is a floor, and
+    // the honest headline says "at least" rather than a total with an error bar
+    // that does not cover the missing squares.
+    if (demand.truncated) {
+      details.push(`Au moins ${count(demand.people.count)} habitants — comptage incomplet`);
+      details.push('Le carroyage INSEE a renvoyé une page tronquée'
+        + (Number.isFinite(demand.matched) ? ` (${count(demand.matched)} carreaux dans la boîte)` : '')
+        + ' — ce total est un plancher, pas une fourchette');
+    } else {
+      details.push(`${count(demand.people.count)} habitants`
+        + (width === null ? '' : ` (±${width} %)`));
+      details.push(`Entre ${count(demand.people.low)} et ${count(demand.people.high)}`
+        + ' selon qu’on compte les carreaux entiers ou tout carreau touché');
+    }
     // The four counts, as a partition a reader can add up: inside + straddling
     // = touched, and counted is the centroid convention drawn from both.
     details.push(`${count(demand.households.count)} ménages`
@@ -335,6 +361,12 @@ export function ficheLines(fiche) {
       details.push(`${demand.imputedCells} carreau${plural ? 'x' : ''}`
         + ` imputé${plural ? 's' : ''} sur ${demand.cells.counted}`
         + ` (${demand.imputedShare} %) — valeurs approchées, pas observées`);
+    } else if (demand.imputedUnknown > 0) {
+      // "None imputed" is a claim about INSEE's flag, and it cannot be made
+      // when the flag did not arrive. Two cells in five are imputed nationally,
+      // so the silent default was the flattering answer, not the neutral one.
+      details.push(`Imputation non renseignée sur ${demand.imputedUnknown}`
+        + ` des ${demand.cells.counted} carreaux retenus — observées ou approchées, l’INSEE ne l’a pas dit`);
     } else if (demand.cells.counted > 0) {
       details.push(`Aucun carreau imputé sur les ${demand.cells.counted} retenus`);
     }
@@ -403,9 +435,17 @@ const base = createAddressScanLayer({
 
     const ring = payload.isochrone?.ring ?? null;
     if (Array.isArray(ring) && ring.length >= 3) {
-      const positions = ring
+      const toPositions = (entries) => (Array.isArray(entries) ? entries : [])
         .filter((entry) => Number.isFinite(entry?.[0]) && Number.isFinite(entry?.[1]))
         .map(([lon, lat]) => Cesium.Cartesian3.fromDegrees(lon, lat));
+      const positions = toPositions(ring);
+      // The holes the isochrone service cut out — ground the ring does not
+      // reach. Filled over, they would show as catchment the population count
+      // has already excluded.
+      const holes = (payload.isochrone?.holes || [])
+        .map(toPositions)
+        .filter((hole) => hole.length >= 3)
+        .map((hole) => new Cesium.PolygonHierarchy(hole));
       if (positions.length >= 3) {
         // ONE ring, and it is the fiche's own — not a copy of the isochrone
         // layer's three. Amber rather than teal so the two layers on at once
@@ -413,7 +453,7 @@ const base = createAddressScanLayer({
         dataSource.entities.add({
           id: 'fiche:ring:fill',
           polygon: {
-            hierarchy: new Cesium.PolygonHierarchy(positions),
+            hierarchy: new Cesium.PolygonHierarchy(positions, holes),
             material: Cesium.Color.fromCssColorString(SELECTED_COLOR).withAlpha(0.12),
             classificationType,
             outline: false,
@@ -474,6 +514,8 @@ const base = createAddressScanLayer({
       niveau: demand?.niveau ?? null,
       pauvrete: demand?.pauvrete ?? null,
       imputedShare: demand?.imputedShare ?? null,
+      imputedUnknown: demand?.imputedUnknown ?? null,
+      truncated: Boolean(demand?.truncated),
       straddlingCells: demand?.cells?.straddling ?? null,
       zone: payload.zoning?.code ?? null,
       medianPrixM2: payload.market?.medianPrixM2 ?? null,

@@ -11,16 +11,20 @@ import assert from 'node:assert/strict';
 import {
   CELL_POSITIONS,
   aggregateInRing,
+  asRings,
   bracketWidthPercent,
+  buildEdgeIndex,
   classifyCell,
   composeFiche,
+  pointInPolygon,
   pointInRing,
   projectAddress,
   projectMarket,
   projectZoning,
   ringBounds,
+  segmentsIntersect,
 } from './implantationFeed.js';
-import { cellCentre } from './filosofiFeed.js';
+import { cellCentre, cellCorners } from './filosofiFeed.js';
 
 /** A square ring in degrees, centred on a point. */
 function box(lon, lat, halfDeg) {
@@ -119,16 +123,95 @@ test('a cell wholly inside, wholly outside, and across the edge are three answer
 });
 
 test('a ring narrower than a cell still counts as a straddle', () => {
-  // Four corners outside does NOT mean the cell is outside: a thin ring can
-  // pass through the middle of a square without containing any corner. The
-  // centroid test is the fifth test that catches it, and dropping it would let
-  // a whole class of straddles disappear from the upper bound.
+  // Four corners outside does NOT mean the cell is outside: a ring smaller than
+  // a square sits entirely within it, touching no corner and crossing no edge.
+  // It is caught by the swallowed-ring test, not by any sampled point.
   const cell = { n: 2_531_400, e: 3_918_600 };
   const [lon, lat] = cellCentre({ res: 200, n: cell.n, e: cell.e });
   const tiny = classifyCell(cell, box(lon, lat, 0.0002), 200);
   assert.equal(tiny.cornersInside, 0, 'the ring is smaller than the cell');
+  assert.equal(tiny.crossed, false, 'and it crosses no edge of it');
   assert.equal(tiny.centroidInside, true);
   assert.equal(tiny.position, CELL_POSITIONS.straddling);
+});
+
+// ── The case the five-point test could not see ───────────────────────────────
+
+test('a corridor crossing a cell away from its centroid is a straddle, not an outsider', () => {
+  // THE REGRESSION THIS FILE EXISTED WITHOUT. The old classifier sampled four
+  // corners and the centroid; a band 28 m tall crossing the low third of a cell
+  // covers none of the five, so the cell was declared OUTSIDE and the "upper
+  // bound" lost it. The band below is exactly that: it spans the cell in
+  // longitude and misses every sample point in latitude.
+  const cell = { n: 2_500_000, e: 3_900_000 };
+  const corners = cellCorners({ res: 200, n: cell.n, e: cell.e });
+  const south = Math.min(...corners.map(([, lat]) => lat));
+  const west = Math.min(...corners.map(([lon]) => lon)) - 0.01;
+  const east = Math.max(...corners.map(([lon]) => lon)) + 0.01;
+  const band = [
+    [west, south + 0.0002], [east, south + 0.0002],
+    [east, south + 0.00045], [west, south + 0.00045],
+  ];
+
+  const verdict = classifyCell(cell, band, 200);
+  assert.equal(verdict.cornersInside, 0, 'no corner is inside the band');
+  assert.equal(verdict.centroidInside, false, 'nor is the centroid');
+  assert.equal(verdict.position, CELL_POSITIONS.straddling, 'and yet the band crosses the cell');
+
+  const aggregate = aggregateInRing([{ ...cell, ind: 500, men: 200, est: 0 }], band, 200);
+  assert.equal(aggregate.people.high, 500, 'an upper bound that can be zero is not a bound');
+  assert.equal(aggregate.people.low, 0, 'and the lower bound stays honest');
+  assert.equal(aggregate.people.count, 0, 'the centroid convention is unchanged');
+});
+
+test('two segments that meet are told apart from two that only look like they do', () => {
+  assert.equal(segmentsIntersect([0, 0], [2, 2], [0, 2], [2, 0]), true, 'a plain X');
+  assert.equal(segmentsIntersect([0, 0], [1, 1], [2, 2], [3, 3]), false, 'collinear, disjoint');
+  assert.equal(segmentsIntersect([0, 0], [2, 2], [1, 1], [3, 3]), true, 'collinear, overlapping');
+  assert.equal(segmentsIntersect([0, 0], [2, 0], [1, 0], [1, 5]), true, 'a T touching counts');
+  assert.equal(segmentsIntersect([0, 0], [2, 0], [3, -1], [3, 1]), false, 'crossing the LINE, not the segment');
+});
+
+test('the edge index answers the same question as brute force, only faster', () => {
+  // A ring with enough vertices that banding actually partitions it, and a row
+  // of cells walked across it. The index is an optimisation; if it ever
+  // disagrees with the unindexed path the bracket silently changes.
+  const [lon, lat] = cellCentre({ res: 200, n: 2_531_400, e: 3_918_600 + 5 * 200 });
+  const ring = Array.from({ length: 64 }, (_, i) => {
+    const angle = (i / 64) * Math.PI * 2;
+    return [lon + Math.cos(angle) * 0.004, lat + Math.sin(angle) * 0.003];
+  });
+  const index = buildEdgeIndex(ring, 200 / 111_320);
+  assert.ok(index.count > 1, 'the ring spans several bands');
+  for (const cell of cellRow(3_918_600, 2_531_400, 12)) {
+    assert.equal(
+      classifyCell(cell, ring, 200, index).position,
+      classifyCell(cell, ring, 200).position,
+      `cell e=${cell.e}`,
+    );
+  }
+});
+
+test('a hole is ground the ring does not reach, and no cell over it is fully inside', () => {
+  const cell = { n: 2_531_400, e: 3_918_600 };
+  const [lon, lat] = cellCentre({ res: 200, n: cell.n, e: cell.e });
+  const solid = box(lon, lat, 0.01);
+  assert.equal(classifyCell(cell, solid, 200).position, CELL_POSITIONS.inside);
+
+  // The same ring with a courtyard punched out of the middle of the cell.
+  const withHole = [solid, box(lon, lat, 0.0003)];
+  assert.equal(asRings(withHole).length, 2);
+  assert.equal(pointInPolygon(withHole, lon, lat), false, 'the centre is in the hole');
+  assert.equal(
+    classifyCell(cell, withHole, 200).position,
+    CELL_POSITIONS.straddling,
+    'a square with a hole in it is not a square fully inside',
+  );
+
+  const aggregate = aggregateInRing([{ ...cell, ind: 300, men: 120, est: 0 }], withHole, 200);
+  assert.equal(aggregate.people.low, 0, 'so it cannot count towards the floor');
+  assert.equal(aggregate.people.high, 300, 'but it is still touched');
+  assert.equal(aggregate.people.count, 0, 'and its centroid is over the hole');
 });
 
 // ── The bracket ─────────────────────────────────────────────────────────────

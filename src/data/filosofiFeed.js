@@ -33,6 +33,12 @@
  * carries two integers instead of four coordinate pairs, and the client draws
  * a square that is exactly INSEE's square rather than a rounded copy of it.
  *
+ * That claim was true over the mainland and FALSE over three of the four
+ * overseas départements, where Snyder's truncated series drifted to 1,4e-8° —
+ * still only 1,6 mm, but not what the sentence above says, and INSEE publishes
+ * carroyage there too. `geodeticLatitude()` now refines the series and the
+ * round trip is good to 8,3e-14° from Mayotte to Dunkerque.
+ *
  * WHAT THE RELAY DROPS. INSEE's published file has an `ind_18_24` band; the
  * WFS `DescribeFeatureType` does not. The band is recoverable as the residual
  * of `ind` minus the nine published bands — checked on the Lyon 7e fixture:
@@ -190,12 +196,47 @@ export function laeaToWgs84(easting, northing) {
     x * sinCe,
     _D * rho * Math.cos(_BETA0) * cosCe - _D * _D * y * Math.sin(_BETA0) * sinCe,
   );
+  return [lambda * 180 / Math.PI, geodeticLatitude(beta) * 180 / Math.PI];
+}
+
+/**
+ * Authalic latitude β → geodetic latitude φ, to the last bit.
+ *
+ * Snyder's series in e² is the textbook inversion and it is what shipped, but
+ * it is truncated at e⁶ and its error grows with the distance from the
+ * projection's own latitude of origin (52° N). Measured round trips:
+ *
+ *   · mainland and Corsica — worst 5,9e-9°, 0,66 mm
+ *   · Guadeloupe 1,3e-8° · Martinique 1,3e-8° · Mayotte 1,2e-8° ·
+ *     La Réunion **1,4e-8°**, 1,58 mm
+ *
+ * Three of the four overseas départements therefore breached the 1e-8° this
+ * module's header promises, and INSEE publishes carroyage for all of them. One
+ * Newton step on the exact authalic relation `q(φ) = qₚ sin β` closes it: worst
+ * residual 8,3e-14° — nine nanometres — everywhere from Mayotte to Dunkerque.
+ *
+ * It costs about 18 ns per call, which is 0,5 ms over a full 5 000-cell
+ * viewport at five points a cell.
+ *
+ * @param {number} beta Authalic latitude, radians.
+ * @returns {number} Geodetic latitude, radians.
+ */
+function geodeticLatitude(beta) {
   const e2 = LAEA.e2;
-  const phi = beta
+  // The series, as the first guess.
+  let phi = beta
     + (e2 / 3 + 31 * e2 ** 2 / 180 + 517 * e2 ** 3 / 5040) * Math.sin(2 * beta)
     + (23 * e2 ** 2 / 360 + 251 * e2 ** 3 / 3780) * Math.sin(4 * beta)
     + (761 * e2 ** 3 / 45360) * Math.sin(6 * beta);
-  return [lambda * 180 / Math.PI, phi * 180 / Math.PI];
+  const target = _QP * Math.sin(beta);
+  const sinPhi = Math.sin(phi);
+  const denominator = 1 - e2 * sinPhi * sinPhi;
+  // dq/dφ = 2(1 − e²)cos φ / (1 − e² sin²φ)². Halving this factor — an easy
+  // slip — makes the step overshoot by exactly two and the iteration oscillates
+  // around the answer forever instead of converging to it.
+  const slope = (2 * (1 - e2) * Math.cos(phi)) / (denominator * denominator);
+  if (slope !== 0) phi += (target - authalicQ(phi)) / slope;
+  return phi;
 }
 
 /** `CRS3035RES200mN2529400E3919200` → its parts. */
@@ -316,6 +357,27 @@ function share(value) {
 }
 
 /**
+ * Read INSEE's imputation flag without inventing an answer.
+ *
+ * `i_car_est` / `i_est_1km` is 1 when the cell's figures were MODELLED because
+ * publishing the real ones would breach statistical secrecy, and 0 when they
+ * were observed. A column that is absent, null, empty or unparseable answers
+ * NEITHER, and the difference matters: "observed" is a claim the layer prints
+ * on every card, and two cells in five are imputed nationally, so defaulting to
+ * 0 would silently promote modelled figures to measured ones.
+ *
+ * @param {unknown} raw
+ * @returns {0|1|null}
+ */
+function imputationFlag(raw) {
+  if (raw === undefined || raw === null || raw === '') return null;
+  const parsed = Number(raw);
+  if (parsed === 1) return 1;
+  if (parsed === 0) return 0;
+  return null;
+}
+
+/**
  * Project a WFS answer into the wire shape the layer draws.
  *
  * Commune names are dictionary-encoded rather than repeated: over a Lyon
@@ -324,10 +386,14 @@ function share(value) {
  *
  * @param {object|null|undefined} payload A WFS FeatureCollection.
  * @param {{resolution?: number}} [options]
+ * @param {{resolution?: number, count?: number}} [options] `count` is the row
+ *   ceiling the request was made with; a page that reaches it is a page the
+ *   service cut short.
  * @returns {{cells: Array<object>, communes: Object<string,string>,
- *   matched: number|null, returned: number, truncated: boolean}}
+ *   matched: number|null, returned: number, requested: number|null,
+ *   capped: boolean, truncated: boolean, estUnknown: number}}
  */
-export function projectCarreaux(payload, { resolution = 200 } = {}) {
+export function projectCarreaux(payload, { resolution = 200, count = FILOSOFI_MAX_CELLS } = {}) {
   const features = Array.isArray(payload?.features) ? payload.features : [];
   const communes = {};
   const cells = [];
@@ -358,20 +424,40 @@ export function projectCarreaux(payload, { resolution = 200 } = {}) {
       proprietaires: share(props.men_prop_div_men),
       solo: share(props.men_1ind_div_men),
       collectif: share(props.part_men_coll_div_men),
-      est: Number(props[FILOSOFI_IMPUTED_FIELD[resolution]]) === 1 ? 1 : 0,
+      // 1 imputed, 0 observed, NULL when the service did not say. The old
+      // `=== 1 ? 1 : 0` turned every absent, renamed or null flag into the
+      // assertion "observed", which is the one claim this field exists to
+      // make and the one a missing column cannot support.
+      est: imputationFlag(props[FILOSOFI_IMPUTED_FIELD[resolution]]),
       com: code,
     });
   }
   const matched = num(payload?.numberMatched);
+  // The page came back FULL. On its own that is not proof of truncation — a box
+  // can hold exactly the ceiling — but it is the only signal left when the
+  // service declines to count, and the WFS is documented to answer `"unknown"`.
+  const capped = Number.isFinite(count) && count > 0 && features.length >= count;
   return {
     cells,
     communes,
     matched,
     returned: cells.length,
+    requested: Number.isFinite(count) ? count : null,
+    capped,
     // The service answers `numberMatched` for the WHOLE box and `numberReturned`
     // for what fitted under COUNT. Saying "truncated" from the cell count alone
-    // would call a box that happens to hold exactly the ceiling complete.
-    truncated: matched !== null && cells.length > 0 && matched > cells.length,
+    // would call a box that happens to hold exactly the ceiling complete — but
+    // the OPPOSITE mistake is worse and was the one shipped: with
+    // `numberMatched` absent or `"unknown"`, a page capped at exactly 5 000 rows
+    // reported `truncated: false` and a partial catchment was sold as a whole
+    // one. A full page with no count is now assumed truncated.
+    truncated: matched !== null
+      ? cells.length > 0 && matched > cells.length
+      : capped,
+    // How many cells refused to say whether they were imputed. Zero is the
+    // normal answer and the only one that lets a card claim "aucun carreau
+    // imputé"; anything else means the question was not answered.
+    estUnknown: cells.reduce((total, cell) => total + (cell.est === null ? 1 : 0), 0),
   };
 }
 
@@ -670,10 +756,12 @@ export function summarizeCells(cells) {
   let people = 0;
   let households = 0;
   let imputed = 0;
+  let imputedUnknown = 0;
   for (const cell of list) {
     if (Number.isFinite(cell.ind)) people += cell.ind;
     if (Number.isFinite(cell.men)) households += cell.men;
     if (cell.est === 1) imputed += 1;
+    else if (cell.est !== 0) imputedUnknown += 1;
   }
   const niveau = weightedMean(list, 'niveau', 'ind');
   const pauvrete = weightedMean(list, 'pauvrete', 'men');
@@ -684,6 +772,9 @@ export function summarizeCells(cells) {
     // The count and the share, because "1 042 imputed" and "39 % imputed" are
     // read by different people and neither derives the other at a glance.
     imputedCells: imputed,
+    // Cells whose flag the service did not answer, kept apart from the imputed
+    // count: a share of 0 % means "none imputed" only when this is 0 too.
+    imputedUnknown,
     imputedShare: list.length ? Math.round((imputed / list.length) * 1000) / 10 : null,
     niveau: niveau === null ? null : Math.round(niveau),
     pauvrete: pauvrete === null ? null : Math.round(pauvrete * 10) / 10,

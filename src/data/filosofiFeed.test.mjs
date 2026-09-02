@@ -51,13 +51,17 @@ test('the inverse projection reproduces the geometry the service published', () 
       // The service closes its ring by repeating the first corner; the derived
       // form does not, so compare the first four only.
       assert.equal(published.length, 5, 'a closed square has five listed corners');
+      // 1e-8, which is what the module header claims. It used to be 1e-7 — ten
+      // times looser than the promise — and the gap is exactly where the
+      // overseas drift hid. The residual against these fixtures is 8,5e-9,
+      // which is the fixtures' own rounding, not the projection's.
       for (let i = 0; i < 4; i += 1) {
         assert.ok(
-          Math.abs(published[i][0] - derived[i][0]) < 1e-7,
+          Math.abs(published[i][0] - derived[i][0]) < 1e-8,
           `${feature.properties.id_inspire} corner ${i} lon: ${published[i][0]} vs ${derived[i][0]}`,
         );
         assert.ok(
-          Math.abs(published[i][1] - derived[i][1]) < 1e-7,
+          Math.abs(published[i][1] - derived[i][1]) < 1e-8,
           `${feature.properties.id_inspire} corner ${i} lat: ${published[i][1]} vs ${derived[i][1]}`,
         );
       }
@@ -65,6 +69,58 @@ test('the inverse projection reproduces the geometry the service published', () 
     }
   }
   assert.equal(checked, 10, 'both fixtures must still be exercised');
+});
+
+test('the inverse holds to 1e-8 overseas too, where the series used to drift', () => {
+  // THE CLAIM THIS TEST EXISTS FOR. The header promises 1e-8° and the fixtures
+  // above are all mainland. Snyder's truncated series is at its best near the
+  // projection's origin at 52° N and worst far from it: measured round trips
+  // reached 1,4e-8° at La Réunion, 1,3e-8° at Guadeloupe and Martinique and
+  // 1,2e-8° at Mayotte — INSEE publishes carroyage for every one of them, so
+  // three of the four overseas départements broke a documented guarantee.
+  //
+  // The forward projection is written out here rather than imported, because
+  // the module only ships the inverse and a round trip needs both halves.
+  const { a, e2, lat0, lon0, x0, y0 } = {
+    a: 6378137, e2: (1 / 298.257222101) * (2 - 1 / 298.257222101),
+    lat0: (52 * Math.PI) / 180, lon0: (10 * Math.PI) / 180, x0: 4321000, y0: 3210000,
+  };
+  const e = Math.sqrt(e2);
+  const q = (phi) => {
+    const s = Math.sin(phi);
+    return (1 - e2) * (s / (1 - e2 * s * s) - (1 / (2 * e)) * Math.log((1 - e * s) / (1 + e * s)));
+  };
+  const qp = q(Math.PI / 2);
+  const rq = a * Math.sqrt(qp / 2);
+  const beta0 = Math.asin(q(lat0) / qp);
+  const m0 = Math.cos(lat0) / Math.sqrt(1 - e2 * Math.sin(lat0) ** 2);
+  const d = (a * m0) / (rq * Math.cos(beta0));
+  const forward = (lonDeg, latDeg) => {
+    const phi = (latDeg * Math.PI) / 180;
+    const lam = (lonDeg * Math.PI) / 180;
+    const beta = Math.asin(q(phi) / qp);
+    const b = rq * Math.sqrt(2 / (1 + Math.sin(beta0) * Math.sin(beta)
+      + Math.cos(beta0) * Math.cos(beta) * Math.cos(lam - lon0)));
+    return [
+      b * d * Math.cos(beta) * Math.sin(lam - lon0) + x0,
+      (b / d) * (Math.cos(beta0) * Math.sin(beta)
+        - Math.sin(beta0) * Math.cos(beta) * Math.cos(lam - lon0)) + y0,
+    ];
+  };
+
+  const probes = [
+    ['Lille', 3.06, 50.63], ['Lyon', 4.835, 45.764], ['Brest', -4.49, 48.39],
+    ['Ajaccio', 8.74, 41.93], ['Guadeloupe', -61.55, 16.24], ['Martinique', -61.0, 14.6],
+    ['Guyane', -52.3, 4.9], ['La Réunion', 55.5, -21.1], ['Mayotte', 45.0, -13.0],
+  ];
+  for (const [name, lon, lat] of probes) {
+    const [easting, northing] = forward(lon, lat);
+    const [lon2, lat2] = laeaToWgs84(easting, northing);
+    // Four orders of magnitude inside the documented bound, so this test fails
+    // on a regression rather than on the last bit of a double.
+    assert.ok(Math.abs(lon2 - lon) < 1e-12, `${name} lon drift ${lon2 - lon}`);
+    assert.ok(Math.abs(lat2 - lat) < 1e-12, `${name} lat drift ${lat2 - lat}`);
+  }
 });
 
 test('a LAEA square is not axis-aligned in WGS84, and the corners say so', () => {
@@ -215,6 +271,54 @@ test('an empty or malformed answer projects to nothing rather than throwing', ()
     assert.equal(projected.returned, 0);
     assert.equal(projected.truncated, false);
   }
+});
+
+test('a full page with no count is truncated, because the WFS caps silently', () => {
+  // THE FAILURE THIS REPLACES. The Géoplateforme cuts a page at 5 000 rows and
+  // is documented to answer `numberMatched: "unknown"`. The old rule needed a
+  // number to compare against, so an "unknown" or absent count made a capped
+  // page report `truncated: false` — and the fiche summed it and sold the total
+  // as a whole catchment.
+  const page = (rows) => ({
+    features: Array.from({ length: rows }, (_, i) => ({
+      properties: {
+        id_inspire: `CRS3035RES200mN${2_500_000 + i * 200}E3900000`, ind: 10, men: 4, i_car_est: 0,
+      },
+    })),
+  });
+  const full = page(FILOSOFI_MAX_CELLS);
+  assert.equal(projectCarreaux(full, { resolution: 200 }).truncated, true, 'absent count');
+  assert.equal(
+    projectCarreaux({ ...full, numberMatched: 'unknown' }, { resolution: 200 }).truncated,
+    true,
+    'the string the service actually sends',
+  );
+  assert.equal(projectCarreaux(full, { resolution: 200 }).capped, true);
+  const short = page(FILOSOFI_MAX_CELLS - 1);
+  assert.equal(projectCarreaux(short, { resolution: 200 }).truncated, false, 'one row short is complete');
+  assert.equal(projectCarreaux(short, { resolution: 200 }).capped, false);
+});
+
+test('an absent imputation flag is unknown, never "observed"', () => {
+  // `Number(undefined)` is NaN and the old test `=== 1 ? 1 : 0` sent it to 0,
+  // which is the assertion "INSEE observed this cell". Two cells in five are
+  // imputed nationally, so the silent default was the flattering answer.
+  const withoutFlag = {
+    features: [{ properties: { id_inspire: 'CRS3035RES200mN2500000E3900000', ind: 10, men: 4 } }],
+  };
+  const projected = projectCarreaux(withoutFlag, { resolution: 200 });
+  assert.equal(projected.cells[0].est, null);
+  assert.equal(projected.estUnknown, 1);
+
+  const flags = (value) => projectCarreaux({
+    features: [{ properties: { id_inspire: 'CRS3035RES200mN2500000E3900000', ind: 10, [FILOSOFI_IMPUTED_FIELD[200]]: value } }],
+  }, { resolution: 200 }).cells[0].est;
+  assert.equal(flags(1), 1);
+  assert.equal(flags('1'), 1, 'the WFS sends numbers as strings often enough');
+  assert.equal(flags(0), 0);
+  assert.equal(flags(null), null);
+  assert.equal(flags(''), null);
+  assert.equal(flags('oui'), null, 'unparseable is unknown, not observed');
 });
 
 test('a box that fits exactly is not reported as truncated', () => {

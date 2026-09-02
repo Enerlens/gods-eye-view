@@ -26,7 +26,15 @@
  * bounds differ by roughly a third of the population — which is exactly the
  * error bar a single printed number pretends does not exist.
  *
- * WHY PLANAR RAY CASTING IS ENOUGH. The rings this joins against are at most a
+ * AND THE BOUND HAS TO ACTUALLY BOUND. The first version of this decided
+ * "touching" by sampling five points — four corners and the centroid — which is
+ * not a containment test and produced an upper bound that could be too LOW: a
+ * corridor narrower than 200 m crosses a square without covering any of the
+ * five, and the square was dropped. `classifyCell()` now tests the cell's four
+ * edges against the polygon's edges, which is exact, and the cheap sampling
+ * survives only as the centroid convention for the headline.
+ *
+ * WHY PLANAR GEOMETRY IS ENOUGH. The rings this joins against are at most a
  * few kilometres across. Over that span a degree of longitude is a straight
  * line to well under a metre, and the squares being tested are 200 m wide, so
  * the great-circle correction is four orders of magnitude below the quantity it
@@ -47,6 +55,31 @@
  */
 
 import { cellCentre, cellCorners } from './filosofiFeed.js';
+
+/**
+ * A polygon, as this module wants it: a flat list of rings.
+ *
+ * A ring arrives here alone in the common case, and as `[exterior, ...holes]`
+ * when the isochrone service answers a shape with a hole in it — a fenced
+ * railway yard, a block with no through-street — or as several polygons' rings
+ * concatenated when the reachable ground comes in disconnected pieces. Every
+ * containment test below uses the EVEN-ODD rule over that flat list, which
+ * gives the same answer as "exterior minus holes" for well-formed GeoJSON
+ * without needing to know which ring is which.
+ *
+ * A bare ring is accepted unchanged, so every existing caller keeps working.
+ *
+ * @param {Array<number[]>|Array<Array<number[]>>} input
+ * @returns {Array<Array<number[]>>}
+ */
+export function asRings(input) {
+  if (!Array.isArray(input) || !input.length) return [];
+  const first = input[0];
+  if (Array.isArray(first) && Array.isArray(first[0])) {
+    return input.filter((ring) => Array.isArray(ring) && ring.length >= 3);
+  }
+  return [input];
+}
 
 /**
  * Is a point inside a ring? Ray casting, planar in degrees.
@@ -82,28 +115,172 @@ export function pointInRing(ring, lon, lat) {
   return inside;
 }
 
-/** A ring's bounding box, so a cell far away is rejected without five tests. */
-export function ringBounds(ring) {
-  if (!Array.isArray(ring) || !ring.length) return null;
+/**
+ * Is a point inside a polygon? Even-odd across every ring, so a point in a
+ * hole is outside.
+ *
+ * @param {Array<number[]>|Array<Array<number[]>>} rings
+ * @param {number} lon
+ * @param {number} lat
+ * @returns {boolean}
+ */
+export function pointInPolygon(rings, lon, lat) {
+  let inside = false;
+  for (const ring of asRings(rings)) {
+    if (pointInRing(ring, lon, lat)) inside = !inside;
+  }
+  return inside;
+}
+
+/** A polygon's bounding box, so a cell far away is rejected without any test. */
+export function ringBounds(rings) {
   let south = Infinity;
   let north = -Infinity;
   let west = Infinity;
   let east = -Infinity;
-  for (const point of ring) {
-    if (!Array.isArray(point)) continue;
-    const [lon, lat] = point;
-    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
-    if (lat < south) south = lat;
-    if (lat > north) north = lat;
-    if (lon < west) west = lon;
-    if (lon > east) east = lon;
+  for (const ring of asRings(rings)) {
+    for (const point of ring) {
+      if (!Array.isArray(point)) continue;
+      const [lon, lat] = point;
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+      if (lat < south) south = lat;
+      if (lat > north) north = lat;
+      if (lon < west) west = lon;
+      if (lon > east) east = lon;
+    }
   }
   return Number.isFinite(south) && Number.isFinite(west)
     ? { south, west, north, east }
     : null;
 }
 
-/** How a cell sits relative to a ring. */
+// ---------------------------------------------------------------------------
+// Segment geometry
+// ---------------------------------------------------------------------------
+/** Twice the signed area of triangle abc. Positive when abc turns left. */
+function turn(ax, ay, bx, by, cx, cy) {
+  return (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+}
+
+/** Is a point known to be COLLINEAR with ab actually on the segment ab? */
+function onSpan(ax, ay, bx, by, px, py) {
+  return px >= Math.min(ax, bx) && px <= Math.max(ax, bx)
+    && py >= Math.min(ay, by) && py <= Math.max(ay, by);
+}
+
+/**
+ * Do segments ab and cd meet? Touching counts as meeting.
+ *
+ * The four orientation tests are the standard exact-in-principle predicate; the
+ * collinear branches matter here because an isochrone vertex landing exactly on
+ * a grid line is not a freak event — the ring is rounded to five decimals and
+ * the cells come off a metric grid, so ties happen. Counting a touch as a cross
+ * is the conservative direction: it moves a cell into the bracket rather than
+ * out of it.
+ *
+ * Coordinates are degrees; the products are around 1e-6 and stay far inside
+ * double precision.
+ *
+ * @param {number[]} a
+ * @param {number[]} b
+ * @param {number[]} c
+ * @param {number[]} d
+ * @returns {boolean}
+ */
+export function segmentsIntersect(a, b, c, d) {
+  const [ax, ay] = a;
+  const [bx, by] = b;
+  const [cx, cy] = c;
+  const [dx, dy] = d;
+  const d1 = turn(cx, cy, dx, dy, ax, ay);
+  const d2 = turn(cx, cy, dx, dy, bx, by);
+  const d3 = turn(ax, ay, bx, by, cx, cy);
+  const d4 = turn(ax, ay, bx, by, dx, dy);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0))
+    && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  if (d1 === 0 && onSpan(cx, cy, dx, dy, ax, ay)) return true;
+  if (d2 === 0 && onSpan(cx, cy, dx, dy, bx, by)) return true;
+  if (d3 === 0 && onSpan(ax, ay, bx, by, cx, cy)) return true;
+  if (d4 === 0 && onSpan(ax, ay, bx, by, dx, dy)) return true;
+  return false;
+}
+
+/**
+ * Every polygon edge, filed by the latitude bands it spans.
+ *
+ * Without this the join is every cell against every ring segment: a quarter of
+ * an hour by car around Lyon is a ring of some 1 500 vertices and a box of some
+ * 3 000 cells, which is 4.5 million segment pairs before the first population
+ * is added up. Banding on latitude at the cell's own height leaves each cell
+ * testing the handful of edges that could possibly reach it.
+ *
+ * Bands are deliberately allowed to hold the same edge twice rather than being
+ * de-duplicated on read: a redundant intersection test is cheaper than the Set
+ * that would prevent it, and the caller stops at the first hit anyway.
+ *
+ * @param {Array<number[]>|Array<Array<number[]>>} rings
+ * @param {number} [bandDeg] Band height in degrees; defaults to a 64-band split.
+ * @returns {object|null} Null when there is no usable edge.
+ */
+export function buildEdgeIndex(rings, bandDeg) {
+  const edges = [];
+  let south = Infinity;
+  let north = -Infinity;
+  for (const ring of asRings(rings)) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+      const a = ring[j];
+      const b = ring[i];
+      if (!Array.isArray(a) || !Array.isArray(b)) continue;
+      const [ax, ay] = a;
+      const [bx, by] = b;
+      if (!Number.isFinite(ax) || !Number.isFinite(ay)
+        || !Number.isFinite(bx) || !Number.isFinite(by)) continue;
+      const edge = {
+        ax,
+        ay,
+        bx,
+        by,
+        south: Math.min(ay, by),
+        north: Math.max(ay, by),
+        west: Math.min(ax, bx),
+        east: Math.max(ax, bx),
+      };
+      if (edge.south < south) south = edge.south;
+      if (edge.north > north) north = edge.north;
+      edges.push(edge);
+    }
+  }
+  if (!edges.length) return null;
+  const span = north - south;
+  const step = Number.isFinite(bandDeg) && bandDeg > 0
+    ? bandDeg
+    : Math.max(span / 64, 1e-9);
+  // Capped, so a degenerate `bandDeg` cannot ask for a million empty arrays.
+  const count = Math.max(1, Math.min(8192, Math.floor(span / step) + 1));
+  const height = span > 0 ? span / count : 1;
+  const bands = Array.from({ length: count }, () => []);
+  const bandOf = (lat) => Math.min(count - 1, Math.max(0, Math.floor((lat - south) / height)));
+  for (const edge of edges) {
+    const lo = bandOf(edge.south);
+    const hi = bandOf(edge.north);
+    for (let k = lo; k <= hi; k += 1) bands[k].push(edge);
+  }
+  return { south, north, height, count, bands, edges };
+}
+
+/** The edges that could reach a latitude span. */
+function edgesNear(index, south, north) {
+  if (!index) return [];
+  if (north < index.south || south > index.north) return [];
+  const lo = Math.min(index.count - 1, Math.max(0, Math.floor((south - index.south) / index.height)));
+  const hi = Math.min(index.count - 1, Math.max(0, Math.floor((north - index.south) / index.height)));
+  if (lo === hi) return index.bands[lo];
+  const out = [];
+  for (let k = lo; k <= hi; k += 1) out.push(...index.bands[k]);
+  return out;
+}
+
+/** How a cell sits relative to a polygon. */
 export const CELL_POSITIONS = Object.freeze({
   inside: 'inside',
   straddling: 'straddling',
@@ -111,35 +288,82 @@ export const CELL_POSITIONS = Object.freeze({
 });
 
 /**
- * Classify one cell against one ring, using its four real corners AND its
- * centroid.
+ * Classify one cell against one polygon — exactly, not by sampling it.
  *
- * Five tests rather than four, because four corners outside does NOT mean the
- * cell is outside: a ring narrower than 200 m can pass through the middle of a
- * square without containing any of its corners. That case is rare at 200 m and
- * routine at 1 km, and it is the difference between a straddle counted and a
- * straddle silently dropped.
+ * THIS USED TO SAMPLE FIVE POINTS AND IT WAS WRONG. Four corners plus the
+ * centroid sounds thorough and is not a containment test: a corridor narrower
+ * than the cell — a street between two railway embankments, a bridge approach —
+ * crosses a 200 m square without covering any of those five points, and the
+ * cell was then declared OUTSIDE. Reproduced on a band 28 m tall crossing a
+ * real cell: the "upper bound" returned zero people for ground the ring
+ * physically covers. An upper bound that can be too low is not a bound.
+ *
+ * So the boundary is tested against the boundary. A cell straddles when any of
+ * its four edges meets any polygon edge, OR when it swallows a whole ring — the
+ * case where the polygon is smaller than the cell, or where a HOLE sits
+ * entirely inside it, which is a cell whose population is partly unreachable
+ * and therefore not "fully inside" either.
+ *
+ * With no crossing and no swallowed ring, the four corners settle it: all in is
+ * `inside`, all out is `outside`. A mixed count cannot happen for a simple
+ * polygon and is reported as straddling rather than trusted.
  *
  * @param {{n: number, e: number}} cell
- * @param {Array<number[]>} ring
+ * @param {Array<number[]>|Array<Array<number[]>>} rings
  * @param {number} resolution Cell side, metres.
- * @returns {{position: string, centroidInside: boolean, cornersInside: number}}
+ * @param {object|null} [index] A `buildEdgeIndex()` over the same polygon.
+ * @returns {{position: string, centroidInside: boolean, cornersInside: number,
+ *   crossed: boolean}}
  */
-export function classifyCell(cell, ring, resolution) {
+export function classifyCell(cell, rings, resolution, index = null) {
+  const polygon = asRings(rings);
   const corners = cellCorners({ res: resolution, n: cell.n, e: cell.e });
   const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e });
-  const centroidInside = pointInRing(ring, lon, lat);
+  if (!polygon.length) {
+    return {
+      position: CELL_POSITIONS.outside, centroidInside: false, cornersInside: 0, crossed: false,
+    };
+  }
+  const centroidInside = pointInPolygon(polygon, lon, lat);
   let cornersInside = 0;
+  let south = Infinity;
+  let north = -Infinity;
+  let west = Infinity;
+  let east = -Infinity;
   for (const [cornerLon, cornerLat] of corners) {
-    if (pointInRing(ring, cornerLon, cornerLat)) cornersInside += 1;
+    if (pointInPolygon(polygon, cornerLon, cornerLat)) cornersInside += 1;
+    if (cornerLat < south) south = cornerLat;
+    if (cornerLat > north) north = cornerLat;
+    if (cornerLon < west) west = cornerLon;
+    if (cornerLon > east) east = cornerLon;
   }
-  if (cornersInside === 4 && centroidInside) {
-    return { position: CELL_POSITIONS.inside, centroidInside, cornersInside };
+
+  const candidates = index ? edgesNear(index, south, north) : (buildEdgeIndex(polygon)?.edges ?? []);
+  let crossed = false;
+  let swallowed = false;
+  for (const edge of candidates) {
+    if (edge.north < south || edge.south > north || edge.east < west || edge.west > east) continue;
+    if (!swallowed && edge.ax >= west && edge.ax <= east && edge.ay >= south && edge.ay <= north
+      && pointInRing(corners, edge.ax, edge.ay)) swallowed = true;
+    for (let i = 0; i < 4; i += 1) {
+      if (segmentsIntersect(corners[i], corners[(i + 1) % 4], [edge.ax, edge.ay], [edge.bx, edge.by])) {
+        crossed = true;
+        break;
+      }
+    }
+    if (crossed) break;
   }
-  if (cornersInside === 0 && !centroidInside) {
-    return { position: CELL_POSITIONS.outside, centroidInside, cornersInside };
+
+  if (crossed || swallowed) {
+    return { position: CELL_POSITIONS.straddling, centroidInside, cornersInside, crossed };
   }
-  return { position: CELL_POSITIONS.straddling, centroidInside, cornersInside };
+  if (cornersInside === 4) {
+    return { position: CELL_POSITIONS.inside, centroidInside, cornersInside, crossed };
+  }
+  if (cornersInside === 0) {
+    return { position: CELL_POSITIONS.outside, centroidInside, cornersInside, crossed };
+  }
+  return { position: CELL_POSITIONS.straddling, centroidInside, cornersInside, crossed };
 }
 
 /** Sum a field over cells, ignoring the ones that do not publish it. */
@@ -178,34 +402,44 @@ const round1 = (value) => (value === null ? null : Math.round(value * 10) / 10);
  * headline number describes and mixing conventions between a total and its
  * composition would be worse than either.
  *
+ * Holes are honoured: a square containing a hole is a straddler, not a square
+ * fully inside, because part of its population sits on ground the ring does
+ * not reach.
+ *
  * @param {Array<object>} cells Projected carroyage cells.
- * @param {Array<number[]>} ring
+ * @param {Array<number[]>|Array<Array<number[]>>} ring A ring, or a polygon's
+ *   rings as `[exterior, ...holes]`.
  * @param {number} resolution
  * @returns {object|null} Null when there is nothing to join.
  */
 export function aggregateInRing(cells, ring, resolution) {
-  const bounds = ringBounds(ring);
+  const polygon = asRings(ring);
+  const bounds = ringBounds(polygon);
   if (!Array.isArray(cells) || !cells.length || !bounds) return null;
 
   const inside = [];
   const straddling = [];
+  const centroidSet = [];
   // A degree of latitude is about 111 km; 200 m is 0.0018°, 1 km is 0.009°. One
   // cell of slack around the ring's own box is enough to catch every square
   // that could possibly touch it, and rejects the rest with two comparisons.
-  const padDeg = (resolution / 111_320) * 1.5;
+  const cellDeg = resolution / 111_320;
+  const padDeg = cellDeg * 1.5;
+  // One index for the whole join, banded at the cell's own height, and each
+  // cell classified ONCE: the old code classified every straddler twice, which
+  // doubled the most expensive half of the work to re-read one boolean.
+  const index = buildEdgeIndex(polygon, cellDeg);
   for (const cell of cells) {
     const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e });
     if (lat < bounds.south - padDeg || lat > bounds.north + padDeg
       || lon < bounds.west - padDeg || lon > bounds.east + padDeg) continue;
-    const { position } = classifyCell(cell, ring, resolution);
+    const { position, centroidInside } = classifyCell(cell, polygon, resolution, index);
     if (position === CELL_POSITIONS.inside) inside.push(cell);
     else if (position === CELL_POSITIONS.straddling) straddling.push(cell);
+    else continue;
+    if (position === CELL_POSITIONS.inside || centroidInside) centroidSet.push(cell);
   }
 
-  const centroidSet = [
-    ...inside,
-    ...straddling.filter((cell) => classifyCell(cell, ring, resolution).centroidInside),
-  ];
   const touching = [...inside, ...straddling];
   if (!touching.length) {
     return {
@@ -213,6 +447,7 @@ export function aggregateInRing(cells, ring, resolution) {
       people: { low: 0, count: 0, high: 0 },
       households: { low: 0, count: 0, high: 0 },
       imputedCells: 0,
+      imputedUnknown: 0,
       imputedShare: null,
       niveau: null,
       pauvrete: null,
@@ -226,6 +461,10 @@ export function aggregateInRing(cells, ring, resolution) {
   }
 
   const imputed = centroidSet.filter((cell) => cell.est === 1).length;
+  // Cells whose imputation flag the service did not answer. Kept apart from the
+  // imputed count, because "modelled" and "we were not told" are two different
+  // things and only the second forbids the card from claiming "none imputed".
+  const imputedUnknown = centroidSet.filter((cell) => cell.est !== 0 && cell.est !== 1).length;
   return {
     cells: {
       // `inside` and `straddling` PARTITION `touched`; `counted` is the
@@ -249,6 +488,7 @@ export function aggregateInRing(cells, ring, resolution) {
       high: Math.round(sum(touching, 'men')),
     },
     imputedCells: imputed,
+    imputedUnknown,
     imputedShare: centroidSet.length
       ? Math.round((imputed / centroidSet.length) * 1000) / 10
       : null,

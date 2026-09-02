@@ -419,10 +419,16 @@ export function createFilosofiSelectedOverlayEntry(record, communes = {}) {
   if (cell.solo !== null) details.push(`${cell.solo} % de personnes seules`);
   if (cell.surface !== null) details.push(`${cell.surface} m² par logement en moyenne`);
 
-  details.push(cell.est === 1
-    // The one line that must never be dropped.
-    ? 'Carreau IMPUTÉ : valeurs approchées, pas observées (secret statistique)'
-    : 'Carreau observé, non imputé');
+  // The one line that must never be dropped — and never guessed either: with
+  // the flag absent the card says the flag is absent, because "observé" is a
+  // claim and a missing column does not support it.
+  if (cell.est === 1) {
+    details.push('Carreau IMPUTÉ : valeurs approchées, pas observées (secret statistique)');
+  } else if (cell.est === 0) {
+    details.push('Carreau observé, non imputé');
+  } else {
+    details.push('Imputation non renseignée par l’INSEE pour ce carreau');
+  }
   details.push(`Carreau ${side} · revenus ${FILOSOFI_VINTAGE} · INSEE Filosofi`);
   // Height is the count, not the indicator — stated on the card because it is
   // the one thing a viewer cannot read off the picture.
@@ -797,6 +803,8 @@ const filosofiCarreauxLayer = {
       // good as this number.
       imputedCells: summary?.imputedCells ?? null,
       imputedShare: summary?.imputedShare ?? null,
+      // A 0 % imputed share is only good news when nothing was left unsaid.
+      imputedUnknown: summary?.imputedUnknown ?? null,
       truncated: Boolean(_payload?.truncated),
       matched: _payload?.matched ?? null,
       metric: _metric.id,

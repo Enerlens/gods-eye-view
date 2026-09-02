@@ -19728,7 +19728,10 @@ async function refreshFilosofiViewport(box, resolution) {
     throw new Error(`carreaux_${resolution} answer too large (${length} bytes)`);
   }
   const raw = await response.json();
-  const projected = projectCarreaux(raw, { resolution });
+  // The ceiling travels with the answer: `projectCarreaux()` cannot tell a full
+  // page from a complete one without knowing what was asked for, and the
+  // Géoplateforme does not always publish `numberMatched`.
+  const projected = projectCarreaux(raw, { resolution, count: FILOSOFI_MAX_CELLS });
   return {
     resolution,
     box,

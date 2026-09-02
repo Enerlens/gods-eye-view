@@ -302,6 +302,52 @@ test('zero imputed cells reads as good news, not as a warning about nothing', as
   assert.ok(!lines.some((line) => /^0 carreau/.test(line)), lines.join(' | '));
 });
 
+test('a truncated carroyage page is a floor, never a bracket', async () => {
+  // THE FAILURE THIS REPLACES. `grep truncated implantationFiche.js` returned
+  // nothing: the fiche summed whatever the WFS handed it and printed the total
+  // with an error bar, even when the page had been cut at 5 000 rows and an
+  // unknown number of squares were simply absent.
+  const { impl } = stubFetch();
+  const fiche = await read(await ficheFetch('gev:fiche?lat=45.7578&lon=4.8357&seconds=600', {}, { impl }));
+  const cut = ficheLines({
+    ...fiche,
+    demand: { ...fiche.demand, truncated: true, matched: 12_400 },
+  }).details;
+  assert.ok(cut.some((line) => /^Au moins .* habitants — comptage incomplet$/.test(line)), cut.join(' | '));
+  assert.ok(cut.some((line) => /page tronquée/.test(line)), cut.join(' | '));
+  // `Intl` separates thousands with U+202F, so the regex must not assume a plain space.
+  assert.ok(cut.some((line) => /12.400 carreaux dans la boîte/.test(line)), cut.join(' | '));
+  assert.ok(!cut.some((line) => /^Entre /.test(line)), 'a bracket that excludes missing squares is not a bracket');
+  // And the intact fiche still prints the bracket it was built to print.
+  const whole = ficheLines(fiche).details;
+  assert.ok(whole.some((line) => /^Entre /.test(line)), whole.join(' | '));
+});
+
+test('the truncation flag reaches the fiche from the carroyage route', async () => {
+  const { impl } = stubFetch();
+  const wrapped = async (url) => (String(url).includes('/api/filosofi/carreaux')
+    ? { ok: true, status: 200, json: async () => ({ ...CARREAUX_PAYLOAD, truncated: true, matched: 9_000 }) }
+    : impl(url));
+  const fiche = await read(await ficheFetch('gev:fiche?lat=45.7578&lon=4.8357&seconds=600', {}, { impl: wrapped }));
+  assert.equal(fiche.demand.truncated, true);
+  assert.equal(fiche.demand.matched, 9_000);
+  assert.ok(fiche.missing.includes('carroyage tronqué'), JSON.stringify(fiche.missing));
+});
+
+test('an unanswered imputation flag is not silently promoted to "observed"', async () => {
+  const { impl } = stubFetch();
+  const fiche = await read(await ficheFetch('gev:fiche?lat=45.7578&lon=4.8357&seconds=600', {}, { impl }));
+  const unknown = ficheLines({
+    ...fiche,
+    demand: {
+      ...fiche.demand, imputedCells: 0, imputedShare: 0, imputedUnknown: 2,
+    },
+  }).details;
+  assert.ok(unknown.some((line) => /^Imputation non renseignée sur 2 /.test(line)), unknown.join(' | '));
+  assert.ok(!unknown.some((line) => /^Aucun carreau imputé/.test(line)),
+    '"none imputed" is a claim about a flag that did not arrive');
+});
+
 test('a paragraph-long zoning label is clipped, and says it was clipped', () => {
   const long = 'Tissu urbain dense a caractere patrimonial qui regroupe toutes les fonctions '
     + 'des centres urbains. Il est constitue d ilots profonds tres occupes par le bati avec '
