@@ -341,6 +341,34 @@ test('local infrastructure card copy uses the validated source fields', () => {
   });
 });
 
+test('a nameless dam card is titled by what the feature IS, not by the layer', () => {
+  // 5 948 of the pack's 7 432 features carry no name, so the fallback title is
+  // what 80% of these cards say. It used to be the LAYER's title, which called
+  // 1 198 digues "Barrage" — including OSM w860215522, a 159 m runoff bund at
+  // Octeville-sur-Mer with no water body within 250 m.
+  assert.deepEqual(localInfrastructureOverlayCopy({
+    osm: 'w860215522',
+    kind: 'dyke',
+    spanM: 159,
+  }, 'local-dams'), {
+    title: 'Digue',
+    details: ['159 m de long'],
+  });
+
+  assert.equal(localInfrastructureOverlayCopy({ kind: 'dam' }, 'local-dams').title, 'Barrage');
+  assert.equal(localInfrastructureOverlayCopy({ kind: 'dam+dyke' }, 'local-dams').title, 'Barrage-digue');
+  // The world half has no kind left to read, and says only that much.
+  assert.equal(localInfrastructureOverlayCopy({ spanM: 400 }, 'local-dams').title, 'Ouvrage');
+  // A name in the data still wins — the fallback is a fallback.
+  assert.equal(
+    localInfrastructureOverlayCopy({ name: 'Digue de l’Étang', kind: 'dyke' }, 'local-dams').title,
+    'Digue de l’Étang',
+  );
+  // Packs that are all one thing are untouched by the per-feature branch.
+  assert.equal(localInfrastructureOverlayCopy({}, 'local-airports').title, 'Aérodrome');
+  assert.equal(localInfrastructureOverlayCopy({}, 'local-ports').title, 'Port');
+});
+
 test('airport cards come from the pack module, clamped to the host width', () => {
   assert.deepEqual(localInfrastructureOverlayCopy({
     name: 'Nice-Côte d’Azur Airport',
