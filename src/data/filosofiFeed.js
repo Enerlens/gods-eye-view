@@ -502,6 +502,10 @@ export const FILOSOFI_RAMP_SAMPLE = Object.freeze({
   cells: 80_105,
   people: 12_285_745,
   imputedCells: 31_351,
+  // The same 42 boxes read at 1 km, which is where the SIZE classes for the
+  // coarse grid come from. Fewer cells for more people: a coarse carreau is the
+  // aggregate of up to 25 fine ones, and the empty ones do not exist in either.
+  coarse: Object.freeze({ cells: 6_727, people: 12_941_533, imputedCells: 1_665 }),
 });
 
 /**
@@ -520,8 +524,8 @@ const RAMP_WARM = Object.freeze([...RAMP_COLD].reverse());
 /**
  * What the layer can colour by.
  *
- * `weight` is the count the indicator is computed ON, and it drives the
- * EXTRUSION — see `cellHeightM`. Every entry states its unit in words because
+ * `weight` is the count the indicator is computed ON, and it drives the SIZE of
+ * the symbol — see `cellSymbol`. Every entry states its unit in words because
  * "27 100" is meaningless without "€ per person per year", and a legend that
  * omits the unit is a legend that invites the wrong reading.
  */
@@ -665,58 +669,213 @@ export function cellColor(cell, metric) {
 }
 
 /**
- * How tall a cell stands.
+ * The six size classes, as the national quantiles of the count itself.
  *
- * THE HEIGHT IS THE DENOMINATOR, NEVER THE INDICATOR — and this is the layer's
- * one real design decision. Extruding a mean is a category error: a stack of
- * "27 100 € per person" has no volume, and the eye reads volume as quantity.
- * Extruding the COUNT the indicator was computed on gives every block a
- * meaning that adds up — the volume of a city block of squares really is its
- * population — and leaves colour free to carry the indicator.
+ * SIX STEPS AND NOT A CONTINUOUS SCALE — the same decision the colour ramp
+ * makes, for the same reason and one more. The shared reason: the eye cannot
+ * read a continuous magnitude back into a number, and the card carries the
+ * number anyway. The extra one is arithmetic. A screen showing the 1 km grid
+ * gives each cell about 35 pixels; a symbol has to be at least 8 across to be
+ * seen and at most ~28 to stay inside its cell, so the drawable range is 3:1 in
+ * diameter. The DATA spans 100:1 in count — median 109 people per coarse
+ * carreau against 11 690 in the densest square over Bordeaux. A strictly
+ * proportional scale has to spend that mismatch somewhere, and it did:
+ * **65 % of that viewport's 1 907 cells landed on the floor**, the channel went
+ * flat, and a région holding a million people read as empty. Six classes spend
+ * it deliberately instead, and every class is visible.
  *
- * The consequence is the honest one: a brilliantly coloured cell one pixel tall
- * is four households, and it should not be read as a neighbourhood.
+ * ONE SET OF BREAKS PER GRID, measured, not derived. Scaling the 200 m breaks
+ * by 25 — a 1 km cell holds 25 times the people at the same density — is the
+ * arithmetic answer and it is 33 % too high at the top: the coarse grid's own
+ * national p90 is **28 652 people**, not 25 × 1 522 = 38 050, because the 200 m
+ * cells inside a dense square are not all dense. `build-filosofi-ramp.mjs
+ * --resolution 1000` measured it on 2026-09-02 over **6 727 coarse carreaux in
+ * the same 42 boxes**, 12 941 533 people.
  *
- * Metres per person, not a normalised scale: a fixed conversion means two
- * viewports are comparable, and a relative one would make Paris and Aurillac
- * the same height.
+ * The fine grid's breaks ARE the population ramp's, deliberately: the size
+ * classes and the `population` indicator's colour bands are the same measured
+ * quantiles, so a square drawn one class larger is also one band warmer when
+ * that is what you are colouring by.
+ */
+export const FILOSOFI_SIZE_BREAKS = Object.freeze({
+  200: Object.freeze({ ind: FILOSOFI_RAMPS.population, men: FILOSOFI_RAMPS.menages }),
+  1000: Object.freeze({
+    ind: Object.freeze([1_343, 3_147, 6_587, 13_666, 28_652]),
+    men: Object.freeze([642, 1_563, 3_237, 6_850, 14_532]),
+  }),
+});
+
+/**
+ * The most of its own cell a symbol may ever take, as a fraction of the side.
+ *
+ * THIS IS THE WHOLE POINT OF THE LAYER'S REDRAW, so it is a hard ceiling and
+ * not a suggestion. At 0.68 the densest carreau in France still leaves a 47 m
+ * margin of untouched ground on the 200 m grid — the street the basemap draws,
+ * the label it prints, the marker another layer stands there — and the
+ * carroyage stops being an opaque quilt laid over the map. A layer that hides
+ * the map is not a layer, it is a replacement.
+ *
+ * Stated as a fraction of the SIDE even though the symbol is a disc: the
+ * ceiling is about how much of the cell is spent, and `cellDisc` converts. A
+ * disc at the ceiling covers 36 % of its cell, where a square at the same
+ * fraction covered 46 % — the shape is the cheapest 10 points of basemap here.
+ */
+export const FILOSOFI_MAX_FILL = 0.68;
+/**
+ * The smallest class, and it is a floor with a job.
+ *
+ * Below about eight pixels a disc has no size a viewer can compare — two of
+ * them differing by half their area read as two dots — so the bottom class has
+ * to be at least that. 0.26 of the cell is a 59 m disc on the 200 m grid and a
+ * 293 m disc on the 1 km one: eight to ten pixels at the altitude each grid
+ * draws at, enough to see, enough to click, far too small to read as a
+ * neighbourhood.
+ */
+export const FILOSOFI_MIN_FILL = 0.26;
+/**
+ * The hole an imputed cell's ring carries, as a fraction of its own diameter.
+ *
+ * Half, which removes a quarter of the area — and the ring is grown by
+ * `1/√(1−0.5²)` to give it back, so a ring and a disc of the same count cover
+ * the same amount of ground. The hollow is a statement about PROVENANCE;
+ * letting it shrink the symbol would make it a statement about the count, which
+ * would be a second, false, claim.
+ */
+export const FILOSOFI_HOLE_SCALE = 0.5;
+const HOLLOW_COMPENSATION = 1 / Math.sqrt(1 - FILOSOFI_HOLE_SCALE ** 2);
+
+/**
+ * How big a cell's symbol is drawn, and whether it is a ring.
+ *
+ * THE SIZE IS THE DENOMINATOR, NEVER THE INDICATOR — the layer's one real
+ * design decision, and it is the AREA that carries it. Sizing by a mean is a
+ * category error: "27 100 € per person" has no extent, and the eye reads extent
+ * as quantity. Sizing by the COUNT the indicator was computed on gives every
+ * symbol a meaning that adds up, and leaves colour free to carry the indicator.
+ *
+ * Six measured classes rather than a proportion — see `FILOSOFI_SIZE_BREAKS`
+ * for the arithmetic that forced it. A disc says "national class 4 of 6 for
+ * population", which is a claim the eye can read back; a strictly proportional
+ * one said "population" and, at the altitudes this grid is drawn at, was
+ * unreadable at both ends at once.
+ *
+ * IT USED TO BE THE HEIGHT, and that was wrong twice over. A camera looking
+ * down reads no height at all, so on the view this app opens with the channel
+ * carried nothing; and paying for it with the full footprint of every cell
+ * meant a populated département erased its own basemap — no streets, no place
+ * names, no other layer. Both faults have the same fix: spend the count on area
+ * inside the cell rather than on a tower above it.
+ *
+ * The consequence stays the honest one: a brilliantly coloured speck is four
+ * households, and it should not be read as a neighbourhood.
  *
  * @param {object} cell
  * @param {object} metric
  * @param {{resolution?: number}} [options]
- * @returns {number} Metres, always ≥ MIN_EXTRUSION_M when the cell is populated.
+ * @returns {{fill: number, hole: number}} Fractions of the cell's side; `fill`
+ *   is 0 for a cell with nobody in it, and `hole` is 0 unless the cell is
+ *   imputed.
  */
-/**
- * Metres of extrusion per person and per household.
- *
- * Set against the CELL, not by taste: 0.12 m per person puts the densest
- * carreau measured anywhere in the country — Paris 19e, 2 818 people — at
- * 338 m, about 1.7 times the 200 m square it stands on, and a typical urban
- * cell of 500 people at 60 m. Past roughly 2× the cell width a block hides its
- * neighbours behind it and the grid stops being readable from any oblique
- * angle, which is the only angle this layer is worth looking at from.
- *
- * The household figure is 2.3× the person one because a French household is
- * about 2.2 people: the two scales have to agree, or switching from a
- * per-person indicator to a per-household one would relayout the city and read
- * as a change in the country.
- */
-export const FILOSOFI_METRES_PER_PERSON = 0.12;
-export const FILOSOFI_METRES_PER_HOUSEHOLD = 0.28;
-/** Floor, so a four-household square is visible AND still visibly tiny. */
-export const FILOSOFI_MIN_EXTRUSION_M = 6;
-
-export function cellHeightM(cell, metric, { resolution = 200 } = {}) {
+export function cellSymbol(cell, metric, { resolution = 200 } = {}) {
   const count = metric.weight === 'men' ? cell?.men : cell?.ind;
-  if (!Number.isFinite(count) || count <= 0) return 0;
-  const perUnit = metric.weight === 'men'
-    ? FILOSOFI_METRES_PER_HOUSEHOLD
-    : FILOSOFI_METRES_PER_PERSON;
-  // A 1 km cell holds 25 times the people of a 200 m cell at the same density.
-  // Without this the coarse grid would tower over the fine one and read as a
-  // change in the country rather than a change in the grid.
-  const gridScale = resolution === 1000 ? 1 / 25 : 1;
-  return Math.max(FILOSOFI_MIN_EXTRUSION_M, count * perUnit * gridScale);
+  if (!Number.isFinite(count) || count <= 0) return { fill: 0, hole: 0 };
+  const grid = FILOSOFI_SIZE_BREAKS[resolution] || FILOSOFI_SIZE_BREAKS[200];
+  const breaks = metric.weight === 'men' ? grid.men : grid.ind;
+  let band = 0;
+  for (const edge of breaks) {
+    if (count < edge) break;
+    band += 1;
+  }
+  // Even steps in DIAMETER, not in area: the classes are ordinal — "one class
+  // up" — and an eye compares widths far better than it compares areas. The
+  // steps are +75 % of area at the bottom of the ramp and +30 % at the top,
+  // both well past the threshold where two discs read as different sizes rather
+  // than as noise; stepping the AREA evenly instead would make the first jump
+  // nearly imperceptible, which is where most of the country's cells are.
+  const step = (FILOSOFI_MAX_FILL - FILOSOFI_MIN_FILL) / breaks.length;
+  const clamped = FILOSOFI_MIN_FILL + (band * step);
+  if (cell?.est !== 1) return { fill: clamped, hole: 0 };
+  const fill = clamped * HOLLOW_COMPENSATION;
+  return { fill, hole: fill * FILOSOFI_HOLE_SCALE };
+}
+
+/**
+ * Diameter of a disc that covers the same ground as a square of the same side.
+ *
+ * The symbol is a disc, and the scale is stated in squares — `cellSymbol`
+ * returns a fraction of the CELL SIDE. Reading that fraction as a diameter
+ * would quietly shrink every count by π/4, so the diameter is grown by 2/√π and
+ * the disc covers exactly what the scale promises.
+ */
+export const FILOSOFI_DISC_DIAMETER = 2 / Math.sqrt(Math.PI);
+
+/**
+ * The outline of the disc drawn in a cell, as `[lon, lat]` points.
+ *
+ * Built in EPSG:3035 metres and projected point by point, for the same reason
+ * the squares were: a circle of a given radius in LAEA is not a circle in
+ * WGS84, and drawing one from a projected centre would flatten it by a percent
+ * or so at the top of the country and not at the bottom.
+ *
+ * 32 segments: at the widest the layer draws — a 1 km disc filling most of its
+ * cell on a 4 K screen — the chord error is under a third of a pixel, and the
+ * count is the AREA, so a visibly polygonal disc would also be a disc of the
+ * wrong size.
+ *
+ * @param {{res: number, n: number, e: number}} cell
+ * @param {number} fraction Diameter as a share of the cell's side, before the
+ *   square-to-disc correction.
+ * @param {number} [segments]
+ * @returns {Array<[number, number]>}
+ */
+export function cellDisc({ res, n, e }, fraction, segments = 32) {
+  const centreN = n + res / 2;
+  const centreE = e + res / 2;
+  const radius = (res * fraction * FILOSOFI_DISC_DIAMETER) / 2;
+  const points = [];
+  for (let index = 0; index < segments; index += 1) {
+    const angle = (index / segments) * Math.PI * 2;
+    points.push(laeaToWgs84(
+      centreE + (radius * Math.cos(angle)),
+      centreN + (radius * Math.sin(angle)),
+    ));
+  }
+  return points;
+}
+
+/**
+ * The slope a disc is expected to survive on one terrain sample.
+ *
+ * Sampling the whole footprint instead — five probes per cell — was measured at
+ * **400 ms per redraw against 85 ms** for a Lyon viewport of 484 cells, because
+ * `Globe.getHeight` walks the tile tree and costs about 0.16 ms a call. Paying
+ * five times over for relief the clearance can absorb is not a trade worth
+ * making on every metric switch.
+ */
+const SLOPE_TOLERANCE = 0.2;
+
+/**
+ * How far above its terrain sample a disc is laid.
+ *
+ * The discs are FLAT — there is no volume left to read, because the count is
+ * the area, and extruding it a second time would make volume grow as count^1.5.
+ * What is left is a clearance, and it is not decoration: the ground is sampled
+ * at the cell's CENTRE, and a disc pinned to that height on a hillside has its
+ * uphill half swallowed by the terrain it is describing — Fourvière is 130 m
+ * above the Saône inside a few hundred metres.
+ *
+ * So the clearance scales with the symbol's own radius: a fifth of it, which
+ * keeps any disc whole on a slope up to 20 % and lifts a big disc higher than a
+ * small one because it spans more ground. The floor is what stops the smallest
+ * symbols from z-fighting the imagery they are lying on.
+ *
+ * @param {number} resolution
+ * @param {number} [fill] Diameter as a share of the cell's side.
+ * @returns {number} Metres above the sampled ground.
+ */
+export function cellClearanceM(resolution = 200, fill = FILOSOFI_MAX_FILL) {
+  const radius = (resolution * fill * FILOSOFI_DISC_DIAMETER) / 2;
+  return Math.max(resolution === 1000 ? 20 : 6, radius * SLOPE_TOLERANCE);
 }
 
 // ---------------------------------------------------------------------------

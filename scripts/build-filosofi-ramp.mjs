@@ -27,7 +27,24 @@
  */
 
 const WFS = 'https://data.geopf.fr/wfs/ows';
-const TYPENAME = 'INSEE.FILOSOFI.INDICATORS:carreaux_200m';
+/**
+ * The two grids, and why both are measured.
+ *
+ * The colour ramps are read off the 200 m grid and applied to both, because
+ * every indicator on them is a RATE and a rate does not care how big the
+ * square is. The SIZE of the drawn symbol does: a 1 km carreau holds 25 times
+ * the people of a 200 m one at the same density, and scaling one reference by
+ * 25 puts 60 % of a région's coarse cells on the floor — measured over
+ * Bordeaux, 1 907 cells, p90 of the drawn fraction at 0.185 against a ceiling
+ * of 0.72. So the coarse grid gets its own measured reference, on its own
+ * distribution.
+ */
+const TYPENAMES = Object.freeze({
+  200: 'INSEE.FILOSOFI.INDICATORS:carreaux_200m',
+  1000: 'INSEE.FILOSOFI.INDICATORS:carreaux_1km',
+});
+/** The imputation flag is spelled differently on each grid. */
+const IMPUTED_FIELD = Object.freeze({ 200: 'i_car_est', 1000: 'i_est_1km' });
 /**
  * Fields the ramp is measured on, plus the two weights.
  *
@@ -36,11 +53,12 @@ const TYPENAME = 'INSEE.FILOSOFI.INDICATORS:carreaux_200m';
  * for the same reason — see `filosofiFeed.js`, where the cell's outline is
  * rebuilt from `id_inspire` instead of being transported.
  */
-const FIELDS = [
+const BASE_FIELDS = [
   'id_inspire', 'ind', 'men', 'ind_snv_div_ind', 'men_pauv_div_men',
   'part_log_soc_div_men', 'men_surf_div_men', 'part_ind_0_17_div_ind',
-  'part_ind_65p_div_ind', 'men_prop_div_men', 'men_1ind_div_men', 'i_car_est',
+  'part_ind_65p_div_ind', 'men_prop_div_men', 'men_1ind_div_men',
 ];
+const fieldsFor = (resolution) => [...BASE_FIELDS, IMPUTED_FIELD[resolution]];
 
 /**
  * Sample boxes, spread over inhabited France rather than over its bounding
@@ -86,15 +104,15 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * @param {number} count Row ceiling for this box.
  * @returns {Promise<Array<object>>} Raw feature properties.
  */
-async function fetchBox([lon, lat, label], count) {
+async function fetchBox([lon, lat, label], count, resolution) {
   const half = BOX_DEG / 2;
   const params = new URLSearchParams({
     SERVICE: 'WFS',
     VERSION: '2.0.0',
     REQUEST: 'GetFeature',
-    TYPENAMES: TYPENAME,
+    TYPENAMES: TYPENAMES[resolution],
     OUTPUTFORMAT: 'application/json',
-    PROPERTYNAME: FIELDS.join(','),
+    PROPERTYNAME: fieldsFor(resolution).join(','),
     COUNT: String(count),
     // lon,lat order: with a plain `EPSG:4326` suffix the service reads the box
     // in GIS order. The URN spelling (`urn:ogc:def:crs:EPSG::4326`) reads it
@@ -173,14 +191,17 @@ async function main() {
   const argv = process.argv.slice(2);
   const boxLimit = Number(argv[argv.indexOf('--boxes') + 1]) || SAMPLE_ANCHORS.length;
   const asJson = argv.includes('--json');
+  const resolution = argv.includes('--resolution')
+    ? Number(argv[argv.indexOf('--resolution') + 1]) : 200;
+  if (!TYPENAMES[resolution]) throw new Error(`unsupported resolution ${resolution}`);
   const anchors = SAMPLE_ANCHORS.slice(0, boxLimit);
   const perBox = 4000;
 
-  process.stderr.write(`Sampling ${anchors.length} boxes of ${BOX_DEG}° at 200 m…\n`);
+  process.stderr.write(`Sampling ${anchors.length} boxes of ${BOX_DEG}° at ${resolution} m…\n`);
   const rows = [];
   for (const anchor of anchors) {
     try {
-      rows.push(...await fetchBox(anchor, perBox));
+      rows.push(...await fetchBox(anchor, perBox, resolution));
     } catch (error) {
       process.stderr.write(`  ${anchor[2]}: ${error.message}\n`);
     }
@@ -189,7 +210,7 @@ async function main() {
     await sleep(250);
   }
 
-  const imputed = rows.filter((row) => Number(row.i_car_est) === 1).length;
+  const imputed = rows.filter((row) => Number(row[IMPUTED_FIELD[resolution]]) === 1).length;
   const people = rows.reduce((sum, row) => sum + (Number(row.ind) || 0), 0);
   const households = rows.reduce((sum, row) => sum + (Number(row.men) || 0), 0);
 
@@ -205,6 +226,7 @@ async function main() {
 
   const result = {
     measuredAt: new Date().toISOString().slice(0, 10),
+    resolution,
     boxes: anchors.length,
     cells: rows.length,
     imputedCells: imputed,
@@ -223,10 +245,17 @@ async function main() {
   process.stdout.write(`// Measured ${result.measuredAt} over ${result.cells} carreaux`
     + ` in ${result.boxes} boxes — ${result.people.toLocaleString('en-US')} people,`
     + ` ${result.imputedCells} imputed.\n`);
-  process.stdout.write('// Population-weighted p10 / p25 / p50 / p75 / p90.\n');
+  process.stdout.write(`// Grid: ${resolution} m.`
+    + ' Population-weighted p10 / p25 / p50 / p75 / p90.\n');
   for (const metric of METRICS) {
     process.stdout.write(`${metric.key}: ${JSON.stringify(ramps[metric.key])},\n`);
   }
+  // The size channel's reference, which is the p90 of the COUNT itself — the
+  // last entry of the population and menages rows above, repeated here because
+  // it lands in a different constant (`FILOSOFI_FULL_SIZE_COUNT`) and reading it
+  // off a ramp row by eye is how the wrong number gets pasted.
+  process.stdout.write(`// FILOSOFI_FULL_SIZE_COUNT[${resolution}]:`
+    + ` { ind: ${ramps.population.at(-1)}, men: ${ramps.menages.at(-1)} }\n`);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
