@@ -379,6 +379,13 @@ function clearPrimitives() {
   _outlines = null;
   _records = new Map();
   if (_selectedId) {
+    // The address and building lookups go with the selection, exactly as they
+    // do in `clearSelection`. Every teardown that skips this — a pan, a refused
+    // box, a stack switch — otherwise leaves up to `BUILDING_TILE_CAP` BD TOPO
+    // tile requests plus a BAN call running for a parcel nobody is looking at,
+    // against two keyless third-party services, once per camera move.
+    _detailAbort?.abort();
+    _detailAbort = null;
     _selectedId = null;
     _overlayHost.clearSource(CADASTRE_SELECTED_OVERLAY_SOURCE_ID);
   }
@@ -638,29 +645,45 @@ function drawSelectionPrimitives(record) {
   // the frame the click already pays for; the worker pool exists for the
   // two-thousand-polygon batch, not for this.
   //
-  // The gate is not defensive noise. A synchronous ground primitive THROWS
-  // outright — `DeveloperError`, in the dev build the app is developed in —
-  // until `ApproximateTerrainHeights` has loaded, and nothing here can promise
-  // that: it resolves off the first ground primitive's own update. In practice
-  // the batches have long since triggered it by the time a parcel can be
-  // clicked, so this reads `true` and the highlight is immediate; when it does
-  // not, falling back to the worker costs latency, which is the thing worth
-  // losing of the two.
+  // The gate is not defensive noise. A synchronous ground primitive refuses to
+  // build until `ApproximateTerrainHeights` has loaded — `DeveloperError` in the
+  // dev build, a silent early return in the release one — and nothing here can
+  // promise that: it resolves off the first ground primitive's own update. In
+  // practice the batches have long since triggered it by the time a parcel can
+  // be clicked, so this reads `true` and the highlight is immediate.
+  //
+  // When it does NOT, the fallback is not merely slower. Cesium's early return
+  // pushes nothing onto `frameState.afterRender`, so no frame is requested when
+  // the heights finally land, and on a globe that renders on request the
+  // highlight would simply never appear — the card up, the parcel unlit, until
+  // some unrelated camera move happened to pump the scene. So the fallback asks
+  // for the frame itself once the load resolves.
   const immediate = Cesium.ApproximateTerrainHeights?.initialized === true;
+  if (!immediate) {
+    Promise.resolve(Cesium.GroundPrimitive.initializeTerrainHeights())
+      .then(() => governorRequestRender('cadastre-terrain-heights'))
+      .catch(() => { /* no heights, no highlight — the card still answers */ });
+  }
+  const scenePrimitives = _viewer.scene?.primitives;
+  if (!scenePrimitives) return;
+  // Published only once the scene has actually taken it. Assigning first would
+  // leave `_selectedFill` holding a primitive no `remove()` can ever reach if
+  // the collection rejects it — a highlight that leaks and that
+  // `getPrimitiveShapeForQa` would report as drawn.
   const fill = buildFillPrimitive(
     fillInstancesFor(record, highlight.withAlpha(SELECTED_FILL_ALPHA)),
     { asynchronous: !immediate },
   );
   if (fill) {
     fill.show = _enabled;
+    scenePrimitives.add(fill);
     _selectedFill = fill;
-    _viewer.scene.primitives.add(fill);
   }
   const outline = buildOutlinePrimitive(outlineInstancesFor(record, highlight), { asynchronous: !immediate });
   if (outline) {
     outline.show = _enabled;
+    scenePrimitives.add(outline);
     _selectedOutline = outline;
-    _viewer.scene.primitives.add(outline);
   }
 }
 
