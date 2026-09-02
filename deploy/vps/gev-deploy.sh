@@ -13,6 +13,14 @@
 #
 # Deliberately pull-based: GitHub never needs a route into the VPS, and the
 # box holds no CI credentials. The repo is public, so no token either.
+#
+# That last property is why the source arrives as a TARBALL rather than a
+# clone. GitHub answers this box's anonymous ref advertisement (a GET) with
+# 200 but returns 401 to POST /git-upload-pack, and every pack transfer goes
+# through that POST — so `git clone` and `git fetch` cannot run here at all,
+# under any protocol version. codeload is a plain GET and needs no credential.
+# Listing a ref still works over git, but only in protocol v0, which does not
+# POST; the v2 default cannot even resolve a branch head from this IP.
 set -euo pipefail
 
 ROOT=${GEV_ROOT:-/opt/gev}
@@ -51,7 +59,11 @@ else
   branch="$target"
 fi
 
-sha=$(git ls-remote "https://github.com/$REPO.git" "refs/heads/$branch" | cut -f1)
+# `|| true` so an unreadable answer reaches the hold below rather than killing
+# the script through `set -e` — holding is what the next line means to do, and
+# without this it never got the chance to say so.
+sha=$(git -c protocol.version=0 ls-remote "https://github.com/$REPO.git" \
+      "refs/heads/$branch" 2>/dev/null | cut -f1 || true)
 if [ -z "$sha" ]; then
   LOG "branch '$branch' has no commit on the remote — holding"
   exit 0
@@ -66,22 +78,37 @@ fi
 
 LOG "deploying $want (was ${have:-nothing}, container running=$running)"
 
-if [ ! -d "$SRC/.git" ]; then
-  git clone --quiet "https://github.com/$REPO.git" "$SRC"
+# Unpack beside $SRC — same filesystem, so the swap below is a rename — and
+# clean up on every exit path, including the refusal.
+tmp=$(mktemp -d "$ROOT/unpack.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT
+
+# A download that fails HOLDS rather than failing the unit: a flaky minute on
+# codeload is not a reason to page, and the previous container keeps serving.
+if ! curl -fsSL --max-time 300 -o "$tmp/src.tar.gz" \
+     "https://codeload.github.com/$REPO/tar.gz/$sha"; then
+  LOG "tarball for $want could not be downloaded — holding"
+  exit 0
 fi
-git -C "$SRC" fetch --quiet --prune origin "+refs/heads/$branch:refs/remotes/origin/$branch"
-git -C "$SRC" checkout --quiet --detach "$sha"
-git -C "$SRC" clean -qfd
+mkdir -p "$tmp/tree"
+if ! tar -xzf "$tmp/src.tar.gz" -C "$tmp/tree" --strip-components=1; then
+  LOG "tarball for $want is unreadable — holding"
+  exit 0
+fi
 
 # The gate lives in the ref, not on the box: a branch cut before it was added
 # ignores GEV_ACCESS_PASSWORD entirely and would put an OPEN origin — every
-# keyed proxy included — on a URL that is reachable. Refuse, and leave the
-# previous container serving.
+# keyed proxy included — on a URL that is reachable. Read on the UNPACKED tree,
+# before it replaces the live one, so a refusal leaves both the previous
+# checkout and the previous container exactly as they were.
 if grep -q '^GEV_ACCESS_PASSWORD=.' "$ROOT/.env" 2>/dev/null \
-   && ! grep -qF 'gev-access-gate' "$SRC/vite.config.js"; then
+   && ! grep -qF 'gev-access-gate' "$tmp/tree/vite.config.js"; then
   LOG "REFUSING $want: this ref predates the access gate, so staging would be open. Rebase the branch onto main."
   exit 1
 fi
+
+rm -rf "$SRC"
+mv "$tmp/tree" "$SRC"
 
 cd "$ROOT"
 if ! docker compose up -d --build; then
