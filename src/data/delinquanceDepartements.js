@@ -88,6 +88,8 @@ import {
   CELL_SUPPRESSED,
   CELL_ZERO,
   DELINQUANCE_SOURCE,
+  DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS,
+  DELINQUANCE_TOTAL_SLUG,
   indicatorForSlug,
 } from './delinquanceFeed.js';
 
@@ -168,6 +170,44 @@ export function locateDelinquanceDepartement(index, lat, lon, snapKm = DELINQUAN
 export { departementsInBox } from './franceDepartements.js';
 
 /**
+ * One département's computed all-offences cell, for one year.
+ *
+ * There is no suppression at this grain — the DEP base has no `est_diffuse`
+ * column at all — so the total here is EXACT, and that is the difference that
+ * makes it worth drawing: measured on the 2025 edition all 101 départements
+ * carry all 16 contributors, the national total is **3 306 254 facts over
+ * 68 350 798 inhabitants (48.37 ‰)**, and the spread runs from the Cantal at
+ * 24.4 ‰ to Paris at 109.9 ‰. `missing` is returned anyway, because an edition
+ * that stops publishing an indicator would otherwise silently shrink the total.
+ *
+ * @param {object} row A projected département row.
+ * @param {number} slot Index of the year in the payload's `years` order.
+ * @returns {?Array<number>} `[state, count, rate, missing]`.
+ */
+export function delinquanceDepartementTotalCell(row, slot) {
+  if (!row || !(slot >= 0)) return null;
+  let count = 0;
+  let missing = 0;
+  let seen = 0;
+  for (const slug of DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS) {
+    const series = row.cells?.[slug];
+    const cell = Array.isArray(series) ? series[slot] : null;
+    if (!cell || cell[0] === CELL_SUPPRESSED) { missing += 1; continue; }
+    seen += 1;
+    if (cell[0] === CELL_PUBLISHED) count += Number(cell[1]) || 0;
+  }
+  if (!seen) return null;
+  const pop = Number(row.pop);
+  // Recomputed from counts, never assembled from published rates — see
+  // `DELINQUANCE_TOTAL_INDICATOR` for why two denominators cannot be added.
+  const rate = Number.isFinite(pop) && pop > 0 ? (count / pop) * 1000 : null;
+  const state = count > 0
+    ? CELL_PUBLISHED
+    : (missing > 0 ? CELL_SUPPRESSED : CELL_ZERO);
+  return [state, count, rate, missing];
+}
+
+/**
  * Fold one indicator-year of the département base onto the bundled polygons.
  *
  * @param {object} input
@@ -198,9 +238,12 @@ export function projectDelinquanceNational({
   );
   const polygons = index?.list || [];
 
+  const isTotal = indicator === DELINQUANCE_TOTAL_SLUG;
+
   /** Read one département's cell for the selected indicator-year. */
   const cellOf = (row) => {
     if (!row || slot < 0) return null;
+    if (isTotal) return delinquanceDepartementTotalCell(row, slot);
     const series = row.cells?.[indicator];
     return Array.isArray(series) ? series[slot] || null : null;
   };

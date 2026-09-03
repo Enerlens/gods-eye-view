@@ -384,11 +384,6 @@ export const DELINQUANCE_INDICATORS = Object.freeze([
   { slug: 'escroqueries', label: 'Escroqueries et fraudes aux moyens de paiement', short: 'Escroqueries', unite: 'Victime', per: 'habitants', grains: Object.freeze(['dep', 'com']) },
 ]);
 
-/** Indicator lookup by the register's own French label. */
-const INDICATOR_BY_LABEL = new Map(DELINQUANCE_INDICATORS.map((entry) => [entry.label, entry]));
-/** Indicator lookup by slug. */
-const INDICATOR_BY_SLUG = new Map(DELINQUANCE_INDICATORS.map((entry) => [entry.slug, entry]));
-
 /** Slugs published at commune grain — 15 of the 18. */
 export const DELINQUANCE_COMMUNE_SLUGS = Object.freeze(
   DELINQUANCE_INDICATORS.filter((entry) => entry.grains.includes('com')).map((entry) => entry.slug),
@@ -396,6 +391,96 @@ export const DELINQUANCE_COMMUNE_SLUGS = Object.freeze(
 /** Slugs published at département grain — all 18. */
 export const DELINQUANCE_DEPARTEMENT_SLUGS = Object.freeze(
   DELINQUANCE_INDICATORS.map((entry) => entry.slug),
+);
+
+// ---------------------------------------------------------------------------
+// The all-offences total — the one indicator the SSMSI does NOT publish
+// ---------------------------------------------------------------------------
+
+/**
+ * Slug of the cumulative indicator. It is a COMPUTED one, and every surface
+ * that draws it has to say so: the register publishes eighteen indicators and
+ * no total, so this one is this repo's arithmetic and not the publisher's
+ * claim. `computed: true` on the meta is what the cards test.
+ */
+export const DELINQUANCE_TOTAL_SLUG = 'tous';
+
+/**
+ * Indicators that are a DECOMPOSITION of another one in the same table, and
+ * would therefore be counted twice by a naive sum.
+ *
+ * `Usage de stupéfiants` = `Usage de stupéfiants (AFD)` + `Usage de
+ * stupéfiants (hors AFD)`, verified rather than assumed: over the 2025
+ * département base the parent equals the sum of its two children in **101 of
+ * 101 départements, exactly**. At commune grain only the AFD child is
+ * published, and it is ≤ its parent in all 2 057 communes where both carry a
+ * published value. So the children are dropped and the parent is kept, which
+ * leaves **14 contributors at commune grain and 16 at département grain**.
+ */
+export const DELINQUANCE_TOTAL_EXCLUDED = Object.freeze([
+  'usage-stupefiants-afd',
+  'usage-stupefiants-hors-afd',
+]);
+
+/**
+ * The computed total's own vocabulary entry.
+ *
+ * `unite` is deliberately a mouthful. The eighteen indicators are counted in
+ * five different units — `Victime`, `Victime entendue`, `Infraction`,
+ * `Véhicule` and `Mis en cause` — so their sum is not "faits": it adds people
+ * the police stopped to victims who reported to vehicles taken. That is a real
+ * limit of any total over this register, it cannot be fixed by arithmetic, and
+ * the honest thing is to name it in the unit itself.
+ *
+ * `per` is `habitants` for the whole total, including the burglaries the
+ * register publishes per 1 000 DWELLINGS: the total's rate is recomputed from
+ * counts over `insee_pop` rather than assembled from published rates, because
+ * published rates on two different denominators cannot be added at all.
+ */
+export const DELINQUANCE_TOTAL_INDICATOR = Object.freeze({
+  slug: DELINQUANCE_TOTAL_SLUG,
+  label: 'Tous les indicateurs — total calculé',
+  short: 'Tous',
+  unite: 'Victimes, infractions, véhicules et mis en cause confondus',
+  per: 'habitants',
+  grains: Object.freeze(['dep', 'com']),
+  computed: true,
+});
+
+/** The 14 commune-grain contributors to the total. */
+export const DELINQUANCE_TOTAL_COMMUNE_SLUGS = Object.freeze(
+  DELINQUANCE_COMMUNE_SLUGS.filter((slug) => !DELINQUANCE_TOTAL_EXCLUDED.includes(slug)),
+);
+/** The 16 département-grain contributors to the total. */
+export const DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS = Object.freeze(
+  DELINQUANCE_DEPARTEMENT_SLUGS.filter((slug) => !DELINQUANCE_TOTAL_EXCLUDED.includes(slug)),
+);
+
+/**
+ * Commune cell order ON THE WIRE: the register's 15, then the computed total.
+ *
+ * The total is appended rather than inserted so that every existing slot index
+ * keeps its meaning, and it is a SEPARATE list from
+ * {@link DELINQUANCE_COMMUNE_SLUGS} so that no loop over "the indicators the
+ * register publishes" can accidentally sweep the one it does not.
+ */
+export const DELINQUANCE_COMMUNE_CELL_SLUGS = Object.freeze([
+  ...DELINQUANCE_COMMUNE_SLUGS,
+  DELINQUANCE_TOTAL_SLUG,
+]);
+
+/** Indicator lookup by the register's own French label. */
+const INDICATOR_BY_LABEL = new Map(DELINQUANCE_INDICATORS.map((entry) => [entry.label, entry]));
+/**
+ * Indicator lookup by slug — the register's eighteen PLUS the computed total.
+ *
+ * The total is reachable by slug (a card asks for its label and its unit) and
+ * unreachable by label (no upstream row carries one), which is exactly the
+ * asymmetry that keeps `indicatorForLabel` from ever resolving a total out of
+ * the CSV.
+ */
+const INDICATOR_BY_SLUG = new Map(
+  [...DELINQUANCE_INDICATORS, DELINQUANCE_TOTAL_INDICATOR].map((entry) => [entry.slug, entry]),
 );
 
 /**
@@ -472,6 +557,69 @@ export function delinquanceCellState(row) {
   const count = ssmsiNumber(row?.nombre);
   if (count === null) return CELL_SUPPRESSED;
   return count > 0 ? CELL_PUBLISHED : CELL_ZERO;
+}
+
+/**
+ * Sum one commune's fourteen contributing cells into the computed total.
+ *
+ * ── What the three states mean for a TOTAL, which is not what they mean for
+ *    an indicator ──────────────────────────────────────────────────────────
+ * `published`  — at least one contributor published a positive count. The sum
+ *                is of the PUBLISHED ones only, so when `withheld > 0` it is a
+ *                **minorant**: a floor, never the value. Every card says so.
+ * `zero`       — nothing was recorded AND nothing is withheld. A complete,
+ *                measured zero across all fourteen indicators.
+ * `suppressed` — nothing published and something withheld: the register is
+ *                holding back the only thing that could have made this cell
+ *                non-zero, so there is no honest number to paint at all.
+ *
+ * Measured over the 2025 edition's 34 920 communes: **9 606 published (9 428
+ * of them minorants and only 178 exact), 243 complete zeros, 25 071
+ * suppressed**. Nine thousand six hundred is more paintable ground than any
+ * single indicator has — escroqueries, the current top chip, publishes 8 134 —
+ * which is the whole case for offering the total at all.
+ *
+ * ── Why the rate is recomputed and not summed ──────────────────────────────
+ * `taux_pour_mille` is per 1 000 inhabitants for thirteen of these fourteen
+ * and per 1 000 DWELLINGS for `Cambriolages de logement`; rates on two
+ * denominators cannot be added. So the total's rate is `count / insee_pop ×
+ * 1 000`, which makes burglaries per-inhabitant here and nowhere else. A
+ * commune with `insee_pop = 0` — the six *villages détruits* of Verdun — gets
+ * a null rate rather than a division.
+ *
+ * @param {Array<?Array<number>>} cells The 15 register cells, in
+ *   {@link DELINQUANCE_COMMUNE_SLUGS} order.
+ * @param {?number} pop `insee_pop`.
+ * @returns {Array<number>} `[state, count, rate, withheld]`.
+ */
+export function aggregateDelinquanceCommuneTotal(cells, pop) {
+  const source = Array.isArray(cells) ? cells : [];
+  let count = 0;
+  let withheld = 0;
+  let seen = 0;
+  for (let i = 0; i < DELINQUANCE_COMMUNE_SLUGS.length; i += 1) {
+    if (DELINQUANCE_TOTAL_EXCLUDED.includes(DELINQUANCE_COMMUNE_SLUGS[i])) continue;
+    const cell = source[i];
+    // An absent cell is an indicator this edition did not carry for this
+    // commune. It is counted with the withheld ones — both mean "the total
+    // cannot be complete" — rather than treated as a zero it never published.
+    if (!cell) { withheld += 1; continue; }
+    seen += 1;
+    if (cell[0] === CELL_SUPPRESSED) { withheld += 1; continue; }
+    if (cell[0] === CELL_PUBLISHED) count += Number(cell[1]) || 0;
+  }
+  const population = Number(pop);
+  const state = count > 0
+    ? CELL_PUBLISHED
+    : (withheld > 0 || seen === 0 ? CELL_SUPPRESSED : CELL_ZERO);
+  // A suppressed total carries NO rate, the same rule the register applies to
+  // a `ndiff` cell: the sum of the published contributors is 0 there, and a
+  // stored `0` is exactly the number a renderer would paint as "quiet". A
+  // COMPLETE zero does carry 0, because that one is a claim.
+  const rate = state === CELL_SUPPRESSED || !(Number.isFinite(population) && population > 0)
+    ? null
+    : (count / population) * 1000;
+  return [state, count, rate, withheld];
 }
 
 // ---------------------------------------------------------------------------
@@ -934,8 +1082,39 @@ export function createCommuneFold({ year = DELINQUANCE_YEAR_FLOOR } = {}) {
       rowsKept += 1;
     },
 
-    /** Close the fold and hand back everything it built. */
+    /**
+     * Close the fold and hand back everything it built.
+     *
+     * The computed total is derived HERE, in the one place that holds every
+     * commune at once: its quantile ramp has to be cut nationally for the same
+     * reason every other indicator's is (a pack-local cut would rebin a quiet
+     * département into looking like a busy one), and a browser only ever holds
+     * the two or three départements it is looking at.
+     */
     finish() {
+      const totalCensus = new Int32Array(3);
+      const totalRates = [];
+      for (const entry of communes.values()) {
+        const total = aggregateDelinquanceCommuneTotal(entry.cells, entry.pop);
+        // Appended, so every register slot keeps the index it was folded into.
+        entry.cells[DELINQUANCE_COMMUNE_SLUGS.length] = total;
+        totalCensus[total[0]] += 1;
+        let depCensus = byDepartement.get(entry.dep);
+        if (!depCensus) {
+          depCensus = new Map();
+          byDepartement.set(entry.dep, depCensus);
+        }
+        let cell = depCensus.get(DELINQUANCE_TOTAL_SLUG);
+        if (!cell) {
+          cell = new Int32Array(3);
+          depCensus.set(DELINQUANCE_TOTAL_SLUG, cell);
+        }
+        cell[total[0]] += 1;
+        if (total[0] === CELL_PUBLISHED && total[2] !== null && total[2] > 0) totalRates.push(total[2]);
+      }
+      census.set(DELINQUANCE_TOTAL_SLUG, totalCensus);
+      rates.set(DELINQUANCE_TOTAL_SLUG, totalRates);
+
       return {
         year: wanted,
         yearsSeen: [...yearsSeen].filter((value) => /^\d{4}$/.test(value)).sort(),

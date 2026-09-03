@@ -24,6 +24,25 @@ export const WORLD_OVERLAY_STYLE = Object.freeze({
   fontTrackedTitle: '600 13px "JetBrains Mono", monospace',
   fontTrackedDetail: '500 11px "JetBrains Mono", monospace',
   radius: 4,
+  /**
+   * The widest a stacked-copy card may become, CSS px.
+   *
+   * Card width used to be "as wide as the longest line", with no ceiling and no
+   * wrap. That is fine for `450 KT · FL350` and catastrophic for a card that
+   * quotes its publisher: the SSMSI reporting-rate sentence the délinquance
+   * layer carries verbatim measures ~1 900 px on its own, so a selected commune
+   * card spanned the whole viewport (seen 2026-09-02, Gironde) and — worse — its
+   * clamped CENTRE landed outside the keyhole, which paints it at the
+   * `KEYHOLE_OUTSIDE_OPACITY_DEFAULT` floor of 0.01. The reported symptom was a
+   * card so pale it could not be read at all, on the exact communes that need
+   * the most copy (withheld cells carry the suppression rule too).
+   *
+   * 420 px is ~66 characters of `fontDetail`: long enough that ordinary two-
+   * value cards never wrap, short enough that a card stays a card.
+   */
+  cardMaxWidth: 420,
+  /** Floor for the ceiling above, so a narrow viewport still wraps somewhere sane. */
+  cardMinWidth: 180,
 });
 
 /** CCTV's field-tested thumbnail-card overrides on top of shared card chrome. */

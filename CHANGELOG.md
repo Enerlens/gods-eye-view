@@ -938,6 +938,33 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   2 121 lines with their official liveries, step-free status where surveyed —
   and reports the live-vehicle absence in its own stats rather than looking
   broken.
+- **Délinquance — une option « Tous », pour ne plus avoir à choisir un délit
+  avant de voir quoi que ce soit.** La couche s'ouvrait sur un indicateur
+  unique et il fallait en désigner un pour obtenir une carte : elle répondait
+  « où sont les cambriolages » quand la question était « où ce registre est-il
+  chargé ». Elle ouvre désormais sur un **total cumulé**, chip de tête,
+  les six indicateurs dérivés à sa suite. Trois conditions le rendent
+  publiable : il s'annonce comme un total **CALCULÉ par God's Eye View, pas
+  publié par le SSMSI** — le registre publie dix-huit indicateurs et aucun
+  total ; il annonce son unité mélangée (victimes, infractions, véhicules,
+  mis en cause) au lieu de se dire « faits » ; et il écarte les deux
+  sous-indicateurs `Usage de stupéfiants (AFD)` / `(hors AFD)`, qui sont la
+  décomposition d'un troisième — vérifié, le parent vaut exactement AFD + hors
+  AFD dans **101 départements sur 101**. Restent 14 contributeurs à l'échelle
+  communale, 16 à l'échelle départementale.
+- **Et à l'échelle communale, ce total est un MINORANT, ce que la carte dit
+  commune par commune.** Le secret statistique n'existe pas dans la base
+  départementale — le total y est exact, 3 306 254 faits pour 68 350 798
+  habitants, du Cantal à 24,4 ‰ à Paris à 109,9 ‰ — mais il domine la base
+  communale. Mesuré sur l'édition 2025, des 34 920 communes : **9 606 portent
+  un total positif, dont 9 428 minorants et seulement 178 complets**, 243 sont
+  un zéro mesuré complet, et 25 071 ne publient rien du tout et restent
+  ardoise. Une carte qui peindrait ces 25 071 en « calme » serait le contraire
+  de ce que cette couche existe pour faire. La fiche d'une commune annonce
+  combien de ses quatorze indicateurs sont non diffusés, et la légende dit que
+  le vrai total est plus élevé d'un montant inconnu. Au passage, le total est
+  la carte la plus peignable du jeu : 9 606 communes contre 8 134 pour
+  escroqueries, le meilleur indicateur publié.
 
 ### Changed
 - **Le carroyage INSEE ne recouvre plus la carte : un disque par carreau, à
@@ -1000,6 +1027,29 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   calque d'urbanisme change de question sans que le centre bouge) et rend la
   première effective. Trouvé en montant le plafond de la zone de chalandise à
   45 km, où un panoramique tranquille franchit 250 m sans que la vue change.
+- **Une fiche de délinquance faisait toute la largeur de l'écran — et sur une
+  fenêtre un peu plus étroite, elle disparaissait.** Un même bug, deux
+  symptômes opposés. La largeur d'une fiche était « celle de sa plus longue
+  ligne », sans plafond et sans retour à la ligne : parfait pour `450 KT ·
+  FL350`, catastrophique pour une couche qui **cite son éditeur mot pour mot**
+  — la phrase du SSMSI sur la propension à porter plainte mesure à elle seule
+  ~1 900 px. En Gironde, la fiche d'une commune barrait donc le viewport de
+  bord à bord. Autour d'Aubazine en Corrèze, la même fiche était illisible pour
+  la raison inverse : dès qu'une fiche dépasse l'écran, le calage la plaque
+  contre la marge, ce qui **déplace son centre** — et le fondu du keyhole lit
+  le centre. Hors du cercle de visée, tout est peint au plancher
+  `KEYHOLE_OUTSIDE_OPACITY_DEFAULT`, soit **0,01** : si claire et si
+  transparente qu'on ne lisait rien. Et les communes les plus touchées étaient
+  celles qui ont le plus de texte, c'est-à-dire celles dont les cellules sont
+  retenues — Aubazine porte dix indicateurs non diffusés sur quatorze.
+  Les fiches à texte empilé (`card`, `selected`, `tracked`) enroulent
+  désormais leur texte sous un plafond partagé de **420 px**, resserré si le
+  viewport est plus étroit, avec césure des mots plus longs qu'une ligne ; le
+  peintre dessine l'enroulement mesuré et non la source. Le calcul est mis en
+  cache sur l'entrée, donc une image stable n'alloue rien de plus.
+  `scripts/qa-delinquance-fr.mjs` mesure le rectangle réellement peint — sa
+  largeur, sa présence dans le viewport, et la distance de son centre au
+  keyhole — parce que c'était la cause commune des deux symptômes.
 - **Une caméra sélectionnée rendait VERTE au lieu d'ambre, parce que son icône avait sa propre couleur cuite dedans.** Cesium multiplie `billboard.color` dans la texture. La couche CCTV s'en sert pour dire laquelle des caméras l'opérateur a sélectionnée — `#6be8ff` au repos, `#ffd97a` pour l'active — mais le dessin portait du cyan en dur (`#75e7ff` sur des aplats sombres, plus un dégradé de lentille). #75e7ff × #ffd97a = **#75c57a** : la seule caméra que l'ambre devait isoler était la seule à ne pas être ambre. Le cyan de repos sortait lui aussi faux, sursaturé à #31d2ff. L'icône est maintenant `temaki/security_camera` en tracé blanc sur halo sombre, comme tous les autres jeux de ce dépôt le documentent depuis le début : le blanc rend la multiplication neutre, le noir y survit (0 × c = 0) et garde le glyphe lisible sur une orthophoto claire. Au passage, un détail de caméra murale dessiné pour 36 px cesse d'être bouilli en un pâté bleu à 15. Une teinte cuite est un bug, pas un parti pris — `mapIcons.test.mjs` refuse désormais tout glyphe portant un dégradé, une opacité ou un hexadécimal autre que `#ffffff`.
 - **"Sites militaires — Context is temporarily unavailable", while Overpass was
   merely busy.** The layer went dark under normal panning and the server log

@@ -6342,8 +6342,11 @@ const DELINQUANCE_CACHE_PATH = path.join(DELINQUANCE_DISK_DIR, 'base.json');
  * Shape version of the cached fold. Bump whenever `projectDelinquanceDepartements`
  * or `createCommuneFold` changes what it returns — the cache lives for four
  * months on disk, so without it a projection edit is invisible until next year.
+ *
+ * 2 — every commune cell row grew a 16th slot, the computed all-offences total,
+ * and `census`/`thresholds` grew a `tous` key to go with it.
  */
-const DELINQUANCE_CACHE_VERSION = 1;
+const DELINQUANCE_CACHE_VERSION = 2;
 
 /** @type {?{version:number, at:number, payload:object}} */
 let _delinquanceBase = null;

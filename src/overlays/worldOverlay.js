@@ -522,6 +522,10 @@ export function normalizeOverlayEntry(sourceId, entry) {
     thumbnailRuleHeight: entry.thumbnailRuleHeight,
     thumbnailRadius: entry.thumbnailRadius,
     _overlayTacticalAccentColors: null,
+    // Wrapped copy, built only for a card whose text overruns the shared
+    // ceiling. Declared here so the entry's shape does not change under a
+    // source the first time one of its cards is long enough to need it.
+    _overlayWrap: null,
     _overlayTrackDisplayTitle: null,
     _overlayTrackDisplayDetail: null,
     _overlayTrackDisplayText: '',
@@ -1632,7 +1636,20 @@ function snapshotAndProject(entry, source, viewProjection, keyhole) {
   if (record.distanceAlpha <= 0 || record.paintScale <= 0
     || record.altitudeAlpha <= 0 || record.sourceAlpha <= 0) return null;
 
-  measureOverlayEntry(_ctx, entry, record.layout);
+  // A card is measured against the widest one this viewport can hold, in the
+  // entry's own unscaled pixels: the placement clamp cannot rescue a card that
+  // is wider than the screen, it can only pin it to the margin and drag its
+  // centre — and its keyhole opacity — away from the anchor.
+  //
+  // Kept an INTEGER on purpose. This runs once per projected entry per frame,
+  // and a fractional double crossing a call boundary is boxed into a HeapNumber
+  // — measured at 5 120 B/frame on the `phase3-vessels` allocation probe, 16
+  // bytes × the ~320 entries that reach this line. The unscaled case, which is
+  // every card that is not distance-scaled, never divides at all.
+  const viewportCardWidth = _canvasWidth - entry.viewportMargin * 2;
+  measureOverlayEntry(_ctx, entry, record.layout, record.paintScale === 1
+    ? viewportCardWidth
+    : Math.floor(viewportCardWidth / Math.max(0.01, record.paintScale)));
   record.placementInput.anchorX = record.screen.x;
   record.placementInput.anchorY = record.screen.y;
   record.placementInput.width = record.layout.w * record.paintScale;
