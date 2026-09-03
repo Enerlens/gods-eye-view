@@ -8,6 +8,7 @@ import {
 } from '../overlays/worldOverlay.js';
 import { mountPulseHud } from './veloPulseHud.js';
 import {
+  PULSE_RADIUS_FLOOR_M,
   PULSE_RAMP,
   networkBusiest,
   networkCurve,
@@ -133,17 +134,36 @@ const ANIMATION_FRAME_MS = 40;
 const ROW_REFRESH_MS = 900;
 
 /**
- * Alpha at the bottom of the ramp, and how much more the top band gets.
+ * One alpha for every blob, and the reason it is one.
  *
- * Measured against the basemap the layer is read over, which is bright: at 0.42
- * a busy dock washed out into the streets under it. The gain matters as much as
- * the base — a hot site is more opaque as well as more orange, which is what
- * makes a peak visible from far enough away to see the whole city.
+ * IT USED TO CARRY THE VALUE TWICE. The alpha ran 0.50 → 0.90 with the share,
+ * on top of a colour that already carried the share — the same number on two
+ * channels (CARTOGRAPHIE A3, "un canal, une information"). What that bought was
+ * a hot blob at 90 % opacity: **10 % of the map survived underneath it**, so
+ * the layer erased the city exactly where it had something to say about it, and
+ * a reader could no longer tell which street a dock was on.
+ *
+ * 0.45 flat. The basemap keeps 55 % of itself everywhere, and composited over
+ * eight test backgrounds the five bands still separate by at least 6.6 L* —
+ * better than the old variable ladder managed (4.9, with an inversion at the
+ * top). Opacity is now what it has to be: the constant that lets the ramp's own
+ * lightness ordering survive a backdrop this layer does not choose.
+ *
+ * Blobs still stack where they overlap — two at 0.45 read as 0.70 — and that IS
+ * the field: density is the one thing a reader may legitimately infer from
+ * accumulated ink. The cap is per site.
  */
-const BLOB_ALPHA_BASE = 0.5;
-const BLOB_ALPHA_GAIN = 0.4;
-/** An hour nobody sampled: present, and unmistakably not a measurement. */
-const BLOB_ALPHA_UNSAMPLED = 0.22;
+const BLOB_ALPHA = 0.45;
+/**
+ * An hour nobody sampled: present, and unmistakably not a measurement.
+ *
+ * 0.32 rather than 0.22. Against the ramp's PALE end — a station measured and
+ * nearly idle — a 22 % grey composited down to ΔE 12 on a light city, which is
+ * close enough to be mistaken for it. At 0.32 the worst case is ΔE 17: still
+ * the quietest mark on the map, and no longer the same mark as "measured, and
+ * almost nothing". A hole and a zero are different claims.
+ */
+const BLOB_ALPHA_UNSAMPLED = 0.32;
 
 /**
  * How much wider the sprite's quad is than the blob it draws.
@@ -155,15 +175,48 @@ const BLOB_ALPHA_UNSAMPLED = 0.22;
 const BLOB_SPRITE_SPREAD = 2.3;
 
 /**
- * Keeps a city's field visible from higher up without inflating it up close.
+ * The altitude band the field is legible in, and what happens outside it.
  *
- * The blobs are sized IN METRES — a 150 m dock is 150 m at every altitude,
- * which is what makes the field a map rather than a scatter of pins. Far away
- * that is honest and invisible: at 100 km a 150 m blob is a pixel. This grows
- * them on the way out so a reader pulling back to see both cities still has
- * something to see, and leaves them alone below 6 km where the field is read.
+ * `scaleByDistance` USED TO LIVE HERE, and it was a lie about the data. A blob
+ * is sized in METRES because its area IS the quantity; multiplying that by a
+ * factor that depends on the camera's distance meant two identical docks drew
+ * at different sizes in one oblique frame — the far one up to 4.5× the near one
+ * — while the panel underneath claimed "la surface, c'est la quantité mesurée"
+ * (CARTOGRAPHIE B2: on a globe the screen-size channel is already taken by
+ * depth). `bikeshare.js` had the same line removed for the same reason.
+ *
+ * What replaces it is honesty about the range instead of a correction to the
+ * size: a 300 m blob is four pixels at about 65 km, and below four pixels there
+ * is no field left to read. So the field fades out between 40 and 90 km rather
+ * than pretending to be readable, and the panel says so when the camera is
+ * above it. Nothing is resized; something is simply out of range, which is a
+ * fact about the reader's altitude, not about the bicycles.
  */
-const BLOB_SCALE_BY_DISTANCE = new Cesium.NearFarScalar(6_000, 1.0, 140_000, 4.5);
+const BLOB_FADE_NEAR_M = 40_000;
+const BLOB_FADE_FAR_M = 90_000;
+const BLOB_TRANSLUCENCY_BY_DISTANCE = new Cesium.NearFarScalar(
+  BLOB_FADE_NEAR_M, 1.0, BLOB_FADE_FAR_M, 0.0,
+);
+
+/**
+ * Where the field stops being worth looking at — which is NOT the far end of
+ * the fade above, and the difference is Cesium's, not ours.
+ *
+ * `czm_nearFarScalar` does not interpolate linearly between near and far. It
+ * works on SQUARED distances and raises the result to the power 0.2, so the
+ * curve collapses early: measured against that formula, a field declared to
+ * fade from 40 km to 90 km is at 42 % opacity by 45 km, 33 % by 50 and 13 % by
+ * 70. Announcing "descendez sous 90 km" while the map has effectively been
+ * empty since 50 would be a notice that arrives long after the thing it
+ * describes.
+ *
+ * So the notice fires at 45 km, where the fade genuinely starts to bite. It is
+ * keyed on the camera's ALTITUDE while the fade is per-blob EYE DISTANCE — a
+ * deliberate difference: "can this scale carry a field at all" is one answer
+ * for the whole screen, and on an oblique view the far side of the city would
+ * otherwise get a different verdict from the near side.
+ */
+const BLOB_READABLE_CEILING_M = 45_000;
 
 /** Card anchor: above the blob, clear of its own glow. */
 const CARD_LIFT_M = 70;
@@ -229,6 +282,9 @@ let _tickStartPosition = 0;
 let _hud = null;
 let _rowListener = null;
 let _rowRefreshedAt = 0;
+/** Whether the camera is close enough for the field to mean anything. */
+let _inReadableBand = true;
+let _removeCameraListener = null;
 
 /**
  * Resolve a requested mode to one the layer offers.
@@ -251,6 +307,27 @@ export function slotForMode(mode, pack, { now = new Date() } = {}) {
 // ---------------------------------------------------------------------------
 // Drawing
 // ---------------------------------------------------------------------------
+/**
+ * Is the camera low enough that a blob is still a shape rather than a pixel?
+ *
+ * Read from the camera's ALTITUDE and not from a distance to any one site: the
+ * question is whether this scale can carry the field at all, and the answer has
+ * to be the same for Lyon and for Paris in the same frame.
+ */
+function readableBand() {
+  const height = _viewer?.scene?.camera?.positionCartographic?.height;
+  return !Number.isFinite(height) || height <= BLOB_READABLE_CEILING_M;
+}
+
+/** Re-read the band and tell the panel, but only when the answer changed. */
+function syncReadableBand() {
+  const next = readableBand();
+  if (next === _inReadableBand) return;
+  _inReadableBand = next;
+  _hud?.setOutOfRange(!next, Math.round(BLOB_READABLE_CEILING_M / 1000));
+  notifyRow({ immediate: true });
+}
+
 /** Terrain height the globe is rendering under a point, or 0. */
 function renderedGroundM(lat, lon) {
   const globe = _viewer?.scene?.globe;
@@ -355,11 +432,25 @@ export function buildRecords(pack, slot) {
         peakSlot: peakRaw?.slot ?? null,
         share,
         color: blobCss(share),
-        radiusM: pulseRadiusM(value, city, site),
+        radiusM: drawnRadiusM(value, city, site),
       });
     }
   }
   return records;
+}
+
+/**
+ * The radius a site is DRAWN at, hole included.
+ *
+ * `pulseRadiusM` answers 0 for a null, which is right — an hour with no reading
+ * has no quantity to give an area — but a site drawn at zero metres is a site
+ * that vanished, and vanishing is what this layer refuses to do with the
+ * unmeasured: the grey exists precisely so a reader can tell "nobody looked"
+ * from "nothing was there", and the row counts those sites under « non relevé ».
+ * The floor is the smallest mark the layer has and it carries no quantity claim.
+ */
+function drawnRadiusM(value, city, site) {
+  return value === null ? PULSE_RADIUS_FLOOR_M : pulseRadiusM(value, city, site);
 }
 
 /** The map colour for a share, as CSS — for the card accent and the legend. */
@@ -373,9 +464,7 @@ function paintRecord(record) {
   const billboard = record.billboard;
   if (!billboard) return;
   const { r, g, b } = pulseRampRgb(record.share);
-  const alpha = record.share === null
-    ? BLOB_ALPHA_UNSAMPLED
-    : BLOB_ALPHA_BASE + BLOB_ALPHA_GAIN * Math.min(1, record.share);
+  const alpha = record.share === null ? BLOB_ALPHA_UNSAMPLED : BLOB_ALPHA;
   _colorScratch.red = r / 255;
   _colorScratch.green = g / 255;
   _colorScratch.blue = b / 255;
@@ -416,7 +505,7 @@ function drawRecords(records) {
       sizeInMeters: true,
       width: 1,
       height: 1,
-      scaleByDistance: BLOB_SCALE_BY_DISTANCE,
+      translucencyByDistance: BLOB_TRANSLUCENCY_BY_DISTANCE,
       // A heat field belongs ON the city, not inside it: without this a blob
       // sits behind every building that happens to stand between it and the
       // camera, and the field dissolves the moment the 3D tiles load.
@@ -433,7 +522,7 @@ function drawRecords(records) {
       sizeInMeters: true,
       width: 1,
       height: 1,
-      scaleByDistance: BLOB_SCALE_BY_DISTANCE,
+      translucencyByDistance: BLOB_TRANSLUCENCY_BY_DISTANCE,
       disableDepthTestDistance: Number.POSITIVE_INFINITY,
       show: false,
     });
@@ -457,7 +546,7 @@ function paintPosition(position) {
     const value = valueAtFraction(record.site, position, record.scale);
     record.value = value;
     record.share = value !== null && record.peak ? value / record.peak : null;
-    record.radiusM = pulseRadiusM(value, record.city, record.site);
+    record.radiusM = drawnRadiusM(value, record.city, record.site);
     // NOT `record.color`: that is a CSS string, one card reads it, and minting
     // 561 of them 25 times a second is 14 000 throwaway strings a second for
     // one accent. The blob takes its colour from the channels directly.
@@ -798,12 +887,30 @@ const veloPulseLayer = {
     installClickHandler(_viewer);
     registerPickOwner(PULSE_LAYER_ID, (pickedId) => _records.has(pickedId));
     ensureHud();
+    // BOTH events, because neither is enough alone. `camera.changed` only
+    // raises once the view has moved by `percentageChanged` — half the current
+    // altitude by default — so an ordinary zoom can cross the ceiling without
+    // announcing it; `moveEnd` always fires when the reader stops, which is
+    // when they are looking at an empty map and wondering why. Raising the
+    // camera's own threshold would be a global setting other layers share.
+    if (_viewer?.camera && !_removeCameraListener) {
+      const removers = [
+        _viewer.camera.changed?.addEventListener(syncReadableBand),
+        _viewer.camera.moveEnd?.addEventListener(syncReadableBand),
+      ].filter((remove) => typeof remove === 'function');
+      _removeCameraListener = removers.length
+        ? () => { for (const remove of removers) remove(); }
+        : null;
+    }
+    _inReadableBand = readableBand();
+    _hud?.setOutOfRange(!_inReadableBand, Math.round(BLOB_READABLE_CEILING_M / 1000));
     if (_mode === 'week') startTick();
   },
 
   disable() {
     _enabled = false;
     stopTick();
+    if (_removeCameraListener) { _removeCameraListener(); _removeCameraListener = null; }
     clearSelection();
     destroyHud();
     if (_blobs) _blobs.show = false;
@@ -929,7 +1036,11 @@ const veloPulseLayer = {
     };
     if (_error) result.error = _error;
     else if (_loading) result.loadingLabel = 'Semaine type…';
-    else result.loadingLabel = `${slotLabel(_slot)} — semaine type de juin 2026`;
+    else if (!_inReadableBand) {
+      result.loadingLabel = `Descendez sous ${Math.round(BLOB_READABLE_CEILING_M / 1000)} km — `
+        + 'au-dessus, une tache fait moins d’un pixel';
+    } else result.loadingLabel = `${slotLabel(_slot)} — semaine type de juin 2026`;
+    result.readable = _inReadableBand;
     return result;
   },
 
@@ -943,6 +1054,7 @@ const veloPulseLayer = {
       if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
       unregisterPickOwner(PULSE_LAYER_ID);
     }
+    if (_removeCameraListener) { _removeCameraListener(); _removeCameraListener = null; }
     clearCollections();
     _pack = null;
     _summary = null;

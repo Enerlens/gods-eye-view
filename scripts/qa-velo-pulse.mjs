@@ -27,7 +27,11 @@
  *   viii. a clicked site fills the panel's fiche — the copy of the answer that
  *         cannot be hidden — and names its instrument, because a Lyon stock
  *         and a Paris flow are not the same quantity
- *   ix.   the share link carries the mode
+ *   ix.   the panel can be MOVED — grabbed anywhere that is not a control,
+ *         clamped inside the viewport, and remembered for the next session
+ *   x.    above the altitude the field can be read at, the layer says so
+ *         instead of inflating its marks
+ *   xi.   the share link carries the mode
  *
  * Run: node scripts/qa-velo-pulse.mjs --url http://localhost:4173
  */
@@ -286,13 +290,15 @@ async function main() {
     const msPerHour = pace.hours > 0 ? pace.elapsed / pace.hours : Infinity;
     check('it is paced for a reader, not for a stopwatch',
       msPerHour > 420 && msPerHour < 650, `${Math.round(msPerHour)} ms per hour`);
-    // The other half: it moves BETWEEN the hours. 168 whole-hour jumps is the
-    // strobe this layer shipped with, and a whole-number position every time
-    // would mean it is back.
-    const fractional = pace.seen.filter((value) => Math.abs(value - Math.round(value)) > 0.02);
+    // The other half: it moves BETWEEN the hours. What proves that is the STEP,
+    // not the sample — an hour-stepping clock read every 250 ms would show
+    // deltas of exactly 0 or exactly 1, never a fifth of an hour. (Counting
+    // fractional samples does not work: 250 ms against a 520 ms hour aliases,
+    // so a perfectly smooth clock still lands on a whole hour now and then.)
+    const steps = pace.seen.slice(1).map((value, index) => value - pace.seen[index]);
     check('and it eases between them rather than jumping hour to hour',
-      fractional.length >= pace.seen.length - 1,
-      pace.seen.map((value) => value.toFixed(2)).join(' '));
+      steps.every((step) => step > 0.2 && step < 0.8),
+      steps.map((step) => step.toFixed(2)).join(' '));
     check('and the legend moved with it',
       JSON.stringify(after.legend) !== JSON.stringify(before.legend),
       JSON.stringify(after.legend));
@@ -452,8 +458,115 @@ async function main() {
       await shoot(page, '05-fiche-site.png');
     }
 
-    // ── ix. Paris ──────────────────────────────────────────────────────────
-    console.log('\n[9] Paris: the same layer, the other instrument');
+    // ── ix. the panel moves ────────────────────────────────────────────────
+    console.log('\n[9] The panel is a window the reader can put somewhere else');
+    const dragged = await page.evaluate(async () => {
+      const panel = document.getElementById('velo-pulse-hud');
+      const before = panel.getBoundingClientRect();
+      const grip = panel.querySelector('[data-pulse-grip]');
+      const from = { x: Math.round(before.left + 60), y: Math.round(before.top + 8) };
+      const fire = (type, x, y) => grip.dispatchEvent(new PointerEvent(type, {
+        clientX: x, clientY: y, button: 0, bubbles: true, pointerId: 7,
+      }));
+      const move = (type, x, y) => window.dispatchEvent(new PointerEvent(type, {
+        clientX: x, clientY: y, button: 0, bubbles: true, pointerId: 7,
+      }));
+      fire('pointerdown', from.x, from.y);
+      const dragging = panel.classList.contains('panel-dragging');
+      move('pointermove', from.x - 240, from.y - 180);
+      const after = panel.getBoundingClientRect();
+      move('pointerup', from.x - 240, from.y - 180);
+      const stored = window.localStorage.getItem('godsEyeView.v8.panelPos.velo-pulse-hud');
+      // And a drag that would take it off the screen is stopped at the edge.
+      fire('pointerdown', after.left + 60, after.top + 8);
+      move('pointermove', -5000, -5000);
+      const clamped = panel.getBoundingClientRect();
+      move('pointerup', -5000, -5000);
+      return {
+        dragging,
+        movedX: Math.round(after.left - before.left),
+        movedY: Math.round(after.top - before.top),
+        stored: stored ? JSON.parse(stored) : null,
+        clamped: { left: Math.round(clamped.left), top: Math.round(clamped.top) },
+        released: !panel.classList.contains('panel-dragging'),
+      };
+    });
+    check('grabbing the header starts a drag', dragged.dragging === true);
+    check('and the panel follows the pointer',
+      dragged.movedX <= -200 && dragged.movedY <= -150,
+      `${dragged.movedX}, ${dragged.movedY} px`);
+    check('the pointer being released ends it', dragged.released === true);
+    check('where it was left is remembered', Boolean(dragged.stored), JSON.stringify(dragged.stored));
+    check('and it can never be dragged off the screen',
+      dragged.clamped.left === 6 && dragged.clamped.top === 6, JSON.stringify(dragged.clamped));
+    // The strip is a control, not a handle: dragging it must scrub, not move.
+    const stripDrag = await page.evaluate(() => {
+      const panel = document.getElementById('velo-pulse-hud');
+      const strip = panel.querySelector('[data-pulse-strip]');
+      const box = panel.getBoundingClientRect();
+      strip.dispatchEvent(new PointerEvent('pointerdown', {
+        clientX: box.left + 40, clientY: strip.getBoundingClientRect().top + 10,
+        button: 0, bubbles: true, pointerId: 8,
+      }));
+      const moved = panel.getBoundingClientRect().left !== box.left;
+      strip.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 8 }));
+      return { moved, dragging: panel.classList.contains('panel-dragging') };
+    });
+    check('the week strip scrubs and never drags the panel',
+      stripDrag.moved === false && stripDrag.dragging === false, JSON.stringify(stripDrag));
+    const rightClick = await page.evaluate((id) => {
+      const module = window.__godsEyeView.dataManager.layers.get(id).module;
+      const strip = document.querySelector('#velo-pulse-hud [data-pulse-strip]');
+      const box = strip.getBoundingClientRect();
+      const before = module.getStats().slot;
+      strip.dispatchEvent(new PointerEvent('pointerdown', {
+        clientX: box.left + box.width * 0.9, clientY: box.top + 10,
+        button: 2, bubbles: true, pointerId: 9,
+      }));
+      const after = module.getStats().slot;
+      strip.dispatchEvent(new PointerEvent('pointermove', {
+        clientX: box.left + 10, clientY: box.top + 10, bubbles: true, pointerId: 9,
+      }));
+      return { before, after, afterMove: module.getStats().slot };
+    }, LAYER);
+    check('a right-click on the strip scrubs nothing and leaves nothing captured',
+      rightClick.after === rightClick.before && rightClick.afterMove === rightClick.before,
+      JSON.stringify(rightClick));
+    // Home again, so the next section is not testing a panel in a corner.
+    await page.evaluate(() => {
+      const panel = document.getElementById('velo-pulse-hud');
+      panel.querySelector('[data-pulse-grip]').dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    });
+    await pump(page, 2);
+
+    // ── x. the altitude band ───────────────────────────────────────────────
+    console.log('\n[10] Out of range, the layer says so instead of inflating its marks');
+    await setView(page, { ...LYON, height: 120_000 });
+    await pump(page, 6);
+    const high = await probe(page);
+    check('the layer reports it is out of readable range', high.stats.readable === false,
+      String(high.stats.readable));
+    check('and says it in words a reader can act on',
+      /descendez sous \d+ km/i.test(high.stats.loadingLabel || ''), high.stats.loadingLabel);
+    // The ceiling has to be where the field ACTUALLY fades. Cesium's
+    // `czm_nearFarScalar` works on squared distances with a pow(t, 0.2) curve,
+    // so a 40–90 km fade is already at 42 % opacity by 45 km: a notice keyed on
+    // 90 would arrive long after the map went empty.
+    const ceiling = Number((high.stats.loadingLabel || '').match(/sous (\d+) km/)?.[1]);
+    check('and the ceiling is the one the fade really has',
+      ceiling >= 40 && ceiling <= 55, `${ceiling} km`);
+    const notice = await page.evaluate(() => {
+      const el = document.querySelector('#velo-pulse-hud [data-pulse-range]');
+      return { hidden: el?.hidden, text: el?.textContent || '' };
+    });
+    check('the panel carries the same notice', notice.hidden === false, JSON.stringify(notice));
+    await setView(page, LYON);
+    await pump(page, 6);
+    const low = await probe(page);
+    check('and coming back down clears it', low.stats.readable === true, String(low.stats.readable));
+
+    // ── xi. Paris ──────────────────────────────────────────────────────────
+    console.log('\n[11] Paris: the same layer, the other instrument');
     await setView(page, PARIS);
     await pump(page, 10);
     const paris = await probe(page);
@@ -461,8 +574,8 @@ async function main() {
       String(paris.stats.count));
     await shoot(page, '06-paris-pointe.png');
 
-    // ── x. the share link ──────────────────────────────────────────────────
-    console.log('\n[10] The share link carries the mode');
+    // ── xii. the share link ────────────────────────────────────────────────
+    console.log('\n[12] The share link carries the mode');
     const hash = await page.evaluate(() => window.location.hash || '');
     check('the hash enables the layer', /[?&]l=[^&]*\bvp\b/.test(hash) || /(^|\.)vp(\.|&|$)/.test(hash),
       hash.slice(0, 200));

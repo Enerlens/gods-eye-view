@@ -9470,17 +9470,54 @@ body.scene-playback-mode #first-run-launcher {
 
 .velo-pulse-hud[hidden] { display: none; }
 
+/* Moving the panel. The grab surface is the whole panel (see veloPulseHud.js):
+   the strip and the fiche's own strip opt out in JS, because they are controls.
+   `left`/`top` written by the drag override the anchor above — hence the
+   `transform: none` the drag also writes, or a centred panel would jump by
+   half its width on the first grab. */
+.velo-pulse-hud.panel-draggable { cursor: grab; }
+.velo-pulse-hud.panel-dragging {
+  cursor: grabbing;
+  user-select: none;
+  border-color: rgba(0, 212, 255, 0.55);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.62), 0 0 22px rgba(0, 212, 255, 0.16);
+}
+.velo-pulse-hud.panel-dragging * { cursor: grabbing !important; }
+
+/* The header carries the affordance: six dots, the standard "this moves". */
+.velo-pulse-hud-head { cursor: grab; }
+.velo-pulse-grip {
+  width: 10px;
+  height: 8px;
+  flex: 0 0 auto;
+  opacity: 0.55;
+  background-image: radial-gradient(currentColor 1px, transparent 1.2px);
+  background-size: 4px 4px;
+  color: rgba(170, 252, 255, 0.9);
+}
+
+/* Out of the altitude band the field can be read in. Stated, never corrected —
+   the marks keep their true ground size and fade out (see veloPulse.js). */
+.velo-pulse-range {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: rgba(240, 192, 74, 0.95);
+}
+.velo-pulse-range[hidden] { display: none; }
+.velo-pulse-hud.is-out-of-range .velo-pulse-strip { opacity: 0.45; }
+
 .velo-pulse-hud-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
   font-size: 9px;
   letter-spacing: 1.4px;
 }
 
 .velo-pulse-hud-title { color: rgba(170, 252, 255, 0.92); }
-.velo-pulse-hud-window { color: var(--text-dim); letter-spacing: 0.9px; }
+.velo-pulse-hud-window { color: var(--text-dim); letter-spacing: 0.9px; margin-left: auto; }
 
 .velo-pulse-hud-clock {
   display: flex;

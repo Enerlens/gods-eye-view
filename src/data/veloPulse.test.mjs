@@ -25,7 +25,7 @@ import veloPulseLayer, {
   siteId,
   slotForMode,
 } from './veloPulse.js';
-import { PULSE_SLOTS } from './veloPulseFeed.js';
+import { PULSE_RADIUS_FLOOR_M, PULSE_SLOTS, pulseRadiusM } from './veloPulseFeed.js';
 
 function profile(spikeSlot, spikeValue, base = 10) {
   const out = new Array(PULSE_SLOTS).fill(base);
@@ -197,9 +197,16 @@ test('a site with no reading at this hour is grey and flat, not zero-and-blue', 
   const pack = { ...PACK, cities: { ...PACK.cities, paris: { ...PACK.cities.paris, sites: [holed] } } };
   const record = buildRecords(pack, 5).find((entry) => entry.cityKey === 'paris');
   assert.equal(record.value, null);
-  assert.equal(record.radiusM, 0, 'nothing measured is nothing drawn');
   assert.equal(record.share, null);
   assert.equal(record.color, 'rgb(74, 85, 104)', 'the unsampled grey, not the bottom band');
+  // DRAWN, at the smallest mark the layer has. An hour with no reading has no
+  // quantity — `pulseRadiusM` answers 0 for it — but a site drawn at zero
+  // metres is a site that vanished, and a reader cannot tell a station nobody
+  // sampled from a station that is not there. The row counts these under
+  // « non relevé » and the map has to show the same thing.
+  assert.equal(record.radiusM, PULSE_RADIUS_FLOOR_M, 'a hole is a mark, not an absence');
+  assert.equal(pulseRadiusM(null, PACK.cities.paris, PARIS_SITE), 0,
+    'and the quantity itself is still zero — the floor is a drawing decision');
 });
 
 // ── The card ────────────────────────────────────────────────────────────────
