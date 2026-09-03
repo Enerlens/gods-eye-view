@@ -1,0 +1,3128 @@
+{
+ "counts": {
+  "visible": 813,
+  "buttons": 86,
+  "panels": 22,
+  "msyms": 4,
+  "svgs": 2
+ },
+ "btnSig": {
+  "{\"br\":\"50%\",\"pad\":\"0px\",\"fs\":\"13.3333px\",\"fw\":\"400\",\"ff\":\"Arial\",\"tt\":\"none\",\"ls\":\"normal\",\"bg\":\"rgba(12, 12, 20, 0.72)\",\"bd\":\"1px solid rgba(255, 255, 255, 0.08)\"}": [
+   {
+    "ref": "clear-selected-layers",
+    "txt": "layers_clear",
+    "size": "36x36"
+   },
+   {
+    "ref": "share-btn",
+    "txt": "🔗",
+    "size": "36x36"
+   },
+   {
+    "ref": "reset-globe-view",
+    "txt": "public",
+    "size": "36x36"
+   }
+  ],
+  "{\"br\":\"2.88px\",\"pad\":\"0px 3.84px\",\"fs\":\"6.4px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"none\",\"ls\":\"0.72px\",\"bg\":\"rgba(0, 212, 255, 0.06)\",\"bd\":\"1px solid rgba(0, 212, 255, 0.34)\"}": [
+   {
+    "ref": "gev-voice-tier",
+    "txt": "STD",
+    "size": "25x12"
+   }
+  ],
+  "{\"br\":\"0px\",\"pad\":\"0px\",\"fs\":\"10px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"none\",\"ls\":\"normal\",\"bg\":\"rgba(0, 0, 0, 0)\",\"bd\":\"0px none rgb(0, 212, 255)\"}": [
+   {
+    "ref": "gev-voice-button",
+    "txt": "ON/OFF",
+    "size": "42x66"
+   }
+  ],
+  "{\"br\":\"0px\",\"pad\":\"0px\",\"fs\":\"16px\",\"fw\":\"400\",\"ff\":\"Inter\",\"tt\":\"none\",\"ls\":\"normal\",\"bg\":\"rgba(0, 0, 0, 0)\",\"bd\":\"0px none rgb(232, 234, 237)\"}": [
+   {
+    "ref": "control-panel-toggle",
+    "txt": "VISUAL PRESETS",
+    "size": "144x22"
+   }
+  ],
+  "{\"br\":\"6px\",\"pad\":\"0px\",\"fs\":\"13px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"none\",\"ls\":\"normal\",\"bg\":\"rgba(255, 255, 255, 0.03)\",\"bd\":\"1px solid rgba(255, 255, 255, 0.12)\"}": [
+   {
+    "ref": "panel-collapse-btn",
+    "txt": "+",
+    "size": "22x22"
+   },
+   {
+    "ref": "panel-collapse-btn",
+    "txt": "+",
+    "size": "22x22"
+   }
+  ],
+  "{\"br\":\"6px\",\"pad\":\"5px 10px 5px 4px\",\"fs\":\"9px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"uppercase\",\"ls\":\"2px\",\"bg\":\"rgba(0, 0, 0, 0)\",\"bd\":\"0px none rgba(232, 234, 237, 0.3)\"}": [
+   {
+    "ref": "data-category-header",
+    "txt": "▾✈️AIR & ESPACE0/4 ON",
+    "size": "271x22"
+   },
+   {
+    "ref": "data-category-header",
+    "txt": "▾🎖️DÉFENSE0/2 ON",
+    "size": "271x22"
+   },
+   {
+    "ref": "data-category-header",
+    "txt": "▾⚓MARITIME0/3 ON",
+    "size": "271x22"
+   },
+   {
+    "ref": "data-category-header",
+    "txt": "▾🚗MOBILITÉ TERRESTRE0",
+    "size": "271x22"
+   },
+   {
+    "ref": "data-category-header",
+    "txt": "▾⚡ÉNERGIE0/8 ON",
+    "size": "271x22"
+   },
+   {
+    "ref": "data-category-header",
+    "txt": "▾⚠RISQUES & ENVIRONNEM",
+    "size": "271x22"
+   },
+   {
+    "ref": "data-category-header",
+    "txt": "▾≋RÉSEAUX & CAPTEURS0/",
+    "size": "271x22"
+   },
+   {
+    "ref": "data-category-header",
+    "txt": "▾▤BÂTI & TERRITOIRE0/1",
+    "size": "271x22"
+   }
+  ],
+  "{\"br\":\"4px\",\"pad\":\"3px 10px\",\"fs\":\"9px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"none\",\"ls\":\"1.5px\",\"bg\":\"rgba(255, 255, 255, 0.04)\",\"bd\":\"1px solid rgba(255, 255, 255, 0.08)\"}": [
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   },
+   {
+    "ref": "data-toggle-btn",
+    "txt": "OFF",
+    "size": "43x20"
+   }
+  ],
+  "{\"br\":\"6px\",\"pad\":\"0px\",\"fs\":\"12px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"none\",\"ls\":\"normal\",\"bg\":\"rgba(255, 255, 255, 0.03)\",\"bd\":\"1px solid rgba(255, 255, 255, 0.12)\"}": [
+   {
+    "ref": "panel-collapse-btn pp-collapse-btn",
+    "txt": "◀",
+    "size": "20x20"
+   }
+  ],
+  "{\"br\":\"8px 8px 0px 0px\",\"pad\":\"7px 12px\",\"fs\":\"13.3333px\",\"fw\":\"400\",\"ff\":\"Arial\",\"tt\":\"none\",\"ls\":\"normal\",\"bg\":\"rgba(0, 212, 255, 0.15)\",\"bd\":\"1px solid rgb(0, 212, 255)\"}": [
+   {
+    "ref": "hud-toggle",
+    "txt": "◎ HUD",
+    "size": "254x38"
+   },
+   {
+    "ref": "models3d-toggle",
+    "txt": "✈ 3D",
+    "size": "254x38"
+   },
+   {
+    "ref": "scope-toggle",
+    "txt": "adjust Scope",
+    "size": "254x38"
+   },
+   {
+    "ref": "sharpen-toggle",
+    "txt": "🔍 Sharpen",
+    "size": "254x38"
+   }
+  ],
+  "{\"br\":\"8px 8px 0px 0px\",\"pad\":\"7px 12px\",\"fs\":\"13.3333px\",\"fw\":\"400\",\"ff\":\"Arial\",\"tt\":\"none\",\"ls\":\"normal\",\"bg\":\"rgba(0, 255, 80, 0.18)\",\"bd\":\"1px solid rgba(0, 255, 80, 0.8)\"}": [
+   {
+    "ref": "detection-toggle",
+    "txt": "▣ DENSE",
+    "size": "254x38"
+   }
+  ],
+  "{\"br\":\"0px\",\"pad\":\"0px\",\"fs\":\"8px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"uppercase\",\"ls\":\"0.35px\",\"bg\":\"rgb(0, 212, 255)\",\"bd\":\"0px none rgb(0, 0, 0)\"}": [
+   {
+    "ref": "detection-allocation-elastic",
+    "txt": "Elastic",
+    "size": "85x22"
+   }
+  ],
+  "{\"br\":\"0px\",\"pad\":\"0px\",\"fs\":\"8px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"uppercase\",\"ls\":\"0.35px\",\"bg\":\"rgba(255, 255, 255, 0.04)\",\"bd\":\"\"}": [
+   {
+    "ref": "detection-allocation-weighted",
+    "txt": "Weighted",
+    "size": "86x22"
+   }
+  ],
+  "{\"br\":\"0px\",\"pad\":\"0px\",\"fs\":\"9px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"uppercase\",\"ls\":\"0.6px\",\"bg\":\"rgb(0, 212, 255)\",\"bd\":\"0px none rgb(0, 0, 0)\"}": [
+   {
+    "ref": "models3d-mode-proximity",
+    "txt": "Proximity",
+    "size": "94x22"
+   }
+  ],
+  "{\"br\":\"0px\",\"pad\":\"0px\",\"fs\":\"9px\",\"fw\":\"400\",\"ff\":\"JetBrains Mono\",\"tt\":\"uppercase\",\"ls\":\"0.6px\",\"bg\":\"rgba(255, 255, 255, 0.04)\",\"bd\":\"\"}": [
+   {
+    "ref": "models3d-mode-all",
+    "txt": "All",
+    "size": "95x22"
+   }
+  ],
+  "{\"br\":\"8px\",\"pad\":\"7px 12px\",\"fs\":\"13.3333px\",\"fw\":\"400\",\"ff\":\"Arial\",\"tt\":\"none\",\"ls\":\"normal\",\"bg\":\"rgba(12, 12, 20, 0.72)\",\"bd\":\"1px solid rgba(255, 255, 255, 0.08)\"}": [
+   {
+    "ref": "celestial-toggle",
+    "txt": "flare Celestial",
+    "size": "254x38"
+   },
+   {
+    "ref": "clean-view-toggle",
+    "txt": "□ Clean UI",
+    "size": "254x38"
+   },
+   {
+    "ref": "bloom-toggle",
+    "txt": "✨ Bloom",
+    "size": "254x38"
+   }
+  ]
+ },
+ "famCount": {
+  "JetBrains Mono": 313,
+  "Material Symbols Outlined": 4,
+  "Arial": 7,
+  "Inter": 114
+ },
+ "sizeCount": {
+  "26px": 2,
+  "11px": 67,
+  "10px": 7,
+  "16px": 60,
+  "18px": 2,
+  "8px": 71,
+  "9.28px": 2,
+  "6.88px": 1,
+  "6.4px": 2,
+  "6.72px": 1,
+  "6.24px": 1,
+  "9px": 139,
+  "13px": 67,
+  "12px": 3,
+  "14px": 9,
+  "22px": 4
+ },
+ "weightCount": {
+  "300": 1,
+  "400": 372,
+  "500": 61,
+  "600": 3,
+  "700": 1
+ },
+ "ltrCount": {
+  "8px": 2,
+  "5px": 2,
+  "3px": 2,
+  "normal": 77,
+  "1.35px": 2,
+  "1.6px": 1,
+  "2.08px": 2,
+  "0.72px": 1,
+  "0.32px": 1,
+  "0.56px": 2,
+  "2px": 33,
+  "1px": 15,
+  "0.3px": 57,
+  "0.5px": 119,
+  "1.5px": 71,
+  "0.8px": 41,
+  "1.8px": 2,
+  "1.4px": 1,
+  "0.35px": 2,
+  "0.6px": 2,
+  "2.5px": 1,
+  "4px": 1,
+  "1.2px": 1
+ },
+ "ttCount": {
+  "none": 356,
+  "uppercase": 82
+ },
+ "colorCount": {
+  "rgb(232, 234, 237)": 115,
+  "rgb(0, 212, 255)": 12,
+  "rgba(232, 234, 237, 0.3)": 164,
+  "rgba(232, 234, 237, 0.5)": 65,
+  "rgba(184, 244, 255, 0.92)": 2,
+  "rgb(0, 225, 255)": 1,
+  "rgba(206, 232, 239, 0.72)": 2,
+  "rgba(190, 221, 230, 0.72)": 1,
+  "rgba(0, 212, 255, 0.72)": 41,
+  "rgb(0, 0, 0)": 9,
+  "rgba(0, 255, 80, 0.9)": 2,
+  "rgba(0, 255, 255, 0.6)": 22,
+  "rgb(255, 51, 51)": 1,
+  "rgba(232, 234, 237, 0.7)": 1
+ },
+ "brCount": {
+  "50%": 4,
+  "6.4px": 1,
+  "16px 0px 0px 16px": 1,
+  "16px": 4,
+  "2.88px": 1,
+  "0px 16px 16px 0px": 1,
+  "6px": 14,
+  "8px": 60,
+  "4px": 57,
+  "3px": 41,
+  "8px 8px 0px 0px": 5,
+  "0px 0px 8px 8px": 5
+ },
+ "panels": [
+  {
+   "ref": "location-bar",
+   "br": "16px 0px 0px 16px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "1px solid rgba(255, 255, 255, 0.08)",
+   "bf": "blur(24px) saturate(1.4)",
+   "pad": "0px"
+  },
+  {
+   "ref": "gev-voice-control",
+   "br": "16px",
+   "bg": "rgba(8, 31, 42, 0.94)",
+   "bd": "1px solid rgba(0, 212, 255, 0.36)",
+   "bf": "blur(24px) saturate(1.4)",
+   "pad": "5.12px 6.08px 4.8px"
+  },
+  {
+   "ref": "control-panel",
+   "br": "0px 16px 16px 0px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "1px solid rgba(255, 255, 255, 0.08)",
+   "bf": "blur(24px) saturate(1.4)",
+   "pad": "0px"
+  },
+  {
+   "ref": "data-panel-inner",
+   "br": "16px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "1px solid rgba(255, 255, 255, 0.08)",
+   "bf": "blur(24px) saturate(1.4)",
+   "pad": "14px 16px 12px"
+  },
+  {
+   "ref": "scene-panel-inner",
+   "br": "16px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "1px solid rgba(255, 255, 255, 0.08)",
+   "bf": "blur(24px) saturate(1.4)",
+   "pad": "14px 14px 10px"
+  },
+  {
+   "ref": "pp-toggles",
+   "br": "16px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "1px solid rgba(255, 255, 255, 0.08)",
+   "bf": "blur(24px) saturate(1.4)",
+   "pad": "8px"
+  },
+  {
+   "ref": "hud-toggle",
+   "br": "8px 8px 0px 0px",
+   "bg": "rgba(0, 212, 255, 0.15)",
+   "bd": "1px solid rgb(0, 212, 255)",
+   "bf": "blur(16px)",
+   "pad": "7px 12px"
+  },
+  {
+   "ref": "hud-layout-row",
+   "br": "0px 0px 8px 8px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "",
+   "bf": "blur(16px)",
+   "pad": "5px 10px 6px"
+  },
+  {
+   "ref": "detection-toggle",
+   "br": "8px 8px 0px 0px",
+   "bg": "rgba(0, 255, 80, 0.18)",
+   "bd": "1px solid rgba(0, 255, 80, 0.8)",
+   "bf": "blur(16px)",
+   "pad": "7px 12px"
+  },
+  {
+   "ref": "detection-slider-row",
+   "br": "0px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "",
+   "bf": "blur(16px)",
+   "pad": "5px 8px 6px"
+  },
+  {
+   "ref": "detection-allocation-row",
+   "br": "0px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "",
+   "bf": "blur(16px)",
+   "pad": "5px 8px 6px"
+  },
+  {
+   "ref": "detection-fade-row",
+   "br": "0px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "",
+   "bf": "blur(16px)",
+   "pad": "5px 8px 6px"
+  },
+  {
+   "ref": "detection-opacity-row",
+   "br": "0px 0px 8px 8px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "",
+   "bf": "blur(16px)",
+   "pad": "5px 8px 6px"
+  },
+  {
+   "ref": "models3d-toggle",
+   "br": "8px 8px 0px 0px",
+   "bg": "rgba(0, 212, 255, 0.15)",
+   "bd": "1px solid rgb(0, 212, 255)",
+   "bf": "blur(16px)",
+   "pad": "7px 12px"
+  },
+  {
+   "ref": "models3d-mode-row",
+   "br": "0px 0px 8px 8px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "",
+   "bf": "blur(16px)",
+   "pad": "5px 10px 6px"
+  },
+  {
+   "ref": "scope-toggle",
+   "br": "8px 8px 0px 0px",
+   "bg": "rgba(0, 212, 255, 0.15)",
+   "bd": "1px solid rgb(0, 212, 255)",
+   "bf": "blur(16px)",
+   "pad": "7px 12px"
+  },
+  {
+   "ref": "scope-slider-row",
+   "br": "0px 0px 8px 8px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "",
+   "bf": "blur(16px)",
+   "pad": "5px 10px 6px"
+  },
+  {
+   "ref": "celestial-toggle",
+   "br": "8px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "1px solid rgba(255, 255, 255, 0.08)",
+   "bf": "blur(16px)",
+   "pad": "7px 12px"
+  },
+  {
+   "ref": "clean-view-toggle",
+   "br": "8px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "1px solid rgba(255, 255, 255, 0.08)",
+   "bf": "blur(16px)",
+   "pad": "7px 12px"
+  },
+  {
+   "ref": "bloom-toggle",
+   "br": "8px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "1px solid rgba(255, 255, 255, 0.08)",
+   "bf": "blur(16px)",
+   "pad": "7px 12px"
+  },
+  {
+   "ref": "sharpen-toggle",
+   "br": "8px 8px 0px 0px",
+   "bg": "rgba(0, 212, 255, 0.15)",
+   "bd": "1px solid rgb(0, 212, 255)",
+   "bf": "blur(16px)",
+   "pad": "7px 12px"
+  },
+  {
+   "ref": "sharpen-slider-row",
+   "br": "0px 0px 8px 8px",
+   "bg": "rgba(12, 12, 20, 0.72)",
+   "bd": "",
+   "bf": "blur(16px)",
+   "pad": "5px 10px 6px"
+  }
+ ],
+ "msyms": [
+  {
+   "g": "layers_clear",
+   "fs": "18px"
+  },
+  {
+   "g": "public",
+   "fs": "18px"
+  },
+  {
+   "g": "adjust",
+   "fs": "14px"
+  },
+  {
+   "g": "flare",
+   "fs": "14px"
+  }
+ ],
+ "svgs": [
+  {
+   "vb": "180 120 775 520",
+   "ref": "title-logo brand-logo"
+  },
+  {
+   "vb": null,
+   "ref": "gev-screen-whiteboard"
+  }
+ ],
+ "glyphEls": [
+  {
+   "ref": "share-icon",
+   "txt": "🔗",
+   "ff": "Arial"
+  },
+  {
+   "ref": "data-category-caret",
+   "txt": "▾",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-category-icon",
+   "txt": "✈️",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "✈️",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🛰️",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "✈",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🚀",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-category-caret",
+   "txt": "▾",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-category-icon",
+   "txt": "🎖️",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🎖️",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-category-caret",
+   "txt": "▾",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-category-icon",
+   "txt": "⚓",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "◭",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "⬡",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "⚓",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-category-caret",
+   "txt": "▾",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-category-icon",
+   "txt": "🚗",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🚗",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🛣",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🚌",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🚲",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🛴",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "◷",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "⚠",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🚦",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-category-caret",
+   "txt": "▾",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-category-icon",
+   "txt": "⚡",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "⚡",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "☢",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "◈",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "⬡",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🔌",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "▰",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-category-caret",
+   "txt": "▾",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-category-icon",
+   "txt": "⚠",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🌋",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "▲",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "◉",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "⚠",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "⚠",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🔊",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🌳",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🚓",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-category-caret",
+   "txt": "▾",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "▣",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "📹",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "◉",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🌡",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "📡",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-category-caret",
+   "txt": "▾",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-category-icon",
+   "txt": "▤",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "▤",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "▦",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "◎",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "▤",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "▩",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "✚",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🎓",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🏪",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🏗",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🏛",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "🧸",
+   "ff": "Inter"
+  },
+  {
+   "ref": "data-icon",
+   "txt": "▦",
+   "ff": "Inter"
+  },
+  {
+   "ref": "panel-collapse-btn pp-collapse-btn",
+   "txt": "◀",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "pp-icon",
+   "txt": "◎",
+   "ff": "Arial"
+  },
+  {
+   "ref": "pp-icon",
+   "txt": "▣",
+   "ff": "Arial"
+  },
+  {
+   "ref": "pp-icon",
+   "txt": "✈",
+   "ff": "Arial"
+  },
+  {
+   "ref": "pp-icon",
+   "txt": "□",
+   "ff": "Arial"
+  },
+  {
+   "ref": "pp-icon",
+   "txt": "✨",
+   "ff": "Arial"
+  },
+  {
+   "ref": "pp-icon",
+   "txt": "🔍",
+   "ff": "Arial"
+  },
+  {
+   "ref": "hud-bracket",
+   "txt": "┌",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "hud-rec-dot",
+   "txt": "●",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "hud-bracket",
+   "txt": "┐",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "hud-bracket",
+   "txt": "└",
+   "ff": "JetBrains Mono"
+  },
+  {
+   "ref": "hud-bracket",
+   "txt": "┘",
+   "ff": "JetBrains Mono"
+  }
+ ],
+ "layerRows": [
+  {
+   "id": "flights",
+   "txt": "✈️Vols en direct—OFFOpenSky Network · jamais"
+  },
+  {
+   "id": "satellites",
+   "txt": "🛰️Satellites—OFFCelesTrak · jamais"
+  },
+  {
+   "id": "local-airports",
+   "txt": "✈Aéroports—OFFOurAirports · jamais"
+  },
+  {
+   "id": "rocket-launches",
+   "txt": "🚀Missions spatiales—OFFLaunch Library 2 · jamais"
+  },
+  {
+   "id": "military",
+   "txt": "🎖️Vols militaires—OFFadsb.lol · jamais"
+  },
+  {
+   "id": "military-installations",
+   "txt": "⌖Sites militaires—OFFOpenStreetMap + optional Google Maps Places · jam"
+  },
+  {
+   "id": "ais-live-vessels",
+   "txt": "◭Navires en direct—OFFAISStream · jamais"
+  },
+  {
+   "id": "marine-buoys",
+   "txt": "⬡Bouées marines—OFFNOAA NDBC · jamais"
+  },
+  {
+   "id": "local-ports",
+   "txt": "⚓Ports—OFFNGA WPI · jamais"
+  },
+  {
+   "id": "traffic",
+   "txt": "🚗Trafic routier—OFFOpenStreetMap · jamais"
+  },
+  {
+   "id": "road-status-fr",
+   "txt": "🛣État du réseau routierFR—OFFBison Futé / DIR (DATEX II) · jamais"
+  },
+  {
+   "id": "transit-fr",
+   "txt": "🚌Transports en communFR—OFFtransport.data.gouv.fr · jamais"
+  },
+  {
+   "id": "idfm-network",
+   "txt": "ⓂRéseau IDFM (Paris)VILLES—OFFÎle-de-France Mobilités (ODbL) · jamais"
+  },
+  {
+   "id": "bikeshare",
+   "txt": "🚲Stations vélosVILLES—OFFGBFS · jamais"
+  },
+  {
+   "id": "shared-mobility-fr",
+   "txt": "🛴Véhicules partagésFR—OFFtransport.data.gouv.fr · jamais"
+  },
+  {
+   "id": "velo-pulse-fr",
+   "txt": "◷Pouls vélo (semaine type)VILLES—OFFMétropole de Lyon · Ville de Paris"
+  },
+  {
+   "id": "road-events-fr",
+   "txt": "⚠Événements routiersFR—OFFBison Futé / DIR (DATEX II) · jamais"
+  },
+  {
+   "id": "idfm-frequency",
+   "txt": "⏱Fréquence des transports (Paris)FR—OFFOffre hebdomadaire moyenne hors"
+  },
+  {
+   "id": "comptages-fr",
+   "txt": "🚦Comptages routiersFR—OFFComptages routiers permanents — Ville de Par"
+  },
+  {
+   "id": "france-energy",
+   "txt": "⚡Mix électriqueFR—OFFRTE / ODRÉ · jamais"
+  },
+  {
+   "id": "rte-generation",
+   "txt": "☢Groupes de productionFR—OFFRTE · ODRÉ · EDF · OpenStreetMap · jamais"
+  },
+  {
+   "id": "edf-power-plants",
+   "txt": "◈Centrales EDFFR—OFFEDF Open Data · jamais"
+  },
+  {
+   "id": "fr-hydro-plants",
+   "txt": "≈Petite hydroFR—OFFODRÉ + OSM · jamais"
+  },
+  {
+   "id": "power-grid",
+   "txt": "⌁Réseau électrique—OFFOpenStreetMap (Overpass) · jamais"
+  },
+  {
+   "id": "gas-fr",
+   "txt": "⬡Réseau gazFR—OFFNaTran / Teréga / ODRÉ · jamais"
+  },
+  {
+   "id": "irve-fr",
+   "txt": "🔌Bornes de rechargeFR—OFFtransport.data.gouv.fr / ODRÉ · jamais"
+  },
+  {
+   "id": "local-dams",
+   "txt": "▰BarragesFR—OFFOpenStreetMap · jamais"
+  },
+  {
+   "id": "earthquakes",
+   "txt": "🌋Séismes (24 h)—OFFUSGS · jamais"
+  },
+  {
+   "id": "local-firms",
+   "txt": "▲Feux actifs (FIRMS)—OFFNASA FIRMS · LIVE · jamais"
+  },
+  {
+   "id": "vigicrues",
+   "txt": "≋VigicruesFR—OFFSCHAPI / Vigicrues · jamais"
+  },
+  {
+   "id": "hubeau-hydro",
+   "txt": "◉Stations Hub'EauFR—OFFHub'Eau / Eaufrance · jamais"
+  },
+  {
+   "id": "georisques",
+   "txt": "⚠Risques (Géorisques)FR—OFFGéorisques — BRGM / MTE · jamais"
+  },
+  {
+   "id": "meteofrance-vigilance",
+   "txt": "⚠Vigilance météoFR—OFFMétéo-France · jamais"
+  },
+  {
+   "id": "bruit-fr",
+   "txt": "🔊Bruit des aéroportsFR—OFFPlans d’exposition au bruit et plans de gên"
+  },
+  {
+   "id": "fraicheur-fr",
+   "txt": "🌳Îlots de fraîcheurFR—OFFÎlots de fraîcheur, espaces verts frais et f"
+  },
+  {
+   "id": "delinquance-fr",
+   "txt": "🚓Délinquance enregistréeFR—OFFDélinquance enregistrée — SSMSI (minist"
+  },
+  {
+   "id": "telegeography-submarine-cables",
+   "txt": "≋Câbles sous-marins—OFFTeleGeography · jamais"
+  },
+  {
+   "id": "local-datacenters",
+   "txt": "▣Datacenters—OFFLocal · jamais"
+  },
+  {
+   "id": "cctv",
+   "txt": "📹Caméras publiquesVILLES—OFFCCTV + Street View fallback · jamais"
+  },
+  {
+   "id": "radio",
+   "txt": "◉Radio—OFFRadio Browser · jamais"
+  },
+  {
+   "id": "meteo-stations-fr",
+   "txt": "🌡Stations météoFR—OFFMétéo-France · jamais"
+  },
+  {
+   "id": "anfr-fr",
+   "txt": "📡Antennes mobilesFR—OFFObservatoire des réseaux mobiles — ANFR · jama"
+  },
+  {
+   "id": "dvf-sales",
+   "txt": "€Ventes immobilières (DVF)FR—OFFDVF — Etalab / DGFiP · jamais"
+  },
+  {
+   "id": "dpe-fr",
+   "txt": "▤Performance énergétique (DPE)FR—OFFADEME — Observatoire DPE · jamais"
+  },
+  {
+   "id": "urbanisme-gpu",
+   "txt": "▦Urbanisme (PLU & servitudes)FR—OFFGéoportail de l'urbanisme — IGN · j"
+  },
+  {
+   "id": "ads-fr",
+   "txt": "⌂Autorisations d’urbanismeFR—OFFSitadel — SDES + portails ADS · jamais"
+  },
+  {
+   "id": "isochrone-fr",
+   "txt": "◎Zone de chalandise (isochrone)FR—OFFIGN Géoplateforme (BD TOPO®) · Op"
+  },
+  {
+   "id": "implantation-fr",
+   "txt": "⌖Fiche implantationFR—OFFIGN · INSEE · GPU · DGFiP · jamais"
+  },
+  {
+   "id": "bdtopo-buildings",
+   "txt": "▤Bâti 3DFR—OFFIGN BD TOPO (Géoplateforme) · jamais"
+  },
+  {
+   "id": "filosofi-fr",
+   "txt": "▩Carroyage INSEE (revenus & population)FR—OFFINSEE Filosofi (Géoplatef"
+  },
+  {
+   "id": "medecins-fr",
+   "txt": "✚MédecinsFR—OFFCNAM + DREES · jamais"
+  },
+  {
+   "id": "schools-fr",
+   "txt": "🎓Établissements scolairesFR—OFFAnnuaire de l’éducation — MENJ · jamai"
+  },
+  {
+   "id": "amenities-fr",
+   "txt": "🏪Équipements du quotidienFR—OFFBPE 2025 — Insee · FINESS — ARS/ANS · "
+  },
+  {
+   "id": "sitadel-fr",
+   "txt": "🏗Autorisations d’urbanisme (Sitadel)FR—OFFSitadel — permis de constru"
+  },
+  {
+   "id": "sup-fr",
+   "txt": "🏛Enseignement supérieurFR—OFFEffectifs d’étudiants inscrits — MESR · "
+  },
+  {
+   "id": "petite-enfance-fr",
+   "txt": "🧸Accueil du jeune enfantFR—OFFTaux de couverture — Cnaf · jamais"
+  },
+  {
+   "id": "cadastre-fr",
+   "txt": "▦Parcelles cadastralesFR—OFFIGN Api Carto — cadastre PCI vecteur · jam"
+  }
+ ],
+ "texts": [
+  {
+   "ref": "title-bar",
+   "t": "GOD'S EYE"
+  },
+  {
+   "ref": "title-bar",
+   "t": "VIEW"
+  },
+  {
+   "ref": "title-bar",
+   "t": "NO PLACE LEFT BEHIND"
+  },
+  {
+   "ref": "style-indicator",
+   "t": "ACTIVE STYLE"
+  },
+  {
+   "ref": "active-style-name",
+   "t": "NORMAL"
+  },
+  {
+   "ref": "clear-selected-layers",
+   "t": "layers_clear"
+  },
+  {
+   "ref": "share-btn",
+   "t": "🔗"
+  },
+  {
+   "ref": "reset-globe-view",
+   "t": "public"
+  },
+  {
+   "ref": "traffic-sync-label",
+   "t": "syncing road network"
+  },
+  {
+   "ref": "cctv-sync-label",
+   "t": "loading frames"
+  },
+  {
+   "ref": "cctv-sync-progress",
+   "t": "0/0"
+  },
+  {
+   "ref": "location-bar",
+   "t": "LOCATION"
+  },
+  {
+   "ref": "gev-voice-status",
+   "t": "OFF"
+  },
+  {
+   "ref": "gev-voice-tier",
+   "t": "STD"
+  },
+  {
+   "ref": "gev-voice-cost-value",
+   "t": "~$0.00"
+  },
+  {
+   "ref": "gev-voice-button",
+   "t": "ON/OFF"
+  },
+  {
+   "ref": "gev-voice-detail",
+   "t": "VOICE STANDBY"
+  },
+  {
+   "ref": "control-panel-toggle",
+   "t": "VISUAL PRESETS"
+  },
+  {
+   "ref": "data-panel",
+   "t": "DATA LAYERS"
+  },
+  {
+   "ref": "data-panel",
+   "t": "+"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "▾"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "✈️"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "AIR & ESPACE"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "0/4 ON"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "✈️"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "Vols en direct"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "OpenSky Network · jamais"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "🛰️"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "Satellites"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "CelesTrak · jamais"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "✈"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "Aéroports"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "OurAirports · jamais"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "🚀"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "Missions spatiales"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-air-space",
+   "t": "Launch Library 2 · jamais"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "▾"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "🎖️"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "DÉFENSE"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "0/2 ON"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "🎖️"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "Vols militaires"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "adsb.lol · jamais"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "⌖"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "Sites militaires"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-defence",
+   "t": "OpenStreetMap + optional Google Maps Places · jamais"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "▾"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "⚓"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "MARITIME"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "0/3 ON"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "◭"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "Navires en direct"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "AISStream · jamais"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "⬡"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "Bouées marines"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "NOAA NDBC · jamais"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "⚓"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "Ports"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-maritime",
+   "t": "NGA WPI · jamais"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "▾"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "🚗"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "MOBILITÉ TERRESTRE"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "0/10 ON"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "🚗"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Trafic routier"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OpenStreetMap · jamais"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "🛣"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "État du réseau routier"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Bison Futé / DIR (DATEX II) · jamais"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "🚌"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Transports en commun"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "transport.data.gouv.fr · jamais"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Ⓜ"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Réseau IDFM (Paris)"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "VILLES"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Île-de-France Mobilités (ODbL) · jamais"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "🚲"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Stations vélos"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "VILLES"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "GBFS · jamais"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "🛴"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Véhicules partagés"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "transport.data.gouv.fr · jamais"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "◷"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Pouls vélo (semaine type)"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "VILLES"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Métropole de Lyon · Ville de Paris · jamais"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "⚠"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Événements routiers"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Bison Futé / DIR (DATEX II) · jamais"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "⏱"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Fréquence des transports (Paris)"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Offre hebdomadaire moyenne hors vacances — Île-de-France Mobilités · jamais"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "🚦"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Comptages routiers"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-ground-mobility",
+   "t": "Comptages routiers permanents — Ville de Paris · jamais"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "▾"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "⚡"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "ÉNERGIE"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "0/8 ON"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "⚡"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "Mix électrique"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "RTE / ODRÉ · jamais"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "☢"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "Groupes de production"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "RTE · ODRÉ · EDF · OpenStreetMap · jamais"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "◈"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "Centrales EDF"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "EDF Open Data · jamais"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "≈"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "Petite hydro"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "ODRÉ + OSM · jamais"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "⌁"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "Réseau électrique"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OpenStreetMap (Overpass) · jamais"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "⬡"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "Réseau gaz"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "NaTran / Teréga / ODRÉ · jamais"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "🔌"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "Bornes de recharge"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "transport.data.gouv.fr / ODRÉ · jamais"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "▰"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "Barrages"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-energy",
+   "t": "OpenStreetMap · jamais"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "▾"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "⚠"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "RISQUES & ENVIRONNEMENT"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "0/9 ON"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "🌋"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Séismes (24 h)"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "USGS · jamais"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "▲"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Feux actifs (FIRMS)"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "NASA FIRMS · LIVE · jamais"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "≋"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Vigicrues"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "SCHAPI / Vigicrues · jamais"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "◉"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Stations Hub'Eau"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Hub'Eau / Eaufrance · jamais"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "⚠"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Risques (Géorisques)"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Géorisques — BRGM / MTE · jamais"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "⚠"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Vigilance météo"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Météo-France · jamais"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "🔊"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Bruit des aéroports"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Plans d’exposition au bruit et plans de gêne sonore — DGAC, via la Géoplateforme (data.geo"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "🌳"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Îlots de fraîcheur"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Îlots de fraîcheur, espaces verts frais et fontaines — Ville de Paris & Eau de Paris (open"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "🚓"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Délinquance enregistrée"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-hazards",
+   "t": "Délinquance enregistrée — SSMSI (ministère de l’Intérieur) · jamais"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "▾"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "≋"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "RÉSEAUX & CAPTEURS"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "0/6 ON"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "≋"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Câbles sous-marins"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "TeleGeography · jamais"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "▣"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Datacenters"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Local · jamais"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "📹"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Caméras publiques"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "VILLES"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "CCTV + Street View fallback · jamais"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "◉"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Radio"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Radio Browser · jamais"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "🌡"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Stations météo"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Météo-France · jamais"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "📡"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Antennes mobiles"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-comms-sensors",
+   "t": "Observatoire des réseaux mobiles — ANFR · jamais"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "▾"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "▤"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "BÂTI & TERRITOIRE"
+  },
+  {
+   "ref": "data-toggles",
+   "t": "0/15 ON"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "€"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Ventes immobilières (DVF)"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "DVF — Etalab / DGFiP · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "▤"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Performance énergétique (DPE)"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "ADEME — Observatoire DPE · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "▦"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Urbanisme (PLU & servitudes)"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Géoportail de l'urbanisme — IGN · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "⌂"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Autorisations d’urbanisme"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Sitadel — SDES + portails ADS · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "◎"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Zone de chalandise (isochrone)"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "IGN Géoplateforme (BD TOPO®) · OpenStreetMap / OSRM pour le vélo · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "⌖"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Fiche implantation"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "IGN · INSEE · GPU · DGFiP · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "▤"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Bâti 3D"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "IGN BD TOPO (Géoplateforme) · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "▩"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Carroyage INSEE (revenus & population)"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "INSEE Filosofi (Géoplateforme) · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "✚"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Médecins"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "CNAM + DREES · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "🎓"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Établissements scolaires"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Annuaire de l’éducation — MENJ · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "🏪"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Équipements du quotidien"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "BPE 2025 — Insee · FINESS — ARS/ANS · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "🏗"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Autorisations d’urbanisme (Sitadel)"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Sitadel — permis de construire et de démolir, SDES/CGDD · parcelles cadastrales Etalab (DG"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "🏛"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Enseignement supérieur"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Effectifs d’étudiants inscrits — MESR · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "🧸"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Accueil du jeune enfant"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Taux de couverture — Cnaf · jamais"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "▦"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "Parcelles cadastrales"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "FR"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "—"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "OFF"
+  },
+  {
+   "ref": "data-category-body-built-environment",
+   "t": "IGN Api Carto — cadastre PCI vecteur · jamais"
+  },
+  {
+   "ref": "scene-panel",
+   "t": "SCENES"
+  },
+  {
+   "ref": "scene-panel",
+   "t": "+"
+  },
+  {
+   "ref": "pp-toggles",
+   "t": "DISPLAY"
+  },
+  {
+   "ref": "pp-toggles",
+   "t": "◀"
+  },
+  {
+   "ref": "hud-toggle",
+   "t": "◎"
+  },
+  {
+   "ref": "hud-toggle",
+   "t": "HUD"
+  },
+  {
+   "ref": "hud-layout-row",
+   "t": "Layout"
+  },
+  {
+   "ref": "detection-toggle",
+   "t": "▣"
+  },
+  {
+   "ref": "detection-toggle",
+   "t": "DENSE"
+  },
+  {
+   "ref": "detection-slider-row",
+   "t": "Density"
+  },
+  {
+   "ref": "detection-density-value",
+   "t": "75%"
+  },
+  {
+   "ref": "detection-allocation-row",
+   "t": "Allocation"
+  },
+  {
+   "ref": "detection-allocation-elastic",
+   "t": "Elastic"
+  },
+  {
+   "ref": "detection-allocation-weighted",
+   "t": "Weighted"
+  },
+  {
+   "ref": "detection-fade-row",
+   "t": "Fade"
+  },
+  {
+   "ref": "detection-fade-value",
+   "t": "7%"
+  },
+  {
+   "ref": "detection-opacity-row",
+   "t": "Outside"
+  },
+  {
+   "ref": "detection-opacity-value",
+   "t": "1%"
+  },
+  {
+   "ref": "models3d-toggle",
+   "t": "✈"
+  },
+  {
+   "ref": "models3d-toggle",
+   "t": "3D"
+  },
+  {
+   "ref": "models3d-mode-row",
+   "t": "Models"
+  },
+  {
+   "ref": "models3d-mode-proximity",
+   "t": "Proximity"
+  },
+  {
+   "ref": "models3d-mode-all",
+   "t": "All"
+  },
+  {
+   "ref": "scope-toggle",
+   "t": "adjust"
+  },
+  {
+   "ref": "scope-toggle",
+   "t": "Scope"
+  },
+  {
+   "ref": "scope-slider-row",
+   "t": "Feather"
+  },
+  {
+   "ref": "scope-feather-value",
+   "t": "11%"
+  },
+  {
+   "ref": "celestial-toggle",
+   "t": "flare"
+  },
+  {
+   "ref": "celestial-toggle",
+   "t": "Celestial"
+  },
+  {
+   "ref": "clean-view-toggle",
+   "t": "□"
+  },
+  {
+   "ref": "clean-view-toggle",
+   "t": "Clean UI"
+  },
+  {
+   "ref": "bloom-toggle",
+   "t": "✨"
+  },
+  {
+   "ref": "bloom-toggle",
+   "t": "Bloom"
+  },
+  {
+   "ref": "sharpen-toggle",
+   "t": "🔍"
+  },
+  {
+   "ref": "sharpen-toggle",
+   "t": "Sharpen"
+  },
+  {
+   "ref": "sharpen-intensity-value",
+   "t": "49%"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "┌"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "TOP SECRET // SI-TK // NOFORN"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "KH11-4174  OPS-4138"
+  },
+  {
+   "ref": "hud-mode",
+   "t": "NORMAL"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "SUMMARY"
+  },
+  {
+   "ref": "hud-summary",
+   "t": "NORMAL STREET NEAR EIFFEL TOWER (PARIS) 0KM"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "REC"
+  },
+  {
+   "ref": "hud-rec-dot",
+   "t": "●"
+  },
+  {
+   "ref": "hud-timestamp",
+   "t": "2026-09-03 07:13:32Z"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "ORB: 47074  PASS: DESC-275"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "┐"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "└"
+  },
+  {
+   "ref": "hud-mgrs",
+   "t": "MGRS: 31U DQ 4825 1195"
+  },
+  {
+   "ref": "hud-latlon",
+   "t": "48°51'30.24\"N 002°17'40.20\"E"
+  },
+  {
+   "ref": "hud-gsd",
+   "t": "GSD: 0.22m  NIIRS: 7.1"
+  },
+  {
+   "ref": "hud-alt",
+   "t": "ALT: 555m   SUN: 19.6° EL"
+  },
+  {
+   "ref": "hud-ais-vessel",
+   "t": "AIS: --"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "┘"
+  },
+  {
+   "ref": "hud-coll",
+   "t": "COLL: 07:13:32Z"
+  },
+  {
+   "ref": "hud-ona",
+   "t": "ONA: 60.0°"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "BAND: PAN"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "BITS: 11"
+  },
+  {
+   "ref": "intel-hud",
+   "t": "LVL: 1A"
+  },
+  {
+   "ref": "cesium-credits",
+   "t": "Data attribution"
+  }
+ ]
+}

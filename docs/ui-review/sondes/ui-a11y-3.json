@@ -1,0 +1,1513 @@
+{
+  "before": {
+    "data": {
+      "collapsed": true,
+      "display": "block",
+      "vis": "visible",
+      "op": "1",
+      "rect": {
+        "x": 52,
+        "y": 266,
+        "w": 176,
+        "h": 50
+      },
+      "btn": {
+        "tabIndex": 0,
+        "disabled": false,
+        "rect": {
+          "x": 185,
+          "y": 281,
+          "w": 22,
+          "h": 22
+        },
+        "offscreen": false
+      },
+      "innerFocusable": 66,
+      "rows": 57
+    },
+    "scene": {
+      "collapsed": true,
+      "display": "block",
+      "vis": "visible",
+      "op": "1",
+      "rect": {
+        "x": 52,
+        "y": 324,
+        "w": 176,
+        "h": 50
+      },
+      "btn": {
+        "tabIndex": 0,
+        "disabled": false,
+        "rect": {
+          "x": 187,
+          "y": 339,
+          "w": 22,
+          "h": 22
+        },
+        "offscreen": false
+      },
+      "innerFocusable": 23,
+      "rows": 0
+    },
+    "cctv": {
+      "collapsed": true,
+      "display": "block",
+      "vis": "visible",
+      "op": "1",
+      "rect": {
+        "x": 1212,
+        "y": 292,
+        "w": 176,
+        "h": 50
+      },
+      "btn": {
+        "tabIndex": 0,
+        "disabled": false,
+        "rect": {
+          "x": 1347,
+          "y": 307,
+          "w": 22,
+          "h": 22
+        },
+        "offscreen": false
+      },
+      "innerFocusable": 21,
+      "rows": 0
+    },
+    "stack": {
+      "overflow": "visible/visible",
+      "scrollH": 367,
+      "clientH": 367,
+      "scrollTop": 0,
+      "rect": {
+        "y": 266,
+        "h": 367
+      }
+    }
+  },
+  "afterOpenData": {
+    "data": {
+      "collapsed": false,
+      "display": "block",
+      "vis": "visible",
+      "op": "1",
+      "rect": {
+        "x": 52,
+        "y": 266,
+        "w": 320,
+        "h": 367
+      },
+      "btn": {
+        "tabIndex": 0,
+        "disabled": false,
+        "rect": {
+          "x": 329,
+          "y": 281,
+          "w": 22,
+          "h": 22
+        },
+        "offscreen": false
+      },
+      "innerFocusable": 66,
+      "rows": 57
+    },
+    "scene": {
+      "collapsed": true,
+      "display": "none",
+      "vis": "visible",
+      "op": "1",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 0,
+        "h": 0
+      },
+      "btn": {
+        "tabIndex": 0,
+        "disabled": false,
+        "rect": {
+          "x": 0,
+          "y": 0,
+          "w": 0,
+          "h": 0
+        },
+        "offscreen": false
+      },
+      "innerFocusable": 23,
+      "rows": 0
+    },
+    "cctv": {
+      "collapsed": true,
+      "display": "block",
+      "vis": "visible",
+      "op": "1",
+      "rect": {
+        "x": 1212,
+        "y": 324,
+        "w": 176,
+        "h": 50
+      },
+      "btn": {
+        "tabIndex": 0,
+        "disabled": false,
+        "rect": {
+          "x": 1347,
+          "y": 339,
+          "w": 22,
+          "h": 22
+        },
+        "offscreen": false
+      },
+      "innerFocusable": 21,
+      "rows": 0
+    },
+    "stack": {
+      "overflow": "visible/visible",
+      "scrollH": 387,
+      "clientH": 367,
+      "scrollTop": 0,
+      "rect": {
+        "y": 266,
+        "h": 367
+      }
+    }
+  },
+  "walkData": [
+    {
+      "step": 1,
+      "tag": "BUTTON",
+      "id": "clear-selected-layers",
+      "cls": "",
+      "label": "Clear selected data layers",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 658,
+        "y": 32,
+        "w": 36,
+        "h": 36
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 2,
+      "tag": "BUTTON",
+      "id": "share-btn",
+      "cls": "",
+      "label": "Copy share link",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 702,
+        "y": 32,
+        "w": 36,
+        "h": 36
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 3,
+      "tag": "BUTTON",
+      "id": "reset-globe-view",
+      "cls": "",
+      "label": "Reset to full globe view",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 746,
+        "y": 32,
+        "w": 36,
+        "h": 36
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 4,
+      "tag": "BUTTON",
+      "id": "gev-voice-tier",
+      "cls": "gev-voice-tier-btn",
+      "label": "STD",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 733,
+        "y": 811,
+        "w": 24.8,
+        "h": 11.5
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 5,
+      "tag": "BUTTON",
+      "id": "gev-voice-button",
+      "cls": "",
+      "label": "Voice control — hold Space to speak; cli",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 657,
+        "y": 811,
+        "w": 42.4,
+        "h": 66.4
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 6,
+      "tag": "BUTTON",
+      "id": "control-panel-toggle",
+      "cls": "panel-header dock-tray-toggle",
+      "label": "Expand VISUAL PRESETS",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 803,
+        "y": 840,
+        "w": 144,
+        "h": 22.4
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 7,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn",
+      "label": "Collapse DATA LAYERS",
+      "layerId": null,
+      "inDataPanel": true,
+      "rect": {
+        "x": 329,
+        "y": 280,
+        "w": 22,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 8,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-category-header",
+      "label": "▾✈️AIR & ESPACE0/4 ON",
+      "layerId": null,
+      "inDataPanel": true,
+      "rect": {
+        "x": 69,
+        "y": 316,
+        "w": 271,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 9,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Vols en direct: OFF",
+      "layerId": "flights",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 346,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 10,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Satellites: OFF",
+      "layerId": "satellites",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 397,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 11,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Aéroports: OFF",
+      "layerId": "local-airports",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 447,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 12,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Missions spatiales: OFF",
+      "layerId": "rocket-launches",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 497,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 13,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-category-header",
+      "label": "▾🎖️DÉFENSE0/2 ON",
+      "layerId": null,
+      "inDataPanel": true,
+      "rect": {
+        "x": 69,
+        "y": 552,
+        "w": 271,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 14,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Vols militaires: OFF",
+      "layerId": "military",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 582,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 15,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Sites militaires: OFF",
+      "layerId": "military-installations",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 632,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 16,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-category-header",
+      "label": "▾⚓MARITIME0/3 ON",
+      "layerId": null,
+      "inDataPanel": true,
+      "rect": {
+        "x": 69,
+        "y": 682,
+        "w": 271,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 17,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Navires en direct: OFF",
+      "layerId": "ais-live-vessels",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 18,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Bouées marines: OFF",
+      "layerId": "marine-buoys",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 551,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 19,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Ports: OFF",
+      "layerId": "local-ports",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 601,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 20,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-category-header",
+      "label": "▾🚗MOBILITÉ TERRESTRE0/10 ON",
+      "layerId": null,
+      "inDataPanel": true,
+      "rect": {
+        "x": 69,
+        "y": 656,
+        "w": 271,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 21,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Trafic routier: OFF",
+      "layerId": "traffic",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 686,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": "data-toggles",
+      "offscreen": false
+    },
+    {
+      "step": 22,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "État du réseau routier: OFF",
+      "layerId": "road-status-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 23,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Transports en commun: OFF",
+      "layerId": "transit-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 562,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 24,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Réseau IDFM (Paris): OFF",
+      "layerId": "idfm-network",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 624,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 25,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Stations vélos: OFF",
+      "layerId": "bikeshare",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 685,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 26,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Véhicules partagés: OFF",
+      "layerId": "shared-mobility-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 501,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 27,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Pouls vélo (semaine type): OFF",
+      "layerId": "velo-pulse-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 571,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 28,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Événements routiers: OFF",
+      "layerId": "road-events-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 652,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 29,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Fréquence des transports (Paris): OFF",
+      "layerId": "idfm-frequency",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 30,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Comptages routiers: OFF",
+      "layerId": "comptages-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 587,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 31,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-category-header",
+      "label": "▾⚡ÉNERGIE0/8 ON",
+      "layerId": null,
+      "inDataPanel": true,
+      "rect": {
+        "x": 69,
+        "y": 659,
+        "w": 271,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 32,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Mix électrique: OFF",
+      "layerId": "france-energy",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 685,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 33,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Groupes de production: OFF",
+      "layerId": "rte-generation",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 34,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Centrales EDF: OFF",
+      "layerId": "edf-power-plants",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 568,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 35,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Petite hydro: OFF",
+      "layerId": "fr-hydro-plants",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 618,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 36,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Réseau électrique: OFF",
+      "layerId": "power-grid",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 668,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 37,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Réseau gaz: OFF",
+      "layerId": "gas-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 38,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Bornes de recharge: OFF",
+      "layerId": "irve-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 556,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 39,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Barrages: OFF",
+      "layerId": "local-dams",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 612,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 40,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-category-header",
+      "label": "▾⚠RISQUES & ENVIRONNEMENT0/9 ON",
+      "layerId": null,
+      "inDataPanel": true,
+      "rect": {
+        "x": 69,
+        "y": 667,
+        "w": 271,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 41,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Séismes (24 h): OFF",
+      "layerId": "earthquakes",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 685,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 42,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Feux actifs (FIRMS): OFF",
+      "layerId": "local-firms",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 43,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Vigicrues: OFF",
+      "layerId": "vigicrues",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 550,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 44,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Stations Hub'Eau: OFF",
+      "layerId": "hubeau-hydro",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 600,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 45,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Risques (Géorisques): OFF",
+      "layerId": "georisques",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 656,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 46,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Vigilance météo: OFF",
+      "layerId": "meteofrance-vigilance",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 47,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Bruit des aéroports: OFF",
+      "layerId": "bruit-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 556,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 48,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Îlots de fraîcheur: OFF",
+      "layerId": "fraicheur-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 642,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 49,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Délinquance enregistrée: OFF",
+      "layerId": "delinquance-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 50,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-category-header",
+      "label": "▾≋RÉSEAUX & CAPTEURS0/6 ON",
+      "layerId": null,
+      "inDataPanel": true,
+      "rect": {
+        "x": 69,
+        "y": 573,
+        "w": 271,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 51,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Câbles sous-marins: OFF",
+      "layerId": "telegeography-submarine-cables",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 603,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 52,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Datacenters: OFF",
+      "layerId": "local-datacenters",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 653,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 53,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Caméras publiques: OFF",
+      "layerId": "cctv",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 54,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Radio: OFF",
+      "layerId": "radio",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 556,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 55,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Stations météo: OFF",
+      "layerId": "meteo-stations-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 607,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 56,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Antennes mobiles: OFF",
+      "layerId": "anfr-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 662,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 57,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-category-header",
+      "label": "▾▤BÂTI & TERRITOIRE0/15 ON",
+      "layerId": null,
+      "inDataPanel": true,
+      "rect": {
+        "x": 69,
+        "y": 500,
+        "w": 271,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 58,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Ventes immobilières (DVF): OFF",
+      "layerId": "dvf-sales",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 543,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 59,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Performance énergétique (DPE): OFF",
+      "layerId": "dpe-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 621,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 60,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Urbanisme (PLU & servitudes): OFF",
+      "layerId": "urbanisme-gpu",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 685,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 61,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Autorisations d’urbanisme: OFF",
+      "layerId": "ads-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 62,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Zone de chalandise (isochrone): OFF",
+      "layerId": "isochrone-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 570,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 63,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Fiche implantation: OFF",
+      "layerId": "implantation-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 664,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 64,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Bâti 3D: OFF",
+      "layerId": "bdtopo-buildings",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 65,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Carroyage INSEE (revenus & population): ",
+      "layerId": "filosofi-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 564,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 66,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Médecins: OFF",
+      "layerId": "medecins-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 640,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 67,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Établissements scolaires: OFF",
+      "layerId": "schools-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 685,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 68,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Équipements du quotidien: OFF",
+      "layerId": "amenities-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 500,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 69,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Autorisations d’urbanisme (Sitadel): OFF",
+      "layerId": "sitadel-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 582,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 70,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Enseignement supérieur: OFF",
+      "layerId": "sup-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 676,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 71,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Accueil du jeune enfant: OFF",
+      "layerId": "petite-enfance-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 585,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 72,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "data-toggle-btn",
+      "label": "Parcelles cadastrales: OFF",
+      "layerId": "cadastre-fr",
+      "inDataPanel": true,
+      "rect": {
+        "x": 287,
+        "y": 647,
+        "w": 42.7,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 73,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn pp-collapse-btn",
+      "label": "Expand DISPLAY",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 1357,
+        "y": 280,
+        "w": 20,
+        "h": 20
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 74,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn",
+      "label": "Expand CCTV",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 1347,
+        "y": 338,
+        "w": 22,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 75,
+      "tag": "BUTTON",
+      "id": "context-radio-toggle-btn",
+      "cls": "context-radio-toggle",
+      "label": "Open compact Radio controls",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 1314,
+        "y": 392,
+        "w": 28,
+        "h": 28
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 76,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn",
+      "label": "Expand CONTEXT",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 1354,
+        "y": 395,
+        "w": 19.2,
+        "h": 22
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 77,
+      "tag": "A",
+      "id": null,
+      "cls": "",
+      "label": "",
+      "layerId": null,
+      "inDataPanel": false,
+      "rect": {
+        "x": 24,
+        "y": 871,
+        "w": 138,
+        "h": 13
+      },
+      "clippedBy": null,
+      "offscreen": false
+    },
+    {
+      "step": 78,
+      "body": true
+    }
+  ],
+  "ringResults": [
+    {
+      "sel": "#clear-selected-layers",
+      "skipped": "shotA Protocol error (Page.captureScreenshot): Invalid parameters Failed to deserialize params.clip.width - BINDINGS: double value expected at position 86"
+    },
+    {
+      "sel": "#share-btn",
+      "skipped": "shotA Protocol error (Page.captureScreenshot): Invalid parameters Failed to deserialize params.clip.width - BINDINGS: double value expected at position 86"
+    },
+    {
+      "sel": "#reset-globe-view",
+      "skipped": "shotA Protocol error (Page.captureScreenshot): Invalid parameters Failed to deserialize params.clip.width - BINDINGS: double value expected at position 86"
+    },
+    {
+      "sel": "#scene-select",
+      "skipped": "not visible"
+    },
+    {
+      "sel": "#context-radio-toggle-btn",
+      "skipped": "shotA Protocol error (Page.captureScreenshot): Invalid parameters Failed to deserialize params.clip.width - BINDINGS: double value expected at position 87"
+    }
+  ]
+}

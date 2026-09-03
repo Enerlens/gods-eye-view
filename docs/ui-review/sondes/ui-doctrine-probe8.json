@@ -1,0 +1,235 @@
+{
+  "b3": [
+    {
+      "name": "Gironde/Bassin-Arcachon (water)",
+      "lon": -1.13,
+      "lat": 44.68,
+      "ok": true,
+      "x": 661,
+      "y": 535,
+      "rgb": [
+        180,
+        199,
+        203
+      ]
+    },
+    {
+      "name": "Gironde/Landes forest",
+      "lon": -0.75,
+      "lat": 44.55,
+      "ok": true,
+      "x": 800,
+      "y": 602,
+      "rgb": [
+        133,
+        92,
+        72
+      ]
+    },
+    {
+      "name": "Gironde/Bordeaux urban",
+      "lon": -0.575,
+      "lat": 44.84,
+      "ok": true,
+      "x": 864,
+      "y": 454,
+      "rgb": [
+        117,
+        61,
+        62
+      ]
+    },
+    {
+      "name": "Gironde/vineyard Medoc",
+      "lon": -0.85,
+      "lat": 45.15,
+      "ok": true,
+      "x": 764,
+      "y": 295,
+      "rgb": [
+        130,
+        90,
+        70
+      ]
+    }
+  ],
+  "deptCard": {
+    "x": 800,
+    "y": 500
+  },
+  "deptCardDom": [
+    {
+      "sel": "cesiumContainer",
+      "t": "Data provided by:×Flights: OpenSky Network — Schäfer et al., “Bringing Up OpenSky”, IPSN 2014 · opensky-network.org (non-commercial)Military flights, aircraft traces & bounded regional flight fallback: adsb.lol (ODbL 1.0)Live vessels (AIS): AISStream.ioSatellites (TLEs): CelesTrak (celestrak.org), Dr. T.S. KelsoSpace mission launch, payload & recovery metadata: Launch Library 2 — The Space Devs (API documentation and rate limits)Earthquakes: Data courtesy of the U.S. Geological SurveyMarine buoy"
+    },
+    {
+      "sel": "gev-voice-error-tray",
+      "t": "VOICE SYSTEM ERROR DISMISS Check microphone permission and network access, then try again."
+    },
+    {
+      "sel": "hud-corner hud-top-left",
+      "t": "┌ TOP SECRET // SI-TK // NOFORN KH11-4047 OPS-4169 NORMAL SUMMARY NORMAL GLOBAL SECTOR 44.75N 0.75W | EUROPE | ALT 300.0KM | WINDOW 355x219KM | SUN 30° | ONA 0° | UTC+0"
+    },
+    {
+      "sel": "hud-corner hud-bottom-right",
+      "t": "GSD: 112.50m NIIRS: 0.0 ALT: 299951m SUN: 29.8° EL AIS: -- ┘"
+    }
+  ],
+  "f1": {
+    "depthTestAgainstTerrain": false,
+    "groups": {}
+  },
+  "filters": [
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "cockpit-radio-volume",
+      "cls": "gev-quantitative-slider",
+      "layer": null,
+      "aria": "Cockpit Radio volume",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "text",
+      "id": "location-search",
+      "cls": "",
+      "layer": null,
+      "aria": "",
+      "visible": false
+    },
+    {
+      "tag": "SELECT",
+      "type": "select-one",
+      "id": "scene-select",
+      "cls": "",
+      "layer": null,
+      "aria": "Scene recipe",
+      "visible": false
+    },
+    {
+      "tag": "SELECT",
+      "type": "select-one",
+      "id": "hud-layout-select",
+      "cls": "pp-select",
+      "layer": null,
+      "aria": "HUD layout",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "detection-density-slider",
+      "cls": "pp-slider",
+      "layer": null,
+      "aria": "Detection label density",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "detection-fade-slider",
+      "cls": "pp-slider",
+      "layer": null,
+      "aria": "Detection fade distance",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "detection-opacity-slider",
+      "cls": "pp-slider",
+      "layer": null,
+      "aria": "Detection opacity outside the keyhole",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "scope-feather-slider",
+      "cls": "pp-slider",
+      "layer": null,
+      "aria": "",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "bloom-intensity-slider",
+      "cls": "pp-slider",
+      "layer": null,
+      "aria": "",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "sharpen-intensity-slider",
+      "cls": "pp-slider",
+      "layer": null,
+      "aria": "",
+      "visible": false
+    },
+    {
+      "tag": "SELECT",
+      "type": "select-one",
+      "id": "cctv-camera-select",
+      "cls": "",
+      "layer": null,
+      "aria": "CCTV camera",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "context-radio-mini-volume",
+      "cls": "gev-quantitative-slider",
+      "layer": null,
+      "aria": "Compact Radio volume",
+      "visible": false
+    },
+    {
+      "tag": "SELECT",
+      "type": "select-one",
+      "id": "radio-filter",
+      "cls": "",
+      "layer": null,
+      "aria": "Filter stations by station tag",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "radio-tuner-slider",
+      "cls": "",
+      "layer": null,
+      "aria": "Tune available internet radio stations",
+      "visible": false
+    },
+    {
+      "tag": "INPUT",
+      "type": "range",
+      "id": "radio-volume",
+      "cls": "gev-quantitative-slider",
+      "layer": null,
+      "aria": "Radio volume",
+      "visible": false
+    }
+  ],
+  "paramPanel": {
+    "text": "PARAMETERS −",
+    "h": 0
+  },
+  "errors": [
+    "Failed to load resource: the server responded with a status of 403 ()",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)",
+    "WebSocket connection to 'ws://localhost:4290/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:4290/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:4290/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:4290/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "Failed to load resource: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:4290/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:4290/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED",
+    "WebSocket connection to 'ws://localhost:4290/' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED"
+  ]
+}

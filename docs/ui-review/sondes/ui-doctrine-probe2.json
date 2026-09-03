@@ -1,0 +1,660 @@
+{
+  "globeHud": {
+    "#intel-hud": [
+      {
+        "sel": "DIV.hud-bracket",
+        "t": "┌",
+        "visible": true,
+        "x": 40,
+        "y": 144,
+        "fs": "22px"
+      },
+      {
+        "sel": "DIV.hud-classification",
+        "t": "TOP SECRET // SI-TK // NOFORN",
+        "visible": true,
+        "x": 59,
+        "y": 144,
+        "fs": "12px"
+      },
+      {
+        "sel": "DIV.hud-system",
+        "t": "KH11-4047  OPS-4163",
+        "visible": true,
+        "x": 59,
+        "y": 166,
+        "fs": "13px"
+      },
+      {
+        "sel": "#hud-mode",
+        "t": "NORMAL",
+        "visible": true,
+        "x": 59,
+        "y": 190,
+        "fs": "16px"
+      },
+      {
+        "sel": "DIV.hud-summary-label",
+        "t": "SUMMARY",
+        "visible": true,
+        "x": 59,
+        "y": 222,
+        "fs": "9px"
+      },
+      {
+        "sel": "#hud-summary",
+        "t": "NORMAL GLOBAL SECTOR 48.00N 10.00E | EUROPE | ALT 12000.0KM",
+        "visible": true,
+        "x": 59,
+        "y": 238,
+        "fs": "11px"
+      },
+      {
+        "sel": "#hud-timestamp",
+        "t": "2026-09-03 08:04:34Z",
+        "visible": true,
+        "x": 1345,
+        "y": 146,
+        "fs": "13px"
+      },
+      {
+        "sel": "DIV.hud-orbital",
+        "t": "ORB: 47538  PASS: DESC-166",
+        "visible": true,
+        "x": 1285,
+        "y": 166,
+        "fs": "12px"
+      },
+      {
+        "sel": "DIV.hud-bracket",
+        "t": "┐",
+        "visible": true,
+        "x": 1547,
+        "y": 144,
+        "fs": "22px"
+      },
+      {
+        "sel": "DIV.hud-bracket",
+        "t": "└",
+        "visible": true,
+        "x": 40,
+        "y": 830,
+        "fs": "22px"
+      },
+      {
+        "sel": "#hud-mgrs",
+        "t": "MGRS: 32U NU 7459 1678",
+        "visible": true,
+        "x": 59,
+        "y": 830,
+        "fs": "13px"
+      },
+      {
+        "sel": "#hud-latlon",
+        "t": "48°00'00.00\"N 010°00'00.00\"E",
+        "visible": true,
+        "x": 59,
+        "y": 851,
+        "fs": "13px"
+      },
+      {
+        "sel": "#hud-gsd",
+        "t": "GSD: 4500.00m  NIIRS: 0.0",
+        "visible": true,
+        "x": 1266,
+        "y": 804,
+        "fs": "13px"
+      },
+      {
+        "sel": "#hud-alt",
+        "t": "ALT: 11999953m   SUN: 32.6° EL",
+        "visible": true,
+        "x": 1266,
+        "y": 824,
+        "fs": "13px"
+      },
+      {
+        "sel": "#hud-ais-vessel",
+        "t": "AIS: --",
+        "visible": true,
+        "x": 1266,
+        "y": 851,
+        "fs": "13px"
+      },
+      {
+        "sel": "DIV.hud-bracket",
+        "t": "┘",
+        "visible": true,
+        "x": 1547,
+        "y": 804,
+        "fs": "22px"
+      },
+      {
+        "sel": "#hud-coll",
+        "t": "COLL: 08:04:34Z",
+        "visible": true,
+        "x": 28,
+        "y": 388,
+        "fs": "10px"
+      },
+      {
+        "sel": "#hud-ona",
+        "t": "ONA: 0.0°",
+        "visible": true,
+        "x": 28,
+        "y": 300,
+        "fs": "10px"
+      },
+      {
+        "sel": "DIV.",
+        "t": "BAND: PAN",
+        "visible": true,
+        "x": 1556,
+        "y": 280,
+        "fs": "10px"
+      },
+      {
+        "sel": "DIV.",
+        "t": "BITS: 11",
+        "visible": true,
+        "x": 1556,
+        "y": 368,
+        "fs": "10px"
+      },
+      {
+        "sel": "DIV.",
+        "t": "LVL: 1A",
+        "visible": true,
+        "x": 1556,
+        "y": 448,
+        "fs": "10px"
+      }
+    ],
+    "#title-bar": [
+      {
+        "sel": "SPAN.title-accent",
+        "t": "VIEW",
+        "visible": true,
+        "x": 336,
+        "y": 32,
+        "fs": "26px"
+      },
+      {
+        "sel": "P.subtitle",
+        "t": "NO PLACE LEFT BEHIND",
+        "visible": true,
+        "x": 36,
+        "y": 75,
+        "fs": "11px"
+      }
+    ],
+    "#right-context-rail": [
+      {
+        "sel": "SPAN.pp-header-label",
+        "t": "DISPLAY",
+        "visible": true,
+        "x": 1387,
+        "y": 292,
+        "fs": "8px"
+      },
+      {
+        "sel": "BUTTON.panel-collapse-btn",
+        "t": "◀",
+        "visible": true,
+        "x": 1517,
+        "y": 287,
+        "fs": "12px"
+      },
+      {
+        "sel": "SPAN.panel-title",
+        "t": "CCTV",
+        "visible": true,
+        "x": 1391,
+        "y": 351,
+        "fs": "8px"
+      },
+      {
+        "sel": "BUTTON.panel-collapse-btn",
+        "t": "◀",
+        "visible": true,
+        "x": 1507,
+        "y": 345,
+        "fs": "13px"
+      },
+      {
+        "sel": "SPAN.panel-title",
+        "t": "CONTEXT",
+        "visible": true,
+        "x": 1391,
+        "y": 407,
+        "fs": "9px"
+      },
+      {
+        "sel": "SPAN.material-symbols-outlined",
+        "t": "radio",
+        "visible": true,
+        "x": 1479,
+        "y": 404,
+        "fs": "17px"
+      },
+      {
+        "sel": "BUTTON.panel-collapse-btn",
+        "t": "◀",
+        "visible": true,
+        "x": 1514,
+        "y": 402,
+        "fs": "13px"
+      }
+    ],
+    "#command-dock": [
+      {
+        "sel": "#gev-voice-status",
+        "t": "OFF",
+        "visible": true,
+        "x": 795,
+        "y": 909,
+        "fs": "6.88px"
+      },
+      {
+        "sel": "#gev-voice-tier",
+        "t": "STD",
+        "visible": true,
+        "x": 813,
+        "y": 909,
+        "fs": "6.4px"
+      },
+      {
+        "sel": "#gev-voice-cost-value",
+        "t": "~$0.00",
+        "visible": true,
+        "x": 841,
+        "y": 912,
+        "fs": "6.4px"
+      },
+      {
+        "sel": "SPAN.gev-mic-label",
+        "t": "ON/OFF",
+        "visible": true,
+        "x": 744,
+        "y": 959,
+        "fs": "6.72px"
+      },
+      {
+        "sel": "#gev-voice-detail",
+        "t": "VOICE STANDBY",
+        "visible": true,
+        "x": 790,
+        "y": 961,
+        "fs": "6.24px"
+      }
+    ],
+    "#cockpit-hud": [],
+    "#view-switcher": []
+  },
+  "legendVisibility": {
+    "count": 38,
+    "sample": [
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "1–662 bornes 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "663–1 315 bornes 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "1 316–1 874 bornes 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "1 875–2 398 bornes 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "2 399–3 835 bornes 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "3 836+ bornes 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "0,000–5,36 / 1 000 habitants 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "5,36–5,73 / 1 000 habitants 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "5,73–6,23 / 1 000 habitants 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "6,23–6,44 / 1 000 habitants 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "6,44–6,89 / 1 000 habitants 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-item",
+        "text": "> 6,89 / 1 000 habitants 16",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      },
+      {
+        "cls": "data-toggle-legend-swatch",
+        "text": "",
+        "w": 0,
+        "h": 0,
+        "hiddenBy": "#data-toggles"
+      }
+    ],
+    "dataPanelCollapsed": true
+  },
+  "rows": {
+    "irve-fr": {
+      "text": "🔌Bornes de rechargeFR96ONtransport.data.gouv.fr / ODRÉ · 220 666 charge points · 96 départements · 820 outre-mer not mapped · zoom in for sites1–662 bornes 16663–1 315 bornes 161 316–1 874 bornes 161 875–2 398 bornes 162 399–3 835 bornes 163 836+ bornes 16",
+      "legend": [
+        {
+          "label": "1–662 bornes 16",
+          "swatch": "rgb(47, 27, 82)"
+        },
+        {
+          "label": "663–1 315 bornes 16",
+          "swatch": "rgb(77, 42, 134)"
+        },
+        {
+          "label": "1 316–1 874 bornes 16",
+          "swatch": "rgb(114, 57, 180)"
+        },
+        {
+          "label": "1 875–2 398 bornes 16",
+          "swatch": "rgb(155, 79, 208)"
+        },
+        {
+          "label": "2 399–3 835 bornes 16",
+          "swatch": "rgb(199, 116, 224)"
+        },
+        {
+          "label": "3 836+ bornes 16",
+          "swatch": "rgb(235, 169, 239)"
+        }
+      ],
+      "html": "<div class=\"data-toggle-top\"><div class=\"data-toggle-left\"><span class=\"data-icon\">🔌</span><span class=\"data-name\">Bornes de recharge</span><span class=\"data-scope-chip\" title=\"Couverture : FR\">FR</span></div><div class=\"data-toggle-right\"><span class=\"data-count\">96</span><button class=\"data-toggle-btn active feed-nominal\" data-feed-state=\"nominal\" aria-label=\"Bornes de recharge: ON\">ON</button></div></div><div class=\"data-toggle-meta\">transport.data.gouv.fr / ODRÉ · 220 666 charge points · 96 départements · 820 outre-mer not mapped · zoom in for sites</div><div class=\"data-toggle-controls\"><span class=\"data-toggle-legend-item\" title=\"One sixth of the 96 départements. Quantile bins, because on a linear scale Paris alone takes the top fifth.\"><span class=\"data-toggle-legend-swatch\" style=\"background: rgb(47, 27, 82);\"></span><span>1–662 bornes 16</span></span><span class=\"data-toggle-legend-item\" title=\"One sixth of the 96 départements. Quantile bins, because on a linear scale Paris alone takes the top fifth.\"><span class=\"data-toggle-legend-swatch\" style=\"background: rgb(77, 42, 134);\"></span><span>663–1 315 bornes 16</span></span><span class=\"data-toggle-legend-item\" title=\"One sixth of the 96 départements. Quantile bins, because on a linear scale Paris alone takes the top fifth.\"><span class=\"data-toggle-legend-swatch\" style=\"background: rgb(114, 57, 180);\"></span><span>1 3"
+    },
+    "schools-fr": {
+      "text": "🎓Établissements scolairesFR96ONAnnuaire de l’éducation — MENJ · 65 396 établissements sur 96 départements · 2 762 hors métropole non cartographiés · IPS publié pour 40 529 des 62 857 établissements concernés1–294 établissements 17295–433 établissements 15434–589 établissements 16590–719 établissements 16720–1079 établissements 16> 1079 établissements 16",
+      "legend": [
+        {
+          "label": "1–294 établissements 17",
+          "swatch": "rgb(11, 61, 46)"
+        },
+        {
+          "label": "295–433 établissements 15",
+          "swatch": "rgb(18, 92, 68)"
+        },
+        {
+          "label": "434–589 établissements 16",
+          "swatch": "rgb(26, 127, 90)"
+        },
+        {
+          "label": "590–719 établissements 16",
+          "swatch": "rgb(39, 163, 115)"
+        },
+        {
+          "label": "720–1079 établissements 16",
+          "swatch": "rgb(78, 201, 155)"
+        },
+        {
+          "label": "> 1079 établissements 16",
+          "swatch": "rgb(143, 232, 196)"
+        }
+      ],
+      "html": "<div class=\"data-toggle-top\"><div class=\"data-toggle-left\"><span class=\"data-icon\">🎓</span><span class=\"data-name\">Établissements scolaires</span><span class=\"data-scope-chip\" title=\"Couverture : FR\">FR</span></div><div class=\"data-toggle-right\"><span class=\"data-count\">96</span><button class=\"data-toggle-btn active feed-nominal\" data-feed-state=\"nominal\" aria-label=\"Établissements scolaires: ON\">ON</button></div></div><div class=\"data-toggle-meta\">Annuaire de l’éducation — MENJ · 65 396 établissements sur 96 départements · 2 762 hors métropole non cartographiés · IPS publié pour 40 529 des 62 857 établissements concernés</div><div class=\"data-toggle-controls\"><span class=\"data-toggle-legend-item\" title=\"Un sixième des 96 départements. Bins par quantile, parce que sur une échelle linéaire le Nord écrase tout le reste.\"><span class=\"data-toggle-legend-swatch\" style=\"background: rgb(11, 61, 46);\"></span><span>1–294 établissements 17</span></span><span class=\"data-toggle-legend-item\" title=\"Un sixième des 96 départements. Bins par quantile, parce que sur une échelle linéaire le Nord écrase tout le reste.\"><span class=\"data-toggle-legend-swatch\" style=\"background: rgb(18, 92, 68);\"></span><span>295–433 établissements 15</span></span><span class=\"data-toggle-legend-item\" title=\"Un sixième des 96 départements. Bins par quantile, parce que sur une échelle linéaire le Nord écrase tout"
+    },
+    "delinquance-fr": {
+      "text": "🚓Délinquance enregistréeFR96ONDélinquance enregistrée — SSMSI (ministère de l’Intérieur) · à l’instantEscroqueriesDégradationsVols sans violenceViolences intrafamilialesCambriolagesViolences hors famille0,000–5,36 / 1 000 habitants 165,36–5,73 / 1 000 habitants 165,73–6,23 / 1 000 habitants 166,23–6,44 / 1 000 habitants 166,44–6,89 / 1 000 habitants 16> 6,89 / 1 000 habitants 16Non diffusé — secret statistique (national) 24.4K",
+      "legend": [
+        {
+          "label": "0,000–5,36 / 1 000 habitants 16",
+          "swatch": "rgb(255, 224, 138)"
+        },
+        {
+          "label": "5,36–5,73 / 1 000 habitants 16",
+          "swatch": "rgb(255, 182, 72)"
+        },
+        {
+          "label": "5,73–6,23 / 1 000 habitants 16",
+          "swatch": "rgb(249, 115, 22)"
+        },
+        {
+          "label": "6,23–6,44 / 1 000 habitants 16",
+          "swatch": "rgb(224, 49, 49)"
+        },
+        {
+          "label": "6,44–6,89 / 1 000 habitants 16",
+          "swatch": "rgb(176, 32, 32)"
+        },
+        {
+          "label": "> 6,89 / 1 000 habitants 16",
+          "swatch": "rgb(109, 20, 20)"
+        },
+        {
+          "label": "Non diffusé — secret statistique (national) 24.4K",
+          "swatch": "rgb(92, 107, 138)"
+        }
+      ],
+      "html": "<div class=\"data-toggle-top\"><div class=\"data-toggle-left\"><span class=\"data-icon\">🚓</span><span class=\"data-name\">Délinquance enregistrée</span><span class=\"data-scope-chip\" title=\"Couverture : FR\">FR</span></div><div class=\"data-toggle-right\"><span class=\"data-count\">96</span><button class=\"data-toggle-btn active feed-nominal\" data-feed-state=\"nominal\" aria-label=\"Délinquance enregistrée: ON\">ON</button></div></div><div class=\"data-toggle-meta\">Délinquance enregistrée — SSMSI (ministère de l’Intérieur) · à l’instant</div><div class=\"data-toggle-controls\"><button type=\"button\" data-chip-id=\"escroqueries\" class=\"data-toggle-chip chip-active active\" title=\"Escroqueries et fraudes aux moyens de paiement — unité de compte : Victime\" aria-pressed=\"true\" aria-busy=\"false\">Escroqueries</button><button type=\"button\" data-chip-id=\"degradations\" class=\"data-toggle-chip chip-idle\" title=\"Destructions et dégradations volontaires — unité de compte : Infraction\" aria-pressed=\"false\" aria-busy=\"false\">Dégradations</button><button type=\"button\" data-chip-id=\"vols-sans-violence\" class=\"data-toggle-chip chip-idle\" title=\"Vols sans violence contre des personnes — unité de compte : Victime entendue\" aria-pressed=\"false\" aria-busy=\"false\">Vols sans violence</button><button type=\"button\" data-chip-id=\"violences-intrafamiliales\" class=\"data-toggle-chip chip-idle\" title=\"Violences physiques intrafam"
+    }
+  },
+  "c1_wide": [
+    {
+      "name": "Bretagne/Finistere",
+      "lon": -4,
+      "lat": 48.3,
+      "ok": true,
+      "x": 395,
+      "y": 321,
+      "rgb": [
+        170,
+        183,
+        141
+      ]
+    },
+    {
+      "name": "Cotes-d-Armor",
+      "lon": -2.8,
+      "lat": 48.4,
+      "ok": true,
+      "x": 470,
+      "y": 317,
+      "rgb": [
+        153,
+        166,
+        122
+      ]
+    },
+    {
+      "name": "Morbihan",
+      "lon": -2.8,
+      "lat": 47.8,
+      "ok": true,
+      "x": 466,
+      "y": 373,
+      "rgb": [
+        173,
+        120,
+        117
+      ]
+    }
+  ],
+  "c1_wideLegend": {
+    "irve-fr": "🔌Bornes de rechargeFR96ONtransport.data.gouv.fr / ODRÉ · 220 666 charge points · 96 départements · 820 outre-mer not mapped · zoom in for sites1–662 bornes 16663–1 315 bornes 161 316–1 874 bornes 161 875–2 398 bornes 162 399–3 835 bornes 163 836+ bornes 16",
+    "schools-fr": "🎓Établissements scolairesFR96ONAnnuaire de l’éducation — MENJ · 65 396 établissements sur 96 départements · 2 762 hors métropole non cartographiés · IPS publié pour 40 529 des 62 857 établissements concernés1–294 établissements 17295–433 établissements 15434–589 établissements 16590–719 établissements 16720–1079 établissements 16> 1079 établissements 16",
+    "delinquance-fr": "🚓Délinquance enregistréeFR96ONDélinquance enregistrée — SSMSI (ministère de l’Intérieur) · à l’instantEscroqueriesDégradationsVols sans violenceViolences intrafamilialesCambriolagesViolences hors famille0,000–5,36 / 1 000 habitants 165,36–5,73 / 1 000 habitants 165,73–6,23 / 1 000 habitants 166,23–6,44 / 1 000 habitants 166,44–6,89 / 1 000 habitants 16> 6,89 / 1 000 habitants 16Non diffusé — secr"
+  },
+  "c1_narrow": [
+    {
+      "name": "Bretagne/Finistere",
+      "lon": -4,
+      "lat": 48.3,
+      "ok": true,
+      "x": 366,
+      "y": 378,
+      "rgb": [
+        231,
+        213,
+        166
+      ]
+    },
+    {
+      "name": "Cotes-d-Armor",
+      "lon": -2.8,
+      "lat": 48.4,
+      "ok": true,
+      "x": 839,
+      "y": 322,
+      "rgb": [
+        245,
+        218,
+        174
+      ]
+    },
+    {
+      "name": "Morbihan",
+      "lon": -2.8,
+      "lat": 47.8,
+      "ok": true,
+      "x": 840,
+      "y": 677,
+      "rgb": [
+        231,
+        160,
+        153
+      ]
+    }
+  ],
+  "c1_narrowLegend": {
+    "irve-fr": "🔌Bornes de rechargeFR96ONtransport.data.gouv.fr / ODRÉ · 220 666 charge points · 96 départements · 820 outre-mer not mapped · zoom in for sites1–662 bornes 16663–1 315 bornes 161 316–1 874 bornes 161 875–2 398 bornes 162 399–3 835 bornes 163 836+ bornes 16",
+    "schools-fr": "🎓Établissements scolairesFR96ONAnnuaire de l’éducation — MENJ · 65 396 établissements sur 96 départements · 2 762 hors métropole non cartographiés · IPS publié pour 40 529 des 62 857 établissements concernés1–294 établissements 17295–433 établissements 15434–589 établissements 16590–719 établissements 16720–1079 établissements 16> 1079 établissements 16",
+    "delinquance-fr": "🚓Délinquance enregistréeFR96ONDélinquance enregistrée — SSMSI (ministère de l’Intérieur) · à l’instantEscroqueriesDégradationsVols sans violenceViolences intrafamilialesCambriolagesViolences hors famille0,000–5,36 / 1 000 habitants 165,36–5,73 / 1 000 habitants 165,73–6,23 / 1 000 habitants 166,23–6,44 / 1 000 habitants 166,44–6,89 / 1 000 habitants 16> 6,89 / 1 000 habitants 16Non diffusé — secr"
+  },
+  "errors": [
+    "Failed to load resource: the server responded with a status of 403 ()",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+  ]
+}

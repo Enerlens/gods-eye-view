@@ -1,0 +1,1040 @@
+{
+ "counts": {
+  "hover": 90,
+  "focus": 10,
+  "focusVisible": 42,
+  "active": 9,
+  "disabled": 31,
+  "ariaDisabled": 2,
+  "busy": 0
+ },
+ "rows": [
+  {
+   "id": "clear-selected-layers",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "",
+   "label": "Clear selected data layers",
+   "w": 36,
+   "h": 36,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "clear-selected-layers",
+   "hover": [
+    "#top-center-actions button:hover"
+   ],
+   "focusVisible": [
+    "#top-center-actions button:focus-visible"
+   ],
+   "focus": [],
+   "active": [
+    "#top-center-actions button:active"
+   ],
+   "disabledRules": [
+    "#top-center-actions button:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "share-btn",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "",
+   "label": "Copy share link",
+   "w": 36,
+   "h": 36,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "share-btn",
+   "hover": [
+    "#top-center-actions button:hover"
+   ],
+   "focusVisible": [
+    "#top-center-actions button:focus-visible"
+   ],
+   "focus": [],
+   "active": [
+    "#top-center-actions button:active"
+   ],
+   "disabledRules": [
+    "#top-center-actions button:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "reset-globe-view",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "",
+   "label": "Reset to full globe view",
+   "w": 36,
+   "h": 36,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "reset-globe-view",
+   "hover": [
+    "#top-center-actions button:hover"
+   ],
+   "focusVisible": [
+    "#top-center-actions button:focus-visible"
+   ],
+   "focus": [],
+   "active": [
+    "#top-center-actions button:active"
+   ],
+   "disabledRules": [
+    "#top-center-actions button:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "dock-pin-btn",
+   "label": "Pin location tray",
+   "w": 32.8,
+   "h": 32.8,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "location-bar",
+   "hover": [
+    "#command-dock .dock-pin-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "all",
+   "opacity": "1"
+  },
+  {
+   "id": "location-search",
+   "tag": "INPUT",
+   "type": "text",
+   "cls": "",
+   "label": "",
+   "w": 132.6,
+   "h": 28,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "location-search",
+   "hover": [],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "text",
+   "transition": "width 0.3s cubic-bezier(0.4, 0, 0.2, 1), padding 0.3s cubic-bezier(0.4, 0, 0.2, ",
+   "opacity": "1"
+  },
+  {
+   "id": "gev-voice-tier",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "gev-voice-tier-btn",
+   "label": "Voice model: gpt-realtime-2 — click to switch to m",
+   "w": 24.8,
+   "h": 11.5,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "gev-voice-tier",
+   "hover": [
+    ".gev-voice-tier-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "color 0.15s cubic-bezier(0.4, 0, 0.2, 1), border-color 0.15s cubic-bezier(0.4, 0",
+   "opacity": "1"
+  },
+  {
+   "id": "gev-voice-button",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "",
+   "label": "Voice control — hold Space to speak; click to togg",
+   "w": 42.4,
+   "h": 66.4,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "gev-voice-button",
+   "hover": [
+    "#gev-voice-button:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "all",
+   "opacity": "1"
+  },
+  {
+   "id": "control-panel-toggle",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "panel-header dock-tray-toggle",
+   "label": "Expand VISUAL PRESETS",
+   "w": 144,
+   "h": 22.4,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "control-panel-toggle",
+   "hover": [],
+   "focusVisible": [
+    "#command-dock #control-panel .dock-tray-toggle:focus-visible"
+   ],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "all",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "panel-collapse-btn",
+   "label": "Collapse SCENES",
+   "w": 22,
+   "h": 22,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".panel-collapse-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-select",
+   "tag": "SELECT",
+   "type": "select-one",
+   "cls": "",
+   "label": "Scene recipe",
+   "w": 103.3,
+   "h": 31,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "default",
+   "transition": "all",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-new-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn",
+   "label": "NEW",
+   "w": 105.3,
+   "h": 31,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-btn:hover:not(:disabled)"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-delete-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn scene-btn-danger",
+   "label": "DEL",
+   "w": 105.3,
+   "h": 31,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-btn:hover:not(:disabled)",
+    ".scene-btn-danger:hover:not(:disabled)"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-capture-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn",
+   "label": "CAPTURE SHOT",
+   "w": 161,
+   "h": 26,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-btn:hover:not(:disabled)"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-update-shot-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn",
+   "label": "UPDATE SHOT",
+   "w": 161,
+   "h": 26,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-btn:hover:not(:disabled)"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn",
+   "label": "LOAD",
+   "w": 36.4,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn scene-shot-danger",
+   "label": "DEL",
+   "w": 30.8,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover",
+    ".scene-shot-btn.scene-shot-danger:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn",
+   "label": "LOAD",
+   "w": 36.4,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn scene-shot-danger",
+   "label": "DEL",
+   "w": 30.8,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover",
+    ".scene-shot-btn.scene-shot-danger:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn",
+   "label": "LOAD",
+   "w": 36.4,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn scene-shot-danger",
+   "label": "DEL",
+   "w": 30.8,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover",
+    ".scene-shot-btn.scene-shot-danger:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn",
+   "label": "LOAD",
+   "w": 36.4,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn scene-shot-danger",
+   "label": "DEL",
+   "w": 30.8,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover",
+    ".scene-shot-btn.scene-shot-danger:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn",
+   "label": "LOAD",
+   "w": 36.4,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-shot-btn scene-shot-danger",
+   "label": "DEL",
+   "w": 30.8,
+   "h": 20,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-shot-btn:hover",
+    ".scene-shot-btn.scene-shot-danger:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-start-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn",
+   "label": "START",
+   "w": 104.7,
+   "h": 26,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-btn:hover:not(:disabled)"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-stop-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn scene-btn-danger",
+   "label": "STOP",
+   "w": 104.7,
+   "h": 26,
+   "disabled": true,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "default",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "0.45"
+  },
+  {
+   "id": "scene-next-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn",
+   "label": "NEXT",
+   "w": 104.7,
+   "h": 26,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-btn:hover:not(:disabled)"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-export-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn",
+   "label": "EXPORT PRESETS",
+   "w": 104.7,
+   "h": 26,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-btn:hover:not(:disabled)"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-import-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn",
+   "label": "IMPORT",
+   "w": 104.7,
+   "h": 26,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [
+    ".scene-btn:hover:not(:disabled)"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "scene-download-btn",
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "scene-btn",
+   "label": "RUN LOG",
+   "w": 104.7,
+   "h": 26,
+   "disabled": true,
+   "ariaDisabled": null,
+   "panel": "scene-panel",
+   "hover": [],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".scene-btn:disabled"
+   ],
+   "cursor": "default",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "0.45"
+  },
+  {
+   "id": "context-radio-toggle-btn",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "context-radio-toggle",
+   "label": "Go to expanded Radio section",
+   "w": 28,
+   "h": 28,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "global-context-panel",
+   "hover": [
+    ".context-radio-toggle:hover"
+   ],
+   "focusVisible": [
+    ".context-radio-toggle:focus-visible"
+   ],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".context-radio-toggle:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "border-color 0.15s, color 0.15s, background 0.15s, box-shadow 0.15s",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "panel-collapse-btn",
+   "label": "Collapse CONTEXT",
+   "w": 22,
+   "h": 22,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "global-context-panel",
+   "hover": [
+    ".panel-collapse-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "global-context-flights-btn",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "context-mode-button",
+   "label": "CONTACTS",
+   "w": 144.5,
+   "h": 36,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "global-context-panel",
+   "hover": [
+    ".context-mode-button:hover"
+   ],
+   "focusVisible": [
+    ".context-mode-button:focus-visible"
+   ],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".context-mode-button:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "border-color 0.15s, color 0.15s, background 0.15s, box-shadow 0.15s",
+   "opacity": "1"
+  },
+  {
+   "id": "global-context-missions-btn",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "context-mode-button",
+   "label": "rocket_launch SPACE MISSIONS",
+   "w": 144.5,
+   "h": 36,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "global-context-panel",
+   "hover": [
+    ".context-mode-button:hover"
+   ],
+   "focusVisible": [
+    ".context-mode-button:focus-visible"
+   ],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".context-mode-button:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "border-color 0.15s, color 0.15s, background 0.15s, box-shadow 0.15s",
+   "opacity": "1"
+  },
+  {
+   "id": null,
+   "tag": "BUTTON",
+   "type": "submit",
+   "cls": "panel-collapse-btn",
+   "label": "Collapse Radio section",
+   "w": 22,
+   "h": 22,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "radio-panel",
+   "hover": [
+    ".panel-collapse-btn:hover"
+   ],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [],
+   "cursor": "pointer",
+   "transition": "0.15s cubic-bezier(0.4, 0, 0.2, 1)",
+   "opacity": "1"
+  },
+  {
+   "id": "radio-enable-btn",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "panel-layer-toggle",
+   "label": "Enable Radio",
+   "w": 54,
+   "h": 36,
+   "disabled": false,
+   "ariaDisabled": null,
+   "panel": "radio-panel",
+   "hover": [
+    ".panel-layer-toggle:hover"
+   ],
+   "focusVisible": [
+    ".panel-layer-toggle:focus-visible"
+   ],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".panel-layer-toggle:disabled"
+   ],
+   "cursor": "pointer",
+   "transition": "all",
+   "opacity": "1"
+  },
+  {
+   "id": "radio-filter",
+   "tag": "SELECT",
+   "type": "select-one",
+   "cls": "",
+   "label": "Filter stations by station tag",
+   "w": 212,
+   "h": 30,
+   "disabled": true,
+   "ariaDisabled": null,
+   "panel": "radio-panel",
+   "hover": [],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    "#radio-filter:disabled"
+   ],
+   "cursor": "not-allowed",
+   "transition": "all",
+   "opacity": "0.42"
+  },
+  {
+   "id": "radio-prev-btn",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "",
+   "label": "Previous filtered station",
+   "w": 64.8,
+   "h": 30,
+   "disabled": true,
+   "ariaDisabled": null,
+   "panel": "radio-panel",
+   "hover": [],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".radio-transport button:disabled"
+   ],
+   "cursor": "not-allowed",
+   "transition": "all",
+   "opacity": "0.42"
+  },
+  {
+   "id": "radio-play-btn",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "",
+   "label": "Play nearest radio station",
+   "w": 64.8,
+   "h": 30,
+   "disabled": true,
+   "ariaDisabled": null,
+   "panel": "radio-panel",
+   "hover": [],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".radio-transport button:disabled"
+   ],
+   "cursor": "not-allowed",
+   "transition": "all",
+   "opacity": "0.42"
+  },
+  {
+   "id": "radio-next-btn",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "",
+   "label": "Next filtered station",
+   "w": 64.8,
+   "h": 30,
+   "disabled": true,
+   "ariaDisabled": null,
+   "panel": "radio-panel",
+   "hover": [],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".radio-transport button:disabled"
+   ],
+   "cursor": "not-allowed",
+   "transition": "all",
+   "opacity": "0.42"
+  },
+  {
+   "id": "radio-stop-btn",
+   "tag": "BUTTON",
+   "type": "button",
+   "cls": "",
+   "label": "Stop radio playback",
+   "w": 64.8,
+   "h": 30,
+   "disabled": true,
+   "ariaDisabled": null,
+   "panel": "radio-panel",
+   "hover": [],
+   "focusVisible": [],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".radio-transport button:disabled"
+   ],
+   "cursor": "not-allowed",
+   "transition": "all",
+   "opacity": "0.42"
+  },
+  {
+   "id": "radio-volume",
+   "tag": "INPUT",
+   "type": "range",
+   "cls": "gev-quantitative-slider",
+   "label": "Radio volume",
+   "w": 196.6,
+   "h": 18,
+   "disabled": true,
+   "ariaDisabled": null,
+   "panel": "radio-panel",
+   "hover": [],
+   "focusVisible": [
+    ".gev-quantitative-slider:focus-visible"
+   ],
+   "focus": [],
+   "active": [],
+   "disabledRules": [
+    ".gev-quantitative-slider:disabled"
+   ],
+   "cursor": "not-allowed",
+   "transition": "all",
+   "opacity": "0.42"
+  }
+ ],
+ "disabledSelectors": [
+  ".cesium-button:disabled",
+  ".cesium-button option:disabled",
+  "#celestial-toggle:disabled",
+  ".gev-quantitative-slider:disabled",
+  "#top-center-actions button:disabled",
+  ".cockpit-context-actions button:disabled",
+  ".cockpit-radio-transport button:disabled",
+  "#space-mission-panel .mission-replay-transport button:hover:not(:disabled)",
+  "#space-mission-panel .mission-replay-transport button:disabled",
+  "#space-mission-panel .mission-nav-button:hover:not(:disabled)",
+  "#space-mission-panel .mission-nav-button:disabled",
+  ".context-radio-toggle:disabled",
+  ".context-radio-mini-transport button:hover:not(:disabled)",
+  ".context-radio-mini-transport button:focus-visible:not(:disabled)",
+  ".context-radio-mini-transport button:disabled",
+  ".context-mode-button:disabled",
+  ".panel-layer-toggle:disabled",
+  ".radio-transport button:hover:not(:disabled)",
+  ".radio-transport button:focus-visible:not(:disabled)",
+  ".radio-transport button:disabled",
+  "#radio-filter:disabled",
+  ".military-awareness-controls button:disabled",
+  ".data-toggle-chip:disabled",
+  ".cctv-cal-value:hover:not(:disabled)",
+  "#cctv-panel input:disabled",
+  "#cctv-panel button:disabled",
+  "#cctv-panel select:disabled",
+  "#cctv-camera-select:disabled",
+  ".scene-btn:hover:not(:disabled)",
+  ".scene-btn:disabled",
+  ".scene-btn-danger:hover:not(:disabled)"
+ ],
+ "activeSelectors": [
+  ".cesium-button:active",
+  ".cesium-button-disabled:active",
+  ".cesium-animation-rectButton:active .cesium-animation-buttonMain",
+  ".cesium-widget-errorPanel-buttonPanel button:active",
+  ".cesium-cesiumInspector-pickButton:active",
+  "button.cesium-infoBox-close:active",
+  ".panel-drag-handle:active",
+  ".style-btn:active",
+  "#top-center-actions button:active"
+ ],
+ "busySelectors": [],
+ "ariaDisabledSelectors": [
+  ".map-stack-chip[aria-disabled=\"true\"]",
+  ".first-run-choices button[aria-disabled=\"true\"]"
+ ]
+}

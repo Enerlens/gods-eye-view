@@ -1,0 +1,453 @@
+{
+  "ring": {
+    "clear-selected-layers": {
+      "changed": 3136,
+      "total": 3136,
+      "max": 724,
+      "box": {
+        "x": 648,
+        "y": 22,
+        "w": 56,
+        "h": 56
+      }
+    },
+    "reset-globe-view": {
+      "changed": 3136,
+      "total": 3136,
+      "max": 663,
+      "box": {
+        "x": 736,
+        "y": 22,
+        "w": 56,
+        "h": 56
+      }
+    },
+    "control-panel-toggle": {
+      "err": "no box"
+    }
+  },
+  "syncChipCss": {
+    "#traffic-sync-chip": {
+      "color": "rgba(170, 252, 255, 0.92)",
+      "bg": "rgba(3, 10, 18, 0.78)",
+      "bgImage": "none",
+      "opacity": "0",
+      "fontSize": "8px",
+      "rect": {
+        "x": 648,
+        "y": 112,
+        "w": 145,
+        "h": 24
+      },
+      "text": "syncing road network",
+      "backdrop": "blur(14px)",
+      "mixBlend": "normal"
+    },
+    "#traffic-sync-label": {
+      "color": "rgba(184, 244, 255, 0.92)",
+      "bg": "rgba(0, 0, 0, 0)",
+      "bgImage": "none",
+      "opacity": "1",
+      "fontSize": "8px",
+      "rect": {
+        "x": 659,
+        "y": 119,
+        "w": 123,
+        "h": 10
+      },
+      "text": "syncing road network",
+      "backdrop": "none",
+      "mixBlend": "normal"
+    },
+    "#cctv-sync-chip": {
+      "color": "rgba(170, 252, 255, 0.92)",
+      "bg": "rgba(3, 10, 18, 0.78)",
+      "bgImage": "none",
+      "opacity": "0",
+      "fontSize": "8px",
+      "rect": {
+        "x": 644,
+        "y": 146,
+        "w": 152,
+        "h": 24
+      },
+      "text": "loading frames\n    0/0",
+      "backdrop": "blur(14px)",
+      "mixBlend": "normal"
+    },
+    "#cctv-sync-label": {
+      "color": "rgba(184, 244, 255, 0.92)",
+      "bg": "rgba(0, 0, 0, 0)",
+      "bgImage": "none",
+      "opacity": "1",
+      "fontSize": "8px",
+      "rect": {
+        "x": 655,
+        "y": 153,
+        "w": 86,
+        "h": 10
+      },
+      "text": "loading frames",
+      "backdrop": "none",
+      "mixBlend": "normal"
+    },
+    "#cctv-sync-progress": {
+      "color": "rgb(0, 225, 255)",
+      "bg": "rgba(0, 0, 0, 0)",
+      "bgImage": "none",
+      "opacity": "1",
+      "fontSize": "8px",
+      "rect": {
+        "x": 751,
+        "y": 153,
+        "w": 34,
+        "h": 10
+      },
+      "text": "0/0",
+      "backdrop": "none",
+      "mixBlend": "normal"
+    }
+  },
+  "enabled": [
+    "irve-fr",
+    "schools-fr",
+    "delinquance-fr"
+  ],
+  "legends": [
+    {
+      "layer": "irve-fr",
+      "rowVisible": true,
+      "items": [
+        {
+          "label": "1–662 bornes 16",
+          "swatchBg": "rgb(47, 27, 82)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2046
+        },
+        {
+          "label": "663–1 315 bornes 16",
+          "swatchBg": "rgb(77, 42, 134)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 203,
+          "y": 2046
+        },
+        {
+          "label": "1 316–1 874 bornes 16",
+          "swatchBg": "rgb(114, 57, 180)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2060
+        },
+        {
+          "label": "1 875–2 398 bornes 16",
+          "swatchBg": "rgb(155, 79, 208)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2074
+        },
+        {
+          "label": "2 399–3 835 bornes 16",
+          "swatchBg": "rgb(199, 116, 224)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2088
+        },
+        {
+          "label": "3 836+ bornes 16",
+          "swatchBg": "rgb(235, 169, 239)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 230,
+          "y": 2088
+        }
+      ]
+    },
+    {
+      "layer": "delinquance-fr",
+      "rowVisible": true,
+      "items": [
+        {
+          "label": "0,000–5,36 / 1 000 habitants 16",
+          "swatchBg": "rgb(255, 224, 138)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2870
+        },
+        {
+          "label": "5,36–5,73 / 1 000 habitants 16",
+          "swatchBg": "rgb(255, 182, 72)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2884
+        },
+        {
+          "label": "5,73–6,23 / 1 000 habitants 16",
+          "swatchBg": "rgb(249, 115, 22)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2898
+        },
+        {
+          "label": "6,23–6,44 / 1 000 habitants 16",
+          "swatchBg": "rgb(224, 49, 49)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2912
+        },
+        {
+          "label": "6,44–6,89 / 1 000 habitants 16",
+          "swatchBg": "rgb(176, 32, 32)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2926
+        },
+        {
+          "label": "> 6,89 / 1 000 habitants 16",
+          "swatchBg": "rgb(109, 20, 20)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2940
+        },
+        {
+          "label": "Non diffusé — secret statistique (national) 24.4K",
+          "swatchBg": "rgb(92, 107, 138)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 2959
+        }
+      ]
+    },
+    {
+      "layer": "schools-fr",
+      "rowVisible": true,
+      "items": [
+        {
+          "label": "1–294 établissements 17",
+          "swatchBg": "rgb(11, 61, 46)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 4153
+        },
+        {
+          "label": "295–433 établissements 15",
+          "swatchBg": "rgb(18, 92, 68)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 4167
+        },
+        {
+          "label": "434–589 établissements 16",
+          "swatchBg": "rgb(26, 127, 90)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 4181
+        },
+        {
+          "label": "590–719 établissements 16",
+          "swatchBg": "rgb(39, 163, 115)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 4195
+        },
+        {
+          "label": "720–1079 établissements 16",
+          "swatchBg": "rgb(78, 201, 155)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 4209
+        },
+        {
+          "label": "> 1079 établissements 16",
+          "swatchBg": "rgb(143, 232, 196)",
+          "glyph": false,
+          "mask": "none",
+          "w": 6,
+          "h": 6,
+          "labelColor": "rgba(232, 234, 237, 0.3)",
+          "labelSize": "8px",
+          "x": 105,
+          "y": 4223
+        }
+      ]
+    }
+  ],
+  "liveProbe": [],
+  "struct": {
+    "dataPanelTag": "DIV",
+    "dataPanelRole": null,
+    "dataPanelLabel": null,
+    "dataPanelListRole": null,
+    "rowCount": 57,
+    "rowSample": [
+      {
+        "tag": "DIV",
+        "role": null,
+        "inputs": [
+          {
+            "t": "BUTTON",
+            "type": "submit",
+            "label": "Vols en direct: OFF",
+            "role": null
+          }
+        ]
+      },
+      {
+        "tag": "DIV",
+        "role": null,
+        "inputs": [
+          {
+            "t": "BUTTON",
+            "type": "submit",
+            "label": "Satellites: OFF",
+            "role": null
+          }
+        ]
+      }
+    ],
+    "collapseBtnAria": [
+      {
+        "label": null,
+        "expanded": null,
+        "controls": null
+      },
+      {
+        "label": "Collapse DATA LAYERS",
+        "expanded": "true",
+        "controls": null
+      },
+      {
+        "label": "Expand SCENES",
+        "expanded": "false",
+        "controls": null
+      },
+      {
+        "label": "Expand DISPLAY",
+        "expanded": "false",
+        "controls": null
+      },
+      {
+        "label": "Collapse panel",
+        "expanded": "true",
+        "controls": null
+      },
+      {
+        "label": "Expand CCTV",
+        "expanded": "false",
+        "controls": null
+      },
+      {
+        "label": "Expand CONTEXT",
+        "expanded": "false",
+        "controls": null
+      },
+      {
+        "label": "Expand Radio section",
+        "expanded": "false",
+        "controls": null
+      }
+    ],
+    "headings": [
+      {
+        "l": "H1",
+        "vis": true,
+        "t": "GOD'S EYE VIEW"
+      },
+      {
+        "l": "H2",
+        "vis": true,
+        "t": ""
+      }
+    ],
+    "main": false
+  }
+}

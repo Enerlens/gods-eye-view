@@ -1,0 +1,2025 @@
+{
+  "b2": [
+    {
+      "base": 1,
+      "dist": 842,
+      "eff": 2.737,
+      "x": 80,
+      "y": 863
+    },
+    {
+      "base": 1,
+      "dist": 841,
+      "eff": 2.737,
+      "x": 101,
+      "y": 842
+    },
+    {
+      "base": 1,
+      "dist": 850,
+      "eff": 2.735,
+      "x": 144,
+      "y": 806
+    },
+    {
+      "base": 1,
+      "dist": 813,
+      "eff": 2.746,
+      "x": 64,
+      "y": 998
+    },
+    {
+      "base": 1,
+      "dist": 839,
+      "eff": 2.738,
+      "x": 130,
+      "y": 854
+    },
+    {
+      "base": 0.62,
+      "dist": 844,
+      "eff": 1.697,
+      "x": 144,
+      "y": 810
+    },
+    {
+      "base": 1,
+      "dist": 826,
+      "eff": 2.742,
+      "x": 147,
+      "y": 868
+    },
+    {
+      "base": 1,
+      "dist": 825,
+      "eff": 2.742,
+      "x": 158,
+      "y": 847
+    },
+    {
+      "base": 1,
+      "dist": 818,
+      "eff": 2.745,
+      "x": 210,
+      "y": 841
+    },
+    {
+      "base": 1,
+      "dist": 802,
+      "eff": 2.75,
+      "x": 187,
+      "y": 930
+    },
+    {
+      "base": 1,
+      "dist": 826,
+      "eff": 2.742,
+      "x": 245,
+      "y": 785
+    },
+    {
+      "base": 1.3,
+      "dist": 832,
+      "eff": 3.563,
+      "x": 268,
+      "y": 757
+    },
+    {
+      "base": 1,
+      "dist": 798,
+      "eff": 2.751,
+      "x": 233,
+      "y": 901
+    },
+    {
+      "base": 1,
+      "dist": 832,
+      "eff": 2.74,
+      "x": 292,
+      "y": 714
+    },
+    {
+      "base": 1,
+      "dist": 846,
+      "eff": 2.736,
+      "x": 305,
+      "y": 689
+    },
+    {
+      "base": 1.3,
+      "dist": 840,
+      "eff": 3.559,
+      "x": 348,
+      "y": 675
+    },
+    {
+      "base": 1,
+      "dist": 849,
+      "eff": 2.735,
+      "x": 363,
+      "y": 659
+    },
+    {
+      "base": 1.3,
+      "dist": 831,
+      "eff": 3.563,
+      "x": 357,
+      "y": 702
+    },
+    {
+      "base": 1,
+      "dist": 774,
+      "eff": 2.758,
+      "x": 303,
+      "y": 975
+    },
+    {
+      "base": 1.3,
+      "dist": 766,
+      "eff": 3.589,
+      "x": 298,
+      "y": 1000
+    },
+    {
+      "base": 1,
+      "dist": 793,
+      "eff": 2.752,
+      "x": 357,
+      "y": 808
+    },
+    {
+      "base": 1.3,
+      "dist": 817,
+      "eff": 3.569,
+      "x": 423,
+      "y": 692
+    },
+    {
+      "base": 1,
+      "dist": 777,
+      "eff": 2.757,
+      "x": 388,
+      "y": 851
+    },
+    {
+      "base": 1,
+      "dist": 810,
+      "eff": 2.747,
+      "x": 419,
+      "y": 726
+    },
+    {
+      "base": 0.82,
+      "dist": 837,
+      "eff": 2.246,
+      "x": 446,
+      "y": 661
+    },
+    {
+      "base": 1.3,
+      "dist": 829,
+      "eff": 3.564,
+      "x": 451,
+      "y": 650
+    },
+    {
+      "base": 1,
+      "dist": 814,
+      "eff": 2.746,
+      "x": 442,
+      "y": 703
+    },
+    {
+      "base": 1,
+      "dist": 756,
+      "eff": 2.764,
+      "x": 388,
+      "y": 966
+    },
+    {
+      "base": 1,
+      "dist": 838,
+      "eff": 2.738,
+      "x": 479,
+      "y": 614
+    },
+    {
+      "base": 1,
+      "dist": 833,
+      "eff": 2.74,
+      "x": 487,
+      "y": 627
+    },
+    {
+      "base": 1,
+      "dist": 747,
+      "eff": 2.767,
+      "x": 419,
+      "y": 972
+    },
+    {
+      "base": 0.72,
+      "dist": 746,
+      "eff": 1.992,
+      "x": 430,
+      "y": 979
+    },
+    {
+      "base": 1,
+      "dist": 825,
+      "eff": 2.743,
+      "x": 511,
+      "y": 653
+    },
+    {
+      "base": 1,
+      "dist": 793,
+      "eff": 2.752,
+      "x": 496,
+      "y": 735
+    },
+    {
+      "base": 0.62,
+      "dist": 786,
+      "eff": 1.708,
+      "x": 496,
+      "y": 803
+    },
+    {
+      "base": 1,
+      "dist": 799,
+      "eff": 2.75,
+      "x": 507,
+      "y": 712
+    },
+    {
+      "base": 1,
+      "dist": 743,
+      "eff": 2.768,
+      "x": 468,
+      "y": 985
+    },
+    {
+      "base": 0.62,
+      "dist": 753,
+      "eff": 1.714,
+      "x": 515,
+      "y": 920
+    },
+    {
+      "base": 1,
+      "dist": 809,
+      "eff": 2.747,
+      "x": 554,
+      "y": 674
+    },
+    {
+      "base": 1.3,
+      "dist": 839,
+      "eff": 3.56,
+      "x": 572,
+      "y": 591
+    },
+    {
+      "base": 1.3,
+      "dist": 783,
+      "eff": 3.582,
+      "x": 556,
+      "y": 738
+    },
+    {
+      "base": 1,
+      "dist": 773,
+      "eff": 2.759,
+      "x": 557,
+      "y": 785
+    },
+    {
+      "base": 1.3,
+      "dist": 788,
+      "eff": 3.58,
+      "x": 573,
+      "y": 716
+    },
+    {
+      "base": 1,
+      "dist": 787,
+      "eff": 2.754,
+      "x": 576,
+      "y": 763
+    },
+    {
+      "base": 1,
+      "dist": 731,
+      "eff": 2.772,
+      "x": 543,
+      "y": 995
+    },
+    {
+      "base": 0.82,
+      "dist": 842,
+      "eff": 2.244,
+      "x": 601,
+      "y": 599
+    },
+    {
+      "base": 1,
+      "dist": 768,
+      "eff": 2.76,
+      "x": 591,
+      "y": 791
+    },
+    {
+      "base": 1,
+      "dist": 737,
+      "eff": 2.77,
+      "x": 575,
+      "y": 927
+    },
+    {
+      "base": 1,
+      "dist": 742,
+      "eff": 2.768,
+      "x": 587,
+      "y": 918
+    },
+    {
+      "base": 1,
+      "dist": 826,
+      "eff": 2.742,
+      "x": 625,
+      "y": 607
+    },
+    {
+      "base": 1,
+      "dist": 743,
+      "eff": 2.768,
+      "x": 599,
+      "y": 882
+    },
+    {
+      "base": 0.72,
+      "dist": 741,
+      "eff": 1.993,
+      "x": 599,
+      "y": 905
+    },
+    {
+      "base": 1,
+      "dist": 761,
+      "eff": 2.762,
+      "x": 619,
+      "y": 829
+    },
+    {
+      "base": 1,
+      "dist": 789,
+      "eff": 2.754,
+      "x": 631,
+      "y": 734
+    },
+    {
+      "base": 1,
+      "dist": 840,
+      "eff": 2.738,
+      "x": 649,
+      "y": 564
+    },
+    {
+      "base": 1,
+      "dist": 815,
+      "eff": 2.746,
+      "x": 644,
+      "y": 623
+    },
+    {
+      "base": 1,
+      "dist": 832,
+      "eff": 2.74,
+      "x": 653,
+      "y": 582
+    },
+    {
+      "base": 1,
+      "dist": 749,
+      "eff": 2.766,
+      "x": 626,
+      "y": 869
+    },
+    {
+      "base": 1,
+      "dist": 775,
+      "eff": 2.758,
+      "x": 649,
+      "y": 768
+    },
+    {
+      "base": 1.3,
+      "dist": 815,
+      "eff": 3.569,
+      "x": 664,
+      "y": 639
+    },
+    {
+      "base": 1,
+      "dist": 799,
+      "eff": 2.751,
+      "x": 662,
+      "y": 683
+    },
+    {
+      "base": 1.3,
+      "dist": 766,
+      "eff": 3.589,
+      "x": 654,
+      "y": 767
+    },
+    {
+      "base": 1,
+      "dist": 765,
+      "eff": 2.761,
+      "x": 655,
+      "y": 782
+    },
+    {
+      "base": 1.3,
+      "dist": 763,
+      "eff": 3.59,
+      "x": 665,
+      "y": 779
+    },
+    {
+      "base": 1,
+      "dist": 825,
+      "eff": 2.742,
+      "x": 683,
+      "y": 592
+    },
+    {
+      "base": 1.3,
+      "dist": 780,
+      "eff": 3.583,
+      "x": 675,
+      "y": 747
+    },
+    {
+      "base": 1,
+      "dist": 771,
+      "eff": 2.759,
+      "x": 683,
+      "y": 779
+    },
+    {
+      "base": 1,
+      "dist": 840,
+      "eff": 2.738,
+      "x": 705,
+      "y": 578
+    },
+    {
+      "base": 1,
+      "dist": 840,
+      "eff": 2.738,
+      "x": 712,
+      "y": 546
+    },
+    {
+      "base": 1,
+      "dist": 787,
+      "eff": 2.754,
+      "x": 705,
+      "y": 732
+    },
+    {
+      "base": 1,
+      "dist": 754,
+      "eff": 2.765,
+      "x": 701,
+      "y": 851
+    },
+    {
+      "base": 1,
+      "dist": 785,
+      "eff": 2.755,
+      "x": 712,
+      "y": 729
+    },
+    {
+      "base": 1,
+      "dist": 831,
+      "eff": 2.741,
+      "x": 720,
+      "y": 573
+    },
+    {
+      "base": 0.86,
+      "dist": 755,
+      "eff": 2.377,
+      "x": 708,
+      "y": 821
+    },
+    {
+      "base": 1.3,
+      "dist": 779,
+      "eff": 3.584,
+      "x": 714,
+      "y": 754
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 730,
+      "y": 757
+    },
+    {
+      "base": 0.496,
+      "dist": 794,
+      "eff": 1.365,
+      "x": 733,
+      "y": 706
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 731,
+      "y": 757
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 732,
+      "y": 757
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 732,
+      "y": 757
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 733,
+      "y": 757
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 734,
+      "y": 756
+    },
+    {
+      "base": 1,
+      "dist": 791,
+      "eff": 2.753,
+      "x": 736,
+      "y": 691
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.206,
+      "x": 734,
+      "y": 758
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 734,
+      "y": 756
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 735,
+      "y": 756
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 735,
+      "y": 757
+    },
+    {
+      "base": 1,
+      "dist": 779,
+      "eff": 2.757,
+      "x": 735,
+      "y": 755
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 735,
+      "y": 756
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.206,
+      "x": 735,
+      "y": 758
+    },
+    {
+      "base": 1.04,
+      "dist": 779,
+      "eff": 2.867,
+      "x": 735,
+      "y": 757
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.206,
+      "x": 735,
+      "y": 758
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 736,
+      "y": 756
+    },
+    {
+      "base": 1,
+      "dist": 848,
+      "eff": 2.735,
+      "x": 743,
+      "y": 558
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 736,
+      "y": 755
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 736,
+      "y": 756
+    },
+    {
+      "base": 0.8,
+      "dist": 779,
+      "eff": 2.205,
+      "x": 736,
+      "y": 755
+    },
+    {
+      "base": 1,
+      "dist": 823,
+      "eff": 2.743,
+      "x": 747,
+      "y": 590
+    },
+    {
+      "base": 1,
+      "dist": 757,
+      "eff": 2.764,
+      "x": 743,
+      "y": 790
+    },
+    {
+      "base": 0.62,
+      "dist": 815,
+      "eff": 1.702,
+      "x": 751,
+      "y": 644
+    },
+    {
+      "base": 1,
+      "dist": 746,
+      "eff": 2.767,
+      "x": 743,
+      "y": 837
+    },
+    {
+      "base": 0.62,
+      "dist": 760,
+      "eff": 1.713,
+      "x": 756,
+      "y": 826
+    },
+    {
+      "base": 1,
+      "dist": 840,
+      "eff": 2.738,
+      "x": 763,
+      "y": 549
+    },
+    {
+      "base": 0.62,
+      "dist": 752,
+      "eff": 1.715,
+      "x": 762,
+      "y": 862
+    },
+    {
+      "base": 0.72,
+      "dist": 759,
+      "eff": 1.989,
+      "x": 772,
+      "y": 832
+    },
+    {
+      "base": 1,
+      "dist": 798,
+      "eff": 2.751,
+      "x": 782,
+      "y": 681
+    },
+    {
+      "base": 1,
+      "dist": 752,
+      "eff": 2.765,
+      "x": 783,
+      "y": 859
+    },
+    {
+      "base": 1,
+      "dist": 759,
+      "eff": 2.763,
+      "x": 788,
+      "y": 786
+    },
+    {
+      "base": 1.3,
+      "dist": 752,
+      "eff": 3.595,
+      "x": 800,
+      "y": 807
+    },
+    {
+      "base": 1,
+      "dist": 828,
+      "eff": 2.742,
+      "x": 814,
+      "y": 577
+    },
+    {
+      "base": 1.3,
+      "dist": 751,
+      "eff": 3.595,
+      "x": 816,
+      "y": 843
+    },
+    {
+      "base": 1,
+      "dist": 744,
+      "eff": 2.768,
+      "x": 821,
+      "y": 844
+    },
+    {
+      "base": 0.62,
+      "dist": 832,
+      "eff": 1.699,
+      "x": 818,
+      "y": 592
+    },
+    {
+      "base": 1,
+      "dist": 730,
+      "eff": 2.772,
+      "x": 835,
+      "y": 916
+    },
+    {
+      "base": 0.62,
+      "dist": 806,
+      "eff": 1.704,
+      "x": 831,
+      "y": 639
+    },
+    {
+      "base": 1,
+      "dist": 764,
+      "eff": 2.762,
+      "x": 844,
+      "y": 764
+    },
+    {
+      "base": 0.8,
+      "dist": 809,
+      "eff": 2.198,
+      "x": 844,
+      "y": 662
+    },
+    {
+      "base": 1,
+      "dist": 811,
+      "eff": 2.747,
+      "x": 849,
+      "y": 656
+    },
+    {
+      "base": 1.3,
+      "dist": 819,
+      "eff": 3.568,
+      "x": 851,
+      "y": 596
+    },
+    {
+      "base": 1,
+      "dist": 733,
+      "eff": 2.771,
+      "x": 864,
+      "y": 918
+    },
+    {
+      "base": 1,
+      "dist": 726,
+      "eff": 2.773,
+      "x": 884,
+      "y": 938
+    },
+    {
+      "base": 1,
+      "dist": 844,
+      "eff": 2.736,
+      "x": 871,
+      "y": 559
+    },
+    {
+      "base": 1,
+      "dist": 727,
+      "eff": 2.773,
+      "x": 902,
+      "y": 967
+    },
+    {
+      "base": 1,
+      "dist": 811,
+      "eff": 2.747,
+      "x": 886,
+      "y": 622
+    },
+    {
+      "base": 1.3,
+      "dist": 764,
+      "eff": 3.59,
+      "x": 902,
+      "y": 771
+    },
+    {
+      "base": 1,
+      "dist": 730,
+      "eff": 2.772,
+      "x": 911,
+      "y": 928
+    },
+    {
+      "base": 1,
+      "dist": 837,
+      "eff": 2.739,
+      "x": 893,
+      "y": 576
+    },
+    {
+      "base": 1.45,
+      "dist": 752,
+      "eff": 4.01,
+      "x": 921,
+      "y": 829
+    },
+    {
+      "base": 1,
+      "dist": 730,
+      "eff": 2.772,
+      "x": 929,
+      "y": 931
+    },
+    {
+      "base": 1,
+      "dist": 737,
+      "eff": 2.77,
+      "x": 943,
+      "y": 920
+    },
+    {
+      "base": 1,
+      "dist": 724,
+      "eff": 2.774,
+      "x": 951,
+      "y": 973
+    },
+    {
+      "base": 1,
+      "dist": 740,
+      "eff": 2.769,
+      "x": 946,
+      "y": 911
+    },
+    {
+      "base": 1,
+      "dist": 736,
+      "eff": 2.77,
+      "x": 961,
+      "y": 937
+    },
+    {
+      "base": 1,
+      "dist": 737,
+      "eff": 2.77,
+      "x": 974,
+      "y": 966
+    },
+    {
+      "base": 1,
+      "dist": 823,
+      "eff": 2.743,
+      "x": 944,
+      "y": 608
+    },
+    {
+      "base": 1,
+      "dist": 758,
+      "eff": 2.764,
+      "x": 966,
+      "y": 825
+    },
+    {
+      "base": 1,
+      "dist": 795,
+      "eff": 2.752,
+      "x": 957,
+      "y": 678
+    },
+    {
+      "base": 1.3,
+      "dist": 818,
+      "eff": 3.568,
+      "x": 958,
+      "y": 615
+    },
+    {
+      "base": 1,
+      "dist": 793,
+      "eff": 2.752,
+      "x": 970,
+      "y": 712
+    },
+    {
+      "base": 1,
+      "dist": 794,
+      "eff": 2.752,
+      "x": 971,
+      "y": 714
+    },
+    {
+      "base": 1,
+      "dist": 801,
+      "eff": 2.75,
+      "x": 970,
+      "y": 691
+    },
+    {
+      "base": 1,
+      "dist": 772,
+      "eff": 2.759,
+      "x": 981,
+      "y": 783
+    },
+    {
+      "base": 1,
+      "dist": 728,
+      "eff": 2.773,
+      "x": 1004,
+      "y": 971
+    },
+    {
+      "base": 1,
+      "dist": 825,
+      "eff": 2.743,
+      "x": 967,
+      "y": 624
+    },
+    {
+      "base": 0.62,
+      "dist": 777,
+      "eff": 1.71,
+      "x": 986,
+      "y": 786
+    },
+    {
+      "base": 1.3,
+      "dist": 776,
+      "eff": 3.585,
+      "x": 989,
+      "y": 742
+    },
+    {
+      "base": 0.82,
+      "dist": 793,
+      "eff": 2.257,
+      "x": 989,
+      "y": 731
+    },
+    {
+      "base": 1,
+      "dist": 801,
+      "eff": 2.75,
+      "x": 989,
+      "y": 672
+    },
+    {
+      "base": 0.62,
+      "dist": 735,
+      "eff": 1.718,
+      "x": 1028,
+      "y": 996
+    },
+    {
+      "base": 1,
+      "dist": 802,
+      "eff": 2.75,
+      "x": 1002,
+      "y": 701
+    },
+    {
+      "base": 1,
+      "dist": 777,
+      "eff": 2.758,
+      "x": 1013,
+      "y": 768
+    },
+    {
+      "base": 0.62,
+      "dist": 801,
+      "eff": 1.705,
+      "x": 1007,
+      "y": 711
+    },
+    {
+      "base": 1,
+      "dist": 757,
+      "eff": 2.764,
+      "x": 1035,
+      "y": 855
+    },
+    {
+      "base": 1,
+      "dist": 757,
+      "eff": 2.764,
+      "x": 1034,
+      "y": 833
+    },
+    {
+      "base": 1,
+      "dist": 743,
+      "eff": 2.768,
+      "x": 1048,
+      "y": 931
+    },
+    {
+      "base": 1,
+      "dist": 780,
+      "eff": 2.756,
+      "x": 1027,
+      "y": 742
+    },
+    {
+      "base": 0.82,
+      "dist": 809,
+      "eff": 2.253,
+      "x": 1017,
+      "y": 691
+    },
+    {
+      "base": 1.3,
+      "dist": 811,
+      "eff": 3.571,
+      "x": 1018,
+      "y": 685
+    },
+    {
+      "base": 0.62,
+      "dist": 830,
+      "eff": 1.699,
+      "x": 1024,
+      "y": 634
+    },
+    {
+      "base": 1,
+      "dist": 816,
+      "eff": 2.745,
+      "x": 1033,
+      "y": 673
+    },
+    {
+      "base": 1,
+      "dist": 819,
+      "eff": 2.744,
+      "x": 1042,
+      "y": 637
+    },
+    {
+      "base": 1,
+      "dist": 820,
+      "eff": 2.744,
+      "x": 1044,
+      "y": 665
+    },
+    {
+      "base": 0.62,
+      "dist": 759,
+      "eff": 1.713,
+      "x": 1083,
+      "y": 895
+    },
+    {
+      "base": 1,
+      "dist": 733,
+      "eff": 2.771,
+      "x": 1105,
+      "y": 1000
+    },
+    {
+      "base": 1,
+      "dist": 758,
+      "eff": 2.763,
+      "x": 1086,
+      "y": 877
+    },
+    {
+      "base": 1,
+      "dist": 794,
+      "eff": 2.752,
+      "x": 1067,
+      "y": 755
+    },
+    {
+      "base": 1,
+      "dist": 788,
+      "eff": 2.754,
+      "x": 1072,
+      "y": 779
+    },
+    {
+      "base": 1,
+      "dist": 788,
+      "eff": 2.754,
+      "x": 1070,
+      "y": 737
+    },
+    {
+      "base": 1,
+      "dist": 835,
+      "eff": 2.739,
+      "x": 1048,
+      "y": 628
+    },
+    {
+      "base": 1,
+      "dist": 753,
+      "eff": 2.765,
+      "x": 1096,
+      "y": 891
+    },
+    {
+      "base": 0.656,
+      "dist": 789,
+      "eff": 1.806,
+      "x": 1078,
+      "y": 779
+    },
+    {
+      "base": 1,
+      "dist": 824,
+      "eff": 2.743,
+      "x": 1056,
+      "y": 626
+    },
+    {
+      "base": 1,
+      "dist": 766,
+      "eff": 2.761,
+      "x": 1094,
+      "y": 874
+    },
+    {
+      "base": 1,
+      "dist": 798,
+      "eff": 2.751,
+      "x": 1072,
+      "y": 707
+    },
+    {
+      "base": 0.82,
+      "dist": 798,
+      "eff": 2.256,
+      "x": 1079,
+      "y": 744
+    },
+    {
+      "base": 0.82,
+      "dist": 772,
+      "eff": 2.262,
+      "x": 1097,
+      "y": 848
+    },
+    {
+      "base": 0.62,
+      "dist": 834,
+      "eff": 1.699,
+      "x": 1061,
+      "y": 635
+    },
+    {
+      "base": 1,
+      "dist": 761,
+      "eff": 2.762,
+      "x": 1112,
+      "y": 909
+    },
+    {
+      "base": 0.82,
+      "dist": 829,
+      "eff": 2.248,
+      "x": 1071,
+      "y": 653
+    },
+    {
+      "base": 1,
+      "dist": 763,
+      "eff": 2.762,
+      "x": 1123,
+      "y": 851
+    },
+    {
+      "base": 1,
+      "dist": 798,
+      "eff": 2.751,
+      "x": 1099,
+      "y": 734
+    },
+    {
+      "base": 1.3,
+      "dist": 749,
+      "eff": 3.596,
+      "x": 1142,
+      "y": 930
+    },
+    {
+      "base": 1,
+      "dist": 757,
+      "eff": 2.764,
+      "x": 1139,
+      "y": 889
+    },
+    {
+      "base": 1,
+      "dist": 753,
+      "eff": 2.765,
+      "x": 1148,
+      "y": 927
+    },
+    {
+      "base": 0.62,
+      "dist": 845,
+      "eff": 1.696,
+      "x": 1089,
+      "y": 601
+    },
+    {
+      "base": 1,
+      "dist": 785,
+      "eff": 2.755,
+      "x": 1135,
+      "y": 770
+    },
+    {
+      "base": 1,
+      "dist": 767,
+      "eff": 2.761,
+      "x": 1173,
+      "y": 869
+    },
+    {
+      "base": 1,
+      "dist": 760,
+      "eff": 2.763,
+      "x": 1185,
+      "y": 930
+    },
+    {
+      "base": 1,
+      "dist": 802,
+      "eff": 2.75,
+      "x": 1148,
+      "y": 726
+    },
+    {
+      "base": 1,
+      "dist": 841,
+      "eff": 2.737,
+      "x": 1124,
+      "y": 609
+    },
+    {
+      "base": 1,
+      "dist": 757,
+      "eff": 2.764,
+      "x": 1199,
+      "y": 983
+    },
+    {
+      "base": 0.82,
+      "dist": 834,
+      "eff": 2.246,
+      "x": 1129,
+      "y": 659
+    },
+    {
+      "base": 1,
+      "dist": 773,
+      "eff": 2.759,
+      "x": 1198,
+      "y": 907
+    },
+    {
+      "base": 1,
+      "dist": 816,
+      "eff": 2.745,
+      "x": 1158,
+      "y": 692
+    },
+    {
+      "base": 0.62,
+      "dist": 807,
+      "eff": 1.704,
+      "x": 1169,
+      "y": 757
+    },
+    {
+      "base": 1,
+      "dist": 765,
+      "eff": 2.761,
+      "x": 1214,
+      "y": 905
+    },
+    {
+      "base": 1,
+      "dist": 770,
+      "eff": 2.76,
+      "x": 1223,
+      "y": 944
+    },
+    {
+      "base": 1.3,
+      "dist": 798,
+      "eff": 3.576,
+      "x": 1193,
+      "y": 783
+    },
+    {
+      "base": 1,
+      "dist": 791,
+      "eff": 2.753,
+      "x": 1205,
+      "y": 814
+    },
+    {
+      "base": 1.3,
+      "dist": 843,
+      "eff": 3.558,
+      "x": 1165,
+      "y": 618
+    },
+    {
+      "base": 0.496,
+      "dist": 804,
+      "eff": 1.364,
+      "x": 1199,
+      "y": 789
+    },
+    {
+      "base": 1,
+      "dist": 837,
+      "eff": 2.739,
+      "x": 1173,
+      "y": 635
+    },
+    {
+      "base": 1.3,
+      "dist": 774,
+      "eff": 3.586,
+      "x": 1238,
+      "y": 920
+    },
+    {
+      "base": 0.82,
+      "dist": 776,
+      "eff": 2.261,
+      "x": 1246,
+      "y": 937
+    },
+    {
+      "base": 1,
+      "dist": 818,
+      "eff": 2.745,
+      "x": 1212,
+      "y": 721
+    },
+    {
+      "base": 1.3,
+      "dist": 778,
+      "eff": 3.584,
+      "x": 1270,
+      "y": 937
+    },
+    {
+      "base": 1,
+      "dist": 775,
+      "eff": 2.758,
+      "x": 1278,
+      "y": 965
+    },
+    {
+      "base": 1,
+      "dist": 771,
+      "eff": 2.759,
+      "x": 1279,
+      "y": 939
+    },
+    {
+      "base": 1,
+      "dist": 810,
+      "eff": 2.747,
+      "x": 1232,
+      "y": 739
+    },
+    {
+      "base": 1,
+      "dist": 769,
+      "eff": 2.76,
+      "x": 1297,
+      "y": 959
+    },
+    {
+      "base": 1,
+      "dist": 797,
+      "eff": 2.751,
+      "x": 1262,
+      "y": 851
+    },
+    {
+      "base": 1,
+      "dist": 784,
+      "eff": 2.755,
+      "x": 1287,
+      "y": 927
+    },
+    {
+      "base": 1.04,
+      "dist": 788,
+      "eff": 2.864,
+      "x": 1288,
+      "y": 919
+    },
+    {
+      "base": 0.8,
+      "dist": 788,
+      "eff": 2.203,
+      "x": 1290,
+      "y": 920
+    },
+    {
+      "base": 1,
+      "dist": 786,
+      "eff": 2.755,
+      "x": 1293,
+      "y": 929
+    },
+    {
+      "base": 0.8,
+      "dist": 788,
+      "eff": 2.203,
+      "x": 1290,
+      "y": 921
+    },
+    {
+      "base": 1,
+      "dist": 787,
+      "eff": 2.754,
+      "x": 1287,
+      "y": 919
+    },
+    {
+      "base": 1.04,
+      "dist": 788,
+      "eff": 2.864,
+      "x": 1291,
+      "y": 919
+    },
+    {
+      "base": 1,
+      "dist": 781,
+      "eff": 2.756,
+      "x": 1302,
+      "y": 955
+    },
+    {
+      "base": 0.8,
+      "dist": 789,
+      "eff": 2.203,
+      "x": 1292,
+      "y": 918
+    },
+    {
+      "base": 1.04,
+      "dist": 788,
+      "eff": 2.864,
+      "x": 1292,
+      "y": 919
+    },
+    {
+      "base": 0.8,
+      "dist": 789,
+      "eff": 2.203,
+      "x": 1293,
+      "y": 919
+    },
+    {
+      "base": 1.3,
+      "dist": 790,
+      "eff": 3.58,
+      "x": 1297,
+      "y": 915
+    },
+    {
+      "base": 1,
+      "dist": 789,
+      "eff": 2.754,
+      "x": 1298,
+      "y": 919
+    },
+    {
+      "base": 0.8,
+      "dist": 790,
+      "eff": 2.203,
+      "x": 1298,
+      "y": 917
+    },
+    {
+      "base": 1,
+      "dist": 787,
+      "eff": 2.754,
+      "x": 1306,
+      "y": 937
+    },
+    {
+      "base": 1.3,
+      "dist": 836,
+      "eff": 3.561,
+      "x": 1248,
+      "y": 677
+    },
+    {
+      "base": 0.82,
+      "dist": 808,
+      "eff": 2.253,
+      "x": 1282,
+      "y": 825
+    },
+    {
+      "base": 1,
+      "dist": 789,
+      "eff": 2.754,
+      "x": 1311,
+      "y": 931
+    },
+    {
+      "base": 1,
+      "dist": 788,
+      "eff": 2.754,
+      "x": 1306,
+      "y": 890
+    },
+    {
+      "base": 1,
+      "dist": 796,
+      "eff": 2.751,
+      "x": 1295,
+      "y": 830
+    },
+    {
+      "base": 1,
+      "dist": 790,
+      "eff": 2.753,
+      "x": 1318,
+      "y": 933
+    },
+    {
+      "base": 1,
+      "dist": 794,
+      "eff": 2.752,
+      "x": 1315,
+      "y": 911
+    },
+    {
+      "base": 0.62,
+      "dist": 802,
+      "eff": 1.705,
+      "x": 1302,
+      "y": 866
+    },
+    {
+      "base": 0.82,
+      "dist": 791,
+      "eff": 2.258,
+      "x": 1326,
+      "y": 935
+    },
+    {
+      "base": 1,
+      "dist": 780,
+      "eff": 2.757,
+      "x": 1345,
+      "y": 951
+    },
+    {
+      "base": 0.62,
+      "dist": 807,
+      "eff": 1.704,
+      "x": 1317,
+      "y": 855
+    },
+    {
+      "base": 1,
+      "dist": 807,
+      "eff": 2.748,
+      "x": 1318,
+      "y": 855
+    },
+    {
+      "base": 1,
+      "dist": 799,
+      "eff": 2.751,
+      "x": 1334,
+      "y": 902
+    },
+    {
+      "base": 1,
+      "dist": 793,
+      "eff": 2.752,
+      "x": 1355,
+      "y": 894
+    },
+    {
+      "base": 0.62,
+      "dist": 818,
+      "eff": 1.702,
+      "x": 1326,
+      "y": 792
+    },
+    {
+      "base": 1,
+      "dist": 804,
+      "eff": 2.749,
+      "x": 1354,
+      "y": 898
+    },
+    {
+      "base": 1,
+      "dist": 787,
+      "eff": 2.754,
+      "x": 1377,
+      "y": 944
+    },
+    {
+      "base": 1,
+      "dist": 799,
+      "eff": 2.75,
+      "x": 1364,
+      "y": 934
+    },
+    {
+      "base": 1,
+      "dist": 825,
+      "eff": 2.742,
+      "x": 1320,
+      "y": 760
+    },
+    {
+      "base": 1,
+      "dist": 792,
+      "eff": 2.753,
+      "x": 1391,
+      "y": 994
+    },
+    {
+      "base": 1,
+      "dist": 802,
+      "eff": 2.75,
+      "x": 1370,
+      "y": 916
+    },
+    {
+      "base": 1,
+      "dist": 838,
+      "eff": 2.739,
+      "x": 1315,
+      "y": 715
+    },
+    {
+      "base": 1,
+      "dist": 814,
+      "eff": 2.746,
+      "x": 1346,
+      "y": 797
+    },
+    {
+      "base": 1,
+      "dist": 824,
+      "eff": 2.743,
+      "x": 1365,
+      "y": 831
+    },
+    {
+      "base": 1,
+      "dist": 834,
+      "eff": 2.74,
+      "x": 1349,
+      "y": 741
+    },
+    {
+      "base": 1,
+      "dist": 805,
+      "eff": 2.749,
+      "x": 1432,
+      "y": 959
+    },
+    {
+      "base": 1,
+      "dist": 802,
+      "eff": 2.75,
+      "x": 1453,
+      "y": 976
+    },
+    {
+      "base": 1,
+      "dist": 827,
+      "eff": 2.742,
+      "x": 1402,
+      "y": 813
+    },
+    {
+      "base": 1.3,
+      "dist": 836,
+      "eff": 3.561,
+      "x": 1407,
+      "y": 779
+    },
+    {
+      "base": 1,
+      "dist": 814,
+      "eff": 2.746,
+      "x": 1456,
+      "y": 928
+    },
+    {
+      "base": 1,
+      "dist": 809,
+      "eff": 2.747,
+      "x": 1472,
+      "y": 978
+    },
+    {
+      "base": 1,
+      "dist": 806,
+      "eff": 2.748,
+      "x": 1476,
+      "y": 984
+    },
+    {
+      "base": 1,
+      "dist": 837,
+      "eff": 2.739,
+      "x": 1410,
+      "y": 781
+    },
+    {
+      "base": 1,
+      "dist": 832,
+      "eff": 2.74,
+      "x": 1433,
+      "y": 814
+    },
+    {
+      "base": 1,
+      "dist": 842,
+      "eff": 2.737,
+      "x": 1438,
+      "y": 787
+    },
+    {
+      "base": 1,
+      "dist": 813,
+      "eff": 2.746,
+      "x": 1504,
+      "y": 959
+    },
+    {
+      "base": 1,
+      "dist": 823,
+      "eff": 2.743,
+      "x": 1487,
+      "y": 901
+    },
+    {
+      "base": 1,
+      "dist": 835,
+      "eff": 2.739,
+      "x": 1543,
+      "y": 964
+    },
+    {
+      "base": 1,
+      "dist": 846,
+      "eff": 2.736,
+      "x": 1587,
+      "y": 936
+    },
+    {
+      "base": 1,
+      "dist": 843,
+      "eff": 2.737,
+      "x": 1599,
+      "y": 942
+    }
+  ],
+  "glyphSvgs": [
+    {
+      "path": "root/2",
+      "scale": 0.6,
+      "count": 9754,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\" viewBox=\"0 0 32 32\">\n    <g transform=\"translate(16,16)\">\n      <path d=\"M0,-14 L11,10 L4,7 L0,14 L-4,7 L-11,10 Z\" fill=\"#39d5ff\" stroke=\"rgba(4,18,24,0.9)\" stroke-width=\"0.7\" stroke-linejoin=\"round\"/>\n    </g>\n  </svg>"
+    },
+    {
+      "path": "root/2",
+      "scale": 0.6,
+      "count": 743,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\" viewBox=\"0 0 32 32\">\n    <g transform=\"translate(16,16)\">\n      <path d=\"M0,-14 L11,10 L4,7 L0,14 L-4,7 L-11,10 Z\" fill=\"#ff7adf\" stroke=\"rgba(4,18,24,0.9)\" stroke-width=\"0.7\" stroke-linejoin=\"round\"/>\n    </g>\n  </svg>"
+    },
+    {
+      "path": "root/2",
+      "scale": 0.6,
+      "count": 718,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\" viewBox=\"0 0 32 32\">\n    <g transform=\"translate(16,16)\">\n      <path d=\"M0,-14 L11,10 L4,7 L0,14 L-4,7 L-11,10 Z\" fill=\"#f7f0a3\" stroke=\"rgba(4,18,24,0.9)\" stroke-width=\"0.7\" stroke-linejoin=\"round\"/>\n    </g>\n  </svg>"
+    },
+    {
+      "path": "root/3",
+      "scale": 1,
+      "count": 622,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 96 96\"><g transform=\"translate(48,48)\">\n    <path d=\"M0,-42 C 3.8,-40 4.6,-34 4.6,-26 L 4.6,-14\n             L 32,4 L 34,6 L 34,10 L 31.4,9.2 L 4.6,2.4\n             L 4.2,20\n             L 14,28 L 14,32 L 0,28.6 L -14,32 L -14,28 L -4.2,20\n             L -4.6,2.4 L -31.4,9.2 L -34,10 L -34,6 L -32,4 L -4.6,-14\n             L -4.6,-26 C -4.6,-34 -3.8,-40 0,-42 Z\" fill=\"white\" stroke=\"rgba(0,0,0,0.32)\" stroke-width=\"1.4\" stroke-linejoin=\"round\"/>\n    <path d=\"M-15.5,-1.5 l3,7.6 4,-1.4 -1.5,-8.4 Z\" fill=\"white\"/>\n    <path d=\"M15.5,-1.5 l-3,7.6 -4,-1.4 1.5,-8.4 Z\" fill=\"white\"/>\n    <path d=\"M-1.6,33.5 L 1.6,33.5 L 1.6,40 L -1.6,40 Z\" fill=\"white\"/></g></svg>"
+    },
+    {
+      "path": "root/2",
+      "scale": 0.68,
+      "count": 465,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\" viewBox=\"0 0 32 32\">\n    <g transform=\"translate(16,16)\">\n      <path d=\"M0,-14 L11,10 L4,7 L0,14 L-4,7 L-11,10 Z\" fill=\"#ffb347\" stroke=\"rgba(4,18,24,0.9)\" stroke-width=\"0.7\" stroke-linejoin=\"round\"/>\n    </g>\n  </svg>"
+    },
+    {
+      "path": "root/2",
+      "scale": 0.6,
+      "count": 320,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"32\" height=\"32\" viewBox=\"0 0 32 32\">\n    <g transform=\"translate(16,16)\">\n      <path d=\"M0,-14 L11,10 L4,7 L0,14 L-4,7 L-11,10 Z\" fill=\"#7cff9b\" stroke=\"rgba(4,18,24,0.9)\" stroke-width=\"0.7\" stroke-linejoin=\"round\"/>\n    </g>\n  </svg>"
+    },
+    {
+      "path": "root/3",
+      "scale": 0.62,
+      "count": 132,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 96 96\"><g transform=\"translate(48,48)\">\n    <path d=\"M0,-27\n             C 4,-25 5.2,-20 5.2,-13\n             L 5.2,-9\n             L 27,-9 L 27,6 L 5.2,6\n             L 5.2,16\n             L 11.5,23 L 11.5,27 L 0,23.5 L -11.5,27 L -11.5,23 L -5.2,16\n             L -5.2,6\n             L -27,6 L -27,-9 L -5.2,-9\n             L -5.2,-13\n             C -5.2,-20 -4,-25 0,-27 Z\" fill=\"white\" stroke=\"rgba(0,0,0,0.32)\" stroke-width=\"1.4\" stroke-linejoin=\"round\"/>\n    <ellipse cx=\"0\" cy=\"-29\" rx=\"12\" ry=\"3.8\" fill=\"white\" fill-opacity=\"0.5\"/></g></svg>"
+    },
+    {
+      "path": "root/3",
+      "scale": 1.3,
+      "count": 82,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 96 96\"><g transform=\"translate(48,48)\">\n    <path d=\"M0,-45 C 5.6,-43 6.8,-36 6.8,-27 L 6.8,-12\n             L 38,9 L 41.5,12.4 L 41.5,16.6 L 37.6,15 L 6.8,6\n             L 6.3,21\n             L 17,30 L 17,34.6 L 0,30.4 L -17,34.6 L -17,30 L -6.3,21\n             L -6.8,6 L -37.6,15 L -41.5,16.6 L -41.5,12.4 L -38,9 L -6.8,-12\n             L -6.8,-27 C -6.8,-36 -5.6,-43 0,-45 Z\" fill=\"white\" stroke=\"rgba(0,0,0,0.32)\" stroke-width=\"1.4\" stroke-linejoin=\"round\"/>\n    <path d=\"M-19,2 l3.6,9 4.8,-1.7 -1.8,-10 Z\" fill=\"white\"/>\n    <path d=\"M19,2 l-3.6,9 -4.8,-1.7 1.8,-10 Z\" fill=\"white\"/>\n    <path d=\"M-2,35.5 L 2,35.5 L 2,42.5 L -2,42.5 Z\" fill=\"white\"/></g></svg>"
+    },
+    {
+      "path": "root/3",
+      "scale": 0.82,
+      "count": 38,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 96 96\"><g transform=\"translate(48,48)\">\n    <circle cx=\"0\" cy=\"-6\" r=\"31\" fill=\"white\" fill-opacity=\"0.22\"/>\n    <g transform=\"rotate(45 0 -6)\">\n      <rect x=\"-30.5\" y=\"-8.2\" width=\"61\" height=\"4.4\" rx=\"2.2\" fill=\"white\" fill-opacity=\"0.9\"/>\n      <rect x=\"-30.5\" y=\"-8.2\" width=\"61\" height=\"4.4\" rx=\"2.2\" fill=\"white\" fill-opacity=\"0.9\" transform=\"rotate(90 0 -6)\"/>\n    </g>\n    <path d=\"M0,-22 C 8,-20 10.5,-13 10.5,-6 C 10.5,2 7.5,7 0,8.5\n             C -7.5,7 -10.5,2 -10.5,-6 C -10.5,-13 -8,-20 0,-22 Z\" fill=\"white\" stroke=\"rgba(0,0,0,0.32)\" stroke-width=\"1.4\" stroke-linejoin=\"round\"/>\n    <path d=\"M-2.6,8 L 2.6,8 L 1.8,32 L -1.8,32 Z\" fill=\"white\" stroke=\"rgba(0,0,0,0.32)\" stroke-width=\"1.4\" stroke-linejoin=\"round\"/>\n    <path d=\"M-8,27 L 8,27 L 8,30.6 L -8,30.6 Z\" fill=\"white\"/>\n    <circle cx=\"5.6\" cy=\"35\" r=\"6\" fill=\"white\" fill-opacity=\"0.6\"/>\n    <circle cx=\"5.6\" cy=\"35\" r=\"2.1\" fill=\"white\"/></g></svg>"
+    },
+    {
+      "path": "root/3",
+      "scale": 0.72,
+      "count": 3,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 96 96\"><g transform=\"translate(48,48)\">\n    <path d=\"M0,-42\n             L 2.6,-36 L 3.4,-26 L 3.4,-8\n             L 27,8 L 27,13 L 3.6,6\n             L 3.6,16\n             L 8,18 L 8,26 L 3.8,25\n             L 3.2,30 L 15,34 L 15,38 L 2.4,36\n             L 0,40\n             L -2.4,36 L -15,38 L -15,34 L -3.2,30\n             L -3.8,25 L -8,26 L -8,18 L -3.6,16\n             L -3.6,6 L -27,13 L -27,8 L -3.4,-8\n             L -3.4,-26 L -2.6,-36 Z\" fill=\"white\" stroke=\"rgba(0,0,0,0.32)\" stroke-width=\"1.4\" stroke-linejoin=\"round\"/></g></svg>"
+    },
+    {
+      "path": "root/3",
+      "scale": 0.86,
+      "count": 1,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 96 96\"><g transform=\"translate(48,48)\">\n    <path d=\"M0,-40 C 3.4,-38.5 4.2,-33 4.2,-26 L 4.2,-18\n             L 36,-15.5 L 36,-7.5 L 4.2,-8\n             L 3.8,22\n             L 13,27.5 L 13,31.5 L 0,28.6 L -13,31.5 L -13,27.5 L -3.8,22\n             L -4.2,-8 L -36,-7.5 L -36,-15.5 L -4.2,-18\n             L -4.2,-26 C -4.2,-33 -3.4,-38.5 0,-40 Z\" fill=\"white\" stroke=\"rgba(0,0,0,0.32)\" stroke-width=\"1.4\" stroke-linejoin=\"round\"/>\n    <circle cx=\"-17.5\" cy=\"-16.5\" r=\"7.5\" fill=\"white\" fill-opacity=\"0.5\"/>\n    <circle cx=\"17.5\" cy=\"-16.5\" r=\"7.5\" fill=\"white\" fill-opacity=\"0.5\"/>\n    <path d=\"M-19.5,-19 h4 v5 h-4 Z\" fill=\"white\"/>\n    <path d=\"M15.5,-19 h4 v5 h-4 Z\" fill=\"white\"/>\n    <path d=\"M-1.7,31.5 L 1.7,31.5 L 1.7,38.5 L -1.7,38.5 Z\" fill=\"white\"/></g></svg>"
+    },
+    {
+      "path": "root/3",
+      "scale": 1.45,
+      "count": 1,
+      "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"64\" height=\"64\" viewBox=\"0 0 96 96\"><g transform=\"translate(48,48)\">\n    <path d=\"M0,-45 C 7,-42 9,-34 9,-25 L 9,-11\n             L 46,12 L 46,21 L 9,11.5\n             L 8.4,21 L 20,31 L 20,37.5 L 0,32 L -20,37.5 L -20,31 L -8.4,21\n             L -9,11.5 L -46,21 L -46,12 L -9,-11\n             L -9,-25 C -9,-34 -7,-42 0,-45 Z\" fill=\"white\" stroke=\"rgba(0,0,0,0.38)\" stroke-width=\"2\" stroke-linejoin=\"round\"/>\n    <rect x=\"-31\" y=\"9\" width=\"7\" height=\"12\" rx=\"2\" fill=\"white\"/>\n    <rect x=\"-17\" y=\"4.5\" width=\"7\" height=\"12\" rx=\"2\" fill=\"white\"/>\n    <rect x=\"10\" y=\"4.5\" width=\"7\" height=\"12\" rx=\"2\" fill=\"white\"/>\n    <rect x=\"24\" y=\"9\" width=\"7\" height=\"12\" rx=\"2\" fill=\"white\"/></g></svg>"
+    }
+  ],
+  "card": {
+    "clicked": true,
+    "target": {
+      "base": 1.45,
+      "dist": 752,
+      "eff": 4.01,
+      "x": 921,
+      "y": 829
+    },
+    "cards": [
+      {
+        "sel": "global-context-panel-inner",
+        "text": "CONTEXT radio RADIO RADIO READY open_in_full close ENABLE ◀◀ ▶ ▶▶ VOLUME 80% ◀ radar CONTACTS rocket_launch SPACE MISSIONS SELECT CONTEXT CONTACTS — nearest planes · vessels · sitesSPACE MISSIONS — launches & orbital assets flight COCKPIT SEARCH NEARBY SITES 🛸 CONTACTS CONTEXT OFF SELECT CONTACTS TO LOAD OBSERVED / MAPPED PROXIMITY AVAILABLE MISSIONS SELECT A MISSION TO INSPECT — LOADING 30-DAY MISSION INDEX RADIO OFF + ENABLE STATION TAG All NO STATION SELECTED Choose a globe marker or use next. DIRECTORY BAND DRAG TO TUNE ALL · DRAG THE NEEDLE SNAPS TO AVAILABLE STATIONS PREV PLAY NEXT STOP VOLUME 80% Radio off STATION SITE DIRECTORY: RADIO BROWSER Audio connects directly to the broadcaster after you press play. Your IP is visible to that broadcaster."
+      }
+    ]
+  },
+  "cardAfter": [
+    {
+      "sel": "command-dock",
+      "x": 562,
+      "y": 918,
+      "w": 476,
+      "t": "LOCATION + 📍 Location: -- Landmark: -- ParisMarseilleLyonToulouseNiceNantesMontpellierStrasbourg 🔎 AI AGENT OFF STD ~$0.00 ON/OFF VOICE STANDBY VOICE CONTROL Hold Space to speak · click mic to toggle voice VOICE SYSTEM ERROR DISMISS Check microphone permission and network access, then try again. VISUAL PRESETS ◯ Normal 1 ▦ CRT 2 🌙 NVG 3 🌡️ FLIR 4 ✦ Anime 5 ◐ Noir 6 ❄ Snow 7 MAP SOURCE OSM Goog"
+    },
+    {
+      "sel": "location-bar",
+      "x": 562,
+      "y": 918,
+      "w": 168,
+      "t": "LOCATION + 📍 Location: -- Landmark: -- ParisMarseilleLyonToulouseNiceNantesMontpellierStrasbourg 🔎"
+    },
+    {
+      "sel": "gev-voice-control",
+      "x": 730,
+      "y": 902,
+      "w": 140,
+      "t": "AI AGENT OFF STD ~$0.00 ON/OFF VOICE STANDBY VOICE CONTROL Hold Space to speak · click mic to toggle voice VOICE SYSTEM ERROR DISMISS Check microphone permission and network access, then try again."
+    },
+    {
+      "sel": "gev-voice-error-tray",
+      "x": 611,
+      "y": 832,
+      "w": 378,
+      "t": "VOICE SYSTEM ERROR DISMISS Check microphone permission and network access, then try again."
+    },
+    {
+      "sel": "control-panel",
+      "x": 870,
+      "y": 918,
+      "w": 168,
+      "t": "VISUAL PRESETS ◯ Normal 1 ▦ CRT 2 🌙 NVG 3 🌡️ FLIR 4 ✦ Anime 5 ◐ Noir 6 ❄ Snow 7 MAP SOURCE OSM Google 3DBing AerialIONBing LabelsIONOSMIGN OrthoPlan IGN Style NORMAL"
+    },
+    {
+      "sel": "left-panel-stack",
+      "x": 52,
+      "y": 272,
+      "w": 360,
+      "t": "DATA LAYERS + ▾✈️AIR & ESPACE1/4 ON✈️Vols en direct879FALLBACKFALLBACK · adsb.lol · 250nm regional fallback🛰️Satellites—OFFCelesTrak · jamais✈Aéroports—OFFOurAirports · jamais🚀Missions spatiales—OFFLaunch Library 2 · jamais▾🎖️DÉFENSE0/2 ON🎖️Vols militaires—OFFadsb.lol · jamais⌖Sites militaires—OFFOpenStreetMap + optional Google Maps Places · jamais▾⚓MARITIME1/3 ON◭Navires en direct12.0KONAISSt"
+    },
+    {
+      "sel": "right-context-rail",
+      "x": 1218,
+      "y": 272,
+      "w": 330,
+      "t": "DISPLAY ◀ ◎ HUD Layout Tactical Operator Minimal ▣ DENSE Density 75% Allocation Elastic Weighted Fade 7% Outside 1% PARAMETERS − ✈ 3D Models Proximity All adjust Scope Feather 11% flare Celestial □ Clean UI ✨ Bloom 0% 🔍 Sharpen 49% CCTV ◀ EXPAND SOURCE · UNKNOWN Enable CCTV to load camera intersections CCTV OFF NEAREST PREV NEXT FOCUS COVERAGE ON AUTO HOP OFF PROJECTION ON CAL · -- CALIBRATION AD"
+    },
+    {
+      "sel": "hud-corner hud-top-left",
+      "x": 36,
+      "y": 140,
+      "w": 447,
+      "t": "┌ TOP SECRET // SI-TK // NOFORN KH11-4057 OPS-4104 NORMAL SUMMARY NORMAL GLOBAL SECTOR 48.00N 5.00E | EUROPE | ALT 700.0KM | WINDOW 2133x992KM | SUN 32° | ONA 35° | UTC+0"
+    },
+    {
+      "sel": "hud-corner hud-bottom-right",
+      "x": 1292,
+      "y": 800,
+      "w": 272,
+      "t": "GSD: 6.16m NIIRS: 2.3 ALT: 16385m SUN: 31.3° EL AIS: -- ┘"
+    }
+  ],
+  "errors": [
+    "Failed to load resource: the server responded with a status of 403 ()",
+    "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+  ]
+}
