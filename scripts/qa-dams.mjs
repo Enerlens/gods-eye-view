@@ -209,35 +209,63 @@ async function main() {
       const entities = viewer?.dataSources?.getByName?.('Barrages')?.[0]?.entities?.values ?? [];
       const now = window.Cesium?.JulianDate?.now?.();
       const sizes = new Map();
+      // The size channel left the importance floor and went to the MEASURED
+      // SPAN, so the probe now reads both: `sizes` keyed by display tier tells
+      // us the size no longer follows importance, `spans` keyed by length band
+      // tells us what it follows instead.
+      const spans = new Map();
+      const band = (m) => (!Number.isFinite(m) || m <= 0 ? 'unmeasured'
+        : m >= 1000 ? '1000+' : m >= 300 ? '300-999' : m >= 100 ? '100-299' : '25-99');
       for (const entity of entities) {
         const p = entity.properties?.getValue?.(now) ?? {};
         const tier = (p.heightM >= 15 || p.hydro === true
           || (p.name && p.spanM >= 300)) ? 'major' : p.name ? 'named' : 'minor';
-        const size = entity.point?.pixelSize?.getValue?.(now) ?? entity.point?.pixelSize;
+        const size = Number(entity.point?.pixelSize?.getValue?.(now) ?? entity.point?.pixelSize);
         if (!sizes.has(tier)) sizes.set(tier, new Set());
-        sizes.get(tier).add(Number(size));
+        sizes.get(tier).add(size);
+        const key = band(Number(p.spanM));
+        if (!spans.has(key)) spans.set(key, new Set());
+        spans.get(key).add(size);
       }
       return {
         chips: (controls?.chips || []).map((chip) => chip.id),
         legend: (controls?.legend || []).map((item) => ({ label: item.label, count: item.count })),
         sizes: [...sizes.entries()].map(([tier, set]) => [tier, [...set]]),
+        spans: [...spans.entries()].map(([key, set]) => [key, [...set]]),
       };
     });
 
-    record('the row offers the three display floors',
-      tiers.chips.join(',') === 'all,named,major', tiers.chips.join(','));
-    record('the legend names every tier that shipped',
-      tiers.legend.length === 3,
+    // Two chip GROUPS now, and they answer two different questions: WHAT is
+    // drawn (dam / dyke) and HOW MUCH of it (the importance floor). They used
+    // to be one group of three.
+    record('the row offers the kind filter and the three display floors',
+      ['kinds:all', 'kinds:dams', 'kinds:dykes', 'all', 'named', 'major']
+        .every((id) => tiers.chips.includes(id)), tiers.chips.join(','));
+    // And the key gained the SIZE ladder, because a size with no ruler is
+    // unreadable (D1) — including the row for a structure whose span nobody
+    // published, which must not sit at the bottom of the ladder (A1).
+    record('the legend names the kinds and rules the size',
+      tiers.legend.length >= 8
+      && tiers.legend.some((item) => /non mesurée/i.test(item.label)),
       tiers.legend.map((item) => `${item.label}=${item.count}`).join(' · '));
 
+    // THE CHANTIER'S REVERSAL, and it is what this pair of checks now pins.
+    // The dot size used to encode the DISPLAY FLOOR — a qualitative importance
+    // bucket — which is the one thing Bertin's size channel must not carry. It
+    // now encodes the measured SPAN. So a display floor no longer has one
+    // size (its dams have many lengths), and a length band does.
     const sizeOf = new Map(tiers.sizes.map(([tier, set]) => [tier, set]));
-    const oneSizePerTier = [...sizeOf.values()].every((set) => set.length === 1);
-    const ladder = ['major', 'named', 'minor'].map((tier) => sizeOf.get(tier)?.[0]);
-    record('each tier draws at exactly one dot size', oneSizePerTier,
+    record('the size no longer follows the importance floor',
+      [...sizeOf.values()].some((set) => set.length > 1),
       tiers.sizes.map(([tier, set]) => `${tier}=[${set}]`).join(' '));
-    record('the dot sizes descend with importance',
-      ladder.every((size, index) => index === 0 || size < ladder[index - 1]),
-      `major=${ladder[0]} named=${ladder[1]} minor=${ladder[2]}`);
+    const spanOf = new Map(tiers.spans.map(([key, set]) => [key, set]));
+    record('it follows the measured span — one size per length band',
+      [...spanOf.entries()].every(([, set]) => set.length === 1),
+      tiers.spans.map(([key, set]) => `${key}=[${set}]`).join(' '));
+    const ladder = ['1000+', '300-999', '100-299', '25-99'].map((key) => spanOf.get(key)?.[0]);
+    record('and the ladder descends with length',
+      ladder.filter(Number.isFinite).every((size, index, kept) => index === 0 || size < kept[index - 1]),
+      ladder.join(' > '));
 
     // ── Fly to the dams BEFORE measuring what a floor draws ──────────────
     // `entity.show` is written by the pre-render walk, which is also where
