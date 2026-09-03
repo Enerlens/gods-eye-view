@@ -5,13 +5,16 @@ import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 import {
   BUOY_POINT_PX,
+  BUOY_VIEW_PAD_DEG,
   NO_SEA_STATE_CSS,
   SEA_STATE_BANDS,
   SEA_STATE_LABELS_FR,
   SWELL_STEM_SCALE,
+  buoyInView,
   buoyLegend,
   buoyOverlayCopy,
   buoyRingGlyph,
+  buoyViewBoxes,
   coverageLabel,
   createBuoyOverlayEntry,
   createMarineBuoysLayer,
@@ -27,6 +30,11 @@ import {
   swellStemIsFloored,
 } from './marineBuoys.js';
 import { NDBC_BOUNDS } from './ndbcObservations.js';
+import {
+  VIEWPORT_CAMERA_SENSITIVITY,
+  _resetCameraSensitivityForTest,
+  getCameraSensitivityDiagnostics,
+} from './cameraSensitivity.js';
 
 const STATION = Object.freeze({
   station: '41001',
@@ -372,10 +380,11 @@ test('the ring glyph is a stable, cached data URI', () => {
 // What the layer actually draws
 // ---------------------------------------------------------------------------
 
-function stubViewer() {
+function stubViewer(camera = null) {
   const sources = [];
   return {
     sources,
+    camera,
     dataSources: {
       add(source) { sources.push(source); return source; },
       remove(source) { sources.splice(sources.indexOf(source), 1); return true; },
@@ -383,13 +392,66 @@ function stubViewer() {
   };
 }
 
+/**
+ * A camera that really looks at (lat, lon) from `altM`, so the horizon test
+ * under it is Cesium's own arithmetic rather than a stand-in for it. The view
+ * rectangle is supplied by the caller: `computeViewRectangle` needs a whole
+ * scene, and what the cull consumes from it is four degrees.
+ */
+function stubCamera({ lat, lon, altM = 12_000_000, view = null }) {
+  const listeners = new Set();
+  return {
+    percentageChanged: 0.5,
+    positionWC: Cesium.Cartesian3.fromDegrees(lon, lat, altM),
+    computeViewRectangle: () => (view
+      ? Cesium.Rectangle.fromDegrees(view.west, view.south, view.east, view.north)
+      : undefined),
+    changed: {
+      addEventListener: (fn) => listeners.add(fn),
+      removeEventListener: (fn) => listeners.delete(fn),
+    },
+    /** Move the eye and fire `changed`, exactly as a real camera pass would. */
+    moveTo({ lat: nextLat, lon: nextLon, altM: nextAlt = altM, view: nextView }) {
+      this.positionWC = Cesium.Cartesian3.fromDegrees(nextLon, nextLat, nextAlt);
+      if (nextView !== undefined) view = nextView;
+      for (const fn of listeners) fn();
+    },
+    listenerCount: () => listeners.size,
+  };
+}
+
 function silentOverlayHost() {
   return { setEntries() {}, setVisible() {}, clearSource() {} };
 }
 
-async function renderReport(stations) {
+/** Records every cohort the layer publishes, so the cards can be read back. */
+function recordingOverlayHost() {
+  const published = [];
+  return {
+    published,
+    setEntries(_id, entries) { published.push(entries); },
+    setVisible() {},
+    clearSource() {},
+    last() { return published[published.length - 1] || []; },
+  };
+}
+
+/**
+ * A flat datum. The stem tests measure the EXAGGERATION; pinning the sea
+ * surface at h = 0 keeps them from measuring the geoid at the same time. The
+ * datum has its own test below, with a known undulation.
+ */
+const FLAT_GEOID = { ensureReady: async () => {}, heightAt: () => 0 };
+
+async function renderReport(stations, options = {}) {
+  const {
+    overlayHost = silentOverlayHost(),
+    geoid = FLAT_GEOID,
+    camera = null,
+  } = options;
   const layer = createMarineBuoysLayer({
-    overlayHost: silentOverlayHost(),
+    overlayHost,
+    geoid,
     fetchImpl: async () => ({
       ok: true,
       status: 200,
@@ -400,13 +462,13 @@ async function renderReport(stations) {
       }),
     }),
   });
-  const viewer = stubViewer();
+  const viewer = stubViewer(camera);
   layer.init(viewer);
-  layer.enable();
+  layer.enable(viewer);
   assert.equal(await layer.update(), true);
   const source = viewer.sources[0];
   const byId = new Map(source.entities.values.map((entity) => [entity.id, entity]));
-  return { layer, entities: source.entities.values, byId };
+  return { layer, viewer, entities: source.entities.values, byId };
 }
 
 const AT_SEA = REPORT.map((row, index) => ({
@@ -429,6 +491,8 @@ test('the stem stands in world metres, at the published exaggeration', async () 
   const topOf = (id) => Cesium.Cartographic.fromCartesian(stem(id)[1]).height;
   const baseOf = (id) => Cesium.Cartographic.fromCartesian(stem(id)[0]).height;
 
+  // The datum is pinned flat by FLAT_GEOID here, so what this measures is the
+  // exaggeration alone. Where the sea surface actually sits has its own test.
   assert.ok(Math.abs(baseOf('C')) < 1, 'the stem starts at the sea surface');
   assert.ok(Math.abs(topOf('C') - 8_000) < 1, '0.8 m × 10 000 = 8 km');
   assert.ok(Math.abs(topOf('E') - 82_000) < 1, '8.2 m × 10 000 = 82 km');
@@ -497,4 +561,198 @@ test('row controls stay silent before anything is drawn', () => {
   const layer = createMarineBuoysLayer({ overlayHost: silentOverlayHost() });
   assert.equal(layer.getRowControls(), null);
   assert.equal(layer.getStats().swell, null);
+});
+
+// ---------------------------------------------------------------------------
+// The cull — the 2026-09-03 "the buoys drift and cross the globe" report
+// ---------------------------------------------------------------------------
+
+test('the view boxes are padded, and the antimeridian splits them in two', () => {
+  const [box] = buoyViewBoxes({ south: 40, west: -30, north: 50, east: -10 });
+  assert.deepEqual(box, {
+    south: 40 - BUOY_VIEW_PAD_DEG,
+    west: -30 - BUOY_VIEW_PAD_DEG,
+    north: 50 + BUOY_VIEW_PAD_DEG,
+    east: -10 + BUOY_VIEW_PAD_DEG,
+  });
+
+  // A Pacific frame comes back from Cesium with west > east. One inverted box
+  // contains nothing; two boxes contain the Pacific.
+  const pacific = buoyViewBoxes({ south: -10, west: 170, north: 10, east: -170 });
+  assert.equal(pacific.length, 2);
+  assert.deepEqual(pacific.map((b) => [b.west, b.east]), [[168, 180], [-180, -168]]);
+  assert.equal(buoyInView(pacific, 0, 179), true);
+  assert.equal(buoyInView(pacific, 0, -179), true);
+  assert.equal(buoyInView(pacific, 0, 150), false);
+
+  // Unmeasurable is not empty: a null box list admits every station, because
+  // the limb test is still in force and a blank ocean would be a lie.
+  assert.equal(buoyViewBoxes(null), null);
+  assert.equal(buoyViewBoxes({ south: 10, west: 0, north: 10, east: 20 }), null);
+  assert.equal(buoyInView(null, 0, 0), true);
+});
+
+/** A coarse global grid, so every camera has a far side to hide. */
+const GLOBAL_GRID = [];
+for (const lat of [-60, -30, 0, 30, 60]) {
+  for (let lon = -180; lon < 180; lon += 30) {
+    GLOBAL_GRID.push({
+      station: `G${lat}_${lon}`,
+      lat,
+      lon,
+      waveHeightM: 1 + ((lon + 180) / 360),
+      observedAt: Date.UTC(2026, 8, 3, 11, 0),
+    });
+  }
+}
+
+/** Great-circle angle in degrees between two points. */
+function angleDeg(aLat, aLon, bLat, bLon) {
+  const r = Math.PI / 180;
+  const cos = Math.sin(aLat * r) * Math.sin(bLat * r)
+    + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.cos((aLon - bLon) * r);
+  return Math.acos(Math.min(1, Math.max(-1, cos))) / r;
+}
+
+const shownIds = (entities) => new Set(
+  entities.filter((entity) => entity.show !== false).map((entity) => entity.id),
+);
+
+test('no station on the far side of the planet is drawn, at any camera bearing', async () => {
+  const camera = stubCamera({ lat: 45, lon: -30 });
+  const { entities, layer, byId } = await renderReport(GLOBAL_GRID, { camera });
+
+  const atlantic = shownIds(entities);
+  assert.ok(atlantic.size > 0, 'the near side is still drawn');
+  for (const station of GLOBAL_GRID) {
+    const shown = atlantic.has(`marine-buoy:${station.station}`);
+    const angle = angleDeg(45, -30, station.lat, station.lon);
+    // The plan's criterion, and it is generous: the true horizon at this
+    // altitude closes near 70 deg, so anything past 90 is far-side by any
+    // reading of the word.
+    if (shown) assert.ok(angle < 90, `${station.station} is ${angle.toFixed(0)} deg away`);
+    if (angle > 100) assert.equal(shown, false, `${station.station} is behind the limb`);
+  }
+  assert.equal(layer.getStats().visible, atlantic.size);
+  assert.equal(layer.getStats().culled, GLOBAL_GRID.length - atlantic.size);
+
+  // Rotate to the antipode and count again: the two hemispheres share nothing.
+  camera.moveTo({ lat: -45, lon: 150 });
+  const antipode = shownIds(entities);
+  assert.ok(antipode.size > 0, 'the other side is drawn in its turn');
+  for (const id of antipode) assert.equal(atlantic.has(id), false, `${id} cannot be in both`);
+  assert.equal(layer.getStats().visible, antipode.size);
+
+  // And the mark that was already correct did not move: a hidden station keeps
+  // its stem, it does not lose it. One entity, one visibility, both marks.
+  const hidden = [...byId.values()].find((entity) => entity.show === false && entity.polyline);
+  assert.ok(hidden, 'a culled station still carries the stem it is not drawing');
+});
+
+test('a station outside the frame is not drawn, even in front of the limb', async () => {
+  // Looking at the Bay of Biscay, from close enough that most of the Atlantic
+  // grid is still in front of the limb but well off screen.
+  const camera = stubCamera({
+    lat: 45,
+    lon: -10,
+    altM: 2_000_000,
+    view: { south: 40, west: -20, north: 50, east: 0 },
+  });
+  const stations = [
+    { station: 'IN', lat: 45, lon: -10, waveHeightM: 2 },
+    // Inside the pad — kept, so the next camera step does not pop it in.
+    { station: 'PAD', lat: 51, lon: -10, waveHeightM: 2 },
+    // Out of frame, but in front of the limb: the frame is what culls it.
+    { station: 'OUT', lat: 30, lon: -10, waveHeightM: 2 },
+  ].map((row) => ({ ...row, observedAt: Date.UTC(2026, 8, 3, 11, 0) }));
+
+  const { byId } = await renderReport(stations, { camera });
+  assert.equal(byId.get('marine-buoy:IN').show, true);
+  assert.equal(byId.get('marine-buoy:PAD').show, true, 'the pad is a real margin');
+  assert.equal(byId.get('marine-buoy:OUT').show, false, 'in front of the limb, off screen');
+});
+
+test('the cards are picked from the stations that survived the cull', async () => {
+  const overlayHost = recordingOverlayHost();
+  const camera = stubCamera({ lat: 45, lon: -30 });
+  const { entities } = await renderReport(GLOBAL_GRID, { camera, overlayHost });
+
+  const cardIds = new Set(overlayHost.last().map((entry) => `marine-buoy:${entry.id}`));
+  assert.ok(cardIds.size > 0, 'the near side gets cards');
+  const shown = shownIds(entities);
+  for (const id of cardIds) {
+    assert.ok(shown.has(id), `${id} has a card, so it must have a dot`);
+  }
+
+  // Turning the globe re-picks them. Publishing only happens when some
+  // station actually crossed, so a still camera costs nothing.
+  const before = overlayHost.published.length;
+  camera.moveTo({ lat: -45, lon: 150 });
+  assert.equal(overlayHost.published.length, before + 1, 'the crossing republished');
+  const after = overlayHost.published.length;
+  camera.moveTo({ lat: -45, lon: 150 });
+  assert.equal(overlayHost.published.length, after, 'an unchanged set is not republished');
+
+  const rotated = new Set(overlayHost.last().map((entry) => `marine-buoy:${entry.id}`));
+  for (const id of rotated) assert.equal(cardIds.has(`${id}`), false);
+});
+
+test('with no camera to ask, everything is drawn rather than nothing', async () => {
+  const { entities, layer } = await renderReport(GLOBAL_GRID);
+  assert.equal(shownIds(entities).size, GLOBAL_GRID.length);
+  assert.equal(layer.getStats().culled, 0);
+});
+
+// The datum the AIS layer already uses. A buoy on the ellipsoid and a ship on
+// the geoid, in the same water, would sit up to a hundred metres apart.
+test('a station sits on the sea surface, and its stem stands on it', async () => {
+  const { byId } = await renderReport(
+    [{ station: 'N', lat: 45, lon: -30, waveHeightM: 2, observedAt: 0 }],
+    { geoid: { ensureReady: async () => {}, heightAt: () => 42 } },
+  );
+  const now = Cesium.JulianDate.now();
+  const entity = byId.get('marine-buoy:N');
+  const dot = Cesium.Cartographic.fromCartesian(entity.position.getValue(now));
+  assert.ok(Math.abs(dot.height - 42) < 0.5, 'the dot is on the geoid, not the ellipsoid');
+
+  const stem = entity.polyline.positions.getValue(now);
+  const base = Cesium.Cartographic.fromCartesian(stem[0]).height;
+  const top = Cesium.Cartographic.fromCartesian(stem[1]).height;
+  assert.ok(Math.abs(base - 42) < 0.5, 'the stem stands on the same surface');
+  assert.ok(
+    Math.abs((top - base) - swellStemHeightM(2)) < 1,
+    'and it is still exactly as tall as the sea state says',
+  );
+});
+
+// A grid that will not load must cost the datum, never the layer: the stations
+// are the data, the undulation is a refinement of where they are drawn.
+test('a geoid that fails to load leaves the buoys on the ellipsoid, not off the map', async () => {
+  const { byId, layer } = await renderReport(
+    [{ station: 'N', lat: 45, lon: -30, waveHeightM: 2, observedAt: 0 }],
+    { geoid: { ensureReady: async () => { throw new Error('chunk failed'); }, heightAt: () => 42 } },
+  );
+  assert.equal(layer.getStats().error, null, 'a cold grid is not a feed error');
+  const dot = Cesium.Cartographic.fromCartesian(
+    byId.get('marine-buoy:N').position.getValue(Cesium.JulianDate.now()),
+  );
+  assert.ok(Math.abs(dot.height) < 0.5, 'h = 0 is the honest fallback');
+});
+
+// The shared global from Phase 1: this layer is the twelfth claimant, and a
+// claim that outlives its listener is the bug that module exists to prevent.
+test('the camera sensitivity is claimed with the listener and released with it', async () => {
+  _resetCameraSensitivityForTest();
+  const camera = stubCamera({ lat: 45, lon: -30 });
+  const { layer, viewer } = await renderReport(GLOBAL_GRID, { camera });
+
+  assert.deepEqual(getCameraSensitivityDiagnostics().owners, ['marine-buoys']);
+  assert.equal(camera.percentageChanged, VIEWPORT_CAMERA_SENSITIVITY);
+  assert.equal(camera.listenerCount(), 1);
+
+  layer.disable(viewer);
+  assert.deepEqual(getCameraSensitivityDiagnostics().owners, []);
+  assert.equal(camera.percentageChanged, 0.5, 'the value found before the claim comes back');
+  assert.equal(camera.listenerCount(), 0);
+  _resetCameraSensitivityForTest();
 });

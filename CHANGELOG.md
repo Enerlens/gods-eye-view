@@ -199,6 +199,35 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   page réelle — constructions d'imagerie par chargement, tolérance d'erreur
   après un vol annulé, `percentageChanged` après extinction d'une couche, et le
   fond dégradé nommé sur la puce.
+- **Les bouées ne traversent plus le globe.** Rien n'y était animé : les
+  positions viennent d'un seul `Cartesian3.fromDegrees` par relevé, le parseur
+  est positionnellement juste, aucune propriété n'est une callback. La dérive
+  était une **asymétrie** entre les trois marques d'une même station. La
+  pastille ignorait le test de profondeur *et* n'était écrêtée nulle part — une
+  bouée du Pacifique se peignait donc à travers la planète — pendant que sa
+  propre tige, elle, était masquée par le limbe, et que sa fiche l'était déjà
+  par l'hôte de surcouche. Une pastille sans tige et sans fiche, glissant sur le
+  disque du globe quand la caméra tourne : c'était ça, la « dérive ». La
+  pastille garde `disableDepthTestDistance` — c'est la convention arrêtée deux
+  fois dans ce dépôt, chez les vols et chez les navires, parce qu'une distance
+  finie ferait clignoter les contacts sur le maillage photoréaliste et ne
+  servirait à rien quand les tuiles 3D Google possèdent la planète. C'est le
+  **découpage** qui manquait : l'occulteur ellipsoïdal partagé retire la face
+  cachée, et le cadre de la caméra retire le reste. Les 879 stations du relevé
+  du 2026-09-03 tombent à 816 vues de l'Atlantique nord à 14 000 km, et à 199
+  au-dessus du golfe du Mexique. Mesuré : la plus lointaine dessinée à 71,47°,
+  l'horizon à 71,78°, la plus proche masquée à 72,12° — l'écrêtage tombe **sur**
+  le limbe.
+- **Une bouée et un navire flottent enfin sur la même mer.** `heightReference:
+  NONE` posait chaque station à la hauteur ellipsoïdale zéro, alors que
+  l'ondulation du géoïde EGM96 va de −106 à +85 m et que le calque AIS y ancre
+  déjà ses coques. Les pastilles et leurs tiges se posent sur le géoïde ; une
+  grille qui ne charge pas coûte le **repère**, jamais le calque.
+- Nouveau harnais : `npm run qa:marine-buoys` compte, il ne regarde pas. Face
+  cachée depuis l'Atlantique nord puis depuis l'antipode, écrêtage au limbe à
+  la fraction de degré, stations hors cadre, accord entre le nombre publié et
+  le nombre dessiné, et la hauteur des stations dans la plage EGM96 — 8/8 sur
+  page réelle.
 
 ## [Unreleased] — 2026-09-02
 
