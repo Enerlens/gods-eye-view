@@ -28,17 +28,26 @@ import {
   DELINQUANCE_COMMUNE_SLUGS,
   DELINQUANCE_COMPLEMENT_RULE,
   DELINQUANCE_DEPARTEMENT_SLUGS,
+  DELINQUANCE_DOCUMENTATION_SHORT,
   DELINQUANCE_EDITION_FLOOR,
+  DELINQUANCE_ENREGISTREE_SHORT,
   DELINQUANCE_INDICATORS,
+  DELINQUANCE_INDICATOR_NOTES,
   DELINQUANCE_LICENCE,
+  DELINQUANCE_MIS_EN_CAUSE_SHORT,
   DELINQUANCE_MAX_PARTS,
   DELINQUANCE_MAX_RING_VERTICES,
   DELINQUANCE_PLAINTE_RULE,
+  DELINQUANCE_PLAINTE_SHORT,
   DELINQUANCE_SUPPRESSION_RULE,
+  DELINQUANCE_SUPPRESSION_SHORT,
+  DELINQUANCE_TOTAL_AFD_SHORT,
+  DELINQUANCE_TOTAL_AUTHORSHIP_SHORT,
   DELINQUANCE_TOTAL_COMMUNE_SLUGS,
   DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS,
   DELINQUANCE_TOTAL_EXCLUDED,
   DELINQUANCE_TOTAL_SLUG,
+  DELINQUANCE_TOTAL_UNITS_SHORT,
   DELINQUANCE_YEAR_FLOOR,
   DELINQUANCE_ZERO_RULE,
   aggregateDelinquanceCommuneTotal,
@@ -47,6 +56,7 @@ import {
   decimateCommuneRing,
   delinquanceCellState,
   delinquanceContoursUrl,
+  delinquanceCountNoun,
   delinquanceIndicatorNote,
   delinquanceRateUnit,
   indicatorForLabel,
@@ -393,6 +403,68 @@ test('the indicators that mean something other than they look carry the warning'
   // A slug with nothing special to say gets nothing, not a filler line.
   assert.equal(delinquanceIndicatorNote('vols-armes'), null);
   assert.equal(delinquanceIndicatorNote(null), null);
+});
+
+test('THE COMPACT REGISTER SAYS THE SAME THING IN ONE LINE', () => {
+  // A card carries the compact register by default and the verbatim one on
+  // request. The property is that compression never drops a claim: every slug
+  // that warrants a warning warrants it in both, and every compact line fits
+  // the 60 characters the selected card draws before it wraps.
+  for (const slug of Object.keys(DELINQUANCE_INDICATOR_NOTES)) {
+    const short = delinquanceIndicatorNote(slug, { short: true });
+    assert.ok(short, `${slug} has a long note and must have a short one`);
+    assert.ok(short.length <= 60, `${slug} short note is ${short.length} characters: ${short}`);
+    assert.ok(short.length * 2 < delinquanceIndicatorNote(slug).length, `${slug} is not compressed`);
+  }
+  assert.equal(delinquanceIndicatorNote('vols-armes', { short: true }), null);
+  // Each boilerplate line keeps the token its long form was load-bearing for.
+  assert.match(DELINQUANCE_ENREGISTREE_SHORT, /Délinquance ENREGISTRÉE/);
+  assert.match(DELINQUANCE_MIS_EN_CAUSE_SHORT, /Délinquance ENREGISTRÉE/);
+  assert.match(DELINQUANCE_MIS_EN_CAUSE_SHORT, /mis en cause/);
+  // The publisher's own two numbers survive: 12 % of victims of sexual violence
+  // outside the household report it, against 74 % of burglary victims.
+  assert.match(DELINQUANCE_PLAINTE_SHORT, /12 %/);
+  assert.match(DELINQUANCE_PLAINTE_SHORT, /74 %/);
+  // The suppression rule's claim: a THREE-YEAR condition, so a withheld cell is
+  // unknown — never zero, never « small ».
+  assert.match(DELINQUANCE_SUPPRESSION_SHORT, /3 ans/);
+  assert.match(DELINQUANCE_SUPPRESSION_SHORT, /ni zéro/);
+  assert.equal(/entre 1 et 5/i.test(DELINQUANCE_SUPPRESSION_SHORT), false);
+  assert.match(DELINQUANCE_DOCUMENTATION_SHORT, /SSMSI, juillet 2026/);
+  // The computed total's own three claims: authorship first, because it is the
+  // one number here the SSMSI does not publish.
+  assert.match(DELINQUANCE_TOTAL_AUTHORSHIP_SHORT, /CALCULÉ/);
+  assert.match(DELINQUANCE_TOTAL_AUTHORSHIP_SHORT, /God’s Eye View/);
+  assert.match(DELINQUANCE_TOTAL_AUTHORSHIP_SHORT, /SSMSI/);
+  assert.match(DELINQUANCE_TOTAL_UNITS_SHORT, /Unités mélangées/);
+  assert.match(DELINQUANCE_TOTAL_AFD_SHORT, /AFD/);
+  for (const line of [
+    DELINQUANCE_ENREGISTREE_SHORT, DELINQUANCE_MIS_EN_CAUSE_SHORT,
+    DELINQUANCE_PLAINTE_SHORT, DELINQUANCE_SUPPRESSION_SHORT, DELINQUANCE_DOCUMENTATION_SHORT,
+    DELINQUANCE_TOTAL_AUTHORSHIP_SHORT, DELINQUANCE_TOTAL_UNITS_SHORT, DELINQUANCE_TOTAL_AFD_SHORT,
+  ]) assert.ok(line.length <= 60, `over budget (${line.length}): ${line}`);
+});
+
+test('a rate names what it counts, per indicator and per count', () => {
+  // « 6,22 pour 1 000 habitants » answers nothing on its own. The register
+  // counts each indicator in its own unit and four of the five are not facts.
+  assert.equal(delinquanceCountNoun('escroqueries', 2597), 'victimes');
+  assert.equal(delinquanceCountNoun('cambriolages', 843), 'infractions');
+  assert.equal(delinquanceCountNoun('vols-vehicules', 512), 'véhicules');
+  assert.equal(delinquanceCountNoun('usage-stupefiants', 1204), 'mis en cause');
+  assert.equal(delinquanceCountNoun('vols-sans-violence', 12), 'victimes entendues');
+  assert.equal(delinquanceCountNoun('escroqueries', 1), 'victime');
+  assert.equal(delinquanceCountNoun('vols-sans-violence', 1), 'victime entendue');
+  // Every indicator of the catalogue has one, agreed both ways.
+  for (const entry of DELINQUANCE_INDICATORS) {
+    for (const count of [0, 1, 2, 4210]) {
+      const noun = delinquanceCountNoun(entry.slug, count);
+      assert.ok(noun && !/undefined/.test(noun), `${entry.slug} (${entry.unite}) has no noun`);
+    }
+  }
+  // An unknown slug falls back to the generic noun rather than to nothing.
+  assert.equal(delinquanceCountNoun('nope', 3), 'faits');
+  assert.equal(delinquanceCountNoun(null, 1), 'fait');
 });
 
 test('the chips are derived from the data, not chosen by hand', () => {

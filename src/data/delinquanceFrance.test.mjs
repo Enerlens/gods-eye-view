@@ -30,6 +30,7 @@ import delinquanceFranceLayer, {
   DELINQUANCE_RAMP,
   DELINQUANCE_SUPPRESSED_COLOR,
   DELINQUANCE_ZERO_COLOR,
+  METHODO_CHIP_ID,
   buildDelinquanceCommuneLabel,
   buildDelinquanceCommuneRecords,
   buildDelinquanceDepartementLabel,
@@ -39,8 +40,10 @@ import delinquanceFranceLayer, {
   delinquanceCaveat,
   delinquanceFill,
   delinquanceRegimeFor,
+  delinquanceValueLine,
   delinquanceViewBox,
   delinquanceViewSpanDeg,
+  formatDelinquanceCount,
   formatDelinquanceRate,
   selectDelinquanceLabelCohort,
   _clearDelinquanceSelectionForTest,
@@ -57,6 +60,7 @@ import {
   DELINQUANCE_CELL_LABELS,
   DELINQUANCE_COMMUNE_CELL_SLUGS,
   DELINQUANCE_COMMUNE_SLUGS,
+  DELINQUANCE_PLAINTE_RULE,
   DELINQUANCE_SUPPRESSION_RULE,
   DELINQUANCE_TOTAL_COMMUNE_SLUGS,
   DELINQUANCE_TOTAL_SLUG,
@@ -276,7 +280,7 @@ test('an indicator with no commune map yields no records rather than an empty ma
   assert.deepEqual(buildDelinquanceCommuneRecords({ packs: null, indicator: 'cambriolages' }).records, []);
 });
 
-test('a withheld commune’s card quotes the rule and prints no value for the cell', () => {
+test('a withheld commune’s card states the rule, and quotes it in méthodo', () => {
   const { records } = buildDelinquanceCommuneRecords({ packs: [PACK_2B], indicator: 'cambriolages' });
   const withheld = records.find((row) => row.code === '2B242');
   assert.ok(withheld);
@@ -284,16 +288,24 @@ test('a withheld commune’s card quotes the rule and prints no value for the ce
 
   assert.match(card, /Poggio-Mezzana/);
   assert.match(card, new RegExp(DELINQUANCE_CELL_LABELS.suppressed.replace(/[-—]/g, '.')));
-  // The publisher's own sentence, word for word. The paraphrase this card used
+  // The compact card states the rule's CLAIM — a three-year condition, so a
+  // withheld cell is unknown rather than small. The paraphrase this card used
   // to print — « entre 1 et 5 faits » — is refuted by the register itself:
   // 4 735 of the 251 145 withheld 2025 cells published more than 5 facts in
-  // 2023 or 2024.
-  assert.match(card, /plus de 5 faits ont été enregistrés pendant 3 années successives/);
-  assert.match(card, /Le critère porte sur TROIS ANNÉES/);
+  // 2023 or 2024, so nothing may ever suggest a ceiling on the displayed year.
+  assert.match(card, /3 ans de suite/);
+  assert.match(card, /ni zéro, ni « peu »/);
   assert.equal(/entre 1 et 5 faits/i.test(card), false, 'the false gloss must be gone');
-  // No rate, no count, no "0" presented as this commune's value.
-  assert.equal(/\d+,\d+ pour 1 000 logements ·/.test(card), false, `"${card}" must quote no rate`);
-  assert.equal(/Aucun fait/.test(card), false, 'withheld is not "no fact recorded"');
+  // And `méthodo` puts the publisher's own sentence back, word for word.
+  const quoted = norm(buildDelinquanceCommuneLabel(withheld, { methodo: true }));
+  assert.match(quoted, /plus de 5 faits ont été enregistrés pendant 3 années successives/);
+  assert.match(quoted, /Le critère porte sur TROIS ANNÉES/);
+  assert.equal(/entre 1 et 5 faits/i.test(quoted), false, 'the false gloss must be gone');
+  // No rate, no count, no "0" presented as this commune's value, in either.
+  for (const text of [card, quoted]) {
+    assert.equal(/\d+,\d+ pour 1 000 logements ·/.test(text), false, `"${text}" must quote no rate`);
+    assert.equal(/Aucun fait/.test(text), false, 'withheld is not "no fact recorded"');
+  }
 });
 
 test('the departmental mean is labelled as the département’s, never as the commune’s', () => {
@@ -303,8 +315,12 @@ test('the departmental mean is labelled as the département’s, never as the co
   const { records } = buildDelinquanceCommuneRecords({ packs: [PACK_2B], indicator: 'cambriolages' });
   const withheld = records.find((row) => row.code === '2B242');
   const card = norm(buildDelinquanceCommuneLabel(withheld));
-  assert.match(card, /moyenne parmi les communes du département sous secret statistique/);
-  assert.match(card, /pas la valeur de cette commune/);
+  // Compact: whose average it is, and whose it is not, on the same line as the
+  // number — a reader must never meet that rate alone.
+  assert.match(card, /Repère : [\d,]+ pour 1 000 — moyenne dép\., pas cette commune/);
+  const quoted = norm(buildDelinquanceCommuneLabel(withheld, { methodo: true }));
+  assert.match(quoted, /moyenne parmi les communes du département sous secret statistique/);
+  assert.match(quoted, /pas la valeur de cette commune/);
   // And it never becomes a fill: the record's bin stays -1 whatever the mean is.
   assert.equal(withheld.bin, -1);
   assert.equal(delinquanceFill(withheld.state, withheld.bin).css, DELINQUANCE_SUPPRESSED_COLOR);
@@ -325,7 +341,8 @@ test('the departmental mean is labelled as the département’s, never as the co
   const { records: rows } = buildDelinquanceCommuneRecords({ packs: [marseille], indicator: 'vols-armes' });
   assert.equal(rows[0].state, CELL_SUPPRESSED);
   assert.equal(rows[0].mean.variants, 2);
-  assert.match(norm(buildDelinquanceCommuneLabel(rows[0])), /deux moyennes coexistent/);
+  assert.match(norm(buildDelinquanceCommuneLabel(rows[0])), /Deux moyennes coexistent/);
+  assert.match(norm(buildDelinquanceCommuneLabel(rows[0], { methodo: true })), /deux moyennes coexistent/);
 });
 
 test('a published zero’s card is a claim, and reads nothing like a refusal', () => {
@@ -335,11 +352,16 @@ test('a published zero’s card is a claim, and reads nothing like a refusal', (
   const card = norm(buildDelinquanceCommuneLabel(zero));
   assert.match(card, /Aucun fait enregistré/);
   assert.match(card, /0 fait, publié comme tel/);
-  // The other half of the SSMSI rule, quoted: a zero is only published when the
-  // absence held for three successive years.
-  assert.match(card, /l’absence de faits enregistrés lorsqu’elle se reproduit sur 3 années successives/);
+  // The other half of the SSMSI rule: a zero is only published when the absence
+  // held for three successive years — stated compact, quoted in méthodo.
+  assert.match(card, /0 fait, publié comme tel\), 3 ans/);
+  assert.match(
+    norm(buildDelinquanceCommuneLabel(zero, { methodo: true })),
+    /l’absence de faits enregistrés lorsqu’elle se reproduit sur 3 années successives/,
+  );
   // A zero card must not carry the suppression rule — the two must never blur.
   assert.equal(/Non diffusé/.test(card), false, `"${card}" must not read as withheld`);
+  assert.equal(/ni zéro, ni « peu »/.test(card), false, `"${card}" must not read as withheld`);
   assert.equal(card.includes(norm(DELINQUANCE_SUPPRESSION_RULE)), false);
 
   // Textually and visually distinguishable, both directions, in one comparison.
@@ -386,49 +408,124 @@ test('a commune with no inhabitants is reported, never divided', () => {
   assert.equal(/NaN|Infinity/.test(card), false, `"${card}" must contain no arithmetic wreckage`);
 });
 
-test('every card says this is RECORDED delinquency, in the publisher’s own words', () => {
+/** Every card this layer can draw for one register, compact or verbatim. */
+function everyCard(methodo) {
   const cards = [];
   for (const indicator of ['cambriolages', 'escroqueries', 'usage-stupefiants']) {
     for (const record of buildDelinquanceCommuneRecords({ packs: [PACK_2B], indicator }).records) {
-      cards.push(norm(buildDelinquanceCommuneLabel(record)));
+      cards.push(buildDelinquanceCommuneLabel(record, { methodo }));
     }
     const pack = national(indicator);
     for (const row of pack.departements.slice(0, 12)) {
-      cards.push(norm(buildDelinquanceDepartementLabel(row, { indicator, year: '2025' })));
+      cards.push(buildDelinquanceDepartementLabel(row, { indicator, year: '2025', methodo }));
     }
   }
-  assert.ok(cards.length > 20);
-  for (const card of cards) {
-    assert.match(card, /Délinquance ENREGISTRÉE/, card.slice(0, 80));
-    // The SSMSI's own two numbers, which say the caveat harder than any
-    // sentence written here: 12 % of victims of sexual violence outside the
-    // household report it, against 74 % of burglary victims.
+  return cards;
+}
+
+test('every card says this is RECORDED delinquency, in BOTH registers', () => {
+  // The compact card keeps every claim the verbose one made — this is the test
+  // that says so. What changes between the two is length; what may never change
+  // is that a reader is told what they are looking at.
+  for (const methodo of [false, true]) {
+    const cards = everyCard(methodo).map(norm);
+    assert.ok(cards.length > 20);
+    for (const card of cards) {
+      assert.match(card, /Délinquance ENREGISTRÉE/, card.slice(0, 80));
+      // The SSMSI's own two numbers, which say the caveat harder than any
+      // sentence written here: 12 % of victims of sexual violence outside the
+      // household report it, against 74 % of burglary victims. Compressed to
+      // « 12 % à 74 % », they are still the publisher's numbers.
+      assert.match(card, /12 %/);
+      assert.match(card, /74 %/);
+      assert.match(card, /SSMSI, juillet 2026/);
+    }
+    // An offence counted in `Mis en cause` says which kind of claim it is.
+    const stup = cards.find((card) => /^\S+ Usage de stupéfiants — 2025/.test(card));
+    assert.ok(stup, 'the sweep must include a Mis en cause indicator');
+    assert.match(stup, /comptée en mis en cause/);
+    assert.match(stup, /activité des services/);
+  }
+  // And the verbatim register quotes, rather than paraphrasing.
+  for (const card of everyCard(true).map(norm)) {
     assert.match(card, /12 % des victimes de violences sexuelles hors ménage/);
     assert.match(card, /74 % pour les victimes de cambriolages/);
-    assert.match(card, /SSMSI, juillet 2026/);
   }
-  // An offence counted in `Mis en cause` says which kind of claim it is.
-  const stup = cards.find((card) => /^\S+ Usage de stupéfiants — 2025/.test(card));
-  assert.ok(stup, 'the sweep must include a Mis en cause indicator');
-  assert.match(stup, /comptée en mis en cause/);
-  assert.match(stup, /activité des services/);
+});
+
+test('THE DEFAULT CARD IS COMPACT, AND NO LINE OF IT WRAPS', () => {
+  // The failure this test exists for is not a crash: it is a Dordogne card of
+  // 858 characters, 65 % of it quotation, that the overlay folded into some 25
+  // drawn lines around four numbers. A warning nobody finishes reading is not
+  // a warning. Budget: 60 characters, which is what the selected card fits.
+  for (const card of everyCard(false)) {
+    const lines = card.split('\n');
+    assert.ok(lines.length <= 12, `a compact card is at most 12 lines, got ${lines.length}:\n${card}`);
+    for (const line of lines) {
+      assert.ok(line.length <= 60, `compact line over budget (${line.length}): ${line}`);
+    }
+  }
+  // Measured, on the card in the bug report: 858 characters became 351.
+  const dordogne = national('escroqueries').departements.find((row) => row.pop > 0);
+  const compact = buildDelinquanceDepartementLabel(dordogne, { indicator: 'escroqueries', year: '2025' });
+  const verbose = buildDelinquanceDepartementLabel(dordogne, { indicator: 'escroqueries', year: '2025', methodo: true });
+  assert.ok(compact.length * 2 < verbose.length,
+    `the compact card must be less than half the verbose one (${compact.length} vs ${verbose.length})`);
+});
+
+test('the headline number says WHAT it counts — « 6,22 » alone answers nothing', () => {
+  // The register counts each indicator in its own unit and four of the five are
+  // not facts. The card used to print « 6,22 pour 1 000 habitants · 2 597
+  // faits » for every one of them, which named neither the numerator nor, for
+  // escroqueries, the right noun.
+  assert.equal(norm(formatDelinquanceCount('escroqueries', 2597)), '2 597 victimes');
+  assert.equal(norm(formatDelinquanceCount('cambriolages', 843)), '843 infractions');
+  assert.equal(norm(formatDelinquanceCount('vols-vehicules', 512)), '512 véhicules');
+  assert.equal(norm(formatDelinquanceCount('usage-stupefiants', 1204)), '1 204 mis en cause');
+  assert.equal(norm(formatDelinquanceCount('vols-sans-violence', 12)), '12 victimes entendues');
+  // Agreement, because a card that reads « 1 victimes » is a card nobody wrote.
+  assert.equal(norm(formatDelinquanceCount('escroqueries', 1)), '1 victime');
+  assert.equal(norm(formatDelinquanceCount('usage-stupefiants', 1)), '1 mis en cause');
+  // An unknown slug falls back to the generic noun rather than to nothing.
+  assert.equal(norm(formatDelinquanceCount('nope', 3)), '3 faits');
+
+  assert.equal(
+    norm(delinquanceValueLine('escroqueries', 2597, 6.22)),
+    '2 597 victimes, soit 6,22 pour 1 000 habitants',
+  );
+  assert.equal(
+    norm(delinquanceValueLine('cambriolages', 843, 12.4)),
+    '843 infractions, soit 12,4 pour 1 000 logements',
+  );
+  // And the line reaches the card it was written for.
+  const { records } = buildDelinquanceCommuneRecords({ packs: [PACK_75], indicator: 'cambriolages' });
+  const paris = records.find((row) => row.code === '75056');
+  assert.match(norm(buildDelinquanceCommuneLabel(paris)), /\d infractions, soit [\d,]+ pour 1 000 logements/);
 });
 
 test('the first chip is the one whose meaning is least obvious, and it says so', () => {
   // Escroqueries is the indicator with the most communes carrying a published
   // positive value (8 134 nationally on the 2025 edition), so it is what the
   // layer opens on — and the PDF says its victims are counted where they LIVE.
+  // Compact: the claim — residence, not scene — in one line.
   const caveat = norm(delinquanceCaveat('escroqueries'));
-  assert.match(caveat, /LIEU DE RÉSIDENCE/);
-  assert.match(caveat, /où habitent les victimes/);
-  assert.match(norm(delinquanceCaveat('cambriolages')), /1 000 LOGEMENTS/);
+  assert.match(caveat, /domicile de la victime, pas au lieu du fait/);
+  assert.match(norm(delinquanceCaveat('cambriolages')), /LOGEMENTS/);
+  // Verbatim: the register's own sentence, with the reason it gives.
+  const quoted = norm(delinquanceCaveat('escroqueries', { methodo: true }));
+  assert.match(quoted, /LIEU DE RÉSIDENCE/);
+  assert.match(quoted, /où habitent les victimes/);
+  assert.match(norm(delinquanceCaveat('cambriolages', { methodo: true })), /1 000 LOGEMENTS/);
   // A withheld cell adds the rule; a published one does not need it.
-  assert.equal(norm(delinquanceCaveat('cambriolages')).includes(norm(DELINQUANCE_SUPPRESSION_RULE)), false);
+  assert.equal(norm(delinquanceCaveat('cambriolages', { methodo: true }))
+    .includes(norm(DELINQUANCE_SUPPRESSION_RULE)), false);
   assert.equal(
-    norm(delinquanceCaveat('cambriolages', { state: CELL_SUPPRESSED }))
+    norm(delinquanceCaveat('cambriolages', { state: CELL_SUPPRESSED, methodo: true }))
       .includes(norm(DELINQUANCE_SUPPRESSION_RULE)),
     true,
   );
+  // And compact carries that same condition, stated rather than quoted.
+  assert.match(norm(delinquanceCaveat('cambriolages', { state: CELL_SUPPRESSED })), /3 ans de suite/);
   assert.doesNotThrow(() => delinquanceCaveat(null));
   assert.doesNotThrow(() => delinquanceCaveat('nope', { state: CELL_SUPPRESSED }));
 });
@@ -441,15 +538,20 @@ test('the row legend names the withheld state apart and never folds it into a ba
     indicator: 'cambriolages', year: '2025', regime: 'communes',
   });
   const { chips, legend } = _delinquanceRowControlsForTest();
-  // The six derived chips, led by the computed total.
-  assert.equal(chips.length, 7);
-  assert.equal(chips[0].id, 'tous');
-  assert.equal(chips.filter((chip) => chip.active).length, 1);
-  for (const chip of chips) {
+  // The six derived chips, led by the computed total — and the register switch,
+  // which is not one of them.
+  const indicators = chips.filter((chip) => chip.id !== METHODO_CHIP_ID);
+  assert.equal(indicators.length, 7);
+  assert.equal(indicators[0].id, 'tous');
+  assert.equal(indicators.filter((chip) => chip.active).length, 1);
+  for (const chip of indicators) {
     assert.ok(chip.label, 'every chip is named');
     assert.equal(/\(FR\)/.test(chip.label), false);
     assert.match(chip.title, chip.id === 'tous' ? /total calculé/ : /unité de compte/);
   }
+  // The register switch rides last, after every indicator.
+  assert.equal(chips.at(-1).id, METHODO_CHIP_ID);
+  assert.equal(chips.at(-1).active, false, 'cards open compact');
 
   const withheldRows = legend.filter((row) => row.color === DELINQUANCE_SUPPRESSED_COLOR);
   assert.equal(withheldRows.length, 1, 'the withheld state is exactly one legend row');
@@ -489,8 +591,14 @@ test('THE NATIONAL WITHHELD COUNT REACHES THE CARD AT EVERY ZOOM', () => {
     national('vols-armes').departements.find((row) => row.code === '13'),
     { indicator: 'vols-armes', year: '2025' },
   ));
-  assert.match(card, /4 des 5 communes non diffusées/);
-  assert.match(card, /1 avec une valeur publiée/);
+  assert.match(card, /5 communes : 4 non diffusées \(80 %\), 1 publiée/);
+  assert.match(
+    norm(buildDelinquanceDepartementLabel(
+      national('vols-armes').departements.find((row) => row.code === '13'),
+      { indicator: 'vols-armes', year: '2025', methodo: true },
+    )),
+    /4 des 5 communes non diffusées \(80 %\) · 1 avec une valeur publiée/,
+  );
   _clearDelinquanceSelectionForTest();
 });
 
@@ -511,7 +619,7 @@ test('selecting a commune puts one card on its own overlay source, and clearing 
   assert.equal(entry.id, withheld.id);
   assert.ok(entry.position, 'a card must be placed, never left at 0,0');
   // The card's own body carries the rule, so what is drawn is what was tested.
-  assert.match(norm(entry.details.join(' ')), /plus de 5 faits ont été enregistrés pendant 3 années/);
+  assert.match(norm(entry.details.join(' ')), /Diffusé si > 5 faits 3 ans de suite/);
 
   _clearDelinquanceSelectionForTest();
   assert.ok(host.calls.cleared.includes(DELINQUANCE_FR_OVERLAY_SOURCE_ID));
@@ -700,6 +808,95 @@ test('setParams refuses an indicator that has no commune map', () => {
   _clearDelinquanceSelectionForTest();
 });
 
+test('A COMPACT CARD LINE IS ONE CLAIM, AND REACHES THE OVERLAY ALREADY FITTING', () => {
+  // The overlay wraps every stacked card under a shared 420 px ceiling, so this
+  // is not a truncation test: it is the editorial budget. A compact line is one
+  // claim, 60 monospace characters measure ~376 px, and a compact card that
+  // stays under it is drawn exactly as it was written — no line of a default
+  // card is ever broken in the middle of a claim. What needs more room than
+  // that belongs in the verbatim register, which the overlay is free to wrap.
+  const host = recordingHost();
+  const { records } = buildDelinquanceCommuneRecords({ packs: [PACK_2B], indicator: 'cambriolages' });
+  const withheld = records.find((row) => row.state === CELL_SUPPRESSED);
+  _setDelinquanceStateForTest({
+    viewer: fakeViewer(), overlayHost: host, base: BASE, packs: [['2B', PACK_2B]],
+    national: national('cambriolages'), depMeta: [['13', { anchor: [5.4, 43.3] }]],
+    communeRecords: records, indicator: 'cambriolages', year: '2025', regime: 'communes',
+  });
+  _selectDelinquanceCommuneForTest(withheld.id);
+  _selectDelinquanceDepartementForTest('13');
+  assert.ok(host.calls.set.length >= 2, 'both selection paths must have drawn');
+  for (const call of host.calls.set) {
+    const entry = call.entries[0];
+    assert.ok(entry.title.length <= 60, 'a title is a place name, never a sentence');
+    for (const line of entry.details) {
+      assert.ok(line.length <= 60, `compact line over budget (${line.length}): ${line}`);
+    }
+  }
+  // And the verbatim register hands its quotes to the overlay WHOLE — this
+  // layer never shortens a rule to make it fit, it changes register instead.
+  _setDelinquanceStateForTest({
+    viewer: fakeViewer(), overlayHost: host, base: BASE, packs: [['2B', PACK_2B]],
+    communeRecords: records, indicator: 'cambriolages', year: '2025', regime: 'communes',
+    methodo: true,
+  });
+  _selectDelinquanceCommuneForTest(withheld.id);
+  const quoted = norm(host.calls.set.at(-1).entries[0].details.join(' '));
+  assert.match(quoted, /plus de 5 faits ont été enregistrés pendant 3 années successives/);
+  assert.match(quoted, /moyenne parmi les communes du département sous secret statistique/);
+  _clearDelinquanceSelectionForTest();
+});
+
+test('THE MÉTHODO CHIP REDRAWS THE CARD THAT IS ALREADY OPEN', () => {
+  // A reader toggles the register to check what a compact line stands for. If
+  // the open card did not change, they would have to close it and re-find the
+  // commune to find out — and the compact card would stop being defensible,
+  // because the quote it stands in for would be one they never reach.
+  const host = recordingHost();
+  const { records } = buildDelinquanceCommuneRecords({ packs: [PACK_2B], indicator: 'cambriolages' });
+  _setDelinquanceStateForTest({
+    viewer: fakeViewer(), overlayHost: host, base: BASE, packs: [['2B', PACK_2B]],
+    communeRecords: records, indicator: 'cambriolages', year: '2025', regime: 'communes',
+  });
+  const withheld = records.find((row) => row.state === CELL_SUPPRESSED);
+  _selectDelinquanceCommuneForTest(withheld.id);
+  const compact = norm(host.calls.set.at(-1).entries[0].details.join(' '));
+  assert.match(compact, /Diffusé si > 5 faits 3 ans de suite/);
+  assert.equal(/plus de 5 faits ont été enregistrés pendant 3 années/.test(compact), false);
+
+  // The chip's own descriptor is what the panel clicks, so it is what is tested.
+  const chip = _delinquanceRowControlsForTest().chips.at(-1);
+  assert.deepEqual(chip.params, { methodo: 'on' });
+  delinquanceFranceLayer.setParams(chip.params);
+  assert.equal(delinquanceFranceLayer.getParams().methodo, 'on');
+
+  const quoted = norm(host.calls.set.at(-1).entries[0].details.join(' '));
+  assert.equal(host.calls.set.length, 2, 'the same card was repainted, not a second one added');
+  assert.equal(host.calls.set.at(-1).entries[0].id, withheld.id);
+  assert.match(quoted, /plus de 5 faits ont été enregistrés pendant 3 années successives/);
+  assert.ok(quoted.length > compact.length * 2);
+
+  // And back, from the descriptor the panel now shows.
+  const off = _delinquanceRowControlsForTest().chips.at(-1);
+  assert.equal(off.active, true);
+  assert.deepEqual(off.params, { methodo: 'off' });
+  delinquanceFranceLayer.setParams(off.params);
+  assert.equal(delinquanceFranceLayer.getParams().methodo, 'off');
+  assert.equal(norm(host.calls.set.at(-1).entries[0].details.join(' ')), compact);
+
+  // Nonsense leaves the register where it was rather than falling back to one,
+  // in BOTH directions — the compact card is a default, not a fallback.
+  delinquanceFranceLayer.setParams({ methodo: 'peut-être' });
+  assert.equal(delinquanceFranceLayer.getParams().methodo, 'off');
+  delinquanceFranceLayer.setParams({ methodo: 'on' });
+  delinquanceFranceLayer.setParams({ methodo: 'peut-être' });
+  assert.equal(delinquanceFranceLayer.getParams().methodo, 'on');
+  // An indicator switch alone never disturbs it.
+  delinquanceFranceLayer.setParams({ indicator: 'escroqueries' });
+  assert.equal(delinquanceFranceLayer.getParams().methodo, 'on');
+  _clearDelinquanceSelectionForTest();
+});
+
 test('the overlay source ids are the layer’s own and do not collide', () => {
   assert.equal(DELINQUANCE_FR_OVERLAY_SOURCE_ID, 'delinquance-fr-selected');
   assert.equal(DELINQUANCE_FR_LABEL_SOURCE_ID, 'delinquance-fr-departements');
@@ -729,8 +926,10 @@ test('THE TOTAL OPENS THE LAYER, AND ITS CHIP SAYS WHOSE ARITHMETIC IT IS', () =
   assert.equal(chips[0].label, 'Tous');
   assert.match(chips[0].title, /pas publié par le SSMSI/);
   assert.match(chips[0].title, /minorant/);
-  // The register's own indicators still follow, none of them displaced.
-  assert.deepEqual(chips.slice(1).map((chip) => chip.id), CHIPS);
+  // The register's own indicators still follow, none of them displaced, and the
+  // register switch stays last.
+  assert.deepEqual(chips.slice(1, -1).map((chip) => chip.id), CHIPS);
+  assert.equal(chips.at(-1).id, METHODO_CHIP_ID);
   _clearDelinquanceSelectionForTest();
 });
 
@@ -747,29 +946,41 @@ test('a commune card under the total prints the floor, the gap, and the authorsh
   const paris = records.find((record) => record.code === '75056');
   assert.equal(paris.state, CELL_PUBLISHED);
   const copy = norm(buildDelinquanceCommuneLabel(paris));
-  // The number, in the unit it is actually in.
-  assert.match(copy, /faits, victimes et mis en cause cumulés/);
-  assert.match(copy, /pour 1 000 habitants/);
-  // Whose total it is. The SSMSI publishes eighteen indicators and no total.
-  assert.match(copy, /Total CALCULÉ par God’s Eye View, pas publié par le SSMSI/);
-  assert.match(copy, /Usage de stupéfiants \(AFD\) » n’est pas recompté/);
+  const quoted = norm(buildDelinquanceCommuneLabel(paris, { methodo: true }));
+  // The number, and — in both registers — the fact that it is a SUM and not a
+  // count of one thing. « faits » is the word this layer refuses for it.
+  assert.match(copy, /cumulés \(\d+ indicateurs\), soit [\d,]+ pour 1 000 hab\./);
+  assert.match(quoted, /faits, victimes et mis en cause cumulés/);
+  assert.match(quoted, /pour 1 000 habitants/);
+  // Whose total it is. The SSMSI publishes eighteen indicators and no total —
+  // the one claim on this card that no compression may drop.
+  assert.match(copy, /Total CALCULÉ par God’s Eye View, non publié par le SSMSI/);
+  assert.match(quoted, /Total CALCULÉ par God’s Eye View, pas publié par le SSMSI/);
+  assert.match(copy, /Usage stup\. \(AFD\) non recompté/);
+  assert.match(quoted, /Usage de stupéfiants \(AFD\) » n’est pas recompté/);
   assert.equal(/entre 1 et 5/i.test(copy), false);
 
   // A commune whose register cells are complete says so; one with a withheld
   // contributor calls its own number a floor, in as many words.
   const withheld = Number(paris.cell[3]) || 0;
-  if (withheld > 0) {
-    assert.match(copy, /MINORANT/);
-    assert.match(copy, new RegExp(`${withheld} des ${DELINQUANCE_TOTAL_COMMUNE_SLUGS.length} indicateurs`));
-  } else {
-    assert.match(copy, /Total complet/);
+  for (const text of [copy, quoted]) {
+    if (withheld > 0) {
+      assert.match(text, /MINORANT/);
+      assert.match(text, new RegExp(`${withheld} des ${DELINQUANCE_TOTAL_COMMUNE_SLUGS.length} indicateurs`));
+    } else {
+      assert.match(text, /Total complet/);
+    }
   }
 
   // And a commune where nothing is published is not drawn as a quiet one.
   const dark = records.find((record) => record.state === CELL_SUPPRESSED);
   if (dark) {
     const darkCopy = norm(buildDelinquanceCommuneLabel(dark));
-    assert.match(darkCopy, /ni zéro ni petit, il est inconnu|rien à totaliser ici/);
+    assert.match(darkCopy, /total inconnu|Rien à totaliser/);
+    assert.match(
+      norm(buildDelinquanceCommuneLabel(dark, { methodo: true })),
+      /ni zéro ni petit, il est inconnu|rien à totaliser ici/,
+    );
     assert.equal(dark.bin, -1, 'a withheld total never reaches the ramp');
     assert.equal(delinquanceFill(dark.state, dark.bin).css, DELINQUANCE_SUPPRESSED_COLOR);
   }
@@ -798,9 +1009,13 @@ test('a département card under the total says the total is exact THERE and not 
   const copy = norm(buildDelinquanceDepartementLabel(row, {
     indicator: DELINQUANCE_TOTAL_SLUG, year: '2025',
   }));
-  assert.match(copy, /Total exact à cette échelle/);
-  assert.match(copy, /C’est en zoomant sur les communes qu’il apparaît/);
-  assert.match(copy, /Total CALCULÉ par God’s Eye View/);
+  const quoted = norm(buildDelinquanceDepartementLabel(row, {
+    indicator: DELINQUANCE_TOTAL_SLUG, year: '2025', methodo: true,
+  }));
+  assert.match(copy, /Total exact ici : pas de secret statistique au département/);
+  assert.match(quoted, /Total exact à cette échelle/);
+  assert.match(quoted, /C’est en zoomant sur les communes qu’il apparaît/);
+  for (const text of [copy, quoted]) assert.match(text, /Total CALCULÉ par God’s Eye View/);
   // The commune census that travels with it is the TOTAL's census, not an
   // indicator's: it counts communes with no publishable total at all.
   assert.equal(row.communes.suppressed, BASE.censusByDepartement['13'].tous[CELL_SUPPRESSED]);

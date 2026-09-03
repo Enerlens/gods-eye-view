@@ -18,15 +18,24 @@ import {
   DELINQUANCE_COMMUNE_CELL_SLUGS,
   DELINQUANCE_COMMUNE_SLUGS,
   DELINQUANCE_COMPLEMENT_RULE,
+  DELINQUANCE_DOCUMENTATION_SHORT,
   DELINQUANCE_DOCUMENTATION_TITLE,
+  DELINQUANCE_ENREGISTREE_SHORT,
+  DELINQUANCE_MIS_EN_CAUSE_SHORT,
   DELINQUANCE_PLAINTE_RULE,
+  DELINQUANCE_PLAINTE_SHORT,
   DELINQUANCE_SOURCE,
   DELINQUANCE_SUPPRESSION_RULE,
+  DELINQUANCE_SUPPRESSION_SHORT,
+  DELINQUANCE_TOTAL_AFD_SHORT,
+  DELINQUANCE_TOTAL_AUTHORSHIP_SHORT,
   DELINQUANCE_TOTAL_COMMUNE_SLUGS,
   DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS,
   DELINQUANCE_TOTAL_EXCLUDED,
   DELINQUANCE_TOTAL_SLUG,
+  DELINQUANCE_TOTAL_UNITS_SHORT,
   DELINQUANCE_ZERO_RULE,
+  delinquanceCountNoun,
   delinquanceIndicatorNote,
   delinquanceRateUnit,
   indicatorForSlug,
@@ -264,6 +273,13 @@ const SUPPRESSED_ALPHA = 0.52;
 /** A commune with a contour but no row at all in this edition. */
 export const DELINQUANCE_MISSING_COLOR = '#2b2f36';
 
+/**
+ * The one chip in this layer's row that is not an indicator. Its id lives in
+ * the same namespace as the indicator slugs, so it is declared here where the
+ * collision would be visible.
+ */
+export const METHODO_CHIP_ID = 'methodo';
+
 const OUTLINE_COLOR = '#0b0e12';
 const OUTLINE_ALPHA = 0.35;
 const OUTLINE_WIDTH_PX = 1.0;
@@ -289,10 +305,17 @@ const TOTAL_STATE_BLURBS = Object.freeze({
     + 'il n’y a pas de total honnête à afficher. Ce n’est ni zéro, ni « peu » — c’est inconnu.',
 });
 
-/** One-line explanations behind each legend swatch. */
+/**
+ * One-line explanations behind each legend swatch.
+ *
+ * These are hover copy on the layer row, so they are the surface with no length
+ * budget at all — which is why the reporting-rate rule lives here in full as
+ * well as behind the `méthodo` chip. Whatever a card compresses, the panel
+ * still says word for word.
+ */
 const STATE_BLURBS = Object.freeze({
   published: 'Taux publié par le SSMSI. C’est de la délinquance ENREGISTRÉE : ce que la police et '
-    + 'la gendarmerie ont consigné, pas ce qui s’est produit.',
+    + `la gendarmerie ont consigné, pas ce qui s’est produit. ${DELINQUANCE_PLAINTE_RULE}`,
   zero: `Aucun fait enregistré. ${DELINQUANCE_ZERO_RULE} — c’est une valeur publiée, pas un trou.`,
   // The rule, word for word, because the paraphrase this row used to carry
   // ("entre 1 et 5 faits") is refuted by the register itself: 4 735 of the
@@ -322,6 +345,11 @@ let _clickHandler = null;
 let _cameraChangedAttached = false;
 let _cameraDebounceTimer = null;
 let _selectedId = null;
+/**
+ * `méthodo` chip: cards quote the SSMSI's rules in full instead of stating
+ * their claim in one line. Off by default — see the card-copy section.
+ */
+let _methodo = false;
 let _count = 0;
 let _lastUpdate = null;
 let _loading = false;
@@ -378,6 +406,58 @@ export function formatDelinquanceRate(rate) {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals,
   });
+}
+
+/**
+ * A count with the noun it is counted in — `2 597 victimes`, not `2 597 faits`.
+ *
+ * The register counts each indicator in its own unit, and four of the five are
+ * not facts: escroqueries are victims, stupéfiants are people stopped, vehicle
+ * theft is vehicles. Printing `faits` for all of them was both a paraphrase
+ * and the reason a card's headline number could not be read at all.
+ *
+ * @param {string} slug
+ * @param {number} count
+ * @returns {string}
+ */
+export function formatDelinquanceCount(slug, count) {
+  return `${fr(count)} ${delinquanceCountNoun(slug, count)}`;
+}
+
+/**
+ * The measured value of one cell, as one line.
+ *
+ * Count FIRST, rate second, joined by « soit »: the rate alone is the thing no
+ * reader can parse — 6,22 of what, out of what — and naming the numerator once
+ * makes the denominator that follows do its job.
+ *
+ * @param {string} slug
+ * @param {number} count
+ * @param {?number} rate
+ * @returns {string}
+ */
+export function delinquanceValueLine(slug, count, rate) {
+  return `${formatDelinquanceCount(slug, count)}, soit ${formatDelinquanceRate(rate)} `
+    + `pour ${delinquanceRateUnit(slug)}`;
+}
+
+/**
+ * The same line for the computed total, which has no noun of its own.
+ *
+ * Its numerator mixes victims, offences, vehicles and people stopped, so it
+ * cannot borrow `delinquanceCountNoun` — « faits » is the word this layer
+ * refuses for it. `cumulés` plus the number of contributors says what the
+ * number IS; the denominator stays spelled out, because a total recomputed on
+ * the resident population is the one rate here that no reader can guess.
+ *
+ * @param {number} count
+ * @param {?number} rate
+ * @param {number} contributors Indicators summed at this grain.
+ * @returns {string}
+ */
+export function delinquanceTotalValueLine(count, rate, contributors) {
+  return `${fr(count)} cumulés (${contributors} indicateurs), `
+    + `soit ${formatDelinquanceRate(rate)} pour 1 000 hab.`;
 }
 
 // --- Colour ----------------------------------------------------------------
@@ -479,6 +559,29 @@ export function delinquanceViewBox(viewer, padFraction = 0.08) {
 }
 
 // --- Card copy -------------------------------------------------------------
+//
+// TWO REGISTERS, one card. Everything this layer must say, it says in both —
+// the difference is length, never content.
+//
+//   compact (default)  one line per claim, ≤ 60 characters, so nothing wraps
+//   méthodo (chip on)  the SSMSI's own sentences, word for word, wrapped by
+//                      the overlay's own shared 420 px ceiling
+//
+// The verbose card came first and was right about WHAT to say; it was wrong
+// about how much of it a reader would finish. Measured on the 2025 edition, a
+// Dordogne card ran 858 characters — 558 of them quotation, identical on every
+// card of that indicator — around four numbers, which the overlay now has to
+// wrap into a column of some twenty-five lines. The compact register keeps
+// every claim the long one made (recorded ≠ committed, the 12 %/74 % reporting
+// spread, the three-year suppression condition, the residence-not-scene note,
+// and for the computed total its authorship) and drops the wording;
+// the chip puts the wording back for the reader who wants to check it, and
+// the row legend's blurbs carry the full quotes at all times.
+//
+// The one thing the compact register ADDS is the unit: `2 597 victimes, soit
+// 6,22 pour 1 000 habitants`. The old card printed « 6,22 pour 1 000
+// habitants · 2 597 faits », which named neither what was counted nor, for
+// four indicators of five, the right noun.
 
 /**
  * The caveat that rides on every card this layer draws.
@@ -488,30 +591,54 @@ export function delinquanceViewBox(viewer, padFraction = 0.08) {
  * stopped, which is a different kind of claim from a victim's report, and the
  * card says which one the reader is looking at.
  *
- * It QUOTES rather than paraphrases, and that is a correction, not a style
- * choice. This function used to tell a reader that a withheld cell held
- * « entre 1 et 5 faits ». Measured on 2026-09-02 over the real base, that is
- * false for **4 735 of the 251 145 suppressed 2025 cells**, whose own
+ * In `méthodo` it QUOTES rather than paraphrases, and that is a correction,
+ * not a style choice. This function used to tell a reader that a withheld cell
+ * held « entre 1 et 5 faits ». Measured on 2026-09-02 over the real base, that
+ * is false for **4 735 of the 251 145 suppressed 2025 cells**, whose own
  * (commune, indicateur) series published MORE than 5 facts in 2023 or 2024 —
  * Cessy (01071) published 16 `Vols de véhicule` in 2023 and is withheld now.
  * The rule is a THREE-YEAR condition on the series, not a ceiling on the
  * displayed year, so the card carries {@link DELINQUANCE_SUPPRESSION_RULE}
- * word for word and lets the reader apply it.
+ * word for word and lets the reader apply it. The compact register states that
+ * same condition — `Diffusé si > 5 faits 3 ans de suite — ni zéro, ni « peu »`
+ * — because the claim, not the sentence, is what may never be dropped.
  *
  * The reporting-rate line is the publisher's own too, with the publisher's own
  * two numbers: 12 % of victims of sexual violence outside the household report
  * it, against 74 % of burglary victims. Two indicators of this same layer are
  * therefore not on a comparable scale, and no sentence written here would say
- * that as unarguably as the SSMSI saying it about itself.
+ * that as unarguably as the SSMSI saying it about itself — so both registers
+ * carry those two numbers.
  *
  * @param {string} slug
- * @param {{state?:?number}} [options] `CELL_SUPPRESSED` adds the rule verbatim.
+ * @param {{state?:?number, methodo?:boolean}} [options] `CELL_SUPPRESSED` adds
+ *   the suppression rule; `methodo` selects the verbatim register.
  * @returns {string} One or more lines; the caller splits on `\n`.
  */
-export function delinquanceCaveat(slug, { state = null } = {}) {
+export function delinquanceCaveat(slug, { state = null, methodo = _methodo } = {}) {
   const meta = indicatorForSlug(slug);
+  const misEnCause = meta?.unite === 'Mis en cause';
+  const total = slug === DELINQUANCE_TOTAL_SLUG;
   const lines = [];
-  if (slug === DELINQUANCE_TOTAL_SLUG) {
+  if (!methodo) {
+    // The computed total's three claims — authorship, mixed units, no double
+    // count — are three sentences in the verbatim register and three lines
+    // here. None of them may be dropped: the first one is the only thing that
+    // tells a reader this number is GEV's arithmetic and not the register's.
+    if (total) {
+      lines.push(DELINQUANCE_TOTAL_AUTHORSHIP_SHORT);
+      lines.push(DELINQUANCE_TOTAL_UNITS_SHORT);
+      lines.push(DELINQUANCE_TOTAL_AFD_SHORT);
+    } else {
+      lines.push(misEnCause ? DELINQUANCE_MIS_EN_CAUSE_SHORT : DELINQUANCE_ENREGISTREE_SHORT);
+    }
+    const note = delinquanceIndicatorNote(slug, { short: true });
+    if (note) lines.push(note);
+    if (state === CELL_SUPPRESSED) lines.push(DELINQUANCE_SUPPRESSION_SHORT);
+    lines.push(`${DELINQUANCE_PLAINTE_SHORT} · ${DELINQUANCE_DOCUMENTATION_SHORT}`);
+    return lines.join('\n');
+  }
+  if (total) {
     // The total is the one indicator on this layer that the SSMSI does not
     // publish, so its first line is not about crime — it is about authorship.
     lines.push('⚠ Total CALCULÉ par God’s Eye View, pas publié par le SSMSI : somme des '
@@ -522,7 +649,7 @@ export function delinquanceCaveat(slug, { state = null } = {}) {
       + '1 000 logements.');
     lines.push('« Usage de stupéfiants (AFD) » n’est pas recompté : il est déjà dans « Usage de '
       + 'stupéfiants » (vérifié, 101 départements sur 101).');
-  } else if (meta?.unite === 'Mis en cause') {
+  } else if (misEnCause) {
     lines.push('⚠ Délinquance ENREGISTRÉE, comptée en mis en cause : ce sont des personnes '
       + 'interpellées. Cet indicateur mesure aussi l’activité des services.');
   } else {
@@ -538,46 +665,154 @@ export function delinquanceCaveat(slug, { state = null } = {}) {
       + '4 735 cellules non diffusées en 2025 avaient publié plus de 5 faits en 2023 ou 2024. '
       + '« Non diffusé » ne veut donc pas dire « peu ».');
   }
+  lines.push(DELINQUANCE_DOCUMENTATION_TITLE);
   return lines.join('\n');
+}
+
+/** French plural agreement for the census counts. */
+function plural(count, word) {
+  return Math.abs(Number(count)) < 2 ? word : `${word}s`;
+}
+
+/**
+ * How many inhabitants, and how many dwellings when dwellings are what the
+ * rate is divided by.
+ *
+ * Compact cards print the DENOMINATOR of the rate above them and nothing else:
+ * `266 451 logements` under a per-1 000-habitants rate is a number with no
+ * question attached to it.
+ */
+function populationLine(pop, log, slug, methodo) {
+  if (!(pop > 0)) return null;
+  const wantsLog = methodo || indicatorForSlug(slug)?.per === 'logements';
+  return wantsLog && log > 0
+    ? `${fr(pop)} habitants · ${fr(log)} logements`
+    : `${fr(pop)} habitants`;
+}
+
+/**
+ * The commune census — what turns a solid-looking département into an honest
+ * one, by saying how much of the finer map underneath is withheld.
+ */
+function communeCensusLine(communes, methodo) {
+  const total = communes.published + communes.zero + communes.suppressed;
+  const share = ((100 * communes.suppressed) / Math.max(1, total)).toFixed(0);
+  if (methodo) {
+    return `${fr(communes.suppressed)} des ${fr(total)} communes non diffusées (${share} %) · `
+      + `${fr(communes.published)} avec une valeur publiée`;
+  }
+  return `${fr(total)} communes : ${fr(communes.suppressed)} non `
+    + `${plural(communes.suppressed, 'diffusée')} (${share} %), `
+    + `${fr(communes.published)} ${plural(communes.published, 'publiée')}`;
 }
 
 /** Card copy for one département. */
 export function buildDelinquanceDepartementLabel(row, context = {}) {
   const slug = context.indicator || _indicator;
+  const methodo = context.methodo ?? _methodo;
   const meta = indicatorForSlug(slug);
   const details = [];
   details.push(`${meta?.label || slug} — ${context.year || _year || '—'}`);
   if (slug === DELINQUANCE_TOTAL_SLUG && row.state === CELL_PUBLISHED) {
     // No `est_diffuse` column exists at this grain, so this total is complete
     // — the one place on this layer where a total is a value and not a floor.
-    details.push(`${formatDelinquanceRate(row.rate)} pour 1 000 habitants · ${fr(row.count)} faits, `
-      + `victimes et mis en cause cumulés sur ${DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS.length} indicateurs`);
-    details.push('Total exact à cette échelle : la base départementale ne connaît pas le secret '
-      + 'statistique. C’est en zoomant sur les communes qu’il apparaît.');
+    details.push(methodo
+      ? `${formatDelinquanceRate(row.rate)} pour 1 000 habitants · ${fr(row.count)} faits, `
+        + `victimes et mis en cause cumulés sur ${DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS.length} indicateurs`
+      : delinquanceTotalValueLine(row.count, row.rate, DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS.length));
+    details.push(methodo
+      ? 'Total exact à cette échelle : la base départementale ne connaît pas le secret '
+        + 'statistique. C’est en zoomant sur les communes qu’il apparaît.'
+      : 'Total exact ici : pas de secret statistique au département');
   } else if (row.state === CELL_PUBLISHED) {
-    details.push(`${formatDelinquanceRate(row.rate)} pour ${delinquanceRateUnit(slug)} · ${fr(row.count)} ${meta?.unite === 'Véhicule' ? 'véhicules' : 'faits'}`);
+    details.push(delinquanceValueLine(slug, row.count, row.rate));
   } else if (row.state === CELL_ZERO) {
     details.push(DELINQUANCE_CELL_LABELS.zero);
   } else {
     details.push('Aucune ligne pour ce département dans cette édition');
   }
-  if (row.pop > 0) details.push(`${fr(row.pop)} habitants · ${fr(row.log)} logements`);
-  // The commune census is what turns a solid-looking département into an
-  // honest one: it says how much of the finer map underneath is withheld.
-  if (row.communes) {
-    const total = row.communes.published + row.communes.zero + row.communes.suppressed;
-    details.push(`${fr(row.communes.suppressed)} des ${fr(total)} communes non diffusées `
-      + `(${((100 * row.communes.suppressed) / Math.max(1, total)).toFixed(0)} %) · `
-      + `${fr(row.communes.published)} avec une valeur publiée`);
-  }
-  details.push(delinquanceCaveat(slug, { state: row.state }));
-  details.push(DELINQUANCE_DOCUMENTATION_TITLE);
+  const population = populationLine(row.pop, row.log, slug, methodo);
+  if (population) details.push(population);
+  if (row.communes) details.push(communeCensusLine(row.communes, methodo));
+  details.push(delinquanceCaveat(slug, { state: row.state, methodo }));
   return [row.name, ...details].join('\n');
 }
 
+/**
+ * Characters a compact card line may run to.
+ *
+ * Not a wrapping mechanism — the overlay wraps every stacked card under its own
+ * shared 420 px ceiling, and one implementation of that is enough. This is an
+ * EDITORIAL budget: a compact line is one claim, and a claim that needs more
+ * than sixty characters belongs in the verbatim register instead. 60 monospace
+ * characters measure ~376 px, so a compact card reaches the overlay already
+ * under the ceiling and is never folded on the way out.
+ */
+const COMPACT_LINE_BUDGET = 60;
+
+/**
+ * Every OTHER indicator for this commune, so the reader is never stuck with
+ * the one that happens to be painted.
+ *
+ * `méthodo` lists all fifteen on one line, published values and ✕ marks
+ * together — 223 characters on a Périgueux card, four drawn lines of chips
+ * once wrapped. The compact register fills ONE line with the ones that have a
+ * value and counts the rest, because a withheld indicator's name tells the
+ * reader nothing its count does not.
+ *
+ * Under the total, `méthodo` marks the contributors excluded from it — a
+ * reader adding the list up by hand must see why it does not reconcile with
+ * the number above. The compact card says the same thing once, in its caveat
+ * ({@link DELINQUANCE_TOTAL_AFD_SHORT}), rather than thirteen characters at a
+ * time inside a line that has sixty.
+ */
+function otherIndicatorLines(record, slug, methodo, total = false) {
+  const published = [];
+  const all = [];
+  let suppressed = 0;
+  for (let i = 0; i < DELINQUANCE_COMMUNE_SLUGS.length; i += 1) {
+    const other = DELINQUANCE_COMMUNE_SLUGS[i];
+    if (other === slug) continue;
+    const value = record?.cells?.[i];
+    if (!value) continue;
+    const name = indicatorForSlug(other)?.short || other;
+    const marked = total && DELINQUANCE_TOTAL_EXCLUDED.includes(other)
+      ? `${name} (hors total)`
+      : name;
+    if (value[0] === CELL_PUBLISHED) {
+      published.push(`${name} ${fr(value[1])}`);
+      all.push(`${marked} ${fr(value[1])}`);
+    } else if (value[0] === CELL_SUPPRESSED) {
+      suppressed += 1;
+      all.push(`${marked} ✕`);
+    }
+  }
+  if (methodo) return all.length ? [all.join(' · ')] : [];
+  const lines = [];
+  if (published.length) {
+    // Drop chips from the end until the line fits, counting whatever the trim
+    // leaves behind. One chip always survives, however long its name is.
+    const shown = published.slice();
+    while (shown.length > 1 && chipLine(shown, published.length - shown.length).length
+      > COMPACT_LINE_BUDGET) shown.pop();
+    lines.push(chipLine(shown, published.length - shown.length));
+  }
+  if (suppressed) {
+    lines.push(`${suppressed} ${plural(suppressed, 'indicateur')} `
+      + `non ${plural(suppressed, 'diffusé')} ici`);
+  }
+  return lines;
+}
+
+/** One compact chip line, with the count of the chips it did not fit. */
+function chipLine(shown, hidden) {
+  return shown.join(' · ') + (hidden ? ` · +${hidden} ${plural(hidden, 'publié')}` : '');
+}
+
 /** Card copy for one commune. */
-export function buildDelinquanceCommuneLabel(record) {
+export function buildDelinquanceCommuneLabel(record, context = {}) {
   const slug = record?.indicator || _indicator;
+  const methodo = context.methodo ?? _methodo;
   const meta = indicatorForSlug(slug);
   const details = [];
   details.push(`${meta?.label || slug} — ${record?.year || '—'}`);
@@ -586,69 +821,85 @@ export function buildDelinquanceCommuneLabel(record) {
   const total = slug === DELINQUANCE_TOTAL_SLUG;
   // The fourth slot of a computed total cell: how many of its contributors the
   // register withheld. It is the difference between a value and a floor, so it
-  // is the first thing the card says about the number it is about to print.
+  // is the first thing the card says about the number it is about to print —
+  // and it is said in both registers, at both lengths.
   const withheld = total ? Number(cell?.[3]) || 0 : 0;
   const contributors = DELINQUANCE_TOTAL_COMMUNE_SLUGS.length;
   if (total && state === CELL_PUBLISHED) {
-    details.push(`${formatDelinquanceRate(cell[2])} pour 1 000 habitants · ${fr(cell[1])} faits, `
-      + 'victimes et mis en cause cumulés');
-    details.push(withheld > 0
-      ? `⚠ MINORANT : ${fr(withheld)} des ${contributors} indicateurs sont non diffusés ici, et `
-        + 'ne sont donc PAS dans ce total. Le vrai total est plus élevé, d’un montant inconnu.'
-      : `Total complet : les ${contributors} indicateurs sont tous diffusés ici — le cas de `
-        + '178 communes sur 34 920 dans l’édition 2025.');
+    details.push(methodo
+      ? `${formatDelinquanceRate(cell[2])} pour 1 000 habitants · ${fr(cell[1])} faits, `
+        + 'victimes et mis en cause cumulés'
+      : delinquanceTotalValueLine(cell[1], cell[2], contributors));
+    if (withheld > 0) {
+      details.push(methodo
+        ? `⚠ MINORANT : ${fr(withheld)} des ${contributors} indicateurs sont non diffusés ici, et `
+          + 'ne sont donc PAS dans ce total. Le vrai total est plus élevé, d’un montant inconnu.'
+        : `⚠ MINORANT : ${fr(withheld)} des ${contributors} indicateurs non diffusés ici`);
+    } else {
+      details.push(methodo
+        ? `Total complet : les ${contributors} indicateurs sont tous diffusés ici — le cas de `
+          + '178 communes sur 34 920 dans l’édition 2025.'
+        : `Total complet : les ${contributors} indicateurs sont diffusés ici`);
+    }
   } else if (total && state === CELL_ZERO) {
-    details.push(`${DELINQUANCE_CELL_LABELS.zero} pour les ${contributors} indicateurs, et aucun `
-      + `n’est non diffusé — ${DELINQUANCE_ZERO_RULE}`);
+    details.push(methodo
+      ? `${DELINQUANCE_CELL_LABELS.zero} pour les ${contributors} indicateurs, et aucun `
+        + `n’est non diffusé — ${DELINQUANCE_ZERO_RULE}`
+      : `${DELINQUANCE_CELL_LABELS.zero} sur les ${contributors} indicateurs, aucun retenu`);
   } else if (total && state === CELL_SUPPRESSED) {
-    details.push('Aucun fait publié, et le registre en retient : rien à totaliser ici');
-    details.push(`${fr(withheld)} des ${contributors} indicateurs non diffusés — le total n’est `
-      + 'ni zéro ni petit, il est inconnu.');
+    details.push(methodo
+      ? 'Aucun fait publié, et le registre en retient : rien à totaliser ici'
+      : 'Rien à totaliser : le registre en retient ici');
+    details.push(methodo
+      ? `${fr(withheld)} des ${contributors} indicateurs non diffusés — le total n’est `
+        + 'ni zéro ni petit, il est inconnu.'
+      : `${fr(withheld)} des ${contributors} indicateurs non diffusés — total inconnu`);
   } else if (state === CELL_PUBLISHED) {
-    details.push(`${formatDelinquanceRate(cell[2])} pour ${delinquanceRateUnit(slug)} · ${fr(cell[1])} faits`);
+    details.push(delinquanceValueLine(slug, cell[1], cell[2]));
   } else if (state === CELL_ZERO) {
-    details.push(`${DELINQUANCE_CELL_LABELS.zero} (0 fait, publié comme tel) — ${DELINQUANCE_ZERO_RULE}`);
+    // A published zero is a CLAIM, and the claim rests on the three-year
+    // condition — which the compact line states and `méthodo` quotes.
+    details.push(methodo
+      ? `${DELINQUANCE_CELL_LABELS.zero} (0 fait, publié comme tel) — ${DELINQUANCE_ZERO_RULE}`
+      : `${DELINQUANCE_CELL_LABELS.zero} (0 fait, publié comme tel), 3 ans`);
   } else if (state === CELL_SUPPRESSED) {
     details.push(`${DELINQUANCE_CELL_LABELS.suppressed}`);
     const mean = record?.mean || null;
     if (mean && Number.isFinite(mean.rate)) {
-      // The publisher's own words for this column, quoted. It is a
-      // DÉPARTEMENTAL average over every withheld commune, not this commune's
-      // value, and the label has to make that impossible to misread.
-      details.push(`Repère : ${formatDelinquanceRate(mean.rate)} pour ${delinquanceRateUnit(slug)} — `
-        + `${DELINQUANCE_COMPLEMENT_RULE}, pas la valeur de cette commune`
-        + (mean.variants > 1 ? ' (deux moyennes coexistent ici : communes et arrondissements)' : ''));
+      // `complement_info_taux` is a DÉPARTEMENTAL average over every withheld
+      // commune, not this commune's value, and the label has to make that
+      // impossible to misread — in either register. `méthodo` quotes the
+      // column's own definition; the compact line names whose average it is.
+      const rate = `${formatDelinquanceRate(mean.rate)} pour ${delinquanceRateUnit(slug)}`;
+      details.push(methodo
+        ? `Repère : ${rate} — ${DELINQUANCE_COMPLEMENT_RULE}, pas la valeur de cette commune`
+          + (mean.variants > 1 ? ' (deux moyennes coexistent ici : communes et arrondissements)' : '')
+        : `Repère : ${formatDelinquanceRate(mean.rate)} pour 1 000 — moyenne dép., `
+          + 'pas cette commune');
+      if (!methodo && mean.variants > 1) {
+        details.push('⚠ Deux moyennes coexistent : communes et arrondissements');
+      }
     }
   } else {
     details.push('Aucune ligne pour cette commune dans cette édition');
   }
   if (record?.pop === 0) {
-    details.push('⚠ Population municipale nulle — aucun taux pour 1 000 habitants n’est calculable ici');
+    details.push(methodo
+      ? '⚠ Population municipale nulle — aucun taux pour 1 000 habitants n’est calculable ici'
+      : '⚠ Population municipale nulle — aucun taux calculable');
   } else if (record?.pop > 0) {
-    details.push(`${fr(record.pop)} habitants${record.log > 0 ? ` · ${fr(record.log)} logements` : ''}`);
+    const population = populationLine(record.pop, record.log, slug, methodo);
+    if (population) details.push(population);
   }
-  // Every other indicator for this commune, states included, so the reader is
-  // never stuck with the six that happen to be paintable.
-  const others = [];
-  for (let i = 0; i < DELINQUANCE_COMMUNE_SLUGS.length; i += 1) {
-    const other = DELINQUANCE_COMMUNE_SLUGS[i];
-    if (other === slug) continue;
-    const value = record?.cells?.[i];
-    if (!value) continue;
-    // Under the total, the two lines that would double-count are marked rather
-    // than hidden: a reader adding the list up by hand must be able to see why
-    // it does not reconcile with the number above it.
-    const excluded = total && DELINQUANCE_TOTAL_EXCLUDED.includes(other) ? ' (hors total)' : '';
-    const short = `${indicatorForSlug(other)?.short || other}${excluded}`;
-    if (value[0] === CELL_PUBLISHED) others.push(`${short} ${fr(value[1])}`);
-    else if (value[0] === CELL_SUPPRESSED) others.push(`${short} ✕`);
-  }
-  if (others.length) details.push(others.join(' · '));
+  details.push(...otherIndicatorLines(record, slug, methodo, total));
+  // A commune limit is a legal object and the drawn ring is not one. That
+  // claim survives compression; only its sentence shortens.
   if (record?.simplified) {
-    details.push('Contour simplifié pour l’affichage — ce n’est pas une limite administrative');
+    details.push(methodo
+      ? 'Contour simplifié pour l’affichage — ce n’est pas une limite administrative'
+      : 'Contour simplifié — pas une limite administrative');
   }
-  details.push(delinquanceCaveat(slug, { state }));
-  details.push(DELINQUANCE_DOCUMENTATION_TITLE);
+  details.push(delinquanceCaveat(slug, { state, methodo }));
   return [record?.name || record?.code || 'Commune', ...details].join('\n');
 }
 
@@ -737,6 +988,27 @@ function selectCommune(id) {
     _viewer ? Cesium.Cartesian3.fromDegrees(record.anchor[0], record.anchor[1]) : { anchor: record.anchor },
     buildDelinquanceCommuneLabel(record),
   )], DELINQUANCE_FR_OVERLAY_SOURCE_OPTIONS);
+}
+
+/** The `méthodo` parameter as a boolean, or null when it says nothing. */
+function readMethodo(value) {
+  const text = String(value ?? '').trim().toLowerCase();
+  if (text === 'on' || text === '1' || text === 'true') return true;
+  if (text === 'off' || text === '0' || text === 'false') return false;
+  return null;
+}
+
+/**
+ * Redraw the open card in place.
+ *
+ * The `méthodo` chip changes the copy of a card that is already on screen, and
+ * a reader who toggles it while a département is selected must see THAT card
+ * change — not have to close and re-click it to find out what the chip did.
+ */
+function refreshSelection() {
+  if (!_selectedId) return;
+  if (_selectedId.startsWith('dep:')) selectDepartement(_selectedId.slice(4));
+  else selectCommune(_selectedId);
 }
 
 function onKeyDown(event) {
@@ -1271,6 +1543,15 @@ const delinquanceFranceLayer = {
    * the computed total rather than on a silently different crime.
    */
   setParams(params = {}) {
+    // `méthodo` is copy-only: it repaints the open card and nothing else. It
+    // is handled BEFORE the indicator so the two can travel together. An
+    // unrecognised value leaves the register alone rather than falling back to
+    // one — the compact card is a default, not a fallback.
+    const methodo = readMethodo(params?.methodo);
+    if (methodo !== null && methodo !== _methodo) {
+      _methodo = methodo;
+      refreshSelection();
+    }
     const next = String(params?.indicator || '').trim();
     if (!next || next === _indicator) return;
     if (!DELINQUANCE_COMMUNE_CELL_SLUGS.includes(next)) return;
@@ -1280,7 +1561,7 @@ const delinquanceFranceLayer = {
   },
 
   getParams() {
-    return { indicator: _indicator, year: _year };
+    return { indicator: _indicator, year: _year, methodo: _methodo ? 'on' : 'off' };
   },
 
   getStats() {
@@ -1324,6 +1605,12 @@ const delinquanceFranceLayer = {
    * zoom levels is worse than a row that reads zero. The suppressed row's
    * count is the national one from the commune fold, so the number a reader
    * sees at national zoom is the number they will meet when they zoom in.
+   *
+   * The LAST chip is not an indicator: it is `méthodo`, and it is what makes
+   * the compact card defensible. Cards state each rule's claim in one line;
+   * this chip replaces those lines with the SSMSI's own sentences, on the card
+   * the reader already has open. It sits last so switching register never
+   * moves an indicator chip out from under a cursor.
    */
   getRowControls() {
     if (!_base) return { chips: [], legend: [] };
@@ -1343,6 +1630,16 @@ const delinquanceFranceLayer = {
         : `${indicatorForSlug(slug)?.label || slug} — unité de compte : ${indicatorForSlug(slug)?.unite || '—'}`,
       params: { indicator: slug },
     }));
+    chips.push({
+      id: METHODO_CHIP_ID,
+      label: 'Méthodo',
+      active: _methodo,
+      state: _methodo ? 'active' : 'idle',
+      title: _methodo
+        ? 'Cartes compactes — masquer les règles du SSMSI citées mot pour mot'
+        : 'Citer sur les cartes les règles du SSMSI, mot pour mot',
+      params: { methodo: _methodo ? 'off' : 'on' },
+    });
 
     const legend = [];
     const blurbs = _indicator === DELINQUANCE_TOTAL_SLUG ? TOTAL_STATE_BLURBS : STATE_BLURBS;
@@ -1445,8 +1742,9 @@ const delinquanceFranceLayer = {
 /** Seed the layer's state so cards, legends and selection run without WebGL. */
 export function _setDelinquanceStateForTest({
   viewer, overlayHost, base, national, packs, communeRecords, depMeta, depIndex,
-  indicator, year, regime, status, count, visibleDeps,
+  indicator, year, regime, status, count, visibleDeps, methodo = false,
 } = {}) {
+  _methodo = methodo === true;
   _viewer = viewer || null;
   _overlayHost = overlayHost || DEFAULT_OVERLAY_HOST;
   _base = base || null;
@@ -1478,6 +1776,7 @@ export function _selectDelinquanceCommuneForTest(id) {
 /** Exercise the production clear path and restore the production host seam. */
 export function _clearDelinquanceSelectionForTest() {
   clearSelection();
+  _methodo = false;
   _overlayHost = DEFAULT_OVERLAY_HOST;
   // Back to the indicator a fresh boot opens on, so one test's chip choice
   // cannot become the next test's default.
