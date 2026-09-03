@@ -223,6 +223,17 @@ export const DATA_CREDITS = [
       'via <a href="https://github.com/gregoiredavid/france-geojson" target="_blank" rel="noopener">france-geojson</a> (G. David), Licence Ouverte.',
   },
   {
+    key: 'google-map-tiles-2d',
+    html:
+      'Google basemaps (worldwide): ' +
+      '<a href="https://developers.google.com/maps/documentation/tile/2d-tiles-overview" target="_blank" rel="noopener">Google Map Tiles API 2D tiles</a> ' +
+      '&mdash; roadmap and terrain, &copy; Google, used under the ' +
+      '<a href="https://cloud.google.com/maps-platform/terms" target="_blank" rel="noopener">Google Maps Platform Terms of Service</a>. ' +
+      'Satellite imagery and Photorealistic 3D Tiles are withheld from projects billed to an ' +
+      '<a href="https://developers.google.com/maps/comms/eea/map-tiles" target="_blank" rel="noopener">EEA address</a>; ' +
+      'the cartography served here is not.',
+  },
+  {
     key: 'ign-geoplateforme',
     html:
       'IGN basemaps (France): ' +

@@ -264,6 +264,16 @@ async function init() {
       );
     }
 
+    // Where a build that cannot show the 3D globe LANDS. A keyed build with no
+    // tileset is the EEA case: Google withholds 3D tiles and satellite from an
+    // EEA billing address (403) but still serves roadmap and terrain on the
+    // very same key, so Google's own cartography is both a better first
+    // impression than OSM and the thing the operator is already paying for.
+    // The keyless build is untouched — it still lands on OSM.
+    const startupStack = tileset
+      ? 'photoreal'
+      : (keylessMode ? 'osm' : 'google-roadmap');
+
     const mapStackController = new MapStackController(viewer, {
       googleTileset: tileset,
       cesiumToken,
@@ -272,7 +282,7 @@ async function init() {
       // failed, and both arrive here as `googleTileset: null`.
       googleKeyConfigured: !keylessMode,
       ignTerrainSpike,
-      initialStack: tileset ? 'photoreal' : 'osm',
+      initialStack: startupStack,
       // Task 5 (height-datum fix): rebroadcast stack changes as a window
       // CustomEvent so data layers (CCTV per-regime ground resolution) can
       // react without coupling MapStackController to layer modules. Fires on
@@ -283,7 +293,7 @@ async function init() {
       },
       onError: (message) => console.warn('[MapStack]', message),
     });
-    await mapStackController.setStack(tileset ? 'photoreal' : 'osm', { silent: true });
+    await mapStackController.setStack(startupStack, { silent: true });
 
     // Initialize the style manager (post-processing, HUD, locations, share links)
     const styleManager = new StyleManager(viewer, { mapStackController });

@@ -136,9 +136,10 @@ try {
     controls: document.getElementById('control-panel-toggle')?.getAttribute('aria-controls'),
   }));
   check(
-    'exact six-source presentation; the retired left Map Stack panel is gone',
+    'exact eight-source presentation; the retired left Map Stack panel is gone',
     JSON.stringify(presentation.ids) === JSON.stringify([
-      'photoreal', 'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
+      'photoreal', 'google-roadmap', 'google-terrain',
+      'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
     ]) && !presentation.retiredPanel,
     JSON.stringify(presentation),
   );
@@ -641,14 +642,16 @@ try {
 
   await page.click('.dock-pin-btn[data-pin-target="control-panel"]');
   const desktop = await trayMetrics();
-  // Two rows of three since the tray grew from four sources to six: six tiles
-  // do not fit one row of the ~34rem popover without truncating "Bing Aerial".
-  // The grid is deliberately 3-up so keyed sources share the first row and
-  // keyless ones the second.
+  // Three rows of three since the tray grew to eight sources with the Google
+  // 2D pair. The grid stays 3-up — eight tiles do not fit fewer rows without
+  // truncating "Bing Aerial" — but the old "keyed sources on row 1, keyless on
+  // row 2" split no longer holds: five sources need a credential, so OSM now
+  // shares row 2 with the Bing pair. The ordering still groups by cost; only
+  // the row boundaries stopped coinciding with the groups.
   check(
-    'desktop tray is two rows of three and fully inside the viewport',
-    desktop.rows === 2
-      && desktop.chips.length === 6
+    'desktop tray is three rows of three and fully inside the viewport',
+    desktop.rows === 3
+      && desktop.chips.length === 8
       && new Set(desktop.chips.map((chip) => chip.left)).size === 3
       && desktop.popover.left >= 0
       && desktop.popover.right <= desktop.viewport.width,
@@ -662,7 +665,7 @@ try {
     '620 px tray falls to two columns without clipping',
     at620.expanded === 'true'
       && at620.pinned
-      && at620.rows === 3
+      && at620.rows === 4
       && new Set(at620.chips.map((chip) => chip.left)).size === 2
       && at620.popover.left >= 0
       && at620.popover.right <= at620.viewport.width,
@@ -680,7 +683,7 @@ try {
     '480 px live resize keeps the open tray and every tile in bounds',
     at480.expanded === 'true'
       && at480.pinned
-      && at480.rows === 3
+      && at480.rows === 4
       && at480.popover.left >= 0
       && at480.popover.right <= at480.viewport.width
       && allRectsInside,
@@ -740,13 +743,21 @@ try {
       activeId: window.__godsEyeView.styleManager.mapStackController.getActiveId(),
       photorealAvailable: window.__godsEyeView.styleManager.mapStackController
         .isStackAvailable('photoreal'),
+      googleRoadmapAvailable: window.__godsEyeView.styleManager.mapStackController
+        .isStackAvailable('google-roadmap'),
       lastError: window.__godsEyeView.styleManager.mapStackController.getState()?.lastError || null,
       status: document.getElementById('map-stack-status').textContent.trim(),
       pressed: [...document.querySelectorAll('.map-stack-chip')]
         .filter((chip) => chip.getAttribute('aria-pressed') === 'true')
         .map((chip) => chip.dataset.stackId),
     }));
-    const expectedDefault = restored.photorealAvailable ? 'photoreal' : 'osm';
+    // The build's own default, down the same ladder main.js and the controller
+    // use: the 3D globe, else Google's 2D cartography when the key exists (the
+    // EEA case), else OSM. Hard-coding any one of the three would make this
+    // assertion fail for a configuration the fallback exists to serve.
+    const expectedDefault = restored.photorealAvailable
+      ? 'photoreal'
+      : (restored.googleRoadmapAvailable ? 'google-roadmap' : 'osm');
     check(
       `a map=${legacyId} link restores to ${expectedDefault} with that tile lit and no error`,
       restored.activeId === expectedDefault

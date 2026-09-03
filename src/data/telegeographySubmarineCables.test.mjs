@@ -153,7 +153,13 @@ test('cable ground lines classify against exactly the active surface on every st
     Cesium.ClassificationType.CESIUM_3D_TILE,
   );
   // Every globe stack renders imagery on the shown globe — terrain pass only.
-  for (const stackId of ['bing-aerial', 'bing-labels', 'osm']) {
+  for (const stackId of [
+    'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
+    // Google 2D shares the photoreal stack's KEY, not its surface: these are
+    // raster imagery on the shown globe, so pinning them here is what stops
+    // someone reading "Google" and wiring them to the 3D-tile pass.
+    'google-roadmap', 'google-terrain',
+  ]) {
     assert.equal(
       cableClassificationTypeForStack(stackId),
       Cesium.ClassificationType.TERRAIN,

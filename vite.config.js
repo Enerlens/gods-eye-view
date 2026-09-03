@@ -16769,6 +16769,132 @@ function googlePlacesContextProxy() {
         res.end(JSON.stringify({ error: error?.message || 'Google Places request failed', places: [] }));
       }
     });
+
+    // ── Google 2D Map Tiles: the session broker ────────────────────────────
+    // Cesium fetches `{z}/{x}/{y}` tiles perfectly well on its own, but it
+    // cannot OPEN a Map Tiles session: that is a POST, and every 2D tile URL
+    // is invalid without the `session` token it returns. So the session is
+    // brokered here and the tiles themselves go straight from the browser to
+    // Google — the same shape as OSM, IGN and ion, none of which are proxied
+    // either. Proxying 30 kB tiles through this box would buy nothing.
+    //
+    // Brokering server-side is also what makes it CHEAP. A session is valid
+    // for 14 days and is NOT per-user, so one `createSession` serves every
+    // visitor until it ages out; doing it client-side would spend one call
+    // per page load. It is refreshed early so nobody is handed a token that
+    // expires mid-pan.
+    //
+    // WHY THIS ENDPOINT EXISTS AT ALL — the EEA withdrawal is narrower than
+    // it looks. Google withholds `satellite` and 3D tiles from EEA billing
+    // addresses (403 PERMISSION_DENIED), but `roadmap` and `terrain` are NOT
+    // withheld: verified 2026-09-03 on the production key, which answers 403
+    // for satellite and 200 with a real PNG for roadmap. This is the whole
+    // reason a Google basemap can work on a build whose "Google 3D" chip is
+    // dead. Never "fix" a 403 here by retrying as satellite.
+    //
+    // `mapType` is an ALLOWLIST, not a passthrough: each distinct session is
+    // a billable `createSession` call and a cache slot, so the reachable set
+    // is held to four (2 map types x 2 scales) by pinning language/region
+    // server-side. A client cannot make this endpoint spend more than that.
+    const GOOGLE_2D_SESSION_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+    const GOOGLE_2D_REFRESH_MARGIN_MS = 60 * 60 * 1000;
+    const GOOGLE_2D_MAP_TYPES = new Set(['roadmap', 'terrain']);
+    const GOOGLE_2D_SCALES = new Set(['scaleFactor1x', 'scaleFactor2x']);
+    const google2dSessions = new Map();
+
+    middlewares.use('/api/google/2d-session', async (req, res) => {
+      const sendJson = (status, body) => {
+        res.statusCode = status;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.end(JSON.stringify(body));
+      };
+
+      if (req.method !== 'GET') {
+        sendJson(405, { error: 'Method not allowed' });
+        return;
+      }
+
+      const requestUrl = new URL(req.url || '', 'http://localhost');
+      const mapType = String(requestUrl.searchParams.get('mapType') || 'roadmap');
+      const scale = String(requestUrl.searchParams.get('scale') || 'scaleFactor1x');
+      if (!GOOGLE_2D_MAP_TYPES.has(mapType)) {
+        // Spelling out the withheld pair keeps a future reader from assuming
+        // the allowlist is arbitrary.
+        sendJson(400, {
+          error: `Unsupported mapType "${mapType}". Only roadmap and terrain are served; `
+            + 'satellite and 3D tiles are withheld from EEA billing addresses.',
+        });
+        return;
+      }
+      if (!GOOGLE_2D_SCALES.has(scale)) {
+        sendJson(400, { error: `Unsupported scale "${scale}".` });
+        return;
+      }
+
+      const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+      if (!apiKey) {
+        sendJson(503, { error: 'GOOGLE_MAPS_API_KEY is not set' });
+        return;
+      }
+
+      const language = process.env.GEV_GOOGLE_TILE_LANGUAGE || 'fr-FR';
+      const region = process.env.GEV_GOOGLE_TILE_REGION || 'FR';
+      const cacheKey = `${mapType}|${scale}|${language}|${region}`;
+      const cached = google2dSessions.get(cacheKey);
+      if (cached && cached.expiresAtMs - GOOGLE_2D_REFRESH_MARGIN_MS > Date.now()) {
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        sendJson(200, cached.payload);
+        return;
+      }
+
+      try {
+        // `terrain` is rejected outright without a roadmap layer ("The terrain
+        // map type must always contain a roadmap layer"), so the layer is not
+        // optional styling — it is what makes the request legal.
+        const body = {
+          mapType,
+          language,
+          region,
+          scale,
+          ...(scale === 'scaleFactor1x' ? {} : { highDpi: true }),
+          ...(mapType === 'terrain' ? { layerTypes: ['layerRoadmap'] } : {}),
+        };
+        const response = await fetch(`https://tile.googleapis.com/v1/createSession?key=${encodeURIComponent(apiKey)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data.session) {
+          sendJson(response.status || 502, {
+            error: data.error?.message || 'Google createSession failed',
+          });
+          return;
+        }
+
+        // Google's own `expiry` is authoritative when present (seconds since
+        // epoch, ~14 days out); the TTL constant is only the fallback for a
+        // response that omits it.
+        const expirySeconds = Number(data.expiry);
+        const expiresAtMs = Number.isFinite(expirySeconds) && expirySeconds > 0
+          ? expirySeconds * 1000
+          : Date.now() + GOOGLE_2D_SESSION_TTL_MS;
+        const payload = {
+          session: data.session,
+          expiry: expiresAtMs,
+          tileWidth: Number(data.tileWidth) || 256,
+          tileHeight: Number(data.tileHeight) || 256,
+          imageFormat: data.imageFormat || 'png',
+          mapType,
+          scale,
+        };
+        google2dSessions.set(cacheKey, { payload, expiresAtMs });
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        sendJson(200, payload);
+      } catch (error) {
+        sendJson(502, { error: error?.message || 'Google createSession failed' });
+      }
+    });
   }
 
   return {

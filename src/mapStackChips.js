@@ -1,14 +1,21 @@
 // MAP STACK source chips — the always-visible replacement for the `<select>`
 // that used to sit in the Map Stack panel. One button per stack, rendered from
-// `MapStackController.getStacks()`. The six accepted sources below are
+// `MapStackController.getStacks()`. The eight accepted sources below are
 // the whole shipped set; keeping the allowlist explicit means a stack added to
 // `MAP_STACKS` for internal use cannot reach the tray until someone names it
 // here.
 //
-// Order groups by what a source COSTS the operator, not by age: the three that
-// need a credential first (Google 3D, the two Bing/ion stacks), then the three
-// keyless ones (OSM worldwide, then the two IGN France stacks). On the tray's
-// three-column desktop grid that puts each group on its own row.
+// Order groups by what a source COSTS the operator, not by age: the five that
+// need a credential first (Google 3D, the two Google 2D stacks, the two
+// Bing/ion stacks), then the three keyless ones (OSM worldwide, then the two
+// IGN France stacks). With eight sources on the tray's three-column desktop
+// grid the groups no longer line up with the rows — OSM shares row 2 with the
+// Bing pair — so the order is the grouping, not the layout.
+//
+// The two Google 2D chips sit next to Google 3D on purpose: they run on the
+// SAME key, and on an EEA billing address they are the ones that actually
+// work — so an operator staring at a greyed-out "Google 3D" finds the live
+// Google alternative in the same glance rather than concluding Google is out.
 //
 // The chips are a control SURFACE only: selecting one calls back into the same
 // `_setMapStack()` path the dropdown's `change` handler used, and the active
@@ -18,6 +25,8 @@
 export const MAP_STACK_CHIP_CLASS = 'map-stack-chip';
 export const PRESENTED_MAP_STACK_IDS = Object.freeze([
   'photoreal',
+  'google-roadmap',
+  'google-terrain',
   'bing-aerial',
   'bing-labels',
   'osm',

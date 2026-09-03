@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from './renderGovernor.js';
 import { IgnBilTerrainProvider } from './data/ignBilTerrain.js';
+import { createGoogleMapTilesProvider } from './data/googleMapTiles.js';
 
 export const MAP_STACKS = [
   {
@@ -9,6 +10,28 @@ export const MAP_STACKS = [
     shortLabel: '3D',
     kind: 'photoreal',
     requiresIon: false,
+  },
+  // ── Google 2D Map Tiles (same key as the 3D globe, no ion token) ──────────
+  // These two exist because the EEA withdrawal is narrower than its error
+  // message: Google refuses `satellite` and 3D tiles to an EEA billing
+  // address but serves `roadmap` and `terrain` on the very same key. So a
+  // build whose "Google 3D" chip is permanently dead can still show Google's
+  // cartography. See src/data/googleMapTiles.js for the measured evidence.
+  {
+    id: 'google-roadmap',
+    label: 'Plan Google',
+    shortLabel: 'Plan G',
+    kind: 'google-2d',
+    requiresIon: false,
+    google2d: { mapType: 'roadmap', scale: 'scaleFactor2x' },
+  },
+  {
+    id: 'google-terrain',
+    label: 'Relief Google',
+    shortLabel: 'Relief G',
+    kind: 'google-2d',
+    requiresIon: false,
+    google2d: { mapType: 'terrain', scale: 'scaleFactor2x' },
   },
   {
     id: 'bing-aerial',
@@ -180,7 +203,12 @@ export class MapStackController {
     this.ignTerrainSpike = ignTerrainSpike === true;
     this._onChange = onChange;
     this._onError = onError;
-    this._activeId = googleTileset ? initialStack : 'osm';
+    // `initialStack` is honoured whenever it can actually be shown; the guard
+    // at the end of this constructor is what handles the case where it cannot.
+    // It used to be overridden with 'osm' outright whenever the 3D tileset was
+    // missing, which made a caller's choice of startup stack unreachable on
+    // exactly the builds that have one to make.
+    this._activeId = initialStack;
     // A stack owns an ORDERED LIST of imagery layers, not one layer: the IGN
     // stacks are OSM (base, index 0) + IGN France (index 1). Bottom-first.
     this._imageryLayers = [];
@@ -209,7 +237,15 @@ export class MapStackController {
     this._switchGen = 0;
 
     if (!this.getStack(this._activeId) || !this.isStackAvailable(this._activeId)) {
-      this._activeId = googleTileset ? 'photoreal' : 'osm';
+      // The startup ladder, mirroring the one main.js applies: the 3D globe,
+      // else Google's 2D cartography when the key is KNOWN to exist (the EEA
+      // case — 3D and satellite are withheld, roadmap and terrain are not),
+      // else OSM. A `null` key flag — the caller never said — deliberately
+      // stays on OSM rather than landing on a stack whose session call would
+      // answer 503 for want of a key.
+      if (googleTileset) this._activeId = 'photoreal';
+      else if (this.googleKeyConfigured === true) this._activeId = 'google-roadmap';
+      else this._activeId = 'osm';
     }
   }
 
@@ -241,6 +277,9 @@ export class MapStackController {
     }
     if (stack?.kind === 'photoreal' && this.googleKeyConfigured === true) {
       return 'Google 3D Tiles failed to load';
+    }
+    if (stack?.kind === 'google-2d') {
+      return `Google Maps API key required for ${stack.label}`;
     }
     return `${stack?.label || 'This map stack'} is unavailable`;
   }
@@ -275,6 +314,12 @@ export class MapStackController {
     const stack = this.getStack(id);
     if (!stack) return false;
     if (stack.kind === 'photoreal') return !!this.googleTileset;
+    // `google-2d` needs the Google key but NOT a loaded 3D tileset: these are
+    // exactly the stacks that work when photoreal does not. Only an explicit
+    // `false` (the keyless build said so) makes them unavailable — `null`
+    // means the caller never said, and guessing "missing" would hide a
+    // working basemap from every controller built by a test or a tool.
+    if (stack.kind === 'google-2d') return this.googleKeyConfigured !== false;
     if (stack.requiresIon) return !!this.cesiumToken;
     return true;
   }
@@ -428,6 +473,14 @@ export class MapStackController {
       });
     } else if (stack.kind === 'ign-wmts') {
       provider = createIgnWmtsProvider(stack);
+    } else if (stack.kind === 'google-2d') {
+      // Async unlike the others: a 2D tile URL is invalid without a session
+      // token, and only the server can mint one. A throw here (no key, dead
+      // billing, or the regional withdrawal) propagates to setStack's error
+      // path with Google's own wording, and nothing is cached — so a switch
+      // retried after the key is fixed opens a fresh session instead of
+      // replaying the failure.
+      provider = await createGoogleMapTilesProvider(stack);
     } else {
       throw new Error(`Unsupported map stack: ${stack.id}`);
     }
