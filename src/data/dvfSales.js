@@ -622,7 +622,12 @@ const baseLayer = createAddressScanLayer({
    * The key to the ramp, plus the two admissions A5 asks for: what was clipped
    * and what could not be placed.
    */
-  rowControls(payload) {
+  rowControls(_runtime, _summary, payload) {
+    // Built from the payload that was actually DRAWN, so a layer that has never
+    // scanned — or whose scan went dormant above the ceiling — publishes
+    // nothing rather than a key to a wash that is not on screen. The shell
+    // hands over a null payload in exactly those two cases.
+    if (!payload) return null;
     const reference = dvfReference(payload);
     const sales = payload.sales || [];
     const legend = dvfLegendEntries(reference, countByClass(sales, reference.medianPrixM2));

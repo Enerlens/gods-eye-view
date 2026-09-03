@@ -838,7 +838,6 @@ const adsScanLayer = createAddressScanLayer({
   runtimeParams: {
     months: { values: ADS_WINDOWS.map((window) => window.months), defaultValue: ADS_WINDOW_DEFAULT },
   },
-  rowControls: (runtime, summary) => ({ chips: adsWindowChips(runtime.months, summary) }),
   params: (point, viewer, runtime) => ({
     radius: String(ADS_DEFAULT_RADIUS_M),
     months: runtime.months ?? ADS_WINDOW_DEFAULT,
@@ -848,7 +847,13 @@ const adsScanLayer = createAddressScanLayer({
   // whose shape is their caption; this one spends COLOUR on the state of the
   // dossier, and it now spends the same colour on whole roofs, so D1 makes the
   // key compulsory rather than optional.
-  rowControls: adsRowControls,
+  // The chips build from the runtime alone, so they exist before the first
+  // scan; the colour key is built from the payload that was actually drawn and
+  // is simply absent while nothing is.
+  rowControls: (runtime, summary, payload) => ({
+    ...(payload ? adsRowControls(payload) : {}),
+    chips: adsWindowChips(runtime.months, summary),
+  }),
 
   render({ payload, dataSource, viewer }) {
     // The volumes first, because the registry notifies the BD TOPO layer

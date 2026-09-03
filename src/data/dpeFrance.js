@@ -756,7 +756,7 @@ const dpeScanLayer = createAddressScanLayer({
     return drawn;
   },
 
-  rowControls: dpeRowControls,
+  rowControls: (_runtime, _summary, payload) => dpeRowControls(payload),
 
   summarize: dpeSummarize,
 });

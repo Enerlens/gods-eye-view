@@ -1171,7 +1171,15 @@ export function createAddressScanLayer(config) {
      */
     ...(rowControls ? {
       getRowControls() {
-        return rowControls({ ..._runtime }, _payload ? summarize(_payload) : null);
+        // NOT guarded on the payload, and the distinction matters. A CHIP says
+        // what choosing it would mean, which is true before any scan has run —
+        // so the chips must build with no summary at all. A LEGEND built from
+        // the payload must NOT be published for a dormant scan, or it describes
+        // a wash that is no longer on screen. So the shell publishes the
+        // payload as the third argument and lets it be null; deciding what an
+        // absent payload means belongs to the layer, not here.
+        const drawn = _payload && !_dormant && _enabled ? _payload : null;
+        return rowControls({ ..._runtime }, drawn ? summarize(drawn) : null, drawn) || null;
       },
     } : {}),
 
@@ -1236,18 +1244,6 @@ export function createAddressScanLayer(config) {
         scanPin: _pin ? { lat: _pin.lat, lon: _pin.lon } : null,
         ...(_payload ? summarize(_payload) : {}),
       };
-    },
-
-    /**
-     * The layer's key, built from the payload that is actually drawn — so a
-     * dormant scan (camera above the ceiling, nothing on screen) publishes
-     * nothing rather than describing a wash that is no longer there.
-     * @returns {{legend?: Array<object>, chips?: Array<object>, surfaceFill?: boolean}|null}
-     */
-    getRowControls() {
-      if (typeof rowControls !== 'function') return null;
-      if (!_payload || _dormant || !_enabled) return null;
-      return rowControls(_payload) || null;
     },
   };
 }
