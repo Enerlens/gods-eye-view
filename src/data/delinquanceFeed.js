@@ -280,9 +280,100 @@ export const DELINQUANCE_INDICATOR_NOTES = Object.freeze({
     + 'carte communale de cet indicateur.',
 });
 
-/** The note for one indicator, or null. Never a filler sentence. */
-export function delinquanceIndicatorNote(slug) {
-  return DELINQUANCE_INDICATOR_NOTES[String(slug ?? '').trim()] || null;
+/**
+ * The same warnings, compressed to ONE card line each.
+ *
+ * The verbatim register above is what the layer says when a reader asks for
+ * it; this one is what a card says by default. Measured on the 2025 edition, a
+ * Dordogne card carried 858 characters of which 558 were quotation — repeated
+ * identically on every card of that indicator, around four useful numbers, and
+ * drawn as a box wider than the screen. A warning nobody finishes reading is
+ * not a warning, so the default card keeps the CLAIM of each rule and drops
+ * its wording; the `méthodo` chip puts the wording back, unabridged.
+ *
+ * Every line here is ≤ 60 characters, which is what the selected card fits
+ * before the overlay wraps it.
+ */
+export const DELINQUANCE_INDICATOR_NOTES_SHORT = Object.freeze({
+  escroqueries: '⚠ Comptées au domicile de la victime, pas au lieu du fait',
+  cambriolages: 'Rapporté aux LOGEMENTS — non comparable aux autres',
+  'usage-stupefiants': 'Mis en cause élucidés — mesure l’activité des services',
+  'usage-stupefiants-afd': 'Amendes forfaitaires — rupture de série en juillet 2026',
+  'usage-stupefiants-hors-afd': 'Publié au département seulement',
+  'trafic-stupefiants': 'Mis en cause élucidés — mesure l’activité des services',
+  homicides: 'Publié au département seulement',
+  'tentatives-homicide': 'Publié au département seulement',
+});
+
+/**
+ * The note for one indicator, or null. Never a filler sentence.
+ * @param {string} slug
+ * @param {{short?:boolean}} [options] `short` picks the one-line register.
+ * @returns {?string}
+ */
+export function delinquanceIndicatorNote(slug, { short = false } = {}) {
+  const key = String(slug ?? '').trim();
+  const register = short ? DELINQUANCE_INDICATOR_NOTES_SHORT : DELINQUANCE_INDICATOR_NOTES;
+  return register[key] || null;
+}
+
+/**
+ * The four boilerplate caveats, compressed. Each keeps the load-bearing token
+ * of its long form — `Délinquance ENREGISTRÉE`, the 12 %/74 % pair, the
+ * three-year condition — so nothing a card asserts today stops being asserted.
+ */
+export const DELINQUANCE_ENREGISTREE_SHORT = '⚠ Délinquance ENREGISTRÉE — le déclaré, pas le réel';
+/** Its `Mis en cause` variant: a count of people stopped, not of reports. */
+export const DELINQUANCE_MIS_EN_CAUSE_SHORT = '⚠ Délinquance ENREGISTRÉE, comptée en mis en cause';
+/** The reporting-rate scale, with the publisher's own two numbers. */
+export const DELINQUANCE_PLAINTE_SHORT = 'Plainte : 12 % à 74 % selon l’atteinte';
+/** The suppression rule's CLAIM: a withheld cell is unknown, not small. */
+export const DELINQUANCE_SUPPRESSION_SHORT = 'Diffusé si > 5 faits 3 ans de suite — ni zéro, ni « peu »';
+/** Provenance, short enough to ride at the end of another line. */
+export const DELINQUANCE_DOCUMENTATION_SHORT = 'SSMSI, juillet 2026';
+
+/**
+ * The computed total's own three claims, compressed.
+ *
+ * The total is the one indicator here the SSMSI does not publish, so the first
+ * of the three is about AUTHORSHIP rather than about crime, and it is the one
+ * line of this whole file that may never be dropped for length: a reader who
+ * loses it is reading GEV's arithmetic as the register's.
+ */
+export const DELINQUANCE_TOTAL_AUTHORSHIP_SHORT = '⚠ Total CALCULÉ par God’s Eye View, non publié par le SSMSI';
+/** Why the number cannot be called « faits », and what its rate sits on. */
+export const DELINQUANCE_TOTAL_UNITS_SHORT = 'Unités mélangées, taux recalculé sur la population';
+/** Why one indicator of the eighteen is not in it. */
+export const DELINQUANCE_TOTAL_AFD_SHORT = 'Usage stup. (AFD) non recompté : déjà dans son parent';
+
+/**
+ * What the numbers on a card actually COUNT, per indicator.
+ *
+ * This is the answer to the only question a rate provokes — « 6,22 quoi ? » —
+ * and the register answers it differently for each indicator: escroqueries are
+ * counted in VICTIMES, cambriolages in INFRACTIONS, vols de véhicule in
+ * VÉHICULES, stupéfiants in MIS EN CAUSE. The card used to print « faits » for
+ * every one of them, which is a paraphrase for four of the five units and says
+ * nothing for the fifth. Keyed by the `unite` column, singular then plural.
+ */
+const UNIT_NOUNS = Object.freeze({
+  Victime: Object.freeze(['victime', 'victimes']),
+  'Victime entendue': Object.freeze(['victime entendue', 'victimes entendues']),
+  Infraction: Object.freeze(['infraction', 'infractions']),
+  Véhicule: Object.freeze(['véhicule', 'véhicules']),
+  'Mis en cause': Object.freeze(['mis en cause', 'mis en cause']),
+});
+const DEFAULT_UNIT_NOUNS = Object.freeze(['fait', 'faits']);
+
+/**
+ * The noun this indicator's counts are expressed in, agreed with the count.
+ * @param {string} slug
+ * @param {number} [count] Drives the plural; 1 alone is singular.
+ * @returns {string}
+ */
+export function delinquanceCountNoun(slug, count = 2) {
+  const nouns = UNIT_NOUNS[indicatorForSlug(slug)?.unite] || DEFAULT_UNIT_NOUNS;
+  return Math.abs(Number(count)) < 2 ? nouns[0] : nouns[1];
 }
 
 /**

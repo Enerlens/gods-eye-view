@@ -32,6 +32,36 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   n'obtient pas. La lecture d'expansion, elle, garde sa phrase entière sur la
   fiche de chaque anneau.
 
+### Changed
+- **Les fiches délinquance disent enfin 6,22 DE QUOI.** La ligne de valeur
+  affichait « 6,22 pour 1 000 habitants · 2 597 faits » — un nombre que personne
+  ne peut lire, et un nom faux : le SSMSI compte les escroqueries en VICTIMES,
+  les cambriolages en INFRACTIONS, les vols de véhicule en VÉHICULES et les
+  stupéfiants en MIS EN CAUSE. Quatre unités sur cinq ne sont pas des faits. La
+  fiche dit maintenant **« 2 597 victimes, soit 6,22 pour 1 000 habitants »**,
+  dans l'unité que le registre publie, accordée au nombre — et le total calculé,
+  qui n'a pas d'unité à lui, dit **« 230 892 cumulés (14 indicateurs) »** plutôt
+  que d'emprunter celle d'un autre.
+- **Et elles tiennent en un écran sans qu'on ait à les enrouler.** Mesurée sur
+  la Dordogne, une fiche faisait 858 caractères dont 558 de citation — la même,
+  mot pour mot, sur chaque fiche du même indicateur — pour quatre nombres
+  utiles ; l'enroulement à 420 px la rend lisible, mais en colonne d'une
+  vingtaine de lignes. La fiche par défaut fait **351 caractères sur 8 lignes**,
+  une ligne par affirmation, 60 caractères au plus : sous le plafond, donc
+  dessinée telle qu'elle est écrite, aucune phrase coupée en son milieu.
+- **Rien n'a été retiré, seulement raccourci.** La délinquance ENREGISTRÉE,
+  l'écart de dépôt de plainte 12 % → 74 %, la condition de trois ans du secret
+  statistique, le comptage au domicile de la victime, et pour le total la
+  mention qu'il est CALCULÉ par God's Eye View et non publié par le SSMSI : tous
+  là, une ligne chacun au lieu d'un paragraphe.
+- **Une puce « Méthodo » rend les règles du SSMSI, mot pour mot.** Elle est la
+  contrepartie de la fiche compacte : un lecteur qui veut vérifier ce qu'une
+  ligne courte résume clique, et la fiche DÉJÀ OUVERTE se redessine avec les
+  citations intégrales, la définition exacte de la moyenne départementale et
+  l'inventaire complet des autres indicateurs — sinon il faudrait refermer la
+  fiche et retrouver sa commune. Elle ne voyage pas dans le lien de partage :
+  une vue partagée s'ouvre toujours compacte.
+
 ## [Unreleased] — 2026-09-02
 
 ### Added
