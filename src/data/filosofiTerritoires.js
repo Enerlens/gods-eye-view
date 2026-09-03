@@ -250,9 +250,13 @@ export function createTerritorySelectedOverlayEntry(record, metric) {
 
   // The line that stops the two regimes being read as one dataset. Never
   // omitted: it is the only thing on the card that explains why zooming in
-  // changes the number.
+  // changes the number — and the YEAR is the one the proxy says it would serve,
+  // not a constant. A deployment that builds a local pack draws 2021 while the
+  // relay is on 2019, and a hard-coded year would caption the map wrongly the
+  // moment that happened. It did, on staging, before this line read it.
+  const carroyageVintage = record.carroyageVintage ?? TERRITORY_VINTAGE.carroyage;
   details.push(`Agrégat ${levelLabel.toLowerCase()} — au carreau, le calque montre une MOYENNE`
-    + ` par carreau de 200 m, millésime ${TERRITORY_VINTAGE.carroyage}`);
+    + ` par carreau de 200 m, millésime ${carroyageVintage}`);
   if (record.anchorFromCoverageBox) {
     details.push('Repère posé au centre de la zone de couverture : ce territoire n’a pas de contour embarqué');
   }

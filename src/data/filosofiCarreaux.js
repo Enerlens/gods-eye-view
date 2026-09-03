@@ -683,6 +683,9 @@ async function loadTerritories(level) {
     if (signal.aborted) return false;
     _territoryAnchors = anchors;
     const { records, unanchored } = joinTerritories(payload.territories, anchors, level);
+    // The carreau millésime the proxy says it would serve, carried onto every
+    // record so the card can name it without the client assuming a year.
+    for (const record of records) record.carroyageVintage = payload.vintage?.carroyage ?? null;
     drawTerritories(records);
     _territoryPayload = { ...payload, unanchored, drawn: records.length };
     _level = level;
@@ -1060,9 +1063,13 @@ const filosofiCarreauxLayer = {
     _metric = nextCarreau;
     _territoryMetric = nextTerritory;
     if (_regime === 'territoires') {
-      const records = _territoryPayload && _territoryAnchors
+      const rebuilt = _territoryPayload && _territoryAnchors
         ? joinTerritories(_territoryPayload.territories, _territoryAnchors, _level).records
         : [];
+      for (const record of rebuilt) {
+        record.carroyageVintage = _territoryPayload?.vintage?.carroyage ?? null;
+      }
+      const records = rebuilt;
       clearSelection();
       drawTerritories(records);
     } else {
