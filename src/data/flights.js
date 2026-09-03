@@ -4240,6 +4240,11 @@ const flightsLayer = {
         const [rawIcao24, callsign, origin_country, time_position, last_contact, lon, lat, baro_alt, on_ground, velocity, true_track, , , geo_alt] = state;
         const icao24 = _normalizeTrackedIcao(rawIcao24);
         const category = Number.isFinite(state[17]) ? state[17] : null; // extended=1 emitter category
+        // [18]/[19] are the adsb.lol extension (adsbLolFallback.js): the ICAO
+        // type designator and the tail, which OpenSky never sends. Absent on
+        // an OpenSky vector, present on every fallback one.
+        const feedTypeCode = _toCleanText(state[18]);
+        const feedRegistration = _toCleanText(state[19]);
         const vertical_rate = Number.isFinite(state[11]) ? state[11] : null; // m/s, + = climbing
         acceptedSnapshotIcaos.add(icao24);
         const onGround = on_ground === true;
@@ -4413,6 +4418,16 @@ const flightsLayer = {
 
         // Store flight metadata for click-to-track labels
         const cat = stickyNumber(category, prevMeta?.category, null);
+        // Type/tail resolution, in precedence order: an adsbdb answer wins,
+        // because it is the only source that also carries the human-readable
+        // typeName the cards print. The feed's own value fills the gap that
+        // answer leaves — the ambient enrichment is rationed (4 in flight, a
+        // 300-token bucket) against thousands of contacts, so for most of the
+        // fleet it is the ONLY type that will ever arrive. Argument order is
+        // deliberate: stickyText returns its first non-empty argument, so
+        // "previous, then feed" is exactly "never regress a resolved value".
+        const typeCode = stickyText(prevMeta?.typeCode, feedTypeCode) || null;
+        const registration = stickyText(prevMeta?.registration, feedRegistration) || null;
         const meta = {
           callsign: stickyText(callsign, prevMeta?.callsign),
           altitude: alt,
@@ -4438,8 +4453,9 @@ const flightsLayer = {
           velocity: stickyNumber(velocity, prevMeta?.velocity, 0),
           true_track: stickyNumber(true_track, prevMeta?.true_track, 0),
           category: cat,
-          // An adsbdb-enriched type code outranks the coarse OpenSky category.
-          klass: classifyAircraft({ typeCode: prevMeta?.typeCode ?? null, category: cat }),
+          // A type designator — enriched or carried by the feed — outranks the
+          // coarse OpenSky category.
+          klass: classifyAircraft({ typeCode, category: cat }),
           turnRateDps: prevMeta?.turnRateDps || 0,
           verticalRate: stickyNumber(vertical_rate, prevMeta?.verticalRate, null),
           // Analyst seam: OpenSky origin_country (state[2]) — additive, sticky
@@ -4454,10 +4470,11 @@ const flightsLayer = {
             prevMeta?.lastContactEpochMs,
             null,
           ),
-          // adsbdb enrichment — written by the enrichment callbacks, carried across polls:
-          typeCode: prevMeta?.typeCode ?? null,
+          // Type and tail: adsb.lol carries them in the vector, adsbdb writes
+          // them from its enrichment callbacks. Either way, carried across polls.
+          typeCode,
           typeName: prevMeta?.typeName ?? null,
-          registration: prevMeta?.registration ?? null,
+          registration,
           airline: prevMeta?.airline ?? null,
           route: prevMeta?.route ?? null,
           // The RAW poll fix lat/lon (this tick's OpenSky state-vector
@@ -5347,41 +5364,41 @@ const flightsLayer = {
         glyph: classLegendGlyph(klass === TR3B_CLASS && _irBoost ? 'tr3bHot' : klass),
         count,
         blurb: klass === 'unknown'
-          ? 'Type not reported yet — the silhouette is a placeholder and swaps '
-            + 'in place the moment the type answer lands.'
+          ? 'Type encore non déclaré — la silhouette est un substitut, remplacé '
+            + 'sur place dès que la réponse de type arrive.'
           : undefined,
       }));
     if (military > 0) {
       legend.push({
-        label: 'Military ICAO allocation',
+        label: 'Plage OACI militaire',
         color: '#ffb800',
         count: military,
-        blurb: 'Amber marks the transponder’s registered allocation block, not the mission.',
+        blurb: 'L’ambre marque le bloc d’allocation enregistré du transpondeur, pas la mission.',
       });
     }
     if (_trackedIcao) {
       legend.push({
-        label: 'Tracked contact',
+        label: 'Contact suivi',
         color: '#00ffff',
         count: 1,
-        blurb: 'Cyan and its trail — the past track, not a prediction.',
+        blurb: 'Le cyan et sa trace — le chemin parcouru, pas une prédiction.',
       });
     }
     if (coasting > 0) {
       legend.push({
-        label: 'Coasting (missed polls)',
+        label: 'À l’estime (sondages manqués)',
         // The exact washed tint the sprite wears — freshness is a COLOUR here,
         // not an alpha, so the swatch can be the datum.
         color: coastingSwatchCss('#ffffff'),
         count: coasting,
-        blurb: 'Washed out, not faded: the position is dead-reckoned from the '
-          + 'last fix rather than reported. Transparency means distance here.',
+        blurb: 'Délavé, et non estompé : la position est tenue à l’estime depuis '
+          + 'le dernier point, elle n’est pas rapportée. Ici la transparence dit l’ancienneté.',
       });
     }
     if (unclassified > 0 && !byClass.has('unknown')) {
       // Defensive: the tally above already covers it, but a future refactor
       // must not be able to drop the honest class silently.
-      legend.push({ label: 'Unclassified', color: '#ffffff', count: unclassified });
+      legend.push({ label: 'Non classé', color: '#ffffff', count: unclassified });
     }
     return { legend };
   },

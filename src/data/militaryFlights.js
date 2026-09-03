@@ -3827,24 +3827,24 @@ const militaryFlightsLayer = {
         glyph: classLegendGlyph(klass === TR3B_CLASS && _irBoost ? 'tr3bHot' : klass),
         count,
         blurb: klass === 'unknown'
-          ? 'Type not reported by adsb.lol — the silhouette is a placeholder.'
+          ? 'Type non déclaré par adsb.lol — la silhouette est un substitut.'
           : undefined,
       }));
     if (_trackedIcao) {
       legend.push({
-        label: 'Tracked contact',
+        label: 'Contact suivi',
         color: '#00ffff',
         count: 1,
-        blurb: 'Cyan and its trail — the past track, not a prediction.',
+        blurb: 'Le cyan et sa trace — le chemin parcouru, pas une prédiction.',
       });
     }
     if (coasting > 0) {
       legend.push({
-        label: 'Coasting (missed polls)',
+        label: 'À l’estime (sondages manqués)',
         color: coastingSwatchCss('#ffb800'),
         count: coasting,
-        blurb: 'Washed out, not faded: the position is dead-reckoned from the '
-          + 'last fix rather than reported. Transparency means distance here.',
+        blurb: 'Délavé, et non estompé : la position est tenue à l’estime depuis '
+          + 'le dernier point, elle n’est pas rapportée. Ici la transparence dit l’ancienneté.',
       });
     }
     return { legend };

@@ -1,7 +1,8 @@
 // src/data/aircraftClass.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyAircraft, CLASS_SCALE_2D, CLASS_SCALE_3D, CLASS_MODEL_URL, CLASS_MODEL_REAL } from './aircraftClass.js';
+import { classifyAircraft, CLASS_LEGEND_LABELS, CLASS_SCALE_2D, CLASS_SCALE_3D, CLASS_MODEL_URL, CLASS_MODEL_REAL } from './aircraftClass.js';
+import { VESSEL_FAMILY_LABELS } from './vesselLabels.js';
 
 test('type-code classification (military layer path)', () => {
   assert.equal(classifyAircraft({ typeCode: 'F16' }), 'fastjet');
@@ -59,7 +60,29 @@ test('scale/url tables cover every class', () => {
     assert.ok(Number.isFinite(CLASS_SCALE_2D[kind]), kind);
     assert.ok(CLASS_SCALE_3D[kind] >= 0.75 && CLASS_SCALE_3D[kind] <= 1.45, kind);
     assert.ok(typeof CLASS_MODEL_URL[kind] === 'string', kind);
+    // A class with no caption falls back to its internal key in the legend, so
+    // the reader gets 'quadjet' — a colour chart, not a legend.
+    assert.ok(typeof CLASS_LEGEND_LABELS[kind] === 'string' && CLASS_LEGEND_LABELS[kind], kind);
   }
+});
+
+test('the legend is in French, and says "unknown" the way the sea layers say it', () => {
+  // One phrase for one idea across the air and sea keys.
+  assert.equal(CLASS_LEGEND_LABELS.unknown, VESSEL_FAMILY_LABELS.unknown);
+  // Guard against a partial revert leaving half the key in English: no caption
+  // may be one of the strings this phase replaced.
+  const English = new Set([
+    'Light aircraft', 'Glider', 'Turboprop', 'Narrow-body jet', 'Wide-body jet',
+    'Four-engine heavy', 'Helicopter', 'Fast jet', 'Business jet', 'Large UAV',
+    'Type not reported',
+  ]);
+  for (const [kind, label] of Object.entries(CLASS_LEGEND_LABELS)) {
+    assert.ok(!English.has(label), `${kind} is still captioned in English`);
+  }
+  // fastjet is reached from OpenSky category 7 (a SPEED reading) as well as
+  // from the type set, so its caption must not assert a mission.
+  assert.equal(classifyAircraft({ category: 7 }), 'fastjet');
+  assert.doesNotMatch(CLASS_LEGEND_LABELS.fastjet, /combat|chasse|militaire/i);
 });
 
 test('CLASS_MODEL_REAL entries carry the fields the layers consume', () => {
