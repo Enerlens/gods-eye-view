@@ -40,6 +40,11 @@ const MILITARY_STYLES = new Set(['retro', 'surveillance', 'thermal']);
 const HUD_VARIANTS = new Set(['tactical', 'operator', 'minimal']);
 const HUD_SUMMARY_INTERVAL_MS = 15000;
 const HUD_SUMMARY_URL = '/api/openai/hud-summary';
+// The one summary failure that cannot resolve without restarting the server:
+// `/api/openai/hud-summary` answers 503 `{"error":"OPENAI_API_KEY is not set"}`
+// when the key is absent. Matched on the message so the endpoint keeps owning
+// the wording.
+const SUMMARY_UNCONFIGURED_RE = /OPENAI_API_KEY/i;
 
 /** Flattened list of all city POIs for nearest-point lookups. */
 const NEARBY_POINTS = Object.values(CITY_POIS)
@@ -83,6 +88,8 @@ export class IntelHUD {
     this._summaryRequest = null;
     this._lastSummarySignature = '';
     this._summaryRevision = 0;
+    // Latches once the endpoint reports a missing key; see SUMMARY_UNCONFIGURED_RE.
+    this._summaryDisabled = false;
     // One-shot guards so the very first summary lands immediately instead of
     // waiting for the 15s interval tick: B) swap the "Awaiting telemetry..."
     // placeholder for the deterministic line as soon as metrics exist, then
@@ -623,6 +630,13 @@ export class IntelHUD {
    */
   async _updateSummary(animate = false, force = false) {
     const fallbackText = this._composeSummary();
+    // A server with no OPENAI_API_KEY cannot start answering mid-session — the
+    // key is read at boot, so fixing it ends this page anyway. Keep composing
+    // the local line instead of asking again. See the catch below.
+    if (this._summaryDisabled) {
+      this._setSummaryText(fallbackText, animate);
+      return;
+    }
     if (!this._latestMetrics) {
       this._setSummaryText(fallbackText, animate);
       return;
@@ -674,7 +688,14 @@ export class IntelHUD {
       if (revision !== this._summaryRevision) return;
       this._setSummaryText(data.summary, animate);
     } catch (error) {
-      if (error?.name !== 'AbortError') {
+      if (SUMMARY_UNCONFIGURED_RE.test(error?.message || '')) {
+        // Distinguished from a transient failure on purpose. Retrying a
+        // MISSING KEY is unwinnable, and the tick below runs every 15 s: one
+        // QA session logged 19 identical 503s in five minutes, which is the
+        // kind of noise that trains a reader to ignore this warning.
+        this._summaryDisabled = true;
+        console.warn('[HUD] AI summary off for this session: OPENAI_API_KEY is not set');
+      } else if (error?.name !== 'AbortError') {
         console.warn('[HUD] AI summary unavailable:', error);
         // Invalidate the committed signature so the next periodic tick
         // retries instead of sticking on the fallback line forever.

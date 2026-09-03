@@ -352,7 +352,7 @@ function cardPosition(record) {
 export function buildRoadStatusSelectionLabel(record, payload = null) {
   const segment = record?.segment || {};
   const style = roadStatusStyle(segment.s);
-  const axis = segment.a || 'Unnamed road';
+  const axis = segment.a || 'Voie sans nom';
   const details = [];
 
   details.push(`● ${style.label}`);
@@ -363,23 +363,23 @@ export function buildRoadStatusSelectionLabel(record, payload = null) {
     // Checked BEFORE the formatted pair, because "0 veh/h" is a true sentence
     // that reads like a broken sensor. It is neither: 114 of 1 192 stations
     // counted nothing at 22:30, and that is a fact about the hour.
-    details.push('no vehicle counted in the last 6-min window');
+    details.push('aucun véhicule compté sur la dernière fenêtre de 6 min');
   } else if (flow || speed) {
-    details.push(`${[flow, speed].filter(Boolean).join(' · ')} (6-min average)`);
+    details.push(`${[flow, speed].filter(Boolean).join(' · ')} (moyenne sur 6 min)`);
   }
 
   const reporters = Array.isArray(segment.src) ? segment.src.map(agglomerationLabel) : [];
   if (reporters.length) details.push(`⌖ ${reporters.join(' · ')}`);
-  if (segment.d) details.push(`Operator ${segment.d}`);
+  if (segment.d) details.push(`Exploitant ${segment.d}`);
   // Where the dot on the globe comes from. A published coordinate needs no
   // sentence; one this app resolved from a kilometre post does, because the
   // reader is entitled to know the position is derived and to how much.
-  if (segment.g === 'pr') details.push('position resolved from its kilometre post (PR), median 4 m');
+  if (segment.g === 'pr') details.push('position déduite de son point de repère (PR), médiane 4 m');
   if (segment.at) {
     const age = Math.max(0, Math.round((Date.now() - new Date(segment.at).getTime()) / 1000));
-    details.push(`state reported ${age}s ago`);
+    details.push(`état relevé il y a ${age} s`);
   } else if (payload?.flow?.windowEnd) {
-    details.push('state not reported for this site');
+    details.push('état non communiqué pour ce site');
   }
   details.push('Bison Futé / DIR — Licence Ouverte 2.0');
 
@@ -662,7 +662,11 @@ const roadStatusFranceLayer = {
     };
     if (_notice) stats.notice = _notice.text;
     if (_error) stats.error = _error;
-    if (_status === 'zoom-in') stats.loadingLabel = 'Zoom in to load road status';
+    // Same phrasing as the other viewport-gated layers (`bdtopoBuildings`,
+    // `filosofiFeed`): the threshold is named, and the prompt uses the
+    // tutoiement those layers settled on rather than the vouvoiement two
+    // others use.
+    if (_status === 'zoom-in') stats.loadingLabel = `Zoome sous ${ROAD_STATUS_MAX_BOX_DEG}° pour charger l’état du réseau`;
     return stats;
   },
 

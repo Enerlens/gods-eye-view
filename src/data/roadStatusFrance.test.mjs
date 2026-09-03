@@ -58,18 +58,18 @@ test('the card names the road, the state, and the window the numbers cover', () 
   const label = buildRoadStatusSelectionLabel(makeRecord());
   const [title, ...details] = label.split('\n');
   assert.match(title, /^A630 · MB133\.I1$/);
-  assert.ok(details.some((line) => line.includes('Free flow')));
+  assert.ok(details.some((line) => line.includes('Fluide')));
   // The whole point: "89 km/h" beside a live-looking colour would read as an
   // instantaneous speed, and it is a six-minute average of a loop detector.
-  const measurement = details.find((line) => line.includes('veh/h'));
-  assert.match(measurement, /410 veh\/h · 89 km\/h \(6-min average\)/);
+  const measurement = details.find((line) => line.includes('véh/h'));
+  assert.match(measurement, /410 véh\/h · 89 km\/h \(moyenne sur 6 min\)/);
   assert.ok(details.some((line) => line.includes('Bordeaux')), 'the reporting centre is named');
   assert.ok(details.some((line) => /Licence Ouverte 2\.0/.test(line)), 'attribution travels with the card');
 });
 
 test('a station that counted nothing says so, and prints no speed', () => {
   const label = buildRoadStatusSelectionLabel(makeRecord({ f: 0, v: 0 }));
-  assert.match(label, /no vehicle counted in the last 6-min window/);
+  assert.match(label, /aucun véhicule compté sur la dernière fenêtre de 6 min/);
   assert.ok(!/km\/h/.test(label), 'a zero speed must never be drawn as stationary traffic');
 });
 
@@ -78,10 +78,10 @@ test('a located station nobody watches is drawn, and the card does not invent a 
     makeRecord({ s: 'unknown', src: [], at: null }),
     { flow: { windowEnd: '2026-08-31T21:00:00.000Z' } },
   );
-  assert.match(label, /Not reported/);
-  assert.match(label, /state not reported for this site/);
+  assert.match(label, /Non communiqué/);
+  assert.match(label, /état non communiqué pour ce site/);
   // The count is still real and still shown: no state does not mean no data.
-  assert.match(label, /410 veh\/h/);
+  assert.match(label, /410 véh\/h/);
 });
 
 test('a card on a curving segment is anchored to its middle, not to its first hop', () => {
@@ -105,19 +105,19 @@ test('a position resolved from a kilometre post says so; a published one does no
   // The two are drawn identically and are not the same claim. A viewer told
   // "A84 · 35A0084T096_00D, congested" over Rennes deserves to know that dot
   // came from the national bornage, because no DIR published it.
-  assert.equal(/kilometre post/.test(buildRoadStatusSelectionLabel(makeRecord())), false);
+  assert.equal(/point de repère/.test(buildRoadStatusSelectionLabel(makeRecord())), false);
   const derived = buildRoadStatusSelectionLabel(makeRecord({
     id: '35A0084T096_00D', a: 'A84', d: null, g: 'pr', src: ['TraficBreizhRennes'],
   }));
-  assert.match(derived, /position resolved from its kilometre post \(PR\), median 4 m/);
+  assert.match(derived, /position déduite de son point de repère \(PR\), médiane 4 m/);
   assert.match(derived, /⌖ Rennes/);
   // And it does not claim an operator the referential never named.
-  assert.equal(/Operator/.test(derived), false);
+  assert.equal(/Exploitant/.test(derived), false);
 });
 
 test('the age printed is the age of the reported state', () => {
   const label = buildRoadStatusSelectionLabel(makeRecord());
-  const age = /state reported (\d+)s ago/.exec(label);
+  const age = /état relevé il y a (\d+) s/.exec(label);
   assert.ok(age, label);
   assert.ok(Number(age[1]) >= 41 && Number(age[1]) <= 45, `age was ${age[1]}s`);
 });
@@ -157,7 +157,7 @@ test('the legend reads in severity order and omits states with nothing on screen
     },
   });
   const { legend } = _roadStatusRowControlsForTest();
-  assert.deepEqual(legend.map((row) => row.label), ['Free flow', 'Congested', 'Not reported']);
+  assert.deepEqual(legend.map((row) => row.label), ['Fluide', 'Congestionné', 'Non communiqué']);
   assert.deepEqual(legend.map((row) => row.count), [134, 2, 10]);
   assert.equal(legend[0].color, ROAD_STATUS_LEVELS.freeFlow.color);
   // The one entry a viewer has to be told the meaning of.

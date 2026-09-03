@@ -214,14 +214,18 @@ test('the four channels are far enough apart to be told apart, and none reads as
 // ── Formatting ──────────────────────────────────────────────────────────────
 
 test('figures are formatted in the units their own file publishes', () => {
+  // French separators, spelled with escapes so the narrow no-break space
+  // (U+202F) between the thousands is visible in this file rather than being
+  // an invisible character nobody can review. `36,106 km` — what `en-US` used
+  // to produce here — reads as 36.1 to a French eye, off by a factor of 1000.
   assert.equal(formatMw(930), '930 MW');
-  assert.equal(formatMw(7196), '7.2 GW');
+  assert.equal(formatMw(7196), '7,2 GW');
   assert.equal(formatMw(null), '—');
-  assert.equal(formatGwhPerYear(15.6), '15.6 GWh/an');
+  assert.equal(formatGwhPerYear(15.6), '15,6 GWh/an');
   assert.equal(formatGwhPerYear(268.14), '268 GWh/an');
-  assert.equal(formatGwhPerYear(16311), '16.3 TWh/an');
+  assert.equal(formatGwhPerYear(16311), '16,3 TWh/an');
   assert.equal(formatGwhPerYear(null), '—');
-  assert.equal(formatKm(36106), '36,106 km');
+  assert.equal(formatKm(36106), '36 106 km');
   assert.equal(formatKm(undefined), '—');
 });
 
@@ -486,9 +490,9 @@ test('the legend splits injection points by tier, because that split is the hone
   assert.equal(legend[3].count, 1);
   assert.equal(legend[4].count, 2);
   // The two networks report their own lengths; neither is a share of a total.
-  assert.match(legend[0].blurb, /31,420 km/);
-  assert.match(legend[1].blurb, /4,686 km/);
-  assert.match(legend[2].blurb, /7\.2 GW/);
+  assert.match(legend[0].blurb, /31 420 km/);
+  assert.match(legend[1].blurb, /4 686 km/);
+  assert.match(legend[2].blurb, /7,2 GW/);
   assert.match(legend[4].blurb, /does not draw/);
 });
 

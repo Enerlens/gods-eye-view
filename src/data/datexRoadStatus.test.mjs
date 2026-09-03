@@ -267,8 +267,8 @@ test('a segment is tested by its own extent, not by its midpoint', () => {
 });
 
 test('a zero-flow station prints no speed, because zero means "nothing passed"', () => {
-  assert.equal(formatFlow(1350), '1 350 veh/h');
-  assert.equal(formatFlow(0), '0 veh/h');
+  assert.equal(formatFlow(1350), '1 350 véh/h');
+  assert.equal(formatFlow(0), '0 véh/h');
   assert.equal(formatFlow(null), null);
   assert.equal(formatSpeed(113, 140), '113 km/h');
   assert.equal(formatSpeed(0, 0), null);
