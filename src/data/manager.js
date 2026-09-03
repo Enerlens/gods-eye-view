@@ -2544,15 +2544,15 @@ export class DataLayerManager {
     }
     if (presentedError) {
       if (typeof stats.retryInSec === 'number' && stats.retryInSec > 0) {
-        return `${stateLabel} · ${source} · ${presentedError} · retry ${stats.retryInSec}s`;
+        return `${stateLabel} · ${source} · ${presentedError} · nouvelle tentative dans ${stats.retryInSec} s`;
       }
       return `${stateLabel} · ${source} · ${presentedError}`;
     }
-    const ago = stats.lastUpdate ? this._timeAgo(stats.lastUpdate) : 'never';
+    const ago = stats.lastUpdate ? this._timeAgo(stats.lastUpdate) : 'jamais';
     if (stats.loading) {
       const loadingLabel = typeof stats.loadingLabel === 'string' && stats.loadingLabel.trim()
         ? stats.loadingLabel.trim()
-        : 'loading...';
+        : 'chargement…';
       return `${source} · ${loadingLabel}`;
     }
     if (feedState === 'fallback') {
@@ -2563,7 +2563,7 @@ export class DataLayerManager {
     }
     if (feedState === 'stale') {
       const retry = typeof stats.retryInSec === 'number' && stats.retryInSec > 0
-        ? ` · retrying in ${stats.retryInSec}s`
+        ? ` · nouvelle tentative dans ${stats.retryInSec} s`
         : '';
       return `${stateLabel} · ${source} · ${ago}${retry}`;
     }
@@ -2600,11 +2600,16 @@ export class DataLayerManager {
     return String(n);
   }
 
+  // Freshness copy is French because it sits on the same line as the layer's
+  // own French name — `Vols en direct · OpenSky Network · just now` was the
+  // reading that made the mix obvious. The UPPERCASE feed states above
+  // (FEED_STATE_LABELS) are deliberately left alone: they are the console's
+  // status vocabulary rather than prose, and harnesses assert on them.
   _timeAgo(timestamp) {
     const diff = Math.floor((Date.now() - timestamp) / 1000);
-    if (diff < 5) return 'just now';
-    if (diff < 60) return `${diff}s ago`;
-    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-    return `${Math.floor(diff / 3600)}h ago`;
+    if (diff < 5) return 'à l’instant';
+    if (diff < 60) return `il y a ${diff} s`;
+    if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
+    return `il y a ${Math.floor(diff / 3600)} h`;
   }
 }

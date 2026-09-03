@@ -118,21 +118,24 @@ export const AGGLOMERATION_LABELS = Object.freeze({
  * because a road reported congested by one centre and free by another is not a
  * road anyone should be told is free.
  */
+// `id` stays English because it is a code identifier; `label` is what a reader
+// sees on the card and in the legend of a layer called « État du réseau
+// routier », so it uses the vocabulary Bison Futé itself publishes.
 export const ROAD_STATUS_LEVELS = Object.freeze({
   freeFlow: Object.freeze({
-    id: 'freeFlow', rank: 0, label: 'Free flow', color: '#2ecc71', widthPx: 3.5,
+    id: 'freeFlow', rank: 0, label: 'Fluide', color: '#2ecc71', widthPx: 3.5,
   }),
   heavy: Object.freeze({
-    id: 'heavy', rank: 1, label: 'Heavy', color: '#f0b23e', widthPx: 4.5,
+    id: 'heavy', rank: 1, label: 'Dense', color: '#f0b23e', widthPx: 4.5,
   }),
   congested: Object.freeze({
-    id: 'congested', rank: 2, label: 'Congested', color: '#e05252', widthPx: 5.5,
+    id: 'congested', rank: 2, label: 'Congestionné', color: '#e05252', widthPx: 5.5,
   }),
   impossible: Object.freeze({
-    id: 'impossible', rank: 3, label: 'Impassable', color: '#8e2b2b', widthPx: 6,
+    id: 'impossible', rank: 3, label: 'Impraticable', color: '#8e2b2b', widthPx: 6,
   }),
   unknown: Object.freeze({
-    id: 'unknown', rank: -1, label: 'Not reported', color: '#7c8794', widthPx: 2.5,
+    id: 'unknown', rank: -1, label: 'Non communiqué', color: '#7c8794', widthPx: 2.5,
   }),
 });
 
@@ -509,7 +512,10 @@ export function agglomerationLabel(directory) {
  */
 export function formatFlow(flowVehH) {
   if (!Number.isFinite(flowVehH) || flowVehH < 0) return null;
-  return `${Math.round(flowVehH).toLocaleString('en-US').replace(/,/g, ' ')} veh/h`;
+  // `véh/h` with the accent, matching `comptagesParis` — the taxonomy presents
+  // the two layers as the same subject measured differently, so they must not
+  // spell the unit two ways.
+  return `${Math.round(flowVehH).toLocaleString('en-US').replace(/,/g, ' ')} véh/h`;
 }
 
 /**

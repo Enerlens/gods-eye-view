@@ -16,6 +16,67 @@ import { decodeLayerStateParams, encodeLayerStateParams } from './data/layerStat
 
 const DEBOUNCE_MS = 500;
 const LEGACY_BLOOM_FALLBACK = 50;
+const SHARE_ALTITUDE_FALLBACK_M = 800;
+
+/**
+ * Whether a parsed latitude names a real place.
+ *
+ * `Cesium.Cartesian3.fromDegrees` runs the trigonometry without validating its
+ * range, so a FINITE latitude outside [-90, 90] does not throw — it reflects
+ * the position through the pole (`sign(lat) * (180 - |lat|)`) and flips the
+ * longitude by 180°. `#lat=123.456&lon=2.35` lands at 56.544° / -177.65°, on
+ * the other side of the planet, with nothing logged anywhere.
+ *
+ * That is the one failure a share link must not have: its whole promise is
+ * reproducing a view, so a mistyped digit has to fail visibly rather than
+ * quietly show somewhere else.
+ *
+ * @param {number} lat
+ * @returns {boolean}
+ */
+export function isShareLatitudeInRange(lat) {
+  return Number.isFinite(lat) && lat >= -90 && lat <= 90;
+}
+
+/**
+ * Wrap a longitude into [-180, 180).
+ *
+ * Longitude is deliberately NOT rejected the way latitude is: a value outside
+ * the range still names a real meridian by wrapping, so 190 is an honest way
+ * to write -170 and nothing is lost by accepting it. Normalising keeps the
+ * state canonical, so the link this session regenerates is the tidy spelling.
+ *
+ * @param {number} lon
+ * @returns {?number} Wrapped longitude, or null when not finite.
+ */
+export function normalizeShareLongitude(lon) {
+  if (!Number.isFinite(lon)) return null;
+  // An already-canonical longitude is returned untouched. The wrap below is
+  // exact only for values that need it: routing 2.35 through it comes back as
+  // 2.3500000000000227, which would move every ordinary link a few
+  // micrometres and make the regenerated hash differ from the one pasted in.
+  if (lon >= -180 && lon < 180) return Object.is(lon, -0) ? 0 : lon;
+  const wrapped = (((lon + 180) % 360) + 360) % 360 - 180;
+  // `-0` round-trips through the URL as "0" anyway; normalise it so callers
+  // comparing against 0 do not have to know about signed zero.
+  return Object.is(wrapped, -0) ? 0 : wrapped;
+}
+
+/**
+ * Camera height from a share link, in metres.
+ *
+ * A negative height puts the camera below the ellipsoid, which no valid link
+ * expresses. Such a value is treated exactly like an ABSENT one — it falls
+ * back to the default — because that is already this format's contract for an
+ * altitude it cannot use.
+ *
+ * @param {?string} value Raw `alt` param.
+ * @returns {number} Metres above the ellipsoid.
+ */
+export function parseShareAltitude(value) {
+  const num = parseFloat(value);
+  return Number.isFinite(num) && num >= 0 ? num : SHARE_ALTITUDE_FALLBACK_M;
+}
 
 // Style name mapping: internal → URL-friendly
 const STYLE_TO_URL = {
@@ -159,10 +220,15 @@ export class ShareLinkManager {
     const lat = parseFloat(params.get('lat'));
     const lon = parseFloat(params.get('lon'));
 
-    // Coordinates drive Cartesian conversion, so reject non-finite URL values
+    // Coordinates drive Cartesian conversion, so reject unusable URL values
     // before marking a share restoration as pending. `parseFloat('Infinity')`
-    // is not NaN and would otherwise reach Cesium asynchronously at startup.
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    // is not NaN and would otherwise reach Cesium asynchronously at startup —
+    // and a finite-but-out-of-range latitude is worse still, because Cesium
+    // accepts it and silently reflects the camera through the pole. See
+    // {@link isShareLatitudeInRange}.
+    if (!isShareLatitudeInRange(lat)) return null;
+    const wrappedLon = normalizeShareLongitude(lon);
+    if (wrappedLon === null) return null;
 
     const parseOr = (value, fallback) => {
       const num = parseFloat(value);
@@ -178,8 +244,8 @@ export class ShareLinkManager {
     const decodedLayerState = decodeLayerStateParams(params);
     const state = {
       lat,
-      lon,
-      alt: parseOr(params.get('alt'), 800),
+      lon: wrappedLon,
+      alt: parseShareAltitude(params.get('alt')),
       heading: parseOr(params.get('heading'), 0),
       pitch: parseOr(params.get('pitch'), -35),
       roll: parseOr(params.get('roll'), 0),

@@ -22313,13 +22313,21 @@ export function deferCesiumScriptTag(html) {
 function deferCesiumBundlePlugin() {
   return {
     name: 'gev-defer-cesium-bundle',
+    // BUILD ONLY, because that is the only place the tag exists. `vite dev`
+    // serves Cesium through the module graph and injects no blocking script,
+    // so the warning below fired on EVERY dev page load — 11 times in one QA
+    // session — announcing a broken optimisation that was simply not
+    // applicable. A warning that cries wolf on every reload is worth nothing
+    // the day the build really does change.
+    apply: 'build',
     transformIndexHtml: {
       order: 'post',
       handler(html) {
         const { html: out, changed } = deferCesiumScriptTag(html);
         if (!changed) {
-          // Only reachable if vite-plugin-cesium changes how it injects the
-          // tag. Silence would mean quietly giving the blocking script back.
+          // Now genuinely only reachable if vite-plugin-cesium changes how it
+          // injects the tag. Silence would mean quietly giving the blocking
+          // script back.
           console.warn('[gev-defer-cesium-bundle] no Cesium script tag to defer — did vite-plugin-cesium change its injection?');
         }
         return out;

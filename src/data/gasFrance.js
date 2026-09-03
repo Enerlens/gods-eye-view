@@ -244,24 +244,44 @@ export function gasInjectionPointSize(gwh) {
   return Math.round(INJECTION_MIN_PX + ratio * (INJECTION_MAX_PX - INJECTION_MIN_PX));
 }
 
+/**
+ * French number formatting, as the sibling FR layers write it.
+ *
+ * `toLocaleString('en-US')` was reaching the cards as `36,106 km of trace` — a
+ * figure a French reader parses as 36.1, off by a factor of 1000. The same
+ * applied to `toFixed`, whose decimal point should be a comma here. This gives
+ * the narrow no-break space and the decimal comma, matching the local `fr()`
+ * helpers in `amenitiesFrance`, `schoolsFrance` and the other FR layers.
+ *
+ * @param {number} value
+ * @param {number} [digits=0] Fraction digits, fixed (not a maximum).
+ * @returns {string}
+ */
+function fr(value, digits = 0) {
+  return Number(value).toLocaleString('fr-FR', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+}
+
 /** Format a megawatt figure the way a control room writes it. */
 export function formatMw(mw) {
   if (!Number.isFinite(mw)) return '—';
-  if (mw >= 1000) return `${(mw / 1000).toFixed(mw >= 10_000 ? 0 : 1)} GW`;
-  return `${Math.round(mw).toLocaleString('en-US')} MW`;
+  if (mw >= 1000) return `${fr(mw / 1000, mw >= 10_000 ? 0 : 1)} GW`;
+  return `${fr(Math.round(mw))} MW`;
 }
 
 /** Format an annual energy figure. */
 export function formatGwhPerYear(gwh) {
   if (!Number.isFinite(gwh)) return '—';
-  if (gwh >= 1000) return `${(gwh / 1000).toFixed(1)} TWh/an`;
-  return `${gwh.toFixed(gwh < 100 ? 1 : 0)} GWh/an`;
+  if (gwh >= 1000) return `${fr(gwh / 1000, 1)} TWh/an`;
+  return `${fr(gwh, gwh < 100 ? 1 : 0)} GWh/an`;
 }
 
 /** Format a network length. */
 export function formatKm(km) {
   if (!Number.isFinite(km)) return '—';
-  return `${Math.round(km).toLocaleString('en-US')} km`;
+  return `${fr(Math.round(km))} km`;
 }
 
 /**
@@ -838,7 +858,7 @@ async function load() {
     // Half a system is still a system — the layer reports which half is
     // missing rather than blanking the half that arrived.
     if (!_networkLoaded && !_sitesLoaded) {
-      _error = 'ODRÉ gas datasets unavailable';
+      _error = 'jeux de données gaz ODRÉ indisponibles';
       _status = 'error';
       return false;
     }
@@ -856,7 +876,7 @@ async function load() {
     return true;
   } catch (error) {
     console.warn('[Data:Gas FR] load error:', error);
-    _error = 'ODRÉ gas network error';
+    _error = 'erreur du réseau gaz ODRÉ';
     _status = 'error';
     return false;
   } finally {
@@ -898,13 +918,13 @@ function collectDetectableObjects(options = {}) {
 }
 
 function buildLoadingLabel() {
-  if (_loading && !_networkLoaded) return 'loading the transmission trace...';
-  if (_loading) return 'refreshing the gas register...';
-  if (_status === 'error') return _error || 'unavailable';
+  if (_loading && !_networkLoaded) return 'chargement du tracé de transport…';
+  if (_loading) return 'actualisation du registre gaz…';
+  if (_status === 'error') return _error || 'indisponible';
   const parts = [];
-  if (_networkStats?.lengthKm) parts.push(`${formatKm(_networkStats.lengthKm)} of trace`);
+  if (_networkStats?.lengthKm) parts.push(`${formatKm(_networkStats.lengthKm)} de tracé`);
   if (_plants.length) parts.push(`${_plants.length} centrales`);
-  if (_injections.length) parts.push(`${_injections.length} injection sites`);
+  if (_injections.length) parts.push(`${_injections.length} sites d’injection`);
   if (_error) parts.push(_error);
   return parts.join(' · ');
 }
