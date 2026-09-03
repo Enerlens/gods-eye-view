@@ -1422,6 +1422,7 @@ body.ui-clean-view #data-panel,
 body.ui-clean-view #cctv-panel,
 body.ui-clean-view #radio-panel,
 body.ui-clean-view #global-context-panel,
+body.ui-clean-view #velo-pulse-hud,
 body.ui-clean-view #scene-panel {
   opacity: 0 !important;
   visibility: hidden !important;
@@ -9431,4 +9432,261 @@ body.scene-playback-mode #first-run-launcher {
   .first-run-arrow { transition: none; }
   /* Scrolling a tile into view must not animate either. */
   .first-run-choices { scroll-behavior: auto; }
+}
+
+/* ═══════════════════════════════════════════════
+   POULS VÉLO — the week's transport, under the globe
+   ═══════════════════════════════════════════════
+   Layer-owned and self-mounting (src/data/veloPulseHud.js): it exists only
+   while the layer is on, so it takes no room in index.html for the thirty
+   layers that do not need it.
+
+   It sits ABOVE the command dock rather than in a side panel, for the reason
+   it was built: a reader watching 561 blobs breathe over Lyon must be able to
+   read the hour, the shape of the week and the station they just clicked
+   WITHOUT looking away from them — and the anchored card cannot do that job
+   near the edge of the scope, where the keyhole fades it to one per cent. */
+.velo-pulse-hud {
+  position: fixed;
+  left: 50%;
+  bottom: calc(2vh + 108px);
+  z-index: 140;
+  width: min(620px, 92vw);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 13px 9px;
+  border: 1px solid rgba(123, 189, 211, 0.3);
+  border-radius: 12px;
+  background: rgba(6, 14, 22, 0.86);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 18px rgba(0, 212, 255, 0.07);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  pointer-events: auto;
+}
+
+.velo-pulse-hud[hidden] { display: none; }
+
+.velo-pulse-hud-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 9px;
+  letter-spacing: 1.4px;
+}
+
+.velo-pulse-hud-title { color: rgba(170, 252, 255, 0.92); }
+.velo-pulse-hud-window { color: var(--text-dim); letter-spacing: 0.9px; }
+
+.velo-pulse-hud-clock {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.velo-pulse-play {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 11px;
+  border: 1px solid rgba(123, 189, 211, 0.35);
+  border-radius: 7px;
+  background: rgba(0, 212, 255, 0.07);
+  color: rgba(190, 244, 255, 0.95);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.3px;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.velo-pulse-play:hover,
+.velo-pulse-play:focus-visible {
+  border-color: rgba(0, 212, 255, 0.6);
+  background: rgba(0, 212, 255, 0.16);
+}
+
+.velo-pulse-play-glyph { font-size: 10px; }
+
+.velo-pulse-hour {
+  font-size: 17px;
+  font-weight: 500;
+  letter-spacing: 2.2px;
+  color: #fff;
+}
+
+.velo-pulse-phase {
+  flex: 1;
+  text-align: right;
+  font-size: 10px;
+  letter-spacing: 0.6px;
+  color: rgba(240, 192, 74, 0.92);
+  font-family: var(--font-sans);
+}
+
+/* The strip IS the control: 168 hours wide, click or drag anywhere on it. */
+.velo-pulse-strip {
+  position: relative;
+  height: 40px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.03);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.velo-pulse-strip:focus-visible {
+  outline: 1px solid rgba(0, 212, 255, 0.65);
+  outline-offset: 2px;
+}
+
+.velo-pulse-curve {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.velo-pulse-cursor {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: #fff;
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.75);
+  pointer-events: none;
+}
+
+/* While the week runs the cursor eases with it; a scrub jumps, because the
+   reader's finger is already the animation. */
+.velo-pulse-hud.is-playing .velo-pulse-cursor { transition: left 60ms linear; }
+
+.velo-pulse-days {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  font-size: 8px;
+  letter-spacing: 1.6px;
+  color: var(--text-dim);
+}
+
+.velo-pulse-days span { text-align: center; }
+.velo-pulse-days .weekend { color: rgba(122, 190, 214, 0.75); }
+
+.velo-pulse-hud-legend {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.velo-pulse-swatch {
+  width: 13px;
+  height: 7px;
+  border-radius: 2px;
+}
+
+.velo-pulse-legend-text { flex: 1 1 220px; }
+
+.velo-pulse-site {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+/* `display: flex` above beats the user-agent's `[hidden] { display: none }`,
+   so the empty fiche has to hide itself explicitly — otherwise the panel
+   carries a blank block with a close button for a station nobody picked. */
+.velo-pulse-site[hidden] { display: none; }
+
+.velo-pulse-site-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+  letter-spacing: 1.5px;
+  color: #fff;
+}
+
+.velo-pulse-site-close {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1;
+  padding: 2px 7px;
+  cursor: pointer;
+}
+
+.velo-pulse-site-close:hover { color: #fff; border-color: rgba(255, 255, 255, 0.4); }
+
+/* The station's own week, in the map's colours: the bar under the cursor is
+   the colour of the blob under the reader's cursor, 168 times over. The strip
+   is its own positioning context so the cursor rides THIS canvas and not the
+   whole fiche — the two strips are the same 168 hours at the same scale, and
+   one number places both. */
+.velo-pulse-site-strip {
+  position: relative;
+  height: 26px;
+}
+
+.velo-pulse-site-week {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 4px;
+}
+
+.velo-pulse-site-lines {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.velo-pulse-site-lines li:first-child {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: rgba(240, 244, 248, 0.95);
+}
+
+.velo-pulse-site-empty {
+  margin: 0;
+  padding-top: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  font-family: var(--font-sans);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.velo-pulse-site-empty[hidden] { display: none; }
+
+/* Under 900 px the dock stacks and the strip needs the width more than the
+   fiche needs two columns. */
+@media (max-width: 900px) {
+  .velo-pulse-hud { bottom: calc(2vh + 150px); }
+  .velo-pulse-site-lines { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .velo-pulse-hud.is-playing .velo-pulse-cursor { transition: none; }
 }

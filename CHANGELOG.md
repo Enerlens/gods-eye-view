@@ -44,6 +44,38 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   et toute enveloppe autour d'une araignée est surtout du sol inaccessible.
   Ajouter des rayons n'y change rien — à 24, 32, 48 et 64 directions le chiffre
   lyonnais reste à un point de +19 % : l'erreur est la FORME, pas la résolution.
+- **Pouls vélo — une carte de chaleur, et une semaine qu'on peut enfin lire.**
+  Le calque dessinait 561 cubes extrudés : la couleur pour la part du maximum, la
+  HAUTEUR pour la quantité. À l'écran c'est un champ de confettis flottants — l'un
+  cache l'autre, au nadir le canal hauteur disparaît entièrement, et d'assez loin
+  pour voir la forme d'une ville il ne reste rien. C'est maintenant une nappe de
+  chaleur : une tache douce par site, posée au sol, dimensionnée EN MÈTRES, qui
+  déborde sur ses voisines comme le fait une carte de densité. La couleur reste la
+  part du maximum hebdomadaire du site lui-même, interpolée entre les cinq bandes
+  de la légende au lieu de sauter de l'une à l'autre ; ce qui était dans la hauteur
+  est passé dans la SURFACE — deux fois la quantité, deux fois l'encre, ce qui est
+  ce qu'un lecteur lit d'un disque.
+- **L'animation dit ce qu'elle montre.** SEMAINE déroulait 168 heures en 37
+  secondes sans une seule indication : pas d'heure à l'écran, pas de forme de la
+  semaine, aucun moyen de s'arrêter sur une heure. Un panneau sous le globe porte
+  désormais l'heure en toutes lettres, ce que fait le réseau à cette heure-là
+  (« pointe », « la nuit — presque personne ne roule »), la semaine entière en 168
+  barres — la courbe même sur laquelle POINTE se fige — et un curseur sur l'heure
+  dessinée.
+- **Cette bande EST la commande.** Un clic, un glissé ou les flèches du clavier
+  posent la semaine sur l'heure demandée et la mettent en pause ; le bouton la
+  relance exactement là. Le rythme passe de 220 ms à 520 ms par heure — la semaine
+  complète en 87 s au lieu de 37 — et chaque tache glisse ENTRE les heures au lieu
+  de sauter : la valeur affichée est l'heure où l'on est, adoucie vers la suivante,
+  et un trou dans l'archive n'est jamais comblé par son voisin.
+- **La fiche d'une station ne peut plus se cacher.** La carte d'un site cliqué est
+  ancrée dans le monde : hors du hublot elle tombe à 1 % d'opacité, autant dire
+  rien — un lecteur qui clique près du bord du scope n'obtenait aucune réponse. La
+  fiche est désormais aussi dans le panneau, toujours à l'écran : le nom, la
+  lecture de l'heure dans l'unité de la ville, le maximum de la semaine, et la
+  semaine propre de la station en 168 barres aux couleurs de la carte. Les deux
+  sortent de la même fonction, donc elles ne peuvent pas imprimer deux nombres
+  différents pour un même quai.
 - **Le bruit des aéroports se lit enfin de loin.** Le calque tirait UNE bande sur
   les quatre d'un plan et s'effaçait au-dessus de 12 km — alors que le plan le
   plus large de France, la zone D du Bourget, fait 65,8 km de côté : la forme ne
