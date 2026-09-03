@@ -661,3 +661,89 @@ export function projectBikeEnvelope({ durations, fan, steps, snapM = null }) {
   }
   return rings;
 }
+
+/**
+ * How far the nearest BAN address point may be before it stops naming the pin.
+ *
+ * The centre of a catchment is a spot the reader chose on a map, not a door
+ * they typed, so it lands in fields and on roundabouts as often as on a
+ * building. 120 m is about a block face plus its setback: inside it the nearest
+ * address IS what the reader clicked, and outside it printing a street number
+ * as a title is a confident lie about a point that has none. The commune is the
+ * fallback because it is still true at any distance.
+ *
+ * The cadastre's own reverse lookup uses 60 m, which is right for a card whose
+ * subject is one parcel; this card's subject is a fifteen-minute walk.
+ */
+export const CENTRE_ADDRESS_MAX_M = 120;
+
+/**
+ * Project one BAN reverse answer into what the catchment card can title itself.
+ *
+ * The distance is KEPT rather than used to reject, unlike the cadastre's
+ * projection: a point 400 m from the nearest address still belongs to a commune
+ * and the card still has to be titled, so the decision is made where the title
+ * is written and the raw measurement travels with the answer.
+ *
+ * @param {object} payload BAN FeatureCollection.
+ * @returns {?{label: string|null, street: string|null, housenumber: string|null,
+ *   postcode: string|null, city: string|null, citycode: string|null,
+ *   distanceM: number|null}}
+ */
+export function projectCentreAddress(payload) {
+  const props = payload?.features?.[0]?.properties;
+  if (!props) return null;
+  const text = (value) => {
+    const out = String(value ?? '').trim();
+    return out || null;
+  };
+  const distance = Number(props.distance);
+  const label = text(props.label);
+  const city = text(props.city);
+  if (!label && !city) return null;
+  return {
+    label,
+    housenumber: text(props.housenumber),
+    street: text(props.street),
+    postcode: text(props.postcode),
+    city,
+    citycode: text(props.citycode),
+    distanceM: Number.isFinite(distance) ? Math.round(distance) : null,
+  };
+}
+
+/**
+ * A coordinate as a French reader writes it, for a point with no address.
+ *
+ * `O` for ouest, not `W`: the rest of this layer is written in French and a
+ * compass letter is the one place an English abbreviation would pass unnoticed.
+ *
+ * @param {number} lon @param {number} lat
+ * @returns {string}
+ */
+export function formatCoordinates(lon, lat) {
+  const one = (value, positive, negative) => `${Math.abs(value)
+    .toLocaleString('fr-FR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })} ${value < 0 ? negative : positive}`;
+  return `${one(lat, 'N', 'S')} · ${one(lon, 'E', 'O')}`;
+}
+
+/**
+ * What the catchment card calls the point it was measured from.
+ *
+ * Three answers and they are not interchangeable. A street address within
+ * {@link CENTRE_ADDRESS_MAX_M} is the one the reader recognises. Past that the
+ * commune is the largest true thing that can be said. With neither, the
+ * coordinate — which names the point exactly and tells the reader nothing,
+ * which is the honest state of affairs for a click in the middle of a forest.
+ *
+ * @param {?object} address Output of {@link projectCentreAddress}.
+ * @param {{lon: number, lat: number}} point
+ * @returns {string}
+ */
+export function centreTitle(address, point) {
+  const distance = address?.distanceM;
+  const near = distance === null || distance === undefined || distance <= CENTRE_ADDRESS_MAX_M;
+  if (address?.label && near) return address.label;
+  if (address?.city) return address.city;
+  return formatCoordinates(point?.lon ?? 0, point?.lat ?? 0);
+}

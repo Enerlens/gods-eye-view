@@ -171,6 +171,7 @@ import {
   buildIsochroneUrl,
   parseSteps as parseIsochroneSteps,
   projectBikeEnvelope,
+  projectCentreAddress,
   projectIsochrone,
   resolveProfile as resolveIsochroneProfile,
   ringExpansion,
@@ -20683,41 +20684,56 @@ function installAddressRoute(middlewares, route, plan, options = {}) {
 }
 
 /**
- * Resolve the ARRONDISSEMENT-level INSEE code for a point, via the BAN.
+ * Reverse-geocode a point through the BAN, once per ~11 m cell.
  *
  * The BAN reverse geocoder, and only it. `geo.api.gouv.fr` answers **75056** —
  * Paris as one commune — for every Paris point, and so does the `codeInsee`
- * Géorisques echoes back; DVF publishes its files as **75113**. Two consumers
- * need this now (DVF for its file path, Géorisques for its radon lookup), which
- * is why it is shared rather than copied.
+ * Géorisques echoes back; DVF publishes its files as **75113**. Three consumers
+ * need this answer now — DVF for its file path, Géorisques for its radon
+ * lookup, and the catchment card for the street line it is titled with — which
+ * is why the whole projection is memoised rather than just the commune code.
  *
- * Memoised on a ~11 m grid: it is the same call for every scan of a block.
+ * Memoised on a ~11 m grid: it is the same call for every scan of a block, and
+ * for every travel mode measured from the same pin.
  *
  * @param {number} lon @param {number} lat
- * @returns {Promise<{code: string, name: string|null}|null>}
+ * @returns {Promise<?object>} `projectCentreAddress` output, or null.
  */
-const _communeCodeCache = new Map();
-async function resolveCommuneCode(lon, lat) {
+const _reverseAddressCache = new Map();
+async function resolveReverseAddress(lon, lat) {
   const key = `${lon.toFixed(4)},${lat.toFixed(4)}`;
-  if (_communeCodeCache.has(key)) return _communeCodeCache.get(key);
+  if (_reverseAddressCache.has(key)) return _reverseAddressCache.get(key);
   const body = await fetchAddressSource(
     `https://api-adresse.data.gouv.fr/reverse/?lon=${lon}&lat=${lat}`,
     { maxBytes: 256 * 1024 },
   );
-  const properties = body?.features?.[0]?.properties;
-  const code = String(properties?.citycode || '').toUpperCase();
-  const resolved = /^[0-9][0-9AB][0-9]{3}$/.test(code)
-    ? { code, name: properties?.city || null }
-    : null;
+  const address = projectCentreAddress(body);
   // A failed lookup is NOT cached: it is usually a reset, not a coordinate
   // without a commune, and caching it would make one blip permanent.
-  if (resolved) {
-    _communeCodeCache.set(key, resolved);
-    while (_communeCodeCache.size > 500) {
-      _communeCodeCache.delete(_communeCodeCache.keys().next().value);
+  if (address) {
+    _reverseAddressCache.set(key, address);
+    while (_reverseAddressCache.size > 500) {
+      _reverseAddressCache.delete(_reverseAddressCache.keys().next().value);
     }
   }
-  return resolved;
+  return address;
+}
+
+/**
+ * The arrondissement-level INSEE code, read off the same answer.
+ *
+ * Two consumers needed the code (DVF for its file path, Géorisques for radon)
+ * and a third now needs the street line (the catchment card's title). One call
+ * answers all three, and sharing the memo means a point already scanned for
+ * risks costs the catchment nothing.
+ *
+ * @param {number} lon @param {number} lat
+ * @returns {Promise<{code: string, name: string|null}|null>}
+ */
+async function resolveCommuneCode(lon, lat) {
+  const address = await resolveReverseAddress(lon, lat);
+  const code = String(address?.citycode || '').toUpperCase();
+  return /^[0-9][0-9AB][0-9]{3}$/.test(code) ? { code, name: address.city || null } : null;
 }
 
 /**
@@ -21654,6 +21670,11 @@ function isochroneProxy() {
             // rather than from a constant, so `seconds=300` does not send a
             // reader a fan built for fifteen minutes and read it at five.
             const fan = bikeFanPoints({ ...point, seconds: steps[steps.length - 1] });
+            // Started here and awaited at the end: it is a different host from
+            // the routing engine, so it costs nothing but the bytes, and the
+            // card is TITLED with it — a title that arrives after the card is
+            // open is a title the reader watches change.
+            const addressPromise = resolveReverseAddress(point.lon, point.lat);
             // 25 s rather than the shared 20: measured against the FOSSGIS
             // cluster on 2026-09-02, an isolated 397-point table answered in
             // 0.6 s and a burst of them was throttled to a flat 10 s. The
@@ -21677,6 +21698,9 @@ function isochroneProxy() {
             return {
               profile: 'bike',
               requestedSteps: steps,
+              // What the pin is CALLED. The card's title, and the only thing in
+              // the payload that describes the point rather than the rings.
+              address: await addressPromise,
               rings,
               missing: steps.length - rings.length,
               expansion: ringExpansion(rings),
@@ -21706,6 +21730,7 @@ function isochroneProxy() {
           // a deployed instance, is the shape of traffic that gets an open
           // service to stop being open. One ring at a time costs a reader about
           // half a second more and costs the publisher a third of the burst.
+          const addressPromise = resolveReverseAddress(point.lon, point.lat);
           const rings = [];
           for (const seconds of steps) {
             // eslint-disable-next-line no-await-in-loop -- deliberate: see above.
@@ -21724,6 +21749,7 @@ function isochroneProxy() {
           return {
             profile,
             requestedSteps: steps,
+            address: await addressPromise,
             rings,
             // Reported so the client can say "two of the three rings arrived"
             // rather than silently drawing a smaller catchment area.

@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
+import { getOverlaySourceEntries } from '../overlays/worldOverlay.js';
 import {
   SEAT_EPSILON_M,
   addressScanClickIntent,
@@ -663,5 +664,99 @@ test('the render is told whether the centre was chosen or merely looked at', asy
   // The altitude is still the CAMERA's — how far away the reader is standing —
   // because that is what it means to everything downstream.
   assert.equal(seen.at(-1).altitudeM, 900);
+  layer.disable();
+});
+
+// ── The two hooks a layer with a shape around its marker needs ──────────────
+
+test('afterDraw runs on a drawn AND indexed layer, so it can open a card', async (t) => {
+  withDocument(t);
+  const calls = [];
+  const { layer } = await scannedLayer({
+    render({ dataSource, point }) {
+      dataSource.entities.add({
+        id: 'centre',
+        position: Cesium.Cartesian3.fromDegrees(point.lon, point.lat),
+        name: 'Le titre',
+        description: 'une ligne · une autre',
+      });
+      return 1;
+    },
+    afterDraw({ payload, point, selectCard }) {
+      // The claim being tested: by the time the hook runs, the card index holds
+      // what `render` just drew. Called from `render` this would be false.
+      calls.push({ payload, point, opened: selectCard('centre') });
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].opened, true, 'the entity drawn a moment ago is selectable');
+  assert.deepEqual(calls[0].payload, { zones: ['one'] });
+  assert.equal(layer.getStats().selectedId, 'centre');
+  layer.disable();
+});
+
+test('a hook that throws does not take the scan down with it', async (t) => {
+  withDocument(t);
+  const warnings = [];
+  const warn = console.warn;
+  console.warn = (...args) => { warnings.push(args.join(' ')); };
+  t.after(() => { console.warn = warn; });
+  const { layer } = await scannedLayer({
+    afterDraw() { throw new Error('boom'); },
+  });
+  assert.equal(layer.getStats().error, null, 'the answer is drawn and the layer is healthy');
+  assert.equal(layer.getStats().count, 1);
+  assert.ok(warnings.some((line) => line.includes('boom')));
+  layer.disable();
+});
+
+test('cardAnchor moves the open card off its marker, and sets which side', async (t) => {
+  withDocument(t);
+  const painted = [];
+  const { layer } = await scannedLayer({
+    render({ dataSource, point }) {
+      dataSource.entities.add({
+        id: 'centre',
+        position: Cesium.Cartesian3.fromDegrees(point.lon, point.lat),
+        name: 'Le titre',
+        description: 'une ligne',
+      });
+      return 1;
+    },
+    // A kilometre south of the marker, which is where the shape's lower edge is.
+    cardAnchor: (card) => (card.id === 'centre'
+      ? { lon: ADDRESS.lon, lat: ADDRESS.lat - 0.01, placement: 'below' }
+      : null),
+    afterDraw({ selectCard }) { painted.push(selectCard('centre')); },
+  });
+  assert.deepEqual(painted, [true]);
+  const entries = getOverlaySourceEntries('scan-test');
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].placement, 'below', 'the layer chose the side, not the host');
+  const carto = Cesium.Cartographic.fromCartesian(entries[0].position);
+  assert.ok(Math.abs(Cesium.Math.toDegrees(carto.latitude) - (ADDRESS.lat - 0.01)) < 1e-6,
+    'the card hangs where the layer put it, not on the marker');
+  layer.disable();
+});
+
+test('an anchor that answers nothing leaves the card on its marker', async (t) => {
+  withDocument(t);
+  const { layer } = await scannedLayer({
+    render({ dataSource, point }) {
+      dataSource.entities.add({
+        id: 'centre',
+        position: Cesium.Cartesian3.fromDegrees(point.lon, point.lat),
+        name: 'Le titre',
+        description: 'une ligne',
+      });
+      return 1;
+    },
+    cardAnchor: () => null,
+    afterDraw({ selectCard }) { selectCard('centre'); },
+  });
+  const entry = getOverlaySourceEntries('scan-test')[0];
+  const carto = Cesium.Cartographic.fromCartesian(entry.position);
+  assert.ok(Math.abs(Cesium.Math.toDegrees(carto.latitude) - ADDRESS.lat) < 1e-6);
+  assert.equal(entry.placement, 'above', 'and the shipped default side is kept');
   layer.disable();
 });

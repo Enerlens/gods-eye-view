@@ -1,7 +1,15 @@
 import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
-import { createAddressScanLayer } from './addressScanLayer.js';
-import { BIKE_ENVELOPE_BEARINGS, ISOCHRONE_STEPS, equivalentRadiusM } from './isochroneFeed.js';
+import { createAddressScanLayer, renderedGroundM } from './addressScanLayer.js';
+import {
+  BIKE_ENVELOPE_BEARINGS,
+  CENTRE_ADDRESS_MAX_M,
+  ISOCHRONE_STEPS,
+  centreTitle,
+  equivalentRadiusM,
+} from './isochroneFeed.js';
+import { estimateCardBoxPx, solveCatchmentFrame } from './isochroneFraming.js';
+import { getOverlayPaintRect } from '../overlays/worldOverlay.js';
 
 /**
  * Zone de chalandise — the ground you can actually reach, instead of a circle.
@@ -44,6 +52,21 @@ import { BIKE_ENVELOPE_BEARINGS, ISOCHRONE_STEPS, equivalentRadiusM } from './is
  * is two measured areas divided by each other. A share of 84 % between 5 and
  * 10 minutes is a place fraying at its edges; a share above 100 % is a place
  * that opens up once you clear the first block.
+ *
+ * A CLICK NOW ALSO MOVES THE CAMERA, AND THE CARD OPENS ITSELF. Measuring the
+ * ground a point reaches and then leaving it half under a panel, at whatever
+ * altitude the reader happened to be at, is the layer refusing to show its own
+ * answer in a second way. So a pinned centre is FRAMED: the catchment is fitted
+ * to the part of the canvas the chrome is not sitting on, top-down, with a band
+ * reserved at the bottom for the card — and the card is anchored on the shape's
+ * lower edge rather than on its centre, so it is beside the wash instead of on
+ * top of it. `isochroneFraming.js` holds that arithmetic and the reasons.
+ *
+ * AND THE CARD IS TITLED WITH THE ADDRESS. "Point fixé — à pied" named the
+ * layer's internal state and not the reader's subject; the proxy reverse-
+ * geocodes the pin through the BAN and the card is titled with the street, the
+ * commune when the nearest address is too far to be the one clicked, and the
+ * coordinate when there is neither.
  *
  * WHY THE FILLS STACK. The three rings are nested, drawn far to near, each at a
  * low alpha, so the centre is the sum of three and the outer band is one. That
@@ -250,6 +273,89 @@ export function expansionSentence(step) {
     + `(×${step.ratio} au lieu de ×${step.freeSpaceRatio}) — le réseau freine`;
 }
 
+/**
+ * Both expansion readings on ONE line, for the card that has six.
+ *
+ * The centre card now opens by itself over the shape it describes, so every
+ * line it spends is a line of catchment it covers or a metre of altitude it
+ * costs. The two full sentences — which the RING cards still carry, because a
+ * reader who clicked one ring is asking about that pair — become one: the
+ * shares in order, and the verdict of the LAST pair, which is the one
+ * describing the outermost band and the only one the reader can see the edge of.
+ *
+ * @param {Array<object>} expansion
+ * @returns {string|null}
+ */
+export function expansionDigest(expansion) {
+  const steps = (Array.isArray(expansion) ? expansion : [])
+    .filter((step) => Number.isFinite(step?.share));
+  if (!steps.length) return null;
+  const shares = steps.map((step) => `${Math.round(step.share)} %`).join(' puis ');
+  const last = steps[steps.length - 1];
+  return `${shares} de l’expansion libre — `
+    + `le réseau ${last.share >= 100 ? 's’ouvre' : 'freine'}`;
+}
+
+/**
+ * The card the centre marker opens, and the one a click puts up by itself.
+ *
+ * WRITTEN SHORT ON PURPOSE. These cards are not wrapped — the overlay host
+ * sizes a card to its longest line — and this one is painted beside a catchment
+ * whose frame it is reserved out of, so every character is width the shape does
+ * not get. The long form of each reading survives on the ring labels, which a
+ * reader reaches by asking for one ring in particular.
+ *
+ * The order is the order things get DROPPED in, at six lines: what the shape is
+ * first, then how big, then the circle it refuses to be, then anything that
+ * would make the numbers mean less than they look, then the reading, then the
+ * state of the centre — which the LIBÉRER chip also says, and is the only line
+ * here said twice.
+ *
+ * @param {object} input
+ * @param {object} input.payload
+ * @param {string} input.mode
+ * @param {{lon: number, lat: number, pinned?: boolean}} input.point
+ * @returns {{title: string, details: string[]}}
+ */
+export function centreCardText({ payload = {}, mode, point }) {
+  const rings = Array.isArray(payload.rings) ? payload.rings : [];
+  const outer = rings[rings.length - 1] || null;
+  const address = payload.address || null;
+  const distanceM = address?.distanceM;
+  const warnings = [];
+  // Said only when the title is a COMMUNE standing in for an address, which is
+  // the one case where the title could be read as more precise than it is.
+  if (Number.isFinite(distanceM) && distanceM > CENTRE_ADDRESS_MAX_M && address?.city) {
+    warnings.push(`première adresse à ${fr(distanceM, 0)} m — le point n’en a pas`);
+  }
+  if (payload.missing) {
+    warnings.push(`${payload.missing} anneau${payload.missing > 1 ? 'x' : ''} `
+      + `non renvoyé${payload.missing > 1 ? 's' : ''} par le service`);
+  }
+  if (payload.envelope) {
+    warnings.push(`enveloppe OSM, ${outer?.bearings || BIKE_ENVELOPE_BEARINGS} `
+      + 'directions — surface majorée');
+  }
+  const details = [
+    `Zone de chalandise ${modeVerb(mode)} autour de ce point`,
+    rings.length
+      // Commas, not the middle dot every other line here uses: the card's
+      // details travel through the entity `description` as ONE string split on
+      // ` · `, so a line that contains the separator comes back as three.
+      ? rings.map((ring) => `${minutesLabel(ring.seconds)} ${fr(ring.areaKm2)} km²`).join(', ')
+      : 'aucun anneau renvoyé par le service',
+    outer
+      ? `même surface qu’un disque de ${equivalentRadiusM(outer.areaKm2)} m de rayon`
+      : null,
+    ...warnings,
+    expansionDigest(payload.expansion),
+    point?.pinned
+      ? 'centre fixé par ce clic — LIBÉRER pour le rendre'
+      : 'centre suivi par la caméra — cliquez pour le figer',
+  ].filter(Boolean);
+  return { title: centreTitle(address, point), details };
+}
+
 /** A number as a French reader writes it. */
 function fr(value, digits = 2) {
   return Number(value).toLocaleString('fr-FR', { maximumFractionDigits: digits });
@@ -448,6 +554,82 @@ export function drawRing(dataSource, ring, {
   return 1;
 }
 
+/** Seconds the framing flight takes. Long enough to read as a move, not a cut. */
+export const ISOCHRONE_FRAME_FLIGHT_SEC = 1.5;
+
+/**
+ * The solved frame for the catchment currently drawn, or null.
+ *
+ * Two consumers: the flight, once; and `cardAnchor`, on every repaint of the
+ * card — which is why it is held rather than recomputed. The anchor is a WORLD
+ * point on the shape's lower edge, so it stays off the wash at every altitude
+ * the reader then chooses; only turning the map invalidates it, and turning the
+ * map is a gesture that moves the card back over the shape by design, not a
+ * state to defend against.
+ * @type {?object}
+ */
+let _frame = null;
+/** The catchment `_frame` was solved for: pin and mode. Null while unpinned. */
+let _framedFor = null;
+
+/** A pooled overlay rectangle, detached from the pool. */
+function copyRect(rect) {
+  return rect ? { x: rect.x, y: rect.y, w: rect.w, h: rect.h } : null;
+}
+
+/**
+ * Is anything else already driving the camera?
+ *
+ * The same two owners the CCTV focus refuses to fight. A layer that flies while
+ * an entity is tracked loses the flight one frame later and leaves the reader
+ * with a camera that twitched; cockpit owns the view outright.
+ */
+function cameraIsOwnedElsewhere(viewer) {
+  if (viewer?.trackedEntity) return true;
+  return typeof document !== 'undefined'
+    && document.body?.classList?.contains('cockpit-mode') === true;
+}
+
+/**
+ * Fly to the solved frame: top-down, heading kept, the catchment in the box.
+ *
+ * PITCH IS FORCED TO NADIR and heading is not. The framing arithmetic is
+ * flat-ground trigonometry, which is only true looking straight down — at 20°
+ * off, the top of the screen is half again as far away as the bottom and a
+ * catchment fitted on the flat formula overshoots the frame. Heading survives
+ * because a reader who turned the map to face a valley is still facing it, and
+ * the offsets are computed on the screen axes for exactly that reason.
+ *
+ * @param {object} viewer
+ * @param {object} frame Output of `solveCatchmentFrame`.
+ * @returns {boolean} True when a flight was started.
+ */
+export function flyToCatchmentFrame(viewer, frame) {
+  const camera = viewer?.camera;
+  if (!camera?.flyTo || !frame?.camera) return false;
+  if (cameraIsOwnedElsewhere(viewer)) return false;
+  const { lon, lat, altitudeM } = frame.camera;
+  if (!Number.isFinite(lon) || !Number.isFinite(lat) || !(altitudeM > 0)) return false;
+  // Above the GROUND, not above the ellipsoid: 26 km over the Cantal and 26 km
+  // over the Camargue are not the same view, and the frame was solved in
+  // metres of ground per pixel.
+  const groundM = renderedGroundM(
+    viewer.scene?.globe, Cesium.Math.toRadians(lon), Cesium.Math.toRadians(lat),
+  ) ?? 0;
+  camera.cancelFlight?.();
+  camera.flyTo({
+    destination: Cesium.Cartesian3.fromDegrees(lon, lat, groundM + altitudeM),
+    orientation: {
+      heading: frame.headingRad ?? 0,
+      pitch: -Cesium.Math.PI_OVER_TWO,
+      roll: 0,
+    },
+    duration: ISOCHRONE_FRAME_FLIGHT_SEC,
+    easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
+  });
+  return true;
+}
+
 const base = createAddressScanLayer({
   id: ISOCHRONE_LAYER_ID,
   name: ISOCHRONE_LAYER_NAME,
@@ -472,6 +654,60 @@ const base = createAddressScanLayer({
     return true;
   },
   params: () => ({ profile: _mode, seconds: ISOCHRONE_STEPS.join(',') }),
+
+  /**
+   * Frame the catchment and open its card, once it is drawn and indexed.
+   *
+   * ONLY FOR A PINNED CENTRE. A camera-following scan is the reader driving,
+   * and a layer that re-aimed the camera after every scan would take the map
+   * away from them — the request was for a click to show its answer, not for
+   * the map to keep re-centring itself.
+   *
+   * The flight is spent once per catchment, keyed on the pin AND the mode: a
+   * driving ring is an order of magnitude wider than the walking one it
+   * replaces, so switching mode over a fixed pin has to reframe. A redraw for
+   * the same catchment — a basemap change — re-opens the card and stays put.
+   */
+  afterDraw({ payload, point, viewer, selectCard }) {
+    if (!point?.pinned) {
+      _frame = null;
+      _framedFor = null;
+      return;
+    }
+    const signature = `${point.lon},${point.lat}|${payload?.profile ?? _mode}`;
+    if (signature !== _framedFor) {
+      _framedFor = signature;
+      const card = centreCardText({
+        payload, mode: resolveMode(payload?.profile) || _mode, point,
+      });
+      _frame = solveCatchmentFrame({
+        viewer,
+        rings: payload?.rings,
+        centre: point,
+        // The card is measured BEFORE it is painted, because the band the
+        // frame reserves for it has to be its real height.
+        card: estimateCardBoxPx(card.title, card.details),
+      });
+      flyToCatchmentFrame(viewer, _frame);
+    }
+    // After the anchor is in hand, never before: the card is painted at the
+    // position `cardAnchor` gives it, and opening it first would put it on the
+    // marker for as long as the flight lasts.
+    selectCard('isochrone:centre');
+  },
+
+  /**
+   * Hang the card off the catchment's lower edge instead of its centre.
+   *
+   * The centre marker sits in the middle of a wash up to 16 km across; a card
+   * anchored there is painted over the one thing the layer exists to show. The
+   * anchor `solveCatchmentFrame` returns is the point the frame reserved a band
+   * under, so the card lands in that band.
+   */
+  cardAnchor(card) {
+    if (card?.id !== 'isochrone:centre' || !_frame?.anchor) return null;
+    return { ..._frame.anchor, placement: _frame.side };
+  },
   // The rings are ground-classification geometry and a classification type is
   // read once, when the primitive is built. Switching to the Google photoreal
   // tileset hides the globe and a wash built for TERRAIN then draws nothing —
@@ -497,7 +733,7 @@ const base = createAddressScanLayer({
     }
 
     if (point) {
-      const outer = rings[rings.length - 1] || null;
+      const card = centreCardText({ payload, mode, point });
       dataSource.entities.add({
         id: 'isochrone:centre',
         position: Cesium.Cartesian3.fromDegrees(point.lon, point.lat),
@@ -513,33 +749,11 @@ const base = createAddressScanLayer({
           disableDepthTestDistance: Number.POSITIVE_INFINITY,
         },
         properties: { kind: 'isochrone-centre' },
-        name: point.pinned
-          ? `Point fixé — ${modeVerb(mode)}`
-          : `Depuis ce point, ${modeVerb(mode)}`,
-        description: [
-          rings.length
-            ? rings.map((ring) => `${minutesLabel(ring.seconds)} : ${fr(ring.areaKm2)} km²`).join(' · ')
-            : 'aucun anneau renvoyé par le service',
-          outer
-            ? `cercle équivalent au plus grand anneau : ${equivalentRadiusM(outer.areaKm2)} m`
-            : null,
-          ...(payload.expansion || []).map(expansionSentence),
-          // Said out loud: two rings out of three is a smaller catchment area
-          // drawn with the same confidence as three, which is the one way this
-          // layer could quietly mislead.
-          payload.missing
-            ? `${payload.missing} anneau${payload.missing > 1 ? 'x' : ''} non renvoyé${payload.missing > 1 ? 's' : ''} par le service`
-            : null,
-          payload.envelope
-            ? 'Enveloppe OSM/OSRM sur 36 directions — surface majorée, pas le polygone IGN'
-            : null,
-          // Where the centre came from, on the marker that IS the centre. A
-          // reader who does not know whether flying away will move the answer
-          // cannot tell what they are looking at.
-          point.pinned
-            ? 'centre fixé par un clic — la caméra ne le déplace plus'
-            : 'centre suivi par la caméra — cliquez la carte pour le figer',
-        ].filter(Boolean).join(' · '),
+        // The SAME text the layer puts up by itself after a click. One card,
+        // reachable two ways, rather than a marker that says something else
+        // from what opened over it a second ago.
+        name: card.title,
+        description: card.details.join(' · '),
       });
       drawn += 1;
     }
@@ -561,6 +775,14 @@ const base = createAddressScanLayer({
       // outermost band.
       expansionShare: (payload.expansion || []).at(-1)?.share ?? null,
       resourceVersion: payload.resourceVersion ?? null,
+      // What the centre is CALLED, and how far the nearest address really was.
+      // Reported apart from the title so a reader of the row — or of the QA
+      // harness — can tell a street the pin is on from a commune it is merely in.
+      address: payload.address?.label ?? null,
+      addressCity: payload.address?.city ?? null,
+      addressDistanceM: Number.isFinite(payload.address?.distanceM)
+        ? payload.address.distanceM
+        : null,
       // Which of the two upstreams answered, and whether what is drawn is a
       // polygon or an envelope. Both are read by the row and by the QA harness,
       // and neither is derivable from the ring count.
@@ -638,6 +860,14 @@ const isochroneRingsLayer = {
     if (params.centre !== undefined) {
       const centre = resolveCentre(params.centre);
       if (!centre) return false;
+      // Dropped BEFORE the rescan, not after it: releasing the pin can leave
+      // the layer dormant, which draws nothing and so never reaches the hook
+      // that would otherwise clear the frame — and a stale anchor would hang
+      // the next card off a catchment that is no longer on screen.
+      if (centre === 'camera') {
+        _frame = null;
+        _framedFor = null;
+      }
       if (base.setScanPin(centre === 'camera' ? null : centre)) changed = true;
     }
     if (!changed) return false;
@@ -710,6 +940,19 @@ const isochroneRingsLayer = {
     return { chips, legend };
   },
 
+  /**
+   * Turning the layer back on reframes, even over the pin it already had.
+   *
+   * The reader may have flown a continent away while it was off, and the
+   * signature that stops a redraw from spending a second flight would also stop
+   * the one draw that has to spend one.
+   */
+  enable(viewer) {
+    _frame = null;
+    _framedFor = null;
+    base.enable(viewer);
+  },
+
   getStats() {
     const stats = base.getStats();
     const spec = modeSpec(_mode);
@@ -717,6 +960,26 @@ const isochroneRingsLayer = {
     const result = {
       ...stats,
       mode: _mode,
+      // Where the catchment was framed, and where the card actually landed.
+      // Both are reported because the promise this layer now makes — the card
+      // is beside the wash, never on it — is a promise about pixels, and a
+      // promise about pixels that nothing outside can read is a promise nobody
+      // can hold it to.
+      framing: _frame
+        ? {
+          side: _frame.side,
+          altitudeM: Math.round(_frame.camera.altitudeM),
+          box: _frame.box,
+          bounds: _frame.bounds,
+          anchor: _frame.anchor,
+        }
+        : null,
+      // COPIED, not handed out: the host pools its paint rectangles and
+      // rewrites them next frame, so a reference would silently become a
+      // different card's box.
+      cardRectPx: stats.selectedId ? copyRect(getOverlayPaintRect(
+        ISOCHRONE_LAYER_ID, stats.selectedId,
+      )) : null,
       // What the drawn shape IS, at the top level, so a reader of the row or of
       // the QA harness never has to open a ring to find out.
       envelope: spec.envelope,

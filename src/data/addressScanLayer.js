@@ -244,7 +244,13 @@ export const ADDRESS_SCAN_OVERLAY_OPTIONS = Object.freeze({
  * describing its entity well, and there is one card implementation rather than
  * four.
  *
- * @param {{id: string, title: string, details: string[], position: object}} card
+ * `placement` is carried through because a layer that RE-ANCHORS its card (see
+ * `cardAnchor`) has already decided which side of the anchor the card belongs
+ * on, and letting the host re-derive it from the anchor's height on screen
+ * would undo that decision.
+ *
+ * @param {{id: string, title: string, details: string[], position: object,
+ *   placement?: string}} card
  * @returns {object|null}
  */
 export function createAddressScanOverlayEntry(card) {
@@ -265,7 +271,7 @@ export function createAddressScanOverlayEntry(card) {
     anchorRadiusPx: 9,
     minAnchorGapPx: 11,
     verticalOnly: true,
-    placement: 'above',
+    placement: card.placement === 'below' ? 'below' : 'above',
     edgeFade: 'keyhole',
     horizonCull: true,
     terrainOcclusion: false,
@@ -452,6 +458,17 @@ export function scanShiftNeeded(last, next, minShiftKm = ADDRESS_SCAN_MIN_SHIFT_
  * @param {number|(() => number)} [config.minShiftKm] Distance the scan centre
  *   must move before the question is asked again. Also a function for the same
  *   reason: 250 m redraws a walking ring and is noise against a driving one.
+ * @param {(context: {payload: object, point: object, viewer: ?object,
+ *   selectCard: (id: string) => boolean}) => void} [config.afterDraw]
+ *   Called once the draw is on screen AND indexed, which is the first moment a
+ *   card can be opened for it. This is where a layer that answers about a point
+ *   the reader chose puts the answer up without waiting to be asked twice.
+ * @param {(card: object) => ({lon: number, lat: number, placement?: string}|null)}
+ *   [config.cardAnchor]
+ *   Move the open card off its marker. A layer that draws a SHAPE around its
+ *   marker — a catchment, a viewshed — has a card that covers the very thing it
+ *   describes, and only the layer knows where the shape ends. Returning null,
+ *   which is the default, leaves the card on the marker.
  * @param {(context: {lon: number, lat: number, viewer: ?object}) => boolean}
  *   [config.groundClick]
  *   What this layer does with a click on bare ground that opened no card.
@@ -471,6 +488,8 @@ export function createAddressScanLayer(config) {
     summarize = () => ({}),
     groundCard = null,
     groundClick = null,
+    afterDraw = null,
+    cardAnchor = null,
     maxAltitudeM = ADDRESS_SCAN_MAX_ALTITUDE_M,
     minShiftKm = ADDRESS_SCAN_MIN_SHIFT_KM,
     fetchImpl = (...args) => fetch(...args),
@@ -570,9 +589,34 @@ export function createAddressScanLayer(config) {
     governorRequestRender(`${id}-deselect`);
   }
 
+  /**
+   * Apply the layer's own anchor override to a card.
+   *
+   * Seated on the terrain the globe is DRAWING at the new coordinate, not on
+   * the one under the marker: an anchor a kilometre away from a marker in a
+   * valley hangs in the air over the ridge it was moved to.
+   */
+  function anchoredCard(card) {
+    if (!cardAnchor || !card) return card;
+    const at = cardAnchor(card);
+    if (!at || !Number.isFinite(at.lon) || !Number.isFinite(at.lat)) return card;
+    const height = renderedGroundM(
+      _viewer?.scene?.globe,
+      Cesium.Math.toRadians(at.lon),
+      Cesium.Math.toRadians(at.lat),
+    ) ?? 0;
+    return {
+      ...card,
+      lon: at.lon,
+      lat: at.lat,
+      placement: at.placement || card.placement,
+      position: Cesium.Cartesian3.fromDegrees(at.lon, at.lat, height),
+    };
+  }
+
   /** Paint one card, whatever it was built from. */
   function paintCard(card) {
-    const entry = createAddressScanOverlayEntry(card);
+    const entry = createAddressScanOverlayEntry(anchoredCard(card));
     if (!entry) return false;
     setOverlaySourceVisible(id, true);
     setOverlayEntries(id, [entry], ADDRESS_SCAN_OVERLAY_OPTIONS);
@@ -732,7 +776,7 @@ export function createAddressScanLayer(config) {
     if (!_selectedId) return;
     const card = cardById(_selectedId);
     if (!card) { clearSelection(); return; }
-    const entry = createAddressScanOverlayEntry(card);
+    const entry = createAddressScanOverlayEntry(anchoredCard(card));
     if (entry) setOverlayEntries(id, [entry], ADDRESS_SCAN_OVERLAY_OPTIONS);
   }
 
@@ -812,8 +856,27 @@ export function createAddressScanLayer(config) {
     }) || 0;
     seatMarkers(_lastPoint);
     indexCards();
+    // The selection was cleared to rebuild the entities it pointed at, so the
+    // hook runs here too — otherwise switching basemaps silently closes a card
+    // the reader never asked to close.
+    runAfterDraw(_payload, _lastPoint);
     governorRequestRender(`${id}-map-stack`);
     return true;
+  }
+
+  /**
+   * Hand a finished, indexed draw back to the layer.
+   *
+   * Never inside `render`: that callback runs BEFORE `indexCards`, so a card
+   * opened from it would be opened for an index that does not hold it yet.
+   */
+  function runAfterDraw(payload, point) {
+    if (typeof afterDraw !== 'function') return;
+    try {
+      afterDraw({ payload, point, viewer: _viewer, selectCard: selectEntity });
+    } catch (error) {
+      console.warn(`[Data:${id}] afterDraw`, error?.message || error);
+    }
   }
 
   /**
@@ -908,6 +971,10 @@ export function createAddressScanLayer(config) {
         _lastUpdate = Date.now();
         _stale = payload.stale === true;
         _lastError = null;
+        // Last, so the hook reads a layer whose state already agrees with what
+        // is on screen — `getStats()` inside it must not describe the previous
+        // answer.
+        runAfterDraw(payload, point);
         // The render governor runs in requestRenderMode: a redraw nobody asks
         // to paint simply never appears on screen.
         governorRequestRender(`${id}-scan`);
@@ -1039,6 +1106,20 @@ export function createAddressScanLayer(config) {
     async update(viewer, { signal } = {}) {
       if (viewer) _viewer = viewer;
       return runScan(viewer || _viewer, signal);
+    },
+
+    /**
+     * Open the card of an entity this layer drew, without a click.
+     *
+     * The path `afterDraw` uses to put an answer up on its own. It is the same
+     * selection a click makes — same emphasis on the marker, same card, same
+     * Escape to dismiss — so there is one selected state and not two.
+     *
+     * @param {string} entityId
+     * @returns {boolean} True when the entity had a card to open.
+     */
+    selectCard(entityId) {
+      return selectEntity(entityId);
     },
 
     /**

@@ -100,7 +100,7 @@ async function shoot(page, name) {
  * beat that is not a guess. A DORMANT layer never updates at all, so that has
  * to be a valid way out or the harness hangs on the state test (i) is about.
  */
-async function waitForSettled(page, timeoutMs = 40000) {
+async function waitForSettled(page, { timeoutMs = 40000, expect = null } = {}) {
   const started = Date.now();
   const before = await page.evaluate((id) => (
     window.__godsEyeView.dataManager.layers.get(id).module.getStats().lastUpdate ?? 0
@@ -114,17 +114,24 @@ async function waitForSettled(page, timeoutMs = 40000) {
         lastUpdate: stats.lastUpdate ?? 0,
         error: stats.error ?? null,
         rings: stats.ringsDrawn ?? 0,
+        profile: stats.profile ?? null,
+        centre: stats.scanCentre ?? null,
       };
     }, LAYER);
     if (state.error) return state;
     if (state.dormant) return state;
-    if (state.lastUpdate > before && state.rings > 0) return state;
+    // `lastUpdate` moving is NOT enough on its own. The layer runs one scan at
+    // a time and QUEUES a second, so a scan already in flight for the previous
+    // question lands first and satisfies a bare freshness test — after which
+    // every later measurement describes the answer being replaced. `expect`
+    // is how a caller says which answer it is waiting for.
+    if (state.lastUpdate > before && state.rings > 0 && (!expect || expect(state))) return state;
     await sleep(200);
   }
   return null;
 }
 
-async function setView(page, { lon, lat, height }) {
+async function setView(page, { lon, lat, height }, expect = null) {
   await page.evaluate((lo, la, h) => {
     const gev = window.__godsEyeView;
     const ellipsoid = gev.viewer.scene.globe?.ellipsoid || gev.viewer.scene.ellipsoid;
@@ -137,7 +144,7 @@ async function setView(page, { lon, lat, height }) {
     gev.viewer.scene.requestRender?.();
   }, lon, lat, height);
   await pump(page, 6);
-  await waitForSettled(page);
+  await waitForSettled(page, { expect });
 }
 
 function probe(page) {
@@ -162,14 +169,118 @@ function probe(page) {
         .filter((entity) => entity.position && entity.description)
         .map((entity) => String(entity.id)),
       // The one visual difference between a polygon and an envelope that a
-      // harness can read: an envelope's outline is a dash material.
+      // harness can read: an envelope's outline carries a DASH LENGTH. Read as
+      // a property and not as `constructor.name`, which the production bundle
+      // minifies to two letters — a test that only passed against unminified
+      // source is a test of the build, not of the layer.
       outlineMaterials: entities
         .filter((entity) => String(entity.id).includes(':outline'))
-        .map((entity) => entity.polyline?.material?.constructor?.name || 'none'),
+        .map((entity) => (entity.polyline?.material?.dashLength !== undefined ? 'dash' : 'solid')),
       centreCard: entities.find((entity) => String(entity.id) === 'isochrone:centre')
         ?.description?.getValue?.(window.__godsEyeView.viewer.clock.currentTime) || null,
+      centreTitle: entities.find((entity) => String(entity.id) === 'isochrone:centre')
+        ?.name || null,
     };
   }, LAYER);
+}
+
+/**
+ * Where the widest ring and its card actually landed, in canvas pixels.
+ *
+ * The whole subject of the framing work: a promise about pixels can only be
+ * checked in pixels. The ring is projected from the Cartesian positions the
+ * layer drew — not recomputed from lon/lat — so this measures what the scene
+ * graph holds rather than what the plan intended.
+ */
+function measureFrame(page) {
+  return page.evaluate((id) => {
+    const gev = window.__godsEyeView;
+    const { scene } = gev.viewer;
+    // The card rect is published per PAINTED FRAME, so render before reading.
+    scene.render();
+    scene.render();
+    const module = gev.dataManager.layers.get(id).module;
+    const stats = module.getStats();
+    const source = gev.viewer.dataSources.getByName(id)[0];
+    const entities = source ? [...source.entities.values] : [];
+    const time = gev.viewer.clock.currentTime;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    let projected = 0;
+    for (const entity of entities) {
+      if (!String(entity.id).includes(':outline')) continue;
+      const positions = entity.polyline?.positions?.getValue?.(time) || [];
+      for (const position of positions) {
+        const point = scene.cartesianToCanvasCoordinates(position);
+        if (!point || !Number.isFinite(point.x)) continue;
+        projected += 1;
+        minX = Math.min(minX, point.x);
+        maxX = Math.max(maxX, point.x);
+        minY = Math.min(minY, point.y);
+        maxY = Math.max(maxY, point.y);
+      }
+    }
+    // Canvas-relative, like the card rect and the projected ring, so the three
+    // can be compared without one of them being in another coordinate space.
+    const canvasBox = scene.canvas.getBoundingClientRect();
+    const rectOf = (selector) => {
+      const element = document.querySelector(selector);
+      const box = element?.getBoundingClientRect?.();
+      return box && box.width > 0 && box.height > 0
+        ? { x: box.left - canvasBox.left, y: box.top - canvasBox.top, w: box.width, h: box.height }
+        : null;
+    };
+    return {
+      stats,
+      canvas: { w: scene.canvas.clientWidth, h: scene.canvas.clientHeight },
+      camera: {
+        heightM: gev.viewer.camera.positionCartographic.height,
+        pitchDeg: (gev.viewer.camera.pitch * 180) / Math.PI,
+      },
+      rings: projected ? { x: minX, y: minY, w: maxX - minX, h: maxY - minY } : null,
+      chrome: ['#left-panel-stack', '#data-panel', '#right-context-rail', '#command-dock']
+        .map(rectOf),
+    };
+  }, LAYER);
+}
+
+/** Do two axis-aligned rectangles share a pixel? */
+function overlaps(a, b) {
+  if (!a || !b) return false;
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+
+/**
+ * Poll until the camera has REACHED the solved altitude and stopped.
+ *
+ * "Stopped moving" alone is not the condition: a mode change over a fixed pin
+ * can be answered by a scan already in flight for the OLD mode, so there is a
+ * second of stillness before the flight that matters is even requested — and a
+ * harness that measured then measured the previous framing. The target the
+ * layer published is the only honest end state to wait for.
+ */
+async function waitForFlight(page, timeoutMs = 15000) {
+  const started = Date.now();
+  let last = null;
+  let still = 0;
+  while (Date.now() - started < timeoutMs) {
+    await pump(page, 3, 70);
+    const state = await page.evaluate((id) => {
+      const gev = window.__godsEyeView;
+      return {
+        heightM: gev.viewer.camera.positionCartographic.height,
+        solvedM: gev.dataManager.layers.get(id).module.getStats().framing?.altitudeM ?? null,
+      };
+    }, LAYER);
+    const onTarget = state.solvedM === null
+      || Math.abs(state.heightM - state.solvedM) < Math.max(400, state.solvedM * 0.12);
+    still = last !== null && Math.abs(state.heightM - last) < 1 && onTarget ? still + 1 : 0;
+    last = state.heightM;
+    if (still >= 2) return state;
+  }
+  return { heightM: last, solvedM: null };
 }
 
 async function main() {
@@ -262,7 +373,7 @@ async function main() {
     await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
       id, { profile: 'car' }, { origin: 'user' },
     ), LAYER);
-    await waitForSettled(page);
+    await waitForSettled(page, { expect: (state) => state.profile === 'car' });
     await pump(page, 10);
     const lyonCar = await probe(page);
     check('the active chip moved', lyonCar.chips.find((chip) => chip.active)?.id === 'car',
@@ -286,7 +397,7 @@ async function main() {
     const tookBike = await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
       id, { profile: 'bike' }, { origin: 'user' },
     ), LAYER);
-    await waitForSettled(page);
+    await waitForSettled(page, { expect: (state) => state.profile === 'bike' });
     await pump(page, 10);
     const lyonBike = await probe(page);
     check('setLayerParams accepts it', tookBike === true, String(tookBike));
@@ -304,7 +415,7 @@ async function main() {
       /ODbL|OSRM|OpenStreetMap/.test(lyonBike.stats.feedSource || ''), lyonBike.stats.feedSource);
     check('every outline is drawn dashed, so the two kinds never look alike',
       lyonBike.outlineMaterials.length === 3
-      && lyonBike.outlineMaterials.every((name) => /Dash/.test(name)),
+      && lyonBike.outlineMaterials.every((kind) => kind === 'dash'),
       lyonBike.outlineMaterials.join(','));
     check('the centre card refuses to be read as the IGN polygon',
       /majorée|enveloppe/i.test(lyonBike.centreCard || ''), (lyonBike.centreCard || '').slice(0, 120));
@@ -340,7 +451,7 @@ async function main() {
     await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
       id, { profile: 'car' }, { origin: 'user' },
     ), LAYER);
-    await waitForSettled(page);
+    await waitForSettled(page, { expect: (state) => state.profile === 'car' });
     await pump(page, 10);
     const highCar = await probe(page);
     check('by car at the same 30 km it measures', highCar.stats.dormant === false
@@ -357,7 +468,9 @@ async function main() {
       return { x: Math.round(canvas.clientWidth * 0.38), y: Math.round(canvas.clientHeight * 0.62) };
     });
     await page.mouse.click(clicked.x, clicked.y);
-    await waitForSettled(page);
+    await waitForSettled(page, {
+      expect: (state) => Boolean(state.centre) && state.profile === 'car',
+    });
     await pump(page, 10);
     const pinned = await probe(page);
     check('a real canvas click set a pin', Boolean(pinned.stats.scanPin),
@@ -374,6 +487,145 @@ async function main() {
       pinned.chips.map((chip) => chip.id).join(','));
     await shoot(page, '07-point-fixe.png');
 
+    // ── vii-b. the frame, the title and the card that opens itself ────────
+    console.log('\n[7b] The click frames the catchment and captions it');
+    await waitForFlight(page);
+    const framed = await measureFrame(page);
+    check('the card opened on its own', framed.stats.selectedId === 'isochrone:centre',
+      String(framed.stats.selectedId));
+    check('and it is titled with a place, not with the layer`s own state',
+      Boolean(pinned.centreTitle) && !/point fix/i.test(pinned.centreTitle || ''),
+      pinned.centreTitle);
+    check('the title is the BAN address, or the commune when there is none',
+      pinned.centreTitle === (framed.stats.address || framed.stats.addressCity)
+      || /^\d+,\d+ [NS] · \d+,\d+ [EO]$/.test(pinned.centreTitle || ''),
+      `${pinned.centreTitle} vs ${framed.stats.address} / ${framed.stats.addressCity}`);
+    check('the card explains what the shape is, in the mode drawn',
+      /Zone de chalandise .* autour de ce point/.test(pinned.centreCard || ''),
+      (pinned.centreCard || '').slice(0, 90));
+
+    check('the camera flew to the solved altitude',
+      Number.isFinite(framed.stats.framing?.altitudeM)
+      && Math.abs(framed.camera.heightM - framed.stats.framing.altitudeM)
+        < framed.stats.framing.altitudeM * 0.15,
+      `${Math.round(framed.camera.heightM)} m vs ${framed.stats.framing?.altitudeM} m solved`);
+    check('and it is looking straight down, which is what the framing assumes',
+      Math.abs(framed.camera.pitchDeg + 90) < 1.5, `${framed.camera.pitchDeg.toFixed(1)}°`);
+
+    const box = framed.stats.framing?.box;
+    check('the whole catchment is inside the frame the chrome left over',
+      Boolean(framed.rings) && Boolean(box)
+      && framed.rings.x >= box.x - 2 && framed.rings.x + framed.rings.w <= box.x + box.w + 2
+      && framed.rings.y >= box.y - 2 && framed.rings.y + framed.rings.h <= box.y + box.h + 2,
+      `rings ${JSON.stringify(framed.rings)} box ${JSON.stringify(box)}`);
+    check('and it fills that frame rather than sitting in a corner of it',
+      Boolean(framed.rings) && Boolean(box)
+      && Math.max(framed.rings.w / box.w, framed.rings.h / box.h) > 0.6,
+      `${framed.rings && box ? Math.max(framed.rings.w / box.w, framed.rings.h / box.h).toFixed(2) : 'n/a'}`);
+
+    // THE COMPLAINT THIS FIXES: the card used to be painted on the catchment.
+    check('the card is beside the catchment, not on top of it',
+      Boolean(framed.stats.cardRectPx) && !overlaps(framed.stats.cardRectPx, framed.rings),
+      `card ${JSON.stringify(framed.stats.cardRectPx)} rings ${JSON.stringify(framed.rings)}`);
+    check('and it is clear of the panels too',
+      Boolean(framed.stats.cardRectPx)
+      && !framed.chrome.some((rect) => overlaps(framed.stats.cardRectPx, rect)),
+      JSON.stringify(framed.chrome));
+    check('the catchment itself clears the panels',
+      Boolean(framed.rings) && !framed.chrome.some((rect) => overlaps(framed.rings, rect)),
+      `rings ${JSON.stringify(framed.rings)}`);
+    await shoot(page, '07b-cadrage.png');
+    console.log(`      cadré à ${framed.stats.framing?.altitudeM} m · `
+      + `anneau ${Math.round(framed.rings?.w || 0)}×${Math.round(framed.rings?.h || 0)} px · `
+      + `fiche ${JSON.stringify(framed.stats.cardRectPx)}`);
+
+    // A DIFFERENT-SIZED catchment over the same pin has to be reframed, or the
+    // mode chip draws a walking ring at a driving altitude and the ring the
+    // layer just measured is a smudge — this is the original complaint, moved
+    // from the camera to the chip.
+    const drivingAltitudeM = framed.stats.framing.altitudeM;
+    await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
+      id, { profile: 'foot' }, { origin: 'user' },
+    ), LAYER);
+    await waitForSettled(page, { expect: (state) => state.profile === 'foot' });
+    await waitForFlight(page);
+    const reframed = await measureFrame(page);
+    check('switching mode over a fixed pin reframes',
+      reframed.stats.framing.altitudeM < drivingAltitudeM * 0.7,
+      `${drivingAltitudeM} m by car → ${reframed.stats.framing.altitudeM} m on foot`);
+    check('and the smaller catchment fills the frame in its turn',
+      Boolean(reframed.rings)
+      && Math.max(
+        reframed.rings.w / reframed.stats.framing.box.w,
+        reframed.rings.h / reframed.stats.framing.box.h,
+      ) > 0.6,
+      `rings ${JSON.stringify(reframed.rings)} box ${JSON.stringify(reframed.stats.framing.box)}`);
+    check('the card followed it and is still beside it',
+      Boolean(reframed.stats.cardRectPx) && !overlaps(reframed.stats.cardRectPx, reframed.rings),
+      `card ${JSON.stringify(reframed.stats.cardRectPx)}`);
+    await shoot(page, '07c-cadrage-pieton.png');
+
+    // ── vii-d. the panel the reader actually has open ─────────────────────
+    // The complaint arrived with the DATA LAYERS panel EXPANDED — 320 px of
+    // opaque chrome down the left of the map. A frame measured against the
+    // collapsed chip proves nothing about that.
+    console.log('\n[7d] With the DATA LAYERS panel open, the frame moves over');
+    const opened = await page.evaluate(() => {
+      const panel = document.querySelector('#data-panel');
+      if (!panel) return null;
+      if (panel.classList.contains('collapsed')) {
+        document.querySelector('.panel-collapse-btn[data-collapse-target="data-panel"]')?.click();
+      }
+      return !panel.classList.contains('collapsed');
+    });
+    await pump(page, 8);
+    check('the panel opened', opened === true, String(opened));
+    // A different pixel, so the pin MOVES and the layer reframes rather than
+    // reporting the frame it solved against the collapsed panel.
+    const secondClick = await page.evaluate(() => {
+      const canvas = window.__godsEyeView.viewer.scene.canvas;
+      return { x: Math.round(canvas.clientWidth * 0.55), y: Math.round(canvas.clientHeight * 0.45) };
+    });
+    await page.mouse.click(secondClick.x, secondClick.y);
+    // The pin MOVED, so wait for a scan taken somewhere else than the last one.
+    await waitForSettled(page, {
+      expect: (state) => Boolean(state.centre)
+        && Math.abs(state.centre.lat - (reframed.stats.scanCentre?.lat ?? 0)) > 1e-6,
+    });
+    await waitForFlight(page);
+    const withPanel = await measureFrame(page);
+    const panelRect = withPanel.chrome[1];
+    check('the panel is really open and wide', Boolean(panelRect) && panelRect.w > 250,
+      JSON.stringify(panelRect));
+    check('the frame starts past the panel',
+      withPanel.stats.framing.box.x >= panelRect.x + panelRect.w,
+      `box.x=${Math.round(withPanel.stats.framing.box.x)} panel ends at `
+      + `${Math.round(panelRect.x + panelRect.w)}`);
+    check('and nothing drawn is under it',
+      Boolean(withPanel.rings) && !withPanel.chrome.some((rect) => overlaps(withPanel.rings, rect)),
+      `rings ${JSON.stringify(withPanel.rings)}`);
+    check('the card is still beside the catchment and clear of the chrome',
+      Boolean(withPanel.stats.cardRectPx)
+      && !overlaps(withPanel.stats.cardRectPx, withPanel.rings)
+      && !withPanel.chrome.some((rect) => overlaps(withPanel.stats.cardRectPx, rect)),
+      `card ${JSON.stringify(withPanel.stats.cardRectPx)}`);
+    await shoot(page, '07d-cadrage-panneau-ouvert.png');
+    await page.evaluate(() => {
+      const panel = document.querySelector('#data-panel');
+      if (panel && !panel.classList.contains('collapsed')) {
+        document.querySelector('.panel-collapse-btn[data-collapse-target="data-panel"]')?.click();
+      }
+    });
+    await pump(page, 6);
+
+    // Back to driving for the ceiling test below, which is about a catchment
+    // too wide to fit under any camera-driven ceiling.
+    await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
+      id, { profile: 'car' }, { origin: 'user' },
+    ), LAYER);
+    await waitForSettled(page, { expect: (state) => state.profile === 'car' });
+    await waitForFlight(page);
+
     // The ceiling no longer applies: pull back past the driving ceiling and the
     // catchment must still be on screen, which is the complaint this fixes.
     const beforeFly = isochroneRequests;
@@ -384,9 +636,11 @@ async function main() {
       && flown.stats.ringsDrawn === 3, `dormant=${flown.stats.dormant} rings=${flown.stats.ringsDrawn}`);
     check('and flying there spent no request', isochroneRequests === beforeFly,
       `${isochroneRequests - beforeFly} extra`);
+    // Against the pin in force NOW, which the panel test above moved on purpose
+    // — not against the one the first click set two blocks ago.
     check('the pin did not follow the camera',
-      Math.abs((flown.stats.scanPin?.lat ?? 0) - (pinned.stats.scanPin?.lat ?? 9)) < 1e-9,
-      JSON.stringify(flown.stats.scanPin));
+      Math.abs((flown.stats.scanPin?.lat ?? 0) - (withPanel.stats.scanPin?.lat ?? 9)) < 1e-9,
+      `${JSON.stringify(flown.stats.scanPin)} vs ${JSON.stringify(withPanel.stats.scanPin)}`);
     await shoot(page, '08-point-fixe-recul.png');
 
     const released = await page.evaluate((id) => {
@@ -426,7 +680,8 @@ async function main() {
     await page.evaluate((id) => window.__godsEyeView.dataManager.setLayerParams(
       id, { profile: 'foot' }, { origin: 'user' },
     ), LAYER);
-    await setView(page, PARIS);
+    await setView(page, PARIS, (state) => state.profile === 'foot'
+      && Math.abs((state.centre?.lat ?? 0) - PARIS.lat) < 0.05);
     await pump(page, 10);
     const paris = await probe(page);
     const parisAreas = paris.stats.areasKm2 || [];

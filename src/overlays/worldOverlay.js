@@ -914,6 +914,24 @@ export function getOverlayPaintRect(sourceId, entryId) {
 }
 
 /**
+ * The normalized entries a source currently holds.
+ *
+ * The read half of {@link setOverlayEntries}, for the same reason
+ * {@link getOverlayPaintRect} exists: a source hands this host a card and then
+ * has no way to see what the host made of it. Placement, anchor and priority
+ * are all decided at normalization, and a caller that cannot read them back
+ * cannot check the one thing it asked for. The array is a copy; the entries are
+ * the live records and must not be mutated.
+ *
+ * @param {string} sourceId
+ * @returns {Array<WorldOverlayEntry>} Empty when the source holds nothing.
+ */
+export function getOverlaySourceEntries(sourceId) {
+  const source = _sources.get(String(sourceId));
+  return source ? [...source.entries.values()] : [];
+}
+
+/**
  * Resolve the topmost interactive world-overlay entry at CSS-pixel coords.
  * @param {number} x
  * @param {number} y
@@ -1141,7 +1159,7 @@ function ensureCanvasSize() {
  * its own computed `display`, so the local style test alone cannot see it.
  * `checkVisibility` resolves the whole chain; the local test is the fallback.
  */
-function elementIsVisible(element) {
+export function overlayElementIsVisible(element) {
   if (!element || element.hidden) return false;
   if (typeof element.checkVisibility === 'function') {
     return element.checkVisibility({
@@ -1238,7 +1256,7 @@ function refreshUiOccluders(timestamp, force = false) {
     const matches = document.querySelectorAll?.(selector)
       || [document.querySelector?.(selector)].filter(Boolean);
     for (const element of matches) {
-      if (seen.has(element) || !elementIsVisible(element)) continue;
+      if (seen.has(element) || !overlayElementIsVisible(element)) continue;
       seen.add(element);
       if (_resizeObserver && !_observedOccluderElements.has(element)) {
         _resizeObserver.observe(element);
