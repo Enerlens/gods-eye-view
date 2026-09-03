@@ -33,6 +33,29 @@
  * Measured on that week (2026-08-24 → 2026-08-30): 2 977 arcs × 168 h =
  * **500 136 rows, every arc with exactly 168** — no gaps, no decay.
  *
+ * ── The fold IS the hour cursor's axis, and it is 48 slots, not 168 ─────────
+ * `comptagesParis.js` now lets a reader scrub the hour, and what it scrubs is
+ * exactly what this module builds: `wq` and `eq`, two 24-hour profiles of means
+ * per arc. That is 48 published values per arc and NOT the 168 individual hours
+ * of the week, and the difference is a claim about the data that has to be
+ * stated rather than implied by a control:
+ *
+ *   • a slot is a mean over the FIVE weekdays or the TWO weekend days, so it
+ *     describes a typical Tuesday-ish hour and never a particular Tuesday.
+ *     Every label downstream says "type" for that reason.
+ *   • the mean is taken over the hours that REPORTED, which is what `nq`/`nk`
+ *     are for: of the 71 448 weekday cells, 37 062 carry all five days, 29 979
+ *     carry none, and 4 407 (6.17 %) are partial. A cell built from one Tuesday
+ *     is not marked differently from one built from five, and that is the
+ *     coarsest thing this feed does — the card prints the reported-hour totals
+ *     (`hq`, `hk`) so the reader can see how thin a profile is.
+ *   • a slot with no reporting day at all stays `null`, never 0, all the way to
+ *     the renderer, which draws it as its own dash. See Trap 3.
+ *
+ * Publishing the 168 raw hours instead would cost 3.5x the payload to answer a
+ * question — "what happened on Wednesday the 26th at 18 h" — that a J-2 weekly
+ * batch is the wrong instrument for anyway.
+ *
  * ── The five upstream calls, and why there are five ─────────────────────────
  * 1. `records?select=max(t_1h)` — the edition. ~100 B, 0.27 s.
  * 2. `exports/geojson?where=t_1h=<week's last stamp>` — geometry AND names in

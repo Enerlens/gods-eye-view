@@ -41,24 +41,66 @@
  * Monday–Sunday week — 2 977 arcs × 168 hours = 500 136 rows, every arc with
  * exactly 168. Every card and the row label say *mesuré, J-2* and name the week.
  *
- * ── What the colour claims, what the width claims, what the DASH claims ─────
- * COLOUR is the measured count: the arc's mean weekday hour, on a five-band
- * indigo → rose ramp at 100 / 250 / 500 / 1 000 véh/h, which splits the 1 730
- * counting arcs 196 / 620 / 519 / 238 / 157. It is deliberately not the
- * green → amber → red both other road layers use for congestion, and not one of
- * `idfm-network`'s four Paris hues.
+ * ── An HOUR CURSOR, because one average was hiding 500 136 measurements ─────
+ * The pack holds 2 977 arcs x 168 hours, folded upstream into two 24-hour
+ * profiles per arc — 48 published means. Until 2026-09-03 this layer painted
+ * exactly ONE of them, the weekday average, and the cost of that was measured:
+ * only **932 of the 1 730 counting arcs (53.9 %)** are in the same width band
+ * at 18 h as they are on that average, and only **124 (7.2 %)** hold one band
+ * across all 48 slots. The single number misfiled 798 streets.
  *
- * WIDTH repeats the same band, because a hue is not readable in a hairline at
- * 30 km and a boulevard should stay a boulevard.
+ * So the panel row carries seven chips — the same mechanism `idfm-frequency`
+ * proved, transposed — and they move the map through `mean`, `clock`, and four
+ * pinned (day-type x hour) slots. `comptagesRhythm.js` owns the tokens, the
+ * parsing and the labels; this file owns the repaint.
  *
- * The DASH is the honest half. A third of this network measures nothing:
- * **891 of 2 977 arcs (29.9 %) published neither a count nor an occupancy for
- * all 168 hours**, and they are drawn as broken lines, never as the bottom of
- * the ramp. 356 more measure occupancy and never a count — a real measurement
- * in a unit the ramp does not speak — and get a solid steel stroke off the
- * scale. A quiet street and a dead loop are the two things this layer exists to
- * keep apart, and they are separated by stroke before they are separated by
- * colour.
+ * The week is ARCHIVED and the chips must not pretend otherwise. `clock` reads
+ * the Paris wall clock and looks that hour up in the last complete Monday to
+ * Sunday week; it is labelled "A cette heure", never "maintenant", and the row
+ * label names the week AND the slot on every state (rule E1). The word "live"
+ * still appears nowhere.
+ *
+ * ── What the colour claims, what the WIDTH claims, what the DASHES claim ─────
+ * COLOUR is the RHYTHM class: nocturne, week-end, pendulaire, pointe du matin,
+ * pointe du soir, continu — six hues computed by `comptagesRhythm.js` on the 48
+ * published means, plus one desaturated seventh for the 36 arcs whose coverage
+ * is too thin to classify. It is a qualitative variable on a hue channel (B4),
+ * inside B5's ceiling, and it does NOT move with the cursor: the rhythm is a
+ * property of the week, not of the hour being read.
+ *
+ * WIDTH is the count, and it is the ONLY channel that carries it. Five bands at
+ * 100 / 250 / 500 / 1 000 veh/h, frozen (C1), read at the SELECTED slot. Before
+ * this change the hue carried the same band as the width — two channels for one
+ * information, which is the defect rule A3 names, and it was the only free
+ * channel this layer had.
+ *
+ * The DASHES are the honest half, and there are now two of them:
+ *   • **891 of 2 977 arcs (29.9 %)** published neither a count nor an occupancy
+ *     for all 168 hours. Long dark dash, never the bottom of the width scale.
+ *   • an arc that DOES count can still publish nothing in the selected slot —
+ *     at most 69 of the 1 730 do (weekend 10 h), 83 arcs can ever be in that
+ *     state. Short pale dash: measured street, unmeasured hour. It is not the
+ *     same absence as the first and it is not drawn like it (rule A1).
+ * And 356 arcs measure occupancy and never a count — a real measurement in a
+ * unit the scale does not speak — which keeps its solid steel stroke off the
+ * scale at every slot.
+ *
+ * ── Why the cursor does not rebuild a single vertex ─────────────────────────
+ * A stroke width is baked into `GroundPolylineGeometry`; only `color` and `show`
+ * are per-instance on a built batch (verified in the embedded Cesium source:
+ * `Primitive._appendShowToShader` is applied whatever the appearance, so `show`
+ * works on the dashed material batches too). Rebuilding the batches on every
+ * chip would be exactly the "filter that destroys the batch" rule G2 forbids.
+ *
+ * So the geometry is built ONCE, per width band, and the cursor only writes
+ * `show`. The cost is bounded by what `comptagesReachableBands()` proves: an arc
+ * only needs an instance in the bands it can actually reach across `mean` and
+ * the 48 slots. Measured on the pack — 1 712 placed counting arcs, 8 560
+ * instances if all five bands were built for each, **4 970 (58.1 %) built**,
+ * spread 1 230 / 1 471 / 1 288 / 711 / 270 — plus 83 hour-gap instances, 355
+ * occupancy and 879 silent. **6 287 instances in 8 draw calls**, against 2 946
+ * in 2 before. A chip click writes at most two `show` attributes per arc that
+ * moved, and no worker runs.
  *
  * ── What is NOT drawn, and is counted instead ───────────────────────────────
  * 31 arcs have no geometry — the same 31 whose `date_debut` and `date_fin` are
@@ -82,22 +124,44 @@ import {
 import { powerClassificationTypeForScene, powerClassificationTypeForStack } from './powerGrid.js';
 import {
   COMPTAGES_BARRE_LABELS,
-  COMPTAGES_FLOW_COLORS,
   COMPTAGES_FLOW_WIDTHS,
+  COMPTAGES_HOUR_GAP_ALPHA,
+  COMPTAGES_HOUR_GAP_COLOR,
+  COMPTAGES_HOUR_GAP_DASH_LENGTH,
+  COMPTAGES_HOUR_GAP_LABEL,
+  COMPTAGES_HOUR_GAP_WIDTH,
+  COMPTAGES_MOMENTS,
   COMPTAGES_OCCUPANCY_COLOR,
   COMPTAGES_OCCUPANCY_WIDTH,
+  COMPTAGES_RHYTHM_BLURBS,
+  COMPTAGES_RHYTHM_CLASSES,
+  COMPTAGES_RHYTHM_COLORS,
+  COMPTAGES_RHYTHM_THRESHOLDS,
   COMPTAGES_SILENT_ALPHA,
   COMPTAGES_SILENT_COLOR,
   COMPTAGES_SILENT_DASH_LENGTH,
   COMPTAGES_SILENT_WIDTH,
+  COMPTAGES_SLOT_MEAN,
   COMPTAGES_STATE_LABELS,
   COMPTAGES_STROKE_ALPHA,
+  COMPTAGES_WIDTH_INK,
+  comptagesArcFlow,
   comptagesArcStyle,
   comptagesDayLine,
+  comptagesFlowBandGlyph,
   comptagesFlowBandLabel,
+  comptagesHasHourGap,
   comptagesOccupancyBand,
+  comptagesParseSlot,
   comptagesProfileReference,
+  comptagesReachableBands,
+  comptagesResolveSlot,
+  comptagesRhythmClass,
+  comptagesRhythmLabel,
+  comptagesRhythmMetrics,
   comptagesSaturatedHours,
+  comptagesSlotLabel,
+  comptagesStrokeGlyph,
 } from './comptagesRhythm.js';
 
 /** Layer id — also the share-link registry key and the voice-tool enum value. */
@@ -141,14 +205,31 @@ const FLOOR_WARM_LIMIT = 400;
 const SELECTED_COLOR = '#00ffff';
 const SELECTED_WIDTH_BONUS = 3;
 
-/** One-line explanations behind each legend swatch. */
+/**
+ * One-line explanations behind each WIDTH swatch.
+ *
+ * They describe the band, not the moment: the counts move with the cursor and
+ * are printed beside the swatch, so a blurb that quoted one slot's tally would
+ * be wrong on the other six.
+ */
 const BAND_BLURBS = Object.freeze([
-  'Rues comptées à moins de 100 véhicules par heure en moyenne, l’heure ouvrée type.',
-  'Le gros du réseau compté : 620 arcs sur les 1 730 qui publient un comptage.',
-  'Axes de desserte. La médiane des arcs comptés est à 263 véh/h.',
-  'Grands boulevards et quais.',
-  'Boulevard périphérique et voies sur berges. Le maximum mesuré est 5 133 véh/h.',
+  'Moins de 100 véhicules comptés dans l’heure. Le trait le plus fin. '
+    + 'Sur la moyenne ouvrée 196 arcs y sont ; à 04 h en semaine, 1 174.',
+  'De 100 à 250 véh/h. Le gros du réseau compté sur la moyenne ouvrée : 620 arcs.',
+  'De 250 à 500 véh/h. Axes de desserte — la médiane des arcs comptés est à 263 véh/h.',
+  'De 500 à 1 000 véh/h. Grands boulevards et quais.',
+  '1 000 véh/h et plus, le trait le plus large. Boulevard périphérique et voies '
+    + 'sur berges ; le maximum mesuré de la semaine est 5 133 véh/h.',
 ]);
+
+/** Blurbs for the three strokes that are not on the count scale. */
+const OCCUPANCY_BLURB = 'La boucle publie un taux d’occupation et jamais un comptage. '
+  + 'C’est une mesure réelle, dans une autre unité — elle n’a pas de place sur l’échelle en véh/h, '
+  + 'et elle ne bouge pas avec le curseur horaire.';
+const SILENT_BLURB_HEAD = 'Trait pointillé long : 168 h sans comptage ni occupation.';
+const HOUR_GAP_BLURB = 'Trait pointillé court : cet arc compte bien dans la semaine, '
+  + 'mais il n’a rien publié pour la tranche sélectionnée. Ce n’est pas une heure creuse — '
+  + 'une heure creuse mesurée prend le trait le plus fin, pas un pointillé.';
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
@@ -164,6 +245,24 @@ let _records = new Map();
 let _payload = null;
 /** @type {Array<Cesium.GroundPolylinePrimitive>} */
 let _primitives = [];
+/**
+ * One primitive per width band, index = band. Built once, never rebuilt by the
+ * cursor — the cursor only writes `show` on the instances inside them.
+ * @type {Array<?Cesium.GroundPolylinePrimitive>}
+ */
+let _bandPrimitives = new Array(COMPTAGES_FLOW_WIDTHS.length).fill(null);
+/** The short-dash batch: arcs that count, in a slot they published nothing for. */
+let _gapPrimitive = null;
+/** Slot token as asked for (`mean` / `clock` / `w18`…), and its resolution. */
+let _slotToken = COMPTAGES_SLOT_MEAN;
+let _slot = comptagesResolveSlot(COMPTAGES_SLOT_MEAN);
+/** Injectable clock, so a test can stand at 01:30 on a Saturday. */
+const DEFAULT_NOW = () => Date.now();
+let _now = DEFAULT_NOW;
+/** True while a `show` write could not land because a batch was not ready. */
+let _stylePending = false;
+let _styleRetryRemover = null;
+let _styleRetryFrames = 0;
 /** @type {?Cesium.GroundPolylinePrimitive} */
 let _highlight = null;
 let _selectedId = null;
@@ -251,24 +350,69 @@ function clearHighlight() {
 }
 
 function clearPrimitives() {
+  stopStyleRetry();
   for (const primitive of _primitives) {
     _viewer?.scene?.groundPrimitives?.remove?.(primitive);
   }
   _primitives = [];
+  _bandPrimitives = new Array(COMPTAGES_FLOW_WIDTHS.length).fill(null);
+  _gapPrimitive = null;
   clearHighlight();
 }
 
+/** Add one ground-polyline batch to the scene and register it. */
+function addBatch(instances, appearance) {
+  if (!instances.length || !_viewer?.scene?.groundPrimitives?.add) return null;
+  const primitive = _viewer.scene.groundPrimitives.add(new Cesium.GroundPolylinePrimitive({
+    geometryInstances: instances,
+    classificationType: _classificationType,
+    appearance,
+    // The attribute table is what the cursor writes to. Releasing the instances
+    // is the documented default and does not take the table with it, but the
+    // repo's one other per-instance writer (`bdtopoBuildings.js`) keeps them,
+    // and a batch this layer rewrites on every chip is not the place to differ.
+    releaseGeometryInstances: false,
+  }));
+  primitive.show = _enabled;
+  _primitives.push(primitive);
+  return primitive;
+}
+
+/** A dashed material, one colour for the whole batch — materials are not per-instance. */
+function dashedAppearance(color, alpha, dashLength) {
+  return new Cesium.PolylineMaterialAppearance({
+    material: Cesium.Material.fromType('PolylineDash', {
+      color: Cesium.Color.fromCssColorString(color).withAlpha(alpha),
+      dashLength,
+    }),
+  });
+}
+
+/** One geometry instance for one arc, at one baked width. */
+function arcInstance(record, widthPx, attributes) {
+  return new Cesium.GeometryInstance({
+    id: record.id,
+    // The positions array is SHARED between an arc's band instances: Cesium
+    // packs it into the worker payload, so five instances of one arc cost five
+    // wrappers and one coordinate list.
+    geometry: new Cesium.GroundPolylineGeometry({ positions: record.positions, width: widthPx }),
+    attributes,
+  });
+}
+
 /**
- * Rebuild both batches for the whole city.
+ * Rebuild every batch for the whole city.
  *
- * TWO primitives and not one, and not one per band. Colour and width both
- * travel per geometry instance on a `PolylineColorAppearance`, so the five flow
- * bands and the occupancy-only stroke merge into a single batch — 2 086
- * instances, one draw call. The silent arcs cannot join it: a dash is a
- * MATERIAL and a material is per-primitive, which is the same constraint
- * `powerGrid.js` hits on its underground cables. So the 891 dashed strokes are
- * the second batch, and paying one extra draw call is what buys "no measurement
- * looks nothing like a measurement".
+ * EIGHT primitives, and the count is forced by two Cesium facts, not chosen:
+ * a dash is a MATERIAL and a material is per-primitive (the constraint
+ * `powerGrid.js` hits on its underground cables), and a stroke WIDTH is baked
+ * into the geometry, so a width band is a primitive too. What is per-instance —
+ * `color` and `show` — is exactly what the hour cursor needs, which is why the
+ * cursor never comes back here.
+ *
+ * See the module header for the measured instance counts: 4 970 band instances
+ * rather than 8 560, because an arc is only given geometry in the bands it can
+ * actually reach.
  */
 function drawArcs(payload) {
   clearPrimitives();
@@ -283,57 +427,217 @@ function drawArcs(payload) {
   if (!_groundLinesSupported) return;
 
   const arcs = Array.isArray(payload?.arcs) ? payload.arcs : [];
-  const solid = [];
-  const dashed = [];
+  const counted = [];
+  const occupancy = [];
+  const silent = [];
   const warm = [];
   for (const arc of arcs) {
-    const style = comptagesArcStyle(arc);
+    const style = comptagesArcStyle(arc, _slot);
     const midpoint = comptagesMidpoint(arc.g);
     const id = `comptages-fr:${arc.a}`;
+    const positions = comptagesPositions(arc.g);
     // An unplaceable arc is still a record — the card cannot be opened from the
     // globe, but the counts are real and the row reports them.
-    _records.set(id, { id, arc, style, midpoint });
-    const positions = comptagesPositions(arc.g);
+    const record = {
+      id,
+      arc,
+      style,
+      midpoint,
+      positions,
+      bands: comptagesReachableBands(arc),
+      hasGap: comptagesHasHourGap(arc),
+      painted: null,
+    };
+    _records.set(id, record);
     if (!positions) continue;
     if (midpoint && warm.length < FLOOR_WARM_LIMIT) warm.push(midpoint);
-    const instance = new Cesium.GeometryInstance({
-      id,
-      geometry: new Cesium.GroundPolylineGeometry({ positions, width: style.widthPx }),
-      attributes: {
-        color: Cesium.ColorGeometryInstanceAttribute.fromColor(
-          Cesium.Color.fromCssColorString(style.color).withAlpha(style.alpha),
-        ),
-      },
-    });
-    (style.dashed ? dashed : solid).push(instance);
+    if (arc.s === 'counted') counted.push(record);
+    else if (arc.s === 'occupancy') occupancy.push(record);
+    else silent.push(record);
   }
 
-  if (solid.length) {
-    const primitive = _viewer.scene.groundPrimitives.add(new Cesium.GroundPolylinePrimitive({
-      geometryInstances: solid,
-      classificationType: _classificationType,
-      appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
-    }));
-    primitive.show = _enabled;
-    _primitives.push(primitive);
+  // The five width bands. Colour is the rhythm hue and is written once here,
+  // because the class is a property of the WEEK — the cursor never changes it.
+  for (let band = 0; band < COMPTAGES_FLOW_WIDTHS.length; band += 1) {
+    const instances = [];
+    for (const record of counted) {
+      if (!record.bands.includes(band)) continue;
+      const visible = !record.style.gap && record.style.bin === band;
+      if (visible) record.painted = band;
+      instances.push(arcInstance(record, COMPTAGES_FLOW_WIDTHS[band], {
+        color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+          Cesium.Color.fromCssColorString(record.style.color).withAlpha(COMPTAGES_STROKE_ALPHA),
+        ),
+        show: new Cesium.ShowGeometryInstanceAttribute(visible),
+      }));
+    }
+    _bandPrimitives[band] = addBatch(
+      instances, new Cesium.PolylineColorAppearance({ translucent: true }),
+    );
   }
-  if (dashed.length) {
-    const primitive = _viewer.scene.groundPrimitives.add(new Cesium.GroundPolylinePrimitive({
-      geometryInstances: dashed,
-      classificationType: _classificationType,
-      appearance: new Cesium.PolylineMaterialAppearance({
-        material: Cesium.Material.fromType('PolylineDash', {
-          color: Cesium.Color.fromCssColorString(COMPTAGES_SILENT_COLOR)
-            .withAlpha(COMPTAGES_SILENT_ALPHA),
-          dashLength: COMPTAGES_SILENT_DASH_LENGTH,
-        }),
-      }),
+
+  // Occupancy: one steel colour, one width, never on the count scale and never
+  // moved by the cursor. It shares the colour appearance so it costs no extra
+  // material, and it is a separate batch only because its width is its own.
+  const occupancyInstances = occupancy.map((record) => arcInstance(
+    record, COMPTAGES_OCCUPANCY_WIDTH, {
+      color: Cesium.ColorGeometryInstanceAttribute.fromColor(
+        Cesium.Color.fromCssColorString(COMPTAGES_OCCUPANCY_COLOR).withAlpha(COMPTAGES_STROKE_ALPHA),
+      ),
+    },
+  ));
+  addBatch(occupancyInstances, new Cesium.PolylineColorAppearance({ translucent: true }));
+
+  // The two absences, one dashed material each.
+  addBatch(
+    silent.map((record) => arcInstance(record, COMPTAGES_SILENT_WIDTH, {})),
+    dashedAppearance(COMPTAGES_SILENT_COLOR, COMPTAGES_SILENT_ALPHA, COMPTAGES_SILENT_DASH_LENGTH),
+  );
+  const gapInstances = [];
+  for (const record of counted) {
+    if (!record.hasGap) continue;
+    if (record.style.gap) record.painted = 'gap';
+    gapInstances.push(arcInstance(record, COMPTAGES_HOUR_GAP_WIDTH, {
+      show: new Cesium.ShowGeometryInstanceAttribute(record.style.gap),
     }));
-    primitive.show = _enabled;
-    _primitives.push(primitive);
   }
+  _gapPrimitive = addBatch(
+    gapInstances,
+    dashedAppearance(
+      COMPTAGES_HOUR_GAP_COLOR, COMPTAGES_HOUR_GAP_ALPHA, COMPTAGES_HOUR_GAP_DASH_LENGTH,
+    ),
+  );
+
   if (warm.length) warmGroundFloor(warm);
   governorRequestRender('comptages-fr-draw');
+}
+
+// --- The hour cursor --------------------------------------------------------
+
+/** The batch an arc is drawn in for a given target — a band index, or the gap. */
+function primitiveForTarget(target) {
+  return target === 'gap' ? _gapPrimitive : _bandPrimitives[target] ?? null;
+}
+
+/**
+ * Write one instance's `show`, or report that the batch was not ready.
+ *
+ * `getGeometryInstanceAttributes` throws before the primitive's first update,
+ * which is a NOT-YET and not a failure: the caller re-tries on the next frame
+ * rather than leaving the map showing the previous slot.
+ */
+function setInstanceShow(primitive, id, visible) {
+  if (!primitive) return true;
+  if (!primitive.ready) return false;
+  try {
+    const attributes = primitive.getGeometryInstanceAttributes(id);
+    if (!attributes) return true;
+    attributes.show = Cesium.ShowGeometryInstanceAttribute.toValue(visible);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Frames the retry is allowed before it gives up and rebuilds instead.
+ *
+ * A chip pressed while the batches are still on the geometry worker cannot
+ * write `show` yet, and Cesium's async pipeline settles in a handful of frames.
+ * Four seconds at 60 fps is two orders of magnitude of head-room; past it the
+ * batch is not coming, and spinning an O(2 977) pass every frame forever would
+ * be a worse failure than the one it is waiting on.
+ */
+const STYLE_RETRY_FRAME_BUDGET = 240;
+
+/** Retry the pending `show` writes once the batches finish building. */
+function scheduleStyleRetry() {
+  if (_styleRetryRemover || !_viewer?.scene?.postRender?.addEventListener) return;
+  _styleRetryFrames = 0;
+  _styleRetryRemover = _viewer.scene.postRender.addEventListener(() => {
+    if (!_stylePending) {
+      stopStyleRetry();
+      return;
+    }
+    _styleRetryFrames += 1;
+    if (_styleRetryFrames > STYLE_RETRY_FRAME_BUDGET) {
+      // Correctness over the batch: rebuilding bakes the right attributes at
+      // construction, so the map cannot be left showing one slot under a label
+      // that names another. Expensive, and it has never been reached.
+      stopStyleRetry();
+      if (_payload) drawArcs(_payload);
+      return;
+    }
+    applySlotStyles({ force: true });
+  });
+}
+
+function stopStyleRetry() {
+  if (_styleRetryRemover) {
+    _styleRetryRemover();
+    _styleRetryRemover = null;
+  }
+  _styleRetryFrames = 0;
+  _stylePending = false;
+}
+
+/**
+ * Repaint the city for the current slot — WITHOUT touching a vertex.
+ *
+ * Two `show` writes per arc that moved band, and nothing at all for an arc that
+ * did not. This is the whole reason the geometry is banded: rebuilding the
+ * batches here would drop the vertex arrays and freeze the globe during exactly
+ * the gesture the chips exist to make fluid (rule G2).
+ */
+function applySlotStyles({ force = false } = {}) {
+  let pending = false;
+  let moved = 0;
+  for (const record of _records.values()) {
+    const style = comptagesArcStyle(record.arc, _slot);
+    record.style = style;
+    if (!record.positions || record.arc?.s !== 'counted') continue;
+    const target = style.gap ? 'gap' : style.bin;
+    if (!force && record.painted === target) continue;
+    let ok = true;
+    if (force) {
+      for (const band of record.bands) {
+        ok = setInstanceShow(_bandPrimitives[band], record.id, band === target) && ok;
+      }
+      if (record.hasGap) ok = setInstanceShow(_gapPrimitive, record.id, target === 'gap') && ok;
+    } else {
+      if (record.painted !== null) {
+        ok = setInstanceShow(primitiveForTarget(record.painted), record.id, false) && ok;
+      }
+      ok = setInstanceShow(primitiveForTarget(target), record.id, true) && ok;
+    }
+    if (ok) {
+      record.painted = target;
+      moved += 1;
+    } else {
+      pending = true;
+    }
+  }
+  _stylePending = pending;
+  if (pending) scheduleStyleRetry();
+  else stopStyleRetry();
+  if (moved || force) governorRequestRender('comptages-fr-slot');
+  return moved;
+}
+
+/**
+ * Re-resolve `clock` and repaint when the Paris hour has rolled over.
+ *
+ * Called from the two surfaces the panel already polls, rather than adding a
+ * timer: `updateInterval` here is six hours because the DATA changes weekly,
+ * and shortening it to follow a clock would re-fetch 0.3 MB to move a chip.
+ */
+function syncClockSlot() {
+  if (_slotToken !== 'clock') return;
+  const next = comptagesResolveSlot('clock', _now());
+  if (next.day === _slot.day && next.hour === _slot.hour) return;
+  _slot = next;
+  applySlotStyles();
+  if (_selectedId) repaintSelectedCard(_selectedId);
 }
 
 /** Re-classify against the active surface, rebuilding the baked batches. */
@@ -395,6 +699,39 @@ export function comptagesSilenceLine(arc, hours = 168) {
 }
 
 /**
+ * The numbers behind the hue, in one parenthesis.
+ *
+ * The class is a waterfall over four measured ratios, and the card prints the
+ * one that decided it rather than asserting the class on its own authority. An
+ * arc that could not be classified says which day-type is short of hours — the
+ * refusal is a fact about the data, so it gets a number too.
+ */
+function rhythmEvidence(arc) {
+  const metrics = comptagesRhythmMetrics(arc);
+  if (!metrics) return '';
+  const pct = (value) => `${(value * 100).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} %`;
+  const times = (value) => `×${value.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}`;
+  const T = COMPTAGES_RHYTHM_THRESHOLDS;
+  if (metrics.weekdayHours < T.coverage || metrics.weekendHours < T.coverage) {
+    return ` (${metrics.weekdayHours}/24 h en semaine, ${metrics.weekendHours}/24 h le week-end)`;
+  }
+  if (Number.isFinite(metrics.nightShare) && metrics.nightShare >= T.night) {
+    return ` (${pct(metrics.nightShare)} du trafic entre 00 et 04 h)`;
+  }
+  if (Number.isFinite(metrics.weekendRatio) && metrics.weekendRatio >= T.weekend) {
+    return ` (${times(metrics.weekendRatio)} l’heure de semaine, le week-end)`;
+  }
+  const parts = [];
+  if (Number.isFinite(metrics.morningShoulder) && metrics.morningShoulder >= T.shoulder) {
+    parts.push(`matin ${times(metrics.morningShoulder)}`);
+  }
+  if (Number.isFinite(metrics.eveningShoulder) && metrics.eveningShoulder >= T.shoulder) {
+    parts.push(`soir ${times(metrics.eveningShoulder)}`);
+  }
+  return parts.length ? ` (${parts.join(', ')} le creux de midi)` : '';
+}
+
+/**
  * Card copy for one selected arc.
  *
  * Every line is a published value, a count of published values, or a stated
@@ -406,7 +743,7 @@ export function comptagesSilenceLine(arc, hours = 168) {
  * @param {object} [payload] The document the record came from.
  * @returns {string} Newline-separated card copy.
  */
-export function buildComptagesSelectionLabel(record, payload = null) {
+export function buildComptagesSelectionLabel(record, payload = null, slot = _slot) {
   const arc = record?.arc || {};
   const details = [];
   const title = arc.n ? `${arc.n} · arc ${arc.a}` : `Arc ${arc.a}`;
@@ -421,8 +758,25 @@ export function buildComptagesSelectionLabel(record, payload = null) {
   } else if (arc.s === 'occupancy') {
     details.push(`Occupation mesurée sur ${fr(arc.hk)} h — aucun véhicule compté`);
   } else {
-    details.push(`${fr(arc.mq ?? 0)} véh/h en moyenne, l’heure ouvrée type`);
+    // The selected slot FIRST, because it is what the width on screen is
+    // showing. A gap here is stated as a gap and never as a low count.
+    const flow = comptagesArcFlow(arc, slot);
+    if (slot?.kind === 'mean') {
+      details.push(`${fr(arc.mq ?? 0)} véh/h en moyenne, l’heure ouvrée type`);
+    } else if (flow === null) {
+      details.push(`Aucun comptage publié — ${comptagesSlotLabel(slot)}`);
+    } else {
+      details.push(`${fr(Math.round(flow))} véh/h — ${comptagesSlotLabel(slot)}`);
+      details.push(`${fr(arc.mq ?? 0)} véh/h en moyenne, l’heure ouvrée type`);
+    }
     details.push(`${fr(arc.hq)} heures comptées sur ${fr(hours)}`);
+    // WHY the arc is the colour it is. A hue the reader has to take on trust is
+    // not a legend, and the four numbers behind it are already computed.
+    // Read off the ARC and not off the render record: the class is a pure
+    // function of the pack, and a card built for an arc that is not currently
+    // drawn (an unplaced one, say) must say the same thing as one that is.
+    const rhythm = comptagesRhythmLabel(comptagesRhythmClass(arc));
+    if (rhythm) details.push(`Rythme : ${rhythm.toLowerCase()}${rhythmEvidence(arc)}`);
   }
 
   const reference = comptagesProfileReference(arc.wq, arc.eq);
@@ -451,17 +805,17 @@ export function buildComptagesSelectionLabel(record, payload = null) {
   if (!arc.g) details.push('⚠ Aucune géométrie publiée pour cet arc — non tracé');
 
   const week = comptagesWeekLabel(payload?.week);
-  details.push(`Mesuré, J-2 · semaine ${week || '—'}`);
+  details.push(`Mesuré, J-2 · semaine ${week || '—'} · ${comptagesSlotLabel(slot)}`);
   details.push('Ville de Paris — ODbL');
 
   return [title, ...details.filter(Boolean)].join('\n');
 }
 
 /** Protected selected-arc entry for the shared overlay host. */
-export function createComptagesSelectedOverlayEntry(record, payload = null) {
+export function createComptagesSelectedOverlayEntry(record, payload = null, slot = _slot) {
   const position = cardPosition(record);
   if (!record?.id || !position) return null;
-  const [title, ...details] = buildComptagesSelectionLabel(record, payload).split('\n');
+  const [title, ...details] = buildComptagesSelectionLabel(record, payload, slot).split('\n');
   return {
     id: String(record.id),
     position,
@@ -523,13 +877,25 @@ function selectArc(id) {
       appearance: new Cesium.PolylineColorAppearance({ translucent: true }),
     }));
   }
-  const entry = createComptagesSelectedOverlayEntry(record, _payload);
-  if (entry) {
-    _overlayHost.setEntries(
-      COMPTAGES_FR_OVERLAY_SOURCE_ID, [entry], COMPTAGES_FR_OVERLAY_SOURCE_OPTIONS,
-    );
-  }
+  repaintSelectedCard(id);
   governorRequestRender('comptages-fr-select');
+}
+
+/**
+ * Rewrite the open card for the current slot.
+ *
+ * The card quotes the selected hour, so a chip pressed while a card is open has
+ * to move the card too — otherwise the panel and the map would be reading two
+ * different hours of the same street.
+ */
+function repaintSelectedCard(id) {
+  const record = _records.get(id);
+  if (!record) return;
+  const entry = createComptagesSelectedOverlayEntry(record, _payload, _slot);
+  if (!entry) return;
+  _overlayHost.setEntries(
+    COMPTAGES_FR_OVERLAY_SOURCE_ID, [entry], COMPTAGES_FR_OVERLAY_SOURCE_OPTIONS,
+  );
 }
 
 function onKeyDown(event) {
@@ -622,8 +988,10 @@ function collectDetectableObjects(options = {}) {
   const records = [];
   for (const record of _records.values()) {
     // Only what is actually on the globe. An arc with no published geometry has
-    // no position to hand the detector, and must not be invented one.
-    if (record.midpoint && record.arc?.s === 'counted') records.push(record);
+    // no position to hand the detector, and must not be invented one. And only
+    // what the SELECTED slot measured: a callout reading "0 véh/h" on an hour
+    // nobody published would be the same lie the dash exists to prevent.
+    if (record.midpoint && record.arc?.s === 'counted' && !record.style?.gap) records.push(record);
   }
   if (!records.length) return [];
   const maxCount = Number.isFinite(options.maxCount)
@@ -644,7 +1012,7 @@ function collectDetectableObjects(options = {}) {
         (Number.isFinite(floor) ? floor : 0) + CARD_LIFT_M,
       ),
       sourceId: record.id,
-      id: `${fr(record.arc.mq ?? 0)} véh/h`,
+      id: `${fr(Math.round(record.style?.flow ?? record.arc.mq ?? 0))} véh/h`,
       type: 'Counting arc',
       skipLabel: record.id === _selectedId,
     });
@@ -655,9 +1023,15 @@ function collectDetectableObjects(options = {}) {
 
 // --- Row label --------------------------------------------------------------
 
-/** One line under the layer's toggle: what this view actually contains. */
+/**
+ * One line under the layer's toggle: what this view actually contains.
+ *
+ * It names the WEEK and the SLOT on every state that draws anything, because a
+ * screenshot of this layer has to be readable on its own (rule E1) and the slot
+ * is now the difference between two very different maps of the same street.
+ */
 export function buildComptagesLoadingLabel({
-  payload = _payload, loading = _loading, inView = _inView, error = _error,
+  payload = _payload, loading = _loading, inView = _inView, error = _error, slot = _slot,
 } = {}) {
   if (loading) return 'lecture de la semaine mesurée...';
   if (!inView) return 'Paris intra-muros uniquement — hors de la vue';
@@ -665,6 +1039,7 @@ export function buildComptagesLoadingLabel({
   const parts = [];
   const week = comptagesWeekLabel(payload.week);
   parts.push(`${fr(payload.states?.counted || 0)} arcs comptés${week ? ` · semaine ${week}` : ''}`);
+  parts.push(comptagesSlotLabel(slot));
   const silent = payload.states?.silent || 0;
   if (silent > 0) parts.push(`${fr(silent)} sans aucune mesure`);
   // The arcs that count and cannot be drawn. Stated here because the map
@@ -700,6 +1075,10 @@ const comptagesParisLayer = {
     _stale = false;
     _lastUpdate = null;
     _inView = false;
+    _bandPrimitives = new Array(COMPTAGES_FLOW_WIDTHS.length).fill(null);
+    _gapPrimitive = null;
+    _slotToken = COMPTAGES_SLOT_MEAN;
+    _slot = comptagesResolveSlot(COMPTAGES_SLOT_MEAN, _now());
     _classificationType = powerClassificationTypeForScene(viewer?.scene);
 
     if (typeof window !== 'undefined' && !_mapStackListener) {
@@ -738,6 +1117,7 @@ const comptagesParisLayer = {
     _debounceTimer = null;
     _abort?.abort();
     _abort = null;
+    stopStyleRetry();
     for (const primitive of _primitives) primitive.show = false;
     _overlayHost.setVisible(COMPTAGES_FR_OVERLAY_SOURCE_ID, false);
     if (_clickHandler) {
@@ -769,6 +1149,7 @@ const comptagesParisLayer = {
   },
 
   getStats() {
+    syncClockSlot();
     const stats = {
       count: _records.size,
       lastUpdate: _lastUpdate,
@@ -783,6 +1164,9 @@ const comptagesParisLayer = {
       arcsUnplacedMeasuring: _payload?.unplacedMeasuring ?? null,
       week: _payload?.week ?? null,
       processedAt: _payload?.processedAt ?? null,
+      // The instant represented, published rather than implied (rule E1).
+      slot: _slotToken,
+      slotLabel: comptagesSlotLabel(_slot),
     };
     const label = buildComptagesLoadingLabel();
     if (label) stats.loadingLabel = label;
@@ -794,53 +1178,152 @@ const comptagesParisLayer = {
   getViewportSummary() {
     if (!_payload) return null;
     const { arcs, ...summary } = _payload;
-    return { ...summary, drawn: _records.size, inView: _inView };
+    return {
+      ...summary,
+      drawn: _records.size,
+      inView: _inView,
+      slot: _slotToken,
+      slotDay: _slot.day,
+      slotHour: _slot.hour,
+    };
   },
 
   /**
-   * Colour legend for the control-panel row.
+   * Seven hour chips, and a legend for BOTH channels of a bivariate map.
    *
-   * Tallied over the whole pack, because the whole pack is what is drawn —
-   * there is no viewport here. The five flow bands come first in magnitude
-   * order; the two non-ramp states come last and are kept even at zero, because
-   * "a dashed line means nobody measured this street" is the entry a reader has
-   * to be given.
+   * The chips are not serialized into the share link — the layer is registered
+   * `enabled-only` in `layerState.js`, a shared file this module does not own —
+   * so a shared view always opens on `mean`, the aggregate the layer has always
+   * drawn. That is the right default anyway: `mean` is reproducible for two
+   * readers opening the same link at different times of day, which `clock`
+   * would not be.
+   *
+   * The legend has three blocks and it needs all three, because the map now
+   * encodes two variables at once (rule D1 applies to the hue; C1 requires the
+   * width cuts to be published):
+   *   1. the RHYTHM classes, in colour, counted over the whole pack;
+   *   2. the DÉBIT bands, in width, counted at the SELECTED slot — the swatch is
+   *      a masked stroke of the real width, so the key shows the thing itself;
+   *   3. the three strokes that are off the count scale.
+   * Every count is tallied over the whole pack because the whole pack is drawn:
+   * there is no viewport and no cap here, so `n affiché / N connu` are the same
+   * number and rule A5 has nothing to declare beyond the 31 unplaced arcs the
+   * row label already names.
    */
   getRowControls() {
-    if (!_payload) return { chips: [], legend: [] };
-    const bands = new Array(COMPTAGES_FLOW_COLORS.length).fill(0);
+    syncClockSlot();
+    const chips = COMPTAGES_MOMENTS.map((moment) => {
+      const active = _slotToken === moment.slot;
+      return {
+        id: moment.id,
+        label: moment.label,
+        active,
+        state: active ? 'active' : 'idle',
+        title: moment.slot === 'clock'
+          ? `Suivre l’horloge de Paris — actuellement ${comptagesSlotLabel(comptagesResolveSlot('clock', _now()))}, `
+            + `lu dans la semaine archivée ${comptagesWeekLabel(_payload?.week) || '—'}`
+          : `${comptagesSlotLabel(comptagesResolveSlot(moment.slot, _now()))} — `
+            + `semaine archivée ${comptagesWeekLabel(_payload?.week) || '—'}`,
+        params: { slot: moment.slot },
+      };
+    });
+    if (!_payload) return { chips, legend: [] };
+
+    const legend = [];
+    // 1. The hue: the shape of the week. Counted over every arc that has one,
+    // drawn or not, because the class does not depend on the slot.
+    const rhythms = new Map();
+    const bands = new Array(COMPTAGES_FLOW_WIDTHS.length).fill(0);
+    let gaps = 0;
     for (const record of _records.values()) {
-      if (record.style.bin !== null) bands[record.style.bin] += 1;
+      const style = record.style;
+      if (style.rhythm) rhythms.set(style.rhythm, (rhythms.get(style.rhythm) || 0) + 1);
+      if (style.gap) gaps += 1;
+      else if (style.bin !== null) bands[style.bin] += 1;
     }
-    const legend = bands
-      .map((count, bin) => ({
+    for (const rhythm of COMPTAGES_RHYTHM_CLASSES) {
+      const count = rhythms.get(rhythm) || 0;
+      if (!count) continue;
+      legend.push({
+        label: comptagesRhythmLabel(rhythm),
+        color: COMPTAGES_RHYTHM_COLORS[rhythm],
+        count,
+        blurb: COMPTAGES_RHYTHM_BLURBS[rhythm],
+      });
+    }
+    // 2. The width: the count, at this slot. A band at zero is dropped, but the
+    // thresholds themselves are frozen and never re-cut from what is on screen.
+    bands.forEach((count, bin) => {
+      if (!count) return;
+      legend.push({
         label: comptagesFlowBandLabel(bin),
-        color: COMPTAGES_FLOW_COLORS[bin],
+        color: COMPTAGES_WIDTH_INK,
+        glyph: comptagesFlowBandGlyph(bin),
         count,
         blurb: BAND_BLURBS[bin],
-      }))
-      .filter((row) => row.count > 0);
+      });
+    });
+    // 3. The three strokes that are not on the count scale. The silent row is
+    // kept even at zero: "a dashed line means nobody measured this street" is
+    // the entry a reader has to be given before they can read the map at all.
     const states = _payload.states || {};
     if (states.occupancy > 0) {
       legend.push({
         label: COMPTAGES_STATE_LABELS.occupancy,
         color: COMPTAGES_OCCUPANCY_COLOR,
+        glyph: comptagesStrokeGlyph({ widthPx: COMPTAGES_OCCUPANCY_WIDTH }),
         count: states.occupancy,
-        blurb: 'La boucle publie un taux d’occupation et jamais un comptage. '
-          + 'C’est une mesure réelle, dans une autre unité — elle n’a pas de place sur l’échelle en véh/h.',
+        blurb: OCCUPANCY_BLURB,
+      });
+    }
+    if (gaps > 0) {
+      legend.push({
+        label: COMPTAGES_HOUR_GAP_LABEL,
+        color: COMPTAGES_HOUR_GAP_COLOR,
+        glyph: comptagesStrokeGlyph({
+          widthPx: COMPTAGES_HOUR_GAP_WIDTH, dashLength: COMPTAGES_HOUR_GAP_DASH_LENGTH,
+        }),
+        count: gaps,
+        blurb: HOUR_GAP_BLURB,
       });
     }
     if (states.silent > 0) {
       legend.push({
         label: COMPTAGES_STATE_LABELS.silent,
         color: COMPTAGES_SILENT_COLOR,
+        glyph: comptagesStrokeGlyph({
+          widthPx: COMPTAGES_SILENT_WIDTH, dashLength: COMPTAGES_SILENT_DASH_LENGTH,
+        }),
         count: states.silent,
-        blurb: `Tracé en pointillés : 168 h sans comptage ni occupation. `
+        blurb: `${SILENT_BLURB_HEAD} `
           + `${fr(_payload.silentBy?.i || 0)} sont déclarés invalides par la Ville, `
           + `${fr(_payload.silentBy?.b || 0)} barrés, et ${fr(_payload.silentBy?.o || 0)} déclarés ouverts.`,
       });
     }
-    return { chips: [], legend };
+    return { chips, legend };
+  },
+
+  /**
+   * Move the hour cursor.
+   *
+   * An unknown token is IGNORED rather than clamped or defaulted: a chip that
+   * silently moved the reader to 04:00 because a caller sent nonsense would be
+   * worse than a chip that did nothing — the same rule `idfm-frequency` wrote
+   * down for its bands.
+   */
+  setParams(params = {}) {
+    const parsed = comptagesParseSlot(params?.slot);
+    if (!parsed) return;
+    const token = parsed.kind === 'clock' ? 'clock' : parsed.token;
+    if (token === _slotToken) return;
+    _slotToken = token;
+    _slot = comptagesResolveSlot(token, _now());
+    applySlotStyles();
+    if (_selectedId) repaintSelectedCard(_selectedId);
+  },
+
+  getParams() {
+    return { slot: _slotToken, day: _slot.day, hour: _slot.hour };
   },
 
   destroy(viewer) {
@@ -862,6 +1345,7 @@ const comptagesParisLayer = {
       _moveEndRemover();
       _moveEndRemover = null;
     }
+    stopStyleRetry();
     clearPrimitives();
     _records.clear();
     _payload = null;
@@ -872,15 +1356,26 @@ const comptagesParisLayer = {
 /** Seed rendered records so selection/card/legend paths run without WebGL. */
 export function _setComptagesStateForTest({
   viewer, payload, overlayHost, enabled = true, inView = true,
+  slot = COMPTAGES_SLOT_MEAN, now = null,
 } = {}) {
   _viewer = viewer || null;
   _overlayHost = overlayHost || DEFAULT_OVERLAY_HOST;
   _payload = payload || null;
+  _now = typeof now === 'function' ? now : DEFAULT_NOW;
+  _slotToken = comptagesParseSlot(slot) ? slot : COMPTAGES_SLOT_MEAN;
+  _slot = comptagesResolveSlot(_slotToken, _now());
   _records = new Map();
   for (const arc of payload?.arcs || []) {
     const id = `comptages-fr:${arc.a}`;
     _records.set(id, {
-      id, arc, style: comptagesArcStyle(arc), midpoint: comptagesMidpoint(arc.g),
+      id,
+      arc,
+      style: comptagesArcStyle(arc, _slot),
+      midpoint: comptagesMidpoint(arc.g),
+      positions: null,
+      bands: comptagesReachableBands(arc),
+      hasGap: comptagesHasHourGap(arc),
+      painted: null,
     });
   }
   _enabled = enabled;
@@ -900,12 +1395,16 @@ export function _selectComptagesForTest(id) {
 /** Exercise the production clear path and restore the production host seam. */
 export function _clearComptagesSelectionForTest() {
   clearSelection();
+  stopStyleRetry();
   _overlayHost = DEFAULT_OVERLAY_HOST;
+  _now = DEFAULT_NOW;
   _payload = null;
   _records = new Map();
   _enabled = false;
   _inView = false;
   _status = 'idle';
+  _slotToken = COMPTAGES_SLOT_MEAN;
+  _slot = comptagesResolveSlot(COMPTAGES_SLOT_MEAN);
 }
 
 /** @returns {?string} */
@@ -926,6 +1425,41 @@ export function _comptagesStatsForTest() {
 /** Detection candidates, for tests that do not construct a viewer. */
 export function _comptagesDetectablesForTest(options = {}) {
   return collectDetectableObjects(options);
+}
+
+/**
+ * Run the production batch build against a stub scene.
+ *
+ * `GroundPolylineGeometry`, `GeometryInstance`, `Material` and both appearances
+ * are pure JS — only `GroundPolylinePrimitive.isSupported` reaches for a GL
+ * context, and it reads exactly one flag. So the batching decisions (how many
+ * primitives, which arc gets an instance in which band) are testable without
+ * WebGL, which is where the cursor's whole cost argument lives.
+ */
+export function _drawComptagesForTest(payload) {
+  _groundLinesSupported = null;
+  drawArcs(payload);
+  return {
+    primitives: _primitives,
+    bands: _bandPrimitives,
+    gap: _gapPrimitive,
+    records: _records,
+  };
+}
+
+/** Drive the production `setParams` path, chip-style. */
+export function _comptagesSetParamsForTest(params) {
+  comptagesParisLayer.setParams(params);
+}
+
+/** The slot the layer is currently drawing. */
+export function _comptagesSlotForTest() {
+  return { token: _slotToken, ..._slot };
+}
+
+/** The record index, so a test can read what each arc would be painted. */
+export function _comptagesRecordsForTest() {
+  return _records;
 }
 
 export default comptagesParisLayer;

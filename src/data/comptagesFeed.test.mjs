@@ -334,3 +334,40 @@ test('an empty upstream produces an empty pack, not a throw and not a fake one',
   assert.equal(pack.unplaced, 0);
   assert.equal(projectComptagesArcs().count, 0);
 });
+
+test('the fold ships the 48 slots the hour cursor navigates, gaps included', () => {
+  // The renderer's chips scrub `wq` and `eq`, so what this projection ships is
+  // the cursor's whole axis. Two invariants have to hold for the control to be
+  // honest about what it is moving through.
+  const pack = projected();
+  for (const arc of pack.arcs) {
+    for (const field of ['wq', 'eq', 'wk', 'ek']) {
+      const slots = arc[field];
+      if (slots === null) continue;
+      // (1) EXACTLY 24 slots, always, so slot n is hour n and never an index
+      // into a compacted list. A profile with the empty hours dropped would put
+      // the evening peak wherever the gaps happened to fall.
+      assert.equal(slots.length, COMPTAGES_HOURS, `${arc.a}.${field}`);
+      // (2) every slot is a number or a null — never a coerced zero. The whole
+      // week carries 234 measured zeroes against 218 707 nulls, and the cursor
+      // draws the two differently.
+      for (const value of slots) {
+        assert.ok(value === null || Number.isFinite(value), `${arc.a}.${field} carries ${value}`);
+      }
+    }
+    // A profile that measured nothing at all is `null` outright rather than 24
+    // nulls, so "this day-type does not exist for this arc" is one check.
+    if (arc.s === 'silent') {
+      assert.equal(arc.wq, null);
+      assert.equal(arc.eq, null);
+    }
+  }
+  // Bd Sébastopol: 12 weekday hours published and none at the weekend. The gaps
+  // are what make an hour cursor a claim rather than a slider — hour 09 is a
+  // hole and hour 13 is a measured zero, in the same profile.
+  const sebastopol = pack.arcs.find((arc) => arc.a === '525');
+  assert.equal(sebastopol.wq[9], null);
+  assert.equal(sebastopol.wq[13], 0);
+  assert.equal(sebastopol.eq, null);
+  assert.equal(sebastopol.s, 'counted', 'it counts — it just does not count all week');
+});
