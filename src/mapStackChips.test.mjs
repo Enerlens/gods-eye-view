@@ -61,9 +61,26 @@ const doc = { createElement: (tagName) => makeElement(tagName) };
 /** Text a chip renders, label + optional requirement badge. */
 const chipText = (chip) => chip.children.map((child) => child.textContent).join(' ');
 
+/**
+ * The chip for one stack id.
+ *
+ * Assertions below address chips BY ID rather than by position: the row's
+ * order is pinned once, in the render test, and every other test is about a
+ * particular source. Hard-coded indices made adding a source rewrite tests
+ * that had nothing to do with it — and, worse, could leave an index pointing
+ * at a different chip that happened to still pass.
+ */
+const chipById = (container, id) => {
+  const chip = container.children.find((child) => child.dataset.stackId === id);
+  assert.ok(chip, `no chip rendered for ${id}`);
+  return chip;
+};
+
 // Shaped exactly like MapStackController.getStacks() output.
 const CONTROLLER_STACKS = [
   { id: 'photoreal', label: 'Google 3D', requiresIon: false, available: true, unavailableReason: null },
+  { id: 'google-roadmap', label: 'Plan Google', requiresIon: false, available: true, unavailableReason: null },
+  { id: 'google-terrain', label: 'Relief Google', requiresIon: false, available: true, unavailableReason: null },
   { id: 'bing-aerial', label: 'Bing Aerial', requiresIon: true, available: true, unavailableReason: null },
   { id: 'bing-labels', label: 'Bing Labels', requiresIon: true, available: true, unavailableReason: null },
   { id: 'osm', label: 'OSM', requiresIon: false, available: true, unavailableReason: null },
@@ -71,19 +88,29 @@ const CONTROLLER_STACKS = [
   { id: 'ign-plan', label: 'Plan IGN', requiresIon: false, available: true, unavailableReason: null },
 ];
 
-test('the row renders exactly the six accepted sources', () => {
+test('the row renders exactly the eight accepted sources', () => {
   const container = makeElement();
   renderMapStackChips(container, CONTROLLER_STACKS, { activeId: 'photoreal', doc });
 
   assert.deepEqual(container.children.map((chip) => chip.dataset.stackId), [
-    'photoreal', 'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
+    'photoreal', 'google-roadmap', 'google-terrain',
+    'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
   ]);
   assert.deepEqual(container.children.map(chipText), [
-    'Google 3D', 'Bing Aerial', 'Bing Labels', 'OSM', 'IGN Ortho', 'Plan IGN',
+    'Google 3D', 'Plan Google', 'Relief Google',
+    'Bing Aerial', 'Bing Labels', 'OSM', 'IGN Ortho', 'Plan IGN',
   ]);
   assert.deepEqual(PRESENTED_MAP_STACK_IDS, [
-    'photoreal', 'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
+    'photoreal', 'google-roadmap', 'google-terrain',
+    'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
   ]);
+  // The two Google 2D chips carry NO ION badge: they ride the Google key, and
+  // pointing the operator at the wrong credential is the failure this pins.
+  assert.doesNotMatch(
+    [chipById(container, 'google-roadmap'), chipById(container, 'google-terrain')]
+      .map(chipText).join(' '),
+    /ion/i,
+  );
   assert.ok(container.children.every((chip) => chip.tagName === 'button' && chip.type === 'button'));
   assert.ok(container.children.every((chip) => chip.classList.contains(MAP_STACK_CHIP_CLASS)));
 });
@@ -116,8 +143,8 @@ test('clicking a chip dispatches that stack id — the same selection the dropdo
     doc,
   });
 
-  container.children[3].click();
-  container.children[1].click();
+  chipById(container, 'osm').click();
+  chipById(container, 'bing-aerial').click();
   assert.deepEqual(selected, ['osm', 'bing-aerial']);
 });
 
@@ -139,15 +166,15 @@ test('the lit chip tracks controller state, not the click', () => {
 
   // A rejected/superseded switch reports the stack that is genuinely active.
   syncMapStackChips(container, 'photoreal');
-  assert.ok(container.children[0].classList.contains('active'));
-  assert.equal(container.children[3].getAttribute('aria-pressed'), 'false');
+  assert.ok(chipById(container, 'photoreal').classList.contains('active'));
+  assert.equal(chipById(container, 'osm').getAttribute('aria-pressed'), 'false');
 
   // A landed switch moves both the class and the pressed state.
   syncMapStackChips(container, 'osm');
-  assert.ok(container.children[3].classList.contains('active'));
-  assert.equal(container.children[3].getAttribute('aria-pressed'), 'true');
-  assert.ok(!container.children[0].classList.contains('active'));
-  assert.equal(container.children[0].getAttribute('aria-pressed'), 'false');
+  assert.ok(chipById(container, 'osm').classList.contains('active'));
+  assert.equal(chipById(container, 'osm').getAttribute('aria-pressed'), 'true');
+  assert.ok(!chipById(container, 'photoreal').classList.contains('active'));
+  assert.equal(chipById(container, 'photoreal').getAttribute('aria-pressed'), 'false');
 });
 
 test('keyless ion stacks stay focusable, aria-disabled, and say why', () => {
@@ -164,7 +191,7 @@ test('keyless ion stacks stay focusable, aria-disabled, and say why', () => {
     doc,
   });
 
-  const bingAerial = container.children[1];
+  const bingAerial = chipById(container, 'bing-aerial');
   assert.equal(bingAerial.disabled, false, 'unavailable sources remain keyboard-reachable');
   assert.equal(bingAerial.getAttribute('aria-disabled'), 'true');
   assert.equal(
@@ -178,7 +205,7 @@ test('keyless ion stacks stay focusable, aria-disabled, and say why', () => {
   bingAerial.click();
   assert.deepEqual(selected, [], 'an unavailable stack must not reach the switch path');
 
-  assert.equal(container.children[3].getAttribute('aria-disabled'), 'false', 'OSM stays selectable');
+  assert.equal(chipById(container, 'osm').getAttribute('aria-disabled'), 'false', 'OSM stays selectable');
 });
 
 test('an AVAILABLE but partial source says where it works, without reading as broken', () => {
@@ -189,8 +216,7 @@ test('an AVAILABLE but partial source says where it works, without reading as br
     coverageNote: 'metropolitan France only',
   } : stack)), { activeId: 'osm', onSelect: (id) => selected.push(id), doc });
 
-  const ign = container.children[4];
-  assert.equal(ign.dataset.stackId, 'ign-ortho');
+  const ign = chipById(container, 'ign-ortho');
   assert.equal(ign.getAttribute('aria-disabled'), 'false', 'a partial source is selectable, not disabled');
   assert.ok(!ign.classList.contains('unavailable'));
   assert.equal(ign.title, 'IGN Ortho — metropolitan France only');
@@ -202,7 +228,7 @@ test('an AVAILABLE but partial source says where it works, without reading as br
 
   // A source with nothing to qualify keeps a bare label and no aria-label
   // override — the button text is already its accessible name.
-  const osm = container.children[3];
+  const osm = chipById(container, 'osm');
   assert.equal(osm.title, 'OSM');
   assert.equal(osm.getAttribute('aria-label'), null);
 });
@@ -218,12 +244,12 @@ test('a non-ion stack that fails never claims an ion token is required', () => {
   } : stack));
   renderMapStackChips(container, tilesFailed, { activeId: 'osm', doc });
 
-  const google = container.children[0];
+  const google = chipById(container, 'photoreal');
   assert.equal(google.getAttribute('aria-disabled'), 'true');
   assert.equal(google.getAttribute('aria-label'), 'Google 3D unavailable: Google 3D is unavailable');
   assert.equal(chipText(google), 'Google 3D', 'no ION badge on a stack that does not need ion');
   assert.equal(google.title, 'Google 3D is unavailable');
-  assert.equal(chipText(container.children[1]), 'Bing Aerial', 'available ion stacks stay unbadged');
+  assert.equal(chipText(chipById(container, 'bing-aerial')), 'Bing Aerial', 'available ion stacks stay unbadged');
 });
 
 test('models carry the stack\'s own reason and never invent an active chip', () => {

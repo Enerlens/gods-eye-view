@@ -23,9 +23,10 @@ const stubViewer = () => ({
 
 const stackById = (id) => MAP_STACKS.find((stack) => stack.id === id);
 
-test('the shipped registry is the six ids every presentation surface expects', () => {
+test('the shipped registry is the eight ids every presentation surface expects', () => {
   assert.deepEqual(MAP_STACKS.map((stack) => stack.id), [
-    'photoreal', 'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
+    'photoreal', 'google-roadmap', 'google-terrain',
+    'bing-aerial', 'bing-labels', 'osm', 'ign-ortho', 'ign-plan',
   ]);
   // Only the Bing/ion pair costs a credential. Getting this wrong would put an
   // ION badge on a keyless source, or hide a keyed one behind no warning.
@@ -33,6 +34,50 @@ test('the shipped registry is the six ids every presentation surface expects', (
     MAP_STACKS.filter((stack) => stack.requiresIon).map((stack) => stack.id),
     ['bing-aerial', 'bing-labels'],
   );
+});
+
+test('the Google 2D stacks are keyed but tileset-independent — the EEA case', () => {
+  // The whole point of these two: on an EEA billing address Google refuses 3D
+  // tiles and satellite (403) while still serving roadmap and terrain on the
+  // SAME key. So availability must follow the KEY, never the loaded 3D
+  // tileset. A controller with a key and no tileset is exactly staging.
+  const controller = new MapStackController(stubViewer(), {
+    googleTileset: null,
+    googleKeyConfigured: true,
+  });
+  assert.equal(controller.isStackAvailable('photoreal'), false);
+  assert.equal(controller.isStackAvailable('google-roadmap'), true);
+  assert.equal(controller.isStackAvailable('google-terrain'), true);
+  // …and it is what the controller falls back to, rather than dropping to OSM
+  // and leaving a paid-for basemap unused.
+  assert.equal(controller.getActiveId(), 'google-roadmap');
+
+  // The keyless build says so explicitly, and only that turns them off.
+  const keyless = new MapStackController(stubViewer(), { googleKeyConfigured: false });
+  assert.equal(keyless.isStackAvailable('google-roadmap'), false);
+  assert.match(
+    keyless.getStacks().find((stack) => stack.id === 'google-roadmap').unavailableReason,
+    /Google Maps API key required/,
+  );
+
+  // `null` means the caller never said; guessing "missing" would hide a
+  // working basemap from every tool-built controller.
+  const unsaid = new MapStackController(stubViewer(), {});
+  assert.equal(unsaid.isStackAvailable('google-roadmap'), true);
+
+  for (const [id, mapType] of [['google-roadmap', 'roadmap'], ['google-terrain', 'terrain']]) {
+    const stack = stackById(id);
+    assert.equal(stack.kind, 'google-2d');
+    // No ion token: these ride the Google key, and an ION badge here would
+    // send the operator hunting for the wrong credential.
+    assert.equal(stack.requiresIon, false);
+    assert.equal(stack.google2d.mapType, mapType);
+    // Anything other than a scaleFactor Google accepts is a 400 at session
+    // time, which surfaces as a dead chip rather than a fallback.
+    assert.equal(stack.google2d.scale, 'scaleFactor2x');
+  }
+  // Worldwide — unlike the IGN pair, these carry no coverage caveat.
+  assert.equal(stackById('google-roadmap').coverageNote, undefined);
 });
 
 test('the IGN stacks name a real Géoplateforme layer and declare their partial coverage', () => {

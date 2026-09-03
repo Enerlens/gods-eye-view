@@ -6,6 +6,32 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-03
 
 ### Added
+- **Le fond de carte Google, sur la clé même qui ne peut pas charger le globe
+  3D.** Le retrait EEE de Google est plus étroit que son message d'erreur ne le
+  laisse croire. Mesuré le 2026-09-03 sur la clé de production : `3dtiles/root.json`
+  et `createSession mapType:satellite` répondent tous deux **403
+  PERMISSION_DENIED**, mais `roadmap` et `terrain` répondent **200** avec de
+  vraies tuiles. La restriction porte sur l'adresse de **facturation** et frappe
+  l'*imagerie*, pas la cartographie : une installation facturée en Europe, dont
+  la pastille « Google 3D » restera grise pour toujours, peut donc afficher le
+  plan et le relief Google. Deux sources entrent dans le tiroir, **Plan Google**
+  et **Relief Google**, en z0–20 et en tuiles 512 px, mondiales — sans jeton
+  Cesium ion et sans le découpage France des sources IGN.
+  Une URL de tuile 2D est invalide sans jeton de session, et ouvrir une session
+  est un POST que Cesium ne sait pas faire : `/api/google/2d-session` le fait
+  côté serveur, mutualise le jeton entre tous les visiteurs — Google le donne
+  pour **14 jours** — et laisse les tuiles aller du navigateur à Google en
+  direct, comme OSM, l'IGN et ion. Un `createSession` tous les quinze jours au
+  lieu d'un par chargement de page. `mapType` est une liste blanche de deux
+  valeurs, pas un passe-plat : chaque session distincte est un appel facturable,
+  et demander `satellite` répond 400 en nommant le retrait EEE plutôt que de
+  laisser Google répondre 403 plus loin.
+  **Et le démarrage atterrit dessus.** Une installation qui a une clé mais pas de
+  tuiles 3D tombait sur OSM ; elle ouvre maintenant sur le plan Google, c'est-à-dire
+  sur ce qui est déjà payé. Une installation sans clé continue d'ouvrir sur OSM,
+  inchangée — et `initialStack` cesse d'être écrasé quand le globe 3D manque, ce
+  qui rendait le choix de l'appelant inatteignable sur les seules configurations
+  qui en ont un à faire.
 - **Un clic cadre la zone de chalandise, au lieu de la dessiner là où vous étiez.**
   Mesurer le sol qu'un point atteint puis en laisser un tiers sous le panneau
   DATA LAYERS, à l'altitude où la caméra se trouvait par hasard, c'était le
