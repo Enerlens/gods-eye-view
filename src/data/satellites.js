@@ -2166,7 +2166,24 @@ const satellitesLayer = {
         title,
         params: { catalog: active ? 'core' : 'dense' },
       }],
-      legend: satelliteClassLegend(_classTally()),
+      legend: [
+        ...satelliteClassLegend(_classTally()),
+        // The ring is the one line on this map that runs FORWARD in time.
+        // Aircraft and vessel trails are the past, drawn in the same idiom —
+        // a coloured polyline behind a moving symbol — so without this row a
+        // reader has no way to know that two graphically identical lines point
+        // in opposite temporal directions (CARTOGRAPHIE E3).
+        ...(_params.showOrbits && _orbitPaths.size
+          ? [{
+            label: 'Orbit ahead (prediction)',
+            color: '#00ffff',
+            count: _orbitPaths.size,
+            blurb: 'One full orbital period propagated FORWARD from the current '
+              + 'TLE — where the satellite is going, not where it has been. '
+              + 'Aircraft and vessel trails are the opposite: past track.',
+          }]
+          : []),
+      ],
     };
   },
 

@@ -4,7 +4,7 @@
  *
  * Renders authentic reconnaissance metadata over the Cesium canvas:
  * classification banners, live MGRS/lat-lon coordinates, sensor metrics
- * (GSD, NIIRS, ONA), timestamps, and orbital data — all updating in
+ * (off-nadir angle), timestamps, and simulated mission dressing — all updating in
  * real-time at configurable cadences.
  *
  * The HUD auto-activates when a military-style shader (NVG, FLIR, CRT) is
@@ -59,7 +59,7 @@ const NEARBY_POINTS = Object.values(CITY_POIS)
  * Full-screen intelligence HUD overlay rendered on top of the Cesium canvas.
  *
  * Displays classification banners, MGRS/lat-lon readouts, sensor metrics
- * (GSD, NIIRS, off-nadir angle), sun elevation, orbital metadata, and a
+ * (off-nadir angle), sun elevation, simulated orbital dressing, and a
  * rolling semantic summary line. All values derive from the live camera
  * position and update on independent timer cadences.
  */
@@ -129,7 +129,14 @@ export class IntelHUD {
       }
     };
 
-    // Session-consistent pseudorandom identifiers (generated once at construction)
+    // Session-consistent pseudorandom identifiers (generated once at
+    // construction). These are SET DRESSING — no such mission, sensor, orbit
+    // or pass exists. They used to render in the same font, colour and weight
+    // as the MGRS, latitude and longitude two corners away, which ARE real; a
+    // reader had no way to tell the invented half of the HUD from the measured
+    // half (CARTOGRAPHIE A1). They keep their place in the cockpit fiction and
+    // gain the `.hud-simulated` treatment plus a `SIM` prefix, which costs the
+    // atmosphere nothing and costs the lie everything.
     this._missionId = `KH11-${4000 + Math.floor(Math.random() * 200)}`;
     this._sensorId = `OPS-${4100 + Math.floor(Math.random() * 100)}`;
     this._orbitNum = 47000 + Math.floor(Math.random() * 1000);
@@ -152,7 +159,7 @@ export class IntelHUD {
     this._el.innerHTML = `
       <div class="hud-top-bar">
         <span class="hud-top-bar-left">TOP SECRET // SI-TK // NOFORN</span>
-        <span class="hud-top-bar-center">${this._missionId}</span>
+        <span class="hud-top-bar-center hud-simulated">SIM ${this._missionId}</span>
         <span class="hud-top-bar-right">PAGE 1/1</span>
       </div>
 
@@ -160,7 +167,7 @@ export class IntelHUD {
         <div class="hud-bracket">┌</div>
         <div class="hud-content">
           <div class="hud-classification">TOP SECRET // SI-TK // NOFORN</div>
-          <div class="hud-system">${this._missionId}  ${this._sensorId}</div>
+          <div class="hud-system hud-simulated">SIM ${this._missionId}  ${this._sensorId}</div>
           <div class="hud-mode" id="hud-mode">NORMAL</div>
           <div class="hud-summary-wrap">
             <div class="hud-summary-label">SUMMARY</div>
@@ -172,7 +179,7 @@ export class IntelHUD {
       <div class="hud-corner hud-top-right">
         <div class="hud-content" style="text-align:right">
           <div class="hud-rec"><span id="hud-rec-dot">●</span> REC  <span id="hud-timestamp">2026-01-01 00:00:00Z</span></div>
-          <div class="hud-orbital">ORB: ${this._orbitNum}  PASS: DESC-${this._passNum}</div>
+          <div class="hud-orbital hud-simulated">SIM ORB: ${this._orbitNum}  PASS: DESC-${this._passNum}</div>
         </div>
         <div class="hud-bracket">┐</div>
       </div>
@@ -187,7 +194,6 @@ export class IntelHUD {
 
       <div class="hud-corner hud-bottom-right">
         <div class="hud-content" style="text-align:right">
-          <div id="hud-gsd">GSD: --m  NIIRS: --</div>
           <div id="hud-alt">ALT: --m   SUN: --° EL</div>
           <div id="hud-ais-vessel" class="hud-ais-vessel">AIS: --</div>
         </div>
@@ -199,8 +205,8 @@ export class IntelHUD {
         <div id="hud-ona">ONA: --°</div>
       </div>
 
-      <div class="hud-edge hud-right-edge">
-        <div>BAND: PAN</div>
+      <div class="hud-edge hud-right-edge hud-simulated">
+        <div>SIM BAND: PAN</div>
         <div>BITS: 11</div>
         <div>LVL: 1A</div>
       </div>
@@ -294,7 +300,7 @@ export class IntelHUD {
   /**
    * Derive all camera-based telemetry and push values to the DOM.
    * Reads the viewer camera's cartographic position and computes MGRS,
-   * lat/lon DMS, GSD, NIIRS, sun elevation, off-nadir angle, and
+   * lat/lon DMS, sun elevation, off-nadir angle, and
    * collection timestamp. Stores results in {@link _latestMetrics}.
    */
   _updateCameraData() {
@@ -330,15 +336,23 @@ export class IntelHUD {
       bottomEl.textContent = `MGRS: ${mgrsLabel}  LAT: ${latDMS}  LON: ${lonDMS}`;
     }
 
-    // GSD (Ground Sample Distance): approximate resolution in meters per pixel
-    // derived from camera altitude. NIIRS (National Imagery Interpretability
-    // Rating Scale): 0-9 quality rating computed via the General Image Quality
-    // Equation (GIQE) simplified form: NIIRS = 10.25 - 3.32 * log10(GSD_inches).
-    const gsd = Math.max(0.01, altM * 0.000375);
-    const gsdInches = gsd * 39.37;
-    const niirs = Math.max(0, Math.min(9, 10.25 - 3.32 * Math.log10(gsdInches)));
-    const gsdEl = document.getElementById('hud-gsd');
-    if (gsdEl) gsdEl.textContent = `GSD: ${gsd.toFixed(2)}m  NIIRS: ${niirs.toFixed(1)}`;
+    // REMOVED (CARTOGRAPHIE F2, 2026-09-02): GSD and its derived NIIRS.
+    //
+    // The readout was `altM * 0.000375` — a magic constant independent of the
+    // field of view, of the canvas height and of the pitch — printed to two
+    // decimals under the label "GSD", directly above the real MSL altitude and
+    // below the authentic MGRS. The opening view is pitched -30 deg
+    // (`camera.js`), where the metres-per-pixel ratio varies by roughly a
+    // factor of ten across a single frame: the number was not right anywhere
+    // in particular, and it was wrong SILENTLY, in the typography of the
+    // measured readouts around it.
+    //
+    // Deliberately not replaced by a corrected ground-sample-distance module:
+    // that would add permanent chrome to the one style the product ships bare
+    // (`sharelink.js` hides the HUD on load, on purpose). The correct formula
+    // exists in the repo if a real need appears —
+    // `telegeographySubmarineCables.js` computes
+    // `2 * tan(fieldOfView / 2) / height` against the actual frustum.
 
     // Altitude — reported as height above MEAN SEA LEVEL. `altM` is the raw
     // ellipsoidal camera height, which reads far below zero wherever the geoid
@@ -369,8 +383,9 @@ export class IntelHUD {
     if (onaEl) onaEl.textContent = `ONA: ${ona.toFixed(1)}°`;
 
     // `altM` stays the raw ellipsoidal camera height the sensor model reads
-    // (GSD/NIIRS, view band). `altMslM` is the ADDITIVE display datum — the
-    // only one any readout string should print.
+    // (the STREET/CITY/METRO view band, whose thresholds were tuned against
+    // it). `altMslM` is the ADDITIVE display datum — the only one any readout
+    // string should print.
     this._latestMetrics = {
       latDeg,
       lonDeg,

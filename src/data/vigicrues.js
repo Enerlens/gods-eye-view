@@ -721,7 +721,8 @@ export function createVigicruesLayer({
      * @returns {{chips: Array<object>, legend: Array<object>}}
      */
     getRowControls() {
-      return { chips: [], legend: vigicruesLevelLegend(_summary.byKey) };
+      // Ground-classified area fill — see surfaceFillNotice.js.
+      return { chips: [], legend: vigicruesLevelLegend(_summary.byKey), surfaceFill: true };
     },
 
     getStats() {

@@ -13,6 +13,7 @@
 // look different from one it placed at a street number; and a thinned view must
 // print both numbers per family or it is claiming the sample is the inventory.
 import test from 'node:test';
+import { CHOROPLETH_FILL_ALPHA } from './choroplethAlpha.js';
 import assert from 'node:assert/strict';
 
 import amenitiesFranceLayer, {
@@ -212,7 +213,10 @@ test('a choropleth bin that is not an integer bin gets no colour at all', () => 
   assert.equal(amenitiesDepartementColor(undefined), null);
   assert.equal(amenitiesDepartementColor('0'), null);
   assert.equal(amenitiesDepartementColor(1.5), null);
-  assert.equal(amenitiesDepartementAlpha(null), 0.34);
+  // The alpha ladder is shared and DESCENDING (see choroplethAlpha.js); a
+  // non-bin clamps to its first entry, which is now the heaviest, not the
+  // lightest.
+  assert.equal(amenitiesDepartementAlpha(null), CHOROPLETH_FILL_ALPHA[0]);
 });
 
 test('the ramp is a different colour family from the two national views beside it', () => {

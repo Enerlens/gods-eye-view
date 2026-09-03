@@ -15,6 +15,7 @@ import flightsLayer, {
   _floorGroundedDisplayPositionForTest,
   _clearDisplayFloorStateForTest,
   mapAnalystRecord,
+  formatContactAltitude,
 } from './flights.js';
 import { setMilitaryLayerActive } from './militaryRegistry.js';
 import {
@@ -1462,4 +1463,26 @@ test('display floor: two contacts on the same cell get their own outputs', () =>
   );
   assert.notEqual(a, b, 'a shared scratch would hand both contacts the same object');
   assert.ok(Math.abs(_floorCarto(a).height - _floorCarto(b).height) < 0.05);
+});
+
+test('an unreported altitude never prints as a flight level', () => {
+  // The 10 km airborne default exists so the sprite has somewhere to render.
+  // It must not reach the readout as "FL328" — the same guard velocity has.
+  assert.equal(
+    formatContactAltitude({ altitude: 10000, altitudeMeasured: false }),
+    'ALT UNK',
+  );
+  assert.equal(formatContactAltitude({ altitude: null }), 'ALT UNK');
+  assert.equal(formatContactAltitude(null), 'ALT UNK');
+  // A reported reading still prints, in both regimes.
+  assert.equal(
+    formatContactAltitude({ altitude: 10000, altitudeMeasured: true }),
+    'FL328',
+  );
+  assert.equal(
+    formatContactAltitude({ altitude: 1000, altitudeMeasured: true }),
+    '3281 ft',
+  );
+  // A contact parked on the apron reported 0 m — measured, and printable.
+  assert.equal(formatContactAltitude({ altitude: 0, altitudeMeasured: true }), '0 ft');
 });

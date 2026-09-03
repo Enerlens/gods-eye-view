@@ -80,6 +80,29 @@ const CULL_LIFT_THRESHOLD_M = 10;
 const CULL_LIFT_M = 12;
 
 /** Color stops shared by cell heat fills and detection glow sprites. */
+/**
+ * Heat score (per equatorial square degree) at which the cell ramp saturates.
+ *
+ * Calibrated against the aggregation above: one detection contributes roughly
+ * 9 score units (`intensity` ≈ 8 for a typical VIIRS row, plus the count and
+ * night weights), so 900 is about 100 detections inside one equatorial 1°
+ * cell — a major fire complex. Multiplied by `gridDegrees²` at use, so the 2°
+ * band saturates at the same density on the ground, at ~400 detections.
+ *
+ * This is the number that makes the ramp ABSOLUTE. Changing it changes what
+ * every colour on the fire map means, so it changes the legend too.
+ */
+const HEAT_SATURATION_PER_DEG2 = 900;
+/** Ramp stops, shared by the cell ramp and its legend. */
+const HEAT_RED_STOP = 0.72;
+const HEAT_ORANGE_STOP = 0.42;
+/**
+ * Floor on cos(latitude) when converting a degree cell to ground area: 0.25 is
+ * 75.5°, past which a handful of Arctic detections would otherwise divide by
+ * nearly zero and paint the pole red.
+ */
+const MIN_AREA_COS = 0.25;
+
 const DETECTION_COLOR_STOPS = [
   { name: 'red', color: Cesium.Color.RED },
   { name: 'orange', color: Cesium.Color.ORANGE },
@@ -327,6 +350,66 @@ export function createFirmsHeatmapLayer({
     },
 
     /**
+     * The key to the fire ramp — and, above all, a statement of WHICH ramp is
+     * on screen.
+     *
+     * This layer runs two different doctrines at two altitude bands and never
+     * said so. Above ~750 km it paints aggregated CELLS whose colour is a fire
+     * DENSITY; below, it paints individual DETECTIONS whose colour is that
+     * one fire's radiative power. An operator zooming through the boundary
+     * watched the meaning of red change at a threshold no interface named,
+     * across 1 600 lines that contained no legend at all.
+     *
+     * Both ramps are now absolute, so each entry can state the quantity it
+     * means rather than "hotter than the other things currently on screen".
+     * @returns {{legend: Array<object>}|null} Row controls, or null while empty.
+     */
+    getRowControls() {
+      const lod = LOD_LEVELS[_currentLodIndex];
+      if (!lod || !_cellCount) return null;
+      if (lod.mode === 'detections') {
+        return {
+          legend: [
+            {
+              label: 'One detection, coloured by radiative power',
+              color: '#ff0000',
+              count: _cellCount,
+              blurb: 'Below ~750 km each dot is a single satellite detection; '
+                + 'red above ~110 MW FRP, orange above ~40 MW, yellow below. '
+                + 'Marker size follows FRP too.',
+            },
+          ],
+        };
+      }
+      // Detections per equatorial cell at each ramp stop, derived from the
+      // same constants the renderer uses — so the legend cannot drift from
+      // the map by editing one and forgetting the other.
+      const cellSaturation = HEAT_SATURATION_PER_DEG2 * lod.gridDegrees * lod.gridDegrees;
+      const perDetection = 9;
+      const atStop = (stop) => Math.round(cellSaturation * stop * stop / perDetection);
+      const unit = `${lod.gridDegrees}° cell`;
+      return {
+        legend: [
+          {
+            label: `≥ ${atStop(HEAT_RED_STOP)} detections per ${unit}`,
+            color: '#ff0000',
+            blurb: 'Counted per unit GROUND area, not per cell: a degree cell '
+              + 'covers less land the further north it sits, and the count is '
+              + 'divided by cos(latitude) so the colour cannot reward latitude.',
+          },
+          { label: `≥ ${atStop(HEAT_ORANGE_STOP)} detections per ${unit}`, color: '#ffa500' },
+          { label: `below ${atStop(HEAT_ORANGE_STOP)} per ${unit}`, color: '#ffff00' },
+          {
+            label: `${_cellCount} cells drawn`,
+            color: null,
+            blurb: 'The scale is fixed, not stretched to the current view — the '
+              + 'same fire is the same colour on any screen size and at any framing.',
+          },
+        ],
+      };
+    },
+
+    /**
      * Strongest currently-loaded detection (by FRP) for voice targeting
      * ("take me to the biggest fire").
      * @returns {{latitude: number, longitude: number, frp: number, label: string}|null}
@@ -551,7 +634,10 @@ export function createFirmsHeatmapLayer({
         cells.set(key, existing);
       }
       // Heat-sorted once; per-render clipping below preserves the order.
-      sorted = [...cells.values()].sort((a, b) => heatScore(b) - heatScore(a));
+      // Sorted by DENSITY, so the `maxCells` cap keeps the genuinely hottest
+      // ground rather than whichever cells happen to sit furthest north.
+      sorted = [...cells.values()]
+        .sort((a, b) => heatScore(b, gridDegrees) - heatScore(a, gridDegrees));
       _cellCacheByGrid.set(gridDegrees, sorted);
     }
 
@@ -581,14 +667,13 @@ export function createFirmsHeatmapLayer({
     _pickIndexById.clear();
     _cullPositions.length = 0;
     _cellCount = cells.length;
-    const maxScore = Math.max(1, ...cells.map(heatScore));
 
     _labelCandidates = [];
     _labelLodDistance = lod.labelDistance;
 
     for (const cell of cells) {
-      const score = heatScore(cell);
-      const normalized = Math.min(1, Math.sqrt(score / maxScore));
+      const score = heatScore(cell, lod.gridDegrees);
+      const normalized = heatNormalized(score, lod.gridDegrees);
       const alpha = 0.16 + normalized * 0.5;
       const color = heatColor(normalized, alpha);
       const centerLon = cell.lonCell + lod.gridDegrees / 2;
@@ -1252,13 +1337,73 @@ function cellIntersectsBounds(cell, gridDegrees, bounds) {
   return east >= bounds.west && west <= bounds.east;
 }
 
-function heatScore(cell) {
-  return cell.intensity + cell.count * 0.8 + cell.night * 0.6 + cell.maxFrp * 0.12;
+/**
+ * Cell heat, expressed PER UNIT AREA rather than per cell.
+ *
+ * Two defects fixed here at once (CARTOGRAPHIE C1 and the equal-area rule).
+ *
+ * 1. AREA. The grid is cut in DEGREES, so a 2° cell at 60°N covers half the
+ *    ground of a 2° cell on the equator. `intensity`, `count` and `night` are
+ *    all EXTENSIVE — they scale with the ground the cell covers — and were
+ *    summed with no divisor, so at equal detection count the northern cell was
+ *    painted as hot as an equatorial one that covers twice the land. The layer
+ *    announced that the north burns harder than it burns, purely because a
+ *    square degree is smaller there. On a feed whose subject is thermal
+ *    anomaly, that artifact has a political reading.
+ *    They are now divided by cos(latitude) — i.e. converted to "per equatorial
+ *    square degree" — with a floor at MIN_AREA_COS so an Arctic cell cannot
+ *    divide by ~0 and paint the pole red off three detections.
+ *
+ * 2. UNITS. `maxFrp` is INTENSIVE — a maximum in megawatts, not a count — so
+ *    it is deliberately NOT divided. Dividing it would make the brightest
+ *    single fire in a cell look brighter for being near a pole.
+ *
+ * NOT done, on purpose: doubling the longitude step above 60°. That is a
+ * sampling refinement (fewer, larger polar cells, so less noise per cell), not
+ * a correctness fix — the normalisation above already removes the artifact it
+ * would mitigate — and it would change the cell geometry, the rectangle
+ * corners and the cache key for no change in what any colour MEANS.
+ * @param {{intensity: number, count: number, night: number, maxFrp: number, latCell: number}} cell Aggregated cell.
+ * @param {number} gridDegrees Grid step this cell was cut at.
+ * @returns {number} Heat score per equatorial square degree.
+ */
+export function heatScore(cell, gridDegrees) {
+  const centerLatDeg = cell.latCell + gridDegrees / 2;
+  const areaFactor = Math.max(
+    MIN_AREA_COS,
+    Math.cos(centerLatDeg * Math.PI / 180),
+  );
+  const extensive = cell.intensity + cell.count * 0.8 + cell.night * 0.6;
+  return extensive / areaFactor + cell.maxFrp * 0.12;
+}
+
+/**
+ * Normalize a cell's heat against a FIXED domain, not against the view.
+ *
+ * The old code took `Math.max(1, ...cells.map(heatScore))` over the cells
+ * CLIPPED TO THE CAMERA — and those bounds come from
+ * `camera.computeViewRectangle()`, which depends on the canvas aspect ratio.
+ * So the same Gironde cell changed colour when an Australian fire entered the
+ * frame, and two people opening the same share link, one full-screen and one
+ * half-screen, did not see the same fire map. The scale is now absolute: a
+ * given colour means a given fire density, on every screen and at every
+ * framing, and the layer's legend states the density it means.
+ *
+ * The reference is per unit AREA and multiplied back up by the cell size, so
+ * the two cell bands (2° global, 1° regional) agree about what "red" means on
+ * the ground while each keeps its own useful dynamic range.
+ * @param {number} score `heatScore()` output.
+ * @param {number} gridDegrees Grid step this cell was cut at.
+ * @returns {number} 0..1 ramp position.
+ */
+export function heatNormalized(score, gridDegrees) {
+  const saturation = HEAT_SATURATION_PER_DEG2 * gridDegrees * gridDegrees;
+  return Math.min(1, Math.sqrt(Math.max(0, score) / saturation));
 }
 
 function heatColor(value, alpha) {
-  if (value > 0.72) return Cesium.Color.RED.withAlpha(alpha);
-  if (value > 0.42) return Cesium.Color.ORANGE.withAlpha(alpha);
+  if (value > HEAT_RED_STOP) return Cesium.Color.RED.withAlpha(alpha);
+  if (value > HEAT_ORANGE_STOP) return Cesium.Color.ORANGE.withAlpha(alpha);
   return Cesium.Color.YELLOW.withAlpha(alpha);
 }
 
@@ -1566,8 +1711,10 @@ export function applyFirmsOverlayPolicy(card, fadeDistance) {
  * @returns {string} "r, g, b" accent string.
  */
 function cellAccent(normalized) {
-  if (normalized > 0.72) return accentForSeverity('red');
-  if (normalized > 0.42) return accentForSeverity('orange');
+  // Same stops as `heatColor` — read from the same constants so the label
+  // accent can never disagree with the rectangle underneath it.
+  if (normalized > HEAT_RED_STOP) return accentForSeverity('red');
+  if (normalized > HEAT_ORANGE_STOP) return accentForSeverity('orange');
   return accentForSeverity('yellow');
 }
 

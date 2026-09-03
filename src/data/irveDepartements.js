@@ -34,17 +34,52 @@
  * where the loss was.
  *
  * ── What the map shows, and what it deliberately does not ───────────────────
- * The painted scalar is the ABSOLUTE number of charge points, in quantile bins.
- * Not density: the range per 1 000 km² runs from 43.9 (Lozère) to 101 785
- * (Paris, which is 104 km²), a factor of 2 300 that leaves 95 départements
- * indistinguishable while saying nothing about where the infrastructure is.
- * The count runs 227 → 10 539, a factor of 46, and it answers the question
- * actually being asked. Quantile bins rather than linear ones for the same
- * reason: on a linear ramp Paris alone occupies the top fifth of the scale.
+ * TWO scalars, on two channels: the number of charge points as the HEIGHT of
+ * an extruded prism, and the density per 1 000 km² as its COLOUR. This
+ * paragraph used to argue the opposite, and the argument is worth keeping in
+ * view because its measurement was right and its conclusion was wrong.
  *
- * Density IS computed — from the polygons' own spherical area, so it needs no
- * second dataset — and reported per département on the card, where an area
- * bias in the fill can be checked against it rather than hidden by it.
+ * It weighed "absolute count" against "density", kept the count, and rejected
+ * the density because it spans a factor of 2 254 — 43.7 charge points per
+ * 1 000 km² in Lozère against 98 509.6 in Paris, which is 104 km² (re-measured
+ * 2026-09-03 on the live register, 227 007 charge points; the 2026-08-27 figures
+ * were 43.9 and 101 785) — and therefore "leaves 95 départements
+ * indistinguishable". Two things are wrong with that.
+ *
+ * First, indistinguishability is a property of an EQUAL-INTERVAL ramp, not of
+ * the density. Cut 43.7 → 98 509.6 into six equal steps of 16 411 and the
+ * occupancy is 94 · 1 · 0 · 0 · 0 · 1: ninety-four départements in one class,
+ * three classes nobody can ever be in. Cut the same numbers on a GEOMETRIC
+ * ladder — 100 / 250 / 500 / 1 000 / 2 500 per 1 000 km², each step a doubling
+ * or a two-and-a-half — and the occupancy is 11 · 27 · 28 · 19 · 7 · 4. Every
+ * class is inhabited, and the top one holds exactly the four inner-Paris
+ * départements (75, 92, 93, 94) that made the range look hopeless. The old
+ * sentence measured a bad discretisation and blamed the variable.
+ *
+ * Second, the count was never allowed on a fill at all. It is an ABSOLUTE, and
+ * the corpus names painting one in flat colour « l'une des erreurs
+ * sémiologiques les plus courantes que l'on peut rencontrer sur le géoweb »
+ * (CARTOGRAPHIE B1). The right answer was never one of the two variables — it
+ * was both, on two channels, which a globe has and a sheet of paper does not.
+ * See `choroplethPrism.js` for the shared grammar and its calibration, and
+ * `irveFrance.js` for this layer's frozen scale.
+ *
+ * Density IS computed here — from the polygons' own spherical area, so it
+ * needs no second dataset — and it was already on the card before it was ever
+ * drawn. It is now the one thing the colour says, and the card keeps printing
+ * it so a reader can read the exact figure behind the class.
+ *
+ * ── What this rollup therefore stopped computing ────────────────────────────
+ * The six count QUANTILES. They existed only to feed the flat fill, and they
+ * were computed from the rows in hand on every refresh: a sweep that lost a
+ * stripe silently moved every class boundary, so the same département could
+ * change colour between two loads with no change in the data. That is the C1
+ * fault the prism removes by construction — its colour ladder is a frozen
+ * literal published in `irveFrance.js`, never derived from a payload.
+ * `irveCountBins` / `irveCountBin` stay exported and stay under test: they are
+ * this module's named surface onto the shared quantile helpers, and the fact
+ * that this layer no longer paints with them is not a reason to unpublish them
+ * for the ones that might.
  *
  * ── What is not painted ─────────────────────────────────────────────────────
  * The bundled polygons are the 96 metropolitan départements including Corse.
@@ -136,7 +171,14 @@ export const IRVE_SWEEP_SEED_SPAN_DEG = 10;
  * still truncates there is reported rather than subdivided.
  */
 export const IRVE_SWEEP_MIN_SPAN_DEG = 1 / 64;
-/** Number of quantile bins on the choropleth ramp. */
+/**
+ * Number of quantile bins the shared helpers default to.
+ *
+ * No longer the count of classes on the map: the national regime is a prism
+ * whose colour classes are the frozen density ladder in `irveFrance.js`. This
+ * is the default of `irveCountBins` below, kept because that surface is still
+ * published and still tested.
+ */
 export const IRVE_DEPARTEMENT_BINS = 6;
 /**
  * How far outside every polygon a charge point may sit and still be counted in
@@ -188,6 +230,13 @@ export function sweepStripeTruncated(resultLength, limit = IRVE_SWEEP_LIMIT) {
  * count; `nearestDepartementWithin` keeps its default of `IRVE_COAST_SNAP_KM`,
  * whose 886-point measurement is documented above and is the reason the shared
  * module defaults to the same 2 km.
+ *
+ * NOTE ON THE QUANTILES. `projectIrveDepartements` no longer calls them. They
+ * classified the flat fill, the flat fill is gone, and a class boundary
+ * recomputed from whatever the last sweep returned is exactly the C1 defect
+ * the prism's frozen ladder exists to remove. They remain exported because
+ * they are a general helper under its own tests, not because anything here
+ * paints with them.
  */
 export {
   buildDepartementIndex,
@@ -218,14 +267,15 @@ export function irveCountBin(count, thresholds) {
  *   `puissance_nominale`, the verification columns, and a `pdc` count.
  * @param {{list:Array<object>, byCode:Map}} input.index From `buildDepartementIndex`.
  * @param {?number} [input.totalCount] The dataset's own national count.
- * @param {number} [input.binCount]
- * @returns {object} National rollup.
+ * @param {number} [input.snapKm] Coastline tolerance, in km.
+ * @returns {object} National rollup: one row per département carrying the
+ *   count (the prism's height) and the density (its colour), and never a
+ *   class index — the classes are frozen in the layer, not derived here.
  */
 export function projectIrveDepartements({
   groups,
   index,
   totalCount = null,
-  binCount = IRVE_DEPARTEMENT_BINS,
   snapKm = IRVE_COAST_SNAP_KM,
 } = {}) {
   const rows = Array.isArray(groups) ? groups : [];
@@ -304,11 +354,6 @@ export function projectIrveDepartements({
     if (bandIndex !== UNKNOWN_BAND_INDEX && bandIndex > site[3]) site[3] = bandIndex;
   }
 
-  const thresholds = irveCountBins(
-    [...tally.values()].map((entry) => entry.pdc),
-    binCount,
-  );
-
   const departements = [];
   for (const entry of index?.list || []) {
     const hit = tally.get(entry.code);
@@ -321,10 +366,13 @@ export function projectIrveDepartements({
       sites: hit ? hit.sites.size : 0,
       bands: hit ? hit.bands : Object.fromEntries(IRVE_BAND_KEYS.map((band) => [band, 0])),
       areaKm2,
-      // Derived from the polygon that is actually drawn, so a reader can check
-      // the fill's area bias against a rate rather than having to trust it.
+      // Derived from the polygon that is actually drawn, so the rate and the
+      // shape it colours can never come from two different geometries. It is
+      // the PRISM'S COLOUR, and it is also the answer to the one misreading a
+      // volume invites — "is this pile big because the territory is big?".
+      // `null` only when the ring degenerates to no area, which the layer
+      // draws as a refusal rather than as a low density.
       per1000Km2: areaKm2 > 0 ? Math.round((pdc / areaKm2) * 1000 * 10) / 10 : null,
-      bin: irveCountBin(pdc, thresholds),
     });
   }
   departements.sort((a, b) => b.pdc - a.pdc || a.code.localeCompare(b.code));
@@ -345,8 +393,10 @@ export function projectIrveDepartements({
   return {
     departements,
     mesh,
-    thresholds,
-    binCount: Math.max(2, Math.floor(binCount)),
+    // Départements with at least one charge point. NOT the number drawn: the
+    // prism regime also draws the measured zeros, flat, because "the register
+    // lists nothing here" is a measurement and has to look different from
+    // "nobody swept this" (A1). The layer counts both, separately.
     painted: departements.filter((entry) => entry.pdc > 0).length,
     pdcAssigned,
     pdcSwept,

@@ -53,12 +53,38 @@
  * measurement behind the 2 km is in `irveDepartements.js`, where it was made.
  * It cannot reach the overseas collectivities, which is the point.
  *
- * ── What the choropleth is binned on ────────────────────────────────────────
- * The number of ESTABLISHMENTS, not pupils. The layer draws establishments —
- * one dot per UAI in every other regime — so the national regime shading by
- * anything else would be a different map wearing the same legend. Pupils and
- * per-1 000 km² density travel with every département and are printed on its
- * card, where they can be read as the separate facts they are.
+ * ── What this rollup is read as, and what changed ───────────────────────────
+ * This header used to argue which single variable the national FILL was binned
+ * on, and answered "the number of ESTABLISHMENTS, not pupils, because the
+ * layer draws establishments". The premise was the defect: painting a raw
+ * count as a colour fill is the fault CARTOGRAPHIE B1 names in capitals, and
+ * the question "count or density?" only exists while there is one channel to
+ * put them on. `schoolsFrance.js` now draws a PRISM, so both travel:
+ *
+ *   `schools`      the absolute count → the prism's HEIGHT.
+ *   `per1000Km2`   the count per 1 000 km² of the polygon actually drawn → the
+ *                  prism's COLOUR. It was already computed here and, until the
+ *                  prism, was only ever printed on a card.
+ *
+ * Measured on the 2026-09-03 export (68 158 rows) through this very function:
+ * counts run 150 (Lozère) → 2 504 (Nord), median 577, range 1 : 16.7; density
+ * runs 29.0 → 14 303 per 1 000 km², median 92.4, range 1 : 493. The two ranges
+ * differ by a factor of thirty, which is the arithmetic reason one channel
+ * could never carry both.
+ *
+ * `bin` and `thresholds` — the six-quantile ladder of the old fill — are still
+ * computed and still returned, and NOTHING PAINTS THEM any more. They stay
+ * because the payload shape is shared with the day-long disk cache and pinned
+ * by `schoolsDepartements.test.mjs`, and because they remain the cheapest read
+ * of the count distribution in a served document; removing them is a follow-up
+ * that has to land with that test file. Treat them as a diagnostic, never as a
+ * rendering instruction: a quantile ladder recomputed from the rows in hand is
+ * exactly the C1 violation the prism's frozen domain exists to remove.
+ *
+ * `per1000Km2` is `null`, never 0, when the drawn polygon has no area: a
+ * density that could not be computed is not a density of zero (A1). A
+ * département with no establishments in it keeps a real 0 — that is a
+ * measurement, and the prism draws it as one.
  *
  * Dependency-free and side-effect-free (no Cesium, no DOM) so it runs
  * identically in the browser, in the Vite dev-server proxy, and under
@@ -237,8 +263,11 @@ export function projectSchoolsDepartements({
       areaKm2,
       // Per 1 000 km² of the polygon that is actually DRAWN, not of the
       // département's official area — that is the surface the reader is
-      // looking at, and the one the dot density has to be read against.
-      per1000Km2: areaKm2 > 0 ? (schools / areaKm2) * 1000 : 0,
+      // looking at, the one the dot density has to be read against, and now
+      // the one the prism's colour is. `null` and not 0 when there is no area
+      // to divide by: a rate that could not be computed is not a rate of zero,
+      // and the prism has two different marks for those two facts (A1).
+      per1000Km2: areaKm2 > 0 ? (schools / areaKm2) * 1000 : null,
       bin: countBin(schools, thresholds),
     });
   }

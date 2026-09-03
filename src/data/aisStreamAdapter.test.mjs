@@ -14,6 +14,7 @@ import {
   isRecognizedAisEnvelope,
   parseAisEnvelope,
   parseRetryAfterMs,
+  aisStaticDimensions,
 } from './aisStreamAdapter.js';
 
 const ENV = { hasKey: true, hasTransport: true, keyFingerprint: 'key-a' };
@@ -754,4 +755,80 @@ test('an ingester that throws does not take the process down', async () => {
 
   assert.equal(context.warnings.length, 1, 'the failure was reported, not fatal');
   assert.match(context.warnings[0], /message handling failed/);
+});
+
+// ---------------------------------------------------------------------------
+// Static-message hull dimensions (chantier 5 — the size channel)
+// ---------------------------------------------------------------------------
+
+test('message 5 hands over the hull the ingest used to discard', () => {
+  const dims = aisStaticDimensions({
+    MessageType: 'ShipStaticData',
+    MetaData: { MMSI: '244660000' },
+    Message: {
+      ShipStaticData: {
+        UserID: 244660000,
+        Name: 'MAERSK',
+        Dimension: { A: 250, B: 150, C: 30, D: 29 },
+      },
+    },
+  });
+  assert.deepEqual(dims, {
+    mmsi: '244660000', loaM: 400, beamM: 59, toBowM: 250, toPortM: 30,
+  });
+});
+
+test('message 24 part B is read too — it is the Class B population', () => {
+  const dims = aisStaticDimensions({
+    MessageType: 'StaticDataReport',
+    MetaData: { MMSI: '227123456' },
+    Message: {
+      StaticDataReport: {
+        PartNumber: 1,
+        ReportB: { ShipType: 37, Dimension: { A: 4, B: 8, C: 2, D: 2 } },
+      },
+    },
+  });
+  assert.equal(dims.loaM, 12);
+  assert.equal(dims.beamM, 4);
+});
+
+test('an unconfigured transponder yields no dimensions at all', () => {
+  // 1 709 of 4 307 dimension blocks on the live world feed were all zeros
+  // (measured 2026-09-03) — the single most common shape on the wire.
+  assert.equal(aisStaticDimensions({
+    MessageType: 'ShipStaticData',
+    MetaData: { MMSI: '1' },
+    Message: { ShipStaticData: { Dimension: { A: 0, B: 0, C: 0, D: 0 } } },
+  }), null);
+});
+
+test('only static messages are asked for a hull', () => {
+  assert.equal(aisStaticDimensions({
+    MessageType: 'PositionReport',
+    MetaData: { MMSI: '1' },
+    Message: { PositionReport: { Dimension: { A: 10, B: 10, C: 2, D: 2 } } },
+  }), null, 'a position report has no dimension field to trust');
+  assert.equal(aisStaticDimensions(null), null);
+  assert.equal(aisStaticDimensions({ MessageType: 'ShipStaticData' }), null);
+});
+
+test('a static message without an MMSI cannot be keyed and is dropped', () => {
+  assert.equal(aisStaticDimensions({
+    MessageType: 'ShipStaticData',
+    MetaData: {},
+    Message: { ShipStaticData: { Dimension: { A: 10, B: 10, C: 2, D: 2 } } },
+  }), null);
+});
+
+test('reading dimensions never touches the liveness predicate', () => {
+  // A static message with an all-zero block is still real AIS traffic; the
+  // feed's only proof of life must not depend on the hull being usable.
+  const envelope = {
+    MessageType: 'ShipStaticData',
+    MetaData: { MMSI: '9' },
+    Message: { ShipStaticData: { Dimension: { A: 0, B: 0, C: 0, D: 0 } } },
+  };
+  assert.equal(aisStaticDimensions(envelope), null);
+  assert.equal(isRecognizedAisEnvelope(envelope), true);
 });

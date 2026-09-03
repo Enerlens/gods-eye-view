@@ -107,14 +107,52 @@ export function classifyAircraft({ typeCode, category } = {}) {
   if (Number.isFinite(category) && OPENSKY_CATEGORY[category]) return OPENSKY_CATEGORY[category];
   const cat = String(category || '').trim().toUpperCase();
   if (EMITTER_CATEGORY[cat]) return EMITTER_CATEGORY[cat];
-  return 'airliner';
+  // NEITHER a type code NOR an exploitable category (CARTOGRAPHIE A1).
+  //
+  // This used to return 'airliner', with CLASS_SCALE_2D 1.0 — the exact middle
+  // of the size ramp and the canonical planform "everything else reads
+  // against". It is not an edge case: `/states/all` does not carry the type
+  // code, which arrives only through a rationed asynchronous enrichment
+  // (4 in flight, a 300-token bucket), so on a dense European view every
+  // contact past the budget kept a narrow-body silhouette indefinitely. The
+  // map asserted a fleet it had not measured.
+  //
+  // 'unknown' carries its own glyph (a wingless dart — a planform nobody
+  // flies, so it cannot be mistaken for a measurement) and its own scale. The
+  // in-place reclassification already written in flights.js swaps the glyph
+  // the moment the type answer lands, so this state is visibly transient.
+  return 'unknown';
 }
 
-/** Billboard scale multipliers (skylight GLYPH_SCALE, + fastjet). */
+/**
+ * Human-readable class names for the map legend. The classifier's own keys are
+ * internal; a key that says "quadjet" to a reader is a colour chart, not a
+ * legend. Shared by the civil and military layers so one silhouette can never
+ * be captioned two ways.
+ */
+export const CLASS_LEGEND_LABELS = {
+  light: 'Light aircraft',
+  glider: 'Glider',
+  turboprop: 'Turboprop',
+  airliner: 'Narrow-body jet',
+  widebody: 'Wide-body jet',
+  quadjet: 'Four-engine heavy',
+  helicopter: 'Helicopter',
+  fastjet: 'Fast jet',
+  bizjet: 'Business jet',
+  uav: 'Large UAV',
+  unknown: 'Type not reported',
+};
+
+/** Billboard scale multipliers (skylight GLYPH_SCALE, + fastjet).
+ *  `unknown` sits at 0.9 — deliberately NOT 1.0. Size is the weight-class
+ *  channel here, so an unclassified contact must not land on the value that
+ *  reads "narrow-body"; it reads slightly smaller, and its distinct wingless
+ *  glyph is what actually carries the "not classified" message. */
 export const CLASS_SCALE_2D = {
   light: 0.62, glider: 0.58, turboprop: 0.86, airliner: 1.0,
   widebody: 1.3, quadjet: 1.45, helicopter: 0.82, fastjet: 0.8,
-  bizjet: 0.72, uav: 0.75,
+  bizjet: 0.72, uav: 0.75, unknown: 0.9,
 };
 
 /** 3D model scale multipliers — clamped [0.75, 1.45] while every class shares
@@ -123,7 +161,7 @@ export const CLASS_SCALE_2D = {
 export const CLASS_SCALE_3D = {
   light: 0.75, glider: 0.75, turboprop: 0.85, airliner: 1.0,
   widebody: 1.3, quadjet: 1.45, helicopter: 0.8, fastjet: 0.8,
-  bizjet: 0.8, uav: 0.8,
+  bizjet: 0.8, uav: 0.8, unknown: 0.9,
 };
 
 /** Per-class glTF — all the shared airplane today; drop real assets in here.
@@ -135,6 +173,11 @@ export const CLASS_MODEL_URL = {
   widebody: '/models/airplane.glb', quadjet: '/models/airplane.glb',
   helicopter: '/models/airplane.glb', fastjet: '/models/airplane.glb',
   bizjet: '/models/airplane.glb', uav: '/models/airplane.glb',
+  // No 'unknown' airframe exists to model, so the shared mesh serves it as it
+  // serves every unlisted class. The 2D glyph is where the honesty lives; at
+  // the close range where models take over, the type answer has essentially
+  // always landed (the tracked-contact enrichment path is uncapped).
+  unknown: '/models/airplane.glb',
 };
 
 /** Real per-class GLBs (2026-08-15 Hangar fleet, selected assets; CC-BY 4.0 —

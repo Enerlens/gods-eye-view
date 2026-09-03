@@ -174,6 +174,11 @@ function sceneProbe(page) {
           shown: entity.show !== false,
           color: hex(material),
           alpha: material ? Math.round(material.alpha * 1000) / 1000 : null,
+          // The magnitude moved off alpha and onto the Z axis, so the probe
+          // has to read the Z axis. `null` for a flat footprint, which is what
+          // an unpainted région (Corse) now draws.
+          topM: entity.polygon.extrudedHeight?.getValue?.() ?? null,
+          material: material ? 'color' : 'motif',
         });
       } else if (entity.polyline) {
         const positions = entity.polyline.positions?.getValue?.() || [];
@@ -259,15 +264,25 @@ async function main() {
       probe.polygons.length >= 96, `${probe.polygons.length} polygon entities`);
 
     const corsica = probe.polygons.filter((polygon) => ['2A', '2B'].includes(polygon.code));
-    check('Corsica is present but never painted',
-      corsica.length === 2 && corsica.every((polygon) => !polygon.shown),
-      corsica.map((c) => `${c.code}:${c.shown}`).join(' '));
+    // Corsica is KNOWN and deliberately unmeasured — éCO2mix régional publishes
+    // no Corsican row. It used to be hidden outright, which made "we have no
+    // figure" indistinguishable from "this place does not exist" (A1). It is
+    // now DRAWN, flat and hatched: present, and visibly carrying no value.
+    check('Corsica is drawn, flat, and carries no prism',
+      corsica.length === 2
+      && corsica.every((polygon) => polygon.shown)
+      && corsica.every((polygon) => !polygon.topM),
+      corsica.map((c) => `${c.code}:shown=${c.shown} top=${c.topM}`).join(' '));
 
     // Counted by CODE, not by entity: a MultiPolygon département contributes
     // one entity per island, so the entity count is higher than 96.
     const shownCodes = new Set(probe.polygons.filter((p) => p.shown).map((p) => p.code));
-    check('every département outside Corsica is painted',
-      shownCodes.size === 94, `${shownCodes.size} distinct codes painted (96 − 2 Corsican)`);
+    check('all 96 départements are drawn, Corsica included',
+      shownCodes.size === 96, `${shownCodes.size} distinct codes drawn`);
+    const raised = new Set(probe.polygons.filter((p) => p.topM > 0).map((p) => p.code));
+    check('and 94 of them carry a prism — every one but Corsica',
+      raised.size === 94 && !raised.has('2A') && !raised.has('2B'),
+      `${raised.size} prismes`);
     await shoot(page, '01-regions.png');
 
     // ── ii. the sign convention survives to the rendered material ──────────
@@ -286,11 +301,27 @@ async function main() {
         .every((code) => colorOf(code)?.color === AMBER && colorOf(code)?.alpha === idf.alpha));
     // Alpha ramps on |balance| / load, so the country's largest imbalance must
     // read stronger than a milder one regardless of which side each is on.
-    check('the strongest imbalance is drawn more opaque than a milder one',
-      aura.alpha > colorOf('35').alpha, `AURA ${aura.alpha} vs Ille-et-Vilaine ${colorOf('35').alpha}`);
-    check('the row legend names both sides in words',
-      probe.controls.legend.length === 2
-      && probe.controls.legend.every((entry) => typeof entry.label === 'string' && entry.count > 0));
+    // A3, and this is the reversal worth reading. The magnitude used to ramp
+    // the FILL ALPHA, which meant the alpha channel carried the imbalance while
+    // the hue carried its sign — two readings on one surface, and the stronger
+    // of the two invisible over bright imagery. The magnitude is now the prism
+    // HEIGHT and the colour is the sign ALONE, so alpha must be CONSTANT: a
+    // ramp left on it would be the old defect surviving under the new one.
+    check('alpha carries nothing any more — the height carries the magnitude',
+      probe.polygons.filter((p) => p.topM > 0).every((p) => p.alpha === aura.alpha),
+      `AURA ${aura.alpha} vs Ille-et-Vilaine ${colorOf('35').alpha}`);
+    check('and the strongest imbalance is the tallest prism',
+      aura.topM > colorOf('35').topM,
+      `AURA ${Math.round(aura.topM / 1000)} km vs Ille-et-Vilaine ${Math.round(colorOf('35').topM / 1000)} km`);
+    // The key is now the prism key: a height scale with numbered marks (D1 — a
+    // height with no ruler says only "taller than that one") and the two sign
+    // classes. Entries that name a CHANNEL carry no count, by contract.
+    const named = probe.controls.legend.filter((entry) => Number.isFinite(entry.count));
+    check('the row legend rules the height and names both sides in words',
+      probe.controls.legend.length > 2
+      && probe.controls.legend.every((entry) => typeof entry.label === 'string' && entry.label.length > 0)
+      && named.length >= 2,
+      probe.controls.legend.map((entry) => entry.label).join(' · '));
 
     // ── iii. the border arcs ───────────────────────────────────────────────
     console.log('[qa] iii. five raised border arcs');

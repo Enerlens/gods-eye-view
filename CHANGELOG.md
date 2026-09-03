@@ -32,7 +32,41 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   n'obtient pas. La lecture d'expansion, elle, garde sa phrase entière sur la
   fiche de chaque anneau.
 
+- **Le bâti porte enfin le thème : DPE, prix au m² et permis peints sur les
+  volumes.** Quatre couches parlaient d'un bâtiment en dessinant une punaise
+  au-dessus de son toit, pendant que `Bâti 3D` extrudait les volumes réels de la
+  France pour lui seul. La lettre DPE peinte est le **mode** des diagnostics de
+  l'immeuble, égalité tranchée par la pire : la moyenne donnerait `D` pour
+  `B,B,F`, une lettre qu'aucun diagnostic ne porte, sur une échelle dont les
+  classes ne sont pas équidistantes. Un volume sans donnée est lavé à **ΔE76 ≥ 36**
+  de toutes les palettes, mesuré : il ne peut pas être lu comme une classe.
+- **Les effectifs quittent l'aplat et montent sur l'axe Z.** Bornes de recharge,
+  écoles, enseignement supérieur et mix électrique dessinent des **prismes** :
+  hauteur = l'effectif absolu, couleur = le taux. Peindre un effectif brut en
+  aplat est la faute que le corpus de sémiologie appelle « l'une des plus
+  courantes du géoweb », et elle était ici quatre fois. Les domaines sont gelés
+  et mesurés — 12 000 points de charge, 2 600 établissements — jamais le maximum
+  de la charge utile, sans quoi la couleur d'un département dépendrait de la
+  présence des autres.
+- **Les séismes sont dessinés à leur profondeur.** Le disque valait
+  `2^magnitude × 1000` mètres, ce qui ne mesurait ni la rupture, ni le rayon
+  ressenti, ni rien — et la profondeur était codée rouge→orange→jaune, qui se lit
+  comme une gravité : un foyer à 600 km était peint « faible ». La profondeur est
+  maintenant une géométrie, la magnitude un anneau en pixels constants, et la
+  couleur est rendue à l'âge de l'événement.
+- **Un curseur horaire sur les comptages routiers de Paris.** La couche
+  détenait 2 977 arcs × 168 heures et en peignait une seule, la moyenne de
+  l'heure ouvrée. La teinte, libérée, porte la **forme du rythme** mesurée sur la
+  semaine : nocturne 56 · week-end 100 · pendulaire 367 · pointe du matin 150 ·
+  pointe du soir 652 · continu 369 · indéterminé 36.
+- **Le canal taille rendu à quatre jeux.** Un navire de 400 m et un remorqueur de
+  12 m avaient la même flèche, alors que l'AIS publie la coque — 18,0 % des
+  contacts, mesuré sur le flux réel. Les datacenters rendaient tous le même point
+  de 10 px alors que leur emprise couvre cinq ordres de grandeur. La houle et la
+  hauteur des pylônes ANFR (couverture mesurée : 99,24 %) prennent la verticale.
+
 ### Changed
+
 - **Les fiches délinquance disent enfin 6,22 DE QUOI.** La ligne de valeur
   affichait « 6,22 pour 1 000 habitants · 2 597 faits » — un nombre que personne
   ne peut lire, et un nom faux : le SSMSI compte les escroqueries en VICTIMES,
@@ -61,6 +95,17 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   l'inventaire complet des autres indicateurs — sinon il faudrait refermer la
   fiche et retrouver sa commune. Elle ne voyage pas dans le lien de partage :
   une vue partagée s'ouvre toujours compacte.
+
+- **Une ligne de légende qui nomme un canal n'imprime plus « undefined ».** Le
+  panneau concaténait un compte absent ; la légende sur carte gardait déjà. Le
+  chantier multipliait ces entrées — « 1 m de houle → 10 km », « Taille du
+  point — magnitude » — donc le défaut devenait systématique.
+- **Une pastille de motif est visible.** Une entrée combinant une couleur nulle
+  et un glyphe masquait un fond que personne ne posait : un carré transparent de
+  14 px, là où la doctrine exige un motif pour l'absence de donnée.
+- **DVF colore contre le médian de la commune, pas contre celui de l'écran.** La
+  même vente changeait de couleur quand la caméra bougeait. Le dénominateur est
+  nommé dans la légende et sur chaque fiche.
 
 ## [Unreleased] — 2026-09-02
 

@@ -206,6 +206,15 @@ import {
 const TRANSITION_DURATION_MS = 500;
 /** Map of style name to its GLSL shader module for post-process stages. */
 const STYLES = { retro: retroShader, surveillance: nightVisionShader, thermal: thermalShader, anime: animeShader, noir: noirShader, snow: snowShader };
+/** How each sensor pass is named to a reader when it invalidates the legend. */
+const STYLE_SENSOR_LABELS = Object.freeze({
+  retro: 'CRT',
+  surveillance: 'NVG',
+  thermal: 'FLIR',
+  anime: 'ANIME',
+  noir: 'NOIR',
+  snow: 'SNOW',
+});
 /** Versioned localStorage namespace prefix to invalidate stale panel layouts. */
 const PANEL_LAYOUT_STORAGE_VERSION = 'v6';
 const SHARE_PANEL_STATE_SPECS = Object.freeze([
@@ -1417,7 +1426,13 @@ class CockpitViewController {
       const label = element.querySelector('b');
       if (label) label.textContent = formatSpeedRulerTick(tick.valueKt);
     });
-    const altitudeFt = cockpitAltitudeDisplayFt(info.altitudeM, info.onGround);
+    // An unreported altitude reads `-----` on the tape rather than the 10 km
+    // airborne default the render path uses to place the sprite (CARTOGRAPHIE
+    // A1). The instrument already has a no-data state; it just was never
+    // reached, because the fabricated value is a finite number.
+    const altitudeFt = info.altitudeMeasured === false
+      ? null
+      : cockpitAltitudeDisplayFt(info.altitudeM, info.onGround);
     if (this.altitude) {
       const displayedAltitudeFt = Number.isFinite(altitudeFt)
         ? Math.round(altitudeFt)
@@ -9202,6 +9217,10 @@ export class StyleManager {
     // Sync detection overlay tone to active post-process style
     setDetectionStyle(styleName);
     this._syncIrBoost();
+    // Say that the key stopped decoding the map BEFORE the layers hear about
+    // the style change, so no frame exists in which the swatches are stale and
+    // silent about it.
+    this._syncLegendKeyValidity(styleName);
     window.dispatchEvent(new CustomEvent('gev:style-change', {
       detail: { style: styleName },
     }));
@@ -9211,6 +9230,37 @@ export class StyleManager {
     // Notify share link manager
     this.shareLinkManager.onStyleChange(styleName);
     this._syncShareState();
+  }
+
+  /**
+   * Tell the on-map legend when a sensor style has invalidated it.
+   *
+   * `_initStages()` mounts every style as a `Cesium.PostProcessStage` on
+   * `scene.postProcessStages`, so the pass repaints the COMPOSED frame —
+   * choropleths, billboards and colour ramps included. The legend lives in the
+   * DOM and is not repainted, so under FLIR the swatch keeps its true colour
+   * while the map does not: the key stops decoding the map, silently.
+   *
+   * The style is not disabled — sensor modes are part of the product. The key
+   * simply stops claiming to be a key: the swatches recede and a line says
+   * which pass is between the reader and the data.
+   * @param {string} styleName Active style id, `'normal'` for the unfiltered globe.
+   * @returns {void}
+   */
+  _syncLegendKeyValidity(styleName) {
+    const block = document.getElementById('map-legend');
+    const note = document.getElementById('map-legend-key-note');
+    if (!block || !note) return;
+    const invalid = styleName !== 'normal' && Object.hasOwn(STYLES, styleName);
+    block.classList.toggle('key-invalid', invalid);
+    note.hidden = !invalid;
+    if (invalid) {
+      const label = STYLE_SENSOR_LABELS[styleName] || styleName.toUpperCase();
+      note.textContent = `${label} repaints the whole frame — the colours below `
+        + 'no longer match the map. Return to NORMAL to read the key.';
+    } else {
+      note.textContent = '';
+    }
   }
 
   // ── Shader transitions ────────────────────────

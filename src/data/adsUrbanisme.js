@@ -2,6 +2,7 @@ import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
 import { createAddressScanLayer } from './addressScanLayer.js';
 import { ADS_DEFAULT_MONTHS, ADS_DEFAULT_RADIUS_M, ADS_MAX_MONTHS } from './adsFeed.js';
+import { clearBuildingTheme, registerBuildingTheme } from './buildingTheme.js';
 // The third urbanism layer takes the second one's surface rule rather than
 // writing a third copy of it; `urbanismeGpu.test.mjs` already pins it.
 import { gpuClassificationTypeForScene } from './urbanismeGpu.js';
@@ -29,6 +30,73 @@ import { gpuClassificationTypeForScene } from './urbanismeGpu.js';
  * Paris, Bordeaux and Nantes there are no pale dots, and that is a property of
  * French open data rather than of the block being looked at. The layer says so
  * in its summary rather than letting the absence read as calm.
+ *
+ * ── The volumes, and the sentence a permit is allowed to say about them ─────
+ *
+ * `buildingTheme.js` lets one layer at a time repaint the BD TOPO volumes.
+ * This one registers at `precedence` 30 and hands over the same colour it has
+ * always used — the state of the dossier — so the ramp on the roofs and the
+ * ramp on the cranes are the same ramp. Nothing about the colour choice moves.
+ *
+ * WHAT MOVES IS THE CLAIM, and it is not the same claim as the marker's. A
+ * marker says "a dossier exists at this coordinate". Painting a VOLUME says
+ * "this dossier is about THIS building" — and for a new build on bare ground
+ * that sentence is false twice over: the permit is about a thing that does not
+ * exist yet, and there is no volume under it to paint. So the theme is offered
+ * only the dossiers that can be about something standing:
+ *
+ * • **declared works on an existing building** — `adsFeed.js` writes the SDES
+ *   vocabulary verbatim into `purpose` (`NATURE_PROJET_DECLAREE`: `1 =
+ *   nouvelle construction`, `2 = travaux sur construction existante`), so the
+ *   distinction is READ, not guessed;
+ * • **a permis de démolir** (`PD`), which by definition names something that
+ *   stands;
+ * • **a dossier whose nature is not published**, painted, and counted apart.
+ *
+ * Withheld, counted, and left as a crane only: a declared `nouvelle
+ * construction`, and a **permis d'aménager** (`PA`), which authorises the
+ * development of LAND and never a building.
+ *
+ * MEASURED, AND THE REASON THE THIRD BUCKET IS PAINTED AT ALL: this layer
+ * merges SEVEN sources — the four `SITADEL_FILES` and the three
+ * `LOCAL_ADS_PORTALS` — and exactly TWO of them ask for a nature column.
+ * `NATURE_PROJET_DECLAREE` is in the `columns` of `logements` and `locaux` and
+ * in neither `amenager` nor `demolir` (both of which the FAMILY rule above
+ * settles anyway). The three métropole portals ask for none: `normaliseLocalRow`
+ * fills `purpose` from the free-text `objet`/`details_du_projet`, and no portal
+ * config declares a nature column. Refusing to
+ * paint an unpublished nature would therefore switch the theme off entirely in
+ * Paris, Bordeaux and Nantes — which are the only three places in France where
+ * `instruction` exists at all. The trade taken is the other one: a point that
+ * falls INSIDE a surveyed footprint is already evidence that something stands
+ * there, the volume is painted, and the count of dossiers painted on that
+ * evidence rather than on a declaration is published beside the count painted
+ * on a declaration.
+ *
+ * WHY THE MARKER DOES NOT SHRINK UNDER A THEME. It was the obvious move and it
+ * is an A3 violation: marker SIZE is already spoken for — 20 px for a file
+ * still open or a chantier running, 17 px granted, 14 px history — and adding
+ * "the volume under me is painted" to that channel would put two informations
+ * on one variable. The marker is also the click surface and the card, and it
+ * has to read the same when Bâti 3D is off. It is left alone.
+ *
+ * WHY THE UNPAINTED CITY IS NOT AN ADMISSION OF EMPTINESS. This layer scans a
+ * DISC of {@link ADS_DEFAULT_RADIUS_M} m (0.50 km²) around the point the camera
+ * is looking at. BD TOPO loads a BOX of up to `BDTOPO_MAX_BOX_DEG` = 0.08°,
+ * which at 47°N is 8.90 × 6.04 km = 53.8 km² — 107 times the disc. So at most
+ * about 1% of the volumes on screen were ever inside the question that was
+ * asked, and the other 99% are washed because nobody looked, not because
+ * nothing was filed. That is what the theme's "no data" row says, in those
+ * words, rather than leaving a grey city to be read as a calm one (A4).
+ *
+ * WHERE THE `n peints / N connus` LEDGER LIVES. This layer publishes the OFFER
+ * side — how many dossiers were handed over, how many were withheld and why,
+ * how many carry no usable state — because those are the numbers only it can
+ * know. The PAINT side (`themePainted` / `themeUnpainted` / points that landed
+ * on no footprint) is published by the Bâti 3D row, which owns the join and
+ * runs it against the volumes actually loaded. Running a second join here to
+ * repeat those figures would produce two numbers, computed at two instants,
+ * for one fact; one number in one place is the honest arrangement.
  *
  * @module data/adsUrbanisme
  */
@@ -436,8 +504,332 @@ export function drawAdsEmprises(dataSource, payload, classificationType) {
   return drawn;
 }
 
-const adsUrbanismeLayer = createAddressScanLayer({
-  id: 'ads-fr',
+/* ── The building theme ──────────────────────────────────────────────────── */
+
+/** Registry key. Same string as the layer id, so the two are never out of step. */
+export const ADS_BUILDING_THEME_ID = 'ads-fr';
+
+/** Shown to the reader wherever the paint has to name its owner (D1). */
+export const ADS_BUILDING_THEME_LABEL = 'Autorisations d’urbanisme';
+
+/**
+ * Lower wins. 30 puts this ahead of a €/m² or DPE theme on the same volumes:
+ * what is ABOUT TO HAPPEN to a building outranks what it is worth or how it is
+ * heated, because it is the only one of the three that can still change.
+ */
+export const ADS_BUILDING_THEME_PRECEDENCE = 30;
+
+/**
+ * The label on the "no data" row, and the whole reason it is not just
+ * "sans dossier".
+ *
+ * The scan is a 400 m disc; the volumes are a box up to 53.8 km². A volume can
+ * be unpainted because no dossier was filed on it, or because it sits outside
+ * the circle this layer asked about — and those are different sentences (A4).
+ * The row says both, in that order, because the second is the likelier one.
+ */
+export const ADS_BUILDING_THEME_UNKNOWN_LABEL = `hors du rayon de ${ADS_DEFAULT_RADIUS_M} m, ou sans dossier`;
+
+/** What a permit can be about. */
+export const ADS_TARGET_EXISTING = 'existing';
+export const ADS_TARGET_NEW = 'new';
+export const ADS_TARGET_UNKNOWN = 'unknown';
+
+/**
+ * `NATURE_PROJET_DECLAREE`, as `adsFeed.js` spells it into `purpose`.
+ *
+ * Read rather than re-derived: the feed owns the dictionary and this file owns
+ * the drawing, so the two share a vocabulary and not a copy of the mapping.
+ * `adsUrbanisme.test.mjs` pins both strings against `normaliseSitadelRow`, so a
+ * wording change upstream fails a test here instead of silently reclassifying
+ * every permit in France as "nature not published".
+ */
+const NATURE_EXISTING_TEXT = 'travaux sur construction existante';
+const NATURE_NEW_TEXT = 'nouvelle construction';
+
+/**
+ * Is this dossier about a building that stands, or about ground that does not
+ * carry one yet?
+ *
+ * Three answers and never a guess dressed as two. The declared nature wins when
+ * there is one; failing that, the FAMILY of the authorisation settles the two
+ * cases where the law already answers — a permis de démolir names something
+ * standing, a permis d'aménager authorises the development of land and never a
+ * building. Everything else is `unknown`, which is most of the three métropole
+ * portals, and `unknown` is a value this module carries around rather than
+ * rounding to one of its neighbours.
+ *
+ * @param {object} permit Normalised permit.
+ * @returns {'existing'|'new'|'unknown'}
+ */
+export function adsPermitTarget(permit) {
+  const purpose = String(permit?.purpose ?? '').toLowerCase();
+  if (purpose.includes(NATURE_EXISTING_TEXT)) return ADS_TARGET_EXISTING;
+  if (purpose.includes(NATURE_NEW_TEXT)) return ADS_TARGET_NEW;
+  const kind = String(permit?.kind ?? '');
+  if (kind === 'PD') return ADS_TARGET_EXISTING;
+  if (kind === 'PA') return ADS_TARGET_NEW;
+  return ADS_TARGET_UNKNOWN;
+}
+
+/**
+ * The colour a volume takes for one dossier state — or null, meaning leave it
+ * in the "no data" wash.
+ *
+ * NULL FOR AN UNPUBLISHED STATE, and that is a departure from the marker on
+ * purpose. A crane whose state neither register published is drawn in
+ * `STATE_UNKNOWN` grey-blue `#9fb0c6`, because a marker has to exist for every
+ * dossier. A VOLUME is a value channel, and `#9fb0c6` measures ΔE76 11.2 from
+ * the `#8c93a3` of "refusé ou annulé" — on a scale where 10 is where two
+ * colours stop sharing a name. Two greys that close, on a surface the size of a
+ * roof, would put "nobody published a decision" and "the decision was no" in the
+ * same class. So the volume is not painted, the dossier keeps its crane, and the
+ * row counts it.
+ *
+ * @param {?string} state Normalised state from `adsFeed.js`.
+ * @returns {?string} CSS colour, or null.
+ */
+export function adsBuildingThemeColorFor(state) {
+  const style = STATE_STYLE[String(state ?? '')];
+  return style ? style.color : null;
+}
+
+/**
+ * N dossiers on one volume → the one state the volume wears.
+ *
+ * The SAME rule the plot wash already uses, called through the same function:
+ * a volume carrying several dossiers is exactly the shared-plot problem
+ * `empriseStyle` was written for, and answering it twice with two rankings
+ * would let a roof and the ground under it disagree about their own street.
+ *
+ * @param {Array<object>} permits Dossiers joined to one volume, nearest first.
+ * @returns {?string} state
+ */
+export function adsBuildingThemeReduce(permits) {
+  return empriseStyle(permits).state;
+}
+
+/**
+ * The ramp, one row per COLOUR and not one per state.
+ *
+ * `instruction`/`depose` share a colour and so do `accorde`/`autorise`, and the
+ * panel counts a legend row by matching its swatch against the colours actually
+ * painted. Two rows with one colour would each claim the whole count.
+ * Deliberately without counts: `resolveBuildingThemePaint` fills them in from
+ * the volumes it really painted, which is the number a reader of the Bâti 3D
+ * row needs — not the number of dossiers this layer holds.
+ */
+export const ADS_BUILDING_THEME_LEGEND = Object.freeze([
+  Object.freeze({
+    label: 'Déposé ou en instruction',
+    color: '#3dd6c4',
+    blurb: 'Le dossier est encore au guichet et peut encore faire l’objet d’un recours. '
+      + 'Publié seulement par Paris, Bordeaux et Nantes : ailleurs cette classe est vide '
+      + 'parce que le registre national ne contient que des permis déjà accordés.',
+  }),
+  Object.freeze({
+    label: 'Accordé, chantier non ouvert',
+    color: '#ffb03d',
+    blurb: 'Autorisé, et aucune ouverture de chantier n’est remontée. Le bâtiment peint '
+      + 'est celui qui existe aujourd’hui, pas celui que le permis décrit.',
+  }),
+  Object.freeze({
+    label: 'Chantier ouvert',
+    color: '#ff6b4a',
+    blurb: 'Les travaux ont commencé sur ce volume.',
+  }),
+  Object.freeze({
+    label: 'Travaux achevés',
+    color: '#7ed957',
+    blurb: 'Achèvement déclaré. Le volume BD TOPO peut être antérieur aux travaux : '
+      + 'la peinture dit qu’un dossier s’est terminé ici, pas que le levé l’a vu.',
+  }),
+  Object.freeze({
+    label: 'Refusé ou annulé',
+    color: '#8c93a3',
+    blurb: 'Le dossier a existé, le projet non. Peint parce que « rien ne changera ici » '
+      + 'est une information sur le bâtiment ; la classe garde sa propre teinte et n’est '
+      + 'pas fondue dans les volumes sans dossier.',
+  }),
+]);
+
+/**
+ * Split a served payload into what the theme may paint and what it may not.
+ *
+ * Every dossier leaves this function in exactly one bucket, and the buckets sum
+ * to `total` — that is the A5 ledger, and the test asserts the sum rather than
+ * the individual numbers, because a bucket that quietly swallows a dossier is
+ * precisely the failure this is here to prevent.
+ *
+ * Order of refusal matters and is stated: a new build is withheld BEFORE the
+ * coordinate and the state are looked at, because "this permit is not about a
+ * building that stands" is a fact about the dossier and stays true whatever
+ * else is missing from it.
+ *
+ * @param {?object} payload Served ADS payload.
+ * @returns {{points: Array<object>, total: number, offered: number,
+ *   offeredDeclared: number, offeredInferred: number, newBuild: number,
+ *   land: number, unpublishedState: number, unplaced: number}}
+ */
+export function adsBuildingThemePoints(payload) {
+  const ledger = {
+    points: [],
+    total: 0,
+    offered: 0,
+    offeredDeclared: 0,
+    offeredInferred: 0,
+    newBuild: 0,
+    land: 0,
+    unpublishedState: 0,
+    unplaced: 0,
+  };
+  for (const permit of payload?.permits || []) {
+    ledger.total += 1;
+    const target = adsPermitTarget(permit);
+    if (target === ADS_TARGET_NEW) {
+      if (String(permit?.kind ?? '') === 'PA') ledger.land += 1;
+      else ledger.newBuild += 1;
+      continue;
+    }
+    // Zero by construction in a served payload — `projectAdsPermits` drops a
+    // row with no coordinate before it applies the radius, and the rows the BAN
+    // could not place arrive separately as `unplacedInCommune`. Kept because
+    // the guard is one comparison and a payload shape is not a promise.
+    if (!Number.isFinite(permit?.lon) || !Number.isFinite(permit?.lat)) {
+      ledger.unplaced += 1;
+      continue;
+    }
+    if (!adsBuildingThemeColorFor(permit?.state)) {
+      ledger.unpublishedState += 1;
+      continue;
+    }
+    ledger.points.push(permit);
+    ledger.offered += 1;
+    if (target === ADS_TARGET_EXISTING) ledger.offeredDeclared += 1;
+    else ledger.offeredInferred += 1;
+  }
+  return ledger;
+}
+
+/** The ledger of the last payload handed to the registry, or null. */
+let _themeLedger = null;
+
+/**
+ * Publish (or re-publish) the theme from the payload that was just drawn.
+ *
+ * Re-registering the same id is the data-changed signal: the registry keeps the
+ * theme's original sequence number and fires its `update` notification, which is
+ * the subscription `bdtopoBuildings.js` installs in `init()`. Calling
+ * `applyBuildingTheme()` on top of that would run the join twice for one change.
+ *
+ * @param {?object} payload
+ * @returns {object} the ledger.
+ */
+export function syncAdsBuildingTheme(payload) {
+  const ledger = adsBuildingThemePoints(payload);
+  _themeLedger = ledger;
+  registerBuildingTheme({
+    id: ADS_BUILDING_THEME_ID,
+    label: ADS_BUILDING_THEME_LABEL,
+    precedence: ADS_BUILDING_THEME_PRECEDENCE,
+    points: ledger.points,
+    reduce: adsBuildingThemeReduce,
+    colorFor: adsBuildingThemeColorFor,
+    legend: ADS_BUILDING_THEME_LEGEND,
+    unknownLabel: ADS_BUILDING_THEME_UNKNOWN_LABEL,
+  });
+  return ledger;
+}
+
+/** Withdraw the theme — the layer is going off. */
+export function clearAdsBuildingTheme() {
+  _themeLedger = null;
+  return clearBuildingTheme(ADS_BUILDING_THEME_ID);
+}
+
+/** The ledger, for the row line and the tests. */
+export function adsBuildingThemeLedger() {
+  return _themeLedger;
+}
+
+/** French thousands, matching the rest of the French packs. */
+function fr(value) {
+  return Number(value).toLocaleString('fr-FR');
+}
+
+/**
+ * The one sentence the toggle row adds when the theme is on.
+ *
+ * The OFFER side of the ledger, in the order a reader needs it: how many
+ * dossiers were handed to the volumes, then every reason a dossier was not.
+ * The paint side is on the Bâti 3D row — said out loud, because a number that
+ * lives on another row is worse than no number when nobody knows where it is.
+ *
+ * @param {?object} ledger
+ * @returns {?string}
+ */
+export function adsBuildingThemeLine(ledger = _themeLedger) {
+  if (!ledger || !ledger.total) return null;
+  const held = [];
+  if (ledger.newBuild) held.push(`${fr(ledger.newBuild)} en construction neuve`);
+  if (ledger.land) held.push(`${fr(ledger.land)} permis d’aménager`);
+  if (ledger.unpublishedState) held.push(`${fr(ledger.unpublishedState)} sans état publié`);
+  if (ledger.unplaced) held.push(`${fr(ledger.unplaced)} sans coordonnée`);
+  const head = `${fr(ledger.offered)} des ${fr(ledger.total)} dossiers peignent le bâti 3D`
+    + (ledger.offeredInferred
+      ? ` (dont ${fr(ledger.offeredInferred)} sur nature non publiée)`
+      : '');
+  const tail = held.length ? ` · retenus : ${held.join(', ')}` : '';
+  return `${head}${tail} · compte des volumes peints sur la ligne Bâti 3D`;
+}
+
+/**
+ * The layer's own colour key.
+ *
+ * Six rows, because the marker palette has six colours and the marker is what
+ * this row is about — the volumes have their key on the Bâti 3D row, which is
+ * where the paint is. The sixth row, "état non publié", is the one that has to
+ * be here: it is a colour on screen that the theme deliberately does NOT paint,
+ * and a reader has to be able to look it up.
+ *
+ * @param {?object} payload
+ * @returns {{chips: Array<object>, legend: Array<object>}}
+ */
+export function adsRowControls(payload) {
+  const counts = new Map();
+  for (const permit of payload?.permits || []) {
+    const color = adsStateStyle(permit?.state).color;
+    counts.set(color, (counts.get(color) || 0) + 1);
+  }
+  const legend = ADS_BUILDING_THEME_LEGEND.map((entry) => ({
+    label: entry.label,
+    color: entry.color,
+    count: counts.get(entry.color) || 0,
+    blurb: entry.blurb,
+  }));
+  legend.push({
+    label: 'État non publié',
+    color: STATE_UNKNOWN.color,
+    count: counts.get(STATE_UNKNOWN.color) || 0,
+    blurb: 'Ni Sitadel ni le portail n’a publié d’état pour ce dossier. Le marqueur est '
+      + 'dessiné, le volume ne l’est pas : ce gris est à ΔE 11 du gris de « refusé ou '
+      + 'annulé » et une toiture peinte ne pourrait pas les distinguer.',
+  });
+  // The plot wash IS a ground-classified area fill, so on the photoreal stack it
+  // climbs the façades and the manager's drape notice applies — but only where a
+  // portal published a plot at all, which today is Bordeaux alone. Claimed only
+  // when there is a wash to claim it for. The theme these colours also paint is
+  // NOT a drape: extruded volumes are real geometry that the mesh occludes
+  // instead of receiving (`surfaceFillNotice.js`).
+  return {
+    chips: [],
+    legend,
+    surfaceFill: (payload?.emprises?.length || 0) > 0,
+  };
+}
+
+const adsScanLayer = createAddressScanLayer({
+  id: ADS_BUILDING_THEME_ID,
   name: 'Autorisations d’urbanisme',
   icon: '⌂',
   source: 'Sitadel — SDES + portails ADS',
@@ -446,14 +838,29 @@ const adsUrbanismeLayer = createAddressScanLayer({
   runtimeParams: {
     months: { values: ADS_WINDOWS.map((window) => window.months), defaultValue: ADS_WINDOW_DEFAULT },
   },
-  rowControls: (runtime, summary) => ({ chips: adsWindowChips(runtime.months, summary) }),
   params: (point, viewer, runtime) => ({
     radius: String(ADS_DEFAULT_RADIUS_M),
     months: runtime.months ?? ADS_WINDOW_DEFAULT,
   }),
 
+  // The layer's own colour key. Four of the five scan layers draw badge markers
+  // whose shape is their caption; this one spends COLOUR on the state of the
+  // dossier, and it now spends the same colour on whole roofs, so D1 makes the
+  // key compulsory rather than optional.
+  // The chips build from the runtime alone, so they exist before the first
+  // scan; the colour key is built from the payload that was actually drawn and
+  // is simply absent while nothing is.
+  rowControls: (runtime, summary, payload) => ({
+    ...(payload ? adsRowControls(payload) : {}),
+    chips: adsWindowChips(runtime.months, summary),
+  }),
+
   render({ payload, dataSource, viewer }) {
-    // The ground first, the news on top of it. Emprises are counted separately
+    // The volumes first, because the registry notifies the BD TOPO layer
+    // synchronously and a repaint costs nothing while this data source is still
+    // empty. Re-registering with the new points IS the data-changed signal.
+    syncAdsBuildingTheme(payload);
+    // The ground next, the news on top of it. Emprises are counted separately
     // from the returned total: the number this callback reports is what the
     // manager shows as the layer's count, and that has always been dossiers.
     drawAdsEmprises(dataSource, payload, gpuClassificationTypeForScene(viewer?.scene));
@@ -568,5 +975,79 @@ const adsUrbanismeLayer = createAddressScanLayer({
     };
   },
 });
+
+/**
+ * The layer module.
+ *
+ * The scan shell is wrapped rather than returned directly, for the one thing it
+ * has no hook for: a theme that must be published while the layer is on and
+ * withdrawn the moment it is off. `render()` republishes the points on every
+ * scan; these three methods own the on/off edge, and they are the reason no
+ * other module has to know this layer exists.
+ *
+ * A DORMANT SCAN NEEDS NO FOURTH HOOK, and the arithmetic says why. The shell
+ * stops scanning above 12 000 m and does not call `render()`, so the theme
+ * keeps the points of the last block it saw. It cannot paint anything with
+ * them: `bdtopo-buildings` refuses a viewport wider than 0.08°, which a 60° FOV
+ * camera reaches at 8 900 / (2 · tan 30°) = 7 707 m — a kilometre and a half
+ * BELOW the scan ceiling. There is no altitude at which this layer is asleep
+ * and there are volumes on screen to mis-paint.
+ */
+const adsUrbanismeLayer = {
+  ...adsScanLayer,
+
+  enable(viewer) {
+    adsScanLayer.enable(viewer);
+    // Registered empty rather than not at all: the row's key, the "no data"
+    // wash and the count of unpainted volumes have to appear the moment the
+    // layer is switched on, not one scan later. The first `render()` replaces
+    // the points and keeps the sequence number.
+    syncAdsBuildingTheme(null);
+  },
+
+  disable() {
+    // The paint goes first. Whatever the shell does or fails to do while
+    // tearing down its own listeners, the city must not be left wearing the
+    // colours of a layer that is off.
+    clearAdsBuildingTheme();
+    adsScanLayer.disable();
+  },
+
+  destroy(viewer) {
+    clearAdsBuildingTheme();
+    adsScanLayer.destroy(viewer);
+  },
+
+  getStats() {
+    const stats = adsScanLayer.getStats();
+    const ledger = _themeLedger;
+    if (!ledger) return stats;
+    const line = adsBuildingThemeLine(ledger);
+    return {
+      ...stats,
+      theme: ADS_BUILDING_THEME_ID,
+      themeLabel: ADS_BUILDING_THEME_LABEL,
+      // The OFFER ledger. Every dossier of the served payload is in exactly one
+      // of these, and they sum to `themeTotal` — see `adsBuildingThemePoints`.
+      themeTotal: ledger.total,
+      themeOffered: ledger.offered,
+      themeOfferedDeclared: ledger.offeredDeclared,
+      themeOfferedInferred: ledger.offeredInferred,
+      themeHeldNewBuild: ledger.newBuild,
+      themeHeldLand: ledger.land,
+      themeHeldNoState: ledger.unpublishedState,
+      themeHeldUnplaced: ledger.unplaced,
+      // The disc the question was asked over, against which the unpainted city
+      // has to be read (A4).
+      themeScanRadiusM: ADS_DEFAULT_RADIUS_M,
+      // Appended rather than assigned: whatever the shell is already saying
+      // about the scan itself comes first, because "this scan is incomplete"
+      // outranks "this theme is incomplete".
+      ...(line
+        ? { loadingLabel: stats.loadingLabel ? `${stats.loadingLabel} · ${line}` : line }
+        : {}),
+    };
+  },
+};
 
 export default adsUrbanismeLayer;

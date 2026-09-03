@@ -621,6 +621,12 @@ export const DELINQUANCE_CELL_LABELS = Object.freeze({
   published: 'Valeur publiée',
   zero: 'Aucun fait enregistré',
   suppressed: 'Non diffusé — secret statistique',
+  // A FOURTH state, drawn since the layer was written and never keyed: a
+  // commune with no line at all for this indicator in this edition. It is
+  // painted (DELINQUANCE_MISSING_COLOR at alpha 0.22) and it was counted, but
+  // the count never reached the legend — so the only cell state a reader could
+  // not name was the one that means "we have nothing".
+  missing: 'Absent de cette édition',
 });
 
 /**

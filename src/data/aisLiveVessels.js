@@ -1,4 +1,94 @@
+/**
+ * @module aisLiveVessels
+ * @description Live AIS contacts: a heading-oriented chevron per vessel, a
+ * decluttered card cohort, a selected-vessel trail, and — since the size pass —
+ * the hull, drawn at its real length and beam when the camera is low enough to
+ * read it.
+ *
+ * ══ THE SIZE CHANNEL ═══════════════════════════════════════════════════════
+ *
+ * ── What was wrong ─────────────────────────────────────────────────────────
+ *
+ * Every chevron was 32 px of artwork at one of three scales — 0.60, 0.68, 0.78
+ * — chosen by SPEED: under 8 knots, under 18, above. So a 400 m container ship
+ * and a 12 m harbour tug drew the same mark unless one of them happened to be
+ * moving faster, and the one channel Bertin reserves for an absolute quantity
+ * was spent on a three-step classification of a variable that is already
+ * legible twice over (the card prints `12.4KT`, and `labelPriority` ranks by
+ * it). There was no legend, so nothing on screen could have told the reader.
+ *
+ * Meanwhile the length was IN THE FEED and being deleted. AIS message 5 and
+ * message 24 part B carry A/B/C/D — antenna to bow, stern, port, starboard —
+ * and `vite.config.js`'s ingest kept the name, the type, the destination and
+ * the IMO out of exactly that message, and dropped the four numbers that
+ * describe the ship.
+ *
+ * ── What was measured before choosing anything ─────────────────────────────
+ *
+ * Live AISStream feed, world bounding box, two independent runs on 2026-09-03
+ * (5 min and 4 min):
+ *
+ *   · 18 308 / 15 982 distinct MMSIs carried a position;
+ *   · **16.2 % of them publish a usable hull** (length AND beam). Over the
+ *     French bounding box specifically: 666 of 3 756 contacts, **17.7 %**;
+ *   · 1 709 of 4 307 static dimension blocks were ALL ZEROS — the "not
+ *     available" default of an unconfigured transponder, and the single most
+ *     common shape on the wire;
+ *   · length distribution over the measured hulls (m): min 4 · p05 12 ·
+ *     p10 15 · p25 22 · **median 40** · p75 105 · p90 183 · p99 332 · max 400.
+ *     Beam: median 10 · p90 30 · max 80.
+ *
+ * Four contacts in five publish nothing. That single number is why this pass
+ * refuses to give them a default size: it would be inventing the size of 82 %
+ * of the map, which is the aircraft defect this repo has just corrected ("97 %
+ * de la flotte visible portait une silhouette inventée",
+ * docs/PLAN-CARTOGRAPHIE.md § 1.4).
+ *
+ * ── What is drawn now, in two regimes ──────────────────────────────────────
+ *
+ * ABOVE the hull altitude — the chevron, in CONSTANT PIXELS, area ∝ length
+ * overall (`vesselArrowScale`, `vesselLabels.js`). This is the first branch of
+ * rule B2, and it is legal here for one verifiable reason: this layer sets no
+ * `scaleByDistance` on its billboards, so nothing composes with the thematic
+ * size. Checked, not assumed.
+ *
+ * BELOW it — the same chevron PLUS the hull as a five-vertex polygon in WORLD
+ * UNITS, at true length and beam, oriented to the vessel's heading. That is
+ * B2's second branch and it is the right one for a physical object: the hull
+ * shrinks with distance because the ship does. The threshold is derived from
+ * the scene's own optics rather than picked (`hullAltitudeM`): 15.6 km on a
+ * 900 px canvas at Cesium's default 60° fovy, the height at which a 200 m hull
+ * still spans 10 px.
+ *
+ * The chevron never leaves, and that is deliberate — there is no altitude at
+ * which every hull is legible (a 40 m median contact needs 3 km), so the
+ * chevron stays the contact marker and the hull is the measurement.
+ *
+ * ── What refuses to be drawn, and is counted ───────────────────────────────
+ *
+ * · No published dimensions → a HOLLOW, DASHED chevron at a fixed size that
+ *   the legend states is off the scale. Not a small solid chevron, which would
+ *   read as a small ship (A1, and B5 on the shape channel).
+ * · Length but no beam → the chevron gets its area, the hull does not exist. A
+ *   width is not derivable from a length.
+ * · No heading and no course over ground → no hull. Drawn pointing north by
+ *   default it would assert an orientation nobody measured.
+ * · Beyond {@link HULL_RENDER_CAP} → not drawn, and the legend prints
+ *   `n / N` with the criterion (nearest to the camera first) — rule A5.
+ *
+ * ── Cost, measured ─────────────────────────────────────────────────────────
+ *
+ * Building 400 hulls costs 2.7 ms median on this machine (min 2.15, max 3.34
+ * over seven warm runs; 200 → 1.8 ms, 800 → 4.5 ms) for 2 000 vertices and
+ * 3 600 indices in ONE batched primitive. It is gated three ways: the geometry
+ * only exists under the altitude threshold, it is rebuilt only on the existing
+ * 800 ms visibility pass, and only when {@link hullSetSignature} changes —
+ * which it does not while orbiting a moored harbour, because heading is
+ * quantised and positions move only on a poll. Above the threshold the whole
+ * pass is one cartographic conversion and an early return.
+ */
 import * as Cesium from 'cesium';
+import { TRAIL_MAX_POINTS as TRAIL_VERTEX_CEILING, trimTrailToGroundLength } from './trailWindow.js';
 import {
   registerEntityContext,
   selectEntityContext,
@@ -22,6 +112,18 @@ import {
   vesselTypeCss,
   vesselOverlayCohortLimit,
   normalizeVesselType,
+  vesselFamilyCss,
+  vesselTypeFamily,
+  VESSEL_FAMILY_LABELS,
+  vesselHullFromAisDimensions,
+  vesselArrowScale,
+  vesselArrowClamp,
+  VESSEL_ARROW_UNMEASURED_SCALE,
+  VESSEL_UNMEASURED_DASH,
+  hullAltitudeM,
+  hullOutlineOffsetsM,
+  HULL_RENDER_CAP,
+  vesselSizeLegend,
 } from './vesselLabels.js';
 import {
   clearOverlaySource,
@@ -81,10 +183,30 @@ const TRAIL_HEIGHT_M = 3;
  * is always fine (clears tide/mesh noise in the photoreal sea mesh).
  */
 const VESSEL_LIFT_M = 3;
-/** Combined cap on trail vertices (server backfill + live accumulation). */
-const TRAIL_MAX_POINTS = 400;
+/**
+ * Hard vertex ceiling — the bound on the primitive rebuilt on each refresh.
+ * It used to be the SAME 400 the two aircraft layers use, which is what made a
+ * vessel's trail fit inside its own chevron while an airliner's crossed the
+ * screen. History is now trimmed by GROUND LENGTH (`trailWindow.js`), so both
+ * show the same distance of past.
+ */
+const TRAIL_MAX_POINTS = TRAIL_VERTEX_CEILING;
 /** Minimum movement (m) before a reconcile refresh appends a new trail point. */
 const TRAIL_MIN_MOVE_M = 25;
+/**
+ * Opacity of a true-scale hull. Not opaque: the hull sits on a photoreal sea
+ * whose wake and shadow are part of reading a port, and a solid slab of family
+ * hue erases them.
+ */
+const HULL_ALPHA = 0.72;
+/**
+ * Heading quantum (degrees) in the hull rebuild signature. A hull redrawn for
+ * a 1° yaw is a rebuild nobody can see; 4° is under one pixel of bow travel on
+ * a 200 m ship at the altitude where hulls draw.
+ */
+const HULL_HEADING_QUANTUM_DEG = 4;
+/** Canvas height assumed when the scene cannot be measured (test seams). */
+const HULL_FALLBACK_CANVAS_PX = 900;
 
 const DEFAULT_VESSEL_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
@@ -180,6 +302,26 @@ function describeDegradedAisFeed(status, payload) {
  * @param {number} acceptedRowCount - Number of rows accepted by vessel normalization.
  * @returns {string|null} A short reason for the chip, or null if healthy.
  */
+/**
+ * One line describing how much of the feed survived normalization.
+ *
+ * `rawRowCount` and `acceptedRowCount` have always been computed and published
+ * on `getStats()`, and nothing read them — so a snapshot in which a fifth of
+ * the rows carried no usable position looked identical, on screen, to one where
+ * every row drew. Empty when nothing was dropped: a coverage note that fires on
+ * every refresh stops being read.
+ * @param {number} rawRowCount Rows the feed delivered.
+ * @param {number} acceptedRowCount Rows normalization could draw.
+ * @returns {string} Chip-ready text, or '' when the two agree.
+ */
+export function aisAcceptanceCoverage(rawRowCount, acceptedRowCount) {
+  const raw = Number(rawRowCount);
+  const accepted = Number(acceptedRowCount);
+  if (!Number.isFinite(raw) || !Number.isFinite(accepted)) return '';
+  if (raw <= 0 || accepted >= raw) return '';
+  return `${accepted} of ${raw} rows usable`;
+}
+
 export function deriveAisFeedError(payload, acceptedRowCount) {
   const status = payload && typeof payload.status === 'string' ? payload.status : null;
   // A feed the server reports as not delivering outranks the row count: the
@@ -236,10 +378,13 @@ export function classifyAisFeedSnapshot(payload) {
  * /api/ais-live proxy does not surface AIS NavigationalStatus, so it
  * cannot be derived client-side.
  * @param {Object|null|undefined} record - `state.vesselMap`/`state.vesselRecords` entry.
+ * `lengthM`/`beamM` come from the AIS static message and are null for the four
+ * contacts in five that never publish them — the analyst engine must be able to
+ * tell "small" from "unstated", which is the same A1 rule the map obeys.
  * @returns {{id: string|null, mmsi: string|null, name: string|null,
  *   lat: number|null, lon: number|null, speedKts: number|null,
  *   courseDeg: number|null, shipType: string|null, destination: string|null,
- *   navStatus: null}}
+ *   lengthM: number|null, beamM: number|null, navStatus: null}}
  */
 export function mapAnalystRecord(record) {
   const num = (v) => (Number.isFinite(v) ? v : null);
@@ -256,6 +401,8 @@ export function mapAnalystRecord(record) {
     courseDeg: num(record?.course),
     shipType: text(record?.type),
     destination: text(record?.destination),
+    lengthM: num(record?.hull?.loaM),
+    beamM: num(record?.hull?.beamM),
     navStatus: null,
   };
 }
@@ -387,6 +534,7 @@ const aisLiveVesselsLayer = {
     releaseContinuousRender('ais-vessels');
     unregisterPickOwner('ais-live-vessels');
     setVisible(false);
+    removeHullPrimitive();
     _vesselOverlayHost.clearSource(VESSEL_OVERLAY_SOURCE_ID);
     clearVesselInspection();
     destroySelectedVesselTrail();
@@ -411,6 +559,7 @@ const aisLiveVesselsLayer = {
     unregisterPickOwner('ais-live-vessels');
     clearVesselInspection();
     destroySelectedVesselTrail();
+    removeHullPrimitive();
     if (state.billboardCollection && viewer) {
       viewer.scene.primitives.remove(state.billboardCollection);
     }
@@ -659,11 +808,67 @@ const aisLiveVesselsLayer = {
       lastMessageAt: state.lastMessageAt,
       rawRowCount: state.rawRowCount,
       acceptedRowCount: state.acceptedRowCount,
+      // The gap between what the feed handed over and what could be drawn,
+      // as the one-line `coverage` string the manager prints under the row.
+      // Both numbers were already published and read by nobody, so the map
+      // silently dropped rows it had received (CARTOGRAPHIE A5/H1).
+      coverage: aisAcceptanceCoverage(state.rawRowCount, state.acceptedRowCount),
       // Same chip affordance the flights layer uses: when the server is
       // backing off, say how long until the next attempt instead of leaving
       // the user to guess whether anything is still happening.
       retryInSec: aisRetryInSec(),
     };
+  },
+
+  /**
+   * The key to the chevron hues AND to the chevron sizes.
+   *
+   * TWO CHANNELS, TWO BLOCKS, and they are orthogonal (A3): HUE is the AIS type
+   * family — a nominal variable, which is all hue is entitled to carry — and
+   * SIZE is length overall, an absolute quantity, which is the only thing B1
+   * lets the size channel carry. Neither block repeats the other's information.
+   *
+   * THIS METHOD USED TO RETURN NULL, ALWAYS. It guarded on `records.size`, and
+   * `state.vesselRecords` is an ARRAY: `undefined` is falsy, so the early
+   * return fired on every call and the layer that has hue as its only cue
+   * shipped with no key at all — including on the `#map-legend` mount point
+   * added precisely so a key would be visible without opening a panel (D1).
+   * The guard now reads `.length`, and the block below is finally reachable.
+   *
+   * Tallied over the records actually on screen, so a family or a size band
+   * absent from the view is absent from the key.
+   * @returns {{legend: Array<object>}|null} Row controls, or null while empty.
+   */
+  getRowControls() {
+    const records = state.vesselRecords;
+    if (!Array.isArray(records) || !records.length) return null;
+    const byFamily = new Map();
+    for (const record of records) {
+      const family = vesselTypeFamily(record?.type) || 'unknown';
+      byFamily.set(family, (byFamily.get(family) || 0) + 1);
+    }
+    const legend = [...byFamily.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([family, count]) => ({
+        label: VESSEL_FAMILY_LABELS[family] || family,
+        color: vesselFamilyCss(family === 'unknown' ? null : family),
+        count,
+        blurb: family === 'unknown'
+          ? 'Aucun type AIS exploitable. Gris ardoise, hors de la gamme des '
+            + 'familles — un navire muet ne doit pas être peint en cargo.'
+          : undefined,
+      }));
+
+    const sizes = tallyVesselSizes(records);
+    legend.push(...vesselSizeLegend({
+      ...sizes,
+      hullsDrawn: state.hullTally.drawn,
+      hullEligible: state.hullTally.eligible,
+      hullNoHeading: state.hullTally.noHeading,
+      hullAltitudeM: state.hullTally.altitudeM ?? hullAltitudeM(),
+      hullActive: state.hullTally.active,
+    }));
+    return { legend };
   },
 };
 
@@ -725,6 +930,14 @@ const state = {
   trailMmsi: null,
   /** @type {number} Monotonic token — invalidates in-flight backfill responses */
   trailBackfillToken: 0,
+  /** @type {Object|null} Batched true-scale hull primitive (world units). */
+  hullPrimitive: null,
+  /** Identity of the hull set currently mounted; '' when none. */
+  hullSignature: '',
+  /** Bumped whenever record positions move, so the hull set rebuilds. */
+  hullPositionRev: 0,
+  /** What the size channel can currently say — published in the legend. */
+  hullTally: { active: false, drawn: 0, eligible: 0, noHeading: 0, altitudeM: null },
 };
 
 /** Replace live AIS rows through the production reconciliation path (DEV only). */
@@ -1037,6 +1250,7 @@ function reconcileVessels(viewer, rows) {
   }
 
   state.vesselRecords = [...state.vesselMap.values(), ...state.unkeyedRecords];
+  state.hullPositionRev += 1;
   state.lastVisibilityUpdate = 0;
   updateVisibility(true);
 }
@@ -1054,7 +1268,7 @@ function addRecordPrimitives(record, occluder) {
     position: record.position,
     show: visible,
     image: shipIcon(record, false),
-    scale: shipScale(record),
+    scale: arrowScale(record),
     // Screen-projected rotation lands on the next visibility/rotation pass.
     rotation: 0,
     alignedAxis: Cesium.Cartesian3.ZERO,
@@ -1085,6 +1299,7 @@ function updateRecordInPlace(record, next) {
   record.lon = next.lon;
   record.name = next.name;
   record.imo = next.imo;
+  record.hull = next.hull;
   record.type = next.type;
   record.destination = next.destination;
   record.speed = next.speed;
@@ -1100,7 +1315,7 @@ function updateRecordInPlace(record, next) {
   if (record.billboard) {
     record.billboard.position = record.position;
     // Rotation is owned by the projected-rotation pass (updateVisibility).
-    record.billboard.scale = shipScale(record) * (selected ? 1.2 : 1);
+    record.billboard.scale = arrowScale(record) * (selected ? 1.2 : 1);
     const nextIcon = shipIcon(record, selected);
     if (nextIcon !== prevIcon) {
       record.billboard.image = nextIcon;
@@ -1146,6 +1361,7 @@ function normalizeVessel(row) {
     name: String(row.name || row.input_name || row.mmsi || row.input_identifier || 'VESSEL'),
     mmsi: String(row.mmsi || row.input_identifier || '').trim(),
     imo: String(row.imo || ''),
+    hull: vesselHullFromRow(row),
     type: String(row.type_specific || row.type || ''),
     destination: String(row.destination || ''),
     speed: finiteNumber(row.speed),
@@ -1169,11 +1385,98 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
-function shipScale(record) {
-  const speed = Number(record.speed || 0);
-  if (speed >= 18) return 0.78;
-  if (speed >= 8) return 0.68;
-  return 0.6;
+/**
+ * The hull a row published, in the shape the render pass needs.
+ *
+ * THREE published shapes are accepted, in this order, because three proxies
+ * exist and none of them is wrong:
+ *
+ *  1. `row.hull` — an ALREADY-REDUCED block, the shape this function itself
+ *     returns. This is what the bundled dev proxy emits: `vite.config.js`
+ *     calls `aisStaticDimensions()` on the AISStream static message and stores
+ *     the result whole. Reading it first is not an optimisation, it is the
+ *     only lossless path — the alternative was to re-expand the block into
+ *     four offsets in the proxy and re-collapse it here, which invents a
+ *     `to_stern` the reducer had already consumed. Accepting it costs one
+ *     branch; NOT accepting it is a silent total failure, because a row that
+ *     carries `hull` carries neither `to_bow` nor `length`, so every contact
+ *     falls through to the unmeasured chevron while the proxy is doing its job
+ *     correctly. (That is exactly what happened between the proxy landing and
+ *     this branch: 100 % hollow arrows, and an honest legend saying so.)
+ *  2. the four AIS offsets, the primary WIRE form.
+ *  3. `length` / `beam`, read as a fallback because `VITE_AIS_LIVE_API_URL` can
+ *     point at a proxy that has already reduced them, and a proxy that hands
+ *     over a derived length has still MEASURED it. The antenna offsets stay
+ *     null in that case — a centred hull is an approximation the outline
+ *     builder already documents, whereas a fabricated antenna position would
+ *     be a claim.
+ *
+ * The block in (1) is re-validated rather than trusted: a proxy is allowed to
+ * be wrong, and a non-finite or non-positive length must reach the render pass
+ * as "not reported" and not as a zero-length ship.
+ *
+ * @param {Object} row Raw AIS row from the live API.
+ * @returns {{loaM: number|null, beamM: number|null, toBowM: number|null, toPortM: number|null}}
+ */
+export function vesselHullFromRow(row) {
+  const published = row?.hull;
+  if (published && typeof published === 'object') {
+    const loaM = Number(published.loaM);
+    const beamM = Number(published.beamM);
+    const toBowM = Number(published.toBowM);
+    const toPortM = Number(published.toPortM);
+    const hull = {
+      loaM: Number.isFinite(loaM) && loaM > 0 ? loaM : null,
+      beamM: Number.isFinite(beamM) && beamM > 0 ? beamM : null,
+      toBowM: Number.isFinite(toBowM) && toBowM > 0 ? toBowM : null,
+      toPortM: Number.isFinite(toPortM) && toPortM > 0 ? toPortM : null,
+    };
+    if (hull.loaM !== null || hull.beamM !== null) return hull;
+  }
+
+  const quad = vesselHullFromAisDimensions(
+    row?.to_bow ?? row?.toBow,
+    row?.to_stern ?? row?.toStern,
+    row?.to_port ?? row?.toPort,
+    row?.to_starboard ?? row?.toStarboard,
+  );
+  if (quad.loaM !== null || quad.beamM !== null) return quad;
+
+  const loa = Number(row?.length ?? row?.loa);
+  const beam = Number(row?.beam ?? row?.width);
+  const halves = vesselHullFromAisDimensions(
+    Number.isFinite(loa) ? loa / 2 : null,
+    Number.isFinite(loa) ? loa / 2 : null,
+    Number.isFinite(beam) ? beam / 2 : null,
+    Number.isFinite(beam) ? beam / 2 : null,
+  );
+  return { loaM: halves.loaM, beamM: halves.beamM, toBowM: null, toPortM: null };
+}
+
+/**
+ * Billboard scale for one contact — the size channel, at last carrying a size.
+ *
+ * WHAT THIS CHANNEL USED TO CARRY. Three speed buckets: 0.60 under 8 kt, 0.68
+ * under 18, 0.78 above. Undeclared, unlegended, and a violation of B1 twice
+ * over — speed is not an absolute quantity that wants the size channel, and the
+ * three steps were a classification, not a measurement. Speed keeps the two
+ * places it was already readable: the card's `12.4KT` line and the label
+ * priority. The size now carries LENGTH OVERALL (rule A3: one channel, one
+ * information, and the old one is named).
+ *
+ * A contact whose dimensions were never published gets
+ * {@link VESSEL_ARROW_UNMEASURED_SCALE} and, far more importantly, the hollow
+ * dashed chevron from {@link shipIcon} — never a point on the ramp (rule A1).
+ * @param {Object} record Vessel record.
+ * @returns {number} Billboard scale.
+ */
+function arrowScale(record) {
+  return vesselArrowScale(record?.hull?.loaM) ?? VESSEL_ARROW_UNMEASURED_SCALE;
+}
+
+/** True when this contact's length overall was actually published. */
+function hasMeasuredLength(record) {
+  return Number.isFinite(record?.hull?.loaM) && record.hull.loaM > 0;
 }
 
 /**
@@ -1193,25 +1496,305 @@ function vesselCourseDeg(record) {
  * Build (and cache) a chevron/delta-wing SVG data URL tinted for the vessel.
  * The shape points north (up) so billboard rotation maps directly to heading.
  * One icon is generated per color+variant and reused across all billboards.
- * @param {Object} record - Vessel record (drives per-type tint).
+ *
+ * TWO FILLS, TWO CLAIMS. A SOLID chevron means "this hull was measured, and the
+ * mark's area is its length". A HOLLOW, DASHED chevron means the transponder
+ * published no dimensions — 82 % of contacts on the world feed (see
+ * `vesselLabels.js` for the measurement). The dash is the convention this repo
+ * already uses for an unsurveyed quantity (`cctv.js` draws a dashed cone when
+ * the bearing was never recorded); it survives the sensor post-process passes
+ * that flatten hue, and it cannot be confused with a small ship the way a
+ * smaller solid chevron could.
+ * @param {Object} record - Vessel record (drives per-type tint and the fill).
  * @param {boolean} selected - True for the white/brighter selected variant.
  * @returns {string} SVG data URL.
  */
 function shipIcon(record, selected) {
   const cssColor = selected ? '#ffffff' : vesselTypeCss(record.type);
-  const key = `${cssColor}:${selected ? 'selected' : 'normal'}`;
+  const measured = hasMeasuredLength(record);
+  const key = `${cssColor}:${selected ? 'selected' : 'normal'}:${measured ? 'hull' : 'nohull'}`;
   if (shipIconCache.has(key)) return shipIconCache.get(key);
 
   const stroke = selected ? 'rgba(6,26,32,0.95)' : 'rgba(4,18,24,0.9)';
   const strokeWidth = selected ? 1.1 : 0.7;
+  const path = measured
+    ? `<path d="M0,-14 L11,10 L4,7 L0,14 L-4,7 L-11,10 Z" fill="${cssColor}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="round"/>`
+    : `<path d="M0,-14 L11,10 L4,7 L0,14 L-4,7 L-11,10 Z" fill="none" stroke="${cssColor}" stroke-width="2.4" stroke-dasharray="${VESSEL_UNMEASURED_DASH}" stroke-linejoin="round"/>`;
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
     <g transform="translate(16,16)">
-      <path d="M0,-14 L11,10 L4,7 L0,14 L-4,7 L-11,10 Z" fill="${cssColor}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linejoin="round"/>
+      ${path}
     </g>
   </svg>`;
   const icon = 'data:image/svg+xml;base64,' + btoa(svg);
   shipIconCache.set(key, icon);
   return icon;
+}
+
+// ---------------------------------------------------------------------------
+// The hull — world units, under the altitude where it is legible (B2)
+// ---------------------------------------------------------------------------
+
+/**
+ * Pick the contacts that get a real hull this pass, and count what was refused.
+ *
+ * ── The B2 choice, stated ───────────────────────────────────────────────────
+ *
+ * B2 offers two legal ways to put a quantity on the size channel of a globe:
+ * constant pixels, or world units. This regime takes **world units**, and it is
+ * the case the rule calls legitimate: a ship is a physical object, so drawing
+ * it at its physical length means it shrinks with distance exactly as the thing
+ * itself does. Nothing is composed on top — no `scaleByDistance`, no thematic
+ * multiplier. The chevron above it takes the other branch (constant pixels),
+ * and the two never overlap in what they claim: the hull says *how big*, the
+ * chevron says *where and which family*.
+ *
+ * ── What is refused, and why each refusal is counted ────────────────────────
+ *
+ * · No published length or no published beam → no hull. A hull needs both, and
+ *   a fabricated width on a published length is rule A1 in geometry.
+ * · No published heading and no course over ground → no hull. A hull is a
+ *   directional object; drawn pointing north by default it would assert an
+ *   orientation nobody measured. These are counted separately in the legend
+ *   because "we know its size but not which way it points" is a distinct fact
+ *   from "we know nothing".
+ * · Beyond the cap → not drawn, and declared as `n / N` (rule A5). The
+ *   selection criterion is DISTANCE TO THE CAMERA, nearest first, which is the
+ *   only criterion a reader of a port view can predict.
+ *
+ * @param {Array<Object>} records Vessel records.
+ * @param {Object} options
+ * @param {(record: Object) => number} options.distanceFor Camera distance (m).
+ * @param {number} [options.cap] Maximum hulls drawn.
+ * @returns {{hulls: Array<{record: Object, headingDeg: number, distanceM: number}>,
+ *   eligible: number, noHeading: number, cap: number}}
+ */
+export function selectHullContacts(records, { distanceFor, cap = HULL_RENDER_CAP } = {}) {
+  const limit = Number.isFinite(cap) && cap > 0 ? Math.floor(cap) : HULL_RENDER_CAP;
+  const candidates = [];
+  let noHeading = 0;
+
+  for (const record of records || []) {
+    const hull = record?.hull;
+    if (!Number.isFinite(hull?.loaM) || !(hull.loaM > 0)) continue;
+    if (!Number.isFinite(hull?.beamM) || !(hull.beamM > 0)) continue;
+    // Horizon-culled contacts are not in the view; their hull would be built
+    // and then never rasterised.
+    if (record.billboard && record.billboard.show === false) continue;
+    const direction = record.heading ?? record.course;
+    if (!Number.isFinite(direction)) {
+      noHeading += 1;
+      continue;
+    }
+    const distanceM = distanceFor ? Number(distanceFor(record)) : 0;
+    candidates.push({
+      record,
+      headingDeg: direction,
+      distanceM: Number.isFinite(distanceM) ? distanceM : Number.POSITIVE_INFINITY,
+    });
+  }
+
+  candidates.sort((a, b) => a.distanceM - b.distanceM);
+  return {
+    hulls: candidates.slice(0, limit),
+    eligible: candidates.length,
+    noHeading,
+    cap: limit,
+  };
+}
+
+/**
+ * A cheap identity for the hull set, so a camera orbit does not rebuild it.
+ *
+ * Positions only move on a poll (60 s) or on the one-shot geoid re-floor, which
+ * is what `positionRev` tracks; heading is quantised to
+ * {@link HULL_HEADING_QUANTUM_DEG}. Orbiting a moored harbour therefore
+ * produces the same signature every pass and zero geometry work.
+ * @param {Array<{record: Object, headingDeg: number}>} hulls
+ * @param {number} positionRev Monotonic revision of the record positions.
+ * @returns {string}
+ */
+export function hullSetSignature(hulls, positionRev) {
+  const parts = new Array(hulls.length);
+  for (let i = 0; i < hulls.length; i += 1) {
+    const { record, headingDeg } = hulls[i];
+    const quantised = Math.round(headingDeg / HULL_HEADING_QUANTUM_DEG);
+    parts[i] = `${record.mmsi || record.name}@${quantised}`;
+  }
+  return `${positionRev}|${parts.join(',')}`;
+}
+
+/**
+ * Camera height (m) above the WGS84 ellipsoid, or null when unavailable.
+ * @param {Object} camera Cesium camera (or a test double).
+ * @returns {number|null}
+ */
+function cameraHeightM(camera) {
+  const position = camera?.positionWC || camera?.position;
+  if (!position) return null;
+  const carto = Cesium.Ellipsoid.WGS84.cartesianToCartographic(position);
+  return carto ? carto.height : null;
+}
+
+/** The altitude threshold for this scene, derived from its actual optics. */
+function sceneHullAltitudeM(scene, camera) {
+  const canvasPx = Number(scene?.canvas?.clientHeight) || HULL_FALLBACK_CANVAS_PX;
+  const fovy = Number(camera?.frustum?.fovy);
+  return hullAltitudeM(canvasPx, Number.isFinite(fovy) && fovy > 0 ? fovy : undefined);
+}
+
+/**
+ * Build one batched primitive for the selected hulls.
+ *
+ * ONE primitive for every hull, not one per ship. Per-instance colour works
+ * here precisely because this is NOT a `GroundPrimitive`: a classification
+ * primitive colours by each instance's bounding RECTANGLE (the trap this repo
+ * has already been bitten by), while an ordinary polygon primitive owns its
+ * geometry and colours per instance normally.
+ *
+ * MEASURED COST, on this machine, warm: 400 hulls of five vertices each build
+ * in 2.7 ms median (min 2.15, max 3.34 over seven runs); 200 in 1.8 ms, 800 in
+ * 4.5 ms. The geometry is 2 000 vertices and 3 600 indices at the 400 cap —
+ * three orders of magnitude under the 12 000-row render budget the layer
+ * already carries. Combined with the signature gate, a stationary port view
+ * costs nothing per frame and a moving one costs 2.7 ms every 800 ms.
+ *
+ * `allowPicking: false` is deliberate: the chevron remains the only pickable
+ * mark, so the selection, camera-transfer and card paths are untouched.
+ *
+ * OCCLUSION (rule F1, regime (a)): the hull is depth-tested like the physical
+ * object it is. It can be hidden by a pier or a hull in front of it, which is
+ * true, and the always-visible chevron above it means no contact is ever lost.
+ * @param {Array<{record: Object, headingDeg: number}>} hulls
+ * @returns {Object|null} A Cesium.Primitive, or null when nothing built.
+ */
+function buildHullPrimitive(hulls) {
+  const instances = [];
+  for (const item of hulls) {
+    const offsets = hullOutlineOffsetsM(item.record.hull, item.headingDeg);
+    if (!offsets || !item.record.position) continue;
+    const frame = Cesium.Transforms.eastNorthUpToFixedFrame(item.record.position);
+    const positions = offsets.map(([east, north]) => Cesium.Matrix4.multiplyByPoint(
+      frame,
+      new Cesium.Cartesian3(east, north, 0),
+      new Cesium.Cartesian3(),
+    ));
+    let geometry;
+    try {
+      geometry = Cesium.PolygonGeometry.createGeometry(new Cesium.PolygonGeometry({
+        polygonHierarchy: new Cesium.PolygonHierarchy(positions),
+        perPositionHeight: true,
+        vertexFormat: Cesium.PerInstanceColorAppearance.FLAT_VERTEX_FORMAT,
+      }));
+    } catch {
+      continue; // a degenerate outline is skipped, never approximated
+    }
+    if (!geometry) continue;
+    const color = Cesium.Color
+      .fromCssColorString(vesselTypeCss(item.record.type))
+      .withAlpha(HULL_ALPHA);
+    instances.push(new Cesium.GeometryInstance({
+      geometry,
+      attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor(color) },
+    }));
+  }
+  if (!instances.length) return null;
+  return new Cesium.Primitive({
+    geometryInstances: instances,
+    appearance: new Cesium.PerInstanceColorAppearance({
+      flat: true,
+      translucent: true,
+      closed: false,
+    }),
+    asynchronous: false,
+    allowPicking: false,
+  });
+}
+
+/** Drop the hull primitive from the scene, if one is mounted. */
+function removeHullPrimitive() {
+  const scene = state.viewer?.scene;
+  if (state.hullPrimitive && scene && !scene.isDestroyed?.()) {
+    scene.primitives.remove(state.hullPrimitive);
+  }
+  state.hullPrimitive = null;
+  state.hullSignature = '';
+}
+
+/**
+ * Keep the hull layer in step with the camera, on the existing throttled
+ * visibility pass. Never called per frame.
+ */
+function maintainHullPrimitive() {
+  const viewer = state.viewer;
+  const scene = viewer?.scene;
+  const camera = viewer?.camera;
+  if (!state.enabled || !scene || !camera || typeof scene.primitives?.add !== 'function') {
+    return;
+  }
+
+  const altitudeM = sceneHullAltitudeM(scene, camera);
+  const height = cameraHeightM(camera);
+  state.hullTally.altitudeM = altitudeM;
+
+  if (height === null || height > altitudeM) {
+    // Above the threshold the hull is under a pixel wide; the chevron already
+    // carries the length, so the geometry is dropped rather than drawn as a
+    // smear the reader would try to measure.
+    state.hullTally.active = false;
+    state.hullTally.drawn = 0;
+    state.hullTally.eligible = 0;
+    state.hullTally.noHeading = 0;
+    removeHullPrimitive();
+    return;
+  }
+
+  const cameraPosition = camera.positionWC;
+  const selection = selectHullContacts(state.vesselRecords, {
+    distanceFor: (record) => Cesium.Cartesian3.distance(
+      cameraPosition,
+      record.billboard?.position || record.position,
+    ),
+  });
+  state.hullTally.active = true;
+  state.hullTally.eligible = selection.eligible;
+  state.hullTally.noHeading = selection.noHeading;
+
+  const signature = hullSetSignature(selection.hulls, state.hullPositionRev);
+  if (signature === state.hullSignature && state.hullPrimitive) {
+    state.hullTally.drawn = selection.hulls.length;
+    return;
+  }
+
+  removeHullPrimitive();
+  const primitive = buildHullPrimitive(selection.hulls);
+  state.hullTally.drawn = primitive ? selection.hulls.length : 0;
+  if (!primitive) return;
+  primitive.show = state.billboardCollection ? state.billboardCollection.show : true;
+  scene.primitives.add(primitive);
+  state.hullPrimitive = primitive;
+  state.hullSignature = signature;
+}
+
+/**
+ * Count what the size channel is currently able to say, over the records on
+ * screen. One pass, called from `getRowControls` at panel cadence.
+ * @param {Array<Object>} records
+ * @returns {{measured: number, unmeasured: number, clampedBelow: number, clampedAbove: number}}
+ */
+export function tallyVesselSizes(records) {
+  const tally = { measured: 0, unmeasured: 0, clampedBelow: 0, clampedAbove: 0 };
+  for (const record of records || []) {
+    const loaM = record?.hull?.loaM;
+    if (!Number.isFinite(loaM) || loaM <= 0) {
+      tally.unmeasured += 1;
+      continue;
+    }
+    tally.measured += 1;
+    const clamp = vesselArrowClamp(loaM);
+    if (clamp === 'below') tally.clampedBelow += 1;
+    else if (clamp === 'above') tally.clampedAbove += 1;
+  }
+  return tally;
 }
 
 function installRuntime(viewer) {
@@ -1231,7 +1814,13 @@ function updateVisibility(force = false) {
   if (focusPass) state.lastFocusUpdate = now;
   if (!state.vesselRecords.length) {
     // No records — flush any lingering card entries (vanished-feed case).
-    if (regularPass) updateClusteredLabels([]);
+    if (regularPass) {
+      updateClusteredLabels([]);
+      state.hullTally.drawn = 0;
+      state.hullTally.eligible = 0;
+      state.hullTally.noHeading = 0;
+      removeHullPrimitive();
+    }
     if (focusPass) state.activeFocusCount = 0;
     return;
   }
@@ -1262,6 +1851,8 @@ function updateVisibility(force = false) {
       if (visible) labelCandidates.push(record);
     }
     updateClusteredLabels(labelCandidates);
+    // After visibility, so a horizon-culled contact never enters the hull set.
+    maintainHullPrimitive();
   }
   if (focusPass && scene && camera) {
     const result = applyVesselFocusDeemphasis({
@@ -1574,7 +2165,7 @@ function selectVessel(record) {
   record.missedRefreshes = 0;
   if (record.billboard) {
     record.billboard.image = shipIcon(record, true);
-    record.billboard.scale = shipScale(record) * 1.2;
+    record.billboard.scale = arrowScale(record) * 1.2;
   }
   // Rebuild the card set immediately so the full-detail card appears on the
   // click, not up to VISIBILITY_UPDATE_MS later.
@@ -1621,6 +2212,9 @@ function refloorVesselRecords() {
     record.position = Cesium.Cartesian3.fromDegrees(record.lon, record.lat, heightM);
     if (record.billboard) record.billboard.position = record.position;
   }
+  // Hull outlines are built in each record's local frame, so a datum shift
+  // invalidates every one of them.
+  state.hullPositionRev += 1;
 }
 
 /**
@@ -1678,10 +2272,10 @@ async function backfillVesselTrail(mmsi, token) {
   }
   if (!older.length) return;
 
-  state.trailPositions = older.concat(state.trailPositions);
-  if (state.trailPositions.length > TRAIL_MAX_POINTS) {
-    state.trailPositions = state.trailPositions.slice(state.trailPositions.length - TRAIL_MAX_POINTS);
-  }
+  state.trailPositions = trimTrailToGroundLength(
+    older.concat(state.trailPositions),
+    { maxPoints: TRAIL_MAX_POINTS },
+  );
   if (state.trail) state.trail.setPositions(state.trailPositions);
 }
 
@@ -1697,7 +2291,10 @@ function appendSelectedVesselTrailFix(record) {
   const last = state.trailPositions[state.trailPositions.length - 1];
   if (last && Cesium.Cartesian3.distance(last, next) <= TRAIL_MIN_MOVE_M) return;
   state.trailPositions.push(next);
-  if (state.trailPositions.length > TRAIL_MAX_POINTS) state.trailPositions.shift();
+  state.trailPositions = trimTrailToGroundLength(
+    state.trailPositions,
+    { maxPoints: TRAIL_MAX_POINTS },
+  );
   state.trail.setPositions(state.trailPositions);
 }
 
@@ -1757,7 +2354,7 @@ function clearSelection({ preserveTrail = false, evicted = false } = {}) {
   const record = state.selectedRecord;
   if (record?.billboard) {
     record.billboard.image = shipIcon(record, false);
-    record.billboard.scale = shipScale(record);
+    record.billboard.scale = arrowScale(record);
   }
   state.selectedRecord = null;
   // Drop the full-detail card right away (no-op when the layer is disabled —
@@ -1915,10 +2512,21 @@ function formatHeading(heading) {
   return Number.isFinite(heading) ? `${Math.round(heading)}DEG` : '--DEG';
 }
 
+/**
+ * The instant this position was reported, or the fact that it was not stated.
+ *
+ * A missing or unparseable timestamp used to print "POS: LIVE" — the ABSENCE
+ * of an instant rendered as the claim of maximum freshness, in the slot whose
+ * whole job is to date the fix (CARTOGRAPHIE A1/E3). AIS position reports do
+ * arrive without a usable UTC field; the honest answer is that we do not know
+ * when this one was taken.
+ * @param {{lastPositionUtc?: string|number}} record Vessel record.
+ * @returns {string} `POS: 14:32:07Z`, or `POS: TIME UNKNOWN`.
+ */
 function formatPositionTime(record) {
-  if (!record.lastPositionUtc) return 'POS: LIVE';
+  if (!record.lastPositionUtc) return 'POS: TIME UNKNOWN';
   const date = new Date(record.lastPositionUtc);
-  if (Number.isNaN(date.getTime())) return 'POS: LIVE';
+  if (Number.isNaN(date.getTime())) return 'POS: TIME UNKNOWN';
   return `POS: ${date.toISOString().slice(11, 19)}Z`;
 }
 
@@ -1926,6 +2534,9 @@ function setVisible(show) {
   if (state.billboardCollection) {
     state.billboardCollection.show = show;
   }
+  // `show` on the mounted primitive, never remove-and-rebuild: G2's rule is
+  // that a visibility toggle must not be a destructor.
+  if (state.hullPrimitive) state.hullPrimitive.show = show;
   _vesselOverlayHost.setVisible(VESSEL_OVERLAY_SOURCE_ID, show);
 }
 
@@ -1972,6 +2583,10 @@ function resetState() {
   state.trailPositions = [];
   state.trailMmsi = null;
   state.trailBackfillToken = 0;
+  state.hullPrimitive = null;
+  state.hullSignature = '';
+  state.hullPositionRev = 0;
+  state.hullTally = { active: false, drawn: 0, eligible: 0, noHeading: 0, altitudeM: null };
 }
 
 /**
@@ -2106,4 +2721,40 @@ export function _getVesselStateForTest() {
     trailPositionCount: state.trailPositions.length,
     vesselCount: state.vesselMap.size,
   };
+}
+
+/**
+ * Read the hull pass's own state. A SEPARATE seam from
+ * {@link _getVesselStateForTest} on purpose: the trail-lifecycle tests compare
+ * that object by deep equality, so widening it would make every unrelated
+ * addition a test failure.
+ * @returns {{drawn: number, eligible: number, noHeading: number, active: boolean,
+ *   signature: string, mounted: boolean, positionRev: number}}
+ */
+export function _getVesselHullStateForTest() {
+  return {
+    drawn: state.hullTally.drawn,
+    eligible: state.hullTally.eligible,
+    noHeading: state.hullTally.noHeading,
+    active: state.hullTally.active,
+    altitudeM: state.hullTally.altitudeM,
+    signature: state.hullSignature,
+    mounted: Boolean(state.hullPrimitive),
+    positionRev: state.hullPositionRev,
+  };
+}
+
+/** Drive the production hull pass against a test-owned viewer. Test-only seam. */
+export function _maintainHullPrimitiveForTest() {
+  maintainHullPrimitive();
+}
+
+/** Read a record's resolved billboard scale through the production path. */
+export function _arrowScaleForTest(record) {
+  return arrowScale(record);
+}
+
+/** Resolve a record's chevron artwork through the production path. */
+export function _shipIconForTest(record, selected = false) {
+  return shipIcon(record, selected);
 }

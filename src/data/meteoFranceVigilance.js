@@ -719,7 +719,10 @@ export function createMeteoFranceVigilanceLayer({
      * @returns {{chips: Array<object>, legend: Array<object>}}
      */
     getRowControls() {
-      return { chips: [], legend: vigilanceLevelLegend(_summary.byKey) };
+      // `surfaceFill` marks this legend as keying a ground-classified AREA
+      // FILL, so the manager can add the one shared note about the drape over
+      // the photorealistic mesh (see surfaceFillNotice.js).
+      return { chips: [], legend: vigilanceLevelLegend(_summary.byKey), surfaceFill: true };
     },
 
     getStats() {

@@ -43,7 +43,20 @@ import sitadelFranceLayer, {
   sitadelPermitRecords,
   sitadelPermitSize,
   sitadelRingPositions,
+  sitadelRingPositionsAtHeight,
   sitadelViewport,
+  SITADEL_METRES_PER_DWELLING,
+  SITADEL_PRISM_MAX_M,
+  SITADEL_NO_HEIGHT_DEMOLITION,
+  SITADEL_NO_HEIGHT_DWELLINGS,
+  sitadelHeightLegend,
+  sitadelHeightRefusal,
+  sitadelParcelFloorM,
+  sitadelPrismClipped,
+  sitadelPrismHeightM,
+  _drawSitadelSurfacesForTest,
+  _sitadelColdFloorPendingForTest,
+  _sitadelPrismTallyForTest,
   _clearSitadelSelectionForTest,
   _selectSitadelForTest,
   _setSitadelStateForTest,
@@ -58,10 +71,13 @@ import sitadelFranceLayer, {
 } from './sitadelFrance.js';
 import {
   SITADEL_BANDS,
+  SITADEL_SIZE_CEILING_LGT,
   communeCadastreCodes,
   indexCadastreParcels,
   projectSitadelCommune,
 } from './sitadelFeed.js';
+import { _clearMeshFloorCellsForTest, reportMeshFloorCell } from './groundFloor.js';
+import * as Cesium from 'cesium';
 
 // Cesium reads the aliased line-width range off a live WebGL context, and there
 // is none under `node --test`, so `ContextLimits._maximumAliasedLineWidth` sits
@@ -672,4 +688,238 @@ test('a ring is closed once, and a degenerate ring draws nothing', () => {
   assert.equal(sitadelRingPositions(null), null);
   assert.equal(sitadelRingPositions([[0, 0], [NaN, 1], [1, 1]]), null, 'a NaN vertex must not be drawn');
   assert.ok(SITADEL_FILL_ALPHA > 0 && SITADEL_FILL_ALPHA < 1);
+});
+
+// ── The parcel as a volume ──────────────────────────────────────────────────
+//
+// The fourth property, and the one this section is about: the HEIGHT of a plot
+// is the number of dwellings the register authorised on it, and nothing else.
+// A plot with no height is a plot whose file counts no dwelling — never a plot
+// whose count went missing between the feed and the screen, and never a zero
+// drawn as an invisible film. The tests below close the three doors: the
+// scale, the two refusals, and the ground the prism has to stand on.
+
+/** Warm the shared floor grid over the fixture pack so prisms can be built. */
+function warmFixtureFloors(pack, heightM = 30) {
+  for (const parcel of pack.parcels) {
+    if (Array.isArray(parcel?.p)) reportMeshFloorCell(parcel.p[1], parcel.p[0], heightM);
+  }
+}
+
+test('height is linear in dwellings, and the ceiling is the feed’s own measured one', () => {
+  // Linear, not square-rooted: a prism encodes through a LENGTH, so twice as
+  // tall has to be twice as many. The dot's sqrt is right for a disc and would
+  // be wrong here.
+  assert.equal(sitadelPrismHeightM({ f: 'lgt', lgt: 1 }), 1 * SITADEL_METRES_PER_DWELLING);
+  assert.equal(sitadelPrismHeightM({ f: 'lgt', lgt: 27 }), 27 * SITADEL_METRES_PER_DWELLING);
+  assert.equal(
+    sitadelPrismHeightM({ f: 'lgt', lgt: 100 }) / sitadelPrismHeightM({ f: 'lgt', lgt: 50 }),
+    2,
+    'twice the dwellings is twice the height',
+  );
+  // The dot and the prism saturate on the same measured number.
+  assert.equal(SITADEL_PRISM_MAX_M, SITADEL_SIZE_CEILING_LGT * SITADEL_METRES_PER_DWELLING);
+  assert.equal(sitadelPrismHeightM({ f: 'lgt', lgt: 553 }), SITADEL_PRISM_MAX_M);
+  assert.equal(sitadelPermitSize({ f: 'lgt', lgt: 553 }), SITADEL_POINT_MAX_PX);
+  // Clipping is declared, and the card keeps the true count.
+  assert.equal(sitadelPrismClipped({ f: 'lgt', lgt: 553 }), true);
+  assert.equal(sitadelPrismClipped({ f: 'lgt', lgt: 200 }), false);
+  assert.equal(sitadelPrismClipped({ f: 'dem' }), false);
+});
+
+test('a file that counts no dwelling gets no height, and says which kind it is', () => {
+  // Structural: 33 columns on the permis de démolir file and not one of them
+  // counts a dwelling. Not a fallback, and not a zero.
+  assert.equal(sitadelHeightRefusal({ f: 'dem', lgt: null }), SITADEL_NO_HEIGHT_DEMOLITION);
+  assert.equal(sitadelPrismHeightM({ f: 'dem', lgt: null }), 0);
+  // `sitadelFeed.js` reads `finiteOrNull(NB_LGT_TOT_CREES) ?? 0`, so a
+  // published zero and a blank cell arrive here as the same number and this
+  // layer must not claim to tell them apart.
+  assert.equal(sitadelHeightRefusal({ f: 'lgt', lgt: 0 }), SITADEL_NO_HEIGHT_DWELLINGS);
+  assert.equal(sitadelHeightRefusal({ f: 'lgt', lgt: null }), SITADEL_NO_HEIGHT_DWELLINGS);
+  assert.equal(sitadelHeightRefusal({ f: 'lgt', lgt: 1 }), null);
+  // And the two are told apart on screen by the colour they already had.
+  assert.equal(sitadelPermitColor({ b: 'demolition' }), '#c92a2a');
+  assert.notEqual(sitadelPermitColor({ b: 'termine' }), sitadelPermitColor({ b: 'demolition' }));
+});
+
+test('a prism stands on the parcel’s own resolved ground, or it does not stand', () => {
+  _clearMeshFloorCellsForTest();
+  const parcel = PACK.parcels.find((entry) => Array.isArray(entry?.p));
+  // Cold is NULL and never 0: the ellipsoid is 44–55 m under metropolitan
+  // France, and a prism based there is a hole rather than a building.
+  assert.equal(sitadelParcelFloorM(parcel), null);
+  assert.equal(sitadelParcelFloorM({ p: null }), null);
+  assert.equal(sitadelParcelFloorM(null), null);
+  reportMeshFloorCell(parcel.p[1], parcel.p[0], 41.5);
+  assert.equal(sitadelParcelFloorM(parcel), 41.5);
+  _clearMeshFloorCellsForTest();
+});
+
+test('the Nantes pack draws ten volumes and four flat plots', () => {
+  _clearMeshFloorCellsForTest();
+  warmFixtureFloors(PACK);
+  const viewer = fakeViewer();
+  _setSitadelStateForTest({ payload: PACK, viewer });
+  const { tally, prisms, fills } = _drawSitadelSurfacesForTest(PACK);
+
+  // Measured on the shipped fixture: nine placed permits over fourteen parcels.
+  // Two demolitions hold three plots between them and one permit creating zero
+  // dwellings holds a fourth; the remaining ten plots stand up.
+  assert.equal(tally.parcels, 14);
+  assert.equal(tally.prisms, 10);
+  assert.equal(tally.demolition, 3);
+  assert.equal(tally.noDwellings, 1);
+  assert.equal(tally.coldFloor, 0);
+  assert.equal(tally.prisms + tally.demolition + tally.noDwellings + tally.coldFloor, tally.parcels);
+  // The tallest permit in the pack creates 27 dwellings; nothing is clipped.
+  assert.equal(tally.tallestM, 27 * SITADEL_METRES_PER_DWELLING);
+  assert.equal(tally.clipped, 0);
+
+  // The wash stays under EVERY parcel, prism or not — at the top of this
+  // layer's altitude range a 1 m prism is 0.05 px and the wash is all there is.
+  assert.ok(fills, 'the ground wash is still drawn');
+  assert.ok(prisms, 'and the prisms are a second batch');
+  // A prism is NOT a ground primitive: it carries no classification type, which
+  // is the whole reason it is not draped on the photoreal mesh.
+  assert.equal(prisms.classificationType, undefined);
+  assert.equal(viewer.primitives.includes(prisms), true, 'in the ordinary primitive list');
+  assert.equal(viewer.added.includes(prisms), false, 'never in groundPrimitives');
+  assert.equal(viewer.added.includes(fills), true);
+
+  // Opaque, because a translucent pass writes no depth and a street of
+  // see-through boxes reads as one mass.
+  assert.equal(prisms.appearance.translucent, false);
+  assert.equal(prisms.appearance.closed, true);
+  for (const instance of prisms.geometryInstances) {
+    const [r, g, b, a] = instance.attributes.color.value;
+    assert.equal(a, 255, 'every prism instance is fully opaque');
+    assert.ok(r + g + b > 0);
+  }
+  _clearSitadelSelectionForTest();
+  _clearMeshFloorCellsForTest();
+});
+
+test('a cold ground leaves the plot flat and asks again, once', () => {
+  _clearMeshFloorCellsForTest();
+  const viewer = fakeViewer();
+  _setSitadelStateForTest({ payload: PACK, viewer });
+  const { tally, prisms } = _drawSitadelSurfacesForTest(PACK);
+  // Nothing is extruded from the ellipsoid. Every plot that WOULD stand up is
+  // counted as waiting, not as a class of its own.
+  assert.equal(prisms, null);
+  assert.equal(tally.prisms, 0);
+  assert.equal(tally.coldFloor, 10);
+  assert.equal(_sitadelColdFloorPendingForTest(), true, 'one rebuild is armed');
+  // Once per commune: a genuinely unreachable terrain proxy costs one extra
+  // rebuild and not a loop.
+  _drawSitadelSurfacesForTest(PACK);
+  assert.equal(_sitadelColdFloorPendingForTest(), false);
+  _clearSitadelSelectionForTest();
+  assert.equal(_sitadelColdFloorPendingForTest(), false, 'teardown disarms the timer');
+  _clearMeshFloorCellsForTest();
+});
+
+test('the height key publishes the scale, and the count of what has none', () => {
+  const legend = sitadelHeightLegend({
+    parcels: 14, prisms: 10, clipped: 1, tallestM: 200, demolition: 3, noDwellings: 1, coldFloor: 0,
+  });
+  const scale = legend[0];
+  // The scale row is not a colour, so it carries none — the map legend renders
+  // it as an aligned "not drawn here" line. Without it the relief is a shape
+  // nobody can read a number off (D1).
+  assert.equal(scale.color, null);
+  assert.match(scale.label, /1 logement = 1 m/);
+  assert.equal(scale.count, 10);
+  assert.match(scale.blurb, /200 m/);
+  assert.match(scale.blurb, /écrêtée/, 'clipping is declared where the scale is (A5)');
+
+  const flat = legend[1];
+  assert.equal(flat.count, 4, 'three demolitions and one permit creating nothing');
+  assert.match(flat.label, /Sans hauteur/);
+  assert.match(flat.blurb, /33 colonnes/);
+  assert.match(flat.blurb, /confondues/, 'the published zero and the blank cell are not separated');
+
+  // The transient row only appears while something is still waiting for ground.
+  assert.equal(legend.length, 2);
+  const waiting = sitadelHeightLegend({
+    parcels: 4, prisms: 0, clipped: 0, tallestM: 0, demolition: 0, noDwellings: 0, coldFloor: 4,
+  });
+  assert.equal(waiting.length, 1);
+  assert.match(waiting[0].label, /Sol pas encore résolu/);
+  assert.match(waiting[0].blurb, /transitoire/);
+  assert.deepEqual(sitadelHeightLegend(null), []);
+});
+
+test('the row legend carries the height key and declares the drape only while a plot is flat', () => {
+  _clearMeshFloorCellsForTest();
+  warmFixtureFloors(PACK);
+  const viewer = fakeViewer();
+  _setSitadelStateForTest({ payload: PACK, viewer });
+  _drawSitadelSurfacesForTest(PACK);
+  const controls = _sitadelRowControlsForTest();
+  const scale = controls.legend.find((entry) => /1 logement = 1 m/.test(entry.label));
+  assert.ok(scale, 'the scale is in the key that is visible with the map');
+  // Four plots are still ground-classified washes, so the photoreal drape
+  // notice applies — see surfaceFillNotice.js.
+  assert.equal(controls.surfaceFill, true);
+  // Every band row still carries its own colour and count.
+  for (const entry of controls.legend) {
+    if (entry.color === null) continue;
+    assert.match(entry.color, /^#[0-9a-f]{6}$/i);
+    assert.ok(Number.isFinite(entry.count));
+  }
+  // And the row line says the scale out loud, where nobody has to open a panel.
+  const stats = _sitadelStatsForTest();
+  assert.equal(stats.prisms, 10);
+  assert.equal(stats.metresPerDwelling, SITADEL_METRES_PER_DWELLING);
+  assert.equal(stats.prismCeilingM, SITADEL_PRISM_MAX_M);
+  assert.match(norm(stats.loadingLabel), /10 parcelles en volume/);
+  assert.match(norm(stats.loadingLabel), /1 logement = 1 m, plafond 200 m/);
+  assert.match(norm(stats.loadingLabel), /4 à plat/);
+  _clearSitadelSelectionForTest();
+  _clearMeshFloorCellsForTest();
+});
+
+test('a ring can be lifted to the roof, which is where a selection has to go', () => {
+  const ring = [[-1.55, 47.21], [-1.549, 47.21], [-1.549, 47.211], [-1.55, 47.211], [-1.55, 47.21]];
+  const lifted = sitadelRingPositionsAtHeight(ring, 60);
+  assert.equal(lifted.length, 4, 'the repeated closing vertex is dropped, as on the ground');
+  assert.equal(sitadelRingPositions(ring).length, 4);
+  const carto = Cesium.Cartographic.fromCartesian(lifted[0]);
+  assert.ok(Math.abs(carto.height - 60) < 0.01);
+  assert.equal(sitadelRingPositionsAtHeight(ring, Number.NaN), null);
+  assert.equal(sitadelRingPositionsAtHeight([[0, 0]], 10), null);
+});
+
+test('selecting an extruded plot rings its roof, not the ground under an opaque box', () => {
+  _clearMeshFloorCellsForTest();
+  warmFixtureFloors(PACK);
+  const host = recordingHost();
+  const viewer = fakeViewer();
+  _setSitadelStateForTest({ payload: PACK, overlayHost: host, viewer });
+  _drawSitadelSurfacesForTest(PACK);
+  const beforeWorld = viewer.primitives.length;
+  const beforeGround = viewer.added.length;
+  // The 27-dwelling permit — the tallest in the pack, and the one whose ground
+  // ring would be entirely hidden by its own prism.
+  const tall = _sitadelRecordIdsForTest()
+    .map((id) => _sitadelRecordForTest(id))
+    .find((record) => record.permit.lgt === 27);
+  _selectSitadelForTest(tall.id);
+  assert.equal(_sitadelSelectedIdForTest(), tall.id);
+  assert.equal(viewer.primitives.length, beforeWorld + 1, 'the ring is a world primitive');
+  assert.equal(viewer.added.length, beforeGround, 'and nothing new was clamped to the ground');
+
+  // A demolition has no prism, so its ring goes back on the ground where it
+  // belongs — one selection, two placements, decided by the same height rule.
+  const flat = _sitadelRecordIdsForTest()
+    .map((id) => _sitadelRecordForTest(id))
+    .find((record) => record.permit.f === 'dem');
+  _selectSitadelForTest(flat.id);
+  assert.equal(viewer.primitives.length, beforeWorld, 'the roof ring is gone');
+  assert.equal(viewer.added.length, beforeGround + 1, 'and a ground ring took its place');
+
+  _clearSitadelSelectionForTest();
+  _clearMeshFloorCellsForTest();
 });

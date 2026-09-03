@@ -1,8 +1,10 @@
 // src/data/franceEnergy.test.mjs
 // Covers the éCO2mix LAYER: the région → département grouping, the inverted
-// sign convention that decides who is painted which colour, Corsica's
-// permanent exclusion, the border-arc direction, and the lifecycle. The
-// upstream dataset shape is pinned separately in eco2mixFeed.test.mjs.
+// sign convention that decides which way a prism is coloured, the frozen
+// height domain, the three marks A1 requires (prism / flat zero / striped
+// absence), Corsica's permanent exclusion, the border-arc direction, and the
+// lifecycle. The upstream dataset shape is pinned separately in
+// eco2mixFeed.test.mjs, and the prism grammar itself in choroplethPrism.test.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -13,9 +15,10 @@ import {
   BORDER_ANCHORS,
   ENERGY_OVERLAY_COHORT_LIMIT,
   ENERGY_OVERLAY_COLLISION_CAPACITY,
+  ENERGY_PRISM_DOMAIN_MAX_MW,
+  ENERGY_PRISM_SCALE,
   REGION_DEPARTEMENTS,
   UNCOVERED_REGIONS,
-  balanceLegend,
   balanceStyle,
   borderLabelText,
   buildBorderArcs,
@@ -23,15 +26,26 @@ import {
   createFranceEnergyLayer,
   departementRegionIndex,
   energyClassificationTypeForStack,
+  energyPrismLegend,
+  energyPrismRow,
   formatMegawatts,
   greatCircleArc,
   mapAnalystRecord,
   regionAnchor,
+  regionLabelHeightM,
   regionLabelText,
   selectEnergyOverlayCohort,
   summarizeNational,
 } from './franceEnergy.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
+import {
+  PRISM_BODY_ALPHA,
+  PRISM_MAX_HEIGHT_M,
+  PRISM_MIN_HEIGHT_M,
+  PRISM_NO_RATIO_COLOR,
+  PRISM_TOP_ALPHA,
+  prismApparentPx,
+} from './choroplethPrism.js';
 import { projectEco2mix } from './eco2mixFeed.js';
 
 const BUNDLED = JSON.parse(readFileSync(
@@ -88,29 +102,121 @@ test('POSITIVE netPhysical is an IMPORTER — the inverted convention', () => {
   assert.equal(BALANCE_STYLES.exporter.verb, 'EXPORTE');
 });
 
-test('a balance inside the deadband, or absent, is drawn as nothing', () => {
-  assert.equal(balanceStyle(0, 5000), null);
-  assert.equal(balanceStyle(BALANCE_DEADBAND_MW - 0.001, 5000), null);
+test('the deadband stops claiming a DIRECTION, not a measurement', () => {
+  // The old contract returned null inside the deadband, which put "éCO2mix
+  // published nothing" and "éCO2mix published zero" behind one absence — A1,
+  // and far more dangerous now that absence means "no prism at all".
+  assert.equal(balanceStyle(0, 5000).style.key, 'balanced');
+  assert.equal(balanceStyle(BALANCE_DEADBAND_MW - 0.001, 5000).style.key, 'balanced');
+  assert.equal(balanceStyle(-BALANCE_DEADBAND_MW + 0.001, 5000).style.key, 'balanced');
+  assert.equal(balanceStyle(BALANCE_DEADBAND_MW, 5000).style.key, 'importer');
+  assert.equal(balanceStyle(-BALANCE_DEADBAND_MW, 5000).style.key, 'exporter');
+  // Null now means UNMEASURED and nothing else.
   assert.equal(balanceStyle(null, 5000), null);
   assert.equal(balanceStyle(undefined, 5000), null);
   assert.equal(balanceStyle(Number.NaN, 5000), null);
-  assert.ok(balanceStyle(BALANCE_DEADBAND_MW, 5000));
 });
 
-test('the fill alpha ramps on the ratio to LOAD, not on the field maximum', () => {
-  // Normalising against the current maximum would repaint every région every
-  // time one of them moved, and would make two snapshots incomparable.
-  const small = balanceStyle(-100, 10_000);
+test('the ratio the fill alpha used to carry survives as a number', () => {
+  // A3: alpha ramped 0.12 → 0.52 on |balance| / load. It carries nothing now,
+  // but the variable is not lost — it travels to the analyst record.
   const large = balanceStyle(-7781, 6448);
-  assert.ok(large.alpha > small.alpha);
   assert.ok(large.ratio > 1.2 && large.ratio < 1.25);
-  // Saturation clamps rather than clipping to a flat country-wide colour.
-  const absurd = balanceStyle(-100_000, 1000);
-  assert.equal(absurd.alpha, balanceStyle(-1500, 1000).alpha);
-  // A missing load must not produce NaN alpha.
-  const noLoad = balanceStyle(-500, null);
-  assert.equal(noLoad.ratio, 0);
-  assert.ok(Number.isFinite(noLoad.alpha));
+  assert.equal(large.alpha, undefined, 'alpha is not a channel any more');
+  // A missing load must not produce NaN.
+  assert.equal(balanceStyle(-500, null).ratio, 0);
+  assert.equal(balanceStyle(-500, 0).ratio, 0);
+});
+
+// ── The prism ───────────────────────────────────────────────────────────────
+
+test('the height domain is a frozen literal, and it is not the sample', () => {
+  // C1. The largest balance ever measured here is 7 781 MW; the domain is
+  // 12 000, deliberately above the fleet's plausible maximum, so a cold day
+  // does not silently rescale the country.
+  assert.equal(ENERGY_PRISM_SCALE.domainMax, ENERGY_PRISM_DOMAIN_MAX_MW);
+  assert.equal(ENERGY_PRISM_DOMAIN_MAX_MW, 12_000);
+  assert.equal(ENERGY_PRISM_SCALE.domainMin, 0);
+  assert.equal(ENERGY_PRISM_SCALE.maxHeightM, PRISM_MAX_HEIGHT_M);
+  const observed = Math.max(...PAYLOAD.regions.map((r) => Math.abs(r.netPhysical)));
+  assert.ok(observed < ENERGY_PRISM_DOMAIN_MAX_MW, `observed max ${observed}`);
+  assert.ok(Object.isFrozen(ENERGY_PRISM_SCALE));
+});
+
+test('the scale is LINEAR, and the measurement that justifies it', () => {
+  // choroplethPrism only licenses 'sqrt' above a dynamic range of ~1:30, where
+  // the floor starts doing the work. This layer runs 7 781 → 1 544 MW.
+  const magnitudes = PAYLOAD.regions.map((r) => Math.abs(r.netPhysical));
+  const range = Math.max(...magnitudes) / Math.min(...magnitudes);
+  assert.equal(ENERGY_PRISM_SCALE.mode, 'linear');
+  assert.ok(range < 30, `dynamic range ${range.toFixed(1)} would need declaring`);
+  // And nothing is floored: the smallest région stands well clear of 4 km.
+  const shortest = Math.min(...PAYLOAD.regions.map(
+    (r) => energyPrismRow(r).heightM,
+  ));
+  assert.ok(shortest > PRISM_MIN_HEIGHT_M * 3, `${shortest} m is nearly the floor`);
+});
+
+test('height is |MW| and colour is the SIGN — the two channels never swap', () => {
+  const aura = energyPrismRow({ code: '84', netPhysical: -7781 });
+  const idf = energyPrismRow({ code: '11', netPhysical: 6478 });
+  // Same ruler for both directions: 7 781 MW of export is taller than 6 478 MW
+  // of import, which is the one comparison the flat fill could never make.
+  assert.ok(aura.heightM > idf.heightM);
+  assert.equal(Math.round(aura.heightM), Math.round(7781 / 12_000 * PRISM_MAX_HEIGHT_M));
+  assert.equal(aura.color, BALANCE_STYLES.exporter.color);
+  assert.equal(idf.color, BALANCE_STYLES.importer.color);
+  // Equal magnitudes, opposite signs: same height, different colour. That is
+  // the whole arbitration, in one assertion.
+  const up = energyPrismRow({ code: 'a', netPhysical: 4000 });
+  const down = energyPrismRow({ code: 'b', netPhysical: -4000 });
+  assert.equal(up.heightM, down.heightM);
+  assert.notEqual(up.color, down.color);
+  assert.ok(up.heightM > 0, 'and neither of them goes below the datum');
+});
+
+test('an unmeasured balance is not a measured zero', () => {
+  // `Math.abs(null)` is 0. Handing that to the scale would fabricate a
+  // measured zero out of a région nobody published — the fault the whole
+  // grammar exists to prevent.
+  const missing = energyPrismRow({ code: '94', netPhysical: null });
+  assert.equal(missing.heightM, null);
+  assert.equal(missing.hasValue, false);
+  assert.equal(missing.measuredZero, false);
+  assert.equal(missing.color, null);
+
+  const zero = energyPrismRow({ code: '11', netPhysical: 0 });
+  assert.equal(zero.heightM, 0);
+  assert.equal(zero.measuredZero, true);
+  assert.equal(zero.extruded, false);
+  assert.equal(zero.color, BALANCE_STYLES.balanced.color);
+
+  for (const junk of [{}, { netPhysical: 'beaucoup' }, { netPhysical: [] }, { netPhysical: true }]) {
+    assert.equal(energyPrismRow(junk).heightM, null, JSON.stringify(junk));
+  }
+});
+
+test('a balance above the frozen domain is clipped, and says so', () => {
+  // A5. 12 000 MW is above the fleet's plausible maximum, but a frozen domain
+  // has a top by construction and the map has to admit when it hits it.
+  const winter = energyPrismRow({ code: '84', netPhysical: -14_000 });
+  assert.equal(winter.clipped, true);
+  assert.equal(winter.heightM, PRISM_MAX_HEIGHT_M);
+  assert.equal(energyPrismRow({ code: '84', netPhysical: -7781 }).clipped, false);
+});
+
+test('the calibration figures in the header are reproducible', () => {
+  // The numbers the header quotes at the ~1 500 km national altitude. If the
+  // domain or the max height moves, this fails and the header gets rewritten.
+  const px = (mw) => prismApparentPx({
+    heightM: energyPrismRow({ code: 'x', netPhysical: mw }).heightM,
+    cameraDistanceM: 1_500_000,
+  });
+  assert.ok(Math.abs(px(-7781) - 74.9) < 0.2, `AURA ${px(-7781)}`);
+  assert.ok(Math.abs(px(6478) - 62.3) < 0.2, `IDF ${px(6478)}`);
+  assert.ok(Math.abs(px(1544) - 14.9) < 0.2, `Bretagne ${px(1544)}`);
+  // The two leaders are 12 px apart on screen: a difference the eye sorts.
+  assert.ok(px(-7781) - px(6478) > 10);
 });
 
 // ── The join ────────────────────────────────────────────────────────────────
@@ -136,7 +242,10 @@ test('buildRegionRecords whitelists on the grouping and drops Corsica', () => {
   assert.ok(!withCorse.some((record) => record.code === '94'));
 });
 
-test('records are ordered so the heaviest balance paints last', () => {
+test('records stay ordered weakest-first, deterministically', () => {
+  // Translucent volumes are depth-sorted by the renderer, so this no longer
+  // decides who paints over whom — it keeps the label cohort, the analyst
+  // snapshot and the legend counts stable from one poll to the next.
   const records = buildRegionRecords(PAYLOAD, parseDepartements(BUNDLED));
   const magnitudes = records.map((record) => Math.abs(record.netPhysical));
   assert.deepEqual(magnitudes, magnitudes.slice().sort((a, b) => a - b));
@@ -255,6 +364,23 @@ test('labels carry the verb and the megawatts, never colour alone', () => {
   assert.equal(borderLabelText(inbound), '750 MW depuis Suisse');
 });
 
+test('a région with no published balance says so, and says it in words', () => {
+  // It used to read « ÉQUILIBRÉE », which asserted a measurement nobody made.
+  assert.match(regionLabelText({ name: 'Corse', balance: null }), /SOLDE NON PUBLIÉ/);
+  assert.equal(regionLabelHeightM({ name: 'Corse', netPhysical: null }), 0);
+});
+
+test('the label rides at the TOP of its prism, not on the ground', () => {
+  // B2 asks for a height read against a vertical guide. Here the guide is the
+  // label: it states the megawatts at the altitude the length reaches. Left on
+  // the ground it would sit behind 78 km of translucent volume.
+  const aura = { code: '84', name: 'Auvergne-Rhône-Alpes', netPhysical: -7781 };
+  assert.equal(regionLabelHeightM(aura), energyPrismRow(aura).heightM);
+  assert.ok(regionLabelHeightM(aura) > 70_000);
+  // A measured zero has no prism, so its label stays on the ground.
+  assert.equal(regionLabelHeightM({ code: '11', netPhysical: 0 }), 0);
+});
+
 test('formatMegawatts is sign-free, grouped, and honest about absence', () => {
   assert.equal(formatMegawatts(6478), '6 478 MW');
   assert.equal(formatMegawatts(-6478), '6 478 MW');
@@ -279,15 +405,61 @@ test('border labels outrank régions in the collision cohort', () => {
   assert.deepEqual(selectEnergyOverlayCohort(null), []);
 });
 
-test('the legend counts régions per side and omits an empty side', () => {
+test('the legend publishes the height ruler AND the colour key (D1)', () => {
   const records = buildRegionRecords(PAYLOAD, parseDepartements(BUNDLED));
-  const legend = balanceLegend(records);
-  assert.equal(legend.length, 2);
-  assert.equal(legend.reduce((sum, entry) => sum + entry.count, 0), 12);
-  assert.deepEqual(balanceLegend([]), []);
-  const onlyExporters = balanceLegend(records.filter((r) => r.balance.style.key === 'exporter'));
-  assert.equal(onlyExporters.length, 1);
-  assert.equal(onlyExporters[0].label, BALANCE_STYLES.exporter.label);
+  const legend = energyPrismLegend(records);
+  const labels = legend.map((entry) => entry.label);
+
+  // Height first — it is the primary variable now — with a title row and
+  // numbered ticks, because a length without a ruler says nothing.
+  assert.match(labels[0], /^Hauteur — /);
+  for (const tick of ENERGY_PRISM_SCALE.heightTicks) {
+    const row = legend.find((entry) => entry.label.startsWith(`${tick.toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ')} `));
+    assert.ok(row, `no tick row for ${tick}`);
+    // One constant colour for all three: in these rows the datum is the bar's
+    // HEIGHT, so a varying swatch colour would be a second, false encoding.
+    assert.ok(row.glyph.startsWith('data:image/svg+xml;base64,'));
+    assert.equal(row.color, legend[1].color);
+  }
+  // Then the colour key, counted.
+  const colourTitle = labels.findIndex((label) => label.startsWith('Couleur — '));
+  assert.ok(colourTitle > 0);
+  const exporters = legend.find((entry) => entry.color === BALANCE_STYLES.exporter.color);
+  const importers = legend.find((entry) => entry.color === BALANCE_STYLES.importer.color);
+  assert.equal(exporters.count, 5);
+  assert.equal(importers.count, 7);
+  // The balanced class is real but never fires on this snapshot, so it is not
+  // shown: a colour a reader is told to look for and can never find is noise.
+  assert.ok(!legend.some((entry) => entry.color === BALANCE_STYLES.balanced.color));
+
+  // And Corsica, which is NOT in `records` and would otherwise be forgotten by
+  // a legend that only counted what the join returned.
+  const missing = legend.at(-1);
+  assert.equal(missing.count, UNCOVERED_REGIONS.length);
+  assert.equal(missing.color, PRISM_NO_RATIO_COLOR);
+  assert.ok(missing.glyph, 'the absence is a motif, not just a tint (D3)');
+  assert.match(missing.blurb, /Corse/);
+
+  // Every entry is the repo's shape, and no ratio is asserted anywhere: this
+  // legend must never claim the colour is « un rapport ».
+  for (const entry of legend) {
+    assert.equal(typeof entry.label, 'string');
+    assert.ok('color' in entry);
+    assert.ok(!/rapport/.test(entry.blurb || ''), entry.label);
+  }
+  assert.deepEqual(energyPrismLegend([]), []);
+});
+
+test('the legend declares a clipped prism when there is one (A5)', () => {
+  const records = buildRegionRecords({
+    regions: PAYLOAD.regions.map((region) => (
+      region.code === '84' ? { ...region, netPhysical: -14_000 } : region
+    )),
+  }, parseDepartements(BUNDLED));
+  const clipped = energyPrismLegend(records).find((entry) => /au-dessus de/.test(entry.label));
+  assert.ok(clipped, 'a value over the frozen domain must be announced');
+  assert.equal(clipped.count, 1);
+  assert.match(clipped.blurb, /hauteur maximale/);
 });
 
 test('the low-carbon share is taken against GENERATION, not consumption', () => {
@@ -316,6 +488,12 @@ test('the analyst record restates the balance in the direction a human asks it',
 
   const idf = mapAnalystRecord(records.find((record) => record.code === '11'));
   assert.equal(idf.netExportMw, -6478);
+
+  // The variable the fill alpha used to carry (A3) and the metres the map
+  // actually draws, so an analyst can check the picture against the figure.
+  assert.ok(aura.exchangeRatio > 1.2 && aura.exchangeRatio < 1.25);
+  assert.equal(Math.round(aura.prismHeightM), Math.round(7781 / 12_000 * PRISM_MAX_HEIGHT_M));
+  assert.equal(mapAnalystRecord({ code: '94', netPhysical: null }).prismHeightM, null);
 
   const blank = mapAnalystRecord(null, 3);
   assert.equal(blank.id, 'REGION-0003');
@@ -408,34 +586,146 @@ function createHarness(polls, shapes = TEST_SHAPES) {
   };
 }
 
-test('a région paints all of its départements, and Corsica stays dark', async () => {
+test('a région raises all of its départements to ONE height', async () => {
   const h = createHarness([PAYLOAD]);
   try {
     h.layer.init(h.viewer);
     h.layer.enable(h.viewer);
     assert.equal(await h.layer.update(h.viewer), true);
 
-    const painted = h.entities().filter((entity) => entity.polygon && entity.show);
-    const codes = painted.map((entity) => entity.properties.code.getValue()).sort();
-    // 69 is a MultiPolygon, so it contributes TWO entities — both must paint,
-    // or an island shows clear while its mainland is coloured.
-    assert.deepEqual(codes, ['69', '69', '75', '95']);
-    assert.ok(!codes.includes('2A'), 'Corsica is never painted');
+    const shown = h.entities().filter((entity) => entity.polygon && entity.show);
+    const codes = shown.map((entity) => entity.properties.code.getValue()).sort();
+    // 69 is a MultiPolygon, so it contributes TWO entities — both must rise,
+    // or an island sits at sea level while its mainland is 78 km up.
+    assert.deepEqual(codes, ['2A', '69', '69', '75', '95']);
 
-    // Both Île-de-France départements share ONE material: they are one
-    // measurement, not two.
-    const idf = painted.filter((entity) => ['75', '95'].includes(entity.properties.code.getValue()));
-    assert.equal(idf[0].polygon.material, idf[1].polygon.material);
-    assert.equal(idf[0].polygon.outline.getValue(), false, 'polygon outlines are expensive');
+    const at = (code) => shown.find((entity) => entity.properties.code.getValue() === code);
+    const heightOf = (code) => at(code).polygon.extrudedHeight.getValue();
 
-    // Île-de-France imports → amber; Auvergne-Rhône-Alpes exports → teal.
-    const colorOf = (code) => painted
-      .find((entity) => entity.properties.code.getValue() === code)
-      .polygon.material.color.getValue();
+    // Both Île-de-France départements share ONE material and ONE height: they
+    // are one measurement, not two, and the plateau is what shows it.
+    assert.equal(at('75').polygon.material, at('95').polygon.material);
+    assert.equal(heightOf('75'), heightOf('95'));
+    // The base is the ELLIPSOID for every prism, or the tops stop being
+    // comparable the moment the terrain moves.
+    assert.equal(at('75').polygon.height.getValue(), 0);
+    assert.equal(at('69').polygon.perPositionHeight.getValue(), false);
+
+    // Auvergne-Rhône-Alpes exports 7 781 MW against Île-de-France's 6 478 MW
+    // import: taller AND a different colour. Both facts, one mark.
+    assert.ok(heightOf('69') > heightOf('75'));
+    assert.equal(Math.round(heightOf('69')), Math.round(7781 / 12_000 * PRISM_MAX_HEIGHT_M));
+    const colorOf = (code) => at(code).polygon.material.color.getValue();
     const amber = Cesium.Color.fromCssColorString(BALANCE_STYLES.importer.color);
     const teal = Cesium.Color.fromCssColorString(BALANCE_STYLES.exporter.color);
     assert.ok(colorOf('75').red === amber.red && colorOf('75').green === amber.green);
     assert.ok(colorOf('69').red === teal.red && colorOf('69').green === teal.green);
+    // The body is translucent and the silhouette is not: the top edge is the
+    // reading instrument, so it gets the outline a clamped fill cannot have.
+    assert.equal(colorOf('75').alpha, PRISM_BODY_ALPHA);
+    assert.equal(at('75').polygon.outline.getValue(), true);
+    assert.equal(at('75').polygon.outlineColor.getValue().alpha, PRISM_TOP_ALPHA);
+  } finally {
+    h.restore();
+  }
+});
+
+test('Corsica is a striped footprint, never a prism of height zero', async () => {
+  const h = createHarness([PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+
+    const corse = h.entities().find((entity) => (
+      entity.polygon && entity.properties?.code?.getValue() === '2A'
+    ));
+    // Visible — a hidden Corsica made "not published" look like "nothing here",
+    // which a height channel cannot afford (A1/A4).
+    assert.equal(corse.show, true);
+    assert.equal(corse.polygon.extrudedHeight, undefined, 'no prism, not even a flat one');
+    assert.equal(corse.polygon.height, undefined, 'clamped, or the terrain swallows it');
+    // A MOTIF and not a tint (D3), and still classified, because a footprint on
+    // the ground is exactly the thing classification is for.
+    assert.ok(corse.polygon.material instanceof Cesium.StripeMaterialProperty);
+    assert.ok(corse.polygon.classificationType);
+    // And it never enters the analyst snapshot or the count.
+    assert.ok(!h.layer.getAnalystRecords().some((row) => row.id === '94'));
+  } finally {
+    h.restore();
+  }
+});
+
+test('the three marks A1 asks for are three different marks', async () => {
+  // Measured (prism) / measured at zero (flat, filled, opaque) / not published
+  // (flat, striped). Île-de-France is forced to an exact zero so all three sit
+  // on the same frame.
+  const zeroed = {
+    ...PAYLOAD,
+    regions: PAYLOAD.regions.map((region) => (
+      region.code === '11' ? { ...region, netPhysical: 0 } : region
+    )),
+  };
+  const h = createHarness([zeroed]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+
+    const at = (code) => h.entities().find((entity) => (
+      entity.polygon && entity.properties?.code?.getValue() === code
+    ));
+    const prism = at('69');
+    const zero = at('75');
+    const absent = at('2A');
+
+    assert.ok(prism.polygon.extrudedHeight.getValue() > 0);
+    assert.equal(zero.polygon.extrudedHeight, undefined);
+    assert.equal(absent.polygon.extrudedHeight, undefined);
+
+    // The zero is FILLED and OPAQUE in the balanced slate; the absence is
+    // striped. They must not be the same pixel.
+    assert.equal(
+      zero.polygon.material.color.getValue().alpha,
+      PRISM_TOP_ALPHA,
+      'a measured zero is drawn, and drawn solidly',
+    );
+    assert.equal(
+      zero.polygon.material.color.getValue().red,
+      Cesium.Color.fromCssColorString(BALANCE_STYLES.balanced.color).red,
+    );
+    assert.ok(absent.polygon.material instanceof Cesium.StripeMaterialProperty);
+    assert.ok(!(zero.polygon.material instanceof Cesium.StripeMaterialProperty));
+    // Both flat marks go back on the ground and take the classification.
+    assert.ok(zero.polygon.classificationType);
+    assert.equal(zero.polygon.height, undefined);
+
+    // And the legend counts the zero rather than swallowing it.
+    const legend = h.layer.getRowControls().legend;
+    assert.ok(legend.some((entry) => entry.label === 'mesuré à zéro' && entry.count === 1));
+    assert.equal(h.layer.getStats().unpublishedRegions, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test('a région the upstream drops becomes striped, not stale', async () => {
+  const dropped = { ...PAYLOAD, regions: PAYLOAD.regions.filter((r) => r.code !== '84') };
+  const h = createHarness([PAYLOAD, dropped]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    const rhone = () => h.entities().find((entity) => (
+      entity.polygon && entity.properties?.code?.getValue() === '69'
+    ));
+    assert.ok(rhone().polygon.extrudedHeight.getValue() > 0);
+
+    await h.layer.update(h.viewer);
+    // Not a stale 78 km prism, and not a hole either: a declared absence.
+    assert.equal(rhone().polygon.extrudedHeight, undefined);
+    assert.ok(rhone().polygon.material instanceof Cesium.StripeMaterialProperty);
+    assert.equal(h.layer.getStats().count, 11);
   } finally {
     h.restore();
   }
@@ -523,6 +813,13 @@ test('the overlay publishes one entry per painted région plus one per arc', asy
     assert.equal(borders.length, 5);
     assert.equal(regions.length, 2, 'only IDF and AURA have shapes in the harness');
     for (const entry of entries) assert.equal(entry.interactive, false);
+
+    // Every région label is lifted to the top of its own prism, so the number
+    // and the length it encodes are read in the same glance.
+    for (const entry of regions) {
+      const height = Cesium.Cartographic.fromCartesian(entry.position).height;
+      assert.ok(height > 50_000, `${entry.id} sits at ${height} m, near its base`);
+    }
   } finally {
     h.restore();
   }
@@ -566,6 +863,9 @@ test('getStats restates the national balance as an EXPORT figure', async () => {
 
     const stats = h.layer.getStats();
     assert.equal(stats.count, 12);
+    // A5 in the HUD as well as in the legend, and both zero on this snapshot.
+    assert.equal(stats.clippedRegions, 0);
+    assert.equal(stats.unpublishedRegions, 0);
     assert.equal(stats.netExportMw, -PAYLOAD.national.netPhysical);
     assert.ok(stats.netExportMw > 0, 'France was exporting on the captured snapshot');
     // Physical and commercial are reported under distinct names because they
@@ -597,7 +897,7 @@ test('analyst records are gated on the layer being enabled', async () => {
   }
 });
 
-test('the map-stack event reclassifies the fills in place', async () => {
+test('the map-stack event reclassifies the FOOTPRINTS and skips the prisms', async () => {
   const h = createHarness([PAYLOAD]);
   try {
     h.layer.init(h.viewer);
@@ -607,13 +907,27 @@ test('the map-stack event reclassifies the fills in place', async () => {
     h.mapStackEventTarget.dispatchEvent(new CustomEvent('gev:map-stack-changed', {
       detail: { activeId: 'google-photorealistic' },
     }));
+
+    let prisms = 0;
+    let footprints = 0;
     for (const entity of h.entities()) {
-      if (!entity.polygon) continue;
-      assert.equal(
-        entity.polygon.classificationType.getValue(),
-        Cesium.ClassificationType.CESIUM_3D_TILE,
-      );
+      if (!entity.polygon || !entity.show) continue;
+      if (entity.polygon.extrudedHeight !== undefined) {
+        // An extruded polygon is not a GroundPrimitive: `_isOnTerrain` returns
+        // false as soon as `extrudedHeight` is defined, so a classification set
+        // here would be read and ignored in silence. Not setting it is the
+        // honest state, and it is what keeps a reader from believing otherwise.
+        assert.equal(entity.polygon.classificationType, undefined);
+        prisms += 1;
+      } else {
+        assert.equal(
+          entity.polygon.classificationType.getValue(),
+          Cesium.ClassificationType.CESIUM_3D_TILE,
+        );
+        footprints += 1;
+      }
     }
+    assert.ok(prisms > 0 && footprints > 0, `${prisms} prisms, ${footprints} footprints`);
   } finally {
     h.restore();
   }

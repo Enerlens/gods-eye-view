@@ -8,6 +8,8 @@ import {
   isTrackingSelectionGesture,
 } from './trackingClickGesture.js';
 import { createTrail } from './trailRenderer.js';
+import { TRAIL_MAX_POINTS as TRAIL_VERTEX_CEILING, trimTrailToGroundLength } from './trailWindow.js';
+import { coastingSwatchCss, contactTint } from './contactFreshness.js';
 import { isExplicitLayerStateOrigin } from './layerState.js';
 import {
   screenProjectedRotation,
@@ -16,11 +18,12 @@ import {
   cameraPoseSignature,
 } from './iconOrientation.js';
 import { stickyText, stickyNumber } from './aircraftMeta.js';
-import { classifyAircraft, CLASS_SCALE_2D, CLASS_SCALE_3D, CLASS_MODEL_REAL } from './aircraftClass.js';
+import { classifyAircraft, CLASS_LEGEND_LABELS, CLASS_SCALE_2D, CLASS_SCALE_3D, CLASS_MODEL_REAL } from './aircraftClass.js';
 import { modelAnchorWorld, modelVisualAnchor, trailAnchorForModel, trailHeadStart, visualCenterForModel } from './modelVisualAnchor.js';
-import { aircraftIcon, TRACKED_ICON_PX } from './aircraftIcons.js';
+import { aircraftIcon, classLegendGlyph, TRACKED_ICON_PX } from './aircraftIcons.js';
 import {
   isTr3b, tr3bAircraftClass, tr3bConvertedIds, tr3bIconKind, tr3bTypeLabel,
+  TR3B_CLASS, TR3B_TYPE_LABEL,
 } from './tr3bRegistry.js';
 import { cockpitContactDotImage } from './cockpitContactDot.js';
 import { nextCockpitNearContacts } from './cockpitAirLod.js';
@@ -490,8 +493,13 @@ function _applyCockpitState(detail = {}) {
 
 /** @constant {string} Military trail hue (PRD F4, pinned). */
 const TRAIL_COLOR = '#FFB800';
-/** @constant {number} Combined cap on trail vertices (backfill + live accumulation). */
-const TRAIL_MAX_POINTS = 400;
+/**
+ * @constant {number} Hard vertex ceiling — the bound on the primitive rebuilt
+ * on every poll, no longer the thing that decides how much history is shown.
+ * See `trailWindow.js`: history is trimmed by GROUND LENGTH so a fast jet and
+ * a slow vessel show the same distance of past, not the same fix count.
+ */
+const TRAIL_MAX_POINTS = TRAIL_VERTEX_CEILING;
 /** @type {{setPositions: Function, clear: Function, destroy: Function}|null} Shared fading-trail renderer */
 let _trail = null;
 /** @type {Cesium.Entity|null} Per-frame head segment: last body point → live icon */
@@ -1929,11 +1937,14 @@ function _fleetTick() {
       (bb.height || 20) * (bb.scale || 1) * distanceScale * 0.5,
     );
     const isCockpitNear = _cockpitContactMode && _cockpitNearContacts.has(icao24);
+    // Mirror of flights.js: freshness is a COLOUR wash, not an alpha, so the
+    // one alpha this billboard has left means depth (CARTOGRAPHIE A3).
+    const coasting = Boolean(_missingPolls.get(icao24));
     const treatment = applyAircraftBillboardTreatment({
       billboard: bb,
       baseScale: _cockpitContactMode && !isCockpitNear ? 1 : _militaryBillboardScale(icao24),
-      baseAlpha: _missingPolls.get(icao24) ? 0.45 : 1,
-      baseColor: MIL_ICON_COLOR,
+      baseAlpha: 1,
+      baseColor: contactTint(MIL_ICON_COLOR, coasting),
       focusFactor: focus.factor,
       cameraDistanceM,
       cameraHeightM: camera.positionCartographic?.height,
@@ -2040,7 +2051,14 @@ function _describeFlight(icao24) {
     longitude: Cesium.Math.toDegrees(carto.longitude),
     // Keep the cockpit readout on the reported aviation altitude. Render
     // terrain height is a separate visual datum and may be below zero.
-    altitudeM: Number.isFinite(info?.altitudeM) ? info.altitudeM : carto.height,
+    // The stored field is `altitudeFt` (metres never existed on this meta), so
+    // reading `info.altitudeM` silently fell through to the render height —
+    // i.e. to the 3 048 m airborne default for a contact adsb.lol never gave
+    // an altitude for. Read the reported feet, and say so alongside.
+    altitudeM: Number.isFinite(info?.altitudeFt) ? info.altitudeFt * 0.3048 : carto.height,
+    // Mirror of flights.js: false when nothing was reported, so the cockpit
+    // tape shows `-----` instead of the default the sprite is parked at.
+    altitudeMeasured: Number.isFinite(info?.altitudeFt),
     renderAltitudeM: Number.isFinite(info?.renderAltitudeM) ? info.renderAltitudeM : carto.height,
     onGround: info?.onGround === true,
     velocityMps: displayed.speedMps,
@@ -2080,7 +2098,7 @@ function _trailFloorPosition(position) {
  */
 function _appendTrailFix(position) {
   _trailPositions.push(_trailFloorPosition(position));
-  if (_trailPositions.length > TRAIL_MAX_POINTS) _trailPositions.shift();
+  _trailPositions = trimTrailToGroundLength(_trailPositions, { maxPoints: TRAIL_MAX_POINTS });
   _refreshTrailDisplay();
 }
 
@@ -2270,10 +2288,10 @@ async function _backfillTrail(icao24, token, oldestFixEpochSec) {
     older = thinned;
   }
 
-  _trailPositions = older.concat(_trailPositions);
-  if (_trailPositions.length > TRAIL_MAX_POINTS) {
-    _trailPositions = _trailPositions.slice(_trailPositions.length - TRAIL_MAX_POINTS);
-  }
+  _trailPositions = trimTrailToGroundLength(
+    older.concat(_trailPositions),
+    { maxPoints: TRAIL_MAX_POINTS },
+  );
   _refreshTrailDisplay();
 }
 
@@ -3773,6 +3791,63 @@ const militaryFlightsLayer = {
       source: 'adsb.lol',
       fallback: false,
     };
+  },
+
+  /**
+   * The key to this layer's symbology. Same contract as the civil layer: one
+   * entry per silhouette actually on screen, glyph-masked so the swatch IS the
+   * drawn shape, plus the two non-shape channels this layer spends — the amber
+   * that means "military feed" and the fade that means "coasting on dead
+   * reckoning rather than reported".
+   * @returns {{legend: Array<object>}|null} Row controls, or null while empty.
+   */
+  getRowControls() {
+    if (!_billboards.size) return null;
+    const byClass = new Map();
+    let coasting = 0;
+    for (const icao24 of _billboards.keys()) {
+      const info = _flightData.get(icao24);
+      // The class the contact RENDERS as: a converted contact draws the
+      // triangle, so the key has to list the triangle.
+      const klass = tr3bAircraftClass(icao24, info?.klass || 'unknown');
+      byClass.set(klass, (byClass.get(klass) || 0) + 1);
+      if (_missingPolls.get(icao24)) coasting += 1;
+    }
+    const legend = [...byClass.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([klass, count]) => ({
+        label: klass === TR3B_CLASS
+          ? TR3B_TYPE_LABEL
+          : (CLASS_LEGEND_LABELS[klass] || klass),
+        // The layer's own amber — this whole layer is the military feed, so
+        // hue carries no second meaning here and the glyph keeps it exact.
+        color: '#ffb800',
+        // `tr3b` has a hot IR variant; the swatch follows the same style flag
+        // the billboards do, so the key shows the shape actually on screen.
+        glyph: classLegendGlyph(klass === TR3B_CLASS && _irBoost ? 'tr3bHot' : klass),
+        count,
+        blurb: klass === 'unknown'
+          ? 'Type not reported by adsb.lol — the silhouette is a placeholder.'
+          : undefined,
+      }));
+    if (_trackedIcao) {
+      legend.push({
+        label: 'Tracked contact',
+        color: '#00ffff',
+        count: 1,
+        blurb: 'Cyan and its trail — the past track, not a prediction.',
+      });
+    }
+    if (coasting > 0) {
+      legend.push({
+        label: 'Coasting (missed polls)',
+        color: coastingSwatchCss('#ffb800'),
+        count: coasting,
+        blurb: 'Washed out, not faded: the position is dead-reckoned from the '
+          + 'last fix rather than reported. Transparency means distance here.',
+      });
+    }
+    return { legend };
   },
 };
 

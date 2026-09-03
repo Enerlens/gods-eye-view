@@ -38,6 +38,33 @@
  * source measured to return `75113` is the BAN reverse geocoder's
  * `properties.citycode`, which is therefore the one this path is built from.
  *
+ * THE THIRD TRAP — WHICH MEDIAN THE COLOURS DIVIDE BY. Until 2026-09-03 the map
+ * coloured each sale against the median of the sales inside the SCAN RADIUS,
+ * i.e. against whatever the camera was pointing at. Measured on the captured
+ * fixture, inside one arrondissement: from avenue de France the local median is
+ * **8 857 €/m²**, from rue de Tolbiac 1.5 km away it is **12 406 €/m²** — a
+ * 40 % swing with not one row of data changed. Worse, at both of those points
+ * the priciest and the cheapest sale of the sample each came out *exactly at
+ * the median*, painted "average", because a median of one is that one. That is
+ * the C1 violation in `docs/CARTOGRAPHIE.md`: the classification was derived
+ * from the visible sample.
+ *
+ * The ratio is still the right question — an absolute €/m² ramp paints all of
+ * Paris one colour — so what changes is the DENOMINATOR, not the fraction.
+ * {@link communeReference} computes the median over every mutation of the
+ * commune-year editions in hand, which is exactly the set the proxy already
+ * downloaded and parsed: no extra request, no extra parse, and a number that
+ * does not move when the camera does. It is returned NAMED (`Paris 13e
+ * Arrondissement`, `75113`) so the layer can print it in the legend and on
+ * every card, because a ratio whose denominator is not written down is not a
+ * measurement.
+ *
+ * Its one failure mode is provable rather than feared: `medianPrixM2` is null
+ * only when NO mutation of the editions carries a €/m², and the sales served
+ * are a subset of those same mutations — so whenever there is a sale to colour
+ * there is a denominator to colour it against. The test asserts that implication
+ * rather than trusting it.
+ *
  * Dependency-free and side-effect-free: URL construction, CSV parsing and
  * projection only. The `/api/dvf` proxy imports this; nothing in the browser
  * bundle does.
@@ -309,12 +336,110 @@ export function percentile(sorted, fraction) {
 }
 
 /**
+ * Pick the value that appears most often, ties broken by first appearance.
+ * A commune-year file carries one `nom_commune`; this exists so that a merged
+ * multi-year set with one malformed row still names the commune it is mostly
+ * about rather than whichever row happened to come first.
+ * @param {Array<?string>} values
+ * @returns {?string}
+ */
+function dominant(values) {
+  const tally = new Map();
+  for (const raw of values) {
+    const value = typeof raw === 'string' ? raw.trim() : '';
+    if (!value) continue;
+    tally.set(value, (tally.get(value) || 0) + 1);
+  }
+  let best = null;
+  let bestCount = 0;
+  for (const [value, count] of tally) {
+    if (count > bestCount) { best = value; bestCount = count; }
+  }
+  return best;
+}
+
+/**
+ * The NAMED denominator the map divides every price by.
+ *
+ * This is the C1 fix, and it is deliberately computed from the WHOLE argument
+ * rather than from the selection: `mutations` is every sale of the commune-year
+ * editions the proxy fetched, so the answer is a property of a territory and a
+ * set of editions, not of a camera. Pan across the arrondissement, widen the
+ * radius from 50 m to 1 km, share the link — the number is the same, and the
+ * doctrine's C1 test ("widen the framing; did the first zone change colour?")
+ * answers no.
+ *
+ * It is NOT a national scale, and that is the point: against a national ramp
+ * every Paris sale is the same red and the layer stops answering the question a
+ * buyer asks, which is "is this one dear FOR HERE". The commune — the
+ * arrondissement, where one exists, because that is how the register itself is
+ * published — is the smallest territory that has a name, a boundary the reader
+ * already holds, and enough sales to have a median.
+ *
+ * `basis` is `'commune'` or `'none'`, never a silent fallback: a caller that
+ * gets `'none'` is expected to say so on screen rather than quietly divide by
+ * something else. `'none'` means the editions in hand hold no comparable at
+ * all, which — since the served sales are a subset of these same mutations —
+ * also means there is nothing on screen to colour.
+ *
+ * @param {Array<object>} mutations Output of {@link groupMutations}, whole editions.
+ * @returns {{basis: string, code: ?string, name: ?string, count: number,
+ *   comparableCount: number, unplacedCount: number, medianPrixM2: ?number,
+ *   p25PrixM2: ?number, p75PrixM2: ?number, codeCount: number}}
+ */
+export function communeReference(mutations) {
+  const list = Array.isArray(mutations) ? mutations : [];
+  const ratios = [];
+  const codes = [];
+  const names = [];
+  let unplacedCount = 0;
+  for (const mutation of list) {
+    if (typeof mutation?.prixM2 === 'number' && Number.isFinite(mutation.prixM2)) {
+      ratios.push(mutation.prixM2);
+    }
+    // Counted here because this is the only place that sees the WHOLE edition:
+    // `selectNearbySales` drops a mutation with no coordinate before it can be
+    // measured against a radius, and 8 of the 3,975 captured rows carry none.
+    // A sale nobody can draw is still a sale that happened (A5).
+    if (mutation?.lon === null || mutation?.lat === null
+      || mutation?.lon === undefined || mutation?.lat === undefined) unplacedCount += 1;
+    codes.push(mutation?.communeCode ?? null);
+    names.push(mutation?.commune ?? null);
+  }
+  ratios.sort((a, b) => a - b);
+  const median = percentile(ratios, 0.5);
+  return {
+    basis: median === null ? 'none' : 'commune',
+    code: dominant(codes),
+    name: dominant(names),
+    // A set that spans two commune codes is not supposed to happen — the proxy
+    // fetches one commune's editions — so it is REPORTED rather than averaged
+    // away: a denominator built from two territories names neither of them.
+    codeCount: new Set(codes.filter(Boolean)).size,
+    count: list.length,
+    comparableCount: ratios.length,
+    unplacedCount,
+    medianPrixM2: median,
+    p25PrixM2: percentile(ratios, 0.25),
+    p75PrixM2: percentile(ratios, 0.75),
+  };
+}
+
+/**
  * Select the mutations within `radiusM` of a point and summarise them.
  *
  * The summary reports `comparableCount` beside `count` on purpose: a reader
  * must be able to see that 40 sales were found but only 12 of them yielded a
  * defensible price per square metre. Collapsing that gap would present a
  * median computed from a quarter of the data as if it came from all of it.
+ *
+ * TWO MEDIANS COME OUT OF HERE AND THEY DO NOT DO THE SAME JOB.
+ * `summary.medianPrixM2` describes THIS RADIUS — a statistic about the block,
+ * legitimate to print, worthless as a denominator because it moves with the
+ * camera. `summary.reference` is the commune median ({@link communeReference}),
+ * computed over the whole argument, and it is the only thing a colour may be
+ * divided by. They are separate fields rather than one renamed field precisely
+ * so that a future caller has to choose, out loud, which one it means.
  *
  * @param {Array<object>} mutations Output of {@link groupMutations}.
  * @param {{lon: number, lat: number}} origin
@@ -346,7 +471,11 @@ export function selectNearbySales(mutations, origin, radiusM) {
       served: served.length,
       truncated: near.length > served.length,
       comparableCount: ratios.length,
+      // The block statistic. Printed, never divided by — see the doc comment.
       medianPrixM2: percentile(ratios, 0.5),
+      // The denominator, named. Built from every mutation handed in, not from
+      // the ones the radius kept.
+      reference: communeReference(mutations),
       p25PrixM2: percentile(ratios, 0.25),
       p75PrixM2: percentile(ratios, 0.75),
       radiusM: radius,

@@ -281,6 +281,56 @@ const ACTIVE_COVERAGE_EDGE_DEPTHFAIL = Cesium.Color.fromCssColorString('#8dff87'
 const ACTIVE_COVERAGE_CENTER_DEPTHFAIL = Cesium.Color.fromCssColorString('#d7ff8d').withAlpha(0.26);
 const PLANE_OUTLINE_COLOR = Cesium.Color.fromCssColorString('#6be8ff').withAlpha(0.55);
 
+// ── Heading provenance on the map (CARTOGRAPHIE A1) ──────────────────────────
+// `headingConfidence` was computed with care — `osmCameras.js` demotes a
+// multi-valued `camera:direction` ("270;170", live-sampled in central Paris)
+// to `medium` because one frustum cannot show two facings — and then read by
+// nothing. A camera whose direction is MAPPED and one whose azimuth comes out
+// of `headingFromId()` (a hash of the identifier, i.e. a placeholder) drew the
+// identical cone: the map pointed confidently in a direction nobody surveyed.
+//
+// The distinction is carried by LINE STYLE, not by hue: hue is already spoken
+// for (idle/active, and the per-camera viewshed palette), and a dash pattern
+// is a geometric signal that survives the FLIR/NVG luminance remaps the way a
+// colour change would not.
+const UNSURVEYED_HEADING_DASH_LENGTH = 10.0;
+const _dashMaterialCache = new Map();
+/**
+ * Dashed twin of a solid polyline colour, memoized per colour.
+ * @param {Cesium.Color} color Solid material colour.
+ * @returns {Cesium.PolylineDashMaterialProperty} Dashed material.
+ */
+function unsurveyedHeadingMaterial(color) {
+  const key = color.toCssColorString();
+  let material = _dashMaterialCache.get(key);
+  if (!material) {
+    material = new Cesium.PolylineDashMaterialProperty({
+      color,
+      dashLength: UNSURVEYED_HEADING_DASH_LENGTH,
+    });
+    _dashMaterialCache.set(key, material);
+  }
+  return material;
+}
+
+/**
+ * True when the drawn azimuth is a placeholder rather than a mapped bearing.
+ * `low` is the value `osmCameras.js` assigns when NEITHER `camera:direction`
+ * nor `direction` resolved, so the heading is `headingFromId()`.
+ * @param {object} camera Camera record.
+ * @returns {boolean} Whether the cone's direction is unsurveyed.
+ */
+export function headingIsUnsurveyed(camera) {
+  return String(camera?.headingConfidence || '').toLowerCase() === 'low';
+}
+
+// Legend glyphs for the two cone styles. Handed to the manager as `glyph`, so
+// the swatch is MASKED to the shape while keeping the exact drawn colour — the
+// key shows the same solid/dashed distinction the map does, instead of two
+// identically coloured dots that only their captions tell apart.
+const SOLID_LINE_GLYPH = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZD0iTTEgOEgxNSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg==';
+const DASHED_LINE_GLYPH = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZD0iTTEgOEgxNSIgc3Ryb2tlPSIjMDAwIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJidXR0IiBzdHJva2UtZGFzaGFycmF5PSIzLjQgMi42Ii8+PC9zdmc+';
+
 // ---------------------------------------------------------------------------
 // Module-scoped mutable state
 // ---------------------------------------------------------------------------
@@ -3352,18 +3402,28 @@ export function refreshCoverageStyles() {
       // adjacent cones read as distinct coverage claims (design §3b); the
       // active camera keeps its width/alpha emphasis in both schemes.
       const hue = viewshedOn ? record.viewshedColors : null;
+      // A cone whose azimuth nobody mapped is DASHED. The colour is unchanged,
+      // so idle/active emphasis and the viewshed palette keep working; only
+      // the line pattern says "this direction is a placeholder".
+      const unsurveyed = headingIsUnsurveyed(record.camera);
       if (entity._coverageRole === 'cap') {
-        entity.polyline.material = hue
+        const capColor = hue
           ? (isActive ? hue.lineActive : hue.line)
           : (isActive ? ACTIVE_COVERAGE_CENTER : IDLE_COVERAGE_CENTER_MUTED);
+        entity.polyline.material = unsurveyed
+          ? unsurveyedHeadingMaterial(capColor)
+          : capColor;
         entity.polyline.width = isActive ? 2.2 : 1.0;
         entity.polyline.depthFailMaterial = planeShowing
           ? (hue ? hue.line.withAlpha(0.26) : ACTIVE_COVERAGE_CENTER_DEPTHFAIL)
           : undefined;
       } else {
-        entity.polyline.material = hue
+        const edgeColor = hue
           ? (isActive ? hue.lineActive : hue.line.withAlpha(0.6))
           : (isActive ? ACTIVE_COVERAGE_EDGE : IDLE_COVERAGE_EDGE_MUTED);
+        entity.polyline.material = unsurveyed
+          ? unsurveyedHeadingMaterial(edgeColor)
+          : edgeColor;
         entity.polyline.width = isActive ? 1.8 : 0.9;
         entity.polyline.depthFailMaterial = planeShowing
           ? (hue ? hue.line.withAlpha(0.18) : ACTIVE_COVERAGE_EDGE_DEPTHFAIL)
@@ -5107,6 +5167,51 @@ const cctvLayer = {
       osmMappedStatus: _osmCameraStatus,
       osmMappedSaturated: _osmCameraSaturated,
     };
+  },
+
+  /**
+   * Publish the camera key to the manager — and therefore to the ON-MAP legend
+   * block, not only to the panel row.
+   *
+   * The pose-provenance distinction already existed in this module:
+   * `buildSummaryText()` composes "CAL RAW PRIOR" from `deriveCalBadge()`, and
+   * `headingConfidence` is computed with care in `osmCameras.js`. Both ended
+   * up in `#cctv-summary`, inside `#cctv-panel`, which ships collapsed and is
+   * hidden by the same CSS rule that hid the legends — so a reader saw a
+   * confident cone and had nowhere to learn it was a placeholder.
+   *
+   * Counts are computed over the records actually in the catalog, so the key
+   * never claims a class the map is not drawing.
+   * @returns {{legend: Array<object>}|null} Row controls, or null when idle.
+   */
+  getRowControls() {
+    if (!_records.length) return null;
+    let surveyed = 0;
+    let unsurveyed = 0;
+    for (const record of _records) {
+      if (headingIsUnsurveyed(record.camera)) unsurveyed += 1;
+      else surveyed += 1;
+    }
+    const legend = [];
+    if (surveyed) {
+      legend.push({
+        label: 'Direction mapped',
+        color: '#2fe0ff',
+        glyph: SOLID_LINE_GLYPH,
+        count: surveyed,
+        blurb: 'Solid cone — the bearing comes from the source’s own direction tag.',
+      });
+    }
+    if (unsurveyed) {
+      legend.push({
+        label: 'Direction not mapped',
+        color: '#2fe0ff',
+        glyph: DASHED_LINE_GLYPH,
+        count: unsurveyed,
+        blurb: 'Dashed cone — nobody surveyed this bearing; the azimuth drawn is a placeholder.',
+      });
+    }
+    return legend.length ? { legend } : null;
   },
 
   /**

@@ -116,6 +116,30 @@ const FLOW_BUCKET_COLORS = {
   jam: Cesium.Color.fromCssColorString('#e05252').withAlpha(0.9),
 };
 
+/**
+ * Legend rows for the three measured buckets, worst first — the order a reader
+ * scans for. Colours are NOT stored here: the key reads `_activeBucketColors`
+ * so it follows the preset-aware restyle instead of describing the shipped
+ * palette under a shader that has replaced it.
+ */
+const FLOW_BUCKET_ORDER = Object.freeze([
+  {
+    id: 'jam',
+    label: 'Circulation bloquée',
+    blurb: 'Débit mesuré par TomTom, très en dessous de la vitesse libre.',
+  },
+  {
+    id: 'slow',
+    label: 'Circulation ralentie',
+    blurb: 'Débit mesuré par TomTom, en dessous de la vitesse libre.',
+  },
+  {
+    id: 'free',
+    label: 'Circulation fluide',
+    blurb: 'Débit mesuré par TomTom, à la vitesse libre de la voie.',
+  },
+]);
+
 // ─── Jam-viz prototype (live mode only — see 2026-07-21 design doc) ────────
 /** @const {number} Max congestion heat-line polylines per render (jam first). */
 const HEAT_LINE_CAP = 400;
@@ -2509,6 +2533,78 @@ const trafficLayer = {
       // layer does not have.
       loadingLabel: feed.loadingLabel,
     };
+  },
+
+  /**
+   * The key to the dots — and the control that makes the layer's strictest
+   * reading reachable.
+   *
+   * `setParams({ uncoveredRoads: 'hide' })` has always existed and has always
+   * been the honest view: on a road TomTom publishes no flow for, a white
+   * ambient dot is a SIMULATION, drawn in the same idiom as the measured
+   * coloured ones. The distinction was documented in the code
+   * (`colored = real, white = simulation`) and reachable only by calling a
+   * method from the console — so the most truthful version of this layer
+   * existed and no user could ask for it (CARTOGRAPHIE A1).
+   *
+   * Counts come from the per-bucket rendered-dot tally, so the key describes
+   * what is on screen rather than what was fetched.
+   * @returns {{chips: Array<object>, legend: Array<object>}|null} Row controls.
+   */
+  getRowControls() {
+    if (!_enabled) return null;
+    const chips = [{
+      id: 'uncovered',
+      label: 'MESURÉ SEUL',
+      active: _uncoveredMode === 'hide',
+      state: _uncoveredMode === 'hide' ? 'active' : 'idle',
+      title: _uncoveredMode === 'hide'
+        ? 'Affiche aussi le trafic simulé sur les routes sans mesure TomTom'
+        : 'N’affiche que les routes dont TomTom publie réellement le débit',
+      params: { uncoveredRoads: _uncoveredMode === 'hide' ? 'sim' : 'hide' },
+      // Only meaningful in live mode: without a flow feed there is nothing
+      // measured to keep, and hiding the rest would empty the layer.
+      disabled: !_liveMode,
+    }];
+    const legend = [];
+    const buckets = _bucketCounts || {};
+    // Swatches come from `_activeBucketColors`, not from the shipped palette:
+    // this layer is the one place in the repo that already recolours itself on
+    // `gev:style-change` (NVG/FLIR discard hue, so congestion is re-encoded in
+    // luminance and size). Reading the ACTIVE colour is what keeps the key
+    // decoding the map under every sensor preset instead of only under NORMAL.
+    for (const bucket of FLOW_BUCKET_ORDER) {
+      const count = Number(buckets[bucket.id]) || 0;
+      if (!count) continue;
+      const color = _activeBucketColors[bucket.id] || FLOW_BUCKET_COLORS[bucket.id];
+      legend.push({
+        label: bucket.label,
+        color: color.toCssColorString(),
+        count,
+        blurb: bucket.blurb,
+      });
+    }
+    if (_liveMode && _uncoveredMode === 'sim') {
+      const simulated = Number(buckets.sim) || 0;
+      if (simulated) {
+        legend.push({
+          label: 'Simulé — aucune mesure sur cette voie',
+          color: '#ffffff',
+          count: simulated,
+          blurb: 'Blanc = pas de débit publié par TomTom : le point bouge, mais '
+            + 'sa vitesse est inventée. « MESURÉ SEUL » les retire.',
+        });
+      }
+    }
+    if (_closedRoads) {
+      legend.push({
+        label: 'Route fermée',
+        color: '#ff3b30',
+        count: _closedRoads,
+        blurb: 'Fermeture publiée par TomTom — aucun point n’y circule.',
+      });
+    }
+    return { chips, legend };
   },
 };
 

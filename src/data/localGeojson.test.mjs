@@ -6,6 +6,7 @@ import {
   GROUND_SAMPLE_MAX_ARMED_RETRIES,
   LOCAL_OVERLAY_COHORT_LIMIT,
   LOCAL_STEM_TIP_EPSILON_M,
+  applyLocalSurfaceStyle,
   createLocalGeoJsonLayer,
   createLocalInfrastructureOverlayEntry,
   createLocalInfrastructureOverlayPublisher,
@@ -292,19 +293,44 @@ test('a graded local pack styles, tallies and filters by group', async () => {
   }
 });
 
-test('an UNGRADED local pack exposes no row controls at all', async () => {
+test('an UNGRADED, UNMEASURED local pack exposes no row controls at all', async () => {
   // The manager decides whether to build a row's control strip by testing for
-  // this method. Defining it unconditionally would give ports, dams and
-  // datacenters an empty strip.
+  // this method. Defining it unconditionally would give ports and airports an
+  // empty strip. `local-ports` is the case: no groups, no size channel.
   const layer = createLocalGeoJsonLayer({
-    id: 'local-dams',
+    id: 'local-ports',
     url: '/none.geojsonl',
     name: 'Ungraded',
-    color: '#0088ff',
+    color: '#ffb14e',
   });
   assert.equal(typeof layer.getRowControls, 'undefined');
   assert.equal(typeof layer.setParams, 'undefined');
   assert.equal(typeof layer.setRowControlsListener, 'undefined');
+});
+
+test('a MEASURED pack gets a control strip for its size legend alone', () => {
+  // D1: a size channel without a printed scale is unreadable, so a pack that
+  // spends one qualifies for the strip even with no chips to put in it. Both
+  // bundled ids resolve their renderer from PACK_RENDERERS with nothing
+  // passed by the wiring file.
+  for (const id of ['local-datacenters', 'local-dams']) {
+    const layer = createLocalGeoJsonLayer({
+      id, url: '/none.geojsonl', name: id, color: '#00ffff',
+    });
+    assert.equal(typeof layer.getRowControls, 'function', id);
+    // Nothing loaded yet, so there is nothing to promise: an empty tally must
+    // produce no rows rather than rows counting zero.
+    assert.equal(layer.getRowControls(), null, id);
+  }
+
+  // A legend is not a chip row: `setParams` is the manager's whole
+  // runtime-parameter surface (share links and the voice tools reach for it),
+  // so a pack with a scale to print and nothing to filter must not grow one.
+  const datacenters = createLocalGeoJsonLayer({
+    id: 'local-datacenters', url: '/none.geojsonl', name: 'DC', color: '#00ffff',
+  });
+  assert.equal(typeof datacenters.setParams, 'undefined');
+  assert.equal(typeof datacenters.setRowControlsListener, 'undefined');
 });
 
 test('local infrastructure card copy uses the validated source fields', () => {
@@ -1226,4 +1252,301 @@ test('after the cap a camera-motion frame still samples, and re-opens the budget
     GROUND_SAMPLE_MAX_ARMED_RETRIES,
     'a grounded record asks for no further frames',
   );
+});
+
+// ── The size channel ────────────────────────────────────────────────────────
+//
+// A measured pack spends the size channel per FEATURE, which no `groupStyles`
+// key can express. These tests cover the renderer half of that: the Cesium
+// call sequence that turns a spec into a volume, a slab or a hollow ring, and
+// the guarantee that the packs which spend nothing keep exactly what they had.
+
+const now = () => Cesium.JulianDate.now();
+const valueOf = (property) => (property && typeof property.getValue === 'function'
+  ? property.getValue(now())
+  : property);
+
+test('a volume spec sets the four terrain properties Cesium needs, together', () => {
+  const polygon = new Cesium.PolygonGraphics({});
+  const color = Cesium.Color.fromCssColorString('#00ffff');
+  assert.equal(applyLocalSurfaceStyle(polygon, {
+    surface: 'volume', fillAlpha: 0.32, extrudedHeightM: 20,
+  }, color), true);
+
+  assert.equal(valueOf(polygon.extrudedHeight), 20);
+  assert.equal(valueOf(polygon.extrudedHeightReference), Cesium.HeightReference.RELATIVE_TO_GROUND);
+  // The 0 is load-bearing, not decoration: `getGeometryHeight()` warns and
+  // returns undefined when a heightReference arrives with no height beside it,
+  // and the volume is then silently dropped.
+  assert.equal(valueOf(polygon.height), 0);
+  assert.equal(valueOf(polygon.heightReference), Cesium.HeightReference.CLAMP_TO_GROUND);
+  assert.equal(valueOf(polygon.fill), true);
+  assert.equal(valueOf(polygon.material.color).alpha.toFixed(2), '0.32');
+  // A traced outline is a shell: the top face is what a reader looks down on,
+  // the bottom is buried in the terrain it is clamped to.
+  assert.equal(valueOf(polygon.closeTop), true);
+  assert.equal(valueOf(polygon.closeBottom), false);
+});
+
+test('a flat spec is filled and NEVER extruded, and no spec at all changes nothing', () => {
+  const flat = new Cesium.PolygonGraphics({});
+  assert.equal(applyLocalSurfaceStyle(flat, {
+    surface: 'flat', fillAlpha: 0.32, extrudedHeightM: null,
+  }, Cesium.Color.CYAN), true);
+  assert.equal(valueOf(flat.fill), true);
+  assert.equal(flat.extrudedHeight, undefined, 'a height nobody published');
+  assert.equal(flat.heightReference, undefined, 'still a ground-clamped slab');
+
+  // A height that arrives on a flat spec is refused rather than honoured: the
+  // two halves of the decision must not be able to disagree.
+  const confused = new Cesium.PolygonGraphics({});
+  applyLocalSurfaceStyle(confused, { surface: 'flat', extrudedHeightM: 40 }, Cesium.Color.CYAN);
+  assert.equal(confused.extrudedHeight, undefined);
+
+  // …and a volume spec with no metres is a slab, not a zero-height volume.
+  const empty = new Cesium.PolygonGraphics({});
+  applyLocalSurfaceStyle(empty, { surface: 'volume', extrudedHeightM: 0 }, Cesium.Color.CYAN);
+  assert.equal(empty.extrudedHeight, undefined);
+
+  const untouched = new Cesium.PolygonGraphics({});
+  assert.equal(applyLocalSurfaceStyle(untouched, { surface: null }, Cesium.Color.CYAN), false);
+  assert.equal(applyLocalSurfaceStyle(untouched, null, Cesium.Color.CYAN), false);
+  assert.equal(applyLocalSurfaceStyle(null, { surface: 'flat' }, Cesium.Color.CYAN), false);
+  assert.equal(untouched.fill, undefined);
+});
+
+/**
+ * A layer over polygon features only.
+ *
+ * Points are avoided on purpose: Cesium's GeoJSON loader builds a PIN BILLBOARD
+ * for every Point and the pin builder needs `document`. The layer treats both
+ * identically from the stem down, and the no-footprint case is exercised
+ * through an injected spec below instead.
+ * @param {object} options
+ */
+async function createMeasuredLayerHarness({ id = 'local-datacenters', features, ...rest } = {}) {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const preRender = new MockLayerEvent();
+  const moveEnd = new MockLayerEvent();
+  const dataSources = [];
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => features.map((feature, index) => JSON.stringify({
+      type: 'Feature',
+      id: `measured-${index}`,
+      properties: feature.properties,
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [feature.lon, feature.lat],
+          [feature.lon + feature.size, feature.lat],
+          [feature.lon + feature.size, feature.lat + feature.size],
+          [feature.lon, feature.lat + feature.size],
+          [feature.lon, feature.lat],
+        ]],
+      },
+    })).join('\n'),
+  });
+  globalThis.window = { dispatchEvent() {} };
+  const viewer = {
+    selectedEntity: undefined,
+    dataSources: {
+      add(dataSource) { dataSources.push(dataSource); return dataSource; },
+      remove() { return true; },
+    },
+    camera: {
+      positionWC: Cesium.Cartesian3.fromDegrees(2.35, 48.85, 100_000),
+      frustum: { fov: Math.PI / 3 },
+      moveEnd,
+      flyTo() {},
+    },
+    scene: {
+      canvas: { clientWidth: 800, clientHeight: 600 },
+      preRender,
+      sampleHeightSupported: false,
+      screenSpaceCameraController: { enableInputs: true },
+      pick() { return null; },
+      requestRender() {},
+    },
+  };
+  const layer = createLocalGeoJsonLayer({
+    id,
+    url: '/measured.geojsonl',
+    name: 'Measured',
+    color: '#00ffff',
+    overlayHost: { setVisible() {}, setEntries() {}, clearSource() {} },
+    projectToWindow: () => ({ x: 400, y: 300 }),
+    screenSpaceEventHandlerFactory: () => ({ setInputAction() {}, destroy() {} }),
+    ...rest,
+  });
+  try {
+    await layer.enable(viewer);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  return {
+    layer,
+    viewer,
+    preRender,
+    entities: dataSources[0]?.entities.values || [],
+    cleanup() {
+      if (originalWindow === undefined) delete globalThis.window;
+      else globalThis.window = originalWindow;
+    },
+  };
+}
+
+test('the datacenter pack draws three different footprints without being wired to', () => {
+  // The wiring file passes nothing: the resolver is keyed by layer id, exactly
+  // like the card copy and the nameless title already are, because what a
+  // pack's marks CLAIM is not the wiring file's business.
+  return createMeasuredLayerHarness({
+    features: [
+      // A hall with storeys → an extruded volume, 4 × 5 m. ~1 300 m², which
+      // is inside the pack's own interquartile range for a building.
+      { lon: 2.30, lat: 48.80, size: 0.0004, properties: { tags: { name: 'Hall', building: 'yes', 'building:levels': '4' } } },
+      // A hall with no height at all → flat, and that is 63 % of the pack.
+      { lon: 2.32, lat: 48.81, size: 0.0004, properties: { tags: { name: 'Slab', building: 'yes' } } },
+      // A campus fence → flat, slate, never extruded, and ~1.8 ha: the size
+      // spread that makes the hall/fence distinction matter in the first place.
+      { lon: 2.34, lat: 48.82, size: 0.0015, properties: { tags: { name: 'Site', building: 'no', height: '25' } } },
+    ],
+  }).then(async (harness) => {
+    try {
+      const [volume, slab, site] = harness.entities;
+
+      assert.equal(valueOf(volume.polygon.extrudedHeight), 20, 'four storeys at the measured 5 m');
+      assert.equal(valueOf(volume.polygon.heightReference), Cesium.HeightReference.CLAMP_TO_GROUND);
+
+      // A1 on the map, not just on the card: no default storey height.
+      assert.equal(slab.polygon.extrudedHeight, undefined);
+      assert.equal(site.polygon.extrudedHeight, undefined);
+
+      // Hue carries the one distinction the area number cannot survive.
+      const hue = (entity) => valueOf(entity.polygon.material.color).withAlpha(1).toCssHexString();
+      assert.equal(hue(volume), hue(slab), 'a hall is a hall whether or not it was measured');
+      assert.notEqual(hue(site), hue(slab), 'a fence must not read as a hall');
+
+      // Opacity is constant across the three, so it encodes nothing (A3).
+      const alpha = (entity) => valueOf(entity.polygon.material.color).alpha.toFixed(3);
+      assert.equal(new Set([alpha(volume), alpha(slab), alpha(site)]).size, 1);
+
+      // The anchor dot stops being the size channel: 6 px for all three, and
+      // filled, because all three DO have a footprint.
+      for (const entity of harness.entities) {
+        assert.equal(valueOf(entity.point.pixelSize), 6);
+        assert.equal(valueOf(entity.point.color).alpha, 1);
+      }
+
+      // …and the legend publishes both halves: what the signs are, then how
+      // big they are. Without the second half a world-unit size has no scale.
+      const legend = harness.layer.getRowControls().legend;
+      const byLabel = new Map(legend.map((row) => [row.label, row]));
+      assert.equal(byLabel.get('Volume bâti').count, 1);
+      assert.equal(byLabel.get('Emprise seule').count, 1);
+      assert.equal(byLabel.get('Contour de site').count, 1);
+      assert.equal(byLabel.has('Sans emprise'), false, 'no row for a class with no members');
+      assert.equal(byLabel.get('≥ 1 ha').count, 1, 'the fence is the only hectare here');
+      assert.equal(byLabel.get('≥ 1 000 m²').count, 3);
+    } finally {
+      await harness.layer.destroy?.(harness.viewer);
+      harness.cleanup();
+    }
+  });
+});
+
+test('a spec that says "not measured" draws a hollow ring, not a small dot', async () => {
+  const harness = await createMeasuredLayerHarness({
+    id: 'local-ports',
+    features: [
+      { lon: 2.30, lat: 48.80, size: 0.004, properties: { name: 'Measured', span: 400 } },
+      { lon: 2.32, lat: 48.81, size: 0.004, properties: { name: 'Unmeasured' } },
+    ],
+    featureRender: (props) => (Number.isFinite(Number(props.span))
+      ? { key: 'big', pixelSize: 14, hollow: false, surface: null }
+      : { key: 'none', pixelSize: 8, hollow: true, surface: null }),
+    renderLegend: (tally) => [...tally].map(([key, bucket]) => ({
+      label: key, color: '#c3ccd8', count: bucket.visible,
+    })),
+  });
+  try {
+    const [measured, unmeasured] = harness.entities;
+    assert.equal(valueOf(measured.point.pixelSize), 14);
+    assert.equal(valueOf(measured.point.color).alpha, 1, 'a measurement is a filled disc');
+
+    // The hollow mark: a transparent centre and a coloured rim. It must not be
+    // reachable by any value of the measured ladder — that is the whole of A1
+    // for a size channel.
+    assert.equal(valueOf(unmeasured.point.pixelSize), 8);
+    assert.equal(valueOf(unmeasured.point.color).alpha, 0);
+    assert.equal(valueOf(unmeasured.point.outlineColor).alpha, 1);
+
+    // A pack with no chips still gets a strip, because it has a scale to print.
+    const controls = harness.layer.getRowControls();
+    assert.equal(controls.chips, undefined);
+    assert.deepEqual(controls.legend.map((row) => [row.label, row.count]), [['big', 1], ['none', 1]]);
+  } finally {
+    await harness.layer.destroy?.(harness.viewer);
+    harness.cleanup();
+  }
+});
+
+test('the packs that spend no size channel keep exactly what they had', async () => {
+  // Ports and airports are not measured packs. Nothing about them may move:
+  // the historical 10 px dot, and a polygon Cesium clamped and filled itself.
+  const harness = await createMeasuredLayerHarness({
+    id: 'local-ports',
+    features: [{ lon: 2.30, lat: 48.80, size: 0.004, properties: { name: 'Harbour' } }],
+  });
+  try {
+    const [entity] = harness.entities;
+    assert.equal(valueOf(entity.point.pixelSize), 10);
+    assert.equal(valueOf(entity.point.color).alpha, 1);
+    assert.equal(entity.polygon.extrudedHeight, undefined);
+    assert.equal(entity.polygon.heightReference, undefined);
+    assert.equal(entity.polygon.fill, undefined, 'the loader s own fill, untouched');
+    assert.equal(typeof harness.layer.getRowControls, 'undefined');
+  } finally {
+    await harness.layer.destroy?.(harness.viewer);
+    harness.cleanup();
+  }
+});
+
+test('a display floor empties the size legend it hides, rather than lying about it', async () => {
+  const harness = await createMeasuredLayerHarness({
+    id: 'local-ports',
+    features: [
+      { lon: 2.30, lat: 48.80, size: 0.004, properties: { name: 'Big', rank: 'major' } },
+      { lon: 2.32, lat: 48.81, size: 0.004, properties: { name: 'Small', rank: 'minor' } },
+    ],
+    groupOf: (props) => props.rank,
+    groupStyles: { major: { color: '#ff0000' }, minor: { color: '#00ff00' } },
+    groupVisible: (key, params) => params.floor === 'all' || key === 'major',
+    defaultParams: { floor: 'all' },
+    rowControls: (params) => ({ chips: [{ id: 'all', label: 'ALL', active: params.floor === 'all' }] }),
+    featureRender: (props) => ({
+      key: props.rank === 'major' ? 'span1000' : 'span25',
+      pixelSize: props.rank === 'major' ? 18 : 6,
+      hollow: false,
+      surface: null,
+    }),
+    renderLegend: (tally) => [...tally].map(([key, bucket]) => ({ label: key, count: bucket.visible })),
+  });
+  try {
+    const counts = () => new Map(harness.layer.getRowControls().legend.map((r) => [r.label, r.count]));
+    assert.deepEqual([...counts()], [['span1000', 1], ['span25', 1]]);
+
+    // The chip hides the small one. The size row goes to zero — it does not
+    // keep claiming a mark the reader can no longer find.
+    harness.layer.setParams({ floor: 'major' });
+    assert.deepEqual([...counts()], [['span1000', 1], ['span25', 0]]);
+
+    // …and the chips keep working alongside it, untouched.
+    assert.equal(harness.layer.getRowControls().chips.length, 1);
+  } finally {
+    await harness.layer.destroy?.(harness.viewer);
+    harness.cleanup();
+  }
 });

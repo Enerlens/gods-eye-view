@@ -19,16 +19,22 @@ import irveFranceLayer, {
   createIrveDepartementOverlayEntry,
   irveBandColor,
   irveBandLabel,
-  irveDepartementAlpha,
-  irveDepartementBinLabels,
-  irveDepartementColor,
+  irveDensityColor,
+  irveDepartementPrism,
+  irveNationalPrismRows,
   irveSitePointSize,
   selectIrveLabelCohort,
   _clearIrveSelectionForTest,
   _irveDepartementOverlayForTest,
   _irveRowControlsForTest,
+  _applyIrveClassificationForTest,
+  _repaintIrveDepartementsForTest,
+  _selectIrveDepartementForTest,
   _selectIrveSiteForTest,
   _setIrveStateForTest,
+  IRVE_DENSITY_BREAKS,
+  IRVE_PRISM_DOMAIN_MAX,
+  IRVE_PRISM_SCALE,
   IRVE_FR_LABEL_COHORT_LIMIT,
   IRVE_FR_OVERLAY_SOURCE_ID,
   IRVE_FR_OVERLAY_SOURCE_OPTIONS,
@@ -40,6 +46,14 @@ import irveFranceLayer, {
   irveBeamTargetPx,
 } from './irveFrance.js';
 import { IRVE_BAND_KEYS, IRVE_MAX_BOX_DEG } from './irveFeed.js';
+import {
+  PRISM_BODY_ALPHA,
+  PRISM_MAX_HEIGHT_M,
+  PRISM_MIN_HEIGHT_M,
+  PRISM_NO_RATIO_COLOR,
+  PRISM_TOP_ALPHA,
+  prismApparentPx,
+} from './choroplethPrism.js';
 
 function viewerWithView(degrees) {
   return {
@@ -372,29 +386,41 @@ test('every legend row carries the sentence that explains its band', () => {
   _clearIrveSelectionForTest();
 });
 
-// ── The national regime: one dot per département, not 40 000 per France ─────
+// ── The national regime: a prism per département, not a flat count fill ─────
+//
+// Two variables on two channels: HEIGHT is the number of charge points, COLOUR
+// is the density per 1 000 km². Both scales are FROZEN literals published in
+// the module header, and the tests below exist to keep them literal — a domain
+// re-derived from the payload would make the same département a different
+// height between two loads, which is the C1 fault the prism removes.
 
-/** A rollup shaped exactly as `/api/irve-fr/departements` returns one. */
+/**
+ * A rollup shaped exactly as `/api/irve-fr/departements` returns one.
+ *
+ * The figures are real, re-measured 2026-09-03 by sweeping the live register
+ * (227 007 charge points): Paris and Lozère are the two ends of the count
+ * domain and of the density domain at once, Gironde is the "tall and pale"
+ * case the bivariate pairing exists for, and Corse-du-Sud is here as a MEASURED
+ * ZERO — the register lists nothing there, which is a finding and not a gap.
+ */
 function nationalRollup(overrides = {}) {
   const departements = [
-    { code: '75', name: 'Paris', pdc: 10539, sites: 664, areaKm2: 104, per1000Km2: 101336.5, bin: 5, bands: { lente: 8000, normale: 2000, accelere: 400, rapide: 100, hpc: 39, inconnue: 0 } },
-    { code: '59', name: 'Nord', pdc: 7987, sites: 1454, areaKm2: 5739, per1000Km2: 1391.7, bin: 5, bands: { lente: 4000, normale: 3000, accelere: 800, rapide: 150, hpc: 37, inconnue: 0 } },
-    { code: '69', name: 'Rhône', pdc: 5442, sites: 751, areaKm2: 3253, per1000Km2: 1672.9, bin: 4, bands: { lente: 3000, normale: 2000, accelere: 400, rapide: 40, hpc: 2, inconnue: 0 } },
-    { code: '48', name: 'Lozère', pdc: 227, sites: 69, areaKm2: 5167, per1000Km2: 43.9, bin: 0, bands: { lente: 100, normale: 100, accelere: 20, rapide: 5, hpc: 2, inconnue: 0 } },
-    { code: '2A', name: 'Corse-du-Sud', pdc: 0, sites: 0, areaKm2: 3995, per1000Km2: 0, bin: -1, bands: { lente: 0, normale: 0, accelere: 0, rapide: 0, hpc: 0, inconnue: 0 } },
+    { code: '75', name: 'Paris', pdc: 10245, sites: 664, areaKm2: 104, per1000Km2: 98509.6, bands: { lente: 8000, normale: 2000, accelere: 200, rapide: 6, hpc: 39, inconnue: 0 } },
+    { code: '33', name: 'Gironde', pdc: 7455, sites: 1102, areaKm2: 10077, per1000Km2: 739.8, bands: { lente: 4000, normale: 3000, accelere: 400, rapide: 45, hpc: 10, inconnue: 0 } },
+    { code: '69', name: 'Rhône', pdc: 5437, sites: 751, areaKm2: 3253, per1000Km2: 1671.4, bands: { lente: 3000, normale: 2000, accelere: 395, rapide: 40, hpc: 2, inconnue: 0 } },
+    { code: '48', name: 'Lozère', pdc: 226, sites: 69, areaKm2: 5167, per1000Km2: 43.7, bands: { lente: 100, normale: 99, accelere: 20, rapide: 5, hpc: 2, inconnue: 0 } },
+    { code: '2A', name: 'Corse-du-Sud', pdc: 0, sites: 0, areaKm2: 3995, per1000Km2: 0, bands: { lente: 0, normale: 0, accelere: 0, rapide: 0, hpc: 0, inconnue: 0 } },
   ];
   return {
     departements,
-    thresholds: [667, 1319, 1905, 2428, 3984],
-    binCount: 6,
     painted: 4,
-    pdcAssigned: 24195,
-    pdcSwept: 231079,
-    pdcTotal: 231079,
-    pdcWithheld: 5359,
-    pdcInvalid: 24,
-    pdcUnassigned: 816,
-    pdcSnapped: 778,
+    pdcAssigned: 23363,
+    pdcSwept: 227007,
+    pdcTotal: 227007,
+    pdcWithheld: 5495,
+    pdcInvalid: 26,
+    pdcUnassigned: 820,
+    pdcSnapped: 754,
     truncated: false,
     stalledStripes: 0,
     ...overrides,
@@ -403,39 +429,238 @@ function nationalRollup(overrides = {}) {
 
 const DEP_META = [
   ['75', { code: '75', name: 'Paris', anchor: [2.34, 48.86] }],
-  ['59', { code: '59', name: 'Nord', anchor: [3.16, 50.45] }],
+  ['33', { code: '33', name: 'Gironde', anchor: [-0.58, 44.84] }],
   ['69', { code: '69', name: 'Rhône', anchor: [4.62, 45.87] }],
   ['48', { code: '48', name: 'Lozère', anchor: [3.50, 44.52] }],
   ['2A', { code: '2A', name: 'Corse-du-Sud', anchor: [8.93, 41.87] }],
 ];
 
-test('the choropleth ramp is monotone and shares no colour with the power bands', () => {
-  const ramp = [0, 1, 2, 3, 4, 5].map(irveDepartementColor);
+/** A stand-in for the Cesium entity the GeoJSON source builds per polygon. */
+function depEntity(code) {
+  return {
+    show: false,
+    properties: { code: { getValue: () => code } },
+    polygon: { classificationType: Cesium.ClassificationType.BOTH },
+  };
+}
+
+/** Seed the layer with one entity per code, plus the rollup, then paint. */
+function paintWith(rollup, codes) {
+  const entities = codes.map((code) => [code, [depEntity(code)]]);
+  _setIrveStateForTest({
+    regime: 'national', national: rollup, depEntities: entities, depMeta: DEP_META, records: [],
+  });
+  _repaintIrveDepartementsForTest();
+  return new Map(entities.map(([code, parts]) => [code, parts[0]]));
+}
+
+test('the density ramp is monotone and shares no colour with the power bands', () => {
+  // The ramp now means a RATE, which is the one thing a fill is allowed to
+  // say. It must still be unreadable as one of the power categories: the two
+  // scales never draw at once, but a reader who zooms out must not carry a
+  // category's meaning into a quantity's.
+  const ramp = [50, 150, 300, 700, 1500, 50000].map(irveDensityColor);
   assert.equal(new Set(ramp).size, 6);
   for (const color of ramp) assert.match(color, /^#[0-9a-f]{6}$/i);
-  // A quantity scale must never be readable as one of the power categories.
   const bands = new Set(IRVE_BAND_KEYS.map(irveBandColor));
   for (const color of ramp) assert.ok(!bands.has(color), color);
-  // Alpha climbs with the bin, so density reads as weight as well as hue.
-  const alphas = [0, 1, 2, 3, 4, 5].map(irveDepartementAlpha);
-  assert.deepEqual(alphas, [...alphas].sort((a, b) => a - b));
+  // Lightness ASCENDS with the density, so the dense end is the salient one
+  // against the sky a prism is seen against.
+  const lightness = ramp.map((hex) => parseInt(hex.slice(1, 3), 16)
+    + parseInt(hex.slice(3, 5), 16) + parseInt(hex.slice(5, 7), 16));
+  assert.deepEqual(lightness, [...lightness].sort((a, b) => a - b));
 });
 
-test('a département with no charge point gets no colour at all', () => {
-  // Absence is not the bottom of a scale — the same rule Mix élec applies to
-  // Corse, so an empty département is unpainted rather than dark violet.
-  assert.equal(irveDepartementColor(-1), null);
-  assert.equal(irveDepartementColor(null), null);
-  assert.equal(irveDepartementAlpha(-1), 0);
+test('the class breaks are a frozen geometric ladder, not quantiles of a payload', () => {
+  // C1. Measured over the 96 départements on 2026-09-03, this ladder fills
+  // every class — 11 · 27 · 28 · 19 · 7 · 4 — where six EQUAL intervals over
+  // the same 43.7 → 98 509.6 range give 94 · 1 · 0 · 0 · 0 · 1. The literal is
+  // the point: a boundary derived from the rows in hand moves when a sweep
+  // loses a stripe, and a département that changes colour without changing is
+  // the defect this removes.
+  assert.deepEqual([...IRVE_DENSITY_BREAKS], [100, 250, 500, 1000, 2500]);
+  assert.deepEqual([...IRVE_PRISM_SCALE.ratioBreaks], [...IRVE_DENSITY_BREAKS]);
+  // Six classes, which is CARTOGRAPHIE B3's ceiling and not one more.
+  assert.equal(IRVE_PRISM_SCALE.ratioColors.length, 6);
+  // Boundaries are inclusive at the top of a class, so a value ON a break can
+  // never fall between two colours.
+  assert.equal(irveDensityColor(100), irveDensityColor(43.7));
+  assert.notEqual(irveDensityColor(100.1), irveDensityColor(100));
+  // The four inner-Paris départements, and only they, reach the top class.
+  assert.equal(irveDensityColor(98509.6), IRVE_PRISM_SCALE.ratioColors[5]);
+  assert.equal(irveDensityColor(2500), IRVE_PRISM_SCALE.ratioColors[4]);
 });
 
-test('the legend prints the quantile boundaries it actually chose', () => {
-  // A quantile scale is only honest if the reader can see where it cut.
-  const labels = irveDepartementBinLabels([667, 1319, 1905, 2428, 3984]);
-  assert.equal(labels.length, 6);
-  assert.match(labels[0], /^1–667$/);
-  assert.match(labels[1], /668/);
-  assert.match(labels.at(-1), /\+$/);
+test('a density that was never computed is refused, not painted as the lowest class', () => {
+  // `Number(null)` is 0, so a plain coercion would paint "we have no figure"
+  // as "this is the emptiest part of France".
+  for (const missing of [null, undefined, '', NaN, 'x', [], true]) {
+    assert.equal(irveDensityColor(missing), null, String(missing));
+  }
+  assert.equal(irveDensityColor(0), IRVE_PRISM_SCALE.ratioColors[0]);
+});
+
+test('the height domain is a frozen literal, never the maximum of the payload', () => {
+  // The same département must be the same height in every session and every
+  // share link, so the top of the scale cannot follow the data.
+  assert.equal(IRVE_PRISM_DOMAIN_MAX, 12_000);
+  assert.equal(IRVE_PRISM_SCALE.domainMax, IRVE_PRISM_DOMAIN_MAX);
+  const paris = irveDepartementPrism(nationalRollup().departements[0]);
+  const shrunk = nationalRollup();
+  shrunk.departements = shrunk.departements.slice(1);
+  const gironde = irveDepartementPrism(shrunk.departements[0]);
+  // Dropping the tallest département does not make the next one taller.
+  assert.equal(gironde.heightM, irveDepartementPrism(nationalRollup().departements[1]).heightM);
+  assert.ok(paris.heightM > gironde.heightM);
+  // 10 245 of a frozen 12 000 → 102.5 km, which is 98.6 px at the ~1 500 km
+  // the 9.5° national entry span is reached at.
+  assert.equal(Math.round(paris.heightM), 102_450);
+  assert.ok(Math.abs(prismApparentPx({ heightM: paris.heightM, cameraDistanceM: 1_500_000 }) - 98.6) < 0.5);
+});
+
+test('the height scale is LINEAR, and the floor bites on three départements only', () => {
+  // `choroplethPrism.js` names this layer as a `sqrt` candidate because the
+  // domain runs 1 : 45. Measured, the 4 km floor bites at 400 charge points
+  // and only Cantal (373), Creuse (347) and Lozère (226) are under it — three
+  // of 96, which is the A1 floor doing its job, not a lie by flooring. A sqrt
+  // ruler would draw Paris at 2.4× the median where it is 5.5×.
+  assert.equal(IRVE_PRISM_SCALE.mode, 'linear');
+  const height = (pdc) => irveDepartementPrism({ code: 'x', pdc, per1000Km2: 100 }).heightM;
+  assert.equal(height(400), PRISM_MIN_HEIGHT_M);
+  for (const floored of [373, 347, 226]) assert.equal(height(floored), PRISM_MIN_HEIGHT_M);
+  assert.ok(height(401) > PRISM_MIN_HEIGHT_M);
+  // Linear means the ratio on screen is the ratio in the register.
+  assert.ok(Math.abs((height(10245) / height(1846)) - (10245 / 1846)) < 1e-6);
+  assert.equal(height(IRVE_PRISM_DOMAIN_MAX), PRISM_MAX_HEIGHT_M);
+});
+
+test('a count above the frozen domain is clipped, and the legend says so', () => {
+  // A5. The mark stops measuring at the top of the domain; what it must never
+  // do is pretend otherwise, or quietly move the domain to fit.
+  const rollup = nationalRollup();
+  rollup.departements[0] = { ...rollup.departements[0], pdc: 15_000 };
+  const built = irveDepartementPrism(rollup.departements[0]);
+  assert.equal(built.clipped, true);
+  assert.equal(built.heightM, PRISM_MAX_HEIGHT_M);
+  _setIrveStateForTest({ regime: 'national', national: rollup, records: [] });
+  const { legend } = _irveRowControlsForTest();
+  const clipped = legend.find((row) => /au-dessus du domaine gelé/.test(row.label));
+  assert.ok(clipped, JSON.stringify(legend.map((row) => row.label)));
+  assert.equal(clipped.count, 1);
+  _clearIrveSelectionForTest();
+});
+
+test('a measured zero and an unmeasured département are two different facts', () => {
+  // A1, and the reason this layer draws four marks rather than two. The zero
+  // has a height of exactly zero — not null, not the floor — and the missing
+  // one has no height at all.
+  const zero = irveDepartementPrism({ code: '2A', pdc: 0, per1000Km2: 0 });
+  assert.equal(zero.heightM, 0);
+  assert.equal(zero.measuredZero, true);
+  assert.equal(zero.hasValue, true);
+  assert.equal(zero.extruded, false);
+  const missing = irveDepartementPrism({ code: '2B', pdc: null, per1000Km2: 12 });
+  assert.equal(missing.heightM, null);
+  assert.equal(missing.measuredZero, false);
+  assert.equal(missing.hasValue, false);
+  // A negative count is a bad parse, not "a little": it is refused, not floored.
+  assert.equal(irveDepartementPrism({ code: 'x', pdc: -5, per1000Km2: 12 }).heightM, null);
+});
+
+test('the paint pass gives each of the four states its own mark', () => {
+  const rollup = nationalRollup();
+  // A département whose density cannot be computed: the height is measured,
+  // the colour is not, and the two refusals are independent.
+  rollup.departements.push({
+    code: '2B', name: 'Haute-Corse', pdc: 900, sites: 40, areaKm2: 0, per1000Km2: null, bands: {},
+  });
+  // '01' is in the shapes and NOT in the rollup — a payload that came short.
+  const entities = paintWith(rollup, ['75', '2A', '2B', '01']);
+
+  const paris = entities.get('75').polygon;
+  assert.equal(paris.height, 0, 'the base is the ellipsoid, so tops are comparable');
+  assert.ok(paris.extrudedHeight > 100_000);
+  assert.equal(paris.perPositionHeight, false);
+  // An extruded polygon classifies nothing — Cesium reads the property and
+  // ignores it — so leaving one set would be a property that lies.
+  assert.equal(paris.classificationType, undefined);
+  assert.equal(paris.outline, true, 'off terrain the silhouette is legal at last');
+  assert.ok(Math.abs(paris.outlineColor.alpha - PRISM_TOP_ALPHA) < 1e-6);
+  assert.ok(paris.material instanceof Cesium.ColorMaterialProperty);
+  assert.ok(Math.abs(paris.material.color.getValue().alpha - PRISM_BODY_ALPHA) < 1e-6);
+  assert.equal(entities.get('75').show, true);
+
+  const corse = entities.get('2A').polygon;
+  assert.equal(corse.extrudedHeight, undefined, 'a measured zero has no volume');
+  assert.equal(corse.height, undefined, 'and stays clamped, so it lands on the surface');
+  assert.equal(corse.classificationType, Cesium.ClassificationType.BOTH);
+  assert.equal(corse.outline, false, 'Cesium refuses an outline on terrain');
+  assert.ok(corse.material instanceof Cesium.ColorMaterialProperty);
+  assert.equal(entities.get('2A').show, true, 'drawn, because zero is a measurement');
+
+  const noRatio = entities.get('2B').polygon;
+  assert.ok(noRatio.extrudedHeight > 0, 'the height is still measured');
+  assert.ok(noRatio.material instanceof Cesium.StripeMaterialProperty, 'the colour is refused');
+
+  const unmeasured = entities.get('01').polygon;
+  assert.equal(unmeasured.extrudedHeight, undefined);
+  assert.ok(unmeasured.material instanceof Cesium.GridMaterialProperty,
+    'a motif, not a tint: on a photorealistic globe there is no neutral colour');
+  _clearIrveSelectionForTest();
+});
+
+test('a prism that becomes a footprint gets its classification back', () => {
+  // The map-stack listener only writes to the flat shapes, so a shape that
+  // stops being a prism has to be re-armed by the paint pass or it comes up on
+  // nothing the next time Google's tiles hide the globe.
+  const entities = paintWith(nationalRollup(), ['75']);
+  assert.equal(entities.get('75').polygon.classificationType, undefined);
+  const emptied = nationalRollup();
+  emptied.departements = [{ ...emptied.departements[0], pdc: 0, per1000Km2: 0 }];
+  _setIrveStateForTest({
+    regime: 'national',
+    national: emptied,
+    depEntities: [['75', [entities.get('75')]]],
+    records: [],
+  });
+  _repaintIrveDepartementsForTest();
+  assert.equal(entities.get('75').polygon.extrudedHeight, undefined);
+  assert.equal(entities.get('75').polygon.classificationType, Cesium.ClassificationType.BOTH);
+  _clearIrveSelectionForTest();
+});
+
+test('a map-stack change re-arms the footprints and leaves the prisms alone', () => {
+  // The switch exists because a session that starts over Google's tiles hides
+  // the Cesium globe: a fill asserted onto terrain would have no terrain to
+  // land on. It still has to run — for the flat shapes. Writing it onto a
+  // prism would leave a property that Cesium reads and then ignores, which is
+  // a lie told to the next reader rather than to the renderer.
+  const rollup = nationalRollup();
+  const entities = paintWith(rollup, ['75', '2A']);
+  _applyIrveClassificationForTest(Cesium.ClassificationType.CESIUM_3D_TILE);
+  assert.equal(entities.get('75').polygon.classificationType, undefined, 'the prism');
+  assert.equal(
+    entities.get('2A').polygon.classificationType,
+    Cesium.ClassificationType.CESIUM_3D_TILE,
+    'the measured zero, which is still clamped',
+  );
+  _applyIrveClassificationForTest(Cesium.ClassificationType.BOTH);
+  _clearIrveSelectionForTest();
+});
+
+test('selecting a prism lights its body AND its top edge', () => {
+  // The top edge is the instrument the height is read with. A selection that
+  // filled the body without lighting the edge would take the reading away at
+  // the exact moment the reader asked for the figures.
+  const entities = paintWith(nationalRollup(), ['75']);
+  const before = entities.get('75').polygon.material.color.getValue().clone();
+  _selectIrveDepartementForTest('75');
+  const after = entities.get('75').polygon.material.color.getValue();
+  assert.ok(!Cesium.Color.equals(before, after), 'the body changed colour');
+  assert.ok(Math.abs(after.blue - 1) < 1e-6 && Math.abs(after.red) < 1e-6, 'cyan');
+  assert.ok(Math.abs(after.alpha - PRISM_BODY_ALPHA) < 1e-6);
+  assert.ok(Math.abs(entities.get('75').polygon.outlineColor.alpha - PRISM_TOP_ALPHA) < 1e-6);
+  _clearIrveSelectionForTest();
 });
 
 test('the national row reports the country total and points at the other regime', () => {
@@ -467,21 +692,65 @@ test('the national row says it is loading before it says anything else', () => {
   );
 });
 
-test('the national legend is the quantile ramp, and never the power bands', () => {
-  // The two scales must never be on screen together: one means an amount, the
-  // other means a kind, and the same eye reads both.
+test('the national legend publishes BOTH scales, and never the power bands', () => {
+  // D1. A height with no numbered marks says only "taller than that one", so
+  // the ruler is part of the legend and not a nicety. And the two IRVE scales
+  // must never be on screen together: one means an amount, the other a kind.
   _setIrveStateForTest({
     viewer: viewerWithView(), regime: 'national', national: nationalRollup(), records: [],
   });
   const { legend } = _irveRowControlsForTest();
-  assert.ok(legend.length >= 3, JSON.stringify(legend.map((row) => row.label)));
+  const labels = legend.map((row) => row.label);
+  assert.ok(labels[0].startsWith('Hauteur'), labels.join(' | '));
+  assert.ok(labels.some((label) => /^Couleur/.test(label)), labels.join(' | '));
+  // Three numbered height ticks, drawn as BARS whose height is the datum and
+  // whose colour is constant — a coloured tick would be a second, false
+  // encoding on a row where the colour means nothing.
+  const ticks = legend.filter((row) => row.glyph && /points de charge$/.test(row.label));
+  assert.equal(ticks.length, 3);
+  assert.equal(new Set(ticks.map((row) => row.color)).size, 1);
+  assert.match(flat(ticks[0].label), /^10 000 points de charge$/);
   for (const row of legend) {
-    assert.match(row.label, /bornes$/);
     assert.ok(!IRVE_BAND_KEYS.map(irveBandLabel).includes(row.label), row.label);
-    assert.ok(row.blurb.length > 20);
+    assert.doesNotMatch(row.label, /kW/);
   }
-  // Counts are DÉPARTEMENTS per bin here, not charge points.
-  assert.equal(legend.reduce((sum, row) => sum + row.count, 0), 4);
+  // The colour rows count DÉPARTEMENTS, and only the classes that are occupied
+  // are shown — a legend entry nobody can ever find on the map is noise.
+  const classes = legend.filter((row) => IRVE_PRISM_SCALE.ratioColors.includes(row.color));
+  assert.equal(classes.reduce((sum, row) => sum + row.count, 0), 5);
+  // The measured zero is counted, and named as a measurement.
+  const zero = legend.find((row) => /mesuré à zéro/.test(row.label));
+  assert.equal(zero.count, 1);
+  _clearIrveSelectionForTest();
+});
+
+test('the legend states the areal bias the volume inherits, in French', () => {
+  // The prism does not remove a choropleth's area bias — it moves it from the
+  // fill to the volume. What it adds is a second channel to catch it with, and
+  // saying so on the map is the difference between an arbitration and a trick.
+  _setIrveStateForTest({
+    viewer: viewerWithView(), regime: 'national', national: nationalRollup(), records: [],
+  });
+  const { legend } = _irveRowControlsForTest();
+  const height = legend[0];
+  assert.match(flat(height.blurb), /Échelle linéaire/);
+  assert.match(flat(height.blurb), /12 000 points de charge/);
+  assert.match(height.blurb, /aire n’est pas neutralisée|aire n'est pas neutralisée/);
+  const color = legend.find((row) => /^Couleur/.test(row.label));
+  // The colour's title carries its UNIT, because the class labels below it
+  // are bare numbers, and a number with no unit is not a legend.
+  assert.match(flat(color.label), /densité en points de charge pour 1 000 km²/);
+  _clearIrveSelectionForTest();
+});
+
+test('the rows handed to the prism helpers are the rollup, unedited', () => {
+  _setIrveStateForTest({ regime: 'national', national: nationalRollup(), records: [] });
+  const rows = irveNationalPrismRows();
+  assert.equal(rows.length, 5);
+  assert.deepEqual(rows[0], { code: '75', value: 10245, ratio: 98509.6 });
+  // One builder for the legend tally and for the paint pass, so the two can
+  // never disagree about which départements exist.
+  assert.deepEqual(irveNationalPrismRows(null), []);
   _clearIrveSelectionForTest();
 });
 
@@ -495,20 +764,28 @@ test('the site legend comes back the moment the regime does', () => {
   _clearIrveSelectionForTest();
 });
 
-test('the département card gives the count, the split, and the rate behind it', () => {
-  // The fill encodes an absolute count, which flatters a large département.
-  // Printing the rate beside it is what lets a reader check that bias.
+test('the département card names which channel each figure is', () => {
+  // The volume invites exactly one misreading — "is this pile big because the
+  // territory is big?" — and the card is where it is settled: the count is the
+  // height, the density is the colour, and both are printed as numbers.
   const card = buildIrveDepartementLabel(nationalRollup().departements[0]);
   assert.match(card.split('\n')[0], /^Paris \(75\)$/);
-  assert.match(flat(card), /10 539 points de charge/);
+  assert.match(flat(card), /10 245 points de charge — la hauteur du prisme/);
   assert.match(card, /664 sites/);
-  assert.match(flat(card), /pour 1 000 km²/);
+  assert.match(flat(card), /98 509,6 pour 1 000 km² — la couleur/);
   assert.match(card, /ne publie pas la disponibilité/);
+});
+
+test('a département with no computable density says so on the card', () => {
+  assert.match(
+    buildIrveDepartementLabel({ code: '2B', name: 'Haute-Corse', pdc: 900, sites: 40, bands: {}, areaKm2: 0, per1000Km2: null }),
+    /densité non calculable/,
+  );
 });
 
 test('the département card handles a single charge point and an empty rollup', () => {
   assert.match(
-    buildIrveDepartementLabel({ code: '48', name: 'Lozère', pdc: 1, sites: 1, bands: {}, areaKm2: 5167 }),
+    buildIrveDepartementLabel({ code: '48', name: 'Lozère', pdc: 1, sites: 1, bands: {}, areaKm2: 5167, per1000Km2: 0.2 }),
     /1 point de charge\b/,
   );
   assert.equal(buildIrveDepartementLabel(null), '');
@@ -520,11 +797,18 @@ test('ambient labels name the biggest départements, and only a bounded few', ()
   });
   const cohort = _irveDepartementOverlayForTest();
   assert.ok(cohort.length <= IRVE_FR_LABEL_COHORT_LIMIT);
-  // Ranked by charge points, and the empty département is never labelled.
+  // Ranked by charge points, and the measured zero is never labelled.
   assert.deepEqual(cohort.map((entry) => entry.id), [
-    'irve-fr:dep:75', 'irve-fr:dep:59', 'irve-fr:dep:69', 'irve-fr:dep:48',
+    'irve-fr:dep:75', 'irve-fr:dep:33', 'irve-fr:dep:69', 'irve-fr:dep:48',
   ]);
-  assert.match(flat(cohort[0].title), /Paris · 10 539/);
+  assert.match(flat(cohort[0].title), /Paris · 10 245/);
+  // The label's accent is the prism's own colour — the density class — so the
+  // name and the shape it belongs to are never two different keys.
+  assert.equal(cohort[0].accent, irveDensityColor(98509.6));
+  assert.equal(
+    createIrveDepartementOverlayEntry({ code: '2B', name: 'Haute-Corse', pdc: 900, per1000Km2: null }, null).accent,
+    PRISM_NO_RATIO_COLOR,
+  );
   _clearIrveSelectionForTest();
 });
 

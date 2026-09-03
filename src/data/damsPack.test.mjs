@@ -7,6 +7,12 @@ import {
   DAM_DISPLAY_FLOORS,
   DAM_MATERIAL_FAMILIES,
   DAM_MIN_SPAN_M,
+  DAM_SIZE_SWATCH_COLOR,
+  DAM_SPAN_CLASSES,
+  DAM_SPAN_UNKNOWN,
+  damRenderSpec,
+  damSpanClass,
+  damSpanLegend,
   DAM_TAG_FILTERS,
   DAM_TIERS,
   DAM_TIER_STYLES,
@@ -254,15 +260,18 @@ test('every tier has a style, a floor that keeps it, and a shrinking card range'
   const keys = DAM_TIERS.map((tier) => tier.key);
   assert.deepEqual(keys, ['major', 'named', 'minor'], 'the array order IS the ranking');
 
-  // Styles are keyed by the COMPOSITE `kind:tier` now: colour says WHAT the
-  // structure is, everything else says how much it matters. A dyke and a dam
-  // of the same size draw the same size, in different colours.
+  // Styles are keyed by the COMPOSITE `kind:tier`: colour says WHAT the
+  // structure is, the range says how much it matters. SIZE is deliberately
+  // NOT here any more — it is a per-feature measurement now — and leaving a
+  // tier-shaped `pixelSize` behind would silently win the merge for every
+  // feature whose span OSM never gave us.
   for (const tier of DAM_TIERS) {
     const colours = new Set();
     for (const kind of ['dam', 'dyke', 'dam+dyke', '']) {
       const style = DAM_TIER_STYLES[`${kind}:${tier.key}`];
       assert.ok(style, `${kind}:${tier.key} has no style`);
-      assert.equal(style.pixelSize, tier.pixelSize, `${kind}:${tier.key} size`);
+      assert.equal(style.pixelSize, undefined, `${kind}:${tier.key} still sizes by tier`);
+      assert.equal(style.stemWidth, undefined, `${kind}:${tier.key} still widens by tier`);
       assert.equal(style.cardMaxDistance, tier.cardMaxDistance, `${kind}:${tier.key} range`);
       colours.add(style.color);
     }
@@ -270,12 +279,13 @@ test('every tier has a style, a floor that keeps it, and a shrinking card range'
     // The dam ramp keeps the blues this layer has always used.
     assert.equal(DAM_TIER_STYLES[`dam:${tier.key}`].color, tier.color);
     assert.ok(tier.blurb.length > 0, `${tier.key} has no blurb`);
+    assert.equal(tier.pixelSize, undefined, `${tier.key} still declares a size`);
+    assert.equal(tier.stemWidth, undefined, `${tier.key} still declares a stem width`);
   }
 
-  // Importance is monotonic across all three channels, so the biggest dot is
-  // also the one that keeps its label longest.
+  // Importance is monotonic across the two channels it still owns, so the
+  // ouvrage that ranks highest is also the one that keeps its card longest.
   for (let i = 1; i < DAM_TIERS.length; i += 1) {
-    assert.ok(DAM_TIERS[i].pixelSize < DAM_TIERS[i - 1].pixelSize);
     assert.ok(DAM_TIERS[i].priority < DAM_TIERS[i - 1].priority);
     assert.ok(DAM_TIERS[i].cardMaxDistance < DAM_TIERS[i - 1].cardMaxDistance);
   }
@@ -303,9 +313,8 @@ test('a display floor hides the tiers below it and falls back to showing everyth
 });
 
 test('the legend counts what is DRAWN and names what it is hiding', () => {
-  // The tally arrives keyed by the composite key and is folded twice — once by
-  // structure, once by importance. Both answer a question the panel is asked,
-  // and neither can be read off the other.
+  // The tally arrives keyed by the composite key and is folded onto the
+  // STRUCTURE, which is the axis colour actually draws.
   const legend = damTierLegend(new Map([
     ['dam:major', { total: 1000, visible: 1000 }],
     ['dam:named', { total: 500, visible: 500 }],
@@ -319,10 +328,16 @@ test('the legend counts what is DRAWN and names what it is hiding', () => {
   assert.match(byLabel.get('Barrage').blurb, /4579 masqués/);
   assert.equal(byLabel.get('Digue').count, 110);
   assert.doesNotMatch(byLabel.get('Digue').blurb, /masqué/);
-  // …and the importance rows fold every structure.
-  assert.equal(byLabel.get('Grand barrage').count, 1060);
-  assert.equal(byLabel.get('Barrage nommé').count, 550);
-  assert.equal(byLabel.get('Petit ouvrage').count, 0);
+
+  // The three TIER rows are gone with the tier's pixel sizes. A legend row is
+  // a promise that the reader will find that sign on the map, and after the
+  // size handover there is no mark on the globe that says "Grand barrage" —
+  // the three blues those rows carried were the SAME three blues as the
+  // structure rows above them, printed a second time.
+  for (const tier of DAM_TIERS) {
+    assert.equal(byLabel.has(tier.label), false, `${tier.label} is still a legend row`);
+  }
+  assert.equal(legend.length, 2);
 
   // A group with nothing in it is absent, not a zero row.
   assert.deepEqual(damTierLegend({ 'dam:major': { total: 0, visible: 0 } }), []);
@@ -545,4 +560,136 @@ test('the shipped pack is French-complete, graded, and carries nothing it should
   // tier on the named-and-long clause alone, which is why that clause exists.
   assert.equal(damTier(byName.get('Barrage de Vouglans')), 'major');
   assert.equal(byName.get('Barrage de Vouglans')?.heightM, undefined);
+});
+
+// ── The size channel ────────────────────────────────────────────────────────
+//
+// `height` was measured at 2.30 % of the pack and refused; `spanM`, measured
+// off the geometry, reaches 71.69 % and took the channel. These tests pin the
+// refusal, the frozen thresholds and the hollow mark for the 28 % that were
+// never measured — all three are things a well-meaning tidy-up would undo.
+
+test('span classes are frozen domain thresholds, and a short span is not a small one', () => {
+  const bounds = DAM_SPAN_CLASSES.map((entry) => entry.minM);
+  assert.deepEqual(bounds, [1000, 300, 100, DAM_MIN_SPAN_M], 'longest first, round metres');
+  for (let i = 1; i < bounds.length; i += 1) assert.ok(bounds[i] < bounds[i - 1]);
+  // 300 m is the threshold the tier ladder already uses, so the two ladders
+  // stay commensurable rather than telling a reader two different stories.
+  assert.equal(bounds.includes(MAJOR_DAM_SPAN_M), true);
+
+  assert.equal(damSpanClass({ spanM: 6399 }), 'span1000');
+  assert.equal(damSpanClass({ spanM: 1000 }), 'span1000');
+  assert.equal(damSpanClass({ spanM: 999 }), 'span300');
+  assert.equal(damSpanClass({ spanM: 300 }), 'span300');
+  assert.equal(damSpanClass({ spanM: 299 }), 'span100');
+  assert.equal(damSpanClass({ spanM: 100 }), 'span100');
+  assert.equal(damSpanClass({ spanM: 99 }), 'span25');
+  assert.equal(damSpanClass({ spanM: DAM_MIN_SPAN_M }), 'span25');
+
+  // Below the shipping floor, or absent, is UNMEASURED — not "the smallest".
+  assert.equal(damSpanClass({ spanM: DAM_MIN_SPAN_M - 1 }), DAM_SPAN_UNKNOWN.key);
+  assert.equal(damSpanClass({ spanM: 0 }), DAM_SPAN_UNKNOWN.key);
+  assert.equal(damSpanClass({}), DAM_SPAN_UNKNOWN.key);
+  assert.equal(damSpanClass(null), DAM_SPAN_UNKNOWN.key);
+  assert.equal(damSpanClass({ spanM: 'long' }), DAM_SPAN_UNKNOWN.key);
+});
+
+test('the render spec sizes by the measurement and rings what was never measured', () => {
+  const sizes = DAM_SPAN_CLASSES.map((entry) => damRenderSpec({ spanM: entry.minM }).pixelSize);
+  assert.deepEqual(sizes, [18, 13, 9, 6], 'longest draws largest');
+  for (let i = 1; i < sizes.length; i += 1) assert.ok(sizes[i] < sizes[i - 1]);
+  for (const spec of DAM_SPAN_CLASSES.map((entry) => damRenderSpec({ spanM: entry.minM }))) {
+    assert.equal(spec.hollow, false);
+  }
+
+  // A1 drawn: the unmeasured mark is HOLLOW, and its diameter is not one the
+  // measured ladder ever uses — so it can be confused with no class at all.
+  const unknown = damRenderSpec({});
+  assert.equal(unknown.hollow, true);
+  assert.equal(unknown.pixelSize, DAM_SPAN_UNKNOWN.pixelSize);
+  assert.equal(sizes.includes(unknown.pixelSize), false);
+
+  // The dam polygons keep the flat clamped fill they have always had: 97.7 %
+  // of the pack publishes no height, so there is nothing to extrude by.
+  for (const props of [{ spanM: 1200 }, { spanM: 40, heightM: 133 }, {}]) {
+    const spec = damRenderSpec(props);
+    assert.equal(spec.surface, null);
+    assert.equal(spec.extrudedHeightM, null);
+    // Colour is the structure's business, not the size's — the spec declines
+    // to override it so the kind ramp survives intact.
+    assert.equal(spec.color, null);
+  }
+});
+
+test('the size legend prints its metre bounds and counts what is drawn', () => {
+  const legend = damSpanLegend(new Map([
+    ['span1000', { total: 100, visible: 100 }],
+    ['span300', { total: 400, visible: 400 }],
+    ['span100', { total: 2000, visible: 2000 }],
+    ['span25', { total: 2600, visible: 0 }],
+    ['nospan', { total: 2100, visible: 900 }],
+  ]));
+  const byLabel = new Map(legend.map((row) => [row.label, row]));
+
+  // Every row names its own bound in metres. A size channel with no printed
+  // scale is exactly the case D1 is about.
+  for (const entry of DAM_SPAN_CLASSES) {
+    assert.ok(byLabel.has(entry.label), `${entry.label} missing`);
+    assert.match(entry.label, /\d/, `${entry.label} publishes no number`);
+  }
+  assert.equal(byLabel.get('1 000 m et plus').count, 100);
+  assert.equal(byLabel.get('25 – 99 m').count, 0, 'a floor empties the row, it does not hide it');
+  assert.equal(byLabel.get(DAM_SPAN_UNKNOWN.label).count, 900);
+
+  // One graphite for every row: the datum here is the swatch's diameter, and
+  // a hue moving with it would encode the same fact twice (A3).
+  assert.equal(new Set(legend.map((row) => row.color)).size, 1);
+  assert.equal(legend[0].color, DAM_SIZE_SWATCH_COLOR);
+  // Five distinct swatch shapes for five distinct marks on the globe.
+  assert.equal(new Set(legend.map((row) => row.glyph)).size, 5);
+  for (const row of legend) {
+    assert.ok(row.glyph.startsWith('data:image/svg+xml;base64,'));
+  }
+
+  assert.deepEqual(damSpanLegend(new Map()), []);
+  assert.deepEqual(damSpanLegend(null), []);
+  assert.deepEqual(damSpanLegend({ span300: { total: 0, visible: 0 } }), []);
+});
+
+test('the shipped pack still has the span coverage the size channel was chosen on', () => {
+  const features = readFileSync(PACK, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
+  assert.equal(features.length, 7432, 'the pack this was measured against');
+
+  const counts = new Map();
+  let withHeight = 0;
+  let withSpan = 0;
+  for (const feature of features) {
+    const props = feature.properties || {};
+    if (Number.isFinite(Number(props.heightM))) withHeight += 1;
+    if (Number.isFinite(Number(props.spanM))) withSpan += 1;
+    const key = damSpanClass(props);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+
+  // THE decision this whole section rests on: `height` is on 2.3 % of the
+  // pack, which is not a size channel, it is a list of 171 objects. If a
+  // re-extraction ever pushes it past a usable share, this assertion is the
+  // place that says so.
+  assert.equal(withHeight, 171);
+  assert.ok(withHeight / features.length < 0.05, `height reaches ${withHeight}`);
+  assert.equal(withSpan, 5328);
+  assert.ok(withSpan / features.length > 0.7, `span reaches ${withSpan}`);
+
+  // The populations quoted in the header and in DAM_SPAN_CLASSES.
+  assert.equal(counts.get('span1000'), 116);
+  assert.equal(counts.get('span300'), 439);
+  assert.equal(counts.get('span100'), 2132);
+  assert.equal(counts.get('span25'), 2641);
+  assert.equal(counts.get(DAM_SPAN_UNKNOWN.key), 2104);
+  for (const entry of [...DAM_SPAN_CLASSES, DAM_SPAN_UNKNOWN]) {
+    assert.equal(entry.count, counts.get(entry.key), `${entry.key} count is stale`);
+  }
+  // More than a quarter of the layer is unmeasured. That is precisely why it
+  // gets a mark of its own instead of the smallest disc.
+  assert.ok(counts.get(DAM_SPAN_UNKNOWN.key) / features.length > 0.25);
 });

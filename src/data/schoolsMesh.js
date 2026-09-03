@@ -2,8 +2,13 @@
  * @module schoolsMesh
  *
  * The middle regime of the schools layer: the zooms between "all of France"
- * and "one city", where neither 101 painted départements nor 68 158
- * overlapping dots is the honest answer.
+ * and "one city", where neither 96 département prisms nor 68 158 overlapping
+ * dots is the honest answer.
+ *
+ * Untouched by the national regime's move from a flat fill to a prism, and
+ * that is the point: the prism is a statement about 96 TERRITORIES, this is a
+ * sample of real SITES, and the handover between them is the altitude gate in
+ * `schoolsFrance.js` and nothing else.
  *
  * The policy and its justification live in `geoMeshThinning.js`, which the
  * charge-point layer worked out first (`irveMesh.js` carries the measurements

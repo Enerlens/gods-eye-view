@@ -12,17 +12,45 @@ import * as Cesium from 'cesium';
 import {
   ADS_MAX_MONTHS,
   LOCAL_ADS_PORTALS,
+  SITADEL_FILES,
   normaliseLocalRow,
+  normaliseSitadelRow,
   projectAdsPermits,
 } from './adsFeed.js';
-import {
+import adsUrbanismeLayer, {
+  ADS_BUILDING_THEME_ID,
+  ADS_BUILDING_THEME_LEGEND,
+  ADS_BUILDING_THEME_PRECEDENCE,
+  ADS_TARGET_EXISTING,
+  ADS_TARGET_NEW,
+  ADS_TARGET_UNKNOWN,
   ADS_WINDOWS,
   ADS_WINDOW_DEFAULT,
+  adsBuildingThemeColorFor,
+  adsBuildingThemeLedger,
+  adsBuildingThemeLine,
+  adsBuildingThemePoints,
+  adsBuildingThemeReduce,
+  adsPermitTarget,
+  adsRowControls,
   adsWindowChips,
+  clearAdsBuildingTheme,
   drawAdsEmprises,
   empriseCard,
   empriseStyle,
+  syncAdsBuildingTheme,
 } from './adsUrbanisme.js';
+import {
+  BUILDING_THEME_MIN_DELTA_E,
+  buildingThemeConflicts,
+  clearAllBuildingThemes,
+  deltaE76,
+  getActiveBuildingTheme,
+  parseCssRgb,
+  resolveBuildingThemePaint,
+  unknownBuildingCss,
+} from './buildingTheme.js';
+import { BDTOPO_USAGE_TIERS } from './bdtopoBuildingsFeed.js';
 
 const PORTALS = JSON.parse(readFileSync(
   new URL('./fixtures/ads-portals-sample.json', import.meta.url), 'utf8',
@@ -255,4 +283,235 @@ test('a chip title never invents a count the scan did not report', () => {
   for (const chip of adsWindowChips('36', { truncated: false })) {
     assert.ok(!/\d+ dossiers/.test(chip.title), chip.title);
   }
+});
+// ── The building theme ──────────────────────────────────────────────────────
+//
+// The property these pin is the one the layer's whole claim rests on: painting
+// a VOLUME says "this dossier is about this building", which is a stronger
+// sentence than the marker's "a dossier exists here" — and it is FALSE for a
+// new build on bare ground. So every test below is about what the theme
+// REFUSES to say, and about the ledger that counts the refusals.
+
+/** A square footprint centred on a coordinate, in the shape the join wants. */
+function footprintAt(id, lon, lat, halfDeg = 0.00005) {
+  return {
+    id,
+    degrees: [
+      lon - halfDeg, lat - halfDeg,
+      lon + halfDeg, lat - halfDeg,
+      lon + halfDeg, lat + halfDeg,
+      lon - halfDeg, lat + halfDeg,
+    ],
+    holes: [],
+  };
+}
+
+const LOGEMENTS = SITADEL_FILES.find((file) => file.key === 'logements');
+const AMENAGER = SITADEL_FILES.find((file) => file.key === 'amenager');
+const DEMOLIR = SITADEL_FILES.find((file) => file.key === 'demolir');
+
+test('the nature vocabulary is READ from adsFeed, not re-guessed here', () => {
+  // If `adsFeed.js` ever rewords the two `NATURE_PROJET_DECLAREE` labels, this
+  // test fails instead of every permit in France silently becoming "nature not
+  // published" — which is the failure mode of a classifier that sniffs strings
+  // and nobody pins.
+  const newBuild = normaliseSitadelRow(LOGEMENTS, {
+    NUM_DAU: '0441091200392', TYPE_DAU: 'PC', ETAT_DAU: 2, NATURE_PROJET_DECLAREE: 1,
+  });
+  const onExisting = normaliseSitadelRow(LOGEMENTS, {
+    NUM_DAU: '0441091200393', TYPE_DAU: 'PC', ETAT_DAU: 5, NATURE_PROJET_DECLAREE: 2,
+  });
+  assert.match(newBuild.purpose, /nouvelle construction/);
+  assert.match(onExisting.purpose, /travaux sur construction existante/);
+  assert.equal(adsPermitTarget(newBuild), ADS_TARGET_NEW);
+  assert.equal(adsPermitTarget(onExisting), ADS_TARGET_EXISTING);
+
+  // The two files that do NOT carry the column are settled by the family, and
+  // the law is what settles them: a permis d'aménager authorises the
+  // development of LAND, a permis de démolir names something that stands.
+  const amenager = normaliseSitadelRow(AMENAGER, { NUM_PA: '0441092600001', ETAT_PA: 2 });
+  const demolir = normaliseSitadelRow(DEMOLIR, { NUM_PD: '0441092600086', ETAT_PD: 2 });
+  assert.equal(amenager.kind, 'PA');
+  assert.equal(demolir.kind, 'PD');
+  assert.equal(adsPermitTarget(amenager), ADS_TARGET_NEW);
+  assert.equal(adsPermitTarget(demolir), ADS_TARGET_EXISTING);
+
+  // Neither Sitadel column reaches the métropole portals, so their dossiers
+  // are `unknown` — the third answer, carried rather than rounded off.
+  const bordeaux = normaliseLocalRow(BORDEAUX, PORTALS.bordeaux[0]);
+  assert.equal(adsPermitTarget(bordeaux), ADS_TARGET_UNKNOWN);
+  assert.equal(adsPermitTarget({}), ADS_TARGET_UNKNOWN);
+  assert.equal(adsPermitTarget(null), ADS_TARGET_UNKNOWN);
+});
+
+test('exactly two of the seven sources publish a nature column', () => {
+  // The measurement the header rests on, re-taken from the configuration
+  // itself. If a fifth Sitadel file or a fourth portal arrives, this changes.
+  const withNature = SITADEL_FILES
+    .filter((file) => file.columns.includes('NATURE_PROJET_DECLAREE'))
+    .map((file) => file.key);
+  assert.deepEqual(withNature, ['logements', 'locaux']);
+  assert.equal(SITADEL_FILES.length + LOCAL_ADS_PORTALS.length, 7);
+  for (const portal of LOCAL_ADS_PORTALS) {
+    assert.ok(!('natureColumn' in portal), `${portal.key} publishes no nature column`);
+  }
+});
+
+test('a new build is withheld from the volumes, counted, and left as a crane', () => {
+  const ledger = adsBuildingThemePoints({
+    permits: [
+      { kind: 'PC', state: 'commence', purpose: 'travaux sur construction existante', lon: 1, lat: 2 },
+      { kind: 'PC', state: 'accorde', purpose: 'nouvelle construction · logements', lon: 1, lat: 2 },
+      { kind: 'PA', state: 'accorde', purpose: 'lotissement', lon: 1, lat: 2 },
+      { kind: 'DP', state: 'instruction', purpose: 'ravalement', lon: 1, lat: 2 },
+      { kind: 'PC', state: null, purpose: 'travaux sur construction existante', lon: 1, lat: 2 },
+      { kind: 'PC', state: 'accorde', purpose: 'ravalement', lon: null, lat: 2 },
+    ],
+  });
+  assert.equal(ledger.total, 6);
+  assert.equal(ledger.offered, 2, 'the works-on-existing one and the unclassified one');
+  assert.equal(ledger.offeredDeclared, 1);
+  assert.equal(ledger.offeredInferred, 1);
+  assert.equal(ledger.newBuild, 1);
+  assert.equal(ledger.land, 1, 'a permis d’aménager is about ground, not a roof');
+  assert.equal(ledger.unpublishedState, 1);
+  assert.equal(ledger.unplaced, 1);
+  // The ledger is a PARTITION: a dossier that fell out of every bucket is the
+  // one failure this ledger exists to make impossible.
+  assert.equal(
+    ledger.offered + ledger.newBuild + ledger.land + ledger.unpublishedState + ledger.unplaced,
+    ledger.total,
+  );
+  assert.equal(ledger.points.length, ledger.offered);
+  assert.equal(adsBuildingThemePoints(null).total, 0);
+});
+
+test('a volume carrying several dossiers wears the same state as the ground under it', () => {
+  // One ranking, called through one function. If the roof and the plot could
+  // disagree the street would contradict itself.
+  const permits = [{ state: 'termine' }, { state: 'commence' }, { state: 'accorde' }];
+  assert.equal(adsBuildingThemeReduce(permits), 'commence');
+  assert.equal(adsBuildingThemeReduce(permits), empriseStyle(permits).state);
+  assert.equal(adsBuildingThemeReduce([{ state: null }]), null);
+});
+
+test('an unpublished state paints no volume, because its grey is the refusal grey', () => {
+  // ΔE76 11.2 between `#9fb0c6` (state not published) and `#8c93a3` (refused
+  // or annulled) — 10 is where two colours stop sharing a name. On a roof the
+  // reader would have no way to tell "nobody decided" from "the answer was no".
+  const distance = deltaE76(parseCssRgb('#9fb0c6'), parseCssRgb('#8c93a3'));
+  assert.ok(distance < 15, `measured ΔE ${distance.toFixed(1)}`);
+  assert.equal(adsBuildingThemeColorFor(null), null);
+  assert.equal(adsBuildingThemeColorFor('inconnu'), null);
+  assert.equal(adsBuildingThemeColorFor('commence'), '#ff6b4a');
+  // The two states that share a colour still share it — the legend has one row
+  // per colour for exactly this reason.
+  assert.equal(adsBuildingThemeColorFor('instruction'), adsBuildingThemeColorFor('depose'));
+  assert.equal(adsBuildingThemeColorFor('accorde'), adsBuildingThemeColorFor('autorise'));
+});
+
+test('no painted class can be mistaken for a volume nobody filed on (A1)', () => {
+  const washes = BDTOPO_USAGE_TIERS.map((tier) => unknownBuildingCss(tier.color));
+  let worst = Infinity;
+  for (const entry of ADS_BUILDING_THEME_LEGEND) {
+    for (const wash of washes) {
+      worst = Math.min(worst, deltaE76(parseCssRgb(entry.color), parseCssRgb(wash)));
+    }
+  }
+  // Measured 28.0, on `#8c93a3` against the washed `Indifférencié` grey — the
+  // tightest pair in the palette and still above the module's own bar.
+  assert.ok(worst >= BUILDING_THEME_MIN_DELTA_E, `nearest class is ΔE ${worst.toFixed(1)}`);
+  // And the registry's own registration-time guard has nothing to warn about.
+  assert.deepEqual(
+    buildingThemeConflicts(ADS_BUILDING_THEME_LEGEND.map((entry) => entry.color)),
+    [],
+  );
+  // One row per colour, or the panel's swatch-matched counts double-claim.
+  const colors = ADS_BUILDING_THEME_LEGEND.map((entry) => entry.color);
+  assert.equal(new Set(colors).size, colors.length);
+});
+
+test('the theme paints the existing roof and refuses the empty plot next door', () => {
+  clearAllBuildingThemes();
+  const roof = footprintAt('roof', 2.35, 48.86);
+  const bare = footprintAt('bare', 2.36, 48.86);
+  syncAdsBuildingTheme({
+    permits: [
+      {
+        kind: 'PC', state: 'commence', purpose: 'travaux sur construction existante',
+        lon: 2.35, lat: 48.86,
+      },
+      // A declared new build that geocoded onto a standing roof. This is the
+      // error the whole design is against: it must not paint anything.
+      {
+        kind: 'PC', state: 'accorde', purpose: 'nouvelle construction',
+        lon: 2.36, lat: 48.86,
+      },
+    ],
+  });
+  const theme = getActiveBuildingTheme();
+  assert.equal(theme.id, ADS_BUILDING_THEME_ID);
+  assert.equal(theme.precedence, ADS_BUILDING_THEME_PRECEDENCE);
+
+  const paint = resolveBuildingThemePaint([roof, bare], theme);
+  assert.equal(paint.painted, 1);
+  assert.equal(paint.colorById.get('roof'), '#ff6b4a');
+  assert.equal(paint.colorById.has('bare'), false, 'a new build paints nothing');
+  assert.equal(paint.unpainted, 1);
+  // The "no data" row says which of the two silences it is (A4).
+  assert.match(paint.unknownLabel, /hors du rayon de 400 m/);
+  assert.match(paint.unknownLabel, /sans dossier/);
+  clearAllBuildingThemes();
+});
+
+test('the theme is published on enable and withdrawn on disable', () => {
+  clearAllBuildingThemes();
+  // `addressScanLayer` installs and removes a keydown listener unconditionally,
+  // and `node --test` has no DOM. A property of the harness, not of the layer.
+  const hadDocument = 'document' in globalThis;
+  if (!hadDocument) globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  // Registered EMPTY rather than not at all: the key, the wash and the count of
+  // unpainted volumes have to appear the moment the layer is switched on.
+  adsUrbanismeLayer.enable(null);
+  assert.equal(getActiveBuildingTheme()?.id, ADS_BUILDING_THEME_ID);
+  assert.deepEqual(getActiveBuildingTheme().points, []);
+  adsUrbanismeLayer.disable();
+  assert.equal(getActiveBuildingTheme(), null);
+  assert.equal(adsBuildingThemeLedger(), null);
+  if (!hadDocument) delete globalThis.document;
+  clearAllBuildingThemes();
+});
+
+test('the row line publishes the OFFER ledger and points at the paint ledger', () => {
+  const line = adsBuildingThemeLine({
+    total: 12, offered: 5, offeredDeclared: 3, offeredInferred: 2,
+    newBuild: 4, land: 1, unpublishedState: 2, unplaced: 0,
+  });
+  assert.match(line, /5 des 12 dossiers peignent le bâti 3D/);
+  assert.match(line, /dont 2 sur nature non publiée/);
+  assert.match(line, /4 en construction neuve/);
+  assert.match(line, /1 permis d’aménager/);
+  assert.match(line, /2 sans état publié/);
+  // The number this layer does NOT hold, named where it lives — A5 is not
+  // satisfied by a count that exists somewhere unnamed.
+  assert.match(line, /Bâti 3D/);
+  assert.equal(adsBuildingThemeLine(null), null);
+  assert.equal(adsBuildingThemeLine({ total: 0 }), null);
+});
+
+test('the layer publishes its own colour key, including the class it will not paint', () => {
+  const payload = bordeauxPayload();
+  const controls = adsRowControls(payload);
+  assert.equal(controls.legend.length, ADS_BUILDING_THEME_LEGEND.length + 1);
+  const unpublished = controls.legend.at(-1);
+  assert.equal(unpublished.label, 'État non publié');
+  assert.equal(unpublished.color, '#9fb0c6');
+  assert.match(unpublished.blurb, /le volume ne l’est pas/);
+  // Every drawn dossier is counted exactly once across the key.
+  const counted = controls.legend.reduce((sum, entry) => sum + entry.count, 0);
+  assert.equal(counted, payload.permits.length);
+  // The plot wash IS a ground-classified drape, so the manager's photoreal
+  // notice applies — but only where a portal published a plot.
+  assert.equal(controls.surfaceFill, true);
+  assert.equal(adsRowControls({ permits: [], emprises: [] }).surfaceFill, false);
 });

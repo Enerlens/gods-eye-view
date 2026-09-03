@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  NDBC_BOUNDS,
   NDBC_FIELD_COUNT,
   filterFreshObservations,
   parseNdbcLatestObservations,
@@ -190,4 +191,31 @@ test('fixture reproduces the sparse real-world coverage', () => {
   assert.equal(summary.stations, 12);
   assert.ok(summary.marine < summary.stations, 'some stations report no marine value');
   assert.ok(summary.waveHeight > 0, 'some stations do report wave height');
+});
+
+
+// The bounds are part of the published contract now: a downstream length or
+// colour scale has to be able to read the widest value it can ever be handed,
+// instead of assuming a narrower ceiling than the parser enforces.
+test('the plausibility bounds are exported, frozen and ordered', () => {
+  assert.equal(Object.isFrozen(NDBC_BOUNDS), true);
+  for (const [field, range] of Object.entries(NDBC_BOUNDS)) {
+    assert.equal(range.length, 2, `${field} is a [min, max] pair`);
+    assert.ok(Number.isFinite(range[0]) && Number.isFinite(range[1]), field);
+    assert.ok(range[0] < range[1], `${field} is ordered`);
+  }
+  // The number `marineBuoys.js` freezes its stem domain against.
+  assert.deepEqual(NDBC_BOUNDS.waveHeightM, [0, 40]);
+});
+
+// A bound that stopped rejecting would silently hand a 900 m sea to a scale
+// that maps metres onto kilometres of geometry.
+test('a wave height beyond the exported ceiling is dropped, not clamped', () => {
+  const [, ceiling] = NDBC_BOUNDS.waveHeightM;
+  const row = (wvht) => `41001   34.700  -72.700 2026 08 26 19 50  210  7.2   9.3  ${wvht}`
+    + '   8   5.9 195 1017.1  -1.8  26.1  27.4  22.0   MM     MM';
+  assert.equal(parseNdbcRow(row(String(ceiling))).waveHeightM, ceiling);
+  assert.equal(parseNdbcRow(row(String(ceiling + 0.1))).waveHeightM, null);
+  // Zero is inside the bound and is a reading of a flat sea, not a rejection.
+  assert.equal(parseNdbcRow(row('0.0')).waveHeightM, 0);
 });

@@ -42,14 +42,20 @@ test('ADS-B emitter string categories', () => {
   assert.equal(classifyAircraft({ category: 'B1' }), 'glider');
 });
 
-test('typeCode outranks category; unknown → airliner', () => {
+test('typeCode outranks category; nothing exploitable → unknown, never airliner', () => {
   assert.equal(classifyAircraft({ typeCode: 'F18', category: 6 }), 'fastjet');
-  assert.equal(classifyAircraft({}), 'airliner');
-  assert.equal(classifyAircraft({ typeCode: null, category: 0 }), 'airliner');
+  // CARTOGRAPHIE A1: `/states/all` carries no type code and OpenSky's live
+  // category is 0/"no info" for ~94% of contacts, so this is the INITIAL state
+  // of most of the fleet, not an edge case. It must not claim a narrow-body.
+  assert.equal(classifyAircraft({}), 'unknown');
+  assert.equal(classifyAircraft({ typeCode: null, category: 0 }), 'unknown');
+  // A code we simply don't have a set for is still a MEASUREMENT — it stays
+  // the default jet. Only the absence of any datum is 'unknown'.
+  assert.equal(classifyAircraft({ typeCode: 'B738' }), 'airliner');
 });
 
 test('scale/url tables cover every class', () => {
-  for (const kind of ['light','glider','turboprop','airliner','widebody','quadjet','helicopter','fastjet','bizjet','uav']) {
+  for (const kind of ['light','glider','turboprop','airliner','widebody','quadjet','helicopter','fastjet','bizjet','uav','unknown']) {
     assert.ok(Number.isFinite(CLASS_SCALE_2D[kind]), kind);
     assert.ok(CLASS_SCALE_3D[kind] >= 0.75 && CLASS_SCALE_3D[kind] <= 1.45, kind);
     assert.ok(typeof CLASS_MODEL_URL[kind] === 'string', kind);
@@ -63,4 +69,15 @@ test('CLASS_MODEL_REAL entries carry the fields the layers consume', () => {
     // every real-model class must also exist in the classifier tables
     assert.ok(Number.isFinite(CLASS_SCALE_2D[kind]), kind);
   }
+});
+
+test('the unclassified contact has its own glyph and does not sit mid-ramp', async () => {
+  const { aircraftIcon } = await import('./aircraftIcons.js');
+  // Distinct silhouette — the shape channel, not the size channel, carries
+  // "not classified".
+  assert.notEqual(aircraftIcon('unknown'), aircraftIcon('airliner'));
+  // An unrecognised kind falls back to the dart, not to the airliner planform.
+  assert.equal(aircraftIcon('no-such-class'), aircraftIcon('unknown'));
+  // Size is the weight-class channel: 1.0 means narrow-body and is not free.
+  assert.notEqual(CLASS_SCALE_2D.unknown, CLASS_SCALE_2D.airliner);
 });

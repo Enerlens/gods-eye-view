@@ -107,15 +107,20 @@ export const thermalShader = {
       return clamp(s, 0.0, 1.0);
     }
 
-    // Render a character (digit, '.', or '°') at position
+    // Render a character (digit, '.', or one of the 'rEL' letters) at position.
+    // The '°' glyph was REMOVED (CARTOGRAPHIE A1): the readout it terminated
+    // is a relative scene index, not a temperature, so the degree sign was the
+    // one mark on it that asserted a physical quantity.
     float renderChar(vec2 p, int ch) {
       if (ch == 10) { // '.' decimal point
         return smoothstep(0.15, 0.0, length(p - vec2(0.5, 0.08)));
       }
-      if (ch == 11) { // '°' degree symbol
-        float ring = abs(length(p - vec2(0.5, 0.82)) - 0.08);
-        return smoothstep(0.04, 0.02, ring);
-      }
+      // 7-segment letters for the dimensionless 'rEL' label.
+      if (ch == 12) return clamp(segment(p, 4) + segment(p, 6), 0.0, 1.0);       // 'r'
+      if (ch == 13) return clamp(segment(p, 0) + segment(p, 3) + segment(p, 4)
+                                 + segment(p, 5) + segment(p, 6), 0.0, 1.0);      // 'E'
+      if (ch == 14) return clamp(segment(p, 3) + segment(p, 4)
+                                 + segment(p, 5), 0.0, 1.0);                      // 'L'
       if (ch >= 0 && ch <= 9) return digit(p, ch);
       return 0.0;
     }
@@ -258,42 +263,54 @@ export const thermalShader = {
       // Center crosshair
       hud += crosshair(hudUV) * 0.7;
 
-      // Top-right: simulated temperature readout (derived from center luminance)
+      // Top-right: RELATIVE scene index, labelled 'rEL', derived from the
+      // centre luminance of the composed frame.
+      //
+      // It used to read 20.0 + centerLuma * 30.0, rendered with one decimal
+      // and a degree sign: a physical temperature in Celsius, invented from
+      // the brightness of an orthophoto, printed in the same seven-segment
+      // type as the frame counter. Nothing in this pipeline measures radiance
+      // — there is no thermal band anywhere in the imagery — so no number here
+      // can be a temperature. The code comment said "simulated"; the screen
+      // did not (CARTOGRAPHIE A1). The digits stay, the claim goes: rEL 0.62
+      // is exactly what the shader knows, a dimensionless 0-1 scene index.
       float centerLuma = dot(texture(colorTexture, vec2(0.5)).rgb, vec3(0.299, 0.587, 0.114));
-      float tempC = 20.0 + centerLuma * 30.0; // 20°C to 50°C range
-      int tempInt = int(tempC);
-      int tempDec = int(fract(tempC) * 10.0);
+      float relIndex = clamp(centerLuma, 0.0, 0.999);
+      int relTenths = int(relIndex * 10.0);
+      int relHundredths = int(fract(relIndex * 10.0) * 10.0);
 
-      // Temperature digits at top-right
       float tempHud = 0.0;
-      vec2 tempOrigin = vec2(0.88, 0.92);
       vec2 charSize = vec2(0.018, 0.035);
       float spacing = 0.02;
+      vec2 labelOrigin = vec2(0.812, 0.92);
+      vec2 tempOrigin = vec2(0.884, 0.92);
 
-      // Tens digit
+      // 'rEL' - the unit, so the digits cannot be read as degrees.
+      for (int i = 0; i < 3; i++) {
+        vec2 lp = (hudUV - (labelOrigin + vec2(float(i) * spacing, 0.0))) / charSize;
+        if (lp.x >= 0.0 && lp.x <= 1.0 && lp.y >= 0.0 && lp.y <= 1.0) {
+          tempHud += renderChar(lp, 12 + i);
+        }
+      }
+      // Leading '0' — the index is bounded to the half-open unit interval.
       vec2 d1p = (hudUV - tempOrigin) / charSize;
       if (d1p.x >= 0.0 && d1p.x <= 1.0 && d1p.y >= 0.0 && d1p.y <= 1.0) {
-        tempHud += renderChar(d1p, tempInt / 10);
-      }
-      // Ones digit
-      vec2 d2p = (hudUV - (tempOrigin + vec2(spacing, 0.0))) / charSize;
-      if (d2p.x >= 0.0 && d2p.x <= 1.0 && d2p.y >= 0.0 && d2p.y <= 1.0) {
-        tempHud += renderChar(d2p, tempInt % 10);
+        tempHud += renderChar(d1p, 0);
       }
       // Decimal point
-      vec2 dpp = (hudUV - (tempOrigin + vec2(spacing * 2.0, 0.0))) / charSize;
+      vec2 dpp = (hudUV - (tempOrigin + vec2(spacing, 0.0))) / charSize;
       if (dpp.x >= 0.0 && dpp.x <= 1.0 && dpp.y >= 0.0 && dpp.y <= 1.0) {
         tempHud += renderChar(dpp, 10); // '.'
       }
-      // Decimal digit
+      // Tenths
+      vec2 d2p = (hudUV - (tempOrigin + vec2(spacing * 1.6, 0.0))) / charSize;
+      if (d2p.x >= 0.0 && d2p.x <= 1.0 && d2p.y >= 0.0 && d2p.y <= 1.0) {
+        tempHud += renderChar(d2p, relTenths);
+      }
+      // Hundredths
       vec2 d3p = (hudUV - (tempOrigin + vec2(spacing * 2.6, 0.0))) / charSize;
       if (d3p.x >= 0.0 && d3p.x <= 1.0 && d3p.y >= 0.0 && d3p.y <= 1.0) {
-        tempHud += renderChar(d3p, tempDec);
-      }
-      // Degree symbol
-      vec2 dgp = (hudUV - (tempOrigin + vec2(spacing * 3.5, 0.0))) / charSize;
-      if (dgp.x >= 0.0 && dgp.x <= 1.0 && dgp.y >= 0.0 && dgp.y <= 1.0) {
-        tempHud += renderChar(dgp, 11); // '°'
+        tempHud += renderChar(d3p, relHundredths);
       }
       hud += tempHud * 0.8;
 
@@ -310,12 +327,22 @@ export const thermalShader = {
       }
       hud += framHud * 0.5;
 
-      // Scale bar (right edge gradient)
+      // Scale bar (right edge gradient) — the ONLY legend this shader draws,
+      // so it has to be the key to the image beside it. It was painted in
+      // greyscale unconditionally, which meant that under the ironbow palette
+      // the picture ran black-purple-magenta-red-orange-white while its own
+      // key ran black-to-white: the key stopped decoding the map
+      // (CARTOGRAPHIE, the swatch IS the datum). It now follows the same
+      // mix(mono, iron, palette) the image does, from the same ironbow().
       float bar = scaleBar(hudUV);
       if (bar > 0.0) {
         float barGrad = (hudUV.y - 0.15) / 0.7; // 0 at bottom, 1 at top
         float barVal = mix(barGrad, 1.0 - barGrad, isBlackHot);
-        thermalColor = mix(thermalColor, vec3(barVal), bar * 0.9);
+        // The ironbow ramp maps TRUE temperature regardless of WHOT/BHOT, so
+        // the coloured key reads bottom-cold to top-hot in both modes — same
+        // convention as the image (see the mono/iron mix above).
+        vec3 barColor = mix(vec3(barVal), ironbow(barGrad), palette);
+        thermalColor = mix(thermalColor, barColor, bar * 0.9);
       }
 
       // Composite HUD (rendered in white, slightly transparent)

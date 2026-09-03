@@ -276,13 +276,24 @@ function probe(page) {
     // ten départements carry islands — a shown count would say 6 for 5.
     const shownCodes = new Set();
     const hiddenCodes = new Set();
+    // The count is now the height, so the probe has to read the Z axis: a
+    // département with a PRISM has a measured count, a département drawn FLAT
+    // has a count measured at zero, and the two are different statements.
+    const prismCodes = new Set();
+    const flatCodes = new Set();
     let shown = 0;
     for (const entity of source ? source.entities.values : []) {
       if (!entity.polygon) continue;
       const code = String(entity.properties?.code?.getValue?.() ?? '').trim();
-      if (entity.show) { shownCodes.add(code); shown += 1; } else hiddenCodes.add(code);
+      if (entity.show) {
+        shownCodes.add(code);
+        shown += 1;
+        const top = entity.polygon.extrudedHeight?.getValue?.();
+        if (Number.isFinite(top) && top > 0) prismCodes.add(code); else flatCodes.add(code);
+      } else hiddenCodes.add(code);
     }
     for (const code of shownCodes) hiddenCodes.delete(code);
+    for (const code of prismCodes) flatCodes.delete(code);
     return {
       stats: module.getStats(),
       summary: module.getViewportSummary(),
@@ -293,6 +304,8 @@ function probe(page) {
       polygonsShown: shownCodes.size,
       polygonsHidden: hiddenCodes.size,
       polygonParts: shown,
+      prisms: prismCodes.size,
+      flats: flatCodes.size,
     };
   });
 }
@@ -379,13 +392,19 @@ async function main() {
     }
     check('a national view asks for the rollup, not for a viewport',
       nationalRequests >= 1 && siteRequests === 0, `national=${nationalRequests} sites=${siteRequests}`);
-    check('the départements with charge points are painted',
-      national.polygonsShown === 5,
-      `${national.polygonsShown} départements (${national.polygonParts} parts) of ${national.polygonsShown + national.polygonsHidden}`);
+    check('the départements with charge points are RAISED, one prism each',
+      national.prisms === 5,
+      `${national.prisms} prismes, ${national.flats} plats, ${national.polygonParts} parts`);
     check('and an island keeps every part of its département painted',
       national.polygonParts >= national.polygonsShown, `${national.polygonParts} parts`);
-    check('and the one with none stays unpainted, not painted as the emptiest',
-      national.polygonsHidden >= 1, `${national.polygonsHidden} hidden`);
+    // The reversal this chantier made, and it is the better reading. The empty
+    // département used to be HIDDEN, which put "measured at zero" and "never
+    // measured" behind one silence (A1). Zero is a MEASUREMENT: it is drawn,
+    // flat and filled, with its own legend line — and a département the sweep
+    // never reached is the one that gets no prism and a hatched footprint.
+    check('and a count measured at ZERO is drawn flat, never hidden',
+      national.flats >= 1 && national.polygonsHidden === 0,
+      `${national.flats} plats, ${national.polygonsHidden} masqués`);
     check('no site dot is drawn at this altitude', national.rendered === 0, `${national.rendered} points`);
     check('the layer reports the country total', national.national?.pdcAssigned === 26134,
       String(national.national?.pdcAssigned));
@@ -400,14 +419,32 @@ async function main() {
     // ── vi(a). the legend at altitude is the quantile ramp ─────────────────
     console.log('[qa] vi. the national legend');
     const nationalLegend = Object.fromEntries(national.legend.map(([label, count]) => [label, count]));
-    check('the national legend counts DÉPARTEMENTS, in bins',
-      Object.values(nationalLegend).reduce((a, b) => a + b, 0) === 5,
+    // The key is bivariate now: a HEIGHT ruler with numbered marks (D1 — a
+    // height with no ruler says only "taller than that one") and the density
+    // classes. An entry that names a CHANNEL or a mark carries no count by
+    // contract, so only the counted rows tally the départements.
+    // The two tallies are over two CHANNELS and must not be added together: a
+    // département measured at zero is counted once on the height side, as the
+    // refusal of a prism, and once again on the colour side, in its density
+    // class. Summing them would assert that a bivariate key describes each
+    // unit once, which is exactly what a bivariate key does not do.
+    const colourHeader = national.legend.findIndex(([label]) => /^Couleur —/.test(label));
+    const colourTotal = national.legend.slice(colourHeader + 1)
+      .filter(([, count]) => Number.isFinite(count))
+      .reduce((sum, [, count]) => sum + count, 0);
+    check('the national legend rules the height and counts DÉPARTEMENTS',
+      colourHeader > 0
+      && colourTotal === 6
+      && national.legend.some(([label]) => /^Hauteur — /.test(label))
+      && national.legend.filter(([label]) => /\d[\s\u202f]?\d*\s+points de charge$/.test(label)).length >= 2,
       JSON.stringify(national.legend.map(([l, c]) => [l, c])));
     check('and never shows a power band at this altitude',
       !national.legend.some(([label]) => /kW/.test(label)),
       JSON.stringify(national.legend.map(([l]) => l)));
     check('the ramp is the violet scale, not the power ramp',
-      national.legend.every(([, , color]) => /^#(2f1b52|4d2a86|7239b4|9b4fd0|c774e0|eba9ef)$/.test(color)),
+      national.legend
+        .filter(([, , color]) => !!color)
+        .every(([, , color]) => /^#(2f1b52|4d2a86|7239b4|9b4fd0|c774e0|eba9ef|c3ccd8)$/i.test(color)),
       JSON.stringify(national.legend.map(([, , c]) => c)));
 
     // ── vii. the maillage, between the country and the city ────────────────

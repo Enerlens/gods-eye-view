@@ -49,6 +49,30 @@
  * representing a cell by its largest member would paint rural France 5G on the
  * strength of one upgraded mast per cell.
  *
+ * ── Why the tuple does NOT carry the support height ─────────────────────────
+ * The drawing extrudes each support to its real height in the closest regime,
+ * and the obvious next thought is to put the height in the tuple so the
+ * maillage could do it too. It is refused, and on two measurements rather than
+ * on taste.
+ *
+ * The first is the wire. `sup_nm_haut` is one decimal place over a 0.6–343.3 m
+ * range, so it is three to five characters a row across 72 700 rows in a
+ * document that gzips to 392 035 bytes precisely BECAUSE its four columns sort
+ * together and share leading digits. A fifth column with no spatial
+ * autocorrelation to exploit is the one that does not compress.
+ *
+ * The second is that nobody could see it. The shafts are drawn under 0.06° of
+ * view span — about 6.7 km across — because at the top of the exact regime a
+ * median 30 m mast is already about one screen pixel. The maillage answers
+ * from 0.32° upward, where the same mast is a fifth of a pixel. A height in
+ * this tuple would be a field that is paid for on every load and drawn at no
+ * zoom this file serves.
+ *
+ * And a cell REPRESENTATIVE's height would be a lie of a third kind: the
+ * thinning already speaks for a cell through one member, which is defensible
+ * for a modal band and for an operator count, and is not defensible for a
+ * length that the eye would read as a measurement of the ground it stands on.
+ *
  * ── What the maillage cannot say, and what it can ───────────────────────────
  * `schools-fr`'s maillage carries no names, so a mesh dot's card says
  * "Établissement" until a click fetches the real one. This one has no such

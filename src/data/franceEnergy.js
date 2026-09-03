@@ -4,7 +4,20 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
-import { departementAnchor, parseDepartements } from './meteoFranceVigilance.js';
+import { parseDepartements } from './meteoFranceVigilance.js';
+import {
+  PRISM_BASE_HEIGHT_M,
+  PRISM_BODY_ALPHA,
+  PRISM_HEIGHT_SWATCH_COLOR,
+  PRISM_NO_RATIO_COLOR,
+  PRISM_NO_RATIO_GLYPH,
+  PRISM_TOP_ALPHA,
+  createPrismScale,
+  prismHeightGlyph,
+  prismHeightM,
+  prismRow,
+  prismTally,
+} from './choroplethPrism.js';
 
 /**
  * éCO2mix — where French electricity actually comes from, right now.
@@ -26,30 +39,144 @@ import { departementAnchor, parseDepartements } from './meteoFranceVigilance.js'
  * not a map. So the globe shows the two things in this dataset that ARE
  * spatial:
  *
- * 1. **Which regions power France, and which draw on it.** Each region's
- *    `ech_physiques` is its consumption minus its generation, so its sign
- *    says whether it is a net exporter or a net importer. Measured 2026-08-27
- *    07:45Z: Auvergne-Rhône-Alpes −7 781 MW and Normandie −6 712 MW against
- *    Île-de-France +6 478 MW. That asymmetry — the capital importing almost
- *    its entire load from the nuclear and hydro regions — is the structural
- *    fact about the French grid, and it is legible at a glance in a way the
- *    national mix never is.
+ * 1. **Which regions power France, and which draw on it**, as a PRISM per
+ *    région: HEIGHT is |MW| of physical exchange, HUE is the SIGN of it.
+ *    Each region's `ech_physiques` is its consumption minus its generation, so
+ *    its sign says whether it is a net exporter or a net importer. Measured
+ *    2026-08-27 07:45Z: Auvergne-Rhône-Alpes −7 781 MW and Normandie −6 712 MW
+ *    against Île-de-France +6 478 MW. That asymmetry — the capital importing
+ *    almost its entire load from the nuclear and hydro regions — is the
+ *    structural fact about the French grid, and the prism is what makes it one
+ *    image instead of a table.
  *
  * 2. **The five border flows**, as arcs whose direction is the direction the
- *    power is going.
+ *    power is going. Unchanged by the prism: they are a flow map, they already
+ *    carry magnitude in stroke width and direction in an arrow head, and they
+ *    are drawn between country reference points, not on the régions.
+ *
+ * ── Why the flat fill had to go, and what replaced which channel ────────────
+ *
+ * This layer used to paint the régions in two flat colours whose ALPHA ramped
+ * with |balance| / load. That is the fault CARTOGRAPHIE B1 names in capitals:
+ * `ech_physiques` is an ABSOLUTE quantity in megawatts, and « Représentation
+ * d'une variable quantitative absolue en aplats de couleur — NOP !!!! ». A
+ * colour fill can carry a rate; it cannot carry 7 781 MW.
+ *
+ * A3 — what each channel carried, and what it carries now:
+ *
+ *   HEIGHT  before: nothing. On a 3D globe, the axis was empty.
+ *           now:    |MW|, linearly, from a common datum. The absolute
+ *                   quantity finally sits on the one channel B1 allows it.
+ *   HUE     before: the sign, plus (through alpha) a smear of the magnitude.
+ *           now:    the SIGN ALONE — two franc hues, no gradient. The sign is
+ *                   a BINARY QUALITATIVE fact, and B4 is explicit that colour
+ *                   « est uniquement différenciatrice […] L'œil ne peut pas
+ *                   établir d'ordre ». A diverging ramp would have invited the
+ *                   eye to rank −7 781 against +6 478 by shade; the height
+ *                   ranks them, and it ranks them correctly.
+ *   ALPHA   before: |balance| / load, ramped 0.12 → 0.52 against a saturation
+ *                   of 1.5. A second magnitude encoding on top of the hue —
+ *                   A3 twice over, and unreadable on a translucent volume seen
+ *                   through another translucent volume.
+ *           now:    CONSTANT (`PRISM_BODY_ALPHA` / `PRISM_TOP_ALPHA`). The
+ *                   ratio it carried is not lost: it is published in the
+ *                   analyst record as `exchangeRatio`, where a number belongs.
+ *
+ * ── The arbitration: both prisms go UP ──────────────────────────────────────
+ *
+ * A signed quantity invites the obvious figure — export UP, import DOWN, the
+ * globe's surface as the zero line. It is semiologically stronger on paper and
+ * it is not drawable here. Three reasons, in order of weight:
+ *
+ * 1. It would be INVISIBLE, not merely awkward. `Globe.translucency.enabled`
+ *    is false by default (`Build/CesiumUnminified/index.js:208871`) and it is
+ *    a scene-wide property no layer owns; with an opaque globe, a prism under
+ *    the ellipsoid is occluded ENTIRELY, not partially. Terrain makes it
+ *    worse: the ground sits above the ellipsoid nearly everywhere on land, so
+ *    an Île-de-France prism going down would be buried before it started. And
+ *    on the photorealistic stack the globe is hidden and the 3D tileset is the
+ *    surface (`main.js:237`), which occludes just the same.
+ * 2. Even if it rendered, the two halves would not be COMPARABLE. A signed bar
+ *    chart works because its zero line is straight; here the datum is a
+ *    sphere. Reading 7 781 MW up in Auvergne against 6 478 MW down in
+ *    Île-de-France means comparing two lengths on opposite sides of a curved,
+ *    foreshortened limb — the exact measurement the prism exists to make easy.
+ * 3. The direction is already carried, losslessly, by the one variable
+ *    perspective does not distort (F4): the hue. Spending geometry on a fact
+ *    the colour states exactly, in order to lose the magnitude comparison, is
+ *    a bad trade. The height ruler stays single and shared: every prism starts
+ *    at `PRISM_BASE_HEIGHT_M` = 0 and grows the same way, so the tops are
+ *    comparable across all twelve régions, and the pair of hues says which way
+ *    the power flows.
+ *
+ * What this costs, plainly: the picture no longer looks like a balance sheet,
+ * and a reader who ignores colour sees only "who moves the most power". The
+ * label at the top of every prism spells the verb (EXPORTE / IMPORTE) and the
+ * megawatts, so colour is never the sole carrier.
+ *
+ * ── Calibration, frozen (C1) ────────────────────────────────────────────────
+ *
+ * `ENERGY_PRISM_DOMAIN_MAX_MW` = 12 000 MW ↔ 120 km, a literal measured once
+ * and published here, never re-derived from the poll in hand. On the captured
+ * snapshot the twelve régions run 7 781 → 1 544 MW, i.e. a dynamic range of
+ * 1 : 5.0 — far under the 1 : 30 where `choroplethPrism` says a square-root
+ * ruler starts earning its keep — and the smallest of them stands at 15.4 km,
+ * 3.9× the 4 km floor. So `'linear'` here is not a default taken on trust: no
+ * région is floored, and « deux fois plus haut vaut deux fois plus » is true
+ * of every pair on the map.
+ *
+ * At the ~1 500 km national altitude (`prismApparentPx`, 1600 × 1000):
+ *
+ *     Auvergne-Rhône-Alpes  7 781 MW → 77.8 km →  74.9 px
+ *     Normandie             6 712 MW → 67.1 km →  64.6 px
+ *     Île-de-France         6 478 MW → 64.8 km →  62.3 px
+ *     Bretagne              1 544 MW → 15.4 km →  14.9 px
+ *
+ * The headroom is deliberate. Setting the domain at the observed maximum would
+ * clip the leader on the first cold day: Auvergne-Rhône-Alpes alone carries
+ * ~13.5 GW of nuclear plus the Rhône hydro chain against a ~6.5 GW load, and
+ * Normandie ~10.4 GW against ~2.6 GW. 12 000 MW sits above the largest balance
+ * that fleet can produce while still spending 65 % of the ruler on the régions
+ * that exist. A value above it is CLIPPED, counted, and declared in the legend
+ * (A5) rather than silently rescaling the whole country.
  *
  * ── Honesty rules this layer is built around ────────────────────────────────
  *
  * • **The régions are painted, but the DÉPARTEMENTS are the geometry.** There
  *   are no bundled region polygons; the 96 département shapes already carried
  *   for Vigilance are grouped by region and every département in a region is
- *   painted with its REGION's value. That is a presentational grouping, not a
- *   departmental measurement, so no label ever names a département.
+ *   EXTRUDED TO ITS REGION'S HEIGHT. That is a presentational grouping, not a
+ *   departmental measurement, so no label ever names a département — and the
+ *   legend says it in French, because a prism looks far more like a measured
+ *   unit than a flat fill ever did. The twelve départements of
+ *   Auvergne-Rhône-Alpes form ONE plateau at one altitude; the seams between
+ *   them are visible and they are the truth of the geometry, not twelve
+ *   readings.
  *
- * • **Corse is never painted.** éCO2mix régional covers 12 metropolitan
- *   regions; Corsica runs on its own system and is absent upstream. 2A and 2B
- *   are therefore held permanently hidden rather than inheriting a neighbour's
- *   colour or defaulting to zero.
+ * • **Corse gets a sign of its own, and it is not a short prism.** éCO2mix
+ *   régional covers 12 metropolitan regions; Corsica runs on its own system
+ *   and is absent upstream. 2A and 2B are therefore drawn FLAT AND STRIPED —
+ *   a motif, not a tint, because on a photorealistic globe no hue is neutral
+ *   and a pattern is what survives the NVG and FLIR passes (D3). Under the old
+ *   flat regime they were simply hidden, which made "not published" look
+ *   exactly like "nothing here"; a prism regime cannot afford that, because a
+ *   missing prism and a zero-height prism are one pixel apart. The three
+ *   states are now distinct marks (A1): striped flat footprint = unmeasured,
+ *   opaque flat footprint = measured at zero, prism ≥ 4 km = measured.
+ *
+ * • **Only the flat footprints are ground-classified.** An extruded polygon
+ *   does not classify: `GroundGeometryUpdater._isOnTerrain` returns false as
+ *   soon as `extrudedHeight` is defined (`index.js:148334-148336`), so
+ *   `polygon.classificationType` would be read and then ignored in silence.
+ *   The map-stack listener therefore still runs — the striped and the flat
+ *   footprints ARE clamped, and they still have to drape on whichever surface
+ *   is active — but it skips every prism instead of pretending. Two things
+ *   come free with the change: the batched-`GroundPrimitive` bug that colours
+ *   an instance by its bounding rectangle cannot apply to a geometry that
+ *   classifies nothing; and the outline Cesium force-disables on terrain
+ *   (`index.js:61110-61113`) becomes legal, which is what draws the top edge
+ *   the height is read against. `surfaceFill` is consequently false: no
+ *   thematic hue climbs a façade here any more (F4).
  *
  * • **A zero flow is drawn as nothing.** A border at 0 MW is not a thin arc,
  *   it is no arc — the same "absence is not a colour" rule the Vigilance layer
@@ -116,21 +243,30 @@ export const REGION_DEPARTEMENTS = Object.freeze({
   94: Object.freeze(['2A', '2B']),
 });
 
-/** Régions the upstream dataset does not cover — never painted. See header. */
+/** Régions the upstream dataset does not cover — never given a prism. See header. */
 export const UNCOVERED_REGIONS = Object.freeze(['94']);
 
 /**
- * The balance palette.
+ * The balance palette — three NOMINAL classes, no ramp between them.
  *
  * Teal for surplus and amber for deficit, chosen to survive the deuteranopia
  * collision that a red/green pair would walk straight into. Colour is never
  * the only carrier: every label states the verb (EXPORTE / IMPORTE) and the
  * megawatts in words.
+ *
+ * `balanced` exists so that a measured near-zero has a colour of its own. The
+ * sign of a 0.3 MW balance is rounding, not a direction, and painting it teal
+ * or amber would assert a flow nobody measured. It is drawn slate, and on the
+ * captured snapshot it never fires — the smallest real balance is 1 544 MW.
  */
 export const BALANCE_STYLES = Object.freeze({
   exporter: Object.freeze({
     key: 'exporter', verb: 'EXPORTE', color: '#2ee6a8', label: 'Excédentaire',
     blurb: 'Produit plus qu’elle ne consomme',
+  }),
+  balanced: Object.freeze({
+    key: 'balanced', verb: 'ÉQUILIBRÉE', color: '#8fa3b8', label: 'Équilibrée',
+    blurb: 'Produit ce qu’elle consomme, à moins d’un mégawatt près',
   }),
   importer: Object.freeze({
     key: 'importer', verb: 'IMPORTE', color: '#ff9b3d', label: 'Déficitaire',
@@ -138,19 +274,54 @@ export const BALANCE_STYLES = Object.freeze({
   }),
 });
 
-/** Below this many megawatts a balance is drawn as nothing. See header. */
+/**
+ * Below this many megawatts a balance has no direction worth painting.
+ *
+ * It no longer means "drawn as nothing": that conflated a measured zero with
+ * an unpublished région, which is the A1 fault this layer used to carry. Under
+ * the deadband the prism keeps its measured height (the 4 km floor at least)
+ * and takes the slate `balanced` colour; only an EXACT zero collapses to a
+ * flat footprint. A border arc still disappears below the deadband — an arc is
+ * a direction, and a direction of nothing is nothing.
+ */
 export const BALANCE_DEADBAND_MW = 1;
 
-/** Alpha floor and ceiling for the region fill, ramped by |balance| / load. */
-const FILL_ALPHA_MIN = 0.12;
-const FILL_ALPHA_MAX = 0.52;
 /**
- * The ratio at which the fill saturates. 1.5 means "exports half again its own
- * consumption" — Auvergne-Rhône-Alpes sat at 1.21 on the captured snapshot, so
- * the strongest real region lands near but not at the ceiling, leaving headroom
- * for a winter peak instead of clipping the whole country to one flat colour.
+ * Top of the frozen height domain, in megawatts. See the calibration section
+ * of the header: 12 000 MW ↔ `PRISM_MAX_HEIGHT_M`, measured once, published
+ * here, and never re-derived from a poll (C1).
  */
-const FILL_RATIO_SATURATION = 1.5;
+export const ENERGY_PRISM_DOMAIN_MAX_MW = 12_000;
+
+/**
+ * The layer's frozen prism scale.
+ *
+ * `ratio` here is the SIGNED balance in MW and the two breaks are the deadband
+ * edges, so the three colour classes are exporter / balanced / importer. That
+ * is a nominal ladder riding on `choroplethPrism`'s numeric binning, and it is
+ * the honest use of the machinery: the colour answers "which way", never "how
+ * much". "How much" is the height, and it is |MW|.
+ */
+export const ENERGY_PRISM_SCALE = createPrismScale({
+  id: 'france-energy',
+  domainMax: ENERGY_PRISM_DOMAIN_MAX_MW,
+  heightLabel: 'solde d’échange physique',
+  heightUnit: 'MW',
+  mode: 'linear',
+  heightTicks: [10_000, 5_000, 1_000],
+  ratioLabel: 'sens de l’échange',
+  ratioBreaks: [-BALANCE_DEADBAND_MW, BALANCE_DEADBAND_MW],
+  ratioColors: [
+    BALANCE_STYLES.exporter.color,
+    BALANCE_STYLES.balanced.color,
+    BALANCE_STYLES.importer.color,
+  ],
+  ratioClassLabels: [
+    `${BALANCE_STYLES.exporter.label} — exporte`,
+    `${BALANCE_STYLES.balanced.label} — sous ${BALANCE_DEADBAND_MW} MW`,
+    `${BALANCE_STYLES.importer.label} — importe`,
+  ],
+});
 
 /**
  * Country reference points for the border arcs — NOT interconnection sites.
@@ -212,24 +383,85 @@ export function formatMegawatts(mw) {
  * net importer — the inverse of the intuition that a positive number means a
  * surplus. That inversion is handled here, once.
  *
+ * NULL means UNMEASURED and nothing else. It used to be returned inside the
+ * deadband too, which put "éCO2mix published no figure" and "éCO2mix published
+ * zero" behind the same absence — A1, and much more dangerous under a height
+ * channel than under a flat fill. A measured near-zero now returns the
+ * `balanced` style.
+ *
+ * The `ratio` is kept even though nothing paints with it any more: it is the
+ * variable the fill alpha used to carry, and it now travels to the analyst
+ * record instead of to a visual channel (A3).
+ *
  * @param {number|null|undefined} netPhysical Megawatts, upstream sign.
  * @param {number|null|undefined} load Regional consumption, for the ratio.
- * @returns {{style:object, ratio:number, alpha:number}|null} Null inside the deadband.
+ * @returns {{style:object, ratio:number}|null} Null only when unmeasured.
  */
 export function balanceStyle(netPhysical, load) {
   if (!Number.isFinite(netPhysical)) return null;
-  if (Math.abs(netPhysical) < BALANCE_DEADBAND_MW) return null;
-  const style = netPhysical > 0 ? BALANCE_STYLES.importer : BALANCE_STYLES.exporter;
+  let style = BALANCE_STYLES.balanced;
+  // SYMMETRIC and closed on both sides: ±deadband belongs to the direction,
+  // and only strictly inside it is the exchange "balanced". This is the
+  // convention the layer states everywhere else, and it is the one the prism
+  // has to follow — not the reverse. See `energySignSentinel`.
+  if (netPhysical >= BALANCE_DEADBAND_MW) style = BALANCE_STYLES.importer;
+  else if (netPhysical <= -BALANCE_DEADBAND_MW) style = BALANCE_STYLES.exporter;
   // Ratio against the region's own load, so the picture is comparable across
   // regions AND across time — normalising against the current maximum would
-  // repaint the whole country every time one region moved.
+  // restate the whole country every time one region moved.
   const ratio = Number.isFinite(load) && load > 0 ? Math.abs(netPhysical) / load : 0;
-  const t = Math.min(ratio, FILL_RATIO_SATURATION) / FILL_RATIO_SATURATION;
-  return {
-    style,
-    ratio,
-    alpha: FILL_ALPHA_MIN + (FILL_ALPHA_MAX - FILL_ALPHA_MIN) * t,
-  };
+  return { style, ratio };
+}
+
+/**
+ * One région as the prism grammar's `(value, ratio)` pair.
+ *
+ * HEIGHT takes |MW| — a magnitude, which is what `createPrismScale` demands,
+ * since it refuses a negative `domainMin` precisely so that `heightM === 0`
+ * can keep meaning "measured zero". COLOUR takes the SIGNED value, where the
+ * frozen breaks are the deadband edges.
+ *
+ * The absolute value is computed only for a finite reading: `Math.abs(null)`
+ * is 0, and handing that to the scale would manufacture a measured zero out of
+ * a région the upstream did not publish — the one thing this grammar exists to
+ * prevent.
+ *
+ * @param {object|null|undefined} record From {@link buildRegionRecords}.
+ * @returns {object} A `prismRow` result against {@link ENERGY_PRISM_SCALE}.
+ */
+export function energyPrismRow(record) {
+  const net = Number.isFinite(record?.netPhysical) ? record.netPhysical : null;
+  return prismRow({
+    code: record?.code ?? null,
+    value: net === null ? null : Math.abs(net),
+    // The colour channel of this layer is a SIGN CLASS, not a magnitude — the
+    // legend says so, `ratioLabel` is "sens de l'échange". So the binner is
+    // handed the class, decided by `balanceStyle`, rather than the raw MW.
+    //
+    // It has to be, because the two disagree on the boundary. `balanceStyle`
+    // is symmetric and closed (±1 MW belongs to the direction); `prismRatioBin`
+    // is half-open (`v <= breaks[i]`), so it put exactly +1 MW in "équilibrée"
+    // while the label floating on top of the same prism said "IMPORTE 1 MW" —
+    // two signs, one object, opposite claims. A symmetric closed band cannot
+    // be expressed with two half-open breaks, so the layer decides and the
+    // generic binner follows.
+    ratio: net === null ? null : energySignSentinel(net),
+  }, ENERGY_PRISM_SCALE);
+}
+
+/**
+ * The value handed to `prismRatioBin` so its class matches `balanceStyle`.
+ *
+ * Not a measurement and never displayed: a sentinel that lands unambiguously
+ * inside the intended class of the frozen breaks `[-deadband, +deadband]`.
+ * @param {number} netPhysical Megawatts, upstream sign.
+ * @returns {number}
+ */
+function energySignSentinel(netPhysical) {
+  const key = balanceStyle(netPhysical, null)?.style?.key;
+  if (key === 'importer') return BALANCE_DEADBAND_MW * 2;
+  if (key === 'exporter') return -BALANCE_DEADBAND_MW;
+  return 0;
 }
 
 /**
@@ -266,8 +498,10 @@ export function buildRegionRecords(payload, departements) {
       balance,
     });
   }
-  // Strongest balance last, so a heavy region's fill paints over a lighter
-  // neighbour's where their borders touch.
+  // Weakest first, strongest last. Translucent volumes are depth-sorted by the
+  // renderer, so this no longer decides who paints over whom — it is kept
+  // because it makes the label cohort, the analyst snapshot and the legend
+  // counts deterministic from one poll to the next.
   return records.sort((a, b) => Math.abs(a.netPhysical ?? 0) - Math.abs(b.netPhysical ?? 0)
     || a.code.localeCompare(b.code));
 }
@@ -393,12 +627,15 @@ export function buildBorderArcs(exchanges) {
 
 /**
  * Label text for a région. The verb and the megawatts carry the meaning; the
- * fill colour only reinforces it.
+ * prism's colour only reinforces it, and its height is exactly this number.
+ *
+ * A région with no published balance says so. It used to say « ÉQUILIBRÉE »,
+ * which was an assertion about a measurement nobody made.
  * @param {object} record
  * @returns {string}
  */
 export function regionLabelText(record) {
-  if (!record?.balance) return `${record?.name ?? ''} · ÉQUILIBRÉE`;
+  if (!record?.balance) return `${record?.name ?? ''} · SOLDE NON PUBLIÉ`;
   return `${record.name} · ${record.balance.style.verb} ${formatMegawatts(record.netPhysical)}`;
 }
 
@@ -414,6 +651,22 @@ export function borderLabelText(arc) {
 }
 
 /**
+ * Height, in metres, at which a région's label rides.
+ *
+ * The TOP of its prism, not the ground. B2 asks for a height read « contre un
+ * guide vertical »; here the guide is the label itself, which states the exact
+ * megawatts the length encodes, at the exact altitude the length reaches. A
+ * label left on the ground would sit behind 78 km of translucent volume and
+ * annotate nothing.
+ * @param {object|null|undefined} record
+ * @returns {number} Metres above the ellipsoid, 0 when there is no prism.
+ */
+export function regionLabelHeightM(record) {
+  const heightM = energyPrismRow(record).heightM;
+  return Number.isFinite(heightM) ? heightM : 0;
+}
+
+/**
  * Build the source-owned presentation for one région label.
  * @param {object} record
  * @param {Cesium.Cartesian3} position
@@ -425,7 +678,7 @@ export function createRegionOverlayEntry(record, position) {
     position,
     variant: 'label',
     title: regionLabelText(record),
-    accent: record.balance ? record.balance.style.color : '#8fa3b8',
+    accent: record.balance ? record.balance.style.color : PRISM_NO_RATIO_COLOR,
     priority: Math.round(Math.abs(record.netPhysical ?? 0)),
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
@@ -508,25 +761,128 @@ export function summarizeNational(national) {
   };
 }
 
+/** French grouping for a plain integer, via the platform's own fr-FR rules. */
+function fr(value) {
+  // Same normalisation as `formatMegawatts`: ICU groups with U+202F or U+00A0
+  // depending on its version, and both are flattened so the legend measures and
+  // wraps identically everywhere.
+  return Number(value).toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ');
+}
+
 /**
- * Legend for the toggle row: the balance palette, with how many régions sit on
- * each side right now.
- * @param {Array<object>} records
- * @returns {Array<{label:string,color:string,blurb:string,count:number}>}
+ * The two-part legend: the height ruler, then the colour key (D1).
+ *
+ * Written here rather than taken from `choroplethPrism.prismLegend()`, and the
+ * reason is not convenience. That helper publishes, verbatim, « Un rapport,
+ * donc une variation de valeur : c'est ce que la couleur a le droit de dire »
+ * — true of the three count layers it was written for, and FALSE here, where
+ * the colour is a nominal sign and its licence comes from B4, not B1. Its
+ * height blurb likewise promises that the colour answers « rapporté à quoi ? »,
+ * which this layer's colour cannot do. A legend that misdescribes its own
+ * channel is worse than no legend, so the entries are composed from the same
+ * primitives (`prismHeightM`, `prismHeightGlyph`, `prismTally`, the frozen
+ * scale) with sentences that are true of this map.
+ *
+ * Entry shape is the repo's: `{ label, color, count?, blurb?, glyph? }`.
+ * `color: null` renders an aligned empty swatch and marks a row that is not a
+ * colour key; `glyph` is masked with `color`, so the height ticks hand over a
+ * BAR whose height is the datum while all three share one constant colour —
+ * any variation there would be a second, false encoding.
+ *
+ * @param {Array<object>} records From {@link buildRegionRecords}.
+ * @returns {Array<{label:string,color:?string,blurb?:string,count?:number,glyph?:string}>}
  */
-export function balanceLegend(records) {
-  const counts = { exporter: 0, importer: 0 };
-  for (const record of Array.isArray(records) ? records : []) {
-    const key = record?.balance?.style?.key;
-    if (key in counts) counts[key] += 1;
+export function energyPrismLegend(records) {
+  const list = Array.isArray(records) ? records : [];
+  if (!list.length) return [];
+  const scale = ENERGY_PRISM_SCALE;
+  const tally = prismTally(list.map((record) => ({
+    code: record?.code,
+    value: Number.isFinite(record?.netPhysical) ? Math.abs(record.netPhysical) : null,
+    ratio: Number.isFinite(record?.netPhysical) ? record.netPhysical : null,
+  })), scale);
+  // Corse is not in `records` at all — it is filtered out of the join — so its
+  // deliberate absence has to be added back here, or the legend would count
+  // twelve régions and quietly forget the thirteenth. `noValue` and `noRatio`
+  // are the same régions in this layer (both halves come from the one
+  // `ech_physiques` field), so the row is labelled after the height, which is
+  // the variable a reader misses first.
+  const unpublished = tally.noValue + UNCOVERED_REGIONS.length;
+
+  const entries = [{
+    label: `Hauteur — ${scale.heightLabel}`,
+    color: null,
+    blurb: `Échelle linéaire : deux fois plus haut vaut deux fois plus. Le plus haut prisme fait `
+      + `${Math.round(scale.maxHeightM / 1000)} km pour ${fr(scale.domainMax)} ${scale.heightUnit}, `
+      + `borne gelée et jamais recalculée sur le relevé en cours. La hauteur est la VALEUR ABSOLUE `
+      + `du solde : un exportateur et un importateur de même puissance montent pareil, et c’est la `
+      + `couleur qui dit lequel est lequel. Le socle du prisme est la RÉGION, dessinée par ses `
+      + `départements : aucun département n’est mesuré séparément.`,
+  }];
+
+  for (const tick of scale.heightTicks) {
+    const heightM = prismHeightM(tick, scale);
+    entries.push({
+      label: `${fr(tick)} ${scale.heightUnit}`,
+      color: PRISM_HEIGHT_SWATCH_COLOR,
+      glyph: prismHeightGlyph((heightM ?? 0) / scale.maxHeightM),
+      blurb: `${Math.round((heightM ?? 0) / 1000)} km de haut.`,
+    });
   }
-  const legend = [];
-  for (const key of ['exporter', 'importer']) {
-    if (!(counts[key] > 0)) continue;
-    const spec = BALANCE_STYLES[key];
-    legend.push({ label: spec.label, color: spec.color, blurb: spec.blurb, count: counts[key] });
+
+  if (tally.clipped) {
+    // A5 — above the frozen domain the mark stops measuring. Say how many.
+    entries.push({
+      label: `au-dessus de ${fr(scale.domainMax)} ${scale.heightUnit}`,
+      color: null,
+      count: tally.clipped,
+      blurb: 'Prisme dessiné à la hauteur maximale : il ne dit plus combien. Le domaine reste '
+        + 'gelé pour que la même donnée fasse la même hauteur d’une session à l’autre.',
+    });
   }
-  return legend;
+
+  if (tally.zero) {
+    entries.push({
+      label: 'mesuré à zéro',
+      color: BALANCE_STYLES.balanced.color,
+      count: tally.zero,
+      blurb: 'Emprise à plat, remplie et opaque, sans prisme. Zéro est une mesure : elle ne se '
+        + 'dessine pas comme une absence de mesure.',
+    });
+  }
+
+  entries.push({
+    label: `Couleur — ${scale.ratioLabel}`,
+    color: null,
+    blurb: 'Le sens est binaire, donc deux couleurs franches et aucun dégradé : une variation de '
+      + 'teinte différencie, elle n’ordonne pas. C’est la hauteur qui classe les régions entre '
+      + 'elles. Teal et ambre plutôt que vert et rouge, pour survivre à une deutéranopie, et '
+      + 'chaque étiquette répète le verbe : la couleur n’est jamais seule à porter le sens.',
+  });
+
+  scale.ratioColors.forEach((color, index) => {
+    const count = tally.ratioCounts[index] || 0;
+    if (!count) return;
+    const spec = [BALANCE_STYLES.exporter, BALANCE_STYLES.balanced, BALANCE_STYLES.importer][index];
+    entries.push({
+      label: scale.ratioClassLabels[index],
+      color,
+      count,
+      blurb: spec.blurb,
+    });
+  });
+
+  entries.push({
+    label: `${scale.heightLabel} — non publié`,
+    color: PRISM_NO_RATIO_COLOR,
+    glyph: PRISM_NO_RATIO_GLYPH,
+    count: unpublished,
+    blurb: 'Emprise à plat et hachurée, jamais un prisme court : éCO2mix régional ne publie pas '
+      + 'la Corse, qui tient son propre réseau. Un motif et non une teinte, parce que sur un '
+      + 'globe photoréaliste il n’existe aucune couleur neutre.',
+  });
+
+  return entries;
 }
 
 /**
@@ -547,6 +903,13 @@ export function mapAnalystRecord(record, index = 0) {
     // Restated in the direction a human asks the question in: positive means
     // this région sent power to the rest of France.
     netExportMw: Number.isFinite(record?.netPhysical) ? -record.netPhysical : null,
+    // |balance| / load — the variable the fill alpha used to carry. It left a
+    // visual channel (A3) and landed here, where it is a number rather than a
+    // shade nobody could decode through a translucent volume.
+    exchangeRatio: num(record?.balance?.ratio),
+    // Metres of extrusion, so an analyst can check what the map claims to show
+    // against the figure it was built from.
+    prismHeightM: num(energyPrismRow(record).heightM),
     balance: text(record?.balance?.style?.key),
     topFiliere: record?.mix?.length ? text(record.mix[0].label) : null,
     observedAt: text(record?.at),
@@ -562,10 +925,16 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
 });
 
 /**
- * Which Cesium classification surface a clamped région fill should target.
+ * Which Cesium classification surface a clamped région footprint should target.
  * Same rule the Vigicrues and Vigilance layers established: classify against
  * ONLY the active surface, and fall back to BOTH for an unknown stack rather
  * than risk drawing nothing.
+ *
+ * Still live, but its audience has shrunk to the two FLAT states — the striped
+ * "not published" footprint and the opaque "measured zero" one. A prism is not
+ * classified at all and must not be handed a `classificationType`: the value
+ * would be read and ignored (`index.js:148334-148336`), which is worse than
+ * not setting it, because the next reader would believe it did something.
  * @param {string|null|undefined} activeId Active map-stack id.
  * @returns {Cesium.ClassificationType}
  */
@@ -615,15 +984,30 @@ export function createFranceEnergyLayer({
   let _classificationType = Cesium.ClassificationType.BOTH;
   let _mapStackListener = null;
 
+  /**
+   * Retarget the classification of the FLAT footprints when the map stack
+   * changes.
+   *
+   * A prism is skipped, deliberately and by test: an extruded polygon is built
+   * as an ordinary primitive and reads `classificationType` into a field it
+   * never uses. Writing it there would cost a geometry rebuild of 96 polygons
+   * to change nothing at all.
+   */
   function applyClassification(next) {
     if (next === undefined || next === _classificationType) return;
     _classificationType = next;
     for (const parts of _entities.values()) {
       for (const entity of parts) {
-        if (entity.polygon) entity.polygon.classificationType = next;
+        if (!entity.polygon || isExtruded(entity)) continue;
+        entity.polygon.classificationType = next;
       }
     }
     _viewer?.scene?.requestRender?.();
+  }
+
+  /** True while this entity is drawn as a prism rather than as a footprint. */
+  function isExtruded(entity) {
+    return entity?.polygon?.extrudedHeight !== undefined;
   }
 
   /**
@@ -670,36 +1054,130 @@ export function createFranceEnergyLayer({
     return _shapesPromise;
   }
 
-  /** Paint the current régions onto the pre-built département entities. */
+  /**
+   * Raise the current régions on the pre-built département entities.
+   *
+   * Three marks, and they are the three states of A1:
+   *
+   *   measured, non-zero → PRISM. Base on the ellipsoid, top at |MW|, body
+   *     translucent, silhouette and top edge near-opaque. The top edge is the
+   *     reading instrument, which is why it gets the outline Cesium only
+   *     allows off terrain.
+   *   measured at zero   → FLAT, filled, opaque, ground-clamped, slate.
+   *   not measured       → FLAT, STRIPED, ground-clamped. Corse lives here,
+   *     permanently, and so does any région the upstream drops mid-session.
+   *
+   * Only reached when the poll signature moved, i.e. at most once per upstream
+   * 15-minute step, so rebuilding the extruded geometry costs one frame per
+   * step rather than one per poll.
+   */
   function repaint() {
     const painted = new Set();
     for (const record of _records) {
-      if (!record.balance) continue;
+      const row = energyPrismRow(record);
       // One material instance per région, shared across all its départements:
-      // they are one measurement, not eight.
-      const material = new Cesium.ColorMaterialProperty(
-        Cesium.Color.fromCssColorString(record.balance.style.color)
-          .withAlpha(record.balance.alpha),
-      );
+      // they are one measurement, not eight, and the shared instance is what
+      // makes that visible as a single plateau.
+      const material = prismMaterial(row);
+      const outlineColor = Cesium.Color
+        .fromCssColorString(row.color || PRISM_NO_RATIO_COLOR)
+        .withAlpha(PRISM_TOP_ALPHA);
       for (const code of record.departements) {
         const parts = _entities.get(code);
         if (!parts) continue;
         painted.add(code);
-        for (const entity of parts) {
-          if (!entity.polygon) continue;
-          entity.polygon.material = material;
-          entity.show = true;
-        }
+        for (const entity of parts) applyPrism(entity, row, material, outlineColor);
       }
     }
     // Everything else — Corse, and any région the upstream dropped this
-    // refresh — is drawn as absence rather than as a stale colour.
+    // refresh — is drawn as a DECLARED absence rather than as a hole. Under the
+    // flat regime these were hidden, which made "not published" and "nothing
+    // here" the same pixel; a height channel cannot afford that (A1).
+    const stripe = unpublishedMaterial();
     for (const [code, parts] of _entities) {
       if (painted.has(code)) continue;
-      for (const entity of parts) entity.show = false;
+      for (const entity of parts) applyUnpublished(entity, stripe);
     }
     repaintArcs();
     _viewer?.scene?.requestRender?.();
+  }
+
+  /** Body material for one prism row: the sign's colour, or the stripe. */
+  function prismMaterial(row) {
+    if (!row.hasValue || !row.color) return unpublishedMaterial();
+    return new Cesium.ColorMaterialProperty(
+      Cesium.Color.fromCssColorString(row.color)
+        // A flat footprint is composited over imagery and needs to stay
+        // legible; a prism body is composited over the sky and over other
+        // prisms, and its top edge is what carries the reading.
+        .withAlpha(row.extruded ? PRISM_BODY_ALPHA : PRISM_TOP_ALPHA),
+    );
+  }
+
+  /**
+   * The stripe that says "nobody published this".
+   *
+   * A MOTIF, not a tint (D3): a photorealistic globe has no neutral colour, and
+   * a pattern is the encoding that survives the NVG and FLIR passes. Cesium's
+   * stripe runs along the polygon's texture axes, so these are bands rather
+   * than diagonals — the legend swatch hatches, the map bands, and both read as
+   * "pattern, therefore not a measurement".
+   *
+   * Known degradation, stated rather than hidden: a non-colour material on a
+   * clamped polygon needs `GroundPrimitive.supportsMaterials`, which wants the
+   * depth-texture extension. Where that is missing, Cesium builds the footprint
+   * as an ordinary primitive at height 0 and Corsican terrain hides it — i.e.
+   * the layer falls back to exactly the behaviour it had before this change,
+   * on the machines that could not have done better anyway.
+   */
+  function unpublishedMaterial() {
+    const slate = Cesium.Color.fromCssColorString(PRISM_NO_RATIO_COLOR);
+    return new Cesium.StripeMaterialProperty({
+      orientation: Cesium.StripeOrientation.VERTICAL,
+      evenColor: slate.withAlpha(0.55),
+      oddColor: slate.withAlpha(0.05),
+      repeat: 18,
+    });
+  }
+
+  /** Apply one prism row to one Cesium polygon entity. */
+  function applyPrism(entity, row, material, outlineColor) {
+    const polygon = entity.polygon;
+    if (!polygon) return;
+    polygon.material = material;
+    if (row.extruded) {
+      polygon.height = PRISM_BASE_HEIGHT_M;
+      polygon.extrudedHeight = row.heightM;
+      // Both must stay put: a base clamped to terrain would start the Savoie
+      // prism 2 km above the Landes one, so its TOP would sit 2 km higher at
+      // equal megawatts — a bias correlated with relief, on the one channel
+      // that now carries the measurement.
+      polygon.perPositionHeight = false;
+      polygon.classificationType = undefined;
+      polygon.outline = true;
+      polygon.outlineColor = outlineColor;
+      polygon.outlineWidth = 1;
+    } else {
+      // A measured zero has no prism, so it goes back on the ground where the
+      // terrain cannot swallow it, and it takes the classification with it.
+      polygon.height = undefined;
+      polygon.extrudedHeight = undefined;
+      polygon.classificationType = _classificationType;
+      polygon.outline = false;
+    }
+    entity.show = true;
+  }
+
+  /** Draw one département of an unmeasured région as a striped footprint. */
+  function applyUnpublished(entity, material) {
+    const polygon = entity.polygon;
+    if (!polygon) return;
+    polygon.height = undefined;
+    polygon.extrudedHeight = undefined;
+    polygon.classificationType = _classificationType;
+    polygon.outline = false;
+    polygon.material = material;
+    entity.show = true;
   }
 
   /** Rebuild the border arcs. Five entities at most, so they are recreated whole. */
@@ -740,10 +1218,20 @@ export function createFranceEnergyLayer({
     if (!_enabled) return;
     const entries = [];
     for (const record of _records) {
-      if (!record.balance || !record.anchor) continue;
+      // No anchor means no shape to hang the label off. A missing BALANCE is
+      // no longer a reason to skip: the label is the only place a reader can
+      // learn that éCO2mix published nothing for this région, and it says so
+      // in words rather than by not being there.
+      if (!record.anchor) continue;
       entries.push(createRegionOverlayEntry(
         record,
-        Cesium.Cartesian3.fromDegrees(record.anchor[0], record.anchor[1]),
+        // At the TOP of the prism: the label is the numeric readout of the
+        // length, so it belongs at the end of the length.
+        Cesium.Cartesian3.fromDegrees(
+          record.anchor[0],
+          record.anchor[1],
+          regionLabelHeightM(record),
+        ),
       ));
     }
     for (const arc of _arcs) {
@@ -914,18 +1402,32 @@ export function createFranceEnergyLayer({
     },
 
     /**
-     * Colour legend for the toggle row. No chips: the layer has no options.
-     * @returns {{chips: Array<object>, legend: Array<object>}}
+     * The prism legend, for the toggle row AND the on-map block. No chips: the
+     * layer has no options.
+     *
+     * D1 is not optional here — the height means nothing without its ruler, and
+     * a ruler that lives behind a panel is not a legend. `surfaceFill` is
+     * false: the only ground-classified surfaces left are the two flat marks,
+     * whose colour carries no value for a façade's shading to corrupt.
+     * @returns {{chips: Array<object>, legend: Array<object>, surfaceFill: boolean}}
      */
     getRowControls() {
-      return { chips: [], legend: balanceLegend(_records) };
+      return { chips: [], legend: energyPrismLegend(_records), surfaceFill: false };
     },
 
     getStats() {
+      const rows = _records.map(energyPrismRow);
       return {
-        // Régions actually painted. Corse is excluded upstream, so 12 is a
-        // full house and reporting 13 would imply a coverage that is not there.
+        // Régions actually drawn as prisms. Corse is excluded upstream, so 12
+        // is a full house and reporting 13 would imply a coverage that is not
+        // there — it gets its striped footprint and its legend row instead.
         count: _records.length,
+        // A5, in the HUD as well as in the legend: how many prisms are stuck
+        // at the top of the frozen domain and have stopped saying how much.
+        clippedRegions: rows.filter((row) => row.clipped).length,
+        // Régions the upstream skipped this refresh, Corse aside. Zero on every
+        // captured snapshot; not zero is the interesting case.
+        unpublishedRegions: rows.filter((row) => !row.hasValue).length,
         lastUpdate: _lastUpdate,
         error: _lastError,
         stale: _stale,

@@ -105,6 +105,59 @@
  * Zero is not a height and is returned as null, not drawn as a mast flat on
  * the ground.
  *
+ * ── The height is DENSE, and its 551 holes are a category, not a gap ────────
+ * The column was read here and printed on a card long before it was drawn, so
+ * the coverage had never been counted. It has now, over all 72 700 supports of
+ * the 2026-08-27 edition: **72 149 publish a usable height (99.24 %) and 551
+ * do not (0.76 %)**. Distribution, in metres: min 0.6 · p05 12 · p25 22.2 ·
+ * **median 30** · p75 36 · p90 44 · **p95 48** · p99 64 · **max 343.3** (a
+ * guyed mast). By decade: 1 620 under 10 m, 11 216 in 10–20, 20 486 in 20–30,
+ * 26 461 in 30–40, 9 333 in 40–50, 2 646 in 50–75, 277 in 75–100, 110 at or
+ * above 100 m.
+ *
+ * The 551 holes are the finding. They are not scattered across the register:
+ * cross-tabulated against `nat_id`, **all 551 of them are underground or
+ * indoor** — 506 `Intérieur sous-terrain`, 38 `Tunnel`, 7 `Intérieur galerie`,
+ * and that is 551 of 551 exactly. The register leaves the height blank because
+ * there is no mast to measure: the equipment is in a tunnel. So a support with
+ * no published height is not a support whose height was forgotten, and the
+ * drawing owes it a shape of its own rather than a default one.
+ *
+ * The frozen marks below are published from this count, once, and never
+ * recomputed from whatever is on screen (C1).
+ *
+ * ── The AZIMUTH is not in the file this layer loads. Measured, twice ────────
+ * A mobile antenna radiates into a sector, so the direction is the field worth
+ * having. It is **not in the observatoire**: the CSV header was re-read byte
+ * for byte on 2026-09-03 over a 601-byte range request, and it is 22 columns —
+ * `id · adm_lb_nom · sup_id · emr_lb_systeme · emr_dt · sta_nm_dpt ·
+ * code_insee · generation · date_maj · sta_nm_anfr · nat_id · sup_nm_haut ·
+ * tpo_id · adr_lb_lieu · adr_lb_add1 · adr_lb_add2 · adr_lb_add3 · adr_nm_cp ·
+ * com_cd_insee · coordonnees · coord · statut`. **No azimuth, no tilt, no
+ * aperture, no power.** The bulk 5W archive has `AER_NB_AZIMUT` on
+ * `SUP_ANTENNE.txt`, but importing it would mean the 66 MB join this module
+ * refuses in its opening section, and it would arrive per-AER_ID with no way
+ * to reach a viewport cheaply.
+ *
+ * Where it IS published is Cartoradio, per antenna, as `orientation` in
+ * degrees — the same on-demand call this module already reads for the card.
+ * Measured 2026-09-03 over 40 supports spread through the register (one every
+ * 1 817 rows of the sorted pack), 138 installations and **328 antennas: 324
+ * carry an orientation (98.8 %) and 4 do not**. Mounting height came with it:
+ * `installations[].hauteur` was published on **138 of 138** (min 3 m, median
+ * 26.4 m, max 48.3 m).
+ *
+ * And `orientation: 0` was cleared before it was drawn, because a zero in a
+ * bearing column is the classic null-in-disguise. It is not one here: 26 of
+ * the 138 installations carry a 0, **not one of them carries it alone**, and
+ * 18 of the 26 are the textbook three-sector `0/120/240`. The rest are
+ * `0/105/210`, `0/90/210`, `0/90/270`, `0/140/240`, `0/220`, `0/240`. Zero is
+ * due north and is drawn as due north.
+ *
+ * So the azimuth reaches the map ONE MAST AT A TIME, on the card the reader
+ * asked for, and never as a viewport channel. That is a limit of the transport
+ * and it is stated rather than papered over.
+ *
  * ── Trap 4: `fields=` will not accept an encoded comma ──────────────────────
  * The datastore's projection parameter takes LITERAL commas.
  * `fields=sup_id%2Cadm_lb_nom` returns **HTTP 200, 119 bytes,
@@ -351,6 +404,37 @@ export function anfrNumber(value) {
 }
 
 /**
+ * The support-height domain, frozen, from the whole 2026-08-27 register.
+ *
+ * Published marks, not a scale: the drawing extrudes a support to its REAL
+ * height in metres, so there is no thematic mapping to invert and nothing to
+ * classify. What a reader still needs is where a given shaft sits in the
+ * national distribution, and these are the three numbers that answer it. They
+ * are constants because C1 says a mark must not change meaning when the camera
+ * moves: recomputing "median" from the masts in view would make the same
+ * pylon read differently in Paris and in Lozère.
+ *
+ * Counted over 72 149 published heights — see the Trap 3 section.
+ */
+export const ANFR_HEIGHT_P05_M = 12;
+export const ANFR_HEIGHT_MEDIAN_M = 30;
+export const ANFR_HEIGHT_P95_M = 48;
+export const ANFR_HEIGHT_MAX_M = 343.3;
+/** Supports with, and without, a usable `sup_nm_haut`. 72 149 + 551 = 72 700. */
+export const ANFR_HEIGHT_PUBLISHED = 72_149;
+export const ANFR_HEIGHT_MISSING = 551;
+/**
+ * The three `nat_id` labels that hold all 551 missing heights.
+ *
+ * 506 + 38 + 7 = 551, exactly. Kept as data rather than as prose because the
+ * card and the legend both say it and neither should be able to drift from
+ * the count.
+ */
+export const ANFR_HEIGHTLESS_NATURES = Object.freeze([
+  'Intérieur sous-terrain', 'Tunnel', 'Intérieur galerie',
+]);
+
+/**
  * Support height in metres, or null.
  *
  * Zero is refused rather than returned. 551 of the 72 700 supports publish
@@ -566,6 +650,59 @@ export function anfrDistanceM(lat1, lon1, lat2, lon2) {
   if (![lat1, lon1, lat2, lon2].every(Number.isFinite)) return Infinity;
   const kx = 111_320 * Math.cos((lat1 * Math.PI) / 180);
   return Math.hypot((lon2 - lon1) * kx, (lat2 - lat1) * 110_574);
+}
+
+/**
+ * Cartoradio's `orientation` as a bearing in [0, 360), or null.
+ *
+ * ZERO IS KEPT. It is a real bearing in this register and not a blank — 26 of
+ * the 138 measured installations carry a 0 and every one of them carries it
+ * beside another azimuth, 18 of them as the three-sector `0/120/240`. What is
+ * refused is a non-number and a value outside one turn, because those are the
+ * shapes a null takes when it is not spelled `null`.
+ */
+export function anfrAzimuthDeg(value) {
+  if (value === null || value === undefined || value === '') return null;
+  const deg = Number(String(value).replace(',', '.'));
+  if (!Number.isFinite(deg)) return null;
+  if (deg < -360 || deg > 360) return null;
+  // In range, the value is returned UNTOUCHED. `((12.7 % 360) + 360) % 360` is
+  // 12.699999999999989 in IEEE 754, and a bearing that changes in its twelfth
+  // decimal breaks the pair key that folds three sectors into three rays.
+  if (deg >= 0 && deg < 360) return deg;
+  return ((deg % 360) + 360) % 360;
+}
+
+/**
+ * The point `distanceM` from (`lat`, `lon`) along a bearing, on a sphere.
+ *
+ * Great-circle rather than a flat offset, for one reason that matters at the
+ * distances this is used at: the flat form has to divide by `cos(lat)`, and
+ * that factor is what puts a 60 m ray visibly off-azimuth in Dunkerque and
+ * badly off it in Nouvelle-Calédonie. The spherical form has no such term.
+ *
+ * @param {number} lat Degrees.
+ * @param {number} lon Degrees.
+ * @param {number} bearingDeg Degrees clockwise from north.
+ * @param {number} distanceM Metres.
+ * @returns {?{lat:number, lon:number}}
+ */
+export function anfrProjectPoint(lat, lon, bearingDeg, distanceM) {
+  if (![lat, lon, bearingDeg, distanceM].every(Number.isFinite)) return null;
+  const R = 6_371_000;
+  const rad = Math.PI / 180;
+  const angular = distanceM / R;
+  const lat1 = lat * rad;
+  const lon1 = lon * rad;
+  const bearing = bearingDeg * rad;
+  const sinLat = Math.sin(lat1) * Math.cos(angular)
+    + Math.cos(lat1) * Math.sin(angular) * Math.cos(bearing);
+  const lat2 = Math.asin(Math.min(1, Math.max(-1, sinLat)));
+  const lon2 = lon1 + Math.atan2(
+    Math.sin(bearing) * Math.sin(angular) * Math.cos(lat1),
+    Math.cos(angular) - Math.sin(lat1) * sinLat,
+  );
+  return { lat: lat2 / rad, lon: (((lon2 / rad) + 540) % 360) - 180 };
 }
 
 /**
@@ -877,11 +1014,40 @@ export function projectCartoradioSupport(body) {
  * The newest `date_service` across every emitter comes out of the same pass;
  * the exposure readout uses it to say whether a published measurement predates
  * the equipment it would be read as measuring.
+ *
+ * ── The azimuths, and the two ways they can be absent ───────────────────────
+ * `antennes[].orientation` is the only direction ANFR publishes anywhere this
+ * layer can reach, and `installations[].hauteur` is the only mounting height.
+ * Both are folded here into one list of DISTINCT (bearing, height) pairs,
+ * because a three-sector site files one antenna per operator per band and a
+ * busy mast returns the same three bearings a dozen times: the measured sample
+ * had 328 antennas on 138 installations, and drawing one ray per antenna would
+ * stack a dozen identical rays on each of three bearings.
+ *
+ * What is NOT folded in is a beamwidth or a range, because ANFR publishes
+ * neither. A wedge would have to invent an aperture and a distance; a ray only
+ * has to be pointed. So this returns bearings, and the drawing draws bearings.
+ *
+ * The cost is one card's worth and it is measured on the busiest mast in the
+ * fixtures, support 449714 with five operators and 33 antennas: the antenna
+ * projection goes from 2 424 to 3 756 bytes, **706 to 893 gzipped**. That is
+ * +187 bytes on a per-mast call that is made once, cached for a day and
+ * coalesced by SUP_ID — not on the 72 700-support pack, which carries none of
+ * this.
+ *
+ * The two absences are kept apart because they mean different things:
+ * `withoutAzimuth` is an antenna whose direction nobody filed (4 of 328
+ * measured), and `heightM: null` on a pair is a direction that IS filed on an
+ * installation whose mounting height is not (0 of 138 measured — the branch
+ * exists so the drawing can mark it rather than seat the ray on a guess).
  */
 export function projectCartoradioAntennas(body) {
   const stations = Array.isArray(body?.data) ? body.data : [];
   const systems = new Map();
+  /** `deg|height` → the pair, so a three-sector mast returns three rays. */
+  const azimuths = new Map();
   let antennas = 0;
+  let withoutAzimuth = 0;
   let newestService = null;
   const operators = new Set();
 
@@ -889,8 +1055,18 @@ export function projectCartoradioAntennas(body) {
     const operator = str(station?.station?.exploitant);
     if (operator) operators.add(operator);
     for (const installation of station?.installations || []) {
+      const mountM = anfrHeightM(installation?.hauteur);
       for (const antenna of installation?.antennes || []) {
         antennas += 1;
+        const bearing = anfrAzimuthDeg(antenna?.orientation);
+        if (bearing === null) {
+          withoutAzimuth += 1;
+        } else {
+          const key = `${bearing}|${mountM === null ? '' : mountM}`;
+          const pair = azimuths.get(key);
+          if (pair) pair.antennas += 1;
+          else azimuths.set(key, { deg: bearing, heightM: mountM, antennas: 1 });
+        }
         for (const emitter of antenna?.emetteurs || []) {
           const label = str(emitter?.systeme);
           if (!label) continue;
@@ -921,6 +1097,11 @@ export function projectCartoradioAntennas(body) {
   return {
     stations: stations.length,
     antennas,
+    // Sorted by bearing, then by mounting height, so two reads of the same
+    // mast list the sectors in the same order and a card is diffable.
+    azimuths: [...azimuths.values()]
+      .sort((a, b) => a.deg - b.deg || (a.heightM ?? 0) - (b.heightM ?? 0)),
+    withoutAzimuth,
     operators: [...operators].sort((a, b) => a.localeCompare(b, 'fr')),
     systems: [...systems.values()]
       .map((entry) => ({
