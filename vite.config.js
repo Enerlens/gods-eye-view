@@ -20401,7 +20401,16 @@ function filosofiProxy() {
       }
       if (route === '/territoires') {
         const requestedLevel = String(url.searchParams.get('level') || 'DEP').toUpperCase();
-        const level = requestedLevel === 'REG' ? 'REG' : 'DEP';
+        const requested = requestedLevel === 'REG' ? 'REG' : 'DEP';
+        // ANY CACHED PAYLOAD THAT EMBEDS A VINTAGE MUST CARRY IT IN ITS KEY.
+        // This answer names the millésime the CARREAU regime would serve, so
+        // that a national card can say what zooming in would change — which
+        // means building a local pack changes this answer too. The lesson cost
+        // one deployment at the viewport cache and then, unlearned, a second
+        // one here: staging kept telling the reader "au carreau, 2019" over a
+        // map drawing 2021, because the level alone was the key.
+        const packedForKey = await filosofiPackIndex();
+        const level = `${requested}@${packedForKey?.vintage ?? FILOSOFI_VINTAGE}`;
         const now = Date.now();
         const cached = _filosofiTerritoryCache.get(level);
         if (cached && now - cached.at <= FILOSOFI_TERRITORY_TTL_MS) {
@@ -20416,7 +20425,7 @@ function filosofiProxy() {
         }
         try {
           const { promise } = coalesceProxyRequest(_filosofiTerritoryInFlight, level, async () => {
-            const payload = await refreshFilosofiTerritories(level);
+            const payload = await refreshFilosofiTerritories(requested);
             const fresh = { at: Date.now(), payload };
             _filosofiTerritoryCache.set(level, fresh);
             writeFilosofiTerritoryDisk(level, fresh);
