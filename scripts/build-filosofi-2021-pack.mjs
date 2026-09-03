@@ -48,16 +48,18 @@
  *
  * Usage:
  *   node scripts/build-filosofi-2021-pack.mjs                 # download + build
- *   node scripts/build-filosofi-2021-pack.mjs --from DIR      # build from unzipped CSVs
+ *   node scripts/build-filosofi-2021-pack.mjs --from FILE.zip # build from a local archive
  *   node scripts/build-filosofi-2021-pack.mjs --check         # report what is on disk
  */
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import zlib from 'node:zlib';
+import os from 'node:os';
 import readline from 'node:readline';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
+import { findCentralEntry, findEndOfCentralDirectory } from './lib/remoteZip.mjs';
 import { cellCentre } from '../src/data/filosofiFeed.js';
 import {
   PACK_CRS,
@@ -276,7 +278,9 @@ export function accumulateKm(coarse, row) {
   add('menProp', 'men_prop');
   add('men1ind', 'men_1ind');
   add('menColl', 'men_coll');
-  for (const column of ['ind_0_3', 'ind_4_5', 'ind_6_10', 'ind_11_17']) cell.jeunes += num(row[column]) ?? 0;
+  for (const column of ['ind_0_3', 'ind_4_5', 'ind_6_10', 'ind_11_17']) {
+    cell.jeunes += num(row[column]) ?? 0;
+  }
   for (const column of ['ind_65_79', 'ind_80p']) cell.aines += num(row[column]) ?? 0;
 }
 
@@ -315,27 +319,86 @@ export function coarseCellToWire(cell) {
 // ---------------------------------------------------------------------------
 // The build
 // ---------------------------------------------------------------------------
-async function downloadAndUnzip(workDir) {
+/**
+ * Download the archive once, to a temp file outside the cache.
+ *
+ * OUTSIDE `.gev-cache/` deliberately: on the staging VPS that directory is a
+ * Docker volume the pack has to survive redeploys in, and the first version of
+ * this script unpacked 558 MB of intermediates into it and left them there.
+ * The zip goes to the OS temp directory and is removed in a `finally`.
+ *
+ * @param {string} workDir
+ * @returns {Promise<string>} Path to the downloaded archive.
+ */
+async function downloadArchive(workDir) {
   const zipPath = path.join(workDir, 'filosofi2021_csv.zip');
-  if (!fs.existsSync(zipPath)) {
-    process.stderr.write(`Downloading ${SOURCE_ZIP}\n  (91 MB, once)…\n`);
-    const response = await fetch(SOURCE_ZIP, { signal: AbortSignal.timeout(20 * 60_000) });
-    if (!response.ok) throw new Error(`INSEE HTTP ${response.status}`);
-    await fsp.writeFile(zipPath, Buffer.from(await response.arrayBuffer()));
-  }
-  const { execFileSync } = await import('node:child_process');
-  execFileSync('unzip', ['-o', '-q', zipPath, '-d', workDir]);
-  return workDir;
+  process.stderr.write(`Downloading ${SOURCE_ZIP}\n  (91 MB, once)…\n`);
+  const response = await fetch(SOURCE_ZIP, { signal: AbortSignal.timeout(20 * 60_000) });
+  if (!response.ok) throw new Error(`INSEE HTTP ${response.status}`);
+  await fsp.writeFile(zipPath, Buffer.from(await response.arrayBuffer()));
+  return zipPath;
 }
 
 /**
- * Stream one CSV, emitting a cell per row.
- * @param {string} file
+ * Locate one member inside a local ZIP, without expanding anything.
+ *
+ * NO `unzip`, and that is a deployment fact rather than a preference: the
+ * staging container has no unzip binary, and the first version of this script
+ * shelled out to one. The repo already reads ZIP central directories for the
+ * GTFS route-type index (`lib/remoteZip.mjs`), so this reuses that rather than
+ * adding either a binary dependency or a second parser.
+ *
+ * @param {string} zipPath
+ * @param {string} name Member basename.
+ * @returns {Promise<?{start:number, compressedSize:number, method:number}>}
+ */
+async function locateMember(zipPath, name) {
+  const handle = await fsp.open(zipPath, 'r');
+  try {
+    const { size } = await handle.stat();
+    const tailStart = Math.max(0, size - 65_536);
+    const tail = Buffer.alloc(size - tailStart);
+    await handle.read(tail, 0, tail.length, tailStart);
+    const eocd = findEndOfCentralDirectory(tail, tailStart);
+    const directory = Buffer.alloc(eocd.size);
+    await handle.read(directory, 0, eocd.size, eocd.offset);
+    const entry = findCentralEntry(directory, name);
+    if (!entry) return null;
+    // The local header repeats the name and extra fields, and its lengths are
+    // the authoritative ones — several writers pad the local extra differently
+    // from the central one, and trusting the central lengths lands mid-payload.
+    const header = Buffer.alloc(30);
+    await handle.read(header, 0, 30, entry.localOffset);
+    const start = entry.localOffset + 30 + header.readUInt16LE(26) + header.readUInt16LE(28);
+    return { start, compressedSize: entry.compressedSize, method: entry.method };
+  } finally {
+    await handle.close();
+  }
+}
+
+/**
+ * Stream one CSV out of the archive, emitting a row at a time.
+ *
+ * STREAMED, never expanded: `carreaux_200m_met.csv` is 467 MB flat and the
+ * three together are 473 MB. Writing them to disk to read them once is half a
+ * gigabyte of I/O for nothing, and on the staging volume it was half a
+ * gigabyte that stayed.
+ *
+ * @param {string} zipPath
+ * @param {{start:number, compressedSize:number, method:number}} member
  * @param {(row: Object<string,string>) => void} onRow
  * @returns {Promise<number>} Rows read.
  */
-async function streamCsv(file, onRow) {
-  const stream = fs.createReadStream(file, { encoding: 'utf8' });
+async function streamCsv(zipPath, member, onRow) {
+  const raw = fs.createReadStream(zipPath, {
+    start: member.start,
+    end: member.start + member.compressedSize - 1,
+  });
+  if (member.method !== 0 && member.method !== 8) {
+    throw new Error(`unsupported compression method ${member.method}`);
+  }
+  const stream = member.method === 8 ? raw.pipe(zlib.createInflateRaw()) : raw;
+  stream.setEncoding('utf8');
   const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
   let header = null;
   let count = 0;
@@ -347,7 +410,9 @@ async function streamCsv(file, onRow) {
     for (let i = 0; i < header.length; i += 1) row[header[i]] = parts[i];
     onRow(row);
     count += 1;
-    if (count % 500_000 === 0) process.stderr.write(`    ${count.toLocaleString('en-US')} rows…\n`);
+    if (count % 500_000 === 0) {
+      process.stderr.write(`    ${count.toLocaleString('en-US')} rows…\n`);
+    }
   }
   return count;
 }
@@ -392,44 +457,34 @@ export function shardBounds(cells, resolution) {
   };
 }
 
-async function writeShards(resolution, shards) {
-  const dir = path.join(PACK_DIR, `r${resolution}`);
+async function writeShards(packDir, resolution, shards) {
+  const dir = path.join(packDir, `r${resolution}`);
   await fsp.mkdir(dir, { recursive: true });
   let bytes = 0;
   const bounds = {};
   for (const [key, cells] of shards) {
     const body = zlib.gzipSync(JSON.stringify(cells), { level: 9 });
-    await fsp.writeFile(packShardPath(PACK_DIR, resolution, key), body);
+    await fsp.writeFile(packShardPath(packDir, resolution, key), body);
     bytes += body.length;
     bounds[key] = { ...shardBounds(cells, Number(resolution)), cells: cells.length };
   }
   return { bytes, bounds };
 }
 
-async function main() {
-  const argv = process.argv.slice(2);
-  if (argv.includes('--check')) {
-    try {
-      const index = JSON.parse(await fsp.readFile(INDEX_FILE, 'utf8'));
-      process.stdout.write(`pack millésime ${index.vintage}: ${index.cells[200].toLocaleString('en-US')}`
-        + ` carreaux 200 m, ${index.cells[1000].toLocaleString('en-US')} à 1 km,`
-        + ` ${index.shards[200]} + ${index.shards[1000]} shards, built ${index.builtAt}\n`);
-    } catch {
-      process.stdout.write('no pack on disk — the proxy will serve the Géoplateforme relay (2019)\n');
-      process.exitCode = 1;
-    }
-    return;
-  }
-
-  const fromIndex = argv.indexOf('--from');
-  const workDir = fromIndex >= 0 && argv[fromIndex + 1]
-    ? path.resolve(argv[fromIndex + 1])
-    : await downloadAndUnzip(await fsp.mkdtemp(path.join(REPO, '.gev-cache', 'filosofi-2021-src-')));
-
-  const files = ['carreaux_200m_met.csv', 'carreaux_200m_mart.csv', 'carreaux_200m_reun.csv']
-    .map((name) => path.join(workDir, name))
-    .filter((file) => fs.existsSync(file));
-  if (!files.length) throw new Error(`no carreaux_200m_*.csv under ${workDir}`);
+/**
+ * Read one INSEE archive and write a complete pack.
+ *
+ * Split out of the CLI so it can be tested against a hand-built ZIP of three
+ * rows instead of a 91 MB download — the reader has to survive stored members
+ * as well as deflated ones, a member INSEE stops shipping, and three grids
+ * landing in three shards, and none of that needs the real file.
+ *
+ * @param {string} zipPath
+ * @param {string} packDir
+ * @returns {Promise<object>} The index it wrote.
+ */
+export async function buildPackFromArchive(zipPath, packDir) {
+  const MEMBERS = ['carreaux_200m_met.csv', 'carreaux_200m_mart.csv', 'carreaux_200m_reun.csv'];
 
   /** @type {Map<string, Array<object>>} */
   const fine = new Map();
@@ -441,9 +496,15 @@ async function main() {
   let rows = 0;
   let multiCommune = 0;
 
-  for (const file of files) {
-    process.stderr.write(`  ${path.basename(file)}\n`);
-    rows += await streamCsv(file, (row) => {
+  for (const name of MEMBERS) {
+    const member = await locateMember(zipPath, name);
+    if (!member) {
+      // A member INSEE stopped shipping is a change in the source, not a file
+      // to skip quietly: the totals would come out short and look like data.
+      throw new Error(`${name} is not in ${path.basename(zipPath)}`);
+    }
+    process.stderr.write(`  ${name}\n`);
+    rows += await streamCsv(zipPath, member, (row) => {
       const parsed = parseIdcar(row.idcar_200m);
       if (parsed && !PACK_CRS.includes(parsed.crs)) {
         skippedByCrs.set(parsed.crs, (skippedByCrs.get(parsed.crs) || 0) + 1);
@@ -469,17 +530,17 @@ async function main() {
     coarse.get(key).push(wire);
   }
 
-  await fsp.mkdir(PACK_DIR, { recursive: true });
+  await fsp.mkdir(packDir, { recursive: true });
   process.stderr.write('  writing shards…\n');
-  const fineWritten = await writeShards('200', fine);
-  const coarseWritten = await writeShards('1000', coarse);
+  const fineWritten = await writeShards(packDir, '200', fine);
+  const coarseWritten = await writeShards(packDir, '1000', coarse);
   const fineBytes = fineWritten.bytes;
   const coarseBytes = coarseWritten.bytes;
 
   const index = {
     vintage: PACK_VINTAGE,
     builtAt: new Date().toISOString(),
-    source: { page: SOURCE_PAGE, file: SOURCE_ZIP, files: files.map((f) => path.basename(f)) },
+    source: { page: SOURCE_PAGE, file: SOURCE_ZIP, members: MEMBERS },
     shardMetres: SHARD_M,
     rows,
     cells: { 200: [...fine.values()].reduce((s, a) => s + a.length, 0), 1000: coarseCells.size },
@@ -504,20 +565,59 @@ async function main() {
     skipped: Object.fromEntries([...skippedByCrs].map(([crs, count]) => [`CRS${crs}`, count])),
     // A digest of what went in, so a half-written pack after a crash is visible
     // rather than served as if it were complete.
-    digest: createHash('sha1').update(`${rows}:${fine.size}:${coarse.size}`).digest('hex').slice(0, 12),
+    digest: createHash('sha1')
+      .update(`${rows}:${fine.size}:${coarse.size}`).digest('hex').slice(0, 12),
   };
-  await fsp.writeFile(INDEX_FILE, `${JSON.stringify(index, null, 1)}\n`);
+  await fsp.writeFile(packIndexPath(packDir), `${JSON.stringify(index, null, 1)}\n`);
+  return index;
+}
 
-  process.stdout.write(`${index.cells[200].toLocaleString('en-US')} carreaux de 200 m`
-    + ` in ${index.shards[200]} shards (${(fineBytes / 1e6).toFixed(1)} MB gz)\n`);
-  process.stdout.write(`${index.cells[1000].toLocaleString('en-US')} carreaux de 1 km`
-    + ` in ${index.shards[1000]} shards (${(coarseBytes / 1e6).toFixed(1)} MB gz)\n`);
-  process.stdout.write(`${index.communes.toLocaleString('en-US')} communes`
-    + ` (${index.multiCommune.toLocaleString('en-US')} carreaux à cheval, sans code)`
-    + ` · millésime ${index.vintage}\n`);
-  for (const [crs, count] of Object.entries(index.skipped)) {
-    process.stdout.write(`${count.toLocaleString('en-US')} carreaux en ${crs} laissés au relais WFS`
-      + ' — cette projection n’est pas inversée par le calque\n');
+async function main() {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--check')) {
+    try {
+      const index = JSON.parse(await fsp.readFile(INDEX_FILE, 'utf8'));
+      const fine = index.cells[200].toLocaleString('en-US');
+      const coarse = index.cells[1000].toLocaleString('en-US');
+      process.stdout.write(`pack millésime ${index.vintage}: ${fine} carreaux 200 m,`
+        + ` ${coarse} à 1 km, ${index.shards[200]} + ${index.shards[1000]} shards,`
+        + ` built ${index.builtAt}\n`);
+    } catch {
+      process.stdout.write('no pack on disk — the proxy serves'
+        + ' the Géoplateforme relay (2019)\n');
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  const fromIndex = argv.indexOf('--from');
+  const localZip = fromIndex >= 0 && argv[fromIndex + 1] ? path.resolve(argv[fromIndex + 1]) : null;
+  // A temp directory OUTSIDE the cache volume, removed whatever happens.
+  const workDir = localZip ? null : await fsp.mkdtemp(path.join(os.tmpdir(), 'filosofi-2021-'));
+  const zipPath = localZip || await downloadArchive(workDir);
+
+  const MEMBERS = ['carreaux_200m_met.csv', 'carreaux_200m_mart.csv', 'carreaux_200m_reun.csv'];
+  try {
+    const index = await buildPackFromArchive(zipPath, PACK_DIR);
+    const fineBytes = index.bytes[200];
+    const coarseBytes = index.bytes[1000];
+
+    process.stdout.write(`${index.cells[200].toLocaleString('en-US')} carreaux de 200 m`
+      + ` in ${index.shards[200]} shards (${(fineBytes / 1e6).toFixed(1)} MB gz)\n`);
+    process.stdout.write(`${index.cells[1000].toLocaleString('en-US')} carreaux de 1 km`
+      + ` in ${index.shards[1000]} shards (${(coarseBytes / 1e6).toFixed(1)} MB gz)\n`);
+    process.stdout.write(`${index.communes.toLocaleString('en-US')} communes`
+      + ` (${index.multiCommune.toLocaleString('en-US')} carreaux à cheval, sans code)`
+      + ` · millésime ${index.vintage}\n`);
+    for (const [crs, count] of Object.entries(index.skipped)) {
+      process.stdout.write(`${count.toLocaleString('en-US')} carreaux en ${crs}`
+        + ' laissés au relais WFS — projection non inversée par le calque\n');
+    }
+  } finally {
+
+    // A build that threw must not leave 91 MB behind — least of all on the
+    // staging volume this pack has to fit in.
+    if (workDir) await fsp.rm(workDir, { recursive: true, force: true });
   }
 }
 

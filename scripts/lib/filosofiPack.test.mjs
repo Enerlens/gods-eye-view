@@ -4,7 +4,11 @@
 // fallback rather than a failure.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
+import { deflateRawSync } from 'node:zlib';
 import {
   PACK_BOXES,
   PACK_CRS,
@@ -17,6 +21,7 @@ import {
   shardsForBox,
 } from './filosofiPack.mjs';
 import {
+  buildPackFromArchive,
   cellFromRow,
   accumulateKm,
   coarseCellToWire,
@@ -227,4 +232,113 @@ test('the vintage the builder writes is the one the module publishes', () => {
   // the proxy that reads it — and a drift between them would caption 2021 data
   // with another year.
   assert.equal(PACK_VINTAGE, 2021);
+});
+
+
+// ── Reading the archive ─────────────────────────────────────────────────────
+
+/** A minimal ZIP, so the reader is tested without a 91 MB download. */
+function buildZip(members) {
+  const locals = [];
+  const central = [];
+  let offset = 0;
+  for (const member of members) {
+    const name = Buffer.from(member.name, 'utf8');
+    const raw = Buffer.from(member.body, 'utf8');
+    const stored = member.store === true;
+    const payload = stored ? raw : deflateRawSync(raw);
+    const local = Buffer.alloc(30 + name.length);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(stored ? 0 : 8, 8);
+    local.writeUInt32LE(payload.length, 18);
+    local.writeUInt32LE(raw.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    name.copy(local, 30);
+    const dir = Buffer.alloc(46 + name.length);
+    dir.writeUInt32LE(0x02014b50, 0);
+    dir.writeUInt16LE(stored ? 0 : 8, 10);
+    dir.writeUInt32LE(payload.length, 20);
+    dir.writeUInt32LE(raw.length, 24);
+    dir.writeUInt16LE(name.length, 28);
+    dir.writeUInt32LE(offset, 42);
+    name.copy(dir, 46);
+    locals.push(local, payload);
+    central.push(dir);
+    offset += local.length + payload.length;
+  }
+  const body = Buffer.concat(locals);
+  const directory = Buffer.concat(central);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(members.length, 8);
+  eocd.writeUInt16LE(members.length, 10);
+  eocd.writeUInt32LE(directory.length, 12);
+  eocd.writeUInt32LE(body.length, 16);
+  return Buffer.concat([body, directory, eocd]);
+}
+
+const HEADER = 'idcar_200m,idcar_1km,i_est_200,i_est_1km,lcog_geo,ind,men,men_pauv,'
+  + 'men_1ind,men_prop,ind_snv,men_surf,men_coll,log_soc,ind_0_3,ind_4_5,ind_6_10,'
+  + 'ind_11_17,ind_65_79,ind_80p';
+const ROW = (id, km, crsRow) => `${id},${km},0,0,${crsRow},100,50,10,25,20,2500000,3000,45,5,4,2,6,8,10,5`;
+
+test('the archive is read in place — no unzip binary, no expanded CSV', async () => {
+  // A DEPLOYMENT FACT, not a preference: the staging container has no `unzip`,
+  // and the first version of this script shelled out to one. The members are
+  // 473 MB expanded, so they are streamed out of the archive rather than
+  // written down to be read once.
+  const zip = buildZip([
+    {
+      name: 'carreaux_200m_met.csv',
+      body: `${HEADER}\n${ROW('CRS3035RES200mN2529000E3920400', 'CRS3035RES1000mN2529000E3920000', '69381')}\n`,
+    },
+    {
+      // Stored rather than deflated, because INSEE's writer is not the only one
+      // that will ever produce this archive.
+      name: 'carreaux_200m_reun.csv',
+      store: true,
+      body: `${HEADER}\n${ROW('CRS2975RES200mN7679200E333600', 'CRS2975RES1000mN7679000E333000', '97411')}\n`,
+    },
+    {
+      name: 'carreaux_200m_mart.csv',
+      body: `${HEADER}\n${ROW('CRS5490RES200mN1609400E709000', 'CRS5490RES1000mN1609000E709000', '97209')}\n`,
+    },
+  ]);
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'filosofi-pack-test-'));
+  try {
+    const zipPath = path.join(dir, 'sample.zip');
+    await fsp.writeFile(zipPath, zip);
+    const packDir = path.join(dir, 'pack');
+    const index = await buildPackFromArchive(zipPath, packDir);
+
+    assert.equal(index.cells[200], 3, 'one cell from each territory');
+    assert.equal(index.vintage, PACK_VINTAGE);
+    // The three grids land in three different shards, because the grid is part
+    // of the key.
+    assert.equal(Object.keys(index.bounds[200]).length, 3);
+    assert.ok(Object.keys(index.bounds[200]).some((key) => key.startsWith('2975-')));
+    assert.ok(Object.keys(index.bounds[200]).some((key) => key.startsWith('5490-')));
+    assert.deepEqual(index.skipped, {}, 'nothing INSEE ships is skipped');
+    // And the shard really is on disk, gzipped, with the grid on its cell.
+    const key = Object.keys(index.bounds[200]).find((k) => k.startsWith('2975-'));
+    assert.ok(fs.existsSync(shardPath(packDir, 200, key)));
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('a member INSEE stopped shipping fails the build, it is not skipped', async () => {
+  // The totals would come out short and look like data.
+  const zip = buildZip([{ name: 'carreaux_200m_met.csv', body: `${HEADER}\n` }]);
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'filosofi-pack-test-'));
+  try {
+    const zipPath = path.join(dir, 'sample.zip');
+    await fsp.writeFile(zipPath, zip);
+    await assert.rejects(
+      () => buildPackFromArchive(zipPath, path.join(dir, 'pack')),
+      /carreaux_200m_mart\.csv is not in/,
+    );
+  } finally {
+    await fsp.rm(dir, { recursive: true, force: true });
+  }
 });
