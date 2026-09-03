@@ -5,15 +5,39 @@
 
 :root {
   --bg-dark: #0a0a0f;
-  --glass-bg: rgba(12, 12, 20, 0.72);
-  --glass-border: rgba(255, 255, 255, 0.08);
-  --glass-border-hover: rgba(255, 255, 255, 0.15);
+  /*
+   * GLASS, MEASURED AGAINST THE VOID — not against the globe.
+   *
+   * The panels were authored on top of photorealistic tiles, where a
+   * near-black 72%-opaque plate and a 8%-white hairline are plenty: the
+   * bright city underneath does the separating. But every collapsed launcher
+   * lives in the left/right rail corridors, and those sit OUTSIDE the scope
+   * mask — over `--bg-dark`, i.e. nothing. Measured there, the old values
+   * came out at 1.01:1 surface-vs-backdrop and 1.18:1 border-vs-backdrop:
+   * the DATA LAYERS and SCENES plates were not dim, they were arithmetically
+   * absent, and the only thing marking them was the collapse button.
+   *
+   * These are set so the plate reads as a plate on the worst backdrop the
+   * app has (~1.2:1 surface, ~1.6:1 border over #0a0a0f) while staying at
+   * #1a202b once composited — still unmistakably a dark HUD, and still glass:
+   * alpha went 0.72 → 0.82, not to 1.
+   */
+  --glass-bg: rgba(30, 37, 49, 0.82);
+  --glass-border: rgba(126, 176, 204, 0.28);
+  --glass-border-hover: rgba(168, 214, 236, 0.42);
   --accent: #00d4ff;
   --accent-dim: rgba(0, 212, 255, 0.15);
   --accent-glow: rgba(0, 212, 255, 0.4);
   --text-primary: #e8eaed;
-  --text-secondary: rgba(232, 234, 237, 0.5);
-  --text-dim: rgba(232, 234, 237, 0.3);
+  /*
+   * Both dim tiers move up together so the hierarchy survives the lift. The
+   * 9px/3px-tracked panel titles are the binding constraint: at the old 0.3
+   * they measured 2.37:1 on their own plate, roughly half the 4.5:1 that
+   * type that small needs. 0.52 puts them at 4.6:1, and 0.68 keeps
+   * `secondary` a visible step above `dim` rather than collapsing into it.
+   */
+  --text-secondary: rgba(232, 234, 237, 0.68);
+  --text-dim: rgba(232, 234, 237, 0.52);
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --panel-radius: 16px;
@@ -692,13 +716,19 @@ body.cockpit-mode #cockpit-cloud-effects.active {
   background: linear-gradient(to right, var(--glass-border), transparent);
 }
 
+/*
+ * On a collapsed launcher this button IS the affordance — the plate carries a
+ * title and nothing else clickable — so it takes the brighter tier. Its own
+ * 3%-white fill also lifts the backdrop under the glyph, which is enough to
+ * push a `--text-dim` chevron back under 4.5:1 even after the token lift.
+ */
 .panel-collapse-btn {
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.03);
-  color: var(--text-dim);
+  color: var(--text-secondary);
   font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1;
@@ -2840,7 +2870,9 @@ body.cockpit-mode:has(#left-panel-stack > .panel-collapsible:not(.collapsed)) .c
   position: absolute;
   top: 8px;
   left: 50%;
-  color: rgba(232, 240, 247, 0.45);
+  /* The shadow only helps over a bright globe; over the night side these
+     ticks measured 4.06:1, so the fill carries its own share now. */
+  color: rgba(232, 240, 247, 0.55);
   font-size: 9.5px;
   letter-spacing: 0.12em;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
@@ -4640,8 +4672,11 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   background: rgba(255, 255, 255, 0.03);
 }
 
+/* The "something in this group is on" state was DIMMER than the idle one:
+   cyan at .62 measured 4.35:1 where `--text-dim` now measures 4.65. A
+   highlight that loses to what it highlights against is not a highlight. */
 .data-category.has-active .data-category-header {
-  color: rgba(0, 212, 255, 0.62);
+  color: rgba(0, 212, 255, 0.7);
 }
 
 .data-category-caret {
@@ -4672,7 +4707,7 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
 }
 
 .data-category.has-active .data-category-count {
-  color: rgba(0, 212, 255, 0.5);
+  color: rgba(0, 212, 255, 0.68);
 }
 
 .data-category-body {
@@ -5385,7 +5420,7 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   padding: 0;
   border: 1px solid rgba(98, 181, 255, .22);
   border-radius: 6px;
-  color: rgba(143, 207, 255, .58);
+  color: rgba(143, 207, 255, .72);
   background: rgba(42, 113, 171, .08);
   cursor: pointer;
   transition: border-color .15s ease, color .15s ease, background .15s ease, box-shadow .15s ease;
@@ -5590,7 +5625,8 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   padding: 12px;
   border: 1px dashed rgba(98, 181, 255, .2);
   border-radius: 7px;
-  color: rgba(190, 230, 230, .5);
+  /* 8px mono needs the full 4.5:1; .5 measured 4.08 on the panel plate. */
+  color: rgba(190, 230, 230, .62);
   text-align: center;
   font: 8px/1.45 var(--font-mono);
   letter-spacing: .1em;
@@ -6070,9 +6106,11 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   font-family: var(--font-mono);
   font-size: 9px;
   letter-spacing: 1.5px;
-  color: var(--text-dim);
+  /* Same reason as the collapse button: its own fill lifts the backdrop, and
+     an OFF chip is a control, not a caption. */
+  color: var(--text-secondary);
   background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--glass-border);
   border-radius: 4px;
   cursor: pointer;
   transition: all var(--transition-fast);

@@ -93,6 +93,29 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Changed
 
+- **DATA LAYERS et SCENES cessent d'être noir sur noir.** Les panneaux avaient
+  été réglés sur les tuiles photoréalistes, où une plaque quasi noire à 72 %
+  et un filet blanc à 8 % suffisent : la ville dessous fait la séparation. Mais
+  les lanceurs repliés vivent dans les couloirs latéraux, **hors du masque de
+  visée**, donc sur `--bg-dark`, c'est-à-dire sur rien. Mesuré là, l'ancien
+  réglage donnait **1,01:1** pour la plaque et **1,18:1** pour son bord : les
+  panneaux n'étaient pas discrets, ils étaient arithmétiquement absents, et
+  seul le bouton d'ouverture les signalait. Le verre passe à `rgba(30, 37, 49,
+  .82)` et son filet à `rgba(126, 176, 204, .28)` — **1,21:1** et **1,65:1**
+  sur le pire fond de l'application, soit `#1a202b` une fois composité : un
+  HUD toujours sombre, et toujours du verre (l'alpha va de 0,72 à 0,82, pas à
+  1).
+- **Et les titres de panneau repassent au-dessus du seuil de lisibilité.** À
+  9 px interlettrés de 3 px, `DATA LAYERS` mesurait **2,37:1** sur sa propre
+  plaque, à peu près la moitié des 4,5:1 qu'exige une typographie de cette
+  taille. Les deux niveaux atténués montent ensemble pour que la hiérarchie
+  survive à la remontée — `dim` 0,30 → 0,52 (**4,65:1**), `secondary` 0,50 →
+  0,68 — et les commandes qui portent leur propre fond, donc éclaircissent le
+  fond sous leur glyphe, prennent le niveau supérieur : bouton d'ouverture,
+  pastille `OFF` d'une couche, invite `SELECT CONTEXT`, graduations du ruban de
+  cap. Après passage, **aucun texte ni aucune plaque de l'interface ne reste
+  sous son seuil**, panneaux repliés comme dépliés.
+
 - **Les fiches délinquance disent enfin 6,22 DE QUOI.** La ligne de valeur
   affichait « 6,22 pour 1 000 habitants · 2 597 faits » — un nombre que personne
   ne peut lire, et un nom faux : le SSMSI compte les escroqueries en VICTIMES,
