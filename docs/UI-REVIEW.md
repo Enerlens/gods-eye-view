@@ -433,3 +433,67 @@ Neuf éléments méritent d'être repris dans une prochaine passe, tous vus à l
 ### Défauts croisés signalés hors lentille, non instruits
 
 `#world-overlay-action-list` contient 0 enfant et `#world-overlay-status` est vide alors que 13 étiquettes sont peintes sur le globe — le miroir accessible des cibles visibles ne porte rien. `dataManager.getEnabledLayerIds()` renvoie `{}` alors qu'une couche est allumée et peinte : la poignée d'introspection documentée dans le briefing ne reflète pas l'état. Le hash de partage s'écrit `l=` (liste vide) avec trois couches actives — possiblement un artefact de `origin: 'qa'`. Déplier `#scene-panel` replie automatiquement `#data-panel`, sans que rien ne l'annonce. Le globe se rend en disque blanc uni sur la capture V-FRANCE en clean view (`docs/ui-review/captures/ui-etats-cleanview-on.webp`). Un `TypeError: Cannot read properties of undefined (reading 'updaters')` est levé par `Scene.render()` appelé juste après un clic de sélection (`CesiumWidget._postRender`, `cesium.js:242919`). Le bandeau « VOICE SYSTEM ERROR — Check microphone permission and network access » est présent dans le DOM **au démarrage**, sans action utilisateur. Un clic sur un polygone de département n'ouvre aucune fiche depuis certaines vues. Enfin, deux lectures d'altitude ont divergé après un clic ayant déplacé la caméra (`ALT 700.0` dans `#hud-summary` contre `ALT: 16385m` dans `#hud-alt`).
+
+---
+
+## Tri des défauts « hors lentille » et des « ratés », 2026-09-03
+
+Les deux listes de fin de document n'avaient pas été instruites : les défauts
+croisés hors lentille étaient signalés sans enquête, et les « ratés par les
+lentilles » venaient des vérificateurs sans avoir eux-mêmes été réfutés. Ce tri
+les tranche, sonde par sonde. **Six tombent, trois sont confirmés, un est
+nouveau.**
+
+### Écartés — ce ne sont pas des défauts
+
+| Signalement | Verdict |
+|---|---|
+| `dataManager.getEnabledLayerIds()` renvoie `{}` avec une couche allumée | **Artefact de mesure.** La méthode renvoie un `Set` (`src/data/manager.js:1460`), qui ne franchit pas la frontière JSON de Puppeteer. Le tort est dans la recette du briefing de revue, pas dans l'application. |
+| Le lien de partage écrit `l=` vide avec des couches actives | **Faux.** Couche allumée par le chemin UI puis clic sur `#share-btn` : le hash contient `l=e`. La couche est portée. Le relevé initial lisait le hash avant sa réécriture. |
+| Deux lectures d'altitude divergentes (`ALT 700.0` contre `ALT: 16385m`) | **Transitoire de vol caméra.** Caméra posée, les deux s'accordent : `ALT 555M` / `ALT: 555m` à V‑PARIS, `ALT 1600.0KM` / `ALT: 1599951m` à V‑FRANCE. Les deux afficheurs convergent à des cadences différentes, ce qui ne se voit que pendant un déplacement. |
+| Bannière « VOICE SYSTEM ERROR » présente dans le DOM au démarrage | **Correctement masquée.** `visibility: hidden` (`style.css:8290`) — donc hors de l'arbre d'accessibilité, non annoncée. Révélée par `[data-status='error']:not(.error-dismissed)` (`style.css:8305`). Le balisage est statique, l'état ne l'est pas. |
+| L'attribution annonce « CESIUM ion » alors que les tuiles rendues sont OSM | **Comportement amont.** `#cesium-credits` est le conteneur de crédits par défaut de Cesium (`src/main.js:175`) ; les crédits par couche sont enregistrés dans son popover (`registerDataCredits`, `src/main.js:198`). Ce n'est pas une affirmation de GEV sur la provenance de ses tuiles. |
+| Cinq contrôles de formulaire sans nom accessible | **Surestimé : il y en a trois** — `#scene-import-file`, `#bloom-intensity-slider`, `#sharpen-intensity-slider`. `#location-search` et `#scope-feather-slider` en ont un. Les trois sont dans des panneaux repliés, ce qui les rend inatteignables tant que le panneau est fermé — pas une excuse, une circonstance. |
+
+### Confirmés — reproduits indépendamment
+
+**Le miroir accessible du globe est vide pendant que le globe est peint.**
+Avec `delinquance-fr` active à V‑FRANCE, `__gevWorldOverlay.getDiagnostics()`
+renvoie `paintedCount: 6` et `hitRectCount: 0`, pendant que
+`#world-overlay-action-list` compte **0 enfant** et `#world-overlay-status` est
+vide. Six étiquettes sont donc peintes sur le globe sans aucune représentation
+DOM — ni au clavier, ni au lecteur d'écran, ni au clic. Renforce le motif M5.
+
+**La couleur composite n'est dans aucune légende.** Trois choroplèthes actives
+(`delinquance-fr`, `irve-fr`, `schools-fr`) à V‑FRANCE : le pixel de la Gironde
+mesure `rgb(166, 206, 197)`. Le vérificateur avait relevé `rgb(162, 204, 193)`
+sur une caméra légèrement différente — deux mesures indépendantes concordantes.
+Aucune des **14 pastilles de légende visibles** n'en approche. La composition
+alpha produit une couleur que la clé ne contient pas : la légende n'est pas
+seulement enfermée dans un tiroir (M2), elle est **fausse** dès que deux couches
+zonales se superposent. C'est la conséquence chiffrée de la piste 5 de
+`REPRESENTATION.md`.
+
+**`<html lang="en">` sur une interface majoritairement française**, sans aucun
+`lang="fr"` ailleurs dans le document. WCAG 3.1.1 échoué à la racine.
+
+### Nouveau, trouvé pendant le tri
+
+**`#hud-summary` rend une chaîne vide à 12 000 km.** Aux deux autres vues
+canoniques il rend une ligne complète (`NORMAL STREET NEAR EIFFEL TOWER…`,
+`NORMAL GLOBAL SECTOR 46.60N 2.40E…`) ; à V‑GLOBE, `textContent` est vide après
+huit cycles de rendu espacés. Distinct du constat de troncature à 49 % déjà
+rapporté par la lentille hiérarchie.
+
+### Corrigé — une affirmation du rapport est fausse
+
+La section des « ratés » affirme que le seul `<h1>` du document a pour contenu
+textuel une feuille de style, et qu'un lecteur d'écran annoncerait donc du CSS
+comme titre principal. **La conclusion est fausse.** `src/logoGaze.js:109`
+injecte bien le SVG entier — bloc `<style>` compris — dans le `<span>` du titre,
+donc `h1.textContent` contient effectivement `.cls-4 { fill: #fff; }`. Mais ce
+`<span>` porte `aria-hidden="true"` dans `index.html`, et `logoGaze` le repose
+sur le SVG cloné : il est hors de l'arbre d'accessibilité. Le `<h1>` contient par
+ailleurs bien « GOD'S EYE VIEW ». Ce qui reste vrai est étroit : toute extraction
+textuelle naïve du titre ramasse du CSS.
+
