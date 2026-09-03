@@ -164,6 +164,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   n'est pas le taux de pauvreté des deux.
 
 ### Fixed
+- **Le HUD ne disparaît plus quand le sol est clair.** Les lectures du HUD
+  étaient peintes à même le canevas du globe, dont la luminance couvre toute
+  l'étendue — mer sombre jusqu'aux toits blancs — sans aucune plaque derrière
+  elles : mesuré le 2026-09-03, masque de portée désactivé, `#hud-summary`
+  au-dessus du centre de Paris se posait sur `rgb(227,231,228)` pour un rapport
+  de contraste de **1,00** contre son propre cyan. La ligne qui répond à « où
+  suis-je » était exactement de la couleur du sol qu'elle décrit. Le masque de
+  portée cachait le problème parce qu'il assombrit les bords du cadre, mais
+  c'est une coïncidence et non une garantie : le masque est une bascule
+  utilisateur. Les quatre coins portent maintenant un voile sombre flouté —
+  ramené à **5,31** dans le même relevé, au-dessus du seuil AA. La variante
+  `operator`, qui avait déjà une plaque à 0,36 d'alpha, est alignée dessus :
+  elle était trop mince pour porter le texte sur un toit blanc.
+- **La bascule ON/OFF de chaque calque montre enfin qu'elle a le focus.**
+  `.data-toggle-btn` déclarait `outline: none` — délibéré, l'anneau du
+  navigateur est carré et jure avec le rayon de 4 px — mais rien ne l'avait
+  remplacé : le contrôle le plus utilisé du produit était atteignable au clavier
+  et invisible une fois atteint, au bout de neuf tabulations. L'anneau est
+  désormais dessiné en `box-shadow`, donc il suit le rayon, et doublé d'un liseré
+  sombre pour survivre au fond du bouton.
+- **Un clic sur une bascule de calque s'accuse immédiatement.** L'état pressé
+  n'existait nulle part sur le rail : trois sélecteurs `:active` dans toute la
+  feuille contre soixante-douze `:hover`. Sur un flux lent, le clic ne recevait
+  aucune réponse avant la fin du chargement, des secondes plus tard.
+- **Un flux en cours de chargement ne se déguise plus en flux nominal.**
+  `feed-loading` portait une largeur et un interlettrage, et aucune couleur : un
+  calque actif encore en train de charger retombait sur `.data-toggle-btn.active`
+  et prenait le cyan exact d'un flux sain. Cinq états de flux, quatre couleurs —
+  celui qui veut dire « pas encore là » portait celui qui veut dire « bon ». Il
+  prend une ardoise neutre, qui ne rejoint pas la rampe d'alerte (ambre périmé,
+  orange dégradé, rouge indisponible).
+- **Le document se déclare en français.** `<html lang="en">` couronnait une
+  interface dont le texte visible est français à dix contre un — 68 nœuds de
+  texte français contre 7 anglais, relevés à l'écran panneaux ouverts. Un
+  lecteur d'écran lisait donc « Bouées marines » et « État du réseau routier »
+  avec une voix anglaise (WCAG 3.1.1). La racine passe à `fr` et les six
+  en-têtes de panneau, qui sont systématiquement anglais, sont marqués
+  `lang="en"`. Le reste de la chrome anglaise n'est pas encore marqué.
 - **La Martinique et La Réunion se dessinent enfin — elles n'avaient JAMAIS été
   dessinées.** Le calque déclarait les couvrir depuis sa mise en service et n'a
   jamais tracé un seul de leurs carreaux : l'INSEE maille chaque territoire dans
