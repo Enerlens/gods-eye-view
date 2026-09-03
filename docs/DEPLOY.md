@@ -41,6 +41,26 @@ GitHub (public repo)
 | `/opt/gev/target` | `auto` (default), `main`, or a branch name to pin |
 | `/opt/gev/state/deployed` | `branch@sha` currently live |
 
+### The 2021 carroyage pack
+
+The INSEE carroyage the Géoplateforme relays is **millésime 2019**; INSEE
+published 2021 on 2026-02-12 and the relay has not moved. Staging draws 2021
+only if the pack is built into the container's cache volume:
+
+```bash
+ssh vps 'docker exec gev npm run filosofi:pack-2021'   # ~2 min, 91 MB in, 59 MB out
+ssh vps 'docker exec gev node scripts/build-filosofi-2021-pack.mjs --check'
+```
+
+It writes to `/app/.gev-cache/filosofi-2021`, which is the `gev-cache` named
+volume, so it **survives redeploys** and only has to be rebuilt when INSEE ships
+a new millésime. Without it the proxy serves the relay and reports
+`vintage: 2019` — the year travels with every answer, so staging is never
+wrong about which one it is showing, only older.
+
+The build streams the three CSVs straight out of the archive: no `unzip` (the
+image has none) and no 473 MB of expanded intermediates on the volume.
+
 ### Day to day
 
 ```bash
