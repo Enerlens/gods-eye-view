@@ -15,6 +15,7 @@ import {
   selectLocalInfrastructureOverlayCohort,
 } from './localGeojson.js';
 import { layerFeedState } from './manager.js';
+import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import {
   installRenderGovernor,
   getRenderGovernorDiagnostics,
@@ -447,7 +448,11 @@ test('local infrastructure entries satisfy the shared presentation contract', ()
   assert.deepEqual(entry.details, ['Example Cloud']);
   assert.equal(entry.priority, 1180);
   assert.equal(entry.collisionGroup, 'ambient-card');
-  assert.equal(entry.interactive, false, 'point/stem picking remains Cesium-native');
+  assert.equal(
+    entry.interactive,
+    true,
+    'the card carries the NAME and is the bigger target — it has to answer a click',
+  );
   assert.equal(entry.maxDistance, 14_000_000);
   assert.equal(entry.distanceFadeStartRatio, 250_000 / 14_000_000);
   assert.deepEqual(entry.distanceScale, {
@@ -1547,6 +1552,174 @@ test('a display floor empties the size legend it hides, rather than lying about 
     assert.equal(harness.layer.getRowControls().chips.length, 1);
   } finally {
     await harness.layer.destroy?.(harness.viewer);
+    harness.cleanup();
+  }
+});
+
+/**
+ * One airport, a captured LEFT_CLICK handler, and a scriptable overlay hit
+ * test — everything needed to drive the three-step resolution order by hand.
+ */
+async function createAirportClickHarness() {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const preRender = new MockLayerEvent();
+  const moveEnd = new MockLayerEvent();
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      type: 'Feature',
+      id: 'LFPG',
+      properties: { name: 'Paris Charles de Gaulle', tags: { iata: 'CDG' } },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [2.53, 49.00],
+          [2.58, 49.00],
+          [2.58, 49.02],
+          [2.53, 49.00],
+        ]],
+      },
+    }),
+  });
+  globalThis.window = { dispatchEvent() {} };
+  let hit = null;
+  let picked = null;
+  const flights = [];
+  let clickHandler = null;
+  const viewer = {
+    selectedEntity: undefined,
+    dataSources: { add(dataSource) { return dataSource; }, remove() { return true; } },
+    camera: {
+      positionWC: Cesium.Cartesian3.fromDegrees(2.55, 49.01, 100_000),
+      frustum: { fov: Math.PI / 3 },
+      moveEnd,
+      flyTo(options) { flights.push(options); },
+    },
+    scene: {
+      canvas: { clientWidth: 800, clientHeight: 600 },
+      preRender,
+      sampleHeightSupported: false,
+      screenSpaceCameraController: { enableInputs: true },
+      pick() { return picked; },
+      requestRender() {},
+    },
+  };
+  const layer = createLocalGeoJsonLayer({
+    id: 'local-airports',
+    url: '/airports.geojsonl',
+    name: 'Aéroports',
+    color: '#f0e6ff',
+    overlayHost: {
+      setVisible() {},
+      setEntries() {},
+      clearSource() {},
+      hitTest: (x, y, options = {}) => {
+        if (!hit) return null;
+        if (options.sourceId && options.sourceId !== hit.sourceId) return null;
+        if (x < hit.x || x > hit.x + hit.w || y < hit.y || y > hit.y + hit.h) return null;
+        return hit;
+      },
+    },
+    projectToWindow: () => ({ x: 400, y: 300 }),
+    screenSpaceEventHandlerFactory: () => ({
+      setInputAction(handler) { clickHandler = handler; },
+      destroy() {},
+    }),
+  });
+  try {
+    await layer.enable(viewer);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  return {
+    layer,
+    viewer,
+    flights,
+    click(x, y) { clickHandler({ position: { x, y } }); },
+    setHit(next) { hit = next; },
+    setPicked(next) { picked = next; },
+    cleanup() {
+      if (originalWindow === undefined) delete globalThis.window;
+      else globalThis.window = originalWindow;
+    },
+  };
+}
+
+test('clicking an airport NAME selects and frames it, exactly as clicking its marker does', async () => {
+  const harness = await createAirportClickHarness();
+  try {
+    harness.setHit({
+      sourceId: 'local-airports', entryId: 'LFPG', x: 380, y: 260, w: 120, h: 40,
+    });
+    harness.click(440, 280);
+    assert.ok(harness.viewer.selectedEntity, 'the name selects the feature');
+    assert.equal(harness.viewer.selectedEntity.id, 'LFPG');
+    assert.equal(harness.flights.length, 1, 'and frames it, the way the marker does');
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test('a pick that somebody owns beats the name; an unclaimed one does not', async () => {
+  const harness = await createAirportClickHarness();
+  const hit = { sourceId: 'local-airports', entryId: 'LFPG', x: 380, y: 260, w: 120, h: 40 };
+  try {
+    // A sibling local layer's own entity under the cursor is the honest answer
+    // about what is being pointed at — a card must not steal its click.
+    harness.setHit(hit);
+    harness.setPicked({ id: { __localLayerId: 'local-ports' } });
+    harness.click(440, 280);
+    assert.equal(harness.viewer.selectedEntity, undefined);
+
+    // Same for a pick another registered layer claims.
+    registerPickOwner('flights', (pickedId) => pickedId === 'a1b2c3');
+    try {
+      harness.setPicked({ id: 'a1b2c3' });
+      harness.click(440, 280);
+      assert.equal(harness.viewer.selectedEntity, undefined);
+    } finally {
+      unregisterPickOwner('flights');
+    }
+
+    // But an UNCLAIMED pick is not an obstacle, and this is the case that
+    // decides whether the feature works at all: over photoreal 3D tiles almost
+    // every on-globe pixel picks a tile feature that no layer owns and nobody
+    // can select. Treating that as occupied would leave every name inert.
+    harness.setPicked({ primitive: {}, content: {}, tileset: {} });
+    harness.click(440, 280);
+    assert.equal(harness.viewer.selectedEntity?.id, 'LFPG');
+  } finally {
+    harness.cleanup();
+  }
+});
+
+test('the airport name resolves only while its record is live, and only for its own source', async () => {
+  const harness = await createAirportClickHarness();
+  try {
+    // A hit rectangle outlives its record by a frame, so an id the layer no
+    // longer carries is a miss and never a selection.
+    harness.setPicked(null);
+    harness.setHit({
+      sourceId: 'local-airports', entryId: 'GONE', x: 380, y: 260, w: 120, h: 40,
+    });
+    harness.click(440, 280);
+    assert.equal(harness.viewer.selectedEntity, undefined);
+
+    // Another source's rectangle under the same pixels is not ours either.
+    harness.setHit({
+      sourceId: 'local-ports', entryId: 'LFPG', x: 380, y: 260, w: 120, h: 40,
+    });
+    harness.click(440, 280);
+    assert.equal(harness.viewer.selectedEntity, undefined);
+
+    // Empty space stays empty: this layer never had a deselect branch.
+    harness.setHit(null);
+    harness.click(440, 280);
+    assert.equal(harness.viewer.selectedEntity, undefined);
+    assert.equal(harness.flights.length, 0);
+  } finally {
     harness.cleanup();
   }
 });

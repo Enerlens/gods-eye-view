@@ -4,7 +4,12 @@
 // rectangles, and the rule that a broken host is a miss and never a throw.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { overlayLabelRecordId, pickOverlayLabelId } from './overlayLabelPick.js';
+import {
+  DETECTION_LABEL_SOURCE_PREFIX,
+  detectionLabelSourceId,
+  overlayLabelRecordId,
+  pickOverlayLabelId,
+} from './overlayLabelPick.js';
 
 /** A host stub that answers one rectangle, shaped like hitTestWorldOverlay. */
 function hostWith({ sourceId, entryId, x = 100, y = 50 }) {
@@ -73,5 +78,31 @@ test('a host throwing mid-teardown does not break the layer’s click handler', 
   assert.equal(pickOverlayLabelId({ x: 1, y: 1 }, {
     sourceId: 'gas-fr',
     hitTest: () => { throw new Error('overlay destroyed'); },
+  }), null);
+});
+
+test('detection callouts get one hit-test scope per layer, never one for the lane', () => {
+  // Aircraft and military callsigns are painted by the SAME host lane. If they
+  // shared a source id, a click on a civil contact would resolve inside the
+  // military layer's handler — and both handlers would fight over it.
+  assert.equal(detectionLabelSourceId('flights'), 'detect:flights');
+  assert.equal(detectionLabelSourceId('military'), 'detect:military');
+  assert.notEqual(detectionLabelSourceId('flights'), detectionLabelSourceId('military'));
+  assert.ok(detectionLabelSourceId('flights').startsWith(DETECTION_LABEL_SOURCE_PREFIX));
+  // The scope is a fence, so an absent layer id must not collapse onto a
+  // neighbour's — and it must not read as the bare prefix of a real one.
+  assert.equal(detectionLabelSourceId(null), 'detect:');
+  assert.equal(detectionLabelSourceId(undefined), 'detect:');
+
+  // The record id is published bare under that scope: no prefix to strip.
+  const hitTest = hostWith({ sourceId: 'detect:flights', entryId: '3c6444' });
+  assert.equal(pickOverlayLabelId({ x: 100, y: 50 }, {
+    sourceId: detectionLabelSourceId('flights'),
+    has: (icao24) => icao24 === '3c6444',
+    hitTest,
+  }), '3c6444');
+  assert.equal(pickOverlayLabelId({ x: 100, y: 50 }, {
+    sourceId: detectionLabelSourceId('military'),
+    hitTest,
   }), null);
 });

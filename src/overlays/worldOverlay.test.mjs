@@ -22,6 +22,8 @@ import {
   isOverlayPointVisible,
   normalizeOverlayEntry,
   paintLaneForOverlayEntry,
+  listWorldOverlayHitRects,
+  publishWorldOverlayLaneRect,
   registerWorldOverlayPaintLane,
   removeOverlayEntry,
   selectBoundedOverlayCohort,
@@ -1652,6 +1654,106 @@ test('paint rectangles publish from a pool and topmost interactive lookup wins',
   assert.equal(hit.entryId, 'over', 'hit test walks painted entries from last to first');
   assert.equal(hit.sourceId, 'hits');
   assert.equal(getWorldOverlayDiagnostics().hitRectCount, 2);
+  env.cleanup();
+});
+
+test('a lane publishes its own click surfaces, and an ordinary card still outranks them', () => {
+  // A paint lane solves its own geometry, so the host cannot derive a hit
+  // rectangle for it the way it does for an entry. Without this seam a lane's
+  // text is scenery: the canvas is `pointer-events: none`, so a click aimed at
+  // a callsign reaches the globe and dismisses whatever was selected.
+  const env = installMockEnvironment({ width: 400, height: 300, dpr: 1 });
+  initWorldOverlay(env.viewer);
+  let overCard = null;
+  registerWorldOverlayPaintLane('detection', (frame) => {
+    frame.ctx.fillText('LANE-TEXT', 40, 40);
+    publishWorldOverlayLaneRect('detect:flights', 'a1b2c3', { x: 30, y: 30, w: 60, h: 20 });
+    publishWorldOverlayLaneRect('detect:military', 'ffee00', { x: 200, y: 200, w: 60, h: 20 });
+    if (overCard) publishWorldOverlayLaneRect('detect:flights', 'under-card', overCard);
+  }, { id: 'detection', active: true, target: 'detection' });
+  env.postRender.raise();
+
+  const hit = hitTestWorldOverlay(60, 40);
+  assert.equal(hit.sourceId, 'detect:flights');
+  assert.equal(hit.entryId, 'a1b2c3');
+  assert.equal(hit.entry.interactive, true);
+  assert.equal(hit.entry.collisionGroup, 'lane-label');
+
+  // Per-source scoping is the load-bearing part: two layers share one lane.
+  assert.equal(hitTestWorldOverlay(60, 40, { sourceId: 'detect:military' }), null);
+  assert.equal(hitTestWorldOverlay(230, 210, { sourceId: 'detect:military' }).entryId, 'ffee00');
+  assert.equal(hitTestWorldOverlay(29, 40), null, 'the rectangle stops where the text does');
+
+  assert.deepEqual(
+    listWorldOverlayHitRects({ sourceId: 'detect:flights' }),
+    [{ sourceId: 'detect:flights', entryId: 'a1b2c3', x: 30, y: 30, w: 60, h: 20 }],
+  );
+  assert.equal(getWorldOverlayDiagnostics().hitRectCount, 2);
+
+  // Lane rectangles are pushed before the entry items of the same lane, and the
+  // hit test walks backwards — so a card stacked over lane text still wins.
+  setOverlayEntries('cards', [selectedEntry('OVER-LANE', {
+    interactive: true,
+    position: positionAtScreen(60, 140, 400, 300),
+  })]);
+  env.postRender.raise();
+  const card = getOverlayPaintRect('cards', 'OVER-LANE');
+  assert.ok(card, 'the card reaches the screen');
+  overCard = { x: card.x, y: card.y, w: card.w, h: card.h };
+  env.postRender.raise();
+  const stacked = hitTestWorldOverlay(card.x + card.w / 2, card.y + card.h / 2);
+  assert.equal(stacked.sourceId, 'cards', 'an arbitrated card outranks lane text under it');
+  assert.equal(stacked.entryId, 'OVER-LANE');
+  env.cleanup();
+});
+
+test('a lane rectangle lives exactly one frame and cannot be published outside a paint', () => {
+  const env = installMockEnvironment({ width: 400, height: 300, dpr: 1 });
+  initWorldOverlay(env.viewer);
+  let publish = true;
+  registerWorldOverlayPaintLane('detection', (frame) => {
+    frame.ctx.fillText('LANE-TEXT', 40, 40);
+    if (publish) publishWorldOverlayLaneRect('detect:flights', 'a1b2c3', { x: 30, y: 30, w: 60, h: 20 });
+  }, { id: 'detection', active: true, target: 'detection' });
+
+  env.postRender.raise();
+  assert.equal(hitTestWorldOverlay(60, 40).entryId, 'a1b2c3');
+
+  // Re-published every painted frame, exactly like the text itself: a lane that
+  // stops drawing the words must stop answering for them on the same frame.
+  publish = false;
+  env.postRender.raise();
+  assert.equal(hitTestWorldOverlay(60, 40), null);
+
+  // Outside the paint window there is no frame to attach to, and the buffer is
+  // about to be reset — so the call is refused rather than silently lost.
+  assert.equal(publishWorldOverlayLaneRect('detect:flights', 'a1b2c3', { x: 30, y: 30, w: 60, h: 20 }), false);
+  assert.equal(hitTestWorldOverlay(60, 40), null);
+
+  publish = true;
+  env.postRender.raise();
+  assert.equal(hitTestWorldOverlay(60, 40).entryId, 'a1b2c3');
+  destroyWorldOverlay();
+  assert.equal(publishWorldOverlayLaneRect('detect:flights', 'a1b2c3', { x: 30, y: 30, w: 60, h: 20 }), false);
+  assert.deepEqual(listWorldOverlayHitRects(), []);
+  env.cleanup();
+});
+
+test('a lane rectangle without a shape, a source, or an id is refused', () => {
+  const env = installMockEnvironment({ width: 400, height: 300, dpr: 1 });
+  initWorldOverlay(env.viewer);
+  const results = [];
+  registerWorldOverlayPaintLane('detection', () => {
+    results.push(publishWorldOverlayLaneRect('', 'a1b2c3', { x: 1, y: 1, w: 10, h: 10 }));
+    results.push(publishWorldOverlayLaneRect('detect:flights', '', { x: 1, y: 1, w: 10, h: 10 }));
+    results.push(publishWorldOverlayLaneRect('detect:flights', 'a1', { x: NaN, y: 1, w: 10, h: 10 }));
+    results.push(publishWorldOverlayLaneRect('detect:flights', 'a2', { x: 1, y: 1, w: 0, h: 10 }));
+    results.push(publishWorldOverlayLaneRect('detect:flights', 'a3', null));
+    results.push(publishWorldOverlayLaneRect('detect:flights', 'a4', { x: 1, y: 1, w: 10, h: 10 }));
+  }, { id: 'detection', active: true, target: 'detection' });
+  env.postRender.raise();
+  assert.deepEqual(results, [false, false, false, false, false, true]);
+  assert.equal(listWorldOverlayHitRects().length, 1);
   env.cleanup();
 });
 

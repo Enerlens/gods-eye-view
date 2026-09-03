@@ -2532,8 +2532,41 @@ registry, and the label branch resolves straight into the existing
 
 Proved in a real scene by `npm run qa:label-click`, which reads where the host
 painted a label, dispatches a real pointer event at its centre — nowhere near
-the dot — and asserts the layer's selected-card source started painting; and
-that a click on empty space still clears it.
+the dot — and asserts the layer's selection changed; and that a click on empty
+space still clears it, on the layers that have ever had a deselect branch.
+
+**A paint lane can now publish its own click surfaces (September 2026).** An
+ordinary entry gets its hit rectangle for free, because the host lays it out and
+therefore knows where it landed. The DETECT overlay is not an entry source: it
+solves callout placement against its own collision arbiter and hands the host
+nothing but pixels, so its callsigns could only ever be scenery. That was the
+widest gap of all — a contact's sprite is a few pixels of a target at 900 km/h,
+the callsign beside it is several times that area, so it is what people aim at,
+and every one of those clicks fell onto the globe and DESELECTED the aircraft
+being followed. `publishWorldOverlayLaneRect()` is the seam that closes it:
+same hit-rectangle buffer, same `hitTestWorldOverlay()` resolution, same
+one-frame lifetime, re-stated on every painted frame exactly like the text
+itself. Callouts fainter than 20 % alpha publish nothing — a rectangle over text
+nobody can read is a trap, not a target.
+
+The scope is **per layer**, `detect:<layerId>` (`detectionLabelSourceId()`):
+civil and military aircraft share one lane, and a handler that hit-tested the
+lane as a whole would resolve its neighbour's callsign as one of its own
+contacts. **Vols** and **Vols militaires** consult it, in the same three-step
+order as everything else, and select the contact the callsign names.
+
+**Airport names select and frame, exactly as their pastille does.** The local
+infrastructure layers (**Aéroports**, **Ports**, **Barrages**, **Datacenters**)
+publish an ambient CARD carrying the feature's name at the tip of a recall stem
+whose marker is a few pixels wide; the card was `interactive: false`, so the
+larger of the two targets did nothing. It is now the same click as the marker —
+selection, Context, and the 5 000 m framing flight. Its label branch yields to a
+sibling local layer's own entity and to any pick the registry says another layer
+owns — but NOT to an unclaimed pick, and that distinction is what makes the
+feature work at all: over a loaded photoreal tileset almost every on-globe pixel
+picks a 3D tile feature that no layer owns and nobody can select, so treating a
+non-null `scene.pick()` as "occupied" would have left every name on the globe
+inert again.
 
 ### Context / Contacts coordinator (July 2026)
 

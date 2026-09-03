@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { aircraftIncludedInNearby } from './aircraftNearbyPolicy.js';
 import { registerPickOwner, unregisterPickOwner, isOwnedByOtherLayer, resolvePickId } from './pickRegistry.js';
+import { detectionLabelSourceId, pickOverlayLabelId } from './overlayLabelPick.js';
 import { registerSpriteCollection, restoreSpriteOrder } from './spriteOrder.js';
 import {
   bindTrackingClickGesture,
@@ -90,6 +91,15 @@ const ERROR_BACKOFF_INTERVAL = 20000;
 const BACKOFF_INTERVAL = 45000;
 /** @constant {number} Max position samples retained per aircraft for dead reckoning */
 const POSITION_HISTORY_LIMIT = 5;
+/**
+ * Hit-test scope for this layer's DETECT callsigns.
+ *
+ * The callsign is not an overlay entry: the detection lane solves its own
+ * placement and publishes the rectangle itself, keyed by icao24 under this
+ * per-layer source id. The civil layer shares the same lane under its own,
+ * which is what keeps a click on `AFR1234` from resolving here.
+ */
+const MILITARY_DETECT_LABEL_SOURCE_ID = detectionLabelSourceId('military');
 /** @constant {number} Base billboard display scale */
 const BILLBOARD_SCALE = 0.7;
 
@@ -3934,6 +3944,22 @@ function _installClickHandler(viewer) {
     if (picked) {
       const pickedId = resolvePickId(picked);
       if (pickedId && isOwnedByOtherLayer('military', pickedId)) return;
+    }
+
+    // The DETECT callsign, which the depth buffer knows nothing about, and
+    // which shares one host lane with the civil layer — hence the per-layer
+    // scope. Resolved AFTER the native pick so a contact under the cursor
+    // still wins its own click; `has` re-checks the live billboard map because
+    // a hit rectangle outlives its contact by a frame.
+    const labelled = pickOverlayLabelId(click.position, {
+      sourceId: MILITARY_DETECT_LABEL_SOURCE_ID,
+      has: (icao24) => _billboards.has(icao24),
+    });
+    if (labelled !== null) {
+      if (labelled === _trackedIcao) return;
+      _cancelPendingTrackingRestore();
+      _trackFlight(labelled, { origin: 'user' });
+      return;
     }
 
     // Clicked empty space -- deselect only for a clean, short click. A slow

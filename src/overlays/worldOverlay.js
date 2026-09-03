@@ -240,6 +240,7 @@ const _paintItemPool = [];
 const _paintRectPool = [];
 const _paintRectByKey = new Map();
 const _hitRects = [];
+const _laneRectPool = [];
 const _paintedBySource = Object.create(null);
 const _paintedSourceKeys = [];
 // Live lengths of the pooled frame buffers. Pool arrays are never truncated
@@ -247,6 +248,11 @@ const _paintedSourceKeys = [];
 let _paintCount = 0;
 let _paintRectCount = 0;
 let _hitRectCount = 0;
+let _laneRectCount = 0;
+// True only while paintFrame() is walking the lanes. A rect published outside
+// that window would land in a buffer the next frame is about to reset, so it
+// would be a click surface for nothing.
+let _paintingFrame = false;
 
 const _diagnostics = {
   sourceCount: 0,
@@ -337,6 +343,14 @@ function zeroDemandEntry(value, key, map) {
 function pruneKeyedIndex(index, liveCount) {
   if (index.size > liveCount * 4 + 64) index.clear();
 }
+
+/**
+ * Collision group reported for a lane-published rectangle. A lane solved its
+ * own placement, so it never took part in the host's collision arbitration —
+ * the value exists so a `collisionGroup` filter on {@link hitTestWorldOverlay}
+ * can tell lane text apart from an arbitrated ambient label.
+ */
+const LANE_RECT_COLLISION_GROUP = 'lane-label';
 
 function defaultCollisionGroup(variant) {
   if (variant === 'label') return 'ambient-label';
@@ -721,6 +735,7 @@ function invalidateHost({ solve = true, layout = false } = {}) {
   _canvasNeedsClear = true;
   _paintRectCount = 0;
   _hitRectCount = 0;
+  _laneRectCount = 0;
   _paintRectByKey.clear();
   _viewer?.scene?.requestRender?.();
 }
@@ -793,6 +808,120 @@ export function registerWorldOverlayPaintLane(laneId, painter, options = {}) {
     },
     unregister,
   };
+}
+
+/**
+ * Publish a click surface for text a paint lane drew itself.
+ *
+ * An ORDINARY entry gets its hit rectangle for free: the host lays it out, so
+ * the host knows where it landed and publishes it whenever `interactive` is
+ * set. A paint lane owns its own geometry — detection solves callout placement
+ * against its own collision arbiter and hands the host nothing but pixels — so
+ * the host cannot derive a rectangle for it, and until now a lane's text could
+ * only ever be scenery. This is the seam that lets a lane say "the words I just
+ * painted here ARE the object": same `_hitRects` buffer, same
+ * {@link hitTestWorldOverlay} resolution, same per-frame lifetime.
+ *
+ * Callable only from inside a painter, and only for the frame being painted.
+ * The rectangles are pooled and reset at the top of every `paintFrame`, exactly
+ * like the ones entries publish, so a lane must re-publish on each painted
+ * frame — which is what it is already doing to keep the text on screen.
+ *
+ * Lane rectangles are pushed BEFORE the ordinary entry items of the same lane
+ * (see `paintFrame`), and {@link hitTestWorldOverlay} scans backwards, so an
+ * ambient card stacked over a lane's label still wins the click.
+ *
+ * @param {string} sourceId Hit-test scope. A lane serving several layers must
+ *   give each its own id, or one layer's click handler will resolve a
+ *   sibling's label as its own.
+ * @param {string} entryId Record id the text names.
+ * @param {{x:number,y:number,w:number,h:number}} rect CSS-pixel rectangle.
+ * @returns {boolean} Whether the rectangle was published.
+ */
+export function publishWorldOverlayLaneRect(sourceId, entryId, rect) {
+  if (_destroyed || !_paintingFrame) return false;
+  const source = String(sourceId ?? '');
+  const id = String(entryId ?? '');
+  if (!source || !id) return false;
+  const x = Number(rect?.x);
+  const y = Number(rect?.y);
+  const w = Number(rect?.w);
+  const h = Number(rect?.h);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
+  if (!(w > 0) || !(h > 0)) return false;
+  let pooled = _laneRectPool[_laneRectCount];
+  if (!pooled) {
+    // Field-for-field the shape entries publish, `key` and `stamp` included:
+    // both kinds of rectangle share one `_hitRects` array, and every consumer
+    // of it walks that array without asking which kind it is holding.
+    // `accessibilityLabel` stays empty and `activate` stays null — the
+    // accessible mirror lists ACTIONS, and a lane's label is a pick surface,
+    // not a keyboard-reachable control.
+    pooled = {
+      x: 0,
+      y: 0,
+      w: 0,
+      h: 0,
+      sourceId: '',
+      entryId: '',
+      key: '',
+      stamp: -1,
+      entry: {
+        id: '',
+        source: '',
+        collisionGroup: LANE_RECT_COLLISION_GROUP,
+        interactive: true,
+        selected: false,
+        accessibilityLabel: '',
+        activate: null,
+      },
+    };
+    _laneRectPool[_laneRectCount] = pooled;
+  }
+  _laneRectCount++;
+  pooled.x = x;
+  pooled.y = y;
+  pooled.w = w;
+  pooled.h = h;
+  pooled.sourceId = source;
+  pooled.entryId = id;
+  pooled.key = entryKey(source, id);
+  pooled.stamp = _frameStamp;
+  pooled.entry.id = id;
+  pooled.entry.source = source;
+  _hitRects[_hitRectCount++] = pooled;
+  return true;
+}
+
+/**
+ * The click surfaces this frame published, newest last.
+ *
+ * {@link hitTestWorldOverlay} answers "what is under this point"; a harness
+ * proving a NAME is clickable needs the other direction — "where did you put
+ * the names" — and for lane-published text there is no entry list to read it
+ * off. The array is a per-call copy of plain numbers; the pooled rectangles
+ * themselves are never handed out.
+ *
+ * @param {{sourceId?:string}} [options]
+ * @returns {Array<{sourceId:string,entryId:string,x:number,y:number,w:number,h:number}>}
+ */
+export function listWorldOverlayHitRects(options = {}) {
+  if (_destroyed) return [];
+  const wanted = options.sourceId ? String(options.sourceId) : '';
+  const out = [];
+  for (let i = 0; i < _hitRectCount; i++) {
+    const rect = _hitRects[i];
+    if (wanted && rect.sourceId !== wanted) continue;
+    out.push({
+      sourceId: rect.sourceId,
+      entryId: rect.entryId,
+      x: rect.x,
+      y: rect.y,
+      w: rect.w,
+      h: rect.h,
+    });
+  }
+  return out;
 }
 
 /**
@@ -2114,22 +2243,30 @@ function paintFrame(keyhole) {
     && _detectionSurfaceNeedsClear) clearCanvas(false, true);
   _paintRectCount = 0;
   _hitRectCount = 0;
+  _laneRectCount = 0;
+  _paintingFrame = true;
   sortPooledRange(_paintQueue, _paintCount, comparePaintItems);
   // The shared canvas is not clipped either. Cards already avoid solid chrome
   // by placement, and every occluder composites above this host in the DOM, so
   // the clip could only ever carve voids out of legitimate world content.
   _ctx.save();
-  let itemIndex = 0;
-  for (let lane = 0; lane < WORLD_OVERLAY_PAINT_LANES.length; lane++) {
-    // Source-owned painters run first inside their lane. Detection therefore
-    // retains its former z5 position below every ordinary host entry at z6.
-    paintCustomLane(lane);
-    while (itemIndex < _paintCount && _paintQueue[itemIndex].lane === lane) {
-      paintEntryItem(_paintQueue[itemIndex], keyhole);
-      itemIndex++;
+  try {
+    let itemIndex = 0;
+    for (let lane = 0; lane < WORLD_OVERLAY_PAINT_LANES.length; lane++) {
+      // Source-owned painters run first inside their lane. Detection therefore
+      // retains its former z5 position below every ordinary host entry at z6.
+      paintCustomLane(lane);
+      while (itemIndex < _paintCount && _paintQueue[itemIndex].lane === lane) {
+        paintEntryItem(_paintQueue[itemIndex], keyhole);
+        itemIndex++;
+      }
     }
+  } finally {
+    // A lane painter that throws must not leave the publish window open: the
+    // next lane rectangle would land in a buffer nothing is going to reset.
+    _paintingFrame = false;
+    _ctx.restore();
   }
-  _ctx.restore();
   _diagnostics.paintedCount = _paintRectCount;
   _diagnostics.hitRectCount = _hitRectCount;
   _diagnostics.paintItemPoolSize = _paintItemPool.length;
@@ -2226,6 +2363,9 @@ function createDevFacade() {
     getDiagnostics: getWorldOverlayDiagnostics,
     getPaintRect: getOverlayPaintRect,
     hitTest: hitTestWorldOverlay,
+    // Detection paints its callsigns itself, so there is no entry to ask
+    // `getPaintRect` about — this is how a harness finds the words on screen.
+    hitRects: listWorldOverlayHitRects,
   };
 }
 
@@ -2327,6 +2467,7 @@ export function destroyWorldOverlay() {
   _paintQueue.length = 0;
   _paintItemPool.length = 0;
   _paintRectPool.length = 0;
+  _laneRectPool.length = 0;
   _hitRects.length = 0;
   _accessibleActivatorByKey.clear();
   _accessibilitySignature = '';
@@ -2334,6 +2475,8 @@ export function destroyWorldOverlay() {
   _paintCount = 0;
   _paintRectCount = 0;
   _hitRectCount = 0;
+  _laneRectCount = 0;
+  _paintingFrame = false;
   _uiOcclusionRects.length = 0;
   _uiOcclusionRectPool.length = 0;
   _destroyed = hadHost || _destroyed;
