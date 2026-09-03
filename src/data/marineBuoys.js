@@ -13,6 +13,14 @@ import {
   PRISM_HEIGHT_SWATCH_COLOR,
   prismHeightGlyph,
 } from './choroplethPrism.js';
+// The far-side cull. `horizonOccluder()` is the same shared occluder twelve
+// other depth-test-free layers use; `boxContains`/`padBox` are the shared
+// lat/lon box primitives, so "is this station on screen" is answered by the
+// arithmetic every viewport-driven layer already agrees on.
+import { horizonOccluder } from './iconOrientation.js';
+import { boxContains, padBox } from './viewportBox.js';
+import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
+import { ensureGeoidReady, geoidHeight } from './geoid.js';
 
 /**
  * NOAA NDBC marine observation buoys — latest report per station.
@@ -98,6 +106,48 @@ import {
  * Europe. The dot keeps `disableDepthTestDistance` because a station marker is
  * a locator, not a relief — two marks, two policies, on purpose.
  *
+ * WHY THE BUOYS LOOKED LIKE THEY DRIFTED, AND WHAT ACTUALLY MOVES
+ * --------------------------------------------------------------
+ * Field report, 2026-09-03: the buoys "drift and cross the globe". Nothing
+ * here animates — positions come from one `Cartesian3.fromDegrees` per poll,
+ * the parser is positionally correct, and no property is a callback. The
+ * motion was an ASYMMETRY between the layer's three marks, all on the same
+ * station: the dot ignored depth AND was never culled, so a Pacific station
+ * painted straight through the planet; its own stem was depth-tested and so
+ * disappeared behind the limb; and its card was already horizon-culled by the
+ * overlay host (`horizonCull: true`). A dot with no stem and no card, sliding
+ * across the disc of the globe as the camera turned, is what "drift" was.
+ *
+ * THE FIX IS THE CULL, NOT THE DEPTH TEST. The dot keeps
+ * `disableDepthTestDistance: POSITIVE_INFINITY`, and the far side is removed
+ * by an `EllipsoidalOccluder` instead — the settled convention of this repo,
+ * reached twice from bug reports. `flights.js` states it at
+ * `_groundDepthDistance()` ("far-side planes are still removed by the fleet
+ * tick's horizon occluder, which never depended on depth") and
+ * `aisLiveVessels.js` states it again at its billboard ("the tile sea mesh is
+ * not the geoid exactly, so a depth-tested chevron at the geoid still clips
+ * out behind local tide/mesh noise"). A finite depth distance here would buy
+ * the same far-side hiding at the price of buoys that blink out over photoreal
+ * water, and would not help at all when Google 3D tiles own the planet and
+ * nothing writes far-side depth.
+ *
+ * WHAT IS DRAWN IS WHAT IS IN FRAME
+ * ---------------------------------
+ * Beyond the limb test, a station outside the camera's own view rectangle is
+ * hidden too, and the card cohort is re-picked from the survivors. Both marks
+ * and the card now agree on one visibility for one station, which is the
+ * property that was missing. The pass runs on `camera.changed` at the shared
+ * 5 % sensitivity (`cameraSensitivity.js`, ref-counted — this layer claims and
+ * releases like the other eleven), costs one occluder test and one box test
+ * per station over ~900 stations, and republishes cards ONLY when some
+ * station's visibility actually flipped.
+ *
+ * A station's position is on the SEA SURFACE — the geoid, `h = N` — not on the
+ * ellipsoid. `heightReference: NONE` was pinning every dot to h = 0 while the
+ * EGM96 undulation runs -106..+85 m; the AIS layer already anchors its vessels
+ * this way, and two maritime layers disagreeing about where the sea is would
+ * show as buoys floating above or under the ships beside them.
+ *
  * A1 · NO SENSOR MEANS NO STEM, AND THE DOT SAYS SO TOO
  * ----------------------------------------------------
  * A station with no wave sensor gets NO STEM — not a stem of height zero. And
@@ -167,6 +217,106 @@ export const BUOY_OVERLAY_COLLISION_CAPACITY = 48;
 
 /** Poll cadence. The proxy TTL is 10 min; this only has to not lag it. */
 const UPDATE_INTERVAL_MS = 5 * 60_000;
+
+/** Owner id for the ref-counted `camera.percentageChanged` claim. */
+const BUOY_LAYER_ID = 'marine-buoys';
+
+/**
+ * Margin added around the view rectangle before a station is called off-frame,
+ * in degrees.
+ *
+ * The cull decides what is DRAWN, and the camera moves between two of its own
+ * `changed` events. Without a margin a station entering from the edge would
+ * pop in one whole camera step late. Two degrees is ~220 km — more than the
+ * 5 % of view the shared sensitivity lets the camera travel unannounced at any
+ * framing where a single buoy is still legible.
+ */
+export const BUOY_VIEW_PAD_DEG = 2;
+
+/**
+ * The lat/lon boxes the camera is looking at, padded, and split at the
+ * antimeridian rather than left as one inverted box.
+ *
+ * Returns null when the rectangle is unusable — a camera pointed at space, or
+ * a degenerate box. Null means NO frame restriction, not an empty frame: a
+ * view that cannot be measured must not be mistaken for a view containing
+ * nothing, and the horizon cull is still in force either way.
+ *
+ * A pad that would run off the end of the world is clamped by `padBox` rather
+ * than wrapped around it. The margin is a courtesy against pop-in, not part of
+ * the correctness of the test, so losing two degrees of it at the seam costs
+ * one camera step of lead on stations that are about to be culled anyway.
+ *
+ * @param {?{south:number, west:number, north:number, east:number}} view Degrees; west > east means the view crosses the antimeridian.
+ * @param {number} [padDeg]
+ * @returns {?Array<{south:number, west:number, north:number, east:number}>}
+ */
+export function buoyViewBoxes(view, padDeg = BUOY_VIEW_PAD_DEG) {
+  const south = Number(view?.south);
+  const north = Number(view?.north);
+  const west = Number(view?.west);
+  const east = Number(view?.east);
+  if (![south, west, north, east].every(Number.isFinite)) return null;
+  if (south >= north) return null;
+  if (south < -90 || north > 90 || west < -180 || east > 180) return null;
+  const pad = Math.max(0, Number(padDeg) || 0);
+  if (west > east) {
+    // Crossing the seam: two boxes, each padded on its own. The inner edges
+    // ARE the antimeridian, and `padBox` clamps them there, which is right.
+    return [
+      padBox({ south, west, north, east: 180 }, pad),
+      padBox({ south, west: -180, north, east }, pad),
+    ];
+  }
+  if (west === east) return null;
+  return [padBox({ south, west, north, east }, pad)];
+}
+
+/**
+ * Read {@link buoyViewBoxes} off a live camera.
+ * @param {?object} viewer Cesium viewer.
+ * @param {number} [padDeg]
+ * @returns {?Array<{south:number, west:number, north:number, east:number}>}
+ */
+export function cameraBuoyBoxes(viewer, padDeg = BUOY_VIEW_PAD_DEG) {
+  const rectangle = viewer?.camera?.computeViewRectangle?.();
+  if (!rectangle) return null;
+  return buoyViewBoxes({
+    south: Cesium.Math.toDegrees(rectangle.south),
+    west: Cesium.Math.toDegrees(rectangle.west),
+    north: Cesium.Math.toDegrees(rectangle.north),
+    east: Cesium.Math.toDegrees(rectangle.east),
+  }, padDeg);
+}
+
+/**
+ * Whether a station falls inside the frame.
+ * A null box list is "the frame could not be measured" and admits everything;
+ * see {@link buoyViewBoxes}.
+ * @param {?Array<object>} boxes
+ * @param {number} lat
+ * @param {number} lon
+ * @returns {boolean}
+ */
+export function buoyInView(boxes, lat, lon) {
+  if (!boxes) return true;
+  for (const box of boxes) {
+    if (boxContains(box, lat, lon)) return true;
+  }
+  return false;
+}
+
+/**
+ * The geoid lookup, as an injectable seam.
+ *
+ * A test that pins the STEM's exaggeration wants a flat datum, or it measures
+ * two things at once; a test that pins the DATUM wants a known undulation.
+ * Both are expressible here, and the default is the real EGM96 grid.
+ */
+const DEFAULT_GEOID = Object.freeze({
+  ensureReady: ensureGeoidReady,
+  heightAt: geoidHeight,
+});
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
@@ -673,6 +823,7 @@ export function mapAnalystRecord(station, index = 0) {
 export function createMarineBuoysLayer({
   overlayHost = DEFAULT_OVERLAY_HOST,
   fetchImpl = (...args) => fetch(...args),
+  geoid = DEFAULT_GEOID,
 } = {}) {
   let _dataSource = null;
   let _count = 0;
@@ -686,6 +837,133 @@ export function createMarineBuoysLayer({
   let _stations = [];
   /** @type {?ReturnType<typeof summarizeSwellStems>} Render tally for the legend. */
   let _swell = null;
+  /** @type {?object} The viewer, kept so the cull can read the camera. */
+  let _viewer = null;
+  /**
+   * @type {Array<{entity:object, lat:number, lon:number, surface:object, overlay:object, visible:boolean}>}
+   * One record per DRAWN station: its entity, the sea-surface point the limb
+   * test uses, and the card it would publish. This is the cull's working set.
+   */
+  let _drawn = [];
+  /** How many of `_drawn` survived the last cull — published in `getStats()`. */
+  let _visible = 0;
+  let _cameraChangedAttached = false;
+  /** True once the EGM96 grid has loaded; until then the datum is the ellipsoid. */
+  let _geoidReady = false;
+
+  /**
+   * Sea-surface ellipsoidal height at a station: the geoid undulation N, or 0
+   * (the ellipsoid) while the grid is cold. A cold grid degrades the DATUM by
+   * up to ~100 m; it never fails the layer.
+   */
+  function seaSurfaceHeightM(lat, lon) {
+    if (!_geoidReady) return 0;
+    try {
+      const n = geoid.heightAt(lat, lon);
+      return Number.isFinite(n) ? n : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Publish the card cohort, picked from the stations that survived the cull. */
+  function publishCards() {
+    if (!_enabled) return;
+    const entries = [];
+    for (const record of _drawn) {
+      if (record.visible) entries.push(record.overlay);
+    }
+    overlayHost.setEntries(
+      BUOY_OVERLAY_SOURCE_ID,
+      selectBuoyOverlayCohort(entries),
+      {
+        cohortLimit: BUOY_OVERLAY_COHORT_LIMIT,
+        collisionCapacity: BUOY_OVERLAY_COLLISION_CAPACITY,
+        moving: false,
+      },
+    );
+  }
+
+  /**
+   * Hide every station that is behind the limb or out of frame, and re-pick the
+   * cards from what is left.
+   *
+   * Both marks of a station live on ONE entity, so `entity.show` moves the dot
+   * and its stem together — which is the asymmetry this exists to remove. The
+   * card follows because the cohort is re-picked from the survivors.
+   *
+   * @returns {boolean} True when some station's visibility changed.
+   */
+  function applyVisibility() {
+    if (!_drawn.length) {
+      _visible = 0;
+      return false;
+    }
+    const camera = _viewer?.camera;
+    // No camera to ask (a headless unit-test viewer, or a torn-down one):
+    // nothing is culled. Drawing everything is the honest failure here — the
+    // far side painting through the globe is a defect, an empty ocean is a lie.
+    if (!camera) {
+      let changed = false;
+      for (const record of _drawn) {
+        if (!record.visible) changed = true;
+        record.visible = true;
+        record.entity.show = true;
+      }
+      _visible = _drawn.length;
+      if (changed) _viewer?.scene?.requestRender?.();
+      return changed;
+    }
+
+    const occluder = horizonOccluder(camera);
+    const boxes = cameraBuoyBoxes(_viewer);
+    let changed = false;
+    let visible = 0;
+    for (const record of _drawn) {
+      const next = occluder.isPointVisible(record.surface)
+        && buoyInView(boxes, record.lat, record.lon);
+      if (next !== record.visible) {
+        record.visible = next;
+        record.entity.show = next;
+        changed = true;
+      }
+      if (next) visible += 1;
+    }
+    _visible = visible;
+    // The app renders on demand. A camera move requests a frame of its own, but
+    // the cull must not depend on the ORDER in which Cesium raises
+    // `camera.changed` against that frame — ask for the one that shows the
+    // result, and only when there is a result to show.
+    if (changed) _viewer?.scene?.requestRender?.();
+    return changed;
+  }
+
+  /**
+   * The cull pass, on the shared viewport cadence. Cards are only rebuilt when
+   * a station actually crossed the limb or the frame edge: the cohort is a
+   * function of the visible set alone, so an unchanged set is an unchanged
+   * cohort, and `setOverlayEntries` is not free.
+   */
+  function onCameraChanged() {
+    if (!_enabled) return;
+    if (applyVisibility()) publishCards();
+  }
+
+  function attachCamera(viewer) {
+    if (viewer) _viewer = viewer;
+    const camera = _viewer?.camera;
+    if (_cameraChangedAttached || !camera?.changed?.addEventListener) return;
+    camera.changed.addEventListener(onCameraChanged);
+    claimCameraSensitivity(_viewer, BUOY_LAYER_ID);
+    _cameraChangedAttached = true;
+  }
+
+  function detachCamera() {
+    if (!_cameraChangedAttached) return;
+    _viewer?.camera?.changed?.removeEventListener?.(onCameraChanged);
+    releaseCameraSensitivity(_viewer, BUOY_LAYER_ID);
+    _cameraChangedAttached = false;
+  }
 
   const layer = {
     id: 'marine-buoys',
@@ -695,6 +973,7 @@ export function createMarineBuoysLayer({
     updateInterval: UPDATE_INTERVAL_MS,
 
     init(viewer) {
+      _viewer = viewer;
       _dataSource = new Cesium.CustomDataSource('marine-buoys');
       _dataSource.show = false;
       viewer.dataSources.add(_dataSource);
@@ -706,17 +985,26 @@ export function createMarineBuoysLayer({
       _coverage = null;
       _stations = [];
       _swell = null;
+      _drawn = [];
+      _visible = 0;
       overlayHost.setVisible(BUOY_OVERLAY_SOURCE_ID, false);
     },
 
-    enable() {
+    enable(viewer) {
       _enabled = true;
       if (_dataSource) _dataSource.show = true;
       overlayHost.setVisible(BUOY_OVERLAY_SOURCE_ID, true);
+      attachCamera(viewer);
+      // A layer re-enabled over stations drawn before still has to answer for
+      // where the camera is NOW, and `camera.changed` will not fire until the
+      // operator moves.
+      applyVisibility();
+      publishCards();
     },
 
     disable() {
       _enabled = false;
+      detachCamera();
       if (_dataSource) _dataSource.show = false;
       overlayHost.clearSource(BUOY_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(BUOY_OVERLAY_SOURCE_ID, false);
@@ -745,8 +1033,21 @@ export function createMarineBuoysLayer({
         }
 
         if (!_dataSource) return false;
+
+        // Sea-surface datum. The grid is a lazy ~2.7 MB dynamic import; warm it
+        // before the first draw and never let a failed chunk be reported as a
+        // feed error, because it is not one — it costs the datum, not the data.
+        if (!_geoidReady) {
+          try {
+            await geoid.ensureReady();
+            _geoidReady = true;
+          } catch {
+            _geoidReady = false;
+          }
+        }
+
         _dataSource.entities.removeAll();
-        const overlayEntries = [];
+        _drawn = [];
 
         const drawn = [];
 
@@ -754,7 +1055,12 @@ export function createMarineBuoysLayer({
           if (!Number.isFinite(station?.lat) || !Number.isFinite(station?.lon)) continue;
           const { css } = seaState(station.waveHeightM);
           const color = Cesium.Color.fromCssColorString(css);
-          const position = Cesium.Cartesian3.fromDegrees(station.lon, station.lat);
+          // On the geoid, not on the ellipsoid — the sea surface is where the
+          // AIS layer already puts its hulls.
+          const seaSurfaceM = seaSurfaceHeightM(station.lat, station.lon);
+          const position = Cesium.Cartesian3.fromDegrees(
+            station.lon, station.lat, seaSurfaceM,
+          );
           const stemM = swellStemHeightM(station.waveHeightM);
           const measured = stemM !== null;
 
@@ -800,7 +1106,9 @@ export function createMarineBuoysLayer({
             entity.polyline = {
               positions: [
                 position,
-                Cesium.Cartesian3.fromDegrees(station.lon, station.lat, stemM),
+                Cesium.Cartesian3.fromDegrees(
+                  station.lon, station.lat, seaSurfaceM + stemM,
+                ),
               ],
               width: SWELL_STEM_SCALE.widthPx,
               arcType: Cesium.ArcType.NONE,
@@ -813,31 +1121,34 @@ export function createMarineBuoysLayer({
             };
           }
 
-          _dataSource.entities.add(entity);
+          const added = _dataSource.entities.add(entity);
           drawn.push(station);
 
-          overlayEntries.push(createBuoyOverlayEntry({
-            id: station.station,
-            position,
-            station,
-            accent: css,
-          }));
+          _drawn.push({
+            entity: added,
+            lat: station.lat,
+            lon: station.lon,
+            surface: position,
+            overlay: createBuoyOverlayEntry({
+              id: station.station,
+              position,
+              station,
+              accent: css,
+            }),
+            // Assume drawn, then let the cull below have the last word. The
+            // dot must never render for one frame at a place the card and the
+            // stem already agree it is not.
+            visible: true,
+          });
         }
+
+        // Before the first frame of this poll, not after it.
+        applyVisibility();
 
         // Tallied over what was DRAWN, not over what is on screen (D2).
         _swell = summarizeSwellStems(drawn);
 
-        if (_enabled) {
-          overlayHost.setEntries(
-            BUOY_OVERLAY_SOURCE_ID,
-            selectBuoyOverlayCohort(overlayEntries),
-            {
-              cohortLimit: BUOY_OVERLAY_COHORT_LIMIT,
-              collisionCapacity: BUOY_OVERLAY_COLLISION_CAPACITY,
-              moving: false,
-            },
-          );
-        }
+        publishCards();
 
         _stations = payload.stations;
         _count = _dataSource.entities.values.length;
@@ -855,12 +1166,14 @@ export function createMarineBuoysLayer({
 
     destroy(viewer) {
       _enabled = false;
+      detachCamera();
       overlayHost.clearSource(BUOY_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(BUOY_OVERLAY_SOURCE_ID, false);
       if (_dataSource) {
         viewer.dataSources.remove(_dataSource, true);
         _dataSource = null;
       }
+      _viewer = null;
       _count = 0;
       _lastUpdate = null;
       _lastError = null;
@@ -868,6 +1181,8 @@ export function createMarineBuoysLayer({
       _coverage = null;
       _stations = [];
       _swell = null;
+      _drawn = [];
+      _visible = 0;
     },
 
     /**
@@ -897,6 +1212,12 @@ export function createMarineBuoysLayer({
         // ones clipped, and the stations that got none. A5 wants the écrêtage
         // countable from outside the legend too.
         swell: _swell,
+        // The cull, as two numbers rather than as pixels: how many of the
+        // drawn stations the last camera pass left on screen, and how many the
+        // limb or the frame edge removed. `count` stays the station tally, so
+        // the chip and the QA harness's existing reading are unchanged.
+        visible: _visible,
+        culled: Math.max(0, _count - _visible),
       };
     },
 

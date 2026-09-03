@@ -90,6 +90,7 @@
     "qa:implantation": "node scripts/qa-implantation.mjs",
     "velo:pulse": "node scripts/build-velo-pulse.mjs",
     "qa:velo-pulse": "node scripts/qa-velo-pulse.mjs",
+    "qa:marine-buoys": "node scripts/qa-marine-buoys.mjs",
     "qa:meteo-stations-fr": "node scripts/qa-meteo-stations-fr.mjs"
   },
   "dependencies": {
