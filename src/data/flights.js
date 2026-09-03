@@ -64,6 +64,8 @@ import {
   COURSE_HOLD_SPEED_MPS,
 } from './motionModel.js';
 import { routePlausible } from './routePlausible.js';
+import { buildFlightRoutePlan, routeFrameOffsetEnu } from './flightRoutePlan.js';
+import { hideFlightRouteArc, showFlightRouteArc } from './flightRouteArc.js';
 import { isMilitaryIcao, isMilitaryLayerActive, refreshMilitaryRegistryIfStale, onMilitaryLayerActiveChange } from './militaryRegistry.js';
 import { formatFlightLevel } from './detectionDraw.js';
 import { createGroundSnap } from './groundSnap.js';
@@ -335,15 +337,66 @@ let _lastSource = 'OpenSky Network';
 /** @type {string} Completeness boundary for the latest successful snapshot. */
 let _lastCoverage = 'worldwide upstream snapshot';
 
+/** @type {Cesium.Cartographic} Owned scratch for the poll's feed anchor. */
+const _scratchFeedAnchor = new Cesium.Cartographic();
+
+/**
+ * Which point the regional feed should be centred on: the FOLLOWED contact
+ * when there is one, otherwise the camera's subpoint.
+ *
+ * `lat`/`lon` on this request are the anchor of the proxy's 250 nm adsb.lol
+ * circle — the coverage the layer falls back to whenever the OpenSky snapshot
+ * is too old (which, on an anonymous key, is most of the time). Anchoring that
+ * circle on the CAMERA quietly assumed the camera is always over its subject.
+ * It is not: the route view deliberately stands the camera off the leg's flank
+ * — 758 nm away at a 5 200 km framing — and any wide orbit does the same on a
+ * smaller scale. The followed plane then falls out of its own feed, is evicted
+ * on the next poll, and untracks itself; measured 2026-09-03 on EZY61NZ, whose
+ * route view erased its own subject one poll after framing it.
+ *
+ * Exported pure so the choice is testable without a viewer or a network.
+ * @param {{lat:number, lon:number}|null} tracked Followed contact's position.
+ * @param {{lat:number, lon:number}|null} camera Camera subpoint.
+ * @returns {{lat:number, lon:number}|null}
+ */
+export function chooseFlightFeedAnchor(tracked, camera) {
+  const usable = (point) => Boolean(point)
+    && Number.isFinite(point.lat) && Number.isFinite(point.lon);
+  if (usable(tracked)) return { lat: tracked.lat, lon: tracked.lon };
+  if (usable(camera)) return { lat: camera.lat, lon: camera.lon };
+  return null;
+}
+
+/** The followed contact's coarse position, or null. Never advances the DR cache. */
+function _trackedFeedAnchor() {
+  if (!_trackedIcao) return null;
+  const position = _billboards.get(_trackedIcao)?.position;
+  if (!position) return null;
+  const carto = Cesium.Cartographic.fromCartesian(
+    position, Cesium.Ellipsoid.WGS84, _scratchFeedAnchor,
+  );
+  if (!carto) return null;
+  return {
+    lat: Cesium.Math.toDegrees(carto.latitude),
+    lon: Cesium.Math.toDegrees(carto.longitude),
+  };
+}
+
 function _flightApiUrl(viewer) {
   const cartographic = viewer?.camera?.positionCartographic;
-  if (!cartographic) return API_URL;
-  const latitude = Cesium.Math.toDegrees(cartographic.latitude);
-  const longitude = Cesium.Math.toDegrees(cartographic.longitude);
-  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return API_URL;
+  const anchor = chooseFlightFeedAnchor(
+    _trackedFeedAnchor(),
+    cartographic
+      ? {
+        lat: Cesium.Math.toDegrees(cartographic.latitude),
+        lon: Cesium.Math.toDegrees(cartographic.longitude),
+      }
+      : null,
+  );
+  if (!anchor) return API_URL;
   const params = new URLSearchParams({
-    lat: latitude.toFixed(4),
-    lon: longitude.toFixed(4),
+    lat: anchor.lat.toFixed(4),
+    lon: anchor.lon.toFixed(4),
   });
   return `${API_URL}?${params}`;
 }
@@ -566,6 +619,10 @@ function _setCockpitContactMode(active) {
   if (_modelCollection) _modelCollection.show = true;
   _trail?.setVisible(!next);
   if (_trailHeadEntity) _trailHeadEntity.show = !next;
+  // Cockpit is a first-person view from inside the contact and owns the
+  // camera; a 200 km-high schedule bow overhead has no reading there, and the
+  // route view's own camera excursion is refused while it is active.
+  if (next) _clearRouteView();
   for (const [icao24, bb] of _billboards) _applyFleetBillboardPresentation(icao24, bb);
   _lastCamPoseSig = '';
   _lastFleetTickMs = 0;
@@ -3249,6 +3306,9 @@ function _clearTracking(skipViewerUntrack = false, {
   // cannot read the previous aircraft's cached/smoothed position.
   _resetTrackedDisplay();
   _clearTrail();
+  // The arc belongs to the selection, not to the camera: dropping the contact
+  // drops its scheduled leg with it.
+  _clearRouteView();
 }
 
 function _normalizeTrackedIcao(candidate) {
@@ -3347,6 +3407,7 @@ function _updateTrackedLabelModel(icao24) {
   // The readout and the context slot describe the same contact — refresh them
   // together so voice never narrates a fix the card has already replaced.
   refreshTrackedSubjectContext(_contextSubjectMetadata(icao24));
+  _refreshRouteView(icao24);
 }
 
 /** Re-image the tracked entity's billboard from the current class/conversion. */
@@ -3572,6 +3633,134 @@ function _routeIsPlausible(icao24, route) {
     origin: route.origin,
     destination: route.destination,
   });
+}
+
+/**
+ * ── The route view ──────────────────────────────────────────────────────────
+ *
+ * "Selecting a plane should adapt the view so I can see where it came from and
+ * where it is going" (field note, 2026-09-03). Two things happen, and they are
+ * deliberately one explicit action rather than a side effect of selection: a
+ * click that teleported the camera 3 000 km up every time would make the layer
+ * unusable.
+ *
+ * The camera does NOT stop following the aircraft. The tracked frame is simply
+ * re-applied at a height that puts both airports in shot — the same one-shot
+ * `applyTrackedCameraFrame` handoff `refocusTrackedById` uses, with a computed
+ * offset instead of the entity's own `viewFrom`. That is what keeps the tracked
+ * card, the Cockpit entry and the Context subject alive through the excursion:
+ * nothing about the SELECTION changes, only how far back the camera sits. The
+ * canonical follow frame is one press away again, in `hideTrackedRoute`.
+ */
+
+/** @type {string|null} Contact whose scheduled leg is currently drawn. */
+let _routeViewIcao = null;
+/** @type {Cesium.Cartesian3|null} The close follow offset the route view borrowed. */
+let _routeCanonicalViewFrom = null;
+
+/**
+ * The tracked contact's scheduled leg, gated by `routePlausible`.
+ *
+ * Anchored to the billboard position rather than to `_describeFlight`, for the
+ * same reason `_routeIsPlausible` is: coarse is fine — this feeds a camera
+ * height and two haversines — and the UI polls it four times a second to
+ * decide whether to offer the control at all, which is no reason to advance
+ * the tracked frame cache.
+ */
+function _trackedRoutePlan(icao24 = _trackedIcao) {
+  if (!icao24) return null;
+  const route = _flightData.get(icao24)?.route;
+  if (!route || !_routeIsPlausible(icao24, route)) return null;
+  const position = _billboards.get(icao24)?.position;
+  if (!position) return null;
+  const carto = Cesium.Cartographic.fromCartesian(position, Cesium.Ellipsoid.WGS84, _scratchCarto);
+  if (!carto) return null;
+  return buildFlightRoutePlan({
+    icao24,
+    route,
+    latitude: Cesium.Math.toDegrees(carto.latitude),
+    longitude: Cesium.Math.toDegrees(carto.longitude),
+  });
+}
+
+/**
+ * Re-frame the follow camera at the height `plan` asks for.
+ *
+ * The offset is written to the entity's `viewFrom`, not merely handed to
+ * `applyTrackedCameraFrame`. `viewFrom` is the entity's DECLARED follow offset,
+ * and Cesium's own `EntityView` re-reads it whenever it re-initialises — which
+ * it does shortly after a fresh `trackedEntity` assignment. Applying the route
+ * frame without updating it left the two disagreeing, and EntityView won: the
+ * camera snapped straight back to the close follow view, arc drawn and all.
+ * Observed intermittently, on the runs where the button was pressed soonest
+ * after the contact was selected. `hideTrackedRoute` puts the close offset back.
+ * @returns {'framed'|'no-viewer'|'no-entity'|'cockpit-owns-camera'} Why, when it did not.
+ */
+function _applyRouteFrame(plan) {
+  if (!_viewer || !_trackedEntity) return 'no-viewer';
+  if (_cockpitContactMode) return 'cockpit-owns-camera';
+  if (!_viewer.entities?.contains?.(_trackedEntity)) return 'no-entity';
+  const enu = routeFrameOffsetEnu(plan.frameHeightM, plan.bearingDeg);
+  if (!_routeCanonicalViewFrom) _routeCanonicalViewFrom = _trackedEntity.viewFrom;
+  _trackedEntity.viewFrom = new Cesium.Cartesian3(enu.east, enu.north, enu.up);
+  _trackedCameraFrameStop?.();
+  _viewer.camera.cancelFlight();
+  _viewer.trackedEntity = _trackedEntity;
+  _trackedCameraFrameStop = applyTrackedCameraFrame(
+    _viewer,
+    _trackedEntity,
+    _trackedEntity.viewFrom,
+  ) || null;
+  return 'framed';
+}
+
+/** Drop the arc. The camera is left exactly where it is unless `refocus`. */
+function _clearRouteView({ refocus = false } = {}) {
+  if (!_routeViewIcao) return false;
+  const icao24 = _routeViewIcao;
+  const canonicalViewFrom = _routeCanonicalViewFrom;
+  _routeViewIcao = null;
+  _routeCanonicalViewFrom = null;
+  hideFlightRouteArc();
+  if (!_viewer || !_trackedEntity || icao24 !== _trackedIcao) return true;
+  // Give the entity its close follow offset back whether or not the camera is
+  // being sent there now: leaving the route offset declared would have the
+  // next EntityView re-initialisation re-frame 3 000 km out on its own.
+  if (canonicalViewFrom) _trackedEntity.viewFrom = canonicalViewFrom;
+  if (refocus) {
+    _trackedCameraFrameStop?.();
+    _viewer.camera.cancelFlight();
+    _viewer.trackedEntity = _trackedEntity;
+    _trackedCameraFrameStop = applyTrackedCameraFrame(
+      _viewer,
+      _trackedEntity,
+      _trackedEntity.viewFrom,
+    ) || null;
+  }
+  return true;
+}
+
+/**
+ * Keep the drawn leg honest across polls.
+ *
+ * Two things can change under a shown arc: the enrichment can replace the leg
+ * (a redrawn arc), or the plane can fly somewhere that makes the scheduled leg
+ * implausible (no arc at all — `routePlausible` rejecting a wrong-leg answer
+ * must remove the drawing, not leave the last plausible one on screen). The
+ * camera is NEVER re-framed here; the operator may have moved it since.
+ */
+function _refreshRouteView(icao24) {
+  if (!_routeViewIcao || icao24 !== _routeViewIcao) return;
+  const route = _flightData.get(icao24)?.route;
+  // Positively gone, or positively wrong: erase it.
+  if (!route || !_routeIsPlausible(icao24, route)) {
+    _clearRouteView();
+    return;
+  }
+  // Anything else — a position we could not read this tick — is a reason to
+  // leave the drawing alone, not to erase it. The two airports have not moved.
+  const plan = _trackedRoutePlan(icao24);
+  if (plan) showFlightRouteArc(_viewer, plan);
 }
 
 /**
@@ -5222,6 +5411,73 @@ const flightsLayer = {
     ) || null;
     _publishTrackedSelection(id, origin);
     return true;
+  },
+
+  /**
+   * Describe what the route view can do for the current selection.
+   *
+   * The UI reads this to decide whether to offer the control at all: an
+   * aircraft whose callsign adsbdb does not know, or whose scheduled leg
+   * `routePlausible` rejects, has no route to show and must not be given a
+   * button that would do nothing.
+   * @returns {{available: boolean, active: boolean, fitsOneView: boolean,
+   *   legKm: number|null, origin: string|null, destination: string|null}}
+   */
+  getTrackedRouteState() {
+    const plan = _trackedRoutePlan();
+    const active = Boolean(_routeViewIcao) && _routeViewIcao === _trackedIcao;
+    return {
+      // `|| active` is not belt-and-braces: the plan is re-derived from the
+      // LIVE position on every read, so a moment where the billboard or the
+      // plausibility verdict is briefly unavailable would otherwise withdraw
+      // the only control that can dismiss an arc already on screen.
+      available: Boolean(plan) || active,
+      active,
+      fitsOneView: plan ? plan.fitsOneView : true,
+      legKm: plan ? plan.legKm : null,
+      origin: plan ? plan.origin.label : null,
+      destination: plan ? plan.destination.label : null,
+    };
+  },
+
+  /**
+   * Draw the tracked contact's scheduled leg and pull the follow camera back
+   * far enough to hold both airports in one view.
+   *
+   * Deliberately does NOT republish the selection: nothing about WHICH contact
+   * is selected changes here, only how far back the camera sits, and a second
+   * `gev:awareness-subject-selected` for the same contact would make every
+   * consumer re-run a selection it never lost.
+   * @returns {{ok: boolean, reason?: string, fitsOneView?: boolean, legKm?: number}}
+   */
+  showTrackedRoute() {
+    if (!_viewer || !_trackedIcao) return { ok: false, reason: 'no-selection' };
+    if (_cockpitContactMode) return { ok: false, reason: 'cockpit-owns-camera' };
+    const plan = _trackedRoutePlan();
+    if (!plan) return { ok: false, reason: 'no-route' };
+    // Camera first, drawing second: the frame is the answer to the question
+    // that was asked, and the arc is what explains it once it is on screen.
+    const frameReason = _applyRouteFrame(plan);
+    showFlightRouteArc(_viewer, plan);
+    _routeViewIcao = _trackedIcao;
+    return {
+      ok: true,
+      framed: frameReason === 'framed',
+      frameReason,
+      fitsOneView: plan.fitsOneView,
+      legKm: plan.legKm,
+      origin: plan.origin.label,
+      destination: plan.destination.label,
+    };
+  },
+
+  /**
+   * Remove the scheduled leg and return the camera to the canonical follow
+   * frame. The selection itself is untouched.
+   * @returns {boolean} True when an arc was showing.
+   */
+  hideTrackedRoute() {
+    return _clearRouteView({ refocus: true });
   },
 
   /**

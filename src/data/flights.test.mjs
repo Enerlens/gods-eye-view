@@ -14,6 +14,7 @@ import flightsLayer, {
   _setTrackedFlightRefreshStateForTest,
   _floorGroundedDisplayPositionForTest,
   _clearDisplayFloorStateForTest,
+  chooseFlightFeedAnchor,
   mapAnalystRecord,
   formatContactAltitude,
 } from './flights.js';
@@ -1606,4 +1607,25 @@ test('an unreported altitude never prints as a flight level', () => {
   );
   // A contact parked on the apron reported 0 m — measured, and printable.
   assert.equal(formatContactAltitude({ altitude: 0, altitudeMeasured: true }), '0 ft');
+});
+
+
+// ── The regional feed's anchor ───────────────────────────────────────────────
+
+test('the regional feed follows the CONTACT, not the camera', () => {
+  const plane = { lat: 43.5, lon: -2.1 };
+  const camera = { lat: 51.0, lon: 1.4 };
+  assert.deepEqual(chooseFlightFeedAnchor(plane, camera), plane);
+  // The route view stands the camera off the leg's flank — hundreds of nautical
+  // miles from its own subject. Anchoring the 250 nm adsb.lol circle there
+  // drops the followed plane out of its own feed, and it untracks one poll later.
+  assert.deepEqual(chooseFlightFeedAnchor(null, camera), camera);
+});
+
+test('an unusable anchor falls through rather than sending NaN upstream', () => {
+  const camera = { lat: 51.0, lon: 1.4 };
+  assert.deepEqual(chooseFlightFeedAnchor({ lat: Number.NaN, lon: 2 }, camera), camera);
+  assert.deepEqual(chooseFlightFeedAnchor({ lat: 2 }, camera), camera);
+  assert.equal(chooseFlightFeedAnchor(null, null), null);
+  assert.equal(chooseFlightFeedAnchor(null, { lat: 1, lon: Number.NaN }), null);
 });

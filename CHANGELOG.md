@@ -6,6 +6,45 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-03
 
 ### Added
+- **La route d'un vol suivi, sur une seule vue.** Sélectionner un avion et
+  vouloir voir d'où il vient et où il va demandait jusqu'ici de dézoomer à la
+  main jusqu'à retrouver deux aéroports qu'aucun trait ne reliait. Un bouton
+  **SHOW ROUTE** apparaît maintenant dans la rangée d'actions de CONTACTS —
+  à côté de COCKPIT, et seulement quand il y a une route à montrer. Il fait
+  deux choses. Il **recule la caméra de suivi** à la hauteur exacte qui place
+  l'aéroport le plus lointain à 15° de l'axe de visée — la formule est celle du
+  champ de vision, pas celle de l'horizon, parce que sous le plafond de
+  12 000 km c'est toujours elle qui contraint — et il se poste sur le **flanc**
+  de la liaison, pour que celle-ci traverse l'écran au lieu de s'y enfoncer.
+  Un recul plein sud, lui, rejetait l'extrémité la plus proche hors du cadre
+  par le bas, et laquelle des deux dépendait du cap : mesuré au premier essai
+  en vol réel, Málaga à y = 996 sur 1 000. Et il **trace la liaison** entre les
+  deux aéroports, en arc de grand cercle, avec une pastille nommée à chaque
+  bout.
+  **L'arc est le trajet prévu, pas la trace volée**, et tout dans son dessin
+  sert à le dire : pointillé quand la trace est pleine, ambre quand la trace est
+  cyan, bombé à 200 km d'altitude là où l'avion croise à 11, et légendé
+  ESTIMATED FLIGHT PLAN en son sommet — les mots que la fiche cockpit emploie
+  déjà pour la même donnée. Il n'est dessiné que si `routePlausible` accepte la
+  liaison ; une réponse adsbdb portant la mauvaise étape reste masquée, et un
+  arc affiché qui devient incohérent au sondage suivant disparaît de lui-même.
+  **La sélection survit à l'excursion** : la caméra ne quitte jamais l'avion,
+  elle recule dans son repère, donc la fiche suivie, l'entrée COCKPIT et le
+  sujet de Contexte restent en place pendant les 3 000 km de recul. Un second
+  appui rend le cadrage rapproché et efface l'arc. Une jambe de plus de
+  3 200 km ne tient dans aucune vue d'un globe : le bouton le dit dans son
+  info-bulle au lieu de laisser lire une pastille manquante comme un dessin
+  raté.
+  Le recul est écrit dans le `viewFrom` de l'entité suivie, pas seulement
+  appliqué à la caméra : `viewFrom` est le décalage de suivi *déclaré*, et
+  l'`EntityView` de Cesium le relit à chaque réinitialisation. Sans cela les
+  deux se contredisaient et Cesium gagnait — la caméra revenait au cadrage
+  rapproché, arc dessiné et tout, sur les essais où le bouton était pressé le
+  plus tôt après la sélection.
+  Vérifié en navigateur par `npm run qa:flight-route`, qui suit des contacts
+  réels jusqu'à en trouver un dont l'étape est plausible, projette les deux
+  aéroports à l'écran après cadrage, et vérifie qu'ils y sont tous les deux.
+
 - **Le fond de carte Google, sur la clé même qui ne peut pas charger le globe
   3D.** Le retrait EEE de Google est plus étroit que son message d'erreur ne le
   laisse croire. Mesuré le 2026-09-03 sur la clé de production : `3dtiles/root.json`
@@ -208,7 +247,18 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   nommé dans la légende et sur chaque fiche.
 
 ### Fixed
-
+- **Le flux régional suit le contact suivi, plus la caméra.** Les paramètres
+  `lat`/`lon` de `/api/opensky` ancrent le cercle de 250 NM d'adsb.lol — la
+  couverture de repli, c'est-à-dire l'essentiel du temps sur une clé anonyme.
+  Ils étaient pris sur le **point sous la caméra**, ce qui supposait la caméra
+  toujours au-dessus de son sujet. Elle ne l'est pas : le cadrage de route la
+  poste sur le flanc de la liaison, à 758 NM de l'avion pour un cadrage à
+  5 200 km, et une simple orbite large fait la même chose en plus petit.
+  L'avion suivi sortait alors de son propre flux, était évincé au sondage
+  suivant et se désélectionnait tout seul — mesuré le 2026-09-03 sur EZY61NZ,
+  dont la vue de route effaçait son propre sujet un sondage après l'avoir
+  cadré. L'ancre est maintenant la position du contact suivi quand il y en a
+  un, le point sous la caméra sinon.
 - **Le nom d'un avion, et celui d'un aéroport, sont des surfaces cliquables.**
   L'étiquette DETECT d'un vol est peinte par le calque de détection sur un
   canevas `pointer-events: none` : elle n'existait pour le clic à aucun titre.

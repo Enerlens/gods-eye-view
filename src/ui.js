@@ -691,6 +691,8 @@ class CockpitViewController {
     this.entry = document.getElementById('cockpit-entry');
     this.tr3bToggle = document.getElementById('tr3b-toggle');
     this._tr3bSignature = null;
+    this.routeButton = document.getElementById('flight-route-btn');
+    this._routeSignature = null;
     this.mapViewButton = document.getElementById('map-view-switch');
     this.resetGlobeButton = document.getElementById('cockpit-reset-globe');
     this.hud = document.getElementById('cockpit-hud');
@@ -813,6 +815,7 @@ class CockpitViewController {
     );
     this._listen(this.entry, 'click', () => this.enter());
     this._listen(this.tr3bToggle, 'click', () => this.toggleTrackedTr3b());
+    this._listen(this.routeButton, 'click', () => this.toggleTrackedRoute());
     this._listen(this.mapViewButton, 'click', () => this.exit());
     this._listen(this.visionPrevious, 'click', () => this.cycleVisionMode(-1));
     this._listen(this.visionCurrent, 'click', () => this.cycleVisionMode(1));
@@ -920,6 +923,64 @@ class CockpitViewController {
   }
 
   /**
+   * Toggle the route view of the tracked civil flight: pull the follow camera
+   * back until both airports are in shot, and draw the estimated flight plan
+   * between them. Explicit by design — see the route-view note in `flights.js`.
+   * @returns {boolean} True when the view was toggled.
+   */
+  toggleTrackedRoute() {
+    const info = this.readAircraftInfo();
+    if (info?.layerId !== 'flights') return false;
+    const state = flightsLayer.getTrackedRouteState?.();
+    if (!state?.available) return false;
+    if (state.active) flightsLayer.hideTrackedRoute?.();
+    else flightsLayer.showTrackedRoute?.();
+    this._routeSignature = null; // force the control to repaint on the next sync
+    this.syncRouteButton(info);
+    return true;
+  }
+
+  /**
+   * Offer the route control only when there is a route to show.
+   *
+   * adsbdb answers a callsign, not every aircraft, and `routePlausible`
+   * rejects a wrong-leg answer outright — so most contacts have no scheduled
+   * leg at any given moment, and a permanently visible button would mostly be
+   * a button that does nothing. The military layer carries no route
+   * enrichment at all, hence the civil-only gate. Change-only DOM writes: this
+   * runs on the 250 ms entry-sync cadence.
+   * @param {object|null} info Tracked-aircraft descriptor, or null.
+   */
+  syncRouteButton(info) {
+    if (!this.routeButton) return;
+    const trackedFlight = info?.layerId === 'flights' ? String(info.icao24 || '').trim() : '';
+    const state = trackedFlight ? (flightsLayer.getTrackedRouteState?.() || null) : null;
+    const available = Boolean(state?.available);
+    const active = available && state.active === true;
+    const fits = !available || state.fitsOneView !== false;
+    const signature = available ? `${trackedFlight}:${active ? 1 : 0}:${fits ? 1 : 0}` : '';
+    if (this._routeSignature === signature) return;
+    this._routeSignature = signature;
+    if (!available) {
+      this.routeButton.hidden = true;
+      this.routeButton.setAttribute('aria-pressed', 'false');
+      this.routeButton.textContent = 'SHOW ROUTE';
+      return;
+    }
+    this.routeButton.hidden = false;
+    this.routeButton.setAttribute('aria-pressed', active ? 'true' : 'false');
+    this.routeButton.textContent = active ? 'HIDE ROUTE' : 'SHOW ROUTE';
+    // A leg longer than about 3 200 km cannot be held in one view of a globe.
+    // Say so on the control rather than let the operator read the missing far
+    // pin as a drawing that failed.
+    this.routeButton.title = active
+      ? 'Hide the estimated flight plan and return to the close follow view'
+      : (fits
+        ? `Pull back to hold ${state.origin || 'origin'} and ${state.destination || 'destination'} in one view`
+        : `${state.origin || 'Origin'} → ${state.destination || 'destination'} is too long for one view of the globe — the arc still shows where it runs`);
+  }
+
+  /**
    * Show the 🛸 chip whenever a contact is tracked (its own gate — converting
    * does not depend on the cockpit entry policy) and mirror the conversion
    * state. Change-only DOM writes: this runs on the preUpdate cadence.
@@ -942,6 +1003,7 @@ class CockpitViewController {
     const info = this.readAircraftInfo();
     const trackedContact = !!(info && this.viewer.trackedEntity?.position);
     this.syncTr3bToggle(trackedContact ? info : null);
+    this.syncRouteButton(trackedContact ? info : null);
     const available = !!(this.isEntryAllowed() && trackedContact);
     // Change-only DOM writes: this runs on a preUpdate cadence, and
     // unconditional `hidden` assignments invalidate style/layout every frame
@@ -1093,6 +1155,10 @@ class CockpitViewController {
     if (this.tr3bToggle) {
       this.tr3bToggle.hidden = true;
       this._tr3bSignature = null;
+    }
+    if (this.routeButton) {
+      this.routeButton.hidden = true;
+      this._routeSignature = null;
     }
     if (this.mapViewButton) this.mapViewButton.hidden = false;
     if (this.resetGlobeButton) this.resetGlobeButton.hidden = false;
