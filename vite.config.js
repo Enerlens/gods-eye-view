@@ -20252,6 +20252,12 @@ async function refreshFilosofiTerritories(level) {
     throw new Error(`Melodi unreachable for ${level} — ${partial.join('; ')}`);
   }
 
+  // Which millésime the CARREAU regime would answer with, asked of the same
+  // proxy that would answer it. The national card tells the reader that zooming
+  // in changes the statistic AND the year, and a year hard-coded in the client
+  // is wrong the moment a deployment builds a pack — which is exactly what
+  // happened on staging: the card said 2019 over a map drawing 2021.
+  const pack = await filosofiPackIndex();
   const rows = [...foldTerritoryObservations({ filosofi, population, wages }).values()];
   // Sorted by code so the wire shape is stable and a diff between two fetches
   // is a change in the data rather than a change in INSEE's row order.
@@ -20260,7 +20266,7 @@ async function refreshFilosofiTerritories(level) {
   return {
     level,
     scope: TERRITORY_SCOPE,
-    vintage: TERRITORY_VINTAGE,
+    vintage: { ...TERRITORY_VINTAGE, carroyage: pack?.vintage ?? FILOSOFI_VINTAGE },
     asked: asked.length,
     // What INSEE answered for, which is not always what was asked: the scope
     // stops at La Réunion and a code outside it comes back with no row at all.

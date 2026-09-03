@@ -174,6 +174,20 @@ test('every card line carries the year its number belongs to', () => {
   assert.match(text, /Aire du disque = habitants/);
 });
 
+test('the card names the carroyage millésime the proxy would serve, not a constant', () => {
+  // A deployment that builds a local 2021 pack draws 2021 while the relay is on
+  // 2019. A year hard-coded in the client captions the map wrongly the moment
+  // that happens — and it did, on staging, before this was read off the answer.
+  const [gironde] = joinTerritories(rows(), ANCHORS, 'DEP').records.filter((r) => r.code === '33');
+  const packed = createTerritorySelectedOverlayEntry(
+    { ...gironde, carroyageVintage: 2021 }, NIVEAU,
+  );
+  assert.match(packed.details.join('\n'), /millésime 2021/);
+  // And with nothing said, the relay's own millésime — never a blank.
+  const relayed = createTerritorySelectedOverlayEntry(gironde, NIVEAU);
+  assert.match(relayed.details.join('\n'), new RegExp(`millésime ${TERRITORY_VINTAGE.carroyage}`));
+});
+
 test('the card says when its anchor is not a centroid', () => {
   const [reunion] = joinTerritories(rows(), ANCHORS, 'DEP').records.filter((r) => r.code === '974');
   const card = createTerritorySelectedOverlayEntry(reunion, NIVEAU);
