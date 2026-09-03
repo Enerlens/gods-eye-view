@@ -12,6 +12,7 @@ import {
   FILOSOFI_IMPUTED_FIELD,
   FILOSOFI_MAX_CELLS,
   FILOSOFI_DISC_DIAMETER,
+  FILOSOFI_GRID_CRS,
   FILOSOFI_MAX_FILL,
   FILOSOFI_METRICS,
   FILOSOFI_MIN_FILL,
@@ -26,6 +27,7 @@ import {
   cellCorners,
   cellDisc,
   cellSymbol,
+  gridToWgs84,
   laeaToWgs84,
   metricBand,
   parseCellId,
@@ -40,8 +42,79 @@ import {
 const read = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 const LYON_200M = read('filosofi-carreaux-200m-sample.json');
 const PARIS_1KM = read('filosofi-carreaux-1km-sample.json');
+/** La Réunion and Martinique, which are NOT on the projection métropole uses. */
+const DOM = read('filosofi-carreaux-dom-sample.json');
 
 // ── The identifier is the polygon ───────────────────────────────────────────
+
+test('the overseas grids are not EPSG:3035, and the identifier says which they are', () => {
+  // THE BUG THIS PINS. The layer declared coverage for Martinique and La
+  // Réunion from the day it shipped and drew neither: the WFS names their cells
+  // `CRS5490…` and `CRS2975…`, the grammar accepted `CRS3035` alone, and every
+  // one of their cells was dropped without a word. Measured 2026-09-03 over
+  // Saint-Denis de La Réunion: `numberMatched: 2 502`, cells drawn 0.
+  const reunion = parseCellId(DOM.reunion.features[0].properties.id_inspire);
+  const martinique = parseCellId(DOM.martinique.features[0].properties.id_inspire);
+  assert.equal(reunion.crs, 2975, 'RGR92 / UTM 40S');
+  assert.equal(martinique.crs, 5490, 'RGAF09 / UTM 20N');
+  assert.equal(parseCellId('CRS3035RES200mN2529400E3919200').crs, 3035);
+  // A grid this app cannot invert is refused rather than read in the wrong
+  // projection: a Réunion northing of 7 679 200 read as LAEA lands in the
+  // Arctic.
+  assert.equal(parseCellId('CRS9999RES200mN1E1'), null);
+  assert.deepEqual([...FILOSOFI_GRID_CRS].sort((a, b) => a - b), [2975, 3035, 5490]);
+});
+
+test('the identifier reproduces the published polygon on ALL THREE grids', () => {
+  // The same claim the LAEA inverse already answers for métropole, against
+  // geometry the service really sent — in two projections it did not speak.
+  let worst = 0;
+  let checked = 0;
+  for (const sample of [DOM.reunion, DOM.martinique]) {
+    for (const feature of sample.features) {
+      const mine = cellCorners(parseCellId(feature.properties.id_inspire));
+      for (const [lon, lat] of feature.geometry.coordinates[0][0]) {
+        let nearest = Infinity;
+        for (const [mLon, mLat] of mine) {
+          nearest = Math.min(nearest, Math.hypot(mLon - lon, mLat - lat));
+        }
+        worst = Math.max(worst, nearest);
+        checked += 1;
+      }
+    }
+  }
+  assert.ok(checked >= 40, `only ${checked} points compared`);
+  // 7e-9° is 0.8 mm. The module's header promises 1e-8° and this holds it on
+  // the two grids it did not previously speak.
+  assert.ok(worst < 1e-8, `worst ${worst.toExponential(2)}° over the DOM`);
+});
+
+test('a cell is projected on its own grid, never on the mainland one', () => {
+  const reunion = parseCellId(DOM.reunion.features[0].properties.id_inspire);
+  const [lon, lat] = cellCentre(reunion);
+  assert.ok(lat < -20 && lat > -22, `La Réunion should be near −21, got ${lat}`);
+  assert.ok(lon > 55 && lon < 56);
+  // Read as LAEA the same numbers are nowhere near it — which is exactly the
+  // silent failure this dispatch replaces.
+  const [, wrongLat] = laeaToWgs84(reunion.e, reunion.n);
+  assert.ok(Math.abs(wrongLat - lat) > 10, 'the wrong projection is wrong by continents');
+  // An unstated grid is métropole's, which is what every cell arrives as when
+  // the caller omits the field.
+  assert.deepEqual(gridToWgs84(3035, 3_919_200, 2_529_400), laeaToWgs84(3_919_200, 2_529_400));
+  assert.deepEqual(gridToWgs84(undefined, 3_919_200, 2_529_400), laeaToWgs84(3_919_200, 2_529_400));
+});
+
+test('projected DOM cells carry their grid to the client', () => {
+  // Without it the client would rebuild the polygon in the wrong projection —
+  // the same failure one layer up.
+  const projected = projectCarreaux(DOM.reunion, { resolution: 200 });
+  assert.ok(projected.cells.length > 0, 'La Réunion draws at last');
+  for (const cell of projected.cells) assert.equal(cell.crs, 2975);
+  const antilles = projectCarreaux(DOM.martinique, { resolution: 200 });
+  assert.ok(antilles.cells.length > 0);
+  for (const cell of antilles.cells) assert.equal(cell.crs, 5490);
+});
+
 
 test('the inverse projection reproduces the geometry the service published', () => {
   let checked = 0;

@@ -19,6 +19,15 @@
  * convenient. INSEE's own CSV carries `i_est_200`, `i_est_1km` AND `lcog_geo`,
  * so that is what this reads.
  *
+ * ── ALL THREE TERRITORIES ───────────────────────────────────────────────────
+ * Métropole is EPSG:3035, Martinique is 5490 and La Réunion is 2975 — INSEE
+ * grids each in its own zone rather than reprojecting them, which is right:
+ * LAEA Europe is a projection for Europe and a Réunion carreau expressed in it
+ * would not be square on the ground. The app inverts all three, so the grid
+ * travels with every cell and is part of its shard key — two cells in two
+ * territories can carry the same northing and easting and mean different
+ * places.
+ *
  * ── WHAT IT WRITES ──────────────────────────────────────────────────────────
  * Gzipped JSON shards on a 51.2 km LAEA tile grid, in the layer's OWN wire
  * shape — the same objects `projectCarreaux()` produces from the WFS — so the
@@ -181,7 +190,7 @@ export function share(part, whole) {
  */
 export function cellFromRow(row) {
   const parsed = parseIdcar(row.idcar_200m);
-  if (!parsed || parsed.crs !== PACK_CRS) return null;
+  if (!parsed || !PACK_CRS.includes(parsed.crs)) return null;
   const ind = num(row.ind);
   const men = num(row.men);
   const indSnv = num(row.ind_snv);
@@ -193,6 +202,9 @@ export function cellFromRow(row) {
   return {
     n: parsed.n,
     e: parsed.e,
+    // The grid, because a cell means nothing without it: métropole is LAEA and
+    // the two DOM are their own UTM zones.
+    crs: parsed.crs,
     // Halves are kept: INSEE's imputation splits people between cells, and
     // rounding here would make the layer's totals disagree with the source's.
     ind,
@@ -229,13 +241,14 @@ export function cellFromRow(row) {
  */
 export function accumulateKm(coarse, row) {
   const parsed = parseIdcar(row.idcar_1km);
-  if (!parsed || parsed.crs !== PACK_CRS) return;
+  if (!parsed || !PACK_CRS.includes(parsed.crs)) return;
   const key = row.idcar_1km;
   let cell = coarse.get(key);
   if (!cell) {
     cell = {
       n: parsed.n,
       e: parsed.e,
+      crs: parsed.crs,
       ind: 0,
       men: 0,
       indSnv: 0,
@@ -282,6 +295,7 @@ export function coarseCellToWire(cell) {
   return {
     n: cell.n,
     e: cell.e,
+    crs: cell.crs,
     ind: round(cell.ind),
     men: round(cell.men),
     niveau: cell.ind > 0 ? Math.round(cell.indSnv / cell.ind) : null,
@@ -357,7 +371,9 @@ export function shardBounds(cells, resolution) {
   let north = -Infinity;
   let east = -Infinity;
   for (const cell of cells) {
-    const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e });
+    const [lon, lat] = cellCentre({
+      res: resolution, n: cell.n, e: cell.e, crs: cell.crs ?? 3035,
+    });
     if (lat < south) south = lat;
     if (lat > north) north = lat;
     if (lon < west) west = lon;
@@ -429,7 +445,7 @@ async function main() {
     process.stderr.write(`  ${path.basename(file)}\n`);
     rows += await streamCsv(file, (row) => {
       const parsed = parseIdcar(row.idcar_200m);
-      if (parsed && parsed.crs !== PACK_CRS) {
+      if (parsed && !PACK_CRS.includes(parsed.crs)) {
         skippedByCrs.set(parsed.crs, (skippedByCrs.get(parsed.crs) || 0) + 1);
         return;
       }
@@ -437,7 +453,7 @@ async function main() {
       if (!cell) return;
       if (cell.com) communes.add(cell.com);
       else if (row.lcog_geo) multiCommune += 1;
-      const key = shardKey(cell.n, cell.e);
+      const key = shardKey(cell.crs, cell.n, cell.e);
       if (!fine.has(key)) fine.set(key, []);
       fine.get(key).push(cell);
       accumulateKm(coarseCells, row);
@@ -448,7 +464,7 @@ async function main() {
   const coarse = new Map();
   for (const cell of coarseCells.values()) {
     const wire = coarseCellToWire(cell);
-    const key = shardKey(wire.n, wire.e);
+    const key = shardKey(wire.crs, wire.n, wire.e);
     if (!coarse.has(key)) coarse.set(key, []);
     coarse.get(key).push(wire);
   }

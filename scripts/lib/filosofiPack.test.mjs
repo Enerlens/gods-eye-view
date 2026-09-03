@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import {
-  PACK_BOX,
+  PACK_BOXES,
   PACK_CRS,
   PACK_VINTAGE,
   SHARD_M,
@@ -32,10 +32,15 @@ import {
 test('a shard is a whole number of cells, so its key is exact arithmetic', () => {
   assert.equal(SHARD_M % 200, 0, 'the fine grid must tile a shard exactly');
   assert.equal(SHARD_M % 1000, 0, 'and so must the coarse one');
-  assert.equal(shardKey(2_529_000, 3_920_400), `${Math.floor(2_529_000 / SHARD_M)}_${Math.floor(3_920_400 / SHARD_M)}`);
+  assert.equal(shardKey(3035, 2_529_000, 3_920_400),
+    `3035-${Math.floor(2_529_000 / SHARD_M)}_${Math.floor(3_920_400 / SHARD_M)}`);
   // Two cells in the same 50 km tile share a key; one over the edge does not.
-  assert.equal(shardKey(2_529_000, 3_920_400), shardKey(2_529_200, 3_920_600));
-  assert.notEqual(shardKey(2_529_000, 3_920_400), shardKey(2_529_000, 3_920_400 + SHARD_M));
+  assert.equal(shardKey(3035, 2_529_000, 3_920_400), shardKey(3035, 2_529_200, 3_920_600));
+  assert.notEqual(shardKey(3035, 2_529_000, 3_920_400), shardKey(3035, 2_529_000, 3_920_400 + SHARD_M));
+  // THE GRID IS PART OF THE KEY. Two cells in two territories can carry the
+  // same northing and easting and mean different places; without the prefix
+  // they would land in one file and overwrite each other.
+  assert.notEqual(shardKey(3035, 1_600_000, 700_000), shardKey(5490, 1_600_000, 700_000));
   assert.equal(shardPath('/p', 200, '50_78'), path.join('/p', 'r200', '50_78.json.gz'));
   assert.equal(packIndexPath('/p'), path.join('/p', 'index.json'));
 });
@@ -51,33 +56,38 @@ test('shards are chosen by their own published boxes, so nothing projects twice'
   assert.deepEqual(shardsForBox(undefined, { south: 0, west: 0, north: 1, east: 1 }), []);
 });
 
-test('the pack covers métropole and refuses everything else', () => {
-  // Not a limitation to paper over: INSEE publishes Martinique in CRS5490 and
-  // La Réunion in CRS2975 — their own UTM zones — and this app inverts
-  // EPSG:3035 and nothing else. Those two stay on the WFS, which reprojects
-  // them, so ONE LAYER CAN BE ON TWO MILLÉSIMES AT ONCE and the answer has to
-  // say which per box.
-  assert.equal(PACK_CRS, 3035);
+test('the pack covers all three territories, and refuses a box that straddles one', () => {
+  // INSEE grids each territory in its own zone — métropole EPSG:3035,
+  // Martinique 5490, La Réunion 2975 — and the app inverts all three.
+  assert.deepEqual([...PACK_CRS].sort((a, b) => a - b), [2975, 3035, 5490]);
   assert.ok(packCovers({ south: 45.75, west: 4.82, north: 45.79, east: 4.88 }), 'Lyon');
   assert.ok(packCovers({ south: 41.3, west: 8.6, north: 42.0, east: 9.5 }), 'Corse');
-  assert.ok(!packCovers({ south: 14.4, west: -61.2, north: 14.9, east: -60.8 }), 'Martinique');
-  assert.ok(!packCovers({ south: -21.4, west: 55.2, north: -20.9, east: 55.8 }), 'La Réunion');
+  assert.ok(packCovers({ south: 14.4, west: -61.2, north: 14.9, east: -60.8 }), 'Martinique');
+  assert.ok(packCovers({ south: -21.4, west: 55.2, north: -20.9, east: 55.8 }), 'La Réunion');
+  // INSIDE a box, not merely touching it: answering half a straddling viewport
+  // from the pack would silently short the other half. That one goes to the
+  // relay, which has every territory in one grid.
+  assert.ok(!packCovers({ south: 40.0, west: 4.0, north: 52.0, east: 10.0 }), 'over the top edge');
+  assert.ok(!packCovers({ south: 14.0, west: -62.0, north: 16.0, east: -60.0 }), 'around Martinique');
   assert.ok(!packCovers(null));
-  assert.ok(PACK_BOX.north > 51 && PACK_BOX.south < 41.3, 'Dunkerque to Bonifacio');
+  assert.equal(PACK_BOXES.length, 3);
 });
 
 // ── Reading INSEE's CSV ─────────────────────────────────────────────────────
 
-test('the identifier carries its projection, and only one of them is packable', () => {
+test('the identifier carries its projection, and all three are packable', () => {
   assert.deepEqual(parseIdcar('CRS3035RES200mN2029400E4259000'),
     { crs: 3035, res: 200, n: 2_029_400, e: 4_259_000 });
-  // Martinique and La Réunion, in INSEE's own files.
+  // Martinique and La Réunion, in INSEE's own files and in their own zones.
   assert.equal(parseIdcar('CRS5490RES200mN1592600E728800').crs, 5490);
   assert.equal(parseIdcar('CRS2975RES200mN7634200E359400').crs, 2975);
   assert.equal(parseIdcar('nonsense'), null);
-  // A cell in another projection is not packed — its northing would land it in
-  // the Atlantic if it were read as LAEA.
-  assert.equal(cellFromRow({ idcar_200m: 'CRS5490RES200mN1592600E728800', ind: '1' }), null);
+  // A DOM cell is packed, and carries its grid — without which it would be
+  // rebuilt as LAEA and land in the Arctic.
+  const martinique = cellFromRow({ idcar_200m: 'CRS5490RES200mN1592600E728800', ind: '1' });
+  assert.equal(martinique.crs, 5490);
+  // A grid nobody inverts is still refused.
+  assert.equal(cellFromRow({ idcar_200m: 'CRS9999RES200mN1E1', ind: '1' }), null);
 });
 
 test('a quoted commune list does not shift every column after it', () => {
@@ -185,10 +195,13 @@ test('the coarse imputation flag is the published one, not derived from children
   assert.equal(coarseCellToWire([...coarse.values()][0]).est, 1);
 });
 
-test('a 1 km cell in an unpackable projection is not accumulated', () => {
+test('a 1 km cell keeps its own grid, and an unknown grid is refused', () => {
   const coarse = new Map();
-  accumulateKm(coarse, { idcar_1km: 'CRS2975RES1000mN7634000E359000', ind: '19' });
-  assert.equal(coarse.size, 0);
+  accumulateKm(coarse, { idcar_1km: 'CRS2975RES1000mN7634000E359000', i_est_1km: '0', ind: '19', men: '8' });
+  assert.equal(coarse.size, 1);
+  assert.equal(coarseCellToWire([...coarse.values()][0]).crs, 2975);
+  accumulateKm(coarse, { idcar_1km: 'CRS9999RES1000mN1E1', ind: '1' });
+  assert.equal(coarse.size, 1, 'a grid nobody inverts is not accumulated');
 });
 
 // ── The index the proxy reads ───────────────────────────────────────────────

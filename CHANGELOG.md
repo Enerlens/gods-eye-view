@@ -92,6 +92,23 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   **sommés, jamais moyennés** : la moyenne des taux de pauvreté de deux carreaux
   n'est pas le taux de pauvreté des deux.
 
+### Fixed
+- **La Martinique et La Réunion se dessinent enfin — elles n'avaient JAMAIS été
+  dessinées.** Le calque déclarait les couvrir depuis sa mise en service et n'a
+  jamais tracé un seul de leurs carreaux : l'INSEE maille chaque territoire dans
+  sa propre zone — métropole en EPSG:3035, Martinique en 5490 (UTM 20 N), La
+  Réunion en 2975 (UTM 40 S) — et le lecteur d'identifiant n'acceptait que
+  `CRS3035`. Chaque cellule était jetée sans un mot. Mesuré le 2026-09-03 sur
+  Saint-Denis : le service répond `numberMatched: 2 502` et le calque en
+  dessinait **0**.
+- **L'application porte désormais l'inverse des deux zones UTM**, à côté de
+  celui du LAEA et pour la même raison : trois formules fermées ne justifient
+  pas une dépendance de projection. Vérifié contre la géométrie que le service
+  envoie réellement — **0,78 mm d'écart maximal sur La Réunion, 0,50 mm sur la
+  Martinique**, sous le 1e-8° que le module promet. Le maillage fait partie de
+  l'identité d'une cellule : deux carreaux de deux territoires peuvent porter
+  les mêmes coordonnées et désigner des lieux différents.
+
 - **Le carroyage INSEE se regarde enfin depuis la France entière.** Le calque
   refusait toute vue plus large que 0,9° — à raison : 2,3 millions de carreaux
   ramenés à une page de 5 000, c'est une image de l'échantillon, pas du pays.

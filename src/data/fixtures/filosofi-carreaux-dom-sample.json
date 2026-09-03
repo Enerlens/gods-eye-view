@@ -1,0 +1,713 @@
+{
+ "note": "Live WFS answers over La Réunion and Martinique, captured 2026-09-03, GEOMETRY KEPT. The layer never asks for it; that is exactly what makes this the right fixture, because the claim under test is that the cell IDENTIFIER reproduces the polygon the service would have sent — in a projection that is NOT the one métropole uses.",
+ "reunion": {
+  "type": "FeatureCollection",
+  "features": [
+   {
+    "type": "Feature",
+    "id": "carreaux_200m.2311313",
+    "geometry": {
+     "type": "MultiPolygon",
+     "coordinates": [
+      [
+       [
+        [
+         55.39926994,
+         -20.98030183
+        ],
+        [
+         55.39928918,
+         -20.9784954
+        ],
+        [
+         55.40121255,
+         -20.97851346
+        ],
+        [
+         55.40119333,
+         -20.98031989
+        ],
+        [
+         55.39926994,
+         -20.98030183
+        ]
+       ]
+      ]
+     ]
+    },
+    "geometry_name": "geom",
+    "properties": {
+     "id_inspire": "CRS2975RES200mN7679200E333600",
+     "ind": 12,
+     "depcom": "97408",
+     "nom_com": "La Possession",
+     "men": 4.3,
+     "ind_0_3": 0.5,
+     "ind_4_5": 0,
+     "ind_6_10": 0.8,
+     "ind_11_17": 1.5,
+     "ind_25_39": 3.1,
+     "ind_40_54": 3.3,
+     "ind_55_64": 0.5,
+     "ind_65_79": 1,
+     "ind_80p": 0,
+     "men_5ind": 0.5,
+     "men_1ind": 1.3,
+     "men_prop": 3.3,
+     "men_coll": 0.2,
+     "log_soc": 0,
+     "men_surf": 282.6,
+     "log_av45": 0,
+     "log_45_70": 0,
+     "log_70_90": 1,
+     "log_ap90": 2.8,
+     "men_fmp": 0.5,
+     "men_mais": 4.1,
+     "ind_snv": 118072.6,
+     "men_pauv": 3.3,
+     "i_car_est": 1,
+     "densite_indx25": 300,
+     "ind_snv_div_ind": 9839.4,
+     "part_ind_0_17_div_ind": 23.3,
+     "part_ind_65p_div_ind": 8.3,
+     "part_men_coll_div_men": 4.7,
+     "part_log_soc_div_men": 0,
+     "part_log_av45_div_men": 0,
+     "part_log_ap90_div_men": 65.1,
+     "men_5ind_div_men": 11.6,
+     "men_1ind_div_men": 30.2,
+     "men_prop_div_men": 76.7,
+     "ind_25_39_div_ind": 25.8,
+     "ind_40_54_div_ind": 27.5,
+     "ind_55_64_div_ind": 4.2,
+     "log_45_70_div_men": 0,
+     "log_70_90_div_men": 23.3,
+     "men_surf_div_men": 65.7,
+     "men_fmp_div_men": 11.6,
+     "men_mais_div_men": 95.3,
+     "men_pauv_div_men": 76.7
+    }
+   },
+   {
+    "type": "Feature",
+    "id": "carreaux_200m.2312330",
+    "geometry": {
+     "type": "MultiPolygon",
+     "coordinates": [
+      [
+       [
+        [
+         55.4803826,
+         -20.94852486
+        ],
+        [
+         55.48040084,
+         -20.94671835
+        ],
+        [
+         55.48232387,
+         -20.94673548
+        ],
+        [
+         55.48230565,
+         -20.94854198
+        ],
+        [
+         55.4803826,
+         -20.94852486
+        ]
+       ]
+      ]
+     ]
+    },
+    "geometry_name": "geom",
+    "properties": {
+     "id_inspire": "CRS2975RES200mN7682800E342000",
+     "ind": 1,
+     "depcom": "97411",
+     "nom_com": "Saint-Denis",
+     "men": 0.3,
+     "ind_0_3": 0.1,
+     "ind_4_5": 0,
+     "ind_6_10": 0.1,
+     "ind_11_17": 0.2,
+     "ind_25_39": 0.2,
+     "ind_40_54": 0.2,
+     "ind_55_64": 0.1,
+     "ind_65_79": 0.1,
+     "ind_80p": 0,
+     "men_5ind": 0.1,
+     "men_1ind": 0,
+     "men_prop": 0.2,
+     "men_coll": 0,
+     "log_soc": 0,
+     "men_surf": 21.7,
+     "log_av45": 0,
+     "log_45_70": 0,
+     "log_70_90": 0.1,
+     "log_ap90": 0.2,
+     "men_fmp": 0.1,
+     "men_mais": 0.3,
+     "ind_snv": 16564.5,
+     "men_pauv": 0.1,
+     "i_car_est": 1,
+     "densite_indx25": 25,
+     "ind_snv_div_ind": 16564.5,
+     "part_ind_0_17_div_ind": 40,
+     "part_ind_65p_div_ind": 10,
+     "part_men_coll_div_men": 0,
+     "part_log_soc_div_men": 0,
+     "part_log_av45_div_men": 0,
+     "part_log_ap90_div_men": 66.7,
+     "men_5ind_div_men": 33.3,
+     "men_1ind_div_men": 0,
+     "men_prop_div_men": 66.7,
+     "ind_25_39_div_ind": 20,
+     "ind_40_54_div_ind": 20,
+     "ind_55_64_div_ind": 10,
+     "log_45_70_div_men": 0,
+     "log_70_90_div_men": 33.3,
+     "men_surf_div_men": 72.3,
+     "men_fmp_div_men": 33.3,
+     "men_mais_div_men": 100,
+     "men_pauv_div_men": 33.3
+    }
+   },
+   {
+    "type": "Feature",
+    "id": "carreaux_200m.2312331",
+    "geometry": {
+     "type": "MultiPolygon",
+     "coordinates": [
+      [
+       [
+        [
+         55.48422871,
+         -20.94855908
+        ],
+        [
+         55.4842469,
+         -20.94675258
+        ],
+        [
+         55.48616994,
+         -20.94676965
+        ],
+        [
+         55.48615177,
+         -20.94857616
+        ],
+        [
+         55.48422871,
+         -20.94855908
+        ]
+       ]
+      ]
+     ]
+    },
+    "geometry_name": "geom",
+    "properties": {
+     "id_inspire": "CRS2975RES200mN7682800E342400",
+     "ind": 3,
+     "depcom": "97411",
+     "nom_com": "Saint-Denis",
+     "men": 0.9,
+     "ind_0_3": 0.2,
+     "ind_4_5": 0.1,
+     "ind_6_10": 0.2,
+     "ind_11_17": 0.5,
+     "ind_25_39": 0.6,
+     "ind_40_54": 0.7,
+     "ind_55_64": 0.2,
+     "ind_65_79": 0.3,
+     "ind_80p": 0,
+     "men_5ind": 0.2,
+     "men_1ind": 0.1,
+     "men_prop": 0.6,
+     "men_coll": 0,
+     "log_soc": 0,
+     "men_surf": 65.1,
+     "log_av45": 0,
+     "log_45_70": 0.1,
+     "log_70_90": 0.2,
+     "log_ap90": 0.5,
+     "men_fmp": 0.2,
+     "men_mais": 0.9,
+     "ind_snv": 49693.6,
+     "men_pauv": 0.4,
+     "i_car_est": 1,
+     "densite_indx25": 75,
+     "ind_snv_div_ind": 16564.5,
+     "part_ind_0_17_div_ind": 33.3,
+     "part_ind_65p_div_ind": 10,
+     "part_men_coll_div_men": 0,
+     "part_log_soc_div_men": 0,
+     "part_log_av45_div_men": 0,
+     "part_log_ap90_div_men": 55.6,
+     "men_5ind_div_men": 22.2,
+     "men_1ind_div_men": 11.1,
+     "men_prop_div_men": 66.7,
+     "ind_25_39_div_ind": 20,
+     "ind_40_54_div_ind": 23.3,
+     "ind_55_64_div_ind": 6.7,
+     "log_45_70_div_men": 11.1,
+     "log_70_90_div_men": 22.2,
+     "men_surf_div_men": 72.3,
+     "men_fmp_div_men": 22.2,
+     "men_mais_div_men": 100,
+     "men_pauv_div_men": 44.4
+    }
+   },
+   {
+    "type": "Feature",
+    "id": "carreaux_200m.2312332",
+    "geometry": {
+     "type": "MultiPolygon",
+     "coordinates": [
+      [
+       [
+        [
+         55.48615177,
+         -20.94857616
+        ],
+        [
+         55.48616994,
+         -20.94676965
+        ],
+        [
+         55.48809298,
+         -20.94678671
+        ],
+        [
+         55.48807483,
+         -20.94859322
+        ],
+        [
+         55.48615177,
+         -20.94857616
+        ]
+       ]
+      ]
+     ]
+    },
+    "geometry_name": "geom",
+    "properties": {
+     "id_inspire": "CRS2975RES200mN7682800E342600",
+     "ind": 8,
+     "depcom": "97411",
+     "nom_com": "Saint-Denis",
+     "men": 2.4,
+     "ind_0_3": 0.4,
+     "ind_4_5": 0.2,
+     "ind_6_10": 0.7,
+     "ind_11_17": 1.2,
+     "ind_25_39": 1.5,
+     "ind_40_54": 1.9,
+     "ind_55_64": 0.6,
+     "ind_65_79": 0.8,
+     "ind_80p": 0.1,
+     "men_5ind": 0.6,
+     "men_1ind": 0.4,
+     "men_prop": 1.7,
+     "men_coll": 0.1,
+     "log_soc": 0,
+     "men_surf": 173.6,
+     "log_av45": 0,
+     "log_45_70": 0.2,
+     "log_70_90": 0.5,
+     "log_ap90": 1.4,
+     "men_fmp": 0.4,
+     "men_mais": 2.3,
+     "ind_snv": 132516.2,
+     "men_pauv": 1.1,
+     "i_car_est": 1,
+     "densite_indx25": 200,
+     "ind_snv_div_ind": 16564.5,
+     "part_ind_0_17_div_ind": 31.3,
+     "part_ind_65p_div_ind": 11.3,
+     "part_men_coll_div_men": 4.2,
+     "part_log_soc_div_men": 0,
+     "part_log_av45_div_men": 0,
+     "part_log_ap90_div_men": 58.3,
+     "men_5ind_div_men": 25,
+     "men_1ind_div_men": 16.7,
+     "men_prop_div_men": 70.8,
+     "ind_25_39_div_ind": 18.8,
+     "ind_40_54_div_ind": 23.8,
+     "ind_55_64_div_ind": 7.5,
+     "log_45_70_div_men": 8.3,
+     "log_70_90_div_men": 20.8,
+     "men_surf_div_men": 72.3,
+     "men_fmp_div_men": 16.7,
+     "men_mais_div_men": 95.8,
+     "men_pauv_div_men": 45.8
+    }
+   }
+  ],
+  "totalFeatures": 659,
+  "numberMatched": 659,
+  "numberReturned": 4,
+  "timeStamp": "2026-09-03T08:15:41.337Z",
+  "crs": {
+   "type": "name",
+   "properties": {
+    "name": "urn:ogc:def:crs:EPSG::4326"
+   }
+  }
+ },
+ "martinique": {
+  "type": "FeatureCollection",
+  "features": [
+   {
+    "type": "Feature",
+    "id": "carreaux_200m.2292029",
+    "geometry": {
+     "type": "MultiPolygon",
+     "coordinates": [
+      [
+       [
+        [
+         -61.0602762,
+         14.54960238
+        ],
+        [
+         -61.06026041,
+         14.55140965
+        ],
+        [
+         -61.05840496,
+         14.55139426
+        ],
+        [
+         -61.05842076,
+         14.54958699
+        ],
+        [
+         -61.0602762,
+         14.54960238
+        ]
+       ]
+      ]
+     ]
+    },
+    "geometry_name": "geom",
+    "properties": {
+     "id_inspire": "CRS5490RES200mN1609400E709000",
+     "ind": 25.5,
+     "depcom": "97231",
+     "nom_com": "Les Trois-Îlets",
+     "men": 11,
+     "ind_0_3": 1.9,
+     "ind_4_5": 0,
+     "ind_6_10": 0,
+     "ind_11_17": 2.9,
+     "ind_25_39": 3.2,
+     "ind_40_54": 3.9,
+     "ind_55_64": 7.8,
+     "ind_65_79": 4.5,
+     "ind_80p": 0,
+     "men_5ind": 0.6,
+     "men_1ind": 3.2,
+     "men_prop": 6.5,
+     "men_coll": 1.9,
+     "log_soc": 0,
+     "men_surf": 810.2,
+     "log_av45": 1.3,
+     "log_45_70": 2.6,
+     "log_70_90": 2.6,
+     "log_ap90": 2.6,
+     "men_fmp": 2.6,
+     "men_mais": 9.1,
+     "ind_snv": 513715.4,
+     "men_pauv": 2.6,
+     "i_car_est": 1,
+     "densite_indx25": 637.5,
+     "ind_snv_div_ind": 20145.7,
+     "part_ind_0_17_div_ind": 18.8,
+     "part_ind_65p_div_ind": 17.6,
+     "part_men_coll_div_men": 17.3,
+     "part_log_soc_div_men": 0,
+     "part_log_av45_div_men": 11.8,
+     "part_log_ap90_div_men": 23.6,
+     "men_5ind_div_men": 5.5,
+     "men_1ind_div_men": 29.1,
+     "men_prop_div_men": 59.1,
+     "ind_25_39_div_ind": 12.5,
+     "ind_40_54_div_ind": 15.3,
+     "ind_55_64_div_ind": 30.6,
+     "log_45_70_div_men": 23.6,
+     "log_70_90_div_men": 23.6,
+     "men_surf_div_men": 73.7,
+     "men_fmp_div_men": 23.6,
+     "men_mais_div_men": 82.7,
+     "men_pauv_div_men": 23.6
+    }
+   },
+   {
+    "type": "Feature",
+    "id": "carreaux_200m.2292030",
+    "geometry": {
+     "type": "MultiPolygon",
+     "coordinates": [
+      [
+       [
+        [
+         -61.05842076,
+         14.54958699
+        ],
+        [
+         -61.05840496,
+         14.55139426
+        ],
+        [
+         -61.05654951,
+         14.55137886
+        ],
+        [
+         -61.05656533,
+         14.54957159
+        ],
+        [
+         -61.05842076,
+         14.54958699
+        ]
+       ]
+      ]
+     ]
+    },
+    "geometry_name": "geom",
+    "properties": {
+     "id_inspire": "CRS5490RES200mN1609400E709200",
+     "ind": 3,
+     "depcom": "97231",
+     "nom_com": "Les Trois-Îlets",
+     "men": 1.3,
+     "ind_0_3": 0.2,
+     "ind_4_5": 0,
+     "ind_6_10": 0,
+     "ind_11_17": 0.3,
+     "ind_25_39": 0.4,
+     "ind_40_54": 0.5,
+     "ind_55_64": 0.9,
+     "ind_65_79": 0.5,
+     "ind_80p": 0,
+     "men_5ind": 0.1,
+     "men_1ind": 0.4,
+     "men_prop": 0.8,
+     "men_coll": 0.2,
+     "log_soc": 0,
+     "men_surf": 95.3,
+     "log_av45": 0.2,
+     "log_45_70": 0.3,
+     "log_70_90": 0.3,
+     "log_ap90": 0.3,
+     "men_fmp": 0.3,
+     "men_mais": 1.1,
+     "ind_snv": 60437.1,
+     "men_pauv": 0.3,
+     "i_car_est": 1,
+     "densite_indx25": 75,
+     "ind_snv_div_ind": 20145.7,
+     "part_ind_0_17_div_ind": 16.7,
+     "part_ind_65p_div_ind": 16.7,
+     "part_men_coll_div_men": 15.4,
+     "part_log_soc_div_men": 0,
+     "part_log_av45_div_men": 15.4,
+     "part_log_ap90_div_men": 23.1,
+     "men_5ind_div_men": 7.7,
+     "men_1ind_div_men": 30.8,
+     "men_prop_div_men": 61.5,
+     "ind_25_39_div_ind": 13.3,
+     "ind_40_54_div_ind": 16.7,
+     "ind_55_64_div_ind": 30,
+     "log_45_70_div_men": 23.1,
+     "log_70_90_div_men": 23.1,
+     "men_surf_div_men": 73.3,
+     "men_fmp_div_men": 23.1,
+     "men_mais_div_men": 84.6,
+     "men_pauv_div_men": 23.1
+    }
+   },
+   {
+    "type": "Feature",
+    "id": "carreaux_200m.2292031",
+    "geometry": {
+     "type": "MultiPolygon",
+     "coordinates": [
+      [
+       [
+        [
+         -61.05656533,
+         14.54957159
+        ],
+        [
+         -61.05654951,
+         14.55137886
+        ],
+        [
+         -61.05469407,
+         14.55136345
+        ],
+        [
+         -61.0547099,
+         14.54955618
+        ],
+        [
+         -61.05656533,
+         14.54957159
+        ]
+       ]
+      ]
+     ]
+    },
+    "geometry_name": "geom",
+    "properties": {
+     "id_inspire": "CRS5490RES200mN1609400E709400",
+     "ind": 14,
+     "depcom": "97231",
+     "nom_com": "Les Trois-Îlets",
+     "men": 11,
+     "ind_0_3": 0,
+     "ind_4_5": 1,
+     "ind_6_10": 1,
+     "ind_11_17": 0,
+     "ind_25_39": 4,
+     "ind_40_54": 0,
+     "ind_55_64": 6,
+     "ind_65_79": 2,
+     "ind_80p": 0,
+     "men_5ind": 0,
+     "men_1ind": 10,
+     "men_prop": 5,
+     "men_coll": 5,
+     "log_soc": 0,
+     "men_surf": 470,
+     "log_av45": 1,
+     "log_45_70": 2,
+     "log_70_90": 2,
+     "log_ap90": 4,
+     "men_fmp": 0,
+     "men_mais": 6,
+     "ind_snv": 322108.2,
+     "men_pauv": 2,
+     "i_car_est": 0,
+     "densite_indx25": 350,
+     "ind_snv_div_ind": 23007.7,
+     "part_ind_0_17_div_ind": 14.3,
+     "part_ind_65p_div_ind": 14.3,
+     "part_men_coll_div_men": 45.5,
+     "part_log_soc_div_men": 0,
+     "part_log_av45_div_men": 9.1,
+     "part_log_ap90_div_men": 36.4,
+     "men_5ind_div_men": 0,
+     "men_1ind_div_men": 90.9,
+     "men_prop_div_men": 45.5,
+     "ind_25_39_div_ind": 28.6,
+     "ind_40_54_div_ind": 0,
+     "ind_55_64_div_ind": 42.9,
+     "log_45_70_div_men": 18.2,
+     "log_70_90_div_men": 18.2,
+     "men_surf_div_men": 42.7,
+     "men_fmp_div_men": 0,
+     "men_mais_div_men": 54.5,
+     "men_pauv_div_men": 18.2
+    }
+   },
+   {
+    "type": "Feature",
+    "id": "carreaux_200m.2292032",
+    "geometry": {
+     "type": "MultiPolygon",
+     "coordinates": [
+      [
+       [
+        [
+         -61.0547099,
+         14.54955618
+        ],
+        [
+         -61.05469407,
+         14.55136345
+        ],
+        [
+         -61.05283862,
+         14.55134802
+        ],
+        [
+         -61.05285447,
+         14.54954075
+        ],
+        [
+         -61.0547099,
+         14.54955618
+        ]
+       ]
+      ]
+     ]
+    },
+    "geometry_name": "geom",
+    "properties": {
+     "id_inspire": "CRS5490RES200mN1609400E709600",
+     "ind": 126,
+     "depcom": "97231",
+     "nom_com": "Les Trois-Îlets",
+     "men": 78,
+     "ind_0_3": 1,
+     "ind_4_5": 2,
+     "ind_6_10": 9,
+     "ind_11_17": 6,
+     "ind_25_39": 22,
+     "ind_40_54": 38,
+     "ind_55_64": 23,
+     "ind_65_79": 16,
+     "ind_80p": 2,
+     "men_5ind": 1,
+     "men_1ind": 48,
+     "men_prop": 28,
+     "men_coll": 65,
+     "log_soc": 0,
+     "men_surf": 2953,
+     "log_av45": 0,
+     "log_45_70": 10,
+     "log_70_90": 16,
+     "log_ap90": 40,
+     "men_fmp": 9,
+     "men_mais": 13,
+     "ind_snv": 2814228.4,
+     "men_pauv": 17,
+     "i_car_est": 0,
+     "densite_indx25": 3150,
+     "ind_snv_div_ind": 22335.1,
+     "part_ind_0_17_div_ind": 14.3,
+     "part_ind_65p_div_ind": 14.3,
+     "part_men_coll_div_men": 83.3,
+     "part_log_soc_div_men": 0,
+     "part_log_av45_div_men": 0,
+     "part_log_ap90_div_men": 51.3,
+     "men_5ind_div_men": 1.3,
+     "men_1ind_div_men": 61.5,
+     "men_prop_div_men": 35.9,
+     "ind_25_39_div_ind": 17.5,
+     "ind_40_54_div_ind": 30.2,
+     "ind_55_64_div_ind": 18.3,
+     "log_45_70_div_men": 12.8,
+     "log_70_90_div_men": 20.5,
+     "men_surf_div_men": 37.9,
+     "men_fmp_div_men": 11.5,
+     "men_mais_div_men": 16.7,
+     "men_pauv_div_men": 21.8
+    }
+   }
+  ],
+  "totalFeatures": 1139,
+  "numberMatched": 1139,
+  "numberReturned": 4,
+  "timeStamp": "2026-09-03T08:15:41.883Z",
+  "crs": {
+   "type": "name",
+   "properties": {
+    "name": "urn:ogc:def:crs:EPSG::4326"
+   }
+  }
+ }
+}

@@ -20101,11 +20101,11 @@ function writeFilosofiDisk(key, entry) {
  * whole path exists to protect: a layer that hard-codes its own vintage is one
  * upstream refresh away from captioning 2021 figures with "2019".
  *
- * MÉTROPOLE ONLY. INSEE publishes Martinique in CRS5490 and La Réunion in
- * CRS2975 — their own UTM zones — and this app inverts EPSG:3035 and nothing
- * else. Those 25 995 cells stay on the WFS, which reprojects them, so the two
- * territories remain on 2019 while métropole moves to 2021. The answer says
- * which, per box, rather than averaging the two into a single claim.
+ * ALL THREE TERRITORIES. INSEE grids métropole in EPSG:3035, Martinique in 5490
+ * and La Réunion in 2975 — their own UTM zones — and the app inverts all three,
+ * so the pack holds 2 324 577 cells, which is INSEE's own published total for
+ * 2021 exactly. A box that STRADDLES a territory's edge still goes to the
+ * relay: answering half of it from the pack would silently short the other half.
  */
 const FILOSOFI_PACK_DIR = path.join(process.cwd(), '.gev-cache', 'filosofi-2021');
 let _filosofiPackIndex;
@@ -20158,7 +20158,9 @@ async function filosofiFromPack(box, resolution) {
       return null;
     }
     for (const cell of shard) {
-      const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e });
+      const [lon, lat] = cellCentre({
+        res: resolution, n: cell.n, e: cell.e, crs: cell.crs ?? 3035,
+      });
       if (lat < box.south || lat > box.north || lon < box.west || lon > box.east) continue;
       cells.push(cell);
     }
@@ -20355,7 +20357,7 @@ function filosofiProxy() {
               vintage: index.vintage,
               builtAt: index.builtAt,
               cells: index.cells,
-              scope: 'France métropolitaine — Martinique et La Réunion restent sur le relais WFS',
+              scope: 'France métropolitaine, Martinique et La Réunion',
               source: index.source?.page ?? null,
             };
           })(),

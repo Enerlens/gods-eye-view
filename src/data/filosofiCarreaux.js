@@ -131,7 +131,15 @@ export const FILOSOFI_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
  */
 export const FILOSOFI_MAX_BOX_DEG = 0.9;
 
-/** Where the carroyage exists. Outside these, every request is a certain zero. */
+/**
+ * Where the carroyage exists. Outside these, every request is a certain zero.
+ *
+ * All three are drawn, which was not true until 2026-09-03: INSEE grids
+ * Martinique in EPSG:5490 and La Réunion in EPSG:2975 — their own UTM zones —
+ * and the identifier parser accepted EPSG:3035 alone, so both territories were
+ * declared here and silently dropped every cell. `filosofiFeed.js` now inverts
+ * all three grids.
+ */
 const FILOSOFI_COVERAGE = Object.freeze([
   Object.freeze({ south: 41.2, west: -5.3, north: 51.2, east: 9.7 }), // métropole + Corse
   Object.freeze({ south: 14.3, west: -61.3, north: 15.0, east: -60.7 }), // Martinique
@@ -285,12 +293,20 @@ function renderedGroundM(lat, lon) {
  * @returns {Array<[number, number]>}
  */
 export function drawnOutline(cell, resolution, fraction) {
-  return cellDisc({ res: resolution, n: cell.n, e: cell.e }, fraction);
+  return cellDisc({
+    res: resolution, n: cell.n, e: cell.e, crs: cell.crs ?? 3035,
+  }, fraction);
 }
 
-/** A stable, human-readable id for one drawn cell. */
+/**
+ * A stable, human-readable id for one drawn cell.
+ *
+ * The GRID is part of the identity, not decoration: métropole is EPSG:3035 and
+ * the overseas grids are their own UTM zones, so two cells in two territories
+ * can carry the same northing and easting and mean different places.
+ */
 export function cellId(cell, resolution) {
-  return `filosofi:${resolution}:${cell.n}:${cell.e}`;
+  return `filosofi:${cell.crs ?? 3035}:${resolution}:${cell.n}:${cell.e}`;
 }
 
 function clearPrimitive() {
@@ -318,7 +334,9 @@ function buildRecords(cells, resolution) {
   for (const cell of cells) {
     const symbol = cellSymbol(cell, _metric, { resolution });
     if (symbol.fill <= 0) continue;
-    const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e });
+    const [lon, lat] = cellCentre({
+      res: resolution, n: cell.n, e: cell.e, crs: cell.crs ?? 3035,
+    });
     // ONE sample, at the centre. Probing the footprint instead was measured at
     // 400 ms per redraw against 85 ms for the same 484 cells; the clearance
     // below absorbs the relief that costs.

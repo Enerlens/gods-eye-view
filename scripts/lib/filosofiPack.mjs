@@ -42,21 +42,27 @@ export const PACK_VINTAGE = 2021;
 export const SHARD_M = 50_000;
 
 /**
- * The projection the pack can express, and the only one this app inverts.
+ * The projections the pack can express — all three INSEE publishes on.
  *
- * INSEE publishes Martinique in CRS5490 and La Réunion in CRS2975 — their own
- * UTM zones — so those two territories cannot be packed and stay on the WFS,
- * which reprojects them. That means one layer can be on two millésimes at once,
- * which is why the answer carries its vintage per box rather than per layer.
+ * INSEE grids each territory in its own zone rather than reprojecting them:
+ * métropole in EPSG:3035 (LAEA Europe), Martinique in 5490 (UTM 20 N), La
+ * Réunion in 2975 (UTM 40 S). The app inverts all three, so the pack can hold
+ * all three — but the GRID IS PART OF A CELL'S IDENTITY, because two cells in
+ * two territories can carry the same northing and easting and mean different
+ * places. It is therefore part of the shard key.
  */
-export const PACK_CRS = 3035;
+export const PACK_CRS = Object.freeze([3035, 5490, 2975]);
 
-/** Métropole and Corsica — the extent the pack covers. */
-export const PACK_BOX = Object.freeze({ south: 41.2, west: -5.3, north: 51.2, east: 9.7 });
+/** Where the pack has cells. One box per grid, matching the layer's coverage. */
+export const PACK_BOXES = Object.freeze([
+  Object.freeze({ south: 41.2, west: -5.3, north: 51.2, east: 9.7 }), // métropole + Corse
+  Object.freeze({ south: 14.3, west: -61.3, north: 15.0, east: -60.7 }), // Martinique
+  Object.freeze({ south: -21.5, west: 55.1, north: -20.8, east: 55.9 }), // La Réunion
+]);
 
-/** @param {number} n @param {number} e @returns {string} */
-export function shardKey(n, e) {
-  return `${Math.floor(n / SHARD_M)}_${Math.floor(e / SHARD_M)}`;
+/** @param {number} crs @param {number} n @param {number} e @returns {string} */
+export function shardKey(crs, n, e) {
+  return `${crs}-${Math.floor(n / SHARD_M)}_${Math.floor(e / SHARD_M)}`;
 }
 
 /**
@@ -92,10 +98,17 @@ export function packIndexPath(packDir) {
 
 /**
  * Whether the pack can answer for a box at all.
+ *
+ * INSIDE one of the boxes, not merely touching it: a viewport straddling the
+ * edge of a territory would be answered from the pack for the half that is
+ * packed and silently short the other half. A straddling box goes to the relay,
+ * which has every territory in one grid.
+ *
  * @param {{south:number, west:number, north:number, east:number}} box
  * @returns {boolean}
  */
 export function packCovers(box) {
-  return Boolean(box) && box.south >= PACK_BOX.south && box.north <= PACK_BOX.north
-    && box.west >= PACK_BOX.west && box.east <= PACK_BOX.east;
+  if (!box) return false;
+  return PACK_BOXES.some((area) => box.south >= area.south && box.north <= area.north
+    && box.west >= area.west && box.east <= area.east);
 }
