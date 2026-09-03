@@ -171,6 +171,25 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **Le nom d'un avion, et celui d'un aéroport, sont des surfaces cliquables.**
+  L'étiquette DETECT d'un vol est peinte par le calque de détection sur un
+  canevas `pointer-events: none` : elle n'existait pour le clic à aucun titre.
+  Viser la callsign — plusieurs fois l'aire du sprite, qui fait quelques pixels
+  d'une cible à 900 km/h — revenait donc à cliquer le globe, c'est-à-dire à
+  **désélectionner l'avion qu'on voulait suivre**. Le calque publie désormais,
+  à chaque frame peinte, le rectangle exact des mots qu'il vient de tracer, sous
+  une portée par couche (`detect:flights`, `detect:military`) — sans quoi un
+  clic sur un vol civil se résoudrait dans la couche militaire. Les
+  gestionnaires de clic des **Vols** et des **Vols militaires** consultent ce
+  plan **après** `scene.pick`, jamais avant : un contact sous le curseur garde
+  son propre clic, et une callsign trop pâle pour être lue ne publie rien du
+  tout. Le même correctif ouvre les **noms d'aéroports** — et ceux des ports,
+  barrages et datacenters : le nom sur le globe sélectionne et cadre exactement
+  comme la pastille au bout de la tige, alors qu'il était inerte. Cette couche
+  cède le pas au marqueur d'une couche voisine, mais **pas** à une tuile 3D
+  photoréaliste — sur un globe texturé, presque chaque pixel « pique » une
+  tuile que personne ne possède et que personne ne peut sélectionner, et la
+  traiter comme occupée aurait laissé tous les noms inertes.
 - **Les avions cessent de porter la silhouette d'un autre.** La source de repli
   du calque civil, adsb.lol, publie le désignateur de type OACI (`t`) et
   l'immatriculation (`r`) sur chaque contact ; l'adaptateur

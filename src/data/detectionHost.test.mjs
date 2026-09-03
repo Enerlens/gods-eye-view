@@ -19,9 +19,12 @@ import {
 } from './detection.js';
 import {
   destroyWorldOverlay,
+  hitTestWorldOverlay,
   initWorldOverlay,
+  listWorldOverlayHitRects,
   setOverlayEntries,
 } from '../overlays/worldOverlay.js';
+import { detectionLabelSourceId } from './overlayLabelPick.js';
 import { DETECTION_THEME_MAP } from '../overlays/worldOverlayTokens.js';
 
 test('detection diagnostics count rendered fading rows instead of absent selected identities', () => {
@@ -868,6 +871,62 @@ test('the backdrop feather reaches the canvas as a lighter plate against sky', (
       lightest < heaviest * 0.5,
       `sky plate ${lightest} must be markedly lighter than ground plate ${heaviest}`,
     );
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('the callsign a contact was labelled with is a click surface, scoped to its own layer', () => {
+  // The sprite is a few pixels of a target at 900 km/h; the callsign beside it
+  // is several times that area and reads like a button, so it is what people
+  // aim at. Until the lane published a rectangle, those clicks went through the
+  // `pointer-events: none` canvas onto the globe and DESELECTED the aircraft.
+  const env = installEnvironment();
+  try {
+    initWorldOverlay(env.viewer);
+    initDetection(env.viewer, [detectableLayer(), militaryLayer()], () => {});
+    setMode('DENSE');
+    settleFrame(env);
+    env.ctx.calls.length = 0;
+    settleFrame(env);
+
+    const printed = env.ctx.calls.find(([name, text]) => name === 'fillText' && text === 'TEST0');
+    assert.ok(printed, 'the callsign reaches the shared canvas');
+    const [, , textX, textY] = printed;
+
+    const flights = detectionLabelSourceId('flights');
+    const rects = listWorldOverlayHitRects({ sourceId: flights });
+    const rect = rects.find((candidate) => candidate.entryId === 'flight-0');
+    assert.ok(rect, 'the rectangle is keyed by the contact id, not by the text');
+    assert.ok(
+      textX >= rect.x && textX <= rect.x + rect.w
+        && textY >= rect.y && textY <= rect.y + rect.h,
+      `the rectangle must sit where the words were painted (text ${textX},${textY} vs ${JSON.stringify(rect)})`,
+    );
+
+    const hit = hitTestWorldOverlay(rect.x + rect.w / 2, rect.y + rect.h / 2);
+    assert.equal(hit.sourceId, flights);
+    assert.equal(hit.entryId, 'flight-0');
+
+    // Aircraft and military share one lane. A handler scoped to the other layer
+    // must not resolve this callsign, or a click on a civil contact would land
+    // in the military layer's selection.
+    assert.equal(
+      hitTestWorldOverlay(rect.x + rect.w / 2, rect.y + rect.h / 2, {
+        sourceId: detectionLabelSourceId('military'),
+      }),
+      null,
+    );
+    assert.equal(
+      listWorldOverlayHitRects({ sourceId: detectionLabelSourceId('military') })[0]?.entryId,
+      'military-pin',
+    );
+
+    // Switching DETECT off takes the words away, so it must take the click
+    // surface with them on the same frame.
+    setMode('OFF');
+    settleFrame(env);
+    assert.deepEqual(listWorldOverlayHitRects({ sourceId: flights }), []);
   } finally {
     env.cleanup();
   }

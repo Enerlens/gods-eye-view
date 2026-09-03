@@ -21,9 +21,12 @@ import {
 } from './contextStore.js';
 import {
   clearOverlaySource,
+  hitTestWorldOverlay,
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { pickOverlayLabelId } from './overlayLabelPick.js';
+import { isOwnedByOtherLayer, resolvePickId } from './pickRegistry.js';
 
 const DEFAULT_LABEL_MAX = 900;
 const DEFAULT_LABEL_GRID_PX = 132;
@@ -62,6 +65,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   clearSource: clearOverlaySource,
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
+  hitTest: hitTestWorldOverlay,
 });
 
 /**
@@ -342,7 +346,14 @@ export function createLocalInfrastructureOverlayEntry({
     priority,
     collisionGroup: 'ambient-card',
     zIndex: 30,
-    interactive: false,
+    // The NAME is a click surface, not a caption. The marker is a pastille a
+    // few pixels wide at the tip of a recall stem; the card beside it carries
+    // the airport's name and is several times its area, so it is what a reader
+    // aims at — and while it was inert, every one of those clicks went through
+    // the overlay canvas onto the globe and did nothing at all. Resolved after
+    // the native pick (see the LEFT_CLICK handler), so a marker under the
+    // cursor still wins its own click.
+    interactive: true,
     minDistance: 0,
     maxDistance: range,
     // The fade has to start INSIDE the range it fades over. A short-range card
@@ -658,6 +669,66 @@ export function createLocalGeoJsonLayer({
       }
     }
   }
+
+  /**
+   * The record a published card names, or null once it has left the layer.
+   *
+   * Linear because it runs once per click and never per frame: a Map would
+   * have to be torn down and rebuilt at the four places `_stemRecords` is
+   * reset, and a stale entry there would select a feature that is no longer
+   * in the scene — the one failure this lookup exists to prevent.
+   * @param {string} recordId Overlay entry id, which IS the record id here.
+   * @returns {?object} Live stem record.
+   */
+  function findStemRecord(recordId) {
+    for (let i = 0; i < _stemRecords.length; i++) {
+      if (_stemRecords[i].id === recordId) return _stemRecords[i];
+    }
+    return null;
+  }
+
+  /**
+   * Select one feature and frame it — the whole response to a click, shared by
+   * the marker and by the name beside it so the two cannot drift apart.
+   * @param {Cesium.Viewer} viewer
+   * @param {Cesium.Entity} entity Picked or label-resolved feature.
+   */
+  function selectLocalFeature(viewer, entity) {
+    if (!entity) return;
+    viewer.selectedEntity = entity;
+    selectEntityContext(entity);
+
+    // We zoom to the surface base of the stem or the center of the polygon
+    let targetPos = null;
+
+    if (entity.polyline) {
+      // If it's a stem, fly to the base
+      const positions = entity.polyline.positions.getValue(Cesium.JulianDate.now());
+      if (positions && positions.length > 0) {
+        targetPos = positions[0];
+      }
+    } else if (entity.polygon && entity.polygon.hierarchy) {
+      // If it's a polygon, just fly to its center
+      const hierarchy = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now());
+      if (hierarchy && hierarchy.positions.length > 0) {
+        targetPos = Cesium.BoundingSphere.fromPoints(hierarchy.positions).center;
+      }
+    }
+
+    if (!targetPos) return;
+    const carto = Cesium.Cartographic.fromCartesian(targetPos);
+
+    // Disable interactions so Cesium doesn't magically cancel the flight
+    viewer.scene.screenSpaceCameraController.enableInputs = false;
+
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 5000),
+      duration: 1.5,
+      complete: () => { viewer.scene.screenSpaceCameraController.enableInputs = true; },
+      cancel: () => { viewer.scene.screenSpaceCameraController.enableInputs = true; },
+    });
+  }
+
   const _overlayPublisher = createLocalInfrastructureOverlayPublisher({
     sourceId: id,
     host: overlayHost,
@@ -1003,43 +1074,30 @@ export function createLocalGeoJsonLayer({
           _clickHandler.setInputAction((click) => {
             if (!_enabled) return;
             const picked = viewer.scene.pick(click.position);
-            
+
             if (picked && picked.id && picked.id.__localLayerId === id) {
-              const entity = picked.id;
-              viewer.selectedEntity = entity;
-              selectEntityContext(entity);
-              
-              // We zoom to the surface base of the stem or the center of the polygon
-              let targetPos = null;
-              
-              if (entity.polyline) {
-                // If it's a stem, fly to the base
-                const positions = entity.polyline.positions.getValue(Cesium.JulianDate.now());
-                if (positions && positions.length > 0) {
-                  targetPos = positions[0];
-                }
-              } else if (entity.polygon && entity.polygon.hierarchy) {
-                // If it's a polygon, just fly to its center
-                const hierarchy = entity.polygon.hierarchy.getValue(Cesium.JulianDate.now());
-                if (hierarchy && hierarchy.positions.length > 0) {
-                  targetPos = Cesium.BoundingSphere.fromPoints(hierarchy.positions).center;
-                }
-              }
-              
-              if (targetPos) {
-                const carto = Cesium.Cartographic.fromCartesian(targetPos);
-                
-                // Disable interactions so Cesium doesn't magically cancel the flight
-                viewer.scene.screenSpaceCameraController.enableInputs = false;
-                
-                viewer.camera.flyTo({
-                  destination: Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, 5000),
-                  duration: 1.5,
-                  complete: () => { viewer.scene.screenSpaceCameraController.enableInputs = true; },
-                  cancel: () => { viewer.scene.screenSpaceCameraController.enableInputs = true; },
-                });
-              }
+              selectLocalFeature(viewer, picked.id);
+              return;
             }
+            // A native pick that belongs to somebody else is not empty space:
+            // the depth buffer is the honest answer about what the cursor is
+            // on, and a card drawn over a neighbouring marker must not steal
+            // that marker's click. Photoreal 3D tiles are why this cannot
+            // simply be `if (picked) return`: over a loaded tileset almost
+            // every on-globe pixel picks a tile feature, which no layer claims
+            // and nobody can select — treating that as occupied would leave
+            // every name on the globe inert again.
+            if (picked?.id?.__localLayerId) return; // a sibling local layer
+            const pickedId = picked ? resolvePickId(picked) : null;
+            if (pickedId && isOwnedByOtherLayer(id, pickedId)) return;
+
+            const labelled = pickOverlayLabelId(click.position, {
+              sourceId: id,
+              has: (recordId) => Boolean(findStemRecord(recordId)),
+              hitTest: overlayHost.hitTest || DEFAULT_OVERLAY_HOST.hitTest,
+            });
+            const record = labelled ? findStemRecord(labelled) : null;
+            if (record) selectLocalFeature(viewer, record.entity);
           }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
         }
       }

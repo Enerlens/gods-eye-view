@@ -19,7 +19,11 @@ import {
   getKeyholeFadeTuning,
   keyholeLabelAlphaFromGeometry,
 } from '../celestialRing.js';
-import { registerWorldOverlayPaintLane } from '../overlays/worldOverlay.js';
+import {
+  publishWorldOverlayLaneRect,
+  registerWorldOverlayPaintLane,
+} from '../overlays/worldOverlay.js';
+import { detectionLabelSourceId } from './overlayLabelPick.js';
 import {
   DETECTION_STYLE,
   DETECTION_THEME_MAP,
@@ -94,6 +98,8 @@ const THEME_MAP = DETECTION_THEME_MAP;
 const SPARSE_ZONE_FRACTION = 0.5;
 /** Solve cadence for membership/collision; accepted identities still reproject every frame. */
 const LABEL_SOLVE_INTERVAL_MS = 125;
+/** Faintest callout that still answers a click. See `_publishCalloutClickSurface`. */
+const CALLOUT_CLICK_MIN_ALPHA = 0.2;
 /** Alpha bands retain bracket batching while approximating a continuous radial fade. */
 const BRACKET_ALPHA_STEPS = 4;
 /** Stable per-layer candidate safety cap; independent of density and camera bearing. */
@@ -962,6 +968,9 @@ function _stashCallout(entry, acquireFade, keyhole) {
       leadFromX: 0, leadFromY: 0, leadToX: 0, leadToY: 0,
       plate: '', plateScale: 1, accent: '', label: '', primary: '', micro: '',
       font: FONT, microFont: MICRO_FONT, alpha: 1,
+      // Identity, carried only so the replay lane can publish this rectangle
+      // as a click surface. Nothing in the painting reads it.
+      layerId: '', sourceId: '',
     };
     _calloutPool[_calloutCount] = row;
   }
@@ -988,6 +997,8 @@ function _stashCallout(entry, acquireFade, keyhole) {
   row.font = FONT;
   row.microFont = MICRO_FONT;
   row.alpha = alpha;
+  row.layerId = candidate.layerId || '';
+  row.sourceId = candidate.sourceId == null ? '' : String(candidate.sourceId);
   _calloutCount++;
 }
 
@@ -1009,8 +1020,34 @@ function _paintCalloutLane(frame) {
   for (let i = 0; i < _calloutCount; i++) {
     const row = _calloutPool[i];
     paintDetectionCallout(ctx, row, row.alpha);
+    _publishCalloutClickSurface(row);
   }
   ctx.globalAlpha = 1;
+}
+
+/**
+ * The callsign is a click surface, not a caption.
+ *
+ * A contact's sprite is a few pixels of a target moving at 900 km/h; the
+ * callsign beside it is several times that area and reads like a button, so it
+ * is what people aim at — and until this published a rectangle, every one of
+ * those clicks fell through the `pointer-events: none` canvas onto the globe
+ * and DESELECTED the aircraft. Published from the replay lane rather than from
+ * the solve, because the replay is what runs on every painted frame: a hit
+ * rectangle lives exactly one frame, so it has to be re-stated as often as the
+ * text is re-drawn.
+ *
+ * Scoped per LAYER (`detect:flights`, `detect:military`) so a layer's click
+ * handler cannot resolve a sibling's callsign as one of its own contacts.
+ * @param {Object} row Pooled callout row already painted this frame.
+ */
+function _publishCalloutClickSurface(row) {
+  if (!row.layerId || !row.sourceId) return;
+  // Below this the plate is a ghost on its way out of the keyhole or out of the
+  // acquisition fade. A rectangle over text nobody can read is a trap, not a
+  // target — the click would land on an aircraft the operator cannot see.
+  if (row.alpha < CALLOUT_CLICK_MIN_ALPHA) return;
+  publishWorldOverlayLaneRect(detectionLabelSourceId(row.layerId), row.sourceId, row);
 }
 
 /**

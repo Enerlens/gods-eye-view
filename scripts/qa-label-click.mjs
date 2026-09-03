@@ -4,23 +4,29 @@
  *
  * The unit tests pin the seam (`overlayLabelPick.test.mjs`) and each layer's
  * resolution order, but neither can prove the thing that was actually broken:
- * the ambient labels are painted onto a `pointer-events: none` canvas stacked
- * over the Cesium viewport, so until they published a hit rectangle, a click
- * aimed at a station's name reached the terrain behind it and DISMISSED the
- * selection. Only a real scene can show a rectangle being published where the
- * text is, and a real pointer event landing inside it selecting the object.
+ * the names are painted onto a `pointer-events: none` canvas stacked over the
+ * Cesium viewport, so until they published a hit rectangle, a click aimed at a
+ * station's name reached the terrain behind it and DISMISSED the selection.
+ * Only a real scene can show a rectangle being published where the text is, and
+ * a real pointer event landing inside it selecting the object.
  *
  * What it proves, per layer:
- *   i.   the layer's ambient labels publish hit rectangles at all
- *   ii.  the host resolves a point inside a painted label back to that entry
- *   iii. a real pointer click at the label's CENTRE — nowhere near the dot —
- *        makes the layer paint its selected card
- *   iv.  a click on empty space still clears that card (the regression this
- *        change could plausibly have caused)
+ *   i.   the layer's names publish hit rectangles at all
+ *   ii.  the host resolves a point inside a painted name back to that entry
+ *   iii. a real pointer click at the name's CENTRE — nowhere near the dot —
+ *        selects the object
+ *   iv.  a click on empty space still clears that selection, for the layers
+ *        that have ever had a deselect branch
  *
- * Layers covered live: Hub'Eau (the layer the request came from) and Réseau
- * gaz, which is the same mechanism through a different id convention
- * (`gas-fr-label:<id>` against a bare `hubeau:<code>`).
+ * Layers covered live, and why each one is here:
+ *   - Hub'Eau (the layer the request came from) and Réseau gaz — two ambient
+ *     LABEL entries through different id conventions (`gas-fr-label:<id>`
+ *     against a bare `hubeau:<code>`).
+ *   - Vols — a DETECT callsign, which is not an entry at all: the detection
+ *     lane solves its own placement and publishes the rectangle itself, under
+ *     its own per-layer source id.
+ *   - Aéroports — an ambient CARD, the biggest of the four targets, on a layer
+ *     whose click also frames the feature.
  *
  * Run: node scripts/qa-label-click.mjs --url http://localhost:4173
  */
@@ -54,23 +60,64 @@ const chrome = chromeCandidates.find((candidate) => {
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 /**
+ * How to read "something is selected" for one layer. Each returns a value that
+ * changes on selection and returns to `null` on deselection, so the same three
+ * checks fit a painted card, a followed aircraft and a picked entity alike.
+ */
+const SELECTION_PROBES = {
+  paintedSource: (source) => (page) => page.evaluate((id) => {
+    const painted = window.__gevWorldOverlay?.getDiagnostics?.()?.paintedBySource || {};
+    return painted[id] > 0 ? `${painted[id]} painted` : null;
+  }, source),
+  trackedFlight: () => (page) => page.evaluate(() => {
+    const layer = window.__godsEyeView?.dataManager?.layers?.get('flights')?.module;
+    return layer?.getTrackedInfo?.()?.icao24 || null;
+  }),
+  selectedEntity: () => (page) => page.evaluate(
+    () => window.__godsEyeView?.viewer?.selectedEntity?.id ?? null,
+  ),
+};
+
+/**
  * One camera per layer, chosen so the layer's own viewport gate is satisfied:
- * Hub'Eau refuses a box wider than 20°, and the gas register is national.
+ * Hub'Eau refuses a box wider than 20°, the gas register is national, and the
+ * two aviation layers want a busy sky over Paris.
  */
 const SUBJECTS = [
   {
     layerId: 'hubeau-hydro',
     name: "Hub'Eau Gauges",
     labelSource: 'hubeau-hydro',
-    selectedSource: 'hubeau-hydro-selected',
     view: { lon: 0.6, lat: 44.0, height: 420_000 },
+    selection: SELECTION_PROBES.paintedSource('hubeau-hydro-selected'),
+    clearsOnEmpty: true,
   },
   {
     layerId: 'gas-fr',
     name: 'Réseau gaz',
     labelSource: 'gas-fr',
-    selectedSource: 'gas-fr-selected',
     view: { lon: 2.6, lat: 46.6, height: 1_600_000 },
+    selection: SELECTION_PROBES.paintedSource('gas-fr-selected'),
+    clearsOnEmpty: true,
+  },
+  {
+    layerId: 'flights',
+    name: 'Vols — la callsign DETECT',
+    // Not an entry source: `detect:<layerId>`, published by the detection lane.
+    labelSource: 'detect:flights',
+    needsDetect: true,
+    view: { lon: 2.4, lat: 48.85, height: 600_000 },
+    selection: SELECTION_PROBES.trackedFlight(),
+    clearsOnEmpty: true,
+  },
+  {
+    layerId: 'local-airports',
+    name: 'Aéroports — le nom sur le globe',
+    labelSource: 'local-airports',
+    view: { lon: 2.55, lat: 48.9, height: 300_000 },
+    selection: SELECTION_PROBES.selectedEntity(),
+    // This layer never had a deselect branch: clicking nothing does nothing.
+    clearsOnEmpty: false,
   },
 ];
 
@@ -109,74 +156,28 @@ async function setView(page, lon, lat, height) {
 }
 
 /**
- * Where the host actually painted this source's labels, and whether it
- * published a hit rectangle for each. Reads the same facade the app's own
- * diagnostics use — the text is on a canvas and is never scraped.
+ * Where the host says this source's names are, and what it answers at the
+ * centre of each. Reads the same facade the app's own diagnostics use — the
+ * text is on a canvas and is never scraped, and the ids come from the host
+ * rather than being guessed from the scene.
  */
 function paintedLabelRects(page, sourceId) {
   return page.evaluate((source) => {
     const overlay = window.__gevWorldOverlay;
-    const diagnostics = overlay?.getDiagnostics?.() || {};
-    const painted = diagnostics.paintedBySource?.[source] || 0;
-    // The host indexes rectangles by entry id, so the entry ids come from the
-    // layer's own published cohort rather than from a private host structure.
-    const rects = [];
-    for (const id of window.__gevQaLabelIds?.[source] || []) {
-      const rect = overlay?.getPaintRect?.(source, id);
-      if (!rect) continue;
+    const rects = (overlay?.hitRects?.({ sourceId: source }) || []).map((rect) => {
       const cx = Math.round(rect.x + rect.w / 2);
       const cy = Math.round(rect.y + rect.h / 2);
-      rects.push({
-        id,
-        x: rect.x,
-        y: rect.y,
-        w: rect.w,
-        h: rect.h,
+      return {
+        id: rect.entryId,
+        ...rect,
         cx,
         cy,
         // What the host says is under the centre of the painted text.
         hit: overlay?.hitTest?.(cx, cy, { sourceId: source })?.entryId || null,
-      });
-    }
-    return { painted, hitRectCount: diagnostics.hitRectCount || 0, rects };
+      };
+    });
+    return { hitRectCount: overlay?.getDiagnostics?.()?.hitRectCount || 0, rects };
   }, sourceId);
-}
-
-/** Give the page the bag `readEntryIds` fills before any app code runs. */
-async function captureEntryIds(page) {
-  await page.evaluateOnNewDocument(() => {
-    window.__gevQaLabelIds = {};
-  });
-}
-
-/**
- * Candidate entry ids, derived from the live scene rather than guessed.
- *
- * A harness cannot know which stations Hub'Eau is reporting this minute, so the
- * ids come off the drawn point primitives and the host is asked which of them
- * it actually painted a label for. Anything it did not paint drops out.
- */
-function readEntryIds(page, sourceId, layerId) {
-  return page.evaluate((source, layer) => {
-    window.__gevQaLabelIds = window.__gevQaLabelIds || {};
-    const scene = window.__godsEyeView?.viewer?.scene;
-    const ids = new Set();
-    // Point primitives carry the same identity the ambient label is keyed on
-    // for Hub'Eau (`hubeau:<code>`); the gas layer prefixes its labels, so both
-    // spellings are offered and the host answers only for the one it painted.
-    for (let i = 0; i < (scene?.primitives?.length || 0); i += 1) {
-      const primitive = scene.primitives.get(i);
-      if (typeof primitive?.get !== 'function' || !(primitive.length > 0)) continue;
-      for (let j = 0; j < primitive.length; j += 1) {
-        const id = primitive.get(j)?.id;
-        if (typeof id !== 'string') continue;
-        if (layer === 'hubeau-hydro' && id.startsWith('hubeau:')) ids.add(id);
-        if (layer === 'gas-fr') ids.add(`gas-fr-label:${id}`);
-      }
-    }
-    window.__gevQaLabelIds[source] = [...ids];
-    return window.__gevQaLabelIds[source].length;
-  }, sourceId, layerId);
 }
 
 /**
@@ -199,8 +200,56 @@ async function pointerClick(page, x, y) {
   }, x, y);
 }
 
-function paintedBySource(page) {
-  return page.evaluate(() => window.__gevWorldOverlay?.getDiagnostics?.()?.paintedBySource || {});
+/**
+ * Click a pixel that is genuinely nothing — no primitive under it and no
+ * published click surface over it.
+ *
+ * Finding the pixel and clicking it happen in ONE page evaluation, and that is
+ * the point: hit rectangles are rebuilt every painted frame, so a corner that
+ * was empty when the harness asked can be under a callsign by the time it
+ * clicks. Nothing renders between the emptiness test and the dispatch here, so
+ * "empty" is true of the click and not merely of a moment before it. Returns
+ * what blocked each rejected candidate so a failure names the obstacle instead
+ * of leaving it to be guessed.
+ */
+function clickEmptyPixel(page, candidates) {
+  return page.evaluate((points) => {
+    const gev = window.__godsEyeView;
+    const overlay = window.__gevWorldOverlay;
+    const canvas = gev?.viewer?.scene?.canvas;
+    const blocked = [];
+    for (const [x, y] of points) {
+      let picked = null;
+      try { picked = gev?.viewer?.scene?.pick({ x, y }); } catch { /* mid-teardown */ }
+      const hit = overlay?.hitTest?.(x, y);
+      if (picked || hit) {
+        blocked.push({
+          x,
+          y,
+          picked: picked ? String(picked.id ?? picked.primitive?.id ?? 'primitive') : null,
+          hit: hit ? `${hit.sourceId}/${hit.entryId}` : null,
+        });
+        continue;
+      }
+      if (!canvas) return { point: null, blocked };
+      const box = canvas.getBoundingClientRect();
+      const common = {
+        bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: 'mouse',
+        isPrimary: true, button: 0, buttons: 1,
+        clientX: box.left + x, clientY: box.top + y,
+      };
+      canvas.dispatchEvent(new PointerEvent('pointerdown', common));
+      canvas.dispatchEvent(new PointerEvent('pointerup', { ...common, buttons: 0 }));
+      return { point: { x, y }, blocked };
+    }
+    return { point: null, blocked };
+  }, candidates);
+}
+
+async function setDetection(page, enabled) {
+  await page.evaluate((on) => {
+    window.__godsEyeView?.styleManager?.setDetection?.({ enabled: on, mode: 'panoptic' });
+  }, enabled);
 }
 
 async function shoot(page, name) {
@@ -219,14 +268,13 @@ async function main() {
 
   try {
     const page = await newQaPage(browser);
-    await captureEntryIds(page);
     console.log(`[qa] booting ${APP_URL}`);
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
     await page.waitForFunction(
       () => window.__godsEyeView?.viewer && window.__godsEyeView?.dataManager,
       { timeout: 60000, polling: 200 },
     );
-    await page.waitForFunction(() => Boolean(window.__gevWorldOverlay?.getPaintRect), {
+    await page.waitForFunction(() => Boolean(window.__gevWorldOverlay?.hitRects), {
       timeout: 30000,
       polling: 200,
     });
@@ -236,51 +284,70 @@ async function main() {
       console.log(`\n[qa] ${subject.name} (${subject.layerId})`);
       await setView(page, subject.view.lon, subject.view.lat, subject.view.height);
       await page.evaluate((id) => window.__godsEyeView.dataManager.setEnabled(id, true), subject.layerId);
+      if (subject.needsDetect) await setDetection(page, true);
 
-      // ── i. labels reach the screen AND publish a hit rectangle ───────────
-      let probe = { painted: 0, hitRectCount: 0, rects: [] };
+      // ── i/ii. the names publish hit rectangles, and each resolves at its
+      //         own centre ────────────────────────────────────────────────────
+      let probe = { hitRectCount: 0, rects: [] };
       for (let attempt = 0; attempt < 40; attempt += 1) {
         await pump(page, 3, 70);
         await sleep(500);
-        await readEntryIds(page, subject.labelSource, subject.layerId);
         probe = await paintedLabelRects(page, subject.labelSource);
         if (probe.rects.some((rect) => rect.hit)) break;
       }
       const resolved = probe.rects.filter((rect) => rect.hit === rect.id);
-      check(`${subject.name}: ambient labels painted`, probe.painted > 0, `${probe.painted} painted`);
       check(
-        `${subject.name}: the host publishes hit rectangles for them`,
+        `${subject.name}: the host publishes hit rectangles for the names`,
+        probe.rects.length > 0,
+        `${probe.rects.length} rectangles under ${subject.labelSource}`,
+      );
+      check(
+        `${subject.name}: each resolves back to its own record`,
         resolved.length > 0,
         `${resolved.length} of ${probe.rects.length} probed entries resolve at their own centre`,
       );
       if (!resolved.length) {
         await shoot(page, `${subject.layerId}-00-no-label.png`);
+        if (subject.needsDetect) await setDetection(page, false);
         continue;
       }
 
-      // ── ii/iii. a click at the label's centre selects the object ─────────
+      // ── iii. a click at the name's centre selects the object ─────────────
       const target = resolved[0];
-      const before = (await paintedBySource(page))[subject.selectedSource] || 0;
+      const before = await subject.selection(page);
       await pointerClick(page, target.cx, target.cy);
       await pump(page, 6, 70);
-      const afterClick = (await paintedBySource(page))[subject.selectedSource] || 0;
+      const afterClick = await subject.selection(page);
       check(
-        `${subject.name}: clicking the NAME opens the card`,
-        afterClick > before,
-        `${subject.selectedSource} painted ${before} → ${afterClick} at (${target.cx}, ${target.cy}) for ${target.id}`,
+        `${subject.name}: clicking the NAME selects the object`,
+        afterClick !== null && afterClick !== before,
+        `selection ${JSON.stringify(before)} → ${JSON.stringify(afterClick)} at (${target.cx}, ${target.cy}) for ${target.id}`,
       );
       await shoot(page, `${subject.layerId}-01-label-click.png`);
 
-      // ── iv. empty space still clears it ──────────────────────────────────
-      await pointerClick(page, 40, 960);
-      await pump(page, 6, 70);
-      const afterEmpty = (await paintedBySource(page))[subject.selectedSource] || 0;
-      check(
-        `${subject.name}: a click on nothing still clears the card`,
-        afterEmpty === 0,
-        `${subject.selectedSource} still painting ${afterEmpty}`,
-      );
+      // ── iv. empty space still clears it, where it always did ─────────────
+      if (subject.clearsOnEmpty) {
+        const empty = await clickEmptyPixel(page, [
+          [40, 960], [1560, 960], [40, 40], [1560, 40], [800, 985], [20, 500],
+        ]);
+        if (!check(
+          `${subject.name}: the viewport still has a pixel that is nothing`,
+          empty.point,
+          `every candidate was occupied: ${JSON.stringify(empty.blocked)}`,
+        )) {
+          await shoot(page, `${subject.layerId}-02-no-empty-pixel.png`);
+        } else {
+          await pump(page, 6, 70);
+          const afterEmpty = await subject.selection(page);
+          check(
+            `${subject.name}: a click on nothing still clears the selection`,
+            afterEmpty === null,
+            `selection still ${JSON.stringify(afterEmpty)} after (${empty.point.x}, ${empty.point.y})`,
+          );
+        }
+      }
 
+      if (subject.needsDetect) await setDetection(page, false);
       await page.evaluate((id) => window.__godsEyeView.dataManager.setEnabled(id, false), subject.layerId);
       await pump(page, 4, 60);
     }

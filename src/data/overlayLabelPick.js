@@ -51,7 +51,28 @@ import { hitTestWorldOverlay } from '../overlays/worldOverlay.js';
  * record id (hubeauHydrometry, satellites, telegeographySubmarineCables).
  * `prefix` spans both: pass the prefix the layer uses, or `''` when the entry
  * id IS the record id.
+ *
+ * ── Detection callouts ──────────────────────────────────────────────────────
+ * The DETECT overlay is not an entry source: it solves its own placement and
+ * paints through a host lane, so its callsigns publish their hit rectangles
+ * directly (`publishWorldOverlayLaneRect`) under a source id of their own —
+ * {@link detectionLabelSourceId}, one per contributing layer, with the record
+ * id bare. Per-layer is the load-bearing part: aircraft and military share the
+ * lane, and a click handler that hit-tested the lane as a whole would resolve
+ * its neighbour's callsign as its own.
  */
+
+/** Source-id prefix under which the DETECT lane publishes its click surfaces. */
+export const DETECTION_LABEL_SOURCE_PREFIX = 'detect:';
+
+/**
+ * Hit-test scope for one layer's detection callouts.
+ * @param {string} layerId Data-layer id, as the detection lane sees it.
+ * @returns {string} World-overlay source id to pass to {@link pickOverlayLabelId}.
+ */
+export function detectionLabelSourceId(layerId) {
+  return `${DETECTION_LABEL_SOURCE_PREFIX}${String(layerId ?? '')}`;
+}
 
 /**
  * Strip an ambient-label entry id down to the record id it names.

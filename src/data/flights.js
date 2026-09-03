@@ -22,6 +22,7 @@
 import * as Cesium from 'cesium';
 import { aircraftIncludedInNearby } from './aircraftNearbyPolicy.js';
 import { registerPickOwner, unregisterPickOwner, isOwnedByOtherLayer, resolvePickId } from './pickRegistry.js';
+import { detectionLabelSourceId, pickOverlayLabelId } from './overlayLabelPick.js';
 import {
   registerSpriteCollection,
   restoreSpriteOrder,
@@ -281,6 +282,15 @@ const BACKOFF_INTERVAL = 45000; // 45s on rate limit
 const ERROR_BACKOFF_INTERVAL = 20000; // transient error retry
 /** @constant {number} POSITION_HISTORY_LIMIT - Max position samples kept per aircraft for dead reckoning */
 const POSITION_HISTORY_LIMIT = 5; // keep last N positions per aircraft
+/**
+ * Hit-test scope for this layer's DETECT callsigns.
+ *
+ * The callsign is not an overlay entry: the detection lane solves its own
+ * placement and publishes the rectangle itself, keyed by icao24 under this
+ * per-layer source id. Military aircraft share the same lane under their own,
+ * which is what keeps a click on `RRR7218` from resolving here.
+ */
+const FLIGHTS_DETECT_LABEL_SOURCE_ID = detectionLabelSourceId('flights');
 
 // ---------------------------------------------------------------------------
 // Module-level state: billboard collection and per-aircraft lookup maps
@@ -5492,6 +5502,23 @@ function _installClickHandler(viewer) {
     if (picked) {
       const pickedId = resolvePickId(picked);
       if (pickedId && isOwnedByOtherLayer('flights', pickedId)) return;
+    }
+
+    // The DETECT callsign, which the depth buffer knows nothing about. The
+    // sprite is a few pixels of a target at 900 km/h and the callsign beside it
+    // is the only thing on screen anyone can reliably hit — but it is resolved
+    // AFTER the native pick, so a contact under the cursor still wins its own
+    // click rather than losing it to a neighbour's label. `has` re-checks the
+    // live billboard map because a rectangle outlives its contact by a frame.
+    const labelled = pickOverlayLabelId(click.position, {
+      sourceId: FLIGHTS_DETECT_LABEL_SOURCE_ID,
+      has: (icao24) => _billboards.has(icao24),
+    });
+    if (labelled !== null) {
+      if (labelled === _trackedIcao) return;
+      _cancelPendingTrackingRestore();
+      _trackFlight(labelled, { origin: 'user' });
+      return;
     }
 
     // Clicked empty space — deselect only for a clean, short click. A slow
