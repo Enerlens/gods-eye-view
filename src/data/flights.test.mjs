@@ -329,6 +329,24 @@ test('phase 3a: a tail from the feed reaches the label chain, and is not called 
   assert.equal(record.aircraftClass, 'light');
 });
 
+test('phase 3a: a class learned during a fallback window survives the swing back to OpenSky', async () => {
+  // This is what makes the fix pay on BOTH halves of the source cycle. A
+  // keyless install alternates: the proxy serves OpenSky until its own cached
+  // snapshot passes the 120 s staleness bound, then serves adsb.lol until the
+  // credit-governed 300 s TTL expires. Measured 2026-09-03 on this proxy:
+  // roughly 2 min OpenSky, then 3 min adsb.lol, on repeat.
+  //
+  // An OpenSky vector carries no designator, so without stickiness every swing
+  // back would throw away everything the fallback window taught the layer and
+  // the fleet would flicker between real silhouettes and the placeholder.
+  const { record } = await pollWithVector('a1b2c3', (nowSec) => [
+    'a1b2c3', 'AFR123 ', 'France', nowSec, nowSec,
+    -97.6, 30.3, 10_668, false, 250, 95, 5, null, 10_700,
+    null, null, null, null,
+  ], { ...UNTYPED_META, typeCode: 'EC35', klass: 'helicopter' });
+  assert.equal(record.aircraftClass, 'helicopter', 'the OpenSky poll did not blank the learned type');
+});
+
 test('phase 3a: an adsbdb answer already in hand outranks the feed type code', async () => {
   // Precedence, not stickiness-in-general: adsbdb is the only source that also
   // carries the human-readable typeName the cards print, so a resolved value
