@@ -1450,7 +1450,10 @@ test('buildSelectedVesselCard: destination line + STALE marker; placeholders for
   assert.deepEqual(card.details, [
     'TANKER · --KT · --°',
     '→ ROTTERDAM',
-    'MMSI 353136000 · POS: LIVE · STALE',
+    // A record with no usable position timestamp says so. It used to print
+    // "POS: LIVE" — the absence of an instant rendered as the claim of maximum
+    // freshness, in the slot whose only job is to date the fix.
+    'MMSI 353136000 · POS: TIME UNKNOWN · STALE',
   ]);
 });
 

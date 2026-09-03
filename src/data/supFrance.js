@@ -48,6 +48,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { CHOROPLETH_FILL_ALPHA } from './choroplethAlpha.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
@@ -148,8 +149,20 @@ const KIND_COLORS = Object.freeze({
 const DEPARTEMENT_COLORS = Object.freeze([
   '#241452', '#35207d', '#4b2fae', '#6544dd', '#8e73f0', '#bfaefa',
 ]);
-/** Fill alpha per bin — density reads as weight as well as hue. */
-const DEPARTEMENT_ALPHA = Object.freeze([0.34, 0.40, 0.46, 0.53, 0.60, 0.68]);
+/**
+ * Fill alpha per bin — DESCENDING, and shared with the three sibling count
+ * choropleths so one edit cannot desynchronise them.
+ *
+ * It used to ascend, on the reasoning that "density reads as weight as well as
+ * hue". That is true over a constant backdrop and false over live imagery: the
+ * darkest swatch was also the most transparent, so on a light city the ground
+ * washed it out and the composited lightness ran 67.4 · 65.9 · 65.3 · 65.8 ·
+ * 69.6 · 78.0 — a U, with class 1 reading lighter than classes 2 to 4. See
+ * `choroplethAlpha.js` for the measurements and the search that produced these
+ * numbers, and `choroplethAlpha.test.mjs`, which recomputes the compositing
+ * over eight backgrounds and fails on any inversion.
+ */
+const DEPARTEMENT_ALPHA = CHOROPLETH_FILL_ALPHA;
 const SELECTED_COLOR = '#00ffff';
 /**
  * White, at 0.55 — where `schools-fr` outlines in black at 0.35. The outline

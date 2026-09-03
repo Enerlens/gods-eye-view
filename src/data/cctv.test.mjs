@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import * as Cesium from 'cesium';
 import cctvLayer, {
   CCTV_PROJECTION_OVERLAY_SOURCE_OPTIONS,
+  headingIsUnsurveyed,
   _createCctvProjectionPlaneForTest,
   _extractPickedCameraIdForTest,
   _updateCctvProjectionPlaneForTest,
@@ -1318,4 +1319,30 @@ test('frameRefreshMsFor: an absurd declared cadence cannot freeze a feed', () =>
   assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 86_400_000 }, true), 5 * 60_000);
   assert.equal(frameRefreshMsFor({ upstreamCadenceMs: -5 }, true), 10_000);
   assert.equal(frameRefreshMsFor({ upstreamCadenceMs: 0 }, true), 10_000);
+});
+
+test('an unsurveyed camera bearing is a distinct sign, not the same cone', () => {
+  // CARTOGRAPHIE A1. `osmCameras.js` computes headingConfidence carefully —
+  // a multi-valued "270;170" is demoted to `medium` because one frustum cannot
+  // show two facings — and `low` means NEITHER direction tag resolved, so the
+  // azimuth drawn is `headingFromId()`, a hash of the identifier. Until this
+  // was read, a surveyed bearing and a placeholder drew the identical cone.
+  assert.equal(headingIsUnsurveyed({ headingConfidence: 'low' }), true);
+  assert.equal(headingIsUnsurveyed({ headingConfidence: 'medium' }), false);
+  assert.equal(headingIsUnsurveyed({ headingConfidence: 'high' }), false);
+  // A record that never declared one is not assumed surveyed... nor assumed
+  // placeholder: the field is only trusted when it says so.
+  assert.equal(headingIsUnsurveyed({}), false);
+  assert.equal(headingIsUnsurveyed(null), false);
+});
+
+test('the camera key reaches the map legend, not only the collapsed panel', () => {
+  // The CAL badge and the heading confidence were both composed into
+  // `#cctv-summary`, inside `#cctv-panel`, which ships collapsed and is hidden
+  // by the same CSS rule that hid every layer legend. `getRowControls()` is the
+  // seam the manager reads for the on-map block.
+  assert.equal(typeof cctvLayer.getRowControls, 'function');
+  // With no catalog loaded the layer stays quiet rather than publishing an
+  // empty key.
+  assert.equal(cctvLayer.getRowControls(), null);
 });

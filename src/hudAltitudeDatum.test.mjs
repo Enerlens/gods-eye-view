@@ -119,7 +119,7 @@ const SFO_ELLIPSOIDAL_M = -15;
  */
 function installHudEnvironment() {
   const elements = new Map(
-    ['hud-alt', 'hud-summary', 'hud-mgrs', 'hud-latlon', 'hud-bottom-line', 'hud-gsd', 'hud-coll', 'hud-ona', 'hud-mode']
+    ['hud-alt', 'hud-summary', 'hud-mgrs', 'hud-latlon', 'hud-bottom-line', 'hud-coll', 'hud-ona', 'hud-mode']
       .map((id) => [id, { textContent: '' }]),
   );
   const previousDocument = globalThis.document;
@@ -218,19 +218,40 @@ test('the summary ALT tag agrees with the corner readout', () => {
 });
 
 test('the sensor model keeps the ellipsoidal height it was tuned against', () => {
-  // GSD/NIIRS and the STREET/CITY/METRO view band are camera-geometry math,
-  // not readouts. Re-datuming them would silently move their thresholds, so
-  // altM stays and altMslM is purely additive.
-  assert.equal(
-    has(/const gsd = Math\.max\(0\.01, altM \* 0\.000375\);/),
-    true,
-    'GSD must keep reading the raw camera height',
-  );
+  // The STREET/CITY/METRO view band is camera-geometry math, not a readout.
+  // Re-datuming it would silently move its thresholds, so altM stays and
+  // altMslM is purely additive.
   assert.equal(
     has(/const band = this\._viewBand\(m\.altM\);/),
     true,
     'the view band must keep reading the raw camera height',
   );
+});
+
+test('no invented ground sample distance is printed beside the real coordinates', () => {
+  // CARTOGRAPHIE F2. `altM * 0.000375` ignored the field of view, the canvas
+  // height and the pitch, then printed to two decimals under the label "GSD",
+  // one line above the true MSL altitude and one below the authentic MGRS. At
+  // the opening pitch of -30 deg the true metres-per-pixel varies ~10x across
+  // one frame, so the number was not right anywhere in particular.
+  // Asserted against CODE, not prose — the removal rationale above the deleted
+  // block deliberately names the constant it retired.
+  assert.equal(has(/const gsd = /), false, 'the magic GSD constant must not return');
+  assert.equal(has(/const niirs = /), false, 'no NIIRS rating may be derived from it');
+  assert.equal(has(/id="hud-gsd"/), false, 'the GSD readout element must be gone');
+  assert.equal(has(/getElementById\('hud-gsd'\)/), false, 'nothing may write a GSD readout');
+});
+
+test('the invented mission identifiers are typographically separated from the measured ones', () => {
+  // CARTOGRAPHIE A1. KH11/OPS/ORB/PASS are set dressing; MGRS, lat, lon and
+  // ALT are instruments. They may share a screen, not a voice.
+  for (const anchor of [/hud-top-bar-center hud-simulated/, /hud-system hud-simulated/,
+    /hud-orbital hud-simulated/, /hud-right-edge hud-simulated/]) {
+    assert.equal(has(anchor), true, `simulated readout must carry .hud-simulated: ${anchor}`);
+  }
+  assert.equal(has(/SIM \$\{this\._missionId\}/), true, 'the mission id must be prefixed SIM');
+  assert.equal(has(/SIM ORB:/), true, 'the orbit/pass line must be prefixed SIM');
+  assert.equal(has(/SIM BAND: PAN/), true, 'the band/bits/level strip must be prefixed SIM');
 });
 
 // ── The cold → resolved transition, driven live ─────────────────────────────

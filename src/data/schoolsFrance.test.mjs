@@ -98,8 +98,11 @@ test('a département with nothing in it gets no fill at all', () => {
   assert.equal(schoolsDepartementAlpha(-1), 0);
 });
 
-test('the ramp gets heavier as well as lighter, and is clamped at both ends', () => {
-  assert.ok(schoolsDepartementAlpha(5) > schoolsDepartementAlpha(0));
+test('the ramp keeps its lightness ordering over any basemap, and is clamped at both ends', () => {
+  // Alpha DESCENDS: the darkest swatch is the one a light city washes out, so
+  // it carries the most opacity. See choroplethAlpha.js — the old ascending
+  // ladder inverted the composited lightness over a pale urban background.
+  assert.ok(schoolsDepartementAlpha(0) > schoolsDepartementAlpha(5));
   assert.equal(schoolsDepartementColor(99), schoolsDepartementColor(5));
 });
 

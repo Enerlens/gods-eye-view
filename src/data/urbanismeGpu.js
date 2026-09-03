@@ -749,6 +749,52 @@ const urbanismeGpuLayer = createAddressScanLayer({
   // — a sale, a diagnostic, a hazard record — and those have addresses.
   groundCard: gpuGroundCard,
 
+  /**
+   * The key to the ground wash.
+   *
+   * This layer paints eight zoning families in eight hues, plus a dashed red
+   * servitude outline with no fill, and carried no legend at all — hue was
+   * doing all the work with nothing to decode it. Tallied over the zones
+   * ACTUALLY DRAWN in this scan, in descending order, so the key never lists a
+   * family that is not on screen.
+   *
+   * `surfaceFill` marks it as a ground-classified area wash, so the manager
+   * adds the shared note about the drape over the photorealistic mesh.
+   * @param {{zones?: Array<object>, servitudes?: Array<object>}} payload Drawn scan payload.
+   * @returns {{legend: Array<object>, surfaceFill: boolean}}
+   */
+  rowControls(payload) {
+    const byKind = new Map();
+    for (const zone of payload.zones || []) {
+      const kind = String(zone?.kind || '').toUpperCase() || '?';
+      byKind.set(kind, (byKind.get(kind) || 0) + 1);
+    }
+    const legend = [...byKind.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([kind, count]) => ({
+        label: kind === '?' ? 'Famille non publiée' : kind,
+        color: zoneColorCss(kind),
+        count,
+        // The national grammar, which IS standard across communes — the one
+        // part of a PLU that can be spelled out without inventing.
+        blurb: zoneFamilySentence(kind)
+          || 'Le registre publie une lettre que cette grammaire ne connaît pas — '
+            + 'la zone est dessinée, pas expliquée.',
+      }));
+    const servitudes = (payload.servitudes || []).length;
+    if (servitudes) {
+      legend.push({
+        label: 'Servitude d’utilité publique',
+        color: SERVITUDE_COLOR,
+        count: servitudes,
+        blurb: 'Contour tireté, sans aplat : une seule enveloppe mesurée fait '
+          + '759 polygones sur des kilomètres, et la remplir teinterait la vue '
+          + 'au lieu d’une parcelle.',
+      });
+    }
+    return { legend, surfaceFill: true };
+  },
+
   render({ payload, dataSource, point, viewer }) {
     const classificationType = gpuClassificationTypeForScene(viewer?.scene);
     let drawn = 0;

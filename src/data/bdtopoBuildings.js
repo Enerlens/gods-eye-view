@@ -14,6 +14,12 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import {
+  getActiveBuildingTheme,
+  onBuildingThemeChange,
+  resolveBuildingThemePaint,
+  unknownBuildingCss,
+} from './buildingTheme.js';
 import { boxKey, snapBoxOutward } from './viewportBox.js';
 import { applyViewGate } from './viewGate.js';
 import {
@@ -93,6 +99,17 @@ import {
  *   the middle of Marseille is otherwise indistinguishable from the edge of the
  *   data.
  *
+ * • **The volumes are a support, not only a subject.** `buildingTheme.js` lets
+ *   one other layer at a time paint these instances — DPE, €/m², the state of a
+ *   permit — through `applyBuildingTheme()`, which rewrites the per-instance
+ *   colours of the batch in place instead of rebuilding a 14 000-volume
+ *   primitive. A volume the theme has no point for is NOT left looking graded:
+ *   it keeps its usage hue washed to near-grey (`unknownBuildingCss`), which
+ *   measures ΔE76 36.5 from the nearest class of any palette the themes bring —
+ *   a just-noticeable difference is 2.3 — and the row states how many volumes
+ *   are painted and how many are not. Nothing about the no-theme path changes:
+ *   with no theme registered the colour is the same byte for byte.
+ *
  * • **Google 3D already contains these buildings.** On the photoreal stack the
  *   volumes are hidden rather than double-drawn, and the status says so instead
  *   of leaving the operator to wonder why the layer looks broken.
@@ -147,6 +164,15 @@ const _groundScratch = new Cesium.Cartographic();
 const SELECTED_COLOR = '#00ffff';
 
 /**
+ * A repaint asked for while the batch is still tessellating writes into nothing.
+ * Cesium's worker pool takes tens of milliseconds on a normal payload, so four
+ * tries at 200 ms cover it without turning a genuinely broken primitive into a
+ * timer that never stops.
+ */
+const THEME_RETRY_MS = 200;
+const THEME_RETRY_LIMIT = 4;
+
+/**
  * Where BD TOPO exists at all. Outside these boxes every tile request is a
  * guaranteed 404, and 64 guaranteed 404s per camera move is a rude thing to do
  * to a public service that asks for nothing in return.
@@ -188,6 +214,10 @@ let _mapStackListener = null;
 let _photoreal = false;
 let _coldFloorTimer = null;
 let _coldFloorKey = null;
+let _themePaint = null;
+let _themeUnsubscribe = null;
+let _themeRetryTimer = null;
+let _themeRetries = 0;
 
 /**
  * The viewport this layer will ask for, or null when there is nothing to ask.
@@ -576,6 +606,8 @@ function clearPrimitive() {
   _primitive = null;
   _records = new Map();
   _selectedId = null;
+  _themePaint = null;
+  clearThemeRetry();
 }
 
 /** Build one batched primitive for the whole payload. */
@@ -583,9 +615,15 @@ function drawRecords(records) {
   clearPrimitive();
   if (!records.length || !_viewer) return;
 
+  for (const record of records) _records.set(record.id, record);
+  // The join needs every footprint of the payload before the FIRST colour is
+  // computed, so the theme is resolved between filling the map and building the
+  // instances. With no theme registered this is one Map lookup that returns
+  // null, and `volumeColor` takes exactly the path it took before.
+  refreshThemePaint();
+
   const instances = [];
   for (const record of records) {
-    _records.set(record.id, record);
     instances.push(new Cesium.GeometryInstance({
       id: record.id,
       geometry: new Cesium.PolygonGeometry({
@@ -625,26 +663,131 @@ function drawRecords(records) {
 }
 
 /**
- * A volume's colour: its usage band, darkened towards the ground.
+ * A volume's colour: its usage band, darkened towards the ground — unless a
+ * theme is painting, in which case the volume is the theme's canvas.
  *
  * Opaque, always — an alpha below 1 moves the geometry into Cesium's
  * translucent pass, which does not write depth, and a city then renders as one
  * mass with everything showing through everything.
  *
- * The brightness carries HEIGHT because the usage does not carry enough: 83-87%
- * of buildings on a French urban tile are `Résidentiel` or `Indifférencié`, so
- * two neighbours almost always share a hue, and with no outline between them a
- * street front reads as a single polygon. Height varies between immediate
- * neighbours and is the channel that separates them.
+ * WITHOUT A THEME the brightness carries HEIGHT, because the usage does not
+ * carry enough: 83-87% of buildings on a French urban tile are `Résidentiel` or
+ * `Indifférencié`, so two neighbours almost always share a hue, and with no
+ * outline between them a street front reads as a single polygon. Height varies
+ * between immediate neighbours and is the channel that separates them.
+ *
+ * WITH A THEME the channel is re-assigned rather than shared (A3):
+ *
+ * • a JOINED volume takes the theme's colour flat, with no height darkening at
+ *   all — otherwise a tall D and a short C land on the same pixel value and the
+ *   legend is wrong for both;
+ * • an UNJOINED volume keeps the height shading but on the washed usage colour,
+ *   because it has left the theme's language and the street still has to read as
+ *   a street. Washed means near-grey: `unknownBuildingCss` puts it at
+ *   L* 14.9-33.9 and saturation under 0.12, ΔE76 36.5 from the nearest class of
+ *   any palette the intended themes bring, so "not measured" cannot be read as
+ *   "measured badly" (A1).
  * @param {object} record
  * @returns {Cesium.Color}
  */
 function volumeColor(record) {
-  const base = Cesium.Color.fromCssColorString(record.color);
+  if (_themePaint) {
+    const painted = _themePaint.colorById.get(record.id);
+    if (painted) {
+      const themed = Cesium.Color.fromCssColorString(painted);
+      if (themed) return themed;
+    }
+  }
+  const css = _themePaint ? unknownBuildingCss(record.color) : record.color;
+  const base = Cesium.Color.fromCssColorString(css);
   const visibleM = record.topM - record.baseM - BASE_SINK_M;
   const t = Math.min(Math.max((visibleM - 4) / 34, 0), 1);
   // `darken` is an INSTANCE method on Cesium.Color; there is no static form.
   return base.darken(0.42 * (1 - t), new Cesium.Color());
+}
+
+/**
+ * Re-run the join against the loaded payload, or drop the paint when no theme
+ * is registered.
+ * @returns {boolean} whether a theme is now painting.
+ */
+function refreshThemePaint() {
+  const theme = getActiveBuildingTheme();
+  if (!theme) {
+    _themePaint = null;
+    return false;
+  }
+  _themePaint = resolveBuildingThemePaint([..._records.values()], theme);
+  return Boolean(_themePaint);
+}
+
+function clearThemeRetry() {
+  if (_themeRetryTimer) { clearTimeout(_themeRetryTimer); _themeRetryTimer = null; }
+  _themeRetries = 0;
+}
+
+/**
+ * The loaded footprints, copied.
+ *
+ * A theme that wants to run its own join — a different rule, a different maille
+ * — gets the geometry and not the record: the arrays are sliced so nothing a
+ * caller does can reach the objects the primitive was built from. At the
+ * 14 000-volume cap that is ~600 k numbers, which is why it is a call and not a
+ * getter, and why the layer's own repaint uses the internal records directly.
+ * @returns {Array<{id: string, degrees: Array<number>, holes: Array<Array<number>>,
+ *   lat: number, lon: number, tierId: string}>}
+ */
+export function bdtopoLoadedFootprints() {
+  const out = [];
+  for (const record of _records.values()) {
+    out.push({
+      id: record.id,
+      degrees: record.degrees.slice(),
+      holes: (record.holes || []).map((hole) => hole.slice()),
+      lat: record.lat,
+      lon: record.lon,
+      tierId: record.tierId,
+    });
+  }
+  return out;
+}
+
+/**
+ * Repaint every volume from the active theme, in place.
+ *
+ * This is what a thematic layer calls when its points change or when it is
+ * switched on or off. It rewrites the per-instance colour attributes of the
+ * batch — no geometry is retessellated, nothing is added to or removed from the
+ * scene — which is only possible because the primitive keeps its instances
+ * (`releaseGeometryInstances: false`).
+ *
+ * The selected volume is skipped: the cyan of a selection is the operator's own
+ * act and outranks any theme until they press Escape.
+ *
+ * A primitive that is still tessellating has no attribute table yet and every
+ * write is a silent no-op, so an unapplied repaint schedules itself again a few
+ * times rather than leaving the city painted from the previous theme.
+ * @returns {number} volumes recoloured.
+ */
+export function applyBuildingTheme() {
+  clearThemeRetry();
+  refreshThemePaint();
+  if (!_records.size) {
+    governorRequestRender('bdtopo-theme');
+    return 0;
+  }
+  let applied = 0;
+  for (const record of _records.values()) {
+    if (record.id === _selectedId) continue;
+    if (applyInstanceColor(record.id, volumeColor(record))) applied += 1;
+  }
+  if (!applied && _primitive && !_primitive.ready && _themeRetries < THEME_RETRY_LIMIT) {
+    _themeRetries += 1;
+    _themeRetryTimer = setTimeout(() => { _themeRetryTimer = null; applyBuildingTheme(); },
+      THEME_RETRY_MS);
+  }
+  governorRequestRender('bdtopo-theme');
+  return applied;
 }
 
 function clearSelection() {
@@ -879,6 +1022,11 @@ const bdtopoBuildingsLayer = {
       _mapStackListener = (event) => applyMapStack(event?.detail?.activeId ?? null);
       window.addEventListener('gev:map-stack-changed', _mapStackListener);
     }
+    // A thematic layer registers its theme without knowing this module exists;
+    // the registry tells us, and the batch is recoloured in place. The coupling
+    // runs one way on purpose — five layers importing the building layer to
+    // repaint it would be five ways to leave it painted after they are gone.
+    if (!_themeUnsubscribe) _themeUnsubscribe = onBuildingThemeChange(() => applyBuildingTheme());
     _overlayHost.setVisible(BDTOPO_SELECTED_OVERLAY_SOURCE_ID, false);
     console.log('[Data:Bâti 3D] Initialized');
   },
@@ -905,6 +1053,7 @@ const bdtopoBuildingsLayer = {
     clearSelection();
     clearRetry();
     clearColdFloorRetry();
+    clearThemeRetry();
     clearTimeout(_debounceTimer);
     _debounceTimer = null;
     _abort?.abort();
@@ -967,11 +1116,48 @@ const bdtopoBuildingsLayer = {
   },
 
   /**
-   * The legend: the six usage bands, in the order they are drawn.
+   * The legend of whatever is actually on the volumes.
+   *
+   * Usually the six usage bands, in the order they are drawn. When a theme is
+   * painting, the usage bands are NOT what a reader is looking at any more, so
+   * the theme's own ramp replaces them and carries its name (D1) — a ramp whose
+   * owner is not written next to it is unreadable the moment two thematic
+   * layers exist. The "no data" row is kept at zero for the same reason
+   * `idfm-frequency` keeps its silent row: "this volume was not measured" is an
+   * entry the reader needs before they can read the map at all.
    * @returns {{chips: Array<object>, legend: Array<object>}}
    */
   getRowControls() {
     const legend = [];
+    if (_themePaint) {
+      for (const entry of _themePaint.legend || []) {
+        legend.push({
+          label: entry.label,
+          color: entry.color,
+          count: entry.count,
+          blurb: entry.blurb,
+        });
+      }
+      legend.push({
+        label: _themePaint.unknownLabel,
+        color: unknownBuildingCss(BDTOPO_USAGE_TIERS[BDTOPO_USAGE_TIERS.length - 1].color),
+        count: _themePaint.unpainted,
+        blurb: `Volume sans point ${_themePaint.label} joint : la teinte d'usage BD TOPO, `
+          + 'lavée et assombrie pour qu\'un bâtiment non mesuré ne puisse pas se lire '
+          + 'comme un bâtiment mal noté.',
+      });
+      if (_themePaint.unmatchedPoints || _themePaint.unplacedPoints) {
+        legend.push({
+          label: 'points sans bâtiment',
+          color: unknownBuildingCss(BDTOPO_USAGE_TIERS[BDTOPO_USAGE_TIERS.length - 1].color),
+          count: _themePaint.unmatchedPoints + _themePaint.unplacedPoints,
+          blurb: `${formatCount(_themePaint.unmatchedPoints)} tombent hors de toute emprise `
+            + `chargée et ${formatCount(_themePaint.unplacedPoints)} n'ont aucune coordonnée : `
+            + 'ils existent dans la donnée et ne sont peints nulle part.',
+        });
+      }
+      return { chips: [], legend };
+    }
     for (const tier of _payload?.tiers || BDTOPO_USAGE_TIERS.map((t) => ({ ...t, count: 0 }))) {
       legend.push({
         label: tier.label,
@@ -1000,6 +1186,12 @@ const bdtopoBuildingsLayer = {
       groundGapWorstM: _payload?.groundGapWorstM ?? null,
       saturated: Boolean(_payload?.saturated),
       missingTiles: _payload?.missingTiles ?? 0,
+      theme: _themePaint?.themeId ?? null,
+      themeLabel: _themePaint?.label ?? null,
+      themePainted: _themePaint?.painted ?? null,
+      themeUnpainted: _themePaint?.unpainted ?? null,
+      themeUnmatchedPoints: _themePaint?.unmatchedPoints ?? null,
+      themeUnplacedPoints: _themePaint?.unplacedPoints ?? null,
       lastUpdate: _lastUpdate,
       loading: _loading,
       status: _status === 'ready' ? 'ok' : _status,
@@ -1008,6 +1200,19 @@ const bdtopoBuildingsLayer = {
     // Buildings are drawn and some squares are not. DEGRADED rather than an
     // error string: there IS a city on screen, it is simply short of a few
     // tiles, and the row has to say which of the two it is looking at.
+    // SATURATION — the cap bit. The module header states the reason it exists:
+    // "a straight edge through the middle of Marseille is otherwise
+    // indistinguishable from the edge of the data". It was computed, published
+    // on this very object, and read by nobody, so the straight edge stayed
+    // unexplained. It outranks the missing-tile note below because a capped
+    // draw is a harder boundary than a few refused squares.
+    if (result.saturated && !_photoreal) {
+      result.degraded = true;
+      result.coverage = 'Plafond de tracé atteint';
+      result.loadingLabel = `Plafond de tracé atteint (${formatCount(BDTOPO_VOLUME_CAP)} volumes) — `
+        + 'le bord droit du bâti est la limite du tracé, pas la limite de la ville. '
+        + 'Zoome pour voir le reste.';
+    }
     const missing = Number(_payload?.missingTiles) || 0;
     if (missing > 0 && !_photoreal) {
       result.degraded = true;
@@ -1025,6 +1230,19 @@ const bdtopoBuildingsLayer = {
     } else if (_loading) {
       result.loadingLabel = 'Tuiles BD TOPO…';
     }
+    // Which theme is painting, and on how many of the volumes on screen (A5).
+    // Last, so it never displaces a saturation or missing-tile note: those say
+    // the CITY is incomplete, which outranks the theme being incomplete.
+    if (_themePaint?.buildings && !_photoreal && !result.loadingLabel) {
+      const unplaced = _themePaint.unmatchedPoints + _themePaint.unplacedPoints;
+      const plural = _themePaint.painted > 1 ? 's' : '';
+      result.loadingLabel = `${formatCount(_themePaint.painted)} volume${plural} `
+        + `peint${plural} par ${_themePaint.label}, `
+        + `${formatCount(_themePaint.unpainted)} ${_themePaint.unknownLabel}`
+        + (unplaced
+          ? ` — ${formatCount(unplaced)} point${unplaced > 1 ? 's' : ''} hors emprise`
+          : '');
+    }
     if (_error) result.error = _error;
     return result;
   },
@@ -1041,6 +1259,8 @@ const bdtopoBuildingsLayer = {
       window.removeEventListener('gev:map-stack-changed', _mapStackListener);
       _mapStackListener = null;
     }
+    if (_themeUnsubscribe) { _themeUnsubscribe(); _themeUnsubscribe = null; }
+    clearThemeRetry();
     if (_moveEndRemover) { _moveEndRemover(); _moveEndRemover = null; }
     clearColdFloorRetry();
     clearPrimitive();
@@ -1061,6 +1281,8 @@ export function _setBdtopoStateForTest({
   _photoreal = photoreal;
   _selectedId = null;
   _status = 'ready';
+  _themePaint = null;
+  clearThemeRetry();
 }
 
 /** @returns {?string} */
@@ -1091,6 +1313,22 @@ export function _bdtopoApplyMapStackForTest(activeId) {
 /** The per-tile failure tolerance, without a viewport or a globe. */
 export function _fetchBdtopoTilesForTest(wanted, signal) {
   return fetchTiles(wanted, signal);
+}
+
+/**
+ * Drive the theme seam without a GPU: seed records, then repaint.
+ * @returns {{painted: number, paint: ?object}}
+ */
+export function _applyBdtopoThemeForTest() {
+  const painted = applyBuildingTheme();
+  return { painted, paint: _themePaint };
+}
+
+/** The colour one record would be drawn with, as `#rrggbb`. */
+export function _bdtopoVolumeColorForTest(record) {
+  const color = volumeColor(record);
+  return `#${[color.red, color.green, color.blue]
+    .map((c) => Math.round(c * 255).toString(16).padStart(2, '0')).join('')}`;
 }
 
 /** Seed a payload so `getStats()` can be read for a partial load. */

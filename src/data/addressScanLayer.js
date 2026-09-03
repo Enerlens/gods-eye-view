@@ -1237,5 +1237,17 @@ export function createAddressScanLayer(config) {
         ...(_payload ? summarize(_payload) : {}),
       };
     },
+
+    /**
+     * The layer's key, built from the payload that is actually drawn — so a
+     * dormant scan (camera above the ceiling, nothing on screen) publishes
+     * nothing rather than describing a wash that is no longer there.
+     * @returns {{legend?: Array<object>, chips?: Array<object>, surfaceFill?: boolean}|null}
+     */
+    getRowControls() {
+      if (typeof rowControls !== 'function') return null;
+      if (!_payload || _dormant || !_enabled) return null;
+      return rowControls(_payload) || null;
+    },
   };
 }

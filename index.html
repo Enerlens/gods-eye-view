@@ -63,6 +63,38 @@
   <!-- Toast notification -->
   <div id="toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
+  <!-- Camera heading tape. A free-flying 3D camera removes the one convention
+       a printed sheet gave for free — that the top edge is north — and until
+       now only the cockpit said so. Same divisions, same formatter and the
+       same visual vocabulary as `#cockpit-compass-tape`, so the two mounts
+       cannot disagree about which way north is. -->
+  <div id="globe-heading-tape" class="globe-heading-tape" role="img"
+       aria-label="Camera heading">
+    <div id="globe-heading-divisions" class="globe-heading-divisions" aria-hidden="true"></div>
+    <div class="globe-heading-readout">
+      <span id="globe-heading-value">---</span><small>°</small>
+    </div>
+  </div>
+
+  <!-- On-map legend. The SECOND mount point for the per-layer legend entries
+       the data panel already builds: that panel ships collapsed and its
+       collapsed rule hides the toggle list, so no key was visible in the
+       default state — and a share link deliberately ignores the recipient's
+       stored panel preference, which made the key structurally absent at the
+       exact moment somebody reads a map they did not build. Sits above the
+       Cesium attribution in the bottom-left corner, and hides with the rest of
+       the chrome in clean view and recording mode. -->
+  <aside id="map-legend" class="map-legend" aria-label="Map legend" hidden>
+    <div class="map-legend-title">LEGEND</div>
+    <!-- Sensor styles are full-screen post-process passes: they repaint the
+         COMPOSED image, thematic layers included. This block is DOM, so it is
+         not repainted — the swatch keeps its true colour while the map no
+         longer has it, and the key silently stops decoding the map. This note
+         says so instead. -->
+    <div id="map-legend-key-note" class="map-legend-key-note" role="status" hidden></div>
+    <div id="map-legend-items" class="map-legend-items"></div>
+  </aside>
+
   <!-- Safe frame guides for recording composition -->
   <div id="safe-frame-overlay">
     <div id="safe-frame-box"></div>

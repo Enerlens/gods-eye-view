@@ -7,6 +7,9 @@ import {
   normalizeVesselType,
   vesselOverlayCohortLimit,
   vesselTypeCss,
+  vesselTypeFamily,
+  vesselFamilyCss,
+  VESSEL_FAMILY_LABELS,
 } from './vesselLabels.js';
 
 test('normalizeVesselType maps numeric AIS codes to type families', () => {
@@ -43,7 +46,12 @@ test('vessel type CSS and card accents stay paired', () => {
   assert.equal(accentForVesselType('Passenger'), '255, 122, 223');
   assert.equal(accentForVesselType('Fishing'), '124, 255, 155');
   assert.equal(accentForVesselType('Pilot Vessel'), '247, 240, 163');
-  assert.equal(accentForVesselType('Dredger'), '57, 213, 255');
+  // A dredger belongs to no family in this palette — and it is NOT a cargo
+  // ship. The unfamilied default is off the ramp entirely (CARTOGRAPHIE A1),
+  // which is also the state of every vessel that broadcast no type at all.
+  assert.equal(accentForVesselType('Dredger'), '154, 167, 181');
+  assert.equal(vesselTypeCss(''), '#9aa7b5');
+  assert.notEqual(vesselTypeCss(''), vesselTypeCss('Container Ship'));
   assert.equal(accentForVesselType('84'), '255, 179, 71');
   assert.equal(vesselTypeCss('62'), '#ff7adf');
 });
@@ -92,4 +100,22 @@ test('vesselLabels cannot resurrect a dedicated renderer', async () => {
   ]) {
     assert.equal(source.includes(forbidden), false, `dedicated renderer token returned: ${forbidden}`);
   }
+});
+
+test('the key names the family a hue stands for, including the one nobody declared', () => {
+  // The unfamilied bucket is the map's most common vessel state and it had no
+  // name. It is now off the family ramp, and the key says why.
+  assert.equal(vesselTypeFamily('Crude Oil Tanker'), 'tanker');
+  assert.equal(vesselTypeFamily('Container Ship'), 'cargo');
+  assert.equal(vesselTypeFamily('Passenger/Ferry'), 'passenger');
+  assert.equal(vesselTypeFamily('Fishing'), 'fishing');
+  assert.equal(vesselTypeFamily('Pilot Vessel'), 'service');
+  assert.equal(vesselTypeFamily(''), null, 'no declared type is no family');
+  assert.equal(vesselTypeFamily('Dredger'), null, 'and neither is an unmatched one');
+  // The swatch a family gets IS the hue drawn for it.
+  assert.equal(vesselFamilyCss('tanker'), vesselTypeCss('Tanker'));
+  assert.equal(vesselFamilyCss('cargo'), vesselTypeCss('Container Ship'));
+  assert.equal(vesselFamilyCss(null), vesselTypeCss(''));
+  assert.notEqual(vesselFamilyCss(null), vesselFamilyCss('cargo'));
+  assert.ok(VESSEL_FAMILY_LABELS.unknown);
 });

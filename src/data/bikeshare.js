@@ -1292,14 +1292,23 @@ function ensureCityPoints(cityId, stationMap) {
     const position = createStationPosition(station);
     if (!position) continue;
 
-    // Add a point primitive with distance-based scale and translucency falloff
+    // Distance recedes through TRANSLUCENCY only, never through size.
+    //
+    // `pixelSize` is the capacity channel here (`capacityToPixelSize`), so a
+    // distance term on the same channel makes size mean two things at once and
+    // the reader cannot separate them (CARTOGRAPHIE B2). The old
+    // `scaleByDistance` NearFarScalar(200, 1.35, 130000, 0.4) spanned a factor
+    // of 3.4 — wider than the whole capacity ramp — so a five-dock station at
+    // the cursor outdrew an eighty-dock station across town: the size ordering
+    // on screen was the inverse of the data. The sibling layer
+    // `sharedMobilityFrance.js` has always sized by capacity with
+    // `translucencyByDistance` alone; this is the same rule, one line removed.
     const point = _pointCollection.add({
       position,
       pixelSize: capacityToPixelSize(station.capacity),
       color: COLOR_NEUTRAL,
       outlineColor: cityRingColor(cityId),
       outlineWidth: POINT_RING_PX,
-      scaleByDistance: new Cesium.NearFarScalar(200, 1.35, 130000, 0.4),
       translucencyByDistance: new Cesium.NearFarScalar(200, 1.0, 180000, 0.15),
       disableDepthTestDistance: 2500,
       id: key,

@@ -416,9 +416,13 @@ test('the choropleth ramp is monotone and shares no colour with the power bands'
   // A quantity scale must never be readable as one of the power categories.
   const bands = new Set(IRVE_BAND_KEYS.map(irveBandColor));
   for (const color of ramp) assert.ok(!bands.has(color), color);
-  // Alpha climbs with the bin, so density reads as weight as well as hue.
+  // Alpha DESCENDS with the bin, and that is the fix, not a regression: over a
+  // light city the darkest swatch is the one the ground washes out, so it needs
+  // the most opacity. See choroplethAlpha.js — the ascending ladder made the
+  // composited lightness run 67.4 · 65.9 · 65.3 · 65.8 · 69.6 · 78.0, a U in
+  // which class 1 read lighter than classes 2 to 4.
   const alphas = [0, 1, 2, 3, 4, 5].map(irveDepartementAlpha);
-  assert.deepEqual(alphas, [...alphas].sort((a, b) => a - b));
+  assert.deepEqual(alphas, [...alphas].sort((a, b) => b - a));
 });
 
 test('a département with no charge point gets no colour at all', () => {

@@ -1423,6 +1423,8 @@ body.ui-clean-view #cctv-panel,
 body.ui-clean-view #radio-panel,
 body.ui-clean-view #global-context-panel,
 body.ui-clean-view #velo-pulse-hud,
+body.ui-clean-view #map-legend,
+body.ui-clean-view #globe-heading-tape,
 body.ui-clean-view #scene-panel {
   opacity: 0 !important;
   visibility: hidden !important;
@@ -2808,6 +2810,81 @@ body.cockpit-mode:has(#left-panel-stack > .panel-collapsible:not(.collapsed)) .c
   font-weight: 700;
   text-shadow: 0 0 14px var(--cockpit-accent);
 }
+/* ── Camera heading tape (ordinary globe view) ──────────────────────────────
+   Deliberately built from the cockpit tape's own vocabulary: same divisions,
+   same active-tick treatment, smaller and quieter. Top-centre, under the title
+   bar, out of the way of the top-centre action buttons. Hidden in cockpit view
+   (which carries its own tape) and with the rest of the chrome in clean view
+   and recording mode. */
+.globe-heading-tape {
+  position: fixed;
+  top: 108px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 92;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+  font-family: var(--font-mono);
+}
+
+.globe-heading-divisions {
+  position: relative;
+  width: 340px;
+  height: 26px;
+}
+
+.globe-heading-divisions span {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  color: rgba(232, 240, 247, 0.45);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  transform: translateX(calc(-50% + (var(--slot) * 52px)));
+}
+
+.globe-heading-divisions span::before {
+  content: '';
+  display: block;
+  width: 1px;
+  height: calc(7px - (var(--depth) * 0.8px));
+  margin: 0 auto 4px;
+  background: rgba(0, 212, 255, 0.45);
+}
+
+.globe-heading-divisions span.active {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  text-shadow: 0 0 10px rgba(0, 212, 255, 0.8);
+}
+
+.globe-heading-readout {
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: rgba(232, 240, 247, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.globe-heading-readout small {
+  color: rgba(0, 212, 255, 0.7);
+  font-size: 8px;
+}
+
+/* Cockpit has its own tape, two of them would be one too many. */
+body.cockpit-mode .globe-heading-tape {
+  display: none;
+}
+
+@media (max-width: 620px) {
+  .globe-heading-divisions { width: 220px; }
+  .globe-heading-divisions span { transform: translateX(calc(-50% + (var(--slot) * 34px))); }
+}
+
 .cockpit-position-readout {
   position: absolute;
   right: clamp(24px, 4vw, 58px);
@@ -4278,6 +4355,18 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   font-size: 12px;
   opacity: 0.7;
   letter-spacing: 1.5px;
+}
+
+/* Cockpit set dressing — mission id, sensor id, orbit, pass, band/bits/level.
+   None of it is measured. It sits a few centimetres from the MGRS, latitude,
+   longitude and MSL altitude, which ARE measured, so it must not read in the
+   same voice: dimmer, wider-tracked, and prefixed `SIM` in the markup. The
+   product keeps its atmosphere; the reader keeps the ability to tell which
+   half of the HUD is an instrument. */
+.hud-simulated {
+  opacity: 0.42;
+  font-style: italic;
+  letter-spacing: 2.2px;
 }
 
 /* Edge annotations (vertical text) */
@@ -6123,6 +6212,186 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   mask-position: center;
 }
 
+/* ── On-map legend ──────────────────────────────
+   The key has to be on the map, not inside a panel that ships collapsed. Sits
+   above the Cesium attribution (bottom:36) and below the coordinate HUD corner
+   (.hud-bottom-left, bottom:180), scrolling inside its own box rather than
+   growing into either. `pointer-events: none` on the block, restored on the
+   scrollable list: the legend must never eat a click meant for the globe, but
+   a long key still has to be scrollable. */
+.map-legend {
+  position: fixed;
+  left: 36px;
+  bottom: 68px;
+  z-index: 92;
+  max-width: min(300px, 34vw);
+  max-height: 34vh;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 12px 10px;
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  border-radius: 4px;
+  background: rgba(3, 8, 14, 0.62);
+  backdrop-filter: blur(6px);
+  font-family: var(--font-mono);
+  color: rgba(232, 240, 247, 0.9);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+.map-legend[hidden] {
+  display: none;
+}
+
+/* The on-map key exists for the state where the panel is SHUT — which is how
+   the app ships, and how a share link always opens. With `#data-panel` open,
+   the same entries are already rendered inline under each layer row, and the
+   panel (z-index 100) would simply cover this block (z-index 92) and leave a
+   half-hidden duplicate. One key at a time, and it is the visible one. Same
+   `:has()` idiom the cockpit pitch rail already uses to yield to this stack. */
+body:has(#data-panel:not(.collapsed)) .map-legend {
+  display: none;
+}
+
+.map-legend-title {
+  font-size: 9px;
+  letter-spacing: 2.4px;
+  color: rgba(0, 212, 255, 0.72);
+  flex: none;
+}
+
+.map-legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  overflow-y: auto;
+  pointer-events: auto;
+  scrollbar-width: thin;
+}
+
+/* A sensor style repaints the composed frame, thematic layers included; this
+   block is DOM and is not repainted. Rather than pretend, the key says the
+   colours below no longer match the map, and the swatches recede so nobody
+   matches them by eye. */
+.map-legend-key-note {
+  font-size: 9px;
+  line-height: 1.45;
+  letter-spacing: 0.6px;
+  color: rgba(255, 196, 120, 0.92);
+  border-left: 2px solid rgba(255, 196, 120, 0.5);
+  padding-left: 7px;
+  flex: none;
+}
+
+.map-legend-key-note[hidden] {
+  display: none;
+}
+
+.map-legend.key-invalid .map-legend-swatch {
+  opacity: 0.3;
+}
+
+/* A property of the MAP STACK, not of any one layer: on the photorealistic
+   mesh a ground-classified fill has nowhere to go but the façades too, where
+   the tileset's shading darkens it. Cesium cannot split that drape, so the
+   legend says it once. */
+.map-legend-surface-note {
+  font-size: 9px;
+  line-height: 1.45;
+  letter-spacing: 0.2px;
+  color: rgba(232, 240, 247, 0.6);
+  border-left: 2px solid rgba(0, 212, 255, 0.28);
+  padding-left: 7px;
+}
+
+.map-legend-group {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* Named in full, not abbreviated: a key that does not say what it is keying
+   is a colour chart. */
+.map-legend-layer {
+  font-size: 9.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: rgba(232, 240, 247, 0.62);
+}
+
+.map-legend-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.map-legend-swatch {
+  width: 8px;
+  height: 8px;
+  margin-top: 3px;
+  border-radius: 50%;
+  /* The swatch IS the datum — exactly the drawn colour, with only a hairline
+     ring so a near-black class still reads against the glass. */
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
+  flex: none;
+}
+
+/* A `color: null` entry says "this exists in the data and is NOT drawn here".
+   It gets an empty outline, never a fill, so it cannot be read as a class. */
+.map-legend-swatch.is-unmapped {
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+/* Same contract as the panel legend: a layer whose channel is SHAPE hands over
+   its own glyph; the swatch keeps its declared colour and the mask decides
+   which of its pixels survive. */
+.map-legend-swatch.has-glyph {
+  width: 14px;
+  height: 14px;
+  margin-top: 0;
+  border-radius: 0;
+  box-shadow: none;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+}
+
+.map-legend-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.map-legend-label {
+  font-size: 10.5px;
+  letter-spacing: 0.4px;
+  line-height: 1.35;
+}
+
+/* Rendered as TEXT, not as a `title` tooltip: these strings carry statements
+   the map has to make, and a tooltip puts them out of reach without a mouse. */
+.map-legend-blurb {
+  font-size: 9px;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  color: rgba(232, 240, 247, 0.55);
+}
+
+@media (max-width: 620px) {
+  .map-legend {
+    max-width: 62vw;
+    max-height: 26vh;
+    bottom: 60px;
+    left: 16px;
+  }
+}
+
 /* ── CCTV Panel ─────────────────────────────── */
 #cctv-panel {
   --panel-expanded-width: 360px;
@@ -7013,6 +7282,8 @@ body.recording-mode #cctv-panel,
 body.recording-mode #radio-panel,
 body.recording-mode #global-context-panel,
 body.recording-mode #gev-voice-control,
+body.recording-mode #map-legend,
+body.recording-mode #globe-heading-tape,
 body.recording-mode #scene-panel {
   opacity: 0 !important;
   visibility: hidden !important;

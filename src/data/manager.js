@@ -1,5 +1,6 @@
 import { governorRequestRender } from '../renderGovernor.js';
 import { markDetectionSourcesChanged } from './detection.js';
+import { SURFACE_FILL_DRAPE_NOTE, surfaceFillDrapesBuildings } from './surfaceFillNotice.js';
 function cloneLayerParams(value) {
   if (Array.isArray(value)) return value.map(cloneLayerParams);
   if (value && typeof value === 'object') {
@@ -2407,9 +2408,14 @@ export class DataLayerManager {
    * @param {HTMLElement|null} container The row's `.data-toggle-controls` node.
    * @param {object} layer Registered layer entry.
    */
-  _syncRowControls(container, layer) {
+  _syncRowControls(container, layer, resolvedControls) {
     if (!container) return;
-    const controls = layer.enabled ? this._rowControlsFor(layer.id) : null;
+    // `resolvedControls` lets the caller share one `getRowControls()` answer
+    // between this row and the on-map legend block. `undefined` means "not
+    // resolved yet" (the direct callers); `null` means "resolved to nothing".
+    const controls = resolvedControls === undefined
+      ? (layer.enabled ? this._rowControlsFor(layer.id) : null)
+      : resolvedControls;
     const chips = controls?.chips || [];
     const legend = controls?.legend || [];
     container.hidden = chips.length === 0 && legend.length === 0;
@@ -2475,7 +2481,16 @@ export class DataLayerManager {
       this._panelRefreshPendingOnVisible = true;
       return;
     }
+    // Legend material for the ON-MAP block, gathered in this same pass.
+    // `_rowControlsFor` runs a layer-supplied callback, so it is asked ONCE
+    // per layer per refresh and the answer is shared by both mount points.
+    const mapLegend = [];
     for (const layer of this.getAll()) {
+      const controls = layer.enabled ? this._rowControlsFor(layer.id) : null;
+      if (controls?.legend?.length) {
+        mapLegend.push({ layer, entries: controls.legend, surfaceFill: controls.surfaceFill === true });
+      }
+
       const row = this._toggleContainer.querySelector(`[data-layer-id="${layer.id}"]`);
       if (!row) continue;
 
@@ -2494,8 +2509,9 @@ export class DataLayerManager {
         meta.textContent = this._buildMetaText(layer);
       }
 
-      this._syncRowControls(row.querySelector('.data-toggle-controls'), layer);
+      this._syncRowControls(row.querySelector('.data-toggle-controls'), layer, controls);
     }
+    this._refreshMapLegend(mapLegend);
 
     // Group tallies read live enabled state, so they have to be recomputed on
     // the same tick as the rows — a header still reading "0/6 ON" under six
@@ -2508,6 +2524,108 @@ export class DataLayerManager {
         if (section) this._syncCategoryHeader(section, group);
       }
     }
+  }
+
+  /**
+   * Paint the ON-MAP legend block — the second mount point for the very same
+   * `{color, glyph, label, count, blurb}` entries the layer rows already
+   * build.
+   *
+   * WHY A SECOND MOUNT POINT (CARTOGRAPHIE, "a map without a key is a
+   * picture"). The legend rendering in `_syncRowControls` is good and is not
+   * being replaced. Its PLACEMENT was the defect: the entries live inside
+   * `#data-panel`, which ships `collapsed`, and the collapsed rule hides
+   * `.data-toggle-list` outright — so no legend was visible in the default
+   * state, and opening the panel covered the left quarter of the map. Worse,
+   * a share link deliberately ignores the recipient's stored panel preference
+   * (`ui.js`, `allowStored: !this._initialShareState`), so the one moment
+   * somebody reads a map they did not build was the moment the key was
+   * structurally guaranteed absent.
+   *
+   * The `blurb` is rendered as TEXT here, not as a `title` tooltip. Those
+   * strings carry statements the map has to make — "the fill is an absolute
+   * count, so the card also gives the rate per 1 000 km²" — and a tooltip puts
+   * them out of reach of anyone without a mouse.
+   * @param {Array<{layer: object, entries: Array<object>}>} groups Enabled layers with legends.
+   * @returns {void}
+   */
+  _refreshMapLegend(groups) {
+    // Tolerant of the partial `document` stubs the panel unit tests install:
+    // a manager that cannot reach a real DOM simply has no on-map mount point.
+    if (typeof document === 'undefined' || typeof document.getElementById !== 'function') return;
+    const host = document.getElementById('map-legend');
+    if (!host) return;
+    const list = document.getElementById('map-legend-items');
+    if (!list) return;
+
+    if (!groups.length) {
+      host.hidden = true;
+      list.replaceChildren();
+      return;
+    }
+    host.hidden = false;
+
+    const fragment = document.createDocumentFragment();
+    // One shared note, not one per layer: the drape is a property of the MAP
+    // STACK, and repeating it under every zonal layer would bury the key it is
+    // meant to qualify.
+    if (groups.some((group) => group.surfaceFill)
+        && surfaceFillDrapesBuildings(this.viewer?.scene)) {
+      const note = document.createElement('div');
+      note.className = 'map-legend-surface-note';
+      note.textContent = SURFACE_FILL_DRAPE_NOTE;
+      fragment.appendChild(note);
+    }
+    for (const { layer, entries } of groups) {
+      const group = document.createElement('div');
+      group.className = 'map-legend-group';
+
+      const title = document.createElement('div');
+      title.className = 'map-legend-layer';
+      title.textContent = this._displayName(layer);
+      group.appendChild(title);
+
+      for (const item of entries) {
+        const entry = document.createElement('div');
+        entry.className = 'map-legend-entry';
+
+        const swatch = document.createElement('span');
+        // Same contract as the row legend: the swatch IS the datum, and a
+        // layer whose channel is SHAPE hands over its own glyph to be masked.
+        // An entry with `color: null` is a deliberate "not drawn here" line —
+        // it gets an empty slot so the text still aligns with the coloured
+        // ones, and never a swatch that would imply it was mapped.
+        swatch.className = item.glyph
+          ? 'map-legend-swatch has-glyph'
+          : (item.color ? 'map-legend-swatch' : 'map-legend-swatch is-unmapped');
+        if (item.color) swatch.style.background = item.color;
+        if (item.glyph) {
+          const mask = `url("${item.glyph}")`;
+          swatch.style.webkitMaskImage = mask;
+          swatch.style.maskImage = mask;
+        }
+
+        const text = document.createElement('span');
+        text.className = 'map-legend-text';
+        const label = document.createElement('span');
+        label.className = 'map-legend-label';
+        label.textContent = Number.isFinite(item.count)
+          ? `${item.label} ${this._formatCount(item.count)}`
+          : item.label;
+        text.appendChild(label);
+        if (item.blurb) {
+          const blurb = document.createElement('span');
+          blurb.className = 'map-legend-blurb';
+          blurb.textContent = item.blurb;
+          text.appendChild(blurb);
+        }
+
+        entry.append(swatch, text);
+        group.appendChild(entry);
+      }
+      fragment.appendChild(group);
+    }
+    list.replaceChildren(fragment);
   }
 
   _buildMetaText(layer) {
@@ -2548,7 +2666,31 @@ export class DataLayerManager {
       }
       return `${stateLabel} · ${source} · ${presentedError}`;
     }
-    const ago = stats.lastUpdate ? this._timeAgo(stats.lastUpdate) : 'jamais';
+    // WHAT THE AGE MEANS (CARTOGRAPHIE E2). The registry has always carried a
+    // `cadence` facet — `live` / `periodic` / `static` — validated at boot
+    // (`layerTaxonomy.js` throws on an invalid one) and displayed nowhere. The
+    // cost of that silence is concentrated on `static`: a pack bundled in the
+    // repo printed "il y a 4 min", which reads as freshness when it is only the
+    // moment the file was parsed. A static layer now says it is a fixed
+    // snapshot; a live one says it is a stream. `periodic` keeps the plain age,
+    // which is exactly what an age means there.
+    const cadence = layer.tags?.cadence || null;
+    const ago = cadence === 'static'
+      ? 'instantané figé'
+      : (stats.lastUpdate
+        ? `${cadence === 'live' ? 'flux · ' : ''}${this._timeAgo(stats.lastUpdate)}`
+        : 'jamais');
+    // COVERAGE — the boundary of what the layer could have drawn at all
+    // (CARTOGRAPHIE H1: a map states the edge of its own data). Three layers
+    // publish it — "533 of 892 measuring sea", "RRN non concédé", "worldwide
+    // upstream snapshot" — and it was only ever read in the `fallback` branch
+    // below, which none of them reach. `marineBuoys.js` even asserts in a
+    // comment that "the manager prints it into the chip"; it did not.
+    // A string by contract (`coverageLabel()` documents why), so a layer
+    // handing over an object cannot print "[object Object]" here.
+    const coverage = typeof stats.coverage === 'string' && stats.coverage.trim()
+      ? `${stats.coverage.trim()} · `
+      : '';
     if (stats.loading) {
       const loadingLabel = typeof stats.loadingLabel === 'string' && stats.loadingLabel.trim()
         ? stats.loadingLabel.trim()
@@ -2565,12 +2707,12 @@ export class DataLayerManager {
       const retry = typeof stats.retryInSec === 'number' && stats.retryInSec > 0
         ? ` · nouvelle tentative dans ${stats.retryInSec} s`
         : '';
-      return `${stateLabel} · ${source} · ${ago}${retry}`;
+      return `${stateLabel} · ${source} · ${coverage}${ago}${retry}`;
     }
     if (typeof stats.loadingLabel === 'string' && stats.loadingLabel.trim()) {
-      return `${source} · ${stats.loadingLabel.trim()}`;
+      return `${source} · ${coverage}${stats.loadingLabel.trim()}`;
     }
-    return `${source} · ${ago}`;
+    return `${source} · ${coverage}${ago}`;
   }
 
   _syncToggleButton(button, layer) {

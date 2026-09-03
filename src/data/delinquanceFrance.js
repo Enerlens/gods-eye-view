@@ -323,6 +323,10 @@ const STATE_BLURBS = Object.freeze({
   suppressed: `Non diffusé, au titre du secret statistique. ${DELINQUANCE_SUPPRESSION_RULE} `
     + 'Le critère porte sur trois années, pas sur la valeur affichée : ce n’est NI zéro, NI '
     + 'forcément une valeur basse — c’est inconnu.',
+  missing: 'Cette commune n’a aucune ligne pour cet indicateur dans cette édition. Ce n’est ni '
+    + 'zéro, ni un secret : le registre ne la mentionne pas. Le remplissage est volontairement '
+    + 'le plus sombre et le plus transparent de la carte — plus proche du fond que de la bande '
+    + 'la plus basse.',
 });
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
@@ -1695,6 +1699,18 @@ const delinquanceFranceLayer = {
           blurb: blurbs.suppressed,
         });
       }
+      // The fourth cell state. `buildDelinquanceCommuneRecords` has always
+      // counted it and `delinquanceFill` has always painted it; it simply never
+      // reached the key, so the one state meaning "we have nothing here" was
+      // the only one a reader could not name.
+      if (states.missing) {
+        legend.push({
+          label: DELINQUANCE_CELL_LABELS.missing,
+          color: DELINQUANCE_MISSING_COLOR,
+          count: states.missing,
+          blurb: STATE_BLURBS.missing,
+        });
+      }
     }
     // The national suppression count travels with the legend at every zoom:
     // it is the single number this layer exists to put in front of a reader.
@@ -1707,7 +1723,8 @@ const delinquanceFranceLayer = {
         blurb: blurbs.suppressed,
       });
     }
-    return { chips, legend };
+    // Ground-classified area fill — see surfaceFillNotice.js.
+    return { chips, legend, surfaceFill: true };
   },
 
   destroy(viewer) {

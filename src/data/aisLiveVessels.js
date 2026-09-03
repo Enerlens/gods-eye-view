@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { TRAIL_MAX_POINTS as TRAIL_VERTEX_CEILING, trimTrailToGroundLength } from './trailWindow.js';
 import {
   registerEntityContext,
   selectEntityContext,
@@ -22,6 +23,9 @@ import {
   vesselTypeCss,
   vesselOverlayCohortLimit,
   normalizeVesselType,
+  vesselFamilyCss,
+  vesselTypeFamily,
+  VESSEL_FAMILY_LABELS,
 } from './vesselLabels.js';
 import {
   clearOverlaySource,
@@ -81,8 +85,14 @@ const TRAIL_HEIGHT_M = 3;
  * is always fine (clears tide/mesh noise in the photoreal sea mesh).
  */
 const VESSEL_LIFT_M = 3;
-/** Combined cap on trail vertices (server backfill + live accumulation). */
-const TRAIL_MAX_POINTS = 400;
+/**
+ * Hard vertex ceiling — the bound on the primitive rebuilt on each refresh.
+ * It used to be the SAME 400 the two aircraft layers use, which is what made a
+ * vessel's trail fit inside its own chevron while an airliner's crossed the
+ * screen. History is now trimmed by GROUND LENGTH (`trailWindow.js`), so both
+ * show the same distance of past.
+ */
+const TRAIL_MAX_POINTS = TRAIL_VERTEX_CEILING;
 /** Minimum movement (m) before a reconcile refresh appends a new trail point. */
 const TRAIL_MIN_MOVE_M = 25;
 
@@ -180,6 +190,26 @@ function describeDegradedAisFeed(status, payload) {
  * @param {number} acceptedRowCount - Number of rows accepted by vessel normalization.
  * @returns {string|null} A short reason for the chip, or null if healthy.
  */
+/**
+ * One line describing how much of the feed survived normalization.
+ *
+ * `rawRowCount` and `acceptedRowCount` have always been computed and published
+ * on `getStats()`, and nothing read them — so a snapshot in which a fifth of
+ * the rows carried no usable position looked identical, on screen, to one where
+ * every row drew. Empty when nothing was dropped: a coverage note that fires on
+ * every refresh stops being read.
+ * @param {number} rawRowCount Rows the feed delivered.
+ * @param {number} acceptedRowCount Rows normalization could draw.
+ * @returns {string} Chip-ready text, or '' when the two agree.
+ */
+export function aisAcceptanceCoverage(rawRowCount, acceptedRowCount) {
+  const raw = Number(rawRowCount);
+  const accepted = Number(acceptedRowCount);
+  if (!Number.isFinite(raw) || !Number.isFinite(accepted)) return '';
+  if (raw <= 0 || accepted >= raw) return '';
+  return `${accepted} of ${raw} rows usable`;
+}
+
 export function deriveAisFeedError(payload, acceptedRowCount) {
   const status = payload && typeof payload.status === 'string' ? payload.status : null;
   // A feed the server reports as not delivering outranks the row count: the
@@ -659,11 +689,51 @@ const aisLiveVesselsLayer = {
       lastMessageAt: state.lastMessageAt,
       rawRowCount: state.rawRowCount,
       acceptedRowCount: state.acceptedRowCount,
+      // The gap between what the feed handed over and what could be drawn,
+      // as the one-line `coverage` string the manager prints under the row.
+      // Both numbers were already published and read by nobody, so the map
+      // silently dropped rows it had received (CARTOGRAPHIE A5/H1).
+      coverage: aisAcceptanceCoverage(state.rawRowCount, state.acceptedRowCount),
       // Same chip affordance the flights layer uses: when the server is
       // backing off, say how long until the next attempt instead of leaving
       // the user to guess whether anything is still happening.
       retryInSec: aisRetryInSec(),
     };
+  },
+
+  /**
+   * The key to the chevron hues.
+   *
+   * This layer spends hue on the AIS type family and had no legend, which is
+   * how the unfamilied default came to be byte-for-byte the CARGO colour
+   * without anyone noticing: a vessel that had declared nothing was drawn as a
+   * container ship and there was no key to contradict it. The default is now
+   * off the family ramp (`vesselLabels.js`) and this row names it.
+   *
+   * Tallied over the records actually on screen, so a family absent from the
+   * view is absent from the key.
+   * @returns {{legend: Array<object>}|null} Row controls, or null while empty.
+   */
+  getRowControls() {
+    const records = state.vesselRecords;
+    if (!records || !records.size) return null;
+    const byFamily = new Map();
+    for (const record of records.values()) {
+      const family = vesselTypeFamily(record?.type) || 'unknown';
+      byFamily.set(family, (byFamily.get(family) || 0) + 1);
+    }
+    const legend = [...byFamily.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([family, count]) => ({
+        label: VESSEL_FAMILY_LABELS[family] || family,
+        color: vesselFamilyCss(family === 'unknown' ? null : family),
+        count,
+        blurb: family === 'unknown'
+          ? 'Aucun type AIS exploitable. Gris ardoise, hors de la gamme des '
+            + 'familles — un navire muet ne doit pas être peint en cargo.'
+          : undefined,
+      }));
+    return { legend };
   },
 };
 
@@ -1678,10 +1748,10 @@ async function backfillVesselTrail(mmsi, token) {
   }
   if (!older.length) return;
 
-  state.trailPositions = older.concat(state.trailPositions);
-  if (state.trailPositions.length > TRAIL_MAX_POINTS) {
-    state.trailPositions = state.trailPositions.slice(state.trailPositions.length - TRAIL_MAX_POINTS);
-  }
+  state.trailPositions = trimTrailToGroundLength(
+    older.concat(state.trailPositions),
+    { maxPoints: TRAIL_MAX_POINTS },
+  );
   if (state.trail) state.trail.setPositions(state.trailPositions);
 }
 
@@ -1697,7 +1767,10 @@ function appendSelectedVesselTrailFix(record) {
   const last = state.trailPositions[state.trailPositions.length - 1];
   if (last && Cesium.Cartesian3.distance(last, next) <= TRAIL_MIN_MOVE_M) return;
   state.trailPositions.push(next);
-  if (state.trailPositions.length > TRAIL_MAX_POINTS) state.trailPositions.shift();
+  state.trailPositions = trimTrailToGroundLength(
+    state.trailPositions,
+    { maxPoints: TRAIL_MAX_POINTS },
+  );
   state.trail.setPositions(state.trailPositions);
 }
 
@@ -1915,10 +1988,21 @@ function formatHeading(heading) {
   return Number.isFinite(heading) ? `${Math.round(heading)}DEG` : '--DEG';
 }
 
+/**
+ * The instant this position was reported, or the fact that it was not stated.
+ *
+ * A missing or unparseable timestamp used to print "POS: LIVE" — the ABSENCE
+ * of an instant rendered as the claim of maximum freshness, in the slot whose
+ * whole job is to date the fix (CARTOGRAPHIE A1/E3). AIS position reports do
+ * arrive without a usable UTC field; the honest answer is that we do not know
+ * when this one was taken.
+ * @param {{lastPositionUtc?: string|number}} record Vessel record.
+ * @returns {string} `POS: 14:32:07Z`, or `POS: TIME UNKNOWN`.
+ */
 function formatPositionTime(record) {
-  if (!record.lastPositionUtc) return 'POS: LIVE';
+  if (!record.lastPositionUtc) return 'POS: TIME UNKNOWN';
   const date = new Date(record.lastPositionUtc);
-  if (Number.isNaN(date.getTime())) return 'POS: LIVE';
+  if (Number.isNaN(date.getTime())) return 'POS: TIME UNKNOWN';
   return `POS: ${date.toISOString().slice(11, 19)}Z`;
 }
 

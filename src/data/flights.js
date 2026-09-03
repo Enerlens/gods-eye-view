@@ -33,6 +33,8 @@ import {
   isTrackingSelectionGesture,
 } from './trackingClickGesture.js';
 import { createTrail } from './trailRenderer.js';
+import { TRAIL_MAX_POINTS as TRAIL_VERTEX_CEILING, trimTrailToGroundLength } from './trailWindow.js';
+import { coastingSwatchCss, contactTint } from './contactFreshness.js';
 import { isExplicitLayerStateOrigin } from './layerState.js';
 import {
   screenProjectedRotation,
@@ -41,11 +43,12 @@ import {
   cameraPoseSignature,
 } from './iconOrientation.js';
 import { stickyText, stickyNumber } from './aircraftMeta.js';
-import { classifyAircraft, CLASS_SCALE_2D, CLASS_SCALE_3D, CLASS_MODEL_URL, CLASS_MODEL_REAL } from './aircraftClass.js';
+import { classifyAircraft, CLASS_LEGEND_LABELS, CLASS_SCALE_2D, CLASS_SCALE_3D, CLASS_MODEL_URL, CLASS_MODEL_REAL } from './aircraftClass.js';
 import { modelAnchorWorld, modelVisualAnchor, trailAnchorForModel, trailHeadStart, visualCenterForModel } from './modelVisualAnchor.js';
-import { aircraftIcon, TRACKED_ICON_PX } from './aircraftIcons.js';
+import { aircraftIcon, classLegendGlyph, TRACKED_ICON_PX } from './aircraftIcons.js';
 import {
   isTr3b, tr3bAircraftClass, tr3bConvertedIds, tr3bIconKind, tr3bTypeLabel,
+  TR3B_CLASS, TR3B_TYPE_LABEL,
 } from './tr3bRegistry.js';
 import { cockpitContactDotImage } from './cockpitContactDot.js';
 import { nextCockpitNearContacts } from './cockpitAirLod.js';
@@ -432,7 +435,11 @@ function _contextSubjectMetadata(icao24) {
       callsign: described.callsign || '',
       registration: described.registration || '',
       type: described.typeName || described.typeCode || '',
-      altitude: described.onGround ? 'on ground' : `${altFt.toLocaleString('en-US')} ft`,
+      altitude: described.onGround
+        ? 'on ground'
+        : (described.altitudeMeasured
+          ? `${altFt.toLocaleString('en-US')} ft`
+          : 'unknown (not reported)'),
       speed: Number.isFinite(described.velocityMps)
         ? `${Math.round(described.velocityMps * 1.944)} kt`
         : '',
@@ -571,8 +578,16 @@ function _applyCockpitState(detail = {}) {
 
 /** @constant {string} Civilian trail hue (PRD F4, pinned). */
 const TRAIL_COLOR = '#00d4ff';
-/** @constant {number} Combined cap on trail vertices (backfill + live accumulation). */
-const TRAIL_MAX_POINTS = 400;
+/**
+ * @constant {number} Hard vertex ceiling — the bound on the primitive rebuilt
+ * on every poll. It is NO LONGER what decides how much history is shown: this
+ * layer, `militaryFlights.js` and `aisLiveVessels.js` all shipped the same 400,
+ * one number for a 5 m/s vessel and a 250 m/s airliner, so an aircraft's trail
+ * crossed the screen while a ship's fitted inside its own chevron and read as
+ * "just appeared". `trailWindow.js` now trims by GROUND LENGTH, which is the
+ * quantity a reader compares on a map.
+ */
+const TRAIL_MAX_POINTS = TRAIL_VERTEX_CEILING;
 /** @type {{setPositions: Function, clear: Function, destroy: Function}|null} Shared fading-trail renderer */
 let _trail = null;
 /** @type {Cesium.Entity|null} Cheap 2-point head segment bridging the last fix to the LIVE
@@ -2769,13 +2784,20 @@ function _fleetTick() {
       (bb.height || 20) * (bb.scale || 1) * distanceScale * 0.5,
     );
     const isCockpitNear = _cockpitContactMode && _cockpitNearContacts.has(icao24);
-    const baseColor = _cockpitContactMode && !isCockpitNear
+    const liveColor = _cockpitContactMode && !isCockpitNear
       ? (isMilitaryIcao(icao24) ? MIL_TINT : COCKPIT_CIVILIAN_COLOR)
       : _fleetBillboardColor(icao24);
+    // FRESHNESS MOVES OFF ALPHA (CARTOGRAPHIE A3). `baseAlpha` used to carry
+    // `_missingPolls ? 0.45 : 1`, multiplied into the same alpha as the limb
+    // recession and the focus de-emphasis — three facts, one variable, none of
+    // them recoverable. A coasting contact now stays fully opaque and washes
+    // toward neutral instead; alpha is depth and nothing else.
+    const coasting = Boolean(_missingPolls.get(icao24));
+    const baseColor = contactTint(liveColor, coasting);
     const treatment = applyAircraftBillboardTreatment({
       billboard: bb,
       baseScale: _cockpitContactMode && !isCockpitNear ? 1 : _fleetBillboardScale(icao24, info?.klass),
-      baseAlpha: _missingPolls.get(icao24) ? 0.45 : 1,
+      baseAlpha: 1,
       baseColor,
       focusFactor: focus.factor,
       cameraDistanceM,
@@ -2899,6 +2921,12 @@ function _describeFlight(icao24) {
     // ellipsoid height of the camera/ground-clamped render position. The
     // latter can be slightly negative over terrain near the surface.
     altitudeM: Number.isFinite(info?.altitude) ? info.altitude : carto.height,
+    // Whether `altitudeM` was reported or fabricated by the airborne default.
+    // Readouts must print "ALT UNK" rather than a flight level when false.
+    // Two ways to be unmeasured: the poll never reported one (the flag), or
+    // there is no aviation altitude at all and `altitudeM` above fell back to
+    // the render position's ellipsoid height, which is a pixel, not a reading.
+    altitudeMeasured: Number.isFinite(info?.altitude) && info?.altitudeMeasured === true,
     renderAltitudeM: Number.isFinite(info?.renderAltitudeM) ? info.renderAltitudeM : carto.height,
     onGround: info?.onGround === true,
     velocityMps: displayed.speedMps,
@@ -2932,7 +2960,7 @@ function _describeFlight(icao24) {
  */
 function _appendTrailFix(position) {
   _trailPositions.push(position);
-  if (_trailPositions.length > TRAIL_MAX_POINTS) _trailPositions.shift();
+  _trailPositions = trimTrailToGroundLength(_trailPositions, { maxPoints: TRAIL_MAX_POINTS });
   _refreshTrailDisplay();
 }
 
@@ -3102,10 +3130,10 @@ async function _backfillTrail(icao24, token, oldestFixEpochSec) {
     older.push(Cesium.Cartesian3.fromDegrees(lon, lat, altM));
   }
 
-  _trailPositions = older.concat(_trailPositions);
-  if (_trailPositions.length > TRAIL_MAX_POINTS) {
-    _trailPositions = _trailPositions.slice(_trailPositions.length - TRAIL_MAX_POINTS);
-  }
+  _trailPositions = trimTrailToGroundLength(
+    older.concat(_trailPositions),
+    { maxPoints: TRAIL_MAX_POINTS },
+  );
   _refreshTrailDisplay();
 }
 
@@ -3282,8 +3310,7 @@ function _trackedLabelText(icao24) {
   // the ICAO hex, so a callsign-less enriched contact heads its readout with
   // the tail number rather than raw hex.
   const cs = _contactLabel(icao24, info);
-  const altFt = Math.round((info.altitude || 0) * 3.28084);
-  const fl = altFt >= 18000 ? `FL${Math.round(altFt / 100)}` : `${altFt} ft`;
+  const fl = formatContactAltitude(info);
   const spd = info.velocity ? `${Math.round(info.velocity * 1.944)} kts` : '';
   const stale = (_missingPolls.get(icao24) || _backoff) ? 'STALE' : '';
   const lines = [[cs, fl, spd, stale].filter(Boolean).join(' · ')];
@@ -3427,6 +3454,26 @@ export function _setFlightTrackingRefreshOutcomeForTest({
     source,
     coverage,
   };
+}
+
+/**
+ * Format a contact's altitude for a readout, or say it was never reported.
+ *
+ * CARTOGRAPHIE A1 (the map may not state what nobody measured). A contact with
+ * no barometric report still carries the 10 km airborne default in `altitude`,
+ * because the RENDER path has to place the sprite somewhere — but printing that
+ * number gave "FL328", a flight level nobody measured, set in the same type,
+ * colour and position as the callsign beside it. Velocity on the same line was
+ * always guarded; this is that guard for altitude. `militaryFlights.js` has
+ * said "Alt unknown" since it was written — same sentence, civil layer.
+ * @param {{altitude?: number, altitudeMeasured?: boolean}|null} info Contact metadata.
+ * @returns {string} `FL350`, `12000 ft`, or `ALT UNK`.
+ */
+export function formatContactAltitude(info) {
+  if (!info || info.altitudeMeasured === false) return 'ALT UNK';
+  if (!Number.isFinite(info.altitude)) return 'ALT UNK';
+  const altFt = Math.round(info.altitude * 3.28084);
+  return altFt >= 18000 ? `FL${Math.round(altFt / 100)}` : `${altFt} ft`;
 }
 
 /** Add a cached contact so tests can model a target arriving on a later feed. */
@@ -3796,6 +3843,9 @@ function _setFocusEvidenceAircraft(records = []) {
     const meta = {
       callsign: String(record.callsign || id).toUpperCase(),
       altitude: altitudeM,
+      // Dev fixture: the altitude is stated by the scenario, so it counts as
+      // reported for the readout guard.
+      altitudeMeasured: true,
       renderAltitudeM: altitudeM,
       velocity: Number.isFinite(record.velocityMps) ? record.velocityMps : 0,
       true_track: Number.isFinite(record.trackDeg) ? record.trackDeg : 90,
@@ -4234,6 +4284,17 @@ const flightsLayer = {
         // surface when parked. `Cartesian3.fromDegrees` gets renderAltitudeM,
         // never `alt` directly.
         const alt = stickyNumber(baro_alt, prevMeta?.altitude, onGround ? 0 : 10000);
+        // Honesty gate (CARTOGRAPHIE A1). `alt` above keeps the 10 km airborne
+        // default because the RENDER path needs a height to place the sprite —
+        // but that number was invented here, not measured, and printing it as
+        // "FL328" states a flight level nobody reported. Velocity on the same
+        // record has always been guarded (`info.velocity ? ... : ''`); this is
+        // the same guard for altitude. Sticky like every other field: once an
+        // aircraft has reported a real barometric altitude, a later blank poll
+        // coasts on it rather than regressing to "unknown".
+        const altitudeMeasured = Number.isFinite(baro_alt)
+          || onGround
+          || prevMeta?.altitudeMeasured === true;
 
         // geoid undulation N: cached per-aircraft (negligible drift — see
         // task brief) once the geoid grid has loaded; unavailable pre-load
@@ -4355,6 +4416,11 @@ const flightsLayer = {
         const meta = {
           callsign: stickyText(callsign, prevMeta?.callsign),
           altitude: alt,
+          // False when `altitude` is the fabricated airborne default rather
+          // than a reported reading — every altitude READOUT must consult it
+          // (the render path may still use `altitude`; a sprite has to go
+          // somewhere, a number does not have to be printed).
+          altitudeMeasured,
           // geoAltitudeM/renderAltitudeM are ADDITIVE fields alongside the
           // untouched aviation `altitude` — never rename/replace it (labels,
           // FL readout, route-plausibility, and follow-camera range math all
@@ -5236,6 +5302,88 @@ const flightsLayer = {
       source: _lastSource,
       coverage: _lastCoverage,
     };
+  },
+
+  /**
+   * The key to the busiest symbology in the product.
+   *
+   * This layer spends FOUR visual channels — shape (ten planforms), hue (civil
+   * white / military amber / tracked cyan), size (weight class) and alpha
+   * (a contact coasting on dead reckoning) — and until now spent zero lines
+   * saying so. Counts are tallied over the billboards actually on screen, so
+   * the key can never claim a class the map is not drawing, and classes that
+   * are absent do not appear at all.
+   *
+   * Shape entries hand over the very glyph the billboard uses, masked by the
+   * manager: the swatch is the silhouette, at the exact drawn colour.
+   * @returns {{legend: Array<object>}|null} Row controls, or null while empty.
+   */
+  getRowControls() {
+    if (!_billboards.size) return null;
+    const byClass = new Map();
+    let military = 0;
+    let coasting = 0;
+    let unclassified = 0;
+    for (const icao24 of _billboards.keys()) {
+      const info = _flightData.get(icao24);
+      // The class the contact RENDERS as: a converted contact draws the
+      // triangle, so the key has to list the triangle.
+      const klass = tr3bAircraftClass(icao24, info?.klass || 'unknown');
+      byClass.set(klass, (byClass.get(klass) || 0) + 1);
+      if (klass === 'unknown') unclassified += 1;
+      if (isMilitaryIcao(icao24)) military += 1;
+      if (_missingPolls.get(icao24)) coasting += 1;
+    }
+    const legend = [...byClass.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([klass, count]) => ({
+        label: klass === TR3B_CLASS
+          ? TR3B_TYPE_LABEL
+          : (CLASS_LEGEND_LABELS[klass] || klass),
+        // Civil white is the fleet's own colour; the glyph mask keeps it exact.
+        color: '#ffffff',
+        // `tr3b` has a hot IR variant; the swatch follows the same style flag
+        // the billboards do, so the key shows the shape actually on screen.
+        glyph: classLegendGlyph(klass === TR3B_CLASS && _irBoost ? 'tr3bHot' : klass),
+        count,
+        blurb: klass === 'unknown'
+          ? 'Type not reported yet — the silhouette is a placeholder and swaps '
+            + 'in place the moment the type answer lands.'
+          : undefined,
+      }));
+    if (military > 0) {
+      legend.push({
+        label: 'Military ICAO allocation',
+        color: '#ffb800',
+        count: military,
+        blurb: 'Amber marks the transponder’s registered allocation block, not the mission.',
+      });
+    }
+    if (_trackedIcao) {
+      legend.push({
+        label: 'Tracked contact',
+        color: '#00ffff',
+        count: 1,
+        blurb: 'Cyan and its trail — the past track, not a prediction.',
+      });
+    }
+    if (coasting > 0) {
+      legend.push({
+        label: 'Coasting (missed polls)',
+        // The exact washed tint the sprite wears — freshness is a COLOUR here,
+        // not an alpha, so the swatch can be the datum.
+        color: coastingSwatchCss('#ffffff'),
+        count: coasting,
+        blurb: 'Washed out, not faded: the position is dead-reckoned from the '
+          + 'last fix rather than reported. Transparency means distance here.',
+      });
+    }
+    if (unclassified > 0 && !byClass.has('unknown')) {
+      // Defensive: the tally above already covers it, but a future refactor
+      // must not be able to drop the honest class silently.
+      legend.push({ label: 'Unclassified', color: '#ffffff', count: unclassified });
+    }
+    return { legend };
   },
 };
 

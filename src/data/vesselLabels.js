@@ -25,7 +25,18 @@ const TYPE_STYLES = [
   { pattern: /fishing/i, css: '#7cff9b', accent: '124, 255, 155' },
   { pattern: /tug|tow|pilot|supply|service/i, css: '#f7f0a3', accent: '247, 240, 163' },
 ];
-const DEFAULT_STYLE = { css: '#39d5ff', accent: '57, 213, 255' };
+/**
+ * Vessels whose AIS type matches no family — including the very common case of
+ * a vessel that has broadcast no type at all.
+ *
+ * This used to be `#39d5ff` / `57, 213, 255`: byte-for-byte the CARGO colour.
+ * A ship that had declared nothing was drawn as a container ship, in a palette
+ * where the reader's only cue is hue (CARTOGRAPHIE A1). The replacement is
+ * deliberately OFF the family ramp — a desaturated slate among five saturated
+ * hues — so "no family" reads as its own state rather than as membership in
+ * whichever family happened to be the default.
+ */
+const DEFAULT_STYLE = { css: '#9aa7b5', accent: '154, 167, 181' };
 
 const NUMERIC_TYPE_SPECIALS = {
   30: 'FISHING', 31: 'TOWING', 32: 'TOWING', 33: 'DREDGER', 34: 'DIVE OPS',
@@ -65,6 +76,40 @@ export function accentForVesselType(type) {
 function styleForType(type) {
   const text = normalizeVesselType(type);
   return TYPE_STYLES.find((entry) => entry.pattern.test(text)) || DEFAULT_STYLE;
+}
+
+/**
+ * The family a chevron's hue actually stands for, as a legend key.
+ *
+ * `null` is the unfamilied bucket — an AIS type this palette has no pattern
+ * for, and, far more often, a vessel that broadcast no type at all. It is a
+ * bucket the map has always drawn and never named.
+ * @param {string} type Raw AIS type.
+ * @returns {string|null} Family key, or null when nothing matched.
+ */
+export function vesselTypeFamily(type) {
+  const text = normalizeVesselType(type);
+  const index = TYPE_STYLES.findIndex((entry) => entry.pattern.test(text));
+  return index < 0 ? null : VESSEL_FAMILY_KEYS[index];
+}
+
+/** Family keys, parallel to TYPE_STYLES, with the caption a reader gets. */
+const VESSEL_FAMILY_KEYS = Object.freeze(['tanker', 'cargo', 'passenger', 'fishing', 'service']);
+
+/** Legend captions, keyed as {@link vesselTypeFamily} reports. */
+export const VESSEL_FAMILY_LABELS = Object.freeze({
+  tanker: 'Pétrolier / chimiquier',
+  cargo: 'Cargo, porte-conteneurs, vraquier',
+  passenger: 'Passagers, ferry, croisière',
+  fishing: 'Pêche',
+  service: 'Remorquage, pilotage, servitude',
+  unknown: 'Type non déclaré',
+});
+
+/** Swatch colour for a family key, including the unfamilied bucket. */
+export function vesselFamilyCss(family) {
+  const index = VESSEL_FAMILY_KEYS.indexOf(family);
+  return index < 0 ? DEFAULT_STYLE.css : TYPE_STYLES[index].css;
 }
 
 /**

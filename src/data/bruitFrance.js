@@ -1496,7 +1496,8 @@ const bruitFranceLayer = {
     // NOT call `render`, so a legend built from the last payload alone would
     // keep describing a scan that is no longer on screen.
     if (bruitScanLayer.getStats().dormant === true) return { chips: [], legend: [] };
-    return { chips: [], legend: bruitLegend(_payload) };
+    // Ground-classified area fill — see surfaceFillNotice.js.
+    return { chips: [], legend: bruitLegend(_payload), surfaceFill: true };
   },
 };
 

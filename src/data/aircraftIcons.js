@@ -221,6 +221,21 @@ const BODIES = {
     <circle cx="28" cy="21" r="5.2" fill="#ffffff"/>
     <circle cx="0" cy="6" r="3.6" fill="#ffffff" fill-opacity="0.82"/>`,
 
+  // ── Unclassified contact (CARTOGRAPHIE A1, 2026-09-02). A contact whose
+  //    type OpenSky has not reported and whose enrichment has not landed used
+  //    to wear the AIRLINER planform at scale 1.0 — the map stating a
+  //    narrow-body it had never measured, and doing so for most of a dense
+  //    view, because `/states/all` carries no type code.
+  //
+  //    Deliberately NOT a planform: a plain nose-up dart with a hollow core
+  //    and no wing, no tailplane, no engine pods. Nothing flies this shape, so
+  //    it cannot be read as a measurement; the hollow centre reads as "no
+  //    fill" at fleet size, which is exactly the datum. It swaps to the real
+  //    silhouette in place the moment the type answer arrives.
+  unknown: `
+    <path d="M0,-30 L 18,26 L 0,17 L -18,26 Z"
+          fill="none" stroke="white" stroke-width="4.5" stroke-linejoin="round"
+          stroke-opacity="0.86"/>`,
   // Large UAV (Reaper-class) — bulbous sensor nose, very long slender
   // straight wings, slim tail boom, canted V-tail.
   uav: `
@@ -257,8 +272,28 @@ const TRACKED_RASTER_PX = 192;
  *  Default size serves the fleet; pass `aircraftIcon(kind, TRACKED_ICON_PX)`
  *  (re-exported below) for the tracked billboard. */
 export const TRACKED_ICON_PX = TRACKED_RASTER_PX;
+
+/**
+ * Silhouette for a LEGEND swatch, keyed by class rather than by contact.
+ *
+ * A separate entry point on purpose. Every `aircraftIcon()` call site in the
+ * flight layers is required (by `tr3bRegistry.test.mjs`) to resolve its sprite
+ * kind through `_iconKind`, so that no refresh path can silently revert a
+ * per-contact TR-3B conversion. A legend key has no contact to resolve — it
+ * asks for the shape of a CLASS — so it goes through this door instead of
+ * weakening that invariant.
+ * @param {string} kind classifyAircraft() kind, or a tr3b sprite kind.
+ * @returns {string} SVG data URI.
+ */
+export function classLegendGlyph(kind) {
+  return aircraftIcon(kind);
+}
+
 export function aircraftIcon(kind, px = FLEET_RASTER_PX) {
-  const k = BODIES[kind] ? kind : 'airliner';
+  // An unrecognised kind falls back to the UNCLASSIFIED dart, never to the
+  // airliner planform — a glyph nobody can read as a measurement is the right
+  // answer to "I don't know what this is" (CARTOGRAPHIE A1).
+  const k = BODIES[kind] ? kind : 'unknown';
   const key = `${k}@${px}`;
   let uri = _iconCache.get(key);
   if (!uri) {

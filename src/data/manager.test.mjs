@@ -2925,6 +2925,76 @@ test('a legend entry that declares a glyph is masked to that shape, keeping its 
   }
 });
 
+test('the on-map legend is a second mount point, populated without opening the panel', async () => {
+  // CARTOGRAPHIE. The panel legend is not the defect — its PLACEMENT is:
+  // `#data-panel` ships collapsed and the collapsed rule hides the toggle
+  // list, and a share link deliberately ignores the recipient's stored panel
+  // preference. So the key has to exist somewhere the map itself shows it.
+  const originalDocument = globalThis.document;
+  const host = makeControlElement();
+  const items = makeControlElement();
+  globalThis.document = {
+    createElement: makeControlElement,
+    createDocumentFragment: () => {
+      const fragment = makeControlElement();
+      fragment.isFragment = true;
+      return fragment;
+    },
+    getElementById: (id) => (id === 'map-legend' ? host : id === 'map-legend-items' ? items : null),
+  };
+  host.hidden = true;
+  const mgr = new DataLayerManager({});
+  const layer = makeRowControlLayer();
+  layer.module.getRowControls = () => ({
+    chips: [],
+    legend: [
+      { label: 'NAV', color: '#4fd8ff', blurb: 'GNSS constellations', count: 2 },
+      // A deliberate "present in the data, NOT drawn here" line.
+      { label: 'Schools — not drawn here', color: null },
+    ],
+  });
+  mgr.register(layer.module);
+  const container = makeControlElement();
+
+  try {
+    mgr.buildTogglePanel(container);
+    // Nothing is on: the block stays hidden rather than showing an empty key.
+    mgr._refreshTogglePanel();
+    assert.equal(host.hidden, true);
+
+    assert.equal(await mgr.setEnabled('satellites', true), true);
+    mgr._refreshTogglePanel();
+    assert.equal(host.hidden, false, 'an enabled layer with a legend reveals the block');
+
+    // The layer is named in full — a key that does not say what it keys is a
+    // colour chart.
+    const titles = collectByClass(items, 'map-legend-layer');
+    assert.deepEqual(titles.map((node) => node.textContent), ['Satellites']);
+
+    const swatches = collectByClass(items, 'map-legend-swatch');
+    assert.equal(swatches.length, 2);
+    assert.equal(swatches[0].style.background, '#4fd8ff',
+      'the swatch IS the datum — the exact drawn colour');
+    // The unmapped entry gets an outline, never a fill that could read as a class.
+    assert.match(swatches[1].className, /is-unmapped/);
+    assert.equal(swatches[1].style.background, undefined);
+
+    // The blurb is TEXT, not a tooltip: it carries a statement the map makes.
+    const blurbs = collectByClass(items, 'map-legend-blurb');
+    assert.deepEqual(blurbs.map((node) => node.textContent), ['GNSS constellations']);
+
+    // Turning the layer back off empties the key rather than leaving a stale one.
+    assert.equal(await mgr.setEnabled('satellites', false), true);
+    mgr._refreshTogglePanel();
+    assert.equal(host.hidden, true);
+    assert.equal(collectByClass(items, 'map-legend-swatch').length, 0);
+  } finally {
+    await mgr.destroyAll();
+    if (originalDocument === undefined) delete globalThis.document;
+    else globalThis.document = originalDocument;
+  }
+});
+
 test('a layer that declares row controls renders its chips and color legend', async () => {
   const originalDocument = globalThis.document;
   globalThis.document = { createElement: makeControlElement };
