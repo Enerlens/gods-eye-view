@@ -8,13 +8,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cesium from 'cesium';
 import veloPulseLayer, {
+  ANIMATION_MS_PER_SLOT,
   PULSE_MODES,
   _loadPulsePackForTest,
   _pulseRowControlsForTest,
+  _pulseSeekForTest,
   _pulseSetParamsForTest,
   _pulseStateForTest,
   _pulseStatsForTest,
   _pulseStopTickForTest,
+  _pulseTogglePlayForTest,
   _setPulseStateForTest,
   buildRecords,
   createPulseOverlayEntry,
@@ -110,6 +113,52 @@ test('the mode reaches a share link, because it is what the layer is showing', (
   reset();
 });
 
+test('the week is paced for a reader, not for a stopwatch', () => {
+  // 520 ms an hour: the whole week takes about a minute and a half. The layer
+  // shipped at 220 ms — 37 seconds for 168 discrete jumps — and nobody could
+  // tell what had changed between one frame and the next.
+  assert.ok(ANIMATION_MS_PER_SLOT >= 450, `${ANIMATION_MS_PER_SLOT} ms per hour`);
+  const weekSeconds = (ANIMATION_MS_PER_SLOT * PULSE_SLOTS) / 1000;
+  assert.ok(weekSeconds > 60 && weekSeconds < 180, `${weekSeconds} s for a week`);
+});
+
+test('scrubbing stops the week on the hour asked for, and says so in the row', () => {
+  reset();
+  _setPulseStateForTest({ viewer: fakeViewer(), pack: PACK, mode: 'now', slot: 0 });
+  _pulseSetParamsForTest({ mode: 'week' });
+  assert.equal(_pulseStateForTest().ticking, true);
+  _pulseSeekForTest(3 * 24 + 15);
+  const state = _pulseStateForTest();
+  assert.equal(state.ticking, false, 'a scrub pauses; the reader is the clock now');
+  assert.equal(state.slot, 3 * 24 + 15);
+  // A row reading MAINTENANT over a globe showing Thursday 15:00 would be a lie
+  // told by the interface, so a scrub moves the layer into SEMAINE.
+  assert.equal(state.mode, 'week');
+  assert.equal(_pulseStatsForTest().slotLabel, 'jeudi 15h');
+  const paused = _pulseRowControlsForTest().chips.find((chip) => chip.id === 'week');
+  assert.ok(paused.active && /❚❚/.test(paused.label), JSON.stringify(paused));
+  // And play resumes from exactly where the scrub left it.
+  _pulseTogglePlayForTest();
+  assert.equal(_pulseStateForTest().ticking, true);
+  assert.equal(_pulseStateForTest().slot, 3 * 24 + 15);
+  _pulseTogglePlayForTest();
+  assert.equal(_pulseStateForTest().ticking, false);
+  reset();
+});
+
+test('pressing SEMAINE again restarts a week the reader had paused', () => {
+  reset();
+  _setPulseStateForTest({ viewer: fakeViewer(), pack: PACK, mode: 'now', slot: 0 });
+  _pulseSetParamsForTest({ mode: 'week' });
+  _pulseSeekForTest(40);
+  assert.equal(_pulseStateForTest().ticking, false);
+  // Same mode, and still a change: the chip is the only restart control a
+  // reader who never found the panel has.
+  assert.equal(_pulseSetParamsForTest({ mode: 'week' }), true);
+  assert.equal(_pulseStateForTest().ticking, true);
+  reset();
+});
+
 test('week animates and the other two do not, and disable always stops it', () => {
   reset();
   _setPulseStateForTest({ viewer: fakeViewer(), pack: PACK, mode: 'now', slot: 0 });
@@ -148,8 +197,9 @@ test('a site with no reading at this hour is grey and flat, not zero-and-blue', 
   const pack = { ...PACK, cities: { ...PACK.cities, paris: { ...PACK.cities.paris, sites: [holed] } } };
   const record = buildRecords(pack, 5).find((entry) => entry.cityKey === 'paris');
   assert.equal(record.value, null);
-  assert.equal(record.heightM, 0, 'nothing measured is nothing drawn');
-  assert.equal(record.color, '#4a5568');
+  assert.equal(record.radiusM, 0, 'nothing measured is nothing drawn');
+  assert.equal(record.share, null);
+  assert.equal(record.color, 'rgb(74, 85, 104)', 'the unsampled grey, not the bottom band');
 });
 
 // ── The card ────────────────────────────────────────────────────────────────

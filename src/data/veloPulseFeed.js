@@ -25,8 +25,8 @@
  * WHAT IS COMPARABLE, AND IT IS ONLY ONE THING: each site against ITSELF. The
  * colour ramp is the share of that site's own weekly maximum, so "this is a busy
  * hour here" reads the same in both cities while the absolute number keeps its
- * own unit on the card and in the height. Two sites in two cities are never on
- * screen together — they are 390 km apart — so a shared absolute scale would
+ * own unit on the card and in the blob's AREA. Two sites in two cities are never
+ * on screen together — they are 390 km apart — so a shared absolute scale would
  * buy nothing and cost the truth.
  *
  * Dependency-free and side-effect-free.
@@ -123,6 +123,21 @@ export function slotLabel(slot) {
 }
 
 /**
+ * Any position on the week's circle, brought back onto 0..167.
+ *
+ * The week is a LOOP — Sunday 23:00 is followed by Monday 00:00 — so the
+ * animation, the scrubber and the keyboard all hand this module positions that
+ * ran off one end, and a negative modulo in JavaScript stays negative.
+ *
+ * @param {number} position Hour-of-week, fractional and unbounded.
+ * @returns {number} 0 <= wrapped < 168.
+ */
+export function wrapSlot(position) {
+  if (!Number.isFinite(position)) return 0;
+  return ((position % PULSE_SLOTS) + PULSE_SLOTS) % PULSE_SLOTS;
+}
+
+/**
  * The value a site carries at a slot, or null when it was never sampled there.
  *
  * `scale` divides: Lyon stores occupancy in tenths of a percent so the pack
@@ -138,6 +153,43 @@ export function valueAt(site, slot, scale = 1) {
   const raw = site?.profile?.[slot];
   if (!Number.isFinite(raw)) return null;
   return scale > 1 ? raw / (scale / 100) : raw;
+}
+
+/**
+ * The value to DRAW at a fractional position in the week — which is a
+ * transition, and never a measurement.
+ *
+ * The animation used to jump from one whole hour to the next every 220 ms, so
+ * 561 sites changed colour together, 168 times in 37 seconds. That is a strobe,
+ * not a pulse, and it is the reason nobody could tell what was moving. The
+ * clock now runs between the hours and this is what it reads: the hour we are
+ * IN, eased toward the hour we are heading for.
+ *
+ * The two rules that keep it honest:
+ *
+ *   · The hour we are IN decides everything. If it holds no reading, the site
+ *     is unsampled and stays grey — a neighbour's number is not an answer for
+ *     an hour the archive never described.
+ *   · A hole AHEAD is held, not faded into. Easing toward a missing hour would
+ *     draw a station emptying when what actually happened is that nobody
+ *     looked.
+ *
+ * Every NUMBER a card prints is read at the whole hour with `valueAt`. This
+ * function only ever decides a colour and a diameter.
+ *
+ * @param {object} site
+ * @param {number} position Fractional hour-of-week.
+ * @param {number} [scale]
+ * @returns {number|null}
+ */
+export function valueAtFraction(site, position, scale = 1) {
+  const wrapped = wrapSlot(position);
+  const slot = Math.floor(wrapped);
+  const here = valueAt(site, slot, scale);
+  if (here === null) return null;
+  const next = valueAt(site, (slot + 1) % PULSE_SLOTS, scale);
+  if (next === null) return here;
+  return here + (next - here) * (wrapped - slot);
 }
 
 /**
@@ -196,10 +248,17 @@ export const PULSE_MIN_COVERAGE = 0.5;
  * That agreement is the layer's argument, and it only appears once the stock is
  * read the right way round.
  *
+ * SPLIT OUT OF `networkBusiest` — which is now three lines around it — because
+ * the busiest hour is only ever the ARGMAX of this curve, and the curve itself
+ * is what the timeline under the globe draws. Two copies of this arithmetic
+ * would be two chances for the strip to disagree with the hour POINTE freezes
+ * on, in a layer whose entire claim is that hour.
+ *
  * @param {object} cities The pack's `cities` map, or one city's entry.
- * @returns {{slot: number, score: number, coverage: number}|null}
+ * @returns {{totals: number[], eligible: boolean[], coverage: number[],
+ *   contributing: number}} 168 entries each.
  */
-export function networkBusiest(cities) {
+export function networkActivity(cities) {
   const entries = Array.isArray(cities?.sites) ? [cities] : Object.values(cities || {});
   const totals = new Array(PULSE_SLOTS).fill(0);
   // A slot is comparable only if every contributing city was well enough
@@ -259,6 +318,17 @@ export function networkBusiest(cities) {
       if (share < coverage[slot]) coverage[slot] = share;
     }
   }
+  return { totals, eligible, coverage, contributing };
+}
+
+/**
+ * The busiest hour of the week: the argmax of {@link networkActivity}.
+ *
+ * @param {object} cities The pack's `cities` map, or one city's entry.
+ * @returns {{slot: number, score: number, coverage: number}|null}
+ */
+export function networkBusiest(cities) {
+  const { totals, eligible, coverage, contributing } = networkActivity(cities);
   if (!contributing) return null;
   let best = -1;
   for (let slot = 0; slot < PULSE_SLOTS; slot += 1) {
@@ -273,6 +343,90 @@ export function networkBusiest(cities) {
     score: Math.round(totals[best] * 1000) / 1000,
     coverage: Math.round(coverage[best] * 1000) / 1000,
   };
+}
+
+/**
+ * The week's own shape, 0..1, for the strip the reader scrubs.
+ *
+ * WHY THE ANIMATION NEEDED THIS. Watching 561 sites change colour tells you
+ * something is happening and never what: the two commuter peaks, the flat
+ * night, the different weekend are all facts about the NETWORK, and no single
+ * site carries them. The strip draws exactly the quantity POINTE freezes on —
+ * one bar per hour, the whole week at once — so the animation stops being a
+ * shimmer and becomes a position in a curve the reader can see the rest of.
+ *
+ * Ineligible hours (see `PULSE_MIN_COVERAGE`) come back as `null`, not as 0: a
+ * bar of zero height would read as an hour nobody cycled.
+ *
+ * @param {object} cities The pack's `cities` map.
+ * @returns {{values: Array<number|null>, peakSlot: number|null,
+ *   quietSlot: number|null}|null} Null when nothing contributed.
+ */
+export function networkCurve(cities) {
+  const { totals, eligible, contributing } = networkActivity(cities);
+  if (!contributing) return null;
+  let max = 0;
+  for (let slot = 0; slot < PULSE_SLOTS; slot += 1) {
+    if (eligible[slot] && totals[slot] > max) max = totals[slot];
+  }
+  if (max <= 0) return null;
+  const values = new Array(PULSE_SLOTS).fill(null);
+  let peakSlot = null;
+  let quietSlot = null;
+  for (let slot = 0; slot < PULSE_SLOTS; slot += 1) {
+    if (!eligible[slot]) continue;
+    values[slot] = totals[slot] / max;
+    if (peakSlot === null || values[slot] > values[peakSlot]) peakSlot = slot;
+    if (quietSlot === null || values[slot] < values[quietSlot]) quietSlot = slot;
+  }
+  return { values, peakSlot, quietSlot };
+}
+
+/**
+ * Where one hour sits between the week's quietest and its busiest, 0..1.
+ *
+ * The curve's own floor is high — a Vélo'v dock is never 100 % empty and a
+ * counter is never at zero all night, so the raw week runs about 0.35..1.00 —
+ * and read raw it would say "busy" at four in the morning. Stretching it onto
+ * its OWN observed span is what makes both the strip and the words describe the
+ * variation rather than the offset.
+ *
+ * @param {number} slot 0..167.
+ * @param {{values: Array<number|null>, quietSlot: number|null}|null} curve
+ * @returns {number|null} Null when that hour was not comparable.
+ */
+export function pulseRelief(slot, curve) {
+  const index = Number.isFinite(slot) ? Math.floor(wrapSlot(slot)) : 0;
+  const value = curve?.values?.[index];
+  if (!Number.isFinite(value)) return null;
+  const floor = curve.quietSlot === null ? 0 : (curve.values[curve.quietSlot] ?? 0);
+  const span = 1 - floor;
+  return span > 0 ? Math.min(1, Math.max(0, (value - floor) / span)) : 0;
+}
+
+/**
+ * What the network is DOING at one hour, in four words.
+ *
+ * The strip shows where the hour sits in the week; this says it out loud, so a
+ * reader who has just pressed play is told "pointe du soir" rather than being
+ * left to infer it from a moving cursor. Both read the same stretched curve —
+ * see {@link pulseRelief} — so the words and the bars can never disagree.
+ *
+ * @param {number} slot 0..167.
+ * @param {{values: Array<number|null>}|null} curve From {@link networkCurve}.
+ * @returns {string}
+ */
+export function pulsePhrase(slot, curve) {
+  const index = Number.isFinite(slot) ? Math.floor(wrapSlot(slot)) : 0;
+  const relief = pulseRelief(index, curve);
+  const weekend = Math.floor(index / 24) >= 5;
+  if (relief === null) return weekend ? 'week-end' : 'heure non relevée';
+  const hour = index % 24;
+  if (relief >= 0.85) return weekend ? 'pointe du week-end' : 'pointe';
+  if (relief >= 0.6) return hour < 12 ? 'matinée chargée' : 'fin de journée chargée';
+  if (relief >= 0.35) return weekend ? 'week-end, rythme moyen' : 'rythme moyen';
+  if (relief >= 0.15) return hour >= 21 || hour < 5 ? 'la ville se vide' : 'réseau calme';
+  return 'la nuit — presque personne ne roule';
 }
 
 /**
@@ -312,7 +466,7 @@ export function pulseBand(value, peak) {
 }
 
 /**
- * The colour for one site at one slot.
+ * The BAND colour for one site at one slot — what the legend counts.
  * @param {number|null} value
  * @param {number|null} peak
  * @returns {string}
@@ -322,39 +476,118 @@ export function pulseColor(value, peak) {
   return band < 0 ? PULSE_UNSAMPLED_COLOR : PULSE_RAMP[band].color;
 }
 
+/** `#rrggbb` → `{r, g, b}`, 0..255. */
+function hexChannels(hex) {
+  const value = Number.parseInt(String(hex).replace('#', ''), 16);
+  return { r: (value >> 16) & 255, g: (value >> 8) & 255, b: value & 255 };
+}
+
+/** The share each ramp colour is the exact colour OF — the band's midpoint. */
+const RAMP_ANCHORS = PULSE_RAMP.map((entry, index) => ({
+  at: index === 0
+    ? 0
+    : (index === PULSE_RAMP.length - 1
+      ? 1
+      : (PULSE_RAMP[index - 1].upTo + entry.upTo) / 2),
+  ...hexChannels(entry.color),
+}));
+
+const UNSAMPLED_CHANNELS = Object.freeze(hexChannels(PULSE_UNSAMPLED_COLOR));
+
 /**
- * How tall a site stands at one slot, in metres.
+ * The colour the HEAT FIELD paints, interpolated along the same five anchors.
  *
- * THE HEIGHT IS THE ABSOLUTE QUANTITY, IN THAT CITY'S OWN UNIT — bikes standing
- * at a Vélo'v dock, cyclists counted in an hour at a Paris counter — and the
- * two are deliberately NOT reconciled onto one scale. What is reconciled is the
- * metres-per-unit constant, chosen so a busy site in either city reaches a
- * comparable height on screen: Lyon's docks hold at most a few dozen bikes and
- * Paris' counters see hundreds of cyclists an hour, so the same number of
- * metres per unit would draw Lyon as a flat plain beside a Paris skyline and
- * invite exactly the comparison this module refuses to make.
+ * The bands are the vocabulary — the legend counts sites in them, and the
+ * reader is told "≥ 80 %" in words — but five hard steps are the wrong thing to
+ * ANIMATE: a site drifting across a threshold snapped between two colours, and
+ * 561 sites snapping at 168 different moments is the flicker the columns had.
+ * Interpolating between the same anchors keeps every band's colour exactly
+ * where the legend says it is and fills the gaps between them, so an hour of
+ * the week reads as a swell rather than a switch.
+ *
+ * Channels rather than a string, because the animation asks 561 times a frame
+ * and parsing `rgb(…)` back out at 25 Hz is work with nothing to show for it.
+ *
+ * @param {number|null} share 0..1, a site's value over its own weekly maximum.
+ * @returns {{r: number, g: number, b: number}} 0..255 each.
+ */
+export function pulseRampRgb(share) {
+  if (!Number.isFinite(share)) return UNSAMPLED_CHANNELS;
+  const clamped = Math.min(1, Math.max(0, share));
+  let low = RAMP_ANCHORS[0];
+  let high = RAMP_ANCHORS[RAMP_ANCHORS.length - 1];
+  for (let index = 0; index < RAMP_ANCHORS.length - 1; index += 1) {
+    if (clamped >= RAMP_ANCHORS[index].at && clamped <= RAMP_ANCHORS[index + 1].at) {
+      low = RAMP_ANCHORS[index];
+      high = RAMP_ANCHORS[index + 1];
+      break;
+    }
+  }
+  const span = high.at - low.at;
+  const t = span > 0 ? (clamped - low.at) / span : 0;
+  const mix = (a, b) => Math.round(a + (b - a) * t);
+  return { r: mix(low.r, high.r), g: mix(low.g, high.g), b: mix(low.b, high.b) };
+}
+
+/**
+ * The same colour, as CSS, for the swatches and strips the DOM draws.
+ * @param {number|null} share
+ * @returns {string} `rgb(r, g, b)`.
+ */
+export function pulseRampColor(share) {
+  const { r, g, b } = pulseRampRgb(share);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+/**
+ * The ground RADIUS of a site's blob, in metres.
+ *
+ * THE COLUMNS ARE GONE, AND THIS IS WHERE THEIR CHANNEL WENT. Extruded squares
+ * put the absolute quantity in a HEIGHT, which meant 561 floating cubes over a
+ * city, one hiding the next, unreadable at nadir and unreadable from far
+ * enough away to see both cities' shape. The layer now draws a heat field on
+ * the ground, and the absolute quantity is the blob's AREA — the standard
+ * proportional-symbol encoding, where twice the area means twice the quantity
+ * and a reader comparing two discs is not misled by the fourth power a
+ * radius-proportional symbol would give them.
+ *
+ * Area ∝ quantity means radius ∝ √quantity, and the two constants keep each
+ * city in its OWN unit while landing a busy site in either city at a comparable
+ * size: a full 40-stand Vélo'v dock and a 350-cyclist Paris rush hour both come
+ * out near 150 m. Lyon's docks hold dozens and Paris' counters see hundreds, so
+ * one shared constant would draw Lyon as a scatter of dots beside a Paris of
+ * craters and invite exactly the comparison this module refuses to make.
  *
  * @param {number|null} value The site's value at the slot, in its own unit.
  * @param {object} city The pack's city entry.
  * @param {object} site
  * @returns {number} Metres. 0 when there is nothing to draw.
  */
-export function pulseHeightM(value, city, site) {
+export function pulseRadiusM(value, city, site) {
   if (!Number.isFinite(value)) return 0;
   if (city?.instrument === 'stock') {
     // Occupancy is a percentage; the count of bikes standing there is what the
     // eye should read, so it is reconstituted from the station's own capacity.
     const capacity = Number(site?.capacity);
     const bikes = Number.isFinite(capacity) && capacity > 0 ? (value / 100) * capacity : value / 5;
-    return Math.max(4, bikes * PULSE_METRES_PER_BIKE);
+    return Math.max(PULSE_RADIUS_FLOOR_M, Math.sqrt(Math.max(0, bikes)) * PULSE_RADIUS_M_PER_ROOT_BIKE);
   }
-  return Math.max(4, value * PULSE_METRES_PER_CYCLIST);
+  return Math.max(
+    PULSE_RADIUS_FLOOR_M,
+    Math.sqrt(Math.max(0, value)) * PULSE_RADIUS_M_PER_ROOT_CYCLIST,
+  );
 }
 
-/** 8 m per bike standing at a dock: a full 40-stand station reaches 320 m. */
-export const PULSE_METRES_PER_BIKE = 8;
-/** 0.9 m per cyclist an hour: a 350/h counter at rush hour reaches 315 m. */
-export const PULSE_METRES_PER_CYCLIST = 0.9;
+/** 24 m per √bike: a full 40-stand dock draws a 152 m blob. */
+export const PULSE_RADIUS_M_PER_ROOT_BIKE = 24;
+/** 7.6 m per √cyclist: a 350/h counter at rush hour draws a 142 m blob. */
+export const PULSE_RADIUS_M_PER_ROOT_CYCLIST = 7.6;
+/**
+ * The smallest blob drawn. An empty dock at 04:00 is a MEASUREMENT — the bikes
+ * are out on the road — so it keeps a mark on the map and stays clickable
+ * instead of disappearing into the hours where nobody looked.
+ */
+export const PULSE_RADIUS_FLOOR_M = 20;
 
 /**
  * The number a card prints, with its unit attached.
@@ -368,11 +601,69 @@ export function pulseReading(value, city, site) {
   if (city?.instrument === 'stock') {
     const capacity = Number(site?.capacity);
     const percent = Math.round(value);
-    return Number.isFinite(capacity) && capacity > 0
-      ? `${percent} % pleine — environ ${Math.round((value / 100) * capacity)} vélos sur ${capacity}`
-      : `${percent} % pleine`;
+    if (!Number.isFinite(capacity) || capacity <= 0) return `${percent} % pleine`;
+    const bikes = Math.round((value / 100) * capacity);
+    // A 19-stand dock at 7 % holds ONE bike, and the fiche under the globe
+    // prints this line every hour of the week: "1 vélos" reads as a bug in the
+    // number rather than as a plural nobody bothered with.
+    return `${percent} % pleine — environ ${bikes} vélo${bikes > 1 ? 's' : ''} sur ${capacity}`;
   }
   return `${Math.round(value)} cyclistes par heure`;
+}
+
+/**
+ * Everything a reader is told about ONE site at ONE hour, in order.
+ *
+ * Written once and read twice — by the card anchored on the map and by the
+ * panel under the globe — because those two are the same claim about the same
+ * dock, and the panel exists precisely because the anchored card can be off
+ * screen. Two builders would eventually print two different numbers for one
+ * station, and a reader who saw both would be right to trust neither.
+ *
+ * THE VALUE IS READ AT THE WHOLE HOUR. The animation runs between the hours
+ * (see {@link valueAtFraction}) and that easing is a drawing decision; a
+ * printed number belongs to a measured hour or to no hour at all.
+ *
+ * @param {{site: object, city: object}} record
+ * @param {object|null} pack The whole pack, for the window it covers.
+ * @param {number} slot 0..167.
+ * @returns {string[]}
+ */
+export function pulseSiteDetails(record, pack, slot) {
+  const site = record?.site;
+  const city = record?.city;
+  if (!site || !city) return [];
+  const scale = Number(city.scale) || 1;
+  const value = valueAt(site, slot, scale);
+  const peakRaw = sitePeak(site);
+  const peak = peakRaw ? (scale > 1 ? peakRaw.value / (scale / 100) : peakRaw.value) : null;
+  const details = [];
+  details.push(`${slotLabel(slot)} — ${pulseReading(value, city, site)}`);
+  details.push(city.instrument === 'stock'
+    ? 'Mesure un STOCK : combien de vélos sont garés là'
+    : 'Mesure un FLUX : combien de cyclistes passent là');
+  if (peak !== null && peakRaw) {
+    // MAXIMUM, not "pointe": a Vélo'v station is at its maximum when it is
+    // fullest, which is the middle of the night, and calling that a peak of
+    // activity would be exactly backwards. The next line says which it is.
+    details.push(`Maximum de la semaine ${slotLabel(peakRaw.slot)} — ${pulseReading(peak, city, site)}`);
+    details.push(city.instrument === 'stock'
+      ? 'Une station pleine = des vélos garés ; une station vide = des vélos sur la route'
+      : 'Un compteur élevé = des cyclistes qui passent en ce moment');
+  }
+  const samples = site.samples?.[slot];
+  details.push(Number.isFinite(samples) && samples > 0
+    ? `Moyenne de ${samples} semaine${samples > 1 ? 's' : ''} sur les 4 relevées`
+    : 'Aucun relevé à cette heure de la semaine');
+  if (site.commune) details.push(site.commune);
+  if (site.direction) details.push(`Sens ${site.direction}`);
+  if (site.installedOn) details.push(`Compteur installé le ${site.installedOn}`);
+  if (city.instrument === 'stock' && Number.isFinite(site.capacity)) {
+    details.push(`${site.capacity} bornettes`);
+  }
+  details.push(`Semaine type ${pack?.window?.start} → ${pack?.window?.end}`);
+  details.push(city.source);
+  return details;
 }
 
 /**

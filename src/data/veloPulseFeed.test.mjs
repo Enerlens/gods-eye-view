@@ -4,22 +4,30 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  PULSE_METRES_PER_BIKE,
-  PULSE_METRES_PER_CYCLIST,
+  PULSE_RADIUS_FLOOR_M,
+  PULSE_RADIUS_M_PER_ROOT_BIKE,
+  PULSE_RADIUS_M_PER_ROOT_CYCLIST,
   PULSE_RAMP,
   PULSE_SLOTS,
   PULSE_UNSAMPLED_COLOR,
   networkBusiest,
+  networkCurve,
   pulseBand,
   pulseColor,
-  pulseHeightM,
+  pulsePhrase,
+  pulseRadiusM,
+  pulseRampColor,
   pulseReading,
+  pulseRelief,
+  pulseSiteDetails,
   sitePeak,
   slotForDate,
   slotLabel,
   summarizePack,
   validatePack,
   valueAt,
+  valueAtFraction,
+  wrapSlot,
 } from './veloPulseFeed.js';
 
 /** A profile with a single spike, so every assertion can be read by eye. */
@@ -245,30 +253,122 @@ test('the five bands are five distinct colours', () => {
   assert.equal(new Set(PULSE_RAMP.map((band) => band.color)).size, PULSE_RAMP.length);
 });
 
-// ── Height ──────────────────────────────────────────────────────────────────
+// ── The size of a blob ──────────────────────────────────────────────────────
 
 test('a stock is drawn as bikes and a flow as cyclists, each in its own unit', () => {
   const lyonCity = PACK.cities.lyon;
   const parisCity = PACK.cities.paris;
-  // 80 % of a 40-stand station is 32 bikes.
-  assert.equal(pulseHeightM(80, lyonCity, LYON_SITE), 32 * PULSE_METRES_PER_BIKE);
-  assert.equal(pulseHeightM(350, parisCity, PARIS_SITE), 350 * PULSE_METRES_PER_CYCLIST);
+  // 80 % of a 40-stand station is 32 bikes, and the disc's AREA carries them:
+  // radius grows as the square root, so twice the bikes is twice the ink.
+  assert.equal(
+    pulseRadiusM(80, lyonCity, LYON_SITE),
+    Math.sqrt(32) * PULSE_RADIUS_M_PER_ROOT_BIKE,
+  );
+  assert.equal(
+    pulseRadiusM(350, parisCity, PARIS_SITE),
+    Math.sqrt(350) * PULSE_RADIUS_M_PER_ROOT_CYCLIST,
+  );
+  // Twice the quantity is twice the area, not twice the radius.
+  const one = pulseRadiusM(175, parisCity, PARIS_SITE);
+  const two = pulseRadiusM(350, parisCity, PARIS_SITE);
+  assert.ok(Math.abs((two * two) / (one * one) - 2) < 1e-9, `${one} → ${two}`);
 });
 
-test('the two scales are chosen so neither city is a plain beside the other', () => {
-  // A full 40-stand Lyon dock and a 350/h Paris counter must reach comparable
-  // heights, or the layer invites exactly the comparison it refuses to make.
-  const lyonFull = pulseHeightM(100, PACK.cities.lyon, LYON_SITE);
-  const parisPeak = pulseHeightM(350, PACK.cities.paris, PARIS_SITE);
+test('the two scales are chosen so neither city is a scatter beside the other', () => {
+  // A full 40-stand Lyon dock and a 350/h Paris counter must draw comparable
+  // discs, or the layer invites exactly the comparison it refuses to make.
+  const lyonFull = pulseRadiusM(100, PACK.cities.lyon, LYON_SITE);
+  const parisPeak = pulseRadiusM(350, PACK.cities.paris, PARIS_SITE);
   assert.ok(lyonFull > parisPeak * 0.7 && lyonFull < parisPeak * 1.4,
     `${lyonFull} m vs ${parisPeak} m`);
 });
 
-test('nothing to draw is zero height, and a tiny value still has a floor', () => {
-  assert.equal(pulseHeightM(null, PACK.cities.lyon, LYON_SITE), 0);
-  assert.equal(pulseHeightM(0, PACK.cities.paris, PARIS_SITE), 4, 'a floor keeps it clickable');
+test('nothing to draw is nothing at all, and an empty dock still has a floor', () => {
+  assert.equal(pulseRadiusM(null, PACK.cities.lyon, LYON_SITE), 0);
+  // An empty dock at 04:00 is a MEASUREMENT — the bikes are out on the road —
+  // so it keeps a mark and stays clickable.
+  assert.equal(pulseRadiusM(0, PACK.cities.paris, PARIS_SITE), PULSE_RADIUS_FLOOR_M);
   // A Lyon station with no published capacity still draws rather than vanishing.
-  assert.ok(pulseHeightM(50, PACK.cities.lyon, { ...LYON_SITE, capacity: null }) > 0);
+  assert.ok(pulseRadiusM(50, PACK.cities.lyon, { ...LYON_SITE, capacity: null }) > 0);
+});
+
+// ── The colour the field paints ─────────────────────────────────────────────
+
+test('the continuous ramp passes through the bands the legend names', () => {
+  // The legend's vocabulary is five bands; the map fills the gaps between them
+  // so an animated site swells across a threshold instead of snapping.
+  assert.equal(pulseRampColor(0), 'rgb(44, 62, 107)', 'the bottom band, exactly');
+  assert.equal(pulseRampColor(1), 'rgb(232, 96, 60)', 'the top band, exactly');
+  // Unsampled is the same grey the legend shows, written in the ramp's own
+  // notation rather than a second grey nobody would notice had drifted.
+  assert.equal(pulseRampColor(null), 'rgb(74, 85, 104)');
+  assert.equal(PULSE_UNSAMPLED_COLOR, '#4a5568');
+  // The middle bands are reached exactly too, at their own midpoints — the
+  // legend's swatch is a colour that really is on the map.
+  assert.equal(pulseRampColor(0.5), 'rgb(73, 179, 176)');
+  assert.equal(pulseRampColor(0.7), 'rgb(240, 192, 74)');
+  // And it is continuous: no share is a jump away from the share beside it,
+  // which is the whole reason the animation stopped strobing.
+  const channels = (share) => pulseRampColor(share).match(/\d+/g).map(Number);
+  let previous = channels(0);
+  for (let step = 1; step <= 100; step += 1) {
+    const current = channels(step / 100);
+    for (let index = 0; index < 3; index += 1) {
+      assert.ok(Math.abs(current[index] - previous[index]) <= 12,
+        `channel ${index} jumped at ${step}/100`);
+    }
+    previous = current;
+  }
+});
+
+// ── Between the hours ───────────────────────────────────────────────────────
+
+test('the week is a loop, so a position off either end comes back onto it', () => {
+  assert.equal(wrapSlot(0), 0);
+  assert.equal(wrapSlot(PULSE_SLOTS), 0, 'Sunday 23:00 is followed by Monday 00:00');
+  assert.equal(wrapSlot(-1), PULSE_SLOTS - 1);
+  assert.equal(wrapSlot(PULSE_SLOTS + 3.5), 3.5);
+});
+
+test('the animation eases between two measured hours', () => {
+  const site = { profile: new Array(PULSE_SLOTS).fill(null) };
+  site.profile[10] = 100;
+  site.profile[11] = 200;
+  assert.equal(valueAtFraction(site, 10), 100, 'on the hour, the hour');
+  assert.equal(valueAtFraction(site, 10.5), 150);
+  assert.equal(valueAtFraction(site, 10.75), 175);
+});
+
+test('an hour nobody sampled is never filled in from its neighbours', () => {
+  const site = { profile: new Array(PULSE_SLOTS).fill(null) };
+  site.profile[10] = 100;
+  // The hour we are IN has no reading: the site is unsampled and stays so, at
+  // every fraction of it. A neighbour's number is not an answer for it.
+  assert.equal(valueAtFraction(site, 11), null);
+  assert.equal(valueAtFraction(site, 11.5), null);
+  // A hole AHEAD is held rather than faded into: easing toward a missing hour
+  // would draw a station emptying when in fact nobody looked.
+  assert.equal(valueAtFraction(site, 10.5), 100);
+});
+
+// ── The week's own shape ────────────────────────────────────────────────────
+
+test('the curve the strip draws is the curve POINTE freezes on', () => {
+  const curve = networkCurve(PACK.cities);
+  assert.equal(curve.values.length, PULSE_SLOTS);
+  assert.equal(curve.peakSlot, networkBusiest(PACK.cities).slot,
+    'the strip and the chip must never point at two different hours');
+  assert.equal(curve.values[curve.peakSlot], 1, 'the peak is the top of the strip');
+  assert.equal(networkCurve({}), null, 'nothing to draw is null, not a flat week');
+});
+
+test('the words track the same stretched curve as the bars', () => {
+  const curve = networkCurve(PACK.cities);
+  assert.equal(pulseRelief(curve.peakSlot, curve), 1);
+  assert.equal(pulseRelief(curve.quietSlot, curve), 0);
+  assert.equal(pulseRelief(0, null), null);
+  assert.match(pulsePhrase(curve.peakSlot, curve), /pointe/);
+  assert.match(pulsePhrase(0, null), /non relevée|week-end/);
 });
 
 // ── The reading a card prints ───────────────────────────────────────────────
