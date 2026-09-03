@@ -378,6 +378,34 @@ Cela impose un ordre de passes explicite : les couches thématiques se composent
 
 **Test.** Chaque couche déclare-t-elle une plage d'altitude d'affichage ?
 
+### F7 · Une hauteur déclare son registre et son domaine — **P0** *(ajouté par le chantier « Représentation », 2026-09-03)*
+
+> **Amendement.** Cette règle n'était pas dans la rédaction initiale du document. Elle a été écrite après coup, parce que l'application de la piste 1 de [`REPRESENTATION.md`](./REPRESENTATION.md) a mis **dix couches** sur l'axe Z là où il n'y en avait qu'une, et a créé une ambiguïté que B2 ne couvre pas : B2 dit *où* mettre le quantitatif, pas *comment lire deux longueurs verticales qui ne parlent pas la même langue*.
+
+**Fondement.** Aucun. Le corpus n'a pas d'axe Z : il ne peut pas poser la question. C'est la règle la plus « native globe » du document, et elle vient d'une mesure, pas d'une lecture.
+
+**Transposition.** Une longueur verticale sur GEV appartient à l'un de **trois registres**, et rien à l'écran ne les distingue :
+
+| Registre | Ce que la longueur vaut | Couches |
+|---|---|---|
+| **(1) Hauteur du monde** | 1 m dessiné = 1 m mesuré, à sa place | `bdtopo-buildings` (volumes BD TOPO), `anfr-fr` (fût du support), `local-datacenters` (halls extrudés), `ais-live-vessels` (coque au bau et à la longueur hors-tout) |
+| **(2) Longueur vraie, position conventionnelle** | la longueur est la mesure à 1:1, mais elle n'est **pas** là où est le phénomène | `earthquakes` — la profondeur focale, dressée **au-dessus** du sol parce qu'un globe opaque ne sait pas dessiner sous lui-même sans mentir |
+| **(3) Hauteur d'échelle** | la longueur est une **convention publiée** : un facteur, ou un domaine gelé | `marine-buoys` (×10 000 : 1 m de houle = 10 km), les quatre prismes départementaux/régionaux `irve-fr`, `schools-fr`, `sup-fr`, `france-energy` (domaine gelé → 4 km … 120 km), `sitadel-fr` (1 logement = 1 m, plafond 200 m) |
+
+**Trois obligations.**
+
+- **a) Le registre est nommé** — dans l'en-tête du module *et* dans la légende, en toutes lettres. « ÉCHELLE DE LECTURE » et « hauteur réelle » ne sont pas la même phrase et ne doivent jamais être devinées.
+- **b) Deux registres ne se recouvrent pas en amplitude au même endroit.** C'est ce qui rend l'ambiguïté matériellement impossible plutôt que seulement déconseillée. Mesuré : la plus haute hauteur du monde en France est le mont Blanc à 4 810 m, le plus haut mât ANFR 343,3 m, un immeuble BD TOPO en ville ≤ ~200 m ; les prismes commencent à 4 km et les tiges de houle à 2 km. Aucune hauteur du monde ne peut atteindre un registre (3), et c'est l'argument — déjà écrit dans `choroplethPrism.js` sans être nommé comme une règle — qui autorise 120 km : *« 25× le plus haut relief de France, ce qui interdit de confondre un volume thématique avec du terrain »*.
+- **c) Un domaine de hauteur n'est comparable qu'à l'intérieur de sa couche.** Deux couches ne partagent une règle verticale que si elles partagent une **unité**. Tant qu'elles n'en partagent pas, chacune écrit dans sa légende que son sommet ne mesure qu'elle.
+
+**Le cas limite qui définit la règle, et qui est admis.** `sitadel-fr` extrude un permis à raison d'**1 mètre par logement autorisé**, plafond 200 m — c'est-à-dire exactement dans la plage des volumes BD TOPO réels, et son en-tête dit que c'est délibéré : *« l'unité est choisie pour que le prisme se lise contre la ville où il se dresse »*. Un prisme de 27 m à côté d'un immeuble de 27 m est deux fois la même longueur et deux fois autre chose. C'est toléré parce que l'obligation (a) est tenue — la légende dit `Hauteur = logements autorisés · 1 logement = 1 m` — mais c'est la seule couche du dépôt où la lecture repose sur la légende seule, et pas sur la géométrie.
+
+**Ce que la règle interdit dès demain.** La piste 1 de `REPRESENTATION.md` propose une **tige d'altitude** pour les vols. Une tige d'altitude est du registre (1) et occupe 0–13 km ; la règle de profondeur des séismes est du registre (2) et occupe 1–700 km, avec **la même forme, le même pied au sol et la même verticale**. Sous 13 km les deux sont indiscernables. La tige d'altitude ne peut donc pas être livrée avec le même signe que la tige de séisme : il faut deux signes, ou une seule des deux.
+
+**Test.** ① La légende dit-elle si la longueur est une mesure ou une convention, et avec quel facteur ? ② Deux couches à hauteur allumées ensemble : un lecteur peut-il croire que deux sommets à la même altitude disent la même chose ?
+
+**État au 2026-09-03 : ② échoue.** `irve-fr` et `france-energy` ont des règles de hauteur **pixel pour pixel identiques** — même `domainMax` (12 000), même mode (linéaire), mêmes graduations (10 000 / 5 000 / 1 000), mêmes barres de légende — pour des points de charge d'un côté et des mégawatts de l'autre. Et `irve-fr`, `schools-fr` et `sup-fr` extrudent **les mêmes 96 polygones depuis la même base ellipsoïdale** : deux d'entre elles allumées ensemble donnent deux volumes translucides coïncidents (α composité 0,86 dans le recouvrement), sans qu'aucune légende ne dise que les deux sommets ne se comparent pas.
+
 ---
 
 ## G. Interaction

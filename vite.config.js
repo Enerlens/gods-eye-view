@@ -570,7 +570,11 @@ import {
   normalizeRegionalWeather,
 } from './src/data/regionalBrief.js';
 import { normalizeAdsbLolPointResponse } from './src/data/adsbLolFallback.js';
-import { createAisStreamAdapter, isRecognizedAisEnvelope } from './src/data/aisStreamAdapter.js';
+import {
+  aisStaticDimensions,
+  createAisStreamAdapter,
+  isRecognizedAisEnvelope,
+} from './src/data/aisStreamAdapter.js';
 import { parseSilenceTimeoutEnv } from './src/data/aisWatchdog.js';
 import {
   fetchTerrainChunkWithRetry,
@@ -4031,7 +4035,7 @@ const IRVE_NATIONAL_CACHE_PATH = path.join(IRVE_DISK_DIR, 'departements.json');
  * invisible until tomorrow — and the version that caught this was a coastal
  * snap that the served payload silently did not have.
  */
-const IRVE_NATIONAL_CACHE_VERSION = 3;
+const IRVE_NATIONAL_CACHE_VERSION = 4;
 
 /** @type {?{at:number, payload:object}} */
 let _irveNational = null;
@@ -4418,7 +4422,7 @@ const SCHOOLS_NATIONAL_CACHE_PATH = path.join(SCHOOLS_DISK_DIR, 'departements.js
  * `projectSchoolsDepartements` changes what it returns — the cache lives for a
  * day on disk, so without it a projection edit is invisible until tomorrow.
  */
-const SCHOOLS_NATIONAL_CACHE_VERSION = 2;
+const SCHOOLS_NATIONAL_CACHE_VERSION = 3;
 /**
  * Shape version of a cached VIEWPORT answer.
  *
@@ -5003,7 +5007,7 @@ const SUP_CACHE_PATH = path.join(SUP_DISK_DIR, 'register.json');
  * `projectSupDepartements` changes what it returns — the cache lives for a
  * WEEK on disk, so without it a projection edit is invisible until next month.
  */
-const SUP_CACHE_VERSION = 1;
+const SUP_CACHE_VERSION = 2;
 
 /** @type {?{version:number, at:number, payload:object}} */
 let _supRegister = null;
@@ -17646,11 +17650,18 @@ function ingestAisStreamEnvelope(envelope) {
   if (!mmsi) return false;
 
   if (messageType === 'ShipStaticData' || messageType === 'StaticDataReport') {
+    const previous = _aisStreamStatic.get(mmsi);
     const staticData = {
-      name: vesselNameFromAis(metadata, message, _aisStreamStatic.get(mmsi)),
-      type: vesselTypeFromAis(message, _aisStreamStatic.get(mmsi)),
+      name: vesselNameFromAis(metadata, message, previous),
+      type: vesselTypeFromAis(message, previous),
       destination: stringValue(message.Destination),
       imo: stringValue(message.ImoNumber ?? message.IMO),
+      // The hull lives ONLY in the static message, and a StaticDataReport is
+      // split in two: part A carries the name, part B the dimension block. So
+      // a null here means "this message said nothing about the hull", never
+      // "this ship has no hull" — the previous answer is kept rather than
+      // erased by the half of the report that was never going to carry it.
+      hull: aisStaticDimensions(envelope) ?? previous?.hull ?? null,
     };
     _aisStreamStatic.set(mmsi, staticData);
     mergeAisStaticIntoLiveVessel(mmsi, staticData);
@@ -17671,6 +17682,11 @@ function ingestAisStreamEnvelope(envelope) {
     imo: stringValue(message.ImoNumber ?? message.IMO ?? staticData.imo),
     type: vesselTypeFromAis(message, staticData),
     destination: stringValue(message.Destination ?? staticData.destination),
+    // A position report never carries dimensions; the hull rides along from
+    // whatever static message was heard for this MMSI, and stays null for the
+    // 82% of contacts that have not sent one. `aisLiveVessels` reads
+    // `hull.loaM` to decide between a real hull and the unmeasured chevron.
+    hull: staticData.hull ?? null,
     speed: numberValue(message.Sog ?? message.SOG),
     course: numberValue(message.Cog ?? message.COG),
     heading: normalizedHeading(message.TrueHeading ?? message.Heading),
@@ -17771,6 +17787,10 @@ function mergeAisStaticIntoLiveVessel(mmsi, staticData) {
   if (staticData.type && !existing.type) existing.type = staticData.type;
   if (staticData.destination && !existing.destination) existing.destination = staticData.destination;
   if (staticData.imo && !existing.imo) existing.imo = staticData.imo;
+  // Unlike the fields above, a later hull REPLACES an earlier one instead of
+  // only filling a gap: a transponder that re-sends its dimension block has
+  // been reconfigured, and the newest block is the one the operator declared.
+  if (staticData.hull) existing.hull = staticData.hull;
 }
 
 function vesselNameFromAis(metadata, message, staticData = {}) {

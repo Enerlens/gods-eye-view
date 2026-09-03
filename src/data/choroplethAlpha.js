@@ -1,7 +1,20 @@
 // src/data/choroplethAlpha.js
 /**
- * The fill-alpha ladder shared by the French count choropleths
- * (`irve-fr`, `sup-fr`, `amenities-fr`, `schools-fr`).
+ * The fill-alpha ladder for a French count choropleth.
+ *
+ * ── Who still imports this, as of 2026-09-03 ────────────────────────────────
+ *
+ * ONE layer: `amenities-fr`. This module was written for four — `irve-fr`,
+ * `sup-fr`, `schools-fr` and `amenities-fr` — and three of them left when they
+ * stopped being flat fills. A prism's body carries a CONSTANT alpha
+ * (`choroplethPrism.js`, `PRISM_BODY_ALPHA`) precisely so that alpha encodes
+ * nothing at all (CARTOGRAPHIE A3); a descending ladder there would put a
+ * second, contradictory reading on a volume already seen through another
+ * volume. The measurements below are still the reason this ladder is shaped
+ * the way it is, and they still hold for the layers that do paint a flat fill
+ * — `amenities-fr`, and `medecins-fr` / `petite-enfance-fr` / `delinquance-fr`
+ * if they ever adopt it. Do not delete it as unused; do not re-add it to a
+ * prism layer either.
  *
  * ── The defect this replaces ────────────────────────────────────────────────
  *

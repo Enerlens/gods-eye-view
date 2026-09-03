@@ -6204,6 +6204,11 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   height: 13px;
   border-radius: 0;
   box-shadow: none;
+  /* A glyph entry with NO declared colour still has to be ink. The mask only
+     decides which pixels of the background survive, so a swatch with no
+     background is a 13px hole — which is what "hachure : non publié" rendered
+     as. A coloured entry's inline `style.background` overrides this. */
+  background: rgba(223, 233, 245, 0.75);
   -webkit-mask-size: contain;
   mask-size: contain;
   -webkit-mask-repeat: no-repeat;
@@ -6353,6 +6358,10 @@ body:has(#data-panel:not(.collapsed)) .map-legend {
   margin-top: 0;
   border-radius: 0;
   box-shadow: none;
+  /* Same reason as the panel swatch: the mask reveals the background, so a
+     `color: null` glyph entry with no background is an invisible 14px square.
+     `has-glyph` also shadows `is-unmapped`, so this is the only ink it gets. */
+  background: rgba(223, 233, 245, 0.75);
   -webkit-mask-size: contain;
   mask-size: contain;
   -webkit-mask-repeat: no-repeat;

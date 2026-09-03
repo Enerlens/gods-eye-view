@@ -2467,7 +2467,13 @@ export class DataLayerManager {
         swatch.style.maskImage = mask;
       }
       const text = document.createElement('span');
-      text.textContent = `${item.label} ${this._formatCount(item.count)}`;
+      // Same guard as the map legend below: a legend entry may carry no count
+      // at all. Height keys ("1 m de houle → 10 km"), hatch keys and scale
+      // headers label a channel rather than tally a population, and
+      // `_formatCount(undefined)` returns the literal string "undefined".
+      text.textContent = Number.isFinite(item.count)
+        ? `${item.label} ${this._formatCount(item.count)}`
+        : item.label;
       entry.append(swatch, text);
       container.appendChild(entry);
     }
