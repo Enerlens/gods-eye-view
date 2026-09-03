@@ -13,6 +13,7 @@ import {
   MapStackController,
   IGN_FRANCE_RECTANGLE,
   createIgnWmtsProvider,
+  summarizeProviderError,
 } from './mapStackController.js';
 
 /** The constructor only stores the viewer, so a stub is enough for these. */
@@ -207,4 +208,173 @@ test('the keyless build can select every keyless stack, and only those', () => {
   );
   // With no Google tileset the controller must not open on `photoreal`.
   assert.equal(keyless.getActiveId(), 'osm');
+});
+
+/**
+ * A viewer stub that COUNTS imagery construction, which is the number the
+ * reload bug is actually about.
+ */
+function countingViewer() {
+  const built = [];
+  const live = [];
+  return {
+    scene: { globe: { show: true }, setTerrain() {} },
+    imageryLayers: {
+      add(layer) { built.push(layer); live.push(layer); },
+      remove(layer) { const i = live.indexOf(layer); if (i >= 0) live.splice(i, 1); },
+    },
+    terrainProvider: null,
+    /** Every layer ever added, including the ones since torn down. */
+    builds: built,
+  };
+}
+
+/** A controller whose keyless terrain is pre-resolved, so no test touches the network. */
+function offlineController(viewer, options = {}) {
+  const controller = new MapStackController(viewer, { cesiumToken: '', ...options });
+  controller._reearthTerrainProvider = { _stub: 'terrain' };
+  return controller;
+}
+
+test('replaying the active stack rebuilds nothing', async () => {
+  // The reload the field reported: boot activated a stack, the share restore
+  // replayed the SAME id 1.5 s later, and `_activateGlobeStack` destroyed and
+  // rebuilt every imagery layer — new `ImageryLayer` instances, empty tile
+  // cache, a full coarse→sharp re-refine of a map that had not changed.
+  const viewer = countingViewer();
+  const controller = offlineController(viewer);
+
+  await controller.setStack('osm', { silent: true });
+  assert.equal(viewer.builds.length, 1, 'the boot activation must actually build the imagery');
+
+  await controller.setStack('osm');
+  await controller.setStack('osm');
+  assert.equal(viewer.builds.length, 1, 'replaying the live stack must build nothing');
+  assert.equal(controller.getActiveId(), 'osm');
+});
+
+test('the short-circuit cannot swallow the boot activation itself', async () => {
+  // `_activeId` is seeded in the constructor, BEFORE anything is on the globe.
+  // A short-circuit keyed on the id alone would skip the one call that builds.
+  const viewer = countingViewer();
+  const controller = offlineController(viewer);
+  assert.equal(controller.getActiveId(), 'osm', 'seeded, but nothing is drawn yet');
+
+  await controller.setStack('osm', { silent: true });
+  assert.equal(viewer.builds.length, 1);
+});
+
+test('a share link opening on its own stack costs ONE imagery construction', async () => {
+  // What `#map=ign-plan` must now do end to end: boot reads the hash and
+  // activates Plan IGN (OSM base + IGN over it), and the restore that follows
+  // finds the globe already right.
+  const viewer = countingViewer();
+  const controller = offlineController(viewer);
+
+  await controller.setStack('ign-plan', { silent: true });
+  assert.equal(viewer.builds.length, 2, 'IGN is a two-layer stack: OSM base + IGN on top');
+
+  await controller.setStack('ign-plan');
+  assert.equal(viewer.builds.length, 2, 'the hash restore must not rebuild the same globe');
+});
+
+test('a real switch still rebuilds, and switching back rebuilds again', async () => {
+  const viewer = countingViewer();
+  const controller = offlineController(viewer);
+
+  await controller.setStack('osm', { silent: true });
+  await controller.setStack('ign-ortho');
+  assert.equal(viewer.builds.length, 3, 'OSM (1) then the IGN pair (2)');
+  await controller.setStack('osm');
+  assert.equal(viewer.builds.length, 4);
+  assert.equal(controller.getActiveId(), 'osm');
+});
+
+test('a failed Google 3D boot is named on the source chip, not swallowed', async () => {
+  // The old behaviour was a console.warn and a fallback nobody announced, which
+  // made the basemap non-deterministic from one reload to the next.
+  const viewer = countingViewer();
+  const controller = offlineController(viewer, {
+    googleKeyConfigured: true,
+    googleTilesetError: 'HTTP 403 (API key restricted)',
+  });
+
+  assert.equal(
+    controller.getStacks().find((stack) => stack.id === 'photoreal').unavailableReason,
+    'Google 3D Tiles failed to load: HTTP 403 (API key restricted)',
+    'the chip tooltip quotes the provider, it does not paraphrase it',
+  );
+
+  await controller.setStack('osm', { silent: true });
+  const state = controller.getState();
+  assert.match(state.notice, /HTTP 403/);
+  assert.match(state.notice, /showing OSM$/, 'the notice says what IS on the globe');
+  assert.equal(state.lastError, null, 'a boot fallback is not a failed switch and must never toast');
+});
+
+test('the boot notice steps aside once someone picks a source', async () => {
+  const viewer = countingViewer();
+  const controller = offlineController(viewer, {
+    googleKeyConfigured: true,
+    googleTilesetError: 'network error',
+  });
+  await controller.setStack('osm', { silent: true });
+  assert.ok(controller.getState().notice);
+
+  // A deliberate switch: the globe is now the one that was asked for.
+  await controller.setStack('ign-plan');
+  assert.equal(controller.getState().notice, null);
+});
+
+test('a build that never attempted Google 3D has nothing to report', async () => {
+  const viewer = countingViewer();
+  const controller = offlineController(viewer, { googleKeyConfigured: false });
+  await controller.setStack('osm', { silent: true });
+  assert.equal(controller.getState().notice, null, 'a keyless build is configured, not broken');
+});
+
+test('a Cesium RequestErrorEvent is reduced to the sentence the provider wrote', () => {
+  // The live 2026-09-03 rejection, verbatim. Cesium's RequestErrorEvent has no
+  // `message`, so the generic serializer produced nine hundred characters of
+  // gzip headers — a tooltip nobody can read is the same as no tooltip.
+  const raw = JSON.stringify({
+    statusCode: 403,
+    response: JSON.stringify({
+      error: {
+        code: 403,
+        message: 'Your request cannot be served because satellite tiles and 3D tiles are not '
+          + 'available for your account and region.',
+        status: 'PERMISSION_DENIED',
+      },
+    }),
+    responseHeaders: { 'content-encoding': 'gzip', 'content-length': '220' },
+  });
+  assert.equal(
+    summarizeProviderError(raw),
+    'HTTP 403 — Your request cannot be served because satellite tiles and 3D tiles are not '
+      + 'available for your account and region.',
+  );
+});
+
+test('an error that is already a sentence is left alone, and nothing is invented', () => {
+  assert.equal(summarizeProviderError('network error'), 'network error');
+  assert.equal(summarizeProviderError(''), '');
+  assert.equal(summarizeProviderError(null), '');
+  assert.equal(summarizeProviderError(undefined), '');
+  // A body that is plain text rather than JSON still reads.
+  assert.equal(
+    summarizeProviderError(JSON.stringify({ statusCode: 429, response: 'Too Many Requests' })),
+    'HTTP 429 — Too Many Requests',
+  );
+  // A status with nothing to say still names itself.
+  assert.equal(summarizeProviderError(JSON.stringify({ statusCode: 503 })), 'HTTP 503');
+});
+
+test('a provider that will not stop talking is cut to tooltip length', () => {
+  const long = summarizeProviderError(JSON.stringify({
+    statusCode: 500,
+    response: JSON.stringify({ error: { message: 'x'.repeat(600) } }),
+  }));
+  assert.ok(long.length < 240, `expected a tooltip, got ${long.length} characters`);
+  assert.ok(long.endsWith('…'), 'a truncation must announce itself');
 });

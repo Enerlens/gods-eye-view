@@ -147,6 +147,35 @@ const SHARE_STYLE_PARAM_REGISTRY = Object.freeze({
   ]),
 });
 
+/**
+ * The map stack a share link is asking for, read from the hash BEFORE anything
+ * is on the globe.
+ *
+ * Boot used to activate a stack from the build's own default and let the hash
+ * restore switch to the real one a second and a half later. That second switch
+ * is not free: `_activateGlobeStack()` destroys and rebuilds every
+ * `Cesium.ImageryLayer`, so the reader watched one basemap appear, then get
+ * thrown away, then a second one refine coarse→sharp from an empty tile cache.
+ * On `#map=ign-plan` that is, literally, OSM followed by Plan IGN. Reading the
+ * intent first collapses the two constructions into one.
+ *
+ * Guarded exactly like {@link ShareLinkManager#parseInitialHash}: a hash whose
+ * coordinates are unusable restores NOTHING, so honouring its `map=` would open
+ * on a source no later step is going to justify.
+ * @param {string} [hash] - Location hash, `#` included. Defaults to the live one.
+ * @returns {string|null} The requested stack id, or null when there is no
+ *   restorable share state (the caller then keeps the build's own default).
+ */
+export function peekShareMapStack(hash = (typeof window === 'undefined' ? '' : window.location.hash)) {
+  const raw = String(hash || '').replace(/^#/, '');
+  if (!raw) return null;
+  const params = new URLSearchParams(raw);
+  if (!isShareLatitudeInRange(parseFloat(params.get('lat')))) return null;
+  if (normalizeShareLongitude(parseFloat(params.get('lon'))) === null) return null;
+  const mapStack = params.get('map');
+  return mapStack ? String(mapStack) : null;
+}
+
 export class ShareLinkManager {
   constructor(viewer, {
     onRestore,

@@ -1509,8 +1509,8 @@ function attachRuntimeListeners() {
     const now = Date.now();
     // "Did the camera move" uses the SAME quantized pose signature the fleet
     // rotation pass gates on (iconOrientation.cameraPoseSignature) rather than
-    // camera.changed, whose granularity is globally degraded by other layers
-    // mutating camera.percentageChanged.
+    // camera.changed, whose granularity is globally coarsened whenever another
+    // layer holds a camera-sensitivity claim (data/cameraSensitivity.js).
     const poseSig = cameraMotionSignature(state.viewer.camera);
     if (poseSig !== state.lastCameraPoseSig) {
       state.lastCameraPoseSig = poseSig;

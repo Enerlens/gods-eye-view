@@ -64,6 +64,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { ringAnchor } from './communeContours.js';
@@ -1420,7 +1421,7 @@ const petiteEnfanceFranceLayer = {
 
     if (!_cameraChangedAttached) {
       viewer.camera.changed.addEventListener(onCameraChanged);
-      viewer.camera.percentageChanged = Math.min(viewer.camera.percentageChanged || 1, 0.05);
+      claimCameraSensitivity(viewer, PE_FR_LAYER_ID);
       _cameraChangedAttached = true;
     }
     void loadViewport({ force: true });
@@ -1450,6 +1451,7 @@ const petiteEnfanceFranceLayer = {
 
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
+      releaseCameraSensitivity(viewer, PE_FR_LAYER_ID);
       _cameraChangedAttached = false;
     }
 

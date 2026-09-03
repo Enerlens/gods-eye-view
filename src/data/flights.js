@@ -1504,8 +1504,8 @@ function _resetTrackedDisplay() {
  * horizon-culls billboards beyond the limb (no far-side depth with the globe
  * hidden), and refreshes screen-projected icon rotations whenever the camera
  * pose changed (plus a 1s drift catch-up while idle). Driven by
- * scene.preRender — NOT camera.changed, whose granularity is globally
- * degraded by other layers mutating camera.percentageChanged.
+ * scene.preRender — NOT camera.changed, whose granularity is globally coarsened
+ * whenever another layer holds a camera-sensitivity claim (cameraSensitivity.js).
  * @returns {void}
  */
 

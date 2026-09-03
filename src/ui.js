@@ -3564,7 +3564,14 @@ export class StyleManager {
         ? '...'
         : (stack?.shortLabel || stack?.label || 'MAP');
       this._mapStackStatus.textContent = label;
-      this._mapStackStatus.classList.toggle('warn', !!state.lastError);
+      // `notice` is the boot fallback — the app opened on a source nobody
+      // picked because the one it wanted failed. It never toasts (nobody asked
+      // for anything), but it must not be invisible either: the chip carries
+      // the warning colour and the cause in its tooltip, exactly the way a data
+      // layer names its own outage.
+      const trouble = state.lastError || state.notice || '';
+      this._mapStackStatus.classList.toggle('warn', !!trouble);
+      this._mapStackStatus.title = trouble || (stack?.label || '');
     }
   }
 

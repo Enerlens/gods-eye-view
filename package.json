@@ -43,6 +43,7 @@
     "qa:keyless-boot": "node scripts/qa-keyless-boot.mjs",
     "qa:ign-terrain": "node scripts/qa-ign-terrain.mjs",
     "qa:map-source-tray": "node scripts/qa-map-source-tray.mjs",
+    "qa:map-reload": "node scripts/qa-map-reload.mjs",
     "qa:transit-fr": "node scripts/qa-transit-fr.mjs",
     "qa:road-status-fr": "node scripts/qa-road-status-fr.mjs",
     "qa:traffic-lod": "node scripts/qa-traffic-lod.mjs",

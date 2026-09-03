@@ -86,6 +86,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import { CHOROPLETH_FILL_ALPHA } from './choroplethAlpha.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
@@ -1260,7 +1261,7 @@ const amenitiesFranceLayer = {
 
     if (!_cameraChangedAttached) {
       viewer.camera.changed.addEventListener(onCameraChanged);
-      viewer.camera.percentageChanged = Math.min(viewer.camera.percentageChanged || 1, 0.05);
+      claimCameraSensitivity(viewer, AMENITIES_FR_LAYER_ID);
       _cameraChangedAttached = true;
     }
     if (!_preRenderRemover) {
@@ -1297,6 +1298,7 @@ const amenitiesFranceLayer = {
 
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
+      releaseCameraSensitivity(viewer, AMENITIES_FR_LAYER_ID);
       _cameraChangedAttached = false;
     }
     if (_preRenderRemover) {

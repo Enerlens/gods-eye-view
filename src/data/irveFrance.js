@@ -161,6 +161,7 @@
  * there against captured payloads. This module is presentation.
  */
 import * as Cesium from 'cesium';
+import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import {
   PRISM_BASE_HEIGHT_M,
   PRISM_BODY_ALPHA,
@@ -2077,7 +2078,7 @@ const irveFranceLayer = {
 
     if (!_cameraChangedAttached) {
       viewer.camera.changed.addEventListener(onCameraChanged);
-      viewer.camera.percentageChanged = Math.min(viewer.camera.percentageChanged || 1, 0.05);
+      claimCameraSensitivity(viewer, IRVE_FR_LAYER_ID);
       _cameraChangedAttached = true;
     }
     if (!_preRenderRemover) {
@@ -2114,6 +2115,7 @@ const irveFranceLayer = {
 
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
+      releaseCameraSensitivity(viewer, IRVE_FR_LAYER_ID);
       _cameraChangedAttached = false;
     }
     if (_preRenderRemover) {
