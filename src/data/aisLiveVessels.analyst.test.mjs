@@ -28,8 +28,21 @@ test('ais analyst record: full record maps every contract field', () => {
     courseDeg: 214.0,
     shipType: 'Cargo',
     destination: 'OAKLAND',
+    // Four contacts in five never publish a hull, so the size fields are null
+    // rather than absent: the engine has to tell "small" from "unstated".
+    lengthM: null,
+    beamM: null,
     navStatus: null, // /api/ais-live does not surface NavigationalStatus
   });
+});
+
+test('ais analyst record: a published hull reaches the analyst engine', () => {
+  const r = mapAnalystRecord({
+    ...FULL_RECORD,
+    hull: { loaM: 399, beamM: 59, toBowM: 250, toPortM: 30 },
+  });
+  assert.equal(r.lengthM, 399);
+  assert.equal(r.beamM, 59);
 });
 
 test('ais analyst record: nameless vessel falls back to mmsi id', () => {

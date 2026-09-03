@@ -30,6 +30,30 @@
  * Only 533 of 892 stations report wave height OR sea temperature at all. A
  * missing field is therefore `null` — never 0, never "unknown" — so the layer
  * above can distinguish "this buoy has no wave sensor" from "the sea is flat".
+ *
+ * AND THE COVERAGE ITSELF MOVES
+ * -----------------------------
+ * Re-counted on the 2026-09-03 report: 898 stations, wave height 266 (30%),
+ * sea temperature 481 (54%), wind 673 (75%), 547 with wave OR sea temperature.
+ * Wave coverage went from 21% to 30% in eight days without any station being
+ * built. Whatever a caller does with these counts, it must read them from the
+ * report in hand — a figure hard-coded from one day is wrong within a week.
+ *
+ * WHAT THE WAVE-HEIGHT FIELD ACTUALLY LOOKS LIKE
+ * ----------------------------------------------
+ * Measured over the 266 reporting stations of the 2026-09-03 report, because
+ * `marineBuoys.js` now maps this field onto a LENGTH and a length scale has to
+ * be calibrated against the real distribution, not against the bound below:
+ *
+ *   min 0.0   p10 0.2   p25 0.4   median 0.8   p75 1.4   p90 2.3   max 4.1 m
+ *   ≤ 0.1 m: 24 stations   > 2 m: 30   > 4 m: 1   > 6 m: 0
+ *
+ * Two consequences worth stating. The field is QUANTISED TO THE DECIMETRE, so
+ * "0.0" is a real reading of a flat sea and not a rounded nothing. And an
+ * ordinary day spans 0–4 m while the plausibility ceiling below is 40 m: a
+ * scale stretched to the ceiling would render every ordinary day as a flat
+ * map. `marineBuoys.js` freezes its own domain at 14 m — the top of the last
+ * named WMO band — and argues the choice there.
  */
 
 /** Column positions. Positional by necessity — see trap 1 in the header. */
@@ -65,8 +89,16 @@ export const NDBC_FIELD_COUNT = 22;
  * weather: each ceiling sits well above any value the network has recorded.
  * A value outside its bound becomes null rather than poisoning a rendered
  * readout — the alternative is a buoy claiming a 900 m sea.
+ *
+ * EXPORTED, because a bound is part of this parser's published contract: it is
+ * the widest value a caller can ever be handed. `marineBuoys.js` freezes its
+ * stem domain at 14 m, well inside `waveHeightM`'s 40 m ceiling, and the gap
+ * between the two is exactly the band where a real reading is drawn CLIPPED
+ * rather than dropped. A downstream scale that quietly assumed a narrower
+ * ceiling than this one would be lying by construction, so the number is
+ * readable from outside instead of being a private literal.
  */
-const BOUNDS = Object.freeze({
+export const NDBC_BOUNDS = Object.freeze({
   windDirDeg: [0, 360],
   windSpeedMs: [0, 120],
   gustMs: [0, 150],
@@ -147,20 +179,20 @@ export function parseNdbcRow(line) {
     lat,
     lon,
     observedAt: at,
-    windDirDeg: measurement(fields[COL.windDirDeg], BOUNDS.windDirDeg),
-    windSpeedMs: measurement(fields[COL.windSpeedMs], BOUNDS.windSpeedMs),
-    gustMs: measurement(fields[COL.gustMs], BOUNDS.gustMs),
-    waveHeightM: measurement(fields[COL.waveHeightM], BOUNDS.waveHeightM),
-    dominantPeriodS: measurement(fields[COL.dominantPeriodS], BOUNDS.dominantPeriodS),
-    averagePeriodS: measurement(fields[COL.averagePeriodS], BOUNDS.averagePeriodS),
-    waveDirDeg: measurement(fields[COL.waveDirDeg], BOUNDS.waveDirDeg),
-    pressureHpa: measurement(fields[COL.pressureHpa], BOUNDS.pressureHpa),
-    pressureTendencyHpa: measurement(fields[COL.pressureTendencyHpa], BOUNDS.pressureTendencyHpa),
-    airTempC: measurement(fields[COL.airTempC], BOUNDS.airTempC),
-    seaTempC: measurement(fields[COL.seaTempC], BOUNDS.seaTempC),
-    dewPointC: measurement(fields[COL.dewPointC], BOUNDS.dewPointC),
-    visibilityNmi: measurement(fields[COL.visibilityNmi], BOUNDS.visibilityNmi),
-    tideFt: measurement(fields[COL.tideFt], BOUNDS.tideFt),
+    windDirDeg: measurement(fields[COL.windDirDeg], NDBC_BOUNDS.windDirDeg),
+    windSpeedMs: measurement(fields[COL.windSpeedMs], NDBC_BOUNDS.windSpeedMs),
+    gustMs: measurement(fields[COL.gustMs], NDBC_BOUNDS.gustMs),
+    waveHeightM: measurement(fields[COL.waveHeightM], NDBC_BOUNDS.waveHeightM),
+    dominantPeriodS: measurement(fields[COL.dominantPeriodS], NDBC_BOUNDS.dominantPeriodS),
+    averagePeriodS: measurement(fields[COL.averagePeriodS], NDBC_BOUNDS.averagePeriodS),
+    waveDirDeg: measurement(fields[COL.waveDirDeg], NDBC_BOUNDS.waveDirDeg),
+    pressureHpa: measurement(fields[COL.pressureHpa], NDBC_BOUNDS.pressureHpa),
+    pressureTendencyHpa: measurement(fields[COL.pressureTendencyHpa], NDBC_BOUNDS.pressureTendencyHpa),
+    airTempC: measurement(fields[COL.airTempC], NDBC_BOUNDS.airTempC),
+    seaTempC: measurement(fields[COL.seaTempC], NDBC_BOUNDS.seaTempC),
+    dewPointC: measurement(fields[COL.dewPointC], NDBC_BOUNDS.dewPointC),
+    visibilityNmi: measurement(fields[COL.visibilityNmi], NDBC_BOUNDS.visibilityNmi),
+    tideFt: measurement(fields[COL.tideFt], NDBC_BOUNDS.tideFt),
   };
 }
 

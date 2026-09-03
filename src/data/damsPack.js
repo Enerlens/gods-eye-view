@@ -33,6 +33,60 @@
  * the usine that a barrage feeds is a different object, usually mapped
  * separately, and it is the subject of the `edf-power-plants`, `fr-hydro-plants`
  * and `rte-generation` layers. Nothing is joined between them.
+ *
+ * ── SIZE: WHAT THE PACK CAN CARRY, AND WHAT IT CANNOT ───────────────────────
+ *
+ * OSM publishes `height` and `length` on a `waterway=dam`, and the obvious move
+ * was to put one of them on the size channel. Measured on the shipped pack
+ * before writing a line of it:
+ *
+ *     heightM   171 of 7 432   2.30 %
+ *     spanM   5 328 of 7 432  71.69 %
+ *
+ * `height` is REFUSED. At 2.3 % coverage a height-driven size would be a map
+ * of 171 objects and 7 261 defaults, and the 171 are not a sample of anything —
+ * they are the barrages somebody thought worth measuring, which is the ladder
+ * `damTier` already reads. `length` is not shipped at all: the allowlist in
+ * {@link damFeatureProperties} never carried it.
+ *
+ * What IS carried is `spanM` — the longest straight-line dimension, measured
+ * off the mapped geometry at build time, on 71.7 % of the pack. It is a metre
+ * count of the object itself rather than a tag somebody typed, and it spans
+ * 25 m → 6 399 m (median 100, p95 539). That is the absolute quantity B1 asks
+ * for, so it takes the size channel.
+ *
+ * The four classes are FROZEN DOMAIN thresholds (C1), never quantiles of what
+ * is on screen — 100 m, 300 m and 1 000 m, with their measured populations:
+ *
+ *     ≥ 1 000 m       116   1.56 %
+ *     300 – 999 m     439   5.91 %
+ *     100 – 299 m   2 132  28.69 %
+ *     25 – 99 m     2 641  35.54 %
+ *     not measured  2 104  28.31 %   (of which 660 are the world snapshot,
+ *                                     which shipped without geometry to measure)
+ *
+ * The 2 104 get a HOLLOW ring, not the smallest disc (A1): "not measured" and
+ * "short" are not the same statement, and 28 % of the layer is too much of it
+ * to leave silently indistinguishable.
+ *
+ * Constant PIXELS, not world units, and deliberately the opposite choice from
+ * `datacentersPack.js` next door: a dam's span is a length along an axis this
+ * pack does not ship — 5 583 of the features are a single point — so there is
+ * no true-size shape to draw. A constant-pixel disc is then the only honest
+ * quantitative mark, and it is safe here precisely because this renderer sets
+ * `PointGraphics.pixelSize` and never a `scaleByDistance`: nothing composes
+ * with it (B2).
+ *
+ * ── WHAT THE SIZE CHANNEL USED TO CARRY ─────────────────────────────────────
+ *
+ * The tier — 13 / 9 / 6 px for major / named / minor — and the stem width with
+ * it. Both are gone. Importance was being said three times (dot size, stem
+ * width, card range) and measured never, which is A3 twice over and B1 once.
+ * Tier now lives entirely on the two channels that were already its own and
+ * that no other variable competes for: the label ladder's priority and the
+ * distance at which a card stops being offered ({@link DAM_TIERS} `priority`
+ * and `cardMaxDistance`), plus the display chips. Colour is untouched — it
+ * still says WHAT the structure is.
  */
 
 /**
@@ -499,8 +553,13 @@ export function damFeatureProperties({ tags, osm, spanM = null }) {
  */
 
 /**
- * The three tiers, most important first. This array IS the order: the legend
- * renders it top-down and `DAM_DISPLAY_FLOORS` slices it.
+ * The three tiers, most important first. This array IS the order: the chips
+ * read it top-down and `DAM_DISPLAY_FLOORS` slices it.
+ *
+ * It carries NO `pixelSize` and no `stemWidth` any more — see "WHAT THE SIZE
+ * CHANNEL USED TO CARRY" at the top of this file. What is left is what tier
+ * legitimately owns: a label-grid priority and the distance at which the card
+ * stops being offered.
  *
  * Colours are one blue ramp — these are three grades of one thing — around the
  * layer's historical `#0088ff`, and clear of cyan (datacenters), amber (ports)
@@ -511,8 +570,6 @@ export const DAM_TIERS = Object.freeze([
     key: 'major',
     label: 'Grand barrage',
     color: '#9ad9ff',
-    pixelSize: 13,
-    stemWidth: 3.5,
     priority: 240,
     // Readable from orbit: the shared local-layer ceiling, unchanged.
     cardMaxDistance: 14_000_000,
@@ -523,8 +580,6 @@ export const DAM_TIERS = Object.freeze([
     key: 'named',
     label: 'Barrage nommé',
     color: '#3fa4e0',
-    pixelSize: 9,
-    stemWidth: 3,
     priority: 110,
     // Regional scale: the name arrives once a région fills the screen.
     cardMaxDistance: 1_200_000,
@@ -539,8 +594,6 @@ export const DAM_TIERS = Object.freeze([
     // instead: no name, no height, no operator.
     label: 'Petit ouvrage',
     color: '#2b6c96',
-    pixelSize: 6,
-    stemWidth: 2,
     priority: 30,
     // Départemental scale. The marker is always drawn; only its CARD waits
     // until you are close enough for an unnamed weir to be the point.
@@ -553,18 +606,25 @@ export const DAM_TIERS = Object.freeze([
 const TIER_BY_KEY = new Map(DAM_TIERS.map((tier) => [tier.key, tier]));
 
 /**
- * ── TWO AXES, TWO CHANNELS ──────────────────────────────────────────────────
+ * ── THREE FACTS, THREE CHANNELS ─────────────────────────────────────────────
  *
- * WHAT the structure is, and HOW MUCH it matters, are independent facts and
- * they get independent channels: COLOUR says what, SIZE says how much. A
- * 1 106 m dyke and a 1 106 m barrage are the same size on screen because they
- * are the same size in the world; they are different colours because they are
- * different objects.
+ * WHAT the structure is, HOW BIG it is, and HOW MUCH it matters are three
+ * independent facts and they get three independent channels:
  *
- * That split is forced by the renderer as much as chosen: `createLocalGeoJsonLayer`
- * resolves ONE group key per feature at load and bakes its colour and pixel
- * size into the Cesium primitives, so anything that must vary per feature has
- * to live in that key. Hence a composite `kind:tier`.
+ *     COLOUR   what it is        dam / dyke / both / unclassified (this ramp)
+ *     SIZE     how long it is    the measured span, in constant pixels
+ *     RANGE    how much it weighs the card's `cardMaxDistance` and priority
+ *
+ * A 1 106 m dyke and a 1 106 m barrage are the same size on screen because
+ * they are the same size in the world; they are different colours because they
+ * are different objects; and whichever of the two is named keeps its card
+ * further out. Nothing is said twice.
+ *
+ * The colour/tier split is forced by the renderer as much as chosen:
+ * `createLocalGeoJsonLayer` resolves ONE group key per feature at load and
+ * bakes its colour into the Cesium primitives, so anything that must vary per
+ * feature has to live in that key. Hence a composite `kind:tier`. Size does
+ * NOT travel in it — it comes from {@link damRenderSpec}, per feature.
  *
  * The dyke ramp is ochre — earth, which is what a dyke is made of — and stays
  * clear of the blues this layer already spends on dams, of cyan (datacenters),
@@ -600,15 +660,20 @@ export function damGroupParts(key) {
   return { kind: raw.slice(0, at), tier: raw.slice(at + 1) || 'minor' };
 }
 
-/** Per-tier point/stem styling, in the shape `createLocalGeoJsonLayer` reads. */
+/**
+ * Per-group styling, in the shape `createLocalGeoJsonLayer` reads.
+ *
+ * Two keys only: the colour (from the structure) and the card range (from the
+ * tier). `pixelSize` and `stemWidth` are deliberately absent — the dot's size
+ * is a per-feature measurement now, handed over by {@link damRenderSpec}, and
+ * leaving a tier-shaped size here would silently win the merge for any feature
+ * whose span was never measured.
+ */
 export const DAM_TIER_STYLES = Object.freeze(Object.fromEntries(
   Object.entries(STRUCTURE_RAMPS).flatMap(([kind, ramp]) => DAM_TIERS.map((tier) => [
     `${kind}:${tier.key}`,
     Object.freeze({
-      // Colour from the structure, everything else from the tier.
       color: ramp[tier.key],
-      pixelSize: tier.pixelSize,
-      stemWidth: tier.stemWidth,
       cardMaxDistance: tier.cardMaxDistance,
     }),
   ])),
@@ -756,21 +821,18 @@ export function damStructureVisible(kind, params = {}) {
  */
 export function damTierLegend(tally) {
   const entries = tally instanceof Map ? [...tally] : Object.entries(tally || {});
-  // The tally now arrives keyed by the COMPOSITE key, so it is folded twice:
-  // once per structure and once per tier. Both rows answer a question the
-  // panel is actually asked — "how many digues are there" and "how many of
-  // these are big" — and neither can be read off the other.
+  // The tally arrives keyed by the COMPOSITE `kind:tier`, and is folded onto
+  // the STRUCTURE only. "How many of these are big" is no longer a legend
+  // question — it is a size question, and the size rows answer it with the
+  // metre bounds that produced them.
   const byKind = new Map();
-  const byTier = new Map();
   for (const [key, bucket] of entries) {
     if (!bucket?.total) continue;
-    const { kind, tier } = damGroupParts(key);
-    for (const [map, id] of [[byKind, kind], [byTier, tier]]) {
-      const seen = map.get(id) || { total: 0, visible: 0 };
-      seen.total += bucket.total;
-      seen.visible += bucket.visible ?? bucket.total;
-      map.set(id, seen);
-    }
+    const { kind } = damGroupParts(key);
+    const seen = byKind.get(kind) || { total: 0, visible: 0 };
+    seen.total += bucket.total;
+    seen.visible += bucket.visible ?? bucket.total;
+    byKind.set(kind, seen);
   }
   const legend = [];
   const row = (label, color, blurb, bucket) => {
@@ -793,8 +855,205 @@ export function damTierLegend(tally) {
     'Hors de France : reprise d’un instantané plus ancien, dont les tags OSM ne sont plus disponibles.',
     byKind.get(''),
   );
-  for (const tier of DAM_TIERS) {
-    row(tier.label, tier.color, tier.blurb, byTier.get(tier.key));
+  // The TIER rows used to follow, one per rung, each with its own blue. They
+  // are gone with the tier's pixel sizes: a legend row is a promise that the
+  // reader will find that sign on the map, and after the size handover there
+  // is no mark on the globe that says "Grand barrage" — the three blues in the
+  // old rows were the same three blues as the structure rows above, printed
+  // twice. What tier still does — decide how far out a card is offered, and
+  // what the TOUS/NOMMÉS/GRANDS chips keep — is stated by the chips' own
+  // titles, right beside them. The size rows that follow in the panel come
+  // from `damSpanLegend`, and every one of them names a mark on the globe.
+  return legend;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * SIZE — the measured span, on the channel B1 reserves for it
+ * ══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The four span classes, longest first, with the pixel diameter each draws at.
+ *
+ * Thresholds are FROZEN DOMAIN values (C1): 100 m, 300 m and 1 000 m are round
+ * metre counts a reader can hold, not quantiles of the visible sample, so a dam
+ * never changes size because the camera moved. 300 m is also the threshold
+ * `MAJOR_DAM_SPAN_M` already uses, which keeps the two ladders commensurable.
+ *
+ * Diameters are 6 / 9 / 13 / 18 px. They are NOT proportional to the span —
+ * they cannot be: 25 m to 6 399 m is a factor 256, and an honest diameter would
+ * need either 1 500 px or a floor of a quarter of a pixel. What is proportional
+ * is the ORDER, and the classes are declared as classes, with their bounds
+ * printed in the legend, rather than dressed up as a continuous scale.
+ *
+ * `count` is the shipped pack's population, quoted so a re-extraction that
+ * moves it shows up as a stale comment.
+ */
+export const DAM_SPAN_CLASSES = Object.freeze([
+  Object.freeze({ key: 'span1000', minM: 1000, label: '1 000 m et plus', pixelSize: 18, count: 116 }),
+  Object.freeze({ key: 'span300', minM: 300, label: '300 – 999 m', pixelSize: 13, count: 439 }),
+  Object.freeze({ key: 'span100', minM: 100, label: '100 – 299 m', pixelSize: 9, count: 2132 }),
+  Object.freeze({ key: 'span25', minM: DAM_MIN_SPAN_M, label: '25 – 99 m', pixelSize: 6, count: 2641 }),
+]);
+
+/**
+ * The class for a structure whose span was never measured — 2 104 features,
+ * 28.3 % of the pack, 660 of them the tag-less world snapshot.
+ *
+ * A HOLLOW ring at 8 px: hollow because A1 forbids "unmeasured" from wearing
+ * the same mark as a measurement, and 8 px because a ring smaller than the
+ * smallest disc would still be read as "short".
+ */
+export const DAM_SPAN_UNKNOWN = Object.freeze({
+  key: 'nospan',
+  label: 'Longueur non mesurée',
+  pixelSize: 8,
+  count: 2104,
+});
+
+const SPAN_CLASS_BY_KEY = new Map([
+  ...DAM_SPAN_CLASSES.map((entry) => [entry.key, entry]),
+  [DAM_SPAN_UNKNOWN.key, DAM_SPAN_UNKNOWN],
+]);
+
+/**
+ * Which span class one packed dam draws at.
+ *
+ * A span below {@link DAM_MIN_SPAN_M} is treated as unmeasured, not as tiny:
+ * the build already refuses to ship one, and the reasoning is the same — below
+ * 25 m the number says more about how carefully one volunteer traced a sketch
+ * than about the structure.
+ *
+ * @param {object} props Shipped feature properties.
+ * @returns {string} A {@link DAM_SPAN_CLASSES} key, or `nospan`.
+ */
+export function damSpanClass(props) {
+  const span = Number(props && typeof props === 'object' ? props.spanM : NaN);
+  if (!Number.isFinite(span) || span < DAM_MIN_SPAN_M) return DAM_SPAN_UNKNOWN.key;
+  for (const entry of DAM_SPAN_CLASSES) {
+    if (span >= entry.minM) return entry.key;
+  }
+  return DAM_SPAN_UNKNOWN.key;
+}
+
+/**
+ * The render contract this pack hands `createLocalGeoJsonLayer` — one object
+ * per feature, resolved once at load, in the shape documented there.
+ *
+ * `surface` is null on purpose: the 1 849 dam polygons keep the flat clamped
+ * fill they have always had. A dam wall is a linear object mapped as a thin
+ * sliver, and extruding it by a height 97.7 % of the pack does not publish
+ * would be exactly the invention this module refuses above.
+ *
+ * @param {object} props Shipped feature properties.
+ * @returns {object} Render spec.
+ */
+export function damRenderSpec(props) {
+  const key = damSpanClass(props);
+  const entry = SPAN_CLASS_BY_KEY.get(key) || DAM_SPAN_UNKNOWN;
+  return {
+    key,
+    pixelSize: entry.pixelSize,
+    hollow: key === DAM_SPAN_UNKNOWN.key,
+    color: null,
+    surface: null,
+    fillAlpha: null,
+    extrudedHeightM: null,
+  };
+}
+
+/* ── Legend glyphs ─────────────────────────────────────────────────────────
+ * Masked by the panel, so the fill written here is discarded and the row's
+ * `color` shows through. Only the SHAPE survives, which is the point: these
+ * rows encode size, and a hue that moved with them would be a second, false
+ * encoding.
+ */
+
+const _b64 = (value) => (typeof btoa === 'function'
+  ? btoa(value)
+  : Buffer.from(value, 'utf8').toString('base64'));
+
+const GLYPH_BOX = 18;
+/** @type {Map<string,string>} shape key → data URI. */
+const _glyphCache = new Map();
+
+/** A filled disc of the given screen diameter, drawn 1:1 in the swatch box. */
+function spanDiscGlyph(pixelSize) {
+  const key = `disc:${pixelSize}`;
+  const cached = _glyphCache.get(key);
+  if (cached) return cached;
+  const radius = Math.max(1, Math.min(GLYPH_BOX / 2, Number(pixelSize) / 2 || 1));
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GLYPH_BOX} ${GLYPH_BOX}">`
+    + `<circle cx="9" cy="9" r="${radius.toFixed(2)}" fill="#000"/></svg>`;
+  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
+  _glyphCache.set(key, uri);
+  return uri;
+}
+
+/** The hollow ring the unmeasured class draws. */
+function spanRingGlyph() {
+  const cached = _glyphCache.get('ring');
+  if (cached) return cached;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GLYPH_BOX} ${GLYPH_BOX}">`
+    + '<circle cx="9" cy="9" r="3.4" fill="none" stroke="#000" stroke-width="1.6"/></svg>';
+  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
+  _glyphCache.set('ring', uri);
+  return uri;
+}
+
+/**
+ * Graphite for every size row. ONE colour, because in these rows the datum is
+ * the swatch's diameter; a hue that moved with it would encode the same fact
+ * twice (A3). The structure rows above are where colour means something.
+ */
+export const DAM_SIZE_SWATCH_COLOR = '#c3ccd8';
+
+/**
+ * Build the size legend from a live tally keyed by {@link damRenderSpec}.
+ *
+ * This is the scale the size channel cannot do without (D1): four classes with
+ * their metre bounds printed, plus the hollow ring that says a quarter of the
+ * layer was never measured. Counts are what is DRAWN, so a floor that hides
+ * the small ouvrages empties these rows rather than lying about them.
+ *
+ * @param {Map<string,{total:number, visible:number}>|object} tally
+ * @returns {Array<{label:string,color:string,glyph:string,blurb:string,count:number}>}
+ */
+export function damSpanLegend(tally) {
+  const entries = tally instanceof Map ? [...tally] : Object.entries(tally || {});
+  const byClass = new Map();
+  for (const [key, bucket] of entries) {
+    if (!bucket?.total) continue;
+    const seen = byClass.get(String(key)) || { total: 0, visible: 0 };
+    seen.total += bucket.total;
+    seen.visible += bucket.visible ?? bucket.total;
+    byClass.set(String(key), seen);
+  }
+  const legend = [];
+  const blurb = 'Plus longue dimension mesurée sur la géométrie OSM. Seuils '
+    + 'de domaine gelés (100, 300, 1 000 m), jamais recalculés sur ce qui est '
+    + 'à l’écran.';
+  for (const entry of DAM_SPAN_CLASSES) {
+    const bucket = byClass.get(entry.key);
+    if (!bucket?.total) continue;
+    legend.push({
+      label: entry.label,
+      color: DAM_SIZE_SWATCH_COLOR,
+      glyph: spanDiscGlyph(entry.pixelSize),
+      blurb,
+      count: bucket.visible,
+    });
+  }
+  const unknown = byClass.get(DAM_SPAN_UNKNOWN.key);
+  if (unknown?.total) {
+    legend.push({
+      label: DAM_SPAN_UNKNOWN.label,
+      color: DAM_SIZE_SWATCH_COLOR,
+      glyph: spanRingGlyph(),
+      blurb: 'Anneau creux, jamais un petit disque : OpenStreetMap ne publie '
+        + 'ici ni géométrie exploitable ni longueur. 28 % du paquet, dont '
+        + 'l’instantané mondial repris sans géométrie.',
+      count: unknown.visible,
+    });
   }
   return legend;
 }

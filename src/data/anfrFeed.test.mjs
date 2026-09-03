@@ -28,6 +28,13 @@ import {
   ANFR_EXPOSURE_RADIUS_M,
   ANFR_GENERATIONS,
   ANFR_HAUT,
+  ANFR_HEIGHTLESS_NATURES,
+  ANFR_HEIGHT_MAX_M,
+  ANFR_HEIGHT_MEDIAN_M,
+  ANFR_HEIGHT_MISSING,
+  ANFR_HEIGHT_P05_M,
+  ANFR_HEIGHT_P95_M,
+  ANFR_HEIGHT_PUBLISHED,
   ANFR_ID,
   ANFR_LAT,
   ANFR_LIVE,
@@ -38,6 +45,7 @@ import {
   ANFR_STATUSES,
   ANFR_SVC,
   ANFR_SYS,
+  anfrAzimuthDeg,
   anfrBand,
   anfrCoordinates,
   anfrCsvColumns,
@@ -48,6 +56,7 @@ import {
   anfrHeightM,
   anfrNumber,
   anfrPopCount,
+  anfrProjectPoint,
   parseAnfrNatureTable,
   pickAnfrObservatoire,
   projectAnfrDas,
@@ -455,4 +464,126 @@ test('mask helpers are exact, because every channel on the map is built from the
   assert.equal(anfrPopCount(0), 0);
   assert.equal(anfrPopCount(undefined), 0);
   assert.deepEqual([...ANFR_GENERATIONS], ['2G', '3G', '4G', '5G']);
+});
+
+test('the frozen height domain is the register’s own, and it adds up', () => {
+  // C1 — these are marks of the PHENOMENON, counted once over the whole
+  // register and published, never derived from whatever is on screen. The sum
+  // is the test that keeps them honest: 72 149 measured + 551 blank is exactly
+  // the 72 700 supports the fold produces.
+  assert.equal(ANFR_HEIGHT_PUBLISHED + ANFR_HEIGHT_MISSING, 72_700);
+  assert.ok(ANFR_HEIGHT_P05_M < ANFR_HEIGHT_MEDIAN_M);
+  assert.ok(ANFR_HEIGHT_MEDIAN_M < ANFR_HEIGHT_P95_M);
+  assert.ok(ANFR_HEIGHT_P95_M < ANFR_HEIGHT_MAX_M);
+  // The 551 blanks are a category, not a scatter: every one of them is one of
+  // these three natures. The layer's "no shaft" row quotes this list, so the
+  // list has to stay a list.
+  assert.deepEqual([...ANFR_HEIGHTLESS_NATURES], [
+    'Intérieur sous-terrain', 'Tunnel', 'Intérieur galerie',
+  ]);
+  // And the fixture carries one of them, so the drawing test downstream is
+  // exercising the real case rather than an invented null.
+  const blank = PACK.supports.find((row) => row[ANFR_HAUT] === null);
+  assert.ok(blank, 'the fixture holds a support with no published height');
+  assert.ok(ANFR_HEIGHTLESS_NATURES.includes(PACK.natures[String(blank[8])]));
+});
+
+test('a zero azimuth is north, and the shapes a null takes are refused', () => {
+  // Measured on 138 real installations: 26 carry a 0, none carries it alone,
+  // and 18 of the 26 are the three-sector 0/120/240. So zero is a bearing.
+  assert.equal(anfrAzimuthDeg(0), 0);
+  assert.equal(anfrAzimuthDeg('0'), 0);
+  assert.equal(anfrAzimuthDeg(271), 271);
+  assert.equal(anfrAzimuthDeg('12,7'), 12.7);
+  // One turn either way is normalised; anything beyond it is not a bearing
+  // that was written down badly, it is a different field.
+  assert.equal(anfrAzimuthDeg(-90), 270);
+  assert.equal(anfrAzimuthDeg(360), 0);
+  assert.equal(anfrAzimuthDeg(361), null);
+  assert.equal(anfrAzimuthDeg(null), null);
+  assert.equal(anfrAzimuthDeg(undefined), null);
+  assert.equal(anfrAzimuthDeg(''), null);
+  assert.equal(anfrAzimuthDeg('N'), null);
+});
+
+test('a ray lands at the distance and the bearing it was asked for', () => {
+  // The spherical form is used because the flat one divides by cos(lat), and
+  // that factor is what puts a 60 m ray off-azimuth in Dunkerque. Checked at
+  // three latitudes the register actually reaches, including the two extremes
+  // of the file (51.08 N Dunkerque, -27.62 S the Loyauté islands).
+  for (const lat of [-27.618333, 48.85528, 51.080278]) {
+    for (const bearing of [0, 90, 180, 270, 359]) {
+      const far = anfrProjectPoint(lat, 2.33167, bearing, 60);
+      // Half a metre of slack on a 60 m ray, and the slack is the RULER's:
+      // `anfrDistanceM` is a flat local approximation with a 110 574 m degree
+      // of latitude, which is 0.6 % short of the sphere this projects on.
+      assert.ok(Math.abs(anfrDistanceM(lat, 2.33167, far.lat, far.lon) - 60) < 0.5,
+        `60 m at ${lat}/${bearing}`);
+    }
+  }
+  // North is +latitude and east is +longitude, which is the one way round a
+  // bearing can be wired and still look plausible on a card.
+  const north = anfrProjectPoint(48.85528, 2.33167, 0, 60);
+  assert.ok(north.lat > 48.85528 && Math.abs(north.lon - 2.33167) < 1e-9);
+  const east = anfrProjectPoint(48.85528, 2.33167, 90, 60);
+  assert.ok(east.lon > 2.33167 && Math.abs(east.lat - 48.85528) < 1e-5);
+  assert.equal(anfrProjectPoint(NaN, 0, 0, 60), null);
+  assert.equal(anfrProjectPoint(48, 2, 0, NaN), null);
+});
+
+test('the azimuths fold to distinct bearing/height pairs, and count what is missing', () => {
+  const antennas = projectCartoradioAntennas(CARTORADIO.antennes.body);
+  // The fixture is support 449714: five operators, 33 antennas, and every one
+  // of them files an orientation.
+  assert.equal(antennas.antennas, 33);
+  assert.equal(antennas.withoutAzimuth, 0);
+  assert.ok(antennas.azimuths.length > 0);
+  // Sorted by bearing then height, so two reads of the same mast are diffable.
+  const sorted = [...antennas.azimuths]
+    .sort((a, b) => a.deg - b.deg || (a.heightM ?? 0) - (b.heightM ?? 0));
+  assert.deepEqual(antennas.azimuths, sorted);
+  // Every pair is a real bearing on a real mounting height, and the zero is
+  // kept rather than swept out as a blank.
+  assert.ok(antennas.azimuths.some((pair) => pair.deg === 0));
+  for (const pair of antennas.azimuths) {
+    assert.ok(pair.deg >= 0 && pair.deg < 360);
+    assert.ok(pair.heightM === null || pair.heightM > 0);
+    assert.ok(pair.antennas >= 1);
+  }
+  // The pairs are DISTINCT: a busy mast files the same three sectors many
+  // times over, and one ray per antenna would stack a dozen on each bearing.
+  const keys = antennas.azimuths.map((pair) => `${pair.deg}|${pair.heightM}`);
+  assert.equal(new Set(keys).size, keys.length);
+  assert.equal(
+    antennas.azimuths.reduce((sum, pair) => sum + pair.antennas, 0) + antennas.withoutAzimuth,
+    antennas.antennas,
+    'every antenna is either folded into a pair or counted as unaimed',
+  );
+});
+
+test('an antenna with no orientation is counted, never pointed somewhere', () => {
+  // The measured rate is 4 of 328, so the branch is rare and has to be tested
+  // on purpose. A mounting height that is missing is kept apart from a bearing
+  // that is missing, because the drawing answers them differently.
+  const body = {
+    data: [{
+      station: { exploitant: 'ORANGE' },
+      installations: [
+        { hauteur: 30, antennes: [{ orientation: 120 }, { orientation: null }, {}] },
+        { hauteur: 0, antennes: [{ orientation: 240 }] },
+      ],
+    }],
+  };
+  const antennas = projectCartoradioAntennas(body);
+  assert.equal(antennas.antennas, 4);
+  assert.equal(antennas.withoutAzimuth, 2);
+  assert.deepEqual(antennas.azimuths, [
+    { deg: 120, heightM: 30, antennas: 1 },
+    // `hauteur: 0` is the register's blank, so the pair keeps a null height
+    // rather than a mounting point 0 m off the ground.
+    { deg: 240, heightM: null, antennas: 1 },
+  ]);
+  const empty = projectCartoradioAntennas({});
+  assert.deepEqual(empty.azimuths, []);
+  assert.equal(empty.withoutAzimuth, 0);
 });

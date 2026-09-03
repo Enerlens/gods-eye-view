@@ -1,8 +1,19 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { airportCardDetails, airportLabelPriority } from './airportsPack.js';
-import { datacenterCardDetails, geometryAreaM2 } from './datacentersPack.js';
-import { damCardDetails, damLabelPriority, damStructureTitle } from './damsPack.js';
+import {
+  datacenterCardDetails,
+  datacenterRenderSpec,
+  datacenterSurfaceLegend,
+  geometryAreaM2,
+} from './datacentersPack.js';
+import {
+  damCardDetails,
+  damLabelPriority,
+  damRenderSpec,
+  damSpanLegend,
+  damStructureTitle,
+} from './damsPack.js';
 import {
   clearSelectedEntityContextForLayer,
   registerEntityContext,
@@ -52,6 +63,141 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
 });
+
+/**
+ * ── THE RENDER SPEC ─────────────────────────────────────────────────────────
+ *
+ * One object per feature, resolved once at load, that says how that ONE
+ * feature is drawn. It exists because `groupStyles` cannot: a group style is
+ * keyed by a classification, and the thing this repo kept failing to draw is a
+ * MEASUREMENT — a footprint in square metres, a span in metres — which is
+ * different for every feature and therefore cannot live in a key.
+ *
+ *   key              string   tally + legend bucket for this feature
+ *   pixelSize        number   constant-pixel anchor dot (never scaled by range)
+ *   hollow           boolean  ring instead of disc — A1's "this was not measured"
+ *   color            string?  per-feature colour, overrides the group/layer one
+ *   surface          string?  'volume' | 'flat' | null — how the polygon draws
+ *   fillAlpha        number?  fill opacity for 'volume'/'flat'
+ *   extrudedHeightM  number?  metres, only ever set with surface === 'volume'
+ *
+ * The spec is produced by the PACK, not here, for the same reason the card
+ * copy is: the module that knows what the tags mean is the module that decides
+ * what the mark claims, and it is unit-tested without a scene.
+ *
+ * @type {Readonly<Record<string, {featureRender: Function, renderLegend: Function}>>}
+ */
+const PACK_RENDERERS = Object.freeze({
+  'local-datacenters': Object.freeze({
+    featureRender: datacenterRenderSpec,
+    renderLegend: datacenterSurfaceLegend,
+  }),
+  'local-dams': Object.freeze({
+    featureRender: (properties) => damRenderSpec(properties),
+    renderLegend: damSpanLegend,
+  }),
+});
+
+/**
+ * The default render spec for a pack that declares none: one 10 px dot, no
+ * surface styling, exactly the behaviour ports and airports have always had.
+ * `key` is empty so the tally stays empty and no size legend is offered — a
+ * legend for a channel nobody spends would be a promise about a mark that is
+ * not on the map.
+ */
+const FLAT_RENDER_SPEC = Object.freeze({
+  key: '',
+  pixelSize: null,
+  hollow: false,
+  color: null,
+  surface: null,
+  fillAlpha: null,
+  extrudedHeightM: null,
+});
+
+/**
+ * Apply one render spec's SURFACE half to a Cesium polygon.
+ *
+ * Split out and exported so the three-line decision that turns a footprint
+ * into either a volume or a flat slab is testable, and so the Cesium call
+ * sequence is written once rather than inlined in a 200-line load loop.
+ *
+ * ── WHY `height = 0` IS SET EXPLICITLY ──────────────────────────────────────
+ *
+ * `GeoJsonDataSource.load({clampToGround: true})` leaves both `height` and
+ * `heightReference` undefined, which makes the polygon a ground-classification
+ * primitive. Extruding it needs the terrain-relative pair instead — and
+ * Cesium's `GroundGeometryUpdater.getGeometryHeight()` emits a one-time
+ * console warning and returns undefined if a `heightReference` arrives without
+ * a `height` beside it. So the 0 is not decoration: it is what stops the
+ * volume from being silently dropped.
+ *
+ * ── AND WHY THE FLAT SLAB IS FORCED MONOCHROME ──────────────────────────────
+ *
+ * A batched `GroundPrimitive` colours each instance by its bounding RECTANGLE,
+ * not its polygon, so a per-feature ramp on this class bleeds across
+ * neighbours. The class is NOT monochrome by construction — that was a claim
+ * this header made and the data disproved: `datacenterRenderSpec` emits
+ * `surface: 'flat'` for both the 2 739 halls and the 317 site outlines, in two
+ * different colours, and a site outline encloses the halls it surrounds. So
+ * the class takes ONE colour, declared by the pack as `surfaceColor`, and the
+ * per-feature hue stays on the anchor mark, which is a point and outside the
+ * batch. The richer fix — drawing a site outline as a clamped POLYLINE, which
+ * is what a fence is — is left open; it needs a second geometry in this
+ * loader, not a colour rule.
+ *
+ * ── WHAT THIS DOES NOT SOLVE ────────────────────────────────────────────────
+ *
+ * `RELATIVE_TO_GROUND` is relative to the GLOBE's terrain, not to a photoreal
+ * tileset: over 3D Tiles a volume stands on the terrain surface and the mesh's
+ * own roof stands wherever it was photographed, so the two interpenetrate.
+ * Cesium's geometry updaters have no 3D-Tiles height reference — only
+ * billboards and points do — and the alternative (sampling each footprint
+ * against the tileset at load) would make 3 517 async samples a precondition
+ * of drawing anything. The flat slabs this layer already drew have had the
+ * same limit since they were clamped; the volume does not make it worse.
+ *
+ * @param {object|null} polygon Cesium PolygonGraphics.
+ * @param {object|null} spec Render spec.
+ * @param {object} color Cesium Color for this feature.
+ * @returns {boolean} Whether anything was applied.
+ */
+export function applyLocalSurfaceStyle(polygon, spec, color) {
+  if (!polygon || !spec || !spec.surface) return false;
+  const extruded = Number(spec.extrudedHeightM);
+  const isVolume = spec.surface === 'volume' && Number.isFinite(extruded) && extruded > 0;
+  // A FLAT slab stays in the batched ground-classification pass, and that pass
+  // colours each instance by its bounding RECTANGLE rather than its polygon.
+  // Two colours in that class therefore bleed across neighbours — a site
+  // outline (median 31 204 m²) encloses by construction the halls it surrounds
+  // (median 5 008 m²), so its slate would paint them. `surfaceColor` is the
+  // pack's ONE declared colour for the class; the per-feature hue stays on the
+  // anchor mark, which is a point and not part of the batch. A volume
+  // classifies nothing, so it keeps its own colour.
+  const fillColor = !isVolume && spec.surfaceColor
+    ? Cesium.Color.fromCssColorString(spec.surfaceColor)
+    : color;
+  polygon.fill = true;
+  // Cesium force-disables an outline on a terrain-clamped polygon and warns
+  // once; asking for one on a slab bought a console warning and nothing on
+  // screen. Only the extruded volume can actually carry it.
+  polygon.outline = isVolume;
+  polygon.outlineColor = fillColor;
+  const alpha = Number(spec.fillAlpha);
+  polygon.material = new Cesium.ColorMaterialProperty(
+    fillColor.withAlpha(Number.isFinite(alpha) ? alpha : 0.3),
+  );
+  if (!isVolume) return true;
+  polygon.height = 0;
+  polygon.heightReference = Cesium.HeightReference.CLAMP_TO_GROUND;
+  polygon.extrudedHeight = extruded;
+  polygon.extrudedHeightReference = Cesium.HeightReference.RELATIVE_TO_GROUND;
+  // An OSM outline is a shell, not a solid: the top face is what a reader
+  // looks down on, the bottom is buried in the terrain it is clamped to.
+  polygon.closeTop = true;
+  polygon.closeBottom = false;
+  return true;
+}
 
 /**
  * Footprint of one Cesium polygon hierarchy, in m².
@@ -389,7 +535,27 @@ export function createLocalGeoJsonLayer({
   defaultParams = null,
   /** @type {(params:object, tally:Map<string,{total:number,visible:number}>)=>object} Row chips + legend. */
   rowControls = null,
+  /*
+   * ── OPTIONAL: MEASURED PACKS ───────────────────────────────────────────
+   *
+   * A pack that holds a MEASUREMENT — not a class — spends the size channel
+   * per feature instead of per group. See "THE RENDER SPEC" above for the
+   * contract, and `datacentersPack.js` / `damsPack.js` for the two callers.
+   *
+   * Both default to the pack's own resolver, keyed by layer id in
+   * `PACK_RENDERERS`, for the same reason `localInfrastructureOverlayCopy`
+   * and `namelessTitle` branch on the id right here: the wiring file passes
+   * data, and what a pack's marks CLAIM is not the wiring file's business.
+   * Passing them explicitly overrides the table, which is how the tests get
+   * at this without a bundled dataset.
+   */
+  /** @type {(props:object, measured:{areaM2:number})=>(object|null)} Per-feature marks. */
+  featureRender = null,
+  /** @type {(tally:Map<string,{total:number,visible:number}>)=>Array<object>} Size legend. */
+  renderLegend = null,
 }) {
+  const resolveRenderSpec = featureRender || PACK_RENDERERS[id]?.featureRender || null;
+  const resolveRenderLegend = renderLegend || PACK_RENDERERS[id]?.renderLegend || null;
   let _dataSource = null;
   let _enabled = false;
   let _clickHandler = null;
@@ -398,6 +564,13 @@ export function createLocalGeoJsonLayer({
   let _params = { ...(defaultParams || {}) };
   /** @type {Map<string,{total:number, visible:number}>} Per-group counts, drawn vs loaded. */
   const _groupTally = new Map();
+  /**
+   * Per-render-spec counts, drawn vs loaded — the size legend's source.
+   * Kept apart from `_groupTally` because the two answer different questions
+   * and a pack may spend one channel without spending the other.
+   * @type {Map<string,{total:number, visible:number}>}
+   */
+  const _renderTally = new Map();
   /** @type {(()=>void)|null} Panel repaint hook, installed by the manager. */
   let _rowControlsListener = null;
   /** @type {number|null} Timestamp of the last successful dataset load. */
@@ -464,14 +637,23 @@ export function createLocalGeoJsonLayer({
    * @returns {void}
    */
   function applyGroupFilter() {
-    if (typeof groupOf !== 'function') return;
+    const graded = typeof groupOf === 'function';
+    // An ungraded pack that spends no size channel either has nothing to
+    // recount, and must keep paying nothing for the walk.
+    if (!graded && _renderTally.size === 0) return;
     for (const bucket of _groupTally.values()) bucket.visible = 0;
-    const allow = typeof groupVisible === 'function' ? groupVisible : null;
+    for (const bucket of _renderTally.values()) bucket.visible = 0;
+    const allow = graded && typeof groupVisible === 'function' ? groupVisible : null;
     for (const record of _stemRecords) {
       const visible = !allow || !record.groupKey || allow(record.groupKey, _params) === true;
       record.filteredOut = !visible;
-      if (visible && record.groupKey) {
+      if (!visible) continue;
+      if (record.groupKey) {
         const bucket = _groupTally.get(record.groupKey);
+        if (bucket) bucket.visible += 1;
+      }
+      if (record.renderKey) {
+        const bucket = _renderTally.get(record.renderKey);
         if (bucket) bucket.visible += 1;
       }
     }
@@ -526,11 +708,12 @@ export function createLocalGeoJsonLayer({
       return { count: _count, lastUpdate: _lastUpdate, error: _error };
     },
 
-    // ── Row controls (graded packs only) ──────────────────────────────────
-    // Attached conditionally: the manager decides whether to build a row's
-    // control strip by testing `typeof module.getRowControls === 'function'`,
-    // so defining these unconditionally would give ports, dams and datacenters
-    // an empty strip they have nothing to put in.
+    // ── Row chips (graded packs only) ─────────────────────────────────────
+    // Attached conditionally: the manager treats `setParams` as a layer's
+    // whole runtime-parameter surface (share links and the voice tools reach
+    // for it), so a pack with no chips must not advertise one. `getRowControls`
+    // is attached separately below, because a measured pack has a legend to
+    // publish and nothing to filter.
     ...(rowControls ? {
       /**
        * Apply a row chip's params. `count` in `getStats()` deliberately does
@@ -558,8 +741,31 @@ export function createLocalGeoJsonLayer({
         _rowControlsListener = typeof listener === 'function' ? listener : null;
       },
 
+    } : {}),
+
+    // ── Row legend (graded OR measured packs) ─────────────────────────────
+    // The manager decides whether to build a row's control strip by testing
+    // for this method, so ports and airports — which spend neither channel —
+    // still get no strip at all. A pack that spends the SIZE channel qualifies
+    // on its legend alone: D1 makes a legend mandatory wherever a mark carries
+    // a value, and a size with no printed scale is exactly the case D1 is
+    // about.
+    ...((rowControls || resolveRenderLegend) ? {
+      /**
+       * The row's chips and legend.
+       *
+       * Two producers, one array: the pack's own `rowControls` first (what the
+       * features ARE, and the chips that filter them), then the size legend
+       * (how big they are). The order is the reading order — a reader asks
+       * what before how much — and both halves count what is DRAWN, so a chip
+       * that hides four fifths of the pack empties both.
+       * @returns {{chips?:Array<object>, legend?:Array<object>}|null}
+       */
       getRowControls() {
-        return rowControls(_params, _groupTally) || null;
+        const base = rowControls ? (rowControls(_params, _groupTally) || null) : null;
+        const sizeRows = resolveRenderLegend ? (resolveRenderLegend(_renderTally) || []) : [];
+        if (!base && sizeRows.length === 0) return null;
+        return { ...(base || {}), legend: [...(base?.legend || []), ...sizeRows] };
       },
     } : {}),
 
@@ -632,6 +838,7 @@ export function createLocalGeoJsonLayer({
           // Rebuilt from scratch below; a retry after a failed load must not
           // inherit the counts of the attempt that died.
           _groupTally.clear();
+          _renderTally.clear();
           _stemGeometryDirty = true;
           
           for (let i = 0; i < entities.length; i++) {
@@ -655,6 +862,8 @@ export function createLocalGeoJsonLayer({
                 const hierarchy = feature.polygon.hierarchy?.getValue(Cesium.JulianDate.now());
                 if (hierarchy && hierarchy.positions && hierarchy.positions.length > 0) {
                   pos = Cesium.BoundingSphere.fromPoints(hierarchy.positions).center;
+                  // The one walk that pays for the whole size channel: 46 596
+                  // vertices over the datacenter pack, once, at load.
                   areaM2 = polygonHierarchyAreaM2(hierarchy);
                 }
               }
@@ -694,10 +903,15 @@ export function createLocalGeoJsonLayer({
             // single layer colour and the historical 10 px / 3.5 px geometry.
             const groupKey = typeof groupOf === 'function' ? (groupOf(properties) || null) : null;
             const groupStyle = (groupKey && groupStyles?.[groupKey]) || null;
-            const markerColor = groupStyle?.color
-              ? Cesium.Color.fromCssColorString(groupStyle.color)
+            // Per-feature marks, resolved once. A pack that declares none gets
+            // FLAT_RENDER_SPEC and the historical 10 px / 3.5 px geometry.
+            const renderSpec = (resolveRenderSpec
+              && resolveRenderSpec(properties, { areaM2 })) || FLAT_RENDER_SPEC;
+            const markerCss = renderSpec.color || groupStyle?.color || null;
+            const markerColor = markerCss
+              ? Cesium.Color.fromCssColorString(markerCss)
               : baseColor;
-            const accent = groupStyle?.color || color;
+            const accent = markerCss || color;
             const stemPositionBuffers = [[base, tip], [base, tip]];
             feature.polyline = new Cesium.PolylineGraphics({
               positions: stemPositionBuffers[0],
@@ -705,19 +919,28 @@ export function createLocalGeoJsonLayer({
               material: new Cesium.ColorMaterialProperty(markerColor),
             });
             feature.point = new Cesium.PointGraphics({
-              pixelSize: groupStyle?.pixelSize ?? 10,
-              color: markerColor,
-              outlineColor: Cesium.Color.BLACK,
+              pixelSize: renderSpec.pixelSize ?? groupStyle?.pixelSize ?? 10,
+              // A1, drawn: a HOLLOW ring is a feature whose measurement was
+              // never published, and it must not be reachable by any value of
+              // a measured one — hence a transparent centre, not a small disc.
+              color: renderSpec.hollow ? Cesium.Color.TRANSPARENT : markerColor,
+              outlineColor: renderSpec.hollow ? markerColor : Cesium.Color.BLACK,
               outlineWidth: 2,
               // Never depth-cull the anchor against the photoreal mesh —
               // globe-horizon culling is handled by the pre-render occluder.
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
             });
+            applyLocalSurfaceStyle(feature.polygon, renderSpec, markerColor);
 
             if (groupKey) {
               const bucket = _groupTally.get(groupKey);
               if (bucket) bucket.total += 1;
               else _groupTally.set(groupKey, { total: 1, visible: 0 });
+            }
+            if (renderSpec.key) {
+              const bucket = _renderTally.get(renderSpec.key);
+              if (bucket) bucket.total += 1;
+              else _renderTally.set(renderSpec.key, { total: 1, visible: 0 });
             }
 
             const priority = labelPriorityFromProperties(properties, id);
@@ -735,6 +958,8 @@ export function createLocalGeoJsonLayer({
               lastGroundSampleMs: 0,
               priority,
               groupKey,
+              /** Size-legend bucket, '' for a pack that spends no size channel. */
+              renderKey: renderSpec.key || '',
               /** Hidden by a row-chip display floor — NOT by the horizon occluder. */
               filteredOut: false,
               entry: labels ? createLocalInfrastructureOverlayEntry({
@@ -768,6 +993,7 @@ export function createLocalGeoJsonLayer({
           _count = 0;
           _stemRecords = [];
           _groupTally.clear();
+          _renderTally.clear();
           console.error(`Failed to load ${id}:`, e);
         }
 
@@ -938,6 +1164,7 @@ export function createLocalGeoJsonLayer({
       _dataSource = null;
       _stemRecords = [];
       _groupTally.clear();
+      _renderTally.clear();
       _count = 0;
       _lastUpdate = null;
       _error = null;

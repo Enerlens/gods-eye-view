@@ -27,6 +27,14 @@ import {
   _updateVesselCardsForTest,
   applyVesselFocusDeemphasis,
   mapAnalystRecord,
+  vesselHullFromRow,
+  selectHullContacts,
+  hullSetSignature,
+  tallyVesselSizes,
+  _maintainHullPrimitiveForTest,
+  _getVesselHullStateForTest,
+  _arrowScaleForTest,
+  _shipIconForTest,
 } from './aisLiveVessels.js';
 import aisLiveVesselsLayer from './aisLiveVessels.js';
 import { registerEntityContext, selectEntityContext } from './contextStore.js';
@@ -1644,3 +1652,301 @@ test('a vessel analyst record carries the MMSI the tracker keys on', () => {
   assert.equal(nameless.id, '366999124');
   assert.equal(nameless.mmsi, '366999124');
 });
+
+// ---------------------------------------------------------------------------
+// The size channel (chantier 5) — hull dimensions on screen
+// ---------------------------------------------------------------------------
+
+test('a row carries its four AIS offsets through normalization', () => {
+  const hull = vesselHullFromRow({
+    lat: 1, lon: 2, to_bow: 180, to_stern: 120, to_port: 22, to_starboard: 22,
+  });
+  assert.equal(hull.loaM, 300);
+  assert.equal(hull.beamM, 44);
+  assert.equal(hull.toBowM, 180);
+});
+
+test('a proxy that already reduced the offsets is still a measurement', () => {
+  const hull = vesselHullFromRow({ length: 90, beam: 14 });
+  assert.equal(hull.loaM, 90);
+  assert.equal(hull.beamM, 14);
+  assert.equal(hull.toBowM, null, 'a derived length says nothing about the antenna');
+  assert.equal(hull.toPortM, null);
+});
+
+test('a row that published nothing gets no dimensions', () => {
+  assert.equal(vesselHullFromRow({ lat: 1, lon: 2 }).loaM, null);
+  assert.equal(vesselHullFromRow({ to_bow: 0, to_stern: 0, to_port: 0, to_starboard: 0 }).loaM, null);
+});
+
+// The bundled dev proxy reduces the AIS dimension block server-side and ships
+// the RESULT as `row.hull` — it publishes no `to_bow` and no `length`. Without
+// this branch every contact would fall through to the unmeasured chevron while
+// the proxy was working correctly, which is the worst kind of failure: silent,
+// total, and honestly legended as "dimensions non reportées".
+test('a proxy that publishes the reduced block under `hull` is read', () => {
+  const hull = vesselHullFromRow({
+    lat: 1, lon: 2, hull: { mmsi: '1', loaM: 300, beamM: 44, toBowM: 180, toPortM: 22 },
+  });
+  assert.equal(hull.loaM, 300);
+  assert.equal(hull.beamM, 44);
+  assert.equal(hull.toBowM, 180);
+  assert.equal(hull.toPortM, 22);
+});
+
+test('a published hull block is re-validated, not trusted', () => {
+  // A proxy is allowed to be wrong. Zero, a string and NaN must all arrive as
+  // "not reported" rather than as a zero-length ship.
+  assert.equal(vesselHullFromRow({ hull: { loaM: 0, beamM: 0 } }).loaM, null);
+  assert.equal(vesselHullFromRow({ hull: { loaM: null, beamM: null } }).beamM, null);
+  assert.equal(vesselHullFromRow({ hull: { loaM: 'grand', beamM: 12 } }).loaM, null);
+  assert.equal(vesselHullFromRow({ hull: { loaM: 'grand', beamM: 12 } }).beamM, 12);
+  // An empty or absent block must not shadow the wire form underneath it.
+  const fallback = vesselHullFromRow({
+    hull: null, to_bow: 180, to_stern: 120, to_port: 22, to_starboard: 22,
+  });
+  assert.equal(fallback.loaM, 300);
+  const emptyBlock = vesselHullFromRow({ hull: {}, length: 90, beam: 14 });
+  assert.equal(emptyBlock.loaM, 90);
+});
+
+test('reconciliation attaches the hull to the live record', () => {
+  const collection = makeBillboardCollectionStub();
+  _setVesselStateForTest({ viewer: {}, records: [], billboardCollection: collection });
+  const before = _getVesselHullStateForTest().positionRev;
+  _reconcileVesselsForTest({}, [
+    { mmsi: '1', lat: 48.4, lon: -4.5, to_bow: 60, to_stern: 40, to_port: 8, to_starboard: 8 },
+    { mmsi: '2', lat: 48.4, lon: -4.6 },
+  ]);
+  assert.equal(_getVesselStateForTest().vesselCount, 2);
+  assert.equal(_getVesselHullStateForTest().positionRev, before + 1,
+    'a poll moves the positions, so the hull outlines are invalidated');
+  // The hull rode through normalization onto the live record, not just the row.
+  const records = aisLiveVesselsLayer.getAnalystRecords();
+  assert.equal(records.length, 2);
+  const measured = records.find((entry) => entry.mmsi === '1');
+  assert.equal(measured.lengthM, 100);
+  assert.equal(measured.beamM, 16);
+  const silent = records.find((entry) => entry.mmsi === '2');
+  assert.equal(silent.lengthM, null, 'unstated is null, never a default');
+  assert.equal(silent.beamM, null);
+});
+
+test('the size tally counts what the ramp had to clamp (A5)', () => {
+  const tally = tallyVesselSizes([
+    { hull: { loaM: 8 } }, { hull: { loaM: 12 } },
+    { hull: { loaM: 200 } },
+    { hull: { loaM: 900 } },
+    {}, { hull: {} },
+  ]);
+  assert.equal(tally.measured, 4);
+  assert.equal(tally.unmeasured, 2);
+  assert.equal(tally.clampedBelow, 2);
+  assert.equal(tally.clampedAbove, 1);
+});
+
+test('the billboard scale is a length, never a speed', () => {
+  // The channel used to be three speed buckets: 0.60 / 0.68 / 0.78.
+  const fast = { speed: 24, hull: { loaM: 30, beamM: 6 } };
+  const slow = { speed: 0.2, hull: { loaM: 300, beamM: 45 } };
+  assert.ok(_arrowScaleForTest(slow) > _arrowScaleForTest(fast),
+    'the 300 m ship at anchor outranks the 30 m boat at 24 knots');
+  // Two contacts of identical length must be identically sized whatever they do.
+  assert.equal(
+    _arrowScaleForTest({ speed: 0, hull: { loaM: 120 } }),
+    _arrowScaleForTest({ speed: 30, hull: { loaM: 120 } }),
+  );
+});
+
+test('an unmeasured hull gets a distinct mark, not a default size', () => {
+  const measured = { type: 'Cargo', hull: { loaM: 87, beamM: 14 } };
+  const unmeasured = { type: 'Cargo', hull: { loaM: null, beamM: null } };
+  const measuredIcon = _shipIconForTest(measured, false);
+  const unmeasuredIcon = _shipIconForTest(unmeasured, false);
+  assert.notEqual(measuredIcon, unmeasuredIcon);
+  const svg = Buffer.from(unmeasuredIcon.split(',')[1], 'base64').toString('utf8');
+  assert.match(svg, /fill="none"/, 'the unmeasured chevron is hollow');
+  assert.match(svg, /stroke-dasharray/, 'and dashed');
+  const solid = Buffer.from(measuredIcon.split(',')[1], 'base64').toString('utf8');
+  assert.doesNotMatch(solid, /stroke-dasharray/);
+});
+
+test('the unknown-type slate survives the size pass', () => {
+  const icon = _shipIconForTest({ type: '', hull: { loaM: 100, beamM: 12 } }, false);
+  const svg = Buffer.from(icon.split(',')[1], 'base64').toString('utf8');
+  assert.match(svg, /#9aa7b5/, 'a typeless vessel is still slate, never cargo cyan');
+});
+
+test('hull selection keeps the nearest and declares the rest (A5)', () => {
+  const records = [];
+  for (let i = 0; i < 500; i += 1) {
+    records.push({ mmsi: String(i), heading: 90, hull: { loaM: 100, beamM: 16 } });
+  }
+  const selection = selectHullContacts(records, {
+    distanceFor: (record) => 1000 - Number(record.mmsi),
+    cap: 400,
+  });
+  assert.equal(selection.eligible, 500);
+  assert.equal(selection.hulls.length, 400);
+  assert.equal(selection.hulls[0].record.mmsi, '499', 'nearest first');
+  assert.equal(selection.noHeading, 0);
+});
+
+test('hull selection refuses a hull with no published heading, and counts it', () => {
+  const selection = selectHullContacts([
+    { mmsi: 'a', heading: 12, hull: { loaM: 100, beamM: 16 } },
+    { mmsi: 'b', heading: null, course: null, hull: { loaM: 100, beamM: 16 } },
+    { mmsi: 'c', heading: null, course: 200, hull: { loaM: 100, beamM: 16 } },
+  ], { distanceFor: () => 1 });
+  assert.equal(selection.hulls.length, 2, 'course over ground is an acceptable direction');
+  assert.equal(selection.noHeading, 1);
+  assert.ok(!selection.hulls.some((item) => item.record.mmsi === 'b'));
+});
+
+test('hull selection refuses a length without a beam', () => {
+  const selection = selectHullContacts([
+    { mmsi: 'a', heading: 0, hull: { loaM: 100, beamM: null } },
+    { mmsi: 'b', heading: 0, hull: { loaM: null, beamM: 16 } },
+  ], { distanceFor: () => 1 });
+  assert.equal(selection.hulls.length, 0);
+  assert.equal(selection.eligible, 0);
+  assert.equal(selection.noHeading, 0, 'a missing beam is not a missing heading');
+});
+
+test('hull selection skips horizon-culled contacts', () => {
+  const selection = selectHullContacts([
+    { mmsi: 'a', heading: 0, hull: { loaM: 100, beamM: 16 }, billboard: { show: false } },
+    { mmsi: 'b', heading: 0, hull: { loaM: 100, beamM: 16 }, billboard: { show: true } },
+  ], { distanceFor: () => 1 });
+  assert.equal(selection.hulls.length, 1);
+  assert.equal(selection.hulls[0].record.mmsi, 'b');
+});
+
+test('the hull signature is stable under a camera orbit and moves with the data', () => {
+  const hulls = [
+    { record: { mmsi: 'a' }, headingDeg: 90 },
+    { record: { mmsi: 'b' }, headingDeg: 12 },
+  ];
+  const base = hullSetSignature(hulls, 3);
+  assert.equal(hullSetSignature(hulls, 3), base, 'same set, same revision, no rebuild');
+  assert.equal(
+    hullSetSignature([{ record: { mmsi: 'a' }, headingDeg: 91 }, hulls[1]], 3),
+    base,
+    'a one-degree yaw is under the quantum and must not rebuild',
+  );
+  assert.notEqual(hullSetSignature(hulls, 4), base, 'a new poll rebuilds');
+  assert.notEqual(
+    hullSetSignature([{ record: { mmsi: 'a' }, headingDeg: 120 }, hulls[1]], 3),
+    base,
+    'a real turn rebuilds',
+  );
+});
+
+test('hulls draw under the derived altitude and are dropped above it', () => {
+  const scene = makeHullSceneStub();
+  _setVesselStateForTest({
+    viewer: scene.viewer,
+    records: [
+      {
+        mmsi: '1', heading: 45, lat: 51.9, lon: 4.1, type: 'Cargo',
+        hull: { loaM: 300, beamM: 40, toBowM: 200, toPortM: 20 },
+        position: Cesium.Cartesian3.fromDegrees(4.1, 51.9, 45),
+        billboard: { show: true, position: Cesium.Cartesian3.fromDegrees(4.1, 51.9, 45) },
+      },
+    ],
+    billboardCollection: makeBillboardCollectionStub(),
+  });
+
+  scene.setCameraHeight(4000);
+  _maintainHullPrimitiveForTest();
+  let hullState = _getVesselHullStateForTest();
+  assert.equal(hullState.active, true);
+  assert.equal(hullState.drawn, 1);
+  assert.equal(hullState.mounted, true);
+  assert.equal(scene.added.length, 1);
+
+  const signature = hullState.signature;
+  _maintainHullPrimitiveForTest();
+  assert.equal(_getVesselHullStateForTest().signature, signature);
+  assert.equal(scene.added.length, 1, 'an unchanged set rebuilds nothing');
+
+  scene.setCameraHeight(90000);
+  _maintainHullPrimitiveForTest();
+  hullState = _getVesselHullStateForTest();
+  assert.equal(hullState.active, false);
+  assert.equal(hullState.drawn, 0);
+  assert.equal(hullState.mounted, false, 'above the threshold the geometry is dropped');
+  assert.equal(scene.removed.length, 1);
+});
+
+test('the legend publishes the size scale, not only the hues', () => {
+  _setVesselStateForTest({
+    viewer: {},
+    records: [
+      { mmsi: '1', type: 'Crude Oil Tanker', hull: { loaM: 250, beamM: 40 } },
+      { mmsi: '2', type: '', hull: { loaM: null, beamM: null } },
+    ],
+  });
+  const controls = aisLiveVesselsLayer.getRowControls();
+  assert.ok(controls, 'getRowControls used to return null for every array of records');
+  const labels = controls.legend.map((entry) => entry.label);
+  assert.ok(labels.includes('Pétrolier / chimiquier'));
+  assert.ok(labels.includes('Type non déclaré'));
+  assert.ok(labels.some((label) => label.startsWith('Taille')), 'the size key is mounted');
+  assert.ok(labels.some((label) => label === '100 m'), 'with numbered marks');
+  const unmeasured = controls.legend.find((e) => e.label === 'dimensions non reportées');
+  assert.equal(unmeasured.count, 1);
+});
+
+test('an empty layer still publishes no legend', () => {
+  _setVesselStateForTest({ viewer: {}, records: [] });
+  assert.equal(aisLiveVesselsLayer.getRowControls(), null);
+});
+
+/** Minimal billboard collection double: add/remove with an object identity. */
+function makeBillboardCollectionStub() {
+  const items = [];
+  return {
+    show: true,
+    add(options) {
+      const billboard = { ...options, show: options.show !== false };
+      items.push(billboard);
+      return billboard;
+    },
+    remove(billboard) {
+      const index = items.indexOf(billboard);
+      if (index >= 0) items.splice(index, 1);
+      return index >= 0;
+    },
+    get length() { return items.length; },
+  };
+}
+
+/** Scene double exposing a settable camera height over Rotterdam. */
+function makeHullSceneStub() {
+  const added = [];
+  const removed = [];
+  const camera = {
+    positionWC: Cesium.Cartesian3.fromDegrees(4.1, 51.9, 4000),
+    frustum: { fovy: Math.PI / 3 },
+  };
+  const viewer = {
+    scene: {
+      canvas: { clientHeight: 900 },
+      isDestroyed: () => false,
+      primitives: {
+        add(primitive) { added.push(primitive); return primitive; },
+        remove(primitive) { removed.push(primitive); return true; },
+      },
+    },
+    camera,
+  };
+  return {
+    viewer,
+    added,
+    removed,
+    setCameraHeight(height) {
+      camera.positionWC = Cesium.Cartesian3.fromDegrees(4.1, 51.9, height);
+    },
+  };
+}

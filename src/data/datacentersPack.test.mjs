@@ -11,9 +11,23 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  DATACENTER_AREA_MARKS,
+  DATACENTER_ANCHOR_PX,
+  DATACENTER_FILL_ALPHA,
+  DATACENTER_HALL_COLOR,
+  DATACENTER_LEVEL_HEIGHT_M,
+  DATACENTER_MAX_HEIGHT_M,
   DATACENTER_MIN_AREA_M2,
+  DATACENTER_POINTLESS_PX,
+  DATACENTER_SITE_COLOR,
+  DATACENTER_SURFACES,
+  datacenterAreaBand,
   datacenterCardDetails,
   datacenterFootprint,
+  datacenterHeightM,
+  datacenterRenderSpec,
+  datacenterSurface,
+  datacenterSurfaceLegend,
   datacenterYear,
   formatFootprint,
   geometryAreaM2,
@@ -296,4 +310,201 @@ test('the campus outlines the pack is known to contain are never called building
     assert.ok(!joined.includes('emprise au sol'), `${name}: ${joined}`);
   }
   assert.equal(named.size, 2, 'both reference features are still in the pack');
+});
+
+// ── The size channel ────────────────────────────────────────────────────────
+//
+// Everything below is about the one fact the pack always held and never drew.
+// The tests are mostly, again, about REFUSING: no default height for the 63 %
+// that publish none, no extruded fence, no filled dot for a feature with no
+// emprise at all.
+
+test('height is read in metres first, and converted from storeys second', () => {
+  // `height` is already metres, so it needs no factor and wins.
+  assert.deepEqual(datacenterHeightM({ height: '18' }), { heightM: 18, basis: 'height' });
+  assert.deepEqual(
+    datacenterHeightM({ height: '12,5', 'building:levels': '9' }),
+    { heightM: 12.5, basis: 'height' },
+    'a comma decimal is French typing, not a missing value',
+  );
+
+  // Storeys are converted by the MEASURED 5 m/storey, not by an office 3 m.
+  assert.deepEqual(
+    datacenterHeightM({ 'building:levels': '3' }),
+    { heightM: 3 * DATACENTER_LEVEL_HEIGHT_M, basis: 'levels' },
+  );
+
+  // The 90 % that publish neither get null — never a default. This single
+  // assertion is the whole of A1 for this layer.
+  assert.equal(datacenterHeightM({ building: 'yes' }), null);
+  assert.equal(datacenterHeightM({}), null);
+  assert.equal(datacenterHeightM(null), null);
+
+  // Out of range is REFUSED, not clamped: a clamped 300 m is still a claim
+  // nobody made, and it would be the tallest object on the continent.
+  assert.equal(datacenterHeightM({ height: String(DATACENTER_MAX_HEIGHT_M + 1) }), null);
+  assert.equal(datacenterHeightM({ height: '0' }), null);
+  assert.equal(datacenterHeightM({ height: '-4' }), null);
+  assert.equal(datacenterHeightM({ 'building:levels': '400' }), null);
+  assert.equal(datacenterHeightM({ 'building:levels': 'yes' }), null);
+});
+
+test('a polygon is classed by what it outlines, and a fence is never a volume', () => {
+  assert.equal(datacenterSurface({ building: 'yes', height: '20' }, 9000), 'volume');
+  assert.equal(datacenterSurface({ building: 'industrial', 'building:levels': '2' }, 9000), 'volume');
+  assert.equal(datacenterSurface({ building: 'yes' }, 9000), 'slab');
+
+  // No building tag, or an explicit `building=no`, is a site outline — and it
+  // stays one even when a mapper put a height on it (5 such features ship).
+  assert.equal(datacenterSurface({}, 9000), 'site');
+  assert.equal(datacenterSurface({ building: 'no' }, 9000), 'site');
+  assert.equal(datacenterSurface({ building: 'no', height: '30' }, 9000), 'site');
+  assert.equal(datacenterSurface({ 'building:levels': '4' }, 9000), 'site');
+
+  // No geometry at all is the fourth case, and it is NOT "a very small one".
+  assert.equal(datacenterSurface({ building: 'yes', height: '20' }, 0), 'point');
+  assert.equal(datacenterSurface({ building: 'yes' }, NaN), 'point');
+
+  // The map draws what was mapped even under the card's printing floor: 61
+  // polygons are smaller than DATACENTER_MIN_AREA_M2 and they are still real
+  // traced geometry. The card refuses the NUMBER; the map keeps the shape.
+  assert.equal(datacenterSurface({ building: 'yes' }, DATACENTER_MIN_AREA_M2 - 1), 'slab');
+  assert.equal(datacenterFootprint({ building: 'yes' }, DATACENTER_MIN_AREA_M2 - 1), null);
+});
+
+test('the render spec draws four different signs and never a default height', () => {
+  const volume = datacenterRenderSpec({ tags: { building: 'yes', 'building:levels': '4' } }, { areaM2: 20_000 });
+  assert.equal(volume.surface, 'volume');
+  assert.equal(volume.extrudedHeightM, 4 * DATACENTER_LEVEL_HEIGHT_M);
+  assert.equal(volume.color, DATACENTER_HALL_COLOR);
+  assert.equal(volume.hollow, false);
+  assert.equal(volume.pixelSize, DATACENTER_ANCHOR_PX);
+
+  // 63 % of the pack. Flat, and with NOTHING in extrudedHeightM: this is the
+  // assertion that stops a default storey height from creeping back in.
+  const slab = datacenterRenderSpec({ tags: { building: 'yes' } }, { areaM2: 20_000 });
+  assert.equal(slab.surface, 'flat');
+  assert.equal(slab.extrudedHeightM, null);
+  assert.equal(slab.color, DATACENTER_HALL_COLOR);
+
+  // A fence: flat, never extruded, and a different hue so the reader is not
+  // told a 32 000 m² enclosure is a 32 000 m² hall.
+  const site = datacenterRenderSpec({ tags: { building: 'no', height: '25' } }, { areaM2: 200_000 });
+  assert.equal(site.surface, 'flat');
+  assert.equal(site.extrudedHeightM, null);
+  assert.equal(site.color, DATACENTER_SITE_COLOR);
+  assert.notEqual(site.color, DATACENTER_HALL_COLOR);
+
+  // No emprise: a HOLLOW ring, no surface at all, at a size no filled mark
+  // uses — "absent" must not be reachable by any value of "measured".
+  const point = datacenterRenderSpec({ tags: { building: 'yes' } }, { areaM2: 0 });
+  assert.equal(point.surface, null);
+  assert.equal(point.hollow, true);
+  assert.equal(point.pixelSize, DATACENTER_POINTLESS_PX);
+  assert.notEqual(DATACENTER_POINTLESS_PX, DATACENTER_ANCHOR_PX);
+
+  // Opacity is constant across the three surface classes, on purpose: form
+  // says what is known, hue says what is outlined, extent says how big. A
+  // ramp of alphas would be a fourth encoding of facts already carried (A3).
+  for (const spec of [volume, slab, site]) {
+    assert.equal(spec.fillAlpha, DATACENTER_FILL_ALPHA);
+  }
+
+  // Garbage in still produces a drawable mark rather than a throw.
+  assert.equal(datacenterRenderSpec(null).surface, null);
+  assert.equal(datacenterRenderSpec(undefined, {}).hollow, true);
+});
+
+test('the area marks are frozen domain thresholds, never quantiles of the view', () => {
+  const marks = DATACENTER_AREA_MARKS.map((mark) => mark.minM2);
+  assert.deepEqual(marks, [100_000, 10_000, 1_000], 'largest first, and round');
+  for (let i = 1; i < marks.length; i += 1) assert.ok(marks[i] < marks[i - 1]);
+
+  assert.equal(datacenterAreaBand(7_060_220), 'ha10');
+  assert.equal(datacenterAreaBand(100_000), 'ha10');
+  assert.equal(datacenterAreaBand(99_999), 'ha1');
+  assert.equal(datacenterAreaBand(10_000), 'ha1');
+  assert.equal(datacenterAreaBand(1_000), 'm1000');
+  assert.equal(datacenterAreaBand(999), '', 'under the smallest mark is not a mark');
+  assert.equal(datacenterAreaBand(0), '');
+  assert.equal(datacenterAreaBand(NaN), '');
+});
+
+test('the legend publishes the four signs AND a numbered scale, counting what is drawn', () => {
+  const legend = datacenterSurfaceLegend(new Map([
+    ['volume|ha1', { total: 10, visible: 10 }],
+    ['slab|m1000', { total: 100, visible: 60 }],
+    ['site|ha10', { total: 5, visible: 5 }],
+    ['point|', { total: 20, visible: 20 }],
+  ]));
+  const byLabel = new Map(legend.map((row) => [row.label, row]));
+
+  // Four signs…
+  for (const surface of DATACENTER_SURFACES) {
+    assert.ok(byLabel.has(surface.label), `${surface.label} is missing`);
+    assert.ok(byLabel.get(surface.label).glyph.startsWith('data:image/svg+xml;base64,'));
+  }
+  assert.equal(byLabel.get('Volume bâti').count, 10);
+  assert.equal(byLabel.get('Emprise seule').count, 60, 'counts what is DRAWN');
+  assert.match(byLabel.get('Emprise seule').blurb, /40 masqués/);
+  assert.equal(byLabel.get('Sans emprise').count, 20);
+
+  // …then the scale, without which a world-unit size is unreadable (D1). The
+  // marks are cumulative: `≥ 1 ha` counts the `≥ 10 ha` too.
+  assert.equal(byLabel.get('≥ 10 ha').count, 5);
+  assert.equal(byLabel.get('≥ 1 ha').count, 15);
+  // 5 sites + 10 volumes + the 60 slabs still DRAWN — not the 100 loaded.
+  assert.equal(byLabel.get('≥ 1 000 m²').count, 75);
+  // One graphite for every size row: in those rows the datum is the swatch's
+  // size, so a hue that moved with it would encode the same fact twice.
+  const sizeColors = new Set(DATACENTER_AREA_MARKS.map((mark) => byLabel.get(mark.label).color));
+  assert.equal(sizeColors.size, 1);
+  // …and three visibly different swatch shapes, largest mark largest.
+  const sizeGlyphs = DATACENTER_AREA_MARKS.map((mark) => byLabel.get(mark.label).glyph);
+  assert.equal(new Set(sizeGlyphs).size, 3);
+
+  // Nothing loaded is no rows, not seven rows of zero.
+  assert.deepEqual(datacenterSurfaceLegend(new Map()), []);
+  assert.deepEqual(datacenterSurfaceLegend(null), []);
+  assert.deepEqual(datacenterSurfaceLegend({ 'volume|ha1': { total: 0, visible: 0 } }), []);
+});
+
+test('the shipped pack still splits into the four populations this was measured on', () => {
+  const lines = readFileSync(
+    new URL('./local_data/datacenters/datacenters.geojsonl', import.meta.url),
+    'utf8',
+  ).trim().split('\n');
+
+  const counts = { volume: 0, slab: 0, site: 0, point: 0 };
+  const bands = new Map();
+  let extrudedMax = 0;
+  for (const raw of lines) {
+    const feature = JSON.parse(raw);
+    const areaM2 = geometryAreaM2(feature.geometry);
+    const spec = datacenterRenderSpec(feature.properties, { areaM2 });
+    counts[datacenterSurface(feature.properties?.tags, areaM2)] += 1;
+    bands.set(datacenterAreaBand(areaM2), (bands.get(datacenterAreaBand(areaM2)) || 0) + 1);
+    if (spec.extrudedHeightM) extrudedMax = Math.max(extrudedMax, spec.extrudedHeightM);
+    // A spec is either extruded or flat, never "extruded by nothing".
+    assert.equal(spec.surface === 'volume', spec.extrudedHeightM !== null, raw.slice(0, 80));
+  }
+
+  // The numbers quoted in the module header and in DATACENTER_SURFACES.
+  assert.deepEqual(counts, { volume: 461, slab: 2739, site: 317, point: 834 });
+  for (const surface of DATACENTER_SURFACES) {
+    assert.equal(surface.count, counts[surface.key], `${surface.key} blurb is stale`);
+  }
+  // Two thirds of the pack has an emprise and no height. That proportion IS
+  // the argument for the flat slab, so it is asserted rather than assumed.
+  assert.ok(counts.slab / lines.length > 0.6);
+  // And the cumulative mark counts the legend promises.
+  assert.equal(bands.get('ha10'), 84);
+  assert.equal(bands.get('ha10') + bands.get('ha1'), 1254);
+  assert.equal(bands.get('ha10') + bands.get('ha1') + bands.get('m1000'), 2976);
+  for (const mark of DATACENTER_AREA_MARKS) {
+    assert.ok(mark.count > 0, `${mark.label} count is stale`);
+  }
+  // Nothing in the pack asks for a skyscraper.
+  assert.ok(extrudedMax <= DATACENTER_MAX_HEIGHT_M, `${extrudedMax} m`);
+  assert.equal(extrudedMax, 170);
 });

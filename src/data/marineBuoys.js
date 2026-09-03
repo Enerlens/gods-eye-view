@@ -4,6 +4,15 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+// The prism module is pure arithmetic and strings; only its legend primitives
+// are borrowed here. `prismHeightGlyph` draws the bar swatch whose HEIGHT is
+// the datum, and the graphite is deliberately one constant colour so a ruler
+// tick cannot smuggle in a second encoding (A3). Nothing else about a
+// départemental prism applies to a buoy: no base polygon, no rate fill.
+import {
+  PRISM_HEIGHT_SWATCH_COLOR,
+  prismHeightGlyph,
+} from './choroplethPrism.js';
 
 /**
  * NOAA NDBC marine observation buoys — latest report per station.
@@ -31,13 +40,123 @@ import {
  * sensor is not a station reporting a flat sea, so a missing value renders as
  * an omitted line — never as `0.0 m` and never as `—` styled like a reading.
  * The layer's status line carries the measured/total split so the sparseness
- * is visible rather than inferred from gaps.
+ * is visible rather than inferred from gaps. Re-counted on the 2026-09-03
+ * report: 266 of 898 (30%) carry wave height. The coverage MOVES, which is why
+ * neither the tally nor the legend below is hard-coded from one day's count.
  *
  * COLOR ENCODES SEA STATE, AND ONLY WHERE SEA STATE IS KNOWN
  * ----------------------------------------------------------
  * Buoys reporting wave height are colored on the WMO sea-state ladder. Buoys
  * that report nothing marine stay neutral grey: coloring them by their air
  * temperature or wind would imply a sea reading they never took.
+ *
+ * HEIGHT ENCODES THE SWELL — IN WORLD UNITS, NOT IN PIXELS
+ * --------------------------------------------------------
+ * Significant wave height is the reason anyone looks at a buoy, it is a
+ * continuous physical LENGTH in metres, and it used to be locked inside a
+ * nine-step hue. It now also drives a vertical STEM rising from the station.
+ *
+ * B2 allows a quantity on a globe through exactly two channels: constant
+ * screen pixels, or world units. This layer takes WORLD UNITS.
+ *
+ *  1. Hs *is* a length. A stem in metres is that same length magnified, which
+ *     is what lets the exaggeration be inverted by eye — "30 km of stem,
+ *     therefore 3 m of swell". A bar measured in pixels supports no such
+ *     sentence; it is a chart glued to the sea.
+ *  2. Nothing here composes with a `scaleByDistance` — the layer has none, and
+ *     the dot's `pixelSize` is now CONSTANT (see the next section), so the two
+ *     size channels cannot multiply into the inversion B2 warns about. A stem
+ *     that shrinks with distance shrinks because it is far away, not because
+ *     its value fell, and that is the reading a relief map wants.
+ *  3. 266 constant-pixel bars over the western Atlantic would fuse into a
+ *     picket fence at every zoom. World-unit stems thin out with the view.
+ *
+ * THE EXAGGERATION, PUBLISHED IN THE LEGEND
+ * -----------------------------------------
+ * ×10 000 — one metre of swell draws ten kilometres of stem. At true scale an
+ * 8 m sea on a 6 371 km globe is 1.3 millionths of the radius, i.e. nothing;
+ * so the factor is a READING SCALE, the legend says so in those words, and it
+ * is LINEAR, so a stem twice as tall is twice the swell. Apparent heights,
+ * computed with `choroplethPrism.prismApparentPx()` (viewport 1000 px, aspect
+ * 1.6, fov π/3), for a stem seen side-on:
+ *
+ *     camera →     200 km   500 km   1 500 km   3 000 km   8 000 km
+ *     Hs  8 m      570 px   231 px      77 px      38 px      14 px
+ *     Hs  2 m      144 px    58 px      19 px      10 px       4 px
+ *     Hs  0.8 m     58 px    23 px       8 px       4 px       1 px
+ *
+ * Linear was preferred to the sqrt mode `choroplethPrism.js` offers, and the
+ * price is stated rather than hidden. On the report of 2026-09-03 — 898
+ * stations, 266 with a wave sensor, median Hs 0.8 m, tallest 4.1 m — most
+ * stems are under 10 px at ocean-basin range and the map looks flat. THE SEA
+ * WAS FLAT. A scale that made a calm day look eventful would be the defect.
+ * The same scale puts a Biscay storm at 8 m on 80 km of stem, readable from
+ * 3 000 km out, which is the whole point of the channel.
+ *
+ * The stem does NOT disable the depth test, unlike the dot above it. A relief
+ * has to be hidden by the Earth's limb, or a Pacific swell would draw across
+ * Europe. The dot keeps `disableDepthTestDistance` because a station marker is
+ * a locator, not a relief — two marks, two policies, on purpose.
+ *
+ * A1 · NO SENSOR MEANS NO STEM, AND THE DOT SAYS SO TOO
+ * ----------------------------------------------------
+ * A station with no wave sensor gets NO STEM — not a stem of height zero. And
+ * because a vertical mark has zero apparent length when viewed from directly
+ * overhead, the absence cannot rest on the stem alone: the dot itself changes
+ * SHAPE. A measured station is a filled disc on the WMO ladder; an unmeasured
+ * one is a hollow grey ring (15 % fill, 2 px outline). Shape, not size, and a
+ * ring survives the NVG and FLIR passes that flatten a tint (D3).
+ *
+ * A measured 0.0 m is the opposite case and is drawn as a measurement: it gets
+ * the floor stem below, because a flat sea was observed. That pair — 0.0 m
+ * with a stem, no-sensor with none — is A1 in one image.
+ *
+ * A3 · WHAT EACH CHANNEL CARRIED, AND WHAT IT CARRIES NOW
+ * ------------------------------------------------------
+ *   DOT SIZE   before: 9 px measured / 6 px unmeasured — the size channel,
+ *              the only one Bertin gives to an absolute quantity, spent on a
+ *              two-state qualitative flag.
+ *              now:    CONSTANT for every station. It carries nothing.
+ *   DOT SHAPE  before: nothing.
+ *              now:    filled disc = wave sensor, hollow ring = none.
+ *   HEIGHT     before: unused. `extrudedHeight`/vertical marks appeared in one
+ *              data layer in the whole repo.
+ *              now:    Hs in metres, ×10 000, linear, floored and clipped.
+ *   HUE        before: the WMO sea-state class. Unchanged.
+ *              now:    the WMO sea-state class. Unchanged.
+ *
+ * DECLARED REDUNDANCY: hue and height both carry Hs, and that is deliberate.
+ * Two reasons, both specific to a globe. (a) A vertical stem seen from the
+ * nadir has no apparent length at all — its projected length goes as the sine
+ * of the angle between the stem and the view ray — so at top-down framing the
+ * colour is the ONLY surviving reading. (b) They are not the same statement:
+ * the height is the continuous metre value, the hue is the named WMO class a
+ * mariner actually speaks ("mer forte"). The legend says this out loud rather
+ * than letting a reader discover a doubled channel.
+ *
+ * A5 · THE FLOOR AND THE CEILING, BOTH COUNTED
+ * --------------------------------------------
+ * FLOOR — a stem shorter than 2 km is invisible at any useful range, so a
+ * measured value below 0.2 m is drawn at 2 km and says "measured", not "how
+ * much". The NDBC field is quantised to the decimetre, so the floor covers
+ * exactly the 0.0 and 0.1 m readings: 24 of 266 wave stations on 2026-09-03
+ * (9 %). It costs 1.4 % of the scale, and the count is in the legend.
+ * CEILING — the domain is frozen at 14 m, the top of the last NAMED band of
+ * the WMO ladder, so the two channels clip at the same place for the same
+ * published reason. Above it the stem stays at 140 km and switches to DASHES,
+ * the repo's existing sign for "this attribute is not being asserted", and the
+ * legend counts the clipped stations. The frozen bound is never re-derived
+ * from a poll (C1): the same buoy is the same height in every share link.
+ *
+ * PERF
+ * ----
+ * One entity per station, as before — the stem is a second graphic on the SAME
+ * entity, so the entity count and the QA harness's station tally are unchanged.
+ * Only the ~21–30 % of stations with a wave sensor get a polyline (266 of 898
+ * on 2026-09-03), each two vertices with `arcType: NONE` so Cesium subdivides
+ * nothing. Every property is a constant, so the stems are static geometry: no
+ * per-frame callback, no `CallbackProperty`, nothing to re-evaluate between
+ * the five-minute polls.
  */
 
 const API_URL = '/api/ndbc';
@@ -72,8 +191,26 @@ export const SEA_STATE_BANDS = Object.freeze([
   Object.freeze({ maxM: Infinity, label: 'Phenomenal', css: '#9b5bff' }),
 ]);
 
+/**
+ * The same nine bands under their official French names.
+ *
+ * Not a translation of the English strings above — those are the WMO
+ * sea-state code's own English terms, and these are its own French ones
+ * ("mer forte", "mer grosse"), which is the vocabulary a French mariner
+ * actually uses. Card copy stays in English with the rest of this module's
+ * readouts; the LEGEND is French, like every other legend in the repo.
+ * @type {ReadonlyArray<string>}
+ */
+export const SEA_STATE_LABELS_FR = Object.freeze([
+  'Calme', 'Belle', 'Peu agitée', 'Agitée', 'Forte',
+  'Très forte', 'Grosse', 'Très grosse', 'Énorme',
+]);
+
 /** Neutral color for a station that reports no wave height. */
 export const NO_SEA_STATE_CSS = '#8a97a8';
+
+/** Constant dot diameter, in pixels, for EVERY station — see A3 in the header. */
+export const BUOY_POINT_PX = 8;
 
 /**
  * Classify a wave height onto the WMO ladder.
@@ -86,6 +223,314 @@ export function seaState(waveHeightM) {
   }
   const band = SEA_STATE_BANDS.find((entry) => waveHeightM <= entry.maxM);
   return { label: band.label, css: band.css };
+}
+
+/**
+ * Index of the WMO band a wave height falls in, or -1 when unmeasured.
+ * Shared by the tally and the legend so both walk the same ladder.
+ * @param {number|null|undefined} waveHeightM Significant wave height, metres.
+ * @returns {number} 0-based band index, or -1.
+ */
+export function seaStateBandIndex(waveHeightM) {
+  if (!Number.isFinite(waveHeightM) || waveHeightM < 0) return -1;
+  return SEA_STATE_BANDS.findIndex((entry) => waveHeightM <= entry.maxM);
+}
+
+// ---------------------------------------------------------------------------
+// The swell stem — the size channel, in world units
+// ---------------------------------------------------------------------------
+
+/**
+ * The FROZEN stem scale. Every number is a literal measured once and argued in
+ * the module header; none of it is ever re-derived from a poll, from the
+ * viewport or from the rows in hand (C1), which is what makes the same buoy
+ * the same height in every session and every share link.
+ *
+ * `domainMaxM` is 14 m because that is the top of the last NAMED band of the
+ * WMO ladder — so hue and height clip at the same boundary, for the same
+ * published reason, rather than at two arbitrary ones. The NDBC parser accepts
+ * up to 40 m (`ndbcObservations.js`, `NDBC_BOUNDS.waveHeightM`); the 26 m
+ * between the two is the band where a real reading is drawn clipped and
+ * dashed rather than dropped.
+ */
+export const SWELL_STEM_SCALE = Object.freeze({
+  /** Metres of stem per metre of swell. A reading scale, published as such. */
+  exaggeration: 10_000,
+  /** Top of the frozen domain, metres of Hs. Above it the stem is clipped. */
+  domainMaxM: 14,
+  /** Stem drawn at `domainMaxM`, metres. */
+  maxStemM: 140_000,
+  /** Shortest stem a measured value may draw, metres. Floors Hs < 0.2 m. */
+  minStemM: 2_000,
+  /** Stem width, in pixels. Constant — the width carries nothing. */
+  widthPx: 2,
+  /** Dash length for a clipped stem, in pixels. */
+  clippedDashLength: 12,
+  /** Legend ruler marks, metres of Hs, descending. */
+  ticksM: Object.freeze([8, 2, 0.5]),
+});
+
+// A published scale that contradicts itself must fail where an author sees it,
+// at module load, not at paint time where only a reader would.
+if (SWELL_STEM_SCALE.maxStemM
+    !== SWELL_STEM_SCALE.domainMaxM * SWELL_STEM_SCALE.exaggeration) {
+  throw new RangeError('marineBuoys: maxStemM must be domainMaxM × exaggeration');
+}
+
+/**
+ * Stem height for one station, in metres above the ellipsoid.
+ *
+ * Returns `null` — meaning NO STEM AT ALL — when the station published no wave
+ * height. That is A1: a buoy with no wave sensor must not be drawn as a buoy
+ * that measured a flat sea, so it gets no mark on this channel rather than a
+ * mark of length zero. A measured `0` is the other case entirely and returns
+ * the floor.
+ *
+ * @param {number|null|undefined} waveHeightM Significant wave height, metres.
+ * @returns {number|null} Stem height in metres, or null when there is no stem.
+ */
+export function swellStemHeightM(waveHeightM) {
+  if (!Number.isFinite(waveHeightM) || waveHeightM < 0) return null;
+  const raw = waveHeightM * SWELL_STEM_SCALE.exaggeration;
+  return Math.min(SWELL_STEM_SCALE.maxStemM, Math.max(SWELL_STEM_SCALE.minStemM, raw));
+}
+
+/** True when Hs sits above the frozen domain and the stem stops measuring (A5). */
+export function swellStemIsClipped(waveHeightM) {
+  return Number.isFinite(waveHeightM) && waveHeightM > SWELL_STEM_SCALE.domainMaxM;
+}
+
+/** True when a measured value is short enough to be drawn at the floor (A5). */
+export function swellStemIsFloored(waveHeightM) {
+  if (!Number.isFinite(waveHeightM) || waveHeightM < 0) return false;
+  return waveHeightM * SWELL_STEM_SCALE.exaggeration < SWELL_STEM_SCALE.minStemM;
+}
+
+/**
+ * Tally what the render actually drew, for the legend and the stats line.
+ *
+ * Counted over the stations HANDED TO THE RENDERER, not over what happens to
+ * be on screen: the legend has to describe the layer, and a tally that moved
+ * with the camera would make two readers of the same share link see two
+ * different keys (D2).
+ *
+ * @param {Array<object>} stations Parsed NDBC observations.
+ * @returns {{stations:number, stems:number, noStem:number, floored:number,
+ *   clipped:number, tallestHsM:number|null, atOrAbove:Array<number>,
+ *   bands:Array<{label:string, css:string, count:number}>}}
+ */
+export function summarizeSwellStems(stations) {
+  const rows = Array.isArray(stations) ? stations : [];
+  const ticks = SWELL_STEM_SCALE.ticksM;
+  const atOrAbove = ticks.map(() => 0);
+  const bandCounts = SEA_STATE_BANDS.map(() => 0);
+  let stems = 0;
+  let noStem = 0;
+  let floored = 0;
+  let clipped = 0;
+  let tallestHsM = null;
+
+  for (const row of rows) {
+    const hs = row?.waveHeightM;
+    if (swellStemHeightM(hs) === null) {
+      noStem += 1;
+      continue;
+    }
+    stems += 1;
+    if (swellStemIsFloored(hs)) floored += 1;
+    if (swellStemIsClipped(hs)) clipped += 1;
+    for (let i = 0; i < ticks.length; i += 1) {
+      if (hs >= ticks[i]) atOrAbove[i] += 1;
+    }
+    if (tallestHsM === null || hs > tallestHsM) tallestHsM = hs;
+    const band = seaStateBandIndex(hs);
+    if (band >= 0) bandCounts[band] += 1;
+  }
+
+  return {
+    stations: rows.length,
+    stems,
+    noStem,
+    floored,
+    clipped,
+    tallestHsM,
+    atOrAbove,
+    bands: SEA_STATE_BANDS.map((band, index) => ({
+      label: SEA_STATE_LABELS_FR[index],
+      css: band.css,
+      count: bandCounts[index],
+    })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Legend (D1)
+// ---------------------------------------------------------------------------
+
+/** @type {Map<string,string>} glyph cache. */
+const _glyphCache = new Map();
+
+const _b64 = (text) => (typeof btoa === 'function'
+  ? btoa(text)
+  : Buffer.from(text, 'utf8').toString('base64'));
+
+/**
+ * The hollow-ring swatch, for the row that has no stem.
+ *
+ * A SHAPE, handed to the legend as the very shape the map draws — the swatch
+ * is masked with the entry's colour, so the ring shows in the same grey the
+ * sensorless buoys are drawn in. D3 asks for a motif rather than a tint on a
+ * globe where no colour is neutral; an outline is the cheapest motif there is,
+ * and it is the one encoding that survives the NVG and FLIR passes.
+ * @returns {string} `data:image/svg+xml;base64,…`
+ */
+export function buoyRingGlyph() {
+  const cached = _glyphCache.get('ring');
+  if (cached) return cached;
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">'
+    + '<circle cx="8" cy="8" r="5" fill="none" stroke="#000" stroke-width="2.5"/>'
+    + '</svg>';
+  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
+  _glyphCache.set('ring', uri);
+  return uri;
+}
+
+/** French number, flattened so the legend measures and wraps identically everywhere. */
+function fr(value) {
+  return Number(value).toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ');
+}
+
+/** Round metres as kilometres, for a height blurb. */
+function km(metres) {
+  return `${fr(Math.round(metres / 1000))} km`;
+}
+
+/** French range label for one WMO band, from the frozen boundaries. */
+export function seaStateBandLabel(index) {
+  const name = SEA_STATE_LABELS_FR[index];
+  if (!name) return '';
+  const low = index === 0 ? 0 : SEA_STATE_BANDS[index - 1].maxM;
+  const high = SEA_STATE_BANDS[index].maxM;
+  if (index === 0) return `${name} · ≤ ${fr(high)} m`;
+  if (!Number.isFinite(high)) return `${name} · > ${fr(low)} m`;
+  return `${name} · ${fr(low)} – ${fr(high)} m`;
+}
+
+/**
+ * The two-part key this layer publishes through `getRowControls().legend`,
+ * which `manager.js` mounts BOTH in the panel row and in the on-map block —
+ * the second one being the mount D1 actually requires, since the panel ships
+ * collapsed and a share link ignores the recipient's panel preference.
+ *
+ * Height first: it is the channel that just changed, and it is the one a size
+ * without a ruler makes illegible. Three numbered marks, per D1, plus the
+ * floor and (when it bites) the ceiling, both counted per A5.
+ *
+ * Every entry carries a finite `count` ON PURPOSE. The panel-row renderer
+ * appends `_formatCount(item.count)` unconditionally and `_formatCount(
+ * undefined)` returns the string "undefined" (`manager.js:2470`, a known
+ * pre-existing defect that `choroplethPrism.prismLegend` documents and lives
+ * with). Giving every row a real tally sidesteps it here without touching a
+ * file this layer does not own — and the tallies are worth reading: the ruler
+ * ticks double as a cumulative histogram of the report.
+ *
+ * @param {ReturnType<typeof summarizeSwellStems>} summary Render tally.
+ * @returns {Array<{label:string, color:?string, count:number, glyph?:string, blurb?:string}>}
+ */
+export function buoyLegend(summary) {
+  if (!summary || !Number.isFinite(summary.stations) || summary.stations <= 0) return [];
+  const scale = SWELL_STEM_SCALE;
+  const entries = [];
+
+  const tallest = Number.isFinite(summary.tallestHsM)
+    ? ` Plus haut relevé du rapport en cours : ${fr(summary.tallestHsM)} m.`
+    : '';
+
+  entries.push({
+    label: 'Hauteur — houle significative (Hs)',
+    color: null,
+    count: summary.stems,
+    blurb: `Une tige verticale, en unités monde : 1 m de houle dessine `
+      + `${km(scale.exaggeration)} de tige, soit une exagération verticale `
+      + `×${fr(scale.exaggeration)}. C'est une ÉCHELLE DE LECTURE, pas une mesure à `
+      + `l'échelle — à l'échelle réelle, 8 m de mer sur un globe de 6 371 km ne font `
+      + `rien de visible. Échelle linéaire : une tige deux fois plus haute vaut deux `
+      + `fois plus de houle. Domaine gelé à ${fr(scale.domainMaxM)} m, jamais recalculé `
+      + `depuis le relevé en cours ; au-delà la tige reste à ${km(scale.maxStemM)} et `
+      + `passe en tirets.${tallest}`,
+  });
+
+  scale.ticksM.forEach((tick, index) => {
+    const heightM = swellStemHeightM(tick);
+    entries.push({
+      label: `${fr(tick)} m`,
+      color: PRISM_HEIGHT_SWATCH_COLOR,
+      glyph: prismHeightGlyph((heightM ?? 0) / scale.maxStemM),
+      count: summary.atOrAbove[index] ?? 0,
+      blurb: `Tige de ${km(heightM ?? 0)}. Le compte est celui des bouées à `
+        + `${fr(tick)} m ou plus.`,
+    });
+  });
+
+  entries.push({
+    label: `sous ${fr(scale.minStemM / scale.exaggeration)} m — tige au plancher`,
+    color: PRISM_HEIGHT_SWATCH_COLOR,
+    glyph: prismHeightGlyph(scale.minStemM / scale.maxStemM),
+    count: summary.floored,
+    blurb: `Sous ${fr(scale.minStemM / scale.exaggeration)} m la tige passerait sous le `
+      + `pixel : elle est posée à son plancher de ${km(scale.minStemM)} et dit « mesuré », `
+      + `pas « combien ». Le champ NDBC est quantifié au décimètre, donc ce plancher ne `
+      + `couvre que les relevés à 0,0 et 0,1 m. Coût : `
+      + `${fr(Math.round((scale.minStemM / scale.maxStemM) * 1000) / 10)} % de l'échelle.`,
+  });
+
+  if (summary.clipped) {
+    entries.push({
+      label: `au-dessus de ${fr(scale.domainMaxM)} m — tige écrêtée`,
+      color: PRISM_HEIGHT_SWATCH_COLOR,
+      glyph: prismHeightGlyph(1),
+      count: summary.clipped,
+      blurb: `Relevé supérieur au domaine gelé : la tige reste à ${km(scale.maxStemM)} `
+        + `et passe en TIRETS pour dire qu'elle ne mesure plus. La valeur exacte reste `
+        + `dans la fiche. Le domaine ne bouge pas : c'est ce qui garantit qu'une même `
+        + `houle fait la même hauteur d'une session à l'autre.`,
+    });
+  }
+
+  entries.push({
+    label: 'Pas de capteur de houle — aucune tige',
+    color: NO_SEA_STATE_CSS,
+    glyph: buoyRingGlyph(),
+    count: summary.noStem,
+    blurb: `Cercle creux gris, et rien au-dessus. Une station sans capteur de vague `
+      + `n'est pas une station qui rapporte une mer plate : elle n'a pas une tige de `
+      + `hauteur nulle, elle n'a pas de tige. À l'inverse, une mer mesurée à 0,0 m a `
+      + `bien sa tige, au plancher.`,
+  });
+
+  entries.push({
+    label: 'Couleur — état de mer OMM',
+    color: null,
+    count: summary.stems,
+    blurb: `La teinte suit l'échelle d'état de mer de l'OMM et porte, comme la hauteur, `
+      + `la houle significative. REDONDANCE DÉLIBÉRÉE : une tige verticale vue à la `
+      + `verticale n'a plus aucune longueur apparente, donc au nadir la couleur est la `
+      + `seule lecture qui subsiste. Et les deux ne disent pas la même chose — la `
+      + `hauteur donne le continu en mètres, la teinte donne la classe nommée que les `
+      + `marins emploient. L'échelle compte neuf classes ; seules celles présentes dans `
+      + `le relevé sont listées.`,
+  });
+
+  summary.bands.forEach((band, index) => {
+    if (!band.count) return;
+    entries.push({
+      label: seaStateBandLabel(index),
+      color: band.css,
+      count: band.count,
+    });
+  });
+
+  return entries;
 }
 
 /** Compass point for a bearing in degrees. */
@@ -239,6 +684,8 @@ export function createMarineBuoysLayer({
   let _coverage = null;
   /** @type {Array<object>} Latest parsed stations, kept for the analyst seam. */
   let _stations = [];
+  /** @type {?ReturnType<typeof summarizeSwellStems>} Render tally for the legend. */
+  let _swell = null;
 
   const layer = {
     id: 'marine-buoys',
@@ -258,6 +705,7 @@ export function createMarineBuoysLayer({
       _stale = false;
       _coverage = null;
       _stations = [];
+      _swell = null;
       overlayHost.setVisible(BUOY_OVERLAY_SOURCE_ID, false);
     },
 
@@ -300,23 +748,30 @@ export function createMarineBuoysLayer({
         _dataSource.entities.removeAll();
         const overlayEntries = [];
 
+        const drawn = [];
+
         for (const station of payload.stations) {
           if (!Number.isFinite(station?.lat) || !Number.isFinite(station?.lon)) continue;
           const { css } = seaState(station.waveHeightM);
           const color = Cesium.Color.fromCssColorString(css);
           const position = Cesium.Cartesian3.fromDegrees(station.lon, station.lat);
-          const measured = Number.isFinite(station.waveHeightM);
+          const stemM = swellStemHeightM(station.waveHeightM);
+          const measured = stemM !== null;
 
-          _dataSource.entities.add({
+          const entity = {
             id: `marine-buoy:${station.station}`,
             position,
             point: {
-              // Measured stations read slightly larger — the size difference
-              // carries "this one took a reading", the color carries the value.
-              pixelSize: measured ? 9 : 6,
-              color: color.withAlpha(measured ? 0.95 : 0.6),
-              outlineColor: Cesium.Color.BLACK.withAlpha(0.5),
-              outlineWidth: 1,
+              // CONSTANT for every station: the size channel is spent on the
+              // stem now, and a dot that also varied would compose with it.
+              // What tells the two apart is SHAPE — a filled disc took a wave
+              // reading, a hollow ring did not (A1, and D3's motif-not-tint).
+              pixelSize: BUOY_POINT_PX,
+              color: color.withAlpha(measured ? 0.95 : 0.15),
+              outlineColor: measured
+                ? Cesium.Color.BLACK.withAlpha(0.5)
+                : color.withAlpha(0.95),
+              outlineWidth: measured ? 1 : 2,
               heightReference: Cesium.HeightReference.NONE,
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
             },
@@ -324,6 +779,7 @@ export function createMarineBuoysLayer({
               ndbcStation: station.station,
               observedAt: station.observedAt ?? null,
               waveHeightM: station.waveHeightM ?? null,
+              swellStemM: stemM,
               dominantPeriodS: station.dominantPeriodS ?? null,
               waveDirDeg: station.waveDirDeg ?? null,
               seaTempC: station.seaTempC ?? null,
@@ -332,7 +788,33 @@ export function createMarineBuoysLayer({
               windDirDeg: station.windDirDeg ?? null,
               pressureHpa: station.pressureHpa ?? null,
             },
-          });
+          };
+
+          if (measured) {
+            const clipped = swellStemIsClipped(station.waveHeightM);
+            // Second graphic on the SAME entity, so the entity count still
+            // equals the station count. `arcType: NONE` keeps it two vertices:
+            // the geodesic default would try to subdivide a segment whose two
+            // ends share a longitude. No depth-test override — a relief must
+            // be occluded by the limb, unlike the locator dot above it.
+            entity.polyline = {
+              positions: [
+                position,
+                Cesium.Cartesian3.fromDegrees(station.lon, station.lat, stemM),
+              ],
+              width: SWELL_STEM_SCALE.widthPx,
+              arcType: Cesium.ArcType.NONE,
+              material: clipped
+                ? new Cesium.PolylineDashMaterialProperty({
+                  color: color.withAlpha(0.9),
+                  dashLength: SWELL_STEM_SCALE.clippedDashLength,
+                })
+                : color.withAlpha(0.9),
+            };
+          }
+
+          _dataSource.entities.add(entity);
+          drawn.push(station);
 
           overlayEntries.push(createBuoyOverlayEntry({
             id: station.station,
@@ -341,6 +823,9 @@ export function createMarineBuoysLayer({
             accent: css,
           }));
         }
+
+        // Tallied over what was DRAWN, not over what is on screen (D2).
+        _swell = summarizeSwellStems(drawn);
 
         if (_enabled) {
           overlayHost.setEntries(
@@ -382,6 +867,7 @@ export function createMarineBuoysLayer({
       _stale = false;
       _coverage = null;
       _stations = [];
+      _swell = null;
     },
 
     /**
@@ -407,7 +893,25 @@ export function createMarineBuoysLayer({
         // Numeric breakdown for callers that want the counts rather than the
         // sentence (tests, analyst seam).
         measuring: _coverage,
+        // What the SIZE channel actually drew: stems, the ones floored, the
+        // ones clipped, and the stations that got none. A5 wants the écrêtage
+        // countable from outside the legend too.
+        swell: _swell,
       };
+    },
+
+    /**
+     * The key to the stems and the hues (D1).
+     *
+     * Published here rather than only in `getStats()` because `manager.js`
+     * reads `getRowControls().legend` for BOTH mount points — the panel row
+     * and the on-map block — and only the second one is visible with the map
+     * in the default, collapsed-panel state a share link lands in.
+     * @returns {{chips: Array<object>, legend: Array<object>}|null} Controls, or null while empty.
+     */
+    getRowControls() {
+      if (!_swell || !_swell.stations) return null;
+      return { chips: [], legend: buoyLegend(_swell) };
     },
   };
 

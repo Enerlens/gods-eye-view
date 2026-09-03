@@ -28,8 +28,16 @@ import anfrFranceLayer, {
   ANFR_BAND_COLORS,
   ANFR_FR_LAYER_ID,
   ANFR_FR_OVERLAY_SOURCE_ID,
+  ANFR_MAST_ENTER_SPAN_DEG,
+  ANFR_MAST_EXIT_SPAN_DEG,
   ANFR_MAX_BOX_DEG,
+  ANFR_SECTOR_RAY_M,
+  anfrAzimuthLines,
   anfrBandColor,
+  anfrMastHeightM,
+  anfrMastLegend,
+  anfrMastRegime,
+  anfrSectorRays,
   anfrDetailLines,
   anfrEditionLabel,
   anfrFrenchDate,
@@ -51,6 +59,7 @@ import anfrFranceLayer, {
   createAnfrSelectedOverlayEntry,
   pickAnfrSupportsAt,
   _anfrDetectablesForTest,
+  _anfrMastTallyForTest,
   _anfrRecordForTest,
   _anfrRowControlsForTest,
   _anfrSelectedIdForTest,
@@ -62,6 +71,8 @@ import anfrFranceLayer, {
 } from './anfrFrance.js';
 import {
   ANFR_GENERATIONS,
+  ANFR_HEIGHTLESS_NATURES,
+  ANFR_HEIGHT_MISSING,
   ANFR_ID,
   ANFR_LAT,
   ANFR_LON,
@@ -74,6 +85,7 @@ import {
   ANFR_SYS,
   anfrCsvColumns,
   anfrDecodeMask,
+  anfrDistanceM,
   parseAnfrNatureTable,
   projectAnfrSupports,
   projectCartoradioAntennas,
@@ -91,6 +103,19 @@ import { buildAnfrMesh, selectAnfrMesh } from './anfrMesh.js';
 // property of the harness rather than of the layer.
 const { default: ContextLimits } = await import('@cesium/engine/Source/Renderer/ContextLimits.js');
 ContextLimits._maximumAliasedLineWidth = 16;
+
+// The shafts and the azimuth rays are polylines, and a polyline carries a
+// `Material`. Cesium types a material uniform by testing it against the DOM
+// image classes — `uniformValue instanceof HTMLCanvasElement` and friends,
+// `Material.js:1262` — and under `node --test` those identifiers do not exist,
+// so a bare `Material.fromType('Color', …)` throws a ReferenceError before it
+// ever reaches a GPU. Declaring the four names is a property of the harness,
+// exactly like the aliased line width above: nothing here is ever an instance
+// of them, so the `instanceof` chain falls through to the object branch that
+// the colour and dash uniforms actually belong in.
+for (const name of ['HTMLCanvasElement', 'HTMLImageElement', 'ImageBitmap', 'OffscreenCanvas']) {
+  if (!(name in globalThis)) globalThis[name] = class {};
+}
 
 const read = (name) => JSON.parse(readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8'));
 const norm = (value) => String(value).replace(/[\s ]+/g, ' ');
@@ -704,11 +729,12 @@ test('the maillage says when the camera is simply not over France', () => {
   );
 });
 
-test('init builds one real primitive collection, and the draw path fills it', async () => {
+test('init builds the three real collections, and the draw path fills them', async () => {
   // The seams above run the card and legend paths with `point: null`. This one
   // runs the production `reconcileSupports` against a real
   // PointPrimitiveCollection, so the style a test asserts on is the style a
-  // primitive actually receives.
+  // primitive actually receives. The two polyline collections beside it are
+  // the world-space channel: shafts, and the selected mast's azimuth rays.
   const added = [];
   const viewer = {
     ...fakeViewer(2.30, 48.84, 2.36, 48.88),
@@ -723,8 +749,10 @@ test('init builds one real primitive collection, and the draw path fills it', as
     },
   };
   anfrFranceLayer.init(viewer);
-  assert.equal(added.length, 1);
+  assert.equal(added.length, 3);
   assert.equal(added[0].constructor, Cesium.PointPrimitiveCollection);
+  assert.equal(added[1].constructor, Cesium.PolylineCollection, 'the shafts');
+  assert.equal(added[2].constructor, Cesium.PolylineCollection, 'the azimuth rays');
 
   const http = async (url) => ({
     ok: true,
@@ -747,7 +775,7 @@ test('init builds one real primitive collection, and the draw path fills it', as
   assert.equal(record.point.pixelSize, before, 'and clearing restores it');
 
   anfrFranceLayer.destroy(viewer);
-  assert.equal(added.length, 0, 'destroy removes the collection it added');
+  assert.equal(added.length, 0, 'destroy removes every collection it added');
 });
 
 test('the overlay entry is anchored, protected and single', () => {
@@ -766,4 +794,272 @@ test('the overlay entry is anchored, protected and single', () => {
   assert.equal(createAnfrSelectedOverlayEntry(null), null);
   assert.equal(ANFR_FR_OVERLAY_SOURCE_ID, 'anfr-fr-selected');
   assert.equal(anfrBandColor('nope'), ANFR_BAND_COLORS.projet);
+});
+
+// ── The world-space channel: the support drawn at its real height ───────────
+// One property holds through the six tests below, and it is B2's: the QUANTITY
+// is a length in metres of the world, and no screen-space channel is composed
+// with it. The dot's pixel size is still the operator count and is multiplied
+// by nothing; the shaft's pixel width is a constant that carries nothing. The
+// second property is A1's: 551 supports of the register publish no height, and
+// none of them gets a default one — they get no shaft at all, and the count
+// travels with the row label, the legend and the card.
+
+const heightlessId = anfrSupportId(325857);
+
+test('the shaft is the published height, and there is none where there is none', () => {
+  // 325857 is the fixture's underground support: the register leaves its
+  // height blank because there is no mast to measure. It is one of the three
+  // natures that hold all 551 blanks nationally.
+  const blank = support(325857);
+  assert.equal(blank.heightM, null);
+  assert.ok(ANFR_HEIGHTLESS_NATURES.includes(blank.nature));
+  assert.equal(anfrMastHeightM(blank), null);
+  // A zero and a negative are the same refusal, for the same reason: the
+  // register writes 0 where nobody filled the field in.
+  assert.equal(anfrMastHeightM({ heightM: 0 }), null);
+  assert.equal(anfrMastHeightM({ heightM: -12 }), null);
+  assert.equal(anfrMastHeightM({}), null);
+  assert.equal(anfrMastHeightM(null), null);
+  // And a published one is passed through in metres, unscaled and unclassed —
+  // there is no thematic mapping to invert here.
+  assert.equal(anfrMastHeightM(support(437710)), 308);
+  assert.equal(anfrMastHeightM(support(449714)), 65);
+
+  _setAnfrStateForTest({ overlayHost: makeHost(), pack: PACK, regime: 'supports', mastRegime: true });
+  const tally = _anfrMastTallyForTest();
+  assert.equal(tally.masts + tally.unpublished, SUPPORTS.length);
+  assert.equal(tally.unpublished, 1, 'the one blank in the fixture, counted');
+  assert.equal(tally.clipped, 0);
+  _clearAnfrSelectionForTest();
+});
+
+test('the dot rides the top of its shaft, and stays on the ground without one', () => {
+  _setAnfrStateForTest({ overlayHost: makeHost(), pack: PACK, regime: 'supports', mastRegime: true });
+  const tall = _anfrRecordForTest(anfrSupportId(437710));
+  const flat = _anfrRecordForTest(heightlessId);
+  const lift = (record) => Cesium.Cartographic.fromCartesian(record.position).height
+    - Cesium.Cartographic.fromCartesian(record.groundPosition).height;
+  // 308 m of support is 308 m of lift, to within the ellipsoid round trip.
+  assert.ok(Math.abs(lift(tall) - 308) < 0.5);
+  // No height, no lift: the dot and the foot of the missing shaft are the same
+  // point, which is exactly what "no measurement" should look like.
+  assert.ok(Math.abs(lift(flat)) < 1e-6);
+  // The pixel channel is untouched by any of it — the dot is still sized by
+  // the operator count, and nothing multiplies it (B2).
+  assert.equal(tall.style.sizePx, anfrPointSize(tall.support.operators.length));
+  assert.equal(flat.style.sizePx, anfrPointSize(flat.support.operators.length));
+  _clearAnfrSelectionForTest();
+});
+
+test('the shaft sub-regime has hysteresis and is nested inside the exact one', () => {
+  // Entering is stricter than leaving, so a camera resting on the boundary
+  // cannot flicker the whole shaft field on and off.
+  assert.ok(ANFR_MAST_ENTER_SPAN_DEG < ANFR_MAST_EXIT_SPAN_DEG);
+  assert.ok(ANFR_MAST_EXIT_SPAN_DEG < ANFR_MAX_BOX_DEG, 'and both sit inside the exact regime');
+  assert.equal(anfrMastRegime(0.05, false), true);
+  assert.equal(anfrMastRegime(0.07, false), false, 'above the entry, not entered');
+  assert.equal(anfrMastRegime(0.07, true), true, 'above the entry, not yet left');
+  assert.equal(anfrMastRegime(0.1, true), false);
+  assert.equal(anfrMastRegime(Infinity, true), false);
+  assert.equal(anfrMastRegime(NaN, true), false);
+
+  // The maillage tuple has no height in it, so the shafts cannot follow the
+  // camera down there even if the span would allow it.
+  _setAnfrStateForTest({
+    overlayHost: makeHost(), mesh: MESH_PAYLOAD, regime: 'maillage', mastRegime: true,
+  });
+  assert.equal(_anfrMastTallyForTest().mastRegime, false);
+  assert.equal(_anfrMastTallyForTest().masts, 0);
+  assert.deepEqual(anfrMastLegend({ regime: 'maillage', mastRegime: true }), [],
+    'and no height key is published beside a map that draws no shafts');
+  _clearAnfrSelectionForTest();
+});
+
+test('the height legend publishes numbered marks and names the shape of a blank', () => {
+  // D1 — a size channel with no numbered mark says only "taller than that
+  // one". Three marks, frozen, from the national distribution (C1).
+  _setAnfrStateForTest({ overlayHost: makeHost(), pack: PACK, regime: 'supports', mastRegime: true });
+  const { legend } = _anfrRowControlsForTest();
+  const labels = legend.map((row) => row.label);
+  assert.ok(labels.includes('12 m') && labels.includes('30 m') && labels.includes('48 m'));
+  const ticks = legend.filter((row) => /^\d+ m$/.test(row.label));
+  assert.equal(ticks.length, 3);
+  for (const tick of ticks) assert.ok(tick.glyph?.startsWith('data:image/svg+xml'));
+  // The scale is 1:1 and the legend says so, because that is the whole reason
+  // the length is legitimate on a globe.
+  const header = legend.find((row) => row.label.startsWith('Fût'));
+  assert.ok(header.blurb.includes('un mètre dessiné vaut un mètre de support'));
+  assert.equal(header.count, 14);
+  // A1 — the blank has its own row, its own count, and a hatch rather than a
+  // tint, so it survives the sensor passes (D3).
+  const blank = legend.find((row) => row.label.startsWith('sans fût'));
+  assert.equal(blank.count, 1);
+  assert.ok(blank.glyph?.startsWith('data:image/svg+xml'));
+  assert.ok(blank.blurb.includes(String(ANFR_HEIGHT_MISSING)));
+  // ANFR's own spelling, `Intérieur sous-terrain`, quoted rather than tidied.
+  assert.ok(blank.blurb.includes('sous-terrain'));
+  // The band ramp is untouched: the new rows are appended, never mixed into it.
+  assert.equal(labels.indexOf('5G en service'), 0);
+  _clearAnfrSelectionForTest();
+});
+
+test('the row label tells the three empties apart', () => {
+  // A4 — no shaft on screen can mean too far to draw one, no height published,
+  // or the cap biting. Three causes, three sentences.
+  const far = buildAnfrLoadingLabel({
+    regime: 'supports', status: 'ready', loading: false, count: 15, inView: 15,
+    records: new Map(), mastRegime: false, masts: 0, mastsUnpublished: 0, mastsClipped: 0,
+  });
+  assert.ok(far.includes('vue rapprochée'));
+  assert.ok(!far.includes('sans hauteur publiée'));
+
+  const near = buildAnfrLoadingLabel({
+    regime: 'supports', status: 'ready', loading: false, count: 15, inView: 15,
+    records: new Map(), mastRegime: true, masts: 14, mastsUnpublished: 1, mastsClipped: 3,
+  });
+  assert.ok(near.includes('14 fûts à leur hauteur'));
+  assert.ok(near.includes('1 sans hauteur publiée, sans fût'), 'singular, and A1');
+  assert.ok(near.includes('3 fûts écrêtés par le plafond'), 'A5 — the cap declares itself');
+
+  const plural = buildAnfrLoadingLabel({
+    regime: 'supports', status: 'ready', loading: false, count: 15, inView: 15,
+    records: new Map(), mastRegime: true, masts: 10, mastsUnpublished: 5, mastsClipped: 0,
+  });
+  assert.ok(plural.includes('5 sans hauteur publiée, sans fût'));
+  // The maillage never mentions shafts at all: it has no heights to draw.
+  const mesh = buildAnfrLoadingLabel({
+    regime: 'maillage', status: 'ready', loading: false, count: 3, inView: 9,
+    national: NATIONAL, pick: { thinned: true }, mastRegime: false,
+  });
+  assert.ok(!mesh.includes('fût'));
+});
+
+test('the rays are the published bearings, and refuse to imply a range', () => {
+  // The azimuth is NOT in the observatoire — it comes from the Cartoradio card
+  // of the mast the reader clicked, one mast at a time. What is drawn is a
+  // bearing at a published mounting height, and nothing else.
+  const { rays, bearings, unplaced, unaimed } = anfrSectorRays(DETAIL);
+  assert.ok(rays.length > 0);
+  assert.equal(unplaced, 0);
+  assert.equal(unaimed, 0);
+  assert.ok(bearings.includes(0), 'zero is north, and it is drawn');
+  assert.deepEqual(bearings, [...new Set(bearings)].sort((a, b) => a - b));
+  assert.ok(bearings.length < rays.length, 'the card lists bearings, the map draws pairs');
+
+  // A bearing with no mounting height is REFUSED, not seated on the mast's own
+  // height: those are two different published numbers and swapping them would
+  // be an invention that looks measured.
+  const partial = anfrSectorRays({
+    antennas: {
+      withoutAzimuth: 2,
+      azimuths: [
+        { deg: 120, heightM: 30, antennas: 3 },
+        { deg: 240, heightM: null, antennas: 1 },
+        { deg: NaN, heightM: 30, antennas: 1 },
+      ],
+    },
+  });
+  assert.deepEqual(partial.rays, [{ deg: 120, heightM: 30, antennas: 3 }]);
+  assert.equal(partial.unplaced, 1);
+  assert.equal(partial.unaimed, 2);
+  assert.deepEqual(anfrSectorRays(null).rays, []);
+
+  // And the card says, in French, that the ray length is a drawing convention.
+  const lines = anfrAzimuthLines(DETAIL);
+  assert.ok(lines.some((line) => line.includes('Azimuts publiés')));
+  assert.ok(lines.some((line) => line.includes('0°')));
+  assert.ok(lines.some((line) => line.includes(`${ANFR_SECTOR_RAY_M} m`)
+    && line.includes('ni l’ouverture ni la portée')));
+  const refusals = anfrAzimuthLines({
+    antennas: { withoutAzimuth: 1, azimuths: [{ deg: 90, heightM: null, antennas: 1 }] },
+  });
+  assert.ok(refusals.some((line) => line.includes('sans hauteur de fixation publiée')));
+  assert.ok(refusals.some((line) => line.includes('sans azimut publié')));
+  assert.deepEqual(anfrAzimuthLines({ antennas: { azimuths: [], withoutAzimuth: 0 } }), []);
+});
+
+test('the drawn shafts and rays are world geometry, and go away with the selection', async () => {
+  // The production path, against real primitive collections: this is where a
+  // length in metres either is a length in metres or is not.
+  const added = [];
+  const viewer = {
+    ...fakeViewer(2.325, 48.850, 2.340, 48.860),
+    scene: {
+      requestRender() {},
+      canvas: {},
+      preRender: { addEventListener: () => () => {} },
+      primitives: {
+        add(primitive) { added.push(primitive); return primitive; },
+        remove(primitive) { return added.splice(added.indexOf(primitive), 1).length > 0; },
+        contains() { return true; },
+        raiseToTop() {},
+      },
+    },
+  };
+  anfrFranceLayer.init(viewer);
+  const [, masts, sectors] = added;
+
+  const http = async () => ({ ok: true, json: async () => PACK });
+  _setAnfrStateForTest({ viewer, overlayHost: makeHost(), http, regime: 'maillage' });
+  // A 0.015° box is inside the shaft sub-regime, so the load path draws them.
+  await _loadAnfrViewportForTest(viewer);
+  assert.equal(_anfrMastTallyForTest().mastRegime, true);
+  assert.equal(masts.length, 14, 'one shaft per published height, and none for the blank');
+  assert.equal(masts.show, true);
+
+  // The shaft's LENGTH is the support's height, in metres of the world. This
+  // is the B2 assertion: nothing screen-space is composed with it.
+  const line = masts.get(0);
+  const foot = Cesium.Cartographic.fromCartesian(line.positions[0]);
+  const top = Cesium.Cartographic.fromCartesian(line.positions[1]);
+  assert.ok(Math.abs(foot.longitude - top.longitude) < 1e-12, 'the shaft is vertical');
+  const drawn = top.height - foot.height;
+  const heights = SUPPORTS.map((row) => row.heightM).filter((value) => value > 0);
+  assert.ok(heights.some((value) => Math.abs(value - drawn) < 0.5), `${drawn} is a published height`);
+
+  // A support that radiates nothing gets a dashed shaft: its height is a
+  // figure on an authorised file, not a measurement of something built.
+  const materials = new Set();
+  for (let i = 0; i < masts.length; i += 1) materials.add(masts.get(i).material.type);
+  assert.ok(materials.has('Color'));
+  assert.ok(materials.has('PolylineDash'), 'the project-only support is dashed');
+
+  // Now the rays. Nothing is drawn until a support is selected AND its
+  // Cartoradio card has arrived, because that card is where the bearings are.
+  assert.equal(sectors.show, false);
+  _setAnfrStateForTest({
+    viewer, overlayHost: makeHost(), http, pack: PACK, regime: 'supports',
+    mastRegime: true, details: [[449714, DETAIL]],
+  });
+  _selectAnfrForTest(anfrSupportId(449714));
+  const expected = anfrSectorRays(DETAIL).rays.length;
+  assert.equal(_anfrMastTallyForTest().sectors, expected);
+  assert.equal(sectors.length, expected);
+  assert.equal(sectors.show, true);
+  // Every ray is exactly the declared 60 m, horizontal, at its own mounting
+  // height — a direction, never a coverage radius.
+  for (let i = 0; i < sectors.length; i += 1) {
+    const [near, far] = sectors.get(i).positions;
+    const a = Cesium.Cartographic.fromCartesian(near);
+    const b = Cesium.Cartographic.fromCartesian(far);
+    assert.ok(Math.abs(a.height - b.height) < 0.5, 'horizontal');
+    const metres = anfrDistanceM(
+      Cesium.Math.toDegrees(a.latitude), Cesium.Math.toDegrees(a.longitude),
+      Cesium.Math.toDegrees(b.latitude), Cesium.Math.toDegrees(b.longitude),
+    );
+    assert.ok(Math.abs(metres - ANFR_SECTOR_RAY_M) < 0.5, `${metres} m`);
+  }
+  // One material for the whole fan: a PolylineCollection buckets by material
+  // instance, and 33 fresh ones would be 33 draw calls for one colour.
+  assert.equal(new Set([...Array(sectors.length)].map((_, i) => sectors.get(i).material)).size, 1);
+
+  // Deselecting takes the rays down and leaves the shafts alone: they belong
+  // to two different questions.
+  _clearAnfrSelectionForTest();
+  assert.equal(sectors.show, false);
+  for (let i = 0; i < sectors.length; i += 1) assert.equal(sectors.get(i).show, false);
+
+  anfrFranceLayer.destroy(viewer);
+  assert.equal(added.length, 0);
 });
