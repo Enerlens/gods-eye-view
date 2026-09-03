@@ -65,6 +65,50 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-02
 
 ### Added
+- **Le carroyage peut enfin être servi au millésime 2021, pas seulement 2019.**
+  L'INSEE a publié le carroyage 2021 le **12 février 2026** ; la Géoplateforme
+  relaie toujours 2019 — mesuré au nombre de carreaux : 2 314 836 servis, contre
+  2 313 783 documentés pour 2019 et 2 324 577 pour 2021.
+  `npm run filosofi:pack-2021` transforme le CSV de l'INSEE en shards gzippés
+  dans `.gev-cache/`, et le proxy les préfère quand ils sont là.
+- **Le pack est OPTIONNEL et son absence n'est pas une erreur.** Un clone neuf
+  n'a pas de pack, dessine 2019, et **dit** 2019 : le millésime voyage avec
+  chaque réponse au lieu d'être une constante que le client suppose. C'est la
+  propriété que tout ce chemin existe pour protéger — un calque qui code son
+  propre millésime en dur est à un rafraîchissement amont de légender des
+  chiffres 2021 avec « 2019 ».
+- **Le parquet de 95 Mo sur data.gouv était la voie économique, et il est
+  inutilisable** : 34 colonnes, et pas l'indicatrice d'imputation. Ce calque
+  dessine un carreau modélisé en anneau parce que 39 % le sont ; une source qui
+  ne sait pas dire lesquels ne peut pas l'alimenter. Le CSV de l'INSEE porte
+  `i_est_200`, `i_est_1km` **et** `lcog_geo`.
+- **Une découpe CSV naïve corrompait une ligne sur douze.** Environ **8 % des
+  lignes citent leur champ commune** parce que le carreau est à cheval —
+  `"2A041,2A247"` — et `split(',')` décale toutes les colonnes suivantes. Le
+  premier build a publié une France à **64 010 communes** ; avec une découpe qui
+  respecte les guillemets, **34 851**, ce qui est le bon nombre.
+- **Le maillage 1 km est agrégé localement, à partir du fichier 200 m déjà
+  ouvert.** Les ratios sont recalculés sur des numérateurs et dénominateurs
+  **sommés, jamais moyennés** : la moyenne des taux de pauvreté de deux carreaux
+  n'est pas le taux de pauvreté des deux.
+
+### Fixed
+- **La Martinique et La Réunion se dessinent enfin — elles n'avaient JAMAIS été
+  dessinées.** Le calque déclarait les couvrir depuis sa mise en service et n'a
+  jamais tracé un seul de leurs carreaux : l'INSEE maille chaque territoire dans
+  sa propre zone — métropole en EPSG:3035, Martinique en 5490 (UTM 20 N), La
+  Réunion en 2975 (UTM 40 S) — et le lecteur d'identifiant n'acceptait que
+  `CRS3035`. Chaque cellule était jetée sans un mot. Mesuré le 2026-09-03 sur
+  Saint-Denis : le service répond `numberMatched: 2 502` et le calque en
+  dessinait **0**.
+- **L'application porte désormais l'inverse des deux zones UTM**, à côté de
+  celui du LAEA et pour la même raison : trois formules fermées ne justifient
+  pas une dépendance de projection. Vérifié contre la géométrie que le service
+  envoie réellement — **0,78 mm d'écart maximal sur La Réunion, 0,50 mm sur la
+  Martinique**, sous le 1e-8° que le module promet. Le maillage fait partie de
+  l'identité d'une cellule : deux carreaux de deux territoires peuvent porter
+  les mêmes coordonnées et désigner des lieux différents.
+
 - **Le carroyage INSEE se regarde enfin depuis la France entière.** Le calque
   refusait toute vue plus large que 0,9° — à raison : 2,3 millions de carreaux
   ramenés à une page de 5 000, c'est une image de l'échantillon, pas du pays.

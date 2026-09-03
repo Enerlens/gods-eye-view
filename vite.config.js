@@ -181,9 +181,16 @@ import {
   FILOSOFI_PUBLISHED_CELLS,
   FILOSOFI_VINTAGE,
   buildCarreauxUrl,
+  cellCentre,
   projectCarreaux,
   summarizeCells,
 } from './src/data/filosofiFeed.js';
+import {
+  packCovers as filosofiPackCovers,
+  packIndexPath as filosofiPackIndexPath,
+  shardPath as filosofiShardPath,
+  shardsForBox as filosofiShardsForBox,
+} from './scripts/lib/filosofiPack.mjs';
 import {
   MELODI_DATASETS,
   TERRITORY_SCOPE,
@@ -20079,6 +20086,106 @@ function writeFilosofiDisk(key, entry) {
     .catch((err) => console.warn('[Filosofi Proxy] disk cache write failed:', err?.message || err));
 }
 
+// ---------------------------------------------------------------------------
+// The local 2021 pack — a newer millésime than the relay serves
+// ---------------------------------------------------------------------------
+/**
+ * INSEE published the 2021 carroyage on 2026-02-12; the Géoplateforme WFS this
+ * proxy relays is still on 2019. `scripts/build-filosofi-2021-pack.mjs` turns
+ * INSEE's own CSV into gzipped shards under `.gev-cache/`, and when they are
+ * there this serves them instead.
+ *
+ * THE PACK IS OPTIONAL AND ITS ABSENCE IS NOT AN ERROR. A fresh clone has no
+ * pack, draws 2019, and SAYS 2019 — the millésime travels with every answer
+ * rather than being a constant the client assumes. That is the property this
+ * whole path exists to protect: a layer that hard-codes its own vintage is one
+ * upstream refresh away from captioning 2021 figures with "2019".
+ *
+ * ALL THREE TERRITORIES. INSEE grids métropole in EPSG:3035, Martinique in 5490
+ * and La Réunion in 2975 — their own UTM zones — and the app inverts all three,
+ * so the pack holds 2 324 577 cells, which is INSEE's own published total for
+ * 2021 exactly. A box that STRADDLES a territory's edge still goes to the
+ * relay: answering half of it from the pack would silently short the other half.
+ */
+const FILOSOFI_PACK_DIR = path.join(process.cwd(), '.gev-cache', 'filosofi-2021');
+let _filosofiPackIndex;
+
+/** The pack index, read once. `null` when there is no pack. */
+async function filosofiPackIndex() {
+  if (_filosofiPackIndex !== undefined) return _filosofiPackIndex;
+  try {
+    const raw = await fsp.readFile(filosofiPackIndexPath(FILOSOFI_PACK_DIR), 'utf8');
+    const index = JSON.parse(raw);
+    _filosofiPackIndex = index?.bounds && index?.vintage ? index : null;
+    if (_filosofiPackIndex) {
+      console.log(`[Filosofi Proxy] local pack millésime ${index.vintage}:`
+        + ` ${index.cells['200'].toLocaleString('en-US')} carreaux, métropole only`);
+    }
+  } catch {
+    _filosofiPackIndex = null;
+  }
+  return _filosofiPackIndex;
+}
+
+/**
+ * Answer one box from the pack, in the same wire shape the WFS path produces.
+ *
+ * `truncated` is always false and that is a fact rather than an optimism: the
+ * pack holds every cell INSEE published for métropole, so there is no page
+ * ceiling to hit and nothing to leave out. The WFS path cannot say that.
+ *
+ * @param {object} box
+ * @param {number} resolution
+ * @returns {Promise<?object>} Null when the pack cannot answer.
+ */
+async function filosofiFromPack(box, resolution) {
+  const index = await filosofiPackIndex();
+  if (!index || !filosofiPackCovers(box)) return null;
+  const bounds = index.bounds[String(resolution)];
+  if (!bounds) return null;
+
+  const cells = [];
+  for (const key of filosofiShardsForBox(bounds, box)) {
+    let shard;
+    try {
+      shard = JSON.parse(zlib.gunzipSync(
+        await fsp.readFile(filosofiShardPath(FILOSOFI_PACK_DIR, resolution, key)),
+      ));
+    } catch (error) {
+      // A shard the index promises and the disk does not have is a broken pack,
+      // not a thinner map: fall back to the relay rather than serve a hole.
+      console.warn(`[Filosofi Proxy] pack shard ${resolution}/${key} unreadable:`, error?.message || error);
+      return null;
+    }
+    for (const cell of shard) {
+      const [lon, lat] = cellCentre({
+        res: resolution, n: cell.n, e: cell.e, crs: cell.crs ?? 3035,
+      });
+      if (lat < box.south || lat > box.north || lon < box.west || lon > box.east) continue;
+      cells.push(cell);
+    }
+  }
+  return {
+    resolution,
+    box,
+    vintage: index.vintage,
+    source: 'pack',
+    publishedCells: index.cells[String(resolution)] ?? null,
+    cells,
+    // The pack carries commune CODES and no names: INSEE's CSV publishes
+    // `lcog_geo` alone, and pulling names from another file would smuggle a
+    // second millésime into this one.
+    communes: {},
+    matched: cells.length,
+    returned: cells.length,
+    requested: null,
+    capped: false,
+    truncated: false,
+    estUnknown: cells.reduce((total, cell) => total + (cell.est === null ? 1 : 0), 0),
+    summary: summarizeCells(cells),
+  };
+}
+
 /**
  * The national view's cache, and why its TTL is a month rather than a day.
  *
@@ -20157,6 +20264,9 @@ async function refreshFilosofiTerritories(level) {
  * @returns {Promise<object>}
  */
 async function refreshFilosofiViewport(box, resolution) {
+  // The local pack first, when there is one and it covers this box.
+  const packed = await filosofiFromPack(box, resolution);
+  if (packed) return packed;
   const url = buildCarreauxUrl({ box, resolution, count: FILOSOFI_MAX_CELLS });
   const response = await fetch(url, {
     headers: { Accept: 'application/json' },
@@ -20176,6 +20286,7 @@ async function refreshFilosofiViewport(box, resolution) {
     resolution,
     box,
     vintage: FILOSOFI_VINTAGE,
+    source: 'wfs',
     publishedCells: FILOSOFI_PUBLISHED_CELLS[resolution] ?? null,
     ...projected,
     summary: summarizeCells(projected.cells),
@@ -20236,6 +20347,20 @@ function filosofiProxy() {
         json(200, {
           source: 'INSEE Filosofi — carroyage 200 m et 1 km (Géoplateforme WFS),'
             + ' agrégats département et région (API Melodi)',
+          // Which millésime is actually being served, and by what. Reported
+          // rather than assumed: the pack is optional, and a clone without one
+          // draws 2019 and must say 2019.
+          pack: await (async () => {
+            const index = await filosofiPackIndex();
+            if (!index) return null;
+            return {
+              vintage: index.vintage,
+              builtAt: index.builtAt,
+              cells: index.cells,
+              scope: 'France métropolitaine, Martinique et La Réunion',
+              source: index.source?.page ?? null,
+            };
+          })(),
           national: {
             datasets: MELODI_DATASETS,
             scope: TERRITORY_SCOPE,

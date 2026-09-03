@@ -131,7 +131,15 @@ export const FILOSOFI_SELECTED_OVERLAY_SOURCE_OPTIONS = Object.freeze({
  */
 export const FILOSOFI_MAX_BOX_DEG = 0.9;
 
-/** Where the carroyage exists. Outside these, every request is a certain zero. */
+/**
+ * Where the carroyage exists. Outside these, every request is a certain zero.
+ *
+ * All three are drawn, which was not true until 2026-09-03: INSEE grids
+ * Martinique in EPSG:5490 and La Réunion in EPSG:2975 — their own UTM zones —
+ * and the identifier parser accepted EPSG:3035 alone, so both territories were
+ * declared here and silently dropped every cell. `filosofiFeed.js` now inverts
+ * all three grids.
+ */
 const FILOSOFI_COVERAGE = Object.freeze([
   Object.freeze({ south: 41.2, west: -5.3, north: 51.2, east: 9.7 }), // métropole + Corse
   Object.freeze({ south: 14.3, west: -61.3, north: 15.0, east: -60.7 }), // Martinique
@@ -285,12 +293,20 @@ function renderedGroundM(lat, lon) {
  * @returns {Array<[number, number]>}
  */
 export function drawnOutline(cell, resolution, fraction) {
-  return cellDisc({ res: resolution, n: cell.n, e: cell.e }, fraction);
+  return cellDisc({
+    res: resolution, n: cell.n, e: cell.e, crs: cell.crs ?? 3035,
+  }, fraction);
 }
 
-/** A stable, human-readable id for one drawn cell. */
+/**
+ * A stable, human-readable id for one drawn cell.
+ *
+ * The GRID is part of the identity, not decoration: métropole is EPSG:3035 and
+ * the overseas grids are their own UTM zones, so two cells in two territories
+ * can carry the same northing and easting and mean different places.
+ */
 export function cellId(cell, resolution) {
-  return `filosofi:${resolution}:${cell.n}:${cell.e}`;
+  return `filosofi:${cell.crs ?? 3035}:${resolution}:${cell.n}:${cell.e}`;
 }
 
 function clearPrimitive() {
@@ -318,7 +334,9 @@ function buildRecords(cells, resolution) {
   for (const cell of cells) {
     const symbol = cellSymbol(cell, _metric, { resolution });
     if (symbol.fill <= 0) continue;
-    const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e });
+    const [lon, lat] = cellCentre({
+      res: resolution, n: cell.n, e: cell.e, crs: cell.crs ?? 3035,
+    });
     // ONE sample, at the centre. Probing the footprint instead was measured at
     // 400 ms per redraw against 85 ms for the same 484 cells; the clearance
     // below absorbs the relief that costs.
@@ -336,6 +354,7 @@ function buildRecords(cells, resolution) {
       id: cellId(cell, resolution),
       cell,
       resolution,
+      vintage: _payload?.vintage ?? FILOSOFI_VINTAGE,
       color,
       fill: symbol.fill,
       baseM,
@@ -514,7 +533,13 @@ export function createFilosofiSelectedOverlayEntry(record, communes = {}) {
   } else {
     details.push('Imputation non renseignée par l’INSEE pour ce carreau');
   }
-  details.push(`Carreau ${side} · revenus ${FILOSOFI_VINTAGE} · INSEE Filosofi`);
+  // THE MILLÉSIME IS READ, NOT ASSERTED. The relay serves 2019 and a local pack
+  // serves 2021, and Martinique and La Réunion stay on the relay even when
+  // métropole has moved — so the year belongs to the ANSWER this cell came in,
+  // not to the layer. A constant here is one upstream refresh away from
+  // captioning 2021 figures with "2019".
+  const vintage = record.vintage ?? FILOSOFI_VINTAGE;
+  details.push(`Carreau ${side} · revenus ${vintage} · INSEE Filosofi`);
   // Size is the count, not the indicator — stated on the card because it is the
   // one thing a viewer cannot read off the picture, and because a disc that
   // stops short of its cell must say what the space around it means: nobody
@@ -1153,7 +1178,9 @@ const filosofiCarreauxLayer = {
       metric: _metric.id,
       metricLabel: _metric.label,
       regime: 'carreaux',
-      vintage: FILOSOFI_VINTAGE,
+      // Whatever answered, not what the module was compiled believing.
+      vintage: _payload?.vintage ?? FILOSOFI_VINTAGE,
+      vintageSource: _payload?.source ?? null,
       rampSample: FILOSOFI_RAMP_SAMPLE.cells,
       lastUpdate: _lastUpdate,
       loading: _loading,

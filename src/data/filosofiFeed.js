@@ -239,8 +239,112 @@ function geodeticLatitude(beta) {
   return phi;
 }
 
-/** `CRS3035RES200mN2529400E3919200` → its parts. */
-const ID_GRAMMAR = /^CRS3035RES(\d+)mN(\d+)E(\d+)$/;
+/**
+ * The overseas grids, which are NOT in EPSG:3035 and never were.
+ *
+ * THIS IS THE BUG THIS TABLE EXISTS TO FIX. The layer has declared coverage for
+ * Martinique and La Réunion since it shipped, and drew neither: the WFS names
+ * their cells `CRS5490…` and `CRS2975…`, the identifier grammar accepted
+ * `CRS3035` alone, and every one of their cells was dropped without a word.
+ * Measured 2026-09-03 over Saint-Denis de La Réunion: `numberMatched: 2 502`,
+ * cells drawn **0**.
+ *
+ * INSEE grids each territory in its own UTM zone rather than reprojecting them,
+ * which is the right call — LAEA Europe is a projection for Europe and a
+ * Réunion carreau expressed in it would not be square on the ground. So the app
+ * carries the inverse of both, for the same reason it carries the LAEA one: a
+ * projection dependency for three closed-form formulas is a dependency for
+ * three closed-form formulas.
+ *
+ * RGR92 and RGAF09 are both GRS80-based, like ETRS89 — the same ellipsoid the
+ * LAEA constants above use. The datum differences from WGS84 are centimetric
+ * and this draws 200 m squares.
+ */
+export const FILOSOFI_UTM_CRS = Object.freeze({
+  2975: Object.freeze({ zone: 40, south: true, label: 'RGR92 / UTM 40S — La Réunion' }),
+  5490: Object.freeze({ zone: 20, south: false, label: 'RGAF09 / UTM 20N — Antilles' }),
+});
+
+/** Universal Transverse Mercator constants. Both zones share them. */
+const UTM = Object.freeze({
+  a: 6378137.0,
+  e2: 0.00669438002290,
+  k0: 0.9996,
+  falseEasting: 500_000,
+  falseNorthingSouth: 10_000_000,
+});
+
+/**
+ * UTM metres → WGS84 degrees, Snyder's inverse series.
+ *
+ * The footpoint latitude is found from the meridional arc by the standard e₁
+ * series, then the position by the sixth-order expansion in `D`. Truncation
+ * error inside a UTM zone is well under a millimetre — the projection is only
+ * defined to 3° either side of its central meridian, and both French zones use
+ * about a degree of that.
+ *
+ * @param {number} easting Metres.
+ * @param {number} northing Metres.
+ * @param {{zone: number, south: boolean}} grid
+ * @returns {[number, number]} `[lon, lat]` in degrees.
+ */
+export function utmToWgs84(easting, northing, { zone, south }) {
+  const { a, e2, k0 } = UTM;
+  const ep2 = e2 / (1 - e2);
+  const x = easting - UTM.falseEasting;
+  const y = south ? northing - UTM.falseNorthingSouth : northing;
+
+  const m = y / k0;
+  const mu = m / (a * (1 - e2 / 4 - (3 * e2 ** 2) / 64 - (5 * e2 ** 3) / 256));
+  const e1 = (1 - Math.sqrt(1 - e2)) / (1 + Math.sqrt(1 - e2));
+  const phi1 = mu
+    + ((3 * e1) / 2 - (27 * e1 ** 3) / 32) * Math.sin(2 * mu)
+    + ((21 * e1 ** 2) / 16 - (55 * e1 ** 4) / 32) * Math.sin(4 * mu)
+    + ((151 * e1 ** 3) / 96) * Math.sin(6 * mu)
+    + ((1097 * e1 ** 4) / 512) * Math.sin(8 * mu);
+
+  const sinPhi1 = Math.sin(phi1);
+  const cosPhi1 = Math.cos(phi1);
+  const tanPhi1 = Math.tan(phi1);
+  const c1 = ep2 * cosPhi1 * cosPhi1;
+  const t1 = tanPhi1 * tanPhi1;
+  const sin2 = sinPhi1 * sinPhi1;
+  const n1 = a / Math.sqrt(1 - e2 * sin2);
+  const r1 = (a * (1 - e2)) / ((1 - e2 * sin2) ** 1.5);
+  const d = x / (n1 * k0);
+
+  const lat = phi1 - ((n1 * tanPhi1) / r1) * (
+    (d ** 2) / 2
+    - ((5 + 3 * t1 + 10 * c1 - 4 * c1 * c1 - 9 * ep2) * d ** 4) / 24
+    + ((61 + 90 * t1 + 298 * c1 + 45 * t1 * t1 - 252 * ep2 - 3 * c1 * c1) * d ** 6) / 720
+  );
+  const lon0 = ((6 * zone) - 183) * Math.PI / 180;
+  const lon = lon0 + (
+    d
+    - ((1 + 2 * t1 + c1) * d ** 3) / 6
+    + ((5 - 2 * c1 + 28 * t1 - 3 * c1 * c1 + 8 * ep2 + 24 * t1 * t1) * d ** 5) / 120
+  ) / cosPhi1;
+
+  return [(lon * 180) / Math.PI, (lat * 180) / Math.PI];
+}
+
+/**
+ * One cell's projection, whichever grid it belongs to.
+ *
+ * @param {number} crs EPSG code from the cell identifier.
+ * @param {number} easting @param {number} northing
+ * @returns {[number, number]} `[lon, lat]` in degrees.
+ */
+export function gridToWgs84(crs, easting, northing) {
+  const utm = FILOSOFI_UTM_CRS[crs];
+  return utm ? utmToWgs84(easting, northing, utm) : laeaToWgs84(easting, northing);
+}
+
+/** Every grid the carroyage is published on. */
+export const FILOSOFI_GRID_CRS = Object.freeze([3035, 2975, 5490]);
+
+/** `CRS3035RES200mN2529400E3919200` → its parts, INCLUDING which grid it is on. */
+const ID_GRAMMAR = /^CRS(\d+)RES(\d+)mN(\d+)E(\d+)$/;
 
 /**
  * Read a cell identifier.
@@ -250,11 +354,16 @@ const ID_GRAMMAR = /^CRS3035RES(\d+)mN(\d+)E(\d+)$/;
 export function parseCellId(id) {
   const match = ID_GRAMMAR.exec(String(id ?? '').trim());
   if (!match) return null;
-  const res = Number(match[1]);
-  const n = Number(match[2]);
-  const e = Number(match[3]);
-  if (!Number.isFinite(res) || !Number.isFinite(n) || !Number.isFinite(e)) return null;
-  return { res, n, e };
+  const crs = Number(match[1]);
+  const res = Number(match[2]);
+  const n = Number(match[3]);
+  const e = Number(match[4]);
+  if (![crs, res, n, e].every(Number.isFinite)) return null;
+  // A grid this app cannot invert is refused HERE rather than drawn at
+  // coordinates read in the wrong projection — a Réunion northing of 7 679 200
+  // read as LAEA lands in the Arctic.
+  if (!FILOSOFI_GRID_CRS.includes(crs)) return null;
+  return { crs, res, n, e };
 }
 
 /**
@@ -268,12 +377,12 @@ export function parseCellId(id) {
  * @param {{res: number, n: number, e: number}} cell
  * @returns {Array<[number, number]>} Four `[lon, lat]` corners, SW → NW → NE → SE.
  */
-export function cellCorners({ res, n, e }) {
+export function cellCorners({ res, n, e, crs = 3035 }) {
   return [
-    laeaToWgs84(e, n),
-    laeaToWgs84(e, n + res),
-    laeaToWgs84(e + res, n + res),
-    laeaToWgs84(e + res, n),
+    gridToWgs84(crs, e, n),
+    gridToWgs84(crs, e, n + res),
+    gridToWgs84(crs, e + res, n + res),
+    gridToWgs84(crs, e + res, n),
   ];
 }
 
@@ -282,8 +391,8 @@ export function cellCorners({ res, n, e }) {
  * @param {{res: number, n: number, e: number}} cell
  * @returns {[number, number]} `[lon, lat]`.
  */
-export function cellCentre({ res, n, e }) {
-  return laeaToWgs84(e + res / 2, n + res / 2);
+export function cellCentre({ res, n, e, crs = 3035 }) {
+  return gridToWgs84(crs, e + res / 2, n + res / 2);
 }
 
 // ---------------------------------------------------------------------------
@@ -409,6 +518,10 @@ export function projectCarreaux(payload, { resolution = 200, count = FILOSOFI_MA
     cells.push({
       n: parsed.n,
       e: parsed.e,
+      // The grid this cell is on. Métropole is EPSG:3035; INSEE publishes
+      // Martinique and La Réunion in their own UTM zones, and a cell drawn
+      // without knowing which would be drawn in the wrong ocean.
+      crs: parsed.crs,
       // `ind` and `men` arrive with a half — INSEE's imputation splits people
       // between cells — and the halves are kept. Rounding them here would make
       // the layer's own totals disagree with the source's.
@@ -828,14 +941,15 @@ export const FILOSOFI_DISC_DIAMETER = 2 / Math.sqrt(Math.PI);
  * @param {number} [segments]
  * @returns {Array<[number, number]>}
  */
-export function cellDisc({ res, n, e }, fraction, segments = 32) {
+export function cellDisc({ res, n, e, crs = 3035 }, fraction, segments = 32) {
   const centreN = n + res / 2;
   const centreE = e + res / 2;
   const radius = (res * fraction * FILOSOFI_DISC_DIAMETER) / 2;
   const points = [];
   for (let index = 0; index < segments; index += 1) {
     const angle = (index / segments) * Math.PI * 2;
-    points.push(laeaToWgs84(
+    points.push(gridToWgs84(
+      crs,
       centreE + (radius * Math.cos(angle)),
       centreN + (radius * Math.sin(angle)),
     ));
