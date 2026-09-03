@@ -20109,17 +20109,31 @@ function writeFilosofiDisk(key, entry) {
  */
 const FILOSOFI_PACK_DIR = path.join(process.cwd(), '.gev-cache', 'filosofi-2021');
 let _filosofiPackIndex;
+let _filosofiPackCheckedAt = 0;
+/**
+ * How long an ABSENT pack is believed before looking again.
+ *
+ * The presence is cached forever — a pack does not un-build itself — but the
+ * absence must not be, and that is a deployment lesson rather than a
+ * refinement. The pack is built by a script INTO A RUNNING CONTAINER's volume;
+ * with the negative memoised for the life of the process, the answer stayed
+ * 2019 until someone thought to restart, and nothing said why.
+ */
+const FILOSOFI_PACK_RECHECK_MS = 60_000;
 
-/** The pack index, read once. `null` when there is no pack. */
+/** The pack index. `null` when there is no pack — re-checked once a minute. */
 async function filosofiPackIndex() {
-  if (_filosofiPackIndex !== undefined) return _filosofiPackIndex;
+  if (_filosofiPackIndex) return _filosofiPackIndex;
+  if (Date.now() - _filosofiPackCheckedAt < FILOSOFI_PACK_RECHECK_MS) return null;
+  _filosofiPackCheckedAt = Date.now();
   try {
     const raw = await fsp.readFile(filosofiPackIndexPath(FILOSOFI_PACK_DIR), 'utf8');
     const index = JSON.parse(raw);
     _filosofiPackIndex = index?.bounds && index?.vintage ? index : null;
     if (_filosofiPackIndex) {
       console.log(`[Filosofi Proxy] local pack millésime ${index.vintage}:`
-        + ` ${index.cells['200'].toLocaleString('en-US')} carreaux, métropole only`);
+        + ` ${index.cells['200'].toLocaleString('en-US')} carreaux`
+        + ` (${Object.keys(index.skipped || {}).length ? 'partiel' : 'métropole, Martinique, La Réunion'})`);
     }
   } catch {
     _filosofiPackIndex = null;
@@ -20443,7 +20457,16 @@ function filosofiProxy() {
       const resolution = requestedResolution === 1000 ? 1000 : 200;
 
       const box = snapBoxOutward(requested, FILOSOFI_BOX_STEP_DEG);
-      const key = `${resolution}:${boxKey(box, 3)}`;
+      // THE MILLÉSIME IS PART OF THE CACHE KEY, and it has to be. A cached
+      // answer carries the year it was fetched under; building a local pack
+      // changes which year a box answers with, and without this every viewport
+      // already visited would have kept serving the relay's 2019 for the
+      // thirty days of the TTL — silently, because the answer looks fine.
+      // Measured on staging: after the pack was built, a Lyon box still
+      // answered 2019 until the cache was wiped AND the process restarted.
+      const packed = await filosofiPackIndex();
+      const vintageTag = packed && filosofiPackCovers(box) ? `p${packed.vintage}` : 'wfs';
+      const key = `${vintageTag}:${resolution}:${boxKey(box, 3)}`;
       const now = Date.now();
 
       const cached = _filosofiViewportCache.get(key);
