@@ -58,6 +58,12 @@ a new millésime. Without it the proxy serves the relay and reports
 `vintage: 2019` — the year travels with every answer, so staging is never
 wrong about which one it is showing, only older.
 
+**Nothing else to do after the build.** The proxy re-checks for a pack once a
+minute, and the millésime is part of the viewport cache key, so boxes already
+cached under the relay are simply never read again. Neither of those was true
+the first time this ran: staging kept answering 2019 until the cache was wiped
+*and* the container restarted, in that order, and nothing on the wire said why.
+
 The build streams the three CSVs straight out of the archive: no `unzip` (the
 image has none) and no 473 MB of expanded intermediates on the volume.
 
