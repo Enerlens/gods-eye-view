@@ -182,16 +182,19 @@ test('no unchanged Realtime tool definition drifts silently', () => {
     'set_layer_visibility',
     'show_data_layers_menu',
     'get_entity_context',
+    // The global bloom pass was removed from the product, so
+    // `set_post_processing` lost its `bloom` object and controls sharpen alone.
+    'set_post_processing',
   ]);
   const unchanged = realtimeTools()
     .filter((tool) => !TOUCHED.has(tool.name))
     .sort((a, b) => a.name.localeCompare(b.name));
-  assert.equal(unchanged.length, 18);
+  assert.equal(unchanged.length, 17);
   const digest = createHash('sha256')
     .update(JSON.stringify(unchanged))
     .digest('hex')
     .slice(0, 16);
-  assert.equal(digest, '0e2cf4e4687f797b', 'an unchanged Realtime tool definition drifted');
+  assert.equal(digest, '0a321f7ac13b9663', 'an unchanged Realtime tool definition drifted');
 });
 
 test('Radio volume and mission speed share the Sharpen slider visual language', () => {

@@ -1,5 +1,4 @@
 import * as Cesium from 'cesium';
-import { BLOOM_INTENSITY_DEFAULT, BLOOM_SCALE_VERSION } from './bloom.js';
 import {
   migrateDetectionState,
   normalizeAllocationStrategy,
@@ -11,11 +10,14 @@ import { decodeLayerStateParams, encodeLayerStateParams } from './data/layerStat
  * Share Links — URL Hash State Management
  *
  * Encodes camera position + style into the URL hash so links can be shared.
- * Format: #lat=37.77&lon=-122.42&alt=800&heading=0&pitch=-35&style=nvg&bloom=1&bi=84&bv=2&sharpen=0&si=65&hud=tactical&hv=1&dm=BALANCED&dd=50&da=elastic&kf=16&ko=0&cr=0&map=photoreal
+ * Format: #lat=37.77&lon=-122.42&alt=800&heading=0&pitch=-35&style=nvg&sharpen=0&si=65&hud=tactical&hv=1&dm=BALANCED&dd=50&da=elastic&kf=16&ko=0&cr=0&map=photoreal
+ *
+ * Links written before 2026-09-03 also carry `bloom`, `bi` and `bv` — the
+ * retired global bloom pass. Unknown tokens are simply never read, so those
+ * links still restore everything else they carry.
  */
 
 const DEBOUNCE_MS = 500;
-const LEGACY_BLOOM_FALLBACK = 50;
 const SHARE_ALTITUDE_FALLBACK_M = 800;
 
 /**
@@ -94,6 +96,11 @@ const SHARE_STYLE_PARAMS_PARAM = 'sp';
 const SHARE_CREATED_AT_PARAM = 'at';
 
 const SHARE_PANEL_STATE_REGISTRY = Object.freeze([
+  // `k` would be the mnemonic for a KEY, and `k` is free — but it is free
+  // because it was RETIRED with the left Map Stack panel, and
+  // `sharelink.celestial.test.mjs` pins it as permanently unknown. Take the
+  // next free letter instead of reopening a token somebody deliberately closed.
+  { id: 'map-legend', token: 'e', pinnable: false },
   { id: 'control-panel', token: 'c', pinnable: true },
   { id: 'location-bar', token: 'l', pinnable: true },
   { id: 'data-panel', token: 'd', pinnable: false },
@@ -183,13 +190,10 @@ export class ShareLinkManager {
     cancelOwnedNavigation,
   } = {}) {
     this.viewer = viewer;
-    this._onRestore = onRestore; // callback: ({ style, bloom, sharpen }) => void
+    this._onRestore = onRestore; // callback: ({ style, sharpen }) => void
     this._debounceTimer = null;
     this._currentStyle = 'normal';
-    this._bloomEnabled = false;
     this._sharpenEnabled = false;
-    this._bloomIntensity = BLOOM_INTENSITY_DEFAULT;
-    this._bloomVersion = BLOOM_SCALE_VERSION;
     this._sharpenIntensity = 49;
     this._hudVariant = 'tactical';
     this._hudVisible = false;
@@ -280,10 +284,7 @@ export class ShareLinkManager {
       roll: parseOr(params.get('roll'), 0),
       style,
       styleParams: decodeStyleParamState(params, style),
-      bloom: params.get('bloom') === '1',
       sharpen: params.get('sharpen') === '1',
-      bloomIntensity: parseOr(params.get('bi'), LEGACY_BLOOM_FALLBACK),
-      bloomVersion: parseOr(params.get('bv'), 1),
       sharpenIntensity: parseOr(params.get('si'), 49),
       hudVariant: params.get('hud') || 'tactical',
       hudVisible: params.get('hv') === '1',
@@ -403,10 +404,7 @@ export class ShareLinkManager {
     if (this._onRestore) {
       await this._onRestore({
         style: visualCurrent ? state.style : undefined,
-        bloom: visualCurrent ? state.bloom : undefined,
         sharpen: visualCurrent ? state.sharpen : undefined,
-        bloomIntensity: visualCurrent ? state.bloomIntensity : undefined,
-        bloomVersion: visualCurrent ? state.bloomVersion : undefined,
         sharpenIntensity: visualCurrent ? state.sharpenIntensity : undefined,
         hudVariant: visualCurrent ? state.hudVariant : undefined,
         hudVisible: visualCurrent ? state.hudVisible : undefined,
@@ -502,11 +500,8 @@ export class ShareLinkManager {
     this._scheduleUpdate();
   }
 
-  onToggleChange(bloom, sharpen, extras = {}) {
-    this._bloomEnabled = bloom;
+  onToggleChange(sharpen, extras = {}) {
     this._sharpenEnabled = sharpen;
-    if (typeof extras.bloomIntensity === 'number') this._bloomIntensity = extras.bloomIntensity;
-    if (typeof extras.bloomVersion === 'number') this._bloomVersion = extras.bloomVersion;
     if (typeof extras.sharpenIntensity === 'number') this._sharpenIntensity = extras.sharpenIntensity;
     if (typeof extras.hudVariant === 'string') this._hudVariant = extras.hudVariant;
     if (typeof extras.hudVisible === 'boolean') this._hudVisible = extras.hudVisible;
@@ -581,10 +576,7 @@ export class ShareLinkManager {
     params.set('pitch', Math.round(Cesium.Math.toDegrees(camera.pitch)).toString());
     params.set('roll', Math.round(Cesium.Math.toDegrees(camera.roll)).toString());
     params.set('style', STYLE_TO_URL[this._currentStyle] || 'normal');
-    params.set('bloom', this._bloomEnabled ? '1' : '0');
     params.set('sharpen', this._sharpenEnabled ? '1' : '0');
-    params.set('bi', Math.round(this._bloomIntensity).toString());
-    params.set('bv', Math.round(this._bloomVersion).toString());
     params.set('si', Math.round(this._sharpenIntensity).toString());
     params.set('hud', this._hudVariant);
     params.set('hv', this._hudVisible ? '1' : '0');

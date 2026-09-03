@@ -210,7 +210,13 @@ test('share startup isolates panel defaults from recipient-local collapse prefer
 test('Cockpit owns a focused shared Display portal and compact Radio controls', () => {
   const hiddenRule = css.match(/body\.cockpit-mode :is\(([^)]*)\)\s*\{\s*display:\s*none\s*!important;/);
   assert.ok(hiddenRule, 'Cockpit hidden-chrome rule is missing');
-  assert.match(css, /body\.cockpit-mode #right-context-rail\s*\{\s*display:\s*none\s*!important;/);
+  // The rail is hidden by VISIBILITY on desktop, not display: the map legend
+  // is a rail member now and opts back in from under it (pinned in
+  // rightRailPolicy.test.mjs). Below 760px Cockpit hides everything — left
+  // stack, HUD, context windows — and the rail goes with them, key included.
+  assert.match(css, /body\.cockpit-mode #right-context-rail \{\s*visibility: hidden;\s*\}/);
+  const narrow = css.slice(css.indexOf('@media (max-width: 760px)'));
+  assert.match(narrow, /body\.cockpit-mode #right-context-rail \{\s*display: none !important;\s*\}/);
   assert.match(css, /body\.cockpit-mode #left-panel-stack > #scene-panel\s*\{\s*display:\s*none\s*!important;/);
   assert.match(html, /id="cockpit-display-toggle-btn"[^>]*aria-controls="cockpit-display-panel"/);
   assert.match(html, /id="cockpit-display-toggle-btn"[^>]*>◀<\/button>/);

@@ -27,7 +27,6 @@ export const SCENE_RECIPES = [
       traffic: false,
     },
     post: {
-      bloom: 62,
       sharpen: true,
       detectionMode: 'OFF',
     },
@@ -52,7 +51,6 @@ export const SCENE_RECIPES = [
       traffic: false,
     },
     post: {
-      bloom: 58,
       sharpen: false,
       detectionMode: 'SPARSE',
       styleParams: {
@@ -85,7 +83,6 @@ export const SCENE_RECIPES = [
       traffic: false,
     },
     post: {
-      bloom: 72,
       sharpen: true,
       detectionMode: 'OFF',
       styleParams: {
@@ -117,7 +114,6 @@ export const SCENE_RECIPES = [
       traffic: true,
     },
     post: {
-      bloom: 65,
       sharpen: true,
       detectionMode: 'PANOPTIC',
       styleParams: {
@@ -150,7 +146,6 @@ export const SCENE_RECIPES = [
       traffic: true,
     },
     post: {
-      bloom: 68,
       sharpen: true,
       detectionMode: 'SPARSE',
       styleParams: {
@@ -195,7 +190,6 @@ export const SCENE_RECIPES = [
       earthquakes: false,
     },
     post: {
-      bloom: 60,
       sharpen: true,
       detectionMode: 'SPARSE',
       styleParams: {
@@ -235,7 +229,6 @@ export const SCENE_RECIPES = [
       earthquakes: false,
     },
     post: {
-      bloom: 58,
       sharpen: true,
       detectionMode: 'OFF',
     },
