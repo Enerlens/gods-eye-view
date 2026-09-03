@@ -13,7 +13,7 @@
  * map draws, which is what makes the choropleth's total and the dot count
  * agree by construction rather than by coincidence.
  *
- * ── What the choropleth is binned on, and why it is not the dot count ───────
+ * ── What the HEIGHT carries, and why it is not the dot count ────────────────
  * **Students.** This is a deliberate departure from `schoolsDepartements.js`,
  * which bins on establishments and argues, correctly for it, that a national
  * regime shading by anything other than the drawn unit is "a different map
@@ -31,9 +31,54 @@
  * only the second is about higher education. A map of where BTS sections are
  * is a map of where lycées are, and `schools-fr` already draws that.
  *
- * So the fill is students, the dot count travels on every département's card
- * next to it, and the legend row says `étudiants` out loud so the two are
- * never read as each other.
+ * Students are an ABSOLUTE count, so they now travel on the prism's HEIGHT and
+ * no longer on a colour fill — `choroplethPrism.js` holds that grammar and
+ * `supFrance.js` holds this layer's calibration. The site count travels on
+ * every département's card beside it, so the two are never read as each other.
+ *
+ * ── What the COLOUR carries: a rate this file can actually compute ──────────
+ * The prism needs a ratio for its hue (CARTOGRAPHIE B1), and the ratio a
+ * reader would want first — students per 1 000 INHABITANTS — is not derivable
+ * here: no population figure reaches this module, and inventing one from
+ * another layer's feed would be a source, not an arithmetic. Two candidates
+ * were computable from these very rows, and they were measured against each
+ * other on the real rollup (96 départements, rentrée 2024) by Spearman rank
+ * correlation with the student count and by mean rank displacement:
+ *
+ *   students per 1 000 km² (`per1000Km2`)   ρ = 0.974   mean shift  4.3 places
+ *   share at bac+4 and beyond               ρ = 0.880   mean shift 10.4 places
+ *
+ * The density is very nearly the height drawn a second time — it moves a
+ * département by four places out of ninety-six — and A3 exists to stop a
+ * second channel restating the first. Its spread makes it worse, not better:
+ * 156 to 3 812 827 students per 1 000 km², a factor of 24 500 whose top four
+ * classes are the four départements of the petite couronne, so the hue would
+ * be an Île-de-France detector rather than a rate.
+ *
+ * So the published rate is `advancedShare`: the share of a département's
+ * students enrolled at bac+4 or beyond (`master` + `doctorat` over the cycles
+ * the register grades). It separates the two ways of being big — Ariège is
+ * 94th by enrolment and 35th by share, Allier is 60th and 91st — which is
+ * exactly what the height cannot say. Measured range 0.0 % (Ardèche, Cantal,
+ * Corse-du-Sud, Haute-Loire: real zeros, not gaps) to 46.0 % (Essonne, i.e.
+ * Saclay), median 17.4 %.
+ *
+ * C4, applied: the share is a ratio of SUMS — master + doctorat summed over
+ * the département's sites, divided by the graded total summed the same way —
+ * never a mean of per-site shares. And the denominator is the graded total
+ * rather than `students`, because `supFeed.js` drops any `degre_etudes` it
+ * does not recognise: on this vintage the two are equal on all 96 départements
+ * (2 902 711 = 2 902 711), and if a future vintage breaks that equality the
+ * rate must be over the population that was actually graded. A département
+ * with nothing graded gets `advancedShare: null` — no denominator, no rate,
+ * and the map draws that refusal instead of a zero (A1).
+ *
+ * ── The quantile bin is still published, and the map no longer reads it ─────
+ * `bin` and `thresholds` remain in the payload: they are part of this rollup's
+ * published shape. They are a quantile cut over the rows in hand, which is
+ * precisely what C1 forbids on the map — a poll that lost a stripe would move
+ * every boundary and repaint départements nothing happened to. The prism's
+ * colour ladder is a frozen literal in `supFrance.js` instead.
  *
  * ── What the 96 polygons cannot hold ────────────────────────────────────────
  * They are METROPOLITAN — 96 features, no overseas geometry — so **214 of the
@@ -51,6 +96,10 @@
  * `franceDepartements.js` — the measurement behind the number lives in
  * `irveDepartements.js`, where it was made — and it rescues 10 sites that
  * landed in the drawn sea. It cannot reach Guadeloupe, which is the point.
+ *
+ * The prism does not soften this and must not: 57 301 students that no polygon
+ * can hold are 57 301 students with no height. `unassigned` and `offshore`
+ * travel to the legend, where A5 wants them.
  *
  * Dependency-free and side-effect-free (no Cesium, no DOM) so it runs
  * identically in the browser, in the Vite dev-server proxy, and under
@@ -76,6 +125,35 @@ export const SUP_DEPARTEMENT_BINS = 6;
 
 /** How far outside every polygon a site may sit and still be counted, in km. */
 export const SUP_COAST_SNAP_KM = DEFAULT_COAST_SNAP_KM;
+
+/**
+ * Share of one département's GRADED students at bac+4 and beyond, in percent —
+ * the RATE the prism's colour carries.
+ *
+ * Exported because two callers need the same arithmetic and must not each own
+ * a copy of it: this file publishes it in the rollup, and `supFrance.js` falls
+ * back to it when it is handed a rollup built before the field existed (the
+ * dev proxy caches the payload on disk for a week, and its shape version lives
+ * in a file this layer does not own).
+ *
+ * C4: a ratio of SUMS, never a mean of per-site ratios. The denominator is the
+ * GRADED total and not `students`, because `supFeed.js` drops any
+ * `degre_etudes` it does not recognise — on the 2024 vintage the two are equal
+ * on all 96 départements (2 902 711 = 2 902 711), and if a future one breaks
+ * that equality the rate belongs over the population actually graded.
+ *
+ * @param {{cycles?: object}} row A rollup row, or anything holding `cycles`.
+ * @returns {number|null} Percentage, or `null` when nothing was graded — no
+ *   denominator, no rate, and the map draws that refusal rather than a zero.
+ */
+export function supAdvancedShare(row) {
+  const cycles = row?.cycles;
+  if (!cycles || typeof cycles !== 'object') return null;
+  const graded = SUP_CYCLES.reduce((total, cycle) => total + (Number(cycles[cycle]) || 0), 0);
+  if (!(graded > 0)) return null;
+  const advanced = (Number(cycles.master) || 0) + (Number(cycles.doctorat) || 0);
+  return (advanced / graded) * 100;
+}
 
 /** An empty per-band tally, in ladder order. */
 function emptyKinds() {
@@ -180,6 +258,9 @@ export function projectSupDepartements({
     const bucket = tally.get(entry.code);
     const students = bucket?.students || 0;
     const areaKm2 = entry.areaKm2 || 0;
+    const cycles = bucket?.cycles || emptyCycles();
+    const graded = SUP_CYCLES.reduce((total, cycle) => total + (cycles[cycle] || 0), 0);
+    const advanced = (cycles.master || 0) + (cycles.doctorat || 0);
     departements.push({
       code: entry.code,
       name: entry.name,
@@ -189,10 +270,19 @@ export function projectSupDepartements({
       public: bucket?.public || 0,
       prive: bucket?.prive || 0,
       kinds: bucket?.kinds || emptyKinds(),
-      cycles: bucket?.cycles || emptyCycles(),
+      cycles,
+      graded,
+      advanced,
+      // The prism's HUE. `null` and not 0 when nothing was graded: a
+      // département with no denominator has no rate, and drawing it at the
+      // bottom of the ladder would claim a measurement nobody made (A1).
+      advancedShare: supAdvancedShare({ cycles }),
       areaKm2,
       // Students per 1 000 km² of the polygon that is actually DRAWN — the
-      // surface the reader is looking at, not the official area.
+      // surface the reader is looking at, not the official area. Kept for the
+      // card, where it answers "is this pile big because the territory is
+      // big?"; it is NOT the hue — see the header for the measurement that
+      // disqualified it.
       per1000Km2: areaKm2 > 0 ? (students / areaKm2) * 1000 : 0,
       bin: countBin(students, thresholds),
     });

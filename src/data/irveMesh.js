@@ -3,7 +3,11 @@
  *
  * Pure selection policy for the middle regime of the charge-point layer: the
  * zooms between "all of France" and "one city", where the honest answer is
- * neither 96 painted départements nor 39 859 overlapping dots.
+ * neither 96 département prisms nor 39 859 overlapping dots. (The national
+ * regime became a prism — height for the count, colour for the density — when
+ * the flat count fill was retired; nothing in this middle regime changed, and
+ * the reason is that a thinned SAMPLE of real positions and a complete
+ * AGGREGATE of counts answer two different questions.)
  *
  * ── The problem this exists to solve ────────────────────────────────────────
  * The register puts 231 079 charge points on 39 859 distinct coordinates.

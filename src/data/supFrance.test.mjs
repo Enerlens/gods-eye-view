@@ -1,36 +1,49 @@
-// The rendering decisions: what a dot's colour and size claim, and what the
-// cards say about the two things this register cannot express on its own.
+// The rendering decisions: what a prism, a dot's colour and a dot's size
+// claim, and what the cards say about the things this register cannot express
+// on its own.
 //
-// The recurring property under test is that a dot never overstates what it
+// The recurring property under test is that a mark never overstates what it
 // stands for. A campus dot is one SITE of an establishment, not the
 // establishment; a borrowed coordinate is a thing the map did, not a thing the
-// register said; and the choropleth counts students, not dots. None of those
-// distinctions survive in the colour or the size channel, so the cards and the
-// status line are where they have to live.
+// register said; the national prism's HEIGHT counts students and its COLOUR is
+// a rate, and neither is allowed to say what the other says. None of those
+// distinctions survive in a colour channel alone, so the legend, the cards and
+// the status line are where they have to live.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import supFranceLayer, {
   SUP_FR_LABEL_COHORT_LIMIT,
   SUP_FR_LAYER_ID,
+  SUP_PRISM_SCALE,
   buildSupDepartementLabel,
   buildSupLoadingLabel,
   buildSupSelectionLabel,
   cameraSupBox,
   createSupDepartementOverlayEntry,
   selectSupLabelCohort,
-  supDepartementAlpha,
-  supDepartementBinLabels,
-  supDepartementColor,
   supKindColor,
   supKindLabel,
   supPointSize,
+  supPrismRow,
+  supPrismRows,
+  supRateColor,
   supSiteInBox,
   supViewSpanDeg,
   _clearSupSelectionForTest,
+  _repaintSupDepartementsForTest,
+  _selectSupDepartementForTest,
   _setSupStateForTest,
+  _supDepartementOverlayForTest,
   _supRowControlsForTest,
 } from './supFrance.js';
+import {
+  PRISM_MAX_HEIGHT_M,
+  PRISM_MIN_HEIGHT_M,
+  createPrismScale,
+  prismApparentPx,
+  prismRow,
+} from './choroplethPrism.js';
 import { SUP_KINDS } from './supFeed.js';
 import { SCHOOL_LEVELS } from './schoolsFeed.js';
 import { schoolLevelColor } from './schoolsFrance.js';
@@ -41,6 +54,20 @@ import { schoolLevelColor } from './schoolsFrance.js';
  * French typography and invisible in a diff.
  */
 const norm = (value) => String(value).replace(/[\s  ]+/g, ' ');
+
+/** The shipped scale's own arguments, so a twin can be built to compare with. */
+const spec = () => ({
+  id: 'sup-fr-linear-twin',
+  domainMax: SUP_PRISM_SCALE.domainMax,
+  heightLabel: SUP_PRISM_SCALE.heightLabel,
+  heightUnit: SUP_PRISM_SCALE.heightUnit,
+  ratioLabel: SUP_PRISM_SCALE.ratioLabel,
+  ratioBreaks: [...SUP_PRISM_SCALE.ratioBreaks],
+  ratioColors: [...SUP_PRISM_SCALE.ratioColors],
+});
+
+/** One enrolment on an arbitrary scale, for the linear-versus-sqrt comparison. */
+const supPrismRowOn = (scale, students) => prismRow({ value: students }, scale);
 
 const site = (over = {}) => ({
   id: '0755890V@48.83796,2.36067',
@@ -101,33 +128,201 @@ test('an unknown band falls back to the catch-all, not to a named kind', () => {
   assert.notEqual(supKindColor('quelque chose'), supKindColor('universite'));
 });
 
-test('the choropleth ramp is a different family from the band hues', () => {
-  // A reader zooming out must not carry a category's meaning into a quantity's.
+test('the prism ramp is a different family from the band hues', () => {
+  // A reader zooming out must not carry a category's meaning into a rate's.
   const bands = new Set(SUP_KINDS.map(supKindColor));
-  for (let bin = 0; bin < 6; bin += 1) {
-    assert.equal(bands.has(supDepartementColor(bin)), false);
+  for (const color of SUP_PRISM_SCALE.ratioColors) {
+    assert.equal(bands.has(color), false);
   }
 });
 
-test('a département with nothing in it gets no fill at all', () => {
-  assert.equal(supDepartementColor(-1), null);
-  assert.equal(supDepartementAlpha(-1), 0);
+test('the ramp climbs in LIGHTNESS, so the order survives greyscale', () => {
+  // B4: hue does not order, value does. The ladder has to be readable by a
+  // deuteranope and in a black-and-white screenshot, or it is not a ladder.
+  const luma = (hex) => {
+    const h = hex.replace('#', '');
+    const [r, g, b] = [0, 2, 4].map((i) => Number.parseInt(h.slice(i, i + 2), 16) / 255);
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const values = SUP_PRISM_SCALE.ratioColors.map(luma);
+  for (let i = 1; i < values.length; i += 1) {
+    assert.ok(values[i] > values[i - 1], `class ${i} is not lighter than class ${i - 1}`);
+  }
 });
 
-test('the ramp keeps its lightness ordering over any basemap, and is clamped at both ends', () => {
-  // Alpha DESCENDS: the darkest swatch is the one a light city washes out, so
-  // it carries the most opacity. See choroplethAlpha.js — the old ascending
-  // ladder inverted the composited lightness over a pale urban background.
-  assert.ok(supDepartementAlpha(0) > supDepartementAlpha(5));
-  assert.equal(supDepartementColor(99), supDepartementColor(5));
+// --- The prism: what the height says ----------------------------------------
+
+test('the domain is a frozen literal above the measured maximum, not a quantile', () => {
+  // C1. Paris holds 394 788 students in the 2024 vintage; the ruler stops at
+  // 400 000, so the same département is the same height in every session and a
+  // poll that lost a stripe cannot move a single boundary.
+  assert.equal(SUP_PRISM_SCALE.domainMax, 400_000);
+  assert.equal(SUP_PRISM_SCALE.domainMin, 0);
+  assert.equal(supPrismRow({ students: 394_788, advancedShare: 42.7 }).clipped, false);
+  assert.equal(Object.isFrozen(SUP_PRISM_SCALE), true);
 });
 
-test('bin labels read as ranges, are grouped, and the top one is open-ended', () => {
-  const labels = supDepartementBinLabels([2297, 4259, 9841, 27905, 53455]);
-  assert.equal(labels.length, 6);
-  assert.equal(norm(labels[0]), '1–2 297');
-  assert.equal(norm(labels[1]), '2 298–4 259');
-  assert.equal(norm(labels.at(-1)), '> 53 455');
+test('this layer declares sqrt, and the linear twin is what proves it had to', () => {
+  // The domain runs 738 (Corse-du-Sud) to 394 788 (Paris) — 1 : 535, where the
+  // shared grammar puts the threshold at ~1 : 30. On a linear ruler the 4 km
+  // floor sits at 13 333 students and swallows 51 of the 96 départements,
+  // the median (9 109) among them. On the square root it sits at 444, below
+  // the smallest département, so nothing is floored at all.
+  assert.equal(SUP_PRISM_SCALE.mode, 'sqrt');
+  const linear = createPrismScale({ ...spec(), mode: 'linear' });
+  const floored = (scale, students) => supPrismRowOn(scale, students).heightM <= PRISM_MIN_HEIGHT_M;
+  assert.equal(floored(linear, 9_109), true);
+  assert.equal(floored(linear, 738), true);
+  assert.equal(floored(SUP_PRISM_SCALE, 738), false);
+  assert.equal(floored(SUP_PRISM_SCALE, 9_109), false);
+  // And the two smallest départements stay TELLABLE APART, which is the whole
+  // reason the mode is not the default one.
+  assert.ok(supPrismRow({ students: 950 }).heightM > supPrismRow({ students: 738 }).heightM);
+  assert.equal(supPrismRowOn(linear, 950).heightM, supPrismRowOn(linear, 738).heightM);
+});
+
+test('the measured départements land where the header says they do, in pixels', () => {
+  // Every figure quoted in the module header is recomputed here, at the
+  // ~1 500 km national altitude on a 1600 × 1000 canvas: the numbers are
+  // auditable rather than asserted.
+  const px = (students) => prismApparentPx({
+    heightM: supPrismRow({ students }).heightM,
+    cameraDistanceM: 1_500_000,
+  });
+  assert.equal(Math.round(px(394_788) * 10) / 10, 114.7); // Paris
+  assert.equal(Math.round(px(192_964) * 10) / 10, 80.2); // Rhône
+  assert.equal(Math.round(px(9_109) * 10) / 10, 17.4); // the median département
+  assert.equal(Math.round(px(738) * 10) / 10, 5.0); // Corse-du-Sud
+  // And the tallest prism never exceeds the shared ceiling, whatever arrives.
+  assert.equal(supPrismRow({ students: 1e9 }).heightM, PRISM_MAX_HEIGHT_M);
+});
+
+test('a value above the frozen domain is clipped AND flagged, never rescales the map', () => {
+  // A5: the mark stops measuring, and something has to say so.
+  const over = supPrismRow({ students: 500_000, advancedShare: 40 });
+  assert.equal(over.clipped, true);
+  assert.equal(over.heightM, PRISM_MAX_HEIGHT_M);
+  assert.equal(supPrismRow({ students: 400_000 }).clipped, false);
+});
+
+test('the height ruler brackets the distribution instead of only its top', () => {
+  // The median département holds 9 109 students: a lowest tick at 20 000 —
+  // what the shared default would have picked — leaves half of France under
+  // the bottom of the ruler.
+  assert.deepEqual([...SUP_PRISM_SCALE.heightTicks], [200_000, 50_000, 5_000]);
+  assert.ok(SUP_PRISM_SCALE.heightTicks.at(-1) < 9_109);
+});
+
+// --- The prism: three states of a height, two of a colour -------------------
+
+test('absent, measured zero and measured positive are three different marks', () => {
+  // A1, and the reason this layer was rebuilt. A `?? 0` anywhere on this path
+  // would merge the first two.
+  const absent = supPrismRow({ code: '48' });
+  assert.equal(absent.hasValue, false);
+  assert.equal(absent.heightM, null);
+  assert.equal(absent.extruded, false);
+  assert.equal(absent.measuredZero, false);
+
+  const zero = supPrismRow({ code: '48', students: 0 });
+  assert.equal(zero.hasValue, true);
+  assert.equal(zero.heightM, 0);
+  assert.equal(zero.extruded, false);
+  assert.equal(zero.measuredZero, true);
+
+  const one = supPrismRow({ code: '48', students: 1 });
+  assert.equal(one.extruded, true);
+  assert.ok(one.heightM >= PRISM_MIN_HEIGHT_M);
+});
+
+test('a malformed enrolment is an absence, never a fabricated zero', () => {
+  // `Number([])` is 0 and `Number(true)` is 1: a bad row must not invent a
+  // measurement out of a coercion.
+  for (const students of [null, undefined, NaN, [], true, {}, '', 'beaucoup', -12]) {
+    const row = supPrismRow({ code: '48', students });
+    assert.equal(row.hasValue, false, `${String(students)} should not be a measurement`);
+    assert.equal(row.measuredZero, false);
+  }
+});
+
+test('the two absences are independent — a height without a colour is still a height', () => {
+  const noRate = supPrismRow({ code: '75', students: 394_788, advancedShare: null });
+  assert.equal(noRate.hasValue, true);
+  assert.equal(noRate.extruded, true);
+  assert.equal(noRate.hasRatio, false);
+  assert.equal(noRate.color, null);
+
+  const noCount = supPrismRow({ code: '75', advancedShare: 42.7 });
+  assert.equal(noCount.hasValue, false);
+  assert.equal(noCount.hasRatio, true);
+  assert.ok(noCount.color);
+});
+
+// --- The prism: what the colour says ----------------------------------------
+
+test('the colour is the RATE, on frozen percentage-point breaks', () => {
+  assert.deepEqual([...SUP_PRISM_SCALE.ratioBreaks], [5, 10, 20, 30, 40]);
+  assert.equal(SUP_PRISM_SCALE.ratioColors.length, 6);
+  assert.equal(supRateColor(5), SUP_PRISM_SCALE.ratioColors[0]);
+  assert.equal(supRateColor(17.4), SUP_PRISM_SCALE.ratioColors[2]);
+  // Essonne 46.0 % and Paris 42.7 % — the two of the top class.
+  assert.equal(supRateColor(46), SUP_PRISM_SCALE.ratioColors[5]);
+  assert.equal(supRateColor(42.7), SUP_PRISM_SCALE.ratioColors[5]);
+});
+
+test('a rate of zero is a class, and no rate at all is no colour', () => {
+  // Ardèche, Cantal, Corse-du-Sud and Haute-Loire really do publish 0 % at
+  // bac+4. That is a measurement, and it is not an empty cell.
+  assert.equal(supRateColor(0), SUP_PRISM_SCALE.ratioColors[0]);
+  assert.equal(supRateColor(null), null);
+  assert.equal(supRateColor(undefined), null);
+  assert.equal(supRateColor('beaucoup'), null);
+});
+
+test('the height and the colour are read from two different fields', () => {
+  // The one property that keeps the prism from being a fill drawn twice: move
+  // the rate and the height stays put, and the other way round.
+  const base = { code: '75', students: 100_000, advancedShare: 10 };
+  const richer = supPrismRow({ ...base, advancedShare: 40 });
+  const taller = supPrismRow({ ...base, students: 300_000 });
+  assert.equal(richer.heightM, supPrismRow(base).heightM);
+  assert.notEqual(richer.color, supPrismRow(base).color);
+  assert.equal(taller.color, supPrismRow(base).color);
+  assert.ok(taller.heightM > supPrismRow(base).heightM);
+});
+
+test('a rollup built before the rate existed still gets its colour', () => {
+  // The dev proxy caches this payload on disk for a week and its shape version
+  // lives in a file this layer does not own, so a machine holding an older
+  // rollup must not paint all 96 départements as "rate refused". The cycles
+  // are in that payload, and the rate is the same arithmetic over them.
+  const stale = {
+    code: '69', name: 'Rhône', students: 192_964, sites: 292,
+    cycles: { licence: 121_892, master: 60_000, doctorat: 11_072 },
+  };
+  const row = supPrismRow(stale);
+  assert.equal(row.hasRatio, true);
+  assert.equal(Math.round(row.share * 10) / 10, 36.8);
+  assert.equal(row.color, supRateColor(36.8));
+  // A published `null` is a REFUSAL and is honoured, not recomputed around.
+  assert.equal(supPrismRow({ ...stale, advancedShare: null }).hasRatio, false);
+  // And a row with neither is simply colourless.
+  assert.equal(supPrismRow({ code: '69', students: 10 }).hasRatio, false);
+});
+
+test('a rollup becomes one prism row per département, in its own order', () => {
+  const rows = supPrismRows({
+    departements: [
+      { code: '75', name: 'Paris', students: 394_788, advancedShare: 42.7, sites: 484 },
+      { code: '48', name: 'Lozère', students: 1_122, advancedShare: 7.8, sites: 5 },
+    ],
+  });
+  assert.deepEqual(rows.map((row) => row.code), ['75', '48']);
+  assert.equal(rows[0].name, 'Paris');
+  assert.equal(rows[0].sites, 484);
+  assert.ok(rows[0].heightM > rows[1].heightM);
+  assert.deepEqual(supPrismRows(null), []);
+  assert.deepEqual(supPrismRows({}), []);
 });
 
 // --- Size -------------------------------------------------------------------
@@ -271,6 +466,54 @@ test('the département card gives students, establishments AND sites', () => {
   assert.match(norm(copy), /3 743 étudiants pour 1 000 km²/);
 });
 
+test('the département card prints BOTH channels in their own unit', () => {
+  // The card is where a reader checks what the two channels claim: the height
+  // in students, the hue in points of percentage, each named as such.
+  const copy = norm(buildSupDepartementLabel({
+    code: '69',
+    name: 'Rhône',
+    students: 192964,
+    etabs: 210,
+    sites: 292,
+    advancedShare: 36.84,
+    cycles: { licence: 121892, master: 60000, doctorat: 11072 },
+    public: 150,
+    prive: 142,
+    per1000Km2: 59321,
+  }));
+  assert.match(copy, /192 964 étudiants/);
+  assert.match(copy, /36,8 % des étudiants à bac\+4 et au-delà/);
+  assert.match(copy, /la couleur du prisme/);
+  // And the areal caveat the hue does NOT audit, on the card, in figures.
+  assert.match(copy, /59 321 étudiants pour 1 000 km²/);
+  assert.match(copy, /la hauteur ne le corrige pas/);
+});
+
+test('the card says which half is missing, and never prints a zero for it', () => {
+  // A1 in words: « non publié » is not « 0 », in either channel.
+  const noRate = norm(buildSupDepartementLabel({
+    code: '90', name: 'Belfort', students: 5185, etabs: 12, sites: 14,
+    advancedShare: null, cycles: {}, public: 10, prive: 4, per1000Km2: 8545,
+  }));
+  assert.match(noRate, /Part à bac\+4 non calculable/);
+  assert.equal(/0,0 %/.test(noRate), false);
+
+  const noCount = norm(buildSupDepartementLabel({
+    code: '2A', name: 'Corse-du-Sud', etabs: 0, sites: 0,
+    advancedShare: 12, cycles: {}, public: 0, prive: 0, per1000Km2: 0,
+  }));
+  assert.match(noCount, /Effectif étudiant non publié/);
+  assert.equal(/^0 étudiants/m.test(noCount), false);
+
+  // A measured zero is a measurement and prints as one.
+  const zero = norm(buildSupDepartementLabel({
+    code: '90', name: 'Belfort', students: 0, etabs: 0, sites: 0,
+    advancedShare: null, cycles: {}, public: 0, prive: 0, per1000Km2: 0,
+  }));
+  assert.match(zero, /0 étudiants/);
+  assert.equal(/non publié/.test(zero.split('\n')[1]), false);
+});
+
 test('a département with no private sites and no rate prints neither line', () => {
   const copy = buildSupDepartementLabel({
     code: '48',
@@ -307,14 +550,31 @@ test('the cohort keeps the biggest départements and is bounded', () => {
   assert.deepEqual(selectSupLabelCohort(null), []);
 });
 
-test('a département label carries its student count and its own bin colour', () => {
+test('a département label carries its student count and its prism’s own hue', () => {
   const entry = createSupDepartementOverlayEntry(
-    { code: '75', name: 'Paris', students: 394788, bin: 5 },
+    { code: '75', name: 'Paris', students: 394788, advancedShare: 42.7 },
     { anchor: [2, 48] },
   );
   assert.equal(norm(entry.title), 'Paris · 394 788');
-  assert.equal(entry.accent, supDepartementColor(5));
+  assert.equal(entry.accent, supRateColor(42.7));
   assert.equal(entry.id, 'sup-fr:dep:75');
+});
+
+test('a label never claims a class its prism does not have', () => {
+  // No rate published: the accent falls back to the graphite the striped body
+  // uses, and never to a hue off the ladder.
+  const noRate = createSupDepartementOverlayEntry(
+    { code: '75', name: 'Paris', students: 394788, advancedShare: null },
+    { anchor: [2, 48] },
+  );
+  assert.equal(SUP_PRISM_SCALE.ratioColors.includes(noRate.accent), false);
+  // No enrolment published: the title says so instead of printing « 0 ».
+  const noCount = createSupDepartementOverlayEntry(
+    { code: '48', name: 'Lozère', advancedShare: 7.8 },
+    { anchor: [3, 44] },
+  );
+  assert.match(noCount.title, /non publié/);
+  assert.equal(noCount.priority, 0);
 });
 
 // --- The view box -----------------------------------------------------------
@@ -378,24 +638,335 @@ test('the lycée legend row warns that those addresses are also in schools-fr', 
   assert.match(_supRowControlsForTest().legend[0].blurb, /Établissements scolaires/);
 });
 
-test('the national legend is the quantile ramp, and says it counts students', () => {
+// --- The national legend (D1) ------------------------------------------------
+
+const NATIONAL = Object.freeze({
+  students: 2_960_012,
+  studentsAssigned: 2_902_711,
+  painted: 96,
+  unassigned: 214,
+  departements: [
+    { code: '75', name: 'Paris', students: 394_788, advancedShare: 42.7, sites: 484 },
+    { code: '69', name: 'Rhône', students: 192_964, advancedShare: 36.8, sites: 292 },
+    { code: '48', name: 'Lozère', students: 1_122, advancedShare: 7.8, sites: 5 },
+    { code: '15', name: 'Cantal', students: 1_400, advancedShare: 0, sites: 6 },
+    { code: '90', name: 'Belfort', students: 0, advancedShare: null, sites: 0 },
+    { code: '2A', name: 'Corse-du-Sud', advancedShare: null, sites: 0 },
+  ],
+});
+
+test('the national legend publishes the HEIGHT ruler in figures, not just colours', () => {
+  // D1, and the reason the prism is legible at all: a height nobody can
+  // translate into students is a shape. Three ticks, each with a BAR glyph
+  // whose height is the datum, all in one constant colour so the swatch's
+  // colour cannot read as a second encoding (A3).
+  _setSupStateForTest({ regime: 'national', national: NATIONAL });
+  const { legend } = _supRowControlsForTest();
+  const title = legend[0];
+  assert.match(norm(title.label), /^Hauteur — étudiants$/);
+  assert.equal(title.color, null);
+  assert.match(norm(title.blurb), /400 000 étudiants, borne gelée/);
+  const ticks = legend.filter((row) => row.glyph && /étudiants$/.test(row.label));
+  assert.equal(ticks.length, 3);
+  assert.deepEqual(ticks.map((row) => norm(row.label)), [
+    '200 000 étudiants', '50 000 étudiants', '5 000 étudiants',
+  ]);
+  assert.equal(new Set(ticks.map((row) => row.color)).size, 1);
+  assert.equal(new Set(ticks.map((row) => row.glyph)).size, 3);
+});
+
+test('the legend says the scale is a square root, unprompted', () => {
+  // A ruler where twice as tall means four times as many is a claim the reader
+  // cannot check without being told, so it is told in French, on the map.
+  _setSupStateForTest({ regime: 'national', national: NATIONAL });
+  const { legend } = _supRowControlsForTest();
+  assert.match(norm(legend[0].blurb), /racine carrée/);
+  assert.match(norm(legend[0].blurb), /quatre fois plus/);
+});
+
+test('the legend states the areal bias, and withdraws the promise it cannot keep', () => {
+  // The honest half of the arbitration. The shared blurb ends by promising the
+  // COLOUR answers « rapporté à quoi ? » — true where the hue is a density,
+  // false here, where it is the share at bac+4. The promise is cut and the
+  // real answer (the card's students per 1 000 km²) is named instead.
+  _setSupStateForTest({ regime: 'national', national: NATIONAL });
+  const blurb = norm(_supRowControlsForTest().legend[0].blurb);
+  assert.match(blurb, /aire n’est pas neutralisée|aire n'est pas neutralisée/);
+  assert.equal(/qui répond à/.test(blurb), false);
+  assert.match(blurb, /la couleur ne corrige PAS ce biais/);
+  assert.match(blurb, /étudiants pour 1 000 km²/);
+});
+
+test('the colour half of the legend is a RATE, and says so', () => {
+  _setSupStateForTest({ regime: 'national', national: NATIONAL });
+  const { legend } = _supRowControlsForTest();
+  const title = legend.find((row) => /^Couleur —/.test(row.label));
+  assert.match(norm(title.label), /part des étudiants à bac\+4 et au-delà/);
+  assert.equal(title.color, null);
+  // Only classes somebody is in, and each one counted.
+  const classes = legend.filter((row) => SUP_PRISM_SCALE.ratioColors.includes(row.color));
+  // Cantal 0 %, Lozère 7.8 %, Rhône 36.8 %, Paris 42.7 % — and the two classes
+  // nobody is in are not printed, because a colour a reader is told to look
+  // for and can never find is noise.
+  assert.deepEqual(classes.map((row) => norm(row.label)), ['≤ 5 %', '5 – 10 %', '30 – 40 %', '> 40 %']);
+  assert.deepEqual(classes.map((row) => row.count), [1, 1, 1, 1]);
+});
+
+test('measured zero and unpublished get their own counted rows, never each other’s', () => {
+  // A1 on the legend rather than only on the map: Belfort is a measured zero,
+  // Corse-du-Sud has no published enrolment, and both are counted.
+  _setSupStateForTest({ regime: 'national', national: NATIONAL });
+  const { legend } = _supRowControlsForTest();
+  const zero = legend.find((row) => /mesuré à zéro/.test(row.label));
+  const missing = legend.find((row) => /non publié$/.test(row.label));
+  assert.equal(zero.count, 1);
+  assert.equal(missing.count, 1);
+  assert.notEqual(zero.label, missing.label);
+  // The missing row is keyed by a MOTIF, because no hue is neutral on a globe.
+  assert.ok(missing.glyph);
+});
+
+test('the legend carries the overseas shortfall the prisms cannot draw', () => {
+  // A5 where the map is read: 57 301 students on sites no metropolitan polygon
+  // can hold, counted and never moved.
+  _setSupStateForTest({ regime: 'national', national: NATIONAL });
+  const { legend } = _supRowControlsForTest();
+  const offshore = legend.find((row) => /hors métropole/.test(row.label));
+  assert.equal(offshore.count, 214);
+  assert.match(norm(offshore.blurb), /57 301 étudiants/);
+  // A rollup with nothing offshore does not print an empty warning.
+  _setSupStateForTest({
+    regime: 'national',
+    national: { ...NATIONAL, unassigned: 0 },
+  });
+  assert.equal(
+    _supRowControlsForTest().legend.some((row) => /hors métropole/.test(row.label)),
+    false,
+  );
+});
+
+test('every coloured legend row is a rate row — no colour keys a count', () => {
+  // B1, checked from the outside: the only entries carrying a hue from the
+  // ladder are the rate classes. Height rows carry the constant swatch, and
+  // the title and shortfall rows carry no colour at all.
+  _setSupStateForTest({ regime: 'national', national: NATIONAL });
+  for (const row of _supRowControlsForTest().legend) {
+    if (!SUP_PRISM_SCALE.ratioColors.includes(row.color)) continue;
+    assert.match(norm(row.label), /%/);
+  }
+});
+
+// --- Raising the prisms ------------------------------------------------------
+
+/** A stand-in for one drawn polygon part; only property writes are observed. */
+const drawnPart = () => ({ show: false, polygon: {} });
+
+test('the four states get four different marks on the geometry itself', () => {
+  // A1, at the only place it finally matters: the polygon. A measured zero, a
+  // missing count and a missing rate must not produce the same object.
+  const parts = {
+    75: drawnPart(), 90: drawnPart(), '2A': drawnPart(), 69: drawnPart(),
+  };
   _setSupStateForTest({
     regime: 'national',
     national: {
-      thresholds: [2297, 4259, 9841, 27905, 53455],
+      ...NATIONAL,
       departements: [
-        { code: '75', name: 'Paris', students: 394788, bin: 5 },
-        { code: '48', name: 'Lozère', students: 300, bin: 0 },
-        { code: '90', name: 'Belfort', students: 0, bin: -1 },
+        { code: '75', name: 'Paris', students: 394_788, advancedShare: 42.7 },
+        { code: '90', name: 'Belfort', students: 0, advancedShare: null },
+        { code: '2A', name: 'Corse-du-Sud', advancedShare: null },
+        { code: '69', name: 'Rhône', students: 192_964, advancedShare: null },
       ],
     },
+    depEntities: Object.entries(parts).map(([code, part]) => [code, [part]]),
   });
-  const { legend } = _supRowControlsForTest();
-  assert.equal(legend.length, 2);
-  assert.ok(legend.every((row) => row.label.endsWith('étudiants')));
-  // A bin nobody is in is not a legend row.
-  assert.equal(legend.some((row) => row.count === 0), false);
-  assert.match(legend.at(-1).blurb, /ÉTUDIANTS/);
+  _repaintSupDepartementsForTest();
+
+  // count ✓ rate ✓ — a prism, filled in its class colour.
+  assert.equal(parts[75].polygon.extrudedHeight, supPrismRow({ students: 394_788 }).heightM);
+  assert.equal(parts[75].polygon.fill, true);
+  assert.equal(parts[75].show, true);
+
+  // count = 0 — flat, solidly filled, and back ON THE GROUND so it is visible
+  // where the terrain is 2 km up. Zero is a measurement.
+  assert.equal(parts[90].polygon.extrudedHeight, undefined);
+  assert.equal(parts[90].polygon.height, undefined);
+  assert.equal(parts[90].polygon.fill, true);
+  assert.equal(parts[90].show, true);
+
+  // count ✗ — flat too, and told apart from the zero by its MOTIF, because
+  // Cesium refuses an outline on a clamped polygon and a tint would read as a
+  // seventh class (D3).
+  assert.equal(parts['2A'].polygon.extrudedHeight, undefined);
+  assert.equal(parts['2A'].show, true);
+  assert.match(parts['2A'].polygon.material.constructor.name, /Grid/);
+  // Belfort's rate is null too — a département with zero students has nothing
+  // graded, so a real measured zero always carries a refused colour — and it
+  // is STRIPED, which is not the grid. The two absences stay legible as two.
+  assert.match(parts[90].polygon.material.constructor.name, /Stripe/);
+  assert.notEqual(parts[90].polygon.material, parts['2A'].polygon.material);
+
+  // count ✓ rate ✗ — a prism at full height, with STRIPES instead of a hue.
+  // A third motif is not needed: stripes mean "colour refused", the grid means
+  // "nothing measured", and the two never appear on the same mark.
+  assert.equal(parts[69].polygon.extrudedHeight, supPrismRow({ students: 192_964 }).heightM);
+  assert.equal(parts[69].polygon.fill, true);
+  assert.notEqual(parts[69].polygon.material, parts[75].polygon.material);
+  assert.match(parts[69].polygon.material.constructor.name, /Stripe/);
+  assert.match(parts[75].polygon.material.constructor.name, /Color/);
+});
+
+test('a prism starts on the ellipsoid and classifies nothing; a footprint does the reverse', () => {
+  // The two rendering facts the height scale rests on. A prism: a common datum
+  // (a terrain-clamped base would put Savoie's TOP 2 km higher at equal
+  // enrolment) and a CLEARED `classificationType`, which an extruded polygon
+  // reads and then ignores silently — leaving it set would lie to the next
+  // reader. A flat footprint: the opposite, because it has no height to
+  // protect and would otherwise be buried under the Alps.
+  const prism = drawnPart();
+  const flat = drawnPart();
+  _setSupStateForTest({
+    regime: 'national',
+    national: {
+      ...NATIONAL,
+      departements: [
+        { code: '75', name: 'Paris', students: 394_788, advancedShare: 42.7 },
+        { code: '2A', name: 'Corse-du-Sud', advancedShare: null },
+      ],
+    },
+    depEntities: [['75', [prism]], ['2A', [flat]]],
+  });
+  _repaintSupDepartementsForTest();
+  assert.equal(prism.polygon.height, 0);
+  assert.equal(prism.polygon.perPositionHeight, false);
+  assert.equal(prism.polygon.classificationType, undefined);
+  assert.equal(prism.polygon.outline, true);
+
+  assert.equal(flat.polygon.height, undefined);
+  assert.ok(flat.polygon.classificationType !== undefined);
+  assert.equal(flat.polygon.outline, false);
+});
+
+test('a MultiPolygon département raises every part to the SAME height', () => {
+  // Corsica draws twice. Two prisms, one number — and never a number to add up.
+  const north = drawnPart();
+  const south = drawnPart();
+  _setSupStateForTest({
+    regime: 'national',
+    national: {
+      ...NATIONAL,
+      departements: [{ code: '2A', name: 'Corse-du-Sud', students: 738, advancedShare: 0 }],
+    },
+    depEntities: [['2A', [north, south]]],
+  });
+  _repaintSupDepartementsForTest();
+  assert.equal(north.polygon.extrudedHeight, south.polygon.extrudedHeight);
+  assert.equal(north.polygon.extrudedHeight, supPrismRow({ students: 738 }).heightM);
+});
+
+test('a département the rollup never mentions is a grid, and the legend counts it', () => {
+  // A payload that came back short is neither a zero nor the bottom of the
+  // scale, and hiding it would leave a hole the reader cannot interpret (A4).
+  const part = drawnPart();
+  _setSupStateForTest({
+    regime: 'national',
+    national: { ...NATIONAL, departements: [] },
+    depEntities: [['75', [part]]],
+  });
+  _repaintSupDepartementsForTest();
+  assert.equal(part.show, true);
+  assert.match(part.polygon.material.constructor.name, /Grid/);
+  const missing = _supRowControlsForTest().legend.find((row) => /non publié$/.test(row.label));
+  assert.equal(missing.count, 1);
+});
+
+// --- Selecting a prism -------------------------------------------------------
+
+test('selecting a prism recolours it and leaves its HEIGHT alone', () => {
+  // Selection is a qualitative state, so it takes the hue — which carries the
+  // rate — and never the height, which carries the enrolment. A selected
+  // département must still state how many students it holds.
+  const part = drawnPart();
+  const sent = [];
+  _setSupStateForTest({
+    regime: 'national',
+    national: NATIONAL,
+    depEntities: [['75', [part]]],
+    depMeta: [['75', { anchor: [2.34, 48.85] }]],
+    overlayHost: {
+      setEntries: (id, entries) => sent.push(entries),
+      setVisible: () => {},
+      clearSource: () => {},
+    },
+  });
+  _repaintSupDepartementsForTest();
+  _selectSupDepartementForTest('75');
+  assert.equal(part.show, true);
+  assert.equal(part.polygon.extrudedHeight, supPrismRow(NATIONAL.departements[0]).heightM);
+  assert.equal(part.polygon.outline, true);
+  assert.ok(part.polygon.material);
+  const [entry] = sent.at(-1);
+  assert.equal(entry.title, 'Paris');
+  assert.match(norm(entry.details.join(' ')), /394 788 étudiants/);
+});
+
+test('a département with no published enrolment is still clickable, and says why', () => {
+  // Its footprint IS drawn — hatched, flat — so a click on it must produce the
+  // sentence, not silence. Silence would read as a broken map.
+  const part = drawnPart();
+  const sent = [];
+  _setSupStateForTest({
+    regime: 'national',
+    national: NATIONAL,
+    depEntities: [['2A', [part]]],
+    depMeta: [['2A', { anchor: [8.9, 41.9] }]],
+    overlayHost: {
+      setEntries: (id, entries) => sent.push(entries),
+      setVisible: () => {},
+      clearSource: () => {},
+    },
+  });
+  _repaintSupDepartementsForTest();
+  _selectSupDepartementForTest('2A');
+  assert.equal(sent.length, 1);
+  assert.match(norm(sent[0][0].details.join(' ')), /Effectif étudiant non publié/);
+  // No prism was raised for it, and selecting it did not raise one.
+  assert.equal(part.polygon.extrudedHeight, undefined);
+});
+
+test('the ambient labels ride the prisms and are ordered by enrolment', () => {
+  _setSupStateForTest({
+    regime: 'national',
+    national: NATIONAL,
+    depMeta: [
+      ['75', { anchor: [2.34, 48.85] }],
+      ['69', { anchor: [4.83, 45.75] }],
+      ['2A', { anchor: [8.9, 41.9] }],
+    ],
+  });
+  const cohort = _supDepartementOverlayForTest();
+  // Corse-du-Sud publishes no enrolment, so it gets no label: a label with no
+  // number is a name, and this cohort exists to carry numbers.
+  assert.deepEqual(cohort.map((entry) => entry.id), ['sup-fr:dep:75', 'sup-fr:dep:69']);
+  assert.equal(cohort[0].position.heightM, supPrismRow(NATIONAL.departements[0]).heightM);
+  assert.ok(cohort[0].position.heightM > cohort[1].position.heightM);
+});
+
+test('surfaceFill is declared only while a FLAT footprint is drawn', () => {
+  // The shared "your fill is climbing the façades" notice is true of a
+  // ground-classified footprint and false of every prism, which classifies
+  // nothing. NATIONAL holds one measured zero and one unpublished département,
+  // so it declares it; a rollup where every département has a height does not.
+  _setSupStateForTest({ regime: 'national', national: NATIONAL });
+  assert.equal(_supRowControlsForTest().surfaceFill, true);
+  _setSupStateForTest({
+    regime: 'national',
+    national: {
+      ...NATIONAL,
+      departements: NATIONAL.departements.filter((row) => row.students > 0),
+    },
+  });
+  assert.equal(_supRowControlsForTest().surfaceFill, false);
 });
 
 test('the national legend is empty until the rollup arrives', () => {

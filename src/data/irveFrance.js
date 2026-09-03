@@ -21,9 +21,10 @@
  * only when you are over a city, the country-scale question cannot be asked at
  * all. So the layer answers at the scale you are looking at:
  *
- *   whole country in view — **the 96 départements**, filled by how many charge
- *       (span ≥ 9°)         points each holds, in six quantile bins, with the
- *                           leaders labelled. 18 KB, no clutter.
+ *   whole country in view — **96 PRISMS**: each département polygon extruded
+ *       (span ≥ 9.5°)       to the number of charge points it holds and
+ *                           coloured by its density, with the leaders
+ *                           labelled. 18 KB, no clutter.
  *   part of the country   — **the maillage**: real site positions, thinned by
  *       (9° … 0.35°)        a geographic grid so every occupied cell keeps its
  *                           largest site before any cell gets a second dot.
@@ -32,11 +33,109 @@
  *       (below ~45 km)      access conditions and freshness.
  *
  * The three never draw at once and each has its own legend, so a colour can
- * never be read against the wrong scale. The choropleth reuses the bundled IGN
- * département polygons and the clamp-to-ground technique that
- * `meteoFranceVigilance.js` and `franceEnergy.js` already paint on; the
+ * never be read against the wrong scale. The national regime draws the bundled
+ * IGN département polygons that `meteoFranceVigilance.js` and `franceEnergy.js`
+ * also paint — but EXTRUDED rather than clamped, which is a different Cesium
+ * object with different rules, and the section below is that argument. The
  * maillage's thinning is `cctvLod.js`'s ambient-ring distribution transposed
  * from screen space to geographic space (see `irveMesh.js`).
+ *
+ * ── The national regime is a prism, and each channel says one thing ─────────
+ *
+ * HEIGHT is the number of charge points. COLOUR is the density per 1 000 km².
+ * The shared grammar, its calibration and the arbitrations that produced it
+ * live once in `choroplethPrism.js`; what follows is what is specific to this
+ * layer, measured on this layer's own data.
+ *
+ * WHAT THIS REPLACES, AND WHY THE OLD ARGUMENT WAS WRONG. Until now the fill
+ * was the ABSOLUTE COUNT in six quantile bins, and `irveDepartements.js`
+ * argued for it at length: the density spans a factor of 2 254 (43.7 charge
+ * points per 1 000 km² in Lozère against 98 509.6 in Paris, re-measured
+ * 2026-09-03), so painting it "leaves 95 départements indistinguishable". The
+ * measurement is right, the inference is not, twice over.
+ *
+ *   · Ninety-five-indistinguishable is a property of an EQUAL-INTERVAL ramp.
+ *     Six equal steps of 16 411 over that range give an occupancy of
+ *     94 · 1 · 0 · 0 · 0 · 1. The GEOMETRIC ladder below, over the same
+ *     numbers, gives 11 · 27 · 28 · 19 · 7 · 4 — every class inhabited, and
+ *     the top one holding exactly the four inner-Paris départements.
+ *   · An absolute count was never allowed on a fill at all (CARTOGRAPHIE B1).
+ *     The alternative the old header weighed — count fill against rate fill —
+ *     had one channel and two candidates. A globe has two channels.
+ *
+ * THE HEIGHT DOMAIN IS FROZEN AT 12 000 CHARGE POINTS, and it is a literal,
+ * never a maximum recomputed from the payload (C1). Measured highs: 10 539
+ * (Paris, 2026-08-27) and 10 245 (Paris, 2026-09-03) — the register moves in
+ * both directions, since the national total fell from 231 079 to 227 007 over
+ * the same week. 12 000 leaves ~15 % of headroom above the highest figure ever
+ * measured, so the top of the scale is not permanently clipped by the ordinary
+ * growth of the network, and it puts the 10 000 legend tick at 100 km, which
+ * is a ruler mark a reader can hold Paris against. A département above 12 000
+ * would be drawn at the top and DECLARED as clipped by the legend (A5).
+ *
+ * THE HEIGHT SCALE IS LINEAR, and that is a decision against the one hint
+ * `choroplethPrism.js` gives this layer: it names `irve-fr` as a `'sqrt'`
+ * candidate because the domain runs 1 : 45 and the 4 km floor eats everything
+ * under 3.3 % of the domain. Measured rather than assumed, the floor bites at
+ * 400 charge points, and THREE départements of 96 are under it — Cantal (373),
+ * Creuse (347), Lozère (226). Three floored units is not "the floor doing all
+ * the work"; it is the A1 floor doing its job on the three smallest networks
+ * in France. Against that, `'sqrt'` would draw Paris as 2.4× the median when
+ * it is 5.5×, on the one channel the eye reads best. Linear stands, and the
+ * cost is written into the legend rather than hidden.
+ *
+ * At national altitude (~1 500 km, the camera distance at which the 9.5° entry
+ * span is reached) the scale reads: Paris 102.5 km = 98.6 px, Nord 78.0 km =
+ * 75.1 px, the median département 18.5 km = 17.8 px, Lozère on the floor at
+ * 4 km = 3.9 px. Median-to-top spread is 80.8 px, twice the 40 px under which
+ * `choroplethPrism.js` says the map has become a flat fill again.
+ *
+ * THE COLOUR LADDER IS GEOMETRIC AND FROZEN: 100 / 250 / 500 / 1 000 / 2 500
+ * charge points per 1 000 km², i.e. steps of ×2.5, ×2, ×2, ×2.5, which is what
+ * a 2 254 : 1 range needs. Six classes, because CARTOGRAPHIE B3 puts the
+ * perceptible ceiling at six to seven AFTER compositing, and the geometric
+ * ladder is preferred to quantiles for the C1 reason: quantiles are a property
+ * of the sample and would have to be recomputed — the same département would
+ * change class because a sweep lost a stripe, with no change in the world.
+ *
+ * WHAT THE PRISM REMOVES FOR FREE. An extruded polygon is not a
+ * `GroundPrimitive`, so two defects this repo has already paid for stop
+ * applying: the batched ground fill that colours each instance by its bounding
+ * RECTANGLE instead of its polygon, and the F4 drape that
+ * `surfaceFillNotice.js` exists to declare — a thematic tint climbing the
+ * façades of the photorealistic mesh, where the tileset's own shading changes
+ * the colour a reader decodes. This layer therefore does NOT raise
+ * `surfaceFill` in its row controls: every département that carries a count is
+ * a prism, and in the register as measured on 2026-09-03 that is all 96 of
+ * them. The exception is the flat footprints below, which stay clamped
+ * precisely so that they still land on whatever surface is up.
+ *
+ * WHAT THE PAIRING BUYS, in this layer's own terms. The prism keeps the areal
+ * bias every choropleth has — a big rural département makes a big volume at
+ * equal count — but the colour is the audit of the height: Gironde reads TALL
+ * (7 455 points, 74.6 km) and PALE (739.8 per 1 000 km², class 4 of 6), Paris
+ * reads TALL (10 245, 102.5 km) and SATURATED (98 509.6, top class), and the
+ * difference between "a lot, spread thin" and "a lot, packed" is finally on
+ * the map instead of only on the card.
+ *
+ * FOUR STATES, FOUR MARKS, because the two measurements are refused
+ * independently and A1 forbids one sign for two facts (see
+ * `repaintDepartements` for the code and `prismRow` for the contract):
+ *
+ *   count ✓ density ✓ → a prism at its height, body in its density colour
+ *   count ✓ density ✗ → a prism at its height, body STRIPED — the height is
+ *                       measured, the colour is refused, and the two absences
+ *                       do not contaminate each other
+ *   count = 0         → a FLAT footprint, filled: "the register lists nothing
+ *                       here" is a measurement, and it is drawn, not hidden
+ *   count ✗           → a flat footprint in a GRID, because D3 wants a motif
+ *                       and not a tint where there is no neutral colour
+ *
+ * The last two are the only shapes still clamped to the ground, which is why
+ * `classificationType` still matters for them and is re-armed on every repaint
+ * — and why they cannot be outlined, since Cesium refuses an outline on
+ * terrain. They are told apart by their material instead. The legend counts
+ * each of them separately.
  *
  * A thinned map that does not say it is thinned is a map claiming France has
  * 1 100 charge points, so the middle regime always prints how many sites it
@@ -62,7 +161,17 @@
  * there against captured payloads. This module is presentation.
  */
 import * as Cesium from 'cesium';
-import { CHOROPLETH_FILL_ALPHA } from './choroplethAlpha.js';
+import {
+  PRISM_BASE_HEIGHT_M,
+  PRISM_BODY_ALPHA,
+  PRISM_NO_RATIO_COLOR,
+  PRISM_TOP_ALPHA,
+  createPrismScale,
+  prismLegend,
+  prismRatioColor,
+  prismRow,
+  prismTally,
+} from './choroplethPrism.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
@@ -185,31 +294,80 @@ const BAND_COLORS = Object.freeze({
   inconnue: '#7c8899',
 });
 /**
- * Choropleth ramp, low to high — a violet-to-pink sequential scale.
+ * Density ramp, low to high — a violet-to-pink sequential scale.
  *
  * Deliberately a family that appears nowhere else on this globe: not the power
  * ramp above (which means a *kind* of charging, not an amount), not Mix élec's
  * teal/amber balance, not Vigilance's green→red. The two IRVE regimes never
  * draw at the same time, but a reader who zooms out must not carry a
  * category's meaning into a quantity's.
+ *
+ * Lightness ASCENDS with the value, which is both Bertin's ordering rule and
+ * the right choice for the mark this now colours: a prism is seen against the
+ * sky as often as against the ground, and the dense end has to be the salient
+ * one on either backdrop.
+ *
+ * Six colours because the ladder has six classes — see {@link IRVE_DENSITY_BREAKS}.
  */
 const DEPARTEMENT_COLORS = Object.freeze([
   '#2f1b52', '#4d2a86', '#7239b4', '#9b4fd0', '#c774e0', '#eba9ef',
 ]);
 /**
- * Fill alpha per bin — DESCENDING, and shared with the three sibling count
- * choropleths so one edit cannot desynchronise them.
+ * Frozen class boundaries for the DENSITY, in charge points per 1 000 km².
  *
- * It used to ascend, on the reasoning that "density reads as weight as well as
- * hue". That is true over a constant backdrop and false over live imagery: the
- * darkest swatch was also the most transparent, so on a light city the ground
- * washed it out and the composited lightness ran 67.4 · 65.9 · 65.3 · 65.8 ·
- * 69.6 · 78.0 — a U, with class 1 reading lighter than classes 2 to 4. See
- * `choroplethAlpha.js` for the measurements and the search that produced these
- * numbers, and `choroplethAlpha.test.mjs`, which recomputes the compositing
- * over eight backgrounds and fails on any inversion.
+ * Geometric — ×2.5, ×2, ×2, ×2.5 — because the variable spans 2 254 : 1
+ * (43.7 in Lozère, 98 509.6 in Paris, measured 2026-09-03 over the whole
+ * register). Measured occupancy of the 96 départements on this ladder:
+ * 11 · 27 · 28 · 19 · 7 · 4, against 94 · 1 · 0 · 0 · 0 · 1 for six equal
+ * intervals over the same range. That single comparison is the whole reason
+ * the density is drawable at all, and it is why the header of
+ * `irveDepartements.js` had to be rewritten rather than merely amended.
+ *
+ * A LITERAL, not a quantile of the payload (C1): a class boundary derived from
+ * the rows in hand moves when a sweep loses a stripe, and a département that
+ * changes colour without changing is the defect the frozen ladder removes.
+ * Re-measuring it is an edit to this line, made once, with the date attached.
  */
-const DEPARTEMENT_ALPHA = CHOROPLETH_FILL_ALPHA;
+export const IRVE_DENSITY_BREAKS = Object.freeze([100, 250, 500, 1000, 2500]);
+/**
+ * Top of the frozen HEIGHT domain, in charge points. See the header for the
+ * derivation: 15 % of headroom over the highest département ever measured
+ * (10 539, Paris, 2026-08-27), and a 10 000 legend tick that lands on 100 km.
+ */
+export const IRVE_PRISM_DOMAIN_MAX = 12_000;
+/**
+ * The layer's frozen prism scale — height in charge points, colour in charge
+ * points per 1 000 km². Built once at module load, so a bad literal throws
+ * where an author sees it rather than where a reader does.
+ *
+ * `mode: 'linear'` is deliberate and is argued in the header against
+ * `choroplethPrism.js`'s own hint: the floor bites at 400 charge points and
+ * only three départements of 96 are under it.
+ */
+export const IRVE_PRISM_SCALE = createPrismScale({
+  id: IRVE_FR_LAYER_ID,
+  domainMax: IRVE_PRISM_DOMAIN_MAX,
+  heightLabel: 'points de charge installés',
+  heightUnit: 'points de charge',
+  mode: 'linear',
+  ratioLabel: 'densité en points de charge pour 1 000 km²',
+  ratioBreaks: IRVE_DENSITY_BREAKS,
+  ratioColors: DEPARTEMENT_COLORS,
+  // Round ticks that bracket the real distribution: 100 km for the 10 000 of
+  // Paris, 50 km for the fifth département down, 10 km for the first quartile.
+  heightTicks: [10_000, 5_000, 1_000],
+});
+/**
+ * Fill alpha of a FLAT footprint — the measured zeros and the unmeasured
+ * départements, which are the only shapes still clamped to the ground.
+ *
+ * A scalar, not a ladder. `choroplethAlpha.js` runs a DESCENDING alpha ladder
+ * so that a six-class fill keeps its lightness ordering when composited over
+ * live imagery; there is nothing to order here, because every flat footprint
+ * is drawn in one class or in no colour at all. Importing the ladder would put
+ * a second encoding on a channel that now carries none (A3).
+ */
+const FLAT_FOOTPRINT_ALPHA = 0.45;
 const SELECTED_COLOR = '#00ffff';
 const OUTLINE_COLOR = Cesium.Color.BLACK.withAlpha(0.35);
 const SITE_POINT_MIN_PX = 5;
@@ -344,50 +502,71 @@ export function irveBandLabel(band) {
 }
 
 /**
- * Bin index, or -1 for anything that is not one.
+ * The two measurements one département hands the prism: the charge-point count
+ * (its height) and the density per 1 000 km² (its colour).
  *
- * `Number(null)` is 0, not NaN, so a plain coercion would give a département
- * with NO bin the colour of the LOWEST one — painting "we have no figure for
- * this" as "this is the emptiest part of France". Absence has to be rejected
- * before the numeric check, exactly as it is in `irveFeed.js`.
+ * The two are refused INDEPENDENTLY, which is the whole point of routing this
+ * through `prismRow`: a count that was never published draws no prism at all,
+ * a count measured at zero draws a flat footprint, and a density that cannot
+ * be computed refuses the colour without touching the height. `Number(null)`
+ * is 0 rather than NaN, so none of those three cases may go through a plain
+ * coercion — the shared module rejects absence before it converts, exactly as
+ * `irveFeed.js` does on the site rows.
+ *
+ * @param {object|null|undefined} row Département rollup row.
+ * @returns {object} From `prismRow` — see `choroplethPrism.js`.
  */
-function departementBinIndex(bin) {
-  if (bin === null || bin === undefined || bin === '') return -1;
-  const index = Math.trunc(Number(bin));
-  return Number.isFinite(index) && index >= 0 ? index : -1;
-}
-
-/** Colour for a choropleth bin; an empty département has no colour at all. */
-export function irveDepartementColor(bin) {
-  const index = departementBinIndex(bin);
-  if (index < 0) return null;
-  return DEPARTEMENT_COLORS[Math.min(index, DEPARTEMENT_COLORS.length - 1)];
-}
-
-/** Fill alpha for a choropleth bin. */
-export function irveDepartementAlpha(bin) {
-  const index = departementBinIndex(bin);
-  if (index < 0) return 0;
-  return DEPARTEMENT_ALPHA[Math.min(index, DEPARTEMENT_ALPHA.length - 1)];
+export function irveDepartementPrism(row, { truncated = false } = {}) {
+  const pdc = row?.pdc;
+  // THE FOURTH CASE, and it is a repli that used to reach the screen as a
+  // measurement. `projectIrveDepartements` walks the whole département index
+  // and writes `pdc: 0` for every code the sweep never reached, so a stalled
+  // latitude stripe returns Lozère — 226 real charge points — as a hard zero.
+  // Drawn as a measured zero that is an ASSERTION ("no charge point here")
+  // built on a fallback, which is A1. The sweep already proves its own
+  // completeness against the portal's `total_count` and publishes `truncated`;
+  // when it is short, a zero is demoted to "not measured" — no prism, hatched
+  // footprint — exactly as `schoolsFrance.schoolsPrismRow()` does with the
+  // same signal. Not `Number(pdc)`: `Number(null)` is 0 and would manufacture
+  // the very zero this guard exists to refuse.
+  const unproven = truncated && (pdc === 0 || pdc === '0');
+  return prismRow({
+    code: row?.code,
+    value: unproven ? null : pdc,
+    ratio: row?.per1000Km2,
+  }, IRVE_PRISM_SCALE);
 }
 
 /**
- * Legend row labels for the quantile bins, built from the thresholds the
- * server measured. The numbers matter: a quantile scale is only honest if the
- * reader can see the boundaries it chose.
+ * Colour for one density, or `null` when the density is not published.
  *
- * @param {Array<number>} thresholds Ascending upper bounds, `bins - 1` of them.
- * @returns {Array<string>}
+ * `null` rather than a grey, so every caller has to decide what "no rate"
+ * looks like instead of inheriting a colour that sits inside the ramp's own
+ * family — D3 wants a motif there, not a tint.
+ *
+ * @param {number|null|undefined} per1000Km2 Charge points per 1 000 km².
+ * @returns {?string} CSS colour.
  */
-export function irveDepartementBinLabels(thresholds) {
-  const bounds = (Array.isArray(thresholds) ? thresholds : []).map(Number).filter(Number.isFinite);
-  const labels = [];
-  for (let i = 0; i <= bounds.length; i += 1) {
-    const low = i === 0 ? 1 : bounds[i - 1] + 1;
-    const high = i < bounds.length ? bounds[i] : null;
-    labels.push(high === null ? `${fr(low)}+` : `${fr(low)}–${fr(high)}`);
-  }
-  return labels;
+export function irveDensityColor(per1000Km2) {
+  return prismRatioColor(per1000Km2, IRVE_PRISM_SCALE);
+}
+
+/**
+ * Every département of the current rollup, in the shape the prism helpers
+ * take. One place builds this, so the legend's tally, the paint pass and the
+ * tests can never disagree about which rows exist.
+ * @returns {Array<{code: string, value: number, ratio: ?number}>}
+ */
+export function irveNationalPrismRows(national = _national) {
+  const truncated = national?.truncated === true;
+  return (national?.departements || []).map((row) => ({
+    code: row.code,
+    // Same demotion as `irveDepartementPrism` — the legend's tally and the
+    // paint pass must count the same 96 rows, or the key says "mesuré à
+    // zéro — 1" over a département the map draws as unmeasured.
+    value: irveDepartementPrism(row, { truncated }).value,
+    ratio: row.per1000Km2,
+  }));
 }
 
 /**
@@ -625,7 +804,10 @@ export function buildIrveDepartementLabel(row) {
   if (!row) return '';
   const details = [];
   const pdc = Number(row.pdc) || 0;
-  details.push(`🔌 ${fr(pdc)} point${pdc === 1 ? '' : 's'} de charge`);
+  // The two lines the two channels are read from, named as such: a reader who
+  // wants the exact figure behind a height or behind a class finds it here,
+  // which is what makes the volume's areal bias checkable rather than fatal.
+  details.push(`🔌 ${fr(pdc)} point${pdc === 1 ? '' : 's'} de charge — la hauteur du prisme`);
   if (Number(row.sites) > 0) {
     details.push(`📍 ${fr(row.sites)} site${row.sites === 1 ? '' : 's'}`);
   }
@@ -635,7 +817,11 @@ export function buildIrveDepartementLabel(row) {
     .map((band) => `${fr(bands[band])} × ${irveBandLabel(band).replace(/\s*\(.*\)$/, '').toLowerCase()}`);
   if (split.length) details.push(`⚡ ${split.join(' · ')}`);
   if (Number.isFinite(row.per1000Km2)) {
-    details.push(`▦ ${row.per1000Km2.toLocaleString('fr-FR')} pour 1 000 km² (${fr(row.areaKm2)} km²)`);
+    details.push(`▦ ${row.per1000Km2.toLocaleString('fr-FR')} pour 1 000 km² — la couleur (${fr(row.areaKm2)} km²)`);
+  } else {
+    // Not a zero and not a low density: no rate could be computed at all, and
+    // the prism says so with a striped body rather than a step of the ramp.
+    details.push('▦ densité non calculable — le prisme est hachuré, sa hauteur reste mesurée');
   }
   details.push('Capacité installée — ce fichier ne publie pas la disponibilité');
   return [`${row.name} (${row.code})`, ...details].join('\n');
@@ -693,7 +879,11 @@ export function createIrveDepartementOverlayEntry(row, position) {
     position,
     variant: 'label',
     title: `${row.name} · ${fr(row.pdc)}`,
-    accent: irveDepartementColor(row.bin) || BAND_COLORS.inconnue,
+    // The label's accent is the PRISM'S OWN colour — the density class — so
+    // the name and the shape it belongs to are never two different keys. A
+    // département with no computable density takes the refusal grey rather
+    // than a step of the ramp.
+    accent: irveDensityColor(row.per1000Km2) || PRISM_NO_RATIO_COLOR,
     // The cohort is bounded, so priority decides WHICH départements get named:
     // the biggest, which is the same ranking the fill already shows.
     priority: Number(row.pdc) || 0,
@@ -727,14 +917,20 @@ function restoreRecordStyle(record) {
 }
 
 function clearSelection() {
-  if (_selectedId?.startsWith?.('dep:')) {
-    // Nothing to restore: a département's fill is owned by the repaint, which
-    // is idempotent, so re-running it puts the bin colour back.
-    repaintDepartements();
-  } else if (_selectedId) {
-    restoreRecordStyle(_records.get(_selectedId));
-  }
+  // The id is dropped BEFORE the repaint, and the ordering is the whole fix.
+  // `repaintDepartements` ends by calling `highlightSelectedDepartement`, so
+  // repainting while `_selectedId` was still set re-applied the highlight to
+  // the entity being deselected — which then stayed cyan until the next
+  // repaint, i.e. until the next poll, half an hour later. Clicking Paris then
+  // the Nord left TWO cyan prisms on screen and one card. Same defect, same
+  // ordering, as `schoolsFrance.clearSelection()`.
+  const departement = _selectedId?.startsWith?.('dep:') === true;
+  const record = departement || !_selectedId ? null : _records.get(_selectedId);
   _selectedId = null;
+  // Nothing to restore for a département: its fill is owned by the repaint,
+  // which is idempotent, so re-running it puts the bin colour back.
+  if (departement) repaintDepartements();
+  else if (record) restoreRecordStyle(record);
   _overlayHost.clearSource(IRVE_FR_OVERLAY_SOURCE_ID);
 }
 
@@ -1109,12 +1305,33 @@ function markBeamSweepDirty() {
 
 // --- National regime --------------------------------------------------------
 
+/** True when this entity is currently drawn as a prism rather than a footprint. */
+function isExtruded(entity) {
+  return entity?.polygon?.extrudedHeight !== undefined;
+}
+
+/**
+ * Re-target the ground fill at whichever surface the map stack put up.
+ *
+ * It now applies to the FLAT footprints only — the measured zeros and the
+ * unmeasured départements — and that is not a shortcut, it is the rule.
+ * Verified in the bundled Cesium: `GroundGeometryUpdater._isOnTerrain` returns
+ * false as soon as `extrudedHeight` is defined (`index.js:148334-148336`), so
+ * on a prism `polygon.classificationType` is read into
+ * `_classificationTypeProperty` and then never used. Leaving it set would be a
+ * property that lies to the next reader, so {@link paintDepartementPrism}
+ * clears it on the way up and restores it on the way back down.
+ *
+ * The stack listener still has to run: a session that starts over Google's
+ * tiles, hides the Cesium globe and then switches to Bing must re-assert the
+ * surface for every flat footprint, or those come up on nothing.
+ */
 function applyClassification(next) {
   if (next === undefined || next === _classificationType) return;
   _classificationType = next;
   for (const parts of _depEntities.values()) {
     for (const entity of parts) {
-      if (entity.polygon) entity.polygon.classificationType = next;
+      if (entity.polygon && !isExtruded(entity)) entity.polygon.classificationType = next;
     }
   }
   _viewer?.scene?.requestRender?.();
@@ -1171,16 +1388,109 @@ async function ensureDepartementShapes() {
 /** Re-apply the selected département's highlight after a repaint. */
 function highlightSelectedDepartement() {
   if (!_selectedId?.startsWith('dep:')) return;
-  const highlight = new Cesium.ColorMaterialProperty(
-    Cesium.Color.fromCssColorString(SELECTED_COLOR).withAlpha(0.42),
-  );
+  const cyan = Cesium.Color.fromCssColorString(SELECTED_COLOR);
   for (const entity of _depEntities.get(_selectedId.slice(4)) || []) {
-    if (entity.polygon) entity.polygon.material = highlight;
+    if (!entity.polygon) continue;
+    // A prism keeps its silhouette when it is selected: the top edge is the
+    // instrument the height is read with, and a selection that filled the body
+    // without lighting the edge would take the reading away at the exact
+    // moment the reader asked for the figures.
+    const extruded = isExtruded(entity);
+    entity.polygon.material = new Cesium.ColorMaterialProperty(
+      cyan.withAlpha(extruded ? PRISM_BODY_ALPHA : 0.42),
+    );
+    if (extruded) entity.polygon.outlineColor = cyan.withAlpha(PRISM_TOP_ALPHA);
   }
 }
 
 /**
+ * Draw one département as a PRISM: base on the ellipsoid, top at its count.
+ *
+ * `height` is pinned to {@link PRISM_BASE_HEIGHT_M} (0) rather than clamped to
+ * the ground, and that is the argument for abandoning classification rather
+ * than a consequence of it: a terrain-clamped base would start the Savoie
+ * prism ~2 km higher than the Landes one, so its TOP would sit 2 km higher at
+ * equal count, and a height read against a moving datum is not a height.
+ * Terrain pokes through the bottom of an Alpine prism; that is the visible,
+ * correct trade. `perPositionHeight` must stay false for the same reason.
+ *
+ * @param {Cesium.Entity} entity
+ * @param {object} built A row from {@link irveDepartementPrism}.
+ * @param {Cesium.MaterialProperty} material Body material.
+ * @param {Cesium.Color} edge Silhouette and top-edge colour.
+ */
+function paintDepartementPrism(entity, built, material, edge) {
+  entity.polygon.height = PRISM_BASE_HEIGHT_M;
+  entity.polygon.extrudedHeight = built.heightM;
+  entity.polygon.perPositionHeight = false;
+  // Read and silently ignored on an extruded polygon — see applyClassification.
+  entity.polygon.classificationType = undefined;
+  entity.polygon.material = material;
+  // Cesium force-disables `outline` on terrain with a one-time warning
+  // (`index.js:61110-61113`). Off terrain it is legal, so the prism gets the
+  // silhouette the flat fill could never have.
+  entity.polygon.outline = true;
+  entity.polygon.outlineColor = edge;
+  entity.show = true;
+}
+
+/**
+ * Draw one département as a FLAT footprint — the two cases that have no height.
+ *
+ * These stay clamped to the ground, which is why `classificationType` still
+ * matters for them and why it is re-asserted here on every repaint: an entity
+ * that was a prism a moment ago carries a cleared one.
+ *
+ * They also stay OUTLINED = false, and not by choice: Cesium refuses an
+ * outline on a terrain-clamped polygon. The two flat cases are therefore told
+ * apart by their MATERIAL — a solid fill for a measured zero, a grid for a
+ * département nobody measured — which is what D3 asks for anyway, since a
+ * motif survives the NVG and FLIR passes that a tint does not.
+ *
+ * @param {Cesium.Entity} entity
+ * @param {Cesium.MaterialProperty} material
+ */
+function paintDepartementFootprint(entity, material) {
+  entity.polygon.extrudedHeight = undefined;
+  entity.polygon.height = undefined;
+  entity.polygon.outline = false;
+  entity.polygon.classificationType = _classificationType;
+  entity.polygon.material = material;
+  entity.show = true;
+}
+
+/**
+ * The grid a département with no published count is drawn with (A1 + D3).
+ *
+ * Allocated once and shared: it is one state, not one state per département,
+ * and a repaint that minted a material per shape would churn the material
+ * cache on every rollup.
+ */
+let _unmeasuredMaterial = null;
+function unmeasuredMaterial() {
+  if (!_unmeasuredMaterial) {
+    _unmeasuredMaterial = new Cesium.GridMaterialProperty({
+      color: Cesium.Color.fromCssColorString(PRISM_NO_RATIO_COLOR).withAlpha(0.85),
+      cellAlpha: 0.06,
+      lineCount: new Cesium.Cartesian2(6, 6),
+      lineThickness: new Cesium.Cartesian2(2, 2),
+    });
+  }
+  return _unmeasuredMaterial;
+}
+
+/**
  * Paint the current rollup onto the pre-built département entities.
+ *
+ * Four states, four marks, and the reason they are four and not two is A1:
+ * "we did not measure this" and "we measured this and it is zero" are
+ * different facts, and so are "we have no rate for it" and "the rate is low".
+ *
+ *   count ✓ density ✓ → prism at its height, body in its density colour
+ *   count ✓ density ✗ → prism at its height, body STRIPED: the height is
+ *                       measured, the colour is refused
+ *   count = 0         → flat footprint, filled, no volume at all
+ *   count ✗           → flat footprint, GRID, filled by nothing
  *
  * Idempotent, and it re-asserts a live selection at the end: a repaint resets
  * every material, so without that a camera nudge would silently drop the cyan
@@ -1188,35 +1498,57 @@ function highlightSelectedDepartement() {
  */
 function repaintDepartements() {
   if (!_depEntities.size) return;
-  const painted = new Set();
-  const rows = _national?.departements || [];
-  // One material instance per BIN, shared by every département in it: they are
-  // one step of the scale, not 16 separate colours.
-  const materials = new Map();
-  for (const row of rows) {
-    const color = irveDepartementColor(row.bin);
-    if (!color) continue;
-    let material = materials.get(row.bin);
-    if (!material) {
-      material = new Cesium.ColorMaterialProperty(
-        Cesium.Color.fromCssColorString(color).withAlpha(irveDepartementAlpha(row.bin)),
-      );
-      materials.set(row.bin, material);
-    }
+  const seen = new Set();
+  // One material instance per CLASS, shared by every département in it: they
+  // are one step of a six-step scale, not 96 separate colours.
+  const bodies = new Map();
+  const edges = new Map();
+  for (const row of _national?.departements || []) {
     const parts = _depEntities.get(row.code);
     if (!parts) continue;
-    painted.add(row.code);
+    seen.add(row.code);
+    const built = irveDepartementPrism(row, { truncated: _national?.truncated === true });
+    const key = built.hasRatio ? built.bin : 'none';
+    if (!bodies.has(key)) {
+      const css = built.color || PRISM_NO_RATIO_COLOR;
+      const base = Cesium.Color.fromCssColorString(css);
+      bodies.set(key, built.hasRatio
+        ? new Cesium.ColorMaterialProperty(base.withAlpha(PRISM_BODY_ALPHA))
+        // No density: a motif, not a tint, so the refusal cannot be mistaken
+        // for a step of the ramp (D3).
+        : new Cesium.StripeMaterialProperty({
+          evenColor: base.withAlpha(PRISM_BODY_ALPHA),
+          oddColor: base.withAlpha(0.12),
+          repeat: 24,
+        }));
+      edges.set(key, base.withAlpha(PRISM_TOP_ALPHA));
+      bodies.set(`${key}:flat`, new Cesium.ColorMaterialProperty(
+        base.withAlpha(FLAT_FOOTPRINT_ALPHA),
+      ));
+    }
     for (const entity of parts) {
       if (!entity.polygon) continue;
-      entity.polygon.material = material;
-      entity.show = true;
+      if (built.extruded) {
+        paintDepartementPrism(entity, built, bodies.get(key), edges.get(key));
+      } else if (built.hasValue) {
+        // A measured zero. Drawn, and drawn flat: the register lists nothing
+        // here, which is a finding, and hiding it would make it look like the
+        // sweep had simply missed the département.
+        paintDepartementFootprint(entity, bodies.get(`${key}:flat`));
+      } else {
+        paintDepartementFootprint(entity, unmeasuredMaterial());
+      }
     }
   }
-  // A département the rollup does not cover is drawn as absence rather than as
-  // the bottom of the scale — the same rule Mix élec applies to Corse.
+  // A département the rollup does not cover at all — a payload that came back
+  // short. It is not the bottom of the scale and it is not a zero; it is the
+  // grid, and the legend counts it.
   for (const [code, parts] of _depEntities) {
-    if (painted.has(code)) continue;
-    for (const entity of parts) entity.show = false;
+    if (seen.has(code)) continue;
+    for (const entity of parts) {
+      if (!entity.polygon) continue;
+      paintDepartementFootprint(entity, unmeasuredMaterial());
+    }
   }
   highlightSelectedDepartement();
   _viewer?.scene?.requestRender?.();
@@ -1854,20 +2186,25 @@ const irveFranceLayer = {
   getRowControls() {
     if (_regime === 'national') {
       if (!_national) return { chips: [], legend: [] };
-      const labels = irveDepartementBinLabels(_national.thresholds);
-      const counts = new Array(labels.length).fill(0);
-      for (const row of _national.departements || []) {
-        if (row.bin >= 0 && row.bin < counts.length) counts[row.bin] += 1;
-      }
-      const legend = labels.map((label, bin) => ({
-        label: `${label} bornes`,
-        color: irveDepartementColor(bin),
-        count: counts[bin],
-        blurb: bin === labels.length - 1
-          ? 'Départements in the top sixth by installed charge points. The fill is an absolute count, so the card also gives the rate per 1 000 km².'
-          : 'One sixth of the 96 départements. Quantile bins, because on a linear scale Paris alone takes the top fifth.',
-      })).filter((row) => row.count > 0);
-      return { chips: [], legend };
+      // Height first, then colour, because the height is now the primary
+      // variable — and both halves get their ruler, since a prism whose
+      // legend gives no numbered marks says only "more than that one" (D1).
+      // The counts are DÉPARTEMENTS, and the four non-colour rows (the two
+      // titles, the ticks, the refusals) are the ones `manager.js` renders
+      // with an empty aligned swatch.
+      const tally = prismTally(irveNationalPrismRows(), IRVE_PRISM_SCALE);
+      // The drape notice is true only for the FLAT marks. A prism classifies
+      // nothing, but `paintDepartementFootprint` puts `classificationType`
+      // back on the two flat cases — measured zero, and no row at all — so
+      // under Google 3D Tiles those aplats DO climb the façades and that has
+      // to be declared. Same rule and same shape as `supFrance` and
+      // `schoolsFrance`; irve was the only prism layer that stayed silent.
+      const flat = (tally.zero || 0) + (tally.noValue || 0);
+      return {
+        chips: [],
+        legend: prismLegend(IRVE_PRISM_SCALE, tally),
+        surfaceFill: flat > 0,
+      };
     }
     const tally = new Map();
     for (const record of _records.values()) {
@@ -1973,6 +2310,28 @@ export function _selectIrveSiteForTest(id) {
 /** Exercise the production département selection path. */
 export function _selectIrveDepartementForTest(code) {
   selectDepartement(code);
+}
+
+/**
+ * Drive the map-stack classification switch without a window event.
+ *
+ * The property under test is the one the prism forced: a stack change must
+ * still re-arm every FLAT footprint, and must not write onto a prism, where
+ * Cesium reads the property and ignores it.
+ */
+export function _applyIrveClassificationForTest(next) {
+  applyClassification(next);
+}
+
+/**
+ * Run the production paint pass over seeded entities.
+ *
+ * The four marks this layer owes A1 — prism, striped prism, flat footprint,
+ * grid — are decided here and nowhere else, so a test that asserted them from
+ * a reimplementation would prove nothing about what ships.
+ */
+export function _repaintIrveDepartementsForTest() {
+  repaintDepartements();
 }
 
 /** Exercise the production clear path and restore the production host seam. */

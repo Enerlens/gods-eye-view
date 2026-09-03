@@ -24,13 +24,121 @@
  * from it, which removes the one caveat those layers can never remove: nothing
  * on this map is a sample. What is drawn is what is there.
  *
- *   national — 96 painted départements, shaded by STUDENTS. Entered on the
- *              view's LATITUDE span (≥ 9.5°, metropolitan France being 9.8°
- *              tall), never on the larger of the two spans, which on a 16:10
- *              viewport is mostly a statement about the window's shape.
+ *   national — 96 département PRISMS: height = students, hue = the share at
+ *              bac+4 and beyond. Entered on the view's LATITUDE span (≥ 9.5°,
+ *              metropolitan France being 9.8° tall), never on the larger of
+ *              the two spans, which on a 16:10 viewport is mostly a statement
+ *              about the window's shape.
  *   sites    — every site in view, from the pack, with its card.
  *
- * ── What the colour means, and what the size means ──────────────────────────
+ * ── The national regime was a flat count fill, and that was the worst one ───
+ * Until this pass the national view painted 2.96 million students as SIX
+ * QUANTILE COLOURS over the 96 département polygons. That is the figure the
+ * corpus names in capitals — « Représentation d'une variable quantitative
+ * absolue en aplats de couleur — NOP !!!! » — and of the three layers that
+ * committed it, this one committed it hardest: the students sit in about
+ * thirty cities, and the polygon they were painted on has no relation to them
+ * at all. Paris is 104 km² and holds 394 788 of them; the Gironde is 10 077 km²
+ * — ninety-seven times the area — and holds 107 022.
+ *
+ * The header used to argue that choice by comparing "count fill" with "density
+ * fill" and picking the count. The argument is retired: on a globe the choice
+ * was never between those two, because the height axis was empty. It now
+ * carries the count, and the fill carries a rate, which is the one thing a
+ * fill is allowed to say. `choroplethPrism.js` holds the shared grammar and
+ * every calibration figure; what follows is only what is specific to sup-fr.
+ *
+ * ── A3 · what each channel carried, and what it carries now ─────────────────
+ *   HUE    before: the student count, in six quantile bins recomputed from the
+ *          rows in hand at every load (a B1 fault, and a C1 one).
+ *          now: `advancedShare` — the share of a département's graded students
+ *          at bac+4 and beyond, against FROZEN breaks published below.
+ *   HEIGHT before: nothing. The axis existed and no layer of this repo used it.
+ *          now: the student count, on a square-root ruler — see below for the
+ *          measurement that forced the square root on this layer alone.
+ *   ALPHA  before: `choroplethAlpha.js`'s DESCENDING ladder, a compositing
+ *          correction so that six fills stayed six ordered fills over live
+ *          imagery. now: nothing. A prism body composites over the sky and
+ *          over other prisms, not over the basemap, so that correction has no
+ *          object here; the body is a constant {@link PRISM_BODY_ALPHA}, and
+ *          the ladder is deliberately NOT imported (it would put a second,
+ *          mismatched ordering on a channel that carries none).
+ *
+ * ── Why this layer declares `sqrt`, and it is the layer that must ───────────
+ * The prism default is linear, because a length is judged directly and a
+ * uniform ruler is what makes the legend readable with the map. sup-fr is the
+ * declared exception, and the measurement is unambiguous. The domain runs from
+ * Corse-du-Sud (738 students) to Paris (394 788) — 1 : 535, where the shared
+ * grammar puts the threshold at about 1 : 30. On a linear ruler the 4 km floor
+ * lands at 3.33 % of the domain, i.e. 13 333 students, and **51 of the 96
+ * départements — the median is 9 109 — would be drawn at the same floored
+ * height**. Half of France flattened is not a scale, it is a lie by flooring.
+ * On the square-root ruler the floor lands at 444 students, below the smallest
+ * département, so nothing is floored at all and every value is a height.
+ *
+ * The price is stated in the legend by `prismLegend`, unprompted and in
+ * French: a prism twice as tall is four times as many. Measured heights at the
+ * ~1 500 km national altitude, side-on: Paris 119.2 km (114.7 px), Rhône
+ * 83.3 km (80.2 px), the median département 18.1 km (17.4 px), Corse-du-Sud
+ * 5.2 km (5.0 px). The same values on a linear ruler: 118.4, 57.9, 4.0 and
+ * 4.0 km — the last two identical, which is the defect in one line.
+ *
+ * ── What the hue is, and the two candidates that lost ───────────────────────
+ * `supDepartements.js` carries the measurement in full. In short: students per
+ * 1 000 km² ranks the same as the height (Spearman ρ = 0.974, mean displacement
+ * 4.3 places out of 96) and would spend the second channel restating the
+ * first; students per 1 000 inhabitants is the rate a reader would want and
+ * needs a population source this layer does not have. What ships is the share
+ * at bac+4 and beyond — ρ = 0.880, mean displacement 10.4 places — because it
+ * answers the question the height cannot: the Nord and the Haute-Garonne are
+ * both tall, and 2 800 of this register's sites are lycées running a BTS, so
+ * "many students" and "a full university system" are two different facts.
+ *
+ * WHAT THE HUE DOES NOT DO, and the shared grammar expects it to: it does not
+ * audit the prism's areal bias. A reader who reads the VOLUME rather than the
+ * top edge over-reads wide rural départements, and here the colour does not
+ * catch that, because the rate chosen is not area-normalised. Two mitigations,
+ * both declared rather than hidden: the height legend says in French that the
+ * base is the département and that its area is not neutralised, and every
+ * département card still prints its students per 1 000 km². It is a stated
+ * limit, not a corrected one.
+ *
+ * ── Rendering notes specific to this layer ──────────────────────────────────
+ * · `polygon.classificationType` is CLEARED on every prism and kept on the two
+ *   FLAT marks, which is the whole of the nuance. Verified in the bundled
+ *   Cesium: `GroundGeometryUpdater._isOnTerrain` returns false as soon as
+ *   `extrudedHeight` is defined (`index.js:148334-148336`), so on a prism the
+ *   property is read into `_classificationTypeProperty` and then never used —
+ *   leaving it set would be a property that lies to the next reader. A flat
+ *   footprint, on the other hand, still has to drape, or a département with no
+ *   published enrolment would be buried under 2 km of Alpine terrain and its
+ *   absence mark would be invisible. `BOTH` covers terrain and the
+ *   photorealistic mesh alike, which is why this layer never needed a
+ *   per-stack switch and still does not.
+ * · `surfaceFill` is therefore declared CONDITIONALLY, and it was declared not
+ *   at all before: the shared "your fill is climbing the façades" notice is
+ *   true only while at least one flat footprint is drawn, and false for every
+ *   prism, which drapes on nothing.
+ * · The base sits on the ELLIPSOID (`height = 0`), never on terrain: clamping
+ *   would start the Savoie prism 2 km higher than the Landes one and so put
+ *   its TOP 2 km higher at equal enrolment, which is a bias correlated with
+ *   relief. The whole relief of France is 4.8 km against a 120 km prism.
+ * · A MultiPolygon département raises ONE PRISM PER DRAWN PART, all at the
+ *   same height, because the height is the département's value and not the
+ *   part's. Corsica's two prisms are two views of one number; they are never
+ *   to be added.
+ * · The ambient département label rides at the TOP of its prism rather than on
+ *   the ground, because the top edge is where the reading happens — and a
+ *   label left at the base would be occluded by the very prism it names.
+ *
+ * ── Not in this pass ────────────────────────────────────────────────────────
+ * `REPRESENTATION.md` proposes a Dorling cartogram for this layer, and it is
+ * the dataset in the repo where an anamorphosis is most justified: 2.96 M
+ * students in ~30 cities is a distribution the map of France is a poor support
+ * for. That is a different piece of work — it replaces the geometry, where
+ * this replaces the sign — and it is not started here.
+ *
+ * ── What a dot means in the sites regime (unchanged) ────────────────────────
  * Colour is the establishment BAND — seven of them, folded from the register's
  * 14 published categories on the rules in `supFeed.js`. Size is the enrolment
  * AT THAT SITE, and unlike `schools-fr` there is no unpublished case to draw
@@ -48,7 +156,18 @@
  */
 
 import * as Cesium from 'cesium';
-import { CHOROPLETH_FILL_ALPHA } from './choroplethAlpha.js';
+import {
+  PRISM_BASE_HEIGHT_M,
+  PRISM_BODY_ALPHA,
+  PRISM_NO_RATIO_COLOR,
+  PRISM_NO_RATIO_GLYPH,
+  PRISM_TOP_ALPHA,
+  createPrismScale,
+  prismLegend,
+  prismRatioColor,
+  prismRow,
+  prismTally,
+} from './choroplethPrism.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
@@ -66,6 +185,7 @@ import {
   SUP_KIND_LABELS,
   SUP_PLACEMENT_LABELS,
 } from './supFeed.js';
+import { supAdvancedShare } from './supDepartements.js';
 
 export const SUP_FR_LAYER_ID = 'sup-fr';
 
@@ -137,7 +257,8 @@ const KIND_COLORS = Object.freeze({
 });
 
 /**
- * Choropleth ramp, low to high — a sequential violet scale.
+ * Prism ramp, low rate to high — the same sequential violet scale the flat
+ * fill used, carried over deliberately.
  *
  * Violet because the layer's largest band is, so a reader zooming out from a
  * screen full of universities into the national view is not handed a colour
@@ -145,24 +266,65 @@ const KIND_COLORS = Object.freeze({
  * and in particular from the `schools-fr` green one: the two national views
  * never draw at the same time, but an operator who toggles between them must
  * not carry one quantity's colour into the other's.
+ *
+ * It varies in VALUE and not only in hue (B4): #241452 to #bfaefa is a
+ * monotone lightness climb, so the order survives greyscale and a deuteranope
+ * reads it. What changed under it is what it MEANS — an enrolment count
+ * before, a rate now — which is why the legend leads with the word « part ».
  */
 const DEPARTEMENT_COLORS = Object.freeze([
   '#241452', '#35207d', '#4b2fae', '#6544dd', '#8e73f0', '#bfaefa',
 ]);
+
 /**
- * Fill alpha per bin — DESCENDING, and shared with the three sibling count
- * choropleths so one edit cannot desynchronise them.
+ * The frozen prism scale — every number here is a literal measured once and
+ * published, never derived from a poll or from the viewport (C1).
  *
- * It used to ascend, on the reasoning that "density reads as weight as well as
- * hue". That is true over a constant backdrop and false over live imagery: the
- * darkest swatch was also the most transparent, so on a light city the ground
- * washed it out and the composited lightness ran 67.4 · 65.9 · 65.3 · 65.8 ·
- * 69.6 · 78.0 — a U, with class 1 reading lighter than classes 2 to 4. See
- * `choroplethAlpha.js` for the measurements and the search that produced these
- * numbers, and `choroplethAlpha.test.mjs`, which recomputes the compositing
- * over eight backgrounds and fails on any inversion.
+ * `domainMax` is 400 000 students: a round number just above Paris (394 788),
+ * so the top of the ruler is a figure a reader can carry and nothing in the
+ * 2024 vintage clips. A value above it is drawn at the maximum height, flagged
+ * by `prismRow`, and COUNTED in the legend (A5) rather than silently rescaling
+ * the map — a rentrée that pushes Paris past 400 000 must not shorten every
+ * other département to make room.
+ *
+ * `heightTicks` are explicit rather than the grammar's default
+ * (200 000 / 100 000 / 20 000): the median département holds 9 109 students,
+ * so a ruler whose lowest mark is 20 000 leaves half of France under its
+ * bottom tick. 200 000 / 50 000 / 5 000 puts a mark at 84.9, 42.4 and 13.4 km
+ * — 81.7, 40.8 and 12.9 px at national altitude — which brackets the actual
+ * distribution instead of only its top.
+ *
+ * `ratioBreaks` are round percentage points on a bounded 0–100 domain, so the
+ * ladder needs no justification beyond arithmetic. Class occupancy on the real
+ * rollup: 17 / 18 / 18 / 20 / 21 / 2. The top class holds exactly Essonne
+ * (46.0 %) and Paris (42.7 %) — Saclay and the Quartier latin — and a class of
+ * two is kept because it is a fact about French research, not an accident of
+ * cutting.
  */
-const DEPARTEMENT_ALPHA = CHOROPLETH_FILL_ALPHA;
+export const SUP_PRISM_SCALE = createPrismScale({
+  id: 'sup-fr',
+  domainMax: 400_000,
+  heightLabel: 'étudiants',
+  heightUnit: 'étudiants',
+  mode: 'sqrt',
+  heightTicks: [200_000, 50_000, 5_000],
+  ratioLabel: 'part des étudiants à bac+4 et au-delà',
+  ratioBreaks: [5, 10, 20, 30, 40],
+  ratioColors: DEPARTEMENT_COLORS,
+  ratioClassLabels: Object.freeze([
+    '≤ 5 %', '5 – 10 %', '10 – 20 %', '20 – 30 %', '30 – 40 %', '> 40 %',
+  ]),
+});
+
+/**
+ * Stripe spacing on the body of a prism whose rate is unpublished.
+ *
+ * A MOTIF and not a tint, per D3: on a photorealistic globe no colour is
+ * neutral, and a pattern is the one encoding that survives the NVG and FLIR
+ * passes. 18 repeats spans a département with stripes wide enough to read at
+ * national altitude and fine enough not to be mistaken for a second class.
+ */
+const NO_RATIO_STRIPE_REPEAT = 18;
 const SELECTED_COLOR = '#00ffff';
 /**
  * White, at 0.55 — where `schools-fr` outlines in black at 0.35. The outline
@@ -258,39 +420,56 @@ export function supKindLabel(kind) {
   return SUP_KIND_LABELS[kind] || SUP_KIND_LABELS.autre;
 }
 
-function departementBinIndex(bin) {
-  const index = Number(bin);
-  if (!Number.isFinite(index) || index < 0) return -1;
-  return Math.min(DEPARTEMENT_COLORS.length - 1, Math.floor(index));
+/**
+ * Everything one département needs to be drawn as a prism, from its rollup row.
+ *
+ * The four states the shared grammar defines are kept apart here and never
+ * collapsed (A1): a measured zero is not a missing count, and a missing RATE
+ * is independent of a missing count. `prismRow` decides them; this only adds
+ * the identity and the two figures the card and the label need.
+ *
+ * @param {object} row One entry of `_national.departements`.
+ * @returns {object} The prism row, plus `code`, `name`, `students`, `share`.
+ */
+export function supPrismRow(row) {
+  const source = row || {};
+  // The published rate, or the same arithmetic re-run over the cycles the row
+  // still carries. The dev proxy caches this rollup on disk for a WEEK and its
+  // shape version lives in a file this layer does not own, so a machine that
+  // built its cache before `advancedShare` existed would otherwise draw all 96
+  // prisms striped — an honest mark for a defect that is not real.
+  const ratio = Number.isFinite(source.advancedShare)
+    ? source.advancedShare
+    : (source.advancedShare === null ? null : supAdvancedShare(source));
+  const built = prismRow(
+    { code: source.code, value: source.students, ratio },
+    SUP_PRISM_SCALE,
+  );
+  return {
+    ...built,
+    name: source.name || '',
+    students: built.value,
+    share: built.ratio,
+    sites: Number(source.sites) || 0,
+  };
 }
 
-/** Fill colour for one choropleth bin, or null for a département with none. */
-export function supDepartementColor(bin) {
-  const index = departementBinIndex(bin);
-  return index < 0 ? null : DEPARTEMENT_COLORS[index];
-}
-
-/** Fill alpha for one choropleth bin. */
-export function supDepartementAlpha(bin) {
-  const index = departementBinIndex(bin);
-  return index < 0 ? 0 : DEPARTEMENT_ALPHA[index];
+/** Every département of a rollup as a prism row, in the rollup's own order. */
+export function supPrismRows(national) {
+  return (national?.departements || []).map(supPrismRow);
 }
 
 /**
- * Legend labels for the quantile ramp, built from the measured thresholds.
- * @param {Array<number>} thresholds
- * @returns {Array<string>}
+ * Fill colour for one rate, or `null` when the rate is not published.
+ *
+ * `null` and not a grey: the caller has to decide what "unpublished" looks
+ * like, and the answer is a motif rather than a tint — see
+ * {@link NO_RATIO_STRIPE_REPEAT} and D3.
+ * @param {number|null|undefined} share Percentage at bac+4 and beyond.
+ * @returns {string|null} CSS colour.
  */
-export function supDepartementBinLabels(thresholds) {
-  const bounds = Array.isArray(thresholds) ? thresholds : [];
-  const labels = [];
-  let previous = 0;
-  for (const bound of bounds) {
-    labels.push(`${fr(previous + 1)}–${fr(bound)}`);
-    previous = bound;
-  }
-  labels.push(`> ${fr(previous)}`);
-  return labels;
+export function supRateColor(share) {
+  return prismRatioColor(share, SUP_PRISM_SCALE);
 }
 
 /**
@@ -442,19 +621,35 @@ export function buildSupSelectionLabel(record) {
   return [title, ...details].join('\n');
 }
 
-/** Card copy for one département at national altitude. */
+/**
+ * Card copy for one département at national altitude.
+ *
+ * Both of the prism's channels are spelled out here in the unit they are drawn
+ * in — the height's count and the hue's rate — and both absences are said out
+ * loud rather than printed as a zero, because « pas publié » and « zéro » are
+ * the two facts A1 exists to keep apart.
+ */
 export function buildSupDepartementLabel(row) {
   const details = [];
-  details.push(`${fr(row.students)} étudiants`);
+  const prism = supPrismRow(row);
+  details.push(prism.hasValue
+    ? `${fr(prism.students)} étudiants`
+    : 'Effectif étudiant non publié pour ce département');
   details.push(`${fr(row.etabs)} établissements sur ${fr(row.sites)} sites`);
+  details.push(prism.hasRatio
+    ? `${prism.share.toFixed(1).replace('.', ',')} % des étudiants à bac+4 et au-delà — la couleur du prisme`
+    : 'Part à bac+4 non calculable ici : aucun cycle renseigné');
   const cycles = cycleLine(row.cycles);
   if (cycles) details.push(cycles);
   const mix = [];
   if (row.public > 0) mix.push(`${fr(row.public)} sites publics`);
   if (row.prive > 0) mix.push(`${fr(row.prive)} privés`);
   if (mix.length) details.push(mix.join(' · '));
+  // The prism's own blind spot, on the prism's own card: the height is an
+  // absolute count on a base whose area is not neutralised, so the density is
+  // the figure that answers "big because the territory is big?".
   if (row.per1000Km2 > 0) {
-    details.push(`${fr(Math.round(row.per1000Km2))} étudiants pour 1 000 km²`);
+    details.push(`${fr(Math.round(row.per1000Km2))} étudiants pour 1 000 km² — la hauteur ne le corrige pas`);
   }
   return [row.name, ...details].join('\n');
 }
@@ -491,15 +686,26 @@ export function createSupSelectedOverlayEntry(record) {
   return selectedOverlayEntry(record.id, position, buildSupSelectionLabel(record));
 }
 
-/** Ambient label for one département at national altitude. */
+/**
+ * Ambient label for one département at national altitude.
+ *
+ * The caller anchors it at the TOP of the prism, not on the ground: the top
+ * edge is the reading instrument, and a label at the base would be occluded by
+ * its own prism. The accent is the prism's own hue, so the label cannot claim
+ * a class the volume does not have; a département whose rate is unpublished
+ * gets the graphite the striped body uses, never a hue from the ladder.
+ */
 export function createSupDepartementOverlayEntry(row, position) {
+  const prism = supPrismRow(row);
   return {
     id: `sup-fr:dep:${row.code}`,
     position,
     variant: 'label',
-    title: `${row.name} · ${fr(row.students)}`,
-    accent: supDepartementColor(row.bin) || KIND_COLORS.autre,
-    priority: Number(row.students) || 0,
+    title: prism.hasValue
+      ? `${row.name} · ${fr(prism.students)}`
+      : `${row.name} · non publié`,
+    accent: prism.color || PRISM_NO_RATIO_COLOR,
+    priority: Number(prism.students) || 0,
     collisionGroup: 'ambient-label',
     paintLane: 'ambient-label',
     interactive: false,
@@ -529,13 +735,31 @@ function restoreRecordStyle(record) {
   record.point.pixelSize = record.baseSize;
 }
 
+/**
+ * Recolour the selected prism, height untouched.
+ *
+ * Selection is a QUALITATIVE state and it takes the one channel that carries
+ * nothing thematic — the body's hue is overwritten, the outline goes to full
+ * cyan, and `extrudedHeight` is not touched, so a selected département still
+ * states its enrolment. Losing the rate for as long as the card is open is the
+ * intended trade: the card prints it in figures right there.
+ */
 function highlightSelectedDepartement() {
   if (!_selectedId?.startsWith('dep:')) return;
   const highlight = new Cesium.ColorMaterialProperty(
     Cesium.Color.fromCssColorString(SELECTED_COLOR).withAlpha(0.42),
   );
+  const cyan = Cesium.Color.fromCssColorString(SELECTED_COLOR);
   for (const entity of _depEntities.get(_selectedId.slice(4)) || []) {
-    if (entity.polygon) entity.polygon.material = highlight;
+    if (!entity.polygon) continue;
+    entity.polygon.fill = true;
+    entity.polygon.material = highlight;
+    // A prism keeps its silhouette when selected; a flat footprint has none to
+    // keep, because Cesium refuses an outline on a clamped polygon.
+    if (entity.polygon.extrudedHeight !== undefined) {
+      entity.polygon.outline = true;
+      entity.polygon.outlineColor = cyan.withAlpha(PRISM_TOP_ALPHA);
+    }
   }
 }
 
@@ -547,12 +771,16 @@ function dropDepartementSelection() {
 }
 
 function clearSelection() {
-  if (_selectedId?.startsWith?.('dep:')) {
-    repaintDepartements();
-  } else if (_selectedId) {
-    restoreRecordStyle(_records.get(_selectedId));
-  }
+  // The id is dropped BEFORE the repaint: `repaintDepartements` ends by
+  // calling `highlightSelectedDepartement`, which would otherwise re-apply the
+  // highlight to the entity being deselected and leave it cyan until the next
+  // repaint — here the next poll, SIX HOURS later. Same ordering as
+  // `schoolsFrance` and `irveFrance`.
+  const departement = _selectedId?.startsWith?.('dep:') === true;
+  const record = departement || !_selectedId ? null : _records.get(_selectedId);
   _selectedId = null;
+  if (departement) repaintDepartements();
+  else if (record) restoreRecordStyle(record);
   _overlayHost.clearSource(SUP_FR_OVERLAY_SOURCE_ID);
   governorRequestRender('sup-fr-deselect');
 }
@@ -573,9 +801,18 @@ function selectSite(id) {
   governorRequestRender('sup-fr-select');
 }
 
+/**
+ * Open the card for one département.
+ *
+ * Any département the rollup covers is selectable, INCLUDING one with no
+ * published enrolment: the footprint is drawn for it (hatched, no prism), so a
+ * reader who clicks it must get the sentence that says why it is flat rather
+ * than silence, which would read as a broken map. The card's anchor rides at
+ * the top of the prism for the same reason the ambient label does.
+ */
 function selectDepartement(code) {
   const row = (_national?.departements || []).find((entry) => entry.code === code);
-  if (!row || !(row.students > 0)) return;
+  if (!row) return;
   if (_selectedId && _selectedId !== `dep:${code}`) clearSelection();
   _selectedId = `dep:${code}`;
   highlightSelectedDepartement();
@@ -583,7 +820,7 @@ function selectDepartement(code) {
   if (anchor) {
     const entry = selectedOverlayEntry(
       `sup-fr:dep-card:${code}`,
-      Cesium.Cartesian3.fromDegrees(anchor[0], anchor[1]),
+      Cesium.Cartesian3.fromDegrees(anchor[0], anchor[1], supPrismRow(row).heightM || 0),
       buildSupDepartementLabel(row),
     );
     _overlayHost.setEntries(SUP_FR_OVERLAY_SOURCE_ID, [entry], SUP_FR_OVERLAY_SOURCE_OPTIONS);
@@ -642,13 +879,18 @@ async function ensureDepartementShapes() {
   _depShapesPromise = (async () => {
     const geojson = await (await fetch(DEPARTEMENTS_URL)).json();
     _depMeta = parseDepartements(geojson);
+    // `clampToGround: false` on purpose, and it is the point of this pass: a
+    // clamped polygon is a GroundPrimitive draped on the surface, and an
+    // extruded one cannot be. Cesium then leaves `height` at 0 on 2D
+    // coordinates — the common datum every prism is measured from — and the
+    // repaint puts a flat footprint back on the ground where one is needed.
     const source = await Cesium.GeoJsonDataSource.load(geojson, {
-      clampToGround: true,
+      clampToGround: false,
       fill: Cesium.Color.TRANSPARENT,
       stroke: Cesium.Color.TRANSPARENT,
       strokeWidth: 0,
     });
-    source.name = 'Enseignement supérieur — étudiants par département';
+    source.name = 'Enseignement supérieur — prismes départementaux';
     source.show = _enabled;
     for (const entity of source.entities.values) {
       const code = String(entity.properties?.code?.getValue?.() ?? '').trim();
@@ -657,7 +899,13 @@ async function ensureDepartementShapes() {
         continue;
       }
       entity.polygon.outline = false;
-      entity.polygon.classificationType = Cesium.ClassificationType.BOTH;
+      // Whether this shape ends up a prism or a flat footprint is the
+      // repaint's call, so neither `height` nor `classificationType` is
+      // decided here — see paintDepartementPrism / paintDepartementFootprint.
+      // `perPositionHeight` is the one that is never anything but false: the
+      // outlines carry no z, and a base that follows the relief would move
+      // every top with it.
+      entity.polygon.perPositionHeight = false;
       entity.polygon.material = new Cesium.ColorMaterialProperty(Cesium.Color.TRANSPARENT);
       entity.show = false;
       const parts = _depEntities.get(code);
@@ -676,35 +924,213 @@ async function ensureDepartementShapes() {
   return _depShapesPromise;
 }
 
+/**
+ * The shared height blurb ends by promising that the COLOUR answers « rapporté
+ * à quoi ? ». On the three sibling layers it does, because their hue is a
+ * density. On this one it is not: the hue is the share at bac+4, which says
+ * nothing about the base's area (see the module header for the measurement
+ * that led there). A sentence that is false about the map in front of the
+ * reader is worse than no sentence, so this layer withdraws the promise and
+ * replaces it with what it can actually offer — the density, in figures, on
+ * the card.
+ *
+ * Written as a cut-and-append rather than a rewrite: the clause is removed
+ * when it is there, the correction is added either way, so the day
+ * `choroplethPrism.js` rewords its blurb this degrades to a redundant sentence
+ * instead of a stale copy of somebody else's text.
+ *
+ * @param {Array<object>} legend Entries from `prismLegend`, edited in place.
+ */
+function correctAerialClaim(legend) {
+  const title = legend[0];
+  if (!title?.blurb) return;
+  // Both apostrophes, because the shared string uses the typewriter one today
+  // and the repo's French prose uses the typographic one.
+  const promise = Math.max(
+    title.blurb.indexOf('— c’est la couleur'),
+    title.blurb.indexOf("— c'est la couleur"),
+  );
+  const kept = promise > 0 ? `${title.blurb.slice(0, promise).trimEnd()}.` : title.blurb;
+  title.blurb = `${kept} Sur cette couche la couleur ne corrige PAS ce biais : `
+    + 'elle porte la part du bac+4 et non une densité. Le rapport surfacique est écrit '
+    + 'en chiffres sur la fiche de chaque département (étudiants pour 1 000 km²).';
+}
+
+/**
+ * How a flat footprint is classified onto whatever surface the map stack put
+ * up. `BOTH` covers terrain AND the photorealistic mesh, which is why this
+ * layer never needed a per-stack switch and still does not.
+ *
+ * It applies to the FLAT footprints only — a measured zero, and a département
+ * with no published enrolment. Verified in the bundled Cesium:
+ * `GroundGeometryUpdater._isOnTerrain` returns false as soon as
+ * `extrudedHeight` is defined (`index.js:148334-148336`), so on a prism this
+ * property is read into `_classificationTypeProperty` and then never used. It
+ * is therefore CLEARED on the way up and re-asserted on the way back down,
+ * rather than left set where it would lie to the next reader.
+ */
+const FLAT_CLASSIFICATION = Cesium.ClassificationType.BOTH;
+
+/** Alpha of a flat footprint: no volume to see through, so it stays legible. */
+const FLAT_FOOTPRINT_ALPHA = 0.55;
+
+/**
+ * The material of a prism body — a solid rate colour, or a MOTIF when there
+ * is no rate.
+ *
+ * Cached by class, because these are six steps of one scale and not 96
+ * colours; a repaint that minted a material per département would churn
+ * Cesium's own material cache on every rollup.
+ * @param {object} prism From {@link supPrismRow}.
+ * @param {Map<string, object>} cache Per-repaint material cache.
+ */
+function prismBodyMaterial(prism, cache) {
+  const key = prism.hasRatio ? `bin:${prism.bin}:${prism.extruded ? 'up' : 'flat'}` : 'no-ratio';
+  const cached = cache.get(key);
+  if (cached) return cached;
+  const base = Cesium.Color.fromCssColorString(prism.color || PRISM_NO_RATIO_COLOR);
+  const material = prism.hasRatio
+    ? new Cesium.ColorMaterialProperty(
+      base.withAlpha(prism.extruded ? PRISM_BODY_ALPHA : FLAT_FOOTPRINT_ALPHA),
+    )
+    // No rate: stripes, not a tint (D3). A motif cannot be mistaken for a step
+    // of the ramp, and it survives the NVG and FLIR passes that destroy a hue.
+    : new Cesium.StripeMaterialProperty({
+      orientation: Cesium.StripeOrientation.VERTICAL,
+      evenColor: base.withAlpha(PRISM_BODY_ALPHA),
+      oddColor: base.withAlpha(0.1),
+      repeat: NO_RATIO_STRIPE_REPEAT,
+    });
+  cache.set(key, material);
+  return material;
+}
+
+/**
+ * The grid a département with NO PUBLISHED ENROLMENT is drawn with (A1 + D3).
+ *
+ * A different motif from the stripes above, on purpose: stripes mean "height
+ * measured, colour refused", the grid means "nothing measured at all". Two
+ * refusals, two patterns, and the legend names both. Allocated once, because
+ * it is one state and not one state per shape.
+ */
+let _unmeasuredMaterial = null;
+function unmeasuredMaterial() {
+  if (!_unmeasuredMaterial) {
+    _unmeasuredMaterial = new Cesium.GridMaterialProperty({
+      color: Cesium.Color.fromCssColorString(PRISM_NO_RATIO_COLOR).withAlpha(0.85),
+      cellAlpha: 0.06,
+      lineCount: new Cesium.Cartesian2(6, 6),
+      lineThickness: new Cesium.Cartesian2(2, 2),
+    });
+  }
+  return _unmeasuredMaterial;
+}
+
+/**
+ * Draw one part of a département as a PRISM.
+ *
+ * The base is pinned to the ellipsoid ({@link PRISM_BASE_HEIGHT_M} = 0) and
+ * never clamped to terrain: a base that follows the relief moves the TOP with
+ * it, so Savoie would out-top the Landes by 2 km at equal enrolment. The whole
+ * relief of France is 4.8 km against a 120 km ruler — the error would be 4 %
+ * of the mark, systematically, and correlated with altitude.
+ */
+function paintDepartementPrism(entity, prism, material, edge) {
+  entity.polygon.height = PRISM_BASE_HEIGHT_M;
+  entity.polygon.extrudedHeight = prism.heightM;
+  entity.polygon.perPositionHeight = false;
+  // Read and silently ignored on an extruded polygon — see FLAT_CLASSIFICATION.
+  entity.polygon.classificationType = undefined;
+  entity.polygon.fill = true;
+  entity.polygon.material = material;
+  // Cesium force-disables `outline` on terrain with a one-time warning
+  // (`index.js:61110-61113`). Off terrain it is legal, so the prism gets the
+  // silhouette and the top edge that the reading depends on — the flat fill
+  // could never have either.
+  entity.polygon.outline = true;
+  entity.polygon.outlineColor = edge;
+  entity.show = true;
+}
+
+/**
+ * Draw one part of a département as a FLAT footprint — the two cases with no
+ * height to show.
+ *
+ * These go back ON THE GROUND, which is the whole reason `classificationType`
+ * survives in this module: a footprint left at ellipsoid height would be
+ * buried under 2 km of Alpine terrain, and an absence mark nobody can see is
+ * not an absence mark. The price is the outline — Cesium refuses one on a
+ * clamped polygon — so the two flat cases are told apart by their MATERIAL: a
+ * solid fill for a measured zero, a grid for a département nobody measured.
+ */
+function paintDepartementFootprint(entity, material) {
+  entity.polygon.extrudedHeight = undefined;
+  entity.polygon.height = undefined;
+  entity.polygon.perPositionHeight = false;
+  entity.polygon.classificationType = FLAT_CLASSIFICATION;
+  entity.polygon.outline = false;
+  entity.polygon.fill = true;
+  entity.polygon.material = material;
+  entity.show = true;
+}
+
+/**
+ * Raise every département: height = students, hue = the share at bac+4.
+ *
+ * Four states, four marks, and they are four rather than two because of A1 —
+ * "we did not measure this" and "we measured this and it is zero" are
+ * different facts, and so are "we have no rate for this" and "the rate is low":
+ *
+ *   count ✓ rate ✓ → prism at its height, body in its class colour.
+ *   count ✓ rate ✗ → prism at its height, body STRIPED. The height is
+ *                    measured, the colour is refused; the two are independent.
+ *   count = 0      → flat footprint, solid fill. Zero is a measurement, and
+ *                    hiding it would look like the sweep had missed the
+ *                    département.
+ *   count ✗        → flat footprint, GRID. Nothing was measured here.
+ *
+ * Every part of a MultiPolygon département gets the SAME height, because the
+ * height is the département's value and not the part's.
+ *
+ * Idempotent, and it re-asserts a live selection at the end: a repaint resets
+ * every material, so without that a camera nudge would drop the cyan highlight
+ * while the card stayed on screen.
+ */
 function repaintDepartements() {
   if (!_national) return;
   const materials = new Map();
-  const painted = new Set();
-  for (const row of _national.departements || []) {
-    if (!(row.students > 0)) continue;
-    const color = supDepartementColor(row.bin);
-    if (!color) continue;
-    let material = materials.get(row.bin);
-    if (!material) {
-      material = new Cesium.ColorMaterialProperty(
-        Cesium.Color.fromCssColorString(color).withAlpha(supDepartementAlpha(row.bin)),
-      );
-      materials.set(row.bin, material);
-    }
-    const parts = _depEntities.get(row.code);
+  const edges = new Map();
+  const covered = new Set();
+  for (const prism of supPrismRows(_national)) {
+    const parts = _depEntities.get(prism.code);
     if (!parts) continue;
-    painted.add(row.code);
+    covered.add(prism.code);
+    const edgeKey = prism.hasRatio ? `bin:${prism.bin}` : 'no-ratio';
+    if (!edges.has(edgeKey)) {
+      edges.set(edgeKey, Cesium.Color
+        .fromCssColorString(prism.color || PRISM_NO_RATIO_COLOR)
+        .withAlpha(PRISM_TOP_ALPHA));
+    }
     for (const entity of parts) {
       if (!entity.polygon) continue;
-      entity.polygon.material = material;
-      entity.show = true;
+      if (prism.extruded) {
+        paintDepartementPrism(entity, prism, prismBodyMaterial(prism, materials), edges.get(edgeKey));
+      } else if (prism.hasValue) {
+        paintDepartementFootprint(entity, prismBodyMaterial(prism, materials));
+      } else {
+        paintDepartementFootprint(entity, unmeasuredMaterial());
+      }
     }
   }
-  // A département the rollup does not cover is drawn as absence rather than as
-  // the bottom of the scale.
+  // A département the rollup does not mention at all — a payload that came
+  // back short. It is not the bottom of the scale and it is not a zero: it is
+  // the grid, and `getRowControls` counts it with the other unmeasured ones.
   for (const [code, parts] of _depEntities) {
-    if (painted.has(code)) continue;
-    for (const entity of parts) entity.show = false;
+    if (covered.has(code)) continue;
+    for (const entity of parts) {
+      if (!entity.polygon) continue;
+      paintDepartementFootprint(entity, unmeasuredMaterial());
+    }
   }
   highlightSelectedDepartement();
   _viewer?.scene?.requestRender?.();
@@ -717,12 +1143,15 @@ function publishDepartementOverlay() {
   }
   const entries = [];
   for (const row of _national?.departements || []) {
-    if (!(row.students > 0)) continue;
+    const prism = supPrismRow(row);
+    if (!prism.hasValue) continue;
     const anchor = _depMeta.get(row.code)?.anchor;
     if (!anchor) continue;
     entries.push(createSupDepartementOverlayEntry(
       row,
-      Cesium.Cartesian3.fromDegrees(anchor[0], anchor[1]),
+      // At the TOP of the prism: the label marks the edge that is read, and at
+      // the base it would sit inside its own volume.
+      Cesium.Cartesian3.fromDegrees(anchor[0], anchor[1], prism.heightM),
     ));
   }
   _overlayHost.setEntries(SUP_FR_LABEL_SOURCE_ID, selectSupLabelCohort(entries), {
@@ -988,7 +1417,7 @@ export function buildSupLoadingLabel({
     if (status === 'error') return '';
     if (!national) return '';
     const parts = [`${fr(national.studentsAssigned)} étudiants sur ${fr(national.painted)} départements`];
-    // The choropleth's own blind spot, stated where the choropleth is read.
+    // The prism's own blind spot, stated where the prism is read.
     if (national.unassigned > 0) {
       parts.push(`${fr(national.unassigned)} sites hors métropole non cartographiés`);
     }
@@ -1138,26 +1567,64 @@ const supFranceLayer = {
   },
 
   /**
-   * Colour legend for the control-panel row — whichever scale is actually on
-   * screen, never both.
+   * Colour legend for the control-panel row AND for the on-map block —
+   * whichever scale is actually on screen, never both.
+   *
+   * The national regime hands over the shared prism legend: the height ruler
+   * first (three ticks whose swatch is a BAR of the right height, all in one
+   * constant colour so the swatch's colour cannot read as a second encoding),
+   * then the rate ladder. D1 is the reason this exists at all — a height that
+   * is not published in figures is a shape, not a measurement.
+   *
+   * `surfaceFill` is declared only while a FLAT footprint is on screen: those
+   * are the only marks left that classify onto the surface, and the shared
+   * "your fill is climbing the buildings" notice would be false about a prism.
    */
   getRowControls() {
     if (_regime === 'national') {
       if (!_national) return { chips: [], legend: [] };
-      const labels = supDepartementBinLabels(_national.thresholds);
-      const counts = new Array(labels.length).fill(0);
-      for (const row of _national.departements || []) {
-        if (row.bin >= 0 && row.bin < counts.length) counts[row.bin] += 1;
+      // Through `supPrismRow`, so the tally sees exactly what the map drew —
+      // including the recomputed rate a stale cached rollup does not publish.
+      const rows = supPrismRows(_national).map((row) => ({
+        code: String(row.code), value: row.students, ratio: row.share,
+      }));
+      // A polygon the payload never mentioned is drawn as a grid, so it has to
+      // be counted with the other unmeasured ones — otherwise the legend's
+      // totals would quietly stop adding up to the map.
+      const covered = new Set(rows.map((row) => row.code));
+      for (const code of _depEntities.keys()) {
+        if (!covered.has(code)) rows.push({ code });
       }
-      const legend = labels.map((label, bin) => ({
-        label: `${label} étudiants`,
-        color: supDepartementColor(bin),
-        count: counts[bin],
-        blurb: bin === labels.length - 1
-          ? 'Départements du sixième supérieur. Le remplissage compte les ÉTUDIANTS, pas les sites — la moitié du supérieur français tient dans dix départements, ce qu’un compte de sites n’aurait pas dit.'
-          : 'Un sixième des 96 départements. Bins par quantile : sur une échelle linéaire, Paris écrase tout le reste.',
-      })).filter((row) => row.count > 0);
-      return { chips: [], legend };
+      const tally = prismTally(rows, SUP_PRISM_SCALE);
+      const legend = prismLegend(SUP_PRISM_SCALE, tally);
+      correctAerialClaim(legend);
+      legend.push({
+        label: 'départements couverts',
+        color: null,
+        count: rows.length,
+        blurb: 'Un prisme par PARTIE dessinée : la Corse en lève deux, à la même hauteur, '
+          + 'parce que la hauteur est celle du département et non celle de la partie. '
+          + 'Deux prismes voisins ne s’additionnent jamais.',
+      });
+      // A5, on the map rather than only under the toggle: the shortfall this
+      // rollup cannot draw at all, because no metropolitan polygon can hold it.
+      if (_national.unassigned > 0) {
+        legend.push({
+          label: 'hors métropole — aucun prisme',
+          color: null,
+          glyph: PRISM_NO_RATIO_GLYPH,
+          count: _national.unassigned,
+          blurb: `${fr(_national.students - _national.studentsAssigned)} étudiants sur `
+            + `${fr(_national.students)} sont sur des sites que les 96 polygones métropolitains `
+            + 'ne peuvent pas contenir (La Réunion, Antilles, Guyane, Mayotte, Polynésie). '
+            + 'Ils sont comptés et jamais déplacés : le prisme le plus proche est à 7 000 km.',
+        });
+      }
+      // The drape notice is true only for the FLAT marks: a prism classifies
+      // nothing, so claiming the fill climbs the façades would be false for
+      // every département that has a height (see surfaceFillNotice.js).
+      const flat = (tally.zero || 0) + (tally.noValue || 0);
+      return { chips: [], legend, surfaceFill: flat > 0 };
     }
     const tally = new Map();
     for (const record of _records.values()) {
@@ -1241,6 +1708,15 @@ export function _selectSupDepartementForTest(code) {
   selectDepartement(code);
 }
 
+/**
+ * Raise the prisms through the production path, on whatever stand-in entities
+ * the test seeded. This is the one function that turns a rollup row into
+ * geometry, so it is the one a test has to be able to run without a viewer.
+ */
+export function _repaintSupDepartementsForTest() {
+  repaintDepartements();
+}
+
 /** Exercise the production clear path and restore the production host seam. */
 export function _clearSupSelectionForTest() {
   clearSelection();
@@ -1263,10 +1739,11 @@ export function _supRowControlsForTest() {
 export function _supDepartementOverlayForTest() {
   const entries = [];
   for (const row of _national?.departements || []) {
-    if (!(row.students > 0)) continue;
+    const prism = supPrismRow(row);
+    if (!prism.hasValue) continue;
     const anchor = _depMeta.get(row.code)?.anchor;
     if (!anchor) continue;
-    entries.push(createSupDepartementOverlayEntry(row, { anchor }));
+    entries.push(createSupDepartementOverlayEntry(row, { anchor, heightM: prism.heightM }));
   }
   return selectSupLabelCohort(entries);
 }
