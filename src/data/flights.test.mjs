@@ -238,6 +238,127 @@ test('flights poll refreshes tracked callsign/FL/kts and marks a missed poll STA
   }
 });
 
+/**
+ * Phase 3a seam: drive one poll whose state vector carries the adsb.lol
+ * extension ([18] type designator, [19] tail) and read what the layer publishes.
+ * `show: true` on the collection is what makes getAnalystRecords answer.
+ */
+async function pollWithVector(icao24, vector, meta) {
+  const entity = { gevLabelModel: { title: 'OLD', details: [] } };
+  const billboard = {
+    position: Cesium.Cartesian3.fromDegrees(-97.7, 30.2, 9_000),
+    color: Cesium.Color.WHITE,
+    show: false,
+  };
+  _setTrackedFlightRefreshStateForTest({
+    icao24,
+    entity,
+    billboard,
+    billboardCollection: { show: true, remove() {} },
+    viewer: { camera: { positionCartographic: null }, scene: {} },
+    meta,
+  });
+  const realFetch = globalThis.fetch;
+  let polled = 0;
+  globalThis.fetch = async (url) => {
+    if (!String(url).startsWith('/api/opensky')) {
+      return { ok: true, status: 200, json: async () => ({ found: false }) };
+    }
+    const nowSec = Math.floor(Date.now() / 1000);
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => ({
+        time: nowSec,
+        states: polled++ === 0 ? [vector(nowSec)] : [],
+      }),
+    };
+  };
+  try {
+    await flightsLayer.update({ camera: { positionCartographic: null }, scene: {} });
+    const record = flightsLayer.getAnalystRecords().find((r) => r.icao24 === icao24);
+    return { record, title: entity.gevLabelModel.title };
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+}
+
+const UNTYPED_META = {
+  callsign: '', altitude: 9_000, renderAltitudeM: 9_050, velocity: 180,
+  true_track: 80, klass: 'unknown', onGround: false, wasAirborne: true,
+  turnRateDps: 0, rawLat: 30.2, rawLon: -97.7,
+};
+
+test('phase 3a: a fallback type designator classifies the contact on the poll itself', async () => {
+  // The point of the whole phase. OpenSky sends no type code and an empty
+  // emitter category for ~94 % of contacts, so this aircraft would sit on the
+  // placeholder silhouette until a rationed adsbdb lookup answered — which,
+  // against thousands of contacts, mostly never happens. adsb.lol had 'EC35'
+  // in the payload all along.
+  const { record } = await pollWithVector('a1b2c3', (nowSec) => [
+    'a1b2c3', 'AFR123 ', 'France', nowSec, nowSec,
+    -97.6, 30.3, 10_668, false, 250, 95, 5, null, 10_700,
+    null, null, null, null, 'EC35', 'F-HXYZ',
+  ], { ...UNTYPED_META });
+  assert.equal(record.aircraftClass, 'helicopter');
+});
+
+test('phase 3a: the same contact with no type designator stays honestly unknown', async () => {
+  // The control. Identical vector, indices 18/19 absent — an OpenSky row.
+  // Without it, the test above would pass on any classifier that guessed.
+  const { record } = await pollWithVector('a1b2c3', (nowSec) => [
+    'a1b2c3', 'AFR123 ', 'France', nowSec, nowSec,
+    -97.6, 30.3, 10_668, false, 250, 95, 5, null, 10_700,
+    null, null, null, null,
+  ], { ...UNTYPED_META });
+  assert.equal(record.aircraftClass, 'unknown');
+});
+
+test('phase 3a: a tail from the feed reaches the label chain, and is not called a callsign', async () => {
+  const { record, title } = await pollWithVector('a1b2c3', (nowSec) => [
+    'a1b2c3', null, 'France', nowSec, nowSec,
+    -97.6, 30.3, 10_668, false, 250, 95, 5, null, 10_700,
+    null, null, null, null, 'C172', 'F-HXYZ',
+  ], { ...UNTYPED_META });
+  // The tracked line is "label · FL · kts"; the LABEL is the head of it.
+  assert.match(title, /^F-HXYZ\b/, 'callsign -> registration -> hex, resolved at the registration');
+  assert.doesNotMatch(title, /a1b2c3/, 'the hex is the last resort, and was not reached');
+  assert.equal(record.callsign, null, 'a tail is not a spoken callsign');
+  assert.equal(record.id, 'F-HXYZ');
+  assert.equal(record.aircraftClass, 'light');
+});
+
+test('phase 3a: a class learned during a fallback window survives the swing back to OpenSky', async () => {
+  // This is what makes the fix pay on BOTH halves of the source cycle. A
+  // keyless install alternates: the proxy serves OpenSky until its own cached
+  // snapshot passes the 120 s staleness bound, then serves adsb.lol until the
+  // credit-governed 300 s TTL expires. Measured 2026-09-03 on this proxy:
+  // roughly 2 min OpenSky, then 3 min adsb.lol, on repeat.
+  //
+  // An OpenSky vector carries no designator, so without stickiness every swing
+  // back would throw away everything the fallback window taught the layer and
+  // the fleet would flicker between real silhouettes and the placeholder.
+  const { record } = await pollWithVector('a1b2c3', (nowSec) => [
+    'a1b2c3', 'AFR123 ', 'France', nowSec, nowSec,
+    -97.6, 30.3, 10_668, false, 250, 95, 5, null, 10_700,
+    null, null, null, null,
+  ], { ...UNTYPED_META, typeCode: 'EC35', klass: 'helicopter' });
+  assert.equal(record.aircraftClass, 'helicopter', 'the OpenSky poll did not blank the learned type');
+});
+
+test('phase 3a: an adsbdb answer already in hand outranks the feed type code', async () => {
+  // Precedence, not stickiness-in-general: adsbdb is the only source that also
+  // carries the human-readable typeName the cards print, so a resolved value
+  // must not be rewritten every poll by a feed that disagrees with it.
+  const { record } = await pollWithVector('a1b2c3', (nowSec) => [
+    'a1b2c3', 'AFR123 ', 'France', nowSec, nowSec,
+    -97.6, 30.3, 10_668, false, 250, 95, 5, null, 10_700,
+    null, null, null, null, 'EC35', 'F-HXYZ',
+  ], { ...UNTYPED_META, typeCode: 'B738', typeName: 'Boeing 737-800', klass: 'airliner' });
+  assert.equal(record.aircraftClass, 'airliner', 'EC35 did not overwrite the enriched B738');
+});
+
 test('real civil track path creates no native label and publishes every cached host line', async () => {
   const icao24 = 'civ001';
   const position = Cesium.Cartesian3.fromDegrees(-97.6699, 30.1945, 10_668);

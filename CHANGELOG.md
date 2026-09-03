@@ -93,6 +93,19 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Changed
 
+- **La légende des avions se lit en français.** Les onze libellés de classe
+  partagés par le calque civil et le calque militaire étaient en anglais sous
+  une interface française — « Type not reported », « Light aircraft ». Ils
+  passent aux termes que la langue emploie vraiment : **monocouloir**,
+  **gros-porteur**, **quadriréacteur lourd**. `unknown` se dit désormais « Type
+  non déclaré », mot pour mot comme les calques maritimes le disent déjà, pour
+  qu'une même idée n'ait qu'une seule formulation dans le produit. `fastjet`
+  reste **« Jet rapide »** et non « avion de combat » : cette classe s'atteint
+  aussi depuis la catégorie 7 d'OpenSky, qui est une lecture de *vitesse* —
+  la nommer par la mission affirmerait ce que la donnée ne dit pas, exactement
+  ce que la pastille ambre refuse déjà de faire. Les mentions voisines de la
+  même légende suivent : contact suivi, plage OACI militaire, et les contacts
+  tenus **à l'estime** entre deux sondages.
 - **DATA LAYERS et SCENES cessent d'être noir sur noir.** Les panneaux avaient
   été réglés sur les tuiles photoréalistes, où une plaque quasi noire à 72 %
   et un filet blanc à 8 % suffisent : la ville dessous fait la séparation. Mais
@@ -158,6 +171,29 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Fixed
 
+- **Les avions cessent de porter la silhouette d'un autre.** La source de repli
+  du calque civil, adsb.lol, publie le désignateur de type OACI (`t`) et
+  l'immatriculation (`r`) sur chaque contact ; l'adaptateur
+  `adsbLolFallback.js` ne recopiait ni l'un ni l'autre. Il ne transmettait que
+  la catégorie d'émetteur — un canal grossier qui range un jet d'affaires parmi
+  les monocouloirs et un turbopropulseur parmi les avions légers. Mesuré le
+  2026-09-03 sur l'amont réel, Paris et Los Angeles, 1 452 contacts : **95,7 %
+  portent un désignateur de type**, et le lire **reclasse 19,7 % de la flotte**
+  — dont **244 contacts qui n'étaient pas « non classés » mais classés faux**
+  (96 jets d'affaires dessinés en monocouloirs, 39 turbopropulseurs dessinés en
+  avions légers). Le vecteur d'état gagne deux entrées après les 18 d'OpenSky,
+  que le client lit déjà par indice. Une réponse `adsbdb` déjà obtenue reste
+  prioritaire : elle seule porte aussi le nom lisible que les fiches impriment.
+  Sur le chemin OpenSky, rien ne change et rien ne pouvait changer —
+  `/states/all` ne transporte aucun code type, et sa catégorie d'émetteur reste
+  vide pour **94,6 %** des contacts, mesuré le même jour sur 12 869 états.
+- **L'immatriculation cesse de se faire passer pour un indicatif.** Faute
+  d'indicatif, l'adaptateur logeait `r` dans la case indicatif du vecteur, si
+  bien que `mapAnalystRecord` publiait une immatriculation comme un indicatif
+  prononcé. Elle voyage maintenant dans sa propre case, et la chaîne
+  indicatif → immatriculation → hexadécimal fait la substitution un étage plus
+  haut, là où elle sait quel champ elle lit. Sur l'amont réel : 17 contacts
+  concernés, désormais 0.
 - **La carte ne se reconstruit plus deux fois par chargement.** `#map=ign-plan`
   activait OSM au démarrage, puis rejouait le vrai fond une seconde et demie
   plus tard — et `_activateGlobeStack()` **détruit et reconstruit** chaque

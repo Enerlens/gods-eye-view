@@ -8,6 +8,11 @@ function finiteNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function cleanText(value) {
+  const text = String(value ?? '').trim();
+  return text || null;
+}
+
 function emitterCategory(value) {
   const category = String(value || '').trim().toUpperCase();
   const categories = {
@@ -31,6 +36,17 @@ function emitterCategory(value) {
 /**
  * Convert one adsb.lol v2 aircraft record into the OpenSky state-vector shape
  * consumed by the existing Flights renderer.
+ *
+ * Indices 0..17 are the OpenSky `extended=1` vector. Indices 18 and 19 are a
+ * GEV extension carrying what OpenSky simply does not have: the ICAO type
+ * designator (`t`) and the tail (`r`). `/states/all` publishes neither, only
+ * the emitter category at [17] — which is `0`/"no info" for ~94 % of
+ * contacts, so nearly every aircraft used to reach the classifier with
+ * nothing to classify on and fell back to the placeholder silhouette while
+ * waiting on a rationed adsbdb lookup. adsb.lol has both fields in the
+ * payload; dropping them here was throwing away the answer we were paying to
+ * fetch. The client reads by index and never checks the length, so appending
+ * is backward-compatible with any consumer that only knows the 18 entries.
  * @param {object} aircraft adsb.lol aircraft record.
  * @param {number} nowSeconds Feed response time in epoch seconds.
  * @returns {Array|null} OpenSky-compatible state vector, or null when invalid.
@@ -52,7 +68,12 @@ export function normalizeAdsbLolAircraftState(aircraft, nowSeconds) {
 
   return [
     hex,
-    String(aircraft?.flight || aircraft?.r || '').trim() || null,
+    // Callsign ONLY. The tail used to stand in here when `flight` was blank,
+    // which published a registration as a spoken callsign (analyst queries and
+    // the label chain both read this field). It now travels at [19], and
+    // `_contactLabel`'s callsign -> registration -> hex chain does the
+    // fallback where it belongs.
+    cleanText(aircraft?.flight),
     null,
     Math.max(0, nowSeconds - seenPosition),
     Math.max(0, nowSeconds - seen),
@@ -69,6 +90,9 @@ export function normalizeAdsbLolAircraftState(aircraft, nowSeconds) {
     aircraft?.spi === 1,
     0,
     emitterCategory(aircraft?.category),
+    // [18] ICAO type designator, [19] registration — the GEV extension.
+    cleanText(aircraft?.t),
+    cleanText(aircraft?.r),
   ];
 }
 

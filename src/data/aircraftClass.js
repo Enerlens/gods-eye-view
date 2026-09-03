@@ -129,19 +129,30 @@ export function classifyAircraft({ typeCode, category } = {}) {
  * internal; a key that says "quadjet" to a reader is a colour chart, not a
  * legend. Shared by the civil and military layers so one silhouette can never
  * be captioned two ways.
+ *
+ * In French, like every other legend the product renders (`unknown` is worded
+ * exactly as vesselLabels.js words it, so a reader meets one phrase for one
+ * idea across the air and sea layers). `airliner`/`widebody` take the terms
+ * the industry actually uses in French — monocouloir, gros-porteur — rather
+ * than a calque of the English fuselage wording.
+ *
+ * `fastjet` stays PERFORMANCE, not mission: the class is reached from OpenSky
+ * category 7 ("high performance, >5g, >400 kt") as well as from the type set,
+ * so "avion de combat" would assert a mission from a speed reading. Same rule
+ * the amber swatch follows — allocation block, not mission.
  */
 export const CLASS_LEGEND_LABELS = {
-  light: 'Light aircraft',
-  glider: 'Glider',
-  turboprop: 'Turboprop',
-  airliner: 'Narrow-body jet',
-  widebody: 'Wide-body jet',
-  quadjet: 'Four-engine heavy',
-  helicopter: 'Helicopter',
-  fastjet: 'Fast jet',
-  bizjet: 'Business jet',
-  uav: 'Large UAV',
-  unknown: 'Type not reported',
+  light: 'Avion léger',
+  glider: 'Planeur',
+  turboprop: 'Turbopropulseur',
+  airliner: 'Jet monocouloir',
+  widebody: 'Gros-porteur',
+  quadjet: 'Quadriréacteur lourd',
+  helicopter: 'Hélicoptère',
+  fastjet: 'Jet rapide',
+  bizjet: "Jet d'affaires",
+  uav: 'Grand drone',
+  unknown: 'Type non déclaré',
 };
 
 /** Billboard scale multipliers (skylight GLYPH_SCALE, + fastjet).
