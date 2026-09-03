@@ -55,8 +55,11 @@ import {
   CELL_SUPPRESSED,
   CELL_ZERO,
   DELINQUANCE_CELL_LABELS,
+  DELINQUANCE_COMMUNE_CELL_SLUGS,
   DELINQUANCE_COMMUNE_SLUGS,
   DELINQUANCE_SUPPRESSION_RULE,
+  DELINQUANCE_TOTAL_COMMUNE_SLUGS,
+  DELINQUANCE_TOTAL_SLUG,
   createCommuneFold,
   joinCommuneCells,
   parseSsmsiCsv,
@@ -114,8 +117,10 @@ function packFor(departement, geojsonName) {
   const joined = joinCommuneCells({ contours: contours.communes, cells: FOLD.communes, departement });
   const thresholds = {};
   const means = {};
-  for (const slug of DELINQUANCE_COMMUNE_SLUGS) {
-    const slot = DELINQUANCE_COMMUNE_SLUGS.indexOf(slug);
+  // The CELL slugs, so the computed total is cut against the same national
+  // rate list the proxy cuts it against — the register's fifteen plus one.
+  for (const slug of DELINQUANCE_COMMUNE_CELL_SLUGS) {
+    const slot = DELINQUANCE_COMMUNE_CELL_SLUGS.indexOf(slug);
     const rates = [];
     for (const [, entry] of FOLD.communes) {
       const cell = entry.cells[slot];
@@ -436,12 +441,14 @@ test('the row legend names the withheld state apart and never folds it into a ba
     indicator: 'cambriolages', year: '2025', regime: 'communes',
   });
   const { chips, legend } = _delinquanceRowControlsForTest();
-  assert.equal(chips.length, 6);
+  // The six derived chips, led by the computed total.
+  assert.equal(chips.length, 7);
+  assert.equal(chips[0].id, 'tous');
   assert.equal(chips.filter((chip) => chip.active).length, 1);
   for (const chip of chips) {
     assert.ok(chip.label, 'every chip is named');
     assert.equal(/\(FR\)/.test(chip.label), false);
-    assert.match(chip.title, /unité de compte/);
+    assert.match(chip.title, chip.id === 'tous' ? /total calculé/ : /unité de compte/);
   }
 
   const withheldRows = legend.filter((row) => row.color === DELINQUANCE_SUPPRESSED_COLOR);
@@ -700,4 +707,101 @@ test('the overlay source ids are the layer’s own and do not collide', () => {
   for (const id of [DELINQUANCE_FR_OVERLAY_SOURCE_ID, DELINQUANCE_FR_LABEL_SOURCE_ID]) {
     assert.ok(id.startsWith(DELINQUANCE_FR_LAYER_ID));
   }
+});
+
+// ---------------------------------------------------------------------------
+// The computed total — offered so no reader has to pick an offence first, and
+// carrying every warning that choice used to make unnecessary.
+// ---------------------------------------------------------------------------
+
+test('THE TOTAL OPENS THE LAYER, AND ITS CHIP SAYS WHOSE ARITHMETIC IT IS', () => {
+  const host = recordingHost();
+  _clearDelinquanceSelectionForTest();
+  _setDelinquanceStateForTest({
+    viewer: fakeViewer(), overlayHost: host, base: BASE, national: national(DELINQUANCE_TOTAL_SLUG),
+    depIndex: DEP_INDEX, year: '2025', regime: 'departements',
+  });
+  // No `indicator` was passed, so this is the layer's own default.
+  assert.equal(delinquanceFranceLayer.getParams().indicator, DELINQUANCE_TOTAL_SLUG);
+  const { chips } = _delinquanceRowControlsForTest();
+  assert.equal(chips[0].id, DELINQUANCE_TOTAL_SLUG);
+  assert.equal(chips[0].active, true, 'the layer opens on it');
+  assert.equal(chips[0].label, 'Tous');
+  assert.match(chips[0].title, /pas publié par le SSMSI/);
+  assert.match(chips[0].title, /minorant/);
+  // The register's own indicators still follow, none of them displaced.
+  assert.deepEqual(chips.slice(1).map((chip) => chip.id), CHIPS);
+  _clearDelinquanceSelectionForTest();
+});
+
+test('a commune card under the total prints the floor, the gap, and the authorship', () => {
+  const host = recordingHost();
+  const { records } = buildDelinquanceCommuneRecords({
+    packs: [PACK_75], indicator: DELINQUANCE_TOTAL_SLUG,
+  });
+  _setDelinquanceStateForTest({
+    viewer: fakeViewer(), overlayHost: host, base: BASE, packs: [['75', PACK_75]],
+    communeRecords: records, visibleDeps: ['75'],
+    indicator: DELINQUANCE_TOTAL_SLUG, year: '2025', regime: 'communes',
+  });
+  const paris = records.find((record) => record.code === '75056');
+  assert.equal(paris.state, CELL_PUBLISHED);
+  const copy = norm(buildDelinquanceCommuneLabel(paris));
+  // The number, in the unit it is actually in.
+  assert.match(copy, /faits, victimes et mis en cause cumulés/);
+  assert.match(copy, /pour 1 000 habitants/);
+  // Whose total it is. The SSMSI publishes eighteen indicators and no total.
+  assert.match(copy, /Total CALCULÉ par God’s Eye View, pas publié par le SSMSI/);
+  assert.match(copy, /Usage de stupéfiants \(AFD\) » n’est pas recompté/);
+  assert.equal(/entre 1 et 5/i.test(copy), false);
+
+  // A commune whose register cells are complete says so; one with a withheld
+  // contributor calls its own number a floor, in as many words.
+  const withheld = Number(paris.cell[3]) || 0;
+  if (withheld > 0) {
+    assert.match(copy, /MINORANT/);
+    assert.match(copy, new RegExp(`${withheld} des ${DELINQUANCE_TOTAL_COMMUNE_SLUGS.length} indicateurs`));
+  } else {
+    assert.match(copy, /Total complet/);
+  }
+
+  // And a commune where nothing is published is not drawn as a quiet one.
+  const dark = records.find((record) => record.state === CELL_SUPPRESSED);
+  if (dark) {
+    const darkCopy = norm(buildDelinquanceCommuneLabel(dark));
+    assert.match(darkCopy, /ni zéro ni petit, il est inconnu|rien à totaliser ici/);
+    assert.equal(dark.bin, -1, 'a withheld total never reaches the ramp');
+    assert.equal(delinquanceFill(dark.state, dark.bin).css, DELINQUANCE_SUPPRESSED_COLOR);
+  }
+  _clearDelinquanceSelectionForTest();
+});
+
+test('the total is drawn from the SIXTEENTH cell slot, never from an indicator', () => {
+  const { records } = buildDelinquanceCommuneRecords({
+    packs: [PACK_2B], indicator: DELINQUANCE_TOTAL_SLUG,
+  });
+  assert.ok(records.length > 0);
+  for (const record of records) {
+    assert.equal(record.cell, record.cells[DELINQUANCE_COMMUNE_SLUGS.length]);
+    if (record.state !== CELL_PUBLISHED) continue;
+    // A total is at least the largest single indicator under it.
+    for (let i = 0; i < DELINQUANCE_COMMUNE_SLUGS.length; i += 1) {
+      const cell = record.cells[i];
+      if (cell?.[0] === CELL_PUBLISHED) assert.ok(record.cell[1] >= cell[1]);
+    }
+  }
+});
+
+test('a département card under the total says the total is exact THERE and not below', () => {
+  const rollup = national(DELINQUANCE_TOTAL_SLUG);
+  const row = rollup.departements.find((entry) => entry.code === '13');
+  const copy = norm(buildDelinquanceDepartementLabel(row, {
+    indicator: DELINQUANCE_TOTAL_SLUG, year: '2025',
+  }));
+  assert.match(copy, /Total exact à cette échelle/);
+  assert.match(copy, /C’est en zoomant sur les communes qu’il apparaît/);
+  assert.match(copy, /Total CALCULÉ par God’s Eye View/);
+  // The commune census that travels with it is the TOTAL's census, not an
+  // indicator's: it counts communes with no publishable total at all.
+  assert.equal(row.communes.suppressed, BASE.censusByDepartement['13'].tous[CELL_SUPPRESSED]);
 });

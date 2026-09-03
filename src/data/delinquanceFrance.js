@@ -15,12 +15,17 @@ import {
   CELL_ZERO,
   DELINQUANCE_ATTRIBUTION,
   DELINQUANCE_CELL_LABELS,
+  DELINQUANCE_COMMUNE_CELL_SLUGS,
   DELINQUANCE_COMMUNE_SLUGS,
   DELINQUANCE_COMPLEMENT_RULE,
   DELINQUANCE_DOCUMENTATION_TITLE,
   DELINQUANCE_PLAINTE_RULE,
   DELINQUANCE_SOURCE,
   DELINQUANCE_SUPPRESSION_RULE,
+  DELINQUANCE_TOTAL_COMMUNE_SLUGS,
+  DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS,
+  DELINQUANCE_TOTAL_EXCLUDED,
+  DELINQUANCE_TOTAL_SLUG,
   DELINQUANCE_ZERO_RULE,
   delinquanceIndicatorNote,
   delinquanceRateUnit,
@@ -125,9 +130,40 @@ import {
  * uniform: `Cambriolages de logement` is per 1 000 DWELLINGS, the other
  * fourteen per 1 000 inhabitants, verified on 45 386 of 45 386 non-cambriolage
  * cells against 0 of 4 493 cambriolage ones. Every card and every legend row
- * states its own denominator, and the layer never sums two indicators: their
- * `unité de compte` differs (Victime, Victime entendue, Infraction, Véhicule,
- * Mis en cause) and a "total crime score" would add victims to vehicles.
+ * states its own denominator.
+ *
+ * ── The TOTAL, which this layer used to refuse to compute ──────────────────
+ * An earlier revision of this header said the layer "never sums two
+ * indicators", because their `unité de compte` differs — Victime, Victime
+ * entendue, Infraction, Véhicule, Mis en cause — and a total adds victims to
+ * vehicles. That objection is real and it has not gone away. What changed is
+ * the alternative: refusing to total meant every reader had to pick one
+ * offence before seeing anything at all, which is its own distortion — it
+ * makes the map answer "where are burglaries" when the question was "where is
+ * this register busy".
+ *
+ * So the total exists, under three conditions that keep it honest:
+ *   1. it is labelled a CALCULATED total, GEV's arithmetic and not the
+ *      SSMSI's — the register publishes eighteen indicators and no total;
+ *   2. it names its own mixed unit on the card rather than calling itself
+ *      "faits", and it drops the two `Usage de stupéfiants` sub-indicators,
+ *      which are a decomposition of a third (measured: parent = AFD + hors
+ *      AFD in 101 départements of 101, exactly), so nothing is counted twice;
+ *   3. at commune grain it is a MINORANT wherever the register withholds a
+ *      contributor, and the card says how many. Measured on 2025: of the
+ *      34 920 communes, 9 606 carry a positive total — **9 428 of those are
+ *      minorants and only 178 are complete** — 243 are a complete measured
+ *      zero, and 25 071 publish nothing at all and are drawn slate.
+ * At département grain there is no suppression, so the total is exact: 3 306
+ * 254 facts over 68 350 798 inhabitants nationally, from 24.4 ‰ in the Cantal
+ * to 109.9 ‰ in Paris.
+ *
+ * Two commune outliers are worth knowing before reading the commune map:
+ * **Roissy-en-France (95527) tops it at 1 512 ‰** — 4 045 facts over 2 674
+ * residents — and Paris 1er at 578 ‰. Neither is a dangerous village; both are
+ * places whose population at risk is an airport and a museum, not their
+ * residents. The denominator is the resident population for every indicator on
+ * this layer, and the total makes that limit louder rather than new.
  *
  * ── Six chips out of eighteen, chosen by the data and not by hand ──────────
  * The panel row cannot carry eighteen indicators. Hand-picking six would be a
@@ -236,6 +272,23 @@ const SUPPRESSED_OUTLINE_ALPHA = 0.75;
 const SUPPRESSED_OUTLINE_WIDTH_PX = 2.0;
 const SELECTED_COLOR = '#00ffff';
 
+/**
+ * The three states mean something different under the computed total, so the
+ * legend says something different. `published` in particular stops meaning
+ * "measured" and starts meaning "measured floor", which is the whole reason
+ * these three strings are not a reuse of the ones below.
+ */
+const TOTAL_STATE_BLURBS = Object.freeze({
+  published: 'Somme des indicateurs DIFFUSÉS pour cette maille — total calculé par God’s Eye '
+    + 'View, pas publié par le SSMSI. Dès qu’un indicateur y est non diffusé, c’est un MINORANT : '
+    + 'le vrai total est plus élevé, d’un montant inconnu. Unités mélangées (victimes, '
+    + 'infractions, véhicules, mis en cause).',
+  zero: 'Aucun fait enregistré sur AUCUN des indicateurs, et aucun n’est non diffusé. Un zéro '
+    + 'complet et mesuré — 243 communes sur 34 920 en 2025.',
+  suppressed: 'Rien de publié et au moins un indicateur retenu au titre du secret statistique : '
+    + 'il n’y a pas de total honnête à afficher. Ce n’est ni zéro, ni « peu » — c’est inconnu.',
+});
+
 /** One-line explanations behind each legend swatch. */
 const STATE_BLURBS = Object.freeze({
   published: 'Taux publié par le SSMSI. C’est de la délinquance ENREGISTRÉE : ce que la police et '
@@ -260,7 +313,10 @@ let _overlayHost = DEFAULT_OVERLAY_HOST;
 let _viewer = null;
 let _enabled = false;
 let _regime = 'departements';
-let _indicator = 'cambriolages';
+// The layer OPENS on the computed total: picking an offence before seeing
+// anything is a choice a reader should not have to make first. Every chip
+// narrows from here.
+let _indicator = DELINQUANCE_TOTAL_SLUG;
 let _year = null;
 let _clickHandler = null;
 let _cameraChangedAttached = false;
@@ -455,7 +511,18 @@ export function delinquanceViewBox(viewer, padFraction = 0.08) {
 export function delinquanceCaveat(slug, { state = null } = {}) {
   const meta = indicatorForSlug(slug);
   const lines = [];
-  if (meta?.unite === 'Mis en cause') {
+  if (slug === DELINQUANCE_TOTAL_SLUG) {
+    // The total is the one indicator on this layer that the SSMSI does not
+    // publish, so its first line is not about crime — it is about authorship.
+    lines.push('⚠ Total CALCULÉ par God’s Eye View, pas publié par le SSMSI : somme des '
+      + `${DELINQUANCE_TOTAL_COMMUNE_SLUGS.length} indicateurs communaux `
+      + `(${DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS.length} au niveau départemental).`);
+    lines.push('Unités mélangées (victimes, infractions, véhicules, mis en cause), taux '
+      + 'recalculé sur la population — cambriolages compris, que le SSMSI publie, eux, pour '
+      + '1 000 logements.');
+    lines.push('« Usage de stupéfiants (AFD) » n’est pas recompté : il est déjà dans « Usage de '
+      + 'stupéfiants » (vérifié, 101 départements sur 101).');
+  } else if (meta?.unite === 'Mis en cause') {
     lines.push('⚠ Délinquance ENREGISTRÉE, comptée en mis en cause : ce sont des personnes '
       + 'interpellées. Cet indicateur mesure aussi l’activité des services.');
   } else {
@@ -480,7 +547,14 @@ export function buildDelinquanceDepartementLabel(row, context = {}) {
   const meta = indicatorForSlug(slug);
   const details = [];
   details.push(`${meta?.label || slug} — ${context.year || _year || '—'}`);
-  if (row.state === CELL_PUBLISHED) {
+  if (slug === DELINQUANCE_TOTAL_SLUG && row.state === CELL_PUBLISHED) {
+    // No `est_diffuse` column exists at this grain, so this total is complete
+    // — the one place on this layer where a total is a value and not a floor.
+    details.push(`${formatDelinquanceRate(row.rate)} pour 1 000 habitants · ${fr(row.count)} faits, `
+      + `victimes et mis en cause cumulés sur ${DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS.length} indicateurs`);
+    details.push('Total exact à cette échelle : la base départementale ne connaît pas le secret '
+      + 'statistique. C’est en zoomant sur les communes qu’il apparaît.');
+  } else if (row.state === CELL_PUBLISHED) {
     details.push(`${formatDelinquanceRate(row.rate)} pour ${delinquanceRateUnit(slug)} · ${fr(row.count)} ${meta?.unite === 'Véhicule' ? 'véhicules' : 'faits'}`);
   } else if (row.state === CELL_ZERO) {
     details.push(DELINQUANCE_CELL_LABELS.zero);
@@ -509,7 +583,28 @@ export function buildDelinquanceCommuneLabel(record) {
   details.push(`${meta?.label || slug} — ${record?.year || '—'}`);
   const cell = record?.cell || null;
   const state = cell?.[0] ?? null;
-  if (state === CELL_PUBLISHED) {
+  const total = slug === DELINQUANCE_TOTAL_SLUG;
+  // The fourth slot of a computed total cell: how many of its contributors the
+  // register withheld. It is the difference between a value and a floor, so it
+  // is the first thing the card says about the number it is about to print.
+  const withheld = total ? Number(cell?.[3]) || 0 : 0;
+  const contributors = DELINQUANCE_TOTAL_COMMUNE_SLUGS.length;
+  if (total && state === CELL_PUBLISHED) {
+    details.push(`${formatDelinquanceRate(cell[2])} pour 1 000 habitants · ${fr(cell[1])} faits, `
+      + 'victimes et mis en cause cumulés');
+    details.push(withheld > 0
+      ? `⚠ MINORANT : ${fr(withheld)} des ${contributors} indicateurs sont non diffusés ici, et `
+        + 'ne sont donc PAS dans ce total. Le vrai total est plus élevé, d’un montant inconnu.'
+      : `Total complet : les ${contributors} indicateurs sont tous diffusés ici — le cas de `
+        + '178 communes sur 34 920 dans l’édition 2025.');
+  } else if (total && state === CELL_ZERO) {
+    details.push(`${DELINQUANCE_CELL_LABELS.zero} pour les ${contributors} indicateurs, et aucun `
+      + `n’est non diffusé — ${DELINQUANCE_ZERO_RULE}`);
+  } else if (total && state === CELL_SUPPRESSED) {
+    details.push('Aucun fait publié, et le registre en retient : rien à totaliser ici');
+    details.push(`${fr(withheld)} des ${contributors} indicateurs non diffusés — le total n’est `
+      + 'ni zéro ni petit, il est inconnu.');
+  } else if (state === CELL_PUBLISHED) {
     details.push(`${formatDelinquanceRate(cell[2])} pour ${delinquanceRateUnit(slug)} · ${fr(cell[1])} faits`);
   } else if (state === CELL_ZERO) {
     details.push(`${DELINQUANCE_CELL_LABELS.zero} (0 fait, publié comme tel) — ${DELINQUANCE_ZERO_RULE}`);
@@ -540,8 +635,13 @@ export function buildDelinquanceCommuneLabel(record) {
     if (other === slug) continue;
     const value = record?.cells?.[i];
     if (!value) continue;
-    if (value[0] === CELL_PUBLISHED) others.push(`${indicatorForSlug(other)?.short || other} ${fr(value[1])}`);
-    else if (value[0] === CELL_SUPPRESSED) others.push(`${indicatorForSlug(other)?.short || other} ✕`);
+    // Under the total, the two lines that would double-count are marked rather
+    // than hidden: a reader adding the list up by hand must be able to see why
+    // it does not reconcile with the number above it.
+    const excluded = total && DELINQUANCE_TOTAL_EXCLUDED.includes(other) ? ' (hors total)' : '';
+    const short = `${indicatorForSlug(other)?.short || other}${excluded}`;
+    if (value[0] === CELL_PUBLISHED) others.push(`${short} ${fr(value[1])}`);
+    else if (value[0] === CELL_SUPPRESSED) others.push(`${short} ✕`);
   }
   if (others.length) details.push(others.join(' · '));
   if (record?.simplified) {
@@ -801,9 +901,14 @@ async function ensureBase() {
       _base = payload;
       _error = null;
       if (!_year) _year = payload.newestYear;
-      // The chip set is DERIVED — see the module header — so the default
-      // indicator is the first of it rather than a constant in this file.
-      if (Array.isArray(payload.chips) && payload.chips.length) _indicator = payload.chips[0];
+      // The chip SET is derived from the edition — see the module header — but
+      // the default is the computed total, which is edition-independent. The
+      // derived first chip is only the fallback for a payload that somehow
+      // carries no total column at all.
+      if (!DELINQUANCE_COMMUNE_CELL_SLUGS.includes(_indicator)
+        && Array.isArray(payload.chips) && payload.chips.length) {
+        _indicator = payload.chips[0];
+      }
       return payload;
     })
     .catch((error) => {
@@ -874,7 +979,9 @@ function ringPositions(flat) {
  * @returns {{records:Array<object>, states:{published:number, zero:number, suppressed:number, missing:number}}}
  */
 export function buildDelinquanceCommuneRecords({ packs, indicator }) {
-  const slot = DELINQUANCE_COMMUNE_SLUGS.indexOf(indicator);
+  // The CELL list, not the register's: the computed total occupies the slot
+  // after the fifteen published indicators.
+  const slot = DELINQUANCE_COMMUNE_CELL_SLUGS.indexOf(indicator);
   const records = [];
   const states = { published: 0, zero: 0, suppressed: 0, missing: 0 };
   for (const pack of Array.isArray(packs) ? packs : []) {
@@ -1161,12 +1268,12 @@ const delinquanceFranceLayer = {
   /**
    * Chips select the indicator. They are NOT serialized into the share link —
    * the layer is registered `enabled-only` — so a shared view always opens on
-   * the derived default rather than on a silently different crime.
+   * the computed total rather than on a silently different crime.
    */
   setParams(params = {}) {
     const next = String(params?.indicator || '').trim();
     if (!next || next === _indicator) return;
-    if (!DELINQUANCE_COMMUNE_SLUGS.includes(next)) return;
+    if (!DELINQUANCE_COMMUNE_CELL_SLUGS.includes(next)) return;
     _indicator = next;
     clearSelection();
     void loadViewport({ force: true });
@@ -1220,16 +1327,25 @@ const delinquanceFranceLayer = {
    */
   getRowControls() {
     if (!_base) return { chips: [], legend: [] };
-    const chips = (_base.chips || []).map((slug) => ({
+    // The total leads the row, because it is the state the layer opens in and
+    // because the alternative — a reader who must choose an offence before
+    // seeing any map — is the thing it exists to remove.
+    const chipSlugs = [DELINQUANCE_TOTAL_SLUG, ...(_base.chips || [])];
+    const chips = chipSlugs.map((slug) => ({
       id: slug,
       label: indicatorForSlug(slug)?.short || slug,
       active: slug === _indicator,
       state: slug === _indicator ? 'active' : 'idle',
-      title: `${indicatorForSlug(slug)?.label || slug} — unité de compte : ${indicatorForSlug(slug)?.unite || '—'}`,
+      title: slug === DELINQUANCE_TOTAL_SLUG
+        ? `${DELINQUANCE_TOTAL_COMMUNE_SLUGS.length} indicateurs cumulés — total calculé par `
+          + 'God’s Eye View, pas publié par le SSMSI ; unités mélangées ; minorant dès qu’une '
+          + 'cellule est non diffusée'
+        : `${indicatorForSlug(slug)?.label || slug} — unité de compte : ${indicatorForSlug(slug)?.unite || '—'}`,
       params: { indicator: slug },
     }));
 
     const legend = [];
+    const blurbs = _indicator === DELINQUANCE_TOTAL_SLUG ? TOTAL_STATE_BLURBS : STATE_BLURBS;
     if (_regime === 'departements' && _national) {
       const labels = delinquanceBinLabels(_national.thresholds, _indicator);
       const counts = new Array(labels.length).fill(0);
@@ -1242,7 +1358,7 @@ const delinquanceFranceLayer = {
           label,
           color: DELINQUANCE_RAMP[bin],
           count: counts[bin],
-          blurb: STATE_BLURBS.published,
+          blurb: blurbs.published,
         });
       });
       if (_national.zeroed > 0) {
@@ -1250,7 +1366,7 @@ const delinquanceFranceLayer = {
           label: DELINQUANCE_CELL_LABELS.zero,
           color: DELINQUANCE_ZERO_COLOR,
           count: _national.zeroed,
-          blurb: STATE_BLURBS.zero,
+          blurb: blurbs.zero,
         });
       }
     } else {
@@ -1258,10 +1374,12 @@ const delinquanceFranceLayer = {
       const { states } = buildDelinquanceCommuneRecords({ packs, indicator: _indicator });
       if (states.published) {
         legend.push({
-          label: `Publié (${delinquanceRateUnit(_indicator)})`,
+          label: _indicator === DELINQUANCE_TOTAL_SLUG
+            ? 'Total publié — minorant (1 000 habitants)'
+            : `Publié (${delinquanceRateUnit(_indicator)})`,
           color: DELINQUANCE_RAMP[DELINQUANCE_RAMP.length - 2],
           count: states.published,
-          blurb: STATE_BLURBS.published,
+          blurb: blurbs.published,
         });
       }
       if (states.zero) {
@@ -1269,7 +1387,7 @@ const delinquanceFranceLayer = {
           label: DELINQUANCE_CELL_LABELS.zero,
           color: DELINQUANCE_ZERO_COLOR,
           count: states.zero,
-          blurb: STATE_BLURBS.zero,
+          blurb: blurbs.zero,
         });
       }
       if (states.suppressed) {
@@ -1277,7 +1395,7 @@ const delinquanceFranceLayer = {
           label: DELINQUANCE_CELL_LABELS.suppressed,
           color: DELINQUANCE_SUPPRESSED_COLOR,
           count: states.suppressed,
-          blurb: STATE_BLURBS.suppressed,
+          blurb: blurbs.suppressed,
         });
       }
     }
@@ -1289,7 +1407,7 @@ const delinquanceFranceLayer = {
         label: `${DELINQUANCE_CELL_LABELS.suppressed} (national)`,
         color: DELINQUANCE_SUPPRESSED_COLOR,
         count: national[CELL_SUPPRESSED] || 0,
-        blurb: STATE_BLURBS.suppressed,
+        blurb: blurbs.suppressed,
       });
     }
     return { chips, legend };
@@ -1361,6 +1479,9 @@ export function _selectDelinquanceCommuneForTest(id) {
 export function _clearDelinquanceSelectionForTest() {
   clearSelection();
   _overlayHost = DEFAULT_OVERLAY_HOST;
+  // Back to the indicator a fresh boot opens on, so one test's chip choice
+  // cannot become the next test's default.
+  _indicator = DELINQUANCE_TOTAL_SLUG;
   _base = null;
   _national = null;
   _packs = new Map();

@@ -448,6 +448,77 @@ test('tracked painter preserves centered multi-line readout metrics', () => {
   );
 });
 
+/**
+ * The délinquance regression, in one card: a layer that quotes its publisher
+ * verbatim used to widen its card to the length of the quote — ~1 900 px for
+ * the SSMSI reporting-rate sentence — which both overran the viewport and
+ * dragged the card's CENTRE outside the keyhole, where every entry is painted
+ * at the 0.01 outside-opacity floor. A card that cannot be read is the same
+ * bug as a card that covers the screen.
+ */
+test('stacked-copy cards wrap their copy instead of widening past the ceiling', () => {
+  const quote = '« La propension à déposer plainte a un impact sur le niveau de la délinquance '
+    + 'enregistrée […] en moyenne sur la période 2011-2018 seules 12 % des victimes de violences '
+    + 'sexuelles hors ménage portent plainte, contre 74 % pour les victimes de cambriolages. »';
+  const ctx = mockContext();
+  const entry = {
+    variant: 'selected',
+    selected: true,
+    title: 'Aubazine',
+    details: ['Cambriolages — 2025', quote],
+  };
+  entry._overlayLayout = measureOverlayEntry(ctx, entry, {});
+  const layout = entry._overlayLayout;
+  assert.ok(layout.w <= WORLD_OVERLAY_STYLE.cardMaxWidth, `card width ${layout.w}`);
+  assert.ok(layout.lines.length > 2, 'the quote wraps onto its own lines');
+  assert.equal(layout.h, layout.padY * 2 + layout.titleH + layout.lines.length * layout.lineH);
+  for (const line of layout.lines) {
+    assert.ok(
+      measureWorldOverlayText(ctx, line, WORLD_OVERLAY_STYLE.fontDetail)
+        <= WORLD_OVERLAY_STYLE.cardMaxWidth - layout.padX * 2,
+      `line overflows: ${line}`,
+    );
+  }
+  assert.equal(layout.lines.join(' '), `Cambriolages — 2025 ${quote}`, 'no word is dropped');
+
+  const placement = placementVariants({
+    anchorX: 300,
+    anchorY: 300,
+    width: layout.w,
+    height: layout.h,
+    viewportWidth: 900,
+    viewportHeight: 700,
+  })[0];
+  paintSelected(ctx, entry, placement, 1);
+  assert.deepEqual(
+    ctx.calls.filter(([name]) => name === 'fillText').map(([, text]) => text),
+    ['Aubazine', ...layout.lines],
+    'the painter draws the measured wrap, not the unwrapped source lines',
+  );
+
+  // A second measure of unchanged copy reuses the cached wrap.
+  const before = ctx.measureCount;
+  measureOverlayEntry(ctx, entry, layout);
+  assert.equal(ctx.measureCount, before);
+
+  // A narrow viewport tightens the ceiling below the token.
+  const narrow = measureOverlayEntry(ctx, entry, {}, 240);
+  assert.ok(narrow.w <= 240, `narrow card width ${narrow.w}`);
+  assert.ok(narrow.lines.length > layout.lines.length);
+});
+
+test('an unbreakable word is broken rather than allowed to widen a card', () => {
+  const ctx = mockContext();
+  const entry = {
+    variant: 'card',
+    title: 'LINK',
+    details: ['x'.repeat(400)],
+  };
+  const layout = measureOverlayEntry(ctx, entry, {});
+  assert.ok(layout.w <= WORLD_OVERLAY_STYLE.cardMaxWidth, `card width ${layout.w}`);
+  assert.equal(layout.lines.join(''), 'x'.repeat(400));
+});
+
 test('shared tactical painter preserves FIRMS card metrics and top-rule treatment', () => {
   const ctx = mockContext();
   const entry = {

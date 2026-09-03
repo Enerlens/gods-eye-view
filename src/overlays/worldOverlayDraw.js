@@ -261,13 +261,160 @@ function trackDisplayText(entry) {
 }
 
 /**
+ * Variants whose copy is stacked line per line and is therefore WRAPPED at
+ * {@link WORLD_OVERLAY_STYLE.cardMaxWidth} instead of widening the card.
+ *
+ * `label`, `track` and `thumbnail` are deliberately absent: they paint a single
+ * short line whose width IS their geometry, and the ambient cohorts they serve
+ * were tuned against that width.
+ */
+const WRAPPING_VARIANTS = new Set(['card', 'selected', 'tracked']);
+
+/**
+ * Greedily fill `out` with the lines `text` breaks into under `limit`.
+ *
+ * Word widths are measured once each and summed rather than measuring every
+ * candidate line: the shared measure cache is keyed by string, so measuring
+ * prefixes would allocate a substring per word AND evict real entries. Every
+ * overlay font is JetBrains Mono, where the sum is exact.
+ *
+ * A word wider than the whole line is broken on characters — a 300-character
+ * URL must not be allowed to reopen the unbounded-width hole this closes.
+ */
+function wrapTextInto(ctx, text, font, limit, out) {
+  const source = String(text ?? '');
+  if (!source) {
+    out.push('');
+    return;
+  }
+  // A line that already fits is carried whole: no split, no rejoin, and the
+  // string that reaches the painter is the source string itself.
+  if (measureWorldOverlayText(ctx, source, font) <= limit) {
+    out.push(source);
+    return;
+  }
+  const spaceWidth = measureWorldOverlayText(ctx, ' ', font);
+  const words = source.split(/\s+/);
+  let line = '';
+  let lineWidth = 0;
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i];
+    if (!word) continue;
+    let wordWidth = measureWorldOverlayText(ctx, word, font);
+    if (wordWidth > limit && word.length > 1) {
+      // Break the oversized word itself, in place, and carry the tail on.
+      const perChar = wordWidth / word.length;
+      const chunk = Math.max(1, Math.floor(limit / Math.max(1, perChar)));
+      let rest = word;
+      while (rest.length > chunk && perChar * rest.length > limit) {
+        if (line) {
+          out.push(line);
+          line = '';
+          lineWidth = 0;
+        }
+        out.push(rest.slice(0, chunk));
+        rest = rest.slice(chunk);
+      }
+      if (!rest) continue;
+      words[i] = rest;
+      wordWidth = perChar * rest.length;
+    }
+    if (!line) {
+      line = words[i];
+      lineWidth = wordWidth;
+      continue;
+    }
+    const grown = lineWidth + spaceWidth + wordWidth;
+    if (grown <= limit) {
+      line += ` ${words[i]}`;
+      lineWidth = grown;
+      continue;
+    }
+    out.push(line);
+    line = words[i];
+    lineWidth = wordWidth;
+  }
+  out.push(line);
+}
+
+/**
+ * Text width one line of this card may occupy: the shared ceiling, tightened by
+ * anything the entry or the viewport imposes, minus the card's own padding.
+ */
+function cardWrapLimit(entry, maxWidth, padX) {
+  const entryMax = Number(entry?.maxWidthPx);
+  const ceiling = Math.max(
+    WORLD_OVERLAY_STYLE.cardMinWidth,
+    Math.min(
+      WORLD_OVERLAY_STYLE.cardMaxWidth,
+      Number.isFinite(entryMax) && entryMax > 0 ? entryMax : Number.POSITIVE_INFINITY,
+      maxWidth > 0 ? maxWidth : Number.POSITIVE_INFINITY,
+    ),
+  );
+  return ceiling - padX * 2;
+}
+
+/** True when `cache` still describes the copy `entry` is carrying right now. */
+function wrapCacheMatches(cache, entry, details, titleFont, detailFont, limit) {
+  if (!cache || cache.limit !== limit || cache.titleFont !== titleFont
+    || cache.detailFont !== detailFont || cache.title !== entry?.title
+    || cache.source.length !== details.length) return false;
+  for (let i = 0; i < details.length; i++) {
+    // Sources may mutate a details array in place between frames, so identity
+    // of the ARRAY proves nothing; the strings are compared instead.
+    if (cache.source[i] !== details[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Wrapped title and detail lines for one card, cached on the entry.
+ *
+ * The rebuild allocates; the steady frame does not, which is what the overlay
+ * allocation budgets require. Copy only changes when a source republishes it.
+ */
+function cardWrap(ctx, entry, details, titleFont, detailFont, limit) {
+  let cache = entry._overlayWrap;
+  if (wrapCacheMatches(cache, entry, details, titleFont, detailFont, limit)) return cache;
+  cache = {
+    limit,
+    titleFont,
+    detailFont,
+    title: entry?.title,
+    source: details.slice(),
+    titleLines: [],
+    lines: [],
+    width: 0,
+  };
+  wrapTextInto(ctx, entry?.title || '', titleFont, limit, cache.titleLines);
+  for (let i = 0; i < details.length; i++) {
+    wrapTextInto(ctx, details[i], detailFont, limit, cache.lines);
+  }
+  for (let i = 0; i < cache.titleLines.length; i++) {
+    cache.width = Math.max(cache.width, measureWorldOverlayText(ctx, cache.titleLines[i], titleFont));
+  }
+  for (let i = 0; i < cache.lines.length; i++) {
+    cache.width = Math.max(cache.width, measureWorldOverlayText(ctx, cache.lines[i], detailFont));
+  }
+  cache.width = Math.min(cache.width, limit);
+  if (entry) entry._overlayWrap = cache;
+  return cache;
+}
+
+/**
  * Measure the selected entry variant into a caller-owned layout object.
+ *
+ * `maxWidth` is the widest CARD the caller can place — the viewport minus its
+ * margins, in the entry's own unscaled pixels. It only ever tightens
+ * {@link WORLD_OVERLAY_STYLE.cardMaxWidth}; 0 means "the token alone".
+ *
  * @param {CanvasRenderingContext2D} ctx
  * @param {object} entry
  * @param {object} [out]
- * @returns {{w:number,h:number,padX:number,padY:number,titleH:number,lineH:number,thumbW:number,thumbH:number}}
+ * @param {number} [maxWidth]
+ * @returns {{w:number,h:number,padX:number,padY:number,titleH:number,lineH:number,thumbW:number,thumbH:number,titleLines:?Array<string>,lines:?Array<string>}}
  */
-export function measureOverlayEntry(ctx, entry, out = {}) {
+export function measureOverlayEntry(ctx, entry, out = {}, maxWidth = 0) {
   const variant = entry?.selected ? 'selected' : String(entry?.variant || 'label');
   const details = Array.isArray(entry?.details) ? entry.details : [];
   const selected = variant === 'selected';
@@ -276,26 +423,9 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
   const titleFont = tracked
     ? WORLD_OVERLAY_STYLE.fontTrackedTitle
     : selected ? WORLD_OVERLAY_STYLE.fontSelected : WORLD_OVERLAY_STYLE.fontTitle;
-  let titleWidth = measureWorldOverlayText(ctx, entry?.title || '',
-    variant === 'label' ? WORLD_OVERLAY_STYLE.fontLabel : titleFont);
-  if (variant === 'track' && details[0]) {
-    titleWidth = measureWorldOverlayText(
-      ctx,
-      trackDisplayText(entry),
-      WORLD_OVERLAY_STYLE.fontTrack,
-    );
-  }
-  let detailWidth = 0;
-  for (let i = 0; i < details.length; i++) {
-    detailWidth = Math.max(
-      detailWidth,
-      measureWorldOverlayText(
-        ctx,
-        details[i],
-        tracked ? WORLD_OVERLAY_STYLE.fontTrackedDetail : WORLD_OVERLAY_STYLE.fontDetail,
-      ),
-    );
-  }
+  const detailFont = tracked
+    ? WORLD_OVERLAY_STYLE.fontTrackedDetail
+    : WORLD_OVERLAY_STYLE.fontDetail;
 
   out.padX = tracked ? 13 : selected ? 12 : variant === 'label' || variant === 'track' ? 6 : 9;
   out.padY = tracked ? 9 : selected ? 8 : variant === 'label' || variant === 'track' ? 4 : 6;
@@ -305,6 +435,8 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
   out.lineH = tracked ? 17 : selected ? 15 : 13;
   out.thumbW = 0;
   out.thumbH = 0;
+  out.titleLines = null;
+  out.lines = null;
 
   if (variant === 'thumbnail') {
     out.padX = Math.max(0, Number(entry?.thumbnailPadX) || 0);
@@ -316,10 +448,42 @@ export function measureOverlayEntry(ctx, entry, out = {}) {
     out.thumbH = Math.max(1, Number(entry?.thumbnailHeight) || 54);
     out.w = out.thumbW + out.padX * 2;
     out.h = out.padY + out.thumbH + out.titleGap + out.titleH + out.padBottom;
+    return finishLayout(out);
+  }
+
+  let titleWidth = measureWorldOverlayText(ctx, entry?.title || '',
+    variant === 'label' ? WORLD_OVERLAY_STYLE.fontLabel : titleFont);
+  if (variant === 'track' && details[0]) {
+    titleWidth = measureWorldOverlayText(ctx, trackDisplayText(entry), WORLD_OVERLAY_STYLE.fontTrack);
+  }
+  let detailWidth = 0;
+  for (let i = 0; i < details.length; i++) {
+    detailWidth = Math.max(detailWidth, measureWorldOverlayText(ctx, details[i], detailFont));
+  }
+
+  // The wrap is a RESCUE, not a layout stage: a card whose every line already
+  // fits is measured exactly as it shipped, allocating nothing. That matters
+  // because a moving source republishes its copy every frame — a vessel's
+  // `450 KT · FL350` is a new string 60 times a second — and wrapping strings
+  // that never needed wrapping would put a rebuild on the hot path.
+  const limit = WRAPPING_VARIANTS.has(variant)
+    ? cardWrapLimit(entry, maxWidth, out.padX)
+    : Number.POSITIVE_INFINITY;
+  if (Math.max(titleWidth, detailWidth) > limit) {
+    const wrap = cardWrap(ctx, entry, details, titleFont, detailFont, limit);
+    out.titleLines = wrap.titleLines;
+    out.lines = wrap.lines;
+    out.w = Math.ceil(wrap.width) + out.padX * 2;
+    out.h = out.padY * 2 + out.titleH * wrap.titleLines.length + wrap.lines.length * out.lineH;
   } else {
     out.w = Math.ceil(Math.max(titleWidth, detailWidth)) + out.padX * 2;
     out.h = out.padY * 2 + out.titleH + details.length * out.lineH;
   }
+  return finishLayout(out);
+}
+
+/** Floor both dimensions and hand the layout back. */
+function finishLayout(out) {
   out.w = Math.max(8, out.w);
   out.h = Math.max(8, out.h);
   return out;
@@ -478,19 +642,31 @@ function drawCardChrome(ctx, entry, placement, selected = false) {
 }
 
 function drawCardText(ctx, entry, placement, selected = false, topOffset = 0) {
-  const details = Array.isArray(entry.details) ? entry.details : [];
+  const layout = entry._overlayLayout || {};
+  // The measured wrap is the source of truth: painting `entry.details` raw
+  // would spill past a card that was sized for the wrapped copy.
+  const titleLines = layout.titleLines;
+  const details = layout.lines || (Array.isArray(entry.details) ? entry.details : []);
   const x = placement.rect.x + (selected ? 12 : 9);
+  const step = selected ? 15 : 13;
   let y = placement.rect.y + (selected ? 8 : 6) + topOffset;
   ctx.fillStyle = WORLD_OVERLAY_STYLE.title;
   ctx.font = selected ? WORLD_OVERLAY_STYLE.fontSelected : WORLD_OVERLAY_STYLE.fontTitle;
   ctx.textBaseline = 'top';
-  ctx.fillText(String(entry.title || ''), x, y);
-  y += selected ? 15 : 13;
+  if (titleLines) {
+    for (let i = 0; i < titleLines.length; i++) {
+      ctx.fillText(titleLines[i], x, y);
+      y += step;
+    }
+  } else {
+    ctx.fillText(String(entry.title || ''), x, y);
+    y += step;
+  }
   ctx.fillStyle = WORLD_OVERLAY_STYLE.detail;
   ctx.font = WORLD_OVERLAY_STYLE.fontDetail;
   for (let i = 0; i < details.length; i++) {
     ctx.fillText(String(details[i]), x, y);
-    y += selected ? 15 : 13;
+    y += step;
   }
 }
 
@@ -524,8 +700,9 @@ function tacticalAccentColors(entry) {
 /** Paint the legacy FIRMS/vessel tactical card inside the shared host. */
 export function paintTacticalCard(ctx, entry, placement, alpha = 1) {
   const selected = entry.selected || entry.variant === 'selected';
-  const details = Array.isArray(entry.details) ? entry.details : [];
   const layout = entry._overlayLayout || {};
+  const titleLines = layout.titleLines;
+  const details = layout.lines || (Array.isArray(entry.details) ? entry.details : []);
   const { x, y, w, h } = placement.rect;
   const accentColors = tacticalAccentColors(entry);
   ctx.save();
@@ -564,12 +741,19 @@ export function paintTacticalCard(ctx, entry, placement, alpha = 1) {
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = WORLD_OVERLAY_STYLE.title;
   ctx.font = selected ? WORLD_OVERLAY_STYLE.fontSelected : WORLD_OVERLAY_STYLE.fontTitle;
-  const titleBaseline = y + layout.padY + layout.titleH - 2;
-  ctx.fillText(String(entry.title || ''), x + layout.padX, titleBaseline);
+  let baseline = y + layout.padY + layout.titleH - 2;
+  if (titleLines) {
+    for (let i = 0; i < titleLines.length; i++) {
+      ctx.fillText(titleLines[i], x + layout.padX, baseline);
+      if (i < titleLines.length - 1) baseline += layout.titleH;
+    }
+  } else {
+    ctx.fillText(String(entry.title || ''), x + layout.padX, baseline);
+  }
   ctx.fillStyle = WORLD_OVERLAY_STYLE.detail;
   ctx.font = WORLD_OVERLAY_STYLE.fontDetail;
   for (let i = 0; i < details.length; i++) {
-    ctx.fillText(String(details[i]), x + layout.padX, titleBaseline + (i + 1) * layout.lineH);
+    ctx.fillText(String(details[i]), x + layout.padX, baseline + (i + 1) * layout.lineH);
   }
   ctx.restore();
   return placement.rect;
@@ -681,8 +865,9 @@ export function paintSelected(ctx, entry, placement, alpha = 1) {
 
 /** Paint the centered protected tracked-target readout treatment. */
 export function paintTracked(ctx, entry, placement, alpha = 1) {
-  const details = Array.isArray(entry.details) ? entry.details : [];
   const layout = entry._overlayLayout || {};
+  const titleLines = layout.titleLines;
+  const details = layout.lines || (Array.isArray(entry.details) ? entry.details : []);
   const { x, y, w, h } = placement.rect;
   const accent = entry.accent || WORLD_OVERLAY_STYLE.accent;
   ctx.save();
@@ -700,10 +885,17 @@ export function paintTracked(ctx, entry, placement, alpha = 1) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   const centerX = x + w / 2;
-  const titleBaseline = y + layout.padY + layout.titleH - 2;
+  let titleBaseline = y + layout.padY + layout.titleH - 2;
   ctx.fillStyle = WORLD_OVERLAY_STYLE.title;
   ctx.font = WORLD_OVERLAY_STYLE.fontTrackedTitle;
-  ctx.fillText(String(entry.title || ''), centerX, titleBaseline);
+  if (titleLines) {
+    for (let i = 0; i < titleLines.length; i++) {
+      ctx.fillText(titleLines[i], centerX, titleBaseline);
+      if (i < titleLines.length - 1) titleBaseline += layout.titleH;
+    }
+  } else {
+    ctx.fillText(String(entry.title || ''), centerX, titleBaseline);
+  }
   ctx.fillStyle = WORLD_OVERLAY_STYLE.detail;
   ctx.font = WORLD_OVERLAY_STYLE.fontTrackedDetail;
   for (let i = 0; i < details.length; i++) {

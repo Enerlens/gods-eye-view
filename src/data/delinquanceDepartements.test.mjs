@@ -30,6 +30,8 @@ import {
   CELL_PUBLISHED,
   CELL_SUPPRESSED,
   CELL_ZERO,
+  DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS,
+  DELINQUANCE_TOTAL_SLUG,
   parseSsmsiCsv,
   projectDelinquanceDepartements,
 } from './delinquanceFeed.js';
@@ -38,6 +40,7 @@ import {
   DELINQUANCE_COAST_SNAP_KM,
   DELINQUANCE_DEPARTEMENT_BINS,
   DELINQUANCE_RATE_SCALE,
+  delinquanceDepartementTotalCell,
   delinquanceRateBin,
   delinquanceRateBins,
   departementsInBox,
@@ -277,4 +280,63 @@ test('the contour packs a view asks for are capped and ranked by what is on scre
   assert.deepEqual(departementsInBox(INDEX, { south: NaN, north: 1, west: 0, east: 1 }, 6), []);
   assert.equal(departementsInBox(INDEX, { south: 48.8, north: 48.9, west: 2.3, east: 2.4 }, 0).length, 1,
     'a zero cap still returns the département under the camera');
+});
+
+test('THE DÉPARTEMENT TOTAL IS EXACT, AND IT IS NOT THE SUM OF THE PUBLISHED RATES', () => {
+  const row = PACK.departements.find((entry) => entry.code === '13');
+  const slot = PACK.years.indexOf('2025');
+  const cell = delinquanceDepartementTotalCell(row, slot);
+  assert.equal(cell[0], CELL_PUBLISHED);
+
+  // Counted by hand from the fixture, over the 16 contributors.
+  let expected = 0;
+  for (const slug of DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS) {
+    expected += row.cells[slug][slot][1];
+  }
+  assert.equal(cell[1], expected);
+  assert.equal(cell[3], 0, 'nothing is withheld at this grain');
+
+  // The two decomposition children are in the fixture and are NOT in the sum:
+  // adding them would count the stupéfiants family twice over.
+  const parent = row.cells['usage-stupefiants'][slot][1];
+  const afd = row.cells['usage-stupefiants-afd'][slot][1];
+  const horsAfd = row.cells['usage-stupefiants-hors-afd'][slot][1];
+  assert.equal(afd + horsAfd, parent, 'the register decomposes it exactly');
+  assert.ok(afd > 0 && horsAfd > 0, 'both children carry real values here');
+  let naive = 0;
+  for (const slug of Object.keys(row.cells)) naive += row.cells[slug][slot]?.[1] || 0;
+  assert.equal(naive - cell[1], parent, 'the naive sum overshoots by exactly the family');
+
+  // And the rate is recomputed on the population, never assembled from the
+  // published `taux_pour_mille` — which are on two different denominators.
+  assert.equal(cell[2], (cell[1] / row.pop) * 1000);
+  let summedRates = 0;
+  for (const slug of DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS) {
+    summedRates += row.cells[slug][slot][2];
+  }
+  assert.notEqual(Number(cell[2].toFixed(6)), Number(summedRates.toFixed(6)),
+    'burglaries are per 1 000 dwellings upstream, so the two disagree');
+});
+
+test('the national projection paints the total on its own quantile ramp', () => {
+  const rollup = national(DELINQUANCE_TOTAL_SLUG);
+  assert.equal(rollup.indicator, DELINQUANCE_TOTAL_SLUG);
+  assert.equal(rollup.per, 'habitants');
+  assert.equal(rollup.thresholds.length, DELINQUANCE_DEPARTEMENT_BINS - 1);
+  const painted = rollup.departements.filter((row) => row.state === CELL_PUBLISHED);
+  assert.ok(painted.length > 0);
+  for (const row of painted) {
+    assert.ok(row.bin >= 0 && row.bin < DELINQUANCE_DEPARTEMENT_BINS);
+    assert.ok(row.count > 0);
+    // Every painted total is at least as large as any single indicator's count
+    // in the same département — it is a sum of that one and fifteen others.
+    const source = PACK.departements.find((entry) => entry.code === row.code);
+    const slot = PACK.years.indexOf('2025');
+    for (const slug of DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS) {
+      assert.ok(row.count >= (source.cells[slug][slot]?.[1] || 0));
+    }
+  }
+  // A département with no row at all stays absent rather than becoming a zero.
+  assert.equal(delinquanceDepartementTotalCell(null, 0), null);
+  assert.equal(delinquanceDepartementTotalCell({ cells: {} }, 0), null);
 });

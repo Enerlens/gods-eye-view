@@ -35,8 +35,13 @@ import {
   DELINQUANCE_MAX_RING_VERTICES,
   DELINQUANCE_PLAINTE_RULE,
   DELINQUANCE_SUPPRESSION_RULE,
+  DELINQUANCE_TOTAL_COMMUNE_SLUGS,
+  DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS,
+  DELINQUANCE_TOTAL_EXCLUDED,
+  DELINQUANCE_TOTAL_SLUG,
   DELINQUANCE_YEAR_FLOOR,
   DELINQUANCE_ZERO_RULE,
+  aggregateDelinquanceCommuneTotal,
   communeCodeColumn,
   createCommuneFold,
   decimateCommuneRing,
@@ -165,11 +170,19 @@ test('a published zero survives a NULL rate — the six villages détruits of Ve
   assert.equal(entry.pop, 0);
   assert.equal(FOLD_2025.zeroPopulation, 1, 'the fixture carries exactly one such commune');
   // Fourteen published zeros and one suppression, and the suppression is not
-  // one of the zeros.
-  const states = entry.cells.map((cell) => cell[0]);
+  // one of the zeros. The 16th slot is the computed total and is asserted on
+  // its own below — it is not one of the register's cells.
+  const states = entry.cells
+    .slice(0, DELINQUANCE_COMMUNE_SLUGS.length)
+    .map((cell) => cell[0]);
   assert.equal(states.filter((s) => s === CELL_ZERO).length, 14);
   assert.equal(states.filter((s) => s === CELL_SUPPRESSED).length, 1);
   assert.equal(states.filter((s) => s === CELL_PUBLISHED).length, 0);
+  // A commune with no inhabitants gets no rate out of the total either: a
+  // per-1 000-inhabitants figure over zero inhabitants is not a number.
+  const total = entry.cells[DELINQUANCE_COMMUNE_SLUGS.length];
+  assert.equal(total[1], 0, 'nothing was recorded here');
+  assert.equal(total[2], null, 'and there is no denominator to divide by');
 });
 
 test('a suppressed cell carries NO number at all — there is nothing downstream can paint', () => {
@@ -180,7 +193,9 @@ test('a suppressed cell carries NO number at all — there is nothing downstream
   let zero = 0;
   let published = 0;
   for (const [code, entry] of FOLD_2025.communes) {
-    for (let slot = 0; slot < entry.cells.length; slot += 1) {
+    // The register's cells only: the computed total in the last slot has its
+    // own four-element shape and its own test.
+    for (let slot = 0; slot < DELINQUANCE_COMMUNE_SLUGS.length; slot += 1) {
       const cell = entry.cells[slot];
       if (!cell) continue;
       if (cell[0] === CELL_SUPPRESSED) {
@@ -575,4 +590,98 @@ test('the three state labels cannot be read as one another', () => {
   assert.match(suppressed, /Non diffusé/);
   assert.equal(/z[ée]ro|aucun/i.test(suppressed), false, `"${suppressed}" must not imply nothing happened`);
   assert.equal(/non diffus|secret/i.test(zero), false, `"${zero}" must not imply a refusal`);
+});
+
+// ---------------------------------------------------------------------------
+// The computed total — the one indicator the register does not publish
+// ---------------------------------------------------------------------------
+
+test('the total drops the decomposition that would double-count, and only that', () => {
+  // `Usage de stupéfiants` = AFD + hors AFD, measured exactly in 101 of 101
+  // départements, so keeping all three sums the family twice.
+  assert.deepEqual([...DELINQUANCE_TOTAL_EXCLUDED],
+    ['usage-stupefiants-afd', 'usage-stupefiants-hors-afd']);
+  assert.equal(DELINQUANCE_TOTAL_COMMUNE_SLUGS.length, 14);
+  assert.equal(DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS.length, 16);
+  assert.ok(DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS.includes('usage-stupefiants'),
+    'the PARENT is what stays in');
+  for (const excluded of DELINQUANCE_TOTAL_EXCLUDED) {
+    assert.equal(DELINQUANCE_TOTAL_COMMUNE_SLUGS.includes(excluded), false);
+    assert.equal(DELINQUANCE_TOTAL_DEPARTEMENT_SLUGS.includes(excluded), false);
+  }
+  // Reachable by slug, unreachable by label: no upstream row can ever resolve
+  // to a total, because the register publishes no such row.
+  assert.equal(indicatorForSlug(DELINQUANCE_TOTAL_SLUG).computed, true);
+  assert.equal(indicatorForLabel('Tous les indicateurs — total calculé'), null);
+  assert.equal(DELINQUANCE_COMMUNE_SLUGS.includes(DELINQUANCE_TOTAL_SLUG), false,
+    'the register list must never grow the computed slug');
+  assert.equal(DELINQUANCE_DEPARTEMENT_SLUGS.includes(DELINQUANCE_TOTAL_SLUG), false);
+  assert.equal(delinquanceRateUnit(DELINQUANCE_TOTAL_SLUG), '1 000 habitants');
+});
+
+test('A TOTAL OVER A WITHHELD CELL IS A FLOOR, AND SAYS SO IN ITS OWN SHAPE', () => {
+  const cells = new Array(DELINQUANCE_COMMUNE_SLUGS.length).fill(null);
+  cells[SLOT('cambriolages')] = [CELL_PUBLISHED, 10, 5];
+  cells[SLOT('degradations')] = [CELL_PUBLISHED, 7, 3.5];
+  cells[SLOT('vols-armes')] = [CELL_SUPPRESSED];
+  for (const slug of DELINQUANCE_COMMUNE_SLUGS) {
+    if (!cells[SLOT(slug)]) cells[SLOT(slug)] = [CELL_ZERO];
+  }
+  const [state, count, rate, withheld] = aggregateDelinquanceCommuneTotal(cells, 2000);
+  assert.equal(state, CELL_PUBLISHED);
+  assert.equal(count, 17, 'the published contributors, and nothing else');
+  assert.equal(rate, 8.5, 'recomputed on the population, not summed from rates');
+  assert.equal(withheld, 1, 'the floor knows how far it might be from the value');
+
+  // The AFD child is present and published, and is STILL not counted.
+  cells[SLOT('usage-stupefiants')] = [CELL_PUBLISHED, 4, 2];
+  cells[SLOT('usage-stupefiants-afd')] = [CELL_PUBLISHED, 3, 1.5];
+  assert.equal(aggregateDelinquanceCommuneTotal(cells, 2000)[1], 21, '17 + 4, never + 3 again');
+});
+
+test('the total tells a complete zero from a withheld one, and paints neither as the other', () => {
+  const allZero = new Array(DELINQUANCE_COMMUNE_SLUGS.length).fill(null)
+    .map(() => [CELL_ZERO]);
+  const complete = aggregateDelinquanceCommuneTotal(allZero, 1000);
+  assert.deepEqual(complete, [CELL_ZERO, 0, 0, 0], 'a measured zero keeps its zero rate');
+
+  const withheldSomewhere = allZero.slice();
+  withheldSomewhere[SLOT('escroqueries')] = [CELL_SUPPRESSED];
+  const partial = aggregateDelinquanceCommuneTotal(withheldSomewhere, 1000);
+  assert.equal(partial[0], CELL_SUPPRESSED, 'nothing published + something withheld = unknown');
+  assert.equal(partial[2], null, 'and an unknown cell carries NO rate to paint');
+  assert.equal(partial[3], 1);
+
+  // A cell the edition never wrote counts as withheld, never as a zero.
+  const missing = allZero.slice();
+  missing[SLOT('degradations')] = null;
+  assert.equal(aggregateDelinquanceCommuneTotal(missing, 1000)[3], 1);
+});
+
+test('the fold appends the total, censuses it, and feeds it to the national ramp', () => {
+  for (const [code, entry] of FOLD_2025.communes) {
+    assert.equal(entry.cells.length, DELINQUANCE_COMMUNE_SLUGS.length + 1,
+      `${code} carries the register's cells plus exactly one computed slot`);
+    const total = entry.cells[DELINQUANCE_COMMUNE_SLUGS.length];
+    assert.equal(total.length, 4, 'a total says how many contributors were withheld');
+    assert.deepEqual(
+      total,
+      aggregateDelinquanceCommuneTotal(entry.cells, entry.pop),
+      'the stored total is the pure function of the cells beside it',
+    );
+    if (total[0] === CELL_SUPPRESSED) assert.equal(total[2], null);
+  }
+  // 15 published, 0 complete zeros, 3 suppressed over the fixture's 18
+  // communes; the 15 published rates are what the national quantile cut sees.
+  assert.deepEqual(FOLD_2025.census[DELINQUANCE_TOTAL_SLUG], [15, 0, 3]);
+  assert.equal(FOLD_2025.rates.get(DELINQUANCE_TOTAL_SLUG).length, 15);
+  for (const rate of FOLD_2025.rates.get(DELINQUANCE_TOTAL_SLUG)) assert.ok(rate > 0);
+  // Bouches-du-Rhône: Marseille's own total, and the census of its communes.
+  assert.deepEqual(
+    FOLD_2025.censusByDepartement['13'][DELINQUANCE_TOTAL_SLUG],
+    [5, 0, 0],
+  );
+  // The chip set is cut from the REGISTER's indicators, so the computed total
+  // can never displace a published one from the row.
+  assert.equal(selectDelinquanceChips(FOLD_2025.census).includes(DELINQUANCE_TOTAL_SLUG), false);
 });
