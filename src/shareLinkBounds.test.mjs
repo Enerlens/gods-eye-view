@@ -22,6 +22,7 @@ import {
   isShareLatitudeInRange,
   normalizeShareLongitude,
   parseShareAltitude,
+  peekShareMapStack,
 } from './sharelink.js';
 
 function makeManager(hash = '') {
@@ -132,4 +133,38 @@ test('a negative altitude does not discard the rest of the link', () => {
   assert.equal(state.lat, 48.85);
   assert.equal(state.lon, 2.35);
   assert.equal(state.alt, 800);
+});
+
+// ── peekShareMapStack: the basemap, read before the globe exists ────────────
+//
+// Boot used to activate the build's default and let the hash restore switch to
+// the real stack 1.5 s later — two full imagery constructions per page load,
+// and a visible OSM → Plan IGN flip on every reload of a `#map=ign-plan` link.
+// This helper is what makes it one construction, so its guards have to match
+// `parseInitialHash` exactly: a hash that restores nothing must not be allowed
+// to choose a basemap either.
+
+test('a valid share link hands over the stack it names', () => {
+  assert.equal(peekShareMapStack('#lat=48.85&lon=2.35&map=ign-plan'), 'ign-plan');
+  assert.equal(peekShareMapStack('lat=48.85&lon=2.35&map=osm'), 'osm', 'the leading # is optional');
+});
+
+test('a share link with no map= leaves the build default alone', () => {
+  assert.equal(peekShareMapStack('#lat=48.85&lon=2.35'), null);
+  assert.equal(peekShareMapStack(''), null);
+  assert.equal(peekShareMapStack('#'), null);
+});
+
+test('a hash that would restore nothing chooses no basemap either', () => {
+  // Same rejections parseInitialHash makes. Honouring `map=` from a link whose
+  // camera is unusable would open on a source no later step justifies.
+  assert.equal(peekShareMapStack('#map=ign-plan'), null, 'no coordinates at all');
+  assert.equal(peekShareMapStack('#lat=123.456&lon=2.35&map=ign-plan'), null, 'latitude off the planet');
+  assert.equal(peekShareMapStack('#lat=48.85&lon=NaN&map=ign-plan'), null, 'unusable longitude');
+});
+
+test('an unknown stack id is passed through for the controller to judge', () => {
+  // Availability belongs to MapStackController — the one place that knows
+  // whether this build has a Google key or an ion token. This helper only reads.
+  assert.equal(peekShareMapStack('#lat=48.85&lon=2.35&map=retired-stack'), 'retired-stack');
 });

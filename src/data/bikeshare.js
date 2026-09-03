@@ -11,6 +11,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
@@ -1644,7 +1645,7 @@ const bikeshareLayer = {
 
     if (!_cameraChangedAttached) {
       viewer.camera.changed.addEventListener(onCameraChanged);
-      viewer.camera.percentageChanged = Math.min(viewer.camera.percentageChanged || 1, 0.05);
+      claimCameraSensitivity(viewer, 'bikeshare');
       _cameraChangedAttached = true;
     }
 
@@ -1675,6 +1676,7 @@ const bikeshareLayer = {
 
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
+      releaseCameraSensitivity(viewer, 'bikeshare');
       _cameraChangedAttached = false;
     }
 
@@ -1757,6 +1759,7 @@ const bikeshareLayer = {
     }
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
+      releaseCameraSensitivity(viewer, 'bikeshare');
       _cameraChangedAttached = false;
     }
     abortAllInFlight();

@@ -1,7 +1,9 @@
 import * as Cesium from 'cesium';
 import { StyleManager } from './ui.js';
 import { DEFAULT_CITY_VIEW, flyToDefaultCity } from './camera.js';
-import { installGlobeDetailGovernor } from './globeDetailGovernor.js';
+import { getGlobeDetailDiagnostics, installGlobeDetailGovernor } from './globeDetailGovernor.js';
+import { getCameraSensitivityDiagnostics } from './data/cameraSensitivity.js';
+import { peekShareMapStack } from './sharelink.js';
 import { DataLayerManager } from './data/manager.js';
 import flightsLayer from './data/flights.js';
 import militaryFlightsLayer from './data/militaryFlights.js';
@@ -222,6 +224,10 @@ async function init() {
     viewer.scene.skyAtmosphere.brightnessShift = -0.08;
 
     let tileset = null;
+    // Kept out of the catch so the controller can NAME the failure on the map
+    // source chip. A basemap that is not the one the app asked for has to say
+    // so; the old code's `console.warn` was a message to nobody.
+    let tilesetError = '';
     if (keylessMode) {
       // Deliberately NOT "call it and catch": `createGooglePhotorealistic3DTileset()`
       // with no key spends a doomed round-trip and then reports a network error,
@@ -241,8 +247,8 @@ async function init() {
         viewer.scene.globe.show = false;
       } catch (tileError) {
         console.warn('[Init] Google 3D Tiles unavailable, falling back to Cesium globe:', tileError);
-        const tileErrorDetail = describeError(tileError);
-        loaderStatus.textContent = `Google 3D Tiles unavailable (${tileErrorDetail}). Continuing in fallback mode...`;
+        tilesetError = describeError(tileError);
+        loaderStatus.textContent = `Google 3D Tiles unavailable (${tilesetError}). Continuing in fallback mode...`;
         // Keep Cesium globe visible as fallback instead of aborting the app.
         viewer.scene.globe.show = true;
       }
@@ -281,6 +287,7 @@ async function init() {
       // (keyless build) reads differently from a keyed build whose tiles
       // failed, and both arrive here as `googleTileset: null`.
       googleKeyConfigured: !keylessMode,
+      googleTilesetError: tilesetError,
       ignTerrainSpike,
       initialStack: startupStack,
       // Task 5 (height-datum fix): rebroadcast stack changes as a window
@@ -293,7 +300,24 @@ async function init() {
       },
       onError: (message) => console.warn('[MapStack]', message),
     });
-    await mapStackController.setStack(startupStack, { silent: true });
+    // ONE imagery construction per page load. The hash is read HERE, before the
+    // first activation, instead of being left to the share restore a second and
+    // a half later: `_activateGlobeStack()` destroys and rebuilds every imagery
+    // layer, so activating the build's default and then switching made the
+    // reader watch one basemap appear, get thrown away, and a second refine
+    // coarse→sharp from an empty tile cache. On `#map=ign-plan` that was,
+    // literally, OSM followed by Plan IGN on every reload.
+    //
+    // Availability is asked of the controller rather than re-derived here — it
+    // is the one place that decides — and an unavailable or unknown request
+    // falls back to `getActiveId()`, which is `startupStack` already resolved
+    // against what this build can show. The share restore's own `setStack()`
+    // then short-circuits on the live stack.
+    const requestedStack = peekShareMapStack();
+    const bootStack = requestedStack && mapStackController.isStackAvailable(requestedStack)
+      ? requestedStack
+      : mapStackController.getActiveId();
+    await mapStackController.setStack(bootStack, { silent: true });
 
     // Initialize the style manager (post-processing, HUD, locations, share links)
     const styleManager = new StyleManager(viewer, { mapStackController });
@@ -477,6 +501,13 @@ async function init() {
       weatherEffects,
       cockpitCloudEffects,
       getRenderGovernorDiagnostics,
+      // Two of the three session-global knobs the 2026-09-03 reload report
+      // turned out to be about — the globe's error tolerance and the camera's
+      // change threshold. The third, imagery constructions per page load, is
+      // on `mapStackController` above. Exposed so `qa:map-reload` can watch
+      // them rather than infer them from pixels.
+      getGlobeDetailDiagnostics,
+      getCameraSensitivityDiagnostics,
       requestRender: governorRequestRender,
     };
     window.__godsEyeView.voiceCommands = initGevVoiceCommands({ viewer, styleManager, dataManager, sceneDirector, annotations });

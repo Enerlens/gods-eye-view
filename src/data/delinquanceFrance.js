@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
@@ -1506,7 +1507,7 @@ const delinquanceFranceLayer = {
     registerPickOwner(DELINQUANCE_FR_LAYER_ID, (pickedId) => _communeRecords.has(pickedId));
     if (!_cameraChangedAttached) {
       viewer.camera.changed.addEventListener(onCameraChanged);
-      viewer.camera.percentageChanged = Math.min(viewer.camera.percentageChanged || 1, 0.05);
+      claimCameraSensitivity(viewer, DELINQUANCE_FR_LAYER_ID);
       _cameraChangedAttached = true;
     }
     void loadViewport({ force: true });
@@ -1530,6 +1531,7 @@ const delinquanceFranceLayer = {
     unregisterPickOwner(DELINQUANCE_FR_LAYER_ID);
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
+      releaseCameraSensitivity(viewer, DELINQUANCE_FR_LAYER_ID);
       _cameraChangedAttached = false;
     }
     _loading = false;

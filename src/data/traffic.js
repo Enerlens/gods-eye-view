@@ -20,6 +20,7 @@ import {
 import { queuePlatoons, locateAlongRoad } from './trafficQueue.js';
 import { registerDynamicCredit, TOMTOM_CREDIT } from './dataCredits.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
+import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 
 /**
  * @file Street Traffic — animated dots along OSM road polylines, colored by
@@ -218,8 +219,6 @@ let _lastViewCenter = null;
  * down to street level and never fetch the graph it is supposed to draw there.
  */
 let _lastTierId = null;
-/** @type {number|null} camera.percentageChanged value before we overrode it, restored on disable */
-let _prevPercentageChanged = null;
 /** @type {boolean} Live TomTom flow mode — true iff /api/tomtom/status reports a key */
 let _liveMode = false;
 /**
@@ -2282,13 +2281,12 @@ const trafficLayer = {
       _trafficTimingMoveEndRemover = viewer.camera.moveEnd.addEventListener(markTrafficTimingMoveEnd);
     }
 
-    // Subscribe to camera changes with a 5% movement threshold. Save the prior
-    // value so disable() can restore it — percentageChanged is a shared global
-    // on the camera and leaving it mutated affects every other camera.changed
-    // listener in the app.
+    // Subscribe to camera changes with a 5% movement threshold. The threshold
+    // is CLAIMED, not written: `percentageChanged` is a shared global on the
+    // camera, and this layer's own save/restore was still wrong at two layers —
+    // whoever enabled second saved the value the first had already lowered.
     viewer.camera.changed.addEventListener(onCameraChanged);
-    _prevPercentageChanged = viewer.camera.percentageChanged;
-    viewer.camera.percentageChanged = 0.05;
+    claimCameraSensitivity(viewer, 'traffic');
 
     // Kick off initial viewport check
     onCameraChanged();
@@ -2345,12 +2343,11 @@ const trafficLayer = {
     }
 
     viewer.camera.changed.removeEventListener(onCameraChanged);
-    // Restore the camera's global percentageChanged so other layers/listeners
-    // keep their expected sensitivity.
-    if (_prevPercentageChanged != null) {
-      viewer.camera.percentageChanged = _prevPercentageChanged;
-      _prevPercentageChanged = null;
-    }
+    // Drop the claim so other layers/listeners keep their expected sensitivity.
+    // The shared owner set puts the pre-first-claim value back once the LAST
+    // claimant releases, so disabling traffic while transit is still on leaves
+    // transit's threshold alone.
+    releaseCameraSensitivity(viewer, 'traffic');
     _pointCollection.show = false;
   },
 

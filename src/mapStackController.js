@@ -93,6 +93,53 @@ export const MAP_STACKS = [
 
 const DEFAULT_OSM_CREDIT = '© OpenStreetMap contributors';
 
+/** Longest provider sentence that still belongs in a chip tooltip. */
+const PROVIDER_ERROR_MAX_CHARS = 200;
+
+/**
+ * One readable line out of whatever a tile provider threw.
+ *
+ * Cesium rejects a failed tile request with a `RequestErrorEvent` — a plain
+ * object with `statusCode`, `response` and `responseHeaders` and NO `message` —
+ * so the generic "serialize it" fallback produces nine hundred characters of
+ * gzip headers. The useful part is two fields deep, inside a JSON string:
+ * Google's actual sentence about why (quota, region, a key restricted to
+ * another referrer) lives at `response.error.message`. A tooltip nobody can
+ * read is the same as no tooltip, which is the failure this whole path exists
+ * to end.
+ * @param {*} raw - Anything a provider or `describeError` produced.
+ * @returns {string} `HTTP 403 — <provider sentence>`, the sentence alone, or ''.
+ */
+export function summarizeProviderError(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return '';
+  let status = null;
+  let message = text;
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object') {
+      if (Number.isFinite(parsed.statusCode)) status = parsed.statusCode;
+      let body = parsed.response;
+      // The body is a JSON STRING inside the serialized event, so it needs its
+      // own parse; a plain-text body is kept as-is.
+      if (typeof body === 'string') {
+        try { body = JSON.parse(body); } catch { /* plain text body */ }
+      }
+      const inner = body && typeof body === 'object'
+        ? (body.error?.message || body.message)
+        : body;
+      message = String(inner || parsed.message || '').trim();
+      if (!message && status === null) message = text;
+    }
+  } catch { /* not JSON — it is already a sentence */ }
+  message = message.replace(/\s+/g, ' ').trim();
+  if (message.length > PROVIDER_ERROR_MAX_CHARS) {
+    message = `${message.slice(0, PROVIDER_ERROR_MAX_CHARS - 1)}…`;
+  }
+  if (status === null) return message;
+  return message ? `HTTP ${status} — ${message}` : `HTTP ${status}`;
+}
+
 /** Keyless IGN Géoplateforme WMTS endpoint (no key, no token, CORS-open). */
 const IGN_WMTS_URL = 'https://data.geopf.fr/wmts';
 
@@ -178,6 +225,7 @@ export class MapStackController {
     googleTileset = null,
     cesiumToken = '',
     googleKeyConfigured = null,
+    googleTilesetError = '',
     ignTerrainSpike = false,
     initialStack = 'photoreal',
     onChange = null,
@@ -193,6 +241,15 @@ export class MapStackController {
     // controller built by a test or a tool doesn't start claiming a cause it
     // has no evidence for.
     this.googleKeyConfigured = googleKeyConfigured;
+    // WHY the photoreal tileset is missing, in the provider's own words —
+    // quota, network, a key restricted to another referrer. Boot used to
+    // swallow this: `main.js` caught the error, showed the Cesium globe, and
+    // the app opened on OSM with nothing on screen saying the source had
+    // changed. The map source a reader is looking at is not a detail they can
+    // be left to infer, so the controller carries the cause and the tray says
+    // it. Empty means photoreal was never attempted (keyless build, or a
+    // caller that did not say).
+    this.googleTilesetError = summarizeProviderError(googleTilesetError);
     // DEV-ONLY SPIKE (`?ign_terrain=1`). Replaces the keyless terrain provider
     // with IGN RGE ALTI over France, and FORCES the keyless branch even when an
     // ion token is present — the point of the spike is to look at IGN terrain,
@@ -235,6 +292,18 @@ export class MapStackController {
     // (fast OSM) would otherwise revert the user's last choice (M7). Each call
     // captures a generation and aborts its own commit once superseded.
     this._switchGen = 0;
+    // Whether a switch has actually built the scene yet. `_activeId` is seeded
+    // in this constructor, BEFORE anything is on the globe, so the re-entry
+    // short-circuit in `setStack()` cannot key on the id alone — it would swallow
+    // the one boot call that builds the imagery in the first place.
+    this._activated = false;
+    // Cleared by the first DELIBERATE switch: once someone picks a source, the
+    // globe is the one they asked for and the boot fallback is no longer news.
+    this._bootNoticeDismissed = false;
+    // Imagery layers CONSTRUCTED this page load — the reload bug's own number.
+    // A share link that opens on its own basemap must cost exactly what a plain
+    // load of that basemap costs, and nothing but a counter proves it.
+    this._imageryBuilds = 0;
 
     if (!this.getStack(this._activeId) || !this.isStackAvailable(this._activeId)) {
       // The startup ladder, mirroring the one main.js applies: the 3D globe,
@@ -276,7 +345,9 @@ export class MapStackController {
       return 'Google Maps API key required for Google 3D';
     }
     if (stack?.kind === 'photoreal' && this.googleKeyConfigured === true) {
-      return 'Google 3D Tiles failed to load';
+      return this.googleTilesetError
+        ? `Google 3D Tiles failed to load: ${this.googleTilesetError}`
+        : 'Google 3D Tiles failed to load';
     }
     if (stack?.kind === 'google-2d') {
       return `Google Maps API key required for ${stack.label}`;
@@ -340,9 +411,28 @@ export class MapStackController {
     return MAP_STACKS.find((stack) => this.isStackAvailable(stack.id)) || this.getStack('osm');
   }
 
+  /**
+   * Activate a map stack.
+   *
+   * RE-ENTRY IS A NO-OP, and that is load-bearing rather than an optimization.
+   * `_activateGlobeStack()` DESTROYS and REBUILDS every imagery layer, so the
+   * new `Cesium.ImageryLayer` instances start from an empty tile cache and
+   * re-refine coarse→sharp in full view of the reader. Replaying the stack that
+   * is already on the globe therefore costs a visible reload of a map that did
+   * not change — which is exactly what a share link used to buy: boot activated
+   * a stack, the hash restore replayed the same id a moment later, and the globe
+   * blurred and re-sharpened for nothing.
+   * @param {string} id - Stack id; an unrecognized one resolves to {@link _fallbackStack}.
+   * @param {{silent?: boolean}} [options] - `silent` suppresses the change events.
+   * @returns {Promise<object|null>} Controller state, or null for an empty registry.
+   */
   async setStack(id, { silent = false } = {}) {
     const stack = this.getStack(id) || this._fallbackStack();
     if (!stack) return null;
+
+    if (this._activated && stack.id === this._activeId && !this._isSwitching) {
+      return this.getState();
+    }
 
     if (!this.isStackAvailable(stack.id)) {
       const message = this._unavailableReason(stack);
@@ -354,7 +444,12 @@ export class MapStackController {
     const gen = ++this._switchGen;
     this._isSwitching = true;
     this._lastError = null;
-    if (!silent) this._emitChange('switching');
+    if (!silent) {
+      // Boot activates silently; anything else is somebody choosing, and once
+      // somebody has chosen, the boot fallback is no longer news.
+      this._bootNoticeDismissed = true;
+      this._emitChange('switching');
+    }
 
     try {
       if (stack.kind === 'photoreal') {
@@ -366,6 +461,7 @@ export class MapStackController {
       // owns the final state now, so don't commit ours or emit a stale 'ready'.
       if (gen !== this._switchGen) return this.getState();
       this._activeId = stack.id;
+      this._activated = true;
       // Show/hide of tilesets + imagery swaps need a frame in idle mode;
       // subsequent tile loads self-request via Cesium. (perf wave 2)
       governorRequestRender('map-stack');
@@ -379,6 +475,7 @@ export class MapStackController {
         await this._activatePhotoreal(gen);
         if (gen !== this._switchGen) return this.getState();
         this._activeId = 'photoreal';
+        this._activated = true;
       }
       if (!silent) this._emitChange('error');
     } finally {
@@ -390,6 +487,32 @@ export class MapStackController {
     return this.getState();
   }
 
+  /**
+   * The startup fallback, said out loud.
+   *
+   * Distinct from `lastError`, which belongs to a switch somebody ASKED for and
+   * which the tray turns into a toast. This is the quieter failure: the app
+   * opened on a source nobody chose because the one it wanted could not load.
+   * It rides on the status chip until the first deliberate pick.
+   * @returns {string|null}
+   */
+  _bootNotice() {
+    if (this._bootNoticeDismissed) return null;
+    // No recorded failure, or photoreal is on the globe after all: nothing to say.
+    if (!this.googleTilesetError || this._activeId === 'photoreal') return null;
+    const label = this.getActiveStack()?.label || this._activeId;
+    return `Google 3D Tiles failed to load: ${this.googleTilesetError} — showing ${label}`;
+  }
+
+  /**
+   * Imagery layers built since the page loaded. Diagnostics only — the QA
+   * harness compares it against the number of stacks actually asked for.
+   * @returns {number}
+   */
+  getImageryBuildCount() {
+    return this._imageryBuilds;
+  }
+
   getState(status = this._isSwitching ? 'switching' : 'ready') {
     return {
       activeId: this._activeId,
@@ -397,6 +520,10 @@ export class MapStackController {
       stacks: this.getStacks(),
       status,
       lastError: this._lastError,
+      // Never folded into `lastError`: that field means "the switch you asked
+      // for did not happen", and a caller that toasts it must not start
+      // toasting a boot fallback nobody requested.
+      notice: this._bootNotice(),
       hasCesiumIonToken: !!this.cesiumToken,
     };
   }
@@ -432,6 +559,7 @@ export class MapStackController {
       const layer = new Cesium.ImageryLayer(provider);
       this.viewer.imageryLayers.add(layer, index);
       this._imageryLayers.push(layer);
+      this._imageryBuilds += 1;
     });
 
     if (this.googleTileset) this.googleTileset.show = false;

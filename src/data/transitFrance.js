@@ -67,6 +67,7 @@
  *     away is reported as waiting rather than as an hour early.
  */
 import * as Cesium from 'cesium';
+import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import {
   governorRequestRender,
   holdContinuousRender,
@@ -1284,7 +1285,7 @@ const transitFranceLayer = {
 
     if (!_cameraChangedAttached) {
       viewer.camera.changed.addEventListener(onCameraChanged);
-      viewer.camera.percentageChanged = Math.min(viewer.camera.percentageChanged || 1, 0.05);
+      claimCameraSensitivity(viewer, TRANSIT_FR_LAYER_ID);
       _cameraChangedAttached = true;
     }
     if (!_preRenderRemover) {
@@ -1317,6 +1318,7 @@ const transitFranceLayer = {
 
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
+      releaseCameraSensitivity(viewer, TRANSIT_FR_LAYER_ID);
       _cameraChangedAttached = false;
     }
     if (_preRenderRemover) {

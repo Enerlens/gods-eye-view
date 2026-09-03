@@ -12,6 +12,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   MOVING_SSE_MULTIPLIER,
+  STALL_GUARD_MS,
   getGlobeDetailDiagnostics,
   installGlobeDetailGovernor,
   uninstallGlobeDetailGovernor,
@@ -29,13 +30,23 @@ function makeViewer({ sse = 2 } = {}) {
       };
     },
   });
+  // The stall guard reads raw pose components, so the stub carries a real one.
+  const camera = {
+    moveStart: evt('start'),
+    moveEnd: evt('end'),
+    position: { x: 0, y: 0, z: 0 },
+    direction: { x: 0, y: 0, z: -1 },
+  };
   return {
     scene: { globe: { maximumScreenSpaceError: sse } },
-    camera: { moveStart: evt('start'), moveEnd: evt('end') },
+    camera,
     _fire: (bucket) => listeners[bucket].slice().forEach((fn) => fn()),
     _counts: () => ({ start: listeners.start.length, end: listeners.end.length }),
+    _moveTo: (x) => { camera.position.x = x; },
   };
 }
+
+const tick = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
 test('a moving camera relaxes the tolerance, a settled one restores it exactly', () => {
   const viewer = makeViewer({ sse: 2 });
@@ -121,4 +132,85 @@ test('a viewer without a globe or camera events is declined, not crashed on', ()
   assert.doesNotThrow(() => installGlobeDetailGovernor({}));
   assert.doesNotThrow(() => installGlobeDetailGovernor({ scene: { globe: {} } }));
   assert.equal(getGlobeDetailDiagnostics().installed, false);
+});
+
+test('a move that never ends is not a session-long blur', async () => {
+  // The field report: "it goes to a less sharp version" and stays there. Every
+  // path that cancels a flight (share-link restore calls camera.cancelFlight())
+  // fires moveStart without ever firing moveEnd.
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer, { stallGuardMs: 20 });
+    viewer._fire('start');
+    assert.equal(viewer.scene.globe.maximumScreenSpaceError, 4);
+    assert.equal(getGlobeDetailDiagnostics().stallGuardArmed, true);
+
+    // No moveEnd, ever. Two guard intervals: the first samples, the second
+    // finds the pose unchanged.
+    await tick(70);
+    assert.equal(
+      viewer.scene.globe.maximumScreenSpaceError,
+      2,
+      'a stalled move must hand the sharp globe back on its own',
+    );
+    const diagnostics = getGlobeDetailDiagnostics();
+    assert.equal(diagnostics.relaxed, false);
+    assert.equal(diagnostics.stallGuardArmed, false, 'the poll stops once it has fired');
+    assert.equal(diagnostics.stallRecoveries, 1);
+
+    // The moveEnd that never came, arriving anyway, must be harmless.
+    viewer._fire('end');
+    assert.equal(viewer.scene.globe.maximumScreenSpaceError, 2);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('a long move that is really moving keeps its saving', async () => {
+  // The intro fly-to is four seconds and an orbit runs for minutes; neither may
+  // be cut short by the guard. This is why the guard reads the pose instead of
+  // counting milliseconds since moveStart.
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer, { stallGuardMs: 20 });
+    viewer._fire('start');
+    for (let step = 1; step <= 6; step += 1) {
+      viewer._moveTo(step * 1000);
+      // eslint-disable-next-line no-await-in-loop
+      await tick(15);
+      assert.equal(
+        viewer.scene.globe.maximumScreenSpaceError,
+        4,
+        'a camera that is still moving must stay coarse',
+      );
+    }
+    assert.equal(getGlobeDetailDiagnostics().stallRecoveries, 0);
+
+    viewer._fire('end');
+    assert.equal(viewer.scene.globe.maximumScreenSpaceError, 2);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('the guard is disarmed by moveEnd and by uninstall, never left polling', async () => {
+  const viewer = makeViewer({ sse: 2 });
+  installGlobeDetailGovernor(viewer, { stallGuardMs: 20 });
+  viewer._fire('start');
+  viewer._fire('end');
+  assert.equal(getGlobeDetailDiagnostics().stallGuardArmed, false);
+
+  viewer._fire('start');
+  assert.equal(getGlobeDetailDiagnostics().stallGuardArmed, true);
+  uninstallGlobeDetailGovernor();
+  assert.equal(getGlobeDetailDiagnostics().stallGuardArmed, false);
+  await tick(70);
+  assert.equal(viewer.scene.globe.maximumScreenSpaceError, 2, 'a torn-down governor polls nothing');
+});
+
+test('the shipped guard interval is the one the module documents', () => {
+  // Pinned because a wrong value here is invisible in every other test: too
+  // short and it fights real motion, too long and the blur outlives the reader's
+  // patience — which is the bug this whole guard exists for.
+  assert.equal(STALL_GUARD_MS, 2000);
 });

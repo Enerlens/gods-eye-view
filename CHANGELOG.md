@@ -156,6 +156,50 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   même vente changeait de couleur quand la caméra bougeait. Le dénominateur est
   nommé dans la légende et sur chaque fiche.
 
+### Fixed
+
+- **La carte ne se reconstruit plus deux fois par chargement.** `#map=ign-plan`
+  activait OSM au démarrage, puis rejouait le vrai fond une seconde et demie
+  plus tard — et `_activateGlobeStack()` **détruit et reconstruit** chaque
+  `Cesium.ImageryLayer`, donc le lecteur voyait un fond apparaître, disparaître,
+  puis un second se raffiner du grossier au net depuis un cache de tuiles vide.
+  Mesuré avant : trois couches d'imagerie construites par chargement, OSM à
+  500 ms puis Plan IGN à 1 500 ms. Après : **deux, dès la première frame**, et
+  le fond demandé du premier coup. Le hash est lu avant l'activation, et
+  `setStack()` sur le fond déjà vivant ne reconstruit plus rien.
+- **Le flou ne s'installe plus pour la session.** Le gouverneur de détail double
+  la tolérance d'erreur du globe sur `moveStart` et la rend sur `moveEnd` ; un
+  vol annulé en plein air — ce que fait `camera.cancelFlight()`, appelé par la
+  restauration de lien — laissait le globe **épinglé au double jusqu'au
+  rechargement**. C'est le « on passe à une version moins nette » qui ne revient
+  pas. Un filet de sécurité rend la valeur réglée dès que la pose de la caméra
+  n'a pas bougé d'un intervalle entier : pas un simple délai, qui couperait le
+  vol d'introduction de quatre secondes ou une orbite de plusieurs minutes.
+- **Une couche allumée ne dégrade plus le seuil de rafraîchissement de toutes
+  les autres.** `camera.percentageChanged` est **un seul nombre** partagé par
+  tous les écouteurs `camera.changed` ; onze couches le descendaient à 0,05 à
+  l'activation et leur `disable()` ne le rendait jamais. Mesuré avant : 0,5 →
+  Transports en commun allumé 0,05 → **éteint, toujours 0,05**, pour le reste de
+  la session. C'était la sensation de rechargement permanent. Les douze
+  demandeurs passent par un module à compteur de références
+  (`src/data/cameraSensitivity.js`, calqué sur les prises du gouverneur de
+  rendu) : la valeur appliquée est le minimum des demandes vivantes, et celle
+  d'origine revient quand la dernière est relâchée. La sauvegarde manuelle de
+  `traffic.js` disparaît — elle était encore fausse à deux couches, la seconde
+  sauvegardant la valeur que la première avait déjà baissée.
+- **Un fond de carte qui n'est pas celui demandé le dit.** Un échec Google
+  Photorealistic 3D Tiles au démarrage se repliait en silence sur OSM : le fond
+  n'était donc pas déterministe d'un rechargement à l'autre. La puce de source
+  de carte porte désormais l'avertissement et la phrase du fournisseur —
+  « HTTP 403 — Your request cannot be served because satellite tiles and 3D
+  tiles are not available for your account and region » — réduite à une ligne
+  lisible depuis le `RequestErrorEvent` de Cesium, qui n'a pas de `message` et se
+  sérialisait en neuf cents caractères d'en-têtes gzip.
+- Nouveau harnais : `npm run qa:map-reload` vérifie les quatre nombres sur une
+  page réelle — constructions d'imagerie par chargement, tolérance d'erreur
+  après un vol annulé, `percentageChanged` après extinction d'une couche, et le
+  fond dégradé nommé sur la puce.
+
 ## [Unreleased] — 2026-09-02
 
 ### Added

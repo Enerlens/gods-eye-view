@@ -179,6 +179,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
@@ -1376,7 +1377,7 @@ const idfmFrequencyLayer = {
     registerPickOwner(IDFM_FREQ_LAYER_ID, (pickedId) => _records.has(pickedId));
     if (!_cameraChangedAttached && viewer?.camera) {
       viewer.camera.changed.addEventListener(onCameraChanged);
-      viewer.camera.percentageChanged = Math.min(viewer.camera.percentageChanged || 1, 0.05);
+      claimCameraSensitivity(viewer, IDFM_FREQ_LAYER_ID);
       _cameraChangedAttached = true;
     }
     if (!_preRenderRemover && viewer?.scene?.preRender) {
@@ -1409,6 +1410,7 @@ const idfmFrequencyLayer = {
     unregisterPickOwner(IDFM_FREQ_LAYER_ID);
     if (_cameraChangedAttached && viewer?.camera) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
+      releaseCameraSensitivity(viewer, IDFM_FREQ_LAYER_ID);
       _cameraChangedAttached = false;
     }
     if (_preRenderRemover) {
