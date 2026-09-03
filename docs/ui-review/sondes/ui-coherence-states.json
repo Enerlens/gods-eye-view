@@ -1,0 +1,90 @@
+[
+ {
+  "id": "hud-toggle",
+  "cls": "pp-toggle-btn active",
+  "bg": "rgba(0, 212, 255, 0.15)",
+  "bc": "rgb(0, 212, 255)",
+  "labColor": "rgb(0, 212, 255)",
+  "icoFont": "Arial",
+  "icoTxt": "◎",
+  "btnFont": "Arial",
+  "btnFs": "13.3333px"
+ },
+ {
+  "id": "models3d-toggle",
+  "cls": "pp-toggle-btn active",
+  "bg": "rgba(0, 212, 255, 0.15)",
+  "bc": "rgb(0, 212, 255)",
+  "labColor": "rgb(0, 212, 255)",
+  "icoFont": "Arial",
+  "icoTxt": "✈",
+  "btnFont": "Arial",
+  "btnFs": "13.3333px"
+ },
+ {
+  "id": "scope-toggle",
+  "cls": "pp-toggle-btn active",
+  "bg": "rgba(0, 212, 255, 0.15)",
+  "bc": "rgb(0, 212, 255)",
+  "labColor": "rgb(0, 212, 255)",
+  "icoFont": "Material Symbols Outlined",
+  "icoTxt": "adjust",
+  "btnFont": "Arial",
+  "btnFs": "13.3333px"
+ },
+ {
+  "id": "sharpen-toggle",
+  "cls": "pp-toggle-btn active",
+  "bg": "rgba(0, 212, 255, 0.15)",
+  "bc": "rgb(0, 212, 255)",
+  "labColor": "rgb(0, 212, 255)",
+  "icoFont": "Arial",
+  "icoTxt": "🔍",
+  "btnFont": "Arial",
+  "btnFs": "13.3333px"
+ },
+ {
+  "id": "detection-toggle",
+  "cls": "pp-toggle-btn active panoptic",
+  "bg": "rgba(0, 255, 80, 0.18)",
+  "bc": "rgba(0, 255, 80, 0.8)",
+  "labColor": "rgba(0, 255, 80, 0.9)",
+  "icoFont": "Arial",
+  "icoTxt": "▣",
+  "btnFont": "Arial",
+  "btnFs": "13.3333px"
+ },
+ {
+  "id": "celestial-toggle",
+  "cls": "pp-toggle-btn",
+  "bg": "rgba(12, 12, 20, 0.72)",
+  "bc": "rgba(255, 255, 255, 0.08)",
+  "labColor": "rgba(232, 234, 237, 0.5)",
+  "icoFont": "Material Symbols Outlined",
+  "icoTxt": "flare",
+  "btnFont": "Arial",
+  "btnFs": "13.3333px"
+ },
+ {
+  "id": "bloom-toggle",
+  "cls": "pp-toggle-btn",
+  "bg": "rgba(12, 12, 20, 0.72)",
+  "bc": "rgba(255, 255, 255, 0.08)",
+  "labColor": "rgba(232, 234, 237, 0.5)",
+  "icoFont": "Arial",
+  "icoTxt": "✨",
+  "btnFont": "Arial",
+  "btnFs": "13.3333px"
+ },
+ {
+  "id": "clean-view-toggle",
+  "cls": "pp-toggle-btn",
+  "bg": "rgba(12, 12, 20, 0.72)",
+  "bc": "rgba(255, 255, 255, 0.08)",
+  "labColor": "rgba(232, 234, 237, 0.5)",
+  "icoFont": "Arial",
+  "icoTxt": "□",
+  "btnFont": "Arial",
+  "btnFs": "13.3333px"
+ }
+]

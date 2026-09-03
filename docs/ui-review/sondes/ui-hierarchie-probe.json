@@ -1,0 +1,464 @@
+{
+ "tokens": {
+  "--text-dim": "rgba(232, 234, 237, 0.3)",
+  "--text-primary": "#e8eaed",
+  "--text-secondary": "rgba(232, 234, 237, 0.5)",
+  "--accent-cyan": ""
+ },
+ "chips": [
+  {
+   "s": "#traffic-sync-chip",
+   "hidden": false,
+   "display": "flex",
+   "opacity": "0",
+   "visibility": "visible",
+   "rect": {
+    "x": 728,
+    "y": 112,
+    "w": 145,
+    "h": 24
+   },
+   "text": "syncing road network"
+  },
+  {
+   "s": "#cctv-sync-chip",
+   "hidden": false,
+   "display": "flex",
+   "opacity": "0",
+   "visibility": "visible",
+   "rect": {
+    "x": 724,
+    "y": 146,
+    "w": 152,
+    "h": 24
+   },
+   "text": "loading frames\n    0/0"
+  },
+  {
+   "s": "#global-loading-status",
+   "hidden": true,
+   "display": "none",
+   "opacity": "1",
+   "visibility": "visible",
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "LOADING LIVE DATA"
+  }
+ ],
+ "legend": [
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Lente (≤ 7,4 kW) 2.3K"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Normale (≤ 22 kW) 426"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Accélérée (≤ 50 kW) 120"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Rapide (≤ 150 kW) 28"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Haute puissance (> 150 kW) 43"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Publié (1 000 habitants) 76"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Non diffusé — secret statistique (national) 24.4K"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "École 184"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Collège 53"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Lycée 46"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Adapté & médico-social 8"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  },
+  {
+   "sel": "span.data-toggle-legend-item",
+   "display": "flex",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": "Administratif & orientation 14"
+  },
+  {
+   "sel": "span.data-toggle-legend-swatch",
+   "display": "block",
+   "visible": false,
+   "inPanel": true,
+   "rect": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0
+   },
+   "text": ""
+  }
+ ],
+ "north": {
+  "hits": [
+   {
+    "sel": "BUTTON.cctv-cal-value",
+    "text": "HDG --",
+    "visible": false,
+    "inCockpit": false,
+    "rect": {
+     "x": 0,
+     "y": 0
+    }
+   }
+  ],
+  "compassNodes": [
+   {
+    "sel": "cockpit-compass",
+    "visible": true
+   },
+   {
+    "sel": "cockpit-compass-tape",
+    "visible": true
+   }
+  ],
+  "cockpitHidden": true
+ },
+ "overflow": [
+  {
+   "s": "#hud-summary",
+   "scrollW": 827,
+   "clientW": 420,
+   "overflow": "hidden",
+   "textOverflow": "ellipsis",
+   "whiteSpace": "nowrap",
+   "truncated": true,
+   "text": "NORMAL STREET NEAR EIFFEL TOWER (PARIS) 0KM | EUROPE | ALT 555M | WINDOW 4x4KM | SUN 19° | ONA 60° | UTC+0"
+  },
+  {
+   "s": ".hud-summary",
+   "scrollW": 827,
+   "clientW": 420,
+   "overflow": "hidden",
+   "textOverflow": "ellipsis",
+   "whiteSpace": "nowrap",
+   "truncated": true,
+   "text": "NORMAL STREET NEAR EIFFEL TOWER (PARIS) 0KM | EUROPE | ALT 555M | WINDOW 4x4KM | SUN 19° | ONA 60° | UTC+0"
+  },
+  {
+   "s": "#hud-mode",
+   "scrollW": 420,
+   "clientW": 420,
+   "overflow": "visible",
+   "textOverflow": "clip",
+   "whiteSpace": "normal",
+   "truncated": false,
+   "text": "NORMAL"
+  }
+ ],
+ "density": {
+  "total": 126,
+  "interactive": 14,
+  "sizes": [
+   6.24,
+   6.4,
+   6.72,
+   6.88,
+   8,
+   9,
+   9.28,
+   10,
+   11,
+   12,
+   13,
+   13.3333,
+   14,
+   16,
+   17,
+   18,
+   22,
+   26
+  ],
+  "weights": [
+   "300",
+   "400",
+   "500",
+   "600",
+   "700"
+  ]
+ },
+ "overlay": {
+  "canvas": true,
+  "canvasSize": {
+   "w": 1600,
+   "h": 1000
+  },
+  "actions": 0,
+  "actionText": [],
+  "statusText": ""
+ }
+}

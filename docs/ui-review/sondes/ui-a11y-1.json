@@ -1,0 +1,1985 @@
+{
+  "tabWalk": [
+    {
+      "step": 1,
+      "tag": "BUTTON",
+      "id": "clear-selected-layers",
+      "cls": null,
+      "role": null,
+      "ariaLabel": "Clear selected data layers",
+      "title": "Turn off all selected data layers",
+      "text": "layers_clear",
+      "tabindex": null,
+      "rect": {
+        "x": 658,
+        "y": 32,
+        "w": 36,
+        "h": 36
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "none",
+        "outlineWidth": "0px",
+        "outlineColor": "rgba(232, 234, 237, 0.5)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(12, 12, 20, 0.72)",
+        "borderColor": "rgba(255, 255, 255, 0.08)",
+        "color": "rgba(232, 234, 237, 0.5)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "#top-center-actions",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 2,
+      "tag": "BUTTON",
+      "id": "share-btn",
+      "cls": null,
+      "role": null,
+      "ariaLabel": "Copy share link",
+      "title": "Copy share link",
+      "text": "🔗",
+      "tabindex": null,
+      "rect": {
+        "x": 702,
+        "y": 32,
+        "w": 36,
+        "h": 36
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "none",
+        "outlineWidth": "0px",
+        "outlineColor": "rgba(232, 234, 237, 0.5)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(12, 12, 20, 0.72)",
+        "borderColor": "rgba(255, 255, 255, 0.08)",
+        "color": "rgba(232, 234, 237, 0.5)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "#top-center-actions",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 3,
+      "tag": "BUTTON",
+      "id": "reset-globe-view",
+      "cls": null,
+      "role": null,
+      "ariaLabel": "Reset to full globe view",
+      "title": "Reset camera and return to full globe view",
+      "text": "public",
+      "tabindex": null,
+      "rect": {
+        "x": 746,
+        "y": 32,
+        "w": 36,
+        "h": 36
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "none",
+        "outlineWidth": "0px",
+        "outlineColor": "rgba(232, 234, 237, 0.5)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(12, 12, 20, 0.72)",
+        "borderColor": "rgba(255, 255, 255, 0.08)",
+        "color": "rgba(232, 234, 237, 0.5)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "#top-center-actions",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 4,
+      "tag": "BUTTON",
+      "id": "gev-voice-tier",
+      "cls": "gev-voice-tier-btn",
+      "role": null,
+      "ariaLabel": null,
+      "title": "Voice model: gpt-realtime-2 — click to switch to mini; applies next session",
+      "text": "STD",
+      "tabindex": null,
+      "rect": {
+        "x": 733.1,
+        "y": 811.2,
+        "w": 24.8,
+        "h": 11.5
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "auto",
+        "outlineWidth": "1px",
+        "outlineColor": "rgb(0, 95, 204)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(0, 212, 255, 0.06)",
+        "borderColor": "rgba(0, 212, 255, 0.34)",
+        "color": "rgba(232, 234, 237, 0.5)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "DIV",
+        "DIV",
+        "#gev-voice-control",
+        "#command-dock",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 5,
+      "tag": "BUTTON",
+      "id": "gev-voice-button",
+      "cls": null,
+      "role": null,
+      "ariaLabel": "Voice control — hold Space to speak; click to toggle voice",
+      "title": null,
+      "text": "ON/OFF",
+      "tabindex": null,
+      "rect": {
+        "x": 657.1,
+        "y": 810.5,
+        "w": 42.4,
+        "h": 66.4
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "auto",
+        "outlineWidth": "1px",
+        "outlineColor": "rgb(0, 95, 204)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "borderColor": "rgb(0, 212, 255)",
+        "color": "rgb(0, 212, 255)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "#gev-voice-control",
+        "#command-dock",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 6,
+      "tag": "BUTTON",
+      "id": "control-panel-toggle",
+      "cls": "panel-header dock-tray-toggle",
+      "role": null,
+      "ariaLabel": "Expand VISUAL PRESETS",
+      "title": "Expand VISUAL PRESETS",
+      "text": "VISUAL PRESETS",
+      "tabindex": null,
+      "rect": {
+        "x": 803,
+        "y": 839.8,
+        "w": 144,
+        "h": 22.4
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "solid",
+        "outlineWidth": "1px",
+        "outlineColor": "color(srgb 0 0.831373 1 / 0.8)",
+        "outlineOffset": "3px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(0, 0, 0, 0)",
+        "borderColor": "rgb(232, 234, 237)",
+        "color": "rgb(232, 234, 237)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "DIV",
+        "#control-panel",
+        "#command-dock",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 7,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn",
+      "role": null,
+      "ariaLabel": "Expand DATA LAYERS",
+      "title": "Expand DATA LAYERS",
+      "text": "+",
+      "tabindex": null,
+      "rect": {
+        "x": 185,
+        "y": 281.4,
+        "w": 22,
+        "h": 22
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "auto",
+        "outlineWidth": "1px",
+        "outlineColor": "rgb(0, 95, 204)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(255, 255, 255, 0.03)",
+        "borderColor": "rgba(255, 255, 255, 0.12)",
+        "color": "rgba(232, 234, 237, 0.3)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "DIV",
+        "DIV",
+        "#data-panel",
+        "#left-panel-stack",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 8,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn",
+      "role": null,
+      "ariaLabel": "Expand SCENES",
+      "title": "Expand SCENES",
+      "text": "+",
+      "tabindex": null,
+      "rect": {
+        "x": 187,
+        "y": 337.8,
+        "w": 22,
+        "h": 22
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "auto",
+        "outlineWidth": "1px",
+        "outlineColor": "rgb(0, 95, 204)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(255, 255, 255, 0.03)",
+        "borderColor": "rgba(255, 255, 255, 0.12)",
+        "color": "rgba(232, 234, 237, 0.3)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "DIV",
+        "DIV",
+        "#scene-panel",
+        "#left-panel-stack",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 9,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn pp-collapse-btn",
+      "role": null,
+      "ariaLabel": "Expand DISPLAY",
+      "title": "Expand DISPLAY",
+      "text": "◀",
+      "tabindex": null,
+      "rect": {
+        "x": 1357,
+        "y": 279.8,
+        "w": 20,
+        "h": 20
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "auto",
+        "outlineWidth": "1px",
+        "outlineColor": "rgb(0, 95, 204)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(255, 255, 255, 0.03)",
+        "borderColor": "rgba(255, 255, 255, 0.12)",
+        "color": "rgba(232, 234, 237, 0.3)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "DIV",
+        "#pp-toggles",
+        "#right-context-rail",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 10,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn",
+      "role": null,
+      "ariaLabel": "Expand CCTV",
+      "title": "Expand CCTV",
+      "text": "◀",
+      "tabindex": null,
+      "rect": {
+        "x": 1347,
+        "y": 339.4,
+        "w": 22,
+        "h": 22
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "auto",
+        "outlineWidth": "1px",
+        "outlineColor": "rgb(0, 95, 204)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(255, 255, 255, 0.03)",
+        "borderColor": "rgba(255, 255, 255, 0.12)",
+        "color": "rgba(232, 234, 237, 0.3)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "DIV",
+        "DIV",
+        "#cctv-panel",
+        "#right-context-rail",
+        "BODY",
+        "HTML"
+      ]
+    },
+    {
+      "step": 11,
+      "tag": "BUTTON",
+      "id": "context-radio-toggle-btn",
+      "cls": "context-radio-toggle",
+      "role": null,
+      "ariaLabel": "Open compact Radio controls",
+      "title": "Open compact Radio controls",
+      "text": "radio",
+      "tabindex": null,
+      "rect": {
+        "x": 1313.8,
+        "y": 393.4,
+        "w": 28,
+        "h": 28
+      },
+      "inViewport": true,
+      "focusStyle": {
+        "outlineStyle": "none",
+        "outlineWidth": "0px",
+        "outlineColor": "rgb(255, 255, 255)",
+        "outlineOffset": "0px",
+        "boxShadow": "none",
+        "backgroundColor": "rgba(42, 113, 171, 0.08)",
+        "borderColor": "rgb(121, 194, 255)",
+        "color": "rgb(255, 255, 255)",
+        "filter": "none"
+      },
+      "ancestors": [
+        "#context-radio-dock",
+        "DIV",
+        "DIV",
+        "#global-context-panel",
+        "#right-context-rail",
+        "BODY"
+      ]
+    }
+  ],
+  "loopedAt": {
+    "step": 8,
+    "first": 7,
+    "key": "BUTTON#null.panel-collapse-btn:+"
+  },
+  "focusDiff": [
+    {
+      "sel": "#clear-selected-layers",
+      "label": "Clear selected data layers",
+      "w": 36,
+      "h": 36,
+      "changed": [
+        "transform"
+      ],
+      "focusedOutline": "none 0px rgba(232, 234, 237, 0.5)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "#share-btn",
+      "label": "Copy share link",
+      "w": 36,
+      "h": 36,
+      "changed": [
+        "transform"
+      ],
+      "focusedOutline": "none 0px rgba(232, 234, 237, 0.5)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "#reset-globe-view",
+      "label": "Reset to full globe view",
+      "w": 36,
+      "h": 36,
+      "changed": [
+        "transform"
+      ],
+      "focusedOutline": "none 0px rgba(232, 234, 237, 0.5)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "#gev-voice-tier",
+      "label": "STD",
+      "w": 24.8,
+      "h": 11.5,
+      "changed": [
+        "outlineStyle",
+        "outlineWidth",
+        "outlineColor"
+      ],
+      "focusedOutline": "auto 1px rgb(0, 95, 204)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "#gev-voice-button",
+      "label": "Voice control — hold Space to speak; click to toggle voice",
+      "w": 42.4,
+      "h": 66.4,
+      "changed": [
+        "outlineStyle",
+        "outlineWidth",
+        "outlineColor"
+      ],
+      "focusedOutline": "auto 1px rgb(0, 95, 204)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "#control-panel-toggle",
+      "label": "Expand VISUAL PRESETS",
+      "w": 144,
+      "h": 22.4,
+      "changed": [
+        "outlineStyle",
+        "outlineWidth",
+        "outlineColor",
+        "outlineOffset"
+      ],
+      "focusedOutline": "solid 1px color(srgb 0 0.831373 1 / 0.8)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Expand DATA LAYERS",
+      "w": 22,
+      "h": 22,
+      "changed": [
+        "outlineStyle"
+      ],
+      "focusedOutline": "auto 0px rgba(232, 234, 237, 0.3)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Expand SCENES",
+      "w": 22,
+      "h": 22,
+      "changed": [
+        "outlineStyle"
+      ],
+      "focusedOutline": "auto 0px rgba(232, 234, 237, 0.3)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Expand DISPLAY",
+      "w": 20,
+      "h": 20,
+      "changed": [
+        "outlineStyle"
+      ],
+      "focusedOutline": "auto 0px rgba(232, 234, 237, 0.3)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Expand CCTV",
+      "w": 22,
+      "h": 22,
+      "changed": [
+        "outlineStyle"
+      ],
+      "focusedOutline": "auto 0px rgba(232, 234, 237, 0.3)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "#context-radio-toggle-btn",
+      "label": "Open compact Radio controls",
+      "w": 28,
+      "h": 28,
+      "changed": [],
+      "focusedOutline": "none 0px rgb(255, 255, 255)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Expand CONTEXT",
+      "w": 19.2,
+      "h": 22,
+      "changed": [
+        "outlineStyle"
+      ],
+      "focusedOutline": "auto 0px rgba(232, 234, 237, 0.3)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    },
+    {
+      "sel": "a",
+      "label": null,
+      "w": 138,
+      "h": 13,
+      "changed": [
+        "outlineStyle",
+        "outlineWidth",
+        "outlineColor",
+        "outlineOffset"
+      ],
+      "focusedOutline": "auto 1px rgb(0, 95, 204)",
+      "focusedBoxShadow": "none",
+      "overCanvas": false
+    }
+  ],
+  "targets": [
+    {
+      "sel": "#gev-voice-tier",
+      "label": "STD",
+      "w": 24.8,
+      "h": 11.5,
+      "x": 733,
+      "y": 811,
+      "min": 11.5,
+      "type": "button:button"
+    },
+    {
+      "sel": "a",
+      "label": "",
+      "w": 138,
+      "h": 13,
+      "x": 24,
+      "y": 871,
+      "min": 13,
+      "type": "a"
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Expand CONTEXT",
+      "w": 19.2,
+      "h": 22,
+      "x": 1354,
+      "y": 396,
+      "min": 19.2,
+      "type": "button:submit"
+    },
+    {
+      "sel": "button.panel-collapse-btn.pp-collapse-btn",
+      "label": "Expand DISPLAY",
+      "w": 20,
+      "h": 20,
+      "x": 1357,
+      "y": 281,
+      "min": 20,
+      "type": "button:submit"
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Expand DATA LAYERS",
+      "w": 22,
+      "h": 22,
+      "x": 185,
+      "y": 281,
+      "min": 22,
+      "type": "button:submit"
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Expand SCENES",
+      "w": 22,
+      "h": 22,
+      "x": 187,
+      "y": 339,
+      "min": 22,
+      "type": "button:submit"
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Expand CCTV",
+      "w": 22,
+      "h": 22,
+      "x": 1347,
+      "y": 339,
+      "min": 22,
+      "type": "button:submit"
+    },
+    {
+      "sel": "#control-panel-toggle",
+      "label": "Expand VISUAL PRESETS",
+      "w": 144,
+      "h": 22.4,
+      "x": 803,
+      "y": 840,
+      "min": 22.4,
+      "type": "button:button"
+    },
+    {
+      "sel": "#context-radio-toggle-btn",
+      "label": "Open compact Radio controls",
+      "w": 28,
+      "h": 28,
+      "x": 1314,
+      "y": 393,
+      "min": 28,
+      "type": "button:button"
+    },
+    {
+      "sel": "#clear-selected-layers",
+      "label": "Clear selected data layers",
+      "w": 36,
+      "h": 36,
+      "x": 658,
+      "y": 32,
+      "min": 36,
+      "type": "button:button"
+    },
+    {
+      "sel": "#share-btn",
+      "label": "Copy share link",
+      "w": 36,
+      "h": 36,
+      "x": 702,
+      "y": 32,
+      "min": 36,
+      "type": "button:button"
+    },
+    {
+      "sel": "#reset-globe-view",
+      "label": "Reset to full globe view",
+      "w": 36,
+      "h": 36,
+      "x": 746,
+      "y": 32,
+      "min": 36,
+      "type": "button:button"
+    },
+    {
+      "sel": "#gev-voice-button",
+      "label": "Voice control — hold Space to speak; click to toggle voice",
+      "w": 42.4,
+      "h": 66.4,
+      "x": 657,
+      "y": 811,
+      "min": 42.4,
+      "type": "button:button"
+    }
+  ],
+  "aria": {
+    "headings": [
+      {
+        "level": 1,
+        "text": ".cls-4 { fill: #fff; } .cls-2, .cls-4 { strok",
+        "visible": true,
+        "id": null
+      },
+      {
+        "level": 2,
+        "text": "GOD'S EYE VIEW",
+        "visible": false,
+        "id": null
+      }
+    ],
+    "unlabelledButtons": [],
+    "imgsNoAlt": [
+      "t:4290/cesium-1.138.0/Assets/Images/ion-credit.png"
+    ],
+    "svgNoTitle": 1,
+    "liveRegions": [
+      {
+        "sel": "#world-overlay-status",
+        "live": "polite",
+        "role": "status",
+        "atomic": "true",
+        "hidden": false,
+        "display": "block",
+        "visible": false,
+        "textLen": 0
+      },
+      {
+        "sel": "#global-loading-status",
+        "live": "polite",
+        "role": "status",
+        "atomic": "true",
+        "hidden": true,
+        "display": "none",
+        "visible": false,
+        "textLen": 17
+      },
+      {
+        "sel": "#traffic-sync-chip",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "flex",
+        "visible": true,
+        "textLen": 20
+      },
+      {
+        "sel": "#cctv-sync-chip",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "flex",
+        "visible": true,
+        "textLen": 22
+      },
+      {
+        "sel": "#toast",
+        "live": "polite",
+        "role": "status",
+        "atomic": "true",
+        "hidden": false,
+        "display": "block",
+        "visible": false,
+        "textLen": 0
+      },
+      {
+        "sel": "#cockpit-vision-current-label",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "block",
+        "visible": false,
+        "textLen": 6
+      },
+      {
+        "sel": "#cockpit-brief-position",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "block",
+        "visible": false,
+        "textLen": 5
+      },
+      {
+        "sel": "#cockpit-signal-list",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "grid",
+        "visible": false,
+        "textLen": 0
+      },
+      {
+        "sel": "#cockpit-news-list",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "none",
+        "visible": false,
+        "textLen": 0
+      },
+      {
+        "sel": "#cctv-lightbox-meta",
+        "live": "polite",
+        "role": "status",
+        "atomic": null,
+        "hidden": false,
+        "display": "block",
+        "visible": false,
+        "textLen": 0
+      },
+      {
+        "sel": "#location-mini-status",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "none",
+        "visible": false,
+        "textLen": 36
+      },
+      {
+        "sel": "DIV.gev-voice-error-tray",
+        "live": "assertive",
+        "role": "alert",
+        "atomic": null,
+        "hidden": false,
+        "display": "block",
+        "visible": false,
+        "textLen": 126
+      },
+      {
+        "sel": "#map-stack-status",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "block",
+        "visible": false,
+        "textLen": 3
+      },
+      {
+        "sel": "#style-mini-status",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "none",
+        "visible": false,
+        "textLen": 20
+      },
+      {
+        "sel": "#cctv-source-badge",
+        "live": "polite",
+        "role": "status",
+        "atomic": null,
+        "hidden": false,
+        "display": "none",
+        "visible": false,
+        "textLen": 16
+      },
+      {
+        "sel": "#radio-station-card",
+        "live": "polite",
+        "role": null,
+        "atomic": null,
+        "hidden": false,
+        "display": "none",
+        "visible": false,
+        "textLen": 68
+      },
+      {
+        "sel": "#radio-playback-state",
+        "live": "polite",
+        "role": "status",
+        "atomic": null,
+        "hidden": false,
+        "display": "none",
+        "visible": false,
+        "textLen": 9
+      }
+    ],
+    "inputsNoLabel": [],
+    "landmarkCount": 3,
+    "landmarks": [
+      {
+        "tag": "DIV",
+        "id": "world-overlay-actions",
+        "label": "Visible map targets"
+      },
+      {
+        "tag": "NAV",
+        "id": "top-center-actions",
+        "label": "Globe actions"
+      },
+      {
+        "tag": "ASIDE",
+        "id": "right-context-rail",
+        "label": null
+      }
+    ],
+    "hasMain": false,
+    "htmlLang": "en",
+    "title": "God's Eye View",
+    "skipLink": false,
+    "canvasRole": {
+      "role": null,
+      "label": null,
+      "tabindex": null
+    }
+  },
+  "contrast": [
+    {
+      "sel": "p.subtitle",
+      "text": "NO PLACE LEFT BEHIND",
+      "fontSize": 11,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.35,
+      "pass": false,
+      "x": 233,
+      "y": 82,
+      "rect": {
+        "x": 36,
+        "y": 75,
+        "w": 394,
+        "h": 14
+      }
+    },
+    {
+      "sel": "span.indicator-label",
+      "text": "ACTIVE STYLE",
+      "fontSize": 10,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.35,
+      "pass": false,
+      "x": 1350,
+      "y": 39,
+      "rect": {
+        "x": 1296,
+        "y": 32,
+        "w": 108,
+        "h": 13
+      }
+    },
+    {
+      "sel": "span.panel-title",
+      "text": "DATA LAYERS",
+      "fontSize": 8,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.37,
+      "pass": false,
+      "x": 109,
+      "y": 292,
+      "rect": {
+        "x": 73,
+        "y": 287,
+        "w": 73,
+        "h": 10
+      }
+    },
+    {
+      "sel": "span.panel-title",
+      "text": "SCENES",
+      "fontSize": 8,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.37,
+      "pass": false,
+      "x": 91,
+      "y": 350,
+      "rect": {
+        "x": 71,
+        "y": 345,
+        "w": 40,
+        "h": 10
+      }
+    },
+    {
+      "sel": "span.pp-header-label",
+      "text": "DISPLAY",
+      "fontSize": 8,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.37,
+      "pass": false,
+      "x": 1249,
+      "y": 291,
+      "rect": {
+        "x": 1227,
+        "y": 286,
+        "w": 43,
+        "h": 10
+      }
+    },
+    {
+      "sel": "span.panel-title",
+      "text": "CCTV",
+      "fontSize": 8,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.37,
+      "pass": false,
+      "x": 1244,
+      "y": 350,
+      "rect": {
+        "x": 1231,
+        "y": 345,
+        "w": 26,
+        "h": 10
+      }
+    },
+    {
+      "sel": "span.panel-title",
+      "text": "CONTEXT",
+      "fontSize": 9,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.37,
+      "pass": false,
+      "x": 1260,
+      "y": 407,
+      "rect": {
+        "x": 1231,
+        "y": 401,
+        "w": 59,
+        "h": 12
+      }
+    },
+    {
+      "sel": "#gev-voice-cost-value",
+      "text": "~$0.00",
+      "fontSize": 6.4,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "#gev-voice-control:a0.94>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.43,
+      "pass": false,
+      "x": 774,
+      "y": 817,
+      "rect": {
+        "x": 761,
+        "y": 814,
+        "w": 25,
+        "h": 6
+      }
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "text": "+",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "BUTTON:a0.03>DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.43,
+      "pass": false,
+      "x": 196,
+      "y": 292,
+      "rect": {
+        "x": 185,
+        "y": 281,
+        "w": 22,
+        "h": 22
+      }
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "text": "+",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "BUTTON:a0.03>DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.43,
+      "pass": false,
+      "x": 198,
+      "y": 350,
+      "rect": {
+        "x": 187,
+        "y": 339,
+        "w": 22,
+        "h": 22
+      }
+    },
+    {
+      "sel": "button.panel-collapse-btn.pp-collapse-btn",
+      "text": "◀",
+      "fontSize": 12,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "BUTTON:a0.03>DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.43,
+      "pass": false,
+      "x": 1367,
+      "y": 291,
+      "rect": {
+        "x": 1357,
+        "y": 281,
+        "w": 20,
+        "h": 20
+      }
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "text": "◀",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "BUTTON:a0.03>DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.43,
+      "pass": false,
+      "x": 1358,
+      "y": 350,
+      "rect": {
+        "x": 1347,
+        "y": 339,
+        "w": 22,
+        "h": 22
+      }
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "text": "◀",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.3)",
+      "bgChain": "BUTTON:a0.03>DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 2.43,
+      "pass": false,
+      "x": 1363,
+      "y": 407,
+      "rect": {
+        "x": 1354,
+        "y": 396,
+        "w": 19,
+        "h": 22
+      }
+    },
+    {
+      "sel": "#gev-voice-tier",
+      "text": "STD",
+      "fontSize": 6.4,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.5)",
+      "bgChain": "#gev-voice-tier:a0.06>#gev-voice-control:a0.94>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 4.22,
+      "pass": false,
+      "x": 746,
+      "y": 817,
+      "rect": {
+        "x": 733,
+        "y": 811,
+        "w": 25,
+        "h": 12
+      }
+    },
+    {
+      "sel": "span.material-symbols-outlined",
+      "text": "radio",
+      "fontSize": 17,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(143, 207, 255, 0.58)",
+      "bgChain": "#context-radio-toggle-btn:a0.08>DIV:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 4.44,
+      "pass": false,
+      "x": 1328,
+      "y": 407,
+      "rect": {
+        "x": 1319,
+        "y": 399,
+        "w": 17,
+        "h": 17
+      }
+    },
+    {
+      "sel": "#gev-voice-detail",
+      "text": "VOICE STANDBY",
+      "fontSize": 6.2,
+      "weight": "500",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.5)",
+      "bgChain": "#gev-voice-control:a0.94>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 4.46,
+      "pass": false,
+      "x": 746,
+      "y": 868,
+      "rect": {
+        "x": 710,
+        "y": 863,
+        "w": 73,
+        "h": 9
+      }
+    },
+    {
+      "sel": "span.material-symbols-outlined",
+      "text": "layers_clear",
+      "fontSize": 18,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.5)",
+      "bgChain": "#clear-selected-layers:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 4.61,
+      "pass": true,
+      "x": 676,
+      "y": 50,
+      "rect": {
+        "x": 667,
+        "y": 41,
+        "w": 18,
+        "h": 18
+      }
+    },
+    {
+      "sel": "span.share-icon",
+      "text": "🔗",
+      "fontSize": 16,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.5)",
+      "bgChain": "#share-btn:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 4.61,
+      "pass": true,
+      "x": 720,
+      "y": 50,
+      "rect": {
+        "x": 710,
+        "y": 42,
+        "w": 20,
+        "h": 16
+      }
+    },
+    {
+      "sel": "span.material-symbols-outlined",
+      "text": "public",
+      "fontSize": 18,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.5)",
+      "bgChain": "#reset-globe-view:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 4.61,
+      "pass": true,
+      "x": 764,
+      "y": 50,
+      "rect": {
+        "x": 755,
+        "y": 41,
+        "w": 18,
+        "h": 18
+      }
+    },
+    {
+      "sel": "#hud-rec-dot",
+      "text": "●",
+      "fontSize": 14,
+      "weight": "400",
+      "large": false,
+      "color": "rgb(255, 51, 51)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.43,
+      "pass": true,
+      "x": 1131,
+      "y": 151,
+      "rect": {
+        "x": 1125,
+        "y": 142,
+        "w": 10,
+        "h": 18
+      }
+    },
+    {
+      "sel": "div.hud-bracket",
+      "text": "┌",
+      "fontSize": 22,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 47,
+      "y": 158,
+      "rect": {
+        "x": 40,
+        "y": 140,
+        "w": 13,
+        "h": 35
+      }
+    },
+    {
+      "sel": "div.hud-classification",
+      "text": "TOP SECRET // SI-TK // NOFORN",
+      "fontSize": 12,
+      "weight": "600",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 200,
+      "y": 150,
+      "rect": {
+        "x": 59,
+        "y": 140,
+        "w": 281,
+        "h": 19
+      }
+    },
+    {
+      "sel": "div.hud-system",
+      "text": "KH11-4169  OPS-4140",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 200,
+      "y": 173,
+      "rect": {
+        "x": 59,
+        "y": 162,
+        "w": 281,
+        "h": 21
+      }
+    },
+    {
+      "sel": "#hud-mode",
+      "text": "NORMAL",
+      "fontSize": 16,
+      "weight": "700",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 200,
+      "y": 199,
+      "rect": {
+        "x": 59,
+        "y": 186,
+        "w": 281,
+        "h": 26
+      }
+    },
+    {
+      "sel": "div.hud-summary-label",
+      "text": "SUMMARY",
+      "fontSize": 9,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 200,
+      "y": 225,
+      "rect": {
+        "x": 59,
+        "y": 218,
+        "w": 281,
+        "h": 14
+      }
+    },
+    {
+      "sel": "#hud-summary",
+      "text": "NORMAL GLOBA",
+      "fontSize": 11,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 200,
+      "y": 243,
+      "rect": {
+        "x": 59,
+        "y": 234,
+        "w": 281,
+        "h": 18
+      }
+    },
+    {
+      "sel": "div.hud-rec",
+      "text": "REC",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1253,
+      "y": 151,
+      "rect": {
+        "x": 1125,
+        "y": 140,
+        "w": 255,
+        "h": 22
+      }
+    },
+    {
+      "sel": "#hud-timestamp",
+      "text": "2026-09-03 08:04:04Z",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1283,
+      "y": 150,
+      "rect": {
+        "x": 1185,
+        "y": 142,
+        "w": 196,
+        "h": 17
+      }
+    },
+    {
+      "sel": "div.hud-orbital",
+      "text": "ORB: 47469  PASS: DESC-249",
+      "fontSize": 12,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1253,
+      "y": 172,
+      "rect": {
+        "x": 1125,
+        "y": 162,
+        "w": 255,
+        "h": 19
+      }
+    },
+    {
+      "sel": "div.hud-bracket",
+      "text": "┐",
+      "fontSize": 22,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1393,
+      "y": 158,
+      "rect": {
+        "x": 1387,
+        "y": 140,
+        "w": 13,
+        "h": 35
+      }
+    },
+    {
+      "sel": "div.hud-bracket",
+      "text": "└",
+      "fontSize": 22,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 47,
+      "y": 750,
+      "rect": {
+        "x": 40,
+        "y": 732,
+        "w": 13,
+        "h": 35
+      }
+    },
+    {
+      "sel": "#hud-mgrs",
+      "text": "MGRS: 31U DQ 4825 1195",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 196,
+      "y": 743,
+      "rect": {
+        "x": 59,
+        "y": 732,
+        "w": 274,
+        "h": 21
+      }
+    },
+    {
+      "sel": "#hud-latlon",
+      "text": "48°51'30.24\"N 002°17'40.20\"E",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 196,
+      "y": 764,
+      "rect": {
+        "x": 59,
+        "y": 753,
+        "w": 274,
+        "h": 21
+      }
+    },
+    {
+      "sel": "#hud-gsd",
+      "text": "GSD: 0.22m  NIIRS: 7.1",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1268,
+      "y": 716,
+      "rect": {
+        "x": 1155,
+        "y": 706,
+        "w": 225,
+        "h": 21
+      }
+    },
+    {
+      "sel": "#hud-alt",
+      "text": "ALT: 555m   SUN: 27.6° EL",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1268,
+      "y": 737,
+      "rect": {
+        "x": 1155,
+        "y": 726,
+        "w": 225,
+        "h": 21
+      }
+    },
+    {
+      "sel": "#hud-ais-vessel",
+      "text": "AIS: --",
+      "fontSize": 13,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1268,
+      "y": 764,
+      "rect": {
+        "x": 1155,
+        "y": 753,
+        "w": 225,
+        "h": 21
+      }
+    },
+    {
+      "sel": "div.hud-bracket",
+      "text": "┘",
+      "fontSize": 22,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1393,
+      "y": 723,
+      "rect": {
+        "x": 1387,
+        "y": 706,
+        "w": 13,
+        "h": 35
+      }
+    },
+    {
+      "sel": "#hud-coll",
+      "text": "COLL: 08:04:04Z",
+      "fontSize": 10,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 36,
+      "y": 394,
+      "rect": {
+        "x": 28,
+        "y": 338,
+        "w": 16,
+        "h": 113
+      }
+    },
+    {
+      "sel": "#hud-ona",
+      "text": "ONA: 60.0°",
+      "fontSize": 10,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 36,
+      "y": 280,
+      "rect": {
+        "x": 28,
+        "y": 243,
+        "w": 16,
+        "h": 75
+      }
+    },
+    {
+      "sel": "div",
+      "text": "BAND: PAN",
+      "fontSize": 10,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1404,
+      "y": 264,
+      "rect": {
+        "x": 1396,
+        "y": 230,
+        "w": 16,
+        "h": 68
+      }
+    },
+    {
+      "sel": "div",
+      "text": "BITS: 11",
+      "fontSize": 10,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1404,
+      "y": 348,
+      "rect": {
+        "x": 1396,
+        "y": 318,
+        "w": 16,
+        "h": 60
+      }
+    },
+    {
+      "sel": "div",
+      "text": "LVL: 1A",
+      "fontSize": 10,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(0, 255, 255, 0.6)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 5.95,
+      "pass": true,
+      "x": 1404,
+      "y": 424,
+      "rect": {
+        "x": 1396,
+        "y": 398,
+        "w": 16,
+        "h": 53
+      }
+    },
+    {
+      "sel": "span.gev-mic-label",
+      "text": "ON/OFF",
+      "fontSize": 6.7,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(190, 221, 230, 0.72)",
+      "bgChain": "#gev-voice-control:a0.94>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 6.77,
+      "pass": true,
+      "x": 678,
+      "y": 866,
+      "rect": {
+        "x": 664,
+        "y": 861,
+        "w": 28,
+        "h": 9
+      }
+    },
+    {
+      "sel": "span.location-toolbar-label",
+      "text": "LOCATION",
+      "fontSize": 9.3,
+      "weight": "500",
+      "large": false,
+      "color": "rgba(206, 232, 239, 0.72)",
+      "bgChain": "#location-bar:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 8.13,
+      "pass": true,
+      "x": 567,
+      "y": 851,
+      "rect": {
+        "x": 495,
+        "y": 840,
+        "w": 144,
+        "h": 22
+      }
+    },
+    {
+      "sel": "span.panel-title",
+      "text": "VISUAL PRESETS",
+      "fontSize": 9.3,
+      "weight": "500",
+      "large": false,
+      "color": "rgba(206, 232, 239, 0.72)",
+      "bgChain": "#control-panel:a0.72>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 8.13,
+      "pass": true,
+      "x": 882,
+      "y": 851,
+      "rect": {
+        "x": 817,
+        "y": 840,
+        "w": 130,
+        "h": 22
+      }
+    },
+    {
+      "sel": "a.cesium-credit-expand-link",
+      "text": "Data attribution",
+      "fontSize": 10,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(232, 234, 237, 0.7)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 8.19,
+      "pass": true,
+      "x": 213,
+      "y": 874,
+      "rect": {
+        "x": 162,
+        "y": 868,
+        "w": 101,
+        "h": 13
+      }
+    },
+    {
+      "sel": "#gev-voice-status",
+      "text": "OFF",
+      "fontSize": 6.9,
+      "weight": "400",
+      "large": false,
+      "color": "rgb(0, 212, 255)",
+      "bgChain": "#gev-voice-control:a0.94>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 9.68,
+      "pass": true,
+      "x": 721,
+      "y": 816,
+      "rect": {
+        "x": 715,
+        "y": 811,
+        "w": 12,
+        "h": 9
+      }
+    },
+    {
+      "sel": "span.title-accent",
+      "text": "VIEW",
+      "fontSize": 26,
+      "weight": "300",
+      "large": true,
+      "color": "rgb(0, 212, 255)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 11.16,
+      "pass": true,
+      "x": 383,
+      "y": 50,
+      "rect": {
+        "x": 336,
+        "y": 32,
+        "w": 94,
+        "h": 35
+      }
+    },
+    {
+      "sel": "#active-style-name",
+      "text": "NORMAL",
+      "fontSize": 16,
+      "weight": "500",
+      "large": false,
+      "color": "rgb(0, 212, 255)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 11.16,
+      "pass": true,
+      "x": 1350,
+      "y": 60,
+      "rect": {
+        "x": 1296,
+        "y": 49,
+        "w": 108,
+        "h": 21
+      }
+    },
+    {
+      "sel": "#cctv-sync-progress",
+      "text": "0/0",
+      "fontSize": 8,
+      "weight": "600",
+      "large": false,
+      "color": "rgb(0, 225, 255)",
+      "bgChain": "#cctv-sync-chip:a0.78>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 12.49,
+      "pass": true,
+      "x": 768,
+      "y": 158,
+      "rect": {
+        "x": 751,
+        "y": 153,
+        "w": 34,
+        "h": 10
+      }
+    },
+    {
+      "sel": "#traffic-sync-label",
+      "text": "syncing road network",
+      "fontSize": 8,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(184, 244, 255, 0.92)",
+      "bgChain": "#traffic-sync-chip:a0.78>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 13.91,
+      "pass": true,
+      "x": 720,
+      "y": 124,
+      "rect": {
+        "x": 659,
+        "y": 119,
+        "w": 123,
+        "h": 10
+      }
+    },
+    {
+      "sel": "#cctv-sync-label",
+      "text": "loading frames",
+      "fontSize": 8,
+      "weight": "400",
+      "large": false,
+      "color": "rgba(184, 244, 255, 0.92)",
+      "bgChain": "#cctv-sync-chip:a0.78>BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 13.91,
+      "pass": true,
+      "x": 698,
+      "y": 158,
+      "rect": {
+        "x": 655,
+        "y": 153,
+        "w": 86,
+        "h": 10
+      }
+    },
+    {
+      "sel": "span",
+      "text": "GOD'S EYE",
+      "fontSize": 26,
+      "weight": "600",
+      "large": true,
+      "color": "rgb(232, 234, 237)",
+      "bgChain": "BODY:opaque",
+      "opaqueBackdrop": true,
+      "ratio": 16.39,
+      "pass": true,
+      "x": 265,
+      "y": 50,
+      "rect": {
+        "x": 100,
+        "y": 32,
+        "w": 330,
+        "h": 35
+      }
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,195 @@
+{
+  "hudSummary": {
+    "text": "NORMAL STREET NEAR LOUVRE PYRAMID (PARIS) 0KM | EUROPE | ALT 855M | WINDOW 3x3KM | SUN 28° | ONA 55° | UTC+0",
+    "scrollWidth": 842,
+    "clientWidth": 420,
+    "rect": {
+      "x": 59.25,
+      "y": 233.96875,
+      "w": 420,
+      "h": 17.59375
+    },
+    "color": "rgba(0, 255, 255, 0.6)",
+    "opacity": "0.88",
+    "fontSize": "11px",
+    "overflow": "hidden",
+    "whiteSpace": "nowrap",
+    "textOverflow": "ellipsis",
+    "visible": true
+  },
+  "chain": [
+    {
+      "n": "#hud-summary",
+      "bg": "rgba(0, 0, 0, 0)",
+      "bf": "none",
+      "ts": "rgba(0, 255, 255, 0.4) 0px 0px 4px"
+    },
+    {
+      "n": ".hud-summary-wrap",
+      "bg": "rgba(0, 0, 0, 0)",
+      "bf": "none",
+      "ts": "rgba(0, 255, 255, 0.4) 0px 0px 4px"
+    },
+    {
+      "n": ".hud-content",
+      "bg": "rgba(0, 0, 0, 0)",
+      "bf": "none",
+      "ts": "rgba(0, 255, 255, 0.4) 0px 0px 4px"
+    },
+    {
+      "n": ".hud-corner",
+      "bg": "rgba(0, 0, 0, 0)",
+      "bf": "none",
+      "ts": "rgba(0, 255, 255, 0.4) 0px 0px 4px"
+    },
+    {
+      "n": "#intel-hud",
+      "bg": "rgba(0, 0, 0, 0)",
+      "bf": "none",
+      "ts": "none"
+    },
+    {
+      "n": "BODY",
+      "bg": "rgb(10, 10, 15)",
+      "bf": "none",
+      "ts": "none"
+    }
+  ],
+  "panelTitles": [
+    {
+      "text": "VISUAL PRESETS",
+      "id": "control-panel-toggle",
+      "fontSize": "9.28px",
+      "color": "rgba(206, 232, 239, 0.72)",
+      "opacity": "1",
+      "rect": {
+        "x": 897,
+        "y": 840,
+        "w": 130,
+        "h": 22
+      },
+      "collapsed": false
+    },
+    {
+      "text": "DATA LAYERS",
+      "id": "data-panel",
+      "fontSize": "8px",
+      "color": "rgba(232, 234, 237, 0.3)",
+      "opacity": "1",
+      "rect": {
+        "x": 73,
+        "y": 287,
+        "w": 73,
+        "h": 10
+      },
+      "collapsed": true
+    },
+    {
+      "text": "SCENES",
+      "id": "scene-panel",
+      "fontSize": "8px",
+      "color": "rgba(232, 234, 237, 0.3)",
+      "opacity": "1",
+      "rect": {
+        "x": 71,
+        "y": 345,
+        "w": 40,
+        "h": 10
+      },
+      "collapsed": true
+    },
+    {
+      "text": "CCTV",
+      "id": "cctv-panel",
+      "fontSize": "8px",
+      "color": "rgba(232, 234, 237, 0.3)",
+      "opacity": "1",
+      "rect": {
+        "x": 1391,
+        "y": 345,
+        "w": 26,
+        "h": 10
+      },
+      "collapsed": true
+    },
+    {
+      "text": "CONTEXT",
+      "id": "global-context-panel",
+      "fontSize": "9px",
+      "color": "rgba(232, 234, 237, 0.3)",
+      "opacity": "1",
+      "rect": {
+        "x": 1391,
+        "y": 401,
+        "w": 59,
+        "h": 12
+      },
+      "collapsed": true
+    }
+  ],
+  "compassEls": [
+    {
+      "id": "",
+      "cls": "cockpit-compass",
+      "visible": false
+    },
+    {
+      "id": "cockpit-compass-tape",
+      "cls": "cockpit-compass-tape",
+      "visible": false
+    }
+  ],
+  "headingText": [
+    {
+      "tag": "BUTTON",
+      "id": "",
+      "cls": "cctv-cal-value",
+      "text": "HDG --",
+      "visible": false
+    }
+  ],
+  "cockpitHidden": true,
+  "coll1": "COLL: 08:05:39Z",
+  "hudRail": [
+    {
+      "id": "hud-mode",
+      "t": "NORMAL"
+    },
+    {
+      "id": "hud-summary",
+      "t": "NORMAL STREET NEAR LOUVRE PYRAMID (PARIS) 0KM | EUROPE | ALT"
+    },
+    {
+      "id": "hud-timestamp",
+      "t": "2026-09-03 08:05:38Z"
+    },
+    {
+      "id": "hud-mgrs",
+      "t": "MGRS: 31U DQ 5132 1210"
+    },
+    {
+      "id": "hud-latlon",
+      "t": "48°51'36.00\"N 002°20'11.04\"E"
+    },
+    {
+      "id": "hud-gsd",
+      "t": "GSD: 0.34m  NIIRS: 6.5"
+    },
+    {
+      "id": "hud-alt",
+      "t": "ALT: 855m   SUN: 27.8° EL"
+    },
+    {
+      "id": "hud-ais-vessel",
+      "t": "AIS: --"
+    },
+    {
+      "id": "hud-coll",
+      "t": "COLL: 08:05:39Z"
+    },
+    {
+      "id": "hud-ona",
+      "t": "ONA: 55.0°"
+    }
+  ]
+}

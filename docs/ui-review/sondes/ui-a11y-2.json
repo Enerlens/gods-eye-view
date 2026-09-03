@@ -1,0 +1,2054 @@
+{
+  "opened": [
+    [
+      "#data-panel",
+      "open"
+    ],
+    [
+      "#scene-panel",
+      "open"
+    ],
+    [
+      "#cctv-panel",
+      "open"
+    ]
+  ],
+  "walk": [
+    {
+      "step": 1,
+      "tag": "BUTTON",
+      "id": "clear-selected-layers",
+      "cls": "",
+      "label": "Clear selected data layers",
+      "rect": {
+        "x": 658,
+        "y": 32,
+        "w": 36,
+        "h": 36
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(12, 12, 20, 0.72)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#clear-selected-layers<#top-center-actions<body<html",
+      "scrollY": 0,
+      "panelScroll": null
+    },
+    {
+      "step": 2,
+      "tag": "BUTTON",
+      "id": "share-btn",
+      "cls": "",
+      "label": "Copy share link",
+      "rect": {
+        "x": 702,
+        "y": 32,
+        "w": 36,
+        "h": 36
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(12, 12, 20, 0.72)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#share-btn<#top-center-actions<body<html",
+      "scrollY": 0,
+      "panelScroll": null
+    },
+    {
+      "step": 3,
+      "tag": "BUTTON",
+      "id": "reset-globe-view",
+      "cls": "",
+      "label": "Reset to full globe view",
+      "rect": {
+        "x": 746,
+        "y": 32,
+        "w": 36,
+        "h": 36
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(12, 12, 20, 0.72)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#reset-globe-view<#top-center-actions<body<html",
+      "scrollY": 0,
+      "panelScroll": null
+    },
+    {
+      "step": 4,
+      "tag": "BUTTON",
+      "id": "gev-voice-tier",
+      "cls": "gev-voice-tier-btn",
+      "label": "STD",
+      "rect": {
+        "x": 733,
+        "y": 811,
+        "w": 24.8,
+        "h": 11.5
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 212, 255, 0.06)",
+      "border": "rgba(0, 212, 255, 0.34)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#gev-voice-tier<div<div<#gev-voice-control<#command-dock",
+      "scrollY": 0,
+      "panelScroll": "command-dock:0"
+    },
+    {
+      "step": 5,
+      "tag": "BUTTON",
+      "id": "gev-voice-button",
+      "cls": "",
+      "label": "Voice control — hold Space to speak; click to toggle voice",
+      "rect": {
+        "x": 657,
+        "y": 811,
+        "w": 42.4,
+        "h": 66.4
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgb(0, 212, 255)",
+      "color": "rgb(0, 212, 255)",
+      "path": "#gev-voice-button<#gev-voice-control<#command-dock<body<html",
+      "scrollY": 0,
+      "panelScroll": "command-dock:0"
+    },
+    {
+      "step": 6,
+      "tag": "BUTTON",
+      "id": "control-panel-toggle",
+      "cls": "panel-header dock-tray-toggle",
+      "label": "Expand VISUAL PRESETS",
+      "rect": {
+        "x": 803,
+        "y": 840,
+        "w": 144,
+        "h": 22.4
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "solid|1px|color(srgb 0 0.831373 1 / 0.8)|off3px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgb(232, 234, 237)",
+      "color": "rgb(232, 234, 237)",
+      "path": "#control-panel-toggle<div<#control-panel<#command-dock<body",
+      "scrollY": 0,
+      "panelScroll": "command-dock:0"
+    },
+    {
+      "step": 7,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn",
+      "label": "Collapse SCENES",
+      "rect": {
+        "x": 356,
+        "y": 281,
+        "w": 22,
+        "h": 22
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.03)",
+      "border": "rgba(255, 255, 255, 0.12)",
+      "color": "rgba(232, 234, 237, 0.3)",
+      "path": "button<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 8,
+      "tag": "SELECT",
+      "id": "scene-select",
+      "cls": "",
+      "label": "Scene recipe",
+      "rect": {
+        "x": 67,
+        "y": 317,
+        "w": 98.3,
+        "h": 31
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "none|0px|rgb(232, 234, 237)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.06)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgb(232, 234, 237)",
+      "path": "#scene-select<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 9,
+      "tag": "BUTTON",
+      "id": "scene-new-btn",
+      "cls": "scene-btn",
+      "label": "NEW",
+      "rect": {
+        "x": 173,
+        "y": 317,
+        "w": 100.3,
+        "h": 31
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#scene-new-btn<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 10,
+      "tag": "BUTTON",
+      "id": "scene-delete-btn",
+      "cls": "scene-btn scene-btn-danger",
+      "label": "DEL",
+      "rect": {
+        "x": 282,
+        "y": 317,
+        "w": 100.3,
+        "h": 31
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#scene-delete-btn<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 11,
+      "tag": "BUTTON",
+      "id": "scene-capture-btn",
+      "cls": "scene-btn",
+      "label": "CAPTURE SHOT",
+      "rect": {
+        "x": 67,
+        "y": 356,
+        "w": 153.5,
+        "h": 26
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#scene-capture-btn<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 12,
+      "tag": "BUTTON",
+      "id": "scene-update-shot-btn",
+      "cls": "scene-btn",
+      "label": "UPDATE SHOT",
+      "rect": {
+        "x": 229,
+        "y": 356,
+        "w": 153.5,
+        "h": 26
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#scene-update-shot-btn<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 13,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn",
+      "label": "LOAD",
+      "rect": {
+        "x": 298,
+        "y": 402,
+        "w": 36.4,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:0"
+    },
+    {
+      "step": 14,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn scene-shot-danger",
+      "label": "DEL",
+      "rect": {
+        "x": 340,
+        "y": 402,
+        "w": 30.8,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:0"
+    },
+    {
+      "step": 15,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn",
+      "label": "LOAD",
+      "rect": {
+        "x": 298,
+        "y": 458,
+        "w": 36.4,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:0"
+    },
+    {
+      "step": 16,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn scene-shot-danger",
+      "label": "DEL",
+      "rect": {
+        "x": 340,
+        "y": 458,
+        "w": 30.8,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:0"
+    },
+    {
+      "step": 17,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn",
+      "label": "LOAD",
+      "rect": {
+        "x": 298,
+        "y": 514,
+        "w": 36.4,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:0"
+    },
+    {
+      "step": 18,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn scene-shot-danger",
+      "label": "DEL",
+      "rect": {
+        "x": 340,
+        "y": 514,
+        "w": 30.8,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:0"
+    },
+    {
+      "step": 19,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn",
+      "label": "LOAD",
+      "rect": {
+        "x": 298,
+        "y": 459,
+        "w": 36.4,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:110"
+    },
+    {
+      "step": 20,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn scene-shot-danger",
+      "label": "DEL",
+      "rect": {
+        "x": 340,
+        "y": 460,
+        "w": 30.8,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:110"
+    },
+    {
+      "step": 21,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn",
+      "label": "LOAD",
+      "rect": {
+        "x": 298,
+        "y": 516,
+        "w": 36.4,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:110"
+    },
+    {
+      "step": 22,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "scene-shot-btn scene-shot-danger",
+      "label": "DEL",
+      "rect": {
+        "x": 340,
+        "y": 516,
+        "w": 30.8,
+        "h": 20
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "button<div<div<div<#scene-shot-list",
+      "scrollY": 0,
+      "panelScroll": "scene-shot-list:110"
+    },
+    {
+      "step": 23,
+      "tag": "BUTTON",
+      "id": "scene-start-btn",
+      "cls": "scene-btn",
+      "label": "START",
+      "rect": {
+        "x": 67,
+        "y": 558,
+        "w": 99.7,
+        "h": 26
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#scene-start-btn<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 24,
+      "tag": "BUTTON",
+      "id": "scene-next-btn",
+      "cls": "scene-btn",
+      "label": "NEXT",
+      "rect": {
+        "x": 282,
+        "y": 558,
+        "w": 99.7,
+        "h": 26
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#scene-next-btn<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 25,
+      "tag": "BUTTON",
+      "id": "scene-export-btn",
+      "cls": "scene-btn",
+      "label": "EXPORT PRESETS",
+      "rect": {
+        "x": 67,
+        "y": 592,
+        "w": 99.7,
+        "h": 26
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#scene-export-btn<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 26,
+      "tag": "BUTTON",
+      "id": "scene-import-btn",
+      "cls": "scene-btn",
+      "label": "IMPORT",
+      "rect": {
+        "x": 175,
+        "y": 592,
+        "w": 99.7,
+        "h": 26
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#scene-import-btn<div<div<#scene-panel<#left-panel-stack",
+      "scrollY": 0,
+      "panelScroll": "scene-panel:0"
+    },
+    {
+      "step": 27,
+      "tag": "BUTTON",
+      "id": null,
+      "cls": "panel-collapse-btn",
+      "label": "Collapse CCTV",
+      "rect": {
+        "x": 1336,
+        "y": 281,
+        "w": 22,
+        "h": 22
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.03)",
+      "border": "rgba(255, 255, 255, 0.12)",
+      "color": "rgba(232, 234, 237, 0.3)",
+      "path": "button<div<div<#cctv-panel<#right-context-rail",
+      "scrollY": 0,
+      "panelScroll": "cctv-panel-inner:0"
+    },
+    {
+      "step": 28,
+      "tag": "DIV",
+      "id": "cctv-frame-wrap",
+      "cls": "cctv-frame-wrap",
+      "label": "Open the camera frame at full resolution",
+      "rect": {
+        "x": 1073,
+        "y": 325,
+        "w": 289,
+        "h": 163.4
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "solid|1px|rgba(120, 232, 255, 0.85)|off2px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgba(255, 255, 255, 0.12)",
+      "color": "rgb(232, 234, 237)",
+      "path": "#cctv-frame-wrap<div<#cctv-panel<#right-context-rail<body",
+      "scrollY": 0,
+      "panelScroll": "cctv-panel-inner:0"
+    },
+    {
+      "step": 29,
+      "tag": "BUTTON",
+      "id": "cctv-enable-btn",
+      "cls": "scene-btn",
+      "label": "CCTV OFF",
+      "rect": {
+        "x": 1073,
+        "y": 545,
+        "w": 140.5,
+        "h": 26
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)",
+      "path": "#cctv-enable-btn<div<div<#cctv-panel<#right-context-rail",
+      "scrollY": 0,
+      "panelScroll": "cctv-panel-inner:0"
+    },
+    {
+      "step": 30,
+      "tag": "A",
+      "id": null,
+      "cls": "",
+      "label": "",
+      "rect": {
+        "x": 24,
+        "y": 871,
+        "w": 138,
+        "h": 13
+      },
+      "onScreen": true,
+      "clipped": false,
+      "outline": "auto|1px|rgb(0, 95, 204)|off1px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgba(232, 234, 237, 0.7)",
+      "color": "rgba(232, 234, 237, 0.7)",
+      "path": "a<div<div<div<#cesium-credits",
+      "scrollY": 0,
+      "panelScroll": null
+    },
+    {
+      "step": 31,
+      "body": true
+    }
+  ],
+  "unfocused": {
+    "a.": {
+      "outline": "none|0px|rgb(255, 255, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgb(255, 255, 255)",
+      "color": "rgb(255, 255, 255)"
+    },
+    "#clear-selected-layers": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(12, 12, 20, 0.72)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#share-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(12, 12, 20, 0.72)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#reset-globe-view": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(12, 12, 20, 0.72)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cockpit-vision-previous": {
+      "outline": "none|0px|rgba(244, 251, 255, 0.64)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.38)",
+      "border": "rgba(0, 0, 0, 0)",
+      "color": "rgba(244, 251, 255, 0.64)"
+    },
+    "#cockpit-vision-current": {
+      "outline": "none|0px|rgba(244, 251, 255, 0.64)|off0px",
+      "boxShadow": "color(srgb 0 0.862745 1 / 0.3) 0px 0px 10px 0px",
+      "bg": "color(srgb 0 0.138911 0.174217 / 0.749412)",
+      "border": "rgb(0, 220, 255)",
+      "color": "rgba(244, 251, 255, 0.64)"
+    },
+    "#cockpit-vision-next": {
+      "outline": "none|0px|rgba(244, 251, 255, 0.64)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.38)",
+      "border": "rgba(0, 0, 0, 0)",
+      "color": "rgba(244, 251, 255, 0.64)"
+    },
+    "#cockpit-context-previous": {
+      "outline": "none|0px|color(srgb 0.18 0.887451 1)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.72)",
+      "border": "color(srgb 0 0.862745 1 / 0.3)",
+      "color": "color(srgb 0.18 0.887451 1)"
+    },
+    "#cockpit-context-next": {
+      "outline": "none|0px|color(srgb 0.18 0.887451 1)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.72)",
+      "border": "color(srgb 0 0.862745 1 / 0.3)",
+      "color": "color(srgb 0.18 0.887451 1)"
+    },
+    "#cockpit-context-toggle": {
+      "outline": "none|0px|color(srgb 0.18 0.887451 1)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.72)",
+      "border": "color(srgb 0 0.862745 1 / 0.3)",
+      "color": "color(srgb 0.18 0.887451 1)"
+    },
+    "#cockpit-weather-toggle": {
+      "outline": "none|0px|rgba(244, 251, 255, 0.42)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.54)",
+      "border": "rgba(244, 251, 255, 0.15)",
+      "color": "rgba(244, 251, 255, 0.42)"
+    },
+    "#cockpit-brief-previous": {
+      "outline": "none|0px|color(srgb 0.18 0.887451 1)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.72)",
+      "border": "color(srgb 0 0.862745 1 / 0.3)",
+      "color": "color(srgb 0.18 0.887451 1)"
+    },
+    "#cockpit-brief-next": {
+      "outline": "none|0px|color(srgb 0.18 0.887451 1)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.72)",
+      "border": "color(srgb 0 0.862745 1 / 0.3)",
+      "color": "color(srgb 0.18 0.887451 1)"
+    },
+    "#cockpit-brief-auto": {
+      "outline": "none|0px|rgba(244, 251, 255, 0.42)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.72)",
+      "border": "color(srgb 0 0.862745 1 / 0.3)",
+      "color": "rgba(244, 251, 255, 0.42)"
+    },
+    "#cockpit-signal-toggle": {
+      "outline": "none|0px|color(srgb 0.18 0.887451 1)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 7, 12, 0.72)",
+      "border": "color(srgb 0 0.862745 1 / 0.3)",
+      "color": "color(srgb 0.18 0.887451 1)"
+    },
+    "a.cockpit-weather-credit": {
+      "outline": "none|0px|rgba(182, 226, 241, 0.72)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgba(182, 226, 241, 0.72)",
+      "color": "rgba(182, 226, 241, 0.72)"
+    },
+    "button.": {
+      "outline": "none|0px|color(srgb 0.2 0.890196 1)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "color(srgb 0.2 0.890196 1)",
+      "color": "color(srgb 0.2 0.890196 1)"
+    },
+    "#cockpit-display-toggle-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.03)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cockpit-radio-toggle-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.03)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cockpit-radio-enable-btn": {
+      "outline": "none|0px|rgb(143, 207, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(42, 113, 171, 0.12)",
+      "border": "rgba(98, 181, 255, 0.3)",
+      "color": "rgb(143, 207, 255)"
+    },
+    "#cockpit-radio-prev-btn": {
+      "outline": "none|0px|rgb(156, 234, 241)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(65, 220, 231, 0.05)",
+      "border": "rgba(65, 220, 231, 0.24)",
+      "color": "rgb(156, 234, 241)"
+    },
+    "#cockpit-radio-play-btn": {
+      "outline": "none|0px|rgb(156, 234, 241)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(65, 220, 231, 0.05)",
+      "border": "rgba(65, 220, 231, 0.24)",
+      "color": "rgb(156, 234, 241)"
+    },
+    "#cockpit-radio-next-btn": {
+      "outline": "none|0px|rgb(156, 234, 241)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(65, 220, 231, 0.05)",
+      "border": "rgba(65, 220, 231, 0.24)",
+      "color": "rgb(156, 234, 241)"
+    },
+    "#cockpit-radio-volume": {
+      "outline": "none|0px|rgb(197, 197, 197)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgba(118, 118, 118, 0.3)",
+      "color": "rgb(197, 197, 197)"
+    },
+    "#cockpit-reset-globe": {
+      "outline": "none|0px|rgb(188, 238, 255)|off0px",
+      "boxShadow": "rgba(0, 0, 0, 0.24) 0px 0px 18px 0px",
+      "bg": "rgba(2, 12, 20, 0.82)",
+      "border": "rgba(116, 219, 255, 0.38)",
+      "color": "rgb(188, 238, 255)"
+    },
+    "#map-view-switch": {
+      "outline": "none|0px|rgb(188, 238, 255)|off0px",
+      "boxShadow": "rgba(0, 0, 0, 0.24) 0px 0px 18px 0px",
+      "bg": "rgba(2, 12, 20, 0.82)",
+      "border": "rgba(116, 219, 255, 0.38)",
+      "color": "rgb(188, 238, 255)"
+    },
+    "#clean-view-exit": {
+      "outline": "none|0px|rgb(217, 247, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(8, 10, 14, 0.88)",
+      "border": "rgba(255, 255, 255, 0.25)",
+      "color": "rgb(217, 247, 255)"
+    },
+    "#cctv-lightbox-close": {
+      "outline": "none|0px|rgb(156, 239, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(6, 14, 20, 0.9)",
+      "border": "rgba(120, 232, 255, 0.34)",
+      "color": "rgb(156, 239, 255)"
+    },
+    "button.panel-collapse-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.3)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.03)",
+      "border": "rgba(255, 255, 255, 0.12)",
+      "color": "rgba(232, 234, 237, 0.3)"
+    },
+    "button.dock-pin-btn": {
+      "outline": "none|0px|rgba(190, 221, 230, 0.5)|off0px",
+      "boxShadow": "rgba(0, 0, 0, 0.5) 0px 5.6px 14.4px 0px",
+      "bg": "rgba(8, 24, 34, 0.96)",
+      "border": "rgba(123, 189, 211, 0.2)",
+      "color": "rgba(190, 221, 230, 0.5)"
+    },
+    "button.location-pill": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.04)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#search-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.04)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#location-search": {
+      "outline": "none|0px|rgb(232, 234, 237)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgb(232, 234, 237)",
+      "color": "rgb(232, 234, 237)"
+    },
+    "#gev-voice-tier": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 212, 255, 0.06)",
+      "border": "rgba(0, 212, 255, 0.34)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#gev-voice-button": {
+      "outline": "none|0px|rgb(0, 212, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgb(0, 212, 255)",
+      "color": "rgb(0, 212, 255)"
+    },
+    "button.gev-voice-error-dismiss": {
+      "outline": "none|0px|rgba(255, 220, 224, 0.72)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.04)",
+      "border": "rgba(255, 143, 157, 0.32)",
+      "color": "rgba(255, 220, 224, 0.72)"
+    },
+    "#control-panel-toggle": {
+      "outline": "none|0px|rgb(232, 234, 237)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgb(232, 234, 237)",
+      "color": "rgb(232, 234, 237)"
+    },
+    "button.style-btn": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "rgba(0, 212, 255, 0.15) 0px 0px 20px 0px, rgba(0, 212, 255, 0.1) 0px 0",
+      "bg": "rgba(0, 212, 255, 0.15)",
+      "border": "rgb(0, 212, 255)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "button.map-stack-chip": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.28)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.02)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.28)"
+    },
+    "button.data-category-header": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.3)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgba(232, 234, 237, 0.3)",
+      "color": "rgba(232, 234, 237, 0.3)"
+    },
+    "button.data-toggle-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.3)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.04)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgba(232, 234, 237, 0.3)"
+    },
+    "#scene-select": {
+      "outline": "none|0px|rgb(232, 234, 237)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.06)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgb(232, 234, 237)"
+    },
+    "#scene-new-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-delete-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-capture-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-update-shot-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "button.scene-shot-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-start-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-stop-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-next-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-export-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-import-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-download-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#scene-import-file": {
+      "outline": "none|0px|rgb(232, 234, 237)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgb(232, 234, 237)",
+      "color": "rgb(232, 234, 237)"
+    },
+    "#hud-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "rgba(0, 212, 255, 0.15) 0px 0px 12px 0px",
+      "bg": "rgba(0, 212, 255, 0.15)",
+      "border": "rgb(0, 212, 255)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#hud-layout-select": {
+      "outline": "none|0px|rgb(232, 234, 237)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.06)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgb(232, 234, 237)"
+    },
+    "#detection-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "rgba(0, 255, 80, 0.15) 0px 0px 12px 0px",
+      "bg": "rgba(0, 255, 80, 0.18)",
+      "border": "rgba(0, 255, 80, 0.8)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#detection-density-slider": {
+      "outline": "none|0px|rgb(16, 16, 16)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.08)",
+      "border": "rgb(16, 16, 16)",
+      "color": "rgb(16, 16, 16)"
+    },
+    "#detection-allocation-elastic": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "none",
+      "bg": "rgb(0, 212, 255)",
+      "border": "rgb(0, 0, 0)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#detection-allocation-weighted": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.3)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.04)",
+      "border": "rgba(232, 234, 237, 0.3)",
+      "color": "rgba(232, 234, 237, 0.3)"
+    },
+    "#detection-fade-slider": {
+      "outline": "none|0px|rgb(16, 16, 16)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.08)",
+      "border": "rgb(16, 16, 16)",
+      "color": "rgb(16, 16, 16)"
+    },
+    "#detection-opacity-slider": {
+      "outline": "none|0px|rgb(16, 16, 16)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.08)",
+      "border": "rgb(16, 16, 16)",
+      "color": "rgb(16, 16, 16)"
+    },
+    "#param-panel-collapse-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.3)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.03)",
+      "border": "rgba(255, 255, 255, 0.12)",
+      "color": "rgba(232, 234, 237, 0.3)"
+    },
+    "#models3d-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "rgba(0, 212, 255, 0.15) 0px 0px 12px 0px",
+      "bg": "rgba(0, 212, 255, 0.15)",
+      "border": "rgb(0, 212, 255)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#models3d-mode-proximity": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "none",
+      "bg": "rgb(0, 212, 255)",
+      "border": "rgb(0, 0, 0)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#models3d-mode-all": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.3)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.04)",
+      "border": "rgba(232, 234, 237, 0.3)",
+      "color": "rgba(232, 234, 237, 0.3)"
+    },
+    "#scope-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "rgba(0, 212, 255, 0.15) 0px 0px 12px 0px",
+      "bg": "rgba(0, 212, 255, 0.15)",
+      "border": "rgb(0, 212, 255)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#scope-feather-slider": {
+      "outline": "none|0px|rgb(16, 16, 16)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.08)",
+      "border": "rgb(16, 16, 16)",
+      "color": "rgb(16, 16, 16)"
+    },
+    "#celestial-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(12, 12, 20, 0.72)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#clean-view-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(12, 12, 20, 0.72)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#bloom-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(12, 12, 20, 0.72)",
+      "border": "rgba(255, 255, 255, 0.08)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#bloom-intensity-slider": {
+      "outline": "none|0px|rgb(16, 16, 16)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.08)",
+      "border": "rgb(16, 16, 16)",
+      "color": "rgb(16, 16, 16)"
+    },
+    "#sharpen-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "rgba(0, 212, 255, 0.15) 0px 0px 12px 0px",
+      "bg": "rgba(0, 212, 255, 0.15)",
+      "border": "rgb(0, 212, 255)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#sharpen-intensity-slider": {
+      "outline": "none|0px|rgb(16, 16, 16)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.08)",
+      "border": "rgb(16, 16, 16)",
+      "color": "rgb(16, 16, 16)"
+    },
+    "#cctv-frame-wrap": {
+      "outline": "none|0px|rgb(232, 234, 237)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgba(255, 255, 255, 0.12)",
+      "color": "rgb(232, 234, 237)"
+    },
+    "#cctv-enable-btn": {
+      "outline": "none|0px|rgb(0, 95, 204)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cctv-nearest-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cctv-prev-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cctv-camera-select": {
+      "outline": "none|0px|rgb(232, 234, 237)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.06)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgb(232, 234, 237)"
+    },
+    "#cctv-next-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cctv-focus-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cctv-coverage-btn": {
+      "outline": "none|0px|rgb(0, 212, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 212, 255, 0.14)",
+      "border": "rgb(0, 212, 255)",
+      "color": "rgb(0, 212, 255)"
+    },
+    "#cctv-auto-hop-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cctv-projection-btn": {
+      "outline": "none|0px|rgb(0, 212, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 212, 255, 0.14)",
+      "border": "rgb(0, 212, 255)",
+      "color": "rgb(0, 212, 255)"
+    },
+    "#cctv-adjust-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "button.cctv-cal-value": {
+      "outline": "none|0px|rgb(145, 237, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.04)",
+      "border": "rgba(255, 255, 255, 0.12)",
+      "color": "rgb(145, 237, 255)"
+    },
+    "#cctv-calib-save-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#cctv-calib-reset-btn": {
+      "outline": "none|0px|rgba(232, 234, 237, 0.5)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(255, 255, 255, 0.05)",
+      "border": "rgba(255, 255, 255, 0.14)",
+      "color": "rgba(232, 234, 237, 0.5)"
+    },
+    "#context-radio-toggle-btn": {
+      "outline": "none|0px|rgba(143, 207, 255, 0.58)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(42, 113, 171, 0.08)",
+      "border": "rgba(98, 181, 255, 0.22)",
+      "color": "rgba(143, 207, 255, 0.58)"
+    },
+    "#context-radio-details-btn": {
+      "outline": "none|0px|rgb(143, 234, 242)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(14, 69, 78, 0.16)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(143, 234, 242)"
+    },
+    "#context-radio-mini-close-btn": {
+      "outline": "none|0px|rgb(143, 234, 242)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(14, 69, 78, 0.16)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(143, 234, 242)"
+    },
+    "#context-radio-mini-enable-btn": {
+      "outline": "none|0px|rgb(143, 207, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(42, 113, 171, 0.12)",
+      "border": "rgba(98, 181, 255, 0.3)",
+      "color": "rgb(143, 207, 255)"
+    },
+    "#context-radio-mini-prev-btn": {
+      "outline": "none|0px|rgb(143, 234, 242)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(14, 69, 78, 0.16)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(143, 234, 242)"
+    },
+    "#context-radio-mini-play-btn": {
+      "outline": "none|0px|rgb(143, 234, 242)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(14, 69, 78, 0.16)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(143, 234, 242)"
+    },
+    "#context-radio-mini-next-btn": {
+      "outline": "none|0px|rgb(143, 234, 242)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(14, 69, 78, 0.16)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(143, 234, 242)"
+    },
+    "#context-radio-mini-volume": {
+      "outline": "none|0px|rgb(197, 197, 197)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgba(118, 118, 118, 0.3)",
+      "color": "rgb(197, 197, 197)"
+    },
+    "#global-context-flights-btn": {
+      "outline": "none|0px|rgb(143, 207, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(42, 113, 171, 0.09)",
+      "border": "rgba(98, 181, 255, 0.28)",
+      "color": "rgb(143, 207, 255)"
+    },
+    "#global-context-missions-btn": {
+      "outline": "none|0px|rgb(143, 207, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(42, 113, 171, 0.09)",
+      "border": "rgba(98, 181, 255, 0.28)",
+      "color": "rgb(143, 207, 255)"
+    },
+    "#cockpit-entry": {
+      "outline": "none|0px|rgb(220, 238, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(2, 12, 18, 0.9)",
+      "border": "rgba(0, 220, 255, 0.5)",
+      "color": "rgb(220, 238, 255)"
+    },
+    "#installations-search-btn": {
+      "outline": "none|0px|rgb(143, 207, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(42, 113, 171, 0.12)",
+      "border": "rgba(98, 181, 255, 0.3)",
+      "color": "rgb(143, 207, 255)"
+    },
+    "#tr3b-toggle": {
+      "outline": "none|0px|rgb(0, 0, 0)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(42, 113, 171, 0.08)",
+      "border": "rgba(98, 181, 255, 0.22)",
+      "color": "rgb(0, 0, 0)"
+    },
+    "#radio-enable-btn": {
+      "outline": "none|0px|rgb(143, 207, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(42, 113, 171, 0.12)",
+      "border": "rgba(98, 181, 255, 0.3)",
+      "color": "rgb(143, 207, 255)"
+    },
+    "#radio-filter": {
+      "outline": "none|0px|rgb(197, 250, 255)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(5, 24, 31, 0.88)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(197, 250, 255)"
+    },
+    "#radio-tuner-slider": {
+      "outline": "none|0px|rgb(197, 197, 197)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgba(118, 118, 118, 0.3)",
+      "color": "rgb(197, 197, 197)"
+    },
+    "#radio-prev-btn": {
+      "outline": "none|0px|rgb(143, 234, 242)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(14, 69, 78, 0.14)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(143, 234, 242)"
+    },
+    "#radio-play-btn": {
+      "outline": "none|0px|rgb(143, 234, 242)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(14, 69, 78, 0.14)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(143, 234, 242)"
+    },
+    "#radio-next-btn": {
+      "outline": "none|0px|rgb(143, 234, 242)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(14, 69, 78, 0.14)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(143, 234, 242)"
+    },
+    "#radio-stop-btn": {
+      "outline": "none|0px|rgb(143, 234, 242)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(14, 69, 78, 0.14)",
+      "border": "rgba(65, 220, 231, 0.28)",
+      "color": "rgb(143, 234, 242)"
+    },
+    "#radio-volume": {
+      "outline": "none|0px|rgb(197, 197, 197)|off0px",
+      "boxShadow": "none",
+      "bg": "rgba(0, 0, 0, 0)",
+      "border": "rgba(118, 118, 118, 0.3)",
+      "color": "rgb(197, 197, 197)"
+    }
+  },
+  "targets": [
+    {
+      "sel": "#gev-voice-tier",
+      "label": "STD",
+      "w": 24.8,
+      "h": 11.5,
+      "min": 11.5,
+      "area": 286,
+      "x": 733,
+      "y": 811,
+      "tab": 0
+    },
+    {
+      "sel": "a.",
+      "label": "",
+      "w": 138,
+      "h": 13,
+      "min": 13,
+      "area": 1794,
+      "x": 24,
+      "y": 871,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn",
+      "label": "LOAD",
+      "w": 36.4,
+      "h": 20,
+      "min": 20,
+      "area": 728,
+      "x": 298,
+      "y": 292,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn.scene-shot-danger",
+      "label": "DEL",
+      "w": 30.8,
+      "h": 20,
+      "min": 20,
+      "area": 616,
+      "x": 340,
+      "y": 292,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn",
+      "label": "LOAD",
+      "w": 36.4,
+      "h": 20,
+      "min": 20,
+      "area": 728,
+      "x": 298,
+      "y": 348,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn.scene-shot-danger",
+      "label": "DEL",
+      "w": 30.8,
+      "h": 20,
+      "min": 20,
+      "area": 616,
+      "x": 340,
+      "y": 348,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn",
+      "label": "LOAD",
+      "w": 36.4,
+      "h": 20,
+      "min": 20,
+      "area": 728,
+      "x": 298,
+      "y": 404,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn.scene-shot-danger",
+      "label": "DEL",
+      "w": 30.8,
+      "h": 20,
+      "min": 20,
+      "area": 616,
+      "x": 340,
+      "y": 404,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn",
+      "label": "LOAD",
+      "w": 36.4,
+      "h": 20,
+      "min": 20,
+      "area": 728,
+      "x": 298,
+      "y": 460,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn.scene-shot-danger",
+      "label": "DEL",
+      "w": 30.8,
+      "h": 20,
+      "min": 20,
+      "area": 616,
+      "x": 340,
+      "y": 460,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn",
+      "label": "LOAD",
+      "w": 36.4,
+      "h": 20,
+      "min": 20,
+      "area": 728,
+      "x": 298,
+      "y": 516,
+      "tab": 0
+    },
+    {
+      "sel": "button.scene-shot-btn.scene-shot-danger",
+      "label": "DEL",
+      "w": 30.8,
+      "h": 20,
+      "min": 20,
+      "area": 616,
+      "x": 340,
+      "y": 516,
+      "tab": 0
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Collapse SCENES",
+      "w": 22,
+      "h": 22,
+      "min": 22,
+      "area": 484,
+      "x": 356,
+      "y": 281,
+      "tab": 0
+    },
+    {
+      "sel": "button.panel-collapse-btn",
+      "label": "Collapse CCTV",
+      "w": 22,
+      "h": 22,
+      "min": 22,
+      "area": 484,
+      "x": 1336,
+      "y": 281,
+      "tab": 0
+    },
+    {
+      "sel": "button.cctv-cal-value",
+      "label": "HDG --",
+      "w": 52.6,
+      "h": 22,
+      "min": 22,
+      "area": 1157,
+      "x": 1083,
+      "y": 728,
+      "tab": 0
+    },
+    {
+      "sel": "button.cctv-cal-value",
+      "label": "PITCH --",
+      "w": 64.8,
+      "h": 22,
+      "min": 22,
+      "area": 1426,
+      "x": 1141,
+      "y": 728,
+      "tab": 0
+    },
+    {
+      "sel": "button.cctv-cal-value",
+      "label": "FOV --",
+      "w": 52.6,
+      "h": 22,
+      "min": 22,
+      "area": 1157,
+      "x": 1210,
+      "y": 728,
+      "tab": 0
+    },
+    {
+      "sel": "button.cctv-cal-value",
+      "label": "RANGE --",
+      "w": 64.8,
+      "h": 22,
+      "min": 22,
+      "area": 1426,
+      "x": 1268,
+      "y": 728,
+      "tab": 0
+    },
+    {
+      "sel": "button.cctv-cal-value",
+      "label": "HGT --",
+      "w": 52.6,
+      "h": 22,
+      "min": 22,
+      "area": 1157,
+      "x": 1083,
+      "y": 755,
+      "tab": 0
+    },
+    {
+      "sel": "button.cctv-cal-value",
+      "label": "ΔN --",
+      "w": 46.5,
+      "h": 22,
+      "min": 22,
+      "area": 1023,
+      "x": 1141,
+      "y": 755,
+      "tab": 0
+    },
+    {
+      "sel": "button.cctv-cal-value",
+      "label": "ΔE --",
+      "w": 46.5,
+      "h": 22,
+      "min": 22,
+      "area": 1023,
+      "x": 1192,
+      "y": 755,
+      "tab": 0
+    },
+    {
+      "sel": "#control-panel-toggle",
+      "label": "Expand VISUAL PRESETS",
+      "w": 144,
+      "h": 22.4,
+      "min": 22.4,
+      "area": 3224,
+      "x": 803,
+      "y": 840,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-capture-btn",
+      "label": "CAPTURE SHOT",
+      "w": 153.5,
+      "h": 26,
+      "min": 26,
+      "area": 3991,
+      "x": 67,
+      "y": 356,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-update-shot-btn",
+      "label": "UPDATE SHOT",
+      "w": 153.5,
+      "h": 26,
+      "min": 26,
+      "area": 3991,
+      "x": 229,
+      "y": 356,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-start-btn",
+      "label": "START",
+      "w": 99.7,
+      "h": 26,
+      "min": 26,
+      "area": 2591,
+      "x": 67,
+      "y": 558,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-stop-btn",
+      "label": "STOP",
+      "w": 99.7,
+      "h": 26,
+      "min": 26,
+      "area": 2591,
+      "x": 175,
+      "y": 558,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-next-btn",
+      "label": "NEXT",
+      "w": 99.7,
+      "h": 26,
+      "min": 26,
+      "area": 2591,
+      "x": 282,
+      "y": 558,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-export-btn",
+      "label": "EXPORT PRESETS",
+      "w": 99.7,
+      "h": 26,
+      "min": 26,
+      "area": 2591,
+      "x": 67,
+      "y": 592,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-import-btn",
+      "label": "IMPORT",
+      "w": 99.7,
+      "h": 26,
+      "min": 26,
+      "area": 2591,
+      "x": 175,
+      "y": 592,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-download-btn",
+      "label": "RUN LOG",
+      "w": 99.7,
+      "h": 26,
+      "min": 26,
+      "area": 2591,
+      "x": 282,
+      "y": 592,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-enable-btn",
+      "label": "CCTV OFF",
+      "w": 140.5,
+      "h": 26,
+      "min": 26,
+      "area": 3653,
+      "x": 1073,
+      "y": 545,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-nearest-btn",
+      "label": "NEAREST",
+      "w": 140.5,
+      "h": 26,
+      "min": 26,
+      "area": 3653,
+      "x": 1222,
+      "y": 545,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-focus-btn",
+      "label": "FOCUS",
+      "w": 91,
+      "h": 26,
+      "min": 26,
+      "area": 2366,
+      "x": 1073,
+      "y": 618,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-coverage-btn",
+      "label": "COVERAGE ON",
+      "w": 91,
+      "h": 26,
+      "min": 26,
+      "area": 2366,
+      "x": 1172,
+      "y": 618,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-auto-hop-btn",
+      "label": "AUTO HOP OFF",
+      "w": 91,
+      "h": 26,
+      "min": 26,
+      "area": 2366,
+      "x": 1271,
+      "y": 618,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-projection-btn",
+      "label": "PROJECTION ON",
+      "w": 191,
+      "h": 26,
+      "min": 26,
+      "area": 4966,
+      "x": 1073,
+      "y": 652,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-adjust-btn",
+      "label": "ADJUST",
+      "w": 189.5,
+      "h": 26,
+      "min": 26,
+      "area": 4927,
+      "x": 1163,
+      "y": 695,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-calib-save-btn",
+      "label": "SAVE CAL",
+      "w": 130.5,
+      "h": 26,
+      "min": 26,
+      "area": 3393,
+      "x": 1083,
+      "y": 785,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-calib-reset-btn",
+      "label": "RESET CAL",
+      "w": 130.5,
+      "h": 26,
+      "min": 26,
+      "area": 3393,
+      "x": 1222,
+      "y": 785,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-select",
+      "label": "Scene recipe",
+      "w": 98.3,
+      "h": 31,
+      "min": 31,
+      "area": 3048,
+      "x": 67,
+      "y": 317,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-new-btn",
+      "label": "NEW",
+      "w": 100.3,
+      "h": 31,
+      "min": 31,
+      "area": 3111,
+      "x": 173,
+      "y": 317,
+      "tab": 0
+    },
+    {
+      "sel": "#scene-delete-btn",
+      "label": "DEL",
+      "w": 100.3,
+      "h": 31,
+      "min": 31,
+      "area": 3110,
+      "x": 282,
+      "y": 317,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-prev-btn",
+      "label": "PREV",
+      "w": 91.7,
+      "h": 31,
+      "min": 31,
+      "area": 2841,
+      "x": 1073,
+      "y": 579,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-camera-select",
+      "label": "CCTV camera",
+      "w": 89.7,
+      "h": 31,
+      "min": 31,
+      "area": 2780,
+      "x": 1173,
+      "y": 579,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-next-btn",
+      "label": "NEXT",
+      "w": 91.7,
+      "h": 31,
+      "min": 31,
+      "area": 2842,
+      "x": 1270,
+      "y": 579,
+      "tab": 0
+    },
+    {
+      "sel": "#clear-selected-layers",
+      "label": "Clear selected data layers",
+      "w": 36,
+      "h": 36,
+      "min": 36,
+      "area": 1296,
+      "x": 658,
+      "y": 32,
+      "tab": 0
+    },
+    {
+      "sel": "#share-btn",
+      "label": "Copy share link",
+      "w": 36,
+      "h": 36,
+      "min": 36,
+      "area": 1296,
+      "x": 702,
+      "y": 32,
+      "tab": 0
+    },
+    {
+      "sel": "#reset-globe-view",
+      "label": "Reset to full globe view",
+      "w": 36,
+      "h": 36,
+      "min": 36,
+      "area": 1296,
+      "x": 746,
+      "y": 32,
+      "tab": 0
+    },
+    {
+      "sel": "#gev-voice-button",
+      "label": "Voice control — hold Space to ",
+      "w": 42.4,
+      "h": 66.4,
+      "min": 42.4,
+      "area": 2814,
+      "x": 657,
+      "y": 811,
+      "tab": 0
+    },
+    {
+      "sel": "#cctv-frame-wrap",
+      "label": "Open the camera frame at full ",
+      "w": 289,
+      "h": 163.4,
+      "min": 163.4,
+      "area": 47233,
+      "x": 1073,
+      "y": 325,
+      "tab": 0
+    }
+  ],
+  "trap": {
+    "collapsed": true,
+    "focusables": 66,
+    "rowCount": 57,
+    "rowFocusable": [
+      {
+        "tag": "DIV",
+        "tabindex": null,
+        "role": null,
+        "inner": 1
+      },
+      {
+        "tag": "DIV",
+        "tabindex": null,
+        "role": null,
+        "inner": 1
+      },
+      {
+        "tag": "DIV",
+        "tabindex": null,
+        "role": null,
+        "inner": 1
+      }
+    ]
+  }
+}
