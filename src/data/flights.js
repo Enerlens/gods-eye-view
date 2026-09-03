@@ -64,6 +64,7 @@ import {
   COURSE_HOLD_SPEED_MPS,
 } from './motionModel.js';
 import { routePlausible } from './routePlausible.js';
+import { openSkyStaleThresholdMs } from './openSkyFreshness.js';
 import { buildFlightRoutePlan, routeFrameOffsetEnu } from './flightRoutePlan.js';
 import { hideFlightRouteArc, showFlightRouteArc } from './flightRouteArc.js';
 import { isMilitaryIcao, isMilitaryLayerActive, refreshMilitaryRegistryIfStale, onMilitaryLayerActiveChange } from './militaryRegistry.js';
@@ -277,7 +278,6 @@ const _billboardLimbScale = new WeakMap();
 
 /** @constant {string} API_URL - Vite proxy endpoint for OpenSky /states/all */
 const API_URL = '/api/opensky';
-const SOURCE_STALE_MS = 120_000;
 /** @constant {number} BACKOFF_INTERVAL - Cooldown (ms) after 429 / auth errors */
 const BACKOFF_INTERVAL = 45000; // 45s on rate limit
 /** @constant {number} ERROR_BACKOFF_INTERVAL - Cooldown (ms) after transient errors */
@@ -320,6 +320,8 @@ let _count = 0;
 let _lastUpdate = null;
 /** @type {boolean} True while in a backoff/cooldown window */
 let _backoff = false;
+/** @type {boolean} The proxy served the 250 nm regional circle, not the worldwide feed. */
+let _sourceFallback = false;
 /** @type {number} Epoch ms — earliest time the next fetch is allowed */
 let _retryAt = 0;
 /** @type {string|null} Human-readable error string shown in stats chip */
@@ -4185,6 +4187,7 @@ const flightsLayer = {
     _lastStatus = null;
     _lastSource = 'OpenSky Network';
     _lastCoverage = 'worldwide upstream snapshot';
+    _sourceFallback = false;
     _trackedIcao = null;
     _resetTrackedSelectionState();
     _trackedEntity = null;
@@ -4407,7 +4410,15 @@ const flightsLayer = {
         ? Number(data.time) * 1000
         : null;
       const sourceAgeMs = sourceEpochMs == null ? 0 : Math.max(0, Date.now() - sourceEpochMs);
-      const sourceStale = sourceAgeMs > SOURCE_STALE_MS;
+      // Judged against the TTL the proxy's credit governor is actually
+      // applying, which it publishes. A fixed 120 s here was not a staleness
+      // test once that TTL stretched to 300 s — it was a guarantee of one, and
+      // it is why the badge sat orange while nothing was wrong.
+      const proxyTtlSec = Number(response.headers.get('x-opensky-ttl-seconds'));
+      const staleThresholdMs = openSkyStaleThresholdMs(
+        Number.isFinite(proxyTtlSec) ? proxyTtlSec * 1000 : null,
+      );
+      const sourceStale = sourceAgeMs > staleThresholdMs;
       _backoff = sourceStale;
       _retryAt = 0;
       _lastError = sourceStale
@@ -4415,6 +4426,10 @@ const flightsLayer = {
         : null;
       _lastSource = responseSource || 'OpenSky Network';
       _lastCoverage = responseCoverage || 'worldwide upstream snapshot';
+      // A verdict from the proxy, not a regex over the source name. Only the
+      // regional adsb.lol circle sets it; every other path is the worldwide
+      // feed, fallback or not.
+      _sourceFallback = response.headers.get('x-flight-fallback') === '1';
       const currentIcaos = new Set();
       const acceptedSnapshotIcaos = new Set();
       const now = Cesium.JulianDate.now();
@@ -5584,6 +5599,11 @@ const flightsLayer = {
       retryInSec,
       source: _lastSource,
       coverage: _lastCoverage,
+      // Explicit, so the control chip stops inferring a feed verdict from a
+      // regex over the source NAME (`manager.js`: `/\badsb\.lol\b/i`). The
+      // military layer has published this field since it was added; this is
+      // the last layer that made the manager guess.
+      fallback: _sourceFallback,
     };
   },
 

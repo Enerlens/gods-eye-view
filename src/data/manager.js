@@ -92,7 +92,6 @@ export function layerFeedState(stats = {}) {
   const state = stats || {};
   const status = typeof state.status === 'string' ? state.status.toLowerCase() : '';
   const source = `${state.source || ''} ${state.coverage || ''}`;
-  const hasExplicitFallback = typeof state.fallback === 'boolean';
   const hasPriorData = Number(state.count) > 0 || Boolean(state.lastUpdate);
   const presentedError = state.error || state.lastError || state.managerRefreshError;
   if (['unavailable', 'offline', 'down', 'error'].includes(status)) return 'unavailable';
@@ -111,12 +110,17 @@ export function layerFeedState(stats = {}) {
   if (GUIDANCE_STATUSES.has(status)) {
     return state.stale ? 'stale' : 'nominal';
   }
+  // A source NAME is not a feed VERDICT. This used to also sniff `adsb.lol`
+  // out of the source string, which pinned the civil flights layer to an
+  // orange FALLBACK chip for as long as the proxy was serving the regional
+  // circle — and told the military layer, whose PRIMARY source adsb.lol is,
+  // the same thing until it started publishing `fallback: false` to say
+  // otherwise. Both layers now publish the boolean; the guess is gone.
   if (
     state.fallback === true
     || status === 'fallback'
     || state.mode === 'sim'
     || /\bfallback\b/i.test(source)
-    || (!hasExplicitFallback && /\badsb\.lol\b/i.test(source))
   ) {
     return 'fallback';
   }
