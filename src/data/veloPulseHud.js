@@ -39,6 +39,11 @@
  * @module data/veloPulseHud
  */
 import {
+  attachPanelDrag,
+  clearPanelPosition,
+  restorePanelPosition,
+} from '../panelDrag.js';
+import {
   PULSE_DAYS,
   PULSE_RAMP,
   PULSE_SLOTS,
@@ -100,8 +105,14 @@ export function pulseLegendSentence(summary) {
       ? `${name} : le remplissage des stations (un STOCK)`
       : `${name} : les cyclistes comptés (un FLUX)`;
   });
-  const head = `La couleur, c’est la part du maximum de la semaine du site lui-même ;`
-    + ` la surface de la tache, c’est la quantité mesurée.`;
+  // NAMED, because it decides what the reader is allowed to do with it. This is
+  // one mark PER STATION — a proportional symbol whose area is the quantity —
+  // and not a kernel-density heatmap, which aggregates its inputs and would
+  // make the fiche below a lie: there would be no single station under the
+  // cursor to open. Mericskay's own comparison table rules the heatmap out the
+  // moment an interface offers per-entity interaction, and this one does.
+  const head = `Une tache par station : la couleur, c’est la part du maximum de la semaine`
+    + ` du site lui-même ; la surface, c’est la quantité mesurée.`;
   return instruments.length ? `${head} ${instruments.join(' · ')}.` : head;
 }
 
@@ -209,7 +220,8 @@ function paintSiteLines(list, record, pack, slot) {
 }
 
 const PANEL_MARKUP = `
-  <div class="velo-pulse-hud-head">
+  <div class="velo-pulse-hud-head" data-pulse-grip title="Glissez pour déplacer le panneau · double-clic pour le remettre en place">
+    <span class="velo-pulse-grip" aria-hidden="true"></span>
     <span class="velo-pulse-hud-title">POULS VÉLO · SEMAINE TYPE</span>
     <span class="velo-pulse-hud-window" data-pulse-window></span>
   </div>
@@ -228,6 +240,7 @@ const PANEL_MARKUP = `
   </div>
   <div class="velo-pulse-days" aria-hidden="true" data-pulse-days></div>
   <p class="velo-pulse-hud-legend" data-pulse-legend></p>
+  <p class="velo-pulse-range" data-pulse-range hidden role="status"></p>
   <section class="velo-pulse-site" data-pulse-site hidden>
     <div class="velo-pulse-site-head">
       <strong data-pulse-site-name></strong>
@@ -296,6 +309,12 @@ export function mountPulseHud({ onSeek, onTogglePlay, onClearSelection } = {}) {
   };
 
   strip.addEventListener('pointerdown', (event) => {
+    // PRIMARY BUTTON ONLY. A right-click on the strip used to start a scrub
+    // that nothing ended: the browser opens its context menu, the `pointerup`
+    // never arrives, and the strip keeps the pointer captured — so the week
+    // scrubbed with every mouse move and the globe stopped receiving input
+    // until the next click. `panelDrag.js` and `ui.js` both guard this way.
+    if (event.button !== 0) return;
     dragging = true;
     strip.setPointerCapture?.(event.pointerId);
     seekFromEvent(event);
@@ -315,6 +334,10 @@ export function mountPulseHud({ onSeek, onTogglePlay, onClearSelection } = {}) {
   };
   strip.addEventListener('pointerup', endDrag);
   strip.addEventListener('pointercancel', endDrag);
+  // The safety net the radio tuner already carries: a capture lost to anything
+  // the page does not see — an OS gesture, a window switch — still ends the
+  // scrub instead of leaving it live.
+  strip.addEventListener('lostpointercapture', endDrag);
   strip.addEventListener('keydown', (event) => {
     const steps = {
       ArrowLeft: -1, ArrowRight: 1, ArrowDown: -1, ArrowUp: 1, PageDown: -24, PageUp: 24,
@@ -332,6 +355,28 @@ export function mountPulseHud({ onSeek, onTogglePlay, onClearSelection } = {}) {
 
   playButton.addEventListener('click', () => onTogglePlay?.());
   node('[data-pulse-site-close]').addEventListener('click', () => onClearSelection?.());
+
+  // ── Moving the panel ──────────────────────────────────────────────────────
+  // The whole panel is the grab surface, not just its header: it is a small
+  // window that sits over the city a reader is trying to see, and asking them
+  // to find a 14-pixel title bar to get it out of the way is the kind of
+  // friction that ends with the layer switched off. The strip and the buttons
+  // are excluded — a slider that moves the panel instead of scrubbing the week
+  // would be worse than a panel that does not move at all.
+  panel.classList.add('panel-draggable');
+  restorePanelPosition(panel, PULSE_HUD_ID);
+  const releaseDrag = attachPanelDrag(panel, {
+    panelId: PULSE_HUD_ID,
+    ignoreSelector: '[data-pulse-strip], .velo-pulse-site-strip',
+  });
+  // A panel dragged somewhere unfortunate — behind the dock, off in a corner —
+  // has to have a way home that does not involve clearing site data.
+  node('[data-pulse-grip]').addEventListener('dblclick', () => {
+    clearPanelPosition(PULSE_HUD_ID);
+    for (const property of ['left', 'top', 'right', 'bottom', 'transform']) {
+      panel.style.removeProperty(property);
+    }
+  });
 
   const paintClock = () => {
     const slot = Math.floor(position);
@@ -445,12 +490,30 @@ export function mountPulseHud({ onSeek, onTogglePlay, onClearSelection } = {}) {
       paintSiteLines(node('[data-pulse-site-lines]'), selected, pack, slot);
     },
 
+    /**
+     * The camera climbed above the altitude where a blob is still a shape.
+     *
+     * Said rather than corrected: inflating the marks to keep them visible is
+     * what the layer stopped doing (B2). What is out of range is the reader's
+     * viewpoint, and the panel is where that belongs — the map itself has
+     * nothing left to draw at this height.
+     */
+    setOutOfRange(outOfRange, ceilingKm) {
+      const notice = node('[data-pulse-range]');
+      notice.hidden = !outOfRange;
+      notice.textContent = outOfRange
+        ? `Trop haut pour lire le champ — descendez sous ${ceilingKm} km.`
+        : '';
+      panel.classList.toggle('is-out-of-range', Boolean(outOfRange));
+    },
+
     setVisible(visible) {
       panel.hidden = !visible;
     },
 
     destroy() {
       resizeObserver?.disconnect();
+      releaseDrag();
       panel.remove();
     },
   };

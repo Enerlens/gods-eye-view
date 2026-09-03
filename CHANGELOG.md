@@ -147,6 +147,76 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   dessinait rien. Elle dessine maintenant les départements du pays : bouger la
   caméra reviendrait à résoudre un problème qui n'existe plus, en prenant une
   décision à la place de l'opérateur.
+- **Pouls vélo — la carte réapparaît sous la nappe, et le panneau se déplace.**
+  Quatre corrections tirées de la doctrine cartographique du dépôt, mesurées
+  plutôt qu'estimées. **L'opacité portait la valeur une deuxième fois** (0,50 →
+  0,90 selon l'intensité, par-dessus une couleur qui disait déjà la même chose) :
+  au sommet de la rampe il ne restait **10 % du fond de carte** sous une tache,
+  donc le calque effaçait la ville précisément là où il avait quelque chose à en
+  dire. Alpha fixe à 0,45, le fond garde 55 % de lui-même partout.
+- **La rampe montait puis redescendait.** Mesurées en clarté CIE L\*, les cinq
+  bandes donnaient 27 · 50 · 67 · 80 · **58** : la bande la plus chargée était
+  plus sombre que celle d'en dessous, donc l'ordre mourait dès qu'on retirait la
+  teinte — daltonisme, niveaux de gris, écran délavé. Et aucun réglage d'opacité
+  ne le rattrapait, le défaut était dans la rampe.
+- **Et la première réparation en a créé une autre.** Faire monter la rampe
+  jusqu'au bout — jusqu'à une menthe pâle — remettait l'ordre et rendait le
+  calque invisible : mesurée contre la carte qu'elle recouvre, la bande la plus
+  chargée tombait à ΔE 11 sur une ville claire, soit une tache que personne ne
+  voit. Une rampe doit passer **deux** épreuves, et une seule est dans la
+  doctrine. La rampe descend donc, et elle descend vers le chaud : blanc bleuté
+  → ambre → orange → rouge → carmin, **93 · 80 · 63 · 45 · 27**. Les bandes
+  restent à 6,3 L\* l'une de l'autre sur six fonds d'essai, la bande « ≥ 80 % »
+  ressort à **ΔE 24** de la carte, et la bande « < 20 % » n'en ressort
+  volontairement presque pas : une station qui ne fait rien laisse voir sa rue,
+  ce qui est exactement la demande. Aucun vert, donc aucune lecture « feu
+  tricolore » ; ΔE 19 des deux autres rampes de magnitude dessinées sur les
+  mêmes rues. Un test recalcule toute la chaîne — y compris l'alpha lu dans le
+  calque lui-même — et échoue à la première inversion, à la première bande qui
+  cesse de se détacher, et à la première bande chargée qui cesse de se voir.
+- **Une heure non relevée passe de 22 % à 32 % d'opacité.** Contre la bande
+  pâle de la nouvelle rampe — une station mesurée et presque inerte — le gris à
+  22 % tombait à ΔE 12 sur une ville claire : assez proche pour être confondu.
+  Un trou et un zéro sont deux affirmations différentes.
+- **Une tache ne grossit plus avec la distance.** Sa surface EST la quantité ;
+  la multiplier par un facteur qui dépend de la caméra faisait dessiner deux
+  stations identiques à des tailles différentes dans une même image oblique — la
+  lointaine jusqu'à 4,5 fois la proche — pendant que le panneau affirmait « la
+  surface, c'est la quantité mesurée ». Ce qui remplace ce facteur n'est pas une
+  correction de taille mais l'aveu de la portée : le champ s'efface entre 40 et
+  90 km, et au-dessus le panneau dit « descendez sous 90 km » au lieu de gonfler
+  ses marques.
+- **Le panneau dit ce qu'il dessine** : *une tache par station*. Ce n'est pas une
+  carte de chaleur par noyau — celle-ci agrège ses points et rendrait la fiche
+  mensongère, puisqu'il n'y aurait plus une station sous le curseur.
+- **Trois défauts trouvés par une revue adverse, et corrigés.** Le fondu de
+  distance de Cesium n'est pas linéaire — `czm_nearFarScalar` travaille sur des
+  distances au CARRÉ et élève le résultat à la puissance 0,2 — donc un champ
+  annoncé « 40 → 90 km » est déjà à 42 % d'opacité à 45 km et à 13 % à 70 :
+  l'avertissement se déclenche désormais à 45 km, là où la carte se vide
+  vraiment. Il écoute aussi `moveEnd` en plus de `changed`, sinon un zoom
+  ordinaire franchit le plafond sans rien dire. Et une heure non relevée est
+  maintenant DESSINÉE — un point gris au rayon plancher — au lieu d'un rayon
+  nul : un site qui disparaît ne se distingue pas d'un site qui n'existe pas,
+  alors que la ligne du calque les compte sous « non relevé ».
+- **Et deux dans le déplacement lui-même.** Les gestionnaires de glissé étaient
+  partagés par toutes les prises au lieu d'une par glissé : deux doigts sur un
+  écran tactile, ou une reprise après un `pointerup` avalé par un changement de
+  fenêtre, et la première prise abandonnait ses écouteurs sur `window` sans que
+  rien puisse les retirer — le panneau suivait la souris sans bouton enfoncé et
+  le clic suivant enregistrait la position (0, 0) d'un nœud détaché. Un clic
+  droit sur la bande de la semaine, enfin, lançait un scrub que rien ne
+  terminait, le menu contextuel avalant le relâchement. Les deux ont leur test
+  de régression, vérifié par mutation.
+
+- **Et il se déplace.** Cliquer-glisser n'importe où sur le panneau le déplace,
+  sauf sur la bande de la semaine et les boutons, qui restent des commandes ; il
+  est bloqué à six pixels des bords pour qu'on puisse toujours le rattraper,
+  retrouve sa place à la session suivante, et un double-clic sur son en-tête le
+  ramène à son ancrage. La géométrie sort dans `src/panelDrag.js`, que `ui.js`
+  utilise désormais aussi : une seule définition de la marge et de la clé de
+  stockage pour tous les panneaux, y compris ceux qu'`ui.js` ne voit jamais
+  parce qu'ils s'installent eux-mêmes.
 - **La zone de chalandise se dessine autour du point que vous choisissez.**
   Jusqu'ici le centre était l'endroit que la caméra regardait — correct pour lire
   une rue, inutile pour la seule question que ce calque pose : « qu'est-ce que

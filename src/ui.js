@@ -26,6 +26,11 @@ import {
   LayerStateCoordinator,
 } from './data/layerState.js';
 import { renderMapStackChips, syncMapStackChips } from './mapStackChips.js';
+import {
+  PANEL_POSITION_STORAGE_VERSION as PANEL_DRAG_STORAGE_VERSION,
+  clampPanelPosition,
+  panelPositionStorageKey,
+} from './panelDrag.js';
 import { OrbitController } from './orbit.js';
 import {
   CelestialRing,
@@ -228,7 +233,11 @@ const COCKPIT_ENTRY_COLLAPSE_PANEL_IDS = Object.freeze([
  * default changes (e.g. right-rail origin) can reset positions without also
  * resetting every panel's open/closed preference.
  */
-const PANEL_POSITION_STORAGE_VERSION = 'v8';
+// Re-exported from `panelDrag.js`, which owns the key format now that panels
+// this class never sees (`#velo-pulse-hud`, mounted by its own layer) save
+// their position under the same versioned namespace. One bump, one reset,
+// every panel — which is the whole point of versioning it.
+const PANEL_POSITION_STORAGE_VERSION = PANEL_DRAG_STORAGE_VERSION;
 const DETECTION_ALLOCATION_STORAGE_KEY = 'gev:detection-allocation:v1';
 /** Z ladder: panels promote within [100, 139]; voice pill 150, toast 200, clean-view-exit 300. */
 const PANEL_Z_BASE = 100;
@@ -6823,7 +6832,7 @@ export class StyleManager {
    * @returns {string} localStorage key.
    */
   _panelStorageKey(panelId) {
-    return `godsEyeView.${PANEL_POSITION_STORAGE_VERSION}.panelPos.${panelId}`;
+    return panelPositionStorageKey(panelId);
   }
 
   /**
@@ -7634,12 +7643,18 @@ export class StyleManager {
    */
   _clampToViewport(left, top, panelEl) {
     const rect = panelEl.getBoundingClientRect();
-    const maxLeft = Math.max(6, window.innerWidth - rect.width - 6);
-    const maxTop = Math.max(6, window.innerHeight - rect.height - 6);
-    return {
-      left: Math.max(6, Math.min(maxLeft, left)),
-      top: Math.max(6, Math.min(maxTop, top)),
-    };
+    // The arithmetic lives in `panelDrag.js`, which the layer-owned panels use
+    // too — `#velo-pulse-hud` mounts itself and this class never sees it. Two
+    // copies of a 6-pixel inset are two chances for one panel to be draggable
+    // off an edge the other one respects.
+    return clampPanelPosition({
+      left,
+      top,
+      width: rect.width,
+      height: rect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    });
   }
 
   /**

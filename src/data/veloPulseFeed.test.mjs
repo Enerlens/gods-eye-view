@@ -297,16 +297,16 @@ test('nothing to draw is nothing at all, and an empty dock still has a floor', (
 test('the continuous ramp passes through the bands the legend names', () => {
   // The legend's vocabulary is five bands; the map fills the gaps between them
   // so an animated site swells across a threshold instead of snapping.
-  assert.equal(pulseRampColor(0), 'rgb(44, 62, 107)', 'the bottom band, exactly');
-  assert.equal(pulseRampColor(1), 'rgb(232, 96, 60)', 'the top band, exactly');
+  assert.equal(pulseRampColor(0), 'rgb(230, 236, 242)', 'the bottom band, exactly');
+  assert.equal(pulseRampColor(1), 'rgb(125, 18, 48)', 'the top band, exactly');
   // Unsampled is the same grey the legend shows, written in the ramp's own
   // notation rather than a second grey nobody would notice had drifted.
   assert.equal(pulseRampColor(null), 'rgb(74, 85, 104)');
   assert.equal(PULSE_UNSAMPLED_COLOR, '#4a5568');
   // The middle bands are reached exactly too, at their own midpoints — the
   // legend's swatch is a colour that really is on the map.
-  assert.equal(pulseRampColor(0.5), 'rgb(73, 179, 176)');
-  assert.equal(pulseRampColor(0.7), 'rgb(240, 192, 74)');
+  assert.equal(pulseRampColor(0.5), 'rgb(226, 128, 63)');
+  assert.equal(pulseRampColor(0.7), 'rgb(195, 58, 51)');
   // And it is continuous: no share is a jump away from the share beside it,
   // which is the whole reason the animation stopped strobing.
   const channels = (share) => pulseRampColor(share).match(/\d+/g).map(Number);

@@ -438,13 +438,47 @@ export function pulsePhrase(slot, curve) {
  * maximum is at its busiest. The share is the same quantity in both cities; a
  * word describing activity is not. The card says what a high share means for
  * that particular instrument, in that instrument's own words.
+ *
+ * ── MONOTONE IN LIGHTNESS, AND DARK WHERE IT IS BUSY ────────────────────────
+ * This ramp shipped once as blue → teal → yellow → orange, and its last step
+ * went the WRONG WAY: measured as CIE L*, the five bands read
+ * 27 · 50 · 67 · 80 · 58. The busiest band was darker than the one below it, so
+ * the order died the moment the hue was taken away — a colour-blind reader, a
+ * greyscale print, a washed-out screen — and no opacity setting removed the
+ * inversion, because the defect was in the ramp (CARTOGRAPHIE B4).
+ *
+ * The obvious repair — climb all the way, ending on a pale mint — fixed the
+ * ordering and broke something worse: measured against the basemap it is drawn
+ * over, the busiest band came out at ΔE 11, which over a light city is a blob
+ * nobody can see. A ramp has to satisfy BOTH tests, and only one of them is in
+ * the doctrine.
+ *
+ * So it descends, and it descends into the warm: **93 · 80 · 63 · 45 · 27**.
+ *
+ *   · Ordering survives greyscale, monotonically, by construction.
+ *   · The bands stay 6.3 L* apart at the layer's alpha, composited over six
+ *     backdrops (light city, mid city, dark roof, park, water, near-white).
+ *   · The busy end has ink where it matters — ΔE 24 against the map — and the
+ *     calm end deliberately has almost none: a station doing nothing should let
+ *     its street show through, which is the whole complaint this answers.
+ *   · Closest approach to the two other magnitude ramps painted over these same
+ *     streets (`idfm-frequency`, `comptages-fr`) is ΔE 19. Two layers on one
+ *     coordinate may not share a colour.
+ *
+ * It is warm without being a traffic light: amber → red → carmine, no green
+ * anywhere, so it cannot be read as the congestion triad `traffic.js` and
+ * `roadStatusFrance.js` own on the same streets.
+ *
+ * `veloPulseRamp.test.mjs` recomputes the whole compositing chain — including
+ * the alpha read out of `veloPulse.js` itself — and fails on any inversion, any
+ * band that stops separating, and a busiest band that stops being visible.
  */
 export const PULSE_RAMP = Object.freeze([
-  Object.freeze({ upTo: 0.2, color: '#2c3e6b', label: '< 20 %' }),
-  Object.freeze({ upTo: 0.4, color: '#3b7bb5', label: '20 – 40 %' }),
-  Object.freeze({ upTo: 0.6, color: '#49b3b0', label: '40 – 60 %' }),
-  Object.freeze({ upTo: 0.8, color: '#f0c04a', label: '60 – 80 %' }),
-  Object.freeze({ upTo: Infinity, color: '#e8603c', label: '≥ 80 %' }),
+  Object.freeze({ upTo: 0.2, color: '#e6ecf2', label: '< 20 %' }),
+  Object.freeze({ upTo: 0.4, color: '#eebd74', label: '20 – 40 %' }),
+  Object.freeze({ upTo: 0.6, color: '#e2803f', label: '40 – 60 %' }),
+  Object.freeze({ upTo: 0.8, color: '#c33a33', label: '60 – 80 %' }),
+  Object.freeze({ upTo: Infinity, color: '#7d1230', label: '≥ 80 %' }),
 ]);
 
 /** No sample at this slot. Grey, and never the bottom band. */
