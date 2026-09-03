@@ -18,9 +18,12 @@ import isochroneRingsLayer, {
   _isochroneBaseForTest,
   _isochroneModeForTest,
   _setIsochroneModeForTest,
+  centreCardText,
   drawRing,
   envelopeSentences,
+  expansionDigest,
   expansionSentence,
+  flyToCatchmentFrame,
   minutesLabel,
   modeVerb,
   resolveCentre,
@@ -29,6 +32,7 @@ import isochroneRingsLayer, {
   ringStyle,
 } from './isochroneRings.js';
 import { ISOCHRONE_STEPS } from './isochroneFeed.js';
+import { getOverlaySourceEntries } from '../overlays/worldOverlay.js';
 
 /** A square ring around Lyon, big enough to have a distinct northernmost point. */
 function squareRing(halfDeg, { north = 45.77 } = {}) {
@@ -353,4 +357,286 @@ test('the row names the upstream that actually answered', () => {
   assert.equal(cycling.envelope, true, 'a reader must not have to open a ring to learn this');
   assert.match(cycling.feedSource, /ODbL/, 'a different network is a different licence');
   _setIsochroneModeForTest(ISOCHRONE_DEFAULT_MODE);
+});
+
+// ── The card the click opens by itself ──────────────────────────────────────
+
+const PIN = { lon: -1.0522, lat: 43.7069, pinned: true };
+
+/** A square ring centred on the pin, of `halfDeg` a side. */
+function pinRing(halfDeg) {
+  return [
+    [PIN.lon - halfDeg, PIN.lat - halfDeg],
+    [PIN.lon + halfDeg, PIN.lat - halfDeg],
+    [PIN.lon + halfDeg, PIN.lat + halfDeg],
+    [PIN.lon - halfDeg, PIN.lat + halfDeg],
+  ];
+}
+
+/** A payload shaped as `/api/isochrone` answers one. */
+function catchmentPayload(overrides = {}) {
+  return {
+    profile: 'foot',
+    address: {
+      label: '8 Rue Gambetta 40100 Dax', city: 'Dax', postcode: '40100', distanceM: 11,
+    },
+    rings: [
+      { seconds: 300, areaKm2: 0.14, ring: pinRing(0.002) },
+      { seconds: 600, areaKm2: 0.5, ring: pinRing(0.004) },
+      { seconds: 900, areaKm2: 1.23, ring: pinRing(0.006) },
+    ],
+    expansion: [
+      { fromSeconds: 300, toSeconds: 600, share: 89.3, ratio: 3.57, freeSpaceRatio: 4 },
+      { fromSeconds: 600, toSeconds: 900, share: 109.3, ratio: 4.37, freeSpaceRatio: 4 },
+    ],
+    missing: 0,
+    envelope: false,
+    ...overrides,
+  };
+}
+
+test('the card is titled with the address, not with the layer`s own state', () => {
+  const card = centreCardText({ payload: catchmentPayload(), mode: 'foot', point: PIN });
+  assert.equal(card.title, '8 Rue Gambetta 40100 Dax');
+  assert.doesNotMatch(card.title, /point fix/i, 'the old title named a state, not a place');
+  assert.equal(card.details[0], 'Zone de chalandise à pied autour de ce point');
+  assert.match(card.details[1], /^5 min 0,14 km², 10 min 0,5 km², 15 min 1,23 km²$/);
+});
+
+test('every line survives the trip through the entity description', () => {
+  // The card's details reach a click as ONE string split on ` · `, so a line
+  // that contains the separator comes back as three lines that were never
+  // written. This is the round trip, taken exactly as `cardFromEntity` takes it.
+  for (const payload of [
+    catchmentPayload(),
+    catchmentPayload({ envelope: true, missing: 1, profile: 'bike' }),
+    catchmentPayload({ address: { city: 'Dax', label: 'Route de X', distanceM: 400 } }),
+  ]) {
+    const card = centreCardText({ payload, mode: payload.profile, point: PIN });
+    assert.deepEqual(card.details.join(' · ').split(' · '), card.details,
+      `a detail line carries the separator: ${JSON.stringify(card.details)}`);
+  }
+});
+
+test('the card explains the shape in the reader`s mode, and stays short', () => {
+  for (const mode of ['foot', 'car', 'bike']) {
+    const card = centreCardText({
+      payload: catchmentPayload({ profile: mode, envelope: mode === 'bike' }),
+      mode,
+      point: PIN,
+    });
+    assert.equal(card.details[0], `Zone de chalandise ${modeVerb(mode)} autour de ce point`);
+    assert.ok(card.details.length <= 6, `${mode}: ${card.details.length} lines`);
+    // The card is painted beside a catchment it is framed out of, so its width
+    // is catchment the reader does not get. 62 characters is about 410 px.
+    for (const line of card.details) {
+      assert.ok(line.length <= 62, `too long for the frame (${line.length}): ${line}`);
+    }
+  }
+});
+
+test('a commune standing in for an address says so on the card', () => {
+  const card = centreCardText({
+    payload: catchmentPayload({
+      address: { label: 'Route de la Parcelle 40990', city: 'Saint-Paul-lès-Dax', distanceM: 412 },
+    }),
+    mode: 'foot',
+    point: PIN,
+  });
+  assert.equal(card.title, 'Saint-Paul-lès-Dax');
+  assert.ok(card.details.some((line) => /première adresse à 412 m/.test(line)),
+    'or the commune title reads as more precise than it is');
+});
+
+test('an envelope still declares itself on the card that opens by itself', () => {
+  const card = centreCardText({
+    payload: catchmentPayload({ profile: 'bike', envelope: true }),
+    mode: 'bike',
+    point: PIN,
+  });
+  assert.ok(card.details.some((line) => /enveloppe OSM/.test(line) && /majorée/.test(line)));
+});
+
+test('a dropped ring is named on the card, not silently drawn smaller', () => {
+  const one = centreCardText({ payload: catchmentPayload({ missing: 1 }), mode: 'foot', point: PIN });
+  assert.ok(one.details.some((line) => /1 anneau non renvoyé/.test(line)));
+  const two = centreCardText({ payload: catchmentPayload({ missing: 2 }), mode: 'foot', point: PIN });
+  assert.ok(two.details.some((line) => /2 anneaux non renvoyés/.test(line)));
+});
+
+test('the card says which of the two centres it is describing', () => {
+  const pinned = centreCardText({ payload: catchmentPayload(), mode: 'foot', point: PIN });
+  assert.ok(pinned.details.at(-1).includes('LIBÉRER'));
+  const followed = centreCardText({
+    payload: catchmentPayload(), mode: 'foot', point: { ...PIN, pinned: false },
+  });
+  assert.match(followed.details.at(-1), /caméra/);
+});
+
+test('a service that answered nothing is said, not drawn as an empty catchment', () => {
+  const card = centreCardText({
+    payload: { rings: [], expansion: [], address: null },
+    mode: 'foot',
+    point: PIN,
+  });
+  assert.equal(card.title, '43,7069 N · 1,0522 O');
+  assert.equal(card.details[1], 'aucun anneau renvoyé par le service');
+});
+
+test('the expansion digest keeps the reading and drops the arithmetic', () => {
+  assert.equal(
+    expansionDigest([
+      { fromSeconds: 300, toSeconds: 600, share: 89.3 },
+      { fromSeconds: 600, toSeconds: 900, share: 109.3 },
+    ]),
+    '89 % puis 109 % de l’expansion libre — le réseau s’ouvre',
+  );
+  // The verdict is the LAST pair's: it describes the outermost band, which is
+  // the only edge the reader can see.
+  assert.match(expansionDigest([{ share: 120 }, { share: 71 }]), /freine$/);
+  assert.equal(expansionDigest([]), null);
+  assert.equal(expansionDigest([{ share: null }]), null);
+  assert.equal(expansionDigest(undefined), null);
+});
+
+/**
+ * A viewer with just enough of a canvas for the framing to solve on.
+ *
+ * No `ScreenSpaceEventHandler` is built — the shell only installs one when
+ * `scene.canvas` is an element it can listen on, and this is a measurement
+ * surface, not one.
+ */
+function framingViewer() {
+  const flights = [];
+  return {
+    flights,
+    viewer: {
+      camera: {
+        heading: 0,
+        frustum: { fov: Math.PI / 3, aspectRatio: 1.6 },
+        positionCartographic: new Cesium.Cartographic(
+          Cesium.Math.toRadians(PIN.lon), Cesium.Math.toRadians(PIN.lat), 3_000,
+        ),
+        moveEnd: { addEventListener: () => () => {} },
+        cancelFlight() {},
+        flyTo(options) { flights.push(options); },
+      },
+      scene: {
+        globe: { show: true },
+        canvasMeasureOnly: { clientWidth: 1600, clientHeight: 1000 },
+        requestRender() {},
+      },
+      dataSources: { add: (source) => source, remove: () => true },
+    },
+  };
+}
+
+/** The viewer the last `scanOnce` built, for tests that then move the camera. */
+let _framingViewer = null;
+
+/** Drive one real scan of the layer against a canned `/api/isochrone` answer. */
+async function scanOnce(t, payload, { pin = PIN } = {}) {
+  const originalDocument = globalThis.document;
+  const originalFetch = globalThis.fetch;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  const urls = [];
+  globalThis.fetch = async (url) => {
+    urls.push(String(url));
+    return { ok: true, json: async () => payload };
+  };
+  const { viewer, flights } = framingViewer();
+  _framingViewer = viewer;
+  // The canvas is attached only after `enable`, which is what would otherwise
+  // try to build a Cesium input handler on an object that is not an element.
+  const base = _isochroneBaseForTest();
+  base.init(viewer);
+  base.enable(viewer);
+  viewer.scene.canvas = viewer.scene.canvasMeasureOnly;
+  t.after(() => {
+    base.disable();
+    base.destroy(viewer);
+    globalThis.document = originalDocument;
+    globalThis.fetch = originalFetch;
+  });
+  isochroneRingsLayer.setParams({ centre: `${pin.lon},${pin.lat}` });
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  return { flights, urls, stats: isochroneRingsLayer.getStats() };
+}
+
+test('a click frames the catchment and puts its card up, off the wash', async (t) => {
+  _setIsochroneModeForTest('foot');
+  const { flights, stats } = await scanOnce(t, catchmentPayload());
+  assert.equal(stats.ringsDrawn, 3);
+  assert.equal(stats.selectedId, 'isochrone:centre', 'the card opened without a second click');
+  assert.equal(stats.address, '8 Rue Gambetta 40100 Dax');
+
+  assert.equal(flights.length, 1, 'one flight per catchment, not one per frame');
+  const orientation = flights[0].orientation;
+  assert.ok(Math.abs(orientation.pitch + Cesium.Math.PI_OVER_TWO) < 1e-9,
+    'nadir, because the framing arithmetic is only true looking straight down');
+  assert.equal(orientation.heading, 0);
+
+  assert.equal(stats.framing.side, 'below');
+  assert.ok(stats.framing.altitudeM > 0);
+  assert.ok(stats.framing.anchor.lat < PIN.lat,
+    'the card hangs off the southern edge of the shape, not off its centre');
+  assert.ok(stats.framing.anchor.lat < stats.framing.bounds.south + 1e-9);
+});
+
+test('the centre marker carries exactly what the card says', async (t) => {
+  _setIsochroneModeForTest('foot');
+  const payload = catchmentPayload();
+  await scanOnce(t, payload);
+  const [entry] = getOverlaySourceEntries('isochrone-fr');
+  const expected = centreCardText({ payload, mode: 'foot', point: PIN });
+  assert.equal(entry.title, expected.title);
+  assert.deepEqual(entry.details, expected.details);
+  assert.equal(entry.placement, 'below');
+});
+
+test('releasing the centre drops the frame with it', async (t) => {
+  _setIsochroneModeForTest('foot');
+  await scanOnce(t, catchmentPayload());
+  assert.ok(isochroneRingsLayer.getStats().framing);
+  isochroneRingsLayer.setParams({ centre: 'camera' });
+  assert.equal(isochroneRingsLayer.getStats().framing, null,
+    'a stale anchor would hang the next card off a catchment that has gone');
+});
+
+test('a camera-following scan is never reframed under the reader', async (t) => {
+  _setIsochroneModeForTest('foot');
+  const { flights } = await scanOnce(t, catchmentPayload());
+  assert.equal(flights.length, 1);
+
+  isochroneRingsLayer.setParams({ centre: 'camera' });
+  // A real move, so the release actually costs a scan rather than resolving to
+  // "the answer in hand still describes this block".
+  _framingViewer.camera.positionCartographic.latitude = Cesium.Math.toRadians(43.75);
+  await isochroneRingsLayer.update();
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  assert.equal(flights.length, 1, 'the reader is driving; the layer does not take the wheel');
+  assert.equal(isochroneRingsLayer.getStats().selectedId, null,
+    'and no card opens over a scan nobody asked for');
+  assert.equal(isochroneRingsLayer.getStats().framing, null);
+});
+
+test('a flight is refused while something else owns the camera', () => {
+  const tracked = { camera: { flyTo() { throw new Error('flew anyway'); } }, trackedEntity: {} };
+  assert.equal(flyToCatchmentFrame(tracked, {
+    camera: { lon: 1, lat: 43, altitudeM: 4_000 }, headingRad: 0,
+  }), false);
+  assert.equal(flyToCatchmentFrame({ camera: null }, {
+    camera: { lon: 1, lat: 43, altitudeM: 4_000 }, headingRad: 0,
+  }), false);
+  // And a frame the solver refused to produce is not flown to either.
+  const spy = { flights: [] };
+  const viewer = {
+    scene: { globe: null },
+    camera: { cancelFlight() {}, flyTo(options) { spy.flights.push(options); } },
+  };
+  assert.equal(flyToCatchmentFrame(viewer, null), false);
+  assert.equal(flyToCatchmentFrame(viewer, {
+    camera: { lon: 1, lat: 43, altitudeM: 0 }, headingRad: 0,
+  }), false);
+  assert.equal(spy.flights.length, 0);
 });

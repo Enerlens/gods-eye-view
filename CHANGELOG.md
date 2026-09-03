@@ -3,6 +3,35 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
+## [Unreleased] — 2026-09-03
+
+### Added
+- **Un clic cadre la zone de chalandise, au lieu de la dessiner là où vous étiez.**
+  Mesurer le sol qu'un point atteint puis en laisser un tiers sous le panneau
+  DATA LAYERS, à l'altitude où la caméra se trouvait par hasard, c'était le
+  calque refusant de montrer sa propre réponse une deuxième fois. La caméra vole
+  désormais à l'aplomb du point, à l'altitude qui fait tenir la zone entière —
+  non pas dans le canevas, mais dans **la partie du canevas qu'aucun panneau
+  n'occupe** : les mêmes rectangles d'interface que le solveur de fiches évite
+  déjà sont lus, les bandes de bord sont retranchées, et la zone est centrée
+  dans ce qui reste. Une zone à pied et une zone en voiture sont à deux ordres
+  de grandeur l'une de l'autre ; changer de mode sur un point fixé recadre.
+- **La fiche s'ouvre toute seule, et elle ne recouvre plus la zone.** Une bande
+  de la hauteur de la fiche est réservée en bas du cadre, et la fiche est
+  accrochée au **bord inférieur de la forme** et non à son centre : le filet la
+  relie au contour qu'elle décrit, et aucun pixel du lavis n'est dessous. La
+  bande coûte environ un sixième du cadre — moins cher que n'importe quelle
+  bande verticale, une fiche étant trois fois plus large que haute.
+- **Et la fiche est titrée par l'adresse du point.** « Point fixé — à pied »
+  nommait un état interne, pas le sujet du lecteur. Le proxy géocode le point à
+  l'envers via la **BAN** et la fiche porte la voie quand la première adresse est
+  à moins de 120 m, la commune au-delà — avec la distance dite, sans quoi un nom
+  de commune se lirait comme plus précis qu'il n'est — et la coordonnée quand il
+  n'y a ni l'une ni l'autre. Le texte est resserré pour la même raison que la
+  bande existe : chaque caractère de la fiche est de la largeur que la zone
+  n'obtient pas. La lecture d'expansion, elle, garde sa phrase entière sur la
+  fiche de chaque anneau.
+
 ## [Unreleased] — 2026-09-02
 
 ### Added

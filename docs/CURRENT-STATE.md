@@ -2195,6 +2195,46 @@ IGN walking polygon measured −32 % to +117 % of area across five communes — 
 worst case being rural, where the true shape is a spider. All of that is on the
 card, not only in this file.
 
+On 2026-09-03 the same complaint came back once more, in the last clothes it
+had: a catchment measured, drawn, and then left half under a panel with its own
+card painted on top of it.
+
+**A pinned centre is now FRAMED.** The layer solves an altitude that fits the
+drawn rings and flies there top-down — nadir because ground metres per pixel is
+one number only when the camera looks straight down, and a catchment fitted with
+the flat-ground formula at 20° of pitch overshoots by tens of per cent. Heading
+is kept, and the screen-axis offsets are rotated into ground axes rather than
+the map being turned back to north. The target is not the canvas centre: the
+chrome rectangles are read live from `WORLD_OVERLAY_OCCLUDER_SELECTORS` — the
+same inventory the card solver prefers to avoid — edge bands are inset past, and
+the rings are centred in what is left. Chrome here sits in a GUTTER
+(`--left-stack-x: 52px`), so a band is an element that STARTS within a tenth of
+the canvas of an edge; the first version required it to touch, matched nothing,
+and framed a catchment with a third of it under the panel stack. An element
+touching two edges is charged to whichever inset removes less canvas, and one
+too wide to inset past is ignored rather than obeyed. `isochroneFraming.js` is
+pure and its headline test re-implements the nadir projection to measure where
+the shape actually lands.
+
+**The card opens by itself, off the shape.** A band the height of the card is
+reserved at the bottom of the frame, and the card is anchored on the catchment's
+lower edge instead of on the centre marker — so the leader touches the outline
+it describes and no pixel of the wash is underneath. Two additions to the shared
+shell make that possible for any layer with a shape around its marker:
+`afterDraw`, which runs once the draw is on screen AND indexed (the first moment
+a card can be opened), and `cardAnchor`, which moves an open card off its
+marker. Both are opt-in and the other five address layers pass neither.
+
+**And the card is titled by the address.** "Point fixé — à pied" named the
+layer's own state. The proxy reverse-geocodes the pin through the BAN — folded
+into the memo that already answered the INSEE code for DVF and Géorisques, so a
+mode switch over one pin costs nothing — and the title is the street within
+120 m, the commune beyond it with the distance said out loud, and the coordinate
+when there is neither. The details were rewritten short for the same reason the
+band exists: the card is painted beside a catchment it is reserved out of, so
+every character is width the shape does not get. The full expansion sentences
+survive on the ring cards, which a reader reaches by asking about one ring.
+
 These five carry the first **two-character** share tokens — `gr`, `dv`, `dp`,
 `ur`, `if` — `cadastre-fr` is the sixth, `cd`, and `ads-fr` later took `au`. The single-character space
 ran out exactly where this file kept predicting it would: by the time this

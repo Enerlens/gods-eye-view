@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import {
   BIKE_ENVELOPE_BEARINGS,
   BIKE_ENVELOPE_SAMPLES,
+  CENTRE_ADDRESS_MAX_M,
   ISOCHRONE_MAX_RINGS,
   ISOCHRONE_MAX_SECONDS,
   ISOCHRONE_MIN_SECONDS,
@@ -18,11 +19,14 @@ import {
   bikeFanPoints,
   buildBikeTableUrl,
   buildIsochroneUrl,
+  centreTitle,
   clampSeconds,
   destinationPoint,
   equivalentRadiusM,
+  formatCoordinates,
   parseSteps,
   projectBikeEnvelope,
+  projectCentreAddress,
   projectIsochrone,
   rawRingAreaKm2,
   resolveProfile,
@@ -441,4 +445,69 @@ test('an ordinary polygon still projects to one part with no holes', () => {
   assert.equal(walk.holes.length, 0);
   assert.equal(walk.parts.length, 1);
   assert.equal(walk.parts[0].ring, walk.ring);
+});
+
+// ── What the centre is called ───────────────────────────────────────────────
+
+/** A BAN reverse answer, shaped as the service actually returns one. */
+function banAnswer({ label, city, distance, citycode = '40088' }) {
+  return {
+    type: 'FeatureCollection',
+    features: [{
+      properties: {
+        label, city, distance, citycode, postcode: '40100', street: 'Rue Gambetta', housenumber: '8',
+      },
+    }],
+  };
+}
+
+test('the projection keeps the distance instead of using it to reject', () => {
+  const far = projectCentreAddress(banAnswer({
+    label: 'Route de la Parcelle 40990 Saint-Paul-lès-Dax', city: 'Saint-Paul-lès-Dax', distance: 412.6,
+  }));
+  assert.equal(far.distanceM, 413, 'rounded to the metre and carried, not dropped');
+  assert.equal(far.city, 'Saint-Paul-lès-Dax');
+  // The cadastre's own projection drops this answer outright; a catchment card
+  // still has to be titled, so the decision is made where the title is written.
+  assert.ok(far.label);
+});
+
+test('an answer with neither a label nor a commune is no answer', () => {
+  assert.equal(projectCentreAddress(null), null);
+  assert.equal(projectCentreAddress({ features: [] }), null);
+  assert.equal(projectCentreAddress({ features: [{ properties: { distance: 4 } }] }), null);
+});
+
+test('a near address titles the card; a far one only names the commune', () => {
+  const near = projectCentreAddress(banAnswer({
+    label: '8 Rue Gambetta 40100 Dax', city: 'Dax', distance: 11,
+  }));
+  assert.equal(centreTitle(near, { lon: -1.05, lat: 43.7 }), '8 Rue Gambetta 40100 Dax');
+  const far = projectCentreAddress(banAnswer({
+    label: '8 Rue Gambetta 40100 Dax', city: 'Dax', distance: CENTRE_ADDRESS_MAX_M + 1,
+  }));
+  assert.equal(centreTitle(far, { lon: -1.05, lat: 43.7 }), 'Dax',
+    'a street number a block and a half away is a confident lie');
+  // Exactly at the threshold is still the address.
+  const edge = projectCentreAddress(banAnswer({
+    label: '8 Rue Gambetta 40100 Dax', city: 'Dax', distance: CENTRE_ADDRESS_MAX_M,
+  }));
+  assert.equal(centreTitle(edge, { lon: -1.05, lat: 43.7 }), '8 Rue Gambetta 40100 Dax');
+});
+
+test('with no address at all the coordinate is the title, written in French', () => {
+  const title = centreTitle(null, { lon: -1.0522, lat: 43.7069 });
+  assert.equal(title, '43,7069 N · 1,0522 O');
+  assert.equal(centreTitle(null, { lon: 7.2661, lat: -21.2 }), '21,2000 S · 7,2661 E');
+  assert.equal(formatCoordinates(0, 0), '0,0000 N · 0,0000 E');
+});
+
+test('a BAN answer the geocoder gave no distance for is still trusted', () => {
+  // The service always sends one; if it stops, the nearest address is still the
+  // nearest address, and refusing it would blank every title at once.
+  const noDistance = projectCentreAddress(banAnswer({
+    label: '8 Rue Gambetta 40100 Dax', city: 'Dax', distance: undefined,
+  }));
+  assert.equal(noDistance.distanceM, null);
+  assert.equal(centreTitle(noDistance, { lon: -1.05, lat: 43.7 }), '8 Rue Gambetta 40100 Dax');
 });
