@@ -336,6 +336,7 @@ function buildRecords(cells, resolution) {
       id: cellId(cell, resolution),
       cell,
       resolution,
+      vintage: _payload?.vintage ?? FILOSOFI_VINTAGE,
       color,
       fill: symbol.fill,
       baseM,
@@ -514,7 +515,13 @@ export function createFilosofiSelectedOverlayEntry(record, communes = {}) {
   } else {
     details.push('Imputation non renseignée par l’INSEE pour ce carreau');
   }
-  details.push(`Carreau ${side} · revenus ${FILOSOFI_VINTAGE} · INSEE Filosofi`);
+  // THE MILLÉSIME IS READ, NOT ASSERTED. The relay serves 2019 and a local pack
+  // serves 2021, and Martinique and La Réunion stay on the relay even when
+  // métropole has moved — so the year belongs to the ANSWER this cell came in,
+  // not to the layer. A constant here is one upstream refresh away from
+  // captioning 2021 figures with "2019".
+  const vintage = record.vintage ?? FILOSOFI_VINTAGE;
+  details.push(`Carreau ${side} · revenus ${vintage} · INSEE Filosofi`);
   // Size is the count, not the indicator — stated on the card because it is the
   // one thing a viewer cannot read off the picture, and because a disc that
   // stops short of its cell must say what the space around it means: nobody
@@ -1153,7 +1160,9 @@ const filosofiCarreauxLayer = {
       metric: _metric.id,
       metricLabel: _metric.label,
       regime: 'carreaux',
-      vintage: FILOSOFI_VINTAGE,
+      // Whatever answered, not what the module was compiled believing.
+      vintage: _payload?.vintage ?? FILOSOFI_VINTAGE,
+      vintageSource: _payload?.source ?? null,
       rampSample: FILOSOFI_RAMP_SAMPLE.cells,
       lastUpdate: _lastUpdate,
       loading: _loading,

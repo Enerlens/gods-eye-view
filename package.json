@@ -82,6 +82,7 @@
     "meteo:stations": "node scripts/build-meteo-stations-fr.mjs",
     "filosofi:ramp": "node scripts/build-filosofi-ramp.mjs",
     "filosofi:territoires": "node scripts/build-filosofi-territoires.mjs",
+    "filosofi:pack-2021": "node scripts/build-filosofi-2021-pack.mjs",
     "territoires:pack": "node scripts/build-fr-territoires.mjs",
     "qa:filosofi": "node scripts/qa-filosofi.mjs",
     "qa:isochrone": "node scripts/qa-isochrone.mjs",

@@ -1,0 +1,217 @@
+// scripts/lib/filosofiPack.test.mjs
+// The on-disk contract for the local 2021 carroyage pack, and the two rules
+// that keep it from lying: it covers métropole only, and its absence is a
+// fallback rather than a failure.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import path from 'node:path';
+import {
+  PACK_BOX,
+  PACK_CRS,
+  PACK_VINTAGE,
+  SHARD_M,
+  packCovers,
+  packIndexPath,
+  shardKey,
+  shardPath,
+  shardsForBox,
+} from './filosofiPack.mjs';
+import {
+  cellFromRow,
+  accumulateKm,
+  coarseCellToWire,
+  parseIdcar,
+  shardBounds,
+  share,
+  singleCommune,
+  splitCsvLine,
+} from '../build-filosofi-2021-pack.mjs';
+
+// ── The layout ──────────────────────────────────────────────────────────────
+
+test('a shard is a whole number of cells, so its key is exact arithmetic', () => {
+  assert.equal(SHARD_M % 200, 0, 'the fine grid must tile a shard exactly');
+  assert.equal(SHARD_M % 1000, 0, 'and so must the coarse one');
+  assert.equal(shardKey(2_529_000, 3_920_400), `${Math.floor(2_529_000 / SHARD_M)}_${Math.floor(3_920_400 / SHARD_M)}`);
+  // Two cells in the same 50 km tile share a key; one over the edge does not.
+  assert.equal(shardKey(2_529_000, 3_920_400), shardKey(2_529_200, 3_920_600));
+  assert.notEqual(shardKey(2_529_000, 3_920_400), shardKey(2_529_000, 3_920_400 + SHARD_M));
+  assert.equal(shardPath('/p', 200, '50_78'), path.join('/p', 'r200', '50_78.json.gz'));
+  assert.equal(packIndexPath('/p'), path.join('/p', 'index.json'));
+});
+
+test('shards are chosen by their own published boxes, so nothing projects twice', () => {
+  const bounds = {
+    lyon: { south: 45.7, west: 4.8, north: 45.9, east: 5.0 },
+    paris: { south: 48.8, west: 2.2, north: 49.0, east: 2.5 },
+  };
+  assert.deepEqual(shardsForBox(bounds, { south: 45.75, west: 4.83, north: 45.78, east: 4.87 }), ['lyon']);
+  assert.deepEqual(shardsForBox(bounds, { south: 40, west: 0, north: 50, east: 6 }).sort(), ['lyon', 'paris']);
+  assert.deepEqual(shardsForBox(bounds, { south: 43.0, west: 1.0, north: 43.5, east: 1.5 }), []);
+  assert.deepEqual(shardsForBox(undefined, { south: 0, west: 0, north: 1, east: 1 }), []);
+});
+
+test('the pack covers métropole and refuses everything else', () => {
+  // Not a limitation to paper over: INSEE publishes Martinique in CRS5490 and
+  // La Réunion in CRS2975 — their own UTM zones — and this app inverts
+  // EPSG:3035 and nothing else. Those two stay on the WFS, which reprojects
+  // them, so ONE LAYER CAN BE ON TWO MILLÉSIMES AT ONCE and the answer has to
+  // say which per box.
+  assert.equal(PACK_CRS, 3035);
+  assert.ok(packCovers({ south: 45.75, west: 4.82, north: 45.79, east: 4.88 }), 'Lyon');
+  assert.ok(packCovers({ south: 41.3, west: 8.6, north: 42.0, east: 9.5 }), 'Corse');
+  assert.ok(!packCovers({ south: 14.4, west: -61.2, north: 14.9, east: -60.8 }), 'Martinique');
+  assert.ok(!packCovers({ south: -21.4, west: 55.2, north: -20.9, east: 55.8 }), 'La Réunion');
+  assert.ok(!packCovers(null));
+  assert.ok(PACK_BOX.north > 51 && PACK_BOX.south < 41.3, 'Dunkerque to Bonifacio');
+});
+
+// ── Reading INSEE's CSV ─────────────────────────────────────────────────────
+
+test('the identifier carries its projection, and only one of them is packable', () => {
+  assert.deepEqual(parseIdcar('CRS3035RES200mN2029400E4259000'),
+    { crs: 3035, res: 200, n: 2_029_400, e: 4_259_000 });
+  // Martinique and La Réunion, in INSEE's own files.
+  assert.equal(parseIdcar('CRS5490RES200mN1592600E728800').crs, 5490);
+  assert.equal(parseIdcar('CRS2975RES200mN7634200E359400').crs, 2975);
+  assert.equal(parseIdcar('nonsense'), null);
+  // A cell in another projection is not packed — its northing would land it in
+  // the Atlantic if it were read as LAEA.
+  assert.equal(cellFromRow({ idcar_200m: 'CRS5490RES200mN1592600E728800', ind: '1' }), null);
+});
+
+test('a quoted commune list does not shift every column after it', () => {
+  // The bug this replaced: about 8 % of rows quote their commune field because
+  // the cell straddles communes — `"2A041,2A247"` — and `line.split(',')`
+  // shifted the rest by one. The first build published 64 010 communes and the
+  // wrong income in one row out of twelve.
+  const line = 'CRS3035RES200mN2042600E4257600,CRS3035RES1000mN2042000E4257000,'
+    + 'CRS3035RES32000mN2016000E4256000,1,1,"2A041,2A247",4,1.9';
+  const parts = splitCsvLine(line);
+  assert.equal(parts[5], '2A041,2A247', 'the quoted field stays whole');
+  assert.equal(parts[6], '4', 'and the column after it is still the population');
+  assert.equal(parts.length, 8);
+  // Doubled quotes are an escaped quote, not the end of the field.
+  assert.deepEqual(splitCsvLine('a,"b""c",d'), ['a', 'b"c', 'd']);
+  assert.deepEqual(splitCsvLine('a,,b'), ['a', '', 'b']);
+});
+
+test('a cell on several communes is named by none of them', () => {
+  // INSEE lists every commune a carreau touches. The wire shape carries one
+  // code, and picking the first would be inventing an answer the publisher
+  // deliberately declined to give — the same reason the 1 km grid names none.
+  assert.equal(singleCommune('2A041'), '2A041');
+  assert.equal(singleCommune('"2A041"'), '2A041');
+  assert.equal(singleCommune('2A041,2A247'), null);
+  assert.equal(singleCommune(''), null);
+  assert.equal(singleCommune(null), null);
+});
+
+test('a row becomes the same wire cell the WFS path produces', () => {
+  // The whole point of the pack: the proxy serves it through the path that
+  // already exists, and the client cannot tell which source answered except by
+  // reading the vintage it is told.
+  const cell = cellFromRow({
+    idcar_200m: 'CRS3035RES200mN2529000E3920400',
+    idcar_1km: 'CRS3035RES1000mN2529000E3920000',
+    i_est_200: '0',
+    lcog_geo: '69381',
+    ind: '100', men: '50', men_pauv: '10', men_1ind: '25', men_prop: '20',
+    ind_snv: '2500000', men_surf: '3000', men_coll: '45', log_soc: '5',
+    ind_0_3: '4', ind_4_5: '2', ind_6_10: '6', ind_11_17: '8',
+    ind_65_79: '10', ind_80p: '5',
+  });
+  assert.equal(cell.n, 2_529_000);
+  assert.equal(cell.e, 3_920_400);
+  assert.equal(cell.ind, 100);
+  assert.equal(cell.niveau, 25_000, 'ind_snv / ind, which the WFS pre-divides');
+  assert.equal(cell.pauvrete, 20, '10 poor households of 50');
+  // `men_surf` is a TOTAL floor area, not a mean: reading it straight would
+  // publish a France of 3 000 m² apartments.
+  assert.equal(cell.surface, 60);
+  assert.equal(cell.jeunes, 20, 'four age bands under 18, summed');
+  assert.equal(cell.aines, 15);
+  assert.equal(cell.est, 0);
+  assert.equal(cell.com, '69381');
+});
+
+test('an unstated imputation flag is null, never "observed"', () => {
+  // The one claim this field exists to make, and the one a missing column
+  // cannot support.
+  assert.equal(cellFromRow({ idcar_200m: 'CRS3035RES200mN1E1', i_est_200: '1', ind: '1' }).est, 1);
+  assert.equal(cellFromRow({ idcar_200m: 'CRS3035RES200mN1E1', i_est_200: '0', ind: '1' }).est, 0);
+  assert.equal(cellFromRow({ idcar_200m: 'CRS3035RES200mN1E1', ind: '1' }).est, null);
+});
+
+test('a share of nothing is null, not zero', () => {
+  assert.equal(share(10, 50), 20);
+  assert.equal(share(1, 3), 33.3, 'rounded to the tenth the relay publishes');
+  assert.equal(share(5, 0), null, 'no denominator is not a rate of zero');
+  assert.equal(share(null, 50), null);
+});
+
+// ── Aggregating to 1 km ─────────────────────────────────────────────────────
+
+test('the coarse grid sums numerators, never averages rates', () => {
+  // The mean of two cells' poverty rates is not the poverty rate of the two.
+  // Averaging would weight a 4-household square like a 400-household one and
+  // make the coarse grid disagree with the fine one over the same ground.
+  const coarse = new Map();
+  const base = {
+    idcar_1km: 'CRS3035RES1000mN2529000E3920000',
+    i_est_1km: '0',
+    ind_snv: '0', men_surf: '0', men_prop: '0', men_1ind: '0', men_coll: '0', log_soc: '0',
+  };
+  accumulateKm(coarse, { ...base, ind: '400', men: '200', men_pauv: '20' });
+  accumulateKm(coarse, { ...base, ind: '4', men: '2', men_pauv: '2' });
+  const wire = coarseCellToWire([...coarse.values()][0]);
+  assert.equal(wire.men, 202);
+  // 22 poor of 202 is 10.9 %. The mean of 10 % and 100 % would have been 55 %.
+  assert.equal(wire.pauvrete, 10.9);
+  assert.equal(wire.com, null, 'a 1 km square spans communes and INSEE names none');
+});
+
+test('the coarse imputation flag is the published one, not derived from children', () => {
+  // INSEE decides confidentiality at each resolution: a 1 km square of observed
+  // 200 m cells can still be published as modelled, and inferring it from the
+  // children would be overruling the publisher.
+  const coarse = new Map();
+  accumulateKm(coarse, {
+    idcar_1km: 'CRS3035RES1000mN2529000E3920000', i_est_1km: '1', ind: '10', men: '5',
+  });
+  accumulateKm(coarse, {
+    idcar_1km: 'CRS3035RES1000mN2529000E3920000', i_est_1km: '1', ind: '10', men: '5',
+  });
+  assert.equal(coarseCellToWire([...coarse.values()][0]).est, 1);
+});
+
+test('a 1 km cell in an unpackable projection is not accumulated', () => {
+  const coarse = new Map();
+  accumulateKm(coarse, { idcar_1km: 'CRS2975RES1000mN7634000E359000', ind: '19' });
+  assert.equal(coarse.size, 0);
+});
+
+// ── The index the proxy reads ───────────────────────────────────────────────
+
+test('a shard publishes a box that contains its own cells', () => {
+  // The proxy picks files by viewport and never projects anything itself, so a
+  // box that clipped its own cells would drop them silently.
+  const cells = [
+    { n: 2_529_000, e: 3_920_400 },
+    { n: 2_530_000, e: 3_921_400 },
+  ];
+  // Those two cells sit at 45.75002/4.85531 and 45.75963/4.86728.
+  const box = shardBounds(cells, 200);
+  assert.ok(box.south < 45.75002 && box.north > 45.75963, `${JSON.stringify(box)}`);
+  assert.ok(box.west < 4.85531 && box.east > 4.86728, `${JSON.stringify(box)}`);
+  // The margin is a whole cell, because a centre is not a corner.
+  const tight = shardBounds([cells[0]], 200);
+  assert.ok(tight.north - tight.south > (2 * 200) / 111_000 * 0.9);
+});
+
+test('the vintage the builder writes is the one the module publishes', () => {
+  // Two programs agree about this number — the script that writes the pack and
+  // the proxy that reads it — and a drift between them would caption 2021 data
+  // with another year.
+  assert.equal(PACK_VINTAGE, 2021);
+});
