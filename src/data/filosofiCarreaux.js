@@ -7,7 +7,22 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { boxKey, snapBoxOutward } from './viewportBox.js';
-import { applyViewGate } from './viewGate.js';
+import {
+  TERRITORY_SELECTED_OVERLAY_SOURCE_ID,
+  createTerritorySelectedOverlayEntry,
+  fillTerritoryCollection,
+  joinTerritories,
+  loadTerritoryAnchors,
+  resolveTerritoryPickId,
+  territoryChips,
+  territoryLegend,
+  territoryStats,
+} from './filosofiTerritoires.js';
+import {
+  TERRITORY_VINTAGE,
+  levelForBox,
+  resolveTerritoryMetric,
+} from './filosofiTerritoiresFeed.js';
 import {
   FILOSOFI_METRICS,
   FILOSOFI_RAMPS,
@@ -81,6 +96,17 @@ import {
  * `filosofiFeed.js` carries the measurement: population-weighted quantiles over
  * a 42-box national sample, so a colour means the same thing wherever the
  * camera is.
+ *
+ * ABOVE THE GRID'S CEILING THE LAYER CHANGES DATASET RATHER THAN GOING BLANK.
+ * The carroyage refuses a box wider than 0.9°, and that refusal is right — 2.3
+ * million squares sampled down to a page is a picture of the sample. It also
+ * left the map empty at the altitude the app opens at. So past that ceiling the
+ * layer draws INSEE's own aggregates instead: one disc per département, then
+ * per région, from a second keyless API. It is a DIFFERENT DATASET — a median
+ * where the grid has a mean, people where it has households, 2023 where the
+ * relayed grid is 2019 — and `filosofiTerritoires.js` puts that on every card,
+ * because a reader who thinks they are seeing the same numbers from further
+ * away is being misled by the zoom.
  *
  * @module data/filosofiCarreaux
  */
@@ -175,6 +201,18 @@ let _retryDelayMs = 0;
 let _clickHandler = null;
 let _moveEndRemover = null;
 
+// --- The national regime ---------------------------------------------------
+/** `'carreaux'` below the grid's ceiling, `'territoires'` above it. */
+let _regime = 'carreaux';
+let _level = 'DEP';
+let _points = null;
+/** territory id -> drawn record */
+let _territoryRecords = new Map();
+let _territoryPayload = null;
+let _territoryMetric = resolveTerritoryMetric('niveau');
+let _territoryLoadedKey = null;
+let _territoryAnchors = null;
+
 // ---------------------------------------------------------------------------
 // The view
 // ---------------------------------------------------------------------------
@@ -216,9 +254,9 @@ export function filosofiViewportBox(viewer) {
   };
   if (!Number.isFinite(box.south) || !Number.isFinite(box.west)) return { box: null, reason: 'no-view' };
   if (box.west >= box.east || box.south >= box.north) return { box: null, reason: 'no-view' };
-  if (!filosofiCoverageIntersects(box)) return { box: null, reason: 'off-coverage' };
-  if (filosofiBoxTooWide(box)) return { box: null, reason: 'too-wide' };
-  return { box, reason: null };
+  if (!filosofiCoverageIntersects(box)) return { box: null, reason: 'off-coverage', raw: box };
+  if (filosofiBoxTooWide(box)) return { box: null, reason: 'too-wide', raw: box };
+  return { box, reason: null, raw: box };
 }
 
 // ---------------------------------------------------------------------------
@@ -407,6 +445,7 @@ function clearSelection() {
   }
   _selectedId = null;
   _overlayHost.clearSource(FILOSOFI_SELECTED_OVERLAY_SOURCE_ID);
+  _overlayHost.clearSource(TERRITORY_SELECTED_OVERLAY_SOURCE_ID);
 }
 
 /** Repaint every instance after the metric changed, without refetching. */
@@ -537,11 +576,125 @@ function installClickHandler(viewer) {
   _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
   _clickHandler.setInputAction((click) => {
     const picked = viewer.scene.pick(click.position);
+    const territory = resolveTerritoryPickId(picked, (id) => _territoryRecords.has(id));
+    if (territory) { selectTerritory(territory); return; }
     const id = resolveFilosofiPickId(picked);
     if (id) { selectCell(id); return; }
     if (!picked && _selectedId) clearSelection();
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
+}
+
+// ---------------------------------------------------------------------------
+// The national regime
+// ---------------------------------------------------------------------------
+function clearPoints() {
+  if (_points && _viewer?.scene) _viewer.scene.primitives.remove(_points);
+  _points = null;
+  _territoryRecords = new Map();
+}
+
+/** Drop whatever the other regime had drawn, so only one is ever on screen. */
+function leaveRegime(next) {
+  if (_regime === next) return;
+  clearSelection();
+  if (next === 'territoires') clearPrimitive();
+  else clearPoints();
+  _regime = next;
+}
+
+function drawTerritories(records) {
+  if (!_viewer?.scene) return;
+  if (!_points) {
+    _points = new Cesium.PointPrimitiveCollection();
+    _viewer.scene.primitives.add(_points);
+  }
+  const drawn = fillTerritoryCollection(_points, records, _territoryMetric);
+  _territoryRecords = new Map(drawn.map((record) => [record.id, record]));
+  _points.show = _enabled;
+  governorRequestRender('filosofi-territoires');
+}
+
+/**
+ * Fetch and draw one level of the national view.
+ *
+ * The anchors and the figures are fetched INDEPENDENTLY and cached
+ * independently: the anchors are a bundled file that never changes within a
+ * release, the figures are a millésime behind a month-long proxy cache. Tying
+ * them into one request would re-download the outlines every time INSEE's
+ * cache expired.
+ *
+ * @param {'DEP'|'REG'} level
+ * @returns {Promise<boolean>} Whether anything new was drawn.
+ */
+async function loadTerritories(level) {
+  const key = `territoires:${level}`;
+  if (key === _territoryLoadedKey && _territoryPayload && !_error) {
+    // Same level, same figures — but the metric may have changed under us.
+    drawTerritories([..._territoryRecords.values()].length
+      ? [..._territoryRecords.values()]
+      : joinTerritories(_territoryPayload.territories, _territoryAnchors, level).records);
+    return false;
+  }
+
+  _abort?.abort();
+  _abort = new AbortController();
+  const signal = _abort.signal;
+  const timeout = setTimeout(() => _abort?.abort(), REQUEST_TIMEOUT_MS);
+  _loading = true;
+  _status = 'loading';
+  _error = null;
+  try {
+    const [payload, anchors] = await Promise.all([
+      fetch(`/api/filosofi/territoires?level=${level}`, { signal })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`territoires HTTP ${response.status}`);
+          const body = await response.json();
+          if (!Array.isArray(body?.territories)) throw new Error('Réponse territoires illisible');
+          return body;
+        }),
+      _territoryAnchors ? Promise.resolve(_territoryAnchors) : loadTerritoryAnchors(),
+    ]);
+    if (signal.aborted) return false;
+    _territoryAnchors = anchors;
+    const { records, unanchored } = joinTerritories(payload.territories, anchors, level);
+    drawTerritories(records);
+    _territoryPayload = { ...payload, unanchored, drawn: records.length };
+    _level = level;
+    _territoryLoadedKey = key;
+    _lastUpdate = Date.now();
+    _retryDelayMs = 0;
+    clearRetry();
+    _status = 'ready';
+    return true;
+  } catch (error) {
+    if (error?.name === 'AbortError') return false;
+    _error = error?.message || String(error);
+    _status = 'unavailable';
+    _territoryLoadedKey = null;
+    scheduleRetry();
+    console.warn('[Data:Carroyage INSEE] national view failed:', error);
+    return false;
+  } finally {
+    clearTimeout(timeout);
+    _loading = false;
+  }
+}
+
+function selectTerritory(id) {
+  const record = _territoryRecords.get(id);
+  if (!record) return false;
+  clearSelection();
+  _selectedId = id;
+  const entry = createTerritorySelectedOverlayEntry(record, _territoryMetric);
+  if (entry) {
+    _overlayHost.setVisible(TERRITORY_SELECTED_OVERLAY_SOURCE_ID, true);
+    _overlayHost.setEntries(
+      TERRITORY_SELECTED_OVERLAY_SOURCE_ID, [entry], FILOSOFI_SELECTED_OVERLAY_SOURCE_OPTIONS,
+    );
+  }
+  governorRequestRender('filosofi-territory-select');
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -566,16 +719,28 @@ function scheduleRetry() {
 async function load() {
   if (!_enabled || !_viewer) return false;
 
-  const { box, reason } = filosofiViewportBox(_viewer);
+  const { box, reason, raw } = filosofiViewportBox(_viewer);
   if (!box) {
+    // TOO WIDE IS NOT NOTHING. The grid cannot answer here, but INSEE can: the
+    // layer changes dataset rather than going blank, and says which one it is
+    // on. Off-coverage and no-view still clear — there is no French aggregate
+    // for a view of the Atlantic either.
+    if (reason === 'too-wide') {
+      leaveRegime('territoires');
+      _payload = null;
+      _loadedKey = null;
+      return loadTerritories(levelForBox(raw));
+    }
+    leaveRegime('carreaux');
     clearPrimitive();
     _payload = null;
     _loadedKey = null;
     _error = null;
-    _status = reason === 'too-wide' ? 'zoom-in' : (reason === 'off-coverage' ? 'off-coverage' : 'idle');
+    _status = reason === 'off-coverage' ? 'off-coverage' : 'idle';
     governorRequestRender('filosofi-clear');
     return false;
   }
+  leaveRegime('carreaux');
 
   const snapped = snapBoxOutward(box, BOX_SNAP_DEG);
   const resolution = resolutionForBox(snapped);
@@ -789,7 +954,14 @@ const filosofiCarreauxLayer = {
     _loadedKey = null;
     _retryDelayMs = 0;
     _metric = FILOSOFI_METRICS[0];
+    _regime = 'carreaux';
+    _level = 'DEP';
+    _territoryPayload = null;
+    _territoryRecords = new Map();
+    _territoryLoadedKey = null;
+    _territoryMetric = resolveTerritoryMetric('niveau');
     _overlayHost.setVisible(FILOSOFI_SELECTED_OVERLAY_SOURCE_ID, false);
+    _overlayHost.setVisible(TERRITORY_SELECTED_OVERLAY_SOURCE_ID, false);
     console.log('[Data:Carroyage INSEE] Initialized');
   },
 
@@ -798,7 +970,9 @@ const filosofiCarreauxLayer = {
     _error = null;
     if (viewer) _viewer = viewer;
     if (_primitive) _primitive.show = true;
+    if (_points) _points.show = true;
     _overlayHost.setVisible(FILOSOFI_SELECTED_OVERLAY_SOURCE_ID, true);
+    _overlayHost.setVisible(TERRITORY_SELECTED_OVERLAY_SOURCE_ID, true);
     installClickHandler(_viewer);
     registerPickOwner(FILOSOFI_LAYER_ID, (pickedId) => _records.has(pickedId));
     if (!_moveEndRemover && _viewer?.camera?.moveEnd) {
@@ -817,7 +991,9 @@ const filosofiCarreauxLayer = {
     _abort?.abort();
     _abort = null;
     if (_primitive) _primitive.show = false;
+    if (_points) _points.show = false;
     _overlayHost.setVisible(FILOSOFI_SELECTED_OVERLAY_SOURCE_ID, false);
+    _overlayHost.setVisible(TERRITORY_SELECTED_OVERLAY_SOURCE_ID, false);
     if (_clickHandler) { _clickHandler.destroy(); _clickHandler = null; }
     if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
     unregisterPickOwner(FILOSOFI_LAYER_ID);
@@ -826,29 +1002,16 @@ const filosofiCarreauxLayer = {
     _status = 'idle';
   },
 
-  /**
-   * Bring the camera inside the box this layer draws at.
-   * @param {?Cesium.Viewer} viewer
-   * @param {{signal?: ?AbortSignal}} [options]
-   * @returns {Promise<boolean>}
-   */
-  async ensureViewGate(viewer, { signal } = {}) {
-    const target = viewer || _viewer;
-    if (!target) return false;
-    const { box, reason } = filosofiViewportBox(target);
-    if (reason !== 'too-wide') return Boolean(box);
-    return applyViewGate(target, {
-      fits: () => Boolean(filosofiViewportBox(target).box),
-      maxDeg: FILOSOFI_MAX_BOX_DEG,
-      coverage: FILOSOFI_COVERAGE,
-      signal,
-      reason: 'filosofi-view-gate',
-    });
-  },
+  // NO `ensureViewGate`, and its removal is the point. The layer used to fly
+  // the camera down to a city when it was switched on from a national view,
+  // because a wide box drew nothing. It now draws the country's départements
+  // there, so moving the operator would be taking a decision away from them to
+  // solve a problem that no longer exists. Zooming is how you ask for the grid.
 
   async update() {
     if (!_enabled) return false;
     _loadedKey = null;
+    _territoryLoadedKey = null;
     const loaded = await load();
     return loaded || !_error;
   },
@@ -861,10 +1024,25 @@ const filosofiCarreauxLayer = {
    */
   setParams(params = {}) {
     if (params.metric === undefined) return false;
-    const next = resolveMetric(params.metric);
-    if (next.id === _metric.id) return false;
-    _metric = next;
-    redrawForMetric();
+    // BOTH regimes are updated, always, whichever one is on screen. The chips
+    // the operator can see belong to the regime they are in, but a share link
+    // carries one id and the camera it restores decides which regime reads it —
+    // so `niveau` has to mean the right thing on both sides of the threshold.
+    const nextCarreau = resolveMetric(params.metric);
+    const nextTerritory = resolveTerritoryMetric(params.metric);
+    const changed = nextCarreau.id !== _metric.id || nextTerritory.id !== _territoryMetric.id;
+    if (!changed) return false;
+    _metric = nextCarreau;
+    _territoryMetric = nextTerritory;
+    if (_regime === 'territoires') {
+      const records = _territoryPayload && _territoryAnchors
+        ? joinTerritories(_territoryPayload.territories, _territoryAnchors, _level).records
+        : [];
+      clearSelection();
+      drawTerritories(records);
+    } else {
+      redrawForMetric();
+    }
     governorRequestRender('filosofi-metric');
     return true;
   },
@@ -879,7 +1057,10 @@ const filosofiCarreauxLayer = {
    * @returns {{metric: string}}
    */
   getParams() {
-    return { metric: _metric.id };
+    // The regime on screen owns the answer: the national view has two
+    // indicators the grid does not have at all, and serialising the carreau
+    // chip while the operator is looking at Gini would share a different map.
+    return { metric: _regime === 'territoires' ? _territoryMetric.id : _metric.id };
   },
 
   /**
@@ -892,6 +1073,13 @@ const filosofiCarreauxLayer = {
   },
 
   getRowControls() {
+    if (_regime === 'territoires') {
+      const records = [..._territoryRecords.values()];
+      return {
+        chips: territoryChips(_territoryMetric),
+        legend: territoryLegend(_territoryMetric, records, _level),
+      };
+    }
     const cells = _payload?.cells || [];
     const chips = FILOSOFI_METRICS.map((metric) => ({
       id: metric.id,
@@ -905,6 +1093,45 @@ const filosofiCarreauxLayer = {
   },
 
   getStats() {
+    if (_regime === 'territoires') {
+      const records = [..._territoryRecords.values()];
+      const stats = territoryStats(records, _level);
+      const result = {
+        count: records.length,
+        regime: 'territoires',
+        level: _level,
+        levelLabel: stats.levelLabel,
+        cells: stats.territories,
+        resolution: null,
+        people: stats.people,
+        niveau: stats.niveau,
+        metric: _territoryMetric.id,
+        metricLabel: _territoryMetric.label,
+        // The year belongs to the number, and the two regimes disagree about
+        // it. Publishing the vintage of the regime ON SCREEN is what stops the
+        // panel from captioning a 2023 median with the grid's 2019.
+        vintage: _territoryMetric.year,
+        vintages: TERRITORY_VINTAGE,
+        scope: stats.scope,
+        withoutFigures: stats.withoutFigures,
+        lastUpdate: _lastUpdate,
+        loading: _loading,
+        status: _status === 'ready' ? 'ok' : _status,
+        stale: Boolean(_territoryPayload?.stale),
+        feedSource: 'INSEE Filosofi, recensement et base Tous salariés — API Melodi',
+      };
+      if (_territoryPayload?.partial) {
+        result.degraded = true;
+        result.loadingLabel = 'Vue nationale incomplète : une des trois sources INSEE n’a pas répondu';
+      } else if (_loading) {
+        result.loadingLabel = `Agrégats ${stats.levelLabel.toLowerCase()}…`;
+      } else if (records.length) {
+        result.loadingLabel = `${stats.levelLabel} · Filosofi ${TERRITORY_VINTAGE.filosofi}`
+          + ' — zoome pour le carroyage 200 m';
+      }
+      if (_error) result.error = _error;
+      return result;
+    }
     const summary = _payload?.summary || null;
     const result = {
       count: _payload?.drawn ?? 0,
@@ -925,6 +1152,7 @@ const filosofiCarreauxLayer = {
       matched: _payload?.matched ?? null,
       metric: _metric.id,
       metricLabel: _metric.label,
+      regime: 'carreaux',
       vintage: FILOSOFI_VINTAGE,
       rampSample: FILOSOFI_RAMP_SAMPLE.cells,
       lastUpdate: _lastUpdate,
@@ -937,9 +1165,6 @@ const filosofiCarreauxLayer = {
       result.degraded = true;
       result.loadingLabel = `${_fr.format(_payload.matched)} carreaux dans la vue,`
         + ` ${_fr.format(_payload.returned)} dessinés — zoome pour les avoir tous`;
-    } else if (_status === 'zoom-in') {
-      result.status = 'ok';
-      result.loadingLabel = `Zoome sous ${FILOSOFI_MAX_BOX_DEG}° pour charger le carroyage`;
     } else if (_status === 'off-coverage') {
       result.status = 'ok';
       result.loadingLabel = 'Hors couverture INSEE (métropole, Martinique, La Réunion)';
@@ -961,7 +1186,10 @@ const filosofiCarreauxLayer = {
     if (_moveEndRemover) { _moveEndRemover(); _moveEndRemover = null; }
     clearRetry();
     clearPrimitive();
+    clearPoints();
     _payload = null;
+    _territoryPayload = null;
+    _territoryLoadedKey = null;
     _viewer = null;
   },
 };

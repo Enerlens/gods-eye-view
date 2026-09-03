@@ -184,6 +184,14 @@ import {
   summarizeCells,
 } from './src/data/filosofiFeed.js';
 import {
+  MELODI_DATASETS,
+  TERRITORY_SCOPE,
+  TERRITORY_VINTAGE,
+  buildTerritoryUrls,
+  codesForLevel,
+  foldTerritoryObservations,
+} from './src/data/filosofiTerritoiresFeed.js';
+import {
   GPU_BOX_STEP_DEG,
   GPU_REQUEST_MAX_BOX_DEG,
   GPU_UPSTREAM_LIMIT,
@@ -20046,10 +20054,99 @@ async function readFilosofiDisk(key, maxAgeMs) {
   }
 }
 
+/** Read a disk-cached national answer. */
+async function readFilosofiTerritoryDisk(level, maxAgeMs) {
+  try {
+    const entry = JSON.parse(await fsp.readFile(filosofiDiskPath(`territoires:${level}`), 'utf8'));
+    if (!Number.isFinite(entry?.at) || !Array.isArray(entry?.payload?.territories)) return null;
+    if (Date.now() - entry.at > maxAgeMs) return null;
+    return entry;
+  } catch {
+    return null;
+  }
+}
+
+function writeFilosofiTerritoryDisk(level, entry) {
+  fsp.mkdir(FILOSOFI_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(filosofiDiskPath(`territoires:${level}`), JSON.stringify(entry)))
+    .catch((err) => console.warn('[Filosofi Proxy] territory cache write failed:', err?.message || err));
+}
+
 function writeFilosofiDisk(key, entry) {
   fsp.mkdir(FILOSOFI_DISK_DIR, { recursive: true })
     .then(() => fsp.writeFile(filosofiDiskPath(key), JSON.stringify(entry)))
     .catch((err) => console.warn('[Filosofi Proxy] disk cache write failed:', err?.message || err));
+}
+
+/**
+ * The national view's cache, and why its TTL is a month rather than a day.
+ *
+ * There are exactly two answers — one per level — and both are statistical
+ * millésimes that move once a year at most. Re-asking INSEE for them on a
+ * camera move would be three round trips to say the same thing.
+ */
+const FILOSOFI_TERRITORY_TTL_MS = 30 * 24 * 60 * 60_000;
+/** level -> {at:number, payload:object} */
+const _filosofiTerritoryCache = new Map();
+const _filosofiTerritoryInFlight = new Map();
+
+/**
+ * One level of the national view: three Melodi datasets folded into one answer.
+ *
+ * THREE, because Filosofi publishes no denominator — `DS_FILOSOFI_CC` carries
+ * medians and rates and not a single count — and the layer sizes every symbol
+ * by the population the indicator was computed on. The wage series is the third
+ * because it is the only income figure INSEE publishes for 2024, and it answers
+ * a different question, which the client states in words.
+ *
+ * A dataset that fails does NOT fail the answer: a national view with no wage
+ * column is still a national view, and refusing to draw the country because one
+ * of three optional columns timed out would be the wrong trade. What is missing
+ * is named in `partial` so the client can say so rather than show a gap.
+ *
+ * @param {'DEP'|'REG'} level
+ * @returns {Promise<object>}
+ */
+async function refreshFilosofiTerritories(level) {
+  const urls = buildTerritoryUrls(level);
+  const partial = [];
+  const get = async (name) => {
+    try {
+      const response = await fetch(urls[name], {
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(FILOSOFI_TIMEOUT_MS),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return await response.json();
+    } catch (error) {
+      partial.push(`${MELODI_DATASETS[name]}: ${error?.message || error}`);
+      return null;
+    }
+  };
+  const [filosofi, population, wages] = await Promise.all([
+    get('filosofi'), get('population'), get('wages'),
+  ]);
+  if (!filosofi && !population) {
+    throw new Error(`Melodi unreachable for ${level} — ${partial.join('; ')}`);
+  }
+
+  const rows = [...foldTerritoryObservations({ filosofi, population, wages }).values()];
+  // Sorted by code so the wire shape is stable and a diff between two fetches
+  // is a change in the data rather than a change in INSEE's row order.
+  rows.sort((a, b) => a.code.localeCompare(b.code));
+  const asked = codesForLevel(level);
+  return {
+    level,
+    scope: TERRITORY_SCOPE,
+    vintage: TERRITORY_VINTAGE,
+    asked: asked.length,
+    // What INSEE answered for, which is not always what was asked: the scope
+    // stops at La Réunion and a code outside it comes back with no row at all.
+    returned: rows.length,
+    missing: asked.filter((code) => !rows.some((row) => row.code === code)),
+    partial: partial.length ? partial : null,
+    territories: rows,
+  };
 }
 
 /**
@@ -20136,7 +20233,14 @@ function filosofiProxy() {
           if (!newest || entry.at > newest) newest = entry.at;
         }
         json(200, {
-          source: 'INSEE Filosofi — carroyage 200 m et 1 km (Géoplateforme WFS)',
+          source: 'INSEE Filosofi — carroyage 200 m et 1 km (Géoplateforme WFS),'
+            + ' agrégats département et région (API Melodi)',
+          national: {
+            datasets: MELODI_DATASETS,
+            scope: TERRITORY_SCOPE,
+            vintage: TERRITORY_VINTAGE,
+            cachedLevels: [..._filosofiTerritoryCache.keys()],
+          },
           licence: 'Licence Ouverte 2.0 — INSEE',
           datasetPage: 'https://www.insee.fr/fr/statistiques/7655475',
           vintage: FILOSOFI_VINTAGE,
@@ -20147,6 +20251,44 @@ function filosofiProxy() {
           maxBoxDeg: FILOSOFI_REQUEST_MAX_BOX_DEG,
           maxCells: FILOSOFI_MAX_CELLS,
         }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+      if (route === '/territoires') {
+        const requestedLevel = String(url.searchParams.get('level') || 'DEP').toUpperCase();
+        const level = requestedLevel === 'REG' ? 'REG' : 'DEP';
+        const now = Date.now();
+        const cached = _filosofiTerritoryCache.get(level);
+        if (cached && now - cached.at <= FILOSOFI_TERRITORY_TTL_MS) {
+          json(200, { ...cached.payload, fetchedAt: cached.at, stale: false }, { 'X-Filosofi': 'HIT' });
+          return;
+        }
+        const onDisk = await readFilosofiTerritoryDisk(level, FILOSOFI_TERRITORY_TTL_MS);
+        if (onDisk) {
+          _filosofiTerritoryCache.set(level, onDisk);
+          json(200, { ...onDisk.payload, fetchedAt: onDisk.at, stale: false }, { 'X-Filosofi': 'DISK' });
+          return;
+        }
+        try {
+          const { promise } = coalesceProxyRequest(_filosofiTerritoryInFlight, level, async () => {
+            const payload = await refreshFilosofiTerritories(level);
+            const fresh = { at: Date.now(), payload };
+            _filosofiTerritoryCache.set(level, fresh);
+            writeFilosofiTerritoryDisk(level, fresh);
+            return fresh;
+          });
+          const entry = await promise;
+          json(200, { ...entry.payload, fetchedAt: entry.at, stale: false }, { 'X-Filosofi': 'MISS' });
+        } catch (error) {
+          // A stale national view beats no national view: the millésime did not
+          // change while INSEE was down.
+          const stale = _filosofiTerritoryCache.get(level)
+            || await readFilosofiTerritoryDisk(level, Infinity);
+          if (stale) {
+            json(200, { ...stale.payload, fetchedAt: stale.at, stale: true }, { 'X-Filosofi': 'STALE' });
+            return;
+          }
+          json(502, { error: String(error?.message || error) });
+        }
         return;
       }
       if (route !== '/carreaux') {

@@ -31,6 +31,7 @@ import filosofiCarreauxLayer, {
 import {
   FILOSOFI_MAX_FILL, cellCorners, cellSymbol, resolveMetric,
 } from './filosofiFeed.js';
+import { levelForBox } from './filosofiTerritoiresFeed.js';
 
 /** Width of an outline in degrees of longitude — the drawn extent, whatever the shape. */
 const spanLon = (points) => Math.max(...points.map(([lon]) => lon))
@@ -144,12 +145,25 @@ test('a Lyon viewport passes the gate', () => {
   assert.ok(box && box.north > box.south);
 });
 
-test('the view gate flies the camera in rather than leaving the operator to guess', async () => {
-  const viewer = createViewer({ south: 44.0, west: 3.0, north: 47.0, east: 7.0 });
-  const fitted = await filosofiCarreauxLayer.ensureViewGate(viewer);
-  assert.equal(fitted, true);
-  assert.ok(viewer.state.flights.length >= 1, 'the gate must move the camera');
-  assert.ok((viewer.state.box.north - viewer.state.box.south) <= FILOSOFI_MAX_BOX_DEG);
+test('the layer no longer moves the camera, because a wide view has its own answer', () => {
+  // It used to fly the operator down to a city when it was switched on from a
+  // national view, because a wide box drew nothing. It now draws the country's
+  // départements there, so taking the camera would be solving a problem that no
+  // longer exists — and taking a decision away from the operator to do it.
+  assert.equal(filosofiCarreauxLayer.ensureViewGate, undefined);
+  // The gate REASON survives, because the load path still uses it to decide
+  // which dataset answers.
+  const viewer = createViewer({ south: 42.0, west: -2.0, north: 50.0, east: 8.0 });
+  const { box, reason, raw } = filosofiViewportBox(viewer);
+  assert.equal(box, null);
+  assert.equal(reason, 'too-wide');
+  assert.ok(raw, 'and the raw box travels with it, so the national regime can size itself');
+  // A box this size is most of France: départements, which is the map a French
+  // reader already has in their head.
+  assert.equal(levelForBox(raw), 'DEP');
+  const continental = createViewer({ south: 35.0, west: -12.0, north: 60.0, east: 25.0 });
+  assert.equal(levelForBox(filosofiViewportBox(continental).raw), 'REG');
+  assert.equal(viewer.state.flights.length, 0, 'no flight was issued');
 });
 
 // ── The imputed squares ─────────────────────────────────────────────────────

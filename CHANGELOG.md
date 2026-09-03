@@ -6,6 +6,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-02
 
 ### Added
+- **Le carroyage INSEE se regarde enfin depuis la France entière.** Le calque
+  refusait toute vue plus large que 0,9° — à raison : 2,3 millions de carreaux
+  ramenés à une page de 5 000, c'est une image de l'échantillon, pas du pays.
+  Mais ça laissait la carte vide exactement à l'altitude où l'application
+  s'ouvre. Au-dessus du plafond de la grille, le calque **change de jeu de
+  données** au lieu de s'éteindre : un disque par **région**, puis un par
+  **département**, sur les agrégats que l'INSEE publie déjà.
+- **Quatre régimes sur une seule ligne de calque** : régions au-delà de 12°,
+  départements jusqu'au plafond de la grille, puis carreaux de 1 km et de
+  200 m. Même grammaire à tous les niveaux — l'aire est la population, la
+  couleur est l'indicateur, six paliers mesurés sur chacun — parce que traverser
+  un seuil de zoom change la RÉSOLUTION, pas le sujet.
+- **Six indicateurs au niveau territorial, dont deux que le carreau ne peut pas
+  calculer** : niveau de vie médian, taux de pauvreté, population, **écart
+  D9/D1**, **indice de Gini**, et le **salaire net privé 2024** — la seule
+  donnée de revenu que l'INSEE publie pour 2024 avec une géographie. Le salaire
+  n'est pas un niveau de vie et l'infobulle le dit : c'est avant impôts et
+  prestations, par emploi et non par ménage, fonction publique exclue.
+- **C'est un AUTRE jeu de données, pas le même vu de plus loin, et chaque fiche
+  le dit.** Une médiane là où la grille a une moyenne, des personnes là où elle
+  compte des ménages, 2023 là où le relais est en 2019. Trois éditeurs, trois
+  millésimes, et chaque ligne de fiche porte l'année de son chiffre.
+- **Les paliers de couleur territoriaux sont mesurés, pas empruntés.** La rampe
+  du carroyage va de 15 300 à 32 400 € ; tous les départements de France tiennent
+  dans une fenêtre de 10 000 €. La lui emprunter aurait peint le pays en deux
+  bandes. `build-filosofi-territoires.mjs` mesure les quantiles pondérés sur
+  **les 97 territoires — 67 055 494 habitants** : ce n'est pas un échantillon,
+  il n'y en a que 97.
+- **Le repère des Hauts-de-Seine n'est pas dans Paris.** Le 92 est un croissant
+  autour du 75, donc son centroïde de surface tombe dans Paris : les deux disques
+  se seraient superposés. Le constructeur du pack vérifie les 97 et déplace ceux
+  qui tombent hors de leur propre contour vers le point intérieur le plus éloigné
+  du bord. Un seul en avait besoin, et c'était celui-là.
+- **Le calque ne déplace plus la caméra.** Il volait l'opérateur jusqu'à une
+  ville quand on l'allumait depuis une vue nationale, parce qu'une vue large ne
+  dessinait rien. Elle dessine maintenant les départements du pays : bouger la
+  caméra reviendrait à résoudre un problème qui n'existe plus, en prenant une
+  décision à la place de l'opérateur.
 - **La zone de chalandise se dessine autour du point que vous choisissez.**
   Jusqu'ici le centre était l'endroit que la caméra regardait — correct pour lire
   une rue, inutile pour la seule question que ce calque pose : « qu'est-ce que

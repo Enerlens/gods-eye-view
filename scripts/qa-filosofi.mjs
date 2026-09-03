@@ -8,9 +8,10 @@
  *
  * What it proves, and why each needs a browser rather than a unit test:
  *
- *   i.    from national altitude the layer draws NOTHING and says to zoom —
- *         2.3 million squares sampled down to 6 000 would be a picture of the
- *         sample, not of the country, and it would look like a map
+ *   i.    from national altitude the layer CHANGES DATASET rather than going
+ *         blank: 2.3 million squares sampled down to 6 000 would be a picture
+ *         of the sample, so the grid still refuses — and INSEE's own régions
+ *         and départements answer in its place, on their own millésime
  *   ii.   over a city the grid appears, at 200 m, as proportional discs with a
  *         real population behind them — checked against both Lyon and Paris,
  *         because the two are the layer's own test of whether the ramp travels
@@ -57,8 +58,17 @@ const chrome = chromeCandidates.find((candidate) => {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Metropolitan France, whole — the view the layer must refuse. */
+/** Metropolitan France and its neighbours — the view the GRID must refuse. */
 const NATIONAL = { lon: 2.4, lat: 46.6, height: 2_600_000 };
+/**
+ * Wide enough that the grid refuses, tight enough that départements answer.
+ *
+ * Measured at this harness's own pitch (−75°, not nadir — a tilted camera sees
+ * to the horizon and its box is nearly three times wider than it is tall): 500 km
+ * reports about 3.6° × 9.6°, which is inside the 12° the DEP level owns. At
+ * 900 km the same camera reports 6.6° × 18.9° and the régions take over.
+ */
+const COUNTRY = { lon: 2.4, lat: 46.6, height: 500_000 };
 /** The two cities the roadmap names. Presqu'île and the 11e. */
 const LYON = { lon: 4.8357, lat: 45.7640, height: 9_000 };
 const PARIS = { lon: 2.3760, lat: 48.8570, height: 9_000 };
@@ -197,21 +207,50 @@ async function main() {
     await page.waitForFunction(() => Boolean(window.__godsEyeView?.dataManager), { timeout: 60000 });
     await pump(page, 6);
 
-    // ── i. the national refusal ────────────────────────────────────────────
-    console.log('\n[1] From national altitude the layer refuses, and says why');
+    // ── i. the national regime ─────────────────────────────────────────────
+    console.log('\n[1] From national altitude the layer answers with régions, not a blank');
     await setView(page, NATIONAL);
     await page.evaluate((id) => window.__godsEyeView.dataManager.setEnabled(
       id, true, { origin: 'user' },
     ), LAYER);
     await waitForSettled(page);
-    await pump(page, 6);
+    await pump(page, 8);
     let state = await probe(page);
-    check('nothing is drawn at 2 600 km', state.stats.count === 0, `count=${state.stats.count}`);
-    check('the row says to zoom rather than reporting an error',
+    check('régions are drawn at 2 600 km', state.stats.count >= 13,
+      `count=${state.stats.count} regime=${state.stats.regime}`);
+    check('and the regime says which dataset that is', state.stats.regime === 'territoires',
+      `regime=${state.stats.regime}`);
+    check('on Filosofi 2023, not the relayed grid of 2019', state.stats.vintage === 2023,
+      `vintage=${state.stats.vintage}`);
+    check('covering a plausible France',
+      state.stats.people > 60e6 && state.stats.people < 70e6, `people=${state.stats.people}`);
+    check('NO carroyage request was spent on a view the grid would refuse',
+      carreauRequests === 0, `${carreauRequests} requests`);
+    check('the row points at the finer grid rather than refusing',
       /zoome/i.test(state.stats.loadingLabel || ''), state.stats.loadingLabel || 'no label');
-    check('no request was spent on a view it would refuse', carreauRequests === 0,
-      `${carreauRequests} requests`);
-    await shoot(page, '01-national-refusal.png');
+    // Two indicators exist only up here; a chip for each is what makes them
+    // reachable at all.
+    check('the national chips include the two the grid cannot compute',
+      ['gini', 'interdecile'].every((id) => state.chips.some((chip) => chip.id === id)),
+      state.chips.map((c) => c.id).join(','));
+    check('and the wage series, which is the only 2024 income figure INSEE has',
+      state.chips.some((chip) => chip.id === 'salaire'), state.chips.map((c) => c.id).join(','));
+    await shoot(page, '01-national-regions.png');
+
+    // ── i-bis. the country view ────────────────────────────────────────────
+    console.log('\n[1b] Pulling in: départements take over from régions');
+    await setView(page, COUNTRY);
+    await waitForSettled(page);
+    await pump(page, 8);
+    const country = await probe(page);
+    check('départements are drawn', country.stats.count > 80,
+      `count=${country.stats.count} level=${country.stats.level}`);
+    check('at the DEP level', country.stats.level === 'DEP', `level=${country.stats.level}`);
+    check('the same 67 million people, cut finer',
+      Math.abs(country.stats.people - state.stats.people) < 1000,
+      `${country.stats.people} vs ${state.stats.people}`);
+    check('still no carroyage request', carreauRequests === 0, `${carreauRequests} requests`);
+    await shoot(page, '01b-national-departements.png');
 
     // ── ii. Lyon ──────────────────────────────────────────────────────────
     console.log('\n[2] Over Lyon: the 200 m grid, as discs, with a real population');
