@@ -50,6 +50,11 @@ import https from 'node:https';
 import { lookup as lookupDns } from 'node:dns/promises';
 import { directionToHeading } from './src/data/directionText.js';
 import {
+  OPENSKY_BASE_CACHE_MS,
+  openSkyAdaptiveTtlMs,
+  openSkySnapshotIsStale,
+} from './src/data/openSkyFreshness.js';
+import {
   osmCameraBboxQuery,
   osmCameraBoxKey,
   osmCameraFromElement,
@@ -607,8 +612,7 @@ let _openskyCacheTime = 0;
 let _openskyCacheMeta = null;
 /** @type {number|null} Source snapshot epoch from the cached OpenSky body. */
 let _openskyCacheSourceEpochMs = null;
-/** TTL for the OpenSky response cache (ms). */
-const OPENSKY_CACHE_MS = 9000;
+
 // --- OpenSky credit governor (field-test fix 2026-07-06) -------------------
 // The global /states/all this proxy fetches costs 4 CREDITS per call against
 // OpenSky's ~4000/day authenticated budget — a day with the app open burned
@@ -621,25 +625,12 @@ const OPENSKY_CACHE_MS = 9000;
 //     attempts until it passes (bounded 30 s … 30 min).
 //  3. Serve-stale: while rate-limited/cooling, serve the last-good body (200 +
 //     X-OpenSky-Stale) so the layer keeps rendering instead of dying.
-/** @type {number} Current adaptive TTL (ms) — starts at the base cache TTL. */
-let _openskyTtlMs = OPENSKY_CACHE_MS;
+/** @type {number} Current adaptive TTL (ms) — starts at the base cache TTL.
+ *  The tier table and the staleness threshold that must move WITH it both live
+ *  in `src/data/openSkyFreshness.js`, which the browser reads too. */
+let _openskyTtlMs = OPENSKY_BASE_CACHE_MS;
 /** @type {number} Epoch-ms before which no upstream fetch is attempted. */
 let _openskyCooldownUntil = 0;
-/**
- * Picks the cache TTL from the remaining daily credit budget.
- * Client polls every 30 s, so tiers ≤30 s cost the same 480 credits/h; the
- * later tiers stretch the day: >2400 → ~3 h of full freshness, then 30 s
- * (~2.5 h), 90 s (~5 h), 300 s (~8 h) ≈ 18+ h of continuous use per day.
- * @param {number} remaining - X-Rate-Limit-Remaining header value.
- * @returns {number} TTL in ms.
- */
-function openskyAdaptiveTtlMs(remaining) {
-  if (!Number.isFinite(remaining)) return OPENSKY_CACHE_MS;
-  if (remaining > 2400) return OPENSKY_CACHE_MS;
-  if (remaining > 1200) return 30_000;
-  if (remaining > 400) return 90_000;
-  return 300_000;
-}
 /** @type {boolean} Guards duplicate auth-failure warnings in logs. */
 let _openskyAuthWarned = false;
 /** @type {boolean} Guards duplicate invalid-auth-mode warnings. */
@@ -656,10 +647,7 @@ const ADSBLOL_POINT_CACHE_MS = 12000;
 const ADSBLOL_POINT_CACHE_MAX = 80;
 const ADSBLOL_POINT_RADIUS_NM = 250;
 const ADSBLOL_POINT_MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
-// A 200 response can still contain an old OpenSky snapshot. Past this point
-// the viewport-scoped adsb.lol source is more honest and keeps local motion
-// current instead of coasting a stale worldwide frame indefinitely.
-const OPENSKY_SOURCE_STALE_MS = 120_000;
+
 // ---------------------------------------------------------------------------
 // Overpass API proxy constants and cache state
 // ---------------------------------------------------------------------------
@@ -2173,6 +2161,11 @@ function buildOpenSkyHeaders({ cacheStatus, requestedMode, usedMode, reason, sta
     'X-OpenSky-Auth-Mode-Requested': requestedMode,
     'X-OpenSky-Auth-Mode-Used': usedMode,
     'X-OpenSky-Auth-Reason': reason,
+    // The TTL the credit governor is applying right now. The browser needs it
+    // to judge staleness against the same number this proxy used, rather than
+    // against a second hard-coded copy that the governor can invalidate — see
+    // `src/data/openSkyFreshness.js`.
+    'X-OpenSky-Ttl-Seconds': String(Math.round(_openskyTtlMs / 1000)),
   };
   // Credit-governor extras (field-test fix 2026-07-06): the client can show a
   // STALE cue / countdown without parsing the body.
@@ -11816,6 +11809,11 @@ async function serveAdsbLolPointFallback(req, res, requestedMode, reason) {
     'X-Flight-Source': 'adsb.lol',
     'X-Flight-Coverage': `${ADSBLOL_POINT_RADIUS_NM}nm regional fallback`,
     'X-Flight-Count': String(fallback.count),
+    // Say it in a field, not in the prose of the two above. The layer chip used
+    // to be decided by a regex sniffing 'adsb.lol' out of the human-readable
+    // source string; a source NAME is not a feed VERDICT, and the two drift the
+    // moment either is reworded.
+    'X-Flight-Fallback': '1',
   });
   res.end(fallback.body);
   return true;
@@ -11830,9 +11828,17 @@ function openSkySourceEpochMs(body) {
   }
 }
 
+/**
+ * A 200 response can still carry an old OpenSky snapshot. Past this point the
+ * viewport-scoped adsb.lol source is more honest and keeps local motion current
+ * instead of coasting a stale worldwide frame indefinitely.
+ *
+ * The threshold tracks the TTL the credit governor is currently applying — a
+ * fixed 120 s against a 300 s cache was not a staleness test but a guarantee of
+ * one. See `openSkyFreshness.js`.
+ */
 function openSkySourceIsStale(sourceEpochMs, now = Date.now()) {
-  return Number.isFinite(sourceEpochMs)
-    && now - sourceEpochMs > OPENSKY_SOURCE_STALE_MS;
+  return openSkySnapshotIsStale(sourceEpochMs, { nowMs: now, ttlMs: _openskyTtlMs });
 }
 
 /**
@@ -11844,7 +11850,8 @@ function openSkySourceIsStale(sourceEpochMs, now = Date.now()) {
  *   - 'auto'   — try OAuth first, fall back to Basic, then anon
  *   - 'anon'   — no credentials
  *
- * Successful responses are cached for OPENSKY_CACHE_MS (~9 s). On
+ * Successful responses are cached for an adaptive TTL (~9 s at full credit,
+ * stretched to 300 s as the daily budget thins — `openSkyFreshness.js`). On
  * upstream failure the proxy serves a stale cached response if available, or
  * a bounded 250 nm adsb.lol point snapshot around the current view anchor.
  *
@@ -12082,7 +12089,7 @@ function openSkyProxy() {
             // budget so a continuously-open app stretches its polls instead of
             // exhausting the quota mid-day. Success also clears any cooldown.
             const remaining = Number(upstream.headers.get('x-rate-limit-remaining'));
-            _openskyTtlMs = openskyAdaptiveTtlMs(remaining);
+            _openskyTtlMs = openSkyAdaptiveTtlMs(remaining);
             _openskyCooldownUntil = 0;
           }
 

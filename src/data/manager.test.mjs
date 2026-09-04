@@ -1820,13 +1820,26 @@ test('layer feed states distinguish unavailable, fallback, stale, and degraded c
     lastUpdate: 1,
   }), 'unavailable', 'an explicit total outage stays unavailable while last-good data is preserved');
   assert.equal(layerFeedState({ mode: 'sim', count: 100, lastUpdate: 1 }), 'fallback');
-  assert.equal(layerFeedState({ source: 'adsb.lol', count: 10, lastUpdate: 1 }), 'fallback');
+  // The verdict comes from the LAYER, not from its source name. Both aviation
+  // layers publish `fallback` now; naming adsb.lol says nothing on its own.
+  assert.equal(
+    layerFeedState({ source: 'adsb.lol', count: 10, lastUpdate: 1 }),
+    'nominal',
+    'a source name is not a feed verdict',
+  );
   assert.equal(layerFeedState({
     source: 'adsb.lol',
     fallback: false,
     count: 10,
     lastUpdate: 1,
   }), 'nominal', 'an explicitly primary adsb.lol feed is not a fallback');
+  assert.equal(layerFeedState({
+    source: 'adsb.lol',
+    coverage: '250nm regional fallback',
+    fallback: true,
+    count: 10,
+    lastUpdate: 1,
+  }), 'fallback', 'and the layer saying so is what makes it one');
   assert.equal(layerFeedState({ stale: true, count: 0, lastUpdate: 1 }), 'stale');
   assert.equal(layerFeedState({ error: 'partial group failure', count: 50, lastUpdate: 1 }), 'degraded');
   assert.equal(layerFeedState({ loading: true }), 'loading');
