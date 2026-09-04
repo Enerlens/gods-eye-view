@@ -93,6 +93,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ### Changed
 
+- **La légende quitte le coin de la carte et prend la tête du rail droit.** Elle
+  était une plaque fixe en bas à gauche, et une règle de feuille de style
+  l'**éteignait** dès qu'on ouvrait DATA LAYERS
+  (`body:has(#data-panel:not(.collapsed)) .map-legend { display: none }`). Ce
+  panneau l'aurait de toute façon recouverte — mais avec des dizaines de calques
+  à parcourir, on perdait la clé au moment précis où l'on en avait besoin.
+  Décision du propriétaire : lire la carte prime sur le panneau qui la cachait.
+  La clé devient donc **le premier membre de `#right-context-rail`**, au-dessus
+  de DISPLAY, CCTV et CONTEXT, dépliée par défaut — dans la seule colonne que
+  DATA LAYERS n'atteint jamais —, et la règle disparaît avec le conflit qui la
+  justifiait. C'est un panneau à part entière : chevron de repli, état retenu
+  sous `v6`, jeton de partage `e`, et **première place dans l'ordre
+  d'allocation**, la seule que `panelStackAutoCollapseIndices` ne replie jamais
+  d'office. `#map-legend-items` est la surface qui défile sous la hauteur
+  allouée. La *génération* de la légende n'a pas bougé d'une ligne : la même
+  passe alimente toujours les entrées en ligne du panneau et ce montage-ci.
+  Trois choses ont été trouvées au navigateur et non à la relecture. **La clé
+  débordait de l'écran** — 1 400 px de haut dans une fenêtre de 900 — parce que
+  l'allocation du rail est écrite par une passe planifiée en `requestAnimationFrame`
+  et qu'une scène Cesium en `requestRenderMode` devenue inerte ne produit plus
+  de trame : elle a désormais un plafond CSS qui tient sans la passe. **Une clé
+  ouverte faisait disparaître les onglets DISPLAY, CCTV et CONTEXT**, le HUD
+  tactique masquant les lanceurs repliés dès qu'un panneau est déplié : la
+  légende ne compte plus comme un panneau que l'opérateur a ouvert, puisqu'elle
+  s'ouvre parce qu'un calque est allumé. Et **en Cockpit**, où le rail est
+  masqué et où sa colonne accueille les lanceurs DISPLAY et RADIO, la clé
+  retrouve le coin en bas à gauche qu'elle occupait avant.
+- **L'effet bloom est retiré du produit.** Décision du propriétaire : on enlève
+  le bloom, et rien d'autre du panneau DISPLAY. Partent la passe globale
+  `scene.postProcessStages.bloom`, son bouton et son curseur, `src/bloom.js`, la
+  façade `setBloom`, la moitié `bloom` de l'outil vocal `set_post_processing` et
+  les jetons de partage `bloom` / `bi` / `bv`. **Aucun rendu ne change** : elle
+  était livrée à `enabled: false, intensity: 0`. À ne pas confondre avec les
+  uniformes `bloom` des nuanceurs NVG et thermique — des paramètres de preset,
+  pas la passe — qui restent, jeton `b` compris. Les liens de partage écrits
+  avant le retrait s'ouvrent toujours : un jeton inconnu n'est simplement jamais
+  lu. Sharpen, HUD, DETECT, PARAMETERS, 3D, Scope, Celestial et Clean UI restent
+  en place, et le panneau reste dans le rail droit.
 - **La légende des avions se lit en français.** Les onze libellés de classe
   partagés par le calque civil et le calque militaire étaient en anglais sous
   une interface française — « Type not reported », « Light aircraft ». Ils

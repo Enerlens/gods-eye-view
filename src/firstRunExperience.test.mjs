@@ -665,10 +665,14 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   // `local-airports` (OurAirports) joined the three layer enums and the
   // common-name mapping, so "show me the airports" resolves without an
   // instruction. +148 bytes, one cache bust, still a deliberate schema edit.
-  assert.equal(block.length, 31471, 'tool schema byte length drifted from the frozen baseline');
+  //
+  // Re-frozen a third time, this one SHRINKING the schema: the global bloom
+  // pass was removed from the product, so `set_post_processing` lost its
+  // `bloom` object and now controls sharpen alone. -263 bytes, one cache bust.
+  assert.equal(block.length, 31208, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '7ea93625da0378c1575660873eb7e00eaa3e81698149ea402ac964322cb49916',
+    '478e282e160eca8760a1e9da2388f041769f8ebd6acdcd3cfdcf7fccdcc42c03',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 

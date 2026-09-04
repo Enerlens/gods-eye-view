@@ -76,25 +76,6 @@
     </div>
   </div>
 
-  <!-- On-map legend. The SECOND mount point for the per-layer legend entries
-       the data panel already builds: that panel ships collapsed and its
-       collapsed rule hides the toggle list, so no key was visible in the
-       default state — and a share link deliberately ignores the recipient's
-       stored panel preference, which made the key structurally absent at the
-       exact moment somebody reads a map they did not build. Sits above the
-       Cesium attribution in the bottom-left corner, and hides with the rest of
-       the chrome in clean view and recording mode. -->
-  <aside id="map-legend" class="map-legend" aria-label="Map legend" hidden>
-    <div class="map-legend-title">LEGEND</div>
-    <!-- Sensor styles are full-screen post-process passes: they repaint the
-         COMPOSED image, thematic layers included. This block is DOM, so it is
-         not repainted — the swatch keeps its true colour while the map no
-         longer has it, and the key silently stops decoding the map. This note
-         says so instead. -->
-    <div id="map-legend-key-note" class="map-legend-key-note" role="status" hidden></div>
-    <div id="map-legend-items" class="map-legend-items"></div>
-  </aside>
-
   <!-- Safe frame guides for recording composition -->
   <div id="safe-frame-overlay">
     <div id="safe-frame-box"></div>
@@ -487,16 +468,6 @@
       <span class="pp-label">Clean UI</span>
     </button>
     <div class="pp-toggle-group">
-      <button class="pp-toggle-btn" id="bloom-toggle" title="Bloom / Glow">
-        <span class="pp-icon">&#x2728;</span>
-        <span class="pp-label">Bloom</span>
-      </button>
-      <div class="pp-slider-row" id="bloom-slider-row">
-        <input type="range" class="pp-slider" id="bloom-intensity-slider" min="0" max="200" value="0" />
-        <span class="pp-slider-value" id="bloom-intensity-value">0%</span>
-      </div>
-    </div>
-    <div class="pp-toggle-group">
       <button class="pp-toggle-btn" id="sharpen-toggle" title="Sharpening">
         <span class="pp-icon">&#x1F50D;</span>
         <span class="pp-label">Sharpen</span>
@@ -737,6 +708,35 @@
 
   <!-- Global Context is deliberately independent from the left layer accordion. -->
   <aside id="right-context-rail">
+    <!-- The map key. The SECOND mount point for the per-layer legend entries
+         the data panel already builds: that panel ships collapsed and its
+         collapsed rule hides the toggle list, so no key was visible in the
+         default state — and a share link deliberately ignores the recipient's
+         stored panel preference, which made the key structurally absent at the
+         exact moment somebody reads a map they did not build.
+
+         It sat in the bottom-left corner and was SWITCHED OFF whenever DATA
+         LAYERS opened, because that panel would have covered it. Owner call
+         (2026-09-03): the key matters more than the panel that hid it, so it
+         moved here — first member of the right rail, above DISPLAY, CCTV and
+         CONTEXT, and open by default. First place in the rail is also first
+         claim on the shared height: `panelStackAutoCollapseIndices` never
+         auto-collapses the leading panel. Still hides with the rest of the
+         chrome in clean view and recording mode. -->
+    <aside id="map-legend" class="map-legend panel-collapsible" data-panel-id="map-legend" aria-label="Map legend" hidden>
+      <div class="map-legend-header">
+        <span class="map-legend-title">LEGEND</span>
+        <span class="panel-divider" aria-hidden="true"></span>
+        <button class="panel-collapse-btn map-legend-collapse-btn" data-collapse-target="map-legend" title="Collapse Legend">&#x25B6;</button>
+      </div>
+      <!-- Sensor styles are full-screen post-process passes: they repaint the
+           COMPOSED image, thematic layers included. This block is DOM, so it is
+           not repainted — the swatch keeps its true colour while the map no
+           longer has it, and the key silently stops decoding the map. This note
+           says so instead. -->
+      <div id="map-legend-key-note" class="map-legend-key-note" role="status" hidden></div>
+      <div id="map-legend-items" class="map-legend-items"></div>
+    </aside>
     <div id="global-context-panel" class="panel-collapsible collapsed" data-panel-id="global-context-panel">
       <div class="panel-glow"></div>
       <div class="global-context-panel-inner">

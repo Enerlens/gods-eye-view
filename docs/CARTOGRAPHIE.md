@@ -150,7 +150,7 @@ Le quantitatif doit migrer sur un canal **orthogonal à la profondeur** : anneau
 
 > « Le nombre de paliers différentiables est de 6 à 7 valeurs de gris **y compris le blanc et le noir**. »
 
-**Transposition.** Sur GEV la couleur perçue est le résultat d'une chaîne : alpha blendé sur une orthophoto texturée — donc la même classe rend différemment sur un toit blanc et sur une forêt —, puis HDR et bloom, puis le post-process capteur, puis le gamma de l'écran. Compter six bandes parce que le cours dit six et se croire conforme est une erreur.
+**Transposition.** Sur GEV la couleur perçue est le résultat d'une chaîne : alpha blendé sur une orthophoto texturée — donc la même classe rend différemment sur un toit blanc et sur une forêt —, puis le HDR, puis le post-process capteur, puis le gamma de l'écran. Compter six bandes parce que le cours dit six et se croire conforme est une erreur.
 
 Deux corollaires opérationnels : ne pas compter sur l'alpha seul sous une couche zonale (poser un fond opaque désaturé, ou encoder par isolignes / motif) ; et valider le nombre de paliers en **mesurant** l'écart perceptuel des couleurs compositées sur un jeu de fonds témoins — c'est automatisable.
 

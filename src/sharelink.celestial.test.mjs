@@ -71,12 +71,12 @@ test('unknown-only v2 layer tokens are invalid, while historical l fields stay i
 
 test('share-link serialization emits the current celestial state', () => {
   const manager = makeManager();
-  manager.onToggleChange(false, false, { celestialRingEnabled: false });
+  manager.onToggleChange(false, { celestialRingEnabled: false });
   clearTimeout(manager._debounceTimer);
   manager._updateHash();
   assert.equal(new URLSearchParams(window.location.hash.slice(1)).get('cr'), '0');
 
-  manager.onToggleChange(false, false, { celestialRingEnabled: true });
+  manager.onToggleChange(false, { celestialRingEnabled: true });
   clearTimeout(manager._debounceTimer);
   manager._updateHash();
   assert.equal(new URLSearchParams(window.location.hash.slice(1)).get('cr'), '1');
@@ -258,7 +258,7 @@ test('allocation strategy defaults to Elastic and round-trips Weighted', () => {
   assert.equal(makeManager('#lat=10&lon=20&da=weighted').parseInitialHash().detectionAllocation, 'WEIGHTED');
 
   const manager = makeManager();
-  manager.onToggleChange(false, false, { detectionAllocation: 'WEIGHTED' });
+  manager.onToggleChange(false, { detectionAllocation: 'WEIGHTED' });
   clearTimeout(manager._debounceTimer);
   manager._updateHash();
   assert.equal(new URLSearchParams(window.location.hash.slice(1)).get('da'), 'weighted');
@@ -274,7 +274,7 @@ test('keyhole fade controls default and round-trip as normalized percentages', (
   assert.equal(restored.detectionOutsideOpacityPct, 35);
 
   const manager = makeManager();
-  manager.onToggleChange(false, false, {
+  manager.onToggleChange(false, {
     detectionFadePct: 22,
     detectionOutsideOpacityPct: 30,
   });
@@ -313,18 +313,18 @@ test('an absent or non-numeric sce stays adaptive, never a pinned value', () => 
 
 test('serialization writes only in-band sce values, and omits an adaptive one', () => {
   const manager = makeManager();
-  manager.onToggleChange(false, false, { scopeTerminusPct: 0 });
+  manager.onToggleChange(false, { scopeTerminusPct: 0 });
   clearTimeout(manager._debounceTimer);
   manager._updateHash();
   assert.equal(new URLSearchParams(window.location.hash.slice(1)).get('sce'), '94',
     'an out-of-band value must be floored on write, not round-tripped');
 
-  manager.onToggleChange(false, false, { scopeTerminusPct: 500 });
+  manager.onToggleChange(false, { scopeTerminusPct: 500 });
   clearTimeout(manager._debounceTimer);
   manager._updateHash();
   assert.equal(new URLSearchParams(window.location.hash.slice(1)).get('sce'), '100');
 
-  manager.onToggleChange(false, false, { scopeTerminusPct: null });
+  manager.onToggleChange(false, { scopeTerminusPct: null });
   clearTimeout(manager._debounceTimer);
   manager._updateHash();
   assert.equal(new URLSearchParams(window.location.hash.slice(1)).has('sce'), false,
@@ -419,8 +419,6 @@ test('every explicit visual UI gesture claims restore authority before it mutate
   const gestureRoutes = [
     ["if (e.key.toLowerCase() === 'h')", "if (e.key.toLowerCase() === 'o')", 'this.hud.toggle()', 'HUD hotkey'],
     ["if (e.key.toLowerCase() === 'd')", "if (e.key.toLowerCase() === 'c')", 'cycleDetectionMode()', 'detection hotkey'],
-    ['// Bloom toggle', '// Bloom intensity slider', 'this._setBloomEnabled(', 'bloom button'],
-    ['// Bloom intensity slider', '// Sharpen toggle', 'this._setBloomIntensity(', 'bloom slider'],
     ['// Sharpen toggle', '// Scope mask', 'this._setSharpenEnabled(', 'sharpen button'],
     ["this._scopeBtn?.addEventListener('click'", "this._scopeFeatherSlider?.addEventListener('input'", 'setScopeMaskEnabled(', 'scope button'],
     ["this._scopeFeatherSlider?.addEventListener('input'", 'if (this._sharpenSlider)', 'setScopeMaskFeather(', 'scope feather slider'],
@@ -548,7 +546,6 @@ test('every explicit visual control facade claims restore authority before mutat
     ['  setHudVisible(mode) {', '  setHudLayout(variantName) {', 'this.hud.setMode(', 'setHudVisible'],
     ['  setHudLayout(variantName) {', '  getDetectionState() {', 'this._setHudVariant(', 'setHudLayout'],
     ['  setDetection({ enabled, mode, densityPct, allocationStrategy, fadePct, outsideOpacityPct } = {}) {', '  async setMapStack(stackId) {', 'this._setDetectionAllocation(', 'setDetection'],
-    ['  setBloom({ enabled, intensityPct } = {}) {', '  setSharpen({ enabled, intensityPct } = {}) {', 'this._setBloomIntensity(', 'setBloom'],
     ['  setSharpen({ enabled, intensityPct } = {}) {', '  get celestialRingEnabled() {', 'this._applySharpenIntensity(', 'setSharpen'],
     ['  setCelestialRingEnabled(enabled, { syncShare = true, focus = false } = {}) {', '  setOrbit(enabled) {', 'this.celestialRing?.setEnabled(', 'setCelestialRingEnabled'],
   ];
@@ -571,11 +568,6 @@ test('public visual facades reject the complete invalid request before authority
         '  async setMapStack(stackId) {',
       ),
       validations: ['enabled !== undefined', 'Invalid outside opacity'],
-    },
-    {
-      label: 'setBloom',
-      block: sourceBlock('  setBloom({ enabled, intensityPct } = {}) {', '  setSharpen({ enabled, intensityPct } = {}) {'),
-      validations: ['Invalid bloom enabled value', 'Invalid bloom intensity'],
     },
     {
       label: 'setSharpen',

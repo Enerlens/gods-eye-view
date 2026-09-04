@@ -1062,7 +1062,7 @@ body.cockpit-mode #cockpit-cloud-effects.active {
   color: var(--accent);
 }
 
-/* ── Bloom Slider (inline with toggle) ───────── */
+/* ── Post-process slider (inline with its toggle) ───────── */
 .pp-toggle-group {
   display: flex;
   flex-direction: column;
@@ -3969,8 +3969,27 @@ body.cockpit-mode #left-panel-stack {
   transition: none;
 }
 body.cockpit-mode #left-panel-stack > #scene-panel { display: none !important; }
+/* Cockpit hides the rail — but the map key is a rail member now, and a first
+   person view still has to decode the colours on the globe. `visibility`
+   rather than `display` so the key alone can opt back in, and it opts back in
+   at the bottom-left corner it held before the rail adopted it: the rail's own
+   column is where Cockpit puts its DISPLAY and RADIO launchers. */
 body.cockpit-mode #right-context-rail {
-  display: none !important;
+  visibility: hidden;
+}
+body.cockpit-mode #right-context-rail > #map-legend:not([hidden]) {
+  visibility: visible;
+  position: fixed;
+  left: 36px;
+  bottom: 68px;
+  z-index: 92;
+  width: min(300px, 34vw);
+  /* Out of the rail's flex flow, so the height the layout pass allocated to a
+     rail member must be undone here too — one class more than
+     `.layout-focus > #map-legend:not(.collapsed)`, which is what sets it. */
+  flex: none;
+  height: auto;
+  max-height: 34vh;
 }
 
 /* Keep the user's intelligence HUD text available in first person. It stays
@@ -4760,6 +4779,7 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   pointer-events: none;
   transition: top var(--transition-fast), max-height var(--transition-fast);
 }
+#right-context-rail > #map-legend,
 #right-context-rail > #pp-toggles,
 #right-context-rail > #cctv-panel,
 #right-context-rail > #global-context-panel {
@@ -4782,7 +4802,8 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   width: var(--right-display-collapsed-width);
   margin-left: auto;
 }
-#right-context-rail > #pp-toggles.collapsed {
+#right-context-rail > #pp-toggles.collapsed,
+#right-context-rail > #map-legend.collapsed {
   width: var(--right-display-collapsed-width);
   margin-left: auto;
 }
@@ -4795,6 +4816,10 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   height: 50px;
   min-height: 50px;
   box-sizing: border-box;
+}
+#right-context-rail > #map-legend.collapsed {
+  min-height: 50px;
+  justify-content: center;
 }
 #right-context-rail #cctv-panel:not(.collapsed) .cctv-panel-inner {
   max-height: 100%;
@@ -4836,6 +4861,7 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
 #right-context-rail.layout-focus.layout-exclusive > [data-panel-id].collapsed {
   display: none;
 }
+#right-context-rail.layout-focus > #map-legend:not(.collapsed),
 #right-context-rail.layout-focus > #pp-toggles:not(.collapsed),
 #right-context-rail.layout-focus > #cctv-panel:not(.collapsed),
 #right-context-rail.layout-focus > #global-context-panel:not(.collapsed) {
@@ -6310,20 +6336,35 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   mask-position: center;
 }
 
-/* ── On-map legend ──────────────────────────────
-   The key has to be on the map, not inside a panel that ships collapsed. Sits
-   above the Cesium attribution (bottom:36) and below the coordinate HUD corner
-   (.hud-bottom-left, bottom:180), scrolling inside its own box rather than
-   growing into either. `pointer-events: none` on the block, restored on the
-   scrollable list: the legend must never eat a click meant for the globe, but
-   a long key still has to be scrollable. */
+/* ── Map legend ─────────────────────────────────
+   First member of the right rail. It used to be a fixed card in the
+   bottom-left corner, switched OFF by a `:has()` rule the moment DATA LAYERS
+   opened — that panel would have covered it anyway. Reading the map matters
+   more than the panel that hid it, so the key moved to the one column DATA
+   LAYERS never reaches, and the rule that turned it off is gone with the
+   conflict that justified it.
+
+   No box of its own: the rail decides the width and (under `.layout-focus`)
+   the height, and `#map-legend-items` is the part that scrolls. Under 720px
+   the rail's layout pass hands back to CSS (`layoutMode: mobile`) and becomes
+   one full-width column at the bottom; the key is a member of that column like
+   every other panel, which is why its old 620px card rule is gone too.
+
+   `max-height` is a FLOOR, not decoration. The rail's allocation
+   (`--right-panel-allocated-height`) is written by an rAF-scheduled pass, and
+   a `requestRenderMode` scene that has gone fully idle can leave that frame
+   pending — measured: a three-layer key rendered 1 400 px tall in a 900 px
+   viewport with the pass still unfired. `--right-stack-max-height` is the
+   corridor the pass last measured and inherits from the rail; the 70vh
+   fallback is what holds before it has ever run. Either way the key stays on
+   screen and `#map-legend-items` gives instead. */
 .map-legend {
-  position: fixed;
-  left: 36px;
-  bottom: 68px;
-  z-index: 92;
-  max-width: min(300px, 34vw);
-  max-height: 34vh;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-height: 0;
+  max-height: var(--right-stack-max-height, 70vh);
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -6335,21 +6376,19 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   font-family: var(--font-mono);
   color: rgba(232, 240, 247, 0.9);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .map-legend[hidden] {
   display: none;
 }
 
-/* The on-map key exists for the state where the panel is SHUT — which is how
-   the app ships, and how a share link always opens. With `#data-panel` open,
-   the same entries are already rendered inline under each layer row, and the
-   panel (z-index 100) would simply cover this block (z-index 92) and leave a
-   half-hidden duplicate. One key at a time, and it is the visible one. Same
-   `:has()` idiom the cockpit pitch rail already uses to yield to this stack. */
-body:has(#data-panel:not(.collapsed)) .map-legend {
-  display: none;
+.map-legend-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
 }
 
 .map-legend-title {
@@ -6359,12 +6398,27 @@ body:has(#data-panel:not(.collapsed)) .map-legend {
   flex: none;
 }
 
+.map-legend-collapse-btn {
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  font-size: 12px;
+  padding: 0;
+}
+
+/* Collapsed, the key is a launcher: its header and nothing else. */
+.map-legend.collapsed > .map-legend-key-note,
+.map-legend.collapsed > .map-legend-items {
+  display: none;
+}
+
 .map-legend-items {
   display: flex;
   flex-direction: column;
   gap: 9px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
-  pointer-events: auto;
   scrollbar-width: thin;
 }
 
@@ -6483,15 +6537,6 @@ body:has(#data-panel:not(.collapsed)) .map-legend {
   line-height: 1.4;
   letter-spacing: 0.2px;
   color: rgba(232, 240, 247, 0.55);
-}
-
-@media (max-width: 620px) {
-  .map-legend {
-    max-width: 62vw;
-    max-height: 26vh;
-    bottom: 60px;
-    left: 16px;
-  }
 }
 
 /* ── CCTV Panel ─────────────────────────────── */
@@ -7581,6 +7626,8 @@ body.scene-playback-mode :is(#clear-selected-layers, #reset-globe-view) {
     width: 100%;
   }
 
+  #right-context-rail #map-legend,
+  #right-context-rail #map-legend.collapsed,
   #right-context-rail #pp-toggles.collapsed .pp-header-row,
   #right-context-rail #cctv-panel,
   #right-context-rail #cctv-panel.collapsed,

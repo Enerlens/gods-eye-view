@@ -1433,7 +1433,7 @@ function sizeBucket(coreSize) {
 /**
  * Build (and cache) a radial-glow sprite: hot near-white center fading
  * through the stop color to a transparent edge. The glow lives in the
- * sprite itself because global bloom defaults OFF.
+ * sprite itself: there is no global glow pass to lean on.
  * @param {{name: string, color: Cesium.Color}} stop - Color stop.
  * @param {number} corePx - Bucketed core size in pixels.
  * @returns {string} PNG data URL.

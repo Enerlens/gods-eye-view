@@ -114,7 +114,6 @@ const PHRASES = [
   { phrase: 'Give me night vision', expect: 'set_visual_style' },
   { phrase: 'Switch to thermal view', expect: 'set_visual_style' },
   { phrase: 'Back to the normal look', expect: 'set_visual_style' },
-  { phrase: 'Turn on bloom', expect: 'set_post_processing' },
   { phrase: 'Sharpen the image a touch', expect: 'set_post_processing' },
 
   // — HUD / detection / panels —
