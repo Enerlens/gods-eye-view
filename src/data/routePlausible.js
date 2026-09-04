@@ -23,6 +23,16 @@ export function greatCircleKm(lat1, lon1, lat2, lon2) {
   return R_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+/**
+ * Initial great-circle bearing from point 1 to point 2, in degrees clockwise
+ * from north. Exported because the route ARC needs the same spherical bearing
+ * the cross-track check already computes — a second implementation of it would
+ * be a second thing to keep right.
+ */
+export function greatCircleBearingDeg(lat1, lon1, lat2, lon2) {
+  return ((bearingRad(lat1, lon1, lat2, lon2) * 180) / Math.PI + 360) % 360;
+}
+
 function bearingRad(lat1, lon1, lat2, lon2) {
   const p1 = lat1 * D2R;
   const p2 = lat2 * D2R;

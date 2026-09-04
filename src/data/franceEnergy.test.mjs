@@ -29,7 +29,6 @@ import {
   energyPrismLegend,
   energyPrismRow,
   formatMegawatts,
-  greatCircleArc,
   mapAnalystRecord,
   regionAnchor,
   regionLabelHeightM,
@@ -274,36 +273,6 @@ test('the région label anchor lands inside its own région', () => {
 });
 
 // ── The arcs ────────────────────────────────────────────────────────────────
-
-test('the great-circle arc touches down exactly on both endpoints', () => {
-  const from = [2.60, 46.60];
-  const to = [-3.70, 40.42];
-  const arc = greatCircleArc(from, to, { samples: 9 });
-  assert.equal(arc.length, 27);
-  assert.ok(Math.abs(arc[0] - from[0]) < 1e-6 && Math.abs(arc[1] - from[1]) < 1e-6);
-  assert.equal(arc[2], 0, 'the arc starts on the ground');
-  assert.ok(Math.abs(arc.at(-3) - to[0]) < 1e-6 && Math.abs(arc.at(-2) - to[1]) < 1e-6);
-  assert.equal(Math.round(arc.at(-1)), 0, 'the arc lands on the ground');
-  // Apex in the middle, and higher than every other sample.
-  const heights = [];
-  for (let i = 2; i < arc.length; i += 3) heights.push(arc[i]);
-  assert.equal(heights.indexOf(Math.max(...heights)), (heights.length - 1) / 2);
-});
-
-test('the arc is a great circle, not a lon/lat lerp', () => {
-  const arc = greatCircleArc([2.60, 46.60], [-3.70, 40.42], { samples: 3 });
-  // The midpoint of a lon/lat lerp would be exactly (-0.55, 43.51); a real
-  // great circle bows away from it.
-  assert.ok(Math.abs(arc[3] - -0.55) > 0.05 || Math.abs(arc[4] - 43.51) > 0.05);
-});
-
-test('coincident endpoints degrade to a point instead of dividing by zero', () => {
-  const arc = greatCircleArc([2.6, 46.6], [2.6, 46.6], { samples: 5 });
-  for (let i = 0; i < arc.length; i += 3) {
-    assert.ok(Number.isFinite(arc[i]) && Number.isFinite(arc[i + 1]) && Number.isFinite(arc[i + 2]));
-    assert.ok(Math.abs(arc[i] - 2.6) < 1e-6);
-  }
-});
 
 test('an import arc ends on France and an export arc starts there', () => {
   // The arrow head is at the END of the polyline, so this IS the direction the

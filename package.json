@@ -61,6 +61,7 @@
     "qa:label-click": "node scripts/qa-label-click.mjs",
     "qa:legend-rail": "node scripts/qa-legend-rail.mjs",
     "qa:flights-type": "node scripts/qa-flights-type.mjs",
+    "qa:flight-route": "node scripts/qa-flight-route.mjs",
     "qa:airports": "node scripts/qa-airports.mjs",
     "qa:bison-fute": "node scripts/qa-bison-fute.mjs",
     "qa:irve-fr": "node scripts/qa-irve-fr.mjs",

@@ -5,6 +5,7 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
+import { ARC_SAMPLES, greatCircleArc } from './greatCircleArc.js';
 import {
   PRISM_BASE_HEIGHT_M,
   PRISM_BODY_ALPHA,
@@ -339,12 +340,6 @@ export const BORDER_ANCHORS = Object.freeze({
   allemagne_belgique: Object.freeze([7.20, 50.40]),
 });
 
-/** Vertices per arc. Enough for a smooth curve at country scale, cheap to rebuild. */
-const ARC_SAMPLES = 48;
-/** Arc apex as a fraction of the chord, clamped to keep short hops readable. */
-const ARC_APEX_RATIO = 0.16;
-const ARC_APEX_MIN_M = 60_000;
-const ARC_APEX_MAX_M = 400_000;
 /** Arc stroke width in pixels, ramped by |MW| up to the saturation flow. */
 const ARC_WIDTH_MIN_PX = 3;
 const ARC_WIDTH_MAX_PX = 15;
@@ -530,60 +525,6 @@ export function regionAnchor(codes, departements) {
   }
   if (!count) return null;
   return [lon / count, lat / count];
-}
-
-/**
- * Sample a great-circle arc between two lon/lat points, raised to an apex in
- * the middle so it reads as a flow over the globe rather than a line on it.
- *
- * Spherical interpolation on unit vectors, not a lon/lat lerp: the latter
- * bends visibly wrong at these distances and breaks outright across the
- * antimeridian. The height profile is a sine bow — zero at both ends, so the
- * arc touches down on the two countries it connects.
- *
- * @param {ReadonlyArray<number>} from `[lon, lat]` degrees.
- * @param {ReadonlyArray<number>} to `[lon, lat]` degrees.
- * @param {{samples?:number, apexRatio?:number}} [options]
- * @returns {number[]} Flat `[lon, lat, height, …]`, ready for Cesium.
- */
-export function greatCircleArc(from, to, options = {}) {
-  const samples = Math.max(2, Math.floor(options.samples ?? ARC_SAMPLES));
-  const apexRatio = Number.isFinite(options.apexRatio) ? options.apexRatio : ARC_APEX_RATIO;
-  const toRad = Math.PI / 180;
-  const a = {
-    x: Math.cos(from[1] * toRad) * Math.cos(from[0] * toRad),
-    y: Math.cos(from[1] * toRad) * Math.sin(from[0] * toRad),
-    z: Math.sin(from[1] * toRad),
-  };
-  const b = {
-    x: Math.cos(to[1] * toRad) * Math.cos(to[0] * toRad),
-    y: Math.cos(to[1] * toRad) * Math.sin(to[0] * toRad),
-    z: Math.sin(to[1] * toRad),
-  };
-  const dot = Math.min(1, Math.max(-1, a.x * b.x + a.y * b.y + a.z * b.z));
-  const omega = Math.acos(dot);
-  const chordM = omega * 6_371_000;
-  const apex = Math.min(ARC_APEX_MAX_M, Math.max(ARC_APEX_MIN_M, chordM * apexRatio));
-  const sinOmega = Math.sin(omega);
-
-  const positions = [];
-  for (let i = 0; i < samples; i += 1) {
-    const t = i / (samples - 1);
-    // Coincident endpoints have no great circle; fall back to the linear blend,
-    // which for identical points is just the point itself.
-    const wa = sinOmega < 1e-9 ? 1 - t : Math.sin((1 - t) * omega) / sinOmega;
-    const wb = sinOmega < 1e-9 ? t : Math.sin(t * omega) / sinOmega;
-    const x = a.x * wa + b.x * wb;
-    const y = a.y * wa + b.y * wb;
-    const z = a.z * wa + b.z * wb;
-    const hyp = Math.hypot(x, y, z) || 1;
-    positions.push(
-      Math.atan2(y, x) / toRad,
-      Math.asin(Math.min(1, Math.max(-1, z / hyp))) / toRad,
-      Math.sin(t * Math.PI) * apex,
-    );
-  }
-  return positions;
 }
 
 /**
