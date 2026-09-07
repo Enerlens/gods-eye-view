@@ -320,8 +320,6 @@ let _count = 0;
 let _lastUpdate = null;
 /** @type {boolean} True while in a backoff/cooldown window */
 let _backoff = false;
-/** @type {boolean} The proxy served the 250 nm regional circle, not the worldwide feed. */
-let _sourceFallback = false;
 /** @type {number} Epoch ms — earliest time the next fetch is allowed */
 let _retryAt = 0;
 /** @type {string|null} Human-readable error string shown in stats chip */
@@ -336,8 +334,10 @@ function _abortActiveUpdates() {
 let _lastStatus = null;
 /** @type {string} Source used by the latest successful snapshot. */
 let _lastSource = 'OpenSky Network';
-/** @type {string} Completeness boundary for the latest successful snapshot. */
-let _lastCoverage = 'worldwide upstream snapshot';
+/** @type {string} Completeness boundary for the latest successful snapshot —
+ *  the EXTENT of what the layer could have drawn, printed under the layer name.
+ *  Worldwide on the OpenSky feed, a 250 NM circle on the adsb.lol one. */
+let _lastCoverage = 'couverture mondiale';
 
 /** @type {Cesium.Cartographic} Owned scratch for the poll's feed anchor. */
 const _scratchFeedAnchor = new Cesium.Cartographic();
@@ -488,7 +488,10 @@ function _contextSubjectMetadata(icao24) {
     id: icao24,
     layerId: 'flights',
     layerName: 'Live Flights',
-    source: 'OpenSky Network',
+    // Whichever of the two feeds actually spoke. Hard-coding OpenSky here made
+    // the Context card and the voice payload name a source that was not on the
+    // wire while the control chip, two centimetres away, named the other one.
+    source: _lastSource,
     label: _contactLabel(icao24, _flightData.get(icao24)),
     latitude: described.latitude,
     longitude: described.longitude,
@@ -852,11 +855,19 @@ const COURSE_SLEW_DT_MAX_SEC = 0.25;
 // ---------------------------------------------------------------------------
 // adsbdb enrichment (best-effort, fail-silent). Bounded fan-out: max 4
 // concurrent requests, dispatches dripped ≥ENRICH_DISPATCH_GAP_MS apart
-// (≤5/s — adsbdb is a free community API; the dev-server proxy additionally
-// caches per-key on disk forever, negative results included, so repeat
-// sessions never re-hit adsbdb). Each key is requested at most once per
-// session. Priority jobs (tracked plane, model-eligible planes) jump the
-// queue; the ambient fleet sweep (below) fills the back at poll cadence.
+// (≤5/s), and the server proxy caches every key on disk for 24 h, negative
+// results included, so a repeat session mostly answers from disk.
+//
+// The number that actually bounds us upstream: adsbdb allows 512 requests per
+// rolling 60 s per IP, answers the 512th with 429 "rate limited for 60
+// seconds", and extends the lockout to 300 s past 1024
+// (`mrjackwills/adsbdb`, `src/db_redis/ratelimit.rs` — LOWER_LIMIT /
+// UPPER_LIMIT). The drip's ≤5/s is ≤300/min, i.e. 59 % of that ceiling, and
+// it is the drip — not the token bucket below — that decides the rate.
+//
+// Each key is requested at most once per session. Priority jobs (tracked
+// plane, model-eligible planes) jump the queue; the ambient fleet sweep
+// (below) fills the back at poll cadence.
 // ---------------------------------------------------------------------------
 const ENRICH_MAX_INFLIGHT = 4;
 /** Min ms between request dispatches — the drip that bounds the fan-out to ≤5/s. */
@@ -947,27 +958,58 @@ function _requestRouteEnrichment(icao24) {
 //   - ≤ ENRICH_AMBIENT_PER_SWEEP new enqueues per poll (= one poll interval
 //     of drip, so the backlog can't outgrow a poll and re-sorts fresh), and
 //   - a ROLLING token-bucket budget (below) bounding the sustained ambient
-//     request rate (repeat sessions resolve instantly from the proxy's
-//     permanent disk cache).
+//     request TOTAL (repeat sessions resolve from the proxy's 24 h disk
+//     cache).
 // Fail-silent by contract: the sweep never throws into the poll loop, never
 // blocks rendering, and never touches tracking state. When a type answer
 // lands, _requestTypeEnrichment's callback swaps the billboard glyph + scale
 // in place (bb.scale composes multiplicatively with scaleByDistance).
 // ---------------------------------------------------------------------------
-// Rolling ambient budget (2026-07-03 field fix). The old ONE-SHOT session cap
-// (300, refilled only in init) burned out in the first two polls of a busy
-// region and never recovered — an hours-long session showed airliner
-// monoculture in every NEW region until planes were clicked (the tracked path
-// is uncapped). Token bucket instead: starts full at the ceiling, refills
-// ENRICH_AMBIENT_REFILL_TOKENS every ENRICH_AMBIENT_REFILL_WINDOW_MS, clamped
-// at the ceiling (no banking beyond one bucket). Numbers: 150 / 5 min sustains
-// 0.5 req/s worst case — an order of magnitude under the 5/s drip that (with
-// the 4-concurrent limit + the proxy's permanent disk cache) is the REAL
-// politeness bound on adsbdb; the 300 ceiling preserves the old first-look
-// burst so a fresh region still classifies quickly.
+// Rolling ambient budget (2026-07-03 field fix, RESIZED 2026-09-07 against a
+// measurement). The original ONE-SHOT session cap (300, refilled only in init)
+// burned out in the first two polls of a busy region and never recovered — an
+// hours-long session showed airliner monoculture in every NEW region until
+// planes were clicked (the tracked path is uncapped). Token bucket instead:
+// starts full at the ceiling, refills ENRICH_AMBIENT_REFILL_TOKENS every
+// ENRICH_AMBIENT_REFILL_WINDOW_MS, clamped at the ceiling (no banking beyond
+// one bucket).
+//
+// THE TWO KNOBS ANSWER TWO DIFFERENT QUESTIONS. 300 / 150 was picked when a
+// rationed adsbdb lookup was the only way to learn a type at all, and was never
+// held against demand. `npm run qa:enrich-budget` holds each half against the
+// thing it actually pays for, on live upstream data:
+//   - the CEILING is the FIRST-LOOK burst — how many airborne contacts a fresh
+//     region puts on screen at once. Under-size it and a region classifies
+//     itself over the following quarter-hour instead of in one pass.
+//   - the REFILL is the CHURN — contacts NEW to the session arriving per
+//     5 minutes. Under-size it and the bucket drains permanently, which is the
+//     2026-07-03 bug again, in slow motion.
+// Measured 2026-09-07 (`qa-enrich-budget`), three regions, 13 minutes of live
+// sampling, the proxy's own 250 NM circle, airborne contacts only — the sweep's
+// two filters. Region | first look | new per 5 min | already carrying `t`:
+//   Francfort      919    126    96.4 %
+//   Paris          795    120    97.3 %
+//   Los Angeles    223     48    98.2 %
+// The measurement moved ONE of the two knobs, which is the point of measuring.
+// The 300 ceiling covered a THIRD of a first look at the busiest region, so a
+// fresh European view spent its whole bucket on its first two polls and then
+// classified the rest at refill rate — a quarter of an hour of half-drawn
+// fleet. It becomes 1000, just over the 919 measured.
+// The refill does NOT move. 150 per 5 min already covers the worst churn
+// measured (126), and it is also the throttle on the case the circle cannot
+// see: a visitor PANNING to a new region pays a first look each time, and past
+// the opening bucket that rate is exactly this number. 150 / 5 min is a
+// sustained 0.5 req/s; doubling it on no evidence would have bought nothing a
+// visitor can perceive and spent someone else's free API to do it.
+//
+// AND NEITHER KNOB IS WHAT ADSBDB SEES. Raising the ceiling does not raise the
+// request RATE: the ≤5/s drip and ENRICH_AMBIENT_PER_SWEEP (150 per 30 s poll)
+// bound that at ≤300/min, against adsbdb's 512-per-60 s limiter — unchanged by
+// this resize. What the bucket bounds is the session TOTAL, which is a
+// courtesy we extend, not the limit we are held to.
 /** Bucket ceiling: max ambient tokens held at once (= the initial burst). */
-const ENRICH_AMBIENT_BUDGET_CEIL = 300;
-/** Tokens added back per refill window. */
+const ENRICH_AMBIENT_BUDGET_CEIL = 1000;
+/** Tokens added back per refill window. Deliberately unchanged — measured. */
 const ENRICH_AMBIENT_REFILL_TOKENS = 150;
 /** Refill window length (ms). */
 const ENRICH_AMBIENT_REFILL_WINDOW_MS = 5 * 60 * 1000;
@@ -1016,7 +1058,19 @@ function _sweepAmbientEnrichment() {
     for (const [icao24, bb] of _billboards) {
       if (_enrichSeen.has(`t:${icao24}`)) continue; // answered / queued / negative this session
       if (!/^[0-9a-f]{6}$/i.test(icao24)) continue; // adsbdb keys are 6-char hex only
-      if (_flightData.get(icao24)?.onGround) continue; // ground traffic never spends ambient budget (click-to-enrich still works)
+      const meta = _flightData.get(icao24);
+      if (meta?.onGround) continue; // ground traffic never spends ambient budget (click-to-enrich still works)
+      // THE FEED ALREADY ANSWERED FOR THIS ONE. Since phase 3a the adsb.lol
+      // vector carries the ICAO designator at [18] and the tail at [19], which
+      // is the whole of what a SILHOUETTE needs; an adsbdb lookup on top would
+      // buy the long model name on a card nobody has opened. That is the
+      // cheapest possible thing to spend a rationed token on, and it was where
+      // most of the bucket went: measured 2026-09-07, TYPE_SHARE of airborne
+      // contacts on that feed already carry the designator. The OpenSky feed
+      // carries none, so nothing changes on the path that actually needs help.
+      // Clicking a plane, or approaching one close enough to render in 3D,
+      // still enriches it — at priority, and off this budget.
+      if (meta?.typeCode) continue;
       if (!bb.position || !occluder.isPointVisible(bb.position)) continue; // beyond the limb
       Cesium.Cartesian3.clone(bb.position, _scratchModelBS.center);
       if (cull.computeVisibility(_scratchModelBS) === Cesium.Intersect.OUTSIDE) continue; // off-screen
@@ -4186,8 +4240,7 @@ const flightsLayer = {
     _lastError = null;
     _lastStatus = null;
     _lastSource = 'OpenSky Network';
-    _lastCoverage = 'worldwide upstream snapshot';
-    _sourceFallback = false;
+    _lastCoverage = 'couverture mondiale';
     _trackedIcao = null;
     _resetTrackedSelectionState();
     _trackedEntity = null;
@@ -4337,7 +4390,7 @@ const flightsLayer = {
       const response = await fetch(_flightApiUrl(viewer || _viewer), { signal: updateSignal });
       _lastStatus = response.status;
       const responseSource = response.headers.get('x-flight-source');
-      const responseCoverage = response.headers.get('x-flight-coverage');
+      const responseCoverageNm = Number(response.headers.get('x-flight-coverage-nm'));
       const authMode = _toLowerText(
         response.headers.get('x-opensky-auth-mode-used') || response.headers.get('x-opensky-auth')
       );
@@ -4425,11 +4478,11 @@ const flightsLayer = {
         ? `Source snapshot ${Math.max(2, Math.round(sourceAgeMs / 60_000))} min old`
         : null;
       _lastSource = responseSource || 'OpenSky Network';
-      _lastCoverage = responseCoverage || 'worldwide upstream snapshot';
-      // A verdict from the proxy, not a regex over the source name. Only the
-      // regional adsb.lol circle sets it; every other path is the worldwide
-      // feed, fallback or not.
-      _sourceFallback = response.headers.get('x-flight-fallback') === '1';
+      // The proxy publishes a radius; the sentence is worded here, in the
+      // language the chip is read in. Absent header = the worldwide feed.
+      _lastCoverage = Number.isFinite(responseCoverageNm) && responseCoverageNm > 0
+        ? `cercle régional de ${responseCoverageNm} NM`
+        : 'couverture mondiale';
       const currentIcaos = new Set();
       const acceptedSnapshotIcaos = new Set();
       const now = Cesium.JulianDate.now();
@@ -5599,11 +5652,21 @@ const flightsLayer = {
       retryInSec,
       source: _lastSource,
       coverage: _lastCoverage,
-      // Explicit, so the control chip stops inferring a feed verdict from a
-      // regex over the source NAME (`manager.js`: `/\badsb\.lol\b/i`). The
-      // military layer has published this field since it was added; this is
-      // the last layer that made the manager guess.
-      fallback: _sourceFallback,
+      // NEITHER OF THIS LAYER'S TWO SOURCES IS A DEGRADATION, and the layer is
+      // the only thing entitled to say so. The chip used to infer "repli" from
+      // a regex over the source NAME (`manager.js`: `/\badsb\.lol\b/i`), which
+      // pinned an orange badge on the civil layer for as long as the proxy was
+      // serving the regional circle — and told the military layer, whose
+      // PRIMARY source adsb.lol is, the same thing until it published this very
+      // field to deny it (`militaryFlights.js`). But adsb.lol is fresher than
+      // the OpenSky snapshot it replaces and carries the ICAO type designator
+      // OpenSky simply does not have. What differs is the EXTENT, and `coverage`
+      // above states it: worldwide, or a 250 NM circle. A narrower map is a fact
+      // the visitor should read; it is not a fault, and it does not go orange.
+      // If a genuinely degraded path is ever added here — a simulated feed, a
+      // cached body served as live — it is this field that must flip, not a
+      // word smuggled into the source name.
+      fallback: false,
     };
   },
 

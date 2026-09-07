@@ -2692,8 +2692,8 @@ export class DataLayerManager {
         : 'jamais');
     // COVERAGE — the boundary of what the layer could have drawn at all
     // (CARTOGRAPHIE H1: a map states the edge of its own data). Three layers
-    // publish it — "533 of 892 measuring sea", "RRN non concédé", "worldwide
-    // upstream snapshot" — and it was only ever read in the `fallback` branch
+    // publish it — "533 of 892 measuring sea", "RRN non concédé", "couverture
+    // mondiale" — and it was only ever read in the `fallback` branch
     // below, which none of them reach. `marineBuoys.js` even asserts in a
     // comment that "the manager prints it into the chip"; it did not.
     // A string by contract (`coverageLabel()` documents why), so a layer

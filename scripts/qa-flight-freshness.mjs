@@ -27,9 +27,15 @@
  *  C. THE NEW RULE DOES NOT. No sample within the governor's own TTL plus its
  *     tolerance is called stale, and the served source stays OpenSky.
  *
- *  D. THE VERDICT IS A FIELD, NOT A REGEX. When the regional circle IS served,
- *     the response says so in `X-Flight-Fallback`, so the control chip stops
- *     inferring a feed verdict from the prose of a source name.
+ *  D. AND THE REGIONAL CIRCLE IS NOT A DEGRADATION. When it IS served, the
+ *     response names its source and states its EXTENT — and claims no fault.
+ *     adsb.lol is fresher than the OpenSky snapshot it stands in for and
+ *     carries the ICAO type designator OpenSky does not have at all; what
+ *     narrows is the map, not the quality. The control chip used to turn
+ *     orange on the word 'fallback' sitting in the coverage prose, so the
+ *     prose is gone: the response reports its radius as a number and lets the
+ *     layer word it. This check reads that number, and checks nothing calls it
+ *     a fault.
  *
  * Run: node scripts/qa-flight-freshness.mjs --url http://localhost:5174
  */
@@ -76,6 +82,10 @@ async function sample() {
   return {
     status: response.status,
     source: header('x-flight-source') || 'OpenSky Network',
+    coverageNm: Number(header('x-flight-coverage-nm')),
+    // Read only to assert its ABSENCE: the proxy used to stamp
+    // `X-Flight-Fallback: 1` on the regional circle, and check D below is what
+    // keeps it from coming back.
     fallbackHeader: header('x-flight-fallback'),
     cache: header('x-opensky-cache'),
     auth: header('x-opensky-auth'),
@@ -139,12 +149,14 @@ async function main() {
     samples.filter((one) => /adsb\.lol/i.test(one.source)).length + ' regional samples',
   );
 
-  // ── D. the verdict is a field ─────────────────────────────────────────────
+  // ── D. the regional circle states its extent, and claims no fault ─────────
   const regional = samples.filter((one) => /adsb\.lol/i.test(one.source));
   check(
-    'D. a regional response declares itself in X-Flight-Fallback, not in its name',
-    regional.every((one) => one.fallbackHeader === '1'),
-    regional.length ? `${regional.length} regional samples` : 'none served this run',
+    'D. a regional response states its radius and claims no degradation',
+    regional.every((one) => one.coverageNm > 0 && one.fallbackHeader === null),
+    regional.length
+      ? `${regional.length} regional samples at ${regional[0].coverageNm} NM`
+      : 'none served this run',
   );
 
   console.log('');
