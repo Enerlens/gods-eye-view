@@ -1165,6 +1165,17 @@ check({
     timeoutMs: 900000,
   }),
 });
+check({
+  id: 'D13', group: 'D', desc: 'qa-chronicle — the recorder writes, folds, sweeps and refuses honestly',
+  // Not heavy: no browser, and the only upstream cost is provoking three
+  // proxies that a release candidate is going to be asked for anyway.
+  run: harness({
+    id: 'D13',
+    script: 'qa-chronicle.mjs',
+    args: ['--url', APP_URL],
+    timeoutMs: 600000,
+  }),
+});
 
 // ─── M · OWNER-EYES (never automated; steps in the runbook) ───────────────
 const MANUAL = [

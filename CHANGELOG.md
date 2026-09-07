@@ -6,6 +6,70 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-03
 
 ### Added
+- **La chronique — le serveur commence à garder ce que personne n'archive.**
+  Presque tout ce que ce fork dessine sur la France est déjà une archive :
+  Filosofi publie une année, DVF une décennie, les comptages parisiens treize
+  mois glissants — et c'est parce que quelqu'un a gardé 27,7 millions de lignes
+  qu'on a pu écrire que 83,9 % des arcs comptés déplacent leur heure de pointe
+  le week-end. **Cinq flux que ce serveur lit déjà ne gardent rien** : un
+  VehiclePositions GTFS-RT est écrasé toutes les trente secondes, QualiCharge
+  remplace ses 75 427 lignes à chaque publication, un répertoire DATEX II ne
+  contient que le fichier courant, un socket AIS ne se rejoue pas, et Vigicrues
+  republie son bulletin par-dessus le précédent deux fois par jour. Aucun n'a
+  d'historique public, et personne ne le vend pour la France.
+  Un enregistreur replie désormais chacun d'eux en **semaine type de 168
+  créneaux, heure de Paris**, gardée pour toujours, et conserve **trente jours de
+  ticks bruts** sous `.gev-cache/chronicle/`. L'heure de Paris et pas UTC parce
+  que tous ces rythmes sont humains : la pointe du soir est à 18 h locales en
+  février comme en juillet, et en UTC elle se déplace d'une heure deux fois par
+  an — ce qui étalerait deux mois de chaque profil sur deux créneaux et
+  aplatirait précisément la pointe qu'on cherche.
+  **Trente jours, parce qu'un repli est irréversible.** Un axe auquel personne
+  n'a pensé le premier jour est perdu à jamais, sauf si les ticks sont encore là
+  pour le reconstruire ; quatre semaines complètes suffisent à rebâtir un premier
+  profil sur un axe neuf. Un jour terminé est compressé sur place — mesuré 30,2
+  Mo en clair contre 4,2 Mo compressés, soit 125 Mo de mois retenu au lieu de
+  900.
+  **Un créneau compte des semaines distinctes, pas des échantillons**, et il
+  refuse de noter quoi que ce soit en dessous de trois. Une source interrogée
+  toutes les cinq minutes met douze échantillons dans un créneau en une seule
+  semaine : juger sur l'effectif laisserait un mardi chargé certifier le créneau
+  mardi 08 h pour toujours. Et une valeur est **notée avant d'être repliée** —
+  « est-ce normal » veut dire « au regard de ce qu'on savait avant » ; noter
+  après met la valeur dans sa propre espérance et tire tout vers « typique »
+  (mesuré sur cinq échantillons : 1,8 σ affiché au lieu de plusieurs dizaines).
+  **Vigicrues ne déclare aucune semaine type, et c'est le point.** Une crue
+  répond à la pluie, pas à mardi ; replier un niveau de vigilance en créneaux
+  horaires fabriquerait une saisonnalité inexistante puis noterait de vrais
+  épisodes contre elle. La source garde donc sa seule chronologie, et
+  `/anomalies` **refuse** en donnant la raison, au lieu de renvoyer une liste
+  vide qui se lirait « rien d'anormal sur les rivières ce soir ».
+  Quatre des cinq sources ne coûtent rien en amont : elles enregistrent une
+  charge que le proxy avait déjà téléchargée. La cinquième est nouvelle —
+  **QualiCharge**, le seul fichier national français qui dise si une borne est
+  libre *maintenant* et pas seulement où elle est installée. Trois pièges y ont
+  été mesurés, dont un qui change le chiffre : `horodatage` dit quand l'opérateur
+  a parlé pour la dernière fois, et **seules 67,9 % des 75 427 lignes ont moins
+  de 24 heures**, la plus vieille remontant à 862 jours. Les périmées ne sont pas
+  muettes, elles sont affirmatives : **18 052 des 24 197 disent encore `libre`**.
+  Lire le fichier tel quel donne 58 742 bornes libres, le lire honnêtement
+  40 690 — **une lecture naïve gonfle la capacité de recharge libre de la France
+  de 44,4 %**. Le brut y est un **journal de transitions** et pas des instantanés :
+  sur 9 min 36 s, 4 231 bornes ont changé de ligne mais 1 116 n'avaient bougé que
+  leur horodatage.
+  Le biais est mesuré plutôt que caché : trois sources ne sont enregistrées que
+  quand quelqu'un regarde, donc la couverture d'un profil est une carte de là où
+  la caméra a été pointée — c'est pourquoi chaque créneau publie son nombre de
+  semaines et qu'un profil maigre se lit comme maigre. Et la licence voyage avec
+  chaque source : le PAN déclare de l'ODbL sur une minorité substantielle de ses
+  flux temps réel, et le partage à l'identique de l'ODbL atteint toute base
+  dérivée exposée publiquement, pas seulement la carte qu'on en tire.
+  Lecture seule côté HTTP (`/api/chronicle-fr/status`, `/series`, `/profile`,
+  `/anomalies`) ; l'écriture se fait à l'intérieur des proxys. Le sondeur
+  QualiCharge est **opt-in** (`CHRONICLE_IRVE_DYNAMIC=1`, armé sur le
+  déploiement de staging, qui est le seul à avoir un volume persistant).
+  Raisonnement complet dans [`docs/CHRONIQUE.md`](docs/CHRONIQUE.md) ;
+  `npm run qa:chronicle`.
 - **La route d'un vol suivi, sur une seule vue.** Sélectionner un avion et
   vouloir voir d'où il vient et où il va demandait jusqu'ici de dézoomer à la
   main jusqu'à retrouver deux aéroports qu'aucun trait ne reliait. Un bouton

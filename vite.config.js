@@ -31,6 +31,11 @@
  *      per département, and the thinned national mesh between the two
  *  24. IGN Api Carto — French cadastral parcels (PCI vecteur) joined to the scale
  *      of the sheet each one was drawn on
+ *  25. The chronicle — the one middleware here that is not a cache. It records
+ *      the five feeds that publish only the present and whose past nobody
+ *      keeps (GTFS-RT, QualiCharge dynamic, DATEX II, AIS over the France box,
+ *      Vigicrues), folds them into a typical week and holds thirty days of raw
+ *      ticks. Four of the five ride on fetches the proxies above already make.
  *
  * Also exposes Cesium and Google 3D Tiles API keys to the
  * client via `import.meta.env.*` defines.
@@ -606,6 +611,40 @@ import {
   validTerrainResult,
 } from './src/data/terrainHeightsProxy.js';
 import { VOICE_MODELS, isKnownVoiceTier, resolveVoiceModel } from './src/voice/voiceCost.js';
+import {
+  CHRONICLE_MIN_WEEKS,
+  CHRONICLE_SLOTS,
+  CHRONICLE_TIME_ZONE,
+  chronicleDayFile,
+  chronicleDayOfFile,
+  chronicleReading,
+  chronicleRetentionFloor,
+  chronicleRoundValue,
+  chronicleSeriesCoverage,
+  chronicleSeriesWeight,
+  chronicleSlotSpread,
+  chronicleStamp,
+  compactableChronicleDays,
+  createChronicleSeries,
+  encodeChronicleTick,
+  expiredChronicleDays,
+  isChronicleSeriesKey,
+  observeChronicleSeries,
+  parseChronicleProfile,
+  serializeChronicleProfile,
+} from './src/data/chronicle.js';
+import {
+  CHRONICLE_SOURCES,
+  chronicleSourceById,
+  chronicleSourceIds,
+} from './src/data/chronicleSources.js';
+import {
+  QUALICHARGE_DYNAMIC_URL,
+  QUALICHARGE_MAX_BYTES,
+  parseQualichargeDynamic,
+  qualichargeSamples,
+  qualichargeTransitions,
+} from './src/data/qualichargeDynamic.js';
 
 /** Resolve __dirname for ESM context. */
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -3202,6 +3241,9 @@ function vigicruesProxy() {
               inflight = refreshUpstream()
                 .then(async (next) => {
                   mem = next;
+                  // Every bulletin, not every request: a level change is rare
+                  // and irreplaceable, so it is written before the cache is.
+                  recordVigicruesChronicle(next);
                   await writeDisk(next);
                   return next;
                 })
@@ -13294,6 +13336,7 @@ async function refreshPanViewport(box, key) {
   _panViewportCache.set(key, { at: Date.now(), payload });
   trimPanViewportCache();
   void flushPanBounds();
+  recordTransitChronicle(payload);
   return payload;
 }
 
@@ -18332,6 +18375,9 @@ function aisStreamRows(maxRows) {
 
 function pruneAisStreamCache() {
   const now = Date.now();
+  // Rides the sweep rather than a timer of its own, so the France box is
+  // sampled exactly while the socket is delivering (see recordAisChronicle).
+  recordAisChronicle(now);
   // The identity registry keeps its own clock: it is bounded by a 30-day TTL
   // and a size cap, not by the 30-minute position staleness below, and it was
   // the one map here that nothing ever swept.
@@ -20229,6 +20275,7 @@ async function refreshRoadStatusSnapshot() {
     },
   };
   _roadStatusSnapshot = snapshot;
+  recordRoadStatusChronicle(snapshot);
   void fsp.mkdir(ROAD_STATUS_CACHE_DIR, { recursive: true })
     .then(() => fsp.writeFile(ROAD_STATUS_CACHE_PATH, JSON.stringify(snapshot), 'utf8'))
     .catch((error) => console.warn('[road-status-fr] cache write failed:', error?.message || error));
@@ -22943,6 +22990,1009 @@ function geoidProxyPlugin() {
 }
 
 // ---------------------------------------------------------------------------
+// The chronicle — recording the five feeds that keep no past
+// ---------------------------------------------------------------------------
+/**
+ * Everything above this line is a CACHE: it exists so the next request is
+ * cheap, and it is allowed to forget. This is the opposite. It exists so that
+ * in six months there is an answer to "is this normal for a Tuesday at 08:00?"
+ * on five feeds that publish only the present and whose past nobody sells.
+ *
+ * The policy — the clock, the 168-slot fold, the anomaly reading, the
+ * retention arithmetic — is in `src/data/chronicle.js`, under test and with
+ * the reasoning. What is left here is the part that cannot be pure: the files,
+ * the debounce, the atomic rename, the retention sweep, and the four call
+ * sites inside the proxies above that hand it what they already fetched.
+ *
+ * ── What this costs the proxies it hangs off ───────────────────────────────
+ *
+ * Nothing upstream, for four of the five. `recordChronicle` is called with a
+ * payload the proxy had already downloaded and projected, so recording transit,
+ * road status, AIS and Vigicrues adds no request to anyone's server. Only the
+ * QualiCharge poller is a new fetch, which is exactly why it is the only one
+ * that has to be switched on (`CHRONICLE_IRVE_DYNAMIC=1`).
+ *
+ * ── The bias that has to be reported rather than hidden ────────────────────
+ *
+ * Three of the four passive sources are recorded ONLY WHEN SOMEONE IS LOOKING:
+ * the transit proxy fetches per viewport, and the road-status and Vigicrues
+ * proxies refresh on request. So a profile's coverage is a map of where this
+ * server's operators have pointed the camera, not of France. That is not
+ * fixable by wanting it to be — polling 151 GTFS-RT feeds nationally is a real
+ * bill — so it is MEASURED instead: every slot carries the number of distinct
+ * weeks behind it, `/api/chronicle-fr/profile` returns it, and
+ * `chronicleReading` refuses to score anything under three. A thin profile
+ * reads as thin rather than as a quiet network.
+ */
+const CHRONICLE_ROOT = path.join(process.cwd(), '.gev-cache', 'chronicle');
+/**
+ * Debounce between profile rewrites.
+ *
+ * The document is rewritten WHOLE, and a source at the 250-series cap
+ * serialises to 1.31 MB, so this is the rate at which that megabyte is paid.
+ * (The busiest source today, `road-status-fr`, holds 99.) Fifteen
+ * minutes is chosen against what a crash actually costs: the raw ticks are on
+ * disk within milliseconds of arriving, so an unflushed profile is at worst a
+ * quarter hour of folding that the raw log could rebuild — never a quarter
+ * hour of lost observation.
+ */
+const CHRONICLE_PROFILE_FLUSH_MS = 15 * 60_000;
+/** How often a source's directory is swept for expired and compactable days. */
+const CHRONICLE_SWEEP_MS = 6 * 60 * 60_000;
+/** Anomalies returned per request unless the caller asks for fewer. */
+const CHRONICLE_ANOMALY_LIMIT = 40;
+/** Filename of the fold, inside each source's directory. */
+const CHRONICLE_PROFILE_FILE = 'profile.json';
+
+/**
+ * @type {Map<string, {profiles: Map<string, object>,
+ *   last: Map<string, {v: number, at: number, slot: number, reading: ?object}>,
+ *   dirty: boolean, flushedAt: number, sweptAt: number, dirReady: boolean,
+ *   writes: Promise<void>, startedAt: ?number, ticks: number, observations: number,
+ *   lastAt: ?number, restored: number, error: ?string}>}
+ */
+const _chronicleState = new Map();
+/**
+ * Rate limit on the read side.
+ *
+ * Looser than the proxies above on purpose: every one of those brokers an
+ * upstream that somebody pays for, and their limits protect a budget. These
+ * routes touch nothing but this server's own files, and the natural caller is
+ * a harness that walks one request per series. The cap is here so a runaway
+ * client cannot spin the directory `stat`s in `chronicleDiskUsage`, not to
+ * ration anything.
+ */
+const _chronicleRateLimiter = makeRateLimiter({ windowMs: 60_000, max: 300, globalMax: 900 });
+
+/** The whole recorder, off in one switch. */
+function chronicleEnabled() {
+  return String(process.env.CHRONICLE_DISABLED || '').trim() !== '1';
+}
+
+function chronicleSourceDir(sourceId) {
+  return path.join(CHRONICLE_ROOT, sourceId);
+}
+
+/**
+ * Load a source's fold, ONCE, synchronously.
+ *
+ * Synchronous on purpose, and the exception to this file's rule. The AIS
+ * registry reads asynchronously because its loader is called from an ingest
+ * path that runs thousands of times a minute, and it pays for that with a
+ * `_aisStaticReady` flag guarding every write. Here the read happens once per
+ * source per process, off the first tick, against a file under a megabyte —
+ * and doing it inline removes the entire class of bug where a tick that
+ * arrives during the read either overwrites weeks of folding or is dropped.
+ */
+function ensureChronicleState(source) {
+  const existing = _chronicleState.get(source.id);
+  if (existing) return existing;
+  const state = {
+    profiles: new Map(),
+    last: new Map(),
+    dirty: false,
+    flushedAt: 0,
+    sweptAt: 0,
+    dirReady: false,
+    writes: Promise.resolve(),
+    startedAt: null,
+    ticks: 0,
+    observations: 0,
+    lastAt: null,
+    restored: 0,
+    error: null,
+  };
+  try {
+    const document = JSON.parse(
+      fs.readFileSync(path.join(chronicleSourceDir(source.id), CHRONICLE_PROFILE_FILE), 'utf8'),
+    );
+    state.profiles = parseChronicleProfile(document);
+    state.restored = state.profiles.size;
+    const meta = document?.meta;
+    if (Number.isFinite(meta?.startedAt)) state.startedAt = meta.startedAt;
+    if (Number.isFinite(meta?.ticks)) state.ticks = meta.ticks;
+    if (Number.isFinite(meta?.observations)) state.observations = meta.observations;
+    if (state.restored) {
+      console.log(`[chronicle] ${source.id}: ${state.restored} series restored from disk.`);
+    }
+  } catch { /* first run for this source */ }
+  _chronicleState.set(source.id, state);
+  return state;
+}
+
+/** The document both writers store: the fold, plus how long it has been going. */
+function chronicleProfileDocument(source, state, now) {
+  return JSON.stringify({
+    ...serializeChronicleProfile(state.profiles, { now }),
+    meta: {
+      source: source.id,
+      startedAt: state.startedAt,
+      ticks: state.ticks,
+      observations: state.observations,
+    },
+  });
+}
+
+function chronicleTempPath(sourceId) {
+  return path.join(
+    chronicleSourceDir(sourceId),
+    `${CHRONICLE_PROFILE_FILE}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`,
+  );
+}
+
+/**
+ * Persist one source's fold ATOMICALLY: temp sibling, then rename over it.
+ *
+ * A crash mid-write leaves the previous document intact, and for a file that
+ * accumulates for years that is not a nicety.
+ */
+async function writeChronicleProfile(source, state) {
+  if (!state.dirty) return false;
+  const temp = chronicleTempPath(source.id);
+  // Serialise and clear the flag in the SAME synchronous step: an observation
+  // folded during the awaits below belongs to the NEXT write, and clearing
+  // afterwards would mark it clean without ever having stored it.
+  const document = chronicleProfileDocument(source, state, Date.now());
+  state.dirty = false;
+  try {
+    await fsp.mkdir(chronicleSourceDir(source.id), { recursive: true });
+    await fsp.writeFile(temp, document);
+    await fsp.rename(temp, path.join(chronicleSourceDir(source.id), CHRONICLE_PROFILE_FILE));
+    state.error = null;
+    return true;
+  } catch (error) {
+    state.dirty = true;
+    state.error = String(error?.message || error);
+    console.warn(`[chronicle] ${source.id}: profile write failed:`, state.error);
+    await fsp.rm(temp, { force: true }).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * The same write, synchronously, for shutdown.
+ *
+ * Vite restarts the dev server in-process on a config change while module
+ * state survives, so without this every config edit threw away up to fifteen
+ * minutes of folding — the same failure the AIS identity registry had before
+ * PR #92 gave it `writeAisStaticRegistrySync`.
+ *
+ * Only the FOLD is flushed here. A raw append already in flight is a promise
+ * the exiting process will drop, which costs at most the one tick that was
+ * mid-write; the fold is what accumulates for years and is therefore what
+ * teardown is spent on.
+ */
+function writeChronicleProfilesSync() {
+  for (const source of CHRONICLE_SOURCES) {
+    const state = _chronicleState.get(source.id);
+    if (!state?.dirty) continue;
+    const temp = chronicleTempPath(source.id);
+    try {
+      fs.mkdirSync(chronicleSourceDir(source.id), { recursive: true });
+      fs.writeFileSync(temp, chronicleProfileDocument(source, state, Date.now()));
+      fs.renameSync(temp, path.join(chronicleSourceDir(source.id), CHRONICLE_PROFILE_FILE));
+      state.dirty = false;
+    } catch (error) {
+      console.warn(`[chronicle] ${source.id}: profile flush failed:`, error?.message || error);
+      try { fs.rmSync(temp, { force: true }); } catch { /* nothing to clean up */ }
+    }
+  }
+}
+
+const gzipAsync = (buffer) => new Promise((resolve, reject) => {
+  zlib.gzip(buffer, { level: 6 }, (error, out) => (error ? reject(error) : resolve(out)));
+});
+
+/**
+ * Drop what has fallen out of the window, and compress what has closed.
+ *
+ * Two passes, in that order, so a day that is both expired and uncompressed is
+ * deleted rather than compressed and then deleted. Throttled to
+ * {@link CHRONICLE_SWEEP_MS}: retention is measured in days, so paying a
+ * directory listing on every tick would be pure waste.
+ *
+ * RUNS INSIDE THE SAME WRITE CHAIN AS THE APPENDS, which is the only thing
+ * standing between this and a silent loss at midnight: a tick stamped 23:59:59
+ * whose append is still queued when a sweep at 00:00:00 reads, gzips and
+ * deletes yesterday's file would be written back into a fresh plain file
+ * holding one line — and the next sweep would compact that over the `.gz` that
+ * held the other 20 000. Serialising the two removes the window rather than
+ * narrowing it.
+ */
+async function sweepChronicleSource(source, state, now) {
+  if (now - state.sweptAt < CHRONICLE_SWEEP_MS) return;
+  state.sweptAt = now;
+  const dir = chronicleSourceDir(source.id);
+  let names;
+  try {
+    names = await fsp.readdir(dir);
+  } catch {
+    return; // nothing recorded yet
+  }
+  const floor = chronicleRetentionFloor(now, source.retentionDays);
+  const expired = new Set(expiredChronicleDays(names, floor));
+  for (const name of expired) {
+    await fsp.rm(path.join(dir, name), { force: true })
+      .catch((error) => console.warn(`[chronicle] ${source.id}: could not drop ${name}:`, error?.message || error));
+  }
+  const today = chronicleStamp(now)?.dayKey;
+  // The listing predates the deletions above, so a day that is both expired and
+  // uncompressed would otherwise be gzipped after it no longer exists.
+  for (const name of compactableChronicleDays(names, today)) {
+    if (expired.has(name)) continue;
+    const plain = path.join(dir, name);
+    const packed = `${plain}.gz`;
+    // Never write over an existing archive. If both forms of a day are present
+    // something has already gone wrong, and the compressed one is the older and
+    // larger of the two; losing it to a retry is worse than leaving a duplicate.
+    if (names.includes(`${name}.gz`)) {
+      console.warn(`[chronicle] ${source.id}: ${name} and its .gz both exist — left alone.`);
+      continue;
+    }
+    try {
+      const body = await fsp.readFile(plain);
+      await fsp.writeFile(packed, await gzipAsync(body));
+      await fsp.rm(plain, { force: true });
+    } catch (error) {
+      console.warn(`[chronicle] ${source.id}: could not compact ${name}:`, error?.message || error);
+      await fsp.rm(packed, { force: true }).catch(() => {});
+    }
+  }
+}
+
+/**
+ * Record one tick of one source.
+ *
+ * The ONE entry point. Callers hand it what they already have; everything
+ * about how it is stored is decided here and in `chronicle.js`.
+ *
+ * Samples are gated PER SERIES, not per tick, because the transit proxy
+ * refreshes whichever feeds a viewport happens to intersect: gating the tick
+ * would record whichever handful of networks landed on the boundary and drop
+ * the rest, while gating the series gives every network its own five-minute
+ * clock regardless of which viewport triggered the fetch.
+ *
+ * @param {string} sourceId One of `chronicleSources.js`.
+ * @param {{at?: number, samples?: Object<string, number>, events?: Array<*>}} tick
+ * @returns {?{recorded: number, events: number}} Null when nothing was stored.
+ */
+function recordChronicle(sourceId, { at = Date.now(), samples = {}, events = [] } = {}) {
+  if (!chronicleEnabled()) return null;
+  const source = chronicleSourceById(sourceId);
+  if (!source) return null;
+  const stamp = chronicleStamp(at);
+  if (!stamp) return null;
+  const state = ensureChronicleState(source);
+
+  const accepted = {};
+  let recorded = 0;
+  for (const [key, raw] of Object.entries(samples)) {
+    if (!isChronicleSeriesKey(key) || !Number.isFinite(raw)) continue;
+    const previous = state.last.get(key);
+    // Strictly forward: an out-of-order tick is dropped rather than folded,
+    // because a series' own clock is what the interval is measured against.
+    if (previous && at - previous.at < source.minIntervalMs) continue;
+    // Rounded ONCE, here, so the value that is folded is byte-for-byte the
+    // value that is logged — which is what makes re-folding the thirty-day
+    // window reproduce the profile rather than approximate it.
+    const value = chronicleRoundValue(raw);
+    accepted[key] = value;
+    recorded += 1;
+
+    let reading = null;
+    if (source.profile) {
+      let series = state.profiles.get(key);
+      if (!series) {
+        series = createChronicleSeries();
+        state.profiles.set(key, series);
+      }
+      // SCORED BEFORE IT IS FOLDED. "Is this normal?" means "against what was
+      // known before this arrived" — scoring afterwards puts the value inside
+      // its own expectation and drags every reading toward `typical`. On a
+      // young slot that is not a rounding difference: with five samples in the
+      // slot, a value four hundred above the mean of the other four scored
+      // 1.8 sigma instead of the several hundred it actually was.
+      reading = chronicleReading(series, stamp.slot, value);
+      observeChronicleSeries(series, stamp.slot, value, stamp.week);
+    }
+    state.last.set(key, {
+      v: value, at, slot: stamp.slot, reading,
+    });
+  }
+  const eventRows = Array.isArray(events) ? events : [];
+  if (!recorded && !eventRows.length) return null;
+  state.ticks += 1;
+  state.observations += recorded;
+  state.lastAt = at;
+  if (!Number.isFinite(state.startedAt)) state.startedAt = at;
+  // Dirty on every tick, not only when a slot moved: the document also carries
+  // when recording started and how much has passed through, and a source that
+  // folds nothing at all (Vigicrues) would otherwise freeze those counters at
+  // whatever the first flush happened to see.
+  state.dirty = true;
+
+  const line = encodeChronicleTick({ at, samples: accepted, events: eventRows });
+  if (line) {
+    // Appends are chained rather than fired in parallel: two concurrent
+    // viewport refreshes would otherwise both write to the same day file, and
+    // O_APPEND only guarantees atomicity below the pipe buffer — a 300-series
+    // transit line is well past it.
+    const target = path.join(chronicleSourceDir(source.id), chronicleDayFile(stamp.dayKey));
+    state.writes = state.writes.then(async () => {
+      if (!state.dirReady) {
+        await fsp.mkdir(chronicleSourceDir(source.id), { recursive: true });
+        state.dirReady = true;
+      }
+      await fsp.appendFile(target, line);
+    }).catch((error) => {
+      state.dirReady = false;
+      state.error = String(error?.message || error);
+      console.warn(`[chronicle] ${source.id}: raw append failed:`, state.error);
+    });
+  }
+
+  const now = Date.now();
+  if (state.dirty && now - state.flushedAt >= CHRONICLE_PROFILE_FLUSH_MS) {
+    state.flushedAt = now;
+    void writeChronicleProfile(source, state);
+  }
+  // Behind the appends, never beside them — see the header on the sweep.
+  state.writes = state.writes
+    .then(() => sweepChronicleSource(source, state, now))
+    .catch((error) => console.warn(`[chronicle] ${source.id}: sweep failed:`, error?.message || error));
+  return { recorded, events: eventRows.length };
+}
+
+// ---------------------------------------------------------------------------
+// What each proxy hands the recorder
+// ---------------------------------------------------------------------------
+/**
+ * The five foldings live together rather than beside their proxies, because
+ * the question a reviewer asks here is not "what does the road-status proxy
+ * do" — it is "what, exactly, is this fork accumulating, and on what axes".
+ * Those axes are permanent in a way the code around them is not: a fold is
+ * irreversible past the thirty-day raw window, so an axis chosen badly today
+ * is an axis that is wrong for ever. They belong on one screen.
+ *
+ * Each function is a projection from a payload the proxy ALREADY built, plus
+ * — where the source publishes discrete state — a diff against what was last
+ * recorded, so the raw log stores events rather than snapshots.
+ */
+
+/** Keep an upstream label usable as a series key. */
+function chronicleAxisKey(value) {
+  return String(value || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 12).toUpperCase();
+}
+
+// --- Vigicrues -------------------------------------------------------------
+/** Reach id -> vigilance level, as last written to the log. */
+let _chronicleVigicruesLevels = null;
+
+/**
+ * Record one Vigicrues bulletin.
+ *
+ * The national counts are folded (they are cheap and they answer "how often is
+ * France in flood vigilance at all"), but the SOURCE declares no typical week
+ * and so nothing here is scored against an hour-of-week — see the reasoning on
+ * `profile: false` in `chronicleSources.js`.
+ *
+ * The events are the point. A reach that goes yellow, then orange, then back
+ * is a chronology no public archive holds, and it is written on EVERY bulletin
+ * rather than on the recorder's 30-minute cadence: a level change is rare and
+ * cannot be re-derived from the counts, so it is never allowed to fall through
+ * the interval gate.
+ */
+function recordVigicruesChronicle(entry) {
+  if (!chronicleEnabled() || !entry?.levels) return;
+  const counts = {
+    'fr/reaches': 0, 'fr/level1': 0, 'fr/level2': 0, 'fr/level3': 0, 'fr/level4': 0, 'fr/unpublished': 0,
+  };
+  const events = [];
+  const next = new Map();
+  for (const [id, level] of Object.entries(entry.levels)) {
+    counts['fr/reaches'] += 1;
+    if (Number.isInteger(level) && level >= 1 && level <= 4) counts[`fr/level${level}`] += 1;
+    else counts['fr/unpublished'] += 1;
+    next.set(id, level ?? 0);
+    const before = _chronicleVigicruesLevels?.get(id);
+    if (before !== (level ?? 0)) events.push([id, level ?? 0]);
+  }
+  _chronicleVigicruesLevels = next;
+  recordChronicle('vigicrues', { at: Date.now(), samples: counts, events });
+}
+
+// --- Bison Futé DATEX II ---------------------------------------------------
+/** Fewest located segments an axis needs before it gets a series of its own. */
+const CHRONICLE_ROAD_AXIS_FLOOR = 6;
+/** Site id -> Traficolor status, as last written to the log. */
+let _chronicleRoadStatuses = null;
+
+/**
+ * Record one national road-status snapshot.
+ *
+ * The axis, not the segment, is the profile unit. There are ~830 drawable
+ * segments and folding each of them would be 1 660 series against a cap of
+ * 250 — and the question worth answering is "is the A7 slower than a usual
+ * Saturday at 11:00", which is an axis question. The segment-level answer is
+ * not lost: it is in the event log, for thirty days, which is four complete
+ * weeks — enough to rebuild a segment-level profile later if anyone decides it
+ * is worth 1 660 series.
+ */
+function recordRoadStatusChronicle(snapshot) {
+  if (!chronicleEnabled() || !Array.isArray(snapshot?.segments)) return;
+  const counts = snapshot.counts || {};
+  const drawn = snapshot.segments.length;
+  const congested = (counts.congested || 0) + (counts.impossible || 0);
+  const samples = {
+    'fr/segments': drawn,
+    'fr/congested': congested,
+    'fr/heavy': counts.heavy || 0,
+    'fr/freeFlow': counts.freeFlow || 0,
+    'fr/unknown': counts.unknown || 0,
+    'fr/measured': snapshot.measured || 0,
+    'fr/feedsFailed': snapshot.feedsFailed || 0,
+  };
+  // The share is over the segments a traffic centre actually spoke for. A
+  // grey segment is not a free one, and dividing by everything drawn would
+  // make a publisher outage read as an empty motorway.
+  const coloured = drawn - (counts.unknown || 0);
+  if (coloured > 0) samples['fr/congestedPct'] = (100 * congested) / coloured;
+
+  /** @type {Map<string, {n: number, congested: number, coloured: number, speed: number, speeds: number}>} */
+  const axes = new Map();
+  let flowTotal = 0;
+  const events = [];
+  const nextStatuses = new Map();
+  for (const segment of snapshot.segments) {
+    if (Number.isFinite(segment.f)) flowTotal += segment.f;
+    nextStatuses.set(segment.id, segment.s);
+    if (_chronicleRoadStatuses?.get(segment.id) !== segment.s) events.push([segment.id, segment.s]);
+    const axis = chronicleAxisKey(segment.a);
+    if (!axis) continue;
+    let bucket = axes.get(axis);
+    if (!bucket) {
+      bucket = {
+        n: 0, congested: 0, coloured: 0, speed: 0, speeds: 0,
+      };
+      axes.set(axis, bucket);
+    }
+    bucket.n += 1;
+    if (segment.s !== 'unknown') bucket.coloured += 1;
+    if (segment.s === 'congested' || segment.s === 'impossible') bucket.congested += 1;
+    if (Number.isFinite(segment.v)) { bucket.speed += segment.v; bucket.speeds += 1; }
+  }
+  _chronicleRoadStatuses = nextStatuses;
+  samples['fr/flowVehH'] = flowTotal;
+  for (const [axis, bucket] of axes) {
+    if (bucket.n < CHRONICLE_ROAD_AXIS_FLOOR) continue;
+    if (bucket.coloured > 0) samples[`axis:${axis}/congestedPct`] = (100 * bucket.congested) / bucket.coloured;
+    if (bucket.speeds > 0) samples[`axis:${axis}/speedKph`] = bucket.speed / bucket.speeds;
+  }
+  recordChronicle('road-status-fr', { at: snapshot.at || Date.now(), samples, events });
+}
+
+// --- transport.data.gouv.fr GTFS-RT ----------------------------------------
+/**
+ * Record whichever networks this viewport refresh happened to touch.
+ *
+ * No national series is emitted, and that is deliberate: the payload is a
+ * VIEWPORT answer, so a "France" count computed from it would be a count of
+ * what one operator was looking at, dressed up as a country.
+ *
+ * ── The count is the NETWORK's, never the box's ────────────────────────────
+ *
+ * `feed.reported` is how many vehicles the network published; `feed.inView` is
+ * how many of them fell inside the requester's rectangle. Only the first is a
+ * property of the network. Folding `inView` would make one series mean
+ * "vehicles TBM is running" when a camera sits over Bordeaux and "vehicles TBM
+ * is running inside a 0.3° box near Lyon" ten minutes later — two quantities,
+ * one slot, and a typical week assembled out of whichever way people happened
+ * to look. So the fleet series is `reported`, which is the same number no
+ * matter who asked.
+ *
+ * The punctuality share cannot be made box-independent the same way: the
+ * schedule join is fetched only when a feed has vehicles IN the box, because
+ * TripUpdates bodies reach 1.2 MB. It is kept anyway — a ratio survives
+ * sampling far better than a count does — and `spoken` travels beside it as
+ * the denominator, so a share computed over four buses is visibly a share
+ * computed over four buses.
+ *
+ * The rule is `summarizeSchedule`'s — the same thresholds as the card the
+ * operator is reading — and `unknown` is excluded from the denominator rather
+ * than folded into `on time`, for exactly the reason that function's own
+ * header gives.
+ */
+function recordTransitChronicle(payload) {
+  if (!chronicleEnabled() || !Array.isArray(payload?.feeds)) return;
+  const byFeed = new Map();
+  for (const vehicle of payload.vehicles || []) {
+    const bucket = byFeed.get(vehicle.feed) || [];
+    bucket.push(vehicle);
+    byFeed.set(vehicle.feed, bucket);
+  }
+  const samples = {};
+  for (const feed of payload.feeds) {
+    // A feed that errored reported nothing; recording a zero would teach the
+    // profile that this network runs no buses at that hour.
+    if (feed.error) continue;
+    const key = chronicleAxisKey(feed.id);
+    if (!key) continue;
+    samples[`feed:${key}/vehicles`] = feed.reported;
+    const tally = summarizeSchedule(byFeed.get(feed.id) || []);
+    const spoken = tally.late + tally.early + tally.onTime;
+    if (spoken > 0) {
+      samples[`feed:${key}/onTimePct`] = (100 * tally.onTime) / spoken;
+      samples[`feed:${key}/spoken`] = spoken;
+    }
+  }
+  recordChronicle('transit-fr', { at: Date.now(), samples });
+}
+
+// --- AISStream, over the France box ----------------------------------------
+/**
+ * The window each AIS tick counts over — the recorder's own cadence, so two
+ * consecutive ticks never count the same report twice and the series is a
+ * genuine "vessels heard in five minutes" rather than a rolling total.
+ */
+const CHRONICLE_AIS_WINDOW_MS = 5 * 60_000;
+/** Speed over ground above which a contact counts as under way, knots. */
+const CHRONICLE_AIS_MOVING_KN = 0.5;
+/** Fewest contacts a 1° cell needs before it earns a series. */
+const CHRONICLE_AIS_CELL_FLOOR = 3;
+let _chronicleAisAt = 0;
+
+/**
+ * Record maritime presence over the France box.
+ *
+ * Driven from `pruneAisStreamCache`, which already runs on every position
+ * report, rather than from a timer: the tick then exists exactly when the feed
+ * is alive, and a dead socket records nothing instead of recording zeros.
+ *
+ * POSITIONS ARE NOT STORED. What is folded is presence — how many distinct
+ * hulls were heard in a 1° cell — because that is the weekly rhythm worth
+ * having and because a per-vessel track archive is a different product with a
+ * different size and a different conversation attached to it.
+ */
+function recordAisChronicle(now = Date.now()) {
+  if (!chronicleEnabled()) return;
+  if (now - _chronicleAisAt < CHRONICLE_AIS_WINDOW_MS) return;
+  _chronicleAisAt = now;
+  const cutoff = now - CHRONICLE_AIS_WINDOW_MS;
+  const cells = new Map();
+  let vessels = 0;
+  let moving = 0;
+  let typed = 0;
+  let sogTotal = 0;
+  let sogCount = 0;
+  for (const row of _aisStreamVessels.values()) {
+    if (row._updatedAt < cutoff) continue;
+    vessels += 1;
+    if (row.type) typed += 1;
+    if (Number.isFinite(row.speed)) {
+      sogTotal += row.speed;
+      sogCount += 1;
+      if (row.speed >= CHRONICLE_AIS_MOVING_KN) moving += 1;
+    }
+    const key = `${Math.floor(row.lat)},${Math.floor(row.lon)}`;
+    cells.set(key, (cells.get(key) || 0) + 1);
+  }
+  // A tick with nothing in it is a socket that is up but quiet, which is a
+  // fact; a tick with nothing in it because the socket is DOWN is not. The
+  // watchdog owns that distinction, so silence here is simply not recorded.
+  if (!vessels) return;
+  const samples = {
+    'fr/vessels': vessels,
+    'fr/moving': moving,
+    'fr/knownType': typed,
+  };
+  if (sogCount > 0) samples['fr/meanSog'] = sogTotal / sogCount;
+  for (const [cell, count] of cells) {
+    if (count < CHRONICLE_AIS_CELL_FLOOR) continue;
+    samples[`cell:${cell}/vessels`] = count;
+  }
+  recordChronicle('ais-fr', { at: now, samples });
+}
+
+/** Bytes and days a source currently holds on disk. */
+async function chronicleDiskUsage(sourceId) {
+  const dir = chronicleSourceDir(sourceId);
+  const usage = {
+    days: 0, bytes: 0, oldestDay: null, newestDay: null, compacted: 0,
+  };
+  let names;
+  try {
+    names = await fsp.readdir(dir);
+  } catch {
+    return usage;
+  }
+  for (const name of names) {
+    const day = chronicleDayOfFile(name);
+    if (!day) continue;
+    usage.days += 1;
+    if (name.endsWith('.gz')) usage.compacted += 1;
+    if (!usage.oldestDay || day < usage.oldestDay) usage.oldestDay = day;
+    if (!usage.newestDay || day > usage.newestDay) usage.newestDay = day;
+    const stat = await fsp.stat(path.join(dir, name)).catch(() => null);
+    if (stat) usage.bytes += stat.size;
+  }
+  return usage;
+}
+
+/**
+ * One source's line in the status answer.
+ *
+ * Loads the fold if this process has not yet had a reason to: after a restart
+ * nothing has recorded, and a status that reported "0 series" over a file
+ * holding six weeks would be the one number an operator must be able to
+ * trust. The read is synchronous and happens once per source per process.
+ */
+async function chronicleSourceStatus(source) {
+  const state = ensureChronicleState(source);
+  const usage = await chronicleDiskUsage(source.id);
+  let coverage = 0;
+  let judgeable = 0;
+  for (const series of state.profiles.values()) {
+    coverage += chronicleSeriesCoverage(series);
+    for (let slot = 0; slot < CHRONICLE_SLOTS; slot += 1) {
+      if (series.w[slot] >= CHRONICLE_MIN_WEEKS) judgeable += 1;
+    }
+  }
+  return {
+    id: source.id,
+    label: source.label,
+    upstream: source.upstream,
+    licence: source.licence,
+    attribution: source.attribution,
+    why: source.why,
+    axes: source.axes,
+    opportunistic: Boolean(source.opportunistic),
+    profile: source.profile,
+    minIntervalMs: source.minIntervalMs,
+    retentionDays: source.retentionDays,
+    // Since the very first tick ever recorded, across restarts — the number
+    // that says how much of a past this fork actually owns.
+    startedAt: state.startedAt,
+    // Last tick in THIS process. Null after a restart until the source speaks
+    // again, which is a different claim from `startedAt` and is why both are
+    // reported.
+    lastAt: state.lastAt,
+    ticks: state.ticks,
+    observations: state.observations,
+    series: state.profiles.size,
+    seriesRestored: state.restored,
+    // How much of the typical week actually exists, and how much of it has
+    // enough distinct weeks behind it to be used. The second number is the
+    // one that says whether this source can answer a question yet.
+    slotsObserved: coverage,
+    slotsJudgeable: judgeable,
+    rawDays: usage.days,
+    rawBytes: usage.bytes,
+    rawCompactedDays: usage.compacted,
+    rawOldestDay: usage.oldestDay,
+    rawNewestDay: usage.newestDay,
+    error: state.error,
+  };
+}
+
+/**
+ * Vite plugin: read-only access to what the chronicle has accumulated.
+ *
+ *   GET /api/chronicle-fr/status                     — every source, its
+ *                                                      licence, its cadence,
+ *                                                      how much it holds
+ *   GET /api/chronicle-fr/series?source=             — the series it knows,
+ *                                                      by weight
+ *   GET /api/chronicle-fr/profile?source=&series=    — one typical week,
+ *                                                      168 slots
+ *   GET /api/chronicle-fr/anomalies?source=&limit=   — the last value of every
+ *                                                      series, scored against
+ *                                                      the slot it landed in
+ *
+ * Read-only by construction: there is no route that writes. Recording happens
+ * inside the proxies that already fetch, and the QualiCharge poller below.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function chronicleProxy() {
+  function install(middlewares) {
+    middlewares.use('/api/chronicle-fr', async (req, res) => {
+      const json = (status, body, headers = {}) => {
+        if (res.headersSent) return;
+        res.writeHead(status, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Cache-Control': 'no-store',
+          ...headers,
+        });
+        res.end(JSON.stringify(body));
+      };
+      if (!enforceOptInRateLimit(_chronicleRateLimiter, req, res)) return;
+      try {
+        const incoming = new URL(req.url || '', 'http://localhost');
+        const route = incoming.pathname === '/' ? '/status' : incoming.pathname;
+        const source = chronicleSourceById(incoming.searchParams.get('source'));
+
+        if (route === '/status') {
+          json(200, {
+            enabled: chronicleEnabled(),
+            timeZone: CHRONICLE_TIME_ZONE,
+            slots: CHRONICLE_SLOTS,
+            minWeeks: CHRONICLE_MIN_WEEKS,
+            root: CHRONICLE_ROOT,
+            // The one source that fetches for itself, and so the one whose
+            // health is not visible through the proxy it rides on.
+            irveDynamic: {
+              armed: chronicleIrveArmed(),
+              pollMs: CHRONICLE_IRVE_POLL_MS,
+              ..._chronicleIrveLast,
+            },
+            sources: await Promise.all(CHRONICLE_SOURCES.map(chronicleSourceStatus)),
+          });
+          return;
+        }
+
+        if (!source) {
+          json(400, { error: 'source must be one of', sources: chronicleSourceIds() });
+          return;
+        }
+        // Same loader as the status line: after a restart nothing has recorded
+        // yet, and a 404 over a file holding six weeks would be a lie about
+        // what this server owns.
+        const state = ensureChronicleState(source);
+
+        if (route === '/series') {
+          const rows = [];
+          for (const [key, series] of state.profiles) {
+            rows.push({
+              series: key,
+              observations: chronicleSeriesWeight(series),
+              slotsObserved: chronicleSeriesCoverage(series),
+              lastValue: state.last.get(key)?.v ?? null,
+              lastAt: state.last.get(key)?.at ?? null,
+            });
+          }
+          rows.sort((a, b) => b.observations - a.observations || a.series.localeCompare(b.series));
+          json(200, { source: source.id, profile: source.profile, count: rows.length, series: rows });
+          return;
+        }
+
+        if (route === '/profile') {
+          const key = String(incoming.searchParams.get('series') || '');
+          const series = state.profiles.get(key);
+          if (!series) {
+            json(404, { error: 'no such series recorded', source: source.id, series: key });
+            return;
+          }
+          const slots = [];
+          for (let slot = 0; slot < CHRONICLE_SLOTS; slot += 1) {
+            if (!series.n[slot]) continue;
+            const spread = chronicleSlotSpread(series, slot);
+            slots.push({
+              slot,
+              weekday: Math.floor(slot / 24),
+              hour: slot % 24,
+              samples: series.n[slot],
+              weeks: series.w[slot],
+              mean: series.mean[slot],
+              sd: Number.isFinite(spread) ? spread : null,
+              // Whether this slot is allowed to judge anything yet. The client
+              // must not have to re-derive the rule.
+              judgeable: series.w[slot] >= CHRONICLE_MIN_WEEKS,
+            });
+          }
+          json(200, {
+            source: source.id,
+            series: key,
+            timeZone: CHRONICLE_TIME_ZONE,
+            minWeeks: CHRONICLE_MIN_WEEKS,
+            licence: source.licence,
+            attribution: source.attribution,
+            slots,
+          });
+          return;
+        }
+
+        if (route === '/anomalies') {
+          if (!source.profile) {
+            json(200, {
+              source: source.id,
+              profile: false,
+              // Not an empty result: a refusal, with the reason.
+              reason: source.why,
+              rows: [],
+            });
+            return;
+          }
+          const now = Date.now();
+          const stamp = chronicleStamp(now);
+          const limit = clampInt(incoming.searchParams.get('limit'), 1, 500, CHRONICLE_ANOMALY_LIMIT);
+          const rows = [];
+          // A pure read: the score was computed when the value arrived, against
+          // the profile as it stood before it was folded in.
+          for (const [key, last] of state.last) {
+            if (!last.reading) continue;
+            rows.push({
+              series: key, value: last.v, at: last.at, slot: last.slot, ...last.reading,
+            });
+          }
+          rows.sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+          json(200, {
+            source: source.id,
+            at: now,
+            slot: stamp?.slot ?? null,
+            timeZone: CHRONICLE_TIME_ZONE,
+            licence: source.licence,
+            attribution: source.attribution,
+            // Three numbers, because an empty `rows` has three meanings and
+            // they must not be confused: nothing has been observed since this
+            // process started (`observed` 0), everything observed landed in a
+            // slot too young to judge (`unjudged`), or everything observed was
+            // ordinary (`judged` > 0 with no band above `typical`).
+            observed: state.last.size,
+            judged: rows.length,
+            unjudged: state.last.size - rows.length,
+            rows: rows.slice(0, limit),
+          });
+          return;
+        }
+
+        json(404, { error: 'Not Found' });
+      } catch (error) {
+        console.warn('[chronicle] proxy error:', error?.message || error);
+        json(500, { error: 'chronicle proxy error' });
+      }
+    });
+  }
+
+  return {
+    name: 'chronicle-proxy',
+    configureServer(server) {
+      install(server.middlewares);
+      startChronicleIrveTick();
+      server.httpServer?.on('close', disposeChronicle);
+    },
+    configurePreviewServer(server) {
+      install(server.middlewares);
+      startChronicleIrveTick();
+      server.httpServer?.on('close', disposeChronicle);
+    },
+    // Middleware-mode backstop: there is no httpServer to hang 'close' on.
+    closeBundle() { disposeChronicle(); },
+  };
+}
+
+/** Stop the poller and land every unflushed fold. */
+function disposeChronicle() {
+  if (_chronicleIrveTimer) {
+    clearInterval(_chronicleIrveTimer);
+    _chronicleIrveTimer = null;
+  }
+  if (_chronicleIrveWarmup) {
+    clearTimeout(_chronicleIrveWarmup);
+    _chronicleIrveWarmup = null;
+  }
+  writeChronicleProfilesSync();
+}
+
+// ---------------------------------------------------------------------------
+// The one recorded source that has to fetch for itself
+// ---------------------------------------------------------------------------
+/**
+ * Poll cadence for the QualiCharge dynamic file.
+ *
+ * Fifteen minutes: 1.17 MB gzipped a poll is 112 MB a day, which is the cost
+ * of the whole thing and is comparable to one of the static GTFS conversions
+ * this server already fetches on a click. Faster buys little — the median AC
+ * session is far longer than a quarter hour — and each poll's `horodatage`
+ * says when the state it reports actually began, so a session that starts and
+ * ends between two polls still leaves its end time in the log.
+ */
+const CHRONICLE_IRVE_POLL_MS = 15 * 60_000;
+/**
+ * Delay before the FIRST poll.
+ *
+ * A `npm run dev` that is going to be killed in twenty seconds — a QA harness,
+ * a port check, a mistyped command — should not have pulled six megabytes off
+ * a public ministry proxy on its way out.
+ */
+const CHRONICLE_IRVE_WARMUP_MS = 60_000;
+const CHRONICLE_IRVE_TIMEOUT_MS = 60_000;
+
+let _chronicleIrveTimer = null;
+let _chronicleIrveWarmup = null;
+let _chronicleIrveInFlight = false;
+/** Previous poll's state, so the log stores transitions rather than snapshots. */
+let _chronicleIrveRows = null;
+let _chronicleIrveLast = { at: null, pdc: 0, fresh: 0, transitions: 0, error: null };
+
+/**
+ * Whether the poller may run.
+ *
+ * OPT-IN, and it is the only thing in this file that is. Every other recorded
+ * source rides on a fetch the server was making anyway; this one adds 112 MB a
+ * day of new outbound traffic to a public proxy, and that is a decision an
+ * operator makes rather than one a checkout makes for them. The staging
+ * deployment sets it in `deploy/vps/docker-compose.yml`, which is where the
+ * accumulation is actually worth anything — a laptop's `.gev-cache` is thrown
+ * away, a mounted volume is not.
+ */
+function chronicleIrveArmed() {
+  if (!chronicleEnabled()) return false;
+  return String(process.env.CHRONICLE_IRVE_DYNAMIC || '').trim() === '1';
+}
+
+/** One poll: fetch, fold, log the transitions. */
+async function pollChronicleIrve() {
+  if (_chronicleIrveInFlight || !chronicleIrveArmed()) return;
+  _chronicleIrveInFlight = true;
+  try {
+    const response = await fetch(QUALICHARGE_DYNAMIC_URL, {
+      headers: { Accept: 'text/csv', 'User-Agent': ROAD_STATUS_USER_AGENT },
+      signal: AbortSignal.timeout(CHRONICLE_IRVE_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+    const csv = await readResponseTextCapped(response, QUALICHARGE_MAX_BYTES);
+    // The freshness clock is the moment the body ARRIVED — see Trap 2 in
+    // `qualichargeDynamic.js`. Taking it after the parse would age every row
+    // by however long the parse took.
+    const fetchedAt = Date.now();
+    const parsed = parseQualichargeDynamic(csv);
+    if (!parsed.rows.size) throw new Error('upstream returned no readable rows');
+    const folded = qualichargeSamples(parsed.rows, { now: fetchedAt });
+    const transitions = qualichargeTransitions(_chronicleIrveRows, parsed.rows);
+    _chronicleIrveRows = parsed.rows;
+    recordChronicle('irve-fr', { at: fetchedAt, samples: folded.samples, events: transitions });
+    _chronicleIrveLast = {
+      at: fetchedAt,
+      pdc: folded.pdc,
+      fresh: folded.fresh,
+      transitions: transitions.length,
+      error: null,
+    };
+  } catch (error) {
+    _chronicleIrveLast = { ..._chronicleIrveLast, error: String(error?.message || error) };
+    console.warn('[chronicle] irve-fr poll failed:', _chronicleIrveLast.error);
+  } finally {
+    _chronicleIrveInFlight = false;
+  }
+}
+
+/**
+ * Arm the poller. Unref'd so it never holds the dev server open, and
+ * idempotent so a Vite in-process restart cannot stack intervals.
+ */
+function startChronicleIrveTick() {
+  if (_chronicleIrveTimer || !chronicleIrveArmed()) return;
+  _chronicleIrveWarmup = setTimeout(() => {
+    _chronicleIrveWarmup = null;
+    void pollChronicleIrve();
+  }, CHRONICLE_IRVE_WARMUP_MS);
+  _chronicleIrveWarmup.unref?.();
+  _chronicleIrveTimer = setInterval(() => { void pollChronicleIrve(); }, CHRONICLE_IRVE_POLL_MS);
+  _chronicleIrveTimer.unref?.();
+  console.log(`[chronicle] irve-fr armed — polling QualiCharge every ${CHRONICLE_IRVE_POLL_MS / 60_000} min.`);
+}
+
+// ---------------------------------------------------------------------------
 // Hosted-deployment plumbing (access gate + preview parity)
 // ---------------------------------------------------------------------------
 /**
@@ -23313,6 +24363,9 @@ export default defineConfig(({ mode }) => {
       gpuProxy(),
       idfmProxy(),
       geoidProxyPlugin(),
+      // Last, so its `httpServer.close` teardown is registered after every
+      // proxy that feeds it has installed its own.
+      chronicleProxy(),
       ].map(withPreviewParity),
     ],
     server: {
