@@ -2867,6 +2867,8 @@ inert again.
 
 - Server-side `ws` websocket to `wss://stream.aisstream.io/v0/stream` maintained by Vite middleware; `AISSTREAM_API_KEY` never reaches the browser (AISStream has no browser CORS). The `ws` package is used rather than Node's built-in WebSocket specifically because only it can hard-abort a wedged socket (see the watchdog note in the delta block at the top).
 - Browser polls same-origin `/api/ais-live` cache every 60s.
+- The subscription defaults to **metropolitan France and its approaches** (`[[[41,-8],[51.6,10]]]`, `src/data/aisSubscription.js`), not the world box it used to open on: ~3 750 contacts instead of ~18 300, so the six-minutely identity messages stop losing the race against the position firehose. `AISSTREAM_BOUNDING_BOXES` overrides it; the silence watchdog self-arms for either measured preset, judged on the RESOLVED subscription rather than on whether the variable is set.
+- Learned identities (MMSI → type, name, IMO, hull) persist in `.gev-cache/ais-static/registry.json` for **30 days** — loaded once at start, rewritten atomically at most once a minute and synchronously on shutdown (`src/data/aisStaticRegistry.js`). Before this the map re-learned the whole fleet at every restart, six minutes at a time. `destination` is voyage data and is deliberately never persisted. The registry is swept by the same 30-day TTL and a 50 000-entry cap; `pruneAisStreamCache()` used to leave it untouched, so it also leaked for the life of the process.
 - The first enable in a session starts one 30-second client grace timer. Until
   an accepted vessel position arrives, `live`/`open`/`connecting` transport reports
   `LOADING`; the timer is not restarted by the 60-second poll. Expiry or a
@@ -2874,7 +2876,7 @@ inert again.
   warm vessels survive later zero-position refreshes as stale/degraded data,
   while disable/re-enable owns a new timer and superseded responses remain
   inert.
-- Client render cap `VITE_AIS_LIVE_MAX_ROWS` (default 12,000); type-colored ship icons (tanker/cargo/passenger/fishing/tug); screen-space label clustering caps active labels at `VITE_AIS_LIVE_LABEL_MAX_ROWS` (default 900).
+- Client render cap `VITE_AIS_LIVE_MAX_ROWS` (default 12,000); type-colored ship icons (tanker/cargo/passenger/fishing/tug/pleasure-sailing, plus the off-ramp slate for an undeclared type); screen-space label clustering caps active labels at `VITE_AIS_LIVE_LABEL_MAX_ROWS` (default 900).
 - Click-to-inspect wired into the voice context store.
 
 ### Voice Control (June 2026)

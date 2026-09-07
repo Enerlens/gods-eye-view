@@ -586,6 +586,19 @@ import {
 } from './src/data/aisStreamAdapter.js';
 import { parseSilenceTimeoutEnv } from './src/data/aisWatchdog.js';
 import {
+  AIS_STATIC_MAX_ENTRIES,
+  AIS_STATIC_TTL_MS,
+  adoptAisStaticRegistry,
+  parseAisStaticRegistry,
+  pruneAisStaticEntries,
+  serializeAisStaticRegistry,
+} from './src/data/aisStaticRegistry.js';
+import {
+  AIS_BBOX_FRANCE,
+  AIS_DEFAULT_MESSAGE_TYPES,
+  isBusyAisSubscription,
+} from './src/data/aisSubscription.js';
+import {
   fetchTerrainChunkWithRetry,
   parseTerrainPoints,
   resolveTerrainHeightRequest,
@@ -1976,16 +1989,36 @@ const GBFS_ALLOWED_HOSTS = new Set([
 // AISStream live vessel cache state
 // ---------------------------------------------------------------------------
 const AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
-const AISSTREAM_DEFAULT_BBOXES = [[[-90, -180], [90, 180]]];
-const AISSTREAM_DEFAULT_MESSAGE_TYPES = [
-  'PositionReport',
-  'StandardClassBPositionReport',
-  'ExtendedClassBPositionReport',
-  'ShipStaticData',
-  'StaticDataReport',
-];
+/**
+ * Default subscription area: metropolitan France, not the planet.
+ *
+ * The reasoning, the measurement behind it and the DOM-TOM caveat live with
+ * the constant in `aisSubscription.js`. `AISSTREAM_BOUNDING_BOXES` still
+ * overrides it, and `AIS_BBOX_WORLD` is the value that restores the old
+ * behaviour.
+ */
+const AISSTREAM_DEFAULT_BBOXES = AIS_BBOX_FRANCE;
+const AISSTREAM_DEFAULT_MESSAGE_TYPES = AIS_DEFAULT_MESSAGE_TYPES;
 const AISSTREAM_CACHE_MAX = 50000;
 const AISSTREAM_STALE_MS = 30 * 60 * 1000;
+/** Disk home of the MMSI identity registry. One document, rewritten whole. */
+const AIS_STATIC_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'ais-static');
+const AIS_STATIC_DISK_FILE = path.join(AIS_STATIC_DISK_DIR, 'registry.json');
+/**
+ * Debounce between rewrites.
+ *
+ * A busy France box learns a few identities a second, and the file is written
+ * whole, so this trades at most a minute of learning against one rewrite a
+ * minute instead of thousands. A clean shutdown flushes synchronously, so the
+ * minute is only ever lost to a kill -9.
+ */
+const AIS_STATIC_FLUSH_MS = 60_000;
+/**
+ * Throttle on the expiry sweep. `pruneAisStreamCache()` runs on EVERY position
+ * report; a 30-day TTL cannot expire anything between two of them, so paying
+ * a full scan of the registry each time would be pure waste.
+ */
+const AIS_STATIC_PRUNE_MS = 60_000;
 // Per-MMSI recent-path ring buffers (PRD WS-F F3). Float32 lat/lon (~1m
 // precision, fine for 25m thinning) + Uint32 epoch seconds ≈ 12B/sample;
 // 64 samples × 50k MMSIs worst case ≈ 38MB. Tracks exist only while the dev
@@ -2040,8 +2073,27 @@ let _aisNeedsRearm = false;
 let _aisWebSocketImpl;
 /** @type {Map<string,object>} */
 const _aisStreamVessels = new Map();
-/** @type {Map<string,object>} */
+/**
+ * @type {Map<string,{name:string,type:string,destination?:string,imo:string,hull:?object,updatedAt:number}>}
+ * mmsi -> declared identity, learned from message 5 / message 24 part B.
+ *
+ * Unlike the two maps around it this one OUTLIVES the process: it is loaded
+ * from `.gev-cache/ais-static/registry.json` at start and rewritten on a
+ * debounce, because a transponder repeats its identity only every ~6 minutes
+ * and re-learning the whole fleet at every restart is what kept the map's
+ * "Type non déclaré" bucket full (see `aisStaticRegistry.js`).
+ */
 const _aisStreamStatic = new Map();
+/** Whether the registry file has been read; guards the first write. */
+let _aisStaticLoaded = false;
+/** Set once the read has settled — writing before it would erase the file. */
+let _aisStaticReady = false;
+/** Whether memory holds identities the file does not. */
+let _aisStaticDirty = false;
+/** Wall clock of the last rewrite, for the debounce. */
+let _aisStaticFlushedAt = 0;
+/** Wall clock of the last expiry sweep, for the throttle. */
+let _aisStaticPrunedAt = 0;
 /** @type {Map<string,{lats:Float32Array,lons:Float32Array,times:Uint32Array,head:number,len:number}>} mmsi -> track ring buffer */
 const _aisStreamTracks = new Map();
 /** @type {Map<string,{lat:number,lon:number,epochSec:number}>} mmsi -> first fix awaiting second (lazy buffer allocation) */
@@ -17893,24 +17945,27 @@ function aisWebSocketImpl() {
  * .env into process.env — the reverted watchdog read these at import time and
  * silently ignored every .env value, including its own kill switch.
  *
- * A custom subscription (one harbor, one message type) can be legitimately
- * silent for minutes, so the silence watch only self-arms for the default
- * worldwide subscription. An operator with a narrow filter opts back in by
- * setting AISSTREAM_SILENCE_TIMEOUT_MS to a value sized for that filter; 0 is
- * an explicit kill switch.
+ * A narrow subscription (one harbor, one message type) can be legitimately
+ * silent for minutes, so the silence watch only self-arms for a subscription
+ * this repo has measured as busy (`aisSubscription.js`). An operator with a
+ * narrow filter opts back in by setting AISSTREAM_SILENCE_TIMEOUT_MS to a
+ * value sized for that filter; 0 is an explicit kill switch.
+ *
+ * Judged on the RESOLVED subscription rather than on whether the variables are
+ * set: the previous rule disarmed the watchdog for anyone who spelled out the
+ * world box by hand, which is the busiest subscription there is.
  */
 function aisWatchdogPolicy() {
   if (_aisWatchdogPolicy) return _aisWatchdogPolicy;
-  const customSubscription = Boolean(
-    process.env.AISSTREAM_BOUNDING_BOXES || process.env.AISSTREAM_MESSAGE_TYPES,
-  );
+  const filters = aisSubscriptionFilters();
+  const busySubscription = isBusyAisSubscription(filters.boundingBoxes, filters.messageTypes);
   const override = parseSilenceTimeoutEnv(
     process.env.AISSTREAM_SILENCE_TIMEOUT_MS,
     (message) => console.warn(message),
   );
   const reportMs = override.kind === 'timeout' ? override.value : AISSTREAM_SILENCE_REPORT_MS;
   _aisWatchdogPolicy = {
-    silenceWatch: override.kind === 'off' ? false : (override.kind === 'timeout' || !customSubscription),
+    silenceWatch: override.kind === 'off' ? false : (override.kind === 'timeout' || busySubscription),
     reportMs,
     recycleMs: Math.round(reportMs * AISSTREAM_RECYCLE_RATIO),
     // Overridable so the watchdog can be exercised end-to-end against a local
@@ -17972,6 +18027,9 @@ function aisKeyFingerprint() {
  * background interval, so recovery does not depend on browser traffic.
  */
 function ensureAisStreamConnection() {
+  // Cheap after the first call, and placed here so the registry is read
+  // whichever way the server was mounted — dev, preview or middleware mode.
+  loadAisStaticRegistryOnce();
   const adapter = aisAdapter();
   if (_aisNeedsRearm) {
     // Post-dispose re-arm, now that the restarted server's .env is loaded. The
@@ -18037,6 +18095,11 @@ function disposeAisStream() {
     _aisStreamTickTimer = null;
   }
   if (_aisAdapter) _aisAdapter.dispose();
+  // Land what the session learned before this instance goes away. Not belt
+  // and braces: a config-change restart re-imports this file, so the successor
+  // starts on FRESH maps and reads its fleet back from the document written
+  // here (measured on a live restart: 159 identities out, 159 back in).
+  writeAisStaticRegistrySync();
   // Drop the cached policy and re-arm LAZILY. Re-deriving budgets here would
   // read process.env before the restarted server's loadEnv() has repopulated
   // it, caching the outgoing configuration; the next ensure() runs after that.
@@ -18044,11 +18107,26 @@ function disposeAisStream() {
   _aisNeedsRearm = true;
 }
 
+/**
+ * Resolve the subscription filters from the environment.
+ *
+ * Split out from {@link aisStreamSubscription} so the watchdog can judge what
+ * is actually being asked for without going anywhere near the API key.
+ * @returns {{boundingBoxes: Array, messageTypes: Array}}
+ */
+function aisSubscriptionFilters() {
+  return {
+    boundingBoxes: parseJsonEnv('AISSTREAM_BOUNDING_BOXES', AISSTREAM_DEFAULT_BBOXES),
+    messageTypes: parseCsvOrJsonEnv('AISSTREAM_MESSAGE_TYPES', AISSTREAM_DEFAULT_MESSAGE_TYPES),
+  };
+}
+
 function aisStreamSubscription() {
+  const filters = aisSubscriptionFilters();
   return {
     APIKey: process.env.AISSTREAM_API_KEY,
-    BoundingBoxes: parseJsonEnv('AISSTREAM_BOUNDING_BOXES', AISSTREAM_DEFAULT_BBOXES),
-    FilterMessageTypes: parseCsvOrJsonEnv('AISSTREAM_MESSAGE_TYPES', AISSTREAM_DEFAULT_MESSAGE_TYPES),
+    BoundingBoxes: filters.boundingBoxes,
+    FilterMessageTypes: filters.messageTypes,
   };
 }
 
@@ -18088,9 +18166,13 @@ function ingestAisStreamEnvelope(envelope) {
       // "this ship has no hull" — the previous answer is kept rather than
       // erased by the half of the report that was never going to carry it.
       hull: aisStaticDimensions(envelope) ?? previous?.hull ?? null,
+      // When this identity was last confirmed on the wire. Drives the 30-day
+      // disk TTL and the eviction order — nothing the browser ever sees.
+      updatedAt: Date.now(),
     };
     _aisStreamStatic.set(mmsi, staticData);
     mergeAisStaticIntoLiveVessel(mmsi, staticData);
+    markAisStaticLearned();
   }
 
   const lat = numberValue(metadata.latitude ?? metadata.Latitude ?? message.Latitude);
@@ -18249,7 +18331,12 @@ function aisStreamRows(maxRows) {
 }
 
 function pruneAisStreamCache() {
-  const cutoff = Date.now() - AISSTREAM_STALE_MS;
+  const now = Date.now();
+  // The identity registry keeps its own clock: it is bounded by a 30-day TTL
+  // and a size cap, not by the 30-minute position staleness below, and it was
+  // the one map here that nothing ever swept.
+  pruneAisStaticRegistry(now);
+  const cutoff = now - AISSTREAM_STALE_MS;
   for (const [mmsi, row] of _aisStreamVessels) {
     if (row._updatedAt < cutoff) {
       _aisStreamVessels.delete(mmsi);
@@ -18269,6 +18356,117 @@ function pruneAisStreamCache() {
     _aisStreamTracks.delete(mmsi);
     _aisStreamTrackPending.delete(mmsi);
   }
+}
+
+// ---------------------------------------------------------------------------
+// MMSI identity registry — the half of the AIS cache that survives a restart
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the registry once, folding it into whatever the feed has already heard.
+ *
+ * Fire-and-forget and idempotent: called from every `ensureAisStreamConnection`
+ * so it also arms in middleware mode, where no Vite hook runs. A missing or
+ * corrupt file is not an error — it is a first run.
+ */
+function loadAisStaticRegistryOnce() {
+  if (_aisStaticLoaded) return;
+  _aisStaticLoaded = true;
+  fsp.readFile(AIS_STATIC_DISK_FILE, 'utf8')
+    .then((text) => {
+      const loaded = parseAisStaticRegistry(text, { ttlMs: AIS_STATIC_TTL_MS });
+      const adopted = adoptAisStaticRegistry(_aisStreamStatic, loaded);
+      if (adopted) {
+        console.log(`[AISStream] ${adopted} vessel identities restored from disk (${AIS_STATIC_DISK_FILE}).`);
+      }
+    })
+    .catch(() => {})
+    // Only now may anything write: a rewrite before the read has settled would
+    // overwrite weeks of learning with the handful of entries heard since boot.
+    .finally(() => { _aisStaticReady = true; });
+}
+
+/** Note that memory holds an identity the file does not, and rewrite on cue. */
+function markAisStaticLearned() {
+  _aisStaticDirty = true;
+  if (!_aisStaticReady) return;
+  const now = Date.now();
+  if (now - _aisStaticFlushedAt < AIS_STATIC_FLUSH_MS) return;
+  _aisStaticFlushedAt = now;
+  writeAisStaticRegistry().catch(() => {});
+}
+
+/** Serialise the registry exactly as both writers store it. */
+function aisStaticRegistryDocument() {
+  return JSON.stringify(serializeAisStaticRegistry(_aisStreamStatic, {
+    ttlMs: AIS_STATIC_TTL_MS,
+    maxEntries: AIS_STATIC_MAX_ENTRIES,
+  }));
+}
+
+/** Temp sibling of the registry file — same directory, so the rename is atomic. */
+function aisStaticTempPath() {
+  return `${AIS_STATIC_DISK_FILE}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+}
+
+/**
+ * Persist the registry ATOMICALLY: temp sibling, then rename over the target.
+ * A crash mid-write leaves the previous document intact, which for a 30-day
+ * cache is weeks of learning that must not be lost to a full disk.
+ */
+async function writeAisStaticRegistry() {
+  if (!_aisStaticReady || !_aisStaticDirty) return false;
+  const temp = aisStaticTempPath();
+  // Serialise and clear the flag in the SAME synchronous step. An identity
+  // learned during the awaits below belongs to the NEXT write; clearing the
+  // flag afterwards would mark it clean without ever having stored it.
+  const document = aisStaticRegistryDocument();
+  _aisStaticDirty = false;
+  try {
+    await fsp.mkdir(AIS_STATIC_DISK_DIR, { recursive: true });
+    await fsp.writeFile(temp, document);
+    await fsp.rename(temp, AIS_STATIC_DISK_FILE);
+    return true;
+  } catch (error) {
+    _aisStaticDirty = true;
+    console.warn('[AISStream] identity registry write failed:', error?.message || error);
+    await fsp.rm(temp, { force: true }).catch(() => {});
+    return false;
+  }
+}
+
+/**
+ * The same write, synchronously, for shutdown.
+ *
+ * Teardown gets no await: the process is on its way out and an unresolved
+ * promise would simply be dropped, taking up to a minute of learning with it.
+ */
+function writeAisStaticRegistrySync() {
+  if (!_aisStaticReady || !_aisStaticDirty) return false;
+  const temp = aisStaticTempPath();
+  try {
+    fs.mkdirSync(AIS_STATIC_DISK_DIR, { recursive: true });
+    fs.writeFileSync(temp, aisStaticRegistryDocument());
+    fs.renameSync(temp, AIS_STATIC_DISK_FILE);
+    _aisStaticDirty = false;
+    return true;
+  } catch (error) {
+    console.warn('[AISStream] identity registry flush failed:', error?.message || error);
+    try { fs.rmSync(temp, { force: true }); } catch { /* nothing to clean up */ }
+    return false;
+  }
+}
+
+/** Sweep expired identities and hold the registry under its size cap. */
+function pruneAisStaticRegistry(now = Date.now()) {
+  if (now - _aisStaticPrunedAt < AIS_STATIC_PRUNE_MS) return;
+  _aisStaticPrunedAt = now;
+  const dropped = pruneAisStaticEntries(_aisStreamStatic, {
+    now,
+    ttlMs: AIS_STATIC_TTL_MS,
+    maxEntries: AIS_STATIC_MAX_ENTRIES,
+  });
+  if (dropped) _aisStaticDirty = true;
 }
 
 function newestAisPositionAt(rows) {

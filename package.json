@@ -96,6 +96,7 @@
     "velo:pulse": "node scripts/build-velo-pulse.mjs",
     "qa:velo-pulse": "node scripts/qa-velo-pulse.mjs",
     "qa:marine-buoys": "node scripts/qa-marine-buoys.mjs",
+    "qa:vessel-types": "node scripts/qa-vessel-types.mjs",
     "qa:meteo-stations-fr": "node scripts/qa-meteo-stations-fr.mjs"
   },
   "dependencies": {
