@@ -180,6 +180,50 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `src/db_redis/ratelimit.rs`). Ce que le seau borne, c'est le **total** d'une
   session, pas son débit.
 
+- **Le bruit des aéroports, dézoomé, n'est plus dessiné à la serpe.** Vue de
+  loin, une zone de bruit était un polygone à facettes ; la même zone, vue de
+  près, était une courbe propre. Ce n'étaient pas deux rendus du même contour,
+  c'étaient **deux géométries différentes**. Le service DGAC généralise le
+  tracé qu'il renvoie à l'échelle de rendu demandée, et la vue d'ensemble la
+  demandait cent fois plus grossière : mesuré, la zone C de Roissy revenait avec
+  **381 sommets de près et 22 de loin**, sa zone D avec 664 contre 37 — un
+  anneau de 65,8 km de large dessiné avec trente-sept points.
+  Et ce n'était pas un réglage à corriger, parce que **ce chiffre faisait deux
+  métiers à la fois**. C'est lui qui élargit le tampon de la requête, et sans ce
+  tampon large les zones B, C et D — des anneaux qui n'entourent pas le point
+  interrogé — ne reviennent tout simplement pas : à l'échelle fine, Roissy ne
+  rend pas sa zone D et Toussus perd sa zone B. Affiner le tracé revenait à
+  perdre les zones qu'on avait dézoomé pour voir.
+  Les deux besoins sont désormais séparés en **deux passes**. La première, large,
+  ne sert plus qu'à **nommer** les zones présentes ; chaque zone nommée est
+  ensuite **redemandée à l'échelle fine**, visée sur son propre contour — ce qui
+  marche parce que le service ne découpe pas la géométrie qu'il renvoie au cadre
+  par lequel on l'interroge. Mesuré sur 50 aérodromes et 170 zones, la seconde
+  passe en récupère **170 sur 170**. Sur les douze aérodromes autour de Paris,
+  le dessin passe de **1 399 à 12 045 sommets**.
+  **Personne n'attend cette seconde passe.** Elle coûte environ neuf secondes à
+  froid, ce qui n'est pas un temps de recentrage de caméra : la vue large
+  s'affiche immédiatement comme avant — complète, toutes les zones présentes —
+  et **s'affine sous l'œil** quelques secondes plus tard, aérodrome par
+  aérodrome. La ligne de guidage l'annonce (« contours en cours d'affinage »)
+  pour que le lecteur qui voit le trait bouger sache pourquoi. Le résultat est
+  gardé un mois par aérodrome, sur disque : le registre national ne compte que
+  224 aérodromes et n'a gagné que 8 arrêtés en six ans, donc c'est payé une fois.
+  Au passage, un en-tête corrigé sur **les six calques d'adresse** : la route
+  répondait `Cache-Control: private, max-age=300` à toute réponse, ce qui est
+  juste pour une réponse sur une adresse — elle ne change pas pendant qu'on la
+  regarde — et rendait le rafraîchissement ci-dessus **entièrement inopérant**.
+  Mesuré dans un vrai navigateur : les relances toutes les cinq secondes étaient
+  servies par le cache HTTP, aucune n'atteignait le serveur, et le dessin restait
+  à 72 zones grossières pendant toute la session pendant que le proxy terminait
+  ses 18 aérodromes en vingt secondes. L'en-tête suit désormais la durée de vie
+  réelle de la réponse.
+  **Et la fiche ne promet jamais plus que ce qui est dessiné.** Chaque zone
+  transporte l'échelle à laquelle son propre contour a été récupéré ; la fiche
+  annonce **la plus grossière** — la seule vraie de toutes les formes à l'écran
+  — et dit combien sont déjà affinées, plutôt que d'aplatir un dessin mixte sur
+  un seul chiffre.
+
 - **La légende quitte le coin de la carte et prend la tête du rail droit.** Elle
   était une plaque fixe en bas à gauche, et une règle de feuille de style
   l'**éteignait** dès qu'on ouvrait DATA LAYERS

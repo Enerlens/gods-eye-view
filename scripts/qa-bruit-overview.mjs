@@ -31,9 +31,12 @@
  *        pixel, and a dashed ring would answer a question nobody asked.
  *   v.   several aerodromes are drawn at once, each with its own marker, and
  *        clicking one opens ITS card and not another's.
- *   vi.  the card names the overview's own generalisation scale — a hundred
- *        times coarser than a point scan's — so the two can never be read as
- *        each other.
+ *   vi.  the card names the scale the SHAPE BESIDE IT is at. The overview is
+ *        served at a scale a hundred times coarser than a point scan's and each
+ *        band is then re-fetched at the fine scale behind the response, so both
+ *        denominators are legitimate and which one is true depends on how far
+ *        the second pass has got. What must never happen — and is what this
+ *        checks — is the card claiming a precision the outline does not have.
  *   vii. at 400 km, above the overview ceiling, it goes dormant and clears, so
  *        the old honest behaviour survives at the altitude it now belongs at.
  *
@@ -281,9 +284,33 @@ const note = (ok, message) => {
       `${wide.aerodromes.length} aerodromes drawn at once, each with its own marker`);
     const cdgMarker = wide.aerodromes.find((entry) => String(entry.name).includes('LFPG'));
     note(Boolean(cdgMarker), `Roissy has a marker of its own (${cdgMarker?.name ?? 'missing'})`);
-    // A HUNDRED TIMES COARSER, said out loud on the card rather than implied.
-    note(norm(cdgMarker?.description).includes('1:3 975 696'),
-      'the card names the overview generalisation, not the point probe\'s');
+    // THE SCALE THE SHAPE IS ACTUALLY AT, whichever pass produced it.
+    //
+    // This check used to pin the coarse denominator, and it was right to at the
+    // time: the overview fetched once, at a scale a hundred times coarser, and
+    // the card had to say so rather than borrow the point probe's precision.
+    // The second pass re-fetches each band at the fine scale behind the
+    // response, so BOTH numbers are now legitimate — 1:3,975,696 while the
+    // refinement is still running, 1:39,757 once it has landed — and pinning
+    // either one alone would fail on a cache the other side of that moment.
+    // What must hold in every state is that the card's number matches the
+    // payload's, which is the claim the whole scale-reporting machinery makes.
+    // Trimmed: the group is greedy and the denominator is followed by a space
+    // before the em dash, so an untrimmed capture never equals the stated one
+    // and this check would pass or fail on whitespace.
+    const cardScale = norm(cdgMarker?.description).match(/1:([\d ]+)/)?.[1]?.trim();
+    const statedScale = String(wide.stats?.scaleDenominator ?? '').replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    note(cardScale === statedScale,
+      `the card names the scale the payload reports (card 1:${cardScale}, payload 1:${statedScale})`);
+    note(cardScale === '3 975 696' || cardScale === '39 757',
+      `the scale is one of the two passes' own, not a third number (1:${cardScale})`);
+    // A refined view says the FINE scale and a coarse one says the coarse
+    // scale; a mixed one says the coarse scale and names how many bands are
+    // already better. The claim is never bigger than the geometry behind it.
+    if (wide.stats?.coarseBands > 0) {
+      note(cardScale === '3 975 696',
+        `${wide.stats.coarseBands} bands are still coarse, so the card says the coarse scale`);
+    }
     note(!/le repère/.test(String(cdgMarker?.description ?? '')),
       'no overview card mentions a marker the reader does not have');
     note(wide.stats?.aerodromes > 0 && wide.stats?.zonesHere === 0,

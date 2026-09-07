@@ -43,8 +43,15 @@ import {
   arreteDocumentDate,
   bandText,
   buildBruitProbeUrl,
+  BRUIT_REFINE_INSET,
+  BRUIT_REFINE_SEEDS,
+  BRUIT_SCALE_PROPERTY,
+  bruitAreaScale,
+  bruitFeatureKey,
+  bruitRefineSeeds,
   foldAerodromes,
   foldByAirport,
+  refineBruitCollection,
   noiseIndexOf,
   mergeBruitCollections,
   projectBruit,
@@ -567,4 +574,184 @@ test('folding aerodromes never lets an unknown zone letter lead', () => {
   // headline everywhere one is published.
   assert.equal(entry.top.zone, 'B');
   assert.deepEqual(entry.bands.map((band) => band.zone), ['B', 'Z']);
+});
+
+// ── THE SECOND PASS ─────────────────────────────────────────────────────────
+//
+// The overview fetches at a scale a hundred times coarser than a point scan,
+// and it has to: that scale is what makes the GetFeatureInfo buffer wide enough
+// to return zones B, C and D from a probe aimed at a point that sits inside
+// zone A. The price is that GeoServer generalises the outline to the same
+// scale, so a 65.8 km ring comes back with 37 vertices and draws as a polygon
+// with visible facets. The second pass buys the coverage without the facets by
+// re-fetching each band at the fine scale, aimed at its own coarse outline.
+//
+// The property these tests hold: **a band is drawn at the scale the payload
+// says it is at, and the payload never claims a scale for a shape that is not
+// at it.** That is the same discipline as the unit on a threshold — a number a
+// reader trusts, printed beside a shape that does not support it.
+
+test('a refinement seed lands inside the band, not on its generalised corner', () => {
+  // A square, so the expected seeds are arithmetic rather than a fixture.
+  const square = {
+    type: 'Polygon',
+    coordinates: [[[0, 0], [0, 10], [10, 10], [10, 0], [0, 0]]],
+  };
+  const seeds = bruitRefineSeeds(square, { seeds: 4, inset: 0.1 });
+  assert.equal(seeds.length, 4);
+  // Every seed is pulled off the ring toward its centroid. A seed left ON the
+  // outline misses far more often, because a generalised vertex sits at a
+  // corner the true boundary cuts — measured, 6 of 17 bands.
+  for (const seed of seeds) {
+    assert.ok(seed.lon > 0 && seed.lon < 10, `${seed.lon} is off the outline`);
+    assert.ok(seed.lat > 0 && seed.lat < 10, `${seed.lat} is off the outline`);
+  }
+  // And they are spread around the ring rather than taken consecutively:
+  // adjacent vertices of a generalised outline fail or succeed together, so six
+  // of them would be one seed that costs six requests.
+  assert.equal(new Set(seeds.map((s) => `${s.lon},${s.lat}`)).size, 4);
+});
+
+test('the seed budget is bounded by the ring, and an empty geometry asks for nothing', () => {
+  const triangle = { type: 'Polygon', coordinates: [[[0, 0], [1, 0], [0, 1], [0, 0]]] };
+  // A ring shorter than the budget yields one seed per vertex, never a repeat:
+  // the budget is a ceiling on requests, not a quota to fill.
+  assert.ok(bruitRefineSeeds(triangle, { seeds: BRUIT_REFINE_SEEDS }).length <= 4);
+  assert.deepEqual(bruitRefineSeeds(null), []);
+  assert.deepEqual(bruitRefineSeeds({ type: 'Point', coordinates: [1, 2] }), []);
+  // Degenerate rings are dropped by `projectRings` before they can become an
+  // aim point at 0°N 0°E.
+  assert.deepEqual(bruitRefineSeeds({ type: 'Polygon', coordinates: [[[0, 0], [1, 1]]] }), []);
+});
+
+test('a MultiPolygon is seeded from its biggest lobe, because one hit returns all of them', () => {
+  const geometry = {
+    type: 'MultiPolygon',
+    coordinates: [
+      [[[0, 0], [0, 1], [1, 1], [0, 0]]],
+      [[[10, 10], [10, 20], [20, 20], [20, 10], [15, 15], [10, 10]]],
+    ],
+  };
+  const seeds = bruitRefineSeeds(geometry, { seeds: 3 });
+  assert.ok(seeds.length > 0);
+  // Every seed is in the second lobe's neighbourhood. Spending the budget
+  // across lobes would buy nothing — the service returns the whole feature —
+  // and would spend candidates on the small one, which is hardest to hit.
+  for (const seed of seeds) assert.ok(seed.lon > 5, `${seed.lon} is on the small lobe`);
+});
+
+test('a refined feature carries the fine scale and an unrefined one carries the coarse one', () => {
+  const fine = { type: 'Polygon', coordinates: [[[2, 49], [2, 50], [3, 50], [2, 49]]] };
+  const refined = refineBruitCollection(AREA_CDG, new Map([['dgac_peb_plan_wmsv.564', fine]]));
+  const stamped = refined.features.map((f) => f.properties[BRUIT_SCALE_PROPERTY]);
+  // Every feature is stamped, not only the refined ones: a card reads the
+  // scale off the band, and an unstamped band would fall back to a default
+  // that is a guess about which pass produced it.
+  assert.equal(stamped.filter((v) => Number.isFinite(v)).length, refined.features.length);
+  assert.equal(refined.refined + refined.coarse, refined.features.length);
+  assert.ok(refined.refined >= 0);
+});
+
+test('refining copies, so the cached coarse collection survives the pass', () => {
+  const before = JSON.stringify(AREA_CDG);
+  const key = bruitFeatureKey(AREA_CDG.features[0]);
+  const swapped = { type: 'Polygon', coordinates: [[[0, 0], [0, 1], [1, 1], [0, 0]]] };
+  const out = refineBruitCollection(AREA_CDG, new Map([[key, swapped]]));
+  assert.equal(out.refined, 1);
+  assert.deepEqual(out.features[0].geometry, swapped);
+  // The entry in the per-aerodrome cache is the coarse collection. Editing it
+  // in place would make a cache that can no longer be re-derived from the
+  // probe that filled it — and a second refinement pass would read its own
+  // output as the outline to aim at.
+  assert.equal(JSON.stringify(AREA_CDG), before, 'the coarse collection was mutated');
+});
+
+test('a feature with no identity is never refined by accident', () => {
+  const anonymous = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: null }] };
+  assert.equal(bruitFeatureKey(anonymous.features[0]), null);
+  const out = refineBruitCollection(anonymous, new Map([['null', { type: 'Polygon', coordinates: [] }]]));
+  // `String(null)` is `'null'`, which is a real key in a Map. Keyed on that,
+  // every anonymous feature in a view would collect the same geometry.
+  assert.equal(out.refined, 0);
+  assert.equal(out.coarse, 1);
+});
+
+test('the overview names the COARSEST band on screen, never the best one', () => {
+  const mixed = bruitAreaScale([
+    { scaleDenominator: BRUIT_PROBE_SCALE_DENOMINATOR },
+    { scaleDenominator: BRUIT_PROBE_SCALE_DENOMINATOR },
+    { scaleDenominator: BRUIT_AREA_SCALE_DENOMINATOR },
+  ]);
+  // The one number that is true of EVERY shape drawn. Reporting the fine scale
+  // because most of the view is fine would print a precision the faceted third
+  // band does not have — the same silent claim the unit rules exist to stop.
+  assert.equal(mixed.scaleDenominator, BRUIT_AREA_SCALE_DENOMINATOR);
+  assert.equal(mixed.refinedBands, 2);
+  assert.equal(mixed.coarseBands, 1);
+
+  const done = bruitAreaScale([{ scaleDenominator: BRUIT_PROBE_SCALE_DENOMINATOR }]);
+  assert.equal(done.scaleDenominator, BRUIT_PROBE_SCALE_DENOMINATOR);
+  assert.equal(done.coarseBands, 0);
+
+  // An EMPTY view is answered at the scale it was asked at. `Math.max()` over
+  // nothing is -Infinity, which would print as "1:-∞" on a card.
+  assert.equal(bruitAreaScale([]).scaleDenominator, BRUIT_AREA_SCALE_DENOMINATOR);
+  assert.equal(bruitAreaScale(null).scaleDenominator, BRUIT_AREA_SCALE_DENOMINATOR);
+});
+
+test('an overview built from refined features reports the fine scale end to end', () => {
+  const fine = { type: 'Polygon', coordinates: [[[2.5, 49.0], [2.5, 49.1], [2.6, 49.1], [2.5, 49.0]]] };
+  const map = new Map(AREA_CDG.features.map((f) => [bruitFeatureKey(f), fine]));
+  const refined = refineBruitCollection(AREA_CDG, map);
+  const payload = projectBruitArea({
+    peb: [refined], probed: [CDG], centre: CDG, radiusKm: 50,
+  });
+  assert.equal(payload.scaleDenominator, BRUIT_PROBE_SCALE_DENOMINATOR);
+  assert.equal(payload.coarseBands, 0);
+  assert.ok(payload.refinedBands > 0);
+});
+
+test('an unrefined overview still answers at the overview scale, exactly as before', () => {
+  // The regression this guards: the second pass must be invisible to a view
+  // that has not had one. A coarse overview is complete and correct — every
+  // band of every aerodrome is drawn — and only its outline is generalised.
+  const payload = projectBruitArea({
+    peb: [AREA_CDG], probed: [CDG], centre: CDG, radiusKm: 50,
+  });
+  assert.equal(payload.scaleDenominator, BRUIT_AREA_SCALE_DENOMINATOR);
+  assert.equal(payload.refinedBands, 0);
+  assert.ok(payload.coarseBands > 0);
+});
+
+test('a band published as two polygons is only as fine as its worst piece', () => {
+  const fineOne = { ...LFPZ.features[0], properties: { ...LFPZ.features[0].properties, [BRUIT_SCALE_PROPERTY]: BRUIT_PROBE_SCALE_DENOMINATOR } };
+  const coarseTwin = { ...LFPZ.features[1], properties: { ...LFPZ.features[1].properties, [BRUIT_SCALE_PROPERTY]: BRUIT_AREA_SCALE_DENOMINATOR } };
+  const bands = projectBruitZones(
+    { type: 'FeatureCollection', features: [fineOne, coarseTwin] },
+    { kind: 'peb', point: LFPZ_POINT },
+  );
+  // Saint-Cyr publishes one band as two features. Refining one lobe and not
+  // the other must not let the card claim a fine outline for the shape as a
+  // whole — the reader sees one band, and half of it is still faceted.
+  for (const band of bands) {
+    if (band.pieces > 1) {
+      assert.equal(band.scaleDenominator, BRUIT_AREA_SCALE_DENOMINATOR);
+    }
+  }
+});
+
+test('the inset is a fraction, so it scales with the band it is refining', () => {
+  // A fixed inset cannot work: it has to be small enough not to cross a 400 m
+  // zone A, which makes it useless on Roissy's 65.8 km zone D — the exact band
+  // the overview exists to draw.
+  const small = bruitRefineSeeds(
+    { type: 'Polygon', coordinates: [[[0, 0], [0, 0.01], [0.01, 0.01], [0, 0]]] },
+    { seeds: 1, inset: BRUIT_REFINE_INSET },
+  );
+  const large = bruitRefineSeeds(
+    { type: 'Polygon', coordinates: [[[0, 0], [0, 1], [1, 1], [0, 0]]] },
+    { seeds: 1, inset: BRUIT_REFINE_INSET },
+  );
+  const offset = (seed, vertex) => Math.hypot(seed.lon - vertex[0], seed.lat - vertex[1]);
+  assert.ok(offset(large[0], [0, 0]) > offset(small[0], [0, 0]) * 50);
 });

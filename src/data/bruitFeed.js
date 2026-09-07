@@ -611,6 +611,13 @@ export function projectBruitZones(payload, { kind = 'peb', point } = {}) {
       updatedOn: registerDate(properties.date_maj),
       documentUrl: properties.ref_doc || null,
       atPoint: hasPoint ? pointInPolygons(geometry.parts, lon, lat) : false,
+      // The scale THIS polygon's outline was fetched at, or null when nothing
+      // stamped it. Null and not a default: the two projectors below fill it
+      // with their own mode's denominator, and a default chosen here would
+      // silently answer for both of them.
+      scaleDenominator: Number.isFinite(properties[BRUIT_SCALE_PROPERTY])
+        ? properties[BRUIT_SCALE_PROPERTY]
+        : null,
       parts: geometry.parts,
       vertices: geometry.vertices,
       holes: geometry.holes,
@@ -634,6 +641,14 @@ export function projectBruitZones(payload, { kind = 'peb', point } = {}) {
     seen.holes += band.holes;
     seen.pieces += 1;
     seen.atPoint = seen.atPoint || band.atPoint;
+    // The COARSER of the two, because a band drawn from two polygons is only
+    // as good as its worst piece: refining one lobe of Saint-Cyr's zone A and
+    // not the other must not let the card claim a fine outline for the shape
+    // as a whole. `Math.max` because a BIGGER denominator is a coarser map.
+    seen.scaleDenominator = (Number.isFinite(seen.scaleDenominator)
+      && Number.isFinite(band.scaleDenominator))
+      ? Math.max(seen.scaleDenominator, band.scaleDenominator)
+      : (seen.scaleDenominator ?? band.scaleDenominator);
     seen.bounds = polygonsBounds(seen.parts);
   }
   const bands = [...merged.values()];
@@ -789,6 +804,169 @@ export function mergeBruitCollections(collections) {
 }
 
 /**
+ * The property a REFINED feature carries its own scale in.
+ *
+ * Namespaced `gev_` because it is not the service's: `data.geopf.fr` publishes
+ * no such field, and anyone diffing a cached collection against a live probe
+ * must see at a glance which key this repository added. Read back by
+ * {@link projectBruitZones} into `band.scaleDenominator`, so the scale a card
+ * prints is the one the geometry beside it was actually fetched at — never a
+ * constant standing in for it.
+ */
+export const BRUIT_SCALE_PROPERTY = 'gev_scale_denominator';
+
+/**
+ * Seed points tried per band before the refinement gives up on it.
+ *
+ * SIX, AND THE NUMBER IS MEASURED. The refinement re-probes a band at the fine
+ * scale, aimed at a point derived from its own COARSE outline — and the coarse
+ * outline is generalised, so the aim is wrong by up to about a pixel of the
+ * scale it came from (1.1 km) while the fine probe's buffer is about 33 m. A
+ * single seed is therefore not reliable, and the fix is to try several around
+ * the ring rather than to widen anything.
+ *
+ * Measured 2026-09-07 over two disjoint 25-aerodrome slices of the register,
+ * 170 bands in all, PEB:
+ *
+ *   candidates needed   1 → 149   2 → 3   3 → 9   4 → 1   ≥5 → 0
+ *   bands recovered     170 / 170        fine probes spent  209 (1.23 per band)
+ *
+ * Four is the worst case ever observed and six is that with room. The budget is
+ * bounded rather than unbounded because a band the seeds cannot reach must cost
+ * six requests and then be DRAWN COARSE, not spend a scan hunting for it.
+ */
+export const BRUIT_REFINE_SEEDS = 6;
+
+/**
+ * How far a seed is pulled off the coarse outline, toward the ring's centroid.
+ *
+ * 2% of the way in. A seed left exactly ON a coarse vertex misses far more
+ * often — measured, 6 of 17 bands at LFPO, LFMD, LFPB and LFML — because a
+ * generalised vertex sits at a corner the real boundary cuts, so half of them
+ * land OUTSIDE the true polygon and outside the fine buffer with it. Pulling
+ * inward biases the seed into the band's own interior, where being wrong by a
+ * kilometre still lands on the right polygon. The same 17 bands with this
+ * inset: 16 recovered on the first seed.
+ *
+ * A FRACTION AND NOT A DISTANCE, so it scales with the band: 2% of the way to
+ * the centre of Roissy's 65.8 km zone D is about a kilometre, and 2% of the way
+ * to the centre of a 400 m zone A is eight metres. A fixed inset would have to
+ * be small enough not to cross the narrow bands, which makes it useless on the
+ * wide ones — the exact bands the overview exists to draw.
+ */
+export const BRUIT_REFINE_INSET = 0.02;
+
+/**
+ * Identity of one returned FEATURE — not of a band.
+ *
+ * The two are different and the difference is load-bearing. {@link bandKey}
+ * folds the several polygons one band may be published as into one answer;
+ * this names a single polygon, so a refinement fetched for one piece is put
+ * back on that piece and not on its sibling. Same rule as
+ * {@link mergeBruitCollections}, which is why it is one function: the service's
+ * own feature id, falling back to `id_map`.
+ *
+ * @param {object|null|undefined} feature
+ * @returns {?string}
+ */
+export function bruitFeatureKey(feature) {
+  const id = feature?.id ?? feature?.properties?.id_map ?? null;
+  return id === null || id === undefined ? null : String(id);
+}
+
+/**
+ * Where to aim a fine probe so that it comes back holding THIS band.
+ *
+ * The overview's coarse probe is aimed at the aerodrome's published reference
+ * point, which is the only coordinate known before anything is fetched. That
+ * works because the coarse buffer is kilometres wide; it is exactly what does
+ * NOT work at the fine scale, where the buffer is metres and the reference
+ * point is inside zone A alone. So the fine probe is aimed at the band's own
+ * outline — which the coarse answer has just supplied — pulled slightly into
+ * its interior. See {@link BRUIT_REFINE_SEEDS} and {@link BRUIT_REFINE_INSET}
+ * for the two numbers and the measurements behind them.
+ *
+ * Seeds are spread EVENLY around the ring rather than taken consecutively:
+ * consecutive vertices of a generalised outline are metres apart and fail or
+ * succeed together, so six of them are one seed that costs six requests.
+ *
+ * @param {object|null|undefined} geometry GeoJSON Polygon or MultiPolygon.
+ * @param {{seeds?: number, inset?: number}} [options]
+ * @returns {Array<{lat: number, lon: number}>} Ordered; try them in order.
+ */
+export function bruitRefineSeeds(geometry, {
+  seeds = BRUIT_REFINE_SEEDS, inset = BRUIT_REFINE_INSET,
+} = {}) {
+  const { parts } = projectRings(geometry);
+  if (!parts.length) return [];
+  // The biggest part's OUTER ring. One hit returns the whole feature — every
+  // lobe of a MultiPolygon, not just the lobe that was hit — so spreading the
+  // budget over the parts would buy nothing and would spend candidates on the
+  // small lobes, which are the ones a seed is most likely to miss.
+  const ring = parts
+    .map((rings) => rings[0])
+    .reduce((biggest, candidate) => (candidate.length > biggest.length ? candidate : biggest));
+  let cx = 0;
+  let cy = 0;
+  for (const [lon, lat] of ring) { cx += lon; cy += lat; }
+  cx /= ring.length;
+  cy /= ring.length;
+  const wanted = Math.max(1, Math.min(Math.floor(seeds) || 1, ring.length));
+  const out = [];
+  for (let k = 0; k < wanted; k += 1) {
+    const [lon, lat] = ring[Math.floor((k * ring.length) / wanted)];
+    out.push({ lon: lon + (cx - lon) * inset, lat: lat + (cy - lat) * inset });
+  }
+  return out;
+}
+
+/**
+ * Put the fine geometry back on the coarse collection, and STAMP EVERY FEATURE
+ * WITH THE SCALE IT IS ACTUALLY AT.
+ *
+ * The stamp is the point of this function, not a by-product. A refinement that
+ * reaches 30 of a view's 34 bands leaves a collection that is mostly fine and
+ * partly coarse, and a payload that answered "1:39,757" for all of it would be
+ * making the same silent claim this layer exists to avoid — a number on a card
+ * that the shape beside it does not support. Every feature carries its own
+ * denominator, the projector folds them up, and the card names the COARSEST.
+ *
+ * Features are copied rather than mutated: the coarse collection is what sits
+ * in the per-aerodrome cache, and a refinement that edited it in place would
+ * make a cache entry that can never be re-derived from the probe that filled it.
+ *
+ * @param {object|null|undefined} collection Coarse GetFeatureInfo answer.
+ * @param {Map<string, object>|null} refined Feature key → fine geometry.
+ * @param {{coarseScale?: number, fineScale?: number}} [options]
+ * @returns {{type: string, features: Array<object>, refined: number, coarse: number}}
+ */
+export function refineBruitCollection(collection, refined, {
+  coarseScale = BRUIT_AREA_SCALE_DENOMINATOR,
+  fineScale = BRUIT_PROBE_SCALE_DENOMINATOR,
+} = {}) {
+  const features = Array.isArray(collection?.features) ? collection.features : [];
+  let hit = 0;
+  const out = features.map((feature) => {
+    const key = bruitFeatureKey(feature);
+    const geometry = key === null ? null : (refined?.get?.(key) ?? null);
+    const properties = { ...(feature?.properties || {}) };
+    if (!geometry) {
+      properties[BRUIT_SCALE_PROPERTY] = coarseScale;
+      return { ...feature, properties };
+    }
+    hit += 1;
+    properties[BRUIT_SCALE_PROPERTY] = fineScale;
+    return { ...feature, geometry, properties };
+  });
+  return {
+    type: 'FeatureCollection',
+    features: out,
+    refined: hit,
+    coarse: features.length - hit,
+  };
+}
+
+/**
  * One entry per aerodrome, from bands that belong to no point.
  *
  * The overview has no marker to be inside of, so {@link foldByAirport} — which
@@ -933,7 +1111,47 @@ export function projectBruitArea({
     disputed: all.some((band) => band.indexDisputed),
     revised: all.some((band) => band.revisedDocument),
     nearest: nearest ? { ...nearest } : null,
-    scaleDenominator: BRUIT_AREA_SCALE_DENOMINATOR,
+    // THE COARSEST BAND ON SCREEN, not the finest and not a constant.
+    //
+    // The overview fetches at `BRUIT_AREA_PIXEL_DEG` and then re-fetches each
+    // band's outline at the probe scale — see `refineBruitCollection` — and
+    // that second pass is done in the background, so a view can legitimately
+    // hold thirty fine bands and four coarse ones. This is the one number the
+    // card prints as "contours généralisés au 1:X", and the only reading of it
+    // that is true of EVERY shape drawn is the worst one. `refinedBands` and
+    // `coarseBands` beside it are what let the card say the mixture out loud
+    // rather than flattening it to its worst case.
+    ...bruitAreaScale(all),
     available: { peb: available.peb !== false, pgs: available.pgs !== false },
+  };
+}
+
+/**
+ * Fold the per-band scales into the three numbers a card needs.
+ *
+ * Separate from {@link projectBruitArea} because the point scan will want it
+ * the day the point mode gains a second scale, and because a reducer with a
+ * `Math.max` over a possibly-empty list is exactly the shape that silently
+ * returns `-Infinity` when nobody is looking.
+ *
+ * @param {Array<object>} bands
+ * @returns {{scaleDenominator: number, refinedBands: number, coarseBands: number}}
+ */
+export function bruitAreaScale(bands, { fallback = BRUIT_AREA_SCALE_DENOMINATOR } = {}) {
+  // AN UNSTAMPED BAND IS A COARSE BAND, not a band with no scale. Everything
+  // in an overview was fetched at `BRUIT_AREA_PIXEL_DEG` unless a second pass
+  // replaced it, so a missing stamp means the pass has not run — which is
+  // exactly the state the counts exist to report. Filtering them out instead
+  // would answer `coarseBands: 0` for a view where every band is coarse.
+  const scales = (bands || [])
+    .map((band) => (Number.isFinite(band?.scaleDenominator) ? band.scaleDenominator : fallback))
+    .filter((value) => Number.isFinite(value));
+  const refinedBands = scales.filter((value) => value <= BRUIT_PROBE_SCALE_DENOMINATOR).length;
+  return {
+    // No bands at all is not "infinitely fine": an empty view is answered at
+    // the scale it was ASKED at, which is the overview's own.
+    scaleDenominator: scales.length ? Math.max(...scales) : BRUIT_AREA_SCALE_DENOMINATOR,
+    refinedBands,
+    coarseBands: scales.length - refinedBands,
   };
 }

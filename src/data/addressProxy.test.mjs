@@ -4,7 +4,13 @@
 // running dev server, not by reading the code — and neither one throws.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { addressCacheKey, addressPoint, gpuRequestBox } from '../../vite.config.js';
+import {
+  ADDRESS_PROVISIONAL_TTL_MS,
+  addressCacheControl,
+  addressCacheKey,
+  addressPoint,
+  gpuRequestBox,
+} from '../../vite.config.js';
 import {
   GPU_BOX_STEP_DEG,
   GPU_MAX_BOX_DEG,
@@ -127,4 +133,47 @@ test('a box and a point at the same address are different cache entries', () => 
   // would tell a reader at 9 km that they can see their neighbours' zoning.
   const point = { lon: 2.376, lat: 48.83 };
   assert.notEqual(addressCacheKey('gpu', point, 'pt'), addressCacheKey('gpu', point, '43.385,-1.464,43.405,-1.444'));
+});
+
+// ── The header that silently defeated a poll ────────────────────────────────
+//
+// FOUND LIVE, and it is the third bug in this file that does not throw. The
+// route answered every address scan with `private, max-age=300`, which is right
+// for an answer about a doorway: it does not change while you look at it. The
+// noise overview is the first answer on this shell that DOES change — it is
+// served from coarse outlines and refined behind the response — and its layer
+// re-asks every five seconds to collect the sharper shape. Measured in a real
+// browser: every one of those requests was answered out of the HTTP cache, not
+// one reached the server, and the draw sat at 72 coarse bands for the whole
+// session while the proxy finished all 18 aerodromes in twenty seconds. The
+// fetch is not visible in the network panel and nothing anywhere reports an
+// error; the shape simply never improves.
+
+test('an answer the server is still replacing is never stored by the browser', () => {
+  // `no-store` and not a short `max-age`: `max-age` is a FLOOR on how long the
+  // browser may keep serving what it has, and an answer being actively
+  // replaced wants no floor at all.
+  assert.equal(addressCacheControl(3_000), 'no-store');
+  assert.equal(addressCacheControl(ADDRESS_PROVISIONAL_TTL_MS - 1), 'no-store');
+});
+
+test('a settled answer keeps the five minutes the address layers always had', () => {
+  assert.equal(addressCacheControl(6 * 60 * 60 * 1000), 'private, max-age=300');
+  assert.equal(addressCacheControl(30 * 60 * 1000), 'private, max-age=300');
+  // Capped at the server's own shelf life, so the header can never promise
+  // longer than the cache behind it would hold.
+  assert.equal(addressCacheControl(90_000), 'private, max-age=90');
+  assert.equal(addressCacheControl(ADDRESS_PROVISIONAL_TTL_MS), 'private, max-age=60');
+});
+
+test('a missing or nonsensical shelf life stores nothing, rather than defaulting long', () => {
+  // The fail-safe direction. Getting this wrong the other way is the bug
+  // above: an answer cached for five minutes that nobody can refresh.
+  assert.equal(addressCacheControl(0), 'no-store');
+  assert.equal(addressCacheControl(-1), 'no-store');
+  assert.equal(addressCacheControl(NaN), 'no-store');
+  assert.equal(addressCacheControl(undefined), 'no-store');
+  // Infinity too. It is not a shelf life anyone meant to configure, and the
+  // reading that costs least when it is wrong is "ask again".
+  assert.equal(addressCacheControl(Infinity), 'no-store');
 });

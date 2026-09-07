@@ -459,10 +459,15 @@ export function scanShiftNeeded(last, next, minShiftKm = ADDRESS_SCAN_MIN_SHIFT_
  *   must move before the question is asked again. Also a function for the same
  *   reason: 250 m redraws a walking ring and is noise against a driving one.
  * @param {(context: {payload: object, point: object, viewer: ?object,
- *   selectCard: (id: string) => boolean}) => void} [config.afterDraw]
+ *   selectCard: (id: string) => boolean, rescan: () => void}) => void}
+ *   [config.afterDraw]
  *   Called once the draw is on screen AND indexed, which is the first moment a
  *   card can be opened for it. This is where a layer that answers about a point
  *   the reader chose puts the answer up without waiting to be asked twice.
+ *   `rescan` re-asks the SAME question and takes the answer anyway, bypassing
+ *   both movement and query-string guards — for the layer whose upstream
+ *   improves a reply it has already sent. Call it from a timer, not in a loop:
+ *   nothing here rate-limits it.
  * @param {(card: object) => ({lon: number, lat: number, placement?: string}|null)}
  *   [config.cardAnchor]
  *   Move the open card off its marker. A layer that draws a SHAPE around its
@@ -872,8 +877,15 @@ export function createAddressScanLayer(config) {
    */
   function runAfterDraw(payload, point) {
     if (typeof afterDraw !== 'function') return;
+    // Deferred to a task of its own. `afterDraw` runs INSIDE `runScan`, where
+    // `_scanning` is still true, so calling this synchronously would only set
+    // `_rescanQueued` and re-ask the same question the guard is about to refuse
+    // — a spin, not a refresh.
+    const rescan = () => { setTimeout(() => { void runScan(_viewer, null, { force: true }); }, 0); };
     try {
-      afterDraw({ payload, point, viewer: _viewer, selectCard: selectEntity });
+      afterDraw({
+        payload, point, viewer: _viewer, selectCard: selectEntity, rescan,
+      });
     } catch (error) {
       console.warn(`[Data:${id}] afterDraw`, error?.message || error);
     }
@@ -890,7 +902,7 @@ export function createAddressScanLayer(config) {
    * @param {AbortSignal|null} [signal]
    * @returns {Promise<boolean>}
    */
-  async function runScan(viewer, signal = null) {
+  async function runScan(viewer, signal = null, { force = false } = {}) {
     if (_scanning) { _rescanQueued = true; return true; }
     _scanning = true;
     try {
@@ -941,7 +953,15 @@ export function createAddressScanLayer(config) {
       // straight down through that altitude and the shift is zero while the
       // answer that is on screen is now the wrong kind. So the two halves are
       // compared SEPARATELY: the centre by distance, everything else by string.
-      if (!scanShiftNeeded(_lastPoint, point, shiftThresholdKm())
+      // `force` is the one way past this guard, and it exists for exactly one
+      // situation: the ANSWER changed while the question did not. A layer whose
+      // upstream sharpens what it already returned — the noise overview, which
+      // serves a coarse outline and refines it behind the response — has a
+      // reader sitting on a settled camera with nothing left to trigger a
+      // refetch. Neither half of the guard can see that, because both describe
+      // the request and the change is in the reply.
+      if (!force
+          && !scanShiftNeeded(_lastPoint, point, shiftThresholdKm())
           && paramsSignature === _lastParamsSignature) {
         return true;
       }
