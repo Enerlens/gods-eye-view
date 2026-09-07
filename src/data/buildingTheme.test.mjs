@@ -186,6 +186,101 @@ test('a point with no coordinate is counted apart from a point that missed', () 
   assert.equal(join.unplacedPoints, 3, 'never geocoded at all');
 });
 
+/* ── 1b. the join by identifier, which outranks the geometry ───────────── */
+
+test('a point naming a building goes to it, whatever its geocode says', () => {
+  // The whole point of the pivot. This is the mis-attribution the geometric
+  // join makes for real: 83 of the Marseille box's diagnostics landed on a
+  // neighbour's footprint.
+  const target = box('target', 0, 0, 1, 1);
+  const neighbour = box('neighbour', 1, 0, 2, 1);
+  target.rnb = ['2NPB8CCYQ237'];
+  neighbour.rnb = ['SEX7DQ1X5KDX'];
+  const join = joinPointsToBuildings([target, neighbour], [
+    { lon: 1.5, lat: 0.5, rnb: '2NPB8CCYQ237', tag: 'geocoded next door' },
+  ]);
+  assert.deepEqual([...join.byBuilding.keys()], ['target']);
+  assert.equal(join.matchedById, 1);
+  assert.equal(join.matchedByPoint, 0);
+});
+
+test('a point naming a building it also geocodes to is still ONE match', () => {
+  const target = box('target', 0, 0, 1, 1);
+  target.rnb = ['A'];
+  const join = joinPointsToBuildings([target], [{ lon: 0.5, lat: 0.5, rnb: 'A' }]);
+  assert.equal(join.matchedPoints, 1);
+  assert.equal(join.matchedById, 1);
+  assert.equal(join.matchedByPoint, 0);
+  assert.equal(join.byBuilding.get('target').length, 1);
+});
+
+test('a diagnostic with no coordinate at all is placed by its identifier', () => {
+  // The BAN failed to geocode this row — 190 of 1 000 in the Paris sample — and
+  // the register still knows which building it is about.
+  const target = box('target', 0, 0, 1, 1);
+  target.rnb = ['A'];
+  const join = joinPointsToBuildings([target], [{ lon: null, lat: null, rnb: 'A' }]);
+  assert.equal(join.matchedById, 1);
+  assert.equal(join.unplacedPoints, 0, 'it was placed — by the key, not by the dot');
+});
+
+test('an identifier drawn as two polygons colours both, and counts one point', () => {
+  const left = box('left', 0, 0, 1, 1);
+  const right = box('right', 1, 0, 2, 1);
+  left.rnb = ['A'];
+  right.rnb = ['A'];
+  const join = joinPointsToBuildings([left, right], [{ lon: 5, lat: 5, rnb: 'A' }]);
+  assert.deepEqual([...join.byBuilding.keys()], ['left', 'right']);
+  assert.equal(join.matchedPoints, 1, 'one diagnostic, not two');
+  assert.equal(join.matchedById, 1);
+});
+
+test('an identifier naming nothing on screen falls back to the geometry', () => {
+  const here = box('here', 0, 0, 1, 1);
+  here.rnb = ['A'];
+  const join = joinPointsToBuildings([here], [
+    { lon: 0.5, lat: 0.5, rnb: 'ELSEWHERE' },
+    { lon: 9, lat: 9, rnb: 'ELSEWHERE' },
+  ]);
+  assert.equal(join.idOffScreen, 2, 'both named a building this viewport does not draw');
+  assert.equal(join.matchedByPoint, 1, 'and one of them still landed on a footprint');
+  assert.equal(join.unmatchedPoints, 1);
+  assert.equal(join.matchedById, 0);
+});
+
+test('the raw slash-joined BD TOPO string works as a footprint key', () => {
+  const merged = box('merged', 0, 0, 1, 1);
+  merged.rnb = 'A/B';
+  const join = joinPointsToBuildings([merged], [{ lon: 9, lat: 9, rnb: 'B' }]);
+  assert.equal(join.matchedById, 1);
+  assert.equal(join.pivotBuildings, 2);
+});
+
+test('an empty rnb on a point is not an identifier, and does not skip the geometry', () => {
+  const here = box('here', 0, 0, 1, 1);
+  here.rnb = ['A'];
+  const join = joinPointsToBuildings([here], [
+    { lon: 0.5, lat: 0.5, rnb: '' },
+    { lon: 0.5, lat: 0.5, rnb: '   ' },
+    { lon: 0.5, lat: 0.5 },
+  ]);
+  assert.equal(join.matchedByPoint, 3);
+  assert.equal(join.idOffScreen, 0, 'an absent key is not a key that missed');
+});
+
+test('footprints with no identifier keep working exactly as before', () => {
+  // Every existing caller passes footprints without `rnb`. The geometric join
+  // must be byte-identical for them.
+  const join = joinPointsToBuildings([box('a', 0, 0, 1, 1)], [
+    { lon: 0.5, lat: 0.5 },
+    { lon: 9, lat: 9 },
+  ]);
+  assert.equal(join.matchedPoints, 1);
+  assert.equal(join.matchedById, 0);
+  assert.equal(join.pivotBuildings, 0);
+  assert.equal(join.unmatchedPoints, 1);
+});
+
 test('a degenerate footprint is dropped instead of poisoning the index', () => {
   const index = buildFootprintIndex([
     box('ok', 0, 0, 1, 1),
@@ -568,8 +663,10 @@ test('a theme paints the volumes it joined and washes the ones it did not', (t) 
   assert.equal(stats.theme, 'dpe-fr');
   assert.equal(stats.themePainted, 1);
   assert.equal(stats.themeUnpainted, 1);
+  // No footprint here carries an RNB identifier, so the line says the colour
+  // rests on a geocode rather than printing a meaningless "0 %".
   assert.match(stats.loadingLabel,
-    /^1 volume peint par Performance énergétique \(DPE\), 1 sans diagnostic — 1 point hors emprise$/);
+    /^1 volume peint par Performance énergétique \(DPE\), 1 sans diagnostic — 1 point hors emprise · jointure géométrique seule$/);
 
   const { legend } = _bdtopoRowControlsForTest();
   assert.deepEqual(legend.map((entry) => entry.label), ['G', 'sans diagnostic', 'points sans bâtiment']);

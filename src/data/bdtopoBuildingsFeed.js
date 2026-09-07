@@ -508,7 +508,9 @@ export function summarizeBuildings(records, extra = {}) {
       withHeight += 1;
       if (record.heightM > tallestM) { tallestM = record.heightM; tallestName = record.label; }
     }
-    if (record.rnb) withRnb += 1;
+    // `rnb` is an ARRAY of identifiers (`rnbPivot.js`, shape 1). A polygon
+    // counts once however many buildings the register splits it into.
+    if (Array.isArray(record.rnb) ? record.rnb.length : record.rnb) withRnb += 1;
     if (Number.isFinite(record.gapM)) gaps.push(Math.abs(record.gapM));
   }
 

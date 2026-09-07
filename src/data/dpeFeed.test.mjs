@@ -119,3 +119,55 @@ test('an absent parameter takes the default, not the minimum', () => {
   // An EXPLICIT zero is still a request, and is still clamped to the floor.
   assert.equal(clampDpeRadius('0'), 50);
 });
+
+/* ── the pivot: the register names the BUILDING, not only the address ──── */
+
+/**
+ * A second captured page, from a Marseille point, fetched through the very URL
+ * `buildDpeUrl` produces on 2026-09-07.
+ *
+ * A second fixture rather than a replacement: the Paris one above is a block
+ * where NO row carries `id_rnb` — which is 26.3 % of that box and a case the
+ * projection has to keep handling — while five of these six do, and the sixth
+ * does not. Both halves of the register in two verbatim pages.
+ */
+const RNB_SAMPLE = JSON.parse(readFileSync(
+  new URL('./fixtures/ademe-dpe-rnb-sample.json', import.meta.url),
+  'utf8',
+));
+
+test('asking for id_rnb is accepted by the dataset, and it is in the pinned selection', () => {
+  // This dataset answers HTTP 400 for a column it does not publish, so a field
+  // in `DPE_FIELDS` that is absent upstream takes the whole layer down. The
+  // captured page is the proof that these two are real columns.
+  assert.ok(DPE_FIELDS.includes('id_rnb'));
+  assert.ok(DPE_FIELDS.includes('provenance_id_rnb'));
+  const row = RNB_SAMPLE.results[0];
+  assert.equal(row.id_rnb, '83SJ572HH22P');
+  assert.equal(row.provenance_id_rnb, 'Reprise RNB');
+});
+
+test('the identifier and its provenance reach the entry the join runs on', () => {
+  const { entries } = projectDpe(RNB_SAMPLE, { radiusM: 300 });
+  assert.equal(entries[0].rnb, '83SJ572HH22P');
+  assert.equal(entries[0].rnbSource, 'Reprise RNB');
+});
+
+test('a row the register could not attach to a building says so with null', () => {
+  // data-fair omits a null column entirely. `''` or `'null'` here would mint an
+  // identifier that names nothing and quietly hand the row to no building.
+  const { entries } = projectDpe(RNB_SAMPLE, { radiusM: 300 });
+  const orphan = entries.find((entry) => !entry.rnb);
+  assert.equal(orphan.rnb, null);
+  assert.equal(orphan.rnbSource, null, 'no key, no provenance to report');
+});
+
+test('the coverage of the pivot is reported, not assumed', () => {
+  // It is the ceiling on what the identity join can reach in this scan, and it
+  // moves with the edition — 34.5 % over Ustaritz against 73.7 % over Paris 13e.
+  const projected = projectDpe(RNB_SAMPLE, { radiusM: 300 });
+  assert.equal(projected.rnbCoverage, 5 / 6);
+  assert.equal(projectDpe(SAMPLE, { radiusM: 300 }).rnbCoverage, 0,
+    'a block where no row names a building is a real answer, not a broken one');
+  assert.equal(projectDpe(null, {}).rnbCoverage, 0);
+});

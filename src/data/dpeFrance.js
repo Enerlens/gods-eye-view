@@ -61,6 +61,20 @@ import { governorRequestRender } from '../renderGovernor.js';
  *   **The worst** turns one bad studio out of forty into a G on a whole block —
  *   the exact overstatement A1 exists to forbid, in the other direction.
  *
+ * • **The diagnostic names its building, and that is how it reaches a volume.**
+ *   Since 2026-09-07 the projection reads `id_rnb`, and `buildingTheme.js`
+ *   joins on it before it looks at any coordinate. The BAN geocode was never a
+ *   claim about a BUILDING: it is a point on a street, and it lands in the road
+ *   or on a neighbour often enough to matter. Measured over four boxes, the
+ *   share of diagnostics that reach a drawn volume goes from 81.8 % to 96.3 %
+ *   in Paris 13e and from 40.4 % to 75.7 % in Lyon 2e, and 2 to 83 rows per box
+ *   were being painted on the wrong roof. `rnbPivot.js` carries the reasoning;
+ *   the two counts are kept apart on the row, because a colour decided by a key
+ *   and a colour decided by a dot are not the same claim.
+ *
+ *   34.5 % to 73.7 % of the rows carry the key depending on the commune, so the
+ *   geometric join is not gone — it is the fallback, and it is counted as one.
+ *
  * • **What the mode cannot see, stated.** The register publishes `numero_dpe`
  *   (per diagnostic) and `identifiant_ban` (per ADDRESS), and no dwelling key
  *   at all. A flat re-diagnosed in 2021 and again in 2024 therefore votes
@@ -446,6 +460,12 @@ function emptyJoin() {
     painted: 0,
     mixed: 0,
     matchedPoints: 0,
+    // The two halves of `matchedPoints`, kept apart because they are not the
+    // same claim: `matchedById` is the register naming the building, and
+    // `matchedByPoint` is a geocode falling inside a polygon.
+    matchedById: 0,
+    matchedByPoint: 0,
+    idOffScreen: 0,
     unmatchedPoints: 0,
     unplacedPoints: 0,
     ungradedPoints: 0,
@@ -479,6 +499,9 @@ function computeJoin(entries) {
   const join = joinPointsToBuildings(footprints, entries);
   result.buildings = join.buildings;
   result.matchedPoints = join.matchedPoints;
+  result.matchedById = join.matchedById;
+  result.matchedByPoint = join.matchedByPoint;
+  result.idOffScreen = join.idOffScreen;
   result.unmatchedPoints = join.unmatchedPoints;
   result.unplacedPoints = join.unplacedPoints;
   for (const [buildingId, points] of join.byBuilding) {
@@ -684,6 +707,17 @@ export function dpeSummarize(payload) {
     themePainted: join.painted,
     themeUnpainted: Math.max(0, join.buildings - join.painted),
     themeMixedBuildings: join.mixed,
+    // How the diagnostics reached their volumes. `themeMatchedById` is the
+    // register's own key (`rnbPivot.js`); `themeMatchedByPoint` is the BAN
+    // geocode falling inside a footprint, which is a guess and is counted as
+    // one. `themeIdOffScreen` names a building this viewport does not draw.
+    themeMatchedById: join.matchedById,
+    themeMatchedByPoint: join.matchedByPoint,
+    themeIdOffScreen: join.idOffScreen,
+    // The ceiling on the first of those: the share of the SERVED rows that name
+    // a building at all. 34.5 % over Ustaritz against 73.7 % over Paris 13e, so
+    // a low identity count is often the edition and not the join.
+    rnbCoverage: payload?.rnbCoverage ?? null,
     themeUnmatchedPoints: join.unmatchedPoints,
     themeUnplacedPoints: join.unplacedPoints,
     themeUngradedPoints: join.ungradedPoints,

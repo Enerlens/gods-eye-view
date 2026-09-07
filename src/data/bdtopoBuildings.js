@@ -45,6 +45,13 @@ import {
   summarizeBuildings,
   surveyedGroundM,
 } from './bdtopoBuildingsFeed.js';
+import {
+  parseRnbIds,
+  projectRnbBuilding,
+  projectRnbFirst,
+  rnbBuildingUrl,
+  rnbClosestUrl,
+} from './rnbPivot.js';
 
 /**
  * Bâti 3D (FR) — every building France has surveyed, at its own altitude.
@@ -274,6 +281,82 @@ export function bdtopoLabel(props) {
 }
 
 /**
+ * The identity block of the selection card: what this building is called in the
+ * national register, what addresses it answers to, and what ground it is on.
+ *
+ * WHY THIS IS A SEPARATE FUNCTION AND FULLY TESTED. It is where the pivot
+ * becomes visible, and it is where it can most easily start lying. Three
+ * distinctions it has to keep, and every one of them is a real case:
+ *
+ * • **Several identifiers is not one identifier.** 65 of 2 395 Paris polygons
+ *   carry 2, 3 or 5 — the tile merges what the register splits. The card said
+ *   `RNB <first>` and dropped the rest until 2026-09-07.
+ *
+ * • **A guessed identity is labelled as one.** When BD TOPO published no
+ *   `identifiants_rnb` (4.5 % of Paris polygons) the pivot is resolved by
+ *   proximity instead, and the line says `plus proche à N m`. On a card whose
+ *   whole subject is WHICH building you clicked, an unlabelled guess is the one
+ *   thing worse than a missing line.
+ *
+ * • **A building with no address is normal.** 10 of 160 Lyon buildings the RNB
+ *   publishes carry none. The line is omitted rather than filled with the
+ *   nearest street, which is what `cadastreParcelDetail.js` had to buy with a
+ *   distance guard because it had no register to ask.
+ *
+ * @param {object} record The drawn volume.
+ * @param {?object} pivot A `projectRnbBuilding` record, or null.
+ * @returns {Array<string>} Zero to five card lines, in reading order.
+ */
+export function rnbPivotLines(record, pivot = null) {
+  const lines = [];
+  const own = Array.isArray(record?.rnb) ? record.rnb : parseRnbIds(record?.rnb);
+  const guessed = Boolean(pivot?.rnbId) && !own.includes(pivot.rnbId);
+
+  if (own.length) {
+    lines.push(own.length === 1
+      ? `RNB ${own[0]}`
+      : `RNB ${own.join(' · ')} — ${own.length} bâtiments pour une emprise`);
+  } else if (pivot?.rnbId) {
+    const near = Number.isFinite(pivot.distanceM) ? ` à ${formatMetres(pivot.distanceM)}` : '';
+    lines.push(`RNB ${pivot.rnbId} — plus proche${near}, non publié sur cette emprise`);
+  }
+
+  if (!pivot) return lines;
+
+  // Anything but a standing building is worth a line of its own: a volume drawn
+  // at full height that the register says is demolished is exactly the kind of
+  // disagreement between two editions a reader should see rather than infer.
+  if (pivot.status && pivot.status !== 'constructed') {
+    lines.push(`Statut RNB : ${pivot.statusLabel}`);
+  }
+
+  const addresses = pivot.addresses || [];
+  if (addresses.length === 1) lines.push(addresses[0].label);
+  else if (addresses.length > 1) {
+    lines.push(`${addresses[0].label} · +${addresses.length - 1} autre${addresses.length > 2 ? 's' : ''} adresse${addresses.length > 2 ? 's' : ''} BAN`);
+  }
+
+  const plots = pivot.plots || [];
+  if (plots.length === 1) lines.push(`Parcelle ${plots[0].id}`);
+  else if (plots.length > 1) {
+    // The share is of the BUILDING, not of the parcel — see `projectRnbPlot`.
+    const share = Number.isFinite(plots[0].coverRatio)
+      ? ` (${Math.round(plots[0].coverRatio * 100)} % de l'emprise)`
+      : '';
+    lines.push(`${plots.length} parcelles · ${plots[0].id}${share}`);
+  }
+
+  // The caveat closes the block rather than restating the first line: what a
+  // reader needs at the bottom is not "the identity was guessed" again, it is
+  // that the ADDRESS and the PARCEL above are that guessed building's, and
+  // three lines up is far enough for the two to come apart.
+  if (guessed && lines.length > 1) {
+    lines.push('Adresse et parcelle héritées de ce bâtiment rapproché, non de l\'emprise');
+  }
+  return lines;
+}
+
+/**
  * The selected-building card.
  *
  * Every line is either a published value or an explicit statement that the
@@ -281,10 +364,20 @@ export function bdtopoLabel(props) {
  * a viewer cannot tell by looking: two buildings side by side, one standing on
  * its surveyed roof altitude and one on a cadastral interpolation, are drawn
  * identically and are not the same claim.
+ *
+ * THE PIVOT IS THE SECOND ARGUMENT, and it arrives late. IGN's tile says which
+ * building this is (`identifiants_rnb`); it does not say what that building is
+ * CALLED or what ground it stands on. The RNB does, in one keyless request that
+ * `selectObject` fires on the click, so the card is published immediately
+ * without those lines and re-published with them ~170 ms later. A card that
+ * waited would make a click feel broken to buy two lines.
+ *
  * @param {object} record
+ * @param {?object} [pivot] A `projectRnbBuilding` record for this volume, or
+ *   null while the lookup is in flight, or when it found nothing.
  * @returns {?object}
  */
-export function createBdtopoSelectedOverlayEntry(record) {
+export function createBdtopoSelectedOverlayEntry(record, pivot = null) {
   if (!record?.id || !record.position) return null;
   const props = record.props || {};
   const details = [];
@@ -326,7 +419,7 @@ export function createBdtopoSelectedOverlayEntry(record) {
     ? `Altimétrie ${String(props.methode_d_acquisition_altimetrique || 'non précisée').toLowerCase()}, ±${precision} m`
     : 'Altimétrie non renseignée par l\'IGN');
 
-  if (props.identifiants_rnb) details.push(`RNB ${String(props.identifiants_rnb).split('/')[0]}`);
+  for (const line of rnbPivotLines(record, pivot)) details.push(line);
 
   return {
     id: String(record.id),
@@ -588,7 +681,10 @@ async function buildRecords(tiles) {
       gapM: seat.gapM,
       heightM: finiteOrNull(entry.props.hauteur),
       dwellings: Number(entry.props.nombre_de_logements) || 0,
-      rnb: entry.props.identifiants_rnb || null,
+      // ALL of them, not the first. `identifiants_rnb` is a slash-joined list
+      // on 2.7 % of Paris polygons, and this is the key every thematic join now
+      // runs on — dropping the tail silently unpaints a merged building.
+      rnb: parseRnbIds(entry.props.identifiants_rnb),
       label: bdtopoLabel(entry.props),
       first: entry.first,
       position: Cesium.Cartesian3.fromDegrees(entry.lon, entry.lat, seat.topM),
@@ -734,8 +830,12 @@ function clearThemeRetry() {
  * caller does can reach the objects the primitive was built from. At the
  * 14 000-volume cap that is ~600 k numbers, which is why it is a call and not a
  * getter, and why the layer's own repaint uses the internal records directly.
+ *
+ * `rnb` travels with the geometry because it is now the PRIMARY join key: a
+ * caller handed rings but not the identifier would have no choice but to fall
+ * back on the geocoded dot, which is the thing the pivot exists to replace.
  * @returns {Array<{id: string, degrees: Array<number>, holes: Array<Array<number>>,
- *   lat: number, lon: number, tierId: string}>}
+ *   lat: number, lon: number, tierId: string, rnb: Array<string>}>}
  */
 export function bdtopoLoadedFootprints() {
   const out = [];
@@ -747,6 +847,7 @@ export function bdtopoLoadedFootprints() {
       lat: record.lat,
       lon: record.lon,
       tierId: record.tierId,
+      rnb: (record.rnb || []).slice(),
     });
   }
   return out;
@@ -796,6 +897,9 @@ function clearSelection() {
     if (record) applyInstanceColor(_selectedId, volumeColor(record));
   }
   _selectedId = null;
+  // The pivot lookup outlives the card it was for otherwise: click through five
+  // buildings and five answers arrive for a selection that no longer exists.
+  if (_rnbPivotAbort) { _rnbPivotAbort.abort(); _rnbPivotAbort = null; }
   _overlayHost.clearSource(BDTOPO_SELECTED_OVERLAY_SOURCE_ID);
 }
 
@@ -822,21 +926,108 @@ function applyInstanceColor(id, color) {
   }
 }
 
+/**
+ * Resolved RNB pivots, keyed by the identifier they were resolved from.
+ *
+ * Bounded at 200, oldest evicted first, rather than a fetch per selection: an
+ * operator comparing three buildings on a street clicks between them, and the
+ * register's answer for a building does not change while they do. Bounded at
+ * all because a tour of a city is otherwise an unbounded accumulation of small
+ * objects for the life of the tab.
+ *
+ * `null` is a cached ABSENCE — the register has no such building — and it is
+ * kept, because re-asking a 404 on every click is the same request forever. A
+ * FAILED request is not cached, which is the distinction that matters: an
+ * outage must not become a permanent silence on a card.
+ * @type {Map<string, ?object>}
+ */
+const _rnbPivots = new Map();
+const RNB_PIVOT_CACHE_MAX = 200;
+/** @type {?AbortController} The lookup for the current selection, if any. */
+let _rnbPivotAbort = null;
+
+function cacheRnbPivot(key, pivot) {
+  _rnbPivots.set(key, pivot);
+  while (_rnbPivots.size > RNB_PIVOT_CACHE_MAX) {
+    _rnbPivots.delete(_rnbPivots.keys().next().value);
+  }
+}
+
+/**
+ * Ask the RNB what the selected building is called and what it stands on.
+ *
+ * ONE request, straight from the browser, no proxy — the same reasoning as the
+ * BD TOPO tiles this layer already reads that way: keyless, CORS-open, one call
+ * per click. See `rnbPivot.js`.
+ *
+ * The fallback matters as much as the main path. A footprint BD TOPO published
+ * without `identifiants_rnb` (4.5 % of Paris) still has a register entry, found
+ * by proximity — and `rnbPivotLines` labels that answer as a guess rather than
+ * letting it read like the tile's own key.
+ *
+ * @param {object} record
+ * @param {AbortSignal} signal
+ * @returns {Promise<?object>}
+ */
+async function fetchRnbPivot(record, signal) {
+  const own = record.rnb?.[0] || null;
+  if (own) {
+    const response = await fetch(rnbBuildingUrl(own), { signal });
+    // A 404 is an answer: this identifier is not in the current edition.
+    if (response.status === 404) return null;
+    if (!response.ok) throw new Error(`RNB ${own}: HTTP ${response.status}`);
+    return projectRnbBuilding(await response.json());
+  }
+  const url = rnbClosestUrl({ lat: record.lat, lon: record.lon });
+  if (!url) return null;
+  const response = await fetch(url, { signal });
+  if (!response.ok) throw new Error(`RNB closest: HTTP ${response.status}`);
+  return projectRnbFirst(await response.json());
+}
+
+/** Publish the card for the current selection at whatever depth it is known. */
+function publishSelectionCard(record, pivot) {
+  const entry = createBdtopoSelectedOverlayEntry(record, pivot);
+  if (!entry) return;
+  _overlayHost.setEntries(
+    BDTOPO_SELECTED_OVERLAY_SOURCE_ID,
+    [entry],
+    BDTOPO_SELECTED_OVERLAY_SOURCE_OPTIONS,
+  );
+  governorRequestRender('bdtopo-select');
+}
+
 function selectObject(id) {
   clearSelection();
   const record = _records.get(id);
   if (!record) return;
   _selectedId = id;
   applyInstanceColor(id, Cesium.Color.fromCssColorString(SELECTED_COLOR));
-  const entry = createBdtopoSelectedOverlayEntry(record);
-  if (entry) {
-    _overlayHost.setEntries(
-      BDTOPO_SELECTED_OVERLAY_SOURCE_ID,
-      [entry],
-      BDTOPO_SELECTED_OVERLAY_SOURCE_OPTIONS,
-    );
-  }
-  governorRequestRender('bdtopo-select');
+
+  // The identity key of this volume, which is also the cache key. A footprint
+  // with none is cached under its own render id: the proximity answer belongs
+  // to that polygon and to no other.
+  const pivotKey = record.rnb?.[0] || `at:${record.id}`;
+  publishSelectionCard(record, _rnbPivots.get(pivotKey) ?? null);
+  if (_rnbPivots.has(pivotKey)) return;
+
+  const controller = new AbortController();
+  _rnbPivotAbort = controller;
+  fetchRnbPivot(record, controller.signal).then((pivot) => {
+    if (controller.signal.aborted) return;
+    cacheRnbPivot(pivotKey, pivot);
+    // The operator may have clicked elsewhere while this was in flight; only
+    // the card that is still on screen is rewritten.
+    if (_selectedId === id) publishSelectionCard(record, pivot);
+  }).catch((error) => {
+    if (controller.signal.aborted || error?.name === 'AbortError') return;
+    // Not cached: an outage is not an answer, and the next click should try
+    // again rather than inherit a permanent silence. The card keeps the lines
+    // the tile alone could fill.
+    console.warn('[bdtopo] RNB pivot unavailable:', error?.message || error);
+  }).finally(() => {
+    if (_rnbPivotAbort === controller) _rnbPivotAbort = null;
+  });
 }
 
 /** Resolve a Cesium pick into one of this layer's render ids. */
@@ -1147,15 +1338,22 @@ const bdtopoBuildingsLayer = {
           + 'comme un bâtiment mal noté.',
       });
       if (_themePaint.unmatchedPoints || _themePaint.unplacedPoints) {
+        const offScreen = _themePaint.idOffScreen
+          ? ` ${formatCount(_themePaint.idOffScreen)} nomment un bâtiment RNB absent de cette vue.`
+          : '';
         legend.push({
           label: 'points sans bâtiment',
           color: unknownBuildingCss(BDTOPO_USAGE_TIERS[BDTOPO_USAGE_TIERS.length - 1].color),
           count: _themePaint.unmatchedPoints + _themePaint.unplacedPoints,
           blurb: `${formatCount(_themePaint.unmatchedPoints)} tombent hors de toute emprise `
             + `chargée et ${formatCount(_themePaint.unplacedPoints)} n'ont aucune coordonnée : `
-            + 'ils existent dans la donnée et ne sont peints nulle part.',
+            + `ils existent dans la donnée et ne sont peints nulle part.${offScreen}`,
         });
       }
+      // How the paint was decided is NOT a legend row: every swatch here is a
+      // colour that is on the map, and the identity join and the geometric one
+      // paint the same colours. It goes on the status line and into
+      // `getStats()` instead.
       return { chips: [], legend };
     }
     for (const tier of _payload?.tiers || BDTOPO_USAGE_TIERS.map((t) => ({ ...t, count: 0 }))) {
@@ -1192,6 +1390,15 @@ const bdtopoBuildingsLayer = {
       themeUnpainted: _themePaint?.unpainted ?? null,
       themeUnmatchedPoints: _themePaint?.unmatchedPoints ?? null,
       themeUnplacedPoints: _themePaint?.unplacedPoints ?? null,
+      // How the paint was decided. `themeMatchedById` is the register naming
+      // the building (`rnbPivot.js`); `themeMatchedByPoint` is a geocode that
+      // fell inside a polygon, which is the older, weaker claim.
+      // `themePivotBuildings` is how many of the drawn volumes carry an
+      // identifier at all — the ceiling on the first number.
+      themeMatchedById: _themePaint?.matchedById ?? null,
+      themeMatchedByPoint: _themePaint?.matchedByPoint ?? null,
+      themeIdOffScreen: _themePaint?.idOffScreen ?? null,
+      themePivotBuildings: _themePaint?.pivotBuildings ?? null,
       lastUpdate: _lastUpdate,
       loading: _loading,
       status: _status === 'ready' ? 'ok' : _status,
@@ -1236,12 +1443,25 @@ const bdtopoBuildingsLayer = {
     if (_themePaint?.buildings && !_photoreal && !result.loadingLabel) {
       const unplaced = _themePaint.unmatchedPoints + _themePaint.unplacedPoints;
       const plural = _themePaint.painted > 1 ? 's' : '';
+      // The share joined by the register's own key rather than by a geocode.
+      // On the map the two are indistinguishable — same colour, same volume —
+      // so the only place a reader can learn which they are looking at is here.
+      const matched = _themePaint.matchedById + _themePaint.matchedByPoint;
+      let byId = '';
+      if (_themePaint.matchedById) {
+        byId = ` · ${Math.round((_themePaint.matchedById / matched) * 100)} % par identifiant RNB`;
+      } else if (matched) {
+        // Not "0 %", which reads as a rounding. Nothing on screen carries the
+        // register's key, so every colour here rests on a geocode.
+        byId = ' · jointure géométrique seule';
+      }
       result.loadingLabel = `${formatCount(_themePaint.painted)} volume${plural} `
         + `peint${plural} par ${_themePaint.label}, `
         + `${formatCount(_themePaint.unpainted)} ${_themePaint.unknownLabel}`
         + (unplaced
           ? ` — ${formatCount(unplaced)} point${unplaced > 1 ? 's' : ''} hors emprise`
-          : '');
+          : '')
+        + byId;
     }
     if (_error) result.error = _error;
     return result;
@@ -1264,6 +1484,10 @@ const bdtopoBuildingsLayer = {
     if (_moveEndRemover) { _moveEndRemover(); _moveEndRemover = null; }
     clearColdFloorRetry();
     clearPrimitive();
+    // The identifier-less entries are keyed by RENDER id, which is minted per
+    // load — after a teardown they name polygons that no longer exist, so the
+    // map is emptied rather than left holding answers about nothing.
+    _rnbPivots.clear();
     _payload = null;
     _viewer = null;
   },

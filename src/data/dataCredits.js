@@ -284,6 +284,16 @@ export const DATA_CREDITS = [
       'published height instead, and each card names which of the two it used.',
   },
   {
+    key: 'rnb',
+    html:
+      'Building identity, addresses and cadastral parcels of a selected building: ' +
+      '<a href="https://rnb.beta.gouv.fr" target="_blank" rel="noopener">R&eacute;f&eacute;rentiel National des B&acirc;timents</a> ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'The same identifier is what joins the DPE register to the volumes on screen &mdash; ' +
+      'BD TOPO&reg; publishes it on the tile, so the join needs no request. When a footprint ' +
+      'carries none, the identity is resolved by proximity and the card says so.',
+  },
+  {
     key: 'edf-power-plants',
     html:
       'EDF generating fleet (localisation and installed power of its hydraulic, ' +

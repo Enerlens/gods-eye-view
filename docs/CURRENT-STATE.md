@@ -2048,6 +2048,34 @@ bear on EXISTING fabric (declared work on an existing building, demolition
 permits, and unpublished nature); a declared new build and a permis d'aménager —
 which authorises LAND — are held back, counted, and stay cranes.
 
+**The join is by IDENTIFIER first since 2026-09-07, and by geometry only then.**
+The Référentiel National des Bâtiments gives every building in France one stable
+key, and the BD TOPO tiles this repository already draws carry it
+(`identifiants_rnb`, 95.5 % to 99.2 % of drawn footprints). The ADEME DPE
+register publishes the same key as `id_rnb` on 34.5 % to 73.7 % of its rows
+depending on the commune, so `dpe-fr` no longer needs a coordinate to reach a
+volume — and the coordinate was never a claim about a building. Measured over
+four boxes: diagnostics reaching a drawn volume go 81.8 % → 96.3 % (Paris 13e),
+40.4 % → 75.7 % (Lyon 2e), 78.8 % → 88.9 % (Marseille), 14.0 % → 41.5 %
+(Ustaritz), and 2 to 83 rows per box were being painted on a NEIGHBOUR's roof.
+The two paths are counted apart (`themeMatchedById` / `themeMatchedByPoint`,
+« 96 % par identifiant RNB » on the Bâti 3D row): they paint the same colour and
+are not the same claim. The join costs no request — both registers carry the key
+— and `rnbPivot.js` states the two multiplicities that break a naive index (one
+emprise merging several RNB buildings; one building drawn as several emprises).
+`npm run qa:rnb-pivot` re-measures all of it, including the 573-of-573 agreement
+between the RNB's own `bdtopo` identifiers and the tiles' `cleabs`. DVF and the
+permits are NOT joined this way and cannot be: the geolocated DVF file publishes
+no RNB column, only `id_parcelle`, and the parcel→building relation has no bulk
+endpoint.
+
+**A selected volume names itself.** Clicking a building fires one keyless,
+unproxied RNB lookup (~170 ms) and the card gains the BAN addresses that
+building answers to and the cadastral parcels it stands on. A footprint IGN
+published without an identifier (4.5 % of Paris) is resolved by proximity
+instead, and the card says so — a guessed identity must not read like a
+published key.
+
 **Scope mismatch, declared rather than corrected.** The scans cover 200 m (DPE),
 300 m (DVF) and 400 m (ADS) while the building layer loads a box up to 0.08°,
 i.e. 8.90 × 6.04 km = 53.8 km² at the 47th parallel — up to 107× more. At most
@@ -3394,6 +3422,19 @@ Replay transport uses one Play/Pause toggle plus Cancel. During ascent only the 
   (`QA_BASE_URL=http://localhost:4173 npm run qa:map-source-tray`). Add
   `-- --keyless` to force the no-ion-token expectations on a keyed server; both
   invocations are gates.
+- `scripts/qa-rnb-pivot.mjs`: the pivot re-measured against three live services,
+  with no browser and no dev server (`npm run qa:rnb-pivot`, or
+  `-- --box lyon`). It decodes the same BD TOPO tiles the layer would draw, with
+  the layer's own module, and runs the map's own `joinPointsToBuildings` over
+  them. Four checks per box: the tiles still carry `identifiants_rnb` (floor
+  80 %, measured 95.5–99.2 %); the RNB's own `bdtopo` identifiers still match
+  those tiles' `cleabs` (floor 98 %, measured 573/573 over Lyon 2e); the
+  identity join still reaches more DPE rows than the geocoded dot (81.8 → 96.3 %
+  Paris, 40.4 → 75.7 % Lyon, 78.8 → 88.9 % Marseille, 14.0 → 41.5 % Ustaritz);
+  and, informationally, how many rows the dot was putting on a neighbour's roof.
+  A service that is down reports "not testable here" rather than red — three
+  upstreams is three ways to have a bad afternoon that says nothing about this
+  repository.
 - `scripts/qa-view-gate.mjs`: browser proof that a layer gated on a close camera
   is FLOWN there rather than told to zoom (`npm run qa:view-gate --
   --url http://localhost:4173`). Covers Bâti 3D and the mapped grid from a

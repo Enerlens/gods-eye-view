@@ -56,6 +56,16 @@ export const DPE_FIELDS = Object.freeze([
   'etiquette_ges',
   'adresse_ban',
   'identifiant_ban',
+  // The pivot. The register names the BUILDING, not just the address point, and
+  // that identifier is the same one the BD TOPO tiles carry — see `rnbPivot.js`
+  // for what it buys and for the calibration behind the claim. Measured over
+  // four boxes on 2026-09-07, `id_rnb` is present on 34.5 % (Ustaritz) to
+  // 73.7 % (Paris 13e) of the rows a scan returns.
+  'id_rnb',
+  // How the register got it: `Reprise RNB` when the RNB matched the diagnostic
+  // itself, `Logiciel` when the diagnostician's software declared it. Two
+  // different claims about the same key, and the card is entitled to say which.
+  'provenance_id_rnb',
   'annee_construction',
   'surface_habitable_logement',
   'cout_total_5_usages',
@@ -171,18 +181,26 @@ export function projectDpe(payload, { radiusM } = {}) {
   const entries = [];
   const distribution = Object.fromEntries(DPE_LABELS.map((letter) => [letter, 0]));
   const costs = [];
+  let withRnb = 0;
   for (const row of rows) {
     const point = parseGeopoint(row?._geopoint);
     const dpe = label(row?.etiquette_dpe);
     if (dpe) distribution[dpe] += 1;
     const cost = num(row?.cout_total_5_usages);
     if (cost !== null) costs.push(cost);
+    const rnb = String(row?.id_rnb ?? '').trim() || null;
+    if (rnb) withRnb += 1;
     entries.push({
       id: String(row?.numero_dpe ?? `dpe-${entries.length}`),
       etiquetteDpe: dpe,
       etiquetteGes: label(row?.etiquette_ges),
       address: row?.adresse_ban ?? null,
       banId: row?.identifiant_ban ?? null,
+      // `rnb` is the name `buildingTheme.js` joins on. Carried on every entry,
+      // graded or not: a diagnostic with no letter still belongs to a building
+      // and still has to be counted against it.
+      rnb,
+      rnbSource: rnb ? (String(row?.provenance_id_rnb ?? '').trim() || null) : null,
       builtYear: num(row?.annee_construction),
       surfaceM2: num(row?.surface_habitable_logement),
       annualCostEur: cost,
@@ -201,6 +219,10 @@ export function projectDpe(payload, { radiusM } = {}) {
     entries,
     truncated: total !== null && total > entries.length,
     distribution,
+    // Share of the served rows that name a building. It is the ceiling on what
+    // the identity join can reach in this scan, and the layer prints it rather
+    // than letting a thin edition look like a thin city.
+    rnbCoverage: entries.length ? withRnb / entries.length : 0,
     medianCoutAnnuel: costs.length ? Math.round(costs[Math.floor((costs.length - 1) / 2)]) : null,
   };
 }
