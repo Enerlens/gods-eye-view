@@ -122,13 +122,27 @@ test('the key names the family a hue stands for, including the one nobody declar
   assert.equal(vesselTypeFamily('Passenger/Ferry'), 'passenger');
   assert.equal(vesselTypeFamily('Fishing'), 'fishing');
   assert.equal(vesselTypeFamily('Pilot Vessel'), 'service');
+  // AIS 36/37 — the commonest declaration on a coastline, and the one family
+  // the palette had no pattern for: 94 of 1 696 live French contacts on
+  // 2026-09-07 declared it and were drawn as if they had declared nothing.
+  assert.equal(vesselTypeFamily('37'), 'pleasure');
+  assert.equal(vesselTypeFamily('36'), 'pleasure');
+  assert.equal(vesselTypeFamily('Sailing Vessel'), 'pleasure');
   assert.equal(vesselTypeFamily(''), null, 'no declared type is no family');
+  assert.equal(vesselTypeFamily('0'), null, 'and neither is AIS "not available"');
   assert.equal(vesselTypeFamily('Dredger'), null, 'and neither is an unmatched one');
   // The swatch a family gets IS the hue drawn for it.
   assert.equal(vesselFamilyCss('tanker'), vesselTypeCss('Tanker'));
   assert.equal(vesselFamilyCss('cargo'), vesselTypeCss('Container Ship'));
   assert.equal(vesselFamilyCss(null), vesselTypeCss(''));
+  assert.equal(vesselFamilyCss('pleasure'), vesselTypeCss('37'));
   assert.notEqual(vesselFamilyCss(null), vesselFamilyCss('cargo'));
+  // Six families, six hues, and none of them the slate of the unnamed bucket.
+  const hues = ['tanker', 'cargo', 'passenger', 'fishing', 'service', 'pleasure']
+    .map((family) => vesselFamilyCss(family));
+  assert.equal(new Set(hues).size, hues.length, 'every family has its own hue');
+  assert.equal(hues.includes(vesselFamilyCss(null)), false);
+  assert.ok(VESSEL_FAMILY_LABELS.pleasure);
   assert.ok(VESSEL_FAMILY_LABELS.unknown);
 });
 

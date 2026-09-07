@@ -224,6 +224,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   — et dit combien sont déjà affinées, plutôt que d'aplatir un dessin mixte sur
   un seul chiffre.
 
+- **La plaisance et la voile cessent d'être « Type non déclaré ».** Mesuré le
+  2026-09-07 sur le flux réel, boîte France, 1 696 contacts : 500 portaient un
+  type, dont 187 le code AIS **0** — « non disponible », donc muets à juste
+  titre. Sur les 313 qui déclaraient vraiment quelque chose, **153 étaient
+  peints dans l'ardoise des muets** parce que la palette n'avait aucun motif
+  pour leur code. Les deux premiers, à eux seuls, valent 94 contacts : **36
+  (voile) et 37 (plaisance)** — sur une côte, la déclaration la plus fréquente
+  qui soit. Ils prennent une sixième famille, *Plaisance et voile*, en violet
+  `#a78bfa`, hors des cinq teintes existantes comme du gris ardoise réservé à
+  ceux qui n'ont rien dit. La légende étant décomptée sur les seuls navires à
+  l'écran, elle n'apparaît que là où il y en a. Confirmé le même jour sur un
+  relevé plus large — 3 252 contacts, 1 019 déclarations exploitables : **230
+  d'entre elles sont de la plaisance ou de la voile**, et la part des
+  déclarations correctement nommées passe de 57 % à 80 %.
+  Restent dans le seau sans nom, et c'est volontaire : le code 0, les 37 codes
+  9x (« autre type, sans précision »), et 22 contacts épars — dragage, grande
+  vitesse, SAR, police, militaire, servitude portuaire — trop peu nombreux ici
+  pour leur inventer une teinte sans décision de conception.
+
+- **Le flux navires écoute la France, plus la planète entière.** La
+  souscription AISStream s'ouvrait sur `[[[-90,-180],[90,180]]]` : tous les
+  messages AIS de la Terre dans un seul websocket. Or les messages d'identité
+  sont ceux qui perdent la course quand le tuyau sature, et l'identité est
+  exactement ce qui manquait à la carte. Le défaut devient **la France
+  métropolitaine et ses approches** — `[[[41,-8],[51.6,10]]]`, du rail
+  d'Ouessant au pas de Calais, golfe du Lion et Corse compris : ~3 750 contacts
+  au lieu de ~18 300, même cadence statique par navire, cinq fois moins de trafic
+  pour la faire passer. Combinée au registre qui survit désormais aux
+  redémarrages, la part de types déclarés monte de session en session au lieu de
+  se réinitialiser. La boîte est **métropolitaine** : les DOM-TOM n'y sont pas,
+  et c'est dit là où la constante est écrite. Une ligne de `.env` rend le monde
+  entier (`AISSTREAM_BOUNDING_BOXES`), et plusieurs boîtes peuvent être listées.
+  Le chien de garde de silence, qui ne s'armait que « si aucune variable n'est
+  posée », juge maintenant la **souscription résolue** : il s'arme pour les deux
+  boîtes dont ce dépôt a mesuré le débit — la France et le monde —, non filtrées.
+  L'ancienne règle le désarmait pour quiconque écrivait la boîte mondiale à la
+  main, c'est-à-dire sur la souscription la plus bavarde qui soit.
+
 - **La légende quitte le coin de la carte et prend la tête du rail droit.** Elle
   était une plaque fixe en bas à gauche, et une règle de feuille de style
   l'**éteignait** dès qu'on ouvrait DATA LAYERS
@@ -339,6 +377,56 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   nommé dans la légende et sur chaque fiche.
 
 ### Fixed
+- **Ce que le serveur apprend d'un navire lui survit enfin.** « Type non
+  déclaré » n'était pas un défaut d'affichage : l'AIS coupe un navire en deux.
+  Les messages de position — 1/2/3 et 18, ceux dont la carte est faite — ne
+  portent **ni type, ni nom, ni numéro IMO, ni dimensions**. Tout cela ne voyage
+  que dans le message 5 et dans la partie B du message 24, qu'un transpondeur
+  émet toutes les six minutes environ (le 19, extension Classe B rare, en porte
+  une partie ; il ne change pas l'ordre de grandeur). Le serveur l'avait compris et fusionnait
+  correctement les deux familles, dans les deux sens — mais dans une `Map` de
+  mémoire de processus que **rien n'écrivait nulle part**. Chaque redémarrage
+  jetait 100 % de ce que le flux avait mis des heures à enseigner : un
+  changement de config Vite, un déploiement, un capot rabattu. Mesuré sur le
+  flux réel le 2026-09-03, boîte mondiale, 5 minutes : **18 308 MMSI distincts
+  ont émis une position, 5 530 ont émis un message statique**. Ces ~70 % sont la
+  taille du seau « Type non déclaré » à un instant donné — et sans rien sur
+  disque, chaque session repartait de 100 % pour y redescendre.
+  Les identités apprises tiennent maintenant dans
+  `.gev-cache/ais-static/registry.json`, **30 jours** — le TTL et le
+  raisonnement du cache des installations militaires : un MMSI change de type à
+  l'échelle du chantier naval, pas de la session. Écriture atomique (fichier
+  temporaire puis `rename`, pour qu'un disque plein ne déchire pas des semaines
+  d'apprentissage), une réécriture par minute au plus, et un vidage
+  **synchrone** à l'extinction — la minute de retard n'est perdue que sur un
+  `kill -9`. Le fichier est lu une fois au démarrage et **le flux en cours gagne
+  toujours** une collision ; le disque ne fait que combler ses trous, ce dont a
+  précisément besoin un `StaticDataReport` scindé en deux moitiés dont l'une
+  porte le nom et l'autre la coque.
+  **La destination n'y entre pas.** Elle voyage dans le même message 5 que
+  l'identité, mais c'est une donnée de *voyage* : vraie pour une traversée,
+  fausse pour la suivante. Rejouer une destination de trois semaines sur une
+  fiche vivante serait un mensonge dit avec aplomb ; le champ est retiré à la
+  porte et n'est jamais restauré.
+  Et la fuite, réelle et indépendante du reste : `pruneAisStreamCache()`
+  élaguait les positions et les traces, jamais ce registre — qui grossissait
+  donc pour la vie du processus. Il a maintenant son propre balayage, borné par
+  le TTL de 30 jours et par un plafond de 50 000 identités (la plus anciennement
+  entendue part la première), au plus une fois par minute puisqu'un TTL de
+  30 jours ne peut rien périmer entre deux messages de position.
+  Politique et forme du fichier sont pures et testées hors ligne dans
+  `src/data/aisStaticRegistry.js` ; `vite.config.js` ne garde que le chemin, la
+  temporisation et le `rename`. `npm run qa:vessel-types` mesure le serveur qui
+  tourne : contacts dans la boîte souscrite, taille du registre, part des
+  contacts vivants déjà sur disque — c'est-à-dire ce que le prochain démarrage
+  gardera —, part de types déclarés, absence de destination sur disque et
+  bornes du registre. Vérifié sur de vrais redémarrages successifs — **159,
+  puis 442, puis 1 568 identités écrites puis relues à l'identique** —, et le
+  premier contact servi après un démarrage portait déjà son type et sa coque.
+  Sur la dernière session, 3 252 contacts vivants : **1 463 d'entre eux
+  (45,0 %) étaient déjà sur disque**, c'est-à-dire ce que le démarrage suivant
+  n'aura pas à réapprendre. Avant, ce nombre était zéro à chaque fois.
+
 - **Le seuil de fraîcheur des vols suit le TTL, au lieu de le contredire.**
   Le rapport terrain était « ce data layer tombe très rapidement en mode
   fallback ». Il n'y avait aucune panne derrière. Il y avait **deux constantes

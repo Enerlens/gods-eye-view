@@ -61,6 +61,14 @@ const TYPE_STYLES = [
   { pattern: /passenger|ferry|cruise/i, css: '#ff7adf', accent: '255, 122, 223' },
   { pattern: /fishing/i, css: '#7cff9b', accent: '124, 255, 155' },
   { pattern: /tug|tow|pilot|supply|service/i, css: '#f7f0a3', accent: '247, 240, 163' },
+  // Codes 36 and 37 — sailing and pleasure craft. Measured on the France box
+  // 2026-09-07 over 1 696 live contacts: 94 of them declared one of these two
+  // and were drawn in the slate of "Type non déclaré", which is 30 % of every
+  // contact that declared anything usable at all; confirmed the same day on a
+  // wider run, 230 of 1 019 usable declarations out of 3 252 contacts. On a
+  // coastline this is the commonest declaration there is, and it was the only
+  // large family the palette had no pattern for.
+  { pattern: /pleasure|sailing/i, css: '#a78bfa', accent: '167, 139, 250' },
 ];
 /**
  * Vessels whose AIS type matches no family — including the very common case of
@@ -69,7 +77,7 @@ const TYPE_STYLES = [
  * This used to be `#39d5ff` / `57, 213, 255`: byte-for-byte the CARGO colour.
  * A ship that had declared nothing was drawn as a container ship, in a palette
  * where the reader's only cue is hue (CARTOGRAPHIE A1). The replacement is
- * deliberately OFF the family ramp — a desaturated slate among five saturated
+ * deliberately OFF the family ramp — a desaturated slate among six saturated
  * hues — so "no family" reads as its own state rather than as membership in
  * whichever family happened to be the default.
  */
@@ -131,7 +139,7 @@ export function vesselTypeFamily(type) {
 }
 
 /** Family keys, parallel to TYPE_STYLES, with the caption a reader gets. */
-const VESSEL_FAMILY_KEYS = Object.freeze(['tanker', 'cargo', 'passenger', 'fishing', 'service']);
+const VESSEL_FAMILY_KEYS = Object.freeze(['tanker', 'cargo', 'passenger', 'fishing', 'service', 'pleasure']);
 
 /** Legend captions, keyed as {@link vesselTypeFamily} reports. */
 export const VESSEL_FAMILY_LABELS = Object.freeze({
@@ -140,6 +148,7 @@ export const VESSEL_FAMILY_LABELS = Object.freeze({
   passenger: 'Passagers, ferry, croisière',
   fishing: 'Pêche',
   service: 'Remorquage, pilotage, servitude',
+  pleasure: 'Plaisance et voile',
   unknown: 'Type non déclaré',
 });
 
