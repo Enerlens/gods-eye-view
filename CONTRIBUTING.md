@@ -29,6 +29,20 @@ The highest-leverage places to jump in:
 - **🎨 Add a visual style.** Styles are GLSL post-process shaders in `src/styles/`.
 - **🐛 Fix bugs / improve the first-run experience.** See [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md).
 
+## Finding a French data source (`.mcp.json`)
+
+`.mcp.json` registers the **official data.gouv.fr MCP server** (`https://mcp.data.gouv.fr/mcp`, no key, read-only) so a compatible AI assistant can search the national open-data catalog while you work. It's a discovery aid for authors — `search_datasets`, `search_dataservices`, `get_dataservice_openapi_spec` and `list_dataset_resources` beat guessing at dataset URLs when you're scoping a new layer.
+
+It is **not** a runtime data path, and no product code should call it:
+
+- Its CORS preflight answers `403` — the browser can't reach it.
+- Its tools return prose for a model to read, not typed JSON. The plain REST API (`https://www.data.gouv.fr/api/2/datasets/resources/<id>/`) returns real fields and is what layers and scripts should use.
+- data.gouv.fr call the server experimental and warn its answers "peuvent être incomplètes, erronées ou inclure des hallucinations", recommending their APIs for anything serious.
+
+Layers already fetch the same platform directly: 162 pinned `www.data.gouv.fr/api/1/datasets/r/<uuid>` resources, mostly the national transport access point's GTFS feeds in `config/pan_gtfs_*.json`.
+
+⚠️ **Never source a licence claim from an MCP answer.** Use it to find a candidate; confirm the licence and attribution on the dataset's own page before it goes into [DATA_SOURCES.md](DATA_SOURCES.md).
+
 ## Architecture in one minute
 
 - **No framework.** Vanilla JS + [CesiumJS](https://cesium.com/platform/cesiumjs/) + [Vite](https://vitejs.dev/).
