@@ -371,6 +371,10 @@ import { projectAmenitiesDepartements } from './src/data/amenitiesDepartements.j
 // defined in the file.
 import {
   BRUIT_AREA_PIXEL_DEG,
+  BRUIT_PROBE_PIXEL_DEG,
+  bruitFeatureKey,
+  bruitRefineSeeds,
+  refineBruitCollection,
   BRUIT_PROBE_PIXELS,
   BRUIT_SOURCE,
   buildBruitProbeUrl,
@@ -8723,6 +8727,18 @@ function idfmFrequencyProxy() {
 const BRUIT_WMS_HOST = 'data.geopf.fr';
 /** The scan answer is cheap to rebuild and the plans move once a decade. */
 const BRUIT_SCAN_TTL_MS = 6 * 60 * 60 * 1000;
+/**
+ * How long an overview that is still being refined may be served from cache.
+ *
+ * Three seconds, which is SHORTER than the layer's five-second poll on purpose:
+ * a TTL longer than the poll means half the polls are answered with the copy
+ * they already have, and the outline sharpens in half as many steps for the
+ * same number of requests. The whole answer is rebuilt from the per-aerodrome
+ * zone cache with no upstream call — measured at 59 ms for 24 aerodromes from a
+ * cold process — so re-deriving it is far cheaper than the round trip that asks
+ * for it.
+ */
+const BRUIT_REFINING_TTL_MS = 3_000;
 /** The national arrêté register, on disk. */
 const BRUIT_INDEX_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 /**
@@ -8799,6 +8815,28 @@ const BRUIT_ZONES_TTL_MS = 30 * 24 * 60 * 60 * 1000;
  */
 const BRUIT_AREA_CONCURRENCY = 3;
 /**
+ * How often the background refiner re-checks whether the foreground is idle.
+ *
+ * 250 ms. Long enough that a burst of twelve coarse probes is not polled a
+ * thousand times, short enough that the refiner is back at work well inside the
+ * gap between two camera settles — the shell debounces a move by rather more
+ * than this before it scans at all.
+ */
+const BRUIT_REFINE_YIELD_MS = 250;
+/**
+ * How long an aerodrome whose second pass came up short is left alone.
+ *
+ * Ten minutes, and this is a HOT-LOOP GUARD rather than a tuning knob. An
+ * aerodrome is re-queued whenever a scan touches it and it is not yet fully
+ * refined, which is what turns a 429 into a delay instead of a month of facets.
+ * Without a cooldown that same rule is a treadmill: a band the seeds genuinely
+ * cannot reach would cost six upstream probes on every scan, and the layer
+ * polls every five seconds while an overview is sharpening. Measured, no such
+ * band exists — 170 of 170 recovered over 50 aerodromes — which is exactly why
+ * the failure mode has to be bounded here rather than trusted not to happen.
+ */
+const BRUIT_REFINE_RETRY_MS = 10 * 60 * 1000;
+/**
  * The widest overview one request may ask for, in km.
  *
  * 300. The layer stops asking at 250 km of altitude — the altitude at which the
@@ -8833,8 +8871,14 @@ function bruitAreaCentre({ lat, lon }) {
   // binary floating point, and that lands in the cache key as its own string.
   return { lat: Number(snap(lat).toFixed(4)), lon: Number(snap(lon).toFixed(4)) };
 }
-/** Bump when the shape one cached aerodrome holds changes. */
-const BRUIT_ZONES_CACHE_VERSION = 1;
+/**
+ * Bump when the shape one cached aerodrome holds changes.
+ *
+ * 2 — an entry now also records whether its outlines have been REFINED to the
+ * probe scale, and a version-1 entry cannot answer that question. Serving one
+ * as if it could would pin a coarse plan for thirty days and report it as fine.
+ */
+const BRUIT_ZONES_CACHE_VERSION = 2;
 /**
  * The declared footprint of `dgac_pgs_plan_wmsv`, from its own capabilities
  * document on 2026-09-02 — and the one probe the overview is allowed to skip.
@@ -9083,6 +9127,216 @@ function scheduleBruitZonesWrite() {
   if (typeof _bruitZonesWriteTimer?.unref === 'function') _bruitZonesWriteTimer.unref();
 }
 
+
+/**
+ * ── THE SECOND PASS: WHY THE OVERVIEW IS FETCHED TWICE ──────────────────────
+ *
+ * `BRUIT_AREA_PIXEL_DEG` is doing two jobs at once and they pull in opposite
+ * directions. It sets the GetFeatureInfo BUFFER — about 3 px, so kilometres of
+ * ground at the overview scale — which is the only reason zones B, C and D come
+ * back at all from a probe aimed at a point that sits inside zone A. And it
+ * sets the SCALE DENOMINATOR, which is what GeoServer generalises the returned
+ * outline to. One knob, and the setting that catches every ring is the setting
+ * that flattens it.
+ *
+ * Measured 2026-09-07, PEB, one probe per aerodrome at each scale:
+ *
+ *   LFPG zone C   381 vertices at 1:39,757    →   22 at 1:3,975,696   ÷17
+ *   LFPG zone D   664                         →   37                  ÷18
+ *   LFML zone D   541                         →   40                  ÷14
+ *   LFPO zone A    94                         →   22
+ *
+ * A 65.8 km ring drawn with 37 vertices is a polygon with visible facets, and
+ * that is what a dezoomed reader was looking at.
+ *
+ * The two jobs separate because THE SERVICE DOES NOT CLIP THE GEOMETRY IT
+ * RETURNS to the box it was asked through — the same property `BRUIT_PROBE_PIXELS`
+ * already documents, where a 0.0101° box at Roissy returns a zone spanning
+ * 0.57°. So the coarse probe can be demoted to a DISCOVERY pass whose only job
+ * is to name the bands, and each named band can then be re-fetched at the fine
+ * scale by aiming a second probe at its own outline. Measured over 50
+ * aerodromes and 170 bands, that recovers 170 of 170 — see
+ * `BRUIT_REFINE_SEEDS` in `bruitFeed.js` for the seeding and its failure budget.
+ *
+ * ── AND WHY IT IS A BACKGROUND PASS ─────────────────────────────────────────
+ * Because it is not free and the reader is waiting. Measured on a cold cache,
+ * the twelve aerodromes around Paris at {@link BRUIT_AREA_CONCURRENCY}:
+ *
+ *   coarse only                    12 probes     ~1.5 s     751 vertices
+ *   coarse + refinement            85 probes     ~9.5 s   7,287 vertices  ×9.7
+ *
+ * Nine and a half seconds is not a camera settle, it is a hang. So the refined
+ * outline is never what a request waits for: the coarse answer goes out at once
+ * — a whole-plan overview, exactly as before this change — the aerodromes it
+ * touched are queued, and the fine geometry lands in the per-aerodrome cache
+ * for the next scan. The payload says `refining` so the layer knows to come
+ * back, and every band says which scale it is at so the card never claims the
+ * fine one for a shape that is still coarse.
+ *
+ * The cost is paid ONCE PER AERODROME PER MONTH, against a register of 224
+ * aerodromes nationally and plans that gained 8 documents in six years.
+ */
+
+/**
+ * Upstream calls a client is currently blocked on.
+ *
+ * The refinement must never take a slot from a scan somebody is waiting for.
+ * The service was measured refusing above three concurrent — HTML 429, 190 of
+ * 240 — so "run the background pass at 2 as well" would be five, and the way
+ * that fails is the foreground scan retrying with a 1.5 s back-off. Instead the
+ * background worker YIELDS: it checks this counter before every probe and waits
+ * while any foreground work is in flight, so it only ever spends the idle time
+ * between camera settles.
+ */
+let _bruitForeground = 0;
+
+/** Aerodromes whose plans are cached coarse, waiting for their second pass. */
+const _bruitRefineQueue = new Map();
+let _bruitRefineRunning = false;
+
+/**
+ * Whether this entry is worth a second pass right now.
+ *
+ * Not simply `!refined`. A pass that reached some bands and not others leaves
+ * an entry that is worth retrying — the service may have been refusing — but
+ * only after {@link BRUIT_REFINE_RETRY_MS}, or every scan pays for the same
+ * misses again. `triedAt` is absent on an entry that has never had a pass, so
+ * a fresh coarse probe is always queued at once.
+ *
+ * @param {?{refined?: boolean, triedAt?: number}} entry
+ * @returns {boolean}
+ */
+function bruitNeedsRefine(entry) {
+  if (!entry || entry.refined === true) return false;
+  if (!Number.isFinite(entry.triedAt)) return true;
+  return Date.now() - entry.triedAt >= BRUIT_REFINE_RETRY_MS;
+}
+
+/** Run `job` with the foreground gate held, so the refiner stands aside. */
+async function bruitForeground(job) {
+  _bruitForeground += 1;
+  try {
+    return await job();
+  } finally {
+    _bruitForeground -= 1;
+  }
+}
+
+/**
+ * One band's outline at the probe scale, or null.
+ *
+ * Seeds are tried IN ORDER and the first hit wins: they are ranked by
+ * {@link bruitRefineSeeds} and, measured, 149 of 170 bands answer on the first.
+ * A miss costs `BRUIT_REFINE_SEEDS` in `bruitFeed.js` requests and then gives up — the band
+ * stays coarse and says so, which is the honest outcome and, on 170 measured
+ * bands, one that never happened.
+ *
+ * @param {'peb'|'pgs'} kind
+ * @param {object} feature Coarse feature to refine.
+ * @returns {Promise<?object>} Fine GeoJSON geometry.
+ */
+async function bruitRefineFeature(kind, feature) {
+  const key = bruitFeatureKey(feature);
+  if (key === null) return null;
+  for (const seed of bruitRefineSeeds(feature.geometry)) {
+    // Wait out any scan a client is blocked on before spending a slot.
+    await bruitRefineYield();
+    const answer = await fetchBruitJson(buildBruitProbeUrl(kind, seed, BRUIT_PROBE_PIXEL_DEG));
+    // `null` is the service refusing, and it is NOT a miss on this seed: trying
+    // the next one would spend the whole budget on an outage. Give the band up
+    // for now; the aerodrome stays unrefined and is queued again next scan.
+    if (!answer) return null;
+    const hit = (Array.isArray(answer.features) ? answer.features : [])
+      .find((candidate) => bruitFeatureKey(candidate) === key);
+    if (hit?.geometry) return hit.geometry;
+  }
+  return null;
+}
+
+/** Stand aside while a client is waiting on the same upstream. */
+async function bruitRefineYield() {
+  while (_bruitForeground > 0) {
+    await new Promise((resolve) => { setTimeout(resolve, BRUIT_REFINE_YIELD_MS); });
+  }
+}
+
+/**
+ * Refine one aerodrome's cached plans in place.
+ *
+ * Reads the entry back out of the cache rather than closing over it, because
+ * the wait in {@link bruitRefineYield} can be seconds long and a fresher coarse
+ * probe may have replaced it — writing a refinement onto a collection that is
+ * no longer the cached one would resurrect the outlines it replaced.
+ *
+ * @param {string} oaci
+ * @returns {Promise<boolean>} Whether the entry is now fully refined.
+ */
+async function bruitRefineAerodrome(oaci) {
+  const held = _bruitZones.get(oaci);
+  if (!bruitNeedsRefine(held)) return true;
+  const refined = { peb: null, pgs: null };
+  let coarse = 0;
+  for (const kind of ['peb', 'pgs']) {
+    const collection = held[kind];
+    const features = Array.isArray(collection?.features) ? collection.features : [];
+    if (!features.length) continue;
+    const geometries = new Map();
+    for (const feature of features) {
+      const geometry = await bruitRefineFeature(kind, feature);
+      if (geometry) geometries.set(bruitFeatureKey(feature), geometry);
+    }
+    const next = refineBruitCollection(collection, geometries);
+    coarse += next.coarse;
+    refined[kind] = next;
+  }
+  const current = _bruitZones.get(oaci);
+  // Replaced under us while we waited — the refinement describes a collection
+  // that is no longer cached, so it is dropped rather than merged.
+  if (current !== held) return false;
+  _bruitZones.set(oaci, {
+    at: held.at,
+    peb: refined.peb ?? held.peb,
+    pgs: refined.pgs ?? held.pgs,
+    // Only a pass that reached EVERY band closes the aerodrome out. One left
+    // coarse means the entry is retried later — which turns a transient 429
+    // into a delay instead of a month of facets — but not on the very next
+    // scan; see `BRUIT_REFINE_RETRY_MS`.
+    refined: coarse === 0,
+    triedAt: Date.now(),
+  });
+  scheduleBruitZonesWrite();
+  return coarse === 0;
+}
+
+/**
+ * Drain the refinement queue, one aerodrome at a time, forever after.
+ *
+ * SERIAL ON PURPOSE. The parallelism that matters is the foreground's, and this
+ * worker exists to use the gaps in it; two of them would only make the gaps
+ * shorter. A single worker also means the queue is a fair FIFO — the aerodrome
+ * a reader is looking at now was enqueued before the one they looked at ten
+ * minutes ago is retried.
+ */
+function bruitDrainRefineQueue() {
+  if (_bruitRefineRunning) return;
+  _bruitRefineRunning = true;
+  void (async () => {
+    try {
+      while (_bruitRefineQueue.size > 0) {
+        const [oaci] = _bruitRefineQueue.keys();
+        _bruitRefineQueue.delete(oaci);
+        try {
+          await bruitRefineAerodrome(oaci);
+        } catch (error) {
+          console.warn(`[Bruit Proxy] refine ${oaci}:`, error?.message || error);
+        }
+      }
+    } finally {
+      _bruitRefineRunning = false;
+    }
+  })();
+}
+
 /** Whether the PGS layer declares any ground at this aerodrome — see {@link BRUIT_PGS_BBOX}. */
 function bruitPgsInFootprint(airport) {
   const m = BRUIT_PGS_BBOX_MARGIN_DEG;
@@ -9101,31 +9355,50 @@ function bruitPgsInFootprint(airport) {
  *
  * @param {{oaci: ?string, lat: number, lon: number}} airport
  * @returns {Promise<{oaci: string, peb: ?object, pgs: ?object, cached: boolean,
- *   failed: boolean}>}
+ *   failed: boolean, pending: boolean}>} `pending` is whether a second pass is
+ *   queued for this aerodrome right now — see `bruitNeedsRefine`.
  */
 async function bruitAerodromeZones(airport) {
   const oaci = String(airport?.oaci ?? '').trim().toUpperCase()
     || `${airport.lat.toFixed(3)},${airport.lon.toFixed(3)}`;
   const held = _bruitZones.get(oaci);
   if (held && Date.now() - held.at < BRUIT_ZONES_TTL_MS) {
-    return { oaci, peb: held.peb, pgs: held.pgs, cached: true, failed: false };
+    // PENDING, not "unrefined". An aerodrome inside its retry cooldown is not
+    // being worked on, and reporting it as in-flight would keep the layer
+    // polling for a shape that is not going to change for ten minutes. The
+    // geometry stays honestly coarse either way — that is `coarseBands`'s job,
+    // not this one's.
+    const pending = bruitNeedsRefine(held);
+    if (pending) _bruitRefineQueue.set(oaci, true);
+    return {
+      oaci, peb: held.peb, pgs: held.pgs, cached: true, failed: false, pending,
+    };
   }
   const wantsPgs = bruitPgsInFootprint(airport);
-  const [peb, pgs] = await Promise.all([
+  // Held open only for the two calls the client is actually waiting on. The
+  // refinement runs outside it, by design — see `_bruitForeground`.
+  const [peb, pgs] = await bruitForeground(() => Promise.all([
     fetchBruitJson(buildBruitProbeUrl('peb', airport, BRUIT_AREA_PIXEL_DEG)),
     wantsPgs
       ? fetchBruitJson(buildBruitProbeUrl('pgs', airport, BRUIT_AREA_PIXEL_DEG))
       : Promise.resolve({ type: 'FeatureCollection', features: [] }),
-  ]);
+  ]));
   if (!peb) {
     // Serve whatever is held rather than a hole, and say it is old.
-    if (held) return { oaci, peb: held.peb, pgs: held.pgs, cached: true, failed: false };
-    return { oaci, peb: null, pgs: pgs ?? null, cached: false, failed: true };
+    if (held) {
+      const pending = bruitNeedsRefine(held);
+      if (pending) _bruitRefineQueue.set(oaci, true);
+      return { oaci, peb: held.peb, pgs: held.pgs, cached: true, failed: false, pending };
+    }
+    return { oaci, peb: null, pgs: pgs ?? null, cached: false, failed: true, pending: false };
   }
-  const entry = { at: Date.now(), peb, pgs: pgs ?? null };
+  const entry = { at: Date.now(), peb, pgs: pgs ?? null, refined: false, triedAt: null };
   _bruitZones.set(oaci, entry);
   scheduleBruitZonesWrite();
-  return { oaci, peb, pgs: entry.pgs, cached: false, failed: false };
+  // The coarse answer goes back NOW and the fine one is fetched behind it. The
+  // whole point of the second pass is that nobody waits for it.
+  _bruitRefineQueue.set(oaci, true);
+  return { oaci, peb, pgs: entry.pgs, cached: false, failed: false, pending: true };
 }
 
 /**
@@ -9184,6 +9457,10 @@ async function buildBruitArea(centre, radiusKm) {
   // Every aerodrome refusing is an outage, not an empty region.
   if (selected.length > 0 && answered.length === 0) return null;
   const missing = probes.length - answered.length;
+  // Started AFTER the probes, so a cold overview's twelve foreground calls are
+  // already in flight and the refiner finds the gate shut rather than racing
+  // them for a slot.
+  bruitDrainRefineQueue();
   return {
     ...projectBruitArea({
       peb: answered.map((probe) => probe.peb),
@@ -9202,6 +9479,14 @@ async function buildBruitArea(centre, radiusKm) {
     // Aerodromes in reach that the request budget dropped. Reported so the
     // layer can say so rather than drawing a map that stops at twelve.
     dropped,
+    // Aerodromes whose second pass is queued or running RIGHT NOW. THE LAYER
+    // USES THIS TO COME BACK: a reader who settles the camera once and does not
+    // move would otherwise keep the facets forever, because the shell only
+    // refetches when the question changes. It counts pending work rather than
+    // coarse geometry, so it reaches zero — and the polling stops — even in the
+    // state where a band could not be refined at all. What is on screen in that
+    // state is still reported honestly, by `coarseBands`.
+    refining: answered.filter((probe) => probe.pending === true).length,
     source: BRUIT_SOURCE,
     register: {
       count: register.count,
@@ -9330,7 +9615,16 @@ function bruitFranceProxy() {
         key: addressCacheKey('bruit-fr', point),
         load: () => buildBruitScan(point),
       };
-    }, { ttlMs: BRUIT_SCAN_TTL_MS });
+    }, {
+      // A PROVISIONAL ANSWER GETS A PROVISIONAL SHELF LIFE. An overview drawn
+      // from coarse outlines is correct and complete — every band is there —
+      // but it is not the answer the second pass is about to replace, and six
+      // hours of it would mean the refinement lands in the zone cache and never
+      // reaches a reader. Ten seconds is longer than a camera settle and far
+      // shorter than one aerodrome's refinement, so a reader polling through it
+      // gets each aerodrome as it sharpens rather than all of them at the end.
+      ttlMs: (payload) => (payload?.refining > 0 ? BRUIT_REFINING_TTL_MS : BRUIT_SCAN_TTL_MS),
+    });
   }
   return {
     name: 'bruit-fr-proxy',
@@ -20925,22 +21219,59 @@ function addressCacheSet(key, payload) {
 }
 
 /**
+ * The `Cache-Control` an answer with this shelf life may be given.
+ *
+ * A PROVISIONAL ANSWER IS `no-store`, not a short `max-age`. The two are not
+ * the same thing here: `max-age` is a floor on how long the browser may go on
+ * serving what it has, and an answer the server is actively replacing wants no
+ * floor at all — the layer is polling precisely because the reply is expected
+ * to have changed. Anything with a real shelf life keeps the five minutes the
+ * four sibling address layers have always had, capped so it can never claim
+ * longer than the server's own cache would hold it.
+ *
+ * @param {number} ttlMs
+ * @returns {string}
+ */
+export const ADDRESS_PROVISIONAL_TTL_MS = 60_000;
+export function addressCacheControl(ttlMs) {
+  if (!Number.isFinite(ttlMs) || ttlMs <= 0) return 'no-store';
+  if (ttlMs < ADDRESS_PROVISIONAL_TTL_MS) return 'no-store';
+  return `private, max-age=${Math.min(300, Math.floor(ttlMs / 1000))}`;
+}
+
+/**
  * Install one address route with the shared cache, limiter and error shape.
  *
  * @param {object} middlewares Vite middleware stack.
  * @param {string} route Mount path, e.g. `/api/dvf`.
  * @param {(url: URL, req: object) => {key: string, load: () => Promise<object|null>}|null} plan
  *   Returns the cache key and the loader, or null when the request is invalid.
- * @param {{ttlMs?: number}} [options]
+ * @param {{ttlMs?: number|((payload: object) => number)}} [options]
+ *   A FUNCTION when the answer's own shelf life depends on what it says. The
+ *   noise overview serves a coarse outline and sharpens it behind the response,
+ *   so an answer carrying `refining > 0` is provisional: cached for six hours
+ *   it would outlive the refinement it is waiting for, and the reader would sit
+ *   on facets until the entry aged out. Everything else keeps one number.
  */
 function installAddressRoute(middlewares, route, plan, options = {}) {
-  const ttlMs = options.ttlMs ?? ADDRESS_MEMORY_TTL_MS;
+  const ttlFor = typeof options.ttlMs === 'function'
+    ? (payload) => options.ttlMs(payload)
+    : () => options.ttlMs ?? ADDRESS_MEMORY_TTL_MS;
   middlewares.use(route, async (req, res) => {
     const send = (status, payload) => {
       if (res.headersSent) return;
       res.writeHead(status, {
         'Content-Type': 'application/json; charset=utf-8',
-        'Cache-Control': status === 200 ? 'private, max-age=300' : 'no-store',
+        // THE BROWSER'S CACHE IS BOUND BY THE SAME SHELF LIFE AS OURS, and
+        // this used to be a flat five minutes. That is correct for an answer
+        // about an address, which does not change while you look at it, and it
+        // silently defeated the noise overview's refinement poll: the layer
+        // re-asked every five seconds, `fetch` answered every one of them out
+        // of the HTTP cache, and the sharpened outline sat on the server for
+        // five minutes without a single request reaching it. Measured — the
+        // draw stayed at 72 coarse bands for the whole session while the proxy
+        // finished all 18 aerodromes in 20 s.
+        'Cache-Control': status === 200 ? addressCacheControl(ttlFor(payload)) : 'no-store',
       });
       res.end(JSON.stringify(payload));
     };
@@ -20950,7 +21281,7 @@ function installAddressRoute(middlewares, route, plan, options = {}) {
     }
     const url = new URL(req.url || '', 'http://localhost');
     if (url.pathname === '/status' || url.pathname.endsWith('/status')) {
-      send(200, { route, entries: _addressCache.size, ttlMs });
+      send(200, { route, entries: _addressCache.size, ttlMs: ttlFor(null) });
       return;
     }
     let planned;
@@ -20966,7 +21297,10 @@ function installAddressRoute(middlewares, route, plan, options = {}) {
     }
     // Cache before limiter: a repeat of a scan already answered costs nothing
     // upstream, so it should not spend a slot either.
-    const cached = addressCacheGet(planned.key, ttlMs);
+    // The TTL is read from the CACHED payload, because it is that answer's own
+    // shelf life that is in question — not the one about to be built.
+    const peek = addressCacheGet(planned.key, Infinity);
+    const cached = addressCacheGet(planned.key, ttlFor(peek?.payload ?? null));
     if (cached && !cached.stale) {
       send(200, { ...cached.payload, fetchedAt: cached.cachedAt, stale: false });
       return;

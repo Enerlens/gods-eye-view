@@ -24,7 +24,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 
-import { BRUIT_AREA_SCALE_DENOMINATOR, projectBruit, projectBruitArea } from './bruitFeed.js';
+import {
+  BRUIT_AREA_SCALE_DENOMINATOR, BRUIT_PROBE_SCALE_DENOMINATOR, projectBruit, projectBruitArea,
+} from './bruitFeed.js';
 import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
 import bruitFranceLayer, {
   ADDRESS_SCAN_CEILING_M,
@@ -52,7 +54,11 @@ import bruitFranceLayer, {
   bruitDayText,
   bruitDrawOrder,
   bruitEmphasis,
+  bruitCommonCaveats,
   bruitGuidanceLabel,
+  BRUIT_REFINE_POLL_MS,
+  BRUIT_REFINE_POLL_STRIKES,
+  scheduleBruitRefinePoll,
   bruitLegend,
   bruitMarkerGlyph,
   bruitMarkerTitle,
@@ -904,4 +910,142 @@ test('a card is six lines, so the caveat is placed rather than pushed', () => {
   const ground = bruitGroundCard({ lon: anchor.lon, lat: anchor.lat, payload: AREA });
   assert.ok(ground.details.length <= BRUIT_CARD_MAX_LINES, `${ground.details.length} lines`);
   assert.ok(norm(ground.details[ground.details.length - 1]).includes('avions seulement'));
+});
+
+// ── COMING BACK FOR THE SHARPENED OUTLINE ───────────────────────────────────
+//
+// The overview is served coarse and refined behind the response, because the
+// refinement costs about nine seconds on a cold cache and a camera settle
+// cannot wait for it. That makes this the one layer on the address-scan shell
+// whose ANSWER improves while its QUESTION does not — and both of the shell's
+// refetch triggers watch the question. Without the poll below, a reader who
+// settles the camera and stops moving keeps the faceted outline for as long as
+// the tab is open.
+
+/** A fake clock, so the give-up is tested in a millisecond rather than 30 s. */
+function fakeClock() {
+  const timers = [];
+  return {
+    setTimer: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
+    clearTimer: (handle) => { if (timers[handle - 1]) timers[handle - 1].cleared = true; },
+    pending: () => timers.filter((t) => !t.cleared && !t.fired),
+    fire: () => {
+      const next = timers.find((t) => !t.cleared && !t.fired);
+      if (!next) return false;
+      next.fired = true;
+      next.fn();
+      return true;
+    },
+  };
+}
+
+test('a still-refining overview asks again, and a finished one stops', () => {
+  const clock = fakeClock();
+  let rescans = 0;
+  const rescan = () => { rescans += 1; };
+  assert.equal(
+    scheduleBruitRefinePoll({ payload: { area: true, refining: 3 }, rescan }, clock),
+    true,
+  );
+  assert.equal(clock.pending().length, 1);
+  assert.equal(clock.pending()[0].ms, BRUIT_REFINE_POLL_MS);
+  clock.fire();
+  assert.equal(rescans, 1);
+  // Nothing left to sharpen: no timer, and the layer goes quiet.
+  assert.equal(
+    scheduleBruitRefinePoll({ payload: { area: true, refining: 0 }, rescan }, clock),
+    false,
+  );
+  assert.equal(clock.pending().length, 0);
+});
+
+test('a point scan never polls — there is nothing to refine below 12 km', () => {
+  const clock = fakeClock();
+  // The point mode already fetches at the fine scale. A poll here would be a
+  // request every five seconds for an answer that cannot change.
+  assert.equal(
+    scheduleBruitRefinePoll({ payload: { refining: 4 }, rescan: () => {} }, clock),
+    false,
+  );
+  assert.equal(clock.pending().length, 0);
+});
+
+test('progress keeps the poll alive; a stalled refinement gives up', () => {
+  const clock = fakeClock();
+  const rescan = () => {};
+  // Each poll that lands one more aerodrome resets the budget, so a genuinely
+  // slow overview — twenty aerodromes, minutes of refinement — is never cut off
+  // halfway through.
+  for (let remaining = 12; remaining > 6; remaining -= 1) {
+    assert.equal(
+      scheduleBruitRefinePoll({ payload: { area: true, refining: remaining }, rescan }, clock),
+      true,
+      `gave up while still making progress at ${remaining}`,
+    );
+  }
+  // Now nothing moves. The service is refusing the fine probes, and the layer
+  // must stop rather than poll for as long as the tab is open.
+  let polls = 0;
+  while (scheduleBruitRefinePoll({ payload: { area: true, refining: 6 }, rescan }, clock)) {
+    polls += 1;
+    assert.ok(polls <= BRUIT_REFINE_POLL_STRIKES + 1, 'the poll never gave up');
+  }
+  assert.equal(polls, BRUIT_REFINE_POLL_STRIKES);
+});
+
+test('giving up is not a failure — the coarse overview is still the whole answer', () => {
+  const clock = fakeClock();
+  // Every band of every aerodrome is drawn either way; only the outline is
+  // generalised. So the give-up changes nothing on screen and says nothing
+  // alarming — it just stops asking.
+  for (let i = 0; i <= BRUIT_REFINE_POLL_STRIKES + 2; i += 1) {
+    scheduleBruitRefinePoll({ payload: { area: true, refining: 2 }, rescan: () => {} }, clock);
+  }
+  assert.equal(clock.pending().length, 0);
+});
+
+test('a missing rescan handle is inert rather than a crash', () => {
+  const clock = fakeClock();
+  assert.equal(scheduleBruitRefinePoll({ payload: { area: true, refining: 2 } }, clock), false);
+  assert.equal(scheduleBruitRefinePoll({}, clock), false);
+});
+
+test('the guidance line says the outline is about to change under the reader', () => {
+  const line = norm(bruitGuidanceLabel({
+    area: true, lastUpdate: 1, aerodromes: 8, dropped: 0, refining: 3,
+  }));
+  assert.match(line, /affinage/);
+  assert.match(line, /3 aérodromes/);
+  // The cap is the louder fact: a map that stops at twelve is incomplete, and
+  // an outline that is still sharpening is not.
+  assert.match(
+    norm(bruitGuidanceLabel({ area: true, lastUpdate: 1, aerodromes: 12, dropped: 4, refining: 3 })),
+    /non demandés/,
+  );
+  assert.equal(
+    bruitGuidanceLabel({ area: true, lastUpdate: 1, aerodromes: 8, dropped: 0, refining: 0 }),
+    null,
+  );
+});
+
+test('a mixed draw never prints one scale as if it covered everything', () => {
+  const mixed = bruitCommonCaveats({
+    area: true,
+    scaleDenominator: BRUIT_AREA_SCALE_DENOMINATOR,
+    refinedBands: 30,
+    coarseBands: 4,
+  }).join(' · ');
+  // The coarsest number is the headline, because it is the only one true of
+  // every shape on screen — but on its own it understates thirty of them.
+  assert.match(norm(mixed), /1:3 975 696/);
+  assert.match(norm(mixed), /30 zones déjà affinées/);
+  // A view that is entirely one scale says one number, exactly as before.
+  const done = bruitCommonCaveats({
+    area: true,
+    scaleDenominator: BRUIT_PROBE_SCALE_DENOMINATOR,
+    refinedBands: 34,
+    coarseBands: 0,
+  }).join(' · ');
+  assert.match(norm(done), /1:39 757/);
+  assert.doesNotMatch(norm(done), /déjà affinée/);
 });

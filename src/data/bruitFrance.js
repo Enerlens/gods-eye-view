@@ -137,20 +137,37 @@ import { ZONE_FILL_MAX_ALPHA } from './urbanismeGpu.js';
  *   OVERVIEW MODE, 12 km to {@link BRUIT_OVERVIEW_CEILING_M} — one probe per
  *     AERODROME in view, at its own published reference point, at
  *     1:{@link BRUIT_AREA_SCALE_DENOMINATOR}, whose buffer is wide enough that
- *     the whole plan comes back. No marker, so no winner, no runner-up and no
- *     dashes: `atPoint` is false on every band because nothing was tested
- *     against a point, and drawing that as "you are not standing in it" would
- *     be an answer to a question nobody asked.
+ *     the whole plan comes back — and then a second pass that re-fetches each
+ *     band it found at the fine scale, so the shape is as wide as the overview
+ *     needs and as detailed as the point probe's. No marker, so no winner, no
+ *     runner-up and no dashes: `atPoint` is false on every band because nothing
+ *     was tested against a point, and drawing that as "you are not standing in
+ *     it" would be an answer to a question nobody asked.
  *
- * ── DRAWN AT A STATED GENERALISATION, AND IT IS NOT THE SAME ONE ────────────
+ * ── DRAWN AT A STATED GENERALISATION, AND THE OVERVIEW EARNS THE FINE ONE ───
  * The outline the service returns is generalised to the requested rendering
  * scale — 1:39,757 for a point probe, 1:3,975,696 for an overview, a hundred
- * times coarser. The overview is therefore WIDER, not finer: it is the whole
- * plan at the detail a shape being read from a hundred kilometres up needs, and
- * descending under 12 km re-reads the band underfoot at the fine scale. The
- * card prints whichever denominator the payload actually carries, never a
- * constant, so the two can never be confused. Nothing drawn here is a surveyed
- * limit; the arrêté PDF on the card is the document that is.
+ * times coarser. That is one knob doing two jobs: the coarse scale is what
+ * makes the GetFeatureInfo buffer wide enough to return zones B, C and D at
+ * all, and it is also what flattens them. Measured, Roissy's zone D came back
+ * with 37 vertices across 65.8 km — a ring with visible facets.
+ *
+ * The two jobs are separated by fetching TWICE. The coarse probe is demoted to
+ * a discovery pass that names the bands; each named band is then re-fetched at
+ * the PROBE scale, aimed at its own coarse outline, which works because the
+ * service does not clip the geometry it returns to the box it was asked
+ * through. Measured over the twelve aerodromes around Paris, 751 vertices
+ * became 7,287. The proxy owns that pass and its measurements; see the second-
+ * pass header beside `bruitAerodromeZones` in `vite.config.js`.
+ *
+ * IT IS A BACKGROUND PASS, so the overview is drawn coarse first and sharpens
+ * under the reader a few seconds later — nine and a half seconds of refinement
+ * is not a camera settle. {@link scheduleBruitRefinePoll} is how this layer
+ * comes back for it, and {@link bruitCommonCaveats} is why a half-refined view
+ * still cannot overclaim: every band carries the scale its own outline was
+ * fetched at, the card prints the COARSEST of them, and it names how many are
+ * already better. Nothing drawn here is a surveyed limit at either scale; the
+ * arrêté PDF on the card is the document that is.
  *
  * ── WHY IT SITS ON `createAddressScanLayer` ─────────────────────────────────
  * The upstream takes a coordinate, not a bounding box, exactly like the four
@@ -644,9 +661,23 @@ export function bruitScaleDenominator(payload) {
  */
 export function bruitCommonCaveats(payload) {
   const denominator = bruitScaleDenominator(payload);
+  const scale = `contours généralisés au 1:${denominator.toLocaleString('fr-FR')} — ce n’est pas un relevé`;
+  // A MIXED DRAW MUST NOT PRINT ONE NUMBER. The overview serves coarse outlines
+  // and sharpens them band by band, so a view legitimately holds thirty at the
+  // probe scale and four at the overview's. `bruitScaleDenominator` returns the
+  // COARSEST, which is the only number true of every shape on screen — but on
+  // its own it understates thirty of them, so the mixture is named.
+  const coarse = Number(payload?.coarseBands) || 0;
+  const refined = Number(payload?.refinedBands) || 0;
+  if (payload?.area === true && coarse > 0 && refined > 0) {
+    return [
+      'avions seulement — ni route, ni fer, ni industrie : la carte de bruit stratégique n’est pas publiée ici',
+      `${scale} — ${refined} zone${refined > 1 ? 's' : ''} déjà affinée${refined > 1 ? 's' : ''} au 1:${BRUIT_PROBE_SCALE_DENOMINATOR.toLocaleString('fr-FR')}`,
+    ];
+  }
   return [
     'avions seulement — ni route, ni fer, ni industrie : la carte de bruit stratégique n’est pas publiée ici',
-    `contours généralisés au 1:${denominator.toLocaleString('fr-FR')} — ce n’est pas un relevé`,
+    scale,
   ];
 }
 
@@ -1137,9 +1168,17 @@ export function bruitGuidanceLabel(stats) {
         : 'Aucun plan de bruit aérien dans ce cadre';
     }
     // The line that keeps a capped map from reading as a complete one.
-    return stats.dropped > 0
-      ? `${stats.aerodromes} aérodromes dessinés · ${stats.dropped} de plus dans le cadre, non demandés`
-      : null;
+    if (stats.dropped > 0) {
+      return `${stats.aerodromes} aérodromes dessinés · ${stats.dropped} de plus dans le cadre, non demandés`;
+    }
+    // SAID OUT LOUD, because the shape is about to change under the reader.
+    // A coarse overview is complete — every band is drawn — but its outlines
+    // are visibly faceted, and a reader who sees them redraw finer a few
+    // seconds later is owed the reason rather than left wondering what moved.
+    if (stats.refining > 0) {
+      return `contours en cours d’affinage — ${stats.refining} aérodrome${stats.refining > 1 ? 's' : ''} encore au tracé large`;
+    }
+    return null;
   }
   if (stats?.lastUpdate && !(stats.zonesHere > 0)) {
     return stats.nearestKm != null
@@ -1147,6 +1186,91 @@ export function bruitGuidanceLabel(stats) {
       : 'Aucun plan de bruit aérien sur ce point';
   }
   return null;
+}
+
+
+/**
+ * How long to wait before asking again while the overview is still sharpening.
+ *
+ * 5 s. The poll costs no upstream call — the proxy rebuilds the whole overview
+ * from its per-aerodrome zone cache — so the only budget it spends is the
+ * layer's own rate limit, 40 a minute, against which twelve polls a minute is
+ * comfortable. Long enough that a refinement has usually landed at least one
+ * more aerodrome between two of them, so the shape sharpens in visible steps
+ * rather than flickering.
+ */
+export const BRUIT_REFINE_POLL_MS = 5_000;
+
+/**
+ * Polls with NO PROGRESS before the layer stops asking.
+ *
+ * Six, so about thirty seconds. The give-up is not a failure state and nothing
+ * on screen changes when it fires: a coarse overview is a complete and correct
+ * overview — every band of every aerodrome is drawn, the letters, the colours
+ * and the cards are the same — it is only the outline that is generalised, and
+ * the card says so. What this guards against is a layer that polls forever
+ * because the service is refusing the fine probes, which would be a request
+ * every five seconds for as long as the tab is open.
+ *
+ * Counted on PROGRESS and not on attempts: an overview of twenty aerodromes
+ * legitimately takes minutes to sharpen, and each one that lands resets the
+ * count. Only a run of six polls that moved nothing stops it.
+ */
+export const BRUIT_REFINE_POLL_STRIKES = 6;
+
+/** Poll state — the layer draws one overview at a time, so one of each. */
+let _refineTimer = null;
+let _refineRemaining = null;
+let _refineStrikes = 0;
+
+/** Stop polling and forget where we were. Called on every draw. */
+function stopBruitRefinePoll() {
+  if (_refineTimer) clearTimeout(_refineTimer);
+  _refineTimer = null;
+}
+
+/**
+ * Come back for the sharpened outline, and know when to stop.
+ *
+ * THE PROBLEM THIS SOLVES. The overview's outlines are generalised a hundred
+ * times coarser than a point scan's, because the scale that makes the buffer
+ * wide enough to return zones B, C and D is the same scale GeoServer
+ * generalises to — see the proxy's second-pass header. The proxy therefore
+ * serves the coarse answer at once and re-fetches each band at the fine scale
+ * behind it. Nothing about the QUESTION changes when that lands, so the shell's
+ * two refetch triggers — the camera moved, the query string changed — are both
+ * blind to it, and a reader who settles the camera and stops would keep the
+ * facets forever. This is the third trigger, and it is the layer's own because
+ * the layer is the only thing that knows the answer can improve.
+ *
+ * Exported for the test, which drives it with a fake clock rather than waiting
+ * thirty seconds to watch it give up.
+ *
+ * @param {{payload: object, rescan: () => void}} context
+ * @param {{setTimer?: Function, clearTimer?: Function}} [clock]
+ */
+export function scheduleBruitRefinePoll({ payload, rescan }, clock = {}) {
+  const setTimer = clock.setTimer || ((fn, ms) => setTimeout(fn, ms));
+  const clearTimer = clock.clearTimer || ((handle) => clearTimeout(handle));
+  if (_refineTimer) clearTimer(_refineTimer);
+  _refineTimer = null;
+  const remaining = Number(payload?.refining);
+  if (payload?.area !== true || !(remaining > 0) || typeof rescan !== 'function') {
+    _refineRemaining = null;
+    _refineStrikes = 0;
+    return false;
+  }
+  // Progress resets the budget; a poll that moved nothing spends one. `null` is
+  // the first sight of this overview, which is progress by definition.
+  if (_refineRemaining === null || remaining < _refineRemaining) _refineStrikes = 0;
+  else _refineStrikes += 1;
+  _refineRemaining = remaining;
+  if (_refineStrikes >= BRUIT_REFINE_POLL_STRIKES) return false;
+  _refineTimer = setTimer(() => {
+    _refineTimer = null;
+    rescan();
+  }, BRUIT_REFINE_POLL_MS);
+  return true;
 }
 
 /** Last payload drawn, for the row legend the shell has no hook for. */
@@ -1164,6 +1288,10 @@ let _pgs = null;
 export function renderBruit({ payload, dataSource, point, viewer }) {
   const classificationType = bruitClassificationTypeForScene(viewer?.scene);
   _payload = payload;
+  // A point scan, or a dormant clear, ends any poll the overview left running:
+  // `afterDraw` reinstates it on the next overview, and a timer that outlives
+  // the draw it belongs to would rescan a question the reader has left.
+  stopBruitRefinePoll();
   if (payload?.area === true) {
     _peb = null;
     _pgs = null;
@@ -1409,6 +1537,13 @@ export function summarizeBruit(payload) {
       nearestOaci: payload?.nearest?.oaci ?? null,
       register: payload?.register ?? null,
       scaleDenominator: payload?.scaleDenominator ?? BRUIT_AREA_SCALE_DENOMINATOR,
+      // How much of what is on screen is still the coarse outline. Three
+      // numbers rather than a flag, because "4 of 34 bands" and "34 of 34" are
+      // the difference between a shape that is nearly right and one that has
+      // not been refined at all, and the guidance line words them differently.
+      refining: payload?.refining ?? 0,
+      refinedBands: payload?.refinedBands ?? 0,
+      coarseBands: payload?.coarseBands ?? 0,
       available: payload?.available ?? null,
     };
   }
@@ -1464,6 +1599,10 @@ const bruitScanLayer = createAddressScanLayer({
   // on. Without this hook the interior of every band is inert — see
   // `bruitGroundCard`.
   groundCard: bruitGroundCard,
+  // The ONLY layer on this shell that uses `rescan`, and the reason is in
+  // `scheduleBruitRefinePoll`: its upstream improves an answer it has already
+  // sent, which neither of the shell's own refetch triggers can see.
+  afterDraw: scheduleBruitRefinePoll,
 });
 
 /**

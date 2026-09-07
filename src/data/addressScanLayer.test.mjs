@@ -365,6 +365,55 @@ test('an unchanged question at an unchanged point still costs nothing', async (t
   layer.disable();
 });
 
+test('a layer whose ANSWER improved can re-ask a question that did not change', async (t) => {
+  // The third refetch trigger, and the only one the shell cannot infer. Both
+  // guards above describe the REQUEST — the centre moved, the query string
+  // changed — and the noise overview's upstream serves a coarse outline and
+  // sharpens it behind the response. Nothing about the question changes when
+  // that lands, so without `rescan` a reader on a settled camera keeps the
+  // faceted shape for as long as the tab is open.
+  const originalDocument = globalThis.document;
+  globalThis.document = { addEventListener() {}, removeEventListener() {} };
+  t.after(() => { globalThis.document = originalDocument; });
+  const queries = [];
+  const { viewer } = headlessViewer(ADDRESS.lon, ADDRESS.lat, 900);
+  let handle = null;
+  const layer = createAddressScanLayer({
+    id: 'refine-test',
+    name: 'Refine test',
+    icon: '▦',
+    source: 'test',
+    endpoint: '/api/test',
+    updateInterval: 900_000,
+    render: () => 1,
+    afterDraw: ({ rescan }) => { handle = rescan; },
+    fetchImpl: async (url) => {
+      queries.push(String(url));
+      return { ok: true, json: async () => ({ refining: 1 }) };
+    },
+  });
+  layer.init(viewer);
+  layer.enable(viewer);
+  await layer.update(viewer);
+  assert.equal(queries.length, 1);
+  assert.equal(typeof handle, 'function', 'afterDraw was not handed a rescan');
+
+  // Plain re-runs are still refused: the guard is bypassed by `rescan`, not
+  // removed, and nothing else in the shell gains a way past it.
+  await layer.update(viewer);
+  assert.equal(queries.length, 1, 'the guard stopped holding for everyone else');
+
+  handle();
+  // `rescan` defers to a task of its own, because `afterDraw` runs inside the
+  // scan it belongs to — called synchronously it would only set the single-
+  // flight queue and re-ask the question the guard is about to refuse.
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  await new Promise((resolve) => { setTimeout(resolve, 0); });
+  assert.equal(queries.length, 2, 'the forced rescan never reached the network');
+  assert.equal(queries[0], queries[1], 'it asked a different question');
+  layer.disable();
+});
+
 // ── Whose click is it ────────────────────────────────────────────────────────
 //
 // Four outcomes, and the layer that answers a ground point has to reach three
