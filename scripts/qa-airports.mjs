@@ -56,6 +56,33 @@ function record(name, ok, detail) {
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
 
+/**
+ * Take a shot, after pumping a frame.
+ *
+ * `Page.captureScreenshot` waits for the compositor to hand it a NEW frame, and
+ * this app runs in Cesium's `requestRenderMode` — parked, it produces none, and
+ * the capture hangs past any `protocolTimeout` rather than returning the last
+ * one. Asking the render governor for a frame first is what unsticks it.
+ * @param {import('puppeteer').Page} page
+ * @param {string} file Absolute path to write.
+ */
+async function shoot(page, file) {
+  try {
+    await page.evaluate(() => {
+      window.__godsEyeView?.requestRender?.('qa-airports:shot');
+      window.__godsEyeView?.styleManager?.viewer?.scene?.requestRender?.();
+    });
+    await sleep(600);
+    await page.screenshot({ path: file });
+    console.log(`\n  shot → ${file}`);
+  } catch (error) {
+    // NOT a check. The shot is documentation; the compositor stalling over a
+    // photoreal tileset that is 403-blocked in the EEA must not throw away the
+    // three dozen assertions that already passed.
+    console.log(`\n  shot SKIPPED (${file}): ${error?.message || error}`);
+  }
+}
+
 /** Poll until `check` returns truthy or the budget runs out. */
 async function waitFor(page, check, { timeoutMs = 60_000, everyMs = 1000 } = {}) {
   const deadline = Date.now() + timeoutMs;
@@ -82,6 +109,11 @@ async function main() {
       '--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist',
       '--disable-dev-shm-usage', '--window-size=1440,900',
     ],
+    // `Page.captureScreenshot` intermittently blew the 30 s default on a
+    // machine already running a second dev server: the shot is taken of a
+    // 7 464-marker scene the compositor has to flush first. The checks had all
+    // passed by then, so the harness was reporting a failure it had not found.
+    protocolTimeout: 180_000,
   });
 
   const consoleErrors = [];
@@ -195,42 +227,110 @@ async function main() {
       const viewer = window.__godsEyeView.styleManager?.viewer;
       const entities = viewer?.dataSources?.getByName?.('Aéroports')?.[0]?.entities?.values ?? [];
       const now = window.Cesium?.JulianDate?.now?.();
-      const sizes = new Map();
+      // What each channel actually carries, read off the live primitives:
+      // COLOUR by tier (the ladder), SIZE by published runway length, and the
+      // hollow ring where no length was published at all.
+      const colours = new Map();
+      const sizeByClass = new Map();
+      let hollow = 0;
+      let hollowWithLength = 0;
+      let solidWithoutLength = 0;
+      const lengthClass = (metres) => (!(metres > 0) ? 'nolength'
+        : metres >= 3000 ? 'len3000'
+          : metres >= 1800 ? 'len1800'
+            : metres >= 1000 ? 'len1000' : 'len0');
       for (const entity of entities) {
         const p = entity.properties?.getValue?.(now) ?? {};
         const tier = p.type === 'large_airport' ? 'hub'
           : p.scheduled ? 'airline'
             : p.type === 'medium_airport' ? 'airport' : 'airfield';
-        const size = entity.point?.pixelSize?.getValue?.(now) ?? entity.point?.pixelSize;
-        if (!sizes.has(tier)) sizes.set(tier, new Set());
-        sizes.get(tier).add(Number(size));
+        const point = entity.point;
+        const size = Number(point?.pixelSize?.getValue?.(now) ?? point?.pixelSize);
+        const fill = point?.color?.getValue?.(now) ?? point?.color;
+        const outline = point?.outlineColor?.getValue?.(now) ?? point?.outlineColor;
+        // A hollow mark is a transparent FILL with a coloured outline, so the
+        // MARK's colour lives in a different slot for a ring than for a disc.
+        // Reading one slot would report two colours per tier and call it a bug.
+        const isHollow = Number(fill?.alpha) === 0;
+        const mark = isHollow ? outline : fill;
+        if (!colours.has(tier)) colours.set(tier, new Set());
+        colours.get(tier).add(String(mark?.toCssHexString?.() ?? mark));
+        const klass = lengthClass(Number(p.runways?.longestM));
+        if (!sizeByClass.has(klass)) sizeByClass.set(klass, new Set());
+        sizeByClass.get(klass).add(size);
+        if (isHollow) {
+          hollow += 1;
+          if (klass !== 'nolength') hollowWithLength += 1;
+        } else if (klass === 'nolength') {
+          solidWithoutLength += 1;
+        }
       }
       return {
         chips: (controls?.chips || []).map((chip) => chip.id),
         legend: (controls?.legend || []).map((item) => ({ label: item.label, count: item.count })),
-        sizes: [...sizes.entries()].map(([tier, set]) => [tier, [...set]]),
+        colours: [...colours.entries()].map(([tier, set]) => [tier, [...set]]),
+        sizes: [...sizeByClass.entries()].map(([klass, set]) => [klass, [...set]]),
+        hollow,
+        hollowWithLength,
+        solidWithoutLength,
       };
     });
 
     record('the row offers the four display floors',
       tiers.chips.join(',') === 'all,airports,airlines,hubs', tiers.chips.join(','));
-    record('the legend names every tier that shipped',
-      tiers.legend.length === 4,
+    // Four tier rows, four length classes, the unmeasured ring and the runway
+    // mark: every channel this layer spends has a key (D1).
+    record('the legend names every tier AND every size class that shipped',
+      tiers.legend.length === 10,
       tiers.legend.map((item) => `${item.label}=${item.count}`).join(' · '));
 
-    const sizeOf = new Map(tiers.sizes.map(([tier, set]) => [tier, set]));
-    const oneSizePerTier = [...sizeOf.values()].every((set) => set.length === 1);
-    const ladder = ['hub', 'airline', 'airport', 'airfield'].map((tier) => sizeOf.get(tier)?.[0]);
-    record('each tier draws at exactly one dot size', oneSizePerTier,
-      tiers.sizes.map(([tier, set]) => `${tier}=[${set}]`).join(' '));
-    record('the dot sizes descend with importance',
-      ladder.every((size, index) => index === 0 || size < ladder[index - 1]),
-      `hub=${ladder[0]} airline=${ladder[1]} airport=${ladder[2]} airfield=${ladder[3]}`);
+    // COLOUR is the tier ladder, and nothing else may move with it.
+    const colourOf = new Map(tiers.colours.map(([tier, set]) => [tier, set]));
+    const oneColourPerTier = [...colourOf.values()].every((set) => set.length === 1);
+    const distinctColours = new Set([...colourOf.values()].map((set) => set[0]));
+    record('each tier draws in exactly one colour, and no two tiers share it',
+      oneColourPerTier && distinctColours.size === colourOf.size,
+      tiers.colours.map(([tier, set]) => `${tier}=[${set}]`).join(' '));
+
+    // SIZE is the published runway length: one diameter per frozen class,
+    // descending with the metres, and NEVER varying inside a class.
+    const sizeOf = new Map(tiers.sizes.map(([klass, set]) => [klass, set]));
+    const oneSizePerClass = [...sizeOf.values()].every((set) => set.length === 1);
+    const ladder = ['len3000', 'len1800', 'len1000', 'len0'].map((k) => sizeOf.get(k)?.[0]);
+    record('each length class draws at exactly one dot size', oneSizePerClass,
+      tiers.sizes.map(([klass, set]) => `${klass}=[${set}]`).join(' '));
+    record('the dot sizes descend with the published runway length',
+      ladder.every((size, index) => Number.isFinite(size)
+        && (index === 0 || size < ladder[index - 1])),
+      `len3000=${ladder[0]} len1800=${ladder[1]} len1000=${ladder[2]} len0=${ladder[3]}`);
+
+    // A1 on the globe: the ring and the disc must partition the pack exactly.
+    record('the hollow ring marks every unpublished length, and only those',
+      tiers.hollowWithLength === 0 && tiers.solidWithoutLength === 0 && tiers.hollow > 1000,
+      `${tiers.hollow} rings · ${tiers.hollowWithLength} rings on a measured field`
+      + ` · ${tiers.solidWithoutLength} discs on an unmeasured one`);
+    record('the ring diameter is not reachable by any measured class',
+      ![...sizeOf.entries()].some(([klass, set]) => klass !== 'nolength'
+        && set.includes(sizeOf.get('nolength')?.[0])),
+      `ring=${sizeOf.get('nolength')?.[0]} classes=${ladder.join('/')}`);
 
     // A floor must actually remove markers from the globe — and give them back.
     const floored = await page.evaluate(async () => {
       const dm = window.__godsEyeView.dataManager;
       const viewer = window.__godsEyeView.styleManager?.viewer;
+      // Park the camera first. Marker visibility is a function of distance now
+      // (each tier declares a range), so counting markers while the boot
+      // fly-to is still descending measures the tween, not the floor.
+      const Cartesian3 = viewer.camera.positionWC.constructor;
+      viewer.camera.cancelFlight?.();
+      viewer.camera.setView({
+        destination: Cartesian3.fromDegrees(2.4, 47, 2_000_000),
+        orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+      });
+      viewer.camera.moveEnd.raiseEvent();
+      viewer.scene.render();
+      await new Promise((resolve) => { setTimeout(resolve, 700); });
+      viewer.scene.render();
       const entities = viewer?.dataSources?.getByName?.('Aéroports')?.[0]?.entities?.values ?? [];
       const shown = () => entities.filter((entity) => entity.show !== false).length;
       dm.setLayerParams('local-airports', { floor: 'hubs' }, { origin: 'user' });
@@ -258,6 +358,132 @@ async function main() {
       floored.restored > floored.afterFloor,
       `${floored.afterFloor} → ${floored.restored}`);
 
+    // ── The runway is drawn, and the stem stops claiming an altitude ──────
+    // Over Roissy at 12 km: five runway records ship, and the fifth is the
+    // 440 m grass helicopter lane that makes `count: 5` read as five strips.
+    const field = await page.evaluate(async () => {
+      const viewer = window.__godsEyeView.styleManager?.viewer;
+      // No `window.Cesium` global exists — borrow the statics off a live
+      // instance's constructor, the qa-cctv-v2 / qa-height-datum precedent.
+      const Cartesian3 = viewer.camera.positionWC.constructor;
+      const ellipsoid = viewer.scene.globe.ellipsoid;
+      viewer.camera.cancelFlight?.();
+      viewer.camera.setView({
+        destination: Cartesian3.fromDegrees(2.55412, 49.00896, 12_000),
+        orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+      });
+      // A programmatic setView does not raise moveEnd, and moveEnd is what the
+      // layer re-places its geometry on — the same contract the recall stem has
+      // always had. Raising it is what a drag or a flyTo would do.
+      viewer.camera.moveEnd.raiseEvent();
+      viewer.scene.requestRender();
+      viewer.scene.render();
+      await new Promise((resolve) => { setTimeout(resolve, 800); });
+      viewer.scene.render();
+
+      // The runways live in a PolylineCollection primitive, not in the data
+      // source: find it by the layer tag its polylines carry as their pick id.
+      let lines = null;
+      for (let i = 0; i < viewer.scene.primitives.length; i += 1) {
+        const primitive = viewer.scene.primitives.get(i);
+        if (!primitive || typeof primitive.get !== 'function' || !primitive.length) continue;
+        if (primitive.get(0)?.id?.__localLayerId === 'local-airports') { lines = primitive; break; }
+      }
+      if (!lines) return { found: false };
+
+      let shown = 0;
+      let cdgShown = 0;
+      const cdgSpans = [];
+      const widths = new Set();
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines.get(i);
+        if (!line.show) continue;
+        shown += 1;
+        const props = line.id?.properties?.getValue?.() ?? {};
+        if (props.icao !== 'LFPG') continue;
+        cdgShown += 1;
+        const [head, tail] = line.positions;
+        cdgSpans.push(Math.round(Cartesian3.distance(head, tail)));
+        widths.add(line.width);
+      }
+
+      // The stem is capped in metres for this layer: read the tip's height back
+      // against the base it stands on.
+      const entities = viewer.dataSources.getByName('Aéroports')[0].entities.values;
+      let maxStemM = 0;
+      for (const entity of entities) {
+        if (entity.show === false || !entity.__localBaseCartesian) continue;
+        const tip = entity.position?.getValue?.();
+        if (!tip) continue;
+        const lift = ellipsoid.cartesianToCartographic(tip).height
+          - ellipsoid.cartesianToCartographic(entity.__localBaseCartesian).height;
+        if (lift > maxStemM) maxStemM = lift;
+      }
+      return {
+        found: true, total: lines.length, shown, cdgShown,
+        cdgSpans: cdgSpans.sort((a, b) => b - a),
+        widths: [...widths].sort((a, b) => a - b),
+        maxStemM: Math.round(maxStemM),
+      };
+    });
+
+    // The batch is POOLED: it holds what is drawn, not what the pack carries —
+    // 6 698 resident polylines cost their vertices in the shader on every frame
+    // whether shown or not, which is a 6 ms per-frame regression measured
+    // against origin/main. So the invariant is that the two numbers AGREE.
+    record('the published runway geometry reaches the globe as real lines',
+      field.found && field.shown > 20 && field.total === field.shown,
+      field.found ? `${field.total} in the batch, ${field.shown} drawn` : 'no batch');
+    record('Roissy draws all five of its runway records',
+      field.cdgShown === 5, `${field.cdgShown} drawn — spans ${field.cdgSpans?.join('/')} m`);
+    record('each runway is drawn at its own true length, helicopter lane included',
+      field.cdgSpans?.[0] > 4100 && field.cdgSpans?.[0] < 4300
+      && field.cdgSpans?.[4] > 300 && field.cdgSpans?.[4] < 600,
+      `longest=${field.cdgSpans?.[0]} m shortest=${field.cdgSpans?.[4]} m`);
+    record('close in, the stroke carries each runway\'s own published width',
+      (field.widths?.length ?? 0) > 1 && Math.max(...(field.widths || [0])) > 2,
+      `stroke widths ${field.widths?.join('/')} px for 45 m and 60 m strips`);
+    record('the recall stem is capped in metres, well under pattern altitude',
+      field.maxStemM <= 151,
+      `tallest stem ${field.maxStemM} m (cap 150, traffic pattern ~300)`);
+
+    await sleep(4000);
+    await shoot(page, path.join(SHOT_DIR, 'airports-roissy.png'));
+
+    // ── The marker range, which is the A4 fix ─────────────────────────────
+    // From orbit the 100 %-French `airfield` tier must be gone: drawn, it
+    // reports a French aerodrome density that belongs to the SELECTION.
+    const orbit = await page.evaluate(async () => {
+      const viewer = window.__godsEyeView.styleManager?.viewer;
+      const Cartesian3 = viewer.camera.positionWC.constructor;
+      viewer.camera.setView({
+        destination: Cartesian3.fromDegrees(2.4, 46, 9_000_000),
+        orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+      });
+      viewer.camera.moveEnd.raiseEvent();
+      viewer.scene.requestRender();
+      viewer.scene.render();
+      await new Promise((resolve) => { setTimeout(resolve, 800); });
+      viewer.scene.render();
+      const drawn = { hub: 0, airline: 0, airport: 0, airfield: 0 };
+      for (const entity of viewer.dataSources.getByName('Aéroports')[0].entities.values) {
+        if (entity.show === false) continue;
+        const p = entity.properties?.getValue?.() ?? {};
+        const tier = p.type === 'large_airport' ? 'hub'
+          : p.scheduled ? 'airline'
+            : p.type === 'medium_airport' ? 'airport' : 'airfield';
+        drawn[tier] += 1;
+      }
+      return drawn;
+    });
+
+    record('from orbit the France-only tier is not drawn at all',
+      orbit.airfield === 0 && orbit.airport === 0,
+      `hub=${orbit.hub} airline=${orbit.airline} airport=${orbit.airport} airfield=${orbit.airfield}`);
+    record('the tiers that are worldwide by selection still are',
+      orbit.hub > 100,
+      `${orbit.hub} grands aéroports still drawn at 9 000 km`);
+
     // ── Shot ──────────────────────────────────────────────────────────────
     // newQaPage() suppressed the launcher before boot; this asserts the card is
     // actually out of the shot rather than trusting that it worked.
@@ -265,23 +491,77 @@ async function main() {
       await firstRunLauncherSuppressed(page));
     await page.evaluate(() => {
       const viewer = window.__godsEyeView.styleManager?.viewer;
-      const Cesium = window.Cesium;
-      if (!viewer || !Cesium) return;
+      if (!viewer) return;
+      // There is NO `window.Cesium` global. This block used to read one and
+      // return early when it came back undefined, so the shot was taken from
+      // wherever the boot fly-to happened to leave the camera and the framing
+      // below was never applied. Statics are borrowed off a live instance.
+      const Cartesian3 = viewer.camera.positionWC.constructor;
       // Cancel the boot fly-to first, or the tween drags the camera back to
       // Paris under the manual render pump.
       viewer.camera.cancelFlight?.();
       // Île-de-France at départemental scale: eleven fields in one frame, from
       // Roissy and Orly down to the grass strips the long tail is made of.
       viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(2.4, 48.7, 260_000),
-        orientation: { heading: 0, pitch: -Cesium.Math.PI_OVER_TWO, roll: 0 },
+        destination: Cartesian3.fromDegrees(2.4, 48.7, 260_000),
+        orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
       });
+      viewer.camera.moveEnd.raiseEvent();
       viewer.scene.requestRender();
     });
     await sleep(6000);
 
-    await page.screenshot({ path: path.join(SHOT_DIR, 'airports-idf.png') });
-    console.log(`\n  shot → ${path.join(SHOT_DIR, 'airports-idf.png')}`);
+    // The FAR regime, which is what 260 km is: Roissy's mark is held at its
+    // class floor (18 px, so ~6 km of world length at this range — more symbol
+    // than measurement, and declared as such), while Toussus' 1 100 m strip has
+    // passed RUNWAY_MAX_STRETCH and is not drawn at all. Its pastille speaks
+    // for it. The TRUE-length regime is proven by the 12 km block above.
+    const farRegime = await page.evaluate(async () => {
+      const viewer = window.__godsEyeView.styleManager?.viewer;
+      const Cartesian3 = viewer.camera.positionWC.constructor;
+      // Self-contained, like the two blocks above: the geometry pass runs on
+      // moveEnd inside a rendered frame, and this harness cannot assume the
+      // page is still producing frames on its own — a stalled compositor would
+      // otherwise be read as "the layer drew nothing".
+      viewer.camera.cancelFlight?.();
+      viewer.camera.setView({
+        destination: Cartesian3.fromDegrees(2.4, 48.7, 260_000),
+        orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
+      });
+      viewer.camera.moveEnd.raiseEvent();
+      viewer.scene.render();
+      await new Promise((resolve) => { setTimeout(resolve, 800); });
+      viewer.scene.render();
+      let lines = null;
+      for (let i = 0; i < viewer.scene.primitives.length; i += 1) {
+        const primitive = viewer.scene.primitives.get(i);
+        if (!primitive || typeof primitive.get !== 'function' || !primitive.length) continue;
+        if (primitive.get(0)?.id?.__localLayerId === 'local-airports') { lines = primitive; break; }
+      }
+      if (!lines) return { drawn: 0 };
+      let drawn = 0;
+      const spans = [];
+      for (let i = 0; i < lines.length; i += 1) {
+        const line = lines.get(i);
+        if (!line.show) continue;
+        drawn += 1;
+        const props = line.id?.properties?.getValue?.() ?? {};
+        if (props.icao === 'LFPG' || props.icao === 'LFPN') {
+          spans.push([props.icao, Math.round(Cartesian3.distance(line.positions[0], line.positions[1]))]);
+        }
+      }
+      return { drawn, spans };
+    });
+    const roissyFar = farRegime.spans?.find((entry) => entry[0] === 'LFPG')?.[1] ?? 0;
+    const toussusFar = farRegime.spans?.find((entry) => entry[0] === 'LFPN')?.[1] ?? 0;
+    record('far out the mark holds its class floor instead of shrinking away',
+      farRegime.drawn > 0 && roissyFar > 4300,
+      `${farRegime.drawn} drawn · Roissy held at ${roissyFar} m for a 4 217 m runway`);
+    record('and a strip the floor would stretch past 2x is dropped, not inflated',
+      toussusFar === 0,
+      toussusFar ? `Toussus drawn at ${toussusFar} m for 1 100 m` : 'Toussus left to its pastille');
+
+    await shoot(page, path.join(SHOT_DIR, 'airports-idf.png'));
 
     const relevantErrors = consoleErrors.filter((text) => /airport|aéroport|ourairports/i.test(text));
     record('no console errors mentioning the new layer', relevantErrors.length === 0,

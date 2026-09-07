@@ -138,11 +138,21 @@ const airports = createLocalGeoJsonLayer({
   // ── Importance is the map channel, not just card text ─────────────────
   // Every marker the same size says every airfield matters the same, which is
   // the one thing this pack is NOT. `airportTier` grades each feature once and
-  // that single answer drives the dot size, the colour, the label ladder, the
-  // legend and the display floors — see the ladder in ./airportsPack.js.
+  // that single answer drives the colour, the label ladder, the legend, the
+  // display floors and — new — the distance at which the MARK itself is drawn.
+  // It no longer drives the dot SIZE: that is the published runway length now,
+  // through the pack's render spec. See both ladders in ./airportsPack.js.
   groupOf: airportTier,
   groupStyles: AIRPORT_TIER_STYLES,
   groupVisible: airportTierVisible,
+
+  // The recall stem is capped in metres here and nowhere else in the app,
+  // because this is the one layer whose marks stand over ground that live
+  // aircraft are flown above. Uncapped it puts the pastille at FL114 at 50 km
+  // and FL228 at 100 km, in the middle of the traffic the flights layers draw
+  // at their real altitudes — two vertical lengths, two registers, one column
+  // of pixels (F7). 150 m is under the 300 m traffic-pattern altitude.
+  stemMaxHeightM: 150,
   // Opens on TOUS: a visitor who turns the layer on asked to see the airports,
   // and a layer that hides 1 126 of them before being asked would be answering
   // a question nobody put. The chip is there the moment they want it.

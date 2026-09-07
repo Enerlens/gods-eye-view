@@ -354,3 +354,63 @@ Rangées par ce qu'elles coûtent. **Trois d'entre elles ont été corrigées pe
 3. **Vérifier la coque AIS à l'écran.** Le contrat proxy ↔ client vient d'être réparé et n'a jamais tourné en vrai : un port dense (Rotterdam, Le Havre) répond en une minute à la question « le seuil de 15,6 km est-il le bon ».
 4. **Le module d'échelle de puissance partagé** (verdict ①), avant d'ajouter le moindre cylindre aux trois couches énergie restantes.
 5. **Retirer les quatre `scaleByDistance` composés** (incohérence 2), avec une capture avant-après par couche.
+
+---
+
+## État d'application — 2026-09-07 · les aéroports
+
+*Un seul dataset, pris en entier plutôt qu'en surface, et **vu dans un navigateur** — ce que le passage du 2026-09-03 n'avait pas fait.*
+
+La ligne « Aéroports » de l'audit tient en une phrase : *« Sous ~50 km, dessiner la piste orientée à sa vraie longueur. La hiérarchie devient une mesure au lieu d'un bucket. »* Elle a été appliquée, et le reste de la couche avec — parce que la mesurer a montré que la proposition, telle qu'elle était écrite, était **inapplicable en France**.
+
+### La mesure qui a changé le brief
+
+Recomptée sur le tirage OurAirports du 2026-09-07, sur les 7 464 terrains que la politique de sélection retient :
+
+| Palier | Piste géoréférencée | dont France |
+|---|---:|---:|
+| Grand aéroport | 1 091 / 1 173 — 93,0 % | 26 / 27 |
+| Aéroport sans ligne | 1 539 / 1 990 — 77,3 % | 90 / 90 |
+| Aéroport de ligne | 2 071 / 3 175 — 65,2 % | 74 / 92 |
+| **Aérodrome & aéroclub** | **89 / 1 126 — 7,9 %** | 89 / 1 126 |
+| **Total** | **4 790 / 7 464 — 64,2 %** | **279 / 1 335 — 20,9 %** |
+
+Le palier `airfield` est français à 100 % par construction : la clause (c) de la politique est la seule qui admette un petit terrain sans ligne régulière, et elle ne vaut que pour la France. **Le long tail français — la raison d'être du paquet — est exactement la moitié qu'OurAirports n'a jamais géoréférencée.** Livrer « la piste remplace le point » aurait donc effacé 92 % des aéroclubs d'une couche dont l'argument entier est qu'ils y sont, au profit d'une carte du monde qui a, elle, ses coordonnées.
+
+**La proposition était juste et son mode d'emploi était faux.** La piste ne peut pas être *le* signe ; elle est *un* signe, et il en faut un autre, de première classe, pour les 2 674 terrains sans forme.
+
+### Ce qui a été livré
+
+| # | Geste | Règle | Preuve |
+|---|---|---|---|
+| 1 | La taille de la pastille porte `longestM`, en quatre classes à seuils gelés (3 000 / 1 800 / 1 000 m → 18/13/9/6 px) | B1, C1 | `qa-airports` : « chaque classe dessine à exactement une taille », « les tailles descendent avec la longueur publiée » |
+| 2 | Anneau creux 8 px pour les 1 314 terrains sans longueur publiée | A1, B5 | « l'anneau marque toute longueur non publiée, et seulement celles-là » — 1 314 anneaux, 0 anneau sur un terrain mesuré, 0 disque sur un non mesuré |
+| 3 | La piste tracée : 6 698 pistes, deux seuils publiés, longueur / cap / largeur vrais | B2, F6 | Roissy dessine 4217/4200/2701/2700/443 m, épaisseurs 2/3/4 px |
+| 4 | Portée d'affichage de la marque par palier, imprimée dans la légende | A4, A5, F6 | « depuis l'orbite le palier France-seulement n'est pas dessiné » — hub=671, tout le reste à 0 |
+| 5 | Tige de rappel plafonnée à 150 m | F7 | « la tige est plafonnée en mètres » — la plus haute mesure 150 m |
+
+Le paquet passe de 2,42 à 2,73 Mo (+12,8 %), la couche de 21 à **36 contrôles navigateur**, tous verts.
+
+### Ce que l'implémentation a appris contre ce document
+
+**1. « Une marque, deux planchers » bat « trois régimes ».** Ce document et la proposition initiale décrivaient trois régimes séparés — tiret symbolique, ligne métrique, ruban à largeur vraie — comme trois dessins à faire commuter. Ils n'en font qu'un : une seule polyligne dont la **longueur** est plancherée au diamètre de sa propre pastille et dont **l'épaisseur** est plancherée à 3 px. Un plancher déjà dépassé ne fait rien, donc les trois régimes tombent des deux planchers, sans commutation et sans discontinuité à masquer. Le seul construit est celui de la donnée ; le « symbole » est la même ligne étirée autour du même milieu, à un facteur près.
+
+**2. Une borne dérivée bat une borne choisie, et il y en avait deux à trouver.** Ni « ~50 km » ni aucun autre seuil rond n'apparaît dans le code livré. Une piste **secondaire** apparaît quand un pixel passe sous 45 m — la largeur médiane publiée, donc littéralement le point où deux bandes cessent d'être séparables. Et une piste est abandonnée quand son plancher l'étirerait au-delà du **double** de sa longueur vraie, parce qu'au-delà la marque est plus symbole que mesure. Les deux se lisent comme des phrases ; « 50 km » ne se lit pas.
+
+**3. Une seconde géométrie ne coûte pas ce qu'on croit, et ce n'est pas le dessin.** Version résidente — une polyligne Cesium par piste, 6 698 objets, `show` basculé par la caméra — l'image *stable* est passée de **0,6 ms à 6,9 ms de médiane** (p90 5,0 → 13,1), mesuré contre `origin/main` dans la même session, caméra parquée à 260 km, couche allumée. Payé sur **chaque image** pendant que la caméra bouge, pas seulement à l'arrêt. Un `PolylineCollection` téléverse toutes ses polylignes dans un seul tampon et dessine le lot en une commande : `show: false` est un attribut par sommet, donc une polyligne masquée coûte quand même ses sommets dans le shader. Deux corrections, toutes deux mesurées : un **pool** de polylignes réutilisées, dimensionné à ce qui est réellement à l'écran (11 à 88) et non à ce que le paquet contient — retour à 0,7 ms — et une **lecture de `canvas.clientHeight` hissée hors de la boucle**, qui s'exécutait une fois par enregistrement et par arrêt caméra, soit 7 464 lectures de layout DOM (la passe d'arrêt est retombée de 17,6 / 10,9 / 13,2 ms à 8,5 / 2,2 / 2,6 ms à 2 000 / 260 / 60 km, contre 8,7 / 1,9 / 2,5 pour la référence). *Le repère qui a désigné le coupable* : le surcoût ne bougeait pas avec le nombre de pistes dessinées — identique à 2 000 km où il y en a zéro et à 60 km où il y en a 71.
+
+**3 bis. Et partager un `Material` entre polylignes est un plantage, pas une économie.** `Polyline._destroy()` appelle `this._material.destroy()`, et le `destroyObject` de Cesium n'est pas idempotent : un matériau partagé est détruit une fois par polyligne, et la seconde lève. C'était donc un plantage latent au `removeAll()` et à la destruction de la couche, écrit en croyant économiser des appels de dessin. Il n'y avait rien à économiser : les *buckets* sont indexés par `material.type` et non par instance (`PolylineCollection.js:1160`), donc un matériau par polyligne se regroupe quand même en une commande.
+
+**4. La teinte du palier sur la piste était une faute, et le navigateur l'a dit avant la doctrine.** La première version peignait chaque piste à la couleur de son palier. Sur le fond clair, le pas le plus haut de la rampe (`#f0e6ff`) **disparaît purement et simplement** — visible dans `qa-shots/airports/`, où les cinq pistes de Roissy sont tracées et illisibles. La correction est double et elle était déjà dans la doctrine : un **contour** sur le trait, exactement ce que la pastille a toujours eu pour la même raison (B3 : la couleur perçue est le résultat d'un compositage sur un fond qui n'est pas neutre), et la teinte de **couche** plutôt que celle du palier — la ligne porte la mesure, la pastille porte le palier, un canal une information (A3).
+
+### Ce que ce chantier ferme, et ce qu'il n'a pas touché
+
+**Fermé :** la ligne « Aéroports » du tableau *Air & Espace*, et — hors périmètre annoncé — le vide de type (b) de la règle A4 sur cette couche, plus une ambiguïté F7 que personne n'avait relevée : la tige de rappel des couches locales est un **quatrième** registre vertical, et au-dessus d'un aéroport elle occupait la bande d'altitude où les couches de vols dessinent de vrais avions (695 m à 10 km, 3 475 m à 50 km, 13 900 m à 200 km). F7 avait vu la collision tige d'altitude ↔ tige de séisme ; celle-ci était déjà à l'écran.
+
+**Non touché, et volontairement :**
+
+- **L'emprise de l'aéroport.** Le paquet n'a que les pistes. Un périmètre d'aérodrome demanderait OSM, donc une seconde source dans un paquet qui n'en revendique qu'une — décision séparée, avec un champ de provenance par objet.
+- **Le revêtement en texture.** `revêtue / non revêtue / eau` couvre 78 % et reste dans la fiche. C'est un qualitatif, il appartient à la forme ou au motif (B4), et le trait n'a plus de canal libre une fois la longueur, le cap et la largeur posés.
+- **Le trafic ADS-B sur la pastille.** La couverture ADS-B est inégale et non déclarée : la carte lirait « aéroport calme » là où GEV ne reçoit rien. A1 et A4 en même temps.
+- **La géométrie OSM pour combler le trou français.** Ferait passer les aéroclubs de 8 % à ~90 %. Le précédent existe (`build-osm-dams.mjs` embarque 6 771 objets Overpass, ODbL déjà traitée). Même objection que l'emprise : deux sources dans un paquet qui en revendique une.
+- **Le ruban au sol à la vraie largeur, en perspective.** L'épaisseur livrée est un trait d'écran : sous une caméra très rasante elle ne raccourcit pas comme le ferait une surface. La longueur et le cap restent les valeurs publiées, qui sont ce que la marque revendique. Un vrai ruban voudrait dire reconstruire des milliers de volumes d'ombre à chaque arrêt de caméra, pour 45 m de largeur apparente.

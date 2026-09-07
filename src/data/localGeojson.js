@@ -1,6 +1,11 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
-import { airportCardDetails, airportLabelPriority } from './airportsPack.js';
+import {
+  airportCardDetails,
+  airportLabelPriority,
+  airportLengthLegend,
+  airportRenderSpec,
+} from './airportsPack.js';
 import {
   datacenterCardDetails,
   datacenterRenderSpec,
@@ -57,6 +62,72 @@ const GROUND_SAMPLE_MAX_ABS_HEIGHT_M = 9000;
  * 30 × 2 s ≈ 60 s, far longer than a tile stream-in.
  */
 export const GROUND_SAMPLE_MAX_ARMED_RETRIES = 30;
+
+/* ── DRAWN LINES: the runway regime ladder ──────────────────────────────────
+ *
+ * A pack may hand a feature a `lines` array — a list of published segments in
+ * lon/lat, with an optional metre width. `local-airports` is the first caller:
+ * OurAirports publishes both thresholds of a runway, which makes an airport the
+ * one object in this loader that has a real oriented shape at true scale.
+ *
+ * ONE MARK, TWO FLOORS, THREE REGIMES — and it is continuous at both crossings,
+ * because a floor that is already exceeded does nothing:
+ *
+ *   far     length floored to the feature's own pastille diameter, stroke at
+ *           RUNWAY_MIN_STROKE_PX          → an oriented tick, graded by class
+ *   mid     length TRUE, stroke still at the minimum
+ *                                         → the runway, at its place and its cap
+ *   near    length TRUE, stroke at the runway's own published metre width
+ *                                         → the runway, at its size
+ *
+ * The far floor is the pastille's diameter on purpose: the mark never shrinks
+ * below the dot it grew out of, and the two therefore say the same thing at the
+ * moment they hand over (see AIRPORT_LENGTH_CLASSES).
+ *
+ * WHAT THIS IS NOT. The stroke is a screen width, so under a strongly oblique
+ * camera it does not foreshorten the way a true ground ribbon would: near the
+ * horizon a runway reads slightly too wide. Its LENGTH and its BEARING are
+ * always the published ones, which is what the mark claims; the width is a
+ * stroke, and a stroked centreline is not a surface. Drawing a real
+ * ground-clamped ribbon would mean rebuilding thousands of shadow volumes on
+ * every camera settle, which is not worth 45 m of apparent width.
+ *
+ * The segments are also NOT clamped to the terrain. They sit at the record's
+ * sampled ground height — the same number the stem stands on, sampled at the
+ * airport's own reference point within GROUND_SAMPLE_MAX_DISTANCE_M and left at
+ * ellipsoid height beyond it. At 100 km a pixel is already 107 m, so the
+ * un-sampled error is invisible; close in, on a field flat by construction, one
+ * height for the whole strip is the right model.
+ */
+
+/**
+ * Minimum TOTAL stroke of a drawn segment, in pixels — outline included.
+ *
+ * 3 rather than 2 because the segment is drawn with an outline, for the same
+ * reason the anchor pastille has always had one: the composited colour of a
+ * mark depends on the basemap under it (B3), and a 45 m runway is two or three
+ * pixels wide at the range where its width first becomes readable. Without the
+ * outline the top tier's near-white violet vanished outright on the light IGN
+ * and Google roadmap stacks — measured, in `qa-shots/airports/`.
+ */
+const RUNWAY_MIN_STROKE_PX = 3;
+/** How much of that stroke is outline, split across both edges. */
+const RUNWAY_OUTLINE_PX = 1.5;
+/**
+ * Metres per pixel at which the median 45 m runway is exactly one pixel wide.
+ * Above it the true width cannot be drawn at all, which is also the point where
+ * a field's SECONDARY strips stop being separable and are not drawn either.
+ */
+const RUNWAY_TRUE_WIDTH_MPP = 45;
+/**
+ * How far the length floor may stretch a segment past its true length before
+ * the segment is dropped entirely. Beyond 2× the mark is more symbol than
+ * measurement, and the pastille — which carries the same class — says it better.
+ */
+const RUNWAY_MAX_STRETCH = 2;
+/** Lift above the sampled ground, in metres, so the strip clears the mesh it sits on. */
+const RUNWAY_LIFT_M = 3;
+
 /** Ignore sub-metre camera-derived stem-tip noise at camera settle. */
 export const LOCAL_STEM_TIP_EPSILON_M = 0.5;
 const LOCAL_STEM_TIP_EPSILON_SQ = LOCAL_STEM_TIP_EPSILON_M ** 2;
@@ -84,6 +155,13 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
  *   surface          string?  'volume' | 'flat' | null — how the polygon draws
  *   fillAlpha        number?  fill opacity for 'volume'/'flat'
  *   extrudedHeightM  number?  metres, only ever set with surface === 'volume'
+ *   lines            array?   published segments {lon1,lat1,lon2,lat2,widthM}
+ *   lineFloorPx      number?  minimum screen length of those segments
+ *
+ * `lines` is the second geometry this loader could not draw. A point feature
+ * has a shape when the pack publishes one — a runway from threshold to
+ * threshold — and until now the only geometry a record could own was the one
+ * Cesium parsed out of the GeoJSON. See the regime ladder above the constants.
  *
  * The spec is produced by the PACK, not here, for the same reason the card
  * copy is: the module that knows what the tags mean is the module that decides
@@ -92,6 +170,10 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
  * @type {Readonly<Record<string, {featureRender: Function, renderLegend: Function}>>}
  */
 const PACK_RENDERERS = Object.freeze({
+  'local-airports': Object.freeze({
+    featureRender: (properties) => airportRenderSpec(properties),
+    renderLegend: airportLengthLegend,
+  }),
   'local-datacenters': Object.freeze({
     featureRender: datacenterRenderSpec,
     renderLegend: datacenterSurfaceLegend,
@@ -117,6 +199,9 @@ const FLAT_RENDER_SPEC = Object.freeze({
   surface: null,
   fillAlpha: null,
   extrudedHeightM: null,
+  lines: null,
+  lineBaseM: 0,
+  lineFloorPx: 0,
 });
 
 /**
@@ -538,7 +623,15 @@ export function createLocalGeoJsonLayer({
    */
   /** @type {(props:object)=>(string|null)} Classify a feature into a group key. */
   groupOf = null,
-  /** @type {Record<string,{color?:string,pixelSize?:number,stemWidth?:number}>} Per-group styling. */
+  /**
+   * Per-group styling. `markerMaxDistance` is how far out the MARK is drawn at
+   * all, which is not the same question as how far out its card is offered:
+   * a pack whose lesser groups are geographically skewed (the airports pack's
+   * `airfield` tier is 100 % French, by selection) would otherwise report a
+   * density from orbit that belongs to the selection and not to the world.
+   * Omitted, the group is drawn wherever the horizon allows — the old behaviour.
+   * @type {Record<string,{color?:string,pixelSize?:number,stemWidth?:number,cardMaxDistance?:number,markerMaxDistance?:number}>}
+   */
   groupStyles = null,
   /** @type {(groupKey:string, params:object)=>boolean} Whether a group is drawn. */
   groupVisible = null,
@@ -564,6 +657,28 @@ export function createLocalGeoJsonLayer({
   featureRender = null,
   /** @type {(tally:Map<string,{total:number,visible:number}>)=>Array<object>} Size legend. */
   renderLegend = null,
+  /*
+   * ── OPTIONAL: A CEILING ON THE RECALL STEM ─────────────────────────────
+   *
+   * The stem holds the pastille at a constant 65 px above its base, which
+   * means its height IN METRES is `0.0695 × camera distance`: 695 m at 10 km,
+   * 3 475 m at 50 km, 13 900 m at 200 km. For a dam or a port that is a
+   * recall device and nothing else, because nothing else on the globe is
+   * reasoning about a height there.
+   *
+   * Over an AIRPORT it is a claim. The live-flight layers draw aircraft at
+   * their real altitudes above the same runways, so an uncapped pastille
+   * floats at FL114 among the traffic on approach and at FL228 above it —
+   * two lengths on the same vertical over the same point, in two different
+   * registers, with nothing on screen to tell them apart (F7).
+   *
+   * Capping in METRES fixes it without giving up the device: below the cap the
+   * stem still lifts the mark clear of the mesh, and above it the mark simply
+   * sits on its field. 150 m is under the 300 m (1 000 ft AGL) traffic-pattern
+   * altitude, so the pastille can never reach a height an aircraft is flown at.
+   */
+  /** @type {number} Ceiling on the recall stem, in metres. Uncapped by default. */
+  stemMaxHeightM = Number.POSITIVE_INFINITY,
 }) {
   const resolveRenderSpec = featureRender || PACK_RENDERERS[id]?.featureRender || null;
   const resolveRenderLegend = renderLegend || PACK_RENDERERS[id]?.renderLegend || null;
@@ -591,6 +706,45 @@ export function createLocalGeoJsonLayer({
   let _preRenderRemover = null;
   let _cameraMoveEndRemover = null;
   let _stemRecords = [];
+  /**
+   * The drawn segments of every record, in ONE batched primitive.
+   *
+   * Not entities: their positions and widths are re-derived on every camera
+   * settle, and a Cesium geometry updater rebuilds a primitive for each such
+   * change. `PolylineCollection` is the primitive built for exactly this — it
+   * owns the batch and takes position and width writes in place.
+   * @type {?object}
+   */
+  let _runwayLines = null;
+  /**
+   * Reusable polylines, in draw order, all of them resident in `_runwayLines`.
+   *
+   * ── WHY A POOL AND NOT ONE POLYLINE PER SEGMENT ─────────────────────────
+   *
+   * A `PolylineCollection` uploads EVERY polyline it holds into one vertex
+   * buffer and draws the batch in one command; `show: false` is a per-vertex
+   * attribute, so a hidden polyline still costs its vertices in the shader.
+   * Resident-per-segment, the airports pack put 6 698 of them in the buffer to
+   * draw between 11 and 71. Measured against `origin/main` on the same session,
+   * parked at 260 km with the layer on: a steady frame went from 0,6 ms median
+   * (p90 5,0) to **6,9 ms median (p90 13,1)** — paid on every frame the camera
+   * moves, not only on settle. Pooled to the peak actually drawn, it comes back.
+   *
+   * ── AND WHY EACH ENTRY OWNS ITS MATERIAL ────────────────────────────────
+   *
+   * `Polyline._destroy()` calls `this._material.destroy()`, and Cesium's
+   * `destroyObject` is not idempotent. A material shared across polylines is
+   * therefore destroyed once per polyline, and the SECOND one throws — so a
+   * shared material is a latent crash on `removeAll()` and on collection
+   * teardown, not a saving. It costs nothing to give each entry its own:
+   * buckets are keyed by `material.type` (`PolylineCollection.js:1160`), not by
+   * instance, so same-type materials still batch into one draw call.
+   *
+   * @type {Array<{line:object, positions:Array<object>, head:object, tail:object, mid:object}>}
+   */
+  const _runwayPool = [];
+  /** How many pool entries the current camera settle handed out. */
+  let _runwayUsed = 0;
   let _stemGeometryDirty = true;
   let _lastVisibilityUpdate = 0;
   let _destroyed = false;
@@ -635,6 +789,74 @@ export function createLocalGeoJsonLayer({
     if (!_groundRetryTimer) return;
     clearTimeout(_groundRetryTimer);
     _groundRetryTimer = null;
+  }
+
+  /**
+   * The layer's one polyline batch, created on the first record that needs it.
+   *
+   * A pack that publishes no `lines` never allocates it, and never adds a
+   * primitive to the scene — ports and datacenters pay nothing for this.
+   * @param {Cesium.Viewer} viewer
+   * @returns {object} The live PolylineCollection.
+   */
+  function ensureRunwayCollection(viewer) {
+    if (_runwayLines) return _runwayLines;
+    _runwayLines = new Cesium.PolylineCollection();
+    _runwayLines.show = _enabled;
+    viewer.scene.primitives.add(_runwayLines);
+    return _runwayLines;
+  }
+
+  /**
+   * Hand out the next pooled polyline, growing the pool if this settle needs
+   * one more than any settle before it. Entries are never released, only
+   * hidden: the peak is what the buffer costs, and it is small.
+   * @param {Cesium.Viewer} viewer
+   * @returns {object} A pool entry, already shown.
+   */
+  function takeRunwayLine(viewer) {
+    const existing = _runwayPool[_runwayUsed];
+    if (existing) {
+      _runwayUsed += 1;
+      if (!existing.line.show) existing.line.show = true;
+      return existing;
+    }
+    const collection = ensureRunwayCollection(viewer);
+    const positions = [new Cesium.Cartesian3(), new Cesium.Cartesian3()];
+    const entry = {
+      positions,
+      head: positions[0],
+      tail: positions[1],
+      mid: new Cesium.Cartesian3(),
+      line: collection.add({
+        positions,
+        width: RUNWAY_MIN_STROKE_PX,
+        material: Cesium.Material.fromType('PolylineOutline', {
+          color: Cesium.Color.fromCssColorString(color),
+          outlineColor: Cesium.Color.BLACK.withAlpha(0.85),
+          outlineWidth: RUNWAY_OUTLINE_PX,
+        }),
+        show: true,
+      }),
+    };
+    _runwayPool.push(entry);
+    _runwayUsed += 1;
+    return entry;
+  }
+
+  /** Hide every pool entry this settle did not hand out. */
+  function releaseUnusedRunwayLines() {
+    for (let i = _runwayUsed; i < _runwayPool.length; i += 1) {
+      const { line } = _runwayPool[i];
+      if (line.show) line.show = false;
+    }
+  }
+
+  /** Drop every drawn segment, keeping the (empty) primitive for the next load. */
+  function clearRunwayLines() {
+    _runwayPool.length = 0;
+    _runwayUsed = 0;
+    if (_runwayLines) _runwayLines.removeAll();
   }
 
   /**
@@ -738,6 +960,10 @@ export function createLocalGeoJsonLayer({
     _enabled = false;
     clearGroundRetryRender();
     if (_dataSource) _dataSource.show = false;
+    // A primitive is not in the data source, so `_dataSource.show` never
+    // reached it: without this the runways stayed on the globe after the row
+    // was switched off.
+    if (_runwayLines) _runwayLines.show = false;
     _overlayPublisher.hide();
     clearSelectedEntityContextForLayer(id);
     if (viewer?.selectedEntity?.__localLayerId === id) {
@@ -799,6 +1025,10 @@ export function createLocalGeoJsonLayer({
         if (!changed) return false;
         _params = next;
         applyGroupFilter();
+        // A chip that re-reveals a group has to re-place its drawn segments as
+        // well as re-show its markers, and only the geometry pass does that —
+        // without this they would stay hidden until the camera next moved.
+        _stemGeometryDirty = true;
         // The walk is throttled to VISIBILITY_UPDATE_MS and the governor is in
         // requestRenderMode, so without both of these the chip would appear to
         // do nothing for up to half a second on a parked camera.
@@ -907,7 +1137,9 @@ export function createLocalGeoJsonLayer({
           _count = entities.length;
           _stemRecords = [];
           // Rebuilt from scratch below; a retry after a failed load must not
-          // inherit the counts of the attempt that died.
+          // inherit the counts of the attempt that died — nor the segments,
+          // which live in a primitive the data source knows nothing about.
+          clearRunwayLines();
           _groupTally.clear();
           _renderTally.clear();
           _stemGeometryDirty = true;
@@ -1003,6 +1235,31 @@ export function createLocalGeoJsonLayer({
             });
             applyLocalSurfaceStyle(feature.polygon, renderSpec, markerColor);
 
+            // ── The second geometry: the published segments of this feature ──
+            // METADATA ONLY. Nothing Cesium-side is allocated here: the drawn
+            // polylines come from a shared pool sized to what is on screen, not
+            // to what the pack holds (see `_runwayPool`).
+            const runways = [];
+            if (Array.isArray(renderSpec.lines) && renderSpec.lines.length > 0) {
+              for (const segment of renderSpec.lines) {
+                const head = Cesium.Cartesian3.fromDegrees(segment.lon1, segment.lat1, 0);
+                const tail = Cesium.Cartesian3.fromDegrees(segment.lon2, segment.lat2, 0);
+                // The CHORD, which is what will actually be drawn — over a
+                // 4 km runway it sits 0.3 mm under the arc, and using the arc
+                // here would make the stretch factor disagree with the line.
+                const spanM = Cesium.Cartesian3.distance(head, tail);
+                if (!(spanM > 0)) continue;
+                runways.push({
+                  lon1: Cesium.Math.toRadians(segment.lon1),
+                  lat1: Cesium.Math.toRadians(segment.lat1),
+                  lon2: Cesium.Math.toRadians(segment.lon2),
+                  lat2: Cesium.Math.toRadians(segment.lat2),
+                  spanM,
+                  widthM: segment.widthM,
+                });
+              }
+            }
+
             if (groupKey) {
               const bucket = _groupTally.get(groupKey);
               if (bucket) bucket.total += 1;
@@ -1033,6 +1290,24 @@ export function createLocalGeoJsonLayer({
               renderKey: renderSpec.key || '',
               /** Hidden by a row-chip display floor — NOT by the horizon occluder. */
               filteredOut: false,
+              /** Past the group's declared marker range. Re-decided on camera settle. */
+              outOfRange: false,
+              /** How far out this group's MARK is drawn; 0 means "wherever the horizon allows". */
+              markerMaxDistance: Number(groupStyle?.markerMaxDistance) > 0
+                ? Number(groupStyle.markerMaxDistance)
+                : 0,
+              /** Ceiling on the recall stem, in metres. */
+              stemMaxHeightM,
+              /** Published segments of this feature, drawn in `_runwayLines`. */
+              runways,
+              /** Minimum screen length of those segments — the pastille's diameter. */
+              runwayFloorPx: Number(renderSpec.lineFloorPx) > 0
+                ? Number(renderSpec.lineFloorPx)
+                : RUNWAY_MIN_STROKE_PX,
+              /** Height the segments stand at until the ground sample lands. */
+              runwayBaseM: Number.isFinite(Number(renderSpec.lineBaseM))
+                ? Number(renderSpec.lineBaseM)
+                : 0,
               entry: labels ? createLocalInfrastructureOverlayEntry({
                 id: recordId,
                 layerId: id,
@@ -1063,6 +1338,7 @@ export function createLocalGeoJsonLayer({
           }
           _count = 0;
           _stemRecords = [];
+          clearRunwayLines();
           _groupTally.clear();
           _renderTally.clear();
           console.error(`Failed to load ${id}:`, e);
@@ -1112,6 +1388,13 @@ export function createLocalGeoJsonLayer({
 
           const cameraPos = viewer.camera.positionWC;
           if (!cameraPos) return;
+          // One DOM layout read for the whole walk, not one per record.
+          const pixelFactor = localPixelFactor(viewer);
+          // The drawn segments are re-dealt from scratch on every settle, so
+          // the pool's cursor rewinds here and whatever is left over is hidden
+          // after the walk. Between settles nothing moved, so nothing is dealt.
+          if (_stemGeometryDirty) _runwayUsed = 0;
+          const takeLine = () => takeRunwayLine(viewer);
           
           const occluder = new Cesium.EllipsoidalOccluder(Cesium.Ellipsoid.WGS84, cameraPos);
           const visibleOverlayRecords = [];
@@ -1133,7 +1416,25 @@ export function createLocalGeoJsonLayer({
             const record = _stemRecords[i];
             const wasGroundSampled = record.groundSampled;
             if (refreshStemGeometry) {
-              updateLocalStemGeometry(viewer, record, now);
+              const distance = Cesium.Cartesian3.distance(cameraPos, record.base);
+              // The MARK's own range (F6), re-decided only on camera settle:
+              // between two settles the camera has not moved, so the answer
+              // cannot have changed — the same assumption the stem geometry
+              // has always made.
+              record.outOfRange = record.markerMaxDistance > 0
+                && distance > record.markerMaxDistance;
+              // Out of range cannot change without camera motion, and camera
+              // motion is what sets `_stemGeometryDirty` — so skipping the stem
+              // here can never leave a stale tip behind. A row chip CAN change
+              // `filteredOut` with the camera parked, which is why that case
+              // still updates the stem and only withholds the segments.
+              if (!record.outOfRange) {
+                updateLocalStemGeometry(viewer, record, now, distance, pixelFactor);
+                if (record.runways.length > 0 && !record.filteredOut
+                  && occluder.isPointVisible(record.base)) {
+                  updateLocalRunwayGeometry(record, distance, pixelFactor, takeLine);
+                }
+              }
             } else if (canSampleGround && !record.groundSampled
               && now - record.lastGroundSampleMs >= GROUND_SAMPLE_RETRY_MS) {
               // Capability first: without it the distance below is pure waste,
@@ -1141,7 +1442,11 @@ export function createLocalGeoJsonLayer({
               const distance = Cesium.Cartesian3.distance(viewer.camera.positionWC, record.base);
               if (distance < GROUND_SAMPLE_MAX_DISTANCE_M
                 && sampleLocalGroundHeight(viewer, record, now)) {
-                updateLocalStemGeometry(viewer, record, now, distance);
+                updateLocalStemGeometry(viewer, record, now, distance, pixelFactor);
+                // The segments stand on the height that just landed, so they
+                // are stale now — but they cannot be re-dealt one record at a
+                // time, because the pool is dealt in a single pass. The
+                // `groundSampleProgress` branch below re-arms that pass instead.
               }
             }
             if (!wasGroundSampled && record.groundSampled) groundSampleProgress = true;
@@ -1161,14 +1466,26 @@ export function createLocalGeoJsonLayer({
             // Two independent reasons to be invisible: over the horizon, or
             // below the row's display floor. Both must clear before a marker —
             // or its ambient card — reaches the screen.
-            const isVisible = !record.filteredOut && occluder.isPointVisible(record.base);
+            // THREE independent reasons now: over the horizon, below the row's
+            // display floor, or past the group's declared marker range. The
+            // segments answer to the same three — the collection has no horizon
+            // test of its own — which is why the deal above repeats the
+            // occluder call rather than trusting the range alone.
+            const isVisible = !record.filteredOut && !record.outOfRange
+              && occluder.isPointVisible(record.base);
             if (record.entity.show !== isVisible) record.entity.show = isVisible;
             if (isVisible && record.entry) visibleOverlayRecords.push(record);
           }
+          if (refreshStemGeometry) releaseUnusedRunwayLines();
           _stemGeometryDirty = false;
           // Tiles ARE streaming in: real progress re-opens the give-up budget
-          // so the records still waiting get their own bounded run of retries.
-          if (groundSampleProgress) _groundRetryArms = 0;
+          // so the records still waiting get their own bounded run of retries —
+          // and re-arms the geometry pass, because a record that just landed on
+          // its sampled ground has segments still standing on the old height.
+          if (groundSampleProgress) {
+            _groundRetryArms = 0;
+            _stemGeometryDirty = true;
+          }
           if (groundRetryPending) scheduleGroundRetryRender(viewer);
 
           const canvas = viewer.scene.canvas;
@@ -1200,6 +1517,7 @@ export function createLocalGeoJsonLayer({
       // disable() runs before _dataSource exists, so its show=false is a no-op —
       // reading _enabled here (rather than forcing true) respects the toggle-off.
       if (_dataSource) _dataSource.show = _enabled;
+      if (_runwayLines) _runwayLines.show = _enabled;
       viewer.scene.requestRender?.();
     },
 
@@ -1218,6 +1536,14 @@ export function createLocalGeoJsonLayer({
       if (_dataSource && viewer) {
         viewer.dataSources.remove(_dataSource, true);
       }
+      if (_runwayLines) {
+        // `remove` destroys the collection, which frees its vertex buffers and
+        // each pooled polyline's own material with them.
+        try { viewer?.scene?.primitives?.remove(_runwayLines); } catch { /* already gone */ }
+        _runwayLines = null;
+      }
+      _runwayPool.length = 0;
+      _runwayUsed = 0;
       _overlayPublisher.destroy();
       _dataSource = null;
       _stemRecords = [];
@@ -1267,17 +1593,116 @@ function sampleLocalGroundHeight(viewer, record, now) {
   return true;
 }
 
-function updateLocalStemGeometry(viewer, record, now, knownDistance = null) {
+/**
+ * Metres per screen pixel PER METRE of camera distance, for the current frame.
+ *
+ * `metresPerPixel = distance × factor`. It is what turns a pixel budget into a
+ * world length, and it is the whole of the runway regime ladder's arithmetic —
+ * and of the recall stem's, which is the same factor times 65.
+ *
+ * ── WHY IT IS HOISTED OUT OF THE WALK ───────────────────────────────────────
+ *
+ * `canvas.clientHeight` is a DOM LAYOUT READ. Computed inside the per-record
+ * loop it ran once per record per camera settle — 7 464 times for the airports
+ * pack, twice over for a record that also has segments to place. Measured
+ * against `origin/main` on the same session, in a 1440×900 headless scene with
+ * the layer on: the pre-render walk cost 7,3 / 1,6 / 2,1 ms at 2 000 / 260 /
+ * 60 km before, and 17,6 / 10,9 / 13,2 ms with the layer's second geometry
+ * added — a FLAT ~10 ms that did not move with the number of runways drawn (0
+ * at 2 000 km, 71 at 60 km), which is what identified the layout read rather
+ * than the drawing. Read once per walk, it comes back down.
+ *
+ * @param {Cesium.Viewer} viewer
+ * @returns {number} Metres per pixel per metre of distance.
+ */
+function localPixelFactor(viewer) {
+  const canvasHeight = viewer.scene.canvas.clientHeight || 1080;
+  const fov = viewer.camera.frustum.fov || (Math.PI / 3);
+  return (2 * Math.tan(fov / 2)) / canvasHeight;
+}
+
+/**
+ * Re-place one record's drawn segments for the current camera distance.
+ *
+ * The floor is applied by SCALING the segment about its own midpoint, not by
+ * re-deriving a bearing: at `t === 1` the endpoints are bit-for-bit the
+ * published thresholds, so the mid regime is the data and nothing else, and the
+ * far regime is the same line stretched about the same centre. There is no
+ * discontinuity to hide because there is no second construction.
+ *
+ * @param {object} record Live stem record carrying `runways`.
+ * @param {number} distance Camera-to-feature distance in metres.
+ * @param {number} pixelFactor {@link localPixelFactor} for this frame.
+ * @returns {void}
+ */
+function updateLocalRunwayGeometry(record, distance, pixelFactor, take) {
+  const metresPerPixel = distance * pixelFactor;
+  const floorM = record.runwayFloorPx * metresPerPixel;
+  // Above this, a 45 m strip is under a pixel wide: the true width cannot be
+  // drawn, and a field's secondary strips have stopped being separable.
+  const fieldIsOpen = metresPerPixel <= RUNWAY_TRUE_WIDTH_MPP;
+  // Before the terrain sample lands, the pack's published base — see
+  // `lineBaseM`. After it, the surface the stem itself stands on.
+  const base = record.groundSampled ? record.groundHeight : record.runwayBaseM;
+  const height = base + RUNWAY_LIFT_M;
+
+  for (let i = 0; i < record.runways.length; i++) {
+    const runway = record.runways[i];
+    const stretch = Math.max(1, floorM / runway.spanM);
+    // More symbol than measurement, or a secondary strip too far out to read.
+    // Not drawn at all rather than hidden: an undrawn segment costs no vertex.
+    if (stretch > RUNWAY_MAX_STRETCH || (i > 0 && !fieldIsOpen)) continue;
+
+    const entry = take();
+    Cesium.Cartesian3.fromRadians(
+      runway.lon1, runway.lat1, height, Cesium.Ellipsoid.WGS84, entry.head,
+    );
+    Cesium.Cartesian3.fromRadians(
+      runway.lon2, runway.lat2, height, Cesium.Ellipsoid.WGS84, entry.tail,
+    );
+    if (stretch > 1) {
+      Cesium.Cartesian3.midpoint(entry.head, entry.tail, entry.mid);
+      for (const end of [entry.head, entry.tail]) {
+        Cesium.Cartesian3.subtract(end, entry.mid, end);
+        Cesium.Cartesian3.multiplyByScalar(end, stretch, end);
+        Cesium.Cartesian3.add(end, entry.mid, end);
+      }
+    }
+    // The pool entry owns its position array and the two Cartesians inside it,
+    // which is why the scratch cannot be shared: `Polyline` keeps the array by
+    // REFERENCE and reads it back during the render.
+    entry.positions[0] = entry.head;
+    entry.positions[1] = entry.tail;
+    entry.line.positions = entry.positions;
+    // The record's OWN entity, so the click handler already in place resolves a
+    // click on the runway to its airport. Re-stamped because a pooled line is
+    // handed to a different airport on the next settle.
+    entry.line.id = record.entity;
+
+    // A1 drawn on the third channel: only a runway whose width upstream
+    // actually publishes may ever be thicker than the minimum stroke.
+    const width = runway.widthM
+      ? Math.max(RUNWAY_MIN_STROKE_PX, runway.widthM / metresPerPixel)
+      : RUNWAY_MIN_STROKE_PX;
+    // Quantised, because every width change re-batches the collection and the
+    // camera settles constantly. Half a pixel is under the anti-aliasing.
+    const quantised = Math.round(width * 2) / 2;
+    if (entry.line.width !== quantised) entry.line.width = quantised;
+  }
+}
+
+function updateLocalStemGeometry(viewer, record, now, knownDistance = null, knownFactor = null) {
   const distance = Number.isFinite(knownDistance)
     ? knownDistance
     : Cesium.Cartesian3.distance(viewer.camera.positionWC, record.base);
   if (distance < GROUND_SAMPLE_MAX_DISTANCE_M) sampleLocalGroundHeight(viewer, record, now);
   const effectiveDistance = Math.max(distance, 5000);
-  const canvasHeight = viewer.scene.canvas.clientHeight || 1080;
-  const fov = viewer.camera.frustum.fov || (Math.PI / 3);
+  const pixelFactor = Number.isFinite(knownFactor) ? knownFactor : localPixelFactor(viewer);
   const targetPx = 65;
-  const fovFactor = 2 * Math.tan(fov / 2) * (targetPx / canvasHeight);
-  const tipHeight = record.groundHeight + effectiveDistance * fovFactor;
+  // Capped in METRES for a layer that declares a ceiling — see `stemMaxHeightM`.
+  // Uncapped (Infinity) the Math.min is a no-op and the geometry is unchanged.
+  const lift = Math.min(effectiveDistance * pixelFactor * targetPx, record.stemMaxHeightM);
+  const tipHeight = record.groundHeight + lift;
   Cesium.Cartesian3.fromRadians(
     record.carto.longitude,
     record.carto.latitude,
