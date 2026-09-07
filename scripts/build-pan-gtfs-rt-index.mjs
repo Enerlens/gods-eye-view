@@ -325,7 +325,19 @@ async function main() {
     : await fetchJson(PAN_DATASETS_URL, Math.max(args.timeout, 60000));
   console.log(`[PAN] ${datasets.length} datasets`);
 
-  const feeds = vehiclePositionFeedsFromCatalog(datasets);
+  // MEMBERSHIP IS THE DECLARATION, NOT THE AVAILABILITY FLAG. `is_available`
+  // is the PAN's own "we could not reach this a moment ago", and it flaps:
+  // measured 2026-09-07, TaM's urban feed (resource 81755 — Montpellier's main
+  // network, 80 vehicles at the previous build) was flagged unavailable during
+  // this build's catalog read and available again two minutes later. Honouring
+  // that flag here DELETES the network from the shipped index along with its
+  // observed footprint, its health record and its measured companions, on the
+  // strength of one coin toss. So the flagged resource is kept and PROBED, and
+  // the probe decides: a feed that answers is healthy, and one that does not is
+  // quarantined by `applyProbeHealth` and revived by any later success. A
+  // publisher that stops declaring `vehicle_positions` still leaves, because
+  // that is a statement about what the resource is rather than an outage.
+  const feeds = vehiclePositionFeedsFromCatalog(datasets, { includeUnavailable: true });
   console.log(`[PAN] ${feeds.length} gtfs-rt resources declaring vehicle_positions`);
 
   const previous = await readExistingIndex(args.out);

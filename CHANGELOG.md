@@ -234,6 +234,36 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   hauteur des pylônes ANFR (couverture mesurée : 99,24 %) prennent la verticale.
 
 ### Changed
+- **L'index des transports français a été remesuré.** `config/pan_gtfs_rt_feeds.json`
+  datait du 2026-08-31 : c'est le fichier qui dit à la couche Transports en
+  commun quels réseaux existent et *où* leurs véhicules ont été vus, le
+  catalogue national ne publiant sa couverture que sous forme de nom. Les trois
+  index sont repassés le 2026-09-07 à 17 h 10, un lundi en heure de pointe —
+  la même tranche que la mesure de référence, pour que les flottes soient
+  comparables.
+  Le catalogue est passé de 784 jeux à **782**, et le nombre de ressources
+  déclarant `vehicle_positions` n'a pas bougé — **150** — ce qui masque six
+  entrées et six sorties : arrivent **Sankéo** (Perpignan, 59 véhicules),
+  **Rémi Centre-Val de Loire** sous une ressource re-frappée (104, contre 3
+  pour l'ancienne), **Némus** (Flers, 23), **TUM** (Mende), **Hoplà** (Oise)
+  et Saint-Sulpice-la-Pointe ; partent cinq réseaux qui ont cessé de déclarer
+  des positions — dont Tempobus, Val d'Isère et le Réseau Nord de Martinique,
+  tous à zéro véhicule depuis la mesure précédente — et l'ancienne ressource de
+  Rémi. **148 réseaux sur 150 portent désormais une emprise observée** contre
+  144, et **63 publient des alertes** contre 60. Les trois doublons confirmés
+  le 2026-08-31 le sont restés, et aucun flux n'est en quarantaine.
+  Les deux index dérivés suivent : `pan_gtfs_static.json` (147 flux, la trace
+  de ligne et les arrêts d'une course) et `pan_route_types.json` (143 réseaux,
+  6 988 lignes), sans quoi les six réseaux entrants auraient roulé sans classe
+  de véhicule ni tracé. La classe se résout maintenant pour **94,0 %** de la
+  flotte nationale mesurée en pointe (7 171 véhicules), et le taux de jointure
+  moyen des retards passe de 0,92 sur 79 réseaux à **0,97 sur 134** — l'écart
+  est l'heure, pas le code : la mesure d'août avait été prise le soir, quand la
+  moitié des réseaux sont rentrés au dépôt.
+  Trois navettes de station — Tignes, l'Alpe d'Huez, Valmobus — publient hors
+  saison un `routes.txt` sans colonne `route_type` exploitable et perdent leur
+  carte de lignes ; elles ne rapportaient aucun véhicule ce jour-là, et la
+  raison est écrite par réseau dans `unresolved` au lieu d'être avalée.
 - **Le budget qui donne sa silhouette à un avion, redimensionné sur une mesure
   au lieu d'une intuition.** L'enrichissement *ambiant* — celui qui classe les
   avions qu'on n'a pas cliqués — puise dans un seau de jetons. Il en tenait
@@ -480,6 +510,28 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   nommé dans la légende et sur chaque fiche.
 
 ### Fixed
+- **Un réseau ne disparaît plus de l'index parce que le catalogue l'a cru
+  injoignable une minute.** Le Point d'Accès National publie deux choses très
+  différentes sur une ressource : ce qu'elle **est** (son format et ses
+  `features`, que seul l'éditeur change) et si le PAN a **réussi à la joindre**
+  à l'instant (`is_available`). La construction de l'index lisait les deux de
+  la même façon, et laissait donc le second décider de l'appartenance.
+  Or ce drapeau bat. Mesuré le 2026-09-07 : la ressource 81755 — le flux urbain
+  de **TaM, le réseau principal de Montpellier** — était marquée injoignable
+  lors de la lecture de catalogue de 17 h 10, et joignable de nouveau deux
+  minutes plus tard. La première construction l'a donc **supprimée** du fichier
+  livré, avec son emprise observée, son historique de santé et ses ressources
+  compagnes, sur un tirage à pile ou face. Le flux répondait : sondé à 17 h 18,
+  il rapportait **178 véhicules**, sa plus grosse flotte de l'année.
+  L'ironie est que le script savait déjà traiter une panne : un flux qui échoue
+  au sondage est mis en quarantaine — retiré de la sélection, gardé dans le
+  fichier, ressuscité par n'importe quel succès ultérieur. C'était la
+  *déclaration* du catalogue qui était traitée plus durement que la mesure.
+  Les trois constructions lisent maintenant la déclaration de l'éditeur, et
+  laissent le sondage juger de la joignabilité. Un éditeur qui cesse de
+  déclarer `vehicle_positions` sort toujours de l'index — c'est une phrase, pas
+  une panne — et c'est bien ce qui est arrivé aux cinq réseaux partis ce
+  jour-là.
 - **Ce que le serveur apprend d'un navire lui survit enfin.** « Type non
   déclaré » n'était pas un défaut d'affichage : l'AIS coupe un navire en deux.
   Les messages de position — 1/2/3 et 18, ceux dont la carte est faite — ne

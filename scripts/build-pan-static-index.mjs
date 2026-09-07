@@ -58,8 +58,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   PAN_DATASETS_URL,
+  declaresVehiclePositions,
   isTripUpdateResource,
-  isVehiclePositionResource,
   panFeedDescriptor,
   panGeoJsonConversionUrl,
   staticGtfsResources,
@@ -143,7 +143,7 @@ async function probeConversion(url, timeoutMs) {
  */
 export function pairDataset(dataset, detail) {
   const resources = Array.isArray(dataset?.resources) ? dataset.resources : [];
-  const vehicleFeeds = resources.filter(isVehiclePositionResource);
+  const vehicleFeeds = resources.filter(declaresVehiclePositions);
   if (!vehicleFeeds.length) return [];
 
   const tripUpdates = resources.filter(isTripUpdateResource).map((resource) => ({
@@ -266,7 +266,12 @@ async function main() {
   }
 
   const withVehicles = (Array.isArray(datasets) ? datasets : [])
-    .filter((dataset) => (dataset?.resources || []).some(isVehiclePositionResource));
+    // Same membership rule as the realtime index: the publisher's declaration,
+    // not the catalog's momentary `is_available` flag — see
+    // `vehiclePositionFeedsFromCatalog`. A dataset whose position feed is
+    // flagged unreachable still needs its trip-update and conversion siblings
+    // recorded, or the flap costs the network its line traces too.
+    .filter((dataset) => (dataset?.resources || []).some(declaresVehiclePositions));
   console.log(`[static] ${withVehicles.length} datasets publish vehicle positions`);
 
   let done = 0;

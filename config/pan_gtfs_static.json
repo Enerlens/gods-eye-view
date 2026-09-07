@@ -1,13 +1,13 @@
 {
   "source": "https://transport.data.gouv.fr/api/datasets",
-  "generatedAt": "2026-08-31T18:30:50.472Z",
+  "generatedAt": "2026-09-07T15:18:48.907Z",
   "generator": "scripts/build-pan-static-index.mjs",
   "note": "Companion resources for the live vehicle feeds: the TripUpdates feed that carries each running trip's ordered stops, and the PAN's own GeoJSON conversion of the static GTFS, which carries the line traces. URLs only — no geometry is committed here.",
-  "feedCount": 148,
-  "feedsWithTripUpdates": 148,
-  "feedsWithGeometry": 148,
-  "feedsDeclaringShapes": 142,
-  "conversionBytesTotal": 505054828,
+  "feedCount": 147,
+  "feedsWithTripUpdates": 145,
+  "feedsWithGeometry": 147,
+  "feedsDeclaringShapes": 134,
+  "conversionBytesTotal": 413007724,
   "feeds": {
     "pan-10231": {
       "network": "Navette Aéroport de Bordeaux",
@@ -36,7 +36,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/10230/GeoJSON",
             "declared": true,
             "bytes": 18845,
-            "checkedAt": "2026-08-31T12:28:17.440462Z",
+            "checkedAt": "2026-09-07T12:18:14.306996Z",
             "reachable": true
           }
         }
@@ -69,7 +69,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/12601/GeoJSON",
             "declared": true,
             "bytes": 804026,
-            "checkedAt": "2026-08-31T12:29:50.046497Z",
+            "checkedAt": "2026-09-07T12:22:24.342445Z",
             "reachable": true
           }
         }
@@ -102,7 +102,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/12608/GeoJSON",
             "declared": true,
             "bytes": 46299,
-            "checkedAt": "2026-08-31T18:27:08.827358Z",
+            "checkedAt": "2026-09-07T12:23:00.268679Z",
             "reachable": true
           }
         }
@@ -127,15 +127,15 @@
           "resourceId": 12616,
           "title": "Horaires théoriques de la station de ski Valmorel (GTFS)",
           "pageUrl": "https://transport.data.gouv.fr/resources/12616",
-          "updated": "2026-07-09T02:00:00.000000Z",
-          "hasShapes": true,
-          "stopCount": 75,
-          "routeCount": 6,
+          "updated": "2026-09-01T02:00:00.000000Z",
+          "hasShapes": false,
+          "stopCount": 0,
+          "routeCount": 0,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/12616/GeoJSON",
             "declared": true,
-            "bytes": 215072,
-            "checkedAt": "2026-08-31T12:35:55.028282Z",
+            "bytes": 42,
+            "checkedAt": "2026-09-07T12:18:04.461755Z",
             "reachable": true
           }
         }
@@ -160,7 +160,7 @@
           "resourceId": 83509,
           "title": "GTFS Lulu en Bus (Ex LUNEO)",
           "pageUrl": "https://transport.data.gouv.fr/resources/83509",
-          "updated": "2026-07-26T05:34:23.979861Z",
+          "updated": "2026-09-03T07:58:09.062534Z",
           "hasShapes": true,
           "stopCount": 97,
           "routeCount": 3,
@@ -168,7 +168,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83509/GeoJSON",
             "declared": true,
             "bytes": 163593,
-            "checkedAt": "2026-08-31T18:20:36.418880Z",
+            "checkedAt": "2026-09-07T12:22:55.471936Z",
             "reachable": true
           }
         }
@@ -195,13 +195,13 @@
           "pageUrl": "https://transport.data.gouv.fr/resources/11725",
           "updated": "2026-07-01T02:00:00.000000Z",
           "hasShapes": true,
-          "stopCount": 175,
-          "routeCount": 14,
+          "stopCount": 174,
+          "routeCount": 13,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/11725/GeoJSON",
             "declared": true,
-            "bytes": 186180,
-            "checkedAt": "2026-08-31T18:29:42.700340Z",
+            "bytes": 180029,
+            "checkedAt": "2026-09-07T12:18:51.190247Z",
             "reachable": true
           }
         }
@@ -234,7 +234,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/34265/GeoJSON",
             "declared": true,
             "bytes": 334348,
-            "checkedAt": "2026-08-31T18:25:03.207862Z",
+            "checkedAt": "2026-09-07T12:21:00.815190Z",
             "reachable": true
           }
         }
@@ -259,7 +259,7 @@
           "resourceId": 80934,
           "title": "Horaires théoriques du réseau Car Jaunes",
           "pageUrl": "https://transport.data.gouv.fr/resources/80934",
-          "updated": "2026-08-30T23:46:58.773641Z",
+          "updated": "2026-09-01T11:52:32.847041Z",
           "hasShapes": true,
           "stopCount": 468,
           "routeCount": 16,
@@ -267,7 +267,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/80934/GeoJSON",
             "declared": true,
             "bytes": 2624162,
-            "checkedAt": "2026-08-31T12:39:04.634005Z",
+            "checkedAt": "2026-09-07T12:19:00.816636Z",
             "reachable": true
           }
         }
@@ -300,7 +300,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79151/GeoJSON",
             "declared": true,
             "bytes": 193495,
-            "checkedAt": "2026-08-31T18:22:44.635521Z",
+            "checkedAt": "2026-09-07T12:20:01.825238Z",
             "reachable": true
           }
         }
@@ -333,7 +333,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79576/GeoJSON",
             "declared": true,
             "bytes": 973475,
-            "checkedAt": "2026-08-31T18:22:23.409055Z",
+            "checkedAt": "2026-09-07T12:19:52.351929Z",
             "reachable": true
           }
         }
@@ -358,15 +358,15 @@
           "resourceId": 64163,
           "title": "GTFS CapBus",
           "pageUrl": "https://transport.data.gouv.fr/resources/64163",
-          "updated": "2026-07-04T02:00:00.000000Z",
+          "updated": "2026-09-01T02:00:00.000000Z",
           "hasShapes": true,
-          "stopCount": 306,
-          "routeCount": 10,
+          "stopCount": 258,
+          "routeCount": 6,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/64163/GeoJSON",
             "declared": true,
-            "bytes": 468779,
-            "checkedAt": "2026-08-31T18:25:31.537928Z",
+            "bytes": 372070,
+            "checkedAt": "2026-09-07T12:20:41.333767Z",
             "reachable": true
           }
         }
@@ -399,7 +399,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79537/GeoJSON",
             "declared": true,
             "bytes": 806413,
-            "checkedAt": "2026-08-31T12:27:39.891376Z",
+            "checkedAt": "2026-09-07T12:19:41.271477Z",
             "reachable": true
           }
         }
@@ -432,7 +432,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/52917/GeoJSON",
             "declared": true,
             "bytes": 3474250,
-            "checkedAt": "2026-08-31T18:28:29.965754Z",
+            "checkedAt": "2026-09-07T12:18:58.116150Z",
             "reachable": true
           }
         }
@@ -454,22 +454,6 @@
       ],
       "statics": [
         {
-          "resourceId": 83783,
-          "title": "GTFS valable du 18/12/25 au 31/08/26",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83783",
-          "updated": "2026-08-28T23:23:56.729414Z",
-          "hasShapes": true,
-          "stopCount": 185,
-          "routeCount": 23,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/83783/GeoJSON",
-            "declared": true,
-            "bytes": 647114,
-            "checkedAt": "2026-08-31T18:23:47.597406Z",
-            "reachable": true
-          }
-        },
-        {
           "resourceId": 84160,
           "title": "GTFS REZOBUS_v46___Du_01_09_2026_au_31_08_2027.zip",
           "pageUrl": "https://transport.data.gouv.fr/resources/84160",
@@ -481,7 +465,23 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/84160/GeoJSON",
             "declared": true,
             "bytes": 681705,
-            "checkedAt": "2026-08-31T12:37:41.461140Z",
+            "checkedAt": "2026-09-07T12:20:40.324605Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 83783,
+          "title": "GTFS valable du 18/12/25 au 31/08/26",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83783",
+          "updated": "2026-09-06T23:33:42.503051Z",
+          "hasShapes": true,
+          "stopCount": 185,
+          "routeCount": 23,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/83783/GeoJSON",
+            "declared": true,
+            "bytes": 681705,
+            "checkedAt": "2026-09-07T12:22:23.429284Z",
             "reachable": true
           }
         }
@@ -514,7 +514,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/80742/GeoJSON",
             "declared": true,
             "bytes": 634152,
-            "checkedAt": "2026-08-31T12:35:52.048100Z",
+            "checkedAt": "2026-09-07T12:16:35.511856Z",
             "reachable": true
           }
         }
@@ -539,15 +539,15 @@
           "resourceId": 43286,
           "title": "Horaires théoriques au format GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/43286",
-          "updated": "2026-08-27T09:21:21.000000Z",
+          "updated": "2026-09-01T10:12:49.000000Z",
           "hasShapes": true,
-          "stopCount": 1074,
-          "routeCount": 72,
+          "stopCount": 1063,
+          "routeCount": 67,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/43286/GeoJSON",
             "declared": true,
-            "bytes": 2387987,
-            "checkedAt": "2026-08-31T12:29:45.721770Z",
+            "bytes": 2239550,
+            "checkedAt": "2026-09-07T12:21:39.448003Z",
             "reachable": true
           }
         }
@@ -573,14 +573,14 @@
           "title": "Horaires théoriques du réseau Resalp - Alpe d'Huez",
           "pageUrl": "https://transport.data.gouv.fr/resources/78387",
           "updated": "2026-08-08T02:00:00.000000Z",
-          "hasShapes": true,
-          "stopCount": 102,
-          "routeCount": 4,
+          "hasShapes": false,
+          "stopCount": 0,
+          "routeCount": 0,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/78387/GeoJSON",
             "declared": true,
-            "bytes": 140861,
-            "checkedAt": "2026-08-31T18:25:58.860760Z",
+            "bytes": 42,
+            "checkedAt": "2026-09-07T12:20:59.620188Z",
             "reachable": true
           }
         }
@@ -607,13 +607,13 @@
           "pageUrl": "https://transport.data.gouv.fr/resources/79014",
           "updated": "2026-05-30T02:00:00.000000Z",
           "hasShapes": true,
-          "stopCount": 360,
+          "stopCount": 348,
           "routeCount": 9,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/79014/GeoJSON",
             "declared": true,
-            "bytes": 347175,
-            "checkedAt": "2026-08-31T12:33:50.001763Z",
+            "bytes": 366133,
+            "checkedAt": "2026-09-07T12:20:55.541633Z",
             "reachable": true
           }
         }
@@ -646,7 +646,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/52937/GeoJSON",
             "declared": true,
             "bytes": 2264870,
-            "checkedAt": "2026-08-31T18:26:39.426157Z",
+            "checkedAt": "2026-09-07T12:22:54.702210Z",
             "reachable": true
           }
         }
@@ -679,7 +679,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/64280/GeoJSON",
             "declared": true,
             "bytes": 1155476,
-            "checkedAt": "2026-08-31T18:25:22.454409Z",
+            "checkedAt": "2026-09-07T12:22:51.665822Z",
             "reachable": true
           }
         }
@@ -712,7 +712,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/72361/GeoJSON",
             "declared": true,
             "bytes": 169825,
-            "checkedAt": "2026-08-31T18:26:42.407875Z",
+            "checkedAt": "2026-09-07T12:19:20.226063Z",
             "reachable": true
           }
         }
@@ -737,15 +737,15 @@
           "resourceId": 79831,
           "title": "Horaires théoriques des lignes régulières et secondaires du réseau Cap Cotentin",
           "pageUrl": "https://transport.data.gouv.fr/resources/79831",
-          "updated": "2026-07-01T12:30:51.571000Z",
+          "updated": "2026-09-03T13:12:00.439000Z",
           "hasShapes": true,
-          "stopCount": 621,
-          "routeCount": 34,
+          "stopCount": 620,
+          "routeCount": 35,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/79831/GeoJSON",
             "declared": true,
-            "bytes": 2510592,
-            "checkedAt": "2026-08-31T18:27:57.455310Z",
+            "bytes": 2672063,
+            "checkedAt": "2026-09-07T12:19:47.918114Z",
             "reachable": true
           }
         }
@@ -778,7 +778,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79992/GeoJSON",
             "declared": true,
             "bytes": 162221,
-            "checkedAt": "2026-08-31T18:26:22.127453Z",
+            "checkedAt": "2026-09-07T12:19:52.854920Z",
             "reachable": true
           }
         }
@@ -803,15 +803,15 @@
           "resourceId": 79420,
           "title": "palmbus-cannes-fr.zip",
           "pageUrl": "https://transport.data.gouv.fr/resources/79420",
-          "updated": "2026-08-28T07:06:40.894000Z",
+          "updated": "2026-09-06T06:00:01.734000Z",
           "hasShapes": true,
-          "stopCount": 1529,
-          "routeCount": 48,
+          "stopCount": 1521,
+          "routeCount": 47,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/79420/GeoJSON",
             "declared": true,
-            "bytes": 1666453,
-            "checkedAt": "2026-08-28T06:18:52.399013Z",
+            "bytes": 1593923,
+            "checkedAt": "2026-09-07T12:19:34.571819Z",
             "reachable": true
           }
         }
@@ -836,15 +836,15 @@
           "resourceId": 82832,
           "title": "GTFS - MOVE",
           "pageUrl": "https://transport.data.gouv.fr/resources/82832",
-          "updated": "2026-08-13T22:03:23.452901Z",
+          "updated": "2026-09-07T02:21:46.009910Z",
           "hasShapes": true,
-          "stopCount": 108,
-          "routeCount": 12,
+          "stopCount": 166,
+          "routeCount": 11,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/82832/GeoJSON",
             "declared": true,
-            "bytes": 740513,
-            "checkedAt": "2026-08-31T12:39:22.375478Z",
+            "bytes": 732410,
+            "checkedAt": "2026-09-07T12:21:31.659455Z",
             "reachable": true
           }
         }
@@ -866,18 +866,18 @@
       ],
       "statics": [
         {
-          "resourceId": 81924,
-          "title": "Noirmoutier Saison 2026",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81924",
-          "updated": "2026-08-20T12:23:39.462000Z",
+          "resourceId": 84176,
+          "title": "GTFS GRATIBUS",
+          "pageUrl": "https://transport.data.gouv.fr/resources/84176",
+          "updated": "2026-09-06T16:47:12.844505Z",
           "hasShapes": true,
           "stopCount": 97,
           "routeCount": 5,
           "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/81924/GeoJSON",
+            "url": "https://transport.data.gouv.fr/resources/conversions/84176/GeoJSON",
             "declared": true,
             "bytes": 142578,
-            "checkedAt": "2026-08-31T18:26:18.080840Z",
+            "checkedAt": "2026-09-07T12:19:17.231423Z",
             "reachable": true
           }
         }
@@ -910,7 +910,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/80676/GeoJSON",
             "declared": true,
             "bytes": 2849191,
-            "checkedAt": "2026-08-31T18:27:18.992672Z",
+            "checkedAt": "2026-09-07T12:19:53.172819Z",
             "reachable": true
           }
         }
@@ -935,15 +935,15 @@
           "resourceId": 80694,
           "title": "filbleu_gtfs.zip",
           "pageUrl": "https://transport.data.gouv.fr/resources/80694",
-          "updated": "2026-08-28T09:00:50.912308Z",
+          "updated": "2026-09-05T22:54:12.148078Z",
           "hasShapes": true,
           "stopCount": 2268,
           "routeCount": 49,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/80694/GeoJSON",
             "declared": true,
-            "bytes": 3696154,
-            "checkedAt": "2026-08-31T12:31:08.976967Z",
+            "bytes": 3233921,
+            "checkedAt": "2026-09-07T12:16:32.242782Z",
             "reachable": true
           }
         }
@@ -965,22 +965,6 @@
       ],
       "statics": [
         {
-          "resourceId": 80223,
-          "title": "GTFS - Horaires théoriques + TAD + Scolaire + Shapes",
-          "pageUrl": "https://transport.data.gouv.fr/resources/80223",
-          "updated": "2026-07-22T09:10:44.162000Z",
-          "hasShapes": true,
-          "stopCount": 1227,
-          "routeCount": 42,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/80223/GeoJSON",
-            "declared": true,
-            "bytes": 1421817,
-            "checkedAt": "2026-08-31T18:28:49.019896Z",
-            "reachable": true
-          }
-        },
-        {
           "resourceId": 80705,
           "title": "GTFS - pour être utilisé avec le GTFS-RT",
           "pageUrl": "https://transport.data.gouv.fr/resources/80705",
@@ -992,7 +976,23 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/80705/GeoJSON",
             "declared": true,
             "bytes": 144432,
-            "checkedAt": "2026-08-31T18:29:09.267245Z",
+            "checkedAt": "2026-09-07T12:18:06.117705Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 80223,
+          "title": "GTFS - Horaires théoriques + TAD + Scolaire + Shapes",
+          "pageUrl": "https://transport.data.gouv.fr/resources/80223",
+          "updated": "2026-07-22T09:10:44.162000Z",
+          "hasShapes": true,
+          "stopCount": 1227,
+          "routeCount": 42,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/80223/GeoJSON",
+            "declared": true,
+            "bytes": 1421817,
+            "checkedAt": "2026-09-07T12:19:51.106592Z",
             "reachable": true
           }
         }
@@ -1017,15 +1017,15 @@
           "resourceId": 80721,
           "title": "GTFS Aléop",
           "pageUrl": "https://transport.data.gouv.fr/resources/80721",
-          "updated": "2026-08-30T06:00:22.000000Z",
+          "updated": "2026-09-06T06:00:23.000000Z",
           "hasShapes": true,
-          "stopCount": 9779,
-          "routeCount": 149,
+          "stopCount": 9784,
+          "routeCount": 148,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/80721/GeoJSON",
             "declared": true,
-            "bytes": 21731162,
-            "checkedAt": "2026-08-31T18:24:31.385364Z",
+            "bytes": 20994777,
+            "checkedAt": "2026-09-07T12:19:03.487257Z",
             "reachable": true
           }
         }
@@ -1056,15 +1056,15 @@
           "resourceId": 82911,
           "title": "gtfs-production.zip",
           "pageUrl": "https://transport.data.gouv.fr/resources/82911",
-          "updated": "2026-08-12T13:50:32.030000Z",
+          "updated": "2026-09-01T19:48:56.632000Z",
           "hasShapes": true,
           "stopCount": 1136,
           "routeCount": 88,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/82911/GeoJSON",
             "declared": true,
-            "bytes": 4823646,
-            "checkedAt": "2026-08-31T17:11:45.064818Z",
+            "bytes": 4831507,
+            "checkedAt": "2026-09-07T12:22:30.516973Z",
             "reachable": true
           }
         }
@@ -1097,7 +1097,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/80586/GeoJSON",
             "declared": true,
             "bytes": 827226,
-            "checkedAt": "2026-08-31T18:29:51.648763Z",
+            "checkedAt": "2026-09-07T12:23:06.151976Z",
             "reachable": true
           }
         }
@@ -1125,12 +1125,12 @@
           "updated": "2026-08-12T18:24:49.757285Z",
           "hasShapes": true,
           "stopCount": 245,
-          "routeCount": 24,
+          "routeCount": 21,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81255/GeoJSON",
             "declared": true,
-            "bytes": 870952,
-            "checkedAt": "2026-08-31T12:29:31.285718Z",
+            "bytes": 679174,
+            "checkedAt": "2026-09-07T12:20:56.511300Z",
             "reachable": true
           }
         }
@@ -1155,15 +1155,15 @@
           "resourceId": 81034,
           "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau TOHM",
           "pageUrl": "https://transport.data.gouv.fr/resources/81034",
-          "updated": "2026-08-24T21:17:26.000000Z",
+          "updated": "2026-09-01T02:19:30.000000Z",
           "hasShapes": true,
-          "stopCount": 125,
+          "stopCount": 122,
           "routeCount": 10,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81034/GeoJSON",
             "declared": true,
-            "bytes": 565059,
-            "checkedAt": "2026-08-31T12:36:29.499295Z",
+            "bytes": 237217,
+            "checkedAt": "2026-09-07T12:19:46.812463Z",
             "reachable": true
           }
         }
@@ -1188,15 +1188,15 @@
           "resourceId": 81042,
           "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau Aire'MOB",
           "pageUrl": "https://transport.data.gouv.fr/resources/81042",
-          "updated": "2026-08-16T07:16:09.000000Z",
+          "updated": "2026-09-01T02:22:23.000000Z",
           "hasShapes": true,
           "stopCount": 118,
           "routeCount": 9,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81042/GeoJSON",
             "declared": true,
-            "bytes": 980394,
-            "checkedAt": "2026-08-31T18:24:33.977828Z",
+            "bytes": 624408,
+            "checkedAt": "2026-09-07T12:18:02.849530Z",
             "reachable": true
           }
         }
@@ -1229,7 +1229,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81058/GeoJSON",
             "declared": true,
             "bytes": 565385,
-            "checkedAt": "2026-08-31T18:25:04.326556Z",
+            "checkedAt": "2026-09-07T12:21:33.944554Z",
             "reachable": true
           }
         }
@@ -1254,15 +1254,15 @@
           "resourceId": 81072,
           "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau AXO",
           "pageUrl": "https://transport.data.gouv.fr/resources/81072",
-          "updated": "2026-08-29T20:29:07.000000Z",
+          "updated": "2026-09-05T20:31:09.000000Z",
           "hasShapes": true,
           "stopCount": 272,
           "routeCount": 25,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81072/GeoJSON",
             "declared": true,
-            "bytes": 1438329,
-            "checkedAt": "2026-08-31T18:28:52.800902Z",
+            "bytes": 1030628,
+            "checkedAt": "2026-09-07T12:21:05.762233Z",
             "reachable": true
           }
         },
@@ -1270,7 +1270,7 @@
           "resourceId": 81645,
           "title": "Description du TAD zonal (GTFS-Flex) - réseau AXO",
           "pageUrl": "https://transport.data.gouv.fr/resources/81645",
-          "updated": "2026-08-29T20:29:35.000000Z",
+          "updated": "2026-09-05T20:31:28.000000Z",
           "hasShapes": false,
           "stopCount": 83,
           "routeCount": 12,
@@ -1278,7 +1278,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81645/GeoJSON",
             "declared": true,
             "bytes": 15888,
-            "checkedAt": "2026-08-31T18:27:09.742564Z",
+            "checkedAt": "2026-09-07T12:20:50.411199Z",
             "reachable": true
           }
         }
@@ -1311,7 +1311,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81074/GeoJSON",
             "declared": true,
             "bytes": 349150,
-            "checkedAt": "2026-08-31T12:36:14.225609Z",
+            "checkedAt": "2026-09-07T12:20:40.556620Z",
             "reachable": true
           }
         }
@@ -1338,13 +1338,13 @@
           "pageUrl": "https://transport.data.gouv.fr/resources/81066",
           "updated": "2026-08-18T23:40:39.000000Z",
           "hasShapes": true,
-          "stopCount": 267,
+          "stopCount": 266,
           "routeCount": 15,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81066/GeoJSON",
             "declared": true,
-            "bytes": 1723030,
-            "checkedAt": "2026-08-31T18:21:05.491406Z",
+            "bytes": 996681,
+            "checkedAt": "2026-09-07T12:20:39.710791Z",
             "reachable": true
           }
         }
@@ -1366,22 +1366,6 @@
       ],
       "statics": [
         {
-          "resourceId": 81138,
-          "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau Corolis (interurbain)",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81138",
-          "updated": "2026-07-05T04:23:33.000000Z",
-          "hasShapes": true,
-          "stopCount": 249,
-          "routeCount": 27,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/81138/GeoJSON",
-            "declared": true,
-            "bytes": 6125218,
-            "checkedAt": "2026-08-31T12:37:18.721645Z",
-            "reachable": true
-          }
-        },
-        {
           "resourceId": 81650,
           "title": "Description du TAD zonal (GTFS-Flex) - réseau Corolis",
           "pageUrl": "https://transport.data.gouv.fr/resources/81650",
@@ -1393,7 +1377,23 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81650/GeoJSON",
             "declared": true,
             "bytes": 24032,
-            "checkedAt": "2026-08-31T12:38:21.846420Z",
+            "checkedAt": "2026-09-07T12:20:36.514051Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 81138,
+          "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau Corolis (interurbain)",
+          "pageUrl": "https://transport.data.gouv.fr/resources/81138",
+          "updated": "2026-08-31T02:18:28.000000Z",
+          "hasShapes": true,
+          "stopCount": 249,
+          "routeCount": 27,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/81138/GeoJSON",
+            "declared": true,
+            "bytes": 6125218,
+            "checkedAt": "2026-09-07T12:20:57.734481Z",
             "reachable": true
           }
         }
@@ -1418,15 +1418,15 @@
           "resourceId": 81146,
           "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau TIC (interurbain)",
           "pageUrl": "https://transport.data.gouv.fr/resources/81146",
-          "updated": "2026-08-20T21:12:43.000000Z",
+          "updated": "2026-09-01T02:19:13.000000Z",
           "hasShapes": true,
-          "stopCount": 207,
-          "routeCount": 24,
+          "stopCount": 203,
+          "routeCount": 23,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81146/GeoJSON",
             "declared": true,
-            "bytes": 4917945,
-            "checkedAt": "2026-08-31T18:27:14.921113Z",
+            "bytes": 4321353,
+            "checkedAt": "2026-09-07T12:21:27.163480Z",
             "reachable": true
           }
         }
@@ -1459,7 +1459,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/8119/GeoJSON",
             "declared": true,
             "bytes": 249585,
-            "checkedAt": "2026-08-31T18:27:17.783441Z",
+            "checkedAt": "2026-09-07T12:21:02.076872Z",
             "reachable": true
           }
         }
@@ -1484,7 +1484,7 @@
           "resourceId": 81179,
           "title": "Données théoriques au format GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/81179",
-          "updated": "2026-06-30T16:14:17.395000Z",
+          "updated": "2026-08-31T06:37:19.149000Z",
           "hasShapes": true,
           "stopCount": 127,
           "routeCount": 5,
@@ -1492,7 +1492,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81179/GeoJSON",
             "declared": true,
             "bytes": 222479,
-            "checkedAt": "2026-08-31T18:28:32.755454Z",
+            "checkedAt": "2026-09-07T12:19:59.787857Z",
             "reachable": true
           }
         }
@@ -1525,7 +1525,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81177/GeoJSON",
             "declared": true,
             "bytes": 15562,
-            "checkedAt": "2026-08-31T18:28:19.605537Z",
+            "checkedAt": "2026-09-07T12:21:30.411039Z",
             "reachable": true
           }
         }
@@ -1547,6 +1547,22 @@
       ],
       "statics": [
         {
+          "resourceId": 81056,
+          "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau Le Bus",
+          "pageUrl": "https://transport.data.gouv.fr/resources/81056",
+          "updated": "2026-09-01T02:18:36.000000Z",
+          "hasShapes": true,
+          "stopCount": 72,
+          "routeCount": 5,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/81056/GeoJSON",
+            "declared": true,
+            "bytes": 251841,
+            "checkedAt": "2026-09-07T12:21:34.407902Z",
+            "reachable": true
+          }
+        },
+        {
           "resourceId": 81652,
           "title": "Description du TAD zonal (GTFS-Flex) - réseau Le Bus",
           "pageUrl": "https://transport.data.gouv.fr/resources/81652",
@@ -1558,23 +1574,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81652/GeoJSON",
             "declared": true,
             "bytes": 3607,
-            "checkedAt": "2026-08-31T18:26:46.895216Z",
-            "reachable": true
-          }
-        },
-        {
-          "resourceId": 81056,
-          "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau Le Bus",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81056",
-          "updated": "2026-08-13T16:39:55.000000Z",
-          "hasShapes": true,
-          "stopCount": 75,
-          "routeCount": 5,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/81056/GeoJSON",
-            "declared": true,
-            "bytes": 607857,
-            "checkedAt": "2026-08-31T12:29:16.501983Z",
+            "checkedAt": "2026-09-07T12:20:35.102674Z",
             "reachable": true
           }
         }
@@ -1607,7 +1607,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81054/GeoJSON",
             "declared": true,
             "bytes": 165453,
-            "checkedAt": "2026-08-31T18:24:45.043028Z",
+            "checkedAt": "2026-09-07T12:16:24.749962Z",
             "reachable": true
           }
         }
@@ -1632,7 +1632,7 @@
           "resourceId": 81648,
           "title": "Description du TAD zonal (GTFS-Flex) - réseau Pass Thelle Bus",
           "pageUrl": "https://transport.data.gouv.fr/resources/81648",
-          "updated": "2026-08-29T20:29:35.000000Z",
+          "updated": "2026-08-31T20:33:03.000000Z",
           "hasShapes": null,
           "stopCount": null,
           "routeCount": null,
@@ -1640,7 +1640,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81648/GeoJSON",
             "declared": true,
             "bytes": 33862,
-            "checkedAt": "2026-08-31T18:26:57.663231Z",
+            "checkedAt": "2026-09-07T12:20:36.836268Z",
             "reachable": true
           }
         },
@@ -1648,7 +1648,7 @@
           "resourceId": 81068,
           "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau Pass Thelle Bus",
           "pageUrl": "https://transport.data.gouv.fr/resources/81068",
-          "updated": "2026-08-29T20:29:23.000000Z",
+          "updated": "2026-09-05T20:31:19.000000Z",
           "hasShapes": true,
           "stopCount": 33,
           "routeCount": 2,
@@ -1656,7 +1656,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81068/GeoJSON",
             "declared": true,
             "bytes": 131473,
-            "checkedAt": "2026-08-31T12:39:05.482684Z",
+            "checkedAt": "2026-09-07T12:19:41.873497Z",
             "reachable": true
           }
         }
@@ -1678,34 +1678,34 @@
       ],
       "statics": [
         {
-          "resourceId": 81651,
-          "title": "Description du TAD zonal (GTFS-Flex) - réseau Sablons Bus",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81651",
-          "updated": "2026-08-29T20:29:36.000000Z",
-          "hasShapes": false,
-          "stopCount": 101,
-          "routeCount": 10,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/81651/GeoJSON",
-            "declared": true,
-            "bytes": 20639,
-            "checkedAt": "2026-08-31T18:22:03.344752Z",
-            "reachable": true
-          }
-        },
-        {
           "resourceId": 81070,
           "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau Sablons Bus",
           "pageUrl": "https://transport.data.gouv.fr/resources/81070",
-          "updated": "2026-08-29T20:29:35.000000Z",
+          "updated": "2026-09-06T20:30:24.000000Z",
           "hasShapes": true,
           "stopCount": 55,
           "routeCount": 5,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81070/GeoJSON",
             "declared": true,
-            "bytes": 673103,
-            "checkedAt": "2026-08-31T18:29:55.854091Z",
+            "bytes": 589504,
+            "checkedAt": "2026-09-07T12:16:31.889674Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 81651,
+          "title": "Description du TAD zonal (GTFS-Flex) - réseau Sablons Bus",
+          "pageUrl": "https://transport.data.gouv.fr/resources/81651",
+          "updated": "2026-09-05T20:31:29.000000Z",
+          "hasShapes": false,
+          "stopCount": 103,
+          "routeCount": 10,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/81651/GeoJSON",
+            "declared": true,
+            "bytes": 21112,
+            "checkedAt": "2026-09-07T12:18:59.096150Z",
             "reachable": true
           }
         }
@@ -1738,7 +1738,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81222/GeoJSON",
             "declared": true,
             "bytes": 510787,
-            "checkedAt": "2026-08-31T18:27:07.726871Z",
+            "checkedAt": "2026-09-07T12:18:51.360590Z",
             "reachable": true
           }
         }
@@ -1763,15 +1763,15 @@
           "resourceId": 81254,
           "title": "gtfs-dole.zip",
           "pageUrl": "https://transport.data.gouv.fr/resources/81254",
-          "updated": "2026-08-26T07:55:03.005000Z",
+          "updated": "2026-09-02T11:39:50.120000Z",
           "hasShapes": true,
           "stopCount": 412,
           "routeCount": 16,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81254/GeoJSON",
             "declared": true,
-            "bytes": 509030,
-            "checkedAt": "2026-08-31T18:28:52.948248Z",
+            "bytes": 500590,
+            "checkedAt": "2026-09-07T12:17:13.329357Z",
             "reachable": true
           }
         }
@@ -1804,7 +1804,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79559/GeoJSON",
             "declared": true,
             "bytes": 804031,
-            "checkedAt": "2026-08-31T12:33:48.043895Z",
+            "checkedAt": "2026-09-07T12:22:17.874536Z",
             "reachable": true
           }
         }
@@ -1829,15 +1829,15 @@
           "resourceId": 80725,
           "title": "Transport - Données GTFS LEMET",
           "pageUrl": "https://transport.data.gouv.fr/resources/80725",
-          "updated": "2026-08-30T18:35:25.000000Z",
+          "updated": "2026-09-06T18:35:32.000000Z",
           "hasShapes": true,
-          "stopCount": 1673,
+          "stopCount": 1671,
           "routeCount": 78,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/80725/GeoJSON",
             "declared": true,
-            "bytes": 3097874,
-            "checkedAt": "2026-08-31T18:12:40.813455Z",
+            "bytes": 2753792,
+            "checkedAt": "2026-09-07T12:23:03.566793Z",
             "reachable": true
           }
         }
@@ -1862,7 +1862,7 @@
           "resourceId": 79847,
           "title": "gtfs-navineo.zip",
           "pageUrl": "https://transport.data.gouv.fr/resources/79847",
-          "updated": "2026-08-24T15:17:49.185000Z",
+          "updated": "2026-09-01T09:19:21.578000Z",
           "hasShapes": true,
           "stopCount": 1747,
           "routeCount": 61,
@@ -1870,7 +1870,56 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79847/GeoJSON",
             "declared": true,
             "bytes": 2235208,
-            "checkedAt": "2026-08-31T18:25:21.595519Z",
+            "checkedAt": "2026-09-07T12:21:04.765662Z",
+            "reachable": true
+          }
+        }
+      ]
+    },
+    "pan-81570": {
+      "network": "Hoplà Le Bus",
+      "datasetId": "659eb61087e7a31564db6157",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/donnees-theoriques-du-reseau-hopla-communaute-de-communes-de-la-plaine-destrees",
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "tripUpdates": [
+        {
+          "resourceId": 81568,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/35431ce0-2b02-4585-b125-55849208b6b5",
+          "title": "Horaire temps réel (GTFS-RT PROTOBUF) - réseau Hoplà",
+          "pageUrl": "https://transport.data.gouv.fr/resources/81568"
+        }
+      ],
+      "statics": [
+        {
+          "resourceId": 81649,
+          "title": "Description du TAD zonal (GTFS-Flex) - réseau Hoplà",
+          "pageUrl": "https://transport.data.gouv.fr/resources/81649",
+          "updated": "2025-09-30T20:54:23.000000Z",
+          "hasShapes": false,
+          "stopCount": 75,
+          "routeCount": 38,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/81649/GeoJSON",
+            "declared": true,
+            "bytes": 15074,
+            "checkedAt": "2026-09-07T12:20:39.232289Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 81519,
+          "title": "Arrêts, horaires et parcours théoriques (GTFS) - réseau Hoplà",
+          "pageUrl": "https://transport.data.gouv.fr/resources/81519",
+          "updated": "2026-09-01T02:22:15.000000Z",
+          "hasShapes": true,
+          "stopCount": 26,
+          "routeCount": 2,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/81519/GeoJSON",
+            "declared": true,
+            "bytes": 207000,
+            "checkedAt": "2026-09-07T12:18:49.151066Z",
             "reachable": true
           }
         }
@@ -1895,15 +1944,15 @@
           "resourceId": 81575,
           "title": "Horaires théoriques du réseau de bus de Sète agglopôle méditerranée",
           "pageUrl": "https://transport.data.gouv.fr/resources/81575",
-          "updated": "2026-08-27T02:30:47.000000Z",
+          "updated": "2026-09-04T02:30:19.000000Z",
           "hasShapes": true,
-          "stopCount": 518,
+          "stopCount": 517,
           "routeCount": 22,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81575/GeoJSON",
             "declared": true,
-            "bytes": 594855,
-            "checkedAt": "2026-08-31T12:31:11.332260Z",
+            "bytes": 592588,
+            "checkedAt": "2026-09-07T12:20:56.485985Z",
             "reachable": true
           }
         }
@@ -1928,7 +1977,7 @@
           "resourceId": 81547,
           "title": "GTFS_CAGTD",
           "pageUrl": "https://transport.data.gouv.fr/resources/81547",
-          "updated": "2026-08-30T23:55:47.000000Z",
+          "updated": "2026-09-06T10:22:52.000000Z",
           "hasShapes": true,
           "stopCount": 346,
           "routeCount": 14,
@@ -1936,7 +1985,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81547/GeoJSON",
             "declared": true,
             "bytes": 841836,
-            "checkedAt": "2026-08-31T18:25:48.734189Z",
+            "checkedAt": "2026-09-07T12:22:33.067223Z",
             "reachable": true
           }
         }
@@ -1969,7 +2018,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/84161/GeoJSON",
             "declared": true,
             "bytes": 17489,
-            "checkedAt": "2026-08-31T18:23:07.900747Z",
+            "checkedAt": "2026-09-07T12:17:37.636103Z",
             "reachable": true
           }
         },
@@ -1985,7 +2034,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83775/GeoJSON",
             "declared": true,
             "bytes": 17027,
-            "checkedAt": "2026-08-31T18:29:22.290017Z",
+            "checkedAt": "2026-09-07T12:21:19.888799Z",
             "reachable": true
           }
         }
@@ -2018,7 +2067,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81643/GeoJSON",
             "declared": true,
             "bytes": 11184,
-            "checkedAt": "2026-08-31T12:32:21.724105Z",
+            "checkedAt": "2026-09-07T12:22:59.520878Z",
             "reachable": true
           }
         }
@@ -2030,42 +2079,13 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-tam-en-temps-reel-gtfs-rt-urbain-et-suburbain",
       "licence": "odc-odbl",
       "licenceLabel": "ODbL 1.0",
-      "tripUpdates": [
-        {
-          "resourceId": 83779,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/4f7aa71d-a7e5-4c03-8074-03a233304266",
-          "title": "Mises à jour des trajets suburbain",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83779"
-        },
-        {
-          "resourceId": 81757,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/297e8061-5435-409a-aa94-4170f215ef69",
-          "title": "Mises à jour des trajets urbain",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81757"
-        }
-      ],
+      "tripUpdates": [],
       "statics": [
-        {
-          "resourceId": 81754,
-          "title": "Horaires de référence urbain (GTFS)",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81754",
-          "updated": "2026-08-30T16:49:46.000000Z",
-          "hasShapes": false,
-          "stopCount": 1575,
-          "routeCount": 51,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/81754/GeoJSON",
-            "declared": true,
-            "bytes": 315866,
-            "checkedAt": "2026-08-31T18:28:18.949674Z",
-            "reachable": true
-          }
-        },
         {
           "resourceId": 83773,
           "title": "Horaires de référence suburbain (GTFS)",
           "pageUrl": "https://transport.data.gouv.fr/resources/83773",
-          "updated": "2026-08-30T01:18:29.000000Z",
+          "updated": "2026-09-06T01:15:21.000000Z",
           "hasShapes": true,
           "stopCount": 1235,
           "routeCount": 38,
@@ -2073,7 +2093,23 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83773/GeoJSON",
             "declared": true,
             "bytes": 1173707,
-            "checkedAt": "2026-08-31T12:39:01.434187Z",
+            "checkedAt": "2026-09-07T12:19:40.975048Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 81754,
+          "title": "Horaires de référence urbain (GTFS)",
+          "pageUrl": "https://transport.data.gouv.fr/resources/81754",
+          "updated": "2026-09-06T21:54:45.000000Z",
+          "hasShapes": false,
+          "stopCount": 1575,
+          "routeCount": 51,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/81754/GeoJSON",
+            "declared": true,
+            "bytes": 315869,
+            "checkedAt": "2026-09-07T12:19:49.647968Z",
             "reachable": true
           }
         }
@@ -2100,13 +2136,13 @@
           "pageUrl": "https://transport.data.gouv.fr/resources/80036",
           "updated": "2026-08-15T00:01:10.000000Z",
           "hasShapes": true,
-          "stopCount": 1484,
-          "routeCount": 47,
+          "stopCount": 1770,
+          "routeCount": 104,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/80036/GeoJSON",
             "declared": true,
-            "bytes": 3231123,
-            "checkedAt": "2026-08-31T18:27:05.740027Z",
+            "bytes": 5050897,
+            "checkedAt": "2026-09-07T12:22:33.421765Z",
             "reachable": true
           }
         }
@@ -2139,7 +2175,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81252/GeoJSON",
             "declared": true,
             "bytes": 78297,
-            "checkedAt": "2026-08-31T18:25:37.686342Z",
+            "checkedAt": "2026-09-07T12:21:31.277853Z",
             "reachable": true
           }
         }
@@ -2172,7 +2208,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81907/GeoJSON",
             "declared": true,
             "bytes": 721794,
-            "checkedAt": "2026-08-31T18:17:12.060748Z",
+            "checkedAt": "2026-09-07T12:23:00.504811Z",
             "reachable": true
           }
         }
@@ -2211,50 +2247,17 @@
         },
         {
           "resourceId": 84099,
-          "title": "Horaires été 2026",
+          "title": "Horaires hivernaux 2026",
           "pageUrl": "https://transport.data.gouv.fr/resources/84099",
-          "updated": "2026-07-06T06:23:50.791000Z",
+          "updated": "2026-08-31T19:33:02.481000Z",
           "hasShapes": true,
-          "stopCount": 344,
-          "routeCount": 5,
+          "stopCount": 349,
+          "routeCount": 6,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/84099/GeoJSON",
             "declared": true,
-            "bytes": 242314,
-            "checkedAt": "2026-08-31T18:21:58.070314Z",
-            "reachable": true
-          }
-        }
-      ]
-    },
-    "pan-81953": {
-      "network": "Tempobus",
-      "datasetId": "5ff729169eef497ad3507b9c",
-      "datasetUrl": "https://transport.data.gouv.fr/datasets/agen-gtfs-urbain",
-      "licence": "lov2",
-      "licenceLabel": "Licence Ouverte 2.0",
-      "tripUpdates": [
-        {
-          "resourceId": 81953,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/37b144db-2013-49ff-9a24-b8396f19655d",
-          "title": "Données Urbaines Temps Réel",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81953"
-        }
-      ],
-      "statics": [
-        {
-          "resourceId": 80245,
-          "title": "agen-gtfs-urbain-été-2026",
-          "pageUrl": "https://transport.data.gouv.fr/resources/80245",
-          "updated": "2026-07-05T12:46:29.519000Z",
-          "hasShapes": true,
-          "stopCount": 1325,
-          "routeCount": 70,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/80245/GeoJSON",
-            "declared": true,
-            "bytes": 2316176,
-            "checkedAt": "2026-08-31T13:11:43.839661Z",
+            "bytes": 283245,
+            "checkedAt": "2026-09-07T12:18:33.433445Z",
             "reachable": true
           }
         }
@@ -2287,7 +2290,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81183/GeoJSON",
             "declared": true,
             "bytes": 2346585,
-            "checkedAt": "2026-08-31T12:37:20.203663Z",
+            "checkedAt": "2026-09-07T12:15:02.495812Z",
             "reachable": true
           }
         }
@@ -2320,7 +2323,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/84148/GeoJSON",
             "declared": true,
             "bytes": 227491,
-            "checkedAt": "2026-08-31T12:29:48.535692Z",
+            "checkedAt": "2026-09-07T12:19:48.822815Z",
             "reachable": true
           }
         }
@@ -2353,7 +2356,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83134/GeoJSON",
             "declared": true,
             "bytes": 1592288,
-            "checkedAt": "2026-08-31T18:19:00.288611Z",
+            "checkedAt": "2026-09-07T12:22:35.427970Z",
             "reachable": true
           }
         }
@@ -2386,7 +2389,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/8201/GeoJSON",
             "declared": true,
             "bytes": 33236,
-            "checkedAt": "2026-08-31T12:29:36.307144Z",
+            "checkedAt": "2026-09-07T12:20:54.943831Z",
             "reachable": true
           }
         }
@@ -2400,16 +2403,16 @@
       "licenceLabel": "Licence Ouverte 2.0",
       "tripUpdates": [
         {
-          "resourceId": 84047,
-          "url": "https://proxy.transport.data.gouv.fr/resource/kiceo-vannes-gtfs-rt",
-          "title": "Données en temps réel au format GTFS-RT (Global)",
-          "pageUrl": "https://transport.data.gouv.fr/resources/84047"
-        },
-        {
           "resourceId": 82096,
           "url": "https://proxy.transport.data.gouv.fr/resource/kiceo-vannes-gtfs-rt-trip-update",
           "title": "Données en temps réel au format GTFS-RT (TripUpdate)",
           "pageUrl": "https://transport.data.gouv.fr/resources/82096"
+        },
+        {
+          "resourceId": 84047,
+          "url": "https://proxy.transport.data.gouv.fr/resource/kiceo-vannes-gtfs-rt",
+          "title": "Données en temps réel au format GTFS-RT (Global)",
+          "pageUrl": "https://transport.data.gouv.fr/resources/84047"
         }
       ],
       "statics": [
@@ -2417,15 +2420,15 @@
           "resourceId": 82553,
           "title": "Données théoriques au format GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/82553",
-          "updated": "2026-08-30T19:32:07.885000Z",
+          "updated": "2026-09-04T14:58:17.112000Z",
           "hasShapes": true,
-          "stopCount": 2609,
-          "routeCount": 200,
+          "stopCount": 2599,
+          "routeCount": 201,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/82553/GeoJSON",
             "declared": true,
-            "bytes": 15026446,
-            "checkedAt": "2026-08-31T16:12:56.237197Z",
+            "bytes": 14988529,
+            "checkedAt": "2026-09-07T12:22:35.240075Z",
             "reachable": true
           }
         }
@@ -2458,7 +2461,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82140/GeoJSON",
             "declared": true,
             "bytes": 175733,
-            "checkedAt": "2026-08-31T12:34:14.421691Z",
+            "checkedAt": "2026-09-07T12:20:45.022217Z",
             "reachable": true
           }
         }
@@ -2480,6 +2483,22 @@
       ],
       "statics": [
         {
+          "resourceId": 83281,
+          "title": "GTFS (Version en cours)",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83281",
+          "updated": "2026-09-05T22:40:20.000000Z",
+          "hasShapes": true,
+          "stopCount": 1804,
+          "routeCount": 155,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/83281/GeoJSON",
+            "declared": true,
+            "bytes": 6609524,
+            "checkedAt": "2026-09-07T12:21:28.384298Z",
+            "reachable": true
+          }
+        },
+        {
           "resourceId": 83282,
           "title": "GTFS (version à venir) ->Présence facultative",
           "pageUrl": "https://transport.data.gouv.fr/resources/83282",
@@ -2492,22 +2511,6 @@
             "declared": true,
             "bytes": 6635656,
             "checkedAt": "2026-08-30T18:35:01.630059Z",
-            "reachable": true
-          }
-        },
-        {
-          "resourceId": 83281,
-          "title": "GTFS (Version en cours)",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83281",
-          "updated": "2026-08-29T22:40:18.000000Z",
-          "hasShapes": true,
-          "stopCount": 1804,
-          "routeCount": 155,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/83281/GeoJSON",
-            "declared": true,
-            "bytes": 6635656,
-            "checkedAt": "2026-08-31T12:29:05.613590Z",
             "reachable": true
           }
         }
@@ -2540,7 +2543,78 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82554/GeoJSON",
             "declared": true,
             "bytes": 285120,
-            "checkedAt": "2026-08-31T18:26:58.602395Z",
+            "checkedAt": "2026-09-07T12:19:01.557678Z",
+            "reachable": true
+          }
+        }
+      ]
+    },
+    "pan-82273": {
+      "network": "Sankéo",
+      "datasetId": "615fd9d5bbb0c1c35fe86fe3",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-sankeo",
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "tripUpdates": [
+        {
+          "resourceId": 82901,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/19990c8d-e56f-4a13-afbb-795cddd1a6da",
+          "title": "Réseau Sankéo - Lignes Régulières Temps Réel",
+          "pageUrl": "https://transport.data.gouv.fr/resources/82901"
+        },
+        {
+          "resourceId": 82273,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/793437a0-d3df-4b77-89d5-72525d49800b",
+          "title": "Réseau Sankéo - Lignes Scolaires Temps Réel",
+          "pageUrl": "https://transport.data.gouv.fr/resources/82273"
+        }
+      ],
+      "statics": [
+        {
+          "resourceId": 82900,
+          "title": "Réseau Sankéo - Lignes Régulières",
+          "pageUrl": "https://transport.data.gouv.fr/resources/82900",
+          "updated": "2026-09-06T16:15:07.637261Z",
+          "hasShapes": true,
+          "stopCount": 1691,
+          "routeCount": 45,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/82900/GeoJSON",
+            "declared": true,
+            "bytes": 4237153,
+            "checkedAt": "2026-09-07T12:20:24.217908Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 83734,
+          "title": "Réseau Sankéo - Lignes Scolaires",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83734",
+          "updated": "2026-07-24T11:22:13.558000Z",
+          "hasShapes": false,
+          "stopCount": 652,
+          "routeCount": 137,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/83734/GeoJSON",
+            "declared": true,
+            "bytes": 124380,
+            "checkedAt": "2026-09-07T12:22:33.241172Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 83735,
+          "title": "Réseau Sankéo - LR & TSR",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83735",
+          "updated": "2026-07-24T11:18:50.151000Z",
+          "hasShapes": true,
+          "stopCount": 1052,
+          "routeCount": 42,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/83735/GeoJSON",
+            "declared": true,
+            "bytes": 5827603,
+            "checkedAt": "2026-09-07T12:18:48.811634Z",
             "reachable": true
           }
         }
@@ -2565,15 +2639,15 @@
           "resourceId": 83807,
           "title": "Horaires théoriques du réseau Sitac - Calais",
           "pageUrl": "https://transport.data.gouv.fr/resources/83807",
-          "updated": "2026-06-15T20:31:11.000000Z",
+          "updated": "2026-09-02T02:00:00.000000Z",
           "hasShapes": true,
-          "stopCount": 806,
+          "stopCount": 803,
           "routeCount": 60,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83807/GeoJSON",
             "declared": true,
-            "bytes": 1381611,
-            "checkedAt": "2026-08-31T18:24:43.101018Z",
+            "bytes": 1257082,
+            "checkedAt": "2026-09-07T12:23:02.401754Z",
             "reachable": true
           }
         }
@@ -2598,15 +2672,15 @@
           "resourceId": 81942,
           "title": "Base de données multimodale théorique des réseaux de transport public normands au format GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/81942",
-          "updated": "2026-08-25T07:38:12.999000Z",
-          "hasShapes": true,
-          "stopCount": 12515,
-          "routeCount": 554,
+          "updated": "2026-09-03T14:02:31.159000Z",
+          "hasShapes": false,
+          "stopCount": 12007,
+          "routeCount": 590,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81942/GeoJSON",
-            "declared": true,
-            "bytes": 72251112,
-            "checkedAt": "2026-08-31T18:27:14.576079Z",
+            "declared": false,
+            "bytes": null,
+            "checkedAt": null,
             "reachable": true
           }
         }
@@ -2631,15 +2705,15 @@
           "resourceId": 79560,
           "title": "Horaires théoriques du Réseau de transport urbain de la Métropole Toulon Provence Méditerranée",
           "pageUrl": "https://transport.data.gouv.fr/resources/79560",
-          "updated": "2026-08-28T11:52:53.000000Z",
+          "updated": "2026-09-03T12:23:39.000000Z",
           "hasShapes": true,
-          "stopCount": 2019,
+          "stopCount": 2016,
           "routeCount": 99,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/79560/GeoJSON",
             "declared": true,
-            "bytes": 4604183,
-            "checkedAt": "2026-08-31T12:35:35.503185Z",
+            "bytes": 4102891,
+            "checkedAt": "2026-09-07T12:20:27.387045Z",
             "reachable": true
           }
         }
@@ -2672,7 +2746,40 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83782/GeoJSON",
             "declared": true,
             "bytes": 81157,
-            "checkedAt": "2026-08-31T18:22:37.585774Z",
+            "checkedAt": "2026-09-07T12:19:20.942351Z",
+            "reachable": true
+          }
+        }
+      ]
+    },
+    "pan-82551": {
+      "network": "Némus",
+      "datasetId": "65a7f8a1a8c1f93f2f87dea9",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-nemus",
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "tripUpdates": [
+        {
+          "resourceId": 82550,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/a16f63fd-32d2-42ef-9e58-7b616ecf7252",
+          "title": "Temps réel au format gtfs-rt (trip_update)",
+          "pageUrl": "https://transport.data.gouv.fr/resources/82550"
+        }
+      ],
+      "statics": [
+        {
+          "resourceId": 82094,
+          "title": "GTFS  SCOLAIRE DU 01/09/2026 AU 02/07/2027",
+          "pageUrl": "https://transport.data.gouv.fr/resources/82094",
+          "updated": "2026-07-22T10:10:32.938000Z",
+          "hasShapes": false,
+          "stopCount": 190,
+          "routeCount": 34,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/82094/GeoJSON",
+            "declared": true,
+            "bytes": 40534,
+            "checkedAt": "2026-09-07T12:16:46.393265Z",
             "reachable": true
           }
         }
@@ -2705,7 +2812,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82547/GeoJSON",
             "declared": true,
             "bytes": 242868,
-            "checkedAt": "2026-08-31T12:26:53.348903Z",
+            "checkedAt": "2026-09-07T12:16:45.691900Z",
             "reachable": true
           }
         }
@@ -2738,7 +2845,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79528/GeoJSON",
             "declared": true,
             "bytes": 1217651,
-            "checkedAt": "2026-08-31T12:32:36.034500Z",
+            "checkedAt": "2026-09-07T12:20:41.660475Z",
             "reachable": true
           }
         }
@@ -2752,16 +2859,16 @@
       "licenceLabel": "Licence Ouverte 2.0",
       "tripUpdates": [
         {
-          "resourceId": 82633,
-          "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt-trip-update",
-          "title": "Données en temps réel des horaires aux arrêts du réseau MOCA",
-          "pageUrl": "https://transport.data.gouv.fr/resources/82633"
-        },
-        {
           "resourceId": 82630,
           "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt",
           "title": "Données gobales en temps réel du réseau MOCA",
           "pageUrl": "https://transport.data.gouv.fr/resources/82630"
+        },
+        {
+          "resourceId": 82633,
+          "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt-trip-update",
+          "title": "Données en temps réel des horaires aux arrêts du réseau MOCA",
+          "pageUrl": "https://transport.data.gouv.fr/resources/82633"
         }
       ],
       "statics": [
@@ -2777,7 +2884,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82309/GeoJSON",
             "declared": true,
             "bytes": 70060,
-            "checkedAt": "2026-08-31T18:27:19.854251Z",
+            "checkedAt": "2026-09-07T12:19:58.775923Z",
             "reachable": true
           }
         }
@@ -2791,16 +2898,16 @@
       "licenceLabel": "Licence Ouverte 2.0",
       "tripUpdates": [
         {
-          "resourceId": 82633,
-          "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt-trip-update",
-          "title": "Données en temps réel des horaires aux arrêts du réseau MOCA",
-          "pageUrl": "https://transport.data.gouv.fr/resources/82633"
-        },
-        {
           "resourceId": 82630,
           "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt",
           "title": "Données gobales en temps réel du réseau MOCA",
           "pageUrl": "https://transport.data.gouv.fr/resources/82630"
+        },
+        {
+          "resourceId": 82633,
+          "url": "https://proxy.transport.data.gouv.fr/resource/moca-caux-austreberthe-gtfs-rt-trip-update",
+          "title": "Données en temps réel des horaires aux arrêts du réseau MOCA",
+          "pageUrl": "https://transport.data.gouv.fr/resources/82633"
         }
       ],
       "statics": [
@@ -2816,7 +2923,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82309/GeoJSON",
             "declared": true,
             "bytes": 70060,
-            "checkedAt": "2026-08-31T18:27:19.854251Z",
+            "checkedAt": "2026-09-07T12:19:58.775923Z",
             "reachable": true
           }
         }
@@ -2829,6 +2936,12 @@
       "licence": "lov2",
       "licenceLabel": "Licence Ouverte 2.0",
       "tripUpdates": [
+        {
+          "resourceId": 83186,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/544afe29-c195-40b1-a52d-c5d654b98f75",
+          "title": "Prochains passages des lignes du réseau Astuce exploitées par TNI",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83186"
+        },
         {
           "resourceId": 83187,
           "url": "https://www.data.gouv.fr/api/1/datasets/r/04647b22-2acc-46b2-b06b-67025acb823c",
@@ -2846,28 +2959,38 @@
           "url": "https://www.data.gouv.fr/api/1/datasets/r/178700bf-570a-4a5e-95a2-59ac5857c622",
           "title": "GTFS-RT - Horaires de passage en temps réel (lignes Transdev Rouen)",
           "pageUrl": "https://transport.data.gouv.fr/resources/82678"
-        },
-        {
-          "resourceId": 83186,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/544afe29-c195-40b1-a52d-c5d654b98f75",
-          "title": "Prochains passages des lignes du réseau Astuce exploitées par TNI",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83186"
         }
       ],
       "statics": [
         {
+          "resourceId": 84182,
+          "title": "GTFS - Données enrichies du réseau Astuce",
+          "pageUrl": "https://transport.data.gouv.fr/resources/84182",
+          "updated": "2026-09-06T19:40:23.697000Z",
+          "hasShapes": null,
+          "stopCount": null,
+          "routeCount": null,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/84182/GeoJSON",
+            "declared": false,
+            "bytes": null,
+            "checkedAt": null,
+            "reachable": false
+          }
+        },
+        {
           "resourceId": 64973,
           "title": "Liste des arrêts, horaires et parcours du réseau Astuce",
           "pageUrl": "https://transport.data.gouv.fr/resources/64973",
-          "updated": "2026-08-30T13:32:03.000000Z",
+          "updated": "2026-09-06T13:32:36.000000Z",
           "hasShapes": true,
           "stopCount": 3701,
-          "routeCount": 113,
+          "routeCount": 111,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/64973/GeoJSON",
             "declared": true,
-            "bytes": 1777481,
-            "checkedAt": "2026-08-31T12:31:31.153386Z",
+            "bytes": 1773571,
+            "checkedAt": "2026-09-07T12:21:08.337351Z",
             "reachable": true
           }
         }
@@ -2900,7 +3023,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82711/GeoJSON",
             "declared": true,
             "bytes": 218802,
-            "checkedAt": "2026-08-31T18:28:54.034702Z",
+            "checkedAt": "2026-09-07T12:22:34.754236Z",
             "reachable": true
           }
         }
@@ -2927,46 +3050,13 @@
           "pageUrl": "https://transport.data.gouv.fr/resources/80467",
           "updated": "2026-08-04T19:07:40.000000Z",
           "hasShapes": false,
-          "stopCount": 885,
+          "stopCount": 883,
           "routeCount": 32,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/80467/GeoJSON",
             "declared": true,
-            "bytes": 211603,
-            "checkedAt": "2026-08-31T18:24:21.826681Z",
-            "reachable": true
-          }
-        }
-      ]
-    },
-    "pan-82723": {
-      "network": "En bus NEVA",
-      "datasetId": "6787cc7c9e4b5b19e7d0e876",
-      "datasetUrl": "https://transport.data.gouv.fr/datasets/neva-granville-terre-et-mer",
-      "licence": "lov2",
-      "licenceLabel": "Licence Ouverte 2.0",
-      "tripUpdates": [
-        {
-          "resourceId": 82724,
-          "url": "https://proxy.transport.data.gouv.fr/resource/neva-granville-gtfs-rt-trip-update",
-          "title": "Données en temps réel des horaires aux arrêts du réseau Néva",
-          "pageUrl": "https://transport.data.gouv.fr/resources/82724"
-        }
-      ],
-      "statics": [
-        {
-          "resourceId": 82721,
-          "title": "Jeu de données théorique du réseau Néva (Granville Terre et Mer)",
-          "pageUrl": "https://transport.data.gouv.fr/resources/82721",
-          "updated": "2026-07-30T14:04:40.756000Z",
-          "hasShapes": true,
-          "stopCount": 173,
-          "routeCount": 7,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/82721/GeoJSON",
-            "declared": true,
-            "bytes": 270216,
-            "checkedAt": "2026-08-31T18:28:21.648906Z",
+            "bytes": 211176,
+            "checkedAt": "2026-09-07T12:18:03.934040Z",
             "reachable": true
           }
         }
@@ -2991,15 +3081,15 @@
           "resourceId": 80613,
           "title": "Jeu de données théorique du réseau Transurbain (Évreux Portes de Normandie)",
           "pageUrl": "https://transport.data.gouv.fr/resources/80613",
-          "updated": "2026-06-22T07:13:36.877000Z",
-          "hasShapes": true,
-          "stopCount": 359,
+          "updated": "2026-09-03T07:27:11.363000Z",
+          "hasShapes": false,
+          "stopCount": 357,
           "routeCount": 10,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/80613/GeoJSON",
             "declared": true,
-            "bytes": 1708887,
-            "checkedAt": "2026-08-31T18:26:12.072711Z",
+            "bytes": 75030,
+            "checkedAt": "2026-09-07T12:21:08.751567Z",
             "reachable": true
           }
         }
@@ -3024,15 +3114,15 @@
           "resourceId": 83368,
           "title": "BeeMob - Offre théorique au format GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/83368",
-          "updated": "2026-08-30T21:14:06.000000Z",
+          "updated": "2026-09-01T13:19:48.000000Z",
           "hasShapes": true,
-          "stopCount": 678,
-          "routeCount": 34,
+          "stopCount": 611,
+          "routeCount": 29,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83368/GeoJSON",
             "declared": true,
-            "bytes": 922895,
-            "checkedAt": "2026-08-31T18:27:54.432698Z",
+            "bytes": 620991,
+            "checkedAt": "2026-09-07T12:20:00.995464Z",
             "reachable": true
           }
         }
@@ -3055,17 +3145,17 @@
       "statics": [
         {
           "resourceId": 82874,
-          "title": "GTFS_20260601_20260831_TDV_TACO",
+          "title": "GTFS_2026-2027_TDV_TACO",
           "pageUrl": "https://transport.data.gouv.fr/resources/82874",
-          "updated": "2026-06-29T12:19:35.072000Z",
-          "hasShapes": true,
+          "updated": "2026-09-01T09:11:18.360000Z",
+          "hasShapes": false,
           "stopCount": 54,
           "routeCount": 1,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/82874/GeoJSON",
             "declared": true,
-            "bytes": 19540,
-            "checkedAt": "2026-08-31T18:27:30.989368Z",
+            "bytes": 11363,
+            "checkedAt": "2026-09-07T12:20:32.168282Z",
             "reachable": true
           }
         }
@@ -3087,10 +3177,26 @@
       ],
       "statics": [
         {
+          "resourceId": 84170,
+          "title": "gtfs_setram_lmm_auto.zip",
+          "pageUrl": "https://transport.data.gouv.fr/resources/84170",
+          "updated": "2026-09-06T00:10:54.411262Z",
+          "hasShapes": true,
+          "stopCount": 1799,
+          "routeCount": 66,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/84170/GeoJSON",
+            "declared": true,
+            "bytes": 2480989,
+            "checkedAt": "2026-09-07T12:21:03.705216Z",
+            "reachable": true
+          }
+        },
+        {
           "resourceId": 79601,
           "title": "gtfs-setram-lmm.zip",
           "pageUrl": "https://transport.data.gouv.fr/resources/79601",
-          "updated": "2026-08-30T20:50:42.646000Z",
+          "updated": "2026-08-31T08:12:53.041000Z",
           "hasShapes": true,
           "stopCount": 1799,
           "routeCount": 66,
@@ -3098,7 +3204,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79601/GeoJSON",
             "declared": true,
             "bytes": 2480969,
-            "checkedAt": "2026-08-31T18:25:29.587577Z",
+            "checkedAt": "2026-09-07T12:22:37.312008Z",
             "reachable": true
           }
         }
@@ -3129,15 +3235,15 @@
           "resourceId": 84037,
           "title": "Offre de transport LiA format GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/84037",
-          "updated": "2026-08-29T20:05:29.000000Z",
+          "updated": "2026-09-05T20:04:59.000000Z",
           "hasShapes": false,
-          "stopCount": 1094,
-          "routeCount": 70,
+          "stopCount": 1095,
+          "routeCount": 69,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/84037/GeoJSON",
             "declared": true,
-            "bytes": 220378,
-            "checkedAt": "2026-08-31T12:29:43.461591Z",
+            "bytes": 220588,
+            "checkedAt": "2026-09-07T12:12:26.070873Z",
             "reachable": true
           }
         }
@@ -3195,15 +3301,15 @@
           "resourceId": 83024,
           "title": "GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/83024",
-          "updated": "2026-08-30T10:56:17.956613Z",
+          "updated": "2026-09-06T23:32:15.167795Z",
           "hasShapes": true,
-          "stopCount": 7385,
+          "stopCount": 7390,
           "routeCount": 204,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83024/GeoJSON",
             "declared": true,
-            "bytes": 13343804,
-            "checkedAt": "2026-08-31T18:15:03.176465Z",
+            "bytes": 12730829,
+            "checkedAt": "2026-09-07T12:18:20.202288Z",
             "reachable": true
           }
         }
@@ -3236,7 +3342,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/80655/GeoJSON",
             "declared": true,
             "bytes": 772632,
-            "checkedAt": "2026-08-31T18:28:55.070700Z",
+            "checkedAt": "2026-09-07T12:22:06.758342Z",
             "reachable": true
           }
         }
@@ -3275,7 +3381,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82662/GeoJSON",
             "declared": true,
             "bytes": 3694749,
-            "checkedAt": "2026-08-31T18:24:34.954662Z",
+            "checkedAt": "2026-09-07T12:19:52.195730Z",
             "reachable": true
           }
         }
@@ -3308,7 +3414,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82148/GeoJSON",
             "declared": true,
             "bytes": 7370475,
-            "checkedAt": "2026-08-31T12:38:52.200140Z",
+            "checkedAt": "2026-09-07T12:19:55.421542Z",
             "reachable": true
           }
         }
@@ -3341,7 +3447,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82660/GeoJSON",
             "declared": true,
             "bytes": 383009,
-            "checkedAt": "2026-08-31T18:23:23.100665Z",
+            "checkedAt": "2026-09-07T12:21:01.624194Z",
             "reachable": true
           }
         }
@@ -3374,40 +3480,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81975/GeoJSON",
             "declared": true,
             "bytes": 111836,
-            "checkedAt": "2026-08-31T18:29:31.426782Z",
-            "reachable": true
-          }
-        }
-      ]
-    },
-    "pan-83190": {
-      "network": "SITRAVEL",
-      "datasetId": "6852e92885e530ede69c6816",
-      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-cvlmobilite-plan-de-transport-theorique-la-navette-lete-a-chinon-format-gtfs",
-      "licence": "lov2",
-      "licenceLabel": "Licence Ouverte 2.0",
-      "tripUpdates": [
-        {
-          "resourceId": 83190,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/82608db8-ab62-48d8-83de-decaed8828b3",
-          "title": "Réseau CVLmobilité - information temps réel La Navette - l'été à Chinon (format GTFS-RT)",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83190"
-        }
-      ],
-      "statics": [
-        {
-          "resourceId": 83189,
-          "title": "LaNavette_l'étéàChinon_2026.zip",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83189",
-          "updated": "2026-05-22T14:43:10.455000Z",
-          "hasShapes": true,
-          "stopCount": 35,
-          "routeCount": 2,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/83189/GeoJSON",
-            "declared": true,
-            "bytes": 22046,
-            "checkedAt": "2026-08-31T12:36:22.300010Z",
+            "checkedAt": "2026-09-07T12:21:01.422159Z",
             "reachable": true
           }
         }
@@ -3440,7 +3513,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82150/GeoJSON",
             "declared": true,
             "bytes": 110666,
-            "checkedAt": "2026-08-31T18:27:28.943909Z",
+            "checkedAt": "2026-09-07T12:22:42.233102Z",
             "reachable": true
           }
         }
@@ -3465,15 +3538,15 @@
           "resourceId": 83202,
           "title": "Lien pour la mise à jour du GTFS du réseau Hop Bus",
           "pageUrl": "https://transport.data.gouv.fr/resources/83202",
-          "updated": "2026-08-31T03:15:27.000000Z",
+          "updated": "2026-09-07T03:00:31.000000Z",
           "hasShapes": true,
           "stopCount": 389,
           "routeCount": 10,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83202/GeoJSON",
             "declared": true,
-            "bytes": 18065707,
-            "checkedAt": "2026-08-31T12:24:55.816687Z",
+            "bytes": 19253330,
+            "checkedAt": "2026-09-07T12:23:11.954154Z",
             "reachable": true
           }
         }
@@ -3498,15 +3571,15 @@
           "resourceId": 81338,
           "title": "Jeu de données théorique du réseau Semo (Val-de-Reuil, Louviers, Seine Eure Agglo)",
           "pageUrl": "https://transport.data.gouv.fr/resources/81338",
-          "updated": "2026-07-29T14:29:16.216000Z",
+          "updated": "2026-09-03T14:00:15.541000Z",
           "hasShapes": true,
-          "stopCount": 461,
-          "routeCount": 23,
+          "stopCount": 451,
+          "routeCount": 21,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81338/GeoJSON",
             "declared": true,
-            "bytes": 2463908,
-            "checkedAt": "2026-08-31T18:28:51.100204Z",
+            "bytes": 1465181,
+            "checkedAt": "2026-09-07T12:20:34.666905Z",
             "reachable": true
           }
         }
@@ -3520,6 +3593,12 @@
       "licenceLabel": "Licence Ouverte 2.0",
       "tripUpdates": [
         {
+          "resourceId": 83186,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/544afe29-c195-40b1-a52d-c5d654b98f75",
+          "title": "Prochains passages des lignes du réseau Astuce exploitées par TNI",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83186"
+        },
+        {
           "resourceId": 83187,
           "url": "https://www.data.gouv.fr/api/1/datasets/r/04647b22-2acc-46b2-b06b-67025acb823c",
           "title": "Prochains passages des lignes du réseau Astuce exploitées par TAE",
@@ -3536,28 +3615,38 @@
           "url": "https://www.data.gouv.fr/api/1/datasets/r/178700bf-570a-4a5e-95a2-59ac5857c622",
           "title": "GTFS-RT - Horaires de passage en temps réel (lignes Transdev Rouen)",
           "pageUrl": "https://transport.data.gouv.fr/resources/82678"
-        },
-        {
-          "resourceId": 83186,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/544afe29-c195-40b1-a52d-c5d654b98f75",
-          "title": "Prochains passages des lignes du réseau Astuce exploitées par TNI",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83186"
         }
       ],
       "statics": [
         {
+          "resourceId": 84182,
+          "title": "GTFS - Données enrichies du réseau Astuce",
+          "pageUrl": "https://transport.data.gouv.fr/resources/84182",
+          "updated": "2026-09-06T19:40:23.697000Z",
+          "hasShapes": null,
+          "stopCount": null,
+          "routeCount": null,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/84182/GeoJSON",
+            "declared": false,
+            "bytes": null,
+            "checkedAt": null,
+            "reachable": false
+          }
+        },
+        {
           "resourceId": 64973,
           "title": "Liste des arrêts, horaires et parcours du réseau Astuce",
           "pageUrl": "https://transport.data.gouv.fr/resources/64973",
-          "updated": "2026-08-30T13:32:03.000000Z",
+          "updated": "2026-09-06T13:32:36.000000Z",
           "hasShapes": true,
           "stopCount": 3701,
-          "routeCount": 113,
+          "routeCount": 111,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/64973/GeoJSON",
             "declared": true,
-            "bytes": 1777481,
-            "checkedAt": "2026-08-31T12:31:31.153386Z",
+            "bytes": 1773571,
+            "checkedAt": "2026-09-07T12:21:08.337351Z",
             "reachable": true
           }
         }
@@ -3571,6 +3660,12 @@
       "licenceLabel": "Licence Ouverte 2.0",
       "tripUpdates": [
         {
+          "resourceId": 83186,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/544afe29-c195-40b1-a52d-c5d654b98f75",
+          "title": "Prochains passages des lignes du réseau Astuce exploitées par TNI",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83186"
+        },
+        {
           "resourceId": 83187,
           "url": "https://www.data.gouv.fr/api/1/datasets/r/04647b22-2acc-46b2-b06b-67025acb823c",
           "title": "Prochains passages des lignes du réseau Astuce exploitées par TAE",
@@ -3587,28 +3682,38 @@
           "url": "https://www.data.gouv.fr/api/1/datasets/r/178700bf-570a-4a5e-95a2-59ac5857c622",
           "title": "GTFS-RT - Horaires de passage en temps réel (lignes Transdev Rouen)",
           "pageUrl": "https://transport.data.gouv.fr/resources/82678"
-        },
-        {
-          "resourceId": 83186,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/544afe29-c195-40b1-a52d-c5d654b98f75",
-          "title": "Prochains passages des lignes du réseau Astuce exploitées par TNI",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83186"
         }
       ],
       "statics": [
         {
+          "resourceId": 84182,
+          "title": "GTFS - Données enrichies du réseau Astuce",
+          "pageUrl": "https://transport.data.gouv.fr/resources/84182",
+          "updated": "2026-09-06T19:40:23.697000Z",
+          "hasShapes": null,
+          "stopCount": null,
+          "routeCount": null,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/84182/GeoJSON",
+            "declared": false,
+            "bytes": null,
+            "checkedAt": null,
+            "reachable": false
+          }
+        },
+        {
           "resourceId": 64973,
           "title": "Liste des arrêts, horaires et parcours du réseau Astuce",
           "pageUrl": "https://transport.data.gouv.fr/resources/64973",
-          "updated": "2026-08-30T13:32:03.000000Z",
+          "updated": "2026-09-06T13:32:36.000000Z",
           "hasShapes": true,
           "stopCount": 3701,
-          "routeCount": 113,
+          "routeCount": 111,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/64973/GeoJSON",
             "declared": true,
-            "bytes": 1777481,
-            "checkedAt": "2026-08-31T12:31:31.153386Z",
+            "bytes": 1773571,
+            "checkedAt": "2026-09-07T12:21:08.337351Z",
             "reachable": true
           }
         }
@@ -3633,15 +3738,15 @@
           "resourceId": 83178,
           "title": "Flux GTFS du réseau de transport public Lignes d'Azur",
           "pageUrl": "https://transport.data.gouv.fr/resources/83178",
-          "updated": "2026-07-24T22:09:12.000000Z",
+          "updated": "2026-08-25T22:15:21.000000Z",
           "hasShapes": true,
-          "stopCount": 4575,
-          "routeCount": 115,
+          "stopCount": 4545,
+          "routeCount": 112,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83178/GeoJSON",
             "declared": true,
-            "bytes": 8112441,
-            "checkedAt": "2026-08-31T18:28:00.902230Z",
+            "bytes": 7727173,
+            "checkedAt": "2026-09-07T12:20:54.738673Z",
             "reachable": true
           }
         }
@@ -3666,15 +3771,15 @@
           "resourceId": 75062,
           "title": "GTFS du réseau Ales'y",
           "pageUrl": "https://transport.data.gouv.fr/resources/75062",
-          "updated": "2026-08-20T07:41:09.194000Z",
+          "updated": "2026-09-04T08:11:15.207000Z",
           "hasShapes": true,
           "stopCount": 2583,
           "routeCount": 122,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/75062/GeoJSON",
             "declared": true,
-            "bytes": 961146,
-            "checkedAt": "2026-08-31T11:11:17.659084Z",
+            "bytes": 961056,
+            "checkedAt": "2026-09-07T12:23:04.228538Z",
             "reachable": true
           }
         }
@@ -3699,7 +3804,7 @@
           "resourceId": 83300,
           "title": "Données théoriques au format GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/83300",
-          "updated": "2026-06-08T06:59:44.684000Z",
+          "updated": "2026-08-31T06:38:53.512000Z",
           "hasShapes": true,
           "stopCount": 445,
           "routeCount": 13,
@@ -3707,7 +3812,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83300/GeoJSON",
             "declared": true,
             "bytes": 1027461,
-            "checkedAt": "2026-08-31T18:29:49.645232Z",
+            "checkedAt": "2026-09-07T12:21:30.832960Z",
             "reachable": true
           }
         }
@@ -3740,23 +3845,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81705/GeoJSON",
             "declared": true,
             "bytes": 319985,
-            "checkedAt": "2026-08-31T18:17:42.930194Z",
-            "reachable": true
-          }
-        },
-        {
-          "resourceId": 83781,
-          "title": "GTFS SEMOP 2026",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83781",
-          "updated": "2026-02-26T10:52:58.596000Z",
-          "hasShapes": true,
-          "stopCount": 536,
-          "routeCount": 8,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/83781/GeoJSON",
-            "declared": true,
-            "bytes": 201788,
-            "checkedAt": "2026-08-31T18:22:13.326124Z",
+            "checkedAt": "2026-09-07T12:18:29.448626Z",
             "reachable": true
           }
         },
@@ -3772,7 +3861,23 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83304/GeoJSON",
             "declared": true,
             "bytes": 53117,
-            "checkedAt": "2026-08-31T18:26:41.427420Z",
+            "checkedAt": "2026-09-07T12:18:59.895060Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 83781,
+          "title": "GTFS SEMOP 2026",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83781",
+          "updated": "2026-02-26T10:52:58.596000Z",
+          "hasShapes": true,
+          "stopCount": 536,
+          "routeCount": 8,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/83781/GeoJSON",
+            "declared": true,
+            "bytes": 201788,
+            "checkedAt": "2026-09-07T12:20:40.825403Z",
             "reachable": true
           }
         }
@@ -3805,7 +3910,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/80680/GeoJSON",
             "declared": true,
             "bytes": 961719,
-            "checkedAt": "2026-08-31T18:29:08.191796Z",
+            "checkedAt": "2026-09-07T12:20:37.084440Z",
             "reachable": true
           }
         }
@@ -3833,12 +3938,12 @@
           "updated": "2026-08-22T23:40:34.369792Z",
           "hasShapes": true,
           "stopCount": 190,
-          "routeCount": 14,
+          "routeCount": 12,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83394/GeoJSON",
             "declared": true,
-            "bytes": 662910,
-            "checkedAt": "2026-08-31T12:35:28.496420Z",
+            "bytes": 641683,
+            "checkedAt": "2026-09-07T12:23:18.113227Z",
             "reachable": true
           }
         }
@@ -3863,15 +3968,15 @@
           "resourceId": 83526,
           "title": "Azalys Blois GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/83526",
-          "updated": "2026-08-24T15:18:24.000000Z",
+          "updated": "2026-09-03T17:04:32.000000Z",
           "hasShapes": true,
-          "stopCount": 1396,
-          "routeCount": 83,
+          "stopCount": 1157,
+          "routeCount": 72,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83526/GeoJSON",
             "declared": true,
-            "bytes": 2985924,
-            "checkedAt": "2026-08-31T18:25:30.516618Z",
+            "bytes": 2560203,
+            "checkedAt": "2026-09-07T12:22:24.973726Z",
             "reachable": true
           }
         }
@@ -3896,7 +4001,7 @@
           "resourceId": 83467,
           "title": "CCPE_Transports publics théoriques",
           "pageUrl": "https://transport.data.gouv.fr/resources/83467",
-          "updated": "2026-08-30T00:00:00.000000Z",
+          "updated": "2026-09-06T00:00:00.000000Z",
           "hasShapes": true,
           "stopCount": 65,
           "routeCount": 5,
@@ -3904,7 +4009,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83467/GeoJSON",
             "declared": true,
             "bytes": 214123,
-            "checkedAt": "2026-08-31T18:23:38.389008Z",
+            "checkedAt": "2026-09-07T12:19:19.361295Z",
             "reachable": true
           }
         }
@@ -3918,16 +4023,16 @@
       "licenceLabel": "Licence Ouverte 2.0",
       "tripUpdates": [
         {
-          "resourceId": 83524,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/b30879dc-089f-4213-8cf6-5f51afb28e4f",
-          "title": "GTFS-RT - Horaires de passage",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83524"
-        },
-        {
           "resourceId": 83837,
           "url": "https://proxy.transport.data.gouv.fr/resource/ficibus-fecamp-gtfs-rt-trip-update",
           "title": "Données en temps réel des horaires aux arrêts du réseau Ficibus",
           "pageUrl": "https://transport.data.gouv.fr/resources/83837"
+        },
+        {
+          "resourceId": 83524,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/b30879dc-089f-4213-8cf6-5f51afb28e4f",
+          "title": "GTFS-RT - Horaires de passage",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83524"
         }
       ],
       "statics": [
@@ -3943,7 +4048,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82311/GeoJSON",
             "declared": true,
             "bytes": 213246,
-            "checkedAt": "2026-08-31T18:20:47.252116Z",
+            "checkedAt": "2026-09-07T12:21:30.064307Z",
             "reachable": true
           }
         }
@@ -3976,7 +4081,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82545/GeoJSON",
             "declared": true,
             "bytes": 1331721,
-            "checkedAt": "2026-08-31T18:22:28.445625Z",
+            "checkedAt": "2026-09-07T12:17:27.836834Z",
             "reachable": true
           }
         }
@@ -4001,48 +4106,15 @@
           "resourceId": 83627,
           "title": "Horaires théoriques de la station de Tignes (GTFS)",
           "pageUrl": "https://transport.data.gouv.fr/resources/83627",
-          "updated": "2026-08-11T02:00:00.000000Z",
-          "hasShapes": true,
-          "stopCount": 19,
-          "routeCount": 2,
+          "updated": "2026-09-01T02:00:00.000000Z",
+          "hasShapes": false,
+          "stopCount": 0,
+          "routeCount": 0,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83627/GeoJSON",
             "declared": true,
-            "bytes": 23042,
-            "checkedAt": "2026-08-31T18:26:03.867054Z",
-            "reachable": true
-          }
-        }
-      ]
-    },
-    "pan-83630": {
-      "network": "Navettes saisonnières Val d'Isère",
-      "datasetId": "6798942abc43332729738b53",
-      "datasetUrl": "https://transport.data.gouv.fr/datasets/navettes-val-disere",
-      "licence": "lov2",
-      "licenceLabel": "Licence Ouverte 2.0",
-      "tripUpdates": [
-        {
-          "resourceId": 83630,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/28c1bf4a-90d8-4360-baf3-ceaea2a1941f",
-          "title": "Horaires temps-réel du réseau Val d'Isère (GTFS-RT)",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83630"
-        }
-      ],
-      "statics": [
-        {
-          "resourceId": 83629,
-          "title": "Horaires théoriques du réseau Val d'Isère (GTFS)",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83629",
-          "updated": "2026-07-04T02:00:00.000000Z",
-          "hasShapes": true,
-          "stopCount": 51,
-          "routeCount": 5,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/83629/GeoJSON",
-            "declared": true,
-            "bytes": 56135,
-            "checkedAt": "2026-08-31T12:32:26.962130Z",
+            "bytes": 42,
+            "checkedAt": "2026-09-07T12:20:45.491721Z",
             "reachable": true
           }
         }
@@ -4069,13 +4141,13 @@
           "pageUrl": "https://transport.data.gouv.fr/resources/80419",
           "updated": "2026-06-04T00:31:06.000000Z",
           "hasShapes": true,
-          "stopCount": 2817,
-          "routeCount": 365,
+          "stopCount": 2826,
+          "routeCount": 363,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/80419/GeoJSON",
             "declared": true,
-            "bytes": 20371947,
-            "checkedAt": "2026-08-31T18:29:26.664935Z",
+            "bytes": 20751463,
+            "checkedAt": "2026-09-07T12:19:31.641699Z",
             "reachable": true
           }
         }
@@ -4108,7 +4180,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82661/GeoJSON",
             "declared": true,
             "bytes": 3622752,
-            "checkedAt": "2026-08-31T18:27:39.280461Z",
+            "checkedAt": "2026-09-07T12:23:00.019934Z",
             "reachable": true
           }
         }
@@ -4133,15 +4205,15 @@
           "resourceId": 83408,
           "title": "QUB - Offre théorique au format GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/83408",
-          "updated": "2026-07-06T07:40:07.000000Z",
+          "updated": "2026-09-03T08:14:43.000000Z",
           "hasShapes": true,
-          "stopCount": 1123,
+          "stopCount": 1122,
           "routeCount": 56,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83408/GeoJSON",
             "declared": true,
-            "bytes": 3662930,
-            "checkedAt": "2026-08-31T12:39:06.799417Z",
+            "bytes": 3217478,
+            "checkedAt": "2026-09-07T12:22:55.931746Z",
             "reachable": true
           }
         }
@@ -4155,16 +4227,16 @@
       "licenceLabel": "ODbL 1.0",
       "tripUpdates": [
         {
-          "resourceId": 83765,
-          "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt-trip-update",
-          "title": "Données en temps réel au format GTFS-RT • TripUpdate",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83765"
-        },
-        {
           "resourceId": 83766,
           "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt",
           "title": "Données en temps réel au format GTFS-RT",
           "pageUrl": "https://transport.data.gouv.fr/resources/83766"
+        },
+        {
+          "resourceId": 83765,
+          "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt-trip-update",
+          "title": "Données en temps réel au format GTFS-RT • TripUpdate",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83765"
         }
       ],
       "statics": [
@@ -4180,7 +4252,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83762/GeoJSON",
             "declared": true,
             "bytes": 10599942,
-            "checkedAt": "2026-08-31T12:36:51.968531Z",
+            "checkedAt": "2026-09-07T12:21:25.063550Z",
             "reachable": true
           }
         }
@@ -4194,16 +4266,16 @@
       "licenceLabel": "ODbL 1.0",
       "tripUpdates": [
         {
-          "resourceId": 83765,
-          "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt-trip-update",
-          "title": "Données en temps réel au format GTFS-RT • TripUpdate",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83765"
-        },
-        {
           "resourceId": 83766,
           "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt",
           "title": "Données en temps réel au format GTFS-RT",
           "pageUrl": "https://transport.data.gouv.fr/resources/83766"
+        },
+        {
+          "resourceId": 83765,
+          "url": "https://proxy.transport.data.gouv.fr/resource/lila-presquile-cap-atlantique-gtfs-rt-trip-update",
+          "title": "Données en temps réel au format GTFS-RT • TripUpdate",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83765"
         }
       ],
       "statics": [
@@ -4219,7 +4291,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83762/GeoJSON",
             "declared": true,
             "bytes": 10599942,
-            "checkedAt": "2026-08-31T12:36:51.968531Z",
+            "checkedAt": "2026-09-07T12:21:25.063550Z",
             "reachable": true
           }
         }
@@ -4231,42 +4303,13 @@
       "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-tam-en-temps-reel-gtfs-rt-urbain-et-suburbain",
       "licence": "odc-odbl",
       "licenceLabel": "ODbL 1.0",
-      "tripUpdates": [
-        {
-          "resourceId": 83779,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/4f7aa71d-a7e5-4c03-8074-03a233304266",
-          "title": "Mises à jour des trajets suburbain",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83779"
-        },
-        {
-          "resourceId": 81757,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/297e8061-5435-409a-aa94-4170f215ef69",
-          "title": "Mises à jour des trajets urbain",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81757"
-        }
-      ],
+      "tripUpdates": [],
       "statics": [
-        {
-          "resourceId": 81754,
-          "title": "Horaires de référence urbain (GTFS)",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81754",
-          "updated": "2026-08-30T16:49:46.000000Z",
-          "hasShapes": false,
-          "stopCount": 1575,
-          "routeCount": 51,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/81754/GeoJSON",
-            "declared": true,
-            "bytes": 315866,
-            "checkedAt": "2026-08-31T18:28:18.949674Z",
-            "reachable": true
-          }
-        },
         {
           "resourceId": 83773,
           "title": "Horaires de référence suburbain (GTFS)",
           "pageUrl": "https://transport.data.gouv.fr/resources/83773",
-          "updated": "2026-08-30T01:18:29.000000Z",
+          "updated": "2026-09-06T01:15:21.000000Z",
           "hasShapes": true,
           "stopCount": 1235,
           "routeCount": 38,
@@ -4274,7 +4317,23 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83773/GeoJSON",
             "declared": true,
             "bytes": 1173707,
-            "checkedAt": "2026-08-31T12:39:01.434187Z",
+            "checkedAt": "2026-09-07T12:19:40.975048Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 81754,
+          "title": "Horaires de référence urbain (GTFS)",
+          "pageUrl": "https://transport.data.gouv.fr/resources/81754",
+          "updated": "2026-09-06T21:54:45.000000Z",
+          "hasShapes": false,
+          "stopCount": 1575,
+          "routeCount": 51,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/81754/GeoJSON",
+            "declared": true,
+            "bytes": 315869,
+            "checkedAt": "2026-09-07T12:19:49.647968Z",
             "reachable": true
           }
         }
@@ -4307,7 +4366,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82555/GeoJSON",
             "declared": true,
             "bytes": 2684280,
-            "checkedAt": "2026-08-31T12:39:11.667492Z",
+            "checkedAt": "2026-09-07T12:22:40.702312Z",
             "reachable": true
           }
         }
@@ -4339,8 +4398,8 @@
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83839/GeoJSON",
             "declared": true,
-            "bytes": 629437,
-            "checkedAt": "2026-08-31T18:25:01.614197Z",
+            "bytes": 779630,
+            "checkedAt": "2026-09-07T12:22:15.301875Z",
             "reachable": true
           }
         }
@@ -4367,13 +4426,13 @@
           "pageUrl": "https://transport.data.gouv.fr/resources/83841",
           "updated": "2026-08-19T16:45:00.223718Z",
           "hasShapes": true,
-          "stopCount": 1214,
+          "stopCount": 1216,
           "routeCount": 120,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83841/GeoJSON",
             "declared": true,
-            "bytes": 1534504,
-            "checkedAt": "2026-08-31T12:32:18.921649Z",
+            "bytes": 1496145,
+            "checkedAt": "2026-09-07T12:19:19.374946Z",
             "reachable": true
           }
         }
@@ -4406,7 +4465,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/80587/GeoJSON",
             "declared": true,
             "bytes": 3575430,
-            "checkedAt": "2026-08-31T18:28:04.682041Z",
+            "checkedAt": "2026-09-07T12:19:47.599613Z",
             "reachable": true
           }
         }
@@ -4439,7 +4498,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83852/GeoJSON",
             "declared": true,
             "bytes": 306863,
-            "checkedAt": "2026-08-31T12:36:10.136102Z",
+            "checkedAt": "2026-09-07T12:20:35.489829Z",
             "reachable": true
           }
         }
@@ -4472,7 +4531,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82683/GeoJSON",
             "declared": true,
             "bytes": 2555326,
-            "checkedAt": "2026-08-31T18:26:45.538618Z",
+            "checkedAt": "2026-09-07T12:21:11.862979Z",
             "reachable": true
           }
         }
@@ -4505,7 +4564,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83859/GeoJSON",
             "declared": true,
             "bytes": 62218,
-            "checkedAt": "2026-08-31T18:28:14.753267Z",
+            "checkedAt": "2026-09-07T12:23:04.360984Z",
             "reachable": true
           }
         }
@@ -4530,15 +4589,15 @@
           "resourceId": 83529,
           "title": "GTFS Dreux agglomération",
           "pageUrl": "https://transport.data.gouv.fr/resources/83529",
-          "updated": "2026-07-10T09:02:09.000000Z",
+          "updated": "2026-08-31T15:03:52.000000Z",
           "hasShapes": true,
-          "stopCount": 532,
-          "routeCount": 10,
+          "stopCount": 1292,
+          "routeCount": 115,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/83529/GeoJSON",
             "declared": true,
-            "bytes": 264652,
-            "checkedAt": "2026-08-31T12:35:22.147553Z",
+            "bytes": 1792602,
+            "checkedAt": "2026-09-07T12:19:45.575689Z",
             "reachable": true
           }
         }
@@ -4571,7 +4630,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/80092/GeoJSON",
             "declared": true,
             "bytes": 199596,
-            "checkedAt": "2026-08-31T12:33:40.893334Z",
+            "checkedAt": "2026-09-07T12:20:36.318114Z",
             "reachable": true
           }
         }
@@ -4593,26 +4652,10 @@
       ],
       "statics": [
         {
-          "resourceId": 83922,
-          "title": "Arrêts, horaires et parcours théoriques (GTFS) - Le Libellule",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83922",
-          "updated": "2026-08-29T20:29:15.000000Z",
-          "hasShapes": true,
-          "stopCount": 29,
-          "routeCount": 2,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/83922/GeoJSON",
-            "declared": true,
-            "bytes": 90638,
-            "checkedAt": "2026-08-31T18:26:54.562375Z",
-            "reachable": true
-          }
-        },
-        {
           "resourceId": 83921,
           "title": "Description du TAD zonal (GTFS-FLEX) - réseau Le Libellule",
           "pageUrl": "https://transport.data.gouv.fr/resources/83921",
-          "updated": "2026-08-29T20:29:35.000000Z",
+          "updated": "2026-09-05T20:31:28.000000Z",
           "hasShapes": false,
           "stopCount": 40,
           "routeCount": 2,
@@ -4620,7 +4663,23 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83921/GeoJSON",
             "declared": true,
             "bytes": 7662,
-            "checkedAt": "2026-08-31T18:26:59.588677Z",
+            "checkedAt": "2026-09-07T12:20:49.451185Z",
+            "reachable": true
+          }
+        },
+        {
+          "resourceId": 83922,
+          "title": "Arrêts, horaires et parcours théoriques (GTFS) - Le Libellule",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83922",
+          "updated": "2026-09-06T20:30:11.000000Z",
+          "hasShapes": true,
+          "stopCount": 29,
+          "routeCount": 2,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/83922/GeoJSON",
+            "declared": true,
+            "bytes": 90638,
+            "checkedAt": "2026-09-07T12:23:17.851873Z",
             "reachable": true
           }
         }
@@ -4669,7 +4728,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83987/GeoJSON",
             "declared": true,
             "bytes": 8303755,
-            "checkedAt": "2026-08-31T12:36:23.493201Z",
+            "checkedAt": "2026-09-07T12:20:37.315235Z",
             "reachable": true
           }
         }
@@ -4701,24 +4760,24 @@
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/84065/GeoJSON",
             "declared": true,
-            "bytes": 651241,
-            "checkedAt": "2026-08-31T18:23:12.104233Z",
+            "bytes": 784343,
+            "checkedAt": "2026-09-07T12:14:25.957990Z",
             "reachable": true
           }
         },
         {
           "resourceId": 84114,
-          "title": "GTFS théorique 29/06 - 30/08/26",
+          "title": "GTFS théorique 31/08/26 au 03/01/2027",
           "pageUrl": "https://transport.data.gouv.fr/resources/84114",
-          "updated": "2026-07-08T11:41:30.268000Z",
+          "updated": "2026-09-03T08:06:58.176000Z",
           "hasShapes": false,
-          "stopCount": 722,
+          "stopCount": 730,
           "routeCount": 20,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/84114/GeoJSON",
             "declared": true,
-            "bytes": 169866,
-            "checkedAt": "2026-08-31T18:23:37.307423Z",
+            "bytes": 171500,
+            "checkedAt": "2026-09-07T12:22:11.800261Z",
             "reachable": true
           }
         }
@@ -4751,7 +4810,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82294/GeoJSON",
             "declared": true,
             "bytes": 2024432,
-            "checkedAt": "2026-08-31T12:36:12.324335Z",
+            "checkedAt": "2026-09-07T12:22:07.901908Z",
             "reachable": true
           }
         }
@@ -4782,15 +4841,15 @@
           "resourceId": 84037,
           "title": "Offre de transport LiA format GTFS",
           "pageUrl": "https://transport.data.gouv.fr/resources/84037",
-          "updated": "2026-08-29T20:05:29.000000Z",
+          "updated": "2026-09-05T20:04:59.000000Z",
           "hasShapes": false,
-          "stopCount": 1094,
-          "routeCount": 70,
+          "stopCount": 1095,
+          "routeCount": 69,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/84037/GeoJSON",
             "declared": true,
-            "bytes": 220378,
-            "checkedAt": "2026-08-31T12:29:43.461591Z",
+            "bytes": 220588,
+            "checkedAt": "2026-09-07T12:12:26.070873Z",
             "reachable": true
           }
         }
@@ -4815,7 +4874,7 @@
           "resourceId": 83643,
           "title": "Référentiel depuis la plateforme chouette",
           "pageUrl": "https://transport.data.gouv.fr/resources/83643",
-          "updated": "2026-08-30T01:31:52.000000Z",
+          "updated": "2026-09-06T01:31:59.000000Z",
           "hasShapes": true,
           "stopCount": 3398,
           "routeCount": 333,
@@ -4823,40 +4882,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/83643/GeoJSON",
             "declared": true,
             "bytes": 57046254,
-            "checkedAt": "2026-08-31T18:27:22.524081Z",
-            "reachable": true
-          }
-        }
-      ]
-    },
-    "pan-84054": {
-      "network": "Rémi - Réseau de Mobilité Interurbaine CVDL",
-      "datasetId": "5e6193359ce2e7207cf4c8f5",
-      "datasetUrl": "https://transport.data.gouv.fr/datasets/remi-offre-theorique-mobilite-reseau-interurbain-regional",
-      "licence": "odc-odbl",
-      "licenceLabel": "ODbL 1.0",
-      "tripUpdates": [
-        {
-          "resourceId": 84053,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/6b6b3744-331f-4353-b93e-c6db1ea0b503",
-          "title": "REMI GTFS-RT TRIP-UP DATES",
-          "pageUrl": "https://transport.data.gouv.fr/resources/84053"
-        }
-      ],
-      "statics": [
-        {
-          "resourceId": 83530,
-          "title": "REMI GTFS",
-          "pageUrl": "https://transport.data.gouv.fr/resources/83530",
-          "updated": "2026-08-29T19:01:39.000000Z",
-          "hasShapes": true,
-          "stopCount": 5827,
-          "routeCount": 156,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/83530/GeoJSON",
-            "declared": true,
-            "bytes": 30454513,
-            "checkedAt": "2026-08-31T18:29:24.540184Z",
+            "checkedAt": "2026-09-07T12:20:28.771693Z",
             "reachable": true
           }
         }
@@ -4889,7 +4915,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/84115/GeoJSON",
             "declared": true,
             "bytes": 4326897,
-            "checkedAt": "2026-08-31T18:25:42.879854Z",
+            "checkedAt": "2026-09-07T12:22:31.216056Z",
             "reachable": true
           }
         }
@@ -4922,7 +4948,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/82663/GeoJSON",
             "declared": true,
             "bytes": 1422136,
-            "checkedAt": "2026-08-31T18:24:35.960020Z",
+            "checkedAt": "2026-09-07T12:19:41.154934Z",
             "reachable": true
           }
         }
@@ -4955,7 +4981,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/84068/GeoJSON",
             "declared": true,
             "bytes": 665399,
-            "checkedAt": "2026-08-31T12:24:57.259919Z",
+            "checkedAt": "2026-09-07T12:22:50.020463Z",
             "reachable": true
           }
         }
@@ -4977,22 +5003,6 @@
       ],
       "statics": [
         {
-          "resourceId": 81193,
-          "title": "gtfs-maritime-martinique.zip",
-          "pageUrl": "https://transport.data.gouv.fr/resources/81193",
-          "updated": "2023-08-21T05:09:26.687000Z",
-          "hasShapes": null,
-          "stopCount": null,
-          "routeCount": null,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/81193/GeoJSON",
-            "declared": false,
-            "bytes": null,
-            "checkedAt": null,
-            "reachable": false
-          }
-        },
-        {
           "resourceId": 80394,
           "title": "gtfs-sud-sudlib_v2.zip",
           "pageUrl": "https://transport.data.gouv.fr/resources/80394",
@@ -5002,6 +5012,22 @@
           "routeCount": null,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/80394/GeoJSON",
+            "declared": false,
+            "bytes": null,
+            "checkedAt": null,
+            "reachable": false
+          }
+        },
+        {
+          "resourceId": 81193,
+          "title": "gtfs-maritime-martinique.zip",
+          "pageUrl": "https://transport.data.gouv.fr/resources/81193",
+          "updated": "2023-08-21T05:09:26.687000Z",
+          "hasShapes": null,
+          "stopCount": null,
+          "routeCount": null,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/81193/GeoJSON",
             "declared": false,
             "bytes": null,
             "checkedAt": null,
@@ -5020,7 +5046,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79897/GeoJSON",
             "declared": true,
             "bytes": 4345632,
-            "checkedAt": "2026-08-31T12:34:25.636477Z",
+            "checkedAt": "2026-09-07T12:21:32.163003Z",
             "reachable": true
           }
         }
@@ -5053,40 +5079,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/79898/GeoJSON",
             "declared": true,
             "bytes": 1801877,
-            "checkedAt": "2026-08-31T18:28:30.995766Z",
-            "reachable": true
-          }
-        }
-      ]
-    },
-    "pan-84086": {
-      "network": "Réseau Nord",
-      "datasetId": "63da9677e47cfa0836c459e5",
-      "datasetUrl": "https://transport.data.gouv.fr/datasets/gtfs-urbain-de-la-zone-nord-cap-nord",
-      "licence": "lov2",
-      "licenceLabel": "Licence Ouverte 2.0",
-      "tripUpdates": [
-        {
-          "resourceId": 84084,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/9c12856f-6303-49a9-bbd8-ed30c52414b4",
-          "title": "gtfs-rt-nord-TripUpdate",
-          "pageUrl": "https://transport.data.gouv.fr/resources/84084"
-        }
-      ],
-      "statics": [
-        {
-          "resourceId": 80606,
-          "title": "gtfs-nord-rtm.zip",
-          "pageUrl": "https://transport.data.gouv.fr/resources/80606",
-          "updated": "2026-06-25T18:25:55.045000Z",
-          "hasShapes": true,
-          "stopCount": 3289,
-          "routeCount": 57,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/80606/GeoJSON",
-            "declared": true,
-            "bytes": 2412875,
-            "checkedAt": "2026-08-31T12:33:23.770771Z",
+            "checkedAt": "2026-09-07T12:19:20.586782Z",
             "reachable": true
           }
         }
@@ -5119,7 +5112,40 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/84087/GeoJSON",
             "declared": true,
             "bytes": 119381,
-            "checkedAt": "2026-08-31T18:29:25.306422Z",
+            "checkedAt": "2026-09-07T12:22:13.096357Z",
+            "reachable": true
+          }
+        }
+      ]
+    },
+    "pan-84090": {
+      "network": "Réseau urbain ST SULPICE LA POINTE",
+      "datasetId": "6a3b939e6d59013b6b98c46e",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/reseau-de-transport-urbain-de-la-ville-de-st-sulpice-la-pointe",
+      "licence": "lov2",
+      "licenceLabel": "Licence Ouverte 2.0",
+      "tripUpdates": [
+        {
+          "resourceId": 84090,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/3577ce0e-7581-455c-81ec-f50008b7d6c0",
+          "title": "GTFS-RT",
+          "pageUrl": "https://transport.data.gouv.fr/resources/84090"
+        }
+      ],
+      "statics": [
+        {
+          "resourceId": 84089,
+          "title": "GTFS",
+          "pageUrl": "https://transport.data.gouv.fr/resources/84089",
+          "updated": "2026-07-04T02:00:00.000000Z",
+          "hasShapes": true,
+          "stopCount": 73,
+          "routeCount": 2,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/84089/GeoJSON",
+            "declared": true,
+            "bytes": 56156,
+            "checkedAt": "2026-09-07T12:19:38.667643Z",
             "reachable": true
           }
         }
@@ -5144,15 +5170,15 @@
           "resourceId": 81026,
           "title": "GTFS liO",
           "pageUrl": "https://transport.data.gouv.fr/resources/81026",
-          "updated": "2026-08-30T02:40:11.076666Z",
+          "updated": "2026-09-06T23:53:25.881304Z",
           "hasShapes": true,
-          "stopCount": 12295,
-          "routeCount": 325,
+          "stopCount": 12171,
+          "routeCount": 309,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/81026/GeoJSON",
             "declared": true,
-            "bytes": 44167620,
-            "checkedAt": "2026-08-31T12:34:50.403264Z",
+            "bytes": 41627551,
+            "checkedAt": "2026-09-07T12:18:34.818975Z",
             "reachable": true
           }
         }
@@ -5185,46 +5211,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/84121/GeoJSON",
             "declared": true,
             "bytes": 5772163,
-            "checkedAt": "2026-08-31T18:26:31.464975Z",
-            "reachable": true
-          }
-        }
-      ]
-    },
-    "pan-84125": {
-      "network": "TANGO",
-      "datasetId": "5c642379634f41657e9b5ea4",
-      "datasetUrl": "https://transport.data.gouv.fr/datasets/offre-de-transport-du-reseau-tango-de-nimes-metropole-gtfs-gtfs-rt",
-      "licence": "lov2",
-      "licenceLabel": "Licence Ouverte 2.0",
-      "tripUpdates": [
-        {
-          "resourceId": 80731,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/dba43a34-366d-4bef-aed1-b48c0e31c863",
-          "title": "GTFS-RT Mises à jour des trajets en temps réel",
-          "pageUrl": "https://transport.data.gouv.fr/resources/80731"
-        },
-        {
-          "resourceId": 84126,
-          "url": "https://www.data.gouv.fr/api/1/datasets/r/9be4a7ae-6436-4aab-bdb7-a81e09fa3233",
-          "title": "GTFS-RT - Prochains passages en temps réel",
-          "pageUrl": "https://transport.data.gouv.fr/resources/84126"
-        }
-      ],
-      "statics": [
-        {
-          "resourceId": 82911,
-          "title": "gtfs-production.zip",
-          "pageUrl": "https://transport.data.gouv.fr/resources/82911",
-          "updated": "2026-08-12T13:50:32.030000Z",
-          "hasShapes": true,
-          "stopCount": 1136,
-          "routeCount": 88,
-          "geojson": {
-            "url": "https://transport.data.gouv.fr/resources/conversions/82911/GeoJSON",
-            "declared": true,
-            "bytes": 4823646,
-            "checkedAt": "2026-08-31T17:11:45.064818Z",
+            "checkedAt": "2026-09-07T12:22:37.033728Z",
             "reachable": true
           }
         }
@@ -5249,15 +5236,15 @@
           "resourceId": 84137,
           "title": "GTFS Mobivie",
           "pageUrl": "https://transport.data.gouv.fr/resources/84137",
-          "updated": "2026-08-26T01:21:41.000000Z",
+          "updated": "2026-09-04T01:28:44.000000Z",
           "hasShapes": true,
           "stopCount": 270,
           "routeCount": 9,
           "geojson": {
             "url": "https://transport.data.gouv.fr/resources/conversions/84137/GeoJSON",
             "declared": true,
-            "bytes": 623256,
-            "checkedAt": "2026-08-31T18:19:34.417893Z",
+            "bytes": 452743,
+            "checkedAt": "2026-09-07T12:23:19.928341Z",
             "reachable": true
           }
         }
@@ -5290,7 +5277,73 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/81876/GeoJSON",
             "declared": true,
             "bytes": 1346267,
-            "checkedAt": "2026-08-31T12:32:48.246640Z",
+            "checkedAt": "2026-09-07T12:15:06.794962Z",
+            "reachable": true
+          }
+        }
+      ]
+    },
+    "pan-84178": {
+      "network": "Rémi - Réseau de Mobilité Interurbaine CVDL",
+      "datasetId": "5e6193359ce2e7207cf4c8f5",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/remi-offre-theorique-mobilite-reseau-interurbain-regional",
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "tripUpdates": [
+        {
+          "resourceId": 84177,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/3c060a5c-aa75-45a5-b8c2-d2067086399e",
+          "title": "REMI GTFS-RT TRIP-UP DATES",
+          "pageUrl": "https://transport.data.gouv.fr/resources/84177"
+        }
+      ],
+      "statics": [
+        {
+          "resourceId": 83530,
+          "title": "REMI GTFS",
+          "pageUrl": "https://transport.data.gouv.fr/resources/83530",
+          "updated": "2026-09-06T19:47:00.000000Z",
+          "hasShapes": true,
+          "stopCount": 5940,
+          "routeCount": 159,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/83530/GeoJSON",
+            "declared": true,
+            "bytes": 28449104,
+            "checkedAt": "2026-09-07T12:22:05.866567Z",
+            "reachable": true
+          }
+        }
+      ]
+    },
+    "pan-8488": {
+      "network": "TUM - Transports Urbain Mendois",
+      "datasetId": "5dfa54b46f44417bc185117a",
+      "datasetUrl": "https://transport.data.gouv.fr/datasets/horaires-theoriques-et-temps-reel-du-reseau-max-mende-mobilites-bus-gtfs-gtfs-rt",
+      "licence": "odc-odbl",
+      "licenceLabel": "ODbL 1.0",
+      "tripUpdates": [
+        {
+          "resourceId": 8488,
+          "url": "https://www.data.gouv.fr/api/1/datasets/r/9b9013ec-4cbb-4f18-b44a-1e94088320a8",
+          "title": "Horaires temps-réel du réseau Max Mende Mobilités - BUS (GTFS-RT)",
+          "pageUrl": "https://transport.data.gouv.fr/resources/8488"
+        }
+      ],
+      "statics": [
+        {
+          "resourceId": 8487,
+          "title": "Horaires théoriques du réseau Max Mende Mobilités - BUS (GTFS)",
+          "pageUrl": "https://transport.data.gouv.fr/resources/8487",
+          "updated": "2026-09-04T13:37:09.000000Z",
+          "hasShapes": true,
+          "stopCount": 123,
+          "routeCount": 6,
+          "geojson": {
+            "url": "https://transport.data.gouv.fr/resources/conversions/8487/GeoJSON",
+            "declared": true,
+            "bytes": 382750,
+            "checkedAt": "2026-09-07T12:17:07.485996Z",
             "reachable": true
           }
         }
@@ -5323,7 +5376,7 @@
             "url": "https://transport.data.gouv.fr/resources/conversions/8597/GeoJSON",
             "declared": true,
             "bytes": 118381,
-            "checkedAt": "2026-08-31T18:26:15.169791Z",
+            "checkedAt": "2026-09-07T12:22:35.938928Z",
             "reachable": true
           }
         }

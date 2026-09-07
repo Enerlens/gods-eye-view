@@ -1,11 +1,11 @@
 {
   "source": "https://transport.data.gouv.fr/api/datasets",
-  "generatedAt": "2026-08-31T16:49:47.049Z",
+  "generatedAt": "2026-09-07T15:19:28.874Z",
   "generator": "scripts/build-pan-route-types.mjs",
   "note": "route_id → GTFS route_type, read from each network's static routes.txt; uniformKind is set only when every route in the network shares one class",
-  "feedCount": 147,
-  "feedsWithoutRoutes": 1,
-  "routeCount": 7044,
+  "feedCount": 143,
+  "feedsWithoutRoutes": 4,
+  "routeCount": 6988,
   "feeds": {
     "pan-84094": {
       "network": "Réseau interurbain liO Occitanie",
@@ -18,7 +18,6 @@
         "106": 3,
         "108": 3,
         "109": 3,
-        "110": 3,
         "112": 3,
         "113": 3,
         "114": 3,
@@ -144,13 +143,9 @@
         "500": 3,
         "503": 3,
         "505": 3,
-        "506": 3,
-        "510": 3,
         "511": 3,
         "512": 3,
         "520": 3,
-        "521": 3,
-        "522": 3,
         "523": 3,
         "524": 3,
         "525": 3,
@@ -159,7 +154,6 @@
         "532": 3,
         "536": 3,
         "540": 3,
-        "541": 3,
         "542": 3,
         "543": 3,
         "550": 3,
@@ -284,7 +278,6 @@
         "875": 3,
         "876": 3,
         "877": 3,
-        "878": 3,
         "880": 3,
         "881": 3,
         "882": 3,
@@ -315,36 +308,27 @@
         "967": 3,
         "968": 3,
         "MOVIGO_A": 3,
-        "BALAD_O_BUS": 3,
         "MOVIGO_B": 3,
         "MOVIGO_C": 3,
         "MOVIGO_D": 3,
         "MOVIGO_E": 3,
         "MOVIGO_F": 3,
-        "LIPY1": 3,
-        "LIPY2": 3,
-        "LIPY3": 3,
-        "LIPY4": 3,
-        "LIPY5": 3,
-        "LIPY6": 3,
         "MOVIGO_MATIN": 3,
-        "NAV2_P2V": 3,
         "NAV_GRAU": 3,
-        "SAVIGN_AX": 3,
         "MOVIGO_SOIR": 3,
         "TIL_du_46": 3,
         "TILEO_1": 3,
         "TILEO_2": 3
       },
       "kinds": {
-        "bus": 325
+        "bus": 309
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 242,
-        "direct": 242,
-        "resolved": 242,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 430,
+        "direct": 425,
+        "resolved": 430,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-80723": {
@@ -467,7 +451,6 @@
         "212_S": 3,
         "216_S": 3,
         "401-B": 3,
-        "401-M": 3,
         "402-B": 3,
         "424-M": 3,
         "101E": 3,
@@ -501,15 +484,15 @@
         "YEU": 4
       },
       "kinds": {
-        "bus": 148,
+        "bus": 147,
         "ferry": 1
       },
       "uniformKind": null,
       "join": {
-        "sampled": 162,
-        "direct": 160,
-        "resolved": 160,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 212,
+        "direct": 202,
+        "resolved": 202,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82296": {
@@ -622,7 +605,6 @@
         "ATOUMOD002:Line:FRxLinexx57AE0F48x2436x44BDxA2F0xAA45D4A483E7x:LOC": 2,
         "ATOUMOD002:Line:FRxLinexx5E25F2B5xD15Fx475FxB424xC7ED6748FE50x:LOC": 2,
         "ATOUMOD002:Line:FRxLinexx6155CD5FxAB2Dx4274xA052x8C7462540578x:LOC": 2,
-        "ATOUMOD002:Line:FRxLinexx61589714xdfbdx400cxb4fbx990881ceda24x:LOC": 3,
         "ATOUMOD002:Line:FRxLinexx66849E04x284Fx47D7x8795x4C925C6ED66Fx:LOC": 2,
         "ATOUMOD002:Line:FRxLinexx6a7e9883x518fx4a10x8f46xa659e93a82f9x:LOC": 2,
         "ATOUMOD002:Line:FRxLinexx6CC8BBE5x9508x49DBx95CDx797616EA49C6x:LOC": 2,
@@ -702,8 +684,6 @@
         "ATOUMOD006:Line:4:LOC": 3,
         "ATOUMOD006:Line:5:LOC": 3,
         "ATOUMOD006:Line:6:LOC": 3,
-        "ATOUMOD006:Line:6a:LOC": 3,
-        "ATOUMOD006:Line:6b:LOC": 3,
         "ATOUMOD006:Line:7a:LOC": 3,
         "ATOUMOD006:Line:7b:LOC": 3,
         "ATOUMOD006:Line:8:LOC": 3,
@@ -741,17 +721,16 @@
         "ATOUMOD012:Line:2:LOC": 3,
         "ATOUMOD012:Line:3:LOC": 3,
         "ATOUMOD012:Line:Navette:LOC": 3,
-        "ATOUMOD013:Line:1:LOC": 3,
-        "ATOUMOD013:Line:2:LOC": 3,
-        "ATOUMOD013:Line:3:LOC": 3,
         "ATOUMOD014:Line:30030155:LOC": 3,
         "ATOUMOD018:Line:737:LOC": 3,
         "ATOUMOD018:Line:805:LOC": 3,
-        "ATOUMOD019:Line:1:LOC": 3,
+        "ATOUMOD019:Line:01:LOC": 3,
+        "ATOUMOD019:Line:02:LOC": 3,
+        "ATOUMOD019:Line:03:LOC": 3,
+        "ATOUMOD019:Line:04:LOC": 3,
         "ATOUMOD019:Line:11:LOC": 3,
         "ATOUMOD019:Line:12:LOC": 3,
         "ATOUMOD019:Line:13:LOC": 3,
-        "ATOUMOD019:Line:2:LOC": 3,
         "ATOUMOD019:Line:21:LOC": 3,
         "ATOUMOD019:Line:22:LOC": 3,
         "ATOUMOD019:Line:23:LOC": 3,
@@ -760,8 +739,6 @@
         "ATOUMOD019:Line:26:LOC": 3,
         "ATOUMOD019:Line:27:LOC": 3,
         "ATOUMOD019:Line:28:LOC": 3,
-        "ATOUMOD019:Line:3:LOC": 3,
-        "ATOUMOD019:Line:4:LOC": 3,
         "ATOUMOD019:Line:51:LOC": 3,
         "ATOUMOD019:Line:52:LOC": 3,
         "ATOUMOD019:Line:53:LOC": 3,
@@ -863,6 +840,21 @@
         "ATOUMOD035:Line:F:LOC": 3,
         "ATOUMOD035:Line:FER:LOC": 3,
         "ATOUMOD035:Line:G:LOC": 3,
+        "ATOUMOD035:Line:H:LOC": 3,
+        "ATOUMOD035:Line:S1:LOC": 3,
+        "ATOUMOD035:Line:S10:LOC": 3,
+        "ATOUMOD035:Line:S11:LOC": 3,
+        "ATOUMOD035:Line:S12:LOC": 3,
+        "ATOUMOD035:Line:S13:LOC": 3,
+        "ATOUMOD035:Line:S14:LOC": 3,
+        "ATOUMOD035:Line:S2:LOC": 3,
+        "ATOUMOD035:Line:S3:LOC": 3,
+        "ATOUMOD035:Line:S4:LOC": 3,
+        "ATOUMOD035:Line:S5:LOC": 3,
+        "ATOUMOD035:Line:S6:LOC": 3,
+        "ATOUMOD035:Line:S7:LOC": 3,
+        "ATOUMOD035:Line:S8:LOC": 3,
+        "ATOUMOD035:Line:S9:LOC": 3,
         "ATOUMOD036:Line:4558066457509888:LOC": 3,
         "ATOUMOD036:Line:4612030137892864:LOC": 3,
         "ATOUMOD036:Line:4666911632654336:LOC": 3,
@@ -1042,9 +1034,36 @@
         "ATOUMOD040:Line:1010148:LOC": 3,
         "ATOUMOD041:Line:1:LOC": 3,
         "ATOUMOD041:Line:2:LOC": 3,
-        "ATOUMOD051:Line:BYB1x19:LOC": 3,
-        "ATOUMOD051:Line:BYB2x19:LOC": 3,
-        "ATOUMOD051:Line:BYB3x19:LOC": 3,
+        "ATOUMOD051:Line:BYB1x1:LOC": 3,
+        "ATOUMOD051:Line:BYB2x1:LOC": 3,
+        "ATOUMOD051:Line:BYB3x1:LOC": 3,
+        "ATOUMOD080:Line:AP:LOC": 4,
+        "ATOUMOD080:Line:BO:LOC": 4,
+        "ATOUMOD080:Line:BP:LOC": 4,
+        "ATOUMOD080:Line:CR:LOC": 4,
+        "ATOUMOD080:Line:HL:LOC": 4,
+        "ATOUMOD080:Line:HO:LOC": 4,
+        "ATOUMOD080:Line:HP:LOC": 4,
+        "ATOUMOD080:Line:LH:LOC": 4,
+        "ATOUMOD080:Line:MP:LOC": 4,
+        "ATOUMOD080:Line:NP:LOC": 4,
+        "ATOUMOD080:Line:OB:LOC": 4,
+        "ATOUMOD080:Line:OH:LOC": 4,
+        "ATOUMOD080:Line:OS:LOC": 4,
+        "ATOUMOD080:Line:PA:LOC": 4,
+        "ATOUMOD080:Line:PB:LOC": 4,
+        "ATOUMOD080:Line:PH:LOC": 4,
+        "ATOUMOD080:Line:PM:LOC": 4,
+        "ATOUMOD080:Line:PN:LOC": 4,
+        "ATOUMOD080:Line:PR:LOC": 4,
+        "ATOUMOD080:Line:PS:LOC": 4,
+        "ATOUMOD080:Line:RC:LOC": 4,
+        "ATOUMOD080:Line:RY:LOC": 4,
+        "ATOUMOD080:Line:SP:LOC": 4,
+        "ATOUMOD080:Line:SY:LOC": 4,
+        "ATOUMOD080:Line:YM:LOC": 4,
+        "ATOUMOD080:Line:YR:LOC": 4,
+        "ATOUMOD080:Line:YS:LOC": 4,
         "ATOUMOD101:Line:R1:LOC": 3,
         "ATOUMOD102:Line:3659:LOC": 3,
         "ATOUMOD102:Line:7755:LOC": 3,
@@ -1071,34 +1090,92 @@
         "ATOUMOD118:Line:241:LOC": 3
       },
       "kinds": {
-        "bus": 511,
+        "bus": 520,
         "metro": 1,
-        "ferry": 10,
+        "ferry": 37,
         "rail": 26,
         "tram": 6
       },
       "uniformKind": null,
       "join": {
-        "sampled": 227,
-        "direct": 226,
-        "resolved": 226,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 316,
+        "direct": 314,
+        "resolved": 314,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
-    "pan-84054": {
+    "pan-84178": {
       "network": "Réseau interurbain Rémi",
       "routes": {
-        "REMI36:Line:I": 3,
-        "REMI36:Line:V": 3,
-        "REMI36:Line:B": 3,
-        "REMI36:Line:F": 3,
-        "REMI36:Line:S": 3,
-        "REMI36:Line:433": 3,
-        "REMI36:Line:L": 3,
-        "REMI36:Line:Q": 3,
-        "REMI36:Line:800": 3,
-        "REMI36:Line:A": 3,
-        "REMI36:Line:U": 3,
+        "REMI41:Line:10": 3,
+        "REMI41:Line:16": 3,
+        "REMI41:Line:51": 3,
+        "REMI41:Line:54": 3,
+        "REMI41:Line:931": 3,
+        "REMI41:Line:13": 3,
+        "REMI41:Line:492": 3,
+        "REMI41:Line:55": 3,
+        "REMI41:Line:2": 3,
+        "REMI41:Line:14": 3,
+        "REMI41:Line:11": 3,
+        "REMI41:Line:440": 3,
+        "REMI41:Line:8": 3,
+        "REMI41:Line:407": 3,
+        "REMI41:Line:429": 3,
+        "REMI41:Line:941": 3,
+        "REMI41:Line:4": 3,
+        "REMI41:Line:431": 3,
+        "REMI41:Line:5": 3,
+        "REMI41:Line:6": 3,
+        "REMI41:Line:1": 3,
+        "REMI41:Line:3": 3,
+        "REMI41:Line:53": 3,
+        "REMI41:Line:20": 3,
+        "REMI41:Line:430": 3,
+        "REMI41:Line:52": 3,
+        "REMI41:Line:7": 3,
+        "REMI41:Line:9": 3,
+        "REMI_18:Line:100": 3,
+        "REMI_18:Line:105": 3,
+        "REMI_18:Line:110": 3,
+        "REMI_18:Line:120": 3,
+        "REMI_18:Line:120.TAD": 3,
+        "REMI_18:Line:145": 3,
+        "REMI_18:Line:150": 3,
+        "REMI_18:Line:160": 3,
+        "REMI_18:Line:160.TAD": 3,
+        "REMI_18:Line:185": 3,
+        "REMI_18:Line:190": 3,
+        "REMI_18:Line:190.TAD": 3,
+        "REMI_18:Line:235": 3,
+        "REMI_18:Line:235.TAD": 3,
+        "REMI_18:Line:300": 3,
+        "REMI_18:Line:433": 3,
+        "REMI_18:Line:800": 3,
+        "REMI37:Line:343": 3,
+        "REMI37:Line:355": 3,
+        "REMI37:Line:59": 3,
+        "REMI37:Line:157": 3,
+        "REMI37:Line:156": 3,
+        "REMI37:Line:37": 3,
+        "REMI37:Line:29": 3,
+        "REMI37:Line:304": 3,
+        "REMI37:Line:345": 3,
+        "REMI37:Line:63": 3,
+        "REMI37:Line:351": 3,
+        "REMI37:Line:306": 3,
+        "REMI37:Line:139": 3,
+        "REMI37:Line:349": 3,
+        "REMI37:Line:143": 3,
+        "REMI37:Line:144": 3,
+        "REMI37:Line:152": 3,
+        "REMI37:Line:347": 3,
+        "REMI37:Line:384": 3,
+        "REMI37:Line:140": 3,
+        "REMI37:Line:303": 3,
+        "REMI37:Line:357": 3,
+        "REMI37:Line:353": 3,
+        "REMI37:Line:145": 3,
         "REMI45:Line:37": 3,
         "REMI45:Line:18": 3,
         "REMI45:Line:16": 3,
@@ -1149,73 +1226,19 @@
         "REMI45:Line:105": 3,
         "REMI45:Line:93": 3,
         "REMI45:Line:630": 3,
-        "REMI45:Line:643": 3,
         "REMI45:Line:585": 3,
         "REMI45:Line:15": 3,
-        "REMI37:Line:343": 3,
-        "REMI37:Line:355": 3,
-        "REMI37:Line:59": 3,
-        "REMI37:Line:157": 3,
-        "REMI37:Line:156": 3,
-        "REMI37:Line:37": 3,
-        "REMI37:Line:29": 3,
-        "REMI37:Line:304": 3,
-        "REMI37:Line:345": 3,
-        "REMI37:Line:63": 3,
-        "REMI37:Line:351": 3,
-        "REMI37:Line:389": 3,
-        "REMI37:Line:390": 3,
-        "REMI37:Line:306": 3,
-        "REMI37:Line:139": 3,
-        "REMI37:Line:349": 3,
-        "REMI37:Line:143": 3,
-        "REMI37:Line:144": 3,
-        "REMI37:Line:152": 3,
-        "REMI37:Line:347": 3,
-        "REMI37:Line:384": 3,
-        "REMI37:Line:140": 3,
-        "REMI37:Line:303": 3,
-        "REMI37:Line:357": 3,
-        "REMI37:Line:353": 3,
-        "REMI37:Line:145": 3,
-        "REMI41:Line:10": 3,
-        "REMI41:Line:16": 3,
-        "REMI41:Line:51": 3,
-        "REMI41:Line:54": 3,
-        "REMI41:Line:931": 3,
-        "REMI41:Line:13": 3,
-        "REMI41:Line:492": 3,
-        "REMI41:Line:55": 3,
-        "REMI41:Line:2": 3,
-        "REMI41:Line:14": 3,
-        "REMI41:Line:11": 3,
-        "REMI41:Line:440": 3,
-        "REMI41:Line:8": 3,
-        "REMI41:Line:407": 3,
-        "REMI41:Line:429": 3,
-        "REMI41:Line:941": 3,
-        "REMI41:Line:4": 3,
-        "REMI41:Line:431": 3,
-        "REMI41:Line:5": 3,
-        "REMI41:Line:6": 3,
-        "REMI41:Line:1": 3,
-        "REMI41:Line:3": 3,
-        "REMI41:Line:53": 3,
-        "REMI41:Line:20": 3,
-        "REMI41:Line:430": 3,
-        "REMI41:Line:52": 3,
-        "REMI41:Line:7": 3,
-        "REMI41:Line:9": 3,
-        "REMI_18:Line:100": 3,
-        "REMI_18:Line:150": 3,
-        "REMI_18:Line:110": 3,
-        "REMI_18:Line:160": 3,
-        "REMI_18:Line:105": 3,
-        "REMI_18:Line:120": 3,
-        "REMI_18:Line:190": 3,
-        "REMI_18:Line:145": 3,
-        "REMI_18:Line:235": 3,
-        "REMI_18:Line:185": 3,
+        "REMI36:Line:A": 3,
+        "REMI36:Line:B": 3,
+        "REMI36:Line:F": 3,
+        "REMI36:Line:I": 3,
+        "REMI36:Line:L": 3,
+        "REMI36:Line:L_TAD": 3,
+        "REMI36:Line:Q": 3,
+        "REMI36:Line:S": 3,
+        "REMI36:Line:U": 3,
+        "REMI36:Line:U_TAD": 3,
+        "REMI36:Line:V": 3,
         "REMI28:Line:31": 3,
         "REMI28:Line:14": 3,
         "REMI28:Line:90": 3,
@@ -1236,7 +1259,6 @@
         "REMI28:Line:202": 3,
         "REMI28:Line:45": 3,
         "REMI28:Line:57": 3,
-        "REMI28:Line:79": 3,
         "REMI28:Line:66": 3,
         "REMI28:Line:41": 3,
         "REMI28:Line:44": 3,
@@ -1246,14 +1268,14 @@
         "REMI28:Line:51": 3
       },
       "kinds": {
-        "bus": 156
+        "bus": 159
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 38,
-        "direct": 19,
-        "resolved": 38,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 104,
+        "direct": 39,
+        "resolved": 104,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-36515": {
@@ -1281,10 +1303,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 16,
-        "direct": 16,
-        "resolved": 16,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 52,
+        "direct": 52,
+        "resolved": 52,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83026": {
@@ -1502,10 +1524,10 @@
       },
       "uniformKind": null,
       "join": {
-        "sampled": 446,
-        "direct": 441,
-        "resolved": 441,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 518,
+        "direct": 518,
+        "resolved": 518,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83714": {
@@ -1726,7 +1748,6 @@
         "1003240": 713,
         "1003241": 713,
         "1003242": 713,
-        "1003243": 713,
         "1003244": 713,
         "1003248": 713,
         "1003249": 713,
@@ -1871,22 +1892,21 @@
         "1008598": 713,
         "1008658": 712,
         "1008659": 712,
-        "1008783": 713,
         "1009909": 713,
         "1009910": 713,
         "1010009": 712,
         "1010029": 713
       },
       "kinds": {
-        "bus": 321,
+        "bus": 319,
         "coach": 44
       },
       "uniformKind": null,
       "join": {
-        "sampled": 50,
-        "direct": 50,
-        "resolved": 50,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 168,
+        "direct": 168,
+        "resolved": 168,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83319": {
@@ -1919,7 +1939,6 @@
         "42": 3,
         "43": 3,
         "44": 3,
-        "45": 3,
         "47": 3,
         "49": 3,
         "50": 3,
@@ -1999,8 +2018,6 @@
         "C": 3,
         "Exp4": 3,
         "NVDB": 3,
-        "NVMA": 3,
-        "AUR3": 3,
         "NGOR": 3,
         "08": 3,
         "B": 0,
@@ -2009,37 +2026,28 @@
         "FOOT": 3
       },
       "kinds": {
-        "bus": 111,
+        "bus": 108,
         "tram": 4
       },
       "uniformKind": null,
       "join": {
-        "sampled": 215,
-        "direct": 215,
-        "resolved": 215,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 230,
+        "direct": 230,
+        "resolved": 230,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81755": {
       "network": "Réseau urbain TaM",
       "routes": {
-        "1": 0,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 3,
-        "7": 3,
         "8": 3,
+        "9": 3,
         "10": 3,
-        "11": 3,
         "13": 3,
         "14": 3,
-        "15": 3,
         "16": 3,
         "17": 3,
         "18": 3,
-        "19": 3,
         "20": 3,
         "21": 3,
         "22": 3,
@@ -2047,24 +2055,19 @@
         "24": 3,
         "25": 3,
         "26": 3,
-        "27": 3,
-        "28": 3,
         "30": 3,
-        "31": 3,
         "32": 3,
         "33": 3,
         "34": 3,
-        "35": 3,
         "36": 3,
         "38": 3,
         "40": 3,
-        "41": 3,
         "42": 3,
         "43": 3,
         "44": 3,
         "46": 3,
         "47": 3,
-        "50": 3,
+        "51": 3,
         "52": 3,
         "53": 3,
         "91": 3,
@@ -2073,40 +2076,31 @@
         "94": 3,
         "95": 3,
         "96": 3,
-        "A": 3
+        "AMIGO": 3,
+        "RUGBY": 3
       },
       "kinds": {
-        "tram": 5,
-        "bus": 46
+        "bus": 38
       },
-      "uniformKind": null,
+      "uniformKind": "bus",
       "join": {
-        "sampled": 156,
-        "direct": 156,
-        "resolved": 156,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 181,
+        "direct": 36,
+        "resolved": 181,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83780": {
       "network": "Réseau urbain TaM",
       "routes": {
-        "1": 0,
-        "2": 0,
-        "3": 0,
-        "4": 0,
-        "5": 0,
-        "6": 3,
-        "7": 3,
         "8": 3,
+        "9": 3,
         "10": 3,
-        "11": 3,
         "13": 3,
         "14": 3,
-        "15": 3,
         "16": 3,
         "17": 3,
         "18": 3,
-        "19": 3,
         "20": 3,
         "21": 3,
         "22": 3,
@@ -2114,24 +2108,19 @@
         "24": 3,
         "25": 3,
         "26": 3,
-        "27": 3,
-        "28": 3,
         "30": 3,
-        "31": 3,
         "32": 3,
         "33": 3,
         "34": 3,
-        "35": 3,
         "36": 3,
         "38": 3,
         "40": 3,
-        "41": 3,
         "42": 3,
         "43": 3,
         "44": 3,
         "46": 3,
         "47": 3,
-        "50": 3,
+        "51": 3,
         "52": 3,
         "53": 3,
         "91": 3,
@@ -2140,408 +2129,393 @@
         "94": 3,
         "95": 3,
         "96": 3,
-        "A": 3
+        "AMIGO": 3,
+        "RUGBY": 3
       },
       "kinds": {
-        "tram": 5,
-        "bus": 46
+        "bus": 38
       },
-      "uniformKind": null,
+      "uniformKind": "bus",
       "join": {
-        "sampled": 38,
-        "direct": 38,
-        "resolved": 38,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
-    },
-    "pan-82677": {
-      "network": "Réseau urbain Astuce",
-      "routes": {
-        "TAE:100": 3,
-        "TAE:101": 3,
-        "TAE:102": 3,
-        "TAE:103": 3,
-        "TAE:104": 3,
-        "TAE:106": 3,
-        "TAE:311": 3,
-        "TAE:A": 3,
-        "TAE:B": 3,
-        "TAE:C": 3,
-        "TAE:D1": 3,
-        "TAE:D2": 3,
-        "TAE:F": 3,
-        "TAE:F9": 3,
-        "TAE:G": 3,
-        "TAE:I": 3,
-        "TCAR:01": 3,
-        "TCAR:02": 3,
-        "TCAR:03": 3,
-        "TCAR:04": 3,
-        "TCAR:05": 3,
-        "TCAR:06": 3,
-        "TCAR:07": 3,
-        "TCAR:08": 3,
-        "TCAR:10": 3,
-        "TCAR:11": 3,
-        "TCAR:13": 3,
-        "TCAR:14": 3,
-        "TCAR:15": 3,
-        "TCAR:20": 3,
-        "TCAR:201": 3,
-        "TCAR:202": 3,
-        "TCAR:203": 3,
-        "TCAR:204": 3,
-        "TCAR:205": 3,
-        "TCAR:206": 3,
-        "TCAR:207": 3,
-        "TCAR:208": 3,
-        "TCAR:210": 3,
-        "TCAR:211": 3,
-        "TCAR:212": 3,
-        "TCAR:213": 3,
-        "TCAR:214": 3,
-        "TCAR:22": 3,
-        "TCAR:220": 3,
-        "TCAR:221": 3,
-        "TCAR:222": 3,
-        "TCAR:224": 3,
-        "TCAR:225": 3,
-        "TCAR:227": 3,
-        "TCAR:228": 3,
-        "TCAR:229": 3,
-        "TCAR:26": 3,
-        "TCAR:27": 3,
-        "TCAR:28": 3,
-        "TCAR:300": 3,
-        "TCAR:301": 3,
-        "TCAR:302": 3,
-        "TCAR:303": 3,
-        "TCAR:305": 3,
-        "TCAR:310": 3,
-        "TCAR:311": 3,
-        "TCAR:313": 3,
-        "TCAR:314": 3,
-        "TCAR:315": 3,
-        "TCAR:322": 3,
-        "TCAR:33": 3,
-        "TCAR:330": 3,
-        "TCAR:331": 3,
-        "TCAR:332": 3,
-        "TCAR:333": 3,
-        "TCAR:334": 3,
-        "TCAR:335": 3,
-        "TCAR:336": 3,
-        "TCAR:340": 3,
-        "TCAR:341": 3,
-        "TCAR:342": 3,
-        "TCAR:343": 3,
-        "TCAR:35": 3,
-        "TCAR:350": 3,
-        "TCAR:351": 3,
-        "TCAR:36": 3,
-        "TCAR:360": 3,
-        "TCAR:361": 3,
-        "TCAR:363": 3,
-        "TCAR:364": 3,
-        "TCAR:37": 3,
-        "TCAR:38": 3,
-        "TCAR:41": 3,
-        "TCAR:42": 3,
-        "TCAR:43": 3,
-        "TCAR:44": 3,
-        "TCAR:440": 3,
-        "TCAR:45": 3,
-        "TCAR:46": 3,
-        "TCAR:47": 3,
-        "TCAR:48": 3,
-        "TCAR:49": 3,
-        "TCAR:50": 3,
-        "TCAR:51": 3,
-        "TCAR:529": 3,
-        "TCAR:530": 3,
-        "TCAR:60": 3,
-        "TCAR:90": 1,
-        "TCAR:91": 3,
-        "TCAR:92": 3,
-        "TCAR:93": 3,
-        "TCAR:94": 3,
-        "TCAR:95": 3,
-        "TCAR:98": 3,
-        "TCAR:99": 4,
-        "TNI:26": 3,
-        "TNI:530": 3
-      },
-      "kinds": {
-        "bus": 111,
-        "metro": 1,
-        "ferry": 1
-      },
-      "uniformKind": null,
-      "join": {
-        "sampled": 186,
-        "direct": 186,
-        "resolved": 186,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
-    },
-    "pan-83297": {
-      "network": "Réseau urbain Astuce",
-      "routes": {
-        "TAE:100": 3,
-        "TAE:101": 3,
-        "TAE:102": 3,
-        "TAE:103": 3,
-        "TAE:104": 3,
-        "TAE:106": 3,
-        "TAE:311": 3,
-        "TAE:A": 3,
-        "TAE:B": 3,
-        "TAE:C": 3,
-        "TAE:D1": 3,
-        "TAE:D2": 3,
-        "TAE:F": 3,
-        "TAE:F9": 3,
-        "TAE:G": 3,
-        "TAE:I": 3,
-        "TCAR:01": 3,
-        "TCAR:02": 3,
-        "TCAR:03": 3,
-        "TCAR:04": 3,
-        "TCAR:05": 3,
-        "TCAR:06": 3,
-        "TCAR:07": 3,
-        "TCAR:08": 3,
-        "TCAR:10": 3,
-        "TCAR:11": 3,
-        "TCAR:13": 3,
-        "TCAR:14": 3,
-        "TCAR:15": 3,
-        "TCAR:20": 3,
-        "TCAR:201": 3,
-        "TCAR:202": 3,
-        "TCAR:203": 3,
-        "TCAR:204": 3,
-        "TCAR:205": 3,
-        "TCAR:206": 3,
-        "TCAR:207": 3,
-        "TCAR:208": 3,
-        "TCAR:210": 3,
-        "TCAR:211": 3,
-        "TCAR:212": 3,
-        "TCAR:213": 3,
-        "TCAR:214": 3,
-        "TCAR:22": 3,
-        "TCAR:220": 3,
-        "TCAR:221": 3,
-        "TCAR:222": 3,
-        "TCAR:224": 3,
-        "TCAR:225": 3,
-        "TCAR:227": 3,
-        "TCAR:228": 3,
-        "TCAR:229": 3,
-        "TCAR:26": 3,
-        "TCAR:27": 3,
-        "TCAR:28": 3,
-        "TCAR:300": 3,
-        "TCAR:301": 3,
-        "TCAR:302": 3,
-        "TCAR:303": 3,
-        "TCAR:305": 3,
-        "TCAR:310": 3,
-        "TCAR:311": 3,
-        "TCAR:313": 3,
-        "TCAR:314": 3,
-        "TCAR:315": 3,
-        "TCAR:322": 3,
-        "TCAR:33": 3,
-        "TCAR:330": 3,
-        "TCAR:331": 3,
-        "TCAR:332": 3,
-        "TCAR:333": 3,
-        "TCAR:334": 3,
-        "TCAR:335": 3,
-        "TCAR:336": 3,
-        "TCAR:340": 3,
-        "TCAR:341": 3,
-        "TCAR:342": 3,
-        "TCAR:343": 3,
-        "TCAR:35": 3,
-        "TCAR:350": 3,
-        "TCAR:351": 3,
-        "TCAR:36": 3,
-        "TCAR:360": 3,
-        "TCAR:361": 3,
-        "TCAR:363": 3,
-        "TCAR:364": 3,
-        "TCAR:37": 3,
-        "TCAR:38": 3,
-        "TCAR:41": 3,
-        "TCAR:42": 3,
-        "TCAR:43": 3,
-        "TCAR:44": 3,
-        "TCAR:440": 3,
-        "TCAR:45": 3,
-        "TCAR:46": 3,
-        "TCAR:47": 3,
-        "TCAR:48": 3,
-        "TCAR:49": 3,
-        "TCAR:50": 3,
-        "TCAR:51": 3,
-        "TCAR:529": 3,
-        "TCAR:530": 3,
-        "TCAR:60": 3,
-        "TCAR:90": 1,
-        "TCAR:91": 3,
-        "TCAR:92": 3,
-        "TCAR:93": 3,
-        "TCAR:94": 3,
-        "TCAR:95": 3,
-        "TCAR:98": 3,
-        "TCAR:99": 4,
-        "TNI:26": 3,
-        "TNI:530": 3
-      },
-      "kinds": {
-        "bus": 111,
-        "metro": 1,
-        "ferry": 1
-      },
-      "uniformKind": null,
-      "join": {
-        "sampled": 202,
-        "direct": 202,
-        "resolved": 202,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 39,
+        "direct": 39,
+        "resolved": 39,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83298": {
       "network": "Réseau urbain Astuce",
       "routes": {
-        "TAE:100": 3,
-        "TAE:101": 3,
-        "TAE:102": 3,
-        "TAE:103": 3,
-        "TAE:104": 3,
-        "TAE:106": 3,
-        "TAE:311": 3,
-        "TAE:A": 3,
-        "TAE:B": 3,
-        "TAE:C": 3,
-        "TAE:D1": 3,
-        "TAE:D2": 3,
-        "TAE:F": 3,
-        "TAE:F9": 3,
-        "TAE:G": 3,
-        "TAE:I": 3,
-        "TCAR:01": 3,
-        "TCAR:02": 3,
-        "TCAR:03": 3,
-        "TCAR:04": 3,
-        "TCAR:05": 3,
+        "TNI:530": 3,
+        "TCAR:93": 3,
+        "TCAR:91": 3,
+        "TCAR:60": 3,
+        "TCAR:51": 3,
+        "TCAR:47": 3,
+        "TCAR:46": 3,
+        "TCAR:45": 3,
+        "TCAR:43": 3,
+        "TCAR:42": 3,
+        "TCAR:41": 3,
+        "TCAR:360": 3,
+        "TCAR:36": 3,
+        "TCAR:351": 3,
+        "TCAR:37": 3,
+        "TCAR:350": 3,
+        "TCAR:343": 3,
+        "TCAR:342": 3,
+        "TCAR:341": 3,
+        "TCAR:340": 3,
+        "TCAR:361": 3,
+        "TCAR:336": 3,
+        "TCAR:331": 3,
+        "TCAR:314": 3,
+        "TCAR:311": 3,
+        "TCAR:310": 3,
         "TCAR:06": 3,
-        "TCAR:07": 3,
-        "TCAR:08": 3,
-        "TCAR:10": 3,
+        "TAE:B": 3,
+        "TCAR:04": 3,
+        "TCAR:330": 3,
         "TCAR:11": 3,
+        "TCAR:305": 3,
+        "TCAR:10": 3,
+        "TAE:I": 3,
+        "TAE:F9": 3,
+        "TCAR:99": 4,
+        "TCAR:02": 3,
+        "TCAR:38": 3,
+        "TAE:100": 3,
+        "TCAR:332": 3,
         "TCAR:13": 3,
+        "TAE:101": 3,
+        "TCAR:07": 3,
+        "TAE:102": 3,
+        "TCAR:08": 3,
         "TCAR:14": 3,
-        "TCAR:15": 3,
+        "TCAR:363": 3,
+        "TAE:G": 3,
+        "TCAR:01": 3,
+        "TCAR:98": 3,
+        "TCAR:334": 3,
+        "TAE:104": 3,
+        "TCAR:335": 3,
+        "TCAR:203": 3,
+        "TCAR:333": 3,
+        "TCAR:222": 3,
+        "TCAR:28": 3,
+        "TCAR:94": 3,
+        "TCAR:35": 3,
+        "TCAR:03": 3,
         "TCAR:20": 3,
+        "TCAR:44": 3,
+        "TCAR:224": 3,
+        "TCAR:92": 3,
+        "TCAR:364": 3,
+        "TAE:311": 3,
+        "TCAR:322": 3,
+        "TAE:D1": 3,
+        "TCAR:221": 3,
+        "TCAR:206": 3,
+        "TAE:D2": 3,
+        "TAE:103": 3,
+        "TAE:A": 3,
+        "TNI:26": 3,
+        "TCAR:212": 3,
+        "TAE:C": 3,
+        "TCAR:313": 3,
         "TCAR:201": 3,
         "TCAR:202": 3,
-        "TCAR:203": 3,
+        "TAE:106": 3,
         "TCAR:204": 3,
+        "TCAR:33": 3,
         "TCAR:205": 3,
-        "TCAR:206": 3,
         "TCAR:207": 3,
+        "TCAR:49": 3,
         "TCAR:208": 3,
-        "TCAR:210": 3,
-        "TCAR:211": 3,
-        "TCAR:212": 3,
-        "TCAR:213": 3,
-        "TCAR:214": 3,
+        "TCAR:90": 1,
+        "TCAR:15": 3,
         "TCAR:22": 3,
-        "TCAR:220": 3,
-        "TCAR:221": 3,
-        "TCAR:222": 3,
-        "TCAR:224": 3,
-        "TCAR:225": 3,
-        "TCAR:227": 3,
-        "TCAR:228": 3,
+        "TCAR:214": 3,
+        "TCAR:95": 3,
+        "TCAR:210": 3,
+        "TCAR:05": 3,
+        "TCAR:211": 3,
         "TCAR:229": 3,
-        "TCAR:26": 3,
+        "TCAR:213": 3,
+        "TCAR:220": 3,
+        "TAE:F": 3,
+        "TCAR:227": 3,
+        "TCAR:225": 3,
+        "TCAR:228": 3,
         "TCAR:27": 3,
-        "TCAR:28": 3,
         "TCAR:300": 3,
         "TCAR:301": 3,
-        "TCAR:302": 3,
-        "TCAR:303": 3,
-        "TCAR:305": 3,
-        "TCAR:310": 3,
-        "TCAR:311": 3,
-        "TCAR:313": 3,
-        "TCAR:314": 3,
-        "TCAR:315": 3,
-        "TCAR:322": 3,
-        "TCAR:33": 3,
-        "TCAR:330": 3,
-        "TCAR:331": 3,
-        "TCAR:332": 3,
-        "TCAR:333": 3,
-        "TCAR:334": 3,
-        "TCAR:335": 3,
-        "TCAR:336": 3,
-        "TCAR:340": 3,
-        "TCAR:341": 3,
-        "TCAR:342": 3,
-        "TCAR:343": 3,
-        "TCAR:35": 3,
-        "TCAR:350": 3,
-        "TCAR:351": 3,
-        "TCAR:36": 3,
-        "TCAR:360": 3,
-        "TCAR:361": 3,
-        "TCAR:363": 3,
-        "TCAR:364": 3,
-        "TCAR:37": 3,
-        "TCAR:38": 3,
-        "TCAR:41": 3,
-        "TCAR:42": 3,
-        "TCAR:43": 3,
-        "TCAR:44": 3,
-        "TCAR:440": 3,
-        "TCAR:45": 3,
-        "TCAR:46": 3,
-        "TCAR:47": 3,
         "TCAR:48": 3,
-        "TCAR:49": 3,
-        "TCAR:50": 3,
-        "TCAR:51": 3,
-        "TCAR:529": 3,
-        "TCAR:530": 3,
-        "TCAR:60": 3,
-        "TCAR:90": 1,
-        "TCAR:91": 3,
-        "TCAR:92": 3,
-        "TCAR:93": 3,
-        "TCAR:94": 3,
-        "TCAR:95": 3,
-        "TCAR:98": 3,
-        "TCAR:99": 4,
-        "TNI:26": 3,
-        "TNI:530": 3
+        "TCAR:302": 3,
+        "TCAR:315": 3,
+        "TCAR:303": 3
       },
       "kinds": {
-        "bus": 111,
-        "metro": 1,
-        "ferry": 1
+        "bus": 106,
+        "ferry": 1,
+        "metro": 1
       },
       "uniformKind": null,
       "join": {
-        "sampled": 5,
-        "direct": 5,
-        "resolved": 5,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 6,
+        "direct": 6,
+        "resolved": 6,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
+    },
+    "pan-82677": {
+      "network": "Réseau urbain Astuce",
+      "routes": {
+        "TNI:530": 3,
+        "TCAR:93": 3,
+        "TCAR:91": 3,
+        "TCAR:60": 3,
+        "TCAR:51": 3,
+        "TCAR:47": 3,
+        "TCAR:46": 3,
+        "TCAR:45": 3,
+        "TCAR:43": 3,
+        "TCAR:42": 3,
+        "TCAR:41": 3,
+        "TCAR:360": 3,
+        "TCAR:36": 3,
+        "TCAR:351": 3,
+        "TCAR:37": 3,
+        "TCAR:350": 3,
+        "TCAR:343": 3,
+        "TCAR:342": 3,
+        "TCAR:341": 3,
+        "TCAR:340": 3,
+        "TCAR:361": 3,
+        "TCAR:336": 3,
+        "TCAR:331": 3,
+        "TCAR:314": 3,
+        "TCAR:311": 3,
+        "TCAR:310": 3,
+        "TCAR:06": 3,
+        "TAE:B": 3,
+        "TCAR:04": 3,
+        "TCAR:330": 3,
+        "TCAR:11": 3,
+        "TCAR:305": 3,
+        "TCAR:10": 3,
+        "TAE:I": 3,
+        "TAE:F9": 3,
+        "TCAR:99": 4,
+        "TCAR:02": 3,
+        "TCAR:38": 3,
+        "TAE:100": 3,
+        "TCAR:332": 3,
+        "TCAR:13": 3,
+        "TAE:101": 3,
+        "TCAR:07": 3,
+        "TAE:102": 3,
+        "TCAR:08": 3,
+        "TCAR:14": 3,
+        "TCAR:363": 3,
+        "TAE:G": 3,
+        "TCAR:01": 3,
+        "TCAR:98": 3,
+        "TCAR:334": 3,
+        "TAE:104": 3,
+        "TCAR:335": 3,
+        "TCAR:203": 3,
+        "TCAR:333": 3,
+        "TCAR:222": 3,
+        "TCAR:28": 3,
+        "TCAR:94": 3,
+        "TCAR:35": 3,
+        "TCAR:03": 3,
+        "TCAR:20": 3,
+        "TCAR:44": 3,
+        "TCAR:224": 3,
+        "TCAR:92": 3,
+        "TCAR:364": 3,
+        "TAE:311": 3,
+        "TCAR:322": 3,
+        "TAE:D1": 3,
+        "TCAR:221": 3,
+        "TCAR:206": 3,
+        "TAE:D2": 3,
+        "TAE:103": 3,
+        "TAE:A": 3,
+        "TNI:26": 3,
+        "TCAR:212": 3,
+        "TAE:C": 3,
+        "TCAR:313": 3,
+        "TCAR:201": 3,
+        "TCAR:202": 3,
+        "TAE:106": 3,
+        "TCAR:204": 3,
+        "TCAR:33": 3,
+        "TCAR:205": 3,
+        "TCAR:207": 3,
+        "TCAR:49": 3,
+        "TCAR:208": 3,
+        "TCAR:90": 1,
+        "TCAR:15": 3,
+        "TCAR:22": 3,
+        "TCAR:214": 3,
+        "TCAR:95": 3,
+        "TCAR:210": 3,
+        "TCAR:05": 3,
+        "TCAR:211": 3,
+        "TCAR:229": 3,
+        "TCAR:213": 3,
+        "TCAR:220": 3,
+        "TAE:F": 3,
+        "TCAR:227": 3,
+        "TCAR:225": 3,
+        "TCAR:228": 3,
+        "TCAR:27": 3,
+        "TCAR:300": 3,
+        "TCAR:301": 3,
+        "TCAR:48": 3,
+        "TCAR:302": 3,
+        "TCAR:315": 3,
+        "TCAR:303": 3
+      },
+      "kinds": {
+        "bus": 106,
+        "ferry": 1,
+        "metro": 1
+      },
+      "uniformKind": null,
+      "join": {
+        "sampled": 188,
+        "direct": 188,
+        "resolved": 188,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
+    },
+    "pan-83297": {
+      "network": "Réseau urbain Astuce",
+      "routes": {
+        "TNI:530": 3,
+        "TCAR:93": 3,
+        "TCAR:91": 3,
+        "TCAR:60": 3,
+        "TCAR:51": 3,
+        "TCAR:47": 3,
+        "TCAR:46": 3,
+        "TCAR:45": 3,
+        "TCAR:43": 3,
+        "TCAR:42": 3,
+        "TCAR:41": 3,
+        "TCAR:360": 3,
+        "TCAR:36": 3,
+        "TCAR:351": 3,
+        "TCAR:37": 3,
+        "TCAR:350": 3,
+        "TCAR:343": 3,
+        "TCAR:342": 3,
+        "TCAR:341": 3,
+        "TCAR:340": 3,
+        "TCAR:361": 3,
+        "TCAR:336": 3,
+        "TCAR:331": 3,
+        "TCAR:314": 3,
+        "TCAR:311": 3,
+        "TCAR:310": 3,
+        "TCAR:06": 3,
+        "TAE:B": 3,
+        "TCAR:04": 3,
+        "TCAR:330": 3,
+        "TCAR:11": 3,
+        "TCAR:305": 3,
+        "TCAR:10": 3,
+        "TAE:I": 3,
+        "TAE:F9": 3,
+        "TCAR:99": 4,
+        "TCAR:02": 3,
+        "TCAR:38": 3,
+        "TAE:100": 3,
+        "TCAR:332": 3,
+        "TCAR:13": 3,
+        "TAE:101": 3,
+        "TCAR:07": 3,
+        "TAE:102": 3,
+        "TCAR:08": 3,
+        "TCAR:14": 3,
+        "TCAR:363": 3,
+        "TAE:G": 3,
+        "TCAR:01": 3,
+        "TCAR:98": 3,
+        "TCAR:334": 3,
+        "TAE:104": 3,
+        "TCAR:335": 3,
+        "TCAR:203": 3,
+        "TCAR:333": 3,
+        "TCAR:222": 3,
+        "TCAR:28": 3,
+        "TCAR:94": 3,
+        "TCAR:35": 3,
+        "TCAR:03": 3,
+        "TCAR:20": 3,
+        "TCAR:44": 3,
+        "TCAR:224": 3,
+        "TCAR:92": 3,
+        "TCAR:364": 3,
+        "TAE:311": 3,
+        "TCAR:322": 3,
+        "TAE:D1": 3,
+        "TCAR:221": 3,
+        "TCAR:206": 3,
+        "TAE:D2": 3,
+        "TAE:103": 3,
+        "TAE:A": 3,
+        "TNI:26": 3,
+        "TCAR:212": 3,
+        "TAE:C": 3,
+        "TCAR:313": 3,
+        "TCAR:201": 3,
+        "TCAR:202": 3,
+        "TAE:106": 3,
+        "TCAR:204": 3,
+        "TCAR:33": 3,
+        "TCAR:205": 3,
+        "TCAR:207": 3,
+        "TCAR:49": 3,
+        "TCAR:208": 3,
+        "TCAR:90": 1,
+        "TCAR:15": 3,
+        "TCAR:22": 3,
+        "TCAR:214": 3,
+        "TCAR:95": 3,
+        "TCAR:210": 3,
+        "TCAR:05": 3,
+        "TCAR:211": 3,
+        "TCAR:229": 3,
+        "TCAR:213": 3,
+        "TCAR:220": 3,
+        "TAE:F": 3,
+        "TCAR:227": 3,
+        "TCAR:225": 3,
+        "TCAR:228": 3,
+        "TCAR:27": 3,
+        "TCAR:300": 3,
+        "TCAR:301": 3,
+        "TCAR:48": 3,
+        "TCAR:302": 3,
+        "TCAR:315": 3,
+        "TCAR:303": 3
+      },
+      "kinds": {
+        "bus": 106,
+        "ferry": 1,
+        "metro": 1
+      },
+      "uniformKind": null,
+      "join": {
+        "sampled": 197,
+        "direct": 197,
+        "resolved": 197,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82163": {
@@ -2709,10 +2683,10 @@
       },
       "uniformKind": null,
       "join": {
-        "sampled": 286,
-        "direct": 286,
-        "resolved": 286,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 329,
+        "direct": 328,
+        "resolved": 328,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82474": {
@@ -2825,10 +2799,10 @@
       },
       "uniformKind": null,
       "join": {
-        "sampled": 189,
-        "direct": 184,
-        "resolved": 184,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 218,
+        "direct": 218,
+        "resolved": 218,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-84122": {
@@ -2929,10 +2903,10 @@
       },
       "uniformKind": null,
       "join": {
-        "sampled": 82,
+        "sampled": 93,
         "direct": 0,
         "resolved": 0,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-10231": {
@@ -2948,7 +2922,7 @@
         "sampled": 2,
         "direct": 2,
         "resolved": 2,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81786": {
@@ -2976,9 +2950,72 @@
         "40": 3,
         "41": 3,
         "42": 3,
+        "101": 3,
+        "102": 3,
+        "103": 3,
+        "104": 3,
+        "105": 3,
+        "106": 3,
+        "107": 3,
+        "111": 3,
+        "112": 3,
+        "113": 3,
+        "114": 3,
+        "115": 3,
+        "121": 3,
+        "122": 3,
+        "123": 3,
+        "131": 3,
+        "132": 3,
+        "133": 3,
+        "134": 3,
+        "140": 3,
+        "141": 3,
+        "142": 3,
+        "143": 3,
+        "144": 3,
+        "145": 3,
+        "146": 3,
+        "147": 3,
+        "149": 3,
+        "151": 3,
+        "152": 3,
+        "153": 3,
+        "154": 3,
+        "155": 3,
+        "156": 3,
+        "158": 3,
+        "159": 3,
+        "161": 3,
+        "163": 3,
+        "166": 3,
+        "172": 3,
+        "173": 3,
+        "176": 3,
+        "181": 3,
+        "182": 3,
+        "192": 3,
+        "193": 3,
+        "195": 3,
+        "202": 3,
+        "203": 3,
+        "204": 3,
+        "205": 3,
+        "206": 3,
+        "207": 3,
+        "210": 3,
+        "211": 3,
+        "212": 3,
+        "213": 3,
         "220": 3,
+        "221": 3,
         "301": 3,
         "302": 3,
+        "351": 3,
+        "352": 3,
+        "354": 3,
+        "355": 3,
+        "356": 3,
         "01": 3,
         "02": 3,
         "03": 3,
@@ -2994,24 +3031,18 @@
         "C": 0,
         "SCO": 3,
         "N1": 3,
-        "N2": 3,
-        "Test 151": 3,
-        "Test 152": 3,
-        "Test 154": 3,
-        "Test 163": 3,
-        "Test_172": 3,
-        "Test_173": 3
+        "N2": 3
       },
       "kinds": {
-        "bus": 44,
+        "bus": 101,
         "tram": 3
       },
       "uniformKind": null,
       "join": {
-        "sampled": 135,
-        "direct": 135,
-        "resolved": 135,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 259,
+        "direct": 259,
+        "resolved": 259,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-80699": {
@@ -3073,136 +3104,75 @@
       },
       "uniformKind": null,
       "join": {
-        "sampled": 144,
+        "sampled": 168,
         "direct": 0,
         "resolved": 0,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
-    "pan-84038": {
-      "network": "Réseau urbain LiA",
+    "pan-82273": {
+      "network": "Réseau urbain et scolaire Sankéo",
       "routes": {
-        "6-09": 3,
-        "6-10": 3,
-        "6-11": 3,
-        "6-11E": 3,
-        "6-12": 3,
-        "6-13": 3,
-        "6-14": 3,
-        "6-15": 3,
-        "6-16": 3,
-        "6-17": 3,
-        "6-18": 3,
-        "6-19": 3,
-        "6-20": 3,
-        "6-21": 3,
-        "6-25": 3,
-        "6-60": 3,
-        "6-70": 3,
-        "6-71": 3,
-        "6-91": 3,
-        "6-A": 0,
-        "6-B": 0,
-        "6-C1": 3,
-        "6-C2": 3,
-        "6-C3": 3,
-        "6-C4": 3,
-        "6-C5": 3,
-        "6-C6": 3,
-        "6-C7": 3,
-        "6-C8": 3,
-        "6-FUNI": 0,
-        "6-LP": 3,
-        "6-NB": 3,
-        "6-P+R": 3,
-        "6-P+V": 3,
-        "6-SUB": 3,
-        "7-09": 3,
-        "7-10": 3,
-        "7-11": 3,
-        "7-11E": 3,
-        "7-12": 3,
-        "7-13": 3,
-        "7-14": 3,
-        "7-15": 3,
-        "7-16": 3,
-        "7-17": 3,
-        "7-18": 3,
-        "7-19": 3,
-        "7-20": 3,
-        "7-21": 3,
-        "7-25": 3,
-        "7-60": 3,
-        "7-70": 3,
-        "7-71": 3,
-        "7-91": 3,
-        "7-A": 0,
-        "7-B": 0,
-        "7-C1": 3,
-        "7-C2": 3,
-        "7-C3": 3,
-        "7-C4": 3,
-        "7-C5": 3,
-        "7-C6": 3,
-        "7-C7": 3,
-        "7-C8": 3,
-        "7-FUNI": 3,
-        "7-LP": 3,
-        "7-NB": 3,
-        "7-P+R": 3,
-        "7-P+V": 3,
-        "7-SUB": 3
+        "1": 3,
+        "2": 3,
+        "3": 3,
+        "4": 3,
+        "5": 3,
+        "6": 3,
+        "7": 3,
+        "8": 3,
+        "9": 3,
+        "10": 3,
+        "11": 3,
+        "15": 3,
+        "16": 3,
+        "17": 3,
+        "18": 3,
+        "19": 3,
+        "20": 3,
+        "21": 3,
+        "22": 3,
+        "23": 3,
+        "24": 3,
+        "25": 3,
+        "26": 3,
+        "2EX": 3,
+        "3EX": 3,
+        "4EX": 3,
+        "5EX": 3,
+        "6EX": 3,
+        "9EX": 3,
+        "10EX": 3,
+        "12EX": 3,
+        "A": 3,
+        "B": 3,
+        "C": 3,
+        "D": 3,
+        "NCAN": 3,
+        "NCDV": 3,
+        "NCMI": 3,
+        "NDEC": 3,
+        "0NDEF": 3,
+        "NINT": 3,
+        "NITB": 3,
+        "NRAY": 3,
+        "NSAI": 3,
+        "OCCA": 3
       },
       "kinds": {
-        "bus": 65,
-        "tram": 5
+        "bus": 45
       },
-      "uniformKind": null,
+      "uniformKind": "bus",
       "join": {
-        "sampled": 101,
-        "direct": 101,
-        "resolved": 101,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 59,
+        "direct": 0,
+        "resolved": 59,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82896": {
       "network": "Réseau urbain LiA",
       "routes": {
-        "6-09": 3,
-        "6-10": 3,
-        "6-11": 3,
-        "6-11E": 3,
-        "6-12": 3,
-        "6-13": 3,
-        "6-14": 3,
-        "6-15": 3,
-        "6-16": 3,
-        "6-17": 3,
-        "6-18": 3,
-        "6-19": 3,
-        "6-20": 3,
-        "6-21": 3,
-        "6-25": 3,
-        "6-60": 3,
-        "6-70": 3,
-        "6-71": 3,
-        "6-91": 3,
-        "6-A": 0,
-        "6-B": 0,
-        "6-C1": 3,
-        "6-C2": 3,
-        "6-C3": 3,
-        "6-C4": 3,
-        "6-C5": 3,
-        "6-C6": 3,
-        "6-C7": 3,
-        "6-C8": 3,
-        "6-FUNI": 0,
-        "6-LP": 3,
-        "6-NB": 3,
-        "6-P+R": 3,
-        "6-P+V": 3,
-        "6-SUB": 3,
         "7-09": 3,
         "7-10": 3,
         "7-11": 3,
@@ -3237,18 +3207,137 @@
         "7-NB": 3,
         "7-P+R": 3,
         "7-P+V": 3,
-        "7-SUB": 3
+        "7-SUB": 3,
+        "8-09": 3,
+        "8-10": 3,
+        "8-11": 3,
+        "8-11E": 3,
+        "8-12": 3,
+        "8-13": 3,
+        "8-14": 3,
+        "8-15": 3,
+        "8-16": 3,
+        "8-17": 3,
+        "8-18": 3,
+        "8-19": 3,
+        "8-20": 3,
+        "8-21": 3,
+        "8-25": 3,
+        "8-60": 3,
+        "8-70": 3,
+        "8-71": 3,
+        "8-91": 3,
+        "8-A": 0,
+        "8-B": 0,
+        "8-C1": 3,
+        "8-C2": 3,
+        "8-C3": 3,
+        "8-C4": 3,
+        "8-C5": 3,
+        "8-C6": 3,
+        "8-C7": 3,
+        "8-C8": 3,
+        "8-FUNI": 3,
+        "8-NB": 3,
+        "8-P+R": 3,
+        "8-P+V": 3,
+        "8-SUB": 3
       },
       "kinds": {
         "bus": 65,
-        "tram": 5
+        "tram": 4
       },
       "uniformKind": null,
       "join": {
-        "sampled": 136,
+        "sampled": 137,
         "direct": 0,
         "resolved": 0,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
+      }
+    },
+    "pan-84038": {
+      "network": "Réseau urbain LiA",
+      "routes": {
+        "7-09": 3,
+        "7-10": 3,
+        "7-11": 3,
+        "7-11E": 3,
+        "7-12": 3,
+        "7-13": 3,
+        "7-14": 3,
+        "7-15": 3,
+        "7-16": 3,
+        "7-17": 3,
+        "7-18": 3,
+        "7-19": 3,
+        "7-20": 3,
+        "7-21": 3,
+        "7-25": 3,
+        "7-60": 3,
+        "7-70": 3,
+        "7-71": 3,
+        "7-91": 3,
+        "7-A": 0,
+        "7-B": 0,
+        "7-C1": 3,
+        "7-C2": 3,
+        "7-C3": 3,
+        "7-C4": 3,
+        "7-C5": 3,
+        "7-C6": 3,
+        "7-C7": 3,
+        "7-C8": 3,
+        "7-FUNI": 3,
+        "7-LP": 3,
+        "7-NB": 3,
+        "7-P+R": 3,
+        "7-P+V": 3,
+        "7-SUB": 3,
+        "8-09": 3,
+        "8-10": 3,
+        "8-11": 3,
+        "8-11E": 3,
+        "8-12": 3,
+        "8-13": 3,
+        "8-14": 3,
+        "8-15": 3,
+        "8-16": 3,
+        "8-17": 3,
+        "8-18": 3,
+        "8-19": 3,
+        "8-20": 3,
+        "8-21": 3,
+        "8-25": 3,
+        "8-60": 3,
+        "8-70": 3,
+        "8-71": 3,
+        "8-91": 3,
+        "8-A": 0,
+        "8-B": 0,
+        "8-C1": 3,
+        "8-C2": 3,
+        "8-C3": 3,
+        "8-C4": 3,
+        "8-C5": 3,
+        "8-C6": 3,
+        "8-C7": 3,
+        "8-C8": 3,
+        "8-FUNI": 3,
+        "8-NB": 3,
+        "8-P+R": 3,
+        "8-P+V": 3,
+        "8-SUB": 3
+      },
+      "kinds": {
+        "bus": 65,
+        "tram": 4
+      },
+      "uniformKind": null,
+      "join": {
+        "sampled": 121,
+        "direct": 121,
+        "resolved": 121,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-80732": {
@@ -3348,113 +3437,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 97,
-        "direct": 97,
-        "resolved": 97,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
-    },
-    "pan-84125": {
-      "network": "Réseau urbain Tango",
-      "routes": {
-        "6": 3,
-        "7": 3,
-        "8": 3,
-        "9": 3,
-        "10": 3,
-        "11": 3,
-        "12": 3,
-        "13": 3,
-        "14": 3,
-        "15": 3,
-        "16": 3,
-        "17": 3,
-        "20": 3,
-        "21": 3,
-        "22": 3,
-        "31": 3,
-        "32": 3,
-        "33": 3,
-        "41": 3,
-        "42": 3,
-        "43": 3,
-        "51": 3,
-        "52": 3,
-        "61": 3,
-        "62": 3,
-        "70": 3,
-        "71": 3,
-        "72": 3,
-        "73": 3,
-        "74": 3,
-        "75": 3,
-        "76": 3,
-        "77": 715,
-        "78": 3,
-        "80": 3,
-        "85": 3,
-        "86": 3,
-        "87": 3,
-        "88": 3,
-        "100": 3,
-        "101": 3,
-        "103": 3,
-        "104": 3,
-        "105": 3,
-        "107": 3,
-        "115": 3,
-        "205": 3,
-        "206": 3,
-        "211": 3,
-        "212": 3,
-        "214": 3,
-        "216": 3,
-        "217": 3,
-        "218": 3,
-        "219": 3,
-        "221": 3,
-        "222": 3,
-        "227": 3,
-        "228": 3,
-        "229": 3,
-        "230": 3,
-        "231": 3,
-        "800": 3,
-        "801": 3,
-        "802": 3,
-        "803": 3,
-        "805": 3,
-        "203A": 3,
-        "203B": 3,
-        "220A": 3,
-        "220C": 3,
-        "220D": 3,
-        "804A": 3,
-        "804B": 3,
-        "AERO": 3,
-        "F1": 3,
-        "F14": 3,
-        "F2": 3,
-        "F6": 3,
-        "F9": 3,
-        "NMAR": 3,
-        "NNO": 3,
-        "NRCN": 3,
-        "T1": 3,
-        "T2": 3,
-        "T3": 3,
-        "T4": 3,
-        "T5": 3
-      },
-      "kinds": {
-        "bus": 88
-      },
-      "uniformKind": "bus",
-      "join": {
-        "sampled": 97,
-        "direct": 97,
-        "resolved": 97,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 142,
+        "direct": 142,
+        "resolved": 142,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-67732": {
@@ -3526,10 +3512,10 @@
       },
       "uniformKind": null,
       "join": {
-        "sampled": 143,
-        "direct": 127,
-        "resolved": 127,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 159,
+        "direct": 158,
+        "resolved": 158,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-84050": {
@@ -3874,10 +3860,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 129,
-        "direct": 129,
-        "resolved": 129,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 17,
+        "direct": 17,
+        "resolved": 17,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81512": {
@@ -3968,10 +3954,10 @@
       },
       "uniformKind": null,
       "join": {
-        "sampled": 122,
-        "direct": 122,
-        "resolved": 122,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 163,
+        "direct": 163,
+        "resolved": 163,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83118": {
@@ -4307,10 +4293,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 78,
-        "direct": 78,
-        "resolved": 78,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 148,
+        "direct": 148,
+        "resolved": 148,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-74509": {
@@ -4382,24 +4368,19 @@
         "04": 3,
         "06": 3,
         "N1": 3,
-        "N2": 3,
-        "BLEU": 3,
-        "PORT": 3,
-        "SB1": 3,
-        "SB2": 3,
-        "CIEL": 3
+        "N2": 3
       },
       "kinds": {
-        "bus": 69,
+        "bus": 64,
         "tram": 2,
         "aerial": 1
       },
       "uniformKind": null,
       "join": {
-        "sampled": 79,
-        "direct": 79,
-        "resolved": 79,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 143,
+        "direct": 126,
+        "resolved": 126,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82889": {
@@ -4465,23 +4446,18 @@
         "C4": 3,
         "10A": 3,
         "10B": 3,
-        "M": 3,
-        "FLEX-21b": 3,
-        "FLEX-21c": 3,
-        "FLEX-22": 3,
-        "FLEX-21a": 3,
-        "FLEX-20": 3
+        "M": 3
       },
       "kinds": {
-        "bus": 64,
+        "bus": 59,
         "tram": 2
       },
       "uniformKind": null,
       "join": {
-        "sampled": 101,
-        "direct": 98,
-        "resolved": 98,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 106,
+        "direct": 103,
+        "resolved": 103,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-84058": {
@@ -4562,10 +4538,10 @@
       },
       "uniformKind": null,
       "join": {
-        "sampled": 94,
-        "direct": 94,
-        "resolved": 94,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 96,
+        "direct": 96,
+        "resolved": 96,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83857": {
@@ -4597,10 +4573,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 95,
-        "direct": 95,
-        "resolved": 95,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 105,
+        "direct": 105,
+        "resolved": 105,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-80662": {
@@ -4680,67 +4656,47 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 6,
+        "direct": 6,
+        "resolved": 6,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-80710": {
       "network": "Réseau urbain Ametis",
       "routes": {
-        "AMI:T33-1": 3,
-        "AMI:T36-1": 3,
-        "AMI:T37-1": 3,
-        "AMI:T38-1": 3,
-        "AMI:T39-1": 3,
-        "AMI:T40-1": 3,
-        "AMI:T41-1": 3,
-        "AMI:T42-1": 3,
-        "AMI:T43-1": 3,
-        "AMI:T44-1": 3,
-        "AMI:T45-1": 3,
-        "AMI:T47-1": 3,
-        "AMI:T49-1": 3,
-        "AMI:10-1": 3,
-        "AMI:11-1": 3,
-        "AMI:12-1": 3,
-        "AMI:13-1": 3,
-        "AMI:14-1": 3,
-        "AMI:15-1": 3,
-        "AMI:16-1": 3,
-        "AMI:5A-1": 3,
-        "AMI:5B-1": 3,
-        "AMI:6-1": 3,
-        "AMI:7-1": 3,
-        "AMI:8-1": 3,
-        "AMI:9-1": 3,
-        "AMI:CDV-1": 3,
-        "AMI:L-1": 3,
-        "AMI:N1-1": 3,
-        "AMI:N2-1": 3,
-        "AMI:N3-1": 3,
-        "AMI:N4-1": 3,
-        "AMI:NAM1-1": 3,
-        "AMI:NAM2-1": 3,
-        "AMI:NAVC-1": 3,
-        "AMI:R61-1": 3,
-        "AMI:R62-1": 3,
-        "AMI:R63-1": 3,
-        "AMI:R64-1": 3,
-        "AMI:R65-1": 3,
-        "AMI:R66-1": 3,
-        "AMI:R68-1": 3
+        "6": 3,
+        "7": 3,
+        "8": 3,
+        "9": 3,
+        "10": 3,
+        "11": 3,
+        "12": 3,
+        "13": 3,
+        "14": 3,
+        "15": 3,
+        "16": 3,
+        "5A": 3,
+        "5B": 3,
+        "CDV": 3,
+        "L": 3,
+        "N1": 3,
+        "N2": 3,
+        "N3": 3,
+        "N4": 3,
+        "NAM1": 3,
+        "NAM2": 3,
+        "NAVC": 3
       },
       "kinds": {
-        "bus": 42
+        "bus": 22
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 85,
-        "direct": 0,
-        "resolved": 85,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 104,
+        "direct": 95,
+        "resolved": 104,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-79830": {
@@ -4766,6 +4722,7 @@
         "F": 3,
         "FER": 3,
         "G": 3,
+        "H": 3,
         "S1": 3,
         "S10": 3,
         "S11": 3,
@@ -4782,14 +4739,14 @@
         "S9": 3
       },
       "kinds": {
-        "bus": 34
+        "bus": 35
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 45,
-        "direct": 44,
-        "resolved": 45,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 59,
+        "direct": 59,
+        "resolved": 59,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82095": {
@@ -4994,17 +4951,18 @@
         "379": 3,
         "381": 3,
         "382": 3,
-        "383": 3
+        "383": 3,
+        "384": 3
       },
       "kinds": {
-        "bus": 200
+        "bus": 201
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 58,
-        "direct": 58,
-        "resolved": 58,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 67,
+        "direct": 67,
+        "resolved": 67,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81543": {
@@ -5077,10 +5035,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 40,
-        "direct": 40,
-        "resolved": 40,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 61,
+        "direct": 61,
+        "resolved": 61,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-80184": {
@@ -5118,7 +5076,6 @@
         "BOC": 3,
         "CITY": 3,
         "ILE": 3,
-        "MIM": 3,
         "MRO": 3,
         "N10": 3,
         "N20": 3,
@@ -5136,14 +5093,14 @@
         "SUQ": 3
       },
       "kinds": {
-        "bus": 48
+        "bus": 47
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 81,
-        "direct": 81,
-        "resolved": 81,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 92,
+        "direct": 92,
+        "resolved": 92,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83386": {
@@ -5165,12 +5122,7 @@
         "bus": 11
       },
       "uniformKind": "bus",
-      "join": {
-        "sampled": 36,
-        "direct": 11,
-        "resolved": 36,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
+      "join": null
     },
     "pan-84081": {
       "network": "Réseau urbain de la zone Centre (CACEM)",
@@ -5241,10 +5193,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 28,
-        "direct": 28,
-        "resolved": 28,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 5,
+        "direct": 5,
+        "resolved": 5,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83331": {
@@ -5378,10 +5330,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 13,
-        "direct": 13,
-        "resolved": 13,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 83,
+        "direct": 83,
+        "resolved": 83,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83851": {
@@ -5478,10 +5430,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 48,
-        "direct": 48,
-        "resolved": 48,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 84,
+        "direct": 84,
+        "resolved": 84,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83843": {
@@ -5613,10 +5565,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 22,
+        "sampled": 37,
         "direct": 0,
-        "resolved": 22,
-        "at": "2026-08-31T16:49:47.049Z"
+        "resolved": 37,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-80939": {
@@ -5638,10 +5590,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 4,
-        "direct": 4,
-        "resolved": 4,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 5,
+        "direct": 5,
+        "resolved": 5,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81967": {
@@ -5696,10 +5648,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 14,
+        "direct": 14,
+        "resolved": 14,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83743": {
@@ -5783,10 +5735,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 32,
-        "direct": 32,
-        "resolved": 32,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 74,
+        "direct": 74,
+        "resolved": 74,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82783": {
@@ -5808,34 +5760,29 @@
         "14": 3,
         "15": 3,
         "16": 3,
+        "17": 3,
         "20": 3,
         "21": 3,
         "22": 3,
         "23": 3,
         "24": 3,
+        "25": 3,
         "26": 3,
-        "177": 3,
-        "255": 3,
+        "E": 3,
         "A": 3,
         "B": 3,
         "C": 3,
-        "D": 3,
-        "E": 3,
-        "L": 3,
-        "P": 3,
-        "S": 3,
-        "F": 3,
-        "H": 3
+        "D": 3
       },
       "kinds": {
-        "bus": 34
+        "bus": 29
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 36,
-        "direct": 36,
-        "resolved": 36,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 43,
+        "direct": 41,
+        "resolved": 43,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81579": {
@@ -5869,10 +5816,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 49,
-        "direct": 31,
-        "resolved": 49,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 44,
+        "direct": 33,
+        "resolved": 44,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81998": {
@@ -5911,10 +5858,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 24,
+        "sampled": 30,
         "direct": 0,
-        "resolved": 24,
-        "at": "2026-08-31T16:49:47.049Z"
+        "resolved": 30,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-84017": {
@@ -5955,10 +5902,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 26,
-        "direct": 26,
-        "resolved": 26,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 28,
+        "direct": 28,
+        "resolved": 28,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83868": {
@@ -6084,31 +6031,118 @@
         "bus": 115
       },
       "uniformKind": "bus",
-      "join": {
-        "sampled": 18,
-        "direct": 18,
-        "resolved": 18,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
+      "join": null
     },
     "pan-84080": {
       "network": "Réseau urbain de la zone Sud (CAESM)",
       "routes": {
-        "4001": 4,
-        "4002": 4,
-        "4003": 4,
-        "4004": 4
+        "L-EXPRESS-01": 3,
+        "L-EXPRESS-02-VAUCLIN-FRANCOIS-LAMENTIN-TCSP": 3,
+        "L-EXPRESS-03": 3,
+        "L-EXPRESS-04": 3,
+        "L-EXPRESS-05": 3,
+        "L01": 3,
+        "L02_03": 3,
+        "L06": 3,
+        "L10": 3,
+        "L11": 3,
+        "L12": 3,
+        "L14_A": 3,
+        "L16": 3,
+        "L20": 3,
+        "L21": 3,
+        "L22": 3,
+        "L24": 3,
+        "L25": 3,
+        "L26": 3,
+        "L27": 3,
+        "L28": 3,
+        "L29": 3,
+        "L30": 3,
+        "L31": 3,
+        "L32": 3,
+        "L33": 3,
+        "L35": 3,
+        "L36": 3,
+        "L37": 3,
+        "L38": 3,
+        "L39": 3,
+        "L40": 3,
+        "L41": 3,
+        "L42": 3,
+        "L43": 3,
+        "L44": 3,
+        "L45": 3,
+        "L46": 3,
+        "L47": 3,
+        "L48": 3,
+        "L49": 3,
+        "L50": 3,
+        "L51": 3,
+        "L52": 3,
+        "L53": 3,
+        "L54": 3,
+        "L55": 3,
+        "L55b": 3,
+        "L56": 3,
+        "L57": 3,
+        "L57r": 3,
+        "L58": 3,
+        "L59": 3,
+        "L60": 3,
+        "L61": 3,
+        "L62": 3,
+        "L63": 3,
+        "L7": 3,
+        "L8": 3,
+        "L9": 3,
+        "LA-NAVETTE-01-02": 3,
+        "LIGNE-09-12-JUMELEES": 3,
+        "LIGNE-23-25-24-JUMELEES": 3,
+        "LIGNE-27-29": 3,
+        "LIGNE-33-35": 3,
+        "LIGNE-36-33-JUMELEES": 3,
+        "LIGNE-42-44-JUMELEES": 3,
+        "LIGNE-51-52-JUMELEES": 3,
+        "LIGNE-55A-55B-JUMELEES": 3,
+        "LIGNE-A": 3,
+        "LIGNE-C1": 3,
+        "LIGNE-C2": 3,
+        "LIGNE-D1": 3,
+        "LIGNE-D2": 3,
+        "LIGNE-EA": 3,
+        "LIGNE-EB": 3,
+        "LIGNE-F": 3,
+        "LIGNE-G": 3,
+        "LIGNE-H": 3,
+        "LIGNE-I": 3,
+        "LIGNE-L": 3,
+        "LIGNE-M": 3,
+        "LIGNE-P-EXPRESS": 3,
+        "LIGNE-P-LA-NAVETTE-SALINES": 3,
+        "LIGNE-P1": 3,
+        "LIGNE-P3A": 3,
+        "LIGNE-P3B": 3,
+        "Ligne_04_05": 3,
+        "Ligne_13": 3,
+        "Ligne_15": 3,
+        "Ligne_17": 3,
+        "Ligne_18": 3,
+        "Ligne_18_19": 3,
+        "Ligne_19a": 3,
+        "Ligne_19b": 3,
+        "Ligne_21_22": 3,
+        "Ligne_23": 3,
+        "Ligne_34": 3,
+        "Ligne_39_40": 3,
+        "Ligne_58_64": 3,
+        "Ligne_61_62": 3
       },
       "kinds": {
-        "ferry": 4
+        "bus": 101
       },
-      "uniformKind": "ferry",
-      "join": {
-        "sampled": 45,
-        "direct": 0,
-        "resolved": 45,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
+      "uniformKind": "bus",
+      "join": null
     },
     "pan-84157": {
       "network": "Réseau urbain RTCA",
@@ -6143,10 +6177,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 14,
+        "sampled": 25,
         "direct": 0,
-        "resolved": 14,
-        "at": "2026-08-31T16:49:47.049Z"
+        "resolved": 25,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81908": {
@@ -6172,10 +6206,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 8,
-        "direct": 8,
-        "resolved": 8,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 13,
+        "direct": 13,
+        "resolved": 13,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82731": {
@@ -6196,7 +6230,12 @@
         "bus": 10
       },
       "uniformKind": "bus",
-      "join": null
+      "join": {
+        "sampled": 37,
+        "direct": 37,
+        "resolved": 37,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
     },
     "pan-79036": {
       "network": "Réseau urbain Ruban",
@@ -6242,173 +6281,162 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 16,
-        "direct": 16,
-        "resolved": 16,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 35,
+        "direct": 35,
+        "resolved": 35,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83414": {
       "network": "Réseau urbain Azalys",
       "routes": {
-        "D-95": 3,
-        "D-98": 3,
-        "F-95": 3,
-        "F-98": 3,
-        "E-95": 3,
-        "E-98": 3,
-        "S14-98": 3,
-        "H-95": 3,
-        "H-98": 3,
-        "SOIR-98": 3,
-        "SOIR-95": 3,
-        "S12-98": 3,
-        "S10-98": 3,
-        "L15-123": 3,
-        "L16-123": 3,
-        "L17-123": 3,
-        "L18-123": 3,
-        "L19-123": 3,
-        "L20-123": 3,
-        "L21-123": 3,
-        "L22-123": 3,
-        "L23-123": 3,
-        "L24-123": 3,
-        "L25-123": 3,
-        "L26-123": 3,
-        "L28-123": 3,
-        "L29-123": 3,
-        "L30-123": 3,
-        "L31-123": 3,
-        "L32-123": 3,
-        "NCH2-95": 3,
-        "NCH1-95": 3,
-        "N2-95": 3,
-        "N2-98": 3,
-        "N1-95": 3,
-        "N1-98": 3,
-        "S11-98": 3,
-        "A-95": 3,
-        "A-98": 3,
-        "S1-123": 3,
-        "S11-123": 3,
-        "S12-123": 3,
-        "S13-123": 3,
-        "S2-123": 3,
-        "S40-123": 3,
-        "S41-123": 3,
-        "S42-123": 3,
-        "S43-123": 3,
-        "S44-123": 3,
-        "S51-123": 3,
-        "S52-123": 3,
-        "S53-123": 3,
-        "S54-123": 3,
-        "S55-123": 3,
-        "S56-123": 3,
-        "S57-123": 3,
-        "S58-123": 3,
-        "S59-123": 3,
-        "S601-123": 3,
-        "S602-123": 3,
-        "S61-123": 3,
-        "S62-123": 3,
-        "S63-123": 3,
-        "S64-123": 3,
-        "S65-123": 3,
-        "S66-123": 3,
-        "S671-123": 3,
-        "S672-123": 3,
-        "S681-123": 3,
-        "S682-123": 3,
-        "S69-123": 3,
-        "S70-123": 3,
-        "S71-123": 3,
-        "S72-123": 3,
-        "S73-123": 3,
-        "S74-123": 3,
-        "S75-123": 3,
-        "B-95": 3,
-        "B-98": 3,
-        "C-95": 3,
-        "C-98": 3,
-        "G-95": 3,
-        "G-98": 3
+        "L18": 3,
+        "D": 3,
+        "F": 3,
+        "E": 3,
+        "S14": 3,
+        "S57": 3,
+        "S58": 3,
+        "L30": 3,
+        "S70": 3,
+        "S71": 3,
+        "S74": 3,
+        "S55": 3,
+        "S601": 3,
+        "H": 3,
+        "S59": 3,
+        "L28": 3,
+        "S64": 3,
+        "S61": 3,
+        "S62": 3,
+        "S63": 3,
+        "S671": 3,
+        "S681": 3,
+        "S672": 3,
+        "S682": 3,
+        "S69": 3,
+        "S65": 3,
+        "S66": 3,
+        "L29": 3,
+        "S56": 3,
+        "SOIR": 3,
+        "S52": 3,
+        "S12": 3,
+        "S10": 3,
+        "L232": 3,
+        "S13": 3,
+        "L32": 3,
+        "S73": 3,
+        "S75": 3,
+        "S602": 3,
+        "S51": 3,
+        "L31": 3,
+        "NCH2": 3,
+        "NCH1": 3,
+        "N2": 3,
+        "N1": 3,
+        "S54": 3,
+        "S11": 3,
+        "A": 3,
+        "S2": 3,
+        "S1": 3,
+        "L24": 3,
+        "L19": 3,
+        "L22": 3,
+        "S53": 3,
+        "S40": 3,
+        "L15": 3,
+        "S43": 3,
+        "S44": 3,
+        "L231": 3,
+        "B": 3,
+        "S72": 3,
+        "C": 3,
+        "L25": 3,
+        "L21": 3,
+        "L20": 3,
+        "L26": 3,
+        "L161": 3,
+        "L162": 3,
+        "L17": 3,
+        "S41": 3,
+        "S42": 3,
+        "G": 3
       },
       "kinds": {
-        "bus": 83
+        "bus": 72
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 22,
-        "direct": 0,
-        "resolved": 22,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 53,
+        "direct": 53,
+        "resolved": 53,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82278": {
       "network": "Réseau urbain SITAC",
       "routes": {
-        "zenbus:Line:577450010:LOC": 3,
-        "zenbus:Line:561180001:LOC": 3,
-        "zenbus:Line:540230001:LOC": 3,
-        "zenbus:Line:566940001:LOC": 3,
-        "zenbus:Line:534710001:LOC": 3,
-        "zenbus:Line:566950001:LOC": 3,
-        "zenbus:Line:700690001:LOC": 3,
-        "zenbus:Line:722850001:LOC": 3,
-        "zenbus:Line:722860001:LOC": 3,
-        "zenbus:Line:546560001:LOC": 3,
-        "zenbus:Line:561190001:LOC": 3,
         "zenbus:Line:537730001:LOC": 3,
-        "zenbus:Line:6395804213313536:LOC": 3,
+        "zenbus:Line:561180001:LOC": 3,
+        "zenbus:Line:4810787299262464:LOC": 3,
+        "zenbus:Line:577450010:LOC": 3,
         "zenbus:Line:549900001:LOC": 3,
+        "zenbus:Line:540230001:LOC": 3,
         "zenbus:Line:549910001:LOC": 3,
-        "zenbus:Line:692350003:LOC": 3,
-        "zenbus:Line:716910001:LOC": 3,
-        "zenbus:Line:716920001:LOC": 3,
-        "zenbus:Line:727330001:LOC": 3,
-        "zenbus:Line:716850003:LOC": 3,
-        "zenbus:Line:4832014604697600:LOC": 3,
-        "zenbus:Line:684480001:LOC": 3,
-        "zenbus:Line:715040002:LOC": 3,
-        "zenbus:Line:4862956455067648:LOC": 3,
-        "zenbus:Line:590820015:LOC": 3,
-        "zenbus:Line:720820003:LOC": 3,
-        "zenbus:Line:553860001:LOC": 3,
-        "zenbus:Line:684460002:LOC": 3,
+        "zenbus:Line:546560001:LOC": 3,
+        "zenbus:Line:534710001:LOC": 3,
+        "zenbus:Line:566940001:LOC": 3,
+        "zenbus:Line:6395804213313536:LOC": 3,
+        "zenbus:Line:715070001:LOC": 3,
         "zenbus:Line:4860024502353920:LOC": 3,
-        "zenbus:Line:720860001:LOC": 3,
-        "zenbus:Line:698230001:LOC": 3,
+        "zenbus:Line:561190001:LOC": 3,
         "zenbus:Line:676280002:LOC": 3,
-        "zenbus:Line:570820023:LOC": 4,
-        "zenbus:Line:684470001:LOC": 3,
-        "zenbus:Line:722840001:LOC": 3,
-        "zenbus:Line:4815637323972608:LOC": 3,
-        "zenbus:Line:700700001:LOC": 3,
-        "zenbus:Line:686640002:LOC": 3,
-        "zenbus:Line:722820001:LOC": 3,
-        "zenbus:Line:711080002:LOC": 3,
-        "zenbus:Line:709480008:LOC": 3,
+        "zenbus:Line:684490001:LOC": 3,
+        "zenbus:Line:566950001:LOC": 3,
         "zenbus:Line:713110001:LOC": 3,
         "zenbus:Line:718830001:LOC": 3,
-        "zenbus:Line:680180001:LOC": 3,
-        "zenbus:Line:702180001:LOC": 3,
-        "zenbus:Line:706050001:LOC": 3,
-        "zenbus:Line:684490001:LOC": 3,
-        "zenbus:Line:720870001:LOC": 3,
-        "zenbus:Line:722830001:LOC": 3,
-        "zenbus:Line:716930001:LOC": 3,
-        "zenbus:Line:698210001:LOC": 3,
-        "zenbus:Line:4810787299262464:LOC": 3,
+        "zenbus:Line:715040002:LOC": 3,
         "zenbus:Line:706040001:LOC": 3,
+        "zenbus:Line:706050001:LOC": 3,
+        "zenbus:Line:684470001:LOC": 3,
+        "zenbus:Line:570820023:LOC": 4,
+        "zenbus:Line:553860001:LOC": 3,
+        "zenbus:Line:722850001:LOC": 3,
+        "zenbus:Line:680180001:LOC": 3,
         "zenbus:Line:722870001:LOC": 3,
-        "zenbus:Line:698220001:LOC": 3,
-        "zenbus:Line:715070001:LOC": 3,
+        "zenbus:Line:692350003:LOC": 3,
+        "zenbus:Line:722840001:LOC": 3,
+        "zenbus:Line:4904135695532032:LOC": 3,
+        "zenbus:Line:720870001:LOC": 3,
+        "zenbus:Line:716920001:LOC": 3,
+        "zenbus:Line:716910001:LOC": 3,
+        "zenbus:Line:702180001:LOC": 3,
+        "zenbus:Line:711080002:LOC": 3,
+        "zenbus:Line:716850003:LOC": 3,
+        "zenbus:Line:4832014604697600:LOC": 3,
+        "zenbus:Line:720820003:LOC": 3,
+        "zenbus:Line:684480001:LOC": 3,
+        "zenbus:Line:698210001:LOC": 3,
+        "zenbus:Line:684460002:LOC": 3,
+        "zenbus:Line:727330001:LOC": 3,
+        "zenbus:Line:722830001:LOC": 3,
+        "zenbus:Line:700690001:LOC": 3,
+        "zenbus:Line:716930001:LOC": 3,
+        "zenbus:Line:590820015:LOC": 3,
+        "zenbus:Line:722820001:LOC": 3,
+        "zenbus:Line:720860001:LOC": 3,
         "zenbus:Line:718820001:LOC": 3,
+        "zenbus:Line:4815637323972608:LOC": 3,
+        "zenbus:Line:698230001:LOC": 3,
+        "zenbus:Line:686640002:LOC": 3,
+        "zenbus:Line:4862956455067648:LOC": 3,
+        "zenbus:Line:722860001:LOC": 3,
+        "zenbus:Line:698220001:LOC": 3,
+        "zenbus:Line:700700001:LOC": 3,
+        "zenbus:Line:709480008:LOC": 3,
         "zenbus:Line:678580001:LOC": 3,
-        "zenbus:Line:703770003:LOC": 3,
-        "zenbus:Line:4904135695532032:LOC": 3
+        "zenbus:Line:703770003:LOC": 3
       },
       "kinds": {
         "bus": 59,
@@ -6416,10 +6444,10 @@
       },
       "uniformKind": null,
       "join": {
-        "sampled": 37,
-        "direct": 37,
-        "resolved": 37,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 45,
+        "direct": 45,
+        "resolved": 45,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83928": {
@@ -6438,48 +6466,46 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 15,
-        "direct": 10,
-        "resolved": 15,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 35,
+        "direct": 11,
+        "resolved": 35,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81140": {
       "network": "Réseau interurbain et TAD zonal Corolis",
       "routes": {
-        "501": 3,
-        "502": 3,
-        "503": 3,
-        "511": 3,
-        "512": 3,
-        "513": 3,
-        "514": 3,
-        "515": 3,
-        "516": 3,
-        "517": 3,
-        "518": 3,
-        "521": 3,
-        "522": 3,
-        "523": 3,
-        "525": 3,
-        "526": 3,
-        "527": 3,
-        "528": 3,
-        "531": 3,
-        "532": 3,
-        "533": 3,
-        "534": 3,
-        "535": 3,
-        "536": 3,
-        "537": 3,
-        "538": 3,
-        "CP": 715
+        "225": 3,
+        "226": 3,
+        "227": 3,
+        "228": 3,
+        "229": 3,
+        "230": 3,
+        "231": 3,
+        "232": 3,
+        "233": 3,
+        "234": 3,
+        "235": 3,
+        "236": 3,
+        "237": 3,
+        "238": 3,
+        "247": 3,
+        "248": 3,
+        "249": 3,
+        "250": 3,
+        "305": 3,
+        "307": 3
       },
       "kinds": {
-        "bus": 27
+        "bus": 20
       },
       "uniformKind": "bus",
-      "join": null
+      "join": {
+        "sampled": 27,
+        "direct": 0,
+        "resolved": 27,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
     },
     "pan-81126": {
       "network": "Réseau urbain Corolis",
@@ -6500,10 +6526,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 23,
-        "direct": 23,
-        "resolved": 23,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 22,
+        "direct": 22,
+        "resolved": 22,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83285": {
@@ -6516,8 +6542,6 @@
         "ATOUMOD006:Line:S7:LOC": 3,
         "ATOUMOD006:Line:10:LOC": 3,
         "ATOUMOD006:Line:5:LOC": 3,
-        "ATOUMOD006:Line:6a:LOC": 3,
-        "ATOUMOD006:Line:6b:LOC": 3,
         "ATOUMOD006:Line:7a:LOC": 3,
         "ATOUMOD006:Line:7b:LOC": 3,
         "ATOUMOD006:Line:8:LOC": 3,
@@ -6534,10 +6558,15 @@
         "ATOUMOD006:Line:6:LOC": 3
       },
       "kinds": {
-        "bus": 23
+        "bus": 21
       },
       "uniformKind": "bus",
-      "join": null
+      "join": {
+        "sampled": 23,
+        "direct": 23,
+        "resolved": 23,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
     },
     "pan-83748": {
       "network": "Réseau urbain Qub",
@@ -6604,10 +6633,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 33,
-        "direct": 33,
-        "resolved": 33,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 60,
+        "direct": 60,
+        "resolved": 60,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83201": {
@@ -6632,100 +6661,20 @@
         "sampled": 6,
         "direct": 6,
         "resolved": 6,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
-    },
-    "pan-81953": {
-      "network": "Réseau urbain Tempo Bus",
-      "routes": {
-        "DIM2": 3,
-        "GAUJ": 3,
-        "L01": 3,
-        "L02": 3,
-        "L03": 3,
-        "L04": 3,
-        "L05": 3,
-        "L06": 3,
-        "L07": 3,
-        "NCB1": 3,
-        "S101": 3,
-        "S102": 3,
-        "S103": 3,
-        "S104": 3,
-        "S105": 3,
-        "S106": 3,
-        "S107": 3,
-        "S108": 3,
-        "S109": 3,
-        "S110": 3,
-        "S111": 3,
-        "S112": 3,
-        "S201": 3,
-        "S202": 3,
-        "S203": 3,
-        "S204": 3,
-        "S205": 3,
-        "S206": 3,
-        "S207": 3,
-        "S208": 3,
-        "S209": 3,
-        "S210": 3,
-        "S211": 3,
-        "S212": 3,
-        "S213": 3,
-        "S214": 3,
-        "S215": 3,
-        "S216": 3,
-        "S217": 3,
-        "S218": 3,
-        "S219": 3,
-        "S301": 3,
-        "S302": 3,
-        "S303": 3,
-        "S304": 3,
-        "S305": 3,
-        "S306": 3,
-        "S307": 3,
-        "S308": 3,
-        "S309": 3,
-        "S310": 3,
-        "S311": 3,
-        "S312": 3,
-        "S401": 3,
-        "S402": 3,
-        "S403": 3,
-        "S404": 3,
-        "S405": 3,
-        "S406": 3,
-        "S407": 3,
-        "S408": 3,
-        "S409": 3,
-        "S410": 3,
-        "S411": 3,
-        "S412": 3,
-        "S413": 3,
-        "S414": 3,
-        "S415": 3,
-        "S416": 3,
-        "S417": 3
-      },
-      "kinds": {
-        "bus": 70
-      },
-      "uniformKind": "bus",
-      "join": null
     },
     "pan-79015": {
       "network": "Réseau urbain Ritmo",
       "routes": {
         "zenbus:Line:737930001:LOC": 3,
-        "zenbus:Line:760800001:LOC": 3,
-        "zenbus:Line:743630001:LOC": 3,
-        "zenbus:Line:736370020:LOC": 3,
-        "zenbus:Line:758860001:LOC": 3,
-        "zenbus:Line:747400002:LOC": 3,
-        "zenbus:Line:726780019:LOC": 3,
         "zenbus:Line:756890009:LOC": 3,
+        "zenbus:Line:726780019:LOC": 3,
+        "zenbus:Line:736370020:LOC": 3,
+        "zenbus:Line:747400002:LOC": 3,
+        "zenbus:Line:758860001:LOC": 3,
+        "zenbus:Line:743630001:LOC": 3,
+        "zenbus:Line:760800001:LOC": 3,
         "zenbus:Line:753020003:LOC": 3
       },
       "kinds": {
@@ -6733,78 +6682,11 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 20,
-        "direct": 20,
-        "resolved": 20,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 28,
+        "direct": 28,
+        "resolved": 28,
+        "at": "2026-09-07T15:19:28.874Z"
       }
-    },
-    "pan-84086": {
-      "network": "Réseau urbain de la zone Nord (CAP NORD)",
-      "routes": {
-        "ROB3": 3,
-        "NC10": 3,
-        "NC4A": 3,
-        "NA24": 3,
-        "NA25": 3,
-        "NA26": 3,
-        "NA27": 3,
-        "NC01": 3,
-        "NC02": 3,
-        "NC03": 3,
-        "NC04": 3,
-        "NC05": 3,
-        "NC06": 3,
-        "NC07": 3,
-        "NC08": 3,
-        "NC09": 3,
-        "NC4B": 3,
-        "NC8A": 3,
-        "NC8B": 3,
-        "ROB1": 3,
-        "ROB2": 3,
-        "ROB4": 3,
-        "ROB5": 3,
-        "ROB6": 3,
-        "ROB7": 3,
-        "ROB8": 3,
-        "ROB9": 3,
-        "SM01": 3,
-        "SM02": 3,
-        "SM03": 3,
-        "SM04": 3,
-        "SM05": 3,
-        "SM06": 3,
-        "SM07": 3,
-        "TM01": 3,
-        "TR01": 3,
-        "TR02": 3,
-        "TR03": 3,
-        "TR04": 3,
-        "TR05": 3,
-        "TR06": 3,
-        "GM01": 3,
-        "GM02": 3,
-        "GM03": 3,
-        "GM04": 3,
-        "GM05": 3,
-        "GM06": 3,
-        "GM07": 3,
-        "LR01": 3,
-        "LR02": 3,
-        "LR03": 3,
-        "LR04": 3,
-        "LR05": 3,
-        "LR06": 3,
-        "MA01": 3,
-        "NA22": 3,
-        "NA23": 3
-      },
-      "kinds": {
-        "bus": 57
-      },
-      "uniformKind": "bus",
-      "join": null
     },
     "pan-52918": {
       "network": "Réseau urbain L'va",
@@ -6863,10 +6745,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 15,
-        "direct": 15,
-        "resolved": 15,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 64,
+        "direct": 64,
+        "resolved": 64,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83365": {
@@ -6891,10 +6773,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 15,
-        "direct": 15,
-        "resolved": 15,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 6,
+        "direct": 6,
+        "resolved": 6,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81122": {
@@ -6931,10 +6813,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 23,
-        "direct": 23,
-        "resolved": 23,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 34,
+        "direct": 34,
+        "resolved": 34,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83796": {
@@ -7013,10 +6895,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 23,
-        "direct": 23,
-        "resolved": 23,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 34,
+        "direct": 34,
+        "resolved": 34,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83079": {
@@ -7057,10 +6939,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 12,
-        "direct": 12,
-        "resolved": 12,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 40,
+        "direct": 39,
+        "resolved": 40,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-84138": {
@@ -7081,10 +6963,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 12,
-        "direct": 12,
-        "resolved": 12,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 13,
+        "direct": 13,
+        "resolved": 13,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81150": {
@@ -7109,21 +6991,20 @@
         "Sco JV": 3,
         "Sco LYC": 3,
         "TAD101": 715,
-        "TAD103": 715,
         "TAD 107": 715,
         "TAD 109": 715,
         "ARC Express": 3,
         "Sco ARA": 3
       },
       "kinds": {
-        "bus": 24
+        "bus": 23
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 2,
-        "direct": 2,
-        "resolved": 2,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 28,
+        "direct": 28,
+        "resolved": 28,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81134": {
@@ -7150,10 +7031,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 12,
-        "direct": 12,
-        "resolved": 12,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 14,
+        "direct": 14,
+        "resolved": 14,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83078": {
@@ -7180,32 +7061,28 @@
         "sampled": 4,
         "direct": 4,
         "resolved": 4,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-40623": {
       "network": "Réseau urbain Cap’Bus",
       "routes": {
-        "zenbus:Line:604130034:LOC": 3,
-        "zenbus:Line:613520001:LOC": 3,
         "zenbus:Line:580030006:LOC": 3,
-        "zenbus:Line:768490037:LOC": 3,
-        "zenbus:Line:6512710916243456:LOC": 3,
+        "zenbus:Line:613520001:LOC": 3,
         "zenbus:Line:6336924114485248:LOC": 3,
         "zenbus:Line:623010001:LOC": 3,
-        "zenbus:Line:4831904623755264:LOC": 3,
-        "zenbus:Line:719730003:LOC": 3,
-        "zenbus:Line:6049415981694976:LOC": 3
+        "zenbus:Line:604130034:LOC": 3,
+        "zenbus:Line:719730003:LOC": 3
       },
       "kinds": {
-        "bus": 10
+        "bus": 6
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 8,
-        "direct": 8,
-        "resolved": 8,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 7,
+        "direct": 7,
+        "resolved": 7,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-67153": {
@@ -7240,10 +7117,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 2,
+        "direct": 2,
+        "resolved": 2,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83766": {
@@ -7377,10 +7254,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 13,
-        "direct": 13,
-        "resolved": 13,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 63,
+        "direct": 63,
+        "resolved": 63,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83764": {
@@ -7514,10 +7391,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 13,
-        "direct": 13,
-        "resolved": 13,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 63,
+        "direct": 63,
+        "resolved": 63,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82719": {
@@ -7534,7 +7411,6 @@
         "CSCAF-09": 3,
         "CSCAF-10": 3,
         "LIGNE-30": 3,
-        "LIGNE-8": 3,
         "LIGNE-A": 3,
         "LIGNE-B": 3,
         "LIGNE-C": 3,
@@ -7554,17 +7430,18 @@
         "RENFORT-LIGNE-F-BEHREN": 3,
         "RENFORT-LIGNE-G": 3,
         "RENFORT-LIGNE-H": 3,
-        "LIGNE-AS-124": 3
+        "LIGNE-AS-124": 3,
+        "Ligne-8": 3
       },
       "kinds": {
         "bus": 32
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 13,
-        "direct": 13,
-        "resolved": 13,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 32,
+        "direct": 32,
+        "resolved": 32,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-79746": {
@@ -7581,7 +7458,12 @@
         "bus": 6
       },
       "uniformKind": "bus",
-      "join": null
+      "join": {
+        "sampled": 1,
+        "direct": 0,
+        "resolved": 1,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
     },
     "pan-82142": {
       "network": "Réseau urbain Astrobus",
@@ -7628,10 +7510,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 8,
-        "direct": 8,
-        "resolved": 8,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 7,
+        "direct": 5,
+        "resolved": 7,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81420": {
@@ -7671,10 +7553,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 20,
-        "direct": 20,
-        "resolved": 20,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 23,
+        "direct": 23,
+        "resolved": 23,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82596": {
@@ -7697,7 +7579,7 @@
         "sampled": 4,
         "direct": 4,
         "resolved": 4,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83538": {
@@ -7746,10 +7628,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 7,
-        "direct": 7,
-        "resolved": 7,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 23,
+        "direct": 23,
+        "resolved": 23,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82578": {
@@ -7774,10 +7656,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 6,
-        "direct": 6,
-        "resolved": 6,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 7,
+        "direct": 7,
+        "resolved": 7,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83840": {
@@ -7800,10 +7682,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 8,
-        "direct": 8,
-        "resolved": 8,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 18,
+        "direct": 18,
+        "resolved": 18,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81988": {
@@ -7862,10 +7744,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 6,
-        "direct": 6,
-        "resolved": 6,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 26,
+        "direct": 26,
+        "resolved": 26,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81312": {
@@ -7967,10 +7849,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 7,
-        "direct": 7,
-        "resolved": 7,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 22,
+        "direct": 22,
+        "resolved": 22,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-84015": {
@@ -8003,10 +7885,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 11,
+        "sampled": 23,
         "direct": 0,
-        "resolved": 11,
-        "at": "2026-08-31T16:49:47.049Z"
+        "resolved": 23,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81698": {
@@ -8019,10 +7901,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 2,
+        "direct": 2,
+        "resolved": 2,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-79742": {
@@ -8041,10 +7923,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 3,
-        "direct": 3,
-        "resolved": 3,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 11,
+        "direct": 11,
+        "resolved": 11,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81060": {
@@ -8070,10 +7952,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 5,
-        "direct": 5,
-        "resolved": 5,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 4,
+        "direct": 4,
+        "resolved": 4,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83395": {
@@ -8081,8 +7963,6 @@
       "routes": {
         "Ligne 4": 3,
         "NCV2": 3,
-        "NCV3": 3,
-        "NVF": 3,
         "Navette centre ville": 3,
         "zenbus:Line:550340001:LOC": 3,
         "zenbus:Line:550350001:LOC": 3,
@@ -8095,14 +7975,14 @@
         "zenbus:Line:892310003:LOC": 3
       },
       "kinds": {
-        "bus": 14
+        "bus": 12
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 6,
-        "direct": 6,
-        "resolved": 6,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 12,
+        "direct": 12,
+        "resolved": 12,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81341": {
@@ -8130,10 +8010,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 3,
-        "direct": 3,
-        "resolved": 3,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 22,
+        "direct": 22,
+        "resolved": 22,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81697": {
@@ -8145,11 +8025,55 @@
         "bus": 1
       },
       "uniformKind": "bus",
+      "join": null
+    },
+    "pan-82551": {
+      "network": "Réseau scolaire de Flers",
+      "routes": {
+        "1": 3,
+        "2": 3,
+        "3": 3,
+        "4": 3,
+        "5": 3,
+        "6": 3,
+        "7": 3,
+        "10": 3,
+        "11": 3,
+        "12": 3,
+        "13": 3,
+        "14": 3,
+        "15": 3,
+        "17": 3,
+        "18": 3,
+        "19": 3,
+        "20": 3,
+        "21": 3,
+        "23": 3,
+        "24": 3,
+        "25": 3,
+        "26": 3,
+        "27": 3,
+        "28": 3,
+        "29": 3,
+        "30": 3,
+        "31": 3,
+        "32": 3,
+        "33": 3,
+        "34": 3,
+        "35": 3,
+        "36": 3,
+        "44": 3,
+        "48": 3
+      },
+      "kinds": {
+        "bus": 34
+      },
+      "uniformKind": "bus",
       "join": {
-        "sampled": 1,
-        "direct": 0,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 23,
+        "direct": 23,
+        "resolved": 23,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82549": {
@@ -8164,10 +8088,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 3,
-        "direct": 3,
-        "resolved": 3,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 5,
+        "direct": 5,
+        "resolved": 5,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-80381": {
@@ -8178,23 +8102,22 @@
         "LIGNE C": 3,
         "LIGNE D": 3,
         "LIGNE E": 3,
+        "LIGNE ESAT": 3,
         "LIGNE F": 3,
         "LIGNE G": 3,
         "LIGNE H": 3,
-        "LIGNE J": 3,
         "LIGNE M": 3,
-        "LIGNE N": 3,
         "NAVETTE TGV": 3
       },
       "kinds": {
-        "bus": 12
+        "bus": 11
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 5,
-        "direct": 5,
-        "resolved": 5,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 8,
+        "direct": 8,
+        "resolved": 8,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83855": {
@@ -8213,10 +8136,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 4,
-        "direct": 4,
-        "resolved": 4,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 2,
+        "direct": 2,
+        "resolved": 2,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81626": {
@@ -8242,10 +8165,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 7,
-        "direct": 7,
-        "resolved": 7,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 10,
+        "direct": 10,
+        "resolved": 10,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83139": {
@@ -8275,10 +8198,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 2,
-        "direct": 2,
-        "resolved": 2,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 12,
+        "direct": 12,
+        "resolved": 12,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83392": {
@@ -8302,7 +8225,12 @@
         "bus": 13
       },
       "uniformKind": "bus",
-      "join": null
+      "join": {
+        "sampled": 8,
+        "direct": 8,
+        "resolved": 8,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
     },
     "pan-81256": {
       "network": "Réseau urbain PondiBUS",
@@ -8318,10 +8246,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 2,
-        "direct": 2,
-        "resolved": 2,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 3,
+        "direct": 3,
+        "resolved": 3,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-8202": {
@@ -8335,10 +8263,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 3,
-        "direct": 3,
-        "resolved": 3,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 4,
+        "direct": 4,
+        "resolved": 4,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82875": {
@@ -8350,7 +8278,12 @@
         "bus": 1
       },
       "uniformKind": "bus",
-      "join": null
+      "join": {
+        "sampled": 1,
+        "direct": 1,
+        "resolved": 1,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
     },
     "pan-81925": {
       "network": "Réseau urbain Transp’Or",
@@ -8371,28 +8304,11 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 10,
-        "direct": 10,
-        "resolved": 10,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 8,
+        "direct": 8,
+        "resolved": 8,
+        "at": "2026-09-07T15:19:28.874Z"
       }
-    },
-    "pan-82723": {
-      "network": "Réseau urbain Néva",
-      "routes": {
-        "ATOUMOD105:Line:348940035:LOC": 3,
-        "ATOUMOD105:Line:350210009:LOC": 3,
-        "ATOUMOD105:Line:5140010311352320:LOC": 3,
-        "ATOUMOD105:Line:5188685444153344:LOC": 3,
-        "ATOUMOD105:Line:5962875763949568:LOC": 3,
-        "ATOUMOD105:Line:761900004:LOC": 3,
-        "ATOUMOD105:Line:848310001:LOC": 3
-      },
-      "kinds": {
-        "bus": 7
-      },
-      "uniformKind": "bus",
-      "join": null
     },
     "pan-81044": {
       "network": "Réseau urbain et interurbain Aire’MOB",
@@ -8412,10 +8328,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 3,
-        "direct": 3,
-        "resolved": 3,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 5,
+        "direct": 5,
+        "resolved": 5,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81017": {
@@ -8426,13 +8342,10 @@
         "4403": 3,
         "4404": 3,
         "4406": 3,
-        "4407": 3,
         "4421": 3,
         "4422": 3,
         "4423": 3,
         "4425": 3,
-        "4441": 3,
-        "4442": 3,
         "4451": 3,
         "4452": 3,
         "4464": 3,
@@ -8447,14 +8360,14 @@
         "4483": 3
       },
       "kinds": {
-        "bus": 24
+        "bus": 21
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 4,
-        "direct": 4,
-        "resolved": 4,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 13,
+        "direct": 13,
+        "resolved": 13,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-15449": {
@@ -8472,7 +8385,7 @@
         "sampled": 3,
         "direct": 3,
         "resolved": 3,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-8118": {
@@ -8495,32 +8408,27 @@
         "sampled": 7,
         "direct": 7,
         "resolved": 7,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81324": {
       "network": "Réseau urbain Sablons Bus",
       "routes": {
-        "49": 3,
-        "50": 3,
-        "54": 3,
-        "55": 3,
-        "62": 3,
-        "63": 3,
-        "64": 3,
-        "65": 3,
-        "395": 3,
-        "396": 3
+        "A": 3,
+        "B": 3,
+        "C": 3,
+        "D": 3,
+        "E": 3
       },
       "kinds": {
-        "bus": 10
+        "bus": 5
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 1,
-        "direct": 0,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 4,
+        "direct": 4,
+        "resolved": 4,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83523": {
@@ -8540,7 +8448,7 @@
         "sampled": 2,
         "direct": 2,
         "resolved": 2,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82186": {
@@ -8560,27 +8468,30 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 2,
-        "direct": 2,
-        "resolved": 2,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 5,
+        "direct": 5,
+        "resolved": 5,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81300": {
       "network": "Réseau urbain Le Bus",
       "routes": {
-        "254": 3,
-        "255": 3
+        "1": 3,
+        "2": 3,
+        "3": 3,
+        "4": 3,
+        "1TAD": 715
       },
       "kinds": {
-        "bus": 2
+        "bus": 5
       },
       "uniformKind": "bus",
       "join": {
         "sampled": 5,
-        "direct": 0,
+        "direct": 5,
         "resolved": 5,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81036": {
@@ -8602,10 +8513,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 6,
-        "direct": 6,
-        "resolved": 6,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 5,
+        "direct": 5,
+        "resolved": 5,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83889": {
@@ -8622,10 +8533,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 5,
-        "direct": 5,
-        "resolved": 5,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 6,
+        "direct": 6,
+        "resolved": 6,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81335": {
@@ -8673,10 +8584,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 8,
-        "direct": 8,
-        "resolved": 8,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 9,
+        "direct": 9,
+        "resolved": 9,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81306": {
@@ -8698,10 +8609,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 2,
+        "direct": 2,
+        "resolved": 2,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-38878": {
@@ -8728,10 +8639,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 2,
+        "direct": 2,
+        "resolved": 2,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-82713": {
@@ -8747,10 +8658,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 2,
-        "direct": 2,
-        "resolved": 2,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 1,
+        "direct": 1,
+        "resolved": 1,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83150": {
@@ -8766,10 +8677,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 3,
-        "direct": 3,
-        "resolved": 3,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 5,
+        "direct": 5,
+        "resolved": 5,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81290": {
@@ -8795,23 +8706,6 @@
       "uniformKind": "bus",
       "join": null
     },
-    "pan-82632": {
-      "network": "Réseau urbain MOCA",
-      "routes": {
-        "ATOUMOD041:Line:1:LOC": 3,
-        "ATOUMOD041:Line:2:LOC": 3
-      },
-      "kinds": {
-        "bus": 2
-      },
-      "uniformKind": "bus",
-      "join": {
-        "sampled": 1,
-        "direct": 0,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
-    },
     "pan-82630": {
       "network": "Réseau urbain MOCA",
       "routes": {
@@ -8822,18 +8716,25 @@
         "bus": 2
       },
       "uniformKind": "bus",
-      "join": {
-        "sampled": 1,
-        "direct": 0,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
+      "join": null
+    },
+    "pan-82632": {
+      "network": "Réseau urbain MOCA",
+      "routes": {
+        "ATOUMOD041:Line:1:LOC": 3,
+        "ATOUMOD041:Line:2:LOC": 3
+      },
+      "kinds": {
+        "bus": 2
+      },
+      "uniformKind": "bus",
+      "join": null
     },
     "pan-83924": {
       "network": "Réseau urbain et TAD zonal Libellule",
       "routes": {
-        "1": 3,
-        "2": 3
+        "391": 3,
+        "392": 3
       },
       "kinds": {
         "bus": 2
@@ -8841,9 +8742,9 @@
       "uniformKind": "bus",
       "join": {
         "sampled": 1,
-        "direct": 1,
+        "direct": 0,
         "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-83192": {
@@ -8856,10 +8757,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 5,
-        "direct": 3,
-        "resolved": 5,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 10,
+        "direct": 5,
+        "resolved": 10,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-81808": {
@@ -8881,7 +8782,60 @@
         "sampled": 3,
         "direct": 3,
         "resolved": 3,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
+      }
+    },
+    "pan-81570": {
+      "network": "Réseau urbain Hoplà",
+      "routes": {
+        "309": 3,
+        "310": 3,
+        "311": 3,
+        "312": 3,
+        "313": 3,
+        "314": 3,
+        "315": 3,
+        "316": 3,
+        "317": 3,
+        "318": 3,
+        "319": 3,
+        "320": 3,
+        "321": 3,
+        "322": 3,
+        "323": 3,
+        "324": 3,
+        "325": 3,
+        "326": 3,
+        "327": 3,
+        "328": 3,
+        "329": 3,
+        "330": 3,
+        "331": 3,
+        "332": 3,
+        "333": 3,
+        "334": 3,
+        "335": 3,
+        "336": 3,
+        "337": 3,
+        "338": 3,
+        "339": 3,
+        "340": 3,
+        "341": 3,
+        "342": 3,
+        "343": 3,
+        "344": 3,
+        "345": 3,
+        "346": 3
+      },
+      "kinds": {
+        "bus": 38
+      },
+      "uniformKind": "bus",
+      "join": {
+        "sampled": 2,
+        "direct": 0,
+        "resolved": 2,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-8598": {
@@ -8903,10 +8857,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 9,
-        "direct": 9,
-        "resolved": 9,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 8,
+        "direct": 8,
+        "resolved": 8,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-84067": {
@@ -8941,10 +8895,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 11,
+        "sampled": 10,
         "direct": 0,
-        "resolved": 11,
-        "at": "2026-08-31T16:49:47.049Z"
+        "resolved": 10,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-12609": {
@@ -8962,7 +8916,28 @@
         "sampled": 2,
         "direct": 2,
         "resolved": 2,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
+      }
+    },
+    "pan-8488": {
+      "network": "Réseau urbain TUM",
+      "routes": {
+        "zenbus:Line:16050162:LOC": 3,
+        "zenbus:Line:4549308700426240:LOC": 3,
+        "zenbus:Line:4771309419495424:LOC": 3,
+        "zenbus:Line:6033597388554240:LOC": 3,
+        "zenbus:Line:4580583746306048:LOC": 3,
+        "zenbus:Line:4606557863018496:LOC": 3
+      },
+      "kinds": {
+        "bus": 6
+      },
+      "uniformKind": "bus",
+      "join": {
+        "sampled": 2,
+        "direct": 2,
+        "resolved": 2,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-84088": {
@@ -8976,7 +8951,12 @@
         "bus": 3
       },
       "uniformKind": "bus",
-      "join": null
+      "join": {
+        "sampled": 3,
+        "direct": 3,
+        "resolved": 3,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
     },
     "pan-34266": {
       "network": "Réseau urbain La Navette Oloron Sainte-Marie",
@@ -8994,10 +8974,10 @@
       },
       "uniformKind": "bus",
       "join": {
-        "sampled": 2,
-        "direct": 2,
-        "resolved": 2,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 3,
+        "direct": 3,
+        "resolved": 3,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-25678": {
@@ -9008,7 +8988,6 @@
         "zenbus:Line:375020010:LOC": 3,
         "zenbus:Line:376920006:LOC": 3,
         "zenbus:Line:5204162090369024:LOC": 3,
-        "zenbus:Line:502500001:LOC": 3,
         "zenbus:Line:371990011:LOC": 3,
         "zenbus:Line:380800004:LOC": 3,
         "zenbus:Line:376930002:LOC": 3,
@@ -9019,14 +8998,31 @@
         "zenbus:Line:4896114768609280:LOC": 3
       },
       "kinds": {
-        "bus": 14
+        "bus": 13
       },
       "uniformKind": "bus",
       "join": {
         "sampled": 3,
         "direct": 3,
         "resolved": 3,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
+      }
+    },
+    "pan-84090": {
+      "network": "Réseau urbain ST SULPICE LA POINTE",
+      "routes": {
+        "zenbus:Line:659570001:LOC": 3,
+        "zenbus:Line:673260001:LOC": 3
+      },
+      "kinds": {
+        "bus": 2
+      },
+      "uniformKind": "bus",
+      "join": {
+        "sampled": 1,
+        "direct": 1,
+        "resolved": 1,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     },
     "pan-40392": {
@@ -9040,7 +9036,12 @@
         "bus": 3
       },
       "uniformKind": "bus",
-      "join": null
+      "join": {
+        "sampled": 2,
+        "direct": 2,
+        "resolved": 2,
+        "at": "2026-09-07T15:19:28.874Z"
+      }
     },
     "pan-80382": {
       "network": "Réseau urbain Gratibus",
@@ -9055,12 +9056,7 @@
         "bus": 5
       },
       "uniformKind": "bus",
-      "join": {
-        "sampled": 4,
-        "direct": 4,
-        "resolved": 4,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
+      "join": null
     },
     "pan-79993": {
       "network": "Réseau urbain Sarlat Bus",
@@ -9076,20 +9072,8 @@
         "sampled": 1,
         "direct": 1,
         "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "at": "2026-09-07T15:19:28.874Z"
       }
-    },
-    "pan-83190": {
-      "network": "Navette estivale CVL Mobilité",
-      "routes": {
-        "NCV_ChinonClassic": 3,
-        "Navette Coeur de Ville": 3
-      },
-      "kinds": {
-        "bus": 2
-      },
-      "uniformKind": "bus",
-      "join": null
     },
     "pan-84069": {
       "network": "Réseau urbain U Vagabondu",
@@ -9104,12 +9088,7 @@
         "bus": 5
       },
       "uniformKind": "bus",
-      "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
+      "join": null
     },
     "pan-83468": {
       "network": "Réseau urbain Pays des Ecrins",
@@ -9124,78 +9103,11 @@
         "bus": 5
       },
       "uniformKind": "bus",
-      "join": null
-    },
-    "pan-83628": {
-      "network": "Navettes saisonnières Tignes",
-      "routes": {
-        "zenbus:Line:22350003:LOC": 3,
-        "zenbus:Line:18430001:LOC": 3
-      },
-      "kinds": {
-        "bus": 2
-      },
-      "uniformKind": "bus",
       "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
-    },
-    "pan-83630": {
-      "network": "Navettes saisonnières Val d'Isère",
-      "routes": {
-        "zenbus:Line:448260042:LOC": 3,
-        "zenbus:Line:851340005:LOC": 3,
-        "zenbus:Line:444420027:LOC": 3,
-        "zenbus:Line:458610011:LOC": 3,
-        "zenbus:Line:473590007:LOC": 3
-      },
-      "kinds": {
-        "bus": 5
-      },
-      "uniformKind": "bus",
-      "join": null
-    },
-    "pan-78388": {
-      "network": "Navettes hivernales de l'Alpe d'Huez",
-      "routes": {
-        "zenbus:Line:4785755441332224:LOC": 3,
-        "zenbus:Line:5974932161822720:LOC": 3,
-        "zenbus:Line:5161267916439552:LOC": 3,
-        "zenbus:Line:5975156884242432:LOC": 3
-      },
-      "kinds": {
-        "bus": 4
-      },
-      "uniformKind": "bus",
-      "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
-      }
-    },
-    "pan-12617": {
-      "network": "Navettes saisonnières Valmobus",
-      "routes": {
-        "zenbus:Line:674870001:LOC": 3,
-        "zenbus:Line:5067864069373952:LOC": 3,
-        "zenbus:Line:28050136:LOC": 3,
-        "zenbus:Line:2030139:LOC": 3,
-        "zenbus:Line:791280020:LOC": 3,
-        "zenbus:Line:810600003:LOC": 3
-      },
-      "kinds": {
-        "bus": 6
-      },
-      "uniformKind": "bus",
-      "join": {
-        "sampled": 1,
-        "direct": 1,
-        "resolved": 1,
-        "at": "2026-08-31T16:49:47.049Z"
+        "sampled": 2,
+        "direct": 2,
+        "resolved": 2,
+        "at": "2026-09-07T15:19:28.874Z"
       }
     }
   },
@@ -9204,6 +9116,21 @@
       "id": "pan-82909",
       "network": "Navette de la CC Sel et Vermois",
       "error": "no end-of-central-directory record in tail"
+    },
+    {
+      "id": "pan-83628",
+      "network": "Navettes saisonnières Tignes",
+      "error": "routes.txt has no usable route_type column"
+    },
+    {
+      "id": "pan-78388",
+      "network": "Navettes hivernales de l'Alpe d'Huez",
+      "error": "routes.txt has no usable route_type column"
+    },
+    {
+      "id": "pan-12617",
+      "network": "Navettes saisonnières Valmobus",
+      "error": "routes.txt has no usable route_type column"
     }
   ]
 }

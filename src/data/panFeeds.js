@@ -230,7 +230,28 @@ export function panFeedDescriptor(dataset, resource) {
 }
 
 /**
- * Whether a resource is a GTFS-RT body that declares vehicle positions.
+ * Whether a resource DECLARES itself a GTFS-RT vehicle-position body.
+ *
+ * This is the publisher's own statement about what the resource IS — its
+ * format and its `features` — and nothing else. It is deliberately separate
+ * from {@link isVehiclePositionResource} because the catalog says two very
+ * different things about a resource and they age differently: what it is
+ * (stable, and only the publisher changes it) and whether the PAN could reach
+ * it a moment ago (`is_available`, which flaps). A build that decides
+ * MEMBERSHIP of the shipped index must read the first and measure the second
+ * itself.
+ *
+ * @param {Object} resource One entry of `dataset.resources`.
+ * @returns {boolean}
+ */
+export function declaresVehiclePositions(resource) {
+  if (!resource || resource.format !== PAN_GTFS_RT_FORMAT) return false;
+  const features = Array.isArray(resource.features) ? resource.features : [];
+  return features.includes(PAN_VEHICLE_POSITIONS_FEATURE);
+}
+
+/**
+ * Whether a resource is a vehicle-position body worth POLLING right now.
  * `is_available: false` is the PAN's own "we could not reach this" flag and is
  * respected — polling a resource the catalog already knows is down is noise.
  *
@@ -238,10 +259,7 @@ export function panFeedDescriptor(dataset, resource) {
  * @returns {boolean}
  */
 export function isVehiclePositionResource(resource) {
-  if (!resource || resource.format !== PAN_GTFS_RT_FORMAT) return false;
-  if (resource.is_available === false) return false;
-  const features = Array.isArray(resource.features) ? resource.features : [];
-  return features.includes(PAN_VEHICLE_POSITIONS_FEATURE);
+  return declaresVehiclePositions(resource) && resource.is_available !== false;
 }
 
 /**
@@ -364,16 +382,35 @@ export function panGeoJsonConversionUrl(resourceId) {
 
 /**
  * Every vehicle-position feed in a PAN catalog dump, in stable id order.
+ *
+ * `includeUnavailable` keeps resources the catalog currently flags
+ * `is_available: false`. A poller must not want them; a BUILD must, because
+ * that flag is a momentary reachability claim and dropping a feed on it
+ * deletes the network — its observed footprint, its health record and its
+ * measured companions — from the shipped index. Measured 2026-09-07: TaM's
+ * urban feed (resource 81755, Montpellier's main network) was flagged
+ * unavailable during one catalog read and available again two minutes later.
+ * A feed that genuinely stops answering is quarantined by
+ * `panFeedHealth.applyProbeHealth` on measurement, and revives on one later
+ * success; a publisher that stops declaring `vehicle_positions` still drops
+ * out here, because that is a statement rather than an outage.
+ *
  * @param {Array<Object>} datasets Parsed `GET /api/datasets` body.
+ * @param {Object} [options]
+ * @param {boolean} [options.includeUnavailable=false] Keep resources flagged
+ *   unreachable by the catalog, leaving the verdict to a probe.
  * @returns {Array<Object>} Feed descriptors.
  */
-export function vehiclePositionFeedsFromCatalog(datasets) {
+export function vehiclePositionFeedsFromCatalog(datasets, options = {}) {
+  const declares = options.includeUnavailable
+    ? declaresVehiclePositions
+    : isVehiclePositionResource;
   const feeds = [];
   for (const dataset of Array.isArray(datasets) ? datasets : []) {
     // Only public-transit datasets carry vehicle positions; the type check
     // keeps a future feature reuse (e.g. car-sharing) from silently joining.
     for (const resource of Array.isArray(dataset?.resources) ? dataset.resources : []) {
-      if (!isVehiclePositionResource(resource)) continue;
+      if (!declares(resource)) continue;
       const descriptor = panFeedDescriptor(dataset, resource);
       if (descriptor) feeds.push(descriptor);
     }
