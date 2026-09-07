@@ -247,6 +247,42 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   nommé dans la légende et sur chaque fiche.
 
 ### Fixed
+- **Le seuil de fraîcheur des vols suit le TTL, au lieu de le contredire.**
+  Le rapport terrain était « ce data layer tombe très rapidement en mode
+  fallback ». Il n'y avait aucune panne derrière. Il y avait **deux constantes
+  de 120 s écrites séparément** — l'une au proxy, décidant quand abandonner
+  OpenSky pour le cercle régional de 250 NM d'adsb.lol, l'autre au navigateur,
+  décidant quand allumer le badge orange STALE — et, entre les deux, un
+  gouverneur de crédit qui étire le cache à **300 s** à mesure que le budget
+  quotidien OpenSky s'épuise. Un corps servi depuis un cache de 300 s a
+  mécaniquement plus de 120 s. Passé le premier palier, ces seuils ne
+  *mesuraient* pas la péremption : ils la *garantissaient*.
+  Un seul endroit décide maintenant, `src/data/openSkyFreshness.js`, lu par le
+  proxy **et** par le navigateur : périmé ⟺ plus vieux que **le TTL que le
+  gouverneur a lui-même choisi**, plus une tolérance fixe de 120 s pour l'âge
+  que l'instantané avait déjà en amont. Cacher 300 s délibérément et servir un
+  corps de 300 s n'est pas une surprise ; 420 s en est une. Le TTL étant borné
+  à 300 s, le seuil est borné à 420 s — ce n'est jamais un permis de servir des
+  positions anciennes. Le proxy publie le TTL appliqué sur
+  `X-OpenSky-Ttl-Seconds`, pour que le client juge le même nombre plutôt qu'une
+  seconde copie.
+  Mesuré le 2026-09-03 par `npm run qa:flight-freshness`, sur une fenêtre de
+  cache complète, clé anonyme, TTL 300 s : **6 sondages sur 13 dépassaient
+  120 s** — exactement les polls qui affichaient FALLBACK — et **aucun** ne
+  dépasse le nouveau seuil.
+  **Et le verdict du bandeau devient un champ, pas une regex.** La pastille de
+  couche déduisait « repli » en cherchant `adsb.lol` dans le *nom* de la source
+  (`manager.js`). Un nom de source n'est pas un verdict de flux : la couche
+  militaire, dont adsb.lol est la source *primaire*, devait déjà publier
+  `fallback: false` pour démentir la regex. La couche civile publie maintenant
+  le booléen elle-même, à partir d'un `X-Flight-Fallback` que le proxy pose
+  quand il sert vraiment le cercle régional. La regex est retirée.
+  **Reste la cause racine, qui n'est pas du code** : `OPENSKY_CLIENT_ID` et
+  `OPENSKY_CLIENT_SECRET` sont présents mais **vides** dans le `.env` racine,
+  donc `OPENSKY_AUTH_MODE=oauth` retombe en anonyme
+  (`X-OpenSky-Auth-Reason: oauth_invalid_or_missing`), donc le gouverneur passe
+  au palier 300 s. Avec des identifiants OAuth, le TTL reste à 9 s et rien de
+  tout ceci ne se déclenche. Voir `docs/opensky-auth.md`.
 - **Le flux régional suit le contact suivi, plus la caméra.** Les paramètres
   `lat`/`lon` de `/api/opensky` ancrent le cercle de 250 NM d'adsb.lol — la
   couverture de repli, c'est-à-dire l'essentiel du temps sur une clé anonyme.
