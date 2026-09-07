@@ -24,14 +24,25 @@
  * Machine assertions:
  *   E1 ingest    : all 12 synthetic planes in the flights layer
  *   E2 baseline  : BEFORE any enrichment answer, all 12 billboards carry the
- *                  default airliner glyph at scale 1 (the real-world problem)
+ *                  UNCLASSIFIED glyph at its own scale (the real-world
+ *                  problem). This used to read "airliner glyph at scale 1",
+ *                  and was left behind when `classifyAircraft` stopped
+ *                  answering 'airliner' for a contact it had not measured —
+ *                  the wingless 'unknown' dart at 0.9 is the honest default
+ *                  now, and the check follows the classifier rather than
+ *                  naming a class.
  *   E3 requests  : the sweep requested all 12 hexes, each exactly once
+ *   E3b feed-typed: a 13th plane whose type designator the FEED already
+ *                  carries at state[18] (what adsb.lol publishes since phase
+ *                  3a) is drawn with the right silhouette from the first
+ *                  frame and is NEVER requested from adsbdb — the ambient
+ *                  budget only pays for contacts nothing has classified yet
  *   E4 diversity : ≥5 distinct glyph data-URIs displayed ambiently after
  *                  enrichment (expected: 8)
  *   E5 glyphs    : every billboard's image === aircraftIcon(classify(typeCode))
  *   E6 scales    : every billboard's scale === CLASS_SCALE_2D[klass]
  *   E7 bounds    : ≤4 concurrent requests, ≥185 ms between dispatches (≤5/s
- *                  drip), total ≤300 (budget ceiling)
+ *                  drip), total ≤1000 (budget ceiling)
  *   E8 next poll : another poll neither reverts glyphs nor re-requests hexes
  *   E10 exhaust  : the ROLLING ambient budget exhausts — new on-screen planes
  *                  stop being requested once the bucket is empty (shrunk via
@@ -75,7 +86,7 @@ const SHOT_DIR = path.resolve('qa-shots/enrich-ambient');
 const MAX_INFLIGHT = 4;        // ENRICH_MAX_INFLIGHT
 const DISPATCH_GAP_MS = 200;   // ENRICH_DISPATCH_GAP_MS (≤5 req/s)
 const GAP_TOLERANCE_MS = 15;   // clock-quantization allowance on the gap check
-const SESSION_CAP = 300;       // ENRICH_AMBIENT_BUDGET_CEIL (rolling-bucket ceiling)
+const SESSION_CAP = 1000;      // ENRICH_AMBIENT_BUDGET_CEIL (rolling-bucket ceiling)
 
 // Rolling-budget QA seam (window.__GEV_ENRICH_AMBIENT_QA in flights.js):
 // shrunk so the exhaust→refill cycle is observable headlessly. windowMs starts
@@ -140,27 +151,51 @@ const TYPES = {
   aa000c: null,   // adsbdb 404 → found:false → stays airliner, never re-asked
 };
 
+/** The 13th plane, and the point of E3b: its designator rides in the FEED at
+ *  state[18] — where adsb.lol has published it since phase 3a — so nothing
+ *  needs to ask adsbdb about it. It sits just north of the row rather than at
+ *  the end of it, to keep the 12-plane row inside the top-down frame. */
+const FEED_TYPED = { hex: 'aa000d', typeCode: 'A359' }; // widebody
+
 const SPEC = {
   timeOffsetSec: 0,
   responseDelayMs: 400, // adsbdb latency so concurrency is actually observable
   budgetQa: BUDGET_QA,
   types: TYPES,
-  planes: Object.keys(TYPES).map((hex, i) => ({
-    icao: hex,
-    callsign: `AMB${String(i + 1).padStart(3, '0')}`,
-    lon0: ROW_LON0 + i * ROW_STEP_DEG,
-    lat0: ROW_LAT,
-    courseDeg: 0,
-    speedMps: 70,
-    altM: 2400 + i * 40,
-  })),
+  planes: [
+    ...Object.keys(TYPES).map((hex, i) => ({
+      icao: hex,
+      callsign: `AMB${String(i + 1).padStart(3, '0')}`,
+      lon0: ROW_LON0 + i * ROW_STEP_DEG,
+      lat0: ROW_LAT,
+      courseDeg: 0,
+      speedMps: 70,
+      altM: 2400 + i * 40,
+    })),
+    {
+      icao: FEED_TYPED.hex,
+      callsign: 'AMB013',
+      lon0: ROW_LON0 + 6 * ROW_STEP_DEG,
+      lat0: ROW_LAT + 0.015,
+      courseDeg: 0,
+      speedMps: 70,
+      altM: 2900,
+      feedType: FEED_TYPED.typeCode, // → state[18]
+    },
+  ],
 };
 
 // Node-side expectations (same classifier inputs the layer sees).
-const expected = new Map(Object.entries(TYPES).map(([hex, tc]) => [
-  hex, classifyAircraft(tc ? { typeCode: tc } : { category: 0 }),
-]));
-const AIRLINER_ICON = aircraftIcon(classifyAircraft({ category: 0 })); // pre-enrichment default
+const expected = new Map([
+  ...Object.entries(TYPES).map(([hex, tc]) => [
+    hex, classifyAircraft(tc ? { typeCode: tc } : { category: 0 }),
+  ]),
+  [FEED_TYPED.hex, classifyAircraft({ typeCode: FEED_TYPED.typeCode })],
+]);
+/** What a category-0 contact classifies as before any answer lands — asked of
+ *  the classifier, never named here, so this harness cannot drift from it. */
+const BASELINE_CLASS = classifyAircraft({ category: 0 });
+const BASELINE_ICON = aircraftIcon(BASELINE_CLASS); // pre-enrichment default
 
 // ---------------------------------------------------------------------------
 async function main() {
@@ -279,6 +314,8 @@ async function main() {
               s.speedMps, s.course,
               0, null, null, null, false, 0,
               0,                        // state[17] — category 0 = "no info" (the 94% case)
+              f.feedType || null,       // state[18] — GEV extension: ICAO type designator
+              null,                     // state[19] — GEV extension: tail
             ];
           });
           return Promise.resolve(jsonResponse({ time: Math.floor(nowSec), states }));
@@ -339,6 +376,14 @@ async function main() {
       window.__ENR.timeOffsetSec = -32;
       await dm.setEnabled('flights', true);
       const fl = dm.layers.get('flights').module;
+      // 3D OFF, for real. This harness has always said "3D stays off" and never
+      // turned it off: MODEL_ALT_CEIL_M is 800 km, so the 20 km frame below is
+      // squarely inside the model regime, and `_ensureModel` fires a PRIORITY
+      // type lookup for every model-eligible plane. That request is legitimate
+      // and uncapped by design — it is also not the ambient sweep, which is the
+      // only thing measured here, and it made E3b read a priority lookup as an
+      // ambient one.
+      fl.setParams({ models3d: false });
       for (const off of [-24, -16, -8, 0]) {
         window.__ENR.timeOffsetSec = off;
         await fl.update(v);
@@ -362,8 +407,8 @@ async function main() {
     for (const hex of Object.keys(TYPES)) {
       const bb = beforeById.get(hex);
       if (!bb) baselineBad.push(`${hex}:missing`);
-      else if (bb.image !== AIRLINER_ICON) baselineBad.push(`${hex}:not-default-glyph`);
-      else if (Math.abs(bb.scale - (CLASS_SCALE_2D.airliner || 1)) > 1e-9) baselineBad.push(`${hex}:scale=${bb.scale}`);
+      else if (bb.image !== BASELINE_ICON) baselineBad.push(`${hex}:not-default-glyph`);
+      else if (Math.abs(bb.scale - (CLASS_SCALE_2D[BASELINE_CLASS] || 1)) > 1e-9) baselineBad.push(`${hex}:scale=${bb.scale}`);
     }
     record('E2 baseline: all 12 category-0 planes default to the airliner glyph',
       baselineBad.length === 0,
@@ -377,9 +422,11 @@ async function main() {
     // ========================================================================
     console.log('\nReleasing adsbdb responses; waiting for the bounded drip to drain...');
     await page.evaluate(() => window.__ENRICH_RELEASE());
+    // Only the 12 unclassified planes are ever requested — the 13th carries its
+    // designator in the feed, so waiting on SPEC.planes.length would hang here.
     const drained = await page.waitForFunction(
       (want) => window.__ENRICH_LOG.starts.length >= want && window.__ENRICH_LOG.inflight === 0,
-      { timeout: 30000, polling: 100 }, SPEC.planes.length
+      { timeout: 30000, polling: 100 }, Object.keys(TYPES).length
     ).then(() => true).catch(() => false);
     if (!drained) console.log('  \x1b[33mdrip did not fully drain within 30 s\x1b[0m');
     // Give the enrichment callbacks a beat to apply billboard swaps.
@@ -405,6 +452,24 @@ async function main() {
 
     const after = await page.evaluate(() => window.__collectBillboards());
     const afterById = new Map(after.map((b) => [b.id, b]));
+
+    // E3b — the contact the feed already answered for costs nothing. Before
+    // phase 3a the adapter dropped `t`, so every contact reached the classifier
+    // with nothing to classify on and the whole fleet queued for adsbdb. Now
+    // ~97 % of an adsb.lol fleet arrives typed; spending a rationed token to
+    // re-ask about them was where most of the bucket went.
+    const feedTypedBb = afterById.get(FEED_TYPED.hex);
+    const feedTypedClass = expected.get(FEED_TYPED.hex);
+    // GLYPH, not scale. The drawn scale is `CLASS_SCALE_2D[klass]` times a
+    // per-contact limb factor the harness cannot see, so E6 below — which
+    // compares the bare table value — is the place that argument is had.
+    record('E3b feed-typed: state[18] classifies without spending an ambient token',
+      !uniqueHexes.has(FEED_TYPED.hex)
+        && Boolean(feedTypedBb)
+        && feedTypedBb.image === aircraftIcon(feedTypedClass),
+      `${FEED_TYPED.hex} (${FEED_TYPED.typeCode} → ${feedTypedClass}) `
+      + `requested=${uniqueHexes.has(FEED_TYPED.hex)} drawn=${Boolean(feedTypedBb)} `
+      + `glyph=${feedTypedBb?.image === aircraftIcon(feedTypedClass)}`);
     const syntheticImages = new Set(
       Object.keys(TYPES).map((hex) => afterById.get(hex)?.image).filter(Boolean)
     );

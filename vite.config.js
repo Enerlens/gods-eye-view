@@ -11807,13 +11807,20 @@ async function serveAdsbLolPointFallback(req, res, requestedMode, reason) {
       reason,
     }),
     'X-Flight-Source': 'adsb.lol',
-    'X-Flight-Coverage': `${ADSBLOL_POINT_RADIUS_NM}nm regional fallback`,
+    // COVERAGE, as a NUMBER, and no verdict at all. This used to be prose —
+    // '250nm regional fallback' — and that one word was load-bearing twice
+    // over: the control chip matched `/\bfallback\b/i` against it to turn
+    // itself orange, and the visitor read it as "something broke". Neither
+    // holds. adsb.lol is FRESHER than the OpenSky snapshot it stands in for and
+    // carries the ICAO type designator in clear, which OpenSky does not have at
+    // all — over the ground it covers it is the better source, not a worse one.
+    // What actually changes is the EXTENT: a circle around the view anchor
+    // instead of a worldwide snapshot. So that is all this says, and it says it
+    // as a radius rather than a sentence — the sentence the visitor reads is
+    // French, and a French sentence has no business in an HTTP header, whose
+    // values are ISO-8859-1 by spec. `flights.js` words it.
+    'X-Flight-Coverage-Nm': String(ADSBLOL_POINT_RADIUS_NM),
     'X-Flight-Count': String(fallback.count),
-    // Say it in a field, not in the prose of the two above. The layer chip used
-    // to be decided by a regex sniffing 'adsb.lol' out of the human-readable
-    // source string; a source NAME is not a feed VERDICT, and the two drift the
-    // moment either is reworded.
-    'X-Flight-Fallback': '1',
   });
   res.end(fallback.body);
   return true;

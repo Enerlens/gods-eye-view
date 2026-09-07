@@ -63,6 +63,7 @@
     "qa:flights-type": "node scripts/qa-flights-type.mjs",
     "qa:flight-route": "node scripts/qa-flight-route.mjs",
     "qa:flight-freshness": "node scripts/qa-flight-freshness.mjs",
+    "qa:enrich-budget": "node scripts/qa-enrich-budget.mjs",
     "qa:airports": "node scripts/qa-airports.mjs",
     "qa:bison-fute": "node scripts/qa-bison-fute.mjs",
     "qa:irve-fr": "node scripts/qa-irve-fr.mjs",

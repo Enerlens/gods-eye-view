@@ -1835,11 +1835,16 @@ test('layer feed states distinguish unavailable, fallback, stale, and degraded c
   }), 'nominal', 'an explicitly primary adsb.lol feed is not a fallback');
   assert.equal(layerFeedState({
     source: 'adsb.lol',
-    coverage: '250nm regional fallback',
+    coverage: 'cercle régional de 250 NM',
+    count: 10,
+    lastUpdate: 1,
+  }), 'nominal', 'a narrower coverage is a fact to state, not a fault to flag');
+  assert.equal(layerFeedState({
+    source: 'some feed',
     fallback: true,
     count: 10,
     lastUpdate: 1,
-  }), 'fallback', 'and the layer saying so is what makes it one');
+  }), 'fallback', 'and the layer saying so is the only thing that makes it one');
   assert.equal(layerFeedState({ stale: true, count: 0, lastUpdate: 1 }), 'stale');
   assert.equal(layerFeedState({ error: 'partial group failure', count: 50, lastUpdate: 1 }), 'degraded');
   assert.equal(layerFeedState({ loading: true }), 'loading');

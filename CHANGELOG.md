@@ -131,6 +131,54 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   hauteur des pylônes ANFR (couverture mesurée : 99,24 %) prennent la verticale.
 
 ### Changed
+- **Le budget qui donne sa silhouette à un avion, redimensionné sur une mesure
+  au lieu d'une intuition.** L'enrichissement *ambiant* — celui qui classe les
+  avions qu'on n'a pas cliqués — puise dans un seau de jetons. Il en tenait
+  **300**, rechargés de **150 toutes les 5 minutes**. Ces deux nombres avaient
+  été posés le 2026-07-03, quand une requête `adsbdb` rationnée était le
+  **seul** chemin vers un code type ; le plan de la phase 3a demandait de les
+  relever « une fois (1) livré **et mesuré** ». La mesure n'avait pas été
+  faite.
+  `npm run qa:enrich-budget` la fait, en direct sur le flux amont, parce que
+  les deux boutons répondent à deux questions différentes : le **plafond**
+  finance la *première vue* d'une région — combien d'avions en vol s'affichent
+  d'un coup — et la **recharge** finance le *renouvellement* — combien de
+  contacts nouveaux entrent par tranche de 5 minutes. Sous-dimensionner le
+  premier, c'est regarder une région se classer pendant le quart d'heure qui
+  suit ; sous-dimensionner la seconde, c'est vider le seau pour de bon, ce qui
+  est le bogue de juillet au ralenti. Relevé le 2026-09-07, trois régions,
+  13 minutes, cercle de 250 NM, contacts en vol seulement — les deux filtres
+  du balayage :
+
+  | région | première vue | nouveaux / 5 min | portant `t` |
+  | --- | ---: | ---: | ---: |
+  | Francfort | 919 | 126 | 96,4 % |
+  | Paris | 795 | 120 | 97,3 % |
+  | Los Angeles | 223 | 48 | 98,2 % |
+
+  **La mesure a déplacé un seul des deux boutons, et c'est tout l'intérêt de
+  mesurer.** Le plafond de 300 couvrait **un tiers** d'une première vue sur la
+  région la plus dense : une vue européenne fraîche vidait son seau en deux
+  sondages, puis classait le reste à la vitesse de la recharge — un quart
+  d'heure de flotte à moitié dessinée. Il passe à **1 000**, juste au-dessus des
+  919 relevés. La **recharge ne bouge pas** : 150 par 5 minutes couvre déjà le
+  pire renouvellement mesuré (126), et c'est de surcroît le frein sur le cas que
+  le cercle ne voit pas — un visiteur qui *déplace* la caméra paie une première
+  vue à chaque région, et passé le seau initial, cette cadence-là *est* ce
+  nombre. La doubler sans preuve n'aurait rien apporté de perceptible et aurait
+  dépensé l'API gratuite de quelqu'un d'autre pour le faire.
+  **Et le même relevé dit où passait le budget.** Environ 97 % des contacts
+  d'un flux adsb.lol portent déjà leur désignateur ICAO depuis la phase 3a, et
+  le balayage les redemandait quand même à `adsbdb` : un jeton rationné dépensé
+  pour le nom long du modèle, sur une fiche que personne n'a ouverte. Il ne les
+  demande plus. Cliquer un avion — ou s'en approcher assez pour qu'il passe en
+  3D — l'enrichit toujours, en priorité et hors de ce budget.
+  **Rien de tout cela n'accélère les requêtes.** La cadence reste bornée par la
+  goutte-à-goutte (≤ 5/s) et par les 150 mises en file par sondage, soit
+  ≤ 300/min. adsbdb tolère 512 requêtes par 60 s glissantes avant un 429 d'une
+  minute, et 300 s de blocage au-delà de 1 024 (`mrjackwills/adsbdb`,
+  `src/db_redis/ratelimit.rs`). Ce que le seau borne, c'est le **total** d'une
+  session, pas son débit.
 
 - **La légende quitte le coin de la carte et prend la tête du rail droit.** Elle
   était une plaque fixe en bas à gauche, et une règle de feuille de style
@@ -270,13 +318,34 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   cache complète, clé anonyme, TTL 300 s : **6 sondages sur 13 dépassaient
   120 s** — exactement les polls qui affichaient FALLBACK — et **aucun** ne
   dépasse le nouveau seuil.
-  **Et le verdict du bandeau devient un champ, pas une regex.** La pastille de
-  couche déduisait « repli » en cherchant `adsb.lol` dans le *nom* de la source
-  (`manager.js`). Un nom de source n'est pas un verdict de flux : la couche
-  militaire, dont adsb.lol est la source *primaire*, devait déjà publier
-  `fallback: false` pour démentir la regex. La couche civile publie maintenant
-  le booléen elle-même, à partir d'un `X-Flight-Fallback` que le proxy pose
-  quand il sert vraiment le cercle régional. La regex est retirée.
+  **Et adsb.lol cesse d'être présenté comme une panne.** Deux choses lui
+  collaient une pastille orange. La première était une regex : `manager.js`
+  déduisait « repli » en cherchant `adsb.lol` dans le *nom* de la source — au
+  point que la couche militaire, dont adsb.lol est la source *primaire*, devait
+  publier `fallback: false` pour démentir la devinette. La seconde était un mot
+  dans la prose : l'en-tête de couverture disait « 250nm regional **fallback** »,
+  que la même fonction relisait avec `/\bfallback\b/i`. Un nom de source n'est
+  pas un verdict de flux, et un mot glissé dans une phrase encore moins.
+  Or adsb.lol n'est pas une dégradation : il est **plus frais** que l'instantané
+  OpenSky qu'il remplace et porte le **désignateur ICAO en clair**, qu'OpenSky
+  n'a tout simplement pas. Ce qui change quand il sert, ce n'est pas la
+  qualité, c'est l'**étendue** — un cercle de 250 NM autour du point visé au
+  lieu d'un instantané mondial. C'est donc l'étendue, et rien d'autre, que la
+  réponse annonce désormais : un **rayon en nombre**, que la couche met en
+  phrase elle-même (« cercle régional de 250 NM », en face de « couverture
+  mondiale »). Une phrase destinée à l'écran n'a rien à faire dans un en-tête
+  HTTP, dont les valeurs sont en ISO-8859-1 : le premier accent hors de cette
+  table s'y perdrait en silence.
+  La couche civile publie le booléen elle-même, à `false`, comme la militaire :
+  aucune de ses deux sources n'est un repli, et le jour où un vrai chemin
+  dégradé existera, c'est ce champ qui basculera — pas un mot passé en fraude
+  dans un libellé. La pastille reste **ON**, et la ligne sous le nom de la
+  couche dit laquelle des deux sources parle et jusqu'où elle porte :
+  `adsb.lol · cercle régional de 250 NM · flux · à l'instant`.
+  **Et la fiche Contexte nomme la même source que la pastille.** Elle écrivait
+  `OpenSky Network` en dur — donc, pendant tout le temps où le cercle régional
+  servait, deux surfaces distantes de deux centimètres nommaient deux sources
+  différentes, et celle qui parlait n'était pas la bonne.
   **Reste la cause racine, qui n'est pas du code** : `OPENSKY_CLIENT_ID` et
   `OPENSKY_CLIENT_SECRET` sont présents mais **vides** dans le `.env` racine,
   donc `OPENSKY_AUTH_MODE=oauth` retombe en anonyme
