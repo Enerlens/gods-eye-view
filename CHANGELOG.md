@@ -6,6 +6,45 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-03
 
 ### Added
+- **Le Référentiel National des Bâtiments devient le pivot du lot adresse.**
+  Jusqu'ici, tout ce que ce dépôt sait d'un bâtiment lui était rattaché par un
+  point : un DPE, une vente, un permis atterrissait sur l'emprise dans laquelle
+  son géocodage BAN tombait. C'est une supposition, et le géocodage BAN n'a
+  jamais prétendu désigner un bâtiment — il désigne un point de rue, et il
+  tombe dans la chaussée ou sur l'immeuble voisin assez souvent pour compter.
+  L'État publie l'identité manquante, et **les tuiles BD TOPO que ce dépôt
+  dessine déjà la portent** : `identifiants_rnb`, sur 95,5 % à 99,2 % des
+  emprises tracées. La jointure se fait désormais par cet identifiant, et par
+  la géométrie seulement pour ce qui n'en porte pas.
+  Mesuré le 2026-09-07 sur quatre boîtes, part des diagnostics DPE qui
+  atteignent un volume dessiné : **Paris 13e 81,8 % → 96,3 %**, **Lyon 2e
+  40,4 % → 75,7 %**, **Marseille 78,8 % → 88,9 %**, **Ustaritz 14,0 % →
+  41,5 %**. Le gain n'est pas uniforme et il n'est pas marginal : Lyon double
+  presque, parce que ses géocodages BAN tombent dans la rue. Et de 2 à 83
+  lignes par boîte étaient peintes sur **le mauvais toit** — la seule
+  correction du lot qui change une couleur déjà affichée.
+  Le compte des deux jointures est tenu séparément, sur la rangée du bâti
+  (« 96 % par identifiant RNB ») et dans `getStats()`, parce qu'une couleur
+  décidée par une clé publiée et une couleur décidée par un point ne sont pas
+  la même affirmation — et à l'écran elles sont identiques.
+  La jointure ne coûte **aucune requête** : les deux registres portent la clé.
+  Le RNB n'est appelé que pour le bâtiment **sélectionné**, une fois, sans
+  proxy — comme les tuiles BD TOPO, sans clé et CORS ouvert — et la fiche
+  gagne alors ce que la tuile ne dit pas : les **adresses BAN** auxquelles le
+  bâtiment répond et les **parcelles cadastrales** sur lesquelles il se tient.
+  La carte s'affiche immédiatement sans ces lignes et se réécrit ~170 ms plus
+  tard ; attendre aurait fait passer un clic pour une panne.
+  Deux honnêtetés y sont câblées. Une emprise que BD TOPO publie **sans**
+  identifiant (4,5 % à Paris) voit son identité résolue par proximité, et la
+  fiche le dit — une identité devinée ne doit jamais se lire comme une clé
+  publiée. Et une emprise qui porte **plusieurs** identifiants (65 sur 2 395 à
+  Paris) les affiche tous : la fiche n'en lisait que le premier.
+  La calibration est refaite, pas supposée : sur 600 bâtiments RNB de Lyon 2e,
+  574 portent un identifiant `bdtopo`, et **573 sur 573** désignent le `cleabs`
+  de la tuile qui porte le même identifiant RNB — zéro désaccord. Le harnais
+  `npm run qa:rnb-pivot` rejoue les quatre boîtes contre les trois services
+  vivants, sans navigateur ni serveur de dev.
+
 - **La chronique — le serveur commence à garder ce que personne n'archive.**
   Presque tout ce que ce fork dessine sur la France est déjà une archive :
   Filosofi publie une année, DVF une décennie, les comptages parisiens treize

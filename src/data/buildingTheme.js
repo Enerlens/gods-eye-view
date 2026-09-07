@@ -60,7 +60,31 @@
  *   diagnostic that this map does not show, and the layer publishing the theme
  *   is expected to print both numbers.
  *
- * ── The join, and why it is indexed ────────────────────────────────────────
+ * ── The join is by IDENTIFIER first, and by geometry only then ─────────────
+ *
+ * Until 2026-09-07 the only join here was the geometric one below, and it is a
+ * guess: a diagnostic is attached to whichever footprint its BAN geocode
+ * happens to land inside. The Référentiel National des Bâtiments ended that for
+ * any register that publishes an `id_rnb` — the BD TOPO tiles this layer draws
+ * already carry the same key in `identifiants_rnb`, on 95.5 % to 99.2 % of
+ * their polygons. A point that names a building is given to that building, full
+ * stop; the grid below runs only for the points that name none.
+ *
+ * Measured over four boxes on 2026-09-07, DPE rows joined to the volumes the
+ * layer would draw — Paris 13e 81.8 % → 96.3 %, Lyon 2e 40.4 % → 75.7 %,
+ * Marseille 78.8 % → 88.9 %, Ustaritz 14.0 % → 41.5 %. Of the rows both methods
+ * place, they disagree on 2, 4, 83 and 4 respectively: buildings that were being
+ * painted with a neighbour's letter. `rnbPivot.js` carries the reasoning, the
+ * two multiplicities that break a naive index, and the calibration against the
+ * RNB's own BD TOPO identifiers.
+ *
+ * The two are counted apart — `matchedById` and `matchedByPoint` — because they
+ * are not the same claim, and A5 is about not letting a guess borrow the
+ * authority of a key. `idOffScreen` is the third number: a point whose
+ * identifier names no drawn footprint, which is then offered to the grid like
+ * any other point rather than being dropped as "matched elsewhere".
+ *
+ * ── The geometric join, and why it is indexed ──────────────────────────────
  *
  * A viewport at `BDTOPO_MAX_BOX_DEG` (0.08° ≈ 9 km) holds up to the 14 000-volume
  * cap; a DPE or DVF payload over the same box is a few hundred points. The naive
@@ -111,6 +135,10 @@
  * guarantees it is called once per building with every point that landed on it,
  * in the order the caller supplied them.
  */
+
+// The one import, and it keeps the promise above: `rnbPivot.js` is pure too —
+// identifier parsing and a Map, no Cesium, no DOM, no fetch.
+import { indexFootprintsByRnb } from './rnbPivot.js';
 
 /** Default precedence for a theme that does not state one. */
 export const BUILDING_THEME_DEFAULT_PRECEDENCE = 100;
@@ -671,44 +699,81 @@ export function locateBuilding(index, lon, lat, counter = null) {
 }
 
 /**
- * Join thematic points onto footprints.
+ * Join thematic points onto footprints — by RNB identifier first, then by
+ * geometry.
  *
- * Pure: same inputs, same Map, no globals read. The two honesty counters are
+ * Pure: same inputs, same Map, no globals read. The honesty counters are
  * returned rather than logged, because the layer publishing the theme is the one
  * that has to print them (A5).
- * @param {Array<object>} footprints `{id, degrees, holes}` — the loaded volumes.
- * @param {Array<object>} points `{lon, lat, ...}`
+ *
+ * A point carrying `rnb` that names a drawn footprint is attached to EVERY
+ * footprint carrying that identifier and counted ONCE — a building cut across
+ * two tiles is drawn twice and must not be painted down the middle, and it is
+ * still one diagnostic. See `rnbPivot.js` for both multiplicities.
+ *
+ * @param {Array<object>} footprints `{id, degrees, holes, rnb?}` — the loaded
+ *   volumes. `rnb` is an array of RNB identifiers, or the raw slash-joined
+ *   BD TOPO string.
+ * @param {Array<object>} points `{lon, lat, rnb?, ...}`
  * @param {{cellDeg?: number}} [options]
  * @returns {{byBuilding: Map<string, Array<object>>, matchedPoints: number,
+ *   matchedById: number, matchedByPoint: number, idOffScreen: number,
  *   unmatchedPoints: number, unplacedPoints: number, buildings: number,
- *   matchedBuildings: number, tests: number, cellDeg: number}}
+ *   pivotBuildings: number, matchedBuildings: number, tests: number,
+ *   cellDeg: number}}
  */
 export function joinPointsToBuildings(footprints, points, options = {}) {
   const index = buildFootprintIndex(footprints, options);
+  const rnbIndex = indexFootprintsByRnb(footprints);
   const byBuilding = new Map();
   const counter = { tests: 0 };
-  let matchedPoints = 0;
+  let matchedById = 0;
+  let matchedByPoint = 0;
+  let idOffScreen = 0;
   let unmatchedPoints = 0;
   let unplacedPoints = 0;
 
+  const attach = (id, point) => {
+    const bucket = byBuilding.get(id);
+    if (bucket) bucket.push(point);
+    else byBuilding.set(id, [point]);
+  };
+
   for (const point of points || []) {
+    // The identifier is read BEFORE the coordinate, so a register row that
+    // names a building without geocoding to one is a match rather than an
+    // unplaced point.
+    const rnbId = typeof point?.rnb === 'string' ? point.rnb.trim() : '';
+    if (rnbId) {
+      const targets = rnbIndex.get(rnbId);
+      if (targets) {
+        matchedById += 1;
+        for (const id of targets) attach(id, point);
+        continue;
+      }
+      // Named a building this viewport does not draw. Not a match, not a
+      // failure — and still eligible for the grid.
+      idOffScreen += 1;
+    }
     const lon = finiteCoord(point?.lon);
     const lat = finiteCoord(point?.lat);
     if (!Number.isFinite(lon) || !Number.isFinite(lat)) { unplacedPoints += 1; continue; }
     const id = locateBuilding(index, lon, lat, counter);
     if (!id) { unmatchedPoints += 1; continue; }
-    matchedPoints += 1;
-    const bucket = byBuilding.get(id);
-    if (bucket) bucket.push(point);
-    else byBuilding.set(id, [point]);
+    matchedByPoint += 1;
+    attach(id, point);
   }
 
   return {
     byBuilding,
-    matchedPoints,
+    matchedPoints: matchedById + matchedByPoint,
+    matchedById,
+    matchedByPoint,
+    idOffScreen,
     unmatchedPoints,
     unplacedPoints,
     buildings: index.count,
+    pivotBuildings: rnbIndex.size,
     matchedBuildings: byBuilding.size,
     tests: counter.tests,
     cellDeg: index.cellDeg,
@@ -794,7 +859,11 @@ export function resolveBuildingThemePaint(footprints, theme, options = {}) {
     painted: colorById.size,
     unpainted: Math.max(0, join.buildings - colorById.size),
     buildings: join.buildings,
+    pivotBuildings: join.pivotBuildings,
     matchedPoints: join.matchedPoints,
+    matchedById: join.matchedById,
+    matchedByPoint: join.matchedByPoint,
+    idOffScreen: join.idOffScreen,
     unmatchedPoints: join.unmatchedPoints,
     unplacedPoints: join.unplacedPoints,
     tests: join.tests,

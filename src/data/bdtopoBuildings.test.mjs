@@ -15,6 +15,7 @@ import bdtopoBuildingsLayer, {
   _fetchBdtopoTilesForTest,
   _setBdtopoPayloadForTest,
   _setBdtopoStateForTest,
+  rnbPivotLines,
   bdtopoViewportBox,
 } from './bdtopoBuildings.js';
 
@@ -234,4 +235,101 @@ test('on the photoreal stack the shortfall is not reported, because nothing is d
   const stats = _bdtopoStatsForTest();
   assert.equal(stats.degraded, undefined);
   assert.match(stats.loadingLabel, /Google 3D/);
+});
+
+/* ── the RNB pivot on the selection card ───────────────────────────────── */
+
+test('a single identifier is printed whole, and several are not truncated to one', () => {
+  // Until 2026-09-07 the card read `String(identifiants_rnb).split('/')[0]`,
+  // which is wrong on the 65 of 2 395 Paris polygons that merge several RNB
+  // buildings into one emprise.
+  assert.deepEqual(rnbPivotLines({ rnb: ['2NPB8CCYQ237'] }), ['RNB 2NPB8CCYQ237']);
+  assert.deepEqual(rnbPivotLines({ rnb: ['A', 'B', 'C'] }),
+    ['RNB A · B · C — 3 bâtiments pour une emprise']);
+});
+
+test('a footprint the tile did not identify says its RNB line is a guess', () => {
+  // 4.5 % of Paris polygons publish no `identifiants_rnb`. The register is
+  // still asked, by proximity — and the card must not let that read like a key.
+  const lines = rnbPivotLines({ rnb: [] }, {
+    rnbId: 'SEX7DQ1X5KDX', status: 'constructed', distanceM: 6.4, addresses: [], plots: [],
+  });
+  assert.match(lines[0], /^RNB SEX7DQ1X5KDX — plus proche à 6\.4 m, non publié sur cette emprise$/);
+});
+
+test('the address and parcel of a guessed identity say whose they are', () => {
+  // The first line already says the identity was rapprochée. What the closing
+  // line adds is that the two lines BETWEEN them belong to that other building
+  // — which is the thing a reader would otherwise carry away as fact.
+  const lines = rnbPivotLines({ rnb: [] }, {
+    rnbId: 'X',
+    status: 'constructed',
+    distanceM: 6,
+    addresses: [{ label: '12 Rue Vieille 69002 Lyon' }],
+    plots: [{ id: '69385000AK0022', coverRatio: 1 }],
+  });
+  assert.equal(lines.at(-1), 'Adresse et parcelle héritées de ce bâtiment rapproché, non de l\'emprise');
+});
+
+test('a guessed identity that carried nothing gets no closing caveat to carry', () => {
+  const lines = rnbPivotLines({ rnb: [] }, {
+    rnbId: 'X', status: 'constructed', distanceM: 6, addresses: [], plots: [],
+  });
+  assert.equal(lines.length, 1, 'one line, and it already says the identity was rapprochée');
+});
+
+test('an identity that came from the tile itself is never labelled a guess', () => {
+  const lines = rnbPivotLines({ rnb: ['X'] }, {
+    rnbId: 'X',
+    status: 'constructed',
+    addresses: [{ label: '12 Rue Vieille 69002 Lyon' }],
+    plots: [{ id: '69385000AK0022', coverRatio: 1 }],
+  });
+  assert.deepEqual(lines, ['RNB X', '12 Rue Vieille 69002 Lyon', 'Parcelle 69385000AK0022']);
+});
+
+test('a building the register says is not standing gets a line for it', () => {
+  const lines = rnbPivotLines({ rnb: ['X'] }, {
+    rnbId: 'X', status: 'demolished', statusLabel: 'démoli', addresses: [], plots: [],
+  });
+  assert.deepEqual(lines, ['RNB X', 'Statut RNB : démoli']);
+});
+
+test('a building with no address gets no address line, and no invented one', () => {
+  // 10 of 160 Lyon buildings publish none. `cadastreParcelDetail.js` had to buy
+  // a distance guard for this; here the register simply says nothing.
+  const lines = rnbPivotLines({ rnb: ['X'] }, {
+    rnbId: 'X', status: 'constructed', addresses: [], plots: [],
+  });
+  assert.deepEqual(lines, ['RNB X']);
+});
+
+test('several addresses are counted rather than listed off the bottom of the card', () => {
+  const lines = rnbPivotLines({ rnb: ['X'] }, {
+    rnbId: 'X',
+    status: 'constructed',
+    addresses: [{ label: '12 Rue A 69002 Lyon' }, { label: '14 Rue A 69002 Lyon' }],
+    plots: [],
+  });
+  assert.equal(lines[1], '12 Rue A 69002 Lyon · +1 autre adresse BAN');
+});
+
+test('a building on two parcels names the one it is mostly on, with the share', () => {
+  const lines = rnbPivotLines({ rnb: ['X'] }, {
+    rnbId: 'X',
+    status: 'constructed',
+    addresses: [],
+    // `projectRnbBuilding` sorts these; the card trusts that order.
+    plots: [{ id: '69385000AK0022', coverRatio: 0.99 }, { id: '69385000AK0023', coverRatio: 0.01 }],
+  });
+  assert.equal(lines[1], '2 parcelles · 69385000AK0022 (99 % de l\'emprise)');
+});
+
+test('with the lookup still in flight the card is the tile alone, not a blank', () => {
+  assert.deepEqual(rnbPivotLines({ rnb: ['X'] }, null), ['RNB X']);
+  assert.deepEqual(rnbPivotLines({ rnb: [] }, null), []);
+});
+
+test('the raw slash-joined attribute is accepted, since the card may see a record either way', () => {
+  assert.deepEqual(rnbPivotLines({ rnb: 'A/B' }), ['RNB A · B — 2 bâtiments pour une emprise']);
 });
