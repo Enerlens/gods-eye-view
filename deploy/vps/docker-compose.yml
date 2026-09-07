@@ -15,6 +15,14 @@ services:
     container_name: gev
     restart: unless-stopped
     env_file: .env
+    environment:
+      # The chronicle records five feeds that publish only the present. Four of
+      # them ride on fetches the server already makes and need no switch; the
+      # QualiCharge charge-point poller is a NEW 112 MB/day of outbound traffic,
+      # so it is opt-in everywhere and armed HERE — this is the deployment with
+      # a persistent volume, and therefore the only one where the accumulation
+      # is worth anything. Set CHRONICLE_IRVE_DYNAMIC=0 in .env to stop it.
+      CHRONICLE_IRVE_DYNAMIC: ${CHRONICLE_IRVE_DYNAMIC:-1}
     ports:
       # Loopback for the Cloudflare tunnel, tailnet address for direct access.
       - "127.0.0.1:${GEV_PORT:-4173}:4173"

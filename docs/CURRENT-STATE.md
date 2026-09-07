@@ -1617,7 +1617,9 @@ Use docs in this order when details conflict:
 
 1. `docs/CURRENT-STATE.md` (this file)
 2. `docs/opensky-auth.md` (OpenSky authentication)
-3. `CHANGELOG.md` (release history)
+3. `docs/CHRONIQUE.md` (what the server records and why, and the licence line on
+   an accumulated base)
+4. `CHANGELOG.md` (release history)
 
 Historical planning documents may not match runtime behavior.
 
@@ -3254,6 +3256,30 @@ easier to meet (detection is now on more often), but does not create it.
 
 ## Operational Notes
 
+- **The chronicle is the one middleware that is not a cache.** Five French
+  feeds publish only the present and keep no history — GTFS-RT (151 PAN feeds),
+  the QualiCharge dynamic charge-point file, Bison Futé DATEX II, AISStream over
+  the France box, and Vigicrues. `recordChronicle` (in `vite.config.js`, policy
+  in `src/data/chronicle.js`) folds each into a **168-slot typical week in
+  Europe/Paris**, kept indefinitely, and appends thirty days of raw ticks under
+  `.gev-cache/chronicle/<source>/YYYY-MM-DD.ndjson` — a finished day is gzipped
+  in place (measured ratio 7.3). Read back at `/api/chronicle-fr/{status,series,
+  profile,anomalies}`; nothing there writes.
+  Four of the five ride on fetches the proxies already make and are ON by
+  default (`CHRONICLE_DISABLED=1` stops everything). The fifth polls for itself
+  — 1.17 MB gzipped every 15 min — and is OPT-IN via `CHRONICLE_IRVE_DYNAMIC=1`,
+  armed in `deploy/vps/docker-compose.yml`.
+  Three invariants, each pinned in `src/data/chronicle.test.mjs`: a slot counts
+  DISTINCT WEEKS and refuses to score anything under three; a non-finite value
+  is refused rather than folded as a zero ("the feed said nothing" is not "the
+  feed said zero"); and a value is scored BEFORE it is folded, so an
+  expectation never contains the value it is judging. Vigicrues declares
+  `profile: false` — a flood answers to rainfall, not to Tuesday — and
+  `/anomalies` refuses it with the reason rather than returning an empty list.
+  The transit fleet series is `feed.reported`, never `feed.inView`: the proxy
+  answers per viewport, and folding the in-box count would make one series mean
+  two different quantities. Full reasoning in `docs/CHRONIQUE.md`; QA harness is
+  `npm run qa:chronicle -- --url http://localhost:5173`.
 - **Earthquake discs are STATIC geometry.** Every quake is a `CLAMP_TO_GROUND`
   ellipse; a `CallbackProperty` axis re-tessellates its ground primitive every
   frame, which cost 32.4 ms/frame and 30 fps on the shipped 58-event feed. The

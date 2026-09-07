@@ -1,5 +1,34 @@
 # Test fixtures
 
+- `qualicharge-dynamique-1627-sample.csv` / `qualicharge-dynamique-1637-sample.csv`
+  — the SAME seventeen real charge points, from two captures of the national
+  QualiCharge dynamic file taken **9 min 36 s apart** on 2026-09-07 (16:27:28
+  and 16:37:04 UTC). Two files rather than one because half of what
+  `qualichargeDynamic.js` claims is about CHANGE, and a single snapshot cannot
+  pin it.
+
+  Every row is there for a named trap, and all of them are real:
+  **FRETIE49301A14** goes `libre` → `occupe` and **FRPD1ELIDMILLTTN120021** the
+  other way; **FRPD1ECORWITBBC200011** comes back from `hors_service`;
+  **FRLDLE00000747** moves its `horodatage` by nearly eight hours and changes
+  nothing at all, which is the heartbeat the transition log must NOT store (1 116
+  of the 4 231 changed rows nationally were exactly this).
+  **FRITPEPCC00831** is four days stale and still says `libre`;
+  **FRS14EETSF1** is 222 days stale and still says `libre`;
+  **FRELCEM4L4** is 252 days stale and says `reserve` — those three are the tail
+  that inflates France's free-charging capacity by 44.4 % if the file is read as
+  written. **FRV75PPX12201** is one of the sixteen Ville de Paris ids that omit
+  the AFIREV `E` separator, so the operator code has to be read as the first
+  five characters rather than split on it. **FRDRVEABNY1** is a fresh `inconnu`.
+  The remaining nine are fresh FRPD1 and FRTSL plugs, present so an occupancy
+  share over a real operator can be computed at all.
+
+  Not captured synthetically on purpose: the freshness distribution, the stale
+  `libre` bias and the heartbeat rate are all properties of how ~180 operators
+  actually behave, and a fabricated fixture would have agreed with whatever the
+  projection assumed. ~2 KB each. Used by `qualichargeDynamic.test.mjs`.
+  Licence Ouverte 2.0 (QualiCharge / DGEC, via transport.data.gouv.fr).
+
 - `sitadel-12202-sample.json` — real rows from the SDES's DiDo API for Rodez
   (INSEE 12202), captured 2026-09-02 with the projection's own per-file column
   selection. Two families, deliberately: six `logements` rows chosen so that

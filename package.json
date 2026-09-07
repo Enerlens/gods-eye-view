@@ -97,7 +97,8 @@
     "qa:velo-pulse": "node scripts/qa-velo-pulse.mjs",
     "qa:marine-buoys": "node scripts/qa-marine-buoys.mjs",
     "qa:vessel-types": "node scripts/qa-vessel-types.mjs",
-    "qa:meteo-stations-fr": "node scripts/qa-meteo-stations-fr.mjs"
+    "qa:meteo-stations-fr": "node scripts/qa-meteo-stations-fr.mjs",
+    "qa:chronicle": "node scripts/qa-chronicle.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",

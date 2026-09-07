@@ -57,6 +57,7 @@ How to read this:
 | **Temaki** (rapiD / OpenStreetMap iD editor) | The surveillance-camera icon in the CCTV layer. Temaki covers subjects no interface icon set does; it replaced a hand-drawn glyph that baked cyan into its artwork and so rendered the ACTIVE (amber-tinted) camera green | [CC0 1.0 Universal](licenses/temaki/LICENSE) — public-domain dedication: no attribution required, no conditions | `licenses/temaki/NOTICE` names the glyph used and records that its three paths are vendored verbatim and kept separate — merging them would fill the lens |
 | **Inter** (Rasmus Andersson / The Inter Project Authors) | The seven DPE grade letters A–G, plus the `?` the register publishes with no grade, in the Diagnostic de performance énergétique layer. Eight glyph OUTLINES, not a font file — the badge letters used to be stroked paths authored in this project and read as traced rather than set | [SIL Open Font License 1.1](licenses/inter/LICENSE) — free to use, modify and redistribute, including in commercial work; the reserved-font-name clause is not engaged because nothing here is distributed as a font | `licenses/inter/NOTICE` names the eight glyphs and the exact instance extracted (`wght 700, opsz 14`), and records that each `d` is stored in Inter's own 2048-unit em space with the placement applied as an SVG transform rather than baked into the path |
 | **transport.data.gouv.fr** (Point d'Accès National) | Live GTFS-Realtime vehicle positions for French public transport — buses, trams, metros, interurban coaches — plus, for the same networks, their `TripUpdate` schedule deviations (150 feeds) and `Alert` service disruptions (60 feeds), and the static `routes.txt` of each network, read for `route_type` alone | Declared per dataset in the catalog: Licence Ouverte 2.0 (101 queryable feeds), ODbL 1.0 (46), Licence Ouverte 1.0 (1) — all attribution-only. The static GTFS carries the same licence as its realtime sibling | "transport.data.gouv.fr" + the publishing transport authority / operator of each feed shown |
+| **QualiCharge — statut dynamique des points de recharge** (via `proxy.transport.data.gouv.fr`) | Whether each of France's public charge points is in service and free RIGHT NOW — 75 427 `points de charge` measured 2026-09-07, 6.08 MB of CSV (1.17 MB gzipped). The only national French feed that publishes availability rather than installed capacity; connecting to the DGEC's QualiCharge API is compulsory for DC operators claiming renewable-electricity certificates, which is why it covers the fast network. Polled by the chronicle recorder (opt-in, `CHRONICLE_IRVE_DYNAMIC=1`), never by the browser | [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md) — attribution required, including the data's last-update date; commercial reuse permitted. No key, no account | "Source : QualiCharge — Direction générale de l'énergie et du climat, via transport.data.gouv.fr. Licence Ouverte 2.0 (Etalab)." plus each row's own `horodatage`, which is the only honest freshness claim this file supports — a third of it is more than a day old |
 | **transport.data.gouv.fr** (Point d'Accès National) | French shared mobility (GBFS): free-floating bikes, e-bikes, scooters, mopeds and car-sharing, plus operator dock stations | Declared per operator in the catalog: Licence Ouverte 2.0 (72 systems), ODbL 1.0 (15), Licence Ouverte 1.0 (2), unspecified (46) | "transport.data.gouv.fr" + the operator / mobility authority of each system shown |
 | **Bison Futé — DATEX II** (`tipi.bison-fute.gouv.fr`) | Live state of the French non-conceded national road network: a `trafficStatusValue` per measurement site from the sixteen DIR traffic-management centres (`TRAFICOLOR-DIR`, every 60–360 s), the six-minute national flow/speed snapshot (`QTV-DIR/qtvDir.xml`), and the counting-station referential the geometry is built from (`QTV-DIR/refDir.csv`) — all through the `/api/road-status-fr` proxy | [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md) — attribution required, commercial reuse and redistribution permitted, no share-alike; keyless | "Bison Futé / DIR — Licence Ouverte 2.0", plus the six-minute measurement window the layer reports |
 | **Bornage du réseau routier national** (DGITM, via data.gouv.fr) | The 51 940 kilometre posts (points repères) of the French national road network with their Lambert-93 coordinates, 2025 edition. Read once at build time to give a position to the road-status sites the DIR publish as an ADDRESS rather than as a coordinate — 153 counting stations, including all 115 of DIR Ouest, and the 602 Breton status sites whose identifiers are themselves point-repère addresses | [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md) — attribution required, commercial reuse and redistribution permitted; keyless | "Bornage du réseau routier national — DGITM, Licence Ouverte 2.0", alongside the Bison Futé credit on the same layer |
@@ -474,6 +475,34 @@ How to read this:
   **The millésime is inferred, not published.** Neither the WFS capabilities, the `DescribeFeatureType`, nor the CSW record (`INSEE_DONNEES`, dated 2024-12-24) names a year. The field set is the Filosofi carroyé layout and INSEE's current 200 m edition is *Revenus, pauvreté et niveau de vie en 2019*, so the layer reports 2019 — and this file records that it is a product inference rather than a value read off the relay.
 
   Cached 30 days in memory and on disk under `.gev-cache/filosofi/`, with serve-stale to a year: a statistical millésime does not change for two years at a time, so the disk cache turns a city-wide pan into one round trip per box, ever. An EMPTY box is cached like any other answer, because the Atlantic and the Ardennes both answer zero and re-asking for that on every pan is the traffic the cache exists to stop.
+
+### The chronicle creates DERIVED DATABASES, and the licence follows the flux
+
+Five of the live sources above publish only the present and keep no history:
+GTFS-RT, the QualiCharge dynamic charge-point file, Bison Futé's DATEX II,
+AISStream over the France box, and Vigicrues. A recorder (`src/data/chronicle.js`,
+opt-in for QualiCharge only, documented in [`docs/CHRONIQUE.md`](docs/CHRONIQUE.md))
+folds each into a 168-slot typical week kept indefinitely, and keeps thirty days
+of raw ticks under `.gev-cache/chronicle/`. Nothing it writes is committed to
+this repository.
+
+**That accumulation is a derived database in the ODbL's sense, and the licence
+of the input travels with it.** Four of the five inputs are Licence Ouverte 2.0
+or unlicensed public radio, which permit a proprietary derivative against
+attribution alone. GTFS-RT is not one licence but a per-feed declaration: the
+transport.data.gouv.fr catalogue declares Licence Ouverte 2.0 on most French
+realtime feeds and **ODbL 1.0 on a sizeable minority**, and ODbL's share-alike
+reaches any derived database that is *publicly exposed* — behind a map or an
+API, not only as a file. So:
+
+- The declared licence is stored WITH each source in `src/data/chronicleSources.js`
+  and returned on every line of `/api/chronicle-fr/status`. It is what a future
+  export path has to consult; it is not decoration.
+- A profile accumulated from an ODbL feed stays share-alike no matter what is
+  built on top of it. Publishing one means publishing the base.
+- Attribution is required on every one of the five, and the Licence Ouverte's
+  obligation has two limbs — name the source AND state the date of last update
+  of the information reused. Both travel on the status and profile answers.
 
 ## Bundled snapshots (committed under `src/data/local_data/`)
 
