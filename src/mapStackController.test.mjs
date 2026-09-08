@@ -14,7 +14,10 @@ import {
   IGN_FRANCE_RECTANGLE,
   createIgnWmtsProvider,
   summarizeProviderError,
+  IGN_OPAQUE_BOXES,
+  isViewFullyCoveredByIgn,
 } from './mapStackController.js';
+import { WORLD_IMAGERY_FAILURE_BUDGET } from './data/worldImagery.js';
 
 /** The constructor only stores the viewer, so a stub is enough for these. */
 const stubViewer = () => ({
@@ -82,9 +85,12 @@ test('the Google 2D stacks are keyed but tileset-independent — the EEA case', 
 });
 
 test('the IGN stacks name a real Géoplateforme layer and declare their partial coverage', () => {
-  for (const [id, layer, format] of [
-    ['ign-ortho', 'ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg'],
-    ['ign-plan', 'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png'],
+  for (const [id, layer, format, coverage] of [
+    // The two notes differ because the two stacks now differ: only the plan is
+    // France-and-nothing-else. The ortho carries world satellite under it, so
+    // saying "metropolitan France only" on its chip would be a lie.
+    ['ign-ortho', 'ORTHOIMAGERY.ORTHOPHOTOS', 'image/jpeg', 'IGN 20 cm over France, world satellite beyond'],
+    ['ign-plan', 'GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2', 'image/png', 'metropolitan France only'],
   ]) {
     const stack = stackById(id);
     assert.equal(stack.kind, 'ign-wmts');
@@ -95,7 +101,7 @@ test('the IGN stacks name a real Géoplateforme layer and declare their partial 
     assert.equal(stack.wmts.format, format);
     assert.equal(stack.wmts.maximumLevel, 19);
     // Available-but-partial. The tray turns this into the chip tooltip.
-    assert.equal(stack.coverageNote, 'metropolitan France only');
+    assert.equal(stack.coverageNote, coverage);
   }
 });
 
@@ -151,25 +157,57 @@ test('the WMTS provider carries every parameter the Géoplateforme requires', ()
   assert.match(provider.credit.html, /IGN/);
 });
 
-test('an IGN stack composites over OSM, bottom-first; every other stack is one layer', async () => {
+test('an IGN stack composites over a world base, bottom-first; every other stack is one layer', async () => {
   const controller = new MapStackController(stubViewer(), { cesiumToken: '' });
 
   const ign = await controller._getStackProviders(stackById('ign-ortho'));
   assert.equal(ign.length, 2, 'IGN needs a world base under it');
-  assert.ok(ign[0] instanceof Cesium.OpenStreetMapImageryProvider, 'OSM is the BASE layer');
   assert.ok(ign[1] instanceof Cesium.WebMapTileServiceImageryProvider, 'IGN composites on top');
   // Cesium stretches a BASE layer's edge pixels across every tile outside its
   // bounds. IGN alone at index 0 would paint France's coastline over the
   // Atlantic and then the rest of Earth — the whole reason for the pair.
 
+  // The ortho's base is SATELLITE, not OSM: a street map showing through under
+  // a photograph reads as a rendering fault the moment the camera leaves France.
+  assert.ok(ign[0] instanceof Cesium.UrlTemplateImageryProvider, 'ortho sits on world satellite');
+  assert.match(ign[0].url, /arcgisonline\.com/, 'Esri is the preferred world base');
+  assert.equal(ign[0].maximumLevel, 19, 'Esri stops where IGN stops — the base never outruns it');
+
+  // `ign-plan` is cartography, and OSM's line work continues it past the border.
+  const plan = await controller._getStackProviders(stackById('ign-plan'));
+  assert.ok(plan[0] instanceof Cesium.OpenStreetMapImageryProvider, 'the plan keeps its OSM base');
+
   const osm = await controller._getStackProviders(stackById('osm'));
   assert.equal(osm.length, 1);
-  assert.equal(osm[0], ign[0], 'the OSM provider is shared, not rebuilt per stack');
-
-  // Both IGN stacks reuse the same cached OSM base and their own layer.
-  const plan = await controller._getStackProviders(stackById('ign-plan'));
-  assert.equal(plan[0], ign[0]);
+  assert.equal(osm[0], plan[0], 'the OSM provider is shared, not rebuilt per stack');
   assert.notEqual(plan[1], ign[1]);
+});
+
+test('the world base falls back to Sentinel-2 once Esri has failed its tile budget', async () => {
+  const controller = new MapStackController(stubViewer(), { cesiumToken: '' });
+  const [esri] = await controller._getStackProviders(stackById('ign-ortho'));
+  assert.equal(controller._getWorldImageryProvider(), esri, 'the base is cached, not rebuilt');
+
+  // One tile lost to a flaky connection must not cost the sharp basemap, and
+  // neither must the SAME tile failing repeatedly — Cesium re-raises
+  // `errorEvent` on every retry, so the budget counts distinct tiles.
+  for (let retry = 0; retry < WORLD_IMAGERY_FAILURE_BUDGET + 2; retry += 1) {
+    esri.errorEvent.raiseEvent({ level: 7, x: 1, y: 1 });
+  }
+  assert.equal(controller._getWorldImageryProvider(), esri, 'one repeatedly-failing tile is not an outage');
+
+  for (let tile = 0; tile < WORLD_IMAGERY_FAILURE_BUDGET; tile += 1) {
+    esri.errorEvent.raiseEvent({ level: 7, x: tile, y: 2 });
+  }
+  const fallback = controller._getWorldImageryProvider();
+  assert.notEqual(fallback, esri, 'a real outage swaps the base');
+  assert.match(fallback.url, /s2cloudless-2017/, 'the fallback is the CC BY 4.0 vintage, not a NonCommercial one');
+  assert.equal(fallback.maximumLevel, 14, 'Sentinel-2 is 10 m — anything past 14 is upsampling');
+
+  // IGN is untouched by the swap: France keeps its 20 cm layer and its cache.
+  const after = await controller._getStackProviders(stackById('ign-ortho'));
+  assert.equal(after[0], fallback);
+  assert.equal(after[1], (await controller._getStackProviders(stackById('ign-ortho')))[1]);
 });
 
 test('an unavailable stack says which credential it is missing, not a generic one', () => {
@@ -377,4 +415,35 @@ test('a provider that will not stop talking is cut to tooltip length', () => {
   }));
   assert.ok(long.length < 240, `expected a tooltip, got ${long.length} characters`);
   assert.ok(long.endsWith('…'), 'a truncation must announce itself');
+});
+
+test('the world base sleeps only where IGN is proven opaque, never on its bounding box', () => {
+  // Paris at city zoom: wholly inside the central box, so the invisible base
+  // must switch off — this is the 874 kB per view the bench measured.
+  assert.equal(isViewFullyCoveredByIgn({ west: 2.28, south: 48.85, east: 2.31, north: 48.87 }), true);
+
+  // Brussels is INSIDE `IGN_FRANCE_RECTANGLE` and the Géoplateforme answers
+  // "No data found" there. Sleeping the base on the bounding box would leave a
+  // white hole, which is why the boxes exist at all.
+  assert.equal(isViewFullyCoveredByIgn({ west: 4.34, south: 50.84, east: 4.36, north: 50.86 }), false);
+  assert.ok(4.35 > IGN_FRANCE_RECTANGLE.west && 4.35 < IGN_FRANCE_RECTANGLE.east
+    && 50.85 > IGN_FRANCE_RECTANGLE.south && 50.85 < IGN_FRANCE_RECTANGLE.north,
+  'Brussels really is inside the clamp — that is the trap being guarded');
+
+  // A whole-country view is covered by no single box, so the base stays on.
+  assert.equal(isViewFullyCoveredByIgn({ west: -5, south: 42, east: 9, north: 51 }), false);
+  // A view straddling two boxes is not covered by their union: the gap may be sea.
+  assert.equal(isViewFullyCoveredByIgn({ west: 1.5, south: 44.5, east: 5.5, north: 46.0 }), false);
+  // No rectangle at all (camera sees space past the globe) keeps the base on.
+  assert.equal(isViewFullyCoveredByIgn(null), false);
+  // An antimeridian-crossing view is never France, however its numbers compare.
+  assert.equal(isViewFullyCoveredByIgn({ west: 179, south: 44, east: -179, north: 45 }), false);
+
+  // Every box must sit strictly inside the clamp, or it would claim coverage
+  // the IGN layer is not even allowed to request.
+  for (const box of IGN_OPAQUE_BOXES) {
+    assert.ok(box.west >= IGN_FRANCE_RECTANGLE.west && box.east <= IGN_FRANCE_RECTANGLE.east
+      && box.south >= IGN_FRANCE_RECTANGLE.south && box.north <= IGN_FRANCE_RECTANGLE.north,
+    `${JSON.stringify(box)} escapes the France clamp`);
+  }
 });
