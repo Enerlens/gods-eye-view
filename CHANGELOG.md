@@ -6,6 +6,57 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-08
 
 ### Added
+- **La radiographie d'adresse — dix thématiques sur une feuille.**
+  `/fiche.html?lat=&lon=` interroge quinze routes de l'application en parallèle
+  et compose les dix thématiques de la grille Cityscan — Immobilier, Transport,
+  Éducation, Commodités, Nuisances, Risques, Numérique, Emploi, Urbanisme,
+  Voisinage — en valeurs mesurées. `?embed=1` retire l'habillage pour une
+  iframe et l'impression du navigateur produit le PDF : les deux offres à 50 €
+  et 30 €/mois relevées au démontage, sans une ligne de backend. Palier 1 du
+  triage [`docs/CITYSCAN.md`](docs/CITYSCAN.md).
+  **Deux chiffres sont situés dans le pays, huit ne le sont pas et disent
+  pourquoi.** La surface atteignable à pied en dix minutes et le prix médian au
+  m² sont mesurés sur exactement les formes du barème national — un centile,
+  plus une lettre pour la première. Les chiffres de voisinage de la feuille sont
+  moyennés sur un **rectangle de carreaux**, pas sur un anneau piéton :
+  `scoreIndicator()` les refuse sur la géométrie, et la feuille imprime le
+  refus au lieu d'un tiret.
+  **Une page, pas un panneau, et elle ne charge pas Cesium.** La carte du globe
+  est plafonnée à six lignes ; dix thématiques en font soixante. La feuille
+  pèse **23 ko de JS** — un greffon retire les injections de `vite-plugin-cesium`
+  des pages qui sont des documents, en dev comme au build.
+  **Le faux négatif qu'elle refuse :** Géorisques éclate en trois appels et
+  répond HTTP 200 même quand le rapport de risques a lâché. « non lus » n'est
+  pas « aucun risque », et le payload dégradé est capturé en fixture.
+- **Quatre sources qui ferment les trous de la grille.** Quatre routes
+  d'adresse, chacune avec son module pur et ses fixtures capturées en direct :
+  **carte des loyers 2025** (`/api/loyers-fr`) — 30 029 communes sur 34 900
+  reçoivent un loyer calculé pour une *maille* de voisines, l'intervalle publié
+  fait 45,7 % de la valeur, et c'est charges comprises ;
+  **Ma connexion internet** (`/api/arcep-fr`) — le fichier par défaut répond
+  « 100 % éligibles à 30 Mbit/s » parce qu'il compte le satellite, la variante
+  filaire répond 95,4 %, et c'est elle qui est lue ;
+  **indice ATMO** (`/api/atmo-fr`) — l'indice du jour et les deux suivants, avec
+  les cinq sous-indices dont il est le maximum ;
+  **recensement INSEE** (`/api/emploi-fr`) — activité, emploi et chômage sur
+  trois recensements, avec le taux retenu sous 100 actifs.
+- **La base permanente des équipements passe de dix codes à vingt-quatre.**
+  Sept familles de plus — restaurants, boulangeries, commerces de bouche,
+  banques, salles de sport, lieux culturels, stations-service — soit vingt et un
+  types de plus de la taxonomie POI de Cityscan. **126 857 → 521 672 lignes
+  dessinées**, 95 404 → 445 380 points, et le pack national passe de 37,8 Mo à
+  170 Mo. Quatre de leurs trente types restent hors d'atteinte parce que le
+  registre ne les porte pas : ni bar, ni café, ni musée, ni tabac, ni jardin
+  public dans l'édition 2025.
+
+### Fixed
+- **La couche Équipements disait 12 000 points là où elle en connaissait
+  53 121.** Le plafond de la route `/sites` ne mordait jamais — le carré le plus
+  dense que le zoom autorise tenait 9 139 points. Après l'élargissement il en
+  tient 53 121, et 41 121 étaient écartés en silence. Le nombre était publié
+  dans le payload depuis toujours ; la couche l'affiche maintenant sous son
+  interrupteur, avec le renvoi au maillage.
+
 - **Le barème national — la fiche d'adresse dit enfin où elle se situe dans le
   pays.** « 0,96 km² atteignables à pied » est un fait qu'aucun lecteur ne peut
   lire sans un pays contre lequel le lire. La `Fiche implantation` imprime
