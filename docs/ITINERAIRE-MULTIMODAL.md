@@ -383,3 +383,11 @@ macOS, 16 Go, 10 cœurs. OSM : Geofabrik, extraits `france`, `ile-de-france`,
 
 Chaque build a été mesuré avec `/usr/bin/time -l` (RSS maximum) et chaque heap
 vivant avec `jcmd GC.run` suivi de `jcmd GC.heap_info`.
+
+**Un piège pour qui reproduit.** OTP 2.x reconnaît un GTFS **au nom du fichier**,
+pas à son contenu : un `80931.zip` est ignoré, un `gtfs-80931.zip` est lu. Un
+premier build francilien a donc tourné dix-neuf minutes, s'est terminé sans
+erreur, a écrit un `graph.obj` de 338 Mo — et ce graphe ne contenait aucun
+transport en commun. La seule trace était un `❓` devant le nom du fichier dans
+le journal, et un `Transit built. |Stops|=0` tout à la fin. Un succès silencieux
+qui n'en est pas un : exactement le mode de panne que ce dépôt refuse ailleurs.
