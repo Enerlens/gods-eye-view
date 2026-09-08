@@ -9803,7 +9803,10 @@ const AMENITIES_CACHE_PATH = path.join(AMENITIES_DISK_DIR, 'pack.json');
  * MONTH on disk and costs ninety seconds to rebuild, so without a bump a
  * projection edit stays invisible until October.
  */
-const AMENITIES_CACHE_VERSION = 1;
+// 2 — the Cityscan catch-up widened `BPE_CODE_FAMILY` from ten codes to
+// twenty-four and `AMENITY_FAMILIES` from seven to fourteen, so a version-1
+// pack holds neither the new records nor the new family indices in its mesh.
+const AMENITIES_CACHE_VERSION = 2;
 
 let _amenities = null;
 let _amenitiesInFlight = new Map();

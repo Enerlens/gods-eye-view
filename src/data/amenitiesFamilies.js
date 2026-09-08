@@ -1,7 +1,7 @@
 /**
  * @module data/amenitiesFamilies
  *
- * The seven family names of `amenities-fr`, and nothing else.
+ * The family names of `amenities-fr`, and nothing else.
  *
  * Extracted from `amenitiesFeed.js` for one measured reason: the address
  * radiography prints "Supermarché, supérette" beside a distance, and importing
@@ -15,6 +15,13 @@
  */
 
 export const AMENITY_FAMILY_LABELS = Object.freeze({
+  restaurant: 'Restaurant',
+  boulangerie: 'Boulangerie',
+  commerce: 'Commerce de bouche',
+  banque: 'Banque',
+  sport: 'Salle de sport',
+  culture: 'Lieu culturel',
+  carburant: 'Station-service',
   medecin: 'Médecin généraliste',
   courses: 'Supermarché, supérette',
   pharmacie: 'Pharmacie',
@@ -26,6 +33,13 @@ export const AMENITY_FAMILY_LABELS = Object.freeze({
 
 /** Singular/plural head-word for a card, keyed the same way. */
 export const AMENITY_FAMILY_PLURALS = Object.freeze({
+  restaurant: 'restaurants',
+  boulangerie: 'boulangeries',
+  commerce: 'commerces de bouche',
+  banque: 'agences bancaires',
+  sport: 'salles de sport',
+  culture: 'lieux culturels',
+  carburant: 'stations-service',
   medecin: 'médecins généralistes',
   courses: 'commerces alimentaires',
   pharmacie: 'pharmacies',

@@ -158,7 +158,7 @@ test('every family has its own hue and none of them is a neighbour layer’s', (
     assert.equal(seen.has(color), false, `${family} reuses a colour`);
     seen.add(color);
   }
-  assert.equal(seen.size, 7);
+  assert.equal(seen.size, AMENITY_FAMILIES.length);
   // schools-fr draws 68 158 dots and sup-fr 6 914 over the same country; a
   // shared hex would make two registers indistinguishable on a stacked address.
   const neighbours = new Set([
@@ -363,6 +363,29 @@ test('the sites line reports what it received and did not draw, without naming a
     regime: 'sites', status: 'ready', loading: false, count: 9000, truncated: 0,
   });
   assert.equal(/non tracés/.test(clean), false);
+});
+
+test('the proxy’s own cap is named, because it is the one that now bites', () => {
+  // Measured 2026-09-08 over the densest 0.349° square France allows —
+  // 48.65 N, 2.20 E — after the Cityscan catch-up: 53 121 dots in the box, of
+  // which the proxy answers 12 000. Silently drawing 12 000 and calling it the
+  // view would understate that square by three quarters.
+  const label = buildAmenitiesLoadingLabel({
+    regime: 'sites',
+    status: 'ready',
+    loading: false,
+    count: 12000,
+    truncated: 0,
+    summary: { rows: 67900, capped: 41121 },
+  });
+  assert.match(norm(label), /12 000 équipements/);
+  assert.match(norm(label), /41 121 au-delà du plafond de la réponse/);
+  assert.match(label, /dézoome pour le maillage/);
+  // A view under the cap claims nothing.
+  const clean = buildAmenitiesLoadingLabel({
+    regime: 'sites', status: 'ready', loading: false, count: 268, summary: { rows: 284, capped: 0 },
+  });
+  assert.equal(/plafond/.test(clean), false);
 });
 
 test('an empty view says it is empty, and a loading one says what it is loading', () => {

@@ -261,30 +261,42 @@ propriétaire, c'est un argument de vente.
 | 6. IPS des écoles | **était déjà fait** | `src/data/ipsFeed.js`, joint par UAI depuis la PR #53 |
 | 7. Emploi (Melodi) | **livré**, trois recensements | `/api/emploi-fr`, `src/data/emploiFeed.js` |
 | 8. Rapport partageable | **livré** : `?embed=1` + impression navigateur | `fiche.html` |
-| 2. BPE de 10 à ~40 codes | **pas fait** — voir ci-dessous | — |
+| 2. BPE de 10 à 24 codes | **livré**, et il coûtait plus cher que prévu | `src/data/amenitiesFeed.js` |
 
-**Ce que le démontage avait sous-estimé sur la BPE.** Le recensement des 235
-codes TYPEQU a été refait sur l'archive vivante (2 921 770 lignes, édition
-BPE25) : les codes qui couvriraient les types POI de Cityscan pèsent **413 989
-lignes de plus**, soit **4,3 fois** ce que la couche dessine aujourd'hui
-(126 857). Le seul A504 « restaurant-restauration rapide » en fait 231 989. Le
-chiffre cité au démontage — « épicerie et boulangerie : 80 226 lignes » — ne
-mesurait que deux codes sur la quinzaine nécessaire. Ce n'est plus une addition
-de constantes : c'est un choix de régime de dessin (tout au zoom rapproché,
-rien dans le maillage national), et il mérite sa propre décision.
+**Ce que le démontage avait sous-estimé sur la BPE.** Le chiffre cité —
+« épicerie et boulangerie : 80 226 lignes de plus » — ne mesurait que deux
+codes sur les quatorze nécessaires. Le recensement complet des 235 codes TYPEQU
+a été refait sur l'archive vivante, puis le pack national reconstruit. Ce que
+l'extension coûte réellement, mesuré des deux côtés :
 
-Codes mesurés, prêts à être ajoutés : A504 restaurant (231 989), B207
-boulangerie-pâtisserie (50 122), B202 épicerie (30 104), A203 banque (23 986),
-B204 boucherie-charcuterie (17 378), F121 gymnase (16 113), F307 bibliothèque
-(15 676), B316 station-service (10 497), F120 salles de remise en forme
-(8 549), B206 poissonnerie (2 346), F312 exposition (2 145), F303 cinéma
-(1 969), B205 produits surgelés (1 726), F315 arts du spectacle (1 389).
+| | avant | après |
+|---|---|---|
+| Codes TYPEQU lus | 10 | 24 |
+| Familles | 7 | 14 |
+| Lignes dessinées | 126 857 | **521 672** |
+| Points après repli | 95 404 | **445 380** |
+| `pack.json` sur disque | 37,8 Mo | **170 Mo** |
+| Repli national | 47 s | 54 s |
+| Le carré le plus dense (0,349°, 48.65 N 2.20 E) | 9 139 points | **53 121** |
 
-**Deux types Cityscan que la BPE ne peut pas servir**, vérifié dans
+Le seul A504 « restaurant-restauration rapide » pèse 231 989 lignes — davantage
+que les sept familles d'origine réunies — et 34 192 de ses points partagent une
+coordonnée avec un autre restaurant.
+
+**Le plafond qui ne mordait jamais mord maintenant.** La route `/sites` répond
+au plus 12 000 points ; sur le carré parisien le plus dense elle en écarte
+désormais 41 121, soit trois quarts de la vue. Ce nombre était calculé et
+publié dans le payload, mais la couche ne l'affichait pas : elle le dit
+maintenant sous son propre interrupteur, et renvoie au maillage. C'est la
+seule régression que l'extension a introduite, et elle est corrigée.
+
+**Quatre types Cityscan que la BPE ne peut pas servir**, vérifié dans
 `TYPEQU_2025.csv` : il n'existe **aucun code « bar / café / débit de
-boissons »** ni **aucun code « musée »** dans l'édition 2025, et pas de code
-« tabac » non plus. `bar`, `cultural_places` et `tabac` de leur taxonomie
-resteront ouverts tant qu'on n'ira pas les chercher dans OSM.
+boissons »**, **aucun code « musée »**, aucun « tabac » et aucun « jardin
+public » dans l'édition 2025. B209 est le *commerce* de boissons, F312 la
+médiation culturelle. Ces quatre types restent ouverts tant qu'on n'ira pas les
+chercher dans OSM, et `BPE_ABSENT_TYPES` le dit dans le code plutôt que de
+laisser un lecteur conclure qu'il n'y a pas de café dans sa rue.
 
 **Ce qui reste ouvert, et qui n'était pas au palier 1 :** aucun lien depuis le
 globe vers la fiche — la carte de survol du globe est plafonnée à six lignes

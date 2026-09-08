@@ -27,24 +27,60 @@
  * chunked with no `Content-Length`, so a byte-size integrity gate is not
  * available; the zip's own central directory is.
  *
- * ── What is drawn: seven families, one register each ────────────────────────
- * The brief's row is *écoles, médecins, pharmacies, supermarchés, piscines,
- * poste, gendarmerie*. Six of the seven are drawn, one is refused outright, and
- * two more are added where a register already folded gives them for free. The
- * rule that decides every one of them is **one register per family, never two**
- * — two registers on one family is how a map ends up with every pharmacy in
- * France drawn twice, forty metres apart.
+ * ── What is drawn: fourteen families, one register each ─────────────────────
+ * The brief's row was *écoles, médecins, pharmacies, supermarchés, piscines,
+ * poste, gendarmerie* — seven families, ten BPE codes. On 2026-09-08 the row
+ * widened, against a specific target: Cityscan publishes a POI taxonomy of
+ * **5 familles × 6 thèmes = 30 types**, and this layer covered four of them.
+ * Seven families and fourteen codes were added to cover twenty-one more. The
+ * rule that decides every one of them is unchanged and is the reason the
+ * education and transport halves of their taxonomy are still refused here:
+ * **one register per family, never two** — two registers on one family is how
+ * a map ends up with every pharmacy in France drawn twice, forty metres apart.
  *
- *   medecin     BPE D265 — 61 263 rows in the file
- *   courses     BPE B104 + B105 + B201 — 2 256 + 12 929 + 5 617 = 20 802
+ * Measured over the live BPE25 archive and the FINESS file on 2026-09-08.
+ * "Drawn" is rows that survived the two refusals in Trap 1 and Trap 2; the
+ * pack then folds co-located rows of one family into a single dot.
+ *
+ *   restaurant  BPE A504 — 231 989 rows, 220 480 drawn
+ *   boulangerie BPE B207 — 50 122, 47 612 drawn
+ *   commerce    BPE B202 + B204 + B205 + B206 — 51 554, 48 335 drawn
+ *   medecin     BPE D265 — 61 263, 60 268 drawn
+ *   banque      BPE A203 — 23 986, 23 691 drawn
+ *   sport       BPE F120 + F121 — 24 662, 23 609 drawn
+ *   culture     BPE F303 + F307 + F312 + F315 — 21 179, 20 614 drawn
+ *   courses     BPE B104 + B105 + B201 — 20 802, 20 463 drawn
  *   pharmacie   FINESS categetab 620 — 20 003, NOT BPE D307's 20 334
- *   poste       BPE A206 + A207 + A208 — 6 584 + 3 164 + 7 122 = 16 870
- *   piscine     BPE F101 — 3 633
- *   gendarmerie BPE A104 + A140 — 3 394 + 661 = 4 055
- *   hopital     FINESS categagretab 1101/1102/1106/1110 — 388 + 1 371 + 195
- *               + 631 = 2 585
+ *   poste       BPE A206 + A207 + A208 — 16 870, 16 847 drawn
+ *   carburant   BPE B316 — 10 497, 10 474 drawn
+ *   gendarmerie BPE A104 + A140 — 4 055, 3 963 drawn
+ *   piscine     BPE F101 — 3 633, 3 626 drawn
+ *   hopital     FINESS categagretab 1101/1102/1106/1110 — 2 585
  *
- * 129 211 candidate rows. After the two refusals below, **126 859 are drawn**.
+ * **521 672 drawn, folded to 445 380 dots**, against 126 857 and 95 404 before
+ * the widening — 4,1× the rows and 4,7× the dots. The pack on disk goes from
+ * 37,8 Mo to **170 Mo**; the national fold from 47 s to 54 s; a cold process
+ * reads the pack back in about 1,4 s and answers a viewport in 33 ms. Those
+ * four numbers were measured, not estimated, and they are the reason this is
+ * one selection rather than an open door: another dense family is another
+ * 40 Mo of cache.
+ *
+ * The single biggest one is worth naming. **A504 alone is 231 989 rows** —
+ * more than the seven original families put together — and 34 192 of its drawn
+ * rows share a coordinate with another restaurant, which is what a food court
+ * and a shopping street look like in this file. It sits at index 0 of
+ * `AMENITY_FAMILIES` and is therefore the first family the mesh's per-family
+ * budget takes from, and the smallest dot on screen.
+ *
+ * ── Four Cityscan types this register CANNOT serve ──────────────────────────
+ * Checked in `TYPEQU_2025.csv`, not assumed: the 2025 edition publishes 235
+ * codes and **none of them is a bar, a café, a débit de boissons, a museum, a
+ * tabac or a public garden**. B209 is "commerce de boissons" (8 537 rows), a
+ * shop and not a bar; F312 is "exposition et médiation culturelle" (2 145),
+ * which is not the museum list. Those four types stay open whatever is added
+ * here, and `BPE_ABSENT_TYPES` says so in the payload rather than leaving a
+ * reader to conclude there is no café in their street. OpenStreetMap is where
+ * they would have to come from.
  *
  * ── What is refused, and the measurement behind each refusal ────────────────
  * 1. **DOM = C, enseignement, 79 743 rows — refused entirely.** `schools-fr`
@@ -57,15 +93,19 @@
  *    it would double every school in France from a source whose geocoding is
  *    measurably worse (79.2% `QUALITE_XY = B` over the whole file, against the
  *    ministry's own coordinates). C4–C7, another 17 678 rows, are `sup-fr`'s
- *    subject for the same reason.
+ *    subject for the same reason. This covers six of Cityscan's thirty types
+ *    and they are served, just not from here.
  * 2. **B326 stations de recharge, 28 819 rows — refused.** `irve-fr` reads the
  *    same fact live from transport.data.gouv.fr, where it is 231 079 charge
  *    points on 39 579 distinct coordinates. Showing 28 819 points frozen at the
  *    2025 vintage beside them is not a second opinion, it is a stale one.
+ *    B316 stations-service, next door in the file, ARE drawn: nothing else in
+ *    this app knows where the petrol is.
  * 3. **DOM = E, transports, 99 280 rows — refused.** 96 253 of them are
  *    TAXI-VTC operators' registered addresses, which are not equipment a
  *    reader can walk to; the 2 938 gares and 89 aéroports are `transit-fr`'s
- *    and `local-airports`' subject.
+ *    and `local-airports`' subject — another six Cityscan types served
+ *    elsewhere.
  * 4. **D307 pharmacies, 20 334 rows — refused in favour of FINESS's 20 003.**
  *    The two registers describe the same objects and disagree by 331. FINESS
  *    wins on three measured grounds: `nofinesset` is a stable unique key
@@ -78,19 +118,21 @@
  *    within 1 km, median distance 79 m.** An A&E is a department inside a
  *    hospital, and drawing both puts two dots on one building.
  *
- * Everything else in the file — 231 989 restaurants, 113 427 plumbers, 50 122
- * bakeries, 34 917 mairies — is simply outside the brief's row and is counted,
- * never drawn. The proxy reports the whole 2 921 770 so the card can say what
- * fraction of the register this layer is.
+ * Everything else in the file — 113 427 plumbers, 111 080 estate agents,
+ * 34 917 mairies — is simply outside the row and is counted, never drawn. The
+ * proxy reports the whole 2 921 770 so the card can say what fraction of the
+ * register this layer is.
  *
  * ── Trap 1: both registers admit which of their points are invented, and this
  *    module refuses those points rather than drawing them ─────────────────────
  * BPE publishes `QUALITE_GEOLOC`, whose modality **33** INSEE spells out in
  * `BPE25_anonymisee_varmod.csv` as *"Voie inconnue, Position aléatoire dans la
  * commune"*. That is not an imprecise position, it is a drawn one. Over the
- * ten selected codes it is **1 284 rows**, and this module proved the wording
- * literal: of the 207 communes holding more than one such row (724 rows), only
- * **3** contain any repeated coordinate — the position is re-drawn per row.
+ * twenty-two selected BPE codes it is **7 728 rows** — 1 284 over the original
+ * ten, and A504 restaurants alone contribute 3 805 — and this module proved
+ * the wording literal on the original set: of the 207 communes holding more
+ * than one such row (724 rows), only **3** contain any repeated coordinate.
+ * The position is re-drawn per row.
  *
  * FINESS does the same thing differently. Its `sourcecoordet` names the
  * geocoder, and **4 646 rows are geocoded against `ADMIN-EXPRESS-2023`** — the
@@ -102,18 +144,24 @@
  * coordinate**, against 1 608 of 84 561 for the BAN control. Four different
  * establishments in Bourg-en-Bresse all sit at 5.224702, 46.205283.
  *
- * Both are refused: **1 284 BPE rows and 898 FINESS rows** in the drawn
+ * Both are refused: **7 728 BPE rows and 898 FINESS rows** in the drawn
  * families, counted and reported per family, never placed. One register draws
  * a random point in the commune and the other draws the same point for the
  * whole commune; neither is where the thing is.
  *
  * ── Trap 2: a row with no coordinate at all, and where they are ─────────────
- * 170 of the 106 623 selected BPE rows publish no LATITUDE. **100 of those 170
- * are in Mayotte** — every single one of the département's 100 rows in these
- * ten codes, across all five families, with LATITUDE, LONGITUDE, LAMBERT_X and
- * LAMBERT_Y all empty while still declaring `EPSG=4471`. Mayotte has 7 081 BPE
- * rows and 17 communes; this layer draws none of its BPE equipment, and the
- * card says so rather than letting an empty island read as an empty island.
+ * **12 902 of the 520 612 selected BPE rows publish no LATITUDE** — 170 over
+ * the original ten codes, and the widening found far more of them: 7 704
+ * restaurants, 2 345 commerces de bouche, 1 565 boulangeries. The dense
+ * commercial codes are the worst geocoded in the file, which is a fact about
+ * how INSEE builds them and not about where the shops are.
+ *
+ * **100 of the original 170 were in Mayotte** — every single one of the
+ * département's 100 rows in those ten codes, across all five families, with
+ * LATITUDE, LONGITUDE, LAMBERT_X and LAMBERT_Y all empty while still declaring
+ * `EPSG=4471`. Mayotte has 7 081 BPE rows and 17 communes; this layer draws
+ * none of its BPE equipment, and the card says so rather than letting an empty
+ * island read as an empty island.
  * FINESS is the counterweight and it is drawn: 189 Mayotte establishments,
  * 28 pharmacies and 7 hospitals among them.
  *
@@ -223,13 +271,20 @@ export const FINESS_COLUMN_COUNT = 35;
  * a payload bound rather than an upstream one: the proxy answers `/sites` out
  * of the folded index with no network call at all. Measured on the real pack,
  * the densest 0.349° square the ceiling allows anywhere in France — 48.65 N,
- * 2.20 E, Paris and its inner south-eastern suburbs — holds **9 139 dots,
- * 2 840 075 bytes of JSON and 277 260 gzipped**; the same square over Lyon holds
- * 1 762 and over the Creuse 81.
+ * 2.20 E, Paris and its inner south-eastern suburbs — holds **53 121 dots and
+ * 67 900 register rows**, against 9 139 dots before the Cityscan catch-up. The
+ * same square over Lyon holds 9 799 and over the Creuse 268.
+ *
+ * The ceiling therefore no longer bounds the answer on its own: the proxy's
+ * 12 000-site cap does, and over Paris it drops 41 121 dots. The answer is
+ * 3 596 036 bytes of JSON and 327 513 gzipped at that cap. Both numbers are
+ * reported on the payload and printed under the layer's toggle — see
+ * `MAX_RENDERED_SITES` in `amenitiesFrance.js` — because the alternative is a
+ * map that quietly shows a quarter of a city.
  */
 export const AMENITIES_MAX_BOX_DEG = 0.35;
 
-// --- The seven families -----------------------------------------------------
+// --- The fourteen families --------------------------------------------------
 
 /**
  * Family ids, in the order the mesh uses as its category index.
@@ -237,12 +292,18 @@ export const AMENITIES_MAX_BOX_DEG = 0.35;
  * The order is not cosmetic. `geoMeshThinning.js` breaks a tie between two
  * equally common categories in a cell towards the LOWER index, so the ladder
  * runs from the family that over-claims least to the one that over-claims most:
- * a cell drawn as "a GP" when it also held a hospital under-states, and a cell
- * drawn as "a hospital" when it held one GP over-states. Ascending by national
- * count is the same order, which is a coincidence worth not relying on.
+ * a cell drawn as "a restaurant" when it also held a hospital under-states, and
+ * a cell drawn as "a hospital" when it held one restaurant over-states.
+ * Descending by national count is the same order, which is a coincidence worth
+ * not relying on.
+ *
+ * THE ORDER IS ALSO A CACHE KEY. The mesh stores a family as its INDEX in this
+ * array, so reordering it silently renames every row of a cached pack — which
+ * is why `AMENITIES_CACHE_VERSION` was bumped when the seven became fourteen.
  */
 export const AMENITY_FAMILIES = Object.freeze([
-  'medecin', 'courses', 'pharmacie', 'poste', 'piscine', 'gendarmerie', 'hopital',
+  'restaurant', 'boulangerie', 'commerce', 'medecin', 'banque', 'sport', 'culture',
+  'courses', 'pharmacie', 'poste', 'carburant', 'gendarmerie', 'piscine', 'hopital',
 ]);
 
 /** Index of a family in {@link AMENITY_FAMILIES}, or -1. */
@@ -254,6 +315,13 @@ export { AMENITY_FAMILY_LABELS, AMENITY_FAMILY_PLURALS } from './amenitiesFamili
 
 /** One line behind each swatch — what the family actually contains, measured. */
 export const AMENITY_FAMILY_BLURBS = Object.freeze({
+  restaurant: 'BPE A504 « restaurant-restauration rapide ». 231 989 lignes — à elle seule, davantage que les sept familles d’origine réunies.',
+  boulangerie: 'BPE B207 boulangerie-pâtisserie, 50 122 lignes. Le repère de proximité français, et son propre code.',
+  commerce: 'BPE B202 épicerie (30 104), B204 boucherie-charcuterie (17 378), B206 poissonnerie (2 346), B205 produits surgelés (1 726). Le commerce de bouche, séparé du « faire ses courses ».',
+  banque: 'BPE A203 banque et caisse d’épargne, 23 986 lignes. Ce sont des agences recevant du public, pas des distributeurs.',
+  sport: 'BPE F120 salles de remise en forme (8 549) et F121 salles multisports et gymnases (16 113). Le bassin de natation garde sa propre famille.',
+  culture: 'BPE F307 bibliothèque (15 676), F312 exposition et médiation culturelle (2 145), F303 cinéma (1 969), F315 arts du spectacle (1 389). La BPE 2025 ne porte aucun code « musée ».',
+  carburant: 'BPE B316 station-service, 10 497 lignes. Les bornes de recharge sont refusées : irve-fr lit le même fait en direct.',
   medecin: 'BPE D265. 61 263 dans le fichier, 60 270 dessinés : 946 sont placés au hasard dans leur commune et 47 n’ont pas de coordonnée.',
   courses: 'BPE B104 hypermarché et grand magasin (2 256), B105 supermarché (12 929), B201 supérette (5 617). Ni épicerie ni boulangerie : ce sont 80 226 lignes de plus.',
   pharmacie: 'FINESS, catégorie 620 « Pharmacie d’Officine » — 20 003 officines, contre 20 334 pour la BPE. Un seul registre par famille, et c’est celui qui a une clé stable.',
@@ -265,6 +333,13 @@ export const AMENITY_FAMILY_BLURBS = Object.freeze({
 
 /** Which register answers for a family. One each, never two. */
 export const AMENITY_FAMILY_REGISTER = Object.freeze({
+  restaurant: 'bpe',
+  boulangerie: 'bpe',
+  commerce: 'bpe',
+  banque: 'bpe',
+  sport: 'bpe',
+  culture: 'bpe',
+  carburant: 'bpe',
   medecin: 'bpe',
   courses: 'bpe',
   pharmacie: 'finess',
@@ -288,6 +363,24 @@ export const BPE_CODE_FAMILY = Object.freeze({
   F101: 'piscine',
   A104: 'gendarmerie',
   A140: 'gendarmerie',
+  // ── The Cityscan catch-up, 2026-09-08 ───────────────────────────────────
+  // Fourteen codes, chosen against their taxonomy (5 familles × 6 thèmes) and
+  // measured against the live archive rather than assumed. See the header for
+  // what they cost and what they still cannot cover.
+  A504: 'restaurant',
+  B207: 'boulangerie',
+  B202: 'commerce',
+  B204: 'commerce',
+  B205: 'commerce',
+  B206: 'commerce',
+  A203: 'banque',
+  F120: 'sport',
+  F121: 'sport',
+  F303: 'culture',
+  F307: 'culture',
+  F312: 'culture',
+  F315: 'culture',
+  B316: 'carburant',
 });
 
 /** INSEE's own label for each drawn code, verbatim from `TYPEQU_2025.csv`. */
@@ -302,6 +395,36 @@ export const BPE_CODE_LABELS = Object.freeze({
   F101: 'Bassin de natation',
   A104: 'Gendarmerie',
   A140: 'Police',
+  A504: 'Restaurant- restauration rapide',
+  B207: 'Boulangerie-pâtisserie',
+  B202: 'Épicerie',
+  B204: 'Boucherie charcuterie',
+  B205: 'Produits surgelés',
+  B206: 'Poissonnerie',
+  A203: 'Banque, caisse d’épargne',
+  F120: 'Salles de remise en forme',
+  F121: 'Salles multisports, gymnases',
+  F303: 'Cinéma',
+  F307: 'Bibliothèque',
+  F312: 'Exposition et médiation culturelle',
+  F315: 'Arts du spectacle',
+  B316: 'Station-service',
+});
+
+/**
+ * Cityscan POI types this register CANNOT serve, checked in `TYPEQU_2025.csv`.
+ *
+ * Not a policy, a measurement: the 2025 edition publishes 235 codes and none of
+ * them is a bar, a café, a débit de boissons, a museum, a tabac or a public
+ * garden. Four of their thirty types therefore stay open here whatever is
+ * added, and they will stay open until somebody goes and gets them from
+ * OpenStreetMap.
+ */
+export const BPE_ABSENT_TYPES = Object.freeze({
+  bar: 'Aucun code « bar », « café » ou « débit de boissons » dans la BPE 2025.',
+  tabac: 'Aucun code « tabac » : B209 est le commerce de boissons, pas le bureau de tabac.',
+  musee: 'Aucun code « musée » : F312 est « exposition et médiation culturelle », qui n’est pas la même liste.',
+  garden: 'Aucun code « parc » ni « jardin public » : la BPE recense des équipements, pas des espaces verts.',
 });
 
 /**

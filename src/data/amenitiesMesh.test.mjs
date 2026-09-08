@@ -40,8 +40,18 @@ const FRANCE = Object.freeze({ south: 41.3, west: -5.2, north: 51.1, east: 9.6 }
  * property is about the ratio between the families, and a lattice makes the
  * cell rule's contribution visible instead of hiding it in real clustering.
  */
+/**
+ * The drawn counts of the fourteen families, measured on the BPE25 + FINESS
+ * pack built on 2026-09-08 — in `AMENITY_FAMILIES` order, so index i is
+ * family i.
+ */
+const DRAWN_PER_FAMILY = Object.freeze([
+  186288, 44598, 44800, 30213, 21086, 22838, 20020,
+  19354, 19216, 16832, 10346, 3953, 3625, 2211,
+]);
+
 function nationalSet(scale = 1) {
-  const counts = [30215, 19354, 19216, 16832, 3625, 3953, 2211].map((n) => Math.round(n * scale));
+  const counts = DRAWN_PER_FAMILY.map((n) => Math.round(n * scale));
   const rows = [];
   for (let family = 0; family < counts.length; family += 1) {
     for (let i = 0; i < counts[family]; i += 1) {
@@ -76,16 +86,24 @@ test('a single global pass starves the rarest family, and the per-family pass do
   const hopitalIndex = AMENITY_FAMILIES.indexOf('hopital');
   assert.ok(globalPerFamily[hopitalIndex] < 30,
     `a global pass should starve hôpital, got ${globalPerFamily[hopitalIndex]}`);
-  // The floor is budget / (families × divisor) = 1100 / 28 = 39.
-  assert.equal(kept.get('hopital'), Math.floor(1100 / (7 * AMENITIES_FLOOR_DIVISOR)));
+  // The floor is budget / (families × divisor). With fourteen families rather
+  // than seven it halves — 1100 / 56 = 19 — which is the price of the Cityscan
+  // catch-up on the national view and is stated here rather than discovered.
+  assert.equal(kept.get('hopital'),
+    Math.floor(1100 / (AMENITY_FAMILIES.length * AMENITIES_FLOOR_DIVISOR)));
   assert.ok(kept.get('hopital') > globalPerFamily[hopitalIndex]);
-  // And it is paid for by the biggest family, not by the middle ones.
-  assert.ok(kept.get('medecin') < globalPerFamily[AMENITY_FAMILIES.indexOf('medecin')]);
+  // And it is paid for by the biggest family, not by the middle ones. That
+  // family used to be `medecin`; since the Cityscan catch-up it is
+  // `restaurant`, at 186 288 drawn against the médecins' 30 213 — so the
+  // assertion names the head of the ladder rather than a family that has since
+  // become a middle one.
+  const biggest = AMENITY_FAMILIES[0];
+  assert.ok(kept.get(biggest) < globalPerFamily[AMENITY_FAMILIES.indexOf(biggest)]);
 });
 
 test('the allocation always sums to exactly the budget, and never over-draws a family', () => {
   for (const budget of [1100, 1600, 2200, 37, 7, 1]) {
-    const counts = [30215, 19354, 19216, 16832, 3625, 3953, 2211];
+    const counts = [...DRAWN_PER_FAMILY];
     const alloc = allocateAmenityBudget(counts, budget);
     assert.equal(alloc.reduce((a, b) => a + b, 0), budget, `budget ${budget}`);
     alloc.forEach((value, i) => {
@@ -96,24 +114,29 @@ test('the allocation always sums to exactly the budget, and never over-draws a f
 });
 
 test('a budget larger than the set keeps everything, and an empty set keeps nothing', () => {
-  const counts = [3, 1, 0, 0, 2, 0, 0];
+  const zeroes = new Array(AMENITY_FAMILIES.length).fill(0);
+  const counts = [...zeroes];
+  counts[0] = 3; counts[1] = 1; counts[4] = 2;
   assert.deepEqual(allocateAmenityBudget(counts, 100), counts);
-  assert.deepEqual(allocateAmenityBudget(counts, 0), [0, 0, 0, 0, 0, 0, 0]);
-  assert.deepEqual(allocateAmenityBudget([0, 0, 0, 0, 0, 0, 0], 100), [0, 0, 0, 0, 0, 0, 0]);
-  assert.deepEqual(allocateAmenityBudget(null, 100), [0, 0, 0, 0, 0, 0, 0]);
+  assert.deepEqual(allocateAmenityBudget(counts, 0), zeroes);
+  assert.deepEqual(allocateAmenityBudget([...zeroes], 100), zeroes);
+  assert.deepEqual(allocateAmenityBudget(null, 100), zeroes);
 });
 
 test('a family with one member in view keeps that member rather than being rounded away', () => {
-  const counts = [50000, 0, 0, 0, 0, 0, 1];
+  const counts = new Array(AMENITY_FAMILIES.length).fill(0);
+  counts[0] = 50000;
+  counts[counts.length - 1] = 1;
   const alloc = allocateAmenityBudget(counts, 100);
-  assert.equal(alloc[6], 1);
+  assert.equal(alloc[alloc.length - 1], 1);
   assert.equal(alloc.reduce((a, b) => a + b, 0), 100);
 });
 
 test('the floor cannot over-subscribe the budget when many families are present', () => {
-  // Seven families, budget 7: one dot each and no more.
-  const alloc = allocateAmenityBudget([100, 100, 100, 100, 100, 100, 100], 7);
-  assert.equal(alloc.reduce((a, b) => a + b, 0), 7);
+  // One family, one dot, and no more: the budget equals the family count.
+  const families = AMENITY_FAMILIES.length;
+  const alloc = allocateAmenityBudget(new Array(families).fill(100), families);
+  assert.equal(alloc.reduce((a, b) => a + b, 0), families);
   for (const value of alloc) assert.ok(value >= 0 && value <= 100);
 });
 
@@ -176,7 +199,10 @@ test('the tuple reads back as a family, a precision and an id that survives the 
   const row = [48.83801, 2.34276, 3, AMENITY_FAMILIES.indexOf('medecin')];
   assert.equal(meshAmenityFamily(row), 'medecin');
   assert.equal(meshAmenityPrecision(row), 'numero');
-  assert.equal(meshAmenityId(row), 'a:0:48.83801,2.34276');
+  // The id embeds the family INDEX, so it moves when the ladder grows — which
+  // is exactly why the pack carries a cache version: a version-1 mesh row read
+  // against a fourteen-family ladder would name the wrong family.
+  assert.equal(meshAmenityId(row), `a:${AMENITY_FAMILIES.indexOf('medecin')}:48.83801,2.34276`);
   // The family MUST be in the key: two families share 1 137 coordinates in the
   // real pack, and a bare coordinate would merge a pharmacy into a supermarket.
   const other = [48.83801, 2.34276, 3, AMENITY_FAMILIES.indexOf('pharmacie')];
@@ -203,5 +229,5 @@ test('a tuple with an out-of-range family index is dropped, not filed under fami
   const pick = selectAmenitiesMesh(rows, { box: FRANCE, budget: 1100 });
   assert.equal(pick.inBox, 1);
   assert.equal(pick.picked.length, 1);
-  assert.equal(meshAmenityFamily(pick.picked[0]), 'medecin');
+  assert.equal(meshAmenityFamily(pick.picked[0]), AMENITY_FAMILIES[0]);
 });
