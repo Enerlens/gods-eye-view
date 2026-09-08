@@ -162,6 +162,53 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   carte imprime « le rang du prix se lit sur les 87 % d'anneaux où une vente
   comparable existait — une France plus urbaine que la France ».
 
+- **L'avis de valeur — le seul composant fermé de Cityscan, ouvert et borné.**
+  `docs/CITYSCAN.md` a démonté le produit et n'a trouvé, derrière ses onze
+  routes de données, **aucune source que nous n'ayons pas déjà** : leur propre
+  fichier de traduction public ne crédite « Source : Algorithme » que pour un
+  seul module, l'estimation. Une couche **Avis de valeur (DVF)** (`vv`,
+  `/api/avis-valeur`) répond à « que vaut ce logement-ci » à partir des mêmes
+  millésimes DVF que la carte des ventes, et **ne publie jamais un prix sans
+  l'intervalle dans lequel il se tient**.
+  **Deux incertitudes, jamais confondues.** La *fourchette* p25–p75 dit où les
+  ventes comparables ont changé de main au m² — elle ne rétrécit pas quand les
+  données s'accumulent, parce que ce n'est pas une barre d'erreur mais la
+  dispersion du marché, et elle ne borne pas ce logement-ci. L'*intervalle sur
+  la médiane* dit à quel point le milieu est fermement placé : l'intervalle
+  classique `[x(k), x(n+1−k)]`, dont la couverture est calculée depuis la
+  binomiale et **vérifiée par rééchantillonnage** — nominal 93,8 / 93,0 /
+  96,1 / 90,1 % à n = 5 / 8 / 12 / 30, empirique 93,6 / 93,0 / 96,9 / 90,8 %
+  sur les 4 192 ventes d'appartements de Paris 13e, éditions 2023–2025. Les
+  deux bornes sont affichées séparément, parce qu'un `±` sur un intervalle
+  d'ordres statistiques sous-déclare un côté : à Paris le milieu est connu à
+  **−5,3 % / +3,2 %**, pas à « ±4,3 % ».
+  **Le plancher de cinq ventes est dérivé, pas choisi** : à quatre, l'échantillon
+  entier ne couvre la médiane qu'à 87,5 % et aucun intervalle à 90 % n'existe.
+  **Trois réponses, trois phrases** : une valeur avec sa fourchette ; une
+  fourchette *sans* valeur, quand on ne connaît pas le milieu mieux que le
+  marché n'est dispersé ou qu'une borne s'écarte de plus de 20 % ; ou rien du
+  tout, en disant lequel des silences c'est. **Et le registre a un trou que
+  personne n'annonce** : DVF ne couvre ni le Bas-Rhin, ni le Haut-Rhin, ni la
+  Moselle, ni Mayotte — mesuré, les quatre répondent 404 quand La Réunion répond
+  200 — soit trois millions d'habitants pour qui « le fichier n'existe pas ici »
+  n'est pas « aucune vente ici ».
+  **L'échelle d'élargissement dépense la distance avant la surface**, et c'est
+  mesuré : élargir la bande de surface de ±20 % à ±35 % déplace le prix au m²
+  entre le bas et le haut de la bande de 3,0 → 3,6 % à Paris, 4,0 → 10,7 % à
+  Lille et **13,3 → 20,4 % à Ajaccio**, un biais invisible ; élargir le rayon
+  coûte la prémisse « ici », mais le rayon est écrit, dessiné et cliquable.
+  Choisir l'échelon sur les prix qui fixent ensuite l'intervalle est une
+  sélection, et elle est **mesurée plutôt que passée sous silence** : 91,9 à
+  92,8 % de couverture après sélection sur les lois de prix de quatre communes
+  réelles, mais **0 % sur une loi à deux modes** — la forme qui casse la
+  méthode, et elle est nommée.
+  **La dérive du marché est mesurée et affichée, jamais appliquée** : la
+  corriger par un indice communal annuel injecterait ±7 à ±11 % de bruit pour
+  rattraper 2 à 5 % de biais résiduel.
+  **Quatre exclusions comptées** : les VEFA (mesurées à +43 % sur Paris 13e),
+  les logements déclarés à un euro — dont un 166 m² place Pinel, et dont
+  l'arrondi au m² donne 0, un nombre qui franchit tous les garde-fous —, les
+  ventes chiffrées sans coordonnée, et une même mutation livrée deux fois.
 - **Le chiffrage du GTFS-RT national — la question laissée ouverte par la
   chronique, répondue en octets.** `docs/CHRONIQUE.md` disait qu'enregistrer
   les 150 flux GTFS-RT français nationalement « demande un chiffrage avant de

@@ -9,10 +9,13 @@ import { readFileSync } from 'node:fs';
 import {
   DVF_DEFAULT_RADIUS_M,
   DVF_MAX_RADIUS_M,
+  DVF_UNCOVERED_DEPARTEMENTS,
   buildDvfUrl,
   clampDvfRadius,
   departementOf,
+  dvfCoverage,
   groupMutations,
+  haversineM,
   parseDvfCsv,
   percentile,
   selectNearbySales,
@@ -155,4 +158,35 @@ test('an absent parameter takes the default, not the minimum', () => {
   assert.equal(clampDvfRadius(undefined), DVF_DEFAULT_RADIUS_M);
   // An EXPLICIT zero is still a request, and is still clamped to the floor.
   assert.equal(clampDvfRadius('0'), 50);
+});
+
+test('the four départements the register does not reach are named, not silently empty', () => {
+  // MEASURED 2026-09-08 on the 2024 edition: 67482 (Strasbourg), 57463 (Metz),
+  // 68224 (Mulhouse) and 97611 (Mamoudzou) each answer 404 with a 233-byte
+  // body, while 97411 (Saint-Denis de La Réunion) answers 200 with 647,463
+  // bytes. A 404 and an empty commune are indistinguishable downstream, and
+  // "the register does not cover this département" is not "no sale was
+  // recorded here" — three million people live under the first sentence.
+  assert.deepEqual([...DVF_UNCOVERED_DEPARTEMENTS], ['57', '67', '68', '976']);
+  for (const code of ['67482', '57463', '68224', '97611']) {
+    assert.equal(dvfCoverage(code).basis, 'livre-foncier', code);
+  }
+  // The overseas guess that would have been wrong: La Réunion is covered.
+  assert.equal(dvfCoverage('97411').basis, 'dvf');
+  assert.equal(dvfCoverage('75113').basis, 'dvf');
+  assert.equal(dvfCoverage('2A004').basis, 'dvf');
+  // No commune resolved is its own state, never "covered".
+  assert.equal(dvfCoverage(null).basis, 'unknown');
+  assert.equal(dvfCoverage('nonsense').basis, 'unknown');
+});
+
+test('the distance the estimate measures is the distance the map drew', () => {
+  // Exported so `avisValeurFeed.js` cannot grow a second haversine that
+  // disagrees with this one about where a 300 m circle ends.
+  assert.equal(Math.round(haversineM(48.83, 2.3735, 48.83, 2.3735)), 0);
+  const [first] = MUTATIONS.filter((mutation) => mutation.lon !== null);
+  const { sales } = selectNearbySales([first], { lon: first.lon, lat: first.lat }, 300);
+  assert.equal(sales[0].distanceM, 0);
+  // One minute of latitude is a nautical mile, to a metre.
+  assert.equal(Math.round(haversineM(48.0, 2.0, 48.0 + 1 / 60, 2.0)), 1853);
 });

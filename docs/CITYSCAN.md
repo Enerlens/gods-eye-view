@@ -215,18 +215,105 @@ reçoivent un rang sans lettre.
 
 ### Palier 2 — faisable, mais des semaines
 
-1. **L'estimateur (avis de valeur).** DVF porte surface, pièces, type et date :
-   un moteur de comparables est à notre portée. Le coût est ailleurs — nettoyage
-   des ventes multi-lots, appariement au bâti via le RNB, calibration, et
-   surtout **affichage de l'incertitude**. C'est le seul composant réellement
-   fermé de Cityscan, et ses dix ans d'avance sont là, pas dans la donnée.
-2. **Le générateur de documents.** Sections, modules, gabarits, thèmes, polices,
-   historique, signature. C'est un produit entier, pas une couche.
-3. **Le bruit hors aérien.** Les cartes de bruit stratégiques (directive
-   2002/49) sont publiées agglomération par agglomération : l'agrégation
-   nationale est un chantier de collecte, pas de rendu.
-4. **Temps de trajet multimodal vers un point choisi.** Nos isochrones tiennent ;
-   « 23 min en TC jusqu'à La Défense » demande un moteur hébergé (OTP/Valhalla).
+1. ~~**L'estimateur (avis de valeur).**~~ **LIVRÉ le 2026-09-08** — couche
+   `avis-valeur` (`vv`), route `/api/avis-valeur`, sur les mêmes millésimes DVF
+   que la carte des ventes. Le détail tient dans `docs/CURRENT-STATE.md` ; ce
+   qui compte pour ce document, c'est que le coût annoncé ici était le bon et
+   qu'il était ailleurs que dans la donnée :
+   · le nettoyage multi-lots était **déjà fait** par `dvfFeed.js` (une mutation
+     de 179 lots n'a pas de €/m²), donc rien à refaire ;
+   · l'appariement RNB s'est révélé **inutile** — un comparable se choisit par
+     rayon, surface et type, pas par bâtiment ;
+   · la calibration EST le produit : deux intervalles qui ne se mélangent
+     jamais, un plancher de cinq ventes *dérivé* du point où l'intervalle
+     cesse d'exister, et une porte à deux clauses qui refuse de publier un
+     milieu qu'on ne connaît pas mieux que le marché n'est dispersé ;
+   · et l'affichage de l'incertitude n'est pas une décoration ajoutée à la fin,
+     c'est la raison pour laquelle il y a **trois réponses possibles** au lieu
+     d'une : une valeur, une fourchette sans valeur, ou rien — en disant
+     laquelle.
+   Trois choses ont été trouvées en chemin qu'aucune analyse de bureau n'aurait
+   données : le registre **ne couvre pas** le Bas-Rhin, le Haut-Rhin, la Moselle
+   ni Mayotte (404 mesurés, trois millions d'habitants) ; il publie des
+   appartements **déclarés à un euro**, dont l'arrondi au m² vaut 0, un nombre
+   qui franchit tous les garde-fous ; et les VEFA se paient +43 % au m² à
+   Paris 13e, donc les garder biaisait l'estimation vers le haut.
+   **Ce que Cityscan garde encore** : dix ans de calibration contre des ventes
+   réelles, et un algorithme qu'on ne peut pas auditer. Le nôtre est auditable,
+   ce qui est un argument différent — pas le même.
+2. **Le générateur de documents — DÉBLOQUÉ le 2026-09-08.** Sections, modules,
+   gabarits, thèmes, polices, historique, signature : c'est un produit entier,
+   pas une couche. C'était aussi le seul poste du palier 2 qui **dépendait du
+   palier 1**, et cette dépendance est levée : `/fiche.html` existe (#100), et
+   avec elle `?embed=1` et l'impression PDF du navigateur. Le gabarit a
+   maintenant un contenu à mettre en page. C'est le prochain à prendre — le
+   seul du palier 2 qui n'attende plus rien ni personne.
+3. **Le bruit hors aérien — chiffré le 2026-09-08, et plus cher que « un
+   chantier de collecte ».** Ce qui était écrit ici restait vrai et vague ; les
+   mesures :
+   · **155 jeux** répondent à « cartes de bruit stratégiques » sur data.gouv.fr,
+     et 113 à « classement sonore des infrastructures » ;
+   · ils sont publiés **par DDT, par département, par type d'infrastructure et
+     par période**. Sur les 50 premiers résultats, **quatre organisations
+     seulement** — dont 30 jeux pour la seule DDT de Côte-d'Or, qui découpe la
+     même carte en route / autoroute / voie ferrée × jour / nuit / 24 h × type
+     A / type C ;
+   · ils sortent en **WMS + WFS + Shapefile**. Le WFS répond : `GetCapabilities`
+     mesuré **HTTP 200, 20 562 octets**, une couche `ms:LNC_FER_CONV_S_021` ;
+   · la note de `docs/CURRENT-STATE.md` disait « les archives Géo-IDE n'ont pas
+     de CORS ». **C'est exact et ce n'est plus un obstacle** : nos couches
+     passent par un proxy serveur, où le CORS ne s'applique pas. L'obstacle est
+     ailleurs ;
+   · l'obstacle est le **format et le poids**. Le service n'annonce que du GML
+     (`gml/3.2`, `3.2.1`, `3.1.1`, `2.1.2`) ; `OUTPUTFORMAT=application/json`
+     répond **500 enveloppant un 400**. Et `COUNT=1` sur la couche « voies
+     ferrées conventionnelles » de Côte-d'Or rapporte **1 080 625 octets pour
+     UNE bande**. Le `numberMatched` de cette couche est 4.
+   Traduction : ce n'est pas le patron de `bruitFrance.js` (WMS
+   `GetFeatureInfo`, réponses de quelques kilo-octets, JSON). C'est un parseur
+   GML, une découverte par DDT, et des polygones à l'échelle du mégaoctet par
+   bande — avec une couverture nationale qui, sur cet échantillon, n'existe pas
+   encore. **Palier 2 confirmé, mais le coût est le parseur et la collecte, pas
+   le rendu, et la couverture est partielle par construction.**
+4. **Temps de trajet multimodal vers un point choisi — CHIFFRÉ le 2026-09-08.**
+   Méthode et mesures : [`docs/ITINERAIRE-MULTIMODAL.md`](ITINERAIRE-MULTIMODAL.md).
+   Trois graphes régionaux ont été construits pour de vrai avec OpenTripPlanner
+   2.9.0, et la France en a été extrapolée avec un modèle ajusté dessus.
+   · **Le produit marche** : sur le graphe francilien, *av. de France → La
+     Défense = 34 min, 2 correspondances, RER C › B › A*, en **748 ms**. C'est
+     mot pour mot la phrase que ce document donnait comme hors de portée.
+   · **La facture est une machine** : `graph.obj` France ≈ **4,8 Go**, heap
+     vivant ≈ **15 à 19 Go**, donc `-Xmx` de 24 à 32 Go, donc **une machine de
+     32 Go au minimum**, 48 à 64 Go pour être tranquille. C'est le seul poste
+     du palier 2 qui ajoute une machine au produit plutôt qu'une route.
+   · **Le mode de panne a été observé** : la France entière lancée sur ce Mac
+     ne construit pas, et ne tombe pas non plus — elle **ralentit d'un facteur
+     840** (108 Mo/s à la première passe OSM, 24 à la deuxième, **0,128 à la
+     troisième**), la JVM réclamant 11 Go quand le système ne lui en garde que
+     1,14 résident. Attention à ce que cet essai prouve : la machine portait
+     déjà 15 Go d'autres processus au repos, donc il montre **la forme de la
+     panne** — pas de version dégradée, on perd la machine — et **pas le
+     seuil**, qui vient du modèle.
+   · **Et c'est un abonnement, pas un achat** : **39 % des flux GTFS français
+     sont republiés dans les 7 jours** (51 % dans les 14, ancienneté médiane
+     13,2 jours), donc la reconstruction hebdomadaire est le plancher — et une
+     reconstruction, c'est la machine de 32 Go occupée pendant tout le build.
+   · **Un flux cassé arrête tout** : un `route_id` vide dans le GTFS maritime
+     de Corsica Ferries fait échouer le build entier. Un moteur national, c'est
+     un cron **plus** une validation et une quarantaine.
+   · **La piste a été mesurée, et elle renverse la réponse** : **MOTIS 2.11.2**
+     projette ses données en mémoire au lieu de tenir le graphe dans un tas
+     JVM. Sur le même Mac de 16 Go, il importe **la France entière en 6 min
+     41 s**, la sert sous **2 Go résidents** et répond en **24 à 32 ms** — là
+     où OTP échouait et demandait 32 Go. **Les 32 Go étaient le prix d'OTP, pas
+     le prix du produit.**
+   · **Le blocage qui reste tient en un flux** : MOTIS refuse le GTFS de
+     l'IDFM (les deux ressources téléchargeables), donc « la France sur une
+     petite machine » veut dire aujourd'hui **la France moins Paris** — 75,8 %
+     du corpus. Et la symétrie est l'enseignement : OTP refuse Corsica Ferries
+     que MOTIS accepte, MOTIS refuse l'IDFM qu'OTP accepte. **Aucun des deux
+     moteurs ne lit la France telle qu'elle est publiée** ; la couche de
+     validation n'est pas optionnelle, quel que soit le moteur.
 
 ### Palier 3 — non duplicable
 
@@ -335,7 +422,15 @@ en production : délinquance enregistrée et petite enfance (Voisinage,
    quelle géométrie elle se laisse noter. Voir [`docs/BAREME.md`](BAREME.md).
 5. **Le mode intégrable et l'export PDF** — la surface commerciale, une fois que
    le contenu vaut d'être partagé.
-6. **L'estimateur** — en dernier, et jamais sans son intervalle.
+6. ~~**L'estimateur** — en dernier, et jamais sans son intervalle.~~
+   **Fait le 2026-09-08, et pris en premier plutôt qu'en dernier.** La raison
+   du changement d'ordre : c'est le seul poste de la grille qui ne dépendait
+   d'aucun autre. La fiche adresse (palier 1) et le générateur de documents
+   (palier 2) se tiennent l'un l'autre ; l'estimateur ne tient qu'à DVF, qui
+   était déjà en production. Il est donc parti seul, sans attendre, et la
+   consigne « jamais sans son intervalle » a été tenue au sens fort : il y en a
+   deux, et le produit refuse de publier un chiffre quand le second est trop
+   large.
 
 ---
 

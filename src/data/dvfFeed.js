@@ -132,6 +132,44 @@ export function departementOf(communeCode) {
 }
 
 /**
+ * The départements the register does not reach, and never will under this name.
+ *
+ * The Bas-Rhin, the Haut-Rhin and the Moselle keep the **livre foncier**, a
+ * land register inherited from German law and held by the judiciary rather than
+ * by the DGFiP; Mayotte's cadastre is not in the *fichier immobilier* either.
+ * Their transfers are recorded — they are simply not in THIS file.
+ *
+ * MEASURED 2026-09-08 against the 2024 edition: `67482` (Strasbourg), `57463`
+ * (Metz), `68224` (Mulhouse) and `97611` (Mamoudzou) each answer **404 with a
+ * 233-byte body**, while `97411` (Saint-Denis de La Réunion) answers 200 with
+ * 647,463 bytes — so the hole is these four départements and not "the overseas
+ * territories", which is the guess that would have been wrong.
+ *
+ * The reason this is a named constant rather than an empty result: a 404 and an
+ * empty commune are indistinguishable downstream, and "no sale was recorded
+ * around this address" is a statement about a market while "the register does
+ * not cover this département" is a statement about a file. Three million people
+ * live under the second one.
+ */
+export const DVF_UNCOVERED_DEPARTEMENTS = Object.freeze(['57', '67', '68', '976']);
+
+/**
+ * Whether the register covers the département a commune sits in.
+ * @param {?string} communeCode INSEE code, or null when none was resolved.
+ * @returns {{basis: string, departement: ?string}} `basis` is `'dvf'`,
+ *   `'livre-foncier'`, or `'unknown'` when there is no commune to test.
+ */
+export function dvfCoverage(communeCode) {
+  const code = String(communeCode || '').trim().toUpperCase();
+  if (!/^[0-9][0-9AB][0-9]{3}$/.test(code)) return { basis: 'unknown', departement: null };
+  const departement = departementOf(code);
+  return {
+    basis: DVF_UNCOVERED_DEPARTEMENTS.includes(departement) ? 'livre-foncier' : 'dvf',
+    departement,
+  };
+}
+
+/**
  * Build the URL of one commune-year edition.
  * @param {{year: number|string, communeCode: string}} query
  * @returns {string}
@@ -310,8 +348,16 @@ export function groupMutations(rows) {
   }));
 }
 
-/** Great-circle distance in metres. */
-function haversineM(lat1, lon1, lat2, lon2) {
+/**
+ * Great-circle distance in metres.
+ *
+ * Exported so that `avisValeurFeed.js` measures a comparable's distance with
+ * the very function that decided which sales the map drew. Two haversines that
+ * agree to the metre today are two haversines that can disagree tomorrow, and
+ * an estimate whose 300 m circle is not the map's 300 m circle would be
+ * unarguable in exactly the way this repository refuses.
+ */
+export function haversineM(lat1, lon1, lat2, lon2) {
   const toRad = Math.PI / 180;
   const dLat = (lat2 - lat1) * toRad;
   const dLon = (lon2 - lon1) * toRad;

@@ -694,6 +694,20 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // Beside DVF because it reads the very same editions, and `dataset` although
+  // the number on the card is COMPUTED here: the facet describes where the
+  // material comes from, and every €/m² behind the estimate is a published
+  // mutation. What is ours is the selection rule and the interval, which is
+  // exactly what the card says.
+  Object.freeze({
+    id: 'avis-valeur',
+    category: 'built-environment',
+    label: 'Avis de valeur (DVF)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'dpe-fr',
     category: 'built-environment',

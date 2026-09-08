@@ -269,6 +269,44 @@
   echoes `codeInsee: "75056"` — Paris whole, not the arrondissement — which is
   the code that breaks DVF. Licence Ouverte 2.0, BRGM.
 
+- `dvf-75113-avis-250m-sample.csv` — **329 rows for the estimator**, and its
+  shape is its claim: every row of every mutation within **250 m of
+  2.3735, 48.8300** (avenue de France, Paris 13e) in the **2024 and 2025**
+  editions, 170 mutations, plus **four named mutations added by hand** because
+  the 250 m disc contains none of the four traps and each one has to be provably
+  refused rather than merely absent. A spatial cut, not a curated one: the
+  ladder's rungs, the surface bands and the drift all need a real neighbourhood
+  with a real density, and a hand-picked sample would have agreed with whatever
+  the selection rule assumed. It carries **131 flat comparables, 67 in 2024 and
+  64 in 2025**, which is what lets the commune-drift reading (30 per edition)
+  exist at all.
+
+  The four added mutations, all real, all from 75113:
+  **`2021-1718868`** — a VEFA of 57 m² at 7 632 €/m², **180 m from the point**,
+  so the very first rung's radius and its ±20 % band around 60 m² would both
+  have taken it. It is BELOW the local median, so excluding VEFA is visibly not
+  a way of making the answer look richer.
+  **`2021-1718712`** — a VEFA of 107 m² at 13 832 €/m², also 180 m away, inside
+  the band around 100 m² and well above the median: the same exclusion, pulling
+  the other way.
+  **`2024-1222991`** — an 88 m² flat with `valeur_fonciere` **1**. `round(1/88)`
+  is **0**, which is a number, so it clears every guard `dvfFeed.js` has and
+  arrives as a free apartment.
+  **`2024-1213795`** — a 69 m² flat at 10 464 €/m² with **no longitude and no
+  latitude**, inside the ±20 % band around 60 m² and impossible to test against
+  any radius.
+  Licence Ouverte, DGFiP via Etalab.
+
+- `dvf-48012-avis-sample.csv` — **91 rows: the WHOLE of Les Monts-Verts
+  (Lozère), editions 2023, 2024 and 2025**, nothing removed. 23 mutations, of
+  which 7 carry a comparable €/m². It is here because thin France is not a
+  degraded Paris, it is a different regime: this commune is the case where the
+  ladder walks all five rungs, reaches the floor only on the widest, and then
+  REFUSES to publish a centre — a `basis: 'range'` on real data rather than on a
+  constructed one. A synthetic thin commune would have had whatever spread the
+  test needed; this one's is 442 to 1 547 €/m² because that is what six houses
+  in the Lozère actually sold for. Licence Ouverte, DGFiP via Etalab.
+
 - `dvf-75113-2024-sample.csv` — 194 of the 3,975 rows of the 2024 Paris 13e
   edition (752,768 bytes whole), captured 2026-09-01. Every trap in it is real
   and is the point. It keeps mutation `2024-1225294` **entire — all 179 rows**,

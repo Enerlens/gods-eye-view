@@ -234,6 +234,23 @@ const OPTION_GROUPS = Object.freeze({
   'ads-fr': Object.freeze([
     enumOption('months', 'w', '36', ['36', '72', '156'], { 36: '3', 72: '6', 156: 'd' }),
   ]),
+  // THE SUBJECT OF THE ESTIMATE, and it has to travel. `a 60 m² flat here` and
+  // `a 150 m² house here` are two different numbers over one doorway, and a
+  // link that dropped either token would reopen the right address under the
+  // wrong headline — the same failure `filosofi-fr` describes for its
+  // indicator, with a price on it.
+  //
+  // The surface codes are the size class and not the number (`s`, `m`, `l`,
+  // `x`), because they are frozen the moment the first link is copied and a
+  // future 45 m² anchor must not have to renumber the ones already sent. The
+  // CENTRE is deliberately absent: every option in this file is an enum, a
+  // pinned coordinate is not, and a link that carried one would also have to
+  // carry the promise that the pin still means the same thing — so a shared
+  // link reopens following the camera, on the view its sender was looking at.
+  'avis-valeur': Object.freeze([
+    enumOption('type', 't', 'Appartement', ['Appartement', 'Maison'], { Appartement: 'a', Maison: 'm' }),
+    enumOption('surface', 's', '60', ['30', '60', '100', '150'], { 30: 's', 60: 'm', 100: 'l', 150: 'x' }),
+  ]),
   satellites: Object.freeze([
     enumOption('catalog', 'c', 'core', ['core', 'dense'], { core: 'c', dense: 'd' }),
     integerOption('selectedSatTrackingId', 't', null),
@@ -377,6 +394,14 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   // layer next door is radio-browser.info AUDIO streams and shares nothing with
   // this but a word, which is exactly why the token had to be unmistakable.
   Object.freeze({ id: 'anfr-fr', token: 'an', disposition: 'enabled-only' }),
+  // `vv` for valeur vénale, and NOT the `av` this layer was first written
+  // against. `av` is one character from `au` (ads-fr), the other layer about a
+  // property dossier at the same doorway, and this file already records what a
+  // near-collision costs: a share link that enabled the wrong one of two
+  // adjacent property layers would look like it worked. `vv` cannot be
+  // mistyped into anything claimed. `enabled+options` because the SUBJECT is
+  // what the map claims — see the option group above.
+  Object.freeze({ id: 'avis-valeur', token: 'vv', disposition: 'enabled+options', optionOwner: 'avis-valeur' }),
   Object.freeze({ id: 'bdtopo-buildings', token: '5', disposition: 'enabled-only' }),
   Object.freeze({ id: 'bikeshare', token: 'b', disposition: 'enabled-only' }),
   // TWO CHARACTERS, because the single-character scheme is spent: a-y are taken,
