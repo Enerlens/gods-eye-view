@@ -419,7 +419,7 @@ test('a provider that will not stop talking is cut to tooltip length', () => {
 
 test('the world base sleeps only where IGN is proven opaque, never on its bounding box', () => {
   // Paris at city zoom: wholly inside the central box, so the invisible base
-  // must switch off — this is the 874 kB per view the bench measured.
+  // must switch off — this is the 813 kB per view the bench measured.
   assert.equal(isViewFullyCoveredByIgn({ west: 2.28, south: 48.85, east: 2.31, north: 48.87 }), true);
 
   // Brussels is INSIDE `IGN_FRANCE_RECTANGLE` and the Géoplateforme answers
