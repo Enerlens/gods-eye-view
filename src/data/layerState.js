@@ -422,6 +422,18 @@ export const LAYER_STATE_REGISTRY = Object.freeze([
   Object.freeze({ id: 'bruit-fr', token: 'bz', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cadastre-fr', token: 'cd', disposition: 'enabled-only' }),
   Object.freeze({ id: 'cctv', token: 'c', disposition: 'enabled+options', optionOwner: 'cctv' }),
+  // `cp` for comparables. `c` is cctv, `cd` is the cadastre and `cr` is the
+  // road counts, so the two-character space is where this had to land anyway —
+  // and `cp` is far enough from `cr` that a mistyped link enables neither.
+  //
+  // `enabled-only`, and this one is not a shortage of options — it is the
+  // layer's whole privacy property. The dossier is a client's property, its
+  // address and its price; it lives in `localStorage` and moves as a file. A
+  // share link that carried it would be the one place in this application
+  // where somebody else's valuation left the machine that typed it. What the
+  // link carries is that the layer is on; what the recipient sees is their own
+  // dossier, which is exactly right.
+  Object.freeze({ id: 'comparables-fr', token: 'cp', disposition: 'enabled-only' }),
   // `cr` for comptages routiers. `c` is cctv and `co` reads like a prefix of
   // nothing in particular; `cr` says what the layer counts. Two characters
   // because there is no single one left — see the block below, which predicted

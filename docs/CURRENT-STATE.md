@@ -2411,8 +2411,11 @@ ring, and the three largest of them are courtyards of 787, 754 and 249 m²
 that the rule would have silently filled in.
 | `isochrone-fr` | `is` | `/api/isochrone` | IGN Géoplateforme, Valhalla over BD TOPO® — three rings per scan; cycling instead from the FOSSGIS OSRM table over OSM |
 | `implantation-fr` | `im` | *(none of its own)* | Fans out across `/api/isochrone`, `/api/filosofi/carreaux`, `/api/gpu`, `/api/dvf` and the BAN reverse geocoder, and joins them in the browser |
+| `comparables-fr` | `cp` | `/api/dvf` (candidates only) | The dossier itself is keyed in by the reader and lives in `localStorage`; `/api/geocode` and the BAN reverse endpoint turn a typed address into a coordinate |
 
-`implantation-fr` is the only layer in the app with NO SOURCE OF ITS OWN. It
+`implantation-fr` was the only layer in the app with NO SOURCE OF ITS OWN until
+`comparables-fr` joined it below; it is still the only one that composes its
+answer entirely out of other people's registers. It
 uses the shared address-scan factory's `fetchImpl` seam to fan out across four
 routes this server already has — all already cached, all already tested — and
 does the spatial join locally: which 200 m carreaux fall inside the reachable
@@ -2426,6 +2429,49 @@ areal interpolation and it assumes an even spread INSEE's imputation flag exists
 to deny. The `ficheLines()` output is unit-tested for one thing above all — no
 line may contain ' · ', which is the separator `cardFromEntity()` splits on, and
 a line carrying one arrives on screen in two halves.
+
+`comparables-fr` is the second layer with no source of its own, and the only one
+whose data the READER supplies. It holds one property under study and the
+comparables retained against it — DVF mutations picked out of the candidate list
+the panel offers within 500 m, and listings keyed in by hand — and it computes
+what a valuation note computes. Three things about it are structural rather than
+cosmetic. **An asking price and a completed sale are never averaged together**:
+two samples, two medians, two silhouettes (`euro` for a mutation, the `tag`
+added to `addressMarkerIcons.js` for a listing), and the gap between the two
+medians printed as its own line, with both sample sizes beside it and a
+sentence refusing the reading a reader would otherwise supply: different
+properties, different dates, no temporal adjustment, so not a negotiation
+margin.
+**The estimate is a quartile range on a named sample**, refused below three
+ratio-bearing comparables and told when it is short — never a point estimate,
+and never called a confidence interval. **Every exclusion is counted and
+printed** (A5): no €/m² without a surface, no €/m² recomputed for a multi-lot
+mutation (DVF publishes null there and `dvfFeed.js` measured what dividing
+anyway produces), no €/m² outside 300–50 000 €.
+
+It sits on the address-scan shell for one specific mechanism: `setScanPin()`. A
+dossier belongs to a property, not to wherever the camera drifted, so posing the
+property pins the scan to it — and a pinned scan is exempt from the altitude
+ceiling, so the dossier does not vanish when the reader pulls back to see the
+city. The candidate sales are deliberately NOT drawn: `dvf-sales` already draws
+those same mutations coloured by what they say about the local market, and a
+second encoding of the same fact on the same street is A3 broken at the scale of
+the map. The pool is a list; the map is the selection.
+
+Its panel is layer-owned and self-mounting (`comparablesPanel.js`, the
+`veloPulseHud.js` idiom), so `index.html` carries nothing for it. The dossier is
+in `localStorage` under `godsEyeView.comparables.v1` and moves as a file: export
+writes our own shape, import accepts either that or a bare JSON array of
+listings — which is what an agency's own back-office exports — and MERGES rather
+than replaces. Nothing is uploaded anywhere, which is why the share token is
+`enabled-only`. The precise version of that claim, which is the one on screen:
+prices, surfaces and listing links are never transmitted; the ADDRESS a reader
+types goes to `/api/geocode` and to the BAN reverse endpoint because that is
+what turns an address into a coordinate, and the property's position goes to
+`/api/dvf`. « Rien ne quitte le navigateur » was the round version, and an
+adversarial pass was right to refuse it. A listing's URL is stored as a link and **never
+requested**; `scripts/qa-comparables.mjs` watches every request the page makes
+and fails if one reaches the host typed into that field.
 
 `/api/isochrone` (IGN Valhalla over BD TOPO®) WAS a service with no surface —
 in the repository since 2026-09-01 and drawn by nothing. It is now the

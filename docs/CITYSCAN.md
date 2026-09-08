@@ -4,6 +4,18 @@
 est en train de disparaître dans un autre produit, et la moitié des constats
 ci-dessous a une date de péremption.*
 
+> **Décision du propriétaire, 2026-09-08 — on n'achète rien.** Ce fork part en
+> open source. Une dépendance payante (Yanport 200 €/mois, PriceHubble, Casafari
+> pour les annonces ; Yousign 106 €/mois pour la signature) est une licence que
+> personne clonant le dépôt ne peut exercer : c'est un mur déguisé en ligne
+> budgétaire, pas une capacité. Tout ce qui suit est relu sous cette contrainte,
+> et elle change **une** case du triage — l'achat sort du palier 3 comme réponse
+> aux annonces. Les deux autres portes y restent, et l'une d'elles est celle que
+> Cityscan emprunte lui-même.
+>
+> **Livré :** le palier 1½ et le palier 1 (§ 3 bis), puis les comparables
+> (§ 3 ter).
+
 ---
 
 ## 0. Le fait qui change la question
@@ -129,7 +141,7 @@ Nos 52 couches et 66 routes serveur, rangées dans la grille de Cityscan.
 
 | Thématique | Ce que nous avons **déjà** | Ce qui manque | Palier |
 |---|---|---|---|
-| **Immobilier** | Ventes immobilières (DVF), Performance énergétique (DPE), Parcelles, Bâti 3D + pivot RNB | Loyers de référence ; estimation ; annonces en cours | 1 (loyers) · 2 (estimation) · 3 (annonces) |
+| **Immobilier** | Ventes immobilières (DVF), Performance énergétique (DPE), Parcelles, Bâti 3D + pivot RNB, **Comparables (sélection conseiller)** | Loyers de référence ; estimation | 1 (loyers) · 2 (estimation) · ~~3 (annonces)~~ **livré le 2026-09-08, § 3 ter** |
 | **Transport** | Transit FR (151 réseaux **GTFS-RT**), Fréquence des transports, Réseau IDFM, Road Status, Événements routiers, Bikeshare, Shared Mobility, Zone de chalandise (isochrones) | rien de significatif | **déjà devant** |
 | **Éducation** | Établissements scolaires, Accueil du jeune enfant, Enseignement supérieur | **IPS** et résultats (DEPP) | 1 |
 | **Commodités** | Équipements du quotidien (BPE, 10 codes), Médecins, Bornes IRVE, Îlots de fraîcheur | 25 codes BPE de plus (restaurants, bars, cinémas, banques, stations-service, boulangeries…) | 1 |
@@ -314,24 +326,101 @@ reçoivent un rang sans lettre.
      que MOTIS accepte, MOTIS refuse l'IDFM qu'OTP accepte. **Aucun des deux
      moteurs ne lit la France telle qu'elle est publiée** ; la couche de
      validation n'est pas optionnelle, quel que soit le moteur.
+5. **Les avis clients** — descendus du palier 3 le 2026-09-08 : immodvisor
+   expose une API partenaire documentée, déjà intégrée chez Yanport. C'est une
+   demande de partenariat, pas un mur.
+6. **La signature électronique** — descendue du palier 3 elle aussi, mais
+   **hors périmètre** sous la contrainte d'ouverture : Yousign est un
+   abonnement, et il n'existe pas d'équivalent qualifié eIDAS gratuit. À laisser
+   au déploiement qui en a besoin, pas au dépôt.
 
-### Palier 3 — non duplicable
+### Palier 3 — ce qui est vraiment fermé
 
-1. **Les annonces en cours** (SeLoger, Leboncoin, portails). Pas de licence, CGU
-   contraires. C'est le socle de « Biens en vente / en location ». *Nuance
-   apprise au reniflage : chez Cityscan aussi c'est l'agent qui les sélectionne
-   à la main — le produit n'a donc pas de flux magique, il a un utilisateur qui
-   travaille. Un opérateur humain reste une option légale ; un robot, non.*
-2. **Les avis clients** (immodvisor, opinion-system) — partenariats commerciaux.
-3. **La signature électronique et le mandat** dans le flux de l'agent —
-   conformité, pas code.
-4. **La distribution.** Cityscan est dans Modelo, Netty et Apimo, via Septeo,
-   devant 30 000 professionnels. C'est le vrai fossé, et aucune ligne de code ne
-   le franchit.
+*Révisé le 2026-09-08 après vérification. La première rédaction mettait quatre
+choses dans ce palier ; trois n'y avaient pas leur place. Ce qui suit distingue
+une **route** fermée d'une **capacité** absente — ce n'est pas la même chose, et
+c'est toute la question.*
 
-**Un faux fossé, à ne pas payer :** « cartes des mutations depuis 2014 ».
-DVF est publique depuis 2014 et nous l'avons déjà. Ce n'est pas un actif
-propriétaire, c'est un argument de vente.
+#### Fermé pour de bon : constituer une base nationale d'annonces par extraction
+
+Seul point du triage adossé à de la jurisprudence — récente, répétée, chiffrée.
+
+| Décision | Ce qu'elle tient |
+|---|---|
+| Cass. 1ʳᵉ civ., **5 oct. 2022**, n° 21-16.307 — *LBC France c. Entreparticuliers.com* | L'investissement « substantiel » inclut modération, structuration et communication. Une **sous-base** (les annonces immobilières de leboncoin) est protégée pour elle-même. |
+| Cass. 1ʳᵉ civ., **15 oct. 2025**, n° 23-23.167 — *La Centrale c. ADS4ALL / LeParking* | Les investissements de **vérification** comptent. Critère nouveau : le risque pesant sur l'amortissement du modèle du producteur. |
+| CA Versailles, **14 avr. 2026**, n° 24/05370 — *LBC France c. Babel France (Jinka)* | Extraction et réutilisation illicites confirmées. **200 000 €** de dommages, 53 000 € d'article 700, astreinte de **500 € par annonce**. La première instance disait 50 000 € : l'appel a quadruplé. |
+
+**L'exception de fouille de textes et de données ne sauve pas l'opération.**
+Les articles L122-5-3 et L342-3 du CPI autorisent les *copies faites en vue de
+la fouille*, sur des contenus licitement accessibles, **et sous réserve
+d'opposition du titulaire** — opposition exprimée par les portails dans leurs
+CGU et leur `robots.txt`. Surtout, l'exception ne couvre jamais la
+**réutilisation** de la partie substantielle, qui est exactement ce que vend un
+agrégateur d'annonces.
+
+La route est fermée, et le prix de la franchir est publié.
+
+#### Mais la capacité n'est pas fermée — trois portes ouvertes
+
+**1. Les annonces du client lui-même.** L'API partenaire d'Apimo dit texto :
+« Notre API pour les prestataires immobiliers vous permet d'accéder aux
+**agences, annonces et contacts**, et d'envoyer des informations **selon vos
+droits** ». Ubiflow revendique plus de **100 logiciels métiers** connectés,
+Hektor expose un flux XML. Une agence **possède** ses annonces et les diffuse
+déjà par passerelle. Y accéder n'est pas une extraction, c'est un consentement —
+celui que le client donne en signant.
+
+**2. L'achat — écarté par décision, pas par impossibilité.** Yanport vend
+annonces et estimations en self-service, **200 € HT/mois** (Starter) à
+**2 500 €** (Business), sans engagement ; PriceHubble et Casafari occupent le
+même créneau. Ce n'était pas une frontière, c'était une ligne budgétaire — et la
+décision du 2026-09-08 la raye : un dépôt ouvert ne peut pas dépendre d'un flux
+que ses lecteurs n'ont pas. Noté ici pour mémoire, et pour qu'une reprise
+commerciale sache que la porte existe.
+
+**3. La sélection humaine — celle que Cityscan pratique.** Leurs propres
+traductions publiques disent : *« Source : Sélection de votre conseiller(ère)
+parmi les portails d'annonces »*. Le produit ne contient **pas** de base
+nationale d'annonces dans ce module ; il contient un écran où l'agent choisit.
+Légal, reproductible en une interface, et déjà l'état de l'art du concurrent.
+
+#### Les deux autres points étaient mal classés
+
+**Les avis clients.** immodvisor expose une **API partenaire** documentée,
+connectée aux CRM du secteur — et **déjà intégrée aux dossiers d'estimation de
+Yanport**, c'est-à-dire à notre analogue direct. Demande de partenariat, pas
+mur. → **palier 2.**
+
+**La signature électronique.** Yousign, prestataire qualifié eIDAS certifié
+ANSSI, vend une API en self-service à partir de **106 € HT/mois**. → **palier 2**
+techniquement, quelques jours d'intégration — mais **hors périmètre** sous la
+contrainte d'ouverture : c'est un abonnement, et il n'existe pas d'équivalent
+qualifié eIDAS gratuit. À laisser au déploiement qui en a besoin, pas au dépôt.
+
+#### Ce qui reste réellement difficile
+
+**La base installée.** Cityscan est devant 30 000 professionnels via Septeo.
+Mais la porte est documentée : **Apimo n'appartient pas à Septeo** (pied de page
+« apiwork »), expose une API prestataire, et **embarque déjà Modelo Insight
+comme tiers**. Un CRM qui intègre un tiers en intègre deux. Ce n'est pas fermé,
+c'est **long et commercial** — le seul poste où écrire du code n'avance à rien.
+
+**Le temps de calibration de l'estimateur.** Dix ans d'ajustement ne sont ni
+secrets ni brevetés. Ils sont simplement passés. Palier 2, mais qui dure.
+
+**Ce qui n'est pas un fossé du tout.** « Cartes des mutations depuis 2014 » :
+DVF est publique depuis 2014 et nous l'avons. Leurs propres sources citent, pour
+le marché local, « Observatoires immobiliers, Base DVF et Statistiques
+sociodémographiques (INSEE) » — trois sources publiques ou accessibles. Aucune
+archive privée d'annonces n'est revendiquée derrière la carte des prix.
+
+#### Résumé du palier 3
+
+Une seule chose est vraiment non duplicable : **extraire les portails**. Et ce
+n'était pas une capacité qui nous manquait — c'était un raccourci qu'il ne faut
+pas prendre, que Cityscan ne prend pas non plus, et qui coûte 500 € l'annonce
+quand on le prend.
 
 ---
 
@@ -403,6 +492,64 @@ s'ouvre par URL. Trois thématiques pourraient encore s'enrichir de routes déj�
 en production : délinquance enregistrée et petite enfance (Voisinage,
 Éducation), bruit aérien et antennes ANFR (Nuisances).
 
+## 3 ter. Ce qui est livré des annonces — `comparables-fr`, le 2026-09-08
+
+La couche **Comparables (sélection conseiller)**. Jeton de partage `cp`, panneau
+auto-monté par la couche, 34 contrôles navigateur au vert contre le DVF réel à
+Lyon (`npm run qa:comparables`), et une passe adverse (`codex challenge`) passée
+avant la livraison — c'est elle qui a sorti l'ordre d'épinglage du scan, la
+porte d'import qui laissait entrer des « ventes » que personne n'a enregistrées,
+et la phrase de confidentialité trop ronde.
+
+**Ce que c'est.** Un dossier par bien. On pose le bien — centre de la vue, ou
+adresse géocodée par la BAN — et le scan **s'épingle dessus** au lieu de suivre
+la caméra (`setScanPin`, le mécanisme que la coquille d'adresse portait déjà).
+Le panneau propose les ventes DVF dans **500 m**, on en retient ce qu'on veut,
+on saisit les annonces qu'on a sous les yeux, et la fiche se calcule.
+
+**Ce qui le distingue de la version du concurrent**, et c'est le seul écart qui
+compte : **un prix demandé et un prix payé ne sont jamais moyennés ensemble.**
+Deux médianes, deux silhouettes (le signe € pour une mutation, une étiquette de
+prix ajoutée au jeu d'icônes pour une annonce), et l'écart entre les deux
+imprimé sur sa propre ligne, avec les deux tailles d'échantillon à côté et la
+phrase qui refuse la lecture facile : ce ne sont pas les mêmes biens, ni les
+mêmes dates, et aucun ajustement temporel n'est appliqué — donc ce n'est pas une
+marge de négociation. La fourchette est un écart interquartile sur un
+échantillon nommé, refusée sous trois comparables, jamais présentée comme un
+intervalle de confiance.
+
+**Ce qu'il refuse, en le comptant** (A5) : pas de €/m² sans surface ; pas de
+€/m² recalculé pour une mutation multi-lots — DVF y publie `null`, et diviser
+quand même redonne les 1,28 M€/m² déjà mesurés sur un immeuble de 179 lots ; pas
+de €/m² hors de 300–50 000 €, ce qui attrape le zéro de trop sans exclure la
+Creuse ni le 6e. L'âge porte l'alpha (A2) ; une date **inconnue** ne prend pas
+l'alpha du plus vieux en silence, elle prend un trait pointillé (A1).
+
+**Les trois portes du palier 3, en pratique :**
+
+| Porte | État |
+|---|---|
+| Sélection humaine — celle de Cityscan | **livrée** : c'est le panneau |
+| Les annonces du client (Apimo, Ubiflow, Hektor) | **livrée à moitié** : l'import accepte un tableau JSON d'annonces avec des champs français ou anglais, et **fusionne**. Ce qui reste est commercial, pas technique : la conversation avec Apimo |
+| L'achat (Yanport, PriceHubble, Casafari) | **écartée par décision** — voir l'encadré en tête |
+
+**Et la ligne qu'il ne faut pas franchir est tenue par un test, pas par une
+promesse.** Le lien d'une annonce est stocké comme lien et jamais requêté ;
+`scripts/qa-comparables.mjs` enregistre **toutes** les requêtes de la page et
+échoue si une seule atteint l'hôte saisi dans ce champ. C'est l'assertion qui
+attrape la régression que personne ne verrait à l'œil.
+
+**Ce qui sort quand même, dit précisément.** Prix, surfaces, liens et dossier ne
+sont jamais transmis. Sortent : **l'adresse que le lecteur tape**, envoyée au
+géocodeur (BAN / IGN) pour devenir des coordonnées, et **la position du bien**,
+envoyée à `/api/dvf`. « Rien ne quitte le navigateur » était la formule ronde ;
+la passe adverse a eu raison de la refuser, et c'est la version exacte qui est
+imprimée en pied de panneau.
+
+**Ce que ça ne fait pas** (et qui reste au palier 2) : l'estimateur calibré, le
+générateur de documents, la note A→E. Le dossier n'est ni un avis de valeur
+signé ni un rapport de marque — c'est la matière d'où l'un et l'autre sortent.
+
 ---
 
 ## 4. Ordre de construction proposé
@@ -420,9 +567,12 @@ en production : délinquance enregistrée et petite enfance (Voisinage,
    2026-09-08**, et pris avant les couches parce qu'il décide de leur forme :
    toute couche ajoutée arrive maintenant avec l'obligation de déclarer sur
    quelle géométrie elle se laisse noter. Voir [`docs/BAREME.md`](BAREME.md).
-5. **Le mode intégrable et l'export PDF** — la surface commerciale, une fois que
-   le contenu vaut d'être partagé.
-6. ~~**L'estimateur** — en dernier, et jamais sans son intervalle.~~
+5. ~~**Le mode intégrable et l'export PDF**~~ — **fait le 2026-09-08** avec la
+   radiographie d'adresse (`?embed=1` + impression navigateur).
+6. ~~**Les annonces**~~ — **fait le 2026-09-08** (§ 3 ter), et prises hors
+   séquence parce que c'était la seule case où nous n'avions rien du tout et
+   que la réponse ne coûtait ni licence ni service : un écran de sélection.
+7. ~~**L'estimateur** — en dernier, et jamais sans son intervalle.~~
    **Fait le 2026-09-08, et pris en premier plutôt qu'en dernier.** La raison
    du changement d'ordre : c'est le seul poste de la grille qui ne dépendait
    d'aucun autre. La fiche adresse (palier 1) et le générateur de documents

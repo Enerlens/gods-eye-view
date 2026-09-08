@@ -6,6 +6,59 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-08
 
 ### Added
+- **Comparables (sélection conseiller) 🇫🇷 — le module qui manquait face à
+  Cityscan, construit comme eux le construisent, et sans rien acheter.** Le
+  démontage du concurrent (`docs/CITYSCAN.md`) avait laissé une seule case
+  vraiment vide : les annonces. Le fichier de traductions public de Cityscan
+  nomme lui-même sa source — « *Source : Sélection de votre conseiller(ère)
+  parmi les portails d'annonces* » — donc leur module de comparables ne contient
+  aucune base d'annonces : il contient un écran où le conseiller choisit. C'est
+  cet écran. **Un dossier par bien** : on pose le bien (centre de la vue ou
+  adresse géocodée), on retient les ventes DVF que le panneau propose dans un
+  rayon de 500 m, on saisit les annonces qu'on a sous les yeux, et on lit ce
+  dont un avis de valeur est réellement fait.
+  **Un prix demandé et un prix payé ne sont jamais moyennés ensemble.** C'est
+  l'axiome A1 appliqué à une fiche plutôt qu'à une choroplèthe : une intention
+  et une observation ne sont pas la même mesure. Deux médianes calculées à part,
+  deux silhouettes sur le globe — le signe € de DVF pour une mutation, une
+  **étiquette de prix** ajoutée au jeu d'icônes pour une annonce — et l'écart
+  entre les deux imprimé sur sa propre ligne, avec les deux tailles
+  d'échantillon à côté et la phrase qui refuse la lecture facile : ce ne sont ni
+  les mêmes biens ni les mêmes dates, aucun ajustement temporel n'est appliqué,
+  donc ce n'est **pas** une marge de négociation. La fourchette est un
+  **intervalle interquartile sur un échantillon nommé**, refusée sous trois
+  comparables, et jamais vendue comme un intervalle de confiance.
+  **Tout ce qui est écarté est compté et dit** (A5) : pas de €/m² sans surface,
+  pas de €/m² recalculé pour une mutation multi-lots — le registre y publie
+  `null` et diviser quand même donne les 1,28 M€/m² que `dvfFeed.js` avait déjà
+  mesurés sur un immeuble de 179 lots — et pas de €/m² hors de **300–50 000 €**,
+  bornes assez larges pour la Creuse comme pour le 6e et assez serrées pour
+  attraper un zéro de trop. L'âge porte l'alpha du marqueur (A2) ; une date
+  **inconnue** ne prend pas discrètement l'alpha du plus vieux, elle prend un
+  **trait pointillé** vers le bien.
+  **Rien n'est acheté et rien n'est aspiré.** Le fork part en open source, donc
+  un flux payant (Yanport à 200 €/mois, PriceHubble, Casafari) serait un mur
+  pour quiconque clone le dépôt, pas une dépendance. Et l'extraction des
+  portails est jugée, chiffrée et récente : Cass. 1re civ. **5 oct. 2022**
+  n° 21-16.307, Cass. 1re civ. **15 oct. 2025** n° 23-23.167, CA Versailles
+  **14 avr. 2026** n° 24/05370 — **200 000 €** et **500 € par annonce** sous
+  astreinte. Le lien d'une annonce est donc stocké **comme lien** et jamais
+  requêté : `scripts/qa-comparables.mjs` surveille toutes les requêtes de la
+  page et échoue si une seule atteint l'hôte saisi dans ce champ.
+  **Le dossier ne quitte pas le navigateur — dit précisément.** Pas de compte,
+  pas de backend, pas d'envoi : `localStorage`, export et import par fichier —
+  l'import accepte aussi un simple tableau JSON d'annonces, qui est la forme
+  qu'exporte le logiciel métier d'une agence, et il **fusionne** au lieu de
+  remplacer. Prix, surfaces et liens ne sont jamais transmis. Ce qui sort, et
+  qui est écrit dans le panneau plutôt que dans un commentaire : **l'adresse que
+  vous tapez**, envoyée au géocodeur (BAN / IGN) pour devenir des coordonnées,
+  et **la position du bien**, envoyée à DVF. « Rien ne quitte le navigateur »
+  était la version ronde ; une passe adverse a eu raison de la refuser. Le lien
+  de partage ne transporte que l'état on/off de la couche, ce qui est exactement
+  ce qu'on veut du bien d'un client. Jeton de partage `cp`, panneau auto-monté
+  par la couche (le patron du Pouls vélo), 34 contrôles navigateur au vert
+  contre le DVF réel à Lyon.
+
 - **La pastille « IGN Ortho » s'appelle « Satellite ».** Elle avait cessé d'être
   ce que son nom disait : depuis qu'un fond satellite mondial passe dessous, elle
   ne décrit plus un îlot français mais la seule source d'imagerie du globe. C'est

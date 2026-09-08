@@ -99,6 +99,7 @@
     "qa:implantation": "node scripts/qa-implantation.mjs",
     "bareme:fr": "node scripts/build-bareme-fr.mjs",
     "qa:avis-valeur": "node scripts/qa-avis-valeur.mjs",
+    "qa:comparables": "node scripts/qa-comparables.mjs",
     "velo:pulse": "node scripts/build-velo-pulse.mjs",
     "qa:velo-pulse": "node scripts/qa-velo-pulse.mjs",
     "qa:marine-buoys": "node scripts/qa-marine-buoys.mjs",
