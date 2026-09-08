@@ -249,7 +249,7 @@ export const DATA_CREDITS = [
   {
     key: 'world-satellite-keyless',
     html:
-      'Worldwide satellite base under IGN Ortho (keyless): ' +
+      'Worldwide satellite base under the Satellite stack (keyless): ' +
       '<a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank" rel="noopener">Esri World Imagery</a> ' +
       '&mdash; imagery &copy; Esri, Maxar, Earthstar Geographics and the GIS User Community, served to z19 under the ' +
       '<a href="https://www.esri.com/en-us/legal/terms/full-master-agreement" target="_blank" rel="noopener">Esri Terms of Use</a>. ' +

@@ -327,7 +327,7 @@ try {
     return { result, providers, lit, activeAfterRestore: controller.getActiveId(), before };
   });
   check(
-    'IGN Ortho composites over a world SATELLITE base — two layers, Esri underneath',
+    'the Satellite stack composites over a world SATELLITE base — two layers, Esri underneath',
     ignSwitch.result?.ok === true
       && ignSwitch.result?.activeStack === 'ign-ortho'
       // A URL template, not OSM: the ortho's base is now Esri World Imagery, so

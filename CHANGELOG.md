@@ -6,6 +6,17 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-08
 
 ### Added
+- **La pastille « IGN Ortho » s'appelle « Satellite ».** Elle avait cessé d'être
+  ce que son nom disait : depuis qu'un fond satellite mondial passe dessous, elle
+  ne décrit plus un îlot français mais la seule source d'imagerie du globe. C'est
+  la seule pastille du bandeau nommée par son CONTENU et non par son fournisseur,
+  parce que c'est la seule qui en sert plusieurs — IGN au-dessus de la France,
+  Esri au-delà. L'infobulle porte le détail : « Satellite — IGN 20 cm over
+  France, world satellite beyond ».
+  **L'identifiant `ign-ortho` ne bouge pas.** C'est le jeton de partage de
+  `?map=`, et le renommer aurait cassé tous les liens jamais copiés depuis
+  l'application. Seul change ce que l'opérateur lit.
+
 - **Ce qui est gratuit ici et bloqué dans un produit payant, écrit noir sur blanc.**
   `DATA_SOURCES.md` gagne une section **Commercial use** : un tableau ✅/❌ source
   par source, et le chemin de remplacement chiffré pour celles qui tombent. Le

@@ -84,7 +84,7 @@ const CONTROLLER_STACKS = [
   { id: 'bing-aerial', label: 'Bing Aerial', requiresIon: true, available: true, unavailableReason: null },
   { id: 'bing-labels', label: 'Bing Labels', requiresIon: true, available: true, unavailableReason: null },
   { id: 'osm', label: 'OSM', requiresIon: false, available: true, unavailableReason: null },
-  { id: 'ign-ortho', label: 'IGN Ortho', requiresIon: false, available: true, unavailableReason: null },
+  { id: 'ign-ortho', label: 'Satellite', requiresIon: false, available: true, unavailableReason: null },
   { id: 'ign-plan', label: 'Plan IGN', requiresIon: false, available: true, unavailableReason: null },
 ];
 
@@ -98,7 +98,7 @@ test('the row renders exactly the eight accepted sources', () => {
   ]);
   assert.deepEqual(container.children.map(chipText), [
     'Google 3D', 'Plan Google', 'Relief Google',
-    'Bing Aerial', 'Bing Labels', 'OSM', 'IGN Ortho', 'Plan IGN',
+    'Bing Aerial', 'Bing Labels', 'OSM', 'Satellite', 'Plan IGN',
   ]);
   assert.deepEqual(PRESENTED_MAP_STACK_IDS, [
     'photoreal', 'google-roadmap', 'google-terrain',
@@ -219,9 +219,9 @@ test('an AVAILABLE but partial source says where it works, without reading as br
   const ign = chipById(container, 'ign-ortho');
   assert.equal(ign.getAttribute('aria-disabled'), 'false', 'a partial source is selectable, not disabled');
   assert.ok(!ign.classList.contains('unavailable'));
-  assert.equal(ign.title, 'IGN Ortho — metropolitan France only');
-  assert.equal(ign.getAttribute('aria-label'), 'IGN Ortho — metropolitan France only');
-  assert.equal(chipText(ign), 'IGN Ortho', 'the coverage note lives in the tooltip, not the chip face');
+  assert.equal(ign.title, 'Satellite — metropolitan France only');
+  assert.equal(ign.getAttribute('aria-label'), 'Satellite — metropolitan France only');
+  assert.equal(chipText(ign), 'Satellite', 'the coverage note lives in the tooltip, not the chip face');
 
   ign.click();
   assert.deepEqual(selected, ['ign-ortho'], 'a partial source still switches');

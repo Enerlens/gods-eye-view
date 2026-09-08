@@ -70,14 +70,20 @@ export const MAP_STACKS = [
   // (`IGN_FRANCE_RECTANGLE`), because the DOM sit in three different vertical
   // systems and belong with the terrain work, not here.
   {
+    // The ID stays `ign-ortho` even though the label no longer says IGN: it is
+    // the share token in `?map=`, so renaming it would break every link ever
+    // copied out of this app. Only what the operator READS changed.
     id: 'ign-ortho',
-    label: 'IGN Ortho',
-    shortLabel: 'Ortho',
+    // Named for its CONTENT, not its provider — the only chip in the tray that
+    // has to be, because it is the only one serving more than one. It draws
+    // IGN's 20 cm orthophoto over keyless world satellite
+    // (see `_getStackProviders`), so "IGN Ortho" described a France-shaped
+    // island this stack stopped being.
+    label: 'Satellite',
+    shortLabel: 'Sat',
     kind: 'ign-wmts',
     requiresIon: false,
-    // Worldwide now, unlike `ign-plan`: this stack composites IGN's 20 cm
-    // orthophoto over keyless world satellite (see `_getStackProviders`), so
-    // the France clamp bounds the SHARP layer rather than the whole stack.
+    // The France clamp bounds the SHARP layer, not the whole stack.
     coverageNote: 'IGN 20 cm over France, world satellite beyond',
     wmts: {
       layer: 'ORTHOIMAGERY.ORTHOPHOTOS',

@@ -304,7 +304,7 @@ See [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md) for the authoritative runti
 
 **The legend, one more time:** 🟢 **no signup** — works out of the box · 🟡 **free key** — register, paste, done · 🔴 **metered** — a billing-enabled account; costs are small but real.
 
-Most of the globe is 🟢: the **basemap itself** (OSM worldwide, IGN Ortho and Plan IGN over France), **place search** (OpenStreetMap's Nominatim worldwide, the IGN Géoplateforme for French addresses), flights (anonymous), military traffic, satellites, earthquakes, CCTV, radio, bikeshare, French transit, French shared mobility, space missions, mapped installations, and every bundled dataset run with **zero keys**.
+Most of the globe is 🟢: the **basemap itself** (OSM and world satellite imagery worldwide, IGN's 20 cm orthophoto and Plan IGN over France), **place search** (OpenStreetMap's Nominatim worldwide, the IGN Géoplateforme for French addresses), flights (anonymous), military traffic, satellites, earthquakes, CCTV, radio, bikeshare, French transit, French shared mobility, space missions, mapped installations, and every bundled dataset run with **zero keys**.
 
 **`git clone && npm i && npm run dev` needs no credential at all.** What a keyless build gives up is the photorealistic 3D planet, the Bing imagery stacks, the voice mic, and the Google-only place context behind annotations and the cockpit readout — each of which says which key it wants rather than failing silently. The search box is not on that list any more: it geocodes keylessly.
 
