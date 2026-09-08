@@ -176,7 +176,7 @@ try {
     return { providers, tilesLoaded: window.__godsEyeView.viewer.scene.globe.tilesLoaded };
   });
   check(
-    'IGN Ortho switches keyless and composites over a world SATELLITE base layer',
+    'the Satellite stack switches keyless and composites over a world SATELLITE base layer',
     switched?.ok === true
       && switched?.activeStack === 'ign-ortho'
       // Esri (a URL template), not OSM: the base under a photograph has to be

@@ -1,4 +1,4 @@
-// Keyless worldwide satellite imagery — the base layer under IGN Ortho.
+// Keyless worldwide satellite imagery — the base layer of the `Satellite` stack.
 //
 // WHY THIS FILE EXISTS. A keyless build has no photography outside France.
 // Google's satellite is withheld from any EEA billing address (see
@@ -12,7 +12,7 @@
 // 2026-09-08, and both answer with real JPEG and open CORS:
 //
 //                      z=17     z=18     z=19     z=20
-//   IGN Ortho          15.4 kB  11.6 kB   9.8 kB   404
+//   IGN orthophoto     15.4 kB  11.6 kB   9.8 kB   404
 //   Esri World Imagery 16.3 kB  14.1 kB  12.2 kB  2521 B ("no data" tile)
 //
 // Esri and IGN cap at the SAME z=19, which is what makes the composite safe:
