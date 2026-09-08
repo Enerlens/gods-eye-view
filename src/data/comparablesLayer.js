@@ -111,6 +111,15 @@ const UPDATE_INTERVAL_MS = 900_000;
  */
 export const CANDIDATE_RADIUS_M = 500;
 
+/**
+ * Shelf life of the memoised DVF answer, in ms.
+ *
+ * Matches the proxy's own address cache. Without it a successful answer for a
+ * point was kept for the life of the tab: a register that republished, or a
+ * layer switched off and on again an hour later, still read the first reply.
+ */
+const DVF_MEMO_TTL_MS = 300_000;
+
 /** Ceiling for the UNPINNED scan. A posed property is exempt — see the header. */
 const MAX_ALTITUDE_M = 12_000;
 
@@ -120,6 +129,21 @@ export const VENTE_COLOR = '#3ce0c8';
 export const ANNONCE_COLOR = '#ff9f45';
 /** The property under study. */
 export const SUBJECT_COLOR = '#f4f7fb';
+
+/**
+ * Entity ids, and why the comparables sit under a prefix of their own.
+ *
+ * A comparable's id can come from an imported file, so it is
+ * attacker-controlled in the only sense that matters here: a row whose id was
+ * literally `bien` produced the same entity id as the property marker, and
+ * Cesium answers a duplicate id by THROWING — « An entity with id
+ * comparables:bien already exists » — which left half a dossier drawn and the
+ * panel counting rows the map did not have. The subject keeps a namespace no
+ * `c:`-prefixed id can reach.
+ */
+export const SUBJECT_ENTITY_ID = 'comparables:bien';
+const COMPARABLE_ENTITY_PREFIX = 'comparables:c:';
+const LINK_ENTITY_PREFIX = 'comparables:l:';
 
 /** Alpha floor for the oldest comparable, and for one with no date at all. */
 export const OLDEST_ALPHA = 0.5;
@@ -220,8 +244,11 @@ export async function comparablesFetch(url, options = {}, { impl = fetch } = {})
   }
 
   const memoKey = `${lat.toFixed(5)}|${lon.toFixed(5)}|${radiusM}`;
-  let dvf = _dvfMemo && _dvfMemo.key === memoKey ? _dvfMemo.payload : null;
+  const fresh = _dvfMemo && _dvfMemo.key === memoKey
+    && Date.now() - _dvfMemo.at < DVF_MEMO_TTL_MS;
+  let dvf = fresh ? _dvfMemo.payload : null;
   let asked = false;
+  let aborted = false;
   if (!dvf) {
     asked = true;
     try {
@@ -231,22 +258,31 @@ export async function comparablesFetch(url, options = {}, { impl = fetch } = {})
       );
       const payload = response?.ok ? await response.json() : null;
       dvf = payload && !payload.error ? payload : null;
-    } catch {
-      // An abort is the camera moving on; a failure is a register that did not
-      // answer. Both leave the dossier untouched, which is the point.
+    } catch (error) {
+      // AN ABORT IS NOT A SILENT REGISTER, and it used to be reported as one:
+      // the camera moved on, the scan was cancelled, and the row announced
+      // « DVF muet » over a pool it had simply not waited for. Named here so
+      // the payload below can keep the previous pool instead of emptying it.
+      aborted = error?.name === 'AbortError';
       dvf = null;
     }
-    if (dvf) _dvfMemo = { key: memoKey, payload: dvf };
+    if (dvf) _dvfMemo = { key: memoKey, payload: dvf, at: Date.now() };
   }
 
   const known = new Set((_dossier.comparables ?? []).map((entry) => entry.id));
   const sales = Array.isArray(dvf?.sales) ? dvf.sales : [];
-  const candidates = sales
+  const candidates = aborted ? _candidates : sales
     .map((sale) => comparableFromDvfSale(sale))
     .filter(Boolean)
     .map((entry) => ({ ...entry, distanceM: distanceMetres({ lat, lon }, entry), already: known.has(entry.id) }))
     .slice(0, CANDIDATE_LIMIT);
   _candidates = candidates;
+  // HOW MANY SALES EXIST, not how many arrived. `/api/dvf` serves at most
+  // DVF_MAX_SALES of them and reports the real count in its summary, so
+  // `sales.length` understated the population it was truncating: 450 mutations
+  // came back as « 24 des 400 », and the fifty the proxy had already dropped
+  // vanished from a sentence whose whole job is to declare what was dropped.
+  const foundTotal = Number.isFinite(dvf?.summary?.count) ? dvf.summary.count : sales.length;
 
   return {
     ok: true,
@@ -260,8 +296,9 @@ export async function comparablesFetch(url, options = {}, { impl = fetch } = {})
       candidates,
       // A5, at the scale of a list: the panel prints both numbers and the
       // criterion, so nobody reads 24 of 60 as 60.
-      candidateTotal: sales.length,
-      candidatesMissing: !dvf,
+      candidateTotal: foundTotal,
+      candidatesMissing: !dvf && !aborted,
+      scanAborted: aborted,
       candidatesFresh: asked,
       commune: dvf?.commune?.nom ?? dvf?.commune?.name ?? null,
       reference: dvf?.summary?.reference ?? null,
@@ -289,7 +326,7 @@ export function renderComparables({ payload, dataSource, viewer }) {
 
   if (subject && Number.isFinite(subject.lat) && Number.isFinite(subject.lon)) {
     dataSource.entities.add({
-      id: 'comparables:bien',
+      id: SUBJECT_ENTITY_ID,
       position: Cesium.Cartesian3.fromDegrees(subject.lon, subject.lat),
       billboard: {
         image: addressMarkerGlyph('target'),
@@ -315,7 +352,7 @@ export function renderComparables({ payload, dataSource, viewer }) {
     );
     const card = comparableLines(entry, subject);
     dataSource.entities.add({
-      id: `comparables:${entry.id}`,
+      id: `${COMPARABLE_ENTITY_PREFIX}${entry.id}`,
       position: Cesium.Cartesian3.fromDegrees(entry.lon, entry.lat),
       billboard: {
         image: addressMarkerGlyph(entry.kind === 'vente' ? 'euro' : 'tag'),
@@ -345,7 +382,7 @@ export function renderComparables({ payload, dataSource, viewer }) {
           dashLength: 12,
         });
       dataSource.entities.add({
-        id: `comparables:link:${entry.id}`,
+        id: `${LINK_ENTITY_PREFIX}${entry.id}`,
         polyline: {
           positions,
           width: 2,
@@ -410,6 +447,11 @@ const base = createAddressScanLayer({
 
   render: renderComparables,
 
+  // Fires after EVERY completed draw, including the rescans the shell queues
+  // for itself. This is the only notification that a scan actually landed —
+  // see `commit()` for the probe that proved `update()`'s promise is not one.
+  afterDraw: () => { publishScan(); },
+
   summarize(payload) {
     const summary = dossierSummary(payload.dossier ?? emptyDossier());
     return {
@@ -444,25 +486,38 @@ const base = createAddressScanLayer({
 /**
  * Push the dossier to storage, to the panel and to the map.
  *
- * The panel is repainted TWICE and both are needed. Once immediately, so the
- * row a reader just added appears under their cursor rather than after a round
- * trip; once when the rescan lands, because the candidate pool's "already in
- * the dossier" flags are computed inside the fetch. Without the second pass a
- * retained sale kept its `+` button, a second click found the sale already
- * there and did nothing, and the panel looked broken — measured in the browser
- * harness, which retained one of the three it asked for.
+ * The panel is repainted TWICE and both are needed. Once here, so the row a
+ * reader just added appears under their cursor rather than after a round trip;
+ * once when a draw LANDS, from {@link publishScan}, because the candidate
+ * pool's "already in the dossier" flags are computed inside the fetch.
+ *
+ * The second repaint used to hang off `base.update().then(...)`, and that was
+ * wrong in a way only a probe finds: the shell resolves that promise
+ * IMMEDIATELY when a scan is already in flight, queueing the real work
+ * internally. So the continuation ran against the previous scan's pool and the
+ * panel kept showing another property's sales. `afterDraw` fires once per
+ * completed draw — queued rescans, camera scans and edits alike — which is the
+ * notification this needed all along.
+ *
+ * @param {object} next The dossier to adopt.
+ * @param {{rescan?: boolean}} [options] `false` when the caller is about to
+ *   move the scan pin, which starts a scan of its own — see `setSubject`.
+ * @returns {boolean} Whether storage accepted it.
  */
-function commit(next) {
+function commit(next, { rescan = true } = {}) {
   _dossier = next;
   _revision += 1;
   const saved = saveDossier(_dossier);
   _panel?.setDossier(_dossier, { saved });
-  void base.update().then(() => {
-    _panel?.setCandidates(actions.candidates());
-    _panel?.setDossier(_dossier, { saved });
-    _rowControlsListener?.();
-  });
+  if (rescan) void base.update();
   return saved;
+}
+
+/** Repaint everything that reads a completed scan. */
+function publishScan() {
+  _panel?.setCandidates(actions.candidates());
+  _panel?.setDossier(_dossier, { saved: true });
+  _rowControlsListener?.();
 }
 
 /** The handlers the panel drives the layer with. */
@@ -470,7 +525,17 @@ const actions = {
   /** Pose the property under study, and pin the candidate scan to it. */
   setSubject(subject) {
     if (!subject || !Number.isFinite(subject.lat) || !Number.isFinite(subject.lon)) return false;
-    commit({
+    // THE PIN MOVES BEFORE THE SCAN RUNS, and the order is the whole
+    // correctness of this method. `commit()` used to run first and start a
+    // scan at the OLD pin carrying the NEW revision; the pin change then
+    // queued a second scan, whose result the panel never showed. Measured in a
+    // probe: posing a property 111 km away left the panel listing the previous
+    // property's sales, and moving it a further 111 m issued no request at all
+    // — the first scan had already consumed the new revision, so the shell's
+    // 250 m movement guard suppressed the correction. Now the pin is set
+    // first, the dossier is committed without asking for a scan of its own,
+    // and exactly one scan runs, at the right point, with the right revision.
+    const next = {
       ..._dossier,
       subject: {
         label: subject.label ?? null,
@@ -481,11 +546,13 @@ const actions = {
         rooms: subject.rooms ?? _dossier.subject?.rooms ?? null,
         type: subject.type ?? _dossier.subject?.type ?? null,
       },
-    });
+    };
     // The scan follows the property from here on. A dossier that re-listed its
     // candidates every time the camera drifted would be a different dossier
     // each time it was opened.
-    base.setScanPin({ lat: subject.lat, lon: subject.lon });
+    const moved = base.setScanPin({ lat: subject.lat, lon: subject.lon });
+    commit(next, { rescan: !moved });
+    if (moved) void base.update();
     return true;
   },
 
@@ -631,14 +698,7 @@ const comparablesLayer = {
   },
 
   async update(viewer, options) {
-    const ok = await base.update(viewer, options);
-    // The panel is redrawn from the scan that just landed rather than from the
-    // one that triggered it: the candidate pool and the map have to agree, and
-    // the pool is only final once the fetch has resolved.
-    _panel?.setCandidates(actions.candidates());
-    _panel?.setDossier(_dossier, { saved: true });
-    _rowControlsListener?.();
-    return ok;
+    return base.update(viewer, options);
   },
 
   getStats() {

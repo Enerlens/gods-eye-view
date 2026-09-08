@@ -1,4 +1,3 @@
-import { percentile } from './dvfFeed.js';
 import { greatCircleKm } from './trafficBounds.js';
 
 /**
@@ -43,8 +42,11 @@ import { greatCircleKm } from './trafficBounds.js';
  * never the same sign for a measured value and a default — extends to this
  * cleanly: an asking price is an INTENTION and a mutation is an OBSERVATION,
  * so they are counted apart, drawn apart, and the difference between the two
- * medians is printed as its own line. That difference is the negotiation
- * margin, and it is the most useful number on the card.
+ * medians is printed as its own line — with both sample sizes beside it, and
+ * with the sentence that refuses the words a reader would otherwise supply:
+ * it is not a negotiation margin. It is the distance between what is being
+ * asked for one set of properties and what was paid for another, at another
+ * time, with no temporal adjustment applied to either.
  *
  * WHAT IS REFUSED, AND COUNTED WHILE BEING REFUSED (A5). No ratio without a
  * surface. No ratio recomputed for a DVF mutation that bought more than one
@@ -55,12 +57,18 @@ import { greatCircleKm } from './trafficBounds.js';
  * and one 20 000 000 €/m² typo moves a median more than every honest entry in
  * the dossier. Every one of those exclusions is counted and printed.
  *
- * NOTHING LEAVES THE BROWSER. The dossier lives in `localStorage` and moves by
- * file. There is no account, no backend and no upload: a client's property, its
- * address and its price are processed on the machine that typed them. That is
- * why the share link carries the layer's on/off state and nothing else — see
- * `layerState.js` — and it is a property worth having, not a limitation to
- * apologise for.
+ * WHAT LEAVES THE BROWSER, EXACTLY. The dossier does not: it lives in
+ * `localStorage`, moves by file, and there is no account, no backend and no
+ * upload — which is why the share link carries the layer's on/off state and
+ * nothing else (see `layerState.js`). But « rien ne quitte le navigateur » was
+ * too round a sentence to be true, and an adversarial pass said so: THREE
+ * things do go out, and each is named on screen rather than in a comment.
+ * The ADDRESS a reader types goes to `/api/geocode` and to the BAN reverse
+ * endpoint, because turning an address into a coordinate is what those are
+ * for. The SCAN POINT goes to `/api/dvf`. No price, no surface, no listing
+ * link and no dossier ever does. The distinction matters: an address is the
+ * one field a client would recognise, and a reader deserves the precise
+ * sentence rather than the flattering one.
  *
  * @module data/comparablesDossier
  */
@@ -103,6 +111,16 @@ export const SHORT_RATIO_SAMPLE = 5;
 /** Days after which a keyed-in listing is called old on the card. */
 export const STALE_LISTING_DAYS = 180;
 
+/**
+ * Largest subject surface the estimate will multiply, in m².
+ *
+ * A guard against arithmetic, not against architecture: `1e308` typed into the
+ * surface field produced an estimate of `Infinity` and a badge reading
+ * « Infinity k€ ». Ten hectares of floor area is past any dwelling and past
+ * most buildings, so anything above it is a keystroke.
+ */
+export const MAX_SURFACE_M2 = 100_000;
+
 /** Cap on the candidate sales the panel offers. Declared, per A5. */
 export const CANDIDATE_LIMIT = 24;
 
@@ -113,9 +131,26 @@ function money(value) {
   return Number.isFinite(value) ? `${_fr.format(Math.round(value))} €` : '—';
 }
 
-/** @param {?number} value */
+/** @param {?number} value A whole quantity — people, rows, metres. */
 function count(value) {
   return Number.isFinite(value) ? _fr.format(Math.round(value)) : '—';
+}
+
+/**
+ * A measured quantity, keeping the decimal the reader typed.
+ *
+ * Surfaces go through here and counts do not: a 70,4 m² flat was printed
+ * « 70,4 m² » in the panel row and « 70 m² » on the card, from the same field,
+ * while the arithmetic used 70,4. Two numbers on screen for one measurement is
+ * a reader wondering which one the estimate used.
+ *
+ * @param {?number} value
+ * @returns {string}
+ */
+function amount(value) {
+  return Number.isFinite(value)
+    ? new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(value)
+    : '—';
 }
 
 /**
@@ -148,10 +183,16 @@ export function agree(n, one, many = `${one}s`) {
 export function parseNumber(value) {
   if (value === null || value === undefined) return null;
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
-  const cleaned = String(value)
+  let cleaned = String(value)
     .replace(/[\s  ]/g, '')
     .replace(/[€]/g, '')
-    .replace(',', '.');
+    .trim();
+  // « 1.234,56 » is how a French export writes a number, and it used to parse
+  // as nothing at all: the comma became a dot, `1.234.56` is not a number, and
+  // a real price arrived on the card as « sans prix ». When BOTH separators are
+  // present the dot is the thousands mark and the comma is the decimal.
+  if (cleaned.includes(',') && cleaned.includes('.')) cleaned = cleaned.replace(/\./g, '');
+  cleaned = cleaned.replace(',', '.');
   if (cleaned === '') return null;
   const parsed = Number(cleaned);
   return Number.isFinite(parsed) ? parsed : null;
@@ -225,10 +266,31 @@ export function frenchDate(isoDate) {
   return `${day}/${month}/${year}`;
 }
 
-/** Identifier for a keyed-in row. Stable once written, never derived from data. */
-function newId() {
-  const random = Math.random().toString(36).slice(2, 10);
-  return `saisie-${Date.now().toString(36)}-${random}`;
+/**
+ * Identifier for a row that arrived without one.
+ *
+ * DERIVED FROM THE CONTENT, not from a clock and a random number, and that is a
+ * deduplication rule rather than a naming preference: an agency export carries
+ * no id of ours, so importing the same file twice produced two comparables —
+ * and three imports of a one-row file unlocked a three-sample bracket built
+ * from one listing. Same kind, same address, same price, same surface, same
+ * date is the same listing; {@link mergeComparables} then refuses it by id.
+ *
+ * A genuine second sale at the same address on the same day for the same price
+ * is the collision this accepts, and it is the right trade: the reader sees the
+ * row in the panel and can add the second by hand, whereas a silently doubled
+ * sample is invisible.
+ *
+ * @param {object} parts
+ * @returns {string}
+ */
+function derivedId({ kind, label, price, surface, date }) {
+  const seed = [kind, label, price, surface, date].join('|');
+  let hash = 5381;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (((hash << 5) + hash) ^ seed.charCodeAt(index)) >>> 0;
+  }
+  return `saisie-${hash.toString(36)}`;
 }
 
 /** An empty dossier — the state the layer starts in and returns to. */
@@ -252,24 +314,42 @@ export function emptyDossier() {
  *   lots: ?number}} input
  * @returns {{prixM2: ?number, refused: ?string}}
  */
-export function ratioFor({ price, surface, kind, given = null, lots = null }) {
+export function ratioFor({
+  price, surface, kind, given = null, lots = null, refused = null,
+}) {
+  const inBounds = (value) => value >= PRIX_M2_BOUNDS.min && value <= PRIX_M2_BOUNDS.max;
   if (kind === 'vente') {
-    // The register decided. A null here means the sale is not a comparable in
-    // €/m², which is a fact about the mutation, not a gap in our data.
+    // THE LOT COUNT IS CHECKED BEFORE THE RATIO, not after. A supplied ratio
+    // used to win outright, which is right for a payload DVF built — the
+    // register only publishes one when the mutation bought exactly one
+    // dwelling — and wrong for anything else that can reach this function.
+    // A file claiming `kind: 'vente'`, `dwellingCount: 2`, `prixM2: 10000`
+    // entered the SALE median at 10 000 €/m² with no exclusion counted. The
+    // register's rule is now enforced here rather than assumed upstream.
+    if (Number.isFinite(lots) && lots !== 1) return { prixM2: null, refused: 'lots' };
+    if (Number.isFinite(given) && Number.isFinite(price) && price <= 0) {
+      return { prixM2: null, refused: 'prix' };
+    }
     if (Number.isFinite(given)) {
-      return given >= PRIX_M2_BOUNDS.min && given <= PRIX_M2_BOUNDS.max
+      // Bounds BEFORE rounding: 299,6 €/m² rounded to 300 used to slip past
+      // its own floor.
+      return inBounds(given)
         ? { prixM2: Math.round(given), refused: null }
         : { prixM2: null, refused: 'bornes' };
     }
-    return { prixM2: null, refused: Number.isFinite(lots) && lots !== 1 ? 'lots' : 'surface' };
+    // WHY A CARRIED REASON WINS HERE. Normalising is not idempotent without
+    // it: a sale refused for `bornes` has a null ratio, so a second pass —
+    // which is exactly what retaining a candidate does — re-derived the reason
+    // from what was left and printed « 1 sans surface » beside a row showing
+    // 100 m². The reason belongs to the row, not to the pass.
+    if (refused) return { prixM2: null, refused };
+    return { prixM2: null, refused: Number.isFinite(surface) && surface > 0 ? 'lots' : 'surface' };
   }
   if (!Number.isFinite(price) || price <= 0) return { prixM2: null, refused: 'prix' };
   if (!Number.isFinite(surface) || surface <= 0) return { prixM2: null, refused: 'surface' };
-  const ratio = Math.round(price / surface);
-  if (ratio < PRIX_M2_BOUNDS.min || ratio > PRIX_M2_BOUNDS.max) {
-    return { prixM2: null, refused: 'bornes' };
-  }
-  return { prixM2: ratio, refused: null };
+  const ratio = price / surface;
+  if (!inBounds(ratio)) return { prixM2: null, refused: 'bornes' };
+  return { prixM2: Math.round(ratio), refused: null };
 }
 
 /**
@@ -300,11 +380,18 @@ export function normaliseComparable(raw) {
   const url = safeListingUrl(raw.url);
   const lots = parseNumber(raw.lots ?? raw.dwellingCount);
   const { prixM2, refused } = ratioFor({
-    price, surface, kind, given: parseNumber(raw.prixM2), lots,
+    price,
+    surface,
+    kind,
+    given: parseNumber(raw.prixM2),
+    lots,
+    // Carried so a second pass over an already-normalised row keeps the reason
+    // the first pass established — see {@link ratioFor}.
+    refused: typeof raw.ratioRefused === 'string' ? raw.ratioRefused : null,
   });
   if (!label && !Number.isFinite(price) && !Number.isFinite(prixM2)) return null;
   return {
-    id: String(raw.id ?? '').trim() || newId(),
+    id: String(raw.id ?? '').trim() || derivedId({ kind, label, price, surface, date }),
     kind,
     label: label || (kind === 'vente' ? 'Vente sans adresse publiée' : 'Annonce sans adresse'),
     lat: Number.isFinite(lat) ? lat : null,
@@ -357,6 +444,34 @@ export function comparableFromDvfSale(sale) {
 }
 
 /**
+ * A quantile of a sorted sample, interpolated and NOT rounded.
+ *
+ * The same linear interpolation as `dvfFeed.percentile()`, minus its final
+ * `Math.round()`, and the difference is not cosmetic here: that function
+ * answers in €/m², where a rounded euro is the unit anyone reads, while these
+ * quantiles get MULTIPLIED BY A SURFACE before they become the number a client
+ * sees. Rounding first moved a printed bracket by 50 to 100 € for a 100 m²
+ * flat — 250 200 € where the sample says 250 150 € — for no reason a reader
+ * could see or check. Rounded once, at the end, when euros become euros.
+ *
+ * Local rather than a change to the shared helper: six other layers print that
+ * helper's output directly, in €/m², where its rounding is correct.
+ *
+ * @param {number[]} sorted
+ * @param {number} fraction
+ * @returns {?number}
+ */
+export function quantile(sorted, fraction) {
+  if (!Array.isArray(sorted) || sorted.length === 0) return null;
+  if (sorted.length === 1) return sorted[0];
+  const position = (sorted.length - 1) * fraction;
+  const low = Math.floor(position);
+  const high = Math.ceil(position);
+  if (low === high) return sorted[low];
+  return sorted[low] + (sorted[high] - sorted[low]) * (position - low);
+}
+
+/**
  * The statistics of one sample, and what the sample left out.
  *
  * `withRatio` beside `count` on purpose, for the reason `dvfFeed.js` states:
@@ -382,9 +497,9 @@ export function sampleStats(entries) {
   return {
     count: list.length,
     withRatio: ratios.length,
-    median: percentile(ratios, 0.5),
-    p25: percentile(ratios, 0.25),
-    p75: percentile(ratios, 0.75),
+    median: quantile(ratios, 0.5),
+    p25: quantile(ratios, 0.25),
+    p75: quantile(ratios, 0.75),
     min: ratios.length ? ratios[0] : null,
     max: ratios.length ? ratios[ratios.length - 1] : null,
     refused,
@@ -419,28 +534,40 @@ export function dossierSummary(dossier, { now = Date.now() } = {}) {
     : (annonces.withRatio >= MIN_RATIO_SAMPLE ? 'annonces' : null);
   const chosen = basis === 'ventes' ? ventes : (basis === 'annonces' ? annonces : null);
   const surface = parseNumber(subject?.surface);
-  const estimate = chosen && Number.isFinite(surface) && surface > 0 && chosen.median !== null
+  const usableSurface = Number.isFinite(surface) && surface > 0 && surface <= MAX_SURFACE_M2;
+  const estimate = chosen && usableSurface && chosen.median !== null
     ? {
       basis,
       sample: chosen.withRatio,
       short: chosen.withRatio < SHORT_RATIO_SAMPLE,
+      // ROUNDED ONCE, AT THE END. Rounding each €/m² quartile first and
+      // multiplying second moved a printed bracket by tens of euros for no
+      // reason a reader could see — 250 200 € where the sample says 250 150 €.
+      // The ratios keep their decimals here and the euros are rounded when
+      // they become euros.
       low: Math.round(chosen.p25 * surface),
       mid: Math.round(chosen.median * surface),
       high: Math.round(chosen.p75 * surface),
     }
     : null;
 
-  // The negotiation margin, and it only exists when both instruments answered.
+  // The distance between the two instruments, and it only exists when both
+  // answered. NOT a negotiation margin, whatever it looks like: these are
+  // different properties at different dates with no temporal adjustment, and
+  // the line that prints it says so.
   const gapPercent = ventes.median !== null && annonces.median !== null && ventes.median > 0
     ? Math.round(((annonces.median - ventes.median) / ventes.median) * 1000) / 10
     : null;
 
-  const distances = retained
-    .map((entry) => distanceMetres(subject, entry))
-    .filter((value) => Number.isFinite(value));
-  const ages = retained
-    .map((entry) => ageDays(entry.date, now))
-    .filter((value) => Number.isFinite(value));
+  // `Math.max(...list)` throws `RangeError: Maximum call stack size exceeded`
+  // on a long enough dossier — reproduced at 150 000 rows, which an import can
+  // reach — so the maxima are folded rather than spread.
+  const maxOf = (list) => list.reduce(
+    (best, value) => (Number.isFinite(value) && (best === null || value > best) ? value : best),
+    null,
+  );
+  const distances = retained.map((entry) => distanceMetres(subject, entry));
+  const ages = retained.map((entry) => ageDays(entry.date, now));
   const staleListings = retained.filter((entry) => entry.kind === 'annonce'
     && (ageDays(entry.date, now) ?? 0) > STALE_LISTING_DAYS).length;
 
@@ -464,9 +591,14 @@ export function dossierSummary(dossier, { now = Date.now() } = {}) {
     estimate,
     gapPercent,
     staleListings,
-    maxDistanceM: distances.length ? Math.max(...distances) : null,
-    oldestDays: ages.length ? Math.max(...ages) : null,
+    maxDistanceM: maxOf(distances),
+    oldestDays: maxOf(ages),
     unplaced: ventes.unplaced + annonces.unplaced,
+    // Split, because the sentence about them is not the same: an unplaced row
+    // that BEARS a ratio really is counted in a median, and one that does not
+    // is absent from everything and was being told it counted.
+    unplacedCounted: retained.filter((entry) => (!Number.isFinite(entry.lat)
+      || !Number.isFinite(entry.lon)) && Number.isFinite(entry.prixM2)).length,
   };
 }
 
@@ -499,6 +631,26 @@ export function refusalWords(reason, n = 1) {
 }
 
 /**
+ * Take the card separator out of a line, and keep taking it out.
+ *
+ * ONE PASS IS NOT ENOUGH, and the failure is a label a reader can type. A
+ * single `replaceAll(' · ', ' — ')` is non-overlapping: « A · · B » has one
+ * match at the first separator, and the replacement puts a space in front of
+ * the surviving dot — so the line leaves here still carrying « · » and
+ * `cardFromEntity()` splits the sentence in two on screen. Repeat until the
+ * string stops changing, which is at most a couple of passes because every
+ * pass strictly reduces the number of dots.
+ *
+ * @param {string} line
+ * @returns {string}
+ */
+export function sanitiseLine(line) {
+  let out = String(line ?? '');
+  while (out.includes(' · ')) out = out.replaceAll(' · ', ' — ');
+  return out;
+}
+
+/**
  * The dossier as the lines a card prints.
  *
  * NO LINE MAY CONTAIN ' · '. `cardFromEntity()` splits an entity description on
@@ -522,7 +674,7 @@ export function dossierLines(dossier, { now = Date.now() } = {}) {
 
   if (subject) {
     const traits = [
-      Number.isFinite(subject.surface) ? `${count(subject.surface)} m²` : null,
+      Number.isFinite(subject.surface) ? `${amount(subject.surface)} m²` : null,
       Number.isFinite(subject.rooms) ? `${count(subject.rooms)} ${agree(subject.rooms, 'pièce')}` : null,
       subject.type,
     ].filter(Boolean);
@@ -534,7 +686,7 @@ export function dossierLines(dossier, { now = Date.now() } = {}) {
 
   if (summary.retained === 0) {
     lines.push('Aucun comparable retenu — le dossier est vide');
-    return lines.map((line) => line.replaceAll(' · ', ' — '));
+    return lines.map(sanitiseLine);
   }
 
   const dropped = summary.total - summary.retained;
@@ -563,8 +715,15 @@ export function dossierLines(dossier, { now = Date.now() } = {}) {
 
   if (summary.gapPercent !== null) {
     const sign = summary.gapPercent > 0 ? '+' : '';
+    // THE TWO SAMPLE SIZES TRAVEL WITH THE PERCENTAGE. A median of one listing
+    // against a median of two sales is a legitimate thing to print and an
+    // illegitimate thing to print alone: the reader has to see that the
+    // headline rests on three rows before quoting it.
     lines.push(`Écart affichage sur acte ${sign}${String(summary.gapPercent).replace('.', ',')} %`
-      + ' — un prix demandé n’est pas un prix payé, et les deux échantillons ne couvrent pas la même période');
+      + ` — ${count(summary.annonces.withRatio)} ${agree(summary.annonces.withRatio, 'annonce')}`
+      + ` contre ${count(summary.ventes.withRatio)} ${agree(summary.ventes.withRatio, 'vente')}`);
+    lines.push('Ce n’est pas une marge de négociation — ce sont d’autres biens,'
+      + ' à d’autres dates, et aucun ajustement temporel n’est appliqué');
   }
 
   if (summary.estimate) {
@@ -581,10 +740,18 @@ export function dossierLines(dossier, { now = Date.now() } = {}) {
     // surface is missing, who fills it in and still gets no range because the
     // sample was short all along, has been sent round a corner.
     const blocking = [];
+    const surface = summary.subject?.surface ?? null;
     if (!summary.subject) blocking.push('aucun bien défini');
-    else if (!Number.isFinite(summary.subject.surface)) blocking.push('surface du bien non renseignée');
+    else if (!Number.isFinite(surface)) blocking.push('surface du bien non renseignée');
+    else if (surface <= 0) blocking.push('surface du bien nulle ou négative');
+    else if (surface > MAX_SURFACE_M2) {
+      blocking.push(`surface du bien au-delà de ${count(MAX_SURFACE_M2)} m², probablement une faute de frappe`);
+    }
     if (!summary.basis) blocking.push(`moins de ${MIN_RATIO_SAMPLE} comparables avec un €/m²`);
-    lines.push(`Pas de fourchette — ${blocking.join(', ')}`);
+    // A refusal with no reason after the dash is the one thing worse than the
+    // refusal: reproduced with a surface of 0, which passed the finiteness
+    // check and named nothing.
+    lines.push(`Pas de fourchette — ${blocking.length ? blocking.join(', ') : 'raison indéterminée'}`);
   }
 
   const refusals = mergedRefusals(summary);
@@ -596,8 +763,15 @@ export function dossierLines(dossier, { now = Date.now() } = {}) {
   }
   if (summary.unplaced > 0) {
     const n = summary.unplaced;
-    lines.push(`${count(n)} ${agree(n, 'comparable')} sans position`
-      + ` — ${agree(n, 'compté')} dans les médianes, ${agree(n, 'absent')} de la carte`);
+    const counted = summary.unplacedCounted;
+    // « comptés dans les médianes » was printed for every unplaced row, including
+    // rows with no ratio at all — which the line above had just declared
+    // excluded. Two different facts, so two different sentences.
+    lines.push(counted === n
+      ? `${count(n)} ${agree(n, 'comparable')} sans position`
+        + ` — ${agree(n, 'compté')} dans les médianes, ${agree(n, 'absent')} de la carte`
+      : `${count(n)} ${agree(n, 'comparable')} sans position, dont ${count(counted)}`
+        + ` dans les médianes — ${agree(n, 'absent')} de la carte`);
   }
   if (summary.staleListings > 0) {
     const n = summary.staleListings;
@@ -608,7 +782,7 @@ export function dossierLines(dossier, { now = Date.now() } = {}) {
     lines.push(`Comparable le plus éloigné à ${count(summary.maxDistanceM)} m du bien`);
   }
 
-  return lines.map((line) => line.replaceAll(' · ', ' — '));
+  return lines.map(sanitiseLine);
 }
 
 /**
@@ -625,7 +799,7 @@ export function comparableLines(entry, subject = null, { now = Date.now() } = {}
     ? `${kindWord} — prix acté, source DGFiP`
     : `${kindWord} — prix demandé, saisi par le conseiller`);
   const traits = [
-    Number.isFinite(entry.surface) ? `${count(entry.surface)} m²` : null,
+    Number.isFinite(entry.surface) ? `${amount(entry.surface)} m²` : null,
     Number.isFinite(entry.rooms) ? `${count(entry.rooms)} ${agree(entry.rooms, 'pièce')}` : null,
     entry.type,
   ].filter(Boolean);
@@ -645,10 +819,10 @@ export function comparableLines(entry, subject = null, { now = Date.now() } = {}
   }
   if (distance !== null) details.push(`À ${count(distance)} m du bien étudié`);
   if (entry.portal) details.push(`Vue sur ${entry.portal}`);
-  if (entry.note) details.push(entry.note.replaceAll(' · ', ' — '));
+  if (entry.note) details.push(entry.note);
   return {
-    title: entry.label,
-    details: details.map((line) => line.replaceAll(' · ', ' — ')),
+    title: sanitiseLine(entry.label),
+    details: details.map(sanitiseLine),
   };
 }
 
@@ -689,7 +863,13 @@ export function adoptDossier(parsed) {
   const comparables = (Array.isArray(parsed.comparables) ? parsed.comparables : [])
     .map((entry) => normaliseComparable(entry))
     .filter(Boolean);
-  const subject = parsed.subject && Number.isFinite(parseNumber(parsed.subject.lat))
+  // BOTH coordinates, not just the latitude. `{subject: {lat: 45}}` used to
+  // adopt with `lon: null`, which the panel then formatted with `.toFixed()`
+  // and the render skipped — an imported file could break the panel and be
+  // saved on the way through.
+  const subject = parsed.subject
+    && Number.isFinite(parseNumber(parsed.subject.lat))
+    && Number.isFinite(parseNumber(parsed.subject.lon))
     ? {
       label: String(parsed.subject.label ?? '').slice(0, 160) || null,
       commune: String(parsed.subject.commune ?? '').slice(0, 80) || null,
@@ -760,7 +940,15 @@ export function importDossierJson(text) {
     return { dossier: null, kept: 0, rejected: 0, mode: 'illisible' };
   }
   if (Array.isArray(parsed)) {
-    const kept = parsed.map((entry) => normaliseComparable(entry)).filter(Boolean);
+    // A BARE ARRAY IS A LIST OF ASKING PRICES, whatever its rows claim to be.
+    // `kind` used to be trusted here, so a file carrying `kind: "vente"` put
+    // rows the DGFiP never published into the SALES median — and the card then
+    // printed « Fourchette sur les ventes actées » over them. Nothing outside
+    // `/api/dvf` may enter that sample; the array door only opens onto the
+    // other one.
+    const kept = parsed
+      .map((entry) => normaliseComparable({ ...entry, kind: 'annonce', prixM2: null }))
+      .filter(Boolean);
     return {
       dossier: { version: COMPARABLES_SCHEMA_VERSION, subject: null, comparables: kept },
       kept: kept.length,

@@ -14,6 +14,7 @@ import comparablesLayer, {
   COMPARABLES_LAYER_ID,
   OLDEST_ALPHA,
   OLDEST_DAYS,
+  SUBJECT_ENTITY_ID,
   VENTE_COLOR,
   _comparablesDossierForTest,
   _resetComparablesForTest,
@@ -144,6 +145,46 @@ test('a sale already in the dossier is offered as taken, not as new', async () =
   assert.equal(payload.candidates[1].already, false);
 });
 
+test('the declared total is the population, not what the proxy served', async () => {
+  // `/api/dvf` serves at most 400 of the sales it found and reports the real
+  // count in its summary. Using `sales.length` turned 450 mutations into
+  // « 24 des 400 », which is the exact sentence A5 exists to keep honest.
+  _resetComparablesForTest();
+  const served = Array.from({ length: 400 }, (_unused, index) => sale(index));
+  const impl = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      commune: { code: '69382', nom: 'Lyon 2e' },
+      sales: served,
+      summary: { count: 450, served: 400, truncated: true },
+    }),
+  });
+  const payload = await (await comparablesFetch(
+    `gev:comparables?lat=${LYON.lat}&lon=${LYON.lon}&rev=0`, {}, { impl },
+  )).json();
+  assert.equal(payload.candidateTotal, 450);
+  assert.equal(payload.candidates.length, CANDIDATE_LIMIT);
+});
+
+test('an aborted scan keeps the pool it had, and does not report a silent register', async () => {
+  _resetComparablesForTest();
+  const { impl } = dvfStub([sale(1), sale(2)]);
+  await comparablesFetch(`gev:comparables?lat=${LYON.lat}&lon=${LYON.lon}&rev=0`, {}, { impl });
+  const abortImpl = async () => {
+    const error = new Error('aborted');
+    error.name = 'AbortError';
+    throw error;
+  };
+  // A different point, so the memo cannot answer it.
+  const payload = await (await comparablesFetch(
+    'gev:comparables?lat=48.85&lon=2.35&rev=1', {}, { impl: abortImpl },
+  )).json();
+  assert.equal(payload.scanAborted, true);
+  assert.equal(payload.candidatesMissing, false, 'a cancelled scan is not a mute register');
+  assert.equal(payload.candidates.length, 2, 'the pool it had is the pool it keeps');
+});
+
 test('a scan with no coordinate is refused rather than answered about 0°N 0°E', async () => {
   _resetComparablesForTest();
   const { impl, calls } = dvfStub([]);
@@ -204,7 +245,34 @@ test('an unknown date is a dashed connector, not a quiet fade', () => {
   const dashed = links.filter((entity) => 'dashLength' in entity.polyline.material);
   assert.equal(dashed.length, 1, 'exactly the one whose age nobody measured');
   const dateless = payload.dossier.comparables.find((entry) => entry.date === null);
-  assert.equal(dashed[0].id, `comparables:link:${dateless.id}`);
+  assert.equal(dashed[0].id, `comparables:l:${dateless.id}`);
+});
+
+test('an imported id cannot collide with the property marker', () => {
+  // Cesium throws on a duplicate entity id, and the id of a comparable can come
+  // straight out of an imported file. A row literally called `bien` used to
+  // take the subject's entity id with it and leave half a dossier drawn.
+  const dataSource = fakeDataSource();
+  const hostile = normaliseComparable({
+    id: 'bien', kind: 'annonce', label: 'Collision', price: 400_000, surface: 70,
+    lat: LYON.lat + 0.001, lon: LYON.lon, date: '2026-09-01',
+  });
+  const drawn = renderComparables({
+    payload: {
+      dossier: {
+        ...emptyDossier(),
+        subject: { label: 'Le bien', lat: LYON.lat, lon: LYON.lon },
+        comparables: [hostile],
+      },
+    },
+    dataSource,
+    viewer: null,
+  });
+  assert.equal(drawn, 3, 'the property, the marker and the connector all drew');
+  const ids = dataSource.added.map((entity) => entity.id);
+  assert.equal(new Set(ids).size, ids.length, 'no two entities share an id');
+  assert.ok(ids.includes(SUBJECT_ENTITY_ID));
+  assert.ok(ids.includes('comparables:c:bien'));
 });
 
 test('an unretained comparable leaves the map with the median', () => {

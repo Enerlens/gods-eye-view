@@ -229,7 +229,13 @@ async function main() {
 
     console.log(`[qa] booting ${APP_URL}`);
     await page.goto(APP_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForFunction(() => Boolean(window.__godsEyeView?.dataManager), { timeout: 60000 });
+    // NOT `page.waitForFunction`: its default `raf` polling never ticks on a
+    // globe that idles — and since « un fond qui se met en veille » (#103) the
+    // globe idles at boot, so the wait hung for 60 s on an app that was up in
+    // twelve seconds. Measured on this branch, before and after the rebase.
+    check('the app booted', await waitFor(
+      page, () => Boolean(window.__godsEyeView?.dataManager), null, 60000,
+    ));
     await pump(page, 6);
     await setView(page, LYON);
 
@@ -265,21 +271,32 @@ async function main() {
     console.log('\n[3] The pool comes from the live register');
     check('the pool has candidates', state.pool > 0, `pool=${state.pool}`);
     check('the pool declares its radius', /\d+ m/.test(state.poolCount || ''), state.poolCount || '');
-    const toRetain = Math.min(3, state.pool);
-    for (let index = 0; index < toRetain; index += 1) {
+    // RETAIN UNTIL THE SAMPLE CAN CARRY A BRACKET, not a fixed three. A DVF
+    // sale is only a comparable in €/m² when it bought exactly one dwelling,
+    // and around Bellecour a third of them do not — so a fixed count left the
+    // dossier one ratio short of the estimate, and the harness never exercised
+    // the arithmetic it exists to check.
+    let retainedCount = 0;
+    for (let index = 0; index < 10; index += 1) {
       // Always the first ENABLED row: retaining removes nothing from the list,
       // it disables the button, so the next un-taken row is the next match.
       const clicked = await clickIn(
         page, `${PANEL} [data-cmp-pool] .cmp-item .cmp-icon-btn:not([disabled])`,
       );
       if (!clicked) break;
+      retainedCount += 1;
       await waitForScan(page);
       await pump(page, 3);
+      const ratios = (await probe(page)).stats.ventesWithRatio ?? 0;
+      if (ratios >= 3 && retainedCount >= 3) break;
     }
     state = await probe(page);
-    check(`${toRetain} sales retained`, state.retained === toRetain, `retained=${state.retained}`);
+    check(`${retainedCount} sales retained`, state.retained === retainedCount,
+      `retained=${state.retained}`);
+    check('at least three of them carry a €/m²', (state.stats.ventesWithRatio ?? 0) >= 3,
+      `withRatio=${state.stats.ventesWithRatio}`);
     check('each retained sale is drawn with a connector',
-      state.markers >= toRetain + 1 && state.links >= toRetain,
+      state.markers >= retainedCount + 1 && state.links >= retainedCount,
       `markers=${state.markers} links=${state.links}`);
     check('the summary counts them', state.lines.some((line) => /ventes DVF/i.test(line)),
       state.lines.join(' | '));
@@ -294,16 +311,49 @@ async function main() {
     await clickIn(page, `${PANEL} [data-cmp-add]`);
     await waitForScan(page);
     await pump(page, 6);
+    // The surface of the property, which is what turns a €/m² into euros.
+    // Without it the harness never reached the estimate at all.
+    await setField(page, `${PANEL} [data-cmp-surface]`, '70');
+    await waitForScan(page);
+    await pump(page, 6);
     state = await probe(page);
-    check('the listing is in the dossier', state.retained === toRetain + 1, `retained=${state.retained}`);
-    check('it carries a price per square metre',
-      state.lines.some((line) => /Annonces — 6 000 €\/m²|Annonces — 6 000/.test(line))
-        || state.lines.some((line) => /Annonces —/.test(line)),
-      state.lines.join(' | '));
+    check('the listing is in the dossier', state.retained === retainedCount + 1,
+      `retained=${state.retained}`);
+    // 420 000 € over 70 m² is 6 000 €/m², exactly, and the sentence has to say
+    // so — the assertion here used to accept ANY line starting with "Annonces",
+    // which is no assertion at all.
+    check('it carries the price per square metre it computes to',
+      state.lines.some((line) => /^Annonces — 6\s?000 €\/m² médian demandé sur 1\b/.test(line)),
+      state.lines.filter((line) => /Annonces/.test(line)).join(' | '));
     check('the two samples stay apart',
       state.lines.some((line) => /^Ventes DVF/.test(line))
         && state.lines.some((line) => /^Annonces/.test(line)),
       state.lines.join(' | '));
+    // THE ARITHMETIC, AGAINST LIVE DATA. The bracket cannot be predicted from
+    // here, but it can be checked against the median the sales line prints: the
+    // middle of the estimate is that median times the surface, and the printed
+    // median is itself rounded to the euro per square metre — so the two may
+    // differ by at most half a euro per square metre, 35 € at 70 m².
+    const digits = (text) => Number(String(text).replace(/[^\d]/g, ''));
+    const salesLine = state.lines.find((line) => /^Ventes DVF — /.test(line)) || '';
+    const bracketLine = state.lines.find((line) => /^Fourchette /.test(line)) || '';
+    const medianM2 = digits((salesLine.match(/— ([\d\s ]+) €\/m²/) || [])[1] || '');
+    const bracket = (bracketLine.match(/([\d\s ]+) €/g) || []).map(digits);
+    // The sentence reads "<low> € à <high> €, médiane <mid> €", so the middle
+    // value is the LAST of the three, not the second.
+    const [low, high, mid] = bracket;
+    check('the estimate is a bracket built on the sales',
+      bracket.length === 3 && low <= mid && mid <= high && /sur les ventes actées/.test(bracketLine),
+      bracketLine || 'no bracket printed');
+    check('its middle is the median times the surface',
+      bracket.length === 3 && Math.abs(mid - medianM2 * 70) <= 35,
+      `median=${medianM2} × 70 = ${medianM2 * 70}, printed ${mid}`);
+    check('and it says what the range is not',
+      state.lines.some((line) => /pas un intervalle de confiance/.test(line)),
+      state.lines.join(' | '));
+    check('the gap carries both sample sizes',
+      state.lines.some((line) => /Écart affichage sur acte .* annonce.* contre .* vente/.test(line)),
+      state.lines.filter((line) => /Écart/.test(line)).join(' | '));
     check('the legend carries both counts', state.legend.length === 2,
       JSON.stringify(state.legend));
     await shoot(page, '04-annonce-saisie.png');
@@ -325,7 +375,13 @@ async function main() {
     check('the share link carries the layer, not the dossier',
       !/rue|annonce|420000/i.test(String(shareUrl)), String(shareUrl).slice(0, 160));
     await page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
-    await page.waitForFunction(() => Boolean(window.__godsEyeView?.dataManager), { timeout: 60000 });
+    // NOT `page.waitForFunction`: its default `raf` polling never ticks on a
+    // globe that idles — and since « un fond qui se met en veille » (#103) the
+    // globe idles at boot, so the wait hung for 60 s on an app that was up in
+    // twelve seconds. Measured on this branch, before and after the rebase.
+    check('the app booted', await waitFor(
+      page, () => Boolean(window.__godsEyeView?.dataManager), null, 60000,
+    ));
     await pump(page, 6);
     await setView(page, LYON);
     await setEnabled(page, true);
@@ -333,7 +389,7 @@ async function main() {
     await waitForScan(page);
     await pump(page, 6);
     state = await probe(page);
-    check('the dossier came back', state.retained === toRetain + 1, `retained=${state.retained}`);
+    check('the dossier came back', state.retained === retainedCount + 1, `retained=${state.retained}`);
     check('and so did the property', !/Aucun bien/i.test(state.subject || ''), state.subject || '');
     await shoot(page, '05-apres-rechargement.png');
 
@@ -342,7 +398,7 @@ async function main() {
     await clickIn(page, `${PANEL} [data-cmp-clear]`);
     await pump(page, 2);
     state = await probe(page);
-    check('the first press only arms the button', state.retained === toRetain + 1
+    check('the first press only arms the button', state.retained === retainedCount + 1
       && /CONFIRMER/i.test(state.clearLabel || ''), `${state.clearLabel} retained=${state.retained}`);
     await clickIn(page, `${PANEL} [data-cmp-clear]`);
     await waitForScan(page);

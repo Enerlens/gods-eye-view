@@ -29,6 +29,7 @@ import {
   ratioFor,
   safeListingUrl,
   sampleStats,
+  sanitiseLine,
   saveDossier,
 } from './comparablesDossier.js';
 
@@ -113,7 +114,11 @@ test('the negotiation gap is printed, and only when both instruments answered', 
     comparables: [...ventes([5000, 5000, 5000]), ...annonces([5500, 5500, 5500])],
   });
   assert.ok(lines.some((line) => /Écart affichage sur acte \+10 %/.test(line)));
-  assert.ok(lines.some((line) => /prix demandé n’est pas un prix payé/.test(line)));
+  // The two sample sizes travel with the percentage, and the sentence refuses
+  // the words a reader would otherwise supply: this is not a negotiation margin.
+  assert.ok(lines.some((line) => /3 annonces contre 3 ventes/.test(line)), lines.join('\n'));
+  assert.ok(lines.some((line) => /pas une marge de négociation/.test(line)));
+  assert.ok(lines.some((line) => /aucun ajustement temporel/.test(line)));
 });
 
 test("a multi-lot mutation keeps the register's null instead of a computed absurdity", () => {
@@ -270,6 +275,148 @@ test('an old listing is a price the market already refused, and the card says it
   assert.ok(ageDays(old.date, now) > STALE_LISTING_DAYS);
   const lines = dossierLines({ ...emptyDossier(), subject: SUBJECT, comparables: [old] }, { now });
   assert.ok(lines.some((line) => new RegExp(`plus de ${STALE_LISTING_DAYS} jours`).test(line)));
+});
+
+// ── the adversarial pass of 2026-09-08 ─────────────────────────────────────
+// Every test below reproduces a finding from the `codex challenge` run on this
+// layer. They are grouped because they share one theme: a number that is wrong
+// and well formatted triggers no other test.
+
+test('an imported file cannot put a row nobody registered into the sales median', () => {
+  // The failure: a bare array claiming `kind: "vente"` entered the DVF sample,
+  // and the card printed « Fourchette sur les ventes actées » over rows the
+  // DGFiP never published.
+  const result = importDossierJson(JSON.stringify([
+    { kind: 'vente', id: 'foreign', prix: 700_000, surface: 100, prixM2: 7000 },
+    { kind: 'vente', id: 'foreign-2', prix: 720_000, surface: 100, prixM2: 7200 },
+  ]));
+  assert.equal(result.kept, 2);
+  assert.deepEqual(result.dossier.comparables.map((entry) => entry.kind), ['annonce', 'annonce']);
+  const summary = dossierSummary({ ...emptyDossier(), subject: SUBJECT, comparables: result.dossier.comparables });
+  assert.equal(summary.ventes.count, 0, 'nothing outside /api/dvf reaches the sales sample');
+  assert.equal(summary.annonces.count, 2);
+});
+
+test('a supplied €/m² does not buy its way past the lot count', () => {
+  // `given` used to win before `lots` was looked at, so a row with two
+  // dwellings and a ratio entered the median at that ratio, uncounted.
+  const smuggled = normaliseComparable({
+    kind: 'vente', label: 'Deux lots', price: 1_000_000, surface: 0,
+    prixM2: 10_000, lots: 2, lat: 45.75, lon: 4.83,
+  });
+  assert.equal(smuggled.prixM2, null);
+  assert.equal(smuggled.ratioRefused, 'lots');
+  // And a sale with a ratio but no price left is refused on the price, not
+  // waved through on the ratio.
+  assert.equal(ratioFor({ kind: 'vente', given: 5000, price: 0, lots: 1 }).refused, 'prix');
+});
+
+test('normalising a row twice keeps the reason it was excluded for', () => {
+  // Retaining a candidate normalises it a second time. The reason used to be
+  // re-derived from what was left, so a sale refused for `bornes` was printed
+  // as « sans surface » beside a row showing 100 m².
+  const once = comparableFromDvfSale({
+    id: 'm-1', date: '2025-04-02', valeur: 6_000_000, commune: 'Paris 6e',
+    address: '1 rue Test', lat: 48.85, lon: 2.33,
+    dwellingSurface: 100, dwellingCount: 1, prixM2: 60_000, types: ['Appartement'],
+  });
+  assert.equal(once.ratioRefused, 'bornes');
+  const twice = normaliseComparable(once);
+  assert.equal(twice.ratioRefused, 'bornes', 'the reason belongs to the row, not to the pass');
+  assert.deepEqual(twice, { ...once, id: twice.id });
+});
+
+test('importing the same listing file twice adds it once', () => {
+  // An agency export carries no id of ours. Three imports of a one-row file
+  // used to unlock a three-sample bracket built from one listing.
+  const file = JSON.stringify([{ adresse: '4 rue A', prix: 350_000, surface: 70 }]);
+  let dossier = emptyDossier();
+  let added = 0;
+  for (let pass = 0; pass < 3; pass += 1) {
+    const result = mergeComparables(dossier, importDossierJson(file).dossier.comparables);
+    dossier = result.dossier;
+    added += result.added;
+  }
+  assert.equal(added, 1);
+  assert.equal(dossier.comparables.length, 1);
+});
+
+test('the euro bracket is rounded once, when it becomes euros', () => {
+  // Rounding each €/m² quartile before multiplying by the surface moved the
+  // printed bracket by tens of euros. 1 000 / 2 001 / 3 002 over 100 m²:
+  // p25 = 1 500,5 and p75 = 2 501,5, so the bracket is 150 050 – 250 150 €.
+  const sample = [1000, 2001, 3002].map((prixM2, index) => normaliseComparable({
+    id: `a${index}`, kind: 'annonce', label: `${index} rue Test`,
+    price: prixM2 * 100, surface: 100, lat: 45.75, lon: 4.83, date: '2026-09-01',
+  }));
+  const summary = dossierSummary({
+    ...emptyDossier(), subject: { ...SUBJECT, surface: 100 }, comparables: sample,
+  });
+  assert.equal(summary.estimate.low, 150_050);
+  assert.equal(summary.estimate.mid, 200_100);
+  assert.equal(summary.estimate.high, 250_150);
+});
+
+test('a surface that is not a surface says so instead of refusing in silence', () => {
+  const sample = [5000, 5200, 5400].map((prixM2, index) => normaliseComparable({
+    id: `b${index}`, kind: 'annonce', price: prixM2 * 70, surface: 70,
+    lat: 45.75, lon: 4.83, date: '2026-09-01',
+  }));
+  for (const [surface, expected] of [[0, /nulle ou négative/], [-50, /nulle ou négative/],
+    [1e308, /faute de frappe/]]) {
+    const lines = dossierLines({
+      ...emptyDossier(), subject: { ...SUBJECT, surface }, comparables: sample,
+    });
+    const refusal = lines.find((line) => line.startsWith('Pas de fourchette'));
+    assert.match(refusal, expected, `surface ${surface}`);
+    // And never a dangling dash with nothing after it.
+    assert.ok(!/Pas de fourchette — $/.test(refusal));
+  }
+  // The estimate itself never carries an infinity into the panel's badge.
+  const summary = dossierSummary({
+    ...emptyDossier(), subject: { ...SUBJECT, surface: 1e308 }, comparables: sample,
+  });
+  assert.equal(summary.estimate, null);
+});
+
+test('the card separator cannot survive a label that contains two of them', () => {
+  // One non-overlapping pass left « A · · B » as « A — · B », which splits on
+  // screen into two card lines.
+  assert.equal(sanitiseLine('A · · B'), 'A — — B');
+  const lines = dossierLines({
+    ...emptyDossier(),
+    subject: { ...SUBJECT, label: 'A · · B' },
+    comparables: [],
+  });
+  for (const line of lines) assert.ok(!line.includes(' · '), line);
+  const card = comparableLines(normaliseComparable({
+    kind: 'annonce', label: 'X · · Y', price: 300_000, surface: 60,
+    note: 'note · · double', type: 'Appartement · · centre',
+  }), SUBJECT);
+  assert.ok(!card.title.includes(' · '));
+  for (const line of card.details) assert.ok(!line.includes(' · '), line);
+});
+
+test('an unplaced row without a ratio is not told it counts in the medians', () => {
+  const priceless = normaliseComparable({ kind: 'annonce', label: 'Sans prix', price: 0, surface: 0 });
+  const usable = normaliseComparable({ kind: 'annonce', label: 'Sans position', price: 350_000, surface: 70 });
+  const lines = dossierLines({
+    ...emptyDossier(), subject: SUBJECT, comparables: [priceless, usable],
+  });
+  const sentence = lines.find((line) => /sans position/.test(line));
+  assert.match(sentence, /2 comparables sans position, dont 1 dans les médianes/);
+});
+
+test('a long dossier does not blow the stack on its own maxima', () => {
+  // `Math.max(...list)` threw RangeError at 150 000 rows, which an import can
+  // reach. Ten thousand is enough to prove the fold.
+  const many = Array.from({ length: 10_000 }, (_unused, index) => normaliseComparable({
+    id: `n${index}`, kind: 'annonce', price: 350_000, surface: 70,
+    lat: 45.75 + index * 1e-6, lon: 4.83, date: '2026-01-01',
+  }));
+  const summary = dossierSummary({ ...emptyDossier(), subject: SUBJECT, comparables: many });
+  assert.equal(summary.retained, 10_000);
+  assert.ok(Number.isFinite(summary.maxDistanceM));
 });
 
 test('a listing URL is a link, and only ever http or https', () => {

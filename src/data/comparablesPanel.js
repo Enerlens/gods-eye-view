@@ -51,6 +51,8 @@ import {
 export const COMPARABLES_PANEL_ID = 'comparables-panel';
 
 const _fr = new Intl.NumberFormat('fr-FR');
+/** Surfaces keep one decimal, here and on the card — same field, same number. */
+const _surface = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
 
 /** How long the destructive button stays armed after the first press, in ms. */
 const CONFIRM_WINDOW_MS = 4000;
@@ -124,8 +126,12 @@ const PANEL_MARKUP = `
   </div>
   <p class="cmp-provenance">
     Sélection manuelle, comme chez le concurrent. Aucune annonce n’est collectée
-    automatiquement : ce dossier ne contient que ce que vous y mettez, il ne quitte
-    jamais ce navigateur, et le lien d’une annonce n’est jamais consulté par l’application.
+    automatiquement : ce dossier ne contient que ce que vous y mettez, et le lien
+    d’une annonce n’est jamais consulté par l’application.
+    <br />Prix, surfaces et liens ne sont jamais transmis — ils restent dans ce
+    navigateur. Seules sortent l’adresse que vous tapez, envoyée au géocodeur
+    (BAN / IGN) pour devenir des coordonnées, et la position du bien, envoyée à
+    DVF pour lister les ventes autour.
   </p>
 `;
 
@@ -201,7 +207,9 @@ export async function reverseAddress(point, impl = fetch) {
 
 /** A coordinate as a label, when no address answered. */
 export function coordinateLabel(point) {
-  return `${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}`;
+  return Number.isFinite(point?.lat) && Number.isFinite(point?.lon)
+    ? `${point.lat.toFixed(5)}, ${point.lon.toFixed(5)}`
+    : 'position incomplète';
 }
 
 /**
@@ -245,6 +253,7 @@ export function mountComparablesPanel(actions = {}) {
   let pool = { list: [], total: 0, missing: false, radiusM: 0 };
   let clearArmedAt = 0;
   let destroyed = false;
+  let adding = false;
 
   const say = (message) => { if (statusLine) statusLine.textContent = message; };
 
@@ -303,18 +312,35 @@ export function mountComparablesPanel(actions = {}) {
 
   // ── a listing, typed ─────────────────────────────────────────────────────
   async function addListing() {
+    // ONE ADD PER CLICK. Geocoding takes a round trip, and a second click
+    // during it used to run the whole function again — same fields, same
+    // listing, two rows, and a sample size the reader did not create.
+    if (adding) return;
     const address = node('[data-cmp-new-address]')?.value ?? '';
     const price = parseNumber(node('[data-cmp-new-price]')?.value);
     const surface = parseNumber(node('[data-cmp-new-surface]')?.value);
     const rooms = parseNumber(node('[data-cmp-new-rooms]')?.value);
     const url = node('[data-cmp-new-url]')?.value ?? '';
-    if (!Number.isFinite(price)) { say('Une annonce sans prix n’est pas un comparable.'); return; }
+    // A price of 0 or less is not a price. It used to pass the finite check,
+    // land in the dossier with a refused ratio, and be announced as retained.
+    if (!Number.isFinite(price) || price <= 0) {
+      say('Une annonce sans prix n’est pas un comparable.');
+      return;
+    }
     if (url.trim() && !safeListingUrl(url)) { say('Lien ignoré — seuls http et https sont acceptés.'); }
     let position = null;
-    if (String(address).trim().length >= 3) {
-      say('Recherche de l’adresse de l’annonce…');
-      position = await geocodeAddress(address);
-      if (destroyed) return;
+    adding = true;
+    const addButton = node('[data-cmp-add]');
+    if (addButton) addButton.disabled = true;
+    try {
+      if (String(address).trim().length >= 3) {
+        say('Recherche de l’adresse de l’annonce…');
+        position = await geocodeAddress(address);
+        if (destroyed) return;
+      }
+    } finally {
+      adding = false;
+      if (addButton) addButton.disabled = false;
     }
     const added = actions.add?.({
       kind: 'annonce',
@@ -420,7 +446,7 @@ export function mountComparablesPanel(actions = {}) {
       Number.isFinite(entry.prixM2)
         ? `${_fr.format(entry.prixM2)} €/m²`
         : `pas de €/m²${entry.ratioRefused === 'lots' ? ' — lot multiple' : ''}`,
-      Number.isFinite(entry.surface) ? `${_fr.format(entry.surface)} m²` : null,
+      Number.isFinite(entry.surface) ? `${_surface.format(entry.surface)} m²` : null,
       Number.isFinite(entry.rooms) ? `${entry.rooms} ${agree(entry.rooms, 'pièce')}` : null,
       Number.isFinite(distanceM) ? `${_fr.format(distanceM)} m` : null,
       frenchDate(entry.date),

@@ -2413,7 +2413,9 @@ that the rule would have silently filled in.
 | `implantation-fr` | `im` | *(none of its own)* | Fans out across `/api/isochrone`, `/api/filosofi/carreaux`, `/api/gpu`, `/api/dvf` and the BAN reverse geocoder, and joins them in the browser |
 | `comparables-fr` | `cp` | `/api/dvf` (candidates only) | The dossier itself is keyed in by the reader and lives in `localStorage`; `/api/geocode` and the BAN reverse endpoint turn a typed address into a coordinate |
 
-`implantation-fr` is the only layer in the app with NO SOURCE OF ITS OWN. It
+`implantation-fr` was the only layer in the app with NO SOURCE OF ITS OWN until
+`comparables-fr` joined it below; it is still the only one that composes its
+answer entirely out of other people's registers. It
 uses the shared address-scan factory's `fetchImpl` seam to fan out across four
 routes this server already has — all already cached, all already tested — and
 does the spatial join locally: which 200 m carreaux fall inside the reachable
@@ -2436,7 +2438,10 @@ what a valuation note computes. Three things about it are structural rather than
 cosmetic. **An asking price and a completed sale are never averaged together**:
 two samples, two medians, two silhouettes (`euro` for a mutation, the `tag`
 added to `addressMarkerIcons.js` for a listing), and the gap between the two
-medians printed as its own line, because that gap is the negotiation margin.
+medians printed as its own line, with both sample sizes beside it and a
+sentence refusing the reading a reader would otherwise supply: different
+properties, different dates, no temporal adjustment, so not a negotiation
+margin.
 **The estimate is a quartile range on a named sample**, refused below three
 ratio-bearing comparables and told when it is short — never a point estimate,
 and never called a confidence interval. **Every exclusion is counted and
@@ -2459,8 +2464,12 @@ in `localStorage` under `godsEyeView.comparables.v1` and moves as a file: export
 writes our own shape, import accepts either that or a bare JSON array of
 listings — which is what an agency's own back-office exports — and MERGES rather
 than replaces. Nothing is uploaded anywhere, which is why the share token is
-`enabled-only`: a client's property, its address and its price never leave the
-machine that typed them. A listing's URL is stored as a link and **never
+`enabled-only`. The precise version of that claim, which is the one on screen:
+prices, surfaces and listing links are never transmitted; the ADDRESS a reader
+types goes to `/api/geocode` and to the BAN reverse endpoint because that is
+what turns an address into a coordinate, and the property's position goes to
+`/api/dvf`. « Rien ne quitte le navigateur » was the round version, and an
+adversarial pass was right to refuse it. A listing's URL is stored as a link and **never
 requested**; `scripts/qa-comparables.mjs` watches every request the page makes
 and fails if one reaches the host typed into that field.
 
