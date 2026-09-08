@@ -203,6 +203,26 @@ const BODIES = Object.freeze({
       + 'M48,8 L48,18 M48,78 L48,88 M8,48 L18,48 M78,48 L88,48',
     fills: '<circle cx="48" cy="48" r="4.5"/>',
   },
+
+  // ── Comparables: a price tag, for the listing the advisor keyed in.
+  //    The register next door already owns the euro sign, and a retained DVF
+  //    sale keeps it — because it IS that register. What this pack had no
+  //    silhouette for is the other half of a valuation note: a price that is
+  //    being ASKED rather than one that was paid. The two must never draw the
+  //    same picture, which is doctrine A1 applied to a card instead of a
+  //    choropleth: an intention and an observation are not the same
+  //    measurement and cannot wear the same sign.
+  //
+  //    THE POINT IS ON THE LEFT AND NOTHING ELSE IN THE PACK HAS ONE. The
+  //    hazard triangle points UP, the crane hangs to one side, and everything
+  //    else is round or square; a horizontal wedge is the one silhouette left
+  //    that survives at 15 px without being read as any of them. The hole is a
+  //    fill for the reason the hazard bang's dot is: a stroked ring of that
+  //    radius closes into a blob at raster size.
+  tag: {
+    strokes: 'M38,18 L82,18 L82,78 L38,78 L12,48 Z',
+    fills: '<circle cx="34" cy="48" r="5.5"/>',
+  },
 });
 
 /**

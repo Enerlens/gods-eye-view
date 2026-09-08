@@ -24,7 +24,11 @@ function svgOf(uri) {
  * layer a marker came from.
  */
 test('every register draws a different silhouette', () => {
-  const perLayer = ['euro', 'dpe:C', 'hazard', 'plan'];
+  // `tag` is here for the same reason `euro` is, and against `euro` above all:
+  // a retained DVF sale and a keyed-in listing sit side by side on the same
+  // street in the comparables layer, and telling them apart is the whole
+  // argument of that dossier.
+  const perLayer = ['euro', 'dpe:C', 'hazard', 'plan', 'tag'];
   const uris = perLayer.map((kind) => addressMarkerGlyph(kind));
   assert.equal(new Set(uris).size, perLayer.length);
   // And the IDFM stops, which borrow from the transit pack, must not collide

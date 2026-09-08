@@ -771,6 +771,25 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
     auth: 'none',
     cadence: 'periodic',
   }),
+  // The second row in the whole taxonomy that is not a source, and the first
+  // whose data the READER supplies. It sits beside the fiche because it asks
+  // the same question about the same clicked door — what is this worth — and
+  // because the two are read together: the fiche says who lives around a plot,
+  // this one says what the plots around it changed hands for.
+  //
+  // `dataset` for the reason the fiche is: a visitor turns it on and off like
+  // any other layer and it draws its own geometry. `auth: 'none'` and
+  // `cadence: 'periodic'` describe its ONE outbound source, DVF — the dossier
+  // itself has no cadence, because it changes when its owner edits it.
+  Object.freeze({
+    id: 'comparables-fr',
+    category: 'built-environment',
+    label: 'Comparables (sélection conseiller)',
+    kind: 'dataset',
+    coverage: 'fr',
+    auth: 'none',
+    cadence: 'periodic',
+  }),
   Object.freeze({
     id: 'bdtopo-buildings',
     category: 'built-environment',
