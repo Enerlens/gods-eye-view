@@ -13,6 +13,13 @@ import {
   projectZoning,
   ringBounds,
 } from './implantationFeed.js';
+import {
+  BAREME_FR,
+  BAREME_GEOMETRIES,
+  BAREME_REASONS,
+  BAREME_SAMPLE,
+  scoreIndicator,
+} from './baremeNational.js';
 
 /**
  * Fiche implantation — the one card a geomarketing tool exists to print.
@@ -47,6 +54,16 @@ import {
  * minutes — "dix minutes à pied" — so the chips are 5, 10 and 15, and the
  * driving ring stays the isochrone layer's own control. One ring per scan, so
  * the fiche costs one isochrone call rather than three.
+ *
+ * AND THE FIGURES NOW SAY WHERE THEY STAND. "1,04 km² atteignables" is a fact
+ * nobody can read without a country to read it against, so the card carries a
+ * national percentile beside it and, for the three indicators whose direction
+ * is a defensible judgement rather than an opinion, an A→E letter.
+ * `baremeNational.js` holds the measured ladders and every refusal; `FICHE_SCORED`
+ * below is the join, and its `geometry` functions are what stop a fifteen-minute
+ * ring from being graded on a ten-minute scale. THE DURATION CHIPS ARE THE
+ * REASON THAT GUARD EXISTS: the same indicators mean something else on a wider
+ * ring, and the ladder was measured at ten minutes only.
  *
  * @module data/implantationFiche
  */
@@ -272,6 +289,121 @@ export async function ficheFetch(url, options = {}, { impl = fetch } = {}) {
 }
 
 /**
+ * Ce que la fiche sait situer dans le pays, et où elle le lit.
+ *
+ * La table de jointure entre la fiche et `baremeNational.js`. Elle est courte
+ * exprès : la fiche calcule une quinzaine de nombres et seuls cinq d'entre eux
+ * ont une échelle nationale ET une place lisible sur une carte de vingt lignes.
+ * Les autres restent des valeurs, ce qui était déjà leur métier.
+ *
+ * `geometry` est une FONCTION de la fiche, jamais une constante. L'anneau que le
+ * barème décrit est celui de dix minutes ; le lecteur peut demander cinq ou
+ * quinze, et les mêmes indicateurs y valent autre chose. Renvoyer `null` alors
+ * fait refuser le rang, ce qui est le comportement voulu — un « A » obtenu sur
+ * un anneau de quinze minutes contre une échelle de dix serait faux et
+ * invisible.
+ */
+export const FICHE_SCORED = Object.freeze([
+  Object.freeze({
+    id: 'acces',
+    read: (fiche) => fiche?.isochrone?.areaKm2 ?? null,
+    geometry: (fiche) => (fiche?.isochrone?.seconds === 600
+      ? BAREME_GEOMETRIES.RING_FOOT_600 : null),
+  }),
+  Object.freeze({
+    id: 'niveau',
+    read: (fiche) => fiche?.demand?.niveau ?? null,
+    geometry: ringGeometryOf,
+  }),
+  Object.freeze({
+    id: 'pauvrete',
+    read: (fiche) => fiche?.demand?.pauvrete ?? null,
+    geometry: ringGeometryOf,
+  }),
+  Object.freeze({
+    id: 'habitants',
+    read: (fiche) => fiche?.demand?.people?.count ?? null,
+    geometry: ringGeometryOf,
+  }),
+  Object.freeze({
+    id: 'prixM2',
+    read: (fiche) => fiche?.market?.medianPrixM2 ?? null,
+    // Le disque DVF ne dépend pas du pas choisi : la couche balaie toujours
+    // 300 m, et c'est sur 300 m que le barème a été mesuré.
+    geometry: () => BAREME_GEOMETRIES.DISC_300,
+  }),
+]);
+
+/**
+ * La géométrie d'un agrégat d'anneau — ou rien, quand il n'est pas notable.
+ *
+ * DEUX FAÇONS DE NE PAS ÊTRE NOTABLE, et la seconde a déjà coûté un chiffre
+ * faux ailleurs dans ce dépôt : le mauvais pas de temps, et une page de
+ * carroyage tronquée. Un agrégat tronqué est un PLANCHER — il manque des
+ * carreaux — et un plancher classé dans une distribution nationale reçoit
+ * toujours un rang trop bas, sans que rien à l'écran ne le dise.
+ *
+ * @param {object} fiche
+ * @returns {string|null}
+ */
+function ringGeometryOf(fiche) {
+  if (fiche?.isochrone?.seconds !== 600) return null;
+  if (fiche?.demand?.truncated) return null;
+  return BAREME_GEOMETRIES.RING_FOOT_600;
+}
+
+/**
+ * Situer la fiche dans le pays.
+ *
+ * `options` est passé tel quel à `scoreIndicator()` : il n'existe que pour que
+ * les tests puissent noter contre une échelle synthétique. La campagne de
+ * mesure change les nombres du barème plusieurs fois par an, et un test qui
+ * s'appuierait dessus mesurerait la campagne au lieu de la jointure.
+ *
+ * @param {object} fiche
+ * @param {{bareme?: object, sampleSize?: number}} [options]
+ * @returns {Array<object>} Un score par entrée de `FICHE_SCORED`, dans l'ordre.
+ */
+export function ficheScores(fiche, options = {}) {
+  return FICHE_SCORED.map((entry) => scoreIndicator(entry.id, entry.read(fiche), {
+    ...options,
+    geometry: entry.geometry(fiche),
+  }));
+}
+
+/**
+ * La lettre, ou les deux lettres que la fourchette enjambe.
+ *
+ * « B ou C » n'est pas une coquetterie : sur quelques centaines de tirages une
+ * valeur assise près d'une borne de quintile a une chance sur deux d'être dans
+ * l'autre bande, et imprimer la meilleure des deux serait un choix commercial.
+ * @param {object} score
+ * @returns {string|null}
+ */
+export function letterPhrase(score) {
+  if (!score?.letterLow || !score?.letterHigh) return null;
+  return score.ferme ? score.letter : `${score.letterHigh} ou ${score.letterLow}`;
+}
+
+/**
+ * Le rang en un mot, pour la ligne qui les aligne tous.
+ *
+ * Un nombre quand la fourchette est étroite, un intervalle quand elle ne l'est
+ * pas. Le seuil de vingt points sépare les deux : en dessous, la fourchette
+ * n'est que l'erreur d'échantillonnage et un centile la résume ; au-dessus, la
+ * valeur est sur un PALIER de l'échelle — 0 % de logement social couvre le bas
+ * de la distribution — et un centile unique y serait une invention.
+ * @param {object} score
+ * @returns {string}
+ */
+export function compactRank(score) {
+  if (!Number.isFinite(score?.percentile)) return '—';
+  return score.percentileHigh - score.percentileLow > 20
+    ? `${score.percentileLow}–${score.percentileHigh}ᵉ`
+    : `${score.percentile}ᵉ`;
+}
+
+/**
  * The fiche, as the lines a card prints.
  *
  * NO LINE MAY CONTAIN ' · '. The shared factory's `cardFromEntity()` builds a
@@ -374,6 +506,52 @@ export function ficheLines(fiche) {
     details.push('Aucun carreau INSEE habité dans cette zone');
   } else {
     details.push('Population indisponible — le carroyage INSEE n’a pas répondu');
+  }
+
+  // ── Le rang national ──────────────────────────────────────────────────────
+  // Jamais une lettre sans la convention qui la produit : « A » ne veut rien
+  // dire tant que le lecteur ignore que c'est le meilleur cinquième de France,
+  // et au nom de qui. La convention voyage donc sur la ligne des lettres, et la
+  // provenance de l'échelle sur celle des centiles.
+  const scores = ficheScores(fiche);
+  const lettered = scores.filter((score) => score.letterLow);
+  const ranked = scores.filter((score) => Number.isFinite(score.percentile));
+  if (lettered.length) {
+    details.push(`${lettered.map((score) => `${score.short} ${letterPhrase(score)}`).join(', ')}`
+      + ' — lettres au sens du résident acheteur, A = le meilleur cinquième de France');
+  }
+  if (ranked.length) {
+    details.push(`Centiles nationaux — ${ranked
+      .map((score) => `${score.short} ${compactRank(score)}`).join(', ')}`);
+    details.push(`Barème mesuré sur ${count(BAREME_SAMPLE.rings)} anneaux de 10 min`
+      + ` tirés au sort dans la population (${BAREME_SAMPLE.measuredAt})`
+      + `, à ±${BAREME_SAMPLE.marginPt} points de centile près`);
+  }
+  // Le prix est le seul indicateur dont l'échelle ne couvre pas l'échantillon :
+  // un anneau sur trois n'a aucune vente comparable dans ses 300 m, et ceux-là
+  // sont ruraux. Le rang du prix est donc lu sur une France partielle et plus
+  // urbaine que le pays, ce que la carte dit au lieu de le laisser deviner.
+  const price = ranked.find((score) => score.id === 'prixM2');
+  const priceCoverage = BAREME_FR.prixM2 && BAREME_SAMPLE.rings
+    ? Math.round((BAREME_FR.prixM2.measured / BAREME_SAMPLE.rings) * 100)
+    : null;
+  if (price && priceCoverage !== null && priceCoverage < 95) {
+    details.push(`Le rang du prix se lit sur les ${priceCoverage} % d’anneaux`
+      + ' où une vente comparable existait — une France plus urbaine que la France');
+  }
+  // LE REFUS SE DIT MÊME QUAND IL RESTE DES RANGS À IMPRIMER, et c'est la
+  // raison d'être de ce test séparé plutôt que d'un `else`. Sur un anneau de
+  // cinq minutes le prix au m² garde son rang — il est mesuré sur un disque de
+  // 300 m que le pas de temps ne touche pas — et les quatre indicateurs
+  // d'anneau disparaissent. Une ligne « Centiles nationaux » plus courte que
+  // d'habitude, sans un mot d'explication, est exactement l'omission
+  // silencieuse que cette couche refuse partout ailleurs.
+  if (scores.some((score) => score.reason === BAREME_REASONS.GEOMETRY)) {
+    details.push(fiche?.demand?.truncated
+      ? 'Rang national suspendu sur l’anneau — un comptage tronqué est un plancher'
+        + ', et un plancher se classerait toujours trop bas'
+      : 'Rang national indisponible sur cet anneau'
+        + ' — le barème n’est mesuré qu’à dix minutes de marche');
   }
 
   if (zoning) {

@@ -6,6 +6,60 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-08
 
 ### Added
+- **Le barème national — la fiche d'adresse dit enfin où elle se situe dans le
+  pays.** « 0,96 km² atteignables à pied » est un fait qu'aucun lecteur ne peut
+  lire sans un pays contre lequel le lire. La `Fiche implantation` imprime
+  désormais, sous ses valeurs, un **centile national** par indicateur et une
+  **lettre A→E** pour les trois dont le sens n'est pas une opinion. Méthode,
+  mesures et refus : [`docs/BAREME.md`](docs/BAREME.md). Palier 1½ du triage
+  [`docs/CITYSCAN.md`](docs/CITYSCAN.md).
+  **Le chiffrage annoncé se trompait de lot.** Le triage prévoyait « précalculer
+  120 indicateurs sur 35 000 communes, les stocker et les rafraîchir » : un
+  tableau à la commune **ne peut pas noter la fiche**, parce que la fiche ne
+  mesure rien à la commune — elle mesure sur un anneau piéton de dix minutes.
+  Le bon lot est un **tirage**, pas un inventaire. `npm run bareme:fr` balaie
+  une fois la trame nationale — **377 234 carreaux de 1 km, 64 089 848
+  habitants** — puis tire des RÉSIDENTS à probabilité proportionnelle à la
+  population, en deux degrés et systématiquement, et fait tourner sur chaque
+  porte la composition que la fiche fait sur l'adresse du lecteur.
+  **Première campagne : 1 200 anneaux, zéro refus, 42 minutes.** Le résultat
+  tient dans **~2 Ko gelés** dans `src/data/baremeNational.js` ; un chargement de
+  page ne coûte **pas un octet de plus**. Le volume que le triage redoutait
+  n'existe pas : un barème est une distribution, et une distribution bien tirée
+  de mille observations donne un centile à ±2,9 points.
+  **Le chiffre qui justifie le lot : l'échelle d'anneau vaut 74 % de l'échelle
+  de carreau.** Le dépôt portait déjà `FILOSOFI_RAMPS`, les mêmes indicateurs au
+  carreau de 200 m, gratuits à un `import` près. Mesurés **deux fois sur le même
+  échantillon**, l'anneau et le carreau ne donnent pas la même distribution :
+  moyenner une trentaine de carreaux rentre les deux queues. Noté sur l'échelle
+  de carreau, un anneau au **10ᵉ centile se lirait au 22ᵉ** et un anneau au
+  **90ᵉ au 84ᵉ** — une bande de lettre entière à chaque extrémité, et rien à
+  l'écran ne l'aurait dit. D'où la règle que le module rend impossible à
+  oublier : **une valeur ne se classe que dans une distribution mesurée sur la
+  même géométrie**, et `geometry` est comparé à chaque appel. Sur un anneau de
+  cinq ou quinze minutes, les rangs d'anneau sont refusés **et la carte le dit**,
+  pendant que le rang du prix — mesuré sur un disque de 300 m que le pas de temps
+  ne touche pas — survit.
+  **Huit indicateurs sur onze n'ont pas de lettre, et c'est une décision.** Une
+  lettre exige de savoir dans quel sens l'indicateur est « bon » ; pour la part
+  de logement social, l'âge des habitants ou le prix au m², le sens dépend
+  entièrement de qui demande — un prix élevé est une bonne nouvelle pour un
+  vendeur et une mauvaise pour un acheteur. Ceux-là reçoivent un **rang, jamais
+  de note**. Les trois qui portent une lettre l'annoncent avec leur convention
+  sur la même ligne : *lettres au sens du résident acheteur, A = le meilleur
+  cinquième de France*. Chaque `direction` porte sa justification écrite, et un
+  test la refuse si elle manque.
+  **La lettre est elle-même une fourchette.** ±2,9 points de centile sur 1 200
+  tirages : une valeur assise près d'une borne de quintile s'imprime « C ou D »
+  — vu à la place de la République — plutôt que la meilleure des deux. Et une
+  valeur assise sur un palier de l'échelle (0 % de logement social couvre le bas
+  de la distribution) reçoit un intervalle de centiles, jamais un point : y
+  interpoler inventerait une précision que la donnée refuse.
+  **Le rang du prix ne couvre pas le pays, et le dit.** 151 anneaux sur 1 200
+  n'avaient aucune vente comparable dans leurs 300 m, et ils sont ruraux : la
+  carte imprime « le rang du prix se lit sur les 87 % d'anneaux où une vente
+  comparable existait — une France plus urbaine que la France ».
+
 - **Le chiffrage du GTFS-RT national — la question laissée ouverte par la
   chronique, répondue en octets.** `docs/CHRONIQUE.md` disait qu'enregistrer
   les 150 flux GTFS-RT français nationalement « demande un chiffrage avant de
@@ -71,6 +125,16 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   diagnostiquer.
 
 ### Fixed
+- **La fiche d'adresse répondait « aucun carreau INSEE habité » pour TOUTE
+  adresse de Martinique et de La Réunion.** `implantationFeed.js` perdait le
+  `crs` du carreau en inversant la grille INSEE, qui grille la métropole en
+  EPSG:3035, la Martinique en 5490 et La Réunion en 2975. Un carreau réunionnais
+  inversé avec le défaut métropolitain revient à **93,9° O / 55,5° N — la baie
+  d'Hudson** : tous les carreaux tombaient hors de tous les anneaux, et la
+  jointure rendait zéro sans jamais échouer. Trouvé par la campagne du barème,
+  qui a tiré La Réunion en premier et essuyé **seize refus d'affilée** avant que
+  quelqu'un regarde. Première mesure réunionnaise après correctif : 0,59 km²,
+  936 habitants.
 - **Le compose du VPS ne se met pas à jour tout seul, et ça avait désarmé le
   seul enregistreur qui ne dépend de personne.** L'agent de déploiement remplace
   la source à chaque tour mais lance `docker compose up -d --build` avec le

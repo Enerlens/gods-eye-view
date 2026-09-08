@@ -94,6 +94,7 @@
     "qa:filosofi": "node scripts/qa-filosofi.mjs",
     "qa:isochrone": "node scripts/qa-isochrone.mjs",
     "qa:implantation": "node scripts/qa-implantation.mjs",
+    "bareme:fr": "node scripts/build-bareme-fr.mjs",
     "velo:pulse": "node scripts/build-velo-pulse.mjs",
     "qa:velo-pulse": "node scripts/qa-velo-pulse.mjs",
     "qa:marine-buoys": "node scripts/qa-marine-buoys.mjs",
