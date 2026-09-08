@@ -19,7 +19,8 @@ horaires, cousus ensemble et tenus en mémoire. Alors il a été construit.
 
 Trois graphes régionaux réels ont été bâtis de bout en bout, un modèle a été
 ajusté dessus, et la France en a été extrapolée. Un quatrième build — la France
-entière — a été lancé sur cette machine pour voir où est le mur.
+entière — a été lancé sur cette machine pour voir où est le mur. Il l'a trouvé
+(§3 bis).
 
 **Ce qui a servi :** OpenTripPlanner **2.9.0** (sortie du 2026-03-18, la version
 qu'on déploierait aujourd'hui), JDK 26, MacBook 16 Go / 10 cœurs.
@@ -124,6 +125,43 @@ de ramasse-miettes, en pratique 1,5 à 2× :
 
 > **`-Xmx` de 24 à 32 Go, donc une machine de 32 Go au minimum, 48 à 64 Go pour
 > être tranquille.**
+
+---
+
+## 3 bis. Le contrôle : la France sur 16 Go, et où est exactement le mur
+
+L'extrapolation ci-dessus dit « 32 Go au minimum ». Une extrapolation qu'on ne
+tente pas de casser est une opinion, alors la France entière a été lancée sur
+cette machine de 16 Go avec `-Xmx11G`, sur les 43 flux exploitables et les
+5,08 Go d'OSM.
+
+**Elle ne construit pas.** Et la façon dont elle échoue est plus instructive
+qu'un `OutOfMemoryError` : le moteur ne tombe pas, il **ralentit d'un facteur
+840**. OTP lit le fichier OSM en trois passes, et le débit de chacune est écrit
+dans son journal :
+
+| Passe | Débit |
+|---|---|
+| Relations | **108,1 Mo/s** — 5,1 Go en 46,957 s |
+| Chemins | **24,0 Mo/s** — 5,1 Go en 3 min 31,367 s |
+| Nœuds | **0,128 Mo/s** — bloquée à **19 %** après quatorze minutes |
+
+Les deux premières passes tiennent en mémoire. La troisième n'y tient plus,
+parce que l'index des 73,3 millions de chemins construit par la deuxième y est
+resté. À ce moment précis, mesuré : la JVM réclame 11 Go, **le système ne lui en
+garde que 1,14 Go résident**, le processus brûle **171 % de CPU** à faire
+entrer et sortir des pages, et `PhysMem` affiche **41 Mo libres**.
+
+À 0,128 Mo/s, les 4,1 Go restants de cette seule passe demanderaient **près de
+neuf heures** — avant la construction du graphe de rues, le raccrochage des
+arrêts et la génération des correspondances, qui sont les trois étapes lourdes.
+Le build a été arrêté après **22 min 56 s** : la courbe de décroissance a déjà
+dit ce qu'il y avait à savoir, et neuf heures de machine à genoux n'auraient
+rien ajouté.
+
+**Ce que ce contrôle établit** : le chiffre de 32 Go n'est pas une marge de
+confort, c'est un seuil. En dessous, le build ne rend pas un résultat en
+retard — il ne rend rien, en occupant la machine.
 
 ---
 

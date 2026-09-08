@@ -286,6 +286,11 @@ reçoivent un rang sans lettre.
      vivant ≈ **15 à 19 Go**, donc `-Xmx` de 24 à 32 Go, donc **une machine de
      32 Go au minimum**, 48 à 64 Go pour être tranquille. C'est le seul poste
      du palier 2 qui ajoute une machine au produit plutôt qu'une route.
+   · **Le contrôle a été fait** : la France entière lancée sur 16 Go ne
+     construit pas, et ne tombe pas non plus — elle **ralentit d'un facteur
+     840** (108 Mo/s à la première passe OSM, 24 à la deuxième, **0,128 à la
+     troisième**), la JVM réclamant 11 Go quand le système ne lui en garde que
+     1,14 résident. Les 32 Go ne sont pas une marge de confort, c'est un seuil.
    · **Et c'est un abonnement, pas un achat** : **39 % des flux GTFS français
      sont republiés dans les 7 jours** (51 % dans les 14, ancienneté médiane
      13,2 jours), donc la reconstruction hebdomadaire est le plancher — et une
