@@ -82,9 +82,8 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   quelqu'un facturera.
   **Deux pièges que le tableau nomme et que personne ne verrait venir :** le
   palier gratuit de Cesium ion est explicitement « Personal and non-commercial
-  use », donc les deux pastilles Bing sont bloquées deux fois — et **Bing Maps
-  est en retrait**, Cesium ne garantissant l'accès que « at least through
-  September 2026 », c'est-à-dire maintenant. Et le millésime **2017** de
+  use », donc les deux pastilles Bing sont inutilisables dans un produit payant.
+  Et le millésime **2017** de
   Sentinel-2 cloudless n'est pas un détail : le « mettre à jour » vers 2018-2025
   ferait basculer cette ligne en ❌, tous ces millésimes étant CC BY-**NC**-SA.
   L'attribution Esri est alignée sur son `copyrightText` officiel, où Maxar est
@@ -185,6 +184,24 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   public dans l'édition 2025.
 
 ### Fixed
+- **Le dépôt annonçait la mort de Bing pour ce mois-ci. C'est faux, et la
+  formulation vient de nous.** `DATA_SOURCES.md` lisait « at least through
+  September 2026 » comme une échéance alors que c'est un **plancher de
+  garantie** — la phrase est toujours publiée telle quelle par Cesium, jamais
+  mise à jour. La vraie borne vient de l'annonce de Cesium : ils sont client
+  **Bing Maps Enterprise**, « the latest possible end date for our use is
+  **June 30, 2028** », et « if you are using Bing Maps through Cesium ion, you
+  can continue to do so without worry » — avec annonce préalable et fenêtre de
+  test avant tout retrait. Un lecteur qui croyait cette ligne aurait supprimé
+  deux sources encore vivantes ; le fichier explique donc l'erreur au lieu de
+  l'effacer.
+  **Et le successeur est nommé** : Cesium a versé les assets **Google Maps 2D**
+  dans ion le 2 octobre 2025 (Satellite, Satellite + labels, Roadmap…),
+  diffusés sous *leur* accord Google et non sous une clé à soi, dans l'ancien
+  quota Bing rebaptisé « Global Imagery ». C'est aussi le seul chemin connu qui
+  atteindrait de l'imagerie Google depuis une adresse de facturation EEE — non
+  vérifié, et la section dit précisément ce qui reste à prouver.
+
 - **La couche Équipements disait 12 000 points là où elle en connaissait
   53 121.** Le plafond de la route `/sites` ne mordait jamais — le carré le plus
   dense que le zoom autorise tenait 9 139 points. Après l'élargissement il en

@@ -704,7 +704,7 @@ rather than discovered afterwards. Verified 2026-09-08.
 | What | Status for a PAID product | Why |
 |------|---------------------------|-----|
 | **Esri World Imagery** — the world satellite base under the `Satellite` stack | ❌ **Blocked** | `services.arcgisonline.com` is a *legacy tile service*. Esri's own documentation: *"As stated in the terms of use, this service is not available for commercial use."* The item's `licenseInfo` is the **Esri Master License Agreement**. The endpoint answers 200 to anyone, which is precisely what makes it easy to ship by accident. |
-| **Bing Aerial / Bing Labels** via Cesium ion | ❌ **Blocked twice over** | The ion **Community tier is explicitly "Personal and non-commercial use"** — the first commercial plan is $149/month. And Bing Maps is being **retired**: Cesium guarantees access only *"at least through September 2026"*, i.e. now. Cesium has not yet named a replacement. |
+| **Bing Aerial / Bing Labels** via Cesium ion | ❌ **Blocked by the plan, not by the clock** | The ion **Community tier is explicitly "Personal and non-commercial use"** (1,000 Global Imagery sessions/month) — the first commercial plan is $149/month for 5,000. That is the whole blocker. The retirement is **not** imminent: see the note below. Also note ion's own terms — Bing assets "may not [be combined] with non-Bing maps or with non-Bing imagery", so a Bing stack has to stay a single layer, which is what it is here. |
 | **TeleGeography submarine cables** | ❌ **Blocked** | CC BY-**NC**-SA 3.0. Already documented above — delete the folder or license it. |
 | **EOX Sentinel-2 cloudless** | ✅ **as shipped** | The **2017** vintage this repo uses is CC BY 4.0. Do not "upgrade" it: every vintage from **2018 to 2025 is CC BY-NC-SA** and would silently move this row to ❌. |
 | **IGN Géoplateforme** (ortho, plan, BD TOPO, cadastre, geocoder…) | ✅ | Licence Ouverte 2.0 explicitly permits commercial reuse. Attribution + date of last update. |
@@ -712,11 +712,82 @@ rather than discovered afterwards. Verified 2026-09-08.
 | **Google Map Tiles 2D** (`Plan Google`, `Relief Google`) | ✅ *with your own key and billing* | Google Maps Platform ToS. Note this is unrelated to the EEA withdrawal, which blocks `satellite` and 3D tiles by **billing address** — a restriction on access, not on commercial use. |
 | Everything else in the tables above | ✅ | Licence Ouverte, ODbL, CC BY, PDDL or public domain, each named in its own row. |
 
+### How long Bing actually has — read "at least" as a floor
+
+An earlier version of this file said Cesium guaranteed Bing "only *at least
+through September 2026*, i.e. now", and concluded the two Bing chips were about
+to die. **That was a misreading of a minimum guarantee as a deadline**, and it
+is corrected here rather than quietly dropped, because it is the kind of
+sentence that makes someone delete working code.
+
+The sentence itself is real and still published verbatim in the
+[Content Usage and Attribution Guide](https://cesium.com/learn/ion/content-usage-and-attribution-guide/):
+*"Bing Maps is being retired, but Cesium ion will provide access to it at least
+through September 2026. Alternative imagery will be made available soon."* It
+has not been updated since. What bounds the real horizon is Cesium's own
+announcement, [Bing Maps end of life timeline in Cesium ion](https://community.cesium.com/t/bing-maps-end-of-life-timeline-in-cesium-ion/40002)
+(Lisa Bos, Cesium ion PM, 2025-04-15):
+
+> Cesium is an **Enterprise Bing Maps customer, and the latest possible end date
+> for our use is June 30, 2028**. If you are using Bing Maps through Cesium ion,
+> you can continue to do so without worry. […] it's likely we will remove Bing
+> assets from ion prior to the latest date in 2028
+
+Restated by Cesium staff on 2025-11-14: *"our access to Bing Maps that we
+provide through ion remains in place until 2028."* Microsoft's own dates match:
+Bing Maps for Enterprise **Basic (free) accounts died 2025-06-30**, enterprise
+contracts run to **2028-06-30**. Cesium promises an announcement and a testing
+window before removing the assets.
+
+**The successors already exist, and they are not announcements — they are asset
+IDs.** Cesium added **Google Maps 2D** assets to ion on 2025-10-02 and **Azure
+Maps** assets (Microsoft's own Bing replacement) in December 2025, as a
+Technology Preview. Both are streamed by ion under Cesium's agreements — no key
+of your own — and folded into the former Bing quota, now called **Global
+Imagery**, with plan allowances unchanged. From CesiumJS's own
+[`imagery-assets-available-from-ion`](https://github.com/CesiumGS/cesium/blob/main/packages/sandcastle/gallery/imagery-assets-available-from-ion/main.js)
+Sandcastle:
+
+| ion asset | id |
+|---|---|
+| Google Maps 2D Satellite | `3830182` |
+| Google Maps 2D Satellite with Labels | `3830183` |
+| Google Maps 2D Roadmap | `3830184` |
+| Google Maps 2D Labels Only | `3830185` |
+| Google Maps 2D Contour | `3830186` |
+| Azure Maps Aerial | `3891168` |
+| Azure Maps Roads | `3891169` |
+| Azure Maps Labels Only | `3891170` |
+| Sentinel-2 | `3954` |
+
+They load with `IonImageryProvider.fromAssetId(id)`, one call, against the same
+`CESIUM_ION_TOKEN` the two Bing stacks already need — those go through
+`createWorldImageryAsync({ style })` in `src/mapStackController.js`, which is
+the Bing-specific shortcut for the same mechanism. So adding or swapping one is
+an entry in `MAP_STACKS` and a branch in `_getImageryProvider`, not a new
+integration. (CesiumJS also ships a dedicated
+`Google2DImageryProvider.fromIonAssetId()` since **1.134** — this repo is on
+1.138 — for the styling options; the plain ion provider is enough for a basemap.)
+
+Two things to know before treating it as a drop-in for the world base under IGN:
+
+- ion's Google terms say you **"may not combine Google Maps Platform data with a
+  non-Google map"**, so a Google-via-ion layer can only ever be a standalone
+  chip — never the world base under the IGN orthophoto the way Esri is.
+- CesiumJS documents that **"Google 2D Tiles can only be used with the Google
+  geocoder"**, which this build does not use (its search is keyless).
+
+Whether ion's Google satellite escapes the **EEA imagery withdrawal** that
+kills this project's own Google key is *untested*. The withdrawal keys off the
+**customer's billing address**, and on this path the customer is Cesium; that
+makes it plausible, not proven. It costs one free ion token to find out.
+
 ### The imagery replacement, if that day comes
 
 Losing Esri and Bing would leave a paid product with **no worldwide
-high-resolution imagery**, since Google's is withheld from EEA billing addresses.
-The measured options, cheapest first:
+high-resolution imagery**, since Google's is withheld from EEA billing addresses
+*on your own key* — the ion route below is the exception. The measured options,
+cheapest first:
 
 - **Keep Sentinel-2 cloudless 2017** — already the fallback in
   `src/data/worldImagery.js`, already CC BY 4.0, costs nothing. 10 m resolution
@@ -727,9 +798,12 @@ The measured options, cheapest first:
   requiring the `premium:user:basemaps` privilege. **2M basemap tiles free per
   month**, then $0.15/1000; or the session model, 1,000 free then $4/1000. At
   ~90 tiles per view that free tier is roughly 22,000 page loads a month.
-- **Cesium ion Commercial** — $149/month, 5,000 imagery sessions. Only worth it
-  if the 3D tiling and terrain are wanted too, and its Bing imagery is on the
-  way out regardless.
+- **Cesium ion Commercial** — $149/month, 5,000 Global Imagery sessions. This
+  now buys Google Maps 2D Satellite as well as Bing, on Cesium's agreement
+  rather than a key of your own, which is the one path here that reaches
+  *Google* imagery from an EEA address at all. Bing under it has until
+  2028-06-30 at the outside (see above); Google 2D does not carry that clock.
+  Still only worth it if the 3D tiling and terrain are wanted too.
 
 Nothing in the code needs to change to *keep the current, free, open-source
 posture*. The switch would be to make the world base follow a key the way
