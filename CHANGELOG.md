@@ -3,6 +3,51 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
+## [Unreleased] — 2026-09-07
+
+### Added
+- **Le chiffrage du GTFS-RT national — la question laissée ouverte par la
+  chronique, répondue en octets.** `docs/CHRONIQUE.md` disait qu'enregistrer
+  les 150 flux GTFS-RT français nationalement « demande un chiffrage avant de
+  l'allumer ». Il est fait, mesuré contre les 147 ressources distinctes de
+  l'index et contre les horaires publiés de quatre réseaux, et il tient dans
+  [`docs/CHRONIQUE-GTFS-RT.md`](docs/CHRONIQUE-GTFS-RT.md).
+  **La journée de service est l'unité de compte, pas l'heure du sondage** : à
+  22 h la France en service pèse un cinquième de ce qu'elle pèse à 17 h, donc
+  multiplier un balayage nocturne par 1 440 se tromperait de 80 %. La forme de
+  la journée vient des horaires — **10,62 véhicule-heures et 428,3 passages
+  d'arrêt par véhicule en service à 17 h**, pondérés sur quatre réseaux — et
+  l'ancre est le sondage national de 17 h 18 : **7 212 véhicules**, d'où
+  **76 591 véhicule-heures et 3,09 millions de passages d'arrêt par jour**.
+  **Le prix varie d'un facteur 50 selon la forme qu'on garde.** Un balayage
+  national pèse 230 Ko compressés ; sur un an, à 30 s, garder les corps entiers
+  coûte **524 Go**, garder la position projetée **77 Go**, et la garder
+  dédupliquée **42,6 Go** — une position en NDJSON pèse 24,6 o compressée
+  contre 36,7 o en protobuf, donc garder ce qu'on tire du corps coûte moins
+  cher que garder le corps. Les **passages d'arrêt** — l'objet qui vaut le
+  produit — pèsent **11,4 Go par an** et ne dépendent pas de la cadence : un bus
+  ne passe qu'une fois. Les semaines types, elles, sont gratuites : 70 Mo pour
+  les 6 895 lignes françaises, pour toujours.
+  **Un véhicule français émet une position toutes les ~39 s** : sonder à 30 s en
+  récolte 72 %, à 60 s 42 %, et à 10 s on paye trois fois le prix pour 40 % de
+  plus (écart médian de republication mesuré à 20 s sur les 25 plus gros flux).
+  **Le piège de facture, ce sont les TripUpdates** : 1 416 Go d'entrant par an à
+  30 s, dont l'essentiel est la même prédiction réécrite — alors que **995 des
+  1 211 positions nomment déjà l'arrêt où le véhicule se trouve**, ce qui donne
+  le passage gratuitement dans des octets déjà téléchargés.
+  Bilan sur la machine qui héberge : **≈ 15 Go en régime** (30 jours de
+  positions dédupliquées, 12 mois de passages, les profils) contre **21 Go
+  libres** sur un VPS partagé avec la production Enerlens — et `docker builder
+  prune` rend 12,8 Go sans rien détruire. Deux scripts refont la mesure,
+  `scripts/measure-pan-gtfs-rt-cost.mjs` (dont un mode `--budget` qui recalcule
+  l'année sans réseau) et `scripts/measure-gtfs-service-day.mjs`.
+  Trois choses apprises au passage : **un flux qui dort ressemble exactement à
+  un flux mort** (5 ressources sur 147 en échec pendant la mesure, dont trois
+  qui répondaient à 17 h 18 et rendaient un 404 à 22 h 10, et une qui a changé
+  d'identifiant en sept jours) ; le plafond `CHRONICLE_MAX_SERIES` de 250 ne
+  passe pas l'échelle nationale, qui en demande 441 ; et la nuit ne coûte
+  presque rien — un corps vide fait 15 octets, c'est l'en-tête HTTP qui coûte.
+
 ## [Unreleased] — 2026-09-03
 
 ### Added

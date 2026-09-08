@@ -102,11 +102,19 @@ carte de là où les opérateurs de ce serveur ont pointé la caméra, pas de la
 France.
 
 Ce n'est pas réparable en le souhaitant — interroger 151 flux GTFS-RT
-nationalement est une facture réelle, et le transcript qui a ouvert ce chantier
-le disait : *« le stockage d'un an de GTFS-RT national demande un chiffrage
-avant de l'allumer »*. Alors c'est **mesuré** : chaque créneau porte son nombre
-de semaines, `/profile` le renvoie, et un profil maigre se lit comme maigre
-plutôt que comme un réseau calme.
+nationalement est une facture réelle. Alors c'est **mesuré** : chaque créneau
+porte son nombre de semaines, `/profile` le renvoie, et un profil maigre se lit
+comme maigre plutôt que comme un réseau calme.
+
+Et la facture, elle, est chiffrée depuis le 2026-09-07 :
+[`docs/CHRONIQUE-GTFS-RT.md`](CHRONIQUE-GTFS-RT.md). Le résumé tient en deux
+nombres — **42,6 Go par an** pour les positions nationales dédupliquées à 30 s,
+**11,4 Go par an** pour les passages d'arrêt, dont on n'a besoin de garder qu'un
+mois et douze mois respectivement, soit **≈ 15 Go en régime** contre 21 Go
+libres sur le VPS. Ce qui coûterait vraiment cher est ce qu'on ne fera pas :
+524 Go par an pour garder les corps entiers, et 1 416 Go d'entrant par an pour
+sonder les TripUpdates à la même cadence alors que 82 % des positions nomment
+déjà l'arrêt où le véhicule se trouve.
 
 Corollaire assumé sur le transit : la série de flotte est `feed.reported` — le
 nombre de véhicules que le **réseau** a publiés — et jamais `feed.inView`, qui
@@ -209,6 +217,8 @@ décoration.
 | `src/data/qualichargeDynamic.js` | La seule nouvelle source amont, et les trois pièges mesurés de son fichier. |
 | `vite.config.js` | Les fichiers, la temporisation, le renommage atomique, le balayage de rétention, et les cinq replis. |
 | `scripts/qa-chronicle.mjs` | `npm run qa:chronicle -- --url http://localhost:5173` |
+| `scripts/measure-pan-gtfs-rt-cost.mjs` | Le chiffrage national : coût d'un balayage, cadence de republication, poids d'un échantillon, et `--budget` qui refait l'année sans réseau. |
+| `scripts/measure-gtfs-service-day.mjs` | La journée de service tirée des horaires publiés — le facteur qui transforme un sondage d'une heure en un an. |
 
 ## Le piège qui vaut le détour : un tiers du fichier IRVE ne parle pas de maintenant
 
