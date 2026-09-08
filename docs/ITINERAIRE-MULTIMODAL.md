@@ -25,12 +25,17 @@ dans un tas JVM — et la réponse n'est pas la même (§7).
 
 **La réponse courte, pour qui ne lit que ce paragraphe.** Avec OTP, la France
 demande une machine de **32 Go** et cette machine-ci n'y arrive pas. Avec MOTIS,
-la France entière s'importe en **6 min 41 s**, se sert sous **2 Go résidents**
-et répond en **24 à 32 ms** — sur ce même Mac. Le prix de 32 Go n'est pas le
-prix du produit, c'est le prix d'OTP. Mais MOTIS **ne lit pas le GTFS de
-l'Île-de-France**, donc « la France sur une petite machine » veut dire
-aujourd'hui « la France moins Paris », et c'est un défaut d'un flux, pas d'une
-architecture.
+**la France entière — Paris compris — s'importe en 4 min 34 s, se sert sous
+2 Go résidents et répond à p50 170 ms** sur ce même Mac : *av. de France →
+La Défense en 25 min par le M14 et le RER A, Melun → La Défense en 55 min par
+la ligne R et le RER A*. Le prix de 32 Go n'est pas le prix du produit, c'est le
+prix d'OTP.
+
+Le refus du GTFS francilien, qui bornait ce document à « la France moins
+Paris », **n'était pas un défaut de la donnée** : c'est une table de MOTIS
+2.11.2 dont les clés pointent sur un tampon déjà libéré, corrigée en amont le
+30 août 2026 et absente de toute version publiée. Une colonne retirée d'un
+fichier de 8 584 octets suffit à l'attendre. **Un moteur, pas deux** — §8.
 
 **Ce qui a servi :** OpenTripPlanner **2.9.0** (sortie du 2026-03-18) et
 **MOTIS 2.11.2** (2026-08-12), les versions qu'on déploierait aujourd'hui.
@@ -332,17 +337,31 @@ La France mesurée ci-dessus est donc **la France moins Paris** :
 route correctement de Lille à Roubaix et de Rennes à Brest ; « Melun → La
 Défense » ne trouve rien.
 
+**Ce paragraphe est laissé tel qu'il a été mesuré, et il est exact — mais son
+titre l'était moins. La cause a été trouvée depuis, et ce n'est pas la donnée :
+voir §8.** L'IDFM ne publie rien d'illégal ni d'invalide ; c'est MOTIS 2.11.2
+qui lit une table dont les clés ont été libérées. Le §8 le démontre, le répare
+en une colonne, et construit **la France entière, Paris compris, sur ce même
+Mac**.
+
 ### La symétrie qui est le vrai enseignement
 
 - **OTP refuse Corsica Ferries** (un `route_id` vide) — **MOTIS l'accepte**.
 - **MOTIS refuse l'IDFM** — **OTP l'accepte**.
 
-**Aucun des deux moteurs ne lit la France telle qu'elle est publiée.** Ce n'est
-pas un défaut d'un moteur, c'est une propriété du corpus : il contient des
-défauts que deux implémentations rigoureuses ne rencontrent pas au même endroit.
+**Aucun des deux moteurs ne lit la France telle qu'elle est publiée.** Le
+constat tient ; sa cause, elle, n'est pas la même des deux côtés, et le §8 a
+tranché : le refus de Corsica Ferries est un **défaut de donnée** (un
+`route_id` vide, que la spécification interdit), le refus de l'IDFM est un
+**défaut de moteur** — une table de correspondance dont les clés pointent sur
+un tampon déjà libéré, corrigée en amont le 30 août 2026 et absente de toute
+version publiée. Symétrie de forme, pas de nature.
+
 La conclusion du §5 s'en trouve renforcée, pas remplacée — **la couche de
 validation et de réparation n'est pas optionnelle, quel que soit le moteur
-choisi.**
+choisi.** Elle sert même à deux choses distinctes : réparer ce que les
+producteurs publient de travers, et **contourner ce que le moteur du moment ne
+sait pas lire**. Le second est temporaire, le premier ne l'est pas.
 
 ### Ce que ça change pour la décision
 
@@ -356,19 +375,232 @@ choisi.**
 | **Mémoire en service** | **3,59 Go vivants (IDF)** · **15–19 Go France, extrapolé** | **1,91 Go (France, mesuré)** |
 | Latence | 291–748 ms (IDF) | **24–32 ms** (mêmes trajets) |
 | France sur cette machine | **échec** | **réussi** |
-| Flux français refusés | Corsica Ferries | **IDFM** |
+| Flux français refusés | Corsica Ferries | **IDFM** — bug moteur, réparé en une colonne (§8) |
 
 Le chiffre de 32 Go du §3 **n'est donc pas le prix du produit, c'est le prix
 d'OTP**. Avec un moteur mémoire-projetée, la France tient sur une machine
 ordinaire — disque un peu plus généreux, mémoire cinq à dix fois moindre,
 requêtes dix à trente fois plus rapides.
 
-Ce qui reste bloquant est **une seule ligne d'un seul flux**, pas une
-architecture. Et c'est un problème qui a un propriétaire : soit l'IDFM publie un
-GTFS que MOTIS lit, soit le défaut est remonté à MOTIS, soit la couche de
-réparation du §5 le corrige en amont. Tant que ce n'est pas fait, « la France
-sur une petite machine » veut dire **la France moins Paris**, et Paris est
-précisément la scène du produit.
+Ce qui restait bloquant était **une seule colonne d'un seul flux**, pas une
+architecture. Le §8 l'a levé : « la France sur une petite machine » veut
+maintenant dire **la France, Paris compris**, et elle a été construite.
+
+---
+
+## 8. Le refus de l'Île-de-France : la cause, la réparation, et la France entière
+
+Le §7 laissait trois portes ouvertes — « soit l'IDFM publie un GTFS lisible,
+soit le défaut remonte à MOTIS, soit la couche de réparation le corrige ». La
+bonne était la deuxième, et la troisième coûte cinq lignes.
+
+**Le GTFS de l'IDFM n'a aucun défaut. MOTIS 2.11.2 lit une table dont les clés
+ont été libérées.**
+
+### Ce que le journal disait déjà
+
+L'échec est reproductible en **4,9 s** : MOTIS 2.11.2, le GTFS IDFM 80921 tel
+que publié (116 719 562 octets), une base OSM minuscule. La dernière étape
+annoncée par le suivi de progression n'est pas « Read Stop Times », c'est
+**`Load Ticketing`** — l'extension *Google Transit Ticketing*, celle qui porte
+les liens d'achat de titres. Rien à voir avec des horaires.
+
+Le même flux servi de deux façons échoue de deux façons — et c'est ça, la
+signature :
+
+| Le flux est servi… | MOTIS 2.11.2 |
+|---|---|
+| en archive `.zip` | `ankerl::unordered_dense::map::at(): key not found` |
+| en **répertoire** de fichiers | **SIGSEGV** (code 139), même étape |
+| `.zip` ou répertoire, **colonne `ticketing_deep_link_id` retirée d'`agency.txt`** | **import propre** |
+
+Un même défaut logique ne produit pas deux pannes différentes selon le mode de
+lecture ; une **mémoire libérée**, si. En archive, le contenu du fichier est un
+tampon sur le tas : libéré puis réécrit, la comparaison de clés échoue et la
+table dit « pas trouvé ». En répertoire, le fichier est **projeté en mémoire** :
+à la libération, la page est démappée, et la même comparaison déréférence une
+adresse qui n'existe plus. Le moteur mémoire-projetée du §7 se retourne ici
+contre lui-même.
+
+### La ligne, en amont
+
+`nigiri` est le chargeur d'horaires de MOTIS. La version épinglée par MOTIS
+2.11.2 (`.pkg` → nigiri `0a08a1c`), dans `src/loader/gtfs/ticketing.cc` :
+
+```cpp
+auto map = hash_map<std::string_view, ticketing_link_idx_t>{};   // clés = vues
+...
+auto const deep_links =
+    read_ticketing_deep_links(tt, load(kTicketingDeeplinks).data());  // ← temporaire
+for (auto const& [provider_idx, deep_link_id] : agency_ticketing) {
+  tt.providers_[provider_idx].ticketing_link_ = deep_links.at(deep_link_id);  // ← lit du libéré
+}
+```
+
+Les clés de la table sont des `string_view` sur le contenu du fichier. Ce
+contenu est un **temporaire détruit au point-virgule**. Le `at()` de la ligne
+suivante compare la clé cherchée à des octets qui ne sont plus à personne.
+
+Corrigé en amont le **2026-08-30** par `cf852e90` — *« ticketing parsers: fix
+crash (map keys go out of scope) »* — qui passe la table en
+`hash_map<std::string, …>`. Les dates comptent : **v2.11.2 est du 12 août, le
+correctif du 30**. Aucune version publiée ne le contient ; `master` l'a (motis
+épingle nigiri `b27ad6b`, du 31 août). Et **aucun ticket ne décrit la panne** : chercher
+« ticketing » dans les deux dépôts ne rend que l'implémentation de l'extension
+elle-même. Le correctif est passé sans que personne n'écrive qu'il débloquait
+Paris.
+
+### Pourquoi l'IDFM, et pratiquement personne d'autre
+
+Les 53 flux du corpus ont été balayés. **Deux déclarent la colonne, un seul la
+remplit** :
+
+- **IDFM** — les deux ressources téléchargeables donnent à **toutes** leurs
+  agences la même valeur, `ticketing_deep_link:1` : 62 agences pour l'« Horaires
+  au format GTFS » (80921), 60 pour la « GTFS modifié » (80931). Les deux ont
+  été réimportées ici, et les deux tombent sur la même phrase. Ce qui explique
+  enfin pourquoi le §7 les voyait « échouer identiquement » : ce n'est pas leur
+  contenu qui se ressemble, c'est le code qui les lit.
+- **TCL Lyon** (81943) déclare la colonne dans `agency.txt` **et** `routes.txt`,
+  mais toutes ses valeurs sont vides — et `agency.cc` ignore le vide. Le flux
+  passe.
+
+Le seul réseau français que MOTIS 2.11.2 refuse est donc celui qui a implémenté
+l'extension Google jusqu'au bout. **Le réseau le plus complet du pays est puni
+d'avoir été le plus complet.**
+
+### La réparation : une colonne, cinq lignes, 0,05 s
+
+Ce qu'on jette est nommable : `ticketing_deep_links.txt` de l'IDFM contient
+**une ligne**, dont les trois URL sont `https://app.idf-mobilites.fr/gtfs` —
+l'application de l'opérateur, la même pour les 62 agences. Ce n'est pas de la
+donnée de routage, et le produit n'en affiche rien.
+
+```bash
+python3 - <<'EOF'
+import csv, io, zipfile
+z = zipfile.ZipFile('idfm.zip')
+rows = list(csv.DictReader(io.TextIOWrapper(z.open('agency.txt'), 'utf-8-sig')))
+cols = [c for c in rows[0] if c != 'ticketing_deep_link_id']
+with open('agency.txt', 'w', newline='') as f:
+    w = csv.DictWriter(f, fieldnames=cols, extrasaction='ignore')
+    w.writeheader(); w.writerows(rows)
+EOF
+zip -0 -j idfm.zip agency.txt     # 0,05 s : un membre réécrit, pas 1 Go
+```
+
+Le remplacement d'un seul membre coûte **0,05 s** sur l'archive de 117 Mo
+(1,05 Go décompressés) : la réparation n'ajoute rien au temps de collecte, et le
+`.zip` d'origine reste à côté, intact et vérifiable.
+
+### La France entière, Paris compris, sur ce Mac de 16 Go
+
+Corpus reconstruit le 2026-09-08 avec la règle du §1, étendue de ce qu'elle
+avait manqué : le Point d'Accès National classe la couverture nationale sous
+`pays`, pas `country`, et **le GTFS « Réseau SNCF TGV, Intercités et TER » était
+tombé du corpus de septembre**. Sans lui, Bordeaux → Toulouse se route en
+**28 heures** par cars interurbains ; avec lui, en 2 h 27. Un corpus se vérifie
+par ses itinéraires, pas par son compte de fichiers.
+
+| | |
+|---|---|
+| Flux | **53** (46 régionaux + 7 nationaux/européens), **1 002 Mo** zippés |
+| `stop_times` | **39 602 882** — dont 8 736 153 pour le seul IDFM |
+| Rues | `france-latest.osm.pbf`, **5 076 560 568 octets** (le fichier du §3) |
+| **Import complet** | **274 s** — horaires 22,7 s · adresses 1 min 47 · rues 2 min 00 · appariement 16 s |
+| RSS maximum à l'import | **5,13 Go** |
+| Sur disque | **7,7 Go** |
+| Chargé | **383 555 arrêts · 1 868 158 courses · 36 760 889 transports × jours**, 53 sources |
+| Démarrage du serveur | **10,8 s** à froid, **3,6 s** cache chaud |
+| **Résident en service** | **2,63 Go** au démarrage, **1,81 Go** après 300 requêtes |
+| Latence, 300 trajets entre 20 gares | **p50 170 ms · p90 346 ms · p99 596 ms**, **300/300** avec itinéraire |
+
+Le résident **baisse** sous la charge : le système reprend les pages projetées
+dont personne ne se sert. C'est la propriété que le §7 annonçait, vérifiée cette
+fois avec Paris dedans.
+
+Et ce que ça donne, départ mercredi 9 septembre 2026 à 8 h (heure de Paris) :
+
+| Trajet | Résultat | Latence |
+|---|---|---|
+| **av. de France (13e) → La Défense** | **25 min**, 1 corr. — **M14** jusqu'à Châtelet, **RER A** jusqu'à La Défense | **p50 124 ms** |
+| **Melun → La Défense** | **55 min**, 1 corr. — **ligne R** jusqu'à Gare de Lyon, **RER A** | **p50 82 ms** |
+| Paris Austerlitz → Lyon Part-Dieu | 119 min, **direct** | 241 ms |
+| Bordeaux St-Jean → Toulouse Matabiau | 147 min, **direct** | 154 ms |
+| Nice → Lyon Part-Dieu | 273 min, 1 corr. | 103 ms |
+| Rennes → Brest | 120 min, direct | 141 ms |
+| Lille Flandres → Roubaix | 26 min, 1 corr. — **M2** | 101 ms |
+
+« Melun → La Défense » ne trouvait rien au §7. Il trouve la ligne R et le RER A,
+en 82 ms.
+
+### La reconstruction hebdomadaire coûte une minute, pas une nuit
+
+Mesure non prévue, et c'est la plus utile pour l'exploitation. Ajouter les
+sept flux nationaux à un jeu de données déjà importé a coûté **59 s** — horaires
+31 s, appariement des arrêts aux rues 18 s, extension du géocodage aux arrêts
+8 s. Le graphe de rues (`osr`, 2 min) et l'index d'adresses (`adr`, 1 min 47)
+n'ont **pas** été refaits : MOTIS les indexe par empreinte de l'OSM, qui n'avait
+pas bougé.
+
+Donc, pour les 39 % de flux GTFS republiés dans les 7 jours (§5) : **une minute
+de machine par semaine**, pas les 274 s d'un build complet, et pas la nuit
+d'OTP. Le build complet ne redevient nécessaire que lorsque l'extrait OSM
+change.
+
+### Trois défauts de corpus ramassés au passage
+
+La couche de validation du §5 a maintenant des cas nommés, tous rencontrés sur
+ce seul balayage :
+
+- **Un zip de zips.** Le flux Mobigo Jura (84076) publie une archive qui ne
+  contient que `20260803.zip` et `20270101.zip`. MOTIS ne charge pas zéro : il
+  **refuse l'import entier** — `unable to import: no loader for ... found`,
+  code de sortie 1. Un flux départemental fait donc tomber le build national,
+  exactement comme le `route_id` vide de Corsica Ferries chez OTP (§5). Il faut
+  le déballer, et choisir le millésime : deux sont proposés, 2026 et 2027.
+- **Deux sources sans un seul jour de service.** MOTIS les charge, les compte, et
+  leur donne `transportsXDays = 0` avec une date de début à **2206** :
+  le réseau scolaire de Martinique s'arrête au 10 juillet 2026, les **Chemins de
+  fer de la Corse au 9 mars 2026**. Un flux périmé n'est pas une erreur de
+  chargement, c'est un trou silencieux dans la carte.
+- **Un CSV en largeur fixe.** L'AVE Renfe complète chaque ligne par des espaces
+  jusqu'à une largeur constante. MOTIS l'avale ; le balayage naïf qui vérifie
+  les calendriers, lui, a lu `20260909␣␣␣…` et conclu « pas de service ». Le
+  garde-fou doit être plus tolérant que le moteur, pas moins.
+
+### La décision : un moteur, pas deux
+
+La question posée était : « MOTIS pour la France, autre chose pour Paris ? »
+La réponse est non, et le tableau dit pourquoi.
+
+| | **Un moteur** — MOTIS + réparation | **Deux moteurs** — OTP sur l'IDF, MOTIS ailleurs |
+|---|---|---|
+| Machine | **une**, 16 Go suffisent (1,8–2,6 Go résidents) | celle de MOTIS **plus** celle d'OTP : 3,59 Go de tas vivant pour la seule IDF, JVM à dimensionner |
+| Construction | 274 s complet, **59 s** pour un rafraîchissement d'horaires | deux chaînes, deux formats de graphe, deux cadences |
+| Trajets à cheval | **routés** : Melun → La Défense, Paris → Lyon, Nice → Lyon | **impossibles** sans recoller deux réponses à la frontière — un Melun → Rouen n'appartient à aucun des deux |
+| Flux refusés | aucun, après une colonne | OTP refuse toujours Corsica Ferries (§5) : la réparation reste **obligatoire** de toute façon |
+| Surface d'exploitation | une API, un cron, une quarantaine | deux de chaque, et un routeur d'appels par géographie |
+| Dette | **datée** : disparaît à la première version MOTIS qui embarque nigiri ≥ `cf852e90` | permanente |
+
+Le deuxième moteur n'achèterait rien qu'on n'ait déjà, et il ferait revenir la
+machine à 32 Go pour la seule région où le produit doit être le meilleur.
+
+**Ce qu'il faut poser en exploitation, dans cet ordre :**
+
+1. **Épingler MOTIS 2.11.2** et appliquer la réparation à l'ingestion — pas au
+   téléchargement, à l'ingestion, pour que le fichier d'origine reste vérifiable.
+2. **Balayer, ne pas supposer** : la réparation cherche la colonne dans
+   `agency.txt` et `routes.txt` de **chaque** flux, et journalise ce qu'elle
+   touche. Aujourd'hui, ça touche un flux sur 53.
+3. **Surveiller la prochaine version de MOTIS.** Dès qu'une release embarque
+   nigiri ≥ `cf852e90`, la réparation devient inutile — on la retire, on garde le
+   balayage, et on le dit dans le journal.
+4. **Ne pas oublier la licence.** Le PAN classe le GTFS IDFM en
+   `mobility-licence` — Licence Mobilités, avec obligations de déclaration, et
+   non Licence Ouverte. `DATA_SOURCES.md` le note déjà pour la couche
+   `idfm-frequency`. Servir des itinéraires parisiens veut dire s'y conformer :
+   c'est une démarche, pas un obstacle technique.
 
 ---
 
@@ -383,6 +615,18 @@ macOS, 16 Go, 10 cœurs. OSM : Geofabrik, extraits `france`, `ile-de-france`,
 
 Chaque build a été mesuré avec `/usr/bin/time -l` (RSS maximum) et chaque heap
 vivant avec `jcmd GC.run` suivi de `jcmd GC.heap_info`.
+
+**Pour le §8**, même journée et même machine : MOTIS 2.11.2 en `import` puis
+`server`, résident lu par `ps -o rss=` sur le processus qui répond, latences
+mesurées côté client sur l'API `/api/v1/plan` (300 tirages entre 20 gares,
+graine fixée). Le code incriminé est lu dans `nigiri` aux deux commits que
+MOTIS épingle : `0a08a1c` pour la version 2.11.2 (`.pkg` du dépôt motis à ce
+tag) et `b27ad6b` pour `master`. Corpus GTFS et OSM téléchargés à nouveau le
+2026-09-08 ; le fichier `france-latest.osm.pbf` a la taille exacte du §1, à
+l'octet près. Les trois défauts de corpus ont été vérifiés flux par flux, chacun
+importé seul : le zip de zips fait sortir MOTIS en code 1, et les deux flux
+périmés s'importent proprement en rendant `transportsXDays = 0`. Les données de
+test ont été effacées après mesure.
 
 **Un piège pour qui reproduit.** OTP 2.x reconnaît un GTFS **au nom du fichier**,
 pas à son contenu : un `80931.zip` est ignoré, un `gtfs-80931.zip` est lu. Un
