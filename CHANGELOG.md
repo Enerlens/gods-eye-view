@@ -58,6 +58,18 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   le plancher — 259 Ko par balayage sont dus quelle que soit la flotte, donc
   éteindre de 1 h à 5 h ne rendrait que ~10 % de l'entrant.
 
+### Changed
+- **La chronique QualiCharge a son régime mesuré, et il est deux fois et demie
+  moins cher que l'estimation.** Une fois la ligne de base de démarrage passée,
+  un sondage en régime journalise **3 295 transitions en 14 minutes — 122 Ko en
+  clair, 28 Ko compressés**, contre 75 456 transitions et 2 831 Ko pour la ligne
+  de base. Soit ~316 000 transitions et ~12 Mo par jour là où la journée
+  synthétique de `docs/CHRONIQUE.md` en supposait 30. Corollaire noté au même
+  endroit : **un redémarrage coûte 23 sondages**, près de six heures
+  d'enregistrement en octets, et le staging redéploie à chaque poussée — donc
+  « le journal a doublé » se vérifie sur `State.StartedAt` avant de se
+  diagnostiquer.
+
 ### Fixed
 - **Le compose du VPS ne se met pas à jour tout seul, et ça avait désarmé le
   seul enregistreur qui ne dépend de personne.** L'agent de déploiement remplace

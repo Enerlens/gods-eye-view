@@ -166,6 +166,27 @@ Le premier sondage après un démarrage journalise l'état hérité des 75 427 b
 (~2,9 Mo). C'est voulu : après une coupure on ne sait pas ce qui a changé, donc
 la ligne de base est réécrite plutôt que devinée.
 
+**Le régime réel, mesuré le 2026-09-08 sur le staging**, une fois la ligne de
+base passée :
+
+| | Transitions | En clair | Compressé | Par transition |
+|---|---|---|---|---|
+| Ligne de base au démarrage | 75 456 | 2 831 Ko | 751 Ko | 38,4 o |
+| Un sondage en régime (14 min) | **3 295** | **122 Ko** | **28 Ko** | 37,8 o |
+
+Soit ~316 000 transitions et **~12 Mo en clair par jour**, deux fois et demie
+moins que l'estimation synthétique ci-dessus, qui supposait 5 000 bornes
+changeantes par tick. Trente jours de brut tiennent donc dans une centaine de
+mégaoctets.
+
+**Une conséquence à connaître : un redémarrage coûte 23 sondages**, soit près de
+six heures d'enregistrement en octets. Sur le staging, qui redéploie à chaque
+poussée sur la PR ouverte la plus récente, une journée de développement actif
+écrit donc plus de lignes de base que de transitions. Ce n'est pas une fuite —
+chaque ligne de base est un état vrai et daté — mais c'est la raison pour
+laquelle « le journal a doublé » n'est pas un signe d'anomalie tant qu'on n'a
+pas regardé `docker inspect -f {{.State.StartedAt}} gev`.
+
 ## Les routes
 
 ```
