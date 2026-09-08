@@ -6,6 +6,24 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-08
 
 ### Added
+- **Les deux instruments qui ont décidé le fond satellite, versés dans le dépôt.**
+  Ils vivaient dans un répertoire de travail non versionné, alors que ce sont eux
+  qui portent la preuve. `npm run qa:world-imagery` cadre quatre vues qui mettent
+  une frontière dans l'image — Douvres, le Rhin, les Pyrénées, plus Manhattan en
+  témoin — vérifie la composition, les attributions des deux licences, et
+  **contrôle désormais que la caméra est bien où le cadrage l'a demandée** : le
+  vol de démarrage écrasait silencieusement la première vue, si bien que la
+  capture montrait Paris pendant que tous les contrôles passaient au vert.
+  `npm run qa:world-imagery-cost` imprime le coût par stratégie, en tuiles et en
+  octets.
+  **Et le banc corrige un chiffre que le dépôt affirmait.** Rendu déterministe —
+  il neutralise explicitement la mise en veille du produit, sinon toutes ses
+  lignes finissent par mesurer la même chose — il montre que `cutoutRectangle`
+  lit **exactement 813 ko, tuile pour tuile, comme l'empilement nu**. La première
+  mesure disait 813 contre 874 et laissait croire à une petite économie : c'était
+  du bruit. Le constat n'en est que plus net, et les commentaires du code, la
+  fiche d'état et le changelog qui citaient 874 ko sont corrigés.
+
 - **Le globe a enfin des photos hors de France, et il en charge moins qu'avant.**
   `IGN Ortho` compositait son orthophoto 20 cm sur un fond mondial de **traits
   OSM** : un plan de rues sous une photographie, ce qui se lit comme un défaut

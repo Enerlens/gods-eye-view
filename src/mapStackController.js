@@ -186,12 +186,13 @@ export const IGN_FRANCE_RECTANGLE = Object.freeze({
  * survived a tile-by-tile probe at z13 with zero misses and zero blanks
  * (81/81 for the first, 49/49 for the others, measured 2026-09-08).
  *
- * WHAT IT BUYS, measured with `.context/bench-world-imagery-cost.mjs` over
- * Paris at z≈17: the invisible base costs 46 tiles / 874 kB per view — MORE
- * than the visible IGN layer's own 769 kB. `cutoutRectangle` does not help
- * (813 kB: it cuts the draw, not the fetch); only `show = false` takes it to
- * zero. Coastal and border cities are deliberately absent: there the base is
- * genuinely visible and must keep loading.
+ * WHAT IT BUYS, measured with `npm run qa:world-imagery-cost` over Paris at
+ * z≈17: the invisible base costs 37 tiles / 813 kB per view, against the
+ * visible IGN layer's own 755 kB — the layer nobody can see costs MORE than
+ * the one they came for. `cutoutRectangle` measures 37 tiles / 813 kB too,
+ * byte for byte identical: it cuts the draw, not the fetch. Only
+ * `show = false` takes it to zero. Coastal and border cities are deliberately
+ * absent: there the base is genuinely visible and must keep loading.
  */
 export const IGN_OPAQUE_BOXES = Object.freeze([
   Object.freeze({ west: 0.5, south: 44.0, east: 5.0, north: 49.0 }),
@@ -718,10 +719,10 @@ export class MapStackController {
    *
    * This is the one that keeps the two-layer stack from costing twice. Cesium
    * downloads a lower layer in full even when an opaque layer completely hides
-   * it, so over Paris the base was fetching 874 kB (Esri) or 268 kB (the OSM
+   * it, so over Paris the base was fetching 813 kB (Esri) or 268 kB (the OSM
    * base this replaced) per view to draw nothing. `show = false` is the only
-   * lever that stops the FETCH — `cutoutRectangle` only stops the draw, and
-   * measured 813 kB against 874, which is no saving at all.
+   * lever that stops the FETCH — `cutoutRectangle` measures the SAME 813 kB,
+   * byte for byte, because it only stops the draw.
    *
    * Called on camera rest rather than per frame: `show` flipping back on makes
    * Cesium re-request the base, so doing this mid-flight would thrash tiles
