@@ -110,6 +110,29 @@ draws, layer proxies answer from that origin — rather than by trusting a
 node scripts/qa-deployment.mjs --url https://gev.enerlens.com/ --auth gev:<password>
 ```
 
+### The VPS compose file does not update itself
+
+The deploy agent swaps `/opt/gev/src` on every run, but it calls
+`docker compose up -d --build` with **the box's own
+`/opt/gev/docker-compose.yml`**, which it never rewrites. So a PR that adds an
+environment variable to the repository's compose file is **inert on staging**
+until that file is copied over by hand.
+
+Not hypothetical: the chronicle merged on 2026-09-07 carrying
+`CHRONICLE_IRVE_DYNAMIC: 1` in `deploy/vps/docker-compose.yml`, the VPS copy
+dated from 2026-09-01, and the QualiCharge poller — the **only** source that
+records without anyone looking — stayed disarmed for a day with no error and no
+log line, `/api/chronicle-fr/status` simply answering `irveDynamic.armed: false`.
+
+```bash
+scp deploy/vps/docker-compose.yml vps:/opt/gev/
+ssh vps 'cd /opt/gev && docker compose up -d'    # recreates the container; `restart` will not
+ssh vps 'set -a; . /opt/gev/.env; set +a; curl -s -u "gev:$GEV_ACCESS_PASSWORD" \
+  http://localhost:4173/api/chronicle-fr/status | head -c 200'
+```
+
+After any merge meant to change the environment, read `armed` — not GitHub.
+
 ### Installing it somewhere else
 
 ```bash

@@ -108,12 +108,12 @@ comme maigre plutôt que comme un réseau calme.
 
 Et la facture, elle, est chiffrée depuis le 2026-09-07 :
 [`docs/CHRONIQUE-GTFS-RT.md`](CHRONIQUE-GTFS-RT.md). Le résumé tient en deux
-nombres — **42,6 Go par an** pour les positions nationales dédupliquées à 30 s,
-**11,4 Go par an** pour les passages d'arrêt, dont on n'a besoin de garder qu'un
+nombres — **42,3 Go par an** pour les positions nationales dédupliquées à 30 s,
+**11 Go par an** pour les passages d'arrêt, dont on n'a besoin de garder qu'un
 mois et douze mois respectivement, soit **≈ 15 Go en régime** contre 21 Go
 libres sur le VPS. Ce qui coûterait vraiment cher est ce qu'on ne fera pas :
-524 Go par an pour garder les corps entiers, et 1 416 Go d'entrant par an pour
-sonder les TripUpdates à la même cadence alors que 82 % des positions nomment
+342 Go par an pour garder les corps entiers, et 1 718 Go d'entrant par an pour
+sonder les TripUpdates à la même cadence alors que 88 % des positions nomment
 déjà l'arrêt où le véhicule se trouve.
 
 Corollaire assumé sur le transit : la série de flotte est `feed.reported` — le
