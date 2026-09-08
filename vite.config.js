@@ -140,6 +140,26 @@ import {
   selectNearbySales,
 } from './src/data/dvfFeed.js';
 import { buildDpeUrl, clampDpeRadius, projectDpe } from './src/data/dpeFeed.js';
+import { foldToCommune } from './src/data/communeCode.js';
+import {
+  LOYERS_SEGMENTS,
+  decodeLoyersCsv,
+  loyersResourceUrl,
+  parseLoyersCsv,
+  projectLoyers,
+} from './src/data/loyersFeed.js';
+import {
+  ARCEP_FILES,
+  arcepFileUrl,
+  parseArcepCsv,
+  projectArcep,
+} from './src/data/arcepFeed.js';
+import {
+  buildAtmoBoxUrl,
+  buildAtmoZoneUrl,
+  projectAtmo,
+} from './src/data/atmoFeed.js';
+import { buildEmploiUrl, projectEmploi } from './src/data/emploiFeed.js';
 import {
   adsSince,
   applyGeocoding,
@@ -21787,6 +21807,468 @@ function dpeProxy() {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Commune-keyed address proxies — loyers, ARCEP, ATMO, emploi
+// ---------------------------------------------------------------------------
+/**
+ * The four sources that answer for a COMMUNE, read from a coordinate.
+ *
+ * They close the four holes the Cityscan grid left in this fork — rents,
+ * connectivity, air, employment — and they share one shape the six address
+ * proxies above do not: the question is asked at a point and answered about a
+ * commune. That shape decides three things, once, here:
+ *
+ *   1. **The BAN resolves the code**, through the same memoised
+ *      `resolveCommuneCode` the risk and market scans already use, so a scan
+ *      that has already asked for radon pays nothing to ask for rents.
+ *   2. **The code is folded per register, not globally.** ARCEP and Atmo
+ *      publish Paris as one commune; the carte des loyers publishes twenty
+ *      arrondissements; Melodi publishes both, under two different level
+ *      names. `communeCode.js` carries the fold and each route below chooses.
+ *   3. **Two of the four are national files, not per-address APIs.** The carte
+ *      des loyers is four 4,7 MB CSVs and Ma connexion internet three 2,3 MB
+ *      ones; both are downloaded once, indexed by INSEE code, held in memory
+ *      and mirrored to disk. A scan then costs a Map lookup. The alternative —
+ *      a per-address upstream call — does not exist for either source.
+ */
+const COMMUNE_PACK_DIR = path.join(process.cwd(), '.gev-cache', 'commune');
+/** Both packs are republished on a quarter or a year; a day is generous. */
+const COMMUNE_PACK_TTL_MS = 24 * 60 * 60 * 1000;
+/** How long a pack may still be served after a failed refresh. */
+const COMMUNE_PACK_STALE_MS = 30 * 24 * 60 * 60 * 1000;
+/** Ceiling per downloaded file. The largest measured is 4 774 352 bytes. */
+const COMMUNE_PACK_MAX_BYTES = 32 * 1024 * 1024;
+const COMMUNE_PACK_TIMEOUT_MS = 90_000;
+const _communePacks = new Map();
+const _communePackInFlight = new Map();
+
+/**
+ * Fetch one national file as BYTES, capped.
+ *
+ * Bytes rather than text because the carte des loyers is CP1252 and
+ * `response.text()` would decide it is UTF-8 and destroy a fifth of the
+ * commune names before this process ever sees them. Decoding belongs to the
+ * feed module that knows the encoding.
+ *
+ * @param {string} url
+ * @returns {Promise<?Uint8Array>}
+ */
+async function fetchCommunePackBytes(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), COMMUNE_PACK_TIMEOUT_MS);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'GodsEyeView/1.0 (commune pack; +https://github.com/bilawalsidhu/gods-eye-view)' },
+    });
+    if (!response.ok) {
+      console.warn(`[commune-pack] ${response.status} from ${new URL(url).host}`);
+      return null;
+    }
+    const declared = Number(response.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > COMMUNE_PACK_MAX_BYTES) {
+      console.warn(`[commune-pack] declared ${declared} bytes from ${new URL(url).host}, over cap`);
+      return null;
+    }
+    const buffer = new Uint8Array(await response.arrayBuffer());
+    if (buffer.byteLength > COMMUNE_PACK_MAX_BYTES) {
+      console.warn(`[commune-pack] ${buffer.byteLength} bytes from ${new URL(url).host}, over cap`);
+      return null;
+    }
+    return buffer;
+  } catch (error) {
+    if (error?.name !== 'AbortError') {
+      console.warn(`[commune-pack] ${new URL(url).host}: ${error?.message || error}`);
+    }
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Where one pack's mirror lives. */
+function communePackPath(key) {
+  return path.join(COMMUNE_PACK_DIR, `${key}.json`);
+}
+
+/**
+ * A national pack, from memory, then from disk, then from upstream.
+ *
+ * The disk mirror is what makes a cold start cheap: without it every restart
+ * re-downloads 19 MB before the first fiche can name a rent. `serialise` and
+ * `revive` exist because a `Map` does not survive `JSON.stringify`.
+ *
+ * @param {object} spec
+ * @param {string} spec.key Cache key and file name.
+ * @param {() => Promise<?object>} spec.build
+ * @param {(payload: object) => object} spec.serialise
+ * @param {(stored: object) => ?object} spec.revive
+ * @returns {Promise<?{payload: object, at: number, stale: boolean}>}
+ */
+async function ensureCommunePack({ key, build, serialise, revive }) {
+  const now = Date.now();
+  const held = _communePacks.get(key);
+  if (held && now - held.at <= COMMUNE_PACK_TTL_MS) return { ...held, stale: false };
+  if (!held) {
+    try {
+      const stored = JSON.parse(await fsp.readFile(communePackPath(key), 'utf8'));
+      const revived = Number.isFinite(stored?.at) ? revive(stored.payload) : null;
+      if (revived) {
+        const entry = { payload: revived, at: stored.at };
+        _communePacks.set(key, entry);
+        if (now - entry.at <= COMMUNE_PACK_TTL_MS) return { ...entry, stale: false };
+      }
+    } catch { /* no mirror yet */ }
+  }
+  const { promise } = coalesceProxyRequest(_communePackInFlight, key, async () => {
+    const payload = await build();
+    if (!payload) return null;
+    const entry = { payload, at: Date.now() };
+    _communePacks.set(key, entry);
+    fsp.mkdir(COMMUNE_PACK_DIR, { recursive: true })
+      .then(() => fsp.writeFile(communePackPath(key), JSON.stringify({ at: entry.at, payload: serialise(payload) })))
+      .catch((error) => console.warn(`[commune-pack] ${key} mirror write failed:`, error?.message || error));
+    return entry;
+  });
+  const built = await promise;
+  if (built) return { ...built, stale: false };
+  // A pack a month old is still this quarter's edition of a file republished
+  // four times a year. Serving it beats blanking the theme.
+  const fallback = _communePacks.get(key);
+  if (fallback && Date.now() - fallback.at <= COMMUNE_PACK_STALE_MS) {
+    return { ...fallback, stale: true };
+  }
+  return null;
+}
+
+/** Rebuild a `Map` index from its stored array form. */
+function reviveCommuneIndex(entries) {
+  return Array.isArray(entries) ? new Map(entries) : null;
+}
+
+/**
+ * The commune a point falls in — from the BAN, then from the IGN's own
+ * point-in-polygon.
+ *
+ * The five older address proxies resolve the commune through the BAN alone,
+ * and they are right to: DVF files are keyed on the ARRONDISSEMENT (75113),
+ * which only the BAN answers. But the BAN answers a nearby ADDRESS, and where
+ * there is none within its search radius it returns an empty feature list —
+ * measured live at 44.5586 N, 5.8533 E, high ground above Veynes, which is
+ * inside a commune and has no address in it. For a risk scan that is a fair
+ * refusal, because the answer really is about the address. For a COMMUNE-level
+ * fact — the rent, the fibre, the air, the unemployment rate — it is not: the
+ * point is unambiguously in Veynes, and `geo.api.gouv.fr` says so from the
+ * polygon.
+ *
+ * So the BAN goes first, because it is the only one that can name an
+ * arrondissement, and the polygon answers behind it. The payload carries which
+ * one answered, since the second cannot name arrondissements at all — it
+ * returns 75056 for every point in Paris — and a card showing a city-wide rent
+ * for a Paris address should be able to say why.
+ *
+ * @param {{lat: number, lon: number}} point
+ * @returns {Promise<?{code: string, name: ?string, via: 'ban'|'contour'}>}
+ */
+async function resolveCommuneAnywhere(point) {
+  const fromBan = await resolveCommuneCode(point.lon, point.lat);
+  if (fromBan) return { ...fromBan, via: 'ban' };
+  const rows = await fetchAddressSource(
+    `https://geo.api.gouv.fr/communes?lat=${point.lat}&lon=${point.lon}&fields=nom,code`,
+    { maxBytes: 64 * 1024 },
+  );
+  const first = Array.isArray(rows) ? rows[0] : null;
+  const code = String(first?.code || '').toUpperCase();
+  if (!/^[0-9][0-9AB][0-9]{3}$/.test(code)) return null;
+  return { code, name: first?.nom || null, via: 'contour' };
+}
+
+/**
+ * Carte des loyers — the four segment files, indexed by INSEE code.
+ *
+ * `GET /api/loyers-fr?lat=&lon=`
+ *
+ * WHY A PROXY. Four CSVs totalling 19 MB, in CP1252, for one commune's four
+ * numbers. Nothing about that belongs in a browser, and the files do not
+ * change between two clicks on the same street.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function loyersFranceProxy() {
+  const packKey = 'carte-loyers-2025';
+  async function buildLoyersPack() {
+    const segments = {};
+    const missing = [];
+    // Serially, not in parallel: four 4,7 MB downloads at once against
+    // data.gouv's static host for one first scan is not a thing to do, and the
+    // pack is built once a day at most.
+    for (const segment of LOYERS_SEGMENTS) {
+      const bytes = await fetchCommunePackBytes(loyersResourceUrl(segment.resource));
+      if (!bytes) { missing.push(segment.key); continue; }
+      const parsed = parseLoyersCsv(decodeLoyersCsv(bytes));
+      if (!parsed.rows.size) { missing.push(segment.key); continue; }
+      segments[segment.key] = parsed.rows;
+    }
+    // A pack with no segment at all is not a pack. One or two missing is a
+    // degraded answer the card can still print.
+    if (!Object.keys(segments).length) return null;
+    return { segments, missing, communes: segments.app?.size ?? null };
+  }
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/loyers-fr', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      return {
+        key: addressCacheKey('loyers-fr', point),
+        load: async () => {
+          const commune = await resolveCommuneAnywhere(point);
+          if (!commune) return null;
+          const pack = await ensureCommunePack({
+            key: packKey,
+            build: buildLoyersPack,
+            serialise: (payload) => ({
+              ...payload,
+              segments: Object.fromEntries(
+                Object.entries(payload.segments).map(([key, rows]) => [key, [...rows]]),
+              ),
+            }),
+            revive: (stored) => {
+              const segments = {};
+              for (const [key, entries] of Object.entries(stored?.segments || {})) {
+                const index = reviveCommuneIndex(entries);
+                if (index) segments[key] = index;
+              }
+              return Object.keys(segments).length ? { ...stored, segments } : null;
+            },
+          });
+          if (!pack) return null;
+          // NOT folded. This register publishes arrondissements and the
+          // arrondissement is the finer, truer answer — see `communeCode.js`.
+          const rows = Object.fromEntries(LOYERS_SEGMENTS.map((segment) => [
+            segment.key,
+            pack.payload.segments[segment.key]?.get(commune.code) ?? null,
+          ]));
+          const fiche = projectLoyers({
+            code: commune.code, rows, missing: pack.payload.missing,
+          });
+          return {
+            ...fiche,
+            commune: { ...fiche.commune, name: fiche.commune.name || commune.name, via: commune.via },
+            packBuiltAt: pack.at,
+            packStale: pack.stale,
+          };
+        },
+      };
+    });
+  }
+  return {
+    name: 'loyers-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Ma connexion internet — what a fixed line here can carry.
+ *
+ * `GET /api/arcep-fr?lat=&lon=`
+ * @returns {import('vite').Plugin}
+ */
+function arcepFranceProxy() {
+  const packKey = 'arcep-mci-commune';
+  async function buildArcepPack() {
+    const files = {};
+    let edition = null;
+    for (const [key, file] of Object.entries(ARCEP_FILES)) {
+      const bytes = await fetchCommunePackBytes(arcepFileUrl(file));
+      if (!bytes) continue;
+      const parsed = parseArcepCsv(new TextDecoder('utf-8').decode(bytes));
+      if (!parsed.rows.size) continue;
+      files[key] = parsed.rows;
+      if (!edition) edition = parsed.edition;
+    }
+    if (!files.best && !files.wired) return null;
+    return { files, edition };
+  }
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/arcep-fr', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      return {
+        key: addressCacheKey('arcep-fr', point),
+        load: async () => {
+          const commune = await resolveCommuneAnywhere(point);
+          if (!commune) return null;
+          const pack = await ensureCommunePack({
+            key: packKey,
+            build: buildArcepPack,
+            serialise: (payload) => ({
+              ...payload,
+              files: Object.fromEntries(
+                Object.entries(payload.files).map(([key, rows]) => [key, [...rows]]),
+              ),
+            }),
+            revive: (stored) => {
+              const files = {};
+              for (const [key, entries] of Object.entries(stored?.files || {})) {
+                const index = reviveCommuneIndex(entries);
+                if (index) files[key] = index;
+              }
+              return Object.keys(files).length ? { ...stored, files } : null;
+            },
+          });
+          if (!pack) return null;
+          // FOLDED. Paris is one row of 1 667 292 premises here; asking for
+          // 75113 answers nothing at all.
+          const code = foldToCommune(commune.code);
+          const projected = projectArcep({
+            code,
+            best: pack.payload.files.best?.get(code) ?? null,
+            wired: pack.payload.files.wired?.get(code) ?? null,
+            techno: pack.payload.files.techno?.get(code) ?? null,
+          });
+          if (!projected) return null;
+          return {
+            ...projected,
+            commune: {
+              ...projected.commune,
+              // The BAN's name, never the register's: 97701 is published as
+              // `Saint-Barthlemy`, with the accent gone from the bytes.
+              name: commune.name,
+              // What the reader clicked, beside what was answered for.
+              requested: commune.code,
+              folded: code !== commune.code,
+              via: commune.via,
+            },
+            packBuiltAt: pack.at,
+            packStale: pack.stale,
+          };
+        },
+      };
+    });
+  }
+  return {
+    name: 'arcep-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Indice ATMO — today's air, and the next two days, from the AASQA federation.
+ *
+ * `GET /api/atmo-fr?lat=&lon=`
+ *
+ * TWO REQUESTS AT MOST, and the second only when the first comes back empty:
+ * roughly one commune in six is not named by its agency, and the fallback asks
+ * what is published around the point instead. The answer then carries the
+ * zone's own name and its distance, because an index borrowed from the next
+ * valley is a different claim from one published for this commune.
+ *
+ * A SHORTER SHELF LIFE than its five siblings. The index is republished every
+ * morning and an address scan cached for the default half hour would still be
+ * right; what would not be right is holding YESTERDAY's index through the
+ * republication, so the route's TTL is set to the hour.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function atmoFranceProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/atmo-fr', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      return {
+        key: addressCacheKey('atmo-fr', point),
+        load: async () => {
+          const commune = await resolveCommuneAnywhere(point);
+          // FOLDED: Lyon publishes 69123, never 69381.
+          const code = commune ? foldToCommune(commune.code) : null;
+          const today = new Date().toISOString().slice(0, 10);
+          const zoneUrl = code ? buildAtmoZoneUrl(code) : null;
+          let collection = zoneUrl ? await fetchAddressSource(zoneUrl) : null;
+          let nearby = false;
+          if (!collection?.features?.length) {
+            const boxUrl = buildAtmoBoxUrl(point);
+            collection = boxUrl ? await fetchAddressSource(boxUrl) : null;
+            nearby = true;
+          }
+          if (!collection) return null;
+          const projected = projectAtmo({
+            collection, point: { lat: point.lat, lon: point.lon }, today, nearby,
+          });
+          // An empty answer from BOTH attempts is a real fact about coverage,
+          // not a failure: some communes have no agency publishing for them.
+          // It is returned as a payload so the fiche can say so, rather than
+          // as null, which the route would turn into HTTP 502.
+          if (!projected) {
+            return {
+              zone: null,
+              quality: null,
+              band: null,
+              forecast: [],
+              uncovered: true,
+              requested: code,
+              via: commune?.via ?? null,
+            };
+          }
+          return { ...projected, uncovered: false, requested: code, via: commune?.via ?? null };
+        },
+      };
+    }, { ttlMs: 60 * 60 * 1000 });
+  }
+  return {
+    name: 'atmo-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
+/**
+ * Emploi — activity, employment and unemployment at the place of residence.
+ *
+ * `GET /api/emploi-fr?lat=&lon=`
+ *
+ * ONE upstream call for thirty observations, so this proxy is not here for
+ * size. It is here for the LEVEL: Melodi serves communes as `COM` and
+ * arrondissements as `ARM`, and asking at the wrong level answers HTTP 200
+ * with an empty list — indistinguishable, from the browser, from a commune the
+ * census does not cover. That choice belongs somewhere a unit test can see it.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function emploiFranceProxy() {
+  function install(middlewares) {
+    installAddressRoute(middlewares, '/api/emploi-fr', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      return {
+        key: addressCacheKey('emploi-fr', point),
+        load: async () => {
+          const commune = await resolveCommuneAnywhere(point);
+          if (!commune) return null;
+          const emploiUrl = buildEmploiUrl(commune.code);
+          if (!emploiUrl) return null;
+          const payload = await fetchAddressSource(emploiUrl, { maxBytes: 2 * 1024 * 1024 });
+          if (!payload) return null;
+          // The dataset's own scope, stated in its metadata: France hors
+          // Mayotte. An empty answer for 976 is a boundary, not a silence.
+          const inScope = !String(commune.code).startsWith('976');
+          const projected = projectEmploi({ payload, code: commune.code, inScope });
+          return {
+            ...projected,
+            commune: { ...projected.commune, name: commune.name, via: commune.via },
+          };
+        },
+      };
+    });
+  }
+  return {
+    name: 'emploi-france-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
 /**
  * ADS — the building permits on this block, from both registers at once.
  * `GET /api/ads-fr?lat=&lon=&radius=&months=`
@@ -24358,6 +24840,10 @@ export default defineConfig(({ mode }) => {
       georisquesProxy(),
       dvfProxy(),
       dpeProxy(),
+      loyersFranceProxy(),
+      arcepFranceProxy(),
+      atmoFranceProxy(),
+      emploiFranceProxy(),
       adsFranceProxy(),
       isochroneProxy(),
       gpuProxy(),

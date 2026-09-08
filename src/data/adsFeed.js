@@ -128,6 +128,7 @@
  * it; nothing in the browser bundle does.
  */
 
+import { foldToCommune } from './communeCode.js';
 import { ringAreaM2, ringLabelAnchor, sanitisePolygonParts } from './ringGeometry.js';
 import { ARRONDISSEMENT_COMMUNES, parcelParts, sitadelJoinCommune } from './sitadelFeed.js';
 import { ADS_LINEAGE_BASIS, insidePoint, sitadelParcelRefs } from './cadastreLineage.js';
@@ -439,13 +440,12 @@ export const ADS_PRECISION = Object.freeze({
  * @returns {?string} The code Sitadel's `COMM` column uses, or null.
  */
 export function foldToSitadelCommune(code) {
-  const raw = String(code ?? '').trim().toUpperCase();
-  if (!/^[0-9][0-9AB][0-9]{3}$/.test(raw)) return null;
-  const number = Number.parseInt(raw, 10);
-  if (number >= 75101 && number <= 75120) return '75056';
-  if (number >= 13201 && number <= 13216) return '13055';
-  if (number >= 69381 && number <= 69389) return '69123';
-  return raw;
+  // The fold itself lives in `communeCode.js`: four other registers now need
+  // the same three ranges — Ma connexion internet and Atmo France key on the
+  // parent commune, the carte des loyers on the arrondissement, Melodi on both
+  // under two level names — and three cities written out four times is three
+  // chances to write one of them down wrong.
+  return foldToCommune(code);
 }
 
 /**

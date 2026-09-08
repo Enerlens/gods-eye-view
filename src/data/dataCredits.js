@@ -698,6 +698,52 @@ export const DATA_CREDITS = [
       + 'that would assume people are spread evenly across a square, which INSEE&rsquo;s own imputation flag exists to deny.',
   },
   {
+    key: 'carte-loyers',
+    html:
+      'Rents: <em>Carte des loyers &mdash; indicateurs de loyers d&rsquo;annonce par commune</em>, mill&eacute;sime 2025, '
+      + 'DGALN/DHUP with ANIL and the SDES, via '
+      + '<a href="https://www.data.gouv.fr/datasets/carte-des-loyers-indicateurs-de-loyers-dannonce-par-commune-en-2025/" target="_blank" rel="noopener">data.gouv.fr</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
+      + '<strong>A prediction, not a median</strong>: an econometric model over leboncoin and Groupe SeLoger listings 2019&ndash;2025, '
+      + 'quoted <strong>charges comprises</strong> for an unfurnished reference dwelling &mdash; 52&nbsp;m&sup2; for a flat, 92&nbsp;m&sup2; for a house. '
+      + 'Measured over the four published files: <strong>30&nbsp;029 of 34&nbsp;900 communes</strong> receive a figure computed for a '
+      + '<em>maille</em> of neighbouring communes rather than for themselves, and the ministry&rsquo;s own prediction interval is '
+      + '45,7&nbsp;% of the value at the median. Every figure is shown with that interval and with the basis it was computed on.',
+  },
+  {
+    key: 'arcep-mci',
+    html:
+      'Fixed-line connectivity: <em>Ma connexion internet</em> &mdash; '
+      + '<a href="https://www.arcep.fr" target="_blank" rel="noopener">ARCEP</a>, commune statistics, quarterly edition, via '
+      + '<a href="https://data.arcep.fr/fixe/maconnexioninternet/" target="_blank" rel="noopener">data.arcep.fr</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
+      + 'Shares are read from <code>commune_meilleure_techno_thd</code>, the one file in which each premises is counted exactly once, '
+      + 'under its best available technology. Speed classes come from the <strong>wired</strong> variant, never from the default one: '
+      + 'that file counts satellite and therefore reports 100&nbsp;% of French premises eligible for 30&nbsp;Mbit/s, against 95,4&nbsp;% wired.',
+  },
+  {
+    key: 'atmo-france',
+    html:
+      'Air quality: <em>indice ATMO</em> quotidien par commune &mdash; '
+      + '<a href="https://www.atmo-france.org/" target="_blank" rel="noopener">Atmo France</a> and the seventeen regional AASQA, '
+      + 'served from the <a href="https://data.atmo-france.org/geoserver/ind/ows" target="_blank" rel="noopener">Atmo Data WFS</a> '
+      + '(<a href="https://opendatacommons.org/licenses/odbl/1-0/" target="_blank" rel="noopener">ODbL 1.0</a>). '
+      + 'The published index is the maximum of five sub-indices &mdash; NO&sub2;, O&sub3;, PM10, PM2,5, SO&sub2; &mdash; and the card names '
+      + 'which one drove it. Measured on 2026-09-08: <strong>28&nbsp;717 zones for 34&nbsp;900 communes</strong>, four agencies publishing '
+      + 'at intercommunal level only, so an index borrowed from a neighbouring zone is flagged and carries its distance.',
+  },
+  {
+    key: 'insee-rp-emploi',
+    html:
+      'Employment: <em>Recensement de la population &mdash; population active et ch&ocirc;mage</em> '
+      + '(<code>DS_RP_EMPLOI_LR_PRINC</code>), INSEE, via the keyless '
+      + '<a href="https://api.insee.fr/melodi/" target="_blank" rel="noopener">Melodi API</a> '
+      + '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). '
+      + 'Residents aged 15 to 64 at their place of residence, over the 2012, 2017 and 2023 censuses. '
+      + '<strong>A rate is withheld below 100 active residents</strong>: the values are weighted survey estimates, and one census '
+      + 'commune measured here reports 1,75 active residents of whom 1,75 are unemployed. The counts are still shown; the percentage is not.',
+  },
+  {
     key: 'ign-isochrone',
     html:
       'Reachable-area rings: IGN G&eacute;oplateforme ' +

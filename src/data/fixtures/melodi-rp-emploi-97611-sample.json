@@ -1,0 +1,21 @@
+{
+  "observations" : [ ],
+  "identifier" : "DS_RP_EMPLOI_LR_PRINC",
+  "paging" : {
+    "first" : "https://api.insee.fr/melodi/data/DS_RP_EMPLOI_LR_PRINC?GEO=2026-COM-97611&SEX=_T&AGE=Y15T64&EDUC=_T&maxResult=200&page=1"
+  },
+  "publisher" : {
+    "id" : "INSEE",
+    "label" : [ {
+      "content" : "Institut national de la statistique et des etudes economiques (INSEE)",
+      "lang" : "fr"
+    }, {
+      "content" : "National Institute of Statistics and Economic Studies",
+      "lang" : "en"
+    } ]
+  },
+  "title" : {
+    "en" : "Labor force and unemployment - Main indicators",
+    "fr" : "Population active et chômage - Principaux indicateurs (dossier complet) "
+  }
+}
