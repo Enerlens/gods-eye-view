@@ -198,10 +198,24 @@ export function parseArcepCsv(text) {
   };
 }
 
-/** A share of a total, in percent to one decimal, or null. */
+/**
+ * A share of a total, in percent to one decimal, or null.
+ *
+ * **A share below the whole never rounds up to 100.** Paris publishes
+ * 1 667 159 copper-connectable premises out of 1 667 292: 99,992 %, which one
+ * decimal rounds to 100,0 and a card then prints as "100 % encore raccordables
+ * au cuivre". That is a claim the file does not make — 133 premises have
+ * already lost their pair — and the same rounding would say "100 % éligibles à
+ * la fibre" for a commune with a hundred homes that are not. The floor is
+ * applied at 99,9 rather than by adding decimals, because the extra digits are
+ * noise everywhere else.
+ */
 function share(part, total) {
   if (!Number.isFinite(part) || !Number.isFinite(total) || total <= 0) return null;
-  return Math.round((part / total) * 1000) / 10;
+  const rounded = Math.round((part / total) * 1000) / 10;
+  if (rounded >= 100 && part < total) return 99.9;
+  if (rounded <= 0 && part > 0) return 0.1;
+  return rounded;
 }
 
 /**

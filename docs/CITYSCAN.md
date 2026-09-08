@@ -248,6 +248,53 @@ propriétaire, c'est un argument de vente.
 
 ---
 
+## 3 bis. Ce qui a été livré du palier 1 — 8 septembre 2026
+
+Écrit après coup, contre le code, pas contre le plan.
+
+| Item du palier 1 | État | Où |
+|---|---|---|
+| 1. Radiographie d'adresse | **livré**, dix thématiques, en valeurs | `/fiche.html`, `src/data/adresseRadiographie.js` |
+| 3. Loyers | **livré** | `/api/loyers-fr`, `src/data/loyersFeed.js` |
+| 4. Numérique (ARCEP) | **livré** | `/api/arcep-fr`, `src/data/arcepFeed.js` |
+| 5. Qualité de l'air (ATMO) | **livré**, en direct, avec J+1 et J+2 | `/api/atmo-fr`, `src/data/atmoFeed.js` |
+| 6. IPS des écoles | **était déjà fait** | `src/data/ipsFeed.js`, joint par UAI depuis la PR #53 |
+| 7. Emploi (Melodi) | **livré**, trois recensements | `/api/emploi-fr`, `src/data/emploiFeed.js` |
+| 8. Rapport partageable | **livré** : `?embed=1` + impression navigateur | `fiche.html` |
+| 2. BPE de 10 à ~40 codes | **pas fait** — voir ci-dessous | — |
+
+**Ce que le démontage avait sous-estimé sur la BPE.** Le recensement des 235
+codes TYPEQU a été refait sur l'archive vivante (2 921 770 lignes, édition
+BPE25) : les codes qui couvriraient les types POI de Cityscan pèsent **413 989
+lignes de plus**, soit **4,3 fois** ce que la couche dessine aujourd'hui
+(126 857). Le seul A504 « restaurant-restauration rapide » en fait 231 989. Le
+chiffre cité au démontage — « épicerie et boulangerie : 80 226 lignes » — ne
+mesurait que deux codes sur la quinzaine nécessaire. Ce n'est plus une addition
+de constantes : c'est un choix de régime de dessin (tout au zoom rapproché,
+rien dans le maillage national), et il mérite sa propre décision.
+
+Codes mesurés, prêts à être ajoutés : A504 restaurant (231 989), B207
+boulangerie-pâtisserie (50 122), B202 épicerie (30 104), A203 banque (23 986),
+B204 boucherie-charcuterie (17 378), F121 gymnase (16 113), F307 bibliothèque
+(15 676), B316 station-service (10 497), F120 salles de remise en forme
+(8 549), B206 poissonnerie (2 346), F312 exposition (2 145), F303 cinéma
+(1 969), B205 produits surgelés (1 726), F315 arts du spectacle (1 389).
+
+**Deux types Cityscan que la BPE ne peut pas servir**, vérifié dans
+`TYPEQU_2025.csv` : il n'existe **aucun code « bar / café / débit de
+boissons »** ni **aucun code « musée »** dans l'édition 2025, et pas de code
+« tabac » non plus. `bar`, `cultural_places` et `tabac` de leur taxonomie
+resteront ouverts tant qu'on n'ira pas les chercher dans OSM.
+
+**Ce qui reste ouvert, et qui n'était pas au palier 1 :** aucun lien depuis le
+globe vers la fiche — la carte de survol du globe est plafonnée à six lignes
+par `addressScanLayer.js` et n'a pas d'affordance cliquable, donc la fiche
+s'ouvre par URL. Trois thématiques pourraient encore s'enrichir de routes déjà
+en production : délinquance enregistrée et petite enfance (Voisinage,
+Éducation), bruit aérien et antennes ANFR (Nuisances).
+
+---
+
 ## 4. Ordre de construction proposé
 
 1. **La fiche adresse** — promouvoir `Fiche implantation` en radiographie

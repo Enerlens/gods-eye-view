@@ -250,26 +250,7 @@ export function amenityFamilyIndex(family) {
   return AMENITY_FAMILIES.indexOf(family);
 }
 
-export const AMENITY_FAMILY_LABELS = Object.freeze({
-  medecin: 'Médecin généraliste',
-  courses: 'Supermarché, supérette',
-  pharmacie: 'Pharmacie',
-  poste: 'La Poste',
-  piscine: 'Bassin de natation',
-  gendarmerie: 'Gendarmerie, police',
-  hopital: 'Hôpital',
-});
-
-/** Singular/plural head-word for a card, keyed the same way. */
-export const AMENITY_FAMILY_PLURALS = Object.freeze({
-  medecin: 'médecins généralistes',
-  courses: 'commerces alimentaires',
-  pharmacie: 'pharmacies',
-  poste: 'points de contact La Poste',
-  piscine: 'bassins de natation',
-  gendarmerie: 'unités de gendarmerie et de police',
-  hopital: 'hôpitaux',
-});
+export { AMENITY_FAMILY_LABELS, AMENITY_FAMILY_PLURALS } from './amenitiesFamilies.js';
 
 /** One line behind each swatch — what the family actually contains, measured. */
 export const AMENITY_FAMILY_BLURBS = Object.freeze({

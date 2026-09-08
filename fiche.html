@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Radiographie d'adresse</title>
+  <!--
+    LA RADIOGRAPHIE D'ADRESSE — une adresse, dix thématiques, une feuille.
+
+        /fiche.html?lat=48.83&lon=2.376
+        /fiche.html?q=13 rue du Chevaleret, Paris
+        /fiche.html?lat=…&lon=…&embed=1      ← sans en-tête ni pied de page
+
+    POURQUOI UNE PAGE À PART, ET PAS UN PANNEAU DANS LE GLOBE. Trois raisons,
+    dans cet ordre :
+
+    1. La carte overlay du globe n'affiche que six lignes (`.slice(0, 6)` dans
+       `addressScanLayer.js`, et c'est le bon choix pour une étiquette posée
+       sur une porte). Dix thématiques en font une soixantaine.
+    2. Ce que Cityscan vend, ce n'est pas une carte : c'est un DOCUMENT. Une
+       page imprimable est le format du produit copié, pas un pis-aller.
+    3. `?embed=1` et `Ctrl+P` couvrent, sans une ligne de backend, les deux
+       offres à 50 € et 30 €/mois relevées au démontage — la valorisation de
+       bien et la captation de leads.
+
+    AUCUN CESIUM ICI. La page ne charge ni globe ni tuiles : elle appelle les
+    quinze routes de `adresseRadiographie.js` et compose du texte. C'est ce qui
+    la rend imprimable, intégrable dans une iframe, et lisible sur un téléphone
+    d'agence.
+
+    IMPRESSION. Le CSS `@media print` passe le fond en blanc, l'encre en noir,
+    évite les coupures au milieu d'une thématique et imprime l'URL de la
+    source. « Imprimer → Enregistrer au format PDF » suffit : pas de moteur PDF
+    embarqué, donc rien à maintenir et rien à charger.
+  -->
+  <style>
+    :root {
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', ui-monospace, monospace;
+      --ink: #10151d;
+      --ink-dim: #55606f;
+      --ink-faint: #8a93a1;
+      --rule: #dfe4ea;
+      --paper: #ffffff;
+      --tint: #f6f8fa;
+      --accent: #0d6b8a;
+      --warn: #9a5b00;
+      --absent: #a03028;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--tint);
+      color: var(--ink);
+      font-family: var(--font-sans);
+      font-size: 15px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .sheet {
+      max-width: 46rem;
+      margin: 0 auto;
+      background: var(--paper);
+      padding: 2.5rem 2.75rem 3rem;
+      min-height: 100vh;
+    }
+
+    header.masthead { border-bottom: 2px solid var(--ink); padding-bottom: 1rem; }
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.68rem;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      margin: 0 0 0.4rem;
+    }
+    h1 { font-size: 1.7rem; line-height: 1.2; margin: 0 0 0.35rem; font-weight: 650; }
+    .subline { color: var(--ink-dim); font-size: 0.92rem; margin: 0; }
+    .coords { font-family: var(--font-mono); font-size: 0.82rem; color: var(--ink-faint); }
+
+    form.lookup { display: flex; gap: 0.5rem; margin: 1.25rem 0 0; }
+    form.lookup input {
+      flex: 1;
+      font: inherit;
+      padding: 0.5rem 0.7rem;
+      border: 1px solid var(--rule);
+      border-radius: 6px;
+      background: var(--tint);
+      color: var(--ink);
+    }
+    form.lookup button {
+      font: inherit;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--accent);
+      color: #fff;
+      cursor: pointer;
+    }
+    form.lookup button.ghost { background: transparent; color: var(--accent); }
+
+    .status {
+      margin: 1.1rem 0 0;
+      font-size: 0.85rem;
+      color: var(--ink-dim);
+      font-family: var(--font-mono);
+    }
+
+    .caveat {
+      margin: 1.4rem 0 0;
+      padding: 0.75rem 0.9rem;
+      border-left: 3px solid var(--warn);
+      background: #fff8ec;
+      font-size: 0.86rem;
+      color: #6b4a12;
+    }
+
+    section.theme { margin: 2.1rem 0 0; break-inside: avoid; }
+    section.theme > h2 {
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin: 0 0 0.15rem;
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+    }
+    section.theme[data-status="absent"] > h2 { color: var(--absent); }
+    section.theme[data-status="partial"] > h2 { color: var(--warn); }
+    section.theme > p.question {
+      margin: 0 0 0.7rem;
+      color: var(--ink-dim);
+      font-size: 0.88rem;
+    }
+
+    dl.rows { margin: 0; display: grid; grid-template-columns: minmax(9rem, 1fr) minmax(6rem, auto); gap: 0; }
+    dl.rows > div {
+      display: contents;
+    }
+    dl.rows dt, dl.rows dd {
+      border-top: 1px solid var(--rule);
+      padding: 0.42rem 0;
+      margin: 0;
+    }
+    dl.rows dt { color: var(--ink-dim); padding-right: 1rem; }
+    dl.rows dd { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+    dl.rows .note {
+      grid-column: 1 / -1;
+      border-top: 0;
+      padding: 0 0 0.35rem;
+      margin: -0.3rem 0 0;
+      color: var(--ink-faint);
+      font-size: 0.8rem;
+      text-align: left;
+    }
+
+    ul.notes { margin: 0.75rem 0 0; padding-left: 1.1rem; color: var(--ink-dim); font-size: 0.84rem; }
+    ul.notes li { margin: 0.2rem 0; }
+
+    footer.colophon {
+      margin: 3rem 0 0;
+      padding-top: 1rem;
+      border-top: 1px solid var(--rule);
+      font-size: 0.78rem;
+      color: var(--ink-faint);
+    }
+    footer.colophon a { color: var(--accent); }
+
+    body.embed .sheet { padding: 1.25rem 1.25rem 2rem; min-height: 0; }
+    body.embed form.lookup, body.embed .print { display: none; }
+
+    @media (max-width: 40rem) {
+      .sheet { padding: 1.5rem 1.1rem 2rem; }
+      dl.rows { grid-template-columns: 1fr auto; }
+    }
+
+    @media print {
+      body { background: #fff; font-size: 11pt; }
+      .sheet { max-width: none; padding: 0; }
+      form.lookup, .print { display: none; }
+      section.theme { break-inside: avoid; page-break-inside: avoid; }
+      a[href]::after { content: " (" attr(href) ")"; font-size: 0.75em; color: #666; }
+      .caveat { border-left-color: #666; background: #f4f4f4; color: #333; }
+    }
+  </style>
+</head>
+<body>
+  <main class="sheet" id="sheet">
+    <header class="masthead">
+      <p class="eyebrow">Radiographie d’adresse</p>
+      <h1 id="title">Une adresse, dix thématiques</h1>
+      <p class="subline" id="subline">Entrez une adresse française, ou ouvrez cette page avec <code>?lat=&amp;lon=</code>.</p>
+    </header>
+    <form class="lookup" id="lookup" autocomplete="off">
+      <input id="query" name="q" type="search" placeholder="13 rue du Chevaleret, Paris" aria-label="Adresse">
+      <button type="submit">Scanner</button>
+      <button type="button" class="ghost print" id="print">Imprimer</button>
+    </form>
+    <p class="status" id="status"></p>
+    <div id="themes"></div>
+    <footer class="colophon" id="colophon"></footer>
+  </main>
+  <script type="module" src="/src/fiche.js"></script>
+</body>
+</html>

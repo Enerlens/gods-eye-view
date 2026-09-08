@@ -24715,6 +24715,77 @@ export function deferCesiumScriptTag(html) {
   return { html: source.replace(CESIUM_SCRIPT_TAG_RE, '<script defer src="$1"></script>'), changed: true };
 }
 
+/**
+ * The pages that are DOCUMENTS, not globes, and must not carry a 6 MB engine.
+ *
+ * `fiche.html` — the address radiography — renders text. It loads no viewer,
+ * no tiles and no terrain, and `vite-plugin-cesium` has no way to know that:
+ * it injects its script tag and its widget stylesheet into every HTML entry
+ * point in the build. Left alone, a printable sheet would download Cesium
+ * before its first line of type.
+ */
+const CESIUM_FREE_PAGES = Object.freeze(['fiche.html']);
+
+/** Whether this build page is one of them. @param {?string} filename */
+export function isCesiumFreePage(filename) {
+  const name = String(filename || '').split('/').pop();
+  return CESIUM_FREE_PAGES.includes(name);
+}
+
+/** Cesium's own widget stylesheet, as the plugin injects it. */
+const CESIUM_WIDGETS_LINK_RE = new RegExp(
+  `<link rel="stylesheet" href="[^"]*${CESIUM_BASE_DIR_RE}/Widgets/widgets\\.css">`,
+);
+
+/**
+ * Remove the injected Cesium assets from one page.
+ *
+ * Returns `changed` for the same reason {@link deferCesiumScriptTag} does: a
+ * silent no-op would hand back a document page still carrying the engine, and
+ * nothing downstream would notice.
+ *
+ * @param {string} html
+ * @returns {{html: string, changed: boolean}}
+ */
+export function stripCesiumAssets(html) {
+  const source = String(html || '');
+  let out = source.replace(CESIUM_SCRIPT_TAG_RE, '');
+  out = out.replace(CESIUM_WIDGETS_LINK_RE, '');
+  return { html: out, changed: out !== source };
+}
+
+/**
+ * Strip Cesium from the document pages, at build time.
+ *
+ * Runs BEFORE the defer plugin — which is why that one is told to skip these
+ * pages rather than warn about a tag this plugin has already removed.
+ *
+ * @returns {import('vite').Plugin}
+ */
+function stripCesiumFromDocumentPages() {
+  return {
+    name: 'gev-strip-cesium-from-documents',
+    // BOTH dev and build, unlike its sibling below. `vite-plugin-cesium`
+    // injects its widget stylesheet into every page in dev too — measured:
+    // `/fiche.html` pulled `Widgets/widgets.css` off the dev server — and that
+    // sheet is not inert, it carries Cesium's own type and button rules. A
+    // document page that renders differently in dev and in production is worse
+    // than one that is merely heavier.
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        if (!isCesiumFreePage(ctx?.filename || ctx?.path)) return html;
+        const { html: out, changed } = stripCesiumAssets(html);
+        if (!changed) {
+          console.warn('[gev-strip-cesium-from-documents] nothing to strip from '
+            + `${ctx?.path} — did vite-plugin-cesium change its injection?`);
+        }
+        return out;
+      },
+    },
+  };
+}
+
 function deferCesiumBundlePlugin() {
   return {
     name: 'gev-defer-cesium-bundle',
@@ -24727,7 +24798,11 @@ function deferCesiumBundlePlugin() {
     apply: 'build',
     transformIndexHtml: {
       order: 'post',
-      handler(html) {
+      handler(html, ctx) {
+        // A document page has already had the tag removed by
+        // `stripCesiumFromDocumentPages`; warning about its absence would be
+        // the cry-wolf failure the `apply: 'build'` note above describes.
+        if (isCesiumFreePage(ctx?.filename || ctx?.path)) return html;
         const { html: out, changed } = deferCesiumScriptTag(html);
         if (!changed) {
           // Now genuinely only reachable if vite-plugin-cesium changes how it
@@ -24786,6 +24861,7 @@ export default defineConfig(({ mode }) => {
       accessGatePlugin(),
       staticCachePolicyPlugin(),
       cesium({ cesiumBaseUrl: `${CESIUM_BASE_DIR}/` }),
+      stripCesiumFromDocumentPages(),
       deferCesiumBundlePlugin(),
       ...[
       openSkyProxy(),
@@ -24884,6 +24960,19 @@ export default defineConfig(({ mode }) => {
       // The Cesium engine bundle is inherently large; raise the warning ceiling
       // so the build log isn't dominated by an expected chunk-size notice.
       chunkSizeWarningLimit: 1500,
+      rollupOptions: {
+        // TWO entry points, and naming them is what makes the second one ship.
+        // Vite builds `index.html` alone by default, so `fiche.html` — the
+        // address radiography, the one surface of this app that is a document
+        // rather than a globe — would have worked in `npm run dev` and been
+        // absent from every deployment. It loads no Cesium and no tiles, which
+        // is the point: it prints, it embeds in an iframe, and it opens on a
+        // phone in an agency.
+        input: {
+          index: path.resolve(__dirname, 'index.html'),
+          fiche: path.resolve(__dirname, 'fiche.html'),
+        },
+      },
     },
   };
 });

@@ -91,6 +91,23 @@ test('copper is a moving fact: Ajaccio has none left, Paris nearly all', () => {
   assert.equal(ajaccio.copper.premises, 0);
   assert.equal(ajaccio.copper.percent, 0);
   assert.ok(paris.copper.percent > 99);
+  // 1 667 159 of 1 667 292 is 99,992 %, and it must not be printed as 100 %:
+  // 133 Paris premises have already lost their copper pair.
+  assert.ok(paris.copper.premises < paris.premises);
+  assert.equal(paris.copper.percent, 99.9);
+});
+
+test('a share never rounds to a whole it has not reached', () => {
+  const parsed = parseArcepCsv([
+    'code_insee;nom_com;code_dep;code_reg;nbr;type;elig_cu;date',
+    // One premises short of the whole, and one premises above nothing.
+    '01001;Essai;01;84;1000000;all;999999;2026-03-31',
+    '01002;Essai;01;84;1000000;all;1;2026-03-31',
+  ].join('\n'));
+  const nearlyAll = projectArcep({ code: '01001', techno: parsed.rows.get('01001'), best: parsed.rows.get('01001') });
+  const nearlyNone = projectArcep({ code: '01002', techno: parsed.rows.get('01002'), best: parsed.rows.get('01002') });
+  assert.equal(nearlyAll.copper.percent, 99.9);
+  assert.equal(nearlyNone.copper.percent, 0.1);
 });
 
 test('gigabit above fibre is cable, not an error', () => {
