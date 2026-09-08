@@ -17,6 +17,12 @@ import {
   radiographieRequests,
   scanBox,
 } from './adresseRadiographie.js';
+import {
+  BAREME_GEOMETRIES,
+  BAREME_REASONS,
+  BAREME_SAMPLE,
+  scoreIndicator,
+} from './baremeNational.js';
 
 const PARTS = JSON.parse(readFileSync(
   new URL('./fixtures/radiographie-paris13-parts.json', import.meta.url),
@@ -71,15 +77,61 @@ test('the captured scan answered on all ten themes', () => {
   assert.equal(fiche.address.code, '75113');
 });
 
-test('NO GRADE AND NO LETTER — the refusal is on the payload, not in a comment', () => {
-  // The single most important assertion in this file. Cityscan's product is
-  // ten scores out of 100; producing one without the national distribution
-  // behind it would be the one dishonesty this whole fork exists against.
-  assert.equal(fiche.grading, null);
-  assert.match(fiche.gradingNote, /distributions nationales/);
-  const printed = JSON.stringify(fiche.themes);
-  assert.ok(!/"score"/.test(printed));
-  assert.ok(!/\/100/.test(printed));
+test('exactly two numbers are ranked, and the payload names which', () => {
+  // The single most important assertion in this file. Cityscan grades all ten
+  // themes; `baremeNational.js` has scales for eleven indicators, and only two
+  // of them were measured on a shape this sheet also measures on. Ranking a
+  // third would give a plausible letter and a false one.
+  assert.deepEqual(fiche.grading.ranked, ['acces', 'prixM2']);
+  assert.equal(fiche.grading.rings, BAREME_SAMPLE.rings);
+  assert.match(fiche.gradingNote, /même géométrie/);
+  const ranked = fiche.themes.flatMap((theme) => theme.lines)
+    .filter((row) => /centile national/.test(String(row.value)));
+  assert.equal(ranked.length, 2);
+});
+
+test('the walking area is ranked on its OWN ring, and the other two are not', () => {
+  const transport = theme('transport');
+  const ranks = transport.lines.filter((row) => /centile/.test(String(row.value)));
+  // Five and fifteen minutes are different shapes from the one the scale was
+  // drawn on, so they carry no rank at all — not a wrong one, and not a dash
+  // without an explanation.
+  assert.equal(ranks.length, 1);
+  assert.equal(ranks[0].label, 'Cet accès à pied dans le pays');
+  assert.match(ranks[0].note, /note [A-E]/);
+  assert.match(notes('transport'), /anneau de dix minutes/);
+  assert.match(notes('transport'), /même géométrie/);
+});
+
+test('the price carries a rank and never a letter, and says why', () => {
+  const price = rows('immobilier')['Ce prix dans le pays'];
+  assert.match(price.value, /centile national/);
+  // `direction: null` in the barème: a high price is good news for a seller
+  // and bad news for a buyer, so the rank answers both and no letter does.
+  assert.equal(/note [A-E]/.test(price.note), false);
+  assert.match(price.note, /vendeur/);
+  assert.match(price.note, /acheteur/);
+});
+
+test('the neighbourhood figures are refused a rank, on the geometry rule', () => {
+  // The barème has a scale for every one of these — measured on a ten-minute
+  // walking ring. This theme averages a RECTANGLE of carreaux, which is not
+  // that shape, and printing a rank would be the exact failure that module was
+  // built to make impossible.
+  const ranked = theme('voisinage').lines.filter((row) => /centile/.test(String(row.value)));
+  assert.equal(ranked.length, 0);
+  assert.match(notes('voisinage'), /anneau piéton de dix minutes, pas sur un rectangle/);
+  assert.match(notes('voisinage'), /fiche implantation du globe/);
+});
+
+test('a value measured on the wrong shape earns a named refusal, never a rank', () => {
+  // Driven through the composer rather than asserted on the helper: the shape
+  // this sheet passes is the thing under test.
+  const wrongShape = scoreIndicator('acces', 0.97, { geometry: BAREME_GEOMETRIES.CARREAU_200 });
+  assert.equal(wrongShape.percentile, null);
+  assert.equal(wrongShape.reason, BAREME_REASONS.GEOMETRY);
+  const rightShape = scoreIndicator('acces', 0.97, { geometry: BAREME_GEOMETRIES.RING_FOOT_600 });
+  assert.ok(rightShape.percentile > 0);
 });
 
 test('a rent borrowed from a mesh of communes says so on its own row', () => {

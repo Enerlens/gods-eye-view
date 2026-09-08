@@ -254,7 +254,7 @@ propriétaire, c'est un argument de vente.
 
 | Item du palier 1 | État | Où |
 |---|---|---|
-| 1. Radiographie d'adresse | **livré**, dix thématiques, en valeurs | `/fiche.html`, `src/data/adresseRadiographie.js` |
+| 1. Radiographie d'adresse | **livré**, dix thématiques ; deux chiffres situés contre le barème de #99, le reste refusé sur la géométrie | `/fiche.html`, `src/data/adresseRadiographie.js` |
 | 3. Loyers | **livré** | `/api/loyers-fr`, `src/data/loyersFeed.js` |
 | 4. Numérique (ARCEP) | **livré** | `/api/arcep-fr`, `src/data/arcepFeed.js` |
 | 5. Qualité de l'air (ATMO) | **livré**, en direct, avec J+1 et J+2 | `/api/atmo-fr`, `src/data/atmoFeed.js` |
@@ -297,6 +297,17 @@ public » dans l'édition 2025. B209 est le *commerce* de boissons, F312 la
 médiation culturelle. Ces quatre types restent ouverts tant qu'on n'ira pas les
 chercher dans OSM, et `BPE_ABSENT_TYPES` le dit dans le code plutôt que de
 laisser un lecteur conclure qu'il n'y a pas de café dans sa rue.
+
+**Rencontre avec le palier 1½.** Le barème national (#99) a atterri sur `main`
+pendant que cette feuille se construisait, et il change ce qu'elle a le droit
+de dire. Deux de ses chiffres sont mesurés sur exactement les formes que le
+barème a relevées — l'anneau piéton de dix minutes et le disque de 300 m de
+DVF — et ils portent donc un centile national, plus une lettre pour le premier.
+Tout le reste est refusé, et c'est le module qui refuse : les chiffres de
+voisinage de la feuille sont moyennés sur un **rectangle de carreaux**, pas sur
+un anneau, et `scoreIndicator()` répond « échelle mesurée sur une autre
+géométrie ». La feuille imprime ce refus au lieu d'un tiret. C'est la fiche
+implantation du globe qui porte les rangs de ces indicateurs-là.
 
 **Ce qui reste ouvert, et qui n'était pas au palier 1 :** aucun lien depuis le
 globe vers la fiche — la carte de survol du globe est plafonnée à six lignes

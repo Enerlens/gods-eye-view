@@ -11,18 +11,31 @@
  *
  * This module is the fiche. The barème is deliberately NOT here; see below.
  *
- * ── WHAT IT REFUSES TO DO, AND WHY THAT IS THE PRODUCT ──────────────────────
+ * ── WHERE IT GRADES, AND WHERE IT REFUSES TO ────────────────────────────────
  * Cityscan grades every theme out of 100 and stamps a letter A→E on it. A
- * letter is a claim about a NATIONAL DISTRIBUTION: to say "B" you must know
- * where this address sits among 35 000 communes for that indicator. Nothing
- * here knows that yet — that is the *palier 1½* batch job the teardown costed
- * out honestly — so this fiche prints **measured values and never a grade**.
+ * letter is a claim about a NATIONAL DISTRIBUTION, and since 2026-09-08 this
+ * repository has one: `baremeNational.js` carries eleven measured scales, from
+ * a national draw of 1 200 residents.
  *
- * A reader is told "3 crèches à 400 m", "fibre chez 94,5 % des locaux",
- * "indice ATMO 2 sur 6, tiré par l'ozone". They are not told that this is a B.
- * The day the national distributions exist, the grade goes on top of these
- * same numbers; until then a letter would be a number with a confidence it has
- * not earned.
+ * **It covers two of this sheet's numbers and refuses the rest, on purpose.**
+ * A scale is keyed on the GEOMETRY it was measured on, and it will not rank a
+ * value measured on another shape — the trap that module exists to make
+ * impossible. Of everything below:
+ *
+ *   - the **ten-minute walking area** is measured on exactly the ring the
+ *     scale was drawn from (`RING_FOOT_600`), so it carries a national
+ *     percentile and a letter;
+ *   - the **median price per m²** is measured on the same 300 m disc
+ *     (`DISC_300`), so it carries a percentile — and never a letter, because
+ *     a high price is good news for a seller and bad news for a buyer;
+ *   - every neighbourhood figure here is averaged over a RECTANGLE of INSEE
+ *     carreaux, not over a walking ring, so the scale refuses it and the sheet
+ *     prints the refusal. The globe's `Fiche implantation` measures the same
+ *     indicators on the ring and does carry their ranks.
+ *
+ * Nothing else has a scale at all. A reader is told "3 crèches à 400 m",
+ * "fibre chez 94,5 % des locaux", "indice ATMO 2 sur 6, tiré par l'ozone" —
+ * values, without a letter, because no letter has been earned for them.
  *
  * ── The ten themes, and where each one's number comes from ──────────────────
  * Every route below already existed or was added for this fiche, every one is
@@ -60,6 +73,15 @@
  */
 
 import { AMENITY_FAMILY_LABELS, AMENITY_FAMILY_PLURALS } from './amenitiesFamilies.js';
+import {
+  BAREME_GEOMETRIES,
+  BAREME_REASONS,
+  BAREME_SAMPLE,
+  scoreIndicator,
+} from './baremeNational.js';
+
+/** Read from the barème rather than retyped, so the two cannot drift apart. */
+const BAREME_REASONS_GEOMETRY = BAREME_REASONS.GEOMETRY;
 
 /** How far around the point each bounded question looks. */
 export const RADIOGRAPHIE_RADIUS = Object.freeze({
@@ -243,6 +265,45 @@ export async function fetchRadiographieParts(point, { fetchImpl = fetch, signal 
   return Object.fromEntries(settled);
 }
 
+/**
+ * The national rank of one value, as the row a reader can read.
+ *
+ * `scoreIndicator` never throws and never returns null: an indicator it could
+ * not place comes back with a NAMED reason, and printing that reason is half
+ * the product — "échelle mesurée sur une autre géométrie" and "aucune échelle"
+ * are different facts and a reader deserves the second sentence rather than a
+ * dash.
+ *
+ * @param {string} id Indicator id in `baremeNational.js`.
+ * @param {?number} value
+ * @param {string} geometry The shape THIS sheet measured on. Passing it is what
+ *   makes a wrong ranking impossible; omitting it earns a refusal, by design.
+ * @param {string} label Row heading.
+ * @returns {?object} A printable row, or null when there is nothing to say.
+ */
+function rankRow(id, value, geometry, label) {
+  const score = scoreIndicator(id, value, { geometry });
+  if (score.reason && score.percentile === null) {
+    // Only worth a row when the refusal teaches something. "No scale at all"
+    // for an indicator nobody expected to be graded is noise.
+    if (score.reason !== BAREME_REASONS_GEOMETRY) return null;
+    return line(label, 'non classé', score.reason);
+  }
+  if (score.percentile === null) return null;
+  const bracket = `${score.percentileLow}ᵉ à ${score.percentileHigh}ᵉ centile`;
+  // The letter only when both ends of the bracket land in one band; otherwise
+  // the honest answer is two letters, which is what `scoreIndicator` says.
+  const letter = score.letter
+    ? `note ${score.letter}`
+    : (score.letterHigh && score.letterLow ? `note ${score.letterHigh} ou ${score.letterLow}` : null);
+  const head = [bracket, letter].filter(Boolean).join(' — ');
+  // The direction note is a SENTENCE and the bracket is a figure; chaining both
+  // on em dashes read as one run-on. It is printed only where there is no
+  // letter, which is exactly where a reader needs to be told why.
+  const note = score.direction ? head : `${head}. ${score.directionNote}`;
+  return line(label, `${score.percentile}ᵉ centile national`, note);
+}
+
 /** Shorthand for one printed row. */
 function line(label, value, note = null) {
   return note ? { label, value, note } : { label, value };
@@ -264,6 +325,12 @@ function projectImmobilier({ dvf, loyers, dpe }) {
         `${count(summary.p25PrixM2)} à ${count(summary.p75PrixM2)} €/m²`,
         'premier et troisième quartiles — la moitié des ventes tient dans cet écart'));
     }
+    // The 300 m radius above is `RADIOGRAPHIE_RADIUS.sales`, kept identical to
+    // DVF's own — and identical to the disc the national scale was measured on,
+    // which is what lets this one line carry a rank at all.
+    const priceRank = rankRow('prixM2', summary.medianPrixM2, BAREME_GEOMETRIES.DISC_300,
+      'Ce prix dans le pays');
+    if (priceRank) lines.push(priceRank);
     const reference = summary.reference ?? null;
     if (reference?.medianPrixM2) {
       lines.push(line(`Référence ${reference.name || reference.code || ''}`.trim(),
@@ -323,6 +390,15 @@ function projectTransport({ walk, drive }) {
     lines.push(line(`${minutesLabel(ring.seconds)} à pied`,
       `${decimal(ring.areaKm2, 2)} km²`,
       'surface réellement atteignable par la voirie, pas un cercle'));
+    // ONLY the ten-minute ring, and only because the national scale was drawn
+    // on exactly that shape. Ranking the five- or fifteen-minute ring against
+    // it would give a plausible letter and a false one — the whole reason
+    // `baremeNational.js` keys its scales on a geometry.
+    if (ring.seconds === 600) {
+      const rank = rankRow('acces', ring.areaKm2, BAREME_GEOMETRIES.RING_FOOT_600,
+        'Cet accès à pied dans le pays');
+      if (rank) lines.push(rank);
+    }
   }
   const driveRing = drive?.rings?.[0] ?? null;
   if (driveRing) {
@@ -334,6 +410,9 @@ function projectTransport({ walk, drive }) {
   else {
     notes.push('Les réseaux de transport en commun ne sont pas encore comptés ici : '
       + 'la couche Transit FR les dessine en direct sur le globe.');
+    notes.push('Seul l’anneau de dix minutes est situé dans le pays : le barème national '
+      + 'a été mesuré sur cette forme-là, et une valeur ne se classe que dans une '
+      + 'distribution mesurée sur la même géométrie.');
   }
   return { lines, notes };
 }
@@ -708,6 +787,13 @@ function projectVoisinage({ carroyage }) {
   }
   notes.push('Ce sont des carreaux autour du point, pas une zone de chalandise : '
     + 'la fiche implantation du globe calcule la même chose sur l’isochrone réelle.');
+  // The refusal, said where it applies. The barème has scales for every one of
+  // these indicators — but measured on a ten-minute walking ring, and a
+  // rectangle of carreaux is not that shape. Printing a rank here would be the
+  // exact failure `baremeNational.js` was built to make impossible.
+  notes.push('Aucun de ces chiffres n’est situé dans le pays : le barème national les '
+    + 'mesure sur l’anneau piéton de dix minutes, pas sur un rectangle de carreaux. '
+    + 'C’est la fiche implantation du globe qui en porte les rangs.');
   return { lines, notes };
 }
 
@@ -795,9 +881,20 @@ export function composeRadiographie({ point, parts = {}, at = Date.now() }) {
     answered: themes.filter((theme) => theme.status === 'ok').length,
     partial: themes.filter((theme) => theme.status === 'partial').length,
     absent: themes.filter((theme) => theme.status === 'absent').map((theme) => theme.id),
-    // The refusal, carried on the payload so no renderer can forget it.
-    grading: null,
-    gradingNote: 'Aucune note ni lettre : les distributions nationales par indicateur '
-      + 'ne sont pas encore calculées, et un A sans elles serait un chiffre inventé.',
+    // What the sheet may and may not grade, carried on the payload so no
+    // renderer can forget it and no reader has to guess.
+    grading: {
+      source: 'baremeNational.js',
+      measuredAt: BAREME_SAMPLE.measuredAt,
+      rings: BAREME_SAMPLE.rings,
+      marginPt: BAREME_SAMPLE.marginPt,
+      ranked: ['acces', 'prixM2'],
+    },
+    gradingNote: `Deux chiffres sont situés dans le pays — la surface atteignable à pied `
+      + `en dix minutes et le prix médian au m² — contre un barème tiré sur `
+      + `${count(BAREME_SAMPLE.rings)} résidents (±${decimal(BAREME_SAMPLE.marginPt, 1)} `
+      + `points de centile). Tout le reste est donné en valeur : une note exige une `
+      + `distribution nationale mesurée sur la même géométrie, et il n’en existe pas `
+      + `encore pour ces indicateurs-là.`,
   };
 }

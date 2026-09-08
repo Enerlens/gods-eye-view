@@ -7,7 +7,8 @@
  *
  *   i.   the page composes against the LIVE services, on two real addresses in
  *        two different régions, and comes back with ten themes rather than a
- *        blank sheet and a stack trace
+ *        blank sheet and a stack trace — with exactly two of its figures
+ *        ranked against the national barème and the rest stating why not
  *   ii.  it loads NO Cesium. The sheet is a document; a build that quietly
  *        started shipping a 3D engine with it would still look correct on
  *        screen and be four megabytes heavier, which is exactly the kind of
@@ -114,11 +115,20 @@ async function main() {
       `${answered}/10`);
     check('no theme rendered empty', paris.sheet.themes.every((theme) => theme.rows > 0
       || /n’a pas répondu|Aucun|non lus/.test(theme.text)));
-    // THE REFUSAL, on screen: no grade, no letter, no score out of a hundred.
-    check('the sheet says why it prints no grade', /distributions nationales/.test(paris.sheet.caveat));
-    check('and prints none', !/\/100|note\s*:\s*[A-E]\b/.test(
-      paris.sheet.themes.map((theme) => theme.text).join(' '),
-    ));
+    // THE GRADING CONTRACT, on screen: two ranks against the national barème,
+    // and a stated reason for everything it will not rank.
+    const text0 = paris.sheet.themes.map((theme) => theme.text).join(' ');
+    check('the sheet says what it may and may not grade',
+      /même géométrie/.test(paris.sheet.caveat));
+    check('exactly two figures carry a national percentile',
+      (text0.match(/centile national/g) || []).length === 2,
+      String((text0.match(/centile national/g) || []).length));
+    // No `\b` after the letter: `textContent` runs the rows together, so the A
+    // of "note A" is followed by the "15" of the next row and the boundary
+    // never fires. The em dash before it is the anchor that does.
+    check('the walking area carries a letter', /— note [A-E]/.test(text0));
+    check('the neighbourhood figures say why they carry none',
+      /pas sur un rectangle de carreaux/.test(text0));
     check('no page error', paris.errors.length === 0, paris.errors.slice(0, 2).join(' | '));
 
     // ii. A document page must not download a 3D engine.
