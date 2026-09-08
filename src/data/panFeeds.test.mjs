@@ -10,6 +10,7 @@ import {
   boxOverlapArea,
   boxesIntersect,
   companionResources,
+  declaresVehiclePositions,
   isRealtimeResourceWith,
   isTripUpdateResource,
   isVehiclePositionResource,
@@ -83,6 +84,32 @@ test('only available gtfs-rt resources declaring vehicle positions become feeds'
   assert.deepEqual(feeds.map((feed) => feed.id), ['pan-1']);
   assert.equal(isVehiclePositionResource(catalog[0].resources[1]), false);
   assert.equal(isVehiclePositionResource(catalog[0].resources[2]), false);
+});
+
+test('a build keeps a resource the catalog momentarily calls unreachable', () => {
+  // `is_available` is a reachability claim and it FLAPS: measured 2026-09-07,
+  // TaM's urban feed — Montpellier's main network — was flagged unavailable in
+  // one catalog read and available again two minutes later. A poller is right
+  // to skip it; a build that honoured it would delete the network from the
+  // shipped index, footprint and health record and all, on a coin toss.
+  const catalog = [dataset({
+    resources: [
+      { id: 10, format: 'gtfs-rt', features: ['vehicle_positions'], is_available: true, url: 'https://a' },
+      { id: 11, format: 'gtfs-rt', features: ['vehicle_positions'], is_available: false, url: 'https://b' },
+      // A publisher that stops DECLARING positions is making a statement, not
+      // reporting an outage, and leaves under either rule.
+      { id: 12, format: 'gtfs-rt', features: [], is_available: true, url: 'https://c' },
+    ],
+  })];
+  assert.deepEqual(vehiclePositionFeedsFromCatalog(catalog).map((feed) => feed.id), ['pan-10']);
+  assert.deepEqual(
+    vehiclePositionFeedsFromCatalog(catalog, { includeUnavailable: true }).map((feed) => feed.id),
+    ['pan-10', 'pan-11'],
+  );
+  // The two predicates differ on exactly that flag and on nothing else.
+  assert.equal(declaresVehiclePositions(catalog[0].resources[1]), true);
+  assert.equal(isVehiclePositionResource(catalog[0].resources[1]), false);
+  assert.equal(declaresVehiclePositions(catalog[0].resources[2]), false);
 });
 
 test('two vehicle-position resources under one dataset stay two feeds', () => {

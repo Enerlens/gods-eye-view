@@ -47,7 +47,7 @@ import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { vehiclePositionsFromBytes } from '../src/data/gtfsRealtime.js';
-import { PAN_DATASETS_URL, isVehiclePositionResource } from '../src/data/panFeeds.js';
+import { PAN_DATASETS_URL, declaresVehiclePositions } from '../src/data/panFeeds.js';
 import {
   kindFromRouteType,
   parseRouteTypes,
@@ -185,7 +185,10 @@ function pairFeedsWithStatic(datasets) {
   const pairs = [];
   for (const dataset of Array.isArray(datasets) ? datasets : []) {
     const resources = Array.isArray(dataset?.resources) ? dataset.resources : [];
-    const realtime = resources.filter(isVehiclePositionResource);
+    // The publisher's declaration, not the catalog's `is_available` flag — the
+    // same membership rule the realtime index uses, so a feed that survives one
+    // flap there does not lose its vehicle classes here.
+    const realtime = resources.filter(declaresVehiclePositions);
     if (!realtime.length) continue;
     const statics = resources
       .filter((resource) => resource.format === 'GTFS' && resource.url)
