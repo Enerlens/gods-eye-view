@@ -6,6 +6,26 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-08
 
 ### Added
+- **Ce qui est gratuit ici et bloqué dans un produit payant, écrit noir sur blanc.**
+  `DATA_SOURCES.md` gagne une section **Commercial use** : un tableau ✅/❌ source
+  par source, et le chemin de remplacement chiffré pour celles qui tombent. Le
+  dépôt disait de la licence Esri qu'elle était « a grey area for a MIT fork » —
+  c'est faux, et la formulation est corrigée : la documentation d'Esri pour ces
+  *legacy tile services* dit mot pour mot *« this service is not available for
+  commercial use »*, et l'item déclare l'**Esri Master License Agreement**.
+  Rien ne change pour ce projet, qui est gratuit et reste dans les clous ; la
+  section existe pour que la décision se prenne sur les faits le jour où
+  quelqu'un facturera.
+  **Deux pièges que le tableau nomme et que personne ne verrait venir :** le
+  palier gratuit de Cesium ion est explicitement « Personal and non-commercial
+  use », donc les deux pastilles Bing sont bloquées deux fois — et **Bing Maps
+  est en retrait**, Cesium ne garantissant l'accès que « at least through
+  September 2026 », c'est-à-dire maintenant. Et le millésime **2017** de
+  Sentinel-2 cloudless n'est pas un détail : le « mettre à jour » vers 2018-2025
+  ferait basculer cette ligne en ❌, tous ces millésimes étant CC BY-**NC**-SA.
+  L'attribution Esri est alignée sur son `copyrightText` officiel, où Maxar est
+  devenu **Vantor**.
+
 - **Les deux instruments qui ont décidé le fond satellite, versés dans le dépôt.**
   Ils vivaient dans un répertoire de travail non versionné, alors que ce sont eux
   qui portent la preuve. `npm run qa:world-imagery` cadre quatre vues qui mettent
