@@ -744,21 +744,28 @@ IDs.** Cesium added **Google Maps 2D** assets to ion on 2025-10-02 and **Azure
 Maps** assets (Microsoft's own Bing replacement) in December 2025, as a
 Technology Preview. Both are streamed by ion under Cesium's agreements — no key
 of your own — and folded into the former Bing quota, now called **Global
-Imagery**, with plan allowances unchanged. From CesiumJS's own
+Imagery**, with plan allowances unchanged. IDs from CesiumJS's own
 [`imagery-assets-available-from-ion`](https://github.com/CesiumGS/cesium/blob/main/packages/sandcastle/gallery/imagery-assets-available-from-ion/main.js)
-Sandcastle:
+Sandcastle, **each one probed against a free Community token on 2026-09-08**
+(`GET /v1/assets/{id}/endpoint`):
 
-| ion asset | id |
-|---|---|
-| Google Maps 2D Satellite | `3830182` |
-| Google Maps 2D Satellite with Labels | `3830183` |
-| Google Maps 2D Roadmap | `3830184` |
-| Google Maps 2D Labels Only | `3830185` |
-| Google Maps 2D Contour | `3830186` |
-| Azure Maps Aerial | `3891168` |
-| Azure Maps Roads | `3891169` |
-| Azure Maps Labels Only | `3891170` |
-| Sentinel-2 | `3954` |
+| ion asset | id | probed |
+|---|---|---|
+| Google Maps 2D Satellite | `3830182` | ✅ 200 `GOOGLE_2D_MAPS` |
+| Google Maps 2D Satellite with Labels | `3830183` | ✅ 200 |
+| Google Maps 2D Roadmap | `3830184` | ✅ 200 |
+| Google Maps 2D Labels Only | `3830185` | *not probed* |
+| Google Maps 2D Contour | `3830186` | ✅ 200 |
+| Bing Aerial / with Labels / Road | `2` `3` `4` | ✅ 200 `BING` |
+| Azure Maps Aerial / Roads / Labels | `3891168` `3891169` `3891170` | ❌ **404 `ResourceNotFound`** |
+| Sentinel-2 | `3954` | ❌ **404 `ResourceNotFound`** |
+
+The two 404 rows are the useful surprise: **an asset id being in the Sandcastle
+does not mean a given account can stream it.** Bing, Google 2D and Cesium World
+Terrain (`1`) resolve with no setup; Azure (still a Technology Preview) and
+Sentinel-2 do not. The likely fix is adding them from the ion **Asset Depot**
+first — untested. Do not plan on Azure as the Bing successor until that is
+verified on the account that will actually serve it.
 
 They load with `IonImageryProvider.fromAssetId(id)`, one call, against the same
 `CESIUM_ION_TOKEN` the two Bing stacks already need — those go through
@@ -777,10 +784,44 @@ Two things to know before treating it as a drop-in for the world base under IGN:
 - CesiumJS documents that **"Google 2D Tiles can only be used with the Google
   geocoder"**, which this build does not use (its search is keyless).
 
-Whether ion's Google satellite escapes the **EEA imagery withdrawal** that
-kills this project's own Google key is *untested*. The withdrawal keys off the
-**customer's billing address**, and on this path the customer is Cesium; that
-makes it plausible, not proven. It costs one free ion token to find out.
+### ion's Google satellite DOES escape the EEA withdrawal — measured 2026-09-08
+
+This was the open question for a month, and it is now answered with pixels
+rather than reasoning. From this machine, **in France**, on a **free Community**
+ion token:
+
+| tile | result |
+|---|---|
+| Paris z18 (`132784/90184`) | **HTTP 200**, `image/jpeg`, 26 443 B, 311 ms |
+| Lyon z17 (`67296/46753`) | **HTTP 200**, `image/jpeg`, 34 764 B |
+| New York z18 — control | **HTTP 200**, `image/jpeg`, 23 113 B |
+
+Google's own [EEA notice](https://developers.google.com/maps/comms/eea/map-tiles)
+is what explains it: *"Satellite image tiles in 2D Tiles are not available […]
+The Map Tiles API will throw a `403` HTTP error"*, but only for **"projects […]
+linked to an account with an EEA billing address"**. It keys off the *project's*
+billing address, never the end user's location — and on this path the Google
+project is Cesium's, in the US. The endpoint response makes the mechanism
+visible: ion returns a **Google session token it created itself**, plus a signed
+proxy URL `https://assets.ion.cesium.com/proxy/3830182`. The browser never talks
+to `tile.googleapis.com`; our billing address never enters the request.
+
+Three measured details that decide how it would be wired:
+
+- **It goes deeper than anything this repo shows today.** Tiles answer to
+  **z22** over Paris (IGN stops at z19 with a 404, Esri at z19). Weight falls off
+  after z20 — 20 564 B at z20, 12 391 B at z21, 8 062 B at z22 — so the honest
+  sharp limit is around z20/z21, still one to two levels past the current cap.
+- **`access-control-allow-origin: *`** on the proxied tiles, so no proxy of our
+  own is needed. Tiles are `private, max-age=86400`.
+- **The session expires after one hour** (`exp - iat = 3600` in the proxy JWT),
+  so any wiring must re-fetch the endpoint, not cache the URL for a long-lived
+  session. This is the one real piece of work.
+
+And the attribution it forces, which is not optional: the endpoint returns the
+**Cesium ion logo**, the **Google logo**, *and* — on the Community tier — a
+credit reading **"Upgrade for commercial use."**. That last one would render on
+any deployment using a free token.
 
 ### The imagery replacement, if that day comes
 
@@ -798,12 +839,13 @@ cheapest first:
   requiring the `premium:user:basemaps` privilege. **2M basemap tiles free per
   month**, then $0.15/1000; or the session model, 1,000 free then $4/1000. At
   ~90 tiles per view that free tier is roughly 22,000 page loads a month.
-- **Cesium ion Commercial** — $149/month, 5,000 Global Imagery sessions. This
-  now buys Google Maps 2D Satellite as well as Bing, on Cesium's agreement
-  rather than a key of your own, which is the one path here that reaches
-  *Google* imagery from an EEA address at all. Bing under it has until
-  2028-06-30 at the outside (see above); Google 2D does not carry that clock.
-  Still only worth it if the 3D tiling and terrain are wanted too.
+- **Cesium ion Commercial** — $149/month, 5,000 Global Imagery sessions. This is
+  no longer a "only if you want the 3D tiling too" option: it is the **only
+  verified path to Google satellite imagery for an EEA-billed company**, proven
+  by tile fetch above, and therefore the only one that answers the paid
+  product's imagery gap at full resolution. Bing under it has until 2028-06-30
+  at the outside; Google 2D carries no such clock. It also drops the
+  "Upgrade for commercial use." credit the free tier forces on screen.
 
 Nothing in the code needs to change to *keep the current, free, open-source
 posture*. The switch would be to make the world base follow a key the way
