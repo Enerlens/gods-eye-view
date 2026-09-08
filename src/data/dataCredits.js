@@ -247,6 +247,21 @@ export const DATA_CREDITS = [
       'Coverage is clipped to metropolitan France and Corsica; DOM-TOM are not shown.',
   },
   {
+    key: 'world-satellite-keyless',
+    html:
+      'Worldwide satellite base under IGN Ortho (keyless): ' +
+      '<a href="https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9" target="_blank" rel="noopener">Esri World Imagery</a> ' +
+      '&mdash; imagery &copy; Esri, Maxar, Earthstar Geographics and the GIS User Community, served to z19 under the ' +
+      '<a href="https://www.esri.com/en-us/legal/terms/full-master-agreement" target="_blank" rel="noopener">Esri Terms of Use</a>. ' +
+      'If that service fails, the base degrades to ' +
+      '<a href="https://cloudless.eox.at" target="_blank" rel="noopener">Sentinel-2 cloudless 2017 by EOX</a> ' +
+      '(contains modified Copernicus Sentinel data 2017, ' +
+      '<a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener">CC BY 4.0</a>) &mdash; ' +
+      '10 m resolution, served to z14. The 2017 vintage is deliberate: every EOX vintage from 2018 onward is ' +
+      'CC BY-<strong>NC</strong>-SA, and this repository is MIT. ' +
+      'Neither layer is shown over metropolitan France, where IGN&rsquo;s 20 cm orthophoto sits above them.',
+  },
+  {
     key: 'odre-eco2mix',
     html:
       'Live French electricity mix (&eacute;CO2mix, national + 12 r&eacute;gions): ' +

@@ -6,6 +6,39 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-08
 
 ### Added
+- **Le globe a enfin des photos hors de France, et il en charge moins qu'avant.**
+  `IGN Ortho` compositait son orthophoto 20 cm sur un fond mondial de **traits
+  OSM** : un plan de rues sous une photographie, ce qui se lit comme un défaut
+  de rendu dès que la caméra passe la frontière. Le fond devient de l'imagerie
+  satellite mondiale, **sans clé ni compte** — Esri World Imagery, plafonné au
+  z19 qui est exactement celui de l'IGN, donc le fond prolonge la couche nette
+  sans jamais la dépasser. L'IGN reste prioritaire partout où elle a des tuiles.
+  Le satellite Google, lui, reste hors d'atteinte : il est retiré à toute
+  facturation européenne, ce qu'une sonde du 2026-09-08 reconfirme (`satellite`
+  403, `roadmap` 200 sur la même clé).
+  **Et le fond se met en veille au lieu de se charger pour rien.** Cesium
+  télécharge intégralement une couche basse même quand la couche du dessus la
+  masque à 100 % : au-dessus de Paris, le fond invisible coûtait **46 tuiles /
+  874 ko par vue, plus que l'orthophoto visible elle-même**. Sur les cinq boîtes
+  où l'IGN est prouvée opaque, la couche mondiale passe à `show = false` et le
+  coût tombe à **zéro tuile**. `cutoutRectangle` avait été mesuré d'abord et
+  écarté : il coupe le dessin, pas le téléchargement (813 ko contre 874). Le
+  même mécanisme s'applique à `Plan IGN`, dont la base OSM gaspillait déjà
+  37 tuiles / 268 ko par vue parisienne avant ce changement — le stack est donc
+  **plus léger qu'avant** tout en couvrant le monde.
+  **Les boîtes de veille sont sondées, pas devinées.** Le rectangle d'une couche
+  n'est pas sa couverture : le clamp France englobe Bruxelles, où la
+  Géoplateforme répond `No data found`. Éteindre le fond sur ce rectangle
+  percerait des trous blancs. Les cinq boîtes retenues sont les plus grandes
+  boîtes intérieures ayant passé un sondage tuile à tuile au z13 sans un seul
+  manque (81/81 puis 49/49). Les villes côtières et frontalières en sont
+  volontairement absentes : là, le fond est réellement visible.
+  **Un repli de licence, pas seulement de panne.** Si Esri échoue six tuiles
+  distinctes, le fond bascule en place sur Sentinel-2 cloudless **2017** (EOX,
+  CC BY 4.0) sans toucher à la couche IGN ni à son cache. Le millésime est
+  délibéré : chez EOX, seuls 2016 et 2017 sont en CC BY — 2018 à 2025 sont en
+  CC BY-**NC**-SA, inembarquables dans un dépôt MIT.
+
 - **La radiographie d'adresse — dix thématiques sur une feuille.**
   `/fiche.html?lat=&lon=` interroge quinze routes de l'application en parallèle
   et compose les dix thématiques de la grille Cityscan — Immobilier, Transport,

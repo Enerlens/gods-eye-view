@@ -2,6 +2,12 @@ import * as Cesium from 'cesium';
 import { governorRequestRender } from './renderGovernor.js';
 import { IgnBilTerrainProvider } from './data/ignBilTerrain.js';
 import { createGoogleMapTilesProvider } from './data/googleMapTiles.js';
+import {
+  WORLD_IMAGERY_FAILURE_BUDGET,
+  createEsriWorldImageryProvider,
+  createS2CloudlessProvider,
+  watchTileFailures,
+} from './data/worldImagery.js';
 
 export const MAP_STACKS = [
   {
@@ -69,7 +75,10 @@ export const MAP_STACKS = [
     shortLabel: 'Ortho',
     kind: 'ign-wmts',
     requiresIon: false,
-    coverageNote: 'metropolitan France only',
+    // Worldwide now, unlike `ign-plan`: this stack composites IGN's 20 cm
+    // orthophoto over keyless world satellite (see `_getStackProviders`), so
+    // the France clamp bounds the SHARP layer rather than the whole stack.
+    coverageNote: 'IGN 20 cm over France, world satellite beyond',
     wmts: {
       layer: 'ORTHOIMAGERY.ORTHOPHOTOS',
       format: 'image/jpeg',
@@ -162,6 +171,56 @@ const IGN_WMTS_URL = 'https://data.geopf.fr/wmts';
 export const IGN_FRANCE_RECTANGLE = Object.freeze({
   west: -5.5, south: 41.2, east: 9.8, north: 51.2,
 });
+
+/**
+ * Boxes where IGN's orthophoto is known to cover EVERY pixel, so the world
+ * satellite base underneath can be switched off entirely.
+ *
+ * WHY THIS IS A LIST AND NOT `IGN_FRANCE_RECTANGLE`. A layer's rectangle is
+ * its bounding box, not its coverage. The France clamp above also contains
+ * Belgium, Luxembourg, northern Spain and northern Italy, where the
+ * Géoplateforme answers either `<ExceptionReport>No data found` (Brussels,
+ * z13) or a ~1.6 kB blank JPEG — 17 of 49 sampled points on the full
+ * rectangle. Sleeping the base over that box would punch white holes in the
+ * globe outside France. These five boxes are the largest interior ones that
+ * survived a tile-by-tile probe at z13 with zero misses and zero blanks
+ * (81/81 for the first, 49/49 for the others, measured 2026-09-08).
+ *
+ * WHAT IT BUYS, measured with `.context/bench-world-imagery-cost.mjs` over
+ * Paris at z≈17: the invisible base costs 46 tiles / 874 kB per view — MORE
+ * than the visible IGN layer's own 769 kB. `cutoutRectangle` does not help
+ * (813 kB: it cuts the draw, not the fetch); only `show = false` takes it to
+ * zero. Coastal and border cities are deliberately absent: there the base is
+ * genuinely visible and must keep loading.
+ */
+export const IGN_OPAQUE_BOXES = Object.freeze([
+  Object.freeze({ west: 0.5, south: 44.0, east: 5.0, north: 49.0 }),
+  Object.freeze({ west: -0.5, south: 43.4, east: 2.0, north: 45.5 }),
+  Object.freeze({ west: 4.5, south: 45.2, east: 6.0, north: 48.3 }),
+  Object.freeze({ west: 2.0, south: 49.0, east: 4.0, north: 50.2 }),
+  Object.freeze({ west: 4.2, south: 43.7, east: 6.0, north: 45.0 }),
+]);
+
+/**
+ * Whether a view is wholly inside one box where IGN is known to be opaque.
+ *
+ * Degrees in, so the caller converts once and this stays readable next to the
+ * table above. A view that straddles two boxes is NOT covered even if their
+ * union contains it — the gap between them may be sea, and being wrong here
+ * shows as a white hole rather than as a slow frame.
+ * @param {{west: number, south: number, east: number, north: number}|null} view
+ * @returns {boolean}
+ */
+export function isViewFullyCoveredByIgn(view) {
+  if (!view) return false;
+  // An antimeridian-crossing view is never in France, and comparing its bounds
+  // numerically would silently say otherwise.
+  if (view.east < view.west || view.north < view.south) return false;
+  return IGN_OPAQUE_BOXES.some((box) => view.west >= box.west
+    && view.east <= box.east
+    && view.south >= box.south
+    && view.north <= box.north);
+}
 
 // Keyless global ellipsoidal terrain (Re:Earth Terrain / Mapterhorn, CC BY 4.0,
 // EGM2008 geoid via NGA) — quantized-mesh 1.0, `ellipsoid` data-type. Fixes
@@ -267,9 +326,20 @@ export class MapStackController {
     // exactly the builds that have one to make.
     this._activeId = initialStack;
     // A stack owns an ORDERED LIST of imagery layers, not one layer: the IGN
-    // stacks are OSM (base, index 0) + IGN France (index 1). Bottom-first.
+    // stacks are a world base (index 0) + IGN France (index 1). Bottom-first.
     this._imageryLayers = [];
     this._imageryProviders = new Map();
+    // The world satellite base under `ign-ortho`, cached by provider name so a
+    // degraded session doesn't rebuild Esri behind its own fallback. Keyed
+    // separately from `_imageryProviders` because these are not stacks: they
+    // have no chip, no id and no share token, and are never selectable alone.
+    this._worldImageryProviders = new Map();
+    // Latched, never un-latched within a session. Esri coming back up mid-
+    // session is not worth a second rebuild of every imagery layer under the
+    // camera; the fallback is honest imagery, not an error state.
+    this._worldImageryDegraded = false;
+    // One `moveEnd` subscription for the whole session, not one per switch.
+    this._worldBaseWatchAttached = false;
     this._isSwitching = false;
     this._lastError = null;
     // Tracks which terrain PROVIDER is actually installed on the scene, not
@@ -564,26 +634,141 @@ export class MapStackController {
 
     if (this.googleTileset) this.googleTileset.show = false;
     this.viewer.scene.globe.show = true;
+    this._watchCameraForWorldBase();
+    // Evaluate immediately as well as on the next camera rest: switching to
+    // the ortho while already parked over Paris must not fetch a base layer
+    // that will be hidden a moment later.
+    this._syncWorldBaseVisibility();
     await this._setWorldTerrainEnabled(!!this.cesiumToken && !this.ignTerrainSpike, gen);
+  }
+
+  /**
+   * Subscribes once to camera rest, so the world base can sleep over France.
+   *
+   * `moveEnd` and not `changed`: the latter fires throughout a flight, and
+   * every flip of `show` re-triggers tile requests. Waiting for the camera to
+   * settle means one decision per movement instead of dozens.
+   */
+  _watchCameraForWorldBase() {
+    if (this._worldBaseWatchAttached) return;
+    const moveEnd = this.viewer?.camera?.moveEnd;
+    if (!moveEnd?.addEventListener) return;
+    moveEnd.addEventListener(() => this._syncWorldBaseVisibility());
+    this._worldBaseWatchAttached = true;
   }
 
   /**
    * Imagery providers for one stack, BOTTOM-FIRST.
    *
    * Every stack but the IGN pair is a single world-covering layer. The IGN
-   * stacks return `[osm, ign]`: IGN covers metropolitan France only, and a
-   * France-shaped layer at index 0 would be Cesium's base layer, whose edge
-   * pixels Cesium stretches over the rest of the planet. OSM underneath keeps
-   * the world honest and the French tiles land on top of it.
+   * stacks return two: IGN covers metropolitan France only, and a France-shaped
+   * layer at index 0 would be Cesium's base layer, whose edge pixels Cesium
+   * stretches over the rest of the planet. A world layer underneath keeps the
+   * world honest and the French tiles land on top of it.
+   *
+   * WHICH world layer depends on what is above it, and the two IGN stacks want
+   * opposite things. `ign-plan` is cartography, so OSM's line work continues it
+   * naturally past the border. `ign-ortho` is a photograph, and OSM under a
+   * photograph reads as a rendering fault — so it gets satellite instead, which
+   * is also the only worldwide photography a keyless build has at all. IGN
+   * still wins wherever it has tiles: it sits at index 1, above the base, and
+   * its rectangle is what hands the globe back to satellite at the coastline.
    * @param {object} stack - Stack descriptor from `MAP_STACKS`.
    * @returns {Promise<Array<Cesium.ImageryProvider>>}
    */
   async _getStackProviders(stack) {
     if (stack.kind !== 'ign-wmts') return [await this._getImageryProvider(stack)];
-    return [
-      await this._getImageryProvider(this.getStack('osm')),
-      await this._getImageryProvider(stack),
-    ];
+    const base = stack.id === 'ign-ortho'
+      ? this._getWorldImageryProvider()
+      : await this._getImageryProvider(this.getStack('osm'));
+    return [base, await this._getImageryProvider(stack)];
+  }
+
+  /**
+   * The worldwide satellite base: Esri, or Sentinel-2 cloudless once Esri has
+   * proved it cannot serve this session.
+   *
+   * Synchronous on purpose. Both providers are plain URL templates with nothing
+   * to fetch at construction, so this never joins the awaited path that
+   * `_switchGen` guards — there is no window in which a newer switch could be
+   * clobbered by an older one resolving late.
+   * @returns {Cesium.ImageryProvider}
+   */
+  _getWorldImageryProvider() {
+    const key = this._worldImageryDegraded ? 's2cloudless' : 'esri';
+    const cached = this._worldImageryProviders.get(key);
+    if (cached) return cached;
+
+    const provider = this._worldImageryDegraded
+      ? createS2CloudlessProvider()
+      : createEsriWorldImageryProvider();
+    this._worldImageryProviders.set(key, provider);
+    if (!this._worldImageryDegraded) {
+      watchTileFailures(
+        provider,
+        WORLD_IMAGERY_FAILURE_BUDGET,
+        () => this._degradeWorldImagery(),
+      );
+    }
+    return provider;
+  }
+
+  /**
+   * Switches the world satellite base OFF while IGN is covering every pixel.
+   *
+   * This is the one that keeps the two-layer stack from costing twice. Cesium
+   * downloads a lower layer in full even when an opaque layer completely hides
+   * it, so over Paris the base was fetching 874 kB (Esri) or 268 kB (the OSM
+   * base this replaced) per view to draw nothing. `show = false` is the only
+   * lever that stops the FETCH — `cutoutRectangle` only stops the draw, and
+   * measured 813 kB against 874, which is no saving at all.
+   *
+   * Called on camera rest rather than per frame: `show` flipping back on makes
+   * Cesium re-request the base, so doing this mid-flight would thrash tiles
+   * across the whole pan. Cheap enough to be unconditional — one rectangle
+   * computation and at most five comparisons.
+   */
+  _syncWorldBaseVisibility() {
+    // Both IGN stacks, not just the ortho: Plan IGN is opaque over France too,
+    // and its OSM base was already fetching 37 tiles / 268 kB per Paris view to
+    // draw nothing long before satellite entered the picture.
+    if (this.getActiveStack()?.kind !== 'ign-wmts') return;
+    const base = this._imageryLayers[0];
+    if (!base) return;
+    const view = this.viewer?.camera?.computeViewRectangle?.();
+    // No rectangle means the globe does not fill the view (the camera is far
+    // enough out to see space), which is exactly when the base is needed.
+    const covered = view ? isViewFullyCoveredByIgn({
+      west: Cesium.Math.toDegrees(view.west),
+      south: Cesium.Math.toDegrees(view.south),
+      east: Cesium.Math.toDegrees(view.east),
+      north: Cesium.Math.toDegrees(view.north),
+    }) : false;
+    if (base.show === !covered) return;
+    base.show = !covered;
+    governorRequestRender('world-base-visibility');
+  }
+
+  /**
+   * Swaps the dead Esri base for Sentinel-2 cloudless, in place.
+   *
+   * Only the base layer is rebuilt, and only when it is actually on screen: the
+   * IGN layer above it is untouched, so France keeps its 20 cm orthophoto and
+   * its tile cache across the swap. A stack that is not currently showing the
+   * world base just picks the fallback up the next time it is built.
+   */
+  _degradeWorldImagery() {
+    if (this._worldImageryDegraded) return;
+    this._worldImageryDegraded = true;
+    if (this.getActiveId() !== 'ign-ortho' || this._imageryLayers.length === 0) return;
+
+    const stale = this._imageryLayers[0];
+    const layer = new Cesium.ImageryLayer(this._getWorldImageryProvider());
+    this.viewer.imageryLayers.add(layer, 0);
+    this.viewer.imageryLayers.remove(stale, false);
+    this._imageryLayers[0] = layer;
+    this._imageryBuilds += 1;
+    governorRequestRender('world-imagery-fallback');
   }
 
   async _getImageryProvider(stack) {

@@ -281,9 +281,12 @@ try {
   }
 
   // The two keyless France sources are the whole point of a keyless build:
-  // they must be selectable with NO credential of any kind, and they must say
-  // up front that they only cover France — an operator who picks IGN over
-  // Texas sees the globe not change at all, and needs to know why.
+  // they must be selectable with NO credential of any kind, and each must say
+  // up front what it actually covers. The two answers now DIFFER, and pinning
+  // them apart is the point: `ign-plan` really does stop at the border, so an
+  // operator who picks it over Texas sees the globe barely change and needs to
+  // know why. `ign-ortho` carries world satellite under it, so claiming
+  // "metropolitan France only" on that chip would be the lie instead.
   const ignChips = await page.evaluate(() => ['ign-ortho', 'ign-plan'].map((id) => {
     const chip = document.querySelector(`[data-stack-id="${id}"]`);
     return {
@@ -294,12 +297,16 @@ try {
       unavailableClass: chip?.classList.contains('unavailable'),
     };
   }));
+  const expectedCoverage = {
+    'ign-ortho': /IGN 20 cm over France, world satellite beyond/,
+    'ign-plan': /metropolitan France only/,
+  };
   check(
-    'keyless IGN sources are selectable and declare their France-only coverage',
+    'keyless IGN sources are selectable and each declares its own real coverage',
     ignChips.every((chip) => chip.ariaDisabled === 'false'
       && !chip.unavailableClass
-      && /metropolitan France only/.test(chip.title || '')
-      && /metropolitan France only/.test(chip.ariaLabel || '')),
+      && expectedCoverage[chip.id].test(chip.title || '')
+      && expectedCoverage[chip.id].test(chip.ariaLabel || '')),
     JSON.stringify(ignChips),
   );
 
@@ -320,11 +327,14 @@ try {
     return { result, providers, lit, activeAfterRestore: controller.getActiveId(), before };
   });
   check(
-    'IGN composites over an OSM base — two layers, OSM underneath',
+    'IGN Ortho composites over a world SATELLITE base — two layers, Esri underneath',
     ignSwitch.result?.ok === true
       && ignSwitch.result?.activeStack === 'ign-ortho'
+      // A URL template, not OSM: the ortho's base is now Esri World Imagery, so
+      // the globe stays photographic once the camera leaves France instead of
+      // showing street lines through an aerial photograph.
       && JSON.stringify(ignSwitch.providers) === JSON.stringify([
-        'OpenStreetMapImageryProvider', 'WebMapTileServiceImageryProvider',
+        'UrlTemplateImageryProvider', 'WebMapTileServiceImageryProvider',
       ])
       && JSON.stringify(ignSwitch.lit) === JSON.stringify(['ign-ortho'])
       && ignSwitch.activeAfterRestore === ignSwitch.before,
