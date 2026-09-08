@@ -317,8 +317,16 @@ export const CELL_POSITIONS = Object.freeze({
  */
 export function classifyCell(cell, rings, resolution, index = null) {
   const polygon = asRings(rings);
-  const corners = cellCorners({ res: resolution, n: cell.n, e: cell.e });
-  const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e });
+  // THE GRID TRAVELS WITH THE CELL, and forgetting it is not a rounding error.
+  // INSEE grids métropole in EPSG:3035, Martinique in 5490 and La Réunion in
+  // 2975; `cellCorners()` defaults to 3035, so a Réunion cell inverted without
+  // its `crs` comes back at 93,9° W / 55,5° N — Hudson Bay. Every cell then
+  // falls outside every ring, and the fiche answered "aucun carreau INSEE
+  // habité dans cette zone" for every address in the two overseas territories.
+  // Measured 2026-09-08 by the barème campaign, which drew La Réunion first and
+  // was refused sixteen times in a row before anyone looked.
+  const corners = cellCorners({ res: resolution, n: cell.n, e: cell.e, crs: cell.crs });
+  const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e, crs: cell.crs });
   if (!polygon.length) {
     return {
       position: CELL_POSITIONS.outside, centroidInside: false, cornersInside: 0, crossed: false,
@@ -430,7 +438,7 @@ export function aggregateInRing(cells, ring, resolution) {
   // doubled the most expensive half of the work to re-read one boolean.
   const index = buildEdgeIndex(polygon, cellDeg);
   for (const cell of cells) {
-    const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e });
+    const [lon, lat] = cellCentre({ res: resolution, n: cell.n, e: cell.e, crs: cell.crs });
     if (lat < bounds.south - padDeg || lat > bounds.north + padDeg
       || lon < bounds.west - padDeg || lon > bounds.east + padDeg) continue;
     const { position, centroidInside } = classifyCell(cell, polygon, resolution, index);

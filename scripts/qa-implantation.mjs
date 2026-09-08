@@ -258,6 +258,17 @@ async function main() {
       lyon.lines.some((line) => /PLU/.test(line)), lyon.lines.join(' | '));
     check('the market line is present',
       lyon.lines.some((line) => /DVF/.test(line)), lyon.lines.join(' | '));
+    // The national rank. It is composed in the browser from a constant, so a
+    // unit test proves the arithmetic — but only a run proves that a REAL Lyon
+    // fiche lands inside the measured ladder rather than beyond both its ends.
+    check('the fiche says where it stands in France',
+      lyon.lines.some((line) => /^Centiles nationaux — /.test(line)), lyon.lines.join(' | '));
+    check('a letter never travels without the convention that produced it',
+      lyon.lines.some((line) => /A = le meilleur cinquième de France/.test(line)),
+      lyon.lines.join(' | '));
+    check('the barème names its own sample and date',
+      lyon.lines.some((line) => /Barème mesuré sur [\d\s]+ anneaux de 10 min/.test(line)),
+      lyon.lines.join(' | '));
 
     // ── v. the duration ───────────────────────────────────────────────────
     console.log('\n[5] Changing the duration changes the answer');
@@ -273,6 +284,17 @@ async function main() {
       short.stats.people < people, `${short.stats.people} vs ${people}`);
     check('and a smaller area', short.stats.areaKm2 < lyon.stats.areaKm2,
       `${short.stats.areaKm2} vs ${lyon.stats.areaKm2}`);
+    // THE GEOMETRY RAIL, ON SCREEN. The barème is measured on ten-minute rings;
+    // at five minutes the four ring indicators forfeit their rank and the card
+    // has to SAY so — the price rank survives, because it is measured on a
+    // 300 m disc the duration does not touch, and a silently shorter list of
+    // centiles is exactly the omission this layer refuses elsewhere.
+    check('five minutes forfeits the ring ranks, out loud',
+      short.lines.some((line) => /barème n’est mesuré qu’à dix minutes/.test(line)),
+      short.lines.filter((line) => /centile|arème/.test(line)).join(' | '));
+    check('and keeps the one rank the duration does not touch',
+      short.lines.some((line) => /Centiles nationaux — prix au m²/.test(line)),
+      short.lines.filter((line) => /Centiles/.test(line)).join(' | '));
     await shoot(page, '02-lyon-5min.png');
     console.log(`      5 min : ${short.stats.people} habitants sur ${short.stats.areaKm2} km²`);
 

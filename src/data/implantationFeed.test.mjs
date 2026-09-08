@@ -365,3 +365,26 @@ test('a fiche with missing halves still composes, and names what is missing', ()
   assert.equal(fiche.zoning, null);
   assert.equal(fiche.address.label, null, 'an absent address is an empty shape, not undefined');
 });
+
+test('a Réunion cell is joined on ITS grid, not on the one métropole uses', () => {
+  // THE REGRESSION THIS FILE EXISTS FOR, and it shipped. INSEE grids La Réunion
+  // in EPSG:2975 and Martinique in 5490; inverting either with the 3035 default
+  // sends the cell to Hudson Bay — measured 93,9° W / 55,5° N for the cell
+  // below — so it falls outside every ring and the fiche reported "aucun
+  // carreau INSEE habité" for every address in the two overseas territories.
+  const cell = { n: 7_641_000, e: 340_000, crs: 2975, ind: 180, men: 70, niveau: 14_000 };
+  const [lon, lat] = cellCentre({ res: 200, ...cell });
+  assert.ok(lon > 55 && lon < 56 && lat < -20 && lat > -22, 'the fixture must be on Réunion');
+  const ring = [
+    [lon - 0.004, lat - 0.004], [lon + 0.004, lat - 0.004],
+    [lon + 0.004, lat + 0.004], [lon - 0.004, lat + 0.004],
+  ];
+  const joined = aggregateInRing([cell], ring, 200);
+  assert.equal(joined.people.count, 180);
+  assert.equal(joined.niveau, 14_000);
+
+  // And the same cell WITHOUT its grid is the bug, still reproducible: the
+  // default projection puts it four thousand kilometres away.
+  const stripped = { n: cell.n, e: cell.e, ind: cell.ind, men: cell.men };
+  assert.equal(aggregateInRing([stripped], ring, 200).people.count, 0);
+});

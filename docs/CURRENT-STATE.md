@@ -1,6 +1,36 @@
 # God's Eye View Current State
 
-Updated: September 3, 2026
+Updated: September 8, 2026
+
+> **2026-09-08 — la fiche d'adresse dit où elle se situe dans le pays.**
+> `src/data/baremeNational.js` porte onze échelles nationales mesurées par
+> `npm run bareme:fr` sur **1 200 anneaux piétons de dix minutes**, tirés à
+> probabilité proportionnelle à la population sur les 377 234 carreaux de 1 km
+> de l'INSEE (64 089 848 habitants), zéro refus. La `Fiche implantation` imprime
+> un **centile national** par indicateur et une **lettre A→E** pour les trois
+> dont le sens n'est pas une opinion. Méthode et mesures : `docs/BAREME.md`.
+>
+> **La géométrie est une clé de jointure, pas un commentaire.** Une valeur ne se
+> classe que dans une distribution mesurée sur la même forme. Mesuré sur le même
+> échantillon, l'intervalle interdécile d'un anneau vaut **74 %** de celui d'un
+> carreau de 200 m : noté sur `FILOSOFI_RAMPS`, un anneau au 10ᵉ centile se
+> lirait au 22ᵉ et un anneau au 90ᵉ au 84ᵉ — une bande de lettre à chaque bout.
+> Sur un anneau de 5 ou 15 min, les rangs d'anneau sont **refusés et la carte le
+> dit** ; le rang du prix, mesuré sur un disque de 300 m, survit.
+>
+> **Huit indicateurs sur onze n'ont pas de lettre.** Un prix élevé est bon pour
+> un vendeur et mauvais pour un acheteur ; une part de logement social est une
+> politique publique. Ceux-là reçoivent un rang. Les trois qui portent une lettre
+> annoncent leur convention sur la même ligne.
+>
+> **Un bug est tombé de la mesure** : `implantationFeed.js` perdait le `crs` du
+> carreau, donc tout carreau de Martinique ou de La Réunion atterrissait dans la
+> baie d'Hudson et la fiche répondait « aucun carreau INSEE habité » pour toute
+> adresse d'outre-mer. Corrigé, test de régression posé.
+>
+> **QA navigateur passée** : `npm run qa:implantation -- --url http://localhost:4173`
+> — 40 contrôles au vert sur Lyon et Paris, dont les cinq nouveaux. 6 200 tests
+> unitaires, 0 échec.
 
 > **2026-09-03 — l'axe Z entre en service.** Suite de la doctrine
 > `docs/CARTOGRAPHIE.md` et de l'audit `docs/REPRESENTATION.md` (dont la section

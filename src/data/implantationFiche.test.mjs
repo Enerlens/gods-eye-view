@@ -13,13 +13,17 @@ import implantationFicheLayer, {
   FICHE_STEPS,
   _ficheSecondsForTest,
   _setFicheSecondsForTest,
+  compactRank,
   ficheFetch,
+  ficheScores,
   clipLabel,
   ficheLines,
   fetchPart,
+  letterPhrase,
   minutesLabel,
   resolveSeconds,
 } from './implantationFiche.js';
+import { BAREME_FR, BAREME_GEOMETRIES, BAREME_LADDER_Q, BAREME_REASONS } from './baremeNational.js';
 
 /**
  * A ring big enough to hold the fixture cells, as the isochrone route sends it.
@@ -385,4 +389,119 @@ test('a ring dominated by its own border says so', async () => {
   }).details;
   assert.ok(!interior.some((line) => /La bordure domine/.test(line)),
     'a ring with a real interior must not carry the caveat');
+});
+
+// ---------------------------------------------------------------------------
+// Le rang national
+// ---------------------------------------------------------------------------
+/** Une échelle linéaire 0→100, pour lire un centile à l'œil. */
+const FAKE_LADDER = BAREME_LADDER_Q.map((q) => Math.round(q * 100));
+const FAKE_BAREME = {
+  acces: { geometry: BAREME_GEOMETRIES.RING_FOOT_600, ladder: FAKE_LADDER },
+  niveau: { geometry: BAREME_GEOMETRIES.RING_FOOT_600, ladder: FAKE_LADDER },
+  habitants: { geometry: BAREME_GEOMETRIES.RING_FOOT_600, ladder: FAKE_LADDER },
+  prixM2: { geometry: BAREME_GEOMETRIES.DISC_300, ladder: FAKE_LADDER },
+};
+/**
+ * Des valeurs qui tombent ENTRE deux points de l'échelle, jamais dessus.
+ *
+ * Une valeur assise exactement sur un point est un palier — `ladderBracket()`
+ * rend alors un intervalle large, à raison — et ce n'est pas ce que ces
+ * tests-ci mesurent.
+ */
+const SCORED_FICHE = (overrides = {}) => ({
+  isochrone: { seconds: 600, areaKm2: 65 },
+  demand: { niveau: 32, people: { count: 88 }, truncated: false },
+  market: { medianPrixM2: 55 },
+  ...overrides,
+});
+
+test('un anneau de dix minutes reçoit son rang, indicateur par indicateur', () => {
+  const scores = ficheScores(SCORED_FICHE(), { bareme: FAKE_BAREME, sampleSize: 100_000 });
+  const byId = Object.fromEntries(scores.map((score) => [score.id, score]));
+  assert.equal(byId.acces.percentile, 65);
+  assert.equal(byId.acces.letter, 'B');
+  assert.equal(byId.niveau.percentile, 32);
+  assert.equal(byId.habitants.percentile, 88);
+  // La densité n'a pas de sens défendable : un rang, jamais de lettre.
+  assert.equal(byId.habitants.letter, null);
+  assert.equal(byId.prixM2.percentile, 55);
+});
+
+test('un anneau qui n’est pas celui du barème ne reçoit AUCUN rang d’anneau', () => {
+  // La panne silencieuse que la géométrie existe pour rendre impossible : les
+  // mêmes indicateurs sur quinze minutes de marche valent tout autre chose.
+  const scores = ficheScores(
+    SCORED_FICHE({ isochrone: { seconds: 900, areaKm2: 65 } }),
+    { bareme: FAKE_BAREME, sampleSize: 100_000 },
+  );
+  const byId = Object.fromEntries(scores.map((score) => [score.id, score]));
+  for (const id of ['acces', 'niveau', 'habitants']) {
+    assert.equal(byId[id].reason, BAREME_REASONS.GEOMETRY, `${id} aurait dû être refusé`);
+    assert.equal(byId[id].percentile, null);
+  }
+  // Le disque DVF, lui, ne dépend pas du pas de temps et garde son rang.
+  assert.equal(byId.prixM2.percentile, 55);
+});
+
+test('un carroyage tronqué est un plancher, et un plancher ne se classe pas', () => {
+  const scores = ficheScores(
+    SCORED_FICHE({ demand: { niveau: 32, people: { count: 88 }, truncated: true } }),
+    { bareme: FAKE_BAREME, sampleSize: 100_000 },
+  );
+  const byId = Object.fromEntries(scores.map((score) => [score.id, score]));
+  assert.equal(byId.niveau.reason, BAREME_REASONS.GEOMETRY);
+  assert.equal(byId.habitants.percentile, null);
+  // La surface atteignable ne vient pas du carroyage : elle reste notable.
+  assert.equal(byId.acces.percentile, 65);
+});
+
+test('letterPhrase dit les deux lettres quand la fourchette les enjambe', () => {
+  assert.equal(letterPhrase({ letter: 'A', letterLow: 'A', letterHigh: 'A', ferme: true }), 'A');
+  assert.equal(
+    letterPhrase({ letter: null, letterLow: 'C', letterHigh: 'B', ferme: false }),
+    'B ou C',
+  );
+  assert.equal(letterPhrase({}), null);
+});
+
+test('compactRank rend un intervalle sur un palier et un nombre sinon', () => {
+  assert.equal(compactRank({ percentile: 42, percentileLow: 39, percentileHigh: 45 }), '42ᵉ');
+  assert.equal(compactRank({ percentile: 20, percentileLow: 0, percentileHigh: 40 }), '0–40ᵉ');
+  assert.equal(compactRank({}), '—');
+});
+
+test('la carte n’imprime un rang que lorsqu’il y a une échelle, et le date', () => {
+  const lines = ficheLines({
+    isochrone: { seconds: 600, areaKm2: 1.04, radiusM: 576 },
+    demand: null,
+    market: null,
+    missing: [],
+  }).details.join('\n');
+  if (Object.keys(BAREME_FR).length) {
+    assert.match(lines, /Centiles nationaux —/);
+    assert.match(lines, /Barème mesuré sur/);
+  } else {
+    assert.doesNotMatch(lines, /centile/);
+  }
+});
+
+test('les lignes du rang ne peuvent pas casser la carte en deux', () => {
+  // Même règle que pour toute autre ligne : le séparateur du factory ne doit
+  // jamais apparaître à l'intérieur d'une ligne.
+  const { details } = ficheLines({
+    isochrone: { seconds: 600, areaKm2: 1.04, radiusM: 576 },
+    demand: {
+      people: { low: 3800, count: 4210, high: 5200 },
+      households: { low: 1700, count: 1900, high: 2400 },
+      cells: { inside: 12, straddling: 20, counted: 24, touched: 32 },
+      niveau: 22_400, pauvrete: 14.2, jeunes: 20.1, aines: 18.4,
+      social: 6.9, solo: 43.6, proprietaires: 40.8,
+      imputedCells: 0, imputedUnknown: 0, imputedShare: 0, resolution: 200,
+      truncated: false,
+    },
+    market: { sales: 47, comparable: 31, medianPrixM2: 4200 },
+    missing: [],
+  });
+  for (const line of details) assert.ok(!line.includes(' · '), `séparateur dans « ${line} »`);
 });
