@@ -33,6 +33,8 @@
  *   --concurrency N  parallel requests (default 8)
  *   --out PATH       write the JSON report here
  *   --budget PATH    no network: re-derive the projections from a saved report
+ *   --against PATH   a SECOND report, at another hour: the sweep's cost is then
+ *                    fitted through both points instead of split by entity
  *   --peak-fleet N   vehicles the national index saw at 17 h (default 7212)
  *   --day-factor N   vehicle-hours per 17 h vehicle (default 10.62, measured by
  *                    `scripts/measure-gtfs-service-day.mjs`)
@@ -59,7 +61,7 @@ const MAX_BYTES = 48 * 1024 * 1024;
 function parseArgs(argv) {
   const args = {
     rounds: 0, interval: 30, companions: false,
-    limit: 0, concurrency: 8, out: '', budget: '',
+    limit: 0, concurrency: 8, out: '', budget: '', against: '',
     peakFleet: 7212, dayFactor: 10.62, passageFactor: 428.3,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -71,6 +73,7 @@ function parseArgs(argv) {
     else if (flag === '--concurrency') args.concurrency = Number(argv[++i]) || 8;
     else if (flag === '--out') args.out = argv[++i] || '';
     else if (flag === '--budget') args.budget = argv[++i] || '';
+    else if (flag === '--against') args.against = argv[++i] || '';
     else if (flag === '--peak-fleet') args.peakFleet = Number(argv[++i]) || 7212;
     else if (flag === '--day-factor') args.dayFactor = Number(argv[++i]) || 10.62;
     else if (flag === '--passage-factor') args.passageFactor = Number(argv[++i]) || 428.3;
@@ -250,6 +253,22 @@ const ALERT_GZ = 812;
 /** Request + response headers, both ways. Estimated, not measured. */
 const HTTP_OVERHEAD = 700;
 
+/** The three totals a projection needs out of any report's inventory. */
+function sweepOf(report) {
+  const live = report.inventory.filter((entry) => entry.ok && entry.read);
+  return {
+    feeds: live.length,
+    fleet: live.reduce((total, entry) => total + entry.read.vehicleCount, 0),
+    sweepGz: live.reduce((total, entry) => total + entry.gzBytes, 0),
+    companionGz: (report.companions || [])
+      .filter((entry) => entry.ok && entry.read)
+      .reduce((total, entry) => total + entry.gzBytes, 0),
+    trips: (report.companions || [])
+      .filter((entry) => entry.ok && entry.read)
+      .reduce((total, entry) => total + entry.read.tripCount, 0),
+  };
+}
+
 /**
  * Turn one measured sweep into a year, at several cadences.
  *
@@ -265,13 +284,26 @@ const HTTP_OVERHEAD = 700;
  */
 export function budgetFromReport(report, {
   peakFleet = 7212, dayFactor = 10.62, passageFactor = 428.3,
-  cadences = [30, 60, 120, 300],
+  cadences = [30, 60, 120, 300], reference = null, peakTrips = 17200,
 } = {}) {
   const live = report.inventory.filter((entry) => entry.ok && entry.read);
   const fleet = live.reduce((total, entry) => total + entry.read.vehicleCount, 0);
   const sweepGz = live.reduce((total, entry) => total + entry.gzBytes, 0);
   const alerts = live.reduce((total, entry) => total + entry.read.alertCount, 0);
-  const fixedGz = live.length * 35 + alerts * ALERT_GZ;
+  // ONE sweep can only be split by guessing which entity belongs to the hour:
+  // framing and alerts stay, the rest is charged to the fleet. Measured at two
+  // hours, that guess is wrong by 40 % — the trip updates that ride inside the
+  // position bodies barely follow the fleet (15 806 at 1 259 vehicles, 22 985
+  // at 4 799), so charging them to it inflates the peak. With a second report
+  // the line is fitted through both sweeps instead, and the split stops being
+  // an assumption: an intercept the hour does not move, and a marginal cost per
+  // vehicle that carries its own share of trip updates with it.
+  const other = reference ? sweepOf(reference) : null;
+  const fitted = other && other.fleet !== fleet;
+  const slopeGz = fitted ? (sweepGz - other.sweepGz) / (fleet - other.fleet) : null;
+  const fixedGz = fitted
+    ? Math.max(0, sweepGz - slopeGz * fleet)
+    : live.length * 35 + alerts * ALERT_GZ;
   const variableGz = Math.max(0, sweepGz - fixedGz);
   const perSampleGz = report.positionWeight.records
     ? report.positionWeight.gz / report.positionWeight.records : 0;
@@ -309,13 +341,24 @@ export function budgetFromReport(report, {
 
   const okCompanions = (report.companions || []).filter((entry) => entry.ok && entry.read);
   const companionGz = okCompanions.reduce((total, entry) => total + entry.gzBytes, 0);
-  const companionFixed = okCompanions.length * 35;
+  const trips = okCompanions.reduce((total, entry) => total + entry.read.tripCount, 0);
+  // Trip-update bodies are priced per COURSE, not per vehicle: a trip appears
+  // in them before a vehicle is assigned to it, and the count at 17 h 18 was
+  // 17 200 courses against 7 212 vehicles.
+  const companionFitted = other && other.trips && trips !== other.trips;
+  const companionSlope = companionFitted
+    ? (companionGz - other.companionGz) / (trips - other.trips) : null;
+  const companionFixed = companionFitted
+    ? Math.max(0, companionGz - companionSlope * trips)
+    : okCompanions.length * 35;
   const companionVariable = Math.max(0, companionGz - companionFixed);
+  const tripHourRatioSum = companionFitted && trips
+    ? dayFactor * peakTrips / trips : hourRatioSum;
   const companionRows = okCompanions.length
     ? [30, 60, 300].map((seconds) => {
       const sweeps = 86400 / seconds;
       const ingress = sweeps * companionFixed
-        + (3600 / seconds) * companionVariable * hourRatioSum
+        + (3600 / seconds) * companionVariable * tripHourRatioSum
         + sweeps * okCompanions.length * HTTP_OVERHEAD;
       return {
         seconds,
@@ -327,7 +370,8 @@ export function budgetFromReport(report, {
     : [];
 
   return {
-    feeds: live.length, fleet, sweepGz, fixedGz, variableGz,
+    feeds: live.length, fleet, sweepGz, fixedGz, variableGz, fitted: Boolean(fitted),
+    slopeGz,
     perSampleGz, perPassageGz, movedFraction,
     vehicleHours, passagesPerDay,
     rows, companions: { count: okCompanions.length, sweepGz: companionGz, rows: companionRows },
@@ -347,7 +391,11 @@ function printBudget(report, args) {
   console.log(`\n## budget — from ${report.measuredAt}, fleet ${budget.fleet} vehicles`);
   console.log(`sweep ${(budget.sweepGz / 1024).toFixed(0)} KB gz`
     + ` = ${(budget.fixedGz / 1024).toFixed(0)} KB that the hour does not move`
-    + ` + ${(budget.variableGz / 1024).toFixed(0)} KB that follows the fleet`);
+    + ` + ${(budget.variableGz / 1024).toFixed(0)} KB that follows the fleet`
+    + (budget.fitted
+      ? ` — fitted through two hours, ${budget.slopeGz.toFixed(1)} B per vehicle`
+      : ' — ONE hour only, so the fleet is charged for trip updates it does not'
+        + ' carry: read the ingress columns as an upper bound'));
   console.log(`day: ${args.peakFleet} vehicles at 17 h × ${args.dayFactor}`
     + ` = ${Math.round(budget.vehicleHours).toLocaleString('fr-FR')} vehicle-hours,`
     + ` ${Math.round(budget.passagesPerDay).toLocaleString('fr-FR')} stop passages`);
@@ -394,7 +442,9 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.budget) {
     const report = JSON.parse(fs.readFileSync(args.budget, 'utf8'));
-    printBudget(report, args);
+    const reference = args.against
+      ? JSON.parse(fs.readFileSync(args.against, 'utf8')) : null;
+    printBudget(report, { ...args, reference });
     return;
   }
   const indexPath = path.join(process.cwd(), 'config', 'pan_gtfs_rt_feeds.json');

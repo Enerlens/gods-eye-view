@@ -71,6 +71,39 @@ test('the alerts are the part of a night sweep that the hour does not thin out',
   assert.ok(noisy.variableGz < quiet.variableGz, 'the same body, less of it attributed to the fleet');
 });
 
+test('two reports at two hours fit the line; one report can only guess', () => {
+  // The correction that a second measurement forced. A single sweep has to
+  // charge everything but framing and alerts to the fleet; measured at 22 h and
+  // again at 09 h, the real line came out at 157 Ko + 59 o per vehicle, and the
+  // guess had overstated the year's ingress by 40 %.
+  const evening = report({ vehicles: 1000, gzBytes: 200_000 });
+  const morning = report({ vehicles: 5000, gzBytes: 400_000 });
+
+  const alone = budgetFromReport(morning, { cadences: [30] });
+  assert.equal(alone.fitted, false);
+  assert.equal(alone.fixedGz, 35, 'one feed of framing, no alerts');
+
+  const fitted = budgetFromReport(morning, { reference: evening, cadences: [30] });
+  assert.equal(fitted.fitted, true);
+  assert.equal(fitted.slopeGz, 50);
+  assert.equal(fitted.fixedGz, 150_000);
+
+  // The property that matters: the fitted line reproduces the OTHER hour it was
+  // never told about, and the single-sweep split does not come close.
+  const predict = (budget, fleet) => budget.fixedGz + (budget.fitted
+    ? budget.slopeGz * fleet
+    : budget.variableGz * (fleet / budget.fleet));
+  assert.equal(predict(fitted, 1000), 200_000, 'exactly the evening sweep');
+  assert.ok(predict(alone, 1000) < 100_000, 'the guess loses half the evening sweep');
+});
+
+test('a reference taken at the same fleet is refused rather than divided by', () => {
+  const twin = report({ vehicles: 100, gzBytes: 11_000 });
+  const budget = budgetFromReport(report({ vehicles: 100, gzBytes: 10_000 }), { reference: twin });
+  assert.equal(budget.fitted, false);
+  assert.equal(budget.slopeGz, null);
+});
+
 test('the deduplicated column is filled only for the cadence actually polled', () => {
   const budget = budgetFromReport(report({ interval: 30 }), { cadences: [30, 60] });
   const [fast, slow] = budget.rows;
