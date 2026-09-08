@@ -286,11 +286,14 @@ reçoivent un rang sans lettre.
      vivant ≈ **15 à 19 Go**, donc `-Xmx` de 24 à 32 Go, donc **une machine de
      32 Go au minimum**, 48 à 64 Go pour être tranquille. C'est le seul poste
      du palier 2 qui ajoute une machine au produit plutôt qu'une route.
-   · **Le contrôle a été fait** : la France entière lancée sur 16 Go ne
-     construit pas, et ne tombe pas non plus — elle **ralentit d'un facteur
+   · **Le mode de panne a été observé** : la France entière lancée sur ce Mac
+     ne construit pas, et ne tombe pas non plus — elle **ralentit d'un facteur
      840** (108 Mo/s à la première passe OSM, 24 à la deuxième, **0,128 à la
      troisième**), la JVM réclamant 11 Go quand le système ne lui en garde que
-     1,14 résident. Les 32 Go ne sont pas une marge de confort, c'est un seuil.
+     1,14 résident. Attention à ce que cet essai prouve : la machine portait
+     déjà 15 Go d'autres processus au repos, donc il montre **la forme de la
+     panne** — pas de version dégradée, on perd la machine — et **pas le
+     seuil**, qui vient du modèle.
    · **Et c'est un abonnement, pas un achat** : **39 % des flux GTFS français
      sont republiés dans les 7 jours** (51 % dans les 14, ancienneté médiane
      13,2 jours), donc la reconstruction hebdomadaire est le plancher — et une
@@ -298,10 +301,19 @@ reçoivent un rang sans lettre.
    · **Un flux cassé arrête tout** : un `route_id` vide dans le GTFS maritime
      de Corsica Ferries fait échouer le build entier. Un moteur national, c'est
      un cron **plus** une validation et une quarantaine.
-   · **La piste qui changerait la réponse et qui n'est pas mesurée** : Valhalla
-     et MOTIS projettent leurs tuiles en mémoire au lieu de tenir le graphe
-     dans un tas JVM. Si les 32 Go sont ce qui bloque, c'est là qu'il faut
-     mesurer avant de renoncer.
+   · **La piste a été mesurée, et elle renverse la réponse** : **MOTIS 2.11.2**
+     projette ses données en mémoire au lieu de tenir le graphe dans un tas
+     JVM. Sur le même Mac de 16 Go, il importe **la France entière en 6 min
+     41 s**, la sert sous **2 Go résidents** et répond en **24 à 32 ms** — là
+     où OTP échouait et demandait 32 Go. **Les 32 Go étaient le prix d'OTP, pas
+     le prix du produit.**
+   · **Le blocage qui reste tient en un flux** : MOTIS refuse le GTFS de
+     l'IDFM (les deux ressources téléchargeables), donc « la France sur une
+     petite machine » veut dire aujourd'hui **la France moins Paris** — 75,8 %
+     du corpus. Et la symétrie est l'enseignement : OTP refuse Corsica Ferries
+     que MOTIS accepte, MOTIS refuse l'IDFM qu'OTP accepte. **Aucun des deux
+     moteurs ne lit la France telle qu'elle est publiée** ; la couche de
+     validation n'est pas optionnelle, quel que soit le moteur.
 
 ### Palier 3 — non duplicable
 

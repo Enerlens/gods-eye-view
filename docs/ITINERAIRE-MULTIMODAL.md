@@ -17,13 +17,25 @@ Cette taille ne se devine pas. Elle dépend d'un objet qu'aucune documentation n
 publie pour la France : le **graphe** — toutes les rues du pays plus tous les
 horaires, cousus ensemble et tenus en mémoire. Alors il a été construit.
 
-Trois graphes régionaux réels ont été bâtis de bout en bout, un modèle a été
-ajusté dessus, et la France en a été extrapolée. Un quatrième build — la France
-entière — a été lancé sur cette machine pour voir où est le mur. Il l'a trouvé
-(§3 bis).
+Trois graphes régionaux réels ont été bâtis de bout en bout avec
+**OpenTripPlanner**, un modèle a été ajusté dessus, et la France en a été
+extrapolée (§1 à §3). Puis la même question a été posée à un moteur d'une autre
+famille, **MOTIS**, qui projette ses données en mémoire au lieu de les tenir
+dans un tas JVM — et la réponse n'est pas la même (§7).
 
-**Ce qui a servi :** OpenTripPlanner **2.9.0** (sortie du 2026-03-18, la version
-qu'on déploierait aujourd'hui), JDK 26, MacBook 16 Go / 10 cœurs.
+**La réponse courte, pour qui ne lit que ce paragraphe.** Avec OTP, la France
+demande une machine de **32 Go** et cette machine-ci n'y arrive pas. Avec MOTIS,
+la France entière s'importe en **6 min 41 s**, se sert sous **2 Go résidents**
+et répond en **24 à 32 ms** — sur ce même Mac. Le prix de 32 Go n'est pas le
+prix du produit, c'est le prix d'OTP. Mais MOTIS **ne lit pas le GTFS de
+l'Île-de-France**, donc « la France sur une petite machine » veut dire
+aujourd'hui « la France moins Paris », et c'est un défaut d'un flux, pas d'une
+architecture.
+
+**Ce qui a servi :** OpenTripPlanner **2.9.0** (sortie du 2026-03-18) et
+**MOTIS 2.11.2** (2026-08-12), les versions qu'on déploierait aujourd'hui.
+JDK 26, MacBook 16 Go / 10 cœurs — dont 15 Go étaient déjà occupés par d'autres
+applications au repos, ce qui compte pour lire le §3 bis.
 
 ---
 
@@ -159,9 +171,26 @@ Le build a été arrêté après **22 min 56 s** : la courbe de décroissance a 
 dit ce qu'il y avait à savoir, et neuf heures de machine à genoux n'auraient
 rien ajouté.
 
-**Ce que ce contrôle établit** : le chiffre de 32 Go n'est pas une marge de
-confort, c'est un seuil. En dessous, le build ne rend pas un résultat en
-retard — il ne rend rien, en occupant la machine.
+### Ce que ce contrôle établit — et ce qu'il n'établit PAS
+
+Il montre **le mode de panne**, et c'est le seul titre qu'il mérite : privée de
+mémoire résidente, la JVM ne rend pas un résultat en retard, elle ne rend rien
+en occupant la machine. Il n'y a pas de version dégradée « ça tourne lentement ».
+
+Il ne montre **pas** que « la France demande plus de 16 Go », et il faut le dire
+franchement parce que la première rédaction de cette page le laissait entendre.
+**Ce Mac n'avait pas 16 Go à offrir.** Mesuré après coup, au repos, sans aucun
+build en cours : **607 processus, `PhysMem` à 15 Go utilisés et 154 Mo libres**,
+dont 1,47 Go de WebKit, 1,5 Go réparti sur les aides d'Arc, 0,65 Go pour
+ChatGPT/Codex et 1 Go de Chrome laissé par les harnais QA. Le `-Xmx11G` donné à
+OTP ne pouvait pas être honoré : il restait autour de **4 à 6 Go réellement
+disponibles**, et c'est ce chiffre-là, pas 16, que la troisième passe a heurté.
+
+Ce que le contrôle vaut donc exactement : **il confirme la forme de la panne, il
+ne mesure pas le seuil.** Le seuil vient de §3 — de trois builds régionaux
+propres et du modèle ajusté dessus —, et il n'a pas besoin de ce quatrième
+essai. Un contrôle honnête du seuil demanderait une machine dédiée de 16 Go et
+une autre de 32 ; il reste à faire, et il n'est pas fait ici.
 
 ---
 
@@ -222,12 +251,10 @@ mis en quarantaine.
 
 ## 6. Ce qui n'est pas mesuré ici
 
-- **Valhalla et MOTIS.** Tous deux travaillent sur des tuiles **projetées en
-  mémoire** (`mmap`) au lieu de tenir le graphe dans le tas d'une JVM, ce qui
-  change la nature de la contrainte : la RAM cesse d'être un plancher dur et
-  devient un cache. Si le chiffre de 32 Go ci-dessus est ce qui bloque la
-  décision, **c'est la piste à mesurer avant de renoncer** — et elle n'est pas
-  mesurée ici, donc elle n'est pas chiffrée ici.
+- **Valhalla.** Non mesuré. Son routage piéton/voiture est excellent, mais son
+  support du transport en commun est moins éprouvé que celui des deux autres, et
+  la question posée ici est multimodale de bout en bout. MOTIS, lui, a été
+  mesuré : voir §7.
 - **La qualité des itinéraires**, au-delà du fait qu'ils sont plausibles et
   nomment les bonnes lignes. Comparer à Citymapper ou au Assistant SNCF demande
   un corpus de trajets de référence, qui est un autre chantier.
@@ -237,9 +264,118 @@ mis en quarantaine.
 
 ---
 
+---
+
+## 7. MOTIS — la même question posée à un moteur mémoire-projetée
+
+Le §6 disait « c'est la piste à mesurer avant de renoncer ». Elle a été mesurée,
+le même jour, sur la même machine, avec les mêmes fichiers.
+
+**MOTIS 2.11.2** (binaire macOS arm64 officiel) ne tient pas son graphe dans le
+tas d'un processus : il écrit des fichiers **projetés en mémoire** (`mmap`) et
+laisse le système d'exploitation décider de ce qui reste résident. La contrainte
+change de nature — la RAM cesse d'être un plancher dur et devient un cache.
+
+Le générateur de tuiles vectorielles a été **désactivé** dans sa configuration,
+parce qu'OTP n'en construit pas non plus et que GEV dessine son propre globe :
+comparer un routeur à un routeur + un serveur de tuiles n'aurait pas été
+comparer.
+
+### Ce qu'il fait de la France, sur ce Mac de 16 Go
+
+| | |
+|---|---|
+| Périmètre | **la France entière** — 5,08 Go d'OSM, 43 flux, **26 925 380 `stop_times`** |
+| Import | **401 s** (6 min 41 s) |
+| RSS maximum à l'import | **5,60 Go** |
+| Données produites | **8,3 Go** — dont 4,2 Go de routage rue, 1,8 Go d'adresses, 1,0 Go de tracés, **745 Mo de grille horaire** |
+| Démarrage du serveur | **11 s** |
+| **Résident en service** | **1,47 Go** au démarrage, **1,91 Go** après 600 requêtes |
+
+C'est la ligne qui décide : **la France entière servie sous 2 Go résidents**,
+pendant qu'OTP demandait 3,59 Go d'ensemble vivant pour la seule Île-de-France.
+Le résident monte avec l'usage — c'est le cache qui se remplit — et reste très
+en dessous des 8,3 Go du jeu de données, ce qui est exactement la promesse du
+`mmap`.
+
+### Et il répond vite
+
+| Trajet | Réponse | p50 |
+|---|---|---|
+| av. de France → La Défense | 39 min, C › B › A | **26 ms** |
+| Paris Gare de Lyon → Lyon Part-Dieu | 123 min, direct | **24 ms** |
+| Bordeaux → Toulouse | 192 min, 1 corr. | **32 ms** |
+| Lille Flandres → Roubaix | 35 min, métro M2 | **24 ms** |
+| Rennes → Brest | 136 min, direct | **26 ms** |
+
+Sur 300 trajets entre vingt gares françaises tirées au hasard : **p50 88 ms,
+p90 244 ms, p99 360 ms**, 250 avec itinéraire. OTP, sur la seule
+Île-de-France, mesurait 291 à 748 ms.
+
+### Le mais, et il est gros
+
+**MOTIS 2.11.2 ne lit pas l'Île-de-France.**
+
+Les 44 flux du corpus ont été passés un par un dans MOTIS, sur une base OSM
+minuscule, pour savoir lesquels il accepte : **42 sur 43 passent**. Le seul
+refus est **IDFM** — le réseau qui compte le plus, et celui sur lequel porte la
+question du produit. L'erreur est
+`ankerl::unordered_dense::map::at(): key not found`, et elle survit au retrait
+de `frequencies.txt` (que l'IDFM publie **vide**, en-tête seul),
+`transfers.txt`, `platform_groups.txt`, `ticketing_deep_links.txt`,
+`attributions.txt` **et** `shapes.txt`. Les deux ressources GTFS téléchargeables
+de l'IDFM échouent identiquement : la « modifiée » (80931, 186 Mo) et
+l'« originale » (80921, 117 Mo). La troisième (83316) répond **403**.
+
+La France mesurée ci-dessus est donc **la France moins Paris** :
+26 925 380 `stop_times` sur les 35 508 239 du corpus, soit **75,8 %**. Elle
+route correctement de Lille à Roubaix et de Rennes à Brest ; « Melun → La
+Défense » ne trouve rien.
+
+### La symétrie qui est le vrai enseignement
+
+- **OTP refuse Corsica Ferries** (un `route_id` vide) — **MOTIS l'accepte**.
+- **MOTIS refuse l'IDFM** — **OTP l'accepte**.
+
+**Aucun des deux moteurs ne lit la France telle qu'elle est publiée.** Ce n'est
+pas un défaut d'un moteur, c'est une propriété du corpus : il contient des
+défauts que deux implémentations rigoureuses ne rencontrent pas au même endroit.
+La conclusion du §5 s'en trouve renforcée, pas remplacée — **la couche de
+validation et de réparation n'est pas optionnelle, quel que soit le moteur
+choisi.**
+
+### Ce que ça change pour la décision
+
+| | OTP 2.9.0 | MOTIS 2.11.2 |
+|---|---|---|
+| Ce qui a été construit sur ce Mac | **Île-de-France seule** | **France moins Paris** |
+| Construction | 1 061 s (IDF) | **401 s (France)** |
+| RSS maximum à la construction | 3,97 Go (IDF) | 5,60 Go (France) |
+| Sur disque | 886 Mo (IDF) · **4,8 Go France, extrapolé** | **8,3 Go (France, mesuré)** |
+| Démarrage | 17 s | **11 s** |
+| **Mémoire en service** | **3,59 Go vivants (IDF)** · **15–19 Go France, extrapolé** | **1,91 Go (France, mesuré)** |
+| Latence | 291–748 ms (IDF) | **24–32 ms** (mêmes trajets) |
+| France sur cette machine | **échec** | **réussi** |
+| Flux français refusés | Corsica Ferries | **IDFM** |
+
+Le chiffre de 32 Go du §3 **n'est donc pas le prix du produit, c'est le prix
+d'OTP**. Avec un moteur mémoire-projetée, la France tient sur une machine
+ordinaire — disque un peu plus généreux, mémoire cinq à dix fois moindre,
+requêtes dix à trente fois plus rapides.
+
+Ce qui reste bloquant est **une seule ligne d'un seul flux**, pas une
+architecture. Et c'est un problème qui a un propriétaire : soit l'IDFM publie un
+GTFS que MOTIS lit, soit le défaut est remonté à MOTIS, soit la couche de
+réparation du §5 le corrige en amont. Tant que ce n'est pas fait, « la France
+sur une petite machine » veut dire **la France moins Paris**, et Paris est
+précisément la scène du produit.
+
+---
+
 ## Sources et méthode
 
-OpenTripPlanner 2.9.0 (`otp-shaded-2.9.0.jar`, commit `9babe45`), JDK 26,
+OpenTripPlanner 2.9.0 (`otp-shaded-2.9.0.jar`, commit `9babe45`) et MOTIS
+2.11.2 (`motis-macos-arm64`), JDK 26,
 macOS, 16 Go, 10 cœurs. OSM : Geofabrik, extraits `france`, `ile-de-france`,
 `bretagne`, `corse` du 2026-09-08. GTFS : transport.data.gouv.fr, API
 `/api/datasets`, téléchargements du 2026-09-08. Cadence de republication :
