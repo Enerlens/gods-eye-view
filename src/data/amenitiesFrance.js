@@ -11,10 +11,16 @@
  * the thinning. This file is the rendering.
  *
  * ── What is on the map ─────────────────────────────────────────────────────
- * **95 406 dots**, folded from 126 859 register rows, in seven families:
- * 30 215 médecins généralistes · 19 354 commerces alimentaires · 19 216
- * pharmacies · 16 832 points de contact La Poste · 3 953 gendarmeries et
- * commissariats · 3 625 bassins de natation · 2 211 hôpitaux.
+ * **445 380 dots**, folded from 521 672 register rows, in fourteen families:
+ * 186 288 restaurants · 44 800 commerces de bouche · 44 598 boulangeries ·
+ * 30 213 médecins généralistes · 22 838 salles de sport · 21 086 banques ·
+ * 20 020 lieux culturels · 19 354 commerces alimentaires · 19 216 pharmacies ·
+ * 16 832 points de contact La Poste · 10 346 stations-service · 3 953
+ * gendarmeries et commissariats · 3 625 bassins de natation · 2 211 hôpitaux.
+ *
+ * Seven of those fourteen arrived on 2026-09-08 to cover Cityscan's own POI
+ * taxonomy — see `amenitiesFeed.js` for the codes, the cost and the four types
+ * that register simply cannot serve.
  *
  * ── The refusal is a feature of this layer, not an omission ─────────────────
  * The brief's row opens with *écoles*, and this layer draws none. `schools-fr`
@@ -44,7 +50,8 @@
  *   sites    — every amenity in the box, with its card, from the proxy's
  *              `/sites` route. Gated at 0.35°, and the densest square that
  *              ceiling allows anywhere in France — 48.65 N, 2.20 E, which is
- *              Paris and its inner south-eastern suburbs — holds 9 139 dots.
+ *              Paris and its inner south-eastern suburbs — holds 53 121 dots,
+ *              of which the proxy answers 12 000 and says so.
  *
  * ── What the colour means, and what the size does NOT mean ──────────────────
  * Colour is the FAMILY, and it is a categorical ladder, never a ramp — a
@@ -56,7 +63,8 @@
  * all.** A pharmacy is one pharmacy; neither register publishes a capacity, a
  * headcount or a turnover for any of the seven families. So size here is a
  * LEGIBILITY rule and is stated as one: the rarer a family is nationally, the
- * larger its dot, so that 2 211 hospitals are not lost under 30 215 GPs. It is
+ * larger its dot, so that 2 211 hospitals are not lost under 186 288
+ * restaurants. It is
  * a property of the palette, not a property of the equipment, and no card ever
  * reads a size back as a quantity.
  *
@@ -68,21 +76,24 @@
  * ── The second visual channel is honesty about position ─────────────────────
  * Both registers publish how well they know where a thing is, and this layer
  * draws that rather than hiding it. A dot whose position is a street number
- * (79 043 of the 95 406 dots) is drawn solid with a warm halo; one the register
- * only places in the street (11 216), or grades no better than "voie probable"
- * (766), or declines to grade at all (4 381, of which 3 626 are bassins de
- * natation whose census publishes no precision anywhere) is drawn softer, and
+ * (451 983 of the 521 672 drawn rows) is drawn solid with a warm halo; one the
+ * register only places in the street (36 763), or grades no better than "voie
+ * probable" (4 933), or declines to grade at all (27 993, among them the 3 626
+ * bassins de natation whose census publishes no precision anywhere) is drawn
+ * softer, and
  * the two weakest bands lose the halo entirely. The halo is also this layer's signature against its neighbours:
  * `schools-fr` outlines in black, `sup-fr` in white, and these outline in sand,
  * so on a stacked address the ring says which register drew the dot.
  *
  * And where a register admits it drew the position rather than found it — BPE's
  * `QUALITE_GEOLOC = 33`, "position aléatoire dans la commune", and FINESS's
- * 4 646 ADMIN-EXPRESS commune centroids — there is no dot at all. **2 182 rows
- * in the drawn families are refused on those grounds and 170 more publish no
- * coordinate**, all of them counted and reported on the national card. 100 of
- * those 170 are the whole of Mayotte's everyday BPE equipment, which is why the
- * island carries FINESS pharmacies and hospitals and nothing else.
+ * 4 646 ADMIN-EXPRESS commune centroids — there is no dot at all. **8 626 rows
+ * in the drawn families are refused on those grounds and 12 902 more publish no
+ * coordinate**, all of them counted and reported on the national card. The
+ * widening of 2026-09-08 found most of them: the dense commercial codes are
+ * the worst geocoded in the file, 7 704 restaurants alone. Mayotte's whole
+ * everyday BPE equipment is still among them, which is why the island carries
+ * FINESS pharmacies and hospitals and nothing else.
  */
 
 import * as Cesium from 'cesium';
@@ -163,13 +174,20 @@ const VIEWPORT_TIMEOUT_MS = 45_000;
 /**
  * Hard cap on rendered dots.
  *
- * 12 000, above the densest square the 0.35° ceiling allows anywhere in France
- * (9 139 dots at 48.65 N, 2.20 E), so it never bites in production — it exists
- * so a malformed payload cannot ask Cesium for a million primitives. If it ever
- * did bite, what survives is what a reader would keep: the proxy sends the
- * payload sorted rarest-family-first, so a cap drops médecins généralistes, of
- * which that same square holds 3 426, and never its 218 hospitals. Whatever is
- * dropped is counted and printed under the toggle.
+ * 12 000, the same number the proxy caps its own answer at. It USED to be
+ * above the densest square the 0.35° ceiling allows anywhere in France —
+ * 9 139 dots at 48.65 N, 2.20 E — so it never bit. Since the Cityscan
+ * catch-up that same square holds **53 121 dots**, so the proxy's cap now
+ * fires hard there and this one still does not: the payload arrives already
+ * cut to 12 000.
+ *
+ * What survives is what a reader would keep: the proxy sends the payload
+ * sorted rarest-family-first, so a cap drops restaurants — of which that
+ * square holds tens of thousands — long before it touches a hospital.
+ * **Both numbers are printed under the toggle**, the proxy's `capped` and this
+ * layer's own, because a map that drops three quarters of a view without
+ * saying so is not a bounded map, it is a quietly incomplete one. The honest
+ * answer at that zoom is the maillage regime, and the label says so.
  */
 const MAX_RENDERED_SITES = 12_000;
 const POINT_LIFT_M = 2.5;
@@ -190,6 +208,8 @@ const GROUND_WARM_LIMIT = 600;
  * mappings in their head.
  */
 export const AMENITY_COLORS = Object.freeze({
+  // The seven of the original brief, unchanged — a screenshot taken before the
+  // Cityscan catch-up must still read the same.
   medecin: '#c92a2a',
   courses: '#d9480f',
   pharmacie: '#0f8a5f',
@@ -197,6 +217,18 @@ export const AMENITY_COLORS = Object.freeze({
   piscine: '#15aabf',
   gendarmerie: '#862e9c',
   hopital: '#a61e4d',
+  // The seven added for the Cityscan grid. Each sits in the same mid-dark,
+  // warm-leaning register and keeps a mnemonic rather than an arbitrary hue:
+  // the wine of a table, the crust of a loaf, the awning of a butcher, the
+  // green of a bank note, the track orange of a gym, the ink of a library, the
+  // yellow of a forecourt.
+  restaurant: '#7a3b2e',
+  boulangerie: '#b9752b',
+  commerce: '#8f4a1f',
+  banque: '#2f6f4f',
+  sport: '#c25e00',
+  culture: '#4a4fa8',
+  carburant: '#8d7b12',
 });
 
 /**
@@ -207,12 +239,24 @@ export const AMENITY_COLORS = Object.freeze({
  * 2 211 hospitals) and it is the only thing size means anywhere in this layer.
  */
 export const AMENITY_POINT_PX = Object.freeze({
+  // Still the inverse of the national counts, now over fourteen families
+  // rather than seven. The top of the ladder moved: a restaurant is the
+  // commonest thing in the register — 231 989 rows, more than the seven
+  // original families put together — so it is the smallest dot there is, and a
+  // hospital is still the largest.
+  restaurant: 5,
+  boulangerie: 6,
+  commerce: 6,
   medecin: 6.5,
+  banque: 7,
+  sport: 7,
+  culture: 7.5,
   courses: 8,
   pharmacie: 8,
   poste: 8.5,
-  piscine: 10,
+  carburant: 9,
   gendarmerie: 10,
+  piscine: 10,
   hopital: 12,
 });
 
@@ -1210,6 +1254,15 @@ export function buildAmenitiesLoadingLabel({
     parts.push(`${fr(summary.rows)} lignes de registre`);
   }
   if (truncated > 0) parts.push(`${fr(truncated)} reçus mais non tracés`);
+  // The PROXY's cap, which is a different number from the render cap above and
+  // now the one that actually bites. Before the Cityscan catch-up the densest
+  // square France allows held 9 139 dots and neither cap ever fired; it now
+  // holds 53 121, of which the proxy sends 12 000. A map that dropped 41 121
+  // équipements without saying so would be exactly the "quietly incomplete"
+  // failure the comment above refuses.
+  if (summary?.capped > 0) {
+    parts.push(`${fr(summary.capped)} au-delà du plafond de la réponse — dézoome pour le maillage`);
+  }
   return parts.join(' · ');
 }
 

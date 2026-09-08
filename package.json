@@ -93,6 +93,7 @@
     "territoires:pack": "node scripts/build-fr-territoires.mjs",
     "qa:filosofi": "node scripts/qa-filosofi.mjs",
     "qa:isochrone": "node scripts/qa-isochrone.mjs",
+    "qa:fiche": "node scripts/qa-fiche.mjs",
     "qa:implantation": "node scripts/qa-implantation.mjs",
     "bareme:fr": "node scripts/build-bareme-fr.mjs",
     "velo:pulse": "node scripts/build-velo-pulse.mjs",

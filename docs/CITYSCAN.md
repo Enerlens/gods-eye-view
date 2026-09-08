@@ -248,6 +248,76 @@ propriétaire, c'est un argument de vente.
 
 ---
 
+## 3 bis. Ce qui a été livré du palier 1 — 8 septembre 2026
+
+Écrit après coup, contre le code, pas contre le plan.
+
+| Item du palier 1 | État | Où |
+|---|---|---|
+| 1. Radiographie d'adresse | **livré**, dix thématiques ; deux chiffres situés contre le barème de #99, le reste refusé sur la géométrie | `/fiche.html`, `src/data/adresseRadiographie.js` |
+| 3. Loyers | **livré** | `/api/loyers-fr`, `src/data/loyersFeed.js` |
+| 4. Numérique (ARCEP) | **livré** | `/api/arcep-fr`, `src/data/arcepFeed.js` |
+| 5. Qualité de l'air (ATMO) | **livré**, en direct, avec J+1 et J+2 | `/api/atmo-fr`, `src/data/atmoFeed.js` |
+| 6. IPS des écoles | **était déjà fait** | `src/data/ipsFeed.js`, joint par UAI depuis la PR #53 |
+| 7. Emploi (Melodi) | **livré**, trois recensements | `/api/emploi-fr`, `src/data/emploiFeed.js` |
+| 8. Rapport partageable | **livré** : `?embed=1` + impression navigateur | `fiche.html` |
+| 2. BPE de 10 à 24 codes | **livré**, et il coûtait plus cher que prévu | `src/data/amenitiesFeed.js` |
+
+**Ce que le démontage avait sous-estimé sur la BPE.** Le chiffre cité —
+« épicerie et boulangerie : 80 226 lignes de plus » — ne mesurait que deux
+codes sur les quatorze nécessaires. Le recensement complet des 235 codes TYPEQU
+a été refait sur l'archive vivante, puis le pack national reconstruit. Ce que
+l'extension coûte réellement, mesuré des deux côtés :
+
+| | avant | après |
+|---|---|---|
+| Codes TYPEQU lus | 10 | 24 |
+| Familles | 7 | 14 |
+| Lignes dessinées | 126 857 | **521 672** |
+| Points après repli | 95 404 | **445 380** |
+| `pack.json` sur disque | 37,8 Mo | **170 Mo** |
+| Repli national | 47 s | 54 s |
+| Le carré le plus dense (0,349°, 48.65 N 2.20 E) | 9 139 points | **53 121** |
+
+Le seul A504 « restaurant-restauration rapide » pèse 231 989 lignes — davantage
+que les sept familles d'origine réunies — et 34 192 de ses points partagent une
+coordonnée avec un autre restaurant.
+
+**Le plafond qui ne mordait jamais mord maintenant.** La route `/sites` répond
+au plus 12 000 points ; sur le carré parisien le plus dense elle en écarte
+désormais 41 121, soit trois quarts de la vue. Ce nombre était calculé et
+publié dans le payload, mais la couche ne l'affichait pas : elle le dit
+maintenant sous son propre interrupteur, et renvoie au maillage. C'est la
+seule régression que l'extension a introduite, et elle est corrigée.
+
+**Quatre types Cityscan que la BPE ne peut pas servir**, vérifié dans
+`TYPEQU_2025.csv` : il n'existe **aucun code « bar / café / débit de
+boissons »**, **aucun code « musée »**, aucun « tabac » et aucun « jardin
+public » dans l'édition 2025. B209 est le *commerce* de boissons, F312 la
+médiation culturelle. Ces quatre types restent ouverts tant qu'on n'ira pas les
+chercher dans OSM, et `BPE_ABSENT_TYPES` le dit dans le code plutôt que de
+laisser un lecteur conclure qu'il n'y a pas de café dans sa rue.
+
+**Rencontre avec le palier 1½.** Le barème national (#99) a atterri sur `main`
+pendant que cette feuille se construisait, et il change ce qu'elle a le droit
+de dire. Deux de ses chiffres sont mesurés sur exactement les formes que le
+barème a relevées — l'anneau piéton de dix minutes et le disque de 300 m de
+DVF — et ils portent donc un centile national, plus une lettre pour le premier.
+Tout le reste est refusé, et c'est le module qui refuse : les chiffres de
+voisinage de la feuille sont moyennés sur un **rectangle de carreaux**, pas sur
+un anneau, et `scoreIndicator()` répond « échelle mesurée sur une autre
+géométrie ». La feuille imprime ce refus au lieu d'un tiret. C'est la fiche
+implantation du globe qui porte les rangs de ces indicateurs-là.
+
+**Ce qui reste ouvert, et qui n'était pas au palier 1 :** aucun lien depuis le
+globe vers la fiche — la carte de survol du globe est plafonnée à six lignes
+par `addressScanLayer.js` et n'a pas d'affordance cliquable, donc la fiche
+s'ouvre par URL. Trois thématiques pourraient encore s'enrichir de routes déjà
+en production : délinquance enregistrée et petite enfance (Voisinage,
+Éducation), bruit aérien et antennes ANFR (Nuisances).
+
+---
+
 ## 4. Ordre de construction proposé
 
 1. **La fiche adresse** — promouvoir `Fiche implantation` en radiographie

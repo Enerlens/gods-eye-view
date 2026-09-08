@@ -15,8 +15,10 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   deferCesiumScriptTag,
+  isCesiumFreePage,
   parseGeoidQuery,
   staticAssetHeaders,
+  stripCesiumAssets,
 } from '../vite.config.js';
 
 // Read from the same source of truth the config uses, so this file cannot rot
@@ -114,6 +116,32 @@ test('a tag that is not there is reported, never silently accepted', () => {
   const { html: out, changed } = deferCesiumScriptTag('<head><script src="/other.js"></script></head>');
   assert.equal(changed, false);
   assert.equal(out, '<head><script src="/other.js"></script></head>');
+});
+
+// ── Cesium-free document pages ─────────────────────────────────────────────
+
+test('the address radiography is a document page, the globe is not', () => {
+  assert.equal(isCesiumFreePage('fiche.html'), true);
+  assert.equal(isCesiumFreePage('/abs/path/to/fiche.html'), true);
+  assert.equal(isCesiumFreePage('index.html'), false);
+  assert.equal(isCesiumFreePage(null), false);
+});
+
+test('both injected Cesium assets are removed from a document page', () => {
+  // The whole point: a printable sheet must not download a 3D engine. Measured
+  // before this landed — `dist/fiche.html` pulled Cesium.js and widgets.css.
+  const html = `<head><link rel="stylesheet" href="/${CESIUM_DIR}/Widgets/widgets.css">`
+    + `<script src="/${CESIUM_DIR}/Cesium.js"></script></head>`;
+  const { html: out, changed } = stripCesiumAssets(html);
+  assert.equal(changed, true);
+  assert.ok(!out.includes('Cesium.js'));
+  assert.ok(!out.includes('widgets.css'));
+});
+
+test('a page with nothing to strip is reported, never silently accepted', () => {
+  const { html: out, changed } = stripCesiumAssets('<head><script src="/assets/fiche.js"></script></head>');
+  assert.equal(changed, false);
+  assert.equal(out, '<head><script src="/assets/fiche.js"></script></head>');
 });
 
 test('an unversioned Cesium tag is not matched', () => {

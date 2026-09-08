@@ -26,7 +26,9 @@ import {
   AMENITY_FAMILY_BLURBS,
   AMENITY_FAMILY_LABELS,
   AMENITY_FAMILY_REGISTER,
+  BPE_ABSENT_TYPES,
   BPE_CODE_FAMILY,
+  BPE_CODE_LABELS,
   BPE_COLUMN_COUNT,
   BPE_EDITION_FLOOR,
   BPE_REFUSED_CODES,
@@ -145,14 +147,20 @@ test('every bassin de natation in the fixture carries no published precision at 
   assert.equal(pools[0].site.precision, 'indeterminee');
 });
 
-test('the ten drawn codes are drawn and every refused code is skipped', () => {
+test('every selected code in the fixture is drawn and every refused one is skipped', () => {
   const drawnCodes = new Set();
   const skipped = new Set();
   bpeOutcomes.forEach((outcome, i) => {
     if (outcome.kind === 'skip') skipped.add(bpeCode(i));
     else drawnCodes.add(bpeCode(i));
   });
+  // Asserted over the codes the FIXTURE holds, not over the whole selection:
+  // the selection is twenty-four codes since the Cityscan catch-up and this
+  // capture is twenty-six real rows, so demanding one row per code would only
+  // ever be a demand to grow the fixture.
+  const present = new Set(BPE_LINES.slice(1).map((line, i) => bpeCode(i)));
   for (const code of Object.keys(BPE_CODE_FAMILY)) {
+    if (!present.has(code)) continue;
     assert.ok(drawnCodes.has(code) || code === 'A208' || code === 'B104',
       `expected ${code} among the drawn codes`);
   }
@@ -161,9 +169,24 @@ test('the ten drawn codes are drawn and every refused code is skipped', () => {
     assert.ok(skipped.has(code), `${code} must not be drawn`);
     assert.ok(BPE_REFUSED_CODES[code], `${code} must carry a stated reason`);
   }
-  // And a code that is simply outside the brief.
-  assert.ok(skipped.has('A504'));
+  // A504 was in this list until 2026-09-08 as "outside the brief". The brief
+  // widened: a restaurant is one of Cityscan's thirty POI types, and it is now
+  // the commonest family this layer draws.
+  assert.ok(drawnCodes.has('A504'));
+  assert.equal(BPE_CODE_FAMILY.A504, 'restaurant');
   assert.equal(BPE_REFUSED_CODES.A504, undefined);
+});
+
+test('the types the BPE simply does not carry are named, not silently dropped', () => {
+  // Four of Cityscan's thirty POI types have no code in this register at all,
+  // and a reader comparing the two products deserves to know which.
+  for (const [type, why] of Object.entries(BPE_ABSENT_TYPES)) {
+    assert.ok(why.length > 20, `${type} needs a stated reason`);
+  }
+  assert.deepEqual(Object.keys(BPE_ABSENT_TYPES).sort(), ['bar', 'garden', 'musee', 'tabac']);
+  // And none of them sneaked into the selection under another name.
+  const labels = Object.values(BPE_CODE_LABELS).join(' ').toLowerCase();
+  assert.ok(!/\bbar\b|café|débit de boissons|musée|tabac/.test(labels));
 });
 
 test('the FINESS CRS token is read positionally, including the two rows with no EPSG: prefix', () => {
@@ -264,7 +287,8 @@ test('the score bands are typed, so an unscored row cannot become the worst-loca
 });
 
 test('the family vocabulary is complete and each family answers to exactly one register', () => {
-  assert.equal(AMENITY_FAMILIES.length, 7);
+  // Seven of the original brief plus the seven added for the Cityscan grid.
+  assert.equal(AMENITY_FAMILIES.length, 14);
   for (const family of AMENITY_FAMILIES) {
     assert.ok(AMENITY_FAMILY_LABELS[family], `${family} needs a label`);
     assert.ok(AMENITY_FAMILY_BLURBS[family], `${family} needs a blurb`);
@@ -368,9 +392,28 @@ test('the tally counts every outcome exactly once, in the right bucket', () => {
   for (const outcome of finessOutcomes) tallyAmenityOutcome(tally, outcome);
   assert.equal(tally.scanned, bpeOutcomes.length + finessOutcomes.length);
   assert.equal(tally.malformed, 0);
-  assert.equal(sumByFamily(tally.drawn), 28);
+  // 29 since the Cityscan catch-up: the fixture's one A504 row, which was
+  // skipped as "outside the brief" until 2026-09-08, is now a restaurant.
+  assert.equal(sumByFamily(tally.drawn), 29);
+  // The tally is keyed on EVERY family, so the seven the capture does not
+  // reach are present at zero. Asserted as a full object rather than a subset:
+  // a family silently missing from the tally would be a family the rollup
+  // cannot report.
   assert.deepEqual(tally.drawn, {
-    medecin: 7, courses: 2, pharmacie: 5, poste: 3, piscine: 1, gendarmerie: 3, hopital: 7,
+    restaurant: 1,
+    boulangerie: 0,
+    commerce: 0,
+    medecin: 7,
+    banque: 0,
+    sport: 0,
+    culture: 0,
+    courses: 2,
+    pharmacie: 5,
+    poste: 3,
+    carburant: 0,
+    gendarmerie: 3,
+    piscine: 1,
+    hopital: 7,
   });
   assert.equal(sumByFamily(tally.refusedNoCoordinate), 1);
   assert.equal(sumByFamily(tally.refusedInvented), 4);

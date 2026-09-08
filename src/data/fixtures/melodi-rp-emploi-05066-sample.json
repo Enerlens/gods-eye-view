@@ -1,0 +1,591 @@
+{
+  "observations" : [ {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "1",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 4.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "1T2",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 5.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "2",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 1.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "3",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 2.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "31",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "33",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "35",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "35T36",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 2.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "36",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 2.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "_T",
+      "TIME_PERIOD" : "2012",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 7.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "1",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 1.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "1T2",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 1.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "2",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "3",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 3.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "31",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 3.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "33",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "35",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "35T36",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "36",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "_T",
+      "TIME_PERIOD" : "2017",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 4.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "1",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "1T2",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 1.75
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "2",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 1.75
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "3",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 1.75
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "31",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.875
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "33",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "35",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.0
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "35T36",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.875
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "36",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 0.875
+      }
+    }
+  }, {
+    "attributes" : {
+      "OBS_STATUS" : "A"
+    },
+    "dimensions" : {
+      "GEO" : "2026-COM-05066",
+      "SEX" : "_T",
+      "FREQ" : "A",
+      "EMPSTA_ENQ" : "_T",
+      "TIME_PERIOD" : "2023",
+      "RP_MEASURE" : "POP",
+      "EDUC" : "_T",
+      "AGE" : "Y15T64"
+    },
+    "measures" : {
+      "OBS_VALUE_NIVEAU" : {
+        "value" : 3.5
+      }
+    }
+  } ],
+  "identifier" : "DS_RP_EMPLOI_LR_PRINC",
+  "paging" : {
+    "first" : "https://api.insee.fr/melodi/data/DS_RP_EMPLOI_LR_PRINC?GEO=2026-COM-05066&SEX=_T&AGE=Y15T64&EDUC=_T&maxResult=200&page=1"
+  },
+  "publisher" : {
+    "id" : "INSEE",
+    "label" : [ {
+      "content" : "Institut national de la statistique et des etudes economiques (INSEE)",
+      "lang" : "fr"
+    }, {
+      "content" : "National Institute of Statistics and Economic Studies",
+      "lang" : "en"
+    } ]
+  },
+  "title" : {
+    "en" : "Labor force and unemployment - Main indicators",
+    "fr" : "Population active et chômage - Principaux indicateurs (dossier complet) "
+  }
+}

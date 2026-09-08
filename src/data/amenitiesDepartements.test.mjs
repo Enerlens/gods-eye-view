@@ -86,7 +86,10 @@ test('the coverage share is computed over the BPE families only, and says so in 
     AMENITY_FAMILIES.filter((f) => AMENITY_FAMILY_REGISTER[f] === 'bpe').sort());
   assert.equal(AMENITIES_COVERAGE_FAMILIES.includes('pharmacie'), false);
   assert.equal(AMENITIES_COVERAGE_FAMILIES.includes('hopital'), false);
-  assert.equal(AMENITIES_COVERAGE_FAMILIES.length, 5);
+  // Twelve of the fourteen families are BPE's; the two FINESS ones are the
+  // exclusions asserted above. Five until the Cityscan catch-up widened the
+  // selection on 2026-09-08.
+  assert.equal(AMENITIES_COVERAGE_FAMILIES.length, 12);
 });
 
 test('the share is covered communes over folded communes, per département', () => {
