@@ -135,10 +135,15 @@ import {
   DVF_FIRST_YEAR,
   buildDvfUrl,
   clampDvfRadius,
+  dvfCoverage,
   groupMutations,
   parseDvfCsv,
   selectNearbySales,
 } from './src/data/dvfFeed.js';
+import {
+  parseAvisSubject,
+  projectAvisValeur,
+} from './src/data/avisValeurFeed.js';
 import { buildDpeUrl, clampDpeRadius, projectDpe } from './src/data/dpeFeed.js';
 import { foldToCommune } from './src/data/communeCode.js';
 import {
@@ -21362,6 +21367,12 @@ async function fetchAddressSource(url, options = {}) {
     maxBytes = ADDRESS_MAX_RESPONSE_BYTES,
     text = false,
     attempts = ADDRESS_FETCH_ATTEMPTS,
+    // Called with the last attempt's verdict when the fetch gives up. Optional,
+    // and ignored by five of the six address routes: only DVF needs to know
+    // WHY nothing came back, because "this commune published no edition that
+    // year" and "the download failed" are the same `null` and must not be
+    // cached the same way.
+    onFailure = null,
   } = options;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const result = await fetchAddressSourceOnce(url, { timeoutMs, maxBytes, text });
@@ -21371,9 +21382,13 @@ async function fetchAddressSource(url, options = {}) {
     // answering the very same URL from curl, so a scan that gave up on the
     // first reset reported "no risks at this address" for a live register. An
     // HTTP error or an oversized body is a real answer and is never retried.
-    if (!result.retryable || attempt === attempts) return null;
+    if (!result.retryable || attempt === attempts) {
+      onFailure?.({ status: result.status ?? null, retryable: result.retryable === true });
+      return null;
+    }
     await new Promise((resolve) => { setTimeout(resolve, ADDRESS_RETRY_DELAY_MS); });
   }
+  onFailure?.({ status: null, retryable: true });
   return null;
 }
 
@@ -21395,7 +21410,10 @@ async function fetchAddressSourceOnce(url, options) {
     if (!response.ok) {
       console.warn(`[address-proxy] ${response.status} from ${new URL(url).host}`);
       // A 5xx is the server saying "not now"; a 4xx is it saying "not this".
-      return { ok: false, retryable: response.status >= 500 };
+      // The STATUS travels with the verdict because one caller has to tell the
+      // two apart: a DVF commune-year that answers 404 has no edition, and one
+      // that times out has an edition nobody fetched. See `onFailure` below.
+      return { ok: false, retryable: response.status >= 500, status: response.status };
     }
     // Refuse on the declared size before buffering it, then keep counting
     // while the body streams. The measured worst case is 1.4 MB of servitude
@@ -21696,8 +21714,17 @@ function georisquesProxy() {
 }
 
 /**
- * DVF — what property actually sold for, per commune-year, parsed server-side.
+ * DVF — what property actually sold for, per commune-year, parsed server-side,
+ * and the estimate built on top of it.
+ *
  * `GET /api/dvf?lat=&lon=&radius=&years=2024,2023`
+ * `GET /api/avis-valeur?lat=&lon=&type=Appartement&surface=60&years=`
+ *
+ * ONE PLUGIN, TWO ROUTES, and that is the point: the estimate reads the very
+ * editions the sales map was drawn from, out of the same memoised store below.
+ * Split into two plugins they would each hold their own copy of a Paris
+ * arrondissement-year and could drift a millésime apart, which would put a card
+ * quoting a median beside dots that never entered it.
  * @returns {import('vite').Plugin}
  */
 function dvfProxy() {
@@ -21713,34 +21740,119 @@ function dvfProxy() {
   const editions = new Map();
   const EDITION_MEMORY_MAX = 40;
 
-  function rememberEdition(key, mutations) {
-    editions.set(key, mutations);
+  function rememberEdition(key, value) {
+    editions.set(key, value);
     while (editions.size > EDITION_MEMORY_MAX) {
       editions.delete(editions.keys().next().value);
     }
-    return mutations;
+    return value;
   }
 
-  async function loadEdition(year, communeCode) {
+  /**
+   * One commune-year, parsed — or `null` when the download failed.
+   *
+   * THE PROMISE IS WHAT IS MEMOISED, not the array, and that is the fix for a
+   * measured amplification: eight subjects asked about the same doorway
+   * concurrently produced **eight downloads of the same 750 KB edition**,
+   * because the cache only ever held completed work and the shared in-flight
+   * coalescer upstream keys on the whole request (subject included), so two
+   * subjects never met. Storing the pending promise makes the second caller
+   * wait on the first's download instead of starting its own. A rejected
+   * promise is evicted so the next scan can try again.
+   *
+   * A 404 AND A TIMEOUT ARE NOT THE SAME ANSWER. A commune with no edition for
+   * a year answers 404, which is data: the empty list is cached, on disk too,
+   * so the miss costs nothing again. Anything else — a reset, a 5xx, a body
+   * over the cap — is an edition that EXISTS and that nobody fetched, and
+   * caching it as empty used to make an outage permanent for the life of the
+   * process (there is no TTL on this map) and for a week on disk. Those return
+   * `null`, cache nothing, and are reported to the caller.
+   */
+  function loadEdition(year, communeCode) {
     const cacheKey = `${year}-${communeCode}`;
     if (editions.has(cacheKey)) return editions.get(cacheKey);
-    const diskPath = path.join(ADDRESS_CACHE_DIR, `dvf-${cacheKey}.json`);
-    try {
-      const stat = await fsp.stat(diskPath);
-      if (Date.now() - stat.mtimeMs < DVF_DISK_TTL_MS) {
-        return rememberEdition(cacheKey, JSON.parse(await fsp.readFile(diskPath, 'utf8')));
-      }
-    } catch { /* no disk copy yet */ }
-    const csv = await fetchAddressSource(buildDvfUrl({ year, communeCode }), { text: true });
-    // A commune with no edition for a year is a 404, which is data, not an
-    // error: an empty list is cached so the miss is not re-fetched every scan.
-    const mutations = csv ? groupMutations(parseDvfCsv(csv)) : [];
-    rememberEdition(cacheKey, mutations);
-    try {
-      await fsp.mkdir(ADDRESS_CACHE_DIR, { recursive: true });
-      await fsp.writeFile(diskPath, JSON.stringify(mutations));
-    } catch { /* cache is an optimisation, never a requirement */ }
-    return mutations;
+    const pending = (async () => {
+      const diskPath = path.join(ADDRESS_CACHE_DIR, `dvf-${cacheKey}.json`);
+      try {
+        const stat = await fsp.stat(diskPath);
+        if (Date.now() - stat.mtimeMs < DVF_DISK_TTL_MS) {
+          return JSON.parse(await fsp.readFile(diskPath, 'utf8'));
+        }
+      } catch { /* no disk copy yet */ }
+      let status = null;
+      const csv = await fetchAddressSource(buildDvfUrl({ year, communeCode }), {
+        text: true,
+        onFailure: (failure) => { status = failure.status; },
+      });
+      if (!csv && status !== 404) return null;
+      const mutations = csv ? groupMutations(parseDvfCsv(csv)) : [];
+      try {
+        await fsp.mkdir(ADDRESS_CACHE_DIR, { recursive: true });
+        await fsp.writeFile(diskPath, JSON.stringify(mutations));
+      } catch { /* cache is an optimisation, never a requirement */ }
+      return mutations;
+    })().then((value) => {
+      // A failed download is not remembered — see above.
+      if (value === null) editions.delete(cacheKey);
+      return value;
+    }, (error) => {
+      editions.delete(cacheKey);
+      throw error;
+    });
+    return rememberEdition(cacheKey, pending);
+  }
+
+  /**
+   * The editions a scan reads, newest first.
+   *
+   * Shared by both routes on purpose. The estimate and the sales map must be
+   * built from the SAME editions or the card would quote a median the dots on
+   * screen were not drawn from — and sharing the window also means the estimate
+   * costs zero extra downloads whenever the sales layer has already scanned.
+   */
+  function requestedYears(searchParams) {
+    const thisYear = new Date().getFullYear();
+    const requested = String(searchParams.get('years') || '')
+      .split(',').map((value) => Number.parseInt(value.trim(), 10))
+      .filter((year) => Number.isFinite(year) && year >= DVF_FIRST_YEAR && year <= thisYear);
+    // Default to the three most recent editions that can exist. The newest
+    // is published with a lag, so an empty answer for it is normal.
+    //
+    // DEDUPLICATED, and that is not tidiness. `loadEditions` concatenates, so
+    // `years=2025,2025,2025,2025,2025` used to hand the projection every
+    // mutation five times: measured on the Paris fixture, 28 comparables
+    // became 140, the interval on the median narrowed from [7 969, 8 359] to
+    // [8 052, 8 220], and a commune with ONE recorded sale published it as
+    // five comparables with a zero-width interval. The duplicated ids then
+    // threw at `dataSource.entities.add`. A query string that can manufacture
+    // sample size is a query string that can manufacture confidence.
+    return [...new Set((requested.length ? requested : [thisYear - 1, thisYear - 2, thisYear - 3])
+      .filter((year) => year >= DVF_FIRST_YEAR))]
+      .slice(0, 5)
+      .sort((a, b) => b - a);
+  }
+
+  /**
+   * Concatenate the editions of one commune, and say which ones did not arrive.
+   *
+   * `unavailable` is the A5 half: an answer built from two editions out of
+   * three is not the same answer as one built from three, and reporting the
+   * years alongside the mutations is what lets a card say so instead of
+   * quietly publishing a thinner sample as if it were the whole window.
+   *
+   * @returns {Promise<{mutations: Array<object>, unavailable: Array<number>}>}
+   */
+  async function loadEditions(years, communeCode) {
+    const mutations = [];
+    const unavailable = [];
+    for (const year of years) {
+      // Sequential on purpose: three 750 KB downloads in parallel for one
+      // click is a burst the file host has no reason to absorb.
+      const edition = await loadEdition(year, communeCode);
+      if (edition === null) unavailable.push(year);
+      else mutations.push(...edition);
+    }
+    return { mutations, unavailable };
   }
 
   function install(middlewares) {
@@ -21748,29 +21860,55 @@ function dvfProxy() {
       const point = addressPoint(url.searchParams);
       if (!point) return null;
       const radiusM = clampDvfRadius(url.searchParams.get('radius'));
-      const thisYear = new Date().getFullYear();
-      const requested = String(url.searchParams.get('years') || '')
-        .split(',').map((value) => Number.parseInt(value.trim(), 10))
-        .filter((year) => Number.isFinite(year) && year >= DVF_FIRST_YEAR && year <= thisYear);
-      // Default to the three most recent editions that can exist. The newest
-      // is published with a lag, so an empty answer for it is normal.
-      const years = (requested.length ? requested : [thisYear - 1, thisYear - 2, thisYear - 3])
-        .filter((year) => year >= DVF_FIRST_YEAR)
-        .slice(0, 5)
-        .sort((a, b) => b - a);
+      const years = requestedYears(url.searchParams);
       return {
         key: addressCacheKey('dvf', point, radiusM, years.join('-')),
         load: async () => {
           const commune = await resolveCommuneCode(point.lon, point.lat);
           if (!commune) return null;
-          const all = [];
-          for (const year of years) {
-            // Sequential on purpose: three 750 KB downloads in parallel for one
-            // click is a burst the file host has no reason to absorb.
-            all.push(...await loadEdition(year, commune.code));
-          }
-          const { sales, summary } = selectNearbySales(all, point, radiusM);
-          return { commune, years, sales, summary };
+          const { mutations, unavailable } = await loadEditions(years, commune.code);
+          const { sales, summary } = selectNearbySales(mutations, point, radiusM);
+          // The register's own hole, carried on the answer rather than left to
+          // be inferred from an empty list: a commune in the Bas-Rhin, the
+          // Haut-Rhin, the Moselle or Mayotte returns nothing because the file
+          // does not exist, not because nothing was sold there. `unavailable`
+          // is the other silence — editions that exist and did not download.
+          return {
+            commune, years, unavailableYears: unavailable,
+            coverage: dvfCoverage(commune.code), sales, summary,
+          };
+        },
+      };
+    });
+
+    // `GET /api/avis-valeur?lat=&lon=&type=Appartement&surface=60&years=`
+    // The estimate, from the same editions the map above is drawn from.
+    installAddressRoute(middlewares, '/api/avis-valeur', (url) => {
+      const point = addressPoint(url.searchParams);
+      if (!point) return null;
+      // THROWS on an out-of-enum subject, which `installAddressRoute` turns
+      // into a 400 carrying the message. Not clamped: a share link that asked
+      // for 47 m² must not be answered about 60 m².
+      const subject = parseAvisSubject({
+        type: url.searchParams.get('type'),
+        surface: url.searchParams.get('surface'),
+      });
+      const years = requestedYears(url.searchParams);
+      return {
+        key: addressCacheKey('avis', point, subject.type, subject.surfaceM2, years.join('-')),
+        load: async () => {
+          const commune = await resolveCommuneCode(point.lon, point.lat);
+          if (!commune) return null;
+          const { mutations, unavailable } = await loadEditions(years, commune.code);
+          return {
+            ...projectAvisValeur({
+              mutations,
+              subject: { ...subject, lon: point.lon, lat: point.lat },
+              commune,
+              years,
+            }),
+            unavailableYears: unavailable,
+          };
         },
       };
     });

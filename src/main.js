@@ -24,6 +24,7 @@ import implantationFicheLayer from './data/implantationFiche.js';
 import veloPulseLayer from './data/veloPulse.js';
 import georisquesLayer from './data/georisques.js';
 import dvfSalesLayer from './data/dvfSales.js';
+import avisValeurLayer from './data/avisValeur.js';
 import dpeFranceLayer from './data/dpeFrance.js';
 import urbanismeGpuLayer from './data/urbanismeGpu.js';
 import adsUrbanismeLayer from './data/adsUrbanisme.js';
@@ -358,6 +359,7 @@ async function init() {
     dataManager.register(veloPulseLayer);
     dataManager.register(georisquesLayer);
     dataManager.register(dvfSalesLayer);
+    dataManager.register(avisValeurLayer);
     dataManager.register(dpeFranceLayer);
     dataManager.register(urbanismeGpuLayer);
     dataManager.register(adsUrbanismeLayer);

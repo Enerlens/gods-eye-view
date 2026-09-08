@@ -1160,7 +1160,14 @@ export function createAddressScanLayer(config) {
       // height this layer had switched itself off at, and waiting for them to
       // nudge the camera to get it would read as the click doing nothing.
       if (next) _dormant = false;
-      if (_enabled) void runScan(_viewer);
+      // FORCED, because the movement guard describes CAMERA DRIFT and a pin is
+      // not drift. Without it a pin moved 111 m — one building to the next —
+      // changed `getParams().centre` and fired no request at all: the answer on
+      // screen went on describing the previous door while the layer reported
+      // the new one. `ADDRESS_SCAN_MIN_SHIFT_KM` exists to stop a camera nudge
+      // from spending a request; a reader who clicked a doorway has spent it
+      // deliberately.
+      if (_enabled) void runScan(_viewer, null, { force: true });
       return true;
     },
 
@@ -1212,12 +1219,21 @@ export function createAddressScanLayer(config) {
      * looking exactly like the one they did.
      */
     setParams(next = {}, { origin = 'programmatic' } = {}) {
-      let changed = false;
+      // VALIDATED WHOLE, THEN APPLIED. The loop used to write each key as it
+      // checked it, so `{type: 'Maison', surface: '47'}` returned false — the
+      // documented refusal — having already applied `type`. The layer then went
+      // on asking a question NOBODY had chosen, which is the one outcome the
+      // reject-don't-clamp rule exists to prevent. Two passes, no partial state.
+      const accepted = [];
       for (const [key, value] of Object.entries(next)) {
         const spec = runtimeParams[key];
         if (!spec) return false;
         const candidate = String(value);
         if (!spec.values.includes(candidate)) return false;
+        accepted.push([key, candidate]);
+      }
+      let changed = false;
+      for (const [key, candidate] of accepted) {
         if (_runtime[key] === candidate) continue;
         _runtime[key] = candidate;
         changed = true;

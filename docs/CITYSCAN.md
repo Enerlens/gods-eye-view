@@ -215,18 +215,82 @@ reçoivent un rang sans lettre.
 
 ### Palier 2 — faisable, mais des semaines
 
-1. **L'estimateur (avis de valeur).** DVF porte surface, pièces, type et date :
-   un moteur de comparables est à notre portée. Le coût est ailleurs — nettoyage
-   des ventes multi-lots, appariement au bâti via le RNB, calibration, et
-   surtout **affichage de l'incertitude**. C'est le seul composant réellement
-   fermé de Cityscan, et ses dix ans d'avance sont là, pas dans la donnée.
+1. ~~**L'estimateur (avis de valeur).**~~ **LIVRÉ le 2026-09-08** — couche
+   `avis-valeur` (`vv`), route `/api/avis-valeur`, sur les mêmes millésimes DVF
+   que la carte des ventes. Le détail tient dans `docs/CURRENT-STATE.md` ; ce
+   qui compte pour ce document, c'est que le coût annoncé ici était le bon et
+   qu'il était ailleurs que dans la donnée :
+   · le nettoyage multi-lots était **déjà fait** par `dvfFeed.js` (une mutation
+     de 179 lots n'a pas de €/m²), donc rien à refaire ;
+   · l'appariement RNB s'est révélé **inutile** — un comparable se choisit par
+     rayon, surface et type, pas par bâtiment ;
+   · la calibration EST le produit : deux intervalles qui ne se mélangent
+     jamais, un plancher de cinq ventes *dérivé* du point où l'intervalle
+     cesse d'exister, et une porte à deux clauses qui refuse de publier un
+     milieu qu'on ne connaît pas mieux que le marché n'est dispersé ;
+   · et l'affichage de l'incertitude n'est pas une décoration ajoutée à la fin,
+     c'est la raison pour laquelle il y a **trois réponses possibles** au lieu
+     d'une : une valeur, une fourchette sans valeur, ou rien — en disant
+     laquelle.
+   Trois choses ont été trouvées en chemin qu'aucune analyse de bureau n'aurait
+   données : le registre **ne couvre pas** le Bas-Rhin, le Haut-Rhin, la Moselle
+   ni Mayotte (404 mesurés, trois millions d'habitants) ; il publie des
+   appartements **déclarés à un euro**, dont l'arrondi au m² vaut 0, un nombre
+   qui franchit tous les garde-fous ; et les VEFA se paient +43 % au m² à
+   Paris 13e, donc les garder biaisait l'estimation vers le haut.
+   **Ce que Cityscan garde encore** : dix ans de calibration contre des ventes
+   réelles, et un algorithme qu'on ne peut pas auditer. Le nôtre est auditable,
+   ce qui est un argument différent — pas le même.
 2. **Le générateur de documents.** Sections, modules, gabarits, thèmes, polices,
-   historique, signature. C'est un produit entier, pas une couche.
-3. **Le bruit hors aérien.** Les cartes de bruit stratégiques (directive
-   2002/49) sont publiées agglomération par agglomération : l'agrégation
-   nationale est un chantier de collecte, pas de rendu.
-4. **Temps de trajet multimodal vers un point choisi.** Nos isochrones tiennent ;
-   « 23 min en TC jusqu'à La Défense » demande un moteur hébergé (OTP/Valhalla).
+   historique, signature. C'est un produit entier, pas une couche — et c'est le
+   seul poste du palier 2 qui **dépend du palier 1** : il assemble la fiche
+   adresse (palier 1, point 1) et sort par le mode intégrable et l'impression
+   PDF (palier 1, point 8). Le commencer avant que ces deux-là existent, c'est
+   écrire un gabarit pour un contenu qui n'a pas encore de forme. À prendre
+   après, pas en parallèle. L'estimateur, lui, ne dépendait de rien — c'est
+   pourquoi il est parti en premier.
+3. **Le bruit hors aérien — chiffré le 2026-09-08, et plus cher que « un
+   chantier de collecte ».** Ce qui était écrit ici restait vrai et vague ; les
+   mesures :
+   · **155 jeux** répondent à « cartes de bruit stratégiques » sur data.gouv.fr,
+     et 113 à « classement sonore des infrastructures » ;
+   · ils sont publiés **par DDT, par département, par type d'infrastructure et
+     par période**. Sur les 50 premiers résultats, **quatre organisations
+     seulement** — dont 30 jeux pour la seule DDT de Côte-d'Or, qui découpe la
+     même carte en route / autoroute / voie ferrée × jour / nuit / 24 h × type
+     A / type C ;
+   · ils sortent en **WMS + WFS + Shapefile**. Le WFS répond : `GetCapabilities`
+     mesuré **HTTP 200, 20 562 octets**, une couche `ms:LNC_FER_CONV_S_021` ;
+   · la note de `docs/CURRENT-STATE.md` disait « les archives Géo-IDE n'ont pas
+     de CORS ». **C'est exact et ce n'est plus un obstacle** : nos couches
+     passent par un proxy serveur, où le CORS ne s'applique pas. L'obstacle est
+     ailleurs ;
+   · l'obstacle est le **format et le poids**. Le service n'annonce que du GML
+     (`gml/3.2`, `3.2.1`, `3.1.1`, `2.1.2`) ; `OUTPUTFORMAT=application/json`
+     répond **500 enveloppant un 400**. Et `COUNT=1` sur la couche « voies
+     ferrées conventionnelles » de Côte-d'Or rapporte **1 080 625 octets pour
+     UNE bande**. Le `numberMatched` de cette couche est 4.
+   Traduction : ce n'est pas le patron de `bruitFrance.js` (WMS
+   `GetFeatureInfo`, réponses de quelques kilo-octets, JSON). C'est un parseur
+   GML, une découverte par DDT, et des polygones à l'échelle du mégaoctet par
+   bande — avec une couverture nationale qui, sur cet échantillon, n'existe pas
+   encore. **Palier 2 confirmé, mais le coût est le parseur et la collecte, pas
+   le rendu, et la couverture est partielle par construction.**
+4. **Temps de trajet multimodal vers un point choisi — les deux entrées sont
+   mesurées, le graphe ne l'est pas.** Nos isochrones tiennent ; « 23 min en TC
+   jusqu'à La Défense » demande un moteur hébergé (OTP/Valhalla), et ce moteur
+   demande deux fichiers que nous connaissons déjà :
+   · **le GTFS statique français** — `config/pan_gtfs_static.json` indexe
+     **147 réseaux**, dont 134 déclarent leurs `shapes`, pour
+     **413 007 724 octets** de conversions PAN ;
+   · **l'extrait OSM France** — mesuré le 2026-09-08 par une requête de plage
+     sur Geofabrik, `Content-Range: bytes 0-1/5076560568`, soit **5,08 Go**.
+   Ce qui n'est PAS mesuré, et qui décide de la facture : la taille du graphe
+   construit et la RAM du processus qui le sert. C'est le seul poste du palier 2
+   qui ajoute une **machine** au produit plutôt qu'une route ; tant que ce
+   chiffre n'est pas pris sur une vraie construction, l'annoncer serait une
+   estimation sans intervalle — exactement ce que la couche livrée au point 1
+   refuse de faire.
 
 ### Palier 3 — non duplicable
 
@@ -335,7 +399,15 @@ en production : délinquance enregistrée et petite enfance (Voisinage,
    quelle géométrie elle se laisse noter. Voir [`docs/BAREME.md`](BAREME.md).
 5. **Le mode intégrable et l'export PDF** — la surface commerciale, une fois que
    le contenu vaut d'être partagé.
-6. **L'estimateur** — en dernier, et jamais sans son intervalle.
+6. ~~**L'estimateur** — en dernier, et jamais sans son intervalle.~~
+   **Fait le 2026-09-08, et pris en premier plutôt qu'en dernier.** La raison
+   du changement d'ordre : c'est le seul poste de la grille qui ne dépendait
+   d'aucun autre. La fiche adresse (palier 1) et le générateur de documents
+   (palier 2) se tiennent l'un l'autre ; l'estimateur ne tient qu'à DVF, qui
+   était déjà en production. Il est donc parti seul, sans attendre, et la
+   consigne « jamais sans son intervalle » a été tenue au sens fort : il y en a
+   deux, et le produit refuse de publier un chiffre quand le second est trop
+   large.
 
 ---
 
