@@ -199,6 +199,133 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   exactement ce que `docs/CHRONIQUE.md` annonçait. `docs/DEPLOY.md` porte
   désormais la manœuvre et la règle : après une fusion censée changer
   l'environnement, lire `armed`, pas GitHub.
+## [Unreleased] — 2026-09-07
+
+### Changed
+- **Un aéroport cesse d'être une punaise et redevient ses pistes.** La couche
+  **Aéroports** dépensait la totalité de son budget graphique — la taille du
+  point *et* sa clarté — sur un seul seau à quatre valeurs, le `type` éditorial
+  d'OurAirports. Or le README du paquet dit lui-même ce qu'est ce seau :
+  « driven mostly by traffic and **runway length** ». La mesure était dans le
+  paquet, sur 82 % des terrains, et n'atteignait jamais l'écran. Trois canaux
+  la remplacent, un par information.
+
+  **La taille du point porte la longueur de piste publiée**, en quatre classes
+  à seuils gelés (C1) choisies sur l'exploitation et non sur des quantiles :
+  3 000 m et plus (18 px, 1 280 terrains), 1 800 – 2 999 m (13 px, 2 577 — un
+  A320 demande ~1 800 m), 1 000 – 1 799 m (9 px, 1 690), moins de 1 000 m
+  (6 px, 603). **La teinte reste le palier** et ne dit plus que lui.
+
+  **Les 1 314 terrains dont OurAirports ne publie aucune longueur reçoivent un
+  anneau creux**, pas un petit disque : « non publié » n'est pas « court », et
+  le diamètre de l'anneau (8 px) n'est atteignable par aucune classe mesurée.
+  C'est la règle A1, dessinée — et c'est le préalable de tout le reste, sans
+  quoi faire porter une valeur à la marque transformerait 1 314 silences en
+  affirmations.
+
+  **La piste elle-même est tracée.** OurAirports publie les deux seuils de
+  chaque piste et sa largeur, ce qui fait de l'aéroport le seul objet du globe
+  qui ait une forme orientée à l'échelle vraie. 6 698 pistes sur 4 790
+  terrains, +304 Ko sur un paquet qui passe de 2,42 à 2,73 Mo. **Une marque,
+  deux planchers, trois régimes**, continus aux deux passages parce qu'un
+  plancher déjà dépassé ne fait rien : loin, la longueur est tenue au diamètre
+  de sa propre pastille — c'est le tiret orienté, gradué par classe ; à moyenne
+  distance la longueur et le cap sont **vrais** ; de près l'épaisseur du trait
+  atteint la largeur publiée de la piste. Roissy dessine ses cinq bandes, deux
+  doublets parallèles et la voie hélico `08H/26H` de 443 m sur 30 — celle-là
+  même que le README passait une page à excuser, et qui s'explique toute seule
+  une fois dessinée à l'échelle.
+
+  Deux bornes, dérivées et non choisies : une piste **secondaire** n'apparaît
+  qu'une fois le pixel sous 45 m — la largeur médiane publiée, donc le point où
+  deux bandes cessent d'être séparables ; et toute piste que le plancher
+  étirerait au-delà du **double** de sa longueur vraie n'est pas dessinée du
+  tout, parce qu'au-delà la marque est plus symbole que mesure et que la
+  pastille porte déjà la même classe. À 260 km, Roissy tient un tiret et
+  Toussus-le-Noble n'en a pas.
+
+  **Deux lignes de piste sur trois mille sont refusées**, et les deux refus
+  sont des tests de cohérence entre deux nombres publiés séparément, pas des
+  jugements : 128 pistes dont l'écart entre la distance seuil-à-seuil et le
+  `length_ft` publié dépasse 25 % — l'un des deux est faux, et une piste tracée
+  depuis un mauvais seuil est une piste au mauvais endroit —, et 1 piste dont
+  le milieu est à plus de 10 km de son propre aéroport, à 36 008 m exactement,
+  ce qui est une jointure ratée et pas un long taxiway.
+
+  **L'asymétrie est la contrainte de conception, et elle est épinglée par un
+  test.** 93 % des grands aéroports ont une géométrie, et **8 % des aéroclubs**
+  — 89 sur 1 126, tous français. Le long tail français, qui est la raison
+  d'être de la clause (c), est exactement la moitié qu'OurAirports n'a jamais
+  géoréférencée. La piste ne peut donc jamais devenir le signe principal de
+  cette couche : elle en effacerait 92 % au profit d'une carte du monde qui a,
+  elle, ses coordonnées. C'est la pastille qui parle pour eux.
+
+- **La marque d'un aérodrome a désormais une portée d'affichage, et la légende
+  la dit.** Le palier *Aérodrome & aéroclub* est français à 100 % par
+  construction. Dessiné depuis l'orbite, il rapportait une densité
+  d'aérodromes qui appartient à la **sélection** et pas au monde, juste à côté
+  d'une Allemagne que le paquet laisse vide exprès — c'est le vide de type (b)
+  de la règle A4, jamais déclaré. Les quatre paliers déclarent maintenant leur
+  distance d'apparition : 14 000 / 7 500 / 3 000 / **900 km**. Le 900 n'est pas
+  un goût : la France fait environ 1 000 km, et 1 000 km remplissent une
+  fenêtre de 1 080 px à ~870 km. Les aéroclubs arrivent exactement quand la
+  France est le sujet du cadre. Chaque portée est imprimée dans la légende de
+  la rangée, parce que rien à l'écran ne peut la dire autrement.
+
+- **La tige de rappel des aéroports est plafonnée à 150 m.** Toutes les couches
+  locales tiennent leur pastille à 65 px constants au-dessus du sol, ce qui
+  fait de la hauteur de la tige, *en mètres*, `0,0695 × distance caméra` :
+  695 m à 10 km, 3 475 m à 50 km, 13 900 m à 200 km. Pour un barrage c'est un
+  artifice de lecture. Au-dessus d'un aéroport c'est une affirmation — les
+  couches de vols dessinent les avions à leur altitude réelle au-dessus des
+  mêmes pistes, si bien que la pastille flottait au FL114 au milieu du trafic
+  en approche et au FL228 au-dessus : deux longueurs verticales, deux registres,
+  une seule colonne de pixels (F7). 150 m passe sous les 300 m (1 000 ft AGL)
+  du tour de piste, donc la marque ne peut plus atteindre une hauteur à
+  laquelle un avion se pilote. Le plafond est une option de couche
+  (`stemMaxHeightM`) et n'est posé que là.
+
+### Fixed
+- **Une seconde géométrie dans un `PolylineCollection` se paie à chaque image,
+  pas à chaque arrêt de caméra.** La première version des tracés de piste posait
+  une polyligne Cesium par piste — 6 698 objets résidents dont on basculait le
+  `show`. Une collection téléverse pourtant *toutes* ses polylignes dans un seul
+  tampon et dessine le lot en une commande : `show: false` est un attribut par
+  sommet, donc une polyligne masquée coûte quand même ses sommets dans le
+  shader. Mesuré contre `origin/main` dans la même session, caméra parquée à
+  260 km, couche allumée : l'image stable passait de **0,6 à 6,9 ms** de
+  médiane. Corrigé par un **pool** de polylignes réutilisées, dimensionné à ce
+  qui est à l'écran (11 à 88) et non à ce que le paquet contient. Retour à
+  0,7 ms. Le repère qui a désigné le coupable : le surcoût ne bougeait pas avec
+  le nombre de pistes dessinées — identique à 2 000 km, où il y en a zéro.
+- **`canvas.clientHeight` était lu une fois par enregistrement et par arrêt de
+  caméra.** C'est une lecture de layout DOM, et la passe de géométrie des
+  couches locales en faisait 7 464 par arrêt — depuis toujours pour la tige de
+  rappel, et deux fois par enregistrement dès qu'il fallait aussi placer une
+  piste. Le facteur est désormais lu une fois par passe : 17,6 / 10,9 / 13,2 ms
+  → **8,5 / 2,2 / 2,6 ms** à 2 000 / 260 / 60 km, contre 8,7 / 1,9 / 2,5 pour la
+  référence.
+- **Partager un `Material` entre polylignes était un plantage latent.**
+  `Polyline._destroy()` appelle `this._material.destroy()`, et le
+  `destroyObject` de Cesium n'est pas idempotent : un matériau partagé est
+  détruit une fois par polyligne, et la seconde lève. Chaque polyligne a
+  maintenant le sien, ce qui ne coûte rien — les *buckets* sont indexés par
+  `material.type` et pas par instance, donc le lot reste un seul appel de
+  dessin.
+- **La capture de QA des aéroports ne cadrait rien depuis le début.** Le bloc
+  qui devait poser la caméra sur l'Île-de-France lisait un global
+  `window.Cesium` qui n'existe pas dans cette application, et repartait
+  silencieusement sur son `if (!viewer || !Cesium) return`. La capture était
+  donc prise là où le vol d'amorçage avait laissé la caméra. Les statics sont
+  maintenant empruntés à une instance vivante, comme le font déjà
+  `qa-cctv-v2` et `qa-height-datum`. La capture elle-même est désormais
+  non bloquante : c'est de la documentation, pas un contrôle, et un compositeur
+  qui se fige sur un tileset bloqué en EEE ne doit pas jeter les trois douzaines
+  d'assertions déjà passées.
+- **Un chip de rangée qui redonne un groupe redessine aussi sa géométrie.**
+  `setParams` remettait les marqueurs visibles sans marquer la passe de
+  géométrie à refaire, ce qui laissait les tracés de piste masqués jusqu'au
+  prochain mouvement de caméra.
 
 ## [Unreleased] — 2026-09-03
 

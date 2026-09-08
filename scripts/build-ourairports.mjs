@@ -27,7 +27,7 @@
  * `runways.csv` is keyed on `airport_ref` (the airport's numeric `id`), with
  * `airport_ident` as a redundant second key. The numeric ref is used: idents
  * get reassigned upstream when an airfield's ICAO code changes, and a stale
- * ident would silently attach one airport's runways to another. 48,203 runway
+ * ident would silently attach one airport's runways to another. 48,230 runway
  * rows are grouped once into a Map, so the join is linear, not quadratic.
  *
  * DETERMINISM
@@ -197,7 +197,10 @@ function toFeature(row, runways, countryNames) {
     properties.elevationM = Math.round(elevationFt * FEET_TO_METRES);
   }
 
-  const summary = summarizeRunways(runways);
+  // The anchor is handed over so `runwayGeometry` can refuse a runway joined to
+  // the wrong field — the 36 km outlier the pack module documents. It is this
+  // row's own published point, which is also the point the feature ships.
+  const summary = summarizeRunways(runways, { lon, lat });
   if (summary.count > 0) properties.runways = summary;
 
   return {
@@ -258,12 +261,22 @@ async function main() {
   let french = 0;
   let withRunway = 0;
   let withSurface = 0;
+  let withGeometry = 0;
+  let frenchWithGeometry = 0;
+  let segments = 0;
   for (const feature of features) {
     const props = feature.properties;
     byType.set(props.type, (byType.get(props.type) || 0) + 1);
-    if (FRENCH_TERRITORIES.has(props.countryCode)) french += 1;
+    const isFrench = FRENCH_TERRITORIES.has(props.countryCode);
+    if (isFrench) french += 1;
     if (props.runways?.longestM) withRunway += 1;
     if (props.runways?.surface) withSurface += 1;
+    const geom = props.runways?.geom;
+    if (Array.isArray(geom) && geom.length > 0) {
+      withGeometry += 1;
+      segments += geom.length;
+      if (isFrench) frenchWithGeometry += 1;
+    }
   }
   const bytes = fs.statSync(OUT).size;
   process.stderr.write([
@@ -275,6 +288,8 @@ async function main() {
     `French         ${french.toLocaleString('en-US')} in France + territories`,
     `Runway length  ${withRunway.toLocaleString('en-US')} features (${Math.round((withRunway / features.length) * 100)}%)`,
     `Surface family ${withSurface.toLocaleString('en-US')} features (${Math.round((withSurface / features.length) * 100)}%)`,
+    `Runway shape   ${withGeometry.toLocaleString('en-US')} features (${Math.round((withGeometry / features.length) * 100)}%), `
+      + `${segments.toLocaleString('en-US')} drawn runways, ${frenchWithGeometry.toLocaleString('en-US')} of them French`,
     ...[...byType.entries()].sort((a, b) => b[1] - a[1])
       .map(([type, count]) => `  ${type.padEnd(14)} ${count.toLocaleString('en-US')}`),
     '',

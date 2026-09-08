@@ -89,6 +89,8 @@
  * still says WHAT the structure is.
  */
 
+import { sizeDiscGlyph, sizeRingGlyph } from './sizeLegendGlyphs.js';
+
 /**
  * The Overpass tag filters the pack is extracted with. The selection policy IS
  * this query — plus one documented exclusion in the build script — so it lives
@@ -968,37 +970,13 @@ export function damRenderSpec(props) {
  * encoding.
  */
 
-const _b64 = (value) => (typeof btoa === 'function'
-  ? btoa(value)
-  : Buffer.from(value, 'utf8').toString('base64'));
-
-const GLYPH_BOX = 18;
-/** @type {Map<string,string>} shape key → data URI. */
-const _glyphCache = new Map();
-
-/** A filled disc of the given screen diameter, drawn 1:1 in the swatch box. */
-function spanDiscGlyph(pixelSize) {
-  const key = `disc:${pixelSize}`;
-  const cached = _glyphCache.get(key);
-  if (cached) return cached;
-  const radius = Math.max(1, Math.min(GLYPH_BOX / 2, Number(pixelSize) / 2 || 1));
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GLYPH_BOX} ${GLYPH_BOX}">`
-    + `<circle cx="9" cy="9" r="${radius.toFixed(2)}" fill="#000"/></svg>`;
-  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
-  _glyphCache.set(key, uri);
-  return uri;
-}
-
-/** The hollow ring the unmeasured class draws. */
-function spanRingGlyph() {
-  const cached = _glyphCache.get('ring');
-  if (cached) return cached;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GLYPH_BOX} ${GLYPH_BOX}">`
-    + '<circle cx="9" cy="9" r="3.4" fill="none" stroke="#000" stroke-width="1.6"/></svg>';
-  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
-  _glyphCache.set('ring', uri);
-  return uri;
-}
+/*
+ * The two swatches moved to `./sizeLegendGlyphs.js` when the airports pack
+ * started spending the same channel: both legends render into the SAME panel,
+ * one under the other, so two private copies would drift the day one of them
+ * changed a radius — and the reader would be told that two identical
+ * situations are different.
+ */
 
 /**
  * Graphite for every size row. ONE colour, because in these rows the datum is
@@ -1038,7 +1016,7 @@ export function damSpanLegend(tally) {
     legend.push({
       label: entry.label,
       color: DAM_SIZE_SWATCH_COLOR,
-      glyph: spanDiscGlyph(entry.pixelSize),
+      glyph: sizeDiscGlyph(entry.pixelSize),
       blurb,
       count: bucket.visible,
     });
@@ -1048,7 +1026,7 @@ export function damSpanLegend(tally) {
     legend.push({
       label: DAM_SPAN_UNKNOWN.label,
       color: DAM_SIZE_SWATCH_COLOR,
-      glyph: spanRingGlyph(),
+      glyph: sizeRingGlyph(),
       blurb: 'Anneau creux, jamais un petit disque : OpenStreetMap ne publie '
         + 'ici ni géométrie exploitable ni longueur. 28 % du paquet, dont '
         + 'l’instantané mondial repris sans géométrie.',

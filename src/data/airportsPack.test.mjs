@@ -5,6 +5,9 @@ import { readFileSync } from 'node:fs';
 
 import {
   AIRPORT_DISPLAY_FLOORS,
+  AIRPORT_DRAWN_RUNWAY_SUFFIX,
+  AIRPORT_LENGTH_CLASSES,
+  AIRPORT_LENGTH_UNKNOWN,
   AIRPORT_TIERS,
   AIRPORT_TIER_STYLES,
   AIRPORT_TYPE_LABELS,
@@ -12,10 +15,17 @@ import {
   airportCardDetails,
   airportIcaoCode,
   airportLabelPriority,
+  airportLengthClass,
+  airportLengthClassOf,
+  airportLengthLegend,
+  airportRenderSpec,
+  airportRunwaySegments,
   airportTier,
   airportTierLegend,
   airportTierVisible,
+  greatCircleMetres,
   isPackedAirport,
+  runwayGeometry,
   runwaySurfaceFamily,
   summarizeRunways,
 } from './airportsPack.js';
@@ -241,26 +251,204 @@ test('every tier is drawn distinctly, and the ramp descends with importance', ()
   assert.deepEqual(keys, ['hub', 'airline', 'airport', 'airfield'], 'order is the ladder');
   assert.deepEqual(Object.keys(AIRPORT_TIER_STYLES).sort(), [...keys].sort());
 
-  const sizes = AIRPORT_TIERS.map((tier) => tier.pixelSize);
-  assert.deepEqual(sizes, [...sizes].sort((a, b) => b - a), `dot sizes must descend: ${sizes}`);
-  // Two tiers sharing a colour or a size would make the ladder unreadable.
+  // Two tiers sharing a colour would make the ladder unreadable.
   assert.equal(new Set(AIRPORT_TIERS.map((t) => t.color)).size, keys.length);
-  assert.equal(new Set(sizes).size, keys.length);
+
+  // SIZE IS NOT A TIER CHANNEL ANY MORE. It carries the published runway
+  // length; a tier-shaped `pixelSize` back on the ladder would win the merge in
+  // the renderer against every field whose runway was never measured.
+  for (const tier of AIRPORT_TIERS) {
+    assert.equal(tier.pixelSize, undefined, `${tier.key} must not size by tier`);
+    assert.equal(AIRPORT_TIER_STYLES[tier.key].pixelSize, undefined, tier.key);
+  }
 
   // Card range descends with the same ladder: a lesser field makes you come
   // closer before it takes a label cell away from a bigger one.
   const ranges = AIRPORT_TIERS.map((tier) => tier.cardMaxDistance);
   assert.ok(ranges.every(Number.isFinite), `every tier needs a card range: ${ranges}`);
   assert.deepEqual(ranges, [...ranges].sort((a, b) => b - a), `card ranges must descend: ${ranges}`);
-  // The styles handed to the layer must carry all four channels.
+
+  // Marker range descends too, and is never SHORTER than the card range: a name
+  // offered for a mark nobody can see is a card floating over nothing.
+  const marks = AIRPORT_TIERS.map((tier) => tier.markerMaxDistance);
+  assert.ok(marks.every(Number.isFinite), `every tier needs a marker range: ${marks}`);
+  assert.deepEqual(marks, [...marks].sort((a, b) => b - a), `marker ranges must descend: ${marks}`);
+  for (const tier of AIRPORT_TIERS) {
+    assert.ok(tier.markerMaxDistance >= tier.cardMaxDistance,
+      `${tier.key}: the mark must arrive before its card`);
+  }
+  // The France-only tier is the one this channel exists for.
+  assert.equal(AIRPORT_TIERS.at(-1).key, 'airfield');
+  assert.ok(AIRPORT_TIERS.at(-1).markerMaxDistance <= 1_000_000,
+    'the 100 %-French tier must not be drawn from orbit');
+
+  // The styles handed to the layer must carry exactly the four channels it reads.
   for (const tier of AIRPORT_TIERS) {
     assert.deepEqual(AIRPORT_TIER_STYLES[tier.key], {
       color: tier.color,
-      pixelSize: tier.pixelSize,
       stemWidth: tier.stemWidth,
       cardMaxDistance: tier.cardMaxDistance,
+      markerMaxDistance: tier.markerMaxDistance,
     }, tier.key);
   }
+});
+
+test('the tier legend declares the marker range, because nothing on screen can', () => {
+  const rows = airportTierLegend(new Map([
+    ['hub', { total: 2, visible: 2 }],
+    ['airfield', { total: 10, visible: 4 }],
+  ]));
+  assert.equal(rows.length, 2);
+  // The top tier is drawn at the shared ceiling, so it claims no range at all.
+  assert.ok(!/Marque affichée/.test(rows[0].blurb), rows[0].blurb);
+  assert.match(rows[1].blurb, /Marque affichée sous 900 km\./);
+  assert.match(rows[1].blurb, /6 masqués$/);
+  assert.equal(rows[1].count, 4);
+});
+
+test('length classes are frozen domain thresholds, and an unpublished length is not a short one', () => {
+  const mins = AIRPORT_LENGTH_CLASSES.map((entry) => entry.minM);
+  assert.deepEqual(mins, [3000, 1800, 1000, 0], 'operational bounds, not quantiles');
+  const sizes = AIRPORT_LENGTH_CLASSES.map((entry) => entry.pixelSize);
+  assert.deepEqual(sizes, [...sizes].sort((a, b) => b - a), `diameters must descend: ${sizes}`);
+  assert.equal(new Set(sizes).size, sizes.length, 'two classes may not share a diameter');
+
+  assert.equal(airportLengthClass({ runways: { longestM: 4215 } }), 'len3000');
+  assert.equal(airportLengthClass({ runways: { longestM: 3000 } }), 'len3000');
+  assert.equal(airportLengthClass({ runways: { longestM: 2999 } }), 'len1800');
+  assert.equal(airportLengthClass({ runways: { longestM: 1000 } }), 'len1000');
+  assert.equal(airportLengthClass({ runways: { longestM: 441 } }), 'len0');
+
+  // A1: never the same mark for a measurement and its absence.
+  for (const props of [{}, null, { runways: {} }, { runways: { longestM: 0 } }]) {
+    assert.equal(airportLengthClass(props), 'nolength', JSON.stringify(props));
+  }
+  // The ring must not be reachable by any measured diameter, or it would read
+  // as a class rather than as a refusal.
+  assert.ok(!sizes.includes(AIRPORT_LENGTH_UNKNOWN.pixelSize),
+    'the unmeasured ring shares a diameter with a measured class');
+});
+
+test('the render spec sizes by the measurement, rings what was never published, and carries the shape', () => {
+  const geom = [[2.55274, 48.9957, 2.61018, 48.9988, 45]];
+  const drawn = airportRenderSpec({ runways: { longestM: 4215, geom } });
+  assert.equal(drawn.pixelSize, 18);
+  assert.equal(drawn.hollow, false);
+  // The floor of the drawn segment IS the pastille it grew out of.
+  assert.equal(drawn.lineFloorPx, drawn.pixelSize);
+  assert.equal(drawn.lines.length, 1);
+  assert.deepEqual(drawn.lines[0], {
+    lon1: 2.55274, lat1: 48.9957, lon2: 2.61018, lat2: 48.9988, widthM: 45,
+  });
+  // The suffix is what lets ONE tally answer two questions.
+  assert.equal(drawn.key, `len3000${AIRPORT_DRAWN_RUNWAY_SUFFIX}`);
+  assert.equal(airportLengthClassOf(drawn.key), 'len3000');
+
+  const sized = airportRenderSpec({ runways: { longestM: 1500 } });
+  assert.equal(sized.key, 'len1000', 'no geometry, no suffix');
+  assert.equal(sized.lines.length, 0);
+
+  const unknown = airportRenderSpec({});
+  assert.equal(unknown.hollow, true);
+  assert.equal(unknown.pixelSize, AIRPORT_LENGTH_UNKNOWN.pixelSize);
+  assert.equal(unknown.key, 'nolength');
+
+  // An airport is not a footprint this pack ships: the surface half of the
+  // render contract must stay untouched, or the loader would try to fill one.
+  for (const spec of [drawn, sized, unknown]) {
+    assert.equal(spec.surface, null);
+    assert.equal(spec.extrudedHeightM, null);
+  }
+});
+
+test('the size legend prints its bounds, counts what is drawn, and names the runway mark', () => {
+  const rows = airportLengthLegend(new Map([
+    ['len3000+rw', { total: 1200, visible: 900 }],
+    ['len3000', { total: 80, visible: 80 }],
+    ['nolength', { total: 300, visible: 300 }],
+  ]));
+  assert.deepEqual(rows.map((r) => r.label), [
+    '3 000 m et plus', 'Longueur non publiée', 'Piste tracée',
+  ]);
+  // The two halves of one class sum back into one row…
+  assert.equal(rows[0].count, 980);
+  // …and the drawn half also answers on its own.
+  assert.equal(rows[2].count, 900);
+  assert.match(rows[0].blurb, /1 000, 1 800, 3 000 m/, 'the frozen bounds are printed');
+  assert.match(rows[1].blurb, /[Aa]nneau creux/);
+  // One colour across every size row: the datum is the swatch, not the hue.
+  assert.equal(new Set(rows.map((r) => r.color)).size, 1);
+  assert.ok(rows.every((r) => r.glyph.startsWith('data:image/svg+xml;base64,')));
+
+  // A class nobody drew is absent, not zero: the row would promise a mark.
+  assert.deepEqual(airportLengthLegend(new Map()), []);
+});
+
+test('runway geometry refuses the two rows that would put a runway in the wrong place', () => {
+  // Charles de Gaulle 08L/26R, verbatim from runways.csv.
+  const real = {
+    closed: '0',
+    le_longitude_deg: '2.55274', le_latitude_deg: '48.9957',
+    he_longitude_deg: '2.61018', he_latitude_deg: '48.9988',
+    length_ft: '13829', width_ft: '148',
+  };
+  const anchor = { lon: 2.55412, lat: 49.00896 };
+  assert.deepEqual(runwayGeometry([real], anchor), [[2.55274, 48.9957, 2.61018, 48.9988, 45]]);
+
+  // Refusal 1 — the two published numbers disagree by more than the tolerance.
+  assert.deepEqual(runwayGeometry([{ ...real, length_ft: '3000' }], anchor), []);
+  // …but a disagreement inside it is kept: upstream rounds, and so do we.
+  assert.equal(runwayGeometry([{ ...real, length_ft: '13000' }], anchor).length, 1);
+
+  // Refusal 2 — the runway is joined to the wrong field.
+  assert.deepEqual(runwayGeometry([real], { lon: 2.55412, lat: 49.5 }), []);
+  // With no anchor the offset test simply does not run.
+  assert.equal(runwayGeometry([real], null).length, 1);
+
+  // Closed, unplaceable, Null Island, and one threshold entered twice.
+  assert.deepEqual(runwayGeometry([{ ...real, closed: '1' }], anchor), []);
+  assert.deepEqual(runwayGeometry([{ ...real, he_latitude_deg: '' }], anchor), []);
+  assert.deepEqual(runwayGeometry([{
+    closed: '0',
+    le_longitude_deg: '0', le_latitude_deg: '0',
+    he_longitude_deg: '0', he_latitude_deg: '0.01',
+  }], anchor), []);
+  assert.deepEqual(runwayGeometry([{
+    closed: '0',
+    le_longitude_deg: '2.5', le_latitude_deg: '49',
+    he_longitude_deg: '2.5', he_latitude_deg: '49',
+  }], anchor), []);
+  assert.deepEqual(runwayGeometry(null), []);
+
+  // A1 on the third channel: an unpublished width is OMITTED, never defaulted,
+  // so the renderer can never stroke a thickness nobody measured.
+  const { width_ft: _drop, ...noWidth } = real;
+  assert.deepEqual(runwayGeometry([noWidth], anchor), [[2.55274, 48.9957, 2.61018, 48.9988]]);
+
+  // Longest first — the layer draws index 0 alone at range.
+  const short = {
+    ...real,
+    le_longitude_deg: '2.55857', le_latitude_deg: '49.01577',
+    he_longitude_deg: '2.5646', he_latitude_deg: '49.01609',
+    length_ft: '1444', width_ft: '98',
+  };
+  const ordered = runwayGeometry([short, real], anchor);
+  assert.equal(ordered.length, 2);
+  assert.deepEqual(ordered[0], [2.55274, 48.9957, 2.61018, 48.9988, 45], 'longest first');
+});
+
+test('the shipped geometry is read back defensively, and a stale pack simply has no shape', () => {
+  assert.deepEqual(airportRunwaySegments({}), []);
+  assert.deepEqual(airportRunwaySegments({ runways: {} }), [], 'a pack built before the shape');
+  assert.deepEqual(airportRunwaySegments({ runways: { geom: 'nope' } }), []);
+  assert.deepEqual(airportRunwaySegments({ runways: { geom: [[1, 2, 3]] } }), [], 'too short');
+  assert.deepEqual(airportRunwaySegments({ runways: { geom: [[1, 2, 3, null]] } }), []);
+  assert.deepEqual(airportRunwaySegments({ runways: { geom: [[1, 2, 3, 4]] } }), [
+    { lon1: 1, lat1: 2, lon2: 3, lat2: 4, widthM: null },
+  ]);
+  assert.deepEqual(airportRunwaySegments({ runways: { geom: [[1, 2, 3, 4, 0]] } }), [
+    { lon1: 1, lat1: 2, lon2: 3, lat2: 4, widthM: null },
+  ], 'a zero width is no width');
 });
 
 test('the display floors slice the ladder from the top down', () => {
@@ -398,4 +586,78 @@ test('the shipped pack obeys the policy it documents', () => {
   // means the join or the upstream merge went wrong.
   const icaos = features.map((f) => f.properties.icao).filter(Boolean);
   assert.equal(new Set(icaos).size, icaos.length, 'duplicate ICAO indicator in the pack');
+});
+
+test('the shipped pack still has the runway shape the size and line channels were chosen on', () => {
+  const features = readFileSync(PACK, 'utf8')
+    .split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
+  const french = new Set(FRENCH_TERRITORY_CODES);
+
+  let withLength = 0;
+  let withGeometry = 0;
+  let frenchTotal = 0;
+  let frenchWithGeometry = 0;
+  let segments = 0;
+  for (const feature of features) {
+    const props = feature.properties;
+    if (props.runways?.longestM > 0) withLength += 1;
+    const shape = airportRunwaySegments(props);
+    if (french.has(props.countryCode)) frenchTotal += 1;
+    if (shape.length === 0) continue;
+    withGeometry += 1;
+    segments += shape.length;
+    if (french.has(props.countryCode)) frenchWithGeometry += 1;
+
+    // Longest first is a contract the renderer relies on: it draws index 0
+    // alone at range and opens the rest of the field only close in.
+    const spans = shape.map((s) => greatCircleMetres(s.lon1, s.lat1, s.lon2, s.lat2));
+    assert.deepEqual(spans, [...spans].sort((a, b) => b - a),
+      `${props.name}: segments must ship longest first`);
+    // Refusal 2, verified on the shipped bytes rather than on the build's word.
+    for (const segment of shape) {
+      const [lon, lat] = feature.geometry.coordinates;
+      const offset = greatCircleMetres(
+        lon, lat, (segment.lon1 + segment.lon2) / 2, (segment.lat1 + segment.lat2) / 2,
+      );
+      assert.ok(offset <= 10_000, `${props.name}: runway ${Math.round(offset)} m from its field`);
+    }
+  }
+
+  // Floors, not equalities — upstream gains and loses rows every day. Measured
+  // 2026-09-07: 6 150 lengths, 4 790 shaped fields, 6 698 segments, 279 French.
+  assert.ok(withLength > 5800, `runway lengths collapsed (${withLength})`);
+  assert.ok(withGeometry > 4500, `runway shapes collapsed (${withGeometry})`);
+  assert.ok(segments > 6300, `drawn runways collapsed (${segments})`);
+
+  // THE ASYMMETRY IS THE DESIGN CONSTRAINT, so it is pinned. The French long
+  // tail is the half upstream never georeferenced: if this ever rose above a
+  // third, the layer could start treating the runway as its primary sign — and
+  // until then it must not. See the pack header.
+  assert.ok(frenchWithGeometry / frenchTotal < 0.35,
+    `French geometry coverage rose to ${(100 * frenchWithGeometry / frenchTotal).toFixed(1)}% —`
+    + ' re-read the "runway can never be the only sign" argument before relying on it');
+
+  // Every shaped field is also a sized one, so the drawn segment always has a
+  // floor to fall back on. The reverse is not true and must not be assumed.
+  for (const feature of features) {
+    if (airportRunwaySegments(feature.properties).length === 0) continue;
+    assert.notEqual(airportLengthClass(feature.properties), AIRPORT_LENGTH_UNKNOWN.key,
+      `${feature.properties.name} has a shape but no published length`);
+  }
+
+  const byIcao = new Map(features.filter((f) => f.properties.icao)
+    .map((f) => [f.properties.icao, f.properties]));
+  // Roissy ships all five runway records, and the fifth is the 440 m grass
+  // helicopter lane 08H/26H that makes `count: 5` read as a hub with five
+  // strips. Drawn to scale beside the four real ones, it explains itself.
+  const cdg = airportRunwaySegments(byIcao.get('LFPG'));
+  assert.equal(cdg.length, 5);
+  const cdgSpans = cdg.map((s) => Math.round(greatCircleMetres(s.lon1, s.lat1, s.lon2, s.lat2)));
+  assert.ok(cdgSpans[0] > 4100 && cdgSpans[0] < 4300, `LFPG longest ${cdgSpans[0]} m`);
+  assert.ok(cdgSpans[4] < 600, `LFPG shortest ${cdgSpans[4]} m — the helicopter lane`);
+  assert.equal(cdg[4].widthM, 30);
+
+  // Issy is the case the layer must keep drawable as a ring: a real published
+  // heliport with a runway record and no threshold coordinates at all.
+  assert.deepEqual(airportRunwaySegments(byIcao.get('LFPI')), []);
 });
