@@ -198,9 +198,27 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   **Et le successeur est nommé** : Cesium a versé les assets **Google Maps 2D**
   dans ion le 2 octobre 2025 (Satellite, Satellite + labels, Roadmap…),
   diffusés sous *leur* accord Google et non sous une clé à soi, dans l'ancien
-  quota Bing rebaptisé « Global Imagery ». C'est aussi le seul chemin connu qui
-  atteindrait de l'imagerie Google depuis une adresse de facturation EEE — non
-  vérifié, et la section dit précisément ce qui reste à prouver.
+  quota Bing rebaptisé « Global Imagery ».
+
+- **Le satellite Google marche depuis la France par Cesium ion — mesuré, pas
+  déduit.** C'était la question ouverte depuis un mois. Sondé le 2026-09-08
+  depuis cette machine avec un token ion **gratuit** : tuile de Paris en z18,
+  **HTTP 200, `image/jpeg`, 26 443 octets**, plus Lyon et un témoin new-yorkais.
+  L'explication est dans la notice EEE de Google elle-même : le blocage vise les
+  « projects linked to an account with an **EEA billing address** », jamais la
+  position de l'utilisateur final — et sur ce chemin le projet Google est celui
+  de Cesium, aux États-Unis. ion crée la session Google lui-même et sert les
+  tuiles par un proxy signé ; le navigateur ne parle jamais à
+  `tile.googleapis.com`. Trois mesures qui décideront du câblage : les tuiles
+  répondent jusqu'au **z22** (l'IGN s'arrête au z19), le proxy renvoie
+  `access-control-allow-origin: *`, et la session **expire au bout d'une heure**.
+  Rien n'est câblé : la section documente ce qui est prouvé et ce qui coûterait
+  du travail.
+  **Deux identifiants d'asset annoncés se sont révélés inatteignables** — Azure
+  Maps et Sentinel-2 répondent `404 ResourceNotFound` sur un compte Community,
+  là où Bing et Google 2D passent sans réglage. Le tableau porte donc le
+  résultat du sondage asset par asset, et non la liste de la Sandcastle prise
+  pour argent comptant.
 
 - **La couche Équipements disait 12 000 points là où elle en connaissait
   53 121.** Le plafond de la route `/sites` ne mordait jamais — le carré le plus
