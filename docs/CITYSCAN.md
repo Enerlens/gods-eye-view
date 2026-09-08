@@ -241,14 +241,13 @@ reçoivent un rang sans lettre.
    **Ce que Cityscan garde encore** : dix ans de calibration contre des ventes
    réelles, et un algorithme qu'on ne peut pas auditer. Le nôtre est auditable,
    ce qui est un argument différent — pas le même.
-2. **Le générateur de documents.** Sections, modules, gabarits, thèmes, polices,
-   historique, signature. C'est un produit entier, pas une couche — et c'est le
-   seul poste du palier 2 qui **dépend du palier 1** : il assemble la fiche
-   adresse (palier 1, point 1) et sort par le mode intégrable et l'impression
-   PDF (palier 1, point 8). Le commencer avant que ces deux-là existent, c'est
-   écrire un gabarit pour un contenu qui n'a pas encore de forme. À prendre
-   après, pas en parallèle. L'estimateur, lui, ne dépendait de rien — c'est
-   pourquoi il est parti en premier.
+2. **Le générateur de documents — DÉBLOQUÉ le 2026-09-08.** Sections, modules,
+   gabarits, thèmes, polices, historique, signature : c'est un produit entier,
+   pas une couche. C'était aussi le seul poste du palier 2 qui **dépendait du
+   palier 1**, et cette dépendance est levée : `/fiche.html` existe (#100), et
+   avec elle `?embed=1` et l'impression PDF du navigateur. Le gabarit a
+   maintenant un contenu à mettre en page. C'est le prochain à prendre — le
+   seul du palier 2 qui n'attende plus rien ni personne.
 3. **Le bruit hors aérien — chiffré le 2026-09-08, et plus cher que « un
    chantier de collecte ».** Ce qui était écrit ici restait vrai et vague ; les
    mesures :
@@ -276,21 +275,28 @@ reçoivent un rang sans lettre.
    bande — avec une couverture nationale qui, sur cet échantillon, n'existe pas
    encore. **Palier 2 confirmé, mais le coût est le parseur et la collecte, pas
    le rendu, et la couverture est partielle par construction.**
-4. **Temps de trajet multimodal vers un point choisi — les deux entrées sont
-   mesurées, le graphe ne l'est pas.** Nos isochrones tiennent ; « 23 min en TC
-   jusqu'à La Défense » demande un moteur hébergé (OTP/Valhalla), et ce moteur
-   demande deux fichiers que nous connaissons déjà :
-   · **le GTFS statique français** — `config/pan_gtfs_static.json` indexe
-     **147 réseaux**, dont 134 déclarent leurs `shapes`, pour
-     **413 007 724 octets** de conversions PAN ;
-   · **l'extrait OSM France** — mesuré le 2026-09-08 par une requête de plage
-     sur Geofabrik, `Content-Range: bytes 0-1/5076560568`, soit **5,08 Go**.
-   Ce qui n'est PAS mesuré, et qui décide de la facture : la taille du graphe
-   construit et la RAM du processus qui le sert. C'est le seul poste du palier 2
-   qui ajoute une **machine** au produit plutôt qu'une route ; tant que ce
-   chiffre n'est pas pris sur une vraie construction, l'annoncer serait une
-   estimation sans intervalle — exactement ce que la couche livrée au point 1
-   refuse de faire.
+4. **Temps de trajet multimodal vers un point choisi — CHIFFRÉ le 2026-09-08.**
+   Méthode et mesures : [`docs/ITINERAIRE-MULTIMODAL.md`](ITINERAIRE-MULTIMODAL.md).
+   Trois graphes régionaux ont été construits pour de vrai avec OpenTripPlanner
+   2.9.0, et la France en a été extrapolée avec un modèle ajusté dessus.
+   · **Le produit marche** : sur le graphe francilien, *av. de France → La
+     Défense = 34 min, 2 correspondances, RER C › B › A*, en **748 ms**. C'est
+     mot pour mot la phrase que ce document donnait comme hors de portée.
+   · **La facture est une machine** : `graph.obj` France ≈ **4,8 Go**, heap
+     vivant ≈ **15 à 19 Go**, donc `-Xmx` de 24 à 32 Go, donc **une machine de
+     32 Go au minimum**, 48 à 64 Go pour être tranquille. C'est le seul poste
+     du palier 2 qui ajoute une machine au produit plutôt qu'une route.
+   · **Et c'est un abonnement, pas un achat** : **39 % des flux GTFS français
+     sont republiés dans les 7 jours** (51 % dans les 14, ancienneté médiane
+     13,2 jours), donc la reconstruction hebdomadaire est le plancher — et une
+     reconstruction, c'est la machine de 32 Go occupée pendant tout le build.
+   · **Un flux cassé arrête tout** : un `route_id` vide dans le GTFS maritime
+     de Corsica Ferries fait échouer le build entier. Un moteur national, c'est
+     un cron **plus** une validation et une quarantaine.
+   · **La piste qui changerait la réponse et qui n'est pas mesurée** : Valhalla
+     et MOTIS projettent leurs tuiles en mémoire au lieu de tenir le graphe
+     dans un tas JVM. Si les 32 Go sont ce qui bloque, c'est là qu'il faut
+     mesurer avant de renoncer.
 
 ### Palier 3 — non duplicable
 
