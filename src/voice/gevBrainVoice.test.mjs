@@ -233,3 +233,26 @@ test('the default fetch survives being called as a method — the browser checks
     globalThis.fetch = realFetch;
   }
 });
+
+test('reachable separates "the server said no" from "the server never answered"', async () => {
+  const answered = await fetchVoiceConfig(async () => ({
+    ok: true,
+    json: async () => ({ provider: null, reason: 'No voice key is set — add OPENAI_API_KEY or OPENROUTER_API_KEY.' }),
+  }));
+  assert.equal(answered.reachable, true, 'a 200 saying "no key" IS an answer');
+  assert.match(answered.reason, /No voice key is set/);
+
+  for (const [status, pattern] of [[404, /HTTP 404/], [401, /HTTP 401/], [429, /HTTP 429/]]) {
+    const blocked = await fetchVoiceConfig(async () => ({ ok: false, status }));
+    assert.equal(blocked.reachable, false);
+    assert.match(blocked.reason, pattern, 'the status code is the diagnosis');
+    assert.match(blocked.reason, /Click the mic again/, 'and the message must say the click is worth repeating');
+  }
+
+  const offline = await fetchVoiceConfig(async () => { throw new Error('Failed to fetch'); });
+  assert.equal(offline.reachable, false);
+  assert.match(offline.reason, /Failed to fetch/);
+
+  const garbled = await fetchVoiceConfig(async () => ({ ok: true, json: async () => { throw new Error('Unexpected token'); } }));
+  assert.equal(garbled.reachable, false, 'a 200 of nonsense is not an answer either');
+});

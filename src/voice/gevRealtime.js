@@ -340,11 +340,23 @@ export class GevRealtimeController {
   }
 
   /**
-   * Read (once) which brain this server can drive.
+   * Read which brain this server can drive, caching only a real answer.
+   *
+   * Caching the failure too was a bug with a nasty shape: one transient 429 in
+   * front of the app — or a dropped packet on the first click — left the mic
+   * dead for the whole life of the tab, saying the same thing however many
+   * times it was clicked, and only a page reload cleared it. A lookup that
+   * never reached the server is forgotten so the next click retries.
+   *
    * @returns {Promise<object>}
    */
   resolveVoiceConfig() {
-    if (!this.voiceConfigPromise) this.voiceConfigPromise = fetchVoiceConfig();
+    if (!this.voiceConfigPromise) {
+      this.voiceConfigPromise = fetchVoiceConfig().then((config) => {
+        if (!config.reachable) this.voiceConfigPromise = null;
+        return config;
+      });
+    }
     return this.voiceConfigPromise;
   }
 

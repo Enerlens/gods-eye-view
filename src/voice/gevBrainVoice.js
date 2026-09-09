@@ -38,36 +38,57 @@ const RECOGNITION_RESTART_MS = 250;
 /**
  * Read the server's voice configuration.
  *
- * A failure here resolves to "no provider" rather than throwing: a dev server
- * without the endpoint (an older build, a static preview) must present a mic
- * that says it is unavailable, not a page that fails to boot.
+ * Never throws: a dev server without the endpoint (an older build, a static
+ * preview) must present a mic that says it is unavailable, not a page that
+ * fails to boot.
+ *
+ * `reachable` is the load-bearing field. It separates the two failures that
+ * used to read identically on the dock and need opposite responses:
+ *
+ *   reachable: true   the server ANSWERED — "no key is set", "voice is off".
+ *                     Clicking again will say the same thing. Fix the .env.
+ *   reachable: false  the server was never heard from — a 429, a 404 on an
+ *                     older build, a dropped packet. Clicking again may work,
+ *                     so this answer must NOT be remembered (see
+ *                     GevRealtimeController.resolveVoiceConfig).
+ *
+ * The status code travels in `reason` because it is the whole diagnosis: 404
+ * means the build predates this endpoint, 401 means the auth gate, 429 means
+ * a rate limit in front of the app rather than the app itself.
  *
  * @param {typeof fetch} [fetchImpl]
- * @returns {Promise<{provider: string|null, reason: string, language: string, model: string|null, maxRounds: number, configured: object}>}
+ * @returns {Promise<{provider: string|null, reason: string, reachable: boolean, language: string, model: string|null, maxRounds: number, configured: object}>}
  */
 export async function fetchVoiceConfig(fetchImpl = defaultFetch) {
-  const fallback = {
+  const unreachable = (detail) => ({
     provider: null,
-    reason: 'Voice configuration is unavailable.',
+    reachable: false,
+    reason: `Could not reach voice configuration (${detail}). Click the mic again.`,
     language: 'en-US',
     model: null,
     maxRounds: DEFAULT_MAX_ROUNDS,
     configured: { openai: false, openrouter: false },
-  };
+  });
+  let response;
   try {
-    const response = await fetchImpl('/api/voice/config', { headers: { Accept: 'application/json' } });
-    if (!response.ok) return fallback;
+    response = await fetchImpl('/api/voice/config', { headers: { Accept: 'application/json' } });
+  } catch (error) {
+    return unreachable(error?.message || 'network error');
+  }
+  if (!response.ok) return unreachable(`HTTP ${response.status}`);
+  try {
     const data = await response.json();
     return {
       provider: typeof data?.provider === 'string' ? data.provider : null,
-      reason: typeof data?.reason === 'string' ? data.reason : fallback.reason,
+      reachable: true,
+      reason: typeof data?.reason === 'string' ? data.reason : 'Voice is not configured on this server.',
       language: typeof data?.language === 'string' ? data.language : 'en-US',
       model: typeof data?.model === 'string' ? data.model : null,
       maxRounds: Number(data?.maxRounds) > 0 ? Math.min(8, Number(data.maxRounds)) : DEFAULT_MAX_ROUNDS,
-      configured: data?.configured && typeof data.configured === 'object' ? data.configured : fallback.configured,
+      configured: data?.configured && typeof data.configured === 'object' ? data.configured : { openai: false, openrouter: false },
     };
-  } catch {
-    return fallback;
+  } catch (error) {
+    return unreachable(error?.message || 'unreadable response');
   }
 }
 

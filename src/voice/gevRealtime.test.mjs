@@ -3246,3 +3246,41 @@ test('a genuinely different refused call still gets its own output', async () =>
   await controller.handleRealtimeEvent(lateToolItemEvent('resp_old', 'call_two', 'item_two'));
   assert.deepEqual(outputs, ['call_one', 'call_two'], 'each distinct call is answered');
 });
+
+test('a voice-config lookup that never reached the server is retried, not remembered', async () => {
+  // Regression, seen on staging 2026-09-09: a rate limit in front of the app
+  // made the first lookup fail, the failure was cached, and the mic then read
+  // "Voice configuration is unavailable" for the life of the tab — however many
+  // times it was clicked, long after the limit had cleared. Only a reload fixed
+  // it. A lookup that never got an answer must be forgotten.
+  const realFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) return { ok: false, status: 429 };
+    return {
+      ok: true,
+      json: async () => ({ provider: 'openrouter', reason: 'Selected by GEV_VOICE_PROVIDER=openrouter.', language: 'fr-FR', model: 'mistralai/mistral-medium-3.1', maxRounds: 5 }),
+    };
+  };
+  try {
+    const host = { voiceConfigPromise: null };
+    host.resolveVoiceConfig = GevRealtimeController.prototype.resolveVoiceConfig;
+
+    const first = await host.resolveVoiceConfig();
+    assert.equal(first.reachable, false);
+    assert.match(first.reason, /HTTP 429/, 'the status is the diagnosis and must be shown');
+    assert.equal(host.voiceConfigPromise, null, 'an unreachable answer must not be cached');
+
+    const second = await host.resolveVoiceConfig();
+    assert.equal(second.reachable, true);
+    assert.equal(second.provider, 'openrouter');
+    assert.equal(attempts, 2, 'the second click retried');
+
+    // A real answer IS cached: "no key is set" will not change by clicking again.
+    await host.resolveVoiceConfig();
+    assert.equal(attempts, 2, 'a reachable answer is remembered');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
