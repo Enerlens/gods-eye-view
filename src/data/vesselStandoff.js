@@ -38,12 +38,27 @@
  *   · far edge, ahead        0.904·range
  *
  * A coast at distance D is therefore inside the frame from EVERY bearing at
- * range ≈ 2.68·D. The factor below is deliberately under that. The worst case
- * it gives up on is a coast lying exactly behind the camera — and buying that
- * one case costs every ordinary click (coast ahead or abeam) a range that
- * reads as a map instead of a scene. The floor and the ceiling matter more
- * than the factor: they are what keep a ferry alongside its berth and a
- * freighter in mid-Channel in the same visual register.
+ * range ≈ 2.68·D, and that is the factor: no bearing is given up on. It first
+ * shipped at 2.2 — deliberately under the guarantee, on the argument that
+ * buying the coast-astern case cost every ordinary click a range that "reads
+ * as a map instead of a scene". The operator, looking at the result, asked for
+ * the map. 2.68 is where the optics put the guarantee, so it is a derived
+ * number and not a second taste call.
+ *
+ * ── Where the floor comes from ─────────────────────────────────────────────
+ *
+ * The floor rules more clicks than the factor does: French AIS traffic hugs
+ * the coast, so anything within ~4.5 km of land lands on it. It was 8 km — a
+ * ~9 km-wide scene, which holds a port basin. 12 km holds the basin AND the
+ * town that names it (~14 km wide, ~4.5 km of ground astern of the target),
+ * which is the whole point of framing a ship by its coast.
+ *
+ * 12 km also keeps the size channel alive: the camera settles at 0.616·range =
+ * 7.4 km, and true-scale hulls stop being drawn above `hullAltitudeM()` —
+ * 15.6 km on a 900 px canvas, 23.5 km on a full-height window
+ * (`vesselLabels.js`). A floor much wider than this would trade the hulls for
+ * the context, and the hulls are the only thing on screen drawn at its real
+ * size. `vesselStandoff.test.mjs` pins that margin.
  *
  * PURE — no Cesium, no DOM, no fetch. The caller measures the coast distance
  * (`franceDepartements.nearestDepartementWithin`) and this decides the framing.
@@ -60,13 +75,13 @@
  */
 export const VESSEL_STANDOFF = Object.freeze({
   /** Closest the camera ever settles on a clicked vessel, metres. */
-  minRangeM: 8_000,
+  minRangeM: 12_000,
   /** Furthest, metres — used as-is when no coast is within `scanKm`. */
   maxRangeM: 45_000,
   /** Used when the coast distance is UNKNOWN (outlines not loaded yet), metres. */
   defaultRangeM: 20_000,
   /** Range per metre of coast distance — see the file header. */
-  coastFactor: 2.2,
+  coastFactor: 2.68,
   /** Down-pitch of the transfer, degrees. Oblique: a nadir drop reads as a map. */
   pitchDeg: -38,
 });

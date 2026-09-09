@@ -166,7 +166,7 @@ test('every framing is a real oblique standoff, not a nadir or an inside-out sph
     radiusM: 150,
     rangeM: 20_000,
     pitchDeg: -38,
-    minRangeM: 8_000,
+    minRangeM: 12_000,
     maxRangeM: 45_000,
   });
   assert.deepEqual({ ...WORLD_FOCUS_FRAMING.fire }, { radiusM: 400, rangeM: 3000, pitchDeg: -35 });

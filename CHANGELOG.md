@@ -25,6 +25,39 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   qui s'ouvre directement sur un fond satellite ne paie pas ces 848 kB pendant
   son démarrage.
 
+- **La clé d'une couche est peinte une fois, sur la carte — plus deux fois.**
+  Les mêmes entrées `{couleur, glyphe, libellé, compte}` étaient montées à deux
+  endroits : sous la ligne de la couche dans `DATA LAYERS`, à gauche, et dans
+  le bloc `LEGEND` du rail droit. Deux copies d'une même clé ne protègent rien
+  — le lecteur doit les comparer pour découvrir que c'est la même liste — et la
+  copie de gauche repoussait au passage la couche suivante hors du panneau : les
+  sept familles des navires en direct occupaient à elles seules sept lignes
+  au-dessus de `Bouées marines`. C'est le bloc sur la carte qui survit : il est
+  lisible sans ouvrir de panneau, il rend le `blurb` de chaque entrée en
+  **texte** au lieu d'un `title` réservé à la souris, et c'est celui que voit le
+  destinataire d'un lien de partage (`ui.js`, `allowStored:
+  !this._initialShareState`). La ligne de la couche garde ses **puces** — elles
+  sont des commandes, pas une légende — et devient silencieuse quand elle n'en a
+  aucune.
+- **Cliquer un navire recule encore : plancher 12 km, facteur 2,68.** Le recul
+  mesuré depuis la côte (livré la veille) partait de `2,2 × distance` avec un
+  plancher à 8 km. Le facteur venait d'être choisi **sous** la garantie
+  optique : au champ de 60° et au pitch −38°, une côte à distance D n'est dans
+  le cadre depuis **toutes** les orientations qu'à partir de `2,68 × D`, et 2,2
+  abandonnait délibérément le cas de la côte dans le dos pour un cadre qui « se
+  lit comme une scène plutôt que comme une carte ». Demande de l'opérateur :
+  la carte. 2,68 est donc désormais le facteur, et il n'est pas un second choix
+  de goût — c'est là que l'optique pose la garantie. Le **plancher** compte
+  davantage, car le trafic AIS français longe la côte et presque tout clic y
+  tombe : 8 km tenaient un bassin portuaire, 12 km tiennent le bassin **et** la
+  ville qui le nomme (~14 km de large, 4,5 km de sol derrière la cible). Mesuré
+  sur les mêmes positions réelles : Le Havre à quai 8 → **12 km**, milieu du
+  Pas-de-Calais 19,7 → **24 km**, large de Nice 34,8 → **42,4 km**, Ouessant et
+  Gascogne inchangés au plafond de 45 km. Le plancher reste sous l'altitude où
+  les coques à l'échelle réelle sont dessinées (7,4 km de hauteur caméra contre
+  un seuil de 15,6 à 23,5 km selon la fenêtre), donc un navire au port garde sa
+  coque : c'est le seul objet de la scène tracé à sa vraie taille, et un test
+  épingle désormais cette marge.
 - **Ouvrir la carte ne coûte plus rien à personne — ni des octets, ni une
   clé.** Deux mesures prises sur la machine que ce projet vise vraiment (un
   portable de 2018, CPU bridé ÷4, 10 Mbit/s) ont donné deux résultats que

@@ -2456,15 +2456,26 @@ export class DataLayerManager {
   }
 
   /**
-   * Render a layer's row chips and color legend, and keep the whole block
+   * Render a layer's row chips — the CONTROLS, and only those. The key itself
+   * is painted once, on the map, by {@link _refreshMapLegend}. The block stays
    * hidden while the layer is off (or while a dependency owner has surrendered
    * it) so a quiet row stays quiet.
+   *
+   * THE ROW USED TO REPAINT THE KEY TOO. Both mount points read the same
+   * `getRowControls().legend`, so every enabled layer printed its swatches
+   * twice: once under the row in `#data-panel`, once in `#map-legend` on the
+   * right. Two copies of one key is not redundancy that protects — the reader
+   * has to compare them to find out they are the same list, and the left copy
+   * pushed the next layer's row off the panel while doing it. The on-map block
+   * is the copy that survives: it is legible without opening a panel, it
+   * carries each entry's `blurb` as TEXT rather than as a mouse-only `title`,
+   * and it is the one a share-link recipient sees (`ui.js`,
+   * `allowStored: !this._initialShareState`).
    *
    * Chip BUTTONS are reconciled in place, keyed by chip id, rather than
    * rebuilt: this runs on every panel refresh — including the one the chip's
    * own click triggers — and replacing the node would drop keyboard focus
-   * mid-interaction. Legend entries hold no focus and no listeners, so they
-   * are replaced freely.
+   * mid-interaction.
    * @param {HTMLElement|null} container The row's `.data-toggle-controls` node.
    * @param {object} layer Registered layer entry.
    */
@@ -2477,12 +2488,8 @@ export class DataLayerManager {
       ? (layer.enabled ? this._rowControlsFor(layer.id) : null)
       : resolvedControls;
     const chips = controls?.chips || [];
-    const legend = controls?.legend || [];
-    container.hidden = chips.length === 0 && legend.length === 0;
-
-    for (const node of [...container.children]) {
-      if (String(node.className).split(/\s+/).includes('data-toggle-legend-item')) node.remove();
-    }
+    // A legend-only layer now has nothing to show HERE: its key is on the map.
+    container.hidden = chips.length === 0;
 
     const stale = new Map();
     for (const node of [...container.children]) {
@@ -2507,36 +2514,6 @@ export class DataLayerManager {
       button.setAttribute('aria-busy', chip.busy ? 'true' : 'false');
     }
     for (const node of stale.values()) node.remove();
-
-    for (const item of legend) {
-      const entry = document.createElement('span');
-      entry.className = 'data-toggle-legend-item';
-      if (item.blurb) entry.title = item.blurb;
-      const swatch = document.createElement('span');
-      // A layer whose map channel is SHAPE, not hue, may hand the legend the
-      // very glyph it draws. Masking keeps the swatch the exact declared
-      // colour — the mask only decides which of its pixels survive — so the
-      // "the swatch IS the datum" rule holds for both kinds of entry.
-      swatch.className = item.glyph
-        ? 'data-toggle-legend-swatch has-glyph'
-        : 'data-toggle-legend-swatch';
-      swatch.style.background = item.color;
-      if (item.glyph) {
-        const mask = `url("${item.glyph}")`;
-        swatch.style.webkitMaskImage = mask;
-        swatch.style.maskImage = mask;
-      }
-      const text = document.createElement('span');
-      // Same guard as the map legend below: a legend entry may carry no count
-      // at all. Height keys ("1 m de houle → 10 km"), hatch keys and scale
-      // headers label a channel rather than tally a population, and
-      // `_formatCount(undefined)` returns the literal string "undefined".
-      text.textContent = Number.isFinite(item.count)
-        ? `${item.label} ${this._formatCount(item.count)}`
-        : item.label;
-      entry.append(swatch, text);
-      container.appendChild(entry);
-    }
   }
 
   _refreshTogglePanel() {
@@ -2549,7 +2526,8 @@ export class DataLayerManager {
     }
     // Legend material for the ON-MAP block, gathered in this same pass.
     // `_rowControlsFor` runs a layer-supplied callback, so it is asked ONCE
-    // per layer per refresh and the answer is shared by both mount points.
+    // per layer per refresh and one answer feeds both the row's chips and the
+    // on-map key.
     const mapLegend = [];
     for (const layer of this.getAll()) {
       const controls = layer.enabled ? this._rowControlsFor(layer.id) : null;
@@ -2593,20 +2571,20 @@ export class DataLayerManager {
   }
 
   /**
-   * Paint the ON-MAP legend block — the second mount point for the very same
-   * `{color, glyph, label, count, blurb}` entries the layer rows already
-   * build.
+   * Paint the on-map legend block — THE mount point for the
+   * `{color, glyph, label, count, blurb}` entries each enabled layer publishes
+   * through `getRowControls()`.
    *
-   * WHY A SECOND MOUNT POINT (CARTOGRAPHIE, "a map without a key is a
-   * picture"). The legend rendering in `_syncRowControls` is good and is not
-   * being replaced. Its PLACEMENT was the defect: the entries live inside
-   * `#data-panel`, which ships `collapsed`, and the collapsed rule hides
-   * `.data-toggle-list` outright — so no legend was visible in the default
+   * WHY HERE AND NOWHERE ELSE (CARTOGRAPHIE, "a map without a key is a
+   * picture"). The entries used to render in the layer row as well, inside
+   * `#data-panel`, which ships `collapsed` — and the collapsed rule hides
+   * `.data-toggle-list` outright, so no legend was visible in the default
    * state, and opening the panel covered the left quarter of the map. Worse,
    * a share link deliberately ignores the recipient's stored panel preference
    * (`ui.js`, `allowStored: !this._initialShareState`), so the one moment
    * somebody reads a map they did not build was the moment the key was
-   * structurally guaranteed absent.
+   * structurally guaranteed absent. That copy is gone: the row keeps the
+   * chips, which are controls, and the key is painted once, here.
    *
    * The `blurb` is rendered as TEXT here, not as a `title` tooltip. Those
    * strings carry statements the map has to make — "the fill is an absolute
