@@ -8196,5 +8196,83 @@
 "pauvrete": 15.1
 },
 "truncated": false
+},
+"bruit": {
+"peb": [],
+"pgs": [],
+"airports": [],
+"pgsAirports": [],
+"point": {
+"lat": 48.83,
+"lon": 2.376
+},
+"nearbyCount": 0,
+"mixedIndex": false,
+"indices": [],
+"disputed": false,
+"revised": false,
+"nearest": {
+"oaci": "LFPI",
+"name": "ISSY-LES-MOULINEAUX",
+"lat": 48.8333,
+"lon": 2.272817,
+"arreteDate": "2007-04-18",
+"index": "lden",
+"documentUrl": "http://piece-jointe-carto.developpement-durable.gouv.fr/NAT003/PEB/PEB_LFPI_18_04_2007.pdf",
+"distanceKm": 7.6
+},
+"scaleDenominator": 39757,
+"available": {
+"peb": true,
+"pgs": true
+},
+"source": "Plans d’exposition au bruit et plans de gêne sonore — DGAC, via la Géoplateforme (data.geopf.fr)",
+"register": {
+"count": 224,
+"total": 224,
+"short": false,
+"truncated": false,
+"psophique": 70,
+"lden": 154,
+"oldest": "1974-08-22",
+"newest": "2022-06-20",
+"fetchedAt": 1788958177234
+},
+"nearestReach": 150
+},
+"anfr": {
+"supports": [],
+"count": 0,
+"inBox": 0,
+"truncated": false,
+"box": {
+"south": 48.824,
+"west": 2.36689,
+"north": 48.836,
+"east": 2.38511
+},
+"national": {
+"count": 0,
+"live": 0,
+"projectOnly": 0,
+"plannedUpgrades": 0,
+"bands": {
+"projet": 0,
+"2g": 0,
+"3g": 0,
+"4g": 0,
+"5g": 0
+},
+"generations": {
+"2G": 0,
+"3G": 0,
+"4G": 0,
+"5G": 0
+}
+},
+"edition": "2026-09-03",
+"source": "Observatoire des réseaux mobiles & installations de plus de 5 W — Agence nationale des fréquences (data.anfr.fr, data.gouv.fr)",
+"licence": "Licence Ouverte v2.0 (Etalab)",
+"natureAvailable": false
 }
 }

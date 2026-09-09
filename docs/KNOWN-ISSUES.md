@@ -1,6 +1,6 @@
 # KNOWN ISSUES
 
-Updated: July 8, 2026
+Updated: September 9, 2026
 
 This file tracks active runtime issues only.
 
@@ -10,6 +10,34 @@ of the public release.
 ---
 
 ## Open
+
+### The ANFR observatoire CSV published on 2026-09-03 is a header and nothing else
+Status: Open (upstream), measured 2026-09-09
+
+Context:
+- `pickAnfrObservatoire` resolves the catalogue's `file_csv` to
+  `https://data.anfr.fr/sites/default/files/dataset/20260903183444_observatoireod_20260903.csv`.
+  A `HEAD` on that URL answers **`content-length: 222`** — the 22-column header
+  row, no data rows at all.
+- The catalogue still advertises `records_count` **826 931** for the resource,
+  so the proxy logs `[ANFR Proxy] observatoire short: 0/826931 rows` and caches
+  an empty register. `src/data/fixtures/anfr-observatoire-sample.json` records
+  the same file on 2026-08-27 at **181 988 412 bytes / 826 418 rows**, so this
+  is a regression in the publication, not in the reader.
+
+Consequences in runtime:
+- `Antennes mobiles` (folded into the `Infrastructure numérique` row) draws
+  nothing anywhere, and `/api/anfr-fr/supports` answers `count: 0` for every
+  box.
+- The address radiography prints "Le registre ANFR est vide dans cette édition"
+  rather than "0 supports", because an empty register is a fact about the
+  register and never about the address (`projectAntennes`).
+
+Nothing to fix here: the reader is correct and the cache is short (6 h), so a
+republished file is picked up on its own.
+
+---
+
 
 ### Street traffic can be slow/uneven when panning across dense city blocks
 Status: Open (partially mitigated)

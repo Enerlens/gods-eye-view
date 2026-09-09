@@ -271,12 +271,21 @@ test('the duration reaches a share link, because the headline depends on it', ()
   _setFicheSecondsForTest(FICHE_DEFAULT_SECONDS);
 });
 
-test('the chips are the three durations and exactly one is active', () => {
+test('the chips are the three durations, then the door to the sheet', () => {
   _setFicheSecondsForTest(300);
   const { chips, legend } = implantationFicheLayer.getRowControls();
-  assert.deepEqual(chips.map((chip) => chip.label), ['5 MIN', '10 MIN', '15 MIN']);
-  assert.equal(chips.filter((chip) => chip.active).length, 1);
-  assert.equal(chips.find((chip) => chip.active).id, '300');
+  assert.deepEqual(chips.map((chip) => chip.label),
+    ['5 MIN', '10 MIN', '15 MIN', 'RADIOGRAPHIE']);
+  const durations = chips.filter((chip) => chip.id !== 'sheet');
+  assert.equal(durations.filter((chip) => chip.active).length, 1);
+  assert.equal(durations.find((chip) => chip.active).id, '300');
+  // The door is DISABLED, not hidden, while there is no point to open on: a
+  // chip that comes and goes teaches nobody that the sheet exists, and the
+  // reason it cannot open right now is what its tooltip is for.
+  const door = chips.find((chip) => chip.id === 'sheet');
+  assert.equal(door.disabled, true);
+  assert.equal(door.active, false);
+  assert.match(door.title, /Cliquez une adresse/);
   // The legend IS the bracket: two countable bounds and the headline between.
   assert.deepEqual(legend.map((row) => row.label),
     ['Carreaux entiers', 'Au centre du carreau', 'Carreaux touchés']);

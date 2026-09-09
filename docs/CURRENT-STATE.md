@@ -2175,6 +2175,53 @@ report into, so they instead refuse to memoize a failure —
 load after a doubling cooldown (5 s → 5 min), which keeps one bad load from
 silently demoting every later lookup for the session.
 
+#### The door to the radiography, and the sheet's two missing halves (September 2026)
+
+`src/data/ficheSheet.js` is a layer-owned, self-mounting panel — the same idiom
+as `veloPulseHud.js` — that FRAMES `fiche.html` at the point the globe is
+scanning. It is opened by a `RADIOGRAPHIE` chip on the `Zone de chalandise`
+row, published by `implantation-fr`.
+
+WHY IT EXISTS. Two surfaces answered the same question about the same door and
+nothing linked them: the globe's fiche card is capped at six lines
+(`createAddressScanOverlayEntry`, `.slice(0, 6)` — the right cap for a label
+pinned on a doorway) and `fiche.html` holds sixty rows, printable, reachable
+only by typing its URL.
+
+WHY AN IFRAME. `fiche.html` already ships `?embed=1`, which strips its masthead
+form and print button precisely so it can be framed, and it is a Cesium-free
+page by explicit decision (`CESIUM_FREE_PAGES`). Re-rendering its sixty rows
+inside the globe bundle would mean two renderers for one document, and the
+second would be the one nobody prints. Same origin, same session, same server
+cache.
+
+The frame is EMPTIED on close, not merely hidden: an iframe left pointed at the
+sheet keeps seventeen requests and their timers alive behind a panel nobody is
+reading. Re-pointing at the same place is a no-op rather than a reload.
+
+The chip travels through `setParams({sheet})` and is deliberately absent from
+`getParams()`: a share link carries what the map SAYS, and whether a reader had
+a panel open is not that. It returns `true` because the manager treats `false`
+as a rejection and would log a fault for a chip that did what it was asked.
+
+THE SHEET NOW READS SEVENTEEN ROUTES, not fifteen. Two themes were answering
+half their own question, and the audit had counted both routes as "in
+production for a layer, with no line on the sheet":
+
+- **Nuisances** gains `/api/bruit-fr` — the PEB or PGS band under the point,
+  with its index, its range and the date of its arrêté; outside every plan, the
+  nearest aerodrome and its distance. A band with `atPoint: false` (the
+  overview wash the layer draws AROUND an aerodrome, tested against no point)
+  never reaches the sheet.
+- **Numérique** gains `/api/anfr-fr/supports` — masts around the address by
+  generation, counting only what RADIATES (`live`), never what is approved
+  (`plan`). An empty NATIONAL register is reported as an empty register and
+  never as an empty street; see `docs/KNOWN-ISSUES.md` for the 222-byte
+  upstream CSV that made that distinction load-bearing on the day it shipped.
+
+Both join an existing theme rather than founding one of their own — the same
+"one subject, one heading" decision the layer panel just made.
+
 #### Fused rows — one subject, one line (September 2026)
 
 `src/data/layerFusions.js` is the one table that says which rows are the SAME

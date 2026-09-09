@@ -20,6 +20,7 @@ import {
   BAREME_SAMPLE,
   scoreIndicator,
 } from './baremeNational.js';
+import { mountFicheSheet } from './ficheSheet.js';
 
 /**
  * Fiche implantation — the one card a geomarketing tool exists to print.
@@ -99,6 +100,23 @@ export const FICHE_DEFAULT_SECONDS = 600;
 
 /** @type {number} The ring the fiche is currently computed on. */
 let _seconds = FICHE_DEFAULT_SECONDS;
+
+/**
+ * The radiography panel, mounted on first request and never before.
+ *
+ * THE CARD IS SIX LINES, AND THAT IS THE RIGHT CAP. A label pinned on a doorway
+ * cannot carry sixty rows, and `createAddressScanOverlayEntry` slices it there
+ * on purpose. What was missing was not room on the card — it was a DOOR to the
+ * sheet that already holds the other fifty-four (`fiche.html`, ten themes,
+ * fifteen routes, printable). The chip below is that door, and `ficheSheet.js`
+ * is the frame it opens.
+ *
+ * Held at module scope like `_seconds`, for the same reason: this layer is a
+ * singleton spread over the shared address-scan factory, and its state lives
+ * beside it rather than inside a closure the factory owns.
+ * @type {?object}
+ */
+let _sheet = null;
 
 const SELECTED_COLOR = '#ffd166';
 
@@ -703,6 +721,59 @@ const base = createAddressScanLayer({
 });
 
 /**
+ * The point the radiography opens on.
+ *
+ * Three candidates, in the order a reader would expect: the ground card they
+ * just clicked, then the pin they dropped, then the centre the camera scanned.
+ * The three agree whenever a reader has done anything at all; they differ only
+ * before the first click, where the camera's own centre is still the honest
+ * answer to "which address is this card about".
+ *
+ * Pure, and exported, because the chip's ENABLED state is decided by it: a
+ * door that opens onto nothing has to be shut before it is pressed, not after.
+ *
+ * @param {object} stats `getStats()` from the shared address-scan factory.
+ * @returns {?{lat: number, lon: number}}
+ */
+export function ficheSheetPoint(stats) {
+  // `Number(null)` is 0 and 0 is finite, so a half-written centre — a latitude
+  // with no longitude — would pass a plain `Number.isFinite` pair and open the
+  // sheet in the Gulf of Guinea. It is the same trap `bdtopoBuildings.js`
+  // counts separately in its own join, and it is refused the same way: only a
+  // number or a numeric string is a coordinate here.
+  const coord = (value) => {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+  for (const candidate of [stats?.groundCard, stats?.scanPin, stats?.scanCentre]) {
+    const lat = coord(candidate?.lat);
+    const lon = coord(candidate?.lon);
+    if (lat !== null && lon !== null) return { lat, lon };
+  }
+  return null;
+}
+
+/** Open the sheet on whatever the layer is currently looking at. */
+function _openFicheSheet() {
+  const point = ficheSheetPoint(base.getStats());
+  if (!point) return false;
+  if (!_sheet) _sheet = mountFicheSheet();
+  return _sheet?.show(point, base.getStats()?.groundCard?.title || '') === true;
+}
+
+/** Close it, keeping the mounted panel for the next press. */
+function _closeFicheSheet() {
+  _sheet?.hide?.();
+}
+
+/** The mounted sheet, for tests that do not construct a viewer. */
+export function _ficheSheetForTest() {
+  return _sheet;
+}
+
+/**
  * The layer, wrapping the shared factory with the duration control.
  *
  * Spread rather than subclassed, for the same reason the isochrone layer is:
@@ -720,12 +791,42 @@ const implantationFicheLayer = {
    * @returns {boolean}
    */
   setParams(params = {}) {
+    // THE SHEET IS AN ACTION, NOT A STATE. It travels through `setParams`
+    // because that is the only channel a row chip has, and it deliberately
+    // does NOT appear in `getParams()`: a share link carries what the map
+    // SAYS, and whether a reader had a panel open at the time is not that.
+    // `true` is returned because the manager treats `false` as a rejection
+    // and would log a fault for a chip that did exactly what it was asked.
+    if (params.sheet !== undefined) {
+      if (params.sheet === 'close') _closeFicheSheet();
+      else _openFicheSheet();
+      return true;
+    }
     if (params.seconds === undefined) return false;
     const next = resolveSeconds(params.seconds);
     if (!next || next === _seconds) return false;
     _seconds = next;
     void base.update();
     return true;
+  },
+
+  /**
+   * The panel is closed with the layer.
+   *
+   * A sheet left framing an address whose pin has just left the globe is a
+   * document about a place the reader can no longer see, and it keeps fifteen
+   * requests warm behind it.
+   * @returns {*} Whatever the shared factory's own `disable` returns.
+   */
+  disable(...args) {
+    _closeFicheSheet();
+    return base.disable(...args);
+  },
+
+  destroy(...args) {
+    _sheet?.destroy?.();
+    _sheet = null;
+    return base.destroy(...args);
   },
 
   /** @returns {{seconds: number}} The duration a share link has to carry. */
@@ -743,6 +844,23 @@ const implantationFicheLayer = {
       title: `Population et revenus à ${minutesLabel(seconds)} à pied de l’adresse scannée`,
       params: { seconds },
     }));
+    // THE DOOR. Disabled rather than hidden while there is no point to open:
+    // a chip that appears and disappears teaches nobody that the sheet exists,
+    // and the reason it cannot open right now is exactly what its tooltip is
+    // for. `ficheSheetPoint()` is the same centre the card is written about.
+    const point = ficheSheetPoint(stats);
+    const open = Boolean(_sheet && _sheet.point());
+    chips.push({
+      id: 'sheet',
+      label: 'RADIOGRAPHIE',
+      active: open,
+      state: open ? 'active' : 'idle',
+      disabled: !point,
+      title: point
+        ? 'Ouvrir la radiographie complète de ce point — dix thématiques, imprimable'
+        : 'Cliquez une adresse sur le globe : la radiographie s’ouvre sur ce point',
+      params: { sheet: open ? 'close' : 'open' },
+    });
     // A three-row legend that IS the bracket: the two countable bounds and the
     // headline between them. The layer's whole argument, in the row.
     const legend = [

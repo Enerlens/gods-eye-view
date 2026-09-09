@@ -1,5 +1,5 @@
 // src/data/adresseRadiographie.test.mjs
-// Pins the address radiography against ONE real scan: the fifteen live answers
+// Pins the address radiography against ONE real scan: the seventeen live answers
 // for 48.83 N, 2.376 E (Paris 13e), captured through the very URLs
 // `radiographieRequests` builds. The wording is the product here — every line
 // on the sheet is a claim about somebody's address — so it is asserted rather
@@ -57,8 +57,8 @@ test('the ten themes are Cityscan’s ten, in Cityscan’s order', () => {
 
 test('every request is a route this repository serves, keyed by name', () => {
   const requests = radiographieRequests(POINT);
-  assert.equal(requests.length, 15);
-  assert.equal(new Set(requests.map((request) => request.key)).size, 15);
+  assert.equal(requests.length, 17);
+  assert.equal(new Set(requests.map((request) => request.key)).size, 17);
   for (const request of requests) {
     assert.ok(request.url.startsWith('/api/') || request.url.startsWith('https://api-adresse.data.gouv.fr/'),
       `${request.key} must be an app route or the BAN`);
@@ -244,7 +244,10 @@ test('a silent source degrades one theme and names it, leaving nine standing', (
     parts: { ...PARTS, atmo: null, loyers: null },
     at: AT,
   });
-  assert.equal(without.themes.find((entry) => entry.id === 'nuisances').status, 'absent');
+  // Nuisances reads TWO registers now — the air and the aircraft — so a silent
+  // ATMO leaves it `partial` with the noise half standing, exactly like
+  // Immobilier below. `absent` is reserved for a theme where nothing answered.
+  assert.equal(without.themes.find((entry) => entry.id === 'nuisances').status, 'partial');
   assert.deepEqual(without.themes.find((entry) => entry.id === 'nuisances').silent, ['atmo']);
   // Immobilier keeps DVF and DPE and reports the rent as the missing half —
   // `partial` and `absent` are different facts and must not look alike.
@@ -253,7 +256,116 @@ test('a silent source degrades one theme and names it, leaving nine standing', (
   assert.deepEqual(immobilier.silent, ['loyers']);
   assert.ok(immobilier.lines.length > 3);
   assert.equal(without.answered, 8);
-  assert.deepEqual(without.absent, ['nuisances']);
+  assert.deepEqual(without.absent, []);
+});
+
+// ── Les deux moitiés qui manquaient ─────────────────────────────────────────
+// The audit counted four routes in production with no line on this sheet.
+// Two of them belong to themes that were already here and were answering half
+// their own question: Nuisances printed the air and never the aircraft,
+// Numérique printed the cable and never the mast. They join their theme rather
+// than founding two more — one subject, one heading.
+
+const BRUIT_ROISSY = JSON.parse(readFileSync(
+  new URL('./fixtures/radiographie-bruit-roissy.json', import.meta.url),
+  'utf8',
+));
+
+test('outside every plan, the noise line names the nearest one instead of saying nothing', () => {
+  // Paris 13e is in no PEB at all, which is the common case and the one a
+  // blank row would misreport as "not measured".
+  const row = rows('nuisances')['Plan d’exposition au bruit'];
+  assert.equal(row.value, 'aucun à ce point');
+  assert.match(row.note, /ISSY-LES-MOULINEAUX/);
+  assert.match(row.note, /km$/);
+  assert.match(notes('nuisances'), /CONTRAINTE D’URBANISME/);
+  assert.match(notes('nuisances'), /Bruit AÉRONAUTIQUE seulement/);
+});
+
+test('inside a plan, the band is named with its index, its range and its arrêté', () => {
+  const under = composeRadiographie({
+    point: { lat: 49.0097, lon: 2.5479 },
+    parts: { ...PARTS, bruit: BRUIT_ROISSY },
+    at: AT,
+  });
+  const nuisances = under.themes.find((entry) => entry.id === 'nuisances');
+  const byLabel = Object.fromEntries(nuisances.lines.map((row) => [row.label, row]));
+  const peb = byLabel['Zone C du PEB'];
+  assert.ok(peb, 'the PEB band is named by its zone letter');
+  assert.equal(peb.value, 'Lden 56–65');
+  assert.match(peb.note, /P\. CH\. DE GAULLE \(LFPG\)/);
+  assert.match(peb.note, /arrêté du 2007-04-03/);
+  // The two documents are printed apart and never summed: a PEB zones what may
+  // be BUILT, a PGS who may be HELPED to soundproof.
+  assert.ok(nuisances.lines.some((row) => /du PGS$/.test(row.label)));
+  assert.equal(byLabel['Plan d’exposition au bruit'], undefined);
+});
+
+test('an overview band, tested against no point, never reaches the sheet', () => {
+  // The layer draws bands AROUND an aerodrome with `atPoint: false` precisely
+  // because nothing was tested against a point. On a map that is a wash; on a
+  // sheet about one door it would be a false claim about that door.
+  const overview = {
+    ...BRUIT_ROISSY,
+    peb: BRUIT_ROISSY.peb.map((band) => ({ ...band, atPoint: false })),
+    pgs: [],
+  };
+  const under = composeRadiographie({
+    point: { lat: 49.0097, lon: 2.5479 },
+    parts: { ...PARTS, bruit: overview },
+    at: AT,
+  });
+  const nuisances = under.themes.find((entry) => entry.id === 'nuisances');
+  assert.ok(nuisances.lines.some((row) => row.label === 'Plan d’exposition au bruit'));
+  assert.ok(!nuisances.lines.some((row) => /du PEB$/.test(row.label)));
+});
+
+test('an empty ANFR register is reported as an empty REGISTER, not as an empty street', () => {
+  // Captured live on 2026-09-09: the observatoire CSV published on 2026-09-03
+  // is 222 bytes — its header row and nothing else — against 181 988 412 bytes
+  // and 826 418 rows on 2026-08-27. Printing "0 supports" from that would
+  // report an upstream outage as a fact about somebody's address.
+  assert.equal(PARTS.anfr.national.count, 0);
+  assert.match(notes('numerique'), /Le registre ANFR est vide dans cette édition/);
+  assert.match(notes('numerique'), /ne dit rien de l’adresse/);
+  assert.ok(!rows('numerique')['Supports ANFR autour'], 'no count is printed from an empty register');
+  // And the theme is still `ok`: the route ANSWERED, and what it answered is
+  // itself the news.
+  assert.equal(theme('numerique').status, 'ok');
+});
+
+test('the mast rows count what radiates and never what is merely approved', () => {
+  // `live` is in service or technically operational; `plan` is paperwork.
+  // `anfrFeed.js` calls that distinction "the whole ethical content" of its
+  // band function, and a sheet that folded the two would report 5G at an
+  // address where none exists. Bit i is ANFR_GENERATIONS[i] — 2G, 3G, 4G, 5G.
+  const withMasts = composeRadiographie({
+    point: POINT,
+    parts: {
+      ...PARTS,
+      anfr: {
+        ...PARTS.anfr,
+        edition: '2026-08-27',
+        inBox: 3,
+        national: { ...PARTS.anfr.national, count: 72_700 },
+        supports: [
+          { id: 1, live: 0b1100, plan: 0 },
+          { id: 2, live: 0b0100, plan: 0b1000 },
+          { id: 3, live: 0, plan: 0b1000 },
+        ],
+      },
+    },
+    at: AT,
+  });
+  const numerique = withMasts.themes.find((entry) => entry.id === 'numerique');
+  const byLabel = Object.fromEntries(numerique.lines.map((row) => [row.label, row]));
+  assert.equal(byLabel['Supports ANFR autour'].value, '3');
+  assert.match(byLabel['Supports ANFR autour'].note, /édition 2026-08-27/);
+  assert.equal(byLabel['Supports 5G'].value, '1', 'one radiates, two are paperwork');
+  assert.match(byLabel['Supports 5G'].note, /2 de plus autorisés/);
+  assert.equal(byLabel['Supports 4G'].value, '2');
+  assert.equal(byLabel['Supports 3G'], undefined, 'a generation nobody has draws no row');
+  assert.match(numerique.notes.join(' '), /Un support est un PYLÔNE/);
 });
 
 test('an empty scan produces ten absent themes rather than a broken page', () => {

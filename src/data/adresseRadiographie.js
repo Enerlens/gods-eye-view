@@ -42,13 +42,20 @@
  * cached server-side, and every one may fail on its own without taking the
  * page with it — a theme with no answer says so and the other nine stand.
  *
+ * TWO THEMES READ TWO REGISTERS EACH, and that is the fix for the two halves
+ * this sheet was missing. Nuisances printed the air and never the aircraft;
+ * Numérique printed the cable and never the mast. Both routes were already in
+ * production for the globe's own layers — the 2026-09 audit counted four such
+ * routes with a layer and no line here — and both join a theme that already
+ * existed rather than founding one of their own. One subject, one heading.
+ *
  *   Immobilier   `/api/dvf` · `/api/loyers-fr` · `/api/dpe`
  *   Transport    `/api/isochrone` (marche 5/10/15 min, voiture 15 min)
  *   Éducation    `/api/schools-fr/sites` — with the DEPP's IPS on each school
  *   Commodités   `/api/amenities-fr/sites` — BPE + FINESS
- *   Nuisances    `/api/atmo-fr`
+ *   Nuisances    `/api/atmo-fr` · `/api/bruit-fr`
  *   Risques      `/api/georisques`
- *   Numérique    `/api/arcep-fr`
+ *   Numérique    `/api/arcep-fr` · `/api/anfr-fr/supports`
  *   Emploi       `/api/emploi-fr`
  *   Urbanisme    `/api/gpu` · `/api/ads-fr`
  *   Voisinage    `/api/filosofi/carreaux`
@@ -73,6 +80,7 @@
  */
 
 import { AMENITY_FAMILY_LABELS, AMENITY_FAMILY_PLURALS } from './amenitiesFamilies.js';
+import { ANFR_GENERATIONS } from './anfrFeed.js';
 import {
   BAREME_GEOMETRIES,
   BAREME_REASONS,
@@ -116,9 +124,9 @@ export const RADIOGRAPHIE_THEMES = Object.freeze([
   Object.freeze({ id: 'transport', label: 'Transport', question: 'Ce qu’on atteint depuis cette porte, à pied et en voiture.' }),
   Object.freeze({ id: 'education', label: 'Éducation', question: 'Quelles écoles, et lesquelles.' }),
   Object.freeze({ id: 'commodites', label: 'Commodités', question: 'Les commerces et services du quotidien à portée de marche.' }),
-  Object.freeze({ id: 'nuisances', label: 'Nuisances', question: 'L’air qu’on y respire aujourd’hui.' }),
+  Object.freeze({ id: 'nuisances', label: 'Nuisances', question: 'L’air qu’on y respire, et le bruit qui passe au-dessus.' }),
   Object.freeze({ id: 'risques', label: 'Risques', question: 'Ce que l’État a inscrit au registre pour ce point.' }),
-  Object.freeze({ id: 'numerique', label: 'Numérique', question: 'Ce qu’une ligne fixe peut porter ici.' }),
+  Object.freeze({ id: 'numerique', label: 'Numérique', question: 'Ce qu’une ligne fixe peut porter ici, et ce qui émet au-dessus.' }),
   Object.freeze({ id: 'emploi', label: 'Emploi', question: 'L’activité des habitants, et son sens de marche.' }),
   Object.freeze({ id: 'urbanisme', label: 'Urbanisme', question: 'Ce qui peut être bâti, et ce qui l’est déjà.' }),
   Object.freeze({ id: 'voisinage', label: 'Voisinage', question: 'Qui habite autour, d’après le carroyage INSEE.' }),
@@ -231,6 +239,14 @@ export function radiographieRequests({ lat, lon }) {
     { key: 'atmo', url: `/api/atmo-fr?${at}` },
     { key: 'risques', url: `/api/georisques?${at}&radius=${RADIOGRAPHIE_RADIUS.risks}` },
     { key: 'arcep', url: `/api/arcep-fr?${at}` },
+    // The mobile half of Numérique and the aircraft half of Nuisances. Both
+    // routes were already in production for their own layers, and both were
+    // named in the audit as "a route with a layer that the fiche ignores".
+    // `bruit-fr` answers a POINT — the same probe the globe's layer makes —
+    // and `anfr-fr/supports` answers the same box the schools and the
+    // équipements are asked for, well inside its own 0.35° ceiling.
+    { key: 'bruit', url: `/api/bruit-fr?${at}` },
+    { key: 'anfr', url: `/api/anfr-fr/supports?${bbox}` },
     { key: 'emploi', url: `/api/emploi-fr?${at}` },
     { key: 'gpu', url: `/api/gpu?${at}` },
     { key: 'permis', url: `/api/ads-fr?${at}&radius=${RADIOGRAPHIE_RADIUS.permits}&months=36` },
@@ -540,6 +556,67 @@ function projectNuisances({ atmo }) {
   return { lines, notes };
 }
 
+/**
+ * Le bruit des aéronefs, lu AU SOL.
+ *
+ * The globe files `bruit-fr` under hazards and argues, in its own taxonomy
+ * entry, that "the polygon is about the aircraft, not about the ground under
+ * it". That is true of the MAP and false of a door: a PEB band is a planning
+ * constraint written against the address, and this sheet is where a reader
+ * asks what may be built and who may live there. It is the reading the layer's
+ * own header owed and never had a surface for.
+ *
+ * TWO DOCUMENTS, NEVER ONE SCALE. A *plan d'exposition au bruit* zones what may
+ * be BUILT; a *plan de gêne sonore* zones who may be HELPED to soundproof. They
+ * are drawn from the same index and mean different things, so they are printed
+ * apart and never summed.
+ *
+ * @param {{bruit: ?object}} parts
+ * @returns {{lines: object[], notes: string[]}}
+ */
+function projectBruit({ bruit }) {
+  const lines = [];
+  const notes = [];
+  if (!bruit) {
+    notes.push('Les plans d’exposition au bruit n’ont pas répondu.');
+    return { lines, notes };
+  }
+  const bands = [...(bruit.peb || []), ...(bruit.pgs || [])]
+    // Only a band the probe actually landed IN is a fact about this door. The
+    // overview bands the layer draws around an aerodrome carry `atPoint:false`
+    // precisely because nothing was tested against a point.
+    .filter((band) => band && band.atPoint !== false);
+  for (const band of bands) {
+    const document = band.kind === 'pgs' ? 'PGS' : 'PEB';
+    const airport = [band.airport, band.oaci ? `(${band.oaci})` : ''].filter(Boolean).join(' ');
+    const index = String(band.index || '').toLowerCase() === 'psophique' ? 'indice psophique' : 'Lden';
+    const range = Number.isFinite(band.low) && Number.isFinite(band.high)
+      ? `${index} ${band.low}–${band.high}`
+      : index;
+    lines.push(line(`Zone ${band.zone} du ${document}`, range,
+      [airport, band.arreteDate ? `arrêté du ${band.arreteDate}` : ''].filter(Boolean).join(' · ')));
+  }
+  if (!bands.length) {
+    const nearest = bruit.nearest;
+    if (nearest && Number.isFinite(nearest.distanceKm)) {
+      lines.push(line('Plan d’exposition au bruit', 'aucun à ce point',
+        `le plus proche : ${nearest.name || nearest.oaci} à ${decimal(nearest.distanceKm, 1)} km`));
+    } else {
+      lines.push(line('Plan d’exposition au bruit', 'aucun à ce point'));
+    }
+  }
+  // The three refusals this theme owes, in the order they mislead.
+  notes.push('Un PEB est une CONTRAINTE D’URBANISME, pas une mesure : il décrit '
+    + 'une exposition prévue à long terme, jamais le bruit d’aujourd’hui.');
+  if (bands.some((band) => String(band.index || '').toLowerCase() === 'psophique')) {
+    notes.push('Certains arrêtés sont encore écrits en indice psophique, qui ne se '
+      + 'convertit pas en décibels — les deux échelles ne sont pas comparables.');
+  }
+  notes.push('Bruit AÉRONAUTIQUE seulement. Il n’existe pas de carte de bruit '
+    + 'stratégique nationale ouverte pour la route et le rail (voir bruitFrance.js).');
+  return { lines, notes };
+}
+
 /** Risques — the statutory register, commune verdict and address verdict apart. */
 function projectRisques({ risques }) {
   const lines = [];
@@ -633,6 +710,96 @@ function projectNumerique({ arcep }) {
     notes.push('L’ARCEP ne publie pas les arrondissements : ces parts décrivent la commune entière.');
   }
   return { lines, notes };
+}
+
+/**
+ * Le mobile, sous la même thématique que le filaire.
+ *
+ * The ARCEP note above ends "débits FILAIRES uniquement", and that sentence was
+ * the whole hole: the sheet answered what a cable can carry here and said
+ * nothing about what radiates over it, while `/api/anfr-fr` had been in
+ * production for the globe's own layer the entire time.
+ *
+ * IT COUNTS WHAT RADIATES, NEVER WHAT IS PLANNED. `live` is the mask of
+ * generations in service or technically operational; `plan` is paperwork.
+ * `anfrFeed.js` calls that distinction "the whole ethical content" of its band
+ * function, and a sheet that folded the two would report 5G at an address
+ * where none exists.
+ *
+ * @param {{anfr: ?object}} parts
+ * @returns {{lines: object[], notes: string[]}}
+ */
+function projectAntennes({ anfr }) {
+  const lines = [];
+  const notes = [];
+  if (!anfr) {
+    notes.push('Le registre des supports ANFR n’a pas répondu.');
+    return { lines, notes };
+  }
+  const supports = Array.isArray(anfr.supports) ? anfr.supports : [];
+  // AN EMPTY REGISTER IS NOT AN EMPTY ADDRESS. Measured 2026-09-09, the ANFR
+  // observatoire CSV published on 2026-09-03 is 222 bytes — its header row and
+  // nothing else, against 181 988 412 bytes and 826 418 rows on 2026-08-27.
+  // Printing "0 supports" from that would report an upstream outage as a fact
+  // about somebody's street, which is the one thing this sheet exists not to
+  // do. It says which of the two it is looking at instead.
+  if (!Number.isFinite(anfr.national?.count) || anfr.national.count === 0) {
+    notes.push('Le registre ANFR est vide dans cette édition'
+      + (anfr.edition ? ` (${anfr.edition})` : '')
+      + ' — aucun support n’y figure NULLE PART, donc l’absence ici ne dit rien de l’adresse.');
+    return { lines, notes };
+  }
+  const box = Math.round(RADIOGRAPHIE_RADIUS.boxDeg * 111_320);
+  lines.push(line('Supports ANFR autour', count(anfr.inBox ?? supports.length),
+    `dans ${box} m de côté${anfr.edition ? ` · édition ${anfr.edition}` : ''}`));
+  // One row per generation, from the newest down: 5G first is what a reader
+  // came for, and an empty 2G row below it says the site is modern rather than
+  // leaving them to infer it from an absence.
+  for (let i = ANFR_GENERATIONS.length - 1; i >= 0; i -= 1) {
+    const bit = 1 << i;
+    const live = supports.filter((support) => (Number(support?.live) || 0) & bit).length;
+    const planned = supports.filter((support) => (
+      ((Number(support?.plan) || 0) & bit) && !((Number(support?.live) || 0) & bit)
+    )).length;
+    if (!live && !planned) continue;
+    lines.push(line(`Supports ${ANFR_GENERATIONS[i]}`, count(live),
+      planned ? `${count(planned)} de plus autorisés, pas encore en service` : null));
+  }
+  if (supports.length && !supports.some((support) => Number(support?.live))) {
+    notes.push('Aucun support en service ici : tout ce qui est recensé est à l’état de projet.');
+  }
+  if (anfr.truncated) {
+    notes.push(`Le registre a rendu ${count(supports.length)} supports sur `
+      + `${count(anfr.inBox)} dans la boîte — la liste est tronquée, le compte ne l’est pas.`);
+  }
+  notes.push('Un support est un PYLÔNE, pas une antenne : plusieurs opérateurs '
+    + 'et plusieurs générations partagent le même mât.');
+  notes.push('Le registre ne dit rien de la couverture ressentie à l’intérieur d’un bâtiment.');
+  return { lines, notes };
+}
+
+/**
+ * Two projections under one heading.
+ *
+ * A theme is one question, and two of them here are answered by two registers
+ * that have nothing else in common — the air and the aircraft, the cable and
+ * the mast. Merging at the PROJECTION rather than adding two more themes is
+ * the same decision the layer panel just made: one subject, one line.
+ *
+ * @param {...(parts: object) => {lines: object[], notes: string[]}} projectors
+ * @returns {(parts: object) => {lines: object[], notes: string[]}}
+ */
+function mergeProjections(...projectors) {
+  return (parts) => {
+    const lines = [];
+    const notes = [];
+    for (const projector of projectors) {
+      const projected = projector(parts) || {};
+      lines.push(...(projected.lines || []));
+      notes.push(...(projected.notes || []));
+    }
+    return { lines, notes };
+  };
 }
 
 /** Emploi — the census, and its direction of travel. */
@@ -803,9 +970,9 @@ const PROJECTORS = Object.freeze({
   transport: projectTransport,
   education: projectEducation,
   commodites: projectCommodites,
-  nuisances: projectNuisances,
+  nuisances: mergeProjections(projectNuisances, projectBruit),
   risques: projectRisques,
-  numerique: projectNumerique,
+  numerique: mergeProjections(projectNumerique, projectAntennes),
   emploi: projectEmploi,
   urbanisme: projectUrbanisme,
   voisinage: projectVoisinage,
@@ -817,9 +984,9 @@ const THEME_PARTS = Object.freeze({
   transport: ['walk', 'drive'],
   education: ['schools'],
   commodites: ['amenities'],
-  nuisances: ['atmo'],
+  nuisances: ['atmo', 'bruit'],
   risques: ['risques'],
-  numerique: ['arcep'],
+  numerique: ['arcep', 'anfr'],
   emploi: ['emploi'],
   urbanisme: ['gpu', 'permis'],
   voisinage: ['carroyage'],

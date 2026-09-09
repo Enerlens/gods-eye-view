@@ -6,6 +6,43 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Added
+- **Une porte du globe vers la radiographie d'adresse.** Le dépôt avait deux
+  surfaces qui répondent à la même question sur la même porte, et aucun lien
+  entre elles : la carte de la `Fiche implantation`, plafonnée à **six lignes**
+  — le bon plafond pour une étiquette posée sur une porte — et `fiche.html`,
+  qui en tient soixante, imprimable, et qu'on ne pouvait atteindre qu'en tapant
+  son URL. La seconde a été écrite pour la première et rien ne pointait vers
+  elle.
+
+  La ligne `Zone de chalandise` porte désormais une pastille
+  **RADIOGRAPHIE** : elle ouvre la feuille dans un panneau déplaçable, sur le
+  point que le globe scanne, avec un bouton pour l'ouvrir en onglet et un
+  autre pour l'imprimer en PDF. Le panneau encadre la page que l'application
+  sert déjà (`?embed=1`, un mode que la feuille avait livré exprès pour ça) :
+  pas de second rendu à maintenir, et le PDF reste celui qui s'imprime.
+
+- **La radiographie répond enfin aux deux moitiés qui lui manquaient.**
+  `Nuisances` imprimait l'air et jamais l'avion ; `Numérique` imprimait le
+  câble et jamais le mât — sa propre note se terminait par « débits filaires
+  uniquement ». Les deux routes étaient en production depuis des mois pour les
+  couches du globe. Elles rejoignent la thématique qui existait déjà plutôt que
+  d'en fonder deux de plus.
+
+  · **Bruit** : la zone du PEB ou du PGS sous le point, avec son indice, sa
+    plage et la date de son arrêté ; hors de tout plan, l'aérodrome le plus
+    proche et sa distance. Une bande dessinée « autour » d'un aérodrome, que
+    rien n'a testée contre un point, n'atteint jamais la feuille.
+  · **Antennes** : les supports ANFR autour de l'adresse, comptés par
+    génération, et seulement ce qui **rayonne** — un support autorisé mais pas
+    en service est compté à part, jamais avec.
+
+  Et une honnêteté qui a servi tout de suite : mesuré le 2026-09-09, le CSV de
+  l'observatoire ANFR publié le 2026-09-03 fait **222 octets** — son en-tête et
+  rien d'autre, contre 181 988 412 octets et 826 418 lignes le 2026-08-27. La
+  feuille écrit « le registre ANFR est vide dans cette édition » au lieu de
+  « 0 support » : une panne amont ne doit pas se lire comme un fait sur la rue
+  de quelqu'un.
+
 - **Coller une clé dans l'application, au lieu d'éditer un fichier.** Une
   pastille « POWER UP » apparaît en bas à droite quand il manque des clés ;
   elle ouvre un panneau qui liste les onze fournisseurs, ce que chacun allume,
