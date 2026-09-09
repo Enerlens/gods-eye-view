@@ -46,6 +46,8 @@ import dvfSalesLayer, {
   _dvfSetThemePayloadForTest,
   _dvfWithdrawIfDormantForTest,
   dvfLegendEntries,
+  dvfSaleRecord,
+  dvfVoiceSummary,
   dvfMostRecentSale,
   dvfReference,
   dvfYearsLabel,
@@ -437,4 +439,112 @@ test('the wrapper keeps the shell contract the manager relies on', () => {
   // is that the wrapper did not shadow a method away.
   assert.equal(typeof dvfSalesLayer.getStats().count, 'number');
   assert.equal(dvfSalesLayer.getStats().dormant, false);
+});
+
+// ── WHAT THE VOICE SURFACE MAY SAY ─────────────────────────────────────────
+// The gap this closes: asked for the average price around a Bordeaux bike
+// station, the assistant answered that it had no access to that analysis while
+// the proxy had already computed the median and the card was printing it.
+
+test('a sale becomes a record the analyst engine can query', () => {
+  const sale = {
+    id: '2024-123', lat: 44.8446, lon: -0.5786, prixM2: 5508, valeur: 330_480,
+    dwellingSurface: 60, dwellingCount: 1, rooms: 3, distanceM: 84,
+    date: '2024-06-12', nature: 'Vente', types: ['Appartement'],
+    address: '12 place des Grands Hommes', commune: 'Bordeaux',
+  };
+  const record = dvfSaleRecord(sale);
+  assert.equal(record.id, 'dvf:2024-123');
+  assert.equal(record.prixM2, 5508);
+  assert.equal(record.valeurEur, 330_480);
+  assert.equal(record.surfaceM2, 60);
+  assert.equal(record.year, 2024);
+  assert.equal(record.propertyType, 'Appartement');
+  assert.equal(record.priced, true);
+  // A sale with no position cannot be a neighbour of anything.
+  assert.equal(dvfSaleRecord({ ...sale, lat: null }), null);
+});
+
+test('a mutation the register cannot price carries no price at all', () => {
+  // The 179-lot block sale of the module header. `prixM2: null` is what keeps
+  // €1.28 million per square metre out of every answer — the engine drops
+  // non-finite values, so it can never reach a min, a max or a spoken figure,
+  // while the sale still counts as a sale.
+  const record = dvfSaleRecord({
+    id: 'bloc', lat: 48.83, lon: 2.36, prixM2: null, valeur: 32_000_000,
+    dwellingSurface: 0, dwellingCount: 179, date: '2023-02-01', nature: 'Vente',
+  });
+  assert.equal(record.prixM2, null);
+  assert.equal(record.priced, false);
+  assert.equal(record.surfaceM2, null);
+  assert.equal(record.valeurEur, 32_000_000);
+});
+
+test('the voice summary is the layer\'s own figures, and is silent when dormant', () => {
+  const stats = {
+    count: 255, dormant: false, commune: 'Bordeaux', years: [2025, 2024, 2023],
+    salesFound: 302, comparableCount: 96, truncated: true,
+    localMedianPrixM2: 5508, p25PrixM2: 4700, p75PrixM2: 6400,
+    referenceMedianPrixM2: 5100, referenceLabel: 'Médian de Bordeaux',
+  };
+  const summary = dvfVoiceSummary(stats);
+  assert.equal(summary.blockMedianPrixM2, 5508);
+  assert.equal(summary.communeMedianPrixM2, 5100);
+  assert.equal(summary.communeReference, 'Médian de Bordeaux');
+  // The denominator of the median travels with it: 255 sales of which 96 can
+  // carry a price is not 255 prices.
+  assert.equal(summary.salesInRadius, 302);
+  assert.equal(summary.pricedSales, 96);
+  assert.equal(summary.radiusM, 300);
+  // Above the scan ceiling the layer has nothing to speak for, and "no median"
+  // is a different statement from "a median of nothing".
+  assert.equal(dvfVoiceSummary({ ...stats, dormant: true }), null);
+  assert.equal(dvfVoiceSummary(null), null);
+
+  // Switched on a second ago and still scanning. Silence here reads as "this
+  // place has no sales", which is what a live session actually said.
+  const pending = dvfVoiceSummary({ count: 0, dormant: false, lastUpdate: null });
+  assert.equal(pending.pending, true);
+  assert.equal(pending.blockMedianPrixM2, undefined);
+  assert.match(pending.note, /NOT "no sales here"/);
+});
+
+test('the summary says WHERE it was measured, so a stale block cannot be quoted', () => {
+  // The scan does not clear on arrival: fly Paris → Bordeaux and the layer
+  // holds the Paris block until the next answer lands. Without a position on
+  // the summary, a caller has no way to know which city it is reading.
+  const summary = dvfVoiceSummary({
+    count: 12, dormant: false, commune: 'Paris', salesFound: 302, comparableCount: 96,
+    localMedianPrixM2: 12_264, scanCentre: { lat: 48.865, lon: 2.284 },
+  });
+  assert.deepEqual(summary.measuredAt, { lat: 48.865, lon: 2.284 });
+  // A layer that has drawn without recording a centre says null rather than
+  // implying it was measured where the camera happens to be now.
+  assert.equal(dvfVoiceSummary({ count: 0, dormant: false, salesFound: 0 }).measuredAt, null);
+});
+
+test('the wrapper publishes the three voice hooks', () => {
+  for (const method of ['getAnalystRecords', 'getSelectedInfo', 'getVoiceSummary']) {
+    assert.equal(typeof dvfSalesLayer[method], 'function', method);
+  }
+  // Nothing drawn, nothing to hand over — never a stale block from a city the
+  // reader has already flown away from.
+  _dvfSetThemePayloadForTest(null, false);
+  assert.deepEqual(dvfSalesLayer.getAnalystRecords(), []);
+  assert.equal(dvfSalesLayer.getSelectedInfo(), null);
+  assert.equal(dvfSalesLayer.getVoiceSummary(), null);
+});
+
+test('the drawn payload is what answers, capped like every other layer', () => {
+  const sales = Array.from({ length: 5 }, (_, i) => ({
+    id: `s${i}`, lat: 44.84 + i / 1000, lon: -0.578, prixM2: 5000 + i,
+    valeur: 300_000, dwellingSurface: 60, dwellingCount: 1, date: '2024-01-01',
+    nature: 'Vente', types: ['Appartement'], commune: 'Bordeaux',
+  }));
+  _dvfSetThemePayloadForTest({ sales, summary: {}, commune: { name: 'Bordeaux' } });
+  assert.equal(dvfSalesLayer.getAnalystRecords().length, 5);
+  assert.equal(dvfSalesLayer.getAnalystRecords(2).length, 2);
+  assert.equal(dvfSalesLayer.getAnalystRecords()[0].id, 'dvf:s0');
+  _dvfSetThemePayloadForTest(null, false);
+  clearAllBuildingThemes();
 });

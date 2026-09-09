@@ -2014,6 +2014,58 @@ export function buildIrveLoadingLabel({
  * French EV charge-point layer.
  * @type {Object}
  */
+/**
+ * One charge-point site, in the words a spoken answer uses.
+ *
+ * The layer draws three regimes — national départements, a thinned national
+ * mesh, and full sites over a city. Only the third knows an operator, a name
+ * or a connector list; a mesh dot knows how many charge points sit at a point
+ * and nothing else. `detail` says which of the two the reader is holding, so
+ * the model can answer "I only have the count from this altitude, zoom in for
+ * the operator" instead of narrating absent fields as absent facts.
+ *
+ * AVAILABILITY IS NOT HERE, and that is not an omission to be fixed later: the
+ * national IRVE file is a static inventory, and live occupancy is per-operator
+ * OCPI behind a contract (see the module header). A readout that carried an
+ * `available` field would invite the model to claim a free socket it cannot see.
+ *
+ * @param {object|null} record An `_records` entry.
+ * @returns {object|null}
+ */
+export function irveSiteReadout(record) {
+  const site = record?.site;
+  if (!site) return null;
+  const mesh = record.mesh === true;
+  const num = (value) => (Number.isFinite(value) ? value : null);
+  return {
+    id: site.id,
+    kind: 'charge-point-site',
+    detail: mesh ? 'count-only' : 'full',
+    name: mesh ? null : (site.name || null),
+    commune: mesh ? null : (site.commune || null),
+    lat: num(site.lat),
+    lon: num(site.lon),
+    chargePoints: num(site.pdcDistinct),
+    chargePointsPublished: num(site.pdcPublished),
+    peakKW: mesh ? null : num(site.peakKW),
+    powerBand: IRVE_BAND_LABELS[site.topBand] || null,
+    operators: mesh || !Array.isArray(site.operators) ? null : site.operators.slice(0, 4),
+    connectors: mesh || !Array.isArray(site.connectors)
+      ? null
+      : site.connectors.map((key) => IRVE_CONNECTOR_LABELS[key] || key),
+    access: mesh ? null : (site.access || null),
+    freeToUse: mesh ? null : (site.free ?? null),
+    updatedTo: mesh ? null : (site.updatedTo || null),
+    source: 'transport.data.gouv.fr (IRVE)',
+    availabilityKnown: false,
+    // The BOOLEAN alone was skimmed past: asked "are there free points here?",
+    // the model went hunting with another query instead of saying the file
+    // cannot answer. A sentence in the payload is read; a flag is not. Same
+    // reason `medecins-fr` ships `countsEntries` as prose.
+    availabilityNote: 'Live availability is NOT published for this layer: the national IRVE file is a static inventory, and real-time occupancy is per-operator OCPI behind a contract. Say so; do not query for it.',
+  };
+}
+
 const irveFranceLayer = {
   id: IRVE_FR_LAYER_ID,
   name: 'Bornes IRVE (FR)',
@@ -2137,6 +2189,31 @@ const irveFranceLayer = {
 
   getDetectableObjects(options = {}) {
     return collectDetectableObjects(options);
+  },
+
+  /** The site the operator clicked, ready to be spoken. */
+  getSelectedInfo() {
+    if (!_enabled || !_selectedId || _selectedId.startsWith('dep:')) return null;
+    return irveSiteReadout(_records.get(_selectedId) || null);
+  },
+
+  /**
+   * Loaded sites as plain records for the analyst engine.
+   * Empty in the national regime: what is drawn there is départements, and a
+   * count over 96 polygons is not a count of charge points.
+   * @param {number} [maxCount=2000]
+   * @returns {Array<object>}
+   */
+  getAnalystRecords(maxCount = 2000) {
+    if (!_enabled || _regime === 'national') return [];
+    const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 2000;
+    const out = [];
+    for (const record of _records.values()) {
+      if (out.length >= limit) break;
+      const readout = irveSiteReadout(record);
+      if (readout && Number.isFinite(readout.lat) && Number.isFinite(readout.lon)) out.push(readout);
+    }
+    return out;
   },
 
   getStats() {

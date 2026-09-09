@@ -540,6 +540,56 @@ export function transitAlertReadout(vehicle) {
  * @param {number} [nowMs]
  * @returns {string} Newline-separated card copy.
  */
+/**
+ * One transit vehicle, in the words a spoken answer uses.
+ *
+ * Same source of truth as `buildTransitSelectionLabel` above — the card and the
+ * brain must not disagree about the bus on screen — with the formatting removed
+ * and the absences preserved. Half the national fleet publishes no speed and
+ * 16 % no bearing; those come back null, never zero, for the same reason the
+ * card leaves them out rather than printing "0 km/h, facing north".
+ *
+ * `delaySec` is the run's, not the vehicle's, and it is signed: positive is
+ * late. `delayPublished` states whether the network published one at all, so a
+ * missing delay is never spoken as "on time".
+ *
+ * @param {object|null} record Render record.
+ * @param {number} [nowMs]
+ * @returns {object|null}
+ */
+export function transitVehicleReadout(record, nowMs = Date.now()) {
+  const vehicle = record?.vehicle;
+  if (!vehicle) return null;
+  const feed = record.feed || {};
+  const num = (value) => (Number.isFinite(value) ? value : null);
+  const carto = record.renderPosition
+    ? Cesium.Cartographic.fromCartesian(record.renderPosition)
+    : null;
+  const kind = transitKindReadout(vehicle);
+  return {
+    id: record.id,
+    kind: 'transit-vehicle',
+    line: record.route?.route?.shortName || vehicle.route || null,
+    lineName: record.route?.route?.longName || null,
+    headsign: record.route?.trip?.headsign || vehicle.label || null,
+    network: feed.network || null,
+    mode: kind?.label || null,
+    modeSource: kind?.qualifier || null,
+    lat: carto ? Cesium.Math.toDegrees(carto.latitude) : null,
+    lon: carto ? Cesium.Math.toDegrees(carto.longitude) : null,
+    speedKph: Number.isFinite(vehicle.speedMps) ? Math.round(vehicle.speedMps * 3.6) : null,
+    bearingDeg: Number.isFinite(vehicle.bearing) ? Math.round(vehicle.bearing) : null,
+    status: vehicle.status ? (STATUS_LABELS[vehicle.status] || vehicle.status) : null,
+    occupancy: vehicle.occupancy ? (OCCUPANCY_LABELS[vehicle.occupancy] || vehicle.occupancy) : null,
+    delaySec: num(vehicle.delaySec),
+    delayPublished: Number.isFinite(vehicle.delaySec),
+    fixAgeSec: Number.isFinite(vehicle.timestampMs)
+      ? Math.max(0, Math.round((nowMs - vehicle.timestampMs) / 1000))
+      : null,
+    source: feed.network ? `GTFS-RT — ${feed.network}` : 'GTFS-RT',
+  };
+}
+
 export function buildTransitSelectionLabel(record, nowMs = Date.now()) {
   const vehicle = record?.vehicle || {};
   const feed = record?.feed || {};
@@ -1345,6 +1395,30 @@ const transitFranceLayer = {
 
   getDetectableObjects(options = {}) {
     return collectDetectableVehicles(options);
+  },
+
+  /** The vehicle the operator clicked, ready to be spoken. */
+  getSelectedInfo() {
+    if (!_enabled || !_selectedId) return null;
+    return transitVehicleReadout(_records.get(_selectedId) || null);
+  },
+
+  /**
+   * Loaded vehicles as plain records for the analyst engine.
+   * @param {number} [maxCount=2000]
+   * @returns {Array<object>}
+   */
+  getAnalystRecords(maxCount = 2000) {
+    if (!_enabled) return [];
+    const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 2000;
+    const now = Date.now();
+    const out = [];
+    for (const record of _records.values()) {
+      if (out.length >= limit) break;
+      const readout = transitVehicleReadout(record, now);
+      if (readout && Number.isFinite(readout.lat) && Number.isFinite(readout.lon)) out.push(readout);
+    }
+    return out;
   },
 
   getStats() {

@@ -1,5 +1,6 @@
 import { createGevActionRunner, readLayerLifecycleSummary } from './gevActions.js';
 import { GevBrainVoiceSession, fetchVoiceConfig } from './gevBrainVoice.js';
+import { rotatingVoiceExamples } from './voiceExamples.js';
 import {
   DEFAULT_VOICE_TIER,
   VOICE_COST_LIMITS,
@@ -24,6 +25,25 @@ const STATUS = {
 const DEFAULT_VOICE_ERROR_HINT = 'Check microphone permission and network access, then try again.';
 /** Waits one click sits out when a limiter answers the config lookup with a Retry-After. */
 const VOICE_CONFIG_RETRY_LIMIT = 2;
+// OpenAI's per-minute TOKEN budget, and what this build costs against it.
+//
+// A Realtime response re-sends the whole session prefix every time — the
+// instructions plus all 29 tool schemas — so it bills about 11 000 input tokens
+// before the operator has said a word, measured on the shipped config. An entry
+// tier account is capped at 40 000 tokens per minute, which is three responses;
+// one spoken command that calls a tool is two of them (the call, then the
+// spoken confirmation). So the fourth or fifth sentence of a normal
+// conversation comes back `status: "failed"`, the assistant goes SILENT, and
+// nothing on screen says why — the mic looks broken rather than throttled.
+//
+// The session tells us this itself: `rate_limits.updated` arrives after every
+// response with `remaining` and `reset_seconds`. These two constants turn that
+// into a warning before the wall, and a retry after it.
+const RATE_LIMIT_TOKENS_PER_TURN_FALLBACK = 11000;
+/** Past the reset OpenAI names, so the retry lands in the new window, not on its edge. */
+const RATE_LIMIT_RETRY_MARGIN_MS = 1500;
+/** Longest wait worth sitting out before retrying — beyond this, ask again yourself. */
+const RATE_LIMIT_RETRY_MAX_MS = 65000;
 const CALL_DEDUPE_MS = 2500;
 // WebRTC 'disconnected' is frequently momentary (a brief network blip that ICE
 // recovers on its own). Give it this long to return to 'connected' before we
@@ -198,6 +218,92 @@ export function silenceRadioForVoice({ duckRadio, pauseRadio } = {}) {
  */
 const SUPERSEDED_RESPONSE_MEMORY = 8;
 
+/**
+ * The token bucket out of a `rate_limits.updated` payload.
+ *
+ * The session publishes several buckets (requests, tokens); only the token one
+ * is ever the wall this build hits, because the prefix is large and the
+ * conversation is short.
+ *
+ * @param {Array<{name?: string, limit?: number, remaining?: number, reset_seconds?: number}>} rateLimits
+ * @returns {{limit: number, remaining: number, resetSeconds: number}|null}
+ */
+export function readTokenRateLimit(rateLimits) {
+  if (!Array.isArray(rateLimits)) return null;
+  const bucket = rateLimits.find((entry) => entry?.name === 'tokens');
+  if (!bucket) return null;
+  const remaining = Number(bucket.remaining);
+  if (!Number.isFinite(remaining)) return null;
+  return {
+    limit: Number.isFinite(Number(bucket.limit)) ? Number(bucket.limit) : 0,
+    remaining: Math.max(0, remaining),
+    resetSeconds: Math.max(0, Number(bucket.reset_seconds) || 0),
+  };
+}
+
+/**
+ * How long OpenAI asked us to wait, from the text of its own error.
+ *
+ * The structured error carries no delay field — the number is only ever in the
+ * message ("Please try again in 19.449s."). Parsing it is how the retry can be
+ * timed instead of guessed.
+ *
+ * @param {string} message
+ * @returns {number|null} Milliseconds, or null when the message names no delay.
+ */
+export function parseRateLimitRetryMs(message) {
+  const match = /try again in\s+([\d.]+)\s*(ms|s)\b/i.exec(String(message || ''));
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(match[2].toLowerCase() === 'ms' ? value : value * 1000);
+}
+
+/**
+ * What the dock should say about the remaining token budget, if anything.
+ *
+ * Silence while there is room for another turn: a meter that is always on is a
+ * meter nobody reads. It speaks only once the next command cannot fit, which is
+ * the moment the operator would otherwise be surprised by silence.
+ *
+ * @param {{limit: number, remaining: number, resetSeconds: number}|null} bucket
+ * @param {number} perTurnTokens What one response has been costing.
+ * @returns {{exhausted: boolean, detail: string}|null}
+ */
+export function describeTokenBudget(bucket, perTurnTokens = RATE_LIMIT_TOKENS_PER_TURN_FALLBACK) {
+  if (!bucket || !bucket.limit) return null;
+  const perTurn = Number.isFinite(perTurnTokens) && perTurnTokens > 0
+    ? perTurnTokens
+    : RATE_LIMIT_TOKENS_PER_TURN_FALLBACK;
+  if (bucket.remaining >= perTurn) return null;
+  const seconds = Math.max(1, Math.ceil(bucket.resetSeconds));
+  return {
+    exhausted: true,
+    detail: `TOKEN LIMIT REACHED — RESETS IN ${seconds} S`,
+  };
+}
+
+/**
+ * The sentence that explains a rate-limited turn to the person who was talking.
+ *
+ * The raw upstream message is 200 characters of organization id and bucket
+ * name; what an operator needs is that nothing is broken, that this account has
+ * a ceiling, and where the ceiling is raised.
+ *
+ * @param {{limit: number, remaining: number, resetSeconds: number}|null} bucket
+ * @param {number} perTurnTokens
+ * @returns {string}
+ */
+export function rateLimitHint(bucket, perTurnTokens = RATE_LIMIT_TOKENS_PER_TURN_FALLBACK) {
+  const perTurn = Math.round((Number.isFinite(perTurnTokens) && perTurnTokens > 0
+    ? perTurnTokens
+    : RATE_LIMIT_TOKENS_PER_TURN_FALLBACK) / 100) * 100;
+  const ceiling = bucket?.limit
+    ? `This OpenAI account allows ${bucket.limit.toLocaleString('en-US')} realtime tokens per minute`
+    : 'This OpenAI account has a realtime tokens-per-minute ceiling';
+  return `${ceiling}, and one answer costs about ${perTurn.toLocaleString('en-US')} — the session prefix (instructions plus every tool schema) is re-sent on every response. Nothing is broken: wait for the reset, or raise the limit at platform.openai.com/settings/organization/limits.`;
+}
+
 export function initGevVoiceCommands({ viewer, styleManager, dataManager, sceneDirector = null, annotations = null }) {
   if (window.__gevVoiceCommands && typeof window.__gevVoiceCommands.stop === 'function') {
     window.__gevVoiceCommands.stop({ removeUi: true });
@@ -220,6 +326,11 @@ export function initGevVoiceCommands({ viewer, styleManager, dataManager, sceneD
     else controller.start({ pushToTalk: false });
   };
   ui.button.addEventListener('click', controller.buttonHandler);
+  // A new three each time the tray comes up, whether by hover or by keyboard
+  // focus — both are how the tray is reached, and only one of them is a mouse.
+  controller.refreshVoiceExamples();
+  ui.root.addEventListener('mouseenter', () => controller.refreshVoiceExamples());
+  ui.button.addEventListener('focus', () => controller.refreshVoiceExamples());
   if (ui.tierButton) {
     controller.tierHandler = () => controller.toggleVoiceTier();
     ui.tierButton.addEventListener('click', controller.tierHandler);
@@ -272,6 +383,12 @@ export class GevRealtimeController {
     this.radioHandoffDeferredByReservation = false;
     this.buttonHandler = null;
     this.tierHandler = null;
+    this.voicePickerHandler = null;
+    this.voicePreviewHandler = null;
+    /** Which slice of the example list the help tray is showing. */
+    this.voiceExampleRotation = 0;
+    /** The language the server configured, once a config lookup has answered. */
+    this.voiceLanguage = null;
     // Which provider drives the mic is a server fact (which key is set). It is
     // fetched once per page and cached on the promise so a rapid click does not
     // race two lookups, and so a mic that has already chosen a brain keeps it.
@@ -280,6 +397,12 @@ export class GevRealtimeController {
     this.brainSession = null;
     this.nextErrorHint = null;
     this.annotationEventUnsubscribe = null;
+    /** Last `rate_limits.updated` token bucket — what is left this minute. */
+    this.tokenRateLimit = null;
+    /** What the last response actually cost in input tokens, for the budget maths. */
+    this.lastResponseInputTokens = 0;
+    /** Armed only after a rate-limited failure, and only ever one at a time. */
+    this.rateLimitRetryTimer = null;
     // Voice cost control. The tier is chosen BEFORE a session starts and is
     // baked into the minted token, so a live session always keeps the model it
     // connected with — the toggle is labelled "applies next session" for that
@@ -417,6 +540,12 @@ export class GevRealtimeController {
     const lookup = await this.resolveVoiceConfigPatiently();
     if (!lookup) return; // stopped mid-wait, or a duplicate click
     const { config: voiceConfig, waited } = lookup;
+    // The server owns the language; the examples in the help tray have to be
+    // in it, so the first successful lookup is where they stop guessing French.
+    if (voiceConfig.language && voiceConfig.language !== this.voiceLanguage) {
+      this.voiceLanguage = voiceConfig.language;
+      this.refreshVoiceExamples?.(this.voiceLanguage);
+    }
     // The 'connecting' a wait painted is this attempt's own; any other active
     // status is a second click that landed while the lookup ran.
     if (!waited && this.isActive()) return;
@@ -689,6 +818,11 @@ export class GevRealtimeController {
       this.spaceKeyHeld = true;
       // Space must not generate the focused mic button's native click on keyup.
       event.preventDefault();
+      // The turn-based brain closes the ears while it talks, so an operator who
+      // has heard enough had no way in: the key that means "I want to speak"
+      // now also means "stop talking". Only the browser-synthesis path can be
+      // cut this way — the realtime session already interrupts on live audio.
+      this.brainSession?.interruptSpeech?.();
       this.pauseRadioForVoice();
       if (this.pushToTalkKeyHeld) return;
       // A click-started session is intentionally open-mic. Space only claims an
@@ -879,6 +1013,10 @@ export class GevRealtimeController {
     // The text-brain session owns no WebRTC state, so it is stopped here and
     // the cleanup below runs harmlessly over its null peer connection.
     if (this.brainSession?.isActive()) this.brainSession.stop();
+    this.clearTranscript();
+    // A retry armed against a session that is closing would fire into a dead
+    // data channel — and, worse, into the NEXT session if one opens meanwhile.
+    this.clearRateLimitRetry();
     // Bump the epoch so any start() awaiting a token/getUserMedia/SDP bails and
     // releases its own resources instead of promoting them onto a stopped
     // controller (H7).
@@ -1123,6 +1261,13 @@ export class GevRealtimeController {
       payload,
     });
 
+    // The session's own budget report. It arrives after every response and is
+    // the only warning before the wall — see RATE_LIMIT_TOKENS_PER_TURN_FALLBACK.
+    if (payload.type === 'rate_limits.updated') {
+      this.recordRateLimits(payload.rate_limits);
+      return;
+    }
+
     if (payload.type === 'error') {
       if (payload.error?.code === 'conversation_already_has_active_response') {
         this.cancelRadioHandoff({ abortTools: true });
@@ -1172,6 +1317,9 @@ export class GevRealtimeController {
     if (payload.type === 'input_audio_buffer.speech_started') {
       this.userTurnPending = true;
       this.pendingResponseInstructions = null;
+      // Speaking again IS the retry. Letting the armed one fire too would answer
+      // the old question over the new one.
+      this.clearRateLimitRetry();
       this.cancelRadioHandoff({ abortTools: true });
       this.setVoiceSpeaker('user');
     }
@@ -1596,6 +1744,116 @@ export class GevRealtimeController {
     }
   }
 
+  /**
+   * Put three example phrasings in the help tray, rotating on each showing.
+   *
+   * Nobody discovers a 29-tool surface by guessing at it, and the tray was
+   * telling the operator only how to hold the key down. Three at a time, and a
+   * different three each time it opens, is what makes the mic look like it can
+   * do more than the last thing it was asked.
+   *
+   * @param {string} [language] BCP-47 tag; the fork ships French.
+   */
+  refreshVoiceExamples(language = this.voiceLanguage || 'fr-FR') {
+    const list = this.ui?.helpExamples;
+    if (!list) return;
+    this.voiceExampleRotation = (this.voiceExampleRotation || 0) + 1;
+    list.replaceChildren(...rotatingVoiceExamples(language, this.voiceExampleRotation).map((example) => {
+      const item = document.createElement('li');
+      item.textContent = example;
+      return item;
+    }));
+  }
+
+  /**
+   * Show what the recogniser actually heard.
+   *
+   * The tray truncates to 90 characters and is overwritten by the next status
+   * change, so until now a misheard command left no trace: the only way to find
+   * out that "montre les médecins" arrived as "montre les mets décents" was to
+   * say it again and listen harder. This line survives the turn.
+   *
+   * @param {string} text
+   * @param {{interim?: boolean}} [options] Interim text is styled as provisional.
+   */
+  setHeardText(text, { interim = false } = {}) {
+    if (!this.ui?.heardText) return;
+    this.ui.heardText.textContent = String(text || '');
+    this.ui.heardText.dataset.interim = interim ? 'true' : 'false';
+    this.showTranscript();
+  }
+
+  /**
+   * Show what the mouth is saying, so a spoken answer can be re-read.
+   * @param {string} text
+   */
+  setSpokenText(text) {
+    if (!this.ui?.spokenText) return;
+    this.ui.spokenText.textContent = String(text || '');
+    this.showTranscript();
+  }
+
+  /** Reveal the transcript tray once there is anything in it. */
+  showTranscript() {
+    if (this.ui?.transcript) this.ui.transcript.hidden = false;
+  }
+
+  /** Empty the transcript and put it away. Called when a session ends. */
+  clearTranscript() {
+    if (!this.ui?.transcript) return;
+    this.ui.transcript.hidden = true;
+    if (this.ui.heardText) this.ui.heardText.textContent = '';
+    if (this.ui.spokenText) this.ui.spokenText.textContent = '';
+  }
+
+  /**
+   * Populate the voice picker and the upgrade hint.
+   *
+   * Only the browser-synthesis path calls this — the realtime session's voice
+   * comes from the model, not from the OS, so the row stays hidden there rather
+   * than offering a choice that would change nothing.
+   *
+   * @param {{voices: Array<object>, selected: object|null, preferredUri: string|null,
+   *   hint: string|null, onSelect: Function, onPreview: Function}} options
+   */
+  setVoiceOptions({ voices = [], selected = null, preferredUri = null, hint = null, onSelect, onPreview } = {}) {
+    if (this.ui?.transcriptHint) {
+      this.ui.transcriptHint.textContent = hint || '';
+      this.ui.transcriptHint.hidden = !hint;
+    }
+    const picker = this.ui?.voicePicker;
+    if (!picker) return;
+    if (!voices.length) {
+      if (this.ui.voiceRow) this.ui.voiceRow.hidden = true;
+      return;
+    }
+    this.ui.voiceRow.hidden = false;
+    picker.innerHTML = '';
+    // "Automatic" first, and it is a real option rather than a label for the
+    // current pick: an operator who tried three voices needs a way back to the
+    // app's own choice without knowing which one that was.
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = selected ? `Automatic (${selected.name})` : 'Automatic';
+    picker.appendChild(auto);
+    for (const voice of voices) {
+      const option = document.createElement('option');
+      option.value = voice.voiceURI || voice.name;
+      option.textContent = voice.name;
+      picker.appendChild(option);
+    }
+    picker.value = preferredUri || '';
+    if (this.voicePickerHandler) picker.removeEventListener('change', this.voicePickerHandler);
+    this.voicePickerHandler = () => onSelect?.(picker.value || null);
+    picker.addEventListener('change', this.voicePickerHandler);
+    const preview = this.ui.voicePreview;
+    if (preview) {
+      if (this.voicePreviewHandler) preview.removeEventListener('click', this.voicePreviewHandler);
+      this.voicePreviewHandler = () => onPreview?.(picker.value || selected?.voiceURI || null);
+      preview.addEventListener('click', this.voicePreviewHandler);
+    }
+  }
+
   setVoiceSpeaker(speaker, { keepVisualizerSpeaker = false } = {}) {
     const nextSpeaker = speaker === 'user' || speaker === 'ai' ? speaker : 'idle';
     this.visualizerSpeaker = resolveVoiceVisualizerSpeaker(
@@ -1985,6 +2243,10 @@ export class GevRealtimeController {
    */
   recordUsage(usage) {
     if (!usage) return null;
+    // Measured, not assumed: what the next turn will cost against the per-minute
+    // token budget is what the last one cost.
+    const inputTokens = Number(usage.input_tokens);
+    if (Number.isFinite(inputTokens) && inputTokens > 0) this.lastResponseInputTokens = inputTokens;
     const state = this.costTracker.record(usage);
     this.syncCostUi();
     if (state.warnCrossed) {
@@ -2063,6 +2325,12 @@ export class GevRealtimeController {
       if (responseStatus === 'failed') {
         const details = payload.response?.status_details || null;
         const failErr = details?.error || null;
+        const rateLimited = failErr?.code === 'rate_limit_exceeded';
+        // A rate limit is not a fault to debug, it is a wait to sit out. Say
+        // which wait, in words, before the raw message goes to the error log.
+        if (rateLimited) {
+          this.nextErrorHint = rateLimitHint(this.tokenRateLimit, this.lastResponseInputTokens);
+        }
         this.reportError('Realtime response failed', failErr, {
           responseId: payload.response?.id || payload.response_id || null,
           statusReason: details?.reason || null,
@@ -2074,7 +2342,13 @@ export class GevRealtimeController {
         // connection is still live. Recover to listening so the user can retry
         // (mirrors the transient-blip philosophy, H8).
         if (this.dc?.readyState === 'open') {
-          this.setStatus('listening', 'Ask or command');
+          const retryMs = rateLimited ? this.rateLimitRetryDelayMs(failErr?.message) : null;
+          if (retryMs !== null) {
+            this.setStatus('listening', `TOKEN LIMIT — ANSWERING IN ${Math.ceil(retryMs / 1000)} S`);
+            this.armRateLimitRetry(retryMs);
+          } else {
+            this.setStatus('listening', 'Ask or command');
+          }
         }
       }
       if (!this.pendingRadioPlaybackResult) {
@@ -2089,6 +2363,88 @@ export class GevRealtimeController {
       this.responseActive = true;
       this.pauseRadioForVoice();
     }
+  }
+
+  /**
+   * Remember the session's token budget, and warn once it cannot fund a turn.
+   *
+   * The dock stays quiet while there is room. When there is not, it says so
+   * with the reset countdown — the alternative, and what shipped until now, is
+   * an assistant that simply stops answering mid-conversation.
+   *
+   * @param {Array<object>} rateLimits The `rate_limits.updated` payload.
+   */
+  recordRateLimits(rateLimits) {
+    const bucket = readTokenRateLimit(rateLimits);
+    if (!bucket) return;
+    this.tokenRateLimit = bucket;
+    this.debugLog('voice.rate_limit', {
+      // NOTE: the debug-log sanitizer redacts any key matching /token|secret|key/,
+      // so these are named for the budget rather than for what fills it.
+      allowancePerMinute: bucket.limit,
+      allowanceLeft: bucket.remaining,
+      resetSeconds: Math.round(bucket.resetSeconds),
+      lastTurnCost: this.lastResponseInputTokens || null,
+    });
+    const budget = describeTokenBudget(bucket, this.lastResponseInputTokens);
+    // Only ever a caption on an otherwise idle mic: never overwrite an error,
+    // and never interrupt a turn that is still running.
+    if (budget && this.status === 'listening' && !this.responseActive) {
+      this.setStatus('listening', budget.detail);
+    }
+  }
+
+  /**
+   * How long to wait before answering a turn the token limit swallowed.
+   *
+   * OpenAI names the delay in the error text; the bucket's own reset is the
+   * fallback. Null means do not retry at all — either nothing named a delay, or
+   * the wait is long enough that the operator would rather ask again.
+   *
+   * @param {string} [message] The upstream error message.
+   * @returns {number|null} Milliseconds to wait.
+   */
+  rateLimitRetryDelayMs(message) {
+    const named = parseRateLimitRetryMs(message);
+    const fromBucket = this.tokenRateLimit?.resetSeconds
+      ? Math.round(this.tokenRateLimit.resetSeconds * 1000)
+      : null;
+    const base = named ?? fromBucket;
+    if (base === null || !Number.isFinite(base)) return null;
+    const wait = base + RATE_LIMIT_RETRY_MARGIN_MS;
+    return wait > RATE_LIMIT_RETRY_MAX_MS ? null : wait;
+  }
+
+  /**
+   * Answer the swallowed turn once, after the wait — the operator said it, and
+   * the words are still in the conversation, so a bare `response.create` picks
+   * the request back up rather than asking them to repeat themselves.
+   *
+   * At most one retry is ever armed: if the second attempt is throttled too,
+   * the dock says so and the turn is theirs to re-ask.
+   *
+   * @param {number} waitMs
+   */
+  armRateLimitRetry(waitMs) {
+    this.clearRateLimitRetry();
+    const epoch = this.startEpoch;
+    this.rateLimitRetryTimer = setTimeout(() => {
+      this.rateLimitRetryTimer = null;
+      // A stopped or restarted session, a turn the operator started themselves,
+      // or a response already running: all mean the retry is no longer wanted.
+      if (this.startEpoch !== epoch) return;
+      if (!this.dc || this.dc.readyState !== 'open') return;
+      if (this.responseActive || this.responseCreatePending || this.userTurnPending) return;
+      this.debugLog('response.retry.rate_limited', { waitMs });
+      this.queueResponseCreate('Answer the operator\'s last request now, in one short turn.');
+    }, waitMs);
+  }
+
+  /** Disarm a pending rate-limit retry. Safe to call when none is armed. */
+  clearRateLimitRetry() {
+    if (!this.rateLimitRetryTimer) return;
+    clearTimeout(this.rateLimitRetryTimer);
+    this.rateLimitRetryTimer = null;
   }
 
   queueResponseCreate(instructions) {
@@ -2692,6 +3048,23 @@ function createVoiceControl({ reset = false } = {}) {
       <div id="gev-voice-help" class="gev-voice-help-tray" role="tooltip">
         <span class="gev-voice-help-kicker">VOICE CONTROL</span>
         <span class="gev-voice-help-detail">Hold Space to speak · click mic to toggle voice</span>
+        <ul class="gev-voice-help-examples"></ul>
+      </div>
+      <div class="gev-voice-transcript" hidden>
+        <div class="gev-voice-transcript-row" data-role="heard">
+          <span class="gev-voice-transcript-kicker">HEARD</span>
+          <span class="gev-voice-transcript-text"></span>
+        </div>
+        <div class="gev-voice-transcript-row" data-role="said">
+          <span class="gev-voice-transcript-kicker">SAID</span>
+          <span class="gev-voice-transcript-text"></span>
+        </div>
+        <div class="gev-voice-transcript-hint" hidden></div>
+        <label class="gev-voice-transcript-voice" hidden>
+          <span class="gev-voice-transcript-kicker">VOICE</span>
+          <select class="gev-voice-picker"></select>
+          <button class="gev-voice-preview" type="button" title="Hear this voice">▶</button>
+        </label>
       </div>
       <div class="gev-voice-error-tray" role="alert" aria-live="assertive">
         <div class="gev-voice-error-header">
@@ -2723,8 +3096,16 @@ function createVoiceControl({ reset = false } = {}) {
     status: root.querySelector('#gev-voice-status'),
     detail: root.querySelector('#gev-voice-detail'),
     helpDetail: root.querySelector('.gev-voice-help-detail'),
+    helpExamples: root.querySelector('.gev-voice-help-examples'),
     errorDetail: root.querySelector('#gev-voice-error-detail'),
     errorHint: root.querySelector('.gev-voice-error-hint'),
+    transcript: root.querySelector('.gev-voice-transcript'),
+    heardText: root.querySelector('[data-role="heard"] .gev-voice-transcript-text'),
+    spokenText: root.querySelector('[data-role="said"] .gev-voice-transcript-text'),
+    transcriptHint: root.querySelector('.gev-voice-transcript-hint'),
+    voiceRow: root.querySelector('.gev-voice-transcript-voice'),
+    voicePicker: root.querySelector('.gev-voice-picker'),
+    voicePreview: root.querySelector('.gev-voice-preview'),
     tierButton: root.querySelector('#gev-voice-tier'),
     costValue: root.querySelector('#gev-voice-cost-value'),
   };

@@ -21,15 +21,19 @@ function realtimeTools() {
   return new Function(`return ${literal};`)();
 }
 
-test('Realtime schema exposes the authoritative 28-tool inventory', () => {
+test('Realtime schema exposes the authoritative 29-tool inventory', () => {
   const tools = realtimeTools();
-  assert.equal(tools.length, 28);
+  // 28 → 29: `list_layers` joined the surface. It is the tool that makes "I do
+  // not have that layer" a checkable claim rather than a guess — the model can
+  // now quote the registry instead of inferring the catalogue from an enum.
+  assert.equal(tools.length, 29);
   const names = tools.map((tool) => tool.name);
-  assert.equal(new Set(names).size, 28, 'tool names are unique');
+  assert.equal(new Set(names).size, 29, 'tool names are unique');
   assert.ok(names.includes('set_context_mode'));
   assert.ok(names.includes('control_cockpit'));
   assert.ok(names.includes('select_nearest_aircraft'));
   assert.ok(names.includes('control_radio'));
+  assert.ok(names.includes('list_layers'));
   // Every tool closes its parameter object: an open schema lets the model
   // invent arguments the runner silently drops.
   for (const tool of tools) {
@@ -185,16 +189,25 @@ test('no unchanged Realtime tool definition drifts silently', () => {
     // The global bloom pass was removed from the product, so
     // `set_post_processing` lost its `bloom` object and controls sharpen alone.
     'set_post_processing',
+    // The layer-vocabulary repair. `set_layer_visibility` and
+    // `show_data_layers_menu` went from 17 hand-written ids to all 59
+    // registered ones, `get_entity_context` gained the layers that can now
+    // answer a selection, and `analyst_query` gained the French point layers
+    // the engine already had records for. `list_layers` is new. All five are
+    // derived from src/voice/layerVocabulary.js and held there by
+    // src/voice/layerVocabulary.test.mjs, which fails if the two drift again.
+    'analyst_query',
+    'list_layers',
   ]);
   const unchanged = realtimeTools()
     .filter((tool) => !TOUCHED.has(tool.name))
     .sort((a, b) => a.name.localeCompare(b.name));
-  assert.equal(unchanged.length, 17);
+  assert.equal(unchanged.length, 16);
   const digest = createHash('sha256')
     .update(JSON.stringify(unchanged))
     .digest('hex')
     .slice(0, 16);
-  assert.equal(digest, '0a321f7ac13b9663', 'an unchanged Realtime tool definition drifted');
+  assert.equal(digest, 'f1a4693db3add1e5', 'an unchanged Realtime tool definition drifted');
 });
 
 test('Radio volume and mission speed share the Sharpen slider visual language', () => {

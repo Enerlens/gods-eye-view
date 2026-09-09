@@ -8,8 +8,12 @@ import {
   nextBrainStep,
   parseRetryAfterMs,
   parseToolArguments,
+  describeVoiceUpgradeHint,
+  loadSpeechVoices,
   pickSpeechVoice,
+  scoreSpeechVoice,
   speechRecognitionConstructor,
+  speechVoiceQuality,
 } from './gevBrainVoice.js';
 
 test('a missing /api/voice/config degrades to "no provider", never to a throw', async () => {
@@ -55,17 +59,128 @@ test('malformed tool arguments become a readable result, not a crash', () => {
   assert.equal(parseToolArguments('[1,2]').ok, false, 'a JSON array is not an argument object');
 });
 
-test('a local voice for the exact tag beats a remote one', () => {
+test('the exact language tag still wins, and a wrong language never does', () => {
   const voices = [
-    { lang: 'en-US', localService: true },
-    { lang: 'fr-CA', localService: true },
-    { lang: 'fr-FR', localService: false },
-    { lang: 'fr-FR', localService: true },
+    { name: 'Samantha', lang: 'en-US', localService: true },
+    { name: 'Chantal', lang: 'fr-CA', localService: true },
+    { name: 'Marie', lang: 'fr-FR', localService: false },
+    { name: 'Marie', lang: 'fr-FR', localService: true },
   ];
-  assert.equal(pickSpeechVoice(voices, 'fr-FR').localService, true);
   assert.equal(pickSpeechVoice(voices, 'fr-FR').lang, 'fr-FR');
+  // At equal name and equal tag, the local one still wins — it just no longer
+  // outranks a better-named remote voice (see the next test).
+  assert.equal(pickSpeechVoice(voices, 'fr-FR').localService, true);
   assert.equal(pickSpeechVoice([{ lang: 'de-DE' }], 'fr-FR'), null, 'no match is null, not a wrong-language voice');
   assert.equal(pickSpeechVoice([], 'fr-FR'), null);
+});
+
+/*
+ * THE ROBOTIC-VOICE TEST.
+ *
+ * Reported on Safari, 2026-09-09: "a completely obsolete robotic voice, like
+ * twenty-year-old systems". It was. Every `fr-FR` voice on macOS scored 5 under
+ * the old rule — exact tag 4, local 1 — so the winner was whichever one
+ * `getVoices()` listed first, and on Safari that is the compact Thomas, which
+ * really is concatenative synthesis from the 2000s. Nothing preferred the
+ * Premium voices, and nothing said they existed.
+ */
+test('a modern voice beats the compact one that used to win by list order', () => {
+  const safari = [
+    // Order matters: this is the list order that used to decide the winner.
+    { name: 'Thomas', lang: 'fr-FR', localService: true, voiceURI: 'thomas' },
+    { name: 'Audrey (Premium)', lang: 'fr-FR', localService: true, voiceURI: 'audrey' },
+    { name: 'Amélie', lang: 'fr-CA', localService: true, voiceURI: 'amelie' },
+  ];
+  assert.equal(pickSpeechVoice(safari, 'fr-FR').name, 'Audrey (Premium)');
+
+  // Edge's neural voices are NETWORK voices. Latency matters less than being
+  // understood, so `localService` must not outrank them any more.
+  const edge = [
+    { name: 'Microsoft Paul - French (France)', lang: 'fr-FR', localService: true, voiceURI: 'paul' },
+    { name: 'Microsoft Denise Online (Natural) - French (France)', lang: 'fr-FR', localService: false, voiceURI: 'denise' },
+  ];
+  assert.match(pickSpeechVoice(edge, 'fr-FR').name, /Denise/);
+
+  // A great English voice must never win a French turn, however well named.
+  const mixed = [
+    { name: 'Microsoft Aria Online (Natural)', lang: 'en-US', localService: false },
+    { name: 'Thomas', lang: 'fr-FR', localService: true },
+  ];
+  assert.equal(pickSpeechVoice(mixed, 'fr-FR').lang, 'fr-FR');
+});
+
+test('the operator\'s own pick overrides the ranking, and only while it exists', () => {
+  const voices = [
+    { name: 'Audrey (Premium)', lang: 'fr-FR', localService: true, voiceURI: 'audrey' },
+    { name: 'Thomas', lang: 'fr-FR', localService: true, voiceURI: 'thomas' },
+  ];
+  assert.equal(pickSpeechVoice(voices, 'fr-FR', { preferredUri: 'thomas' }).name, 'Thomas');
+  // A preference for a voice that has been uninstalled falls back to the
+  // ranking rather than to silence.
+  assert.equal(pickSpeechVoice(voices, 'fr-FR', { preferredUri: 'gone' }).name, 'Audrey (Premium)');
+});
+
+test('voice quality is read off the NAME, and claims nothing more', () => {
+  assert.equal(speechVoiceQuality({ name: 'Audrey (Premium)' }), 'modern');
+  assert.equal(speechVoiceQuality({ name: 'Microsoft Denise Online (Natural)' }), 'modern');
+  assert.equal(speechVoiceQuality({ name: 'Thomas (Compact)' }), 'compact');
+  assert.equal(speechVoiceQuality({ name: 'Eloquence Grandpa' }), 'compact');
+  assert.equal(speechVoiceQuality({ name: 'Thomas' }), 'unknown');
+  assert.equal(speechVoiceQuality(null), 'unknown');
+  assert.equal(scoreSpeechVoice({ lang: 'de-DE', name: 'Anna' }, 'fr-FR'), 0);
+});
+
+test('Safari with only the compact voice is told where the good one lives', () => {
+  const safariUa = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Version/18.0 Safari/605.1.15';
+  const hint = describeVoiceUpgradeHint([{ name: 'Thomas', lang: 'fr-FR' }], 'fr-FR', { userAgent: safariUa });
+  assert.match(hint, /System Settings/);
+  assert.match(hint, /Spoken Content/);
+  assert.match(hint, /Audrey/);
+
+  // Nothing to say once a good voice is installed…
+  assert.equal(
+    describeVoiceUpgradeHint([{ name: 'Audrey (Premium)', lang: 'fr-FR' }], 'fr-FR', { userAgent: safariUa }),
+    null,
+  );
+  // …nor on the platforms that ship neural voices without being asked…
+  assert.equal(
+    describeVoiceUpgradeHint([{ name: 'Thomas', lang: 'fr-FR' }], 'fr-FR', {
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0) Chrome/141 Edg/141',
+    }),
+    null,
+  );
+  // …nor for a language this advice was not written for.
+  assert.equal(
+    describeVoiceUpgradeHint([{ name: 'Alex', lang: 'en-US' }], 'en-US', { userAgent: safariUa }),
+    null,
+  );
+});
+
+test('Chrome\'s empty first getVoices() is waited out, not believed', () => {
+  // Chrome returns [] from the first call and fires `voiceschanged` a moment
+  // later. A caller that trusts the first answer picks no voice at all, and a
+  // French session gets narrated by the browser default — in English.
+  let listeners = [];
+  let voices = [];
+  const scope = {
+    speechSynthesis: {
+      getVoices: () => voices,
+      addEventListener: (name, fn) => { if (name === 'voiceschanged') listeners.push(fn); },
+      removeEventListener: (name, fn) => { listeners = listeners.filter((entry) => entry !== fn); },
+    },
+  };
+  const pending = loadSpeechVoices(scope, 5000);
+  voices = [{ name: 'Audrey (Premium)', lang: 'fr-FR' }];
+  listeners.forEach((fn) => fn());
+  return pending.then((result) => {
+    assert.equal(result.length, 1);
+    assert.equal(listeners.length, 0, 'the listener is removed, not leaked');
+  });
+});
+
+test('a browser with no synthesis at all answers with an empty list', async () => {
+  assert.deepEqual(await loadSpeechVoices({}, 10), []);
+  assert.deepEqual(await loadSpeechVoices({ speechSynthesis: { getVoices: () => [] } }, 10), []);
 });
 
 test('cost gains a digit below a dollar so a cheap session is not shown as $0.00', () => {
@@ -77,14 +192,18 @@ test('cost gains a digit below a dollar so a cheap session is not shown as $0.00
 
 /* ---------- a full turn, with fake ears, fake brain and fake mouth ---------- */
 
-function makeHarness({ replies }) {
+function makeHarness({ replies, describeSituation = null, autoEndSpeech = true } = {}) {
   const statuses = [];
   const spoken = [];
   const toolCalls = [];
+  const subtitles = [];
   const host = {
     ui: { costValue: { dataset: {} }, root: { dataset: {} } },
     setStatus: (status, detail) => statuses.push([status, detail]),
     setVoiceSpeaker: () => {},
+    setHeardText: (text, options) => subtitles.push(['heard', text, options?.interim === true]),
+    setSpokenText: (text) => subtitles.push(['said', text, false]),
+    setVoiceOptions: () => {},
   };
   let round = 0;
   const fetchImpl = async () => ({
@@ -97,7 +216,13 @@ function makeHarness({ replies }) {
     abort() { this.started = false; }
   }
   class FakeUtterance {
-    constructor(text) { this.text = text; setTimeout(() => this.onend?.(), 0); }
+    constructor(text) {
+      this.text = text;
+      // `autoEndSpeech: false` leaves the utterance hanging so a test can look
+      // at the session WHILE the mouth is open — which is the only moment the
+      // ears-must-stay-shut rule can be observed.
+      if (autoEndSpeech) setTimeout(() => this.onend?.(), 0);
+    }
   }
   const scope = {
     SpeechRecognition: FakeRecognition,
@@ -108,6 +233,7 @@ function makeHarness({ replies }) {
     toolCalls.push([name, args]);
     return { ok: true, name };
   };
+  if (describeSituation) runner.describeSituation = describeSituation;
   const session = new GevBrainVoiceSession({
     host,
     runner,
@@ -115,7 +241,7 @@ function makeHarness({ replies }) {
     fetchImpl,
     scope,
   });
-  return { session, statuses, spoken, toolCalls, host };
+  return { session, statuses, spoken, toolCalls, subtitles, host };
 }
 
 test('a spoken turn runs its tools, then speaks one confirmation', async () => {
@@ -394,4 +520,110 @@ test('cancelling a turn during its rate-limit wait ends the wait, not just the f
   const reply = await pending;
   assert.equal(reply.ok, false);
   assert.equal(reply.error, 'Turn cancelled');
+});
+
+/* ---------- the situation preamble, the subtitles, and the closed ears ------ */
+
+test('every turn carries where-we-are, and only the newest one', async () => {
+  // The root cause behind "it does not know what THIS station is": the text
+  // brain received a bare message array. No camera, no layers, no selection.
+  let tick = 0;
+  const { session } = makeHarness({
+    replies: [{ message: { content: 'Ok.' }, usage: { cost: 0 } }],
+    describeSituation: async () => `[GEV SITUATION]\nCamera: brief ${++tick}.`,
+  });
+  await session.start({});
+  await session.runTurn('Où suis-je ?');
+  await session.runTurn('Et maintenant ?');
+
+  const briefs = session.messages.filter((message) => message.__gevSituation);
+  assert.equal(briefs.length, 1, 'a ten-turn session must not carry ten stale snapshots');
+  assert.match(briefs[0].content, /brief 2/, 'the brief is the one from THIS turn');
+  assert.equal(briefs[0].role, 'user', 'the server owns the system prompt and refuses a second one');
+  // The brief goes in FRONT of the request it is meant to orient.
+  const order = session.messages.map((message) => (message.__gevSituation ? 'brief' : message.role));
+  assert.equal(order.indexOf('brief') < order.lastIndexOf('user'), true);
+});
+
+test('a situation brief that cannot be built loses the context, never the turn', async () => {
+  const { session, spoken } = makeHarness({
+    replies: [{ message: { content: 'Ok.' }, usage: { cost: 0 } }],
+    describeSituation: async () => { throw new Error('no viewer'); },
+  });
+  await session.start({});
+  await session.runTurn('Montre les médecins');
+  assert.deepEqual(spoken, ['Ok.']);
+  assert.equal(session.messages.some((message) => message.__gevSituation), false);
+});
+
+test('a runner with no situation seam is still a working mic', async () => {
+  const { session, spoken } = makeHarness({ replies: [{ message: { content: 'Ok.' }, usage: { cost: 0 } }] });
+  await session.start({});
+  await session.runTurn('Montre les médecins');
+  assert.deepEqual(spoken, ['Ok.']);
+});
+
+test('what was heard and what was said both survive the turn', async () => {
+  // setStatus truncates at 90 characters and is overwritten by the next status
+  // change, so a misheard command used to leave no trace at all.
+  const { session, subtitles } = makeHarness({
+    replies: [{ message: { content: 'Couche médecins activée.' }, usage: { cost: 0 } }],
+  });
+  await session.start({});
+  await session.runTurn('Montre la couche des médecins');
+  assert.deepEqual(subtitles, [
+    ['heard', 'Montre la couche des médecins', false],
+    ['said', 'Couche médecins activée.', false],
+  ]);
+});
+
+test('the ears stay shut while the mouth is open', async () => {
+  // Regression, and the code half of the "choppy voice" report: speak() calls
+  // recognition.stop(), which fires onend, which used to schedule a restart
+  // 250 ms later — squarely inside the sentence being spoken. From then until
+  // the utterance ended the recogniser was live against the speakers.
+  const { session } = makeHarness({
+    replies: [{ message: { content: 'Une phrase assez longue pour couvrir le redémarrage.' }, usage: { cost: 0 } }],
+    autoEndSpeech: false,
+  });
+  await session.start({});
+  const turn = session.runTurn('Dis quelque chose');
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(session.speaking, true, 'the mouth is open');
+  assert.equal(session.recognition.started, false, 'the ears must be shut');
+
+  // The self-restart the browser triggers is declined while speaking...
+  session.handleRecognitionEnd();
+  assert.equal(session.restartTimer, null, 'no restart is even scheduled mid-sentence');
+
+  // ...and Space cuts the sentence short and hands the turn straight back.
+  assert.equal(session.interruptSpeech(), true);
+  assert.equal(session.speaking, false);
+  assert.equal(session.recognition.started, true, 'the ears reopen exactly once, here');
+  assert.equal(session.interruptSpeech(), false, 'nothing to interrupt twice');
+  await turn;
+});
+
+test('the operator\'s voice choice is remembered, and a refusing localStorage is not fatal', async () => {
+  const stored = new Map();
+  const { session } = makeHarness({ replies: [{ message: { content: 'Ok.' }, usage: { cost: 0 } }] });
+  session.scope.localStorage = {
+    getItem: (key) => stored.get(key) ?? null,
+    setItem: (key, value) => stored.set(key, value),
+    removeItem: (key) => stored.delete(key),
+  };
+  session.setPreferredVoice('audrey');
+  assert.equal(stored.get('gev.voice.speechVoiceUri'), 'audrey');
+  session.setPreferredVoice(null);
+  assert.equal(stored.has('gev.voice.speechVoiceUri'), false, 'null means "back to automatic"');
+
+  // Safari in private mode throws on localStorage. A mic that fails to start
+  // over a cosmetic preference would be an absurd trade.
+  session.scope.localStorage = {
+    getItem: () => { throw new Error('denied'); },
+    setItem: () => { throw new Error('denied'); },
+    removeItem: () => { throw new Error('denied'); },
+  };
+  session.setPreferredVoice('amelie');
+  assert.equal(session.preferredVoiceUri, 'amelie');
 });

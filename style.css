@@ -9385,6 +9385,143 @@ body:not(.ui-clean-view):not(.recording-mode):has(#intel-hud[data-variant='minim
   transform: translate(-50%, 0) scale(1);
 }
 
+.gev-voice-help-examples {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  color: rgba(223, 245, 250, 0.72);
+  font-size: 9px;
+  list-style: none;
+}
+
+.gev-voice-help-examples li::before {
+  margin-right: 0.3rem;
+  color: rgba(54, 220, 255, 0.6);
+  content: '›';
+}
+
+/*
+ * VOICE SUBTITLES — what was heard, and what was said.
+ *
+ * The dock's own readout truncates at 90 characters and is overwritten by the
+ * next status change, which made a misheard command undiagnosable: the only way
+ * to learn that a phrase arrived garbled was to say it again. This tray sits
+ * above the capsule, stays put for the whole session, and wraps.
+ *
+ * It shares the help tray's geometry on purpose — same anchor, same width, same
+ * glass — but it is NOT a tooltip: it is pinned while a session is live rather
+ * than shown on hover, so `pointer-events` stay on for the voice picker inside.
+ */
+#gev-voice-control .gev-voice-transcript {
+  position: absolute;
+  bottom: calc(100% + 0.7rem);
+  left: 50%;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(26rem, calc(100vw - 2rem));
+  padding: 0.55rem 0.7rem;
+  color: rgba(223, 245, 250, 0.92);
+  font-size: 10px;
+  line-height: 1.35;
+  text-align: left;
+  background: rgba(7, 22, 31, 0.96);
+  border: 1px solid rgba(54, 220, 255, 0.28);
+  border-radius: 0.38rem;
+  box-shadow: 0 0.85rem 2rem rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(24px) saturate(1.3);
+  -webkit-backdrop-filter: blur(24px) saturate(1.3);
+  transform: translateX(-50%);
+}
+
+#gev-voice-control .gev-voice-transcript[hidden] {
+  display: none;
+}
+
+/* Hovering the dock raises the help tooltip; two trays in the same place is
+   one too many, so the transcript yields while the tooltip is up. */
+#gev-voice-control:not([data-status='error']):hover .gev-voice-transcript {
+  opacity: 0.12;
+}
+
+.gev-voice-transcript-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+}
+
+.gev-voice-transcript-kicker {
+  flex: none;
+  min-width: 2.6rem;
+  color: rgba(54, 220, 255, 0.72);
+  font-size: 8px;
+  letter-spacing: 0.09em;
+}
+
+.gev-voice-transcript-text {
+  overflow-wrap: anywhere;
+}
+
+/* Interim recognition is a guess the browser is still revising. Dimming it is
+   what stops a half-heard phrase reading as the final transcript. */
+.gev-voice-transcript-text[data-interim='true'] {
+  color: rgba(223, 245, 250, 0.55);
+  font-style: italic;
+}
+
+.gev-voice-transcript-hint {
+  color: #ffdc78;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.gev-voice-transcript-hint[hidden] {
+  display: none;
+}
+
+.gev-voice-transcript-voice {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.gev-voice-transcript-voice[hidden] {
+  display: none;
+}
+
+.gev-voice-picker {
+  flex: 1;
+  min-width: 0;
+  max-width: 12rem;
+  padding: 0.1rem 0.2rem;
+  color: rgba(223, 245, 250, 0.92);
+  font-family: inherit;
+  font-size: 9px;
+  background: rgba(4, 14, 20, 0.9);
+  border: 1px solid rgba(54, 220, 255, 0.28);
+  border-radius: 0.2rem;
+}
+
+.gev-voice-preview {
+  flex: none;
+  padding: 0.1rem 0.35rem;
+  color: rgba(54, 220, 255, 0.9);
+  font-size: 9px;
+  background: rgba(4, 14, 20, 0.9);
+  border: 1px solid rgba(54, 220, 255, 0.28);
+  border-radius: 0.2rem;
+  cursor: pointer;
+}
+
+#command-dock.dock-has-pinned-tray .gev-voice-transcript {
+  bottom: calc(100% + 1.7rem + var(--dock-pinned-stack-height));
+}
+
 #command-dock.dock-has-pinned-tray .gev-voice-help-tray {
   bottom: calc(100% + 1.7rem + var(--dock-pinned-stack-height));
 }

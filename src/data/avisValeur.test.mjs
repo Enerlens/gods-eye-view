@@ -30,6 +30,7 @@ import {
   avisLegendEntries,
   avisRefusalText,
   avisSubjectCard,
+  avisVoiceSummary,
   avisYearsLabel,
 } from './avisValeur.js';
 
@@ -226,4 +227,54 @@ test('the editions are named the way a French reader writes them', () => {
   assert.equal(avisYearsLabel([2025, 2023, 2024]), 'éditions 2023 à 2025');
   assert.equal(avisYearsLabel([]), null);
   assert.equal(avisYearsLabel(null), null);
+});
+
+// ── WHAT THE VOICE MAY SAY ─────────────────────────────────────────────────
+// Same discipline as the card: the estimate is the layer's, never the
+// speaker's. The wording trap here is `basis` — three states, and only one of
+// them permits a single price.
+
+test('the voice summary publishes a centre only when the estimate has one', () => {
+  const stats = {
+    dormant: false, commune: 'Bordeaux', years: [2025, 2024, 2023],
+    basis: 'comparables', reason: null, comparableCount: 69,
+    subjectType: 'Appartement', subjectSurfaceM2: 60, rungRadiusM: 300,
+    prixM2Median: 5300, prixM2P25: 4600, prixM2P75: 6100,
+    valeurMedian: 318_000, ciDeviationMaxPct: 11, surfaceMedian: 52, driftPct: -4.3,
+  };
+  const summary = avisVoiceSummary(stats);
+  assert.equal(summary.estimatedPrixM2, 5300);
+  assert.equal(summary.estimatedValeurEur, 318_000);
+  assert.equal(summary.comparableCount, 69);
+  assert.equal(summary.radiusM, 300);
+  // The band is symmetric in metres and the market is not: the comparables'
+  // own median surface is printed rather than assumed to be the subject's.
+  assert.equal(summary.comparableSurfaceMedianM2, 52);
+
+  // `range` is the proxy REFUSING to centre the sample. Republishing the
+  // quartiles' midpoint as a price would smuggle back the very number the
+  // refusal withheld.
+  const range = avisVoiceSummary({ ...stats, basis: 'range', reason: 'interval-too-wide' });
+  assert.equal(range.estimatedPrixM2, null);
+  assert.equal(range.estimatedValeurEur, null);
+  assert.equal(range.prixM2P25, 4600);
+  assert.equal(range.reason, 'interval-too-wide');
+
+  // Nothing to speak for: off the air, or above the scan ceiling.
+  assert.equal(avisVoiceSummary({ ...stats, dormant: true }), null);
+  assert.equal(avisVoiceSummary(null), null);
+
+  // Still computing is a THIRD state, and it must not read as "no comparables".
+  const pending = avisVoiceSummary({ ...stats, basis: null });
+  assert.equal(pending.pending, true);
+  assert.equal(pending.estimatedPrixM2, undefined);
+  assert.match(pending.note, /NOT "no comparables here"/);
+
+  // And where it was centred, so a neighbourhood the camera has left cannot be
+  // quoted for the one it has arrived at.
+  assert.deepEqual(
+    avisVoiceSummary({ ...stats, scanCentre: { lat: 44.8446, lon: -0.5786 } }).measuredAt,
+    { lat: 44.8446, lon: -0.5786 },
+  );
+  assert.equal(summary.measuredAt, null);
 });

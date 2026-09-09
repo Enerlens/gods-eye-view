@@ -22,6 +22,10 @@ import {
   shouldHandlePushToTalkKeyDown,
   shouldIgnoreVoiceButtonClick,
   shouldStopVoiceAfterRadioTool,
+  describeTokenBudget,
+  parseRateLimitRetryMs,
+  rateLimitHint,
+  readTokenRateLimit,
   readStoredVoiceTier,
   readStoredVoiceLimits,
   writeStoredVoiceTier,
@@ -3392,4 +3396,166 @@ test('a duplicate click during the wait does not start a second session', async 
   } finally {
     restore();
   }
+});
+
+// ── The per-minute TOKEN budget ─────────────────────────────────────────────
+// Measured on the shipped session: one response bills ~10 900 input tokens
+// before the operator has said a word (instructions + 29 tool schemas, re-sent
+// every time), against an entry-tier ceiling of 40 000 per minute. That is
+// three responses, and a single tool-using command is two of them. Until now
+// the fourth came back `status: "failed"` and the assistant went mute with no
+// caption, no hint, and no retry — the mic looked broken rather than throttled.
+
+test('the token bucket is read out of a rate_limits.updated payload', () => {
+  assert.deepEqual(
+    readTokenRateLimit([
+      { name: 'requests', limit: 1000, remaining: 999, reset_seconds: 0.06 },
+      { name: 'tokens', limit: 40000, remaining: 18217, reset_seconds: 32.674 },
+    ]),
+    { limit: 40000, remaining: 18217, resetSeconds: 32.674 },
+  );
+  assert.equal(readTokenRateLimit([{ name: 'requests', limit: 1000, remaining: 999 }]), null);
+  assert.equal(readTokenRateLimit(null), null);
+});
+
+test('the retry delay comes from the message, which is the only place it exists', () => {
+  assert.equal(
+    parseRateLimitRetryMs('Rate limit reached … Please try again in 19.449s. Visit …'),
+    19449,
+  );
+  assert.equal(parseRateLimitRetryMs('Please try again in 400ms.'), 400);
+  assert.equal(parseRateLimitRetryMs('Rate limit reached.'), null);
+  assert.equal(parseRateLimitRetryMs(null), null);
+});
+
+test('the budget caption appears only once the next turn cannot be funded', () => {
+  assert.equal(describeTokenBudget({ limit: 40000, remaining: 18217, resetSeconds: 32.7 }, 11000), null);
+  assert.deepEqual(
+    describeTokenBudget({ limit: 40000, remaining: 4000, resetSeconds: 32.7 }, 11000),
+    { exhausted: true, detail: 'TOKEN LIMIT REACHED — RESETS IN 33 S' },
+  );
+  // No bucket, or a session that never published a limit: say nothing.
+  assert.equal(describeTokenBudget(null, 11000), null);
+  assert.equal(describeTokenBudget({ limit: 0, remaining: 0, resetSeconds: 5 }, 11000), null);
+});
+
+test('the rate-limit hint names the ceiling and the cost of one answer', () => {
+  const hint = rateLimitHint({ limit: 40000, remaining: 0, resetSeconds: 20 }, 10886);
+  assert.match(hint, /40,000 realtime tokens per minute/);
+  assert.match(hint, /about 10,900/);
+  assert.match(hint, /Nothing is broken/);
+});
+
+/** A controller with just enough UI and transport to take realtime events. */
+function budgetController() {
+  const sent = [];
+  const ui = {
+    root: { dataset: {}, classList: { remove() {} }, querySelectorAll: () => [] },
+    status: { textContent: '' },
+    detail: { textContent: '', title: '' },
+    errorDetail: { textContent: '' },
+    errorHint: { textContent: '' },
+  };
+  const controller = new GevRealtimeController({ ui, runner: async () => ({ ok: true }) });
+  controller.debugLog = () => {};
+  controller.dc = { readyState: 'open', send(message) { sent.push(JSON.parse(message)); }, close() {} };
+  return { controller, ui, sent };
+}
+
+const rateLimitedDone = {
+  type: 'response.done',
+  response: {
+    id: 'response-throttled',
+    status: 'failed',
+    status_details: {
+      type: 'failed',
+      error: {
+        type: 'tokens',
+        code: 'rate_limit_exceeded',
+        message: 'Rate limit reached for gpt-realtime-2 (for limit gpt-4o-realtime) in organization org-x on tokens per min (TPM): Limit 40000, Used 39912, Requested 13054. Please try again in 19.449s.',
+      },
+    },
+  },
+};
+
+test('a throttled turn says how long the wait is instead of going silent', async () => {
+  const { controller, ui } = budgetController();
+  controller.handleRealtimeEvent({ data: JSON.stringify({
+    type: 'rate_limits.updated',
+    rate_limits: [{ name: 'tokens', limit: 40000, remaining: 88, reset_seconds: 19.4 }],
+  }) });
+  await controller.handleRealtimeEvent({ data: JSON.stringify(rateLimitedDone) });
+  assert.equal(controller.status, 'listening', 'the session stays usable');
+  assert.match(ui.detail.textContent, /TOKEN LIMIT — ANSWERING IN 21 S/);
+  assert.ok(controller.rateLimitRetryTimer, 'and the swallowed turn is armed to be answered');
+  controller.clearRateLimitRetry();
+});
+
+test('the retry answers the operator without making them repeat themselves', async () => {
+  const { controller, sent } = budgetController();
+  await controller.handleRealtimeEvent({ data: JSON.stringify(rateLimitedDone) });
+  assert.ok(controller.rateLimitRetryTimer);
+  controller.rateLimitRetryTimer._onTimeout();
+  controller.rateLimitRetryTimer = null;
+  const created = sent.find((message) => message.type === 'response.create');
+  assert.ok(created, 'one response.create, no user action needed');
+  assert.match(created.response.instructions, /last request/);
+});
+
+test('speaking again, or stopping the mic, disarms the retry', async () => {
+  const { controller } = budgetController();
+  await controller.handleRealtimeEvent({ data: JSON.stringify(rateLimitedDone) });
+  assert.ok(controller.rateLimitRetryTimer);
+  await controller.handleRealtimeEvent({ data: JSON.stringify({ type: 'input_audio_buffer.speech_started' }) });
+  assert.equal(controller.rateLimitRetryTimer, null, 'the new question wins over the old one');
+
+  await controller.handleRealtimeEvent({ data: JSON.stringify(rateLimitedDone) });
+  assert.ok(controller.rateLimitRetryTimer);
+  controller.stop();
+  assert.equal(controller.rateLimitRetryTimer, null, 'nothing fires into a closed session');
+});
+
+test('a failure that is not a rate limit keeps the plain recovery caption', async () => {
+  const { controller, ui } = budgetController();
+  await controller.handleRealtimeEvent({ data: JSON.stringify({
+    type: 'response.done',
+    response: {
+      id: 'response-other',
+      status: 'failed',
+      status_details: { type: 'failed', error: { type: 'server_error', code: 'internal_error', message: 'boom' } },
+    },
+  }) });
+  assert.equal(ui.detail.textContent, 'Ask or command');
+  assert.equal(controller.rateLimitRetryTimer, null);
+});
+
+test('the budget caption never overwrites an error or interrupts a live turn', () => {
+  const { controller, ui } = budgetController();
+  const exhausted = { type: 'rate_limits.updated', rate_limits: [{ name: 'tokens', limit: 40000, remaining: 10, reset_seconds: 12 }] };
+
+  controller.setStatus('error', 'Microphone permission was denied');
+  const errorCaption = ui.detail.textContent;
+  controller.handleRealtimeEvent({ data: JSON.stringify(exhausted) });
+  assert.equal(ui.detail.textContent, errorCaption, 'a budget note must not bury a real error');
+  assert.equal(ui.errorDetail.textContent, 'Microphone permission was denied');
+
+  controller.setStatus('listening', 'Ask or command');
+  controller.responseActive = true;
+  controller.handleRealtimeEvent({ data: JSON.stringify(exhausted) });
+  assert.equal(ui.detail.textContent, 'Ask or command');
+
+  controller.responseActive = false;
+  controller.handleRealtimeEvent({ data: JSON.stringify(exhausted) });
+  assert.equal(ui.detail.textContent, 'TOKEN LIMIT REACHED — RESETS IN 12 S');
+});
+
+test('what one turn costs is measured from the last one, not assumed', async () => {
+  const { controller } = budgetController();
+  await controller.handleRealtimeEvent({ data: JSON.stringify({
+    type: 'response.done',
+    response: { id: 'r1', status: 'completed', usage: { input_tokens: 12733, output_tokens: 15, total_tokens: 12748 } },
+  }) });
+  assert.equal(controller.lastResponseInputTokens, 12733);
+  // 12 733 does not fit in 12 000 left, where the 11 000 fallback would have.
+  assert.ok(describeTokenBudget({ limit: 40000, remaining: 12000, resetSeconds: 9 }, controller.lastResponseInputTokens));
 });

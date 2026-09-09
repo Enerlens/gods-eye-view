@@ -131,19 +131,20 @@ The cockpit even carries its own briefing strip: nearby live signals, regional h
 > Voice needs **one key — your choice of two**. Without either, the entire app still runs; the mic button just says which key it wants.
 >
 > - **OpenAI** — a single speech-to-speech model over WebRTC. Full duplex: you can talk over it. The same key drives the **AI HUD summary**, a terse five-word intelligence-style readout of the current view that regenerates as you move.
-> - **OpenRouter** — your browser's own speech recognition and speech synthesis (no key, no download) with a text model in the middle, driving the same 28 tools. Turn-based rather than full duplex, and cheaper: measured **$0.001–0.005 per spoken command** on the default brain. Set `GEV_VOICE_PROVIDER=openrouter`.
+> - **OpenRouter** — your browser's own speech recognition and speech synthesis (no key, no download) with a text model in the middle, driving the same 29 tools. Turn-based rather than full duplex, and cheaper: measured **$0.001–0.005 per spoken command** on the default brain. Set `GEV_VOICE_PROVIDER=openrouter`.
 >
 > The default brain on that path is **Mistral Medium 3.1**, picked on a French routing bench over this app's own tool schemas — 26/26 on tool choice, and the only model in that bench that refused to invent history when handed a thin source document. Any OpenRouter model with tool calling works: set `OPENROUTER_VOICE_MODEL`.
 
 Click **GEV MIC**, grant the microphone, and just talk. This is more than a voice-controlled remote:
 
 - **🧠 It knows what it's looking at.** The agent pulls live scene context before answering — including coordinates, street names, active layers, and view scale. Ask *"what city is this?"* mid-flight and it knows.
-- **🎯 Entity Q&A.** Click any plane, ship, or datacenter and ask *"what's this?"* It answers using the object's live telemetry.
+- **🎯 Entity Q&A.** Click any plane, ship, datacenter, bike station, charge point or bus and ask *"what's this?"* It answers using the object's live telemetry — *"how many bikes and docks here?"* is answered from the loaded record, with the time of the last report.
+- **🗂️ It knows its own catalogue.** All 59 toggleable layers are nameable by voice, in French or English, by id, spoken name or the label on the panel — *"montre les médecins"*, *"les bornes de recharge"*, *"vigilance météo"*. Ask *"what layers do you have?"* and it reads the registry; ask for one that does not exist and it offers the closest three instead of guessing.
 - **👁️ Visual grounding.** At street level, it reads a viewport screenshot to identify legible signage and building names, and is instructed never to hallucinate labels.
 - **🎬 Cinematic framing.** *"Show me the planes overhead"* pulls the camera back, angles it, and frames the live traffic like a director.
 - **🔒 Honest and secure.** The agent only confirms actions that succeeded. Your `OPENAI_API_KEY` never touches the browser; the client only gets a short-lived session token.
 
-Twenty-eight tools, four jobs — the commands below come straight from the product's voice test suite and tool playbook:
+Twenty-nine tools, four jobs — the commands below come straight from the product's voice test suite and tool playbook:
 
 **🎥 Direct it** — drone-operator camera verbs:
 > 🗣️ *"Take me to Tokyo."* · *"Orbit around this area slowly."* · *"Draw the walking route from the Capitol to Zilker Park."* → *"Fly the route we just drew."* · *"Zoom out to a globe view."*

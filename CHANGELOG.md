@@ -193,6 +193,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   « rien à cet endroit ». Une proposition est une promesse ; les marques sont
   la seule preuve. Les mesures et les règles sont dans
   [`docs/DEMANDER-UNE-DONNEE.md`](docs/DEMANDER-UNE-DONNEE.md).
+- **`list_layers` — la voix peut citer le registre au lieu de le deviner.** Le
+  29ᵉ outil vocal rend « je n'ai pas cette couche » vérifiable : identifiant,
+  libellé français, groupe, état et nombre d'objets chargés, filtrables par un
+  sujet en français ou en anglais.
+- **Des sous-titres sur le dock, et trois exemples en rotation.** Ce qui a été
+  entendu et ce qui est dit restent lisibles après le tour : une erreur de
+  reconnaissance se diagnostique sans réécouter. Au repos, le dock propose
+  trois formulations parmi dix, tirées de la même liste que les instructions du
+  modèle — une suggestion qu'il ne saurait pas honorer serait pire que rien.
+- **`npm run qa:immobilier-voice` — la lecture immobilière est sous test.**
+  Harnais navigateur déterministe, sans modèle et sans réseau : les deux
+  endpoints sont tenus par des charges **enregistrées** sur le proxy de l'app
+  place des Grands Hommes. Il prouve les quatre choses que le registre vivant
+  ne peut pas fixer — la caméra qui descend toute seule (23 027 m → 516 m) et
+  la couche qui dessine dans la foulée, le cadrage à 900 m sur la portée et non
+  à 7 km sur le plafond, les médianes qui arrivent jusqu'à `layerSummaries`, et
+  que ces médianes sont bien celles du proxy : la charge sert 12 ventes sur un
+  scan de 372, donc un résumé recalculé sur ce qui est à l'écran tomberait à
+  côté.
+- **`npm run qa:voice-bench` — le banc français est dans le dépôt.** 154 cas de
+  routage (les 26 historiques, 9 écrits pour ce rapport, et **les 59 couches ×
+  2 formulations**, dérivées du registre) et 6 cas de lecture qui notent ce que
+  le modèle **dit** d'un résultat d'outil. La configuration est lue dans
+  `vite.config.js`, jamais copiée. Coût mesuré : ~0,0006 $ le cas.
 
 ### Changed
 - **Les aéroports : quatre paliers qui posaient deux questions, un seul palier
@@ -253,6 +277,166 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `docs/CARTOGRAPHIE.md`.
 
 ### Fixed
+- **« Active la couche DVF » : la couche s'allumait, l'écran restait vide, et
+  l'outil répondait « c'est fait ».** Signalé comme « par la voix ça ne marche
+  jamais, alors qu'en cliquant ça marche » — et le clic n'y était pour rien :
+  les couches à balayage d'adresse (ventes DVF, avis de valeur, DPE, cadastre,
+  urbanisme) scannent **300 m autour de la caméra** et se mettent en sommeil
+  **au-dessus de 12 km**. Depuis une vue de ville, la couche passait bien à ON
+  et ne dessinait rien ; `set_layer_visibility` renvoyait `ok: true` sans un mot,
+  l'assistante disait « DVF activé », et l'opérateur voyait une carte vide. En
+  cliquant soi-même on est déjà dans la rue, d'où l'illusion.
+
+  **La vue se règle maintenant toute seule.** Allumer une couche, c'est demander
+  à la voir : quand la hauteur de caméra est le seul obstacle, l'outil descend
+  droit sur le point que l'opérateur avait déjà en cadre, relance le balayage et
+  répond avec ce qui est à l'écran — pas avec une proposition. Mesuré :
+  **23 027 m → 516 m**, et 12 ventes dessinées dans la foulée. Le cadrage suit
+  la **portée** de la réponse et non le plafond : une couche déclare ce qu'elle
+  couvre (`scanReachM`, 300 m pour DVF) et la caméra se pose à trois rayons,
+  900 m — cadrer sur le plafond aurait donné 7 km, soit une couche réveillée et
+  un pâté de maisons gros comme un point. Une couche sans portée déclarée garde
+  60 % de son propre plafond : le bruit aérien s'endort à 250 km parce qu'il
+  dessine un contour régional, et le descendre à 900 m répondrait à une question
+  que personne n'a posée. Sans point au sol sous la caméra (le limbe, l'espace),
+  rien ne bouge et l'explication de la couche tient.
+
+  Les autres états sont dits aussi, parce qu'il n'y a pas qu'une façon d'être
+  allumé sans rien montrer : `loading`, `source-error`, et `nothing-in-view`
+  (ça marche, et cette vue-là est vide — une phrase sur la VUE, jamais sur le
+  jeu de données). Le partage entre « en cours » et « en panne » passe par le
+  `layerFeedState()` déjà partagé, donc une couche qui range son invite de zoom
+  dans `stats.error` n'est pas annoncée en panne.
+- **« Autour de la station des Grands Hommes, quel est le prix moyen d'un
+  appartement ? » — « je n'ai pas accès à ces analyses ».** La réponse était
+  honnête et le chiffre était déjà là : `/api/avis-valeur` avait rendu une
+  médiane, son intervalle et les 68 ventes comparables qui la fondent, et la
+  fiche à l'écran les imprimait. Il n'existait simplement aucun chemin de la
+  couche vers le modèle — `analyst_query` ne connaissait pas `dvf-sales`, et
+  aucun outil ne lisait ce qu'une couche a **calculé**. `get_entity_context`
+  porte désormais `layerSummaries` : pour chaque couche allumée qui en publie
+  un, le nombre que la couche a mesuré **avec sa méthode attachée** — le rayon,
+  la médiane du pâté (5 435 €/m² place des Grands Hommes), combien de ventes
+  portent un prix (97 sur 172), le médian de la commune qui sert de
+  dénominateur (4 423 €/m²), et pour l'estimation le centre et son intervalle
+  (5 576 €/m², 335 000 € pour 60 m², ±13 %). Le chiffre est **relevé**, jamais
+  recalculé : une moyenne des points dessinés serait un second nombre pour la
+  même question, avec une autre règle que celle de la fiche.
+- **Les ventes DVF sont interrogeables.** `dvf-sales` publie ses mutations à
+  `analyst_query` — combien de ventes autour, la plus chère au mètre carré,
+  la plus proche. `prixM2` reste **null** partout où le registre ne peut pas
+  chiffrer la vente (un immeuble de 179 lots, un appartement vendu avec un
+  commerce) et le moteur écarte les valeurs non finies : les 32 M€ répartis sur
+  179 lots comptent comme une vente et ne peuvent entrer dans aucun prix. Chaque
+  ligne rendue porte une adresse, pas seulement un identifiant de mutation — la
+  liste classée revenait en identifiants internes, que les règles de diction
+  interdisent de prononcer.
+- **Un résumé mesuré ailleurs ne peut plus être cité ici.** Les couches à
+  balayage gardent le dernier pâté scanné jusqu'à ce que le suivant réponde :
+  entre « emmène-moi à Bordeaux » et l'arrivée du scan, le résumé en main est
+  celui de Paris. Chaque résumé dit maintenant **où** il a été mesuré, et
+  au-delà de la portée de la couche il est remplacé par un `pending` qui dit de
+  ne pas le citer. Même traitement pour la couche qu'on vient d'allumer : le
+  silence se lisait comme « il n'y a rien ici », et une session réelle a
+  répondu « les couches ne remontent aucune donnée » une demi-seconde avant
+  qu'elles ne le fassent.
+- **La voix se taisait au bout de trois phrases, et rien ne disait pourquoi.**
+  Avec une clé OpenAI, une session Realtime renvoie *tout* son préambule à
+  chaque réponse — les instructions plus les 29 schémas d'outils. Mesuré sur la
+  configuration livrée : **10 886 jetons d'entrée** avant que l'opérateur ait
+  parlé, contre un plafond de **40 000 jetons par minute** sur un compte d'entrée
+  de gamme. Soit trois réponses par minute — et une seule commande qui appelle
+  un outil en consomme deux (l'appel, puis la confirmation parlée). La quatrième
+  phrase revenait donc en `status: "failed"`, l'assistante se taisait, et le
+  dock n'affichait ni la cause ni l'attente : le micro avait l'air cassé alors
+  qu'il était bridé. Le budget est maintenant lu dans `rate_limits.updated`,
+  que la session envoie après chaque réponse : le dock prévient avant le mur
+  (« TOKEN LIMIT REACHED — RESETS IN 33 S »), un tour englouti est **repris tout
+  seul** après l'attente que l'API nomme elle-même — l'opérateur n'a pas à
+  répéter sa question — et le message d'erreur explique le plafond au lieu de
+  recracher l'identifiant d'organisation. Reparler ou couper le micro désarme
+  la reprise. *(Le vrai levier reste le compte : le plafond se relève sur
+  platform.openai.com/settings/organization/limits.)*
+- **« Il y a 2000 bornes de recharge dans la vue » : 2000 était le plafond, pas
+  un compte.** Chaque couche rend au plus 2 000 enregistrements à
+  `analyst_query`, et sur Paris la couche IRVE atteint ce plafond — le nombre
+  était donc dit comme un total. Mesuré au micro avec 2 200 bornes chargées :
+  la réponse est désormais « **au moins** 2 000 … un plancher, pas un total
+  exact ». Le plafond voyage dans `coverage.capped`, avec les mots à employer.
+- **Un second moteur analytique interrogeait le monde du premier.** Le cache de
+  `runAnalystQuery` gardait le `dataManager` avec lequel il était né : un
+  deuxième `createGevActionRunner` — un viewer réinitialisé, ou deux harnais
+  dans le même processus — questionnait donc les couches de l'ancien monde et
+  recevait un zéro confiant. Le moteur suit maintenant son monde.
+- **`qa:voice-routing` comptait comme des erreurs de routage des phrases que le
+  modèle n'a jamais vues.** Le harnais envoyait six tours d'affilée : à
+  ~11 000 jetons le tour, les suivants revenaient en `failed`, sans appel
+  d'outil, et étaient notés FAIL. Il lit maintenant le même budget que l'app,
+  attend la fenêtre suivante quand elle ne peut plus financer un tour, rejoue
+  une fois un tour bridé, et marque SKIP — pas FAIL — ce qui reste bridé.
+- **« Je n'ai pas cette couche » était faux : la voix ne pouvait nommer que 17
+  couches sur 60.** L'énumération `layerId` des outils vocaux était écrite à la
+  main et héritée de l'amont ; le fork avait grandi à 60 couches enregistrées.
+  Un modèle qui respecte une énumération ne pouvait donc pas émettre
+  `medecins-fr` — demander la couche médecins revenait à s'entendre dire
+  qu'elle n'existait pas, et **43 couches**, toutes les françaises, étaient
+  dans ce cas. Les quatre énumérations sont maintenant **dérivées du registre**
+  (`src/voice/layerVocabulary.js` lit `LAYER_TAXONOMY`), un test échoue si les
+  deux divergent, et la résolution accepte l'identifiant, les alias français et
+  anglais et le libellé du panneau, accents et casse ignorés (« médecins »,
+  « bornes de recharge », « vigilance météo », « îlots de fraîcheur »). Une
+  couche inconnue ne fait plus échouer l'outil : elle renvoie **les trois plus
+  proches**, et le nouvel outil `list_layers` permet de citer le registre au
+  lieu de le deviner. Mesuré sur un vrai tour de modèle : « Active la couche
+  médecin » atteint `medecins-fr`.
+- **Un deuxième chemin envoyait « médecins » sur la mauvaise couche.**
+  `LAYER_ALIASES` est un littéral `Map` : une clé en double gagne en silence, et
+  `amenities-fr` réclamait « médecins », « docteurs » et « doctors » quatre
+  cents lignes après `medecins-fr`. Le comptage d'équipements de la BPE
+  répondait donc à une question sur le registre des praticiens. Les mots sont
+  revenus à la couche qui tient le registre, et un test refuse désormais toute
+  clé en double.
+- **La voix ne savait pas lire une station qu'elle venait d'afficher.**
+  Interrogée sur les vélos et les places d'une station TBM sélectionnée, elle
+  renvoyait au site de l'opérateur — alors que le nombre de vélos, de places et
+  la capacité étaient déjà dans le navigateur. `get_entity_context` ne lisait la
+  sélection que sur quatre familles suivables ; il lit maintenant **toutes** les
+  couches qui savent répondre, et ajoute les enregistrements chargés les plus
+  proches avec leur distance. `bikeshare`, `irve-fr`, `medecins-fr`,
+  `shared-mobility-fr` et `transit-fr` exposent leur sélection et leurs
+  enregistrements ; `analyst_query` passe de 5 à **22 couches**, donc « combien
+  de bornes dans la vue » et « la station la plus proche avec des vélos »
+  répondent sur les données chargées. Un compte issu d'une couche chargée par
+  viewport le dit, au lieu de se faire passer pour un total national.
+- **Un filtre nommant un champ que la couche ne publie pas répondait « zéro ».**
+  Le pire mode de panne du moteur analytique : zéro est une réponse plausible et
+  rien n'a l'air cassé. Mesuré au banc — interrogé sur les bornes libres, le
+  modèle filtrait `irve-fr` sur `bikesAvailable`, un champ d'une autre couche.
+  Le moteur refuse maintenant et **nomme les champs réels**, ce qui laisse au
+  modèle une chance de se corriger dans le même tour.
+- **Le cerveau texte ne savait ni où il était ni ce que « cette station »
+  désignait.** Le chemin OpenRouter postait les seuls messages : ni caméra, ni
+  lieu, ni couches actives, ni sélection. Un préambule de situation court
+  précède maintenant chaque tour, et un seul est conservé dans l'historique —
+  une conversation de dix tours ne traîne pas dix instantanés qui se
+  contredisent. Mesuré : « Où suis-je ? » et « Je regarde quoi, là ? »
+  répondent **sans appel d'outil**.
+- **La voix de retour, sur Safari, était la synthèse concaténative d'il y a
+  vingt ans.** Toutes les voix `fr-FR` d'Apple étaient à égalité dans le choix,
+  donc la première listée gagnait — la voix compacte. Le choix suit maintenant
+  une préférence explicite par navigateur (Audrey/Amélie sur Safari, les voix
+  neuronales « Natural » sur Edge, « Google français » sur Chrome), un
+  sélecteur dans le dock mémorise la voix retenue, et si seule la voix compacte
+  est installée le dock **dit où télécharger la bonne**. Chrome renvoie une
+  liste vide au premier appel : elle est maintenant attendue. *(Ce chemin ne
+  concerne que le micro sans clé OpenAI ; une session Realtime parle avec la
+  voix du modèle.)*
+- **Les oreilles se rouvraient au milieu de la phrase.** `speak()` arrêtait la
+  reconnaissance, ce qui déclenchait un redémarrage programmé 250 ms plus tard
+  — en plein milieu de la confirmation prononcée. Le micro écoutait donc les
+  haut-parleurs jusqu'à la fin de la phrase. Elles restent fermées, et
+  **Espace coupe la synthèse** et rend la parole.
+
 - **Un 429 devant l'app laissait le micro mort, et accusait la permission
   micro.** Sur l'instance hébergée, une règle de limitation à la périphérie
   (mesurée : 30 requêtes `/api` par 10 s et par adresse, puis 10 s de blocage)

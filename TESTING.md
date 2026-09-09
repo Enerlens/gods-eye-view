@@ -71,6 +71,32 @@ settled and not applicable because no Google 3D tileset is active.
   - `window.__gevAnnotations.demo()` — lays the SF set down at once
   - `window.__gevAnnotations.clear()` — erase all marks
   - `window.__gevAnnotations.count()` — how many marks are live
+- **Voice routing + reading (real model turns, costs money):**
+  `npm run qa:voice-bench` drives the SHIPPED instructions and tool schemas —
+  sliced out of `vite.config.js`, never copied — through an OpenRouter model
+  and grades which tool each French phrase reaches. `--mode reading` grades
+  what the model SAYS about a canned tool result instead. Measured cost
+  ~$0.0006 per case; `--cases N` caps a run while iterating.
+
+  Run it before shipping any change to the voice instructions or the tool
+  schemas: this is the only instrument that sees a failure living entirely in
+  what the model is ALLOWED to say. The médecins bug — a 17-value layer enum
+  for a 60-layer registry — passed every unit test in the suite.
+
+  `node scripts/qa-voice-routing.mjs --layer routing` asks the same question of
+  the REALTIME model, through a session minted by the app's own
+  `/api/realtime/token`. It paces itself: one response bills ~11 200 input
+  tokens against a 40 000-per-minute account ceiling, so it waits for the token
+  window rather than reading a throttled turn as a routing miss. Expect roughly
+  three turns a minute — a full sweep is slow by arithmetic, not by choice.
+- **Reading property data by voice (free, deterministic, no model):**
+  `npm run qa:immobilier-voice` proves the path from the DVF and avis-de-valeur
+  layers to the numbers the model is handed — that a layer switched on from
+  40 km up flies the camera down onto the point in frame and comes back drawing
+  (23 027 m → 516 m, framed on the 300 m scan and not on the 12 km ceiling), and
+  that `get_entity_context` carries the medians the PROXY computed rather than
+  an average of the markers on screen. Both endpoints are held still with
+  payloads recorded from the live proxy over Place des Grands Hommes.
 
 ---
 

@@ -1321,12 +1321,17 @@ function ensureCityPoints(cityId, stationMap) {
       stationId: station.stationId,
       stationName: station.name,
       point,
+      // Kept alongside the primitive so a spoken "which station is nearest"
+      // never has to unproject a Cartesian back to degrees.
+      lat: station.lat,
+      lon: station.lon,
       capacity: toNonNegativeInteger(station.capacity),
       bikesAvailable: null,
       docksAvailable: null,
       isInstalled: station.isInstalled,
       isRenting: station.isRenting,
       isReturning: station.isReturning,
+      lastReportedMs: null,
     });
 
     runtime.stationKeys.add(key);
@@ -1385,6 +1390,12 @@ function applyStatusToPoints(cityId, statusMap) {
     record.isInstalled = normalizeGbfsBool(status?.isInstalled, true);
     record.isRenting = normalizeGbfsBool(status?.isRenting, true);
     record.isReturning = normalizeGbfsBool(status?.isReturning, true);
+    // GBFS `last_reported` is seconds since epoch, and it is the ONE field that
+    // separates "eight bikes" from "eight bikes as of forty minutes ago". A
+    // spoken answer that omits it is a claim about now made from a stale file.
+    record.lastReportedMs = Number.isFinite(status?.lastReported) && status.lastReported > 0
+      ? status.lastReported * 1000
+      : null;
 
     // Update visual properties based on current status
     record.point.pixelSize = capacityToPixelSize(capacity);
@@ -1575,6 +1586,55 @@ function onCameraChanged() {
  * stats hooks for the HUD and UI systems.
  * @type {Object}
  */
+/**
+ * One station as a spoken answer, not as a render record.
+ *
+ * WHY THIS EXISTS: the voice brain was asked "how many bikes and docks at this
+ * station?" and sent the operator to the transport company's website — because
+ * nothing exposed the station it had just drawn. Every number needed for that
+ * answer was already in `_stationRenderMap`; the layer simply had no way to say
+ * it. This is that way, kept pure so it can be asserted without a viewer.
+ *
+ * Field names are the answer's own words. `point`, `key` and `cityId` do not
+ * survive: a model handed `bordeaux-tbm:1042` will read it out loud, and an
+ * operator who hears an internal key hears a bug.
+ *
+ * `capacity` here is the RESOLVED capacity — the feed's own figure when it
+ * publishes one, else bikes + docks. Both are honest answers to "how big is
+ * this station"; neither is a claim the feed did not make.
+ *
+ * @param {object|null} record A `_stationRenderMap` entry.
+ * @returns {object|null} Named fields, or null when there is no record.
+ */
+export function bikeshareStationReadout(record) {
+  if (!record) return null;
+  const city = CITY_BY_ID.get(record.cityId) || null;
+  const bikes = Number.isFinite(record.bikesAvailable) ? record.bikesAvailable : null;
+  const docks = Number.isFinite(record.docksAvailable) ? record.docksAvailable : null;
+  const capacity = Number.isFinite(record.capacity) ? record.capacity : null;
+  return {
+    id: record.key,
+    kind: 'bike-station',
+    name: record.stationName || null,
+    // Both halves of "where": the system an operator would name, and the city.
+    system: city?.provider || null,
+    city: city?.city || null,
+    lat: Number.isFinite(record.lat) ? record.lat : null,
+    lon: Number.isFinite(record.lon) ? record.lon : null,
+    bikesAvailable: bikes,
+    docksAvailable: docks,
+    capacity,
+    // Null rather than 0 when the status feed has not landed: "no bikes" and
+    // "not reported yet" are opposite things to say out loud.
+    occupancyPct: bikes !== null && capacity ? Math.round((bikes / capacity) * 100) : null,
+    installed: record.isInstalled !== false,
+    renting: record.isRenting !== false,
+    returning: record.isReturning !== false,
+    lastReportedMs: Number.isFinite(record.lastReportedMs) ? record.lastReportedMs : null,
+    source: 'GBFS',
+  };
+}
+
 const bikeshareLayer = {
   id: 'bikeshare',
   name: 'Bikeshare',
@@ -1723,6 +1783,40 @@ const bikeshareLayer = {
    */
   getDetectableObjects(options = {}) {
     return collectDetectableStations(options);
+  },
+
+  /**
+   * The station the operator clicked, ready to be spoken.
+   * Null when nothing is selected — the voice path reads that as "no subject"
+   * and falls back to what is in view rather than inventing one.
+   * @returns {object|null}
+   */
+  getSelectedInfo() {
+    if (!_enabled || !_selectedKey) return null;
+    return bikeshareStationReadout(_stationRenderMap.get(_selectedKey) || null);
+  },
+
+  /**
+   * Every loaded station as a plain record, for the analyst engine.
+   *
+   * "Loaded" is the honest word and the honest scope: this layer activates
+   * cities by camera proximity and altitude, so a count over these records is
+   * a count of what is on screen's neighbourhood, never a national total. The
+   * engine's own coverage note carries that caveat to the model.
+   *
+   * @param {number} [maxCount=2000]
+   * @returns {Array<object>}
+   */
+  getAnalystRecords(maxCount = 2000) {
+    if (!_enabled || !_pointCollection?.show) return [];
+    const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 2000;
+    const out = [];
+    for (const record of _stationRenderMap.values()) {
+      if (out.length >= limit) break;
+      const readout = bikeshareStationReadout(record);
+      if (readout && Number.isFinite(readout.lat) && Number.isFinite(readout.lon)) out.push(readout);
+    }
+    return out;
   },
 
   /**

@@ -676,10 +676,33 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   // through to a geocode instead of the hand-tuned framing sitting right there.
   // +550 bytes, one cache bust, and src/locations.test.mjs now fails if the two
   // lists drift again.
-  assert.equal(block.length, 31758, 'tool schema byte length drifted from the frozen baseline');
+  //
+  // Re-frozen a FIFTH time, and this is the largest edit the guard has ever
+  // recorded: the layer vocabulary. `set_layer_visibility` and
+  // `show_data_layers_menu` carried 17 hand-written ids while the fork had
+  // registered 60 layers, so 43 of them — every French one, including the
+  // médecins layer an operator asked for by name — could not be NAMED by the
+  // model, which then reported them as nonexistent. All four layer enums are
+  // now derived from src/voice/layerVocabulary.js, `list_layers` was added so
+  // "I don't have that" becomes a checkable claim, and four instruction lines
+  // state the reading and diction rules. +5904 bytes, one cache bust, and
+  // src/voice/layerVocabulary.test.mjs fails if an enum drifts from the
+  // registry again.
+  //
+  // Re-frozen a SIXTH time, and for a measured refusal: asked for the average
+  // price per square metre around a Bordeaux bike station, the model answered
+  // that analytical queries did not cover DVF — which was true. `dvf-sales`
+  // now publishes records, so it joins the `analyst_query` and
+  // `get_entity_context` enums, and both descriptions name the one rule that
+  // makes an answer honest: count and rank the SALES here, read the MARKET
+  // from the layer's own median (carried on `layerSummaries`), never average
+  // rows whose price the register withheld. +364 bytes, one cache bust — and
+  // the wording was cut to the bone because this session prefix is re-sent on
+  // every response against a 40 000 tokens-per-minute ceiling.
+  assert.equal(block.length, 38026, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '307c59a2086a1fc84a9e461cac33e1b10de21d34abf32d3be7c5578d4ccf6ba0',
+    '3bb25f428500a0fffffa0fbd9f3122578bb8da82f8d9c77b4156fe21e11fa7ff',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 

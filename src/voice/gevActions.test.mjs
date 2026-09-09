@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
+import { ANALYST_RECORD_CAP } from '../data/analystEngine.js';
 import { CCTV_FOCUS_RESULT } from '../data/cctv.js';
 import { getContextStore, registerEntityContext } from '../data/contextStore.js';
 import { DataLayerManager } from '../data/manager.js';
@@ -12,6 +14,8 @@ import {
   controlRadio,
   createGevActionRunner,
   cctvVoiceFocusOutcome,
+  layerDrawingReport,
+  scanDescentRangeM,
   formatTrackedEntityLabel,
   knownRadioLocation,
 } from './gevActions.js';
@@ -3013,4 +3017,607 @@ test('fly_to_location: a spoken query beats a contradicting preset id', async ()
 
   const queryPreset = await runner('fly_to_location', { query: 'austin' });
   assert.equal(queryPreset.locationId, 'austin', 'a query naming a preset still resolves to it');
+});
+
+/* ---------- the layer registry, and reading a selected record ------------- */
+
+/**
+ * A manager holding a handful of layers, shaped the way the real one is:
+ * `layers` is a Map of `{ module, enabled }`, `getAll()` is the flat list the
+ * panel renders.
+ */
+/**
+ * The navigation harness plus the seams the scene context reads: viewport
+ * sampling picks the ellipsoid, and the view target is the camera's own point.
+ * @returns {{viewer: object, styleManager: object}}
+ */
+function createSceneContextHarness() {
+  const harness = createVoiceNavigationHarness();
+  const position = harness.viewer.camera.positionWC;
+  harness.viewer.camera.pickEllipsoid = () => position;
+  harness.viewer.camera.getPickRay = () => ({ origin: position, direction: position });
+  harness.viewer.scene.pickPosition = () => position;
+  harness.viewer.scene.globe.pick = () => position;
+  return harness;
+}
+
+function stubManager(entries) {
+  const layers = new Map(entries.map((entry) => [entry.id, {
+    module: entry.module || {},
+    enabled: entry.enabled !== false,
+  }]));
+  return {
+    layers,
+    isEnabled: (id) => Boolean(layers.get(id)?.enabled),
+    getAll: () => entries.map((entry) => ({
+      id: entry.id,
+      name: entry.name || entry.id,
+      enabled: entry.enabled !== false,
+      stats: { count: entry.count ?? 0 },
+      showInTogglePanel: true,
+    })),
+  };
+}
+
+test('list_layers answers from the registry, and a lookup finds the French name', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const dataManager = stubManager([{ id: 'medecins-fr', name: 'Médecins', count: 128 }]);
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+
+  const all = await runner('list_layers', {});
+  assert.equal(all.ok, true);
+  assert.equal(all.matched, all.total);
+  assert.ok(all.total >= 59, 'the whole registry, not just what is enabled');
+
+  const one = await runner('list_layers', { query: 'docteurs' });
+  assert.equal(one.matched, 1);
+  assert.deepEqual(one.layers[0], {
+    id: 'medecins-fr',
+    label: 'Médecins',
+    group: 'BÂTI & TERRITOIRE',
+    coverage: 'fr',
+    enabled: true,
+    count: 128,
+  });
+  assert.equal(one.total, all.total, 'a filtered answer still states the size of the catalogue');
+
+  const miss = await runner('list_layers', { query: 'licornes' });
+  assert.equal(miss.matched, 0);
+  assert.deepEqual(miss.suggestions, []);
+});
+
+test('an unknown layer comes back with the nearest names instead of a thrown error', async () => {
+  // This is the whole médecins failure in one assertion. A THROWN error reached
+  // the model as "the tool failed", and it told the operator the layer does not
+  // exist. A refusal that carries the neighbours lets it offer them instead.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager: stubManager([]) });
+  const result = await runner('set_layer_visibility', { layerId: 'bornes electriques', enabled: true });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.suggestions.map((entry) => entry.id), ['irve-fr', 'power-grid']);
+  assert.match(result.hint, /list_layers/);
+});
+
+test('a French layer name reaches the manager as its registered id', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const enabled = [];
+  const dataManager = {
+    ...stubManager([{ id: 'medecins-fr', name: 'Médecins' }]),
+    setEnabled: async (id, value) => { enabled.push([id, value]); return true; },
+  };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  await runner('set_layer_visibility', { layerId: 'Médecins', enabled: true });
+  await runner('set_layer_visibility', { layerId: 'medecins', enabled: false });
+  assert.deepEqual(enabled, [['medecins-fr', true], ['medecins-fr', false]]);
+});
+
+test('get_entity_context reads a selection off ANY layer, plus what is near it', async () => {
+  // The bike-station report: the station layer owns its own `_selectedId` and
+  // never reaches the shared context store, so the store said "nothing is
+  // selected" while a card for the clicked station was on screen.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const station = {
+    id: 'bordeaux-tbm:1042',
+    kind: 'bike-station',
+    name: 'Place Gambetta',
+    lat: 30.26,
+    lon: -97.74,
+    bikesAvailable: 12,
+    docksAvailable: 8,
+    capacity: 20,
+  };
+  const dataManager = stubManager([{
+    id: 'bikeshare',
+    name: 'Stations vélos',
+    count: 312,
+    module: {
+      getSelectedInfo: () => station,
+      getAnalystRecords: () => [station, { ...station, id: 'x:2', name: 'Far', lat: 31.26, lon: -97.74 }],
+    },
+  }]);
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+
+  const selected = await runner('get_entity_context', { scope: 'selected' });
+  assert.equal(selected.scope, 'selected');
+  assert.equal(selected.selected.layerId, 'bikeshare');
+  assert.equal(selected.selected.bikesAvailable, 12);
+  assert.equal(selected.selected.docksAvailable, 8);
+
+  const inView = await runner('get_entity_context', { scope: 'in_view', limit: 2 });
+  assert.equal(inView.scope, 'in_view');
+  assert.equal(inView.nearby.length, 2);
+  assert.equal(inView.nearby[0].name, 'Place Gambetta', 'nearest first');
+  assert.equal(inView.nearby[0].layerId, 'bikeshare');
+  assert.ok(inView.nearby[1].distanceKm > inView.nearby[0].distanceKm);
+});
+
+test('get_entity_context carries what each layer has measured about this place', async () => {
+  // The Bordeaux refusal: asked for the average price per square metre around
+  // a bike station, the model said it had no access to that analysis — while
+  // the proxy had already computed the median and the card was printing it.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const dataManager = stubManager([
+    {
+      id: 'dvf-sales',
+      name: 'Ventes immobilières (DVF)',
+      module: {
+        name: 'Ventes immobilières (DVF)',
+        getVoiceSummary: () => ({ blockMedianPrixM2: 5508, pricedSales: 96, radiusM: 300 }),
+      },
+    },
+    {
+      id: 'avis-valeur',
+      name: 'Avis de valeur (DVF)',
+      module: { getVoiceSummary: () => ({ basis: 'comparables', estimatedPrixM2: 5300 }) },
+    },
+    // Nothing to say, and a layer mid-teardown: neither may cost the others.
+    { id: 'dpe-fr', module: { getVoiceSummary: () => null } },
+    { id: 'irve-fr', module: { getVoiceSummary: () => { throw new Error('mid-teardown'); } } },
+    { id: 'bikeshare', enabled: false, module: { getVoiceSummary: () => ({ blockMedianPrixM2: 1 }) } },
+  ]);
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+
+  const inView = await runner('get_entity_context', {});
+  assert.deepEqual(inView.layerSummaries.map((s) => s.layerId), ['dvf-sales', 'avis-valeur']);
+  assert.equal(inView.layerSummaries[0].blockMedianPrixM2, 5508);
+  assert.equal(inView.layerSummaries[0].label, 'Ventes immobilières (DVF)');
+  assert.equal(inView.layerSummaries[1].estimatedPrixM2, 5300);
+
+  // The filter argument narrows the summaries the same way it narrows the scan.
+  const filtered = await runner('get_entity_context', { layerId: 'dvf-sales' });
+  assert.deepEqual(filtered.layerSummaries.map((s) => s.layerId), ['dvf-sales']);
+
+  // No layer publishing one: the key is absent, never an empty array the model
+  // has to read as "measured nothing here".
+  const bare = createGevActionRunner({
+    viewer, styleManager, dataManager: stubManager([{ id: 'flights', module: {} }]),
+  });
+  assert.equal((await bare('get_entity_context', {})).layerSummaries, undefined);
+});
+
+test('a summary measured somewhere else is withheld, not quoted for this view', async () => {
+  // The camera-driven layers keep the last block they scanned until the next
+  // answer lands. Between "take me to Bordeaux" and the scan settling, the
+  // summary in hand is Paris — and printing a Paris median over Bordeaux roofs
+  // is worse than saying nothing.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const here = { lat: 30.26, lon: -97.74 };
+  const summaryAt = (at) => ({
+    id: 'dvf-sales',
+    name: 'Ventes immobilières (DVF)',
+    module: {
+      name: 'Ventes immobilières (DVF)',
+      getVoiceSummary: () => ({ blockMedianPrixM2: 12_264, radiusM: 300, measuredAt: at }),
+    },
+  });
+  const runner = (at) => createGevActionRunner({
+    viewer, styleManager, dataManager: stubManager([summaryAt(at)]),
+  });
+
+  // Measured 100 m away — inside the layer's own 300 m reach, so it IS about
+  // what the camera is looking at.
+  const near = await runner({ lat: here.lat + 0.0009, lon: here.lon })('get_entity_context', {});
+  assert.equal(near.layerSummaries[0].blockMedianPrixM2, 12_264);
+  assert.equal(near.layerSummaries[0].pending, undefined);
+
+  // Measured a continent away.
+  const far = await runner({ lat: 48.865, lon: 2.284 })('get_entity_context', {});
+  assert.equal(far.layerSummaries[0].pending, true);
+  assert.equal(far.layerSummaries[0].blockMedianPrixM2, undefined);
+  assert.match(far.layerSummaries[0].note, /do NOT quote it/);
+
+  // A summary with no recorded centre is taken at its word: withholding it
+  // would silence every layer that measures something other than a disc.
+  const anywhere = await runner(null)('get_entity_context', {});
+  assert.equal(anywhere.layerSummaries[0].blockMedianPrixM2, 12_264);
+});
+
+test('a disabled layer holds no selection, and a broken one costs only itself', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const dataManager = stubManager([
+    { id: 'bikeshare', enabled: false, module: { getSelectedInfo: () => ({ id: 'off', kind: 'bike-station' }) } },
+    { id: 'irve-fr', module: { getSelectedInfo: () => { throw new Error('mid-teardown'); } } },
+    { id: 'medecins-fr', module: { getSelectedInfo: () => ({ id: 'ok', kind: 'medical-practice' }) } },
+  ]);
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  const result = await runner('get_entity_context', { scope: 'selected' });
+  assert.equal(result.selected.layerId, 'medecins-fr');
+});
+
+test('the situation brief says where we are, what is on, and what "this" means', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const dataManager = stubManager([{
+    id: 'bikeshare',
+    name: 'Stations vélos',
+    count: 312,
+    module: {
+      getSelectedInfo: () => ({
+        id: 'bordeaux-tbm:1042',
+        kind: 'bike-station',
+        name: 'Place Gambetta',
+        bikesAvailable: 12,
+        docksAvailable: 8,
+        capacity: 20,
+        renting: true,
+        lat: 44.84,
+        lon: -0.58,
+      }),
+    },
+  }]);
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  const brief = await runner.describeSituation();
+
+  assert.match(brief, /GEV SITUATION/);
+  assert.match(brief, /do not read it aloud/);
+  assert.match(brief, /Camera: 30\.2600, -97\.7400/);
+  assert.match(brief, /Layers on \(1\): Stations vélos 312\./);
+  assert.match(brief, /Selected: bike-station "Place Gambetta"/);
+  assert.match(brief, /bikesAvailable 12/);
+  assert.match(brief, /"This one" means THIS/);
+  // The internal key must not travel: a model handed "bordeaux-tbm:1042" reads
+  // it out loud, and an operator who hears a database key hears a bug.
+  assert.ok(!brief.includes('bordeaux-tbm:1042'), 'ids stay out of the brief');
+  // A field that is true is the uninteresting half of a boolean and is dropped;
+  // the budget is ~300 tokens and every character has to earn its place.
+  assert.ok(!brief.includes('renting'), 'a true flag says nothing worth spending tokens on');
+  assert.ok(brief.length <= 1400, 'the brief stays inside its token budget');
+});
+
+test('a situation brief over a bare scene still answers "where am I"', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const brief = await createGevActionRunner({
+    viewer, styleManager, dataManager: stubManager([]),
+  }).describeSituation();
+  assert.match(brief, /Camera: /);
+  assert.match(brief, /Layers on: none\./);
+});
+
+test('no spoken name resolves to two different layers', () => {
+  // `LAYER_ALIASES` is a Map literal, so a duplicate key silently wins — and
+  // one did: `amenities-fr` claimed "médecins", "docteurs" and "doctors" some
+  // four hundred lines after `medecins-fr` claimed the same words, so asking
+  // for the doctors REGISTER turned on the everyday-amenities FACILITY counts.
+  // Nothing in review catches that; this does.
+  const source = readFileSync(new URL('./gevActions.js', import.meta.url), 'utf8');
+  const start = source.indexOf('const LAYER_ALIASES = new Map([');
+  const end = source.indexOf(']);', start);
+  assert.ok(start > 0 && end > start, 'LAYER_ALIASES must still be a single literal');
+  const keys = [...source.slice(start, end).matchAll(/\[["']([^"']*)["'], '([^']*)'\]/g)]
+    .map((match) => match[1]);
+  const seen = new Set();
+  const duplicates = keys.filter((key) => (seen.has(key) ? true : (seen.add(key), false)));
+  assert.deepEqual(duplicates, [], 'a duplicate alias key silently overrides the earlier one');
+
+  const map = new Function(`return ${source.slice(start + 'const LAYER_ALIASES = '.length, end + 2)}`)();
+  // The practitioner register and the facility counts answer different
+  // questions and must not share a word.
+  for (const word of ['médecins', 'medecins', 'docteurs', 'doctors', 'médecin généraliste']) {
+    assert.equal(map.get(word), 'medecins-fr', `"${word}" names practitioners, not amenities`);
+  }
+  for (const word of ['pharmacies', 'hôpitaux', 'commerces', 'piscines']) {
+    assert.equal(map.get(word), 'amenities-fr', `"${word}" names a facility in the BPE`);
+  }
+});
+
+test('a capped record set is narrated as a floor, not as the number in view', async () => {
+  // Measured against gpt-realtime over Paris: "combien de bornes de recharge
+  // dans la vue ?" came back with 2000 records — the layer's ceiling — and was
+  // spoken as "Il y a 2000 bornes de recharge dans la vue". The cap is now in
+  // the payload, in the words the model is asked to use.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const irve = {
+    id: 'irve-fr',
+    getAnalystRecords: (limit = ANALYST_RECORD_CAP) => Array.from(
+      { length: Math.min(limit, 5000) },
+      (_, i) => ({ id: `irve-${i}`, lat: 48.85, lon: 2.35, chargePoints: 2 }),
+    ),
+  };
+  const runner = createGevActionRunner({
+    viewer: {
+      clock: { onTick: { addEventListener: () => () => {} } },
+      scene: { canvas: { addEventListener() {}, removeEventListener() {} } },
+      camera: {
+        moveEnd: { addEventListener() {} },
+        positionCartographic: { height: 30_000, latitude: 0.8526, longitude: 0.041 },
+      },
+    },
+    styleManager: {},
+    dataManager: {
+      layers: new Map([['irve-fr', { module: irve }]]),
+      isEnabled: (id) => id === 'irve-fr',
+      getAll: () => [{ id: 'irve-fr', name: 'Bornes IRVE (FR)', enabled: true, stats: { count: 5000 } }],
+    },
+  });
+  // An explicit centre, so no Contacts state left by another test can move it.
+  const result = await runner('analyst_query', {
+    layers: ['irve-fr'],
+    scope: { kind: 'radius', km: 500, center: { lat: 48.85, lon: 2.35 } },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.count, ANALYST_RECORD_CAP, 'the ceiling was reached');
+  assert.match(result.coverage.capped, /irve-fr returned the maximum of 2000/);
+  assert.match(result.coverage.capped, /FLOOR, not a total/);
+});
+
+test('a second runner queries its OWN world, not the first one that ever ran', async () => {
+  // The cached engine kept the dataManager it was born with. A later runner —
+  // a re-initialised viewer, or a second harness in one process — asked the old
+  // world about layers it had never heard of and got a confident zero.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const world = (layerId, records) => ({
+    viewer: {
+      clock: { onTick: { addEventListener: () => () => {} } },
+      scene: { canvas: { addEventListener() {}, removeEventListener() {} } },
+      camera: {
+        moveEnd: { addEventListener() {} },
+        positionCartographic: { height: 30_000, latitude: 0.8526, longitude: 0.041 },
+      },
+    },
+    styleManager: {},
+    dataManager: {
+      layers: new Map([[layerId, { module: { id: layerId, getAnalystRecords: () => records } }]]),
+      isEnabled: (id) => id === layerId,
+      getAll: () => [{ id: layerId, name: layerId, enabled: true, stats: { count: records.length } }],
+    },
+  });
+  const first = createGevActionRunner(world('flights', [{ id: 'A', lat: 48.85, lon: 2.35 }]));
+  await first('analyst_query', { layers: ['flights'], scope: { kind: 'radius', km: 500, center: { lat: 48.85, lon: 2.35 } } });
+
+  const second = createGevActionRunner(world('medecins-fr', [
+    { id: 'M1', lat: 48.85, lon: 2.35, practitioners: 3 },
+    { id: 'M2', lat: 48.86, lon: 2.36, practitioners: 1 },
+  ]));
+  const result = await second('analyst_query', {
+    layers: ['medecins-fr'],
+    scope: { kind: 'radius', km: 500, center: { lat: 48.85, lon: 2.35 } },
+  });
+  assert.equal(result.count, 2, 'the second world answers for itself');
+});
+
+// ── ON IS NOT VISIBLE ──────────────────────────────────────────────────────
+// Reported from the field as "activating DVF by voice never works, but
+// clicking does". The toggle was never the problem: the address-scan layers go
+// dormant above their ceiling, so the layer came on and drew nothing while the
+// tool said ok — and by hand you are already looking at a street.
+
+test('a layer that is on but drawing nothing says which of the three reasons', () => {
+  const managerFor = (stats) => ({ layers: new Map([['dvf-sales', { module: { getStats: () => stats } }]]) });
+
+  const dormant = layerDrawingReport(managerFor({ count: 0, dormant: true, dormantAboveM: 12_000, scanReachM: 300 }), 'dvf-sales');
+  assert.equal(dormant.drawing, false);
+  assert.equal(dormant.notDrawnBecause, 'camera-too-high');
+  assert.equal(dormant.scanCeilingKm, 12);
+  assert.equal(dormant.suggestedRangeM, 900);
+  assert.match(dormant.hint, /below 12 km/);
+
+  const loading = layerDrawingReport(managerFor({ count: 0, loading: true }), 'dvf-sales');
+  assert.equal(loading.notDrawnBecause, 'loading');
+
+  const broken = layerDrawingReport(managerFor({ count: 0, error: 'DVF HTTP 502' }), 'dvf-sales');
+  assert.equal(broken.notDrawnBecause, 'source-error');
+  assert.equal(broken.sourceError, 'DVF HTTP 502');
+
+  // A layer that puts its zoom prompt in `error` is NOT down — several do, and
+  // `layerFeedState` is the shared arbiter that keeps the chip and this report
+  // from disagreeing about it.
+  const guided = layerDrawingReport(managerFor({ count: 0, status: 'zoom-in', error: 'Zoom in below 0.8°' }), 'dvf-sales');
+  assert.equal(guided.notDrawnBecause, 'camera-too-high');
+
+  // Working, and this view is genuinely empty — a statement about the view,
+  // never about the dataset.
+  const empty = layerDrawingReport(managerFor({ count: 0, status: 'empty', lastUpdate: 1 }), 'dvf-sales');
+  assert.deepEqual(empty, { drawing: false, notDrawnBecause: 'nothing-in-view', count: 0 });
+
+  // Data on screen: nothing to warn about, and the count travels.
+  const drawing = layerDrawingReport(managerFor({ count: 255, dormant: false }), 'dvf-sales');
+  assert.deepEqual(drawing, { drawing: true, count: 255 });
+
+  // A layer that already had rows keeps them through a refresh error — a stale
+  // draw is still a draw, and "nothing is showing" would be false.
+  const stillDrawn = layerDrawingReport(managerFor({ count: 12, error: 'refresh failed' }), 'dvf-sales');
+  assert.equal(stillDrawn.drawing, true);
+
+  // A module with no stats at all must not invent a verdict about the screen.
+  assert.deepEqual(layerDrawingReport(managerFor(null), 'dvf-sales'), {});
+  assert.deepEqual(layerDrawingReport({ layers: new Map() }, 'dvf-sales'), {});
+  assert.deepEqual(layerDrawingReport(null, 'dvf-sales'), {});
+});
+
+test('set_layer_visibility reports what is on screen, not just what is on', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const viewer = {
+    clock: { onTick: { addEventListener: () => () => {} } },
+    scene: { canvas: { addEventListener() {}, removeEventListener() {} } },
+    camera: { moveEnd: { addEventListener() {} } },
+  };
+  const managerWith = (stats) => ({
+    layers: new Map([['dvf-sales', { module: { getStats: () => stats } }]]),
+    isEnabled: () => false,
+    getLayerLifecycleState: () => ({ enabled: true, lifecycleState: 'enabled', uncertain: false }),
+    getAll: () => [{ id: 'dvf-sales', name: 'Ventes immobilières (DVF)' }],
+    setEnabled: async () => true,
+  });
+
+  // This viewer cannot even derive a view target — no canvas, no picking. The
+  // descent is refused rather than thrown, and the layer's own explanation is
+  // what the operator gets.
+  const dormant = await createGevActionRunner({
+    viewer, styleManager: {}, dataManager: managerWith({ count: 0, dormant: true, dormantAboveM: 12_000 }),
+  })('set_layer_visibility', { layerId: 'dvf-sales', enabled: true });
+  // ok stays TRUE: the layer is on and the request was honoured. What changes
+  // is that the model can no longer say "activé" and stop there.
+  assert.equal(dormant.ok, true);
+  assert.equal(dormant.enabled, true);
+  assert.equal(dormant.drawing, false);
+  assert.equal(dormant.notDrawnBecause, 'camera-too-high');
+  assert.equal(dormant.viewAdjusted.ok, false);
+
+  const drawing = await createGevActionRunner({
+    viewer, styleManager: {}, dataManager: managerWith({ count: 255, dormant: false }),
+  })('set_layer_visibility', { layerId: 'dvf-sales', enabled: true });
+  assert.equal(drawing.drawing, true);
+  assert.equal(drawing.count, 255);
+
+  // Switching a layer OFF says nothing about what is drawn — there is nothing.
+  const off = await createGevActionRunner({
+    viewer,
+    styleManager: {},
+    dataManager: {
+      ...managerWith({ count: 0, dormant: true, dormantAboveM: 12_000 }),
+      isEnabled: () => true,
+      getLayerLifecycleState: () => ({ enabled: false, lifecycleState: 'disabled', uncertain: false }),
+    },
+  })('set_layer_visibility', { layerId: 'dvf-sales', enabled: false });
+  assert.equal(off.ok, true);
+  assert.equal(off.drawing, undefined);
+  assert.equal(off.notDrawnBecause, undefined);
+});
+
+test('the descent frames the ANSWER, not the ceiling', () => {
+  // The whole point of declaring a reach. Framed on the ceiling, DVF would drop
+  // to 7 km — awake, and a 300 m block of pins the size of a full stop.
+  assert.equal(scanDescentRangeM({ dormantAboveM: 12_000, scanReachM: 300 }), 900);
+  assert.equal(scanDescentRangeM({ dormantAboveM: 1500, scanReachM: 300 }), 900);
+  // A reach so small the camera would be inside the buildings, and one so large
+  // the descent would be pointless: both clamped.
+  assert.equal(scanDescentRangeM({ scanReachM: 20 }), 400);
+  assert.equal(scanDescentRangeM({ scanReachM: 50_000 }), 20_000);
+  // No declared reach: 60 % of the layer's own ceiling is the only honest thing
+  // left to say. A regional noise outline dormant at 250 km must NOT be dragged
+  // down to a street corner.
+  assert.equal(scanDescentRangeM({ dormantAboveM: 250_000 }), 150_000);
+  assert.equal(scanDescentRangeM(null), 900);
+});
+
+/**
+ * A viewer with a ground point under the camera and a flight that COMPLETES.
+ *
+ * `flyToBoundingSphere` calling its `complete` callback is the whole point:
+ * `fly_to_location{waitForArrival:true}` resolves on it, and a stub that never
+ * fires leaves the descent hanging forever rather than failing a test.
+ */
+function createDescentHarness() {
+  const ground = Cesium.Cartesian3.fromDegrees(-0.5786, 44.8446, 0);
+  const position = Cesium.Cartesian3.fromDegrees(-0.5786, 44.8446, 40_000);
+  const flights = [];
+  const viewer = {
+    clock: { onTick: { addEventListener: () => () => {} } },
+    scene: {
+      canvas: { clientWidth: 1200, clientHeight: 800, addEventListener() {}, removeEventListener() {} },
+      globe: { getHeight: () => 0 },
+      pickPositionSupported: false,
+      tweens: [],
+    },
+    camera: {
+      moveEnd: { addEventListener() {} },
+      positionWC: position,
+      positionCartographic: Cesium.Cartographic.fromCartesian(position),
+      heading: 0,
+      pitch: Cesium.Math.toRadians(-45),
+      pickEllipsoid: () => ground,
+      cancelFlight() {},
+      lookAt() {},
+      lookAtTransform() {},
+      flyToBoundingSphere(sphere, options) {
+        flights.push({ sphere, range: options?.offset?.range });
+        options?.complete?.();
+      },
+    },
+  };
+  return { viewer, flights, styleManager: {} };
+}
+
+test('a layer that needs a lower camera gets one, instead of an offer', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, flights, styleManager } = createDescentHarness();
+  // Dormant until the flight lands, then answering — the shape of a real scan.
+  let landed = false;
+  let refreshed = 0;
+  const dataManager = {
+    layers: new Map([['dvf-sales', {
+      module: {
+        name: 'Ventes immobilières (DVF)',
+        getStats: () => (landed
+          ? { count: 172, dormant: false }
+          : { count: 0, dormant: true, dormantAboveM: 12_000, scanReachM: 300 }),
+      },
+    }]]),
+    isEnabled: () => false,
+    getLayerLifecycleState: () => ({ enabled: true, lifecycleState: 'enabled', uncertain: false }),
+    getAll: () => [{ id: 'dvf-sales', name: 'Ventes immobilières (DVF)' }],
+    setEnabled: async () => true,
+    refreshLayer: async () => { refreshed += 1; landed = true; return true; },
+  };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+
+  const result = await runner('set_layer_visibility', { layerId: 'dvf-sales', enabled: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.viewAdjusted?.ok, true, JSON.stringify(result.viewAdjusted));
+  // Three radii up, and onto the point that was already in frame — never a
+  // place of the tool's own choosing.
+  assert.equal(result.viewAdjusted.rangeM, 900);
+  assert.equal(result.viewAdjusted.latitude, 44.8446);
+  assert.equal(result.viewAdjusted.longitude, -0.5786);
+  assert.equal(flights.length, 1, 'the camera must actually have been asked to move');
+  assert.equal(flights[0].range, 900);
+  assert.equal(refreshed, 1, 'the scan is requested, not waited for on a timer');
+  // And the answer reported is the one AFTER the descent, not the one that
+  // triggered it.
+  assert.equal(result.drawing, true);
+  assert.equal(result.count, 172);
+  assert.equal(result.notDrawnBecause, undefined);
+});
+
+test('with nothing under the camera the layer keeps its own explanation', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, flights, styleManager } = createDescentHarness();
+  // Pointing at space: no ground point, so there is nowhere to descend TO, and
+  // inventing one would answer about a place nobody was looking at.
+  viewer.camera.pickEllipsoid = () => undefined;
+  const dataManager = {
+    layers: new Map([['dvf-sales', {
+      module: { getStats: () => ({ count: 0, dormant: true, dormantAboveM: 12_000, scanReachM: 300 }) },
+    }]]),
+    isEnabled: () => false,
+    getLayerLifecycleState: () => ({ enabled: true, lifecycleState: 'enabled', uncertain: false }),
+    getAll: () => [{ id: 'dvf-sales', name: 'Ventes immobilières (DVF)' }],
+    setEnabled: async () => true,
+  };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  const result = await runner('set_layer_visibility', { layerId: 'dvf-sales', enabled: true });
+  assert.equal(result.ok, true);
+  assert.equal(result.drawing, false);
+  assert.equal(result.notDrawnBecause, 'camera-too-high');
+  assert.equal(result.viewAdjusted.ok, false);
+  assert.equal(result.viewAdjusted.reason, 'no-ground-point-under-the-camera');
+  assert.equal(flights.length, 0);
 });
