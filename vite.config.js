@@ -25321,6 +25321,150 @@ function staticCachePolicyPlugin() {
 }
 
 /**
+ * Pre-compressed asset delivery — the brotli half of the cache policy above.
+ *
+ * `vite preview` compresses on the fly, in gzip, at the default level. Two
+ * things follow, and both cost real bytes on a first visit:
+ *
+ *   - Gzip is what the origin can afford to compute per request, not what the
+ *     format can do. Measured on this build: `Cesium.js` is 1 651 kB gzipped
+ *     and **1 282 kB** in brotli-11, the entry chunk 326 → **266 kB**. That is
+ *     ~430 kB off a cold boot, for bytes that are identical every time and can
+ *     therefore be compressed once, at build time, as slowly as we like.
+ *   - Cloudflare does not upgrade an origin's gzip to brotli — it passes the
+ *     encoded body through. So the edge cannot buy this back for us; the
+ *     origin has to send `br` or nobody does.
+ *
+ * `npm run build` writes a `.br` next to every eligible asset
+ * (`scripts/precompress-dist.mjs`); this middleware serves it when the client
+ * asked for brotli. A build that skipped the script simply has no `.br` files
+ * and every request falls through to vite's gzip — the optimisation degrades
+ * to the previous behaviour rather than to a 404.
+ *
+ * Three deliberate restrictions:
+ *
+ *   - **Content-addressed URLs only** (the same allowlist `staticAssetHeaders`
+ *     uses). This middleware answers 200 with a full body and never 304, which
+ *     is free for a URL nobody revalidates and a waste for one that does.
+ *   - **No range requests.** A partial brotli body is not a partial anything;
+ *     those fall through to sirv and the raw file.
+ *   - **A short extension map, not an exclusion list.** It doubles as the
+ *     Content-Type table, because ending the response here means sirv never
+ *     runs and nothing else would set the type.
+ *
+ * It installs through `configurePreviewServer`, which vite runs before its own
+ * `compression()` — so ending the response here is enough to keep the gzip
+ * middleware from ever seeing it, and no body is compressed twice.
+ */
+const PRECOMPRESSED_CONTENT_TYPES = Object.freeze({
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.geojson': 'application/json; charset=utf-8',
+  '.geojsonl': 'application/json; charset=utf-8',
+  '.wasm': 'application/wasm',
+  '.svg': 'image/svg+xml',
+  '.xml': 'application/xml',
+});
+
+/**
+ * Below this, the header block costs more than the compression saves, and a
+ * `.br` file per icon just multiplies the inodes a deployment has to copy.
+ */
+export const PRECOMPRESS_MIN_BYTES = 1024;
+
+/**
+ * The asset a URL names, when it may be served pre-compressed — else null.
+ *
+ * Shared by the build script and the middleware so the two can never disagree
+ * about which files get a `.br`: a file compressed but not served is wasted
+ * build time, and a URL served but not compressed is a 404 on a path that
+ * worked yesterday.
+ *
+ * @param {string} url - Request URL, query string and all.
+ * @returns {{pathname: string, contentType: string}|null}
+ */
+export function precompressibleAsset(url) {
+  const raw = String(url || '').split('?')[0].split('#')[0];
+  let pathname;
+  try {
+    pathname = decodeURIComponent(raw);
+  } catch {
+    return null; // A malformed escape is not a filename.
+  }
+  if (pathname.includes('\0') || pathname.includes('\\')) return null;
+  if (pathname.split('/').includes('..')) return null;
+  if (!IMMUTABLE_ASSET_RE.test(pathname)) return null;
+  const contentType = PRECOMPRESSED_CONTENT_TYPES[path.extname(pathname).toLowerCase()];
+  if (!contentType) return null;
+  return { pathname, contentType };
+}
+
+/**
+ * Whether the client said it can decode brotli.
+ *
+ * Parsed rather than substring-matched: `br` appears inside `brotli` and
+ * inside any future token containing those letters, and `br;q=0` is a client
+ * explicitly refusing it — both are silent wrong answers for an `includes`.
+ *
+ * @param {?string} acceptEncoding - The `Accept-Encoding` header.
+ * @returns {boolean}
+ */
+export function acceptsBrotli(acceptEncoding) {
+  for (const part of String(acceptEncoding || '').split(',')) {
+    const [name, ...params] = part.split(';');
+    if (name.trim().toLowerCase() !== 'br') continue;
+    const quality = params.map((p) => p.trim()).find((p) => p.toLowerCase().startsWith('q='));
+    if (!quality) return true;
+    return Number.parseFloat(quality.slice(2)) > 0;
+  }
+  return false;
+}
+
+/** @returns {import('vite').Plugin} */
+function precompressedAssetsPlugin() {
+  return {
+    name: 'gev-precompressed-assets',
+    // Preview only, like the cache policy it extends: `vite dev` has no build
+    // output to have pre-compressed.
+    configurePreviewServer(server) {
+      const distDir = path.resolve(server.config.root, server.config.build.outDir);
+      server.middlewares.use((req, res, next) => {
+        if (req.method !== 'GET' && req.method !== 'HEAD') { next(); return; }
+        if (req.headers.range) { next(); return; }
+        if (!acceptsBrotli(req.headers['accept-encoding'])) { next(); return; }
+        const asset = precompressibleAsset(req.url);
+        if (!asset) { next(); return; }
+        const file = `${path.join(distDir, asset.pathname)}.br`;
+        // Belt and braces: `precompressibleAsset` already refuses `..`, and
+        // this refuses anything that still resolved outside the build output.
+        if (!file.startsWith(distDir + path.sep)) { next(); return; }
+        let stat;
+        try {
+          stat = fs.statSync(file);
+        } catch {
+          next(); // No pre-compressed sibling: vite's gzip takes it.
+          return;
+        }
+        if (!stat.isFile()) { next(); return; }
+        res.setHeader('Content-Type', asset.contentType);
+        res.setHeader('Content-Encoding', 'br');
+        res.setHeader('Content-Length', String(stat.size));
+        res.statusCode = 200;
+        if (req.method === 'HEAD') { res.end(); return; }
+        const body = fs.createReadStream(file);
+        // The headers are already out, so a read failure here can only be
+        // ended, not recovered into a 500 — destroying the socket is what
+        // tells the client the body is short rather than complete.
+        body.on('error', () => { res.destroy(); });
+        body.pipe(res);
+      });
+    },
+  };
+}
+
+/**
  * Takes the Cesium engine off the HTML parser's critical path.
  *
  * `vite-plugin-cesium` injects the engine as a plain blocking script in
@@ -25975,6 +26119,9 @@ export default defineConfig(({ mode }) => {
       accessGatePlugin(),
       frameGuardPlugin(),
       staticCachePolicyPlugin(),
+      // After the cache policy, so a pre-compressed body inherits the `Vary`
+      // and `immutable` headers that pass already set on the same URL.
+      precompressedAssetsPlugin(),
       cesium({ cesiumBaseUrl: `${CESIUM_BASE_DIR}/` }),
       stripCesiumFromDocumentPages(),
       deferCesiumBundlePlugin(),

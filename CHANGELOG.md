@@ -64,6 +64,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   (`2026-06-02T08:00:00+02:00`), et la suite passe de l'UTC à UTC+14.
 
 ### Changed
+- **Le code part compressé au maximum, et non plus au minimum que le serveur
+  pouvait calculer à la volée — 460 kB de moins pour ouvrir le globe.** Le
+  serveur compressait chaque fichier au moment où il le servait, en gzip, au
+  niveau qu'il pouvait se permettre entre deux visiteurs. Or ces octets-là sont
+  identiques à chaque visite : ils peuvent être compressés **une fois**, à la
+  fabrication, aussi lentement qu'on veut.
+
+  Mesuré sur le fil, à travers le serveur : le moteur 3D passe de **1 651 à
+  1 282 kB**, le paquet principal de l'application de **326 à 266 kB**, la
+  table des altitudes de terrain de 97 à 78 kB. Au total, ouvrir la carte
+  coûte **2,23 → 1,77 Mo** — 21 % de moins, sur une mesure déterministe (même
+  chiffre aux cinq démarrages). Les données des couches en profitent au même
+  titre : le fichier des aérodromes passe de 611 à **429 kB**.
+
+  Ce n'est pas quelque chose que l'hébergeur pouvait rattraper : Cloudflare
+  transmet le gzip d'une origine tel quel plutôt que de le recompresser. Soit
+  l'origine envoie du brotli, soit personne ne le fait.
+
+  Une fabrication qui sauterait cette étape n'est pas cassée : elle retombe
+  simplement sur le gzip à la volée d'avant. `npm run qa:brotli` vérifie sur
+  socket que le corps décodé est bien identique à l'original, que le
+  `Content-Length` annonce ce qui est envoyé, et qu'un client qui ne sait pas
+  décoder le brotli n'en reçoit jamais.
+
 - **Les 60 couches de données ne se téléchargent plus qu'au premier clic —
   470 kB de moins pour ouvrir le globe.** L'application chargeait le code des
   soixante couches avant d'afficher quoi que ce soit : la CCTV, l'AIS, le

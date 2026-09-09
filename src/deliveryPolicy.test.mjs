@@ -14,9 +14,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  acceptsBrotli,
   deferCesiumScriptTag,
   isCesiumFreePage,
   parseGeoidQuery,
+  precompressibleAsset,
   staticAssetHeaders,
   stripCesiumAssets,
 } from '../vite.config.js';
@@ -115,6 +117,84 @@ test('every response announces that the encoding was negotiated', () => {
 test('a missing or malformed url is answered, not thrown on', () => {
   for (const u of [undefined, null, '', '?onlyquery']) {
     assert.equal(staticAssetHeaders(u).Vary, 'Accept-Encoding');
+  }
+});
+
+// ── Pre-compressed delivery ────────────────────────────────────────────────
+//
+// Two judgements, and both have a silent wrong answer. Saying yes to a URL
+// that revalidates hands back a 200 where a 304 was due, forever; saying yes
+// to a client that cannot decode brotli hands it a body it will render as
+// mojibake or refuse to parse, with no error anywhere.
+
+test('the two scripts a cold boot cannot avoid are pre-compressible', () => {
+  // Measured: 1 651 → 1 282 kB for the engine, 326 → 266 kB for the entry.
+  for (const p of [`/${CESIUM_DIR}/Cesium.js`, `/${CESIUM_DIR}/Workers/chunk-3CDICLGN.js`, '/assets/index-BlPAiXAf.js']) {
+    assert.equal(precompressibleAsset(p)?.contentType, 'text/javascript; charset=utf-8', p);
+  }
+});
+
+test('the extension map doubles as the content-type table', () => {
+  // Ending the response here means sirv never runs, so nothing else would set
+  // the type — a stylesheet served as `application/octet-stream` is not applied.
+  assert.equal(precompressibleAsset('/assets/index-x.css').contentType, 'text/css; charset=utf-8');
+  assert.equal(precompressibleAsset('/assets/regions-x.json').contentType, 'application/json; charset=utf-8');
+  assert.equal(precompressibleAsset('/assets/airports-x.geojsonl').contentType, 'application/json; charset=utf-8');
+  assert.equal(precompressibleAsset(`/${CESIUM_DIR}/ThirdParty/draco_decoder.wasm`).contentType, 'application/wasm');
+});
+
+test('an already-compressed format is left alone', () => {
+  // Brotli over a JPEG or a woff2 costs build time and returns bytes.
+  for (const p of [`/${CESIUM_DIR}/Assets/Textures/SkyBox/tycho2t3_80_px.jpg`, '/assets/logo-x.png', '/assets/b789-x.glb']) {
+    assert.equal(precompressibleAsset(p), null, p);
+  }
+});
+
+test('a url that revalidates is never served pre-compressed', () => {
+  // This middleware answers 200 with a full body and never 304. That is free
+  // for a content-addressed URL and a regression for every other one.
+  for (const p of ['/', '/index.html', '/fiche.html', '/style.css', '/fonts/fonts.css', '/models/b789.glb']) {
+    assert.equal(precompressibleAsset(p), null, p);
+  }
+});
+
+test('the same allowlist as the cache policy, so the two cannot drift', () => {
+  // A file compressed but not served is wasted build time; a URL served but
+  // not compressed is a 404 on a path that worked yesterday.
+  for (const p of ['/uploads/assets/evil.js', '/cesium/Cesium.js', '/api/proxy?to=/assets/x.js']) {
+    assert.equal(precompressibleAsset(p), null, p);
+    assert.equal(staticAssetHeaders(p)['Cache-Control'], undefined, p);
+  }
+});
+
+test('a traversal cannot climb out of the build output', () => {
+  for (const p of ['/assets/../../../etc/passwd.js', '/assets/%2e%2e/%2e%2e/etc/shadow.js', '/assets/..%2f..%2fetc%2fx.js']) {
+    assert.equal(precompressibleAsset(p), null, p);
+  }
+});
+
+test('a malformed escape is refused rather than thrown on', () => {
+  assert.equal(precompressibleAsset('/assets/%E0%A4%A.js'), null);
+  assert.equal(precompressibleAsset(undefined), null);
+});
+
+test('a query string neither hides nor invents an extension', () => {
+  assert.equal(precompressibleAsset('/assets/index-x.js?v=2').pathname, '/assets/index-x.js');
+  assert.equal(precompressibleAsset('/assets/logo-x.png?as=.js'), null);
+});
+
+test('brotli is accepted when the client says so, in any of its spellings', () => {
+  for (const h of ['br', 'gzip, deflate, br', 'br;q=1.0, gzip;q=0.8', ' BR ', 'gzip, br, zstd']) {
+    assert.equal(acceptsBrotli(h), true, h);
+  }
+});
+
+test('a client that cannot decode brotli is never handed one', () => {
+  // `br` is a substring of `brotli` and of any future token containing it, and
+  // `br;q=0` is an explicit refusal — both are silent wrong answers to
+  // `includes('br')`.
+  for (const h of ['gzip, deflate', 'gzip', '', undefined, 'identity', 'br;q=0', 'gzip, br;q=0', 'brotli']) {
+    assert.equal(acceptsBrotli(h), false, JSON.stringify(h));
   }
 });
 
