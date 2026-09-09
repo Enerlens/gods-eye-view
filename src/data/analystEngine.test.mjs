@@ -201,3 +201,38 @@ test('helpers: haversine sanity + scope radius', () => {
   const scoped = applyScope(FLIGHTS, { kind: 'radius' }, { center: { lat: 30.27, lon: -97.74 }, km: 50 });
   assert.deepEqual(scoped.map((f) => f.id).sort(), ['GND1', 'SWA1']);
 });
+
+test('analyst: a filter on a field the layer never publishes is refused, not answered "zero"', async () => {
+  // The worst failure this engine can produce: an unknown field matches
+  // nothing, the count comes back 0, and 0 is a plausible-looking answer.
+  // Measured on the voice bench 2026-09-09 — asked whether any charge points
+  // were free, the model filtered `irve-fr` on `bikesAvailable`, which belongs
+  // to the bike layer. Silently, that is "no free charge points here".
+  const engine = createAnalystEngine({
+    getRecords: () => [{ id: 'a', lat: 44.8, lon: -0.6, chargePoints: 6 }],
+    resolveRegionRing: async () => null,
+    getViewContext: () => ({ lat: 44.8, lon: -0.6, viewRadiusKm: 50 }),
+  });
+  const stray = await engine.query({
+    layers: ['irve-fr'],
+    scope: { kind: 'view' },
+    filters: [{ field: 'bikesAvailable', op: 'gt', value: 0 }],
+  });
+  assert.equal(stray.ok, false);
+  assert.match(stray.error, /has no field bikesAvailable/);
+  assert.match(stray.error, /chargePoints/, 'the refusal names what the layer DOES publish');
+  assert.equal(stray.coverage.scope, 'unknown-field');
+
+  // The layer's own fields still work, and so do the ones every record carries.
+  const good = await engine.query({
+    layers: ['irve-fr'],
+    scope: { kind: 'view' },
+    filters: [{ field: 'chargePoints', op: 'gte', value: 4 }],
+  });
+  assert.equal(good.ok, true);
+  assert.equal(good.count, 1);
+  const byId = await engine.query({
+    layers: ['irve-fr'], scope: { kind: 'view' }, filters: [{ field: 'id', op: 'eq', value: 'a' }],
+  });
+  assert.equal(byId.ok, true);
+});

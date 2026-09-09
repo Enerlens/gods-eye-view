@@ -26,13 +26,54 @@
 
 import { pointInRing } from './naturalEarthRegions.js';
 
-/** Layers the engine understands, with the fields queries may reference. */
+/**
+ * Layers the engine understands, with the fields queries may reference.
+ *
+ * THIS TABLE IS A GATE, not documentation: a layer absent from it is refused by
+ * name, however well it implements `getAnalystRecords()`. That is why it stood
+ * at five entries while seventeen layers published records — "how many charge
+ * points are in view?" was answerable from data already in the browser, and the
+ * engine said it could not query `irve-fr`.
+ *
+ * The field lists are the query vocabulary, and they are copied from each
+ * layer's own record mapper rather than invented here. A field named here that
+ * the mapper does not emit is a filter that silently matches nothing; the unit
+ * test alongside this module checks the two agree.
+ */
 export const ANALYST_LAYERS = {
   flights: { numeric: ['altitudeM', 'speedMps', 'verticalRateMps'], text: ['callsign', 'icao24', 'originCountry', 'operator', 'routeOrigin', 'routeDestination', 'aircraftClass'], flags: ['military', 'onGround'] },
   military: { numeric: ['altitudeM', 'speedMps', 'verticalRateMps'], text: ['callsign', 'icao24', 'originCountry', 'operator', 'aircraftClass'], flags: ['military', 'onGround'] },
   'ais-live-vessels': { numeric: ['speedKts', 'courseDeg'], text: ['name', 'mmsi', 'shipType', 'destination', 'navStatus'], flags: [] },
   'local-firms': { numeric: ['frp'], text: ['confidence', 'satellite'], flags: [] },
   earthquakes: { numeric: ['magnitude', 'depthKm'], text: ['place'], flags: [] },
+
+  // ── Ground mobility ───────────────────────────────────────────────────────
+  // The layer behind "how many bikes at the nearest station" — the question
+  // that sent an operator to the transport company's website because nothing
+  // here would answer it.
+  bikeshare: { numeric: ['bikesAvailable', 'docksAvailable', 'capacity', 'occupancyPct'], text: ['name', 'system', 'city'], flags: ['installed', 'renting', 'returning'] },
+  'shared-mobility-fr': { numeric: ['vehiclesAvailable', 'docksAvailable', 'capacity', 'rangeKm'], text: ['name', 'operator', 'system', 'vehicleKind'], flags: ['renting'] },
+  'transit-fr': { numeric: ['speedKph', 'bearingDeg', 'delaySec', 'fixAgeSec'], text: ['line', 'lineName', 'headsign', 'network', 'mode', 'status', 'occupancy'], flags: ['delayPublished'] },
+  'road-events-fr': { numeric: ['severity', 'startMs', 'endMs'], text: ['category', 'label', 'state', 'road', 'town', 'operator'], flags: ['safety'] },
+
+  // ── Energy ────────────────────────────────────────────────────────────────
+  'irve-fr': { numeric: ['chargePoints', 'chargePointsPublished', 'peakKW'], text: ['name', 'commune', 'powerBand', 'access', 'detail'], flags: ['freeToUse'] },
+  'edf-power-plants': { numeric: ['capacityMw', 'units'], text: ['name', 'filiere', 'kind', 'fuel', 'operator', 'commune', 'departement', 'region'], flags: [] },
+  'rte-generation': { numeric: ['installedMw', 'outputMw', 'loadFactor', 'units', 'unitsReporting'], text: ['name', 'kind', 'generationClass', 'commune', 'departement', 'region'], flags: [] },
+  'fr-hydro-plants': { numeric: ['capacityKw', 'plants', 'energyKwh12m', 'loadFactor', 'headM'], text: ['name', 'kind', 'technology', 'commune', 'departement', 'region', 'gridOperator'], flags: ['anonymous'] },
+  'france-energy': { numeric: ['loadMw', 'generationMw', 'netExportMw', 'exchangeRatio'], text: ['name', 'balance', 'topFiliere'], flags: [] },
+  'gas-fr': { numeric: ['installedMw', 'capacityGwhPerYear'], text: ['name', 'kind', 'operator', 'networkTier', 'status', 'commune', 'departement'], flags: [] },
+  'power-grid': { numeric: ['voltageV', 'voltageKv'], text: ['name', 'kind', 'role', 'roleLabel', 'operator', 'ref'], flags: [] },
+
+  // ── Hazards & sensors ─────────────────────────────────────────────────────
+  vigicrues: { numeric: ['level', 'updatedAtMs'], text: ['name', 'levelLabel'], flags: [] },
+  'hubeau-hydro': { numeric: ['dischargeM3s', 'localGaugeM', 'observedAtMs'], text: ['name', 'river', 'freshness'], flags: ['producerFlaggedDoubtful'] },
+  'meteofrance-vigilance': { numeric: ['level'], text: ['name', 'levelLabel', 'phenomena'], flags: [] },
+  'meteo-stations-fr': { numeric: ['altitudeM', 'instrumentCount', 'posteType'], text: ['name', 'kind', 'stationClass', 'wmoId', 'commune', 'departement'], flags: ['measuresWind', 'measuresPressure', 'publishesOpenly', 'listedAsSynop'] },
+  'marine-buoys': { numeric: ['waveHeightM', 'dominantPeriodS', 'waveDirectionDeg', 'seaTempC', 'airTempC', 'windSpeedMs', 'windDirectionDeg', 'pressureHpa'], text: ['seaState'], flags: [] },
+
+  // ── Built environment ─────────────────────────────────────────────────────
+  'medecins-fr': { numeric: ['practitioners'], text: ['address', 'commune', 'postcode', 'family', 'detail'], flags: ['healthCentre'] },
 };
 
 const EARTH_R_KM = 6371;
@@ -127,6 +168,32 @@ export function createAnalystEngine(providers) {
           ok: false,
           error: `I can't query ${unknown.join(', ')} yet — supported layers: ${Object.keys(ANALYST_LAYERS).join(', ')}.`,
           coverage: { layersQueried: [], scope: 'unsupported-layer' },
+        };
+      }
+      // A filter naming a field none of the queried layers has matches NOTHING
+      // and answers "zero" — the worst failure mode this engine can produce,
+      // because zero is a plausible answer and nothing about it looks wrong.
+      // Measured on the voice bench: asked whether any charge points were free,
+      // the model filtered `irve-fr` on `bikesAvailable`, a field that belongs
+      // to another layer, and would have been told there were none. Refusing
+      // and naming the real fields lets it correct itself in the same turn.
+      const named = new Set(layers.flatMap((key) => [
+        ...ANALYST_LAYERS[key].numeric,
+        ...ANALYST_LAYERS[key].text,
+        ...ANALYST_LAYERS[key].flags,
+        // Every record carries these, whatever the layer.
+        'id', 'lat', 'lon', 'layerKey', 'distanceKm',
+      ]));
+      const strayFilters = (spec.filters || [])
+        .map((filter) => filter?.field)
+        .filter((field) => field && !named.has(field));
+      if (strayFilters.length) {
+        return {
+          ok: false,
+          error: `${layers.join(', ')} ${layers.length > 1 ? 'have' : 'has'} no field `
+            + `${strayFilters.join(', ')} — available fields: ${[...named].join(', ')}. `
+            + 'A field this layer does not publish is not something it withholds; it is something it never measured.',
+          coverage: { layersQueried: [], scope: 'unknown-field' },
         };
       }
       for (const key of layers) {

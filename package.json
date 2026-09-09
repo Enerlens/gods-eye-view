@@ -41,6 +41,7 @@
     "test": "node scripts/run-unit-tests.mjs",
     "test:track": "node scripts/track-regression.mjs",
     "qa:voice-brain": "node scripts/qa-voice-brain.mjs",
+    "qa:voice-bench": "node scripts/qa-voice-bench.mjs",
     "qa:keyless-boot": "node scripts/qa-keyless-boot.mjs",
     "qa:ign-terrain": "node scripts/qa-ign-terrain.mjs",
     "qa:map-source-tray": "node scripts/qa-map-source-tray.mjs",

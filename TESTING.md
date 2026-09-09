@@ -71,6 +71,17 @@ settled and not applicable because no Google 3D tileset is active.
   - `window.__gevAnnotations.demo()` — lays the SF set down at once
   - `window.__gevAnnotations.clear()` — erase all marks
   - `window.__gevAnnotations.count()` — how many marks are live
+- **Voice routing + reading (real model turns, costs money):**
+  `npm run qa:voice-bench` drives the SHIPPED instructions and tool schemas —
+  sliced out of `vite.config.js`, never copied — through an OpenRouter model
+  and grades which tool each French phrase reaches. `--mode reading` grades
+  what the model SAYS about a canned tool result instead. Measured cost
+  ~$0.0006 per case; `--cases N` caps a run while iterating.
+
+  Run it before shipping any change to the voice instructions or the tool
+  schemas: this is the only instrument that sees a failure living entirely in
+  what the model is ALLOWED to say. The médecins bug — a 17-value layer enum
+  for a 60-layer registry — passed every unit test in the suite.
 
 ---
 

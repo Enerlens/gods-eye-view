@@ -8,7 +8,7 @@ import {
 import { getNextIssPass } from '../data/satellites.js';
 import { CCTV_FOCUS_RESULT } from '../data/cctv.js';
 import { contextModeWord } from '../contextModePolicy.js';
-import { createAnalystEngine } from '../data/analystEngine.js';
+import { ANALYST_LAYERS, createAnalystEngine } from '../data/analystEngine.js';
 import { layerFeedState } from '../data/manager.js';
 import militaryAwarenessLayer, {
   collectAircraftProximityWindow,
@@ -20,6 +20,11 @@ import { isPickedWorldPosition } from '../data/scenePick.js';
 import { resolveRegionRingForQuery } from '../annotations/annotationResolver.js';
 import { normalizeRadioCountryInput } from '../data/radioCountry.js';
 import { TR3B_CLASS } from '../data/tr3bRegistry.js';
+import {
+  describeVoiceLayers,
+  resolveVoiceLayerId,
+  suggestVoiceLayers,
+} from './layerVocabulary.js';
 
 const ALLOWED_STYLES = new Set(['normal', 'retro', 'surveillance', 'thermal', 'anime', 'noir', 'snow']);
 const PANEL_ALIASES = new Map([
@@ -141,6 +146,20 @@ const COCKPIT_ACTION_ALIASES = new Map([
 ]);
 const COCKPIT_TARGET_LAYERS = new Set(['flights', 'military', 'ais-live-vessels', 'military-installations']);
 
+/**
+ * English (and some French) spoken names, inherited from upstream and grown by
+ * this fork. `src/voice/layerVocabulary.js` is consulted after it and covers
+ * the registry systematically; this table survives because it carries
+ * vocabulary the registry cannot derive — "quakes", "chemist", "pylons".
+ *
+ * IT IS A `Map` LITERAL, SO A DUPLICATE KEY SILENTLY WINS. That is not
+ * theoretical: `amenities-fr` claimed "médecins", "docteurs" and "doctors"
+ * several hundred lines below `medecins-fr`'s claim on the same words, so
+ * asking for the doctors register turned on the everyday-amenities layer
+ * instead — a facility count from the BPE answering a question about
+ * practitioners. The words moved to the layer that holds the register, and
+ * gevActions.test.mjs now fails on any duplicate key at all.
+ */
 const LAYER_ALIASES = new Map([
   ['flights', 'flights'],
   ['planes', 'flights'],
@@ -201,7 +220,6 @@ const LAYER_ALIASES = new Map([
   ['high voltage', 'power-grid'],
   ['pylons', 'power-grid'],
   ['substations', 'power-grid'],
-  ['rte', 'power-grid'],
   ['rte', 'rte-generation'],
   ['reactors', 'rte-generation'],
   ['reactor', 'rte-generation'],
@@ -257,6 +275,10 @@ const LAYER_ALIASES = new Map([
   ['gp', 'medecins-fr'],
   ['generalistes', 'medecins-fr'],
   ['généralistes', 'medecins-fr'],
+  ['docteurs', 'medecins-fr'],
+  ['medecin generaliste', 'medecins-fr'],
+  ['médecin généraliste', 'medecins-fr'],
+  ['general practitioners', 'medecins-fr'],
   ['deserts medicaux', 'medecins-fr'],
   ['déserts médicaux', 'medecins-fr'],
   ['medical deserts', 'medecins-fr'],
@@ -524,11 +546,6 @@ const LAYER_ALIASES = new Map([
   ["pharmacies", 'amenities-fr'],
   ["pharmacy", 'amenities-fr'],
   ["chemist", 'amenities-fr'],
-  ["doctors", 'amenities-fr'],
-  ["doctor", 'amenities-fr'],
-  ["gp", 'amenities-fr'],
-  ["gps", 'amenities-fr'],
-  ["general practitioners", 'amenities-fr'],
   ["hospitals", 'amenities-fr'],
   ["hospital", 'amenities-fr'],
   ["post office", 'amenities-fr'],
@@ -552,12 +569,6 @@ const LAYER_ALIASES = new Map([
   ["epicerie", 'amenities-fr'],
   ["épicerie", 'amenities-fr'],
   ["pharmacie", 'amenities-fr'],
-  ["pharmacies", 'amenities-fr'],
-  ["medecins", 'amenities-fr'],
-  ["médecins", 'amenities-fr'],
-  ["medecin generaliste", 'amenities-fr'],
-  ["médecin généraliste", 'amenities-fr'],
-  ["docteurs", 'amenities-fr'],
   ["hopitaux", 'amenities-fr'],
   ["hôpitaux", 'amenities-fr'],
   ["hopital", 'amenities-fr'],
@@ -685,6 +696,15 @@ const reverseGeocodeInFlight = new Map();
 const nearbyPlacesCache = new Map();
 const nearbyPlacesInFlight = new Map();
 const VISIBLE_ENTITY_SHORTLIST = 64;
+/**
+ * How many records one layer contributes to a proximity scan.
+ *
+ * The scan runs on a spoken turn, not per frame, and it walks the array once —
+ * but `transit-fr` over Paris holds thousands of vehicles, and the answer is
+ * always the nearest five. Capping the SNAPSHOT rather than the sort keeps the
+ * cost bounded at the layer that would otherwise dominate it.
+ */
+const NEARBY_RECORD_SCAN_LIMIT = 400;
 const BASEMAP_CONTEXT_WAIT_MS = 1500;
 const viewTargetCache = new WeakMap();
 
@@ -728,10 +748,124 @@ export function readLayerLifecycleSummary(dataManager, layerId, { fallbackEnable
   };
 }
 
+/** How many enabled layers the situation brief names before it says "and N more". */
+const SITUATION_LAYER_LIMIT = 12;
+/** How many fields of a selected record the brief carries. */
+const SITUATION_FIELD_LIMIT = 8;
+/** Longest the whole brief may get. ~300 tokens, the budget the plan set. */
+const SITUATION_MAX_CHARS = 1200;
+
+/**
+ * Fields worth stating about a selected object, as `name value` pairs.
+ *
+ * Nulls are dropped rather than reported: a field the feed did not publish is
+ * not a zero, and the brief must not teach the model otherwise. Arrays and
+ * nested objects are dropped too — this is a one-line orientation, and the
+ * model can call get_entity_context for the full record the moment it needs one.
+ *
+ * @param {object} record A layer readout.
+ * @returns {string} Comma-separated pairs, possibly empty.
+ */
+function situationFields(record) {
+  const skip = new Set(['id', 'layerId', 'kind', 'source', 'lat', 'lon', 'countsEntries', 'availabilityKnown']);
+  const parts = [];
+  for (const [key, value] of Object.entries(record)) {
+    if (parts.length >= SITUATION_FIELD_LIMIT) break;
+    if (skip.has(key) || value === null || value === undefined) continue;
+    if (typeof value === 'object') continue;
+    if (typeof value === 'boolean') {
+      if (value === true) continue; // "renting: true" is the uninteresting half.
+      parts.push(`${key} no`);
+      continue;
+    }
+    parts.push(`${key} ${value}`);
+  }
+  return parts.join(', ');
+}
+
+/**
+ * Where the operator is and what they are looking at, as one short message.
+ *
+ * WHY THE CLIENT SENDS THIS AT ALL. The realtime session gets its bearings from
+ * screenshots and a stream of view-state events; the text brain gets a bare
+ * array of messages. It therefore did not know where the camera was, which
+ * layers were on, or what "this station" referred to — and answered accordingly,
+ * with tool calls to re-derive facts the browser already had, or with a polite
+ * suggestion to consult the operator's website. One preamble per turn removes
+ * the whole class of failure for a few hundred tokens.
+ *
+ * It is a `user` message on purpose: the server owns the system prompt and
+ * rejects a second one (see sanitizeBrainMessages), and a `user` turn is also
+ * what the model weighs most heavily as "the current situation".
+ *
+ * Never throws. A brief that cannot be built is simply not sent — a turn
+ * without context is worse than a turn with context, and both are better than
+ * a mic that fails to answer.
+ *
+ * @param {object} deps `{viewer, styleManager, dataManager}`.
+ * @returns {Promise<string|null>} The brief, or null when there is nothing to say.
+ */
+export async function buildSituationBrief({ viewer, styleManager, dataManager }) {
+  try {
+    const viewTarget = getViewTargetCartographic(viewer);
+    const scene = await getSceneContext(viewer, styleManager, dataManager, viewTarget);
+    const lines = [];
+
+    const place = scene.basemap?.place;
+    const where = [place?.locality, place?.region, place?.country].filter(Boolean).join(', ')
+      || place?.formattedAddress
+      || null;
+    const target = scene.basemap?.target;
+    const altKm = scene.camera.heightM / 1000;
+    const altitude = altKm >= 10 ? `${Math.round(altKm)} km` : `${altKm.toFixed(1)} km`;
+    lines.push(
+      `Camera: ${scene.camera.latitude.toFixed(4)}, ${scene.camera.longitude.toFixed(4)} at ${altitude}`
+      + `${target ? ` looking at ${target.latitude.toFixed(4)}, ${target.longitude.toFixed(4)}` : ''}`
+      + `${where ? ` — ${where}` : ''} (${scene.basemap?.viewScale || 'unknown'} scale).`,
+    );
+
+    const on = scene.enabledLayers || [];
+    if (!on.length) lines.push('Layers on: none.');
+    else {
+      const named = on.slice(0, SITUATION_LAYER_LIMIT)
+        .map((layer) => `${layer.name} ${layer.count}`)
+        .join(' · ');
+      const rest = on.length - Math.min(on.length, SITUATION_LAYER_LIMIT);
+      lines.push(`Layers on (${on.length}): ${named}${rest > 0 ? ` · and ${rest} more` : ''}.`);
+    }
+
+    const selected = layerSelectionContexts(dataManager)[0] || selectedEntityContext(dataManager);
+    if (selected) {
+      const label = selected.name || selected.label || selected.id || selected.kind || 'object';
+      const kind = selected.kind || selected.layerId || 'selection';
+      const fields = situationFields(selected);
+      lines.push(`Selected: ${kind} "${label}"${fields ? ` — ${fields}` : ''}. "This one" means THIS.`);
+    }
+
+    const tracked = collectTrackedEntities(dataManager);
+    if (tracked.length) {
+      lines.push(`Tracking: ${tracked.map((t) => `${t.kind} ${t.label || t.id || '?'}`).join('; ')}.`);
+    }
+
+    const contacts = activeContactsWindow();
+    if (contacts) {
+      lines.push(
+        `Contacts window: ${contacts.aircraft} aircraft within ${contacts.radiusKm} km of ${contacts.centeredOn}.`,
+      );
+    }
+
+    const body = lines.join('\n').slice(0, SITUATION_MAX_CHARS);
+    return `[GEV SITUATION — automatic, refreshed each turn. Use it to answer directly; do not read it aloud, `
+      + `and do not call a tool to re-fetch what is already stated here.]\n${body}`;
+  } catch {
+    return null;
+  }
+}
+
 export function createGevActionRunner({ viewer, styleManager, dataManager, sceneDirector = null, annotations = null }) {
   installViewTargetPrewarm(viewer);
   initCameraVerbs(viewer, getViewTargetCartesian);
-  return async function runGevAction(name, rawArgs = {}, runOptions = {}) {
+  async function runGevAction(name, rawArgs = {}, runOptions = {}) {
     const args = rawArgs && typeof rawArgs === 'object' ? rawArgs : {};
     const current = () => !runOptions.signal?.aborted
       && (typeof runOptions.isCurrent !== 'function' || runOptions.isCurrent());
@@ -774,7 +908,19 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
             ...readLayerLifecycleSummary(dataManager, layerId),
           };
         }
-        throw new Error(`Unknown data layer: ${args.layerId || 'missing'}`);
+        // A miss is answerable, not fatal. Thrown, the model heard "tool
+        // failed" and told the operator the layer does not exist — which is
+        // how "montre les médecins" became "je n'ai pas cette couche" while
+        // medecins-fr sat in the registry. Handing back the nearest names lets
+        // it offer them instead of closing the subject.
+        return {
+          ok: false,
+          action: 'set_layer_visibility',
+          layerId,
+          error: `Unknown data layer: ${args.layerId || 'missing'}`,
+          suggestions: suggestVoiceLayers(args.layerId, 3),
+          hint: 'Name the closest registered layers to the operator and ask which they meant. Never say the subject is unavailable without checking list_layers first.',
+        };
       }
       const enabled = Boolean(args.enabled);
       const changeOptions = { origin: 'voice' };
@@ -1282,6 +1428,22 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
       return getCurrentViewState(viewer, styleManager, dataManager, sceneDirector);
     }
 
+    if (name === 'list_layers') {
+      const query = typeof args.query === 'string' ? args.query.trim() : '';
+      const layers = describeVoiceLayers({ dataManager, query: query || null });
+      return {
+        ok: true,
+        action: 'list_layers',
+        query: query || null,
+        // The registry's own count, so a filtered answer never reads as the
+        // whole catalogue: "I have 3 layers" was never true.
+        total: describeVoiceLayers({ dataManager }).length,
+        matched: layers.length,
+        layers,
+        ...(query && !layers.length ? { suggestions: suggestVoiceLayers(query, 3) } : {}),
+      };
+    }
+
     if (name === 'set_hud') {
       const out = { ok: true, action: 'set_hud' };
       if (args.layout != null) {
@@ -1358,7 +1520,22 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
     }
 
     throw new Error(`Unknown GEV tool: ${name}`);
-  };
+  }
+
+  /**
+   * The situation preamble, hung off the runner rather than passed separately.
+   *
+   * The voice session already receives exactly one thing from the app — this
+   * function — and the alternative was threading `viewer`, `styleManager` and
+   * `dataManager` through two more constructors so a text turn could say where
+   * it is. A named property on the runner keeps that seam at one object, and a
+   * test can replace it with a stub in one line.
+   *
+   * @returns {Promise<string|null>}
+   */
+  runGevAction.describeSituation = () => buildSituationBrief({ viewer, styleManager, dataManager });
+
+  return runGevAction;
 }
 
 function selectedCockpitTarget(dataManager) {
@@ -2522,11 +2699,23 @@ function normalizePanelId(value) {
   return PANEL_ALIASES.get(raw.toLowerCase()) || null;
 }
 
+/**
+ * Resolve whatever the model called a layer to a registered id.
+ *
+ * Three passes, cheapest first. The hand-written English table above still
+ * answers first so nothing upstream resolves differently; the registry-derived
+ * vocabulary then catches French names, panel labels and accent-stripped
+ * transcriptions ("medecins", "Bornes de recharge", "vigilance meteo").
+ *
+ * An unrecognized string is returned UNCHANGED rather than nulled, because the
+ * callers distinguish "not a layer name" from "a layer this build does not
+ * have" and say different things about them.
+ */
 function normalizeLayerId(value) {
   const raw = String(value || '').trim();
   if (!raw) return null;
   if (LAYER_ALIASES.has(raw.toLowerCase())) return LAYER_ALIASES.get(raw.toLowerCase());
-  return raw;
+  return resolveVoiceLayerId(raw) || raw;
 }
 
 function normalizeCockpitTargetLayer(value) {
@@ -2839,7 +3028,13 @@ async function getEntityContext(viewer, dataManager, styleManager, args = {}) {
   const scope = String(args.scope || 'auto').toLowerCase();
   const layerId = normalizeLayerId(args.layerId || args.layer);
   const limit = Math.round(clampNumber(args.limit, 1, 12, 5));
-  const selected = selectedEntityContext(dataManager);
+  // Two selection lanes, and the layer lane is checked FIRST for a reason: a
+  // click on a bike station or a charge point never reaches the shared context
+  // store — those layers own their own `_selectedId` — so the store answered
+  // "nothing is selected" while a card for the clicked station was on screen,
+  // and the model concluded it had no way to read it.
+  const layerSelected = layerSelectionContexts(dataManager, layerId);
+  const selected = layerSelected[0] || selectedEntityContext(dataManager);
   const cameraHeightM = viewer.camera.positionCartographic.height;
   const viewTarget = getViewTargetCartographic(viewer);
   const scenePromise = getSceneContext(viewer, styleManager, dataManager, viewTarget);
@@ -2847,6 +3042,12 @@ async function getEntityContext(viewer, dataManager, styleManager, args = {}) {
   const visible = (!selectedWillBeReturned && shouldScanVisibleEntities(cameraHeightM))
     ? visibleEntityContexts(viewer, dataManager, { layerId, limit, target: viewTarget })
     : [];
+  // Point layers publish records, not context-store entities, so the on-screen
+  // scan above cannot see them. This is the same question asked of the other
+  // half of the layers: what is near what the camera is pointing at?
+  const nearby = selectedWillBeReturned
+    ? []
+    : nearbyLayerRecords(dataManager, { layerId, limit, target: viewTarget });
   const scene = await scenePromise;
 
   if ((scope === 'selected' || scope === 'auto') && selected) {
@@ -2857,6 +3058,10 @@ async function getEntityContext(viewer, dataManager, styleManager, args = {}) {
       scope: 'selected',
       scene,
       selected,
+      // More than one layer can hold a selection at once (a station AND a
+      // vessel). The first is the answer; the rest are named so the model can
+      // ask which one the operator meant instead of guessing.
+      ...(layerSelected.length > 1 ? { alsoSelected: layerSelected.slice(1) } : {}),
     };
   }
 
@@ -2868,9 +3073,86 @@ async function getEntityContext(viewer, dataManager, styleManager, args = {}) {
     scene,
     selected: selected || null,
     visible,
-    count: visible.length,
+    nearby,
+    count: visible.length + nearby.length,
     visibleScanSkipped: !shouldScanVisibleEntities(cameraHeightM),
   };
+}
+
+/**
+ * What the operator has clicked, across every layer that can say.
+ *
+ * A layer answers by implementing `getSelectedInfo()`; the contract is that it
+ * returns NAMED fields or null, never a render record and never an internal id
+ * the model would read out loud. Order follows the manager's registration
+ * order, which is stable and reviewable, so two layers holding a selection at
+ * once resolve the same way twice running.
+ *
+ * @param {object} dataManager Layer manager.
+ * @param {string|null} [only] Restrict to one layer id.
+ * @returns {Array<object>} One entry per layer holding a selection.
+ */
+function layerSelectionContexts(dataManager, only = null) {
+  const found = [];
+  for (const [layerId, entry] of dataManager.layers || []) {
+    if (only && layerId !== only) continue;
+    if (!entry?.enabled) continue;
+    const module = entry.module;
+    if (typeof module?.getSelectedInfo !== 'function') continue;
+    try {
+      const info = module.getSelectedInfo();
+      if (info) found.push({ layerId, ...info });
+    } catch {
+      // A layer mid-teardown is not a reason to lose the others.
+    }
+  }
+  return found;
+}
+
+/**
+ * The nearest records to the view target, across the point layers.
+ *
+ * Reads the SAME `getAnalystRecords()` snapshot the analyst engine queries, so
+ * "the nearest station" and "how many stations in view" cannot disagree about
+ * what is loaded. Records without coordinates are skipped rather than sorted
+ * to the end: a nameless entry at an unknown distance is not a neighbour.
+ *
+ * @param {object} dataManager Layer manager.
+ * @param {{layerId?: string|null, limit?: number, target?: object|null}} [options]
+ * @returns {Array<object>} Nearest first, each carrying its layer and distance.
+ */
+function nearbyLayerRecords(dataManager, { layerId = null, limit = 5, target = null } = {}) {
+  if (!target) return [];
+  const lat = Cesium.Math.toDegrees(target.latitude);
+  const lon = Cesium.Math.toDegrees(target.longitude);
+  const candidates = [];
+  for (const [id, entry] of dataManager.layers || []) {
+    if (layerId && id !== layerId) continue;
+    if (!entry?.enabled) continue;
+    // Only the layers the analyst vocabulary knows: a layer absent from it
+    // cannot be queried afterwards, so offering its neighbours invites a
+    // follow-up the engine will refuse.
+    if (!ANALYST_LAYERS[id]) continue;
+    const module = entry.module;
+    if (typeof module?.getAnalystRecords !== 'function') continue;
+    let records = [];
+    try {
+      records = module.getAnalystRecords(NEARBY_RECORD_SCAN_LIMIT) || [];
+    } catch {
+      continue;
+    }
+    for (const record of records) {
+      if (!Number.isFinite(record?.lat) || !Number.isFinite(record?.lon)) continue;
+      candidates.push({
+        distanceKm: Math.round(haversineKm(lat, lon, record.lat, record.lon) * 100) / 100,
+        record: { layerId: id, ...record },
+      });
+    }
+  }
+  candidates.sort((a, b) => a.distanceKm - b.distanceKm);
+  return candidates
+    .slice(0, Math.max(0, limit))
+    .map(({ distanceKm, record }) => ({ ...record, distanceKm }));
 }
 
 /**
@@ -3772,8 +4054,27 @@ function clampNumber(value, min, max, fallback) {
 /** layerId → epoch ms of last voice-driven enable (analyst warm-up honesty). */
 const _layerEnabledAt = new Map();
 let _analystEngine = null;
-/** Layers whose loaded set follows the camera, so a loaded count is not a world count. */
-const VIEWPORT_LOADED_LAYERS = new Set(['flights']);
+/**
+ * Layers whose loaded set follows the camera, so a loaded count is not a world
+ * count.
+ *
+ * Every French point layer added to the analyst vocabulary loads by viewport or
+ * by camera proximity — `irve-fr` fetches a box, `bikeshare` activates cities
+ * within range of the camera, `transit-fr` polls the feeds under the view. A
+ * count over any of them answers "in what is loaded around here", and the model
+ * has to say so: "there are 12 charge points in France" would otherwise be a
+ * sentence this tool could produce.
+ */
+const VIEWPORT_LOADED_LAYERS = new Set([
+  'flights',
+  'bikeshare',
+  'shared-mobility-fr',
+  'transit-fr',
+  'irve-fr',
+  'medecins-fr',
+  'road-events-fr',
+  'meteo-stations-fr',
+]);
 
 /**
  * The Contacts panel's own counts, or null when Contacts has no subject.
@@ -3882,7 +4183,12 @@ async function runAnalystQuery(viewer, dataManager, args = {}) {
     && (result.coverage?.layersQueried || [])
       .some((l) => VIEWPORT_LOADED_LAYERS.has(l.layerKey));
   if (viewportScoped && result.coverage) {
-    result.coverage.note = `${result.coverage.note} — counts cover loaded data; the flights layer loads by viewport`;
+    const byViewport = (result.coverage.layersQueried || [])
+      .map((l) => l.layerKey)
+      .filter((key) => VIEWPORT_LOADED_LAYERS.has(key));
+    result.coverage.note = `${result.coverage.note} — counts cover loaded data; `
+      + `${byViewport.join(', ')} load${byViewport.length === 1 ? 's' : ''} by viewport or camera proximity, `
+      + 'so this is a count around the current view, never a national or world total';
   }
   // ENTITY-CENTRED NEARBY: answered by the SAME engine that fills the Contacts
   // panel, so the spoken number and the panel readout for one centre cannot

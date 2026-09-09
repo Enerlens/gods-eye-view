@@ -676,10 +676,22 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   // through to a geocode instead of the hand-tuned framing sitting right there.
   // +550 bytes, one cache bust, and src/locations.test.mjs now fails if the two
   // lists drift again.
-  assert.equal(block.length, 31758, 'tool schema byte length drifted from the frozen baseline');
+  //
+  // Re-frozen a FIFTH time, and this is the largest edit the guard has ever
+  // recorded: the layer vocabulary. `set_layer_visibility` and
+  // `show_data_layers_menu` carried 17 hand-written ids while the fork had
+  // registered 60 layers, so 43 of them — every French one, including the
+  // médecins layer an operator asked for by name — could not be NAMED by the
+  // model, which then reported them as nonexistent. All four layer enums are
+  // now derived from src/voice/layerVocabulary.js, `list_layers` was added so
+  // "I don't have that" becomes a checkable claim, and four instruction lines
+  // state the reading and diction rules. +5904 bytes, one cache bust, and
+  // src/voice/layerVocabulary.test.mjs fails if an enum drifts from the
+  // registry again.
+  assert.equal(block.length, 37662, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '307c59a2086a1fc84a9e461cac33e1b10de21d34abf32d3be7c5578d4ccf6ba0',
+    'c3b921073fe5a86c5134fe850d16b43c9d5a8cbf4e90114e2f1242bd4b2f57ca',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 

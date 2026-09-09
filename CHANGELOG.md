@@ -193,6 +193,20 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   « rien à cet endroit ». Une proposition est une promesse ; les marques sont
   la seule preuve. Les mesures et les règles sont dans
   [`docs/DEMANDER-UNE-DONNEE.md`](docs/DEMANDER-UNE-DONNEE.md).
+- **`list_layers` — la voix peut citer le registre au lieu de le deviner.** Le
+  29ᵉ outil vocal rend « je n'ai pas cette couche » vérifiable : identifiant,
+  libellé français, groupe, état et nombre d'objets chargés, filtrables par un
+  sujet en français ou en anglais.
+- **Des sous-titres sur le dock, et trois exemples en rotation.** Ce qui a été
+  entendu et ce qui est dit restent lisibles après le tour : une erreur de
+  reconnaissance se diagnostique sans réécouter. Au repos, le dock propose
+  trois formulations parmi dix, tirées de la même liste que les instructions du
+  modèle — une suggestion qu'il ne saurait pas honorer serait pire que rien.
+- **`npm run qa:voice-bench` — le banc français est dans le dépôt.** 154 cas de
+  routage (les 26 historiques, 9 écrits pour ce rapport, et **les 59 couches ×
+  2 formulations**, dérivées du registre) et 6 cas de lecture qui notent ce que
+  le modèle **dit** d'un résultat d'outil. La configuration est lue dans
+  `vite.config.js`, jamais copiée. Coût mesuré : ~0,0006 $ le cas.
 
 ### Changed
 - **Les aéroports : quatre paliers qui posaient deux questions, un seul palier
@@ -253,6 +267,69 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `docs/CARTOGRAPHIE.md`.
 
 ### Fixed
+- **« Je n'ai pas cette couche » était faux : la voix ne pouvait nommer que 17
+  couches sur 60.** L'énumération `layerId` des outils vocaux était écrite à la
+  main et héritée de l'amont ; le fork avait grandi à 60 couches enregistrées.
+  Un modèle qui respecte une énumération ne pouvait donc pas émettre
+  `medecins-fr` — demander la couche médecins revenait à s'entendre dire
+  qu'elle n'existait pas, et **43 couches**, toutes les françaises, étaient
+  dans ce cas. Les quatre énumérations sont maintenant **dérivées du registre**
+  (`src/voice/layerVocabulary.js` lit `LAYER_TAXONOMY`), un test échoue si les
+  deux divergent, et la résolution accepte l'identifiant, les alias français et
+  anglais et le libellé du panneau, accents et casse ignorés (« médecins »,
+  « bornes de recharge », « vigilance météo », « îlots de fraîcheur »). Une
+  couche inconnue ne fait plus échouer l'outil : elle renvoie **les trois plus
+  proches**, et le nouvel outil `list_layers` permet de citer le registre au
+  lieu de le deviner. Mesuré sur un vrai tour de modèle : « Active la couche
+  médecin » atteint `medecins-fr`.
+- **Un deuxième chemin envoyait « médecins » sur la mauvaise couche.**
+  `LAYER_ALIASES` est un littéral `Map` : une clé en double gagne en silence, et
+  `amenities-fr` réclamait « médecins », « docteurs » et « doctors » quatre
+  cents lignes après `medecins-fr`. Le comptage d'équipements de la BPE
+  répondait donc à une question sur le registre des praticiens. Les mots sont
+  revenus à la couche qui tient le registre, et un test refuse désormais toute
+  clé en double.
+- **La voix ne savait pas lire une station qu'elle venait d'afficher.**
+  Interrogée sur les vélos et les places d'une station TBM sélectionnée, elle
+  renvoyait au site de l'opérateur — alors que le nombre de vélos, de places et
+  la capacité étaient déjà dans le navigateur. `get_entity_context` ne lisait la
+  sélection que sur quatre familles suivables ; il lit maintenant **toutes** les
+  couches qui savent répondre, et ajoute les enregistrements chargés les plus
+  proches avec leur distance. `bikeshare`, `irve-fr`, `medecins-fr`,
+  `shared-mobility-fr` et `transit-fr` exposent leur sélection et leurs
+  enregistrements ; `analyst_query` passe de 5 à **22 couches**, donc « combien
+  de bornes dans la vue » et « la station la plus proche avec des vélos »
+  répondent sur les données chargées. Un compte issu d'une couche chargée par
+  viewport le dit, au lieu de se faire passer pour un total national.
+- **Un filtre nommant un champ que la couche ne publie pas répondait « zéro ».**
+  Le pire mode de panne du moteur analytique : zéro est une réponse plausible et
+  rien n'a l'air cassé. Mesuré au banc — interrogé sur les bornes libres, le
+  modèle filtrait `irve-fr` sur `bikesAvailable`, un champ d'une autre couche.
+  Le moteur refuse maintenant et **nomme les champs réels**, ce qui laisse au
+  modèle une chance de se corriger dans le même tour.
+- **Le cerveau texte ne savait ni où il était ni ce que « cette station »
+  désignait.** Le chemin OpenRouter postait les seuls messages : ni caméra, ni
+  lieu, ni couches actives, ni sélection. Un préambule de situation court
+  précède maintenant chaque tour, et un seul est conservé dans l'historique —
+  une conversation de dix tours ne traîne pas dix instantanés qui se
+  contredisent. Mesuré : « Où suis-je ? » et « Je regarde quoi, là ? »
+  répondent **sans appel d'outil**.
+- **La voix de retour, sur Safari, était la synthèse concaténative d'il y a
+  vingt ans.** Toutes les voix `fr-FR` d'Apple étaient à égalité dans le choix,
+  donc la première listée gagnait — la voix compacte. Le choix suit maintenant
+  une préférence explicite par navigateur (Audrey/Amélie sur Safari, les voix
+  neuronales « Natural » sur Edge, « Google français » sur Chrome), un
+  sélecteur dans le dock mémorise la voix retenue, et si seule la voix compacte
+  est installée le dock **dit où télécharger la bonne**. Chrome renvoie une
+  liste vide au premier appel : elle est maintenant attendue. *(Ce chemin ne
+  concerne que le micro sans clé OpenAI ; une session Realtime parle avec la
+  voix du modèle.)*
+- **Les oreilles se rouvraient au milieu de la phrase.** `speak()` arrêtait la
+  reconnaissance, ce qui déclenchait un redémarrage programmé 250 ms plus tard
+  — en plein milieu de la confirmation prononcée. Le micro écoutait donc les
+  haut-parleurs jusqu'à la fin de la phrase. Elles restent fermées, et
+  **Espace coupe la synthèse** et rend la parole.
+
 - **Un 429 devant l'app laissait le micro mort, et accusait la permission
   micro.** Sur l'instance hébergée, une règle de limitation à la périphérie
   (mesurée : 30 requêtes `/api` par 10 s et par adresse, puis 10 s de blocage)

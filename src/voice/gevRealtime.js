@@ -1,5 +1,6 @@
 import { createGevActionRunner, readLayerLifecycleSummary } from './gevActions.js';
 import { GevBrainVoiceSession, fetchVoiceConfig } from './gevBrainVoice.js';
+import { rotatingVoiceExamples } from './voiceExamples.js';
 import {
   DEFAULT_VOICE_TIER,
   VOICE_COST_LIMITS,
@@ -220,6 +221,11 @@ export function initGevVoiceCommands({ viewer, styleManager, dataManager, sceneD
     else controller.start({ pushToTalk: false });
   };
   ui.button.addEventListener('click', controller.buttonHandler);
+  // A new three each time the tray comes up, whether by hover or by keyboard
+  // focus — both are how the tray is reached, and only one of them is a mouse.
+  controller.refreshVoiceExamples();
+  ui.root.addEventListener('mouseenter', () => controller.refreshVoiceExamples());
+  ui.button.addEventListener('focus', () => controller.refreshVoiceExamples());
   if (ui.tierButton) {
     controller.tierHandler = () => controller.toggleVoiceTier();
     ui.tierButton.addEventListener('click', controller.tierHandler);
@@ -272,6 +278,12 @@ export class GevRealtimeController {
     this.radioHandoffDeferredByReservation = false;
     this.buttonHandler = null;
     this.tierHandler = null;
+    this.voicePickerHandler = null;
+    this.voicePreviewHandler = null;
+    /** Which slice of the example list the help tray is showing. */
+    this.voiceExampleRotation = 0;
+    /** The language the server configured, once a config lookup has answered. */
+    this.voiceLanguage = null;
     // Which provider drives the mic is a server fact (which key is set). It is
     // fetched once per page and cached on the promise so a rapid click does not
     // race two lookups, and so a mic that has already chosen a brain keeps it.
@@ -417,6 +429,12 @@ export class GevRealtimeController {
     const lookup = await this.resolveVoiceConfigPatiently();
     if (!lookup) return; // stopped mid-wait, or a duplicate click
     const { config: voiceConfig, waited } = lookup;
+    // The server owns the language; the examples in the help tray have to be
+    // in it, so the first successful lookup is where they stop guessing French.
+    if (voiceConfig.language && voiceConfig.language !== this.voiceLanguage) {
+      this.voiceLanguage = voiceConfig.language;
+      this.refreshVoiceExamples?.(this.voiceLanguage);
+    }
     // The 'connecting' a wait painted is this attempt's own; any other active
     // status is a second click that landed while the lookup ran.
     if (!waited && this.isActive()) return;
@@ -689,6 +707,11 @@ export class GevRealtimeController {
       this.spaceKeyHeld = true;
       // Space must not generate the focused mic button's native click on keyup.
       event.preventDefault();
+      // The turn-based brain closes the ears while it talks, so an operator who
+      // has heard enough had no way in: the key that means "I want to speak"
+      // now also means "stop talking". Only the browser-synthesis path can be
+      // cut this way — the realtime session already interrupts on live audio.
+      this.brainSession?.interruptSpeech?.();
       this.pauseRadioForVoice();
       if (this.pushToTalkKeyHeld) return;
       // A click-started session is intentionally open-mic. Space only claims an
@@ -879,6 +902,7 @@ export class GevRealtimeController {
     // The text-brain session owns no WebRTC state, so it is stopped here and
     // the cleanup below runs harmlessly over its null peer connection.
     if (this.brainSession?.isActive()) this.brainSession.stop();
+    this.clearTranscript();
     // Bump the epoch so any start() awaiting a token/getUserMedia/SDP bails and
     // releases its own resources instead of promoting them onto a stopped
     // controller (H7).
@@ -1593,6 +1617,116 @@ export class GevRealtimeController {
         this.pushToTalkMode,
         this.pushToTalkKeyHeld,
       );
+    }
+  }
+
+  /**
+   * Put three example phrasings in the help tray, rotating on each showing.
+   *
+   * Nobody discovers a 29-tool surface by guessing at it, and the tray was
+   * telling the operator only how to hold the key down. Three at a time, and a
+   * different three each time it opens, is what makes the mic look like it can
+   * do more than the last thing it was asked.
+   *
+   * @param {string} [language] BCP-47 tag; the fork ships French.
+   */
+  refreshVoiceExamples(language = this.voiceLanguage || 'fr-FR') {
+    const list = this.ui?.helpExamples;
+    if (!list) return;
+    this.voiceExampleRotation = (this.voiceExampleRotation || 0) + 1;
+    list.replaceChildren(...rotatingVoiceExamples(language, this.voiceExampleRotation).map((example) => {
+      const item = document.createElement('li');
+      item.textContent = example;
+      return item;
+    }));
+  }
+
+  /**
+   * Show what the recogniser actually heard.
+   *
+   * The tray truncates to 90 characters and is overwritten by the next status
+   * change, so until now a misheard command left no trace: the only way to find
+   * out that "montre les médecins" arrived as "montre les mets décents" was to
+   * say it again and listen harder. This line survives the turn.
+   *
+   * @param {string} text
+   * @param {{interim?: boolean}} [options] Interim text is styled as provisional.
+   */
+  setHeardText(text, { interim = false } = {}) {
+    if (!this.ui?.heardText) return;
+    this.ui.heardText.textContent = String(text || '');
+    this.ui.heardText.dataset.interim = interim ? 'true' : 'false';
+    this.showTranscript();
+  }
+
+  /**
+   * Show what the mouth is saying, so a spoken answer can be re-read.
+   * @param {string} text
+   */
+  setSpokenText(text) {
+    if (!this.ui?.spokenText) return;
+    this.ui.spokenText.textContent = String(text || '');
+    this.showTranscript();
+  }
+
+  /** Reveal the transcript tray once there is anything in it. */
+  showTranscript() {
+    if (this.ui?.transcript) this.ui.transcript.hidden = false;
+  }
+
+  /** Empty the transcript and put it away. Called when a session ends. */
+  clearTranscript() {
+    if (!this.ui?.transcript) return;
+    this.ui.transcript.hidden = true;
+    if (this.ui.heardText) this.ui.heardText.textContent = '';
+    if (this.ui.spokenText) this.ui.spokenText.textContent = '';
+  }
+
+  /**
+   * Populate the voice picker and the upgrade hint.
+   *
+   * Only the browser-synthesis path calls this — the realtime session's voice
+   * comes from the model, not from the OS, so the row stays hidden there rather
+   * than offering a choice that would change nothing.
+   *
+   * @param {{voices: Array<object>, selected: object|null, preferredUri: string|null,
+   *   hint: string|null, onSelect: Function, onPreview: Function}} options
+   */
+  setVoiceOptions({ voices = [], selected = null, preferredUri = null, hint = null, onSelect, onPreview } = {}) {
+    if (this.ui?.transcriptHint) {
+      this.ui.transcriptHint.textContent = hint || '';
+      this.ui.transcriptHint.hidden = !hint;
+    }
+    const picker = this.ui?.voicePicker;
+    if (!picker) return;
+    if (!voices.length) {
+      if (this.ui.voiceRow) this.ui.voiceRow.hidden = true;
+      return;
+    }
+    this.ui.voiceRow.hidden = false;
+    picker.innerHTML = '';
+    // "Automatic" first, and it is a real option rather than a label for the
+    // current pick: an operator who tried three voices needs a way back to the
+    // app's own choice without knowing which one that was.
+    const auto = document.createElement('option');
+    auto.value = '';
+    auto.textContent = selected ? `Automatic (${selected.name})` : 'Automatic';
+    picker.appendChild(auto);
+    for (const voice of voices) {
+      const option = document.createElement('option');
+      option.value = voice.voiceURI || voice.name;
+      option.textContent = voice.name;
+      picker.appendChild(option);
+    }
+    picker.value = preferredUri || '';
+    if (this.voicePickerHandler) picker.removeEventListener('change', this.voicePickerHandler);
+    this.voicePickerHandler = () => onSelect?.(picker.value || null);
+    picker.addEventListener('change', this.voicePickerHandler);
+    const preview = this.ui.voicePreview;
+    if (preview) {
+      if (this.voicePreviewHandler) preview.removeEventListener('click', this.voicePreviewHandler);
+      this.voicePreviewHandler = () => onPreview?.(picker.value || selected?.voiceURI || null);
+      preview.addEventListener('click', this.voicePreviewHandler);
     }
   }
 
@@ -2692,6 +2826,23 @@ function createVoiceControl({ reset = false } = {}) {
       <div id="gev-voice-help" class="gev-voice-help-tray" role="tooltip">
         <span class="gev-voice-help-kicker">VOICE CONTROL</span>
         <span class="gev-voice-help-detail">Hold Space to speak · click mic to toggle voice</span>
+        <ul class="gev-voice-help-examples"></ul>
+      </div>
+      <div class="gev-voice-transcript" hidden>
+        <div class="gev-voice-transcript-row" data-role="heard">
+          <span class="gev-voice-transcript-kicker">HEARD</span>
+          <span class="gev-voice-transcript-text"></span>
+        </div>
+        <div class="gev-voice-transcript-row" data-role="said">
+          <span class="gev-voice-transcript-kicker">SAID</span>
+          <span class="gev-voice-transcript-text"></span>
+        </div>
+        <div class="gev-voice-transcript-hint" hidden></div>
+        <label class="gev-voice-transcript-voice" hidden>
+          <span class="gev-voice-transcript-kicker">VOICE</span>
+          <select class="gev-voice-picker"></select>
+          <button class="gev-voice-preview" type="button" title="Hear this voice">▶</button>
+        </label>
       </div>
       <div class="gev-voice-error-tray" role="alert" aria-live="assertive">
         <div class="gev-voice-error-header">
@@ -2723,8 +2874,16 @@ function createVoiceControl({ reset = false } = {}) {
     status: root.querySelector('#gev-voice-status'),
     detail: root.querySelector('#gev-voice-detail'),
     helpDetail: root.querySelector('.gev-voice-help-detail'),
+    helpExamples: root.querySelector('.gev-voice-help-examples'),
     errorDetail: root.querySelector('#gev-voice-error-detail'),
     errorHint: root.querySelector('.gev-voice-error-hint'),
+    transcript: root.querySelector('.gev-voice-transcript'),
+    heardText: root.querySelector('[data-role="heard"] .gev-voice-transcript-text'),
+    spokenText: root.querySelector('[data-role="said"] .gev-voice-transcript-text'),
+    transcriptHint: root.querySelector('.gev-voice-transcript-hint'),
+    voiceRow: root.querySelector('.gev-voice-transcript-voice'),
+    voicePicker: root.querySelector('.gev-voice-picker'),
+    voicePreview: root.querySelector('.gev-voice-preview'),
     tierButton: root.querySelector('#gev-voice-tier'),
     costValue: root.querySelector('#gev-voice-cost-value'),
   };

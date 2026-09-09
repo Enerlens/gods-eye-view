@@ -61,6 +61,7 @@ import {
   APL_STANDING_LABELS,
   MEDECINS_FR_LAYER_ID,
   MEDECINS_MAX_BOX_DEG,
+  MEDECINS_SOURCE,
   MEDECIN_FAMILIES,
   MEDECIN_FAMILY_LABELS,
   MESH_FAMILY,
@@ -325,6 +326,56 @@ export function selectLabelCohort(entries, limit = LABEL_COHORT_LIMIT) {
 export function boxKey(box, regime) {
   const q = (value) => Math.round(value * 1e4);
   return `${regime}:${q(box.south)}:${q(box.west)}:${q(box.north)}:${q(box.east)}`;
+}
+
+/**
+ * One practice address, in the words a spoken answer uses.
+ *
+ * The register counts ENTRIES, not people, and the module header says so at
+ * length. That distinction has to survive into the voice payload or the model
+ * will happily turn "eight entries" into "eight doctors": `practitioners` is
+ * therefore named for what it counts and `countsEntries` states the caveat in
+ * the payload itself rather than in a comment nobody downstream reads.
+ *
+ * Names are deliberately NOT here. They arrive on a second fetch the click
+ * triggers, and they are personal data about identified individuals: a layer
+ * readout that shipped them would put a list of named doctors into a model
+ * prompt on every glance. The card on screen shows them to the human who
+ * clicked; the brain gets the shape of the place, not the roster.
+ *
+ * @param {object|null} record An `_records` entry.
+ * @param {object} [context] `{ specialites }` label table, when loaded.
+ * @returns {object|null}
+ */
+export function medecinsSiteReadout(record, { specialites = {} } = {}) {
+  if (!record) return null;
+  const site = record.site || null;
+  const num = (value) => (Number.isFinite(value) ? value : null);
+  const specialties = site
+    ? siteSpecialtyList(site, specialites).slice(0, 6).map((entry) => ({
+      label: entry.label,
+      entries: entry.count,
+    }))
+    : null;
+  return {
+    id: record.key,
+    kind: 'medical-practice',
+    // A mesh dot is a thinned national point: it knows a count and a family,
+    // never an address. Same honesty as the charge-point layer.
+    detail: site ? 'full' : 'count-only',
+    address: site ? (site[SITE_VOIE] || null) : null,
+    postcode: site ? (site[SITE_CP] || null) : null,
+    commune: site ? (site[SITE_VILLE] || null) : null,
+    phone: site ? (site[SITE_TEL] || null) : null,
+    healthCentre: site ? Boolean(site[SITE_KIND]?.includes('centre-de-sante')) : null,
+    lat: num(record.lat),
+    lon: num(record.lon),
+    practitioners: num(record.practitioners),
+    countsEntries: 'practitioners counts REGISTER ENTRIES at this address, not distinct people',
+    family: MEDECIN_FAMILY_LABELS[record.family] || record.family || null,
+    specialties,
+    source: MEDECINS_SOURCE,
+  };
 }
 
 export function createMedecinsLayer({
@@ -857,6 +908,32 @@ export function createMedecinsLayer({
           label: MEDECIN_FAMILY_LABELS[family],
         }));
       return { chips, legend };
+    },
+
+    /** The practice the operator clicked, ready to be spoken. */
+    getSelectedInfo() {
+      if (!_enabled || !_selectedId || _selectedId.startsWith('dep:')) return null;
+      return medecinsSiteReadout(_records.get(_selectedId) || null, {
+        specialites: _national?.specialites,
+      });
+    },
+
+    /**
+     * Loaded practices as plain records for the analyst engine.
+     * Empty in the département regime, where what is drawn is 96 polygons.
+     * @param {number} [maxCount=2000]
+     * @returns {Array<object>}
+     */
+    getAnalystRecords(maxCount = 2000) {
+      if (!_enabled || _regime === 'national') return [];
+      const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 2000;
+      const out = [];
+      for (const record of _records.values()) {
+        if (out.length >= limit) break;
+        const readout = medecinsSiteReadout(record, { specialites: _national?.specialites });
+        if (readout && Number.isFinite(readout.lat) && Number.isFinite(readout.lon)) out.push(readout);
+      }
+      return out;
     },
 
     getStats() {

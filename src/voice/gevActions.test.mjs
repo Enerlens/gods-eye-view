@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 import { CCTV_FOCUS_RESULT } from '../data/cctv.js';
 import { getContextStore, registerEntityContext } from '../data/contextStore.js';
@@ -3013,4 +3014,230 @@ test('fly_to_location: a spoken query beats a contradicting preset id', async ()
 
   const queryPreset = await runner('fly_to_location', { query: 'austin' });
   assert.equal(queryPreset.locationId, 'austin', 'a query naming a preset still resolves to it');
+});
+
+/* ---------- the layer registry, and reading a selected record ------------- */
+
+/**
+ * A manager holding a handful of layers, shaped the way the real one is:
+ * `layers` is a Map of `{ module, enabled }`, `getAll()` is the flat list the
+ * panel renders.
+ */
+/**
+ * The navigation harness plus the seams the scene context reads: viewport
+ * sampling picks the ellipsoid, and the view target is the camera's own point.
+ * @returns {{viewer: object, styleManager: object}}
+ */
+function createSceneContextHarness() {
+  const harness = createVoiceNavigationHarness();
+  const position = harness.viewer.camera.positionWC;
+  harness.viewer.camera.pickEllipsoid = () => position;
+  harness.viewer.camera.getPickRay = () => ({ origin: position, direction: position });
+  harness.viewer.scene.pickPosition = () => position;
+  harness.viewer.scene.globe.pick = () => position;
+  return harness;
+}
+
+function stubManager(entries) {
+  const layers = new Map(entries.map((entry) => [entry.id, {
+    module: entry.module || {},
+    enabled: entry.enabled !== false,
+  }]));
+  return {
+    layers,
+    isEnabled: (id) => Boolean(layers.get(id)?.enabled),
+    getAll: () => entries.map((entry) => ({
+      id: entry.id,
+      name: entry.name || entry.id,
+      enabled: entry.enabled !== false,
+      stats: { count: entry.count ?? 0 },
+      showInTogglePanel: true,
+    })),
+  };
+}
+
+test('list_layers answers from the registry, and a lookup finds the French name', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const dataManager = stubManager([{ id: 'medecins-fr', name: 'Médecins', count: 128 }]);
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+
+  const all = await runner('list_layers', {});
+  assert.equal(all.ok, true);
+  assert.equal(all.matched, all.total);
+  assert.ok(all.total >= 59, 'the whole registry, not just what is enabled');
+
+  const one = await runner('list_layers', { query: 'docteurs' });
+  assert.equal(one.matched, 1);
+  assert.deepEqual(one.layers[0], {
+    id: 'medecins-fr',
+    label: 'Médecins',
+    group: 'BÂTI & TERRITOIRE',
+    coverage: 'fr',
+    enabled: true,
+    count: 128,
+  });
+  assert.equal(one.total, all.total, 'a filtered answer still states the size of the catalogue');
+
+  const miss = await runner('list_layers', { query: 'licornes' });
+  assert.equal(miss.matched, 0);
+  assert.deepEqual(miss.suggestions, []);
+});
+
+test('an unknown layer comes back with the nearest names instead of a thrown error', async () => {
+  // This is the whole médecins failure in one assertion. A THROWN error reached
+  // the model as "the tool failed", and it told the operator the layer does not
+  // exist. A refusal that carries the neighbours lets it offer them instead.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager: stubManager([]) });
+  const result = await runner('set_layer_visibility', { layerId: 'bornes electriques', enabled: true });
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.suggestions.map((entry) => entry.id), ['irve-fr', 'power-grid']);
+  assert.match(result.hint, /list_layers/);
+});
+
+test('a French layer name reaches the manager as its registered id', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const enabled = [];
+  const dataManager = {
+    ...stubManager([{ id: 'medecins-fr', name: 'Médecins' }]),
+    setEnabled: async (id, value) => { enabled.push([id, value]); return true; },
+  };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  await runner('set_layer_visibility', { layerId: 'Médecins', enabled: true });
+  await runner('set_layer_visibility', { layerId: 'medecins', enabled: false });
+  assert.deepEqual(enabled, [['medecins-fr', true], ['medecins-fr', false]]);
+});
+
+test('get_entity_context reads a selection off ANY layer, plus what is near it', async () => {
+  // The bike-station report: the station layer owns its own `_selectedId` and
+  // never reaches the shared context store, so the store said "nothing is
+  // selected" while a card for the clicked station was on screen.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const station = {
+    id: 'bordeaux-tbm:1042',
+    kind: 'bike-station',
+    name: 'Place Gambetta',
+    lat: 30.26,
+    lon: -97.74,
+    bikesAvailable: 12,
+    docksAvailable: 8,
+    capacity: 20,
+  };
+  const dataManager = stubManager([{
+    id: 'bikeshare',
+    name: 'Stations vélos',
+    count: 312,
+    module: {
+      getSelectedInfo: () => station,
+      getAnalystRecords: () => [station, { ...station, id: 'x:2', name: 'Far', lat: 31.26, lon: -97.74 }],
+    },
+  }]);
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+
+  const selected = await runner('get_entity_context', { scope: 'selected' });
+  assert.equal(selected.scope, 'selected');
+  assert.equal(selected.selected.layerId, 'bikeshare');
+  assert.equal(selected.selected.bikesAvailable, 12);
+  assert.equal(selected.selected.docksAvailable, 8);
+
+  const inView = await runner('get_entity_context', { scope: 'in_view', limit: 2 });
+  assert.equal(inView.scope, 'in_view');
+  assert.equal(inView.nearby.length, 2);
+  assert.equal(inView.nearby[0].name, 'Place Gambetta', 'nearest first');
+  assert.equal(inView.nearby[0].layerId, 'bikeshare');
+  assert.ok(inView.nearby[1].distanceKm > inView.nearby[0].distanceKm);
+});
+
+test('a disabled layer holds no selection, and a broken one costs only itself', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const dataManager = stubManager([
+    { id: 'bikeshare', enabled: false, module: { getSelectedInfo: () => ({ id: 'off', kind: 'bike-station' }) } },
+    { id: 'irve-fr', module: { getSelectedInfo: () => { throw new Error('mid-teardown'); } } },
+    { id: 'medecins-fr', module: { getSelectedInfo: () => ({ id: 'ok', kind: 'medical-practice' }) } },
+  ]);
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  const result = await runner('get_entity_context', { scope: 'selected' });
+  assert.equal(result.selected.layerId, 'medecins-fr');
+});
+
+test('the situation brief says where we are, what is on, and what "this" means', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const dataManager = stubManager([{
+    id: 'bikeshare',
+    name: 'Stations vélos',
+    count: 312,
+    module: {
+      getSelectedInfo: () => ({
+        id: 'bordeaux-tbm:1042',
+        kind: 'bike-station',
+        name: 'Place Gambetta',
+        bikesAvailable: 12,
+        docksAvailable: 8,
+        capacity: 20,
+        renting: true,
+        lat: 44.84,
+        lon: -0.58,
+      }),
+    },
+  }]);
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  const brief = await runner.describeSituation();
+
+  assert.match(brief, /GEV SITUATION/);
+  assert.match(brief, /do not read it aloud/);
+  assert.match(brief, /Camera: 30\.2600, -97\.7400/);
+  assert.match(brief, /Layers on \(1\): Stations vélos 312\./);
+  assert.match(brief, /Selected: bike-station "Place Gambetta"/);
+  assert.match(brief, /bikesAvailable 12/);
+  assert.match(brief, /"This one" means THIS/);
+  // The internal key must not travel: a model handed "bordeaux-tbm:1042" reads
+  // it out loud, and an operator who hears a database key hears a bug.
+  assert.ok(!brief.includes('bordeaux-tbm:1042'), 'ids stay out of the brief');
+  // A field that is true is the uninteresting half of a boolean and is dropped;
+  // the budget is ~300 tokens and every character has to earn its place.
+  assert.ok(!brief.includes('renting'), 'a true flag says nothing worth spending tokens on');
+  assert.ok(brief.length <= 1400, 'the brief stays inside its token budget');
+});
+
+test('a situation brief over a bare scene still answers "where am I"', async () => {
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createSceneContextHarness();
+  const brief = await createGevActionRunner({
+    viewer, styleManager, dataManager: stubManager([]),
+  }).describeSituation();
+  assert.match(brief, /Camera: /);
+  assert.match(brief, /Layers on: none\./);
+});
+
+test('no spoken name resolves to two different layers', () => {
+  // `LAYER_ALIASES` is a Map literal, so a duplicate key silently wins — and
+  // one did: `amenities-fr` claimed "médecins", "docteurs" and "doctors" some
+  // four hundred lines after `medecins-fr` claimed the same words, so asking
+  // for the doctors REGISTER turned on the everyday-amenities FACILITY counts.
+  // Nothing in review catches that; this does.
+  const source = readFileSync(new URL('./gevActions.js', import.meta.url), 'utf8');
+  const start = source.indexOf('const LAYER_ALIASES = new Map([');
+  const end = source.indexOf(']);', start);
+  assert.ok(start > 0 && end > start, 'LAYER_ALIASES must still be a single literal');
+  const keys = [...source.slice(start, end).matchAll(/\[["']([^"']*)["'], '([^']*)'\]/g)]
+    .map((match) => match[1]);
+  const seen = new Set();
+  const duplicates = keys.filter((key) => (seen.has(key) ? true : (seen.add(key), false)));
+  assert.deepEqual(duplicates, [], 'a duplicate alias key silently overrides the earlier one');
+
+  const map = new Function(`return ${source.slice(start + 'const LAYER_ALIASES = '.length, end + 2)}`)();
+  // The practitioner register and the facility counts answer different
+  // questions and must not share a word.
+  for (const word of ['médecins', 'medecins', 'docteurs', 'doctors', 'médecin généraliste']) {
+    assert.equal(map.get(word), 'medecins-fr', `"${word}" names practitioners, not amenities`);
+  }
+  for (const word of ['pharmacies', 'hôpitaux', 'commerces', 'piscines']) {
+    assert.equal(map.get(word), 'amenities-fr', `"${word}" names a facility in the BPE`);
+  }
 });

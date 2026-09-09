@@ -191,10 +191,13 @@ Updated: September 8, 2026
 > **Voice is instruction-only.** Both globe missions are expressible with
 > shipped tools (`set_layer_visibility`'s enum already carries
 > `local-datacenters`, `local-dams`, `telegeography-submarine-cables`,
-> `local-firms`, `earthquakes`; `zoom_to_globe` supplies the camera), so
-> `GEV_REALTIME_TOOLS` is **byte-identical to `main`** and pinned by sha256 in
-> the unit suite. One instruction paragraph in `vite.config.js` teaches the
-> phrase mapping; deleting it is the complete rollback.
+> `local-firms`, `earthquakes`; `zoom_to_globe` supplies the camera), so the
+> missions themselves add no tool. One instruction paragraph in
+> `vite.config.js` teaches the phrase mapping; deleting it is the complete
+> rollback. (`GEV_REALTIME_TOOLS` is no longer byte-identical to `main` — the
+> layer-vocabulary repair of 2026-09-09 rewrote four enums and added
+> `list_layers`. It is still pinned by sha256 in the unit suite, and every
+> re-freeze since is recorded in `src/firstRunExperience.test.mjs`.)
 >
 > **ESC arbitration — three rules, do not collapse them into one.** (1) The
 > launcher **yields**: a MutationObserver watches `body` for the surfaces that
@@ -1611,7 +1614,8 @@ This is the current runtime/source-of-truth snapshot for the project.
 >   without destination enrichment omit the cue.
 > - The skylight feature set and six field-test hardening rounds shipped
 >   2026-07-03; **CCTV v2** shipped 2026-07-04.
->   Voice tools are **28**. Global Context can be entered or exited directly,
+>   Voice tools were **28** at this milestone (**29** in the live runtime — see
+>   the layer-vocabulary note below). Global Context can be entered or exited directly,
 >   and Cockpit voice control supports status, entry from a selected or tracked
 >   aircraft (establishing Contacts first), exit, and filtered Previous/Next navigation through the full
 >   nearby-contact cohort. Contacts exposes source-honest counts inside its
@@ -1689,7 +1693,38 @@ This is the current runtime/source-of-truth snapshot for the project.
 > ISS pass prediction, and per-layer data attribution. Gate at close: unit 98/98, build clean,
 > track 19/19, + five QA harnesses (heading 16/16, sprites 9/9, cctv 5/5, failstate 5/5,
 > attribution 18/18). New modules: `src/data/{motionModel,aircraftMeta,aircraftClass,aircraftIcons,issPass,routePlausible,dataCredits}.js`.
-> The live runtime now declares 28 voice tools; the 17→20 count above is retained only as milestone history.
+> The live runtime now declares **29** voice tools; the 17→20 count above is retained only as milestone history.
+>
+> **Layer vocabulary (2026-09-09).** The 29th tool is `list_layers`, and it
+> arrived with the repair it exists to make checkable. `set_layer_visibility`
+> and `show_data_layers_menu` had carried a hand-written enum of **17** layer
+> ids since upstream while this fork registered **60** layers, so 43 of them —
+> every French one — could not be NAMED by the model, which reported them as
+> nonexistent when asked. All four layer enums (`set_layer_visibility`,
+> `show_data_layers_menu`, `get_entity_context`, `analyst_query`) are now
+> derived from `src/voice/layerVocabulary.js`, which reads `LAYER_TAXONOMY`;
+> `src/voice/layerVocabulary.test.mjs` fails if the shipped literals drift from
+> it, the same mechanism `src/locations.test.mjs` uses for the fly-to presets.
+> `normalizeLayerId` resolves ids, French and English aliases, and panel labels
+> with accents and case folded away. An unknown layer now returns
+> `suggestions` instead of throwing.
+>
+> **Reading the data (2026-09-09).** `get_entity_context` reads the selection
+> off ANY layer that implements `getSelectedInfo()` — not just the four
+> trackable families — and adds `nearby`, the closest loaded records to the view
+> target with `distanceKm`. `bikeshare`, `irve-fr`, `medecins-fr`,
+> `shared-mobility-fr` and `transit-fr` gained `getSelectedInfo()` and
+> `getAnalystRecords()`; `ANALYST_LAYERS` went from 5 entries to 22, so the
+> French point layers are queryable. The engine now REFUSES a filter naming a
+> field the queried layer does not publish and names the real fields — an
+> unknown field used to match nothing and answer "zero".
+>
+> **Situation preamble (2026-09-09).** The OpenRouter text brain posts a short
+> `user` message before each turn — camera, place, active layers, selection,
+> Contacts window (`buildSituationBrief`, hung off the action runner as
+> `describeSituation`). Only the newest one is kept in the history. The Realtime
+> session does not use it: it already gets view state from
+> `get_current_view_state` and screenshots.
 
 ## Canonical Docs Order
 

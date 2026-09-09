@@ -263,6 +263,59 @@ function objectPosition(object) {
 }
 
 /**
+ * One shared-mobility object — a docking station or a parked vehicle — in the
+ * words a spoken answer uses.
+ *
+ * Mirrors `buildSharedMobilitySelectionLabel` field for field, so the card the
+ * operator reads and the payload the brain reads cannot disagree about the same
+ * dot. The card formats; this one names.
+ *
+ * A parked vehicle is exactly that: GBFS free-floating feeds publish AVAILABLE
+ * vehicles only, never a track. `moving` is therefore absent rather than false —
+ * a field the feed does not answer must not be answered here.
+ *
+ * @param {object|null} record Render record.
+ * @returns {object|null}
+ */
+export function sharedMobilityReadout(record) {
+  const object = record?.object;
+  if (!object) return null;
+  const num = (value) => (Number.isFinite(value) ? value : null);
+  const operator = sharedMobilityOperator(record);
+  const base = {
+    id: record.id,
+    lat: num(object.lat),
+    lon: num(object.lon),
+    operator: operator?.id === 'unknown' ? null : (operator?.label || null),
+    system: record.system?.name || null,
+    source: 'GBFS (transport.data.gouv.fr)',
+  };
+  if (record.type === 'station') {
+    return {
+      ...base,
+      kind: 'shared-mobility-station',
+      name: object.name || null,
+      vehiclesAvailable: num(object.available),
+      docksAvailable: num(object.docks),
+      capacity: num(object.capacity),
+      byKind: object.byKind && Object.keys(object.byKind).length ? { ...object.byKind } : null,
+      renting: object.renting !== false,
+    };
+  }
+  return {
+    ...base,
+    kind: 'shared-mobility-vehicle',
+    vehicleKind: vehicleKindLabel(object.kind),
+    rangeKm: Number.isFinite(object.rangeMeters) ? Math.round(object.rangeMeters / 100) / 10 : null,
+    // GBFS `last_reported` is epoch SECONDS; the readout speaks milliseconds
+    // like every other timestamp the voice payload carries.
+    lastReportedMs: Number.isFinite(object.lastReported) && object.lastReported > 0
+      ? object.lastReported * 1000
+      : null,
+  };
+}
+
+/**
  * Build the card copy for a selected object. Every line is a published value.
  * @param {Object} record Render record.
  * @param {number} [nowMs]
@@ -771,6 +824,29 @@ const sharedMobilityFranceLayer = {
 
   getDetectableObjects(options = {}) {
     return collectDetectableObjects(options);
+  },
+
+  /** The station or vehicle the operator clicked, ready to be spoken. */
+  getSelectedInfo() {
+    if (!_enabled || !_selectedId) return null;
+    return sharedMobilityReadout(_records.get(_selectedId) || null);
+  },
+
+  /**
+   * Loaded stations and vehicles as plain records for the analyst engine.
+   * @param {number} [maxCount=2000]
+   * @returns {Array<object>}
+   */
+  getAnalystRecords(maxCount = 2000) {
+    if (!_enabled) return [];
+    const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 2000;
+    const out = [];
+    for (const record of _records.values()) {
+      if (out.length >= limit) break;
+      const readout = sharedMobilityReadout(record);
+      if (readout && Number.isFinite(readout.lat) && Number.isFinite(readout.lon)) out.push(readout);
+    }
+    return out;
   },
 
   getStats() {

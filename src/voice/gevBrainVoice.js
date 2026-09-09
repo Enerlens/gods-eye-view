@@ -18,6 +18,38 @@
  * working when the brain is a model somebody else self-hosts.
  */
 
+/** Where the operator's chosen synthesis voice is remembered between sessions. */
+const VOICE_URI_STORAGE_KEY = 'gev.voice.speechVoiceUri';
+
+/**
+ * Read the remembered voice, tolerating a browser that refuses storage.
+ * Safari in private mode throws on `localStorage`; a mic that fails to start
+ * over a cosmetic preference would be an absurd trade.
+ * @param {object} scope `window`-like.
+ * @returns {string|null}
+ */
+function readStoredVoiceUri(scope) {
+  try {
+    return scope?.localStorage?.getItem(VOICE_URI_STORAGE_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Remember (or forget) the operator's chosen voice.
+ * @param {object} scope `window`-like.
+ * @param {string|null} uri
+ */
+function storeVoiceUri(scope, uri) {
+  try {
+    if (uri) scope?.localStorage?.setItem(VOICE_URI_STORAGE_KEY, uri);
+    else scope?.localStorage?.removeItem(VOICE_URI_STORAGE_KEY);
+  } catch {
+    // Nothing to do: the preference simply does not survive the session.
+  }
+}
+
 /** Rounds of tool-calling one spoken turn may drive before we give up on it. */
 const DEFAULT_MAX_ROUNDS = 5;
 
@@ -243,37 +275,205 @@ export function describeRecognitionError(code) {
 }
 
 /**
- * Choose the closest synthesis voice for a language tag.
+ * Names worth preferring, per platform, for each base language.
  *
- * Exact tag first, then any voice of the same base language, then the browser
- * default. Prefers a local voice over a network one at equal specificity: a
- * cockpit confirmation should not wait on a round trip to be spoken.
+ * WHY A LIST OF NAMES AND NOT A QUALITY FLAG: the Web Speech API publishes no
+ * quality field. `SpeechSynthesisVoice` carries a name, a lang, a URI and
+ * `localService`, and nothing else — so "is this the twenty-year-old
+ * concatenative voice or the neural one?" is not a question the API answers.
+ * What it does expose is the NAME, and on every engine that ships more than one
+ * French voice the good ones are named:
  *
- * @param {Array<{lang?: string, localService?: boolean, default?: boolean}>} voices
+ *   Safari / macOS   Audrey, Amélie, Aurélie — the Premium and Enhanced voices,
+ *                    present only once downloaded in System Settings →
+ *                    Accessibility → Spoken Content. Absent them, `getVoices()`
+ *                    returns the compact Thomas, which is the voice this fork
+ *                    was shipping by accident (see pickSpeechVoice below).
+ *   Edge / Windows   the "(Natural)" online neural voices — Denise, Henri,
+ *                    Vivienne — keyless, and far better than the SAPI voices.
+ *   Chrome           "Google français", a network voice.
+ *
+ * The list is ordered, and order is the preference. Anything not on it is still
+ * eligible: this ranks, it does not filter.
+ */
+export const SPEECH_VOICE_PREFERENCES = Object.freeze({
+  fr: Object.freeze([
+    'microsoft denise', 'microsoft vivienne', 'microsoft henri',
+    'audrey', 'amélie', 'amelie', 'aurélie', 'aurelie', 'marie',
+    'google français', 'google francais',
+    'thomas', 'daniel',
+  ]),
+  en: Object.freeze([
+    'microsoft aria', 'microsoft guy', 'ava', 'samantha', 'google us english', 'daniel',
+  ]),
+});
+
+/**
+ * Substrings that mark a voice as a modern engine rather than a compact one.
+ * Apple appends "(Premium)"/"(Enhanced)" to a downloaded voice, Microsoft
+ * appends "(Natural)"/"Online", and Chrome's network voices carry "Google".
+ */
+const VOICE_QUALITY_MARKERS = Object.freeze(['premium', 'enhanced', 'natural', 'neural', 'online', 'google', 'siri']);
+
+/** Substrings that mark a voice as the low-fidelity fallback. */
+const VOICE_COMPACT_MARKERS = Object.freeze(['compact', 'eloquence', 'novelty']);
+
+/**
+ * How good a voice's NAME says it is: 'modern', 'compact', or 'unknown'.
+ *
+ * Deliberately a claim about the name, not about the audio — that is all the
+ * API gives us, and calling it anything stronger would be a measurement this
+ * code never took.
+ *
+ * @param {{name?: string}|null} voice
+ * @returns {'modern'|'compact'|'unknown'}
+ */
+export function speechVoiceQuality(voice) {
+  const name = String(voice?.name || '').toLowerCase();
+  if (!name) return 'unknown';
+  if (VOICE_COMPACT_MARKERS.some((marker) => name.includes(marker))) return 'compact';
+  if (VOICE_QUALITY_MARKERS.some((marker) => name.includes(marker))) return 'modern';
+  return 'unknown';
+}
+
+/**
+ * Rank one voice for a language tag. Higher is better; 0 means wrong language.
+ *
+ * The old scoring gave every `fr-FR` voice on macOS the same 5 points, so the
+ * winner was whichever one `getVoices()` happened to list first — the compact
+ * Thomas. Language match still dominates (a great English voice must never win
+ * a French turn), but below it the preference list and the quality markers now
+ * separate voices that used to tie.
+ *
+ * `localService` is the LAST tiebreak, demoted on purpose: it used to outrank
+ * everything except the language tag, which made a compact local voice beat
+ * Edge's neural "Denise Online". Latency matters less than being understood.
+ *
+ * @param {object|null} voice
+ * @param {string} language BCP-47 tag.
+ * @returns {number}
+ */
+export function scoreSpeechVoice(voice, language) {
+  const tag = String(language || '').toLowerCase().replace('_', '-');
+  const base = tag.split('-')[0];
+  const lang = String(voice?.lang || '').toLowerCase().replace('_', '-');
+  if (!lang) return 0;
+  let score = 0;
+  if (lang === tag) score = 1000;
+  else if (lang.split('-')[0] === base) score = 500;
+  else return 0;
+
+  const name = String(voice?.name || '').toLowerCase();
+  const preferences = SPEECH_VOICE_PREFERENCES[base] || [];
+  const rank = preferences.findIndex((wanted) => name.includes(wanted));
+  if (rank >= 0) score += (preferences.length - rank) * 10;
+
+  const quality = speechVoiceQuality(voice);
+  if (quality === 'modern') score += 40;
+  else if (quality === 'compact') score -= 40;
+
+  if (voice?.localService) score += 1;
+  return score;
+}
+
+/**
+ * Choose the synthesis voice for a language tag.
+ *
+ * `preferredUri` is the operator's own choice from the dock, and it wins
+ * outright whenever that voice is still installed — a preference the app
+ * overruled on quality grounds would not be a preference.
+ *
+ * @param {Array<object>} voices
  * @param {string} language
+ * @param {{preferredUri?: string|null}} [options]
  * @returns {object|null}
  */
-export function pickSpeechVoice(voices, language) {
+export function pickSpeechVoice(voices, language, { preferredUri = null } = {}) {
   if (!Array.isArray(voices) || !voices.length) return null;
-  const tag = String(language || '').toLowerCase();
-  const base = tag.split('-')[0];
-  const score = (voice) => {
-    const lang = String(voice?.lang || '').toLowerCase().replace('_', '-');
-    if (!lang) return 0;
-    if (lang === tag) return 4;
-    if (lang.split('-')[0] === base) return 2;
-    return 0;
-  };
+  if (preferredUri) {
+    const chosen = voices.find((voice) => voice?.voiceURI === preferredUri || voice?.name === preferredUri);
+    if (chosen) return chosen;
+  }
   let best = null;
   let bestScore = 0;
   for (const voice of voices) {
-    const value = score(voice) + (voice?.localService ? 1 : 0);
-    if (score(voice) > 0 && value > bestScore) {
+    const score = scoreSpeechVoice(voice, language);
+    if (score > bestScore) {
       best = voice;
-      bestScore = value;
+      bestScore = score;
     }
   }
   return best;
+}
+
+/**
+ * The one line the dock shows when the only French voices installed are the
+ * compact ones — which is what Safari ships until somebody downloads better.
+ *
+ * This is the cheapest fix in the whole voice surface: no synthesis code, no
+ * download, no key. The operator hears a twenty-year-old concatenative voice
+ * because nothing ever told them a better one is two clicks away in System
+ * Settings.
+ *
+ * Returns null when a modern voice is already installed, when the language is
+ * not one we have advice for, or when the platform is not Apple's — Edge and
+ * Chrome ship their neural voices without asking.
+ *
+ * @param {Array<object>} voices
+ * @param {string} language
+ * @param {{userAgent?: string}} [options]
+ * @returns {string|null}
+ */
+export function describeVoiceUpgradeHint(voices, language, { userAgent = '' } = {}) {
+  const base = String(language || '').toLowerCase().split('-')[0];
+  if (base !== 'fr') return null;
+  const ua = String(userAgent || '');
+  const isApple = /Macintosh|iPhone|iPad/.test(ua) || /Safari/.test(ua) && !/Chrome|Chromium|Edg\//.test(ua);
+  if (!isApple) return null;
+  const candidates = (Array.isArray(voices) ? voices : [])
+    .filter((voice) => String(voice?.lang || '').toLowerCase().startsWith('fr'));
+  if (!candidates.length) return null;
+  if (candidates.some((voice) => speechVoiceQuality(voice) === 'modern')) return null;
+  const preferred = SPEECH_VOICE_PREFERENCES.fr.slice(0, 8);
+  if (candidates.some((voice) => preferred.some((name) => String(voice.name || '').toLowerCase().includes(name)
+    && !String(voice.name || '').toLowerCase().includes('thomas')))) {
+    return null;
+  }
+  return 'Only the compact French voice is installed. For a natural one: System Settings → '
+    + 'Accessibility → Spoken Content → System Voice → French → download Audrey or Amélie (Premium).';
+}
+
+/**
+ * Read the synthesis voice list, waiting for it when the browser has not filled
+ * it in yet.
+ *
+ * Chrome returns an EMPTY array from the first `getVoices()` and fires
+ * `voiceschanged` a moment later. A caller that trusts the first call there
+ * picks no voice at all and speaks with the browser default, which is how a
+ * French session ends up narrated in English.
+ *
+ * @param {object} scope `window`-like.
+ * @param {number} [timeoutMs=1500]
+ * @returns {Promise<Array<object>>}
+ */
+export function loadSpeechVoices(scope = globalThis, timeoutMs = 1500) {
+  const synth = scope?.speechSynthesis;
+  if (!synth?.getVoices) return Promise.resolve([]);
+  const now = synth.getVoices() || [];
+  if (now.length) return Promise.resolve(now);
+  if (typeof synth.addEventListener !== 'function') return Promise.resolve(now);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      synth.removeEventListener?.('voiceschanged', finish);
+      resolve(synth.getVoices() || []);
+    };
+    const timer = setTimeout(finish, timeoutMs);
+    synth.addEventListener('voiceschanged', finish, { once: true });
+  });
 }
 
 /**
@@ -347,6 +547,14 @@ export class GevBrainVoiceSession {
     this.turnId = 0;
     this.costUsd = 0;
     this.abortController = null;
+    /** Cached voice list; Chrome fills it asynchronously (see loadSpeechVoices). */
+    this.voices = [];
+    /** The operator's own pick from the dock, or null for "let the app choose". */
+    this.preferredVoiceUri = readStoredVoiceUri(scope);
+    /** True while the mouth is talking, so the ears stay shut. */
+    this.speaking = false;
+    /** Set by speak() for the duration of one utterance; see interruptSpeech. */
+    this.stopSpeaking = null;
   }
 
   isActive() {
@@ -392,6 +600,65 @@ export class GevBrainVoiceSession {
       return;
     }
     this.host.setStatus('listening', pushToTalk ? 'Hold Space to talk' : this.readyDetail());
+    // Not awaited: the mic is live now, and the first confirmation is seconds
+    // away. Chrome's list arrives on `voiceschanged` and will be there by then.
+    void this.refreshVoices();
+  }
+
+  /**
+   * Read the synthesis voices and publish them to the dock.
+   * @returns {Promise<Array<object>>}
+   */
+  async refreshVoices() {
+    this.voices = await loadSpeechVoices(this.scope);
+    const language = this.config.language || 'en-US';
+    this.host.setVoiceOptions?.({
+      voices: this.voices.filter((voice) => String(voice?.lang || '')
+        .toLowerCase()
+        .startsWith(String(language).toLowerCase().split('-')[0])),
+      selected: pickSpeechVoice(this.voices, language, { preferredUri: this.preferredVoiceUri }),
+      preferredUri: this.preferredVoiceUri,
+      hint: describeVoiceUpgradeHint(this.voices, language, {
+        userAgent: this.scope?.navigator?.userAgent || '',
+      }),
+      onSelect: (uri) => this.setPreferredVoice(uri),
+      onPreview: (uri) => this.previewVoice(uri),
+    });
+    return this.voices;
+  }
+
+  /**
+   * Remember the operator's voice, for this session and the next.
+   * @param {string|null} uri A `voiceURI`, or null to return to the app's choice.
+   */
+  setPreferredVoice(uri) {
+    this.preferredVoiceUri = uri || null;
+    storeVoiceUri(this.scope, this.preferredVoiceUri);
+    void this.refreshVoices();
+  }
+
+  /**
+   * Say one short line in a candidate voice, so the operator can hear it before
+   * choosing. Deliberately does NOT touch the ears: this is a UI audition, not
+   * a turn, and the mic must not be closed by clicking around in a menu.
+   * @param {string} uri
+   */
+  previewVoice(uri) {
+    const synth = this.scope.speechSynthesis;
+    if (!synth || !this.scope.SpeechSynthesisUtterance) return;
+    const language = this.config.language || 'en-US';
+    const voice = this.voices.find((entry) => entry?.voiceURI === uri) || null;
+    const utterance = new this.scope.SpeechSynthesisUtterance(
+      String(language).toLowerCase().startsWith('fr')
+        ? 'Contrôle vocal GEV. Caméra en place.'
+        : 'GEV voice control. Camera in place.',
+    );
+    utterance.lang = voice?.lang || language;
+    if (voice) utterance.voice = voice;
+    try {
+      synth.cancel();
+      synth.speak(utterance);
+    } catch { /* an audition that will not play is not worth an error tray */ }
   }
 
   /** @returns {string} */
@@ -419,6 +686,8 @@ export class GevBrainVoiceSession {
       recognition.onend = null;
       try { recognition.abort(); } catch { /* already stopped */ }
     }
+    this.speaking = false;
+    this.stopSpeaking = null;
     try { this.scope.speechSynthesis?.cancel(); } catch { /* no synthesis */ }
     // A fatal recognition error has just painted its diagnosis; resetting to
     // idle here would wipe it before anyone could read it.
@@ -445,8 +714,9 @@ export class GevBrainVoiceSession {
       if (result.isFinal) finalText += transcript;
       else interim += transcript;
     }
-    if (interim.trim() && !this.busy) {
+    if (interim.trim() && !this.busy && !this.speaking) {
       this.host.setStatus('listening', interim.trim().slice(0, 90));
+      this.host.setHeardText?.(interim.trim(), { interim: true });
     }
     const spoken = finalText.trim();
     if (!spoken) return;
@@ -467,12 +737,16 @@ export class GevBrainVoiceSession {
 
   handleRecognitionEnd() {
     if (!this.active || !this.recognition) return;
+    // A stop we asked for, because the mouth is about to open. `speak()` owns
+    // the restart in that case; restarting here would put the recogniser back
+    // on the speakers a quarter of a second into the confirmation.
+    if (this.speaking) return;
     // Chrome ends a continuous session on its own every minute or so. Restarting
     // is what makes an open mic actually stay open.
     if (this.restartTimer) clearTimeout(this.restartTimer);
     this.restartTimer = setTimeout(() => {
       this.restartTimer = null;
-      if (!this.active || !this.recognition) return;
+      if (!this.active || !this.recognition || this.speaking) return;
       try { this.recognition.start(); } catch { /* already running */ }
     }, RECOGNITION_RESTART_MS);
   }
@@ -485,7 +759,10 @@ export class GevBrainVoiceSession {
     this.busy = true;
     const turnId = this.turnId;
     const isCurrent = () => this.active && this.turnId === turnId;
+    await this.pushSituationBrief();
+    if (!isCurrent()) { this.busy = false; return; }
     this.messages.push({ role: 'user', content: spoken });
+    this.host.setHeardText?.(spoken);
     this.host.setStatus('executing', spoken.slice(0, 90));
 
     try {
@@ -532,6 +809,38 @@ export class GevBrainVoiceSession {
     } finally {
       if (this.turnId === turnId) this.busy = false;
     }
+  }
+
+  /**
+   * Put where-we-are in front of the request, once per turn.
+   *
+   * The brief is a plain `user` message: the server owns the system prompt and
+   * refuses a second one, and a user turn is also what the model treats as
+   * "the current situation" rather than as standing policy.
+   *
+   * ONE BRIEF AT A TIME. A ten-turn conversation would otherwise carry ten
+   * stale snapshots, each contradicting the next about where the camera is —
+   * so the previous one is dropped before the new one goes in. What the model
+   * gets is the situation NOW plus the conversation so far, never a history of
+   * situations.
+   *
+   * A brief that cannot be built is skipped in silence. Losing orientation is
+   * a worse answer; losing the turn is a broken mic.
+   *
+   * @returns {Promise<void>}
+   */
+  async pushSituationBrief() {
+    const describe = this.runner?.describeSituation;
+    if (typeof describe !== 'function') return;
+    let brief = null;
+    try {
+      brief = await describe();
+    } catch {
+      return;
+    }
+    if (!brief) return;
+    this.messages = this.messages.filter((message) => !message.__gevSituation);
+    this.messages.push({ role: 'user', content: brief, __gevSituation: true });
   }
 
   /**
@@ -614,9 +923,19 @@ export class GevBrainVoiceSession {
    * An open mic hears the speakers. Chrome's recogniser has no echo
    * cancellation of its own, so a spoken confirmation would otherwise come
    * straight back in as a user turn and the session would talk to itself.
+   *
+   * THE EARS USED TO REOPEN MID-SENTENCE. `recognition.stop()` here fires
+   * `onend`, and `handleRecognitionEnd` answered that by scheduling a restart
+   * 250 ms later — which lands squarely inside the confirmation being spoken.
+   * From then until the utterance ended, the recogniser was live against the
+   * speakers, its interim results repainting the tray under the sentence being
+   * read out. `this.speaking` is what closes that window: the restart timer now
+   * declines while the mouth is open, and `finish()` below is the single place
+   * the ears come back.
    */
   speak(text, isCurrent) {
     const synth = this.scope.speechSynthesis;
+    this.host.setSpokenText?.(text);
     if (!synth || !this.scope.SpeechSynthesisUtterance) {
       this.host.setStatus('listening', text.slice(0, 90));
       return Promise.resolve();
@@ -626,15 +945,23 @@ export class GevBrainVoiceSession {
       const finish = () => {
         if (settled) return;
         settled = true;
+        this.speaking = false;
         if (isCurrent() && this.active && this.recognition) {
           try { this.recognition.start(); } catch { /* already running */ }
         }
         resolve();
       };
+      this.speaking = true;
+      /** Cutting the mouth off mid-sentence must still reopen the ears. */
+      this.stopSpeaking = () => {
+        try { synth.cancel(); } catch { /* nothing queued */ }
+        finish();
+      };
       try { this.recognition?.stop(); } catch { /* not started */ }
       const utterance = new this.scope.SpeechSynthesisUtterance(text);
       utterance.lang = this.config.language || 'en-US';
-      const voice = pickSpeechVoice(synth.getVoices?.() || [], utterance.lang);
+      const voices = this.voices.length ? this.voices : (synth.getVoices?.() || []);
+      const voice = pickSpeechVoice(voices, utterance.lang, { preferredUri: this.preferredVoiceUri });
       if (voice) utterance.voice = voice;
       utterance.onend = finish;
       utterance.onerror = finish;
@@ -646,6 +973,28 @@ export class GevBrainVoiceSession {
         finish();
       }
     });
+  }
+
+  /**
+   * Cut the confirmation short and hand the turn back.
+   *
+   * Bound to the push-to-talk key by the host: the operator who already knows
+   * what the answer is should not have to sit through the rest of it. Returns
+   * whether there was anything to interrupt, so the host can decide whether the
+   * same keypress should also start a turn.
+   *
+   * @returns {boolean}
+   */
+  interruptSpeech() {
+    if (!this.speaking) return false;
+    const stop = this.stopSpeaking;
+    this.stopSpeaking = null;
+    if (typeof stop === 'function') stop();
+    else {
+      this.speaking = false;
+      try { this.scope.speechSynthesis?.cancel(); } catch { /* no synthesis */ }
+    }
+    return true;
   }
 
   syncCost() {
