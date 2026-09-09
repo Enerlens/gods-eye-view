@@ -6,6 +6,33 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Changed
+- **Les 60 couches de données ne se téléchargent plus qu'au premier clic —
+  470 kB de moins pour ouvrir le globe.** L'application chargeait le code des
+  soixante couches avant d'afficher quoi que ce soit : la CCTV, l'AIS, le
+  propagateur de satellites, les cinquante-sept autres. Toutes éteintes. Un
+  lecteur qui ouvre la carte, regarde Paris et n'allume rien payait
+  **4,7 Mo de JavaScript** pour des couches qu'il n'a pas demandées — les deux
+  tiers de tout ce que le navigateur avait à analyser avant le premier
+  pixel.
+
+  Chaque couche s'annonce désormais par sa fiche d'identité — son nom, son
+  icône, sa source, ce que le panneau dessine — et son code n'arrive qu'au
+  basculement qui en a besoin. Rien ne change à l'écran : la liste est la
+  même, dans le même ordre, et une couche déjà allumée puis éteinte puis
+  rallumée ne se retélécharge pas.
+
+  Mesuré sur un portable simulé (CPU ÷4, réseau 4g, médiane de 3 démarrages,
+  contre une copie propre de `main` sur la même machine) : le poids de
+  l'application passe de **2,68 à 2,21 Mo**, le paquet de code principal de
+  **2 560 à 1 102 kB** (806 → 324 kB compressés), et l'ouverture du globe de
+  **3,9 à 3,2 secondes**. Le démarrage ne demande plus que **deux** fichiers
+  de code au lieu du bloc unique.
+
+  La fiche d'identité de chaque couche est **générée depuis la couche
+  elle-même** et re-vérifiée à chaque `npm test` : une couche renommée qui
+  laisserait une vieille étiquette dans le panneau casse la suite au lieu de
+  s'afficher.
+
 - **Les étoiles quittent la carte et rejoignent le satellite — 1,7 seconde de
   moins pour ouvrir le globe.** Cesium fabriquait un ciel étoilé pour chaque
   session : six images du catalogue Tycho-2, **848 kB**, téléchargées à chaque
