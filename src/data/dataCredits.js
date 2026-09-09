@@ -640,6 +640,16 @@ export const DATA_CREDITS = [
       'scheduled-service field worldwide, plus the full French long tail.',
   },
   {
+    key: 'bdtopo-aerodromes',
+    html:
+      'Aerodrome footprints (418 French fields, drawn on the ground): IGN, ' +
+      '<a href="https://geoservices.ign.fr/bdtopo" target="_blank" rel="noopener">BD TOPO®</a> ' +
+      '— Géoplateforme ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'Joined onto the OurAirports pack at build time on the ICAO code; ' +
+      'attribution is REQUIRED here, unlike the public-domain half of the layer.',
+  },
+  {
     key: 'firms',
     html:
       'Active fires: NASA FIRMS — we acknowledge the use of data and/or imagery ' +

@@ -8,6 +8,8 @@ import {
   LOCAL_STEM_TIP_EPSILON_M,
   applyLocalSurfaceStyle,
   createLocalGeoJsonLayer,
+  localFootprintFitsScreen,
+  localFootprintGeometry,
   createLocalInfrastructureOverlayEntry,
   createLocalInfrastructureOverlayPublisher,
   localDatasetError,
@@ -1329,7 +1331,15 @@ test('a flat spec is filled and NEVER extruded, and no spec at all changes nothi
  * through an injected spec below instead.
  * @param {object} options
  */
-async function createMeasuredLayerHarness({ id = 'local-datacenters', features, ...rest } = {}) {
+async function createMeasuredLayerHarness({
+  id = 'local-datacenters',
+  features,
+  /** Emit POINT features — what the airports pack ships — instead of polygons. */
+  points = false,
+  /** Camera altitude, in metres. The footprint floor is read off this distance. */
+  cameraAltitudeM = 100_000,
+  ...rest
+} = {}) {
   const originalFetch = globalThis.fetch;
   const originalWindow = globalThis.window;
   const preRender = new MockLayerEvent();
@@ -1342,16 +1352,18 @@ async function createMeasuredLayerHarness({ id = 'local-datacenters', features, 
       type: 'Feature',
       id: `measured-${index}`,
       properties: feature.properties,
-      geometry: {
-        type: 'Polygon',
-        coordinates: [[
-          [feature.lon, feature.lat],
-          [feature.lon + feature.size, feature.lat],
-          [feature.lon + feature.size, feature.lat + feature.size],
-          [feature.lon, feature.lat + feature.size],
-          [feature.lon, feature.lat],
-        ]],
-      },
+      geometry: points
+        ? { type: 'Point', coordinates: [feature.lon, feature.lat] }
+        : {
+          type: 'Polygon',
+          coordinates: [[
+            [feature.lon, feature.lat],
+            [feature.lon + feature.size, feature.lat],
+            [feature.lon + feature.size, feature.lat + feature.size],
+            [feature.lon, feature.lat + feature.size],
+            [feature.lon, feature.lat],
+          ]],
+        },
     })).join('\n'),
   });
   globalThis.window = { dispatchEvent() {} };
@@ -1362,7 +1374,7 @@ async function createMeasuredLayerHarness({ id = 'local-datacenters', features, 
       remove() { return true; },
     },
     camera: {
-      positionWC: Cesium.Cartesian3.fromDegrees(2.35, 48.85, 100_000),
+      positionWC: Cesium.Cartesian3.fromDegrees(2.35, 48.85, cameraAltitudeM),
       frustum: { fov: Math.PI / 3 },
       moveEnd,
       flyTo() {},
@@ -1722,4 +1734,48 @@ test('the airport name resolves only while its record is live, and only for its 
   } finally {
     harness.cleanup();
   }
+});
+
+test('a footprint yields a hierarchy and the ground extent its floor is read from', () => {
+  // 0.02° at 48.8° N: 1 467 m east-west, 2 211 m north-south. The LARGER one
+  // is what the floor reads, so a long thin field is drawn while its length is
+  // readable rather than only when its width is.
+  const square = localFootprintGeometry([
+    [2.29, 48.79], [2.31, 48.79], [2.31, 48.81], [2.29, 48.81], [2.29, 48.79],
+  ]);
+  assert.ok(square);
+  assert.equal(Math.round(square.spanM), 2211);
+  assert.equal(square.hierarchy.positions.length, 5);
+
+  // Everything that is not a ring gives null rather than a half-built polygon.
+  assert.equal(localFootprintGeometry(null), null);
+  assert.equal(localFootprintGeometry([]), null);
+  assert.equal(localFootprintGeometry([[0, 0], [1, 0], [0, 0]]), null, 'three positions is not a ring');
+  assert.equal(localFootprintGeometry([[0, 0], [1, null], [1, 1], [0, 0]]), null);
+  // A degenerate ring — every vertex identical — has no extent to draw.
+  assert.equal(localFootprintGeometry([[2, 48], [2, 48], [2, 48], [2, 48]]), null);
+});
+
+test('the footprint floor thins by SIZE, which is the honest order for a ground mark', () => {
+  // 8 px is the floor. At 100 km with this app's frustum a pixel is ~193 m of
+  // ground, so the threshold there is ~1.5 km of extent.
+  const metresPerPixel = 193;
+  assert.equal(localFootprintFitsScreen(2211, metresPerPixel), true, '2.2 km is eleven pixels');
+  assert.equal(localFootprintFitsScreen(221, metresPerPixel), false, '220 m is one');
+  // Exactly at the floor is drawn — a floor already met does nothing.
+  assert.equal(localFootprintFitsScreen(8 * metresPerPixel, metresPerPixel), true);
+  assert.equal(localFootprintFitsScreen(8 * metresPerPixel - 1, metresPerPixel), false);
+
+  // Roissy's 10.3 km survives past 1 000 km on a 1 080 px canvas; from orbit
+  // nothing does. The card and the pastille still reach 14 000 km on a 3 000 m
+  // runway — the outline stops being a shape long before it stops being on
+  // screen, which is the whole point of giving it a floor of its own.
+  const atKm = (km) => km * 1000 * ((2 * Math.tan(Math.PI / 6)) / 1080);
+  assert.equal(localFootprintFitsScreen(10334, atKm(1000)), true);
+  assert.equal(localFootprintFitsScreen(10334, atKm(1500)), false);
+
+  // Nothing to draw, and impossible ranges, are refusals rather than throws.
+  assert.equal(localFootprintFitsScreen(0, metresPerPixel), false);
+  assert.equal(localFootprintFitsScreen(2211, 0), false);
+  assert.equal(localFootprintFitsScreen(NaN, metresPerPixel), false);
 });

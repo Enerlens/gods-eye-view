@@ -1,12 +1,15 @@
 /*
- * SIZE-LEGEND GLYPHS — the two shapes a size channel needs in a legend.
+ * SIZE-LEGEND GLYPHS — the shapes a size channel needs in a legend.
  *
  * D1 makes a legend mandatory wherever a mark carries a value, and a size with
  * no printed scale is exactly the case D1 is about. Two packs now spend the
  * size channel on a measurement — `damsPack.js` on a mapped span, and
  * `airportsPack.js` on a published runway length — and both need the same two
  * swatches: a DISC drawn at the class's real screen diameter, and the HOLLOW
- * RING that A1 reserves for "this was never measured".
+ * RING that A1 reserves for "this was never measured". A mark that is drawn in
+ * GROUND units rather than screen ones needs a third and a fourth — a BAR for
+ * a runway, a FOOTPRINT for an aerodrome outline — and they belong here for the
+ * same reason: they are rendered into the same panel, one under the other.
  *
  * They live here rather than in either pack because the two legends are
  * rendered into the SAME panel, one under the other. Two private copies would
@@ -75,6 +78,29 @@ export function sizeBarGlyph(pixelLength, pixelWidth = 2) {
     + ` stroke="#000" stroke-width="${stroke.toFixed(2)}" stroke-linecap="butt"/></svg>`;
   const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
   _glyphCache.set(key, uri);
+  return uri;
+}
+
+/**
+ * The outline of a surveyed ground footprint, drawn to scale on the globe.
+ *
+ * The fourth shape, and it cannot be sized 1:1 like the disc and the bar: a
+ * footprint has no single screen dimension — it shrinks with the camera like
+ * the ground it covers, because it IS ground. So the swatch shows the only
+ * thing that is constant about it — a filled outline, the same stroke and the
+ * same wash the polygon carries on the map — and the row's blurb carries the
+ * scale in words.
+ *
+ * @returns {string} `data:image/svg+xml;base64,…`
+ */
+export function sizeFootprintGlyph() {
+  const cached = _glyphCache.get('footprint');
+  if (cached) return cached;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GLYPH_BOX} ${GLYPH_BOX}">`
+    + '<path d="M2.5 12.5 L5 4 L14.5 3 L16 10.5 L9 15.5 Z" fill="#000" fill-opacity="0.28"'
+    + ' stroke="#000" stroke-width="1.3" stroke-linejoin="round"/></svg>';
+  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
+  _glyphCache.set('footprint', uri);
   return uri;
 }
 

@@ -13,6 +13,19 @@
  *           volunteer editors anyway, in DATA_SOURCES.md and in the in-app
  *           "Data attribution" popover.
  *
+ * SECOND SOURCE — the ground, and it is NOT public domain
+ * ------------------------------------------------------
+ * Source:   https://data.geopf.fr/wfs/ows  ·  `BDTOPO_V3:aerodrome`
+ * License:  IGN, BD TOPO® — LICENCE OUVERTE 2.0. Attribution is REQUIRED, so
+ *           the shipped pack is no longer a single-licence file: every feature
+ *           carrying a `footprint` carries an IGN outline, the card says "IGN"
+ *           on that line, and DATA_SOURCES.md carries the credit. Anything that
+ *           strips the footprints (`--no-footprints`) returns the file to
+ *           public domain alone.
+ * Coverage: métropole + DROM only. Polynésie and Nouvelle-Calédonie are not in
+ *           BD TOPO, which is why Tahiti-Fa'a'ā — 1.89 M passengers — receives
+ *           no outline while a grass strip in the Aveyron does.
+ *
  * WHAT THIS SCRIPT DECIDES, AND WHERE THE DECISION LIVES
  * -----------------------------------------------------
  * Almost nothing, on purpose. The selection policy, the ICAO derivation, the
@@ -40,8 +53,14 @@
  * actually changed.
  *
  * Usage:
- *   node scripts/build-ourairports.mjs            # downloads the three CSVs
+ *   node scripts/build-ourairports.mjs            # downloads the CSVs + the WFS
  *   node scripts/build-ourairports.mjs ./raw-dir  # reads them from a directory
+ *   node scripts/build-ourairports.mjs --no-footprints   # OurAirports alone
+ *
+ * A local directory is read for `aerodrome.geojson` too; when the file is not
+ * there the build says so and ships without footprints rather than failing —
+ * the same posture the three CSVs get, since a pack without outlines is the
+ * pack that shipped until today.
  */
 
 import fs from 'node:fs';
@@ -51,12 +70,30 @@ import { fileURLToPath } from 'node:url';
 import {
   FRENCH_TERRITORY_CODES,
   airportIcaoCode,
+  attachAirportFootprints,
   isPackedAirport,
   summarizeRunways,
 } from '../src/data/airportsPack.js';
 
 const BASE_URL = 'https://davidmegginson.github.io/ourairports-data';
 const FILES = Object.freeze(['airports.csv', 'runways.csv', 'countries.csv']);
+
+/**
+ * The IGN aerodrome layer, as a whole-country GeoJSON in lon/lat.
+ *
+ * `COUNT` is the server's page size, not a cap on the answer: the loop below
+ * follows `STARTINDEX` until a page comes back short. 1 370 objects fit in two
+ * pages today and the pagination is here for the day they do not — a silent
+ * truncation would look exactly like an aerodrome being demolished.
+ *
+ * `SRSNAME=EPSG:4326` on this service returns lon/lat, which is what the pack
+ * writes; `CRS:84` is the spelling the viewport layers need on the BBOX
+ * parameter, and neither is a substitute for the other.
+ */
+const IGN_WFS_URL = 'https://data.geopf.fr/wfs/ows';
+const IGN_TYPENAME = 'BDTOPO_V3:aerodrome';
+const IGN_PAGE = 1000;
+const IGN_FILE = 'aerodrome.geojson';
 const OUT_DIR = path.join(
   path.dirname(fileURLToPath(import.meta.url)),
   '..', 'src', 'data', 'local_data', 'airports',
@@ -141,6 +178,56 @@ async function loadSources(directory) {
   return out;
 }
 
+/**
+ * Read the IGN aerodrome layer, from disk when a directory is given and from
+ * the Géoplateforme WFS otherwise.
+ *
+ * Returns [] — never throws — when the source is missing or unreadable. A
+ * footprint is an ENRICHMENT: losing it costs 417 outlines and no feature, and
+ * a build that dies because a public WFS is having a bad afternoon would be a
+ * worse failure than a pack that ships the way it shipped yesterday. The count
+ * lands in the summary either way, so a silent zero is impossible to miss.
+ *
+ * @param {string|undefined} directory Optional local directory.
+ * @param {boolean} enabled False when `--no-footprints` was passed.
+ * @returns {Promise<object[]>} BD TOPO features.
+ */
+async function loadFootprints(directory, enabled) {
+  if (!enabled) {
+    process.stderr.write('Footprints  skipped (--no-footprints)\n');
+    return [];
+  }
+  if (directory) {
+    const local = path.join(directory, IGN_FILE);
+    if (!fs.existsSync(local)) {
+      process.stderr.write(`Footprints  ${local} not found — building without outlines\n`);
+      return [];
+    }
+    process.stderr.write(`Reading ${local}\n`);
+    return JSON.parse(fs.readFileSync(local, 'utf8'))?.features || [];
+  }
+  const features = [];
+  for (let startIndex = 0; ; startIndex += IGN_PAGE) {
+    const url = `${IGN_WFS_URL}?SERVICE=WFS&VERSION=2.0.0&REQUEST=GetFeature`
+      + `&TYPENAMES=${encodeURIComponent(IGN_TYPENAME)}&OUTPUTFORMAT=application/json`
+      + `&SRSNAME=EPSG:4326&COUNT=${IGN_PAGE}&STARTINDEX=${startIndex}`;
+    process.stderr.write(`Fetching ${IGN_TYPENAME} [${startIndex}…]\n`);
+    let page;
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      page = await response.json();
+    } catch (error) {
+      process.stderr.write(`Footprints  ${IGN_TYPENAME} failed (${error?.message || error})`
+        + ' — building without outlines\n');
+      return [];
+    }
+    const batch = Array.isArray(page?.features) ? page.features : [];
+    features.push(...batch);
+    if (batch.length < IGN_PAGE) return features;
+  }
+}
+
 function clean(value) {
   return String(value ?? '').trim();
 }
@@ -211,8 +298,11 @@ function toFeature(row, runways, countryNames) {
 }
 
 async function main() {
-  const directory = process.argv[2];
+  const args = process.argv.slice(2);
+  const withFootprints = !args.includes('--no-footprints');
+  const directory = args.find((arg) => !arg.startsWith('--'));
   const sources = await loadSources(directory);
+  const footprints = await loadFootprints(directory, withFootprints);
 
   const airports = parseCsv(sources['airports.csv']);
   const runways = parseCsv(sources['runways.csv']);
@@ -241,6 +331,11 @@ async function main() {
     else droppedForPosition += 1;
   }
 
+  // AFTER the features exist and BEFORE they are sorted: the join reads each
+  // feature's own published point, and every decision it makes lives in the
+  // pack module under unit test — this file only hands it the two inputs.
+  const footprintReport = attachAirportFootprints(features, footprints);
+
   // Code-point order, NOT localeCompare: collation depends on the runtime's ICU
   // build, and this file is committed — two machines must produce the same bytes.
   const sortKey = (feature) => {
@@ -264,6 +359,7 @@ async function main() {
   let withGeometry = 0;
   let frenchWithGeometry = 0;
   let segments = 0;
+  let withFootprintNoRunway = 0;
   for (const feature of features) {
     const props = feature.properties;
     byType.set(props.type, (byType.get(props.type) || 0) + 1);
@@ -272,11 +368,13 @@ async function main() {
     if (props.runways?.longestM) withRunway += 1;
     if (props.runways?.surface) withSurface += 1;
     const geom = props.runways?.geom;
-    if (Array.isArray(geom) && geom.length > 0) {
+    const hasRunwayShape = Array.isArray(geom) && geom.length > 0;
+    if (hasRunwayShape) {
       withGeometry += 1;
       segments += geom.length;
       if (isFrench) frenchWithGeometry += 1;
     }
+    if (props.footprint && !hasRunwayShape) withFootprintNoRunway += 1;
   }
   const bytes = fs.statSync(OUT).size;
   process.stderr.write([
@@ -290,6 +388,13 @@ async function main() {
     `Surface family ${withSurface.toLocaleString('en-US')} features (${Math.round((withSurface / features.length) * 100)}%)`,
     `Runway shape   ${withGeometry.toLocaleString('en-US')} features (${Math.round((withGeometry / features.length) * 100)}%), `
       + `${segments.toLocaleString('en-US')} drawn runways, ${frenchWithGeometry.toLocaleString('en-US')} of them French`,
+    `Footprints     ${footprintReport.attached.toLocaleString('en-US')} attached `
+      + `(${footprintReport.byKey} on ICAO, ${footprintReport.byContainment} on containment), `
+      + `${withFootprintNoRunway.toLocaleString('en-US')} of them with no runway shape at all`,
+    `  refused      ${footprintReport.refusedOffset} on anchor offset, `
+      + `${footprintReport.refusedShared} on a shared outline · worst offset kept `
+      + `${footprintReport.maxOffsetM.toLocaleString('en-US')} m`,
+    `  unattached   ${footprintReport.unattached.toLocaleString('en-US')} candidate outlines matched no packed field`,
     ...[...byType.entries()].sort((a, b) => b[1] - a[1])
       .map(([type, count]) => `  ${type.padEnd(14)} ${count.toLocaleString('en-US')}`),
     '',

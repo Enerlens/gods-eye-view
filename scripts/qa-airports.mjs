@@ -2,7 +2,8 @@
 /**
  * QA the airports layer in a real browser.
  *
- *   local-airports  OurAirports, bundled pack (7,464 airports & aerodromes)
+ *   local-airports  OurAirports, bundled pack (7,466 airports & aerodromes)
+ *                   + 418 IGN aerodrome footprints (BD TOPO®, LO 2.0)
  *
  * Checks that the layer registers under the id the share-link registry and the
  * voice enums use, enables, loads every bundled feature, and puts real entities
@@ -17,6 +18,10 @@
  *      quietly reverted to "large + medium only" would still look like a
  *      working global layer from orbit.
  *   3. NO CLOSED AERODROMES. 13,482 ghost fields sit one clause away.
+ *   4. The IGN GROUND is drawn under the French fields, in one colour, clamped
+ *      to the terrain, and it disappears from orbit while the pastille does
+ *      not — the second publisher of this pack, and the only half of it whose
+ *      licence requires attribution.
  *
  * Usage: node scripts/qa-airports.mjs [--url http://localhost:4174] [--headful]
  */
@@ -279,10 +284,10 @@ async function main() {
 
     record('the row offers the three display floors',
       tiers.chips.join(',') === 'all,airports,airlines', tiers.chips.join(','));
-    // Three tier rows, four length classes, the unmeasured ring and the runway
-    // mark: every channel this layer spends has a key (D1).
+    // Three tier rows, four length classes, the unmeasured ring, the runway
+    // mark and the IGN outline: every channel this layer spends has a key (D1).
     record('the legend names every tier AND every size class that shipped',
-      tiers.legend.length === 9,
+      tiers.legend.length === 10,
       tiers.legend.map((item) => `${item.label}=${item.count}`).join(' · '));
 
     // COLOUR is the tier ladder, and nothing else may move with it.
@@ -456,6 +461,72 @@ async function main() {
       field.maxStemM <= 151,
       `tallest stem ${field.maxStemM} m (cap 150, traffic pattern ~300)`);
 
+    // ── The IGN ground: the second publisher, and its own screen floor ────
+    // Same camera, 12 km over Roissy. The outline is a terrain-clamped wash
+    // under the pastille, and the pastille has NOT moved onto it.
+    const ground = await page.evaluate(() => {
+      const viewer = window.__godsEyeView.styleManager?.viewer;
+      const entities = viewer.dataSources.getByName('Aéroports')[0].entities.values;
+      const now = viewer.clock.currentTime;
+      const read = (property) => (property?.getValue ? property.getValue(now) : property);
+      let carried = 0;
+      let drawn = 0;
+      const hues = new Set();
+      let extruded = 0;
+      let clamped = 0;
+      let cdg = null;
+      for (const entity of entities) {
+        if (!entity.polygon) continue;
+        carried += 1;
+        const props = entity.properties?.getValue?.(now) ?? {};
+        const shown = read(entity.polygon.show) !== false && entity.show !== false;
+        if (shown) {
+          drawn += 1;
+          hues.add(read(entity.polygon.material?.color)?.withAlpha(1).toCssHexString());
+        }
+        // A polygon with NEITHER `height` NOR `heightReference` is what Cesium
+        // turns into a ground-classification primitive — the same signature
+        // `GeoJsonDataSource.load({clampToGround: true})` leaves behind. Setting
+        // `heightReference` here would take the outline OUT of that pass.
+        if (read(entity.polygon.extrudedHeight) != null) extruded += 1;
+        if (entity.polygon.height === undefined
+          && entity.polygon.heightReference === undefined) clamped += 1;
+        if (props.icao !== 'LFPG') continue;
+        const positions = read(entity.polygon.hierarchy)?.positions || [];
+        const anchor = entity.__localBaseCartesian;
+        const cartographic = viewer.scene.globe.ellipsoid.cartesianToCartographic(anchor);
+        cdg = {
+          shown,
+          vertices: positions.length,
+          areaHa: props.footprint?.areaHa ?? 0,
+          match: props.footprint?.match ?? '',
+          alpha: read(entity.polygon.material?.color)?.alpha ?? 0,
+          // The anchor is OurAirports' published point, not the outline's centre.
+          anchorLon: Number((cartographic.longitude * 180 / Math.PI).toFixed(4)),
+          anchorLat: Number((cartographic.latitude * 180 / Math.PI).toFixed(4)),
+        };
+      }
+      return { carried, drawn, hues: [...hues], extruded, clamped, cdg };
+    });
+
+    record('the IGN outlines reach the globe as terrain-clamped ground',
+      ground.carried > 380 && ground.clamped === ground.carried && ground.extruded === 0,
+      `${ground.carried} outlines, ${ground.clamped} clamped, ${ground.extruded} extruded`);
+    record('Roissy draws its surveyed emprise, joined on the ICAO code',
+      ground.cdg?.shown === true && ground.cdg?.areaHa > 2000 && ground.cdg?.match === 'icao'
+      && ground.cdg?.vertices > 50,
+      ground.cdg
+        ? `${ground.cdg.areaHa} ha, ${ground.cdg.vertices} vertices, joined on ${ground.cdg.match}`
+        : 'LFPG carries no outline');
+    record('the anchor is still OurAirports\' published point, not the outline\'s centre',
+      Math.abs((ground.cdg?.anchorLon ?? 0) - 2.55) < 0.02
+      && Math.abs((ground.cdg?.anchorLat ?? 0) - 49.0128) < 0.02,
+      `pastille at ${ground.cdg?.anchorLon}, ${ground.cdg?.anchorLat}`);
+    record('every drawn outline is ONE colour — a batched ground primitive bleeds otherwise',
+      ground.hues.length === 1, `${ground.hues.length} hue(s): ${ground.hues.join(' ')}`);
+    record('the outline is a wash, so the apron under it stays readable',
+      ground.cdg?.alpha > 0 && ground.cdg?.alpha < 0.5, `alpha ${ground.cdg?.alpha}`);
+
     await sleep(4000);
     await shoot(page, path.join(SHOT_DIR, 'airports-roissy.png'));
 
@@ -476,7 +547,14 @@ async function main() {
       viewer.scene.render();
       const drawn = { airline: 0, airport: 0, airfield: 0 };
       let longAirports = 0;
+      let footprints = 0;
       for (const entity of viewer.dataSources.getByName('Aéroports')[0].entities.values) {
+        if (entity.polygon) {
+          const show = entity.polygon.show?.getValue
+            ? entity.polygon.show.getValue(viewer.clock.currentTime)
+            : entity.polygon.show;
+          if (show !== false && entity.show !== false) footprints += 1;
+        }
         if (entity.show === false) continue;
         const p = entity.properties?.getValue?.() ?? {};
         const tier = p.scheduled === true ? 'airline'
@@ -484,7 +562,7 @@ async function main() {
         drawn[tier] += 1;
         if (tier === 'airport' && Number(p.runways?.longestM) >= 3000) longAirports += 1;
       }
-      return { ...drawn, longAirports };
+      return { ...drawn, longAirports, footprints };
     });
 
     record('from orbit the France-only tier is not drawn at all',
@@ -499,6 +577,12 @@ async function main() {
     record('the tier that is worldwide by selection still is',
       orbit.airline > 100,
       `${orbit.airline} aéroports de ligne still drawn at 9 000 km`);
+    // The ground channel has a ceiling the mark does not: at 9 000 km the
+    // largest outline in the pack is a fifth of a pixel across. A card and a
+    // pastille still reach orbit on a 3 000 m runway; a footprint stops being
+    // a shape long before it stops being on screen.
+    record('from orbit no footprint is drawn — a ground mark has its own ceiling',
+      orbit.footprints === 0, `${orbit.footprints} outlines still drawn at 9 000 km`);
 
     // ── Shot ──────────────────────────────────────────────────────────────
     // newQaPage() suppressed the launcher before boot; this asserts the card is

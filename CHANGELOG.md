@@ -6,6 +6,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Added
+- **Les aéroports français sont posés sur leur sol.** La couche Aéroports
+  dessinait un point et, quand la source mondiale l'avait géoréférencée, une
+  piste. Elle dessine maintenant l'**emprise** que l'IGN lève dans la BD TOPO®
+  — 418 terrains français, 41 859 ha, jointe au paquet OurAirports **sur le
+  code OACI** (377 terrains) et, pour les 802 aéroclubs qui n'en ont aucun, sur
+  le fait que leur point publié tombe **dans** un contour (41 de plus). Aucune
+  ambiguïté à arbitrer : mesuré sur les 447 contours candidats, aucun n'est
+  réclamé par deux terrains. **213 terrains gagnent une forme qu'ils n'avaient
+  pas du tout**, dont 207 aéroclubs — OurAirports n'avait géoréférencé que 8 %
+  d'entre eux (89 sur 1 127), et ce long tail est précisément la moitié de la
+  couche qu'aucune source mondiale ne couvre. Le contour est **plaqué sur le
+  relief**, d'une seule couleur pour les 418 (une primitive de sol groupée se
+  colore par rectangle englobant, et la boîte de Marseille-Provence recouvre
+  celle de l'hydrobase de Berre), et il a **son propre plancher d'écran** :
+  sous 8 px d'étendue au sol il n'est plus dessiné et la marque redevient une
+  pastille. La pastille, elle, ne bouge pas : elle reste sur le point de
+  référence publié, celui dont chaque piste est mesurée — la recentrer sur le
+  contour déplacerait 418 marques de 154 m en médiane et de 1 382 m au pire.
+  La fiche gagne une ligne, « emprise IGN 2 832 ha », et elle **nomme sa
+  source** : c'est la seule moitié de cette couche dont la licence exige une
+  attribution.
+- **Ce que ce contour ne dit pas, et qui est écrit noir sur blanc.** La BD TOPO
+  s'arrête aux frontières françaises : Tahiti-Fa'a'ā, 1,89 M de passagers en
+  2025, n'a pas de contour là où une bande d'herbe de l'Aveyron en a un. 61 %
+  des 1 370 objets de la couche IGN ne sont pas des contours mais un **carré de
+  5,2 m** — un point déguisé en polygone, y compris 147 objets que le fichier
+  appelle « Aérodrome » — écartés par un plancher d'un hectare. 704 sont des
+  **héliports** (hôpitaux, casernes, gendarmeries, 48 en Guyane) que ce paquet
+  ne lit pas. Et **30 contours, 1 457 ha, ne se rattachent à rien** : la BD TOPO
+  modélise le côté civil et le côté militaire d'un même terrain comme deux
+  objets et ne met le code OACI que sur le civil. Le plus grand est la **base
+  d'aéronautique navale de Lann Bihoué, 767 ha**, à 579 m de Lorient-Bretagne
+  Sud avec qui elle partage sa piste. Les rattacher demanderait de deviner ;
+  Lorient dessine son tablier civil, la base reste sombre, et c'est dit.
 - **La sélection — on demande un sujet, on choisit le jeu soi-même.** Le champ
   de « brancher un jeu de données » prend désormais des mots autant qu'une
   adresse, et le bouton dit lequel il a lu : **CHERCHER** ou **ANALYSER**. Un
