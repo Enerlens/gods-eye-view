@@ -832,6 +832,12 @@ test('genuine chrome changes still invalidate: add, remove, and own-attribute fl
   }]);
   assert.equal(env.viewer.scene.requestRenderCount, renders + 1, 'own-attribute flip invalidates');
 
+  // Each change below is separated by a real frame, as in the app: the
+  // invalidation is throttled to one render per refresh window (see the next
+  // test), so three changes crammed between two frames legitimately cost one.
+  env.advanceTime(150);
+  env.postRender.raise();
+
   // Chrome appearing later, nested: an added subtree CONTAINING inventory chrome.
   const wrapper = env.document.createElement('div');
   const awareness = env.document.createElement('div');
@@ -843,12 +849,86 @@ test('genuine chrome changes still invalidate: add, remove, and own-attribute fl
   }]);
   assert.equal(env.viewer.scene.requestRenderCount, renders + 1, 'added chrome invalidates');
 
+  env.advanceTime(150);
+  env.postRender.raise();
+
   // Chrome disappearing: a removed node that IS inventory chrome.
   renders = env.viewer.scene.requestRenderCount;
   observer.callback([{
     type: 'childList', target: env.document.body, addedNodes: [], removedNodes: [awareness],
   }]);
   assert.equal(env.viewer.scene.requestRenderCount, renders + 1, 'removed chrome invalidates');
+  env.cleanup();
+});
+
+// ── The 2.5-bis hardening ───────────────────────────────────────────────────
+//
+// The parked-render leak closed on 2026-09-09 had two links. The first — the
+// HUD retyping an identical summary forever — was removed at the source, so
+// this path receives no churn today. These two tests pin the second link shut
+// anyway: the next element of chrome that animates in a loop must not be able
+// to reopen it, and the symptom (a scene that never parks) is invisible in a
+// screenshot and in `qa-perf`, which measures a bare globe with no chrome.
+
+test('repeated genuine invalidation inside one window costs one render, not one each', () => {
+  const env = installMockEnvironment({
+    occluders: [
+      { id: 'pp-toggles', rect: { left: 300, top: 40, width: 60, height: 200 } },
+    ],
+  });
+  initWorldOverlay(env.viewer);
+  setOverlayEntries('churn', [selectedEntry('live-entry')]);
+  env.postRender.raise();
+  const observer = env.mutationObservers[0];
+
+  const before = env.viewer.scene.requestRenderCount;
+  // A panel animating its own class at frame rate: 30 genuine attribute
+  // records, no frame in between.
+  for (let i = 0; i < 30; i++) {
+    observer.callback([{
+      type: 'attributes',
+      target: env.document.getElementById('pp-toggles'),
+      attributeName: 'class',
+    }]);
+  }
+  assert.equal(env.viewer.scene.requestRenderCount, before + 1,
+    'thirty announcements inside one refresh window buy one frame');
+  env.cleanup();
+});
+
+test('a refresh that rebuilds the same rectangles does not re-solve', () => {
+  const env = installMockEnvironment({
+    occluders: [
+      { id: 'pp-toggles', rect: { left: 300, top: 40, width: 60, height: 200 } },
+    ],
+  });
+  initWorldOverlay(env.viewer);
+  setOverlayEntries('noop-refresh', [selectedEntry('live-entry')]);
+  env.postRender.raise();
+  const observer = env.mutationObservers[0];
+
+  const before = getWorldOverlayDiagnostics().occluderNoopRefreshes;
+  // Chrome says it moved; its rectangle is identical. A class flip that changes
+  // a colour is exactly this.
+  observer.callback([{
+    type: 'attributes',
+    target: env.document.getElementById('pp-toggles'),
+    attributeName: 'class',
+  }]);
+  env.advanceTime(150);
+  env.postRender.raise();
+  assert.equal(getWorldOverlayDiagnostics().occluderNoopRefreshes, before + 1,
+    'an unchanged inventory is counted, not solved');
+
+  // And a rectangle that REALLY moves is still a layout change.
+  const noop = getWorldOverlayDiagnostics().occluderNoopRefreshes;
+  const panel = env.document.getElementById('pp-toggles');
+  panel._rect = { left: 300, top: 40, width: 60, height: 260 };
+  observer.callback([{ type: 'attributes', target: panel, attributeName: 'style' }]);
+  env.advanceTime(150);
+  env.postRender.raise();
+  assert.equal(getWorldOverlayDiagnostics().occluderNoopRefreshes, noop,
+    'a rectangle that moved is not a no-op');
   env.cleanup();
 });
 
@@ -2239,6 +2319,7 @@ test('diagnostics facade preserves the complete binding shape', () => {
     'fadingCount', 'paintedCount', 'hitRectCount', 'projectionMs', 'solveMs',
     'paintMs', 'solveRevision', 'paintItemPoolSize', 'paintRectPoolSize',
     'candidateIndexSize', 'entriesBySource', 'paintedBySource',
+    'occluderNoopRefreshes',
   ];
   assert.deepEqual(Object.keys(diagnostics).sort(), fields.sort());
 });

@@ -176,6 +176,20 @@ let _solveDirty = true;
 let _canvasNeedsClear = true;
 let _detectionSurfaceNeedsClear = true;
 let _occludersUpdatedAt = Number.NEGATIVE_INFINITY;
+/**
+ * The last exclusion inventory actually solved, flattened to
+ * `[hard, x, y, w, h]` per rect, and how many refreshes rebuilt an identical
+ * one (the counter lives in `_diagnostics`). See
+ * `occluderInventoryUnchanged()`.
+ *
+ * A FLAT TYPED ARRAY, not a string digest. The first version of this guard
+ * built a `${x},${y};` signature and cost 1.5 kB per frame in the allocation
+ * gate — a guard that exists to stop wasted work must not itself be work. The
+ * buffer is grown, never reallocated per refresh, and comparison writes
+ * nothing.
+ */
+let _occluderPrev = new Float64Array(0);
+let _occluderPrevCount = -1;
 let _canvasWidth = 0;
 let _canvasHeight = 0;
 let _canvasDpr = 1;
@@ -270,6 +284,21 @@ const _diagnostics = {
   paintItemPoolSize: 0,
   paintRectPoolSize: 0,
   candidateIndexSize: 0,
+  /**
+   * How many times chrome announced a move that resolved to the exact same
+   * rectangles. A number that climbs while nothing visibly moves is chrome
+   * animating into the placement solver. (perf plan 2.5-bis)
+   *
+   * IT LIVES HERE, in the module-level object, and NOT as an extra key in the
+   * literal `getWorldOverlayDiagnostics()` returns. Measured on Node 24 with
+   * `worldOverlayAllocation.test.mjs`: the same counter, same value, same
+   * public shape, added to that return literal instead, moved the steady frame
+   * from 3 182 to 4 746 B/frame and broke three budgets — reproducibly, to the
+   * byte, on a facade the harness only calls twice and never inside the
+   * measured loop. Whatever V8 does with that eighteenth key, the gate is the
+   * contract; this file does not get to argue with it.
+   */
+  occluderNoopRefreshes: 0,
   entriesBySource: {},
   paintedBySource: _paintedBySource,
 };
@@ -1405,9 +1434,68 @@ function refreshUiOccluders(timestamp, force = false) {
   // panels collapsed into one enormous rectangle that swept unrelated world
   // space, jumped in size whenever a panel expanded, and in cockpit coalesced
   // to 94-98 % of the viewport. Per-rect exclusions hug the real chrome.
+  //
+  // AN INVENTORY THAT DID NOT CHANGE IS NOT A LAYOUT CHANGE. Chrome announces
+  // itself constantly — a class flip, a text swap that reflows a corner, a chip
+  // that appears and disappears at the same size — and most of those
+  // announcements resolve to the exact same rectangles. Re-solving on them
+  // costs a full label placement pass and bumps a revision every listener
+  // downstream watches. See the header of `markOccludersDirty` for why this is
+  // hardening rather than a fix. (perf plan 2.5-bis)
+  if (occluderInventoryUnchanged()) {
+    _diagnostics.occluderNoopRefreshes += 1;
+    return false;
+  }
+  rememberOccluderInventory();
   _solveDirty = true;
   _layoutRevision++;
   return true;
+}
+
+/**
+ * Does the inventory just rebuilt match the one that was last solved?
+ *
+ * Rounded to whole pixels: sub-pixel jitter from a reflow is not a layout
+ * change anyone can see, and comparing raw floats would make the guard fire
+ * almost never. Allocates nothing.
+ * @returns {boolean}
+ */
+function occluderInventoryUnchanged() {
+  const count = _uiOcclusionRects.length;
+  if (_occluderPrevCount !== count) return false;
+  for (let i = 0; i < count; i++) {
+    const rect = _uiOcclusionRects[i];
+    const base = i * 5;
+    if (_occluderPrev[base] !== (rect.hard ? 1 : 0)
+      || _occluderPrev[base + 1] !== Math.round(rect.x)
+      || _occluderPrev[base + 2] !== Math.round(rect.y)
+      || _occluderPrev[base + 3] !== Math.round(rect.w)
+      || _occluderPrev[base + 4] !== Math.round(rect.h)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Copy the current inventory into the comparison buffer. The buffer only ever
+ * grows, and with slack, so a panel appearing and disappearing does not
+ * reallocate on every cycle.
+ * @returns {void}
+ */
+function rememberOccluderInventory() {
+  const count = _uiOcclusionRects.length;
+  if (_occluderPrev.length < count * 5) _occluderPrev = new Float64Array(count * 5 + 40);
+  for (let i = 0; i < count; i++) {
+    const rect = _uiOcclusionRects[i];
+    const base = i * 5;
+    _occluderPrev[base] = rect.hard ? 1 : 0;
+    _occluderPrev[base + 1] = Math.round(rect.x);
+    _occluderPrev[base + 2] = Math.round(rect.y);
+    _occluderPrev[base + 3] = Math.round(rect.w);
+    _occluderPrev[base + 4] = Math.round(rect.h);
+  }
+  _occluderPrevCount = count;
 }
 
 function markLayoutDirty() {
@@ -1417,9 +1505,31 @@ function markLayoutDirty() {
   invalidateHost({ solve: true, layout: true });
 }
 
+/**
+ * Chrome announced that it might have moved.
+ *
+ * WHY THIS IS THROTTLED AND THE TOLERANCE IS NOT. `refreshUiOccluders` already
+ * refuses to recompute more often than `OCCLUDER_REFRESH_MS`, and schedules a
+ * catch-up render when it declines — but the invalidation itself used to ask
+ * for a frame EVERY TIME, so a chrome element that mutates at 60 Hz bought 60
+ * renders per second for at most ten useful recomputes.
+ *
+ * That is the second link of the leak closed on 2026-09-09 (perf plan 2.5). The
+ * first link — the HUD retyping an identical summary every fifteen seconds —
+ * was removed at the source, so this path receives no churn today. It is fixed
+ * anyway, because the next element of chrome that animates in a loop would
+ * reopen the same hole, and the symptom (a scene that never parks) is invisible
+ * in every screenshot and in `qa-perf`, which measures a bare globe.
+ *
+ * @returns {void}
+ */
 function markOccludersDirty() {
+  const alreadyDirty = _occludersDirty;
   _occludersDirty = true;
   if (!overlayHasPaintWork()) return;
+  // Already dirty and inside the refresh window: a frame is already owed, and
+  // `refreshUiOccluders` has already armed the timer that will ask for it.
+  if (alreadyDirty && (nowMs() - _occludersUpdatedAt) < OCCLUDER_REFRESH_MS) return;
   invalidateHost({ solve: true });
 }
 
@@ -2506,6 +2616,10 @@ export function destroyWorldOverlay() {
   _detectionSurfaceNeedsClear = true;
   _detectionSurfacePrepared = false;
   _occludersUpdatedAt = Number.NEGATIVE_INFINITY;
+  // A stale inventory across a destroy/init would make the FIRST rebuild of the
+  // new host look unchanged, and the host would open with no exclusions.
+  _occluderPrevCount = -1;
+  _diagnostics.occluderNoopRefreshes = 0;
   _canvasWidth = 0;
   _canvasHeight = 0;
   _viewport.width = 0;

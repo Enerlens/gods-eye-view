@@ -203,9 +203,19 @@ async function capture(page, scenario, frame) {
   // Chromium's Page.captureScreenshot can wedge while a manually driven
   // WebGL surface is paused. Reading the explicitly rendered canvas captures
   // that same frame without handing frame ownership back to the browser.
-  const dataUrl = await page.evaluate(() => (
-    window.__godsEyeView.viewer.scene.canvas.toDataURL('image/png')
-  ));
+  //
+  // The render and the read are in ONE evaluate on purpose. The `lite` render
+  // profile builds the Viewer with `preserveDrawingBuffer: false`, and there
+  // the buffer is readable only until the compositor takes it — a render in
+  // one round-trip and a `toDataURL` in the next would come back black on any
+  // machine this harness classifies as small.
+  const dataUrl = await page.evaluate(() => {
+    const { scene } = window.__godsEyeView.viewer;
+    // Both calls: under `requestRenderMode` a bare `render()` draws nothing.
+    scene.requestRender();
+    scene.render();
+    return scene.canvas.toDataURL('image/png');
+  });
   fs.writeFileSync(out, Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64'));
   return { file: out, ...tileReadiness };
 }

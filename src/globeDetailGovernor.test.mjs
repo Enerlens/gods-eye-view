@@ -11,10 +11,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  MOVING_RESOLUTION_SCALE,
   MOVING_SSE_MULTIPLIER,
   STALL_GUARD_MS,
   getGlobeDetailDiagnostics,
   installGlobeDetailGovernor,
+  setMovingResolutionScale,
   uninstallGlobeDetailGovernor,
 } from './globeDetailGovernor.js';
 
@@ -40,9 +42,16 @@ function makeViewer({ sse = 2 } = {}) {
   return {
     scene: { globe: { maximumScreenSpaceError: sse } },
     camera,
+    // The `lite` profile's second motion trade rides on the same events, so
+    // the stub has to carry the property it moves.
+    resolutionScale: 1,
     _fire: (bucket) => listeners[bucket].slice().forEach((fn) => fn()),
     _counts: () => ({ start: listeners.start.length, end: listeners.end.length }),
     _moveTo: (x) => { camera.position.x = x; },
+    // Cesium raises `moveStart` from a camera comparison that INCLUDES the
+    // frustum, so resizing the drawing buffer looks like a move. This replays
+    // that: an event with no change to position or direction.
+    _echo: () => listeners.start.slice().forEach((fn) => fn()),
   };
 }
 
@@ -213,4 +222,215 @@ test('the shipped guard interval is the one the module documents', () => {
   // short and it fights real motion, too long and the blur outlives the reader's
   // patience — which is the bug this whole guard exists for.
   assert.equal(STALL_GUARD_MS, 2000);
+});
+
+// ── The `lite` profile's second motion trade: pixels ────────────────────────
+//
+// Same events, same stall guard, same idempotent restore — and the same
+// failure it exists to prevent, one level worse. A tolerance left relaxed is a
+// soft globe; a resolution left at 0.8 is a soft EVERYTHING, chrome and labels
+// included, for the rest of the session.
+
+test('lite trades pixels only while the camera moves, and hands them all back', () => {
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer, { movingResolutionScale: MOVING_RESOLUTION_SCALE });
+    assert.equal(viewer.resolutionScale, 1, 'installing must not change a still frame');
+
+    viewer._fire('start');
+    assert.equal(viewer.resolutionScale, MOVING_RESOLUTION_SCALE);
+
+    viewer._fire('end');
+    assert.equal(viewer.resolutionScale, 1, 'a settled frame is exactly as sharp as it was');
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('full never touches resolutionScale at all', () => {
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer);
+    viewer._fire('start');
+    assert.equal(viewer.resolutionScale, 1);
+    assert.equal(getGlobeDetailDiagnostics().movingResolutionScale, null);
+    viewer._fire('end');
+    assert.equal(viewer.resolutionScale, 1);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('a second moveStart inside one gesture does not ratchet the resolution down', () => {
+  // A wheel event during a drag, or a fly-to that re-triggers, fires moveStart
+  // again without an intervening moveEnd. Capturing the settled scale on that
+  // second event would bank 0.8 as "settled" and leave the app at 0.64, then
+  // 0.512 — the exact shape of the tolerance bug this file already pins.
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer, { movingResolutionScale: 0.8 });
+    viewer._fire('start');
+    viewer._fire('start');
+    viewer._fire('start');
+    assert.equal(viewer.resolutionScale, 0.8);
+    viewer._fire('end');
+    assert.equal(viewer.resolutionScale, 1);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('an out-of-range factor is declined rather than applied', () => {
+  for (const bad of [0, 1, 1.5, -0.5, Number.NaN, null, 'small']) {
+    const viewer = makeViewer({ sse: 2 });
+    try {
+      installGlobeDetailGovernor(viewer, { movingResolutionScale: bad });
+      viewer._fire('start');
+      assert.equal(viewer.resolutionScale, 1, `factor ${String(bad)} must be ignored`);
+    } finally {
+      uninstallGlobeDetailGovernor();
+    }
+  }
+});
+
+test('the stall guard hands back pixels as well as sharpness', async () => {
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer, { movingResolutionScale: 0.8, stallGuardMs: 20 });
+    viewer._fire('start');
+    assert.equal(viewer.resolutionScale, 0.8);
+    // A cancelled flight: moveStart, no moveEnd, and a pose that stops moving.
+    await tick(60);
+    assert.equal(viewer.resolutionScale, 1, 'a move that never ends is not a session-long blur');
+    assert.equal(viewer.scene.globe.maximumScreenSpaceError, 2);
+    assert.ok(getGlobeDetailDiagnostics().stallRecoveries >= 1);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('uninstalling mid-move hands back the resolution too', () => {
+  const viewer = makeViewer({ sse: 2 });
+  installGlobeDetailGovernor(viewer, { movingResolutionScale: 0.8 });
+  viewer._fire('start');
+  assert.equal(viewer.resolutionScale, 0.8);
+  uninstallGlobeDetailGovernor();
+  assert.equal(viewer.resolutionScale, 1);
+});
+
+test('switching the profile off mid-move gives the pixels back immediately', () => {
+  // The DISPLAY-rail switch must not look like it did nothing until the camera
+  // happens to stop.
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer, { movingResolutionScale: 0.8 });
+    viewer._fire('start');
+    assert.equal(viewer.resolutionScale, 0.8);
+    setMovingResolutionScale(null);
+    assert.equal(viewer.resolutionScale, 1);
+    // And the move that is still in progress must not re-apply it on its end.
+    viewer._fire('end');
+    assert.equal(viewer.resolutionScale, 1);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('switching the profile on mid-session applies from the next move', () => {
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer);
+    setMovingResolutionScale(0.8);
+    viewer._fire('start');
+    assert.equal(viewer.resolutionScale, 0.8);
+    viewer._fire('end');
+    assert.equal(viewer.resolutionScale, 1);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('the operator can change the settled resolution and keep it across a move', () => {
+  // `resolutionScale` is captured per move, not at install: a device-pixel-ratio
+  // change or a future quality control owns the settled value, and the governor
+  // hands back whatever it found rather than an install-time snapshot.
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer, { movingResolutionScale: 0.5 });
+    viewer.resolutionScale = 2;
+    viewer._fire('start');
+    assert.equal(viewer.resolutionScale, 1);
+    viewer._fire('end');
+    assert.equal(viewer.resolutionScale, 2);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+// ── The echo ────────────────────────────────────────────────────────────────
+//
+// Reproduces the loop measured on the shipped build on 2026-09-09: `moveEnd`
+// restores the resolution, the restore changes `frustum.aspectRatio` by a
+// rounding error, Cesium reads that as a camera move and raises `moveStart`,
+// and the governor drops the resolution again. 535 ms of "motion" and 16 ms of
+// rest, forever, on a camera nobody was touching.
+
+test('a move that changed no pose is the governor hearing itself, and is ignored', () => {
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer, { movingResolutionScale: 0.8 });
+    viewer._fire('start');
+    viewer._fire('end');
+    assert.equal(viewer.resolutionScale, 1);
+    assert.equal(viewer.scene.globe.maximumScreenSpaceError, 2);
+
+    // The restore's own aspect-ratio change comes back as a moveStart.
+    viewer._echo();
+    assert.equal(viewer.resolutionScale, 1, 'the echo must not re-drop the resolution');
+    assert.equal(viewer.scene.globe.maximumScreenSpaceError, 2, 'nor re-relax the globe');
+    assert.equal(getGlobeDetailDiagnostics().echoesIgnored, 1);
+    assert.equal(getGlobeDetailDiagnostics().stallGuardArmed, false, 'and must not arm a guard');
+
+    // A REAL move — the pose changes — is still honoured.
+    viewer._moveTo(1234);
+    viewer._fire('start');
+    assert.equal(viewer.resolutionScale, 0.8);
+    assert.equal(viewer.scene.globe.maximumScreenSpaceError, 4);
+    viewer._fire('end');
+    assert.equal(viewer.resolutionScale, 1);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('the echo guard is armed only when a resolution trade is', () => {
+  // In `full` nothing resizes the drawing buffer, so there is no echo to
+  // recognise — and swallowing a frustum-only move there would be a silent
+  // behaviour change to a governor that has shipped for weeks.
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer);
+    viewer._fire('start');
+    viewer._fire('end');
+    viewer._echo();
+    assert.equal(viewer.scene.globe.maximumScreenSpaceError, 4, 'full still relaxes on any move');
+    assert.equal(getGlobeDetailDiagnostics().echoesIgnored, 0);
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
+});
+
+test('turning the trade off releases the echo guard with it', () => {
+  const viewer = makeViewer({ sse: 2 });
+  try {
+    installGlobeDetailGovernor(viewer, { movingResolutionScale: 0.8 });
+    viewer._fire('start');
+    viewer._fire('end');
+    setMovingResolutionScale(null);
+    viewer._echo();
+    assert.equal(viewer.scene.globe.maximumScreenSpaceError, 4,
+      'back in full, a frustum-only move relaxes again');
+  } finally {
+    uninstallGlobeDetailGovernor();
+  }
 });

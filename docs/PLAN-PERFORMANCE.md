@@ -15,11 +15,28 @@ Intel UHD 620**, 8 Go, écran 1366×768, Chrome, connexion domestique ou 4G à
 journaliste local. Le profil de mesure qui l'imite en laboratoire :
 CPU ÷4, 10 Mbit/s / 60 ms, 1366×768, cache vide.
 
-Ce que le laboratoire **ne mesure pas** : le GPU. Chromium headless rend en
-SwiftShader (logiciel), donc toutes les mesures d'images par seconde ci-dessous
-sont relatives (méthode de `scripts/qa-perf.mjs`). Les coûts GPU fixes
-(MSAA, post-traitement, `preserveDrawingBuffer`) ne se voient **que sur une
-vraie machine faible**. Le plan en prévoit une (phase 0).
+Ce que le laboratoire ne mesure pas — **corrigé le 2026-09-09, la prémisse
+était fausse.** Ce paragraphe disait : « Chromium headless rend en SwiftShader
+(logiciel), donc les coûts GPU fixes (MSAA, post-traitement,
+`preserveDrawingBuffer`) ne se voient que sur une vraie machine faible ».
+C'était vrai de l'ANCIEN mode headless. `headless: 'new'` est le navigateur
+complet avec la fenêtre supprimée : sur ce Mac, le contexte GL de Cesium
+lui-même répond `ANGLE (Apple, ANGLE Metal Renderer: Apple M5)`. **Le banc
+tourne sur un vrai GPU depuis le début**, et les quatre leviers de la tâche 2.2
+y sont mesurables — `npm run perf:gpu-ab` les relève un par un.
+
+Ce que le laboratoire ne mesure toujours pas, en revanche :
+
+- **Le GPU d'une UHD 620.** Un M5 est un ordre de grandeur au-dessus. Le banc
+  compense en rendant à N× la résolution (`--scale`), ce qui reproduit le
+  **rapport** des coûts bornés par le remplissage de pixels, pas leur valeur
+  absolue. Un classement est donc mesurable ici ; un p90 de sortie de phase 2,
+  non. C'est toujours la tâche 0.3.
+- **Une machine dont le CPU ET le GPU sont lents en même temps.** `--cpu 4`
+  bride le fil principal et laisse le GPU à pleine vitesse ; la machine du § 0
+  n'a pas ce luxe. Les temps d'image de `perf:boot` mélangent donc un CPU bridé
+  et un GPU rapide, et restent comparables entre deux runs de la même sonde,
+  pas à un portable réel.
 
 ## 1. État des lieux mesuré (2026-09-09)
 
@@ -337,9 +354,23 @@ différents.
 `irve-fr` + `schools-fr` + `transit-fr` sur Lyon, orbite 5 s, tas, octets,
 p90/p99. C'est la scène qu'un usager réel regarde ; le globe nu ne suffit pas.
 
-**0.3 Une vraie machine faible.** 🟡 **Outillée, en attente d'une machine.**
-La mesure ne peut pas être automatisée — c'est le seul point du plan qui demande
-un geste humain — mais tout ce qui l'entoure est prêt :
+**0.3 Une vraie machine faible.** 🟡 **Option (2) livrée le 2026-09-09,
+options (1) et (3) toujours ouvertes.** La prémisse de cette tâche était à
+moitié fausse : le banc headless tourne sur un vrai GPU (voir § 0), donc les
+quatre leviers de 2.2 sont **classables sans emprunter de machine**. Ce qui
+reste hors de portée du dépôt, c'est le p90 absolu d'une UHD 620 — donc le
+critère de sortie de la phase 2, et lui seul.
+
+`npm run perf:gpu-ab` (`scripts/perf-gpu-ab.mjs`) est ce substitut : il refuse
+de tourner sur un renderer logiciel, mesure **un levier à la fois en A/B/A/B**
+(la charge de ce Mac passe de 4 à 50 en une passe ; une médiane par condition
+mesurée côte à côte est la seule qui survive à ça), et rend le travail de rendu
+par image plutôt que l'intervalle du balayage écran — il appelle `scene.render()`
+en rafale et draine le pipeline avec un `readPixels` d'un pixel, sinon tout se
+cache sous les 16,7 ms du vsync. `--scale N` rend à N× la résolution linéaire
+pour entrer dans le régime où une petite machine travaille vraiment.
+
+*Ce qui reste vrai de la rédaction d'origine :*
 
 - `scripts/perf-real-gpu-console.js` : à coller dans la console de n'importe
   quel Chrome, sur `https://gev.enerlens.com/?welcome=0`. Il **refuse de
@@ -365,8 +396,12 @@ lequel des quatre paie vraiment. **(3)** Acheter un portable Intel d'occasion
 (~150 €), à ne faire que si « fluide sur un petit ordinateur » est un engagement
 produit durable et pas seulement cette passe d'optimisation.
 
-Sans l'une des trois, les tâches **2.1 à 2.4 restent gelées** : les faire en
-aveugle serait reproduire le M5 d'août.
+**Ce que ce dégel change, et ce qu'il ne change pas.** Les tâches 2.1 à 2.4 ne
+sont plus gelées : chaque levier peut être classé, et un levier qui ne paie pas
+peut être annulé plutôt que livré par principe. Le **critère de sortie** de la
+phase 2 (« orbite p90 ≤ 20 ms en `lite`, aucune image > 100 ms, sur la machine
+de référence ») reste, lui, entièrement suspendu à l'option (1) ou (3) : aucun
+chiffre de `perf:gpu-ab` ne doit y être recopié.
 
 **0.4 Un banc d'origine.** ✅ **Faite le 2026-09-09.** Ni `autocannon` ni `oha`
 — rien à installer sur une boîte qui porte aussi la production Enerlens :
@@ -696,48 +731,189 @@ Critère de sortie de phase : ≤ 1,8 Mo avant la première tuile, `viewer` ≤ 
 > après 1.5 (b) et à re-justifier — elle vaut désormais ~200 kB minifiés sur
 > 4 773 kB analysés, soit 4 %.
 
-### Phase 2 — Le rendu : un profil « léger », automatique et débrayable (2 à 3 jours, machine de référence obligatoire)
+### Phase 2 — Le rendu : un profil « léger », automatique et débrayable (2 à 3 jours, GPU réel disponible au banc, machine de référence pour le critère de sortie)
 
-**2.1 `src/perfProfile.js` : détecter, décider, exposer.** Lu **avant** la
-construction du Viewer (MSAA et `preserveDrawingBuffer` ne se changent pas
-après). Entrées : `navigator.hardwareConcurrency ≤ 4`, `deviceMemory ≤ 4`,
-`WEBGL_debug_renderer_info` contenant `Intel(R) HD|UHD|Iris`, `Mali`, `Adreno`,
-`SwiftShader`, `prefers-reduced-motion`, et — la seule mesure honnête — les
-**temps des 60 premières images** après le premier rendu (p90 > 28 ms →
-léger). Sorties : `full` / `lite`, forcées par `?perf=lite|full`, persistées
-en `localStorage` (jamais dans le lien de partage), et un interrupteur
-« Mode léger » dans le rail DISPLAY à côté de SCOPE. Le profil ne change
-**jamais** ce qui est affiché (couches, données), seulement comment.
+**2.1 `src/perfProfile.js` : détecter, décider, exposer.** ✅ **Faite le
+2026-09-09.** `src/perfProfile.js` + `src/perfProfile.test.mjs` (16 tests),
+l'interrupteur **Lite** dans le rail DISPLAY sous Celestial, et
+`npm run qa:perf-profile` qui fige le contrat en dix contrôles.
 
-**2.2 Les quatre coûts fixes, un A/B chacun sur UHD 620.**
-- `msaaSamples` 4 → 1 en `lite` (`src/main.js:188`). Vérifier les deux
-  usages qui s'y adossent (`src/data/vigicrues.js:81`, `src/data/gasFrance.js:153`
-  : des lignes fines) — passer ces polylignes à 2 px en `lite`.
-- `preserveDrawingBuffer` true → false (`src/main.js:191`), et pour les
-  captures d'écran forcer un `scene.render()` juste avant `toDataURL` /
-  `toBlob` (chercher les appelants dans `src/ui.js`).
-- Netteté OFF par défaut en `lite` (`src/ui.js:403`).
-- `resolutionScale` 0,8 **pendant le mouvement seulement**, 1,0 au repos, avec
-  la mécanique exacte de `src/globeDetailGovernor.js` (`moveStart`/`moveEnd`,
-  garde de blocage). Sur un écran 1366×768 le 0,8 se voit à peine en mouvement
-  et coupe 36 % des pixels.
-Mesure : orbite 5 s, p90/p99, sur la machine de référence, un levier à la fois.
-Gain attendu (ordre de grandeur habituel sur GPU intégré) : MSAA 20-35 %,
-sharpen 5-10 %, preserve 5-10 %, résolution 25-35 % en mouvement.
+Trois écarts à la rédaction d'origine, tous nés d'une mesure :
 
-**2.3 Le globe et le tileset en `lite`.** `globe.maximumScreenSpaceError` 2 →
-3 au repos (×2 en mouvement, inchangé), `tileCacheSize` 100 → 60 (mémoire),
-`skyAtmosphere.show` false ou `atmosphereLightIntensity` réduit. Pour le
-tileset Google (hors EEE) : `maximumScreenSpaceError` 16 → 24 en `lite`,
-`cacheBytes` 256 Mio, `skipLevelOfDetail: true`, `dynamicScreenSpaceError:
-true` (`src/main.js:245-247`). Mesure : `perf:boot` en octets sur le vol
-d'intro (438 req / 14,4 Mo aujourd'hui avec le gouverneur, mémoire
-`globe-detail-governor-measured-gains`), et p90 sur la machine de référence.
+1. **La sonde d'images ne s'applique plus à la session en cours.** Le plan
+   demandait « p90 > 28 ms → léger ». Appliqué à chaud, ça coupe la netteté et
+   fait tomber le MSAA **quatre secondes après l'ouverture**, sous les yeux du
+   lecteur, sur la foi des soixante images les moins représentatives de la
+   session. Le verdict est donc **écrit** et c'est la **visite suivante** qui
+   s'ouvre en `lite` — complète, avec les deux options de contexte que
+   celle-ci n'aurait de toute façon pas pu changer.
+2. **Un intervalle entre deux images n'est pas un temps d'image.** Sous
+   `requestRenderMode` la scène se gare et l'intervalle suivant vaut des
+   secondes. Compté naïvement, ça donnait **p90 33,9 ms sur un Apple M5** — un
+   poste de travail classé petit portable. Plafond à 250 ms, et les
+   **60 premières images sont jetées** (compilation de shaders, premières
+   tuiles) : le M5 retombe à **22,9 ms**, verdict `full`, machine chargée à 30.
+3. **Deux seuils, pas un.** 28 ms pour entrer en `lite`, 22 ms pour en sortir.
+   Sans hystérésis une machine assise sur le seuil oscille à chaque visite :
+   elle mesure lent, s'ouvre en `lite`, `lite` est moins cher, elle mesure
+   vite, s'ouvre en `full`… et l'image change à chaque ouverture pour une
+   raison que personne ne peut voir.
 
-**2.4 Détection en `lite` : 75 → 40 % de densité**, et fondu à 0 %. La
-détection reste ON (directive du 2026-08-22), elle fait moins de candidats par
-solve. Mesure : orbite avec `flights` allumé, p90 ; `qa-perf` §1b doit rester
-vert.
+Le reste est tel qu'écrit : `hardwareConcurrency ≤ 4`, `deviceMemory ≤ 4`,
+`WEBGL_debug_renderer_info`, `prefers-reduced-motion`, `?perf=lite|full`
+(session seulement — un lien collé dans une conversation ne doit pas réécrire
+le profil de qui clique), choix de l'opérateur persisté en `localStorage`,
+**jamais dans le lien de partage**, et le profil ne change **jamais** ce qui
+est affiché. Ce dernier point est le contrôle n°6 de `qa:perf-profile` : même
+liste de couches, mêmes états, mêmes lignes de panneau, même détection.
+
+**2.2 Les quatre coûts fixes, un A/B chacun.** ✅ **Faits le 2026-09-09, sur
+GPU réel — mais pas sur celui du § 0.** Les quatre sont posés et branchés sur
+le profil. Les chiffres sont ceux de `npm run perf:gpu-ab` sur un Apple M5,
+un levier à la fois, A/B/A/B interleavé, en travail de rendu par image :
+
+| Levier | 1366×768 | 2732×1536 | Où |
+|---|---:|---:|---|
+| `msaaSamples` 4 → 1 | **−26 à −43 %** | **−49 à −59 %** | `src/main.js` |
+| netteté OFF | −6 à −13 % | **−17 %** | `grantedSharpen()`, `src/ui.js` |
+| `preserveDrawingBuffer` false | −3 à −12 % | non concluant | `src/main.js` |
+| `resolutionScale` ×0,8 | −5 à −26 % | **−40 à −48 %** | `globeDetailGovernor.js` |
+| **MSAA + netteté ensemble** | **−34 %** | **−60 à −63 %** | — |
+
+**Comment lire cette table.** Les fourchettes ne sont pas de la prudence
+rédactionnelle : ce sont les extrêmes de relevés pris pendant que la charge du
+Mac passait de 4 à 150 (un autre agent y travaillait). À 1366×768 sur un M5 une
+image entière coûte **2,3 ms** et les leviers sont dans le bruit ; à 2732×1536
+l'image coûte **10,8 ms** et le classement se tient. C'est le régime qui
+compte : une UHD 620 à 1366×768 est bornée par le remplissage exactement comme
+un M5 à 2732×1536, et c'est pour ça que `--scale` existe. **Aucun de ces
+chiffres n'est un p90 d'UHD 620** et aucun ne doit être recopié dans le critère
+de sortie.
+
+**Un chiffre qui a failli être publié faux.** La comparaison de bout en bout —
+deux démarrages, `?perf=full` contre `?perf=lite` — a rendu **−86 % puis
+−89 %** à 2732×1536. Les mêmes deux leviers mesurés **sur une seule page** en
+rendent **−63 %**, et le produit de leurs gains individuels en prédit −58 %.
+Deux démarrages, ce sont deux jeux de tuiles différents, et l'écart était
+encaissé comme un résultat. C'est exactement la raison d'être de la règle « un
+levier par PR » du § 3 — appliquée ici à la mesure plutôt qu'à la PR. Le mode
+`--levers profile` reste dans l'outil, mais il imprime maintenant un
+avertissement et ne sert qu'à vérifier que `?perf=` atteint bien le Viewer.
+
+Trois écarts à la rédaction d'origine :
+
+- **Les polylignes fines n'avaient rien à changer.** Vérifié : la plus fine que
+  `vigicrues.js` dessine fait **2,2 px** (niveau UNKNOWN) et le réseau gaz est
+  à **5 px** — les deux sont déjà au-dessus du plancher de 2 px qu'une image
+  mono-échantillonnée demande. La contrainte est notée dans `perfProfile.js`
+  pour le jour où une de ces largeurs baissera.
+- **Les appelants de `toDataURL` n'étaient pas dans `src/ui.js`.** Le seul du
+  côté application est `renderFreshCesiumFrame()` (`src/voice/gevRealtime.js`),
+  qui attendait déjà un `postRender` — mais depuis une microtâche, ce qui est
+  *généralement* encore dans la fenêtre où le tampon est lisible. « Généralement »
+  n'est pas un contrat pour une capture qu'on présente au modèle comme la vue
+  courante : un `scene.render()` synchrone est ajouté juste avant. Le second
+  appelant est `scripts/qa-focus-evidence.mjs`, dont le rendu et la lecture
+  sont maintenant dans **un seul** `evaluate` pour la même raison.
+- **`resolutionScale` vit dans le gouverneur de détail, pas à côté.** Il n'y a
+  qu'une seule vérité sur « la caméra bouge-t-elle », et deux machines à états
+  qui y répondent séparément, c'est un vol annulé qui laisse l'application
+  floue pour le reste de la session — la garde de blocage de ce fichier existe
+  précisément pour ça. Douze tests supplémentaires dans
+  `globeDetailGovernor.test.mjs` couvrent le cliquet (deux `moveStart` d'affilée),
+  la garde de blocage, le démontage en cours de mouvement, le changement de
+  profil à chaud, et l'écho ci-dessous.
+
+**Le levier `resolutionScale`, écrit tel quel, retourne le plan contre
+lui-même.** C'est le vrai résultat de cette tâche et il n'était dans aucune
+prévision. Cesium ne publie pas `moveStart` depuis un gestionnaire d'entrée :
+il le **déduit** dans `View.checkForCameraUpdates`, en comparant la caméra de
+cette image à celle de la précédente — **et cette comparaison inclut le
+frustum**. Changer `resolutionScale` redimensionne le tampon de dessin, ce qui
+change `frustum.aspectRatio` d'une erreur d'arrondi (1366/768 = 1,778646 ;
+1092/614 = 1,778502), ce que Cesium lit comme un déplacement de caméra.
+
+Il n'y a alors plus de sortie de boucle : `moveEnd` restaure la résolution, la
+restauration change le rapport d'aspect, le rapport d'aspect lève `moveStart`,
+`moveStart` rebaisse la résolution. **Mesuré sur l'arbre construit, avant la
+garde** : un cycle de **535 ms de « mouvement » et 16 ms de repos, indéfiniment**,
+sur une caméra garée au-dessus de Paris. Conséquences, toutes les trois graves
+et aucune visible dans une capture d'écran :
+
+1. le globe reste **en permanence** à la tolérance grossière (SSE 4 au lieu de
+   2) — une image fixe durablement moins nette, ce que ce gouverneur promet
+   explicitement de ne jamais faire ;
+2. **le gouverneur de rendu ne gare plus jamais la scène** : 60 images par
+   seconde pour toujours, sur les machines mêmes que le profil `lite` vise. La
+   tâche 2.5 vient de fermer cette fuite ; celle-ci l'aurait rouverte en grand ;
+3. l'image pulse entre deux résolutions toutes les demi-secondes.
+
+La garde tient en une question : **un mouvement qui n'a changé ni la position
+ni la direction n'est pas un mouvement**. La pose est notée à chaque
+restauration et comparée à chaque `moveStart` ; une pose identique est le
+gouverneur qui s'entend lui-même. Vérifié après coup sur l'arbre construit :
+`0 rendu / 5 s` dans les deux profils, `mode: idle`, `holds: []`,
+`echoesIgnored: 1`, `qa-perf` **24/24**.
+
+À retenir au-delà de cette tâche : `qa-perf` **n'aurait pas attrapé ça** — il
+éteint toutes les couches et mesure un globe nu en `full`. C'est le même motif
+que le 09-09 au matin (« une garantie ne vaut que la densité de ce qu'elle a
+mesuré ») ; c'est `qa:perf-profile` qui le couvre désormais, et la sonde de
+scène garée devrait tourner dans les deux profils.
+
+**2.3 Le globe en `lite`.** ✅ **Moitié faite le 2026-09-09, moitié annulée.**
+`globe.maximumScreenSpaceError` 2 → 3 au repos (le gouverneur double ce chiffre
+en mouvement, donc `lite` vole à 6 et se pose à 3) et `tileCacheSize` 100 → 60.
+Posés **avant** `installGlobeDetailGovernor`, sans quoi le gouverneur capturerait
+la valeur grossière comme valeur au repos.
+
+C'est le seul levier de la phase 2 qui rende des **octets**, et c'est celui qui
+compte sur une ligne à 10 Mbit/s. `perf:boot` en A/B, `?perf=full` contre
+`?perf=lite`, médiane de 3, CPU ÷4 / 10 Mbit/s, Paris :
+
+| Fenêtre de 25 s | `full` | `lite` |
+|---|---:|---:|
+| Requêtes | 245 | **212** (−13 %) |
+| Octets | 5,48 Mo | **5,04 Mo** (−8 %) |
+| Requêtes après stabilisation | 81 | **43** (−47 %) |
+| Octets après stabilisation | 0,63 Mo | **0,46 Mo** (−27 %) |
+| Octets de l'app | 2,25 Mo | 2,25 Mo *(identiques)* |
+| Scène parquée | 0 / 5 s | 0 / 5 s |
+
+**Le p90 ne bouge pas** (18,6 contre 20,4 ms, intervalles qui se recouvrent) et
+c'est attendu : à CPU ÷4 le fil principal est le goulot, et les quatre leviers
+de 2.2 sont du côté GPU. C'est la limite du § 0 qui reparle — le laboratoire ne
+sait pas ralentir les deux à la fois.
+
+**Annulé : `skyAtmosphere` et le tileset Google.** L'atmosphère est un poste
+*visible* et le § 2.1 interdit à `lite` de changer ce qui est affiché. Le
+tileset Google est **invisible depuis la France** (blocage EEE, 403) : les
+quatre réglages proposés — dont `skipLevelOfDetail: true`, qui a un coût visuel
+connu (popping) — seraient livrés sans avoir jamais été vus tourner. Deux
+raisons de ne pas les poser, et la seconde est la règle du § 3.
+
+**2.4 Détection en `lite` : ANNULÉE le 2026-09-09**, pour deux raisons dont la
+première suffit.
+
+**Elle ne paie pas.** Mesurée à la scène que le plan nomme — Lyon, `irve-fr` +
+`schools-fr` + `transit-fr`, machine au repos (charge 3,3), A/B/A/B interleavé
+à 2732×1536 — la densité 75 → 50 rend **+5,3 %**, c'est-à-dire rien, ou un peu
+pire. Le même relevé donne −50,8 % pour le MSAA et −35,4 % pour la résolution.
+*Limite de l'instrument, à dire :* la rafale mesure le travail de `scene.render()`,
+et la densité est un coût de **placement**, côté CPU. Elle n'est donc pas
+mesurée là où elle pourrait coûter — mais elle n'est pas non plus mesurée en
+train de payer.
+
+**Et elle contredit le § 2.1.** « 75 → 40 % de densité » retire des libellés de
+la carte. Le profil ne doit **jamais** changer ce qui est affiché : la promesse
+de ce fork est que la même France arrive sur un portable de 2018, pas une France
+plus petite. C'est le contrôle n°6 de `qa:perf-profile`, qui échouerait si cette
+tâche était livrée — à juste titre.
+
+*Note de fait, au passage :* **40 % n'est pas un cran.** `canonicalizeDensity`
+(`src/data/detectionPolicy.js:116`) colle le curseur à 0 / 25 / 50 / 75 / 100 ;
+40 atterrit sur 50. La tâche demandait une valeur que l'application ne sait pas
+prendre.
 
 **2.5 Fermer la fuite parquée (17 rendus / 5 s).** ✅ **Faite le 2026-09-09 —
 et pas là où ce plan la cherchait.** `qa-perf` passe de **19/24 à 24/24**, et
@@ -761,16 +937,67 @@ mais elle passe de **bloquante** à **durcissement** : sans elle, le prochain
 élément de chrome qui s'anime en boucle rouvrira la même fuite. Ce qui a été
 gagné ici est le symptôme et la mesure ; la garde, elle, n'est pas encore posée.
 
+**2.5-bis La garde.** ✅ **Posée le 2026-09-09.** Deux verrous dans
+`src/overlays/worldOverlay.js`, chacun avec son test :
+
+- **Une invalidation déjà en attente ne rachète pas d'image.**
+  `refreshUiOccluders` refusait déjà de recalculer plus souvent que
+  `OCCLUDER_REFRESH_MS` (100 ms) et armait un minuteur de rattrapage — mais
+  `markOccludersDirty` demandait une image à **chaque** annonce. Un élément qui
+  s'anime à 60 Hz achetait donc 60 images par seconde pour dix recalculs utiles.
+  Trente annonces dans une fenêtre coûtent maintenant **une** image.
+- **Un inventaire qui n'a pas changé n'est pas un changement de disposition.**
+  Les rectangles sont comparés à ceux de la dernière résolution ; identiques, on
+  ne re-résout pas et on n'incrémente pas `_layoutRevision` (que toute la chaîne
+  aval surveille). Un changement de classe qui ne change qu'une couleur passait
+  auparavant pour un déménagement. Le compteur `occluderNoopRefreshes` sort dans
+  les diagnostics : s'il grimpe pendant que rien ne bouge à l'écran, c'est du
+  chrome qui s'anime dans le solveur de placement.
+
+*Deux pièges d'allocation traversés pour poser ça, et le second est le plus
+instructif :*
+
+1. **Une garde qui coûte plus cher que ce qu'elle économise.** La première
+   version comparait une **signature de chaîne** (`${x},${y};`). Le portillon
+   d'allocation de Node 24 est passé de 3 182 à 4 746 octets par image. Remplacé
+   par un `Float64Array` plat, alloué une fois et jamais réécrit à la
+   comparaison.
+2. **Ça n'a rien changé — et la vraie cause était ailleurs.** Le coût venait
+   d'**une clé de plus dans l'objet littéral que `getWorldOverlayDiagnostics()`
+   retourne**, une façade que le harnais n'appelle que **deux fois**, jamais
+   dans la boucle mesurée. Même compteur, même valeur, même forme publique,
+   rangé dans l'objet `_diagnostics` de module plutôt que dans le littéral de
+   retour : 13/13. Reproduit à l'octet près dans les deux sens, sur trois
+   workspaces jetables successifs.
+
+   La leçon n'est pas sur V8. C'est que **le portillon d'allocation ne se
+   raisonne pas, il se mesure** — et qu'il faut un Node 24 en local pour le
+   faire (`brew install node@24` ; le banc saute silencieusement sur Node 26,
+   donc `npm test` vert sur cette machine ne dit rien de la CI).
+
 Leçon de méthode, à garder : la cause était dans la phase 1 alors que la tâche
 était rangée en phase 2, et elle a été trouvée en lisant le chemin qui DÉCLENCHE
 le rendu, pas celui qui le sert.
 
-**2.6 Les petits per-frame.** `src/scopeMask.js:355-356` réalloue le
-backing-store du canvas à chaque dessin (ne le faire qu'au changement de
-taille) ; `src/celestialRing.js:367` reste abonné à `postRender` quand l'anneau
-est éteint (désabonner). Mesure : passe stable de
-`scripts/qa-cables-render-probe.mjs` avant/après ; si < 0,3 ms, ne pas
-fusionner, juste le noter.
+**2.6 Les petits per-frame.** ❌ **Mesurés le 2026-09-09, sous le seuil,
+ANNULÉS** — exactement la sortie que cette tâche prévoyait (« si < 0,3 ms, ne pas
+fusionner, juste le noter »).
+
+- **L'abonnement `postRender` de `celestialRing` quand l'anneau est éteint :
+  0 ms.** Rafale de 150 images, médiane de 5, avec et sans l'écouteur :
+  **1,851 ms/image contre 1,864** — le « sans » est plus lent, donc c'est du
+  bruit. `_draw()` sort à la première ligne quand `enabled` est faux ; ce qui
+  reste est un appel de fermeture et deux lectures de propriété.
+- **La réallocation du canevas de `scopeMask` : sous 0,05 ms**, la résolution du
+  chronomètre du navigateur. 1366×768×4 = 4,2 Mo de tampon, et `draw()` n'est
+  **pas** par image — il tourne au redimensionnement, au changement de réglage,
+  au changement de DPR et à chaque palier quantifié d'alpha, soit une douzaine
+  de fois sur toute une descente. Le total sur un geste complet est inférieur à
+  une image.
+
+Les deux sont réels et les deux sont propres à corriger. Aucun des deux ne
+justifie de toucher un fichier : c'est la règle du § 3, appliquée contre
+l'envie de ranger.
 
 Critère de sortie : sur la machine de référence, orbite zéro couche p90 ≤ 20 ms
 en `lite`, 3 couches FR p90 ≤ 33 ms sans image > 100 ms ; `qa-perf` 24/24 ;
@@ -932,6 +1159,18 @@ node scripts/qa-perf.mjs --url http://127.0.0.1:4179
 node scripts/qa-cables-render-probe.mjs --url http://127.0.0.1:4179
 # imagerie : tuiles et octets par point de vue
 QA_BASE_URL=http://127.0.0.1:4179 npm run qa:world-imagery-cost
+# le contrat du profil de rendu : les 4 coûts, l'interrupteur, et « même carte »
+npm run qa:perf-profile -- --url http://127.0.0.1:4179
+
+# ── les coûts GPU fixes, un levier à la fois (le banc rend sur un VRAI GPU —
+# voir § 0 : `headless: 'new'` n'est PAS SwiftShader) ─────────────────────────
+# le classement, dans le régime où le remplissage domine
+npm run perf:gpu-ab -- --url http://127.0.0.1:4179 --scale 2 --repeats 5
+# la scène qu'un visiteur regarde, avec la détection qui a des candidats
+npm run perf:gpu-ab -- --url http://127.0.0.1:4179 --scale 2 --at lyon \
+  --layers irve-fr,schools-fr,transit-fr --settle 20000
+# à ne PAS citer : deux démarrages, deux jeux de tuiles (voir 2.2)
+npm run perf:gpu-ab -- --url http://127.0.0.1:4179 --levers profile
 
 # ── l'origine, DEPUIS LE VPS uniquement (règle Cloudflare : 30 req/10 s par IP,
 # et le Mac partage l'IP de Memel) ────────────────────────────────────────────
@@ -1288,3 +1527,82 @@ donc aucun `.br`, `vite preview` retombait sur le gzip, et `qa:brotli` lisait
 8/17 pour une raison qui n'était pas dans le code testé. La commande écrit
 désormais dans `.context/perf/dist-graph`.
 
+### 2026-09-09 (suite) — le banc avait un GPU depuis le début, et le profil `lite`
+
+**La prémisse du § 0 était fausse.** Trois fichiers répétaient que Chromium
+headless rend en SwiftShader et que les coûts GPU fixes sont donc invisibles au
+laboratoire. C'était vrai de l'ancien mode headless. Vérifié sur le contexte GL
+de Cesium lui-même, dans l'application, avec les arguments de lancement exacts
+de `perf-boot-probe.mjs` :
+
+    ANGLE (Apple, ANGLE Metal Renderer: Apple M5, Unspecified Version)
+
+`headless: 'new'` est le navigateur complet avec la fenêtre supprimée. **La
+phase 2 n'était pas bloquée** ; elle attendait une machine pour un critère de
+sortie, et ce critère-là attend toujours. Le reste était mesurable, et l'est
+maintenant : `npm run perf:gpu-ab`.
+
+**Ce que le nouveau banc fait de différent.** Trois choix, chacun né d'un
+chiffre qui mentait :
+
+1. **Il ne compte pas d'images, il fait du travail de rendu.** `scene.render()`
+   en rafale, puis un `readPixels` d'un pixel pour drainer le pipeline. Sans
+   ça, à 1366×768 sur un M5, les quatre leviers sont tous à 16,7 ms — le
+   balayage de l'écran, pas le coût du rendu.
+2. **Il interleave.** A/B/A/B, une médiane par condition. La charge de ce Mac
+   est passée de 4 à 160 pendant cette session (un autre agent) ; une passe
+   « tout A puis tout B » aurait encaissé la dérive comme un résultat.
+3. **Il refuse de tourner sur un renderer logiciel**, comme le snippet 0.3.
+
+**Les leviers, classés.** Détail en 2.2. L'ordre est stable et il ne suit pas
+le plan : `msaaSamples` domine tout le reste (−49 à −59 % à 2732×1536), la
+résolution de mouvement vient ensuite (−48 %), la netteté est un tiers de ça
+(−17 %), et `preserveDrawingBuffer` est **non concluant** — −3 à −12 % à
+1366×768, +3 % à 2732×1536, ce qui n'est pas un gain, c'est du bruit. Il est
+quand même posé en `lite` parce qu'il n'a aucun coût visuel et qu'il retire une
+copie par image, mais il ne doit pas être compté dans le gain.
+
+**Un −86 % qui n'existait pas.** La comparaison de bout en bout, deux
+démarrages `?perf=full` contre `?perf=lite`, a rendu −86 % puis −89 %. Les deux
+mêmes leviers sur **une seule page** en rendent −63 %, et le produit de leurs
+gains individuels en prédit −58 %. Deux démarrages, ce sont deux jeux de tuiles
+résolus différents. Le mode existe toujours dans l'outil — il sert à vérifier
+que `?perf=` atteint le Viewer — mais il imprime maintenant un avertissement
+sous son propre résultat. C'est la règle « un levier par PR » du § 3 appliquée
+à la mesure, et elle a servi le jour même où elle a été relue.
+
+**Et la sonde d'images du profil a failli classer un M5 en petit portable.**
+p90 **33,9 ms** au premier essai. Deux causes, deux corrections, toutes deux
+dans `src/perfProfile.js` : sous `requestRenderMode` l'intervalle entre deux
+`postRender` n'est un temps d'image que pendant un rendu continu (plafond à
+250 ms), et les soixante premières images d'une session sont la compilation des
+shaders et les premières tuiles, pas le coût de rendu (elles sont jetées). Le
+M5 retombe à **22,9 ms**, verdict `full`, machine chargée à 30. Le verdict ne
+s'applique plus à la session en cours non plus : couper la netteté quatre
+secondes après l'ouverture se voit, et ces images-là sont les moins
+représentatives de la session.
+
+**Le levier qui a failli rouvrir la fuite de 2.5.** `resolutionScale` 0,8
+pendant le mouvement, écrit exactement comme le plan le demande, met
+l'application dans une boucle sans fin : Cesium déduit `moveStart` d'une
+comparaison de caméra **qui inclut le frustum**, redimensionner le tampon de
+dessin change le rapport d'aspect, et la restauration de `moveEnd` relève donc
+un `moveStart`. Mesuré sur l'arbre construit : **535 ms de « mouvement » et
+16 ms de repos, indéfiniment**, sur une caméra garée — globe bloqué à la
+tolérance grossière, scène jamais garée, image qui pulse. Détail et garde en
+2.2. Deux leçons : le plan ne pouvait pas le prévoir, et **`qa-perf` 24/24 ne
+l'aurait jamais vu** — il mesure un globe nu en `full`.
+
+**Et une seconde panne silencieuse du même acabit.** Avec
+`preserveDrawingBuffer: false`, toute lecture du canevas doit appeler
+`scene.requestRender()` **puis** `scene.render()` : sous `requestRenderMode`,
+`render()` seul est un **no-op**, et la lecture rend un cadre **noir**. Trois
+appelants corrigés, dont celui qui envoie « la vue courante » au modèle vocal.
+Rien à l'écran ne signale cette panne ; c'est le contrôle n°7 de
+`qa:perf-profile`.
+
+**Ce que ça laisse à faire pour 0.3.** Rien n'a changé au critère de sortie de
+la phase 2 : il demande un p90 sur une UHD 620 et aucun chiffre ci-dessus n'en
+est un. Ce qui a changé, c'est qu'on peut maintenant **classer** les leviers
+sans machine — donc en annuler un qui ne paie pas — et que l'option (2) du
+plan (« un substitut sur le Mac ») est livrée plutôt qu'imaginée.

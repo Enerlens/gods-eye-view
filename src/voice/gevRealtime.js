@@ -2751,6 +2751,22 @@ export async function renderFreshCesiumFrame(viewer) {
     const fresh = await rendered;
     // A tab switch during the bounded wait invalidates freshness.
     if (typeof document !== 'undefined' && document.hidden) return false;
+    // The `lite` profile builds the Viewer with `preserveDrawingBuffer: false`
+    // (perf plan 2.2), and there the drawing buffer is only readable until the
+    // compositor takes it. Awaiting `postRender` above resumes in a microtask
+    // of the frame's own task, which is *usually* still inside that window —
+    // "usually" is not a contract for a screenshot the model is about to be
+    // told is the current view. One synchronous render here makes the buffer
+    // unambiguously valid for the `drawImage` the caller does next, in the
+    // same task.
+    //
+    // BOTH CALLS ARE REQUIRED. Under `requestRenderMode` — which the idle
+    // render governor turns on — `Scene.render()` alone is a NO-OP unless a
+    // render was requested, so the buffer stays whatever the compositor left
+    // it: measured, a solid black frame. `requestRender()` sets the flag that
+    // makes the next `render()` actually draw.
+    scene.requestRender?.();
+    scene.render?.();
     return fresh;
   } catch {
     return false;
