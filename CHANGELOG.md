@@ -6,6 +6,31 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Added
+- **Un vol suivi dit ce qu'il lui reste à faire, et un aéroport dit ce qui lui
+  arrive.** Deux lignes, deux moitiés du même croisement.
+
+  La ligne de trajet du contact suivi affichait `AUS → LAX` et rien de plus.
+  adsbdb publie les **coordonnées** de l'origine et de la destination depuis que
+  ce proxy existe, et seule l'arche les lisait : la lecture, jamais. Elle
+  affiche maintenant `AUS → LAX · 1 994 km`, mesuré depuis la position même que
+  la garde de plausibilité utilise, et rien du tout quand adsbdb n'a publié
+  aucune coordonnée — une distance ne se devine pas.
+
+  Et la carte d'un aéroport nomme ce qui vole vers lui : `1 en approche —
+  TVF57PQ`. Le paquet dessine 7 466 terrains et ne sait rien du ciel au-dessus ;
+  la couche des vols tient une flotte dont les trajets nomment ces terrains par
+  code. Aucune des deux ne pouvait atteindre l'autre sans un arc d'import, ce
+  que `layerJoins.js` supprime.
+
+  **Ce que ce compte voit, et ce qu'il ne voit pas**, dit parce que le plafond
+  est bas aujourd'hui : la résolution de trajet ne se déclenche que pour le
+  contact SUIVI, un avion à la fois. Une session fraîche répond donc 0 partout,
+  et la ligne se remplit à mesure qu'on suit des vols. C'est un compte de ce que
+  **cette session a résolu**, jamais un tableau des départs — et l'élargir veut
+  dire toucher à un seau de jetons dimensionné par mesure contre les recherches
+  de TYPE (`npm run qa:enrich-budget`), ce qui est une décision mesurée à part,
+  pas l'effet de bord d'une ligne de carte.
+
 - **Un navire dit où il va : la carte le résout en port, et dit dans quelle mer
   il est.** Le message AIS porte une destination de vingt caractères tapée à la
   main, et la carte l'affichait telle quelle depuis toujours — `→ BEANR`,

@@ -2209,6 +2209,7 @@ Published today:
 |---|---|---|
 | `ports/directory` | `local-ports`, while its pack is LOADED (`onFeatures`) | the selected-vessel card |
 | `buoys/nearest` | `marine-buoys`, while it is ENABLED | the selected-vessel card |
+| `flights/boundFor` | `flights`, while it is ENABLED | the airport card (`airportCardDetails`) |
 
 The two lifetimes differ on purpose. A directory is a fact about a file and is
 offered as long as the file is held; a sea state is a reading a visitor asked
@@ -2248,6 +2249,30 @@ Two guards, both measured:
 
 The unresolved half is printed exactly as the master typed it, which is what
 the card did before this module existed.
+
+#### Flight and airport, both directions (September 2026)
+
+`AUS → LAX` becomes `AUS → LAX · 1994 km` on the tracked contact's readout.
+adsbdb has published the destination's coordinates since `adsbdbProxy` was
+written and only `flightRouteArc` ever read them. `_remainingLegKm` measures
+from the BILLBOARD's position — the same fix `_routeIsPlausible` uses, so the
+two halves of one line cannot come from two different positions — and returns
+`null` rather than a guess when the leg carries no coordinate.
+
+The other direction is a join: `flights/boundFor` on the board, read by
+`airportCardDetails`, which gains a line like `1 en approche — TVF57PQ`. Only a
+route `routePlausible` accepts is counted, for the same reason the route LINE
+is gated on it: a wrong-leg answer would put traffic on a field the aircraft is
+nowhere near. Two codes are passed because adsbdb publishes ONE and it is not
+always the same one (`iata_code || icao_code`), and the pack has both columns.
+
+**Its ceiling is low today and the code says so.** `_requestRouteEnrichment`
+fires for the TRACKED contact only, so a fresh session resolves no routes and
+the join answers 0/0 for every field; it fills as a reader tracks flights.
+Widening it means enqueuing route lookups for the ambient fleet, which is a
+change to a token bucket sized by measurement against TYPE lookups
+(`ENRICH_AMBIENT_BUDGET_CEIL` = 1000, refill 150/5 min, `qa:enrich-budget`) —
+a separate measured decision, and one this change deliberately did not make.
 
 #### The door to the radiography, and the sheet's two missing halves (September 2026)
 

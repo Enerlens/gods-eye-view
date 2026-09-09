@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
+import { askJoin } from './layerJoins.js';
 import {
   airportCardDetails,
   airportLabelPriority,
@@ -518,7 +519,13 @@ export function localInfrastructureOverlayCopy(properties, layerId, measured = {
     // The airport pack owns its own copy: the same module decides what the
     // build emits, so a dropped field cannot become a blank line here. The
     // host still owns the width, hence the clamp on the way out.
-    for (const line of airportCardDetails(props)) details.push(clampCardLine(line));
+    //
+    // WHAT IS FLYING TO IT is the one line the pack cannot write: it is a fact
+    // about the sky, held by a layer this one must not import. Asked here,
+    // through the join board, and `null` whenever the flights layer is off —
+    // in which case the card simply has one line fewer.
+    const traffic = askJoin('flights/boundFor', props?.icao, props?.iata);
+    for (const line of airportCardDetails(props, { traffic })) details.push(clampCardLine(line));
   }
 
   return { title, details };
