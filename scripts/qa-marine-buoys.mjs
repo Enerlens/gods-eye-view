@@ -103,11 +103,11 @@ async function lookAt(page, { lat, lon, height }) {
     const viewer = window.__godsEyeView.viewer;
     try { viewer.camera.cancelFlight(); } catch { /* no flight active */ }
     viewer.camera.setView({
-      destination: window.Cesium
-        ? window.Cesium.Cartesian3.fromDegrees(lo, la, h)
-        : viewer.scene.globe.ellipsoid.cartographicToCartesian({
-          longitude: lo * Math.PI / 180, latitude: la * Math.PI / 180, height: h,
-        }),
+      // Through the ellipsoid, never `window.Cesium`: the engine is bundled as
+      // tree-shaken ESM now, so no global exists on either server.
+      destination: viewer.scene.globe.ellipsoid.cartographicToCartesian({
+        longitude: lo * Math.PI / 180, latitude: la * Math.PI / 180, height: h,
+      }),
       orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
     });
     viewer.scene.requestRender?.();

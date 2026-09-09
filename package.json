@@ -92,6 +92,7 @@
     "perf:layers": "node scripts/perf-boot-probe.mjs --at lyon --layers irve-fr,schools-fr,transit-fr",
     "perf:warm": "node scripts/perf-boot-probe.mjs --warm",
     "perf:origin": "node scripts/perf-origin-bench.mjs",
+    "perf:graph": "vite build --config scripts/vite.module-graph.config.mjs --outDir .context/perf/dist-graph --emptyOutDir",
     "measure:plug": "node scripts/measure-plug-e2e.mjs",
     "measure:plug:render": "node scripts/measure-plug-render.mjs",
     "measure:voice-turn": "node scripts/measure-voice-turn.mjs",

@@ -199,29 +199,29 @@ Toutes les colonnes ont été relevées le 2026-09-09 (médiane de 5,
 polices et des clés est repliée dedans pour garder le tableau lisible — son
 détail est au journal, § 7.
 
-| Cible | Départ | **+ skybox (1.1)** | **+ couches (1.3, #123)** | **+ brotli (1.6) et voix (1.3)** | Objectif |
-|---|---:|---:|---:|---:|---:|
-| Octets de l'app (hors tuiles), cache vide | 3,83 Mo [3,82–3,83] | 2,67 Mo [2,67–2,67] | 2,23 Mo [2,22–2,23] | **1,78 Mo [1,78–1,78]** ✅ | **≤ 1,8 Mo** |
-| Requêtes de l'app (hors tuiles) | 36 | 29 | 29 | **38** † | — |
-| Fenêtre 25 s, tuiles comprises | 7,07 Mo [6,95–7,85] | 5,90 Mo | 5,43 Mo | 5,01 Mo | *voir 2.3* |
-| `viewer` prêt, CPU ÷4 / 10 Mbit/s | 5,8 s [4,5–8,8] | 3,57 s [3,55–3,62] | 3,22 s | *non séparé du bruit* | **≤ 3,5 s** |
-| `viewer` prêt, CPU ÷4, cache chaud | non mesuré | non mesuré | **0,60 s [0,59–0,96]** ✅ | non repris | ≤ 1,5 s |
-| JS brut exécuté avant le globe | 8,2 Mo | 8,2 Mo | 6,7 Mo (5,6 Cesium + 1,1 entrée) | **6,4 Mo** (5,6 + 0,85) | ≤ 4 Mo |
-| Orbite 5 s, zéro couche, CPU ÷4 (relatif) | p90 32,5 / p99 44,3 ms | **p90 20,6 [18,4–21,5] / p99 23,8** ✅ p99 | non repris | *non séparé du bruit* | **p90 ≤ 18 / p99 ≤ 33 ms** |
-| Orbite 5 s, 3 couches FR, CPU ÷4 (relatif, SwiftShader) | non mesuré | non mesuré | **p90 19,5 [18,6–23,8] / p99 31,6 [21,5–34,9] ms** | non repris | — |
-| Scène **parquée**, 3 couches FR | non mesuré | non mesuré | **301 rendus / 5 s [300–301]** — `transit-fr` tient le gouverneur en `continuous` | non repris | 0 sans couche animée ; **cadence à trancher** avec (voir 0.2) |
-| Orbite 5 s, 3 couches FR, **UHD 620 réel** | non mesuré | non mesuré | **toujours non mesuré** (0.3) | non mesuré | p90 ≤ 33 ms, aucune image > 100 ms |
-| Scène parquée, détection ON | 15 rendus / 5 s [12–19] | 0 ✅ | 0 ✅ | 0 ✅ | **0** (`qa-perf` 24/24 ✅) |
-| Clés dépensées avant tout geste | 5 | 0 ✅ | 0 ✅ | 0 ✅ | **0** |
-| Tas JS, 3 couches FR allumées | non mesuré | non mesuré | **40 Mio [38–47]** ✅ | non repris | ≤ 250 Mio |
-| 4 packs infra sur Terre entière | « le fps part avec » | inchangé | inchangé | inchangé | p90 ≤ 33 ms sur la machine de référence |
-| Origine : 50 démarrages à froid simultanés | non mesuré | non mesuré | **`/api` p95 34 ms · RSS 345 Mio** ✅ | non repris | `/api` p95 ≤ 1 s, conteneur ≤ 1 Gio |
+| Cible | Départ | **+ skybox (1.1)** | **+ couches (1.3, #123)** | **+ brotli (1.6) et voix (1.3)** | **+ Cesium ESM (1.5 b)** | Objectif |
+|---|---:|---:|---:|---:|---:|---:|
+| Octets de l'app (hors tuiles), cache vide | 3,83 Mo [3,82–3,83] | 2,67 Mo [2,67–2,67] | 2,23 Mo [2,22–2,23] | 1,78 Mo [1,78–1,78] ✅ | **1,34 Mo [1,34–1,34]** ✅ | **≤ 1,8 Mo** |
+| Requêtes de l'app (hors tuiles) | 36 | 29 | 29 | 38 † | **38** | — |
+| Fenêtre 25 s, tuiles comprises | 7,07 Mo [6,95–7,85] | 5,90 Mo | 5,43 Mo | 5,01 Mo | **4,56 Mo** | *voir 2.3* |
+| `viewer` prêt, CPU ÷4 / 10 Mbit/s | 5,8 s [4,5–8,8] | 3,57 s [3,55–3,62] | 3,22 s | 3,66 s [3,64–5,09] | **2,34 s [2,30–2,83]** ✅ | **≤ 3,5 s** |
+| `viewer` prêt, CPU ÷4, cache chaud | non mesuré | non mesuré | **0,60 s [0,59–0,96]** ✅ | non repris | non repris | ≤ 1,5 s |
+| JS brut exécuté avant le globe | 8,2 Mo | 8,2 Mo | 6,7 Mo (5,6 Cesium + 1,1 entrée) | 6,4 Mo (5,6 + 0,85) | **4,8 Mo** (3,9 + 0,83) | ≤ 4 Mo |
+| Orbite 5 s, zéro couche, CPU ÷4 (relatif) | p90 32,5 / p99 44,3 ms | **p90 20,6 [18,4–21,5] / p99 23,8** ✅ p99 | non repris | *non séparé du bruit* | *non séparé du bruit* | **p90 ≤ 18 / p99 ≤ 33 ms** |
+| Orbite 5 s, 3 couches FR, CPU ÷4 (relatif, SwiftShader) | non mesuré | non mesuré | **p90 19,5 [18,6–23,8] / p99 31,6 [21,5–34,9] ms** | non repris | non repris | — |
+| Scène **parquée**, 3 couches FR | non mesuré | non mesuré | **301 rendus / 5 s [300–301]** — `transit-fr` tient le gouverneur en `continuous` | non repris | non repris | 0 sans couche animée ; **cadence à trancher** avec (voir 0.2) |
+| Orbite 5 s, 3 couches FR, **UHD 620 réel** | non mesuré | non mesuré | **toujours non mesuré** (0.3) | non mesuré | non mesuré | p90 ≤ 33 ms, aucune image > 100 ms |
+| Scène parquée, détection ON | 15 rendus / 5 s [12–19] | 0 ✅ | 0 ✅ | 0 ✅ | 0 ✅ | **0** (`qa-perf` 24/24 ✅) |
+| Clés dépensées avant tout geste | 5 | 0 ✅ | 0 ✅ | 0 ✅ | 0 ✅ | **0** |
+| Tas JS, 3 couches FR allumées | non mesuré | non mesuré | **40 Mio [38–47]** ✅ | non repris | non repris | ≤ 250 Mio |
+| 4 packs infra sur Terre entière | « le fps part avec » | inchangé | inchangé | inchangé | inchangé | p90 ≤ 33 ms sur la machine de référence |
+| Origine : 50 démarrages à froid simultanés | non mesuré | non mesuré | **`/api` p95 34 ms · RSS 345 Mio** ✅ | non repris | non repris | `/api` p95 ≤ 1 s, conteneur ≤ 1 Gio |
 
 > La colonne « Polices + clés » (0.1 / 1.2 / 1.7) est repliée dans « Départ »
-> depuis l'ajout de la colonne brotli, pour garder le tableau lisible ; son
-> détail reste au journal, § 7. Les lignes marquées « non repris » sont celles
-> que #124 a relevées et que la passe brotli n'a pas re-mesurées : elle ne les
-> touche pas.
+> depuis l'ajout des colonnes de la phase 1, pour garder le tableau lisible ;
+> son détail reste au journal, § 7. « Non repris » marque les lignes que #124 a
+> relevées et que les passes suivantes n'ont pas re-mesurées : elles ne les
+> touchent pas.
 >
 > **Mise à jour du même jour : #123 a atterri après ces relevés.** Le découpage
 > du JavaScript (tâche 1.3) fait tomber les octets de l'app de **2,67 à
@@ -239,7 +239,8 @@ inchangés à 0,01 Mo près, et c'est normal : 1.3 ne retire pas de code au
 visiteur, elle le sort du chemin critique. La ligne qui bouge est celle du JS
 analysé avant le globe.
 
-**La cible des octets est atteinte : 1,78 Mo pour un plancher à 1,8.** Ce qui
+**Les deux cibles de la phase 1 sont atteintes : 1,34 Mo pour un plancher à 1,8
+et 2,34 s pour un plafond à 3,5.** Ce qui
 reste ouvert sur cette ligne du tableau, c'est le TEMPS, et il ne se paie plus
 en octets : la fermeture statique de `src/main.js` fait encore **2 708 kB avant
 minification sur 121 modules** (relevé du graphe Rollup, pas au grep), et c'est
@@ -585,15 +586,51 @@ CCTV). Mesure identique.
   un `preload` n'aurait fait qu'ajouter une ligne à un document déjà scanné
   par le préchargeur du navigateur. Ne pas réessayer sans avoir d'abord
   déplacé la balise hors de `<head>`.
-- (b) *Ambitieuse* : `rebuildCesium: true` dans `vite-plugin-cesium`
-  (`vite.config.js:25416`) pour passer par l'ESM et laisser Rollup émonder.
-  Les 102 fichiers font `import * as Cesium` en accès membre statique, ce que
-  Rollup sait émonder ; le seul accès dynamique est
-  `window.__CESIUM__ = Cesium` (`src/annotations/annotationEngine.js:7`), à
-  retirer d'abord. Faire un **spike d'une demi-journée** : build, taille, et
-  `npm test` + `qa:keyless-boot`. Si l'ESM émondé tombe sous ~3 Mo brut, garder ;
-  sinon revenir à (a) et l'écrire dans le CHANGELOG pour que personne ne
-  réessaie.
+- (b) *Ambitieuse* : ✅ **faite le 2026-09-09, et gardée — mais le critère
+  écrit n'est PAS atteint, et il faut le dire.** La rédaction disait « si l'ESM
+  émondé tombe sous ~3 Mo brut, garder ; sinon revenir à (a) ». Il tombe à
+  **3 945 kB**. Le seuil a été écrit à l'aveugle, avant toute mesure, et la
+  mesure dit autre chose que ce qu'il anticipait :
+
+  | | IIFE | ESM émondé |
+  |---|---:|---:|
+  | moteur, brut | 5 593 kB | **3 945 kB** |
+  | moteur, sur le fil (brotli) | 1 282 kB | **824 kB** |
+  | entrée de l'app, brut | 853 kB | 828 kB |
+  | **JS brut avant le globe** | **6 446 kB** | **4 773 kB** (−26 %) |
+  | **total sur le fil** | **1 482 kB** | **1 023 kB** (−31 %) |
+  | `viewer`, CPU ÷4 (A/B alterné) | 3 655 ms [3 638–5 094] | **2 344 ms [2 298–2 826]** |
+  | `app=` | 1,78 Mo | **1,34 Mo** |
+
+  Appliquer le seuil à la lettre aurait jeté le plus gros gain restant du plan
+  pour 945 kB au-dessus d'un chiffre que personne n'avait mesuré. La décision
+  est donc de garder, et de laisser la trace de l'écart ici plutôt que de
+  réécrire le critère après coup.
+
+  Ce qu'il a fallu retirer d'abord : `window.__CESIUM__ = Cesium`
+  (`annotations/annotationEngine.js`) — une commodité de console, et un objet
+  de namespace posé sur un global est inémondable par construction. Ce qui est
+  parti avec, sans avoir été prévu : **`window.Cesium`**, qui n'existait que
+  par l'IIFE et jamais sur le serveur de développement. Douze harnais QA le
+  lisaient ; ils lisent maintenant `viewer.clock.currentTime` et
+  `scene.globe.ellipsoid`, ce qui est plus juste — l'horloge de la scène est la
+  date à laquelle ses `Property` sont réellement évaluées.
+
+  Deux choses à surveiller :
+
+  - **La séparation de cache est conservée mais devient conditionnelle.** Un
+    `manualChunks` sort le moteur dans `assets/cesium-engine-<empreinte>.js`,
+    adressé par contenu, immuable un an et pré-compressé comme le reste. Mais
+    son empreinte dépend désormais de ce que l'application appelle : une
+    livraison qui touche une API Cesium nouvelle fait retélécharger 824 kB à un
+    visiteur qui revient, là où seule une montée de version du moteur le
+    faisait avant.
+  - **Le chemin photoréaliste reste non testé**, avant comme après : Google
+    répond 403 à ce compte depuis l'EEE. Ce n'est pas une régression de cette
+    tâche, c'est un angle mort du dépôt.
+
+  La fabrication passe de 2,3 s à 7-13 s, et `deferCesiumBundlePlugin` est
+  supprimé : il réécrivait une balise qu'aucune fabrication n'émet plus.
 
 **1.6 Brotli à l'origine.** ✅ **Faite le 2026-09-09.** Le gain attendu était
 « −15 à −25 % sur les 2,4 Mo de scripts » ; mesuré à travers le serveur, c'est
@@ -650,6 +687,14 @@ complet de résumé), puis le résumé QUI PART après un geste — sans quoi
 Critère de sortie de phase : ≤ 1,8 Mo avant la première tuile, `viewer` ≤ 3,5 s
 à CPU ÷4 / 10 Mbit/s, `npm test` vert, `qa:keyless-boot`, `qa:map-reload`,
 `qa:firstrun` verts.
+
+> ✅ **Atteint le 2026-09-09** : `app=` **1,34 Mo [1,34–1,34]** et `viewer`
+> **2 344 ms [2 298–2 826]**, mesurés en A/B alterné contre l'arbre précédent
+> sur deux serveurs. `npm test` 6 644/6 644, `qa-perf` 24/24, `qa:map-reload`
+> 4/4, `qa:starfield` 4/4, `qa:lazy-layers` 9/9, `qa:lazy-voice` 8/8,
+> `qa:brotli` 17/17. Reste ouvert dans la phase : **1.4** (`ui.js`), reportée
+> après 1.5 (b) et à re-justifier — elle vaut désormais ~200 kB minifiés sur
+> 4 773 kB analysés, soit 4 %.
 
 ### Phase 2 — Le rendu : un profil « léger », automatique et débrayable (2 à 3 jours, machine de référence obligatoire)
 
@@ -1175,6 +1220,71 @@ chiffre est annulée — désigne donc **1.5 (b)**, le passage de Cesium à l'ES
 voix. `src/hud.js` importait une fonction à `voice/gevActions.js` (164 kB de
 runner et de vocabulaire derrière) et `src/locations.js` deux helpers à
 `annotations/annotationResolver.js` (50 kB) — deux arêtes qu'aucun `grep` ne
-montre et que le graphe Rollup donne en une commande. Le graphe est
-`.context/perf/vite.graph.config.mjs` ; il monte dans `scripts/` s'il sert une
-troisième fois.
+montre et que le graphe Rollup donne en une commande. Le graphe est `npm run perf:graph`
+(`scripts/vite.module-graph.config.mjs`) : il a servi trois fois, il est donc
+monté de `.context/` dans `scripts/`.
+
+### 2026-09-09 (suite) — 1.5 (b) : la phase 1 sort, et un critère écrit trop tôt
+
+`viewer` **3 655 ms [3 638–5 094] → 2 344 ms [2 298–2 826]**, `app=`
+**1,78 → 1,34 Mo**, JS brut avant le globe **6 446 → 4 773 kB**, total sur le
+fil **1 482 → 1 023 kB**. **Les deux critères de sortie de la phase 1 sont
+atteints.**
+
+**Le critère écrit pour cette tâche, lui, ne l'est pas, et c'est le point de
+l'entrée.** La rédaction disait « si l'ESM émondé tombe sous ~3 Mo brut,
+garder ; sinon revenir à (a) ». Il tombe à 3 945 kB. Le seuil avait été posé à
+l'aveugle, avant la moindre mesure, et l'appliquer à la lettre aurait rendu au
+visiteur 1,6 Mo de JavaScript et 1,3 s d'attente pour 945 kB au-dessus d'un
+chiffre que personne n'avait vérifié. Gardé, donc — et l'écart consigné ici
+plutôt que le critère réécrit après coup, parce qu'un seuil qu'on ajuste une
+fois qu'on connaît le résultat ne sert plus à rien la fois suivante.
+
+**Sur la mesure du temps.** Seul le tour 1 de l'A/B compte : il a été pris à
+load ~15 et donne une dispersion de 530 ms côté ESM contre 1 460 ms côté IIFE.
+Les tours suivants sont tombés pendant que la charge de ce Mac montait à
+**133** (un autre agent), et un chiffre relevé là ne vaut rien — ni dans un
+sens ni dans l'autre. Protocole utilisé, à reprendre : les deux arbres
+construits, servis par deux `vite preview` sur deux ports, et les mesures
+**entrelacées** plutôt que groupées, pour qu'une dérive de charge frappe les
+deux colonnes également.
+
+**Ce que le passage a emporté sans que ce soit prévu.** `window.Cesium`
+n'existait que par l'IIFE — jamais sur le serveur de développement, ce que
+trois harnais notaient déjà en commentaire sans que personne en tire la
+conséquence. Douze harnais QA le lisaient ; ils lisent maintenant
+`viewer.clock.currentTime` (l'horloge à laquelle les `Property` de la scène
+sont réellement évaluées, donc plus juste que `JulianDate.now()`) et
+`scene.globe.ellipsoid.cartographicToCartesian` à la place de
+`Cesium.Cartesian3.fromDegrees`. Trois tests sur `deferCesiumScriptTag` ont été
+supprimés avec le plugin : ils épinglaient une balise qu'aucune fabrication
+n'émet plus.
+
+**Ce qui reste à surveiller** : l'empreinte du chunk `cesium-engine` dépend
+désormais de ce que l'application appelle, donc une livraison qui touche une
+API Cesium nouvelle fait retélécharger 824 kB à un visiteur qui revient — là où
+seule une montée de version du moteur le faisait avant. Et le chemin
+photoréaliste Google reste non testé de France (403 EEE), avant comme après.
+
+**Il reste 1.4 dans la phase 1, et elle est à re-justifier** : `ui.js` vaut
+~200 kB minifiés sur 4 773 kB analysés avant le globe, soit **4 %**, pour la
+plus grosse chirurgie du plan.
+
+**Après rebasage sur `main` (#124, #125), remesuré** : `viewer` **2 315 ms
+[1 907–8 924]**, `app=` **1,35 Mo [1,35–1,36]** — mêmes chiffres à 30 ms et
+10 kB près. Le maximum à 8,9 s est une pointe de charge, pas l'arbre.
+
+Une entrée à ouvrir au passage : **#125 remet 13 kB dans la fermeture de
+démarrage** (`src/keySetup.js`, importé statiquement par `main.js` pour la
+puce POWER UP). C'est petit et ce n'est pas une régression du plan — mais
+c'est exactement la forme que 1.3 combat, et le module se retire lui-même dès
+que l'endpoint du serveur de dev est absent, c'est-à-dire dans **toutes** les
+livraisons. Un `import()` au premier clic sur la puce le sortirait entièrement.
+
+**Un piège de l'outillage, appris deux fois dans la même session** :
+`npm run perf:graph` construisait dans `dist/` et ne connaît pas
+`scripts/precompress-dist.mjs`. Le `dist/` qu'il laissait derrière lui n'avait
+donc aucun `.br`, `vite preview` retombait sur le gzip, et `qa:brotli` lisait
+8/17 pour une raison qui n'était pas dans le code testé. La commande écrit
+désormais dans `.context/perf/dist-graph`.
+

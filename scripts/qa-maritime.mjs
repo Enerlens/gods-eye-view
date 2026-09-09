@@ -138,7 +138,7 @@ async function main() {
       const source = viewer?.dataSources?.getByName?.('Ports')?.[0];
       const entities = source?.entities?.values ?? [];
       if (!entities.length) return null;
-      const now = window.Cesium?.JulianDate?.now?.();
+      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
       const read = (entity) => {
         const raw = entity.properties?.getValue?.(now) ?? {};
         return raw;
@@ -202,7 +202,7 @@ async function main() {
       const source = viewer?.dataSources?.getByName?.('marine-buoys')?.[0];
       const entities = source?.entities?.values ?? [];
       if (!entities.length) return null;
-      const now = window.Cesium?.JulianDate?.now?.();
+      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
       let measured = 0;
       let unmeasured = 0;
       let flatSea = 0;
@@ -241,12 +241,15 @@ async function main() {
       await firstRunLauncherSuppressed(page));
     await page.evaluate(() => {
       const viewer = window.__godsEyeView.styleManager?.viewer;
-      const Cesium = window.Cesium;
-      if (!viewer || !Cesium) return;
+      if (!viewer) return;
       // North Sea / Channel: dense NGA port coverage, live UK + NL buoys.
+      // Placed through the ellipsoid rather than `Cesium.Cartesian3`: the
+      // engine is bundled as tree-shaken ESM, so no global exists to read.
       viewer.camera.setView({
-        destination: Cesium.Cartesian3.fromDegrees(2.5, 52.0, 1_400_000),
-        orientation: { heading: 0, pitch: -Cesium.Math.PI_OVER_TWO, roll: 0 },
+        destination: viewer.scene.globe.ellipsoid.cartographicToCartesian({
+          longitude: 2.5 * Math.PI / 180, latitude: 52.0 * Math.PI / 180, height: 1_400_000,
+        }),
+        orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
       });
       viewer.scene.requestRender();
     });

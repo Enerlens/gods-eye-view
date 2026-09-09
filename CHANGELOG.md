@@ -64,6 +64,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   (`2026-06-02T08:00:00+02:00`), et la suite passe de l'UTC à UTC+14.
 
 ### Changed
+- **Le moteur 3D ne pèse plus que ce que cette carte utilise — 1,3 seconde de
+  moins pour ouvrir le globe, et 460 kB de moins sur le fil.** Cesium arrivait
+  en un seul bloc de **5,6 Mo** compilé d'avance : la bibliothèque entière,
+  livrée à tout le monde, y compris les parties que cette application n'appelle
+  jamais. Il passe désormais par le même chemin que le reste du code, ce qui
+  permet à l'outil de fabrication de ne garder que ce qui est réellement
+  appelé.
+
+  | | Avant | Après |
+  |---|---:|---:|
+  | Moteur, non compressé | 5 593 kB | **3 945 kB** |
+  | Moteur, sur le fil | 1 282 kB | **824 kB** |
+  | JavaScript analysé avant le globe | 6 446 kB | **4 773 kB** |
+  | Total sur le fil | 1 482 kB | **1 023 kB** |
+
+  Mesuré en A/B alterné entre deux serveurs, portable simulé (CPU ÷4, 10 Mbit/s,
+  cache vide) : ouvrir le globe passe de **3 655 ms [3 638–5 094] à 2 344 ms
+  [2 298–2 826]**, et le poids de l'application de **1,78 à 1,34 Mo**. Les deux
+  objectifs que ce chantier s'était donnés — moins de 1,8 Mo et moins de 3,5
+  secondes sur un petit ordinateur — sont atteints.
+
+  Deux conséquences à connaître. Le moteur reste un fichier séparé et
+  cacheable un an, mais son empreinte dépend maintenant de ce que
+  l'application utilise : une version qui appelle une fonction Cesium nouvelle
+  fera retélécharger 824 kB à un visiteur qui revient, là où seule une montée
+  de version du moteur le faisait avant. Et `window.Cesium`, qui n'existait que
+  par accident de l'ancien format et jamais dans le serveur de développement,
+  a disparu — douze harnais de test le lisaient et lisent désormais l'horloge
+  et l'ellipsoïde de la scène, ce qui est plus juste de toute façon.
+
+  Vérifié : `npm test` 6 644/6 644, `qa-perf` 24/24, `qa:lazy-voice` 8/8,
+  `qa:lazy-layers` 9/9, `qa:starfield` 4/4, `qa:map-reload` 4/4,
+  `qa:brotli` 17/17.
+
 - **L'agent vocal n'est plus téléchargé pour ouvrir une carte — 281 kB de moins
   dans le paquet de démarrage.** Le micro, son moteur d'annotations, ses deux
   rendus et le réalisateur de scènes représentaient **604 kB** du code analysé

@@ -155,7 +155,7 @@ function probe(page) {
     const source = gev.viewer.dataSources.getByName(id)[0];
     const entities = source ? [...source.entities.values] : [];
     const subject = entities.find((entity) => String(entity.id) === 'avis:subject');
-    const now = window.Cesium?.JulianDate?.now?.();
+    const now = window.__godsEyeView?.viewer?.clock?.currentTime;
     const description = subject?.description?.getValue?.(now) ?? null;
     const controls = module.getRowControls() || {};
     const colourOf = (entity) => {

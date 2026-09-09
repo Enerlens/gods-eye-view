@@ -135,7 +135,7 @@ function probe(page) {
     const source = gev.viewer.dataSources.getByName(id)[0];
     const entities = source ? [...source.entities.values] : [];
     const point = entities.find((entity) => String(entity.id) === 'fiche:point');
-    const now = window.Cesium?.JulianDate?.now?.();
+    const now = window.__godsEyeView?.viewer?.clock?.currentTime;
     const description = point?.description?.getValue?.(now) ?? null;
     return {
       stats: module.getStats(),

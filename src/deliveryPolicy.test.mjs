@@ -15,7 +15,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   acceptsBrotli,
-  deferCesiumScriptTag,
   isCesiumFreePage,
   parseGeoidQuery,
   precompressibleAsset,
@@ -128,8 +127,10 @@ test('a missing or malformed url is answered, not thrown on', () => {
 // mojibake or refuse to parse, with no error anywhere.
 
 test('the two scripts a cold boot cannot avoid are pre-compressible', () => {
-  // Measured: 1 651 → 1 282 kB for the engine, 326 → 266 kB for the entry.
-  for (const p of [`/${CESIUM_DIR}/Cesium.js`, `/${CESIUM_DIR}/Workers/chunk-3CDICLGN.js`, '/assets/index-BlPAiXAf.js']) {
+  // Measured through the server: 1 098 → 824 kB for the engine chunk,
+  // 248 → 204 kB for the entry. Cesium's Workers are here too — they are
+  // fetched at runtime from the version-pinned directory, not bundled.
+  for (const p of ['/assets/cesium-engine-Dq9Fo31T.js', '/assets/index-BlPAiXAf.js', `/${CESIUM_DIR}/Workers/chunk-3CDICLGN.js`]) {
     assert.equal(precompressibleAsset(p)?.contentType, 'text/javascript; charset=utf-8', p);
   }
 });
@@ -198,22 +199,15 @@ test('a client that cannot decode brotli is never handed one', () => {
   }
 });
 
-// ── Cesium script defer ────────────────────────────────────────────────────
-
-test('the injected Cesium tag is deferred, keeping its src', () => {
-  const html = `<head><script src="/${CESIUM_DIR}/Cesium.js"></script></head>`;
-  const { html: out, changed } = deferCesiumScriptTag(html);
-  assert.equal(changed, true);
-  assert.equal(out, `<head><script defer src="/${CESIUM_DIR}/Cesium.js"></script></head>`);
-});
-
-test('a tag that is not there is reported, never silently accepted', () => {
-  // The failure that must stay loud: returning the input unchanged would hand
-  // back the 1.63 MB blocking script and nothing would say so.
-  const { html: out, changed } = deferCesiumScriptTag('<head><script src="/other.js"></script></head>');
-  assert.equal(changed, false);
-  assert.equal(out, '<head><script src="/other.js"></script></head>');
-});
+// ── Cesium script defer — deleted, and why ─────────────────────────────────
+//
+// Three tests lived here, all about rewriting `vite-plugin-cesium`'s injected
+// `<script src=".../Cesium.js">` with `defer` so the HTML parser did not stop
+// dead at a 5.6 MB blocking script. The plugin now runs with
+// `rebuildCesium: true` (2026-09-09): the engine comes through the module graph
+// as tree-shaken ESM, vite announces its chunk with `<link rel=modulepreload>`,
+// and no such tag is emitted by any build. A test that pinned the rewrite would
+// be pinning a string no build produces.
 
 // ── Cesium-free document pages ─────────────────────────────────────────────
 
@@ -224,14 +218,14 @@ test('the address radiography is a document page, the globe is not', () => {
   assert.equal(isCesiumFreePage(null), false);
 });
 
-test('both injected Cesium assets are removed from a document page', () => {
-  // The whole point: a printable sheet must not download a 3D engine. Measured
-  // before this landed — `dist/fiche.html` pulled Cesium.js and widgets.css.
-  const html = `<head><link rel="stylesheet" href="/${CESIUM_DIR}/Widgets/widgets.css">`
-    + `<script src="/${CESIUM_DIR}/Cesium.js"></script></head>`;
+test('the injected Cesium stylesheet is removed from a document page', () => {
+  // The sheet is not inert: it carries Cesium's own type and button rules, so a
+  // printable page that kept it would render differently from the one dev
+  // shows. The engine itself no longer reaches these pages at all — `fiche.js`
+  // imports no Cesium, so Rollup gives it none.
+  const html = `<head><link rel="stylesheet" href="/${CESIUM_DIR}/Widgets/widgets.css"></head>`;
   const { html: out, changed } = stripCesiumAssets(html);
   assert.equal(changed, true);
-  assert.ok(!out.includes('Cesium.js'));
   assert.ok(!out.includes('widgets.css'));
 });
 
@@ -241,13 +235,9 @@ test('a page with nothing to strip is reported, never silently accepted', () => 
   assert.equal(out, '<head><script src="/assets/fiche.js"></script></head>');
 });
 
-test('an unversioned Cesium tag is not matched', () => {
-  assert.equal(deferCesiumScriptTag('<script src="/cesium/Cesium.js"></script>').changed, false);
-});
-
 test('the module bundle is left alone', () => {
   const html = '<script type="module" crossorigin src="/assets/index-x.js"></script>';
-  assert.equal(deferCesiumScriptTag(html).html, html);
+  assert.equal(stripCesiumAssets(html).html, html);
 });
 
 // ── Geoid query parsing ────────────────────────────────────────────────────

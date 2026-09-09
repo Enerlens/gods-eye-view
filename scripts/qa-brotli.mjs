@@ -59,8 +59,11 @@ const page = await request('/index.html', 'identity').catch((error) => {
   throw error;
 });
 
-const entry = page.body.toString('utf8').match(/\/assets\/index-[A-Za-z0-9_-]+\.js/)?.[0];
-const cesium = page.body.toString('utf8').match(/\/cesium-[0-9.]+\/Cesium\.js/)?.[0];
+const html = page.body.toString('utf8');
+const entry = html.match(/\/assets\/index-[A-Za-z0-9_-]+\.js/)?.[0];
+// The engine is a content-hashed chunk since it moved to tree-shaken ESM, and
+// vite announces it with `modulepreload` rather than a script tag.
+const cesium = html.match(/\/assets\/cesium-engine-[A-Za-z0-9_-]+\.js/)?.[0];
 check('the built page names its entry chunk and the Cesium engine', Boolean(entry && cesium), { entry, cesium });
 if (!entry || !cesium) process.exit(1);
 
@@ -69,9 +72,15 @@ for (const [label, target] of [['le chunk d\'entrée', entry], ['le moteur Cesiu
   const identity = await request(target, 'identity');
 
   check(`${label} : servi en brotli`, brotli.headers['content-encoding'] === 'br', brotli.headers['content-encoding']);
+  // Decoded defensively: when the pre-compression step has not run, the server
+  // answers gzip, and `brotliDecompressSync` on that body THROWS — which would
+  // take the whole harness down with a zlib stack trace instead of reporting
+  // the one thing it exists to report.
+  let decoded = null;
+  try { decoded = zlib.brotliDecompressSync(brotli.body); } catch { /* not brotli */ }
   check(`${label} : le corps décodé est identique à l'original`,
-    zlib.brotliDecompressSync(brotli.body).equals(identity.body),
-    { br: brotli.body.length, identity: identity.body.length });
+    decoded !== null && decoded.equals(identity.body),
+    { br: brotli.body.length, identity: identity.body.length, decodable: decoded !== null });
   check(`${label} : Content-Length annonce le corps envoyé`,
     Number(brotli.headers['content-length']) === brotli.body.length,
     { announced: brotli.headers['content-length'], sent: brotli.body.length });
@@ -96,8 +105,8 @@ check('« br;q=0 » est un refus, pas une acceptation', zeroQuality.headers['con
 
 // index.html revalidates, so it is deliberately out of the pre-compressed set:
 // this middleware answers 200 and never 304.
-const html = await request('/index.html', 'br, gzip');
-check('la page, qui se revalide, n\'est pas servie pré-compressée', html.headers['content-encoding'] !== 'br', html.headers['content-encoding']);
+const document = await request('/index.html', 'br, gzip');
+check('la page, qui se revalide, n\'est pas servie pré-compressée', document.headers['content-encoding'] !== 'br', document.headers['content-encoding']);
 
 // The `.br` files are an implementation detail of the delivery layer. Serving
 // one directly would hand a browser a body it has no way to decode.

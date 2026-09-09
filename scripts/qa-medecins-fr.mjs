@@ -147,7 +147,7 @@ function probe(page) {
       const code = String(item.properties?.code?.getValue?.() ?? '').trim();
       if (!item.show) continue;
       shown.add(code);
-      const color = item.polygon.material?.getValue?.(window.Cesium?.JulianDate?.now?.())?.color;
+      const color = item.polygon.material?.getValue?.(window.__godsEyeView?.viewer?.clock?.currentTime)?.color;
       if (color) materials.set(code, `${color.red.toFixed(3)},${color.green.toFixed(3)},${color.blue.toFixed(3)}`);
     }
     const stats = module.getStats();
