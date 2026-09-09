@@ -538,6 +538,8 @@ Static datasets shipped in the repo for an out-of-the-box experience. **None are
 | **Datacenters** (~4.3K) | `datacenters/` | **ODbL 1.0** (OpenStreetMap extract) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" |
 | **Barrages et digues** (7,432 — 6,771 in France; 5,504 dams, 1,243 dykes, 24 both) | `dams/` | **ODbL 1.0** (OSM via Overpass for France; OpenInfraMap snapshot elsewhere) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" (+ Open Infrastructure Map for the world half) |
 | **NGA World Port Index** (2,951 ports) | `ports/` | **Public domain** (U.S. Government work, 17 U.S.C. § 105) | ✅ (no restrictions) | "NGA World Port Index (Pub. 150)" (courtesy — not legally required) |
+| **UN/LOCODE** 2024-2 (11,545 ports, not drawn) | `ports/gazetteer.json` | **ODC-PDDL 1.0** (public domain dedication) | ✅ (no restrictions) | "UN/LOCODE (UNECE)" (courtesy) |
+| **GeoNames** `cities15000` (coordinates + exonyms, not drawn) | `ports/gazetteer.json` | **CC BY 4.0** | ✅ with attribution | "GeoNames (CC BY 4.0)" — **required** |
 | **OurAirports** (7,466 airports & aerodromes) **+ IGN BD TOPO®** (418 French aerodrome footprints joined in) | `airports/` | **Public domain** (dedicated by OurAirports) **+ Licence Ouverte 2.0** on the footprints (IGN, BD TOPO®) | ✅ (attribution required for the IGN half) | "OurAirports" (courtesy — not legally required) + **"Emprises d'aérodromes : IGN, BD TOPO® — Géoplateforme (Licence Ouverte 2.0)"** (required) |
 | **TeleGeography Submarine Cable Map** (712 cables + 1,917 landing points) | `telegeography_submarine_cables/` | **CC BY-NC-SA 3.0** | ❌ **NonCommercial — remove for commercial use** | "© TeleGeography — submarinecablemap.com" |
 | **Natural Earth physical regions** (1,046 land + 292 marine named polygons) | `natural_earth/` | **Public domain** | ✅ (no restrictions) | "Made with Natural Earth" (courtesy credit — not legally required) |
@@ -679,6 +681,28 @@ and Marseille-Provence's box overlaps the Berre seaplane base's — and it has a
 screen floor of its own: under 8 px of ground extent it is not drawn and the
 mark reverts to a dot. So the outline disappears between 24 km (the smallest)
 and 1,208 km (Roissy) while the pastille keeps its own, longer range.
+
+### The AIS destination gazetteer (`ports/gazetteer.json`)
+
+Built by `scripts/build-port-gazetteer.mjs`. **Nothing here is drawn on the
+globe**: it is a name table read by `portDirectory.js` to answer "what place is
+this master naming", and it exists because the World Port Index is an index of
+SEA harbours while the field routinely names river ports (`MAINZ`, `PARIS`,
+`FRANKFURT`) and exonyms (`ANTWERP`, `GENOA`). Measured on 1 924 live vessels,
+2026-09-09: destination resolution **50.4 % → 68.9 %**.
+
+- **UN/LOCODE 2024-2** (UNECE), via the Frictionless mirror
+  [`datasets/un-locode`](https://github.com/datasets/un-locode), **ODC-PDDL
+  1.0**. Decides what is a port — function code `1` — and supplies 11 545
+  places the WPI does not carry, plus its own 52-row alias list.
+- **GeoNames `cities15000`**, **CC BY 4.0**, attribution required and carried
+  in the app's "Data attribution" popover. Used for exactly two things, both of
+  which COMPLETE a UN/LOCODE row rather than adding a place: a coordinate for
+  the 4 791 ports UN/LOCODE publishes without one, and the alternate spellings
+  of a city joined to a port by name AND proximity (≤ 25 km).
+
+Rebuild with `npm run ports:gazetteer`; check with
+`npm run qa:vessel-destinations`.
 
 ### NGA World Port Index (`ports/`)
 

@@ -25,6 +25,7 @@ import airportsUrl from './local_data/airports/airports.geojsonl?url';
 import datacentersUrl from './local_data/datacenters/datacenters.geojsonl?url';
 import damsUrl from './local_data/dams/dams.geojsonl?url';
 import portsUrl from './local_data/ports/ports.geojsonl?url';
+import portGazetteerUrl from './local_data/ports/gazetteer.json?url';
 
 /**
  * Registry of local GeoJSON datasets.
@@ -154,8 +155,27 @@ const ports = createLocalGeoJsonLayer({
   // layer: the offer exists exactly while the pack is loaded, and the card
   // that reads it says less when it is not.
   onFeatures: (features) => {
-    const index = buildPortIndex(features);
-    return publishJoin('ports/directory', () => index);
+    // Published SYNCHRONOUSLY on the World Port Index alone, then republished
+    // when the gazetteer lands. The order is the point: a card asking one
+    // second in gets the 2 951 harbours rather than nothing, and the extra
+    // 11 545 places arrive without anyone waiting on them. A gazetteer that
+    // never arrives — offline, 404, a build that skipped the script — leaves
+    // the join exactly as it was before it existed, which is the same
+    // "absence is ordinary" contract every consumer of `layerJoins` already
+    // works to.
+    let index = buildPortIndex(features);
+    let alive = true;
+    const stop = publishJoin('ports/directory', () => index);
+    fetch(portGazetteerUrl)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((gazetteer) => {
+        if (!alive || !gazetteer) return;
+        index = buildPortIndex(features, gazetteer);
+        console.log(`[Data:Ports] gazetteer: +${index.gazetteerPorts} lieux, `
+          + `+${index.aliases} graphies`);
+      })
+      .catch(() => { /* the WPI index stands on its own */ });
+    return () => { alive = false; stop(); };
   },
 });
 

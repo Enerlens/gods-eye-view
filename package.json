@@ -109,6 +109,8 @@
     "qa:address-layers": "node scripts/qa-address-layers.mjs",
     "qa:rnb-pivot": "node scripts/qa-rnb-pivot.mjs",
     "airports:pack": "node scripts/build-ourairports.mjs",
+    "ports:gazetteer": "node scripts/build-port-gazetteer.mjs",
+    "qa:vessel-destinations": "node scripts/qa-vessel-destinations.mjs",
     "dams:pack": "node scripts/build-osm-dams.mjs",
     "medecins:registry": "node scripts/build-medecins-fr.mjs",
     "qa:medecins-fr": "node scripts/qa-medecins-fr.mjs",

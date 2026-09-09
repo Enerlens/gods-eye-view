@@ -631,6 +631,18 @@ export const DATA_CREDITS = [
       '— U.S. public domain. Harbour depths are WPI range bins, not surveyed soundings.',
   },
   {
+    // The gazetteer that resolves an AIS destination to a place the WPI is not
+    // an index of. Not drawn — but read on every vessel card, so it is
+    // credited: GeoNames is CC BY 4.0 and attribution is a condition of it.
+    key: 'port-gazetteer',
+    html:
+      'Destinations AIS (lieux non dessinés) : ' +
+      '<a href="https://unece.org/trade/cefact/UNLOCODE-Download" target="_blank" rel="noopener">UN/LOCODE</a> ' +
+      '(UNECE, ODC-PDDL 1.0) et ' +
+      '<a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> ' +
+      '(CC BY 4.0) — 11 545 ports fluviaux et maritimes, 13 657 graphies.',
+  },
+  {
     key: 'ourairports',
     html:
       'Airports &amp; aerodromes: ' +

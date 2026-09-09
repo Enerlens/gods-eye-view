@@ -24,6 +24,74 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   trois arrivent avec l'asset et ne se retirent pas. Une clé Google facturée
   hors EEE reste le chemin propre pour un produit payant ; sinon c'est le
   palier ion commercial. `DATA_SOURCES.md` porte les deux lignes.
+- **Un aéroport dit enfin ce qui lui arrive, sans qu'on ait rien cliqué.** La
+  ligne « en approche » d'une carte d'aérodrome lisait les trajets des vols, et
+  les trajets n'étaient demandés que pour **le vol suivi** — un avion à la fois.
+  Une session fraîche répondait donc `0/0` pour tous les aérodromes du monde
+  jusqu'à ce qu'un lecteur suive par hasard un avion vers celui qu'il regardait.
+  La flotte à l'écran est désormais enrichie elle aussi.
+
+  **Le blocage était de ne pas savoir combien ça coûte, alors on l'a mesuré.**
+  `npm run qa:enrich-budget` compte maintenant les deux demandes sur une même
+  passe et une même flotte, parce que ce ne sont pas les mêmes flottes : une
+  recherche de TYPE se fait sur l'adresse hexadécimale — tout contact en vol est
+  demandeur — tandis qu'une recherche de TRAJET se fait sur l'INDICATIF, et seul
+  un indicatif de compagnie peut aboutir. Mesuré le 2026-09-09, 26 relevés sur
+  14,6 minutes : Paris **726 contacts en vol pour 573 indicatifs de compagnie**
+  (79 %) et 72 nouveaux par 5 minutes ; Los Angeles 511 / 222 et 22. Et le
+  **rendement** compte autant que la demande : **30 indicatifs sur 40 (75 %)**
+  donnent une route chez adsbdb, et les 30 portent toutes les coordonnées de
+  l'arrivée.
+
+  D'où un **second seau de jetons**, 600 de plafond et 100 de recharge, et non
+  un partage de celui des types. Ce que voit adsbdb ne bouge pas : c'est le
+  goutte-à-goutte partagé qui borne le débit (≤ 5 req/s contre une limite de
+  512 par minute), pas les seaux — ils bornent le TOTAL d'une session.
+
+  Au passage, le harnais comparait encore ses mesures au plafond de **300**,
+  alors que celui-ci était passé à 1 000 quatre jours plus tôt : il affichait
+  donc « le plafond NE COUVRE PAS la première vue » à propos d'un plafond qui la
+  couvrait. Corrigé.
+
+- **Un navire dit où il va, et la carte sait nommer deux fois plus de ces
+  endroits — 50,4 % → 68,9 %.** Le champ `destination` d'un message AIS est
+  vingt caractères tapés à la main par un commandant. Il était résolu contre les
+  2 951 escales du World Port Index, et l'audit de septembre avait écrit ce
+  qu'était l'autre moitié : des **ports fluviaux** (`MAINZ`, `PARIS`,
+  `FRANKFURT`, `KARLSRUHE`, `DUISBURG`) que le WPI n'indexe pas parce qu'il
+  indexe des ports **maritimes**, et des **exonymes** (`ANTWERP` pour
+  `Antwerpen`, `GENOA` pour `Genova`). Les deux demandaient la même chose : une
+  table de noms **avec une source**.
+
+  `scripts/build-port-gazetteer.mjs` la fabrique à partir de trois registres, et
+  aucun ne fait plus que ce pour quoi il est cité. **UN/LOCODE** (UNECE, domaine
+  public ODC-PDDL) décide *ce qui est un port* — code de fonction `1`, que les
+  ports fluviaux portent exactement comme les maritimes — et fournit 11 545
+  lieux absents du WPI, plus sa propre liste d'alias. **GeoNames** (CC BY 4.0)
+  ne sert qu'à *compléter* une ligne déjà choisie par UN/LOCODE : une coordonnée
+  pour les 4 791 ports dont la colonne est vide (`Mainz`, `Karlsruhe`,
+  `Portsmouth`), et les autres graphies d'une ville rattachée à un port **par le
+  nom ET par la distance** (≤ 25 km). 13 657 graphies au total. Toujours aucune
+  distance d'édition nulle part : deux chaînes se replient sur la même clé, ou
+  elles ne se rencontrent pas.
+
+  **Un nom qui s'accorde de loin est refusé plus durement qu'avant.** Le
+  plafond de 2 500 km du WPI avait été mesuré sur 2 951 grandes escales ; le
+  gazetteer en compte quatre fois plus et ce sont des noms de lieux ordinaires
+  — `Stein`, `Beaulieu`, `Workum`. Sur le même échantillon de 1 924 navires, les
+  correspondances se séparent aussi nettement que les premières : **268 bonnes
+  de 0 à 415 km** (une péniche est loin de sa destination parce qu'un fleuve est
+  long), un trou, puis **9 mauvaises à partir de 622 km**. Le plafond du
+  gazetteer est donc à **500 km**, dans le trou, et il est appliqué **par
+  entrée** : un lieu du gazetteer hors de portée ne masque pas une escale du WPI
+  qui, elle, est dans la sienne.
+
+  Trouvé en chemin : `København` se repliait sur `K BENHAVN`. La normalisation
+  Unicode sépare `Ê` en `E` + accent, mais elle ne touche pas les lettres dont
+  le signe fait partie du dessin — `ø`, `æ`, `ß`, `þ`, `ł`. **174 noms** du
+  gazetteer se repliaient sur une clé trouée et ne pouvaient rencontrer aucune
+  saisie. `npm run qa:vessel-destinations` mesure le recensement complet.
+
 - **« Paris, mardi 8 h » est devenu un geste — les trois couches de semaine type
   partagent une heure.** Trois couches de ce dépôt ne dessinent pas une mesure
   en direct mais une **semaine archivée type** : les comptages routiers de Paris
