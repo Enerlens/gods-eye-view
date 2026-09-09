@@ -509,115 +509,117 @@ export function airportCardDetails(props) {
 
 /*
  * ══════════════════════════════════════════════════════════════════════════
- * IMPORTANCE — the ladder that separates Roissy from an aéroclub
+ * IMPORTANCE — one question, asked once: is a seat sold here?
  * ══════════════════════════════════════════════════════════════════════════
  *
- * Seven thousand identical dots is a wall, not a map. The pack already carries
- * the two facts that decide how much an airfield matters, and they are
- * INDEPENDENT of each other:
+ * Seven thousand identical dots is a wall, not a map. The ladder that thins it
+ * used to cross TWO axes — OurAirports' editorial size bucket and the
+ * scheduled-service flag — and it read `large_airport` BEFORE `scheduled`. So
+ * its four steps changed subject as you descended them: size, then service,
+ * then size again. It also seated Paris-Le Bourget, which sells no scheduled
+ * seat at all, at the top of a ladder whose LIGNES chip promised "terrains
+ * desservis par une ligne régulière". 22 fields worldwide made that promise
+ * false, and Le Bourget was not an edge case to patch — it was the symptom.
  *
- *   `type`      — OurAirports' editorial SIZE class. Large means a lot of
- *                 traffic on a long runway. It is not a legal status (see the
- *                 file header) but it is a real, curated size signal.
- *   `scheduled` — whether a timetabled service calls there. This one is a hard
- *                 fact rather than an editorial judgement: a ticket is sold, or
- *                 it is not.
+ * The ladder asks ONE question now, and it is the hard one:
  *
- * Crossing them gives four tiers a reader can actually name. Ordered most to
- * least important, because that order drives the dot size, the label ladder and
- * the display floors below — one ladder, not three that can drift apart.
+ *     `scheduled` — is a ticket sold here? Not an editorial judgement. A
+ *                   timetabled service calls, or it does not.
+ *
+ * The two steps under it are not a second axis sneaking back in. They are the
+ * SELECTION POLICY made visible: clause (a) admits the world's large and medium
+ * airports, clause (c) admits the French long tail and nothing else. The fields
+ * with no scheduled service therefore split exactly where the pack's own
+ * COVERAGE splits — one worldwide step, one France-only step — and the reader
+ * is looking at the shape of the pack rather than at a second opinion on size.
+ *
+ * WHY SIZE IS NOT ON THIS LADDER ANY MORE
+ * ---------------------------------------
+ * `type` is a PROXY for runway length — the file header says so, and the
+ * shipped pack proves it. Median longest runway: 3 048 m for `large_airport`,
+ * 2 050 m for `medium_airport`, 1 037 m for `small_airport` — landing on the
+ * 3 000 / 1 800 / 1 000 m thresholds {@link AIRPORT_LENGTH_CLASSES} already
+ * draws with. Colouring by the bucket while sizing by the measurement was one
+ * fact on two channels (A3), and the measurement is the better of the two.
+ * Roissy still towers over the grass strip beside it — at 18 px against 6, in
+ * published metres. `AIRPORT_TYPE_LABELS` keeps the bucket for the CARD, where
+ * it is named and therefore honest.
  *
  * WHY `airfield` IS ENTIRELY FRENCH, AND WHY THAT IS NOT A BUG
  * -----------------------------------------------------------
- * Clause (c) of the selection policy is the ONLY one that admits a small field
- * with no scheduled service, and it is France-only. So every one of the 1,126
- * `airfield` markers is French — the tier ladder ends up separating "the
- * world's airports" from "France's flying clubs" almost exactly. That is the
- * shape of the pack, stated rather than hidden.
- */
-
-/**
- * The four importance tiers, most important first. This array IS the order: the
- * legend renders it top-down and `AIRPORT_DISPLAY_FLOORS` slices it by index.
- *
- * Colours are one violet ramp rather than four unrelated hues, because these
- * are four grades of ONE thing, and an ordered series must vary in VALUE and
- * not only in hue (B4). Against a light IGN basemap the brightest step needs
- * help, which is what the renderer's black point outline is for — it was
- * already there, and it is the reason the size channel could be freed.
- *
- * ── WHAT THE SIZE CHANNEL USED TO CARRY, AND WHY IT DOES NOT ANY MORE ───────
- *
- * The tier: 14 / 10.5 / 8 / 6 px. So the dot's diameter and the dot's
- * brightness said the same four-valued thing, which is A3 — one canal, one
- * information — and the pack's own README says why it was wrong on top of
- * that: `type` is "OurAirports' editorial SIZE bucket … driven mostly by
- * traffic and RUNWAY LENGTH". The layer was painting the proxy while carrying
- * the measurement, on 82 % of its features, unused.
- *
- * Size now carries `longestM` ({@link AIRPORT_LENGTH_CLASSES}). Tier keeps the
- * three channels that are its own and that nothing competes for: colour, the
- * label ladder's priority, and the two distances below. Same move
- * `damsPack.js` made next door, for the same reason — which is why
- * `pixelSize` and `stemWidth` are absent from {@link AIRPORT_TIER_STYLES}: a
- * tier-shaped size left there would silently win the merge against a feature
- * whose runway was never measured.
+ * Clause (c) is the ONLY one that admits a small field with no scheduled
+ * service, and it is France-only. Measured on the shipped pack: of the 931
+ * non-French small fields, hydrobases and balloonports, every single one is
+ * here on clause (b) — a sold seat — and so ranks `airline`. The bottom step is
+ * 1 126 features, 100 % French, by construction rather than by accident.
  *
  * ── THE TWO DISTANCES ───────────────────────────────────────────────────────
  *
  * `cardMaxDistance` is how far out the NAME is still offered. `markerMaxDistance`
- * is how far out the MARK is drawn at all, and it is new. It exists because
- * the `airfield` tier is 100 % French — clause (c) is the only one that admits
- * a small field with no scheduled service, and it is France-only — so a globe
- * that draws all four tiers from orbit reports a French aerodrome density that
- * is an artefact of the SELECTION, not of the world. That is the second of A4's
- * three empties, and it was undeclared.
+ * is how far out the MARK is drawn at all. The second exists because of the
+ * paragraph above: a globe that draws all three steps from orbit reports a
+ * French aerodrome density that is an artefact of the SELECTION, not of the
+ * world. That is the second of A4's three empties.
  *
  * 900 km for `airfield` is derived, not chosen: France spans about 1 000 km, and
  * at ~870 km a 1 000 km span fills a 1080 px viewport. The aéroclubs therefore
  * arrive exactly when France is the subject of the frame, and not before. The
  * others are set to about 2.5× their card range, so the mark always precedes
  * the name it belongs to rather than arriving with it.
+ *
+ * Folding the old `hub` step into `airline` costs the one thing that step did
+ * well: Roissy's name, readable from orbit, where `airline`'s own 3 000 km card
+ * range would drop it. That range moves to the channel that now carries size —
+ * a runway of 3 000 m or more lifts its OWN card and mark to 14 000 km, per
+ * feature, in {@link airportRenderSpec}. 1 280 fields qualify against the 1 173
+ * that used to, and not one of them is an aéroclub; see the refusal there.
+ */
+
+/**
+ * The three importance tiers, most important first. This array IS the order:
+ * the legend renders it top-down and `AIRPORT_DISPLAY_FLOORS` slices it by
+ * index.
+ *
+ * Colours are one violet ramp rather than three unrelated hues, because these
+ * are three grades of ONE thing, and an ordered series must vary in VALUE and
+ * not only in hue (B4). Three steps of value read further apart than the four
+ * they replace. Against a light IGN basemap the brightest step needs help,
+ * which is what the renderer's black point outline is for.
+ *
+ * `pixelSize` is absent on purpose — see the header. The dot's diameter is a
+ * per-feature measurement now, and a tier-shaped size left here would silently
+ * win the merge against a feature whose runway was never measured.
  */
 export const AIRPORT_TIERS = Object.freeze([
   Object.freeze({
-    key: 'hub',
-    label: 'Grand aéroport',
-    color: '#f0e6ff',
-    stemWidth: 3.5,
-    priority: 240,
-    // Readable from orbit: the shared local-layer ceiling, unchanged.
-    cardMaxDistance: 14_000_000,
-    markerMaxDistance: 14_000_000,
-    blurb: 'Classe « large » d’OurAirports — le trafic et la longueur de piste. Roissy, Heathrow, JFK.',
-  }),
-  Object.freeze({
     key: 'airline',
     label: 'Aéroport de ligne',
-    color: '#c8a6ff',
-    stemWidth: 3,
-    priority: 170,
+    color: '#e6d8ff',
+    stemWidth: 3.5,
+    priority: 240,
     // Continental scale — the card arrives once a country fills the screen.
+    // A field with 3 000 m of runway overrides this to 14 000 km on its own.
     cardMaxDistance: 3_000_000,
-    markerMaxDistance: 7_500_000,
+    markerMaxDistance: 14_000_000,
     blurb: 'Dessert au moins une ligne régulière — un billet s’y achète.',
   }),
   Object.freeze({
     key: 'airport',
     label: 'Aéroport sans ligne',
-    color: '#9a7ad1',
-    stemWidth: 2.5,
+    color: '#a98ada',
+    stemWidth: 2.75,
     priority: 110,
     // Regional scale.
     cardMaxDistance: 1_200_000,
     markerMaxDistance: 3_000_000,
-    blurb: 'Classe « medium » sans service régulier : bases aériennes, aviation d’affaires, terrains de fret.',
+    blurb: 'Aucune ligne régulière : bases aériennes, aviation d’affaires, terrains de fret.',
   }),
   Object.freeze({
     key: 'airfield',
     label: 'Aérodrome & aéroclub',
     color: '#6d5a94',
     stemWidth: 2,
+    priority: 30,
     // Départemental scale, and the number that stops Île-de-France reading as
     // fifteen aéroclubs and three airports. Only the CARD waits this long; the
     // mark itself arrives at `markerMaxDistance`, which is where France stops
@@ -625,7 +627,6 @@ export const AIRPORT_TIERS = Object.freeze([
     cardMaxDistance: 200_000,
     markerMaxDistance: 900_000,
     blurb: 'Terrain sans ligne régulière — aéroclubs, altisurfaces, hydrobases. France uniquement dans ce paquet.',
-    priority: 30,
   }),
 ]);
 
@@ -649,21 +650,34 @@ export const AIRPORT_TIER_STYLES = Object.freeze(Object.fromEntries(
 ));
 
 /**
+ * The two `type` values clause (a) of the selection policy admits worldwide.
+ * They are what separates the pack's two unscheduled steps, and they are read
+ * as a COVERAGE fact — "this kind of field is in the pack for every country" —
+ * never as a size ranking. Size is on the diameter; see the ladder's header.
+ */
+const WORLDWIDE_AIRPORT_TYPES = new Set(['large_airport', 'medium_airport']);
+
+/**
  * Which tier one packed airport belongs to.
  *
- * Read top-down; the first match wins, which is why `large_airport` is tested
- * before `scheduled`. Roissy is both, and it is a hub — putting it in
- * "aéroport de ligne" because it also sells seats would empty the top tier.
+ * The service question is asked FIRST and answers on its own: a field that
+ * sells a seat is an "aéroport de ligne" whatever its size bucket says. Only
+ * then does the selection policy split what is left — worldwide airports from
+ * the French long tail.
+ *
+ * Anything the pack ships that is neither large nor medium falls to `airfield`:
+ * small fields, hydrobases, the one balloonport, and the published French
+ * heliports of clause (d). A heliport is not an "aéroport sans ligne", and an
+ * absent or unknown `type` is not one either — hence the complement rather than
+ * a list of long-tail types.
  *
  * @param {object} props Shipped feature properties.
- * @returns {string} An `AIRPORT_TIERS` key. Always one of the four.
+ * @returns {string} An `AIRPORT_TIERS` key. Always one of the three.
  */
 export function airportTier(props) {
   const source = props && typeof props === 'object' ? props : {};
-  if (text(source.type) === 'large_airport') return 'hub';
   if (source.scheduled === true) return 'airline';
-  if (text(source.type) === 'medium_airport') return 'airport';
-  return 'airfield';
+  return WORLDWIDE_AIRPORT_TYPES.has(text(source.type)) ? 'airport' : 'airfield';
 }
 
 /**
@@ -676,31 +690,31 @@ export function airportTier(props) {
  * These are RUNTIME params, not share-link state: the pack always ships whole
  * and `getStats().count` keeps reporting the total, so a floor hides markers
  * without ever losing them. Same contract as the hydro layer's `floorKw`.
+ *
+ * There were four. TOUS and LIGNES asked about service, AÉROPORTS and GRANDS
+ * asked about size — two axes on one strip of chips. GRANDS is the one that
+ * went: it kept 1 173 fields, and the size channel answers the same question
+ * without a filter, at a threshold the legend already prints. LIGNES is now
+ * true, which it was not: it used to keep 22 fields that sell no seat.
  */
 export const AIRPORT_DISPLAY_FLOORS = Object.freeze([
   Object.freeze({
     id: 'all',
     label: 'TOUS',
-    keep: Object.freeze(['hub', 'airline', 'airport', 'airfield']),
+    keep: Object.freeze(['airline', 'airport', 'airfield']),
     title: 'Tous les terrains du paquet',
   }),
   Object.freeze({
     id: 'airports',
     label: 'AÉROPORTS',
-    keep: Object.freeze(['hub', 'airline', 'airport']),
+    keep: Object.freeze(['airline', 'airport']),
     title: 'Masquer les aérodromes et aéroclubs',
   }),
   Object.freeze({
     id: 'airlines',
     label: 'LIGNES',
-    keep: Object.freeze(['hub', 'airline']),
+    keep: Object.freeze(['airline']),
     title: 'Ne garder que les terrains desservis par une ligne régulière',
-  }),
-  Object.freeze({
-    id: 'hubs',
-    label: 'GRANDS',
-    keep: Object.freeze(['hub']),
-    title: 'Ne garder que les grands aéroports',
   }),
 ]);
 
@@ -861,6 +875,39 @@ export function airportLengthClass(props) {
   return AIRPORT_LENGTH_UNKNOWN.key;
 }
 
+/** Where a field long enough to be named from orbit is still offered. */
+const ORBIT_MAX_DISTANCE = 14_000_000;
+
+/**
+ * The per-feature range override, and the one refusal that keeps it honest.
+ *
+ * The old `hub` tier carried a 14 000 km card range, and it was the only thing
+ * that tier did that the size channel could not do better: Roissy's name has to
+ * survive an orbital view. That range belongs to the field's LENGTH, not to its
+ * billing — what makes a place nameable from 14 000 km is how much runway it
+ * has — so it moves onto the channel that already carries length. 1 280 fields
+ * reach 3 000 m against the 1 173 that were `large_airport`, and 268 of the
+ * newcomers sell no seat at all: air bases and freight fields that a globe had
+ * no honest reason to hide while showing a regional airport with a shorter
+ * strip.
+ *
+ * THE REFUSAL. An `airfield` never qualifies, whatever its runway. That tier is
+ * 100 % French BY SELECTION — clause (c) has no foreign counterpart — so a
+ * French club field lifted to orbit would draw a density that belongs to the
+ * pack and not to the world, which is exactly the A4 empty `markerMaxDistance`
+ * was added to close. Today the clause costs nothing: not one of the 1 126
+ * `airfield` features reaches 3 000 m, measured on the shipped pack. It is here
+ * so that the day one does, the globe does not quietly start lying.
+ *
+ * @param {object} props Shipped feature properties.
+ * @param {string} classKey The feature's {@link airportLengthClass}.
+ * @returns {number|null} Metres, or null to defer to the tier's own ranges.
+ */
+function orbitRange(props, classKey) {
+  if (classKey !== AIRPORT_LENGTH_CLASSES[0].key) return null;
+  return airportTier(props) === 'airfield' ? null : ORBIT_MAX_DISTANCE;
+}
+
 /**
  * The render contract this pack hands `createLocalGeoJsonLayer` — one object
  * per feature, resolved once at load, in the shape documented there.
@@ -877,10 +924,17 @@ export function airportRenderSpec(props) {
   const classKey = airportLengthClass(props);
   const entry = LENGTH_CLASS_BY_KEY.get(classKey) || AIRPORT_LENGTH_UNKNOWN;
   const lines = airportRunwaySegments(props);
+  const orbit = orbitRange(props, classKey);
   return {
     key: lines.length > 0 ? `${classKey}${AIRPORT_DRAWN_RUNWAY_SUFFIX}` : classKey,
     pixelSize: entry.pixelSize,
     hollow: classKey === AIRPORT_LENGTH_UNKNOWN.key,
+    /**
+     * Both null for all but 1 280 features, which leaves the tier's own two
+     * distances in charge. See {@link orbitRange}.
+     */
+    cardMaxDistance: orbit,
+    markerMaxDistance: orbit,
     color: null,
     surface: null,
     fillAlpha: null,

@@ -620,12 +620,22 @@ in `airports/README.md` and enforced by `src/data/airportsPack.js`:
 
 Positions and elevations are volunteer-maintained. **Not usable for navigation.**
 
-The layer grades every feature into four importance tiers (`large_airport` first, then
-scheduled service, then the `medium_airport` remainder, then everything else). The tier
-drives the dot size, the colour, the label ladder and how far out the card stays
-readable, and four row chips filter by it. Those chips are runtime params, not
-share-link state: the pack always ships whole and the layer keeps reporting all 7,464
-features, so a floor hides markers without losing them.
+The layer grades every feature into three importance tiers on **one** question — is a
+scheduled seat sold here? *Aéroport de ligne* (4,326) is every field that sells one,
+whatever its size bucket. What is left splits where the pack's own coverage splits:
+*Aéroport sans ligne* (2,012) is the worldwide large/medium remainder — air bases,
+business and freight fields — and *Aérodrome & aéroclub* (1,126) is the French long
+tail of clause (c), which is 100 % French by construction and not by accident.
+
+The tier drives the colour, the label ladder and how far out the card stays readable.
+It does **not** drive the dot size: that is the published runway length, a measurement
+rather than a bucket. A runway of 3,000 m or more also lifts its own card and mark to
+orbital range, per feature — 1,280 fields, which is what keeps Roissy nameable from
+14,000 km without a size-shaped tier to carry it.
+
+Three row chips filter by tier. They are runtime params, not share-link state: the pack
+always ships whole and the layer keeps reporting all 7,464 features, so a floor hides
+markers without losing them.
 
 ### NGA World Port Index (`ports/`)
 

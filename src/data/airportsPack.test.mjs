@@ -228,27 +228,36 @@ test('thousands separate with an ordinary space, not a runtime-dependent one', (
 
 // ── Importance tiers ───────────────────────────────────────────────────────
 
-test('the tier reads size first, then whether a ticket is sold', () => {
-  // Roissy is BOTH large and scheduled. Taking the scheduled branch first would
-  // empty the top tier of every airport that also sells seats — i.e. all of them.
-  assert.equal(airportTier({ type: 'large_airport', scheduled: true }), 'hub');
-  assert.equal(airportTier({ type: 'large_airport' }), 'hub');
+test('the tier asks one question — is a seat sold — and the size bucket never overrides it', () => {
+  // The service question answers on its own, whatever the size bucket says.
+  // This is the inversion: `large_airport` used to be read first, which seated
+  // Le Bourget above airports that actually sell seats.
+  for (const type of ['large_airport', 'medium_airport', 'small_airport', 'heliport']) {
+    assert.equal(airportTier({ type, scheduled: true }), 'airline', type);
+  }
 
-  assert.equal(airportTier({ type: 'medium_airport', scheduled: true }), 'airline');
-  assert.equal(airportTier({ type: 'small_airport', scheduled: true }), 'airline');
-  assert.equal(airportTier({ type: 'heliport', scheduled: true }), 'airline');
-
+  // What is left splits on COVERAGE, not on size: clause (a) is worldwide,
+  // clause (c) is France-only.
+  assert.equal(airportTier({ type: 'large_airport' }), 'airport');
   assert.equal(airportTier({ type: 'medium_airport' }), 'airport');
 
+  // A heliport is not an "aéroport sans ligne", and neither is a missing type:
+  // the bottom tier is the COMPLEMENT of the two worldwide classes, not a list.
   for (const type of ['small_airport', 'heliport', 'seaplane_base', 'balloonport']) {
     assert.equal(airportTier({ type }), 'airfield', type);
   }
+  assert.equal(airportTier({ type: 'something_new_upstream' }), 'airfield');
+  assert.equal(airportTier({}), 'airfield');
   assert.equal(airportTier(null), 'airfield');
+
+  // `scheduled` is a hard flag: only an explicit true lifts a field.
+  assert.equal(airportTier({ type: 'small_airport', scheduled: 'yes' }), 'airfield');
+  assert.equal(airportTier({ type: 'small_airport', scheduled: false }), 'airfield');
 });
 
 test('every tier is drawn distinctly, and the ramp descends with importance', () => {
   const keys = AIRPORT_TIERS.map((tier) => tier.key);
-  assert.deepEqual(keys, ['hub', 'airline', 'airport', 'airfield'], 'order is the ladder');
+  assert.deepEqual(keys, ['airline', 'airport', 'airfield'], 'order is the ladder');
   assert.deepEqual(Object.keys(AIRPORT_TIER_STYLES).sort(), [...keys].sort());
 
   // Two tiers sharing a colour would make the ladder unreadable.
@@ -295,7 +304,7 @@ test('every tier is drawn distinctly, and the ramp descends with importance', ()
 
 test('the tier legend declares the marker range, because nothing on screen can', () => {
   const rows = airportTierLegend(new Map([
-    ['hub', { total: 2, visible: 2 }],
+    ['airline', { total: 2, visible: 2 }],
     ['airfield', { total: 10, visible: 4 }],
   ]));
   assert.equal(rows.length, 2);
@@ -359,6 +368,41 @@ test('the render spec sizes by the measurement, rings what was never published, 
     assert.equal(spec.surface, null);
     assert.equal(spec.extrudedHeightM, null);
   }
+});
+
+test('a 3 000 m runway buys its own orbital range, and an aeroclub never does', () => {
+  // The one thing the retired `hub` tier did that size could not: keep Roissy
+  // nameable from orbit. It now rides on the measurement instead of the bucket.
+  const roissy = airportRenderSpec({ type: 'large_airport', scheduled: true, runways: { longestM: 4215 } });
+  assert.equal(roissy.cardMaxDistance, 14_000_000);
+  assert.equal(roissy.markerMaxDistance, 14_000_000);
+
+  // And it is the LENGTH that buys it, not the ticket: an air base with a long
+  // runway had no honest reason to hide while a shorter regional airport drew.
+  const airbase = airportRenderSpec({ type: 'medium_airport', runways: { longestM: 3000 } });
+  assert.equal(airbase.cardMaxDistance, 14_000_000, '3 000 m is inclusive');
+
+  // Everything shorter defers to its tier — null, never 0, which the renderer
+  // would read as "wherever the horizon allows".
+  for (const longestM of [2999, 1200, 8]) {
+    const spec = airportRenderSpec({ type: 'medium_airport', runways: { longestM } });
+    assert.equal(spec.cardMaxDistance, null, `${longestM} m must not reach orbit`);
+    assert.equal(spec.markerMaxDistance, null, `${longestM} m must not reach orbit`);
+  }
+  const unmeasured = airportRenderSpec({ type: 'medium_airport' });
+  assert.equal(unmeasured.cardMaxDistance, null, 'an unpublished length is not a long one');
+
+  // THE REFUSAL. The bottom tier is 100 % French by selection, so no runway
+  // length may lift one of its fields to orbit — that would draw a French
+  // aerodrome density belonging to the pack rather than to the world.
+  const club = airportRenderSpec({ type: 'small_airport', runways: { longestM: 4000 } });
+  assert.equal(airportTier({ type: 'small_airport' }), 'airfield');
+  assert.equal(club.cardMaxDistance, null, 'an aeroclub is never drawn from orbit');
+  assert.equal(club.markerMaxDistance, null, 'an aeroclub is never drawn from orbit');
+
+  // Selling a seat takes the same strip out of that tier, and the refusal with it.
+  const shuttle = airportRenderSpec({ type: 'small_airport', scheduled: true, runways: { longestM: 4000 } });
+  assert.equal(shuttle.cardMaxDistance, 14_000_000);
 });
 
 test('the size legend prints its bounds, counts what is drawn, and names the runway mark', () => {
@@ -453,13 +497,15 @@ test('the shipped geometry is read back defensively, and a stale pack simply has
 
 test('the display floors slice the ladder from the top down', () => {
   const ids = AIRPORT_DISPLAY_FLOORS.map((floor) => floor.id);
-  assert.deepEqual(ids, ['all', 'airports', 'airlines', 'hubs']);
+  // Three chips, one axis. GRANDS is gone: it asked about size, which the size
+  // channel answers without a filter.
+  assert.deepEqual(ids, ['all', 'airports', 'airlines']);
 
-  // Every floor keeps the hub, every floor is a strict prefix of the ladder,
-  // and each one is strictly smaller than the last.
+  // Every floor keeps the top tier, every floor is a strict prefix of the
+  // ladder, and each one is strictly smaller than the last.
   let previous = Infinity;
   for (const floor of AIRPORT_DISPLAY_FLOORS) {
-    assert.ok(floor.keep.includes('hub'), `${floor.id} must keep the hubs`);
+    assert.ok(floor.keep.includes('airline'), `${floor.id} must keep the scheduled fields`);
     assert.deepEqual(floor.keep, AIRPORT_TIERS.slice(0, floor.keep.length).map((t) => t.key),
       `${floor.id} must be a top-down prefix of the ladder`);
     assert.ok(floor.keep.length < previous, `${floor.id} must narrow the view`);
@@ -469,7 +515,7 @@ test('the display floors slice the ladder from the top down', () => {
   assert.equal(airportTierVisible('airfield', { floor: 'all' }), true);
   assert.equal(airportTierVisible('airfield', { floor: 'airports' }), false);
   assert.equal(airportTierVisible('airport', { floor: 'airlines' }), false);
-  assert.equal(airportTierVisible('hub', { floor: 'hubs' }), true);
+  assert.equal(airportTierVisible('airline', { floor: 'airlines' }), true);
 
   // An unknown or absent floor shows everything — never nothing. A params
   // typo must not silently blank the layer.
@@ -480,16 +526,15 @@ test('the display floors slice the ladder from the top down', () => {
 
 test('the legend counts what is DRAWN, and names what it hides', () => {
   const tally = new Map([
-    ['hub', { total: 27, visible: 27 }],
-    ['airline', { total: 92, visible: 92 }],
+    ['airline', { total: 118, visible: 118 }],
     ['airfield', { total: 1126, visible: 0 }],
   ]);
   const legend = airportTierLegend(tally);
   // `airport` had no features at all, so it is absent rather than listed as 0.
   assert.deepEqual(legend.map((entry) => entry.label),
-    ['Grand aéroport', 'Aéroport de ligne', 'Aérodrome & aéroclub']);
-  assert.deepEqual(legend.map((entry) => entry.count), [27, 92, 0]);
-  assert.match(legend[2].blurb, /1126 masqués$/, 'a hidden tier says so');
+    ['Aéroport de ligne', 'Aérodrome & aéroclub']);
+  assert.deepEqual(legend.map((entry) => entry.count), [118, 0]);
+  assert.match(legend[1].blurb, /1126 masqués$/, 'a hidden tier says so');
   assert.ok(!/masqué/.test(legend[0].blurb), 'a fully drawn tier says nothing about hiding');
   assert.deepEqual(airportTierLegend(null), []);
 });
@@ -499,8 +544,12 @@ test('the label ladder is the tier ladder, and nothing else', () => {
   const beauvais = airportLabelPriority({ type: 'medium_airport', iata: 'BVA', scheduled: true });
   const bricy = airportLabelPriority({ type: 'medium_airport' });
   const lognes = airportLabelPriority({ type: 'small_airport' });
-  assert.ok(cdg > beauvais && beauvais > bricy && bricy > lognes,
-    `ladder must descend (${cdg} > ${beauvais} > ${bricy} > ${lognes})`);
+  // Roissy and Beauvais both sell seats, so they now share a rung — the ladder
+  // no longer re-ranks them by a size bucket. Roissy still wins the cell, on
+  // the channel that measures: 18 px of runway against Beauvais' 13.
+  assert.equal(cdg, beauvais);
+  assert.ok(beauvais > bricy && bricy > lognes,
+    `ladder must descend (${beauvais} > ${bricy} > ${lognes})`);
 
   // Selling a seat lifts a grass strip out of the aéroclub tier entirely.
   assert.ok(
@@ -586,6 +635,51 @@ test('the shipped pack obeys the policy it documents', () => {
   // means the join or the upstream merge went wrong.
   const icaos = features.map((f) => f.properties.icao).filter(Boolean);
   assert.equal(new Set(icaos).size, icaos.length, 'duplicate ICAO indicator in the pack');
+});
+
+test('the shipped pack has the shape the three-tier ladder was chosen on', () => {
+  const features = readFileSync(PACK, 'utf8')
+    .split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
+  const french = new Set(FRENCH_TERRITORY_CODES);
+
+  const tally = { airline: 0, airport: 0, airfield: 0 };
+  let foreignAirfields = 0;
+  let orbitalAirfields = 0;
+  for (const { properties } of features) {
+    const tier = airportTier(properties);
+    tally[tier] += 1;
+    if (tier !== 'airfield') continue;
+    // THE CLAIM THE LADDER RESTS ON: the bottom tier is France-only, because
+    // clause (c) of the selection policy has no foreign counterpart. Every
+    // non-French small field in the pack is here on clause (b) — a sold seat —
+    // and therefore ranks `airline`.
+    if (!french.has(properties.countryCode)) foreignAirfields += 1;
+    // And the corollary the range refusal exists for: none of them is long
+    // enough to ask for orbit in the first place. Measured, not assumed.
+    if (Number(properties.runways?.longestM) >= AIRPORT_LENGTH_CLASSES[0].minM) orbitalAirfields += 1;
+  }
+
+  assert.equal(foreignAirfields, 0, 'the aeroclub tier must stay 100 % French');
+  assert.equal(orbitalAirfields, 0,
+    'an aeroclub with a 3 000 m runway would exercise the range refusal — check it still holds');
+
+  // Floors, not equalities: a rebuild that shifts a few fields between tiers is
+  // upstream working, one that empties a tier is a broken ladder.
+  assert.ok(tally.airline > 4000, `scheduled tier collapsed (${tally.airline})`);
+  assert.ok(tally.airport > 1800, `unscheduled airport tier collapsed (${tally.airport})`);
+  assert.ok(tally.airfield > 1000, `aeroclub tier collapsed (${tally.airfield})`);
+
+  // Paris-Le Bourget is why the ladder was inverted: Europe's busiest business
+  // airport, and it sells no scheduled seat. It must NOT rank as a line airport,
+  // which is what the LIGNES chip promises to keep.
+  const byIcao = new Map(features.filter((f) => f.properties.icao)
+    .map((f) => [f.properties.icao, f.properties]));
+  const bourget = byIcao.get('LFPB');
+  assert.ok(bourget, 'Le Bourget must ship');
+  assert.notEqual(bourget.scheduled, true, 'Le Bourget sells no scheduled seat');
+  assert.equal(airportTier(bourget), 'airport');
+  // Roissy, which does, sits one rung above it.
+  assert.equal(airportTier(byIcao.get('LFPG')), 'airline');
 });
 
 test('the shipped pack still has the runway shape the size and line channels were chosen on', () => {
