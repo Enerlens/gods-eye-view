@@ -186,47 +186,156 @@ export const IGN_FRANCE_RECTANGLE = Object.freeze({
  * its bounding box, not its coverage. The France clamp above also contains
  * Belgium, Luxembourg, northern Spain and northern Italy, where the
  * Géoplateforme answers either `<ExceptionReport>No data found` (Brussels,
- * z13) or a ~1.6 kB blank JPEG — 17 of 49 sampled points on the full
- * rectangle. Sleeping the base over that box would punch white holes in the
- * globe outside France. These five boxes are the largest interior ones that
- * survived a tile-by-tile probe at z13 with zero misses and zero blanks
- * (81/81 for the first, 49/49 for the others, measured 2026-09-08).
+ * z13) or a ~1.6 kB blank JPEG. Sleeping the base over that box would punch
+ * white holes in the globe outside France.
  *
- * WHAT IT BUYS, measured with `npm run qa:world-imagery-cost` over Paris at
- * z≈17: the invisible base costs 37 tiles / 813 kB per view, against the
- * visible IGN layer's own 755 kB — the layer nobody can see costs MORE than
- * the one they came for. `cutoutRectangle` measures 37 tiles / 813 kB too,
- * byte for byte identical: it cuts the draw, not the fetch. Only
- * `show = false` takes it to zero. Coastal and border cities are deliberately
- * absent: there the base is genuinely visible and must keep loading.
+ * WHERE THESE SEVENTEEN COME FROM — `npm run qa:ign-opaque-boxes`, run
+ * 2026-09-09. They are no longer hand-drawn. The script sweeps 15 554 points
+ * on a 0.1° grid over the clamp (42% come back covered), erodes to points
+ * whose eight neighbours are covered too, grows overlapping maximal rectangles
+ * from a lattice of seeds in both axis orders, and then re-probes every
+ * candidate at HALF the sweep spacing, offset by a quarter step so the probe
+ * lands on midpoints the sweep itself never saw. Seven of twenty-four
+ * candidates were dropped outright. The seventeen below answered real
+ * orthophoto at every one of their 224-1 530 verification points — ~17 100 in
+ * all, zero misses.
+ *
+ * TWO THINGS THAT WOULD HAVE MADE THIS WRONG, both found by re-running it:
+ * thinning an over-large verification grid by halving walks the samples back
+ * ONTO the sweep grid, so the biggest boxes were being "verified" against the
+ * data that proposed them; and the Géoplateforme intermittently 404s tiles it
+ * does serve, which had the same box scoring 1024/1024 and then 1022/1024 on
+ * an identical lattice. Requiring a refusal to be repeated took the yield from
+ * 8 boxes to 17 without relaxing anything.
+ *
+ * TWO OF THE PREVIOUS FIVE WERE NOT SAFE. Re-probed at this standard,
+ * `0.5,44 -> 5,49` (the largest, and the one carrying every wide view) and
+ * `4.2,43.7 -> 6,45` each contain a confirmed hole: the app has been sleeping
+ * the base over views where the globe had nothing to draw. They passed their
+ * original check because a 9x9 grid over a 4.5° box samples every 0.56°.
+ *
+ * WHAT THIS BUYS, measured with `npm run qa:world-imagery-cost`: the invisible
+ * base costs 37 tiles / 813 kB per nadir Paris view against the visible IGN
+ * layer's own 755 kB — the layer nobody can see costs MORE than the one they
+ * came for. `cutoutRectangle` measures 37 tiles / 813 kB too, byte for byte
+ * identical: it cuts the draw, not the fetch. Only `show = false` takes it to
+ * zero. Coast and border are deliberately absent: there the base is genuinely
+ * visible and must keep loading.
  */
 export const IGN_OPAQUE_BOXES = Object.freeze([
-  Object.freeze({ west: 0.5, south: 44.0, east: 5.0, north: 49.0 }),
-  Object.freeze({ west: -0.5, south: 43.4, east: 2.0, north: 45.5 }),
-  Object.freeze({ west: 4.5, south: 45.2, east: 6.0, north: 48.3 }),
-  Object.freeze({ west: 2.0, south: 49.0, east: 4.0, north: 50.2 }),
-  Object.freeze({ west: 4.2, south: 43.7, east: 6.0, north: 45.0 }),
+  Object.freeze({ west: 0.3, south: 44.8, east: 5.9, north: 46.8 }),
+  Object.freeze({ west: -1.4, south: 47.6, east: 5.6, north: 49.1 }),
+  Object.freeze({ west: 1.4, south: 42.9, east: 2.9, north: 49.9 }),
+  Object.freeze({ west: 2.0, south: 43.4, east: 3.3, north: 50.4 }),
+  Object.freeze({ west: 1.2, south: 43.5, east: 3.6, north: 47.2 }),
+  Object.freeze({ west: -0.5, south: 44.8, east: 6.5, north: 46.0 }),
+  Object.freeze({ west: -1.1, south: 43.7, east: 5.1, north: 44.9 }),
+  Object.freeze({ west: 2.0, south: 42.6, east: 2.9, north: 50.6 }),
+  Object.freeze({ west: -0.6, south: 43.0, east: 2.9, north: 44.9 }),
+  Object.freeze({ west: 2.0, south: 47.6, east: 4.0, north: 50.2 }),
+  Object.freeze({ west: -1.7, south: 46.6, east: 0.8, north: 48.5 }),
+  Object.freeze({ west: -1.9, south: 46.9, east: 0.8, north: 48.5 }),
+  Object.freeze({ west: -1.1, south: 46.3, east: -0.1, north: 49.1 }),
+  Object.freeze({ west: -1.3, south: 43.2, east: 3.0, north: 43.8 }),
+  Object.freeze({ west: 5.5, south: 43.9, east: 6.5, north: 46.0 }),
+  Object.freeze({ west: 5.5, south: 43.9, east: 6.7, north: 44.8 }),
+  Object.freeze({ west: -3.7, south: 47.9, east: -3.1, north: 48.6 }),
 ]);
 
 /**
- * Whether a view is wholly inside one box where IGN is known to be opaque.
+ * Bounding box of the union, so a view nowhere near France costs four
+ * comparisons instead of a coverage computation — which is almost every call,
+ * since the camera spends most of its life outside the boxes.
+ */
+const IGN_OPAQUE_HULL = Object.freeze({
+  west: Math.min(...IGN_OPAQUE_BOXES.map((box) => box.west)),
+  south: Math.min(...IGN_OPAQUE_BOXES.map((box) => box.south)),
+  east: Math.max(...IGN_OPAQUE_BOXES.map((box) => box.east)),
+  north: Math.max(...IGN_OPAQUE_BOXES.map((box) => box.north)),
+});
+
+/**
+ * Every distinct cut along one axis: the span's own bounds, plus each box edge
+ * that falls strictly inside them.
+ * @returns {number[]} ascending, deduplicated.
+ */
+function axisCuts(low, high, boxes, lowKey, highKey) {
+  const cuts = new Set([low, high]);
+  for (const box of boxes) {
+    for (const key of [lowKey, highKey]) {
+      if (box[key] > low && box[key] < high) cuts.add(box[key]);
+    }
+  }
+  return [...cuts].sort((a, b) => a - b);
+}
+
+/**
+ * Whether the UNION of a set of boxes covers every point of a rectangle.
+ *
+ * EXACT, not a heuristic. It cuts the rectangle at every box edge crossing it
+ * and tests one interior point per resulting cell: an axis-aligned rectangle
+ * is covered by a set of axis-aligned rectangles if and only if every cell of
+ * that arrangement is covered, because no box edge passes through a cell's
+ * interior. So two adjacent boxes cover a rectangle that neither contains,
+ * while a genuine gap between them still leaves an uncovered cell.
+ *
+ * Split out from {@link isViewFullyCoveredByIgn} so the geometry can be tested
+ * against shapes the French coastline does not happen to make — an L, a ring
+ * with a hole, two boxes meeting exactly on an edge.
+ * @param {{west: number, south: number, east: number, north: number}} rect
+ * @param {ReadonlyArray<{west: number, south: number, east: number, north: number}>} boxes
+ * @returns {boolean}
+ */
+export function isRectangleCoveredByBoxes(rect, boxes) {
+  if (!rect || !boxes?.length) return false;
+  // An antimeridian-crossing rectangle is never in France, and comparing its
+  // bounds numerically would silently say otherwise.
+  if (rect.east < rect.west || rect.north < rect.south) return false;
+
+  const inside = (lon, lat) => boxes.some((box) => lon >= box.west
+    && lon <= box.east && lat >= box.south && lat <= box.north);
+
+  const cutsX = axisCuts(rect.west, rect.east, boxes, 'west', 'east');
+  const cutsY = axisCuts(rect.south, rect.north, boxes, 'south', 'north');
+  // A rectangle with zero width or height has no cells, and the loop below
+  // would vacuously call it covered. Test the degenerate point itself.
+  if (cutsX.length < 2 || cutsY.length < 2) return inside(rect.west, rect.south);
+
+  for (let i = 0; i < cutsX.length - 1; i += 1) {
+    const lon = (cutsX[i] + cutsX[i + 1]) / 2;
+    for (let j = 0; j < cutsY.length - 1; j += 1) {
+      if (!inside(lon, (cutsY[j] + cutsY[j + 1]) / 2)) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Whether the opaque boxes cover every point of a view, so the world satellite
+ * base underneath can sleep.
  *
  * Degrees in, so the caller converts once and this stays readable next to the
- * table above. A view that straddles two boxes is NOT covered even if their
- * union contains it — the gap between them may be sea, and being wrong here
- * shows as a white hole rather than as a slow frame.
+ * table above.
+ *
+ * WHY A UNION AND NOT "INSIDE ONE BOX", which is what this used to test. The
+ * old test cost a real optimisation and bought no safety with it: at the
+ * cockpit's own default tilt of -30° (`src/camera.js`, `src/orbit.js`) a view
+ * over Paris at 9 400 m spans 1.88-2.70 E / 48.93-49.34 N, which crosses the
+ * northern edge of one box and the western edge of its neighbour, so it
+ * belonged to neither — while being, tile for tile, 81/81 covered. Measured
+ * cost of that single miss: 69 requests / 1 362 kB of Esri fetched under an
+ * opaque orthophoto, against the 41 requests / 923 kB of IGN actually on
+ * screen. The layer nobody could see cost 1.5x the one they came for.
  * @param {{west: number, south: number, east: number, north: number}|null} view
  * @returns {boolean}
  */
 export function isViewFullyCoveredByIgn(view) {
   if (!view) return false;
-  // An antimeridian-crossing view is never in France, and comparing its bounds
-  // numerically would silently say otherwise.
-  if (view.east < view.west || view.north < view.south) return false;
-  return IGN_OPAQUE_BOXES.some((box) => view.west >= box.west
-    && view.east <= box.east
-    && view.south >= box.south
-    && view.north <= box.north);
+  // Nothing outside the hull can be covered, and that is almost every call:
+  // the camera spends most of its life nowhere near France.
+  if (view.west < IGN_OPAQUE_HULL.west || view.east > IGN_OPAQUE_HULL.east
+    || view.south < IGN_OPAQUE_HULL.south || view.north > IGN_OPAQUE_HULL.north) return false;
+  return isRectangleCoveredByBoxes(view, IGN_OPAQUE_BOXES);
 }
 
 // Keyless global ellipsoidal terrain (Re:Earth Terrain / Mapterhorn, CC BY 4.0,

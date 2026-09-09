@@ -87,6 +87,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   information, et celui qui touche obtient la version complète sur-le-champ.
 
 ### Fixed
+- **Sous le fond Satellite, la couche que personne ne voit coûtait une fois et
+  demie celle qu'on regarde.** La pastille Satellite empile deux couches : le
+  satellite mondial d'Esri, et l'orthophoto IGN par-dessus. Cesium télécharge la
+  couche du dessous en entier même quand celle du dessus la masque
+  complètement ; un garde-fou existait donc pour l'éteindre au-dessus de la
+  France, mais il exigeait que la vue tienne dans **une seule** boîte de
+  couverture, et les cinq boîtes étaient dessinées à la main. Résultat : au
+  **tangage par défaut du cockpit** (−30°), Paris à 9 382 m couvrait
+  1,88–2,70 E / 48,93–49,34 N — à cheval sur deux boîtes, donc dans aucune,
+  alors que la zone est couverte 81 fois sur 81. Cette vue payait **69 requêtes
+  et 1 362 ko d'Esri invisible** contre **41 requêtes et 927 ko d'IGN** à
+  l'écran. Elle en paie maintenant **zéro** : l'imagerie de la vue tombe de
+  2 285 ko à 927 ko, **−59 %**.
+
+  Deux corrections, et une mesure qui en a tué une troisième. Le test de
+  couverture teste désormais l'**union** des boîtes, exactement (il découpe la
+  vue à chaque arête et vérifie chaque cellule), au lieu de l'appartenance à une
+  seule. Et les boîtes ne sont plus dessinées : `npm run qa:ign-opaque-boxes`
+  les **dérive** d'un balayage de 15 554 points sur la Géoplateforme, puis
+  re-sonde chaque candidate au demi-pas décalé — 7 candidates sur 24 éliminées,
+  les **17** retenues vérifiées sur ~17 100 points sans un seul manque. Sur un
+  balayage de 15 400 positions de caméra, **30 à 37 % de vues supplémentaires**
+  éteignent le fond. En revanche, remplacer `computeViewRectangle()` par un
+  échantillonnage de l'écran n'aurait rien donné : mesuré, les deux coïncident
+  exactement tant que l'horizon n'est pas dans le champ, et quand il l'est on
+  voit vraiment 300 km, donc le fond est nécessaire.
+
+  Au passage, **deux des cinq anciennes boîtes contenaient un vrai trou**
+  (`0,5;44 → 5;49`, la plus grande, et `4,2;43,7 → 6;45`) : l'application
+  éteignait le fond sur des vues où le globe n'avait rien à dessiner. Elles
+  avaient passé un contrôle 9×9, soit un point tous les 0,56° sur une boîte de
+  4,5°. Rien ne change hors de France ni sur le littoral, où le fond mondial est
+  la seule image et doit continuer à se charger.
+
 - **Une scène immobile ne s'arrêtait jamais de dessiner, et la cause était une
   phrase.** Le HUD retapait son résumé à la machine à écrire toutes les 15
   secondes **même quand le texte était identique** — ce qui est le cas normal
