@@ -19,6 +19,7 @@ import { initDatasetBox } from './data/datasetBox.js';
 import { registerDataCredits } from './data/dataCredits.js';
 import { installLazyVoice } from './voice/lazyVoice.js';
 import { MapStackController } from './mapStackController.js';
+import { describePhotorealFailure, loadPhotorealTileset } from './photorealTileset.js';
 import { ignTerrainFlagEnabled } from './data/ignBilTerrain.js';
 import { initLogoGaze } from './logoGaze.js';
 import { installStarfield } from './starfield.js';
@@ -243,26 +244,47 @@ async function init() {
     // source chip. A basemap that is not the one the app asked for has to say
     // so; the old code's `console.warn` was a message to nobody.
     let tilesetError = '';
-    if (keylessMode) {
-      // Deliberately NOT "call it and catch": `createGooglePhotorealistic3DTileset()`
-      // with no key spends a doomed round-trip and then reports a network error,
-      // which the loader would print as if something had gone wrong. Nothing has —
-      // this is the configured build.
-      loaderStatus.textContent = 'No Google key — starting keyless...';
+    // Which door the 3D globe came through, or null. An ion-served tileset is
+    // the SAME Google tileset, but on Cesium's contract and quota, so QA and
+    // anyone driving the app from the console needs to be able to tell them
+    // apart without reading the network panel.
+    let tilesetSource = null;
+    if (!googleApiKey && !cesiumToken) {
+      // Deliberately NOT "call it and catch": with neither credential there is
+      // nothing to try, and an attempt would spend a doomed round-trip and then
+      // report a network error the loader would print as if something had gone
+      // wrong. Nothing has — this is the configured build.
+      loaderStatus.textContent = 'No Google key or ion token — starting keyless...';
     } else {
-      loaderStatus.textContent = 'Loading Google 3D Tiles...';
-      try {
-        // Load Google Photorealistic 3D Tiles
-        tileset = await Cesium.createGooglePhotorealistic3DTileset({
-          onlyUsingWithGoogleGeocoder: true,
-        });
+      const photoreal = await loadPhotorealTileset(Cesium, {
+        googleApiKey,
+        // The token already in the build for Bing and world terrain. It also
+        // opens Google's photoreal tileset as ion asset 2275207, which is the
+        // ONLY route left to the 3D globe on an EEA-billed Google key.
+        ionToken: cesiumToken,
+        onAttempt: (source) => {
+          loaderStatus.textContent = source === 'ion'
+            ? 'Loading Google 3D Tiles via Cesium ion...'
+            : 'Loading Google 3D Tiles...';
+        },
+      });
+      tileset = photoreal.tileset;
+      tilesetSource = photoreal.source;
+      if (tileset) {
+        if (photoreal.source === 'ion') {
+          console.info(
+            '[Init] Google 3D Tiles served through Cesium ion (asset 2275207) — '
+            + `${photoreal.errors.length ? 'the build key was refused: ' + describePhotorealFailure(photoreal.errors) : 'no Google key in this build'}. `
+            + 'Cesium ion credits, including the free tier\'s "Upgrade for commercial use.", are required on screen.',
+          );
+        }
         viewer.scene.primitives.add(tileset);
         // NOTE: Cesium World Terrain intentionally disabled — conflicts with Google 3D Tiles at high zoom.
         // Google Photorealistic 3D Tiles provide their own terrain/elevation.
         viewer.scene.globe.show = false;
-      } catch (tileError) {
-        console.warn('[Init] Google 3D Tiles unavailable, falling back to Cesium globe:', tileError);
-        tilesetError = describeError(tileError);
+      } else {
+        console.warn('[Init] Google 3D Tiles unavailable, falling back to Cesium globe:', photoreal.errors);
+        tilesetError = describePhotorealFailure(photoreal.errors);
         loaderStatus.textContent = `Google 3D Tiles unavailable (${tilesetError}). Continuing in fallback mode...`;
         // Keep Cesium globe visible as fallback instead of aborting the app.
         viewer.scene.globe.show = true;
@@ -290,7 +312,9 @@ async function init() {
     // EEA billing address (403) but still serves roadmap and terrain on the
     // very same key, so Google's own cartography is both a better first
     // impression than OSM and the thing the operator is already paying for.
-    // The keyless build is untouched — it still lands on OSM.
+    // The keyless build lands on OSM only when it has no ion token either:
+    // with one, `tileset` is the ion-served photoreal globe and this lands on
+    // it, key or no key.
     const startupStack = tileset
       ? 'photoreal'
       : (keylessMode ? 'osm' : 'google-roadmap');
@@ -536,6 +560,8 @@ async function init() {
       viewer,
       styleManager,
       tileset,
+      // 'google-key' | 'ion' | null — see the load block above.
+      tilesetSource,
       dataManager,
       // Null until the voice stack lands — `voiceReady` is how a caller waits
       // for it without polling, and `loadVoice()` how it asks for it early.

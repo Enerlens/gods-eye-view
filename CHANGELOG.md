@@ -6,6 +6,25 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Added
+- **Le globe photoréaliste revient, par Cesium ion.** Google retire les tuiles
+  3D et le satellite aux projets facturés dans l'EEE depuis le 8 juillet 2025 :
+  la restriction porte sur l'adresse de facturation du projet, jamais sur le
+  lecteur, et la pastille « Google 3D » était grise ici depuis. Cesium ion
+  publie le **même** jeu de tuiles (asset `2275207`) sous son propre contrat
+  Google, facturé aux États-Unis. L'application essaie donc sa clé d'abord, et
+  quand Google la refuse elle passe par ion sans rien demander. Mesuré depuis
+  la France le 2026-09-09 : 403 sur la clé du dépôt, puis 474 tuiles Google
+  servies par ion et le globe qui ouvre sur Paris. Un jeton ion **gratuit**
+  suffit, et un build sans aucune clé Google y a droit aussi — c'est la route
+  que `npm run doctor` annonçait déjà sans qu'elle existe.
+
+  **Ce que ça coûte, et qui doit le savoir.** Le palier gratuit d'ion est
+  « personnel et non commercial » : il impose à l'écran le crédit
+  « Upgrade for commercial use. » à côté des logos Cesium ion et Google. Les
+  trois arrivent avec l'asset et ne se retirent pas. Une clé Google facturée
+  hors EEE reste le chemin propre pour un produit payant ; sinon c'est le
+  palier ion commercial. `DATA_SOURCES.md` porte les deux lignes.
+
 - **Une petite centrale hydro dit enfin l'eau qui passe et l'ouvrage à côté.**
   ODRÉ publie une puissance installée et jamais le débit ; il publie une hauteur
   de chute et jamais l'ouvrage qui retient l'eau. Hub'Eau mesure le premier à

@@ -527,10 +527,17 @@ export class MapStackController {
    */
   _unavailableReason(stack) {
     if (stack?.requiresIon) return 'Cesium ion token required for Bing stacks';
-    if (stack?.kind === 'photoreal' && this.googleKeyConfigured === false) {
-      return 'Google Maps API key required for Google 3D';
+    // Two credentials open the photoreal globe, not one: the Google key, and
+    // an ion token (ion serves the same tileset as asset 2275207, under
+    // Cesium's US-billed Google project — the only route left on an EEA key).
+    // So "no key" is only the right advice when there is no ion token either;
+    // a keyless build WITH a token that still has no tileset failed for some
+    // other reason, and saying "API key required" would send the reader to buy
+    // the one thing that would not have helped.
+    if (stack?.kind === 'photoreal' && this.googleKeyConfigured === false && !this.cesiumToken) {
+      return 'Google Maps API key or Cesium ion token required for Google 3D';
     }
-    if (stack?.kind === 'photoreal' && this.googleKeyConfigured === true) {
+    if (stack?.kind === 'photoreal' && this.googleKeyConfigured !== null) {
       return this.googleTilesetError
         ? `Google 3D Tiles failed to load: ${this.googleTilesetError}`
         : 'Google 3D Tiles failed to load';
