@@ -288,6 +288,17 @@ test('Windows production hardener applies its exact DACL with native tools', {
   try {
     fs.writeFileSync(filepath, '');
     const hardened = hardenCredentialFile(filepath, { spawn });
+    if (!hardened) {
+      // One diagnostic probe, only on the failing path: which policy is in
+      // force, and can PowerShell see its own module directory at all.
+      const probe = spawnSync(
+        path.win32.join(String(process.env.SystemRoot || process.env.SYSTEMROOT), 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+        ['-NoProfile', '-NonInteractive', '-Command',
+          '(Get-ExecutionPolicy -List | Out-String) + "PSHOME=" + $PSHOME + " PSModulePath=" + $env:PSModulePath'],
+        { encoding: 'utf8', windowsHide: true },
+      );
+      trace.push(`probe → ${`${probe.stdout || ''} ${probe.stderr || ''}`.replace(/\s+/g, ' ').trim().slice(0, 500)}`);
+    }
     assert.equal(hardened, true, trace.length
       ? `native tools: ${trace.join('; ')}`
       : 'refused before spawning any tool — check SystemRoot/WINDIR resolution');
