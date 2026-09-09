@@ -5,6 +5,47 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-09
 
+### Added
+- **Le bâtiment devient un pivot : un clic sur un volume dit ce que ce sol a
+  valu, ce qui y a été autorisé, et ce que le PLU y permet.** Un volume BD TOPO
+  résolvait déjà son identité RNB, ses adresses BAN et ses parcelles
+  cadastrales. Il ne pouvait pas dire les trois choses qu'un lecteur devant un
+  bâtiment veut vraiment savoir.
+
+  **Le blocage annoncé n'existait pas, et le vérifier est ce qui a rendu ce
+  module petit.** Le plan disait que les trois tirages sont « des requêtes
+  réseau déclenchées par une carte, ce que le dépôt ne fait nulle part
+  aujourd'hui ». Deux moitiés de cette phrase sont fausses : le motif existe
+  (`cadastreParcels` publie sa carte tout de suite, lance deux requêtes, garde
+  en cache par parcelle, annule à la re-sélection — et la couche bâtiments fait
+  déjà exactement cela pour le RNB), et **aucune requête n'est nécessaire** :
+  DVF, Sitadel et le GPU sont trois couches déjà chargées pour la même vue. Les
+  ventes portent `id_parcelle`, les permis portent la parcelle qui les a reçus,
+  et le zonage est un jeu de polygones avec une requête par point. La réponse
+  est donc une **lecture** de ce qui est déjà en mémoire — la propriété que le
+  plan appelait l'obstacle est en fait la solution.
+
+  La carte d'un bâtiment gagne jusqu'à trois lignes, dans l'ordre où on se pose
+  les questions : `Vendu juillet 2024 · 560 000 € · 14 359 €/m² — DVF, sur
+  cette parcelle`, `Permis : DP · Autorisé · décembre 2019 — Sitadel, sur cette
+  parcelle`, `PLU : UGSU — Zone urbaine générale · 1 servitude`.
+
+  **Chaque ligne n'existe que si sa propre ligne du panneau est allumée**, ce
+  qui est le contrat de `layerJoins.js` et la forme honnête ici : une fiche qui
+  irait chercher DVF dans le dos du lecteur serait un second balayage d'un
+  registre qu'il a choisi de ne pas ouvrir, au rayon et au millésime qu'il n'a
+  pas choisis. Une carte sans aucune des trois couches est exactement celle que
+  le dépôt dessinait avant.
+
+  **La clé de jointure est vérifiée sur données vivantes** : le RNB publie
+  `75104000AE0003`, DVF publie `75104000AD0034`, et Sitadel publie les morceaux
+  — commune, section, numéro, sans préfixe — que le cadastre complète à la
+  pose. Les 4 500 parcelles du paquet de Paris s'assemblent toutes ; sur un
+  disque de 300 m au centre, 3 des 89 parcelles vendues portent aussi un permis.
+  Un morceau manquant est un **refus**, jamais un rembourrage : un préfixe lu
+  `000` alors qu'il vaut `801` désigne une autre parcelle de la même commune, et
+  Toulouse en publie 46.
+
 ### Changed
 - **Un cabinet, un point : la famille « médecin » d'Équipements se retire quand
   la couche Médecins dessine.** `amenities-fr` dessine la BPE D265 — 61 263

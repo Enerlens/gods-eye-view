@@ -2,6 +2,7 @@ import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
 import { createAddressScanLayer } from './addressScanLayer.js';
 import { clearBuildingTheme, registerBuildingTheme } from './buildingTheme.js';
+import { publishJoin } from './layerJoins.js';
 
 /**
  * DVF — what the flats around this point actually sold for, on the buildings
@@ -491,7 +492,47 @@ let _themeEnabled = false;
  * it repaints itself, and it stops when the theme is cleared — one direction,
  * so a theme can never leave the city painted after its layer is switched off.
  */
+/** Take-down for the per-parcel offer. Null while nothing is offered. */
+let _unpublishByParcel = null;
+
+/**
+ * Offer the sales this scan already holds, keyed on the parcel they name.
+ *
+ * The building layer's card asks for "the last sale on this ground" and the
+ * answer is ALREADY IN MEMORY: `id_parcelle` travels on every projected
+ * mutation, and a BD TOPO volume resolves to the same 14-character id through
+ * the RNB. So the join is a lookup, not a second scan of the register — and it
+ * is offered rather than imported, so a reader who closes this row takes the
+ * line off that card and nothing else changes.
+ *
+ * WHAT IT IS NOT is a claim about the parcel's whole history: the scan is a
+ * disc of {@link SCAN_RADIUS_M} around one point over a bounded run of years,
+ * so "no sale" here means "none in what was scanned" — which is why the line
+ * exists only when there IS one.
+ */
+function publishByParcel() {
+  const sales = _themeEnabled ? (_themePayload?.sales || []) : [];
+  if (!sales.length) {
+    _unpublishByParcel?.();
+    _unpublishByParcel = null;
+    return;
+  }
+  const byParcel = new Map();
+  for (const sale of sales) {
+    const key = String(sale?.parcelle || '').trim();
+    if (!key) continue;
+    const held = byParcel.get(key);
+    // Most recent wins. `date` is ISO, so a string compare is a date compare.
+    if (!held || String(sale.date || '') > String(held.date || '')) byParcel.set(key, sale);
+  }
+  _unpublishByParcel?.();
+  _unpublishByParcel = publishJoin('dvf/byParcel', (parcelId) => (
+    byParcel.get(String(parcelId || '').trim()) || null
+  ));
+}
+
 function publishTheme() {
+  publishByParcel();
   if (!_themeEnabled || !_themePayload) {
     clearBuildingTheme(DVF_LAYER_ID);
     return false;
