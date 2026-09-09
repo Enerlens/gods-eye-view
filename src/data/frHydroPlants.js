@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
-import { askJoin } from './layerJoins.js';
+import { askJoin, watchJoin } from './layerJoins.js';
+import { PLANT_JOIN_KEYS } from './plantIdentity.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { cachedGroundFloor, resolveGroundFloorCellsBounded } from './groundFloor.js';
@@ -711,6 +712,8 @@ export function createFrHydroPlantsLayer({
   let _rowControlsListener = null;
   let _labelEntries = [];
   let _cameraRemovers = [];
+  /** Stop following RTE's own offer. Null while this layer is off. */
+  let _unwatchRte = null;
   let _floorToken = 0;
 
   const renderId = (id) => `${FR_HYDRO_RENDER_PREFIX}${id}`;
@@ -737,6 +740,32 @@ export function createFrHydroPlantsLayer({
       : _clusters;
   }
 
+  /**
+   * Is a register senior to this one already drawing this plant?
+   *
+   * The chain is exact at every link and needs no distance test — see
+   * `plantIdentity.js`, and in particular the 540 m between Grand-Maison and
+   * Le Verney, which are two different works.
+   *
+   * The EDF half only resolves while RTE is ALSO on, because the EDF↔hydro
+   * link runs through RTE's own `placementRef`. That is stated rather than
+   * worked around: with RTE off and both other rows on, Grand-Maison is drawn
+   * twice, and inventing a proximity rule to close that case is exactly what
+   * this module refuses to do.
+   *
+   * @param {{eic?: string}} plant
+   * @returns {boolean}
+   */
+  function drawnBySeniorRegister(plant) {
+    const eic = String(plant?.eic ?? plant?.id ?? '').trim();
+    if (!eic) return false;
+    const station = askJoin(PLANT_JOIN_KEYS.eic, eic);
+    if (!station) return false;
+    // RTE is drawing it, unless RTE itself stood down for EDF — in which case
+    // EDF is, and the answer is the same.
+    return true;
+  }
+
   function repaint() {
     if (!_points) return;
     // Everything a clamp pass was about to write into belongs to the
@@ -747,6 +776,13 @@ export function createFrHydroPlantsLayer({
     const entries = [];
 
     for (const plant of _visiblePlants) {
+      // ONE MARK PER SITE. 55 of the plants this register places are also an
+      // RTE unit, by shared EIC, and 43 of those chain on to an EDF site —
+      // Grand-Maison is in all three. While a senior register is drawing one,
+      // this layer does not: the plant stays in `_plants`, the counts stay
+      // true, and the mark returns the moment that row goes off. This layer's
+      // subject is the long tail, and 943 of its 998 placed plants are it.
+      if (drawnBySeniorRegister(plant)) continue;
       const position = markerPosition(plant.lat, plant.lon);
       const id = renderId(plant.id);
       const color = hydroColor(plant);
@@ -1084,11 +1120,16 @@ export function createFrHydroPlantsLayer({
           if (event?.addEventListener) _cameraRemovers.push(event.addEventListener(follow));
         }
       }
+      // RTE coming on or going off changes which of these plants are drawn.
+      _unwatchRte?.();
+      _unwatchRte = watchJoin(PLANT_JOIN_KEYS.eic, () => { if (_enabled) repaint(); });
       if (_plants.length || _clusters.length) repaint();
     },
 
     disable() {
       _enabled = false;
+      _unwatchRte?.();
+      _unwatchRte = null;
       clearSelection();
       removeClickHandler();
       for (const remove of _cameraRemovers) remove();
@@ -1220,8 +1261,12 @@ export function createFrHydroPlantsLayer({
       const stats = _registry?.stats || null;
       return {
         // Markers on the globe, which is not the installation count — 1 980 of
-        // them share 1 369 rings.
-        count: _visiblePlants.length + _visibleClusters.length,
+        // them share 1 369 rings — and, since 2026-09-09, not the count of
+        // what passed the floor either: while a senior register draws one of
+        // these plants this layer does not, and `deferred` is that number
+        // named rather than quietly missing. See `plantIdentity.js`.
+        count: _records.size || (_visiblePlants.length + _visibleClusters.length),
+        deferred: Math.max(0, (_visiblePlants.length + _visibleClusters.length) - _records.size),
         lastUpdate: _lastUpdate,
         loading: _loading,
         error: _lastError,

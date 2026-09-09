@@ -47,6 +47,42 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   Toulouse en publie 46.
 
 ### Changed
+- **Une centrale, une marque : les 69 stations que deux registres se partagent
+  ne sont plus dessinées deux fois.** Trois couches dessinent la production
+  électrique française et elles se recouvrent lourdement : `edf-power-plants`
+  79 sites, `rte-generation` 108, `fr-hydro-plants` 998 placés. **69 des 108
+  stations RTE sont un site EDF**, et **55 centrales hydro sont un groupe RTE**
+  — dont 43 remontent jusqu'à un site EDF. Grand-Maison était dessinée trois
+  fois.
+
+  L'audit appelait le correctif « une colonne vertébrale à écrire (choisir
+  quelle source fait foi pour la position, laquelle pour la puissance) ». La
+  colonne vertébrale existait déjà, écrite par les scripts de fabrication du
+  dépôt lui-même : `build-rte-units-registry.mjs` pose 69 de ses 108 stations
+  sur la coordonnée publiée par EDF **et note laquelle** (`placementRef:
+  'edf:nucleaire:GRAVELINES'`). La question de la position était donc tranchée,
+  en faveur d'EDF, depuis la fabrication. Le second lien est le **code EIC**,
+  que les deux paquets ODRÉ portent l'un et l'autre.
+
+  **Aucune règle de proximité nulle part**, et la mesure explique pourquoi : la
+  Grand-Maison d'EDF (1 714 MW) est à **540 m** du Verney du registre hydro
+  (21,8 MW), et Super-Bissorte à 410 m d'Orelle. Ce sont des ouvrages
+  différents sur la même montagne. Une règle d'identité à 1 km aurait fusionné
+  80 paires dont plusieurs sont deux centrales, et la carte aurait perdu de la
+  capacité réelle contre un point plus propre.
+
+  **Rien n'est supprimé.** Une couche qui se retire ne dessine pas la marque ;
+  l'enregistrement reste, le compte de la ligne dit ce qui est dessiné **et**
+  combien sont laissés à la couche voisine, et la marque revient dès que
+  celle-ci s'éteint.
+
+  La carte qui survit gagne ce que le retrait aurait masqué : **la puissance de
+  l'autre registre, quand les deux ne sont pas d'accord**. Sur les 69 paires,
+  **43 s'accordent au mégawatt près** et 14 de plus à moins de 5 % — les taire
+  est ce qui rend les 12 restantes lisibles. Et celles-là sont des trouvailles :
+  Flamanville, 2 660 MW chez EDF contre 4 280 chez RTE, c'est l'EPR ; Bouchain,
+  585 contre 1 063 ; Brennilis, 304 contre 125.
+
 - **Un cabinet, un point : la famille « médecin » d'Équipements se retire quand
   la couche Médecins dessine.** `amenities-fr` dessine la BPE D265 — 61 263
   lignes « médecin généraliste » — et `medecins-fr` dessine le registre
