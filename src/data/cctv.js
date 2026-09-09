@@ -49,6 +49,7 @@ import * as Cesium from 'cesium';
 import { registerSpriteCollection, restoreSpriteOrder } from './spriteOrder.js';
 import {
   CCTV_ACTIVATION_RESULT,
+  CCTV_FOCUS_RESULT,
   activateCctvCameraFromWorldClick,
 } from '../cctvFocusRequest.js';
 import { bindTrackingClickGesture, isTrackingClickGesture } from './trackingClickGesture.js';
@@ -166,13 +167,11 @@ const PROJECTION_VERT_ASPECT = PROJECTION_CANVAS_WIDTH / PROJECTION_CANVAS_HEIGH
 // below groundAlt + this clearance, so a fabricated pitch (-24°) cannot bury
 // the monitor plane in the 3D tiles. Exported for the unit suite.
 export const FRUSTUM_GROUND_CLEARANCE_M = 2;
-/** Public result codes for explicit CCTV camera flights. */
-export const CCTV_FOCUS_RESULT = Object.freeze({
-  FOCUSED: 'focused',
-  NO_ACTIVE_CAMERA: 'no-active-camera',
-  TRACKING_HOLDS_VIEW: 'tracking-holds-view',
-  COCKPIT_ACTIVE: 'cockpit-active',
-});
+// `CCTV_FOCUS_RESULT` moved to ../cctvFocusRequest.js, beside the activation
+// codes it pairs with, so the voice actions can read a focus outcome without
+// importing this 211 kB layer. Re-exported here: it is part of this layer's
+// published surface and its tests import it from this file.
+export { CCTV_FOCUS_RESULT };
 // §9.1 activation obstruction probe: clamp the plane's effective range to just
 // short of the first pickFromRay hit along the frustum axis, with a floor so a
 // point-blank obstruction never collapses the frustum to zero. The floor is

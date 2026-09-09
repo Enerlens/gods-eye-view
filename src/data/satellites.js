@@ -2208,6 +2208,13 @@ const satellitesLayer = {
       error: _lastError,
     };
   },
+
+  // Published on the layer, not only as a module export, because the voice
+  // actions reach it through `dataManager.layers` now rather than by importing
+  // this file — see `layerModuleOf()` in voice/gevActions.js. The answer needs
+  // the catalogue, which only exists once this layer has been enabled, so a
+  // layer nobody switched on and a layer with no TLEs give the same answer.
+  getNextIssPass,
 };
 
 function _onKeyDown(e) {

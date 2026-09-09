@@ -5,6 +5,19 @@ export const CCTV_ACTIVATION_RESULT = Object.freeze({
   UNCHANGED: 'unchanged',
   NOT_FOUND: 'not-found',
 });
+/**
+ * Public result codes for explicit CCTV camera flights.
+ *
+ * Here rather than in `data/cctv.js` so a consumer that only has to READ an
+ * outcome — the voice actions do exactly that, four times — does not drag the
+ * layer's 211 kB of frustum geometry and media plumbing into the boot chunk.
+ */
+export const CCTV_FOCUS_RESULT = Object.freeze({
+  FOCUSED: 'focused',
+  NO_ACTIVE_CAMERA: 'no-active-camera',
+  TRACKING_HOLDS_VIEW: 'tracking-holds-view',
+  COCKPIT_ACTIVE: 'cockpit-active',
+});
 
 /**
  * Activate a camera selected by an in-world user click, then request the UI's

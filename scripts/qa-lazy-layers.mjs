@@ -32,8 +32,8 @@ const url = argv.includes('--url') ? argv[argv.indexOf('--url') + 1] : 'http://1
 
 /** The layer switched on mid-run. Small chunk, keyless feed. */
 const PROBE_LAYER = 'earthquakes';
-/** A layer nobody touches, to prove the boot did not warm everything. */
-const UNTOUCHED_LAYER = 'cctv';
+/** A layer nobody touches, to prove nothing warmed the whole registry. */
+const UNTOUCHED_LAYER = 'traffic';
 /** Past the boot burst, so a late chunk still counts against check 1. */
 const BOOT_WATCH_MS = 15_000;
 
@@ -172,7 +172,49 @@ try {
     { refetched: replayChunks },
   );
 
-  // ── 5. an untouched layer is still unloaded ───────────────────────────────
+  // ── 5. the cockpit's own bindings survived the move ───────────────────────
+  // `ui.js` no longer imports the thirteen layers it drives; it binds them from
+  // the manager. Two of those bindings are read by SUBSCRIBING, which a stub
+  // cannot answer until its module lands — so the HUD wiring is re-run on the
+  // first enable. If that re-run were dropped, the CCTV and radio panels would
+  // simply never update, silently, which no other check here would notice.
+  await page.evaluate(async () => {
+    const { dataManager } = window.__godsEyeView;
+    for (const layerId of ['cctv', 'radio']) {
+      try { await dataManager.setEnabled(layerId, true, { origin: 'user' }); } catch { /* upstream */ }
+    }
+  });
+  await new Promise((resolve) => setTimeout(resolve, 3000));
+
+  const cockpitBindings = await page.evaluate(() => {
+    const { styleManager, dataManager } = window.__godsEyeView;
+    const detection = styleManager.getDetectionDiagnostics?.() || null;
+    return {
+      cctvLoaded: dataManager.layers.get('cctv')?.module?.__lazy?.isLoaded?.() === true,
+      radioLoaded: dataManager.layers.get('radio')?.module?.__lazy?.isLoaded?.() === true,
+      cctvSubscribed: typeof styleManager._cctvUnsubscribe === 'function',
+      radioSubscribed: typeof styleManager._radioUnsubscribe === 'function',
+      cctvStatePresent: styleManager._cctvState !== null && styleManager._cctvState !== undefined,
+      radioStatePresent: styleManager._radioState !== null && styleManager._radioState !== undefined,
+      registeredLayerCount: detection?.registeredLayerCount ?? null,
+    };
+  });
+
+  check(
+    'enabling CCTV and radio binds their HUD subscriptions',
+    cockpitBindings.cctvLoaded && cockpitBindings.radioLoaded
+      && cockpitBindings.cctvSubscribed && cockpitBindings.radioSubscribed
+      && cockpitBindings.cctvStatePresent && cockpitBindings.radioStatePresent,
+    cockpitBindings,
+  );
+
+  check(
+    'the detection overlay received its nine-layer register',
+    cockpitBindings.registeredLayerCount === 9,
+    { registeredLayerCount: cockpitBindings.registeredLayerCount },
+  );
+
+  // ── 6. an untouched layer is still unloaded ───────────────────────────────
   const untouched = await page.evaluate(
     (layerId) => window.__godsEyeView.dataManager.layers.get(layerId)?.module?.__lazy?.isLoaded?.() === true,
     UNTOUCHED_LAYER,

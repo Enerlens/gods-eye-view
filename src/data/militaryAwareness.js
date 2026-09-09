@@ -370,47 +370,12 @@ function summarizeAwarenessCohortForNavigation(items, source, {
   };
 }
 
-/**
- * The per-layer counts the Contacts panel is showing, as one flat block.
- *
- * Three honest numbers were reaching the operator at once: this cohort count
- * (the panel), `analyst_query`'s count of CURRENTLY-LOADED records, and the
- * layer-wide loaded total in the coverage note. After the camera dives to a
- * tracked contact the flights layer reloads by viewport, so the loaded set can
- * hold a fraction of the cohort — 8 against the panel's 42 in the field. The
- * numbers are all correct and the disagreement still reads as chaos.
- *
- * Derived from the same snapshot the panel renders (`cohort.summary.count` via
- * `buildAwarenessContextSnapshot`), so the two cannot drift apart. A cohort
- * whose feed cannot answer reports 'unknown' rather than a misleading zero.
- * @param {object|null} snapshot `getContextSnapshot()` result.
- * @returns {{centeredOn: string|null, radiusKm: number|null, aircraft: number|string,
- *   flights: number|string, military: number|string, vessels: number|string}|null}
- *   Panel-equivalent counts.
- */
-export function contactsWindowFromSnapshot(snapshot) {
-  if (!snapshot?.subject) return null;
-  const countFor = (cohortId) => {
-    const cohort = Array.isArray(snapshot.cohorts)
-      ? snapshot.cohorts.find((item) => item?.id === cohortId)
-      : null;
-    return Number.isFinite(cohort?.count) ? cohort.count : 'unknown';
-  };
-  const flights = countFor('flights');
-  const military = countFor('military');
-  return {
-    centeredOn: snapshot.subject.label || snapshot.subject.id || null,
-    radiusKm: Number.isFinite(snapshot.radiusM)
-      ? Math.round(snapshot.radiusM / 1000)
-      : null,
-    aircraft: Number.isFinite(flights) && Number.isFinite(military)
-      ? flights + military
-      : 'unknown',
-    flights,
-    military,
-    vessels: countFor('ais-live-vessels'),
-  };
-}
+// `contactsWindowFromSnapshot` moved to ./militaryAwarenessEngine.js — it is
+// pure arithmetic over a snapshot the panel already published, and the voice
+// actions call it on every contacts question. Leaving it here pinned this
+// layer, and through it the flights, military and AIS layers, into the boot
+// chunk. Re-exported because it is part of this layer's published surface.
+export { contactsWindowFromSnapshot } from './militaryAwarenessEngine.js';
 
 /** Build the read-only Awareness snapshot shared with compact HUD consumers. */
 export function buildAwarenessContextSnapshot(results, navigation = {}, { subjectPresent = true } = {}) {
@@ -1902,6 +1867,12 @@ const militaryAwarenessLayer = {
   navigateNext(options = {}) { return navigateHistory(1, options); },
   /** Select a context target through its owning layer's established tracker. */
   focusTarget(layerId, id, options = {}) { return requestFocus(layerId, id, false, options); },
+  // Published on the layer for the same reason as `getContextSnapshot`: the
+  // voice analyst reads the panel's own window through `dataManager.layers`,
+  // so the spoken count and the drawn one stay one number, and gevActions no
+  // longer imports this file — which used to drag flights, military, AIS and
+  // installations into the boot chunk with it.
+  collectAircraftProximityWindow,
 };
 
 export default militaryAwarenessLayer;
