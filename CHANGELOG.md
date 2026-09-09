@@ -53,6 +53,28 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   énumération vocale, choroplèthe — est écrit dans `docs/DATASETS.md`, avec
   la raison. Trois manifestes livrés : défibrillateurs GeoDAE, arbres
   remarquables de Paris, emprises d'aérodromes BD TOPO.
+- **La voix marche sans compte OpenAI — oreilles et bouche du navigateur,
+  Mistral Medium 3.1 au milieu.** Le micro exigeait une clé OpenAI ; sans elle,
+  le bouton était mort. Il accepte désormais **une clé au choix**. Sur le
+  chemin OpenRouter, la reconnaissance et la synthèse vocales sont celles du
+  navigateur (sans clé, sans téléchargement) et seul le cerveau est facturé :
+  **0,001 à 0,005 $ par commande parlée**, mesuré. Le cerveau par défaut a été
+  choisi sur un banc de routage français construit sur les 28 schémas d'outils
+  de l'app — 26/26 sur le choix d'outil, et le seul modèle du banc à avoir
+  refusé d'inventer une histoire à partir d'un dossier mince. `tools`,
+  `instructions` et le runner d'actions sont partagés entre les deux chemins :
+  une seule source, deux transports. Le serveur garde la clé, le prompt système
+  et la liste d'outils, donc une instance publique ne devient pas un endpoint
+  LLM gratuit pour quelqu'un d'autre. Contrepartie annoncée : c'est du tour par
+  tour, pas du duplex — on ne coupe pas la parole au modèle.
+  `GEV_VOICE_PROVIDER`, `GEV_VOICE_LANGUAGE`, `OPENROUTER_API_KEY`,
+  `OPENROUTER_VOICE_MODEL` — voir `.env.example`. Nouveau harnais :
+  `npm run qa:voice-brain`.
+- **Le micro parle français.** `GEV_VOICE_LANGUAGE=fr-FR` pilote la
+  reconnaissance vocale, le choix de la voix de synthèse, et une instruction qui
+  dit au modèle quelle langue **parler**. Le contrat d'outils reste en anglais
+  des deux côtés : les noms d'outils, les arguments et les valeurs d'énumération
+  ne sont jamais traduits, pas plus qu'un indicatif d'appel ou un code OACI.
 - **Comparables (sélection conseiller) 🇫🇷 — le module qui manquait face à
   Cityscan, construit comme eux le construisent, et sans rien acheter.** Le
   démontage du concurrent (`docs/CITYSCAN.md`) avait laissé une seule case
@@ -231,6 +253,23 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   public dans l'édition 2025.
 
 ### Fixed
+- **Une clé Google présente mais morte rendait toute la planète injoignable.**
+  `searchAndFlyTo` interrogeait Google directement ; sur un `REQUEST_DENIED`
+  (facturation désactivée, API non activée, restriction régionale) il renvoyait
+  `null` et s'arrêtait là — alors que le géocodeur keyless répondait
+  correctement au même instant. Tout lieu hors des presets devenait
+  silencieusement introuvable, à la voix comme à la barre de recherche. Une clé
+  cassée dégrade maintenant **vers** le chemin keyless, pas au-delà.
+- **« Emmène-moi à Bordeaux » pouvait atterrir à Paris.** Plusieurs modèles
+  répondent à `fly_to_location` avec un preset **et** une requête libre
+  contradictoires (`{locationId:"paris", query:"Bordeaux"}`). Le preset gagnait.
+  C'est désormais le lieu que l'utilisateur a réellement prononcé qui gagne — la
+  seule panne qu'un utilisateur à la voix n'a aucun moyen de diagnostiquer.
+- **Les sept villes françaises étaient invisibles pour le modèle.** Marseille,
+  Lyon, Toulouse, Nice, Nantes, Montpellier et Strasbourg avaient leur cadrage
+  réglé à la main dans `CITY_POIS` mais ne figuraient pas dans l'énumération de
+  `fly_to_location`. Le modèle ne pouvait pas les nommer et retombait sur un
+  géocodage générique. Un test échoue désormais si les deux listes divergent.
 - **Le dépôt annonçait la mort de Bing pour ce mois-ci. C'est faux, et la
   formulation vient de nous.** `DATA_SOURCES.md` lisait « at least through
   September 2026 » comme une échéance alors que c'est un **plancher de

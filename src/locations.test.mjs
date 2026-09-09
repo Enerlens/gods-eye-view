@@ -774,3 +774,64 @@ test('every seeded CCTV camera still lands on the POI it was calibrated against'
     assert.ok(city.pois[Number(rawIndex)], `${cityId} has no POI at index ${rawIndex}`);
   }
 });
+
+test('a Google key that cannot answer falls back to the keyless geocoder, not to nothing', async () => {
+  // Regression measured on this fork: GOOGLE_MAPS_API_KEY was set but billing
+  // was off, so every geocode answered REQUEST_DENIED. searchAndFlyTo returned
+  // null and "va à Bordeaux" became unreachable by voice and by search box,
+  // while /api/geocode answered Bordeaux correctly the whole time.
+  const viewer = stubViewer();
+  const hadWindow = Object.hasOwn(globalThis, 'window');
+  const priorWindow = globalThis.window;
+  const priorFetch = globalThis.fetch;
+  const requested = [];
+  globalThis.window = { __GOOGLE_MAPS_API_KEY__: 'billing-disabled-key', setTimeout, clearTimeout };
+  globalThis.fetch = async (url) => {
+    requested.push(String(url));
+    if (String(url).startsWith('https://maps.googleapis.com/')) {
+      return { ok: true, json: async () => ({ status: 'REQUEST_DENIED', error_message: 'You must enable Billing', results: [] }) };
+    }
+    if (String(url).startsWith('/api/overpass')) return { ok: true, json: async () => ({ elements: [] }) };
+    return {
+      ok: true,
+      json: async () => ({
+        result: {
+          lat: 44.841225,
+          lon: -0.5800364,
+          label: 'Bordeaux, France',
+          types: ['locality'],
+          viewport: { southwest: { lat: 44.81, lng: -0.64 }, northeast: { lat: 44.92, lng: -0.53 } },
+        },
+      }),
+    };
+  };
+  try {
+    const destination = await searchAndFlyTo(viewer, 'Bordeaux', {});
+    assert.ok(destination, 'a dead Google key must not end the search');
+    assert.equal(destination.label, 'Bordeaux, France');
+    assert.ok(
+      requested.some((url) => url.startsWith('/api/geocode')),
+      'the keyless proxy must have been asked after Google refused',
+    );
+  } finally {
+    globalThis.fetch = priorFetch;
+    if (hadWindow) globalThis.window = priorWindow;
+    else delete globalThis.window;
+  }
+});
+
+test('the fly_to_location preset enum matches CITY_POIS exactly', () => {
+  // Two files, one list. The voice tool's enum is what the model is allowed to
+  // NAME; CITY_POIS is what the app can actually fly to. When they drifted, the
+  // seven French presets this fork added were unreachable by voice — the model
+  // never knew they existed. This fails the build rather than the feature.
+  const config = fs.readFileSync(new URL('../vite.config.js', import.meta.url), 'utf8');
+  const block = config.slice(config.indexOf("name: 'fly_to_location'"));
+  const enumText = block.slice(block.indexOf('enum: ['), block.indexOf(']', block.indexOf('enum: [')) + 1);
+  const enumIds = [...enumText.matchAll(/'([a-z0-9_-]+)'/g)].map((m) => m[1]);
+  assert.deepEqual(
+    [...enumIds].sort(),
+    Object.keys(CITY_POIS).sort(),
+    'add the new preset to BOTH src/locations.js and the fly_to_location enum in vite.config.js',
+  );
+});

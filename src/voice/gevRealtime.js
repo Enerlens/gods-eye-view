@@ -1,4 +1,5 @@
 import { createGevActionRunner, readLayerLifecycleSummary } from './gevActions.js';
+import { GevBrainVoiceSession, fetchVoiceConfig } from './gevBrainVoice.js';
 import {
   DEFAULT_VOICE_TIER,
   VOICE_COST_LIMITS,
@@ -267,6 +268,11 @@ export class GevRealtimeController {
     this.radioHandoffDeferredByReservation = false;
     this.buttonHandler = null;
     this.tierHandler = null;
+    // Which provider drives the mic is a server fact (which key is set). It is
+    // fetched once per page and cached on the promise so a rapid click does not
+    // race two lookups, and so a mic that has already chosen a brain keeps it.
+    this.voiceConfigPromise = null;
+    this.brainSession = null;
     this.annotationEventUnsubscribe = null;
     // Voice cost control. The tier is chosen BEFORE a session starts and is
     // baked into the minted token, so a live session always keeps the model it
@@ -333,8 +339,37 @@ export class GevRealtimeController {
     return this.status !== 'idle' && this.status !== 'error';
   }
 
+  /**
+   * Read (once) which brain this server can drive.
+   * @returns {Promise<object>}
+   */
+  resolveVoiceConfig() {
+    if (!this.voiceConfigPromise) this.voiceConfigPromise = fetchVoiceConfig();
+    return this.voiceConfigPromise;
+  }
+
   async start({ pushToTalk = false } = {}) {
     if (this.isActive()) return;
+    const voiceConfig = await this.resolveVoiceConfig();
+    if (this.isActive()) return; // a second click landed while the lookup ran
+    if (voiceConfig.provider === 'openrouter') {
+      // Browser ears, browser mouth, OpenRouter brain. Nothing below this line
+      // runs: there is no peer connection, no ephemeral token and no audio
+      // element in that path (see gevBrainVoice.js).
+      this.pauseRadioForVoice();
+      if (this.ui.tierButton) this.ui.tierButton.hidden = true;
+      if (!this.brainSession) {
+        this.brainSession = new GevBrainVoiceSession({ host: this, runner: this.runner, config: voiceConfig });
+      }
+      await this.brainSession.start({ pushToTalk });
+      return;
+    }
+    if (voiceConfig.provider !== 'openai') {
+      // Say which key is missing instead of failing at the token endpoint. A
+      // keyless clone must be able to read its own diagnosis off the dock.
+      this.setStatus('error', voiceConfig.reason || 'Voice is not configured');
+      return;
+    }
     this.pauseRadioForVoice();
     const pushToTalkKeyHeld = pushToTalk && this.pushToTalkKeyHeld;
     const spaceKeyHeld = this.spaceKeyHeld;
@@ -643,6 +678,7 @@ export class GevRealtimeController {
    */
   setMicrophoneEnabled(enabled) {
     if (this.ui?.root) this.ui.root.dataset.microphone = enabled ? 'active' : 'muted';
+    if (this.brainSession?.isActive()) this.brainSession.setMicrophoneEnabled(enabled);
     this.stream?.getAudioTracks?.().forEach((track) => {
       track.enabled = Boolean(enabled);
     });
@@ -769,6 +805,9 @@ export class GevRealtimeController {
 
   stop(options = {}) {
     const { removeUi = false, preserveStatus = false, preserveRadioPlayback = false } = options;
+    // The text-brain session owns no WebRTC state, so it is stopped here and
+    // the cleanup below runs harmlessly over its null peer connection.
+    if (this.brainSession?.isActive()) this.brainSession.stop();
     // Bump the epoch so any start() awaiting a token/getUserMedia/SDP bails and
     // releases its own resources instead of promoting them onto a stopped
     // controller (H7).

@@ -1,0 +1,464 @@
+/**
+ * The keyless-ears voice session: browser STT -> text brain -> browser TTS.
+ *
+ * This is the second way to drive the same 28 tools. Where gevRealtime.js opens
+ * one speech-to-speech WebRTC session to OpenAI, this one splits the job three
+ * ways and only the middle piece costs anything:
+ *
+ *   ears   Web Speech API (SpeechRecognition) — no key, no download
+ *   brain  /api/voice/brain -> OpenRouter (Mistral by default) — ONE key
+ *   mouth  speechSynthesis — no key, OS voices, works offline
+ *   hands  createGevActionRunner — the SAME runner the realtime path uses
+ *
+ * The trade is honest and worth stating where someone will read it: this is
+ * turn-based, not full duplex. You cannot interrupt it mid-sentence the way you
+ * can interrupt the realtime model, and the round trip adds latency the
+ * speech-to-speech path does not have. What it buys is a voice cockpit that
+ * runs on an OpenRouter key instead of an OpenAI one — and a mic that keeps
+ * working when the brain is a model somebody else self-hosts.
+ */
+
+/** Rounds of tool-calling one spoken turn may drive before we give up on it. */
+const DEFAULT_MAX_ROUNDS = 5;
+
+/**
+ * A fetch that is safe to store and call as a method.
+ *
+ * `globalThis.fetch` must be invoked with the global object as its receiver.
+ * Keeping the bare reference on an instance and calling `this.fetchImpl(...)`
+ * makes the SESSION the receiver, which browsers reject with "Illegal
+ * invocation" — and Node does not, so it is invisible to unit tests. Wrapping
+ * it once here is what makes the same call work in both.
+ */
+const defaultFetch = (input, init) => globalThis.fetch(input, init);
+
+/** Recognition dies quietly every ~60 s in Chrome; this is the restart debounce. */
+const RECOGNITION_RESTART_MS = 250;
+
+/**
+ * Read the server's voice configuration.
+ *
+ * A failure here resolves to "no provider" rather than throwing: a dev server
+ * without the endpoint (an older build, a static preview) must present a mic
+ * that says it is unavailable, not a page that fails to boot.
+ *
+ * @param {typeof fetch} [fetchImpl]
+ * @returns {Promise<{provider: string|null, reason: string, language: string, model: string|null, maxRounds: number, configured: object}>}
+ */
+export async function fetchVoiceConfig(fetchImpl = defaultFetch) {
+  const fallback = {
+    provider: null,
+    reason: 'Voice configuration is unavailable.',
+    language: 'en-US',
+    model: null,
+    maxRounds: DEFAULT_MAX_ROUNDS,
+    configured: { openai: false, openrouter: false },
+  };
+  try {
+    const response = await fetchImpl('/api/voice/config', { headers: { Accept: 'application/json' } });
+    if (!response.ok) return fallback;
+    const data = await response.json();
+    return {
+      provider: typeof data?.provider === 'string' ? data.provider : null,
+      reason: typeof data?.reason === 'string' ? data.reason : fallback.reason,
+      language: typeof data?.language === 'string' ? data.language : 'en-US',
+      model: typeof data?.model === 'string' ? data.model : null,
+      maxRounds: Number(data?.maxRounds) > 0 ? Math.min(8, Number(data.maxRounds)) : DEFAULT_MAX_ROUNDS,
+      configured: data?.configured && typeof data.configured === 'object' ? data.configured : fallback.configured,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+/** The browser's SpeechRecognition constructor, or null where there is none. */
+export function speechRecognitionConstructor(scope = globalThis) {
+  return scope?.SpeechRecognition || scope?.webkitSpeechRecognition || null;
+}
+
+/**
+ * Choose the closest synthesis voice for a language tag.
+ *
+ * Exact tag first, then any voice of the same base language, then the browser
+ * default. Prefers a local voice over a network one at equal specificity: a
+ * cockpit confirmation should not wait on a round trip to be spoken.
+ *
+ * @param {Array<{lang?: string, localService?: boolean, default?: boolean}>} voices
+ * @param {string} language
+ * @returns {object|null}
+ */
+export function pickSpeechVoice(voices, language) {
+  if (!Array.isArray(voices) || !voices.length) return null;
+  const tag = String(language || '').toLowerCase();
+  const base = tag.split('-')[0];
+  const score = (voice) => {
+    const lang = String(voice?.lang || '').toLowerCase().replace('_', '-');
+    if (!lang) return 0;
+    if (lang === tag) return 4;
+    if (lang.split('-')[0] === base) return 2;
+    return 0;
+  };
+  let best = null;
+  let bestScore = 0;
+  for (const voice of voices) {
+    const value = score(voice) + (voice?.localService ? 1 : 0);
+    if (score(voice) > 0 && value > bestScore) {
+      best = voice;
+      bestScore = value;
+    }
+  }
+  return best;
+}
+
+/**
+ * What the client should do with an assistant message.
+ *
+ * Split out because it is the whole turn state machine and it is worth
+ * asserting without a browser: a message with tool calls means keep working
+ * (even when it also carries text — that text is a preamble the shipped
+ * instructions tell the model not to produce), text alone ends the turn, and
+ * neither means the model returned nothing usable.
+ *
+ * @param {object|null} message
+ * @returns {{action: 'tools'|'speak'|'empty', calls: Array<object>, text: string}}
+ */
+export function nextBrainStep(message) {
+  const calls = Array.isArray(message?.tool_calls) ? message.tool_calls.filter((c) => c?.function?.name) : [];
+  const text = typeof message?.content === 'string' ? message.content.trim() : '';
+  if (calls.length) return { action: 'tools', calls, text };
+  if (text) return { action: 'speak', calls: [], text };
+  return { action: 'empty', calls: [], text: '' };
+}
+
+/**
+ * Parse a tool call's arguments without letting one bad call kill the turn.
+ * A model that emits invalid JSON gets an error result back and a chance to
+ * correct itself, which is strictly better than dropping the user's request.
+ *
+ * @param {string|object|undefined} value
+ * @returns {{ok: true, args: object} | {ok: false, error: string}}
+ */
+export function parseToolArguments(value) {
+  if (value === undefined || value === null || value === '') return { ok: true, args: {} };
+  if (typeof value === 'object') return { ok: true, args: value };
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { ok: false, error: 'arguments must be a JSON object' };
+    }
+    return { ok: true, args: parsed };
+  } catch (error) {
+    return { ok: false, error: `invalid JSON arguments: ${error?.message || error}` };
+  }
+}
+
+/** Session cost, in the same shape the realtime cost readout uses. */
+export function formatBrainCost(totalUsd) {
+  const value = Number.isFinite(totalUsd) ? Math.max(0, totalUsd) : 0;
+  return value >= 1 ? `~$${value.toFixed(2)}` : `~$${value.toFixed(3)}`;
+}
+
+/**
+ * One turn-based voice session against the text brain.
+ *
+ * `host` is the GevRealtimeController that owns the button, the readout and the
+ * push-to-talk shortcut. This class borrows that UI rather than building a
+ * second one, so the mic looks and behaves identically whichever brain answers.
+ */
+export class GevBrainVoiceSession {
+  constructor({ host, runner, config, fetchImpl = defaultFetch, scope = globalThis }) {
+    this.host = host;
+    this.runner = runner;
+    this.config = config;
+    this.fetchImpl = fetchImpl;
+    this.scope = scope;
+    this.active = false;
+    this.busy = false;
+    this.micEnabled = true;
+    this.recognition = null;
+    this.restartTimer = null;
+    this.messages = [];
+    this.turnId = 0;
+    this.costUsd = 0;
+    this.abortController = null;
+  }
+
+  isActive() {
+    return this.active;
+  }
+
+  /**
+   * @param {{pushToTalk?: boolean}} options
+   * @returns {Promise<void>}
+   */
+  async start({ pushToTalk = false } = {}) {
+    if (this.active) return;
+    const Recognition = speechRecognitionConstructor(this.scope);
+    if (!Recognition) {
+      this.host.setStatus('error', 'This browser has no speech recognition — try Chrome, Edge or Safari');
+      return;
+    }
+    this.active = true;
+    this.busy = false;
+    this.micEnabled = !pushToTalk;
+    this.messages = [];
+    this.costUsd = 0;
+    this.turnId += 1;
+    this.host.pushToTalkMode = pushToTalk;
+    this.syncCost();
+
+    const recognition = new Recognition();
+    recognition.lang = this.config.language || 'en-US';
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
+    recognition.onresult = (event) => this.handleRecognitionResult(event);
+    recognition.onerror = (event) => this.handleRecognitionError(event);
+    recognition.onend = () => this.handleRecognitionEnd();
+    this.recognition = recognition;
+
+    try {
+      recognition.start();
+    } catch (error) {
+      this.active = false;
+      this.recognition = null;
+      this.host.setStatus('error', `Microphone could not start: ${error?.message || error}`);
+      return;
+    }
+    this.host.setStatus('listening', pushToTalk ? 'Hold Space to talk' : this.readyDetail());
+  }
+
+  /** @returns {string} */
+  readyDetail() {
+    const model = this.config.model ? this.config.model.split('/').pop() : 'text brain';
+    return `LISTENING · ${model.toUpperCase()}`;
+  }
+
+  stop() {
+    if (!this.active) return;
+    this.active = false;
+    this.busy = false;
+    this.turnId += 1;
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    this.abortController?.abort();
+    this.abortController = null;
+    const recognition = this.recognition;
+    this.recognition = null;
+    if (recognition) {
+      recognition.onresult = null;
+      recognition.onerror = null;
+      recognition.onend = null;
+      try { recognition.abort(); } catch { /* already stopped */ }
+    }
+    try { this.scope.speechSynthesis?.cancel(); } catch { /* no synthesis */ }
+    this.host.setStatus('idle', 'VOICE STANDBY');
+  }
+
+  /**
+   * Push-to-talk mutes the EARS here, not a WebRTC track: there is no outbound
+   * stream to disable, so a held Space gates whether a final transcript is
+   * allowed to become a turn.
+   * @param {boolean} enabled
+   */
+  setMicrophoneEnabled(enabled) {
+    this.micEnabled = Boolean(enabled);
+  }
+
+  handleRecognitionResult(event) {
+    if (!this.active) return;
+    let finalText = '';
+    let interim = '';
+    for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      const result = event.results[i];
+      const transcript = result[0]?.transcript || '';
+      if (result.isFinal) finalText += transcript;
+      else interim += transcript;
+    }
+    if (interim.trim() && !this.busy) {
+      this.host.setStatus('listening', interim.trim().slice(0, 90));
+    }
+    const spoken = finalText.trim();
+    if (!spoken) return;
+    if (!this.micEnabled) return; // push-to-talk key is up: heard, but not sent.
+    if (this.busy) return;
+    this.runTurn(spoken);
+  }
+
+  handleRecognitionError(event) {
+    if (!this.active) return;
+    const code = event?.error || 'unknown';
+    if (code === 'no-speech' || code === 'aborted') return; // normal; onend restarts.
+    if (code === 'not-allowed' || code === 'service-not-allowed') {
+      this.host.setStatus('error', 'Microphone permission was denied');
+      this.stop();
+      return;
+    }
+    this.host.setStatus('error', `Speech recognition failed: ${code}`);
+  }
+
+  handleRecognitionEnd() {
+    if (!this.active || !this.recognition) return;
+    // Chrome ends a continuous session on its own every minute or so. Restarting
+    // is what makes an open mic actually stay open.
+    if (this.restartTimer) clearTimeout(this.restartTimer);
+    this.restartTimer = setTimeout(() => {
+      this.restartTimer = null;
+      if (!this.active || !this.recognition) return;
+      try { this.recognition.start(); } catch { /* already running */ }
+    }, RECOGNITION_RESTART_MS);
+  }
+
+  /**
+   * One spoken request, start to finish: relay, tools, relay again, speak.
+   * @param {string} spoken
+   */
+  async runTurn(spoken) {
+    this.busy = true;
+    const turnId = this.turnId;
+    const isCurrent = () => this.active && this.turnId === turnId;
+    this.messages.push({ role: 'user', content: spoken });
+    this.host.setStatus('executing', spoken.slice(0, 90));
+
+    try {
+      for (let round = 0; round < this.config.maxRounds; round += 1) {
+        if (!isCurrent()) return;
+        const reply = await this.relay();
+        if (!isCurrent()) return;
+        if (!reply.ok) {
+          this.host.setStatus('error', reply.error);
+          return;
+        }
+        this.costUsd += reply.usage?.cost || 0;
+        this.syncCost();
+
+        const step = nextBrainStep(reply.message);
+        if (step.action === 'empty') {
+          this.host.setStatus('listening', this.readyDetail());
+          return;
+        }
+        if (step.action === 'speak') {
+          this.messages.push({ role: 'assistant', content: step.text });
+          await this.speak(step.text, isCurrent);
+          if (isCurrent()) this.host.setStatus('listening', this.readyDetail());
+          return;
+        }
+
+        this.messages.push({
+          role: 'assistant',
+          content: step.text || null,
+          tool_calls: step.calls,
+        });
+        for (const call of step.calls) {
+          if (!isCurrent()) return;
+          const result = await this.executeCall(call, isCurrent);
+          this.messages.push({
+            role: 'tool',
+            tool_call_id: call.id,
+            content: JSON.stringify(result).slice(0, 8000),
+          });
+        }
+      }
+      // Rounds exhausted: the tools ran, so say so rather than going silent.
+      if (isCurrent()) this.host.setStatus('listening', this.readyDetail());
+    } finally {
+      if (this.turnId === turnId) this.busy = false;
+    }
+  }
+
+  /** @returns {Promise<{ok: boolean, message?: object, usage?: object, error?: string}>} */
+  async relay() {
+    this.abortController = new AbortController();
+    try {
+      const response = await this.fetchImpl('/api/voice/brain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: this.messages }),
+        signal: this.abortController.signal,
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        return { ok: false, error: data?.error || `Voice brain failed: HTTP ${response.status}` };
+      }
+      return { ok: true, message: data?.message || null, usage: data?.usage || null };
+    } catch (error) {
+      if (error?.name === 'AbortError') return { ok: false, error: 'Turn cancelled' };
+      return { ok: false, error: error?.message || 'Voice brain unreachable' };
+    } finally {
+      this.abortController = null;
+    }
+  }
+
+  /**
+   * Run one tool call through the shared action runner.
+   * A thrown tool becomes a result the model can read and recover from — the
+   * realtime path does the same, and silence here would strand the turn.
+   */
+  async executeCall(call, isCurrent) {
+    const name = call.function.name;
+    const parsed = parseToolArguments(call.function.arguments);
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+    this.host.setStatus('executing', name.replace(/_/g, ' ').toUpperCase());
+    try {
+      const result = await this.runner(name, parsed.args, {
+        signal: this.abortController?.signal,
+        isCurrent,
+      });
+      return result ?? { ok: true };
+    } catch (error) {
+      return { ok: false, error: error?.message || `Tool ${name} failed` };
+    }
+  }
+
+  /**
+   * Speak one confirmation, with the ears closed.
+   *
+   * An open mic hears the speakers. Chrome's recogniser has no echo
+   * cancellation of its own, so a spoken confirmation would otherwise come
+   * straight back in as a user turn and the session would talk to itself.
+   */
+  speak(text, isCurrent) {
+    const synth = this.scope.speechSynthesis;
+    if (!synth || !this.scope.SpeechSynthesisUtterance) {
+      this.host.setStatus('listening', text.slice(0, 90));
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        if (isCurrent() && this.active && this.recognition) {
+          try { this.recognition.start(); } catch { /* already running */ }
+        }
+        resolve();
+      };
+      try { this.recognition?.stop(); } catch { /* not started */ }
+      const utterance = new this.scope.SpeechSynthesisUtterance(text);
+      utterance.lang = this.config.language || 'en-US';
+      const voice = pickSpeechVoice(synth.getVoices?.() || [], utterance.lang);
+      if (voice) utterance.voice = voice;
+      utterance.onend = finish;
+      utterance.onerror = finish;
+      this.host.setVoiceSpeaker?.('assistant');
+      this.host.setStatus('executing', text.slice(0, 90));
+      try {
+        synth.speak(utterance);
+      } catch {
+        finish();
+      }
+    });
+  }
+
+  syncCost() {
+    const node = this.host?.ui?.costValue;
+    if (!node) return;
+    node.textContent = formatBrainCost(this.costUsd);
+    node.dataset.level = 'ok';
+    node.title = this.config.model
+      ? `Estimated session cost — ${this.config.model}`
+      : 'Estimated session cost';
+  }
+}
