@@ -428,6 +428,18 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   éteindre de 1 h à 5 h ne rendrait que ~10 % de l'entrant.
 
 ### Changed
+- **Le dépôt a changé de propriétaire GitHub : `Enerlens/gods-eye-view` devient
+  `mml-studio/gods-eye-view`.** « Enerlens » est le nom d'une entreprise, pas
+  celui d'un compte de projets personnels ; le nom libéré est repris aussitôt
+  comme organisation, ce qui **tue les redirections** `github.com/Enerlens/*`
+  au lieu de les laisser vivre — d'où le remplacement des trois seules
+  références en dur : le `REPO` par défaut de l'agent de déploiement
+  (`deploy/vps/gev-deploy.sh`), qui tire le tarball depuis codeload, et les deux
+  User-Agent de courtoisie envoyés à Overpass et à Météo-France. À l'inverse,
+  les mentions de `gev.enerlens.com` et du « VPS Enerlens » **ne bougent pas** :
+  ce sont un domaine et une machine, pas une identité GitHub. L'attribution des
+  commits survit sans rien faire, l'adresse noreply étant préfixée par l'id
+  numérique du compte et non par son login.
 - **La chronique QualiCharge a son régime mesuré, et il est deux fois et demie
   moins cher que l'estimation.** Une fois la ligne de base de démarrage passée,
   un sondage en régime journalise **3 295 transitions en 14 minutes — 122 Ko en

@@ -85,7 +85,7 @@ import {
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT = path.join(ROOT, 'src/data/local_data/meteo_stations_fr/stations.json');
-const USER_AGENT = 'gods-eye-view/meteo-stations-fr (+https://github.com/Enerlens/gods-eye-view)';
+const USER_AGENT = 'gods-eye-view/meteo-stations-fr (+https://github.com/mml-studio/gods-eye-view)';
 
 /** The S3 listing that says which stations have a published fiche climatologique. */
 const FICHECLIM_INDEX = 'https://meteofrance.s3.sbg.io.cloud.ovh.net/?list-type=2&prefix=data/synchro_ftp/REF_STATION/&max-keys=1000';
