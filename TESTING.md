@@ -85,10 +85,18 @@ settled and not applicable because no Google 3D tileset is active.
 
   `node scripts/qa-voice-routing.mjs --layer routing` asks the same question of
   the REALTIME model, through a session minted by the app's own
-  `/api/realtime/token`. It paces itself: one response bills ~10 900 input
+  `/api/realtime/token`. It paces itself: one response bills ~11 200 input
   tokens against a 40 000-per-minute account ceiling, so it waits for the token
   window rather than reading a throttled turn as a routing miss. Expect roughly
   three turns a minute — a full sweep is slow by arithmetic, not by choice.
+- **Reading property data by voice (free, deterministic, no model):**
+  `npm run qa:immobilier-voice` proves the path from the DVF and avis-de-valeur
+  layers to the numbers the model is handed — that a layer switched on from
+  40 km up flies the camera down onto the point in frame and comes back drawing
+  (23 027 m → 516 m, framed on the 300 m scan and not on the 12 km ceiling), and
+  that `get_entity_context` carries the medians the PROXY computed rather than
+  an average of the markers on screen. Both endpoints are held still with
+  payloads recorded from the live proxy over Place des Grands Hommes.
 
 ---
 

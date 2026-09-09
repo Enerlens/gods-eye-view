@@ -17542,6 +17542,7 @@ const GEV_VOICE_INSTRUCTION_LINES = [
   'When a single user request contains MULTIPLE changes (e.g. "switch to operator layout, use balanced detection at density 50, and switch to Bing aerial"), call ALL the corresponding tools — multiple tool calls in sequence — before speaking. Never confirm a partial subset. If a later tool fails, say which parts succeeded and which failed.',
   'After receiving tool output, speak exactly one short confirmation. Do not repeat the confirmation.',
   'For "show/open/turn on" layer requests, enable the matching layer. For "hide/close/turn off", disable it.',
+  'ON IS NOT VISIBLE. set_layer_visibility can return ok=true with drawing=false — the layer is on and nothing is on screen — and notDrawnBecause says which: loading, source-error, or nothing-in-view (working, and this view is genuinely empty: say that about the VIEW, never about the dataset). Never confirm a bare "activated" in those states. When the camera was the only obstacle the tool has ALREADY flown down onto the point you were looking at and rescanned: `viewAdjusted` says so and the drawing fields are the result. Report that move as DONE and name it in one clause ("je descends sur le quartier — 172 ventes"), never as an offer, and never call fly_to_location again for it.',
   // INSTRUCTION-ONLY mapping for the two globe-scale named views.
   //
   // Both are BROADER than the first-run tiles on purpose. A person
@@ -17578,6 +17579,7 @@ const GEV_VOICE_INSTRUCTION_LINES = [
   'PATHS vs DISTANCES: for "walking/driving route from A to B" (or through several stops), use type=route with the ordered points and the matching mode (walking/driving/cycling) — the app draws the real street-following path on the map and reports distance and travel time, which you can read aloud. For "how far is X from Y", "is it nearby", or "X is next to Y", use type=arrow between the two — it draws a floating connector and shows the straight-line distance. Do NOT use route for a simple distance/proximity question.',
   'NEVER SAY A SUBJECT IS UNAVAILABLE WITHOUT LOOKING. This build carries dozens of layers, most of them French, and the enum on set_layer_visibility is the complete list. If a request does not obviously match one, call list_layers with the subject as `query` BEFORE answering. When a set_layer_visibility call comes back ok=false it carries `suggestions`: name those two or three out loud and ask which was meant ("I have Médecins and Établissements scolaires — which did you want?"). "I do not have that layer" is only ever true after list_layers came back empty for it.',
   'READING THE DATA ALOUD. A question ABOUT a station, a charge point, a bus, a practice, a gauge or a weather station is answerable here — never send the operator to an operator\'s website for a number a tool already returned. Use get_entity_context for ONE subject ("this station", "what is that?"): it returns `selected`, whatever layer holds it, plus `nearby` with distanceKm. Use analyst_query for MANY ("how many…", "the nearest one that has…", "the biggest…") — including "the nearest bike station with bikes", which is analyst_query over bikeshare, NOT select_nearest_aircraft: that tool is for aircraft and nothing else. This paragraph is about READING data; it changes no other routing — "follow that plane" is still track_entity, "how far is X" is still annotate_map type=arrow, and "open Contacts" is still set_context_mode.',
+  'WHAT THINGS ARE WORTH HERE. Property questions ("le prix au mètre carré autour d\'ici", "ça vaut combien un appartement ici", "les ventes récentes") ARE answerable: fly to the place, enable dvf-sales (the register) and avis-valeur (the estimate) — both scan a few hundred metres around the camera — then read `layerSummaries` from get_entity_context. Each entry is the median the LAYER computed, with its method: the radius, how many sales carry a price, the commune median behind it, and the estimate\'s interval. Say the figure with its basis. Never average the sales yourself and never quote a price from analyst_query min/max — those rows include mutations the register cannot price. basis=range means no single price may be given, only the quartiles; basis=none means say why there is nothing to estimate from.',
   'SPEAK NUMBERS, NOT RECORDS. Say values the way a person says them — "twelve bikes free and eight docks, out of twenty" — in the language of the conversation. NEVER read an id, a key, an underscore, a field name, or a raw unit aloud: not "bikesAvailable: 12", not "bordeaux-tbm:1042", not "capacityMw". Round sensibly (one decimal at most), convert to the unit a person uses (kilometres, minutes, kilowatts), and say WHEN the value is from whenever the result carries a timestamp — "as of four minutes ago". A field that came back null is NOT zero and NOT a reason to call the tool again: say it is not published yet, and move on — re-asking the same tool cannot make a value the feed never sent appear. Likewise `availabilityKnown: false` means live occupancy is not published for that layer at all; say so instead of hunting for it with another query. And only ever filter on fields the layer you are querying actually has — a filter naming another layer\'s field silently matches nothing and answers "zero".',
   'WHAT CAN I SAY? Answer "que puis-je dire ?" / "what can you do?" from this list, three or four of them, in the operator\'s language — never invent a capability: "Emmène-moi à Bordeaux", "Montre les médecins", "Quelles couches as-tu ?", "Combien de bornes de recharge dans la vue ?", "Combien de vélos à cette station ?", "Où suis-je ?", "Passe en vision nocturne", "Affiche les avions et suis le plus proche", "La station de vélos la plus proche avec des vélos", "Recule, vue du globe entier".',
   'SCOPE HONESTLY. The French point layers load by viewport or camera proximity, so a count over them is a count of what is loaded around the current view — say "in view" or "around here", never a national or world total. When a result carries a coverage note or a warmup note, it is telling you the count is still rising; say so instead of stating it as settled fact.',
@@ -17958,6 +17960,7 @@ const GEV_REALTIME_TOOLS = [
             'meteo-stations-fr',
             'marine-buoys',
             'medecins-fr',
+            'dvf-sales',
             'local-datacenters',
             'local-dams',
             'local-ports',
@@ -18311,9 +18314,10 @@ const GEV_REALTIME_TOOLS = [
               'meteo-stations-fr',
               'marine-buoys',
               'medecins-fr',
+              'dvf-sales',
             ],
           },
-          description: 'Layers to query. fires/wildfires → local-firms; ships/vessels → ais-live-vessels; bikes/vélos → bikeshare; scooters/trottinettes → shared-mobility-fr; buses/trams → transit-fr; charge points/bornes → irve-fr; doctors/médecins → medecins-fr. The French point layers load BY VIEWPORT, so a count over them is a count around the current view — say so, never as a national total.',
+          description: 'Layers to query. fires/wildfires → local-firms; ships/vessels → ais-live-vessels; bikes/vélos → bikeshare; scooters/trottinettes → shared-mobility-fr; buses/trams → transit-fr; charge points/bornes → irve-fr; doctors/médecins → medecins-fr; ventes/DVF → dvf-sales. The French point layers load BY VIEWPORT, so a count over them is a count around the current view — say so, never as a national total. dvf-sales counts and ranks SALES; for what the market is WORTH here, read layerSummaries from get_entity_context instead.',
         },
         scope: {
           type: 'object',
@@ -18328,7 +18332,7 @@ const GEV_REALTIME_TOOLS = [
         },
         filters: {
           type: 'array',
-          description: 'Attribute predicates, ANDed. ALTITUDE IS METERS (40,000 ft = 12192). Fields: altitudeM, speedMps, military, onGround, aircraftClass, callsign, operator, routeOrigin, routeDestination, originCountry (flights); speedKts, shipType, destination (ships); frp, confidence (fires); magnitude, depthKm, place (earthquakes).',
+          description: 'Attribute predicates, ANDed. ALTITUDE IS METERS (40,000 ft = 12192). Fields: altitudeM, speedMps, military, onGround, aircraftClass, callsign, operator, routeOrigin, routeDestination, originCountry (flights); speedKts, shipType, destination (ships); frp, confidence (fires); magnitude, depthKm, place (earthquakes); prixM2, valeurEur, surfaceM2, rooms, year, priced (dvf-sales — prixM2 is null wherever the register cannot price a sale, so filter priced=true before ranking by it).',
           items: {
             type: 'object',
             additionalProperties: false,

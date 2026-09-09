@@ -1714,10 +1714,47 @@ This is the current runtime/source-of-truth snapshot for the project.
 > trackable families — and adds `nearby`, the closest loaded records to the view
 > target with `distanceKm`. `bikeshare`, `irve-fr`, `medecins-fr`,
 > `shared-mobility-fr` and `transit-fr` gained `getSelectedInfo()` and
-> `getAnalystRecords()`; `ANALYST_LAYERS` went from 5 entries to 22, so the
-> French point layers are queryable. The engine now REFUSES a filter naming a
+> `getAnalystRecords()`; `ANALYST_LAYERS` went from 5 entries to 23 (with
+> `dvf-sales`), so the French point layers are queryable. The engine now REFUSES a filter naming a
 > field the queried layer does not publish and names the real fields — an
 > unknown field used to match nothing and answer "zero".
+>
+> **What a layer has MEASURED (2026-09-09).** Some layers do not answer "how
+> many are there" — they answer "what is it worth here", and that number has a
+> method behind it (a radius, a set of comparables, a named denominator). A
+> layer publishes it by implementing `getVoiceSummary()`, and
+> `get_entity_context` carries every enabled layer's under `layerSummaries`.
+> `dvf-sales` publishes the block median €/m², its quartiles, how many of the
+> sales in the radius carry a price at all, and the commune median they are
+> read against; `avis-valeur` publishes the estimate, its `basis`
+> (`comparables` / `range` / `none`) and its interval. The figures are LIFTED
+> from `getStats()`, never re-derived: an average of the drawn markers would be
+> a second number for one question, computed by a different rule than the card.
+> Each summary carries `measuredAt`; a summary measured further from the view
+> target than the layer's own radius is replaced by `pending`, because the
+> camera-driven layers hold the last block they scanned until the next answer
+> lands. A layer that has not scanned yet publishes `pending` too — silence read
+> as "there is nothing here".
+>
+> **ON is not VISIBLE, and the view fixes itself (2026-09-09).**
+> `set_layer_visibility` results carry `drawing` and, when false,
+> `notDrawnBecause`: `loading`, `source-error`, or `nothing-in-view`. `ok` stays
+> true; the layer IS on. Loading-versus-broken is decided by the shared
+> `layerFeedState()` so a layer that puts its zoom prompt in `stats.error` is
+> not reported as down.
+>
+> When the obstacle is CAMERA HEIGHT the tool descends instead of reporting:
+> `descendToLayerScan` flies — through `fly_to_location`, so one navigation
+> policy — straight down onto the view target already in frame, calls
+> `refreshLayer`, and returns the fresh drawing report plus `viewAdjusted`.
+> Measured 23 027 m → 516 m over Bordeaux, 12 sales drawn. The framing follows
+> the layer's declared REACH (`scanReachM` on `createAddressScanLayer`; 300 m
+> for `dvf-sales` and `avis-valeur`) at three radii — `scanDescentRangeM()` —
+> not the ceiling, which for DVF would stop at 7 km. A layer that declares no
+> reach falls back to 60 % of its own ceiling, so `bruit-fr` (dormant at 250 km
+> because it draws a regional outline) is not dragged to a street corner. With
+> no ground point under the camera nothing moves and the layer's own explanation
+> stands.
 >
 > **Situation preamble (2026-09-09).** The OpenRouter text brain posts a short
 > `user` message before each turn — camera, place, active layers, selection,

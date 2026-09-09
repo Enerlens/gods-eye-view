@@ -20,6 +20,7 @@ import test from 'node:test';
 import { bikeshareStationReadout } from '../data/bikeshare.js';
 import { irveSiteReadout } from '../data/irveFrance.js';
 import { medecinsSiteReadout } from '../data/medecinsFrance.js';
+import { dvfSaleRecord } from '../data/dvfSales.js';
 import { ANALYST_LAYERS } from '../data/analystEngine.js';
 
 test('a selected bike station answers the question that was asked', () => {
@@ -153,6 +154,11 @@ test('every layer the analyst enum names publishes the fields it advertises', ()
     'medecins-fr': Object.keys(medecinsSiteReadout({
       key: 'k', lat: 0, lon: 0, practitioners: 1, family: 'generaliste',
       site: [0, 0, 'p', 'i', 'cp', 'v', 'voie', 'tel', [], [], 1],
+    })),
+    'dvf-sales': Object.keys(dvfSaleRecord({
+      id: 'm', lat: 0, lon: 0, prixM2: 5000, valeur: 300_000, dwellingSurface: 60,
+      dwellingCount: 1, rooms: 3, distanceM: 40, date: '2024-01-01',
+      nature: 'Vente', types: ['Appartement'], address: 'a', commune: 'c',
     })),
   };
   for (const [layerId, fields] of Object.entries(emitted)) {

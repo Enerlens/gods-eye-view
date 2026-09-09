@@ -688,10 +688,21 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   // state the reading and diction rules. +5904 bytes, one cache bust, and
   // src/voice/layerVocabulary.test.mjs fails if an enum drifts from the
   // registry again.
-  assert.equal(block.length, 37662, 'tool schema byte length drifted from the frozen baseline');
+  //
+  // Re-frozen a SIXTH time, and for a measured refusal: asked for the average
+  // price per square metre around a Bordeaux bike station, the model answered
+  // that analytical queries did not cover DVF — which was true. `dvf-sales`
+  // now publishes records, so it joins the `analyst_query` and
+  // `get_entity_context` enums, and both descriptions name the one rule that
+  // makes an answer honest: count and rank the SALES here, read the MARKET
+  // from the layer's own median (carried on `layerSummaries`), never average
+  // rows whose price the register withheld. +364 bytes, one cache bust — and
+  // the wording was cut to the bone because this session prefix is re-sent on
+  // every response against a 40 000 tokens-per-minute ceiling.
+  assert.equal(block.length, 38026, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    'c3b921073fe5a86c5134fe850d16b43c9d5a8cbf4e90114e2f1242bd4b2f57ca',
+    '3bb25f428500a0fffffa0fbd9f3122578bb8da82f8d9c77b4156fe21e11fa7ff',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 

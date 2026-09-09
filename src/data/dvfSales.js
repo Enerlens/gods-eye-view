@@ -532,6 +532,103 @@ function countByClass(sales, referenceMedian) {
   return counts;
 }
 
+/**
+ * One drawn mutation as a plain record the analyst engine can query.
+ *
+ * `prixM2` is carried EXACTLY as the register supports it — null for every
+ * mutation `dvfFeed.js` refuses to price (a block sale, a flat sold with a
+ * shop). That null is the whole point: the engine drops non-finite values from
+ * min/max, so a €32,000,000 building spread over 179 lots can never enter a
+ * price answer, while the sale itself still counts as a sale. `priced` is the
+ * same fact as a flag, so "the sales that have a price per square metre" is a
+ * filter rather than a thing the model has to infer from a missing field.
+ *
+ * @param {object} sale One entry of the proxy's `sales` array.
+ * @returns {object|null} A record, or null when it has no position to sit on.
+ */
+export function dvfSaleRecord(sale) {
+  if (!sale || !Number.isFinite(sale.lat) || !Number.isFinite(sale.lon)) return null;
+  const year = Number(String(sale.date || '').slice(0, 4));
+  return {
+    id: `dvf:${sale.id}`,
+    lat: sale.lat,
+    lon: sale.lon,
+    prixM2: Number.isFinite(sale.prixM2) ? sale.prixM2 : null,
+    valeurEur: Number.isFinite(sale.valeur) ? sale.valeur : null,
+    surfaceM2: sale.dwellingSurface > 0 ? sale.dwellingSurface : null,
+    rooms: Number.isFinite(sale.rooms) ? sale.rooms : null,
+    dwellings: Number.isFinite(sale.dwellingCount) ? sale.dwellingCount : null,
+    distanceM: Number.isFinite(sale.distanceM) ? sale.distanceM : null,
+    year: Number.isFinite(year) ? year : null,
+    date: sale.date || null,
+    nature: sale.nature || null,
+    propertyType: (sale.types || []).join(', ') || null,
+    address: sale.address || null,
+    commune: sale.commune || null,
+    priced: Number.isFinite(sale.prixM2),
+  };
+}
+
+/**
+ * What this layer has to SAY about the block it just scanned.
+ *
+ * The numbers are lifted from `getStats()` rather than recomputed, so the
+ * sentence the voice speaks and the figures on the panel are the same
+ * measurement — the failure this repository keeps guarding against is two
+ * honest numbers for one question. Nothing here is derived: the block median,
+ * its quartiles and the commune denominator were all computed by the proxy
+ * from the rows it parsed, and the voice surface only names them.
+ *
+ * Null when the layer has nothing to speak for — off, or dormant above its
+ * altitude ceiling — because "no median" and "a median of nothing" are
+ * different statements and only the first one is true.
+ *
+ * `pending` is the third state and it earns its own field. A layer switched on
+ * a second ago has not scanned yet, and the absence of a summary reads exactly
+ * like "this place has no data": measured on a live session, the model was
+ * asked for the price at an address it had just flown to and answered that the
+ * layers "ne remontent aucune donnée", half a second before they did.
+ *
+ * @param {object|null} stats The layer's own `getStats()` output.
+ * @returns {object|null} Named, speakable fields, or null.
+ */
+export function dvfVoiceSummary(stats) {
+  if (!stats || stats.dormant) return null;
+  if (!Number.isFinite(stats.salesFound)) {
+    return {
+      subject: 'ventes immobilières publiées au registre DVF',
+      pending: true,
+      note: 'The register has not answered for this point yet. Say the reading is '
+        + 'coming and ask again in a moment — this is NOT "no sales here".',
+    };
+  }
+  return {
+    subject: 'ventes immobilières publiées au registre DVF',
+    // WHERE it was measured, not just what. A scan does not clear on arrival:
+    // fly from Paris to Bordeaux and this summary describes the Paris block
+    // until the new answer lands, and a caller with no way to tell would quote
+    // one city's median over another's roofs.
+    measuredAt: stats.scanCentre ? { ...stats.scanCentre } : null,
+    commune: stats.commune ?? null,
+    years: stats.years ?? null,
+    radiusM: SCAN_RADIUS_M,
+    salesInRadius: stats.salesFound,
+    salesDrawn: stats.count ?? 0,
+    // The gap between these two is what makes the median honest, so it travels
+    // with it: a block of 255 sales of which 96 can carry a price per square
+    // metre is not a block of 255 prices.
+    pricedSales: stats.comparableCount ?? 0,
+    truncated: stats.truncated === true,
+    blockMedianPrixM2: stats.localMedianPrixM2 ?? null,
+    blockP25PrixM2: stats.p25PrixM2 ?? null,
+    blockP75PrixM2: stats.p75PrixM2 ?? null,
+    // The denominator the colours are read against, named — a ratio whose
+    // reference territory is not stated is not a measurement (see the header).
+    communeMedianPrixM2: stats.referenceMedianPrixM2 ?? null,
+    communeReference: stats.referenceLabel ?? null,
+  };
+}
+
 const baseLayer = createAddressScanLayer({
   id: DVF_LAYER_ID,
   name: 'Ventes immobilières (DVF)',
@@ -540,6 +637,9 @@ const baseLayer = createAddressScanLayer({
   endpoint: '/api/dvf',
   updateInterval: UPDATE_INTERVAL_MS,
   params: () => ({ radius: String(SCAN_RADIUS_M) }),
+  // What the answer covers, so a caller choosing a camera height frames the
+  // block this layer speaks for rather than the 12 km its ceiling allows.
+  scanReachM: SCAN_RADIUS_M,
 
   render({ payload, dataSource }) {
     const reference = dvfReference(payload);
@@ -764,6 +864,42 @@ const dvfSalesLayer = {
     // hidden and `getStats()` is not being polled.
     withdrawIfDormant(baseLayer.getStats());
     return result;
+  },
+
+  /**
+   * The drawn mutations, for the analyst engine and for "what is near here".
+   *
+   * `_themePayload` is the read handle because it IS the payload that was last
+   * rendered: the shell keeps its own copy private, and this one is set by
+   * `render` and dropped the moment the layer goes off or dormant. So a query
+   * can never be answered from a block the reader has already flown away from.
+   *
+   * @param {number} [maxCount=2000] Ceiling, shared with every other layer.
+   * @returns {Array<object>}
+   */
+  getAnalystRecords(maxCount = 2000) {
+    if (!_themeEnabled || !_themePayload) return [];
+    const limit = Number.isFinite(maxCount) ? Math.max(1, Math.floor(maxCount)) : 2000;
+    const out = [];
+    for (const sale of _themePayload.sales || []) {
+      if (out.length >= limit) break;
+      const record = dvfSaleRecord(sale);
+      if (record) out.push(record);
+    }
+    return out;
+  },
+
+  /** The mutation the operator clicked, ready to be spoken. */
+  getSelectedInfo() {
+    const selectedId = baseLayer.getStats()?.selectedId || null;
+    if (!selectedId || !_themePayload) return null;
+    const sale = (_themePayload.sales || []).find((entry) => `dvf:${entry.id}` === selectedId);
+    return sale ? dvfSaleRecord(sale) : null;
+  },
+
+  /** The block's own figures, so voice and panel cannot disagree. */
+  getVoiceSummary() {
+    return _themeEnabled ? dvfVoiceSummary(dvfSalesLayer.getStats()) : null;
   },
 };
 

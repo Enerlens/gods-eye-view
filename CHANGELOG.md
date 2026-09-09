@@ -202,6 +202,16 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   reconnaissance se diagnostique sans réécouter. Au repos, le dock propose
   trois formulations parmi dix, tirées de la même liste que les instructions du
   modèle — une suggestion qu'il ne saurait pas honorer serait pire que rien.
+- **`npm run qa:immobilier-voice` — la lecture immobilière est sous test.**
+  Harnais navigateur déterministe, sans modèle et sans réseau : les deux
+  endpoints sont tenus par des charges **enregistrées** sur le proxy de l'app
+  place des Grands Hommes. Il prouve les quatre choses que le registre vivant
+  ne peut pas fixer — la caméra qui descend toute seule (23 027 m → 516 m) et
+  la couche qui dessine dans la foulée, le cadrage à 900 m sur la portée et non
+  à 7 km sur le plafond, les médianes qui arrivent jusqu'à `layerSummaries`, et
+  que ces médianes sont bien celles du proxy : la charge sert 12 ventes sur un
+  scan de 372, donc un résumé recalculé sur ce qui est à l'écran tomberait à
+  côté.
 - **`npm run qa:voice-bench` — le banc français est dans le dépôt.** 154 cas de
   routage (les 26 historiques, 9 écrits pour ce rapport, et **les 59 couches ×
   2 formulations**, dérivées du registre) et 6 cas de lecture qui notent ce que
@@ -267,6 +277,69 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `docs/CARTOGRAPHIE.md`.
 
 ### Fixed
+- **« Active la couche DVF » : la couche s'allumait, l'écran restait vide, et
+  l'outil répondait « c'est fait ».** Signalé comme « par la voix ça ne marche
+  jamais, alors qu'en cliquant ça marche » — et le clic n'y était pour rien :
+  les couches à balayage d'adresse (ventes DVF, avis de valeur, DPE, cadastre,
+  urbanisme) scannent **300 m autour de la caméra** et se mettent en sommeil
+  **au-dessus de 12 km**. Depuis une vue de ville, la couche passait bien à ON
+  et ne dessinait rien ; `set_layer_visibility` renvoyait `ok: true` sans un mot,
+  l'assistante disait « DVF activé », et l'opérateur voyait une carte vide. En
+  cliquant soi-même on est déjà dans la rue, d'où l'illusion.
+
+  **La vue se règle maintenant toute seule.** Allumer une couche, c'est demander
+  à la voir : quand la hauteur de caméra est le seul obstacle, l'outil descend
+  droit sur le point que l'opérateur avait déjà en cadre, relance le balayage et
+  répond avec ce qui est à l'écran — pas avec une proposition. Mesuré :
+  **23 027 m → 516 m**, et 12 ventes dessinées dans la foulée. Le cadrage suit
+  la **portée** de la réponse et non le plafond : une couche déclare ce qu'elle
+  couvre (`scanReachM`, 300 m pour DVF) et la caméra se pose à trois rayons,
+  900 m — cadrer sur le plafond aurait donné 7 km, soit une couche réveillée et
+  un pâté de maisons gros comme un point. Une couche sans portée déclarée garde
+  60 % de son propre plafond : le bruit aérien s'endort à 250 km parce qu'il
+  dessine un contour régional, et le descendre à 900 m répondrait à une question
+  que personne n'a posée. Sans point au sol sous la caméra (le limbe, l'espace),
+  rien ne bouge et l'explication de la couche tient.
+
+  Les autres états sont dits aussi, parce qu'il n'y a pas qu'une façon d'être
+  allumé sans rien montrer : `loading`, `source-error`, et `nothing-in-view`
+  (ça marche, et cette vue-là est vide — une phrase sur la VUE, jamais sur le
+  jeu de données). Le partage entre « en cours » et « en panne » passe par le
+  `layerFeedState()` déjà partagé, donc une couche qui range son invite de zoom
+  dans `stats.error` n'est pas annoncée en panne.
+- **« Autour de la station des Grands Hommes, quel est le prix moyen d'un
+  appartement ? » — « je n'ai pas accès à ces analyses ».** La réponse était
+  honnête et le chiffre était déjà là : `/api/avis-valeur` avait rendu une
+  médiane, son intervalle et les 68 ventes comparables qui la fondent, et la
+  fiche à l'écran les imprimait. Il n'existait simplement aucun chemin de la
+  couche vers le modèle — `analyst_query` ne connaissait pas `dvf-sales`, et
+  aucun outil ne lisait ce qu'une couche a **calculé**. `get_entity_context`
+  porte désormais `layerSummaries` : pour chaque couche allumée qui en publie
+  un, le nombre que la couche a mesuré **avec sa méthode attachée** — le rayon,
+  la médiane du pâté (5 435 €/m² place des Grands Hommes), combien de ventes
+  portent un prix (97 sur 172), le médian de la commune qui sert de
+  dénominateur (4 423 €/m²), et pour l'estimation le centre et son intervalle
+  (5 576 €/m², 335 000 € pour 60 m², ±13 %). Le chiffre est **relevé**, jamais
+  recalculé : une moyenne des points dessinés serait un second nombre pour la
+  même question, avec une autre règle que celle de la fiche.
+- **Les ventes DVF sont interrogeables.** `dvf-sales` publie ses mutations à
+  `analyst_query` — combien de ventes autour, la plus chère au mètre carré,
+  la plus proche. `prixM2` reste **null** partout où le registre ne peut pas
+  chiffrer la vente (un immeuble de 179 lots, un appartement vendu avec un
+  commerce) et le moteur écarte les valeurs non finies : les 32 M€ répartis sur
+  179 lots comptent comme une vente et ne peuvent entrer dans aucun prix. Chaque
+  ligne rendue porte une adresse, pas seulement un identifiant de mutation — la
+  liste classée revenait en identifiants internes, que les règles de diction
+  interdisent de prononcer.
+- **Un résumé mesuré ailleurs ne peut plus être cité ici.** Les couches à
+  balayage gardent le dernier pâté scanné jusqu'à ce que le suivant réponde :
+  entre « emmène-moi à Bordeaux » et l'arrivée du scan, le résumé en main est
+  celui de Paris. Chaque résumé dit maintenant **où** il a été mesuré, et
+  au-delà de la portée de la couche il est remplacé par un `pending` qui dit de
+  ne pas le citer. Même traitement pour la couche qu'on vient d'allumer : le
+  silence se lisait comme « il n'y a rien ici », et une session réelle a
+  répondu « les couches ne remontent aucune donnée » une demi-seconde avant
+  qu'elles ne le fassent.
 - **La voix se taisait au bout de trois phrases, et rien ne disait pourquoi.**
   Avec une clé OpenAI, une session Realtime renvoie *tout* son préambule à
   chaque réponse — les instructions plus les 29 schémas d'outils. Mesuré sur la

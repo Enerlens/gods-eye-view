@@ -84,6 +84,18 @@ export const ANALYST_LAYERS = {
 
   // ── Built environment ─────────────────────────────────────────────────────
   'medecins-fr': { numeric: ['practitioners'], text: ['address', 'commune', 'postcode', 'family', 'detail'], flags: ['healthCentre'] },
+  // The property register. `prixM2` is null for every mutation the register
+  // cannot price (a block sale, a flat sold with a shop), and the engine drops
+  // non-finite values — so a €32,000,000 building over 179 lots counts as a
+  // sale and can never enter a price. Ask WHAT THE MARKET IS through the
+  // layer's own summary, not by aggregating these rows: the median of the
+  // block and its commune denominator are computed by the proxy and carried on
+  // `layerSummaries`. These records answer "how many", "which", "the nearest".
+  'dvf-sales': {
+    numeric: ['prixM2', 'valeurEur', 'surfaceM2', 'rooms', 'dwellings', 'year', 'distanceM'],
+    text: ['address', 'commune', 'nature', 'propertyType', 'date'],
+    flags: ['priced'],
+  },
 };
 
 const EARTH_R_KM = 6371;

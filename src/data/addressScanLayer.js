@@ -496,6 +496,14 @@ export function createAddressScanLayer(config) {
     afterDraw = null,
     cardAnchor = null,
     maxAltitudeM = ADDRESS_SCAN_MAX_ALTITUDE_M,
+    // How far the answer actually reaches, in metres. Declared rather than
+    // inferred, because only the layer knows: the ceiling says when a scan
+    // becomes meaningless, and that is a much coarser number than the disc the
+    // layer draws — DVF goes dormant at 12 km and answers about 300 m. A caller
+    // that has to CHOOSE a camera height for this layer (the voice surface,
+    // which now flies down instead of asking) needs the reach, not the ceiling,
+    // or it frames eight kilometres of city around a block of pins.
+    scanReachM = null,
     minShiftKm = ADDRESS_SCAN_MIN_SHIFT_KM,
     fetchImpl = (...args) => fetch(...args),
     // OFF for the four layers that draw billboards: a marker is a billboard
@@ -1259,6 +1267,15 @@ export function createAddressScanLayer(config) {
         // Reported so "nothing is drawn" is never ambiguous between "the
         // camera is too high to scan" and "this address is clear".
         dormant: _dormant,
+        // The ceiling, in the same breath as the state it explains. A reader
+        // told only "dormant" knows the layer drew nothing and not what to do
+        // about it; the voice surface turns this into a descent to the block.
+        // Only while dormant: below the ceiling it is not a fact about the
+        // answer on screen.
+        ...(_dormant ? { dormantAboveM: altitudeCeilingM() } : {}),
+        // Always, when the layer declared one: it is a property of the answer,
+        // not of the camera.
+        ...(Number.isFinite(scanReachM) ? { scanReachM } : {}),
         selectedId: _selectedId,
         clickableCount: _cards.size,
         // The card opened for a bare point rather than for a marker. Reported

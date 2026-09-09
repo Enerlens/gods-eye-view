@@ -6,6 +6,7 @@ import {
   AVIS_DEFAULT_TYPE,
   AVIS_MAX_CI_DEVIATION,
   AVIS_MIN_COMPARABLES,
+  AVIS_RUNGS,
   AVIS_SUBJECT_SURFACES,
   AVIS_TYPES,
 } from './avisValeurFeed.js';
@@ -553,6 +554,11 @@ const base = createAddressScanLayer({
   source: 'Estimation GEV — comparables DVF (Etalab / DGFiP)',
   endpoint: '/api/avis-valeur',
   updateInterval: UPDATE_INTERVAL_MS,
+  // The block rung, which is where the estimate starts and where it lands
+  // whenever the register is dense enough to answer. The ladder can widen to
+  // the commune, but framing a camera on the widest rung a thin sample might
+  // need would put the reader above the street the estimate is about.
+  scanReachM: AVIS_RUNGS[0].radiusM,
   runtimeParams: {
     type: { values: [...AVIS_TYPES], defaultValue: AVIS_DEFAULT_TYPE },
     surface: {
@@ -716,6 +722,71 @@ const base = createAddressScanLayer({
 });
 
 /**
+ * The estimate this layer is currently publishing, in words a voice can say.
+ *
+ * THIS IS THE ANSWER TO "what does a flat cost around here", and it already
+ * existed — computed by the proxy, printed on the card, and invisible to the
+ * voice surface, which is how an operator asking for the price around a
+ * Bordeaux bike station was told the assistant had no access to that analysis.
+ *
+ * Every figure is lifted from `getStats()` rather than recomputed. That is the
+ * whole discipline of this function: the layer's selection rule (which
+ * comparables, at which radius, over which years) is what makes the median
+ * defensible, and a second median averaged from the drawn points by whoever is
+ * speaking would be a different, undefended number wearing the same name.
+ *
+ * `basis` travels because it changes what the sentence may claim:
+ *   comparables — a centre and an interval, publishable as an estimate;
+ *   range       — the sample was too thin or too scattered to centre, so only
+ *                 the quartiles may be said, never a single price;
+ *   none        — nothing to say; `reason` says why in the proxy's own words.
+ *
+ * Null when the layer has nothing to speak for — off, or dormant above its
+ * altitude ceiling.
+ *
+ * @param {object|null} stats The layer's own `getStats()` output.
+ * @returns {object|null} Named, speakable fields, or null.
+ */
+export function avisVoiceSummary(stats) {
+  if (!stats || stats.dormant) return null;
+  // Not yet scanned is not "nothing to estimate from" — see the same third
+  // state in dvfSales.js, and the live session that confused the two.
+  if (!stats.basis) {
+    return {
+      subject: 'estimation immobilière',
+      pending: true,
+      note: 'The estimate has not been computed for this point yet. Say it is '
+        + 'coming and ask again in a moment — this is NOT "no comparables here".',
+    };
+  }
+  return {
+    subject: `estimation d’un bien de type ${stats.subjectType ?? '?'} de ${stats.subjectSurfaceM2 ?? '?'} m²`,
+    // Where the estimate was centred. The scan does not clear on arrival, so a
+    // caller with no way to check would read one neighbourhood's estimate over
+    // another's roofs — see the same note in dvfSales.js.
+    measuredAt: stats.scanCentre ? { ...stats.scanCentre } : null,
+    commune: stats.commune ?? null,
+    years: stats.years ?? null,
+    basis: stats.basis,
+    reason: stats.reason ?? null,
+    comparableCount: stats.comparableCount ?? 0,
+    radiusM: stats.rungRadiusM ?? null,
+    // The centre, and only when `basis` is 'comparables' — `range` means the
+    // proxy refused to publish one, and repeating the quartiles' midpoint here
+    // would smuggle it back in.
+    estimatedPrixM2: stats.basis === 'comparables' ? stats.prixM2Median ?? null : null,
+    estimatedValeurEur: stats.basis === 'comparables' ? stats.valeurMedian ?? null : null,
+    prixM2P25: stats.prixM2P25 ?? null,
+    prixM2P75: stats.prixM2P75 ?? null,
+    intervalDeviationPct: stats.ciDeviationMaxPct ?? null,
+    // A band is symmetric in metres and a market is not: say what the
+    // comparables actually measured when it is not the subject's own surface.
+    comparableSurfaceMedianM2: stats.surfaceMedian ?? null,
+    driftPct: stats.driftPct ?? null,
+  };
+}
+
+/**
  * The layer, wrapping the shared factory with a pinned subject.
  *
  * Spread rather than subclassed, for the reason `isochroneRings.js` gives: every
@@ -809,6 +880,11 @@ const avisValeurLayer = {
         ? avisLegendEntries(_lastPayload, { pinned })
         : controls.legend,
     };
+  },
+
+  /** The published estimate, so voice and card cannot disagree. */
+  getVoiceSummary() {
+    return avisVoiceSummary(base.getStats());
   },
 };
 
