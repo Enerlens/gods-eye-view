@@ -47,6 +47,7 @@ import {
 import { stickyText, stickyNumber } from './aircraftMeta.js';
 import { classifyAircraft, CLASS_LEGEND_LABELS, CLASS_SCALE_2D, CLASS_SCALE_3D, CLASS_MODEL_URL, CLASS_MODEL_REAL } from './aircraftClass.js';
 import { modelAnchorWorld, modelVisualAnchor, trailAnchorForModel, trailHeadStart, visualCenterForModel } from './modelVisualAnchor.js';
+import { modelAssetUrl } from './modelAssets.js';
 import { aircraftIcon, classLegendGlyph, TRACKED_ICON_PX } from './aircraftIcons.js';
 import {
   isTr3b, tr3bAircraftClass, tr3bConvertedIds, tr3bIconKind, tr3bTypeLabel,
@@ -2721,7 +2722,8 @@ async function _ensureModel(icao24) {
   try {
     const spec = _modelSpec(_flightData.get(icao24)?.klass);
     model = await Cesium.Model.fromGltfAsync({
-      url: spec.url,
+      // `spec.url` is the identity; `modelAssetUrl` is where this build serves it.
+      url: modelAssetUrl(spec.url),
       asynchronous: false,
       minimumPixelSize: MODEL_MIN_PX,
       scale: spec.scale,
@@ -2844,7 +2846,7 @@ function _updateTrackedModel() {
     const trackedKey = _specKeyFor(_flightData.get(_trackedIcao)?.klass);
     const trackedIrBoost = _irBoost;
     Cesium.Model.fromGltfAsync({
-      url: trackedSpec.url,
+      url: modelAssetUrl(trackedSpec.url),
       asynchronous: false,
       minimumPixelSize: TRACKED_MODEL_MIN_PX,
       scale: trackedSpec.scale,
@@ -4501,7 +4503,7 @@ const flightsLayer = {
     // destroy/re-init mid-load doesn't flip the flag for a torn-down lifecycle.
     if (!_preloadModel) {
       const epoch = _modelEpoch;
-      Cesium.Model.fromGltfAsync({ url: PLANE_MODEL_URL, asynchronous: false })
+      Cesium.Model.fromGltfAsync({ url: modelAssetUrl(PLANE_MODEL_URL), asynchronous: false })
         .then((m) => {
           if (epoch === _modelEpoch) { _preloadModel = m; _planeModelLoaded = true; }
           else { try { m.destroy(); } catch { /* gone */ } }

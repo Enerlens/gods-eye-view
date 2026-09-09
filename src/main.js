@@ -17,6 +17,7 @@ import { LAYER_CATEGORIES, LAYER_TAXONOMY } from './data/layerTaxonomy.js';
 import { CATALOG_DATASET_MANIFESTS } from './data/datasetsCatalog.js';
 import { initDatasetBox } from './data/datasetBox.js';
 import { registerDataCredits } from './data/dataCredits.js';
+import { modelAssetUrl } from './data/modelAssets.js';
 import { installLazyVoice } from './voice/lazyVoice.js';
 import { MapStackController } from './mapStackController.js';
 import { describePhotorealFailure, loadPhotorealTileset } from './photorealTileset.js';
@@ -591,6 +592,11 @@ async function init() {
       // The dataset box: plug / unplug / infer / list, for the QA harness and
       // for anyone driving the app from the console.
       datasets: datasetBox,
+      // Logical model name -> the URL this build serves it from. A harness that
+      // wants to load a GLB itself (track-regression's independent capability
+      // control) cannot guess the content-hashed directory, and hardcoding
+      // `/models/` would 404 on any build.
+      modelAssetUrl,
     };
     // The other half of the ordering note above: if the voice stack landed
     // first, this is where its three fields stop being null.

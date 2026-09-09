@@ -77,16 +77,64 @@ export async function suppressFirstRun(page, { durable = false } = {}) {
 }
 
 /**
+ * Default polling interval, in ms, for `page.waitForFunction`.
+ *
+ * WHY THIS IS HERE AND NOT LEFT TO PUPPETEER. Puppeteer's default is
+ * `polling: 'raf'` — it re-evaluates the predicate inside a
+ * `requestAnimationFrame` loop. That is the wrong clock for this application
+ * twice over:
+ *
+ *   - **This app parks itself on purpose.** The render governor stops asking
+ *     for frames when nothing moves; that IS the feature `qa-perf.mjs`
+ *     measures. A wait clocked on animation frames in an app engineered to
+ *     stop producing them is a wait that can outlive its own timeout.
+ *   - **Headless Chrome may never tick rAF at all.** Measured on this Mac,
+ *     2026-09-09, on a bare `data:text/html` page with no app in sight: a
+ *     predicate already true resolves in 3 ms, a predicate that becomes true
+ *     after 1 s never resolves and the wait dies at its full timeout. The same
+ *     predicate with `polling: 100` resolves in 1 002 ms.
+ *
+ * The symptom is indistinguishable from a broken app: every harness that waits
+ * for `window.__godsEyeView.viewer` hangs for 90 s and reports a globe that
+ * never booted, while `page.evaluate` answers that the viewer is right there.
+ * Several of the fleet's "pre-existing failures" are this and nothing else.
+ *
+ * 50 ms rather than rAF's ~16: slower to notice a transition by at most a
+ * frame or two, which is noise next to the multi-second settles these
+ * harnesses take afterwards, and it cannot stop ticking. A harness that
+ * genuinely wants frame-clocked polling passes its own `polling` and this
+ * steps aside.
+ */
+export const QA_WAIT_POLLING_MS = 50;
+
+/**
  * `browser.newPage()` with the launcher already handled. The one call a new
  * harness needs; everything else in this file is for the harnesses that want
  * to PROVE the card is gone rather than assume it.
+ *
+ * It also swaps in the timer-based wait default documented above. Done here
+ * because this is already the one door every harness comes through — the
+ * alternative was editing the 79 files that call `waitForFunction`, and the
+ * 80th would have been written with the broken default anyway.
  *
  * @param {import('puppeteer').Browser} browser
  * @param {{durable?: boolean}} [options] passed to {@link suppressFirstRun}.
  * @returns {Promise<import('puppeteer').Page>}
  */
 export async function newQaPage(browser, options = {}) {
-  return suppressFirstRun(await browser.newPage(), options);
+  const page = await browser.newPage();
+  // Guarded, not assumed: the suppression tests hand this function a page
+  // double with only the two methods they assert on, and a wrapper that
+  // insisted on a real puppeteer surface would fail them for the wrong reason.
+  if (typeof page.waitForFunction === 'function') {
+    const waitForFunction = page.waitForFunction.bind(page);
+    page.waitForFunction = (predicate, waitOptions = {}, ...args) => waitForFunction(
+      predicate,
+      waitOptions.polling === undefined ? { ...waitOptions, polling: QA_WAIT_POLLING_MS } : waitOptions,
+      ...args,
+    );
+  }
+  return suppressFirstRun(page, options);
 }
 
 /**

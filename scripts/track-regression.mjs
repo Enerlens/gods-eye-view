@@ -485,10 +485,15 @@ async function main() {
     const glbControlStarted = await evalPage(async () => {
       window.__qaGlbControl = null;
       window.__qaGlbControlError = null;
-      const asset = await fetch('/models/airplane.glb');
+      // Ask the app where the GLB actually lives: a production build serves it
+      // from a content-hashed directory (MODELS_BASE_DIR in vite.config.js), so
+      // a hardcoded `/models/` 404s against `vite preview` and this control
+      // would report a broken browser backend instead of a moved file.
+      const assetUrl = window.__godsEyeView.modelAssetUrl('/models/airplane.glb');
+      const asset = await fetch(assetUrl);
       const assetBytes = asset.ok ? (await asset.arrayBuffer()).byteLength : 0;
       if (!asset.ok || assetBytes === 0) {
-        throw new Error(`GLB control asset unavailable: HTTP ${asset.status}`);
+        throw new Error(`GLB control asset unavailable: HTTP ${asset.status} (${assetUrl})`);
       }
       const Cesium = await import('/node_modules/cesium/Build/Cesium/index.js');
       const viewer = window.__godsEyeView.viewer;
@@ -496,7 +501,7 @@ async function main() {
         Cesium.Cartesian3.fromDegrees(-97.7431, 30.2672, 9000),
       );
       void Cesium.Model.fromGltfAsync({
-        url: '/models/airplane.glb',
+        url: assetUrl,
         modelMatrix,
         scale: 1,
       }).then((model) => {

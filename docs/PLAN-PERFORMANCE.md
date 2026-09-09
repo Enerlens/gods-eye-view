@@ -232,7 +232,7 @@ détail est au journal, § 7.
 | Clés dépensées avant tout geste | 5 | 0 ✅ | 0 ✅ | 0 ✅ | 0 ✅ | **0** |
 | Tas JS, 3 couches FR allumées | non mesuré | non mesuré | **40 Mio [38–47]** ✅ | non repris | non repris | ≤ 250 Mio |
 | 4 packs infra sur Terre entière | « le fps part avec » | inchangé | inchangé | inchangé | inchangé | p90 ≤ 33 ms sur la machine de référence |
-| Origine : 50 démarrages à froid simultanés | non mesuré | non mesuré | **`/api` p95 34 ms · RSS 345 Mio** ✅ | non repris | non repris | `/api` p95 ≤ 1 s, conteneur ≤ 1 Gio |
+| Origine : 50 démarrages à froid simultanés | non mesuré | non mesuré | **`/api` p95 34 ms · RSS 345 Mio** ✅ | non repris | **p95 150 ms · RSS 307 Mio · 130 boots/s** ✅ (phase 4) | `/api` p95 ≤ 1 s, conteneur ≤ 1 Gio |
 
 > La colonne « Polices + clés » (0.1 / 1.2 / 1.7) est repliée dans « Départ »
 > depuis l'ajout des colonnes de la phase 1, pour garder le tableau lisible ;
@@ -1046,44 +1046,105 @@ fait, vérifier), puis les couches FR à `CustomDataSource` par ordre d'usage
 (`transit-fr`, `road-events-fr`, `vigicrues`). Une par PR, avec la passe stable
 avant/après.
 
-### Phase 4 — L'origine : joignable par n'importe qui, sans mettre la production en danger (1 à 2 jours)
+### Phase 4 — L'origine : joignable par n'importe qui, sans mettre la production en danger — FAITE le 2026-09-09
 
-**4.1 Bornes du conteneur.** `mem_limit: 1g`, `memswap_limit: 1g`,
-`cpus: 1.5` dans `deploy/vps/docker-compose.yml`, et
-`NODE_OPTIONS=--max-old-space-size=768`. Aujourd'hui GEV peut, par une fuite
-de cache Overpass ou AIS, prendre la mémoire de Postgres Enerlens. Mesure :
-`docker stats` sous le banc 0.4.
+Les six tâches sont livrées et mesurées. Deux gestes restent hors du dépôt et
+appartiennent à Memel : la règle Cloudflare (4.3) et la levée du Basic auth
+(4.4, dernière étape de la liste dans `docs/DEPLOY.md`). Le détail des
+chiffres est dans `docs/PERFORMANCE.md` § « Origin capacity ».
 
-**4.2 Ce qui manque en en-têtes.** Étendre l'allowlist `immutable` aux
-modèles glTF en les hashant (`import x from './models/c172.glb?url'` ou un
-préfixe de version comme pour Cesium), sinon 3,2 Mo à chaque activation de
-`flights`. Idem pour les packs `.geojsonl` (déjà hashés par Vite → déjà
-couverts, vérifier avec `perf:urls`).
+**4.1 Bornes du conteneur — POSÉES.** `mem_limit: 1g`, `memswap_limit: 1g`,
+`cpus: 1.5` et `NODE_OPTIONS=--max-old-space-size=768` dans
+`deploy/vps/docker-compose.yml`, appliqués sur le VPS et vérifiés
+(`docker inspect` : `mem=1073741824`, `nanocpus=1500000000` ; V8 annonce un
+plafond de tas de 816 Mio). **Un cinquième réglage a été ajouté au plan :
+`cpu_shares: 512`.** `cpus` est un plafond, pas une priorité — il borne un
+emballement mais ne dit rien de la contention. C'est le poids, à la moitié du
+défaut, qui fait que GEV rend le cœur à Postgres quand les deux le veulent.
+Le `memswap_limit` égal au `mem_limit` n'est pas une redondance : la machine
+n'a **aucun swap**, et des valeurs égales sont la façon de dire à Docker de ne
+pas en inventer.
 
-**4.3 Cloudflare.** Remplacer la règle « 30 req / 10 s sur tout `/api` » par
-l'expression de `docs/DEPLOY.md:210-229` (cinq routes qui dépensent une clé).
-C'est côté tableau de bord, donc côté Memel ; l'exécuteur prépare l'expression
-et le test de vérification depuis le VPS.
+**4.2 En-têtes — FAITE, mais la prémisse du plan était fausse.** Mesuré sur le
+serveur de prévisualisation : `vite preview` répond aux modèles avec un ETag
+**faible dérivé de la mtime** (`W/"470200-1788982392686"`), donc un visiteur
+qui revient paie un 304, pas 3,2 Mo. Le coût réel est ailleurs, et il est
+double : `no-cache` veut dire que l'edge Cloudflare ne garde **rien**, donc le
+premier avion de chaque visiteur sort de Paris ; et le script de déploiement
+pose un tarball neuf, donc **chaque redéploiement change la mtime, l'ETag, et
+fait retélécharger un art qui n'a pas bougé** — toutes les trois minutes tant
+qu'une PR est ouverte.
 
-**4.4 Ouverture publique, quotas d'abord.** Avant de lever le Basic auth :
-`GEV_RATELIMIT_OPENAI_PER_MIN`, `GEV_RATELIMIT_GOOGLE_PER_MIN`,
-`GEV_RATELIMIT_VOICE_BRAIN_PER_MIN` posés (limiteurs opt-in qui existent,
-`vite.config.js:1183-1219`), un plafond de dépense côté consoles OpenAI et
-Google, et `GEV_TRUSTED_CLIENT_IP_HEADER=cf-connecting-ip` vérifié via
-`/healthz`. Puis retirer `GEV_ACCESS_PASSWORD`. Une page ouverte sans quotas
-est une clé publique.
+Le répertoire est donc hashé, pas les fichiers un par un : `MODELS_BASE_DIR`
+dans `vite.config.js` nomme `dist/models-<8 hex des octets>`, l'allowlist
+`immutable` le couvre, et `src/data/modelAssets.js` traduit le nom logique en
+URL servie aux six endroits qui passent une URL à Cesium. **Le `?url` par
+fichier suggéré par le plan est impossible** : `flights.test.mjs` importe
+`flights.js` sous `node --test`, où `import x from './c172.glb?url'` lève
+`ERR_UNKNOWN_FILE_EXTENSION` avant le premier test. Un `define` de build n'a
+pas ce défaut — Node y voit un identifiant absent et retombe sur `/models`.
+Vérifié dans le navigateur : `/models-82ba2e5b/airplane.glb`, 88 144 octets,
+`immutable`. Second volet vérifié aussi : les packs `.geojsonl` sont hashés par
+Vite sous `/assets/`, donc `immutable` **et** brotli. Après ça, tout ce qui
+pèse dans `dist/` est content-addressé ; il reste cinq SVG (28 ko) et les deux
+pages HTML, qui ne doivent pas l'être.
 
-**4.5 Capacité : rester sur le KVM 2, décider sur mesure.** Le banc 0.4 dit si
-50 boots simultanés tiennent. Si le p95 `/api` dépasse 1 s ou si le RSS frôle
-la borne : d'abord `docker builder prune` (12,8 Go), puis KVM 4 (8,99 → 14,99 $
-/ mois), **pas** de CDN séparé pour les statiques : l'edge Cloudflare les
-sert déjà en HIT, et déplacer `dist/` sur Pages/R2 casserait l'hypothèse
-same-origin de `/api` pour un gain d'egress qui n'existe plus.
+**4.3 Cloudflare — l'expression est prête, la règle est toujours mauvaise.**
+`deploy/vps/edge-ratelimit-probe.sh` répond sans deviner : il rafale une route
+`/api` **sans clé** qu'aucune règle correcte ne devrait brider, plus `/` en
+témoin. Mesuré depuis le VPS le 2026-09-09 : `/` passe 40 requêtes sans
+broncher, `/api/voice/config` prend un **429 à la 31ᵉ requête, `error code:
+1015`, `retry-after: 10`**. La règle est donc inchangée. Le geste est côté
+tableau de bord.
 
-**4.6 Une sonde de disponibilité.** `curl /healthz` toutes les 5 min depuis
-le VPS vers `gev.enerlens.com` (pas depuis le Mac), journal dans
-`/opt/gev/state/`, pour savoir quand la page publique tombe avant qu'un
-lecteur le dise.
+**4.4 Ouverture publique — l'outillage est livré, l'interrupteur non.** Le
+vrai manque n'était pas les quotas par IP (déjà posés : 20/30/20) mais le fait
+qu'**un plafond par adresse ne borne pas une facture**. Le seul plafond global
+qui existait était implicite — 20 × le cap par IP — donc le
+`GEV_RATELIMIT_OPENAI_PER_MIN=20` de ce déploiement autorisait en silence
+**400 appels facturés la minute**. Trois variables nouvelles le rendent
+explicite : `GEV_RATELIMIT_{OPENAI,GOOGLE,VOICE_BRAIN}_GLOBAL_PER_MIN`, posées
+à 60/90/40 dans `/opt/gev/.env` (inertes tant que ce code n'est pas déployé,
+ce qui est l'intérêt de les poser d'abord). `GEV_TRUSTED_CLIENT_IP_HEADER`
+était déjà en place et vérifié : `/healthz` à travers le tunnel renvoie une
+adresse publique, pas celle du pont Docker. La liste ordonnée des six gestes
+avant de retirer `GEV_ACCESS_PASSWORD` est dans `docs/DEPLOY.md` § « Opening
+the origin to the public ». Son point 4 dit ce qu'un visiteur coûte, et la
+réponse a changé depuis l'état des lieux : le portillon d'engagement de la
+tâche 1.7 est livré, **un démarrage à froid ne dépense plus rien**. L'unité de
+coût d'une page publique n'est donc pas l'arrivée mais le visiteur qui touche
+le globe — une page chargée en boucle ne facture rien — et c'est contre ce
+chiffre-là qu'il faut dimensionner les plafonds globaux.
+
+**4.5 Capacité — on reste sur le KVM 2, mesuré.** Le banc `perf:origin`,
+lancé depuis le VPS, donne à 50 visiteurs pendant 30 s : **129,9 démarrages à
+froid par seconde**, 917 req/s, p50 39 ms, **p95 150 ms**, p99 178 ms, aucune
+erreur, conteneur à **306,8 Mio sur 1 Gio**. Les deux seuils du plan (p95
+`/api` ≤ 1 s, conteneur ≤ 1 Gio) sont tenus avec un ordre de grandeur de
+marge. Pas de `docker builder prune`, pas de KVM 4.
+
+À méthodologie identique, la même mesure valait **6,0 démarrages/s et p95
+901 ms** au moment de la phase 0.4. Le facteur dix-neuf n'est pas venu de
+cette phase-ci : c'est la précompression brotli (`precompress-dist.mjs`) qui a
+transformé le plafond nommé en phase 0.4 — « c'est le gzip, pas la bande
+passante » — en une lecture de fichier. Le débit, plat à 16,8 Mo/s à toutes
+les charges, est passé à 158 Mo/s.
+
+**4.6 Sonde de disponibilité — POSÉE et qui tourne.**
+`deploy/vps/gev-health-probe.{sh,service,timer}`, activée sur le VPS, toutes
+les 5 minutes, journal dans `/opt/gev/state/health.log`. Elle sonde **les deux
+bouts** : `127.0.0.1:4173` et `https://gev.enerlens.com`, parce que l'origine
+debout avec le public mort est un défaut de tunnel ou de DNS, et que les deux
+morts est un défaut d'application — la différence est le diagnostic. Elle sort
+en erreur quand le public tombe, donc le journal systemd le porte aussi.
+
+**Ce que la phase 4 a trouvé et que le plan ne prévoyait pas.** `/opt/gev/.env`
+contient une apostrophe non échappée (`OPENROUTER_APP_NAME=God's Eye View`) :
+tout `. /opt/gev/.env` depuis bash meurt à la ligne 152 et les variables
+suivantes ne sont pas posées. Le parseur `env_file` de Docker n'est pas un
+shell et lit le fichier correctement, donc le conteneur n'a jamais rien vu —
+mais n'importe quel script qui source ce fichier hérite du piège. Consigné
+dans `docs/DEPLOY.md`.
 
 ### Phase 5 — Tenir la ligne
 
@@ -1106,7 +1167,10 @@ lecteur le dise.
 4. **1.5 (a)** et **1.6** → jalon C : brotli servi, Cesium préchargé.
 5. **2.1 à 2.5** sur la machine de référence → jalon D : `lite` livré, `qa-perf`
    24/24.
-6. **4.1, 4.2, 4.4** → jalon E : la page peut être ouverte.
+6. ~~**4.1, 4.2, 4.4** → jalon E : la page peut être ouverte.~~ **Phase 4
+   entière faite le 2026-09-09.** Il reste deux gestes hors dépôt, tous deux
+   côté Memel : restreindre la règle Cloudflare, puis retirer
+   `GEV_ACCESS_PASSWORD` en suivant la liste de `docs/DEPLOY.md`.
 7. **3.1 → 3.6**, une couche par PR, tant que le chiffre bouge.
 8. **1.5 (b)** en spike quand tout le reste est fusionné.
 

@@ -1,0 +1,9 @@
+[Unit]
+Description=God's Eye View — is the page a reader would open still answering?
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/gev/gev-health-probe.sh
+# One probe is two curls with a 10s ceiling each; anything longer is stuck.
+TimeoutStartSec=60

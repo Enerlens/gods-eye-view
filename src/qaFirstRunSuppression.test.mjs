@@ -17,6 +17,7 @@ import path from 'node:path';
 import {
   FIRST_RUN_LAUNCHER_SELECTOR,
   FIRST_RUN_SUPPRESSION_EXEMPT,
+  QA_WAIT_POLLING_MS,
   auditFirstRunSuppression,
   newQaPage,
   suppressFirstRun,
@@ -151,6 +152,45 @@ test('newQaPage suppresses the page it hands back', async () => {
   const returned = await newQaPage(browser);
   assert.equal(returned, page);
   assert.equal(page.run().session.get(FIRST_RUN_SESSION_KEY), 'dismissed');
+});
+
+test('newQaPage gives waits a clock that cannot stop ticking', async () => {
+  // Puppeteer's default is `polling: 'raf'`, and rAF does not tick in this
+  // fleet's headless Chrome — measured on a bare data: URL, a predicate that
+  // becomes true after 1 s never resolves. The failure reads as a globe that
+  // never booted while `page.evaluate` says the viewer is right there.
+  const calls = [];
+  const page = fakePage();
+  page.waitForFunction = async (predicate, options) => { calls.push(options); return 'handle'; };
+  const returned = await newQaPage({ newPage: async () => page });
+
+  await returned.waitForFunction(() => true);
+  await returned.waitForFunction(() => true, { timeout: 5000 });
+  assert.deepEqual(calls, [
+    { polling: QA_WAIT_POLLING_MS },
+    { timeout: 5000, polling: QA_WAIT_POLLING_MS },
+  ]);
+});
+
+test('a harness that wants frame-clocked polling still gets it', async () => {
+  // The default is a default, not a policy: a harness measuring frames has a
+  // reason to ask for rAF, and this must not quietly overrule it.
+  const calls = [];
+  const page = fakePage();
+  page.waitForFunction = async (predicate, options) => { calls.push(options); return 'handle'; };
+  const returned = await newQaPage({ newPage: async () => page });
+
+  await returned.waitForFunction(() => true, { polling: 'raf' });
+  await returned.waitForFunction(() => true, { polling: 250, timeout: 1 });
+  assert.deepEqual(calls, [{ polling: 'raf' }, { polling: 250, timeout: 1 }]);
+});
+
+test('a page double without waitForFunction is handed back, not thrown on', async () => {
+  // `fakePage()` is exactly that double. A wrapper that insisted on the full
+  // puppeteer surface would fail these tests for a reason that has nothing to
+  // do with what they assert.
+  const page = fakePage();
+  assert.equal(await newQaPage({ newPage: async () => page }), page);
 });
 
 test('the launcher probe targets the node index.html actually ships', () => {

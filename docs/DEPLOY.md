@@ -36,10 +36,12 @@ GitHub (public repo)
 | --- | --- |
 | `/opt/gev/gev-deploy.sh` | the deploy agent (copy of `deploy/vps/gev-deploy.sh`) |
 | `/opt/gev/docker-compose.yml` | the stack (copy of `deploy/vps/docker-compose.yml`) |
-| `/opt/gev/.env` | keys + `GEV_ACCESS_PASSWORD`, `chmod 600` |
+| `/opt/gev/.env` | keys + `GEV_ACCESS_PASSWORD`, `chmod 600`. **Do not `source` it from bash** — one value contains an apostrophe (`OPENROUTER_APP_NAME=God's Eye View`), and `. /opt/gev/.env` dies on it at line 152. Docker's `env_file` parser is not a shell and reads it correctly. |
 | `/opt/gev/src` | the source tree the agent swaps out, unpacked from a tarball |
 | `/opt/gev/target` | `auto` (default), `main`, or a branch name to pin |
 | `/opt/gev/state/deployed` | `branch@sha` currently live |
+| `/opt/gev/gev-health-probe.sh` | availability probe (copy of `deploy/vps/gev-health-probe.sh`) |
+| `/opt/gev/state/health.log` | one line per probe, ~7 days |
 
 ### The 2021 carroyage pack
 
@@ -133,14 +135,72 @@ ssh vps 'set -a; . /opt/gev/.env; set +a; curl -s -u "gev:$GEV_ACCESS_PASSWORD" 
 
 After any merge meant to change the environment, read `armed` — not GitHub.
 
+### Bounds, because the box is shared
+
+This VPS also carries the **Enerlens production** stack — Postgres, Redis,
+Caddy, Next.js — plus gbrain, hermes and clawvisor, on 2 vCPU, 8 GB and
+**no swap at all**. Until 2026-09-09 the GEV container had no memory limit,
+no CPU limit and no heap ceiling, so an Overpass or AIS cache that ran away,
+or a burst of cold boots gzipping 8 MB of JavaScript on the fly, could take
+the memory out from under the database. Measured that day, idle: **197 MiB and
+~2% CPU**, against 427 MB free and 4.6 GB available on the host.
+
+`deploy/vps/docker-compose.yml` now carries four numbers:
+
+| Setting | Value | What it is for |
+| --- | --- | --- |
+| `mem_limit` / `memswap_limit` | `1g` / `1g` | 5× the idle footprint. Equal values because the host has no swap, and that is how Docker is told not to start using any. |
+| `cpus` | `1.5` | a ceiling on a runaway, not a reservation. |
+| `cpu_shares` | `512` | the weight **under contention** — half the default, so GEV yields the core to Postgres when both want it, and still burns 1.5 vCPU when the box is idle. |
+| `NODE_OPTIONS` | `--max-old-space-size=768` | Node sizes its heap from the **host's** memory, not the cgroup's. Without this the heap happily grows past `mem_limit` and the kernel OOM-kills the process instead of V8 collecting. |
+
+Applying them is the `scp` from the section above — the deploy agent never
+rewrites that file — and then:
+
+```bash
+scp deploy/vps/docker-compose.yml vps:/opt/gev/
+ssh vps 'cd /opt/gev && docker compose config >/dev/null && docker compose up -d'
+ssh vps 'docker inspect gev --format "mem={{.HostConfig.Memory}} cpus={{.HostConfig.NanoCpus}} shares={{.HostConfig.CpuShares}}"'
+ssh vps 'docker stats --no-stream gev'
+```
+
+`docker inspect` reporting `mem=0` means the compose file was copied but the
+container was only restarted, not recreated: `docker compose up -d` is the
+verb, `restart` is not.
+
+### Is it still up?
+
+`gev-deploy.timer` knows the container was built and started. It learns
+nothing about the tunnel, DNS, an edge rule, or a process that came up and
+then wedged — so every outage so far has been found by somebody looking at a
+screen. `deploy/vps/gev-health-probe.sh` checks both ends every five minutes
+and writes one line per run:
+
+```
+2026-09-09T20:14:03Z origin=200 0.004 {"ok":true,...} public=200 0.081 {"ok":true,...}
+```
+
+`origin` up with `public` down is the tunnel or DNS; both down is the app. It
+runs **from the VPS**, never from a laptop: the Cloudflare rule in front of
+this origin is per source address, and the laptop shares its address with the
+owner's browser.
+
+```bash
+scp deploy/vps/gev-health-probe.sh vps:/opt/gev/
+scp deploy/vps/gev-health-probe.{service,timer} vps:/etc/systemd/system/
+ssh vps 'chmod +x /opt/gev/gev-health-probe.sh'
+ssh vps 'systemctl daemon-reload && systemctl enable --now gev-health-probe.timer'
+ssh vps 'tail -5 /opt/gev/state/health.log'
+```
+
 ### Installing it somewhere else
 
 ```bash
 ssh box 'mkdir -p /opt/gev'
-scp deploy/vps/docker-compose.yml deploy/vps/gev-deploy.sh box:/opt/gev/
-scp deploy/vps/gev-deploy.{service,timer} box:/etc/systemd/system/
-ssh box 'chmod +x /opt/gev/gev-deploy.sh && chmod 600 /opt/gev/.env'
-ssh box 'systemctl daemon-reload && systemctl enable --now gev-deploy.timer'
+scp deploy/vps/docker-compose.yml deploy/vps/gev-deploy.sh deploy/vps/gev-health-probe.sh box:/opt/gev/
+scp deploy/vps/gev-deploy.{service,timer} deploy/vps/gev-health-probe.{service,timer} box:/etc/systemd/system/
+ssh box 'chmod +x /opt/gev/gev-deploy.sh /opt/gev/gev-health-probe.sh && chmod 600 /opt/gev/.env'
+ssh box 'systemctl daemon-reload && systemctl enable --now gev-deploy.timer gev-health-probe.timer'
 ```
 
 `/opt/gev/.env` needs at least:
@@ -206,11 +266,28 @@ npm run qa:provider-settings -- --url http://localhost:4173 --expect-absent
 
 ## Rate limits: the app's, and anything in front of it
 
-The app throttles its **key-spending** routes per client address, opt-in
-(`GEV_RATELIMIT_OPENAI_PER_MIN`, `GEV_RATELIMIT_GOOGLE_PER_MIN`,
-`GEV_RATELIMIT_VOICE_BRAIN_PER_MIN`, see `.env.example`). Everything else
-under `/api/*` is keyless open data with its own upstream courtesy limits
-handled in-process. Two things follow for a hosted deployment.
+The app throttles its **key-spending** routes, opt-in, on two axes that answer
+different questions (`.env.example` documents all six variables):
+
+| | Variable | What it is for |
+| --- | --- | --- |
+| per address | `GEV_RATELIMIT_{OPENAI,GOOGLE,VOICE_BRAIN}_PER_MIN` | fairness — one visitor, or one runaway harness, cannot spend the account |
+| all callers | `GEV_RATELIMIT_{OPENAI,GOOGLE,VOICE_BRAIN}_GLOBAL_PER_MIN` | **the bill** |
+
+Everything else under `/api/*` is keyless open data with its own upstream
+courtesy limits handled in-process.
+
+**The per-address cap is not a spend limit, and reads like one.** A caller
+with a hundred addresses has a hundred buckets, and until the global variable
+existed the only ceiling was an implied backstop of 20× the per-IP cap — so
+the `GEV_RATELIMIT_OPENAI_PER_MIN=20` on this deployment silently authorised
+400 billable calls a minute. Behind a password that is theoretical. It stops
+being theoretical the moment the password comes off, which is why the opening
+checklist below sets the global one first. When the global cap trips everybody
+gets a 429 and the page degrades — no HUD summary, no nearby places — instead
+of the account draining. That is the intended failure.
+
+Two more things follow for a hosted deployment.
 
 **Behind a proxy, tell the app which header carries the real address.**
 Through a Cloudflare tunnel (or any reverse proxy) every request reaches the
@@ -248,3 +325,56 @@ A human cannot produce 30 spoken commands in ten seconds, so the same
 threshold is harmless there. With `GEV_ACCESS_PASSWORD` set and the trusted
 header above, the in-app throttles already do this job per real address, and
 the edge rule can simply be deleted.
+
+`deploy/vps/edge-ratelimit-probe.sh` tells you which shape is live without
+guessing. It bursts a **keyless** `/api` route no correct rule would ever
+throttle, plus `/` as a control; it spends no key and reads no secret, since a
+401 from the Basic gate proves the origin answered just as well as a 200 does.
+
+```
+$ ssh vps /opt/gev/edge-ratelimit-probe.sh          # 2026-09-09
+  GET /                    40 requests, no 429
+  GET /api/voice/config    FIRST 429 at request 31 (~2s)  retry-after=10  error code: 1015
+VERDICT: the edge rule still covers ALL of /api — a keyless route was
+         throttled at request 31.
+```
+
+Run it from the VPS, never from a laptop: the limit is per source address, and
+the laptop shares its address with the owner's browser.
+
+## Opening the origin to the public
+
+`GEV_ACCESS_PASSWORD` is the only thing between the open internet and a set of
+keys somebody pays for. Removing it is a one-line change with a bill attached,
+so it is the LAST step, not the first. In order:
+
+1. **Bound the spend, globally.** Set the three
+   `GEV_RATELIMIT_*_GLOBAL_PER_MIN` in `/opt/gev/.env`. Per-address caps alone
+   do not bound anything a distributed caller does.
+2. **Bound it again at the provider**, because a process-local counter resets
+   on restart and knows nothing about a second deployment: OpenAI platform →
+   Settings → Limits (usage limits); Google Cloud Console → Billing → Budgets
+   & alerts, plus per-API quotas under APIs & Services → Quotas; OpenRouter →
+   Keys → edit → credit limit. This is the only hard stop in the list.
+3. **Check "per IP" is per IP.** `curl -s https://<host>/healthz` must report
+   `client` as your own public address, not a Docker or loopback one. On this
+   deployment `GEV_TRUSTED_CLIENT_IP_HEADER=cf-connecting-ip` is set and
+   verified.
+4. **Know what a visitor costs.** A cold boot spends **nothing**: since the
+   engagement gate in `src/hud.js`, every metered call waits for a real gesture
+   — pointer, wheel or key — because the intro fly-to settles on its own and
+   used to fire five billable calls at t≈6.3 s before a single click. So the
+   unit of cost on a public page is the *engaged* visitor, not the arrival,
+   and a page loaded in a loop bills nothing. Size the global caps above
+   against engaged visitors per minute, not against traffic.
+5. **Fix the edge rule** (above), or the first person who shares the link and
+   the second person behind the same NAT will both see 429s.
+6. **Then, and only then**, remove `GEV_ACCESS_PASSWORD` from `/opt/gev/.env`
+   and `docker compose up -d`. The server logs
+   `[access-gate] GEV_ACCESS_PASSWORD is unset — this origin is OPEN` on boot,
+   and `/healthz` reports `"gated": false`. Both are how you confirm it, and
+   both are how you notice it happened by accident.
+
+Reversing it is the same two commands with the variable put back, so the risk
+is not the switch — it is how long an unbounded key stays reachable before
+anyone notices. Steps 1 and 2 are what make that duration not matter.
