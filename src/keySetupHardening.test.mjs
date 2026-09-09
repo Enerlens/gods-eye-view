@@ -272,10 +272,17 @@ test('Windows production hardener applies its exact DACL with native tools', {
   // which native tool answered what, and report it on failure.
   const trace = [];
   const spawn = (command, args, options) => {
-    const result = spawnSync(command, args, options);
-    trace.push(`${path.win32.basename(String(command))} → status=${result.status}`
+    const name = path.win32.basename(String(command));
+    // Capture instead of `stdio: 'ignore'` so a refusal can say what the tool
+    // actually printed. Safe here and only here: the file is empty and
+    // temporary, so there is no credential for a message to carry.
+    const result = spawnSync(command, args, { ...options, stdio: 'pipe', encoding: 'utf8' });
+    const noise = `${result.stderr || ''} ${name === 'powershell.exe' ? result.stdout || '' : ''}`
+      .replace(/\s+/g, ' ').trim().slice(0, 300);
+    trace.push(`${name} → status=${result.status}`
       + `${result.error ? ` error=${result.error.code || result.error.message}` : ''}`
-      + `${result.signal ? ` signal=${result.signal}` : ''}`);
+      + `${result.signal ? ` signal=${result.signal}` : ''}`
+      + `${noise ? ` said: ${noise}` : ''}`);
     return result;
   };
   try {
