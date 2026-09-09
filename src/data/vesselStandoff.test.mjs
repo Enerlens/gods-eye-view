@@ -9,6 +9,7 @@ import {
   vesselStandoffRangeM,
 } from './vesselStandoff.js';
 import { buildDepartementIndex, nearestDepartementWithin } from './franceDepartements.js';
+import { hullAltitudeM } from './vesselLabels.js';
 
 const OUTLINES = JSON.parse(readFileSync(
   new URL('./local_data/france_departements/departements.geojson', import.meta.url),
@@ -51,10 +52,28 @@ test('the framing is a real oblique standoff and the bounds are ordered', () => 
   assert.ok(VESSEL_STANDOFF.minRangeM < VESSEL_STANDOFF.defaultRangeM);
   assert.ok(VESSEL_STANDOFF.defaultRangeM < VESSEL_STANDOFF.maxRangeM);
   assert.ok(VESSEL_STANDOFF.pitchDeg < 0 && VESSEL_STANDOFF.pitchDeg > -80);
-  // The floor is what the complaint was about: 1 200 m framed water only.
+  // The floor is what the complaint was about: 1 200 m framed water only, and
+  // 8 km still framed a port basin without the town that names it.
   assert.ok(
-    VESSEL_STANDOFF.minRangeM >= 5000,
-    'the floor must still hold a coastline, not a hull',
+    VESSEL_STANDOFF.minRangeM >= 12_000,
+    'the floor must hold a coastline and something nameable on it, not a hull',
+  );
+});
+
+// The floor rules almost every French click, so it is the number that decides
+// whether the size channel is still on screen when the flight ends. Above
+// `hullAltitudeM()` the true-scale hulls are dropped and every contact is a
+// chevron — the one thing drawn at its real size would be traded away for the
+// context this floor exists to buy.
+test('the floor still lands under the altitude where true-scale hulls are drawn', () => {
+  const cameraHeightM = VESSEL_STANDOFF.minRangeM
+    * Math.sin(Math.abs(VESSEL_STANDOFF.pitchDeg) * (Math.PI / 180));
+  // The smallest canvas in play gives the lowest cutoff, so it is the binding
+  // one: a short window drops hulls sooner than a full-height one.
+  const cutoffM = hullAltitudeM(900);
+  assert.ok(
+    cameraHeightM < cutoffM,
+    `the floor settles at ${Math.round(cameraHeightM)} m, above the ${Math.round(cutoffM)} m hull cutoff`,
   );
 });
 

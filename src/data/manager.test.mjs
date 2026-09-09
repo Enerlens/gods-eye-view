@@ -2901,11 +2901,21 @@ function makeRowControlLayer() {
 test('a legend entry that declares a glyph is masked to that shape, keeping its exact colour', async () => {
   // Some layers spend HUE on one fact and SHAPE on another — the French
   // shared-mobility layer paints the operator and draws the vehicle kind. Its
-  // key only works if the row can show both, and the swatch has to stay the
+  // key only works if the block can show both, and the swatch has to stay the
   // exact declared colour: masking decides which pixels survive, never which
   // colour they are.
   const originalDocument = globalThis.document;
-  globalThis.document = { createElement: makeControlElement };
+  const host = makeControlElement();
+  const items = makeControlElement();
+  globalThis.document = {
+    createElement: makeControlElement,
+    createDocumentFragment: () => {
+      const fragment = makeControlElement();
+      fragment.isFragment = true;
+      return fragment;
+    },
+    getElementById: (id) => (id === 'map-legend' ? host : id === 'map-legend-items' ? items : null),
+  };
   const mgr = new DataLayerManager({});
   const layer = makeRowControlLayer();
   layer.module.getRowControls = () => ({
@@ -2923,9 +2933,7 @@ test('a legend entry that declares a glyph is masked to that shape, keeping its 
     assert.equal(await mgr.setEnabled('satellites', true), true);
     mgr._refreshTogglePanel();
 
-    const row = container.querySelector('[data-layer-id="satellites"]');
-    const controls = row.querySelector('.data-toggle-controls');
-    const swatches = collectByClass(controls, 'data-toggle-legend-swatch');
+    const swatches = collectByClass(items, 'map-legend-swatch');
     assert.equal(swatches.length, 2);
     assert.deepEqual(swatches.map((swatch) => swatch.style.background), ['#cbd5e1', '#b6f03c'],
       'a masked swatch is still painted the exact declared colour');
@@ -2934,7 +2942,7 @@ test('a legend entry that declares a glyph is masked to that shape, keeping its 
     assert.equal(swatches[0].style.webkitMaskImage, swatches[0].style.maskImage,
       'Safari and Chromium both need the mask');
     // An entry with no glyph stays the plain dot it always was.
-    assert.equal(swatches[1].className, 'data-toggle-legend-swatch');
+    assert.equal(swatches[1].className, 'map-legend-swatch');
     assert.equal(swatches[1].style.maskImage, undefined);
   } finally {
     await mgr.destroyAll();
@@ -2943,11 +2951,13 @@ test('a legend entry that declares a glyph is masked to that shape, keeping its 
   }
 });
 
-test('the on-map legend is a second mount point, populated without opening the panel', async () => {
-  // CARTOGRAPHIE. The panel legend is not the defect — its PLACEMENT is:
+test('the on-map legend is the only mount point, populated without opening the panel', async () => {
+  // CARTOGRAPHIE. The panel legend was not wrong, its PLACEMENT was:
   // `#data-panel` ships collapsed and the collapsed rule hides the toggle
   // list, and a share link deliberately ignores the recipient's stored panel
-  // preference. So the key has to exist somewhere the map itself shows it.
+  // preference. So the key exists where the map itself shows it — and only
+  // there, since two copies of one key is a comparison the reader has to make
+  // before learning they are the same list.
   const originalDocument = globalThis.document;
   const host = makeControlElement();
   const items = makeControlElement();
@@ -3013,7 +3023,7 @@ test('the on-map legend is a second mount point, populated without opening the p
   }
 });
 
-test('a layer that declares row controls renders its chips and color legend', async () => {
+test('a layer that declares row controls renders its chips — and no key', async () => {
   const originalDocument = globalThis.document;
   globalThis.document = { createElement: makeControlElement };
   const mgr = new DataLayerManager({});
@@ -3040,12 +3050,11 @@ test('a layer that declares row controls renders its chips and color legend', as
     assert.equal(chips[0].attributes['aria-pressed'], 'false');
     assert.equal(chips[0].title, 'toggle the dense catalog');
 
-    const swatches = collectByClass(controls, 'data-toggle-legend-swatch');
-    assert.deepEqual(swatches.map((s) => s.style.background), ['#4fd8ff', '#c89bff'],
-      'each legend swatch is painted the exact class color');
-    const items = collectByClass(controls, 'data-toggle-legend-item');
-    assert.deepEqual(items.map((i) => i.title), ['GNSS', 'belt']);
-    assert.equal(items.length, 2);
+    // The two legend entries this layer publishes are painted on the map, not
+    // here: the row would print the same swatches a second time, and push the
+    // next layer's row down the panel to do it.
+    assert.equal(collectByClass(controls, 'data-toggle-legend-item').length, 0);
+    assert.equal(collectByClass(controls, 'data-toggle-legend-swatch').length, 0);
   } finally {
     await mgr.destroyAll();
     if (originalDocument === undefined) delete globalThis.document;
@@ -3101,11 +3110,8 @@ test('a click outside a chip is inert, and a throwing layer cannot blank the pan
     const row = container.querySelector('[data-layer-id="satellites"]');
     const controls = row.querySelector('.data-toggle-controls');
 
-    const legendItem = collectByClass(controls, 'data-toggle-legend-item')[0];
-    controls.listeners.click({ target: legendItem });
-    assert.equal(layer.mode, 'core', 'the legend is not a control');
     controls.listeners.click({ target: { closest: () => null } });
-    assert.equal(layer.mode, 'core');
+    assert.equal(layer.mode, 'core', 'a click that hits no chip writes nothing');
 
     layer.module.getRowControls = () => { throw new Error('boom'); };
     mgr._refreshTogglePanel();
@@ -3151,8 +3157,9 @@ test('keyboard focus on a chip survives the refresh its own click triggers', asy
     mgr._refreshTogglePanel();
     assert.equal(globalThis.document.activeElement, chip,
       'repeated refreshes never steal focus');
-    // Legend entries hold no focus, so they may be replaced — never duplicated.
-    assert.equal(collectByClass(controls, 'data-toggle-legend-item').length, 2);
+    // Repeated refreshes never smuggle a second copy of the key back into the
+    // row either: the block holds chips and nothing else.
+    assert.equal(collectByClass(controls, 'data-toggle-legend-item').length, 0);
 
     // ...and a chip that genuinely goes away still releases focus.
     layer.module.getRowControls = () => ({ chips: [], legend: [] });
@@ -3267,7 +3274,6 @@ test('a layer that surrenders its row controls hides the block entirely', async 
     assert.equal(controls.hidden, true);
     assert.equal(collectByClass(controls, 'data-toggle-chip').length, 0,
       'the chip is removed, not merely hidden behind a style');
-    assert.equal(collectByClass(controls, 'data-toggle-legend-item').length, 0);
 
     surrendered = false;
     mgr._refreshTogglePanel();

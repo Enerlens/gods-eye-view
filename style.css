@@ -6293,49 +6293,6 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   background: rgba(255, 60, 60, 0.08);
 }
 
-.data-toggle-legend-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-mono);
-  font-size: 8px;
-  letter-spacing: 0.5px;
-  color: var(--text-dim);
-  cursor: default;
-}
-
-.data-toggle-legend-swatch {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  /* The swatch IS the datum — keep it exactly the point color, with only a
-     hairline ring so a near-black class still reads on the panel glass. */
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
-  flex: none;
-}
-
-/* A legend row whose map channel is SHAPE carries the glyph itself: the
-   swatch keeps its declared colour and the mask decides which pixels of it
-   survive, so the same node serves both kinds of entry. No hairline ring —
-   it would trace the box, not the silhouette. */
-.data-toggle-legend-swatch.has-glyph {
-  width: 13px;
-  height: 13px;
-  border-radius: 0;
-  box-shadow: none;
-  /* A glyph entry with NO declared colour still has to be ink. The mask only
-     decides which pixels of the background survive, so a swatch with no
-     background is a 13px hole — which is what "hachure : non publié" rendered
-     as. A coloured entry's inline `style.background` overrides this. */
-  background: rgba(223, 233, 245, 0.75);
-  -webkit-mask-size: contain;
-  mask-size: contain;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  mask-position: center;
-}
-
 /* ── Map legend ─────────────────────────────────
    First member of the right rail. It used to be a fixed card in the
    bottom-left corner, switched OFF by a `:has()` rule the moment DATA LAYERS

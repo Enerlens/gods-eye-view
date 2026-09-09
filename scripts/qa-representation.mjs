@@ -94,7 +94,11 @@ async function shot(page, name) {
 async function legendText(page) {
   return page.evaluate(() => {
     const rows = [];
-    for (const node of document.querySelectorAll('#map-legend .map-legend-entry, .data-toggle-legend-entry')) {
+    // One mount point since 2026-09-09: the key is painted on the map, and the
+    // layer row keeps only its chips. The second selector here named a class
+    // that never existed (`-entry` for `-item`), so it read nothing even when
+    // the inline copy was live.
+    for (const node of document.querySelectorAll('#map-legend .map-legend-entry')) {
       const swatch = node.querySelector('[class*="legend-swatch"]');
       const styles = swatch ? window.getComputedStyle(swatch) : null;
       rows.push({
