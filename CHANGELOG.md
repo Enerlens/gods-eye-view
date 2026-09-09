@@ -5,6 +5,47 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-09
 
+### Changed
+- **Ouvrir la carte ne coûte plus rien à personne — ni des octets, ni une
+  clé.** Deux mesures prises sur la machine que ce projet vise vraiment (un
+  portable de 2018, CPU bridé ÷4, 10 Mbit/s) ont donné deux résultats que
+  personne n'attendait à cet endroit.
+
+  D'abord les **polices**. La page en tirait **410 kB** chez Google, dont
+  **323 kB pour la police d'icônes complète** — 4 277 dessins — alors que
+  l'interface en affiche **28**. Elles sont désormais servies depuis ce
+  serveur, et l'ensemble d'icônes est réduit à ceux qui servent : **4,0 kB**.
+  Trois feuilles de style bloquantes, sur deux domaines que le navigateur
+  n'avait jamais résolus, deviennent une feuille de 1 kB déjà sur place. Total
+  sur le fil : **410 kB → 92 kB**, et le poids de l'application avant la
+  première tuile passe de **3,83 Mo à 3,51 Mo**. Effet de bord qui n'en est pas
+  un : plus une seule requête vers Google au chargement, donc plus une seule
+  adresse IP de lecteur envoyée là-bas avant qu'il ait consenti à quoi que ce
+  soit (CJUE, 2022).
+
+  Ensuite les **clés**. À la fin du vol d'introduction — six secondes après
+  l'ouverture, avant que quiconque ait cliqué — la page passait **cinq appels
+  facturés** : le résumé sémantique du HUD, une recherche de lieux Google, et
+  trois géocodages inverses émis par le navigateur. Le déclencheur était le vol
+  lui-même. Une page publique était donc une page que n'importe qui pouvait
+  facturer en la rechargeant en boucle. Rien n'est plus demandé avant un vrai
+  geste — un clic, une molette, une touche. En attendant, le bandeau affiche la
+  ligne composée localement, qui est exactement celle vers laquelle le chemin
+  IA se replie : le lecteur qui regarde sans toucher ne perd aucune
+  information, et celui qui touche obtient la version complète sur-le-champ.
+
+### Fixed
+- **Une scène immobile ne s'arrêtait jamais de dessiner, et la cause était une
+  phrase.** Le HUD retapait son résumé à la machine à écrire toutes les 15
+  secondes **même quand le texte était identique** — ce qui est le cas normal
+  dès que le service de résumé ne répond pas. Le texte qui grandit décalait la
+  mise en page du coin supérieur gauche, et l'affichage traitait ce décalage
+  comme du travail à peindre. Une carte posée, sans aucune couche, redessinait
+  ainsi **15 fois par 5 secondes**, indéfiniment, sur la batterie de qui la
+  laissait ouverte. Elle en fait **0**, et le contrôle de rendu
+  (`scripts/qa-perf.mjs`) passe de **19/24 à 24/24** — la première fois depuis
+  le mois d'août.
+
 ### Added
 - **Les aéroports français sont posés sur leur sol.** La couche Aéroports
   dessinait un point et, quand la source mondiale l'avait géoréférencée, une

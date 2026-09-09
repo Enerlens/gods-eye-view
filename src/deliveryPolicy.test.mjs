@@ -43,6 +43,23 @@ test('the version-pinned Cesium payload may promise a year', () => {
   }
 });
 
+test('the vendored webfonts may promise a year, because they carry their hash', () => {
+  // `npm run fonts:build` hashes these itself: they live in `public/`, which
+  // Vite copies verbatim, so nothing else would.
+  for (const p of ['/fonts/inter-latin.c9407645.woff2', '/fonts/material-symbols-outlined-subset.b9fe254e.woff2']) {
+    assert.equal(staticAssetHeaders(p)['Cache-Control'], 'public, max-age=31536000, immutable', p);
+  }
+});
+
+test('an unhashed font, and the stylesheet that names them, are not frozen', () => {
+  // `fonts.css` is to the faces what index.html is to the bundle: the map from
+  // stable names to hashed ones. Freezing it would pin a returning visitor to a
+  // face that no longer exists — the same class of failure, one layer down.
+  for (const p of ['/fonts/fonts.css', '/fonts/inter-latin.woff2', '/fonts/inter.woff2']) {
+    assert.equal(staticAssetHeaders(p)['Cache-Control'], undefined, p);
+  }
+});
+
 test('index.html is never frozen — it is the map to every hashed name', () => {
   for (const p of ['/', '/index.html', '/lidar-bdtopo.html']) {
     assert.equal(staticAssetHeaders(p)['Cache-Control'], undefined, p);

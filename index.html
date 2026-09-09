@@ -6,11 +6,23 @@
   <title>God's Eye View</title>
   <link rel="icon" type="image/svg+xml" href="/logo.svg" />
   <link rel="stylesheet" href="/style.css" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20,400,0,0" rel="stylesheet" />
-  <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet" />
+  <!--
+    Fonts are served from this origin, not from Google. Three render-blocking
+    stylesheets on two origins the browser had never resolved used to sit in
+    front of the first paint, and they pulled 410 kB — 323 kB of it the COMPLETE
+    Material Symbols variable font, 4 277 glyphs, for the 28 this interface
+    draws. `npm run fonts:build` regenerates the four faces and the icon subset
+    (4 kB); `src/materialSymbolsSubset.test.mjs` fails when a source names a
+    glyph the subset does not carry. A fourth link, `Material Icons Round`, was
+    fetched on every boot and referenced by nothing — it is gone.
+    Not sending every visitor's IP to fonts.gstatic.com before they consent to
+    anything (CJUE, 2022) is the other half of the reason.
+  -->
+  <!-- fonts:build preload -->
+  <link rel="preload" href="/fonts/inter-latin.c9407645.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/jetbrains-mono-latin.1e06740a.woff2" as="font" type="font/woff2" crossorigin />
+  <!-- /fonts:build preload -->
+  <link rel="stylesheet" href="/fonts/fonts.css" />
 </head>
 <body>
   <div id="cesiumContainer"></div>

@@ -49,3 +49,32 @@ draws.
 
 Apache-2.0 §6 grants no trademark rights, and none is claimed or exercised
 here: no operator's mark appears anywhere in this project's iconography.
+
+─────────────────────────────────────────────────────────────────────────────
+
+SECOND USE, ADDED 2026-09-09: THE INTERFACE ICON FONT, SUBSETTED.
+
+`public/fonts/material-symbols-outlined-subset.woff2` is Material Symbols
+Outlined as a font file, redistributed with this project.
+
+Until now the interface loaded the complete variable font over a `<link>` to
+Google Fonts: 323 kB and 4 277 glyphs, on every cold boot, for the 28 this
+interface draws. The subset is 4 kB.
+
+Source: https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined
+        :opsz,wght,FILL,GRAD@20,400,0,0&icon_names=<the 28 names>
+        retrieved 2026-09-09 by `npm run fonts:build`.
+
+WHAT WAS CHANGED. Nothing in any glyph. The subsetting is performed by Google's
+own `css2` endpoint, which serves a font built to order for the requested icon
+names — this project does not run a subsetter and does not touch the outlines.
+Which names are requested is not a hand-kept list either: it is extracted from
+the sources (`scripts/lib/materialSymbolGlyphs.mjs`) and pinned by
+`src/materialSymbolsSubset.test.mjs`.
+
+`config/material-symbols-subset.json` records the exact glyph list shipped, and
+`config/material-symbols-codepoints.txt` is Google's published codepoint table,
+copied unmodified from google/material-design-icons, used to tell an icon name
+from an ordinary English word.
+
+Apache-2.0 §4 is satisfied by this notice travelling with the file.
