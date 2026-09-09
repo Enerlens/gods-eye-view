@@ -35,6 +35,58 @@ const defaultFetch = (input, init) => globalThis.fetch(input, init);
 /** Recognition dies quietly every ~60 s in Chrome; this is the restart debounce. */
 const RECOGNITION_RESTART_MS = 250;
 
+/** Longest Retry-After we sit out on the operator's behalf. */
+const RETRY_AFTER_MAX_MS = 30_000;
+/** A 429 with no Retry-After is worth this much: Cloudflare's block is 10 s. */
+const RETRY_AFTER_DEFAULT_MS = 10_000;
+/** How many times one spoken turn re-asks the brain after a 429. */
+const BRAIN_RELAY_RETRY_LIMIT = 1;
+
+/**
+ * Milliseconds to wait before retrying, read off a Retry-After header.
+ *
+ * Both forms the header allows are read — delay-seconds and an HTTP-date —
+ * because the two limiters this app meets differ: the in-app throttles send
+ * `5`, the Cloudflare rule in front of staging sends `10`. A missing or
+ * unreadable value falls back to `fallbackMs`, and the result is clamped to
+ * [1 s, 30 s] so a broken header can neither spin the mic nor park it for an
+ * hour.
+ *
+ * @param {string|null|undefined} value - Raw header value.
+ * @param {{now?: number, fallbackMs?: number}} [options]
+ * @returns {number}
+ */
+export function parseRetryAfterMs(value, { now = Date.now(), fallbackMs = RETRY_AFTER_DEFAULT_MS } = {}) {
+  const text = String(value ?? '').trim();
+  let ms = NaN;
+  if (/^\d+$/.test(text)) ms = Number(text) * 1000;
+  else if (text) {
+    const at = Date.parse(text);
+    if (Number.isFinite(at)) ms = at - now;
+  }
+  if (!Number.isFinite(ms)) ms = fallbackMs;
+  return Math.min(RETRY_AFTER_MAX_MS, Math.max(1000, ms));
+}
+
+/**
+ * The tray's second line for a lookup that never got an answer.
+ *
+ * Each one starts by naming what the fault is NOT — the microphone — because
+ * that is where the default hint sent people, and none of these live there.
+ *
+ * @param {number|null} status - HTTP status, or null when nothing came back.
+ * @returns {string}
+ */
+export function describeUnreachableConfig(status) {
+  if (status === 429) {
+    return 'Not the microphone: a rate limit in front of this server (not the app) is refusing /api requests from your network address. '
+      + 'Something else on it is busy — a script, a test run, several tabs reloading — or the edge rule is set below what the app needs; see docs/DEPLOY.md.';
+  }
+  if (status === 401) return 'Not the microphone: the access gate refused the request. Reload the page and sign in again.';
+  if (status === 404) return 'Not the microphone: this build predates the voice endpoint. Deploy a current build.';
+  return 'Not the microphone: the server never answered. Check that this host is reachable, then click the mic again.';
+}
+
 /**
  * Read the server's voice configuration.
  *
@@ -56,14 +108,24 @@ const RECOGNITION_RESTART_MS = 250;
  * means the build predates this endpoint, 401 means the auth gate, 429 means
  * a rate limit in front of the app rather than the app itself.
  *
+ * A 429 also carries `retryAfterMs`, read off the limiter's own Retry-After:
+ * the caller can sit that out and ask again instead of handing a stopwatch
+ * to the operator (GevRealtimeController.resolveVoiceConfigPatiently). Only
+ * a 429 gets one — a dropped connection retried blindly is a loop, not a
+ * remedy. `hint` is the tray's second line, naming where the fault is not.
+ *
  * @param {typeof fetch} [fetchImpl]
- * @returns {Promise<{provider: string|null, reason: string, reachable: boolean, language: string, model: string|null, maxRounds: number, configured: object}>}
+ * @returns {Promise<{provider: string|null, reason: string, reachable: boolean, retryAfterMs: number|null, hint: string|null, language: string, model: string|null, maxRounds: number, configured: object}>}
  */
 export async function fetchVoiceConfig(fetchImpl = defaultFetch) {
-  const unreachable = (detail) => ({
+  const unreachable = (detail, { status = null, retryAfterMs = null } = {}) => ({
     provider: null,
     reachable: false,
-    reason: `Could not reach voice configuration (${detail}). Click the mic again.`,
+    reason: status === 429
+      ? 'Rate limited in front of this server (HTTP 429) — the voice configuration could not be read. Click the mic again.'
+      : `Could not reach voice configuration (${detail}). Click the mic again.`,
+    retryAfterMs,
+    hint: describeUnreachableConfig(status),
     language: 'en-US',
     model: null,
     maxRounds: DEFAULT_MAX_ROUNDS,
@@ -75,7 +137,12 @@ export async function fetchVoiceConfig(fetchImpl = defaultFetch) {
   } catch (error) {
     return unreachable(error?.message || 'network error');
   }
-  if (!response.ok) return unreachable(`HTTP ${response.status}`);
+  if (!response.ok) {
+    return unreachable(`HTTP ${response.status}`, {
+      status: response.status,
+      retryAfterMs: response.status === 429 ? parseRetryAfterMs(response.headers?.get?.('retry-after')) : null,
+    });
+  }
   try {
     const data = await response.json();
     return {
@@ -86,6 +153,8 @@ export async function fetchVoiceConfig(fetchImpl = defaultFetch) {
       model: typeof data?.model === 'string' ? data.model : null,
       maxRounds: Number(data?.maxRounds) > 0 ? Math.min(8, Number(data.maxRounds)) : DEFAULT_MAX_ROUNDS,
       configured: data?.configured && typeof data.configured === 'object' ? data.configured : { openai: false, openrouter: false },
+      retryAfterMs: null,
+      hint: null,
     };
   } catch (error) {
     return unreachable(error?.message || 'unreadable response');
@@ -465,21 +534,51 @@ export class GevBrainVoiceSession {
     }
   }
 
+  /**
+   * Sit out a wait the server asked for, unless the turn is cancelled first.
+   * A method, so a test can replace it and never actually sleep.
+   *
+   * @param {number} ms
+   * @param {AbortSignal|null} [signal]
+   * @returns {Promise<boolean>} true when the wait ran its course, false if aborted.
+   */
+  waitMs(ms, signal = null) {
+    return new Promise((resolve) => {
+      if (signal?.aborted) { resolve(false); return; }
+      const onAbort = () => { clearTimeout(timer); resolve(false); };
+      const timer = setTimeout(() => {
+        signal?.removeEventListener?.('abort', onAbort);
+        resolve(true);
+      }, ms);
+      signal?.addEventListener?.('abort', onAbort, { once: true });
+    });
+  }
+
   /** @returns {Promise<{ok: boolean, message?: object, usage?: object, error?: string}>} */
   async relay() {
     this.abortController = new AbortController();
+    const { signal } = this.abortController;
     try {
-      const response = await this.fetchImpl('/api/voice/brain', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: this.messages }),
-        signal: this.abortController.signal,
-      });
-      const data = await response.json().catch(() => null);
-      if (!response.ok) {
+      for (let attempt = 0; ; attempt += 1) {
+        const response = await this.fetchImpl('/api/voice/brain', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ messages: this.messages }),
+          signal,
+        });
+        const data = await response.json().catch(() => null);
+        if (response.ok) return { ok: true, message: data?.message || null, usage: data?.usage || null };
+        // A 429 says how long to wait, whichever limiter sent it — the in-app
+        // throttle or a rule at the edge. One spoken request is worth one
+        // wait: obey it and ask once more before the turn is declared lost.
+        if (response.status === 429 && attempt < BRAIN_RELAY_RETRY_LIMIT) {
+          const waitMs = parseRetryAfterMs(response.headers?.get?.('retry-after'));
+          this.host.setStatus('executing', `RATE LIMITED — RETRY IN ${Math.ceil(waitMs / 1000)} S`);
+          if (!(await this.waitMs(waitMs, signal))) return { ok: false, error: 'Turn cancelled' };
+          continue;
+        }
         return { ok: false, error: data?.error || `Voice brain failed: HTTP ${response.status}` };
       }
-      return { ok: true, message: data?.message || null, usage: data?.usage || null };
     } catch (error) {
       if (error?.name === 'AbortError') return { ok: false, error: 'Turn cancelled' };
       return { ok: false, error: error?.message || 'Voice brain unreachable' };

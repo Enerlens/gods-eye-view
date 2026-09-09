@@ -22,6 +22,8 @@ const STATUS = {
 };
 /** The tray's fallback second line — see setStatus for when it is replaced. */
 const DEFAULT_VOICE_ERROR_HINT = 'Check microphone permission and network access, then try again.';
+/** Waits one click sits out when a limiter answers the config lookup with a Retry-After. */
+const VOICE_CONFIG_RETRY_LIMIT = 2;
 const CALL_DEDUPE_MS = 2500;
 // WebRTC 'disconnected' is frequently momentary (a brief network blip that ICE
 // recovers on its own). Give it this long to return to 'connected' before we
@@ -274,6 +276,7 @@ export class GevRealtimeController {
     // fetched once per page and cached on the promise so a rapid click does not
     // race two lookups, and so a mic that has already chosen a brain keeps it.
     this.voiceConfigPromise = null;
+    this.voiceConfigWaiting = false;
     this.brainSession = null;
     this.nextErrorHint = null;
     this.annotationEventUnsubscribe = null;
@@ -363,10 +366,60 @@ export class GevRealtimeController {
     return this.voiceConfigPromise;
   }
 
+  /**
+   * Sit out a wait. A method, so a test can replace it and never sleep.
+   * @param {number} ms
+   * @returns {Promise<void>}
+   */
+  waitMs(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * resolveVoiceConfig, obeying a Retry-After instead of handing it to the operator.
+   *
+   * Seen on staging 2026-09-09: a rate-limiting rule at the edge — measured at
+   * 30 `/api` requests per 10 s per address, then a 10 s block — tripped on
+   * traffic that was not this page's (a script, a test run on the same
+   * address; the page itself makes six), and every click during those ten
+   * seconds read "HTTP 429, click the mic again". The server SAID how long to
+   * wait; a human with a stopwatch is not a design. The dock shows the wait,
+   * a click during it stops the attempt like any other, and after
+   * VOICE_CONFIG_RETRY_LIMIT waits the precise diagnosis is shown instead.
+   *
+   * @returns {Promise<{config: object, waited: boolean}|null>} null when the
+   *   attempt was abandoned — the operator stopped it mid-wait, or another
+   *   click is already sitting out the same wait.
+   */
+  async resolveVoiceConfigPatiently() {
+    let waited = false;
+    for (let attempt = 0; ; attempt += 1) {
+      const config = await this.resolveVoiceConfig();
+      if (config.reachable || !config.retryAfterMs || attempt >= VOICE_CONFIG_RETRY_LIMIT) {
+        return { config, waited };
+      }
+      if (this.voiceConfigWaiting) return null;
+      this.voiceConfigWaiting = true;
+      const epoch = this.startEpoch;
+      this.setStatus('connecting', `RATE LIMITED — RETRY IN ${Math.ceil(config.retryAfterMs / 1000)} S`);
+      try {
+        await this.waitMs(config.retryAfterMs);
+      } finally {
+        this.voiceConfigWaiting = false;
+      }
+      if (this.startEpoch !== epoch) return null; // stop() ran during the wait
+      waited = true;
+    }
+  }
+
   async start({ pushToTalk = false } = {}) {
     if (this.isActive()) return;
-    const voiceConfig = await this.resolveVoiceConfig();
-    if (this.isActive()) return; // a second click landed while the lookup ran
+    const lookup = await this.resolveVoiceConfigPatiently();
+    if (!lookup) return; // stopped mid-wait, or a duplicate click
+    const { config: voiceConfig, waited } = lookup;
+    // The 'connecting' a wait painted is this attempt's own; any other active
+    // status is a second click that landed while the lookup ran.
+    if (!waited && this.isActive()) return;
     if (voiceConfig.provider === 'openrouter') {
       // Browser ears, browser mouth, OpenRouter brain. Nothing below this line
       // runs: there is no peer connection, no ephemeral token and no audio
@@ -382,6 +435,9 @@ export class GevRealtimeController {
     if (voiceConfig.provider !== 'openai') {
       // Say which key is missing instead of failing at the token endpoint. A
       // keyless clone must be able to read its own diagnosis off the dock.
+      // A lookup that never got an answer also knows where the fault is NOT
+      // (the microphone) — hand that to the tray before it paints.
+      if (!voiceConfig.reachable && voiceConfig.hint) this.nextErrorHint = voiceConfig.hint;
       this.setStatus('error', voiceConfig.reason || 'Voice is not configured');
       return;
     }

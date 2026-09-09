@@ -1224,13 +1224,38 @@ function enforceOptInRateLimit(limiter, req, res) {
 }
 
 /**
- * Client key for rate limiting. Uses the real socket peer address only — we do
- * NOT trust X-Forwarded-For (client-controlled; a rotating value would mint fresh
- * quota and grow the limiter map). This is a localhost dev proxy, so the socket
- * address is the real client.
+ * Client key for rate limiting.
+ *
+ * By default the real socket peer address, and nothing the client can write:
+ * X-Forwarded-For is client-controlled, and a rotating value would mint fresh
+ * quota and grow the limiter map. On a localhost dev server the socket IS the
+ * client, so that default is right.
+ *
+ * Behind a reverse proxy or a Cloudflare tunnel the socket is the proxy, so
+ * every visitor lands in ONE bucket and "per IP" silently means "global" —
+ * measured on the staging tunnel 2026-09-09, where every request arrived
+ * from the Docker bridge. `trustedHeader` (env GEV_TRUSTED_CLIENT_IP_HEADER)
+ * names the header that proxy sets from the real peer — `cf-connecting-ip`
+ * for Cloudflare — and is opt-in precisely because trusting it on an origin
+ * that is ALSO reachable directly lets a direct caller forge it. Set it only
+ * when nothing reaches the origin except through that proxy.
+ *
+ * @param {import('http').IncomingMessage} req
+ * @param {string|undefined} [trustedHeader] - Header name, read at call time
+ *   because `.env` lands in process.env after this module is imported.
+ * @returns {string}
  */
-function clientKey(req) {
+export function clientKeyFor(req, trustedHeader = process.env.GEV_TRUSTED_CLIENT_IP_HEADER) {
+  const name = String(trustedHeader || '').trim().toLowerCase();
+  if (name) {
+    const raw = req.headers?.[name];
+    const first = String(Array.isArray(raw) ? raw[0] : (raw || '')).split(',')[0].trim();
+    if (first) return first;
+  }
   return String(req.socket?.remoteAddress || 'local');
+}
+function clientKey(req) {
+  return clientKeyFor(req);
 }
 
 /** Server-side timeout ceiling (seconds) we allow inside an Overpass QL query. */
@@ -24856,7 +24881,15 @@ function accessGatePlugin() {
   const install = (middlewares, hosted) => {
     middlewares.use('/healthz', (req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
-      res.end(JSON.stringify({ ok: true, gated: Boolean(process.env.GEV_ACCESS_PASSWORD) }));
+      // `client` is the address the per-IP throttles will key THIS caller on —
+      // only ever the caller's own. Behind a tunnel it reads as the proxy
+      // until GEV_TRUSTED_CLIENT_IP_HEADER is set, which is how a deployment
+      // checks that its "per IP" limits are per IP (docs/DEPLOY.md).
+      res.end(JSON.stringify({
+        ok: true,
+        gated: Boolean(process.env.GEV_ACCESS_PASSWORD),
+        client: clientKeyFor(req),
+      }));
     });
 
     middlewares.use((req, res, next) => {

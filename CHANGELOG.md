@@ -33,6 +33,24 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   la seule preuve. Les mesures et les règles sont dans
   [`docs/DEMANDER-UNE-DONNEE.md`](docs/DEMANDER-UNE-DONNEE.md).
 
+### Fixed
+- **Un 429 devant l'app laissait le micro mort, et accusait la permission
+  micro.** Sur l'instance hébergée, une règle de limitation à la périphérie
+  (mesurée : 30 requêtes `/api` par 10 s et par adresse, puis 10 s de blocage)
+  se déclenchait sur du trafic parallèle depuis la même adresse — un script,
+  un harnais, des onglets qui rechargent ; la page elle-même n'émet que six
+  requêtes `/api` au démarrage — et pendant ces dix secondes le micro lisait
+  « HTTP 429, cliquez à nouveau » sous un conseil sur la permission du micro.
+  Le serveur disait combien de temps attendre ; personne ne le lisait. La
+  lecture de configuration honore désormais `Retry-After` : le dock affiche
+  l'attente (« RATE LIMITED — RETRY IN 10 S »), réessaie, deux fois au plus,
+  puis montre un diagnostic qui commence par « Not the microphone ». Un tour
+  de parole qui reçoit un 429 attend et redemande une fois. Et derrière un
+  tunnel, `GEV_TRUSTED_CLIENT_IP_HEADER` fait enfin voir aux limiteurs
+  « par IP » l'adresse du visiteur plutôt que celle du proxy — `/healthz`
+  renvoie `client` pour le vérifier. Ce qu'une règle de périphérie doit
+  couvrir, et ne pas couvrir, est écrit dans `docs/DEPLOY.md`.
+
 ## [Unreleased] — 2026-09-08
 
 ### Added

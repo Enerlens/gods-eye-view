@@ -6,6 +6,7 @@ import {
   fetchVoiceConfig,
   formatBrainCost,
   nextBrainStep,
+  parseRetryAfterMs,
   parseToolArguments,
   pickSpeechVoice,
   speechRecognitionConstructor,
@@ -300,4 +301,97 @@ test('a non-fatal error keeps listening', async () => {
   await session.start({});
   session.handleRecognitionError({ error: 'bad-grammar' });
   assert.equal(session.isActive(), true);
+});
+
+test('Retry-After is read in both forms, defaulted when absent, and clamped', () => {
+  assert.equal(parseRetryAfterMs('10'), 10_000, 'delay-seconds — what Cloudflare sends');
+  assert.equal(parseRetryAfterMs('5'), 5_000, 'delay-seconds — what the in-app throttles send');
+  const now = Date.parse('Wed, 09 Sep 2026 07:15:31 GMT');
+  assert.equal(parseRetryAfterMs('Wed, 09 Sep 2026 07:15:38 GMT', { now }), 7_000, 'an HTTP-date is relative to now');
+  assert.equal(parseRetryAfterMs(undefined), 10_000, 'no header: a 429 is still worth the edge block length');
+  assert.equal(parseRetryAfterMs('soon'), 10_000, 'garbage is the default, not NaN');
+  assert.equal(parseRetryAfterMs('0'), 1_000, 'never a hot loop');
+  assert.equal(parseRetryAfterMs('3600'), 30_000, 'never parks the mic for an hour');
+});
+
+test('a 429 on the config lookup carries the wait and a hint that is not about the mic', async () => {
+  // The screenshot of 2026-09-09 09:15: "HTTP 429, click the mic again" under
+  // a hint about microphone permission. The edge rule had said how long to
+  // wait; nothing read it.
+  const limited = await fetchVoiceConfig(async () => ({ ok: false, status: 429, headers: { get: (n) => (n === 'retry-after' ? '10' : null) } }));
+  assert.equal(limited.reachable, false);
+  assert.equal(limited.retryAfterMs, 10_000, 'the limiter\'s own Retry-After is the wait');
+  assert.match(limited.reason, /HTTP 429/);
+  assert.match(limited.reason, /in front of this server/, 'the reason says the limit is not the app');
+  assert.match(limited.hint, /^Not the microphone/, 'the tray\'s second line stops pointing at the mic');
+  assert.doesNotMatch(limited.hint, /microphone permission/);
+
+  const bare = await fetchVoiceConfig(async () => ({ ok: false, status: 429 }));
+  assert.equal(bare.retryAfterMs, 10_000, 'a stub without headers still gets the default wait');
+
+  for (const status of [404, 401]) {
+    const other = await fetchVoiceConfig(async () => ({ ok: false, status }));
+    assert.equal(other.retryAfterMs, null, `a ${status} is not worth an automatic retry`);
+    assert.match(other.hint, /^Not the microphone/);
+  }
+  const offline = await fetchVoiceConfig(async () => { throw new Error('Failed to fetch'); });
+  assert.equal(offline.retryAfterMs, null, 'a dropped connection retried blindly is a loop, not a remedy');
+  assert.match(offline.hint, /never answered/);
+
+  const answered = await fetchVoiceConfig(async () => ({ ok: true, json: async () => ({ provider: 'openrouter' }) }));
+  assert.equal(answered.retryAfterMs, null);
+  assert.equal(answered.hint, null);
+});
+
+test('a brain turn that meets a 429 waits what it was told and asks once more', async () => {
+  const { session, statuses } = makeHarness({ replies: [] });
+  const calls = [];
+  session.fetchImpl = async () => {
+    calls.push(Date.now());
+    if (calls.length === 1) {
+      return { ok: false, status: 429, headers: { get: () => '5' }, json: async () => ({ error: 'Rate limit exceeded' }) };
+    }
+    return { ok: true, json: async () => ({ message: { content: 'Vol vers Lyon.' }, usage: { cost: 0.0004 } }) };
+  };
+  const waits = [];
+  session.waitMs = async (ms) => { waits.push(ms); return true; };
+  session.active = true;
+  session.messages = [{ role: 'user', content: 'va à Lyon' }];
+
+  const reply = await session.relay();
+  assert.equal(reply.ok, true, 'the second ask succeeded and the turn is not lost');
+  assert.equal(calls.length, 2);
+  assert.deepEqual(waits, [5_000], 'the wait is the limiter\'s Retry-After, not a guess');
+  assert.deepEqual(statuses.at(-1), ['executing', 'RATE LIMITED — RETRY IN 5 S'], 'the dock says what it is waiting for');
+});
+
+test('a brain turn retries a 429 once, not forever, and never retries a 400', async () => {
+  const { session } = makeHarness({ replies: [] });
+  let asks = 0;
+  session.fetchImpl = async () => { asks += 1; return { ok: false, status: 429, headers: { get: () => '5' }, json: async () => null }; };
+  session.waitMs = async () => true;
+  session.active = true;
+  const stillLimited = await session.relay();
+  assert.equal(stillLimited.ok, false);
+  assert.equal(asks, 2, 'one wait, one retry, then the truth');
+  assert.match(stillLimited.error, /HTTP 429/);
+
+  asks = 0;
+  session.fetchImpl = async () => { asks += 1; return { ok: false, status: 400, json: async () => ({ error: 'messages is required' }) }; };
+  const refused = await session.relay();
+  assert.equal(asks, 1, 'a 400 says the request is wrong; asking again cannot fix it');
+  assert.equal(refused.error, 'messages is required');
+});
+
+test('cancelling a turn during its rate-limit wait ends the wait, not just the fetch', async () => {
+  const { session } = makeHarness({ replies: [] });
+  session.fetchImpl = async () => ({ ok: false, status: 429, headers: { get: () => '10' }, json: async () => null });
+  session.active = true;
+  const pending = session.relay();
+  // The wait is real here (10 s) — the abort must cut it short.
+  await new Promise((r) => setTimeout(r, 0));
+  session.abortController?.abort();
+  const reply = await pending;
+  assert.equal(reply.ok, false);
+  assert.equal(reply.error, 'Turn cancelled');
 });
