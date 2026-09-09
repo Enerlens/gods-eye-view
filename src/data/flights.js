@@ -938,16 +938,25 @@ function _requestTypeEnrichment(icao24, priority = false) {
   }, priority);
 }
 
-function _requestRouteEnrichment(icao24) {
+/**
+ * Ask for one contact's scheduled leg.
+ *
+ * @param {string} icao24
+ * @param {{priority?: boolean}} [options] `true` — the default — is the
+ *   TRACKED path, which jumps the queue and spends no budget. The ambient
+ *   sweep passes `false`: it has already paid a route token and must not
+ *   delay the plane a reader just clicked.
+ */
+function _requestRouteEnrichment(icao24, { priority = true } = {}) {
   const cs = String(_flightData.get(icao24)?.callsign || '').trim().toUpperCase();
   if (!/^[A-Z]{3}\d/.test(cs)) return; // airline-style callsigns only (LLL + digit); GA tails won't resolve
   _enqueueEnrich(`r:${cs}`, `/api/adsbdb/route/${encodeURIComponent(cs)}`, (data) => {
     const meta = _flightData.get(icao24);
-    if (!meta) return;
+    if (!meta) return; // evicted while the lookup was in flight
     meta.airline = data.airline || meta.airline;
     if (data.origin && data.destination) meta.route = { origin: data.origin, destination: data.destination };
     if (icao24 === _trackedIcao && _trackedEntity) _updateTrackedLabelModel(icao24);
-  }, true); // route lookups only fire for the TRACKED plane — front of the queue
+  }, priority);
 }
 
 // ---------------------------------------------------------------------------
@@ -1022,6 +1031,79 @@ let _enrichAmbientBudget = ENRICH_AMBIENT_BUDGET_CEIL;
 /** Epoch ms the bucket last accounted a refill window from (0 = unset). */
 let _enrichAmbientRefillAnchorMs = 0;
 
+// ---------------------------------------------------------------------------
+// AMBIENT ROUTE ENRICHMENT (2026-09-09). A SECOND bucket, because it pays for
+// a second thing.
+//
+// Until now `_requestRouteEnrichment` fired for the TRACKED contact only, so
+// a fresh session held no routes at all and `flights/boundFor` — the join that
+// makes an airport card say "1 en approche — TVF57PQ" — answered 0/0 for every
+// field on Earth until a reader happened to track a plane into that airport.
+// `docs/PLAN-CROISEMENTS.md` recorded widening it as blocked on exactly one
+// thing: doing it inside the TYPE bucket would spend a budget sized against a
+// different demand, and invalidate the measurement that fixed it.
+//
+// So the demand was measured instead. `npm run qa:enrich-budget` now counts
+// both, over one run and one fleet, and they are not the same fleet:
+//
+//   · a TYPE lookup is keyed on the 6-hex address, so every airborne contact
+//     is demand;
+//   · a ROUTE lookup is keyed on the CALLSIGN and only an airline-style one
+//     (`/^[A-Z]{3}\d/`) can resolve at all, so a general-aviation tail is not
+//     demand — it is a request that would come back empty.
+//
+// Measured 2026-09-09, 26 samples over 14.6 minutes on the proxy's own 250 NM
+// circle, airborne contacts only:
+//
+//   region        airborne  airline callsigns  new routes / 5 min
+//   Paris              726                573                  72
+//   Los Angeles        511                222                  22
+//   Francfort            —                  —                   —  (upstream)
+//
+// Frankfurt answered ZERO of its 26 samples that afternoon — adsb.lol dropped
+// every request past the first of each round — so the ceiling below is sized
+// on Paris, which is the busier of the two regions that did answer and the one
+// this fork is about. It is stated rather than smoothed over: a re-run that
+// reaches Frankfurt may find a bigger first look, and the harness will say so.
+//
+// AND THE YIELD IS PART OF THE SIZING. 30 of 40 sampled callsigns (75.0 %)
+// resolve to a leg at adsbdb, and all 30 of those carry destination
+// coordinates — so three requests in four buy a card line and a distance, and
+// the fourth is negative-cached by the proxy for 24 h and never asked again.
+//
+// WHAT THIS DOES NOT CHANGE IS THE RATE. The two buckets bound session TOTALS;
+// what adsbdb sees is bounded by the SHARED drip (4 concurrent,
+// ENRICH_DISPATCH_GAP_MS apart, ≤5/s = ≤300/min) against its 512-per-60 s
+// limiter. Adding a second demand lengthens the queue, not the request rate.
+// A fresh European view on the OpenSky path now has 726 + 573 = 1 299 lookups
+// to drain at that drip, which is 4.3 minutes of back-of-queue work, nearest
+// to the camera first, while every priority path (tracked, model-eligible)
+// keeps jumping the queue in front of it.
+/** Route bucket ceiling: the first-look burst of distinct airline callsigns. */
+const ENRICH_ROUTE_BUDGET_CEIL = 600;
+/**
+ * Tokens back per refill window.
+ *
+ * 100 against a measured worst churn of 72 per 5 minutes. The headroom is the
+ * same shape the TYPE refill carries (150 against 126 measured, 1.19×) rather
+ * than a number picked for roundness, and like that one it is a throttle on
+ * the case the circle cannot see: a reader PANNING to a new region pays a
+ * first look each time, and past the opening bucket that rate is this number.
+ */
+const ENRICH_ROUTE_REFILL_TOKENS = 100;
+/**
+ * Max new ambient ROUTE enqueues per poll sweep.
+ *
+ * Deliberately under {@link ENRICH_AMBIENT_PER_SWEEP}. The two sweeps share
+ * one queue and one drip, and a silhouette is visible on every plane on screen
+ * while a route is visible on a card — so when both are hungry, the type
+ * backlog drains first and the routes fill in behind it.
+ */
+const ENRICH_ROUTE_PER_SWEEP = 60;
+let _enrichRouteBudget = ENRICH_ROUTE_BUDGET_CEIL;
+/** Epoch ms the route bucket last accounted a refill window from (0 = unset). */
+let _enrichRouteRefillAnchorMs = 0;
+
 /** QA seam: headless harnesses (scripts/qa-enrich-ambient.mjs) shrink the
  *  bucket knobs via window.__GEV_ENRICH_AMBIENT_QA = {ceil, refillTokens,
  *  windowMs} — they cannot wait out a real 5-minute window. Read lazily each
@@ -1049,18 +1131,75 @@ function _refillAmbientBudget(nowMs) {
   _enrichAmbientRefillAnchorMs += windows * windowMs;
 }
 
+/** QA seam for the ROUTE bucket, mirroring `_ambientBudgetKnobs`: a harness
+ *  cannot wait out a real 5-minute window either. `window.__GEV_ENRICH_ROUTE_QA
+ *  = {ceil, refillTokens, windowMs}`. Production never sets it. */
+function _routeBudgetKnobs() {
+  const o = (typeof window !== 'undefined' && window.__GEV_ENRICH_ROUTE_QA) || null;
+  return {
+    ceil: Number.isFinite(o?.ceil) && o.ceil > 0 ? o.ceil : ENRICH_ROUTE_BUDGET_CEIL,
+    refillTokens: Number.isFinite(o?.refillTokens) && o.refillTokens > 0 ? o.refillTokens : ENRICH_ROUTE_REFILL_TOKENS,
+    // The window is shared with the type bucket unless a harness says otherwise:
+    // two refill rhythms would be two things to reason about for no gain.
+    windowMs: Number.isFinite(o?.windowMs) && o.windowMs > 0 ? o.windowMs : ENRICH_AMBIENT_REFILL_WINDOW_MS,
+  };
+}
+
+/** The route bucket's own refill, same rolling arithmetic as the type one. */
+function _refillRouteBudget(nowMs) {
+  const { ceil, refillTokens, windowMs } = _routeBudgetKnobs();
+  if (!_enrichRouteRefillAnchorMs) { _enrichRouteRefillAnchorMs = nowMs; return; }
+  const windows = Math.floor((nowMs - _enrichRouteRefillAnchorMs) / windowMs);
+  if (windows <= 0) return;
+  _enrichRouteBudget = Math.min(ceil, _enrichRouteBudget + windows * refillTokens);
+  _enrichRouteRefillAnchorMs += windows * windowMs;
+}
+
+/**
+ * Is this contact worth an ambient ROUTE lookup?
+ *
+ * The same shape gate `_requestRouteEnrichment` applies before it will spend
+ * anything — three letters then a digit — plus the two things that make an
+ * ambient request pointless: a route already in hand, and a callsign already
+ * asked for this session. Deduplication is on the CALLSIGN and not on the
+ * address, because that is what the queue keys on: two contacts can never
+ * share one, but one contact seen across forty polls is one lookup.
+ *
+ * Exported for the unit tests, which drive it without a scene.
+ *
+ * @param {object|null|undefined} meta `_flightData` record.
+ * @param {(key: string) => boolean} [seen] Queue-membership test.
+ * @returns {?string} The callsign to ask about, or null.
+ */
+export function ambientRouteCallsign(meta, seen = (key) => _enrichSeen.has(key)) {
+  if (meta?.route) return null; // already answered — the card has its leg
+  const cs = String(meta?.callsign || '').trim().toUpperCase();
+  // GA tails (`F-GABC`, `N172SP`) never resolve at adsbdb: the register is
+  // scheduled airline legs. Asking would spend a token on a certain miss.
+  if (!/^[A-Z]{3}\d/.test(cs)) return null;
+  return seen(`r:${cs}`) ? null : cs;
+}
+
 function _sweepAmbientEnrichment() {
-  _refillAmbientBudget(Date.now());
-  if (_enrichAmbientBudget <= 0 || !_viewer || !_billboardCollection || !_billboardCollection.show) return;
+  const now = Date.now();
+  _refillAmbientBudget(now);
+  _refillRouteBudget(now);
+  // ONE pass over the billboards feeds BOTH buckets. The visibility work — a
+  // horizon test and a frustum test per contact — is what this sweep costs,
+  // and doing it twice a poll to answer two questions about the same aircraft
+  // would double the only expensive part for nothing.
+  if ((_enrichAmbientBudget <= 0 && _enrichRouteBudget <= 0)
+    || !_viewer || !_billboardCollection || !_billboardCollection.show) return;
   try {
     const camera = _viewer.camera;
     const camPos = camera.positionWC;
     const occluder = horizonOccluder(camera);
     const cull = camera.frustum.computeCullingVolume(camPos, camera.directionWC, camera.upWC);
     const cand = [];
+    const routeCand = [];
+    /** Callsigns already claimed by a candidate in THIS sweep. */
+    const claimed = new Set();
     for (const [icao24, bb] of _billboards) {
-      if (_enrichSeen.has(`t:${icao24}`)) continue; // answered / queued / negative this session
-      if (!/^[0-9a-f]{6}$/i.test(icao24)) continue; // adsbdb keys are 6-char hex only
       const meta = _flightData.get(icao24);
       if (meta?.onGround) continue; // ground traffic never spends ambient budget (click-to-enrich still works)
       // THE FEED ALREADY ANSWERED FOR THIS ONE. Since phase 3a the adsb.lol
@@ -1073,17 +1212,43 @@ function _sweepAmbientEnrichment() {
       // carries none, so nothing changes on the path that actually needs help.
       // Clicking a plane, or approaching one close enough to render in 3D,
       // still enriches it — at priority, and off this budget.
-      if (meta?.typeCode) continue;
+      const wantsType = _enrichAmbientBudget > 0
+        && !_enrichSeen.has(`t:${icao24}`) // answered / queued / negative this session
+        && /^[0-9a-f]{6}$/i.test(icao24) // adsbdb type keys are 6-char hex only
+        && !meta?.typeCode;
+      // Deduplicated on the CALLSIGN within the sweep as well as against the
+      // queue: two contacts carrying one callsign in the same frame would
+      // otherwise spend two tokens on a request `_enqueueEnrich` collapses to
+      // one, and the second contact would be paid for and never answered.
+      const routeCallsign = _enrichRouteBudget > 0 && !claimed.has(String(meta?.callsign || '').trim().toUpperCase())
+        ? ambientRouteCallsign(meta)
+        : null;
+      if (!wantsType && !routeCallsign) continue;
       if (!bb.position || !occluder.isPointVisible(bb.position)) continue; // beyond the limb
       Cesium.Cartesian3.clone(bb.position, _scratchModelBS.center);
       if (cull.computeVisibility(_scratchModelBS) === Cesium.Intersect.OUTSIDE) continue; // off-screen
-      cand.push([icao24, Cesium.Cartesian3.distanceSquared(camPos, bb.position)]);
+      const range = Cesium.Cartesian3.distanceSquared(camPos, bb.position);
+      if (wantsType) cand.push([icao24, range]);
+      if (routeCallsign) {
+        claimed.add(routeCallsign);
+        routeCand.push([icao24, range]);
+      }
     }
     cand.sort((a, b) => a[1] - b[1]); // nearest first — what the user is looking at resolves first
     const n = Math.min(cand.length, ENRICH_AMBIENT_PER_SWEEP, _enrichAmbientBudget);
     for (let i = 0; i < n; i++) {
       _enrichAmbientBudget -= 1;
       _requestTypeEnrichment(cand[i][0]); // non-priority: fills the back of the queue
+    }
+    // Routes AFTER types, and enqueued the same way: nearest first, back of
+    // the shared queue. The order matters on a poll where both are hungry —
+    // a silhouette is visible on every plane on screen and a route is visible
+    // on a card, so the pixels that are already wrong get fixed first.
+    routeCand.sort((a, b) => a[1] - b[1]);
+    const r = Math.min(routeCand.length, ENRICH_ROUTE_PER_SWEEP, _enrichRouteBudget);
+    for (let i = 0; i < r; i++) {
+      _enrichRouteBudget -= 1;
+      _requestRouteEnrichment(routeCand[i][0], { priority: false });
     }
   } catch { /* ambient enrichment is best-effort — never disturb the poll loop */ }
 }
@@ -3751,19 +3916,24 @@ function _remainingLegKm(icao24, route) {
  * traffic on an airport the aircraft is nowhere near. The same gate, the same
  * reason.
  *
- * WHAT IT CAN AND CANNOT SEE, stated because the ceiling is low today.
- * `_requestRouteEnrichment` fires for the TRACKED contact only — one aircraft
- * at a time, front of the enrichment queue — so a fresh session has no routes
- * at all and this answers 0/0 for every field. It fills as a reader tracks
- * flights: track AFR447 into Roissy, click Roissy, and the card says so. It is
- * therefore a count of what THIS SESSION HAS RESOLVED and never a departure
- * board, and the card's wording ("en approche", "au départ", with names) says
- * only what it can stand behind.
+ * WHAT IT CAN AND CANNOT SEE. Until 2026-09-09 `_requestRouteEnrichment` fired
+ * for the TRACKED contact only — one aircraft at a time — so a fresh session
+ * held no routes at all and this answered 0/0 for every field on Earth until
+ * a reader happened to track a flight into that airport. The AMBIENT sweep now
+ * asks for the on-screen fleet too, off its own measured token bucket
+ * (`ENRICH_ROUTE_BUDGET_CEIL`, `npm run qa:enrich-budget`), so a reader who
+ * opens Roissy sees what is around Roissy without having clicked anything.
  *
- * Widening it means enqueuing route lookups for the ambient fleet, which is a
- * change to a token bucket sized by measurement against TYPE lookups
- * (`ENRICH_AMBIENT_BUDGET_CEIL`, `npm run qa:enrich-budget`) — a separate,
- * measured decision, not a side effect of adding a card line.
+ * IT IS STILL NOT A DEPARTURE BOARD, and the wording still says only what it
+ * can stand behind. Three things bound it, and all three are measured:
+ *   · only an AIRLINE-STYLE callsign can resolve at all — 573 of the 726
+ *     airborne contacts in the Paris circle (79 %), the rest being general
+ *     aviation whose tails adsbdb does not carry;
+ *   · of those, 30 of 40 sampled (75.0 %) resolve to a leg;
+ *   · and the sweep only sees what is ON SCREEN, so an airport framed from
+ *     orbit counts a different sky than the same airport framed from 20 km.
+ * A count is therefore what THIS SESSION HAS RESOLVED, still — it is just no
+ * longer, on almost every session, zero.
  *
  * @param {string} icao ICAO code of the airport asking.
  * @param {string} [iata] Its IATA code, when the pack has one.
@@ -4362,9 +4532,11 @@ const flightsLayer = {
       _cockpitModeListener = (event) => _applyCockpitState(event?.detail);
       window.addEventListener('gev:cockpit-mode-changed', _cockpitModeListener);
     }
-    // Fresh session — full bucket, anchor re-seeded on the first sweep.
+    // Fresh session — full buckets, anchors re-seeded on the first sweep.
     _enrichAmbientBudget = _ambientBudgetKnobs().ceil;
     _enrichAmbientRefillAnchorMs = 0;
+    _enrichRouteBudget = _routeBudgetKnobs().ceil;
+    _enrichRouteRefillAnchorMs = 0;
 
     _installClickHandler(viewer);
 
