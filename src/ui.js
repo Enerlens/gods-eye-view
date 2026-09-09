@@ -14,6 +14,7 @@ import {
 } from './cockpitTracking.js';
 import { IntelHUD } from './hud.js';
 import { ShareLinkManager } from './sharelink.js';
+import { setWeekHour } from './data/weekHourCursor.js';
 import {
   isExplicitLayerStateOrigin,
   LayerStateCoordinator,
@@ -2652,7 +2653,12 @@ export class StyleManager {
           mapStack,
           panelState,
           styleParams,
+          weekHour,
         } = state || {};
+        // The hour of the typical week, applied BEFORE the layers come back on
+        // so a restored `comptages-fr` draws the shared hour on its first
+        // repaint rather than the weekday mean and then the hour.
+        if (weekHour) setWeekHour('share', weekHour);
         // Ignore the retired 'ai-edit' style from older share links.
         if (style && style !== 'normal' && style !== 'ai-edit') {
           this.setStyle(style, { applyPreset: true, revealParameters: false, restore: true });

@@ -24,6 +24,44 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   trois arrivent avec l'asset et ne se retirent pas. Une clé Google facturée
   hors EEE reste le chemin propre pour un produit payant ; sinon c'est le
   palier ion commercial. `DATA_SOURCES.md` porte les deux lignes.
+- **« Paris, mardi 8 h » est devenu un geste — les trois couches de semaine type
+  partagent une heure.** Trois couches de ce dépôt ne dessinent pas une mesure
+  en direct mais une **semaine archivée type** : les comptages routiers de Paris
+  (2 977 arcs × 168 heures), le pouls vélo (561 stations × 168 heures) et la
+  fréquence IDFM (36 502 arrêts × 7 jours × 24 tranches). Depuis la fusion elles
+  vivent sur **trois lignes différentes** du panneau, donc en voir deux à la fois
+  est le cas normal — et jusqu'ici ce cas dessinait **deux heures différentes de
+  la semaine côte à côte**. Comparer la pointe du matin sur la route et la pointe
+  du matin dans le métro revenait à comparer 8 h avec l'heure qu'il était.
+
+  Un curseur unique (`src/data/weekHourCursor.js`) tient désormais « l'heure de
+  la semaine type », et chacune des trois la traduit dans **son** vocabulaire
+  sans jamais importer les autres : la position 0–167 du pouls, la tranche
+  d'exploitation 4–27 d'IDFM — où 01 h du mercredi est la tranche 25 du mardi —
+  et le *jour ouvré type* / *week-end type* des comptages. Presser une heure sur
+  n'importe laquelle des trois lignes déplace les deux autres.
+
+  **Ce qui ne se propage pas, et pourquoi.** « À cette heure » et « Maintenant »
+  *libèrent* le curseur au lieu de le poser : ce sont des comportements (suivre
+  l'horloge de Paris), pas des positions, et épingler les autres couches sur
+  l'heure qu'il est par hasard les figerait sur un moment que personne n'a
+  choisi. La semaine du pouls **en train de défiler** ne diffuse rien non plus :
+  168 heures à une toutes les 0,5 s repeindraient 2 977 arcs deux fois par
+  seconde pour une lecture que personne n'a demandée. En pause, elle diffuse.
+
+  **Et le lien porte enfin l'heure.** `wh` est la première clé de partage
+  capable d'exprimer « mardi 8 h ». Ce point était noté comme bloqué par la
+  grammaire de partage — « les trois encodent leur heure séparément et des liens
+  déjà envoyés en dépendent » : c'était faux, et le vérifier est ce qui a rendu
+  le module petit. Dans `layerState.js`, `comptages-fr` et `idfm-frequency` sont
+  `enabled-only` — **aucune des deux n'a jamais mis son heure dans un lien** —
+  et `velo-pulse-fr` encode un mode à trois valeurs, pas une heure. Il n'y avait
+  donc rien à préserver, et la décision est l'inverse de celle qui était
+  attendue : **un jeton partagé, pas trois**. Une clé absente reste le défaut —
+  un lien ne fige jamais un lecteur sur mardi 8 h par accident.
+
+  33 tests neufs, dont un qui parcourt les 168 heures dans les trois dialectes
+  et vérifie qu'aucune traduction ne perd une heure au passage.
 
 - **Une petite centrale hydro dit enfin l'eau qui passe et l'ouvrage à côté.**
   ODRÉ publie une puissance installée et jamais le débit ; il publie une hauteur
