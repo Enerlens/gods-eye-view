@@ -1,10 +1,21 @@
 # Performance baseline
 
-This page records one hardware-rendered Apple M5 comparison captured on 22
-August 2026 in Chrome 150 at 1440 x 900. It is not a minimum hardware
-specification and should not be used to predict performance on untested systems.
-The original capture artifacts are not included here, so this page records
-results rather than defining a runnable benchmark.
+This page records two different things, and confusing them is the mistake it
+now exists to prevent.
+
+*Test context* through *Controls for a future capture* are **one
+hardware-rendered Apple M5 comparison** captured on 22 August 2026 in Chrome 150
+at 1440 x 900 — a machine that hides every cost a small laptop pays. It is not a
+minimum hardware specification and should not be used to predict performance on
+untested systems. The original capture artifacts are not included, so those
+sections record results rather than defining a runnable benchmark.
+
+*Small-laptop lab profile*, *Origin capacity* and *Reference machine* are the
+**small-laptop campaign** of `docs/PLAN-PERFORMANCE.md` (phase 0), added
+9 September 2026: a throttled lab profile, the origin under a crowd, and the one
+measurement that still needs real hardware. Each is runnable —
+`npm run perf:boot`, `perf:warm`, `perf:layers`, `perf:origin` — and each says
+what it cannot see.
 
 ## Test context
 
@@ -129,9 +140,160 @@ Use the same controls before attributing a difference to the application:
 7. Treat a live-source outage as missing coverage, not as evidence of low client
    rendering cost.
 
+## Small-laptop lab profile (phase 0.1 to 0.2)
+
+Measured 9 September 2026 on `origin/main` at `9701e35` — before #123 split the
+JavaScript entry chunk. Re-measured on `50a8827` immediately after it landed,
+the app cost falls from **2.67 MB to 2.23 MB [2.22–2.23]**; the timing column of
+that second run is not usable (the Mac was at load 22.5) and is not reproduced
+here. Nothing else in this section moves with that change.
+
+Method: `npm run perf:boot` against `npm run build` + `vite preview` on the
+development Mac. The profile is the one `docs/PLAN-PERFORMANCE.md` § 0 defines: **CPU ÷4,
+10 Mbit/s / 60 ms, 1366×768, cache disabled**, median of five with `[min–max]`.
+
+These are CPU milliseconds. Headless Chromium renders in software, so the frame
+times below compare runs of this probe to each other and to nothing else — see
+"Reference machine" for the measurement they cannot replace.
+
+| | Cold, no layer | **Warm cache**, no layer | Lyon + 3 French layers |
+| --- | ---: | ---: | ---: |
+| `viewer` ready | 3,572 ms [3,558–3,591] | **603 ms [592–964]** | 3,590 ms [3,557–4,007] |
+| DOMContentLoaded | 2,975 ms | **373 ms** | — |
+| First frame | 3,574 ms | 618 ms | — |
+| App bytes / requests | 2.67 MB / 29 | **0.00 MB / 28** | 2.67 MB / 29 |
+| 25 s window, tiles included | 5.90 MB / 244 | 0.00 MB / 241 | 5.90 MB / 244 |
+| JS heap | 25 MB | 25 MB | **40 MB [38–47]** |
+| Bytes after switch-on (15 s) | 1.51 MB / 148 req | — | **3.98 MB / 152 req** |
+| Parked, renders / 5 s | 0 | 0 | **301 [300–301]** (`transit-fr`) |
+| Orbit p90 / p99 | 18.7 / 23.0 ms | 19.5 / 24.6 ms | 19.5 / 31.6 ms |
+
+Four readings that are not obvious from the table:
+
+- **A returning visitor pays nothing and waits 0.6 s.** "0.00 MB over 28
+  requests" is not a missing measurement: every same-origin request was served
+  from the HTTP cache, so `encodedDataLength` is genuinely zero, and the only
+  bytes on the wire were ~1 kB to `api.cesium.com`. The `immutable` headers
+  already in `vite.config.js` do that work. It also means the warm figure does
+  **not** isolate parse from network — V8's code cache removes most of the
+  first-compile cost too — so it bounds the second visit rather than explaining
+  the first.
+- **Turning three French layers on does not slow the boot** (3,590 vs 3,572 ms)
+  and costs 15 MB of heap, well inside the 250 MiB the plan allows. On the wire
+  it costs **2.47 MB over four requests**: the matched control — same viewpoint,
+  same settle, no layer — pays 1.51 MB over 148, so each French layer arrives as
+  one bulk payload.
+- **The parked scene never stops drawing, and it is `transit-fr` alone.**
+  Measured one layer at a time at the same viewpoint: `irve-fr` 0 renders / 5 s,
+  `schools-fr` 0, `transit-fr` **300**. This is not the leak that phase 2.5
+  fixed — the render governor reports `mode: "continuous"` with
+  `holds: ["transit-fr"]`, and returns to `idle` with no holds the moment the
+  layer is switched off. It is deliberate: a layer that animates vehicles asks
+  for frames. What was never priced is the bill — **60 fps for as long as the
+  tab is open**, on a machine the plan wants to keep cool. Note that
+  `scripts/qa-perf.mjs` cannot see this: its parked check disables every layer
+  first, so 24/24 and a scene that never idles are compatible today.
+- **One cold orbit sample was starved**, not slow: a single frame took 73
+  seconds while a peer benchmark ran on the same Mac. The median absorbs it; the
+  `[min–max]` is what exposes it, which is why the probe never prints a median
+  alone.
+
+## Origin capacity — fifty cold visitors at once (phase 0.4)
+
+Measured 9 September 2026 with `scripts/perf-origin-bench.mjs`, **run on the
+VPS** against `http://127.0.0.1:4173`. It has to run there: `gev.enerlens.com`
+is behind a Cloudflare rule capping `/api` at 30 req/10 s per IP, and a run from
+the Mac would measure that rule rather than the server. Build under test:
+`voix-gev-sans-cle-api@2b396bf`, the branch staging was pinned to that day.
+Host: Hostinger KVM 2 (2 vCPU, 8 GB) shared with the Enerlens production stack;
+the `gev` container still has neither `mem_limit` nor `cpus`.
+
+Each virtual visitor replays the **recorded 23-request boot** — `/`, the two
+scripts, the CSS, the fonts, the Cesium assets, the three same-origin `/api`
+calls — then starts over as a new visitor. Requests use keep-alive and accept
+gzip, like a browser.
+
+| Load | Boots served | Requests | p50 | p95 | p99 | Egress | Container CPU | Container RSS |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 10 visitors, 10 s | 62 (6.0/s) | 476 | 21.9 ms | 901 ms | 1,004 ms | 16.8 MB/s | 173 % | 295 MiB |
+| 25 visitors, 10 s | 56 (5.2/s) | 478 | 63.2 ms | 2,287 ms | 2,340 ms | 16.8 MB/s | 176 % | 369 MiB |
+| 50 visitors, 30 s | 166 (5.3/s) | 4,023 | 69.5 ms | 2,080 ms | 4,163 ms | 17.7 MB/s | 175 % | 345 MiB |
+
+The first two rows replay the seven assets discoverable from the served HTML;
+the third replays the full 23-request trace. All 4,023 responses were 200.
+
+**Both plan targets are met, and neither is where the problem is.** `/api` p95
+under this crowd is **19 to 34 ms** across the three boot endpoints — the target
+was 1 s — and the container peaks at **345 MiB** against a 1 GiB ceiling. What
+saturates is the delivery of static bytes:
+
+| Path | p95 | p99 |
+| --- | ---: | ---: |
+| `/cesium-1.138.0/Cesium.js` | 4,271 ms | 4,304 ms |
+| `/assets/index-*.js` | 2,042 ms | 2,080 ms |
+| `/cesium-.../approximateTerrainHeights.json` | 330 ms | 348 ms |
+| `/api/geoid`, `/api/google/2d-session` | 19–34 ms | 29–40 ms |
+
+**The ceiling is gzip, not bandwidth.** Throughput is 16.8 to 17.7 MB/s at 10,
+25 and 50 visitors alike — flat — while the container sits at 175 % of the
+200 % this box can give. `vite preview` ships **no pre-compressed asset**:
+verified on staging, a request for `/assets/index-*.js` returns
+`Content-Encoding: gzip` with no `Content-Length`, so 2.5 MB are compressed on
+the fly, per visitor, alongside Cesium's 5.7 MB. Serving pre-built `.br`/`.gz`
+files (plan task 1.6) turns that CPU into a file read, and it is the same task
+that cuts client bytes — one change, two ceilings.
+
+Two mitigations already in place, and their limit: Cloudflare caches
+`/cesium-*/*` and `/assets/*` at the edge (`cf-cache-status: HIT` on the second
+request, verified the same day), so a real crowd mostly never reaches the
+origin. The exception is the window right after each deploy, when the content
+hash changes and the first visitor per asset pays a MISS — and staging
+redeploys every three minutes while a PR is open.
+
+## Reference machine — the small laptop (phase 0.3)
+
+The M5 numbers above hide every cost that decides whether this application is
+usable for the reader it is built for: an elected official, a town hall officer,
+a local journalist, on a 2018-2020 laptop. `docs/PLAN-PERFORMANCE.md` defines
+that machine as 2 cores, **Intel UHD 620 integrated graphics**, 8 GB, 1366×768,
+Chrome, a domestic or 4G line.
+
+**No automated harness in this repository can measure it.** Headless Chromium
+renders through SwiftShader — in software — so `scripts/perf-boot-probe.mjs`
+reports CPU milliseconds and nothing else. The four fixed GPU costs the plan
+proposes to cut are invisible there by construction:
+
+| Fixed cost | Where | Why it is invisible headless |
+| --- | --- | --- |
+| MSAA ×4 | `src/main.js` (`msaaSamples`) | multisample resolve is a GPU pass |
+| Sharpen at 49 | `src/ui.js` (four presets) | 9 texture reads per full-screen pixel |
+| `preserveDrawingBuffer: true` | `src/main.js` | a full framebuffer copy per frame |
+| Render resolution | no `resolutionScale` anywhere | fill rate is the whole cost |
+
+So the measurement is made by hand, once, by somebody holding such a machine.
+`scripts/perf-real-gpu-console.js` is that measurement: paste it into the
+DevTools console on `https://gev.enerlens.com/?welcome=0`, wait five minutes,
+send back the one JSON line it copies to the clipboard. It refuses to report on
+a software renderer — a run on SwiftShader is not a failed run, it is a
+meaningless one — and it copies the parked/orbit method of `perf-boot-probe.mjs`
+exactly, so the two columns stay comparable.
+
+### Recorded runs
+
+| Date | Renderer | Cores | Canvas | Layers | Parked / 5 s | Orbit p50 / p90 / p99 | > 33 ms | > 100 ms |
+| --- | --- | ---: | --- | --- | ---: | ---: | ---: | ---: |
+| — | *no run yet* | | | | | | | |
+
+Targets, from `docs/PLAN-PERFORMANCE.md` § 2: parked **0**, orbit **p90 ≤ 33 ms**
+with **no frame over 100 ms**, with three French layers on. Until one row exists
+here, tasks 2.1 to 2.4 of that plan cannot be validated, and doing them blind
+would repeat the August M5 mistake this page exists to record.
+
 ## What is not established yet
 
-- This report does not establish Windows performance.
+- This report does not establish Windows performance. The procedure that would
+  — and the empty table waiting for its first row — is under
+  "Reference machine" above.
 - The report does not record machine memory capacity, so it cannot support a
   minimum-memory recommendation.
 - The report does not cover other GPU renderers or viewport configurations.

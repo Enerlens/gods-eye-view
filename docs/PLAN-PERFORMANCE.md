@@ -153,10 +153,21 @@ GPU.
   `cesium-polylinecollection-traps`) ; le bâti BD TOPO reconstruit sa primitive
   entière à chaque déplacement (`src/data/bdtopoBuildings.js:698-711`) et
   décode les MVT sur le thread principal.
-- Empilement d'imagerie encore présent sous les deux piles IGN
-  (`src/mapStackController.js:684-692`), tenu par la mise en veille
-  `_syncWorldBaseVisibility()` sur `moveEnd` — contrat mesuré, à ne pas
-  toucher.
+- Empilement d'imagerie sous les deux piles IGN, tenu par la mise en veille
+  `_syncWorldBaseVisibility()` sur `moveEnd` (`src/mapStackController.js:847`).
+  **Cette ligne disait « contrat mesuré, à ne pas toucher » ; c'était faux, et
+  #121 l'a corrigé le 2026-09-09.** Le test de couverture exigeait que la vue
+  tienne dans **une seule** boîte d'opacité : au tangage par défaut du cockpit
+  (−30°), une vue de Paris à cheval sur deux boîtes n'était dans aucune, ne
+  s'éteignait donc pas, et payait **69 requêtes / 1 362 ko d'Esri invisible**
+  sous 927 ko d'IGN visible. Le test porte désormais sur l'**union** des boîtes,
+  et les boîtes sont dérivées d'un balayage de la Géoplateforme
+  (`npm run qa:ign-opaque-boxes`, 17 retenues sur 24 candidates) au lieu d'être
+  dessinées à la main — deux des cinq anciennes contenaient un vrai trou.
+  Imagerie de la vue Paris : 2 285 → **927 ko, −59 %**. La leçon de méthode
+  vaut au-delà de cette ligne : « mesuré » ne veut rien dire sans la densité de
+  la mesure, et les anciennes boîtes avaient passé un contrôle 9×9, soit un
+  point tous les 0,56° sur une boîte de 4,5°.
 
 ### 1.5 Serveur et hébergement
 
@@ -191,15 +202,27 @@ colonne « au 09-09 » = après les tâches 0.1, 1.2, 1.7 et 2.5.
 | Requêtes de l'app (hors tuiles) | 36 | 31 | **29** | — |
 | Fenêtre 25 s, tuiles comprises | 7,07 Mo [6,95–7,85] | 7,37 Mo | 5,90 Mo | *voir 2.3* |
 | `viewer` prêt, CPU ÷4 / 10 Mbit/s | 5,8 s [4,5–8,8] | 5,3 s [4,2–6,0] | **3,57 s [3,55–3,62]** | **≤ 3,5 s** |
-| `viewer` prêt, CPU ÷4, cache chaud | non mesuré | non mesuré | non mesuré | ≤ 1,5 s |
+| `viewer` prêt, CPU ÷4, cache chaud | non mesuré | non mesuré | **0,60 s [0,59–0,96]** ✅ | ≤ 1,5 s |
 | JS brut exécuté avant le globe | 8,2 Mo | 8,2 Mo | 8,2 Mo | ≤ 4 Mo |
 | Orbite 5 s, zéro couche, CPU ÷4 (relatif) | p90 32,5 / p99 44,3 ms | p90 24,7 / p99 38,2 ms | **p90 20,6 [18,4–21,5] / p99 23,8** ✅ p99 | **p90 ≤ 18 / p99 ≤ 33 ms** |
-| Orbite 5 s, 3 couches FR, **UHD 620 réel** | non mesuré | non mesuré | non mesuré | p90 ≤ 33 ms, aucune image > 100 ms |
+| Orbite 5 s, 3 couches FR, CPU ÷4 (relatif, SwiftShader) | non mesuré | non mesuré | **p90 19,5 [18,6–23,8] / p99 31,6 [21,5–34,9] ms** | — |
+| Scène **parquée**, 3 couches FR | non mesuré | non mesuré | **301 rendus / 5 s [300–301]** — `transit-fr` tient le gouverneur en `continuous` | 0 sans couche animée ; **cadence à trancher** avec (voir 0.2) |
+| Orbite 5 s, 3 couches FR, **UHD 620 réel** | non mesuré | non mesuré | **toujours non mesuré** (0.3) | p90 ≤ 33 ms, aucune image > 100 ms |
 | Scène parquée, détection ON | 15 rendus / 5 s [12–19] | **0 [0–0]** ✅ | 0 ✅ | **0** (`qa-perf` 24/24 ✅) |
 | Clés dépensées avant tout geste | 5 | **0** ✅ | 0 ✅ | **0** |
-| Tas JS, 3 couches FR allumées | non mesuré | non mesuré | non mesuré | ≤ 250 Mio |
+| Tas JS, 3 couches FR allumées | non mesuré | non mesuré | **40 Mio [38–47]** ✅ | ≤ 250 Mio |
 | 4 packs infra sur Terre entière | « le fps part avec » | inchangé | inchangé | p90 ≤ 33 ms sur la machine de référence |
-| Origine : 50 démarrages à froid simultanés | non mesuré | non mesuré | non mesuré | `/api` p95 ≤ 1 s, conteneur ≤ 1 Gio |
+| Origine : 50 démarrages à froid simultanés | non mesuré | non mesuré | **`/api` p95 34 ms · RSS 345 Mio** ✅ | `/api` p95 ≤ 1 s, conteneur ≤ 1 Gio |
+
+> **Mise à jour du même jour : #123 a atterri après ces relevés.** Le découpage
+> du JavaScript (tâche 1.3) fait tomber les octets de l'app de **2,67 à
+> 2,23 Mo [2,22–2,23]** — remesuré ici sur `main` à `50a8827`, médiane de 5 —
+> donc **le jalon A (≤ 2,5 Mo) est franchi**, après l'avoir manqué de 0,17 Mo.
+> La colonne `viewer` de ce relevé n'est **pas** exploitable : la charge moyenne
+> du Mac était à **22,5** et l'intervalle s'ouvre à [3,26–4,84 s]. Le chiffre à
+> retenir pour le temps est celui de #123, mesuré dos à dos sur une copie propre
+> : **3,91 → 3,22 s**. Les lignes de rendu, de tas et d'origine ne bougent pas
+> avec cette PR.
 
 **`viewer` est à 70 ms de sa cible et le p99 d'orbite est atteint.** Ce qui
 reste pour les octets, c'est la tâche 1.3 : 2,67 Mo dont 2,4 Mo de JavaScript.
@@ -239,30 +262,146 @@ profil `--cpu 4 --net 4g` comme défaut documenté. Réutiliser `newQaPage()` de
 `scripts/lib/qa-first-run.mjs` (carte de premier lancement) et les trois
 drapeaux anti-throttling de `qa-perf.mjs`.
 
-**0.2 Un scénario « 3 couches FR » reproductible.** 🟡 **Outillée, pas encore
-mesurée.** `npm run perf:layers` fait le scénario (Lyon, `irve-fr` +
-`schools-fr` + `transit-fr`, orbite 5 s, tas, p90/p99) ; les chiffres restent à
-relever et à inscrire au tableau du § 2.
+**0.2 Un scénario « 3 couches FR » reproductible.** ✅ **Faite le 2026-09-09.**
+`npm run perf:layers` : Lyon à 12 km, tangage −45°, `irve-fr` + `schools-fr` +
+`transit-fr` allumées après le boot, 15 s de stabilisation, médiane de 5 à
+CPU ÷4 / 10 Mbit/s.
+
+| Mesure | Zéro couche | 3 couches FR | Cible |
+|---|---:|---:|---:|
+| `viewer` prêt | 3 572 ms | 3 590 ms [3 557–4 007] | — |
+| Tas JS | 25 Mio | **40 Mio [38–47]** ✅ | ≤ 250 Mio |
+| Octets après l'allumage (15 s) | 1,51 Mo / 148 req | **3,98 Mo / 152 req** | — |
+| Orbite p90 / p99 | 18,7 / 23,0 ms | 19,5 / 31,6 ms | p90 ≤ 33 ms |
+| Images > 100 ms | 0 | **0** ✅ | 0 |
+| **Scène parquée** | **0 rendu / 5 s** | **301 rendus / 5 s** | 0 |
+
+Trois choses que ces chiffres disent et que le tableau seul ne dirait pas :
+
+- **Allumer trois couches ne ralentit pas le démarrage** (3 590 contre
+  3 572 ms) et coûte **15 Mio de tas** — six fois moins que ce que le plan
+  s'autorise. Le tas n'est pas le problème de cette scène.
+- **Les trois couches coûtent 2,47 Mo pour quatre requêtes.** Le contrôle
+  apparié — même point de vue, même stabilisation, aucune couche — paie
+  1,51 Mo sur 148 requêtes ; la différence est donc **quatre requêtes** qui
+  pèsent 2,47 Mo. Chaque couche FR arrive en un seul bloc, ce qui est le sujet
+  de la phase 3.
+- **La scène parquée ne s'arrête jamais de dessiner, et c'est `transit-fr`
+  seul.** Mesuré une couche à la fois au même point de vue : `irve-fr` **0**,
+  `schools-fr` **0**, `transit-fr` **300**. Ce n'est **pas** la fuite de la
+  tâche 2.5 : le gouverneur passe en `mode: "continuous"` avec
+  `holds: ["transit-fr"]` et revient à `idle`, `holds: []`, dès qu'on éteint la
+  couche. C'est **assumé** — une couche qui anime des véhicules demande des
+  images. Ce qui n'était pas mesuré, c'est le prix : **60 images par seconde
+  pour toujours** dès qu'un visiteur français allume les transports, sur une
+  machine dont le plan dit qu'elle doit rester fraîche. La question que ça pose
+  à la phase 2 n'est pas « d'où vient la fuite » mais « `transit-fr` a-t-il
+  besoin de 60 Hz, ou d'une cadence plafonnée à celle des positions
+  qu'il reçoit ». Elle est ouverte, pas tranchée ici.
+
+Et **`qa-perf` 24/24 ne couvre pas ce cas** : son contrôle de scène parquée
+éteint d'abord **toutes** les couches (`scripts/qa-perf.mjs:123-124`), puis
+vérifie `mode === 'idle'` à zéro couche. Un arbre peut donc afficher 24/24 et
+une scène qui ne se gare jamais dans la vie réelle.
+
+*Piège de méthode, corrigé dans l'outil :* le premier relevé à Lyon sans couche
+donnait **56 rendus / 5 s** et ressemblait à une fuite. Ce n'en était pas une :
+la stabilisation par défaut est de 8 s, et l'imagerie d'un point de vue où le
+vol d'intro n'est jamais passé arrivait encore. Avec `--settle 40000` le même
+arbre donne **0 [0–0]** — et `transit-fr`, lui, donne toujours **300 [300–300]**
+après quarante secondes. D'où le drapeau `--settle`, qui sépare « charge
+encore » de « ne se gare jamais » : deux pannes différentes, deux propriétaires
+différents.
 
 *Rédaction d'origine :* Après le boot :
 `irve-fr` + `schools-fr` + `transit-fr` sur Lyon, orbite 5 s, tas, octets,
 p90/p99. C'est la scène qu'un usager réel regarde ; le globe nu ne suffit pas.
 
-**0.3 Une vraie machine faible.** Chrome sur un portable Intel UHD (ou un
-Windows d'occasion à 150 €) avec `chrome://gpu` vérifié non-SwiftShader,
-`?welcome=0`, la même orbite, `performance.now()` entre `postRender` relevé
-depuis la console. Sans cette machine, les tâches 2.1 à 2.4 ne peuvent pas être
-validées — les faire quand même en aveugle serait reproduire le M5 d'août.
-Consigner dans `docs/PERFORMANCE.md` sous une nouvelle section « machine de
-référence », avec le renderer exact.
+**0.3 Une vraie machine faible.** 🟡 **Outillée, en attente d'une machine.**
+La mesure ne peut pas être automatisée — c'est le seul point du plan qui demande
+un geste humain — mais tout ce qui l'entoure est prêt :
 
-**0.4 Un banc d'origine.** Depuis le VPS (jamais depuis le Mac, même IP que
-Memel et règle Cloudflare) : `autocannon` ou `oha` contre `127.0.0.1:4173`
-avec le jeu exact des requêtes d'un boot (`/`, les 2 scripts, les 6 `/api`),
-50 connexions, 30 s, p95 et RSS du conteneur (`docker stats`).
+- `scripts/perf-real-gpu-console.js` : à coller dans la console de n'importe
+  quel Chrome, sur `https://gev.enerlens.com/?welcome=0`. Il **refuse de
+  répondre sur un renderer logiciel** (un relevé SwiftShader n'est pas un relevé
+  raté, il est vide de sens), reprend **exactement** la méthode de
+  `perf-boot-probe.mjs` — même vue garée sur Lyon, même orbite
+  `rotateRight(0.004)`, mêmes fenêtres de 5 s, mêmes percentiles, donc les deux
+  colonnes restent comparables — et recopie une ligne JSON dans le
+  presse-papiers. Cinq minutes, aucune installation.
+- `docs/PERFORMANCE.md` § « Reference machine » : la procédure, le tableau des
+  quatre coûts GPU invisibles en tête-à-tête avec l'endroit du code où ils sont
+  posés, et **le tableau de relevés, vide, qui attend sa première ligne**.
 
-Critère de sortie : les quatre chiffres « aujourd'hui » du tableau § 2 sont
-remplis, dispersion incluse, et versionnés dans `docs/PERFORMANCE.md`.
+Ce qu'il reste à faire est donc une décision, pas une tâche. Par ordre de coût
+croissant : **(1)** n'importe quel PC Windows déjà sous la main — le sien, celui
+d'un proche, un poste de bureau — vérifié non-SwiftShader dans `chrome://gpu` ;
+c'est une demi-heure et quelqu'un d'autre peut la faire et renvoyer trois
+lignes. **(2)** Un substitut sur le Mac en rendant à 2 ou 3× la résolution :
+les quatre coûts sont bornés par le remplissage de pixels, donc leur **rapport**
+se reproduit et on peut les classer — ça ne donne pas le p90 absolu d'une UHD
+620, donc ça ne valide pas le critère de sortie de la phase 2, mais ça dit
+lequel des quatre paie vraiment. **(3)** Acheter un portable Intel d'occasion
+(~150 €), à ne faire que si « fluide sur un petit ordinateur » est un engagement
+produit durable et pas seulement cette passe d'optimisation.
+
+Sans l'une des trois, les tâches **2.1 à 2.4 restent gelées** : les faire en
+aveugle serait reproduire le M5 d'août.
+
+**0.4 Un banc d'origine.** ✅ **Faite le 2026-09-09.** Ni `autocannon` ni `oha`
+— rien à installer sur une boîte qui porte aussi la production Enerlens :
+`scripts/perf-origin-bench.mjs`, sans dépendance, copié dans `/tmp` et lancé
+depuis le VPS contre `127.0.0.1:4173`. Chaque visiteur virtuel rejoue le **vrai
+jeu de 23 requêtes** d'un boot — relevé par `perf:urls`, pas deviné — puis
+recommence, donc `visits/s` est un nombre de démarrages à froid servis par
+seconde. Résultats complets dans `docs/PERFORMANCE.md` § « Origin capacity ».
+
+Ce que ça donne à 50 visiteurs / 30 s : **166 boots servis (5,3/s)**, 4 023
+requêtes, **toutes en 200**, p50 69,5 ms, p95 2 080 ms, p99 4 163 ms.
+
+- **Les deux cibles du plan sont tenues, et aucune des deux n'est le problème.**
+  `/api` sous cette foule est à **p95 19 à 34 ms** (cible : 1 s) et le conteneur
+  plafonne à **345 Mio** (cible : 1 Gio).
+- **Ce qui sature, c'est le gzip à la volée.** Le débit est **plat à 16,8–17,7
+  Mo/s** à 10, 25 et 50 visiteurs, pendant que le conteneur tient **175 % des
+  200 % que cette boîte peut donner**. `vite preview` ne sert **aucun asset
+  pré-compressé** : les 2,5 Mo du chunk d'entrée et les 5,7 Mo de Cesium sont
+  compressés à chaque visite. p95 de `Cesium.js` : **4 271 ms**. La tâche 1.6
+  (brotli pré-construit) n'est donc pas seulement −15 à −25 % d'octets client,
+  c'est le plafond de débit de l'origine — et cette boîte est partagée avec
+  Postgres.
+- **Cloudflare absorbe le statique** (`cf-cache-status: HIT` au deuxième appel,
+  revérifié le même jour), sauf dans la fenêtre qui suit chaque déploiement : le
+  hash change, et le premier visiteur de chaque asset paie un MISS. Le staging
+  redéploie toutes les 3 minutes tant qu'une PR est ouverte.
+
+Trois pièges rencontrés, tous consignés dans l'outil pour qu'ils ne se
+reprennent pas :
+
+1. **Un `/assets/*.js` absent répond 200 avec `index.html`** (repli SPA de
+   `vite preview`) : 58 kB de HTML au lieu de 2,5 Mo de JS. Un banc qui rejoue
+   une trace enregistrée sur un autre build mesure alors des 404 rapides et
+   rend un p95 flatteur. Le préflight vérifie désormais le `content-type`, pas
+   seulement le code.
+2. **Le corps de `/` est gzippé**, et la découverte des assets le lisait en
+   texte : zéro correspondance, donc un banc à une seule URL qui se croyait
+   complet. La requête de découverte demande `identity`.
+3. **`/api/realtime/debug-log` est en POST seulement** et n'est pas rejoué. Il
+   mérite quand même une ligne au registre : **chaque chargement de page y écrit
+   une ligne de journal**, en `appendFileSync` synchrone, dans un fichier sans
+   rotation — un journal de mise au point alimenté par la production.
+
+Critère de sortie : **trois des quatre chiffres sont remplis**, dispersion
+incluse, et versionnés dans `docs/PERFORMANCE.md` (§ « Small-laptop lab
+profile » et § « Origin capacity ») — cache chaud **0,60 s**, tas 3 couches
+**40 Mio**, origine **`/api` p95 34 ms / RSS 345 Mio**. Le quatrième, l'orbite
+sur GPU réel, **ne peut pas être rempli depuis ce dépôt** : il attend une
+machine (0.3), et l'outil qui le remplira en cinq minutes est écrit.
+
+Ce que la phase 0 a changé au reste du plan, en deux lignes : **1.6 (brotli)
+monte** — c'est le plafond de débit de l'origine, pas seulement des octets
+client — et **la phase 2 gagne une question qu'elle n'avait pas**, la cadence
+d'une couche animée sur une machine qui doit rester fraîche.
 
 ### Phase 1 — Le démarrage : moins d'octets, surtout moins de JavaScript (2 à 3 jours)
 
@@ -643,6 +782,11 @@ npm run perf:boot -- --url http://127.0.0.1:4179 --runs 5
 npm run perf:boot -- --url http://127.0.0.1:4179 --cpu 1 --net none
 # la scène qu'un usager regarde vraiment : 3 couches FR sur Lyon
 npm run perf:layers -- --url http://127.0.0.1:4179
+# une couche à la fois, et une stabilisation assez longue pour distinguer
+# « charge encore » de « ne se gare jamais »
+npm run perf:boot -- --url http://127.0.0.1:4179 --at lyon --layers transit-fr --settle 40000
+# la deuxième visite : cache HTTP chaud, code cache V8 chaud
+npm run perf:warm -- --url http://127.0.0.1:4179 --runs 5
 # la liste des requêtes d'un boot, par octets
 npm run perf:urls -- --url http://127.0.0.1:4179
 # aucune clé dépensée avant un geste (et le résumé qui part après)
@@ -657,6 +801,18 @@ node scripts/qa-perf.mjs --url http://127.0.0.1:4179
 node scripts/qa-cables-render-probe.mjs --url http://127.0.0.1:4179
 # imagerie : tuiles et octets par point de vue
 QA_BASE_URL=http://127.0.0.1:4179 npm run qa:world-imagery-cost
+
+# ── l'origine, DEPUIS LE VPS uniquement (règle Cloudflare : 30 req/10 s par IP,
+# et le Mac partage l'IP de Memel) ────────────────────────────────────────────
+scp scripts/perf-origin-bench.mjs vps:/tmp/
+ssh vps 'set -a; . /opt/gev/.env 2>/dev/null; set +a; \
+  node /tmp/perf-origin-bench.mjs --url http://127.0.0.1:4173 \
+    --auth "gev:$GEV_ACCESS_PASSWORD" --visitors 50 --duration 30'
+ssh vps 'docker stats --no-stream gev'   # le RSS pendant, dans une autre session
+
+# ── le GPU réel, à la main sur un vrai portable (phase 0.3) ──────────────────
+# Ouvrir https://gev.enerlens.com/?welcome=0, F12 → Console, coller
+# scripts/perf-real-gpu-console.js, renvoyer la ligne JSON.
 ```
 
 Lire une ligne `MEDIAN` : **`app=`** est ce que ce dépôt sert (la cible de la
@@ -749,3 +905,117 @@ Ce qu'il faut en garder : **une capture A/B sans attente de stabilisation
 produit des comparaisons fausses en silence**, exactement comme une médiane
 sans dispersion. Le script corrigé est `.context/perf/shot2.mjs` ; s'il sert à
 trancher une deuxième décision, il monte dans `scripts/`.
+
+### 2026-09-09 (suite) — #121, hors plan, et une ligne du § 1.4 démentie
+
+Pas une tâche du plan, mais un gain de rendu mesuré qui appartient à ce journal.
+Sous les deux piles IGN, le fond satellite mondial se chargeait entier alors
+qu'il était intégralement masqué. Le garde-fou existait — il exigeait seulement
+que la vue tienne dans **une seule** boîte d'opacité, et au tangage par défaut
+du cockpit (−30°) une vue de Paris à cheval sur deux boîtes n'était dans aucune.
+
+| Vue Paris, tangage −30° | Avant | Après |
+|---|---:|---:|
+| Esri invisible | 69 req / 1 362 ko | **0** |
+| IGN visible | 41 req / 927 ko | 41 req / 927 ko |
+| Imagerie totale | 2 285 ko | **927 ko, −59 %** |
+
+Le test porte désormais sur l'**union** des boîtes, et les boîtes sont dérivées
+d'un balayage de 15 554 points de la Géoplateforme (`npm run qa:ign-opaque-boxes`)
+au lieu d'être dessinées à la main : 17 retenues sur 24 candidates, et **deux
+des cinq anciennes contenaient un vrai trou**. Sur 15 400 positions de caméra,
+30 à 37 % de vues supplémentaires éteignent le fond.
+
+Ce qu'il faut en retenir pour le plan lui-même : le § 1.4 écrivait « contrat
+mesuré, à ne pas toucher » à propos de ce garde-fou. Il était faux, et les
+anciennes boîtes avaient passé un contrôle 9×9 — un point tous les 0,56° sur une
+boîte de 4,5°. **« Mesuré » ne veut rien dire sans la densité de la mesure.** La
+ligne est corrigée.
+
+### 2026-09-09 (suite) — la phase 0 est close, sauf ce qui demande un GPU
+
+**0.2** et **0.4** sont faites, **0.3** est outillée et attend une machine.
+Trois des quatre chiffres « non mesuré » du tableau § 2 sont remplis ; le
+quatrième ne peut pas l'être depuis ce dépôt.
+
+Tout est relevé sur `origin/main` à **`9701e35`**, donc **avant** le découpage
+du JavaScript (#123), qui a atterri dans l'heure qui a suivi. Les octets ont été
+remesurés dessus — **2,67 → 2,23 Mo**, jalon A franchi — et sont notés sous le
+tableau du § 2. Le `viewer` de ce second relevé n'est pas exploitable : la charge
+du Mac était à 22,5. Les lignes de rendu, de tas et d'origine ne bougent pas avec
+cette PR.
+
+| Ce qui manquait | Mesuré | Cible |
+|---|---:|---:|
+| `viewer` prêt, cache chaud | **0,60 s [0,59–0,96]** | ≤ 1,5 s ✅ |
+| Tas JS, 3 couches FR | **40 Mio [38–47]** | ≤ 250 Mio ✅ |
+| Origine, 50 boots simultanés | **`/api` p95 34 ms · RSS 345 Mio** | 1 s · 1 Gio ✅ |
+| Orbite 3 couches, GPU réel | **toujours rien** | attend 0.3 |
+
+**Trois cibles tenues, et aucune des trois n'était le problème.** C'est le
+résultat le plus utile de la journée : le plan visait la mémoire, la latence
+`/api` et le cache chaud, et les trois étaient déjà bonnes — la seconde visite
+paie **zéro octet** et ouvre le globe en 0,6 s, le tas est six fois sous le
+plafond, l'origine répond aux `/api` en 34 ms sous cinquante visiteurs. Ce que
+ces mesures ont trouvé à la place, ce sont deux coûts que le plan ne pesait pas :
+
+1. **Le plafond de l'origine est le gzip à la volée, pas la bande passante.**
+   Débit plat à 16,8–17,7 Mo/s à 10, 25 et 50 visiteurs, conteneur à 175 % des
+   200 % disponibles, p95 de `Cesium.js` à 4 271 ms. Aucun asset n'est
+   pré-compressé. **La tâche 1.6 change donc de nature** : elle ne rend pas
+   seulement 15 à 25 % d'octets au visiteur, elle rend du CPU à une boîte
+   partagée avec la production Enerlens. Et la tâche 1.3 vaut plus qu'annoncé
+   pour la même raison.
+2. **Une couche animée cloue la scène à 60 images par seconde, pour toujours.**
+   `transit-fr` seule : 300 rendus / 5 s, encore 300 après quarante secondes de
+   stabilisation, gouverneur en `mode: "continuous"`, `holds: ["transit-fr"]`.
+   `irve-fr` et `schools-fr` : **0** chacune. Ce n'est pas la fuite de 2.5, c'est
+   un choix — mais un choix dont personne n'avait le prix, sur une machine dont
+   le § 0 dit qu'elle doit rester fraîche. La phase 2 hérite d'une question de
+   plus : 60 Hz, ou la cadence des positions réellement reçues ?
+
+**Et `qa-perf` 24/24 ne l'aurait jamais vu** : son contrôle de scène parquée
+éteint toutes les couches avant de compter (`scripts/qa-perf.mjs:123-124`). Un
+arbre peut afficher 24/24 et ne jamais se garer chez un visiteur réel. C'est le
+même motif que la ligne « contrat mesuré, à ne pas toucher » du § 1.4, démentie
+le matin même par #121 : **une garantie ne vaut que la densité de ce qu'elle a
+mesuré.**
+
+Cinq corrections d'outillage, toutes issues d'un chiffre faux ou d'une panne :
+
+- **`--warm` pendait 180 s sur la configuration la plus rapide.** La sonde de
+  première image s'installait *après* la création du viewer ; sur un boot rapide
+  la scène avait déjà dessiné et le gouverneur l'avait garée, donc la
+  `postRender` attendue n'arrivait jamais. Elle est maintenant posée par
+  `evaluateOnNewDocument`, avant tout code applicatif. La session `baghdad-v1` a
+  observé le même symptôme de son côté (`tFirstRender=75534` sur un run, 3,3 s
+  sur les trois suivants) — confirmation croisée.
+- **Un run raté jetait les quatre autres.** Deux campagnes de cinq ont été
+  perdues sur un `ProtocolError: Runtime.callFunctionOn timed out`, qui est un
+  SwiftShader affamé, pas l'application. Un run qui lève est désormais compté et
+  passé, et `runs=4/5` s'affiche sur la ligne `MEDIAN`.
+- **`--layers` mesurait les octets d'un globe nu.** Les compteurs étaient figés
+  à 25 s, avant l'allumage des couches. Il y a maintenant une seconde paire de
+  marques — nommée `settle=` et non `layers=`, parce qu'à Lyon sans aucune couche
+  elle compte déjà 1,51 Mo de tuiles : bouger la caméra vers une ville où le vol
+  d'intro n'est jamais passé, ça se paie.
+- **`--settle` sépare « charge encore » de « ne se gare jamais ».** Sans lui, le
+  globe nu à Lyon affichait 56 rendus / 5 s et ressemblait à une fuite.
+- **Un `/assets/*.js` absent répond 200 avec `index.html`.** Le banc d'origine
+  vérifie désormais le `content-type` : sans ça, rejouer une trace enregistrée
+  sur un autre build mesure des 404 rapides et rend un p95 flatteur.
+
+Deux entrées ouvertes au registre, petites mais nommées : le boot demande
+**`/api/geoid` pour un point situé en Caroline du Nord** avant que la caméra
+n'arrive à Paris (0,3 kB, origine non identifiée), et **chaque chargement de
+page POSTe une ligne dans `/api/realtime/debug-log`**, écrite en
+`appendFileSync` synchrone dans un fichier sans rotation — un journal de mise au
+point alimenté par la production.
+
+Enfin, une note d'honnêteté sur les conditions : ces relevés ont été pris
+pendant qu'un **second banc tournait sur le même Mac** (session `baghdad-v1`,
+charge moyenne 4 à 8). Ça n'a pas déplacé les médianes — le boot à froid rejoue
+**3 572 ms [3 558–3 591]** contre 3 570 ms le matin, et 2,67 Mo à l'identique —
+mais ça a produit **une image à 73 secondes** dans un run d'orbite sur cinq. La
+médiane l'absorbe ; c'est le `[min–max]` qui le montre, et c'est exactement
+pourquoi la sonde n'imprime jamais une médiane seule.
