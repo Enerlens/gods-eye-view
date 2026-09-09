@@ -81,34 +81,59 @@ Three marks, three questions, and each channel answers exactly one of them.
 | **Diameter** of the pastille | the published runway length, in four classes | `AIRPORT_LENGTH_CLASSES` |
 | **Hollow ring** instead of a disc | no runway length published at all — 1 314 fields | `airportRenderSpec` |
 | **The drawn line** | the runway itself: its two thresholds, so its true length, bearing and width | `runwayGeometry` + `localGeojson.js` |
-| **Distance the mark appears at** | the tier again, on a channel of its own | `markerMaxDistance` |
+| **Distance the mark appears at** | the tier, plus one per-feature override: 3 000 m of runway buys orbital range | `markerMaxDistance` |
 
-### Importance: four tiers, one ladder
+### Importance: three tiers, one question
 
-Seven thousand identical dots is a wall, not a map. Two fields in the pack decide
-how much an airfield matters, and they are independent of each other: `type` is
-OurAirports' editorial **size** class, `scheduled` is the hard fact that a
-timetabled service calls there. Crossing them gives four tiers, defined once in
-[`airportsPack.js`](../../airportsPack.js) and read by everything downstream —
-the colour, the label ladder, the legend, the display floors and the two ranges.
-One classification, so they cannot drift apart.
+Seven thousand identical dots is a wall, not a map. The ladder that thins them
+used to cross **two** axes — `type`, OurAirports' editorial size class, and
+`scheduled`, the hard fact that a timetabled service calls — and it read size
+first. Its four steps therefore changed subject as you descended them: size,
+then service, then size again. It also seated Paris-Le Bourget, which sells no
+scheduled seat at all, at the top of a ladder whose `LIGNES` chip promised
+"terrains desservis par une ligne régulière". 22 fields worldwide made that
+promise false.
+
+The ladder asks **one** question now, and it is the hard one: *is a ticket sold
+here?* The two steps under it are not a second axis sneaking back in — they are
+the [selection policy](#the-selection-policy) made visible. Clause (a) admits
+the world's large and medium airports; clause (c) admits the French long tail
+and nothing else. So the unscheduled fields split exactly where the pack's own
+**coverage** splits, and the reader sees the shape of the pack rather than a
+second opinion about size.
 
 | Tier | Rule | Colour | Mark from | Card from | World | France |
 |------|------|--------|----------:|----------:|------:|-------:|
-| **Grand aéroport** | `large_airport` | `#f0e6ff` | 14 000 km | 14 000 km | 1 173 | 27 |
-| **Aéroport de ligne** | anything else with `scheduled` | `#c8a6ff` | 7 500 km | 3 000 km | 3 175 | 92 |
-| **Aéroport sans ligne** | `medium_airport`, no scheduled service | `#9a7ad1` | 3 000 km | 1 200 km | 1 990 | 90 |
+| **Aéroport de ligne** | `scheduled` | `#e6d8ff` | 14 000 km | 3 000 km | 4 326 | 118 |
+| **Aéroport sans ligne** | `large_airport` or `medium_airport`, no scheduled service | `#a98ada` | 3 000 km | 1 200 km | 2 012 | 91 |
 | **Aérodrome & aéroclub** | everything else | `#6d5a94` | 900 km | 200 km | 1 126 | 1 126 |
 
-Size is read **before** scheduled service, so Roissy — which is both — stays a
-*Grand aéroport*. Taking the scheduled branch first would empty the top tier of
-every airport that also sells seats, which is all of them.
+The bottom tier is the **complement** of the two worldwide classes, not a list
+of long-tail types: a heliport is not an "aéroport sans ligne", and neither is
+an absent or unrecognised `type` from a future upstream rebuild.
 
-**The tier no longer sizes the dot, and that is the point.** It used to: 14 /
-10,5 / 8 / 6 px, alongside the colour ramp. Two channels said one four-valued
-thing, and the measurement the ramp is a *proxy for* — this file says so itself,
-two sections down: `type` is "driven mostly by traffic and runway length" — was
-carried on 82 % of the pack and drawn nowhere. Size now carries `longestM`.
+**Size is not on this ladder, and that is the point.** `type` is a *proxy* for
+runway length — this file says so itself, two sections down: "driven mostly by
+traffic and runway length" — and the shipped pack proves it. The median longest
+runway is 3 048 m for `large_airport`, 2 050 m for `medium_airport` and 1 037 m
+for `small_airport`, landing on the 3 000 / 1 800 / 1 000 m thresholds the size
+channel already draws with. Colouring by the bucket while sizing by the
+measurement was one fact on two channels, and the measurement is the better of
+the two. Roissy still towers over the grass strip beside it — at 18 px against
+6, in published metres.
+
+**What the retired top tier did that size could not**, it now does per feature:
+a runway of **3 000 m or more lifts its own card and mark to 14 000 km**, so
+Roissy stays nameable from orbit without a size-shaped tier to carry it. 1 280
+fields qualify against the 1 173 that were `large_airport`, and 268 of the
+newcomers sell no seat — air bases and freight fields a globe had no honest
+reason to hide while drawing a regional airport with a shorter strip.
+
+An **`airfield` never qualifies**, whatever its runway: that tier is 100 %
+French by selection, so lifting one of its fields to orbit would draw a density
+belonging to the pack rather than to the world. Today the refusal costs nothing
+— not one of the 1 126 is 3 000 m long — and it is there so that the day one is,
+the globe does not quietly start lying.
 
 **Card range is a channel of its own, and it is not decoration.** At 260 km over
 Île-de-France the shared label grid was awarding fifteen cells to aéroclubs and
@@ -197,8 +222,8 @@ Charles de Gaulle report `count: 5`. This file used to apologise for that number
 in prose. Drawn to scale beside four strips of 2 700 to 4 215 m, it explains
 itself.
 
-**The asymmetry that shapes the whole design:** 93 % of *Grands aéroports* have
-a drawable shape, and **8 % of the aéroclubs** — 89 of 1 126, all French. The
+**The asymmetry that shapes the whole design:** roughly three quarters of the
+airports have a drawable shape, and **8 % of the aéroclubs** — 89 of 1 126, all French. The
 French long tail is exactly the half upstream never georeferenced, so the runway
 can never become this layer's primary sign; the pastille carries the
 measurement for the fields that have none. `airportsPack.test.mjs` pins that
@@ -206,10 +231,10 @@ ratio under a third and says why.
 
 | Tier | With geometry | France |
 |---|---|---|
-| Grand aéroport | 1 091 / 1 173 (93 %) | 26 / 27 |
-| Aéroport sans ligne | 1 539 / 1 990 (77 %) | 90 / 90 |
-| Aéroport de ligne | 2 071 / 3 175 (65 %) | 74 / 92 |
+| Aéroport sans ligne | 1 560 / 2 012 (78 %) | 91 / 91 |
+| Aéroport de ligne | 3 141 / 4 326 (73 %) | 99 / 118 |
 | Aérodrome & aéroclub | 89 / 1 126 (8 %) | 89 / 1 126 |
+| **Total** | **4 790 / 7 464 (64 %)** | **279 / 1 335** |
 
 ### The recall stem is capped here, and nowhere else
 
@@ -224,7 +249,7 @@ aircraft is flown at.
 
 ### Display floors
 
-The layer row carries four chips. They are **runtime params, not share-link
+The layer row carries three chips. They are **runtime params, not share-link
 state**: the pack always ships whole and `getStats().count` keeps reporting
 7 464, so a floor hides markers without losing them. Same contract as the hydro
 layer's `floorKw`.
@@ -234,7 +259,12 @@ layer's `floorKw`.
 | `TOUS` | everything — the default, because a visitor who turned the layer on asked to see the airports |
 | `AÉROPORTS` | drops *Aérodrome & aéroclub* |
 | `LIGNES` | only what a ticket is sold to |
-| `GRANDS` | only *Grand aéroport* |
+
+There were four. `TOUS` and `LIGNES` asked about service, `AÉROPORTS` and
+`GRANDS` asked about size — two axes on one strip of chips. `GRANDS` is the one
+that went: it kept 1 173 fields, and the size channel answers the same question
+without a filter, at a threshold the legend already prints. `LIGNES` is now
+true, which it was not: it used to keep 22 fields that sell no seat.
 
 The legend counts what is **drawn**, not what is loaded: under `AÉROPORTS` the
 aéroclub row reads 0 and its tooltip says how many are hidden.

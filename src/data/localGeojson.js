@@ -157,6 +157,14 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
  *   extrudedHeightM  number?  metres, only ever set with surface === 'volume'
  *   lines            array?   published segments {lon1,lat1,lon2,lat2,widthM}
  *   lineFloorPx      number?  minimum screen length of those segments
+ *   cardMaxDistance  number?  overrides the group's card range for this feature
+ *   markerMaxDistance number? overrides the group's mark range for this feature
+ *
+ * The last two are the same argument as the size channel, applied to LOD: a
+ * range that follows a measurement cannot live in a group key either. The
+ * airports pack spends them to keep a 3 000 m runway nameable from orbit once
+ * its tier stopped being a size class. Both default to null, which leaves the
+ * group style in charge — the behaviour every other pack has.
  *
  * `lines` is the second geometry this loader could not draw. A point feature
  * has a shape when the pack publishes one — a runway from threshold to
@@ -202,6 +210,8 @@ const FLAT_RENDER_SPEC = Object.freeze({
   lines: null,
   lineBaseM: 0,
   lineFloorPx: 0,
+  cardMaxDistance: null,
+  markerMaxDistance: null,
 });
 
 /**
@@ -1242,6 +1252,13 @@ export function createLocalGeoJsonLayer({
             const renderSpec = (resolveRenderSpec
               && resolveRenderSpec(properties, { areaM2 })) || FLAT_RENDER_SPEC;
             const markerCss = renderSpec.color || groupStyle?.color || null;
+            // LOD overrides, resolved once. Per-feature wins over per-group for
+            // the same reason `pixelSize` does: a range that follows a
+            // measurement is more specific than one that follows a class.
+            const markerRange = Number(
+              renderSpec.markerMaxDistance ?? groupStyle?.markerMaxDistance,
+            );
+            const cardRange = renderSpec.cardMaxDistance ?? groupStyle?.cardMaxDistance;
             const markerColor = markerCss
               ? Cesium.Color.fromCssColorString(markerCss)
               : baseColor;
@@ -1323,10 +1340,13 @@ export function createLocalGeoJsonLayer({
               filteredOut: false,
               /** Past the group's declared marker range. Re-decided on camera settle. */
               outOfRange: false,
-              /** How far out this group's MARK is drawn; 0 means "wherever the horizon allows". */
-              markerMaxDistance: Number(groupStyle?.markerMaxDistance) > 0
-                ? Number(groupStyle.markerMaxDistance)
-                : 0,
+              /**
+               * How far out this feature's MARK is drawn; 0 means "wherever the
+               * horizon allows". The per-feature value wins when the pack sets
+               * one, exactly as `pixelSize` does above: a range derived from a
+               * measurement is more specific than one derived from a class.
+               */
+              markerMaxDistance: markerRange > 0 ? markerRange : 0,
               /** Ceiling on the recall stem, in metres. */
               stemMaxHeightM,
               /** Published segments of this feature, drawn in `_runwayLines`. */
@@ -1347,7 +1367,7 @@ export function createLocalGeoJsonLayer({
                 priority,
                 accent,
                 areaM2,
-                maxDistance: groupStyle?.cardMaxDistance,
+                maxDistance: cardRange,
                 copy,
               }) : null,
             });

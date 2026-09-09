@@ -33,6 +33,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   la seule preuve. Les mesures et les règles sont dans
   [`docs/DEMANDER-UNE-DONNEE.md`](docs/DEMANDER-UNE-DONNEE.md).
 
+### Changed
+- **Les aéroports : quatre paliers qui posaient deux questions, un seul palier
+  qui en pose une.** L'échelle d'importance croisait la classe de taille
+  d'OurAirports et le service régulier, et lisait la taille **en premier**. Ses
+  quatre marches changeaient donc de sujet à chaque descente — taille, service,
+  taille — et elle asseyait Paris-Le Bourget, qui ne vend aucun billet, au
+  sommet d'une échelle dont la puce **LIGNES** promettait « les terrains
+  desservis par une ligne régulière » : 22 terrains dans le monde rendaient
+  cette promesse fausse. L'échelle pose désormais **une** question, et c'est la
+  dure — *un billet s'y vend-il ?* — puis laisse la politique de sélection
+  séparer ce qui reste : *Aéroport de ligne* (4 326), *Aéroport sans ligne*
+  (2 012, bases aériennes, aviation d'affaires, fret) et *Aérodrome & aéroclub*
+  (1 126, français à 100 % par construction). La puce `GRANDS` disparaît : elle
+  interrogeait la taille, que le diamètre dit déjà en mètres publiés — mesuré,
+  la médiane de piste par classe OurAirports vaut 3 048 / 2 050 / 1 037 m, soit
+  exactement les seuils du canal taille, si bien que la couleur repeignait ce
+  que le diamètre disait mieux. Ce que l'ancien palier haut faisait seul, il le
+  fait maintenant par terrain : **3 000 m de piste achètent la portée
+  orbitale** — 1 280 terrains contre les 1 173 d'avant, dont 268 sans ligne
+  qu'un globe n'avait aucune raison honnête de cacher pendant qu'il dessinait
+  un aéroport régional à la piste plus courte. Un aéroclub, lui, n'y a jamais
+  droit : son palier est français par sélection, et l'y faire monter
+  dessinerait une densité qui appartient au paquet et non au monde.
+
 ### Fixed
 - **Un 429 devant l'app laissait le micro mort, et accusait la permission
   micro.** Sur l'instance hébergée, une règle de limitation à la périphérie

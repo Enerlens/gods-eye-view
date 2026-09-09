@@ -241,9 +241,10 @@ async function main() {
             : metres >= 1000 ? 'len1000' : 'len0');
       for (const entity of entities) {
         const p = entity.properties?.getValue?.(now) ?? {};
-        const tier = p.type === 'large_airport' ? 'hub'
-          : p.scheduled ? 'airline'
-            : p.type === 'medium_airport' ? 'airport' : 'airfield';
+        // Mirrors airportTier(): the service question first, then the two types
+        // clause (a) admits worldwide. Never a size ranking.
+        const tier = p.scheduled === true ? 'airline'
+          : (p.type === 'large_airport' || p.type === 'medium_airport') ? 'airport' : 'airfield';
         const point = entity.point;
         const size = Number(point?.pixelSize?.getValue?.(now) ?? point?.pixelSize);
         const fill = point?.color?.getValue?.(now) ?? point?.color;
@@ -276,12 +277,12 @@ async function main() {
       };
     });
 
-    record('the row offers the four display floors',
-      tiers.chips.join(',') === 'all,airports,airlines,hubs', tiers.chips.join(','));
-    // Four tier rows, four length classes, the unmeasured ring and the runway
+    record('the row offers the three display floors',
+      tiers.chips.join(',') === 'all,airports,airlines', tiers.chips.join(','));
+    // Three tier rows, four length classes, the unmeasured ring and the runway
     // mark: every channel this layer spends has a key (D1).
     record('the legend names every tier AND every size class that shipped',
-      tiers.legend.length === 10,
+      tiers.legend.length === 9,
       tiers.legend.map((item) => `${item.label}=${item.count}`).join(' · '));
 
     // COLOUR is the tier ladder, and nothing else may move with it.
@@ -333,21 +334,29 @@ async function main() {
       viewer.scene.render();
       const entities = viewer?.dataSources?.getByName?.('Aéroports')?.[0]?.entities?.values ?? [];
       const shown = () => entities.filter((entity) => entity.show !== false).length;
-      dm.setLayerParams('local-airports', { floor: 'hubs' }, { origin: 'user' });
+      dm.setLayerParams('local-airports', { floor: 'airlines' }, { origin: 'user' });
       viewer.scene.render();
       const afterFloor = shown();
+      // The chip promises "terrains desservis par une ligne régulière". Before
+      // the ladder was inverted it kept 22 fields that sell no seat, Le Bourget
+      // among them, because the top tier was a SIZE class. Count the liars.
+      const unscheduledShown = entities.filter((entity) => entity.show !== false
+        && (entity.properties?.getValue?.()?.scheduled !== true)).length;
       const module = dm.layers?.get?.('local-airports')?.module;
       const legendAtFloor = (module?.getRowControls?.()?.legend || [])
         .map((item) => `${item.label}=${item.count}`);
       const statsAtFloor = dm.getAll().find((l) => l.id === 'local-airports')?.stats?.count;
       dm.setLayerParams('local-airports', { floor: 'all' }, { origin: 'user' });
       viewer.scene.render();
-      return { afterFloor, restored: shown(), legendAtFloor, statsAtFloor };
+      return { afterFloor, unscheduledShown, restored: shown(), legendAtFloor, statsAtFloor };
     });
 
-    record('the GRANDS floor hides everything below the top tier',
-      floored.afterFloor > 0 && floored.afterFloor < 1500,
+    record('the LIGNES floor hides everything below the top tier',
+      floored.afterFloor > 0 && floored.afterFloor < stats.count,
       `${floored.afterFloor} markers drawn (of ${stats.count})`);
+    record('the LIGNES floor keeps ONLY fields that sell a scheduled seat',
+      floored.unscheduledShown === 0,
+      `${floored.unscheduledShown} unscheduled fields survived the chip`);
     record('the legend follows the floor instead of claiming the whole pack',
       floored.legendAtFloor.some((entry) => /=0$/.test(entry)),
       floored.legendAtFloor.join(' · '));
@@ -465,24 +474,31 @@ async function main() {
       viewer.scene.render();
       await new Promise((resolve) => { setTimeout(resolve, 800); });
       viewer.scene.render();
-      const drawn = { hub: 0, airline: 0, airport: 0, airfield: 0 };
+      const drawn = { airline: 0, airport: 0, airfield: 0 };
+      let longAirports = 0;
       for (const entity of viewer.dataSources.getByName('Aéroports')[0].entities.values) {
         if (entity.show === false) continue;
         const p = entity.properties?.getValue?.() ?? {};
-        const tier = p.type === 'large_airport' ? 'hub'
-          : p.scheduled ? 'airline'
-            : p.type === 'medium_airport' ? 'airport' : 'airfield';
+        const tier = p.scheduled === true ? 'airline'
+          : (p.type === 'large_airport' || p.type === 'medium_airport') ? 'airport' : 'airfield';
         drawn[tier] += 1;
+        if (tier === 'airport' && Number(p.runways?.longestM) >= 3000) longAirports += 1;
       }
-      return drawn;
+      return { ...drawn, longAirports };
     });
 
     record('from orbit the France-only tier is not drawn at all',
-      orbit.airfield === 0 && orbit.airport === 0,
-      `hub=${orbit.hub} airline=${orbit.airline} airport=${orbit.airport} airfield=${orbit.airfield}`);
-    record('the tiers that are worldwide by selection still are',
-      orbit.hub > 100,
-      `${orbit.hub} grands aéroports still drawn at 9 000 km`);
+      orbit.airfield === 0,
+      `airline=${orbit.airline} airport=${orbit.airport} airfield=${orbit.airfield}`);
+    // The unscheduled tier reaches orbit ONLY through a 3 000 m runway — the
+    // per-feature range that replaced the retired `hub` tier's flat ceiling.
+    // Any other survivor means the override leaked onto the whole tier.
+    record('an unscheduled field reaches orbit only on 3 000 m of runway',
+      orbit.airport === orbit.longAirports,
+      `${orbit.airport} drawn, ${orbit.longAirports} of them ≥ 3 000 m`);
+    record('the tier that is worldwide by selection still is',
+      orbit.airline > 100,
+      `${orbit.airline} aéroports de ligne still drawn at 9 000 km`);
 
     // ── Shot ──────────────────────────────────────────────────────────────
     // newQaPage() suppressed the launcher before boot; this asserts the card is
