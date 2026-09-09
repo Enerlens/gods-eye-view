@@ -1,7 +1,12 @@
 import * as Cesium from 'cesium';
 import { StyleManager } from './ui.js';
 import { DEFAULT_CITY_VIEW, flyToDefaultCity } from './camera.js';
-import { getGlobeDetailDiagnostics, installGlobeDetailGovernor } from './globeDetailGovernor.js';
+import {
+  MOVING_RESOLUTION_SCALE,
+  getGlobeDetailDiagnostics,
+  installGlobeDetailGovernor,
+  setMovingResolutionScale,
+} from './globeDetailGovernor.js';
 import { getCameraSensitivityDiagnostics } from './data/cameraSensitivity.js';
 import { peekShareMapStack } from './sharelink.js';
 import { DataLayerManager } from './data/manager.js';
@@ -29,6 +34,15 @@ import { installScopeMask } from './scopeMask.js';
 import { installGlobeHeadingTape } from './globeHeadingTape.js';
 import { initFirstRunExperience } from './firstRunExperience.js';
 import { initKeySetup } from './keySetup.js';
+import {
+  LITE_MSAA_SAMPLES,
+  FULL_MSAA_SAMPLES,
+  getPerfProfileDiagnostics,
+  initPerfProfile,
+  isLiteProfile,
+  observeFrameProfile,
+  onPerfProfileChange,
+} from './perfProfile.js';
 
 initLogoGaze();
 
@@ -105,6 +119,12 @@ async function init() {
       );
     }
 
+    // The render profile, resolved HERE and nowhere else. Two of the four fixed
+    // render costs are Viewer construction arguments, so a machine that is
+    // going to be treated as small has to be recognised before the next line
+    // runs. See src/perfProfile.js for what `lite` may and may not change.
+    initPerfProfile();
+
     // Create the Cesium viewer with minimal chrome
     const viewer = new Cesium.Viewer('cesiumContainer', {
       timeline: false,
@@ -138,10 +158,22 @@ async function init() {
         document.body.appendChild(el);
         return el;
       })(),
-      msaaSamples: 4,
+      // The two fixed render costs that CANNOT be changed after this call, and
+      // the reason `initPerfProfile()` runs above rather than after the globe
+      // is up. Both are measured, one lever at a time, by `perf:gpu-ab`.
+      //
+      // MSAA is the biggest of the four by a wide margin: −26 to −43 % of
+      // render work per frame at 1366×768, −49 to −59 % at 2732×1536. The
+      // spread is the Mac's load moving under the bench, not the lever.
+      msaaSamples: isLiteProfile() ? LITE_MSAA_SAMPLES : FULL_MSAA_SAMPLES,
       contextOptions: {
         webgl: {
-          preserveDrawingBuffer: true,
+          // `preserveDrawingBuffer` keeps the last frame readable after the
+          // compositor has taken it, which costs a copy per frame and buys
+          // exactly one thing: reading the canvas outside a render. Every such
+          // read in this app already draws a fresh frame first
+          // (`renderFreshCesiumFrame`), so `lite` declines the copy.
+          preserveDrawingBuffer: !isLiteProfile(),
         },
       },
     });
@@ -154,6 +186,12 @@ async function init() {
     // 2026-08-05 perf investigation as a strict halving of idle burn on
     // 120 Hz hardware; a no-op on 60 Hz displays. (perf item 2)
     viewer.targetFrameRate = 60;
+
+    // The only honest reading of how small this machine is: how long it takes
+    // to draw this scene. The verdict arrives ~60 frames from now — too late
+    // for the two construction arguments above, in time for everything else,
+    // and remembered so the NEXT visit gets all four. (perf plan 2.1)
+    observeFrameProfile(viewer);
 
     // Register per-layer data attribution into the "Data attribution" popover.
     // Required by each source's license (ODbL, CC BY-NC-SA, NASA FIRMS, etc.);
@@ -422,7 +460,27 @@ async function init() {
     // settles. The intro fly-to descends through the whole zoom pyramid over
     // one point, refining every level it passes and discarding it a frame
     // later; this declines that work without touching a still frame.
-    installGlobeDetailGovernor(viewer);
+    //
+    // In `lite` the same motion window also trades pixels: 0.8 linear is 36 %
+    // fewer of them, and it is the second-biggest of the four fixed costs
+    // (−5 to −26 % at 1366×768, −40 to −48 % at twice that — a fill-bound
+    // lever only pays where fill is the constraint). One motion state machine
+    // owns both trades, and the governor's header says why that is not
+    // optional: implemented as its own, this lever loops.
+    installGlobeDetailGovernor(viewer, {
+      movingResolutionScale: isLiteProfile() ? MOVING_RESOLUTION_SCALE : null,
+    });
+
+    // What the DISPLAY-rail switch can still change once the page is up.
+    // `msaaSamples` is settable on a live scene even though it is a
+    // construction argument; `preserveDrawingBuffer` is not, and that is why
+    // the switch persists its choice — the next load completes the trade.
+    onPerfProfileChange((profile) => {
+      const lite = profile === 'lite';
+      viewer.scene.msaaSamples = lite ? LITE_MSAA_SAMPLES : FULL_MSAA_SAMPLES;
+      setMovingResolutionScale(lite ? MOVING_RESOLUTION_SCALE : null);
+      governorRequestRender('perf-profile');
+    });
 
     // The explicit scope mask replaces the emergent six-pass artifact —
     // see src/scopeMask.js. Installed before the UI so the DISPLAY-rail
@@ -485,6 +543,10 @@ async function init() {
       // them rather than infer them from pixels.
       getGlobeDetailDiagnostics,
       getCameraSensitivityDiagnostics,
+      // Which render profile this machine got, WHY it got it, and what its own
+      // frames measured — so a harness never has to infer "was this a lite
+      // run?" from pixels. (perf plan 2.1)
+      getPerfProfileDiagnostics,
       // Whether the 848 kB star field has been paid for yet, and on which
       // basemap. `qa:starfield` asserts both halves of the contract.
       starfield,

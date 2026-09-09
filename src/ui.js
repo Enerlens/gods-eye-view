@@ -101,6 +101,12 @@ import {
   shouldHideCollapsedRightPanels,
 } from './rightRailPolicy.js';
 import {
+  getPerfProfile,
+  isLiteProfile,
+  onPerfProfileChange,
+  setPerfProfile,
+} from './perfProfile.js';
+import {
   allocatePanelStackHeights,
   panelStackAutoCollapseIndices,
   resolveLeftStackBottomBoundary,
@@ -451,6 +457,25 @@ const STYLE_STATUS_LABELS = {
  * from it.
  */
 const MILITARY_DETECTION_PRESET = Object.freeze({ mode: 'dense', densityPct: 75 });
+
+/**
+ * What the render profile grants of a preset's sharpen request.
+ *
+ * Sharpening is a full-screen post-process pass, and `perf:gpu-ab` measures it
+ * at −6 to −13 % of render work per frame at 1366×768 and −17 % at twice that
+ * — the third of the four fixed costs. In `lite` no PRESET turns it on.
+ *
+ * This masks presets, not people: `#sharpen-toggle` still works in `lite`, and
+ * a reader who wants the sharper picture on a small machine gets it. It behaves
+ * exactly like `full` in the other direction too — a style switch re-applies
+ * that style's sharpen default and overwrites a manual choice there as well.
+ *
+ * @param {boolean} requested - What the preset asked for.
+ * @returns {boolean} What the profile allows.
+ */
+function grantedSharpen(requested) {
+  return isLiteProfile() ? false : requested;
+}
 
 /** Baseline post-processing settings applied on first load (before share-link restore). */
 const GLOBAL_POST_DEFAULTS = {
@@ -2381,6 +2406,7 @@ export class StyleManager {
     } catch { /* storage can be unavailable in privacy/test contexts */ }
     this._detectionAllocationPreference = normalizeAllocationStrategy(storedDetectionAllocation);
     this._celestialBtn = document.getElementById('celestial-toggle');
+    this._perfLiteBtn = document.getElementById('perf-lite-toggle');
     this._scopeBtn = document.getElementById('scope-toggle');
     this._scopeFeatherSlider = document.getElementById('scope-feather-slider');
     this._scopeFeatherValue = document.getElementById('scope-feather-value');
@@ -3424,6 +3450,33 @@ export class StyleManager {
       this._setSharpenEnabled(!this.sharpenEnabled);
     });
 
+    // The render profile. Deliberately NOT part of the share link: a link
+    // records what somebody is looking at, not the machine they looked at it
+    // on, and forcing a stranger's laptop into `lite` because the author's was
+    // small is a setting nobody asked for. `setPerfProfile` persists to
+    // localStorage instead, which is per-machine and per-person.
+    this._perfLiteBtn?.addEventListener('click', () => {
+      setPerfProfile(isLiteProfile() ? 'full' : 'lite');
+      this._syncPerfLiteButton();
+    });
+    // The profile can also change WITHOUT a click: the frame probe in
+    // src/perfProfile.js can conclude `lite` a second after boot. The button
+    // follows, or it would sit unlit while the app renders in lite.
+    onPerfProfileChange(() => {
+      this._syncPerfLiteButton();
+      // Sharpening is a preset-level grant, so a live profile change has to
+      // re-ask. Going back to `full` restores the app's default look rather
+      // than leaving a picture nobody chose.
+      //
+      // Guarded on the stage: the frame probe can conclude `lite` from sixty
+      // frames that have already been drawn, and on a slow enough machine
+      // those sixty can land before the post-process pipeline is assembled.
+      if (this._sharpenStage) {
+        this._setSharpenEnabled(grantedSharpen(GLOBAL_POST_DEFAULTS.sharpen.enabled));
+      }
+    });
+    this._syncPerfLiteButton();
+
     // Scope mask — the explicit circular viewport treatment (owner ask:
     // standalone toggle + featherable edge; see src/scopeMask.js).
     this._scopeBtn?.addEventListener('click', () => {
@@ -3720,7 +3773,7 @@ export class StyleManager {
       this._applySharpenIntensity(sharpenPct / 100);
     }
     if (typeof sharpenInput.enabled === 'boolean') {
-      this._setSharpenEnabled(sharpenInput.enabled);
+      this._setSharpenEnabled(grantedSharpen(sharpenInput.enabled));
     }
 
     if (preset.hudVariant) {
@@ -3738,6 +3791,23 @@ export class StyleManager {
     if (preset.detection && !this._detectionUserOverridden) {
       this._applyDetectionPreset(preset.detection);
     }
+  }
+
+  /**
+   * Light the DISPLAY-rail switch from whatever the profile currently is.
+   *
+   * The button ships unlit in the markup and is synced from here rather than
+   * from a click, because most `lite` sessions are never clicked into: the
+   * profile arrives from this machine's cores, memory, GPU name, a stored
+   * choice, or the app's own first sixty frames. A switch that only lit when
+   * pressed would tell a reader on a small laptop that nothing had happened.
+   * @returns {void}
+   */
+  _syncPerfLiteButton() {
+    if (!this._perfLiteBtn) return;
+    const lite = getPerfProfile() === 'lite';
+    this._perfLiteBtn.classList.toggle('active', lite);
+    this._perfLiteBtn.setAttribute('aria-pressed', String(lite));
   }
 
   /**
@@ -3776,7 +3846,7 @@ export class StyleManager {
       this._applySharpenIntensity(sharpenPct / 100);
     }
     if (typeof defaults.sharpen?.enabled === 'boolean') {
-      this._setSharpenEnabled(defaults.sharpen.enabled);
+      this._setSharpenEnabled(grantedSharpen(defaults.sharpen.enabled));
     }
 
     if (defaults.hudVariant) {
@@ -8944,6 +9014,11 @@ export class StyleManager {
       this._sharpenSliderValue.textContent = `${sharpenPct}%`;
       this._applySharpenIntensity(sharpenPct / 100);
     }
+    // Deliberately NOT masked by the render profile. Everything else that asks
+    // for sharpening is a default; this is an operator recording a demo, and a
+    // recording that comes out softer than the one asked for is a broken
+    // feature, not a saving. `lite` governs what the app chooses, not what
+    // somebody chose.
     if (typeof sharpenInput.enabled === 'boolean') {
       this._setSharpenEnabled(sharpenInput.enabled);
     } else if (typeof sharpenInput.intensity === 'number') {

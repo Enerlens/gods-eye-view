@@ -62,6 +62,28 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   ligne signifiait donc mardi 8 h à Paris sur un portable français et mardi
   10 h sur un exécutant en UTC. La date est désormais écrite avec son décalage
   (`2026-06-02T08:00:00+02:00`), et la suite passe de l'UTC à UTC+14.
+- **Un mode « Lite » pour les petits ordinateurs — même carte, mêmes données,
+  moins de pixels à peindre.** L'application décide maintenant, avant même de
+  construire le globe, si la machine qui l'ouvre est un poste de travail ou un
+  portable de 2018. Sur un petit ordinateur elle demande **un échantillon par
+  pixel au lieu de quatre**, laisse tomber la passe de netteté, cesse de garder
+  une copie de chaque image, et rend à **80 % de la résolution pendant que la
+  caméra bouge** — jamais à l'arrêt. Mesuré sur un vrai GPU, un levier à la
+  fois : les deux premiers coûtent à eux seuls **un tiers du travail de rendu
+  par image** à 1366×768, et **près des deux tiers** dès que l'écran demande
+  quatre fois plus de pixels.
+
+  Ce que le mode léger ne fait **pas** : il ne retire pas une couche, pas une
+  donnée, pas un libellé. La liste des couches, leurs états, les lignes du
+  panneau et la détection sont identiques dans les deux modes, et
+  `npm run qa:perf-profile` échoue si un jour ce n'est plus vrai.
+
+  Il se décide tout seul (nombre de cœurs, mémoire, nom de la puce graphique,
+  préférence système « réduire les animations »), il se mesure — l'application
+  chronomètre ses propres images et retient le verdict pour la prochaine
+  visite — et il se débraye : un interrupteur **Lite** dans le panneau DISPLAY,
+  ou `?perf=lite` / `?perf=full` dans l'adresse. Le choix reste sur la machine
+  de celui qui l'a fait : il n'entre **jamais** dans un lien de partage.
 
 ### Changed
 - **Le moteur 3D ne pèse plus que ce que cette carte utilise — 1,3 seconde de

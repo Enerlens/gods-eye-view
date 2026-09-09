@@ -475,6 +475,19 @@
         <span class="pp-label">Celestial</span>
       </button>
     </div>
+    <div class="pp-toggle-group">
+      <!-- The render profile, as a switch. Ships UNLIT and unsynced on purpose:
+           ui.js sets both from src/perfProfile.js, which may already have
+           chosen `lite` from this machine's cores, memory, GPU name or its own
+           first sixty frames. A plain unicode glyph, not a Material Symbol —
+           the icon font is subset by name and one more glyph is a font
+           rebuild for a half-filled circle. -->
+      <button class="pp-toggle-btn" id="perf-lite-toggle" aria-pressed="false"
+              title="Lite render — fewer samples per pixel and fewer pixels while the camera moves. Same map, same data.">
+        <span class="pp-icon" aria-hidden="true">&#x25D0;</span>
+        <span class="pp-label">Lite</span>
+      </button>
+    </div>
     <button class="pp-toggle-btn" id="clean-view-toggle" title="Hide UI chrome">
       <span class="pp-icon">&#x25A1;</span>
       <span class="pp-label">Clean UI</span>
