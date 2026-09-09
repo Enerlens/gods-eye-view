@@ -4,6 +4,7 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { publishJoin } from './layerJoins.js';
 // The prism module is pure arithmetic and strings; only its legend primitives
 // are borrowed here. `prismHeightGlyph` draws the bar swatch whose HEIGHT is
 // the datum, and the graphite is deliberately one constant colour so a ruler
@@ -373,6 +374,75 @@ export function seaState(waveHeightM) {
   }
   const band = SEA_STATE_BANDS.find((entry) => waveHeightM <= entry.maxM);
   return { label: band.label, css: band.css };
+}
+
+/**
+ * How far a buoy may be from a ship and still describe its sea, in metres.
+ *
+ * 250 km, and the card always prints the actual distance beside the reading so
+ * a reader can discount it — the cap is not a claim that a wave field is
+ * coherent to exactly that range, it is a floor under absurdity: without one, a
+ * vessel in mid-Atlantic would be told the sea state off Florida.
+ *
+ * The network's density is what makes a cap necessary rather than academic.
+ * Counted on the 2026-09-01 report, 882 reporting stations worldwide and 38 of
+ * them in the eastern hemisphere, so a ship off Dunkerque has a buoy within
+ * tens of kilometres and a ship off Dakar has none within a thousand.
+ */
+export const SEA_STATE_JOIN_MAX_M = 250_000;
+
+/** Great-circle metres. Local, so this file needs no scene to be tested. */
+function buoyDistanceM(lat1, lon1, lat2, lon2) {
+  if (![lat1, lon1, lat2, lon2].every((value) => Number.isFinite(value))) return Infinity;
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
+  return 6_371_008.8 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * The nearest station that actually MEASURES the sea, and what it reads.
+ *
+ * A station without a wave sensor is skipped rather than reported as calm —
+ * the same distinction the map draws with a hollow ring, and the reason this
+ * module says "one without renders neutral rather than calm". Four fifths of
+ * the network has no wave sensor, so a nearest-station join that ignored this
+ * would answer "0 m, calm" for most of the ocean.
+ *
+ * Pure, and exported, because it is the whole content of the vessel-card join
+ * and it has to be testable without a scene.
+ *
+ * @param {ReadonlyArray<object>} stations NDBC observation rows.
+ * @param {number} lat @param {number} lon Where the reading is wanted.
+ * @param {number} [maxM] Ceiling, {@link SEA_STATE_JOIN_MAX_M} by default.
+ * @returns {?{station: string, waveHeightM: number, label: string, css: string,
+ *   distanceM: number, observedAt: ?number}}
+ */
+export function nearestSeaState(stations, lat, lon, maxM = SEA_STATE_JOIN_MAX_M) {
+  const ceiling = Number.isFinite(maxM) && maxM > 0 ? maxM : SEA_STATE_JOIN_MAX_M;
+  if (!Array.isArray(stations) || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  let best = null;
+  let bestM = Infinity;
+  for (const row of stations) {
+    const hs = row?.waveHeightM;
+    if (!Number.isFinite(hs) || hs < 0) continue;
+    const metres = buoyDistanceM(lat, lon, Number(row.lat), Number(row.lon));
+    if (metres >= bestM || metres > ceiling) continue;
+    bestM = metres;
+    best = row;
+  }
+  if (!best) return null;
+  const band = seaState(best.waveHeightM);
+  return {
+    station: String(best.station || ''),
+    waveHeightM: best.waveHeightM,
+    label: band.label,
+    css: band.css,
+    distanceM: bestM,
+    observedAt: Number.isFinite(best.observedAt) ? best.observedAt : null,
+  };
 }
 
 /**
@@ -835,6 +905,8 @@ export function createMarineBuoysLayer({
   let _coverage = null;
   /** @type {Array<object>} Latest parsed stations, kept for the analyst seam. */
   let _stations = [];
+  /** Takes the `buoys/nearest` offer down. Null while the layer is off. */
+  let _releaseJoin = null;
   /** @type {?ReturnType<typeof summarizeSwellStems>} Render tally for the legend. */
   let _swell = null;
   /** @type {?object} The viewer, kept so the cull can read the camera. */
@@ -1000,6 +1072,16 @@ export function createMarineBuoysLayer({
       // operator moves.
       applyVisibility();
       publishCards();
+      // ── The sea state, offered to whoever is on it ────────────────────────
+      // A vessel card says where a ship is going and never what it is going
+      // through, and this layer is holding the answer 40 km away. Offered
+      // while ENABLED rather than while loaded (`layerJoins.js`): a reader who
+      // switched the buoys off asked not to see them, and a vessel card that
+      // kept quoting them would be answering a question they had closed.
+      _releaseJoin?.();
+      _releaseJoin = publishJoin('buoys/nearest', (lat, lon, maxM) => (
+        nearestSeaState(_stations, lat, lon, maxM)
+      ));
     },
 
     disable() {
@@ -1008,6 +1090,8 @@ export function createMarineBuoysLayer({
       if (_dataSource) _dataSource.show = false;
       overlayHost.clearSource(BUOY_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(BUOY_OVERLAY_SOURCE_ID, false);
+      _releaseJoin?.();
+      _releaseJoin = null;
     },
 
     async update() {
@@ -1174,6 +1258,8 @@ export function createMarineBuoysLayer({
         _dataSource = null;
       }
       _viewer = null;
+      _releaseJoin?.();
+      _releaseJoin = null;
       _count = 0;
       _lastUpdate = null;
       _lastError = null;

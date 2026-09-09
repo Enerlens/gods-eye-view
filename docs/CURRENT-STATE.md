@@ -2175,6 +2175,80 @@ report into, so they instead refuse to memoize a failure —
 load after a doubling cooldown (5 s → 5 min), which keeps one bad load from
 silently demoting every later lookup for the session.
 
+#### Cross-layer joins — `layerJoins.js` (September 2026)
+
+The 2026-09 audit counted the joins in this repository and found three: the
+Fiche implantation, the BD TOPO volumes' three themes, and the address
+radiography. Outside those, **no layer read another layer's data at all**.
+
+The reason was structural rather than an oversight — a layer module is a
+singleton with a lifecycle, and importing one from another couples two
+lifecycles, loads a pack that may never be enabled, and makes a cycle the
+moment the second layer wants anything back. `src/data/layerJoins.js` is the
+smallest thing that removes the obstacle: a string-keyed board of provider
+functions. `publishJoin(key, fn)` on enable, the returned teardown on disable,
+`askJoin(key, ...args)` from anywhere.
+
+Three properties, and they are the whole reason it is a file:
+
+- **No import edge.** `aisLiveVessels.js` never mentions the ports layer.
+- **Absence is ordinary.** A key nobody publishes answers `null`, and the
+  consumer says LESS — never an error, never a blank where a sentence was
+  promised. That is what makes it honest to join two layers a reader can switch
+  off independently.
+- **A throw is contained.** `askJoin` catches, warns once per key, returns
+  `null`. One misbehaving provider cannot blank a card.
+
+It is deliberately not an event bus, not a cache and not a dependency graph:
+nothing here can enable a layer, and a card that needs one switched on says so
+rather than switching it on.
+
+Published today:
+
+| Key | Publisher | Read by |
+|---|---|---|
+| `ports/directory` | `local-ports`, while its pack is LOADED (`onFeatures`) | the selected-vessel card |
+| `buoys/nearest` | `marine-buoys`, while it is ENABLED | the selected-vessel card |
+
+The two lifetimes differ on purpose. A directory is a fact about a file and is
+offered as long as the file is held; a sea state is a reading a visitor asked
+to see, and a reader who switched the buoys off asked not to be told about
+them.
+
+#### The AIS destination, resolved — `portDirectory.js` (September 2026)
+
+Measured 2026-09-09 over **2 250 distinct vessels** with a non-empty
+destination, from twelve consecutive `/api/ais-live` snapshots, against the
+2 951 harbours in the pack:
+
+| | | |
+|---|---|---|
+| resolved by UN/LOCODE | 523 | 23.2 % |
+| resolved by port name | 614 | 27.3 % |
+| unresolved | 1 113 | 49.5 % |
+
+Four shapes are read and there is no fuzzy fifth: a code (`BEANR`, `IT GOA`), a
+leg (`DOVER<=>CALAIS`, `NOMON => TRALI` — the LAST segment, or the card would
+name the port the ship has left), a name on a folded key, and a name followed
+by a berth the field's own twenty-character ceiling cut off
+(`ANTWERPEN 4E HAVENDO`). A leading token that names a KIND of place (`PORT`,
+`TERMINAL`, `QUAI`) is never tried alone.
+
+Two guards, both measured:
+
+- **`Port Of Le Havre`.** 322 of 2 951 WPI names carry a generic head a master
+  never types. The stripped form is indexed ALONGSIDE the published one.
+- **`PORT_NAME_MATCH_MAX_M` = 2 500 km.** A code is the master's own identifier
+  and is trusted at any range (the longest legitimate one in the sample is
+  9 131 km); a name is a spelling that happened to agree. The sample splits
+  cleanly: 16 legitimate name matches from 301 km to 1 348 km, then nothing
+  until the 18 wrong ones from 5 006 km up — `PORTLAND` and `PORTSMOUTH` from
+  the Channel, resolved to Oregon and New Hampshire because the WPI carries no
+  English harbour of either name.
+
+The unresolved half is printed exactly as the master typed it, which is what
+the card did before this module existed.
+
 #### The door to the radiography, and the sheet's two missing halves (September 2026)
 
 `src/data/ficheSheet.js` is a layer-owned, self-mounting panel — the same idiom

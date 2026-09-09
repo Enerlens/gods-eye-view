@@ -12,6 +12,7 @@ import {
   classifyAisFeedSnapshot,
   buildVesselCard,
   buildSelectedVesselCard,
+  vesselCardJoins,
   cardScreenSeparated,
   reduceVesselSelection,
   vesselDatumHeightM,
@@ -1963,3 +1964,101 @@ function makeHullSceneStub() {
     },
   };
 }
+
+// ── The two lines the card cannot write on its own ──────────────────────────
+//
+// A vessel message says where a ship is going in twenty hand-typed characters
+// and never what sea it is in. The World Port Index and the NDBC network hold
+// both answers and were drawn one row away without either layer ever asking
+// the other. `layerJoins.js` is the board they meet on; these tests drive it
+// directly rather than standing up two live layers.
+
+test('vesselCardJoins: with no layer publishing, both lines are absent', async () => {
+  const { _resetJoinsForTest } = await import('./layerJoins.js');
+  _resetJoinsForTest();
+  const joins = vesselCardJoins({ destination: 'BEANR', lat: 51.2, lon: 2.4 });
+  assert.equal(joins.destinationLine, null);
+  assert.equal(joins.seaLine, null);
+  // And the card falls back to exactly what it drew before the join existed.
+  const card = buildSelectedVesselCard(makeRecord({ destination: 'BEANR' }), joins);
+  assert.ok(card.details.some((line) => line === '→ BEANR'));
+});
+
+test('vesselCardJoins: the ports pack resolves the destination and adds the range', async () => {
+  const { _resetJoinsForTest, publishJoin } = await import('./layerJoins.js');
+  const { buildPortIndex } = await import('./portDirectory.js');
+  _resetJoinsForTest();
+  const index = buildPortIndex([{
+    properties: { name: 'Antwerpen', unlocode: 'BE ANR', countryCode: 'BE', country: 'Belgium' },
+    geometry: { coordinates: [4.4, 51.23] },
+  }]);
+  publishJoin('ports/directory', () => index);
+  try {
+    const joins = vesselCardJoins({ destination: 'BEANR', lat: 51.2, lon: 2.4 });
+    assert.match(joins.destinationLine, /^→ Antwerpen · \d+ km$/);
+    const card = buildSelectedVesselCard(
+      makeRecord({ destination: 'BEANR', lat: 51.2, lon: 2.4 }),
+      joins,
+    );
+    assert.ok(card.details.some((line) => /Antwerpen/.test(line)));
+    assert.ok(!card.details.includes('→ BEANR'), 'the resolved line replaces the raw one');
+  } finally {
+    _resetJoinsForTest();
+  }
+});
+
+test('vesselCardJoins: an unresolved destination keeps the master s own characters', async () => {
+  const { _resetJoinsForTest, publishJoin } = await import('./layerJoins.js');
+  const { buildPortIndex } = await import('./portDirectory.js');
+  _resetJoinsForTest();
+  publishJoin('ports/directory', () => buildPortIndex([]));
+  try {
+    const joins = vesselCardJoins({ destination: 'HARBOUR TOWAGE', lat: 51.2, lon: 2.4 });
+    assert.equal(joins.destinationLine, null);
+    const card = buildSelectedVesselCard(
+      makeRecord({ destination: 'HARBOUR TOWAGE' }),
+      joins,
+    );
+    assert.ok(card.details.some((line) => line === '→ HARBOUR TOWAGE'));
+  } finally {
+    _resetJoinsForTest();
+  }
+});
+
+test('vesselCardJoins: the sea state comes from the nearest buoy that MEASURES', async () => {
+  const { _resetJoinsForTest, publishJoin } = await import('./layerJoins.js');
+  const { nearestSeaState } = await import('./marineBuoys.js');
+  _resetJoinsForTest();
+  const stations = [
+    // Nearest, but no wave sensor — four fifths of the network is like this,
+    // and reporting it as a flat sea is the failure this join must not make.
+    { station: '61001', lat: 51.25, lon: 2.45, waveHeightM: null },
+    { station: '62305', lat: 51.4, lon: 2.9, waveHeightM: 1.4, observedAt: 1 },
+    { station: '62103', lat: 49.9, lon: -2.9, waveHeightM: 3.2, observedAt: 1 },
+  ];
+  publishJoin('buoys/nearest', (lat, lon) => nearestSeaState(stations, lat, lon));
+  try {
+    const joins = vesselCardJoins({ destination: '', lat: 51.2, lon: 2.4 });
+    assert.match(joins.seaLine, /^MER MODERATE · 1\.4 m · bouée 62305 à \d+/);
+    const card = buildSelectedVesselCard(makeRecord({ lat: 51.2, lon: 2.4 }), joins);
+    assert.ok(card.details.some((line) => /bouée 62305/.test(line)));
+  } finally {
+    _resetJoinsForTest();
+  }
+});
+
+test('vesselCardJoins: a provider that throws leaves the card intact', async () => {
+  const { _resetJoinsForTest, publishJoin } = await import('./layerJoins.js');
+  _resetJoinsForTest();
+  const warn = console.warn;
+  console.warn = () => {};
+  publishJoin('ports/directory', () => { throw new Error('boom'); });
+  publishJoin('buoys/nearest', () => { throw new Error('boom'); });
+  try {
+    const joins = vesselCardJoins({ destination: 'BEANR', lat: 51.2, lon: 2.4 });
+    assert.deepEqual(joins, { destinationLine: null, seaLine: null });
+  } finally {
+    console.warn = warn;
+    _resetJoinsForTest();
+  }
+});

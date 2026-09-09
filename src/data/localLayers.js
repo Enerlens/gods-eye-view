@@ -16,6 +16,8 @@ import {
   damTierLegend,
   damTierVisible,
 } from './damsPack.js';
+import { publishJoin } from './layerJoins.js';
+import { buildPortIndex } from './portDirectory.js';
 
 // Use Vite's ?url import to properly resolve these assets in dev and build
 import airportsUrl from './local_data/airports/airports.geojsonl?url';
@@ -114,6 +116,21 @@ const ports = createLocalGeoJsonLayer({
   labels: true,
   labelMax: 800,
   labelGridPx: 136,
+
+  // ── The pack, offered to whoever needs a harbour ────────────────────────
+  // AIS message 5 carries a destination the master typed by hand, and this
+  // layer holds the 2 951 harbours that field is trying to name. The two were
+  // drawn one row apart and never joined; since the fusion they are the SAME
+  // row (`layerFusions.js`), which is what makes the join reachable without
+  // asking a reader to switch on a second layer.
+  //
+  // Published through `layerJoins.js` rather than imported by the vessels
+  // layer: the offer exists exactly while the pack is loaded, and the card
+  // that reads it says less when it is not.
+  onFeatures: (features) => {
+    const index = buildPortIndex(features);
+    return publishJoin('ports/directory', () => index);
+  },
 });
 
 // OurAirports — public domain, bundled. NOT the whole 86k-row catalogue: the

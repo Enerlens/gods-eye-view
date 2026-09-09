@@ -6,6 +6,45 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Added
+- **Un navire dit où il va : la carte le résout en port, et dit dans quelle mer
+  il est.** Le message AIS porte une destination de vingt caractères tapée à la
+  main, et la carte l'affichait telle quelle depuis toujours — `→ BEANR`,
+  `→ IT GOA`, `→ HARBOUR TOWAGE` — pendant que 2 951 ports du World Port Index
+  étaient dessinés une ligne plus bas, sans que les deux se soient jamais
+  parlé. Depuis la fusion, c'est la **même ligne**, ce qui est précisément ce
+  qui rend la jointure atteignable sans demander d'allumer une seconde couche.
+
+  Mesuré le 2026-09-09 sur **2 250 navires** distincts, relevés sur douze
+  instantanés consécutifs de l'abonnement AIS : **1 137, soit 50,5 %**, nomment
+  un port du paquet — 523 par code UN/LOCODE, 614 par nom. La moitié restante
+  n'est pas du bruit à rapprocher de force, c'est un recensement de ce à quoi
+  le champ sert : des ports fluviaux que le World Port Index ne liste pas
+  (`MAINZ`, `PARIS`, `DUISBURG`), des exonymes (`ANTWERP` contre `Antwerpen`,
+  `GENOA` contre `Genova`), des ordres qui ne sont pas des lieux
+  (`HARBOUR TOWAGE`, `FOR ORDERS`), et des postes à quai. Tout cela reste
+  imprimé **mot pour mot** comme le commandant l'a tapé.
+
+  Aucun rapprochement flou : un code, un trajet (`DOVER<=>CALAIS` → Calais), un
+  nom, ou un nom suivi d'un poste que le champ coupe à vingt caractères
+  (`ANTWERPEN 4E HAVENDO` → Antwerpen). Deux ports du même nom sont départagés
+  par la distance au navire ; et une correspondance **par nom** est refusée
+  au-delà de 2 500 km, un seuil mesuré : dans l'échantillon, les 16 bonnes
+  correspondances vont de 301 à 1 348 km, puis plus rien jusqu'à 5 006 km où
+  commencent les 18 mauvaises — six navires de la Manche écrivant `PORTLAND`
+  renvoyés dans l'Oregon, six écrivant `PORTSMOUTH` renvoyés dans le
+  New Hampshire.
+
+  Et la carte dit enfin dans quelle mer le navire se trouve : `MER SLIGHT ·
+  1 m · bouée 62170 à 128 km`, lue sur la bouée la plus proche **qui mesure
+  vraiment la houle** — quatre cinquièmes du réseau NDBC n'a pas de capteur de
+  vagues, et compter ces stations-là aurait répondu « mer calme, 0 m » pour la
+  moitié de l'océan.
+
+  Les deux lignes sont **facultatives par construction** : un lecteur qui a
+  éteint les ports ou les bouées retrouve exactement la carte d'avant.
+  `src/data/layerJoins.js` est le tableau d'affichage qui rend ça possible —
+  une couche offre un fait, une autre le lit, aucune des deux ne s'importe.
+
 - **Une porte du globe vers la radiographie d'adresse.** Le dépôt avait deux
   surfaces qui répondent à la même question sur la même porte, et aucun lien
   entre elles : la carte de la `Fiche implantation`, plafonnée à **six lignes**
