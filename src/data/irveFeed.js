@@ -24,6 +24,16 @@
  * "N bornes libres" count and never colours a site green-for-available: it
  * draws INSTALLED CAPACITY, and says so.
  *
+ * **That is still true of the MAP, and since 2026-09-09 it is no longer true
+ * of the CARD.** QualiCharge — the DGEC's aggregation API, compulsory for any
+ * DC operator claiming renewable certificates — does publish the live state,
+ * and `irveLive.js` joins it to these sites through a plug→coordinate table
+ * built from the register's own flat export. The colours, the bands and the
+ * counts on this map are unchanged; what a selected site gains is one more
+ * line, carrying its own source, its own denominator and its own age. See
+ * `irveLive.js` for the 9.34 % of plug ids that name two places and are
+ * therefore refused a placement.
+ *
  * ── Trap 1: the published geometry is unusable, twice over ──────────────────
  * `geo_point_borne` is NULL on all 231 079 rows (measured), so Opendatasoft's
  * `within_bbox()` cannot be used at all — the viewport filter has to be a

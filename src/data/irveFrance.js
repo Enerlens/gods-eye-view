@@ -186,11 +186,13 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { pickOverlayLabelId } from './overlayLabelPick.js';
+import { irveLiveFromTuple, irveLiveLine } from './irveLive.js';
 import {
   IRVE_BAND_KEYS,
   IRVE_BAND_LABELS,
   IRVE_CONNECTOR_LABELS,
   IRVE_MAX_BOX_DEG,
+  irveSiteKey,
 } from './irveFeed.js';
 import {
   meshSiteId,
@@ -477,6 +479,14 @@ let _meshError = null;
 let _meshPick = null;
 /** Last viewport summary from the proxy, for the panel row and the analyst. */
 let _summary = null;
+/**
+ * What QualiCharge said about the plugs in the current box, by site key.
+ *
+ * `null` until an answer lands, and it never blocks the map: the register is
+ * what is drawn, the live state is a line on a card. See `irveLive.js`.
+ * @type {?{at: ?number, sites: Map<string, object>, unavailable: boolean}}
+ */
+let _live = null;
 
 // National regime.
 let _national = null;
@@ -712,7 +722,7 @@ function fr(value) {
  * @param {Object} record Render record.
  * @returns {string} Newline-separated card copy.
  */
-export function buildIrveSelectionLabel(record) {
+export function buildIrveSelectionLabel(record, live = null) {
   const site = record?.site || {};
   const details = [];
   const title = site.name || site.commune || 'Station de recharge';
@@ -763,6 +773,12 @@ export function buildIrveSelectionLabel(record) {
       : `🗓 déclaré ${site.updatedFrom}`);
   }
   details.push('Capacité installée — ce fichier ne publie pas la disponibilité');
+  // …AND WHAT DOES. The line above is about the REGISTER and stays true; this
+  // one is a second source answering a second question, so it names itself.
+  // `irveLive.js` holds why the denominator is what QualiCharge spoke for and
+  // not what is installed.
+  const liveLine = irveLiveLine(live?.state, { at: live?.at ?? null });
+  if (liveLine) details.push(`⚡ QualiCharge — ${liveLine}`);
 
   return [title, ...details].join('\n');
 }
@@ -859,13 +875,43 @@ function selectedOverlayEntry(id, position, copy) {
  * @param {Object} record
  * @returns {?Object}
  */
-export function createIrveSelectedOverlayEntry(record) {
+export function createIrveSelectedOverlayEntry(record, live = null) {
   const position = record?.position;
   if (!record?.id || !position) return null;
   const copy = record.mesh
     ? buildIrveMeshLabel(record)
-    : buildIrveSelectionLabel(record);
+    : buildIrveSelectionLabel(record, live);
   return selectedOverlayEntry(record.id, position, copy);
+}
+
+/**
+ * The live entry for one drawn record, or null.
+ *
+ * The join is on the SITE KEY, which both sides compute the same way — the
+ * proxy from the register's flat export, this layer from the grouped rows —
+ * so a plug and the mark it belongs to meet on a string rather than on a
+ * float comparison that would miss by a rounding.
+ */
+function liveForRecord(record) {
+  if (!_live?.sites) return null;
+  const lat = Number(record?.site?.lat);
+  const lon = Number(record?.site?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  // Recomputed from the coordinate rather than read off the record's `id`:
+  // the mesh regime mints its own ids, and a key that came from an id would
+  // work in one regime and silently miss in the other.
+  const state = _live.sites.get(irveSiteKey(lat, lon));
+  return state ? { state, at: _live.at } : null;
+}
+
+/** Redraw the selected card in place, after a late answer changed what it says. */
+function repaintSelectedCard(id) {
+  const record = _records.get(id);
+  if (!record || !_viewer) return;
+  const entry = createIrveSelectedOverlayEntry(record, liveForRecord(record));
+  if (!entry) return;
+  _overlayHost.setEntries(IRVE_FR_OVERLAY_SOURCE_ID, [entry], IRVE_FR_OVERLAY_SOURCE_OPTIONS);
+  governorRequestRender('irve-fr-live');
 }
 
 /**
@@ -945,7 +991,7 @@ function selectSite(id) {
     record.point.pixelSize = SELECTED_POINT_PX;
   }
   styleBeam(record, true);
-  const entry = createIrveSelectedOverlayEntry(record);
+  const entry = createIrveSelectedOverlayEntry(record, liveForRecord(record));
   if (entry) {
     _overlayHost.setEntries(IRVE_FR_OVERLAY_SOURCE_ID, [entry], IRVE_FR_OVERLAY_SOURCE_OPTIONS);
   }
@@ -1835,6 +1881,38 @@ function clearSites() {
   _meshPick = null;
 }
 
+/**
+ * Ask what is FREE in this box, and never let the answer hold up the map.
+ *
+ * Deliberately fire-and-forget beside the viewport query rather than awaited
+ * with it: the register is what the layer draws and the live feed is a line on
+ * a card, so a slow or absent QualiCharge must cost the map nothing. The
+ * result lands in `_live` and the card reads it if it is there.
+ *
+ * @param {{south:number, west:number, north:number, east:number}} box
+ * @param {number} generation The viewport generation this belongs to.
+ */
+function loadLive(box, generation) {
+  const params = new URLSearchParams({
+    box: [box.south, box.west, box.north, box.east].map((v) => v.toFixed(5)).join(','),
+  });
+  fetch(`/api/irve-fr/live?${params}`)
+    .then((response) => (response.ok ? response.json() : null))
+    .then((payload) => {
+      // A viewport that moved on owns the state now; a late answer for the
+      // box before it would put another car park's plugs on this card.
+      if (!payload || generation !== _requestGeneration || !_enabled) return;
+      const sites = new Map();
+      for (const tuple of payload.sites || []) {
+        const entry = irveLiveFromTuple(tuple);
+        if (entry) sites.set(entry.key, entry);
+      }
+      _live = { at: Number(payload.at) || null, sites, unavailable: Boolean(payload.unavailable) };
+      if (_selectedId) repaintSelectedCard(_selectedId);
+    })
+    .catch(() => { /* the card says less, and the map is unaffected */ });
+}
+
 async function loadViewport({ force = false } = {}) {
   if (!_enabled || !_viewer) return;
 
@@ -1885,6 +1963,7 @@ async function loadViewport({ force = false } = {}) {
       north: box.north.toFixed(5),
       east: box.east.toFixed(5),
     });
+    loadLive(box, generation);
     const response = await fetch(`/api/irve-fr/sites?${params}`, { signal: controller.signal });
     if (generation !== _requestGeneration) return;
     if (!response.ok) {
@@ -2097,6 +2176,7 @@ const irveFranceLayer = {
     _error = null;
     _status = 'idle';
     _summary = null;
+    _live = null;
     _regime = 'national';
     _nationalPainted = false;
     _meshPick = null;

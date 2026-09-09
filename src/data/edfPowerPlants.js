@@ -1,6 +1,8 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
+import { askJoin, publishJoin } from './layerJoins.js';
+import { PLANT_JOIN_KEYS, plantCrossRegisterLine } from './plantIdentity.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -436,7 +438,7 @@ export function commissioningText(from, to) {
  * @param {object} record A record from `buildPlantRecords`.
  * @returns {string} Newline-separated; the first line is the title.
  */
-export function buildEdfPlantCard(record) {
+export function buildEdfPlantCard(record, crossRegister = null) {
   const style = FILIERE_STYLES[String(record?.filiere ?? '')] || null;
   const lines = [String(record?.name ?? '').trim() || 'Centrale'];
 
@@ -482,6 +484,18 @@ export function buildEdfPlantCard(record) {
   const reference = String(record?.referenceDate ?? '').trim();
   if (reference) lines.push(`# ${style?.label || 'EDF'} — situation au ${reference}`);
 
+  // THE OTHER REGISTER, when it disagrees. 43 of the 69 sites both registers
+  // hold agree to the megawatt and a card repeating the same figure would be
+  // noise; the 12 that differ by more than 5 % differ for a reason worth a
+  // line — Flamanville is 2 660 MW here and 4 280 at RTE, which is the EPR.
+  const rte = plantCrossRegisterLine(
+    'RTE',
+    crossRegister?.mw ?? null,
+    record?.mw ?? null,
+    crossRegister?.units ? `somme de ${crossRegister.units} groupe${crossRegister.units > 1 ? 's' : ''} ≥ 100 MW` : null,
+  );
+  if (rte) lines.push(rte);
+
   return lines.join('\n');
 }
 
@@ -491,9 +505,9 @@ export function buildEdfPlantCard(record) {
  * @param {object} position Cesium.Cartesian3 for the disc.
  * @returns {object|null}
  */
-export function createEdfSelectedOverlayEntry(record, position) {
+export function createEdfSelectedOverlayEntry(record, position, crossRegister = null) {
   if (!record || !position) return null;
-  const [title, ...details] = buildEdfPlantCard(record).split('\n');
+  const [title, ...details] = buildEdfPlantCard(record, crossRegister).split('\n');
   return {
     id: `edf-plants:${record.id}`,
     position,
@@ -620,6 +634,32 @@ export function createEdfPowerPlantsLayer({
   let _enabled = false;
   let _loading = false;
   let _feedSource = null;
+  /** Take-down for the fleet offer. Null while nothing is offered. */
+  let _unpublishFleet = null;
+
+  /**
+   * Offer this fleet's sites, so the two registers that borrowed its
+   * coordinates can stand down where they hold the same site.
+   *
+   * The key is the layer's own site id — `nucleaire:GRAVELINES` — which is
+   * exactly what `scripts/build-rte-units-registry.mjs` wrote into the RTE
+   * pack's `placementRef` when it placed a station on this fleet's published
+   * coordinate. No proximity anywhere: see `plantIdentity.js` for the 540 m
+   * pair that rules a distance test out.
+   */
+  function publishFleetJoin() {
+    if (!_enabled || !_records.length) {
+      _unpublishFleet?.();
+      _unpublishFleet = null;
+      return;
+    }
+    const byId = new Map(_records.map((record) => [record.id, record]));
+    _unpublishFleet?.();
+    _unpublishFleet = publishJoin(PLANT_JOIN_KEYS.edf, (siteId) => {
+      const record = byId.get(String(siteId || ''));
+      return record ? { name: record.name, mw: record.mw, filiere: record.filiere } : null;
+    });
+  }
 
   function repaint() {
     if (!_pointCollection) return;
@@ -674,7 +714,11 @@ export function createEdfPowerPlantsLayer({
       drawn.point.outlineColor = Cesium.Color.fromCssColorString(EDF_SELECTED_COLOR);
       drawn.point.pixelSize = drawn.basePixelSize + SELECTED_POINT_BONUS_PX;
     }
-    const entry = createEdfSelectedOverlayEntry(drawn.record, drawn.position);
+    const entry = createEdfSelectedOverlayEntry(
+      drawn.record,
+      drawn.position,
+      askJoin(PLANT_JOIN_KEYS.rteByEdf, drawn.record.id),
+    );
     if (entry) {
       overlayHost.setEntries(
         EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID,
@@ -800,11 +844,13 @@ export function createEdfPowerPlantsLayer({
       if (_viewer) installClickHandler(_viewer);
       // The fleet is already drawn if a previous session loaded it; republish
       // the labels the overlay host dropped on disable.
+      publishFleetJoin();
       if (_records.length) repaint();
     },
 
     disable() {
       _enabled = false;
+      publishFleetJoin();
       clearSelection();
       removeClickHandler();
       if (_pointCollection) _pointCollection.show = false;
@@ -831,6 +877,7 @@ export function createEdfPowerPlantsLayer({
         const records = buildPlantRecords(payload);
         const signature = signatureOf(records);
         _records = records;
+        publishFleetJoin();
         _summary = summarizePlants(records);
         _datasets = Array.isArray(payload?.datasets) ? payload.datasets : [];
         _vintages = referenceDateRange(_datasets);

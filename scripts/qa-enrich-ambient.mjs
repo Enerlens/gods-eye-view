@@ -252,7 +252,7 @@ async function main() {
       // Request log: starts (hex + performance.now), live/max concurrency,
       // hold gate (responses park until the harness releases them so the
       // pre-enrichment baseline is deterministic).
-      window.__ENRICH_LOG = { starts: [], inflight: 0, maxInflight: 0, held: true, holds: [] };
+      window.__ENRICH_LOG = { starts: [], routes: [], inflight: 0, maxInflight: 0, held: true, holds: [] };
       window.__ENRICH_RELEASE = () => {
         window.__ENRICH_LOG.held = false;
         window.__ENRICH_LOG.holds.splice(0).forEach((fn) => fn());
@@ -294,6 +294,15 @@ async function main() {
             const finish = () => setTimeout(() => { L.inflight -= 1; resolve(jsonResponse(body)); }, S.responseDelayMs);
             if (L.held) L.holds.push(finish); else finish();
           });
+        }
+        // ROUTE lookups, logged separately from type ones. Since 2026-09-09 the
+        // ambient sweep asks for these too, off their OWN token bucket, which
+        // is the whole of what E13 checks — that they fire without anything
+        // being tracked, and that a callsign is asked about once.
+        if (url.includes('/api/adsbdb/route/')) {
+          const cs = decodeURIComponent(url.split('/').pop().split('?')[0]).toUpperCase();
+          window.__ENRICH_LOG.routes.push({ cs, t: performance.now() });
+          return Promise.resolve(jsonResponse({ found: false }));
         }
         if (url.includes('/api/adsbdb/')) return Promise.resolve(jsonResponse({ found: false }));
         if (url.includes('/api/opensky-track')) return Promise.resolve(jsonResponse({ path: [] }));
@@ -623,6 +632,34 @@ async function main() {
     record('E11 resume: enrichment resumes after a refill window (all waiting planes requested, once each)',
       resumed && batchRequested === BATCH_COUNT && resumeLog.length === expectedTotal && !dupes,
       `starts=${resumeLog.length} (want ${expectedTotal}) batchRequested=${batchRequested}/${BATCH_COUNT} dupes=${dupes}`);
+
+    // ========================================================================
+    // E13 — AMBIENT ROUTE ENRICHMENT (2026-09-09). Until this change routes
+    // were fetched for the TRACKED contact ONLY, so `flights/boundFor` — the
+    // join behind an airport card's "1 en approche" — answered 0/0 on every
+    // fresh session. Nothing has been tracked anywhere in this run, so every
+    // route request logged below is an AMBIENT one, and there should be one
+    // per distinct airline-style callsign on screen and not one more.
+    //
+    // The refusal half of the gate (a general-aviation tail is never asked
+    // about) is proved in `flights.test.mjs` against `ambientRouteCallsign`
+    // rather than here: this synthetic fleet is airline-style throughout, and
+    // adding a GA plane to it would move the frame every other phase is
+    // framed on.
+    // ========================================================================
+    console.log('\nE13 — ambient route enrichment');
+    const routeLog = await page.evaluate(() => window.__ENRICH_LOG.routes.map((r) => r.cs));
+    const routeSet = new Set(routeLog);
+    const fleetCallsigns = await page.evaluate(() => window.__ENR.planes.map((p) => p.callsign.toUpperCase()));
+    const askedForUnknown = [...routeSet].filter((cs) => !fleetCallsigns.includes(cs));
+    const notAirlineStyle = [...routeSet].filter((cs) => !/^[A-Z]{3}\d/.test(cs));
+    record('E13a ambient: routes are fetched with NOTHING tracked',
+      routeSet.size > 0, `${routeSet.size} indicatifs demandés, aucun contact suivi`);
+    record('E13b once each: no callsign is asked about twice',
+      routeLog.length === routeSet.size, `${routeLog.length} demandes pour ${routeSet.size} indicatifs`);
+    record('E13c shape: every callsign asked about is airline-style and on screen',
+      notAirlineStyle.length === 0 && askedForUnknown.length === 0,
+      [...notAirlineStyle, ...askedForUnknown].join(' ') || 'clean');
 
     record('E12: no console errors during QA run', consoleErrors.length === 0,
       consoleErrors.length ? `${consoleErrors.length}: ${consoleErrors.slice(0, 3).join(' | ')}` : 'clean');

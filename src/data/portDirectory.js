@@ -20,21 +20,32 @@
  *   resolved by port name          614   27.3 %
  *   unresolved                   1 113   49.5 %
  *
- * So **1 137 of 2 250 (50.5 %)** name a harbour the app already draws. What
- * the other half is is not noise to be fuzzy-matched away — it is a census of
- * what the field is used for, and it is worth stating because a reader who
- * sees a raw string deserves to know it is normal:
+ * So **1 137 of 2 250 (50.5 %)** named a harbour the app already draws, and
+ * this module wrote down what the other half was. Two families of it were
+ * rattrapable, and both needed the same thing: a NAME TABLE WITH A SOURCE.
+ * `scripts/build-port-gazetteer.mjs` now builds one, and the census moves —
+ * measured the same afternoon over 1 924 vessels with
+ * `npm run qa:vessel-destinations`, **50.4 % → 68.9 %**:
  *
  *   · **inland river ports**, which the World Port Index is not an index of —
- *     `MAINZ` 14, `PARIS` 9, `FRANKFURT` 9, `NEUSS`, `KARLSRUHE`, `DUISBURG`,
- *     `KÖLN`, `MAASTRICHT`. The Rhine and the Seine carry a large share of
- *     this feed and the WPI lists sea harbours;
- *   · **exonyms** — `ANTWERP` 14 against the pack's `Antwerpen`, `GENOA` 13
- *     against `Genova`, `GENT` 8 against `Ghent`. Resolving those needs an
- *     alias table with a source, which this module does not invent;
+ *     `MAINZ`, `PARIS`, `FRANKFURT`, `NEUSS`, `KARLSRUHE`, `DUISBURG`, `KÖLN`,
+ *     `MAASTRICHT`. UN/LOCODE codes those as ports (function `1`) exactly like
+ *     sea harbours, so the gazetteer carries 11 545 of them and this is the
+ *     family it mostly closes;
+ *   · **exonyms** — `ANTWERP` against `Antwerpen`, `GENOA` against `Genova`,
+ *     `GENT` against `Ghent`. UN/LOCODE's own alias list and GeoNames'
+ *     `alternatenames` supply 13 657 spellings, joined to a harbour by NAME
+ *     AND PROXIMITY at build time. Still no edit distance anywhere;
  *   · **orders and states**, not places at all: `HARBOUR TOWAGE` 13,
- *     `FOR ORDERS`, `CRUISING`, `FISHING`;
+ *     `FOR ORDERS`, `CRUISING`, `FISHING`. Not rattrapable, and not a defect;
  *   · **berths and blanks** — `QUAI 5`, `-`, `??`.
+ *
+ * What stays out, measured on the same sample: places UN/LOCODE does not code
+ * as ports at all (`GOLFE JUAN` and `LA NAPOULE` are Riviera marinas, coded
+ * `--3-----`, road terminals), and `ERLENBACH` — six barges on the Main mean
+ * Erlenbach am Main, and the only Erlenbach UN/LOCODE codes as a port is in
+ * Switzerland, 280 km away. That one is refused by the ceiling below rather
+ * than answered wrongly.
  *
  * ── THE SHAPES IT READS, AND WHY THERE IS NO FUZZY ONE ──────────────────────
  *
@@ -64,24 +75,44 @@
  */
 
 /**
+ * The Latin letters Unicode normalisation cannot take apart.
+ *
+ * `NFD` turns `Ê` into `E` plus a combining circumflex, and that is most of
+ * the job. It does NOT touch a letter whose diacritic is part of its shape —
+ * `ø`, `æ`, `ß`, `ð`, `þ`, `ł`, `đ`, `ı` — so `København` was folding to
+ * `K BENHAVN` and could never meet a master typing `KOBENHAVN`. Measured on
+ * the shipped packs: the World Port Index is ASCII throughout and unaffected,
+ * and **174 gazetteer names** were folding to a key with a hole in it, almost
+ * all of them Danish and Norwegian.
+ *
+ * These are transliterations, which is a different thing from a similarity
+ * rule: `ø` IS `o` in every ASCII rendering of the name, and the folding is
+ * applied to BOTH sides of the comparison, so it can only make two spellings
+ * of one name meet — never two different names.
+ */
+const LETTER_FOLDINGS = Object.freeze([
+  [/[ØøƟ]/g, 'O'], [/[Ææ]/g, 'AE'], [/[Œœ]/g, 'OE'], [/ß/g, 'SS'],
+  [/[Ðð]/g, 'D'], [/[Þþ]/g, 'TH'], [/[Łł]/g, 'L'], [/[Đđ]/g, 'D'],
+  [/[Ħħ]/g, 'H'], [/[Ŧŧ]/g, 'T'], [/[ıİ]/g, 'I'], [/[Ə]/g, 'E'],
+]);
+
+/**
  * Fold a string to the key both sides of the join are compared on.
  *
- * Diacritics out (`GÊNES` and `GENES`), punctuation out (`ST. NAZAIRE` and
- * `ST NAZAIRE`), runs of space collapsed, upper-cased. It is deliberately NOT
- * a similarity function: two strings either fold to the same key or they do
- * not.
+ * Diacritics out (`GÊNES` and `GENES`), the letters normalisation cannot
+ * decompose transliterated ({@link LETTER_FOLDINGS}), punctuation out
+ * (`ST. NAZAIRE` and `ST NAZAIRE`), runs of space collapsed, upper-cased. It
+ * is deliberately NOT a similarity function: two strings either fold to the
+ * same key or they do not.
  *
  * @param {unknown} value
  * @returns {string} Folded key, `''` when there is nothing to fold.
  */
 export function foldPortKey(value) {
   if (typeof value !== 'string') return '';
-  return value
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, ' ')
-    .trim();
+  let folded = value.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+  for (const [pattern, replacement] of LETTER_FOLDINGS) folded = folded.replace(pattern, replacement);
+  return folded.replace(/[^A-Z0-9]+/g, ' ').trim();
 }
 
 /**
@@ -168,6 +199,33 @@ const LOCODE_PATTERN = /^[A-Z]{2}[A-Z0-9]{3}$/;
 export const PORT_NAME_MATCH_MAX_M = 2_500_000;
 
 /**
+ * How far a name match against the GAZETTEER may be. Much tighter, and why.
+ *
+ * The 2 500 km above was measured on the World Port Index: 2 951 major
+ * harbours, where two of them sharing a name is rare enough that agreement at
+ * range is usually intention. The gazetteer is a different kind of table —
+ * 11 545 UN/LOCODE port locations, four times as many, and their names are
+ * ordinary place names. `Stein`, `Beaulieu`, `Workum`: agreement at range is
+ * usually coincidence.
+ *
+ * 500 km, and it is measured on the same 1 924-vessel sample, which splits as
+ * cleanly as the WPI one did: **268 gazetteer name matches from 0 to 415 km,
+ * every one of them plausible** — barge traffic is far from its destination
+ * because rivers are long (`AMSTERDAM` at 415 km from a ship off Brighton,
+ * `HERSTAL` at 359 km from the Channel, `MARSEILLE` at 299 km from Genoa) —
+ * then a gap, then **9 matches from 622 km up and every one of them wrong**:
+ * four ships in the Westerschelde writing `FLUSHING` resolved to Flushing,
+ * Cornwall; three at Beaulieu-sur-Mer writing `BEAULIEU` resolved to Beaulieu,
+ * Hampshire; one at Antibes writing `WORKUM`; one at Rouen writing `BUDAPEST`.
+ * (The four `FLUSHING` are now answered correctly by the alias table, which is
+ * where an exonym belongs — the ceiling is what catches the rest.)
+ *
+ * A refused match is not a blank card: the raw field is printed exactly as the
+ * master typed it, which is what the card did before any of this existed.
+ */
+export const PORT_GAZETTEER_NAME_MATCH_MAX_M = 500_000;
+
+/**
  * Generic heads the WPI puts on a harbour's name, and a master never does.
  *
  * The pack calls Le Havre `Port Of Le Havre`, Rouen `Port Of Rouen` and Brest
@@ -209,11 +267,23 @@ function portNameKeys(name) {
  * position to measure from, a contested name is refused outright and the card
  * prints the raw field, which is what it did before this module existed.
  *
+ * THE GAZETTEER MERGES INTO THE SAME TWO MAPS, and losing to the WPI where
+ * they overlap. A code the WPI already carries is kept as the WPI's, because
+ * that row is the one on the map and it is the richer of the two. A NAME is
+ * appended to the bucket rather than replacing it, which is what lets six
+ * ships in the Channel writing `PORTLAND` find Portland, Dorset — a gazetteer
+ * row — while the WPI's Portland, Oregon stays in the same bucket and simply
+ * loses the distance test.
+ *
  * @param {ReadonlyArray<object>} features GeoJSON features from the ports pack.
+ * @param {?{ports?: Array, aliases?: Array}} [gazetteer] Parsed
+ *   `local_data/ports/gazetteer.json`. Absent is ordinary: the index is then
+ *   exactly what it was before the gazetteer existed.
  * @returns {{byLocode: Map<string, object>, byName: Map<string, object[]>,
- *   ports: number, contestedNames: number}}
+ *   ports: number, contestedNames: number, gazetteerPorts: number,
+ *   aliases: number}}
  */
-export function buildPortIndex(features) {
+export function buildPortIndex(features, gazetteer = null) {
   const byLocode = new Map();
   const byName = new Map();
   let ports = 0;
@@ -242,9 +312,46 @@ export function buildPortIndex(features) {
       else byName.set(key, [entry]);
     }
   }
+  let gazetteerPorts = 0;
+  for (const row of Array.isArray(gazetteer?.ports) ? gazetteer.ports : []) {
+    const [code, name, lat, lon] = Array.isArray(row) ? row : [];
+    if (typeof code !== 'string' || typeof name !== 'string') continue;
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    const locode = foldPortKey(code).replace(/ /g, '');
+    if (!LOCODE_PATTERN.test(locode)) continue;
+    const entry = Object.freeze({
+      name, country: '', countryCode: locode.slice(0, 2), unlocode: locode,
+      harborSize: '', lat, lon,
+      // The flag the distance test reads. It travels on the entry rather than
+      // being looked up, because a bucket can hold both kinds and each has to
+      // be judged against its own ceiling.
+      gazetteer: true,
+    });
+    gazetteerPorts += 1;
+    if (!byLocode.has(locode)) byLocode.set(locode, entry);
+    const key = foldPortKey(name);
+    if (!key) continue;
+    const bucket = byName.get(key);
+    if (bucket) bucket.push(entry);
+    else byName.set(key, [entry]);
+  }
+  // Aliases LAST, so a spelling can point at a WPI harbour or at a gazetteer
+  // row indifferently. One that points at neither is dropped here rather than
+  // shipped as a dangling key — the pack and the build can drift.
+  let aliases = 0;
+  for (const row of Array.isArray(gazetteer?.aliases) ? gazetteer.aliases : []) {
+    const [key, code] = Array.isArray(row) ? row : [];
+    if (typeof key !== 'string' || typeof code !== 'string' || key.length < 3) continue;
+    const port = byLocode.get(foldPortKey(code).replace(/ /g, ''));
+    if (!port) continue;
+    aliases += 1;
+    const bucket = byName.get(key);
+    if (!bucket) byName.set(key, [port]);
+    else if (!bucket.includes(port)) bucket.push(port);
+  }
   let contestedNames = 0;
   for (const bucket of byName.values()) if (bucket.length > 1) contestedNames += 1;
-  return { byLocode, byName, ports, contestedNames };
+  return { byLocode, byName, ports, contestedNames, gazetteerPorts, aliases };
 }
 
 /**
@@ -275,17 +382,22 @@ export function matchDestinationToPort(destination, index, from = {}) {
     if (bucket.length === 1 && !positioned) {
       return { port: bucket[0], how: 'name', matched: candidate };
     }
-    // With a ship, the nearest wins — and only if it is near enough to be
-    // meant. Two harbours share `Southampton`, and a vessel in the Channel
-    // does not mean Ontario.
+    // With a ship, the nearest ADMISSIBLE one wins. Each candidate is judged
+    // against its OWN ceiling and only then compared — a bucket holding a
+    // gazetteer row at 600 km and a WPI harbour at 2 000 km must answer with
+    // the harbour, because the gazetteer row is over its ceiling and the
+    // harbour is not. Sorting first and testing after would answer `null`.
     if (!positioned) continue;
     let best = null;
     let bestM = Infinity;
     for (const port of bucket) {
       const metres = portDistanceM(lat, lon, port.lat, port.lon);
-      if (metres < bestM) { bestM = metres; best = port; }
+      const ceiling = port.gazetteer ? PORT_GAZETTEER_NAME_MATCH_MAX_M : PORT_NAME_MATCH_MAX_M;
+      if (metres > ceiling || metres >= bestM) continue;
+      bestM = metres;
+      best = port;
     }
-    if (!best || bestM > PORT_NAME_MATCH_MAX_M) continue;
+    if (!best) continue;
     return {
       port: best,
       how: 'name',

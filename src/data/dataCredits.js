@@ -395,6 +395,19 @@ export const DATA_CREDITS = [
       'availability, and each site&rsquo;s own <code>date_maj</code> is reported as its data timestamp.',
   },
   {
+    // The live half of the same subject. Registered separately because it is a
+    // different publisher under a different obligation, and because it only
+    // ever answers on a CARD — the map is still installed capacity.
+    key: 'qualicharge',
+    html:
+      'Disponibilit&eacute; des bornes (carte de site) : ' +
+      '<a href="https://www.data.gouv.fr/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes" target="_blank" rel="noopener">QualiCharge</a> ' +
+      '&mdash; Direction g&eacute;n&eacute;rale de l&rsquo;&eacute;nergie et du climat, via transport.data.gouv.fr ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'Chaque borne porte son propre <code>horodatage</code> : une borne muette depuis plus de 24 h est ' +
+      'compt&eacute;e comme muette, jamais comme libre.',
+  },
+  {
     key: 'cadastre-pci',
     html:
       'French cadastral parcels: <em>Plan Cadastral Informatis&eacute; (PCI vecteur)</em>, ' +
@@ -629,6 +642,18 @@ export const DATA_CREDITS = [
       'Ports: NGA World Port Index (Pub. 150) — ' +
       '<a href="https://msi.nga.mil/Publications/WPI" target="_blank" rel="noopener">msi.nga.mil</a> ' +
       '— U.S. public domain. Harbour depths are WPI range bins, not surveyed soundings.',
+  },
+  {
+    // The gazetteer that resolves an AIS destination to a place the WPI is not
+    // an index of. Not drawn — but read on every vessel card, so it is
+    // credited: GeoNames is CC BY 4.0 and attribution is a condition of it.
+    key: 'port-gazetteer',
+    html:
+      'Destinations AIS (lieux non dessinés) : ' +
+      '<a href="https://unece.org/trade/cefact/UNLOCODE-Download" target="_blank" rel="noopener">UN/LOCODE</a> ' +
+      '(UNECE, ODC-PDDL 1.0) et ' +
+      '<a href="https://www.geonames.org/" target="_blank" rel="noopener">GeoNames</a> ' +
+      '(CC BY 4.0) — 11 545 ports fluviaux et maritimes, 13 657 graphies.',
   },
   {
     key: 'ourairports',

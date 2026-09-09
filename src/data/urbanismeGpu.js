@@ -1,6 +1,7 @@
 import * as Cesium from 'cesium';
 import { addressMarkerGlyph } from './addressMarkerIcons.js';
 import { createAddressScanLayer } from './addressScanLayer.js';
+import { publishJoin } from './layerJoins.js';
 import { GPU_BOX_MAX_ALTITUDE_M, GPU_MAX_BOX_DEG } from './gpuFeed.js';
 import { pointInPolygons } from './ringGeometry.js';
 import { greatCircleKm } from './trafficBounds.js';
@@ -729,7 +730,40 @@ export function gpuScanParams(point, viewer) {
   };
 }
 
-const urbanismeGpuLayer = createAddressScanLayer({
+/** The zoning answer this scan can give, offered to whoever asks by point. */
+let _unpublishZoneAt = null;
+
+/**
+ * Offer "what does the PLU say at this point", from the scan already drawn.
+ *
+ * A BD TOPO volume's card asks it — the third of the three questions
+ * `docs/PLAN-CROISEMENTS.md` wanted a building click to answer — and the
+ * answer is already resident: this layer holds the zones and servitudes for
+ * the box around the scan point, and `gpuAnswerAt` is the point query it
+ * already runs for its own ground card.
+ *
+ * THE SCAN POINT TRAVELS WITH THE PAYLOAD, and that is not a detail:
+ * `gpuAnswerAt` answers from the REGISTER where the register was asked
+ * (within `GPU_REGISTER_RADIUS_M` of that point) and from the DRAWN MAP
+ * everywhere else, and the two are different claims. Dropping the point would
+ * silently downgrade every answer to the drawn one.
+ *
+ * @param {?object} payload The drawn scan payload.
+ * @param {?{lat:number, lon:number}} point Where the register was asked.
+ */
+function publishZoneAt(payload, point) {
+  if (!payload) {
+    _unpublishZoneAt?.();
+    _unpublishZoneAt = null;
+    return;
+  }
+  _unpublishZoneAt?.();
+  _unpublishZoneAt = publishJoin('plu/zoneAt', (lat, lon) => (
+    gpuAnswerAt(payload, Number(lon), Number(lat), point)
+  ));
+}
+
+const urbanismeGpuScanLayer = createAddressScanLayer({
   id: 'urbanisme-gpu',
   name: 'Urbanisme (PLU & servitudes)',
   icon: '▦',
@@ -793,6 +827,13 @@ const urbanismeGpuLayer = createAddressScanLayer({
       });
     }
     return { legend, surfaceFill: true };
+  },
+
+  // Published from here rather than from `render`, because `afterDraw` runs
+  // once the layer's own state already agrees with what is on screen — a
+  // consumer asking during the draw would read the previous answer.
+  afterDraw({ payload, point }) {
+    publishZoneAt(payload, point);
   },
 
   render({ payload, dataSource, point, viewer }) {
@@ -980,5 +1021,26 @@ const urbanismeGpuLayer = createAddressScanLayer({
     };
   },
 });
+
+/**
+ * The scan layer, plus the take-down its shell has no hook for.
+ *
+ * Wrapped exactly as `dvfSales.js` wraps its own base layer, and for the same
+ * reason: `createAddressScanLayer` offers `afterDraw` for "an answer has
+ * landed" and nothing for "this row went off", and an offer that outlived the
+ * row would put a PLU line on a building card after the reader closed the PLU.
+ */
+const urbanismeGpuLayer = {
+  ...urbanismeGpuScanLayer,
+  enable(viewer) { return urbanismeGpuScanLayer.enable(viewer); },
+  disable(viewer) {
+    publishZoneAt(null, null);
+    return urbanismeGpuScanLayer.disable(viewer);
+  },
+  destroy(viewer) {
+    publishZoneAt(null, null);
+    return urbanismeGpuScanLayer.destroy(viewer);
+  },
+};
 
 export default urbanismeGpuLayer;

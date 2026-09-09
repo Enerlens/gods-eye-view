@@ -123,6 +123,13 @@ import {
 } from '../overlays/worldOverlay.js';
 import { powerClassificationTypeForScene, powerClassificationTypeForStack } from './powerGrid.js';
 import {
+  getWeekHour,
+  setWeekHour,
+  subscribeWeekHour,
+  weekHourFromDayType,
+  weekHourToDayType,
+} from './weekHourCursor.js';
+import {
   COMPTAGES_BARRE_LABELS,
   COMPTAGES_FLOW_WIDTHS,
   COMPTAGES_HOUR_GAP_ALPHA,
@@ -161,6 +168,7 @@ import {
   comptagesRhythmMetrics,
   comptagesSaturatedHours,
   comptagesSlotLabel,
+  comptagesSlotToken,
   comptagesStrokeGlyph,
 } from './comptagesRhythm.js';
 
@@ -255,6 +263,8 @@ let _bandPrimitives = new Array(COMPTAGES_FLOW_WIDTHS.length).fill(null);
 let _gapPrimitive = null;
 /** Slot token as asked for (`mean` / `clock` / `w18`…), and its resolution. */
 let _slotToken = COMPTAGES_SLOT_MEAN;
+/** Stop following the shared week-hour cursor. Null while the layer is off. */
+let _weekHourUnsubscribe = null;
 let _slot = comptagesResolveSlot(COMPTAGES_SLOT_MEAN);
 /** Injectable clock, so a test can stand at 01:30 on a Saturday. */
 const DEFAULT_NOW = () => Date.now();
@@ -1050,6 +1060,86 @@ export function buildComptagesLoadingLabel({
   return parts.join(' · ');
 }
 
+// --- The shared week-hour cursor ---------------------------------------------
+
+/**
+ * Move to a slot token, optionally telling the rest of the map about it.
+ *
+ * The one path both the chip and the shared cursor go through, so the layer
+ * cannot end up in a state its own `getParams` would not report.
+ *
+ * `mean` and `clock` do NOT broadcast, and that is the whole of the rule: the
+ * weekday mean is not an hour of the week at all, and `clock` means "follow
+ * the Paris clock", which is a behaviour rather than a position. Pinning the
+ * other two layers to whatever hour the clock happens to be on would freeze
+ * them at a moment nobody chose. Both therefore RELEASE the cursor instead,
+ * which is exactly what they mean.
+ *
+ * @param {*} token `'mean'`, `'clock'`, `'w00'`…`'e23'`.
+ * @param {{broadcast?: boolean}} [options]
+ * @returns {boolean} Whether the layer moved.
+ */
+function applySlotToken(token, { broadcast = false } = {}) {
+  const parsed = comptagesParseSlot(token);
+  if (!parsed) return false;
+  const next = parsed.kind === 'clock' ? 'clock' : parsed.token;
+  if (next === _slotToken) return false;
+  _slotToken = next;
+  _slot = comptagesResolveSlot(next, _now());
+  applySlotStyles();
+  if (_selectedId) repaintSelectedCard(_selectedId);
+  if (broadcast) {
+    setWeekHour(
+      COMPTAGES_FR_LAYER_ID,
+      parsed.kind === 'hour'
+        ? weekHourFromDayType(parsed.day, parsed.hour, getWeekHour())
+        : null,
+    );
+  }
+  return true;
+}
+
+/**
+ * Follow the shared cursor, and take whatever it already holds.
+ *
+ * Subscribe FIRST and adopt second, so a layer coming on while another already
+ * holds an hour lands on that hour rather than drawing the mean for one
+ * repaint.
+ */
+function followWeekHour() {
+  _weekHourUnsubscribe?.();
+  _weekHourUnsubscribe = subscribeWeekHour(COMPTAGES_FR_LAYER_ID, adoptWeekHour);
+  adoptWeekHour(getWeekHour());
+}
+
+/**
+ * Stop following. The cursor itself is deliberately NOT released: turning this
+ * row off says nothing about the hour the other two are drawing.
+ */
+function unfollowWeekHour() {
+  _weekHourUnsubscribe?.();
+  _weekHourUnsubscribe = null;
+}
+
+/**
+ * Take the shared cursor, translating a real day into this layer's day-TYPE.
+ *
+ * Exact in this direction — Monday to Friday is the weekday profile, Saturday
+ * and Sunday the weekend one — which is why the lossy half of the round trip
+ * lives in `weekHourFromDayType` and not here.
+ *
+ * A released cursor (`null`) leaves the layer where the reader last put it
+ * rather than resetting it: releasing means "nobody is pinning an hour", not
+ * "go back to the mean".
+ *
+ * @param {?{day:number, hour:number}} cursor
+ */
+function adoptWeekHour(cursor) {
+  const dayType = weekHourToDayType(cursor);
+  if (!dayType) return;
+  applySlotToken(comptagesSlotToken(dayType, cursor.hour));
+}
+
 // --- Layer ------------------------------------------------------------------
 
 const comptagesParisLayer = {
@@ -1106,6 +1196,7 @@ const comptagesParisLayer = {
     if (!_moveEndRemover) {
       _moveEndRemover = viewer.camera.moveEnd.addEventListener(scheduleLoad);
     }
+    followWeekHour();
     // DataLayerManager calls update() immediately after enable(), which owns
     // the first fetch. Avoid racing it with a second aborting request here.
   },
@@ -1130,6 +1221,7 @@ const comptagesParisLayer = {
       _moveEndRemover();
       _moveEndRemover = null;
     }
+    unfollowWeekHour();
     _loading = false;
     _status = 'idle';
   },
@@ -1223,7 +1315,12 @@ const comptagesParisLayer = {
           ? `Suivre l’horloge de Paris — actuellement ${comptagesSlotLabel(comptagesResolveSlot('clock', _now()))}, `
             + `lu dans la semaine archivée ${comptagesWeekLabel(_payload?.week) || '—'}`
           : `${comptagesSlotLabel(comptagesResolveSlot(moment.slot, _now()))} — `
-            + `semaine archivée ${comptagesWeekLabel(_payload?.week) || '—'}`,
+            + `semaine archivée ${comptagesWeekLabel(_payload?.week) || '—'}`
+            // An hour chip moves the OTHER typical-week rows too, and a
+            // control with a reach beyond its own row has to say so.
+            + (comptagesParseSlot(moment.slot)?.kind === 'hour'
+              ? ' · déplace aussi les autres couches de semaine type'
+              : ''),
         params: { slot: moment.slot },
       };
     });
@@ -1312,14 +1409,7 @@ const comptagesParisLayer = {
    * down for its bands.
    */
   setParams(params = {}) {
-    const parsed = comptagesParseSlot(params?.slot);
-    if (!parsed) return;
-    const token = parsed.kind === 'clock' ? 'clock' : parsed.token;
-    if (token === _slotToken) return;
-    _slotToken = token;
-    _slot = comptagesResolveSlot(token, _now());
-    applySlotStyles();
-    if (_selectedId) repaintSelectedCard(_selectedId);
+    applySlotToken(params?.slot, { broadcast: true });
   },
 
   getParams() {
@@ -1463,3 +1553,9 @@ export function _comptagesRecordsForTest() {
 }
 
 export default comptagesParisLayer;
+
+/** Test seam: run the half of enable/disable that follows the shared cursor. */
+export function _comptagesFollowWeekHourForTest(follow = true) {
+  if (follow) followWeekHour();
+  else unfollowWeekHour();
+}

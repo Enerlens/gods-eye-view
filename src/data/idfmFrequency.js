@@ -184,6 +184,13 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import {
+  getWeekHour,
+  setWeekHour,
+  subscribeWeekHour,
+  weekHourFromOperatingSlot,
+  weekHourToOperatingSlot,
+} from './weekHourCursor.js';
+import {
   clearOverlaySource,
   setOverlayEntries,
   setOverlaySourceVisible,
@@ -418,6 +425,10 @@ let _classificationType = null;
 
 /** `null` means "follow the Paris clock"; a number pins the band. */
 let _pinnedBand = null;
+/** `null` means "today"; a day name pins it. Only ever set with a band. */
+let _pinnedDay = null;
+/** Stop following the shared week-hour cursor. Null while the layer is off. */
+let _weekHourUnsubscribe = null;
 let _slot = { day: 'mardi', band: 8 };
 
 // --- Small helpers ----------------------------------------------------------
@@ -483,17 +494,27 @@ export function parisOperatingSlot(now = Date.now()) {
 }
 
 /**
- * The slot to draw: the pinned band on today's day, or the live clock.
- * @param {?number} pinned
+ * The slot to draw: the pinned band, on the pinned day or on today's.
+ *
+ * THE DAY BECAME REACHABLE ON 2026-09-09, and only from outside. The seven
+ * chips still give up the day axis for the reason the module header states —
+ * 7 x 24 chips is not a row — but the pack has held a full 7 x 24 profile
+ * since the layer landed, and `weekHourCursor.js` is a control that can name
+ * a day without spending a chip on each one. So a day arriving from the
+ * shared cursor is honoured, and a day arriving from nowhere is still today's.
+ *
+ * @param {?number} pinned Band 4-27, or null to follow the Paris clock.
  * @param {number|Date} [now]
+ * @param {?string} [pinnedDay] One of {@link IDFM_FREQ_DAYS}, or null.
  * @returns {{day:string, band:number, pinned:boolean}}
  */
-export function resolveSlot(pinned, now = Date.now()) {
+export function resolveSlot(pinned, now = Date.now(), pinnedDay = null) {
   const live = parisOperatingSlot(now);
+  const day = IDFM_FREQ_DAYS.includes(pinnedDay) ? pinnedDay : live.day;
   if (typeof pinned !== 'number' || !Number.isFinite(pinned)) {
-    return { day: live.day, band: live.band, pinned: false };
+    return { day, band: live.band, pinned: false };
   }
-  return { day: live.day, band: clampBand(pinned), pinned: true };
+  return { day, band: clampBand(pinned), pinned: true };
 }
 
 // --- Palette ----------------------------------------------------------------
@@ -1223,7 +1244,7 @@ function hideDepartements() {
 async function loadViewport({ force = false } = {}) {
   if (!_enabled) return;
   const previous = `${_slot.day}|${_slot.band}`;
-  _slot = resolveSlot(_pinnedBand, _now());
+  _slot = resolveSlot(_pinnedBand, _now(), _pinnedDay);
   const slotChanged = previous !== `${_slot.day}|${_slot.band}`;
 
   const span = idfmFreqViewSpanDeg(_viewer);
@@ -1328,6 +1349,59 @@ function collectDetectableObjects(options = {}) {
   return result;
 }
 
+// --- The shared week-hour cursor ---------------------------------------------
+
+/**
+ * Move to a band, optionally on a named day, and repaint what quotes it.
+ *
+ * The one path a chip and the shared cursor both go through, so the layer
+ * cannot end up drawing a slot its own `getParams` would not report.
+ *
+ * @param {?number} band 4-27, or null to follow the Paris clock.
+ * @param {?string} day One of `IDFM_FREQ_DAYS`, or null for today's.
+ * @returns {boolean} Whether the layer moved.
+ */
+function applyBand(band, day) {
+  const nextDay = IDFM_FREQ_DAYS.includes(day) ? day : null;
+  if (band === _pinnedBand && nextDay === _pinnedDay) return false;
+  _pinnedBand = band;
+  _pinnedDay = nextDay;
+  _slot = resolveSlot(_pinnedBand, _now(), _pinnedDay);
+  if (_regime === 'arrets') restyleStops();
+  else repaintDepartements();
+  if (_selectedId) repaintSelectedCard(_selectedId);
+  return true;
+}
+
+/** Follow the shared cursor, and take whatever it already holds. */
+function followWeekHour() {
+  _weekHourUnsubscribe?.();
+  _weekHourUnsubscribe = subscribeWeekHour(IDFM_FREQ_LAYER_ID, adoptWeekHour);
+  adoptWeekHour(getWeekHour());
+}
+
+/** Stop following. The cursor is left alone — see `comptagesParis.js`. */
+function unfollowWeekHour() {
+  _weekHourUnsubscribe?.();
+  _weekHourUnsubscribe = null;
+}
+
+/**
+ * Take the shared cursor, on the OPERATING day rather than the calendar one.
+ *
+ * 01 h on a Wednesday is Tuesday's band 25 in this network's own filing, which
+ * is why the `01 h` chip carries band 25 — so the translation is not a
+ * formality, it is the difference between drawing the night service and
+ * drawing nothing.
+ *
+ * @param {?{day:number, hour:number}} cursor
+ */
+function adoptWeekHour(cursor) {
+  const slot = weekHourToOperatingSlot(cursor);
+  if (!slot) return;
+  applyBand(clampBand(slot.band), slot.day);
+}
+
 // --- Layer ------------------------------------------------------------------
 
 const idfmFrequencyLayer = {
@@ -1357,7 +1431,7 @@ const idfmFrequencyLayer = {
     _error = null;
     _status = 'idle';
     _regime = 'region';
-    _slot = resolveSlot(_pinnedBand, _now());
+    _slot = resolveSlot(_pinnedBand, _now(), _pinnedDay);
     _classificationType = viewer?.scene?.globe?.show === false
       ? Cesium.ClassificationType.CESIUM_3D_TILE
       : Cesium.ClassificationType.BOTH;
@@ -1384,6 +1458,10 @@ const idfmFrequencyLayer = {
       _preRenderRemover = viewer.scene.preRender.addEventListener(onPreRender);
     }
     restoreSpriteOrder(viewer);
+    // Adopted before the first fetch, so the viewport is asked for the slot
+    // the reader is on rather than for today's clock and then again for the
+    // pinned hour.
+    followWeekHour();
     // DataLayerManager calls update() immediately after enable() and that call
     // owns the first fetch; racing it with a second request here would double
     // every cold start.
@@ -1408,6 +1486,7 @@ const idfmFrequencyLayer = {
     }
     if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
     unregisterPickOwner(IDFM_FREQ_LAYER_ID);
+    unfollowWeekHour();
     if (_cameraChangedAttached && viewer?.camera) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
       releaseCameraSensitivity(viewer, IDFM_FREQ_LAYER_ID);
@@ -1498,7 +1577,10 @@ const idfmFrequencyLayer = {
         ? 'active' : 'idle',
       title: moment.band === null
         ? `Suivre l’horloge de Paris — actuellement ${IDFM_FREQ_DAY_LABELS[_slot.day]} ${bandLabel(_slot.band)}`
-        : `${IDFM_FREQ_DAY_LABELS[_slot.day]} ${bandLabel(moment.band)}`,
+        // A band chip moves the other typical-week rows too, and a control
+        // whose reach goes past its own row has to say so.
+        : `${IDFM_FREQ_DAY_LABELS[_slot.day]} ${bandLabel(moment.band)}`
+          + ' · déplace aussi les autres couches de semaine type',
       params: { band: moment.band === null ? 'now' : moment.band },
     }));
 
@@ -1569,12 +1651,17 @@ const idfmFrequencyLayer = {
     else if (typeof raw === 'number' && Number.isInteger(raw)
       && raw >= IDFM_FREQ_BAND_MIN && raw <= IDFM_FREQ_BAND_MAX) next = raw;
     else return;
-    if (next === _pinnedBand) return;
-    _pinnedBand = next;
-    _slot = resolveSlot(_pinnedBand, _now());
-    if (_regime === 'arrets') restyleStops();
-    else repaintDepartements();
-    if (_selectedId) repaintSelectedCard(_selectedId);
+    // A chip names a BAND and never a day, so pressing one always returns the
+    // day to today's — otherwise a cursor set from another row would leave
+    // this layer on a Thursday that no control on this row can be seen to have
+    // chosen.
+    applyBand(next, null);
+    // `Maintenant` releases the cursor: it means "follow the clock", which is
+    // a behaviour, not a position. A band travels as the hour it draws.
+    setWeekHour(
+      IDFM_FREQ_LAYER_ID,
+      next === null ? null : weekHourFromOperatingSlot(_slot.day, _slot.band),
+    );
   },
 
   getParams() {
@@ -1643,7 +1730,7 @@ export function _setIdfmFrequencyStateForTest({
   _enabled = enabled;
   _regime = regime;
   _pinnedBand = pinnedBand;
-  _slot = resolveSlot(_pinnedBand, _now());
+  _slot = resolveSlot(_pinnedBand, _now(), _pinnedDay);
   _pack = pack;
   _packBoxKey = pack ? 'test' : null;
   _region = region;
@@ -1683,6 +1770,7 @@ export function _clearIdfmFrequencySelectionForTest() {
   _region = null;
   _depMeta = new Map();
   _pinnedBand = null;
+  _pinnedDay = null;
   _regime = 'region';
   _count = 0;
   _enabled = false;
@@ -1723,6 +1811,12 @@ export function _idfmFrequencyDetectablesForTest(options = {}) {
 /** Drive the production `setParams` path. */
 export function _idfmFrequencySetParamsForTest(params) {
   idfmFrequencyLayer.setParams(params);
+}
+
+/** Test seam: run the half of enable/disable that follows the shared cursor. */
+export function _idfmFrequencyFollowWeekHourForTest(follow = true) {
+  if (follow) followWeekHour();
+  else unfollowWeekHour();
 }
 
 export default idfmFrequencyLayer;

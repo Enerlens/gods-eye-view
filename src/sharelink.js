@@ -5,6 +5,11 @@ import {
 } from './data/detectionPolicy.js';
 import { clampScopeTerminusPct } from './scopeMask.js';
 import { decodeLayerStateParams, encodeLayerStateParams } from './data/layerState.js';
+import {
+  WEEK_HOUR_SHARE_PARAM,
+  decodeWeekHourParam,
+  encodeWeekHourParam,
+} from './data/weekHourCursor.js';
 
 /**
  * Share Links — URL Hash State Management
@@ -326,6 +331,12 @@ export class ShareLinkManager {
         && params.has('l')
         && decodedLayerState === null,
       panelState: decodePanelStateParams(params),
+      // The hour of the archived typical week the three week-shaped layers are
+      // pinned to. The FIRST share key that can carry "Paris, mardi 8 h": the
+      // two layers that hold an hour are `enabled-only` in `layerState.js` and
+      // have never put theirs in a link, and the third encodes a mode enum,
+      // not an hour. One key for the cursor, not one per layer.
+      weekHour: decodeWeekHourParam(params.get(WEEK_HOUR_SHARE_PARAM)),
       sharedAtMs: decodeShareCreatedAtMs(params),
     };
     state.restoreAuthority = {
@@ -595,6 +606,14 @@ export class ShareLinkManager {
     const terminusPct = clampScopeTerminusPct(this._scopeTerminusPct);
     if (terminusPct != null) params.set('sce', String(terminusPct));
     params.set('map', this._mapStack);
+    // Only written when an hour is PINNED. An absent `wh` is the default —
+    // each week-shaped layer following its own live clock — so a link never
+    // freezes a reader on Tuesday 08 h by accident, the same rule `sce`
+    // follows two blocks above. Read straight off the cursor rather than
+    // mirrored into a field here: the cursor is a pure module and there is
+    // nothing to keep in sync.
+    const weekHour = encodeWeekHourParam();
+    if (weekHour !== null) params.set(WEEK_HOUR_SHARE_PARAM, weekHour);
     const layerState = this._layerStateProvider?.();
     if (layerState) encodeLayerStateParams(params, layerState);
     this._encodePanelStateParam(params, this._panelStateProvider?.());

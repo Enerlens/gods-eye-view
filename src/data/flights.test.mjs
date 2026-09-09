@@ -14,6 +14,7 @@ import flightsLayer, {
   _setTrackedFlightRefreshStateForTest,
   _floorGroundedDisplayPositionForTest,
   _clearDisplayFloorStateForTest,
+  ambientRouteCallsign,
   chooseFlightFeedAnchor,
   mapAnalystRecord,
   formatContactAltitude,
@@ -1633,4 +1634,39 @@ test('an unusable anchor falls through rather than sending NaN upstream', () => 
   assert.deepEqual(chooseFlightFeedAnchor({ lat: 2 }, camera), camera);
   assert.equal(chooseFlightFeedAnchor(null, null), null);
   assert.equal(chooseFlightFeedAnchor(null, { lat: 1, lon: Number.NaN }), null);
+});
+
+// --- Ambient route enrichment ------------------------------------------------
+//
+// The gate that decides whether an on-screen contact is worth a ROUTE token.
+// Every clause here is a request NOT sent: the bucket is sized on a measured
+// first look (573 airline callsigns in the Paris circle) and a clause that
+// leaked would spend it on answers that cannot exist.
+
+test('only an airline-style callsign is worth a route token', () => {
+  const seen = () => false;
+  assert.equal(ambientRouteCallsign({ callsign: 'AFR447' }, seen), 'AFR447');
+  assert.equal(ambientRouteCallsign({ callsign: 'ezy62xq' }, seen), 'EZY62XQ');
+  assert.equal(ambientRouteCallsign({ callsign: ' BAW11  ' }, seen), 'BAW11');
+  // General aviation: adsbdb is a register of scheduled airline legs, so a
+  // tail number is a request that is certain to come back empty.
+  assert.equal(ambientRouteCallsign({ callsign: 'F-GABC' }, seen), null);
+  assert.equal(ambientRouteCallsign({ callsign: 'N172SP' }, seen), null);
+  assert.equal(ambientRouteCallsign({ callsign: 'ABCD' }, seen), null, 'four letters, no digit');
+  assert.equal(ambientRouteCallsign({ callsign: '' }, seen), null);
+  assert.equal(ambientRouteCallsign({}, seen), null);
+  assert.equal(ambientRouteCallsign(null, seen), null);
+});
+
+test('a contact that already has its leg spends nothing', () => {
+  const route = { origin: { code: 'CDG' }, destination: { code: 'LAX' } };
+  assert.equal(ambientRouteCallsign({ callsign: 'AFR447', route }, () => false), null);
+});
+
+test('a callsign already in the queue is not asked for twice', () => {
+  // The queue keys on the CALLSIGN, not the address — which is what makes one
+  // answer serve a contact seen across forty polls for one token.
+  const queued = new Set(['r:AFR447']);
+  assert.equal(ambientRouteCallsign({ callsign: 'AFR447' }, (key) => queued.has(key)), null);
+  assert.equal(ambientRouteCallsign({ callsign: 'AFR448' }, (key) => queued.has(key)), 'AFR448');
 });

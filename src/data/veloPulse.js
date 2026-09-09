@@ -2,6 +2,13 @@ import * as Cesium from 'cesium';
 import { governorRequestRender, holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import {
+  getWeekHour,
+  setWeekHour,
+  subscribeWeekHour,
+  weekHourFromPulseSlot,
+  weekHourToPulseSlot,
+} from './weekHourCursor.js';
+import {
   clearOverlaySource,
   setOverlayEntries,
   setOverlaySourceVisible,
@@ -244,8 +251,17 @@ const _colorScratch = new Cesium.Color();
  */
 export const PULSE_MODES = Object.freeze([
   Object.freeze({ id: 'now', label: 'MAINTENANT', blurb: 'L’heure de la semaine qu’il est en ce moment.' }),
-  Object.freeze({ id: 'week', label: 'SEMAINE', blurb: 'Déroule les 168 heures d’une semaine type, une heure toutes les 0,5 s.' }),
-  Object.freeze({ id: 'peak', label: 'POINTE', blurb: 'L’heure la plus chargée du réseau.' }),
+  Object.freeze({
+    id: 'week',
+    label: 'SEMAINE',
+    blurb: 'Déroule les 168 heures d’une semaine type, une heure toutes les 0,5 s. '
+      + 'En pause, l’heure affichée déplace aussi les autres couches de semaine type.',
+  }),
+  Object.freeze({
+    id: 'peak',
+    label: 'POINTE',
+    blurb: 'L’heure la plus chargée du réseau — et les autres couches de semaine type s’y placent aussi.',
+  }),
 ]);
 
 const DEFAULT_OVERLAY_HOST = Object.freeze({
@@ -285,6 +301,8 @@ let _rowRefreshedAt = 0;
 /** Whether the camera is close enough for the field to mean anything. */
 let _inReadableBand = true;
 let _removeCameraListener = null;
+/** Stop following the shared week-hour cursor. Null while the layer is off. */
+let _weekHourUnsubscribe = null;
 
 /**
  * Resolve a requested mode to one the layer offers.
@@ -645,14 +663,54 @@ function startTick() {
   _hud?.setPosition(_position, true);
 }
 
-function applyMode(mode) {
+function applyMode(mode, { broadcast = true } = {}) {
   _mode = mode;
   if (mode === 'week') {
     startTick();
+    // A RUNNING week has no hour to share, and 168 of them at one every 520 ms
+    // would restyle 2 977 traffic arcs twice a second for a reading nobody
+    // asked for. Releasing says the true thing: nobody is pinning an hour.
+    if (broadcast) setWeekHour(PULSE_LAYER_ID, null);
     return;
   }
   stopTick();
   showSlot(slotForMode(mode, _pack));
+  if (!broadcast) return;
+  // `now` follows the wall clock, which is a BEHAVIOUR rather than a position:
+  // pinning the other layers to whatever hour it currently is would freeze
+  // them at a moment nobody chose. `peak` is a concrete hour of the archived
+  // week — the busiest the network records — and does travel.
+  setWeekHour(PULSE_LAYER_ID, mode === 'peak' ? weekHourFromPulseSlot(_slot) : null);
+}
+
+/** Follow the shared cursor, and take whatever it already holds. */
+function followWeekHour() {
+  _weekHourUnsubscribe?.();
+  _weekHourUnsubscribe = subscribeWeekHour(PULSE_LAYER_ID, adoptWeekHour);
+  adoptWeekHour(getWeekHour());
+}
+
+/** Stop following. The cursor is left alone — see `comptagesParis.js`. */
+function unfollowWeekHour() {
+  _weekHourUnsubscribe?.();
+  _weekHourUnsubscribe = null;
+}
+
+/**
+ * Take the shared cursor: pin the week to that hour, paused.
+ *
+ * The state already exists and the reader already knows it — it is what the
+ * scrubber leaves behind, chip reading `SEMAINE ❚❚`. So a cursor arriving from
+ * the traffic row does not need a fourth mode; it needs the third one, stopped
+ * at the hour that was asked for.
+ *
+ * @param {?{day:number, hour:number}} cursor
+ */
+function adoptWeekHour(cursor) {
+  const slot = weekHourToPulseSlot(cursor);
+  if (slot === null) return;
+  if (_mode === 'week' && !_playing && _slot === slot) return;
+  seekTo(slot, { broadcast: false });
 }
 
 /** Jump to a whole hour and repaint everything that quotes it. */
@@ -671,12 +729,16 @@ function showSlot(slot) {
  * mode chip in the layer row follows, because a row reading MAINTENANT over a
  * globe showing Thursday 15:00 would be a lie told by the interface.
  */
-function seekTo(slot) {
+function seekTo(slot, { broadcast = true } = {}) {
   const wasWeek = _mode === 'week';
   stopTick();
   _mode = 'week';
   showSlot(slot);
   notifyRow({ immediate: !wasWeek });
+  // A scrub is the most precise statement of an hour of the week anything in
+  // this application can make — it is the only control here that names a real
+  // DAY — so it is the one that drives the other typical-week layers.
+  if (broadcast) setWeekHour(PULSE_LAYER_ID, weekHourFromPulseSlot(_slot));
 }
 
 function togglePlay() {
@@ -904,7 +966,12 @@ const veloPulseLayer = {
     }
     _inReadableBand = readableBand();
     _hud?.setOutOfRange(!_inReadableBand, Math.round(BLOB_READABLE_CEILING_M / 1000));
-    if (_mode === 'week') startTick();
+    // Adopted before the first tick, so a layer coming on under a pinned
+    // cursor never animates past it.
+    followWeekHour();
+    // A pinned cursor wins over the resume: the reader asked for an hour, not
+    // for an animation, and restarting the clock would walk straight off it.
+    if (_mode === 'week' && !getWeekHour()) startTick();
   },
 
   disable() {
@@ -918,6 +985,7 @@ const veloPulseLayer = {
     if (_clickHandler) { _clickHandler.destroy(); _clickHandler = null; }
     if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
     unregisterPickOwner(PULSE_LAYER_ID);
+    unfollowWeekHour();
   },
 
   async update() {
@@ -1122,6 +1190,12 @@ export function _pulseStopTickForTest() {
 export function _loadPulsePackForTest(fetchImpl) {
   _pack = null;
   return loadPack(fetchImpl);
+}
+
+/** Test seam: run the half of enable/disable that follows the shared cursor. */
+export function _pulseFollowWeekHourForTest(follow = true) {
+  if (follow) followWeekHour();
+  else unfollowWeekHour();
 }
 
 export default veloPulseLayer;

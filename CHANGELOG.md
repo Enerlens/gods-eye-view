@@ -6,6 +6,46 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Added
+- **Le bâtiment devient un pivot : un clic sur un volume dit ce que ce sol a
+  valu, ce qui y a été autorisé, et ce que le PLU y permet.** Un volume BD TOPO
+  résolvait déjà son identité RNB, ses adresses BAN et ses parcelles
+  cadastrales. Il ne pouvait pas dire les trois choses qu'un lecteur devant un
+  bâtiment veut vraiment savoir.
+
+  **Le blocage annoncé n'existait pas, et le vérifier est ce qui a rendu ce
+  module petit.** Le plan disait que les trois tirages sont « des requêtes
+  réseau déclenchées par une carte, ce que le dépôt ne fait nulle part
+  aujourd'hui ». Deux moitiés de cette phrase sont fausses : le motif existe
+  (`cadastreParcels` publie sa carte tout de suite, lance deux requêtes, garde
+  en cache par parcelle, annule à la re-sélection — et la couche bâtiments fait
+  déjà exactement cela pour le RNB), et **aucune requête n'est nécessaire** :
+  DVF, Sitadel et le GPU sont trois couches déjà chargées pour la même vue. Les
+  ventes portent `id_parcelle`, les permis portent la parcelle qui les a reçus,
+  et le zonage est un jeu de polygones avec une requête par point. La réponse
+  est donc une **lecture** de ce qui est déjà en mémoire — la propriété que le
+  plan appelait l'obstacle est en fait la solution.
+
+  La carte d'un bâtiment gagne jusqu'à trois lignes, dans l'ordre où on se pose
+  les questions : `Vendu juillet 2024 · 560 000 € · 14 359 €/m² — DVF, sur
+  cette parcelle`, `Permis : DP · Autorisé · décembre 2019 — Sitadel, sur cette
+  parcelle`, `PLU : UGSU — Zone urbaine générale · 1 servitude`.
+
+  **Chaque ligne n'existe que si sa propre ligne du panneau est allumée**, ce
+  qui est le contrat de `layerJoins.js` et la forme honnête ici : une fiche qui
+  irait chercher DVF dans le dos du lecteur serait un second balayage d'un
+  registre qu'il a choisi de ne pas ouvrir, au rayon et au millésime qu'il n'a
+  pas choisis. Une carte sans aucune des trois couches est exactement celle que
+  le dépôt dessinait avant.
+
+  **La clé de jointure est vérifiée sur données vivantes** : le RNB publie
+  `75104000AE0003`, DVF publie `75104000AD0034`, et Sitadel publie les morceaux
+  — commune, section, numéro, sans préfixe — que le cadastre complète à la
+  pose. Les 4 500 parcelles du paquet de Paris s'assemblent toutes ; sur un
+  disque de 300 m au centre, 3 des 89 parcelles vendues portent aussi un permis.
+  Un morceau manquant est un **refus**, jamais un rembourrage : un préfixe lu
+  `000` alors qu'il vaut `801` désigne une autre parcelle de la même commune, et
+  Toulouse en publie 46.
+
 - **Le globe photoréaliste revient, par Cesium ion.** Google retire les tuiles
   3D et le satellite aux projets facturés dans l'EEE depuis le 8 juillet 2025 :
   la restriction porte sur l'adresse de facturation du projet, jamais sur le
@@ -24,6 +64,181 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   trois arrivent avec l'asset et ne se retirent pas. Une clé Google facturée
   hors EEE reste le chemin propre pour un produit payant ; sinon c'est le
   palier ion commercial. `DATA_SOURCES.md` porte les deux lignes.
+- **Un département en vigilance crues dit enfin quelle rivière.** L'étiquette
+  de Météo-France disait `Aude · Orange · Crues` et ne pouvait pas nommer le
+  cours d'eau : un tronçon Vigicrues ne porte **aucun code de département**, et
+  le rattacher demande un point-dans-polygone. L'audit avait classé ce point
+  comme « beaucoup de machinerie pour une étiquette d'une ligne ».
+
+  Ce n'est cher que si on le fait pour les 337 tronçons. **Hors épisode, tous
+  sont verts** — c'est l'entête de la couche Vigicrues elle-même — et un tronçon
+  vert n'est sur aucune étiquette : le travail est donc proportionnel à ce qui
+  est **élevé**, c'est-à-dire zéro par temps calme et une poignée pendant une
+  crue. L'index de contours existait déjà (`franceDepartements.js`, celui du
+  bilan national IRVE) ; le même fichier est simplement indexé une seconde fois,
+  comme `delinquanceFrance.js` le fait déjà.
+
+  L'étiquette devient `Aude · Orange · Crues · Orbieu, Aude aval, Berre +1` —
+  le plus sévère d'abord, trois noms puis un compte. **Un tronçon est nommé dans
+  chaque département qu'il traverse** : la Loire aval en traverse quatre, et en
+  créditer un seul refuserait aux trois autres un nom dont leur bulletin parle.
+  Les rivières n'apparaissent que si le bulletin du département porte bien le
+  phénomène « Crues » — une alerte au vent qui emprunterait le nom d'une rivière
+  serait deux bulletins imprimés comme un seul. Et si la couche Vigicrues est
+  éteinte, l'étiquette redevient exactement ce qu'elle était.
+
+- **Une borne de recharge dit enfin ce qui est libre, ici, maintenant.**
+  QualiCharge — l'API d'agrégation de la DGEC, obligatoire pour tout opérateur
+  de recharge rapide qui réclame des certificats d'électricité renouvelable —
+  publie l'état en direct de **75 584 points de charge**. Le dépôt le décodait
+  depuis le 7 septembre, avec ses trois pièges mesurés, et ne s'en servait que
+  pour la chronique : la couche IRVE, elle, répétait trois fois qu'elle ne
+  publie pas la disponibilité.
+
+  **Les deux ne pouvaient pas se rencontrer, et le plan disait pourquoi.**
+  QualiCharge se joint sur `id_pdc_itinerance` et ne publie **aucune
+  coordonnée** ; la requête de vue de la couche IRVE **groupe** ses lignes pour
+  être payable — 4 017 points de charge du centre de Paris tiennent en 469
+  lignes groupées — et exclut donc tout identifiant par borne. Aucun des deux
+  n'avait la clé de l'autre.
+
+  La table manquante existe : un export à plat de trois colonnes du fichier
+  consolidé, **227 007 lignes, 8,4 Mo, 17 s**. C'est une passe nationale, donc
+  elle est construite une fois côté serveur, gardée sur disque et rafraîchie au
+  rythme quotidien du registre qu'elle lit. **99,6 % des bornes de QualiCharge y
+  figurent.**
+
+  **Un piège en chemin : 9,34 % des identifiants de borne désignent plus d'un
+  endroit.** Les 227 007 lignes ne portent que 166 908 identifiants distincts,
+  et 15 594 sont publiés à plusieurs coordonnées — dont l'identifiant littéral
+  `Non concerné`, à 117 coordonnées réparties sur 7 302 km. Une borne dont les
+  coordonnées se contredisent de plus de **50 m** est donc **refusée** plutôt
+  que posée sur l'une d'elles : l'unité de rendu de la couche est la coordonnée,
+  deux points à 200 m sont deux marques sur la carte, et poser l'état d'une
+  borne sur l'une des deux est un tirage au sort imprimé comme un fait. Le coût
+  est mesuré, pas supposé : 92,4 % des bornes de QualiCharge se joignent quand
+  même.
+
+  **Ce qui n'a pas changé : la carte.** Elle dessine toujours la capacité
+  installée, sans couleur de disponibilité — c'est un contrat écrit dans
+  `irveFeed.js` et il tient. Ce qui change est **une ligne sur la carte d'un
+  site**, qui porte sa source, son dénominateur et son âge : `QualiCharge — 26
+  libres sur 30 · 1 hors service · 188 muettes · relevé il y a 8 min`. Le
+  dénominateur est ce dont le flux a parlé, jamais ce qui est installé, et une
+  borne muette depuis plus de 24 h est comptée comme muette, jamais comme libre
+  — c'est le piège qui gonfle de 44,4 % la capacité libre de la France, appliqué
+  parking par parking.
+
+  Le fichier n'est **pas** interrogé en boucle : la route `/api/irve-fr/live`
+  le récupère à la demande, quand un lecteur a la couche allumée, et garde la
+  réponse dix minutes. Une session qui n'ouvre jamais une borne ne coûte rien.
+
+- **Un aéroport dit enfin ce qui lui arrive, sans qu'on ait rien cliqué.** La
+  ligne « en approche » d'une carte d'aérodrome lisait les trajets des vols, et
+  les trajets n'étaient demandés que pour **le vol suivi** — un avion à la fois.
+  Une session fraîche répondait donc `0/0` pour tous les aérodromes du monde
+  jusqu'à ce qu'un lecteur suive par hasard un avion vers celui qu'il regardait.
+  La flotte à l'écran est désormais enrichie elle aussi.
+
+  **Le blocage était de ne pas savoir combien ça coûte, alors on l'a mesuré.**
+  `npm run qa:enrich-budget` compte maintenant les deux demandes sur une même
+  passe et une même flotte, parce que ce ne sont pas les mêmes flottes : une
+  recherche de TYPE se fait sur l'adresse hexadécimale — tout contact en vol est
+  demandeur — tandis qu'une recherche de TRAJET se fait sur l'INDICATIF, et seul
+  un indicatif de compagnie peut aboutir. Mesuré le 2026-09-09, 26 relevés sur
+  14,6 minutes : Paris **726 contacts en vol pour 573 indicatifs de compagnie**
+  (79 %) et 72 nouveaux par 5 minutes ; Los Angeles 511 / 222 et 22. Et le
+  **rendement** compte autant que la demande : **30 indicatifs sur 40 (75 %)**
+  donnent une route chez adsbdb, et les 30 portent toutes les coordonnées de
+  l'arrivée.
+
+  D'où un **second seau de jetons**, 600 de plafond et 100 de recharge, et non
+  un partage de celui des types. Ce que voit adsbdb ne bouge pas : c'est le
+  goutte-à-goutte partagé qui borne le débit (≤ 5 req/s contre une limite de
+  512 par minute), pas les seaux — ils bornent le TOTAL d'une session.
+
+  Au passage, le harnais comparait encore ses mesures au plafond de **300**,
+  alors que celui-ci était passé à 1 000 quatre jours plus tôt : il affichait
+  donc « le plafond NE COUVRE PAS la première vue » à propos d'un plafond qui la
+  couvrait. Corrigé.
+
+- **Un navire dit où il va, et la carte sait nommer deux fois plus de ces
+  endroits — 50,4 % → 68,9 %.** Le champ `destination` d'un message AIS est
+  vingt caractères tapés à la main par un commandant. Il était résolu contre les
+  2 951 escales du World Port Index, et l'audit de septembre avait écrit ce
+  qu'était l'autre moitié : des **ports fluviaux** (`MAINZ`, `PARIS`,
+  `FRANKFURT`, `KARLSRUHE`, `DUISBURG`) que le WPI n'indexe pas parce qu'il
+  indexe des ports **maritimes**, et des **exonymes** (`ANTWERP` pour
+  `Antwerpen`, `GENOA` pour `Genova`). Les deux demandaient la même chose : une
+  table de noms **avec une source**.
+
+  `scripts/build-port-gazetteer.mjs` la fabrique à partir de trois registres, et
+  aucun ne fait plus que ce pour quoi il est cité. **UN/LOCODE** (UNECE, domaine
+  public ODC-PDDL) décide *ce qui est un port* — code de fonction `1`, que les
+  ports fluviaux portent exactement comme les maritimes — et fournit 11 545
+  lieux absents du WPI, plus sa propre liste d'alias. **GeoNames** (CC BY 4.0)
+  ne sert qu'à *compléter* une ligne déjà choisie par UN/LOCODE : une coordonnée
+  pour les 4 791 ports dont la colonne est vide (`Mainz`, `Karlsruhe`,
+  `Portsmouth`), et les autres graphies d'une ville rattachée à un port **par le
+  nom ET par la distance** (≤ 25 km). 13 657 graphies au total. Toujours aucune
+  distance d'édition nulle part : deux chaînes se replient sur la même clé, ou
+  elles ne se rencontrent pas.
+
+  **Un nom qui s'accorde de loin est refusé plus durement qu'avant.** Le
+  plafond de 2 500 km du WPI avait été mesuré sur 2 951 grandes escales ; le
+  gazetteer en compte quatre fois plus et ce sont des noms de lieux ordinaires
+  — `Stein`, `Beaulieu`, `Workum`. Sur le même échantillon de 1 924 navires, les
+  correspondances se séparent aussi nettement que les premières : **268 bonnes
+  de 0 à 415 km** (une péniche est loin de sa destination parce qu'un fleuve est
+  long), un trou, puis **9 mauvaises à partir de 622 km**. Le plafond du
+  gazetteer est donc à **500 km**, dans le trou, et il est appliqué **par
+  entrée** : un lieu du gazetteer hors de portée ne masque pas une escale du WPI
+  qui, elle, est dans la sienne.
+
+  Trouvé en chemin : `København` se repliait sur `K BENHAVN`. La normalisation
+  Unicode sépare `Ê` en `E` + accent, mais elle ne touche pas les lettres dont
+  le signe fait partie du dessin — `ø`, `æ`, `ß`, `þ`, `ł`. **174 noms** du
+  gazetteer se repliaient sur une clé trouée et ne pouvaient rencontrer aucune
+  saisie. `npm run qa:vessel-destinations` mesure le recensement complet.
+
+- **« Paris, mardi 8 h » est devenu un geste — les trois couches de semaine type
+  partagent une heure.** Trois couches de ce dépôt ne dessinent pas une mesure
+  en direct mais une **semaine archivée type** : les comptages routiers de Paris
+  (2 977 arcs × 168 heures), le pouls vélo (561 stations × 168 heures) et la
+  fréquence IDFM (36 502 arrêts × 7 jours × 24 tranches). Depuis la fusion elles
+  vivent sur **trois lignes différentes** du panneau, donc en voir deux à la fois
+  est le cas normal — et jusqu'ici ce cas dessinait **deux heures différentes de
+  la semaine côte à côte**. Comparer la pointe du matin sur la route et la pointe
+  du matin dans le métro revenait à comparer 8 h avec l'heure qu'il était.
+
+  Un curseur unique (`src/data/weekHourCursor.js`) tient désormais « l'heure de
+  la semaine type », et chacune des trois la traduit dans **son** vocabulaire
+  sans jamais importer les autres : la position 0–167 du pouls, la tranche
+  d'exploitation 4–27 d'IDFM — où 01 h du mercredi est la tranche 25 du mardi —
+  et le *jour ouvré type* / *week-end type* des comptages. Presser une heure sur
+  n'importe laquelle des trois lignes déplace les deux autres.
+
+  **Ce qui ne se propage pas, et pourquoi.** « À cette heure » et « Maintenant »
+  *libèrent* le curseur au lieu de le poser : ce sont des comportements (suivre
+  l'horloge de Paris), pas des positions, et épingler les autres couches sur
+  l'heure qu'il est par hasard les figerait sur un moment que personne n'a
+  choisi. La semaine du pouls **en train de défiler** ne diffuse rien non plus :
+  168 heures à une toutes les 0,5 s repeindraient 2 977 arcs deux fois par
+  seconde pour une lecture que personne n'a demandée. En pause, elle diffuse.
+
+  **Et le lien porte enfin l'heure.** `wh` est la première clé de partage
+  capable d'exprimer « mardi 8 h ». Ce point était noté comme bloqué par la
+  grammaire de partage — « les trois encodent leur heure séparément et des liens
+  déjà envoyés en dépendent » : c'était faux, et le vérifier est ce qui a rendu
+  le module petit. Dans `layerState.js`, `comptages-fr` et `idfm-frequency` sont
+  `enabled-only` — **aucune des deux n'a jamais mis son heure dans un lien** —
+  et `velo-pulse-fr` encode un mode à trois valeurs, pas une heure. Il n'y avait
+  donc rien à préserver, et la décision est l'inverse de celle qui était
+  attendue : **un jeton partagé, pas trois**. Une clé absente reste le défaut —
+  un lien ne fige jamais un lecteur sur mardi 8 h par accident.
+
+  33 tests neufs, dont un qui parcourt les 168 heures dans les trois dialectes
+  et vérifie qu'aucune traduction ne perd une heure au passage.
 
 - **Une petite centrale hydro dit enfin l'eau qui passe et l'ouvrage à côté.**
   ODRÉ publie une puissance installée et jamais le débit ; il publie une hauteur
@@ -249,6 +464,66 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   s'animera en boucle ne pourra plus empêcher la scène de s'arrêter de dessiner.
 
 ### Changed
+- **Une centrale, une marque : les 69 stations que deux registres se partagent
+  ne sont plus dessinées deux fois.** Trois couches dessinent la production
+  électrique française et elles se recouvrent lourdement : `edf-power-plants`
+  79 sites, `rte-generation` 108, `fr-hydro-plants` 998 placés. **69 des 108
+  stations RTE sont un site EDF**, et **55 centrales hydro sont un groupe RTE**
+  — dont 43 remontent jusqu'à un site EDF. Grand-Maison était dessinée trois
+  fois.
+
+  L'audit appelait le correctif « une colonne vertébrale à écrire (choisir
+  quelle source fait foi pour la position, laquelle pour la puissance) ». La
+  colonne vertébrale existait déjà, écrite par les scripts de fabrication du
+  dépôt lui-même : `build-rte-units-registry.mjs` pose 69 de ses 108 stations
+  sur la coordonnée publiée par EDF **et note laquelle** (`placementRef:
+  'edf:nucleaire:GRAVELINES'`). La question de la position était donc tranchée,
+  en faveur d'EDF, depuis la fabrication. Le second lien est le **code EIC**,
+  que les deux paquets ODRÉ portent l'un et l'autre.
+
+  **Aucune règle de proximité nulle part**, et la mesure explique pourquoi : la
+  Grand-Maison d'EDF (1 714 MW) est à **540 m** du Verney du registre hydro
+  (21,8 MW), et Super-Bissorte à 410 m d'Orelle. Ce sont des ouvrages
+  différents sur la même montagne. Une règle d'identité à 1 km aurait fusionné
+  80 paires dont plusieurs sont deux centrales, et la carte aurait perdu de la
+  capacité réelle contre un point plus propre.
+
+  **Rien n'est supprimé.** Une couche qui se retire ne dessine pas la marque ;
+  l'enregistrement reste, le compte de la ligne dit ce qui est dessiné **et**
+  combien sont laissés à la couche voisine, et la marque revient dès que
+  celle-ci s'éteint.
+
+  La carte qui survit gagne ce que le retrait aurait masqué : **la puissance de
+  l'autre registre, quand les deux ne sont pas d'accord**. Sur les 69 paires,
+  **43 s'accordent au mégawatt près** et 14 de plus à moins de 5 % — les taire
+  est ce qui rend les 12 restantes lisibles. Et celles-là sont des trouvailles :
+  Flamanville, 2 660 MW chez EDF contre 4 280 chez RTE, c'est l'EPR ; Bouchain,
+  585 contre 1 063 ; Brennilis, 304 contre 125.
+
+- **Un cabinet, un point : la famille « médecin » d'Équipements se retire quand
+  la couche Médecins dessine.** `amenities-fr` dessine la BPE D265 — 61 263
+  lignes « médecin généraliste » — et `medecins-fr` dessine le registre
+  conventionné, 64 232 adresses avec les noms, les spécialités et le secteur.
+  Le même cabinet, deux fois. La couche Équipements applique déjà la règle qui
+  tranche — **un seul registre par famille**, ce qui lui fait refuser tout le
+  domaine enseignement de la BPE au profit de `schools-fr` — et l'audit avait
+  noté qu'elle devait le même retrait ici.
+
+  **Rien n'est supprimé pour le payer.** Le point était classé bloqué parce que
+  `AMENITY_FAMILIES` **est une clé de cache** : le maillage stocke une famille
+  par son INDEX dans ce tableau, donc en retirer un renomme silencieusement
+  chaque ligne de chaque paquet en cache et force une reconstruction nationale.
+  Tout cela est vrai — et c'est le prix de la **suppression**. Ne pas dessiner
+  la famille pendant qu'une autre couche le fait ne coûte rien : le tableau ne
+  bouge pas, les paquets non plus, et un lecteur qui n'ouvre jamais la ligne
+  Médecins garde tous les médecins que cette couche a toujours dessinés.
+
+  Le retrait ne vaut que quand `medecins-fr` dessine des **positions** : à
+  l'échelle nationale cette couche peint un aplat d'accessibilité (APL) et ne
+  dessine aucun cabinet — s'y retirer aurait ôté les médecins de la carte au
+  lieu de les dédoublonner. Et la légende gagne une ligne qui dit où ils sont
+  passés, comme celle des écoles juste en dessous.
+
 - **Le moteur 3D ne pèse plus que ce que cette carte utilise — 1,3 seconde de
   moins pour ouvrir le globe, et 460 kB de moins sur le fil.** Cesium arrivait
   en un seul bloc de **5,6 Mo** compilé d'avance : la bibliothèque entière,

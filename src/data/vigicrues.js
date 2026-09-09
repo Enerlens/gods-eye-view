@@ -4,6 +4,7 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
+import { publishJoin } from './layerJoins.js';
 
 /**
  * Vigicrues — France's official river-flood vigilance map.
@@ -169,6 +170,19 @@ export const VIGICRUES_UNKNOWN_LEVEL = Object.freeze({
 /** A reach at or above this level is an ALERT: wider stroke, label, counted. */
 export const VIGICRUES_ALERT_LEVEL = 2;
 
+/**
+ * How many points along one raised reach are offered to a consumer placing it.
+ *
+ * Five. The Loire aval runs through four départements and a single centre
+ * would credit one of them; five points over the reach's own vertices catch
+ * the ends and the middle, which is what a departmental attribution needs.
+ * More would cost nothing measurable — the work is bounded by the number of
+ * RAISED reaches, which is zero outside an episode — and buy nothing either:
+ * a département a reach crosses for less than a fifth of its length is a
+ * département the label has no room to name.
+ */
+export const VIGICRUES_SAMPLES_PER_REACH = 5;
+
 const DEFAULT_OVERLAY_HOST = Object.freeze({
   setEntries: setOverlayEntries,
   setVisible: setOverlaySourceVisible,
@@ -288,6 +302,61 @@ export function buildVigicruesRecords(reaches, levels) {
   }
   return records.sort((a, b) => (a.level.level ?? 0) - (b.level.level ?? 0)
     || a.id.localeCompare(b.id));
+}
+
+/**
+ * Sample points along the RAISED reaches, for whoever needs to place them.
+ *
+ * ── Why sampled, and why only the raised ones ───────────────────────────────
+ *
+ * A vigilance label says "Aude · Orange · Crues" and cannot say WHICH RIVER,
+ * because a Vigicrues reach carries no département code — that is the second
+ * of the two obstacles `docs/PLAN-CROISEMENTS.md` recorded, and the one it
+ * called the real one: attributing a reach means a point-in-polygon against
+ * the departmental outlines.
+ *
+ * It is only expensive if you do it for all 337 reaches. **Outside an episode
+ * every reach is green** — this layer's own headline — and a green reach is
+ * not on any label, so the work is proportional to what is RAISED: zero in
+ * calm weather, a handful during an episode.
+ *
+ * SEVERAL POINTS PER REACH, not a midpoint. A reach is a stretch of river and
+ * the Loire aval runs through four départements; a single centre would credit
+ * one of them and silently deny the other three. Up to
+ * {@link VIGICRUES_SAMPLES_PER_REACH} points spread along the longest parts,
+ * so a reach can legitimately belong to several départements and the consumer
+ * decides what to do about it.
+ *
+ * @param {object[]} records From {@link buildVigicruesRecords}.
+ * @param {number} [minLevel] Reaches at or above this level. Default: raised.
+ * @returns {Array<{id:string, name:string, level:number, points:number[][]}>}
+ */
+export function raisedVigicruesSamples(records, minLevel = VIGICRUES_ALERT_LEVEL) {
+  const out = [];
+  for (const record of Array.isArray(records) ? records : []) {
+    const level = record?.level?.level;
+    if (!Number.isInteger(level) || level < minLevel) continue;
+    const parts = Array.isArray(record.parts) ? record.parts : [];
+    // Flattened first, so the samples are spread over the REACH rather than
+    // over whichever part happens to be longest — a reach split into a long
+    // trunk and a 3-vertex stub would otherwise sample the stub as heavily.
+    const vertices = [];
+    for (const part of parts) for (const point of part) vertices.push(point);
+    if (!vertices.length) continue;
+    const take = Math.min(VIGICRUES_SAMPLES_PER_REACH, vertices.length);
+    const points = [];
+    for (let i = 0; i < take; i += 1) {
+      const at = take === 1 ? 0 : Math.round((i * (vertices.length - 1)) / (take - 1));
+      const point = vertices[at];
+      const lon = Number(point?.[0]);
+      const lat = Number(point?.[1]);
+      if (Number.isFinite(lon) && Number.isFinite(lat)) points.push([lon, lat]);
+    }
+    if (points.length) {
+      out.push({ id: record.id, name: record.name, level, points });
+    }
+  }
+  return out;
 }
 
 /**
@@ -564,6 +633,30 @@ export function createVigicruesLayer({
     );
   }
 
+  /** Take-down for the raised-reach join. Null while nothing is offered. */
+  let _unpublishRaised = null;
+
+  /**
+   * Offer the raised reaches to whoever can place them.
+   *
+   * The Météo-France vigilance layer draws one non-interactive label per
+   * raised département and cannot say which river is raised. It reads this.
+   * Published rather than imported, so a reader who switches this layer off
+   * takes the river names off that label and nothing else breaks — the
+   * "absence is ordinary" contract of `layerJoins.js`.
+   *
+   * A CALM FRANCE OFFERS AN EMPTY ARRAY, not nothing: "the flood map is on
+   * and no reach is raised" and "the flood map is off" are different answers,
+   * and only the first of them means the label should stay silent about
+   * rivers rather than say "unknown".
+   */
+  function publishRaisedJoin() {
+    if (!_enabled) return;
+    const samples = raisedVigicruesSamples(_records);
+    _unpublishRaised?.();
+    _unpublishRaised = publishJoin('vigicrues/raised', () => samples);
+  }
+
   const layer = {
     id: 'vigicrues',
     name: 'Vigicrues (FR)',
@@ -602,6 +695,7 @@ export function createVigicruesLayer({
       if (_dataSource) _dataSource.show = true;
       overlayHost.setVisible(VIGICRUES_OVERLAY_SOURCE_ID, true);
       publishOverlay();
+      publishRaisedJoin();
     },
 
     disable() {
@@ -609,6 +703,8 @@ export function createVigicruesLayer({
       if (_dataSource) _dataSource.show = false;
       overlayHost.clearSource(VIGICRUES_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(VIGICRUES_OVERLAY_SOURCE_ID, false);
+      _unpublishRaised?.();
+      _unpublishRaised = null;
     },
 
     async update() {
@@ -663,6 +759,7 @@ export function createVigicruesLayer({
           publishOverlay();
           _viewer?.scene?.requestRender?.();
         }
+        publishRaisedJoin();
 
         console.log(
           `[Data:Vigicrues] Updated: ${_summary.total} tronçons, ${_summary.alerts} en vigilance`,
@@ -687,6 +784,8 @@ export function createVigicruesLayer({
         viewer.dataSources.remove(_dataSource, true);
         _dataSource = null;
       }
+      _unpublishRaised?.();
+      _unpublishRaised = null;
       _viewer = null;
       _geometryVersion = null;
       _reaches = [];

@@ -5,6 +5,8 @@ import {
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
 import { VIGILANCE_PHENOMENA } from './meteoFranceVigilanceFeed.js';
+import { askJoin } from './layerJoins.js';
+import { buildDepartementIndex, locateDepartement } from './franceDepartements.js';
 
 /**
  * Météo-France Vigilance — the 4-colour départemental weather-warning map.
@@ -352,13 +354,60 @@ export function vigilanceLevelLegend(byKey) {
  * @param {object} record
  * @returns {string}
  */
-export function vigilanceLabelText(record) {
+export function vigilanceLabelText(record, reaches = null) {
   const driver = record?.phenomena?.find(
     (phenomenon) => phenomenon.level.level === record.level.level,
   ) || record?.phenomena?.[0] || null;
-  return driver
+  const head = driver
     ? `${record.name} · ${record.level.label} · ${driver.name}`
     : `${record.name} · ${record.level.label}`;
+  const rivers = vigilanceReachNames(reaches);
+  return rivers ? `${head} · ${rivers}` : head;
+}
+
+/**
+ * How many raised reaches one label can name before it stops being a label.
+ *
+ * Three, plus a count. A département in a flood episode can carry seven raised
+ * reaches, and a seven-name label is a paragraph floating over a map — the
+ * cohort selector next door already caps how many labels are drawn for the
+ * same reason.
+ */
+export const VIGILANCE_REACH_NAME_LIMIT = 3;
+
+/**
+ * Météo-France's own id for the flood phenomenon — `4`, `Crues`.
+ *
+ * Read from {@link VIGILANCE_PHENOMENA} rather than written as a literal, so a
+ * renumbering upstream breaks the lookup loudly instead of silently naming
+ * rivers under a wind warning.
+ */
+export const VIGILANCE_FLOOD_PHENOMENON = String(
+  Object.entries(VIGILANCE_PHENOMENA).find(([, name]) => name === 'Crues')?.[0] ?? '',
+);
+
+/**
+ * The rivers, in the words the label has room for.
+ *
+ * `null` — not an empty string — when there is nothing to say, so the caller
+ * appends nothing rather than a trailing separator. And `null` for an EMPTY
+ * list too: "the flood layer is on and no reach here is raised" is a real
+ * answer, but a label that said "Crues · aucun tronçon" would be arguing with
+ * the bulletin it is drawing.
+ *
+ * @param {?Array<{name: string, level: number}>} reaches
+ * @returns {?string}
+ */
+export function vigilanceReachNames(reaches) {
+  if (!Array.isArray(reaches) || !reaches.length) return null;
+  // Most severe first, then alphabetical: the reach that raised the
+  // département is the one a reader is looking for, and a stable tie-break
+  // keeps the label from reshuffling between two identical bulletins.
+  const sorted = reaches.slice().sort((a, b) => (b.level ?? 0) - (a.level ?? 0)
+    || String(a.name).localeCompare(String(b.name), 'fr'));
+  const names = sorted.slice(0, VIGILANCE_REACH_NAME_LIMIT).map((reach) => reach.name);
+  const rest = sorted.length - names.length;
+  return rest > 0 ? `${names.join(', ')} +${rest}` : names.join(', ');
 }
 
 /**
@@ -367,12 +416,12 @@ export function vigilanceLabelText(record) {
  * @param {Cesium.Cartesian3} position
  * @returns {object}
  */
-export function createVigilanceOverlayEntry(record, position) {
+export function createVigilanceOverlayEntry(record, position, reaches = null) {
   return {
     id: `vigilance:${record.code}`,
     position,
     variant: 'label',
-    title: vigilanceLabelText(record),
+    title: vigilanceLabelText(record, reaches),
     accent: record.level.color,
     priority: (record.level.level ?? 0) * 1000,
     collisionGroup: 'ambient-label',
@@ -434,6 +483,16 @@ export function createMeteoFranceVigilanceLayer({
   /** @type {Map<string, object>} INSEE code → bundled polygon metadata. */
   let _departements = new Map();
   /**
+   * The SAME bundle, indexed a second way. `parseDepartements` gives the code,
+   * the name and a centroid; placing a river reach needs the RINGS, which is
+   * what `buildDepartementIndex` keeps. Built lazily, because outside a flood
+   * episode nothing ever asks for it.
+   * @type {?object}
+   */
+  let _departementIndex = null;
+  /** @type {?object} The parsed outline document, kept for that second index. */
+  let _departementsGeoJsonCache = null;
+  /**
    * INSEE code → EVERY entity Cesium made for it.
    *
    * A `MultiPolygon` département becomes one entity PER PART, not one entity:
@@ -479,6 +538,8 @@ export function createMeteoFranceVigilanceLayer({
       const geojson = departementsGeoJson
         || await (await fetch(departementsUrl)).json();
       _departements = parseDepartements(geojson);
+      _departementsGeoJsonCache = geojson;
+      _departementIndex = null;
       const source = await Cesium.GeoJsonDataSource.load(geojson, {
         clampToGround: true,
         // Fill and stroke are replaced per entity below; these only keep
@@ -543,16 +604,72 @@ export function createMeteoFranceVigilanceLayer({
     _viewer?.scene?.requestRender?.();
   }
 
+  /**
+   * WHICH RIVERS ARE RAISED, per département — asked once per publish.
+   *
+   * The audit called this the join that could not be made: a vigilance label
+   * is a non-interactive text over a département and a Vigicrues reach carries
+   * no département code, so attributing one means a point-in-polygon.
+   *
+   * It is affordable because it is done for the RAISED reaches only, and
+   * outside an episode there are none — `vigicrues.js` says so in its own
+   * header: "outside a flood episode every reach is green". The index is the
+   * same bundled outline file this layer already loaded for its polygons,
+   * indexed a second way, exactly as `delinquanceFrance.js` does.
+   *
+   * A reach belongs to EVERY département it is sampled in: the Loire aval runs
+   * through four, and crediting one of them would deny the other three a name
+   * their bulletin is about.
+   *
+   * @returns {Map<string, Array<{name: string, level: number}>>} Empty when
+   *   the flood layer is off — which is different from "no reach is raised",
+   *   and `vigilanceReachNames` treats both as nothing to say.
+   */
+  function reachesByDepartement() {
+    const raised = askJoin('vigicrues/raised');
+    if (!Array.isArray(raised) || !raised.length) return new Map();
+    if (!_departementIndex) {
+      if (!_departementsGeoJsonCache) return new Map();
+      _departementIndex = buildDepartementIndex(_departementsGeoJsonCache);
+    }
+    const byCode = new Map();
+    for (const reach of raised) {
+      const seen = new Set();
+      for (const [lon, lat] of Array.isArray(reach?.points) ? reach.points : []) {
+        // Returns the INSEE code itself, not a record — the one shape mistake
+        // this join can make silently, because `undefined?.code` is also
+        // falsy and would have named no river at all, for ever, in silence.
+        const code = locateDepartement(_departementIndex, lat, lon);
+        if (!code || seen.has(code)) continue;
+        seen.add(code);
+        const list = byCode.get(code);
+        if (list) list.push({ name: reach.name, level: reach.level });
+        else byCode.set(code, [{ name: reach.name, level: reach.level }]);
+      }
+    }
+    return byCode;
+  }
+
   function publishOverlay() {
     if (!_enabled) return;
+    const byDepartement = reachesByDepartement();
     const entries = [];
     for (const record of _records) {
       const level = record.level.level;
       if (!Number.isInteger(level) || level < VIGILANCE_ALERT_LEVEL) continue;
       if (!record.anchor) continue;
+      // Rivers are named only when the département's own bulletin is about
+      // floods. A wind warning that borrowed a river name from a reach that
+      // happens to cross it would be two bulletins printed as one.
+      const flooding = record.phenomena?.some(
+        (phenomenon) => phenomenon.id === VIGILANCE_FLOOD_PHENOMENON
+          && Number.isInteger(phenomenon.level?.level)
+          && phenomenon.level.level >= VIGILANCE_ALERT_LEVEL,
+      );
       entries.push(createVigilanceOverlayEntry(
         record,
         Cesium.Cartesian3.fromDegrees(record.anchor[0], record.anchor[1]),
+        flooding ? byDepartement.get(record.code) || null : null,
       ));
     }
     overlayHost.setEntries(

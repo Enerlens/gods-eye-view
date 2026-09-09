@@ -45,6 +45,7 @@ import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
+import { publishJoin } from './layerJoins.js';
 import { cachedGroundFloor } from './groundFloor.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
 import {
@@ -399,6 +400,8 @@ export function createMedecinsLayer({
   const _depEntities = new Map();
 
   let _regime = 'national';
+  /** Take-down for the "these cabinets are on the map" join. */
+  let _unpublishDrawing = null;
   let _sites = [];
   let _sitesTruncated = false;
   let _sitesBox = null;
@@ -748,6 +751,7 @@ export function createMedecinsLayer({
         else await renderMesh(box);
       }
       _lastUpdate = Date.now();
+      publishDrawingJoin();
     } catch (error) {
       _lastError = error?.message || String(error);
       // A failed view must be retryable: keeping its key would make every
@@ -780,6 +784,40 @@ export function createMedecinsLayer({
     _clickHandler = null;
   }
 
+  /**
+   * Say when THESE CABINETS ARE ON THE MAP, so `amenities-fr` can stand down.
+   *
+   * ── The duplicate, and why it is only sometimes one ─────────────────────
+   *
+   * `amenities-fr` draws BPE D265 — 61 263 "médecin généraliste" rows — and
+   * this layer draws the conventioned register, 64 232 addresses. The same
+   * cabinet, twice, from two registers. `amenities-fr` already applies the
+   * rule that settles it ("un seul registre par famille", which is why it
+   * refuses the BPE's whole education domain), and `docs/PLAN-CROISEMENTS.md`
+   * recorded that it owes the same withdrawal here.
+   *
+   * NOTHING IS REMOVED TO PAY FOR IT. The withdrawal is conditional and it is
+   * published rather than compiled in: the offer exists only while this layer
+   * is DRAWING POSITIONS, so a reader who never opens the Médecins row keeps
+   * every doctor `amenities-fr` ever drew, and a reader who opens it sees each
+   * cabinet once instead of twice.
+   *
+   * AND ONLY WHEN POSITIONS ARE DRAWN, which is the point of the regime test.
+   * At national altitude this layer paints an APL choropleth and draws no
+   * practice at all; suppressing the other layer's family there would take the
+   * doctors off the map entirely rather than deduplicate them.
+   */
+  function publishDrawingJoin() {
+    const drawing = _enabled && _regime !== 'national';
+    if (!drawing) {
+      _unpublishDrawing?.();
+      _unpublishDrawing = null;
+      return;
+    }
+    if (_unpublishDrawing) return; // already offered; re-publishing would churn watchers
+    _unpublishDrawing = publishJoin('medecins/drawn', () => ({ regime: _regime, sites: _records.size }));
+  }
+
   const layer = {
     id: MEDECINS_FR_LAYER_ID,
     name: 'Médecins (FR)',
@@ -805,6 +843,7 @@ export function createMedecinsLayer({
 
     async enable(viewer) {
       _enabled = true;
+      publishDrawingJoin();
       if (viewer) installClickHandler(viewer);
       if (_points) _points.show = true;
       if (_depDataSource) _depDataSource.show = true;
@@ -824,6 +863,7 @@ export function createMedecinsLayer({
 
     disable() {
       _enabled = false;
+      publishDrawingJoin();
       if (_points) { _points.show = false; _points.removeAll(); }
       if (_depDataSource) _depDataSource.show = false;
       for (const parts of _depEntities.values()) for (const entity of parts) entity.show = false;

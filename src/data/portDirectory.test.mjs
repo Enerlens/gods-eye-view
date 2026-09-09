@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  PORT_GAZETTEER_NAME_MATCH_MAX_M,
   PORT_NAME_MATCH_MAX_M,
   buildPortIndex,
   destinationCandidates,
@@ -11,6 +12,7 @@ import {
   matchDestinationToPort,
   portDistanceM,
 } from './portDirectory.js';
+import { aliasSpellings, parseUnlocodeCoordinates, splitCsvLine } from '../../scripts/build-port-gazetteer.mjs';
 
 /** The shipped World Port Index pack, read the way the layer reads it. */
 const PORTS = readFileSync(
@@ -19,6 +21,14 @@ const PORTS = readFileSync(
 ).split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
 
 const INDEX = buildPortIndex(PORTS);
+
+/** The shipped gazetteer, read the way the ports layer reads it. */
+const GAZETTEER = JSON.parse(readFileSync(
+  new URL('./local_data/ports/gazetteer.json', import.meta.url),
+  'utf8',
+));
+
+const FULL = buildPortIndex(PORTS, GAZETTEER);
 
 /** Somewhere in the southern North Sea — where most of this feed sails. */
 const CHANNEL = { lat: 51.2, lon: 2.4 };
@@ -37,6 +47,12 @@ test('folding is a key, never a similarity', () => {
   assert.equal(foldPortKey('Saint-Nazaire'), 'SAINT NAZAIRE');
   assert.equal(foldPortKey('ST. NAZAIRE'), 'ST NAZAIRE');
   assert.equal(foldPortKey('Gênes'), 'GENES');
+  // The letters normalisation cannot take apart. 174 gazetteer names were
+  // folding to a key with a hole in it before these.
+  assert.equal(foldPortKey('København'), 'KOBENHAVN');
+  assert.equal(foldPortKey('Humlebæk'), 'HUMLEBAEK');
+  assert.equal(foldPortKey('Þórshöfn'), 'THORSHOFN');
+  assert.equal(foldPortKey('Straße'), 'STRASSE');
   assert.equal(foldPortKey(null), '');
   // Two strings either fold to the same key or they do not — `GENOA` and
   // `GENOVA` are one letter apart and stay two different keys.
@@ -144,4 +160,156 @@ test('a mangled index and a mangled pack are inert', () => {
   assert.equal(partial.ports, 1);
   assert.equal(matchDestinationToPort('XXNOW', partial, CHANNEL), null);
   assert.equal(matchDestinationToPort('XXSOM', partial, CHANNEL)?.port.name, 'Somewhere');
+});
+
+// --- The gazetteer ----------------------------------------------------------
+//
+// `scripts/build-port-gazetteer.mjs` adds the places the World Port Index is
+// not an index of — 11 545 UN/LOCODE ports and 13 657 spellings — and moves
+// the destination census from 50.4 % to 68.9 % on a 1 924-vessel sample.
+// What is asserted here is that it can only ever ADD: the WPI keeps every
+// code it carries, no card that resolved before resolves differently, and a
+// name agreeing from far away is refused harder than a WPI name would be.
+
+test('the gazetteer merges without displacing a single World Port Index harbour', () => {
+  assert.ok(FULL.gazetteerPorts > 10_000, `only ${FULL.gazetteerPorts} gazetteer places`);
+  assert.ok(FULL.aliases > 10_000, `only ${FULL.aliases} spellings`);
+  assert.equal(FULL.ports, INDEX.ports, 'the WPI count is untouched');
+  // Compared by CONTENT: each `buildPortIndex` call mints its own frozen
+  // entries, so identity would only be testing that fact.
+  for (const [code, port] of INDEX.byLocode) {
+    const after = FULL.byLocode.get(code);
+    assert.ok(after && after.name === port.name && after.lat === port.lat && after.lon === port.lon,
+      `${code} was displaced by a gazetteer row`);
+    assert.ok(!after.gazetteer, `${code} is answered by a gazetteer row`);
+  }
+});
+
+test('the gazetteer can only bring an answer NEARER — never blank it, never push it away', () => {
+  // The whole risk of a second register is what it does to an answer that was
+  // already right, and the invariant is not "nothing moves": a bucket that
+  // gains a nearer place of the same name SHOULD move, which is the module's
+  // own nearest-wins rule and is why six ships in the Channel writing
+  // `PORTLAND` stop resolving to Oregon. Driven over every WPI harbour name,
+  // the set most exposed to a collision with an 11 545-row gazetteer.
+  const from = { lat: 51.2, lon: 2.4 };
+  let checked = 0;
+  let moved = 0;
+  for (const [name] of INDEX.byName) {
+    const before = matchDestinationToPort(name, INDEX, from);
+    if (!before) continue;
+    checked += 1;
+    const after = matchDestinationToPort(name, FULL, from);
+    assert.ok(after, `${name} stopped resolving`);
+    const wasKm = portDistanceM(from.lat, from.lon, before.port.lat, before.port.lon);
+    const isKm = portDistanceM(from.lat, from.lon, after.port.lat, after.port.lon);
+    assert.ok(isKm <= wasKm,
+      `${name} moved AWAY, ${before.port.name} → ${after.port.name}`);
+    if (after.port.name !== before.port.name) moved += 1;
+  }
+  assert.ok(checked > 100, `only ${checked} names exercised`);
+  // And it stays a rare event: a wholesale reshuffle would mean the gazetteer
+  // is answering for harbours rather than beside them.
+  assert.ok(moved / checked < 0.05, `${moved} of ${checked} answers moved`);
+});
+
+test('the two families the audit named now resolve', () => {
+  // An inland river port: the WPI is an index of SEA harbours and never had it.
+  const rhine = { lat: 50.0, lon: 8.3 };
+  assert.equal(matchDestinationToPort('MAINZ', INDEX, rhine), null);
+  assert.equal(matchDestinationToPort('MAINZ', FULL, rhine)?.port.unlocode, 'DEMAI');
+  // An exonym: the pack spells it `Genova` and 13 masters typed `GENOA`.
+  const ligurian = { lat: 44.0, lon: 8.9 };
+  assert.equal(matchDestinationToPort('GENOA', INDEX, ligurian), null);
+  assert.equal(matchDestinationToPort('GENOA', FULL, ligurian)?.port.name, 'Genova');
+  // The register's own qualifier, which a master never types.
+  assert.equal(matchDestinationToPort('FRANKFURT', FULL, { lat: 50.1, lon: 8.7 })?.port.unlocode, 'DEFRA');
+  // And the other register's spelling of a harbour the WPI calls something else.
+  const corsica = { lat: 41.92, lon: 8.74 };
+  assert.equal(matchDestinationToPort('AJACCIO', INDEX, corsica), null);
+  assert.equal(matchDestinationToPort('AJACCIO', FULL, corsica)?.port.unlocode?.replace(' ', ''), 'FRAJA');
+});
+
+test('a gazetteer name agreeing from far away is refused, and a WPI one at the same range is not', () => {
+  // Three ships at Beaulieu-sur-Mer typed `BEAULIEU`; the only Beaulieu
+  // UN/LOCODE codes as a port is in Hampshire, 1 030 km away.
+  const riviera = { lat: 43.70, lon: 7.34 };
+  assert.equal(matchDestinationToPort('BEAULIEU', FULL, riviera), null);
+  assert.ok(PORT_GAZETTEER_NAME_MATCH_MAX_M < PORT_NAME_MATCH_MAX_M);
+  // A WPI harbour at a comparable range still answers: the ceiling is per
+  // ENTRY, not per query.
+  const brest = matchDestinationToPort('BREST', FULL, { lat: 51.2, lon: 2.4 });
+  const brestM = brest ? portDistanceM(51.2, 2.4, brest.port.lat, brest.port.lon) : 0;
+  assert.ok(brestM > PORT_GAZETTEER_NAME_MATCH_MAX_M && brestM < PORT_NAME_MATCH_MAX_M,
+    `Rade De Brest is ${Math.round(brestM / 1000)} km from the ship`);
+});
+
+test('a bucket holding both kinds answers with the nearest ADMISSIBLE one', () => {
+  // A gazetteer row over its own ceiling must not blank an answer a WPI
+  // harbour further away can still give.
+  const index = buildPortIndex(
+    [{
+      type: 'Feature',
+      geometry: { type: 'Point', coordinates: [-122.7, 45.5] },
+      properties: { name: 'Faraway', unlocode: 'US FAR' },
+    }],
+    { ports: [['GBFAR', 'Faraway', 51.0, 0.0]], aliases: [] },
+  );
+  // A ship in the mid-Atlantic: 4 500 km from the gazetteer row (over its
+  // 500 km ceiling) and 5 900 km from the WPI one (under its 2 500 km one)…
+  const midAtlantic = { lat: 45.0, lon: -35.0 };
+  const near = portDistanceM(45, -35, 51, 0);
+  const far = portDistanceM(45, -35, 45.5, -122.7);
+  assert.ok(near > PORT_GAZETTEER_NAME_MATCH_MAX_M && near < far);
+  // …so neither is admissible here, and the field is printed raw.
+  assert.equal(matchDestinationToPort('FARAWAY', index, midAtlantic), null);
+  // Move the ship inside the WPI ceiling and the WPI harbour answers even
+  // though the gazetteer row is still the nearer of the two.
+  const pacific = { lat: 45.0, lon: -100.0 };
+  assert.equal(matchDestinationToPort('FARAWAY', index, pacific)?.unlocode, undefined);
+  assert.equal(matchDestinationToPort('FARAWAY', index, pacific)?.port.name, 'Faraway');
+  assert.equal(matchDestinationToPort('FARAWAY', index, pacific)?.port.gazetteer, undefined);
+});
+
+test('a malformed gazetteer is inert, exactly like a malformed pack', () => {
+  const fine = buildPortIndex(PORTS, null);
+  assert.equal(fine.gazetteerPorts, 0);
+  assert.equal(fine.aliases, 0);
+  const junk = buildPortIndex(PORTS, {
+    ports: [null, 'nope', [], ['TOOSHORT'], ['XX', 'no code', 1, 2], ['DEXXX', 'No coords', 'a', 'b']],
+    aliases: [null, ['AB'], ['ALIAS', 'ZZZZZ'], ['X', 'DEMAI']],
+  });
+  assert.equal(junk.gazetteerPorts, 0);
+  assert.equal(junk.aliases, 0, 'an alias pointing at no known code is dropped');
+  assert.equal(junk.byName.size, INDEX.byName.size);
+});
+
+// --- The build script's own parsing -----------------------------------------
+
+test('UN/LOCODE degrees-and-minutes parse, or refuse', () => {
+  assert.deepEqual(parseUnlocodeCoordinates('4230N 00131E'), [42.5, 1.517]);
+  assert.deepEqual(parseUnlocodeCoordinates('4425N 00857E'), [44.417, 8.95]);
+  assert.deepEqual(parseUnlocodeCoordinates('4720N 00225W'), [47.333, -2.417]);
+  // A column that is empty for 4 791 of the 17 596 ports.
+  assert.equal(parseUnlocodeCoordinates(''), null);
+  assert.equal(parseUnlocodeCoordinates('somewhere'), null);
+  assert.equal(parseUnlocodeCoordinates('9930N 00131E'), null, 'past the pole');
+});
+
+test('the CSV split honours the export s own quoting', () => {
+  assert.deepEqual(splitCsvLine(',BE,ANR,Antwerpen,Antwerpen,VAN,AI,12345---,0307,,5113N 00425E,'),
+    ['', 'BE', 'ANR', 'Antwerpen', 'Antwerpen', 'VAN', 'AI', '12345---', '0307', '', '5113N 00425E', '']);
+  assert.deepEqual(splitCsvLine('a,"b,c",d'), ['a', 'b,c', 'd']);
+  assert.deepEqual(splitCsvLine('a,"b""c",d'), ['a', 'b"c', 'd']);
+});
+
+test('an alias row yields every spelling it offers, parentheses included', () => {
+  assert.deepEqual(aliasSpellings('Antwerp = Antwerpen'), ['ANTWERP', 'ANTWERPEN']);
+  // `ø` is not a decomposable diacritic; `LETTER_FOLDINGS` is what makes this
+  // meet a master typing `KOBENHAVN`.
+  assert.deepEqual(aliasSpellings('Copenhagen = København'), ['COPENHAGEN', 'KOBENHAVN']);
+  // A parenthetical is a SECOND spelling, so both halves of both sides count.
+  assert.deepEqual(aliasSpellings('Cairo = El Qahira (Cairo)'),
+    ['CAIRO', 'EL QAHIRA CAIRO', 'EL QAHIRA']);
+  assert.deepEqual(aliasSpellings(''), []);
 });

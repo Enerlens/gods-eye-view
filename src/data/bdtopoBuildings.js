@@ -21,6 +21,8 @@ import {
   unknownBuildingCss,
 } from './buildingTheme.js';
 import { boxKey, snapBoxOutward } from './viewportBox.js';
+import { askJoin } from './layerJoins.js';
+import { buildingDossierLines } from './buildingDossier.js';
 import { applyViewGate } from './viewGate.js';
 import {
   BASE_SINK_M,
@@ -377,7 +379,7 @@ export function rnbPivotLines(record, pivot = null) {
  *   null while the lookup is in flight, or when it found nothing.
  * @returns {?object}
  */
-export function createBdtopoSelectedOverlayEntry(record, pivot = null) {
+export function createBdtopoSelectedOverlayEntry(record, pivot = null, dossier = null) {
   if (!record?.id || !record.position) return null;
   const props = record.props || {};
   const details = [];
@@ -420,6 +422,13 @@ export function createBdtopoSelectedOverlayEntry(record, pivot = null) {
     : 'Altimétrie non renseignée par l\'IGN');
 
   for (const line of rnbPivotLines(record, pivot)) details.push(line);
+  // THE BUILDING AS A PIVOT. Once the RNB has said which ground this volume
+  // stands on, three layers this application already loads can say what
+  // happened on it: what it last sold for, what has been authorised, and what
+  // the PLU allows. Each line exists only while its own row is on — the
+  // `layerJoins.js` contract — so a card with none of the three is exactly the
+  // card this layer drew before. See `buildingDossier.js`.
+  for (const line of buildingDossierLines(dossier)) details.push(line);
 
   return {
     id: String(record.id),
@@ -985,9 +994,38 @@ async function fetchRnbPivot(record, signal) {
   return projectRnbFirst(await response.json());
 }
 
+/**
+ * Read the three neighbouring registers for one volume, at draw time.
+ *
+ * A PULL and not a subscription, deliberately: this runs once per card, the
+ * three answers are already in memory, and a card that held a subscription
+ * would have to be torn down as carefully as it was built. `askJoin` answers
+ * `null` for every row that is off, which is what makes the lines optional
+ * rather than conditional on a check this function would have to repeat.
+ *
+ * The PARCEL is the pivot's, and only the first: a building sits on up to a
+ * dozen parcels, `projectRnbBuilding` sorts them by the share of the BUILDING
+ * each covers, and the sale that describes this volume is the one on the
+ * parcel it mostly stands on. The remaining parcels are named on the RNB line
+ * above, so a reader can see there are others.
+ */
+function readBuildingDossier(record, pivot) {
+  const parcelId = pivot?.plots?.[0]?.id || null;
+  const carto = record?.position
+    ? Cesium.Cartographic.fromCartesian(record.position, Cesium.Ellipsoid.WGS84)
+    : null;
+  return {
+    sale: parcelId ? askJoin('dvf/byParcel', parcelId) : null,
+    permits: parcelId ? askJoin('sitadel/byParcel', parcelId) : null,
+    zoning: carto
+      ? askJoin('plu/zoneAt', Cesium.Math.toDegrees(carto.latitude), Cesium.Math.toDegrees(carto.longitude))
+      : null,
+  };
+}
+
 /** Publish the card for the current selection at whatever depth it is known. */
 function publishSelectionCard(record, pivot) {
-  const entry = createBdtopoSelectedOverlayEntry(record, pivot);
+  const entry = createBdtopoSelectedOverlayEntry(record, pivot, readBuildingDossier(record, pivot));
   if (!entry) return;
   _overlayHost.setEntries(
     BDTOPO_SELECTED_OVERLAY_SOURCE_ID,

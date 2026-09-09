@@ -254,6 +254,8 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
+import { publishJoin } from './layerJoins.js';
+import { cadastralParcelId } from './buildingDossier.js';
 import {
   registerSpriteCollection,
   restoreSpriteOrder,
@@ -435,6 +437,8 @@ let _enabled = false;
 let _records = new Map();
 /** @type {?object} the one commune pack in hand */
 let _payload = null;
+/** Take-down for the per-parcel offer. Null while nothing is offered. */
+let _unpublishByParcel = null;
 /** @type {Map<number, {permit: object, index: number, permits: number}>} parcel slot → owner */
 let _owners = new Map();
 /** @type {?Cesium.PointPrimitiveCollection} */
@@ -1410,6 +1414,7 @@ async function load({ force = false } = {}) {
     }
     if (!Array.isArray(body.permits) || !Array.isArray(body.parcels)) throw new Error('malformed payload');
     _payload = body;
+    publishByParcel();
     _communeName = body.commune || body.insee;
     _stale = Boolean(body.stale);
     _lastUpdate = Number(body.fetchedAt) || Date.now();
@@ -1615,6 +1620,60 @@ export function buildSitadelLoadingLabel({
 
 // --- Layer ------------------------------------------------------------------
 
+/**
+ * Offer the permits this commune pack already holds, keyed on the PARCEL.
+ *
+ * The building layer's card asks "what has been authorised on this ground",
+ * and the answer is already in memory: this layer placed each permit on the
+ * exact cadastral parcel its reference names. What it does NOT hold is the
+ * 14-character id everything else joins on — Sitadel publishes the commune,
+ * the section and the number separately and no préfixe at all, which the
+ * cadastre supplies when the parcel is resolved. `cadastralParcelId` assembles
+ * it, and refuses rather than pads when a piece is missing.
+ *
+ * Offered rather than imported, so a reader who closes this row takes the line
+ * off that card and nothing else changes.
+ */
+function publishByParcel() {
+  const permits = Array.isArray(_payload?.permits) ? _payload.permits : [];
+  const parcels = Array.isArray(_payload?.parcels) ? _payload.parcels : [];
+  if (!permits.length || !parcels.length) {
+    _unpublishByParcel?.();
+    _unpublishByParcel = null;
+    return;
+  }
+  const idBySlot = parcels.map((parcel) => cadastralParcelId({
+    commune: parcel?.m, prefixe: parcel?.x, section: parcel?.s, numero: parcel?.n,
+  }));
+  const byParcel = new Map();
+  for (const permit of permits) {
+    for (const slot of permit?.px || []) {
+      const id = idBySlot[slot];
+      if (!id) continue;
+      let bucket = byParcel.get(id);
+      if (!bucket) { bucket = []; byParcel.set(id, bucket); }
+      bucket.push(permit);
+    }
+  }
+  _unpublishByParcel?.();
+  _unpublishByParcel = publishJoin('sitadel/byParcel', (parcelId) => {
+    const bucket = byParcel.get(String(parcelId || '').trim());
+    if (!bucket?.length) return null;
+    // `permits` arrives sorted newest-authorisation first, so the first entry
+    // of a bucket is the newest without a second sort.
+    const newest = bucket[0];
+    const band = SITADEL_BANDS.find((entry) => entry.id === newest.b) || null;
+    return {
+      count: bucket.length,
+      newest: {
+        date: newest.da || null,
+        label: [newest.t, band?.label].filter(Boolean).join(' · ') || null,
+        dwellings: Number.isFinite(newest.lgt) ? newest.lgt : null,
+      },
+    };
+  });
+}
+
 const sitadelFranceLayer = {
   id: SITADEL_FR_LAYER_ID,
   name: 'Autorisations d’urbanisme (Sitadel)',
@@ -1663,6 +1722,7 @@ const sitadelFranceLayer = {
     console.log('[Data:Sitadel FR] Initialized');
   },
 
+
   enable(viewer) {
     _enabled = true;
     _error = null;
@@ -1678,6 +1738,10 @@ const sitadelFranceLayer = {
     _overlayHost.setVisible(SITADEL_FR_OVERLAY_SOURCE_ID, true);
     installClickHandler(viewer);
     registerPickOwner(SITADEL_FR_LAYER_ID, (pickedId) => _records.has(pickedId));
+    // Republish what is already in hand: a row switched off and on again gets
+    // an `unchanged` answer from the proxy, so the load path would not run and
+    // the offer would stay down under a pack that is right there.
+    publishByParcel();
     if (!_moveEndRemover) {
       _moveEndRemover = viewer.camera.moveEnd.addEventListener(scheduleLoad);
     }
@@ -1705,6 +1769,8 @@ const sitadelFranceLayer = {
     }
     if (typeof document !== 'undefined') document.removeEventListener('keydown', onKeyDown);
     unregisterPickOwner(SITADEL_FR_LAYER_ID);
+    _unpublishByParcel?.();
+    _unpublishByParcel = null;
     if (_moveEndRemover) {
       _moveEndRemover();
       _moveEndRemover = null;

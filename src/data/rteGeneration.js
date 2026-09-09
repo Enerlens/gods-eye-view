@@ -2,6 +2,8 @@ import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
+import { askJoin, publishJoin, watchJoin } from './layerJoins.js';
+import { PLANT_JOIN_KEYS, edfSiteIdForRteSite } from './plantIdentity.js';
 import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
@@ -519,6 +521,12 @@ let _registry = null;
 let _registryPromise = null;
 /** @type {Array<object>} Joined stations, most installed power first. */
 let _sites = [];
+/** Take-down for the per-EIC offer. Null while nothing is offered. */
+let _unpublishFleet = null;
+/** Take-down for the reverse (EDF site → this station) offer. */
+let _unpublishRteByEdf = null;
+/** Stop following EDF's own offer. Null while this layer is off. */
+let _unwatchEdf = null;
 /** @type {Array<object>} Live units RTE reports that the registry cannot place. */
 let _unplaced = [];
 
@@ -558,6 +566,65 @@ function stationStyle(site) {
  * rather than diffed: 108 stations is two `removeAll` calls and 216 adds, far
  * below the cost of tracking which reactor changed.
  */
+/**
+ * Offer this fleet's sites by EIC, and stand down where EDF already draws one.
+ *
+ * TWO DIRECTIONS AT ONCE, because this register is the middle of the chain.
+ * It ASKS `plants/edf` — 69 of its 108 sites were placed on an EDF coordinate
+ * and record which one — and it OFFERS `plants/eic`, which is how the hydro
+ * register finds out that a plant it holds is one of these stations, and
+ * through `edfSiteId` that it is an EDF site too. `plantIdentity.js` holds
+ * both keys and the reason neither is a distance test.
+ */
+function publishFleetJoin() {
+  if (!_enabled || !_sites.length) {
+    _unpublishFleet?.();
+    _unpublishFleet = null;
+    _unpublishRteByEdf?.();
+    _unpublishRteByEdf = null;
+    return;
+  }
+  const byEic = new Map();
+  const byEdfSite = new Map();
+  for (const site of _sites) {
+    const edfSiteId = edfSiteIdForRteSite(site);
+    if (edfSiteId) {
+      byEdfSite.set(edfSiteId, {
+        name: site.name, mw: site.mw, units: (site.units || []).length,
+      });
+    }
+    for (const unit of site.units || []) {
+      const eic = String(unit?.eic ?? unit ?? '').trim();
+      if (!eic) continue;
+      byEic.set(eic, {
+        siteId: site.id, name: site.name, mw: site.mw, edfSiteId,
+      });
+    }
+  }
+  _unpublishFleet?.();
+  _unpublishRteByEdf?.();
+  _unpublishFleet = publishJoin(PLANT_JOIN_KEYS.eic, (eic) => byEic.get(String(eic || '').trim()) || null);
+  _unpublishRteByEdf = publishJoin(
+    PLANT_JOIN_KEYS.rteByEdf,
+    (edfSiteId) => byEdfSite.get(String(edfSiteId || '').trim()) || null,
+  );
+}
+
+/**
+ * The EDF site this station is, when EDF is drawing it.
+ *
+ * `null` for the 39 stations EDF's fleet does not contain, and `null` for all
+ * 108 while that row is off — which is what makes the withdrawal reversible
+ * without this layer holding any state about it.
+ *
+ * @param {object} site An RTE pack site.
+ * @returns {?{name: string, mw: number}}
+ */
+function edfDrawingThisSite(site) {
+  const edfSiteId = edfSiteIdForRteSite(site);
+  return edfSiteId ? askJoin(PLANT_JOIN_KEYS.edf, edfSiteId) : null;
+}
+
 function buildStations(sites) {
   if (!_rings || !_discs) return;
   const previouslySelected = _selectedId;
@@ -569,6 +636,11 @@ function buildStations(sites) {
   const warm = [];
   for (const site of sites) {
     if (!Number.isFinite(site?.lat) || !Number.isFinite(site?.lon)) continue;
+    // ONE MARK PER SITE. 69 of these 108 stations were placed on an EDF
+    // coordinate and EDF is the row's primary, so while that row is drawing
+    // them this one does not — the record stays in `_sites`, the counts stay
+    // true, and the mark comes back the moment EDF goes off.
+    if (edfDrawingThisSite(site)) continue;
     const position = sitePosition(site);
     const style = stationStyle(site);
     const ringPx = rteRingSize(site.installedMw);
@@ -610,6 +682,7 @@ function buildStations(sites) {
     warm.push({ lat: site.lat, lon: site.lon });
   }
   _sites = sites;
+  publishFleetJoin();
   warmGroundFloor(warm.slice(0, 300));
   if (previouslySelected && _records.has(previouslySelected)) selectObject(previouslySelected);
   publishOverlay();
@@ -906,7 +979,13 @@ function buildLoadingLabel() {
   if (_loading) return 'refreshing unit output...';
   if (_status === 'error') return _error || 'unavailable';
   const parts = [];
-  if (_sites.length) parts.push(`${_sites.length} centrales`);
+  // WHAT IS DRAWN, and what stood down. `_sites.length` is what the register
+  // holds; while EDF is drawing 69 of these stations the map shows fewer, and
+  // a row that printed the register count would describe a map that is not on
+  // screen. See `plantIdentity.js`.
+  const deferred = Math.max(0, _sites.length - _records.size);
+  if (_records.size) parts.push(`${_records.size} centrales`);
+  if (deferred) parts.push(`${deferred} déjà dessinées par Centrales EDF`);
   if (_joinStats?.placedUnits) {
     parts.push(`${_joinStats.placedUnits} groupes · ${formatGenMw(_joinStats.placedMw)}`);
   } else if (_auth === 'missing') {
@@ -975,13 +1054,27 @@ const rteGenerationLayer = {
     if (!_preRenderRemover) {
       _preRenderRemover = viewer.scene.preRender.addEventListener(onPreRender);
     }
+    // EDF coming on or going off changes which of these stations are drawn,
+    // and waiting out this layer's own poll would leave the duplicate on
+    // screen. Same push `amenities-fr` uses for the médecin family.
+    _unwatchEdf?.();
+    _unwatchEdf = watchJoin(PLANT_JOIN_KEYS.edf, () => {
+      if (_enabled && _sites.length) buildStations(_sites);
+    });
     publishOverlay();
+    // Same reason as `sitadelFrance`: a row switched off and on again may get
+    // no fresh answer, and the offer must not stay down under a fleet already
+    // in memory.
+    publishFleetJoin();
     void load();
     restoreSpriteOrder(viewer);
   },
 
   disable() {
     _enabled = false;
+    _unwatchEdf?.();
+    _unwatchEdf = null;
+    publishFleetJoin();
     clearSelection();
     if (_rings) _rings.show = false;
     if (_discs) _discs.show = false;
@@ -1095,11 +1188,15 @@ const rteGenerationLayer = {
 
   getStats() {
     const stats = {
-      count: _sites.length,
+      // The DRAWN count, because that is what a row's number means everywhere
+      // else in this panel. `stations` below still says what the register
+      // holds, and `deferredToEdf` is the difference, named.
+      count: _records.size,
       lastUpdate: _lastUpdate,
       loading: _loading,
       status: _status === 'ready' ? 'ok' : _status,
       stations: _sites.length,
+      deferredToEdf: Math.max(0, _sites.length - _records.size),
       units: _registry?.units?.length ?? null,
       unitsReporting: _joinStats?.placedUnits ?? 0,
       outputMw: _joinStats?.placedMw ?? null,
