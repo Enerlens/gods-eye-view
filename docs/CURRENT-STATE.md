@@ -2203,6 +2203,9 @@ It is deliberately not an event bus, not a cache and not a dependency graph:
 nothing here can enable a layer, and a card that needs one switched on says so
 rather than switching it on.
 
+`docs/PLAN-CROISEMENTS.md` records what the 2026-09 audit asked for, what
+landed, and — for each item left out — the reason it was left out.
+
 Published today:
 
 | Key | Publisher | Read by |
