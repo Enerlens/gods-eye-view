@@ -236,6 +236,26 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   renvoie `client` pour le vérifier. Ce qu'une règle de périphérie doit
   couvrir, et ne pas couvrir, est écrit dans `docs/DEPLOY.md`.
 
+### Removed
+- **Les emprises d'aérodromes ne sont plus une ligne à côté des Aéroports :
+  elles sont dedans.** La liste des couches portait les deux — ✈ *Aéroports*
+  et ▱ *Emprises d'aérodromes (BD TOPO)*, voisines dans le même groupe — depuis
+  que la seconde avait servi d'exemple à la boîte à datasets. Depuis que la
+  couche Aéroports embarque **418 de ces emprises**, jointes à OurAirports sur
+  le code OACI, les deux lignes disaient la même chose au même endroit et
+  demandaient au lecteur d'arbitrer un recouvrement qu'il n'a aucun moyen de
+  voir : les deux portaient jusqu'à la même teinte (`#b388ff`), donc allumer
+  les deux redessinait le tablier de Roissy par-dessus lui-même sans qu'aucune
+  des deux lignes ne l'annonce. Le manifeste
+  `datasets/aerodromes-bdtopo-ign.json` est retiré ; **rien ne disparaît de la
+  carte** — l'emprise se dessine en allumant *Aéroports*, avec sa pastille
+  ▱ **Emprise au sol** dans la légende et l'attribution IGN sur la fiche.
+  Ce que la jointure laisse dehors reste dit — les 704 héliports de la BD TOPO
+  et les 30 contours surtout militaires qu'aucun terrain ne réclame — et reste
+  branchable en une adresse (`BDTOPO_V3:aerodrome` sur
+  `https://data.geopf.fr/wfs/ows`, collée dans ＋ BRANCHER UN JEU DE DONNÉES) ;
+  ce n'est simplement plus livré comme une couche que personne n'a demandée.
+
 ## [Unreleased] — 2026-09-08
 
 ### Added
