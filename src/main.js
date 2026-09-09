@@ -30,6 +30,7 @@ import {
 import { installScopeMask } from './scopeMask.js';
 import { installGlobeHeadingTape } from './globeHeadingTape.js';
 import { initFirstRunExperience } from './firstRunExperience.js';
+import { initKeySetup } from './keySetup.js';
 
 initLogoGaze();
 
@@ -387,6 +388,12 @@ async function init() {
       loadingScreen.addEventListener('transitionend', revealFirstRun, { once: true });
       setTimeout(revealFirstRun, 900);
     });
+
+    // Provider Settings (the POWER UP chip + dialog). Fire-and-forget: the
+    // module removes its own surface when the dev-server endpoint is absent —
+    // every deployment, and every visitor who is not this machine — so this
+    // costs a built bundle one failed fetch and nothing else.
+    void initKeySetup();
 
     // Expose for debugging
     // Idle render governor: flips the scene into requestRenderMode whenever

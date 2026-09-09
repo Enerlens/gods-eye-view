@@ -183,6 +183,27 @@ Two access paths are wired on the Enerlens box:
   Tailscale. Add a Cloudflare Access policy on that hostname if you want SSO
   in front of the password.
 
+### Provider Settings is not on the deployment
+
+The in-app POWER UP panel writes API keys to disk. Its endpoints install
+through `configureServer` only and are deliberately left out of the
+preview-parity map that mirrors every other proxy onto `vite preview` — so on
+this VPS, which runs `vite preview`, they do not exist. `POST /api/setup/keys`
+returns 404 there, and the client removes the chip and the dialog from the DOM
+rather than showing a surface that cannot work.
+
+Two more layers hold even if that ever changed. The admission gate refuses any
+request carrying a proxy header, which is every request that arrives through
+the Cloudflare tunnel (`cf-connecting-ip`) or the nginx front — the very header
+`GEV_TRUSTED_CLIENT_IP_HEADER` exists to read. And it refuses a `Host` that is
+not a local name, which `gev.enerlens.com` is not.
+
+Prove it after a deploy, from the VPS:
+
+```bash
+npm run qa:provider-settings -- --url http://localhost:4173 --expect-absent
+```
+
 ## Rate limits: the app's, and anything in front of it
 
 The app throttles its **key-spending** routes per client address, opt-in

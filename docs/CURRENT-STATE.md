@@ -1046,6 +1046,41 @@ This is the current runtime/source-of-truth snapshot for the project.
 >   still returns 502 rather than becoming a fabricated ground value. Client
 >   geoid fallbacks wait 60 seconds before retrying and self-heal to Re:Earth on
 >   the first later successful fetch.
+> - **Provider Settings (POWER UP):** a dev-server-only surface that writes API
+>   keys into this checkout's `.env` (or, under Pinokio, `pinokio/ENVIRONMENT`).
+>   `GET /api/setup/status` returns presence and source class per registry
+>   entry, never a value or a suffix; `POST /api/setup/keys` validates, upserts,
+>   sets `process.env` live, and restarts the dev server so the client-exposed
+>   defines re-inject. The registry — which keys exist, what they unlock, which
+>   env vars they need — lives once in `src/keySetupCore.mjs` and is read by the
+>   panel, the endpoints, `npm run doctor`, and `pinokio/_ENVIRONMENT`; tests
+>   fail if any of them drifts from it.
+>
+>   The endpoints install via `configureServer` only and are excluded from the
+>   preview-parity map, so they do not exist under `vite preview` — which is
+>   what a deployment runs. The client removes both the chip and the dialog from
+>   the DOM when the status fetch does not return a payload, so a built bundle
+>   carries no credential surface at all rather than a refused one.
+>
+>   `admitKeySetupRequest` refuses, in order: any request carrying a
+>   reverse-proxy or CDN header (`forwarded`, `x-forwarded-*`, `cf-connecting-ip`,
+>   …), any launch with Pinokio sharing enabled, a non-loopback socket, a
+>   non-local `Host`, a POST with no Origin or a cross Origin, and a POST that
+>   is not `application/json`. A credential that reached the process from
+>   outside this panel's store — an exported shell variable, the macOS Keychain,
+>   another launcher — is reported `managed: 'external'`, rendered read-only,
+>   and refused (409) for both replacement and removal; `dev-fresh.sh` passes a
+>   names-only provenance marker (`GEV_KEY_SETUP_EXTERNAL_KEYS`) so that holds
+>   even when the external value and the stored one are byte-identical. Writes
+>   go to a fresh same-directory temp file created `0600`, hardened before any
+>   secret is written, fsynced, then renamed over the target.
+>
+>   Framing: every document this dev server serves carries `X-Frame-Options:
+>   DENY` and `frame-ancestors 'none'` EXCEPT `fiche.html`, which is meant to be
+>   embedded. Re-navigating an embedded fiche to `/` does not defeat that — the
+>   guard is evaluated per navigation, against the response of the document
+>   actually being loaded.
+>
 > - **Overpass cache admission:** `/api/overpass` parses and sanitizes requests,
 >   then checks fresh memory, identical in-flight work, and fresh disk entries
 >   before invoking its local 90/min limiter. Cache and single-flight responses

@@ -5,6 +5,57 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-09
 
+### Added
+- **Coller une clé dans l'application, au lieu d'éditer un fichier.** Une
+  pastille « POWER UP » apparaît en bas à droite quand il manque des clés ;
+  elle ouvre un panneau qui liste les onze fournisseurs, ce que chacun allume,
+  où obtenir la clé, et un champ pour la coller. L'enregistrement écrit dans le
+  `.env` du dépôt et redémarre le serveur — la page se recharge d'elle-même et
+  la couche est allumée. Plus aucun fichier à éditer à la main.
+
+  **Ce qu'il ne fait pas, délibérément.** Une clé venue d'ailleurs — une
+  variable exportée dans le shell, le trousseau macOS — s'affiche comme
+  configurée et **ne peut être ni remplacée ni supprimée** : le panneau
+  écrirait dans un fichier que le prochain démarrage ignorerait, ce qui aurait
+  l'air d'avoir marché. `dev-fresh.sh` transmet désormais la liste des NOMS
+  qu'il a résolus ailleurs (jamais les valeurs) pour que le serveur puisse le
+  dire même quand les deux sources contiennent les mêmes octets.
+
+  **Où il n'existe pas.** Les points d'entrée ne sont montés que par le serveur
+  de développement : absents de `vite preview`, donc absents de tout ce qu'un
+  déploiement sert — c'est vérifié en navigateur, la pastille et le panneau
+  sont **retirés du DOM**. Et le portier refuse ce qui n'est pas cette
+  machine : une requête portant un en-tête de proxy (`cf-connecting-ip`,
+  `x-forwarded-for`), un `Host` étranger, une origine croisée, un POST sans
+  origine exacte. Le fichier écrit reste en `-rw-------`, et il est remplacé
+  atomiquement : rien d'autre dans le `.env` n'est touché.
+
+  La liste des clés vit à un seul endroit (`src/keySetupCore.mjs`) : le
+  panneau, le serveur, le diagnostic et le gabarit Pinokio la lisent tous, et
+  un test échoue si l'un d'eux dérive.
+
+- **`npm run doctor` — ce qui est configuré, et ce que ça donne.** Un
+  diagnostic hors ligne : version de Node, npm, dépendances, puis une ligne par
+  fournisseur avec **d'où** vient la valeur (shell, `.env`, trousseau) et
+  jamais la valeur elle-même. Il dit surtout ce que l'application fait **sans**
+  la clé — le parc de 171 groupes RTE se dessine sans identifiants, la
+  vigilance passe par le miroir data.gouv.fr — au lieu de n'énumérer que des
+  manques. Sur un compte Google facturé dans l'EEE, il dit que la clé donne
+  Plan et Relief mais pas le globe 3D, et qu'un jeton Cesium ion est la voie
+  qui marche depuis la France.
+
+- **Installation en un clic (Pinokio).** Le dossier `pinokio/` et les scripts
+  qui vont avec : installation, démarrage, mise à jour, réinitialisation, pour
+  une machine sans terminal. Le lanceur refuse de démarrer si le partage est
+  activé — la version courante de Pinokio journalise les codes de connexion des
+  tunnels réussis.
+
+- **Une intégration continue.** Le dépôt n'en avait aucune : `npm test` n'était
+  vert que sur la machine qui écrivait le changement. Tests et build sur
+  Node 24.14 et 26, plus un poste Windows qui joue le chemin d'installation
+  Pinokio — la seule plateforme où les permissions du fichier de clés reposent
+  sur une ACL et non sur un bit de mode.
+
 ### Changed
 - **Les 60 couches de données ne se téléchargent plus qu'au premier clic —
   470 kB de moins pour ouvrir le globe.** L'application chargeait le code des

@@ -32,6 +32,7 @@
     "visualization"
   ],
   "scripts": {
+    "doctor": "node scripts/setup-doctor.mjs",
     "dev": "vite",
     "dev:secure": "./scripts/dev-secure.sh",
     "opensky:import": "./scripts/opensky-import-client.sh",
@@ -129,7 +130,8 @@
     "chronicle:service-day": "node scripts/measure-gtfs-service-day.mjs",
     "dataset:manifest": "node scripts/dataset-manifest.mjs",
     "layers:manifest": "node scripts/build-layer-manifest.mjs",
-    "layers:manifest:check": "node scripts/build-layer-manifest.mjs --check"
+    "layers:manifest:check": "node scripts/build-layer-manifest.mjs --check",
+    "qa:provider-settings": "node scripts/qa-provider-settings.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",
