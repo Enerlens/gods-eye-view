@@ -100,6 +100,130 @@ export const GROUND_SAMPLE_MAX_ARMED_RETRIES = 30;
  * height for the whole strip is the right model.
  */
 
+/* ── DRAWN FOOTPRINT: the ground regime ─────────────────────────────────────
+ *
+ * A pack may also hand a feature a `footprint` — the outer rings of a surveyed
+ * ground boundary, in lon/lat. `local-airports` is again the first caller, and
+ * the outline does NOT come from the same publisher as the feature it lands on:
+ * OurAirports has the identity and the runway, the IGN has the ground.
+ *
+ * IT IS NOT THE FEATURE'S OWN POLYGON, and that is the whole reason it needs a
+ * channel of its own. `applyLocalSurfaceStyle` styles the polygon Cesium parsed
+ * out of the GeoJSON, which for a datacenter IS the record. Here the record is
+ * a POINT — the field's published reference point, the one every runway segment
+ * is measured against — and moving the anchor onto the outline's centre would
+ * shift 418 pastilles by 154 m at the median and 1 382 m at the worst. So the
+ * entity keeps its position and gains a polygon.
+ *
+ * ONE FLOOR, TWO REGIMES:
+ *
+ *   far     not drawn at all — the outline is under
+ *           FOOTPRINT_MIN_SCREEN_PX across
+ *   near    drawn, clamped to the terrain, at true ground scale
+ *
+ * There is no stretched-symbol regime the way `lines` has one, and that is the
+ * point: a runway floored to its pastille's diameter is still an oriented tick
+ * that says something true about bearing, while a footprint floored to a few
+ * pixels is a blob that says only "an airport is here" — which the pastille
+ * already says, better and cheaper. Below the floor the polygon is hidden and
+ * the mark reverts to being a dot, with nothing lost.
+ *
+ * ONE COLOUR FOR ALL OF THEM, never the tier's. Cesium colours a batched ground
+ * primitive by each instance's bounding RECTANGLE rather than by its polygon,
+ * so two overlapping boxes in different colours bleed into each other —
+ * measured once in this pack: Marseille-Provence's box overlaps the Berre
+ * seaplane base's, and they sit in different tiers. The tier is already on the
+ * pastille; repeating it under the polygon would be a second encoding of one
+ * fact (A3) with a rendering bug attached.
+ */
+
+/**
+ * Smallest a footprint may be on screen, in pixels, before it is hidden.
+ *
+ * Measured over the 418 shipped outlines, ground extent: 203 m at the smallest,
+ * 1 251 m at the median, 10 334 m at the largest. On a 1 080 px canvas at the
+ * default 60° frustum, 8 px puts the smallest outline out at 24 km, the median
+ * at 146 km and the largest at 1 208 km — the floor thins by SIZE, which is
+ * the honest ordering when the mark is a ground measurement. (The range moves
+ * with the canvas, because a pixel does; what is fixed is how much of the
+ * screen a mark must fill to earn being drawn.)
+ */
+const FOOTPRINT_MIN_SCREEN_PX = 8;
+
+/**
+ * Fill opacity of a drawn footprint.
+ *
+ * A wash, not a fill: the outline's job is to say WHERE the ground is, over a
+ * basemap that is often a photograph of that same ground. Cesium force-disables
+ * the outline of a terrain-clamped polygon, so this alpha is the only channel
+ * the mark has — high enough to read over both the light IGN plan and a dark
+ * satellite tile (B3), low enough that the apron underneath stays legible.
+ */
+const FOOTPRINT_FILL_ALPHA = 0.22;
+
+/** The surface half of the render spec every footprint is styled with. */
+const FOOTPRINT_SURFACE_SPEC = Object.freeze({
+  surface: 'flat',
+  fillAlpha: FOOTPRINT_FILL_ALPHA,
+  extrudedHeightM: null,
+});
+
+/**
+ * Turn one outer ring into the two things the scene needs: the hierarchy to
+ * draw, and the ground extent the screen floor is measured against.
+ *
+ * Exported and pure so the floor can be tested without a DOM — Cesium's
+ * `GeoJsonDataSource` builds a canvas pin for every POINT feature, so the
+ * airports pack cannot be loaded in a unit test at all.
+ *
+ * The extent is the LARGER of the two spans, so a long thin field is drawn
+ * while its length is readable rather than only when its width is. It is
+ * computed on the bounding box, not the outline: this number decides whether a
+ * shape is worth drawing, and a box is the right approximation for that.
+ *
+ * @param {Array<number[]>|null|undefined} ring Closed outer ring, lon/lat.
+ * @returns {{hierarchy: object, spanM: number}|null} null when unusable.
+ */
+export function localFootprintGeometry(ring) {
+  if (!Array.isArray(ring) || ring.length < 4) return null;
+  const degrees = [];
+  let west = Infinity;
+  let east = -Infinity;
+  let south = Infinity;
+  let north = -Infinity;
+  for (const position of ring) {
+    if (!Array.isArray(position)
+      || !Number.isFinite(position[0]) || !Number.isFinite(position[1])) return null;
+    degrees.push(position[0], position[1]);
+    if (position[0] < west) west = position[0];
+    if (position[0] > east) east = position[0];
+    if (position[1] < south) south = position[1];
+    if (position[1] > north) north = position[1];
+  }
+  const midLat = (south + north) / 2;
+  const spanM = Math.max(
+    (east - west) * 111_320 * Math.cos(Cesium.Math.toRadians(midLat)),
+    (north - south) * 110_540,
+  );
+  if (!(spanM > 0)) return null;
+  return {
+    hierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(degrees)),
+    spanM,
+  };
+}
+
+/**
+ * Whether a footprint of this ground extent is worth drawing at this range.
+ *
+ * @param {number} spanM Ground extent, from {@link localFootprintGeometry}.
+ * @param {number} metresPerPixel `distance * pixelFactor` for this settle.
+ * @returns {boolean}
+ */
+export function localFootprintFitsScreen(spanM, metresPerPixel) {
+  if (!(spanM > 0) || !(metresPerPixel > 0)) return false;
+  return spanM >= metresPerPixel * FOOTPRINT_MIN_SCREEN_PX;
+}
+
 /**
  * Minimum TOTAL stroke of a drawn segment, in pixels — outline included.
  *
@@ -157,6 +281,9 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
  *   extrudedHeightM  number?  metres, only ever set with surface === 'volume'
  *   lines            array?   published segments {lon1,lat1,lon2,lat2,widthM}
  *   lineFloorPx      number?  minimum screen length of those segments
+ *   footprint        array?   surveyed outer rings [[ [lon,lat], … ]] in ground
+ *                             units — the feature's own polygon, NOT the one
+ *                             Cesium parsed (see the footprint regime below)
  *   cardMaxDistance  number?  overrides the group's card range for this feature
  *   markerMaxDistance number? overrides the group's mark range for this feature
  *
@@ -166,10 +293,11 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
  * its tier stopped being a size class. Both default to null, which leaves the
  * group style in charge — the behaviour every other pack has.
  *
- * `lines` is the second geometry this loader could not draw. A point feature
- * has a shape when the pack publishes one — a runway from threshold to
- * threshold — and until now the only geometry a record could own was the one
- * Cesium parsed out of the GeoJSON. See the regime ladder above the constants.
+ * `lines` is the second geometry this loader could not draw, and `footprint`
+ * is the third. A point feature has a shape when the pack publishes one — a
+ * runway from threshold to threshold, an aerodrome boundary surveyed by the
+ * IGN — and the only geometry a record could otherwise own is the one Cesium
+ * parsed out of the GeoJSON. See the two regime ladders above the constants.
  *
  * The spec is produced by the PACK, not here, for the same reason the card
  * copy is: the module that knows what the tags mean is the module that decides
@@ -210,6 +338,7 @@ const FLAT_RENDER_SPEC = Object.freeze({
   lines: null,
   lineBaseM: 0,
   lineFloorPx: 0,
+  footprint: null,
   cardMaxDistance: null,
   markerMaxDistance: null,
 });
@@ -1281,6 +1410,22 @@ export function createLocalGeoJsonLayer({
               // globe-horizon culling is handled by the pre-render occluder.
               disableDepthTestDistance: Number.POSITIVE_INFINITY,
             });
+            // ── The third geometry: the surveyed ground under this feature ──
+            // A hierarchy is built here, ONCE, and handed to the entity: unlike
+            // the runway segments, a footprint is not re-placed per frame, so
+            // it belongs to the data source and dies with it.
+            const ground = localFootprintGeometry(
+              Array.isArray(renderSpec.footprint) ? renderSpec.footprint[0] : null,
+            );
+            const footprintSpanM = ground ? ground.spanM : 0;
+            if (ground) {
+              feature.polygon = new Cesium.PolygonGraphics({ hierarchy: ground.hierarchy });
+              // `baseColor`, never `markerColor` — see the footprint regime.
+              applyLocalSurfaceStyle(feature.polygon, FOOTPRINT_SURFACE_SPEC, baseColor);
+              // Hidden until the first camera settle decides its screen size,
+              // so a load at orbital range never flashes 418 polygons on.
+              feature.polygon.show = false;
+            }
             applyLocalSurfaceStyle(feature.polygon, renderSpec, markerColor);
 
             // ── The second geometry: the published segments of this feature ──
@@ -1351,6 +1496,16 @@ export function createLocalGeoJsonLayer({
               stemMaxHeightM,
               /** Published segments of this feature, drawn in `_runwayLines`. */
               runways,
+              /** Ground extent of the drawn footprint, 0 when there is none. */
+              footprintSpanM,
+              /**
+               * Under the screen floor. Starts TRUE so a record that has not
+               * met a camera settle yet stays hidden — the polygon is created
+               * `show = false` and only a measured distance may reveal it.
+               */
+              footprintTooSmall: true,
+              /** Last value written to `entity.polygon.show`, to avoid churning it. */
+              footprintShown: false,
               /** Minimum screen length of those segments — the pastille's diameter. */
               runwayFloorPx: Number(renderSpec.lineFloorPx) > 0
                 ? Number(renderSpec.lineFloorPx)
@@ -1475,6 +1630,12 @@ export function createLocalGeoJsonLayer({
               // has always made.
               record.outOfRange = record.markerMaxDistance > 0
                 && distance > record.markerMaxDistance;
+              // The footprint's own floor, on the same settle and the same
+              // distance: a ground measurement stops being drawn when it stops
+              // being a shape. `metresPerPixel` is `distance * pixelFactor`,
+              // exactly as the runway regime reads it.
+              record.footprintTooSmall = record.footprintSpanM > 0
+                && !localFootprintFitsScreen(record.footprintSpanM, distance * pixelFactor);
               // Out of range cannot change without camera motion, and camera
               // motion is what sets `_stemGeometryDirty` — so skipping the stem
               // here can never leave a stale tip behind. A row chip CAN change
@@ -1526,6 +1687,17 @@ export function createLocalGeoJsonLayer({
             const isVisible = !record.filteredOut && !record.outOfRange
               && occluder.isPointVisible(record.base);
             if (record.entity.show !== isVisible) record.entity.show = isVisible;
+            // The polygon answers to the same three reasons through
+            // `entity.show`, plus its own screen floor. Written only on a
+            // transition: `PolygonGraphics.show` is a Property, so assigning a
+            // boolean allocates a ConstantProperty every time.
+            if (record.footprintSpanM > 0) {
+              const showFootprint = !record.footprintTooSmall;
+              if (record.footprintShown !== showFootprint) {
+                record.footprintShown = showFootprint;
+                record.entity.polygon.show = showFootprint;
+              }
+            }
             if (isVisible && record.entry) visibleOverlayRecords.push(record);
           }
           if (refreshStemGeometry) releaseUnusedRunwayLines();

@@ -121,13 +121,20 @@ const ports = createLocalGeoJsonLayer({
 // scheduled seat, and the full French long tail down to the grass strips. The
 // four clauses and their reasons live in ./airportsPack.js, which also writes
 // the card, so the layer and the build can never disagree about a field.
+//
+// TWO PUBLISHERS, and the row says both. 418 French fields also carry the
+// ground they sit on — the IGN's surveyed aerodrome boundary, BD TOPO®, under
+// Licence Ouverte 2.0, joined at build time on the ICAO code. OurAirports asks
+// for no attribution and the IGN requires one, so the credit is not optional
+// here: it is on the row, on the card line that prints the outline, and in the
+// attribution popover.
 const airports = createLocalGeoJsonLayer({
   id: 'local-airports',
   url: airportsUrl,
   name: 'Aéroports',
   color: '#b388ff', // Violet — clear of cyan (datacenters), blue (dams), amber (ports)
   icon: '✈',
-  source: 'OurAirports',
+  source: 'OurAirports · IGN',
   labels: true,
   // Tighter than ports (800/136): airports cluster into metro areas — eleven
   // fields inside Île-de-France alone — so the grid needs the extra pitch or

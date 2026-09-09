@@ -5,14 +5,17 @@ import { readFileSync } from 'node:fs';
 
 import {
   AIRPORT_DISPLAY_FLOORS,
+  AIRPORT_DRAWN_FOOTPRINT_SUFFIX,
   AIRPORT_DRAWN_RUNWAY_SUFFIX,
   AIRPORT_LENGTH_CLASSES,
   AIRPORT_LENGTH_UNKNOWN,
   AIRPORT_TIERS,
   AIRPORT_TIER_STYLES,
   AIRPORT_TYPE_LABELS,
+  FOOTPRINT_MAX_ANCHOR_OFFSET_M,
   FRENCH_TERRITORY_CODES,
   airportCardDetails,
+  airportFootprintRings,
   airportIcaoCode,
   airportLabelPriority,
   airportLengthClass,
@@ -23,6 +26,7 @@ import {
   airportTier,
   airportTierLegend,
   airportTierVisible,
+  attachAirportFootprints,
   greatCircleMetres,
   isPackedAirport,
   runwayGeometry,
@@ -754,4 +758,249 @@ test('the shipped pack still has the runway shape the size and line channels wer
   // Issy is the case the layer must keep drawable as a ring: a real published
   // heliport with a runway record and no threshold coordinates at all.
   assert.deepEqual(airportRunwaySegments(byIcao.get('LFPI')), []);
+});
+
+/* ── Footprints — the IGN outline joined onto an OurAirports field ───────── */
+
+/** A BD TOPO feature, with only the fields the join reads. */
+function ignFeature(overrides = {}, ring = null) {
+  const { properties = {}, ...rest } = overrides;
+  return {
+    type: 'Feature',
+    geometry: {
+      type: 'Polygon',
+      // ~1.1 km × 1.1 km at the equator — comfortably over the hectare floor.
+      coordinates: [ring || [[0, 0], [0.01, 0], [0.01, 0.01], [0, 0.01], [0, 0]]],
+    },
+    properties: { nature: 'Aérodrome', usage: 'Civil', ...properties },
+    ...rest,
+  };
+}
+
+/** A packed feature, at a point, with only what the join reads. */
+function packed(properties = {}, coordinates = [0.005, 0.005]) {
+  return { type: 'Feature', geometry: { type: 'Point', coordinates }, properties };
+}
+
+test('the footprint join reads the published key first, then containment', () => {
+  const keyed = packed({ name: 'Keyed', icao: 'LFXX' }, [3, 3]);
+  const unkeyed = packed({ name: 'Unkeyed', localCode: 'XX' }, [0.005, 0.005]);
+  const outside = packed({ name: 'Elsewhere', localCode: 'YY' }, [40, 40]);
+  const features = [keyed, unkeyed, outside];
+  const report = attachAirportFootprints(features, [
+    // The keyed outline sits at (3,3) with the field inside it.
+    ignFeature({ properties: { code_icao: 'LFXX' } },
+      [[2.995, 2.995], [3.005, 2.995], [3.005, 3.005], [2.995, 3.005], [2.995, 2.995]]),
+    ignFeature(),
+  ]);
+
+  assert.equal(report.attached, 2);
+  assert.equal(report.byKey, 1);
+  assert.equal(report.byContainment, 1);
+  assert.equal(keyed.properties.footprint.match, 'icao');
+  assert.equal(unkeyed.properties.footprint.match, 'contains');
+  assert.equal(outside.properties.footprint, undefined, 'a field outside every outline gets none');
+  assert.equal(report.unattached, 0);
+});
+
+test('an outline two fields fall inside is refused for both, never tie-broken', () => {
+  const left = packed({ name: 'Left', localCode: 'AA' }, [0.004, 0.005]);
+  const right = packed({ name: 'Right', localCode: 'BB' }, [0.006, 0.005]);
+  const report = attachAirportFootprints([left, right], [ignFeature()]);
+
+  assert.equal(report.attached, 0);
+  assert.equal(report.refusedShared, 2);
+  assert.equal(left.properties.footprint, undefined);
+  assert.equal(right.properties.footprint, undefined);
+});
+
+test('containment never claims a KEYED outline — that belongs to its own field', () => {
+  // The field has no ICAO code and sits inside an outline that carries one.
+  // Clause (b) reads unkeyed outlines only, so nothing attaches: the outline is
+  // spoken for by a field that may simply not be in the pack.
+  const field = packed({ name: 'Interloper', localCode: 'ZZ' });
+  const report = attachAirportFootprints([field], [
+    ignFeature({ properties: { code_icao: 'LFZZ' } }),
+  ]);
+  assert.equal(report.attached, 0);
+  assert.equal(field.properties.footprint, undefined);
+});
+
+test('the two refusals on the outline itself: a pad, and a placeholder square', () => {
+  const heliport = packed({ name: 'Pad', icao: 'LFAA' });
+  const tiny = packed({ name: 'Speck', icao: 'LFBB' });
+  const report = attachAirportFootprints([heliport, tiny], [
+    // A heliport outline, large enough, and refused on nature alone.
+    ignFeature({ properties: { code_icao: 'LFAA', nature: 'Héliport' } }),
+    // BD TOPO's 5.2 m × 5.2 m placeholder: a coordinate wearing a polygon.
+    ignFeature({ properties: { code_icao: 'LFBB' } },
+      [[0, 0], [0.00005, 0], [0.00005, 0.00005], [0, 0.00005], [0, 0]]),
+  ]);
+  assert.equal(report.attached, 0);
+  assert.equal(heliport.properties.footprint, undefined);
+  assert.equal(tiny.properties.footprint, undefined);
+  assert.equal(report.unattached, 0, 'a refused candidate never counts as unattached');
+});
+
+test('a key that lands kilometres from the field is a bad join, not a big airport', () => {
+  const field = packed({ name: 'Far', icao: 'LFCC' }, [0, 0]);
+  const report = attachAirportFootprints([field], [
+    ignFeature({ properties: { code_icao: 'LFCC' } },
+      [[1, 1], [1.01, 1], [1.01, 1.01], [1, 1.01], [1, 1]]),
+  ]);
+  assert.equal(report.attached, 0);
+  assert.equal(report.refusedOffset, 1);
+  assert.equal(field.properties.footprint, undefined);
+});
+
+test('usage ships only when it is not the ordinary civil case', () => {
+  const military = packed({ name: 'Base', icao: 'LFDD' }, [3, 3]);
+  const civil = packed({ name: 'Club', icao: 'LFEE' }, [0.005, 0.005]);
+  attachAirportFootprints([military, civil], [
+    ignFeature({ properties: { code_icao: 'LFDD', usage: 'Militaire' } },
+      [[2.995, 2.995], [3.005, 2.995], [3.005, 3.005], [2.995, 3.005], [2.995, 2.995]]),
+    ignFeature({ properties: { code_icao: 'LFEE' } }),
+  ]);
+  assert.equal(military.properties.footprint.use, 'Militaire');
+  assert.equal(civil.properties.footprint.use, undefined);
+  // 0.01° × 0.01° at 3° N — the fixture's own size, printed the French way.
+  assert.equal(airportCardDetails(military.properties).at(-1), 'emprise IGN 123 ha · militaire');
+});
+
+test('a multi-part outline ships its largest ring, so the area and the drawing agree', () => {
+  const field = packed({ name: 'Two parts', icao: 'LFFF' }, [0.005, 0.005]);
+  const report = attachAirportFootprints([field], [{
+    type: 'Feature',
+    properties: { nature: 'Aérodrome', usage: 'Civil', code_icao: 'LFFF' },
+    geometry: {
+      type: 'MultiPolygon',
+      coordinates: [
+        [[[0, 0], [0.01, 0], [0.01, 0.01], [0, 0.01], [0, 0]]],
+        [[[0.5, 0.5], [0.502, 0.5], [0.502, 0.502], [0.5, 0.502], [0.5, 0.5]]],
+      ],
+    },
+  }]);
+  assert.equal(report.attached, 1);
+  assert.equal(report.droppedParts, 1);
+  assert.equal(field.properties.footprint.rings.length, 1);
+  // The kept ring is the big one (124 ha at the equator), and the area is
+  // measured on IT rather than on the 5 ha stub the other part contributes.
+  assert.equal(field.properties.footprint.areaHa, 124);
+});
+
+test('the shipped footprint is read back defensively, and an older pack simply has none', () => {
+  assert.deepEqual(airportFootprintRings({}), []);
+  assert.deepEqual(airportFootprintRings({ footprint: {} }), []);
+  assert.deepEqual(airportFootprintRings({ footprint: { rings: 'nope' } }), []);
+  // Three positions cannot close a ring.
+  assert.deepEqual(airportFootprintRings({ footprint: { rings: [[[0, 0], [1, 0], [0, 0]]] } }), []);
+  assert.deepEqual(
+    airportFootprintRings({ footprint: { rings: [[[0, 0], [1, 0], [1, 1], [0, 0]]] } }),
+    [[[0, 0], [1, 0], [1, 1], [0, 0]]],
+  );
+  // One bad vertex refuses the whole ring rather than drawing a truncated one.
+  assert.deepEqual(
+    airportFootprintRings({ footprint: { rings: [[[0, 0], [1, null], [1, 1], [0, 0]]] } }),
+    [],
+  );
+});
+
+test('the render key carries both marks, and the class survives being read back', () => {
+  const ring = [[0, 0], [0.01, 0], [0.01, 0.01], [0, 0]];
+  const both = airportRenderSpec({
+    runways: { longestM: 4215, geom: [[0, 0, 0.01, 0.01, 45]] },
+    footprint: { areaHa: 2832, rings: [ring] },
+  });
+  assert.equal(both.key, `${AIRPORT_LENGTH_CLASSES[0].key}${AIRPORT_DRAWN_RUNWAY_SUFFIX}${AIRPORT_DRAWN_FOOTPRINT_SUFFIX}`);
+  assert.equal(airportLengthClassOf(both.key), AIRPORT_LENGTH_CLASSES[0].key);
+  assert.deepEqual(both.footprint, [ring]);
+
+  // The aeroclub case the whole join exists for: no runway shape, an outline.
+  const outlineOnly = airportRenderSpec({ runways: { longestM: 700 }, footprint: { rings: [ring] } });
+  assert.ok(outlineOnly.key.endsWith(AIRPORT_DRAWN_FOOTPRINT_SUFFIX));
+  assert.ok(!outlineOnly.key.includes(AIRPORT_DRAWN_RUNWAY_SUFFIX));
+  assert.equal(airportLengthClassOf(outlineOnly.key), AIRPORT_LENGTH_CLASSES.at(-1).key);
+
+  // And `surface` stays null: the outline is not the polygon Cesium parsed.
+  assert.equal(both.surface, null);
+});
+
+test('the size legend names the outline, and counts it separately from the runway', () => {
+  const rows = airportLengthLegend(new Map([
+    [`${AIRPORT_LENGTH_CLASSES[0].key}${AIRPORT_DRAWN_RUNWAY_SUFFIX}${AIRPORT_DRAWN_FOOTPRINT_SUFFIX}`,
+      { total: 5, visible: 5 }],
+    [`len300${AIRPORT_DRAWN_FOOTPRINT_SUFFIX}`, { total: 200, visible: 120 }],
+  ]));
+  const footprintRow = rows.find((row) => row.label === 'Emprise au sol');
+  const runwayRow = rows.find((row) => row.label === 'Piste tracée');
+  assert.ok(footprintRow, 'a drawn mark must have a legend row (D1)');
+  assert.equal(footprintRow.count, 125, 'the row counts what is DRAWN, both classes together');
+  assert.equal(runwayRow.count, 5);
+  assert.match(footprintRow.blurb, /IGN/, 'the row names the publisher the rest of the pack is not');
+  assert.notEqual(footprintRow.glyph, runwayRow.glyph);
+});
+
+test('the shipped pack carries the IGN outlines the ground channel was chosen on', () => {
+  const features = readFileSync(PACK, 'utf8')
+    .split('\n').filter((line) => line.trim()).map((line) => JSON.parse(line));
+  const french = new Set(FRENCH_TERRITORY_CODES);
+
+  let withFootprint = 0;
+  let outlineOnly = 0;
+  let byContainment = 0;
+  let foreign = 0;
+  let worstOffsetM = 0;
+  let smallestHa = Infinity;
+  for (const feature of features) {
+    const props = feature.properties;
+    const rings = airportFootprintRings(props);
+    if (rings.length === 0) {
+      assert.equal(props.footprint, undefined,
+        `${props.name}: a footprint that cannot be read back must not ship`);
+      continue;
+    }
+    withFootprint += 1;
+    if (airportRunwaySegments(props).length === 0) outlineOnly += 1;
+    if (props.footprint.match === 'contains') byContainment += 1;
+    if (!french.has(props.countryCode)) foreign += 1;
+    smallestHa = Math.min(smallestHa, props.footprint.areaHa);
+
+    // ONE ring, always — the renderer draws a single hierarchy.
+    assert.equal(rings.length, 1, `${props.name}: the pack ships one ring per field`);
+    const ring = rings[0];
+    assert.deepEqual(ring[0], ring[ring.length - 1], `${props.name}: the ring must close`);
+
+    // The anchor guard, verified on the shipped bytes rather than the build's word.
+    const [lon, lat] = feature.geometry.coordinates;
+    let sumLon = 0;
+    let sumLat = 0;
+    for (const position of ring) { sumLon += position[0]; sumLat += position[1]; }
+    const offset = greatCircleMetres(lon, lat, sumLon / ring.length, sumLat / ring.length);
+    worstOffsetM = Math.max(worstOffsetM, offset);
+    assert.ok(offset <= FOOTPRINT_MAX_ANCHOR_OFFSET_M,
+      `${props.name}: outline centre ${Math.round(offset)} m from its field`);
+  }
+
+  // Floors, not equalities — BD TOPO and OurAirports both move. Measured on the
+  // 2026-09-09 build: 418 footprints, 213 of them on fields with no runway
+  // shape at all, 41 joined on containment, worst anchor offset 1 382 m.
+  assert.ok(withFootprint > 380, `footprint join collapsed (${withFootprint})`);
+  assert.ok(outlineOnly > 180,
+    `the outline-only fields are the reason this join exists (${outlineOnly})`);
+  assert.ok(byContainment > 20, `the containment clause stopped answering (${byContainment})`);
+  assert.ok(smallestHa >= 1, `a sub-hectare outline shipped (${smallestHa} ha)`);
+  assert.ok(worstOffsetM < FOOTPRINT_MAX_ANCHOR_OFFSET_M);
+
+  // BD TOPO stops at the French border, and it overlaps it in both directions:
+  // the French slice of Genève and San Sebastián, and the Brazilian bank of the
+  // Oyapock facing Saint-Georges. A handful, never a wave.
+  assert.ok(foreign <= 10,
+    `${foreign} outlines landed on non-French fields — the coverage claim broke`);
+
+  // Tahiti is the coverage limit, stated as a test: the busiest French airport
+  // with no outline, because Polynésie is not in BD TOPO.
+  const byIcao = new Map(features.filter((f) => f.properties.icao)
+    .map((f) => [f.properties.icao, f.properties]));
+  assert.equal(byIcao.get('NTAA')?.footprint, undefined, 'BD TOPO does not cover Polynésie');
+  assert.ok(byIcao.get('LFPG')?.footprint?.areaHa > 2000, 'Roissy must carry its ground');
 });

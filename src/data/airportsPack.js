@@ -29,7 +29,13 @@
  * they do not upgrade it into a legal status.
  */
 
-import { sizeBarGlyph, sizeDiscGlyph, sizeRingGlyph } from './sizeLegendGlyphs.js';
+import { geometryAreaM2 } from './datacentersPack.js';
+import {
+  sizeBarGlyph,
+  sizeDiscGlyph,
+  sizeFootprintGlyph,
+  sizeRingGlyph,
+} from './sizeLegendGlyphs.js';
 
 /**
  * ISO 3166-1 codes OurAirports uses for France and the French overseas
@@ -370,6 +376,356 @@ export function airportRunwaySegments(props) {
   return out;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * FOOTPRINT — the ground under the field, from the IGN
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * WHY A SECOND SOURCE AT ALL
+ * --------------------------
+ * The runway geometry above is the shape this pack could publish, and the
+ * header on it states the asymmetry that shape has: `geom` reaches 93 % of the
+ * world's large airports and 7.9 % of the French `airfield` tier — the half of
+ * the pack that no global source answers, and the reason clause (c) exists.
+ * OurAirports never georeferenced the aéroclubs. The IGN did: `BDTOPO_V3`
+ * publishes the aerodrome as a surveyed POLYGON, and it is under the same
+ * Licence Ouverte 2.0 as every other Géoplateforme layer in this repo.
+ *
+ * So a field that has no drawn runway can still have a drawn shape, and the
+ * measured effect of the join is exactly that: 417 fields receive a footprint
+ * and 212 of them had NO geometry of any kind before — 206 aéroclubs, 5
+ * scheduled airports, 1 unscheduled.
+ *
+ * THE JOIN, AND WHY IT IS NOT SPATIAL FIRST
+ * -----------------------------------------
+ * BD TOPO carries `code_icao`, so 377 of the 417 are joined on a published key
+ * with no geometry involved. The other 40 come from the second clause — the
+ * field's own point lies INSIDE an unkeyed footprint — which exists because
+ * 802 of the 1 126 French `airfield` features have no ICAO code at all (they
+ * ship a `localCode`), and refusing them would drop the join to the terrains
+ * the state already numbers.
+ *
+ * Measured on the 2026-09-09 retrieval, over the 447 candidate footprints:
+ * every containment hit was UNIQUE — no footprint contained two packed fields
+ * and no field fell inside two footprints — so the second clause never has to
+ * pick a winner. {@link FOOTPRINT_MAX_ANCHOR_OFFSET_M} is the guard that keeps
+ * the key clause honest instead: the offset between a field's published point
+ * and the centre of the footprint it claims runs 154 m at the median, 537 m at
+ * p95 and 1 383 m at the worst (LFOK, Châlons-Vatry), so a kilometres-wide
+ * disagreement is a bad join and not a big airport.
+ *
+ * THE TWO REFUSALS ON THE FOOTPRINT ITSELF
+ * ----------------------------------------
+ *   1. NATURE. BD TOPO's `aerodrome` class is 1 370 objects, and 704 of them
+ *      are héliports — hospital pads, fire stations, gendarmerie yards. The
+ *      pack admits a heliport only when it has an ICAO code (clause (d)), so
+ *      those footprints would have almost nothing to attach to. Only
+ *      {@link FOOTPRINT_NATURES} is read.
+ *   2. AREA. 830 of the 1 370 objects are a 5.2 m × 5.2 m square — a point
+ *      wearing a polygon's clothes, including 147 objects the file calls
+ *      `Aérodrome`. Drawn, they would be an invisible speck that still claims
+ *      to be a surveyed outline, which is A1's exact failure. One hectare is
+ *      the floor. Measured over the 666 objects of the three admitted natures:
+ *      219 fall under it, and 205 of those are the 25 m² square. The floor does
+ *      NOT sit in a gap, though — the largest refusal is 9 891 m² against a
+ *      smallest admission of 10 208 m² — so it is a round number cutting a
+ *      continuum, and the 14 real outlines between 169 m² and 9 892 m² are the
+ *      price. A footprint that small is under a pixel at any range where its
+ *      pastille is still on screen.
+ *
+ * WHAT THE JOIN LEAVES OUT, AND IT IS NOT NOTHING
+ * -----------------------------------------------
+ * 30 candidate footprints — 1 457 ha — attach to nothing. They are mostly
+ * MILITARY: BD TOPO models the civil and the military side of one field as two
+ * objects and puts the ICAO code on the civil one only. The largest is the
+ * Base d'Aéronautique Navale de Lann Bihoué, 767 ha, sharing its runway with
+ * LFRH Lorient-Bretagne Sud 579 m away. Attaching it would mean guessing that
+ * two nearby polygons are one field, which is the kind of guess this pack does
+ * not make — so Lorient draws its civil apron and the naval base stays dark,
+ * and that is said out loud rather than papered over.
+ *
+ * Three footprints carry a FOREIGN indicator — LSGG Genève, LESO Saint-
+ * Sébastien, SMTA Lawa Tabiki — because the IGN maps the French slice of an
+ * airport whose terminal is over the border. The key clause accepts them: it
+ * is the same field, and the pack's own feature for LSGG is Swiss.
+ */
+
+/** BD TOPO `nature` values that describe a prepared landing surface, not a pad. */
+export const FOOTPRINT_NATURES = Object.freeze(['Aérodrome', 'Altiport', 'Hydrobase']);
+
+const FOOTPRINT_NATURE_SET = new Set(FOOTPRINT_NATURES);
+
+/**
+ * Smallest footprint the pack will ship, in m².
+ *
+ * One hectare. See refusal 2 above: below it lies BD TOPO's 27 m² placeholder
+ * square, which is a coordinate and not an outline.
+ */
+export const FOOTPRINT_MIN_AREA_M2 = 10_000;
+
+/**
+ * How far a field's published point may sit from the centre of the footprint it
+ * claims, in metres, before the join is refused. Measured worst case: 1 383 m.
+ */
+export const FOOTPRINT_MAX_ANCHOR_OFFSET_M = 5_000;
+
+/** Coordinate precision the shipped rings carry — the pack's own 5 decimals. */
+const FOOTPRINT_RING_DECIMALS = GEOM_DECIMALS;
+
+/**
+ * Whether one BD TOPO object is eligible to become a shipped footprint.
+ *
+ * @param {{nature?:string}} props BD TOPO feature properties.
+ * @param {number} areaM2 Footprint area from `geometryAreaM2`.
+ * @returns {boolean}
+ */
+export function isFootprintCandidate(props, areaM2) {
+  if (!FOOTPRINT_NATURE_SET.has(text(props?.nature))) return false;
+  const area = Number(areaM2);
+  return Number.isFinite(area) && area >= FOOTPRINT_MIN_AREA_M2;
+}
+
+/**
+ * The outer rings of a GeoJSON Polygon/MultiPolygon, rounded and closed.
+ *
+ * HOLES ARE DROPPED, on purpose. An aerodrome footprint with an inner ring is
+ * a boundary with an enclave in it — a hamlet, a road — and the mark this pack
+ * draws is "this is the ground the field sits on", at a scale where a 2 ha
+ * enclave is a few pixels. Cesium's terrain-clamped polygon takes a hierarchy
+ * with holes, but the batched ground primitive that draws them colours by
+ * BOUNDING RECTANGLE, so a hole is a place the fill is missing and not a place
+ * the ground shows through. One less thing to explain on a card.
+ *
+ * @param {{type?:string, coordinates?:*}} geometry GeoJSON geometry.
+ * @returns {Array<Array<number[]>>} Outer rings, each ≥ 4 positions.
+ */
+export function footprintRings(geometry) {
+  const type = text(geometry?.type);
+  const coordinates = geometry?.coordinates;
+  if (!Array.isArray(coordinates)) return [];
+  const polygons = type === 'Polygon'
+    ? [coordinates]
+    : (type === 'MultiPolygon' ? coordinates : null);
+  if (!polygons) return [];
+  const rings = [];
+  for (const polygon of polygons) {
+    const shell = Array.isArray(polygon) ? polygon[0] : null;
+    if (!Array.isArray(shell) || shell.length < 4) continue;
+    const ring = [];
+    for (const position of shell) {
+      if (!Array.isArray(position) || position.length < 2) continue;
+      const lon = Number(position[0]);
+      const lat = Number(position[1]);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+      ring.push([roundCoord(lon), roundCoord(lat)]);
+    }
+    if (ring.length >= 4) rings.push(ring);
+  }
+  return rings;
+}
+
+/**
+ * Centre of a ring set — the mean of the first ring's vertices.
+ *
+ * Deliberately NOT an area-weighted centroid: this number is only ever compared
+ * against {@link FOOTPRINT_MAX_ANCHOR_OFFSET_M}, a kilometres-scale guard, and
+ * a vertex mean cannot fall outside the outline's own bounding box, which a
+ * centroid of a mis-wound ring can.
+ *
+ * @param {Array<Array<number[]>>} rings
+ * @returns {{lon:number, lat:number}|null}
+ */
+export function footprintCentre(rings) {
+  const ring = Array.isArray(rings) ? rings[0] : null;
+  if (!Array.isArray(ring) || ring.length === 0) return null;
+  let lon = 0;
+  let lat = 0;
+  for (const position of ring) {
+    lon += position[0];
+    lat += position[1];
+  }
+  return { lon: lon / ring.length, lat: lat / ring.length };
+}
+
+/**
+ * Whether a lon/lat lies inside a ring set (even-odd, first ring only).
+ *
+ * @param {Array<Array<number[]>>} rings
+ * @param {number} lon
+ * @param {number} lat
+ * @returns {boolean}
+ */
+export function footprintContains(rings, lon, lat) {
+  if (!Array.isArray(rings)) return false;
+  for (const ring of rings) {
+    let inside = false;
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+      const [xi, yi] = ring[i];
+      const [xj, yj] = ring[j];
+      if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    if (inside) return true;
+  }
+  return false;
+}
+
+/**
+ * Join surveyed footprints onto packed airports. Pure; the build script owns
+ * the fetch and this owns every decision it makes.
+ *
+ * Two clauses, in order, and a field takes the FIRST that answers:
+ *   (a) the footprint's `code_icao` equals the feature's `icao`;
+ *   (b) the feature's point lies inside a footprint that carries NO ICAO code.
+ *
+ * Clause (b) never overrides clause (a) and never claims a keyed footprint,
+ * so a field cannot silently annex the neighbouring aerodrome's outline. A
+ * footprint that two fields both claim under (b) is refused for BOTH — measured
+ * count today: 0, and it stays a refusal rather than a tie-break because
+ * "which of these two airfields owns this polygon" has no answer in the data.
+ *
+ * @param {object[]} features Packed airport features, mutated in place.
+ * @param {Array<{properties:object, geometry:object}>} footprints BD TOPO features.
+ * @returns {{attached:number, byKey:number, byContainment:number,
+ *   refusedOffset:number, refusedShared:number, unattached:number,
+ *   maxOffsetM:number, droppedParts:number}} What the join did, for the
+ *   build's summary.
+ */
+export function attachAirportFootprints(features, footprints) {
+  const candidates = [];
+  let splitParts = 0;
+  for (const raw of Array.isArray(footprints) ? footprints : []) {
+    const props = raw?.properties || {};
+    const all = footprintRings(raw?.geometry);
+    if (all.length === 0) continue;
+    // ONE ring per field, and the area is measured on the ring that ships.
+    // A MultiPolygon aerodrome would otherwise put "2 832 ha" on a card under
+    // an outline drawing part of it — the renderer takes a single hierarchy.
+    // Measured on the 2026-09-09 retrieval: 0 of the 447 candidates are
+    // multi-part, so this costs nothing today and cannot lie tomorrow.
+    let rings = all;
+    if (all.length > 1) {
+      splitParts += all.length - 1;
+      let best = all[0];
+      let bestArea = -1;
+      for (const ring of all) {
+        const area = geometryAreaM2({ type: 'Polygon', coordinates: [ring] });
+        if (area > bestArea) { bestArea = area; best = ring; }
+      }
+      rings = [best];
+    }
+    const areaM2 = geometryAreaM2({ type: 'Polygon', coordinates: rings });
+    if (!isFootprintCandidate(props, areaM2)) continue;
+    candidates.push({
+      icao: text(props.code_icao).toUpperCase(),
+      use: text(props.usage),
+      rings,
+      areaM2,
+      centre: footprintCentre(rings),
+    });
+  }
+
+  const byIcao = new Map();
+  for (const candidate of candidates) {
+    if (!candidate.icao) continue;
+    const seen = byIcao.get(candidate.icao);
+    // Two footprints, one code: keep the larger. Measured today: 2 codes, and
+    // in both the smaller polygon is a taxiway stub of the same field.
+    if (!seen || candidate.areaM2 > seen.areaM2) byIcao.set(candidate.icao, candidate);
+  }
+  const unkeyed = candidates.filter((candidate) => !candidate.icao);
+
+  const report = {
+    attached: 0,
+    byKey: 0,
+    byContainment: 0,
+    refusedOffset: 0,
+    refusedShared: 0,
+    unattached: 0,
+    maxOffsetM: 0,
+    /** Outer rings dropped because a footprint was multi-part. */
+    droppedParts: splitParts,
+  };
+  // First pass over clause (b), so a footprint two fields fall into is refused
+  // for both rather than won by whichever the sort put first.
+  const containmentClaims = new Map();
+  for (const feature of Array.isArray(features) ? features : []) {
+    const icao = text(feature?.properties?.icao).toUpperCase();
+    if (icao && byIcao.has(icao)) continue;
+    const [lon, lat] = feature?.geometry?.coordinates || [];
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    for (const candidate of unkeyed) {
+      if (!footprintContains(candidate.rings, lon, lat)) continue;
+      const claims = containmentClaims.get(candidate) || [];
+      claims.push(feature);
+      containmentClaims.set(candidate, claims);
+    }
+  }
+
+  const claimed = new Map();
+  for (const [candidate, claims] of containmentClaims) {
+    if (claims.length > 1) {
+      report.refusedShared += claims.length;
+      continue;
+    }
+    claimed.set(claims[0], candidate);
+  }
+
+  for (const feature of Array.isArray(features) ? features : []) {
+    const props = feature?.properties;
+    if (!props) continue;
+    const icao = text(props.icao).toUpperCase();
+    const keyed = icao ? byIcao.get(icao) : null;
+    const candidate = keyed || claimed.get(feature) || null;
+    if (!candidate) continue;
+    const [lon, lat] = feature.geometry?.coordinates || [];
+    const offsetM = candidate.centre && Number.isFinite(lon) && Number.isFinite(lat)
+      ? greatCircleMetres(lon, lat, candidate.centre.lon, candidate.centre.lat)
+      : Infinity;
+    if (!(offsetM <= FOOTPRINT_MAX_ANCHOR_OFFSET_M)) {
+      report.refusedOffset += 1;
+      continue;
+    }
+    const footprint = {
+      areaHa: Math.round(candidate.areaM2 / 10_000),
+      match: keyed ? 'icao' : 'contains',
+    };
+    // Only when it is not the ordinary case: a card line that says "civil" under
+    // four hundred civil aerodromes is noise, "militaire" is a fact.
+    if (candidate.use && candidate.use !== 'Civil') footprint.use = candidate.use;
+    // Last, like `runways.geom`, so the long array sits at the end of the line.
+    footprint.rings = candidate.rings;
+    props.footprint = footprint;
+    report.attached += 1;
+    report.maxOffsetM = Math.max(report.maxOffsetM, Math.round(offsetM));
+    if (keyed) report.byKey += 1;
+    else report.byContainment += 1;
+  }
+  report.unattached = candidates.length - report.attached;
+  return report;
+}
+
+/**
+ * Read the shipped footprint back, defensively — the same contract, and the
+ * same reasons, as {@link airportRunwaySegments}.
+ *
+ * @param {object} props Shipped feature properties.
+ * @returns {Array<Array<number[]>>} Rings, or [] when the field has none.
+ */
+export function airportFootprintRings(props) {
+  const footprint = props && typeof props === 'object' ? props.footprint : null;
+  const rings = footprint && typeof footprint === 'object' ? footprint.rings : null;
+  if (!Array.isArray(rings)) return [];
+  const out = [];
+  for (const ring of rings) {
+    if (!Array.isArray(ring) || ring.length < 4) continue;
+    if (!ring.every((position) => Array.isArray(position)
+      && Number.isFinite(position[0]) && Number.isFinite(position[1]))) continue;
+    out.push(ring);
+  }
+  return out;
+}
+
 /**
  * THE SELECTION POLICY. Four clauses, each defensible on screen:
  *
@@ -461,14 +817,25 @@ function metresText(metres) {
 }
 
 /**
- * The card body for one packed airport — up to three lines, in the order a
- * reader wants them: who it is, what it is, where it is.
+ * Format a hectare count the way French reads it — `2 820 ha`. Same ordinary
+ * space, and the same reason, as {@link metresText}.
+ * @param {number} hectares
+ * @returns {string}
+ */
+function hectaresText(hectares) {
+  return `${Math.round(hectares).toLocaleString('fr-FR').replace(/[\u00a0\u202f]/g, ' ')} ha`;
+}
+
+/**
+ * The card body for one packed airport — up to four lines, in the order a
+ * reader wants them: who it is, what it is, how much ground it covers, where
+ * it is.
  *
  * The title is NOT produced here; the shared local-layer host already derives it
  * from `name`. Lines are returned unclamped, because the host owns the width.
  *
  * @param {object} props Shipped feature properties.
- * @returns {string[]} 0–3 detail lines, French, empty entries already dropped.
+ * @returns {string[]} 0–4 detail lines, French, empty entries already dropped.
  */
 export function airportCardDetails(props) {
   const source = props && typeof props === 'object' ? props : {};
@@ -494,6 +861,23 @@ export function airportCardDetails(props) {
     : '';
   const shape = [kind, runwayText].filter(Boolean).join(' · ');
   if (shape) lines.push(shape);
+
+  // Ground, and the only line on this card that is NOT OurAirports — so it
+  // names the IGN, in the card, where the reader is. The attribution popover
+  // carries the licence; a mark whose source differs from its neighbours' has
+  // to say so where it is read.
+  const footprint = source.footprint && typeof source.footprint === 'object'
+    ? source.footprint
+    : null;
+  const areaHa = Number(footprint?.areaHa);
+  if (Number.isFinite(areaHa) && areaHa > 0) {
+    const use = text(footprint.use);
+    lines.push([
+      `emprise IGN ${hectaresText(areaHa)}`,
+      // `usage` only ships when it is not `Civil` — see `attachAirportFootprints`.
+      use ? use.toLocaleLowerCase('fr-FR') : '',
+    ].filter(Boolean).join(' · '));
+  }
 
   // Place. The municipality is dropped when it merely repeats the title.
   const title = text(source.name).toLocaleLowerCase('fr-FR');
@@ -841,17 +1225,41 @@ export const AIRPORT_LENGTH_UNKNOWN = Object.freeze({
  */
 export const AIRPORT_DRAWN_RUNWAY_SUFFIX = '+rw';
 
+/**
+ * Suffix marking a feature whose IGN footprint is drawn.
+ *
+ * A SECOND suffix rather than a second key, and both are appended in a fixed
+ * order, because a field can carry neither, either or both marks — 227 carry
+ * both — and the tally has exactly one bucket per feature to say so.
+ */
+export const AIRPORT_DRAWN_FOOTPRINT_SUFFIX = '+fp';
+
+/** Every render-spec suffix, longest-first so stripping cannot leave a stub. */
+const RENDER_KEY_SUFFIXES = Object.freeze([
+  AIRPORT_DRAWN_FOOTPRINT_SUFFIX,
+  AIRPORT_DRAWN_RUNWAY_SUFFIX,
+]);
+
 const LENGTH_CLASS_BY_KEY = new Map([
   ...AIRPORT_LENGTH_CLASSES.map((entry) => [entry.key, entry]),
   [AIRPORT_LENGTH_UNKNOWN.key, AIRPORT_LENGTH_UNKNOWN],
 ]);
 
-/** The length class inside a render-spec key, with the drawn-runway suffix off. */
+/** The length class inside a render-spec key, with every drawn-mark suffix off. */
 export function airportLengthClassOf(key) {
-  const raw = String(key ?? '');
-  return raw.endsWith(AIRPORT_DRAWN_RUNWAY_SUFFIX)
-    ? raw.slice(0, -AIRPORT_DRAWN_RUNWAY_SUFFIX.length)
-    : raw;
+  let raw = String(key ?? '');
+  // Loop rather than one test: `hub+rw+fp` has to come back as `hub`, and the
+  // day a third mark is added the caller must not have to be edited too.
+  let stripped = true;
+  while (stripped) {
+    stripped = false;
+    for (const suffix of RENDER_KEY_SUFFIXES) {
+      if (!raw.endsWith(suffix)) continue;
+      raw = raw.slice(0, -suffix.length);
+      stripped = true;
+    }
+  }
+  return raw;
 }
 
 /**
@@ -912,10 +1320,11 @@ function orbitRange(props, classKey) {
  * The render contract this pack hands `createLocalGeoJsonLayer` — one object
  * per feature, resolved once at load, in the shape documented there.
  *
- * `surface` stays null: an airport is not a footprint this pack ships, and the
- * runway it DOES ship is drawn as a line by the renderer, not as a polygon
- * here. `lines` is the pack's own extension to the contract, and the renderer
- * is the only reader of it.
+ * `surface` stays null even now that the pack ships footprints: `surface` is
+ * the styling of the polygon Cesium parsed out of the feature, and every
+ * feature here is a Point. The outline travels in `footprint`, which — like
+ * `lines` — is this pack's own extension to the contract, read only by the
+ * renderer.
  *
  * @param {object} props Shipped feature properties.
  * @returns {object} Render spec.
@@ -924,9 +1333,12 @@ export function airportRenderSpec(props) {
   const classKey = airportLengthClass(props);
   const entry = LENGTH_CLASS_BY_KEY.get(classKey) || AIRPORT_LENGTH_UNKNOWN;
   const lines = airportRunwaySegments(props);
+  const footprint = airportFootprintRings(props);
   const orbit = orbitRange(props, classKey);
   return {
-    key: lines.length > 0 ? `${classKey}${AIRPORT_DRAWN_RUNWAY_SUFFIX}` : classKey,
+    key: `${classKey}`
+      + (lines.length > 0 ? AIRPORT_DRAWN_RUNWAY_SUFFIX : '')
+      + (footprint.length > 0 ? AIRPORT_DRAWN_FOOTPRINT_SUFFIX : ''),
     pixelSize: entry.pixelSize,
     hollow: classKey === AIRPORT_LENGTH_UNKNOWN.key,
     /**
@@ -954,6 +1366,16 @@ export function airportRenderSpec(props) {
      */
     lineBaseM: Number.isFinite(Number(props?.elevationM)) ? Number(props.elevationM) : 0,
     lines,
+    /**
+     * The IGN outline, clamped to the terrain by the renderer. The pack's
+     * second extension to the render contract, and the reason it is here rather
+     * than in `surface` is that `surface` styles the polygon Cesium parsed out
+     * of the GeoJSON — and this feature's own geometry is, and stays, the
+     * field's published POINT. Moving the anchor onto the outline's centre
+     * would shift 417 pastilles by 154 m at the median and 1 383 m at the
+     * worst, off the reference point every runway in `lines` is measured from.
+     */
+    footprint,
   };
 }
 
@@ -983,11 +1405,13 @@ export function airportLengthLegend(tally) {
   const entries = tally instanceof Map ? [...tally] : Object.entries(tally || {});
   const byClass = new Map();
   let drawnRunways = 0;
+  let drawnFootprints = 0;
   for (const [key, bucket] of entries) {
     if (!bucket?.total) continue;
     const raw = String(key);
     const visible = bucket.visible ?? bucket.total;
-    if (raw.endsWith(AIRPORT_DRAWN_RUNWAY_SUFFIX)) drawnRunways += visible;
+    if (raw.includes(AIRPORT_DRAWN_RUNWAY_SUFFIX)) drawnRunways += visible;
+    if (raw.includes(AIRPORT_DRAWN_FOOTPRINT_SUFFIX)) drawnFootprints += visible;
     const classKey = airportLengthClassOf(raw);
     const seen = byClass.get(classKey) || { total: 0, visible: 0 };
     seen.total += bucket.total;
@@ -1034,6 +1458,20 @@ export function airportLengthLegend(tally) {
         + '7 464 sont géoréférencés en amont — 279 seulement en France, où le '
         + 'long tail des aéroclubs n’a pas de coordonnées de seuil.',
       count: drawnRunways,
+    });
+  }
+
+  if (drawnFootprints > 0) {
+    legend.push({
+      label: 'Emprise au sol',
+      color: AIRPORT_SIZE_SWATCH_COLOR,
+      glyph: sizeFootprintGlyph(),
+      blurb: 'Le contour EST le terrain : l’emprise levée par l’IGN (BD TOPO), '
+        + 'plaquée sur le relief, donc à l’échelle du sol et non en pixels. '
+        + '417 terrains français sur les 1 335 du paquet, dont 212 n’avaient '
+        + 'aucune forme — l’aéroclub que personne n’a jamais géoréférencé en '
+        + 'amont. Hors de France, aucun : la BD TOPO s’arrête à la frontière.',
+      count: drawnFootprints,
     });
   }
 

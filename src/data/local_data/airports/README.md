@@ -1,7 +1,8 @@
-# Aéroports & aérodromes — OurAirports
+# Aéroports & aérodromes — OurAirports, and the IGN's ground
 
 The open catalogue of the world's airports, aerodromes, heliports and water
-landing areas, maintained by volunteer editors since 2007.
+landing areas, maintained by volunteer editors since 2007 — joined, for 418
+French fields, onto the aerodrome boundary the IGN surveyed.
 
 - **Source:** `https://davidmegginson.github.io/ourairports-data/` — the daily
   mirror of `https://ourairports.com/data/` (same files, stable URLs)
@@ -13,13 +14,26 @@ landing areas, maintained by volunteer editors since 2007.
   legally required; we credit OurAirports and its editors anyway, in
   [`DATA_SOURCES.md`](../../../../DATA_SOURCES.md) and in the in-app
   "Data attribution" popover.
-- **Runtime output:** `airports.geojsonl` (7,464 features, ~2.7 MB)
+- **Runtime output:** `airports.geojsonl` (7,466 features, ~3.3 MB)
 - **Build:** `npm run airports:pack` — deterministic; with no argument it
-  downloads the three CSVs, or pass a directory holding them.
+  downloads the three CSVs **and the IGN layer**, or pass a directory holding
+  them. `--no-footprints` builds the OurAirports half alone.
+
+### Second source — and the pack is no longer single-licence
+
+- **Source:** `https://data.geopf.fr/wfs/ows` — `BDTOPO_V3:aerodrome`
+- **Retrieved:** 2026-09-09 (1,370 objects, 1.9 MB GeoJSON)
+- **License:** IGN, **BD TOPO® — [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md)**.
+  Attribution is **required**, unlike the public-domain half: the credit is on
+  the layer row, on the card line that prints the outline, and in the in-app
+  attribution popover.
+- **Coverage:** métropole + DROM. Polynésie and Nouvelle-Calédonie are absent
+  from BD TOPO, so Tahiti-Fa'a'ā — 1.89 M passengers in 2025 — has no outline
+  while a grass strip in the Aveyron does.
 
 ## This is a SELECTION, not the catalogue
 
-7,464 of 86,050 rows ship. Shipped whole, the catalogue is roughly 25 MB of
+7,466 of 86,060 rows ship. Shipped whole, the catalogue is roughly 25 MB of
 committed JSON, 23,196 rows of it heliports — and in France almost every one of
 those is a hospital landing pad with no ICAO code and no published status.
 
@@ -42,14 +56,15 @@ in the repo.
 
 | | Count |
 |---|------:|
-| Total features | 7,464 |
-| France + overseas territories | 1,335 (1,213 metropolitan) |
+| Total features | 7,466 |
+| France + overseas territories | 1,337 (1,213 metropolitan) |
 | Countries and territories represented | 239 |
-| With a scheduled service | 4,325 |
+| With a scheduled service | 4,327 |
 | With an IATA code | 5,494 |
 | With a measured runway length | 6,150 (82%) |
 | With a classifiable runway surface | 5,795 (78%) |
 | **With drawable runway geometry** | **4,790 (64%)** — 6,698 runways |
+| **With a surveyed IGN footprint** | **418** — 213 of them with no runway geometry at all |
 
 By type — worldwide, then the French share:
 
@@ -59,12 +74,13 @@ By type — worldwide, then the French share:
 | `small_airport` | 1,961 | 1,119 |
 | `large_airport` | 1,173 | 27 |
 | `seaplane_base` | 116 | 27 |
-| `heliport` | 105 | 4 |
+| `heliport` | 107 | 6 |
 | `balloonport` | 1 | 1 |
 
-The four French heliports are Issy-les-Moulineaux (`LFPI`), Toulon Navy Air Base
-(`LFTR`), and — via clause (b), with no ICAO code but a real scheduled shuttle —
-Cannes Croisette and Île d'Yeu Port Joinville.
+The French heliports are Issy-les-Moulineaux (`LFPI`), Toulon Navy Air Base
+(`LFTR`), the two Polynesian pads upstream added on 2026-09-08 (`NTHB` Pago and
+`NTHD` Taiohae) and — via clause (b), with no ICAO code but a real scheduled
+shuttle — Cannes Croisette and Île d'Yeu Port Joinville.
 
 **The asymmetry is the point, and it is a limit.** Inside France the pack is the
 long tail; outside it, the small strips are absent *by design*. A grass field in
@@ -81,6 +97,7 @@ Three marks, three questions, and each channel answers exactly one of them.
 | **Diameter** of the pastille | the published runway length, in four classes | `AIRPORT_LENGTH_CLASSES` |
 | **Hollow ring** instead of a disc | no runway length published at all — 1 314 fields | `airportRenderSpec` |
 | **The drawn line** | the runway itself: its two thresholds, so its true length, bearing and width | `runwayGeometry` + `localGeojson.js` |
+| **The drawn ground** | the aerodrome boundary the IGN surveyed — 418 French fields, one colour, clamped to the terrain | `attachAirportFootprints` + `localGeojson.js` |
 | **Distance the mark appears at** | the tier, plus one per-feature override: 3 000 m of runway buys orbital range | `markerMaxDistance` |
 
 ### Importance: three tiers, one question
@@ -104,9 +121,9 @@ second opinion about size.
 
 | Tier | Rule | Colour | Mark from | Card from | World | France |
 |------|------|--------|----------:|----------:|------:|-------:|
-| **Aéroport de ligne** | `scheduled` | `#e6d8ff` | 14 000 km | 3 000 km | 4 326 | 118 |
+| **Aéroport de ligne** | `scheduled` | `#e6d8ff` | 14 000 km | 3 000 km | 4 327 | 119 |
 | **Aéroport sans ligne** | `large_airport` or `medium_airport`, no scheduled service | `#a98ada` | 3 000 km | 1 200 km | 2 012 | 91 |
-| **Aérodrome & aéroclub** | everything else | `#6d5a94` | 900 km | 200 km | 1 126 | 1 126 |
+| **Aérodrome & aéroclub** | everything else | `#6d5a94` | 900 km | 200 km | 1 127 | 1 127 |
 
 The bottom tier is the **complement** of the two worldwide classes, not a list
 of long-tail types: a heliport is not an "aéroport sans ligne", and neither is
@@ -223,18 +240,96 @@ in prose. Drawn to scale beside four strips of 2 700 to 4 215 m, it explains
 itself.
 
 **The asymmetry that shapes the whole design:** roughly three quarters of the
-airports have a drawable shape, and **8 % of the aéroclubs** — 89 of 1 126, all French. The
+airports have a drawable shape, and **8 % of the aéroclubs** — 89 of 1 127, all French. The
 French long tail is exactly the half upstream never georeferenced, so the runway
 can never become this layer's primary sign; the pastille carries the
 measurement for the fields that have none. `airportsPack.test.mjs` pins that
-ratio under a third and says why.
+ratio under a third and says why. It is also the hole [the IGN
+footprints](#the-ground-the-ign-surveyed) fill: 207 of those aéroclubs now have
+a surveyed outline where upstream had no coordinates to give.
 
 | Tier | With geometry | France |
 |---|---|---|
 | Aéroport sans ligne | 1 560 / 2 012 (78 %) | 91 / 91 |
-| Aéroport de ligne | 3 141 / 4 326 (73 %) | 99 / 118 |
-| Aérodrome & aéroclub | 89 / 1 126 (8 %) | 89 / 1 126 |
-| **Total** | **4 790 / 7 464 (64 %)** | **279 / 1 335** |
+| Aéroport de ligne | 3 141 / 4 327 (73 %) | 99 / 119 |
+| Aérodrome & aéroclub | 89 / 1 127 (8 %) | 89 / 1 127 |
+| **Total** | **4 790 / 7 466 (64 %)** | **279 / 1 337** |
+
+## The ground the IGN surveyed
+
+The asymmetry above is a hole with a shape, and one publisher has exactly what
+fits in it. `BDTOPO_V3:aerodrome` is the IGN's own aerodrome layer: 1 370
+objects, each a **surveyed polygon** rather than a point, and it carries
+`code_icao`. So the join needs no geocoding and no fuzzy name matching.
+
+| | Fields |
+|---|------:|
+| Joined on the published ICAO code | 377 |
+| Joined because the field's point lies inside an unkeyed outline | 41 |
+| **Total drawn** | **418** — 41 859 ha, median 39 ha, largest 2 832 ha (Roissy) |
+| **…with no runway geometry at all before** | **213** |
+
+By tier: 67 `airline` (5 of them shapeless before), 77 `airport` (1), and
+**274 `airfield` — 207 of which had no shape at all**. The tier OurAirports
+georeferenced at 8 % now has a drawn shape for a quarter of its fields, and
+every one of those shapes was surveyed rather than volunteered.
+
+### What BD TOPO is not
+
+**61 % of its 1 370 objects are not outlines.** 830 are a 5.2 m × 5.2 m square —
+a coordinate wearing a polygon's clothes — including 147 the file itself calls
+`Aérodrome`. Of the 666 objects whose `nature` is `Aérodrome`, `Altiport` or
+`Hydrobase`, 219 fall under one hectare and **205 of those are that square**.
+The hectare floor removes them. It does not sit in a gap, though: the largest
+refusal is 9 891 m² against a smallest admission of 10 208 m², so 14 real but
+tiny outlines are the price of a round number.
+
+**704 of the 1 370 are héliports** — hospital pads, fire stations, gendarmerie
+yards, ski stations, 48 of them in Guyane. This pack admits a heliport only
+with an ICAO code (clause (d)), so those outlines have almost nothing to attach
+to and are not read at all. They are the best map of French helipads that
+exists and they are not this layer's subject.
+
+### The refusals, and what is left dark
+
+| Refusal | Why | Count |
+|---|---|---:|
+| `nature` outside the three admitted | a helipad is not a landing surface this pack draws | 704 objects |
+| under one hectare | BD TOPO's placeholder square | 219 objects |
+| anchor offset over 5 km | a key that lands kilometres away is a bad join | 0 — worst kept is 1 382 m (LFOK) |
+| an outline two fields both fall inside | "which of these owns this polygon" has no answer in the data | 0 |
+
+**30 candidate outlines — 1 457 ha — attach to nothing**, and they are mostly
+military. BD TOPO models the civil and the military side of one field as two
+objects and puts the ICAO code on the civil one only. The largest is the **Base
+d'Aéronautique Navale de Lann Bihoué, 767 ha**, sharing its runway with `LFRH`
+Lorient-Bretagne Sud 579 m away. Attaching it would mean guessing that two
+nearby polygons are one field. So Lorient draws its civil apron, the naval base
+stays dark, and that is said here rather than papered over.
+
+Three outlines land on a **foreign** field, and all three are correct: the
+French slice of `LSGG` Genève and `LESO` San Sebastián, and the Brazilian bank
+of the Oyapock facing Saint-Georges (`SBOI`), where BD TOPO maps across the
+river. Coverage stops at the border; it also overlaps it, in both directions.
+
+### On screen
+
+The outline is drawn in **one colour for all 418**, never the tier's: Cesium
+colours a batched ground primitive by each instance's bounding rectangle, and
+Marseille-Provence's box overlaps the Berre seaplane base's — two tiers, one
+box, a colour that would bleed. The tier is already on the pastille.
+
+It has a **screen floor of its own**: under 8 px of ground extent it is not
+drawn, and the mark reverts to being a dot. Ground extents run 203 m to
+10 334 m (median 1 251 m), so on a 1 080 px canvas the smallest outline
+disappears at 24 km, the median at 146 km and Roissy at 1 208 km. A 3 000 m
+runway still buys its card and its pastille a 14 000 km range — a footprint
+stops being a shape long before it stops being on screen.
+
+And the anchor does **not** move onto it: the pastille stays on OurAirports'
+published reference point, which is what every runway segment is measured
+against. Centring it on the outline instead would shift 418 marks by 154 m at
+the median and 1 382 m at the worst.
 
 ### The recall stem is capped here, and nowhere else
 

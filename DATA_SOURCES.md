@@ -537,7 +537,7 @@ Static datasets shipped in the repo for an out-of-the-box experience. **None are
 | **Datacenters** (~4.3K) | `datacenters/` | **ODbL 1.0** (OpenStreetMap extract) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" |
 | **Barrages et digues** (7,432 — 6,771 in France; 5,504 dams, 1,243 dykes, 24 both) | `dams/` | **ODbL 1.0** (OSM via Overpass for France; OpenInfraMap snapshot elsewhere) | ✅ (attribution + share-alike on data) | "© OpenStreetMap contributors" (+ Open Infrastructure Map for the world half) |
 | **NGA World Port Index** (2,951 ports) | `ports/` | **Public domain** (U.S. Government work, 17 U.S.C. § 105) | ✅ (no restrictions) | "NGA World Port Index (Pub. 150)" (courtesy — not legally required) |
-| **OurAirports** (7,464 airports & aerodromes) | `airports/` | **Public domain** (dedicated by OurAirports) | ✅ (no restrictions) | "OurAirports" (courtesy — not legally required) |
+| **OurAirports** (7,466 airports & aerodromes) **+ IGN BD TOPO®** (418 French aerodrome footprints joined in) | `airports/` | **Public domain** (dedicated by OurAirports) **+ Licence Ouverte 2.0** on the footprints (IGN, BD TOPO®) | ✅ (attribution required for the IGN half) | "OurAirports" (courtesy — not legally required) + **"Emprises d'aérodromes : IGN, BD TOPO® — Géoplateforme (Licence Ouverte 2.0)"** (required) |
 | **TeleGeography Submarine Cable Map** (712 cables + 1,917 landing points) | `telegeography_submarine_cables/` | **CC BY-NC-SA 3.0** | ❌ **NonCommercial — remove for commercial use** | "© TeleGeography — submarinecablemap.com" |
 | **Natural Earth physical regions** (1,046 land + 292 marine named polygons) | `natural_earth/` | **Public domain** | ✅ (no restrictions) | "Made with Natural Earth" (courtesy credit — not legally required) |
 | **French département polygons** (96 metropolitan départements) | `france_departements/` | **Licence Ouverte** (IGN ADMIN EXPRESS COG 2018, inherited by reference — see the folder's SOURCE.md) | ✅ (attribution only) | "Contours des départements : IGN — ADMIN EXPRESS COG (édition 2018), via france-geojson (G. David). Licence Ouverte." |
@@ -588,12 +588,12 @@ transaction quota. Requires a free `FIRMS_MAP_KEY`
 (https://firms.modaps.eosdis.nasa.gov/api/map_key/); the layer is empty without it.
 The former bundled 2026-05-25 snapshot was removed 2026-07-16.
 
-### OurAirports (`airports/`)
+### OurAirports + IGN BD TOPO® (`airports/`)
 
 `airports/airports.geojsonl` bundles a **selection** of the OurAirports
-catalogue — 7,464 of its 86,002 rows — with ICAO/IATA codes, municipality,
+catalogue — 7,466 of its 86,060 rows — with ICAO/IATA codes, municipality,
 country, elevation and a runway summary (longest open runway in metres, surface
-family, lit, record count). Retrieved 2026-08-31 from
+family, lit, record count). Retrieved 2026-09-09 from
 `https://davidmegginson.github.io/ourairports-data/` (the daily mirror of
 `ourairports.com/data/`) and transformed by `scripts/build-ourairports.mjs`.
 
@@ -601,13 +601,47 @@ OurAirports **dedicates its data to the public domain** — *"You may use it for
 any purpose, including commercial."* No permission needed, no attribution
 legally required. We credit OurAirports and its volunteer editors anyway.
 
+**This pack has a SECOND publisher, and that one requires attribution.** 418 of
+the French fields also carry the ground they sit on: the aerodrome boundary the
+IGN surveys and publishes as `BDTOPO_V3:aerodrome` on the Géoplateforme WFS,
+under **Licence Ouverte 2.0**. The same build downloads it (1,370 objects,
+2026-09-09), joins it on the published **ICAO code** — 377 fields — plus a
+containment clause for the 802 French `airfield` features that have no ICAO code
+at all (41 more), and ships the outer ring inside `properties.footprint`.
+
+Why it is worth a second source: OurAirports georeferenced **8 % of the French
+aéroclub tier** (89 of 1,127), which is the half of this pack no global source
+answers. **213 fields now have a drawn shape that had none**, 207 of them
+aéroclubs. Four things to know before reading the outlines:
+
+- **BD TOPO stops at the French border, and Polynésie is outside it.** Métropole
+  + DROM only. Tahiti-Fa'a'ā — 1.89 M passengers in 2025 — has no outline while a
+  grass strip in the Aveyron does. It also *overlaps* the border in both
+  directions: the French slice of Genève (`LSGG`) and San Sebastián (`LESO`) are
+  mapped, as is the Brazilian bank of the Oyapock (`SBOI`).
+- **61 % of the IGN layer is not an outline.** 830 of its 1,370 objects are a
+  5.2 m × 5.2 m placeholder square, 147 of them labelled `Aérodrome`. A one-
+  hectare floor removes them — at the cost of 14 real but tiny outlines, since
+  the largest refusal (9,891 m²) and the smallest admission (10,208 m²) sit either
+  side of a round number rather than either side of a gap.
+- **704 of the 1,370 are héliports** — hospital pads, fire stations, gendarmerie
+  yards, 48 of them in Guyane — and they are not read at all: this pack admits a
+  heliport only with an ICAO code. They are the best map of French helipads that
+  exists, and they are not this layer's subject.
+- **30 outlines (1,457 ha) attach to nothing, and they are mostly military.** BD
+  TOPO models the civil and the military side of one field as two objects and
+  puts the ICAO code on the civil one only. The largest is the Base
+  d'Aéronautique Navale de Lann Bihoué, 767 ha, 579 m from `LFRH` Lorient, with
+  which it shares a runway. Joining it would mean guessing that two nearby
+  polygons are one field; the layer would rather leave it dark and say so.
+
 Three things about this pack are easy to get wrong, and all three are documented
 in `airports/README.md` and enforced by `src/data/airportsPack.js`:
 
 - **It is a selection, and the selection is asymmetric.** Worldwide it carries
   every large/medium airport and everything that sells a scheduled seat; inside
   France and the overseas territories it also carries the whole long tail down
-  to the grass strips (1,335 features). A small airfield missing outside France
+  to the grass strips (1,337 features). A small airfield missing outside France
   was **not selected** — it is not evidence of an empty sky.
 - **`type` is OurAirports' editorial SIZE bucket, not a legal category.** It does
   not map onto the French ladder (aérodrome d'intérêt national / régional /
@@ -621,10 +655,10 @@ in `airports/README.md` and enforced by `src/data/airportsPack.js`:
 Positions and elevations are volunteer-maintained. **Not usable for navigation.**
 
 The layer grades every feature into three importance tiers on **one** question — is a
-scheduled seat sold here? *Aéroport de ligne* (4,326) is every field that sells one,
+scheduled seat sold here? *Aéroport de ligne* (4,327) is every field that sells one,
 whatever its size bucket. What is left splits where the pack's own coverage splits:
 *Aéroport sans ligne* (2,012) is the worldwide large/medium remainder — air bases,
-business and freight fields — and *Aérodrome & aéroclub* (1,126) is the French long
+business and freight fields — and *Aérodrome & aéroclub* (1,127) is the French long
 tail of clause (c), which is 100 % French by construction and not by accident.
 
 The tier drives the colour, the label ladder and how far out the card stays readable.
@@ -634,8 +668,16 @@ orbital range, per feature — 1,280 fields, which is what keeps Roissy nameable
 14,000 km without a size-shaped tier to carry it.
 
 Three row chips filter by tier. They are runtime params, not share-link state: the pack
-always ships whole and the layer keeps reporting all 7,464 features, so a floor hides
+always ships whole and the layer keeps reporting all 7,466 features, so a floor hides
 markers without losing them.
+
+A fourth mark joins them where the IGN has surveyed the ground: the aerodrome's
+**emprise**, drawn as a terrain-clamped wash under the pastille. It carries one
+colour for all 418 — a batched ground primitive colours by bounding rectangle,
+and Marseille-Provence's box overlaps the Berre seaplane base's — and it has a
+screen floor of its own: under 8 px of ground extent it is not drawn and the
+mark reverts to a dot. So the outline disappears between 24 km (the smallest)
+and 1,208 km (Roissy) while the pastille keeps its own, longer range.
 
 ### NGA World Port Index (`ports/`)
 

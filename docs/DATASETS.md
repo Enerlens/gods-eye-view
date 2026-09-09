@@ -79,6 +79,12 @@ tabulaire, chargés pour la vue), les arbres remarquables de Paris
 (Opendatasoft, jeu entier) et les emprises d'aérodromes de la BD TOPO (WFS
 IGN, chargées pour la vue).
 
+Ce dernier **recouvre en partie** la couche Aéroports, qui embarque désormais
+418 de ces emprises jointes à OurAirports sur le code OACI. Il reste livré
+parce qu'il montre ce que la jointure laisse dehors : les **704 héliports** de
+la BD TOPO — hôpitaux, casernes, gendarmeries — et les 30 contours, surtout
+militaires, qu'aucun terrain du paquet ne réclame.
+
 ### 3. En ligne de commande — depuis une recherche MCP
 
 `.mcp.json` enregistre le serveur MCP officiel de data.gouv.fr pour
