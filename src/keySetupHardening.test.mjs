@@ -261,8 +261,36 @@ test('Windows hardening converts subprocess exceptions into a fail-closed result
   }), false);
 });
 
+/**
+ * Can `powershell.exe` load the module the DACL verification depends on?
+ *
+ * On a GitHub Windows runner it CANNOT — measured 2026-09-09: `Get-Acl` and
+ * even `Get-ExecutionPolicy` come back `CouldNotAutoloadMatchingModule`, so
+ * Windows PowerShell 5.1 is present on that image but its Security module is
+ * not loadable. Passing `-ExecutionPolicy Bypass` changes nothing; the module
+ * is simply unavailable. That is a property of the runner image, not of a
+ * user's Windows, so the production check below skips rather than failing —
+ * but it PROBES instead of assuming, so a machine where the module works is
+ * always tested for real.
+ *
+ * The hardener's own behaviour there is correct and unchanged: no verification
+ * means no promise, so it returns false and Provider Settings declines to save
+ * a key it could not protect.
+ */
+function securityModuleLoads() {
+  if (process.platform !== 'win32') return false;
+  const root = String(process.env.SystemRoot || process.env.SYSTEMROOT || '');
+  if (!root) return false;
+  const shell = path.win32.join(root, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const probe = spawnSync(shell, [
+    '-NoProfile', '-NonInteractive',
+    '-Command', 'if (Get-Command Get-Acl -ErrorAction SilentlyContinue) { exit 0 } else { exit 1 }',
+  ], { encoding: 'utf8', windowsHide: true });
+  return probe.status === 0;
+}
+
 test('Windows production hardener applies its exact DACL with native tools', {
-  skip: process.platform !== 'win32',
+  skip: securityModuleLoads() ? false : 'Microsoft.PowerShell.Security does not load here',
 }, () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-provider-acl-'));
   const filepath = path.join(directory, 'ENVIRONMENT.tmp');
@@ -307,29 +335,3 @@ test('Windows production hardener applies its exact DACL with native tools', {
   }
 });
 
-test('the DACL verification can load its own module on a locked-down Windows', () => {
-  // A Restricted execution policy — the Windows Server default — stops
-  // PowerShell from LOADING Microsoft.PowerShell.Security, so `Get-Acl` is not
-  // found and the verifier exits 1 before it can look at a single rule. The
-  // hardener then fails closed and Provider Settings refuses to save, on a
-  // machine where nothing is actually wrong. Measured on a GitHub Windows
-  // runner, 2026-09-09.
-  const calls = [];
-  hardenCredentialFile('C:\\GEV\\ENVIRONMENT.tmp', {
-    platform: 'win32',
-    environment: { SYSTEMROOT: WINDOWS_ROOT },
-    fileSystem: windowsFileSystem(),
-    spawn: (command, args) => {
-      calls.push({ command, args });
-      return { status: 0, stdout: '"runner","S-1-5-21-1-2-3-4"\r\n' };
-    },
-  });
-  const verification = calls.find((call) => String(call.command).endsWith('powershell.exe'));
-  assert.ok(verification, 'the DACL is verified, not merely applied');
-  const policyAt = verification.args.indexOf('-ExecutionPolicy');
-  assert.ok(policyAt >= 0, '-ExecutionPolicy is passed');
-  assert.equal(verification.args[policyAt + 1], 'Bypass');
-  // It must still refuse a profile and any prompt.
-  assert.ok(verification.args.includes('-NoProfile'));
-  assert.ok(verification.args.includes('-NonInteractive'));
-});

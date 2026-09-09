@@ -146,16 +146,6 @@ export function hardenCredentialFile(filepath, {
     const verified = spawn(tools.powershell, [
       '-NoProfile',
       '-NonInteractive',
-      // Without this the verification cannot run at all on a machine whose
-      // execution policy is Restricted — the Windows Server default, and a
-      // common enterprise setting. PowerShell refuses to LOAD
-      // Microsoft.PowerShell.Security, so `Get-Acl` is not found, the script
-      // exits 1, the hardener fails closed, and Provider Settings refuses to
-      // save a key it cannot protect. Measured on a GitHub Windows runner,
-      // 2026-09-09: "the module could not be loaded". It grants nothing extra:
-      // the script is a constant in this file, not a file on disk, and anyone
-      // who could change it already owns the process.
-      '-ExecutionPolicy', 'Bypass',
       '-Command', WINDOWS_ACL_VERIFY_SCRIPT,
     ], {
       env: {
