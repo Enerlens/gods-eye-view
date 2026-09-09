@@ -137,7 +137,7 @@ async function main() {
       const source = viewer?.dataSources?.getByName?.('Barrages')?.[0];
       const entities = source?.entities?.values ?? [];
       if (!entities.length) return null;
-      const now = window.Cesium?.JulianDate?.now?.();
+      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
       const props = entities.map((entity) => entity.properties?.getValue?.(now) ?? {});
       const byName = new Map(props.filter((p) => p.name).map((p) => [p.name, p]));
 
@@ -207,7 +207,7 @@ async function main() {
       const controls = module?.getRowControls?.() || null;
       const viewer = window.__godsEyeView.styleManager?.viewer;
       const entities = viewer?.dataSources?.getByName?.('Barrages')?.[0]?.entities?.values ?? [];
-      const now = window.Cesium?.JulianDate?.now?.();
+      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
       const sizes = new Map();
       // The size channel left the importance floor and went to the MEASURED
       // SPAN, so the probe now reads both: `sizes` keyed by display tier tells

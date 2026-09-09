@@ -64,6 +64,96 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   (`2026-06-02T08:00:00+02:00`), et la suite passe de l'UTC à UTC+14.
 
 ### Changed
+- **Le moteur 3D ne pèse plus que ce que cette carte utilise — 1,3 seconde de
+  moins pour ouvrir le globe, et 460 kB de moins sur le fil.** Cesium arrivait
+  en un seul bloc de **5,6 Mo** compilé d'avance : la bibliothèque entière,
+  livrée à tout le monde, y compris les parties que cette application n'appelle
+  jamais. Il passe désormais par le même chemin que le reste du code, ce qui
+  permet à l'outil de fabrication de ne garder que ce qui est réellement
+  appelé.
+
+  | | Avant | Après |
+  |---|---:|---:|
+  | Moteur, non compressé | 5 593 kB | **3 945 kB** |
+  | Moteur, sur le fil | 1 282 kB | **824 kB** |
+  | JavaScript analysé avant le globe | 6 446 kB | **4 773 kB** |
+  | Total sur le fil | 1 482 kB | **1 023 kB** |
+
+  Mesuré en A/B alterné entre deux serveurs, portable simulé (CPU ÷4, 10 Mbit/s,
+  cache vide) : ouvrir le globe passe de **3 655 ms [3 638–5 094] à 2 344 ms
+  [2 298–2 826]**, et le poids de l'application de **1,78 à 1,34 Mo**. Les deux
+  objectifs que ce chantier s'était donnés — moins de 1,8 Mo et moins de 3,5
+  secondes sur un petit ordinateur — sont atteints.
+
+  Deux conséquences à connaître. Le moteur reste un fichier séparé et
+  cacheable un an, mais son empreinte dépend maintenant de ce que
+  l'application utilise : une version qui appelle une fonction Cesium nouvelle
+  fera retélécharger 824 kB à un visiteur qui revient, là où seule une montée
+  de version du moteur le faisait avant. Et `window.Cesium`, qui n'existait que
+  par accident de l'ancien format et jamais dans le serveur de développement,
+  a disparu — douze harnais de test le lisaient et lisent désormais l'horloge
+  et l'ellipsoïde de la scène, ce qui est plus juste de toute façon.
+
+  Vérifié : `npm test` 6 644/6 644, `qa-perf` 24/24, `qa:lazy-voice` 8/8,
+  `qa:lazy-layers` 9/9, `qa:starfield` 4/4, `qa:map-reload` 4/4,
+  `qa:brotli` 17/17.
+
+- **L'agent vocal n'est plus téléchargé pour ouvrir une carte — 281 kB de moins
+  dans le paquet de démarrage.** Le micro, son moteur d'annotations, ses deux
+  rendus et le réalisateur de scènes représentaient **604 kB** du code analysé
+  avant le premier pixel, pour une fonction que la plupart des lecteurs
+  n'utiliseront jamais. Le paquet principal passe de **1 134 à 853 kB**
+  (334 → 248 kB compressés, **266 → 200 kB sur le fil**), et la fermeture
+  statique du démarrage de 2 708 à **2 104 kB** sur 121 → 103 modules.
+
+  **Le panneau du micro, lui, est là dès la première image.** Un bouton qui
+  apparaît une seconde après le reste se lit comme une page encore en train de
+  charger : seule sa mécanique est différée. Elle arrive toute seule dès que le
+  navigateur souffle, ou immédiatement si quelqu'un tend la main vers le micro
+  — clic, focus clavier, survol du panneau, touche Espace.
+
+  Deux fils accidentels ont été coupés au passage, et c'est la moitié du gain :
+  le bandeau du HUD tirait **164 kB** de machinerie vocale pour *une* fonction
+  de contexte cartographique, et la barre de recherche **50 kB** de résolveur
+  d'annotations pour deux helpers de géocodage. Les deux ne servent qu'après un
+  geste ; ils se chargent maintenant avec le geste.
+
+  Ce qui n'a pas changé et se mesure : `npm test` 6 647/6 647,
+  `npm run qa:lazy-voice` 8/8 (le paquet d'entrée ne contient plus une seule
+  empreinte vocale, le panneau est là au démarrage, la pile atterrit seule, et
+  un outil vocal répond après coup), `qa:lazy-layers` 9/9.
+
+  Honnêteté sur le chronomètre : **l'écart de temps n'a pas pu être mesuré
+  aujourd'hui.** Ce Mac portait un autre agent (charge 8 à 21 pendant toute la
+  passe) et deux tours d'A/B alternés n'ont rien séparé. Ce qui est certain est
+  la taille, et une leçon qu'elle donne : le paquet de l'application ne fait
+  plus que 853 kB en face des **5 593 kB de Cesium**. Le mur du démarrage
+  n'est plus notre code.
+
+- **Le code part compressé au maximum, et non plus au minimum que le serveur
+  pouvait calculer à la volée — 460 kB de moins pour ouvrir le globe.** Le
+  serveur compressait chaque fichier au moment où il le servait, en gzip, au
+  niveau qu'il pouvait se permettre entre deux visiteurs. Or ces octets-là sont
+  identiques à chaque visite : ils peuvent être compressés **une fois**, à la
+  fabrication, aussi lentement qu'on veut.
+
+  Mesuré sur le fil, à travers le serveur : le moteur 3D passe de **1 651 à
+  1 282 kB**, le paquet principal de l'application de **326 à 266 kB**, la
+  table des altitudes de terrain de 97 à 78 kB. Au total, ouvrir la carte
+  coûte **2,23 → 1,77 Mo** — 21 % de moins, sur une mesure déterministe (même
+  chiffre aux cinq démarrages). Les données des couches en profitent au même
+  titre : le fichier des aérodromes passe de 611 à **429 kB**.
+
+  Ce n'est pas quelque chose que l'hébergeur pouvait rattraper : Cloudflare
+  transmet le gzip d'une origine tel quel plutôt que de le recompresser. Soit
+  l'origine envoie du brotli, soit personne ne le fait.
+
+  Une fabrication qui sauterait cette étape n'est pas cassée : elle retombe
+  simplement sur le gzip à la volée d'avant. `npm run qa:brotli` vérifie sur
+  socket que le corps décodé est bien identique à l'original, que le
+  `Content-Length` annonce ce qui est envoyé, et qu'un client qui ne sait pas
+  décoder le brotli n'en reçoit jamais.
+
 - **Les 60 couches de données ne se téléchargent plus qu'au premier clic —
   470 kB de moins pour ouvrir le globe.** L'application chargeait le code des
   soixante couches avant d'afficher quoi que ce soit : la CCTV, l'AIS, le

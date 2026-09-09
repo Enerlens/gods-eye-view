@@ -14,9 +14,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  deferCesiumScriptTag,
+  acceptsBrotli,
   isCesiumFreePage,
   parseGeoidQuery,
+  precompressibleAsset,
   staticAssetHeaders,
   stripCesiumAssets,
 } from '../vite.config.js';
@@ -118,22 +119,95 @@ test('a missing or malformed url is answered, not thrown on', () => {
   }
 });
 
-// ── Cesium script defer ────────────────────────────────────────────────────
+// ── Pre-compressed delivery ────────────────────────────────────────────────
+//
+// Two judgements, and both have a silent wrong answer. Saying yes to a URL
+// that revalidates hands back a 200 where a 304 was due, forever; saying yes
+// to a client that cannot decode brotli hands it a body it will render as
+// mojibake or refuse to parse, with no error anywhere.
 
-test('the injected Cesium tag is deferred, keeping its src', () => {
-  const html = `<head><script src="/${CESIUM_DIR}/Cesium.js"></script></head>`;
-  const { html: out, changed } = deferCesiumScriptTag(html);
-  assert.equal(changed, true);
-  assert.equal(out, `<head><script defer src="/${CESIUM_DIR}/Cesium.js"></script></head>`);
+test('the two scripts a cold boot cannot avoid are pre-compressible', () => {
+  // Measured through the server: 1 098 → 824 kB for the engine chunk,
+  // 248 → 204 kB for the entry. Cesium's Workers are here too — they are
+  // fetched at runtime from the version-pinned directory, not bundled.
+  for (const p of ['/assets/cesium-engine-Dq9Fo31T.js', '/assets/index-BlPAiXAf.js', `/${CESIUM_DIR}/Workers/chunk-3CDICLGN.js`]) {
+    assert.equal(precompressibleAsset(p)?.contentType, 'text/javascript; charset=utf-8', p);
+  }
 });
 
-test('a tag that is not there is reported, never silently accepted', () => {
-  // The failure that must stay loud: returning the input unchanged would hand
-  // back the 1.63 MB blocking script and nothing would say so.
-  const { html: out, changed } = deferCesiumScriptTag('<head><script src="/other.js"></script></head>');
-  assert.equal(changed, false);
-  assert.equal(out, '<head><script src="/other.js"></script></head>');
+test('the extension map doubles as the content-type table', () => {
+  // Ending the response here means sirv never runs, so nothing else would set
+  // the type — a stylesheet served as `application/octet-stream` is not applied.
+  assert.equal(precompressibleAsset('/assets/index-x.css').contentType, 'text/css; charset=utf-8');
+  assert.equal(precompressibleAsset('/assets/regions-x.json').contentType, 'application/json; charset=utf-8');
+  assert.equal(precompressibleAsset('/assets/airports-x.geojsonl').contentType, 'application/json; charset=utf-8');
+  assert.equal(precompressibleAsset(`/${CESIUM_DIR}/ThirdParty/draco_decoder.wasm`).contentType, 'application/wasm');
 });
+
+test('an already-compressed format is left alone', () => {
+  // Brotli over a JPEG or a woff2 costs build time and returns bytes.
+  for (const p of [`/${CESIUM_DIR}/Assets/Textures/SkyBox/tycho2t3_80_px.jpg`, '/assets/logo-x.png', '/assets/b789-x.glb']) {
+    assert.equal(precompressibleAsset(p), null, p);
+  }
+});
+
+test('a url that revalidates is never served pre-compressed', () => {
+  // This middleware answers 200 with a full body and never 304. That is free
+  // for a content-addressed URL and a regression for every other one.
+  for (const p of ['/', '/index.html', '/fiche.html', '/style.css', '/fonts/fonts.css', '/models/b789.glb']) {
+    assert.equal(precompressibleAsset(p), null, p);
+  }
+});
+
+test('the same allowlist as the cache policy, so the two cannot drift', () => {
+  // A file compressed but not served is wasted build time; a URL served but
+  // not compressed is a 404 on a path that worked yesterday.
+  for (const p of ['/uploads/assets/evil.js', '/cesium/Cesium.js', '/api/proxy?to=/assets/x.js']) {
+    assert.equal(precompressibleAsset(p), null, p);
+    assert.equal(staticAssetHeaders(p)['Cache-Control'], undefined, p);
+  }
+});
+
+test('a traversal cannot climb out of the build output', () => {
+  for (const p of ['/assets/../../../etc/passwd.js', '/assets/%2e%2e/%2e%2e/etc/shadow.js', '/assets/..%2f..%2fetc%2fx.js']) {
+    assert.equal(precompressibleAsset(p), null, p);
+  }
+});
+
+test('a malformed escape is refused rather than thrown on', () => {
+  assert.equal(precompressibleAsset('/assets/%E0%A4%A.js'), null);
+  assert.equal(precompressibleAsset(undefined), null);
+});
+
+test('a query string neither hides nor invents an extension', () => {
+  assert.equal(precompressibleAsset('/assets/index-x.js?v=2').pathname, '/assets/index-x.js');
+  assert.equal(precompressibleAsset('/assets/logo-x.png?as=.js'), null);
+});
+
+test('brotli is accepted when the client says so, in any of its spellings', () => {
+  for (const h of ['br', 'gzip, deflate, br', 'br;q=1.0, gzip;q=0.8', ' BR ', 'gzip, br, zstd']) {
+    assert.equal(acceptsBrotli(h), true, h);
+  }
+});
+
+test('a client that cannot decode brotli is never handed one', () => {
+  // `br` is a substring of `brotli` and of any future token containing it, and
+  // `br;q=0` is an explicit refusal — both are silent wrong answers to
+  // `includes('br')`.
+  for (const h of ['gzip, deflate', 'gzip', '', undefined, 'identity', 'br;q=0', 'gzip, br;q=0', 'brotli']) {
+    assert.equal(acceptsBrotli(h), false, JSON.stringify(h));
+  }
+});
+
+// ── Cesium script defer — deleted, and why ─────────────────────────────────
+//
+// Three tests lived here, all about rewriting `vite-plugin-cesium`'s injected
+// `<script src=".../Cesium.js">` with `defer` so the HTML parser did not stop
+// dead at a 5.6 MB blocking script. The plugin now runs with
+// `rebuildCesium: true` (2026-09-09): the engine comes through the module graph
+// as tree-shaken ESM, vite announces its chunk with `<link rel=modulepreload>`,
+// and no such tag is emitted by any build. A test that pinned the rewrite would
+// be pinning a string no build produces.
 
 // ── Cesium-free document pages ─────────────────────────────────────────────
 
@@ -144,14 +218,14 @@ test('the address radiography is a document page, the globe is not', () => {
   assert.equal(isCesiumFreePage(null), false);
 });
 
-test('both injected Cesium assets are removed from a document page', () => {
-  // The whole point: a printable sheet must not download a 3D engine. Measured
-  // before this landed — `dist/fiche.html` pulled Cesium.js and widgets.css.
-  const html = `<head><link rel="stylesheet" href="/${CESIUM_DIR}/Widgets/widgets.css">`
-    + `<script src="/${CESIUM_DIR}/Cesium.js"></script></head>`;
+test('the injected Cesium stylesheet is removed from a document page', () => {
+  // The sheet is not inert: it carries Cesium's own type and button rules, so a
+  // printable page that kept it would render differently from the one dev
+  // shows. The engine itself no longer reaches these pages at all — `fiche.js`
+  // imports no Cesium, so Rollup gives it none.
+  const html = `<head><link rel="stylesheet" href="/${CESIUM_DIR}/Widgets/widgets.css"></head>`;
   const { html: out, changed } = stripCesiumAssets(html);
   assert.equal(changed, true);
-  assert.ok(!out.includes('Cesium.js'));
   assert.ok(!out.includes('widgets.css'));
 });
 
@@ -161,13 +235,9 @@ test('a page with nothing to strip is reported, never silently accepted', () => 
   assert.equal(out, '<head><script src="/assets/fiche.js"></script></head>');
 });
 
-test('an unversioned Cesium tag is not matched', () => {
-  assert.equal(deferCesiumScriptTag('<script src="/cesium/Cesium.js"></script>').changed, false);
-});
-
 test('the module bundle is left alone', () => {
   const html = '<script type="module" crossorigin src="/assets/index-x.js"></script>';
-  assert.equal(deferCesiumScriptTag(html).html, html);
+  assert.equal(stripCesiumAssets(html).html, html);
 });
 
 // ── Geoid query parsing ────────────────────────────────────────────────────

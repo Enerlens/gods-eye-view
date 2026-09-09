@@ -23,7 +23,6 @@ import {
   fetchGeoidHeight,
   geoidCell,
 } from './data/geoid.js';
-import { getBasemapLabelContext } from './voice/gevActions.js';
 
 /** Color palettes keyed by shader mode; applied as CSS custom properties. */
 const HUD_COLORS = {
@@ -800,6 +799,14 @@ export class IntelHUD {
   }
 
   async _summaryContext() {
+    // Imported here rather than at the top of the file: `getBasemapLabelContext`
+    // is one function in `voice/gevActions.js`, and that file drags 164 kB of
+    // voice machinery (the action runner and its layer vocabulary) into the
+    // boot bundle for it. Nothing calls this before the engagement gate opens
+    // on a real gesture — `qa:boot-spend` asserts exactly that — so the fetch
+    // lands well after the globe, and the module is cached from the second
+    // tick on.
+    const { getBasemapLabelContext } = await import('./voice/gevActions.js');
     const labels = await getBasemapLabelContext(this.viewer);
     const enabledLayers = this._dataManager?.getAll?.()
       ?.filter((layer) => layer.enabled)

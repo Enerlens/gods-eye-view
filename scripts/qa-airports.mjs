@@ -175,7 +175,7 @@ async function main() {
       const source = viewer?.dataSources?.getByName?.('Aéroports')?.[0];
       const entities = source?.entities?.values ?? [];
       if (!entities.length) return null;
-      const now = window.Cesium?.JulianDate?.now?.();
+      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
       const props = entities.map((entity) => entity.properties?.getValue?.(now) ?? {});
       const byIcao = new Map(props.filter((p) => p.icao).map((p) => [p.icao, p]));
       const french = new Set(['BL', 'FR', 'GF', 'GP', 'MF', 'MQ', 'NC', 'PF', 'PM', 'RE', 'TF', 'WF', 'YT']);
@@ -231,7 +231,7 @@ async function main() {
       const controls = module?.getRowControls?.() || null;
       const viewer = window.__godsEyeView.styleManager?.viewer;
       const entities = viewer?.dataSources?.getByName?.('Aéroports')?.[0]?.entities?.values ?? [];
-      const now = window.Cesium?.JulianDate?.now?.();
+      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
       // What each channel actually carries, read off the live primitives:
       // COLOUR by tier (the ladder), SIZE by published runway length, and the
       // hollow ring where no length was published at all.

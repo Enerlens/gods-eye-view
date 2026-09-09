@@ -1,5 +1,4 @@
 import * as Cesium from 'cesium';
-import { viewportBias, placesNearViewRecovery } from './annotations/annotationResolver.js';
 import { keylessGeocode } from './data/keylessGeocode.js';
 
 /**
@@ -495,6 +494,12 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
 
   const beforeFly = typeof options.beforeFly === 'function' ? options.beforeFly : null;
   const mayFly = () => beforeFly === null || beforeFly() !== false;
+
+  // Both helpers live in the annotation resolver, which is 50 kB of geocoding
+  // the boot path has no use for: nothing here runs until somebody types in the
+  // search box. Imported at the call site so the module lands with the search,
+  // not with the map.
+  const { viewportBias, placesNearViewRecovery } = await import('./annotations/annotationResolver.js');
 
   // Viewport bias — the same bias annotationResolver's geocodePlace uses:
   // "Sixth Street" spoken over Austin must prefer the Sixth Street on screen, not a

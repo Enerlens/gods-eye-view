@@ -2,9 +2,14 @@ import * as Cesium from 'cesium';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
 import { isRateLimitedOutcome, resolveAnnotationTarget } from './annotationResolver.js';
 
-// Dev convenience: expose the app's Cesium instance for console/preview probing
-// (single shared module instance — avoids dual-Cesium state bugs when testing).
-if (typeof window !== 'undefined' && !window.__CESIUM__) window.__CESIUM__ = Cesium;
+// `window.__CESIUM__ = Cesium` used to live here — a console convenience for
+// probing the app's single engine instance. It is gone because the engine is
+// now bundled as tree-shaken ESM (`rebuildCesium`, 2026-09-09), and handing the
+// whole namespace object to a global is unshakeable by construction: Rollup has
+// to materialise every export, which is 1.6 MB of Cesium this app never calls.
+// To probe from the console, reach through the app instead —
+// `__godsEyeView.viewer.scene`, and any class from a live instance's
+// `.constructor`.
 
 /**
  * Annotation engine — the voice agent's "whiteboard" over the 3D world.

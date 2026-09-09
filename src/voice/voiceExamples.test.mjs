@@ -10,6 +10,10 @@ import {
 
 const config = readFileSync(new URL('../../vite.config.js', import.meta.url), 'utf8');
 const dock = readFileSync(new URL('./gevRealtime.js', import.meta.url), 'utf8');
+// The panel's markup lives apart from its brain: the shell is built at boot so
+// the cockpit is complete, the 360 kB controller arrives at idle. See
+// `voice/lazyVoice.js`.
+const dockMarkup = readFileSync(new URL('./voiceControlDom.js', import.meta.url), 'utf8');
 
 test('the rotation is deterministic, wraps, and never repeats within a showing', () => {
   assert.deepEqual(rotatingVoiceExamples('fr-FR', 0), VOICE_EXAMPLES_FR.slice(0, 3));
@@ -42,7 +46,7 @@ test('every example the dock offers is one the model was told it can answer', ()
 });
 
 test('the dock has somewhere to put them', () => {
-  assert.match(dock, /<ul class="gev-voice-help-examples"><\/ul>/);
-  assert.match(dock, /helpExamples: root\.querySelector\('\.gev-voice-help-examples'\)/);
+  assert.match(dockMarkup, /<ul class="gev-voice-help-examples"><\/ul>/);
+  assert.match(dockMarkup, /helpExamples: root\.querySelector\('\.gev-voice-help-examples'\)/);
   assert.match(dock, /refreshVoiceExamples/);
 });

@@ -1462,7 +1462,11 @@ async function runBrowserGroup(record) {
   // main thread. C17 reports from this — a real observation, taken at a moment
   // the page can answer. (Under SwiftShader with ~20k entities up, a trivial
   // evaluate can starve for minutes.)
-  const voiceSnapshotR = await mustEval(() => {
+  const voiceSnapshotR = await mustEval(async () => {
+    // The voice stack is deferred off the boot path (`src/voice/lazyVoice.js`):
+    // it lands at browser idle, and `voiceReady` is the promise the app
+    // publishes so a probe can wait for it instead of racing it.
+    try { await window.__godsEyeView?.voiceReady; } catch { /* reported as absent below */ }
     const vc = window.__gevVoiceCommands;
     if (!vc) return { present: false };
     let diag = null;

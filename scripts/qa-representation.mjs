@@ -64,10 +64,16 @@ async function setView(page, lon, lat, height) {
   await page.evaluate((view) => {
     const gev = window.__godsEyeView;
     if (!gev?.viewer) return;
-    const Cesium = window.Cesium;
     gev.viewer.trackedEntity = undefined;
+    // Placed through the ellipsoid rather than `Cesium.Cartesian3`. There is no
+    // `window.Cesium` any more: the engine is bundled as tree-shaken ESM, so
+    // there is no IIFE to hang a global off — and the dev server never had one.
     gev.viewer.camera.setView({
-      destination: Cesium.Cartesian3.fromDegrees(view.lon, view.lat, view.height),
+      destination: gev.viewer.scene.globe.ellipsoid.cartographicToCartesian({
+        longitude: view.lon * Math.PI / 180,
+        latitude: view.lat * Math.PI / 180,
+        height: view.height,
+      }),
       orientation: { heading: 0, pitch: -Math.PI / 2, roll: 0 },
     });
     gev.viewer.scene.render();
@@ -165,7 +171,7 @@ async function main() {
       // artefact reported as an empty layer. Whichever layer goes first now
       // gets the same chance as the ones that follow it.
       const readGeometry = () => page.evaluate(() => {
-        const now = window.Cesium.JulianDate.now();
+        const now = window.__godsEyeView.viewer.clock.currentTime;
         let extruded = 0; let flat = 0; let maxTop = 0; let perPosition = 0;
         for (const source of window.__godsEyeView.viewer.dataSources._dataSources) {
           for (const entity of source.entities.values) {
@@ -225,7 +231,7 @@ async function main() {
     await page.evaluate(() => window.__godsEyeView.dataManager.setEnabled('earthquakes', true));
     await settle(page, 8000);
     const quakes = await page.evaluate(() => {
-      const now = window.Cesium.JulianDate.now();
+      const now = window.__godsEyeView.viewer.clock.currentTime;
       let polylines = 0; let points = 0; let depthTestOff = 0;
       for (const source of window.__godsEyeView.viewer.dataSources._dataSources) {
         for (const entity of source.entities.values) {
