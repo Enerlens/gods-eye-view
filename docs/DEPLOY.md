@@ -182,3 +182,48 @@ Two access paths are wired on the Enerlens box:
 - **Cloudflare tunnel** — `https://gev.enerlens.com`, for devices without
   Tailscale. Add a Cloudflare Access policy on that hostname if you want SSO
   in front of the password.
+
+## Rate limits: the app's, and anything in front of it
+
+The app throttles its **key-spending** routes per client address, opt-in
+(`GEV_RATELIMIT_OPENAI_PER_MIN`, `GEV_RATELIMIT_GOOGLE_PER_MIN`,
+`GEV_RATELIMIT_VOICE_BRAIN_PER_MIN`, see `.env.example`). Everything else
+under `/api/*` is keyless open data with its own upstream courtesy limits
+handled in-process. Two things follow for a hosted deployment.
+
+**Behind a proxy, tell the app which header carries the real address.**
+Through a Cloudflare tunnel (or any reverse proxy) every request reaches the
+container from the proxy, so the socket peer is the same for all visitors and
+"per IP" quietly becomes "one bucket for everyone". Set
+`GEV_TRUSTED_CLIENT_IP_HEADER=cf-connecting-ip` (Cloudflare; `x-real-ip` for
+nginx/Caddy) and the throttles key on that header instead. It is opt-in
+because a caller who reaches the origin directly can forge it — set it only
+when nothing but the proxy can reach the port. Verify with the open health
+route, which echoes the address the throttles will use for *you*:
+
+```sh
+curl -s https://gev.example.com/healthz   # → {"ok":true,"gated":true,"client":"<your public IP>"}
+```
+
+If `client` is a Docker or loopback address, the header is not being trusted.
+
+**Do not put a rate-limiting rule on all of `/api/*` at the edge.** Measured
+on the Enerlens staging on 2026-09-09: a Cloudflare rule of 30 requests per
+10 s per address on `/api`, blocking for 10 s. A GEV page makes about six
+`/api` requests to boot and a handful a minute afterwards, so the page itself
+never trips it — but a script, a test harness or a couple of tabs reloading
+from the same address does, and for those ten seconds *every* `/api` call
+answers 429: the mic reads "Could not reach voice configuration (HTTP 429)",
+live layers stall, tiles proxied through `/api` go grey. The app obeys the
+`Retry-After` it is sent (the mic waits it out and retries, twice, before
+showing the diagnosis), but the rule is still the wrong shape. If you want an
+edge rule at all, scope it to the routes that spend a key:
+
+```
+(http.request.uri.path in {"/api/voice/brain" "/api/realtime/token" "/api/openai/hud-summary" "/api/google/nearby-places" "/api/google/text-search"})
+```
+
+A human cannot produce 30 spoken commands in ten seconds, so the same
+threshold is harmless there. With `GEV_ACCESS_PASSWORD` set and the trusted
+header above, the in-app throttles already do this job per real address, and
+the edge rule can simply be deleted.

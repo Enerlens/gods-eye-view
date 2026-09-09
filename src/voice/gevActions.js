@@ -2650,7 +2650,17 @@ async function flyToRequestedLocation(viewer, args, {
   const rangeM = Number.isFinite(requestedRangeM)
     ? clampNumber(requestedRangeM, 100, 20000000, 900)
     : null;
-  const locationId = normalizeLocationId(args.locationId || args.query);
+  // A model that sends BOTH a preset id and a free-text query has contradicted
+  // itself — "Emmène-moi à Bordeaux" has come back as {locationId:"paris",
+  // query:"Bordeaux"} from more than one brain. The query is what the user
+  // actually said, so it wins: it either names a preset of its own, or it
+  // falls through to geocoding below. Honouring locationId there would fly to
+  // a city nobody asked for, which is the one failure a voice user cannot
+  // diagnose. With only one of the two present, behaviour is unchanged.
+  const spokenQuery = String(args.query || '').trim();
+  const locationId = spokenQuery
+    ? normalizeLocationId(spokenQuery)
+    : normalizeLocationId(args.locationId);
   const immediate = (navigate) => (
     typeof runImmediate === 'function' ? runImmediate(navigate) : navigate()
   );

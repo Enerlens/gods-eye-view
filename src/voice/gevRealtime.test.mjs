@@ -3246,3 +3246,150 @@ test('a genuinely different refused call still gets its own output', async () =>
   await controller.handleRealtimeEvent(lateToolItemEvent('resp_old', 'call_two', 'item_two'));
   assert.deepEqual(outputs, ['call_one', 'call_two'], 'each distinct call is answered');
 });
+
+test('a voice-config lookup that never reached the server is retried, not remembered', async () => {
+  // Regression, seen on staging 2026-09-09: a rate limit in front of the app
+  // made the first lookup fail, the failure was cached, and the mic then read
+  // "Voice configuration is unavailable" for the life of the tab — however many
+  // times it was clicked, long after the limit had cleared. Only a reload fixed
+  // it. A lookup that never got an answer must be forgotten.
+  const realFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    if (attempts === 1) return { ok: false, status: 429 };
+    return {
+      ok: true,
+      json: async () => ({ provider: 'openrouter', reason: 'Selected by GEV_VOICE_PROVIDER=openrouter.', language: 'fr-FR', model: 'mistralai/mistral-medium-3.1', maxRounds: 5 }),
+    };
+  };
+  try {
+    const host = { voiceConfigPromise: null };
+    host.resolveVoiceConfig = GevRealtimeController.prototype.resolveVoiceConfig;
+
+    const first = await host.resolveVoiceConfig();
+    assert.equal(first.reachable, false);
+    assert.match(first.reason, /HTTP 429/, 'the status is the diagnosis and must be shown');
+    assert.equal(host.voiceConfigPromise, null, 'an unreachable answer must not be cached');
+
+    const second = await host.resolveVoiceConfig();
+    assert.equal(second.reachable, true);
+    assert.equal(second.provider, 'openrouter');
+    assert.equal(attempts, 2, 'the second click retried');
+
+    // A real answer IS cached: "no key is set" will not change by clicking again.
+    await host.resolveVoiceConfig();
+    assert.equal(attempts, 2, 'a reachable answer is remembered');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+/**
+ * A host with just enough of the controller to run the patient config lookup:
+ * the prototype methods under test, a status log, and a wait that never sleeps.
+ */
+function patientHost({ fetchImpl, waitMs = async () => {} }) {
+  const statuses = [];
+  const host = {
+    voiceConfigPromise: null,
+    voiceConfigWaiting: false,
+    startEpoch: 0,
+    status: 'idle',
+    nextErrorHint: null,
+    ui: {},
+    waits: [],
+    setStatus(status, detail) { this.status = status; statuses.push([status, detail]); },
+    async waitMs(ms) { this.waits.push(ms); await waitMs(ms, this); },
+    pauseRadioForVoice() {},
+    runner: async () => ({ ok: true }),
+    brainSession: null,
+  };
+  for (const name of ['resolveVoiceConfig', 'resolveVoiceConfigPatiently', 'start', 'isActive']) {
+    host[name] = GevRealtimeController.prototype[name];
+  }
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = fetchImpl;
+  return { host, statuses, restore: () => { globalThis.fetch = realFetch; } };
+}
+
+const limited = (seconds = '10') => ({ ok: false, status: 429, headers: { get: () => seconds } });
+const openrouterConfig = () => ({
+  ok: true,
+  json: async () => ({ provider: 'openrouter', reason: 'Selected by GEV_VOICE_PROVIDER=openrouter.', language: 'fr-FR', model: 'mistralai/mistral-medium-3.1', maxRounds: 5 }),
+});
+
+test('a 429 on the first click is sat out and retried — the mic starts without a second click', async () => {
+  // Screenshot of 2026-09-09 09:15: "Could not reach voice configuration
+  // (HTTP 429). Click the mic again." The edge rule blocks for ten seconds
+  // and says so in Retry-After; the previous fix made the second click
+  // work, this one removes the second click.
+  let attempts = 0;
+  const { host, statuses, restore } = patientHost({
+    fetchImpl: async () => { attempts += 1; return attempts === 1 ? limited('10') : openrouterConfig(); },
+  });
+  let started = null;
+  host.brainSession = { isActive: () => false, async start(opts) { started = opts; } };
+  try {
+    await host.start({ pushToTalk: false });
+    assert.equal(attempts, 2, 'the lookup was retried by the controller, not by a human');
+    assert.deepEqual(host.waits, [10_000], 'the wait is the limiter\'s own Retry-After');
+    assert.deepEqual(statuses, [['connecting', 'RATE LIMITED — RETRY IN 10 S']], 'the dock shows the wait, never an error');
+    assert.deepEqual(started, { pushToTalk: false }, 'the OpenRouter session started on the same click');
+    assert.equal(host.nextErrorHint, null);
+  } finally {
+    restore();
+  }
+});
+
+test('the waits are bounded: after them the precise diagnosis is shown, pointing away from the mic', async () => {
+  let attempts = 0;
+  const { host, statuses, restore } = patientHost({ fetchImpl: async () => { attempts += 1; return limited('10'); } });
+  try {
+    await host.start();
+    assert.equal(attempts, 3, 'one lookup plus two waited retries');
+    assert.deepEqual(host.waits, [10_000, 10_000]);
+    assert.equal(host.status, 'error');
+    assert.match(statuses.at(-1)[1], /HTTP 429/, 'the status code is still the diagnosis');
+    assert.match(statuses.at(-1)[1], /in front of this server/);
+    assert.equal(host.voiceConfigPromise, null, 'still not remembered — the next click gets a fresh lookup');
+  } finally {
+    restore();
+  }
+});
+
+test('stopping the mic during a rate-limit wait abandons the attempt', async () => {
+  let attempts = 0;
+  const { host, restore } = patientHost({
+    fetchImpl: async () => { attempts += 1; return attempts === 1 ? limited('10') : openrouterConfig(); },
+    // The operator clicks the mic again mid-wait: stop() bumps the epoch.
+    waitMs: async (_ms, self) => { self.startEpoch += 1; self.status = 'idle'; },
+  });
+  let started = false;
+  host.brainSession = { isActive: () => false, async start() { started = true; } };
+  try {
+    await host.start();
+    assert.equal(started, false, 'a stopped attempt must not come back to life after its wait');
+    assert.equal(attempts, 1, 'and it does not even ask again');
+    assert.equal(host.voiceConfigWaiting, false, 'the wait flag is released for the next click');
+  } finally {
+    restore();
+  }
+});
+
+test('a duplicate click during the wait does not start a second session', async () => {
+  let attempts = 0;
+  const { host, restore } = patientHost({
+    fetchImpl: async () => { attempts += 1; return attempts === 1 ? limited('10') : openrouterConfig(); },
+  });
+  let starts = 0;
+  host.brainSession = { isActive: () => false, async start() { starts += 1; } };
+  try {
+    // Two clicks before the first lookup resolves share one promise, then both
+    // see the 429 — only one may sit the wait out and start.
+    await Promise.all([host.start(), host.start()]);
+    assert.equal(starts, 1, 'one mic, one session');
+  } finally {
+    restore();
+  }
+});

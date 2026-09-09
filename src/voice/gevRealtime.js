@@ -1,4 +1,5 @@
 import { createGevActionRunner, readLayerLifecycleSummary } from './gevActions.js';
+import { GevBrainVoiceSession, fetchVoiceConfig } from './gevBrainVoice.js';
 import {
   DEFAULT_VOICE_TIER,
   VOICE_COST_LIMITS,
@@ -19,6 +20,10 @@ const STATUS = {
   executing: 'EXECUTING',
   error: 'ERROR',
 };
+/** The tray's fallback second line — see setStatus for when it is replaced. */
+const DEFAULT_VOICE_ERROR_HINT = 'Check microphone permission and network access, then try again.';
+/** Waits one click sits out when a limiter answers the config lookup with a Retry-After. */
+const VOICE_CONFIG_RETRY_LIMIT = 2;
 const CALL_DEDUPE_MS = 2500;
 // WebRTC 'disconnected' is frequently momentary (a brief network blip that ICE
 // recovers on its own). Give it this long to return to 'connected' before we
@@ -267,6 +272,13 @@ export class GevRealtimeController {
     this.radioHandoffDeferredByReservation = false;
     this.buttonHandler = null;
     this.tierHandler = null;
+    // Which provider drives the mic is a server fact (which key is set). It is
+    // fetched once per page and cached on the promise so a rapid click does not
+    // race two lookups, and so a mic that has already chosen a brain keeps it.
+    this.voiceConfigPromise = null;
+    this.voiceConfigWaiting = false;
+    this.brainSession = null;
+    this.nextErrorHint = null;
     this.annotationEventUnsubscribe = null;
     // Voice cost control. The tier is chosen BEFORE a session starts and is
     // baked into the minted token, so a live session always keeps the model it
@@ -333,8 +345,102 @@ export class GevRealtimeController {
     return this.status !== 'idle' && this.status !== 'error';
   }
 
+  /**
+   * Read which brain this server can drive, caching only a real answer.
+   *
+   * Caching the failure too was a bug with a nasty shape: one transient 429 in
+   * front of the app — or a dropped packet on the first click — left the mic
+   * dead for the whole life of the tab, saying the same thing however many
+   * times it was clicked, and only a page reload cleared it. A lookup that
+   * never reached the server is forgotten so the next click retries.
+   *
+   * @returns {Promise<object>}
+   */
+  resolveVoiceConfig() {
+    if (!this.voiceConfigPromise) {
+      this.voiceConfigPromise = fetchVoiceConfig().then((config) => {
+        if (!config.reachable) this.voiceConfigPromise = null;
+        return config;
+      });
+    }
+    return this.voiceConfigPromise;
+  }
+
+  /**
+   * Sit out a wait. A method, so a test can replace it and never sleep.
+   * @param {number} ms
+   * @returns {Promise<void>}
+   */
+  waitMs(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * resolveVoiceConfig, obeying a Retry-After instead of handing it to the operator.
+   *
+   * Seen on staging 2026-09-09: a rate-limiting rule at the edge — measured at
+   * 30 `/api` requests per 10 s per address, then a 10 s block — tripped on
+   * traffic that was not this page's (a script, a test run on the same
+   * address; the page itself makes six), and every click during those ten
+   * seconds read "HTTP 429, click the mic again". The server SAID how long to
+   * wait; a human with a stopwatch is not a design. The dock shows the wait,
+   * a click during it stops the attempt like any other, and after
+   * VOICE_CONFIG_RETRY_LIMIT waits the precise diagnosis is shown instead.
+   *
+   * @returns {Promise<{config: object, waited: boolean}|null>} null when the
+   *   attempt was abandoned — the operator stopped it mid-wait, or another
+   *   click is already sitting out the same wait.
+   */
+  async resolveVoiceConfigPatiently() {
+    let waited = false;
+    for (let attempt = 0; ; attempt += 1) {
+      const config = await this.resolveVoiceConfig();
+      if (config.reachable || !config.retryAfterMs || attempt >= VOICE_CONFIG_RETRY_LIMIT) {
+        return { config, waited };
+      }
+      if (this.voiceConfigWaiting) return null;
+      this.voiceConfigWaiting = true;
+      const epoch = this.startEpoch;
+      this.setStatus('connecting', `RATE LIMITED — RETRY IN ${Math.ceil(config.retryAfterMs / 1000)} S`);
+      try {
+        await this.waitMs(config.retryAfterMs);
+      } finally {
+        this.voiceConfigWaiting = false;
+      }
+      if (this.startEpoch !== epoch) return null; // stop() ran during the wait
+      waited = true;
+    }
+  }
+
   async start({ pushToTalk = false } = {}) {
     if (this.isActive()) return;
+    const lookup = await this.resolveVoiceConfigPatiently();
+    if (!lookup) return; // stopped mid-wait, or a duplicate click
+    const { config: voiceConfig, waited } = lookup;
+    // The 'connecting' a wait painted is this attempt's own; any other active
+    // status is a second click that landed while the lookup ran.
+    if (!waited && this.isActive()) return;
+    if (voiceConfig.provider === 'openrouter') {
+      // Browser ears, browser mouth, OpenRouter brain. Nothing below this line
+      // runs: there is no peer connection, no ephemeral token and no audio
+      // element in that path (see gevBrainVoice.js).
+      this.pauseRadioForVoice();
+      if (this.ui.tierButton) this.ui.tierButton.hidden = true;
+      if (!this.brainSession) {
+        this.brainSession = new GevBrainVoiceSession({ host: this, runner: this.runner, config: voiceConfig });
+      }
+      await this.brainSession.start({ pushToTalk });
+      return;
+    }
+    if (voiceConfig.provider !== 'openai') {
+      // Say which key is missing instead of failing at the token endpoint. A
+      // keyless clone must be able to read its own diagnosis off the dock.
+      // A lookup that never got an answer also knows where the fault is NOT
+      // (the microphone) — hand that to the tray before it paints.
+      if (!voiceConfig.reachable && voiceConfig.hint) this.nextErrorHint = voiceConfig.hint;
+      this.setStatus('error', voiceConfig.reason || 'Voice is not configured');
+      return;
+    }
     this.pauseRadioForVoice();
     const pushToTalkKeyHeld = pushToTalk && this.pushToTalkKeyHeld;
     const spaceKeyHeld = this.spaceKeyHeld;
@@ -643,6 +749,7 @@ export class GevRealtimeController {
    */
   setMicrophoneEnabled(enabled) {
     if (this.ui?.root) this.ui.root.dataset.microphone = enabled ? 'active' : 'muted';
+    if (this.brainSession?.isActive()) this.brainSession.setMicrophoneEnabled(enabled);
     this.stream?.getAudioTracks?.().forEach((track) => {
       track.enabled = Boolean(enabled);
     });
@@ -769,6 +876,9 @@ export class GevRealtimeController {
 
   stop(options = {}) {
     const { removeUi = false, preserveStatus = false, preserveRadioPlayback = false } = options;
+    // The text-brain session owns no WebRTC state, so it is stopped here and
+    // the cleanup below runs harmlessly over its null peer connection.
+    if (this.brainSession?.isActive()) this.brainSession.stop();
     // Bump the epoch so any start() awaiting a token/getUserMedia/SDP bails and
     // releases its own resources instead of promoting them onto a stopped
     // controller (H7).
@@ -1452,6 +1562,16 @@ export class GevRealtimeController {
       this.ui.errorDetail.textContent = status === 'error'
         ? (resolvedDetail || 'Voice session could not be started.')
         : '';
+    }
+    // The tray's second line is a GUESS ("check microphone permission"), and it
+    // was actively wrong for the failures that have nothing to do with the mic
+    // — a browser with no speech service, a rate limit in front of the app.
+    // Callers set `nextErrorHint` when they know better; it is consumed once so
+    // a stale diagnosis never outlives the error that produced it.
+    if (this.ui.errorHint) {
+      if (status === 'error' && this.nextErrorHint) this.ui.errorHint.textContent = this.nextErrorHint;
+      else if (status !== 'error') this.ui.errorHint.textContent = DEFAULT_VOICE_ERROR_HINT;
+      this.nextErrorHint = null;
     }
     if (status === 'idle' || status === 'connecting' || status === 'error') {
       this.setVoiceSpeaker('idle');
@@ -2604,6 +2724,7 @@ function createVoiceControl({ reset = false } = {}) {
     detail: root.querySelector('#gev-voice-detail'),
     helpDetail: root.querySelector('.gev-voice-help-detail'),
     errorDetail: root.querySelector('#gev-voice-error-detail'),
+    errorHint: root.querySelector('.gev-voice-error-hint'),
     tierButton: root.querySelector('#gev-voice-tier'),
     costValue: root.querySelector('#gev-voice-cost-value'),
   };

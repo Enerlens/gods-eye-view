@@ -533,7 +533,16 @@ export async function searchAndFlyTo(viewer, query, options = {}) {
       types = recovered.types || [];
       viewport = placesViewportToBounds(recovered.viewport) || viewport;
     } else if (!result) {
-      return null;
+      // A Google key that is PRESENT but cannot answer — billing off, the
+      // Geocoding API not enabled, a regional restriction — used to end the
+      // search here. Every place outside the curated presets then became
+      // silently unreachable while the keyless geocoder sat working next to it
+      // (measured 2026-09-09: REQUEST_DENIED "You must enable Billing", and
+      // /api/geocode answering Bordeaux correctly at the same moment).
+      // A broken key must degrade TO the keyless path, not past it.
+      const hit = await keylessGeocode(query, { bias });
+      if (!hit) return null;
+      ({ lat, lng, label, types, viewport } = hit);
     }
   } else {
     // The keyless geocoder's own bounded-then-worldwide pass is what stands in

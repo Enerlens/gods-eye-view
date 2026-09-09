@@ -669,10 +669,17 @@ test('the voice TOOL SCHEMA is byte-identical to main — the mission mapping is
   // Re-frozen a third time, this one SHRINKING the schema: the global bloom
   // pass was removed from the product, so `set_post_processing` lost its
   // `bloom` object and now controls sharpen alone. -263 bytes, one cache bust.
-  assert.equal(block.length, 31208, 'tool schema byte length drifted from the frozen baseline');
+  //
+  // Re-frozen a fourth time: `fly_to_location`'s preset enum gained the seven
+  // French cities this fork had already added to CITY_POIS but never exposed to
+  // the model. Until now it could not NAME them, so "va à Marseille" fell
+  // through to a geocode instead of the hand-tuned framing sitting right there.
+  // +550 bytes, one cache bust, and src/locations.test.mjs now fails if the two
+  // lists drift again.
+  assert.equal(block.length, 31758, 'tool schema byte length drifted from the frozen baseline');
   assert.equal(
     crypto.createHash('sha256').update(block).digest('hex'),
-    '478e282e160eca8760a1e9da2388f041769f8ebd6acdcd3cfdcf7fccdcc42c03',
+    '307c59a2086a1fc84a9e461cac33e1b10de21d34abf32d3be7c5578d4ccf6ba0',
     'the first-run missions must ride EXISTING tools: no schema edit, no cache bust',
   );
 

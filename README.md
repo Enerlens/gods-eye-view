@@ -128,7 +128,12 @@ The cockpit even carries its own briefing strip: nearby live signals, regional h
 
 ## 🎙️ Talk to It
 
-> Voice needs an **OpenAI key**. Without one the entire app still runs — the mic button just reports voice is unavailable. The same key drives the **AI HUD summary**: a terse, five-word intelligence-style readout of the current view that regenerates as you move.
+> Voice needs **one key — your choice of two**. Without either, the entire app still runs; the mic button just says which key it wants.
+>
+> - **OpenAI** — a single speech-to-speech model over WebRTC. Full duplex: you can talk over it. The same key drives the **AI HUD summary**, a terse five-word intelligence-style readout of the current view that regenerates as you move.
+> - **OpenRouter** — your browser's own speech recognition and speech synthesis (no key, no download) with a text model in the middle, driving the same 28 tools. Turn-based rather than full duplex, and cheaper: measured **$0.001–0.005 per spoken command** on the default brain. Set `GEV_VOICE_PROVIDER=openrouter`.
+>
+> The default brain on that path is **Mistral Medium 3.1**, picked on a French routing bench over this app's own tool schemas — 26/26 on tool choice, and the only model in that bench that refused to invent history when handed a thin source document. Any OpenRouter model with tool calling works: set `OPENROUTER_VOICE_MODEL`.
 
 Click **GEV MIC**, grant the microphone, and just talk. This is more than a voice-controlled remote:
 
@@ -256,7 +261,7 @@ Once the basics click, run these:
 | **🪦 Walk the boneyard** | Fly from regional context down into dense, fully resolved rows of retired aircraft. |
 | **🏗️ Orbit Three Gorges** | Sweep the dam and its terrain at a glance — then flip on the **Barrages** layer and find 6,188 more. |
 
-*🎙️ = voice missions — they need an OpenAI key.*
+*🎙️ = voice missions — they need an OpenAI **or** OpenRouter key.*
 
 ![Resolving a selected aircraft's recent flight path into stacked 3D loops above the terrain](docs/media/07-helicopter-loops.gif)
 
@@ -281,8 +286,8 @@ Some of the engineering that makes it feel real rather than like a tech demo:
 - **Honest satellites.** SGP4 propagation with orbit rings that stay locked to their satellites via GMST realignment — no drift, no per-second flicker.
 - **Sits on the real ground.** Entity heights run through a real vertical datum — geoid-aware, sampled against the *rendered* terrain mesh — so aircraft park on aprons and cameras stand on street corners instead of floating.
 - **Spends your quota like it's its own.** The paid feeds run behind cached, budget-governed proxies — an OpenSky credit governor, a TomTom daily tile budget, disk-cached TLEs — so an afternoon of exploring doesn't torch an API allowance.
-- **Local-first key handling.** Secret-bearing providers such as OpenAI, AISStream, OpenSky OAuth, TomTom, and FIRMS are brokered server-side. Proxy destinations are fixed or allowlisted, and the higher-risk paths add bounded requests, timeouts, response caps, and sanitized errors as appropriate. The only provider credentials intentionally exposed to the browser are Google Maps and Cesium ion; restrict both at the provider.
-- **No framework.** Vanilla JavaScript, **CesiumJS**, and **Vite** — plus **Google Photorealistic 3D Tiles** for the planet and the **OpenAI Realtime API** for voice. Fast to read, fast to hack on.
+- **Local-first key handling.** Secret-bearing providers such as OpenAI, OpenRouter, AISStream, OpenSky OAuth, TomTom, and FIRMS are brokered server-side. On the OpenRouter voice path the server also owns the system prompt and the tool list, so a public instance cannot be turned into somebody else's free model endpoint. Proxy destinations are fixed or allowlisted, and the higher-risk paths add bounded requests, timeouts, response caps, and sanitized errors as appropriate. The only provider credentials intentionally exposed to the browser are Google Maps and Cesium ion; restrict both at the provider.
+- **No framework.** Vanilla JavaScript, **CesiumJS**, and **Vite** — plus **Google Photorealistic 3D Tiles** for the planet, and either the **OpenAI Realtime API** or **Web Speech + OpenRouter** for voice. Fast to read, fast to hack on.
 
 ```
 src/
@@ -291,7 +296,8 @@ src/
 ├── hud.js                  # Intelligence HUD + AI scene summary
 ├── mapStackController.js   # Google 3D / Bing / OSM switching
 ├── iconOrientation.js      # Screen-projected world-space headings + horizon cull
-├── voice/                  # OpenAI Realtime session + 28 voice tools
+├── voice/                  # Two brains, one runner: OpenAI Realtime or
+│                           #   Web Speech + OpenRouter, over 28 shared tools
 ├── data/                   # One module per layer + management + context store
 │   └── local_data/         # Bundled datasets (per-folder provenance)
 └── scenes/                 # Cinematic scene director
@@ -307,16 +313,17 @@ See [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md) for the authoritative runti
 
 Most of the globe is 🟢: the **basemap itself** (OSM and world satellite imagery worldwide, IGN's 20 cm orthophoto and Plan IGN over France), **place search** (OpenStreetMap's Nominatim worldwide, the IGN Géoplateforme for French addresses), flights (anonymous), military traffic, satellites, earthquakes, CCTV, radio, bikeshare, French transit, French shared mobility, space missions, mapped installations, and every bundled dataset run with **zero keys**.
 
-**`git clone && npm i && npm run dev` needs no credential at all.** What a keyless build gives up is the photorealistic 3D planet, the Bing imagery stacks, the voice mic, and the Google-only place context behind annotations and the cockpit readout — each of which says which key it wants rather than failing silently. The search box is not on that list any more: it geocodes keylessly.
+**`git clone && npm i && npm run dev` needs no credential at all.** What a keyless build gives up is the photorealistic 3D planet, the Bing imagery stacks, the voice mic, and the Google-only place context behind annotations and the cockpit readout — each of which says which key it wants rather than failing silently. The search box is not on that list any more: it geocodes keylessly. Neither is the mic's ears and mouth: on the OpenRouter path those are the browser's, so the only thing a key buys there is the brain.
 
 ### What you need for the good experience
 
-Five keys cover the fully keyed experience. Three currently offer no-cost developer access; Google Maps and OpenAI are usage-metered. Provider prices and allowances change, so use the linked pricing pages before relying on a budget estimate:
+Five keys cover the fully keyed experience. Three currently offer no-cost developer access; Google Maps and the voice brain are usage-metered. Provider prices and allowances change, so use the linked pricing pages before relying on a budget estimate:
 
 | | Key | Why | Get it |
 |---|-----|-----|--------|
 | 🔴 | **Google Maps** | The photorealistic 3D planet ([Map Tiles API](https://developers.google.com/maps/documentation/tile)), the place context behind annotations and the cockpit readout, and the sharpest place search. Without it the app boots on the keyless globe stacks and searches through OpenStreetMap + IGN instead | [Google Cloud Console](https://console.cloud.google.com/) — metered; [check current pricing](https://developers.google.com/maps/billing-and-pricing/pricing) and URL-restrict it |
-| 🔴 | **OpenAI** | 🎙️ The voice experience + AI HUD summary. Want another provider behind the mic? PRs welcome | [platform.openai.com](https://platform.openai.com) — metered; [check current API pricing](https://openai.com/api/pricing/) |
+| 🔴 | **OpenAI** *(one of two)* | 🎙️ The full-duplex voice experience + AI HUD summary | [platform.openai.com](https://platform.openai.com) — metered; [check current API pricing](https://openai.com/api/pricing/) |
+| 🔴 | **OpenRouter** *(one of two)* | 🎙️ The same 28 voice tools driven by any tool-calling text model, with the browser supplying speech recognition and synthesis. Cheaper, turn-based, and one key fronts every provider | [openrouter.ai](https://openrouter.ai) — metered; [check current model pricing](https://openrouter.ai/models) |
 | 🟡 | **AISStream** | 🚢 Live ships (France by default, world on request) | [aisstream.io](https://aisstream.io) — free, seriously, it's a two-minute signup |
 | 🟡 | **NASA FIRMS** | 🔥 Live active fires | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov/api/map_key/) — free |
 | 🟡 | **TomTom** | 🚦 Real traffic instead of an approximate simulation | [developer.tomtom.com](https://developer.tomtom.com) — check the current developer allowance for your account |

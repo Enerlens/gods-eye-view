@@ -2990,3 +2990,27 @@ test('front5: 0.99 km due EAST is the subject, though a degree box rejects it', 
     assert.equal(result.window.centeredOn, 'N546PC');
   });
 });
+
+test('fly_to_location: a spoken query beats a contradicting preset id', async () => {
+  // Regression, measured on the OpenRouter brain: Mistral Medium answered
+  // "Emmène-moi à Bordeaux" with BOTH locationId:"paris" and query:"Bordeaux".
+  // The preset used to win, so the camera flew to Paris and the confirmation
+  // said Paris — a failure a voice user has no way to diagnose.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  viewer.camera.flyTo = (options) => { options.complete?.(); };
+  const runner = createGevActionRunner({
+    viewer,
+    styleManager,
+    dataManager: { layers: new Map(), getAll: () => [] },
+  });
+
+  const contradicted = await runner('fly_to_location', { locationId: 'austin', query: 'Tokyo' });
+  assert.equal(contradicted.locationId, 'tokyo', 'the place the user actually said wins');
+
+  const presetOnly = await runner('fly_to_location', { locationId: 'austin' });
+  assert.equal(presetOnly.locationId, 'austin', 'a preset id alone still drives the camera');
+
+  const queryPreset = await runner('fly_to_location', { query: 'austin' });
+  assert.equal(queryPreset.locationId, 'austin', 'a query naming a preset still resolves to it');
+});
