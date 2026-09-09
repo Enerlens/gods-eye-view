@@ -1167,6 +1167,10 @@ npm run perf:infra -- --url http://127.0.0.1:4179 --scene world --per-pack
 # la même mesure, profil épinglé (sans quoi SwiftShader impose `lite`)
 npm run perf:infra -- --url http://127.0.0.1:4179 --profile full \
   --baseline avant.json --json apres.json
+# ce qu'une feature dessinée COÛTE, pièce par pièce — sans navigateur, sans
+# rendu, donc décomposable là où la lecture CDP ci-dessus ne l'est pas
+npm run perf:entity-weight
+npm run perf:entity-weight -- --pack dams --count 3000
 
 # ── les coûts GPU fixes, un levier à la fois (le banc rend sur un VRAI GPU —
 # voir § 0 : `headless: 'new'` n'est PAS SwiftShader) ─────────────────────────
@@ -1724,9 +1728,14 @@ enregistré.
 
 L'entrée précédente disait « c'est la machinerie `Entity` + `Property`, seule la
 migration vers les primitives l'enlève ». La première moitié est juste, la
-seconde était une conclusion, pas une mesure. Pesé objet par objet
-(`node --expose-gc`, 3 000 features réelles du pack aéroports, `HeapProfiler`
-n'étant pas nécessaire hors navigateur — deux `gc()` encadrent chaque montage) :
+seconde était une conclusion, pas une mesure — et elle envoyait le plan sur le
+correctif le plus cher disponible. `npm run perf:entity-weight`
+(`scripts/perf-entity-weight.mjs`) est le banc qui a dit autre chose : il monte
+le graphe d'objets qu'un pack obtient, puis le repèse une couche retirée à la
+fois, donc le coût s'attribue à une PIÈCE et non à une catégorie. Rien n'y est
+rendu, donc `heapUsed` entre deux collectes forcées EST le coût de ce graphe et
+de rien d'autre — c'est ce que la lecture CDP de `perf:infra` ne peut pas faire.
+Sur 3 000 features réelles du pack aéroports :
 
 | Ce qu'on garde | Octets / feature |
 |---|---:|
