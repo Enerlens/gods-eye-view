@@ -74,6 +74,10 @@
     "qa:cadastre-highlight": "node scripts/qa-cadastre-highlight.mjs",
     "qa:petite-enfance-fr": "node scripts/qa-petite-enfance-fr.mjs",
     "qa:delinquance-fr": "node scripts/qa-delinquance-fr.mjs",
+    "qa:datasets": "node scripts/qa-datasets.mjs",
+    "measure:plug": "node scripts/measure-plug-e2e.mjs",
+    "measure:plug:render": "node scripts/measure-plug-render.mjs",
+    "measure:voice-turn": "node scripts/measure-voice-turn.mjs",
     "rrn:pack": "node scripts/build-rrn-centreline-pack.mjs",
     "transit:index": "node scripts/build-pan-gtfs-rt-index.mjs",
     "transit:route-types": "node scripts/build-pan-route-types.mjs",
@@ -107,7 +111,8 @@
     "qa:meteo-stations-fr": "node scripts/qa-meteo-stations-fr.mjs",
     "qa:chronicle": "node scripts/qa-chronicle.mjs",
     "chronicle:gtfs-rt-cost": "node scripts/measure-pan-gtfs-rt-cost.mjs",
-    "chronicle:service-day": "node scripts/measure-gtfs-service-day.mjs"
+    "chronicle:service-day": "node scripts/measure-gtfs-service-day.mjs",
+    "dataset:manifest": "node scripts/dataset-manifest.mjs"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",

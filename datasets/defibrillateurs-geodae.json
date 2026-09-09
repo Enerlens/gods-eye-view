@@ -1,0 +1,42 @@
+{
+  "id": "defibrillateurs-geodae",
+  "label": "Défibrillateurs (GeoDAE)",
+  "name": "Defibrillators GeoDAE",
+  "icon": "♥",
+  "color": "#ff5c7a",
+  "category": "built-environment",
+  "coverage": "fr",
+  "source": {
+    "kind": "datagouv",
+    "resourceId": "edb6a9e1-2f16-4bbf-99e7-c3eb6b90794c",
+    "scope": "viewport",
+    "maxFeatures": 4000,
+    "maxSpanDeg": 1.5
+  },
+  "geometry": { "lon": "c_long_coor1", "lat": "c_lat_coor1" },
+  "feature": {
+    "title": ["c_nom", "c_acc_complt", "c_adr_voie"],
+    "details": [
+      { "field": "c_adr_voie", "label": "Voie" },
+      { "field": "c_com_nom", "label": "Commune" },
+      { "field": "c_acc", "label": "Accès" },
+      { "field": "c_disp_j", "label": "Jours" },
+      { "field": "c_disp_h", "label": "Heures" },
+      { "field": "c_etat_fonct", "label": "État" }
+    ],
+    "group": {
+      "field": "c_acc",
+      "styles": {
+        "Extérieur": { "color": "#ff5c7a", "label": "Extérieur" },
+        "Intérieur": { "color": "#ffb3c0", "label": "Intérieur" }
+      },
+      "other": { "color": "#9aa7bd", "label": "Accès non renseigné" }
+    }
+  },
+  "attribution": {
+    "publisher": "Atlasanté — Base nationale des défibrillateurs (GeoDAE)",
+    "licence": "Licence Ouverte 2.0",
+    "url": "https://www.data.gouv.fr/datasets/geodae-base-nationale-des-defibrillateurs/",
+    "text": "Défibrillateurs : GeoDAE — Atlasanté, via data.gouv.fr (Licence Ouverte 2.0)"
+  }
+}

@@ -159,6 +159,9 @@ export class DataLayerManager {
     this._collapsedCategories = new Set();
     this._allowQaRegistration = allowQaRegistration === true;
     this._qaLayerIds = new Set();
+    // Plugged datasets: registered AFTER the seal, by the dataset box, and
+    // tracked apart so they can be unplugged without touching the sealed set.
+    this._datasetLayerIds = new Set();
   }
 
   register(layerModule) {
@@ -184,6 +187,58 @@ export class DataLayerManager {
     const destroyed = await this.destroyLayer(layerId);
     if (destroyed) this._qaLayerIds.delete(layerId);
     return destroyed;
+  }
+
+  /**
+   * Register a plugged dataset once the production registry is sealed.
+   *
+   * The seal exists so a CORE layer cannot reach the panel without a share
+   * token and a taxonomy row — both boot-validated tables. A plugged dataset
+   * is the other case by design: it comes from a manifest, not from code, it
+   * carries no share token (see `datasetStore.js` for why), and its taxonomy
+   * row is derived from the manifest. So it lands after the seal, through
+   * this door and no other, and the panel groups it under the category the
+   * manifest names — which must be one the manager was sealed with, because
+   * a row in a group that does not exist is a row nobody sees.
+   *
+   * @param {object} layerModule The layer, same contract as `register()`.
+   * @param {object} taxonomyEntry `{id, category, label, kind, coverage, auth, cadence, scopeChip}`.
+   * @returns {string} The registered layer id.
+   */
+  registerDataset(layerModule, taxonomyEntry) {
+    if (!this._registrationsFinalized) {
+      throw new Error('Dataset layers register after the production registry is sealed');
+    }
+    if (!taxonomyEntry || taxonomyEntry.id !== layerModule?.id || !taxonomyEntry.category) {
+      throw new Error('Dataset taxonomy entry is incomplete');
+    }
+    if (this._registrationCategories
+      && !this._registrationCategories.some((category) => category.id === taxonomyEntry.category)) {
+      throw new Error(`Unknown dataset category: ${taxonomyEntry.category}`);
+    }
+    this._registerLayer(layerModule);
+    this._datasetLayerIds.add(layerModule.id);
+    if (this._registrationTaxonomy) {
+      this._registrationTaxonomy.set(layerModule.id, Object.freeze({ ...taxonomyEntry }));
+    }
+    this._renderToggles();
+    return layerModule.id;
+  }
+
+  /** Destroy and forget a plugged dataset. False when the id is not one, or teardown was refused. */
+  async unregisterDataset(layerId) {
+    if (!this._datasetLayerIds.has(layerId)) return false;
+    const destroyed = await this.destroyLayer(layerId);
+    if (destroyed) {
+      this._registrationTaxonomy?.delete(layerId);
+      this._renderToggles();
+    }
+    return destroyed;
+  }
+
+  /** Whether a layer id was registered through `registerDataset()`. */
+  isDatasetLayer(layerId) {
+    return this._datasetLayerIds.has(layerId);
   }
 
   _registerLayer(layerModule) {
@@ -1976,6 +2031,7 @@ export class DataLayerManager {
     }
     this.layers.delete(layerId);
     this._qaLayerIds.delete(layerId);
+    this._datasetLayerIds.delete(layerId);
     return true;
   }
 

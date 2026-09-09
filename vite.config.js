@@ -24957,6 +24957,183 @@ function deferCesiumBundlePlugin() {
   };
 }
 
+
+// ---------------------------------------------------------------------------
+// Dataset relay — the one pass-through the dataset box may use
+// ---------------------------------------------------------------------------
+//
+// A plugged dataset (`src/data/datasetBox.js`) is fetched by the BROWSER: the
+// French open-data platforms answer `access-control-allow-origin: *`, measured
+// 2026-09-08 on data.gouv.fr, the Tabular API, the IGN Géoplateforme WFS and
+// the Opendatasoft portals. This relay exists for the hosts that do not —
+// INSEE answers 403 to any request carrying an Origin header — and the client
+// only reaches for it after a direct attempt failed the way CORS fails.
+//
+// WHAT KEEPS IT FROM BEING AN OPEN PROXY. GET only; https only; the target host
+// must end with one of the allow-listed suffixes (extendable through
+// GEV_PLUG_HOSTS, comma-separated); redirects are followed by hand so every
+// hop is checked against the same list; the body is read under a byte cap;
+// no request header from the client is forwarded; and the whole thing sits
+// behind `accessGatePlugin` like every other route. Answers are cached on disk
+// under `.gev-cache/plug/` for an hour and served stale for a week on upstream
+// failure, the same contract as the address routes.
+const PLUG_ALLOWED_HOST_SUFFIXES = Object.freeze([
+  'data.gouv.fr', 'geopf.fr', 'ign.fr', 'opendatasoft.com', 'insee.fr', 'geo.api.gouv.fr',
+  'opendata.paris.fr', 'data.grandlyon.com', 'raw.githubusercontent.com', 'github.io',
+]);
+const PLUG_MAX_BYTES = 24 * 1024 * 1024;
+const PLUG_CACHE_MS = 60 * 60 * 1000;
+const PLUG_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+const PLUG_MAX_REDIRECTS = 5;
+const PLUG_TIMEOUT_MS = 45_000;
+const PLUG_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'plug');
+
+/** Extra host suffixes an operator allowed through the environment. */
+function plugExtraHosts(env = process.env) {
+  return String(env.GEV_PLUG_HOSTS || '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function plugHostAllowed(hostname, extra = plugExtraHosts()) {
+  const host = String(hostname || '').toLowerCase();
+  return [...PLUG_ALLOWED_HOST_SUFFIXES, ...extra].some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+}
+
+/**
+ * Why a relay target is refused, or null when it may be fetched.
+ * Exported for the unit test; pure.
+ * @param {string} rawUrl
+ * @param {string[]} [extra]
+ * @returns {string|null}
+ */
+export function plugRelayTargetFault(rawUrl, extra = []) {
+  let url;
+  try { url = new URL(String(rawUrl || '')); } catch { return 'url invalide'; }
+  if (url.protocol !== 'https:') return 'https uniquement';
+  if (url.username || url.password) return 'identifiants refusés dans l\'URL';
+  if (!plugHostAllowed(url.hostname, extra)) return `hôte non autorisé : ${url.hostname}`;
+  return null;
+}
+
+function plugDiskPath(key) {
+  return path.join(PLUG_DISK_DIR, `${createHash('sha1').update(key).digest('hex')}.json`);
+}
+
+async function readPlugDisk(key) {
+  try {
+    const parsed = JSON.parse(await fsp.readFile(plugDiskPath(key), 'utf8'));
+    if (!parsed || typeof parsed.body !== 'string' || !Number.isFinite(parsed.at)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writePlugDisk(key, entry) {
+  fsp.mkdir(PLUG_DISK_DIR, { recursive: true })
+    .then(() => fsp.writeFile(plugDiskPath(key), JSON.stringify(entry)))
+    .catch((error) => console.warn(`[plug-relay] disk write failed: ${error?.message || error}`));
+}
+
+/** Follow redirects by hand so every hop is allow-listed. */
+async function fetchPlugUpstream(target) {
+  let current = target;
+  for (let hop = 0; hop <= PLUG_MAX_REDIRECTS; hop += 1) {
+    const fault = plugRelayTargetFault(current);
+    if (fault) {
+      const error = new Error(fault);
+      error.plugStatus = 400;
+      throw error;
+    }
+    const response = await fetch(current, {
+      redirect: 'manual',
+      signal: AbortSignal.timeout(PLUG_TIMEOUT_MS),
+      headers: {
+        'User-Agent': 'gods-eye-view/0.1 (+https://github.com/bilawalsidhu/gods-eye-view; dataset relay)',
+        Accept: 'application/json, text/csv, text/plain;q=0.9, */*;q=0.5',
+      },
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      try { await response.body?.cancel?.(); } catch { /* no-op */ }
+      if (!location) break;
+      current = new URL(location, current).toString();
+      continue;
+    }
+    if (!response.ok) {
+      try { await response.body?.cancel?.(); } catch { /* no-op */ }
+      const error = new Error(`amont HTTP ${response.status}`);
+      error.plugStatus = response.status === 404 ? 404 : 502;
+      throw error;
+    }
+    const body = await readResponseTextCapped(response, PLUG_MAX_BYTES);
+    return {
+      at: Date.now(),
+      status: 200,
+      contentType: response.headers.get('content-type') || 'text/plain; charset=utf-8',
+      body,
+    };
+  }
+  const error = new Error('trop de redirections');
+  error.plugStatus = 502;
+  throw error;
+}
+
+function datasetRelayProxy() {
+  const memory = new Map();
+  const inFlight = new Map();
+  const limiter = makeRateLimiter({ windowMs: 60_000, max: 60, globalMax: 240 });
+
+  const send = (res, status, body, contentType, cacheState) => {
+    res.statusCode = status;
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', status === 200 ? 'public, max-age=300' : 'no-store');
+    res.setHeader('X-GEV-Cache', cacheState);
+    res.end(body);
+  };
+  const sendError = (res, status, message) => send(res, status, JSON.stringify({ error: message }), 'application/json; charset=utf-8', 'NONE');
+
+  function install(middlewares) {
+    middlewares.use('/api/plug', async (req, res) => {
+      if (req.method !== 'GET') { sendError(res, 405, 'Method Not Allowed'); return; }
+      const target = new URL(req.url, 'http://localhost').searchParams.get('url');
+      const fault = plugRelayTargetFault(target || '');
+      if (fault) { sendError(res, 400, fault); return; }
+      const key = target;
+      const now = Date.now();
+      let cached = memory.get(key) || await readPlugDisk(key);
+      if (cached) memory.set(key, cached);
+      if (cached && now - cached.at < PLUG_CACHE_MS) {
+        send(res, 200, cached.body, cached.contentType, 'HIT');
+        return;
+      }
+      if (!limiter(clientKey(req))) { sendError(res, 429, 'trop de requêtes'); return; }
+      const request = coalesceProxyRequest(inFlight, key, () => fetchPlugUpstream(target));
+      try {
+        const fresh = await request.promise;
+        memory.set(key, fresh);
+        writePlugDisk(key, fresh);
+        send(res, 200, fresh.body, fresh.contentType, request.shared ? 'INFLIGHT' : 'MISS');
+      } catch (error) {
+        if (cached && now - cached.at < PLUG_STALE_MS) {
+          send(res, 200, cached.body, cached.contentType, 'STALE-ERROR');
+          return;
+        }
+        const status = Number.isInteger(error?.plugStatus) ? error.plugStatus : 502;
+        sendError(res, status, error?.message || 'relais indisponible');
+      }
+    });
+  }
+
+  return {
+    name: 'dataset-relay-proxy',
+    configureServer(server) { install(server.middlewares); },
+    configurePreviewServer(server) { install(server.middlewares); },
+  };
+}
+
 /**
  * Mirrors a dev-only middleware plugin onto the preview server.
  *
@@ -25066,6 +25243,7 @@ export default defineConfig(({ mode }) => {
       gpuProxy(),
       idfmProxy(),
       geoidProxyPlugin(),
+      datasetRelayProxy(),
       // Last, so its `httpServer.close` teardown is registered after every
       // proxy that feeds it has installed its own.
       chronicleProxy(),

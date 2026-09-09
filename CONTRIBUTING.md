@@ -24,6 +24,7 @@ Open `http://localhost:4173`. Before sending a PR run `npm run build`, `npm test
 The highest-leverage places to jump in:
 
 - **🌆 Add a CCTV source pack.** Austin is the reference camera source. Adding another city means a clean public camera catalog with coordinates, attribution, and server-registered frame URLs (the proxy only fetches registered URLs — never client-supplied ones, see [SECURITY.md](SECURITY.md)). City packs are the best first lane.
+- **🔌 Plug a dataset — one JSON file, no code.** Drop a manifest in `datasets/<id>.json` (or paste the dataset's address into **＋ BRANCHER UN JEU DE DONNÉES** under the layer list and copy the manifest it produces) and the layer is on the panel at the next build: group, source line, credit, card and legend derive from the file. `npm run dataset:manifest -- <url>` writes one from a data.gouv.fr page, an Opendatasoft page, a WFS or a bare GeoJSON/CSV. Contract and limits: [`docs/DATASETS.md`](docs/DATASETS.md).
 - **🛰️ Add or improve a data layer.** Each layer is one self-contained module in `src/data/<layer>.js` implementing the layer interface (`init/enable/disable/update/destroy/getStats`, optional `getDetectableObjects`/`getStats`). Use an existing layer as a template.
 - **🎙️ Extend voice control.** Voice tools are declared server-side (`GEV_REALTIME_TOOLS` in `vite.config.js`) and executed client-side (`src/voice/gevActions.js`). Keep the tool surface tight and the responses honest (confirm only what actually happened).
 - **🎨 Add a visual style.** Styles are GLSL post-process shaders in `src/styles/`.
@@ -32,6 +33,16 @@ The highest-leverage places to jump in:
 ## Finding a French data source (`.mcp.json`)
 
 `.mcp.json` registers the **official data.gouv.fr MCP server** (`https://mcp.data.gouv.fr/mcp`, no key, read-only) so a compatible AI assistant can search the national open-data catalog while you work. It's a discovery aid for authors — `search_datasets`, `search_dataservices`, `get_dataservice_openapi_spec` and `list_dataset_resources` beat guessing at dataset URLs when you're scoping a new layer.
+
+The step after a hit is one command. The dataset id or resource id the MCP returns is exactly what the manifest tool opens:
+
+```
+search_datasets("défibrillateurs")                         # MCP → dataset 61556e1e9d6adb2df86eb0fc
+list_dataset_resources("61556e1e9d6adb2df86eb0fc")         # MCP → the CSV resource
+npm run dataset:manifest -- 61556e1e9d6adb2df86eb0fc       # writes datasets/<id>.json
+```
+
+The tool reads the same REST endpoints the MCP wraps, profiles the columns on the Tabular API, guesses the geometry and says why, and reminds you that the licence it read is confirmed on the dataset's page. See [`docs/DATASETS.md`](docs/DATASETS.md).
 
 It is **not** a runtime data path, and no product code should call it:
 

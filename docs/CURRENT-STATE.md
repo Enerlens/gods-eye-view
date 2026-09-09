@@ -2,6 +2,54 @@
 
 Updated: September 8, 2026
 
+> **2026-09-08 — la boîte à datasets : un jeu de données se branche, il ne se
+> code plus.** Contrat et limites dans `docs/DATASETS.md` ; code dans
+> `src/data/dataset*.js`. Trois portes : **＋ BRANCHER UN JEU DE DONNÉES** sous
+> la liste des couches (coller une adresse → brouillon → BRANCHER, retenu dans
+> ce navigateur sous `gev:plugged-datasets:v1`), un fichier `datasets/<id>.json`
+> (livré à tous au build, validé par `datasetsCatalog.test.mjs`), et
+> `npm run dataset:manifest -- <url>` — la commande qui suit une recherche sur
+> le MCP data.gouv.fr. Six adaptateurs (`datasetSources.js`) : GeoJSON,
+> GeoJSONL, CSV, **data.gouv.fr par l'API tabulaire** (pages de 200 lignes
+> typées, filtres d'emprise sur les colonnes de position — jamais utilisée
+> avant dans ce dépôt), WFS (`CRS:84`, mesuré contre la Géoplateforme) et
+> Opendatasoft (`in_bbox`). Tout part du navigateur : les plateformes
+> françaises répondent en CORS ouvert (mesuré) ; `/api/plug` est un relais
+> sur liste blanche pour celles qui refusent un `Origin` (INSEE), tenté
+> après un échec direct seulement.
+>
+> **Ce qui a bougé dans le cœur.** `localGeojson.js` prend trois crochets —
+> `loadFeatures`, `cardCopy`, `invalidate` — et rien d'autre : un jeu branché
+> hérite des tiges, cartes, arbitrage d'étiquettes et occultation des packs
+> livrés. `manager.js` ouvre une porte après le scellé, `registerDataset()` /
+> `unregisterDataset()`, qui ajoute la ligne de taxonomie dérivée du manifeste
+> et redessine le panneau ; les jetons de partage ne sont PAS touchés (un jeu
+> branché n'en a pas, et `docs/DATASETS.md` dit pourquoi). Un neuvième groupe,
+> `plugged` « JEUX BRANCHÉS », vide au démarrage et sans en-tête tant qu'il
+> l'est. L'énumération vocale reste octet pour octet la même ; l'exécuteur
+> accepte tout identifiant enregistré, donc `ds-<id>` se commande à la voix.
+>
+> **Ce que la ligne dit** (CARTOGRAPHIE A5, D1, F6, H1) : « 4 000 affichés
+> sur 186 137 — plafond 4 000, premières lignes », « 42 dans la vue », « n
+> sans position », « via relais » ; au-delà de `maxSpanDeg` un jeu chargé pour
+> la vue affiche « rapprochez-vous » comme consigne (`status: 'zoom-in'`),
+> pas comme panne. La légende porte une entrée par groupe avec son effectif.
+>
+> **Trois manifestes livrés** : défibrillateurs GeoDAE (data.gouv.fr, vue),
+> arbres remarquables de Paris (Opendatasoft, entier), emprises d'aérodromes
+> BD TOPO (WFS IGN, vue). Licences confirmées sur les pages des jeux et
+> portées dans `DATA_SOURCES.md`.
+>
+> **Vérifié** : 6 393 tests unitaires, 0 échec (60 nouveaux) ; `npm run
+> qa:datasets -- --url … --deep` en navigateur, 16 contrôles au vert :
+> catalogue sur le panneau, inférence d'une page Opendatasoft, plug/unplug
+> par l'API et par le formulaire, chargement réel du GeoDAE branché par le
+> formulaire (5 000 lignes de la vue par défaut en 25 requêtes à l'API
+> tabulaire, écrêtage déclaré), persistance à travers un rechargement.
+> **Piège de harnais** : `page.click()` et les captures d'écran de puppeteer
+> expirent sur cette page alors qu'`evaluate` répond en 1 ms — le harnais
+> clique par le DOM et les captures sont sur option (`--shots`).
+
 > **2026-09-08 — la fiche d'adresse dit où elle se situe dans le pays.**
 > `src/data/baremeNational.js` porte onze échelles nationales mesurées par
 > `npm run bareme:fr` sur **1 200 anneaux piétons de dix minutes**, tirés à
