@@ -177,11 +177,19 @@ let _canvasNeedsClear = true;
 let _detectionSurfaceNeedsClear = true;
 let _occludersUpdatedAt = Number.NEGATIVE_INFINITY;
 /**
- * Digest of the last exclusion inventory actually built, and how many refreshes
- * rebuilt an identical one. See `occluderSignature()`.
+ * The last exclusion inventory actually solved, flattened to
+ * `[hard, x, y, w, h]` per rect, and how many refreshes rebuilt an identical
+ * one (the counter lives in `_diagnostics`). See
+ * `occluderInventoryUnchanged()`.
+ *
+ * A FLAT TYPED ARRAY, not a string digest. The first version of this guard
+ * built a `${x},${y};` signature and cost 1.5 kB per frame in the allocation
+ * gate — a guard that exists to stop wasted work must not itself be work. The
+ * buffer is grown, never reallocated per refresh, and comparison writes
+ * nothing.
  */
-let _occluderSignature = null;
-let _occluderNoopRefreshes = 0;
+let _occluderPrev = new Float64Array(0);
+let _occluderPrevCount = -1;
 let _canvasWidth = 0;
 let _canvasHeight = 0;
 let _canvasDpr = 1;
@@ -276,6 +284,21 @@ const _diagnostics = {
   paintItemPoolSize: 0,
   paintRectPoolSize: 0,
   candidateIndexSize: 0,
+  /**
+   * How many times chrome announced a move that resolved to the exact same
+   * rectangles. A number that climbs while nothing visibly moves is chrome
+   * animating into the placement solver. (perf plan 2.5-bis)
+   *
+   * IT LIVES HERE, in the module-level object, and NOT as an extra key in the
+   * literal `getWorldOverlayDiagnostics()` returns. Measured on Node 24 with
+   * `worldOverlayAllocation.test.mjs`: the same counter, same value, same
+   * public shape, added to that return literal instead, moved the steady frame
+   * from 3 182 to 4 746 B/frame and broke three budgets — reproducibly, to the
+   * byte, on a facade the harness only calls twice and never inside the
+   * measured loop. Whatever V8 does with that eighteenth key, the gate is the
+   * contract; this file does not get to argue with it.
+   */
+  occluderNoopRefreshes: 0,
   entriesBySource: {},
   paintedBySource: _paintedBySource,
 };
@@ -1098,10 +1121,6 @@ export function getWorldOverlayDiagnostics() {
     ..._diagnostics,
     entriesBySource: { ..._diagnostics.entriesBySource },
     paintedBySource,
-    // How many times chrome announced a move that resolved to the exact same
-    // rectangles. A number that climbs while nothing visibly moves is chrome
-    // animating into the placement solver. (perf plan 2.5-bis)
-    occluderNoopRefreshes: _occluderNoopRefreshes,
   };
 }
 
@@ -1423,30 +1442,60 @@ function refreshUiOccluders(timestamp, force = false) {
   // costs a full label placement pass and bumps a revision every listener
   // downstream watches. See the header of `markOccludersDirty` for why this is
   // hardening rather than a fix. (perf plan 2.5-bis)
-  const signature = occluderSignature();
-  if (signature === _occluderSignature) {
-    _occluderNoopRefreshes += 1;
+  if (occluderInventoryUnchanged()) {
+    _diagnostics.occluderNoopRefreshes += 1;
     return false;
   }
-  _occluderSignature = signature;
+  rememberOccluderInventory();
   _solveDirty = true;
   _layoutRevision++;
   return true;
 }
 
 /**
- * A comparable digest of the current exclusion inventory. Rounded to whole
- * pixels: sub-pixel jitter from a reflow is not a layout change anyone can see,
- * and comparing raw floats would make the guard fire almost never.
- * @returns {string}
+ * Does the inventory just rebuilt match the one that was last solved?
+ *
+ * Rounded to whole pixels: sub-pixel jitter from a reflow is not a layout
+ * change anyone can see, and comparing raw floats would make the guard fire
+ * almost never. Allocates nothing.
+ * @returns {boolean}
  */
-function occluderSignature() {
-  let out = '';
-  for (const rect of _uiOcclusionRects) {
-    out += `${rect.hard ? 1 : 0}:${Math.round(rect.x)},${Math.round(rect.y)},`
-      + `${Math.round(rect.w)},${Math.round(rect.h)};`;
+function occluderInventoryUnchanged() {
+  const count = _uiOcclusionRects.length;
+  if (_occluderPrevCount !== count) return false;
+  for (let i = 0; i < count; i++) {
+    const rect = _uiOcclusionRects[i];
+    const base = i * 5;
+    if (_occluderPrev[base] !== (rect.hard ? 1 : 0)
+      || _occluderPrev[base + 1] !== Math.round(rect.x)
+      || _occluderPrev[base + 2] !== Math.round(rect.y)
+      || _occluderPrev[base + 3] !== Math.round(rect.w)
+      || _occluderPrev[base + 4] !== Math.round(rect.h)) {
+      return false;
+    }
   }
-  return out;
+  return true;
+}
+
+/**
+ * Copy the current inventory into the comparison buffer. The buffer only ever
+ * grows, and with slack, so a panel appearing and disappearing does not
+ * reallocate on every cycle.
+ * @returns {void}
+ */
+function rememberOccluderInventory() {
+  const count = _uiOcclusionRects.length;
+  if (_occluderPrev.length < count * 5) _occluderPrev = new Float64Array(count * 5 + 40);
+  for (let i = 0; i < count; i++) {
+    const rect = _uiOcclusionRects[i];
+    const base = i * 5;
+    _occluderPrev[base] = rect.hard ? 1 : 0;
+    _occluderPrev[base + 1] = Math.round(rect.x);
+    _occluderPrev[base + 2] = Math.round(rect.y);
+    _occluderPrev[base + 3] = Math.round(rect.w);
+    _occluderPrev[base + 4] = Math.round(rect.h);
+  }
+  _occluderPrevCount = count;
 }
 
 function markLayoutDirty() {
@@ -2567,10 +2616,10 @@ export function destroyWorldOverlay() {
   _detectionSurfaceNeedsClear = true;
   _detectionSurfacePrepared = false;
   _occludersUpdatedAt = Number.NEGATIVE_INFINITY;
-  // A stale digest across a destroy/init would make the FIRST inventory of the
+  // A stale inventory across a destroy/init would make the FIRST rebuild of the
   // new host look unchanged, and the host would open with no exclusions.
-  _occluderSignature = null;
-  _occluderNoopRefreshes = 0;
+  _occluderPrevCount = -1;
+  _diagnostics.occluderNoopRefreshes = 0;
   _canvasWidth = 0;
   _canvasHeight = 0;
   _viewport.width = 0;

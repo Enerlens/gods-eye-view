@@ -947,12 +947,33 @@ gagné ici est le symptôme et la mesure ; la garde, elle, n'est pas encore pos�
   s'anime à 60 Hz achetait donc 60 images par seconde pour dix recalculs utiles.
   Trente annonces dans une fenêtre coûtent maintenant **une** image.
 - **Un inventaire qui n'a pas changé n'est pas un changement de disposition.**
-  Les rectangles sont réduits à une signature entière ; identique, on ne
-  re-résout pas et on n'incrémente pas `_layoutRevision` (que toute la chaîne
+  Les rectangles sont comparés à ceux de la dernière résolution ; identiques, on
+  ne re-résout pas et on n'incrémente pas `_layoutRevision` (que toute la chaîne
   aval surveille). Un changement de classe qui ne change qu'une couleur passait
   auparavant pour un déménagement. Le compteur `occluderNoopRefreshes` sort dans
   les diagnostics : s'il grimpe pendant que rien ne bouge à l'écran, c'est du
   chrome qui s'anime dans le solveur de placement.
+
+*Deux pièges d'allocation traversés pour poser ça, et le second est le plus
+instructif :*
+
+1. **Une garde qui coûte plus cher que ce qu'elle économise.** La première
+   version comparait une **signature de chaîne** (`${x},${y};`). Le portillon
+   d'allocation de Node 24 est passé de 3 182 à 4 746 octets par image. Remplacé
+   par un `Float64Array` plat, alloué une fois et jamais réécrit à la
+   comparaison.
+2. **Ça n'a rien changé — et la vraie cause était ailleurs.** Le coût venait
+   d'**une clé de plus dans l'objet littéral que `getWorldOverlayDiagnostics()`
+   retourne**, une façade que le harnais n'appelle que **deux fois**, jamais
+   dans la boucle mesurée. Même compteur, même valeur, même forme publique,
+   rangé dans l'objet `_diagnostics` de module plutôt que dans le littéral de
+   retour : 13/13. Reproduit à l'octet près dans les deux sens, sur trois
+   workspaces jetables successifs.
+
+   La leçon n'est pas sur V8. C'est que **le portillon d'allocation ne se
+   raisonne pas, il se mesure** — et qu'il faut un Node 24 en local pour le
+   faire (`brew install node@24` ; le banc saute silencieusement sur Node 26,
+   donc `npm test` vert sur cette machine ne dit rien de la CI).
 
 Leçon de méthode, à garder : la cause était dans la phase 1 alors que la tâche
 était rangée en phase 2, et elle a été trouvée en lisant le chemin qui DÉCLENCHE

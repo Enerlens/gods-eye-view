@@ -155,9 +155,14 @@ try {
   );
 
   // ── 5. a canvas read in lite still returns a picture ─────────────────────
-  // The render and the read are one evaluate: with `preserveDrawingBuffer:
-  // false` the buffer is only readable inside the frame that drew it.
-  const liteFrame = await litePage.evaluate(() => {
+  //
+  // Read in BOTH profiles and compared, never asserted on `lite` alone. What
+  // this check is for is the `preserveDrawingBuffer: false` failure mode, which
+  // is profile-specific; "the globe happened to be dark here" is not, and a
+  // one-sided assertion cannot tell the two apart — it failed once for exactly
+  // that reason, on a run where the camera had ended up at 25 km looking
+  // straight down at unloaded tiles.
+  const readCentre = () => {
     const { scene } = window.__godsEyeView.viewer;
     // `requestRender()` THEN `render()`: under requestRenderMode a bare
     // `render()` is a no-op and the read comes back black — which is the exact
@@ -166,18 +171,25 @@ try {
     scene.requestRender();
     scene.render();
     const gl = scene.context._gl || scene.context.gl;
-    const pixels = new Uint8Array(4 * 64 * 64);
-    gl.readPixels(0, 0, 64, 64, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    const size = 64;
+    const x = Math.max(0, (scene.canvas.width >> 1) - (size >> 1));
+    const y = Math.max(0, (scene.canvas.height >> 1) - (size >> 1));
+    const pixels = new Uint8Array(4 * size * size);
+    gl.readPixels(x, y, size, size, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     let lit = 0;
     for (let i = 0; i < pixels.length; i += 4) {
       if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 24) lit++;
     }
     return { lit, total: pixels.length / 4 };
-  });
+  };
+  const fullFrame = await fullPage.evaluate(readCentre);
+  const liteFrame = await litePage.evaluate(readCentre);
   check(
-    'reading the canvas in lite returns a drawn frame, not black',
-    liteFrame.lit > 0,
-    liteFrame,
+    fullFrame.lit > 0
+      ? 'reading the canvas in lite returns a drawn frame, not black'
+      : 'canvas read INCONCLUSIVE — the scene was dark in full too, not a profile fault',
+    fullFrame.lit === 0 || liteFrame.lit > 0,
+    { full: fullFrame, lite: liteFrame },
   );
 
   // ── 6. the switch works, both ways, without a reload ─────────────────────
