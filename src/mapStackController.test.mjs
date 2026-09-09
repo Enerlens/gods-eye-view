@@ -215,7 +215,20 @@ test('an unavailable stack says which credential it is missing, not a generic on
   const keyless = new MapStackController(stubViewer(), { googleKeyConfigured: false });
   assert.equal(
     keyless.getStacks().find((stack) => stack.id === 'photoreal').unavailableReason,
-    'Google Maps API key required for Google 3D',
+    'Google Maps API key or Cesium ion token required for Google 3D',
+  );
+
+  // An ion token opens the photoreal globe on its own (ion serves the same
+  // tileset under Cesium's Google contract), so a keyless build that HAS one
+  // and still has no tileset must not be told to go buy a Google key.
+  const keylessWithIon = new MapStackController(stubViewer(), {
+    googleKeyConfigured: false,
+    cesiumToken: 'ion-token',
+    googleTilesetError: '401 invalid token',
+  });
+  assert.equal(
+    keylessWithIon.getStacks().find((stack) => stack.id === 'photoreal').unavailableReason,
+    'Google 3D Tiles failed to load: 401 invalid token',
   );
 
   // Keyed build whose tiles failed to load: same `googleTileset: null`, opposite advice.

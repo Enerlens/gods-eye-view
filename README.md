@@ -70,7 +70,7 @@ Open **`http://localhost:4173`**. **No key, no `.env`, no signup.** Cold start s
 
 Keyless you get the globe on **OSM** worldwide, and over France the **IGN Géoplateforme** basemaps — BD ORTHO® at 20 cm and Plan IGN — plus every 🟢 data layer, which is most of them. Pick a source in the **MAP SOURCE** row of the Visual Presets tray.
 
-To add the photorealistic 3D planet, copy `.env.example` → `.env` and set `GOOGLE_MAPS_API_KEY`. Everything in this README is color-coded — 🟢 needs nothing · 🟡 free key · 🔴 metered — and Google Maps is the only 🔴 that changes what the planet looks like. Full map in [Keys & Costs](#-api-keys).
+To add the photorealistic 3D planet, copy `.env.example` → `.env` and set `GOOGLE_MAPS_API_KEY` — or, if your Google billing address is in the EEA (where Google withholds 3D tiles), a free `CESIUM_ION_TOKEN`, which serves the same Google tileset under Cesium's contract. Everything in this README is color-coded — 🟢 needs nothing · 🟡 free key · 🔴 metered — and Google Maps is the only 🔴 that changes what the planet looks like. Full map in [Keys & Costs](#-api-keys).
 
 The dev server binds to **localhost** — your keys stay on your machine. Sharing on a LAN and the cost rails live in [Keys & Costs](#-api-keys) and [SECURITY.md](SECURITY.md).
 
@@ -314,7 +314,7 @@ See [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md) for the authoritative runti
 
 Most of the globe is 🟢: the **basemap itself** (OSM and world satellite imagery worldwide, IGN's 20 cm orthophoto and Plan IGN over France), **place search** (OpenStreetMap's Nominatim worldwide, the IGN Géoplateforme for French addresses), flights (anonymous), military traffic, satellites, earthquakes, CCTV, radio, bikeshare, French transit, French shared mobility, space missions, mapped installations, and every bundled dataset run with **zero keys**.
 
-**`git clone && npm i && npm run dev` needs no credential at all.** What a keyless build gives up is the photorealistic 3D planet, the Bing imagery stacks, the voice mic, and the Google-only place context behind annotations and the cockpit readout — each of which says which key it wants rather than failing silently. The search box is not on that list any more: it geocodes keylessly. Neither is the mic's ears and mouth: on the OpenRouter path those are the browser's, so the only thing a key buys there is the brain.
+**`git clone && npm i && npm run dev` needs no credential at all.** What that build gives up is the photorealistic 3D planet, the Bing imagery stacks, the voice mic, and the Google-only place context behind annotations and the cockpit readout — each of which says which key it wants rather than failing silently. The search box is not on that list any more: it geocodes keylessly. Neither is the mic's ears and mouth: on the OpenRouter path those are the browser's, so the only thing a key buys there is the brain.
 
 ### What you need for the good experience
 
@@ -322,7 +322,7 @@ Five keys cover the fully keyed experience. Three currently offer no-cost develo
 
 | | Key | Why | Get it |
 |---|-----|-----|--------|
-| 🔴 | **Google Maps** | The photorealistic 3D planet ([Map Tiles API](https://developers.google.com/maps/documentation/tile)), the place context behind annotations and the cockpit readout, and the sharpest place search. Without it the app boots on the keyless globe stacks and searches through OpenStreetMap + IGN instead | [Google Cloud Console](https://console.cloud.google.com/) — metered; [check current pricing](https://developers.google.com/maps/billing-and-pricing/pricing) and URL-restrict it |
+| 🔴 | **Google Maps** | The photorealistic 3D planet ([Map Tiles API](https://developers.google.com/maps/documentation/tile)), the place context behind annotations and the cockpit readout, and the sharpest place search. Without it the app boots on the keyless globe stacks and searches through OpenStreetMap + IGN instead — except for the 3D planet, which a free Cesium ion token below can serve on its own | [Google Cloud Console](https://console.cloud.google.com/) — metered; [check current pricing](https://developers.google.com/maps/billing-and-pricing/pricing) and URL-restrict it |
 | 🔴 | **OpenAI** *(one of two)* | 🎙️ The full-duplex voice experience + AI HUD summary | [platform.openai.com](https://platform.openai.com) — metered; [check current API pricing](https://openai.com/api/pricing/) |
 | 🔴 | **OpenRouter** *(one of two)* | 🎙️ The same 28 voice tools driven by any tool-calling text model, with the browser supplying speech recognition and synthesis. Cheaper, turn-based, and one key fronts every provider | [openrouter.ai](https://openrouter.ai) — metered; [check current model pricing](https://openrouter.ai/models) |
 | 🟡 | **AISStream** | 🚢 Live ships (France by default, world on request) | [aisstream.io](https://aisstream.io) — free, seriously, it's a two-minute signup |
@@ -337,7 +337,7 @@ Five keys cover the fully keyed experience. Three currently offer no-cost develo
 
 | | Key | Why | Get it |
 |---|-----|-----|--------|
-| 🟡 | **Cesium ion** | 🗺️ Bing imagery map stacks (public `assets:read` token) | [cesium.com/ion](https://cesium.com/ion) — [check the plan that fits your use](https://cesium.com/platform/cesium-ion/pricing/) |
+| 🟡 | **Cesium ion** | 🗺️ Bing imagery map stacks — **and the photorealistic 3D planet**, which ion serves as Google's own asset `2275207` under its own contract. That is the only route to the 3D globe for a Google key billed in the EEA, where Google withholds 3D tiles and satellite. The free tier is non-commercial and puts an "Upgrade for commercial use." link on the credit line (public `assets:read` token) | [cesium.com/ion](https://cesium.com/ion) — [check the plan that fits your use](https://cesium.com/platform/cesium-ion/pricing/) |
 | 🟡 | **OpenSky** | ✈️ More flight-polling credits (🟢 anonymous works without) | [opensky-network.org](https://opensky-network.org) |
 | 🟡 | **Launch Library 2** | 🚀 Higher space-missions request allowance (🟢 works without) | [thespacedevs.com](https://thespacedevs.com) |
 | 🟡 | **RTE** | ☢️ What each French reactor and power station is actually producing (🟢 the fleet, its names and its 93.5 GW of installed capacity draw without it) | [data.rte-france.com](https://data.rte-france.com/create_account) — free; create an application and attach the *Actual Generation* API to it |
