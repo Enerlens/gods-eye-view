@@ -87,6 +87,8 @@
     "perf:boot": "node scripts/perf-boot-probe.mjs",
     "perf:urls": "node scripts/perf-boot-urls.mjs",
     "perf:layers": "node scripts/perf-boot-probe.mjs --at lyon --layers irve-fr,schools-fr,transit-fr",
+    "perf:warm": "node scripts/perf-boot-probe.mjs --warm",
+    "perf:origin": "node scripts/perf-origin-bench.mjs",
     "measure:plug": "node scripts/measure-plug-e2e.mjs",
     "measure:plug:render": "node scripts/measure-plug-render.mjs",
     "measure:voice-turn": "node scripts/measure-voice-turn.mjs",
