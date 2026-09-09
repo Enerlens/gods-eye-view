@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { askJoin } from './layerJoins.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { cachedGroundFloor, resolveGroundFloorCellsBounded } from './groundFloor.js';
@@ -359,7 +360,7 @@ export const SOURCE_NOTES = Object.freeze({
  * @param {object} plant
  * @returns {string} Newline-separated; the first line is the title.
  */
-export function buildHydroCard(plant) {
+export function buildHydroCard(plant, joins = null) {
   const lines = [hydroDisplayName(plant)];
   lines.push(`⚡ ${formatHydroPower(plant?.kw)} installés`);
 
@@ -407,8 +408,75 @@ export function buildHydroCard(plant) {
   if (plant?.regime && plant.regime !== 'En service') lines.push(`⚠ régime : ${plant.regime}`);
 
   lines.push(...buildPlacementLines(plant));
+  lines.push(...buildHydroNeighbourLines(joins));
   if (plant?.eic) lines.push(`# EIC ${plant.eic}`);
   return lines.join('\n');
+}
+
+/**
+ * The two lines this register cannot write, and the sentence they must not say.
+ *
+ * ODRÉ publishes a plant's installed power and never the water going past it;
+ * it publishes a head in metres and never the structure holding the water
+ * back. Hub'Eau is measuring the first a few kilometres away and the OSM dam
+ * pack has mapped the second — and until `layerJoins.js` neither could be
+ * reached from here without an import edge.
+ *
+ * BOTH LINES ARE PROXIMITY, AND BOTH SAY SO. Nothing in either register links
+ * a gauge or a structure to a plant: the gauge is the nearest one REPORTING A
+ * FLOW, on a river the line names so the reader can check it, and the dam is
+ * the nearest mapped structure at a stated distance. "à 2,4 km" is the whole
+ * claim. A card that wrote "son barrage" would be inventing a relationship its
+ * sources do not assert, and this file already spends four lines saying the
+ * register contradicts itself about which commune a plant is in.
+ *
+ * @param {?{gauge: ?object, dam: ?object}} joins
+ * @returns {Array<string>}
+ */
+export function buildHydroNeighbourLines(joins) {
+  const lines = [];
+  const gauge = joins?.gauge;
+  if (gauge && Number.isFinite(gauge.distanceM)) {
+    const where = gauge.river ? `${gauge.name} sur ${gauge.river}` : gauge.name;
+    lines.push(`≋ ${gauge.text} à ${joinKmText(gauge.distanceM)}`
+      + ` — station ${where}, la plus proche qui mesure un débit`);
+  }
+  const dam = joins?.dam;
+  if (dam && Number.isFinite(dam.distanceM)) {
+    const what = dam.name || dam.kind || 'ouvrage non nommé';
+    const height = Number.isFinite(dam.heightM) ? `, ${dam.heightM} m de haut` : '';
+    lines.push(`▰ ${what}${height} à ${joinKmText(dam.distanceM)}`
+      + ' — ouvrage voisin cartographié, aucun registre ne le relie à cette centrale');
+  }
+  return lines;
+}
+
+/** Kilometres, as a card says them. */
+function joinKmText(metres) {
+  if (!Number.isFinite(metres)) return '';
+  if (metres < 1000) return `${Math.round(metres / 10) * 10} m`;
+  return `${(metres / 1000).toFixed(1).replace('.', ',')} km`;
+}
+
+/**
+ * Ask the join board what stands near this plant.
+ *
+ * Two questions, both optional and both silent when the layer that would
+ * answer is switched off — which is the ordinary case and never an error.
+ * `askJoin` swallows a throwing provider, so one misbehaving layer cannot stop
+ * a card from opening.
+ *
+ * @param {?{lat: number, lon: number}} plant
+ * @returns {{gauge: ?object, dam: ?object}}
+ */
+export function hydroNeighbours(plant) {
+  const lat = Number(plant?.lat);
+  const lon = Number(plant?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return { gauge: null, dam: null };
+  return {
+    gauge: askJoin('gauges/nearest', lat, lon),
+    dam: askJoin('dams/nearest', lat, lon),
+  };
 }
 
 /**
@@ -886,9 +954,12 @@ export function createFrHydroPlantsLayer({
       record.point.outlineColor = selected;
       record.point.pixelSize = record.basePixelSize + 5;
     }
+    // The neighbourhood is asked for HERE, at selection, and never on the
+    // render pass: two layers are searched and neither answer changes while a
+    // card is open. A cluster has no single position to ask from.
     const text = record.kind === 'cluster'
       ? buildHydroClusterCard(record.subject)
-      : buildHydroCard(record.subject);
+      : buildHydroCard(record.subject, hydroNeighbours(record.subject));
     const [title, ...details] = text.split('\n');
     overlayHost.setEntries(
       FR_HYDRO_SELECTED_OVERLAY_SOURCE_ID,

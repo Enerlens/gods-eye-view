@@ -19,6 +19,7 @@ import {
   HYDRO_PIXEL_MIN,
   buildHydroCard,
   buildHydroClusterCard,
+  buildHydroNeighbourLines,
   createFrHydroPlantsLayer,
   formatHydroEnergy,
   formatHydroPower,
@@ -575,4 +576,46 @@ test('render ids are namespaced so no other layer can claim a pick', () => {
   for (const c of REGISTRY.clusters.slice(0, 20)) {
     assert.ok(c.id.startsWith('INSEE:'), c.id);
   }
+});
+
+// ── The neighbourhood, and the sentence it must not say ─────────────────────
+//
+// ODRÉ publishes a plant's power and never the water going past it, nor the
+// structure holding it back. Hub'Eau and the OSM dam pack hold both, and
+// `layerJoins.js` is how they reach this card. What the lines may NOT do is
+// assert a relationship neither register carries.
+
+test('the neighbour lines name a gauge and a structure, and claim nothing more', () => {
+  const lines = buildHydroNeighbourLines({
+    gauge: {
+      code: 'V7135010', name: 'Le Rhône à Beaucaire', river: 'Le Rhône',
+      value: 1120, text: '1 120 m³/s', freshness: 'live', distanceM: 2412,
+    },
+    dam: { name: 'Barrage de Vallabrègues', kind: 'Barrage', heightM: 15, hydro: true, distanceM: 830 },
+  });
+  assert.equal(lines.length, 2);
+  assert.match(lines[0], /1 120 m³\/s à 2,4 km/);
+  assert.match(lines[0], /Le Rhône à Beaucaire sur Le Rhône/);
+  assert.match(lines[0], /la plus proche qui mesure un débit/);
+  assert.match(lines[1], /Barrage de Vallabrègues, 15 m de haut à 830 m/);
+  // THE SENTENCE THAT MUST NOT APPEAR. Nothing in either register links a
+  // structure to a plant, so the line says "voisin" and says who is silent.
+  assert.match(lines[1], /aucun registre ne le relie à cette centrale/);
+  assert.ok(!/son barrage/.test(lines.join(' ')));
+});
+
+test('a silent layer costs the card nothing at all', () => {
+  assert.deepEqual(buildHydroNeighbourLines(null), []);
+  assert.deepEqual(buildHydroNeighbourLines({ gauge: null, dam: null }), []);
+  // And the card itself is exactly what it was before the join existed.
+  const plant = { name: 'Centrale de test', kw: 4200, lat: 45, lon: 6 };
+  assert.equal(buildHydroCard(plant), buildHydroCard(plant, { gauge: null, dam: null }));
+});
+
+test('an unnamed structure is still an answer, said as one', () => {
+  const [line] = buildHydroNeighbourLines({
+    gauge: null,
+    dam: { name: null, kind: 'Seuil', heightM: null, hydro: false, distanceM: 240 },
+  });
+  assert.match(line, /^▰ Seuil à 240 m/);
 });

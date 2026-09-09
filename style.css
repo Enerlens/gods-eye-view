@@ -6293,6 +6293,49 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   background: rgba(255, 60, 60, 0.08);
 }
 
+/* ── Fused rows ─────────────────────────────────
+   One subject, one row (`layerFusions.js`): a row that carries several layers
+   holds two kinds of chip on the same strip, and they must not read alike. A
+   FUSION chip switches a whole companion layer on or off — it is a toggle, so
+   it is a pill and it carries a filled or hollow dot. An option chip changes a
+   parameter of a layer that is already on, and keeps the square shape every
+   option chip in the panel has always had.
+
+   The dot is a pseudo-element on purpose: the voice layer and three QA
+   harnesses read a chip's `textContent` as its name, and a glyph baked into
+   the label would join every one of those readings. */
+.data-toggle-chip.chip-fusion {
+  border-radius: 999px;
+  letter-spacing: 0.9px;
+  padding-left: 6px;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.data-toggle-chip.chip-fusion::before {
+  content: '\25CB';
+  margin-right: 4px;
+  opacity: 0.75;
+}
+
+.data-toggle-chip.chip-fusion.active::before {
+  content: '\25CF';
+  opacity: 1;
+}
+
+/* An option published by a COMPANION, not by the row's own layer. The marker
+   is a left edge rather than a colour: the strip can hold three companions,
+   and three hues would be a legend nobody was given. Which layer it steers is
+   in the tooltip, where there is room to name it. */
+.data-toggle-chip.chip-companion {
+  border-left-width: 2px;
+  border-left-color: rgba(255, 255, 255, 0.22);
+  padding-left: 6px;
+}
+
+.data-toggle-chip.chip-companion.active {
+  border-left-color: var(--accent);
+}
+
 /* ── Map legend ─────────────────────────────────
    First member of the right rail. It used to be a fixed card in the
    bottom-left corner, switched OFF by a `:has()` rule the moment DATA LAYERS
@@ -10209,6 +10252,120 @@ button.cmp-item-title:hover { color: #fff; text-decoration: underline; }
    read the hour, the shape of the week and the station they just clicked
    WITHOUT looking away from them — and the anchored card cannot do that job
    near the edge of the scope, where the keyhole fades it to one per cent. */
+/* ── Radiographie d'adresse — the sheet, framed ─────────────────────────────
+   The DOOR between the globe and `fiche.html` (see `ficheSheet.js`). The
+   globe's card is capped at six lines by design; this panel frames the page
+   that already holds the other fifty-four, at the point the globe is scanning.
+
+   It is a WINDOW ON A DOCUMENT, so it is the one panel in the app with a light
+   body: `fiche.html` is a printable sheet on white paper and re-tinting it
+   through the frame would mean maintaining a second theme for a page whose
+   whole point is that it prints. The chrome around it stays the console's. */
+.fiche-sheet {
+  position: fixed;
+  right: calc(2vw + 12px);
+  top: 12vh;
+  z-index: 140;
+  width: min(430px, 42vw);
+  height: min(72vh, 780px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(123, 189, 211, 0.3);
+  border-radius: 12px;
+  background: rgba(6, 14, 22, 0.92);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55), 0 0 18px rgba(0, 212, 255, 0.07);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  pointer-events: auto;
+}
+
+.fiche-sheet[hidden] { display: none; }
+
+/* Only the HEAD grabs: the body is a document a reader scrolls and selects
+   text in, and a drag that started on a paragraph would make it unreadable. */
+.fiche-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border-bottom: 1px solid rgba(123, 189, 211, 0.22);
+  cursor: grab;
+  flex: 0 0 auto;
+}
+
+.fiche-sheet.panel-dragging .fiche-sheet-head { cursor: grabbing; }
+
+.fiche-sheet-grip {
+  width: 9px;
+  height: 12px;
+  flex: 0 0 auto;
+  background-image: radial-gradient(currentColor 1px, transparent 1px);
+  background-size: 4px 4px;
+  color: rgba(255, 255, 255, 0.3);
+}
+
+.fiche-sheet-title {
+  font-size: 9px;
+  letter-spacing: 1.4px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.fiche-sheet-coords {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 8px;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fiche-sheet-actions { display: flex; gap: 4px; flex: 0 0 auto; }
+
+.fiche-sheet-btn {
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  letter-spacing: 1px;
+  text-decoration: none;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.fiche-sheet-btn:hover,
+.fiche-sheet-btn:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.fiche-sheet-close { font-size: 11px; line-height: 1; padding: 1px 6px 3px; }
+
+.fiche-sheet-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  border: 0;
+  background: #fff;
+}
+
+@media (max-width: 900px) {
+  .fiche-sheet {
+    right: 2vw;
+    left: 2vw;
+    width: auto;
+    height: min(64vh, 640px);
+  }
+}
+
 .velo-pulse-hud {
   position: fixed;
   left: 50%;

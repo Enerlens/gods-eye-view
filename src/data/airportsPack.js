@@ -837,7 +837,7 @@ function hectaresText(hectares) {
  * @param {object} props Shipped feature properties.
  * @returns {string[]} 0–4 detail lines, French, empty entries already dropped.
  */
-export function airportCardDetails(props) {
+export function airportCardDetails(props, { traffic = null } = {}) {
   const source = props && typeof props === 'object' ? props : {};
   const lines = [];
 
@@ -887,6 +887,23 @@ export function airportCardDetails(props) {
     text(source.country),
   ].filter(Boolean).join(' · ');
   if (place) lines.push(place);
+
+  // ── The sky over it ──────────────────────────────────────────────────────
+  // Handed in by the flights layer through `layerJoins.js`, and absent
+  // whenever that layer is off — this pack has no way to ask, and a card that
+  // claimed traffic it could not see would be worse than one that says
+  // nothing. What it counts is what THIS SESSION IS TRACKING, so the line says
+  // "suivis" rather than implying a departure board.
+  const traffic_ = traffic && typeof traffic === 'object' ? traffic : null;
+  if (traffic_ && (traffic_.inbound > 0 || traffic_.outbound > 0)) {
+    const legs = [
+      traffic_.inbound > 0 ? `${traffic_.inbound} en approche` : '',
+      traffic_.outbound > 0 ? `${traffic_.outbound} au départ` : '',
+    ].filter(Boolean).join(' · ');
+    const named = [...(traffic_.inboundSamples || []), ...(traffic_.outboundSamples || [])]
+      .slice(0, 3).join(', ');
+    lines.push(named ? `${legs} — ${named}` : legs);
+  }
 
   return lines;
 }

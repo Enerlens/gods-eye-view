@@ -1004,3 +1004,49 @@ test('the shipped pack carries the IGN outlines the ground channel was chosen on
   assert.equal(byIcao.get('NTAA')?.footprint, undefined, 'BD TOPO does not cover Polynésie');
   assert.ok(byIcao.get('LFPG')?.footprint?.areaHa > 2000, 'Roissy must carry its ground');
 });
+
+// ── The sky over the field ──────────────────────────────────────────────────
+//
+// The one line this pack cannot write. It is a fact about live traffic, held
+// by a layer this module must never import, and it arrives through
+// `layerJoins.js` — which means it is absent whenever the flights layer is
+// off, and the card simply has one line fewer.
+
+test('the card names what is flying to the field, when somebody is telling it', () => {
+  const props = {
+    name: 'Charles de Gaulle International Airport',
+    type: 'large_airport',
+    icao: 'LFPG',
+    iata: 'CDG',
+    municipality: 'Roissy-en-France',
+    country: 'France',
+    scheduled: true,
+  };
+  assert.deepEqual(airportCardDetails(props, {
+    traffic: {
+      inbound: 12, outbound: 8, fleet: 900,
+      inboundSamples: ['AFR447', 'BAW303'], outboundSamples: ['DLH1041'],
+    },
+  }).at(-1), '12 en approche · 8 au départ — AFR447, BAW303, DLH1041');
+
+  // One direction only prints one clause.
+  assert.equal(airportCardDetails(props, {
+    traffic: { inbound: 0, outbound: 3, fleet: 900, inboundSamples: [], outboundSamples: [] },
+  }).at(-1), '3 au départ');
+});
+
+test('no traffic, no line — the pack never claims a sky it cannot see', () => {
+  const props = { name: 'Argentan Airfield', type: 'small_airport', icao: 'LFAJ', country: 'France' };
+  const bare = airportCardDetails(props);
+  // The flights layer is off: `askJoin` answered null and the card is what it
+  // has always been.
+  assert.deepEqual(airportCardDetails(props, { traffic: null }), bare);
+  // The layer is ON and nothing is flying there, which is a different fact and
+  // still not a line: a grass strip with no traffic is the ordinary case, and
+  // "0 en approche" on 7 000 cards would be noise.
+  assert.deepEqual(airportCardDetails(props, {
+    traffic: { inbound: 0, outbound: 0, fleet: 900, inboundSamples: [], outboundSamples: [] },
+  }), bare);
+  // A malformed answer cannot break a card either.
+  assert.deepEqual(airportCardDetails(props, { traffic: 'yes' }), bare);
+});

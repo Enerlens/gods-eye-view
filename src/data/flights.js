@@ -20,6 +20,7 @@
  * looking at (product rule 2026-07-02).
  */
 import * as Cesium from 'cesium';
+import { publishJoin } from './layerJoins.js';
 import { aircraftIncludedInNearby } from './aircraftNearbyPolicy.js';
 import { registerPickOwner, unregisterPickOwner, isOwnedByOtherLayer, resolvePickId } from './pickRegistry.js';
 import { detectionLabelSourceId, pickOverlayLabelId } from './overlayLabelPick.js';
@@ -63,7 +64,7 @@ import {
   liftRepeatedGroundFix, synthesizeForwardKinematicsFix, corridorPathLatLon,
   COURSE_HOLD_SPEED_MPS,
 } from './motionModel.js';
-import { routePlausible } from './routePlausible.js';
+import { greatCircleKm, routePlausible } from './routePlausible.js';
 import { openSkyStaleThresholdMs } from './openSkyFreshness.js';
 import { buildFlightRoutePlan, routeFrameOffsetEnu } from './flightRoutePlan.js';
 import { hideFlightRouteArc, showFlightRouteArc } from './flightRouteArc.js';
@@ -772,6 +773,8 @@ const ROTATION_REFRESH_MS = 1000;
 let _lastFleetTickMs = 0;
 /** @type {string} Camera pose signature at the last rotation pass */
 let _lastCamPoseSig = '';
+/** Takes the `flights/boundFor` offer down. Null while the layer is off. */
+let _releaseTrafficJoin = null;
 /** @type {number} Epoch ms of the last full rotation pass */
 let _lastRotPassMs = 0;
 /** @type {number} Last computed rotation for the tracked entity (radians) */
@@ -3447,7 +3450,13 @@ function _trackedLabelText(icao24) {
     : [info.airline, info.typeName || info.typeCode].filter(Boolean).join(' · ');
   if (ident) lines.push(ident);
   if (info.route && _routeIsPlausible(icao24, info.route)) {
-    lines.push(`${info.route.origin.code} → ${info.route.destination.code}`);
+    // HOW MUCH IS LEFT. adsbdb has published the destination's coordinates
+    // since this proxy was written and nothing has ever read them — the arc
+    // uses them, the readout did not. It is the one number a viewer watching a
+    // tracked contact actually wants, and it costs a great-circle.
+    const remainingKm = _remainingLegKm(icao24, info.route);
+    lines.push(`${info.route.origin.code} → ${info.route.destination.code}`
+      + (remainingKm === null ? '' : ` · ${remainingKm} km`));
   }
   return lines.join('\n');
 }
@@ -3689,6 +3698,108 @@ function _routeIsPlausible(icao24, route) {
     origin: route.origin,
     destination: route.destination,
   });
+}
+
+/**
+ * Great-circle kilometres still to fly, rounded the way a readout says them.
+ *
+ * Measured from the BILLBOARD's position, like `_routeIsPlausible` next door
+ * and for the same reason: it is the position the operator is looking at, and
+ * the two halves of one line must not be computed from two different fixes.
+ *
+ * `null` whenever adsbdb published no coordinate for the destination: a
+ * distance is not a field to fill with a guess, and a leg without one keeps
+ * the line it always had.
+ *
+ * @param {string} icao24
+ * @param {{destination: {lat: ?number, lon: ?number}}} route
+ * @returns {?number} Kilometres, or null.
+ */
+function _remainingLegKm(icao24, route) {
+  const lat = Number(route?.destination?.lat);
+  const lon = Number(route?.destination?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const bb = _billboards.get(icao24);
+  if (!bb?.position) return null;
+  const carto = Cesium.Cartographic.fromCartesian(bb.position, Cesium.Ellipsoid.WGS84, _scratchCarto);
+  if (!carto) return null;
+  const km = greatCircleKm(
+    Cesium.Math.toDegrees(carto.latitude),
+    Cesium.Math.toDegrees(carto.longitude),
+    lat,
+    lon,
+  );
+  return Number.isFinite(km) ? Math.round(km) : null;
+}
+
+/**
+ * What is flying to and from one airport, right now.
+ *
+ * THE JOIN THE PACK COULD NOT MAKE. `local-airports` draws 7 466 fields and
+ * knows nothing about the sky over them; this layer holds a fleet whose
+ * scheduled legs name those very fields. Neither could reach the other without
+ * an import edge, which is what `layerJoins.js` exists to remove.
+ *
+ * TWO CODES, because adsbdb publishes ONE and it is not always the same one:
+ * `parseRoute` writes `iata_code || icao_code`, so `LFPG` and `CDG` are both
+ * live in the field depending on what the upstream row carried. The pack has
+ * both columns, so the caller passes both and either may match.
+ *
+ * ONLY A PLAUSIBLE ROUTE COUNTS. `routePlausible.js` already gates the route
+ * LINE on the aircraft's own position — a wrong-leg answer is hidden rather
+ * than drawn faintly — and a tally that counted the hidden ones would put
+ * traffic on an airport the aircraft is nowhere near. The same gate, the same
+ * reason.
+ *
+ * WHAT IT CAN AND CANNOT SEE, stated because the ceiling is low today.
+ * `_requestRouteEnrichment` fires for the TRACKED contact only — one aircraft
+ * at a time, front of the enrichment queue — so a fresh session has no routes
+ * at all and this answers 0/0 for every field. It fills as a reader tracks
+ * flights: track AFR447 into Roissy, click Roissy, and the card says so. It is
+ * therefore a count of what THIS SESSION HAS RESOLVED and never a departure
+ * board, and the card's wording ("en approche", "au départ", with names) says
+ * only what it can stand behind.
+ *
+ * Widening it means enqueuing route lookups for the ambient fleet, which is a
+ * change to a token bucket sized by measurement against TYPE lookups
+ * (`ENRICH_AMBIENT_BUDGET_CEIL`, `npm run qa:enrich-budget`) — a separate,
+ * measured decision, not a side effect of adding a card line.
+ *
+ * @param {string} icao ICAO code of the airport asking.
+ * @param {string} [iata] Its IATA code, when the pack has one.
+ * @returns {?{inbound: number, outbound: number, fleet: number,
+ *   inboundSamples: string[], outboundSamples: string[]}}
+ */
+function _airportTraffic(icao, iata) {
+  const codes = new Set(
+    [icao, iata].map((code) => String(code || '').trim().toUpperCase()).filter(Boolean),
+  );
+  if (!codes.size) return null;
+  let inbound = 0;
+  let outbound = 0;
+  let fleet = 0;
+  const inboundSamples = [];
+  const outboundSamples = [];
+  for (const [icao24, info] of _flightData) {
+    fleet += 1;
+    const route = info?.route;
+    if (!route || !_routeIsPlausible(icao24, route)) continue;
+    const label = _contactLabel(icao24, info);
+    if (codes.has(String(route.destination?.code || '').toUpperCase())) {
+      inbound += 1;
+      if (inboundSamples.length < 3 && label) inboundSamples.push(label);
+    }
+    if (codes.has(String(route.origin?.code || '').toUpperCase())) {
+      outbound += 1;
+      if (outboundSamples.length < 3 && label) outboundSamples.push(label);
+    }
+  }
+  return { inbound, outbound, fleet, inboundSamples, outboundSamples };
+}
+
+/** The traffic tally, for tests that do not construct a scene. */
+export function _airportTrafficForTest(icao, iata) {
+  return _airportTraffic(icao, iata);
 }
 
 /**
@@ -4274,6 +4385,16 @@ const flightsLayer = {
    */
   enable(viewer) {
     if (_billboardCollection) _billboardCollection.show = true;
+    // ── What is flying to an airport, offered to the airport ────────────────
+    // The pack draws 7 466 fields and knows nothing about the sky above them;
+    // this layer holds a fleet whose scheduled legs name those very fields by
+    // code, and until now nothing joined the two. Offered while ENABLED, so an
+    // airport card stops claiming traffic the moment the reader closes the
+    // flights they were reading it from.
+    _releaseTrafficJoin?.();
+    _releaseTrafficJoin = publishJoin('flights/boundFor', (icao, iata) => (
+      _airportTraffic(icao, iata)
+    ));
     holdContinuousRender('flights'); // per-frame animator (perf wave 2)
     if (_modelCollection) _modelCollection.show = true;
     _setCockpitContactMode(document.body.classList.contains('cockpit-mode'));
@@ -4321,6 +4442,8 @@ const flightsLayer = {
   disable(viewer) {
     _abortActiveUpdates();
     _cancelPendingTrackingRestore();
+    _releaseTrafficJoin?.();
+    _releaseTrafficJoin = null;
     if (_billboardCollection) _billboardCollection.show = false;
     releaseContinuousRender('flights');
     _releaseModels();

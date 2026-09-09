@@ -2175,6 +2175,242 @@ report into, so they instead refuse to memoize a failure —
 load after a doubling cooldown (5 s → 5 min), which keeps one bad load from
 silently demoting every later lookup for the session.
 
+#### Cross-layer joins — `layerJoins.js` (September 2026)
+
+The 2026-09 audit counted the joins in this repository and found three: the
+Fiche implantation, the BD TOPO volumes' three themes, and the address
+radiography. Outside those, **no layer read another layer's data at all**.
+
+The reason was structural rather than an oversight — a layer module is a
+singleton with a lifecycle, and importing one from another couples two
+lifecycles, loads a pack that may never be enabled, and makes a cycle the
+moment the second layer wants anything back. `src/data/layerJoins.js` is the
+smallest thing that removes the obstacle: a string-keyed board of provider
+functions. `publishJoin(key, fn)` on enable, the returned teardown on disable,
+`askJoin(key, ...args)` from anywhere.
+
+Three properties, and they are the whole reason it is a file:
+
+- **No import edge.** `aisLiveVessels.js` never mentions the ports layer.
+- **Absence is ordinary.** A key nobody publishes answers `null`, and the
+  consumer says LESS — never an error, never a blank where a sentence was
+  promised. That is what makes it honest to join two layers a reader can switch
+  off independently.
+- **A throw is contained.** `askJoin` catches, warns once per key, returns
+  `null`. One misbehaving provider cannot blank a card.
+
+It is deliberately not an event bus, not a cache and not a dependency graph:
+nothing here can enable a layer, and a card that needs one switched on says so
+rather than switching it on.
+
+`docs/PLAN-CROISEMENTS.md` records what the 2026-09 audit asked for, what
+landed, and — for each item left out — the reason it was left out.
+
+Published today:
+
+| Key | Publisher | Read by |
+|---|---|---|
+| `ports/directory` | `local-ports`, while its pack is LOADED (`onFeatures`) | the selected-vessel card |
+| `buoys/nearest` | `marine-buoys`, while it is ENABLED | the selected-vessel card |
+| `flights/boundFor` | `flights`, while it is ENABLED | the airport card (`airportCardDetails`) |
+| `gauges/nearest` | `hubeau-hydro`, while it is ENABLED, over the records IN VIEW | the small-hydro card |
+| `dams/nearest` | `local-dams`, while its pack is LOADED (`onFeatures`) | the small-hydro card |
+
+The two lifetimes differ on purpose. A directory is a fact about a file and is
+offered as long as the file is held; a sea state is a reading a visitor asked
+to see, and a reader who switched the buoys off asked not to be told about
+them.
+
+#### The AIS destination, resolved — `portDirectory.js` (September 2026)
+
+Measured 2026-09-09 over **2 250 distinct vessels** with a non-empty
+destination, from twelve consecutive `/api/ais-live` snapshots, against the
+2 951 harbours in the pack:
+
+| | | |
+|---|---|---|
+| resolved by UN/LOCODE | 523 | 23.2 % |
+| resolved by port name | 614 | 27.3 % |
+| unresolved | 1 113 | 49.5 % |
+
+Four shapes are read and there is no fuzzy fifth: a code (`BEANR`, `IT GOA`), a
+leg (`DOVER<=>CALAIS`, `NOMON => TRALI` — the LAST segment, or the card would
+name the port the ship has left), a name on a folded key, and a name followed
+by a berth the field's own twenty-character ceiling cut off
+(`ANTWERPEN 4E HAVENDO`). A leading token that names a KIND of place (`PORT`,
+`TERMINAL`, `QUAI`) is never tried alone.
+
+Two guards, both measured:
+
+- **`Port Of Le Havre`.** 322 of 2 951 WPI names carry a generic head a master
+  never types. The stripped form is indexed ALONGSIDE the published one.
+- **`PORT_NAME_MATCH_MAX_M` = 2 500 km.** A code is the master's own identifier
+  and is trusted at any range (the longest legitimate one in the sample is
+  9 131 km); a name is a spelling that happened to agree. The sample splits
+  cleanly: 16 legitimate name matches from 301 km to 1 348 km, then nothing
+  until the 18 wrong ones from 5 006 km up — `PORTLAND` and `PORTSMOUTH` from
+  the Channel, resolved to Oregon and New Hampshire because the WPI carries no
+  English harbour of either name.
+
+The unresolved half is printed exactly as the master typed it, which is what
+the card did before this module existed.
+
+#### The hydraulic chain (September 2026)
+
+A small-hydro card names its installed power and its head, and neither register
+behind it carries the two facts a reader wants next: how much water is going
+past, and what is holding it back. `gauges/nearest` and `dams/nearest` supply
+both, and the wording of both lines is the load-bearing part.
+
+- **A DISCHARGE or nothing.** `nearestHubeauGauge` skips every station
+  reporting only a stage, however close. A stage is a height above a gauge zero
+  specific to that gauge — `hubeauHydrometry.js` spends a paragraph on why two
+  stations' stages are not comparable — and putting one beside a plant's
+  installed power would invite exactly that comparison. Ceiling 25 km
+  (`HUBEAU_JOIN_MAX_M`), and the layer is viewport-driven, so a plant outside
+  the current box gets no answer rather than a cached one from another region.
+- **A NEIGHBOUR, never an identity.** Nothing in ODRÉ or OSM links a structure
+  to a plant. The line says "ouvrage voisin cartographié, aucun registre ne le
+  relie à cette centrale", names the distance, and never writes "son barrage".
+  Ceiling 10 km (`DAM_JOIN_MAX_M`) — wide enough for an intake and a
+  powerhouse kilometres apart, tight enough to stay in the same valley.
+- **A named structure beats a closer anonymous one.** 4 579 of the pack's 6 189
+  features carry no name, no height and no operator. An unnamed one is still
+  returned when it is all there is: "there is something here and OSM does not
+  know what" is an answer.
+
+Both lines name the river or the structure so the reader can check the claim,
+which is the same standard `buildPlacementLines` already holds this card to.
+
+#### Flight and airport, both directions (September 2026)
+
+`AUS → LAX` becomes `AUS → LAX · 1994 km` on the tracked contact's readout.
+adsbdb has published the destination's coordinates since `adsbdbProxy` was
+written and only `flightRouteArc` ever read them. `_remainingLegKm` measures
+from the BILLBOARD's position — the same fix `_routeIsPlausible` uses, so the
+two halves of one line cannot come from two different positions — and returns
+`null` rather than a guess when the leg carries no coordinate.
+
+The other direction is a join: `flights/boundFor` on the board, read by
+`airportCardDetails`, which gains a line like `1 en approche — TVF57PQ`. Only a
+route `routePlausible` accepts is counted, for the same reason the route LINE
+is gated on it: a wrong-leg answer would put traffic on a field the aircraft is
+nowhere near. Two codes are passed because adsbdb publishes ONE and it is not
+always the same one (`iata_code || icao_code`), and the pack has both columns.
+
+**Its ceiling is low today and the code says so.** `_requestRouteEnrichment`
+fires for the TRACKED contact only, so a fresh session resolves no routes and
+the join answers 0/0 for every field; it fills as a reader tracks flights.
+Widening it means enqueuing route lookups for the ambient fleet, which is a
+change to a token bucket sized by measurement against TYPE lookups
+(`ENRICH_AMBIENT_BUDGET_CEIL` = 1000, refill 150/5 min, `qa:enrich-budget`) —
+a separate measured decision, and one this change deliberately did not make.
+
+#### The door to the radiography, and the sheet's two missing halves (September 2026)
+
+`src/data/ficheSheet.js` is a layer-owned, self-mounting panel — the same idiom
+as `veloPulseHud.js` — that FRAMES `fiche.html` at the point the globe is
+scanning. It is opened by a `RADIOGRAPHIE` chip on the `Zone de chalandise`
+row, published by `implantation-fr`.
+
+WHY IT EXISTS. Two surfaces answered the same question about the same door and
+nothing linked them: the globe's fiche card is capped at six lines
+(`createAddressScanOverlayEntry`, `.slice(0, 6)` — the right cap for a label
+pinned on a doorway) and `fiche.html` holds sixty rows, printable, reachable
+only by typing its URL.
+
+WHY AN IFRAME. `fiche.html` already ships `?embed=1`, which strips its masthead
+form and print button precisely so it can be framed, and it is a Cesium-free
+page by explicit decision (`CESIUM_FREE_PAGES`). Re-rendering its sixty rows
+inside the globe bundle would mean two renderers for one document, and the
+second would be the one nobody prints. Same origin, same session, same server
+cache.
+
+The frame is EMPTIED on close, not merely hidden: an iframe left pointed at the
+sheet keeps seventeen requests and their timers alive behind a panel nobody is
+reading. Re-pointing at the same place is a no-op rather than a reload.
+
+The chip travels through `setParams({sheet})` and is deliberately absent from
+`getParams()`: a share link carries what the map SAYS, and whether a reader had
+a panel open is not that. It returns `true` because the manager treats `false`
+as a rejection and would log a fault for a chip that did what it was asked.
+
+THE SHEET NOW READS SEVENTEEN ROUTES, not fifteen. Two themes were answering
+half their own question, and the audit had counted both routes as "in
+production for a layer, with no line on the sheet":
+
+- **Nuisances** gains `/api/bruit-fr` — the PEB or PGS band under the point,
+  with its index, its range and the date of its arrêté; outside every plan, the
+  nearest aerodrome and its distance. A band with `atPoint: false` (the
+  overview wash the layer draws AROUND an aerodrome, tested against no point)
+  never reaches the sheet.
+- **Numérique** gains `/api/anfr-fr/supports` — masts around the address by
+  generation, counting only what RADIATES (`live`), never what is approved
+  (`plan`). An empty NATIONAL register is reported as an empty register and
+  never as an empty street; see `docs/KNOWN-ISSUES.md` for the 222-byte
+  upstream CSV that made that distinction load-bearing on the day it shipped.
+
+Both join an existing theme rather than founding one of their own — the same
+"one subject, one heading" decision the layer panel just made.
+
+#### Fused rows — one subject, one line (September 2026)
+
+`src/data/layerFusions.js` is the one table that says which rows are the SAME
+SUBJECT. `layerTaxonomy.js` answers "what is this dataset and which group does
+it belong to", which is a per-layer question; "are these two rows one subject?"
+is a statement about a PAIR, and a per-layer field can only hold half of it.
+
+Fifteen entries fold **23 layers** into the row of the subject they belong to.
+The panel goes from **61 rows to 38** (36 core layers plus the two plugged
+datasets). What a fusion changes is presentation and nothing else:
+
+- the companion keeps its **id, module, lifecycle, cache and share token**, so a
+  link sent before the merge restores exactly what it always restored;
+- the companion keeps its own **map-legend entry** — the key is gathered per
+  layer from `getAll()` and never went through a row;
+- the companion keeps its **credit line**.
+
+On the row, each companion becomes a **fusion chip**: round, dotted (`○` off,
+`●` on), against the square option chips the panel already had. The row toggle
+enables the primary and the companions that FOLLOW it; a companion marked
+`optIn` (only `comparables-fr` today, the reader's own dossier) waits for its
+chip. Switching a row OFF takes the whole group down, `optIn` included — a lit
+chip under a dark row would be a layer drawing with no visible control.
+
+**The voice surface switches the SUBJECT.** `set_layer_visibility` drives the
+primary through the intent protocol — the operator's utterance is reported on
+that one transition — and then calls `setRowFollowers`, which moves the
+companions beside it and names them back in the result as `companions`. Without
+it, "montre les transports en commun" lit `transit-fr` alone and left
+Île-de-France with no vehicles, which is the exact gap the fusion closes. An
+unfused layer's answer is byte-identical to what it was: the key is named only
+when there are followers. The bare word "météo" was moved off
+`meteo-stations-fr`'s alias list for the same reason — it names the row now,
+and "stations météo" still reaches the instruments.
+
+A row whose primary is off but whose companion a share link left on reads `OFF`
+and still shows its chips, so the drawn layer is always controllable. The
+button's DIRECTION is read from the primary: pressing it switches the subject
+ON rather than switching off the one thing that is drawing.
+
+The chip strip of a fused row carries chips from several modules. Their ids are
+namespaced (`comptages-fr::w04`), because two modules can each publish a chip
+called `week` and on a shared strip that collision would make one chip apply
+the other's params. A companion's option chip carries its owner's name at the
+head of its tooltip, and a left edge in the stylesheet.
+
+**Which layer keeps the row** is a product decision stated in the table: where a
+fusion mixes a layer that has data everywhere with one that stops at the French
+border, the WORLD layer is primary (`bikeshare` over `shared-mobility-fr`,
+`local-datacenters` over `anfr-fr`). A row chipped `FR` over a world subject
+tells a reader outside France that a layer serving them is not for them.
+`layerFusions.test.mjs` asserts it.
+
+**What the fusion does NOT do**, and is owed separately: deduplicate the 56
+plants three registers share (`edf-power-plants`, `rte-generation`,
+`fr-hydro-plants`, plus 14 in `gas-fr`), and move the médecin family out of
+`amenities-fr`. The row merge is the first half of that work.
+
 #### Viewport-gated layers and the view gate (September 2026)
 
 Three layers refuse a request box above a ceiling — Bâti 3D at **0.08°**, the

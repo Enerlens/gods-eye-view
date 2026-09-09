@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
+import { askJoin } from './layerJoins.js';
 import {
   airportCardDetails,
   airportLabelPriority,
@@ -518,7 +519,13 @@ export function localInfrastructureOverlayCopy(properties, layerId, measured = {
     // The airport pack owns its own copy: the same module decides what the
     // build emits, so a dropped field cannot become a blank line here. The
     // host still owns the width, hence the clamp on the way out.
-    for (const line of airportCardDetails(props)) details.push(clampCardLine(line));
+    //
+    // WHAT IS FLYING TO IT is the one line the pack cannot write: it is a fact
+    // about the sky, held by a layer this one must not import. Asked here,
+    // through the join board, and `null` whenever the flights layer is off —
+    // in which case the card simply has one line fewer.
+    const traffic = askJoin('flights/boundFor', props?.icao, props?.iata);
+    for (const line of airportCardDetails(props, { traffic })) details.push(clampCardLine(line));
   }
 
   return { title, details };
@@ -841,10 +848,28 @@ export function createLocalGeoJsonLayer({
   loadFeatures = null,
   /** @type {?((props:object, measured:{areaM2:number}) => {title:string, details:string[]})} */
   cardCopy = null,
+  /**
+   * The parsed Features, handed over once per load, so a pack can offer them
+   * to another layer.
+   *
+   * THIRD HOOK, and the narrowest of the three. `layerJoins.js` explains why
+   * this exists at all: the vessels layer needs the World Port Index to resolve
+   * an AIS destination, and importing the ports layer to get it would couple
+   * two lifecycles and load a 1.1 MB pack that may never be enabled. The pack
+   * publishes instead, from here, while it is loaded — and the return value is
+   * the teardown, run on destroy, so the offer never outlives the data.
+   *
+   * Called with the Features BEFORE they reach Cesium, so a publisher reads
+   * plain GeoJSON rather than entities.
+   * @type {?((features:Array<object>) => (void|(() => void)))}
+   */
+  onFeatures = null,
 }) {
   const resolveRenderSpec = featureRender || PACK_RENDERERS[id]?.featureRender || null;
   const resolveRenderLegend = renderLegend || PACK_RENDERERS[id]?.renderLegend || null;
   let _dataSource = null;
+  /** Takes the `onFeatures` offer back down. Null when nothing is offered. */
+  let _releaseFeatures = null;
   let _enabled = false;
   let _clickHandler = null;
   let _count = 0;
@@ -1270,6 +1295,16 @@ export function createLocalGeoJsonLayer({
             const text = await response.text();
             const lines = text.split('\n').filter(l => l.trim().length > 0);
             features = lines.map(line => JSON.parse(line));
+          }
+
+          // Offered to the join board before anything is drawn: a consumer
+          // that asks between the parse and the scene insert gets the pack
+          // rather than nothing, and a throw here is the loader's own error
+          // path rather than a silent half-published offer.
+          if (typeof onFeatures === 'function') {
+            _releaseFeatures?.();
+            const release = onFeatures(features);
+            _releaseFeatures = typeof release === 'function' ? release : null;
           }
 
           const geojson = {
@@ -1805,6 +1840,10 @@ export function createLocalGeoJsonLayer({
       _runwayPool.length = 0;
       _runwayUsed = 0;
       _overlayPublisher.destroy();
+      // The join offer goes down with the data it describes: a directory that
+      // outlived its pack would answer questions about features nobody holds.
+      _releaseFeatures?.();
+      _releaseFeatures = null;
       _dataSource = null;
       _stemRecords = [];
       _groupTally.clear();

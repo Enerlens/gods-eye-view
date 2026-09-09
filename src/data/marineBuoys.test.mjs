@@ -8,6 +8,7 @@ import {
   BUOY_VIEW_PAD_DEG,
   NO_SEA_STATE_CSS,
   SEA_STATE_BANDS,
+  SEA_STATE_JOIN_MAX_M,
   SEA_STATE_LABELS_FR,
   SWELL_STEM_SCALE,
   buoyInView,
@@ -20,6 +21,7 @@ import {
   createMarineBuoysLayer,
   mapAnalystRecord,
   msToKnots,
+  nearestSeaState,
   seaState,
   seaStateBandIndex,
   seaStateBandLabel,
@@ -755,4 +757,39 @@ test('the camera sensitivity is claimed with the listener and released with it',
   assert.equal(camera.percentageChanged, 0.5, 'the value found before the claim comes back');
   assert.equal(camera.listenerCount(), 0);
   _resetCameraSensitivityForTest();
+});
+
+// ── The sea state, offered to another layer ────────────────────────────────
+
+test('nearestSeaState skips the four fifths of the network that measures no wave', () => {
+  // "Only about a fifth of reporting stations carry a wave sensor, and one
+  // without renders neutral rather than calm" — the same distinction the map
+  // draws with a hollow ring. A nearest-station join that ignored it would
+  // answer "0 m, calm" for most of the ocean.
+  const stations = [
+    { station: 'NEAR', lat: 51.21, lon: 2.41, waveHeightM: null },
+    { station: 'FAR', lat: 51.4, lon: 2.9, waveHeightM: 1.4, observedAt: 7 },
+  ];
+  const answer = nearestSeaState(stations, 51.2, 2.4);
+  assert.equal(answer.station, 'FAR');
+  assert.equal(answer.waveHeightM, 1.4);
+  assert.equal(answer.label, seaState(1.4).label);
+  assert.equal(answer.observedAt, 7);
+  assert.ok(answer.distanceM > 0 && answer.distanceM < SEA_STATE_JOIN_MAX_M);
+});
+
+test('nearestSeaState refuses a buoy too far to be describing the same sea', () => {
+  const stations = [{ station: 'ATLANTIC', lat: 30, lon: -60, waveHeightM: 2 }];
+  assert.equal(nearestSeaState(stations, 51.2, 2.4), null);
+  // The ceiling is a floor under absurdity, not a claim about coherence
+  // length — the card prints the distance beside the reading either way.
+  assert.ok(nearestSeaState(stations, 30.5, -60.5));
+});
+
+test('nearestSeaState is inert on a mangled call', () => {
+  assert.equal(nearestSeaState(null, 51, 2), null);
+  assert.equal(nearestSeaState([], 51, 2), null);
+  assert.equal(nearestSeaState([{ station: 'A', lat: 51, lon: 2, waveHeightM: 1 }], NaN, 2), null);
+  // A negative "height" is not a flat sea, it is a broken row.
+  assert.equal(nearestSeaState([{ station: 'A', lat: 51, lon: 2, waveHeightM: -1 }], 51, 2), null);
 });

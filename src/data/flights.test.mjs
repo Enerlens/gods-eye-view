@@ -468,9 +468,14 @@ test('real civil track path creates no native label and publishes every cached h
     assert.ok(entity instanceof Cesium.Entity, 'trackById must create the real Cesium entity');
     assert.equal(entity.label, undefined);
     assert.ok(entities.values.every((candidate) => candidate.label === undefined));
+    // The route line carries HOW MUCH IS LEFT. adsbdb has published the
+    // destination's coordinates since this proxy was written and only the arc
+    // ever read them; 1 994 km is the great circle from the billboard's own
+    // position over Austin to LAX, measured from the same fix the
+    // plausibility gate uses.
     assert.deepEqual(entity.gevLabelModel, {
       title: 'N12345 · FL350 · 486 kts',
-      details: ['TEST AIR · A320', 'AUS → LAX'],
+      details: ['TEST AIR · A320', 'AUS → LAX · 1994 km'],
       accent: '#39d0ff',
     });
     viewer.scene.preUpdate.raiseEvent();

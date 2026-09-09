@@ -6,6 +6,131 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Added
+- **Une petite centrale hydro dit enfin l'eau qui passe et l'ouvrage à côté.**
+  ODRÉ publie une puissance installée et jamais le débit ; il publie une hauteur
+  de chute et jamais l'ouvrage qui retient l'eau. Hub'Eau mesure le premier à
+  quelques kilomètres et le paquet OSM a cartographié le second — et jusqu'ici
+  aucune des trois couches ne pouvait atteindre les autres.
+
+  La carte d'une centrale porte maintenant, quand les couches voisines sont
+  allumées : `≋ 560 m³/s à 2,7 km — station Le Rhône à Tarascon sur Le Rhône,
+  la plus proche qui mesure un débit` et `▰ Barrage de Saint-Nicolas à 1,2 km —
+  ouvrage voisin cartographié, aucun registre ne le relie à cette centrale`.
+
+  **Les deux lignes sont des VOISINAGES et le disent.** Rien dans les registres
+  ne relie une station ou un ouvrage à une centrale, donc la ligne nomme la
+  rivière pour qu'on puisse vérifier, donne la distance, et ne dit jamais
+  « son barrage ». Et c'est un DÉBIT ou rien : une hauteur d'eau est mesurée
+  au-dessus d'un zéro d'échelle propre à sa station — le module Hub'Eau consacre
+  un paragraphe à expliquer que deux hauteurs ne se comparent pas — donc une
+  station qui ne publie qu'une hauteur n'est jamais retenue, si proche soit-elle.
+
+  Le paquet des barrages préfère un ouvrage NOMMÉ à un seuil anonyme plus
+  proche : 4 579 de ses 6 189 entités n'ont ni nom, ni hauteur, ni exploitant.
+  Un anonyme reste une réponse quand c'est tout ce qu'il y a — « il y a quelque
+  chose ici et OSM ne sait pas quoi » est un fait.
+
+- **Un vol suivi dit ce qu'il lui reste à faire, et un aéroport dit ce qui lui
+  arrive.** Deux lignes, deux moitiés du même croisement.
+
+  La ligne de trajet du contact suivi affichait `AUS → LAX` et rien de plus.
+  adsbdb publie les **coordonnées** de l'origine et de la destination depuis que
+  ce proxy existe, et seule l'arche les lisait : la lecture, jamais. Elle
+  affiche maintenant `AUS → LAX · 1 994 km`, mesuré depuis la position même que
+  la garde de plausibilité utilise, et rien du tout quand adsbdb n'a publié
+  aucune coordonnée — une distance ne se devine pas.
+
+  Et la carte d'un aéroport nomme ce qui vole vers lui : `1 en approche —
+  TVF57PQ`. Le paquet dessine 7 466 terrains et ne sait rien du ciel au-dessus ;
+  la couche des vols tient une flotte dont les trajets nomment ces terrains par
+  code. Aucune des deux ne pouvait atteindre l'autre sans un arc d'import, ce
+  que `layerJoins.js` supprime.
+
+  **Ce que ce compte voit, et ce qu'il ne voit pas**, dit parce que le plafond
+  est bas aujourd'hui : la résolution de trajet ne se déclenche que pour le
+  contact SUIVI, un avion à la fois. Une session fraîche répond donc 0 partout,
+  et la ligne se remplit à mesure qu'on suit des vols. C'est un compte de ce que
+  **cette session a résolu**, jamais un tableau des départs — et l'élargir veut
+  dire toucher à un seau de jetons dimensionné par mesure contre les recherches
+  de TYPE (`npm run qa:enrich-budget`), ce qui est une décision mesurée à part,
+  pas l'effet de bord d'une ligne de carte.
+
+- **Un navire dit où il va : la carte le résout en port, et dit dans quelle mer
+  il est.** Le message AIS porte une destination de vingt caractères tapée à la
+  main, et la carte l'affichait telle quelle depuis toujours — `→ BEANR`,
+  `→ IT GOA`, `→ HARBOUR TOWAGE` — pendant que 2 951 ports du World Port Index
+  étaient dessinés une ligne plus bas, sans que les deux se soient jamais
+  parlé. Depuis la fusion, c'est la **même ligne**, ce qui est précisément ce
+  qui rend la jointure atteignable sans demander d'allumer une seconde couche.
+
+  Mesuré le 2026-09-09 sur **2 250 navires** distincts, relevés sur douze
+  instantanés consécutifs de l'abonnement AIS : **1 137, soit 50,5 %**, nomment
+  un port du paquet — 523 par code UN/LOCODE, 614 par nom. La moitié restante
+  n'est pas du bruit à rapprocher de force, c'est un recensement de ce à quoi
+  le champ sert : des ports fluviaux que le World Port Index ne liste pas
+  (`MAINZ`, `PARIS`, `DUISBURG`), des exonymes (`ANTWERP` contre `Antwerpen`,
+  `GENOA` contre `Genova`), des ordres qui ne sont pas des lieux
+  (`HARBOUR TOWAGE`, `FOR ORDERS`), et des postes à quai. Tout cela reste
+  imprimé **mot pour mot** comme le commandant l'a tapé.
+
+  Aucun rapprochement flou : un code, un trajet (`DOVER<=>CALAIS` → Calais), un
+  nom, ou un nom suivi d'un poste que le champ coupe à vingt caractères
+  (`ANTWERPEN 4E HAVENDO` → Antwerpen). Deux ports du même nom sont départagés
+  par la distance au navire ; et une correspondance **par nom** est refusée
+  au-delà de 2 500 km, un seuil mesuré : dans l'échantillon, les 16 bonnes
+  correspondances vont de 301 à 1 348 km, puis plus rien jusqu'à 5 006 km où
+  commencent les 18 mauvaises — six navires de la Manche écrivant `PORTLAND`
+  renvoyés dans l'Oregon, six écrivant `PORTSMOUTH` renvoyés dans le
+  New Hampshire.
+
+  Et la carte dit enfin dans quelle mer le navire se trouve : `MER SLIGHT ·
+  1 m · bouée 62170 à 128 km`, lue sur la bouée la plus proche **qui mesure
+  vraiment la houle** — quatre cinquièmes du réseau NDBC n'a pas de capteur de
+  vagues, et compter ces stations-là aurait répondu « mer calme, 0 m » pour la
+  moitié de l'océan.
+
+  Les deux lignes sont **facultatives par construction** : un lecteur qui a
+  éteint les ports ou les bouées retrouve exactement la carte d'avant.
+  `src/data/layerJoins.js` est le tableau d'affichage qui rend ça possible —
+  une couche offre un fait, une autre le lit, aucune des deux ne s'importe.
+
+- **Une porte du globe vers la radiographie d'adresse.** Le dépôt avait deux
+  surfaces qui répondent à la même question sur la même porte, et aucun lien
+  entre elles : la carte de la `Fiche implantation`, plafonnée à **six lignes**
+  — le bon plafond pour une étiquette posée sur une porte — et `fiche.html`,
+  qui en tient soixante, imprimable, et qu'on ne pouvait atteindre qu'en tapant
+  son URL. La seconde a été écrite pour la première et rien ne pointait vers
+  elle.
+
+  La ligne `Zone de chalandise` porte désormais une pastille
+  **RADIOGRAPHIE** : elle ouvre la feuille dans un panneau déplaçable, sur le
+  point que le globe scanne, avec un bouton pour l'ouvrir en onglet et un
+  autre pour l'imprimer en PDF. Le panneau encadre la page que l'application
+  sert déjà (`?embed=1`, un mode que la feuille avait livré exprès pour ça) :
+  pas de second rendu à maintenir, et le PDF reste celui qui s'imprime.
+
+- **La radiographie répond enfin aux deux moitiés qui lui manquaient.**
+  `Nuisances` imprimait l'air et jamais l'avion ; `Numérique` imprimait le
+  câble et jamais le mât — sa propre note se terminait par « débits filaires
+  uniquement ». Les deux routes étaient en production depuis des mois pour les
+  couches du globe. Elles rejoignent la thématique qui existait déjà plutôt que
+  d'en fonder deux de plus.
+
+  · **Bruit** : la zone du PEB ou du PGS sous le point, avec son indice, sa
+    plage et la date de son arrêté ; hors de tout plan, l'aérodrome le plus
+    proche et sa distance. Une bande dessinée « autour » d'un aérodrome, que
+    rien n'a testée contre un point, n'atteint jamais la feuille.
+  · **Antennes** : les supports ANFR autour de l'adresse, comptés par
+    génération, et seulement ce qui **rayonne** — un support autorisé mais pas
+    en service est compté à part, jamais avec.
+
+  Et une honnêteté qui a servi tout de suite : mesuré le 2026-09-09, le CSV de
+  l'observatoire ANFR publié le 2026-09-03 fait **222 octets** — son en-tête et
+  rien d'autre, contre 181 988 412 octets et 826 418 lignes le 2026-08-27. La
+  feuille écrit « le registre ANFR est vide dans cette édition » au lieu de
+  « 0 support » : une panne amont ne doit pas se lire comme un fait sur la rue
+  de quelqu'un.
+
 - **Coller une clé dans l'application, au lieu d'éditer un fichier.** Une
   pastille « POWER UP » apparaît en bas à droite quand il manque des clés ;
   elle ouvre un panneau qui liste les onze fournisseurs, ce que chacun allume,
@@ -194,6 +319,42 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   socket que le corps décodé est bien identique à l'original, que le
   `Content-Length` annonce ce qui est envoyé, et qu'un client qui ne sait pas
   décoder le brotli n'en reçoit jamais.
+
+- **Un sujet, une ligne : la liste des couches passe de 61 lignes à 38.** Le
+  panneau listait quatorze sujets deux à quatre fois chacun. « Combien vaut ce
+  sol » occupait trois lignes (`Ventes immobilières`, `Avis de valeur`,
+  `Comparables`) qui lisent le même registre DVF. La route en occupait quatre.
+  Les centrales, trois registres. L'enseignement, deux — la taxonomie écrivait
+  déjà, à côté de `sup-fr`, « un sujet coupé en deux ministères, et la taxonomie
+  ne devrait pas répéter la coupure » ; elle la répétait quand même, en deux
+  lignes.
+
+  Quinze fusions replient **23 couches** dans la ligne du sujet auquel elles
+  appartiennent. Chacune devient une **pastille** sous cette ligne : ronde et
+  pointée, pour la distinguer des pastilles d'option carrées qui existaient
+  déjà. Allumer la ligne allume le sujet entier ; la pastille permet de le
+  reprendre en main morceau par morceau.
+
+  **Rien n'est supprimé.** Aucun module, aucune source, aucun jeton de partage :
+  un lien envoyé avant la fusion rallume exactement ce qu'il rallumait, et une
+  couche rallumée seule par un lien garde une commande sur la ligne qui la
+  porte. Les couches mondiales restent des couches mondiales — les câbles
+  sous-marins, les ports, les bouées, les caméras publiques : quand une fusion
+  mélange une couche mondiale et une couche française, c'est la mondiale qui
+  garde la ligne, pour qu'aucun lecteur hors de France ne voie une pastille
+  `FR` au-dessus de données qui le concernent.
+
+  **La voix suit.** Nommer un sujet allume le sujet : « montre les transports en
+  commun » n'allume plus `transit-fr` seul en laissant l'Île-de-France sans
+  véhicule. Et le mot nu « météo » désigne désormais la ligne, pas la couche
+  d'instruments qu'elle porte — « stations météo » atteint toujours les
+  instruments.
+
+  Ce que la fusion ne fait pas, et qui reste dû : dédoublonner les 56 centrales
+  que trois registres se partagent, et retirer la famille « médecin » de
+  `Équipements du quotidien`. La fusion est la première moitié de ce travail,
+  pas son remplacement. `docs/PLAN-CROISEMENTS.md` liste les huit points restés
+  dehors et l'obstacle de chacun.
 
 - **Les 60 couches de données ne se téléchargent plus qu'au premier clic —
   470 kB de moins pour ouvrir le globe.** L'application chargeait le code des

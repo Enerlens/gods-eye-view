@@ -16,6 +16,9 @@ import {
   damTierLegend,
   damTierVisible,
 } from './damsPack.js';
+import { publishJoin } from './layerJoins.js';
+import { nearestDam } from './damsPack.js';
+import { buildPortIndex } from './portDirectory.js';
 
 // Use Vite's ?url import to properly resolve these assets in dev and build
 import airportsUrl from './local_data/airports/airports.geojsonl?url';
@@ -75,6 +78,31 @@ const dams = createLocalGeoJsonLayer({
   // on asked to see the barrages, and hiding four fifths of them before being
   // asked would answer a question nobody put.
   defaultParams: { floor: DAM_DISPLAY_FLOORS[0].id, kinds: DAM_STRUCTURE_CHIPS[0].id },
+
+  // ── The neighbourhood, offered to the small-hydro register ──────────────
+  // A hydro plant's card names its head and its power and never the structure
+  // holding the water back, because ODRÉ publishes no link to one. This pack
+  // holds 5 529 French dam structures. What it can offer is a NEIGHBOUR at a
+  // measured distance — never an identity, which nothing in either register
+  // supports — and the card that reads it says exactly that.
+  onFeatures: (features) => {
+    const rows = [];
+    for (const feature of Array.isArray(features) ? features : []) {
+      const coordinates = feature?.geometry?.type === 'Point'
+        ? feature.geometry.coordinates
+        : null;
+      // Points only: 1 610 of the pack's features are outlines, and a polygon
+      // has no single position to measure a distance from. A dam drawn as a
+      // wall is still in the pack, it is simply not what this offer answers
+      // with, and the card never claims completeness.
+      if (!Array.isArray(coordinates)) continue;
+      const lon = Number(coordinates[0]);
+      const lat = Number(coordinates[1]);
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+      rows.push({ props: feature.properties || {}, lat, lon });
+    }
+    return publishJoin('dams/nearest', (lat, lon, maxM) => nearestDam(rows, lat, lon, maxM));
+  },
   rowControls: (params, tally) => ({
     // Two rows in the one array the panel renders. Runtime params MERGE, so
     // the two axes stay independent and neither touches the share-link
@@ -114,6 +142,21 @@ const ports = createLocalGeoJsonLayer({
   labels: true,
   labelMax: 800,
   labelGridPx: 136,
+
+  // ── The pack, offered to whoever needs a harbour ────────────────────────
+  // AIS message 5 carries a destination the master typed by hand, and this
+  // layer holds the 2 951 harbours that field is trying to name. The two were
+  // drawn one row apart and never joined; since the fusion they are the SAME
+  // row (`layerFusions.js`), which is what makes the join reachable without
+  // asking a reader to switch on a second layer.
+  //
+  // Published through `layerJoins.js` rather than imported by the vessels
+  // layer: the offer exists exactly while the pack is loaded, and the card
+  // that reads it says less when it is not.
+  onFeatures: (features) => {
+    const index = buildPortIndex(features);
+    return publishJoin('ports/directory', () => index);
+  },
 });
 
 // OurAirports — public domain, bundled. NOT the whole 86k-row catalogue: the

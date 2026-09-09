@@ -7,19 +7,28 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 import {
+  HUBEAU_HISTORY_WINDOW_MS,
+  HUBEAU_JOIN_MAX_M,
+  HUBEAU_LAYER_ID,
   HUBEAU_MAX_VIEWPORT_DEGREES,
   HUBEAU_OBSERVATION_WINDOW_MS,
   HUBEAU_OVERLAY_COHORT_LIMIT,
   HUBEAU_OVERLAY_COLLISION_CAPACITY,
   HUBEAU_QUALIFICATION_DOUBTFUL,
+  HUBEAU_SELECTED_COLOR,
+  HUBEAU_SELECTED_OVERLAY_SOURCE_ID,
+  HUBEAU_SELECTED_OVERLAY_SOURCE_OPTIONS,
+  buildHubeauCard,
   buildHubeauRecords,
   createHubeauHydrometryLayer,
   createHubeauOverlayEntry,
+  createHubeauSelectedOverlayEntry,
   formatHubeauDischarge,
   formatHubeauStage,
   hubeauBboxParam,
   hubeauDischargeM3s,
   hubeauFreshness,
+  hubeauHistoryRequestUrl,
   hubeauObservationsRequestUrl,
   hubeauPixelSize,
   hubeauReading,
@@ -27,19 +36,12 @@ import {
   hubeauStationsRequestUrl,
   hubeauViewportBox,
   mapAnalystRecord,
+  nearestHubeauGauge,
+  parseHubeauHistory,
   parseHubeauObservations,
   parseHubeauStations,
   selectHubeauOverlayCohort,
   summarizeHubeauRecords,
-  HUBEAU_HISTORY_WINDOW_MS,
-  HUBEAU_LAYER_ID,
-  HUBEAU_SELECTED_OVERLAY_SOURCE_ID,
-  HUBEAU_SELECTED_OVERLAY_SOURCE_OPTIONS,
-  HUBEAU_SELECTED_COLOR,
-  buildHubeauCard,
-  createHubeauSelectedOverlayEntry,
-  hubeauHistoryRequestUrl,
-  parseHubeauHistory,
 } from './hubeauHydrometry.js';
 
 const OBSERVATIONS = JSON.parse(readFileSync(
@@ -869,4 +871,35 @@ test('a click on nothing still clears the card, and disable drops the handler', 
   } finally {
     h.restore();
   }
+});
+
+// ── The flow, offered to another layer ─────────────────────────────────────
+
+test('nearestHubeauGauge answers with a DISCHARGE and never with a stage', () => {
+  // A stage is a height above a gauge zero specific to that gauge — this
+  // module spends a paragraph on why two stations' stages are not comparable.
+  // A card that put one beside a plant's installed power would invite exactly
+  // that comparison, so a Q station wins however much further away it is.
+  const records = [
+    { code: 'H1', name: 'Amont', river: 'La Durance', lat: 44.500, lon: 6.300, reading: { kind: 'H', value: 1.2, text: '1,20 m', freshness: 'live' } },
+    { code: 'Q1', name: 'Aval', river: 'La Durance', lat: 44.560, lon: 6.360, reading: { kind: 'Q', value: 42, text: '42 m³/s', freshness: 'live' } },
+  ];
+  const answer = nearestHubeauGauge(records, 44.5, 6.3);
+  assert.equal(answer.code, 'Q1');
+  assert.equal(answer.text, '42 m³/s');
+  assert.equal(answer.river, 'La Durance');
+  assert.ok(answer.distanceM > 7000 && answer.distanceM < 9000);
+  // With no Q inside the ceiling the answer is null rather than a height.
+  assert.equal(nearestHubeauGauge([records[0]], 44.5, 6.3), null);
+});
+
+test('nearestHubeauGauge refuses past its ceiling and on a mangled call', () => {
+  const records = [
+    { code: 'Q1', name: 'Loin', river: null, lat: 48, lon: 2, reading: { kind: 'Q', value: 5, text: '5 m³/s', freshness: 'live' } },
+  ];
+  assert.equal(nearestHubeauGauge(records, 44.5, 6.3), null);
+  assert.ok(nearestHubeauGauge(records, 48.05, 2.05));
+  assert.equal(nearestHubeauGauge(null, 48, 2), null);
+  assert.equal(nearestHubeauGauge(records, NaN, 2), null);
+  assert.equal(HUBEAU_JOIN_MAX_M, 25_000);
 });

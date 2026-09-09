@@ -63,7 +63,7 @@ function pointFromSearch(params) {
  * Geocode a free-text address through the app's own proxy.
  *
  * The BAN is asked directly rather than through `/api/geocode`, because this
- * sheet is France-only by construction — every one of its fifteen sources is a
+ * sheet is France-only by construction — every one of its seventeen sources is a
  * French register — and the BAN answers a French address better than a
  * worldwide geocoder does, with the INSEE code already attached.
  *
@@ -170,7 +170,7 @@ function render(fiche) {
 
 /** Scan a point and render it. */
 async function scan(point) {
-  el('status').textContent = 'Interrogation des quinze sources…';
+  el('status').textContent = 'Interrogation des dix-sept sources…';
   const parts = await fetchRadiographieParts(point);
   render(composeRadiographie({ point, parts }));
 }

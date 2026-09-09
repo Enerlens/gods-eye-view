@@ -38,6 +38,7 @@
  */
 
 import { REGISTERED_LAYER_IDS } from './layerState.js';
+import { fusedIntoFor, fusionCompanionsFor } from './layerFusions.js';
 
 /**
  * The groups, in panel order. Ordering is a product decision: the flagship
@@ -243,7 +244,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'ais-live-vessels',
     category: 'maritime',
-    label: 'Navires en direct',
+    label: 'Navires et ports',
     kind: 'dataset',
     coverage: 'global',
     auth: 'free-key',
@@ -334,7 +335,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'bikeshare',
     category: 'ground-mobility',
-    label: 'Stations vélos',
+    label: 'Vélos et véhicules partagés',
     kind: 'dataset',
     coverage: 'cities',
     auth: 'none',
@@ -446,7 +447,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'edf-power-plants',
     category: 'energy',
-    label: 'Centrales EDF',
+    label: 'Centrales électriques',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -534,7 +535,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'vigicrues',
     category: 'hazards',
-    label: 'Vigicrues',
+    label: "Cours d'eau",
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -563,7 +564,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'meteofrance-vigilance',
     category: 'hazards',
-    label: 'Vigilance météo',
+    label: 'Météo',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -628,7 +629,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'local-datacenters',
     category: 'comms-sensors',
-    label: 'Datacenters',
+    label: 'Infrastructure numérique',
     kind: 'dataset',
     coverage: 'global',
     auth: 'none',
@@ -696,7 +697,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'dvf-sales',
     category: 'built-environment',
-    label: 'Ventes immobilières (DVF)',
+    label: 'Immobilier (DVF)',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -758,7 +759,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'isochrone-fr',
     category: 'built-environment',
-    label: 'Zone de chalandise (isochrone)',
+    label: 'Zone de chalandise',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -816,7 +817,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'filosofi-fr',
     category: 'built-environment',
-    label: 'Carroyage INSEE (revenus & population)',
+    label: 'Territoire (carroyage INSEE)',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -848,7 +849,7 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
   Object.freeze({
     id: 'schools-fr',
     category: 'built-environment',
-    label: 'Établissements scolaires',
+    label: 'Enseignement',
     kind: 'dataset',
     coverage: 'fr',
     auth: 'none',
@@ -942,6 +943,12 @@ const LAYER_TAXONOMY_TABLE = Object.freeze([
 export const LAYER_TAXONOMY = Object.freeze(LAYER_TAXONOMY_TABLE.map((entry) => Object.freeze({
   ...entry,
   scopeChip: coverageChip(entry.coverage),
+  // Resolved here rather than typed into the rows, for the same reason the chip
+  // is: `layerFusions.js` owns which rows are one subject, this table owns what
+  // each dataset is, and a field copied into both would drift. `null` on the
+  // 30-odd layers that are neither a fused row nor folded into one.
+  companions: fusionCompanionsFor(entry.id),
+  fusedInto: fusedIntoFor(entry.id),
 })));
 
 const TAXONOMY_BY_ID = new Map(LAYER_TAXONOMY.map((entry) => [entry.id, entry]));
@@ -1028,7 +1035,12 @@ export function layerTaxonomyFor(layerId) {
 /**
  * Group layer ids by category, in category order then within-group order.
  * Coordinators are excluded: they are not datasets and must never occupy a row
- * or inflate a group's count.
+ * or inflate a group's count. Fused companions are excluded for the same
+ * reason: they are a chip on somebody else's row, and counting them twice is
+ * the duplication `layerFusions.js` exists to remove. A companion therefore
+ * leaves its own category — `bruit-fr` is no longer a row in RISQUES &
+ * ENVIRONNEMENT — which is a real consequence of the merge, stated here rather
+ * than discovered in the panel.
  * @param {ReadonlyArray<object>} [taxonomy] Table to project.
  * @returns {Array<{id: string, label: string, icon: string, layerIds: string[]}>} Groups.
  */
@@ -1038,7 +1050,9 @@ export function groupLayerIdsByCategory(taxonomy = LAYER_TAXONOMY) {
     label: category.label,
     icon: category.icon,
     layerIds: taxonomy
-      .filter((entry) => entry.category === category.id && entry.kind === 'dataset')
+      .filter((entry) => entry.category === category.id
+        && entry.kind === 'dataset'
+        && !entry.fusedInto)
       .map((entry) => entry.id),
   }));
 }

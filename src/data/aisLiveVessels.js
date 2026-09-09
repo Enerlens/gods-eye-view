@@ -88,6 +88,8 @@
  * pass is one cartographic conversion and an early return.
  */
 import * as Cesium from 'cesium';
+import { askJoin } from './layerJoins.js';
+import { destinationPortLine, matchDestinationToPort } from './portDirectory.js';
 import { TRAIL_MAX_POINTS as TRAIL_VERTEX_CEILING, trimTrailToGroundLength } from './trailWindow.js';
 import {
   registerEntityContext,
@@ -1987,7 +1989,7 @@ function updateClusteredLabels(records) {
   const viewer = state.viewer;
   const scene = viewer?.scene;
   const selected = state.selectedRecord;
-  const entries = selected ? [buildSelectedVesselCard(selected)] : [];
+  const entries = selected ? [buildSelectedVesselCard(selected, vesselCardJoins(selected))] : [];
   const maxLabels = labelRowLimit();
 
   if (!scene || !records.length || maxLabels <= 0) {
@@ -2475,6 +2477,50 @@ export function buildVesselCard(record) {
 }
 
 /**
+ * Round a distance the way a card reads it.
+ * @param {number} metres @returns {string}
+ */
+function joinDistanceLabel(metres) {
+  if (!Number.isFinite(metres)) return '';
+  return metres >= 10_000
+    ? `${Math.round(metres / 1000)} km`
+    : `${Math.round(metres / 100) / 10} km`;
+}
+
+/**
+ * The two lines this card cannot write on its own.
+ *
+ * Both come from OTHER LAYERS through `layerJoins.js`, and both are optional
+ * by construction: a reader who has not switched the ports or the buoys on
+ * gets the card this layer has always drawn, never a gap where a sentence was
+ * promised. That is what makes it honest to join two things a reader can
+ * switch off independently.
+ *
+ * Exported for the unit tests, which drive it with a stubbed board rather than
+ * with two live layers.
+ *
+ * @param {object} record Selected vessel record.
+ * @returns {{destinationLine: ?string, seaLine: ?string}}
+ */
+export function vesselCardJoins(record) {
+  const lat = Number(record?.lat);
+  const lon = Number(record?.lon);
+  const from = Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : {};
+
+  const index = askJoin('ports/directory');
+  const match = index ? matchDestinationToPort(record?.destination, index, from) : null;
+  const destinationLine = destinationPortLine(match, from);
+
+  const sea = askJoin('buoys/nearest', lat, lon);
+  const seaLine = sea?.label
+    ? `MER ${sea.label.toUpperCase()} · ${Math.round(sea.waveHeightM * 10) / 10} m`
+      + ` · bouée ${sea.station} à ${joinDistanceLabel(sea.distanceM)}`
+    : null;
+
+  return { destinationLine, seaLine };
+}
+
+/**
  * Card model for the click-selected vessel — the full-detail card, drawn last
  * (on top) and never distance-faded by the overlay. Pinned-but-vanished
  * vessels carry a STALE marker (mirrors the HUD readout). Pure — exported
@@ -2482,7 +2528,7 @@ export function buildVesselCard(record) {
  * @param {Object} record - Selected vessel record.
  * @returns {Object} vesselLabels entry.
  */
-export function buildSelectedVesselCard(record) {
+export function buildSelectedVesselCard(record, joins = null) {
   const direction = record.heading ?? record.course;
   const details = [[
     vesselTypeShort(record) || 'VESSEL',
@@ -2490,7 +2536,20 @@ export function buildSelectedVesselCard(record) {
     Number.isFinite(direction) ? `${Math.round(direction)}°` : '--°',
   ].join(' · ')];
   const destination = String(record.destination || '').trim();
-  if (destination) details.push(`→ ${trimHudValue(destination, 24)}`);
+  if (destination) {
+    // THE DESTINATION, RESOLVED WHEN IT CAN BE. `→ BEANR` becomes
+    // `→ Antwerpen · 84 km` when the ports pack is loaded and the field names
+    // a harbour in it; measured, that is half the fleet (`portDirectory.js`).
+    // The other half keeps the master's own twenty characters verbatim — the
+    // line this card has always drawn — because a berth number and an order
+    // are not places and no amount of matching makes them one.
+    details.push(joins?.destinationLine || `→ ${trimHudValue(destination, 24)}`);
+  }
+  // THE SEA IT IS IN, which no vessel message carries. The buoys layer holds
+  // it and was drawn a row away without either ever asking the other; it
+  // answers only while it is switched on, so a reader who closed it sees the
+  // card it saw before.
+  if (joins?.seaLine) details.push(joins.seaLine);
   const stale = (record.missedRefreshes || 0) > 0;
   details.push(`MMSI ${record.mmsi || '--'} · ${formatPositionTime(record)}${stale ? ' · STALE' : ''}`);
   return {

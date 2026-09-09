@@ -1073,6 +1073,75 @@ function metresText(metres) {
  * @param {object} props Shipped feature properties.
  * @returns {string[]} 0–3 detail lines, French, empty entries already dropped.
  */
+/**
+ * How far a dam may be from a plant and still be worth naming, in metres.
+ *
+ * 10 km, and what the card writes is "à 2,4 km" — a NEIGHBOUR, never an
+ * identity. Neither register carries a link between the two: ODRÉ publishes no
+ * structure for a plant and OSM publishes no plant for a structure, so any
+ * sentence stronger than "the nearest mapped structure is X, N km away" would
+ * be this repository inventing a relationship its sources do not assert.
+ *
+ * 10 km rather than something tighter because a run-of-river plant's intake
+ * and its powerhouse are routinely kilometres apart, and rather than something
+ * looser because past ten kilometres a structure is in another valley.
+ */
+export const DAM_JOIN_MAX_M = 10_000;
+
+/** Great-circle metres. Local, so this pack needs no scene to be tested. */
+function damJoinDistanceM(lat1, lon1, lat2, lon2) {
+  if (![lat1, lon1, lat2, lon2].every((value) => Number.isFinite(value))) return Infinity;
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
+  return 6_371_008.8 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * The nearest mapped dam structure to a point.
+ *
+ * NAMED ONES FIRST, and not merely preferred: 4 579 of the pack's 6 189
+ * features carry no name, no height and no operator — pond outlets and river
+ * weirs — and answering "the nearest structure is an unnamed weir 400 m away"
+ * is noise where "Barrage de Serre-Ponçon, 6 km" is information. An unnamed
+ * one is still returned when it is the only thing inside the ceiling, because
+ * "there is something here and OSM does not know what" is itself an answer.
+ *
+ * @param {ReadonlyArray<{props: object, lat: number, lon: number}>} rows
+ * @param {number} lat @param {number} lon
+ * @param {number} [maxM] Ceiling, {@link DAM_JOIN_MAX_M} by default.
+ * @returns {?{name: ?string, kind: ?string, heightM: ?number, hydro: boolean,
+ *   distanceM: number}}
+ */
+export function nearestDam(rows, lat, lon, maxM = DAM_JOIN_MAX_M) {
+  const ceiling = Number.isFinite(maxM) && maxM > 0 ? maxM : DAM_JOIN_MAX_M;
+  if (!Array.isArray(rows) || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  let named = null;
+  let namedM = Infinity;
+  let any = null;
+  let anyM = Infinity;
+  for (const row of rows) {
+    const metres = damJoinDistanceM(lat, lon, Number(row?.lat), Number(row?.lon));
+    if (metres > ceiling) continue;
+    const name = text(row?.props?.name);
+    if (name && metres < namedM) { namedM = metres; named = row; }
+    if (metres < anyM) { anyM = metres; any = row; }
+  }
+  const winner = named || any;
+  if (!winner) return null;
+  const props = winner.props || {};
+  const height = Number(props.heightM);
+  return {
+    name: text(props.name) || null,
+    kind: damStructureTitle(props) || null,
+    heightM: Number.isFinite(height) && height > 0 ? height : null,
+    hydro: props.hydro === true,
+    distanceM: named ? namedM : anyM,
+  };
+}
+
 export function damCardDetails(props) {
   const source = props && typeof props === 'object' ? props : {};
   const title = text(source.name).toLocaleLowerCase('fr-FR');
