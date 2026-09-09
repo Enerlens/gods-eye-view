@@ -847,41 +847,90 @@ export function anfrEditionLabel(iso) {
 
 // --- Shaft and ray primitives ------------------------------------------------
 
+// ── ONE `Material` PER POLYLINE, AND NEVER A SHARED ONE ──────────────────────
+//
+// This file used to memoize five materials and hand the same instance to every
+// shaft that wanted that appearance, on the stated ground that a
+// `PolylineCollection` buckets by material INSTANCE. Both halves of that were
+// wrong, and the first half was a latent crash.
+//
+// `Polyline._destroy()` calls `this._material.destroy()` unconditionally, and
+// Cesium's `destroyObject` replaces every method with a thrower rather than
+// making the object inert. So the FIRST shaft destroys the shared material and
+// the SECOND throws `DeveloperError: This object was destroyed`. Reproduced on
+// this Cesium build for `destroy()` and for `removeAll()`, solid and dashed
+// alike: two polylines, one material, one throw. Both are live paths here —
+// `disable()` calls `removeAll()`, `destroy()` calls `primitives.remove()`,
+// which destroys — so the layer threw on teardown with two shafts up.
+//
+// And the bucketing claim is false. `sortPolylinesIntoBuckets` keys on
+// `material.type` (`polylineBuckets[material.type]`), and the draw pass then
+// splits commands on `createMaterialId(polyline._material)`, which is
+// `type + JSON(uniform values)`. Both are VALUE keys: two `Color` materials
+// carrying the same colour batch into ONE command however many instances they
+// are. What costs a draw call is a change of appearance between two
+// CONSECUTIVE polylines — a question of ORDER, which `reconcileMasts` now
+// answers, not of allocation.
+//
+// Measured price of the fix: 3.5 KiB per material, so 8.2 MiB at the 2 400
+// shaft cap — against a throw on every teardown.
+//
+// Each pooled polyline owns its materials on these two slots. A shaft may wear
+// either regime over its life, so it keeps one of each rather than swapping
+// instances: an orphaned instance is one Cesium will never destroy, and a
+// re-shared one is the bug above coming back.
+const MAST_SOLID_SLOT = '__gevSolidMaterial';
+const MAST_DASH_SLOT = '__gevDashMaterial';
+
 /**
- * Colour of one shaft: its own band, so a shaft belongs to its dot.
+ * Build the material ONE shaft wears. The shaft owns it from then on.
  *
- * MEMOIZED, and that is not micro-optimisation. A `PolylineCollection` buckets
- * its polylines by material instance, so handing 1 063 shafts 1 063 fresh
- * `Material` objects would build 1 063 buckets and 1 063 draw calls for what
- * is at most five distinct appearances — four band fills plus the dashed one.
+ * A support that radiates nothing is an authorised file, not a built mast: its
+ * height is declared and not observed, and the dash says so with the same
+ * motif the hollow ring already uses on the dot. D3 — a pattern survives the
+ * sensor passes that flatten a tint.
+ * @param {object} style Band style of the support this shaft carries.
+ * @returns {object} A fresh `Cesium.Material`, owned by one polyline.
  */
-const _mastMaterials = new Map();
-function mastMaterial(style) {
-  const key = `${style.color}|${style.hollow ? 'dash' : 'solid'}`;
-  let material = _mastMaterials.get(key);
-  if (!material) {
-    const color = Cesium.Color.fromCssColorString(style.color).withAlpha(MAST_ALPHA);
-    // A support that radiates nothing is an authorised file, not a built mast:
-    // its height is declared and not observed, and the dash says so with the
-    // same motif the hollow ring already uses on the dot. D3 — a pattern
-    // survives the sensor passes that flatten a tint.
-    material = style.hollow
-      ? Cesium.Material.fromType('PolylineDash', { color, dashLength: MAST_DASH_LENGTH })
-      : Cesium.Material.fromType('Color', { color });
-    _mastMaterials.set(key, material);
-  }
-  return material;
+function createMastMaterial(style) {
+  const color = Cesium.Color.fromCssColorString(style.color).withAlpha(MAST_ALPHA);
+  return style.hollow
+    ? Cesium.Material.fromType('PolylineDash', { color, dashLength: MAST_DASH_LENGTH })
+    : Cesium.Material.fromType('Color', { color });
 }
 
-/** The one cyan the selected support's rays share. Same bucketing argument. */
-let _sectorMaterial = null;
-function sectorMaterial() {
-  if (!_sectorMaterial) {
-    _sectorMaterial = Cesium.Material.fromType('Color', {
-      color: Cesium.Color.fromCssColorString(SELECTED_COLOR).withAlpha(SECTOR_ALPHA),
-    });
+/**
+ * Dress a pooled shaft in its band, allocating at most one material per regime.
+ * @param {object} line Pooled `Polyline`, which owns its materials.
+ * @param {object} style Band style of the support this shaft now carries.
+ * @returns {void}
+ */
+function dressMast(line, style) {
+  const slot = style.hollow ? MAST_DASH_SLOT : MAST_SOLID_SLOT;
+  let material = line[slot];
+  if (!material) {
+    material = createMastMaterial(style);
+    line[slot] = material;
+  } else {
+    // A uniform write, not a new instance: same batching key, same object for
+    // Cesium to destroy exactly once.
+    material.uniforms.color = Cesium.Color.fromCssColorString(style.color).withAlpha(MAST_ALPHA);
   }
-  return _sectorMaterial;
+  if (line.material !== material) line.material = material;
+}
+
+/**
+ * The appearance key two consecutive shafts are compared on.
+ *
+ * It is `createMaterialId`'s key in this file's vocabulary: the material type
+ * plus the colour. Cesium opens a new `DrawCommand` every time it changes
+ * between two neighbouring polylines of a bucket, so sorting on it is what
+ * turns 2 400 shafts into at most five commands.
+ * @param {object} style Band style of a support.
+ * @returns {string} Sort key.
+ */
+function mastAppearanceKey(style) {
+  return `${style?.hollow ? 'dash' : 'solid'}|${style?.color || ''}`;
 }
 
 /**
@@ -895,13 +944,21 @@ function sectorMaterial() {
  * Everything it refuses is counted: `_mastsUnpublished` are the supports the
  * register gives no height for, `_mastsClipped` is the cap biting. Both reach
  * the row label and the legend (A1, A5).
+ *
+ * WHICH shafts are drawn is decided in record order and the cap bites there,
+ * so a redraw never swaps one support for another. In what ORDER they are then
+ * written into the pool is a rendering question and nothing else: Cesium
+ * breaks a draw command whenever two neighbouring polylines disagree on
+ * appearance, so the drawn set is grouped by band before it is placed. In
+ * register order the five appearances interleave and the fullest box costs up
+ * to 1 913 commands; grouped it costs at most five.
  */
 function reconcileMasts() {
   _mastsDrawn = 0;
   _mastsUnpublished = 0;
   _mastsClipped = 0;
   const draw = _enabled && _regime === 'supports' && _mastRegime;
-  let index = 0;
+  const drawn = [];
   if (draw) {
     for (const record of _records.values()) {
       const heightM = anfrMastHeightM(record.support);
@@ -909,36 +966,41 @@ function reconcileMasts() {
         _mastsUnpublished += 1;
         continue;
       }
-      if (index >= MAX_RENDERED_MASTS) {
+      if (drawn.length >= MAX_RENDERED_MASTS) {
         _mastsClipped += 1;
         continue;
       }
       // The tally is kept whether or not there is a collection to draw into,
       // so the row label and the legend say the same thing in a headless test
       // as they do on screen.
-      if (_masts) {
-        const positions = [record.groundPosition || record.position, record.position];
-        let line = _masts.get(index);
-        if (!line) {
-          line = _masts.add({
-            positions,
-            width: MAST_WIDTH_PX,
-            material: mastMaterial(record.style),
-            show: true,
-          });
-        } else {
-          line.positions = positions;
-          line.width = MAST_WIDTH_PX;
-          const material = mastMaterial(record.style);
-          if (line.material !== material) line.material = material;
-          line.show = true;
-        }
-      }
-      index += 1;
+      drawn.push(record);
     }
+    // Stable within a band — `Array.prototype.sort` is stable — so two shafts
+    // of the same colour keep their register order and a redraw with the same
+    // records produces the same pool, frame after frame.
+    drawn.sort((a, b) => mastAppearanceKey(a.style).localeCompare(mastAppearanceKey(b.style)));
   }
+  const index = drawn.length;
   _mastsDrawn = index;
   if (!_masts) return;
+  for (let i = 0; i < index; i += 1) {
+    const record = drawn[i];
+    const positions = [record.groundPosition || record.position, record.position];
+    let line = _masts.get(i);
+    if (!line) {
+      // Handed in at the add rather than assigned after it: `add()` without a
+      // `material` builds a default white one that the next line would orphan,
+      // and an orphan is an instance Cesium will never destroy.
+      const material = createMastMaterial(record.style);
+      line = _masts.add({ positions, width: MAST_WIDTH_PX, material, show: true });
+      line[record.style.hollow ? MAST_DASH_SLOT : MAST_SOLID_SLOT] = material;
+    } else {
+      line.positions = positions;
+      line.width = MAST_WIDTH_PX;
+      line.show = true;
+      dressMast(line, record.style);
+    }
+  }
   for (let i = index; i < _masts.length; i += 1) _masts.get(i).show = false;
   _masts.show = draw && index > 0;
 }
@@ -970,7 +1032,6 @@ function drawSectors(record) {
 
   const floor = cachedGroundFloor(support.lat, support.lon);
   const base = (Number.isFinite(floor) ? floor : 0) + POINT_LIFT_M;
-  const material = sectorMaterial();
   let index = 0;
   for (const ray of rays) {
     const far = anfrProjectPoint(support.lat, support.lon, ray.deg, ANFR_SECTOR_RAY_M);
@@ -982,9 +1043,16 @@ function drawSectors(record) {
     ];
     let line = _sectors.get(index);
     if (!line) {
+      // Its own instance, handed in at the add — see the note above the
+      // material helpers: one cyan shared by 33 rays is 32 throws at teardown,
+      // and 33 instances of the same cyan are still one draw command.
+      const material = Cesium.Material.fromType('Color', {
+        color: Cesium.Color.fromCssColorString(SELECTED_COLOR).withAlpha(SECTOR_ALPHA),
+      });
       line = _sectors.add({
         positions, width: SECTOR_WIDTH_PX, material, show: true,
       });
+      line[MAST_SOLID_SLOT] = material;
     } else {
       line.positions = positions;
       line.width = SECTOR_WIDTH_PX;
@@ -2167,11 +2235,11 @@ const anfrFranceLayer = {
       viewer?.scene?.primitives?.remove?.(_sectors);
       _sectors = null;
     }
-    // The memoized materials outlive the collections that used them, and a
-    // second `init()` on a new viewer would otherwise hand a fresh context
-    // objects built against the old one.
-    _mastMaterials.clear();
-    _sectorMaterial = null;
+    // Nothing to clear for the materials any more: each one belongs to the
+    // polyline that wears it, so `primitives.remove` above destroys them with
+    // their collection — exactly once each — and a second `init()` on a new
+    // viewer starts from an empty pool rather than from objects built against
+    // the old context.
     _records.clear();
     _mesh = null;
     _pack = null;
