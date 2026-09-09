@@ -91,6 +91,7 @@
     "perf:boot": "node scripts/perf-boot-probe.mjs",
     "perf:urls": "node scripts/perf-boot-urls.mjs",
     "perf:layers": "node scripts/perf-boot-probe.mjs --at lyon --layers irve-fr,schools-fr,transit-fr",
+    "perf:infra": "node scripts/perf-infra-lod.mjs",
     "perf:warm": "node scripts/perf-boot-probe.mjs --warm",
     "perf:origin": "node scripts/perf-origin-bench.mjs",
     "perf:graph": "vite build --config scripts/vite.module-graph.config.mjs --outDir .context/perf/dist-graph --emptyOutDir",

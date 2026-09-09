@@ -445,8 +445,17 @@ async function main() {
     // 6 698 resident polylines cost their vertices in the shader on every frame
     // whether shown or not, which is a 6 ms per-frame regression measured
     // against origin/main. So the invariant is that the two numbers AGREE.
+    //
+    // The FLOOR used to be 20 and is now Roissy's own five, because the number
+    // it was calibrated against described a bug. Before the frustum gate
+    // (PLAN-PERFORMANCE.md § 3.1) the layer dealt pool lines to every field the
+    // HORIZON allowed, so at 12 km over Roissy the batch carried segments for
+    // airports on the other side of Europe; measured on this framing it now
+    // holds 8, all of them on screen. "More than twenty" was never the claim —
+    // the claim is that real lines reach the globe and that the pool holds
+    // exactly what is drawn, and both are asserted here and just below.
     record('the published runway geometry reaches the globe as real lines',
-      field.found && field.shown > 20 && field.total === field.shown,
+      field.found && field.shown >= 5 && field.total === field.shown,
       field.found ? `${field.total} in the batch, ${field.shown} drawn` : 'no batch');
     record('Roissy draws all five of its runway records',
       field.cdgShown === 5, `${field.cdgShown} drawn — spans ${field.cdgSpans?.join('/')} m`);

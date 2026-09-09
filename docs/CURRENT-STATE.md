@@ -160,9 +160,19 @@ Updated: September 8, 2026
 > and cut: one click enabling `local-datacenters` + `local-dams` +
 > `telegeography-submarine-cables` puts ~5,700 entities on a full-earth view and
 > the frame rate goes with them. The layers are unchanged and still reachable by
-> hand and by voice ("infrastructure mode" is still mapped). Do not re-add the
-> tile before the bundled-infra globe-LOD declutter lands — that is the real
-> fix, and it is post-launch work.
+> hand and by voice ("infrastructure mode" is still mapped).
+>
+> **The globe-LOD declutter this note was waiting for has landed (2026-09-09,
+> PLAN-PERFORMANCE.md § 3.1), and it is not the whole answer.** What the four
+> bundled packs DRAW is now bounded — measured on this machine, a full-earth
+> view went from killing the renderer outright to 387 marks and a 167 ms motion
+> p90, and 120 km over Lyon from 10 178 drawn entities to 234. What they COST TO
+> HOLD did not move: 22 218 entities still retain ~630 MiB, uniformly 28-36 KiB
+> apiece across all four packs, which is the `Entity` + `Property` machinery
+> itself and only the migration to primitives removes it. So the tile is a
+> smaller decision than it was and still not a free one — re-adding it means
+> accepting that memory on the machines this app is meant to reach, and that
+> number should be re-measured with `npm run perf:infra` on a real GPU first.
 >
 > **Show policy — it is NOT one-shot.** Precedence, highest first: a share link
 > never sees it → `?welcome=0` suppresses → `?welcome=1` replays (past both
@@ -3212,6 +3222,34 @@ civil and military aircraft share one lane, and a handler that hit-tested the
 lane as a whole would resolve its neighbour's callsign as one of its own
 contacts. **Vols** and **Vols militaires** consult it, in the same three-step
 order as everything else, and select the contact the callsign names.
+
+**What the four bundled packs draw is bounded by TWO screen rules, not by the
+horizon (September 2026).** Until `localGeojson.js` gained them, the only
+spatial question it asked was `EllipsoidalOccluder` — is this point beyond the
+horizon — which is a hemisphere, not a viewport: measured before the change, at
+120 km over Lyon with all four packs on, **10 178 of 22 218 features were
+`show = true`**, ten thousand of them on the far side of Europe, Africa or the
+Atlantic and never once on screen. (1) A **frustum gate** now hides anything
+whose whole drawn extent is outside the view volume, sized on a bounding sphere
+that reaches from the ground anchor out over the recall stem — which is 65 px
+on screen at every range, so ~1 670 km of world at orbit — plus the surveyed
+footprint and the runway segments at their maximum stretch. It is deliberately
+generous, and it fails OPEN: a scene that cannot describe its frustum culls
+nothing. (2) Above **2 000 km of camera height** a **screen-cell budget** keeps
+one mark per occupied 26 px cell, ranked by the same priority comparator the
+ambient cards use so a name never lands on a dot that is not its own, capped at
+600 marks per pack, and with the SELECTED feature always pinned so pulling back
+to orbit never deletes the thing under an open card. Below 2 000 km the budget
+is not applied at all — a visitor at city range zoomed in to separate two
+neighbouring structures. Both answers are re-decided only on a camera settle,
+like the marker range and the footprint floor beside them, and both follow the
+`lite` render profile (60 % of the marks, grid widened by `1/√0.6` because a
+grid loses cells with the SQUARE of its pitch). Cesium's own leftovers went with
+them: the pack no longer keeps the **pin billboard** Cesium builds for every
+POINT feature (16 834 of them, each drawn under the app's own dot) nor the HTML
+**description table** its default `describe` renders per feature (22 218 of
+them, 1 995 276 characters on the ports pack alone) — neither was ever read.
+`npm run perf:infra` is the bench that holds all of this to a number.
 
 **Airport names select and frame, exactly as their pastille does.** The local
 infrastructure layers (**Aéroports**, **Ports**, **Barrages**, **Datacenters**)
