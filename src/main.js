@@ -71,6 +71,7 @@ import { MapStackController } from './mapStackController.js';
 import { ignTerrainFlagEnabled } from './data/ignBilTerrain.js';
 import { initAnnotations } from './annotations/index.js';
 import { initLogoGaze } from './logoGaze.js';
+import { installStarfield } from './starfield.js';
 import { initCockpitCloudEffects } from './cockpitCloudEffects.js';
 import {
   installRenderGovernor,
@@ -172,6 +173,12 @@ async function init() {
       selectionIndicator: false,
       infoBox: false,
       baseLayer: false,
+      // No star field at construction. Cesium's default SkyBox pulls six
+      // Tycho-2 JPEGs — 848 kB — on every cold start, and measured on a 2-core
+      // laptop at 10 Mbit/s that was 1.7 s of the 5.3 s boot. It comes back,
+      // deferred, on the basemaps where a sky means something: see
+      // `src/starfield.js`.
+      skyBox: false,
       // Visible attribution container — Google Maps / 3D Tiles credits are
       // required by Google's Terms of Service, so they must be shown (styled
       // subtly via #cesium-credits). The credit line stays visible in
@@ -222,6 +229,15 @@ async function init() {
     // Keep a sky behind Google 3D Tiles, but soften Cesium's high-intensity
     // default atmosphere. With the globe hidden its bright limb otherwise
     // reads as a hard cyan seam where distant photoreal tiles meet the sky.
+    // The Moon is drawn against a sky this build no longer ships by default,
+    // and it drags `moonSmall.jpg` plus the IAU2006 rotation tables into the
+    // boot to do it. It goes with the stars.
+    viewer.scene.moon = undefined;
+    viewer.scene.backgroundColor = Cesium.Color.BLACK;
+    // `showWaterEffect` fetches `waterNormals.jpg` (294 kB) the moment a tile
+    // carries a water mask, to animate a specular shimmer that is invisible at
+    // every altitude this app is read at.
+    viewer.scene.globe.showWaterEffect = false;
     viewer.scene.skyAtmosphere.show = true;
     viewer.scene.skyAtmosphere.atmosphereLightIntensity = 18;
     viewer.scene.skyAtmosphere.saturationShift = -0.12;
@@ -322,6 +338,19 @@ async function init() {
       ? requestedStack
       : mapStackController.getActiveId();
     await mapStackController.setStack(bootStack, { silent: true });
+
+    // The star field follows the imagery: it belongs to a photograph of the
+    // Earth, not to a drawing of it. Deferred on this first call so a build
+    // that opens on a satellite basemap still does not pay 848 kB inside its
+    // own boot — see `src/starfield.js`. The boot activation above is silent
+    // and emits no event, which is why it is synced here by hand rather than
+    // only through the listener below.
+    const starfield = installStarfield(viewer.scene, { requestRender: governorRequestRender });
+    starfield.sync(mapStackController.getActiveId(), { defer: true });
+    window.addEventListener('gev:map-stack-changed', (event) => {
+      if (event.detail?.status === 'switching') return;
+      starfield.sync(event.detail?.activeId);
+    });
 
     // Initialize the style manager (post-processing, HUD, locations, share links)
     const styleManager = new StyleManager(viewer, { mapStackController });
@@ -525,6 +554,9 @@ async function init() {
       // them rather than infer them from pixels.
       getGlobeDetailDiagnostics,
       getCameraSensitivityDiagnostics,
+      // Whether the 848 kB star field has been paid for yet, and on which
+      // basemap. `qa:starfield` asserts both halves of the contract.
+      starfield,
       requestRender: governorRequestRender,
       // The dataset box: plug / unplug / infer / list, for the QA harness and
       // for anyone driving the app from the console.
