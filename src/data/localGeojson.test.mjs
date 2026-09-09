@@ -12,8 +12,12 @@ import {
   localFootprintGeometry,
   createLocalInfrastructureOverlayEntry,
   createLocalInfrastructureOverlayPublisher,
+  localCullingVolume,
   localDatasetError,
   localInfrastructureOverlayCopy,
+  localRecordOffScreen,
+  localStemLiftM,
+  selectLocalGlobeLodMarks,
   selectLocalInfrastructureOverlayCohort,
 } from './localGeojson.js';
 import { layerFeedState } from './manager.js';
@@ -1778,4 +1782,297 @@ test('the footprint floor thins by SIZE, which is the honest order for a ground 
   assert.equal(localFootprintFitsScreen(0, metresPerPixel), false);
   assert.equal(localFootprintFitsScreen(2211, 0), false);
   assert.equal(localFootprintFitsScreen(NaN, metresPerPixel), false);
+});
+
+// ── The globe-LOD budget and the frustum gate (PLAN-PERFORMANCE.md § 3.1) ──
+
+/** A record shaped exactly as the walk builds them, for the pure rules. */
+function lodRecord(id, priority, screen, { lon = 0, lat = 0, extentRadiusM = 0 } = {}) {
+  return {
+    id,
+    priority,
+    screen,
+    extentRadiusM,
+    base: Cesium.Cartesian3.fromDegrees(lon, lat, 0),
+    entity: { show: true },
+  };
+}
+
+test('the globe budget draws one mark per occupied screen cell, and the right one', () => {
+  const cell = 26;
+  // Three records inside ONE 26 px cell, and a fourth two cells away. The
+  // second of the three is the important one — a cell is represented by what
+  // matters in it, not by whichever row the pack happened to emit first.
+  const first = lodRecord('a', 10, { x: 10, y: 10 });
+  const best = lodRecord('b', 900, { x: 20, y: 20 });
+  const third = lodRecord('c', 50, { x: 25, y: 5 });
+  const elsewhere = lodRecord('d', 1, { x: 300, y: 300 });
+
+  const kept = selectLocalGlobeLodMarks([first, best, third, elsewhere], {
+    cellPx: cell,
+    width: 800,
+    height: 600,
+    project: (record) => record.screen,
+  });
+  assert.equal(kept.size, 2, 'one occupied cell is one mark, whatever it holds');
+  assert.ok(kept.has(best), 'the cell is represented by its most important feature');
+  assert.ok(kept.has(elsewhere), 'a sparse cell keeps its only member, however small');
+  assert.equal(kept.has(first), false);
+  assert.equal(kept.has(third), false);
+});
+
+test('the budget ceiling cuts cells by importance, not by arrival order', () => {
+  // One record per cell — the grid drops nothing — so only the ceiling bites,
+  // and what it keeps has to be the top of the ladder rather than the head of
+  // the array. Emitted weakest-first so an order-preserving cut would fail.
+  const records = [];
+  for (let index = 0; index < 40; index += 1) {
+    records.push(lodRecord(`r${index}`, index, { x: 13 + index * 26, y: 13 }));
+  }
+  const kept = selectLocalGlobeLodMarks(records, {
+    cellPx: 26,
+    width: 2000,
+    height: 600,
+    maxMarks: 5,
+    project: (record) => record.screen,
+  });
+  assert.equal(kept.size, 5);
+  assert.deepEqual(
+    [...kept].map((record) => record.id).sort(),
+    ['r35', 'r36', 'r37', 'r38', 'r39'],
+    'the ceiling keeps the five that matter most',
+  );
+});
+
+test('a selected feature is drawn whatever cell it lands in, and whoever else won it', () => {
+  // The one moment a budget must not be clever: the visitor has a card open on
+  // this feature. Without the pin, pulling back to orbit deletes the mark under
+  // the card they are reading.
+  const winner = lodRecord('hub', 5000, { x: 10, y: 10 });
+  const selected = lodRecord('weir', 1, { x: 12, y: 12 });
+  const kept = selectLocalGlobeLodMarks([winner, selected], {
+    cellPx: 26,
+    width: 800,
+    height: 600,
+    project: (record) => record.screen,
+    pinned: selected,
+  });
+  assert.equal(kept.size, 2, 'the pin does not evict the cell winner, it joins it');
+  assert.ok(kept.has(selected));
+  assert.ok(kept.has(winner));
+
+  // And it survives a ceiling of one, because a budget that could drop the
+  // selection would be answering a different question from the one asked.
+  const capped = selectLocalGlobeLodMarks([winner, selected], {
+    cellPx: 26,
+    width: 800,
+    height: 600,
+    maxMarks: 1,
+    project: (record) => record.screen,
+    pinned: selected,
+  });
+  assert.deepEqual([...capped].map((record) => record.id), ['weir']);
+});
+
+test('the budget refuses a projection it cannot use rather than guessing a cell', () => {
+  const off = lodRecord('behind', 100, { x: -400, y: 300 });
+  const nan = lodRecord('nan', 100, { x: Number.NaN, y: 10 });
+  const none = lodRecord('null', 100, null);
+  const good = lodRecord('good', 1, { x: 400, y: 300 });
+  const kept = selectLocalGlobeLodMarks([off, nan, none, good], {
+    cellPx: 26,
+    width: 800,
+    height: 600,
+    project: (record) => record.screen,
+  });
+  assert.deepEqual([...kept].map((record) => record.id), ['good']);
+
+  // Degenerate inputs are empty answers, never throws: this runs inside a
+  // preRender handler where a throw would take the frame with it.
+  assert.equal(selectLocalGlobeLodMarks([], { cellPx: 26, project: () => null }).size, 0);
+  assert.equal(selectLocalGlobeLodMarks(null, { cellPx: 26, project: () => null }).size, 0);
+  assert.equal(selectLocalGlobeLodMarks([good], { cellPx: 26 }).size, 0);
+});
+
+test('a scene that cannot describe its frustum culls nothing at all', () => {
+  // The historical behaviour, and the one a test double gets. Failing OPEN is
+  // load-bearing: a gate that culled when it could not answer would empty the
+  // map instead of merely failing to trim it.
+  assert.equal(localCullingVolume(undefined), null);
+  assert.equal(localCullingVolume({ camera: { frustum: { fov: Math.PI / 3 } } }), null);
+  assert.equal(localCullingVolume({
+    camera: { frustum: new Cesium.PerspectiveFrustum() },
+  }), null, 'a frustum with no camera vectors cannot be resolved either');
+  assert.equal(localRecordOffScreen(null, lodRecord('x', 1, null), 1000), false);
+});
+
+test('the frustum gate hides what is not on screen, and only that', () => {
+  // A real camera 500 km over Paris, looking straight down. `up` is derived
+  // rather than borrowed from an axis: `computeCullingVolume` builds its six
+  // planes from an ORTHONORMAL triple, and a non-perpendicular up quietly
+  // skews every one of them.
+  const eye = Cesium.Cartesian3.fromDegrees(2.35, 48.85, 500_000);
+  const direction = Cesium.Cartesian3.normalize(
+    Cesium.Cartesian3.negate(eye, new Cesium.Cartesian3()),
+    new Cesium.Cartesian3(),
+  );
+  const right = Cesium.Cartesian3.normalize(
+    Cesium.Cartesian3.cross(direction, Cesium.Cartesian3.UNIT_Z, new Cesium.Cartesian3()),
+    new Cesium.Cartesian3(),
+  );
+  const up = Cesium.Cartesian3.normalize(
+    Cesium.Cartesian3.cross(right, direction, new Cesium.Cartesian3()),
+    new Cesium.Cartesian3(),
+  );
+  const camera = {
+    positionWC: eye,
+    directionWC: direction,
+    upWC: up,
+    frustum: Object.assign(new Cesium.PerspectiveFrustum(), {
+      fov: Math.PI / 3,
+      aspectRatio: 800 / 600,
+      near: 1,
+      far: 50_000_000,
+    }),
+  };
+  const volume = localCullingVolume({ camera });
+  assert.ok(volume, 'a real camera resolves a culling volume');
+
+  const under = lodRecord('paris', 1, null, { lon: 2.35, lat: 48.85 });
+  // 20° east of the camera is roughly 1 460 km off the view axis at 500 km of
+  // altitude — far outside a 60° cone by any reckoning.
+  const aside = lodRecord('aside', 1, null, { lon: 22.35, lat: 48.85 });
+  assert.equal(localRecordOffScreen(volume, under, 0), false, 'what is under the camera is on screen');
+  assert.equal(localRecordOffScreen(volume, aside, 0), true, 'what is 1 460 km off the axis is not');
+
+  // The gate does NOT replace the horizon occluder, and this is why: the
+  // antipode sits dead ahead of a camera pointed at the planet's centre, so it
+  // is inside the frustum and behind 12 700 km of rock. Both tests are needed,
+  // and the walk still runs both.
+  const antipode = lodRecord('antipode', 1, null, { lon: -177.65, lat: -48.85 });
+  assert.equal(
+    localRecordOffScreen(volume, antipode, 0),
+    false,
+    'a frustum knows nothing about the globe in the way — the occluder does',
+  );
+
+  // The sphere has to reach as far as the record DRAWS, not just to its
+  // anchor. A feature whose anchor is outside the cone but whose recall stem
+  // or surveyed outline reaches into it is on screen and must be kept.
+  assert.equal(
+    localRecordOffScreen(volume, aside, 2_000_000),
+    false,
+    'a stem long enough to enter the frustum keeps its record',
+  );
+  const wide = lodRecord('wide', 1, null, { lon: 22.35, lat: 48.85, extentRadiusM: 2_000_000 });
+  assert.equal(
+    localRecordOffScreen(volume, wide, 0),
+    false,
+    'so does a surveyed extent that reaches in',
+  );
+});
+
+test('the gate sizes its sphere on the same stem the geometry pass places', () => {
+  // The two must not drift: a gate whose idea of the stem is shorter than the
+  // stem culls a mark that is on screen. `localStemLiftM` is the one
+  // definition, and this pins its two clauses.
+  const pixelFactor = (2 * Math.tan(Math.PI / 6)) / 1080;
+  // 65 px of stem at 20 000 km is over a thousand kilometres of world space.
+  assert.equal(
+    Math.round(localStemLiftM(20_000_000, pixelFactor, Infinity)),
+    Math.round(20_000_000 * pixelFactor * 65),
+  );
+  // Under 5 km the distance is floored, so a stem never collapses into its dot.
+  assert.equal(
+    localStemLiftM(1000, pixelFactor, Infinity),
+    localStemLiftM(5000, pixelFactor, Infinity),
+  );
+  // A pack that declares a ceiling gets it — the airports pack's 150 m.
+  assert.equal(localStemLiftM(20_000_000, pixelFactor, 150), 150);
+});
+
+test('above 2 000 km a crowded cell draws one mark; below it, everything', async () => {
+  // The harness projects every record to the same point, so all three land in
+  // one cell — the crowded case, without having to model a projection.
+  const features = [
+    { lon: 2.35, lat: 48.85, size: 0.01, properties: { name: 'Nommé' } },
+    { lon: 2.36, lat: 48.86, size: 0.01, properties: {} },
+    { lon: 2.37, lat: 48.87, size: 0.01, properties: {} },
+  ];
+  const orbit = await createMeasuredLayerHarness({ features, cameraAltitudeM: 20_000_000 });
+  try {
+    orbit.preRender.raise();
+    const shown = orbit.entities.filter((entity) => entity.show !== false);
+    assert.equal(shown.length, 1, 'one occupied cell is one drawn mark');
+    assert.equal(
+      shown[0].properties.name.getValue(),
+      'Nommé',
+      'and it is the cell winner, which is the named feature',
+    );
+  } finally {
+    orbit.cleanup();
+  }
+
+  // The same three features, the same cell, 120 km up: "en dessous, tout".
+  const city = await createMeasuredLayerHarness({ features, cameraAltitudeM: 120_000 });
+  try {
+    city.preRender.raise();
+    assert.equal(
+      city.entities.filter((entity) => entity.show !== false).length,
+      3,
+      'below the LOD height a visitor who zoomed in to separate two neighbours gets both',
+    );
+  } finally {
+    city.cleanup();
+  }
+});
+
+test('a mark dropped at orbit comes back on the way down', async () => {
+  // The flag is sticky by design (it is only recomputed on a settle), so the
+  // descent has to clear it. Left set, a feature dropped once would stay
+  // dropped for the rest of the session.
+  const features = [
+    { lon: 2.35, lat: 48.85, size: 0.01, properties: { name: 'Nommé' } },
+    { lon: 2.36, lat: 48.86, size: 0.01, properties: {} },
+  ];
+  const env = await createMeasuredLayerHarness({ features, cameraAltitudeM: 20_000_000 });
+  try {
+    env.preRender.raise();
+    assert.equal(env.entities.filter((entity) => entity.show !== false).length, 1);
+
+    env.viewer.camera.positionWC = Cesium.Cartesian3.fromDegrees(2.35, 48.85, 120_000);
+    env.viewer.camera.moveEnd.raise();
+    env.preRender.raise();
+    assert.equal(
+      env.entities.filter((entity) => entity.show !== false).length,
+      2,
+      'the descent re-admits what orbit had dropped',
+    );
+  } finally {
+    env.cleanup();
+  }
+});
+
+test('the packs carry no description table Cesium built for nobody', async () => {
+  // Cesium's default `describe` renders an HTML <table> of every property, as
+  // a string, for every feature it parses. This app never reads
+  // `entity.description` — a local card is written by
+  // `localInfrastructureOverlayCopy` (or the pack's own `cardCopy`) off the
+  // unwrapped properties. Measured on the ports pack alone: 1 995 276
+  // characters across 2 951 features, built during the load and retained.
+  //
+  // Its twin — the PIN BILLBOARD Cesium builds for every POINT feature, which
+  // this file also now drops — cannot be pinned here: the pin builder needs a
+  // `document`, which is exactly why this harness draws polygons. It is
+  // measured in the browser instead, by `scripts/perf-infra-lod.mjs`.
+  const env = await createMeasuredLayerHarness({
+    features: [{ lon: 2.35, lat: 48.85, size: 0.01, properties: { name: 'Nommé', country: 'France' } }],
+  });
+  try {
+    assert.equal(env.entities.length, 1);
+    assert.equal(env.entities[0].description, undefined, 'the table nobody reads is gone');
+    assert.ok(env.entities[0].point, 'the app draws its own mark, as it always did');
+  } finally {
+    env.cleanup();
+  }
 });

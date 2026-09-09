@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
+import { isLiteProfile, onPerfProfileChange } from '../perfProfile.js';
 import { askJoin } from './layerJoins.js';
 import {
   airportCardDetails,
@@ -45,6 +46,67 @@ const LOCAL_OVERLAY_CELL_SURPLUS = 2;
 const LOCAL_OVERLAY_MAX_DISTANCE_M = 14000000;
 const LOCAL_OVERLAY_FADE_START_M = 250000;
 const LOCAL_OVERLAY_FADE_START_RATIO = LOCAL_OVERLAY_FADE_START_M / LOCAL_OVERLAY_MAX_DISTANCE_M;
+
+// ── The globe-LOD budget (PLAN-PERFORMANCE.md § 3.1) ───────────────────────
+//
+// Two rules decide what a pack DRAWS, and they answer different questions.
+//
+// The FRUSTUM gate answers "is this on the screen at all". Until it existed the
+// only spatial test here was `EllipsoidalOccluder`, which asks whether a point
+// is over the horizon — a hemisphere, not a viewport. Measured on this tree
+// before the gate: at 120 km over Lyon, with the four bundled packs on, 10 178
+// of 22 218 features were `show = true`. Ten thousand of those were on the far
+// side of Europe, Africa or the Atlantic, batched into vertex buffers, culled
+// again by Cesium every frame, and never once on screen. That single missing
+// test is most of why the four packs together drew about one frame per second.
+//
+// The CELL budget answers "would a second mark here say anything". Above
+// LOCAL_GLOBE_LOD_HEIGHT_M a screen cell is hundreds of kilometres wide, so the
+// dots inside one have already merged into a blob; drawing 40 of them costs 40
+// marks and shows one. Below that height the rule is deliberately NOT applied:
+// a visitor at city range zoomed in to separate two neighbouring structures,
+// and dropping one of them would answer the opposite of the question they put.
+// That is the plan's "au-delà de 2 000 km, un point par cellule occupée ; en
+// dessous, tout", and the threshold is a guarantee rather than a tuning knob.
+/** Camera height above which the marks are decluttered onto a screen grid. */
+const LOCAL_GLOBE_LOD_HEIGHT_M = 2000000;
+/**
+ * Pitch of that grid, in CSS pixels. The widest mark this file draws is 10 px
+ * (`PointGraphics.pixelSize`), so 26 px is the mark plus air on both sides —
+ * the point at which two dots stop touching. It is not the label grid's 132–144
+ * px: a NAME needs room for its own text, a dot needs room for itself.
+ */
+const LOCAL_GLOBE_LOD_CELL_PX = 26;
+/**
+ * Ceiling on the marks one pack may draw at globe range, whatever the window
+ * size. The grid alone is a function of the viewport, so a 5 K display would
+ * quietly re-admit several thousand marks per pack and undo the budget on the
+ * machines least able to pay for it. Four packs at 600 is 2 400 marks, which is
+ * a fifth of what the horizon test alone was letting through.
+ */
+const LOCAL_GLOBE_LOD_MAX_MARKS = 600;
+/**
+ * The `lite` profile's share of that ceiling — the plan's § 3.5 rule
+ * ("`lite` = 60 %") applied to the budget § 3.1 introduces. Wired here rather
+ * than left for 3.5's own pass because a brand-new budget constant that
+ * ignored the profile would be debt on the day it landed.
+ */
+const LOCAL_GLOBE_LOD_LITE_SHARE = 0.6;
+
+/**
+ * The grid pitch that yields that share.
+ *
+ * A grid's occupied-cell count falls with the SQUARE of its pitch, not with
+ * the pitch, so widening the cell by 1/0.6 would drop nearly two thirds of the
+ * marks rather than 40 % of them. `1/√0.6` ≈ 1.29 is the widening that
+ * actually costs 60 %, and it keeps the thinning spatially even instead of
+ * cutting the tail off a priority sort.
+ */
+const LOCAL_GLOBE_LOD_LITE_CELL_PX = Math.round(
+  LOCAL_GLOBE_LOD_CELL_PX / Math.sqrt(LOCAL_GLOBE_LOD_LITE_SHARE),
+);
+/** Scratch for the frustum gate — the test reads it and never keeps it. */
+const LOCAL_CULL_SPHERE = new Cesium.BoundingSphere();
 // Stems are anchored at ellipsoid height 0, but high-elevation features
 // (e.g. dams in river canyons) sit hundreds of meters above the ellipsoid,
 // burying the short close-in stem inside the photoreal mesh. Once the
@@ -252,6 +314,9 @@ const RUNWAY_TRUE_WIDTH_MPP = 45;
 const RUNWAY_MAX_STRETCH = 2;
 /** Lift above the sampled ground, in metres, so the strip clears the mesh it sits on. */
 const RUNWAY_LIFT_M = 3;
+
+/** On-screen height of the recall stem, in CSS pixels, at every camera range. */
+const LOCAL_STEM_TARGET_PX = 65;
 
 /** Ignore sub-metre camera-derived stem-tip noise at camera settle. */
 export const LOCAL_STEM_TIP_EPSILON_M = 0.5;
@@ -670,6 +735,145 @@ export function selectLocalInfrastructureOverlayCohort(records, {
 }
 
 /**
+ * One drawn mark per occupied screen cell — the globe-range half of § 3.1.
+ *
+ * Deliberately the same shape and the same comparator as
+ * {@link selectLocalInfrastructureOverlayCohort} above, because it is the same
+ * policy at a different pitch, and the two disagreeing about which of two
+ * neighbours matters would put a NAME over a dot that is not the dot the name
+ * describes. What it does NOT borrow is that function's two-contender surplus:
+ * a card can be re-placed by the host's rectangle solver and needs an
+ * alternative, a mark is drawn where the feature is and has no second position.
+ *
+ * `pinned` is the escape hatch that keeps the budget honest at the one moment a
+ * visitor is watching: whatever is SELECTED is drawn, whatever cell it falls in
+ * and whoever else won that cell. Without it, selecting a feature and then
+ * pulling back to orbit would silently delete the thing under the open card.
+ *
+ * Pure, and exported, so the rule can be tested without a scene.
+ *
+ * @param {object[]} records Candidate stem records, already frustum-gated.
+ * @param {object} options
+ * @param {number} options.cellPx Grid pitch in CSS pixels.
+ * @param {number} options.width Viewport width in CSS pixels.
+ * @param {number} options.height Viewport height in CSS pixels.
+ * @param {function(object):({x:number,y:number}|null)} options.project Projection callback.
+ * @param {number} [options.maxMarks=Infinity] Hard ceiling on the result.
+ * @param {object} [options.pinned] A record that is drawn unconditionally.
+ * @returns {Set<object>} The records to draw.
+ */
+export function selectLocalGlobeLodMarks(records, {
+  cellPx,
+  width,
+  height,
+  project,
+  maxMarks = Number.POSITIVE_INFINITY,
+  pinned = null,
+} = {}) {
+  const kept = new Set();
+  if (!Array.isArray(records) || records.length === 0 || typeof project !== 'function') return kept;
+  const size = Math.max(1, Number(cellPx) || 1);
+  const cap = Number.isFinite(Number(maxMarks))
+    ? Math.max(0, Math.floor(Number(maxMarks)))
+    : Number.POSITIVE_INFINITY;
+
+  /** @type {Map<string, object>} occupied cell → its best record so far */
+  const cells = new Map();
+  const padding = size;
+  for (const record of records) {
+    if (pinned && record === pinned) {
+      kept.add(record);
+      continue;
+    }
+    const screen = project(record);
+    if (!Number.isFinite(screen?.x) || !Number.isFinite(screen?.y)) continue;
+    // A candidate that projects off-canvas is already frustum-gated out in the
+    // scene; this only catches the padding band and a degenerate projection.
+    if (screen.x < -padding || screen.x > width + padding
+      || screen.y < -padding || screen.y > height + padding) continue;
+    const key = `${Math.floor(screen.x / size)}:${Math.floor(screen.y / size)}`;
+    const held = cells.get(key);
+    if (!held || compareLocalOverlayRecords(record, held) < 0) cells.set(key, record);
+  }
+
+  // Cells are cut most-important-first when there are more of them than the
+  // ceiling allows, for the same reason the card cohort sorts: an arbitrary
+  // 600 of 900 cells would drop hubs and keep river weirs.
+  const winners = [...cells.values()].sort(compareLocalOverlayRecords);
+  for (const record of winners) {
+    if (kept.size >= cap) break;
+    kept.add(record);
+  }
+  return kept;
+}
+
+/**
+ * The camera's culling volume, or null when the scene cannot describe one.
+ *
+ * Null is the historical behaviour — nothing is frustum-culled — and it is what
+ * a test double or a half-built scene gets. Failing OPEN matters here: a gate
+ * that threw, or that culled everything when it could not answer, would empty
+ * the map rather than merely fail to trim it.
+ *
+ * @param {Cesium.Viewer} viewer
+ * @returns {Cesium.CullingVolume|null}
+ */
+export function localCullingVolume(viewer) {
+  const camera = viewer?.camera;
+  const frustum = camera?.frustum;
+  if (typeof frustum?.computeCullingVolume !== 'function') return null;
+  if (!camera.positionWC || !camera.directionWC || !camera.upWC) return null;
+  try {
+    return frustum.computeCullingVolume(camera.positionWC, camera.directionWC, camera.upWC);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether a record's whole drawn extent is outside the view frustum.
+ *
+ * The sphere is centred on the GROUND anchor and sized to reach everything the
+ * record can put on screen from there: the recall stem (which at orbit stands
+ * over a thousand kilometres tall, because it is 65 px whatever the range), the
+ * surveyed footprint, and the runway segments at their maximum stretch. It is
+ * deliberately generous — a sphere that is too big keeps a few marks that could
+ * have been dropped, one that is too small deletes a feature the visitor can
+ * see, and only one of those two is a bug.
+ *
+ * @param {Cesium.CullingVolume|null} cullingVolume Null culls nothing.
+ * @param {object} record Live stem record.
+ * @param {number} stemLenM Current stem length, in metres.
+ * @returns {boolean}
+ */
+export function localRecordOffScreen(cullingVolume, record, stemLenM) {
+  if (!cullingVolume) return false;
+  // Cloned, not aliased: this scratch is handed to Cesium, and a future
+  // `computeVisibility` that wrote to `sphere.center` would be writing into the
+  // record's own ground anchor.
+  Cesium.Cartesian3.clone(record.base, LOCAL_CULL_SPHERE.center);
+  LOCAL_CULL_SPHERE.radius = Math.max(0, stemLenM) + (record.extentRadiusM || 0);
+  return cullingVolume.computeVisibility(LOCAL_CULL_SPHERE) === Cesium.Intersect.OUTSIDE;
+}
+
+/**
+ * How tall the recall stem stands for a given camera distance.
+ *
+ * Extracted so the frustum gate and {@link updateLocalStemGeometry} cannot
+ * drift: the gate sizes its sphere on this number, and a gate whose idea of the
+ * stem is shorter than the stem would cull a mark that is on screen.
+ *
+ * @param {number} distance Camera-to-anchor distance in metres.
+ * @param {number} pixelFactor {@link localPixelFactor} for this frame.
+ * @param {number} maxM Ceiling in metres; `Infinity` for an uncapped pack.
+ * @returns {number}
+ */
+export function localStemLiftM(distance, pixelFactor, maxM) {
+  const effectiveDistance = Math.max(distance, 5000);
+  return Math.min(effectiveDistance * pixelFactor * LOCAL_STEM_TARGET_PX, maxM);
+}
+
+/**
  * Bind a local layer's visibility and entry lifecycle to the shared host.
  * @param {object} options
  * @param {string} options.sourceId Local layer id.
@@ -892,6 +1096,7 @@ export function createLocalGeoJsonLayer({
   let _error = null;
   let _preRenderRemover = null;
   let _cameraMoveEndRemover = null;
+  let _perfProfileRemover = null;
   let _stemRecords = [];
   /**
    * The drawn segments of every record, in ONE batched primitive.
@@ -1164,6 +1369,10 @@ export function createLocalGeoJsonLayer({
       _cameraMoveEndRemover();
       _cameraMoveEndRemover = null;
     }
+    if (_perfProfileRemover) {
+      _perfProfileRemover();
+      _perfProfileRemover = null;
+    }
   };
 
   return {
@@ -1320,6 +1529,14 @@ export function createLocalGeoJsonLayer({
             strokeWidth: 2,
             markerSize: 8,
             markerColor: baseColor,
+            // Cesium's default `describe` builds an HTML <table> of every
+            // property, as a string, for every feature. This app never reads
+            // `entity.description` — a local feature's card is written by
+            // `localInfrastructureOverlayCopy` (or the pack's own `cardCopy`)
+            // off the unwrapped properties. Measured on the ports pack alone:
+            // 1 995 276 characters of table across 2 951 features, ~3.9 MiB of
+            // strings, built during the load and retained for the session.
+            describe: () => undefined,
           });
 
           loaded.name = name;
@@ -1349,7 +1566,15 @@ export function createLocalGeoJsonLayer({
           for (let i = 0; i < entities.length; i++) {
             const feature = entities[i];
             feature.__localLayerId = id; // Tag it so our click handler knows it belongs to this layer
-            
+            // Cesium builds a PIN BILLBOARD for every POINT feature it parses,
+            // from `markerSize`/`markerColor` above, and this loop then gives
+            // the same feature its own `PointGraphics`. The pin was never
+            // removed, so every point in all four packs was drawn TWICE —
+            // measured 2 951 pins over 2 951 ports — a whole BillboardGraphics
+            // and its atlas entry per feature, under a dot that covers it. The
+            // load options cannot suppress it; this can.
+            feature.billboard = undefined;
+
             let pos = feature.position?.getValue(Cesium.JulianDate.now());
             
             // Footprint, measured off the same hierarchy the stem anchor is
@@ -1468,6 +1693,12 @@ export function createLocalGeoJsonLayer({
             // polylines come from a shared pool sized to what is on screen, not
             // to what the pack holds (see `_runwayPool`).
             const runways = [];
+            // How far this feature's drawn extent reaches from its ground
+            // anchor, sized ONCE here so the frustum gate never has to walk the
+            // segments per settle. The footprint's span is a diameter, and a
+            // segment may be stretched up to RUNWAY_MAX_STRETCH before it is
+            // dropped, so both are halved and the larger wins.
+            let extentRadiusM = 0;
             if (Array.isArray(renderSpec.lines) && renderSpec.lines.length > 0) {
               for (const segment of renderSpec.lines) {
                 const head = Cesium.Cartesian3.fromDegrees(segment.lon1, segment.lat1, 0);
@@ -1485,8 +1716,10 @@ export function createLocalGeoJsonLayer({
                   spanM,
                   widthM: segment.widthM,
                 });
+                extentRadiusM = Math.max(extentRadiusM, (spanM * RUNWAY_MAX_STRETCH) / 2);
               }
             }
+            extentRadiusM = Math.max(extentRadiusM, footprintSpanM / 2);
 
             if (groupKey) {
               const bucket = _groupTally.get(groupKey);
@@ -1520,6 +1753,20 @@ export function createLocalGeoJsonLayer({
               filteredOut: false,
               /** Past the group's declared marker range. Re-decided on camera settle. */
               outOfRange: false,
+              /**
+               * Wholly outside the view frustum. Re-decided on camera settle,
+               * for the same reason `outOfRange` is: between two settles the
+               * camera has not moved, so the answer cannot have changed.
+               */
+              offScreen: false,
+              /**
+               * Dropped by the globe-LOD cell budget — a neighbour in the same
+               * screen cell says the same thing at this range. Re-decided on
+               * camera settle, and always false below the LOD height.
+               */
+              beyondBudget: false,
+              /** Drawn reach from the ground anchor, in metres. See the gate. */
+              extentRadiusM,
               /**
                * How far out this feature's MARK is drawn; 0 means "wherever the
                * horizon allows". The per-feature value wins when the pack sets
@@ -1641,7 +1888,15 @@ export function createLocalGeoJsonLayer({
           const occluder = new Cesium.EllipsoidalOccluder(Cesium.Ellipsoid.WGS84, cameraPos);
           const visibleOverlayRecords = [];
           const refreshStemGeometry = _stemGeometryDirty;
-          
+          // Everything that survived the horizon, the row floor and the group's
+          // range — the input the globe-LOD budget then trims. Collected rather
+          // than shown in place, because a cell's winner is not known until
+          // every candidate has been seen.
+          const candidates = [];
+          // Null on a scene that cannot describe its frustum; the gate then
+          // culls nothing, which is exactly the behaviour that shipped before.
+          const cullingVolume = refreshStemGeometry ? localCullingVolume(viewer) : null;
+
           // A scene that cannot sample heights can never ground a record, so it
           // must never arm a retry (the arm would re-arm on every requested
           // frame, forever) and must not spend ANY per-record work trying.
@@ -1671,12 +1926,25 @@ export function createLocalGeoJsonLayer({
               // exactly as the runway regime reads it.
               record.footprintTooSmall = record.footprintSpanM > 0
                 && !localFootprintFitsScreen(record.footprintSpanM, distance * pixelFactor);
+              // Is any of it on the screen (§ 3.1). Decided on the settle for
+              // the same reason as the two above, and sized on the stem the
+              // very next call is about to place — `localStemLiftM` is the one
+              // definition both read, so the sphere cannot be shorter than the
+              // geometry it is meant to contain.
+              record.offScreen = localRecordOffScreen(
+                cullingVolume,
+                record,
+                localStemLiftM(distance, pixelFactor, record.stemMaxHeightM),
+              );
               // Out of range cannot change without camera motion, and camera
               // motion is what sets `_stemGeometryDirty` — so skipping the stem
               // here can never leave a stale tip behind. A row chip CAN change
               // `filteredOut` with the camera parked, which is why that case
               // still updates the stem and only withholds the segments.
-              if (!record.outOfRange) {
+              // Off-screen skips the placement too: a stem nobody can see does
+              // not need re-placing, and the settle that brings it back on
+              // screen re-places it before it is drawn.
+              if (!record.outOfRange && !record.offScreen) {
                 updateLocalStemGeometry(viewer, record, now, distance, pixelFactor);
                 if (record.runways.length > 0 && !record.filteredOut
                   && occluder.isPointVisible(record.base)) {
@@ -1711,18 +1979,22 @@ export function createLocalGeoJsonLayer({
                 < GROUND_SAMPLE_MAX_DISTANCE_M) {
               groundRetryPending = true;
             }
-            // Two independent reasons to be invisible: over the horizon, or
-            // below the row's display floor. Both must clear before a marker —
-            // or its ambient card — reaches the screen.
-            // THREE independent reasons now: over the horizon, below the row's
-            // display floor, or past the group's declared marker range. The
-            // segments answer to the same three — the collection has no horizon
-            // test of its own — which is why the deal above repeats the
+            // FOUR independent reasons to be invisible: over the horizon,
+            // below the row's display floor, past the group's declared marker
+            // range, or outside the view frustum. All must clear before a
+            // marker — or its ambient card — reaches the screen. The segments
+            // answer to the same four, which is why the deal above repeats the
             // occluder call rather than trusting the range alone.
-            const isVisible = !record.filteredOut && !record.outOfRange
-              && occluder.isPointVisible(record.base);
-            if (record.entity.show !== isVisible) record.entity.show = isVisible;
-            // The polygon answers to the same three reasons through
+            //
+            // Clearing them makes a record a CANDIDATE, not a drawn mark: the
+            // globe-LOD budget below still gets to drop it, and a screen cell's
+            // winner is not known until every candidate has been seen. What
+            // fails here is hidden at once, exactly as it always was.
+            const isCandidate = !record.filteredOut && !record.outOfRange
+              && !record.offScreen && occluder.isPointVisible(record.base);
+            if (isCandidate) candidates.push(record);
+            else if (record.entity.show !== false) record.entity.show = false;
+            // The polygon answers to the same reasons through
             // `entity.show`, plus its own screen floor. Written only on a
             // transition: `PolygonGraphics.show` is a Property, so assigning a
             // boolean allocates a ConstantProperty every time.
@@ -1733,8 +2005,50 @@ export function createLocalGeoJsonLayer({
                 record.entity.polygon.show = showFootprint;
               }
             }
+          }
+
+          // ── The globe-LOD budget (§ 3.1) ────────────────────────────────
+          // Re-decided on the settle only, like every other spatial answer in
+          // this walk, and written onto the record so the walks in between
+          // reuse it without re-projecting a thing.
+          const canvas = viewer.scene.canvas;
+          if (refreshStemGeometry) {
+            const cameraCarto = viewer.camera.positionCartographic
+              || Cesium.Cartographic.fromCartesian(cameraPos);
+            const decluttering = Number(cameraCarto?.height) > LOCAL_GLOBE_LOD_HEIGHT_M;
+            if (decluttering) {
+              const selected = viewer.selectedEntity?.__localLayerId === id
+                ? _stemRecords.find((candidate) => candidate.entity === viewer.selectedEntity)
+                : null;
+              // Read per settle rather than captured: the DISPLAY-rail switch
+              // can change it mid-session, and the listener below turns that
+              // into the settle this needs even on a parked camera.
+              const lite = isLiteProfile();
+              const kept = selectLocalGlobeLodMarks(candidates, {
+                cellPx: lite ? LOCAL_GLOBE_LOD_LITE_CELL_PX : LOCAL_GLOBE_LOD_CELL_PX,
+                width: canvas.clientWidth || canvas.width || 0,
+                height: canvas.clientHeight || canvas.height || 0,
+                maxMarks: lite
+                  ? Math.round(LOCAL_GLOBE_LOD_MAX_MARKS * LOCAL_GLOBE_LOD_LITE_SHARE)
+                  : LOCAL_GLOBE_LOD_MAX_MARKS,
+                pinned: selected,
+                project: (record) => projectToWindow(viewer.scene, record.tip),
+              });
+              for (const record of candidates) record.beyondBudget = !kept.has(record);
+            } else {
+              // Below the LOD height every candidate is drawn — "en dessous,
+              // tout". The flags have to be cleared rather than left: a record
+              // dropped at orbit would otherwise stay dropped on the way down.
+              for (const record of candidates) record.beyondBudget = false;
+            }
+          }
+
+          for (const record of candidates) {
+            const isVisible = !record.beyondBudget;
+            if (record.entity.show !== isVisible) record.entity.show = isVisible;
             if (isVisible && record.entry) visibleOverlayRecords.push(record);
           }
+
           if (refreshStemGeometry) releaseUnusedRunwayLines();
           _stemGeometryDirty = false;
           // Tiles ARE streaming in: real progress re-opens the give-up budget
@@ -1747,7 +2061,6 @@ export function createLocalGeoJsonLayer({
           }
           if (groundRetryPending) scheduleGroundRetryRender(viewer);
 
-          const canvas = viewer.scene.canvas;
           const cohort = selectLocalInfrastructureOverlayCohort(visibleOverlayRecords, {
             maxEntries: labelMax,
             gridPx: labelGridPx,
@@ -1757,6 +2070,18 @@ export function createLocalGeoJsonLayer({
             project: (record) => projectToWindow(viewer.scene, record.tip),
           });
           _overlayPublisher.publish(cohort);
+        });
+      }
+      // A profile change is a new budget, and the budget is only recomputed on
+      // a settle — which a parked camera never produces. Without this, flipping
+      // the DISPLAY rail to `lite` would leave this layer at the full mark
+      // count until the visitor happened to move.
+      if (_enabled && !_perfProfileRemover) {
+        _perfProfileRemover = onPerfProfileChange(() => {
+          if (!_enabled) return;
+          _stemGeometryDirty = true;
+          _lastVisibilityUpdate = Number.NEGATIVE_INFINITY;
+          governorRequestRender(`local-perf-profile:${id}`);
         });
       }
       if (_enabled && !_cameraMoveEndRemover) {
@@ -1995,12 +2320,11 @@ function updateLocalStemGeometry(viewer, record, now, knownDistance = null, know
     ? knownDistance
     : Cesium.Cartesian3.distance(viewer.camera.positionWC, record.base);
   if (distance < GROUND_SAMPLE_MAX_DISTANCE_M) sampleLocalGroundHeight(viewer, record, now);
-  const effectiveDistance = Math.max(distance, 5000);
   const pixelFactor = Number.isFinite(knownFactor) ? knownFactor : localPixelFactor(viewer);
-  const targetPx = 65;
   // Capped in METRES for a layer that declares a ceiling — see `stemMaxHeightM`.
-  // Uncapped (Infinity) the Math.min is a no-op and the geometry is unchanged.
-  const lift = Math.min(effectiveDistance * pixelFactor * targetPx, record.stemMaxHeightM);
+  // Uncapped (Infinity) the Math.min inside is a no-op and the geometry is
+  // unchanged. The frustum gate sizes its sphere on the same call.
+  const lift = localStemLiftM(distance, pixelFactor, record.stemMaxHeightM);
   const tipHeight = record.groundHeight + lift;
   Cesium.Cartesian3.fromRadians(
     record.carto.longitude,

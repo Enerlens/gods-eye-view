@@ -1161,6 +1161,12 @@ node scripts/qa-cables-render-probe.mjs --url http://127.0.0.1:4179
 QA_BASE_URL=http://127.0.0.1:4179 npm run qa:world-imagery-cost
 # le contrat du profil de rendu : les 4 coûts, l'interrupteur, et « même carte »
 npm run qa:perf-profile -- --url http://127.0.0.1:4179
+# les quatre packs infra : entités dessinées, tas, p90 — les chiffres de la 3.1
+npm run perf:infra -- --url http://127.0.0.1:4179
+npm run perf:infra -- --url http://127.0.0.1:4179 --scene world --per-pack
+# la même mesure, profil épinglé (sans quoi SwiftShader impose `lite`)
+npm run perf:infra -- --url http://127.0.0.1:4179 --profile full \
+  --baseline avant.json --json apres.json
 
 # ── les coûts GPU fixes, un levier à la fois (le banc rend sur un VRAI GPU —
 # voir § 0 : `headless: 'new'` n'est PAS SwiftShader) ─────────────────────────
@@ -1606,3 +1612,103 @@ la phase 2 : il demande un p90 sur une UHD 620 et aucun chiffre ci-dessus n'en
 est un. Ce qui a changé, c'est qu'on peut maintenant **classer** les leviers
 sans machine — donc en annuler un qui ne paie pas — et que l'option (2) du
 plan (« un substitut sur le Mac ») est livrée plutôt qu'imaginée.
+
+### 2026-09-09 (suite) — phase 3.1, et un test qui manquait depuis le début
+
+La 3.1 est livrée, mesurée, et elle n'a **pas** pris le chemin que le plan
+annonçait. Le plan attribuait le coût des quatre packs aux Entities de Cesium
+et demandait de les remplacer par une `PointPrimitiveCollection`. Le banc dit
+autre chose : le coût dominant n'était pas la nature des objets, c'était
+**leur nombre à l'écran**, et il venait d'un test manquant.
+
+**Le constat.** La seule question spatiale que la couche posait était
+`EllipsoidalOccluder` — « ce point est-il au-delà de l'horizon ». Un horizon
+est un hémisphère, pas un cadre. Mesuré sur `origin/main`, à **120 km au-dessus
+de Lyon**, les quatre packs allumés : **10 178 entités sur 22 218 à
+`show = true`**. Dix mille d'entre elles étaient de l'autre côté de l'Europe,
+de l'Afrique ou de l'Atlantique — batchées dans des tampons de sommets,
+re-culées par Cesium à chaque image, et jamais une seule fois à l'écran. Il n'y
+a jamais eu de troncature de vue dans cette couche.
+
+Deux autres coûts, trouvés en instrumentant le tas plutôt qu'en le devinant :
+
+- **16 834 épingles fantômes.** `GeoJsonDataSource` construit une
+  `BillboardGraphics` (une punaise dessinée sur un canevas) pour chaque feature
+  POINT qu'il parse, à partir de `markerSize`/`markerColor`. La boucle de la
+  couche donnait ensuite à la même feature son propre `PointGraphics` — sans
+  jamais retirer la punaise. **Chaque point des quatre packs était dessiné deux
+  fois**, la punaise sous le disque qui la recouvre.
+- **22 218 tables HTML que personne ne lit.** Le `describe` par défaut de
+  Cesium rend un `<table>` de toutes les propriétés, en chaîne, pour chaque
+  feature. L'application ne lit jamais `entity.description` : une fiche locale
+  est écrite par `localInfrastructureOverlayCopy`. Mesuré sur le seul pack des
+  ports, **1 995 276 caractères sur 2 951 features**.
+
+**Ce qui est livré.** Une garde de frustum (`localRecordOffScreen`, sphère
+englobante dimensionnée sur la hampe de rappel — 65 px à l'écran, donc
+~1 670 km de monde à 20 000 km — plus l'emprise levée et les pistes étirées),
+un budget de cellule d'écran au-delà de 2 000 km (`selectLocalGlobeLodMarks`,
+26 px, plafond 600 marques par pack, la sélection courante toujours épinglée),
+`describe: () => undefined`, et `feature.billboard = undefined`. Le budget suit
+le profil de rendu de la phase 2 (`lite` = 60 % des marques, maille élargie de
+`1/√0,6` parce qu'une grille perd des cellules au CARRÉ de son pas) — c'est la
+règle de la 3.5 appliquée au budget que la 3.1 introduit, câblée tout de suite
+plutôt que laissée en dette.
+
+**Le banc.** `npm run perf:infra` (`scripts/perf-infra-lod.mjs`) : trois
+scènes, les quatre packs, tas relevé par `HeapProfiler.collectGarbage` +
+`Runtime.getHeapUsage`, p90 d'images, CPU ÷4 appliqué **après** le chargement.
+Il n'existait pas — `qa-overlay-baseline.mjs` mesure deux packs sur quatre, sur
+une vue américaine, sans lecture de tas — donc la 3.1 n'était pas closable même
+avec le bon code.
+
+Mesuré le 2026-09-09, M5, SwiftShader, 1440×900, CPU ÷4, profil `lite`
+(SwiftShader tombe dans `SMALL_GPU_RE`, et le banc l'imprime maintenant).
+
+| Scène | Entités dessinées | p90 mouvement | p90 repos | Tas des packs |
+|---|---:|---:|---:|---:|
+| **world** 20 000 km — avant | *le rendu meurt* | — | — | — |
+| **world** — après | **387** / 22 218 | **167 ms** | 217 ms | 613 MiB |
+| **region** 2 000 km — avant | 22 218 | *aucune image* | 2 750 ms | 390 MiB |
+| **region** — après | **9 055** | 233 ms | **283 ms** (−90 %) | 617 MiB |
+| **city** 120 km — avant | 10 178 | 567 ms | 500 ms | 695 MiB |
+| **city** — après | **234** (−98 %) | **150 ms** (−74 %) | **183 ms** (−63 %) | 630 MiB (−9 %) |
+
+Trois choses que ce tableau ne dit pas, et qu'il faut lire avec :
+
+- **La scène `world` de l'avant n'est pas lente, elle est impossible.** Sur
+  trois tentatives, deux ont tué le processus de rendu (`Target closed`) et la
+  troisième a expiré un délai de protocole de dix minutes. Monter le tas de
+  V8 à 4 Gio n'y a rien changé. C'est exactement la scène que
+  `docs/CURRENT-STATE.md` décrit comme le motif du retrait de la tuile
+  INFRASTRUCTURE, et c'est la scène que la 3.1 visait.
+- **La cible « tas −60 % » n'est PAS atteinte** : −9 % sur la seule paire
+  comparable. Les épingles et les tables partent, le reste ne bouge pas, et le
+  banc dit pourquoi : mesuré pack par pack, le coût est de **28 à 36 Kio par
+  feature, uniformément sur les quatre** — y compris sur les packs plats qui ne
+  portent ni piste ni emprise. Ce n'est donc pas la donnée, c'est la machinerie
+  `Entity` + `Property` elle-même. **Seule la migration vers les primitives
+  l'enlève**, et elle reste entièrement à faire : c'est la moitié de la 3.1 que
+  ce travail ne livre pas.
+- **`region` est la scène qui coûte encore le plus, et c'est le seuil qui le
+  décide.** Le plan écrit « au-delà de 2 000 km » ; le code applique donc
+  `> 2 000 km`, et 2 000 km pile est la dernière altitude sans budget. La garde
+  de frustum seule y laisse **9 055 marques** — dix fois mieux qu'avant, mais
+  toujours un mur, sur une vue qui montre l'Europe entière et où personne ne
+  sépare deux ouvrages voisins. Descendre `LOCAL_GLOBE_LOD_HEIGHT_M` est une
+  ligne ; c'est une décision de produit (« en dessous, tout » est une garantie
+  écrite), pas une correction, donc elle n'est pas prise ici.
+
+**Une entrée de registre ouverte au passage, hors 3.1.** `anfrFrance.js`
+PARTAGE ses `Material` entre polylignes (`_mastMaterials`, `_sectorMaterial`
+au niveau module) — précisément le piège que la mémoire
+`cesium-polylinecollection-traps` enregistre, un `Material` partagé plantant au
+`destroy`. Le pool de pistes de `localGeojson.js`, lui, alloue un `Material`
+par polyligne et est conforme. C'est la matière de la 3.3.
+
+**Un chiffre de harnais a bougé, et il décrivait le bug.**
+`qa-airports.mjs` exigeait « plus de 20 polylignes dans le lot » à 12 km
+au-dessus de Roissy. Le lot en tient 8 maintenant, toutes à l'écran : les 12
+autres étaient des pistes distribuées à des terrains hors cadre. Le plancher
+passe aux cinq pistes de Roissy ; l'invariant qui compte — le pool tient
+exactement ce qui est dessiné — n'a pas bougé.
