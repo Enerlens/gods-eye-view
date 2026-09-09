@@ -6293,6 +6293,49 @@ body.cockpit-mode #intel-hud .hud-right-edge { right: 22px; }
   background: rgba(255, 60, 60, 0.08);
 }
 
+/* ── Fused rows ─────────────────────────────────
+   One subject, one row (`layerFusions.js`): a row that carries several layers
+   holds two kinds of chip on the same strip, and they must not read alike. A
+   FUSION chip switches a whole companion layer on or off — it is a toggle, so
+   it is a pill and it carries a filled or hollow dot. An option chip changes a
+   parameter of a layer that is already on, and keeps the square shape every
+   option chip in the panel has always had.
+
+   The dot is a pseudo-element on purpose: the voice layer and three QA
+   harnesses read a chip's `textContent` as its name, and a glyph baked into
+   the label would join every one of those readings. */
+.data-toggle-chip.chip-fusion {
+  border-radius: 999px;
+  letter-spacing: 0.9px;
+  padding-left: 6px;
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.data-toggle-chip.chip-fusion::before {
+  content: '\25CB';
+  margin-right: 4px;
+  opacity: 0.75;
+}
+
+.data-toggle-chip.chip-fusion.active::before {
+  content: '\25CF';
+  opacity: 1;
+}
+
+/* An option published by a COMPANION, not by the row's own layer. The marker
+   is a left edge rather than a colour: the strip can hold three companions,
+   and three hues would be a legend nobody was given. Which layer it steers is
+   in the tooltip, where there is room to name it. */
+.data-toggle-chip.chip-companion {
+  border-left-width: 2px;
+  border-left-color: rgba(255, 255, 255, 0.22);
+  padding-left: 6px;
+}
+
+.data-toggle-chip.chip-companion.active {
+  border-left-color: var(--accent);
+}
+
 /* ── Map legend ─────────────────────────────────
    First member of the right rail. It used to be a fixed card in the
    bottom-left corner, switched OFF by a `:has()` rule the moment DATA LAYERS

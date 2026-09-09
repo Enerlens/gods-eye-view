@@ -3350,6 +3350,10 @@ function makePanelElement() {
     click() { for (const handler of this.listeners.get('click') || []) handler(); },
     setAttribute(name, value) { this.attributes[name] = String(value); },
     getAttribute(name) { return this.attributes[name] ?? null; },
+    // The chip strip delegates its click and resolves the pressed chip with
+    // `closest`. A stub without it swallows every chip press silently, which
+    // is a test that passes because nothing happened.
+    closest(selector) { return matchesSelector(element, selector) ? element : null; },
     querySelector(selector) { return findAll(this, selector)[0] || null; },
     querySelectorAll(selector) { return findAll(this, selector); },
     set innerHTML(value) { if (value === '') this.children = []; this.html = String(value); },
@@ -3598,4 +3602,258 @@ test('categories naming no group, or arriving without a taxonomy, are refused', 
     true,
   );
   await mgr.destroyAll();
+});
+
+// ── FUSED ROWS ──────────────────────────────────────────────────────────────
+//
+// One subject, one row. The taxonomy hands the manager two extra facets —
+// `companions` on the row that carries them, `fusedInto` on the layers that
+// disappear into it — and the panel is what turns them into a toggle that
+// carries several layers plus one chip each. As above, the tables here are
+// SYNTHETIC: what is asserted is the renderer's contract, not this fork's
+// product copy, which layerFusions.test.mjs pins separately.
+
+const FUSED_CATEGORIES = Object.freeze([
+  { id: 'air-space', label: 'AIR & ESPACE', icon: '✈️' },
+  { id: 'maritime', label: 'MARITIME', icon: '⚓' },
+]);
+
+const FUSED_TAXONOMY = Object.freeze([
+  {
+    id: 'flights',
+    category: 'air-space',
+    label: 'Vols en direct',
+    kind: 'dataset',
+    coverage: 'global',
+    scopeChip: null,
+    companions: [
+      { id: 'military', chip: 'Militaires', title: 'même ciel' },
+      { id: 'rocket-launches', chip: 'Missions', title: 'coûteux', optIn: true },
+    ],
+    fusedInto: null,
+  },
+  {
+    id: 'military',
+    category: 'air-space',
+    label: 'Vols militaires',
+    kind: 'dataset',
+    coverage: 'global',
+    scopeChip: null,
+    companions: null,
+    fusedInto: 'flights',
+  },
+  {
+    id: 'rocket-launches',
+    category: 'air-space',
+    label: 'Missions spatiales',
+    kind: 'dataset',
+    coverage: 'global',
+    scopeChip: null,
+    companions: null,
+    fusedInto: 'flights',
+  },
+  {
+    id: 'ais-live-vessels',
+    category: 'maritime',
+    label: 'Navires et ports',
+    kind: 'dataset',
+    coverage: 'global',
+    scopeChip: null,
+    companions: null,
+    fusedInto: null,
+  },
+]);
+
+const FUSED_DISPOSITIONS = FUSED_TAXONOMY.map(({ id }) => ({ id, disposition: 'enabled-only' }));
+
+/** Build a manager sealed with a fused taxonomy, panel painted. */
+function makeFusedPanel({ counts = {} } = {}) {
+  const originalDocument = globalThis.document;
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  globalThis.document = { createElement: makePanelElement };
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: makeMemoryStorage(), configurable: true, writable: true,
+  });
+
+  const mgr = new DataLayerManager({});
+  const modules = new Map();
+  for (const { id } of FUSED_TAXONOMY) {
+    const layer = makeSlowLayer(id, { updateInterval: -1 });
+    layer.module.getStats = () => ({ count: counts[id] ?? 0, lastUpdate: null });
+    modules.set(id, layer.module);
+    mgr.register(layer.module);
+  }
+  mgr.finalizeRegistrations(FUSED_DISPOSITIONS, FUSED_TAXONOMY, FUSED_CATEGORIES);
+  const container = makePanelElement();
+  mgr.buildTogglePanel(container);
+
+  return {
+    mgr,
+    container,
+    modules,
+    rows: () => findAll(container, '.data-toggle-row').map((row) => row.dataset.layerId),
+    row: (id) => container.querySelector(`[data-layer-id="${id}"]`),
+    chips: (id) => findAll(
+      container.querySelector(`[data-layer-id="${id}"]`),
+      '.data-toggle-chip',
+    ),
+    async restore() {
+      await mgr.destroyAll();
+      if (originalDocument === undefined) delete globalThis.document;
+      else globalThis.document = originalDocument;
+      if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+      else delete globalThis.localStorage;
+    },
+  };
+}
+
+test('a fused companion has no row of its own, and never inflates a group count', async () => {
+  const panel = makeFusedPanel();
+  try {
+    assert.deepEqual(panel.rows(), ['flights', 'ais-live-vessels']);
+    // Still registered, still addressable, still toggleable by id — the merge
+    // is a presentation decision and deletes nothing.
+    assert.ok(panel.mgr.layers.has('military'));
+    assert.equal(await panel.mgr.setEnabled('military', true), true);
+
+    const air = panel.container.querySelector('[data-category-id="air-space"]');
+    assert.equal(air.querySelector('.data-category-count').textContent, '0/1 ON');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('the row toggle carries its followers, and leaves the opt-in companion off', async () => {
+  const panel = makeFusedPanel();
+  try {
+    const toggle = panel.row('flights').querySelector('.data-toggle-btn');
+    await toggle.listeners.get('click')[0]();
+
+    assert.equal(panel.mgr.isEnabled('flights'), true);
+    assert.equal(panel.mgr.isEnabled('military'), true, 'a follower follows the row');
+    assert.equal(panel.mgr.isEnabled('rocket-launches'), false, 'an opt-in companion is asked for');
+
+    // OFF takes everything down, opt-in included: a lit chip under a dark row
+    // would be a layer drawing with no visible control.
+    await panel.mgr.setEnabled('rocket-launches', true);
+    await toggle.listeners.get('click')[0]();
+    assert.equal(panel.mgr.isEnabled('flights'), false);
+    assert.equal(panel.mgr.isEnabled('military'), false);
+    assert.equal(panel.mgr.isEnabled('rocket-launches'), false);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a companion chip switches its own layer, and reports its own state', async () => {
+  const panel = makeFusedPanel();
+  try {
+    // Nothing on: the strip is empty, exactly as an unfused off row shows none.
+    assert.deepEqual(panel.chips('flights').map((chip) => chip.textContent), []);
+
+    await panel.mgr.setEnabled('flights', true);
+    const labels = panel.chips('flights').map((chip) => chip.textContent);
+    assert.deepEqual(labels, ['Militaires', 'Missions']);
+
+    const missions = panel.chips('flights')[1];
+    assert.equal(missions.attributes['aria-pressed'], 'false');
+    panel.row('flights').querySelector('.data-toggle-controls')
+      .listeners.get('click')[0]({ target: missions });
+    for (let tick = 0; tick < 20 && !panel.mgr.isEnabled('rocket-launches'); tick += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    assert.equal(panel.mgr.isEnabled('rocket-launches'), true);
+
+    panel.mgr._refreshTogglePanel();
+    assert.equal(panel.chips('flights')[1].attributes['aria-pressed'], 'true');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a companion left on by a share link keeps a control on the row that owns it', async () => {
+  // The token of a fused layer did not change, so a link sent before the merge
+  // still restores exactly what it always restored. What must not happen is a
+  // layer drawing with no way to switch it off.
+  const panel = makeFusedPanel();
+  try {
+    await panel.mgr.setEnabled('military', true);
+    panel.mgr._refreshTogglePanel();
+    assert.equal(panel.row('flights').querySelector('.data-toggle-btn').textContent, 'OFF');
+    const chips = panel.chips('flights');
+    assert.deepEqual(chips.map((chip) => chip.textContent), ['Militaires', 'Missions']);
+    assert.equal(chips[0].attributes['aria-pressed'], 'true');
+
+    // And the OFF-looking button still switches the SUBJECT on, rather than
+    // switching off the one thing that is drawing.
+    await panel.row('flights').querySelector('.data-toggle-btn').listeners.get('click')[0]();
+    assert.equal(panel.mgr.isEnabled('flights'), true);
+    assert.equal(panel.mgr.isEnabled('military'), true);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a fused row counts what is drawing, and only what is drawing', async () => {
+  const panel = makeFusedPanel({ counts: { flights: 1200, military: 800, 'rocket-launches': 300 } });
+  try {
+    const count = () => panel.row('flights').querySelector('.data-count').textContent;
+    assert.equal(count(), '—', 'a row that never drew has nothing to report');
+
+    await panel.mgr.setEnabled('flights', true);
+    panel.mgr._refreshTogglePanel();
+    assert.equal(count(), '1.2K');
+
+    await panel.mgr.setEnabled('military', true);
+    panel.mgr._refreshTogglePanel();
+    assert.equal(count(), '2.0K', 'the row counts the whole subject it is drawing');
+
+    // An off companion still remembers its last count; adding it back would
+    // credit the row with objects that are not on the map.
+    await panel.mgr.setEnabled('military', false);
+    panel.mgr._refreshTogglePanel();
+    assert.equal(count(), '1.2K');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('two modules publishing the same chip id do not steer each other', async () => {
+  const panel = makeFusedPanel();
+  try {
+    const writes = [];
+    for (const id of ['flights', 'military']) {
+      const module = panel.modules.get(id);
+      module.getRowControls = () => ({
+        chips: [{ id: 'mode', label: id.toUpperCase(), active: false, params: { mode: id } }],
+        legend: [],
+      });
+      module.setParams = (params) => { writes.push({ id, params }); return true; };
+      module.getParams = () => ({});
+    }
+    await panel.mgr.setEnabled('flights', true);
+    await panel.mgr.setEnabled('military', true);
+    panel.mgr._refreshTogglePanel();
+
+    const chips = panel.chips('flights');
+    assert.deepEqual(chips.map((chip) => chip.dataset.chipId), [
+      'fusion:military', 'fusion:rocket-launches', 'flights::mode', 'military::mode',
+    ]);
+
+    const controls = panel.row('flights').querySelector('.data-toggle-controls');
+    controls.listeners.get('click')[0]({ target: chips[3] });
+    assert.deepEqual(writes, [{ id: 'military', params: { mode: 'military' } }]);
+
+    // The two kinds of chip carry different classes, because they do different
+    // things: a fusion chip switches a LAYER, an option chip a parameter.
+    assert.equal(chips[0].className.includes('chip-fusion'), true);
+    assert.equal(chips[2].className.includes('chip-fusion'), false, "the row's own option is not a fusion chip");
+    assert.equal(chips[2].className.includes('chip-companion'), false);
+    assert.equal(chips[3].className.includes('chip-companion'), true);
+    // And a companion's option names its owner where there is room to: the
+    // strip can hold a dozen chips from four layers.
+    assert.equal(chips[3].title, 'Militaires · MILITARY');
+  } finally {
+    await panel.restore();
+  }
 });

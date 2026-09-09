@@ -89,9 +89,17 @@ test('grouping preserves category order and drops coordinators', () => {
   assert.equal(layerTaxonomyFor('military-awareness').category, 'defence');
 
   const grouped = groups.flatMap((group) => group.layerIds);
-  const datasets = LAYER_TAXONOMY.filter((entry) => entry.kind === 'dataset');
+  // Datasets MINUS the fused companions: those are a chip on somebody else's
+  // row, and a companion that still occupied a row would be the very
+  // duplication `layerFusions.js` removes.
+  const datasets = LAYER_TAXONOMY
+    .filter((entry) => entry.kind === 'dataset' && !entry.fusedInto);
   assert.equal(grouped.length, datasets.length);
   assert.equal(new Set(grouped).size, grouped.length, 'no layer appears in two groups');
+  for (const entry of LAYER_TAXONOMY) {
+    if (!entry.fusedInto) continue;
+    assert.ok(!grouped.includes(entry.id), `${entry.id} is fused and still has a row`);
+  }
 });
 
 test('no category is left empty — except the one plugged datasets fill at runtime', () => {
@@ -119,10 +127,15 @@ test('the French display names are what the panel renders', () => {
     assert.ok(entry.label.length > 0, `${entry.id} has no label`);
     assert.ok(!/\(FR\)/.test(entry.label), `${entry.id} still carries a (FR) suffix`);
   }
-  assert.equal(layerTaxonomyFor('ais-live-vessels').label, 'Navires en direct');
   assert.equal(layerTaxonomyFor('military-installations').label, 'Sites militaires');
-  assert.equal(layerTaxonomyFor('shared-mobility-fr').label, 'Véhicules partagés');
-  assert.equal(layerTaxonomyFor('local-datacenters').label, 'Datacenters');
+  assert.equal(layerTaxonomyFor('cadastre-fr').label, 'Parcelles cadastrales');
+  // The rows that a fusion renamed: the label now names the SUBJECT, not the
+  // one register the row happened to start as.
+  assert.equal(layerTaxonomyFor('ais-live-vessels').label, 'Navires et ports');
+  assert.equal(layerTaxonomyFor('local-datacenters').label, 'Infrastructure numérique');
+  assert.equal(layerTaxonomyFor('bikeshare').label, 'Vélos et véhicules partagés');
+  assert.equal(layerTaxonomyFor('edf-power-plants').label, 'Centrales électriques');
+  assert.equal(layerTaxonomyFor('schools-fr').label, 'Enseignement');
 });
 
 test('the scope chip marks the exceptions and leaves the default bare', () => {

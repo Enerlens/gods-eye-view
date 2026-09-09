@@ -2080,6 +2080,12 @@ export class DataLayerManager {
         showInTogglePanel: entry.module.showInTogglePanel !== false,
         category: taxonomy?.category || null,
         kind: taxonomy?.kind || null,
+        // The fusion facets, passed through exactly as the taxonomy stated
+        // them. `companions` is the list of layers this row's toggle carries;
+        // `fusedInto` is the row a layer disappeared into. Both null on the
+        // layers that are neither, and on a manager sealed without a taxonomy.
+        companions: taxonomy?.companions || null,
+        fusedInto: taxonomy?.fusedInto || null,
         tags: taxonomy
           ? Object.freeze({
             coverage: taxonomy.coverage,
@@ -2278,6 +2284,10 @@ export class DataLayerManager {
       // `showInTogglePanel` stays the single gate, exactly as in the flat path:
       // the module decides whether it has a row, the taxonomy decides where.
       if (!layer?.showInTogglePanel) continue;
+      // A fused companion has no row of its own — it is a chip on its
+      // primary's row. Skipping it here, and not in the module, is what keeps
+      // the merge a product decision in one table rather than 23 edits.
+      if (entry.fusedInto) continue;
       buckets.get(entry.category)?.push(layer);
     }
     return categories.map((category) => ({
@@ -2372,7 +2382,8 @@ export class DataLayerManager {
 
     const count = document.createElement('span');
     count.className = 'data-count';
-    count.textContent = layer.stats.count ? this._formatCount(layer.stats.count) : '—';
+    const rowCount = this._rowCount(layer);
+    count.textContent = rowCount ? this._formatCount(rowCount) : '—';
 
     const toggle = document.createElement('button');
     toggle.className = `data-toggle-btn${layer.enabled ? ' active' : ''}`;
@@ -2380,7 +2391,12 @@ export class DataLayerManager {
     toggle.addEventListener('click', async () => {
       toggle.disabled = true;
       try {
-        await this.setEnabled(layer.id, !this.isEnabled(layer.id), { origin: 'user' });
+        // The DIRECTION is read from the primary, which is what the button
+        // paints. A row whose primary is off but whose companion a share link
+        // left on still reads OFF and still turns the whole subject on — the
+        // alternative, reading the group here, would make an OFF-looking
+        // button switch everything off.
+        await this._setRowEnabled(layer.id, !this.isEnabled(layer.id));
       } catch (error) {
         console.warn(`[Data] ${layer.id} toggle error:`, error);
       } finally {
@@ -2404,11 +2420,19 @@ export class DataLayerManager {
     // listener is delegated and attached once here, so it survives
     // _refreshTogglePanel — which only rewrites the container's contents.
     const rowModule = this.layers.get(layer.id)?.module;
-    if (typeof rowModule?.getRowControls === 'function') {
+    const companions = this._fusionCompanions(layer.id);
+    if (typeof rowModule?.getRowControls === 'function' || companions.length) {
       // A layer whose controls settle asynchronously (a chunked catalog load
       // that can also fail) pushes a re-render through this; nothing else
-      // would repaint the row before its next scheduled refresh.
+      // would repaint the row before its next scheduled refresh. The
+      // companions register the same listener, for the same reason: their
+      // chips are painted on THIS row.
       rowModule.setRowControlsListener?.(() => this._refreshTogglePanel());
+      for (const companion of companions) {
+        this.layers.get(companion.id)?.module?.setRowControlsListener?.(
+          () => this._refreshTogglePanel(),
+        );
+      }
       const controls = document.createElement('div');
       controls.className = 'data-toggle-controls';
       controls.addEventListener('click', (event) => {
@@ -2416,9 +2440,21 @@ export class DataLayerManager {
         if (!button || button.disabled) return;
         // Re-read the live descriptor rather than trusting the rendered
         // chip, so a stale row can never apply an inverted toggle.
-        const chip = this._rowControlsFor(layer.id)?.chips
+        const chip = this._composedRowControls(layer)?.chips
           ?.find((entry) => entry.id === button.dataset.chipId);
-        if (chip?.params) this.setLayerParams(layer.id, chip.params, { origin: 'user' });
+        if (!chip) return;
+        // Two kinds of chip on one strip, and the descriptor says which:
+        // a fusion chip switches a COMPANION LAYER on or off, an option chip
+        // applies params to whichever layer published it — the primary, or an
+        // enabled companion whose own controls are shown here.
+        if (chip.fusionToggle) {
+          this.setEnabled(chip.targetLayerId, !this.isEnabled(chip.targetLayerId), { origin: 'user' })
+            .catch((error) => console.warn(`[Data] ${chip.targetLayerId} chip toggle error:`, error));
+          return;
+        }
+        if (chip.params) {
+          this.setLayerParams(chip.targetLayerId || layer.id, chip.params, { origin: 'user' });
+        }
       });
       row.appendChild(controls);
       this._syncRowControls(controls, layer);
@@ -2438,6 +2474,81 @@ export class DataLayerManager {
   }
 
   /**
+   * The companions a fused row carries, restricted to layers this manager
+   * actually registered.
+   *
+   * The filter is load-bearing rather than defensive: a key-gated layer that
+   * failed to register, and every bare manager the unit tests build, would
+   * otherwise put a chip on the row for a layer that cannot be toggled.
+   * @param {string} layerId Registered layer id.
+   * @returns {Array<object>} Companion descriptors, possibly empty.
+   */
+  _fusionCompanions(layerId) {
+    const companions = this._registrationTaxonomy?.get(layerId)?.companions;
+    if (!Array.isArray(companions)) return [];
+    return companions.filter((entry) => entry?.id && this.layers.has(entry.id));
+  }
+
+  /**
+   * Whether a row reads as ON — the primary, or ANY companion.
+   *
+   * A share link carries one token per layer and always has: a link sent
+   * before the merge can restore `sup-fr` alone, and so can one sent after it,
+   * because nothing about a companion's token changed. Such a row shows OFF on
+   * its primary but a lit chip, and the reader must be able to switch it off
+   * from the row. Reading the group here is what makes that possible.
+   * @param {string} layerId Primary layer id.
+   * @returns {boolean} True when anything in the row's group is enabled.
+   */
+  _rowEnabled(layerId) {
+    if (this.isEnabled(layerId)) return true;
+    return this._fusionCompanions(layerId).some((entry) => this.isEnabled(entry.id));
+  }
+
+  /**
+   * Switch a whole row on or off.
+   *
+   * ON enables the primary and the companions that FOLLOW the row; an `optIn`
+   * companion is left alone, because its chip is how it is asked for. OFF
+   * disables everything in the group, `optIn` included — a chip still lit
+   * under a dark row would be a layer drawing with no visible control.
+   * @param {string} layerId Primary layer id.
+   * @param {boolean} shouldEnable Target state.
+   * @returns {Promise<void>} Settles when every member has settled.
+   */
+  _setRowEnabled(layerId, shouldEnable) {
+    const companions = this._fusionCompanions(layerId);
+    const targets = shouldEnable
+      ? [layerId, ...companions.filter((entry) => entry.optIn !== true).map((entry) => entry.id)]
+      : [layerId, ...companions.map((entry) => entry.id)];
+    return Promise.all(
+      targets.map((id) => this.setEnabled(id, shouldEnable, { origin: 'user' })),
+    ).then(() => undefined);
+  }
+
+  /**
+   * The number a fused row prints: its own subjects plus those of every
+   * companion currently drawing.
+   *
+   * Summing only the ENABLED members is the honest reading — an off companion
+   * still remembers its last count, and adding it would credit the row with
+   * objects that are not on the map.
+   * @param {object} layer `getAll()` projection for the row's primary.
+   * @returns {number} Count to print, 0 when there is nothing to print.
+   */
+  _rowCount(layer) {
+    let total = layer.enabled ? (layer.stats?.count || 0) : 0;
+    for (const companion of this._fusionCompanions(layer.id)) {
+      if (!this.isEnabled(companion.id)) continue;
+      const entry = this.layers.get(companion.id);
+      total += this._normalizedStats(entry)?.count || 0;
+    }
+    // An off row keeps printing what it last held, exactly as it always has.
+    if (!this._rowEnabled(layer.id)) return layer.stats?.count || 0;
+    return total;
+  }
+
+  /**
    * Read a layer's optional row-control descriptor, tolerating a throw so one
    * misbehaving layer cannot blank the whole panel. Resolved from the registry
    * rather than the `getAll()` projection, which deliberately omits `module`.
@@ -2453,6 +2564,83 @@ export class DataLayerManager {
       console.warn(`[Data] ${layerId} getRowControls error:`, error);
       return null;
     }
+  }
+
+  /**
+   * The chip strip a ROW shows, which on a fused row is more than one module's.
+   *
+   * Order is the reading order: the companions first, because they are what
+   * the row is made of and a reader looking for "where did Sitadel go" must
+   * find it without scanning past four palette chips; then the primary's own
+   * options; then the options of each companion that is on, so an enabled
+   * `avis-valeur` keeps the type and surface chips it owns rather than losing
+   * them to the merge.
+   *
+   * Chip ids are namespaced by their target layer. Two modules can each
+   * publish a chip called `week`, and on a shared strip that collision would
+   * make one chip apply the other's params.
+   *
+   * `legend` and `surfaceFill` are passed through from the PRIMARY untouched:
+   * the on-map key is gathered per layer from `getAll()`, so a companion's key
+   * already reaches the map on its own and must not be duplicated here.
+   * @param {object} layer `getAll()` projection for the row's primary.
+   * @param {Map<string, object|null>} [resolved] Controls already read this pass.
+   * @returns {{ chips?: Array<object>, legend?: Array<object> }|null} Descriptor.
+   */
+  _composedRowControls(layer, resolved = null) {
+    // LIVE state, never the projection's. The click handler holds a `layer`
+    // captured when the row was built, and a chip resolved through a stale
+    // `enabled` would come back null the first time it is pressed.
+    const read = (id) => {
+      if (resolved) return resolved.get(id) ?? null;
+      return this.isEnabled(id) ? this._rowControlsFor(id) : null;
+    };
+    const own = read(layer.id);
+    const companions = this._fusionCompanions(layer.id);
+    if (!companions.length) return own;
+    const chips = [];
+    // Nothing in the group is on: the row shows no chips at all, exactly as an
+    // unfused off row shows none.
+    if (this._rowEnabled(layer.id)) {
+      for (const companion of companions) {
+        const active = this.isEnabled(companion.id);
+        chips.push({
+          id: `fusion:${companion.id}`,
+          label: companion.chip,
+          title: companion.title || '',
+          active,
+          state: active ? 'active' : 'idle',
+          fusionToggle: true,
+          targetLayerId: companion.id,
+          // Two kinds of chip share this strip and they must not READ alike: a
+          // fusion chip switches a whole layer, an option chip changes a
+          // parameter of a layer already on. The class is what lets the
+          // stylesheet make that difference visible.
+          chipClass: 'chip-fusion',
+        });
+      }
+      for (const chip of own?.chips || []) {
+        chips.push({ ...chip, id: `${layer.id}::${chip.id}`, targetLayerId: layer.id });
+      }
+      for (const companion of companions) {
+        if (!this.isEnabled(companion.id)) continue;
+        const sub = read(companion.id);
+        for (const chip of sub?.chips || []) {
+          chips.push({
+            ...chip,
+            id: `${companion.id}::${chip.id}`,
+            targetLayerId: companion.id,
+            chipClass: 'chip-companion',
+            // WHOSE option is this? On a row carrying four layers the strip
+            // holds a dozen chips, and "Sem. 04 h" beside "En cours" says
+            // nothing about which of them it steers. The owner's chip name
+            // leads the tooltip, which is the one place there is room for it.
+            title: `${companion.chip} · ${chip.title || chip.label}`,
+          });
+        }
+      }
+    }
+    return { ...(own || {}), chips };
   }
 
   /**
@@ -2485,7 +2673,7 @@ export class DataLayerManager {
     // between this row and the on-map legend block. `undefined` means "not
     // resolved yet" (the direct callers); `null` means "resolved to nothing".
     const controls = resolvedControls === undefined
-      ? (layer.enabled ? this._rowControlsFor(layer.id) : null)
+      ? this._composedRowControls(layer)
       : resolvedControls;
     const chips = controls?.chips || [];
     // A legend-only layer now has nothing to show HERE: its key is on the map.
@@ -2506,7 +2694,8 @@ export class DataLayerManager {
         container.appendChild(button);
       }
       const state = chip.state || (chip.active ? 'active' : 'idle');
-      button.className = `data-toggle-chip chip-${state}${chip.active ? ' active' : ''}`;
+      button.className = `data-toggle-chip chip-${state}${chip.active ? ' active' : ''}`
+        + (chip.chipClass ? ` ${chip.chipClass}` : '');
       if (button.textContent !== chip.label) button.textContent = chip.label;
       button.title = chip.title || '';
       button.disabled = Boolean(chip.disabled);
@@ -2529,8 +2718,16 @@ export class DataLayerManager {
     // per layer per refresh and one answer feeds both the row's chips and the
     // on-map key.
     const mapLegend = [];
-    for (const layer of this.getAll()) {
-      const controls = layer.enabled ? this._rowControlsFor(layer.id) : null;
+    const layers = this.getAll();
+    // Resolved ONCE per layer for the whole pass, and shared: a fused row asks
+    // for its companions' controls too, and without this map a companion whose
+    // `getRowControls()` is expensive would be called twice per refresh — once
+    // for its own on-map key, once for the chip strip on somebody else's row.
+    const resolved = new Map(
+      layers.map((layer) => [layer.id, layer.enabled ? this._rowControlsFor(layer.id) : null]),
+    );
+    for (const layer of layers) {
+      const controls = resolved.get(layer.id) || null;
       if (controls?.legend?.length) {
         mapLegend.push({ layer, entries: controls.legend, surfaceFill: controls.surfaceFill === true });
       }
@@ -2545,7 +2742,8 @@ export class DataLayerManager {
 
       const count = row.querySelector('.data-count');
       if (count) {
-        count.textContent = layer.stats.count ? this._formatCount(layer.stats.count) : '—';
+        const rowCount = this._rowCount(layer);
+        count.textContent = rowCount ? this._formatCount(rowCount) : '—';
       }
 
       const meta = row.querySelector('.data-toggle-meta');
@@ -2553,7 +2751,11 @@ export class DataLayerManager {
         meta.textContent = this._buildMetaText(layer);
       }
 
-      this._syncRowControls(row.querySelector('.data-toggle-controls'), layer, controls);
+      this._syncRowControls(
+        row.querySelector('.data-toggle-controls'),
+        layer,
+        this._composedRowControls(layer, resolved),
+      );
     }
     this._refreshMapLegend(mapLegend);
 

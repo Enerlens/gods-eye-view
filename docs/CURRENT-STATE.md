@@ -2175,6 +2175,53 @@ report into, so they instead refuse to memoize a failure —
 load after a doubling cooldown (5 s → 5 min), which keeps one bad load from
 silently demoting every later lookup for the session.
 
+#### Fused rows — one subject, one line (September 2026)
+
+`src/data/layerFusions.js` is the one table that says which rows are the SAME
+SUBJECT. `layerTaxonomy.js` answers "what is this dataset and which group does
+it belong to", which is a per-layer question; "are these two rows one subject?"
+is a statement about a PAIR, and a per-layer field can only hold half of it.
+
+Fifteen entries fold **23 layers** into the row of the subject they belong to.
+The panel goes from **62 rows to 38** (36 core layers plus the two plugged
+datasets). What a fusion changes is presentation and nothing else:
+
+- the companion keeps its **id, module, lifecycle, cache and share token**, so a
+  link sent before the merge restores exactly what it always restored;
+- the companion keeps its own **map-legend entry** — the key is gathered per
+  layer from `getAll()` and never went through a row;
+- the companion keeps its **credit line**.
+
+On the row, each companion becomes a **fusion chip**: round, dotted (`○` off,
+`●` on), against the square option chips the panel already had. The row toggle
+enables the primary and the companions that FOLLOW it; a companion marked
+`optIn` (only `comparables-fr` today, the reader's own dossier) waits for its
+chip. Switching a row OFF takes the whole group down, `optIn` included — a lit
+chip under a dark row would be a layer drawing with no visible control.
+
+A row whose primary is off but whose companion a share link left on reads `OFF`
+and still shows its chips, so the drawn layer is always controllable. The
+button's DIRECTION is read from the primary: pressing it switches the subject
+ON rather than switching off the one thing that is drawing.
+
+The chip strip of a fused row carries chips from several modules. Their ids are
+namespaced (`comptages-fr::w04`), because two modules can each publish a chip
+called `week` and on a shared strip that collision would make one chip apply
+the other's params. A companion's option chip carries its owner's name at the
+head of its tooltip, and a left edge in the stylesheet.
+
+**Which layer keeps the row** is a product decision stated in the table: where a
+fusion mixes a layer that has data everywhere with one that stops at the French
+border, the WORLD layer is primary (`bikeshare` over `shared-mobility-fr`,
+`local-datacenters` over `anfr-fr`). A row chipped `FR` over a world subject
+tells a reader outside France that a layer serving them is not for them.
+`layerFusions.test.mjs` asserts it.
+
+**What the fusion does NOT do**, and is owed separately: deduplicate the 56
+plants three registers share (`edf-power-plants`, `rte-generation`,
+`fr-hydro-plants`, plus 14 in `gas-fr`), and move the médecin family out of
+`amenities-fr`. The row merge is the first half of that work.
+
 #### Viewport-gated layers and the view gate (September 2026)
 
 Three layers refuse a request box above a ceiling — Bâti 3D at **0.08°**, the

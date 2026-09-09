@@ -1596,7 +1596,7 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
       const layerId = normalizeLayerId(args.layerId || args.layer);
       setPanelOpen(styleManager, 'data-panel', true);
       const focusedLayer = layerId && dataManager.layers.has(layerId)
-        ? focusDataLayerRow(layerId)
+        ? focusDataLayerRow(layerId, dataManager)
         : null;
       return {
         ok: true,
@@ -3072,8 +3072,17 @@ function normalizeCockpitAction(value) {
   return null;
 }
 
-function focusDataLayerRow(layerId) {
-  const row = document.querySelector(`#data-toggles [data-layer-id="${CSS.escape(layerId)}"]`);
+function focusDataLayerRow(layerId, dataManager = null) {
+  // A FUSED layer has no row of its own — it is a chip on its primary's row
+  // (`layerFusions.js`). Scrolling to nothing would leave a voice request that
+  // succeeded looking like one that did nothing, so the fallback is the row
+  // the layer actually lives on. The mapping is read from the manager's own
+  // projection rather than imported, so the voice layer keeps knowing nothing
+  // about the fusion table.
+  const fusedInto = dataManager?.getAll?.()
+    ?.find((layer) => layer.id === layerId)?.fusedInto || null;
+  const rowId = fusedInto || layerId;
+  const row = document.querySelector(`#data-toggles [data-layer-id="${CSS.escape(rowId)}"]`);
   if (!row) return null;
   row.scrollIntoView({ block: 'center', behavior: 'smooth' });
   row.classList.remove('gev-voice-focus');

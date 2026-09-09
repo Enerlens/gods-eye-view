@@ -194,6 +194,34 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   socket que le corps décodé est bien identique à l'original, que le
   `Content-Length` annonce ce qui est envoyé, et qu'un client qui ne sait pas
   décoder le brotli n'en reçoit jamais.
+- **Un sujet, une ligne : la liste des couches passe de 62 lignes à 38.** Le
+  panneau listait quatorze sujets deux à quatre fois chacun. « Combien vaut ce
+  sol » occupait trois lignes (`Ventes immobilières`, `Avis de valeur`,
+  `Comparables`) qui lisent le même registre DVF. La route en occupait quatre.
+  Les centrales, trois registres. L'enseignement, deux — la taxonomie écrivait
+  déjà, à côté de `sup-fr`, « un sujet coupé en deux ministères, et la taxonomie
+  ne devrait pas répéter la coupure » ; elle la répétait quand même, en deux
+  lignes.
+
+  Quinze fusions replient **23 couches** dans la ligne du sujet auquel elles
+  appartiennent. Chacune devient une **pastille** sous cette ligne : ronde et
+  pointée, pour la distinguer des pastilles d'option carrées qui existaient
+  déjà. Allumer la ligne allume le sujet entier ; la pastille permet de le
+  reprendre en main morceau par morceau.
+
+  **Rien n'est supprimé.** Aucun module, aucune source, aucun jeton de partage :
+  un lien envoyé avant la fusion rallume exactement ce qu'il rallumait, et une
+  couche rallumée seule par un lien garde une commande sur la ligne qui la
+  porte. Les couches mondiales restent des couches mondiales — les câbles
+  sous-marins, les ports, les bouées, les caméras publiques : quand une fusion
+  mélange une couche mondiale et une couche française, c'est la mondiale qui
+  garde la ligne, pour qu'aucun lecteur hors de France ne voie une pastille
+  `FR` au-dessus de données qui le concernent.
+
+  Ce que la fusion ne fait pas, et qui reste dû : dédoublonner les 56 centrales
+  que trois registres se partagent, et retirer la famille « médecin » de
+  `Équipements du quotidien`. La fusion est la première moitié de ce travail,
+  pas son remplacement.
 
 - **Les 60 couches de données ne se téléchargent plus qu'au premier clic —
   470 kB de moins pour ouvrir le globe.** L'application chargeait le code des
