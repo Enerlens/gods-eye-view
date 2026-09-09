@@ -5,6 +5,16 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased]
 
+### Changed
+
+- The Material Symbols icon font is now requested as a subset of the glyphs the
+  app actually renders, and the unused Material Icons Round stylesheet is gone.
+  Loading the app pulled 442 kB from Google Fonts over six requests, 330 kB of
+  it the complete icon font served for the 28 glyphs on screen; it now pulls
+  115 kB over five. `src/materialSymbolsSubset.test.mjs` fails when a source
+  names a glyph the subset is missing, because an absent glyph renders as its
+  own name rather than as a missing-glyph box.
+
 ### Fixed
 
 - Mapped-site outages show their scheduled retry countdown and distinguish
