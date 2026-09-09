@@ -114,6 +114,45 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   information, et celui qui touche obtient la version complète sur-le-champ.
 
 ### Fixed
+- **La carte jetait 19 emprises militaires sur 21.** La couche Installations
+  militaires demande à OpenStreetMap `out center tags geom`. Overpass ne retient
+  que le **dernier** mode de géométrie de la liste : `geom` gagne, et le point
+  central `center` n'est jamais envoyé. Or c'était le seul point que le code
+  savait lire. Chaque caserne, chaque terrain, chaque emprise dessinée comme une
+  surface arrivait donc sans coordonnées et était écartée en silence — seuls
+  survivaient les rares sites cartographiés comme un simple point.
+
+  Mesuré le 9 septembre sur une vue de Strasbourg, avec la requête exacte de
+  l'application : **21 objets renvoyés, 2 affichés**. Les 18 tracés et l'unique
+  relation — la Caserne Stirn, le Quartier Lecourbe — n'apparaissaient nulle
+  part, et la couche ne signalait rien : elle se déclarait à jour. Overpass
+  accompagne ces objets de leur boîte englobante ; le centre de cette boîte les
+  ramène tous, sans changer la requête ni le dessin des emprises. Une boîte
+  incohérente — inversée, à cheval sur l'antiméridien, plus large que la vue
+  autorisée — est toujours refusée plutôt que moyennée en un point plausible
+  dans le mauvais océan.
+
+- **Deux personnes demandant la même route au même instant recevaient deux
+  réponses différentes.** Le serveur regroupe les requêtes Overpass identiques :
+  la deuxième attend le résultat de la première au lieu de repartir vers les
+  miroirs. Quand ce résultat était un refus — un `406` du pare-feu
+  d'overpass-api.de, un `429` de quota — la première recevait bien les routes de
+  la veille gardées en cache, mais la seconde recevait le refus brut. Le repli
+  sur la dernière bonne réponse passe désormais par un seul chemin, quelle que
+  soit la porte d'entrée. Au passage, une seule règle décide de ce qui mérite
+  d'être gardé en cache, relu depuis le cache, et remplacé par une version
+  périmée : ces trois décisions étaient trois comparaisons distinctes, et rien
+  n'empêchait qu'elles divergent.
+
+- **Un site militaire sélectionné ne pouvait plus être désélectionné.** Cliquer
+  une emprise l'allumait et affichait sa fiche ; recliquer dessus, ou cliquer
+  ailleurs sur la carte, ne faisait rien. Le seul moyen de s'en défaire était
+  qu'une autre couche prenne la main. Un second clic la relâche maintenant, et
+  seule la sélection de cette couche est effacée — l'avion qu'un autre clic
+  vient de désigner n'est pas emporté avec elle. Symétriquement, un
+  rafraîchissement tardif de la couche ne repeint plus son ancien site
+  par-dessus une sélection plus récente venue d'ailleurs.
+
 - **Sous le fond Satellite, la couche que personne ne voit coûtait une fois et
   demie celle qu'on regarde.** La pastille Satellite empile deux couches : le
   satellite mondial d'Esri, et l'orthophoto IGN par-dessus. Cesium télécharge la
