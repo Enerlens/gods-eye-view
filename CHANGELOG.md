@@ -5,6 +5,31 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-09
 
+### Changed
+- **Un cabinet, un point : la famille « médecin » d'Équipements se retire quand
+  la couche Médecins dessine.** `amenities-fr` dessine la BPE D265 — 61 263
+  lignes « médecin généraliste » — et `medecins-fr` dessine le registre
+  conventionné, 64 232 adresses avec les noms, les spécialités et le secteur.
+  Le même cabinet, deux fois. La couche Équipements applique déjà la règle qui
+  tranche — **un seul registre par famille**, ce qui lui fait refuser tout le
+  domaine enseignement de la BPE au profit de `schools-fr` — et l'audit avait
+  noté qu'elle devait le même retrait ici.
+
+  **Rien n'est supprimé pour le payer.** Le point était classé bloqué parce que
+  `AMENITY_FAMILIES` **est une clé de cache** : le maillage stocke une famille
+  par son INDEX dans ce tableau, donc en retirer un renomme silencieusement
+  chaque ligne de chaque paquet en cache et force une reconstruction nationale.
+  Tout cela est vrai — et c'est le prix de la **suppression**. Ne pas dessiner
+  la famille pendant qu'une autre couche le fait ne coûte rien : le tableau ne
+  bouge pas, les paquets non plus, et un lecteur qui n'ouvre jamais la ligne
+  Médecins garde tous les médecins que cette couche a toujours dessinés.
+
+  Le retrait ne vaut que quand `medecins-fr` dessine des **positions** : à
+  l'échelle nationale cette couche peint un aplat d'accessibilité (APL) et ne
+  dessine aucun cabinet — s'y retirer aurait ôté les médecins de la carte au
+  lieu de les dédoublonner. Et la légende gagne une ligne qui dit où ils sont
+  passés, comme celle des écoles juste en dessous.
+
 ### Added
 - **Le globe photoréaliste revient, par Cesium ion.** Google retire les tuiles
   3D et le satellite aux projets facturés dans l'EEE depuis le 8 juillet 2025 :

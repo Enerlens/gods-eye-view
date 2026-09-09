@@ -61,10 +61,14 @@ const warned = new Set();
  */
 export function publishJoin(key, provider) {
   if (typeof key !== 'string' || !key || typeof provider !== 'function') return () => {};
+  const wasPresent = providers.has(key);
   providers.set(key, provider);
   warned.delete(key);
+  if (!wasPresent) announce(key, true);
   return () => {
-    if (providers.get(key) === provider) providers.delete(key);
+    if (providers.get(key) !== provider) return;
+    providers.delete(key);
+    announce(key, false);
   };
 }
 
@@ -76,6 +80,56 @@ export function publishJoin(key, provider) {
 export function hasJoin(key) {
   return providers.has(key);
 }
+
+/** @type {Map<string, Set<(present: boolean) => void>>} */
+const watchers = new Map();
+
+/** Fire a key's watchers on a PRESENCE transition, never on a re-publish. */
+function announce(key, present) {
+  const listeners = watchers.get(key);
+  if (!listeners) return;
+  for (const listener of listeners) {
+    try {
+      listener(present);
+    } catch (error) {
+      // A broken watcher must never break a layer's enable path — the same
+      // rule `askJoin` applies to a broken provider.
+      if (!warned.has(`watch:${key}`)) {
+        warned.add(`watch:${key}`);
+        console.warn(`[Joins] watcher for ${key} threw:`, error);
+      }
+    }
+  }
+}
+
+/**
+ * Follow whether anybody is offering a key.
+ *
+ * `askJoin` is a PULL, which is right for a card: it asks when it draws. Some
+ * consumers need a PUSH — `amenities-fr` suppresses its `medecin` family the
+ * moment `medecins-fr` starts drawing the same cabinets, and waiting out a
+ * poll would leave the duplicate on screen for a quarter of an hour.
+ *
+ * Fires on TRANSITIONS only: publishing over an existing provider is the same
+ * offer from a new owner, and a consumer that re-rendered for it would repaint
+ * on every viewport reconcile of the publishing layer.
+ *
+ * @param {string} key
+ * @param {(present: boolean) => void} handler
+ * @returns {() => void} Stop following. Idempotent.
+ */
+export function watchJoin(key, handler) {
+  if (typeof key !== 'string' || !key || typeof handler !== 'function') return () => {};
+  let listeners = watchers.get(key);
+  if (!listeners) { listeners = new Set(); watchers.set(key, listeners); }
+  listeners.add(handler);
+  return () => {
+    listeners.delete(handler);
+    if (!listeners.size) watchers.delete(key);
+  };
+}
+
+
 
 /**
  * Ask for a fact.
@@ -107,5 +161,6 @@ export function joinKeys() {
 /** Drop everything. Test seam only — layers take their own offers down. */
 export function _resetJoinsForTest() {
   providers.clear();
+  watchers.clear();
   warned.clear();
 }

@@ -104,6 +104,7 @@ import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollectio
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { parseDepartements } from './meteoFranceVigilance.js';
+import { hasJoin, watchJoin } from './layerJoins.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -975,6 +976,7 @@ function reconcileMesh(box) {
     const lon = row[MESH_LON];
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
     const family = meshAmenityFamily(row);
+    if (familyDeferred(family)) continue;
     const color = amenityFamilyColor(family);
     if (!color) continue;
     const id = meshAmenityId(row);
@@ -1035,6 +1037,37 @@ async function loadMesh(box) {
 
 // --- Sites regime -----------------------------------------------------------
 
+/**
+ * The one family this layer stands down from, and only while somebody better
+ * is drawing it.
+ *
+ * `amenities-fr` draws BPE D265 — 61 263 "médecin généraliste" rows — and
+ * `medecins-fr` draws the conventioned register, 64 232 addresses. The same
+ * cabinet, twice. This layer already applies the rule that settles it: **one
+ * register per family**, which is why it refuses the BPE's entire education
+ * domain to `schools-fr` and `sup-fr`, and says so in its own legend.
+ *
+ * THE WITHDRAWAL IS CONDITIONAL, WHICH IS WHY NOTHING IS REMOVED TO PAY FOR
+ * IT. `docs/PLAN-CROISEMENTS.md` recorded this as blocked on
+ * `AMENITY_FAMILIES` being a CACHE KEY — the mesh stores a family by its INDEX
+ * in that array, so deleting one silently renames every row of every cached
+ * pack and forces a national rebuild. That is all true, and it is only the
+ * price of deleting the family. Not drawing it while another layer does costs
+ * nothing: the array is untouched, the packs are untouched, and a reader who
+ * never opens the Médecins row keeps every doctor this layer ever drew.
+ */
+const AMENITIES_DEFERRED_FAMILY = 'medecin';
+
+/** True while `medecins-fr` is drawing practice POSITIONS. */
+let _medecinsDrawing = false;
+/** Take-down for the watcher. Null while this layer is off. */
+let _unwatchMedecins = null;
+
+/** Should this family be left to the layer that publishes a better register? */
+function familyDeferred(family) {
+  return _medecinsDrawing && family === AMENITIES_DEFERRED_FAMILY;
+}
+
 function reconcile(payload) {
   const sites = Array.isArray(payload?.sites) ? payload.sites : [];
 
@@ -1049,6 +1082,7 @@ function reconcile(payload) {
     const id = site?.id;
     if (!id || _records.has(id)) continue;
     if (!Number.isFinite(site.lat) || !Number.isFinite(site.lon)) continue;
+    if (familyDeferred(site.family)) continue;
     const color = amenityFamilyColor(site.family);
     if (!color) continue;
     const position = sitePosition(site);
@@ -1071,7 +1105,13 @@ function reconcile(payload) {
   // if it ever bit, plus any row whose family the palette does not know. The
   // label below does not name a cause it cannot prove; it names the count,
   // which is the difference between a bounded map and a quietly incomplete one.
-  _truncated = Math.max(0, sites.length - _records.size);
+  // A DEFERRED family is not truncation: those rows are on the map, drawn by
+  // the layer that publishes the better register, and counting them here would
+  // report a cropped view that is not cropped.
+  const deferred = _medecinsDrawing
+    ? sites.filter((site) => familyDeferred(site?.family)).length
+    : 0;
+  _truncated = Math.max(0, sites.length - deferred - _records.size);
   _count = _records.size;
   warmGroundFloor(warm.slice(0, GROUND_WARM_LIMIT));
   governorRequestRender('amenities-fr-reconcile');
@@ -1320,6 +1360,16 @@ const amenitiesFranceLayer = {
     if (!_preRenderRemover) {
       _preRenderRemover = viewer.scene.preRender.addEventListener(onPreRender);
     }
+    // Stand down from the médecin family while `medecins-fr` draws it, and
+    // come back the moment it stops — waiting out this layer's own poll would
+    // leave the duplicate on screen for a quarter of an hour.
+    _medecinsDrawing = hasJoin('medecins/drawn');
+    _unwatchMedecins?.();
+    _unwatchMedecins = watchJoin('medecins/drawn', (present) => {
+      if (present === _medecinsDrawing) return;
+      _medecinsDrawing = present;
+      if (_enabled) void loadViewport({ force: true });
+    });
     void loadViewport({ force: true });
     restoreSpriteOrder(viewer);
   },
@@ -1348,6 +1398,8 @@ const amenitiesFranceLayer = {
     }
     document.removeEventListener('keydown', onKeyDown);
     unregisterPickOwner(AMENITIES_FR_LAYER_ID);
+    _unwatchMedecins?.();
+    _unwatchMedecins = null;
 
     if (_cameraChangedAttached) {
       viewer.camera.changed.removeEventListener(onCameraChanged);
@@ -1464,6 +1516,19 @@ const amenitiesFranceLayer = {
           ? `${FAMILY_BLURBS[family]} Échantillon : ${fr(tally.get(family))} tracé${tally.get(family) > 1 ? 's' : ''} sur ${fr(inView.get(family))} dans la vue.`
           : FAMILY_BLURBS[family],
       }));
+    // The conditional withdrawal, given a row for the same reason as the
+    // refusal below it: a reader who came looking for doctors is told where
+    // they are rather than left to conclude they are missing.
+    if (_medecinsDrawing) {
+      legend.push({
+        label: 'Médecins — dessinés par la couche Médecins',
+        color: null,
+        count: 0,
+        blurb: 'Les 61 263 lignes D265 de la BPE ne sont pas dessinées tant que medecins-fr est allumé : '
+          + 'il porte le registre conventionné, 64 232 adresses avec les noms, les spécialités et le '
+          + 'secteur. Éteignez cette couche-là et la famille revient ici.',
+      });
+    }
     // The refusal, given a row of its own so a reader who came looking for
     // schools is told where they are instead of concluding they are missing.
     legend.push({
@@ -1522,8 +1587,9 @@ const amenitiesFranceLayer = {
 export function _setAmenitiesStateForTest({
   regime, records, national, mesh, meshPick, count, status, loading, error,
   summary, selectedId, enabled, viewer, points, overlayHost, depEntities, depMeta,
-  truncated, lastUpdate,
+  truncated, lastUpdate, medecinsDrawing,
 } = {}) {
+  if (medecinsDrawing !== undefined) _medecinsDrawing = Boolean(medecinsDrawing);
   if (regime !== undefined) _regime = regime;
   if (records !== undefined) _records = records instanceof Map ? records : new Map(records);
   if (national !== undefined) _national = national;
@@ -1556,5 +1622,20 @@ export function _amenitiesReconcileForTest(payload) { reconcile(payload); }
 export function _amenitiesReconcileMeshForTest(box) { reconcileMesh(box); }
 export function _amenitiesUpdateRegimeForTest(viewer) { return updateRegime(viewer); }
 export function _amenitiesTruncatedForTest() { return _truncated; }
+/** Test seam: run the half of enable/disable that follows `medecins-fr`. */
+export function _amenitiesWatchMedecinsForTest(follow = true) {
+  _unwatchMedecins?.();
+  _unwatchMedecins = null;
+  if (!follow) return;
+  _medecinsDrawing = hasJoin('medecins/drawn');
+  _unwatchMedecins = watchJoin('medecins/drawn', (present) => {
+    if (present === _medecinsDrawing) return;
+    _medecinsDrawing = present;
+    if (_enabled) void loadViewport({ force: true });
+  });
+}
+export function _amenitiesDeferredFamilyForTest() {
+  return _medecinsDrawing ? AMENITIES_DEFERRED_FAMILY : null;
+}
 
 export default amenitiesFranceLayer;
