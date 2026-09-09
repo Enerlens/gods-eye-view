@@ -94,8 +94,13 @@ test('grouping preserves category order and drops coordinators', () => {
   assert.equal(new Set(grouped).size, grouped.length, 'no layer appears in two groups');
 });
 
-test('no category is left empty', () => {
+test('no category is left empty — except the one plugged datasets fill at runtime', () => {
+  // `plugged` is empty by construction at boot: it is where a dataset lands
+  // when its manifest names no group, and the dataset box registers those
+  // AFTER the seal. The panel draws no header for an empty group, so an
+  // empty `plugged` costs nothing on screen.
   for (const group of groupLayerIdsByCategory()) {
+    if (group.id === 'plugged') continue;
     assert.ok(group.layerIds.length > 0, `empty category: ${group.id}`);
   }
 });

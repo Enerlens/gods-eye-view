@@ -415,8 +415,10 @@ export function createLocalInfrastructureOverlayEntry({
   accent,
   areaM2 = 0,
   maxDistance = LOCAL_OVERLAY_MAX_DISTANCE_M,
+  /** @type {?{title:string, details:string[]}} Pre-written copy; bypasses the id-branched table. */
+  copy = null,
 }) {
-  const copy = localInfrastructureOverlayCopy(properties, layerId, { areaM2 });
+  const resolvedCopy = copy || localInfrastructureOverlayCopy(properties, layerId, { areaM2 });
   const range = Number.isFinite(maxDistance) && maxDistance > 0
     ? maxDistance
     : LOCAL_OVERLAY_MAX_DISTANCE_M;
@@ -425,8 +427,8 @@ export function createLocalInfrastructureOverlayEntry({
     source: layerId,
     position,
     variant: 'card',
-    title: copy.title,
-    details: copy.details,
+    title: resolvedCopy.title,
+    details: resolvedCopy.details,
     accent,
     priority,
     collisionGroup: 'ambient-card',
@@ -679,6 +681,27 @@ export function createLocalGeoJsonLayer({
    */
   /** @type {number} Ceiling on the recall stem, in metres. Uncapped by default. */
   stemMaxHeightM = Number.POSITIVE_INFINITY,
+  /*
+   * ── OPTIONAL: A SOURCE THAT IS NOT A BUNDLED FILE ──────────────────────
+   *
+   * The dataset box (`datasetLayer.js`) draws rows it fetched itself — from
+   * the Tabular API, a WFS, an Opendatasoft export, a CSV — through this same
+   * loader, because the stems, cards, label arbitration and horizon culling
+   * are the one thing a plugged dataset must NOT reinvent. Two hooks make
+   * that possible without the loader learning anything about platforms:
+   *
+   *   loadFeatures  resolves to the Features to draw; when set, `url` is not
+   *                 fetched. Called on every enable() that has no data source
+   *                 — so `invalidate()` followed by enable() is a reload.
+   *   cardCopy      (props, {areaM2}) → {title, details}: what a card says.
+   *                 When set, the id-branched copy below is bypassed
+   *                 entirely, and the title it returns is also the entity's
+   *                 context label.
+   */
+  /** @type {?((context:{viewer:object}) => Promise<Array<object>>)} */
+  loadFeatures = null,
+  /** @type {?((props:object, measured:{areaM2:number}) => {title:string, details:string[]})} */
+  cardCopy = null,
 }) {
   const resolveRenderSpec = featureRender || PACK_RENDERERS[id]?.featureRender || null;
   const resolveRenderLegend = renderLegend || PACK_RENDERERS[id]?.renderLegend || null;
@@ -1094,17 +1117,22 @@ export function createLocalGeoJsonLayer({
         // windows (before vs after the add settles) need different cleanup.
         let addedToScene = false;
         try {
-          const response = await fetch(url);
-          // A 404 returns an HTML body that would otherwise die in JSON.parse
-          // one line later, reported as a parse error for a missing file.
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status ?? '?'}`);
+          let features;
+          if (typeof loadFeatures === 'function') {
+            features = await loadFeatures({ viewer });
+            if (!Array.isArray(features)) throw new Error('loadFeatures must resolve to an array of Features');
+          } else {
+            const response = await fetch(url);
+            // A 404 returns an HTML body that would otherwise die in JSON.parse
+            // one line later, reported as a parse error for a missing file.
+            if (!response.ok) {
+              throw new Error(`HTTP ${response.status ?? '?'}`);
+            }
+            const text = await response.text();
+            const lines = text.split('\n').filter(l => l.trim().length > 0);
+            features = lines.map(line => JSON.parse(line));
           }
-          const text = await response.text();
-          const lines = text.split('\n').filter(l => l.trim().length > 0);
-          
-          const features = lines.map(line => JSON.parse(line));
-          
+
           const geojson = {
             type: 'FeatureCollection',
             features
@@ -1182,6 +1210,9 @@ export function createLocalGeoJsonLayer({
             const tip = Cesium.Cartesian3.fromRadians(carto.longitude, carto.latitude, tipHeight);
             const properties = propertyObject(feature);
             const recordId = String(feature.id ?? i);
+            // A plugged dataset writes its own card; a bundled pack keeps the
+            // id-branched copy in `localInfrastructureOverlayCopy`.
+            const copy = typeof cardCopy === 'function' ? (cardCopy(properties, { areaM2 }) || null) : null;
 
             // Store references for bounded stem scaling and native picking.
             feature.__localBaseCarto = carto;
@@ -1192,7 +1223,7 @@ export function createLocalGeoJsonLayer({
               layerName: name,
               source,
               dataSource: loaded,
-              label: featureLabelFromProperties(properties, id),
+              label: copy?.title || featureLabelFromProperties(properties, id),
               properties,
               latitude: Number(Cesium.Math.toDegrees(carto.latitude).toFixed(6)),
               longitude: Number(Cesium.Math.toDegrees(carto.longitude).toFixed(6)),
@@ -1317,6 +1348,7 @@ export function createLocalGeoJsonLayer({
                 accent,
                 areaM2,
                 maxDistance: groupStyle?.cardMaxDistance,
+                copy,
               }) : null,
             });
           }
@@ -1522,6 +1554,42 @@ export function createLocalGeoJsonLayer({
     },
 
     disable: disableLayer,
+
+    /**
+     * Forget the loaded data so the next enable() fetches again — the reload
+     * a viewport-scoped dataset needs when the camera settles somewhere else.
+     *
+     * Not a destroy: the click handler, the overlay publisher and the runway
+     * collection survive, and `_enabled` is left as it is, so a caller can
+     * invalidate an ON layer and immediately enable() it to refill. The
+     * cards are cleared through the publisher's hide/show pair because the
+     * host only forgets a source's entries on hide, and a stale card over
+     * the old view is exactly what this exists to prevent.
+     * @param {Cesium.Viewer} viewer
+     */
+    invalidate: (viewer) => {
+      if (_destroyed) return;
+      clearSelectedEntityContextForLayer(id);
+      if (viewer?.selectedEntity?.__localLayerId === id) viewer.selectedEntity = undefined;
+      if (_enabled) {
+        _overlayPublisher.hide();
+        _overlayPublisher.show();
+      }
+      if (_dataSource && viewer) {
+        try { viewer.dataSources.remove(_dataSource, true); } catch { /* already gone */ }
+      }
+      _dataSource = null;
+      clearRunwayLines();
+      _stemRecords = [];
+      _groupTally.clear();
+      _renderTally.clear();
+      _count = 0;
+      _lastUpdate = null;
+      _error = null;
+      _stemGeometryDirty = true;
+      _lastVisibilityUpdate = Number.NEGATIVE_INFINITY;
+      viewer?.scene?.requestRender?.();
+    },
 
     destroy: (viewer) => {
       if (_destroyed) return;

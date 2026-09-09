@@ -1,0 +1,34 @@
+{
+  "id": "arbres-remarquables-paris",
+  "label": "Arbres remarquables (Paris)",
+  "name": "Remarkable trees Paris",
+  "icon": "🌳",
+  "color": "#7cd992",
+  "category": "built-environment",
+  "coverage": "cities",
+  "cadence": "static",
+  "source": {
+    "kind": "opendatasoft",
+    "url": "https://opendata.paris.fr",
+    "dataset": "arbresremarquablesparis",
+    "geoField": "geom_x_y",
+    "maxFeatures": 1000
+  },
+  "feature": {
+    "title": ["arbres_libellefrancais", "arbres_genre"],
+    "details": [
+      { "field": "arbres_genre", "label": "Genre" },
+      { "field": "arbres_espece", "label": "Espèce" },
+      { "field": "arbres_adresse", "label": "Adresse" },
+      { "field": "arbres_hauteurenm", "label": "Hauteur", "unit": "m" },
+      { "field": "arbres_circonferenceencm", "label": "Circonférence", "unit": "cm" },
+      { "field": "com_annee_plantation", "label": "Planté en" }
+    ]
+  },
+  "attribution": {
+    "publisher": "Ville de Paris — Direction des Espaces Verts et de l'Environnement",
+    "licence": "ODbL",
+    "url": "https://opendata.paris.fr/explore/dataset/arbresremarquablesparis/",
+    "text": "Arbres remarquables : Ville de Paris, opendata.paris.fr (ODbL)"
+  }
+}

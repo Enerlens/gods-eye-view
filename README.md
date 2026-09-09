@@ -234,7 +234,7 @@ Fifty-two live layers. **Forty-nine of them need nothing at all** — no key, no
 
 ![Diving into the Bahamas and revealing labeled submarine cable routes beneath the globe](docs/media/09-undersea-cables.gif)
 
-**Missing a layer you want?** Open an issue — or add it and send the PR.
+**Missing a layer you want? Plug it.** Under the layer list, **＋ BRANCHER UN JEU DE DONNÉES** takes the address of a data.gouv.fr page, an Opendatasoft page, a WFS or a bare GeoJSON/CSV, reads what the platform says about it, and puts it on the globe — grouped, credited, with a card and a legend — without a line of code. Copy the manifest it produces into `datasets/` and it ships for everyone; `npm run dataset:manifest -- <url>` does the same from a terminal, one step after a search on the data.gouv.fr MCP server. Three come bundled: the national defibrillator base (GeoDAE), the remarkable trees of Paris, the IGN aerodrome footprints. How it works and where it stops: [`docs/DATASETS.md`](docs/DATASETS.md). Otherwise, open an issue — or add it and send the PR.
 
 ---
 

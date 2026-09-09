@@ -62,6 +62,8 @@ import marineBuoysLayer from './data/marineBuoys.js';
 import localDataLayers from './data/localLayers.js';
 import { LAYER_STATE_REGISTRY } from './data/layerState.js';
 import { LAYER_CATEGORIES, LAYER_TAXONOMY } from './data/layerTaxonomy.js';
+import { CATALOG_DATASET_MANIFESTS } from './data/datasetsCatalog.js';
+import { initDatasetBox } from './data/datasetBox.js';
 import { registerDataCredits } from './data/dataCredits.js';
 import { SceneDirector } from './scenes/director.js';
 import { initGevVoiceCommands } from './voice/gevRealtime.js';
@@ -413,6 +415,17 @@ async function init() {
       };
     }
     dataManager.buildTogglePanel(document.getElementById('data-toggles'));
+    // The dataset box lands AFTER the seal, by design: a plugged dataset is a
+    // manifest, not a core layer, and `registerDataset` is its only door. The
+    // shipped catalog (`datasets/*.json`) and whatever this browser plugged
+    // earlier are registered here, and the panel to plug more is mounted
+    // under the layer list.
+    let datasetBox = null;
+    try {
+      datasetBox = initDatasetBox({ dataManager, viewer, catalog: CATALOG_DATASET_MANIFESTS });
+    } catch (error) {
+      console.warn('[datasets] box init failed:', error);
+    }
     styleManager.attachDataManager(dataManager);
 
     // Initialize deterministic scene playback for social clip capture
@@ -513,6 +526,9 @@ async function init() {
       getGlobeDetailDiagnostics,
       getCameraSensitivityDiagnostics,
       requestRender: governorRequestRender,
+      // The dataset box: plug / unplug / infer / list, for the QA harness and
+      // for anyone driving the app from the console.
+      datasets: datasetBox,
     };
     window.__godsEyeView.voiceCommands = initGevVoiceCommands({ viewer, styleManager, dataManager, sceneDirector, annotations });
 

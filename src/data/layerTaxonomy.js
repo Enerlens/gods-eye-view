@@ -70,6 +70,14 @@ export const LAYER_CATEGORIES = Object.freeze([
   // this comment reserved a place for has since joined it; a land-use or a
   // population layer would land here too.
   Object.freeze({ id: 'built-environment', label: 'BÂTI & TERRITOIRE', icon: '▤' }),
+  // A NINTH group, and the only one that is empty at boot. It is where a
+  // dataset lands when its manifest names no category — plugged from the
+  // panel, or shipped in `datasets/*.json` without a stated home. Empty, it
+  // draws no header (`_renderToggles` skips a group with no rows), so it
+  // costs nothing until the first dataset is plugged. A manifest MAY name
+  // any of the eight groups above instead; this one says "the reader added
+  // this", which is a fact about provenance the other eight cannot carry.
+  Object.freeze({ id: 'plugged', label: 'JEUX BRANCHÉS', icon: '🔌' }),
 ]);
 
 /**

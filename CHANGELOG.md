@@ -3,9 +3,56 @@
 This changelog records public product changes. For the authoritative description
 of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md).
 
+## [Unreleased] — 2026-09-09
+
+### Added
+- **La sélection — on demande un sujet, on choisit le jeu soi-même.** Le champ
+  de « brancher un jeu de données » prend désormais des mots autant qu'une
+  adresse, et le bouton dit lequel il a lu : **CHERCHER** ou **ANALYSER**. Un
+  sujet lit d'un coup les cinq premiers résultats de data.gouv.fr, ne propose
+  que ceux dont un brouillon **valide** — donc dessinables, prouvés avant
+  d'être offerts — et met sous chacun les quatre faits qui décident : combien
+  d'objets, qui publie, quelle fraîcheur, quelle licence. Ce qui a été écarté
+  est dit avec la raison en une phrase (« fichiers introuvables », « aucune
+  colonne de position »). Rien n'est présélectionné ni étoilé : mesuré sur six
+  sujets, le premier résultat de la plateforme est le bon **une fois sur
+  deux**, et ses erreurs ressemblent à des succès — dix-neuf points d'un
+  département là où une base nationale de 186 118 était visée. Le choix
+  revient au lecteur parce qu'aucune machine n'a de quoi le faire à sa place.
+- **Une barre de chargement qui ne ment pas.** Pendant qu'un jeu se charge, la
+  ligne de statut annonce une fraction **exacte** — « 2 400 sur 5 000 » : la
+  première page de l'API tabulaire donne le total, donc le dénominateur est
+  connu dès la première réponse. Un temps restant s'y ajoute **seulement**
+  après cinq pages, un cinquième du travail, et s'il reste plus de trois
+  secondes — trois seuils mesurés, pas devinés : à deux pages l'extrapolation
+  se trompe de 45 %, à un cinquième elle tombe à 9 %. Le chiffre est arrondi
+  plus grossièrement que son erreur (« environ 30 secondes », par pas de 5).
+  Le dernier mot n'est jamais une barre pleine mais la ligne de couverture de
+  la couche — « 1 321 dans la vue », « 5 000 affichés sur 18 630 », ou
+  « rien à cet endroit ». Une proposition est une promesse ; les marques sont
+  la seule preuve. Les mesures et les règles sont dans
+  [`docs/DEMANDER-UNE-DONNEE.md`](docs/DEMANDER-UNE-DONNEE.md).
+
 ## [Unreleased] — 2026-09-08
 
 ### Added
+- **La boîte à datasets — n'importe quel jeu de données se branche, sans
+  code.** Sous la liste des couches, **＋ BRANCHER UN JEU DE DONNÉES** prend
+  l'adresse d'une page data.gouv.fr, d'un portail Opendatasoft, d'un WFS ou
+  d'un GeoJSON/CSV nu, lit ce que la plateforme publie sur elle-même (titre,
+  éditeur, licence, colonnes, un échantillon), devine la géométrie **et dit
+  pourquoi**, puis dessine le jeu à sa place — groupé, crédité, avec une carte
+  et une légende. Le même manifeste, déposé dans `datasets/<id>.json`, livre
+  la couche à tout le monde au build ; `npm run dataset:manifest -- <url>`
+  l'écrit depuis un terminal, un pas après une recherche sur le MCP officiel
+  de data.gouv.fr. **Six adaptateurs**, dont l'API tabulaire de data.gouv.fr
+  par pages de 200 lignes filtrées sur l'emprise — 161 Mo de fichier IRVE
+  deviennent 11 633 lignes pour la vue de Paris. Tout part du navigateur ;
+  un relais sur liste blanche (`/api/plug`) couvre les hôtes qui refusent un
+  `Origin`. Ce qu'un jeu branché ne reçoit pas — jeton de partage,
+  énumération vocale, choroplèthe — est écrit dans `docs/DATASETS.md`, avec
+  la raison. Trois manifestes livrés : défibrillateurs GeoDAE, arbres
+  remarquables de Paris, emprises d'aérodromes BD TOPO.
 - **Comparables (sélection conseiller) 🇫🇷 — le module qui manquait face à
   Cityscan, construit comme eux le construisent, et sans rien acheter.** Le
   démontage du concurrent (`docs/CITYSCAN.md`) avait laissé une seule case
