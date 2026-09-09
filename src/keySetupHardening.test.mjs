@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { hardenCredentialFile } from './keySetupHardening.mjs';
@@ -265,9 +266,24 @@ test('Windows production hardener applies its exact DACL with native tools', {
 }, () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gev-provider-acl-'));
   const filepath = path.join(directory, 'ENVIRONMENT.tmp');
+  // The hardener is deliberately fail-closed and silent: every refusal returns
+  // the same `false`. That is right in production and useless in CI, where the
+  // only thing on screen is `false !== true`. Wrap the real spawn to record
+  // which native tool answered what, and report it on failure.
+  const trace = [];
+  const spawn = (command, args, options) => {
+    const result = spawnSync(command, args, options);
+    trace.push(`${path.win32.basename(String(command))} → status=${result.status}`
+      + `${result.error ? ` error=${result.error.code || result.error.message}` : ''}`
+      + `${result.signal ? ` signal=${result.signal}` : ''}`);
+    return result;
+  };
   try {
     fs.writeFileSync(filepath, '');
-    assert.equal(hardenCredentialFile(filepath), true);
+    const hardened = hardenCredentialFile(filepath, { spawn });
+    assert.equal(hardened, true, trace.length
+      ? `native tools: ${trace.join('; ')}`
+      : 'refused before spawning any tool — check SystemRoot/WINDIR resolution');
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }

@@ -56,6 +56,13 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   Pinokio — la seule plateforme où les permissions du fichier de clés reposent
   sur une ACL et non sur un bit de mode.
 
+  **Son premier passage a trouvé un test faux.** `slotForMode` est vérifié avec
+  une date construite en heure locale de la machine ; le créneau, lui, est
+  toujours à l'heure de Paris — les jeux de données sont français. La même
+  ligne signifiait donc mardi 8 h à Paris sur un portable français et mardi
+  10 h sur un exécutant en UTC. La date est désormais écrite avec son décalage
+  (`2026-06-02T08:00:00+02:00`), et la suite passe de l'UTC à UTC+14.
+
 ### Changed
 - **Les 60 couches de données ne se téléchargent plus qu'au premier clic —
   470 kB de moins pour ouvrir le globe.** L'application chargeait le code des
