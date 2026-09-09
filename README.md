@@ -344,8 +344,25 @@ Five keys cover the fully keyed experience. Three currently offer no-cost develo
 
 All of them are worth getting. None of them are required to start.
 
+### Where to put them
+
+**Easiest: paste them into the running app.** Start the dev server and a
+**POWER UP** chip appears bottom-right whenever a key is missing. It opens
+Provider Settings: one row per provider, what it unlocks, a link to get the
+key, and a field to paste it. Saving writes your `.env` and restarts the
+server — the page reloads itself and the layer is simply on. `?setup=1` reopens
+it once everything is configured.
+
+That panel exists **only** on the dev server, only for this machine, and only
+for keys it owns: anything you set in your shell or your Keychain is shown as
+configured and left alone, because rewriting it would change nothing. It is
+absent from any build a deployment serves.
+
+Run `npm run doctor` at any time for what is configured, where each value came
+from, and what the app does with — and without — each one.
+
 ```bash
-# Put keys in .env (see .env.example), or pass them as env vars:
+# Or put keys in .env by hand (see .env.example), or pass them as env vars:
 OPENAI_API_KEY="…" AISSTREAM_API_KEY="…" npm run dev -- --host localhost --port 4173
 
 # On macOS, store any of them in the Keychain and dev-fresh.sh pulls them in:

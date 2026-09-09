@@ -1,0 +1,27 @@
+# Check every text file out with LF on every platform.
+#
+# 146 unit test files read repository source with readFileSync and match it
+# against multi-line regexes. Those patterns anchor on \n, so under Git's
+# default core.autocrlf=true on Windows the sources check out with CRLF, every
+# anchored pattern misses, and `npm test` fails on an unmodified clone.
+# Normalizing here keeps the working tree byte-identical on macOS, Linux, and
+# Windows.
+* text=auto eol=lf
+
+# Shell launchers must stay LF to run at all.
+*.sh text eol=lf
+
+# Captured upstream samples keep the bytes their source actually served.
+# Six of them arrive CRLF from data.gouv.fr and Météo-France, and a fixture
+# whose line endings Git has rewritten is no longer a capture of anything.
+src/data/fixtures/** -text
+
+# Assets Git must never rewrite.
+*.gif binary
+*.png binary
+*.webp binary
+*.glb binary
+*.wav binary
+*.pbf binary
+*.woff2 binary
+*.gz binary

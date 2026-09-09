@@ -13,3 +13,7 @@ output/
 .gstack/
 3d-models/
 .env.bak*
+
+# Pinokio keeps its app-scoped credential store and install marker here.
+pinokio/ENVIRONMENT
+pinokio/.installed

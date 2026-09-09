@@ -5,6 +5,64 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-09
 
+### Added
+- **Coller une clé dans l'application, au lieu d'éditer un fichier.** Une
+  pastille « POWER UP » apparaît en bas à droite quand il manque des clés ;
+  elle ouvre un panneau qui liste les onze fournisseurs, ce que chacun allume,
+  où obtenir la clé, et un champ pour la coller. L'enregistrement écrit dans le
+  `.env` du dépôt et redémarre le serveur — la page se recharge d'elle-même et
+  la couche est allumée. Plus aucun fichier à éditer à la main.
+
+  **Ce qu'il ne fait pas, délibérément.** Une clé venue d'ailleurs — une
+  variable exportée dans le shell, le trousseau macOS — s'affiche comme
+  configurée et **ne peut être ni remplacée ni supprimée** : le panneau
+  écrirait dans un fichier que le prochain démarrage ignorerait, ce qui aurait
+  l'air d'avoir marché. `dev-fresh.sh` transmet désormais la liste des NOMS
+  qu'il a résolus ailleurs (jamais les valeurs) pour que le serveur puisse le
+  dire même quand les deux sources contiennent les mêmes octets.
+
+  **Où il n'existe pas.** Les points d'entrée ne sont montés que par le serveur
+  de développement : absents de `vite preview`, donc absents de tout ce qu'un
+  déploiement sert — c'est vérifié en navigateur, la pastille et le panneau
+  sont **retirés du DOM**. Et le portier refuse ce qui n'est pas cette
+  machine : une requête portant un en-tête de proxy (`cf-connecting-ip`,
+  `x-forwarded-for`), un `Host` étranger, une origine croisée, un POST sans
+  origine exacte. Le fichier écrit reste en `-rw-------`, et il est remplacé
+  atomiquement : rien d'autre dans le `.env` n'est touché.
+
+  La liste des clés vit à un seul endroit (`src/keySetupCore.mjs`) : le
+  panneau, le serveur, le diagnostic et le gabarit Pinokio la lisent tous, et
+  un test échoue si l'un d'eux dérive.
+
+- **`npm run doctor` — ce qui est configuré, et ce que ça donne.** Un
+  diagnostic hors ligne : version de Node, npm, dépendances, puis une ligne par
+  fournisseur avec **d'où** vient la valeur (shell, `.env`, trousseau) et
+  jamais la valeur elle-même. Il dit surtout ce que l'application fait **sans**
+  la clé — le parc de 171 groupes RTE se dessine sans identifiants, la
+  vigilance passe par le miroir data.gouv.fr — au lieu de n'énumérer que des
+  manques. Sur un compte Google facturé dans l'EEE, il dit que la clé donne
+  Plan et Relief mais pas le globe 3D, et qu'un jeton Cesium ion est la voie
+  qui marche depuis la France.
+
+- **Installation en un clic (Pinokio).** Le dossier `pinokio/` et les scripts
+  qui vont avec : installation, démarrage, mise à jour, réinitialisation, pour
+  une machine sans terminal. Le lanceur refuse de démarrer si le partage est
+  activé — la version courante de Pinokio journalise les codes de connexion des
+  tunnels réussis.
+
+- **Une intégration continue.** Le dépôt n'en avait aucune : `npm test` n'était
+  vert que sur la machine qui écrivait le changement. Tests et build sur
+  Node 24.14 et 26, plus un poste Windows qui joue le chemin d'installation
+  Pinokio — la seule plateforme où les permissions du fichier de clés reposent
+  sur une ACL et non sur un bit de mode.
+
+  **Son premier passage a trouvé un test faux.** `slotForMode` est vérifié avec
+  une date construite en heure locale de la machine ; le créneau, lui, est
+  toujours à l'heure de Paris — les jeux de données sont français. La même
+  ligne signifiait donc mardi 8 h à Paris sur un portable français et mardi
+  10 h sur un exécutant en UTC. La date est désormais écrite avec son décalage
+  (`2026-06-02T08:00:00+02:00`), et la suite passe de l'UTC à UTC+14.
+
 ### Changed
 - **Les 60 couches de données ne se téléchargent plus qu'au premier clic —
   470 kB de moins pour ouvrir le globe.** L'application chargeait le code des
@@ -114,6 +172,45 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   information, et celui qui touche obtient la version complète sur-le-champ.
 
 ### Fixed
+- **La carte jetait 19 emprises militaires sur 21.** La couche Installations
+  militaires demande à OpenStreetMap `out center tags geom`. Overpass ne retient
+  que le **dernier** mode de géométrie de la liste : `geom` gagne, et le point
+  central `center` n'est jamais envoyé. Or c'était le seul point que le code
+  savait lire. Chaque caserne, chaque terrain, chaque emprise dessinée comme une
+  surface arrivait donc sans coordonnées et était écartée en silence — seuls
+  survivaient les rares sites cartographiés comme un simple point.
+
+  Mesuré le 9 septembre sur une vue de Strasbourg, avec la requête exacte de
+  l'application : **21 objets renvoyés, 2 affichés**. Les 18 tracés et l'unique
+  relation — la Caserne Stirn, le Quartier Lecourbe — n'apparaissaient nulle
+  part, et la couche ne signalait rien : elle se déclarait à jour. Overpass
+  accompagne ces objets de leur boîte englobante ; le centre de cette boîte les
+  ramène tous, sans changer la requête ni le dessin des emprises. Une boîte
+  incohérente — inversée, à cheval sur l'antiméridien, plus large que la vue
+  autorisée — est toujours refusée plutôt que moyennée en un point plausible
+  dans le mauvais océan.
+
+- **Deux personnes demandant la même route au même instant recevaient deux
+  réponses différentes.** Le serveur regroupe les requêtes Overpass identiques :
+  la deuxième attend le résultat de la première au lieu de repartir vers les
+  miroirs. Quand ce résultat était un refus — un `406` du pare-feu
+  d'overpass-api.de, un `429` de quota — la première recevait bien les routes de
+  la veille gardées en cache, mais la seconde recevait le refus brut. Le repli
+  sur la dernière bonne réponse passe désormais par un seul chemin, quelle que
+  soit la porte d'entrée. Au passage, une seule règle décide de ce qui mérite
+  d'être gardé en cache, relu depuis le cache, et remplacé par une version
+  périmée : ces trois décisions étaient trois comparaisons distinctes, et rien
+  n'empêchait qu'elles divergent.
+
+- **Un site militaire sélectionné ne pouvait plus être désélectionné.** Cliquer
+  une emprise l'allumait et affichait sa fiche ; recliquer dessus, ou cliquer
+  ailleurs sur la carte, ne faisait rien. Le seul moyen de s'en défaire était
+  qu'une autre couche prenne la main. Un second clic la relâche maintenant, et
+  seule la sélection de cette couche est effacée — l'avion qu'un autre clic
+  vient de désigner n'est pas emporté avec elle. Symétriquement, un
+  rafraîchissement tardif de la couche ne repeint plus son ancien site
+  par-dessus une sélection plus récente venue d'ailleurs.
+
 - **Sous le fond Satellite, la couche que personne ne voit coûtait une fois et
   demie celle qu'on regarde.** La pastille Satellite empile deux couches : le
   satellite mondial d'Esri, et l'orthophoto IGN par-dessus. Cesium télécharge la

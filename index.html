@@ -949,6 +949,31 @@
     <p class="first-run-note" data-first-run-status role="status" aria-live="polite">Tip: the GEV MIC button in the dock lets you talk to the map.</p>
   </aside>
 
+  <!-- Provider Settings ("POWER UP"): dev-server only. src/keySetup.js removes
+       both nodes when /api/setup/status is absent, which is every build a
+       deployment serves and every visitor that is not this machine. -->
+  <button id="key-setup-chip" type="button" hidden aria-haspopup="dialog" aria-controls="key-setup">
+    <span class="material-symbols-outlined" aria-hidden="true">bolt</span>
+    <span data-key-setup-chip-label>POWER UP</span>
+  </button>
+  <aside id="key-setup" role="dialog" aria-labelledby="key-setup-title" aria-describedby="key-setup-description" hidden lang="en">
+    <div class="key-setup-scanline" aria-hidden="true"></div>
+    <header class="key-setup-header">
+      <span class="key-setup-kicker">GROUND STATION · PROVIDER SETTINGS</span>
+      <button type="button" class="key-setup-close" data-key-setup-close aria-label="Close key setup">
+        <span class="material-symbols-outlined" aria-hidden="true">close</span>
+      </button>
+    </header>
+    <h2 id="key-setup-title">Power up the globe</h2>
+    <p id="key-setup-description">The globe already flies keyless — Esri worldwide, IGN over France. Every key below switches on another real feed: paste one and it is saved into this checkout's own .env, then the server restarts itself. Server-side keys never leave this machine; Google Maps and Cesium ion run in the browser and must be provider-restricted. Keys you configured elsewhere — your shell, your Keychain — are shown but never touched.</p>
+    <div class="key-setup-rows" data-key-setup-rows></div>
+    <div class="key-setup-footer">
+      <button type="button" class="key-setup-apply" data-key-setup-apply>SAVE KEYS</button>
+      <span class="key-setup-hint">ESC to close</span>
+    </div>
+    <p class="key-setup-note" data-key-setup-status role="status" aria-live="polite">From France, the Cesium ion token is the one that buys the 3D globe — Google withholds it from EEA-billed accounts.</p>
+  </aside>
+
   <!-- Intelligence HUD Overlay -->
   <div id="intel-hud"></div>
 

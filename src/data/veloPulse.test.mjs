@@ -91,9 +91,17 @@ test('peak reads a stock the right way round, so it lands on a riding hour', () 
   // correction moves Lyon from Wednesday 03:00 to Wednesday 18:00.
   assert.equal(slotForMode('peak', PACK), 32);
   // A pack with no sites falls back to the wall clock rather than to slot 0.
+  //
+  // The instant is written with its OFFSET, not as `new Date(2026, 5, 2, 8, 0)`:
+  // that constructor reads the machine's own zone, so the same line meant
+  // Tuesday 08:00 in Paris on a French laptop and Tuesday 10:00 in Paris on a
+  // UTC CI runner — slot 34, not 32. The slot is always Paris time (the packs
+  // are French), so the fixture has to name a real instant rather than a local
+  // wall clock. Caught by this repo's first CI run, 2026-09-09.
+  const parisTuesday0800 = new Date('2026-06-02T08:00:00+02:00');
   const empty = { cities: {} };
-  assert.equal(slotForMode('peak', empty, { now: new Date(2026, 5, 2, 8, 0) }), 32);
-  assert.equal(slotForMode('now', PACK, { now: new Date(2026, 5, 2, 8, 0) }), 32);
+  assert.equal(slotForMode('peak', empty, { now: parisTuesday0800 }), 32);
+  assert.equal(slotForMode('now', PACK, { now: parisTuesday0800 }), 32);
 });
 
 test('setting a mode that is not a change, or not a mode, is refused', () => {

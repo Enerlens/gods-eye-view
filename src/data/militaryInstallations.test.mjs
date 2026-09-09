@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   approximateSurfaceDistanceM,
   classifyGoogleMilitaryPlace,
+  installationClickOutcome,
   installationSourceLabel,
   installationResponseSaturated,
   installationSurfaceHeightM,
@@ -17,6 +18,11 @@ import {
   setMeshFloorPreferred,
 } from './groundFloor.js';
 import { _resetFireAnchorsForTest } from './fireAnchors.js';
+import {
+  getSelectedEntityContext,
+  registerEntityContext,
+  selectEntityContext,
+} from './contextStore.js';
 import {
   _resetRenderGovernorForTest,
   getRenderGovernorDiagnostics,
@@ -765,3 +771,56 @@ test('the retry is wired to every lifecycle edge, not just declared', () => {
     /state\.enabled && !state\.loading\) loadInstallations\(\)/,
     'the fired retry re-checks enablement and never races an in-flight load');
 });
+
+
+test('a click can let GO of a site, not only take one', () => {
+  // The handler only ever selected. A picked installation therefore stayed lit
+  // — holding the shared Context readout — until some other layer happened to
+  // claim the slot; clicking it again did nothing at all.
+  assert.equal(installationClickOutcome('osm:way:1', null, true), 'select');
+  assert.equal(installationClickOutcome('osm:way:2', 'osm:way:1', true), 'select');
+  // Re-clicking the selected site releases it.
+  assert.equal(installationClickOutcome('osm:way:1', 'osm:way:1', true), 'release');
+  // Empty map, or a contact this layer does not own: both arrive as "not mine".
+  assert.equal(installationClickOutcome(null, 'osm:way:1', false), 'release');
+  assert.equal(installationClickOutcome('aircraft:ABC', 'osm:way:1', false), 'release');
+  // Nothing selected and nothing of ours picked: the click was not ours.
+  assert.equal(installationClickOutcome(null, null, false), 'ignore');
+  assert.equal(installationClickOutcome('aircraft:ABC', null, false), 'ignore');
+});
+
+test('a late repaint yields to a newer selection from another layer', async () => {
+  // Context navigation selects an aircraft or a vessel with no canvas click at
+  // all. A debounced refetch or a ground floor landing afterwards used to
+  // repaint OUR old site white and take the readout back with it.
+  const run = await runInstallationLoad({ elements: [
+    { type: 'node', id: 77, lat: 30.5, lon: -97.5, tags: { military: 'base', name: 'Held Site' } },
+  ] });
+  try {
+    const site = run.entities()[0];
+    assert.ok(site, 'the site rendered');
+    assert.equal(militaryInstallationsLayer.focusById(site.id), true);
+    assert.equal(selectedEntityCount(run), 1, 'our site is the selected one');
+
+    // Another layer claims the shared slot, the way Context navigation does.
+    const foreign = { __gevContextId: null };
+    registerEntityContext(foreign, { id: 'aircraft:ABC123', layerId: 'flights', label: 'ABC123' });
+    selectEntityContext(foreign);
+
+    await militaryInstallationsLayer.update();
+    assert.equal(selectedEntityCount(run), 0, 'the repaint did not take the selection back');
+    assert.equal(getSelectedEntityContext()?.id, 'aircraft:ABC123', 'the newer subject still holds');
+
+    // A real pick still wins: the yield rule must not make the layer unclickable.
+    assert.equal(militaryInstallationsLayer.focusById(site.id), true);
+    assert.equal(selectedEntityCount(run), 1);
+  } finally {
+    run.restore();
+  }
+});
+
+/** How many of this layer's entities are painted in the selected state. */
+function selectedEntityCount(run) {
+  return run.entities().filter((entity) => entity.point?.pixelSize?.getValue?.() === 13
+    || entity.point?.pixelSize === 13).length;
+}

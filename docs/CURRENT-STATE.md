@@ -1046,11 +1046,53 @@ This is the current runtime/source-of-truth snapshot for the project.
 >   still returns 502 rather than becoming a fabricated ground value. Client
 >   geoid fallbacks wait 60 seconds before retrying and self-heal to Re:Earth on
 >   the first later successful fetch.
+> - **Provider Settings (POWER UP):** a dev-server-only surface that writes API
+>   keys into this checkout's `.env` (or, under Pinokio, `pinokio/ENVIRONMENT`).
+>   `GET /api/setup/status` returns presence and source class per registry
+>   entry, never a value or a suffix; `POST /api/setup/keys` validates, upserts,
+>   sets `process.env` live, and restarts the dev server so the client-exposed
+>   defines re-inject. The registry — which keys exist, what they unlock, which
+>   env vars they need — lives once in `src/keySetupCore.mjs` and is read by the
+>   panel, the endpoints, `npm run doctor`, and `pinokio/_ENVIRONMENT`; tests
+>   fail if any of them drifts from it.
+>
+>   The endpoints install via `configureServer` only and are excluded from the
+>   preview-parity map, so they do not exist under `vite preview` — which is
+>   what a deployment runs. The client removes both the chip and the dialog from
+>   the DOM when the status fetch does not return a payload, so a built bundle
+>   carries no credential surface at all rather than a refused one.
+>
+>   `admitKeySetupRequest` refuses, in order: any request carrying a
+>   reverse-proxy or CDN header (`forwarded`, `x-forwarded-*`, `cf-connecting-ip`,
+>   …), any launch with Pinokio sharing enabled, a non-loopback socket, a
+>   non-local `Host`, a POST with no Origin or a cross Origin, and a POST that
+>   is not `application/json`. A credential that reached the process from
+>   outside this panel's store — an exported shell variable, the macOS Keychain,
+>   another launcher — is reported `managed: 'external'`, rendered read-only,
+>   and refused (409) for both replacement and removal; `dev-fresh.sh` passes a
+>   names-only provenance marker (`GEV_KEY_SETUP_EXTERNAL_KEYS`) so that holds
+>   even when the external value and the stored one are byte-identical. Writes
+>   go to a fresh same-directory temp file created `0600`, hardened before any
+>   secret is written, fsynced, then renamed over the target.
+>
+>   Framing: every document this dev server serves carries `X-Frame-Options:
+>   DENY` and `frame-ancestors 'none'` EXCEPT `fiche.html`, which is meant to be
+>   embedded. Re-navigating an embedded fiche to `/` does not defeat that — the
+>   guard is evaluated per navigation, against the response of the document
+>   actually being loaded.
+>
 > - **Overpass cache admission:** `/api/overpass` parses and sanitizes requests,
 >   then checks fresh memory, identical in-flight work, and fresh disk entries
 >   before invoking its local 90/min limiter. Cache and single-flight responses
 >   therefore do not spend quota; upstream-bound misses retain the existing
->   limiter, mirror, stale, and sanitization behavior.
+>   limiter, mirror, stale, and sanitization behavior. One predicate,
+>   `overpassPayloadIsData`, governs all three payload decisions — what may be
+>   written to the cache, what may be READ back from memory or disk, and what
+>   may be replaced by a stale entry — so a refusal can neither be admitted as
+>   data nor block its own replacement. Every degraded path, including a caller
+>   that JOINED an in-flight request whose outcome was a refusal, serves
+>   last-good data through the same reader; a coalesced caller and the caller
+>   that originated the request always receive the same answer.
 > - **CCTV world-click focus:** clicking an in-world CCTV icon or ambient card
 >   activates it and routes the camera flight through the panel FOCUS policy.
 >   Aircraft/satellite tracking releases outside cockpit; cockpit retains the
@@ -2953,6 +2995,19 @@ inert again.
 - The internal Context coordinator is available in every visual style. Its dedicated right-side `CONTEXT` chooser exposes the neutral shell; the coordinator is not duplicated in Data Layers and does not enable a live-data dependency until a mode is selected.
 - The expanded `CONTEXT` view offers mutually exclusive `CONTACTS` and `SPACE MISSIONS` modes. Selecting `CONTACTS` enables the context-owned Flights, Military Flights, AIS Vessels, and Mapped Installations dependencies only when they are not already user-enabled; selecting `SPACE MISSIONS` enables the recent-launch layer and its Satellite dependency. `CONTACTS` cycles the nearest supported contact of whatever type is selected. Satellites are deliberately excluded from those Awareness cohorts and keep their own tracking UX. Selecting the active mode again returns to the neutral chooser and releases only mode-owned dependencies.
 - If a civilian or military aircraft is already tracked when `CONTACTS` becomes operational, that source-owned track is adopted as the Context subject before nearest-contact autofocus. Context rechecks the tracker after its dependencies settle, so a newer selection wins, while an explicit clear during activation prevents fallback from silently selecting a replacement. Cockpit entry remains unavailable until that Context transaction has settled, so its camera takeover cannot clear Cesium tracking before adoption. Adoption does not recreate tracking or transfer camera ownership; it initializes the normal 250 km ring, history, proximity results, and Cockpit Previous/Next state for the original aircraft.
+- Mapped installations arrive from Overpass as ways and relations carrying a
+  bounding box rather than a centre — `out center tags geom` honours only the
+  last geometry mode, so `center` is never emitted. A feature with no explicit
+  point is placed at the midpoint of that box; an inverted, antimeridian-spanning
+  or implausibly wide box is refused rather than averaged. Measured over
+  Strasbourg on 2026-09-09: 21 elements returned, 2 of which carry a point of
+  their own.
+- Clicking a mapped installation selects it; clicking it again, clicking empty
+  map, or clicking a contact this layer does not own releases the selection and
+  clears only this layer's shared context, leaving a sibling layer's freshly
+  picked contact intact — the same rule CCTV world clicks follow. A later
+  repaint (a debounced refetch, a ground floor resolving) yields to any newer
+  selection made elsewhere instead of repainting its own former site.
 - `SEARCH NEARBY SITES` retains the bounded OSM results and makes one user-initiated, view-biased Google Maps Places text search for “military installation.” Google results are source-stamped, deduplicated against OSM by rounded location/name, and remain mapped context rather than operational claims. If Places is unavailable or the API is not enabled for the supplied key, OSM context remains available.
 - The expanded desktop header omits the redundant `ON` label; the active mode button carries state. Expanded Contact results also omit the duplicate `GLOBAL CONTEXT` / `CONTEXT ONLY` status row and begin with the selected subject and its 250 km scope. Global Context does not fabricate a selected-entity model preview: the provisional hand-authored aircraft wireframe was removed because it was not geometry extracted from the selected entity's actual asset.
 - Dependency ownership is reversible: disabling Global Context releases only dependencies it enabled, while user-enabled layers remain on. This also removes the Military-layer suppression handoff when Global Context owned Military, allowing an already-enabled civilian Flights layer to resume its normal mixed rendering. If OpenSky is unavailable and has no last-good cache, Flights requests a capped 250 nm adsb.lol point snapshot around the current view anchor and labels that provenance explicitly; it never relabels military-feed rows as civilian data. If both inputs fail, Flights remains `UNKNOWN`.

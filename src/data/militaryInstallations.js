@@ -2,6 +2,7 @@ import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
 import {
   clearSelectedEntityContextForLayer,
+  getSelectedEntityContext,
   registerEntityContext,
   removeEntityContextsForLayer,
   selectEntityContext,
@@ -254,7 +255,23 @@ function renderableRecords() {
   return selected ? [...rendered, selected] : rendered;
 }
 
-function renderRecords() {
+/**
+ * Rebuild this layer's entities from the current records.
+ *
+ * @param {object} [options]
+ * @param {boolean} [options.claimSelection=false] This render exists BECAUSE
+ *   the user just picked one of our sites, so our selection is the newest one
+ *   and must stand. Every other render — a debounced refetch landing, a ground
+ *   floor resolving late — has to yield: context navigation can select an
+ *   aircraft or a vessel with no canvas click at all, and a repaint that
+ *   arrives afterwards would otherwise paint our old site white again and take
+ *   the readout back.
+ */
+function renderRecords({ claimSelection = false } = {}) {
+  const selectedContext = getSelectedEntityContext();
+  if (!claimSelection && state.selectedId && selectedContext && selectedContext.id !== state.selectedId) {
+    state.selectedId = null;
+  }
   // Post-moveEnd debounced fetches commit after the camera settles; the
   // rebuilt entities need one frame in idle mode. (perf wave 2 fix)
   governorRequestRender('installations-render');
@@ -354,9 +371,30 @@ function selectRecord(id) {
   const record = state.recordById.get(id);
   if (!record || !state.dataSource) return false;
   state.selectedId = id;
-  renderRecords();
+  renderRecords({ claimSelection: true });
   // renderRecords drops selectedId when the record produced no entity.
   return state.selectedId === id;
+}
+
+/**
+ * What a left click does to this layer's selection.
+ *
+ * There used to be no gesture that let GO of a site: the handler only ever
+ * selected, so a picked installation stayed lit — and kept the shared Context
+ * readout — until another layer happened to claim the slot. Clicking it again,
+ * clicking empty map, or clicking a contact this layer does not own all mean
+ * the same thing, and all three arrive here as "not one of my records".
+ *
+ * Pure, so the decision is pinnable without a Cesium canvas and a synthetic
+ * pointer event.
+ * @param {?string} pickedId Entity id under the cursor, if any.
+ * @param {?string} selectedId This layer's currently selected record id.
+ * @param {boolean} owned Is pickedId one of this layer's records?
+ * @returns {'select'|'release'|'ignore'}
+ */
+export function installationClickOutcome(pickedId, selectedId, owned) {
+  if (pickedId && owned && pickedId !== selectedId) return 'select';
+  return selectedId ? 'release' : 'ignore';
 }
 
 function installInteraction(viewer) {
@@ -366,7 +404,16 @@ function installInteraction(viewer) {
     if (!state.enabled) return;
     const picked = viewer.scene.pick(click.position);
     const id = typeof picked?.id?.id === 'string' ? picked.id.id : null;
-    if (id && state.recordById.has(id)) selectRecord(id);
+    const outcome = installationClickOutcome(id, state.selectedId, state.recordById.has(id));
+    if (outcome === 'select') {
+      selectRecord(id);
+    } else if (outcome === 'release') {
+      // Only OUR shared context is cleared, so a sibling handler's freshly
+      // picked aircraft or vessel survives the same click.
+      state.selectedId = null;
+      clearSelectedEntityContextForLayer(LAYER_ID);
+      renderRecords();
+    }
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
 }
 

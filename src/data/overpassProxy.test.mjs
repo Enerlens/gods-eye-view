@@ -8,20 +8,26 @@
 // Run with: npm test   (node --test)
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import path from 'node:path';
+import { Readable } from 'node:stream';
+import createViteConfig, {
   simplifyOverpassPayloadBody,
   isOverpassBoundaryQuery,
   resolveOverpassPreflight,
   overpassAttemptDisposition,
+  overpassPayloadIsData,
+  readOverpassDisk,
   fetchOverpassPayload,
   OVERPASS_SLOT_LIMIT,
 } from '../../vite.config.js';
 
 test('preflight checks memory, in-flight, then disk before consuming limiter quota', async () => {
   const key = 'normalized query';
-  const fresh = { id: 'memory', cachedAt: 900 };
-  const joined = { id: 'inflight', cachedAt: 950 };
-  const disk = { id: 'disk', cachedAt: 975 };
+  const fresh = { id: 'memory', status: 200, cachedAt: 900 };
+  const joined = { id: 'inflight', status: 200, cachedAt: 950 };
+  const disk = { id: 'disk', status: 200, cachedAt: 975 };
   let diskReads = 0;
   let limiterCalls = 0;
   const allowUpstream = () => { limiterCalls += 1; return true; };
@@ -42,7 +48,7 @@ test('preflight checks memory, in-flight, then disk before consuming limiter quo
 
   const inFlightHit = await resolveOverpassPreflight({
     cacheKey: key,
-    memoryCache: new Map([[key, { id: 'stale', cachedAt: 0 }]]),
+    memoryCache: new Map([[key, { id: 'stale', status: 200, cachedAt: 0 }]]),
     inFlight: new Map([[key, Promise.resolve(joined)]]),
     readDisk: async () => { diskReads += 1; return disk; },
     allowUpstream,
@@ -85,6 +91,48 @@ test('preflight checks memory, in-flight, then disk before consuming limiter quo
     allowUpstream: () => false,
   });
   assert.equal(denied.source, 'RATE_LIMITED');
+});
+
+test('a cached refusal is a miss, on both the memory and the disk arm', async () => {
+  // An older build's write guard read `< 500`, so a mirror's 406 could be
+  // persisted under a boundary query's month-long TTL. Serving it back as a
+  // HIT meant the mirrors were never asked again for as long as it lived.
+  for (const refusal of [{ status: 406 }, { status: 429, rateLimited: true },
+    { status: 200, runtimeError: true }, { status: 302 }, { cachedAt: 1 }]) {
+    let admissions = 0;
+    const result = await resolveOverpassPreflight({
+      cacheKey: 'refused',
+      memoryCache: new Map([['refused', { ...refusal, cachedAt: Date.now() }]]),
+      inFlight: new Map(),
+      readDisk: async () => ({ ...refusal, cachedAt: Date.now() }),
+      allowUpstream: () => { admissions += 1; return true; },
+    });
+    assert.equal(result.source, 'UPSTREAM', `status ${refusal.status} must not be served as data`);
+    assert.equal(admissions, 1, 'a miss admits exactly once — no double spend');
+  }
+});
+
+test('what may be cached and what may be replaced by stale is ONE question', () => {
+  // The write guard and the serve-stale guard were two separate comparisons.
+  // Whatever splits them lets a refusal be both cached and un-replaceable.
+  const cases = [
+    [{ status: 200 }, true],
+    [{ status: 204 }, true],
+    [{ status: 299 }, true],
+    [{ status: 200, rateLimited: true }, false],
+    [{ status: 200, runtimeError: true }, false],
+    [{ status: 302 }, false],
+    [{ status: 406 }, false],
+    [{ status: 429 }, false],
+    [{ status: 502 }, false],
+    [{ status: '200' }, true],
+    [{}, false],
+    [null, false],
+    [undefined, false],
+  ];
+  for (const [payload, expected] of cases) {
+    assert.equal(overpassPayloadIsData(payload), expected, JSON.stringify(payload));
+  }
 });
 
 /** Synthetic dense ring: N points on a circle with sub-tolerance jitter. */
@@ -483,4 +531,100 @@ test('a query too heavy for the mirrors does not park them', async () => {
     /runtime error/,
   );
   assert.equal(outage.until, 0, 'the mirrors answered — they are not down');
+});
+
+
+// ── The proxy itself: one query, two callers, one verdict ────────────────────
+
+const OVERPASS_DISK_DIR = path.join(process.cwd(), '.gev-cache', 'overpass');
+const diskPathFor = (cacheKey) => path.join(OVERPASS_DISK_DIR, `${createHash('sha1').update(cacheKey).digest('hex')}.json`);
+
+function proxyHandler() {
+  const plugin = createViteConfig({ mode: 'test' }).plugins.find((candidate) => candidate.name === 'overpass-proxy');
+  const routes = new Map();
+  plugin.configureServer({ middlewares: { use: (route, handler) => routes.set(route, handler) } });
+  return routes.get('/api/overpass');
+}
+
+function invoke(handler, body) {
+  const req = Readable.from([Buffer.from(body)]);
+  Object.assign(req, { method: 'POST', headers: {}, socket: { remoteAddress: '127.0.0.1' } });
+  return new Promise((resolve, reject) => {
+    const res = {
+      writeHead(status, headers) { this.status = status; this.headers = headers; },
+      end(responseBody) { resolve({ status: this.status, headers: this.headers, body: responseBody }); },
+    };
+    Promise.resolve(handler(req, res)).catch(reject);
+  });
+}
+
+test('a cached refusal never comes back from disk, at any age', async () => {
+  const key = `overpass-refusal-${randomUUID()}`;
+  const file = diskPathFor(key);
+  await mkdir(OVERPASS_DISK_DIR, { recursive: true });
+  try {
+    for (const refusal of [{ status: 406 }, { status: 429 }, { status: 503 },
+      { status: 200, rateLimited: true }, { status: 200, runtimeError: true }]) {
+      await writeFile(file, JSON.stringify({ status: 200, body: '{"elements":[]}', cachedAt: Date.now(), ...refusal }));
+      assert.equal(await readOverpassDisk(key, 60_000), null, `fresh ${JSON.stringify(refusal)}`);
+      assert.equal(await readOverpassDisk(key, Infinity), null, `stale ${JSON.stringify(refusal)}`);
+    }
+    // The point of rejecting refusals is to protect real last-good data, which
+    // must still survive an outage of any length.
+    const good = { status: 200, body: '{"elements":[]}', cachedAt: Date.now() - 120_000 };
+    await writeFile(file, JSON.stringify(good));
+    assert.equal(await readOverpassDisk(key, 60_000), null, 'expired data misses the normal TTL');
+    assert.deepEqual(await readOverpassDisk(key, Infinity), good, 'last-good data survives at any age');
+  } finally {
+    await unlink(file).catch(() => {});
+  }
+});
+
+test('the caller that JOINS a failing request gets the same last-good roads as the one that made it', async (t) => {
+  // Before: the originating caller fell through to serve-stale, while the
+  // coalesced caller was handed the raw refusal — two answers to one query,
+  // in the same second. 406 is the measured refusal: overpass-api.de's abuse
+  // filter answers it to this proxy's User-Agent.
+  const handler = proxyHandler();
+  const query = `[out:json][timeout:12];node(around:10,48.58,7.75)["name"="${randomUUID()}"];out;`;
+  const body = `data=${encodeURIComponent(query)}`;
+  const cacheKey = body.replace(/\s+/g, ' ').trim();
+  const file = diskPathFor(cacheKey);
+  await mkdir(OVERPASS_DISK_DIR, { recursive: true });
+  // Older than any TTL, so the preflight misses it and only serve-stale can
+  // reach it.
+  const stale = { status: 200, body: '{"elements":[{"type":"node","id":1}]}', contentType: 'application/json', cachedAt: Date.now() - 40 * 86_400_000 };
+  await writeFile(file, JSON.stringify(stale));
+
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  let fetches = 0;
+  const mock = t.mock.method(globalThis, 'fetch', async () => {
+    fetches += 1;
+    entered.resolve();
+    await release.promise;
+    return new Response('<html>Not Acceptable</html>', { status: 406, headers: { 'content-type': 'text/html' } });
+  });
+
+  try {
+    const first = invoke(handler, body);
+    await entered.promise;
+    const second = invoke(handler, body);
+    // Let the second request read its in-memory body and join the pending
+    // promise before upstream answers. No sleep, no network.
+    await new Promise((resolve) => { setImmediate(resolve); });
+    release.resolve();
+
+    for (const response of await Promise.all([first, second])) {
+      assert.equal(response.status, 200, 'both callers are served last-good data, not the 406');
+      assert.equal(response.body, stale.body);
+      assert.equal(response.headers['X-Overpass-Cache'], 'STALE');
+    }
+    assert.equal(fetches, 3, 'one shared rotation over the three mirrors, not two');
+    assert.deepEqual(JSON.parse(await readFile(file, 'utf8')), stale, 'the refusal never overwrote the cache');
+  } finally {
+    release.resolve();
+    mock.mock.restore();
+    await unlink(file).catch(() => {});
+  }
 });

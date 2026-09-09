@@ -34,6 +34,36 @@ else
   exit 1
 fi
 
+# ---------------------------------------------------------------------------
+# Which provider keys came from somewhere Provider Settings does not own.
+# ---------------------------------------------------------------------------
+# The in-app panel edits ONE store — the repo-root .env. A key that reaches the
+# server from anywhere else (an exported shell variable, the macOS Keychain)
+# must be shown as configured and left READ-ONLY: writing it to .env would look
+# like it worked and change nothing, because the next launch resolves the same
+# other source again and wins.
+#
+# The server can usually infer this by comparing the live value against the
+# store's, but not when both hold the SAME bytes. This names-only marker closes
+# that case. It carries no secret — only which variables were externally
+# supplied. Captured HERE, before the first `read_dotenv_value`, so a value the
+# panel itself wrote is never mistaken for an inherited one.
+KEY_SETUP_EXTERNAL_KEYS=()
+for key_name in GOOGLE_MAPS_API_KEY CESIUM_ION_TOKEN OPENAI_API_KEY \
+  OPENROUTER_API_KEY AISSTREAM_API_KEY FIRMS_MAP_KEY TOMTOM_API_KEY \
+  RTE_CLIENT_ID RTE_CLIENT_SECRET OPENSKY_CLIENT_ID OPENSKY_CLIENT_SECRET \
+  METEOFRANCE_API_KEY LL2_API_TOKEN; do
+  # Indirect expansion, not eval: bash 3.2 (what stock macOS ships) supports it.
+  [[ -n "${!key_name:-}" ]] && KEY_SETUP_EXTERNAL_KEYS+=("${key_name}")
+done
+unset key_name
+
+# Mark a key as supplied outside the panel's store. Idempotent enough: a name
+# repeated in the CSV is filtered to a Set on the server.
+mark_key_external() {
+  KEY_SETUP_EXTERNAL_KEYS+=("$1")
+}
+
 read_dotenv_value() {
   local variable_name="$1"
   if [[ ! -f ".env" ]]; then
@@ -69,6 +99,7 @@ fi
 
 if [[ -n "${GOOGLE_MAPS_API_KEY_KEYCHAIN}" ]]; then
   GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY_KEYCHAIN}"
+  mark_key_external GOOGLE_MAPS_API_KEY
 elif [[ -n "${GOOGLE_MAPS_API_KEY_ENV}" ]]; then
   GOOGLE_MAPS_API_KEY="${GOOGLE_MAPS_API_KEY_ENV}"
   GOOGLE_MAPS_API_KEY_SOURCE="${GOOGLE_MAPS_API_KEY_ENV_SOURCE}"
@@ -165,6 +196,7 @@ resolve_opensky_credentials() {
       for acct in "client_id" "client-id" "client" "api-key"; do
         OPENSKY_CLIENT_ID="$(read_keychain_secret "${svc}" "${acct}")"
         if [[ -n "${OPENSKY_CLIENT_ID}" ]]; then
+          mark_key_external OPENSKY_CLIENT_ID
           break 2
         fi
       done
@@ -175,6 +207,7 @@ resolve_opensky_credentials() {
       for acct in "client_secret" "client-secret" "secret"; do
         OPENSKY_CLIENT_SECRET="$(read_keychain_secret "${svc}" "${acct}")"
         if [[ -n "${OPENSKY_CLIENT_SECRET}" ]]; then
+          mark_key_external OPENSKY_CLIENT_SECRET
           break 2
         fi
       done
@@ -210,11 +243,22 @@ CESIUM_ION_TOKEN="${CESIUM_ION_TOKEN:-$(read_dotenv_value "CESIUM_ION_TOKEN")}"
 LL2_API_TOKEN="${LL2_API_TOKEN:-$(read_dotenv_value "LL2_API_TOKEN")}"
 TOMTOM_API_KEY="${TOMTOM_API_KEY:-$(read_dotenv_value "TOMTOM_API_KEY")}"
 FIRMS_MAP_KEY="${FIRMS_MAP_KEY:-$(read_dotenv_value "FIRMS_MAP_KEY")}"
-OPENAI_API_KEY="${OPENAI_API_KEY:-$(read_keychain_secret "openai-api" "api-key")}"
-AISSTREAM_API_KEY="${AISSTREAM_API_KEY:-$(read_keychain_secret "aisstream-api" "api-key")}"
-CESIUM_ION_TOKEN="${CESIUM_ION_TOKEN:-$(read_keychain_secret "cesium-ion" "token")}"
-TOMTOM_API_KEY="${TOMTOM_API_KEY:-$(read_keychain_secret "tomtom-api" "api-key")}"
-FIRMS_MAP_KEY="${FIRMS_MAP_KEY:-$(read_keychain_secret "firms-map" "map-key")}"
+# Keychain fallback for each of these. A value that came from the Keychain is
+# marked external for the same reason as Google's above: the panel can show it
+# but must never try to rewrite it.
+resolve_from_keychain() {
+  local name="$1" service="$2" account="$3" secret
+  [[ -n "${!name}" ]] && return 0
+  secret="$(read_keychain_secret "${service}" "${account}")"
+  [[ -z "${secret}" ]] && return 0
+  printf -v "${name}" '%s' "${secret}"
+  mark_key_external "${name}"
+}
+resolve_from_keychain OPENAI_API_KEY "openai-api" "api-key"
+resolve_from_keychain AISSTREAM_API_KEY "aisstream-api" "api-key"
+resolve_from_keychain CESIUM_ION_TOKEN "cesium-ion" "token"
+resolve_from_keychain TOMTOM_API_KEY "tomtom-api" "api-key"
+resolve_from_keychain FIRMS_MAP_KEY "firms-map" "map-key"
 
 if [[ ! -f "src/data/cctv.js" ]]; then
   echo "error: expected CCTV layer file missing: src/data/cctv.js"
@@ -372,5 +416,13 @@ put_env_if_set CESIUM_ION_TOKEN "${CESIUM_ION_TOKEN}"
 put_env_if_set TOMTOM_API_KEY "${TOMTOM_API_KEY}"
 put_env_if_set FIRMS_MAP_KEY "${FIRMS_MAP_KEY}"
 put_env_if_set LL2_API_TOKEN "${LL2_API_TOKEN}"
+
+# Which launcher this is, and which keys it resolved from outside the .env the
+# in-app panel owns. `[*]:-` and not `[*]`: on stock macOS bash 3.2, expanding
+# an EMPTY array under `set -u` is a fatal "unbound variable", so a keyless
+# launch died right here before the guard.
+KEY_SETUP_EXTERNAL_KEYS_CSV="$(IFS=,; printf '%s' "${KEY_SETUP_EXTERNAL_KEYS[*]:-}")"
+put_env GEV_LAUNCHER "dev-fresh"
+put_env GEV_KEY_SETUP_EXTERNAL_KEYS "${KEY_SETUP_EXTERNAL_KEYS_CSV}"
 
 env ${DEV_UNSET[@]+"${DEV_UNSET[@]}"} "${DEV_ENV[@]}" "${DEV_COMMAND[@]}" --host "${HOST}" --port "${PORT}" --force

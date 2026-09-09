@@ -89,6 +89,19 @@ settled and not applicable because no Google 3D tileset is active.
   tokens against a 40 000-per-minute account ceiling, so it waits for the token
   window rather than reading a throttled turn as a routing miss. Expect roughly
   three turns a minute — a full sweep is slow by arithmetic, not by choice.
+- **Provider Settings, both halves (free, deterministic, no model):**
+  `npm run qa:provider-settings -- --url http://localhost:4173` proves the
+  credential panel against a running dev server: one row per registry entry,
+  every field a password field, an externally-configured key offering no way to
+  change it, no credential material anywhere in the DOM, and the app document
+  refusing to be framed while `fiche.html` stays embeddable.
+
+  The same harness with `--expect-absent`, pointed at a `vite preview`, proves
+  the half that matters more: on anything a deployment serves, the chip and the
+  dialog are REMOVED from the document and the write endpoint is a 404. The
+  endpoint's own refusals — proxy headers, a foreign `Host`, a cross Origin, a
+  key configured outside the panel — are unit-pinned in
+  `src/keySetupCore.test.mjs` and need no browser.
 - **Reading property data by voice (free, deterministic, no model):**
   `npm run qa:immobilier-voice` proves the path from the DVF and avis-de-valeur
   layers to the numbers the model is handed — that a layer switched on from
