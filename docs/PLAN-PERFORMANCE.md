@@ -199,14 +199,14 @@ Toutes les colonnes ont été relevées le 2026-09-09 (médiane de 5,
 polices et des clés est repliée dedans pour garder le tableau lisible — son
 détail est au journal, § 7.
 
-| Cible | Départ | **+ skybox (1.1)** | **+ couches (1.3, #123)** | **+ brotli (1.6)** | Objectif |
+| Cible | Départ | **+ skybox (1.1)** | **+ couches (1.3, #123)** | **+ brotli (1.6) et voix (1.3)** | Objectif |
 |---|---:|---:|---:|---:|---:|
-| Octets de l'app (hors tuiles), cache vide | 3,83 Mo [3,82–3,83] | 2,67 Mo [2,67–2,67] | 2,23 Mo [2,22–2,23] | **1,77 Mo [1,77–1,77]** ✅ | **≤ 1,8 Mo** |
-| Requêtes de l'app (hors tuiles) | 36 | 29 | 29 | **29** | — |
-| Fenêtre 25 s, tuiles comprises | 7,07 Mo [6,95–7,85] | 5,90 Mo | 5,43 Mo | 5,00 Mo | *voir 2.3* |
+| Octets de l'app (hors tuiles), cache vide | 3,83 Mo [3,82–3,83] | 2,67 Mo [2,67–2,67] | 2,23 Mo [2,22–2,23] | **1,78 Mo [1,78–1,78]** ✅ | **≤ 1,8 Mo** |
+| Requêtes de l'app (hors tuiles) | 36 | 29 | 29 | **38** † | — |
+| Fenêtre 25 s, tuiles comprises | 7,07 Mo [6,95–7,85] | 5,90 Mo | 5,43 Mo | 5,01 Mo | *voir 2.3* |
 | `viewer` prêt, CPU ÷4 / 10 Mbit/s | 5,8 s [4,5–8,8] | 3,57 s [3,55–3,62] | 3,22 s | *non séparé du bruit* | **≤ 3,5 s** |
 | `viewer` prêt, CPU ÷4, cache chaud | non mesuré | non mesuré | **0,60 s [0,59–0,96]** ✅ | non repris | ≤ 1,5 s |
-| JS brut exécuté avant le globe | 8,2 Mo | 8,2 Mo | **6,7 Mo** (5,6 Cesium + 1,1 entrée) | 6,7 Mo | ≤ 4 Mo |
+| JS brut exécuté avant le globe | 8,2 Mo | 8,2 Mo | 6,7 Mo (5,6 Cesium + 1,1 entrée) | **6,4 Mo** (5,6 + 0,85) | ≤ 4 Mo |
 | Orbite 5 s, zéro couche, CPU ÷4 (relatif) | p90 32,5 / p99 44,3 ms | **p90 20,6 [18,4–21,5] / p99 23,8** ✅ p99 | non repris | *non séparé du bruit* | **p90 ≤ 18 / p99 ≤ 33 ms** |
 | Orbite 5 s, 3 couches FR, CPU ÷4 (relatif, SwiftShader) | non mesuré | non mesuré | **p90 19,5 [18,6–23,8] / p99 31,6 [21,5–34,9] ms** | non repris | — |
 | Scène **parquée**, 3 couches FR | non mesuré | non mesuré | **301 rendus / 5 s [300–301]** — `transit-fr` tient le gouverneur en `continuous` | non repris | 0 sans couche animée ; **cadence à trancher** avec (voir 0.2) |
@@ -233,7 +233,13 @@ détail est au journal, § 7.
 > : **3,91 → 3,22 s**. Les lignes de rendu, de tas et d'origine ne bougent pas
 > avec cette PR.
 
-**La cible des octets est atteinte : 1,77 Mo pour un plancher à 1,8.** Ce qui
+† Les neuf requêtes de plus sont les morceaux de la voix, qui arrivent
+maintenant APRÈS le globe et dans la même fenêtre de 25 s. Les octets sont donc
+inchangés à 0,01 Mo près, et c'est normal : 1.3 ne retire pas de code au
+visiteur, elle le sort du chemin critique. La ligne qui bouge est celle du JS
+analysé avant le globe.
+
+**La cible des octets est atteinte : 1,78 Mo pour un plancher à 1,8.** Ce qui
 reste ouvert sur cette ligne du tableau, c'est le TEMPS, et il ne se paie plus
 en octets : la fermeture statique de `src/main.js` fait encore **2 708 kB avant
 minification sur 121 modules** (relevé du graphe Rollup, pas au grep), et c'est
@@ -511,6 +517,33 @@ le premier rendu qui n'attend plus `fonts.googleapis.com`. Bonus : plus aucune
 requête vers Google au chargement d'une page publique (RGPD, CJUE 2022).
 
 **1.3 Découper l'entrée : les couches se chargent au premier clic.**
+✅ **Faite en deux temps, les 2026-09-09.** Les 60 couches d'abord (PR #123 :
+fermeture statique 7 278 → 2 525 kB, entrée 2 560 → 1 102 kB), puis la pile
+vocale : **2 708 → 2 104 kB** avant minification, 121 → 103 modules, entrée
+**1 134 → 853 kB** minifiés (266 → 200 kB sur le fil en brotli).
+
+Ce que la seconde passe a appris, et qui n'était pas dans la rédaction :
+
+- **La moitié du gain n'était pas la voix, c'était deux arêtes accidentelles.**
+  `src/hud.js` importait UNE fonction de contexte cartographique à
+  `voice/gevActions.js`, ce qui traînait 164 kB (le runner d'actions et son
+  vocabulaire de couches) ; `src/locations.js` importait deux helpers de
+  géocodage à `annotations/annotationResolver.js`, 50 kB. Aucun des deux ne
+  sert avant un geste. C'est exactement le piège noté après #123 : ces arêtes
+  ne se voient QUE dans le graphe Rollup, jamais au grep.
+- **Le panneau ne se différencie pas, seule sa mécanique.** Le markup du micro
+  est sorti dans `src/voice/voiceControlDom.js` (6 kB, aucune dépendance) et
+  reste au démarrage : un contrôle qui apparaît une seconde après le reste se
+  lit comme une page qui charge encore, et il déplacerait le dock sous le
+  curseur.
+- **Deux déclencheurs, pas un.** Inactivité du navigateur (borné, `whenIdle`)
+  ET intention immédiate. Le premier n'est pas une commodité : huit harnais QA
+  lisent `window.__gevVoiceCommands`, et une pile qui n'arrive JAMAIS sans
+  clic les aurait tous cassés. `window.__godsEyeView.voiceReady` est la
+  promesse à attendre ; `track-regression` et `qa-l9-matrix`, qui sondaient
+  sans attendre, l'attendent désormais.
+
+*Rédaction d'origine :* 
 Aujourd'hui `src/main.js:8-62` importe les 55 modules et `dataManager.register`
 les enregistre tous (`src/main.js:346-406`). Introduire un registre de
 **descripteurs légers** (id, libellé, catégorie, jeton de partage, ce que lit
@@ -528,9 +561,19 @@ d'un lien de partage active des couches au boot — le chemin `import()` doit
 contrat d'enregistrement et diront ce qui casse. Une PR par lot, pas une PR
 « tout dynamique ».
 
-**1.4 `ui.js` (462 kB) : sortir le cockpit, les styles visuels et la lightbox
-CCTV du chemin de démarrage.** Même mécanique qu'en 1.3, par `import()` au
-premier usage (bouton COCKPIT, sélecteur de style, clic CCTV). Mesure identique.
+**1.4 `ui.js` (455 kB dans la fermeture) : sortir le cockpit, les styles
+visuels et la lightbox CCTV du chemin de démarrage.** Même mécanique qu'en 1.3,
+par `import()` au premier usage (bouton COCKPIT, sélecteur de style, clic
+CCTV). Mesure identique.
+
+> **À reconsidérer avant de la faire (2026-09-09).** Après 1.3 et sa suite, le
+> paquet d'entrée fait **853 kB minifiés en face des 5 593 kB de Cesium** :
+> réussir 1.4 en entier retirerait environ 200 kB minifiés, soit **3 % du
+> JavaScript analysé avant le globe**. C'est la tâche la plus chère de la phase
+> (`ui.js` fait 10 492 lignes et porte le StyleManager, que `init()` construit
+> avant tout le reste) pour le plus petit reste de gain. La règle de ce plan —
+> une tâche qui ne bouge pas le chiffre est annulée — pointe vers **1.5 (b)**,
+> pas vers 1.4.
 
 **1.5 Cesium lui-même : deux options, mesurer avant de choisir.**
 - (a) *Sûre* : ✅ **la moitié brotli est faite le 2026-09-09**, livrée par la
@@ -1103,3 +1146,35 @@ Trois choses apprises :
   partent déjà à 285 et 286 ms : la balise du moteur est injectée en tête de
   `<head>`, au-dessus du module d'entrée, et le préchargeur du navigateur les
   voit dans le premier kilo-octet. Il n'y a rien à avancer.
+
+### 2026-09-09 (suite) — 1.3 finie, et le mur qui reste n'est plus notre code
+
+Fermeture statique de `src/main.js` : **2 708 → 2 104 kB** avant minification,
+121 → 103 modules. Paquet d'entrée **1 134,5 → 853,3 kB** minifiés
+(334,8 → 248,4 gzip ; **266 → 200 kB sur le fil**, brotli). `npm test`
+6 647/6 647, `qa:lazy-voice` 8/8, `qa:lazy-layers` 9/9, `qa:brotli` 17/17.
+
+**Le temps n'a de nouveau pas pu être séparé.** Deux tours d'A/B alternés entre
+deux serveurs (`dist` et `dist-before` sur deux ports, mesures entrelacées pour
+absorber une charge qui dérive) : AVANT 5 188 puis 4 778 ms, APRÈS 5 278 puis
+5 062 ms, sur un Mac à load 18-21. Un relevé isolé de l'arbre APRÈS, pris à
+load 8, donne `viewer` **2 686 ms [2 666–2 965]** avec une dispersion de 300 ms
+— c'est une observation, pas un A/B, et elle ne doit pas être citée comme un
+gain tant que les deux arbres n'ont pas été mesurés côte à côte au repos.
+
+**Ce que la mesure de taille dit, et qui change la suite du plan.** Le paquet
+d'entrée fait maintenant **853 kB en face des 5 593 kB de Cesium** : le
+JavaScript analysé avant le globe est à **87 % le moteur**. Finir la tâche 1.4
+(`ui.js`, 455 kB dans la fermeture, 10 492 lignes, et le StyleManager que
+`init()` construit en premier) retirerait ~200 kB minifiés, soit **3 %** de ce
+que le navigateur analyse. La règle de ce plan — une tâche qui ne bouge pas le
+chiffre est annulée — désigne donc **1.5 (b)**, le passage de Cesium à l'ESM
+émondé, comme la prochaine tâche de la phase 1, et renvoie 1.4 après elle.
+
+**La leçon technique de la passe** : la moitié du gain ne venait pas de la
+voix. `src/hud.js` importait une fonction à `voice/gevActions.js` (164 kB de
+runner et de vocabulaire derrière) et `src/locations.js` deux helpers à
+`annotations/annotationResolver.js` (50 kB) — deux arêtes qu'aucun `grep` ne
+montre et que le graphe Rollup donne en une commande. Le graphe est
+`.context/perf/vite.graph.config.mjs` ; il monte dans `scripts/` s'il sert une
+troisième fois.

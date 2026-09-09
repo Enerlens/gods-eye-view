@@ -12,11 +12,9 @@ import { LAYER_CATEGORIES, LAYER_TAXONOMY } from './data/layerTaxonomy.js';
 import { CATALOG_DATASET_MANIFESTS } from './data/datasetsCatalog.js';
 import { initDatasetBox } from './data/datasetBox.js';
 import { registerDataCredits } from './data/dataCredits.js';
-import { SceneDirector } from './scenes/director.js';
-import { initGevVoiceCommands } from './voice/gevRealtime.js';
+import { installLazyVoice } from './voice/lazyVoice.js';
 import { MapStackController } from './mapStackController.js';
 import { ignTerrainFlagEnabled } from './data/ignBilTerrain.js';
-import { initAnnotations } from './annotations/index.js';
 import { initLogoGaze } from './logoGaze.js';
 import { installStarfield } from './starfield.js';
 import { initCockpitCloudEffects } from './cockpitCloudEffects.js';
@@ -361,11 +359,30 @@ async function init() {
     }
     styleManager.attachDataManager(dataManager);
 
-    // Initialize deterministic scene playback for social clip capture
-    const sceneDirector = new SceneDirector(viewer, styleManager, dataManager);
-
-    // Initialize the voice "whiteboard" annotation engine (world-space renderer)
-    const annotations = initAnnotations({ viewer, tileset });
+    // The voice agent, its annotation engine and the scene director are 360 kB
+    // of the boot bundle and none of them draws the map — so they are mounted,
+    // not built: the mic panel appears now, its machinery arrives at browser
+    // idle (or immediately if somebody reaches for the mic first). See
+    // `src/voice/lazyVoice.js`.
+    // Republished under the names eight QA harnesses and the console already
+    // know. Called from BOTH sides because the order is genuinely undecided:
+    // the stack can land before `window.__godsEyeView` is published (nothing
+    // between here and there awaits, but nothing promises not to either), and
+    // a one-sided version would silently leave the three fields null forever.
+    let voiceStack = null;
+    const publishVoiceStack = () => {
+      if (!voiceStack || !window.__godsEyeView) return;
+      window.__godsEyeView.voiceCommands = voiceStack.controller;
+      window.__godsEyeView.annotations = voiceStack.annotations;
+      window.__godsEyeView.sceneDirector = voiceStack.sceneDirector;
+    };
+    const voice = installLazyVoice({
+      viewer,
+      styleManager,
+      dataManager,
+      tileset,
+      onReady: (stack) => { voiceStack = stack; publishVoiceStack(); },
+    });
 
     // Keep startup chrome truthful: a share is not restored until camera,
     // visual/map/panel lanes, and every requested layer have terminated.
@@ -451,9 +468,13 @@ async function init() {
       styleManager,
       tileset,
       dataManager,
-      sceneDirector,
+      // Null until the voice stack lands — `voiceReady` is how a caller waits
+      // for it without polling, and `loadVoice()` how it asks for it early.
+      sceneDirector: null,
       mapStackController,
-      annotations,
+      annotations: null,
+      voiceReady: voice.ready,
+      loadVoice: voice.load,
       weatherEffects,
       cockpitCloudEffects,
       getRenderGovernorDiagnostics,
@@ -472,8 +493,9 @@ async function init() {
       // for anyone driving the app from the console.
       datasets: datasetBox,
     };
-    window.__godsEyeView.voiceCommands = initGevVoiceCommands({ viewer, styleManager, dataManager, sceneDirector, annotations });
-
+    // The other half of the ordering note above: if the voice stack landed
+    // first, this is where its three fields stop being null.
+    publishVoiceStack();
   } catch (error) {
     console.error("God's Eye View initialization failed:", error);
     loaderStatus.textContent = `Error: ${describeError(error)}`;

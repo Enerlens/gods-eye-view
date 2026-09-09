@@ -64,6 +64,38 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   (`2026-06-02T08:00:00+02:00`), et la suite passe de l'UTC à UTC+14.
 
 ### Changed
+- **L'agent vocal n'est plus téléchargé pour ouvrir une carte — 281 kB de moins
+  dans le paquet de démarrage.** Le micro, son moteur d'annotations, ses deux
+  rendus et le réalisateur de scènes représentaient **604 kB** du code analysé
+  avant le premier pixel, pour une fonction que la plupart des lecteurs
+  n'utiliseront jamais. Le paquet principal passe de **1 134 à 853 kB**
+  (334 → 248 kB compressés, **266 → 200 kB sur le fil**), et la fermeture
+  statique du démarrage de 2 708 à **2 104 kB** sur 121 → 103 modules.
+
+  **Le panneau du micro, lui, est là dès la première image.** Un bouton qui
+  apparaît une seconde après le reste se lit comme une page encore en train de
+  charger : seule sa mécanique est différée. Elle arrive toute seule dès que le
+  navigateur souffle, ou immédiatement si quelqu'un tend la main vers le micro
+  — clic, focus clavier, survol du panneau, touche Espace.
+
+  Deux fils accidentels ont été coupés au passage, et c'est la moitié du gain :
+  le bandeau du HUD tirait **164 kB** de machinerie vocale pour *une* fonction
+  de contexte cartographique, et la barre de recherche **50 kB** de résolveur
+  d'annotations pour deux helpers de géocodage. Les deux ne servent qu'après un
+  geste ; ils se chargent maintenant avec le geste.
+
+  Ce qui n'a pas changé et se mesure : `npm test` 6 647/6 647,
+  `npm run qa:lazy-voice` 8/8 (le paquet d'entrée ne contient plus une seule
+  empreinte vocale, le panneau est là au démarrage, la pile atterrit seule, et
+  un outil vocal répond après coup), `qa:lazy-layers` 9/9.
+
+  Honnêteté sur le chronomètre : **l'écart de temps n'a pas pu être mesuré
+  aujourd'hui.** Ce Mac portait un autre agent (charge 8 à 21 pendant toute la
+  passe) et deux tours d'A/B alternés n'ont rien séparé. Ce qui est certain est
+  la taille, et une leçon qu'elle donne : le paquet de l'application ne fait
+  plus que 853 kB en face des **5 593 kB de Cesium**. Le mur du démarrage
+  n'est plus notre code.
+
 - **Le code part compressé au maximum, et non plus au minimum que le serveur
   pouvait calculer à la volée — 460 kB de moins pour ouvrir le globe.** Le
   serveur compressait chaque fichier au moment où il le servait, en gzip, au

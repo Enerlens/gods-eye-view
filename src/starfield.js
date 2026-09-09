@@ -1,4 +1,5 @@
 import * as Cesium from 'cesium';
+import { whenIdle } from './whenIdle.js';
 
 /**
  * The star field, moved off the boot path and onto the basemaps it belongs to.
@@ -73,26 +74,6 @@ function skyBoxSources() {
       Cesium.buildModuleUrl(`Assets/Textures/SkyBox/tycho2t3_80_${suffix}.jpg`),
     ]),
   );
-}
-
-/**
- * Run `task` when the browser is not busy, with a bounded wait.
- *
- * `requestIdleCallback` alone is not enough: a tab that never goes idle would
- * never show a sky at all, so the timeout is the contract and the idle window
- * is the optimisation. Safari has no `requestIdleCallback`, hence the fallback.
- *
- * @param {() => void} task
- * @param {number} timeoutMs
- * @returns {() => void} cancel
- */
-function whenIdle(task, timeoutMs) {
-  if (typeof window.requestIdleCallback === 'function') {
-    const handle = window.requestIdleCallback(task, { timeout: timeoutMs });
-    return () => window.cancelIdleCallback(handle);
-  }
-  const handle = window.setTimeout(task, timeoutMs);
-  return () => window.clearTimeout(handle);
 }
 
 /**

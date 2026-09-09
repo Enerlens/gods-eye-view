@@ -86,6 +86,7 @@
     "qa:brotli": "node scripts/qa-brotli.mjs",
     "qa:starfield": "node scripts/qa-starfield.mjs",
     "qa:lazy-layers": "node scripts/qa-lazy-layers.mjs",
+    "qa:lazy-voice": "node scripts/qa-lazy-voice.mjs",
     "perf:boot": "node scripts/perf-boot-probe.mjs",
     "perf:urls": "node scripts/perf-boot-urls.mjs",
     "perf:layers": "node scripts/perf-boot-probe.mjs --at lyon --layers irve-fr,schools-fr,transit-fr",

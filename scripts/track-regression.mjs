@@ -796,7 +796,14 @@ async function main() {
     // 2026-08-21). Drives the real tool runner; costs no model turns.
     // ============================================================
     console.log('\nVoice entity context — a click-selected contact answers scope:selected');
-    const runnerReady = await evalPage(() => typeof window.__gevVoiceCommands?.runner === 'function');
+    // The voice stack is deferred off the boot path (`src/voice/lazyVoice.js`),
+    // so a bare typeof check here is a race: it would read `undefined` on a fast
+    // run and skip the whole section for a reason that has nothing to do with
+    // the build. `voiceReady` is the promise the app publishes for exactly this.
+    const runnerReady = await evalPage(async () => {
+      try { await window.__godsEyeView?.voiceReady; } catch { /* falls through to the typeof */ }
+      return typeof window.__gevVoiceCommands?.runner === 'function';
+    });
     if (!runnerReady) {
       skip('voice-context: click-selected aircraft answers scope:selected',
         'voice command runner not exposed on this build');
