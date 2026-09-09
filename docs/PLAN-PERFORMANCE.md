@@ -1712,3 +1712,250 @@ au-dessus de Roissy. Le lot en tient 8 maintenant, toutes à l'écran : les 12
 autres étaient des pistes distribuées à des terrains hors cadre. Le plancher
 passe aux cinq pistes de Roissy ; l'invariant qui compte — le pool tient
 exactement ce qui est dessiné — n'a pas bougé.
+
+### 2026-09-09 (suite 2) — 3.1 seconde moitié, 3.3, 3.5, et deux items refermés par la mesure
+
+Cette entrée couvre tout ce que la phase 3 avait laissé ouvert. Deux items ont
+été **livrés**, un item a été **vérifié déjà fait**, un item a été **mesuré puis
+déclassé**, et un item reste ouvert avec un obstacle que le plan n'avait pas
+enregistré.
+
+#### D'abord : où partaient vraiment les 28 à 36 Kio par feature
+
+L'entrée précédente disait « c'est la machinerie `Entity` + `Property`, seule la
+migration vers les primitives l'enlève ». La première moitié est juste, la
+seconde était une conclusion, pas une mesure. Pesé objet par objet
+(`node --expose-gc`, 3 000 features réelles du pack aéroports, `HeapProfiler`
+n'étant pas nécessaire hors navigateur — deux `gc()` encadrent chaque montage) :
+
+| Ce qu'on garde | Octets / feature |
+|---|---:|
+| L'`Entity` nue, sans graphiques ni propriétés | 1 379 |
+| + le `PropertyBag` que le GeoJSON construit (12 clés) | 15 354 |
+| + `position` + `PointGraphics` (sans propriétés) | 11 949 |
+| **La feature dessinée telle qu'elle était livrée** | **33 646** |
+| — sans le `PropertyBag` | 19 670 (**−41 %**) |
+| — sans le `PropertyBag` NI le fût par entité | 11 905 (**−65 %**) |
+| Chemin primitives complet (`PointPrimitive` + enregistrement) | 1 231 (−96 %) |
+
+Ce tableau change l'ordre d'attaque. La cible « tas −60 % » **n'exigeait pas**
+la migration vers les primitives : deux retraits chirurgicaux la dépassent, et
+aucun des deux ne touche à la surface d'entité dont dépendent 67 contrôles de
+harnais.
+
+#### 3.1, seconde moitié — livrée en deux retraits
+
+**a. Le `PropertyBag` était un doublon, et il coûtait 14,0 Kio par feature.**
+`GeoJsonDataSource` transforme les propriétés d'une feature en `PropertyBag` :
+une paire d'accesseurs par clé sur un objet en mode dictionnaire, chacune
+adossée à sa `ConstantProperty`, chacune de celles-ci portant son `Event` et
+ses trois tableaux. **42 % du coût d'une feature dessinée**, pour une SECONDE
+copie de propriétés que la boucle de chargement a déjà déballées en objet
+simple — l'objet que lisent la fiche, l'étiquette, la légende et le balayage
+vocal. Rien dans `src/` ne lit `entity.properties` d'un pack local :
+`summarizeEntity` court-circuite sur `__gevContextId` et prend la copie simple
+de l'enregistrement. Le sac est donc relâché après déballage, et l'objet simple
+est publié sur `entity.__localProperties` — une référence, pas une copie.
+**14,0 Kio × 22 218 features ≈ 310 Mio** de tas retenu sur les quatre packs.
+
+**b. Le fût de rappel a quitté l'entité, et il coûtait 7,7 Kio par feature.**
+Une `PolylineGraphics` n'est pas une ligne : c'est une douzaine de `Property`,
+chacune avec son `Event` et ses trois tableaux, plus les deux tampons de
+positions que ce fichier permutait. Chaque feature payait un fût que l'horizon
+ou le budget s'apprêtait à cacher. Les fûts sont maintenant un **pool** dans une
+`PolylineCollection`, dimensionné à ce qui est à l'écran — exactement le patron
+du pool de pistes, jusqu'au matériau possédé par entrée.
+
+Trois choses que ce déplacement a obligé à écrire, et qu'il faut lire avec :
+
+- **L'ordre de distribution décide du nombre de commandes de dessin.** Cesium
+  ouvre une nouvelle `DrawCommand` dès que deux polylignes CONSÉCUTIVES d'un
+  seau désaccordent sur `type + valeurs des uniformes`
+  (`sortPolylinesIntoBuckets` indexe sur `material.type`, la passe de dessin
+  coupe sur `createMaterialId`). Distribué en ordre d'enregistrement, un pack
+  gradué coûterait une commande par CHANGEMENT de couleur ; trié par couleur, il
+  en coûte une par couleur distincte.
+- **L'horizon est la seule grille re-testée à chaque passe.** La caméra bouge
+  une seconde ou plus avant que `moveEnd` ne parte, et `entity.show` n'atteint
+  plus le fût. Sans écriture passe par passe, un fût serait resté suspendu
+  au-dessus de l'autre face de la planète pendant tout un glissement. Le test
+  d'appartenance (`entry.record === record`) est ce qui empêche d'éteindre le
+  fût d'un voisin à travers un pointeur périmé.
+- **Deux lots de polylignes par couche, et `__localLayerId` ne les distingue
+  plus.** Les pistes et les fûts portent tous une feature de la même couche
+  comme identité de sélection, donc `qa-airports` lisait « le premier lot
+  trouvé ». Chaque lot porte maintenant `__gevLocalPool` (`'segments'` ou
+  `'stems'`), et le harnais le lit.
+
+**Mesuré**, `npm run perf:infra`, avant et après sur deux arbres et deux
+serveurs de dev simultanés (`git worktree` sur `HEAD` d'un côté, le travail de
+l'autre), M5, SwiftShader, 1440×900, CPU ÷4 appliqué au seul échantillonnage,
+profil `lite` :
+
+| Scène | Tas des packs avant | après | Δ | p90 mouvement | p90 repos |
+|---|---:|---:|---:|---:|---:|
+| **region** 2 000 km | 619,1 Mio | **431,0 Mio** | **−30 %** | 1 200 → **450 ms** (−62 %) | 2 017 → **533 ms** (−74 %) |
+| **city** 120 km | 633,5 Mio | **405,4 Mio** | **−36 %** | 483 → **267 ms** (−45 %) | 450 → **300 ms** (−33 %) |
+| **world** 20 000 km | *lecture invalide* | 402,6 Mio | — | — → 200 ms | 1 583 → **583 ms** (−63 %) |
+
+Et l'inventaire confirme que le fût a bien changé de nature : **polylignes
+d'entité 22 218 / 9 055 / 234 → 0 partout**, polylignes de primitive = ce qui
+est dessiné (241 à Lyon, dont les 7 segments de piste).
+
+Trois lectures à ne pas se faire soi-même :
+
+- **La scène `world` de l'AVANT n'est pas comparable.** Elle a relevé « 22 218
+  dessinées » et 344,7 Mio, c'est-à-dire l'inventaire pris avant que la passe de
+  visibilité n'ait tourné une seule fois — c'est la première scène du run, celle
+  qui paie la transformation Vite à froid. La même scène après lit 387
+  dessinées. Les scènes `region` et `city`, elles, reproduisent les chiffres de
+  la session précédente à moins de 1 % près (617 / 630 Mio), ce qui est ce qui
+  rend les deux deltas ci-dessus lisibles.
+- **La cible « −60 % » n'est toujours pas atteinte, et l'écart est réel.** Le
+  démontage en Node prédisait −21,7 Kio par feature ; le banc en mesure −10,5
+  (29,2 → 18,7 Kio par feature à Lyon). Deux raisons connues, aucune mesurée :
+  les quatre packs n'ont pas 12 clés chacun (datacenters en a 4, dont un objet
+  `tags` imbriqué dont les chaînes sont retenues de toute façon), et le tas
+  « packs » est une différence entre deux relevés dont la ligne de base
+  (`boot`) bouge de ±25 Mio d'un run à l'autre. Contre la mesure d'AVANT la
+  3.1 (695 Mio à Lyon), 405,4 Mio font **−42 %**.
+- **Le p90 tombe partout, et ce n'est pas seulement le tas.** Une polyligne
+  masquée coûte ses sommets dans le nuanceur à chaque image
+  (la mémoire `cesium-polylinecollection-traps`) ; 22 218 fûts résidents dont 234 visibles
+  étaient exactement cette facture, et le pool la supprime.
+
+**Ce qui n'a PAS bougé** : la surface d'entité. Le point reste une `Entity` avec
+son `PointGraphics`, `entity.show`, `entity.position`, sa fiche et sa sélection.
+C'est ce qui permet aux 44 contrôles de `qa-airports` et aux 23 de `qa-dams` de
+rester valides — voir « ce qui reste ouvert » plus bas pour le prix qu'aurait la
+migration complète.
+
+#### 3.3 — un mât ne partage plus son matériau
+
+`anfrFrance.js` mémorisait cinq `Material` et donnait la même instance à tous
+les fûts d'une bande, au motif écrit qu'un `PolylineCollection` regroupe par
+INSTANCE de matériau. Les deux moitiés étaient fausses.
+
+`Polyline._destroy()` appelle `this._material.destroy()` sans condition, et le
+`destroyObject` de Cesium remplace chaque méthode par un lanceur d'exception :
+le premier fût détruit le matériau partagé, le second lève. Reproduit sur ce
+Cesium pour `destroy()` comme pour `removeAll()`, en trait plein comme en
+pointillé — et les deux sont des chemins vivants (`disable()` appelle
+`removeAll()`, `destroy()` appelle `primitives.remove()`, qui détruit). Le test
+de non-régression échoue sur l'arbre d'avant.
+
+Le regroupement, lui, se fait sur des clés de VALEUR : trente-trois cyans en
+trente-trois instances restent une seule commande. Ce qui coûte une commande,
+c'est un changement d'apparence entre deux polylignes consécutives — donc le lot
+dessiné est trié par bande, et la boîte la plus pleine (1 913 fûts) passe de
+1 913 commandes possibles à cinq. Prix mesuré du correctif : 3,5 Kio par
+matériau, 8,2 Mio au plafond de 2 400 fûts.
+
+Au passage, **l'obstacle « puis les 13 autres `PolylineCollection` » n'existe
+pas** : `src/` en contient cinq au total (`anfrFrance` ×2, `irveFrance`,
+`localGeojson`, `rocketLaunches`), toutes déjà recyclées ou à une polyligne.
+
+#### 3.5 — une règle d'éclaircissage, une seule, pour toutes les couches
+
+`LITE_BUDGET_SHARE = 0.6` et `profileCountBudget()` / `profileCellPx()` vivent
+maintenant dans `perfProfile.js`, et les cinq couches à maillage FR
+(`anfr-fr`, `amenities-fr`, `schools-fr`, `irve-fr`, `medecins-fr`) les
+appellent. La 3.1 avait câblé sa propre copie du 0,6 ; elle a été retirée au
+profit de la règle partagée.
+
+Deux raisons pour une seule constante plutôt qu'un réglage par couche : un
+lecteur sur une machine lente ne doit pas avoir à découvrir que cette carte
+s'éclaircit et que celle-là non — deux densités sur une même machine est un bug
+qui se lit comme une donnée. Et « coverage first, density second » tient : toutes
+les échelles de ce dépôt descendent au plus bas à 1 100, dont 60 % font 660,
+au-dessus des 600 cellules de la grille de `geoMeshThinning` — donc `lite`
+dépense sa coupe sur le DEUXIÈME point d'une cellule chargée et jamais sur le
+premier point d'une cellule vide. Un département creux reste présent.
+
+**Quand une bascule en cours de session prend effet** : à la prochaine sélection
+de la couche (prochain arrêt caméra ou prochain chargement), pas à la bascule.
+C'est le contrat déjà écrit de ce module — un changement en session est « honnête
+mais partiel », `preserveDrawingBuffer` ne pouvant pas suivre du tout — et le
+seul budget re-décidé à chaque arrêt, celui de la 3.1, s'abonne, lui, parce
+qu'une caméra à l'arrêt y montrerait une densité périmée indéfiniment.
+
+#### 3.6 — vérifiée, et déjà faite pour la moitié qui était nommée
+
+Le plan demandait « séismes (`CallbackProperty` → géométrie statique +
+`requestRender`, déjà partiellement fait, vérifier) ». Vérifié : il n'y a plus
+un seul `CallbackProperty` dans `earthquakes.js`. Les axes sont statiques depuis
+le 2026-09-03, les disques sont un `PointPrimitiveCollection` et les règles de
+profondeur un `PolylineCollection`, et la couche mesure **+0,20 ms à 600
+événements** — à l'intérieur du bruit du banc (0,50 ms entre deux passages ÉTEINT
+consécutifs). Sur le flux vivant de 28 événements elle n'est pas mesurable. Rien
+à faire.
+
+La seconde moitié (`transit-fr`, `road-events-fr`, `vigicrues` vers les
+primitives) est le même travail que la migration complète de la 3.1, avec le
+même prix ; voir plus bas.
+
+#### 3.2 — mesurée, puis déclassée
+
+Le plan écrivait : « Les `.geojsonl` de 2 à 2,6 Mo sont lus en entier puis triés
+côté client. » La première moitié est vraie, **la seconde ne l'est pas** : il n'y
+a aucun tri du pack côté client. Ce qui est trié à chaque arrêt, c'est la liste
+des candidats déjà à l'écran, et la 3.1 l'a ramenée à 600 marques par pack au
+plus.
+
+Mesuré sur les quatre packs réunis : **22 200 lignes, 9,24 Mo bruts → 1,84 Mo
+gzip → 1,25 Mo brotli, 40,5 ms de `split` + `JSON.parse`** sur M5 (donc ≈ 160 ms
+à CPU ÷4), payés une fois par session et par pack allumé. À comparer aux
+~310 Mio de tas que le retrait du `PropertyBag` vient de rendre. Un pack à deux
+niveaux est un chantier de scripts de build et d'un chargeur par région ; le
+plan écrit lui-même « ne pas tuiler davantage avant d'avoir mesuré que le niveau
+2 coûte encore ». La mesure est là, et elle dit que ce n'est pas le prochain
+levier. **Décision à Memel** : la 3.2 reste ouverte mais déclassée.
+
+#### Ce qui reste ouvert, et l'obstacle que le plan n'avait pas enregistré
+
+**La migration complète vers les primitives** (le dernier tiers : 11,9 Kio →
+1,2 Kio par feature) reste à faire, et son prix n'est pas dans le code de la
+couche. `qa-airports` (44 contrôles) et `qa-dams` (23) lisent
+`viewer.dataSources.getByName('Aéroports')[0].entities.values` et interrogent
+`entity.point.pixelSize`, `entity.polygon.material`, `entity.show`,
+`entity.position` — une quinzaine de sites, plus `qa-maritime`. Sortir les
+16 834 features POINT des `Entity` réécrit ces trois harnais en entier, et ces
+harnais sont la seule vérification de ces couches. Ce n'est pas une raison de ne
+pas le faire ; c'est une raison de ne pas le faire à moitié, et de le compter
+comme une PR à part entière plutôt que comme la fin de celle-ci.
+
+**La 3.4 (bâti BD TOPO)** n'est pas faite, et une chose a été vérifiée avant de
+la laisser : `load()` mémoïse déjà sur une boîte ARRONDIE (`snapBoxOutward` +
+`boxKey`), donc un petit déplacement de caméra à l'intérieur de la même case ne
+recharge rien du tout. Ce qui reste vrai, c'est que le franchissement d'une case
+redécode toutes les tuiles et reconstruit la primitive. Deux remarques pour qui
+la reprendra :
+
+- **Le Worker ne peut pas prendre `buildRecords`.** Cette fonction appelle
+  `renderedGroundM` → `globe.getHeight()`, c'est-à-dire les triangles que le
+  globe est en train de dessiner. Seul le décodage MVT peut partir, et la
+  géométrie doit revenir en tableaux transférables — c'est une refonte de
+  `buildRecords`, pas un déplacement.
+- **« Garder les tuiles encore en vue » a un prix que le plan n'a pas compté.**
+  Cesium ne sait pas ajouter d'instances à une `Primitive` existante : garder
+  les tuiles déjà décodées veut dire une primitive PAR TUILE, donc jusqu'à
+  soixante commandes de dessin au lieu d'une. C'est un arbitrage, pas un gain
+  net, et il faut la mesure que le plan demande (`moveEnd` → primitive prête,
+  sur Lyon, CPU ÷4 ; la couche publie déjà `elapsedMs`) avant de le prendre.
+
+**Le seuil de 2 000 km** reste l'arbitrage de Memel, inchangé depuis l'entrée
+précédente.
+
+#### Vérifications
+
+`TZ=UTC npm test` **6 941/6 942** (le portillon d'allocation se saute sous
+Node 26) · `npm run doctor -- --json` propre ·
+`qa-airports` **44/44** · `qa-dams` **23/23** · `qa-maritime` **16/16** ·
+`qa-legend-rail` **32/32**.
+
+Deux harnais échouent, et les DEUX échouent identiquement sur `HEAD` mesuré côte
+à côte dans un `git worktree` avec son propre serveur : `qa-label-click` (3
+échecs, tous « the viewport still has a pixel that is nothing » sur Hub'Eau, gaz
+et vols — jamais sur les couches touchées ici, dont les trois contrôles
+aéroports passent) et `qa-perf` **23/24** (« satellites enable registers its
+holder »). Comparer le score, pas la liste — voir la mémoire `qa-harness-baseline-failures`.

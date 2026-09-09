@@ -163,16 +163,28 @@ Updated: September 8, 2026
 > hand and by voice ("infrastructure mode" is still mapped).
 >
 > **The globe-LOD declutter this note was waiting for has landed (2026-09-09,
-> PLAN-PERFORMANCE.md § 3.1), and it is not the whole answer.** What the four
-> bundled packs DRAW is now bounded — measured on this machine, a full-earth
-> view went from killing the renderer outright to 387 marks and a 167 ms motion
-> p90, and 120 km over Lyon from 10 178 drawn entities to 234. What they COST TO
-> HOLD did not move: 22 218 entities still retain ~630 MiB, uniformly 28-36 KiB
-> apiece across all four packs, which is the `Entity` + `Property` machinery
-> itself and only the migration to primitives removes it. So the tile is a
-> smaller decision than it was and still not a free one — re-adding it means
-> accepting that memory on the machines this app is meant to reach, and that
-> number should be re-measured with `npm run perf:infra` on a real GPU first.
+> PLAN-PERFORMANCE.md § 3.1), and so has the half that was still missing.** What
+> the four bundled packs DRAW is bounded — measured on this machine, a
+> full-earth view went from killing the renderer outright to 387 marks, and
+> 120 km over Lyon from 10 178 drawn entities to 234. What they COST TO HOLD has
+> now moved too: **633 → 405 MiB at Lyon (−36 %), 619 → 431 MiB over France
+> (−30 %)**, and the motion p90 with them (483 → 267 ms and 1 200 → 450 ms).
+>
+> Two removals did it, and neither is the primitives migration the note used to
+> promise. Weighed object by object on the airports pack, a drawn feature cost
+> 33.6 KiB: **14.0 KiB of it was the `PropertyBag`** Cesium builds from the
+> GeoJSON — a duplicate of properties the loader had already unwrapped into a
+> plain object — and **7.7 KiB was a `PolylineGraphics` per feature** for a
+> recall stem that the horizon or the budget was about to hide. The bag is
+> released after unwrapping and the stems come from a pool sized to what is on
+> screen. The last third (11.9 → 1.2 KiB per feature) is the primitives
+> migration, and it is still open: it rewrites `qa-airports`, `qa-dams` and
+> `qa-maritime` in full, because all three read `entities.values`.
+>
+> So the tile is a much smaller decision than it was, and still not a free one —
+> re-adding it means accepting ~400 MiB on the machines this app is meant to
+> reach, and that number should be re-measured with `npm run perf:infra` on a
+> real GPU first.
 >
 > **Show policy — it is NOT one-shot.** Precedence, highest first: a share link
 > never sees it → `?welcome=0` suppresses → `?welcome=1` replays (past both

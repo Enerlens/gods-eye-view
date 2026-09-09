@@ -161,6 +161,7 @@
  * there against captured payloads. This module is presentation.
  */
 import * as Cesium from 'cesium';
+import { profileCountBudget } from '../perfProfile.js';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import {
   PRISM_BASE_HEIGHT_M,
@@ -196,6 +197,7 @@ import {
 } from './irveFeed.js';
 import {
   meshSiteId,
+  irveMeshBudget,
   selectIrveMesh,
   MESH_BAND,
   MESH_LAT,
@@ -1752,7 +1754,11 @@ async function ensureMesh() {
  * against a round trip that would cost a few hundred.
  */
 function reconcileMesh(box) {
-  const pick = selectIrveMesh(_mesh?.sites, { box });
+  const pick = selectIrveMesh(_mesh?.sites, {
+    box,
+    // § 3.5 — see `profileCountBudget`. Coverage first, density second.
+    budget: profileCountBudget(irveMeshBudget(box.north - box.south)),
+  });
   _meshPick = pick;
 
   clearSelection();

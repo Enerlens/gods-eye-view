@@ -186,6 +186,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { profileCountBudget } from '../perfProfile.js';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
@@ -220,6 +221,7 @@ import {
   MESH_OPERATORS,
   meshSupportBand,
   meshSupportId,
+  anfrMeshBudget,
   selectAnfrMesh,
 } from './anfrMesh.js';
 
@@ -1491,7 +1493,13 @@ async function ensureMesh() {
  * Paris, against a round trip that would cost a few hundred.
  */
 function reconcileMesh(box) {
-  const pick = selectAnfrMesh(_mesh?.mesh, { box });
+  const pick = selectAnfrMesh(_mesh?.mesh, {
+    box,
+    // § 3.5: the profile decides how DENSE the mesh is, never what it covers.
+    // `lite` spends its cut on the second dot in a crowded cell — the budget
+    // stays above the grid's 600 cells at 60 %, so no occupied cell empties.
+    budget: profileCountBudget(anfrMeshBudget(box.north - box.south)),
+  });
   _meshPick = pick;
   clearSelection();
   _points?.removeAll();

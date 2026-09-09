@@ -97,6 +97,76 @@ export const LITE_GLOBE_SSE = 3;
  */
 export const LITE_TILE_CACHE_SIZE = 60;
 
+/**
+ * The `lite` share of any COUNT budget — how many marks a layer may draw.
+ *
+ * ── WHY 60 %, AND WHY ONE NUMBER FOR EVERY LAYER ────────────────────────────
+ *
+ * `PLAN-PERFORMANCE.md` § 3.5 sets it, and the reason it is a single shared
+ * constant rather than a per-layer tuning knob is that a reader on a slow
+ * machine must not have to discover that this map thins and that one does not.
+ * Two layers drawing at two different densities on the same machine is a bug
+ * that reads as data.
+ *
+ * It does NOT change what is on screen in kind — that is the profile's whole
+ * contract. A mesh keeps "coverage first, density second"
+ * (`docs/KNOWN-ISSUES.md`): every budget in this repo sits above the 600 cells
+ * of `geoMeshThinning`'s grid even at 60 % (the lowest tier, 1 100, becomes
+ * 660), so `lite` spends its cut on the SECOND dot in a crowded cell and never
+ * on the first dot in an empty one. A sparse département stays present.
+ *
+ * Every layer that thins reports what it kept and what it was given, so a
+ * thinned map still says it is thinned — at 60 % as at 100 %.
+ */
+export const LITE_BUDGET_SHARE = 0.6;
+
+/**
+ * Scale a count budget to the profile in force.
+ *
+ * The one place the § 3.5 rule is applied, so a layer that adopts it cannot
+ * drift from the others. Non-finite and non-positive budgets pass through
+ * untouched: 0 means "draw nothing" and `Infinity` means "no ceiling", and
+ * neither is a quantity 60 % of which means anything.
+ *
+ * WHEN A MID-SESSION FLIP TAKES EFFECT. On the layer's next pick — its next
+ * camera settle or its next load — not on the flip itself. That is this
+ * module's stated contract, not an omission: a switch mid-session is already
+ * "honest but partial" (`preserveDrawingBuffer` cannot follow at all), and a
+ * mesh layer's pick is tied to a box rather than to a frame. The one budget
+ * that IS re-decided on every settle — the globe-LOD cell budget in
+ * `localGeojson.js` — subscribes, because there a parked camera would show a
+ * stale density indefinitely.
+ * @param {number} full The budget the `full` profile uses.
+ * @param {boolean} [lite] Override for tests; defaults to the live profile.
+ * @returns {number} The budget this profile may spend.
+ */
+export function profileCountBudget(full, lite = isLiteProfile()) {
+  const value = Number(full);
+  if (!Number.isFinite(value) || value <= 0) return value;
+  if (!lite) return value;
+  return Math.max(1, Math.round(value * LITE_BUDGET_SHARE));
+}
+
+/**
+ * The cell pitch that yields that share on a GRID.
+ *
+ * A grid's occupied-cell count falls with the SQUARE of its pitch, not with the
+ * pitch, so widening a cell by 1/0.6 would drop nearly two thirds of the marks
+ * rather than 40 % of them. `1/√0.6` ≈ 1.29 is the widening that actually costs
+ * 60 %, and it keeps the thinning spatially even instead of cutting the tail
+ * off a priority sort. A count budget and a grid pitch are two different
+ * arithmetics for one rule, which is why they live side by side.
+ * @param {number} fullPx The pitch the `full` profile uses, in CSS pixels.
+ * @param {boolean} [lite] Override for tests; defaults to the live profile.
+ * @returns {number} The pitch this profile uses.
+ */
+export function profileCellPx(fullPx, lite = isLiteProfile()) {
+  const value = Number(fullPx);
+  if (!Number.isFinite(value) || value <= 0) return value;
+  if (!lite) return value;
+  return Math.round(value / Math.sqrt(LITE_BUDGET_SHARE));
+}
+
 /** Where the operator's own choice survives a reload. */
 export const PERF_PROFILE_STORAGE_KEY = 'gev:perf-profile';
 

@@ -138,11 +138,9 @@ async function main() {
       const source = viewer?.dataSources?.getByName?.('Ports')?.[0];
       const entities = source?.entities?.values ?? [];
       if (!entities.length) return null;
-      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
-      const read = (entity) => {
-        const raw = entity.properties?.getValue?.(now) ?? {};
-        return raw;
-      };
+      // The pack's own unwrapped properties — see `localGeojson.js`, which
+      // drops the `PropertyBag` after unwrapping it once.
+      const read = (entity) => entity.__localProperties ?? {};
       const named = entities.map(read).filter((p) => p && p.name);
       const rotterdam = named.find((p) => p.name === 'Rotterdam');
       return {
@@ -202,12 +200,11 @@ async function main() {
       const source = viewer?.dataSources?.getByName?.('marine-buoys')?.[0];
       const entities = source?.entities?.values ?? [];
       if (!entities.length) return null;
-      const now = window.__godsEyeView?.viewer?.clock?.currentTime;
       let measured = 0;
       let unmeasured = 0;
       let flatSea = 0;
       for (const entity of entities) {
-        const p = entity.properties?.getValue?.(now) ?? {};
+        const p = entity.__localProperties ?? {};
         if (p.waveHeightM === null || p.waveHeightM === undefined) unmeasured += 1;
         else {
           measured += 1;

@@ -23,8 +23,11 @@ import {
   getPerfProfileDiagnostics,
   initPerfProfile,
   isLiteProfile,
+  LITE_BUDGET_SHARE,
   observeFrameProfile,
   onPerfProfileChange,
+  profileCellPx,
+  profileCountBudget,
   readPerfSignals,
   resetPerfProfileForTests,
   setPerfProfile,
@@ -287,4 +290,37 @@ test('the boot frames are skipped, not measured', () => {
     assert.equal(diag.frameSamples, 5);
     assert.equal(diag.frameVerdict, 'full');
   } finally { storage.restore(); resetPerfProfileForTests(); }
+});
+
+test('one thinning rule for every layer: 60 % of the count, 1/√0.6 of the pitch', () => {
+  // § 3.5. The rule is shared rather than per-layer because a reader on a slow
+  // machine must not have to discover that this map thins and that one does
+  // not — two densities on one machine is a bug that reads as data.
+  assert.equal(LITE_BUDGET_SHARE, 0.6);
+  assert.equal(profileCountBudget(1100, false), 1100, 'full spends its whole budget');
+  assert.equal(profileCountBudget(1100, true), 660);
+  assert.equal(profileCountBudget(2200, true), 1320);
+  assert.equal(profileCountBudget(600, true), 360);
+
+  // Coverage first, density second: every ladder in this repo bottoms out at
+  // 1 100, and 60 % of that is still above `geoMeshThinning`'s 600-cell grid —
+  // so `lite` spends its cut on the SECOND dot in a crowded cell and never on
+  // the first dot in an empty one. A sparse département stays present.
+  assert.ok(profileCountBudget(1100, true) > 30 * 20);
+
+  // A grid loses cells with the SQUARE of its pitch, so the two arithmetics are
+  // not the same number: widening by 1/0.6 would drop two thirds of the marks.
+  assert.equal(profileCellPx(26, false), 26);
+  assert.equal(profileCellPx(26, true), Math.round(26 / Math.sqrt(0.6)));
+  assert.ok(profileCellPx(26, true) < Math.round(26 / 0.6), 'not the naive widening');
+
+  // "Draw nothing" and "no ceiling" are not quantities 60 % of which means
+  // anything, and neither is a number that is not one.
+  assert.equal(profileCountBudget(0, true), 0);
+  assert.equal(profileCountBudget(Infinity, true), Infinity);
+  assert.ok(Number.isNaN(profileCountBudget(undefined, true)));
+  assert.equal(profileCellPx(0, true), 0);
+
+  // A budget of one mark cannot round down to none.
+  assert.equal(profileCountBudget(1, true), 1);
 });

@@ -159,6 +159,7 @@
  */
 
 import * as Cesium from 'cesium';
+import { profileCountBudget } from '../perfProfile.js';
 import { claimCameraSensitivity, releaseCameraSensitivity } from './cameraSensitivity.js';
 import {
   PRISM_BASE_HEIGHT_M,
@@ -194,6 +195,7 @@ import {
 import { ipsCardLines, ipsCoverageClause } from './ipsFeed.js';
 import {
   meshSchoolId,
+  schoolsMeshBudget,
   selectSchoolsMesh,
   MESH_LAT,
   MESH_LEVEL,
@@ -1485,7 +1487,11 @@ async function ensureMesh() {
  * against a round trip that would cost a few hundred.
  */
 function reconcileMesh(box) {
-  const pick = selectSchoolsMesh(_mesh?.sites, { box });
+  const pick = selectSchoolsMesh(_mesh?.sites, {
+    box,
+    // § 3.5 — see `profileCountBudget`. Coverage first, density second.
+    budget: profileCountBudget(schoolsMeshBudget(box.north - box.south)),
+  });
   _meshPick = pick;
 
   clearSelection();
