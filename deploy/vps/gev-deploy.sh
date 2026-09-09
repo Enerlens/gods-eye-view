@@ -24,7 +24,7 @@
 set -euo pipefail
 
 ROOT=${GEV_ROOT:-/opt/gev}
-REPO=${GEV_REPO:-Enerlens/gods-eye-view}
+REPO=${GEV_REPO:-mml-studio/gods-eye-view}
 SRC="$ROOT/src"
 STATE="$ROOT/state"
 LOG() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
