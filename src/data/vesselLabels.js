@@ -339,20 +339,20 @@ export const VESSEL_ARROW_REF_LOA_M = 200;
 /** Chevron artwork edge (px) at scale 1.0. */
 export const VESSEL_ARROW_ART_PX = 32;
 /**
- * Floor of the ramp, in METRES rather than in scale, so the bound the legend
- * publishes is the bound the code applies. 16 m is the measured p10 of the
+ * Floor of the ramp, in METRES rather than in scale, so the bound this file
+ * states is the bound the code applies. 16 m is the measured p10 of the
  * length distribution (see the module header — 12.2 % of measured hulls are
  * shorter): below it the ramp would produce marks under 9 px, which stop being
- * clickable and stop being chevrons. The legend counts every contact drawn at
- * the floor, because a clamped mark no longer measures anything.
+ * clickable and stop being chevrons. A mark drawn at the floor no longer
+ * measures anything, which is why the bound is published here and not buried.
  */
 export const VESSEL_ARROW_MIN_LOA_M = 16;
 /**
  * Ceiling of the ramp. 450 m is just under the longest ship ever built (458 m,
  * Seawise Giant, scrapped 2010) and above the longest observed on the feed
  * (400 m, with zero contacts over 450 m in either run), so this bound is
- * expected never to bite — it exists so that if it
- * ever does, the count is declared instead of the mark silently lying.
+ * expected never to bite — it exists so that a mal-encoded AIS length lands on
+ * a stated bound instead of stretching the ramp for every other ship.
  */
 export const VESSEL_ARROW_MAX_LOA_M = 450;
 /**
@@ -362,8 +362,8 @@ export const VESSEL_ARROW_MAX_LOA_M = 450;
  * floor would read "smallest ship here", which is a claim. What separates it is
  * not its size but its SHAPE: {@link VESSEL_UNMEASURED_DASH} draws it hollow
  * and dashed, the repo's existing convention for "not surveyed" (the CCTV
- * layer's dashed cone for an unrecorded bearing). The legend then says, in
- * words, that this mark is off the scale.
+ * layer's dashed cone for an unrecorded bearing). Shape carries it, not size:
+ * this mark is off the scale and looks it.
  */
 export const VESSEL_ARROW_UNMEASURED_SCALE = 0.66;
 /** Dash pattern (SVG units) of the unmeasured chevron outline. */
@@ -388,28 +388,6 @@ export function vesselArrowScale(loaM) {
   if (!Number.isFinite(loaM) || loaM <= 0) return null;
   const clamped = Math.min(VESSEL_ARROW_MAX_LOA_M, Math.max(VESSEL_ARROW_MIN_LOA_M, loaM));
   return Math.sqrt(clamped / VESSEL_ARROW_REF_LOA_M);
-}
-
-/**
- * Whether the ramp had to clamp this length, and at which end.
- *
- * A5: a mark drawn at the floor no longer counts, so the legend states how many
- * there are. On the measured distribution this fires for roughly one measured
- * hull in ten at the floor and never at the ceiling.
- * @param {number|null|undefined} loaM Length overall (m).
- * @returns {'below'|'above'|null}
- */
-export function vesselArrowClamp(loaM) {
-  if (!Number.isFinite(loaM) || loaM <= 0) return null;
-  if (loaM < VESSEL_ARROW_MIN_LOA_M) return 'below';
-  if (loaM > VESSEL_ARROW_MAX_LOA_M) return 'above';
-  return null;
-}
-
-/** Rendered chevron edge (px) for a length, for the legend's numbered marks. */
-export function vesselArrowPx(loaM) {
-  const scale = vesselArrowScale(loaM);
-  return scale === null ? null : scale * VESSEL_ARROW_ART_PX;
 }
 
 // ---------------------------------------------------------------------------
@@ -506,186 +484,3 @@ export function hullOutlineOffsetsM(hull, headingDeg) {
   return ship.map(([x, y]) => [x * cos + y * sin, -x * sin + y * cos]);
 }
 
-// ---------------------------------------------------------------------------
-// Glyphs and the legend — a size without a scale is unreadable (D1)
-// ---------------------------------------------------------------------------
-
-const _b64 = (text) => (typeof btoa === 'function'
-  ? btoa(text)
-  : Buffer.from(text, 'utf8').toString('base64'));
-
-/** @type {Map<string, string>} cache key → data URI. */
-const _vesselGlyphCache = new Map();
-
-const GLYPH_VIEW_BOX = 16;
-/** The shipped chevron path, in a 32-unit box centred on the origin. */
-const CHEVRON_PATH = 'M0,-14 L11,10 L4,7 L0,14 L-4,7 L-11,10 Z';
-
-/**
- * A legend swatch shaped like the chevron actually drawn, at the size actually
- * drawn, relative to the widest mark on the ramp.
- *
- * The host masks the swatch with this glyph (`manager.js:2460`), so only the
- * shape survives and the row's declared colour is what the reader sees. That is
- * what lets one legend row be simultaneously the colour key and the size key
- * without either channel borrowing the other's meaning.
- * @param {number} fraction Rendered edge as a fraction of the largest mark, 0..1.
- * @param {boolean} [hollow=false] Draw the outline only (dimensions unpublished).
- * @returns {string} `data:image/svg+xml;base64,…`
- */
-export function vesselChevronGlyph(fraction, hollow = false) {
-  const clamped = Number.isFinite(fraction) ? Math.min(1, Math.max(0.08, fraction)) : 0.08;
-  const key = `chev:${clamped.toFixed(3)}:${hollow ? 'hollow' : 'solid'}`;
-  const cached = _vesselGlyphCache.get(key);
-  if (cached) return cached;
-  // The chevron art is 28 units tall inside its 32-unit box; the glyph box is
-  // 16, so a full-size mark occupies 16/28 of the path's own scale.
-  const scale = (clamped * GLYPH_VIEW_BOX) / 28;
-  const body = hollow
-    ? `<path d="${CHEVRON_PATH}" fill="none" stroke="#000" stroke-width="${(2.6 / Math.max(0.2, scale)).toFixed(2)}"`
-      + ` stroke-dasharray="${VESSEL_UNMEASURED_DASH}" stroke-linejoin="round"/>`
-    : `<path d="${CHEVRON_PATH}" fill="#000"/>`;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GLYPH_VIEW_BOX} ${GLYPH_VIEW_BOX}">`
-    + `<g transform="translate(8,8) scale(${scale.toFixed(4)})">${body}</g>`
-    + '</svg>';
-  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
-  _vesselGlyphCache.set(key, uri);
-  return uri;
-}
-
-/** A hull footprint, for the legend row that announces the world-unit regime. */
-export function vesselHullGlyph() {
-  const cached = _vesselGlyphCache.get('hull');
-  if (cached) return cached;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${GLYPH_VIEW_BOX} ${GLYPH_VIEW_BOX}">`
-    + '<path d="M8 1 L11 5 L11 15 L5 15 L5 5 Z" fill="#000"/>'
-    + '</svg>';
-  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
-  _vesselGlyphCache.set('hull', uri);
-  return uri;
-}
-
-/** Swatch colour of the size rows — one constant hue, because the datum is SIZE. */
-export const VESSEL_SIZE_SWATCH_COLOR = '#c3ccd8';
-
-/** Frozen, published marks of the size scale (m). Three, per D1. */
-export const VESSEL_SIZE_TICKS_M = Object.freeze([30, 100, 300]);
-
-/** French thousands separator, matching the other layers' legends. */
-const fr = (value) => new Intl.NumberFormat('fr-FR').format(Math.round(value));
-
-/**
- * The size key: three numbered marks, the unmeasured mark, and the two
- * declarations rules A5 and A1 require.
- *
- * @param {Object} tally Counts from the render pass.
- * @param {number} tally.measured Contacts whose length overall is published.
- * @param {number} tally.unmeasured Contacts drawn with the hollow dashed mark.
- * @param {number} [tally.clampedBelow] Measured hulls shorter than the ramp floor.
- * @param {number} [tally.clampedAbove] Measured hulls longer than the ramp ceiling.
- * @param {number} [tally.hullsDrawn] True-scale hulls currently in the scene.
- * @param {number} [tally.hullEligible] Hulls that qualified before the cap.
- * @param {number} [tally.hullNoHeading] Measured hulls refused for want of a heading.
- * @param {number} [tally.hullAltitudeM] Altitude below which hulls draw.
- * @param {boolean} [tally.hullActive] Whether the camera is under that altitude.
- * @returns {Array<Object>} Legend entries.
- */
-export function vesselSizeLegend(tally = {}) {
-  const entries = [];
-  const largestPx = vesselArrowPx(VESSEL_SIZE_TICKS_M[VESSEL_SIZE_TICKS_M.length - 1]) || 1;
-
-  entries.push({
-    label: 'Taille — longueur hors-tout (AIS message 5 / 24B)',
-    color: null,
-    blurb: 'L’aire de la flèche est proportionnelle à la longueur : une flèche deux fois '
-      + 'plus large annonce quatre fois la longueur, pas deux. Taille en pixels constants, '
-      + 'jamais composée avec la distance — sur un globe c’est la profondeur qui prend '
-      + 'déjà l’échelle écran.',
-  });
-
-  for (const tick of VESSEL_SIZE_TICKS_M) {
-    const px = vesselArrowPx(tick) || 0;
-    entries.push({
-      label: `${fr(tick)} m`,
-      color: VESSEL_SIZE_SWATCH_COLOR,
-      glyph: vesselChevronGlyph(px / largestPx),
-      blurb: `${Math.round(px)} px à l’écran.`,
-    });
-  }
-
-  if (tally.unmeasured) {
-    entries.push({
-      label: 'dimensions non reportées',
-      color: VESSEL_SIZE_SWATCH_COLOR,
-      glyph: vesselChevronGlyph(0.62, true),
-      count: tally.unmeasured,
-      blurb: 'Flèche creuse et tiretée, à taille fixe hors de l’échelle : le transpondeur '
-        + 'n’a rien publié. Quatre contacts sur cinq sont dans ce cas (16 à 18 % '
-        + 'seulement publient leurs dimensions, mesuré sur le flux mondial et sur '
-        + 'l’emprise France le 2026-09-03) — leur donner une taille par défaut '
-        + 'reviendrait à inventer la taille de la carte.',
-    });
-  }
-
-  if (tally.clampedBelow) {
-    entries.push({
-      label: `moins de ${VESSEL_ARROW_MIN_LOA_M} m`,
-      color: VESSEL_SIZE_SWATCH_COLOR,
-      glyph: vesselChevronGlyph((vesselArrowPx(VESSEL_ARROW_MIN_LOA_M) || 0) / largestPx),
-      count: tally.clampedBelow,
-      blurb: `Dessinés au plancher de l’échelle : en dessous la flèche passerait sous `
-        + `9 px et cesserait d’être cliquable. La marque ne compte plus, elle situe.`,
-    });
-  }
-
-  if (tally.clampedAbove) {
-    entries.push({
-      label: `plus de ${fr(VESSEL_ARROW_MAX_LOA_M)} m`,
-      color: VESSEL_SIZE_SWATCH_COLOR,
-      glyph: vesselChevronGlyph(1),
-      count: tally.clampedAbove,
-      blurb: 'Dessinés au plafond de l’échelle. Aucun navire construit n’atteint cette '
-        + 'longueur : une valeur ici est presque sûrement un champ AIS mal renseigné.',
-    });
-  }
-
-  const hullAltKm = Number.isFinite(tally.hullAltitudeM)
-    ? Math.round(tally.hullAltitudeM / 100) / 10
-    : null;
-  if (hullAltKm !== null) {
-    const eligible = Number(tally.hullEligible) || 0;
-    const drawn = Number(tally.hullsDrawn) || 0;
-    const clipped = Math.max(0, eligible - drawn);
-    entries.push({
-      label: tally.hullActive
-        ? `Coques à l’échelle réelle — ${fr(drawn)} / ${fr(eligible)}`
-        : `Coques à l’échelle réelle sous ${hullAltKm} km`,
-      color: VESSEL_SIZE_SWATCH_COLOR,
-      glyph: vesselHullGlyph(),
-      blurb: tally.hullActive
-        ? `Sous ${hullAltKm} km d’altitude, un navire mesuré est dessiné à sa longueur et `
-          + `à sa largeur réelles, coque orientée au cap — en unités monde, donc il `
-          + `rapetisse avec la distance comme le fait l’objet physique. `
-          + (clipped
-            ? `${fr(clipped)} coques éligibles ne sont pas dessinées : le plafond est de `
-              + `${fr(HULL_RENDER_CAP)}, les plus proches de la caméra d’abord.`
-            : `Plafond ${fr(HULL_RENDER_CAP)} coques, non atteint ici.`)
-        : `Descendre sous ${hullAltKm} km d’altitude pour voir les coques mesurées à leur `
-          + `taille réelle. Au-dessus, une coque de 200 m tomberait sous 10 px et ne dirait `
-          + `plus rien : c’est la flèche qui porte la longueur.`,
-    });
-  }
-
-  if (tally.hullNoHeading) {
-    entries.push({
-      label: 'cap non reporté — pas de coque',
-      color: null,
-      count: tally.hullNoHeading,
-      blurb: 'Dimensions publiées mais ni cap vrai ni route sur le fond : une coque '
-        + 'orientée au nord par défaut affirmerait une orientation que personne n’a '
-        + 'mesurée. Seule la flèche est dessinée.',
-    });
-  }
-
-  return entries;
-}

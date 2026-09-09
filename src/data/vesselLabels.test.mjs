@@ -13,15 +13,10 @@ import {
   vesselHullFromAisDimensions,
   vesselHullFromAisMessage,
   vesselArrowScale,
-  vesselArrowClamp,
   VESSEL_ARROW_MIN_LOA_M,
   VESSEL_ARROW_MAX_LOA_M,
-  VESSEL_SIZE_TICKS_M,
   hullAltitudeM,
   hullOutlineOffsetsM,
-  vesselSizeLegend,
-  vesselChevronGlyph,
-  vesselHullGlyph,
 } from './vesselLabels.js';
 
 test('normalizeVesselType maps numeric AIS codes to type families', () => {
@@ -214,11 +209,7 @@ test('the arrow scale puts AREA, not edge, on the length', () => {
   assert.equal(vesselArrowScale(0), null);
 });
 
-test('the ramp clamps at frozen metre bounds and says which end', () => {
-  assert.equal(vesselArrowClamp(10), 'below');
-  assert.equal(vesselArrowClamp(1000), 'above');
-  assert.equal(vesselArrowClamp(100), null);
-  assert.equal(vesselArrowClamp(null), null);
+test('the ramp clamps at frozen metre bounds', () => {
   assert.equal(vesselArrowScale(1), vesselArrowScale(VESSEL_ARROW_MIN_LOA_M));
   assert.equal(vesselArrowScale(9000), vesselArrowScale(VESSEL_ARROW_MAX_LOA_M));
 });
@@ -261,42 +252,3 @@ test('an absent antenna offset centres the hull instead of inventing one', () =>
   assert.ok(Math.abs(centred[2][1] + 50) < 1e-9, 'stern at half the length');
 });
 
-test('the size legend publishes numbered marks and declares every refusal', () => {
-  const legend = vesselSizeLegend({
-    measured: 100,
-    unmeasured: 400,
-    clampedBelow: 12,
-    clampedAbove: 1,
-    hullsDrawn: 400,
-    hullEligible: 460,
-    hullNoHeading: 9,
-    hullAltitudeM: 15588,
-    hullActive: true,
-  });
-  const labels = legend.map((entry) => entry.label);
-  for (const tick of VESSEL_SIZE_TICKS_M) {
-    assert.ok(labels.some((label) => label.startsWith(String(tick))), `tick ${tick} m`);
-  }
-  const unmeasured = legend.find((entry) => entry.label === 'dimensions non reportées');
-  assert.equal(unmeasured.count, 400);
-  assert.ok(unmeasured.glyph.startsWith('data:image/svg+xml;base64,'));
-  const capped = legend.find((entry) => entry.label.startsWith('Coques à l’échelle réelle'));
-  assert.ok(capped.label.includes('400'));
-  assert.ok(capped.label.includes('460'), 'A5 — n drawn out of N eligible');
-  assert.ok(capped.blurb.includes('caméra'), 'the clipping criterion is named');
-  assert.ok(legend.some((entry) => entry.label.includes('cap non reporté')));
-  assert.ok(legend.some((entry) => entry.count === 12));
-});
-
-test('the size legend stays quiet about refusals that did not happen', () => {
-  const legend = vesselSizeLegend({ measured: 3, unmeasured: 0, hullAltitudeM: 15588 });
-  assert.ok(!legend.some((entry) => entry.label === 'dimensions non reportées'));
-  assert.ok(!legend.some((entry) => entry.label.includes('cap non reporté')));
-  assert.ok(legend.some((entry) => entry.label.includes('Descendre') || entry.blurb?.includes('Descendre')));
-});
-
-test('a measured and an unmeasured swatch are different glyphs', () => {
-  assert.notEqual(vesselChevronGlyph(1, false), vesselChevronGlyph(1, true));
-  assert.equal(vesselChevronGlyph(0.5), vesselChevronGlyph(0.5), 'cached, stable');
-  assert.ok(vesselHullGlyph().startsWith('data:image/svg+xml;base64,'));
-});

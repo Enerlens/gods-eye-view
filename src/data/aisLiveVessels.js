@@ -15,7 +15,7 @@
  * moving faster, and the one channel Bertin reserves for an absolute quantity
  * was spent on a three-step classification of a variable that is already
  * legible twice over (the card prints `12.4KT`, and `labelPriority` ranks by
- * it). There was no legend, so nothing on screen could have told the reader.
+ * it). Nothing on screen could have told the reader, either.
  *
  * Meanwhile the length was IN THE FEED and being deleted. AIS message 5 and
  * message 24 part B carry A/B/C/D — antenna to bow, stern, port, starboard —
@@ -66,15 +66,15 @@
  *
  * ── What refuses to be drawn, and is counted ───────────────────────────────
  *
- * · No published dimensions → a HOLLOW, DASHED chevron at a fixed size that
- *   the legend states is off the scale. Not a small solid chevron, which would
- *   read as a small ship (A1, and B5 on the shape channel).
+ * · No published dimensions → a HOLLOW, DASHED chevron at a fixed size, off
+ *   the scale by its SHAPE. Not a small solid chevron, which would read as a
+ *   small ship (A1, and B5 on the shape channel).
  * · Length but no beam → the chevron gets its area, the hull does not exist. A
  *   width is not derivable from a length.
  * · No heading and no course over ground → no hull. Drawn pointing north by
  *   default it would assert an orientation nobody measured.
- * · Beyond {@link HULL_RENDER_CAP} → not drawn, and the legend prints
- *   `n / N` with the criterion (nearest to the camera first) — rule A5.
+ * · Beyond {@link HULL_RENDER_CAP} → not drawn. The `n / N` and the criterion
+ *   (nearest to the camera first) ride in the layer's stats — rule A5.
  *
  * ── Cost, measured ─────────────────────────────────────────────────────────
  *
@@ -117,13 +117,11 @@ import {
   VESSEL_FAMILY_LABELS,
   vesselHullFromAisDimensions,
   vesselArrowScale,
-  vesselArrowClamp,
   VESSEL_ARROW_UNMEASURED_SCALE,
   VESSEL_UNMEASURED_DASH,
   hullAltitudeM,
   hullOutlineOffsetsM,
   HULL_RENDER_CAP,
-  vesselSizeLegend,
 } from './vesselLabels.js';
 import {
   clearOverlaySource,
@@ -147,6 +145,9 @@ import {
 } from './focusDeemphasis.js';
 import { requestWorldFocus } from '../worldFocus.js';
 import { holdContinuousRender, releaseContinuousRender } from '../renderGovernor.js';
+import { buildDepartementIndex, nearestDepartementWithin } from './franceDepartements.js';
+import { createRetryableLoader } from './retryableLoad.js';
+import { VESSEL_STANDOFF_SCAN_KM, vesselStandoffRangeM } from './vesselStandoff.js';
 
 const FOCUS_EVIDENCE_DEV = import.meta.env?.DEV === true;
 
@@ -479,6 +480,73 @@ function currentGeoidN(lat, lon) {
   return _geoidReady ? geoidHeight(lat, lon) : null;
 }
 
+/**
+ * The bundled IGN département outlines — here for ONE purpose: measuring how
+ * far a clicked vessel is from land, so the transfer flight can frame both
+ * (`vesselStandoff.js`). Five other layers already fetch this exact URL, so on
+ * most sessions it is served from cache.
+ */
+const COAST_OUTLINES_URL = new URL(
+  './local_data/france_departements/departements.geojson',
+  import.meta.url,
+).href;
+
+/** @type {?{list:Array<object>, byCode:Map<string,object>}} Null until warm. */
+let _coastIndex = null;
+
+const loadCoastOutlines = createRetryableLoader(async () => {
+  const response = await fetch(COAST_OUTLINES_URL);
+  if (!response.ok) throw new Error(`departements.geojson ${response.status}`);
+  return buildDepartementIndex(await response.json());
+});
+
+/**
+ * Warm the outlines OFF the critical path, on layer-enable.
+ *
+ * Same shape as the geoid warm-up in `enable()`, and for the same reason: this
+ * is 260 kB of polygons that nothing on screen needs until somebody clicks a
+ * ship, and the AIS layer's first seconds are already paying for a websocket
+ * and a few thousand sprites. Idle if the browser offers idle; a plain timer
+ * otherwise. A failure is silent — a click just gets the default standoff.
+ */
+function primeCoastOutlines() {
+  if (_coastIndex) return;
+  const start = () => {
+    loadCoastOutlines()
+      .then((index) => { _coastIndex = index; })
+      .catch(() => { /* clicks fall back to VESSEL_STANDOFF.defaultRangeM */ });
+  };
+  if (typeof globalThis.requestIdleCallback === 'function') {
+    globalThis.requestIdleCallback(start, { timeout: 5000 });
+  } else if (typeof globalThis.setTimeout === 'function') {
+    globalThis.setTimeout(start, 2000);
+  }
+}
+
+/**
+ * The standoff a clicked vessel should be flown at, or `undefined` to let the
+ * camera policy use its own default.
+ *
+ * `undefined` is not the same answer as "no land nearby": it means the
+ * outlines are not warm yet and this click has NOTHING measured to frame.
+ * A scan that runs and finds nothing within reach returns the ceiling, which
+ * is a measurement.
+ * @param {Object} record Selected vessel record.
+ * @returns {number|undefined} Range in metres.
+ */
+function vesselFocusRangeM(record) {
+  if (!_coastIndex || !Number.isFinite(record?.lat) || !Number.isFinite(record?.lon)) {
+    return undefined;
+  }
+  const coast = nearestDepartementWithin(
+    _coastIndex,
+    record.lat,
+    record.lon,
+    VESSEL_STANDOFF_SCAN_KM,
+  );
+  return vesselStandoffRangeM(coast ? coast.km : null);
+}
+
 /** @type {Map<string, string>} `${cssColor}:${variant}` -> chevron SVG data URL */
 const shipIconCache = new Map();
 
@@ -521,6 +589,8 @@ const aisLiveVesselsLayer = {
         })
         .catch(() => { /* grid failed to load — anchors stay at ellipsoid 0 */ });
     }
+    // Same discipline for the land outlines a vessel click is framed against.
+    primeCoastOutlines();
     // Pick-ownership (H2): vessel picks carry the record OBJECT as their id;
     // the registry resolver reduces it to the record's mmsi (a string key).
     registerPickOwner('ais-live-vessels', (pickedId) => state.vesselMap.has(pickedId));
@@ -821,12 +891,18 @@ const aisLiveVesselsLayer = {
   },
 
   /**
-   * The key to the chevron hues AND to the chevron sizes.
+   * The key to the chevron hues. One row per AIS type family on screen.
    *
-   * TWO CHANNELS, TWO BLOCKS, and they are orthogonal (A3): HUE is the AIS type
-   * family — a nominal variable, which is all hue is entitled to carry — and
-   * SIZE is length overall, an absolute quantity, which is the only thing B1
-   * lets the size channel carry. Neither block repeats the other's information.
+   * IT USED TO KEY THE SIZE RAMP TOO — a header, three numbered marks, the
+   * unmeasured mark and up to four clipping declarations, every one of them
+   * carrying its own paragraph. Sixteen rows and some 1 800 characters of
+   * prose, permanently mounted over the map, for a layer whose primary cue is
+   * a hue with seven values. A key that has to be scrolled is not read, and an
+   * unread key protects nothing. What survives here is the hue key alone —
+   * swatch, name, count. The size ramp's argument lives where it is actually
+   * consulted (this file's header and `vesselLabels.js`) and its counts live
+   * in the layer's stats; the slate of the unfamilied bucket is argued at
+   * {@link VESSEL_FAMILY_LABELS} rather than restated under its own swatch.
    *
    * THIS METHOD USED TO RETURN NULL, ALWAYS. It guarded on `records.size`, and
    * `state.vesselRecords` is an ARRAY: `undefined` is falsy, so the early
@@ -835,8 +911,8 @@ const aisLiveVesselsLayer = {
    * added precisely so a key would be visible without opening a panel (D1).
    * The guard now reads `.length`, and the block below is finally reachable.
    *
-   * Tallied over the records actually on screen, so a family or a size band
-   * absent from the view is absent from the key.
+   * Tallied over the records actually on screen, so a family absent from the
+   * view is absent from the key.
    * @returns {{legend: Array<object>}|null} Row controls, or null while empty.
    */
   getRowControls() {
@@ -853,21 +929,7 @@ const aisLiveVesselsLayer = {
         label: VESSEL_FAMILY_LABELS[family] || family,
         color: vesselFamilyCss(family === 'unknown' ? null : family),
         count,
-        blurb: family === 'unknown'
-          ? 'Aucun type AIS exploitable. Gris ardoise, hors de la gamme des '
-            + 'familles — un navire muet ne doit pas être peint en cargo.'
-          : undefined,
       }));
-
-    const sizes = tallyVesselSizes(records);
-    legend.push(...vesselSizeLegend({
-      ...sizes,
-      hullsDrawn: state.hullTally.drawn,
-      hullEligible: state.hullTally.eligible,
-      hullNoHeading: state.hullTally.noHeading,
-      hullAltitudeM: state.hullTally.altitudeM ?? hullAltitudeM(),
-      hullActive: state.hullTally.active,
-    }));
     return { legend };
   },
 };
@@ -936,7 +998,7 @@ const state = {
   hullSignature: '',
   /** Bumped whenever record positions move, so the hull set rebuilds. */
   hullPositionRev: 0,
-  /** What the size channel can currently say — published in the legend. */
+  /** What the size channel can currently say — published in the layer stats. */
   hullTally: { active: false, drawn: 0, eligible: 0, noHeading: 0, altitudeM: null },
 };
 
@@ -1402,7 +1464,7 @@ function finiteNumber(value) {
  *     carries `hull` carries neither `to_bow` nor `length`, so every contact
  *     falls through to the unmeasured chevron while the proxy is doing its job
  *     correctly. (That is exactly what happened between the proxy landing and
- *     this branch: 100 % hollow arrows, and an honest legend saying so.)
+ *     this branch: 100 % hollow arrows, and an honest shape saying so.)
  *  2. the four AIS offsets, the primary WIRE form.
  *  3. `length` / `beam`, read as a fallback because `VITE_AIS_LIVE_API_URL` can
  *     point at a proxy that has already reduced them, and a proxy that hands
@@ -1554,7 +1616,7 @@ function shipIcon(record, selected) {
  *   a fabricated width on a published length is rule A1 in geometry.
  * · No published heading and no course over ground → no hull. A hull is a
  *   directional object; drawn pointing north by default it would assert an
- *   orientation nobody measured. These are counted separately in the legend
+ *   orientation nobody measured. These are counted separately in the stats
  *   because "we know its size but not which way it points" is a distinct fact
  *   from "we know nothing".
  * · Beyond the cap → not drawn, and declared as `n / N` (rule A5). The
@@ -1773,28 +1835,6 @@ function maintainHullPrimitive() {
   scene.primitives.add(primitive);
   state.hullPrimitive = primitive;
   state.hullSignature = signature;
-}
-
-/**
- * Count what the size channel is currently able to say, over the records on
- * screen. One pass, called from `getRowControls` at panel cadence.
- * @param {Array<Object>} records
- * @returns {{measured: number, unmeasured: number, clampedBelow: number, clampedAbove: number}}
- */
-export function tallyVesselSizes(records) {
-  const tally = { measured: 0, unmeasured: 0, clampedBelow: 0, clampedAbove: 0 };
-  for (const record of records || []) {
-    const loaM = record?.hull?.loaM;
-    if (!Number.isFinite(loaM) || loaM <= 0) {
-      tally.unmeasured += 1;
-      continue;
-    }
-    tally.measured += 1;
-    const clamp = vesselArrowClamp(loaM);
-    if (clamp === 'below') tally.clampedBelow += 1;
-    else if (clamp === 'above') tally.clampedAbove += 1;
-  }
-  return tally;
 }
 
 function installRuntime(viewer) {
@@ -2126,6 +2166,8 @@ function selectAndFocusVessel(record) {
     id: record.mmsi,
     label: record.name || record.mmsi,
     position: record.billboard?.position || record.position,
+    // How far to pull back, measured from this ship's own distance to land.
+    rangeM: vesselFocusRangeM(record),
   });
   return true;
 }
