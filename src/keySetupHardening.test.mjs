@@ -295,3 +295,30 @@ test('Windows production hardener applies its exact DACL with native tools', {
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('the DACL verification can load its own module on a locked-down Windows', () => {
+  // A Restricted execution policy — the Windows Server default — stops
+  // PowerShell from LOADING Microsoft.PowerShell.Security, so `Get-Acl` is not
+  // found and the verifier exits 1 before it can look at a single rule. The
+  // hardener then fails closed and Provider Settings refuses to save, on a
+  // machine where nothing is actually wrong. Measured on a GitHub Windows
+  // runner, 2026-09-09.
+  const calls = [];
+  hardenCredentialFile('C:\\GEV\\ENVIRONMENT.tmp', {
+    platform: 'win32',
+    environment: { SYSTEMROOT: WINDOWS_ROOT },
+    fileSystem: windowsFileSystem(),
+    spawn: (command, args) => {
+      calls.push({ command, args });
+      return { status: 0, stdout: '"runner","S-1-5-21-1-2-3-4"\r\n' };
+    },
+  });
+  const verification = calls.find((call) => String(call.command).endsWith('powershell.exe'));
+  assert.ok(verification, 'the DACL is verified, not merely applied');
+  const policyAt = verification.args.indexOf('-ExecutionPolicy');
+  assert.ok(policyAt >= 0, '-ExecutionPolicy is passed');
+  assert.equal(verification.args[policyAt + 1], 'Bypass');
+  // It must still refuse a profile and any prompt.
+  assert.ok(verification.args.includes('-NoProfile'));
+  assert.ok(verification.args.includes('-NonInteractive'));
+});

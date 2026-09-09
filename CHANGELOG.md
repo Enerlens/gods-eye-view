@@ -56,7 +56,17 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   Pinokio — la seule plateforme où les permissions du fichier de clés reposent
   sur une ACL et non sur un bit de mode.
 
-  **Son premier passage a trouvé un test faux.** `slotForMode` est vérifié avec
+  **Son premier passage a trouvé deux vrais défauts.** Le durcisseur du fichier
+  de clés vérifie sur Windows la liste de contrôle d'accès qu'il vient de poser,
+  en interrogeant PowerShell. Sous la politique d'exécution `Restricted` — le
+  défaut de Windows Server, et un réglage d'entreprise courant — PowerShell
+  refuse de CHARGER le module qui fournit `Get-Acl` : la vérification sort en
+  erreur, le durcisseur échoue en refusant, et Provider Settings décline
+  l'enregistrement sur une machine où rien n'est cassé. Corrigé par
+  `-ExecutionPolicy Bypass` sur cette seule commande — dont le contenu est une
+  constante du code, pas un fichier sur le disque.
+
+  **Et un test faux.** `slotForMode` est vérifié avec
   une date construite en heure locale de la machine ; le créneau, lui, est
   toujours à l'heure de Paris — les jeux de données sont français. La même
   ligne signifiait donc mardi 8 h à Paris sur un portable français et mardi
