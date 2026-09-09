@@ -83,6 +83,13 @@ settled and not applicable because no Google 3D tileset is active.
   what the model is ALLOWED to say. The médecins bug — a 17-value layer enum
   for a 60-layer registry — passed every unit test in the suite.
 
+  `node scripts/qa-voice-routing.mjs --layer routing` asks the same question of
+  the REALTIME model, through a session minted by the app's own
+  `/api/realtime/token`. It paces itself: one response bills ~10 900 input
+  tokens against a 40 000-per-minute account ceiling, so it waits for the token
+  window rather than reading a throttled turn as a routing miss. Expect roughly
+  three turns a minute — a full sweep is slow by arithmetic, not by choice.
+
 ---
 
 ## What changed (the list)

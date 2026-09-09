@@ -25,6 +25,25 @@ const STATUS = {
 const DEFAULT_VOICE_ERROR_HINT = 'Check microphone permission and network access, then try again.';
 /** Waits one click sits out when a limiter answers the config lookup with a Retry-After. */
 const VOICE_CONFIG_RETRY_LIMIT = 2;
+// OpenAI's per-minute TOKEN budget, and what this build costs against it.
+//
+// A Realtime response re-sends the whole session prefix every time — the
+// instructions plus all 29 tool schemas — so it bills about 11 000 input tokens
+// before the operator has said a word, measured on the shipped config. An entry
+// tier account is capped at 40 000 tokens per minute, which is three responses;
+// one spoken command that calls a tool is two of them (the call, then the
+// spoken confirmation). So the fourth or fifth sentence of a normal
+// conversation comes back `status: "failed"`, the assistant goes SILENT, and
+// nothing on screen says why — the mic looks broken rather than throttled.
+//
+// The session tells us this itself: `rate_limits.updated` arrives after every
+// response with `remaining` and `reset_seconds`. These two constants turn that
+// into a warning before the wall, and a retry after it.
+const RATE_LIMIT_TOKENS_PER_TURN_FALLBACK = 11000;
+/** Past the reset OpenAI names, so the retry lands in the new window, not on its edge. */
+const RATE_LIMIT_RETRY_MARGIN_MS = 1500;
+/** Longest wait worth sitting out before retrying — beyond this, ask again yourself. */
+const RATE_LIMIT_RETRY_MAX_MS = 65000;
 const CALL_DEDUPE_MS = 2500;
 // WebRTC 'disconnected' is frequently momentary (a brief network blip that ICE
 // recovers on its own). Give it this long to return to 'connected' before we
@@ -199,6 +218,92 @@ export function silenceRadioForVoice({ duckRadio, pauseRadio } = {}) {
  */
 const SUPERSEDED_RESPONSE_MEMORY = 8;
 
+/**
+ * The token bucket out of a `rate_limits.updated` payload.
+ *
+ * The session publishes several buckets (requests, tokens); only the token one
+ * is ever the wall this build hits, because the prefix is large and the
+ * conversation is short.
+ *
+ * @param {Array<{name?: string, limit?: number, remaining?: number, reset_seconds?: number}>} rateLimits
+ * @returns {{limit: number, remaining: number, resetSeconds: number}|null}
+ */
+export function readTokenRateLimit(rateLimits) {
+  if (!Array.isArray(rateLimits)) return null;
+  const bucket = rateLimits.find((entry) => entry?.name === 'tokens');
+  if (!bucket) return null;
+  const remaining = Number(bucket.remaining);
+  if (!Number.isFinite(remaining)) return null;
+  return {
+    limit: Number.isFinite(Number(bucket.limit)) ? Number(bucket.limit) : 0,
+    remaining: Math.max(0, remaining),
+    resetSeconds: Math.max(0, Number(bucket.reset_seconds) || 0),
+  };
+}
+
+/**
+ * How long OpenAI asked us to wait, from the text of its own error.
+ *
+ * The structured error carries no delay field — the number is only ever in the
+ * message ("Please try again in 19.449s."). Parsing it is how the retry can be
+ * timed instead of guessed.
+ *
+ * @param {string} message
+ * @returns {number|null} Milliseconds, or null when the message names no delay.
+ */
+export function parseRateLimitRetryMs(message) {
+  const match = /try again in\s+([\d.]+)\s*(ms|s)\b/i.exec(String(message || ''));
+  if (!match) return null;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value < 0) return null;
+  return Math.round(match[2].toLowerCase() === 'ms' ? value : value * 1000);
+}
+
+/**
+ * What the dock should say about the remaining token budget, if anything.
+ *
+ * Silence while there is room for another turn: a meter that is always on is a
+ * meter nobody reads. It speaks only once the next command cannot fit, which is
+ * the moment the operator would otherwise be surprised by silence.
+ *
+ * @param {{limit: number, remaining: number, resetSeconds: number}|null} bucket
+ * @param {number} perTurnTokens What one response has been costing.
+ * @returns {{exhausted: boolean, detail: string}|null}
+ */
+export function describeTokenBudget(bucket, perTurnTokens = RATE_LIMIT_TOKENS_PER_TURN_FALLBACK) {
+  if (!bucket || !bucket.limit) return null;
+  const perTurn = Number.isFinite(perTurnTokens) && perTurnTokens > 0
+    ? perTurnTokens
+    : RATE_LIMIT_TOKENS_PER_TURN_FALLBACK;
+  if (bucket.remaining >= perTurn) return null;
+  const seconds = Math.max(1, Math.ceil(bucket.resetSeconds));
+  return {
+    exhausted: true,
+    detail: `TOKEN LIMIT REACHED — RESETS IN ${seconds} S`,
+  };
+}
+
+/**
+ * The sentence that explains a rate-limited turn to the person who was talking.
+ *
+ * The raw upstream message is 200 characters of organization id and bucket
+ * name; what an operator needs is that nothing is broken, that this account has
+ * a ceiling, and where the ceiling is raised.
+ *
+ * @param {{limit: number, remaining: number, resetSeconds: number}|null} bucket
+ * @param {number} perTurnTokens
+ * @returns {string}
+ */
+export function rateLimitHint(bucket, perTurnTokens = RATE_LIMIT_TOKENS_PER_TURN_FALLBACK) {
+  const perTurn = Math.round((Number.isFinite(perTurnTokens) && perTurnTokens > 0
+    ? perTurnTokens
+    : RATE_LIMIT_TOKENS_PER_TURN_FALLBACK) / 100) * 100;
+  const ceiling = bucket?.limit
+    ? `This OpenAI account allows ${bucket.limit.toLocaleString('en-US')} realtime tokens per minute`
+    : 'This OpenAI account has a realtime tokens-per-minute ceiling';
+  return `${ceiling}, and one answer costs about ${perTurn.toLocaleString('en-US')} — the session prefix (instructions plus every tool schema) is re-sent on every response. Nothing is broken: wait for the reset, or raise the limit at platform.openai.com/settings/organization/limits.`;
+}
+
 export function initGevVoiceCommands({ viewer, styleManager, dataManager, sceneDirector = null, annotations = null }) {
   if (window.__gevVoiceCommands && typeof window.__gevVoiceCommands.stop === 'function') {
     window.__gevVoiceCommands.stop({ removeUi: true });
@@ -292,6 +397,12 @@ export class GevRealtimeController {
     this.brainSession = null;
     this.nextErrorHint = null;
     this.annotationEventUnsubscribe = null;
+    /** Last `rate_limits.updated` token bucket — what is left this minute. */
+    this.tokenRateLimit = null;
+    /** What the last response actually cost in input tokens, for the budget maths. */
+    this.lastResponseInputTokens = 0;
+    /** Armed only after a rate-limited failure, and only ever one at a time. */
+    this.rateLimitRetryTimer = null;
     // Voice cost control. The tier is chosen BEFORE a session starts and is
     // baked into the minted token, so a live session always keeps the model it
     // connected with — the toggle is labelled "applies next session" for that
@@ -903,6 +1014,9 @@ export class GevRealtimeController {
     // the cleanup below runs harmlessly over its null peer connection.
     if (this.brainSession?.isActive()) this.brainSession.stop();
     this.clearTranscript();
+    // A retry armed against a session that is closing would fire into a dead
+    // data channel — and, worse, into the NEXT session if one opens meanwhile.
+    this.clearRateLimitRetry();
     // Bump the epoch so any start() awaiting a token/getUserMedia/SDP bails and
     // releases its own resources instead of promoting them onto a stopped
     // controller (H7).
@@ -1147,6 +1261,13 @@ export class GevRealtimeController {
       payload,
     });
 
+    // The session's own budget report. It arrives after every response and is
+    // the only warning before the wall — see RATE_LIMIT_TOKENS_PER_TURN_FALLBACK.
+    if (payload.type === 'rate_limits.updated') {
+      this.recordRateLimits(payload.rate_limits);
+      return;
+    }
+
     if (payload.type === 'error') {
       if (payload.error?.code === 'conversation_already_has_active_response') {
         this.cancelRadioHandoff({ abortTools: true });
@@ -1196,6 +1317,9 @@ export class GevRealtimeController {
     if (payload.type === 'input_audio_buffer.speech_started') {
       this.userTurnPending = true;
       this.pendingResponseInstructions = null;
+      // Speaking again IS the retry. Letting the armed one fire too would answer
+      // the old question over the new one.
+      this.clearRateLimitRetry();
       this.cancelRadioHandoff({ abortTools: true });
       this.setVoiceSpeaker('user');
     }
@@ -2119,6 +2243,10 @@ export class GevRealtimeController {
    */
   recordUsage(usage) {
     if (!usage) return null;
+    // Measured, not assumed: what the next turn will cost against the per-minute
+    // token budget is what the last one cost.
+    const inputTokens = Number(usage.input_tokens);
+    if (Number.isFinite(inputTokens) && inputTokens > 0) this.lastResponseInputTokens = inputTokens;
     const state = this.costTracker.record(usage);
     this.syncCostUi();
     if (state.warnCrossed) {
@@ -2197,6 +2325,12 @@ export class GevRealtimeController {
       if (responseStatus === 'failed') {
         const details = payload.response?.status_details || null;
         const failErr = details?.error || null;
+        const rateLimited = failErr?.code === 'rate_limit_exceeded';
+        // A rate limit is not a fault to debug, it is a wait to sit out. Say
+        // which wait, in words, before the raw message goes to the error log.
+        if (rateLimited) {
+          this.nextErrorHint = rateLimitHint(this.tokenRateLimit, this.lastResponseInputTokens);
+        }
         this.reportError('Realtime response failed', failErr, {
           responseId: payload.response?.id || payload.response_id || null,
           statusReason: details?.reason || null,
@@ -2208,7 +2342,13 @@ export class GevRealtimeController {
         // connection is still live. Recover to listening so the user can retry
         // (mirrors the transient-blip philosophy, H8).
         if (this.dc?.readyState === 'open') {
-          this.setStatus('listening', 'Ask or command');
+          const retryMs = rateLimited ? this.rateLimitRetryDelayMs(failErr?.message) : null;
+          if (retryMs !== null) {
+            this.setStatus('listening', `TOKEN LIMIT — ANSWERING IN ${Math.ceil(retryMs / 1000)} S`);
+            this.armRateLimitRetry(retryMs);
+          } else {
+            this.setStatus('listening', 'Ask or command');
+          }
         }
       }
       if (!this.pendingRadioPlaybackResult) {
@@ -2223,6 +2363,88 @@ export class GevRealtimeController {
       this.responseActive = true;
       this.pauseRadioForVoice();
     }
+  }
+
+  /**
+   * Remember the session's token budget, and warn once it cannot fund a turn.
+   *
+   * The dock stays quiet while there is room. When there is not, it says so
+   * with the reset countdown — the alternative, and what shipped until now, is
+   * an assistant that simply stops answering mid-conversation.
+   *
+   * @param {Array<object>} rateLimits The `rate_limits.updated` payload.
+   */
+  recordRateLimits(rateLimits) {
+    const bucket = readTokenRateLimit(rateLimits);
+    if (!bucket) return;
+    this.tokenRateLimit = bucket;
+    this.debugLog('voice.rate_limit', {
+      // NOTE: the debug-log sanitizer redacts any key matching /token|secret|key/,
+      // so these are named for the budget rather than for what fills it.
+      allowancePerMinute: bucket.limit,
+      allowanceLeft: bucket.remaining,
+      resetSeconds: Math.round(bucket.resetSeconds),
+      lastTurnCost: this.lastResponseInputTokens || null,
+    });
+    const budget = describeTokenBudget(bucket, this.lastResponseInputTokens);
+    // Only ever a caption on an otherwise idle mic: never overwrite an error,
+    // and never interrupt a turn that is still running.
+    if (budget && this.status === 'listening' && !this.responseActive) {
+      this.setStatus('listening', budget.detail);
+    }
+  }
+
+  /**
+   * How long to wait before answering a turn the token limit swallowed.
+   *
+   * OpenAI names the delay in the error text; the bucket's own reset is the
+   * fallback. Null means do not retry at all — either nothing named a delay, or
+   * the wait is long enough that the operator would rather ask again.
+   *
+   * @param {string} [message] The upstream error message.
+   * @returns {number|null} Milliseconds to wait.
+   */
+  rateLimitRetryDelayMs(message) {
+    const named = parseRateLimitRetryMs(message);
+    const fromBucket = this.tokenRateLimit?.resetSeconds
+      ? Math.round(this.tokenRateLimit.resetSeconds * 1000)
+      : null;
+    const base = named ?? fromBucket;
+    if (base === null || !Number.isFinite(base)) return null;
+    const wait = base + RATE_LIMIT_RETRY_MARGIN_MS;
+    return wait > RATE_LIMIT_RETRY_MAX_MS ? null : wait;
+  }
+
+  /**
+   * Answer the swallowed turn once, after the wait — the operator said it, and
+   * the words are still in the conversation, so a bare `response.create` picks
+   * the request back up rather than asking them to repeat themselves.
+   *
+   * At most one retry is ever armed: if the second attempt is throttled too,
+   * the dock says so and the turn is theirs to re-ask.
+   *
+   * @param {number} waitMs
+   */
+  armRateLimitRetry(waitMs) {
+    this.clearRateLimitRetry();
+    const epoch = this.startEpoch;
+    this.rateLimitRetryTimer = setTimeout(() => {
+      this.rateLimitRetryTimer = null;
+      // A stopped or restarted session, a turn the operator started themselves,
+      // or a response already running: all mean the retry is no longer wanted.
+      if (this.startEpoch !== epoch) return;
+      if (!this.dc || this.dc.readyState !== 'open') return;
+      if (this.responseActive || this.responseCreatePending || this.userTurnPending) return;
+      this.debugLog('response.retry.rate_limited', { waitMs });
+      this.queueResponseCreate('Answer the operator\'s last request now, in one short turn.');
+    }, waitMs);
+  }
+
+  /** Disarm a pending rate-limit retry. Safe to call when none is armed. */
+  clearRateLimitRetry() {
+    if (!this.rateLimitRetryTimer) return;
+    clearTimeout(this.rateLimitRetryTimer);
+    this.rateLimitRetryTimer = null;
   }
 
   queueResponseCreate(instructions) {

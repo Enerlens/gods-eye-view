@@ -40,6 +40,16 @@ import { pointInRing } from './naturalEarthRegions.js';
  * the mapper does not emit is a filter that silently matches nothing; the unit
  * test alongside this module checks the two agree.
  */
+/**
+ * The most records one layer will hand over for a single query.
+ *
+ * Every layer's own `getAnalystRecords()` defaults to this same ceiling, and a
+ * dense French city reaches it: a count that comes back exactly here is a cap,
+ * not a total, and saying it as a total is how "2000 bornes de recharge" got
+ * spoken over a view holding rather more.
+ */
+export const ANALYST_RECORD_CAP = 2000;
+
 export const ANALYST_LAYERS = {
   flights: { numeric: ['altitudeM', 'speedMps', 'verticalRateMps'], text: ['callsign', 'icao24', 'originCountry', 'operator', 'routeOrigin', 'routeDestination', 'aircraftClass'], flags: ['military', 'onGround'] },
   military: { numeric: ['altitudeM', 'speedMps', 'verticalRateMps'], text: ['callsign', 'icao24', 'originCountry', 'operator', 'aircraftClass'], flags: ['military', 'onGround'] },
@@ -199,7 +209,14 @@ export function createAnalystEngine(providers) {
       for (const key of layers) {
         if (!ANALYST_LAYERS[key]) continue;
         const rows = providers.getRecords(key) || [];
-        layersQueried.push({ layerKey: key, records: rows.length });
+        // A layer that hands back exactly its ceiling has almost certainly got
+        // more. Measured: "combien de bornes de recharge dans la vue ?" over
+        // Paris answered "2000" — the cap, spoken as a total, and 2000 is
+        // exactly the kind of round number nobody questions. Flagged here so
+        // the count can be narrated as a floor.
+        const entry = { layerKey: key, records: rows.length };
+        if (rows.length >= ANALYST_RECORD_CAP) entry.capped = ANALYST_RECORD_CAP;
+        layersQueried.push(entry);
         for (const row of rows) records.push({ layerKey: key, ...row });
       }
     }

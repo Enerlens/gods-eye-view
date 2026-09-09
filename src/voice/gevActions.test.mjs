@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
+import { ANALYST_RECORD_CAP } from '../data/analystEngine.js';
 import { CCTV_FOCUS_RESULT } from '../data/cctv.js';
 import { getContextStore, registerEntityContext } from '../data/contextStore.js';
 import { DataLayerManager } from '../data/manager.js';
@@ -3240,4 +3241,79 @@ test('no spoken name resolves to two different layers', () => {
   for (const word of ['pharmacies', 'hôpitaux', 'commerces', 'piscines']) {
     assert.equal(map.get(word), 'amenities-fr', `"${word}" names a facility in the BPE`);
   }
+});
+
+test('a capped record set is narrated as a floor, not as the number in view', async () => {
+  // Measured against gpt-realtime over Paris: "combien de bornes de recharge
+  // dans la vue ?" came back with 2000 records — the layer's ceiling — and was
+  // spoken as "Il y a 2000 bornes de recharge dans la vue". The cap is now in
+  // the payload, in the words the model is asked to use.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const irve = {
+    id: 'irve-fr',
+    getAnalystRecords: (limit = ANALYST_RECORD_CAP) => Array.from(
+      { length: Math.min(limit, 5000) },
+      (_, i) => ({ id: `irve-${i}`, lat: 48.85, lon: 2.35, chargePoints: 2 }),
+    ),
+  };
+  const runner = createGevActionRunner({
+    viewer: {
+      clock: { onTick: { addEventListener: () => () => {} } },
+      scene: { canvas: { addEventListener() {}, removeEventListener() {} } },
+      camera: {
+        moveEnd: { addEventListener() {} },
+        positionCartographic: { height: 30_000, latitude: 0.8526, longitude: 0.041 },
+      },
+    },
+    styleManager: {},
+    dataManager: {
+      layers: new Map([['irve-fr', { module: irve }]]),
+      isEnabled: (id) => id === 'irve-fr',
+      getAll: () => [{ id: 'irve-fr', name: 'Bornes IRVE (FR)', enabled: true, stats: { count: 5000 } }],
+    },
+  });
+  // An explicit centre, so no Contacts state left by another test can move it.
+  const result = await runner('analyst_query', {
+    layers: ['irve-fr'],
+    scope: { kind: 'radius', km: 500, center: { lat: 48.85, lon: 2.35 } },
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.count, ANALYST_RECORD_CAP, 'the ceiling was reached');
+  assert.match(result.coverage.capped, /irve-fr returned the maximum of 2000/);
+  assert.match(result.coverage.capped, /FLOOR, not a total/);
+});
+
+test('a second runner queries its OWN world, not the first one that ever ran', async () => {
+  // The cached engine kept the dataManager it was born with. A later runner —
+  // a re-initialised viewer, or a second harness in one process — asked the old
+  // world about layers it had never heard of and got a confident zero.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const world = (layerId, records) => ({
+    viewer: {
+      clock: { onTick: { addEventListener: () => () => {} } },
+      scene: { canvas: { addEventListener() {}, removeEventListener() {} } },
+      camera: {
+        moveEnd: { addEventListener() {} },
+        positionCartographic: { height: 30_000, latitude: 0.8526, longitude: 0.041 },
+      },
+    },
+    styleManager: {},
+    dataManager: {
+      layers: new Map([[layerId, { module: { id: layerId, getAnalystRecords: () => records } }]]),
+      isEnabled: (id) => id === layerId,
+      getAll: () => [{ id: layerId, name: layerId, enabled: true, stats: { count: records.length } }],
+    },
+  });
+  const first = createGevActionRunner(world('flights', [{ id: 'A', lat: 48.85, lon: 2.35 }]));
+  await first('analyst_query', { layers: ['flights'], scope: { kind: 'radius', km: 500, center: { lat: 48.85, lon: 2.35 } } });
+
+  const second = createGevActionRunner(world('medecins-fr', [
+    { id: 'M1', lat: 48.85, lon: 2.35, practitioners: 3 },
+    { id: 'M2', lat: 48.86, lon: 2.36, practitioners: 1 },
+  ]));
+  const result = await second('analyst_query', {
+    layers: ['medecins-fr'],
+    scope: { kind: 'radius', km: 500, center: { lat: 48.85, lon: 2.35 } },
+  });
+  assert.equal(result.count, 2, 'the second world answers for itself');
 });

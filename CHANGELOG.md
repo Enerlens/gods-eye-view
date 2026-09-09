@@ -267,6 +267,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `docs/CARTOGRAPHIE.md`.
 
 ### Fixed
+- **La voix se taisait au bout de trois phrases, et rien ne disait pourquoi.**
+  Avec une clé OpenAI, une session Realtime renvoie *tout* son préambule à
+  chaque réponse — les instructions plus les 29 schémas d'outils. Mesuré sur la
+  configuration livrée : **10 886 jetons d'entrée** avant que l'opérateur ait
+  parlé, contre un plafond de **40 000 jetons par minute** sur un compte d'entrée
+  de gamme. Soit trois réponses par minute — et une seule commande qui appelle
+  un outil en consomme deux (l'appel, puis la confirmation parlée). La quatrième
+  phrase revenait donc en `status: "failed"`, l'assistante se taisait, et le
+  dock n'affichait ni la cause ni l'attente : le micro avait l'air cassé alors
+  qu'il était bridé. Le budget est maintenant lu dans `rate_limits.updated`,
+  que la session envoie après chaque réponse : le dock prévient avant le mur
+  (« TOKEN LIMIT REACHED — RESETS IN 33 S »), un tour englouti est **repris tout
+  seul** après l'attente que l'API nomme elle-même — l'opérateur n'a pas à
+  répéter sa question — et le message d'erreur explique le plafond au lieu de
+  recracher l'identifiant d'organisation. Reparler ou couper le micro désarme
+  la reprise. *(Le vrai levier reste le compte : le plafond se relève sur
+  platform.openai.com/settings/organization/limits.)*
+- **« Il y a 2000 bornes de recharge dans la vue » : 2000 était le plafond, pas
+  un compte.** Chaque couche rend au plus 2 000 enregistrements à
+  `analyst_query`, et sur Paris la couche IRVE atteint ce plafond — le nombre
+  était donc dit comme un total. Mesuré au micro avec 2 200 bornes chargées :
+  la réponse est désormais « **au moins** 2 000 … un plancher, pas un total
+  exact ». Le plafond voyage dans `coverage.capped`, avec les mots à employer.
+- **Un second moteur analytique interrogeait le monde du premier.** Le cache de
+  `runAnalystQuery` gardait le `dataManager` avec lequel il était né : un
+  deuxième `createGevActionRunner` — un viewer réinitialisé, ou deux harnais
+  dans le même processus — questionnait donc les couches de l'ancien monde et
+  recevait un zéro confiant. Le moteur suit maintenant son monde.
+- **`qa:voice-routing` comptait comme des erreurs de routage des phrases que le
+  modèle n'a jamais vues.** Le harnais envoyait six tours d'affilée : à
+  ~11 000 jetons le tour, les suivants revenaient en `failed`, sans appel
+  d'outil, et étaient notés FAIL. Il lit maintenant le même budget que l'app,
+  attend la fenêtre suivante quand elle ne peut plus financer un tour, rejoue
+  une fois un tour bridé, et marque SKIP — pas FAIL — ce qui reste bridé.
 - **« Je n'ai pas cette couche » était faux : la voix ne pouvait nommer que 17
   couches sur 60.** L'énumération `layerId` des outils vocaux était écrite à la
   main et héritée de l'amont ; le fork avait grandi à 60 couches enregistrées.

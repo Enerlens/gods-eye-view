@@ -8,7 +8,7 @@ import {
 import { getNextIssPass } from '../data/satellites.js';
 import { CCTV_FOCUS_RESULT } from '../data/cctv.js';
 import { contextModeWord } from '../contextModePolicy.js';
-import { ANALYST_LAYERS, createAnalystEngine } from '../data/analystEngine.js';
+import { ANALYST_LAYERS, ANALYST_RECORD_CAP, createAnalystEngine } from '../data/analystEngine.js';
 import { layerFeedState } from '../data/manager.js';
 import militaryAwarenessLayer, {
   collectAircraftProximityWindow,
@@ -4055,6 +4055,14 @@ function clampNumber(value, min, max, fallback) {
 const _layerEnabledAt = new Map();
 let _analystEngine = null;
 /**
+ * The world the cached engine was built for. The comment above says "one engine
+ * per runner", but the cache had no way to notice a NEW runner: a second
+ * `createGevActionRunner` (a re-initialised viewer, or two harnesses in one
+ * process) kept querying the FIRST dataManager, so its layers came back empty
+ * and the answer was a confident zero.
+ */
+let _analystEngineFor = null;
+/**
  * Layers whose loaded set follows the camera, so a loaded count is not a world
  * count.
  *
@@ -4098,9 +4106,11 @@ function analystProviders(viewer, dataManager, { recordLimitByLayer = null } = {
       const mod = layer.module;
       if (typeof mod?.getAnalystRecords !== 'function') return [];
       const requestedLimit = recordLimitByLayer?.[layerKey];
-      return Number.isFinite(requestedLimit)
-        ? (mod.getAnalystRecords(requestedLimit) || [])
-        : (mod.getAnalystRecords() || []);
+      // The ceiling is passed explicitly, not left to each layer's own default,
+      // so the engine can recognise a capped answer for what it is.
+      return mod.getAnalystRecords(
+        Number.isFinite(requestedLimit) ? requestedLimit : ANALYST_RECORD_CAP,
+      ) || [];
     },
     resolveRegionRing: (name) => resolveRegionRingForQuery(name),
     /**
@@ -4137,7 +4147,12 @@ function analystProviders(viewer, dataManager, { recordLimitByLayer = null } = {
 }
 
 async function runAnalystQuery(viewer, dataManager, args = {}) {
-  if (!_analystEngine) _analystEngine = createAnalystEngine(analystProviders(viewer, dataManager));
+  if (!_analystEngine || _analystEngineFor !== dataManager) {
+    // A new world also means the remembered follow-up set is gone — which is
+    // correct: "which of those is closest?" cannot refer to a world that is gone.
+    _analystEngine = createAnalystEngine(analystProviders(viewer, dataManager));
+    _analystEngineFor = dataManager;
+  }
   const result = await _analystEngine.query({
     layers: Array.isArray(args.layers) ? args.layers : undefined,
     scope: args.scope,
@@ -4174,6 +4189,15 @@ async function runAnalystQuery(viewer, dataManager, args = {}) {
     .map((l) => l.layerKey);
   if (warming.length) {
     result.coverage.warmup = `${warming.join(', ')} enabled moments ago — data is still loading; counts will rise for ~30-45s. Say so.`;
+  }
+  // A layer that returned exactly its ceiling has more than it said. Measured:
+  // "combien de bornes de recharge dans la vue ?" over Paris came back 2000 —
+  // the cap — and was spoken as a total.
+  const capped = (result.coverage?.layersQueried || []).filter((l) => l.capped);
+  if (capped.length && result.coverage) {
+    result.coverage.capped = `${capped.map((l) => l.layerKey).join(', ')} returned the maximum of `
+      + `${capped[0].capped} loaded records, so this count is a FLOOR, not a total. `
+      + 'Say "at least" — never state it as the number in view.';
   }
   // A radius/view count over a viewport-loaded layer counts what is LOADED, and
   // the flights layer reloads as the camera moves — so this number can sit well

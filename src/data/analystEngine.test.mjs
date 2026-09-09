@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createAnalystEngine, applyScope, haversineKm } from './analystEngine.js';
+import { ANALYST_RECORD_CAP, createAnalystEngine, applyScope, haversineKm } from './analystEngine.js';
 
 // Stub world: a square "Texland" region, flights + ships + fires around it.
 const TEXLAND = { name: 'Texland', ring: [[-100, 28], [-94, 28], [-94, 33], [-100, 33]] };
@@ -235,4 +235,32 @@ test('analyst: a filter on a field the layer never publishes is refused, not ans
     layers: ['irve-fr'], scope: { kind: 'view' }, filters: [{ field: 'id', op: 'eq', value: 'a' }],
   });
   assert.equal(byId.ok, true);
+});
+
+test('a layer that returns its ceiling is flagged, so a cap is not spoken as a total', async () => {
+  // 2000 charge points "in view" is not a measurement, it is where the layer
+  // stopped counting — and it was read aloud as the number in Paris.
+  const engine = createAnalystEngine({
+    getRecords: () => Array.from({ length: ANALYST_RECORD_CAP }, (_, i) => ({
+      id: `irve-${i}`, lat: 48.85 + i * 1e-6, lon: 2.35, chargePoints: 2,
+    })),
+    resolveRegionRing: async () => null,
+    getViewCenter: () => ({ lat: 48.85, lon: 2.35, radiusKm: 50 }),
+  });
+  const result = await engine.query({ layers: ['irve-fr'], scope: { kind: 'anywhere' } });
+  assert.equal(result.ok, true);
+  assert.equal(result.count, ANALYST_RECORD_CAP);
+  assert.deepEqual(result.coverage.layersQueried, [
+    { layerKey: 'irve-fr', records: ANALYST_RECORD_CAP, capped: ANALYST_RECORD_CAP },
+  ]);
+});
+
+test('a layer under its ceiling carries no cap flag', async () => {
+  const engine = createAnalystEngine({
+    getRecords: () => [{ id: 'a', lat: 48.85, lon: 2.35, chargePoints: 2 }],
+    resolveRegionRing: async () => null,
+    getViewCenter: () => ({ lat: 48.85, lon: 2.35, radiusKm: 50 }),
+  });
+  const result = await engine.query({ layers: ['irve-fr'], scope: { kind: 'anywhere' } });
+  assert.deepEqual(result.coverage.layersQueried, [{ layerKey: 'irve-fr', records: 1 }]);
 });

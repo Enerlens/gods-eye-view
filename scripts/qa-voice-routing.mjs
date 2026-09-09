@@ -203,6 +203,13 @@ class RoutingSession {
     this.evidence = evidence;
     this.ws = null;
     this.pending = null; // active turn collector
+    // The per-minute TOKEN ceiling, as the session itself reports it. This
+    // harness used to fire six turns back to back and read the resulting
+    // `response.failed`s as routing FAILURES — the model never saw those
+    // phrases. One response bills ~11 000 input tokens (instructions + all 29
+    // tool schemas, re-sent every time) against 40 000/min on an entry-tier
+    // account, so three responses is the whole minute.
+    this.tokenBudget = null;
   }
 
   connect() {
@@ -220,6 +227,16 @@ class RoutingSession {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     this.evidence.write(`${JSON.stringify({ at: new Date().toISOString(), dir: 'recv', type: msg.type, item: msg.item?.type, name: msg.item?.name ?? msg.name, error: msg.error?.message })}\n`);
+    if (msg.type === 'rate_limits.updated') {
+      const bucket = (msg.rate_limits || []).find((entry) => entry?.name === 'tokens');
+      if (bucket) {
+        this.tokenBudget = {
+          remaining: Number(bucket.remaining) || 0,
+          resetMs: Math.round((Number(bucket.reset_seconds) || 0) * 1000),
+          at: Date.now(),
+        };
+      }
+    }
     if (!this.pending) return;
     if (msg.type === 'response.output_item.done' && msg.item?.type === 'function_call') {
       let parsed = {};
@@ -240,6 +257,9 @@ class RoutingSession {
       this.pending.needContinuation = true;
     }
     if (msg.type === 'response.done') {
+      if (msg.response?.status === 'failed') {
+        this.pending.failure = msg.response.status_details?.error || null;
+      }
       if (this.pending.needContinuation && this.pending.continuations < 4) {
         this.pending.needContinuation = false;
         this.pending.continuations += 1;
@@ -248,7 +268,7 @@ class RoutingSession {
       }
       const p = this.pending;
       this.pending = null;
-      p.resolve(p.calls);
+      p.resolve(p);
     }
     if (msg.type === 'error') {
       // Log-and-continue: a per-turn API hiccup should surface as that turn's
@@ -265,9 +285,9 @@ class RoutingSession {
   /** Send one user text turn; resolve with the list of tool calls it produced. */
   runTurn(text) {
     return new Promise((resolve) => {
-      this.pending = { calls: [], continuations: 0, needContinuation: false, errors: [], resolve };
+      this.pending = { calls: [], continuations: 0, needContinuation: false, errors: [], failure: null, resolve };
       const timer = setTimeout(() => {
-        if (this.pending) { const p = this.pending; this.pending = null; p.resolve(p.calls); }
+        if (this.pending) { const p = this.pending; this.pending = null; p.resolve(p); }
       }, 45000);
       const origResolve = resolve;
       this.pending.resolve = (v) => { clearTimeout(timer); origResolve(v); };
@@ -280,6 +300,24 @@ class RoutingSession {
   }
 
   close() { try { this.ws?.close(); } catch { /* noop */ } }
+
+  /**
+   * Sit out the token window when it cannot fund another turn.
+   *
+   * Measured cost of one response on the shipped config: ~11 000 input tokens.
+   * Anything less than that in the bucket means the next phrase would come back
+   * `failed` and be scored as a routing miss it never was.
+   */
+  async waitForTokenBudget(perTurnTokens = 13000) {
+    const budget = this.tokenBudget;
+    if (!budget || budget.remaining >= perTurnTokens) return 0;
+    const elapsed = Date.now() - budget.at;
+    const wait = Math.max(0, budget.resetMs - elapsed) + 1000;
+    if (wait <= 0) return 0;
+    console.log(`  [budget] ${budget.remaining} tokens left this minute — waiting ${Math.ceil(wait / 1000)}s`);
+    await new Promise((resolve) => setTimeout(resolve, wait));
+    return wait;
+  }
 }
 
 function matchArgs(expected, actual) {
@@ -317,13 +355,25 @@ async function runRoutingLayer() {
     for (const p of batch) {
       if (turnsUsed >= TURN_BUDGET) { skipped(`route: "${p.phrase}"`, 'turn budget exhausted'); continue; }
       turnsUsed += 1;
-      let calls = [];
+      let turn = { calls: [], failure: null };
       try {
-        calls = await session.runTurn(p.phrase);
+        await session.waitForTokenBudget();
+        turn = await session.runTurn(p.phrase);
+        // One retry, after the wait the API itself names: a throttled turn is
+        // not an answer about routing.
+        if (turn.failure?.code === 'rate_limit_exceeded') {
+          await session.waitForTokenBudget(Number.POSITIVE_INFINITY);
+          turn = await session.runTurn(p.phrase);
+        }
       } catch (e) {
         report(false, `route: "${p.phrase}"`, `turn error: ${e.message}`);
         continue;
       }
+      if (turn.failure?.code === 'rate_limit_exceeded') {
+        skipped(`route: "${p.phrase}"`, 'rate limited twice — the model never saw this phrase');
+        continue;
+      }
+      const calls = turn.calls;
       const names = calls.map((c) => c.name);
       if (p.expectNone) {
         report(names.length === 0, `route: "${p.phrase}" → (no tool)`, names.length ? `unexpected calls: ${names.join(',')}` : 'clean conversational turn');
