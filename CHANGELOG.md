@@ -78,12 +78,31 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   panneau et la détection sont identiques dans les deux modes, et
   `npm run qa:perf-profile` échoue si un jour ce n'est plus vrai.
 
+  Il demande aussi **moins de tuiles** : sur une ouverture à Paris, 245 requêtes
+  et 5,48 Mo deviennent **212 et 5,04 Mo**, et une fois la caméra posée le trafic
+  résiduel tombe de 81 requêtes à **43**. C'est le seul des cinq réglages qui
+  rende des octets, et sur une ligne à 10 Mbit/s c'est celui qui se sent.
+
   Il se décide tout seul (nombre de cœurs, mémoire, nom de la puce graphique,
   préférence système « réduire les animations »), il se mesure — l'application
   chronomètre ses propres images et retient le verdict pour la prochaine
   visite — et il se débraye : un interrupteur **Lite** dans le panneau DISPLAY,
   ou `?perf=lite` / `?perf=full` dans l'adresse. Le choix reste sur la machine
   de celui qui l'a fait : il n'entre **jamais** dans un lien de partage.
+
+### Fixed
+- **Le chrome qui s'anime n'achète plus une image par battement.** Un élément
+  d'interface qui annonce un déplacement — un panneau qui change de classe, une
+  puce qui apparaît — demandait une image à chaque annonce, alors que la
+  disposition, elle, n'est recalculée que dix fois par seconde. Un élément animé
+  à 60 Hz achetait donc soixante images par seconde pour dix recalculs utiles.
+  Et une annonce qui aboutit aux **mêmes rectangles** ne relance plus le
+  placement des libellés du tout.
+
+  Rien ne l'exploitait au moment du correctif : la source de ce bruit — le HUD
+  qui retapait la même phrase toutes les quinze secondes — a été retirée le
+  matin même. C'est un verrou, pas une réparation : le prochain élément qui
+  s'animera en boucle ne pourra plus empêcher la scène de s'arrêter de dessiner.
 
 ### Changed
 - **Le moteur 3D ne pèse plus que ce que cette carte utilise — 1,3 seconde de

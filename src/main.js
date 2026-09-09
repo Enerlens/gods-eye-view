@@ -35,7 +35,9 @@ import { installGlobeHeadingTape } from './globeHeadingTape.js';
 import { initFirstRunExperience } from './firstRunExperience.js';
 import { initKeySetup } from './keySetup.js';
 import {
+  LITE_GLOBE_SSE,
   LITE_MSAA_SAMPLES,
+  LITE_TILE_CACHE_SIZE,
   FULL_MSAA_SAMPLES,
   getPerfProfileDiagnostics,
   initPerfProfile,
@@ -226,6 +228,15 @@ async function init() {
     viewer.scene.skyAtmosphere.atmosphereLightIntensity = 18;
     viewer.scene.skyAtmosphere.saturationShift = -0.12;
     viewer.scene.skyAtmosphere.brightnessShift = -0.08;
+
+    // The globe's own two knobs in `lite` (perf plan 2.3). Set HERE, before
+    // `installGlobeDetailGovernor`, because the governor captures whatever
+    // tolerance it finds as the settled one and doubles THAT in motion — set
+    // afterwards, the coarse value would be the one the governor hands back.
+    if (isLiteProfile()) {
+      viewer.scene.globe.maximumScreenSpaceError = LITE_GLOBE_SSE;
+      viewer.scene.globe.tileCacheSize = LITE_TILE_CACHE_SIZE;
+    }
 
     let tileset = null;
     // Kept out of the catch so the controller can NAME the failure on the map

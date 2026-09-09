@@ -53,6 +53,8 @@ function readProfileState() {
     preserveDrawingBuffer: !!gl.getContextAttributes().preserveDrawingBuffer,
     sharpen: !!gev.styleManager.sharpenEnabled,
     governor: gev.getGlobeDetailDiagnostics(),
+    globeSse: scene.globe.maximumScreenSpaceError,
+    tileCacheSize: scene.globe.tileCacheSize,
     button: button
       ? { lit: button.classList.contains('active'), pressed: button.getAttribute('aria-pressed') }
       : null,
@@ -111,6 +113,16 @@ try {
       full: full.governor.movingResolutionScale,
       lite: lite.governor.movingResolutionScale,
       settledScale: [full.governor.currentResolutionScale, lite.governor.currentResolutionScale],
+    },
+  );
+
+  check(
+    'lite asks the globe for coarser tiles and keeps fewer of them',
+    full.globeSse === 2 && lite.globeSse === 3
+      && full.tileCacheSize === 100 && lite.tileCacheSize === 60,
+    {
+      full: { sse: full.globeSse, cache: full.tileCacheSize },
+      lite: { sse: lite.globeSse, cache: lite.tileCacheSize },
     },
   );
 

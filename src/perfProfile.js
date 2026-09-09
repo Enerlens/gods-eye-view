@@ -74,6 +74,29 @@ export const PERF_PROFILES = Object.freeze(['full', 'lite']);
 export const FULL_MSAA_SAMPLES = 4;
 export const LITE_MSAA_SAMPLES = 1;
 
+/**
+ * The globe's error tolerance in `lite`, in pixels of on-screen error.
+ *
+ * 2 is Cesium's default and the value `full` keeps. 3 asks for roughly half as
+ * many tiles at every level — the tile count for a given view goes as the
+ * square of the tolerance — and on a 1366×768 panel the difference at rest is
+ * a texel of blur on distant terrain.
+ *
+ * The motion multiplier in `src/globeDetailGovernor.js` stacks ON TOP of this,
+ * so a `lite` machine flies at 6 and settles at 3 where a `full` one flies at 4
+ * and settles at 2.
+ */
+export const LITE_GLOBE_SSE = 3;
+
+/**
+ * Resident tile cache in `lite`. Cesium's default is 100; 60 is the plan's
+ * number. This is a MEMORY lever, not a frame-time one: a smaller cache evicts
+ * sooner, so a camera that comes back to a view it just left re-fetches. On the
+ * machine § 0 describes — 8 GB shared with everything else — that trade is the
+ * right way round.
+ */
+export const LITE_TILE_CACHE_SIZE = 60;
+
 /** Where the operator's own choice survives a reload. */
 export const PERF_PROFILE_STORAGE_KEY = 'gev:perf-profile';
 

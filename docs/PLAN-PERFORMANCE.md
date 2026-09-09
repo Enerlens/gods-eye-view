@@ -861,19 +861,59 @@ que le 09-09 au matin (« une garantie ne vaut que la densité de ce qu'elle a
 mesuré ») ; c'est `qa:perf-profile` qui le couvre désormais, et la sonde de
 scène garée devrait tourner dans les deux profils.
 
-**2.3 Le globe et le tileset en `lite`.** `globe.maximumScreenSpaceError` 2 →
-3 au repos (×2 en mouvement, inchangé), `tileCacheSize` 100 → 60 (mémoire),
-`skyAtmosphere.show` false ou `atmosphereLightIntensity` réduit. Pour le
-tileset Google (hors EEE) : `maximumScreenSpaceError` 16 → 24 en `lite`,
-`cacheBytes` 256 Mio, `skipLevelOfDetail: true`, `dynamicScreenSpaceError:
-true` (`src/main.js:245-247`). Mesure : `perf:boot` en octets sur le vol
-d'intro (438 req / 14,4 Mo aujourd'hui avec le gouverneur, mémoire
-`globe-detail-governor-measured-gains`), et p90 sur la machine de référence.
+**2.3 Le globe en `lite`.** ✅ **Moitié faite le 2026-09-09, moitié annulée.**
+`globe.maximumScreenSpaceError` 2 → 3 au repos (le gouverneur double ce chiffre
+en mouvement, donc `lite` vole à 6 et se pose à 3) et `tileCacheSize` 100 → 60.
+Posés **avant** `installGlobeDetailGovernor`, sans quoi le gouverneur capturerait
+la valeur grossière comme valeur au repos.
 
-**2.4 Détection en `lite` : 75 → 40 % de densité**, et fondu à 0 %. La
-détection reste ON (directive du 2026-08-22), elle fait moins de candidats par
-solve. Mesure : orbite avec `flights` allumé, p90 ; `qa-perf` §1b doit rester
-vert.
+C'est le seul levier de la phase 2 qui rende des **octets**, et c'est celui qui
+compte sur une ligne à 10 Mbit/s. `perf:boot` en A/B, `?perf=full` contre
+`?perf=lite`, médiane de 3, CPU ÷4 / 10 Mbit/s, Paris :
+
+| Fenêtre de 25 s | `full` | `lite` |
+|---|---:|---:|
+| Requêtes | 245 | **212** (−13 %) |
+| Octets | 5,48 Mo | **5,04 Mo** (−8 %) |
+| Requêtes après stabilisation | 81 | **43** (−47 %) |
+| Octets après stabilisation | 0,63 Mo | **0,46 Mo** (−27 %) |
+| Octets de l'app | 2,25 Mo | 2,25 Mo *(identiques)* |
+| Scène parquée | 0 / 5 s | 0 / 5 s |
+
+**Le p90 ne bouge pas** (18,6 contre 20,4 ms, intervalles qui se recouvrent) et
+c'est attendu : à CPU ÷4 le fil principal est le goulot, et les quatre leviers
+de 2.2 sont du côté GPU. C'est la limite du § 0 qui reparle — le laboratoire ne
+sait pas ralentir les deux à la fois.
+
+**Annulé : `skyAtmosphere` et le tileset Google.** L'atmosphère est un poste
+*visible* et le § 2.1 interdit à `lite` de changer ce qui est affiché. Le
+tileset Google est **invisible depuis la France** (blocage EEE, 403) : les
+quatre réglages proposés — dont `skipLevelOfDetail: true`, qui a un coût visuel
+connu (popping) — seraient livrés sans avoir jamais été vus tourner. Deux
+raisons de ne pas les poser, et la seconde est la règle du § 3.
+
+**2.4 Détection en `lite` : ANNULÉE le 2026-09-09**, pour deux raisons dont la
+première suffit.
+
+**Elle ne paie pas.** Mesurée à la scène que le plan nomme — Lyon, `irve-fr` +
+`schools-fr` + `transit-fr`, machine au repos (charge 3,3), A/B/A/B interleavé
+à 2732×1536 — la densité 75 → 50 rend **+5,3 %**, c'est-à-dire rien, ou un peu
+pire. Le même relevé donne −50,8 % pour le MSAA et −35,4 % pour la résolution.
+*Limite de l'instrument, à dire :* la rafale mesure le travail de `scene.render()`,
+et la densité est un coût de **placement**, côté CPU. Elle n'est donc pas
+mesurée là où elle pourrait coûter — mais elle n'est pas non plus mesurée en
+train de payer.
+
+**Et elle contredit le § 2.1.** « 75 → 40 % de densité » retire des libellés de
+la carte. Le profil ne doit **jamais** changer ce qui est affiché : la promesse
+de ce fork est que la même France arrive sur un portable de 2018, pas une France
+plus petite. C'est le contrôle n°6 de `qa:perf-profile`, qui échouerait si cette
+tâche était livrée — à juste titre.
+
+*Note de fait, au passage :* **40 % n'est pas un cran.** `canonicalizeDensity`
+(`src/data/detectionPolicy.js:116`) colle le curseur à 0 / 25 / 50 / 75 / 100 ;
+40 atterrit sur 50. La tâche demandait une valeur que l'application ne sait pas
+prendre.
 
 **2.5 Fermer la fuite parquée (17 rendus / 5 s).** ✅ **Faite le 2026-09-09 —
 et pas là où ce plan la cherchait.** `qa-perf` passe de **19/24 à 24/24**, et
@@ -897,16 +937,46 @@ mais elle passe de **bloquante** à **durcissement** : sans elle, le prochain
 élément de chrome qui s'anime en boucle rouvrira la même fuite. Ce qui a été
 gagné ici est le symptôme et la mesure ; la garde, elle, n'est pas encore posée.
 
+**2.5-bis La garde.** ✅ **Posée le 2026-09-09.** Deux verrous dans
+`src/overlays/worldOverlay.js`, chacun avec son test :
+
+- **Une invalidation déjà en attente ne rachète pas d'image.**
+  `refreshUiOccluders` refusait déjà de recalculer plus souvent que
+  `OCCLUDER_REFRESH_MS` (100 ms) et armait un minuteur de rattrapage — mais
+  `markOccludersDirty` demandait une image à **chaque** annonce. Un élément qui
+  s'anime à 60 Hz achetait donc 60 images par seconde pour dix recalculs utiles.
+  Trente annonces dans une fenêtre coûtent maintenant **une** image.
+- **Un inventaire qui n'a pas changé n'est pas un changement de disposition.**
+  Les rectangles sont réduits à une signature entière ; identique, on ne
+  re-résout pas et on n'incrémente pas `_layoutRevision` (que toute la chaîne
+  aval surveille). Un changement de classe qui ne change qu'une couleur passait
+  auparavant pour un déménagement. Le compteur `occluderNoopRefreshes` sort dans
+  les diagnostics : s'il grimpe pendant que rien ne bouge à l'écran, c'est du
+  chrome qui s'anime dans le solveur de placement.
+
 Leçon de méthode, à garder : la cause était dans la phase 1 alors que la tâche
 était rangée en phase 2, et elle a été trouvée en lisant le chemin qui DÉCLENCHE
 le rendu, pas celui qui le sert.
 
-**2.6 Les petits per-frame.** `src/scopeMask.js:355-356` réalloue le
-backing-store du canvas à chaque dessin (ne le faire qu'au changement de
-taille) ; `src/celestialRing.js:367` reste abonné à `postRender` quand l'anneau
-est éteint (désabonner). Mesure : passe stable de
-`scripts/qa-cables-render-probe.mjs` avant/après ; si < 0,3 ms, ne pas
-fusionner, juste le noter.
+**2.6 Les petits per-frame.** ❌ **Mesurés le 2026-09-09, sous le seuil,
+ANNULÉS** — exactement la sortie que cette tâche prévoyait (« si < 0,3 ms, ne pas
+fusionner, juste le noter »).
+
+- **L'abonnement `postRender` de `celestialRing` quand l'anneau est éteint :
+  0 ms.** Rafale de 150 images, médiane de 5, avec et sans l'écouteur :
+  **1,851 ms/image contre 1,864** — le « sans » est plus lent, donc c'est du
+  bruit. `_draw()` sort à la première ligne quand `enabled` est faux ; ce qui
+  reste est un appel de fermeture et deux lectures de propriété.
+- **La réallocation du canevas de `scopeMask` : sous 0,05 ms**, la résolution du
+  chronomètre du navigateur. 1366×768×4 = 4,2 Mo de tampon, et `draw()` n'est
+  **pas** par image — il tourne au redimensionnement, au changement de réglage,
+  au changement de DPR et à chaque palier quantifié d'alpha, soit une douzaine
+  de fois sur toute une descente. Le total sur un geste complet est inférieur à
+  une image.
+
+Les deux sont réels et les deux sont propres à corriger. Aucun des deux ne
+justifie de toucher un fichier : c'est la règle du § 3, appliquée contre
+l'envie de ranger.
 
 Critère de sortie : sur la machine de référence, orbite zéro couche p90 ≤ 20 ms
 en `lite`, 3 couches FR p90 ≤ 33 ms sans image > 100 ms ; `qa-perf` 24/24 ;
