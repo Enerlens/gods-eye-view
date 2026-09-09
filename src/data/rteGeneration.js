@@ -1062,6 +1062,10 @@ const rteGenerationLayer = {
       if (_enabled && _sites.length) buildStations(_sites);
     });
     publishOverlay();
+    // Same reason as `sitadelFrance`: a row switched off and on again may get
+    // no fresh answer, and the offer must not stay down under a fleet already
+    // in memory.
+    publishFleetJoin();
     void load();
     restoreSpriteOrder(viewer);
   },

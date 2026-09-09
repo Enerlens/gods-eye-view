@@ -46,68 +46,6 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   `000` alors qu'il vaut `801` désigne une autre parcelle de la même commune, et
   Toulouse en publie 46.
 
-### Changed
-- **Une centrale, une marque : les 69 stations que deux registres se partagent
-  ne sont plus dessinées deux fois.** Trois couches dessinent la production
-  électrique française et elles se recouvrent lourdement : `edf-power-plants`
-  79 sites, `rte-generation` 108, `fr-hydro-plants` 998 placés. **69 des 108
-  stations RTE sont un site EDF**, et **55 centrales hydro sont un groupe RTE**
-  — dont 43 remontent jusqu'à un site EDF. Grand-Maison était dessinée trois
-  fois.
-
-  L'audit appelait le correctif « une colonne vertébrale à écrire (choisir
-  quelle source fait foi pour la position, laquelle pour la puissance) ». La
-  colonne vertébrale existait déjà, écrite par les scripts de fabrication du
-  dépôt lui-même : `build-rte-units-registry.mjs` pose 69 de ses 108 stations
-  sur la coordonnée publiée par EDF **et note laquelle** (`placementRef:
-  'edf:nucleaire:GRAVELINES'`). La question de la position était donc tranchée,
-  en faveur d'EDF, depuis la fabrication. Le second lien est le **code EIC**,
-  que les deux paquets ODRÉ portent l'un et l'autre.
-
-  **Aucune règle de proximité nulle part**, et la mesure explique pourquoi : la
-  Grand-Maison d'EDF (1 714 MW) est à **540 m** du Verney du registre hydro
-  (21,8 MW), et Super-Bissorte à 410 m d'Orelle. Ce sont des ouvrages
-  différents sur la même montagne. Une règle d'identité à 1 km aurait fusionné
-  80 paires dont plusieurs sont deux centrales, et la carte aurait perdu de la
-  capacité réelle contre un point plus propre.
-
-  **Rien n'est supprimé.** Une couche qui se retire ne dessine pas la marque ;
-  l'enregistrement reste, le compte de la ligne dit ce qui est dessiné **et**
-  combien sont laissés à la couche voisine, et la marque revient dès que
-  celle-ci s'éteint.
-
-  La carte qui survit gagne ce que le retrait aurait masqué : **la puissance de
-  l'autre registre, quand les deux ne sont pas d'accord**. Sur les 69 paires,
-  **43 s'accordent au mégawatt près** et 14 de plus à moins de 5 % — les taire
-  est ce qui rend les 12 restantes lisibles. Et celles-là sont des trouvailles :
-  Flamanville, 2 660 MW chez EDF contre 4 280 chez RTE, c'est l'EPR ; Bouchain,
-  585 contre 1 063 ; Brennilis, 304 contre 125.
-
-- **Un cabinet, un point : la famille « médecin » d'Équipements se retire quand
-  la couche Médecins dessine.** `amenities-fr` dessine la BPE D265 — 61 263
-  lignes « médecin généraliste » — et `medecins-fr` dessine le registre
-  conventionné, 64 232 adresses avec les noms, les spécialités et le secteur.
-  Le même cabinet, deux fois. La couche Équipements applique déjà la règle qui
-  tranche — **un seul registre par famille**, ce qui lui fait refuser tout le
-  domaine enseignement de la BPE au profit de `schools-fr` — et l'audit avait
-  noté qu'elle devait le même retrait ici.
-
-  **Rien n'est supprimé pour le payer.** Le point était classé bloqué parce que
-  `AMENITY_FAMILIES` **est une clé de cache** : le maillage stocke une famille
-  par son INDEX dans ce tableau, donc en retirer un renomme silencieusement
-  chaque ligne de chaque paquet en cache et force une reconstruction nationale.
-  Tout cela est vrai — et c'est le prix de la **suppression**. Ne pas dessiner
-  la famille pendant qu'une autre couche le fait ne coûte rien : le tableau ne
-  bouge pas, les paquets non plus, et un lecteur qui n'ouvre jamais la ligne
-  Médecins garde tous les médecins que cette couche a toujours dessinés.
-
-  Le retrait ne vaut que quand `medecins-fr` dessine des **positions** : à
-  l'échelle nationale cette couche peint un aplat d'accessibilité (APL) et ne
-  dessine aucun cabinet — s'y retirer aurait ôté les médecins de la carte au
-  lieu de les dédoublonner. Et la légende gagne une ligne qui dit où ils sont
-  passés, comme celle des écoles juste en dessous.
-
-### Added
 - **Le globe photoréaliste revient, par Cesium ion.** Google retire les tuiles
   3D et le satellite aux projets facturés dans l'EEE depuis le 8 juillet 2025 :
   la restriction porte sur l'adresse de facturation du projet, jamais sur le
@@ -526,6 +464,66 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   s'animera en boucle ne pourra plus empêcher la scène de s'arrêter de dessiner.
 
 ### Changed
+- **Une centrale, une marque : les 69 stations que deux registres se partagent
+  ne sont plus dessinées deux fois.** Trois couches dessinent la production
+  électrique française et elles se recouvrent lourdement : `edf-power-plants`
+  79 sites, `rte-generation` 108, `fr-hydro-plants` 998 placés. **69 des 108
+  stations RTE sont un site EDF**, et **55 centrales hydro sont un groupe RTE**
+  — dont 43 remontent jusqu'à un site EDF. Grand-Maison était dessinée trois
+  fois.
+
+  L'audit appelait le correctif « une colonne vertébrale à écrire (choisir
+  quelle source fait foi pour la position, laquelle pour la puissance) ». La
+  colonne vertébrale existait déjà, écrite par les scripts de fabrication du
+  dépôt lui-même : `build-rte-units-registry.mjs` pose 69 de ses 108 stations
+  sur la coordonnée publiée par EDF **et note laquelle** (`placementRef:
+  'edf:nucleaire:GRAVELINES'`). La question de la position était donc tranchée,
+  en faveur d'EDF, depuis la fabrication. Le second lien est le **code EIC**,
+  que les deux paquets ODRÉ portent l'un et l'autre.
+
+  **Aucune règle de proximité nulle part**, et la mesure explique pourquoi : la
+  Grand-Maison d'EDF (1 714 MW) est à **540 m** du Verney du registre hydro
+  (21,8 MW), et Super-Bissorte à 410 m d'Orelle. Ce sont des ouvrages
+  différents sur la même montagne. Une règle d'identité à 1 km aurait fusionné
+  80 paires dont plusieurs sont deux centrales, et la carte aurait perdu de la
+  capacité réelle contre un point plus propre.
+
+  **Rien n'est supprimé.** Une couche qui se retire ne dessine pas la marque ;
+  l'enregistrement reste, le compte de la ligne dit ce qui est dessiné **et**
+  combien sont laissés à la couche voisine, et la marque revient dès que
+  celle-ci s'éteint.
+
+  La carte qui survit gagne ce que le retrait aurait masqué : **la puissance de
+  l'autre registre, quand les deux ne sont pas d'accord**. Sur les 69 paires,
+  **43 s'accordent au mégawatt près** et 14 de plus à moins de 5 % — les taire
+  est ce qui rend les 12 restantes lisibles. Et celles-là sont des trouvailles :
+  Flamanville, 2 660 MW chez EDF contre 4 280 chez RTE, c'est l'EPR ; Bouchain,
+  585 contre 1 063 ; Brennilis, 304 contre 125.
+
+- **Un cabinet, un point : la famille « médecin » d'Équipements se retire quand
+  la couche Médecins dessine.** `amenities-fr` dessine la BPE D265 — 61 263
+  lignes « médecin généraliste » — et `medecins-fr` dessine le registre
+  conventionné, 64 232 adresses avec les noms, les spécialités et le secteur.
+  Le même cabinet, deux fois. La couche Équipements applique déjà la règle qui
+  tranche — **un seul registre par famille**, ce qui lui fait refuser tout le
+  domaine enseignement de la BPE au profit de `schools-fr` — et l'audit avait
+  noté qu'elle devait le même retrait ici.
+
+  **Rien n'est supprimé pour le payer.** Le point était classé bloqué parce que
+  `AMENITY_FAMILIES` **est une clé de cache** : le maillage stocke une famille
+  par son INDEX dans ce tableau, donc en retirer un renomme silencieusement
+  chaque ligne de chaque paquet en cache et force une reconstruction nationale.
+  Tout cela est vrai — et c'est le prix de la **suppression**. Ne pas dessiner
+  la famille pendant qu'une autre couche le fait ne coûte rien : le tableau ne
+  bouge pas, les paquets non plus, et un lecteur qui n'ouvre jamais la ligne
+  Médecins garde tous les médecins que cette couche a toujours dessinés.
+
+  Le retrait ne vaut que quand `medecins-fr` dessine des **positions** : à
+  l'échelle nationale cette couche peint un aplat d'accessibilité (APL) et ne
+  dessine aucun cabinet — s'y retirer aurait ôté les médecins de la carte au
+  lieu de les dédoublonner. Et la légende gagne une ligne qui dit où ils sont
+  passés, comme celle des écoles juste en dessous.
+
 - **Le moteur 3D ne pèse plus que ce que cette carte utilise — 1,3 seconde de
   moins pour ouvrir le globe, et 460 kB de moins sur le fil.** Cesium arrivait
   en un seul bloc de **5,6 Mo** compilé d'avance : la bibliothèque entière,

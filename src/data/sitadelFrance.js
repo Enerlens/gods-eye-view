@@ -1738,6 +1738,10 @@ const sitadelFranceLayer = {
     _overlayHost.setVisible(SITADEL_FR_OVERLAY_SOURCE_ID, true);
     installClickHandler(viewer);
     registerPickOwner(SITADEL_FR_LAYER_ID, (pickedId) => _records.has(pickedId));
+    // Republish what is already in hand: a row switched off and on again gets
+    // an `unchanged` answer from the proxy, so the load path would not run and
+    // the offer would stay down under a pack that is right there.
+    publishByParcel();
     if (!_moveEndRemover) {
       _moveEndRemover = viewer.camera.moveEnd.addEventListener(scheduleLoad);
     }
