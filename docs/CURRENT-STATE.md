@@ -2210,6 +2210,8 @@ Published today:
 | `ports/directory` | `local-ports`, while its pack is LOADED (`onFeatures`) | the selected-vessel card |
 | `buoys/nearest` | `marine-buoys`, while it is ENABLED | the selected-vessel card |
 | `flights/boundFor` | `flights`, while it is ENABLED | the airport card (`airportCardDetails`) |
+| `gauges/nearest` | `hubeau-hydro`, while it is ENABLED, over the records IN VIEW | the small-hydro card |
+| `dams/nearest` | `local-dams`, while its pack is LOADED (`onFeatures`) | the small-hydro card |
 
 The two lifetimes differ on purpose. A directory is a fact about a file and is
 offered as long as the file is held; a sea state is a reading a visitor asked
@@ -2249,6 +2251,33 @@ Two guards, both measured:
 
 The unresolved half is printed exactly as the master typed it, which is what
 the card did before this module existed.
+
+#### The hydraulic chain (September 2026)
+
+A small-hydro card names its installed power and its head, and neither register
+behind it carries the two facts a reader wants next: how much water is going
+past, and what is holding it back. `gauges/nearest` and `dams/nearest` supply
+both, and the wording of both lines is the load-bearing part.
+
+- **A DISCHARGE or nothing.** `nearestHubeauGauge` skips every station
+  reporting only a stage, however close. A stage is a height above a gauge zero
+  specific to that gauge — `hubeauHydrometry.js` spends a paragraph on why two
+  stations' stages are not comparable — and putting one beside a plant's
+  installed power would invite exactly that comparison. Ceiling 25 km
+  (`HUBEAU_JOIN_MAX_M`), and the layer is viewport-driven, so a plant outside
+  the current box gets no answer rather than a cached one from another region.
+- **A NEIGHBOUR, never an identity.** Nothing in ODRÉ or OSM links a structure
+  to a plant. The line says "ouvrage voisin cartographié, aucun registre ne le
+  relie à cette centrale", names the distance, and never writes "son barrage".
+  Ceiling 10 km (`DAM_JOIN_MAX_M`) — wide enough for an intake and a
+  powerhouse kilometres apart, tight enough to stay in the same valley.
+- **A named structure beats a closer anonymous one.** 4 579 of the pack's 6 189
+  features carry no name, no height and no operator. An unnamed one is still
+  returned when it is all there is: "there is something here and OSM does not
+  know what" is an answer.
+
+Both lines name the river or the structure so the reader can check the claim,
+which is the same standard `buildPlacementLines` already holds this card to.
 
 #### Flight and airport, both directions (September 2026)
 

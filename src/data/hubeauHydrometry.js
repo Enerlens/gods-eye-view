@@ -1,5 +1,6 @@
 import * as Cesium from 'cesium';
 import { governorRequestRender } from '../renderGovernor.js';
+import { publishJoin } from './layerJoins.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { bucketSeries, textSparkline } from './sparkline.js';
 import {
@@ -511,6 +512,75 @@ export function buildHubeauRecords(observations, stations, nowMs) {
 }
 
 /**
+ * How far a gauge may be from a plant and still be worth naming, in metres.
+ *
+ * 25 km, and the card prints the actual distance and the river's name beside
+ * the reading, because the nearest gauge is on SOME river and not necessarily
+ * on the one the plant sits on. The number is a bound on absurdity, not a
+ * claim of hydraulic connection — see `nearestHubeauGauge`, which refuses to
+ * make that claim at any range.
+ */
+export const HUBEAU_JOIN_MAX_M = 25_000;
+
+/** Great-circle metres. Local, so this file needs no scene to be tested. */
+function gaugeDistanceM(lat1, lon1, lat2, lon2) {
+  if (![lat1, lon1, lat2, lon2].every((value) => Number.isFinite(value))) return Infinity;
+  const toRad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * toRad;
+  const dLon = (lon2 - lon1) * toRad;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * toRad) * Math.cos(lat2 * toRad) * Math.sin(dLon / 2) ** 2;
+  return 6_371_008.8 * 2 * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+/**
+ * The nearest gauge that is reporting a FLOW, and what it reads.
+ *
+ * DISCHARGE FIRST, and not merely preferred: a stage (H) is a height above a
+ * gauge zero that is specific to that gauge, and the layer's own header spends
+ * a paragraph on why H "CANNOT drive a colour ramp or a size ramp" and why two
+ * stations' stages are not comparable. A card that put an H beside a hydro
+ * plant's installed power would be inviting exactly that comparison. So a Q
+ * station always wins, however much further away it is, and when there is no
+ * Q inside the ceiling the answer is null rather than a height.
+ *
+ * IT NEVER CLAIMS A RELATIONSHIP. The nearest gauge is nearest, not upstream,
+ * not on the same watercourse, not measuring this plant's water. The record
+ * carries the river's name and the distance so the card can say what it is —
+ * a neighbour — and the caller writes it that way.
+ *
+ * @param {ReadonlyArray<object>} records From {@link buildHubeauRecords}.
+ * @param {number} lat @param {number} lon
+ * @param {number} [maxM] Ceiling, {@link HUBEAU_JOIN_MAX_M} by default.
+ * @returns {?{code: string, name: string, river: ?string, value: number,
+ *   text: string, freshness: string, distanceM: number}}
+ */
+export function nearestHubeauGauge(records, lat, lon, maxM = HUBEAU_JOIN_MAX_M) {
+  const ceiling = Number.isFinite(maxM) && maxM > 0 ? maxM : HUBEAU_JOIN_MAX_M;
+  if (!Array.isArray(records) || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  let best = null;
+  let bestM = Infinity;
+  for (const record of records) {
+    if (record?.reading?.kind !== 'Q') continue;
+    if (!Number.isFinite(record.reading.value)) continue;
+    const metres = gaugeDistanceM(lat, lon, Number(record.lat), Number(record.lon));
+    if (metres >= bestM || metres > ceiling) continue;
+    bestM = metres;
+    best = record;
+  }
+  if (!best) return null;
+  return {
+    code: best.code,
+    name: best.name,
+    river: best.river || null,
+    value: best.reading.value,
+    text: best.reading.text,
+    freshness: best.reading.freshness,
+    distanceM: bestM,
+  };
+}
+
+/**
  * Count what is actually on screen.
  * @param {Array<object>} records
  * @returns {{total:number, live:number, stale:number, doubtful:number, discharge:number}}
@@ -869,6 +939,8 @@ export function createHubeauHydrometryLayer({
   let _drawn = new Map();
   let _selectedId = null;
   let _clickHandler = null;
+  /** Takes the `gauges/nearest` offer down. Null while the layer is off. */
+  let _releaseJoin = null;
   /** 24 h series for the selected station: {pending}|{failed}|{values,min,max,count}. */
   let _history = null;
   let _historyAbort = null;
@@ -1226,6 +1298,17 @@ export function createHubeauHydrometryLayer({
 
     enable(viewer) {
       _enabled = true;
+      // ── The flow, offered to whoever is standing in it ────────────────────
+      // A small-hydro card says how many kilowatts are installed and never how
+      // much water is going past; this layer is drawing the answer a few
+      // kilometres away. Offered while ENABLED (`layerJoins.js`), and only
+      // over the records currently in view — this layer is viewport-driven, so
+      // a plant outside the current box gets no answer, which is honest rather
+      // than a cached one from another region.
+      _releaseJoin?.();
+      _releaseJoin = publishJoin('gauges/nearest', (lat, lon, maxM) => (
+        nearestHubeauGauge(_records, lat, lon, maxM)
+      ));
       if (viewer) _viewer = viewer;
       if (_pointCollection) _pointCollection.show = true;
       overlayHost.setVisible(HUBEAU_OVERLAY_SOURCE_ID, true);
@@ -1239,6 +1322,8 @@ export function createHubeauHydrometryLayer({
 
     disable() {
       _enabled = false;
+      _releaseJoin?.();
+      _releaseJoin = null;
       clearSelection();
       removeClickHandler();
       clearTimeout(_debounceTimer);
@@ -1271,6 +1356,8 @@ export function createHubeauHydrometryLayer({
 
     destroy(viewer) {
       _enabled = false;
+      _releaseJoin?.();
+      _releaseJoin = null;
       clearSelection();
       removeClickHandler();
       unregisterPickOwner(HUBEAU_LAYER_ID);

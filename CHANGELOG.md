@@ -6,6 +6,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Added
+- **Une petite centrale hydro dit enfin l'eau qui passe et l'ouvrage à côté.**
+  ODRÉ publie une puissance installée et jamais le débit ; il publie une hauteur
+  de chute et jamais l'ouvrage qui retient l'eau. Hub'Eau mesure le premier à
+  quelques kilomètres et le paquet OSM a cartographié le second — et jusqu'ici
+  aucune des trois couches ne pouvait atteindre les autres.
+
+  La carte d'une centrale porte maintenant, quand les couches voisines sont
+  allumées : `≋ 560 m³/s à 2,7 km — station Le Rhône à Tarascon sur Le Rhône,
+  la plus proche qui mesure un débit` et `▰ Barrage de Saint-Nicolas à 1,2 km —
+  ouvrage voisin cartographié, aucun registre ne le relie à cette centrale`.
+
+  **Les deux lignes sont des VOISINAGES et le disent.** Rien dans les registres
+  ne relie une station ou un ouvrage à une centrale, donc la ligne nomme la
+  rivière pour qu'on puisse vérifier, donne la distance, et ne dit jamais
+  « son barrage ». Et c'est un DÉBIT ou rien : une hauteur d'eau est mesurée
+  au-dessus d'un zéro d'échelle propre à sa station — le module Hub'Eau consacre
+  un paragraphe à expliquer que deux hauteurs ne se comparent pas — donc une
+  station qui ne publie qu'une hauteur n'est jamais retenue, si proche soit-elle.
+
+  Le paquet des barrages préfère un ouvrage NOMMÉ à un seuil anonyme plus
+  proche : 4 579 de ses 6 189 entités n'ont ni nom, ni hauteur, ni exploitant.
+  Un anonyme reste une réponse quand c'est tout ce qu'il y a — « il y a quelque
+  chose ici et OSM ne sait pas quoi » est un fait.
+
 - **Un vol suivi dit ce qu'il lui reste à faire, et un aéroport dit ce qui lui
   arrive.** Deux lignes, deux moitiés du même croisement.
 

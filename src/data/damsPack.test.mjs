@@ -5,24 +5,27 @@ import { readFileSync } from 'node:fs';
 
 import {
   DAM_DISPLAY_FLOORS,
+  DAM_JOIN_MAX_M,
   DAM_MATERIAL_FAMILIES,
   DAM_MIN_SPAN_M,
   DAM_SIZE_SWATCH_COLOR,
   DAM_SPAN_CLASSES,
   DAM_SPAN_UNKNOWN,
-  damRenderSpec,
-  damSpanClass,
-  damSpanLegend,
+  DAM_STRUCTURES,
+  DAM_STRUCTURE_CHIPS,
   DAM_TAG_FILTERS,
   DAM_TIERS,
   DAM_TIER_STYLES,
   HYDRO_OPERATORS,
   LARGE_DAM_HEIGHT_M,
   MAJOR_DAM_SPAN_M,
+  UNCLASSIFIED_STRUCTURE_LABEL,
   damBuiltYear,
   damCardDetails,
   damDisplayFloor,
   damFeatureProperties,
+  damGroupKey,
+  damGroupParts,
   damHeightM,
   damIsHydro,
   damLabelPriority,
@@ -30,17 +33,16 @@ import {
   damName,
   damOutputMw,
   damOverpassQuery,
+  damRenderSpec,
+  damSpanClass,
+  damSpanLegend,
+  damStructureKind,
+  damStructureTitle,
   damTier,
   damTierLegend,
   damTierVisible,
-  DAM_STRUCTURE_CHIPS,
-  DAM_STRUCTURES,
-  UNCLASSIFIED_STRUCTURE_LABEL,
-  damGroupKey,
-  damGroupParts,
-  damStructureKind,
-  damStructureTitle,
   isDamStructureKind,
+  nearestDam,
 } from './damsPack.js';
 
 const PACK = new URL('./local_data/dams/dams.geojsonl', import.meta.url);
@@ -692,4 +694,38 @@ test('the shipped pack still has the span coverage the size channel was chosen o
   // More than a quarter of the layer is unmeasured. That is precisely why it
   // gets a mark of its own instead of the smallest disc.
   assert.ok(counts.get(DAM_SPAN_UNKNOWN.key) / features.length > 0.25);
+});
+
+// ── The nearest structure, offered to another layer ────────────────────────
+
+test('nearestDam prefers a NAMED structure over a closer anonymous weir', () => {
+  // 4 579 of the pack's 6 189 features carry no name, no height and no
+  // operator. "The nearest structure is an unnamed weir 400 m away" is noise
+  // where "Barrage de Serre-Ponçon, 6 km" is information.
+  const rows = [
+    { props: {}, lat: 44.500, lon: 6.300 },
+    { props: { name: 'Barrage de Serre-Ponçon', heightM: 123, hydro: true }, lat: 44.520, lon: 6.340 },
+  ];
+  const answer = nearestDam(rows, 44.5, 6.3);
+  assert.equal(answer.name, 'Barrage de Serre-Ponçon');
+  assert.equal(answer.heightM, 123);
+  assert.equal(answer.hydro, true);
+  assert.ok(answer.distanceM > 3000);
+});
+
+test('nearestDam still answers with an unnamed one when it is all there is', () => {
+  // "There is something here and OSM does not know what" is itself an answer.
+  const answer = nearestDam([{ props: {}, lat: 44.5, lon: 6.3 }], 44.5, 6.3);
+  assert.equal(answer.name, null);
+  assert.equal(answer.distanceM, 0);
+});
+
+test('nearestDam refuses past its ceiling, and is inert on a mangled call', () => {
+  const rows = [{ props: { name: 'Loin' }, lat: 48, lon: 2 }];
+  assert.equal(nearestDam(rows, 44.5, 6.3), null);
+  assert.ok(nearestDam(rows, 48.01, 2.01));
+  assert.equal(nearestDam(null, 44.5, 6.3), null);
+  assert.equal(nearestDam([], 44.5, 6.3), null);
+  assert.equal(nearestDam(rows, NaN, 2), null);
+  assert.equal(DAM_JOIN_MAX_M, 10_000);
 });
