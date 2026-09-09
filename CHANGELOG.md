@@ -24,6 +24,29 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   trois arrivent avec l'asset et ne se retirent pas. Une clé Google facturée
   hors EEE reste le chemin propre pour un produit payant ; sinon c'est le
   palier ion commercial. `DATA_SOURCES.md` porte les deux lignes.
+- **Un département en vigilance crues dit enfin quelle rivière.** L'étiquette
+  de Météo-France disait `Aude · Orange · Crues` et ne pouvait pas nommer le
+  cours d'eau : un tronçon Vigicrues ne porte **aucun code de département**, et
+  le rattacher demande un point-dans-polygone. L'audit avait classé ce point
+  comme « beaucoup de machinerie pour une étiquette d'une ligne ».
+
+  Ce n'est cher que si on le fait pour les 337 tronçons. **Hors épisode, tous
+  sont verts** — c'est l'entête de la couche Vigicrues elle-même — et un tronçon
+  vert n'est sur aucune étiquette : le travail est donc proportionnel à ce qui
+  est **élevé**, c'est-à-dire zéro par temps calme et une poignée pendant une
+  crue. L'index de contours existait déjà (`franceDepartements.js`, celui du
+  bilan national IRVE) ; le même fichier est simplement indexé une seconde fois,
+  comme `delinquanceFrance.js` le fait déjà.
+
+  L'étiquette devient `Aude · Orange · Crues · Orbieu, Aude aval, Berre +1` —
+  le plus sévère d'abord, trois noms puis un compte. **Un tronçon est nommé dans
+  chaque département qu'il traverse** : la Loire aval en traverse quatre, et en
+  créditer un seul refuserait aux trois autres un nom dont leur bulletin parle.
+  Les rivières n'apparaissent que si le bulletin du département porte bien le
+  phénomène « Crues » — une alerte au vent qui emprunterait le nom d'une rivière
+  serait deux bulletins imprimés comme un seul. Et si la couche Vigicrues est
+  éteinte, l'étiquette redevient exactement ce qu'elle était.
+
 - **Une borne de recharge dit enfin ce qui est libre, ici, maintenant.**
   QualiCharge — l'API d'agrégation de la DGEC, obligatoire pour tout opérateur
   de recharge rapide qui réclame des certificats d'électricité renouvelable —
