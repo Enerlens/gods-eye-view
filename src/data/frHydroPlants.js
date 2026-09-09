@@ -759,11 +759,9 @@ export function createFrHydroPlantsLayer({
   function drawnBySeniorRegister(plant) {
     const eic = String(plant?.eic ?? plant?.id ?? '').trim();
     if (!eic) return false;
-    const station = askJoin(PLANT_JOIN_KEYS.eic, eic);
-    if (!station) return false;
     // RTE is drawing it, unless RTE itself stood down for EDF — in which case
-    // EDF is, and the answer is the same.
-    return true;
+    // EDF is, and the answer is the same either way: somebody senior has it.
+    return Boolean(askJoin(PLANT_JOIN_KEYS.eic, eic));
   }
 
   function repaint() {

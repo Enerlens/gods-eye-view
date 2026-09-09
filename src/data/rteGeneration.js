@@ -3,7 +3,7 @@ import { governorRequestRender } from '../renderGovernor.js';
 import { registerSpriteCollection, restoreSpriteOrder, unregisterSpriteCollection } from './spriteOrder.js';
 import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { askJoin, publishJoin, watchJoin } from './layerJoins.js';
-import { PLANT_JOIN_KEYS, edfSiteIdForRteSite, plantCrossRegisterLine } from './plantIdentity.js';
+import { PLANT_JOIN_KEYS, edfSiteIdForRteSite } from './plantIdentity.js';
 import { cachedGroundFloor, warmGroundFloor } from './groundFloor.js';
 import { horizonOccluder } from './iconOrientation.js';
 import {
