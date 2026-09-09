@@ -185,21 +185,25 @@ dispersion notée. Une cible sans dispersion n'est pas une mesure.
 Colonne « aujourd'hui » remplie le 2026-09-09 (médiane de 5, `[min–max]`) ;
 colonne « au 09-09 » = après les tâches 0.1, 1.2, 1.7 et 2.5.
 
-| Cible | Départ | Au 09-09 | Objectif |
-|---|---:|---:|---:|
-| Octets de l'app (hors tuiles), cache vide | 3,83 Mo [3,82–3,83] | 3,51 Mo [3,51–3,51] | **≤ 1,8 Mo** |
-| Requêtes de l'app (hors tuiles) | 36 | 31 | — |
-| Fenêtre 25 s, tuiles comprises | 7,07 Mo [6,95–7,85] | 7,37 Mo [6,70–7,65] | *voir 2.3* |
-| `viewer` prêt, CPU ÷4 / 10 Mbit/s, cache vide | 5,8 s [4,5–8,8] | 5,3 s [4,2–6,0] | **≤ 3,5 s** |
-| `viewer` prêt, CPU ÷4, cache chaud | non mesuré | non mesuré | ≤ 1,5 s |
-| JS brut exécuté avant le globe | 8,2 Mo | 8,2 Mo | ≤ 4 Mo |
-| Orbite 5 s, zéro couche, CPU ÷4 (relatif) | p90 32,5 [19,1–36,9] / p99 44,3 ms | p90 24,7 [20,4–32,1] / p99 38,2 ms | **p90 ≤ 18 / p99 ≤ 33 ms** |
-| Orbite 5 s, 3 couches FR, **UHD 620 réel** | non mesuré | non mesuré | p90 ≤ 33 ms, aucune image > 100 ms |
-| Scène parquée, détection ON | 15 rendus / 5 s [12–19] | **0 [0–0]** ✅ | **0** (`qa-perf` 24/24 ✅) |
-| Clés dépensées avant tout geste | 5 | **0** ✅ | **0** |
-| Tas JS, 3 couches FR allumées | non mesuré | non mesuré | ≤ 250 Mio |
-| 4 packs infra sur Terre entière | « le fps part avec » | inchangé | p90 ≤ 33 ms sur la machine de référence |
-| Origine : 50 démarrages à froid simultanés | non mesuré | non mesuré | `/api` p95 ≤ 1 s, conteneur ≤ 1 Gio |
+| Cible | Départ | Polices + clés | **+ skybox (1.1)** | Objectif |
+|---|---:|---:|---:|---:|
+| Octets de l'app (hors tuiles), cache vide | 3,83 Mo [3,82–3,83] | 3,51 Mo | **2,67 Mo [2,67–2,67]** | **≤ 1,8 Mo** |
+| Requêtes de l'app (hors tuiles) | 36 | 31 | **29** | — |
+| Fenêtre 25 s, tuiles comprises | 7,07 Mo [6,95–7,85] | 7,37 Mo | 5,90 Mo | *voir 2.3* |
+| `viewer` prêt, CPU ÷4 / 10 Mbit/s | 5,8 s [4,5–8,8] | 5,3 s [4,2–6,0] | **3,57 s [3,55–3,62]** | **≤ 3,5 s** |
+| `viewer` prêt, CPU ÷4, cache chaud | non mesuré | non mesuré | non mesuré | ≤ 1,5 s |
+| JS brut exécuté avant le globe | 8,2 Mo | 8,2 Mo | 8,2 Mo | ≤ 4 Mo |
+| Orbite 5 s, zéro couche, CPU ÷4 (relatif) | p90 32,5 / p99 44,3 ms | p90 24,7 / p99 38,2 ms | **p90 20,6 [18,4–21,5] / p99 23,8** ✅ p99 | **p90 ≤ 18 / p99 ≤ 33 ms** |
+| Orbite 5 s, 3 couches FR, **UHD 620 réel** | non mesuré | non mesuré | non mesuré | p90 ≤ 33 ms, aucune image > 100 ms |
+| Scène parquée, détection ON | 15 rendus / 5 s [12–19] | **0 [0–0]** ✅ | 0 ✅ | **0** (`qa-perf` 24/24 ✅) |
+| Clés dépensées avant tout geste | 5 | **0** ✅ | 0 ✅ | **0** |
+| Tas JS, 3 couches FR allumées | non mesuré | non mesuré | non mesuré | ≤ 250 Mio |
+| 4 packs infra sur Terre entière | « le fps part avec » | inchangé | inchangé | p90 ≤ 33 ms sur la machine de référence |
+| Origine : 50 démarrages à froid simultanés | non mesuré | non mesuré | non mesuré | `/api` p95 ≤ 1 s, conteneur ≤ 1 Gio |
+
+**`viewer` est à 70 ms de sa cible et le p99 d'orbite est atteint.** Ce qui
+reste pour les octets, c'est la tâche 1.3 : 2,67 Mo dont 2,4 Mo de JavaScript.
+Aucun autre poste ne pèse assez pour approcher 1,8 Mo.
 
 La ligne « orbite » est à lire avec prudence : elle est relative (SwiftShader),
 et son intervalle recouvre les deux colonnes. Rien dans cette passe ne visait le
@@ -262,7 +266,52 @@ remplis, dispersion incluse, et versionnés dans `docs/PERFORMANCE.md`.
 
 ### Phase 1 — Le démarrage : moins d'octets, surtout moins de JavaScript (2 à 3 jours)
 
-**1.1 Skybox et fonds Cesium : −0,9 Mo, une ligne.** Construire le Viewer
+**1.1 Skybox et fonds Cesium.** ✅ **Faite le 2026-09-09, validée en capture
+par Memel.** Le plan l'annonçait à « −0,9 Mo, une ligne » ; le gain de temps
+n'était pas chiffré et il est le double de ce que les octets laissaient croire :
+
+| | Avant | Après |
+|---|---:|---:|
+| `viewer` prêt, CPU ÷4 | 5,3 s [4,2–6,0] | **3,57 s [3,55–3,62]** |
+| Octets de l'app | 3,51 Mo | **2,67 Mo** |
+| Requêtes de l'app | 31 | **29** |
+| Orbite, p90 / p99 | 24,7 / 38,2 ms | **20,6 / 23,8 ms** |
+
+Les 848 kB d'étoiles ne coûtaient pas que des octets : six JPEG 1024² se
+disputaient la bande passante ET le décodage pendant le démarrage. La
+dispersion sur `viewer` tombe à **63 ms** (contre 1,8 s), ce qui est le signe
+que la contention a disparu, pas seulement la charge.
+
+**Les étoiles ne sont pas supprimées, elles sont déplacées** (`src/starfield.js`,
+décision de Memel du 2026-09-09) : elles reviennent sur les fonds
+**photographiques** — `photoreal`, `bing-aerial`, `bing-labels`, `ign-ortho` —
+et restent absentes des fonds **dessinés** — `google-roadmap`, `google-terrain`,
+`osm`, `ign-plan`. La règle est le contenu de l'image, pas le fournisseur : sur
+un plan la Terre est un schéma et le noir est un fond ; sur une photo la Terre
+est vue depuis l'orbite et le ciel fait partie de la même affirmation.
+
+Trois points d'implémentation qui ne vont pas de soi :
+
+- **Le premier chargement est différé à l'inactivité du navigateur**, jamais
+  pendant le boot. Sans ça, un build qui s'ouvre sur un fond photographique
+  repaierait exactement les 848 kB qu'on vient d'enlever. Les changements
+  ultérieurs — quelqu'un qui choisit — installent immédiatement.
+- **Le ciel est masqué, jamais détruit.** Comparer deux fonds ne doit pas
+  retélécharger les étoiles ; `qa:starfield` le vérifie explicitement.
+- **La liste est par `id`, pas par `kind`.** `kind` groupe par fournisseur
+  (`ion` contient Bing Aerial ET Bing Labels, `ign-wmts` contient l'ortho ET le
+  Plan), et le fournisseur ne dit pas si l'image est une photo.
+
+`qa:starfield` tient les deux moitiés : zéro face `tycho2t3_80_*.jpg` sur un
+boot en fond dessiné, et les six qui arrivent au passage en satellite. Sans la
+seconde, « ne jamais charger » passerait en supprimant la fonctionnalité.
+
+Deux réductions en prime, du même geste : `scene.moon = undefined` (qui tirait
+`moonSmall.jpg` et les tables IAU2006) et `globe.showWaterEffect = false` (qui
+tire `waterNormals.jpg`, 294 kB, dès qu'une tuile porte un masque d'eau, pour
+un miroitement invisible à toutes les altitudes où cette carte se lit).
+
+*Rédaction d'origine :* Construire le Viewer
 avec `skyBox: false` et un `scene.backgroundColor` noir (ou un skybox
 procédural sans texture), `scene.moon = undefined`, et
 `globe.showWaterEffect = false`. Mesure : `perf:urls`. Gain attendu : −848 kB
@@ -667,7 +716,36 @@ Deux entrées de registre ouvertes par cette passe :
   page qui n'en payait aucun. C'est un choix de typographie, pas de
   performance ; laissé à trancher, pas fait en passant.
 
-**1.1 (skybox) n'a pas été faite** : c'est le seul poste de la phase 1 qui
-change ce qu'on voit, et le plan demande de le trancher en capture avec Memel
-avant de le livrer. Le gain est chiffré (848 kB d'étoiles + 18 kB de lune
-+ 294 kB de `waterNormals.jpg`), le code est d'une ligne ; il manque l'accord.
+**1.1 (skybox)** a été livrée dans la foulée, une fois les captures tranchées
+par Memel — voir l'entrée suivante.
+
+### 2026-09-09 (suite) — 1.1, et une leçon sur la méthode de capture
+
+`viewer` **5,3 s → 3,57 s [3,55–3,62]**, app **3,51 → 2,67 Mo**, orbite p99
+**38,2 → 23,8 ms**. Décision de Memel : les étoiles ne valent pas 1,7 s
+d'attente sur la carte, mais elles valent quelque chose sur un fond satellite —
+d'où `src/starfield.js` (§ 1.1).
+
+**La première paire de captures était fausse, et personne ne l'aurait vu.**
+L'« avant » et l'« après » ne montraient pas les mêmes libellés (France,
+Espagne, Algérie d'un côté ; EUROPE, AFRIQUE de l'autre), et j'ai affirmé que
+c'était « du chargement » sans le vérifier. Memel a demandé si l'altitude
+l'expliquait : non — elle était **identique** dans les deux, donc constante,
+donc incapable d'expliquer une différence. La vraie cause était le script de
+capture, qui attendait 4 s en dur sans vérifier que les tuiles étaient
+arrivées.
+
+Refaites avec une attente de stabilisation réelle (`tilesLoaded` vrai sur douze
+relevés consécutifs), les deux captures montrent **exactement** les mêmes
+libellés et une boîte englobante du globe identique **au pixel** —
+`[364, 58, 1004, 700]`, 640 × 642 dans les deux. Ce qui a permis de mesurer la
+seule différence réelle : **2,74 % des pixels de fond allumés contre 0 %**,
+luminance moyenne 2,82/255.
+
+Au passage, une erreur d'observation corrigée par la mesure : le globe *semble*
+plus grand sur fond noir franc. Il ne l'est pas — c'est l'œil, pas le rendu.
+
+Ce qu'il faut en garder : **une capture A/B sans attente de stabilisation
+produit des comparaisons fausses en silence**, exactement comme une médiane
+sans dispersion. Le script corrigé est `.context/perf/shot2.mjs` ; s'il sert à
+trancher une deuxième décision, il monte dans `scripts/`.

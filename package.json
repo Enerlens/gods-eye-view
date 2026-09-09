@@ -79,6 +79,7 @@
     "fonts:build": "node scripts/build-webfonts.mjs",
     "qa:boot-spend": "node scripts/qa-boot-spend.mjs",
     "qa:webfonts": "node scripts/qa-webfonts.mjs",
+    "qa:starfield": "node scripts/qa-starfield.mjs",
     "perf:boot": "node scripts/perf-boot-probe.mjs",
     "perf:urls": "node scripts/perf-boot-urls.mjs",
     "perf:layers": "node scripts/perf-boot-probe.mjs --at lyon --layers irve-fr,schools-fr,transit-fr",

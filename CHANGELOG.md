@@ -6,6 +6,25 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-09
 
 ### Changed
+- **Les étoiles quittent la carte et rejoignent le satellite — 1,7 seconde de
+  moins pour ouvrir le globe.** Cesium fabriquait un ciel étoilé pour chaque
+  session : six images du catalogue Tycho-2, **848 kB**, téléchargées à chaque
+  démarrage à froid avant que personne ait rien regardé. Sur un portable à deux
+  cœurs et 10 Mbit/s, les retirer fait passer l'ouverture de **5,3 s à 3,6 s**
+  et le poids de l'application de 3,51 Mo à **2,67 Mo**. Ce n'était pas qu'une
+  question d'octets : six JPEG de 1024 pixels se disputaient la bande passante
+  et le décodage pendant le démarrage, et l'écart entre le meilleur et le pire
+  démarrage tombe de 1,8 seconde à **63 millisecondes**.
+
+  Les étoiles ne disparaissent pas, elles changent de place. Elles reviennent
+  sur les fonds **photographiques** — Satellite, Bing Aerial, Google 3D — et
+  restent absentes des fonds **dessinés** — Plan Google, Relief, OSM, Plan IGN.
+  La règle est celle de l'image : sur un plan, la Terre est un schéma et le noir
+  est un fond ; sur une photo, elle est vue depuis l'orbite et le ciel fait
+  partie de la même image. Le chargement reste différé, donc même une session
+  qui s'ouvre directement sur un fond satellite ne paie pas ces 848 kB pendant
+  son démarrage.
+
 - **Ouvrir la carte ne coûte plus rien à personne — ni des octets, ni une
   clé.** Deux mesures prises sur la machine que ce projet vise vraiment (un
   portable de 2018, CPU bridé ÷4, 10 Mbit/s) ont donné deux résultats que
