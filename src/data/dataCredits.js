@@ -395,6 +395,19 @@ export const DATA_CREDITS = [
       'availability, and each site&rsquo;s own <code>date_maj</code> is reported as its data timestamp.',
   },
   {
+    // The live half of the same subject. Registered separately because it is a
+    // different publisher under a different obligation, and because it only
+    // ever answers on a CARD — the map is still installed capacity.
+    key: 'qualicharge',
+    html:
+      'Disponibilit&eacute; des bornes (carte de site) : ' +
+      '<a href="https://www.data.gouv.fr/datasets/infrastructures-de-recharge-pour-vehicules-electriques-donnees-ouvertes" target="_blank" rel="noopener">QualiCharge</a> ' +
+      '&mdash; Direction g&eacute;n&eacute;rale de l&rsquo;&eacute;nergie et du climat, via transport.data.gouv.fr ' +
+      '(<a href="https://github.com/etalab/licence-ouverte/blob/master/LO.md" target="_blank" rel="noopener">Licence Ouverte 2.0</a>). ' +
+      'Chaque borne porte son propre <code>horodatage</code> : une borne muette depuis plus de 24 h est ' +
+      'compt&eacute;e comme muette, jamais comme libre.',
+  },
+  {
     key: 'cadastre-pci',
     html:
       'French cadastral parcels: <em>Plan Cadastral Informatis&eacute; (PCI vecteur)</em>, ' +

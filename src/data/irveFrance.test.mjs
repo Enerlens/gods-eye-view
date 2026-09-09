@@ -139,6 +139,31 @@ test('the card refuses to imply availability', () => {
   assert.doesNotMatch(label, /(?<!Accès )libres?\b/i);
 });
 
+test('a second, NAMED source may say what the register cannot', () => {
+  // The line above is about the REGISTER and stays on the card unchanged.
+  // QualiCharge answers a different question, so it carries its own name, its
+  // own denominator and its own age — and its absence changes nothing.
+  const at = Date.now() - 8 * 60_000;
+  const label = buildIrveSelectionLabel(siteRecord(), {
+    at,
+    state: { free: 3, busy: 1, other: 0, down: 0, mute: 2 },
+  });
+  assert.match(label, /ne publie pas la disponibilité/, 'the register still says so');
+  assert.match(label, /QualiCharge — 3 libres sur 4 · 2 muettes · relevé il y a 8 min/);
+  // The denominator is what the feed spoke for, not the 224 installed points.
+  assert.doesNotMatch(label, /libres sur 224/);
+});
+
+test('a live answer that never arrives leaves the card exactly as it was', () => {
+  const bare = buildIrveSelectionLabel(siteRecord());
+  assert.equal(buildIrveSelectionLabel(siteRecord(), null), bare);
+  assert.equal(buildIrveSelectionLabel(siteRecord(), { at: null, state: null }), bare);
+  assert.equal(
+    buildIrveSelectionLabel(siteRecord(), { at: Date.now(), state: { free: 0, busy: 0, other: 0, down: 0, mute: 0 } }),
+    bare,
+  );
+});
+
 test('the card counts charge points and names the site', () => {
   const label = buildIrveSelectionLabel(siteRecord());
   assert.match(label.split('\n')[0], /QPARK/);

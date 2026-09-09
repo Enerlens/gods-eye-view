@@ -24,6 +24,52 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   trois arrivent avec l'asset et ne se retirent pas. Une clé Google facturée
   hors EEE reste le chemin propre pour un produit payant ; sinon c'est le
   palier ion commercial. `DATA_SOURCES.md` porte les deux lignes.
+- **Une borne de recharge dit enfin ce qui est libre, ici, maintenant.**
+  QualiCharge — l'API d'agrégation de la DGEC, obligatoire pour tout opérateur
+  de recharge rapide qui réclame des certificats d'électricité renouvelable —
+  publie l'état en direct de **75 584 points de charge**. Le dépôt le décodait
+  depuis le 7 septembre, avec ses trois pièges mesurés, et ne s'en servait que
+  pour la chronique : la couche IRVE, elle, répétait trois fois qu'elle ne
+  publie pas la disponibilité.
+
+  **Les deux ne pouvaient pas se rencontrer, et le plan disait pourquoi.**
+  QualiCharge se joint sur `id_pdc_itinerance` et ne publie **aucune
+  coordonnée** ; la requête de vue de la couche IRVE **groupe** ses lignes pour
+  être payable — 4 017 points de charge du centre de Paris tiennent en 469
+  lignes groupées — et exclut donc tout identifiant par borne. Aucun des deux
+  n'avait la clé de l'autre.
+
+  La table manquante existe : un export à plat de trois colonnes du fichier
+  consolidé, **227 007 lignes, 8,4 Mo, 17 s**. C'est une passe nationale, donc
+  elle est construite une fois côté serveur, gardée sur disque et rafraîchie au
+  rythme quotidien du registre qu'elle lit. **99,6 % des bornes de QualiCharge y
+  figurent.**
+
+  **Un piège en chemin : 9,34 % des identifiants de borne désignent plus d'un
+  endroit.** Les 227 007 lignes ne portent que 166 908 identifiants distincts,
+  et 15 594 sont publiés à plusieurs coordonnées — dont l'identifiant littéral
+  `Non concerné`, à 117 coordonnées réparties sur 7 302 km. Une borne dont les
+  coordonnées se contredisent de plus de **50 m** est donc **refusée** plutôt
+  que posée sur l'une d'elles : l'unité de rendu de la couche est la coordonnée,
+  deux points à 200 m sont deux marques sur la carte, et poser l'état d'une
+  borne sur l'une des deux est un tirage au sort imprimé comme un fait. Le coût
+  est mesuré, pas supposé : 92,4 % des bornes de QualiCharge se joignent quand
+  même.
+
+  **Ce qui n'a pas changé : la carte.** Elle dessine toujours la capacité
+  installée, sans couleur de disponibilité — c'est un contrat écrit dans
+  `irveFeed.js` et il tient. Ce qui change est **une ligne sur la carte d'un
+  site**, qui porte sa source, son dénominateur et son âge : `QualiCharge — 26
+  libres sur 30 · 1 hors service · 188 muettes · relevé il y a 8 min`. Le
+  dénominateur est ce dont le flux a parlé, jamais ce qui est installé, et une
+  borne muette depuis plus de 24 h est comptée comme muette, jamais comme libre
+  — c'est le piège qui gonfle de 44,4 % la capacité libre de la France, appliqué
+  parking par parking.
+
+  Le fichier n'est **pas** interrogé en boucle : la route `/api/irve-fr/live`
+  le récupère à la demande, quand un lecteur a la couche allumée, et garde la
+  réponse dix minutes. Une session qui n'ouvre jamais une borne ne coûte rien.
+
 - **Un aéroport dit enfin ce qui lui arrive, sans qu'on ait rien cliqué.** La
   ligne « en approche » d'une carte d'aérodrome lisait les trajets des vols, et
   les trajets n'étaient demandés que pour **le vol suivi** — un avion à la fois.

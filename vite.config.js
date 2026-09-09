@@ -292,6 +292,12 @@ import {
   IRVE_SOURCE,
 } from './src/data/irveFeed.js';
 import {
+  IRVE_PLACEMENT_TOLERANCE_M,
+  buildIrvePlacements,
+  foldIrveLiveBySite,
+  irveLiveTuple,
+} from './src/data/irveLive.js';
+import {
   projectCadastreParcels,
   CADASTRE_API_BASE,
   CADASTRE_BOX_STEP_DEG,
@@ -684,7 +690,9 @@ import {
   chronicleSourceIds,
 } from './src/data/chronicleSources.js';
 import {
+  QUALICHARGE_ATTRIBUTION,
   QUALICHARGE_DYNAMIC_URL,
+  QUALICHARGE_LICENCE,
   QUALICHARGE_MAX_BYTES,
   parseQualichargeDynamic,
   qualichargeSamples,
@@ -4279,6 +4287,50 @@ const IRVE_NATIONAL_CACHE_PATH = path.join(IRVE_DISK_DIR, 'departements.json');
  */
 const IRVE_NATIONAL_CACHE_VERSION = 4;
 
+// ---------------------------------------------------------------------------
+// LIVE AVAILABILITY (2026-09-09). The join `docs/PLAN-CROISEMENTS.md` recorded
+// as blocked, and the two halves of the block.
+//
+// QualiCharge says what every French charge point is DOING and publishes no
+// coordinate; the IRVE viewport query GROUPS its rows to be affordable and so
+// carries no per-plug identifier. The missing piece is one flat export of
+// three columns — measured 227 007 rows, 8.4 MB, 17 s — which is a national
+// pass, so it is built once, kept on disk, and refreshed on the same daily
+// rhythm as the register it reads. 99.6 % of QualiCharge's plugs appear in it;
+// 92.4 % survive the ambiguity rule in `irveLive.js`.
+//
+// THE POLLING IS ON DEMAND AND NOT ON A TIMER. `pollChronicleIrve` fetches the
+// same 6 MB file and is deliberately OPT-IN because it costs 112 MB a day; a
+// route that armed a second timer would spend that on every checkout. This one
+// fetches when a reader with the layer on asks, and holds the answer for
+// IRVE_LIVE_TTL_MS — so a session that never opens a charge point costs
+// nothing at all.
+// ---------------------------------------------------------------------------
+/** How long one QualiCharge body is served before another is fetched. */
+const IRVE_LIVE_TTL_MS = 10 * 60 * 1000;
+/** How long the plug→coordinate table stands. The register rebuilds daily. */
+const IRVE_PLACEMENTS_TTL_MS = 24 * 60 * 60 * 1000;
+const IRVE_PLACEMENTS_CACHE_PATH = path.join(IRVE_DISK_DIR, 'placements.json');
+/** Bump when {@link buildIrvePlacements} changes what it puts in the map. */
+const IRVE_PLACEMENTS_CACHE_VERSION = 1;
+/** The three-column flat export. Everything else in the register is grouped. */
+const IRVE_PLACEMENTS_URL = `https://odre.opendatasoft.com/api/explore/v2.1/catalog/datasets/${IRVE_DATASET}/exports/csv`
+  + '?select=id_pdc_itinerance%2Cconsolidated_latitude%2Cconsolidated_longitude&delimiter=%2C';
+/** Widest box the live route answers — the viewport gate, not a new one. */
+const IRVE_LIVE_MAX_BOX_DEG = IRVE_MAX_BOX_DEG;
+/** Declared to the proxy, like every other outbound fetch in this file. */
+const IRVE_LIVE_USER_AGENT = 'GodsEyeView/1.0 (+https://github.com/bilawalsidhu/gods-eye-view)';
+
+/** @type {?{at:number, placements:Map<string,string>, ambiguous:number, ids:number}} */
+let _irvePlacements = null;
+/** @type {?Promise<object>} */
+let _irvePlacementsInFlight = null;
+let _irvePlacementsDiskChecked = false;
+/** @type {?{at:number, sites:Map<string,object>, joined:number, unplaced:number, pdc:number}} */
+let _irveLive = null;
+/** @type {?Promise<object>} */
+let _irveLiveInFlight = null;
+
 /** @type {?{at:number, payload:object}} */
 let _irveNational = null;
 /** @type {?Promise<object>} */
@@ -4397,6 +4449,116 @@ async function refreshIrveNational() {
   };
 }
 
+/**
+ * The plug → site-key table, from disk, from memory, or from the register.
+ *
+ * One national pass, so it is shared by every caller in flight rather than
+ * fetched per request: a cold start with three readers must download 8.4 MB
+ * once, not three times.
+ *
+ * @returns {Promise<{at:number, placements:Map<string,string>, ambiguous:number, ids:number}>}
+ */
+async function irvePlacements() {
+  if (!_irvePlacementsDiskChecked) {
+    _irvePlacementsDiskChecked = true;
+    try {
+      const entry = JSON.parse(await fsp.readFile(IRVE_PLACEMENTS_CACHE_PATH, 'utf8'));
+      if (entry?.version === IRVE_PLACEMENTS_CACHE_VERSION
+        && Number.isFinite(entry.at)
+        && Array.isArray(entry.pairs)) {
+        _irvePlacements = {
+          at: entry.at,
+          placements: new Map(entry.pairs),
+          ambiguous: entry.ambiguous || 0,
+          ids: entry.ids || 0,
+        };
+      }
+    } catch { /* no disk cache yet */ }
+  }
+  const now = Date.now();
+  if (_irvePlacements && now - _irvePlacements.at <= IRVE_PLACEMENTS_TTL_MS) return _irvePlacements;
+  if (!_irvePlacementsInFlight) {
+    _irvePlacementsInFlight = (async () => {
+      const response = await fetch(IRVE_PLACEMENTS_URL, {
+        headers: { Accept: 'text/csv' },
+        signal: AbortSignal.timeout(180_000),
+      });
+      if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+      const csv = await readResponseTextCapped(response, 64 * 1024 * 1024);
+      const built = buildIrvePlacements(csv);
+      if (!built.placements.size) throw new Error('register export carried no readable placement');
+      const entry = { at: Date.now(), ...built };
+      _irvePlacements = entry;
+      console.log(`[IRVE Proxy] placements: ${entry.placements.size} bornes situées, `
+        + `${entry.ambiguous} refusées (coordonnées contradictoires au-delà de `
+        + `${IRVE_PLACEMENT_TOLERANCE_M} m), sur ${entry.ids} identifiants`);
+      // Written as PAIRS: a Map does not survive JSON, and an object keyed on
+      // 160 000 arbitrary strings is slower to parse than an array of two-item
+      // arrays by enough to matter on a cold boot.
+      fsp.mkdir(IRVE_DISK_DIR, { recursive: true })
+        .then(() => fsp.writeFile(IRVE_PLACEMENTS_CACHE_PATH, JSON.stringify({
+          version: IRVE_PLACEMENTS_CACHE_VERSION,
+          at: entry.at,
+          ambiguous: entry.ambiguous,
+          ids: entry.ids,
+          pairs: [...entry.placements],
+        })))
+        .catch((err) => console.warn('[IRVE Proxy] placement cache write failed:', err?.message || err));
+      return entry;
+    })().finally(() => { _irvePlacementsInFlight = null; });
+  }
+  try {
+    return await _irvePlacementsInFlight;
+  } catch (error) {
+    // A table a week old still places the same plugs: the register moves by
+    // additions, not by relocations. Serving it beats blanking the line.
+    if (_irvePlacements) return _irvePlacements;
+    throw error;
+  }
+}
+
+/**
+ * The live state of every placeable plug, folded onto the sites the map draws.
+ *
+ * The FETCH INSTANT is the freshness clock and it is taken before the parse —
+ * trap 2 of `qualichargeDynamic.js`. Folding from a cache ten minutes later
+ * would age every row by ten minutes it did not live and push the plugs
+ * nearest the 24-hour window over it.
+ *
+ * @returns {Promise<{at:number, sites:Map<string,object>, joined:number,
+ *   unplaced:number, pdc:number}>}
+ */
+async function irveLiveSnapshot() {
+  const now = Date.now();
+  if (_irveLive && now - _irveLive.at <= IRVE_LIVE_TTL_MS) return _irveLive;
+  if (!_irveLiveInFlight) {
+    _irveLiveInFlight = (async () => {
+      const [placed, response] = await Promise.all([
+        irvePlacements(),
+        fetch(QUALICHARGE_DYNAMIC_URL, {
+          headers: { Accept: 'text/csv', 'User-Agent': IRVE_LIVE_USER_AGENT },
+          signal: AbortSignal.timeout(60_000),
+        }),
+      ]);
+      if (!response.ok) throw new Error(`upstream HTTP ${response.status}`);
+      const csv = await readResponseTextCapped(response, QUALICHARGE_MAX_BYTES);
+      const at = Date.now();
+      const parsed = parseQualichargeDynamic(csv);
+      if (!parsed.rows.size) throw new Error('upstream returned no readable rows');
+      const folded = foldIrveLiveBySite(parsed.rows, placed.placements, { now: at });
+      const entry = { at, ...folded, pdc: parsed.rows.size };
+      _irveLive = entry;
+      return entry;
+    })().finally(() => { _irveLiveInFlight = null; });
+  }
+  try {
+    return await _irveLiveInFlight;
+  } catch (error) {
+    if (_irveLive) return _irveLive; // stale, and the payload says so
+    throw error;
+  }
+}
+
 /** Load the national rollup from disk once, lazily. */
 async function readIrveNationalDisk() {
   if (_irveNationalDiskChecked) return;
@@ -4478,6 +4640,53 @@ function irveFranceProxy() {
             }
             : null,
           nationalTtlMs: IRVE_NATIONAL_TTL_MS,
+        }, { 'Cache-Control': 'public, max-age=60' });
+        return;
+      }
+      if (route === '/live') {
+        // The SAME box gate the viewport query uses. A live answer for half of
+        // Europe would be a national rollup wearing a viewport's clothes, and
+        // the layer has a national view already.
+        const parts = String(url.searchParams.get('box') || '').split(',').map(Number);
+        const [south, west, north, east] = parts;
+        if (parts.length !== 4 || parts.some((value) => !Number.isFinite(value))
+          || north <= south || east <= west) {
+          json(400, { error: 'box must be south,west,north,east' });
+          return;
+        }
+        if (north - south > IRVE_LIVE_MAX_BOX_DEG || east - west > IRVE_LIVE_MAX_BOX_DEG) {
+          json(413, { error: `box wider than ${IRVE_LIVE_MAX_BOX_DEG}°`, maxBoxDeg: IRVE_LIVE_MAX_BOX_DEG });
+          return;
+        }
+        let snapshot;
+        try {
+          snapshot = await irveLiveSnapshot();
+        } catch (error) {
+          console.warn('[IRVE Proxy] live availability unavailable:', error?.message || error);
+          // A card that cannot say what is free says nothing about it, and the
+          // installed-capacity card it has always drawn is untouched.
+          json(200, { at: null, unavailable: true, sites: [] }, { 'X-IRVE-LIVE': 'DOWN' });
+          return;
+        }
+        // Filtered by reading the key back, which is where the coordinate
+        // already is — a second copy of 16 792 positions would be a second
+        // thing to keep in step for no gain.
+        const sites = [];
+        for (const [key, site] of snapshot.sites) {
+          const comma = key.indexOf(',');
+          const lat = Number(key.slice(0, comma));
+          const lon = Number(key.slice(comma + 1));
+          if (lat < south || lat > north || lon < west || lon > east) continue;
+          sites.push(irveLiveTuple(key, site));
+        }
+        json(200, {
+          at: snapshot.at,
+          stale: Date.now() - snapshot.at > IRVE_LIVE_TTL_MS,
+          sites,
+          pdc: snapshot.pdc,
+          joined: snapshot.joined,
+          source: QUALICHARGE_ATTRIBUTION,
+          licence: QUALICHARGE_LICENCE,
         }, { 'Cache-Control': 'public, max-age=60' });
         return;
       }
