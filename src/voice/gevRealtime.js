@@ -20,6 +20,8 @@ const STATUS = {
   executing: 'EXECUTING',
   error: 'ERROR',
 };
+/** The tray's fallback second line — see setStatus for when it is replaced. */
+const DEFAULT_VOICE_ERROR_HINT = 'Check microphone permission and network access, then try again.';
 const CALL_DEDUPE_MS = 2500;
 // WebRTC 'disconnected' is frequently momentary (a brief network blip that ICE
 // recovers on its own). Give it this long to return to 'connected' before we
@@ -273,6 +275,7 @@ export class GevRealtimeController {
     // race two lookups, and so a mic that has already chosen a brain keeps it.
     this.voiceConfigPromise = null;
     this.brainSession = null;
+    this.nextErrorHint = null;
     this.annotationEventUnsubscribe = null;
     // Voice cost control. The tier is chosen BEFORE a session starts and is
     // baked into the minted token, so a live session always keeps the model it
@@ -1504,6 +1507,16 @@ export class GevRealtimeController {
         ? (resolvedDetail || 'Voice session could not be started.')
         : '';
     }
+    // The tray's second line is a GUESS ("check microphone permission"), and it
+    // was actively wrong for the failures that have nothing to do with the mic
+    // — a browser with no speech service, a rate limit in front of the app.
+    // Callers set `nextErrorHint` when they know better; it is consumed once so
+    // a stale diagnosis never outlives the error that produced it.
+    if (this.ui.errorHint) {
+      if (status === 'error' && this.nextErrorHint) this.ui.errorHint.textContent = this.nextErrorHint;
+      else if (status !== 'error') this.ui.errorHint.textContent = DEFAULT_VOICE_ERROR_HINT;
+      this.nextErrorHint = null;
+    }
     if (status === 'idle' || status === 'connecting' || status === 'error') {
       this.setVoiceSpeaker('idle');
     }
@@ -2655,6 +2668,7 @@ function createVoiceControl({ reset = false } = {}) {
     detail: root.querySelector('#gev-voice-detail'),
     helpDetail: root.querySelector('.gev-voice-help-detail'),
     errorDetail: root.querySelector('#gev-voice-error-detail'),
+    errorHint: root.querySelector('.gev-voice-error-hint'),
     tierButton: root.querySelector('#gev-voice-tier'),
     costValue: root.querySelector('#gev-voice-cost-value'),
   };

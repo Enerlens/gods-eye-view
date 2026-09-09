@@ -98,6 +98,82 @@ export function speechRecognitionConstructor(scope = globalThis) {
 }
 
 /**
+ * What each SpeechRecognition error actually means, and what to do about it.
+ *
+ * The API reports a bare code and the dock used to print it verbatim under a
+ * static hint reading "check microphone permission" — which is wrong for most
+ * of them, and worst for the one that is hardest to guess:
+ *
+ *   `network` does NOT mean the user is offline, and it has nothing to do with
+ *   this app's server. Recognition in a Chromium browser is a client for a
+ *   REMOTE Google service, and Chromium forks (Arc, Brave, plain Chromium
+ *   builds, Electron) ship without the key that service requires. Same
+ *   machine, same connection: Chrome works, the fork answers `network`.
+ *   Reported repeatedly on chromium-dev, and telling that user to check their
+ *   microphone sends them to look at the one thing that is fine.
+ *
+ * `fatal` marks the codes where retrying in this browser cannot help, so the
+ * session stops instead of sitting in a restart loop.
+ *
+ * @type {Record<string, {message: string, hint: string, fatal: boolean}>}
+ */
+export const RECOGNITION_ERRORS = Object.freeze({
+  network: {
+    message: 'This browser cannot reach its speech recognition service',
+    hint: "Not your connection and not this server — Chromium forks (Arc, Brave, Electron) ship without the key Google's speech service needs. Open the app in Chrome, Edge or Safari.",
+    fatal: true,
+  },
+  'not-allowed': {
+    message: 'Microphone permission was denied',
+    hint: 'Allow the microphone for this site, then click the mic again.',
+    fatal: true,
+  },
+  'service-not-allowed': {
+    message: 'This browser refused to start speech recognition',
+    hint: 'The page must be served over HTTPS or from localhost, and the browser must allow its speech service. Try Chrome, Edge or Safari over HTTPS.',
+    fatal: true,
+  },
+  'audio-capture': {
+    message: 'No microphone was found',
+    hint: 'Check that an input device is connected and selected in the system sound settings.',
+    fatal: true,
+  },
+  'language-not-supported': {
+    message: 'This browser does not speak the configured language',
+    hint: 'Set GEV_VOICE_LANGUAGE to a language this browser supports, or try Chrome.',
+    fatal: true,
+  },
+  'bad-grammar': {
+    message: 'Speech recognition rejected its grammar',
+    hint: 'This is a browser bug rather than a configuration problem. Try Chrome, Edge or Safari.',
+    fatal: false,
+  },
+});
+
+/** Codes that are part of normal listening, not failures. */
+const BENIGN_RECOGNITION_ERRORS = new Set(['no-speech', 'aborted']);
+
+/**
+ * Resolve one recognition error code to what the dock should say.
+ * @param {string} code
+ * @returns {{benign: boolean, message?: string, hint?: string, fatal?: boolean}}
+ */
+export function describeRecognitionError(code) {
+  const key = typeof code === 'string' ? code.trim() : '';
+  if (BENIGN_RECOGNITION_ERRORS.has(key)) return { benign: true };
+  const known = Object.prototype.hasOwnProperty.call(RECOGNITION_ERRORS, key)
+    ? RECOGNITION_ERRORS[key]
+    : null;
+  if (known) return { benign: false, ...known };
+  return {
+    benign: false,
+    message: `Speech recognition failed: ${key || 'unknown error'}`,
+    hint: 'Try Chrome, Edge or Safari over HTTPS. If it persists, reload the page.',
+    fatal: false,
+  };
+}
+
+/**
  * Choose the closest synthesis voice for a language tag.
  *
  * Exact tag first, then any voice of the same base language, then the browser
@@ -255,7 +331,7 @@ export class GevBrainVoiceSession {
     return `LISTENING · ${model.toUpperCase()}`;
   }
 
-  stop() {
+  stop({ keepError = false } = {}) {
     if (!this.active) return;
     this.active = false;
     this.busy = false;
@@ -275,7 +351,9 @@ export class GevBrainVoiceSession {
       try { recognition.abort(); } catch { /* already stopped */ }
     }
     try { this.scope.speechSynthesis?.cancel(); } catch { /* no synthesis */ }
-    this.host.setStatus('idle', 'VOICE STANDBY');
+    // A fatal recognition error has just painted its diagnosis; resetting to
+    // idle here would wipe it before anyone could read it.
+    if (!keepError) this.host.setStatus('idle', 'VOICE STANDBY');
   }
 
   /**
@@ -310,14 +388,12 @@ export class GevBrainVoiceSession {
 
   handleRecognitionError(event) {
     if (!this.active) return;
-    const code = event?.error || 'unknown';
-    if (code === 'no-speech' || code === 'aborted') return; // normal; onend restarts.
-    if (code === 'not-allowed' || code === 'service-not-allowed') {
-      this.host.setStatus('error', 'Microphone permission was denied');
-      this.stop();
-      return;
-    }
-    this.host.setStatus('error', `Speech recognition failed: ${code}`);
+    const diagnosis = describeRecognitionError(event?.error);
+    if (diagnosis.benign) return; // no-speech / aborted: onend restarts us.
+    // Hand the host the specific second line BEFORE setStatus paints the tray.
+    this.host.nextErrorHint = diagnosis.hint;
+    this.host.setStatus('error', diagnosis.message);
+    if (diagnosis.fatal) this.stop({ keepError: true });
   }
 
   handleRecognitionEnd() {

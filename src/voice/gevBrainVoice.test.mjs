@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  describeRecognitionError,
   GevBrainVoiceSession,
   fetchVoiceConfig,
   formatBrainCost,
@@ -176,11 +177,14 @@ test('stop() ends the session and refuses to keep processing a late transcript',
 });
 
 test('a denied microphone stops the session instead of retrying forever', async () => {
-  const { session, statuses } = makeHarness({ replies: [] });
+  const { session, statuses, host } = makeHarness({ replies: [] });
   await session.start({});
   session.handleRecognitionError({ error: 'not-allowed' });
   assert.equal(session.isActive(), false);
   assert.ok(statuses.some(([s, d]) => s === 'error' && /permission/i.test(d)));
+  assert.match(host.nextErrorHint, /Allow the microphone/);
+  // The diagnosis must survive the stop that follows it.
+  assert.equal(statuses.at(-1)[0], 'error');
 });
 
 test('no-speech is normal and does not raise an error', async () => {
@@ -255,4 +259,45 @@ test('reachable separates "the server said no" from "the server never answered"'
 
   const garbled = await fetchVoiceConfig(async () => ({ ok: true, json: async () => { throw new Error('Unexpected token'); } }));
   assert.equal(garbled.reachable, false, 'a 200 of nonsense is not an answer either');
+});
+
+test('"network" is diagnosed as the browser, not as the user\'s connection', () => {
+  // Reported by a user on Arc, 2026-09-09: recognition answered `network` while
+  // the app, the server and the connection were all fine. Chromium forks ship
+  // without the key Google's speech service needs. The old message printed the
+  // bare code under a static "check microphone permission" hint, which sent the
+  // user to inspect the one thing that was working.
+  const d = describeRecognitionError('network');
+  assert.equal(d.benign, false);
+  assert.equal(d.fatal, true, 'retrying in the same browser cannot help');
+  assert.doesNotMatch(d.message, /permission/i);
+  assert.match(d.hint, /Arc/, 'name the browsers this actually happens on');
+  assert.match(d.hint, /Chrome, Edge or Safari/, 'and name a way out');
+  assert.match(d.hint, /Not your connection and not this server/);
+});
+
+test('benign codes are silent, unknown codes still say something useful', () => {
+  assert.deepEqual(describeRecognitionError('no-speech'), { benign: true });
+  assert.deepEqual(describeRecognitionError('aborted'), { benign: true });
+  const unknown = describeRecognitionError('some-new-code');
+  assert.equal(unknown.benign, false);
+  assert.equal(unknown.fatal, false, 'an unknown code is not assumed unrecoverable');
+  assert.match(unknown.message, /some-new-code/, 'the raw code stays visible for a bug report');
+  assert.deepEqual(describeRecognitionError(undefined).benign, false);
+});
+
+test('a fatal recognition error stops the session but leaves its diagnosis up', async () => {
+  const { session, statuses, host } = makeHarness({ replies: [] });
+  await session.start({});
+  session.handleRecognitionError({ error: 'network' });
+  assert.equal(session.isActive(), false, 'no restart loop against a service that will not answer');
+  assert.deepEqual(statuses.at(-1), ['error', 'This browser cannot reach its speech recognition service']);
+  assert.match(host.nextErrorHint, /Chrome, Edge or Safari/);
+});
+
+test('a non-fatal error keeps listening', async () => {
+  const { session } = makeHarness({ replies: [] });
+  await session.start({});
+  session.handleRecognitionError({ error: 'bad-grammar' });
+  assert.equal(session.isActive(), true);
 });
