@@ -114,3 +114,45 @@ export function getAwarenessNavigationTargets(cohorts, subject = null, visitedKe
   });
   return targets;
 }
+
+/**
+ * The per-layer counts the Contacts panel is showing, as one flat block.
+ *
+ * Three honest numbers were reaching the operator at once: this cohort count
+ * (the panel), `analyst_query`'s count of CURRENTLY-LOADED records, and the
+ * layer-wide loaded total in the coverage note. After the camera dives to a
+ * tracked contact the flights layer reloads by viewport, so the loaded set can
+ * hold a fraction of the cohort — 8 against the panel's 42 in the field. The
+ * numbers are all correct and the disagreement still reads as chaos.
+ *
+ * Derived from the same snapshot the panel renders (`cohort.summary.count` via
+ * `buildAwarenessContextSnapshot`), so the two cannot drift apart. A cohort
+ * whose feed cannot answer reports 'unknown' rather than a misleading zero.
+ * @param {object|null} snapshot `getContextSnapshot()` result.
+ * @returns {{centeredOn: string|null, radiusKm: number|null, aircraft: number|string,
+ *   flights: number|string, military: number|string, vessels: number|string}|null}
+ *   Panel-equivalent counts.
+ */
+export function contactsWindowFromSnapshot(snapshot) {
+  if (!snapshot?.subject) return null;
+  const countFor = (cohortId) => {
+    const cohort = Array.isArray(snapshot.cohorts)
+      ? snapshot.cohorts.find((item) => item?.id === cohortId)
+      : null;
+    return Number.isFinite(cohort?.count) ? cohort.count : 'unknown';
+  };
+  const flights = countFor('flights');
+  const military = countFor('military');
+  return {
+    centeredOn: snapshot.subject.label || snapshot.subject.id || null,
+    radiusKm: Number.isFinite(snapshot.radiusM)
+      ? Math.round(snapshot.radiusM / 1000)
+      : null,
+    aircraft: Number.isFinite(flights) && Number.isFinite(military)
+      ? flights + military
+      : 'unknown',
+    flights,
+    military,
+    vessels: countFor('ais-live-vessels'),
+  };
+}

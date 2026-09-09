@@ -274,17 +274,17 @@ test('Radio is nested inside Context with separate disclosure and power controls
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.radio-tuner-needle,[\s\S]*?\.radio-tuner-tick\s*\{\s*transition: none;/);
   assert.doesNotMatch(ui, /_radioTunerCameraRemove = this\.viewer\?\.camera\?\.changed/);
   assert.match(ui, /classList\.toggle\('radio-broadcasting', state\.audioState === 'playing'\)/);
-  assert.match(ui, /cycleStation\(direction, \{[\s\S]*?rotate,[\s\S]*?stationIds:/);
+  assert.match(ui, /cycleStation(?:\?\.)?\(direction, \{[\s\S]*?rotate,[\s\S]*?stationIds:/);
   const cycleStart = ui.indexOf('const cycleRadio = (direction, { rotate = true } = {}) =>');
   const cycleMethod = ui.slice(cycleStart, ui.indexOf('const toggleRadio', cycleStart));
   assert.doesNotMatch(cycleMethod, /refreshTunerBand/);
   assert.match(ui, /_radioTunerBandPinnedForNavigation = true/);
   assert.match(ui, /viewer\?\.canvas\?\.addEventListener\('pointerdown', releaseNavigationBand/);
-  assert.match(ui, /previewTuningStation\(station\?\.id \|\| null, \{ rotate \}\)/);
+  assert.match(ui, /previewTuningStation(?:\?\.)?\(station\?\.id \|\| null, \{ rotate \}\)/);
   assert.match(ui, /tunerPreview\(\{ coordinate: this\._radioTunerCoordinate, rotate: commit \}\)/);
-  assert.match(ui, /radioLayer\.cancelTuning\(\)/);
+  assert.match(ui, /radioLayer\.cancelTuning(?:\?\.)?\(\)/);
   assert.match(ui, /classList\.remove\('radio-broadcasting'\)/);
-  assert.match(ui, /radioLayer\.getTunerStations\(750\)/);
+  assert.match(ui, /radioLayer\.getTunerStations(?:\?\.)?\(750\)/);
   assert.match(ui, /radioTunerPointerPosition\(/);
   assert.doesNotMatch(css, /#right-context-rail\s*>\s*#radio-panel/);
   assert.match(css, /#global-context-panel #radio-panel\.collapsed/);
@@ -370,8 +370,11 @@ test('successful explicit user playback hands the speaker from voice to Radio', 
   assert.ok(confirmedPlaying >= 0 && takeoverSignal > confirmedPlaying);
   assert.match(radio, /startPlayback: \(\) => playSelectedRadio\(\{ origin: 'voice', attemptId: options\.attemptId \}\)/);
   assert.match(radio, /selectRadioStation\(stationId, \{ autoplay: true, origin: 'user' \}\)/);
-  assert.match(ui, /togglePlayback\(\{ origin: 'user' \}\)/);
-  assert.match(ui, /cycleStation\(direction, \{[\s\S]*?origin: 'user'/);
-  assert.match(ui, /commitTuningStation\(station\.id, \{ origin: 'user' \}\)/);
+  // `?.` tolerated: the radio layer is reached through its lazily-loaded stub
+  // now (see src/data/lazyLayer.js), so the UI optional-chains these three.
+  // What is pinned here is the ORIGIN the UI hands over, not the call syntax.
+  assert.match(ui, /togglePlayback(?:\?\.)?\(\{ origin: 'user' \}\)/);
+  assert.match(ui, /cycleStation(?:\?\.)?\(direction, \{[\s\S]*?origin: 'user'/);
+  assert.match(ui, /commitTuningStation(?:\?\.)?\(station\.id, \{ origin: 'user' \}\)/);
   assert.match(realtime, /event\.origin === 'user' && event\.action === 'play' && this\.isActive\(\)[\s\S]*?this\.stop\(\{ preserveRadioPlayback: true \}\)/);
 });

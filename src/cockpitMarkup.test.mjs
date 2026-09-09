@@ -510,7 +510,7 @@ test('Location navigation releases immediate routes before flight and deferred r
 test('Cockpit Radio station changes preserve first-person camera ownership', () => {
   const cycleHelper = ui.match(/const cycleRadio = \(direction, \{ rotate = true \} = \{\}\) => \{([\s\S]*?)\n    \};/);
   assert.ok(cycleHelper, 'shared Radio cycle helper is missing');
-  assert.match(cycleHelper[1], /cycleStation\(direction, \{[\s\S]*?rotate,/);
+  assert.match(cycleHelper[1], /cycleStation(?:\?\.)?\(direction, \{[\s\S]*?rotate,/);
   assert.match(ui, /_radioPrevBtn\?\.addEventListener\('click', \(\) => cycleRadio\(-1\)\)/);
   assert.match(ui, /_contextRadioMiniNextBtn\?\.addEventListener\('click', \(\) => cycleRadio\(1\)\)/);
   assert.match(
@@ -825,7 +825,7 @@ test('voice Cockpit entry honours a requested contact layer before it enters', (
   );
   assert.match(
     retarget,
-    /militaryAwarenessLayer\.navigateNext\(\{\s*targetLayer,\s*aircraftClass,\s*origin: 'voice',\s*\}\)/,
+    /militaryAwarenessLayer\.navigateNext(?:\?\.)?\(\{\s*targetLayer,\s*aircraftClass,\s*origin: 'voice',\s*\}\)/,
     'retargeting reuses filtered navigation with durable voice selection authority',
   );
   assert.match(retarget, /Cockpit flies aircraft only/, 'non-aircraft layers are refused by name');

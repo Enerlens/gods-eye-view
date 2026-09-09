@@ -43,6 +43,7 @@ import {
   setMode as setDetectionModeByLabel,
   suspendDetection,
   resumeDetection,
+  setDetectionLayers,
   setDetectionStyle,
   setDetectionTuning,
 } from './data/detection.js';
@@ -54,25 +55,14 @@ import {
   normalizeProfile,
   profileForDensity,
 } from './data/detectionPolicy.js';
-import trafficLayer from './data/traffic.js';
-import flightsLayer from './data/flights.js';
-import militaryFlightsLayer from './data/militaryFlights.js';
 import { isTr3b, toggleTr3b } from './data/tr3bRegistry.js';
-import satellitesLayer from './data/satellites.js';
-import cctvLayer from './data/cctv.js';
-import radioLayer, {
+import {
   buildRadioTunerTicks,
   radioTunerCommitSlot,
   radioTunerPointerPosition,
   radioTunerSlot,
-} from './data/radio.js';
-import bikeshareLayer from './data/bikeshare.js';
-import transitFranceLayer from './data/transitFrance.js';
-import sharedMobilityFranceLayer from './data/sharedMobilityFrance.js';
-import aisLiveVesselsLayer from './data/aisLiveVessels.js';
-import militaryAwarenessLayer from './data/militaryAwareness.js';
-import militaryInstallationsLayer from './data/militaryInstallations.js';
-import rocketLaunchesLayer from './data/rocketLaunches.js';
+} from './data/radioTuner.js';
+
 import {
   aggregateLayerLoading,
   canPresentDeferredStatusNotice,
@@ -194,6 +184,70 @@ import {
   slewHeading,
   speedRulerTicks,
 } from './cockpitMath.js';
+
+// ─── The thirteen layers this file talks to ──────────────────────────────────
+//
+// These used to be static imports, and they were the single largest reason the
+// boot chunk still carried 1.8 MB of layer code after `main.js` stopped
+// importing any: CCTV alone is 211 kB, military flights 181 kB, and Global
+// Context drags flights, military, AIS and installations behind it. The cockpit
+// needs all thirteen, but only once someone switches one on.
+//
+// So they are bound instead, from the very stubs `main.js` registered — see
+// `src/data/lazyLayer.js`. The object identity is stable for the life of the
+// page, which is why the ~90 call sites below are unchanged: a stub answers
+// `undefined` for a method its module has not brought yet, exactly as
+// `ABSENT_LAYER` does before the manager is attached at all. Every call site
+// that used to be unconditional is now optional-chained for that reason, and
+// the two that CANNOT be — the CCTV and radio HUD subscriptions — are re-run
+// when their module lands (`_bindLayerFeedSubscriptions`).
+const ABSENT_LAYER = Object.freeze({});
+let trafficLayer = ABSENT_LAYER;
+let flightsLayer = ABSENT_LAYER;
+let militaryFlightsLayer = ABSENT_LAYER;
+let satellitesLayer = ABSENT_LAYER;
+let cctvLayer = ABSENT_LAYER;
+let radioLayer = ABSENT_LAYER;
+let bikeshareLayer = ABSENT_LAYER;
+let transitFranceLayer = ABSENT_LAYER;
+let sharedMobilityFranceLayer = ABSENT_LAYER;
+let aisLiveVesselsLayer = ABSENT_LAYER;
+let militaryAwarenessLayer = ABSENT_LAYER;
+let militaryInstallationsLayer = ABSENT_LAYER;
+let rocketLaunchesLayer = ABSENT_LAYER;
+
+/**
+ * Point the bindings above at the manager's registered layers.
+ *
+ * Called from `attachDataManager()`, which is the first moment the registry
+ * exists. A manager that does not know a layer leaves that binding absent
+ * rather than throwing — the unit suite builds partial managers on purpose.
+ *
+ * @param {object|null} dataManager Layer manager, or null to unbind.
+ * @returns {object[]} The bound modules, in detection-overlay order.
+ */
+function bindCockpitLayers(dataManager) {
+  const bind = (layerId) => dataManager?.layers?.get?.(layerId)?.module || ABSENT_LAYER;
+  trafficLayer = bind('traffic');
+  flightsLayer = bind('flights');
+  militaryFlightsLayer = bind('military');
+  satellitesLayer = bind('satellites');
+  cctvLayer = bind('cctv');
+  radioLayer = bind('radio');
+  bikeshareLayer = bind('bikeshare');
+  transitFranceLayer = bind('transit-fr');
+  sharedMobilityFranceLayer = bind('shared-mobility-fr');
+  aisLiveVesselsLayer = bind('ais-live-vessels');
+  militaryAwarenessLayer = bind('military-awareness');
+  militaryInstallationsLayer = bind('military-installations');
+  rocketLaunchesLayer = bind('rocket-launches');
+  // The order the detection overlay was given at construction, preserved: it
+  // decides which register wins a tie between two candidates at the same pixel.
+  return [
+    trafficLayer, flightsLayer, militaryFlightsLayer, satellitesLayer, cctvLayer,
+    bikeshareLayer, transitFranceLayer, sharedMobilityFranceLayer, aisLiveVesselsLayer,
+  ];
+}
 
 /** Duration (ms) for shader intensity crossfade between style presets. */
 const TRANSITION_DURATION_MS = 500;
@@ -2681,7 +2735,11 @@ export class StyleManager {
 
     // Initialize detection overlay BEFORE style stages so the composite
     // stage is first in the post-process pipeline
-    initDetection(viewer, [trafficLayer, flightsLayer, militaryFlightsLayer, satellitesLayer, cctvLayer, bikeshareLayer, transitFranceLayer, sharedMobilityFranceLayer, aisLiveVesselsLayer], (modeLabel) => {
+    // Empty register on purpose: the layer stubs live in the manager, which is
+    // attached later — `attachDataManager()` hands the same nine over through
+    // `setDetectionLayers()`. Detection re-checks each layer on every paint, so
+    // the window between the two is a scene with nothing to detect, not a bug.
+    initDetection(viewer, [], (modeLabel) => {
       this._updateDetectionButton(modeLabel);
     });
     initTrackedReadout(viewer);
@@ -2801,7 +2859,7 @@ export class StyleManager {
     this._cctvRequestFocusHandler = (event) => routeCctvFocusRequest(
       event,
       (activate, focus) => this._runExplicitCctvFocus(activate, focus),
-      (cameraId, durationSec) => cctvLayer.focusCamera(cameraId, durationSec),
+      (cameraId, durationSec) => cctvLayer.focusCamera?.(cameraId, durationSec),
     );
     this._removeCctvRequestFocusListener = registerCctvFocusRequestListener(
       window,
@@ -4296,6 +4354,35 @@ export class StyleManager {
   }
 
   /**
+   * (Re)attach the CCTV and radio HUD subscriptions.
+   *
+   * These two are the only surfaces that read a layer by SUBSCRIBING to it
+   * rather than by calling it, so they are the only two the lazy layers break:
+   * `attachDataManager()` used to run against a statically imported module and
+   * could subscribe once and for good. It now runs against a stub, whose
+   * `subscribe` does not exist until the module lands — so this is also called
+   * on every visibility change for those two layers, and the guards make the
+   * second, third and tenth call free.
+   *
+   * @returns {void}
+   */
+  _bindLayerFeedSubscriptions() {
+    if (!this._cctvUnsubscribe && typeof cctvLayer.subscribe === 'function') {
+      this._cctvUnsubscribe = cctvLayer.subscribe((state) => {
+        this._renderCctvState(state);
+      });
+      if (typeof cctvLayer.getUIState === 'function') {
+        this._renderCctvState(cctvLayer.getUIState());
+      }
+    }
+    if (!this._radioUnsubscribe && typeof radioLayer.subscribe === 'function') {
+      this._radioUnsubscribe = radioLayer.subscribe((state) => {
+        this._renderRadioState(state);
+      });
+    }
+  }
+
+  /**
    * Connects the layer data manager for traffic sync, CCTV state subscription,
    * and layer enable/disable operations.
    * @param {object|null} dataManager - The DataManager instance, or null to detach.
@@ -4315,6 +4402,10 @@ export class StyleManager {
       this._dataManagerVisibilityRequestUnsubscribe = null;
     }
     this._dataManager = dataManager || null;
+    // Point the module-level layer bindings at the registry before anything
+    // below reads one — the detection overlay's register is the same nine, in
+    // the order it was originally constructed with.
+    setDetectionLayers(bindCockpitLayers(this._dataManager));
     this.hud.attachDataManager(this._dataManager);
     this._updateTrafficSyncChip();
     if (this._dataManagerUnsubscribe) {
@@ -4443,23 +4534,11 @@ export class StyleManager {
       this._cctvUnsubscribe();
       this._cctvUnsubscribe = null;
     }
-    if (typeof cctvLayer.subscribe === 'function') {
-      this._cctvUnsubscribe = cctvLayer.subscribe((state) => {
-        this._renderCctvState(state);
-      });
-    }
-    if (typeof cctvLayer.getUIState === 'function') {
-      this._renderCctvState(cctvLayer.getUIState());
-    }
     if (this._radioUnsubscribe) {
       this._radioUnsubscribe();
       this._radioUnsubscribe = null;
     }
-    if (typeof radioLayer.subscribe === 'function') {
-      this._radioUnsubscribe = radioLayer.subscribe((state) => {
-        this._renderRadioState(state);
-      });
-    }
+    this._bindLayerFeedSubscriptions();
     if (!this._awarenessSelectedHandler) {
       this._awarenessSelectedHandler = (event) => this._persistAwarenessSelection(event, false);
       this._awarenessClearedHandler = (event) => this._persistAwarenessSelection(event, true);
@@ -5053,13 +5132,18 @@ export class StyleManager {
   }
 
   _handleContextLayerChange(change) {
+    // The first enable of CCTV or radio is what brings its module — and with it
+    // the `subscribe` the HUD needs. Cheap and idempotent once bound.
+    if (change?.layerId === 'cctv' || change?.layerId === 'radio') {
+      this._bindLayerFeedSubscriptions();
+    }
     if (change?.layerId === 'radio' && [
       'visibility-transition',
       'visibility',
       'visibility-cancelled',
       'visibility-failed',
     ].includes(change.type)) {
-      this._renderRadioState(radioLayer.getUIState());
+      this._renderRadioState(radioLayer.getUIState?.());
     }
     if (change?.type === 'visibility-transition') return;
     // The effective mode must be read BEFORE the entering flag is cleared:
@@ -5359,7 +5443,7 @@ export class StyleManager {
           ? `${station.name}, station ${slot.stationIndex + 1} of ${this._radioTunerStations.length}`
           : 'No station available');
       }
-      if (syncStatic) radioLayer.previewTuningStation(station?.id || null, { rotate });
+      if (syncStatic) radioLayer.previewTuningStation?.(station?.id || null, { rotate });
       return station;
     };
     const setTunerDirectory = (pool) => {
@@ -5375,7 +5459,7 @@ export class StyleManager {
     const refreshTunerBand = ({ force = false } = {}) => {
       if (this._radioTunerDragging || this._radioTuner?.hidden || this._radioTunerSlider?.disabled) return false;
       const selectedId = this._radioState?.selected?.id || null;
-      const pool = radioLayer.getTunerStations(750);
+      const pool = radioLayer.getTunerStations?.(750) || [];
       const poolSignature = pool.map((station) => station.id).join('|');
       const currentPoolSignature = this._radioTunerPool.map((station) => station.id).join('|');
       if (!force && poolSignature === currentPoolSignature && selectedId === this._radioTunerSelectedId) return false;
@@ -5392,7 +5476,7 @@ export class StyleManager {
     const beginTuner = () => {
       if (this._radioTunerDragging || this._radioTunerSlider?.disabled) return false;
       refreshTunerBand();
-      if (!this._radioTunerStations.length || !radioLayer.beginTuning()) return false;
+      if (!this._radioTunerStations.length || !radioLayer.beginTuning?.()) return false;
       // A tuner-owned camera preview must never replace the frozen directory.
       // Only an explicit globe pointer/wheel gesture releases camera pinning.
       this._radioTunerBandPinnedForNavigation = true;
@@ -5450,11 +5534,11 @@ export class StyleManager {
         // Keep the exact band used by the drag so the selected channel cannot
         // jump to a refreshed catalog slot while its camera flight settles.
         this._radioTunerBandPinnedForNavigation = true;
-        result = radioLayer.commitTuningStation(station.id, { origin: 'user' });
+        result = radioLayer.commitTuningStation?.(station.id, { origin: 'user' });
       } else if (!commit) {
-        radioLayer.cancelTuning();
+        radioLayer.cancelTuning?.();
       } else {
-        radioLayer.endTuning();
+        radioLayer.endTuning?.();
       }
       // Radio emits selection/tuning state synchronously. Keep both the logical
       // drag and the no-transition class active until that state has settled,
@@ -5483,7 +5567,7 @@ export class StyleManager {
     const cycleRadio = (direction, { rotate = true } = {}) => {
       this._radioTunerBandPinnedForNavigation = true;
       const pool = this._radioTunerPool.length ? this._radioTunerPool : this._radioTunerStations;
-      const cycled = radioLayer.cycleStation(direction, {
+      const cycled = radioLayer.cycleStation?.(direction, {
         rotate,
         stationIds: pool.map((station) => station.id),
         origin: 'user',
@@ -5588,16 +5672,17 @@ export class StyleManager {
       this.setPanelCollapsed('data-panel', true);
     }, tunerListenerOptions);
     this._radioFilter?.addEventListener('change', () => {
-      const presentation = radioLayer.getUIState();
-      if (!presentation.presentationActive) {
-        this._radioFilter.value = presentation.filter;
+      const presentation = radioLayer.getUIState?.() || null;
+      if (!presentation?.presentationActive) {
+        if (presentation) this._radioFilter.value = presentation.filter;
         return;
       }
       if (this._radioTunerDragging) finishTuner(false);
       if (!this._dataManager?.setLayerParams('radio', {
         filter: this._radioFilter.value,
       }, { origin: 'user' })) {
-        this._radioFilter.value = radioLayer.getUIState().filter;
+        const rejected = radioLayer.getUIState?.();
+        if (rejected) this._radioFilter.value = rejected.filter;
         return;
       }
       this._radioTunerBandPinnedForNavigation = false;
@@ -5606,8 +5691,8 @@ export class StyleManager {
     });
     this._radioPrevBtn?.addEventListener('click', () => cycleRadio(-1));
     this._radioNextBtn?.addEventListener('click', () => cycleRadio(1));
-    this._radioPlayBtn?.addEventListener('click', () => void radioLayer.togglePlayback({ origin: 'user' }));
-    this._radioStopBtn?.addEventListener('click', () => radioLayer.stopPlayback({ origin: 'user' }));
+    this._radioPlayBtn?.addEventListener('click', () => void radioLayer.togglePlayback?.({ origin: 'user' }));
+    this._radioStopBtn?.addEventListener('click', () => radioLayer.stopPlayback?.({ origin: 'user' }));
     this._radioVolume?.addEventListener('input', () => {
       const value = Number(this._radioVolume.value);
       if (this._radioVolumeValue) this._radioVolumeValue.textContent = `${value}%`;
@@ -5615,13 +5700,13 @@ export class StyleManager {
     });
     this._contextRadioMiniPrevBtn?.addEventListener('click', () => cycleRadio(-1));
     this._contextRadioMiniNextBtn?.addEventListener('click', () => cycleRadio(1));
-    this._contextRadioMiniPlayBtn?.addEventListener('click', () => void radioLayer.togglePlayback({ origin: 'user' }));
+    this._contextRadioMiniPlayBtn?.addEventListener('click', () => void radioLayer.togglePlayback?.({ origin: 'user' }));
     // Cockpit owns the Cesium camera even though it intentionally clears
     // viewer.trackedEntity. Station changes must never start the map-view
     // rotation/fallback flights that would compete with its preUpdate pose.
     this._cockpitRadioPrevBtn?.addEventListener('click', () => cycleRadio(-1, { rotate: false }));
     this._cockpitRadioNextBtn?.addEventListener('click', () => cycleRadio(1, { rotate: false }));
-    this._cockpitRadioPlayBtn?.addEventListener('click', () => void radioLayer.togglePlayback({ origin: 'user' }));
+    this._cockpitRadioPlayBtn?.addEventListener('click', () => void radioLayer.togglePlayback?.({ origin: 'user' }));
     this._contextRadioMiniVolume?.addEventListener('input', () => {
       const value = Number(this._contextRadioMiniVolume.value);
       if (this._contextRadioMiniVolumeValue) this._contextRadioMiniVolumeValue.textContent = `${value}%`;
@@ -6096,24 +6181,24 @@ export class StyleManager {
     this._cctvNearestBtn?.addEventListener('click', async () => {
       if (!await this._toggleCctvEnabled(true)) return;
       this._runExplicitCctvFocus(
-        () => cctvLayer.focusNearest({ focus: false }),
-        (cameraId) => cctvLayer.focusCamera(cameraId, 1.8),
+        () => cctvLayer.focusNearest?.({ focus: false }),
+        (cameraId) => cctvLayer.focusCamera?.(cameraId, 1.8),
       );
     });
 
     this._cctvPrevBtn?.addEventListener('click', async () => {
       if (!await this._toggleCctvEnabled(true)) return;
       this._runExplicitCctvFocus(
-        () => cctvLayer.cycleCamera(-1),
-        (cameraId) => cctvLayer.focusCamera(cameraId, 1.4),
+        () => cctvLayer.cycleCamera?.(-1),
+        (cameraId) => cctvLayer.focusCamera?.(cameraId, 1.4),
       );
     });
 
     this._cctvNextBtn?.addEventListener('click', async () => {
       if (!await this._toggleCctvEnabled(true)) return;
       this._runExplicitCctvFocus(
-        () => cctvLayer.cycleCamera(1),
-        (cameraId) => cctvLayer.focusCamera(cameraId, 1.4),
+        () => cctvLayer.cycleCamera?.(1),
+        (cameraId) => cctvLayer.focusCamera?.(cameraId, 1.4),
       );
     });
 
@@ -6125,8 +6210,8 @@ export class StyleManager {
       // three metros, so a bare selection used to leave the view in the old
       // city with a camera active thousands of km away.
       this._runExplicitCctvFocus(
-        () => (cctvLayer.selectCamera(cameraId) ? cameraId : null),
-        (selectedId) => cctvLayer.focusCamera(selectedId, 2.2),
+        () => (cctvLayer.selectCamera?.(cameraId) ? cameraId : null),
+        (selectedId) => cctvLayer.focusCamera?.(selectedId, 2.2),
       );
       this._dataManager?.setLayerParams('cctv', { selectedCameraId: cameraId }, { origin: 'user' });
     });
@@ -6137,7 +6222,7 @@ export class StyleManager {
       if (!await this._toggleCctvEnabled(true)) return;
       this._runExplicitCctvFocus(
         () => selected,
-        (cameraId) => cctvLayer.focusCamera(cameraId, 1.9),
+        (cameraId) => cctvLayer.focusCamera?.(cameraId, 1.9),
       );
       this._dataManager?.setLayerParams('cctv', { selectedCameraId: selected }, { origin: 'user' });
     });
@@ -6574,10 +6659,10 @@ export class StyleManager {
         cockpitActive: !!this.cockpitView?.active,
       }),
       shouldFocus: () => !this._cctvState?.activeCameraId,
-      activate: () => cctvLayer.focusNearest({ focus: false }),
+      activate: () => cctvLayer.focusNearest?.({ focus: false }),
       fly: (cameraId) => this._runExplicitCctvFocus(
         () => cameraId,
-        (selectedId) => cctvLayer.focusCamera(selectedId, 1.6),
+        (selectedId) => cctvLayer.focusCamera?.(selectedId, 1.6),
       ),
     });
     return true;
@@ -8451,7 +8536,7 @@ export class StyleManager {
     const alreadyOnLayer = activeLayer === targetLayer;
     if (alreadyOnLayer && !aircraftClass) return { ok: true, retargeted: false };
     const moved = militaryAwarenessLayer?.navigateNext
-      ? !!militaryAwarenessLayer.navigateNext({
+      ? !!militaryAwarenessLayer.navigateNext?.({
         targetLayer,
         aircraftClass,
         origin: 'voice',
@@ -10393,7 +10478,7 @@ export class StyleManager {
     this._radioTunerCameraRemove = null;
     this._refreshRadioTunerBand = null;
     document.getElementById('title-bar')?.classList.remove('radio-broadcasting');
-    radioLayer.endTuning();
+    radioLayer.endTuning?.();
     if (this._radioSelectedHandler) {
       document.removeEventListener('gev:radio-selected', this._radioSelectedHandler);
       this._radioSelectedHandler = null;

@@ -83,6 +83,7 @@
     "qa:boot-spend": "node scripts/qa-boot-spend.mjs",
     "qa:webfonts": "node scripts/qa-webfonts.mjs",
     "qa:starfield": "node scripts/qa-starfield.mjs",
+    "qa:lazy-layers": "node scripts/qa-lazy-layers.mjs",
     "perf:boot": "node scripts/perf-boot-probe.mjs",
     "perf:urls": "node scripts/perf-boot-urls.mjs",
     "perf:layers": "node scripts/perf-boot-probe.mjs --at lyon --layers irve-fr,schools-fr,transit-fr",
@@ -124,7 +125,9 @@
     "qa:chronicle": "node scripts/qa-chronicle.mjs",
     "chronicle:gtfs-rt-cost": "node scripts/measure-pan-gtfs-rt-cost.mjs",
     "chronicle:service-day": "node scripts/measure-gtfs-service-day.mjs",
-    "dataset:manifest": "node scripts/dataset-manifest.mjs"
+    "dataset:manifest": "node scripts/dataset-manifest.mjs",
+    "layers:manifest": "node scripts/build-layer-manifest.mjs",
+    "layers:manifest:check": "node scripts/build-layer-manifest.mjs --check"
   },
   "dependencies": {
     "@mapbox/vector-tile": "^3.0.0",

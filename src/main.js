@@ -5,61 +5,8 @@ import { getGlobeDetailDiagnostics, installGlobeDetailGovernor } from './globeDe
 import { getCameraSensitivityDiagnostics } from './data/cameraSensitivity.js';
 import { peekShareMapStack } from './sharelink.js';
 import { DataLayerManager } from './data/manager.js';
-import flightsLayer from './data/flights.js';
-import militaryFlightsLayer from './data/militaryFlights.js';
-import earthquakesLayer from './data/earthquakes.js';
-import vigicruesLayer from './data/vigicrues.js';
-import hubeauHydrometryLayer from './data/hubeauHydrometry.js';
-import meteoFranceVigilanceLayer from './data/meteoFranceVigilance.js';
-import franceEnergyLayer from './data/franceEnergy.js';
-import gasFranceLayer from './data/gasFrance.js';
-import edfPowerPlantsLayer from './data/edfPowerPlants.js';
-import frHydroPlantsLayer from './data/frHydroPlants.js';
-import powerGridLayer from './data/powerGrid.js';
-import bdtopoBuildingsLayer from './data/bdtopoBuildings.js';
-import cadastreParcelsLayer from './data/cadastreParcels.js';
-import filosofiCarreauxLayer from './data/filosofiCarreaux.js';
-import isochroneRingsLayer from './data/isochroneRings.js';
-import implantationFicheLayer from './data/implantationFiche.js';
-import comparablesLayer from './data/comparablesLayer.js';
-import veloPulseLayer from './data/veloPulse.js';
-import georisquesLayer from './data/georisques.js';
-import dvfSalesLayer from './data/dvfSales.js';
-import avisValeurLayer from './data/avisValeur.js';
-import dpeFranceLayer from './data/dpeFrance.js';
-import urbanismeGpuLayer from './data/urbanismeGpu.js';
-import adsUrbanismeLayer from './data/adsUrbanisme.js';
-import idfmNetworkLayer from './data/idfmNetwork.js';
-import rteGenerationLayer from './data/rteGeneration.js';
-import satellitesLayer from './data/satellites.js';
-import rocketLaunchesLayer from './data/rocketLaunches.js';
-import trafficLayer from './data/traffic.js';
-import roadEventsFranceLayer from './data/roadEventsFrance.js';
-import cctvLayer from './data/cctv.js';
-import radioLayer from './data/radio.js';
-import bikeshareLayer from './data/bikeshare.js';
-import transitFranceLayer from './data/transitFrance.js';
-import roadStatusFranceLayer from './data/roadStatusFrance.js';
-import sharedMobilityFranceLayer from './data/sharedMobilityFrance.js';
-import irveFranceLayer from './data/irveFrance.js';
-import schoolsFranceLayer from './data/schoolsFrance.js';
-import medecinsFranceLayer from './data/medecinsFrance.js';
-import meteoStationsFranceLayer from './data/meteoStationsFrance.js';
-import supFranceLayer from './data/supFrance.js';
-import comptagesParisLayer from './data/comptagesParis.js';
-import delinquanceFranceLayer from './data/delinquanceFrance.js';
-import anfrFranceLayer from './data/anfrFrance.js';
-import fraicheurParisLayer from './data/fraicheurParis.js';
-import sitadelFranceLayer from './data/sitadelFrance.js';
-import idfmFrequencyLayer from './data/idfmFrequency.js';
-import bruitFranceLayer from './data/bruitFrance.js';
-import amenitiesFranceLayer from './data/amenitiesFrance.js';
-import petiteEnfanceFranceLayer from './data/petiteEnfanceFrance.js';
-import aisLiveVesselsLayer from './data/aisLiveVessels.js';
-import militaryInstallationsLayer from './data/militaryInstallations.js';
-import militaryAwarenessLayer from './data/militaryAwareness.js';
-import marineBuoysLayer from './data/marineBuoys.js';
-import localDataLayers from './data/localLayers.js';
+import { LAYER_MANIFEST } from './data/layerManifest.js';
+import { createLazyLayer } from './data/lazyLayer.js';
 import { LAYER_STATE_REGISTRY } from './data/layerState.js';
 import { LAYER_CATEGORIES, LAYER_TAXONOMY } from './data/layerTaxonomy.js';
 import { CATALOG_DATASET_MANIFESTS } from './data/datasetsCatalog.js';
@@ -372,65 +319,21 @@ async function init() {
     const dataManager = new DataLayerManager(viewer, {
       allowQaRegistration: import.meta.env.DEV,
     });
-    dataManager.register(flightsLayer);
-    dataManager.register(militaryFlightsLayer);
-    dataManager.register(earthquakesLayer);
-    dataManager.register(vigicruesLayer);
-    dataManager.register(hubeauHydrometryLayer);
-    dataManager.register(meteoFranceVigilanceLayer);
-    dataManager.register(franceEnergyLayer);
-    dataManager.register(gasFranceLayer);
-    dataManager.register(edfPowerPlantsLayer);
-    dataManager.register(frHydroPlantsLayer);
-    dataManager.register(powerGridLayer);
-    dataManager.register(bdtopoBuildingsLayer);
-    dataManager.register(cadastreParcelsLayer);
-    dataManager.register(filosofiCarreauxLayer);
-    dataManager.register(isochroneRingsLayer);
-    dataManager.register(implantationFicheLayer);
-    dataManager.register(comparablesLayer);
-    dataManager.register(veloPulseLayer);
-    dataManager.register(georisquesLayer);
-    dataManager.register(dvfSalesLayer);
-    dataManager.register(avisValeurLayer);
-    dataManager.register(dpeFranceLayer);
-    dataManager.register(urbanismeGpuLayer);
-    dataManager.register(adsUrbanismeLayer);
-    dataManager.register(idfmNetworkLayer);
-    dataManager.register(rteGenerationLayer);
-    dataManager.register(satellitesLayer);
-    dataManager.register(rocketLaunchesLayer);
-    rocketLaunchesLayer.attachDataManager(dataManager);
-    dataManager.register(trafficLayer);
-    dataManager.register(roadEventsFranceLayer);
-    dataManager.register(cctvLayer);
-    dataManager.register(radioLayer);
-    dataManager.register(bikeshareLayer);
-    dataManager.register(transitFranceLayer);
-    dataManager.register(roadStatusFranceLayer);
-    dataManager.register(sharedMobilityFranceLayer);
-    dataManager.register(irveFranceLayer);
-    dataManager.register(schoolsFranceLayer);
-    dataManager.register(medecinsFranceLayer);
-    dataManager.register(meteoStationsFranceLayer);
-    dataManager.register(supFranceLayer);
-    dataManager.register(comptagesParisLayer);
-    dataManager.register(delinquanceFranceLayer);
-    dataManager.register(anfrFranceLayer);
-    dataManager.register(fraicheurParisLayer);
-    dataManager.register(sitadelFranceLayer);
-    dataManager.register(idfmFrequencyLayer);
-    dataManager.register(bruitFranceLayer);
-    dataManager.register(amenitiesFranceLayer);
-    dataManager.register(petiteEnfanceFranceLayer);
-    dataManager.register(aisLiveVesselsLayer);
-    dataManager.register(militaryInstallationsLayer);
-    dataManager.register(militaryAwarenessLayer);
-    dataManager.register(marineBuoysLayer);
-    militaryAwarenessLayer.attachDataManager(dataManager);
-    for (const layer of localDataLayers) {
-      dataManager.register(layer);
-    }
+    // Every production layer registers as a STUB — identity only, no module
+    // behind it — and its 30-200 kB of code arrives on the first toggle that
+    // needs it. See `src/data/lazyLayer.js`: statically importing all 60 put
+    // 4 798 kB of the entry chunk's 7 278 kB (pre-minification, rollup's own
+    // module graph, 2026-09-09) in front of a reader who has switched none of
+    // them on. The manifest is generated from the modules and re-derived from
+    // them on every `npm test`, so a stub can never describe a layer that no
+    // longer exists.
+    const layers = LAYER_MANIFEST.map((descriptor) => createLazyLayer(descriptor));
+    for (const layer of layers) dataManager.register(layer);
+    // `rocket-launches` and `military-awareness` read the manager back (one for
+    // the satellites layer's params, the other to drive its own camera
+    // hand-offs). The stub takes the reference now and passes it on the moment
+    // its module loads; the manifest says which two ask for it.
+    for (const layer of layers) layer.attachDataManager?.(dataManager);
     // Restoration starts only after the complete production registry is sealed.
     dataManager.finalizeRegistrations(LAYER_STATE_REGISTRY, LAYER_TAXONOMY, LAYER_CATEGORIES);
     if (import.meta.env.DEV) {

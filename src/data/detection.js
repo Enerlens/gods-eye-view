@@ -293,6 +293,24 @@ let _cockpitActive = false;
 let _cockpitModeListener = null;
 
 /**
+ * Replace the registered layer list after init.
+ *
+ * Detection is installed from the StyleManager's constructor, which runs before
+ * the data-layer manager exists — and the layer modules are no longer available
+ * to import at that point either (see `src/data/lazyLayer.js`). So the overlay
+ * starts with an empty register and is handed the real one the moment
+ * `attachDataManager()` binds it. Candidate collection already re-checks
+ * `typeof layer.getDetectableObjects === 'function'` on every paint, so a layer
+ * whose module has not arrived yet is skipped rather than guessed at.
+ *
+ * @param {Array} layers - Data layer modules that may implement getDetectableObjects().
+ * @returns {void}
+ */
+export function setDetectionLayers(layers) {
+  _layers = Array.isArray(layers) ? layers : [];
+}
+
+/**
  * Initializes detection inside the shared world-overlay host and stores
  * references to data layers. The host owns the canvas and render listener.
  * @param {Cesium.Viewer} viewer - The active Cesium viewer instance.
@@ -1157,6 +1175,10 @@ function _drawOverlay(frame) {
       profile: MODE_LABELS[_mode],
       densityPct: _densityPct,
       allocationStrategy: _allocationStrategy,
+      // How many layers the overlay is actually watching. Published because the
+      // register is handed over AFTER init now (see `setDetectionLayers`), and a
+      // register that never arrived paints an empty, plausible frame.
+      registeredLayerCount: _layers.length,
       viewScale: viewScaleForAltitude(_viewer?.camera?.positionCartographic?.height),
       candidateCount: 0,
       observationCount: 0,
@@ -1434,6 +1456,10 @@ function _drawOverlay(frame) {
       profile: MODE_LABELS[_mode],
       densityPct: _densityPct,
       allocationStrategy: _allocationStrategy,
+      // How many layers the overlay is actually watching. Published because the
+      // register is handed over AFTER init now (see `setDetectionLayers`), and a
+      // register that never arrived paints an empty, plausible frame.
+      registeredLayerCount: _layers.length,
       viewScale: viewScaleForAltitude(altitude),
       candidateCount: _lastSolveSnapshot.cohortCount,
       observationCount: sampledCount,

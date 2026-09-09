@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 import { ANALYST_RECORD_CAP } from '../data/analystEngine.js';
 import { CCTV_FOCUS_RESULT } from '../data/cctv.js';
+import militaryAwarenessLayer from '../data/militaryAwareness.js';
 import { getContextStore, registerEntityContext } from '../data/contextStore.js';
 import { DataLayerManager } from '../data/manager.js';
 import { getActiveCameraMotion, interruptCameraMotion, moveCamera } from '../cameraVerbs.js';
@@ -2844,7 +2845,13 @@ function analystRunner() {
     viewer,
     styleManager: {},
     dataManager: {
-      layers: new Map([['flights', { module: flights }]]),
+      // Global Context is registered here because the actions reach it through
+      // the manager now, exactly as production does — it is no longer imported
+      // by gevActions.js. `withAwareness()` patches this same module object.
+      layers: new Map([
+        ['flights', { module: flights }],
+        ['military-awareness', { module: militaryAwarenessLayer }],
+      ]),
       isEnabled: (id) => id === 'flights',
       getAll: () => [{ id: 'flights', name: 'Live Flights', enabled: true, stats: { count: 1 } }],
     },
