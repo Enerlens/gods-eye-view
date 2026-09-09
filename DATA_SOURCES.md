@@ -749,13 +749,12 @@ Douglas-Peucker simplification, 6-decimal rounding).
 
 A dataset that enters through the dataset box ([`docs/DATASETS.md`](docs/DATASETS.md)) carries its own attribution **in its manifest** — `attribution.publisher`, `attribution.licence`, `attribution.url`, `attribution.text` — and the app registers that text into the same "Data attribution" lightbox as every core credit (`registerDynamicCredit`, at registration time). A manifest without a publisher or a licence does not validate and is not drawn. The licence in a manifest is **read** from the platform's metadata and **confirmed** on the dataset's own page before it is shipped in this repository; a visitor plugging a dataset in their own browser is shown the same reminder and is responsible for the same check.
 
-Nothing plugged is bundled: the rows are fetched at runtime, directly from the platform (all the French ones answer `access-control-allow-origin: *`), or through the allow-listed `/api/plug` relay for the hosts that refuse a browser origin. The three manifests shipped today:
+Nothing plugged is bundled: the rows are fetched at runtime, directly from the platform (all the French ones answer `access-control-allow-origin: *`), or through the allow-listed `/api/plug` relay for the hosts that refuse a browser origin. The two manifests shipped today:
 
 | Manifest | Source | License / terms | Attribution |
 |---|---|---|---|
 | `defibrillateurs-geodae` | **GeoDAE — Base nationale des défibrillateurs** (Atlasanté), CSV resource `edb6a9e1-2f16-4bbf-99e7-c3eb6b90794c` read through `tabular-api.data.gouv.fr` for the current view | [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md), declared on the [dataset page](https://www.data.gouv.fr/datasets/geodae-base-nationale-des-defibrillateurs/) | "Défibrillateurs : GeoDAE — Atlasanté, via data.gouv.fr (Licence Ouverte 2.0)" |
 | `arbres-remarquables-paris` | **Les arbres remarquables** (Ville de Paris, DEVE), Opendatasoft Explore v2.1 GeoJSON export, whole dataset (185 features) | [ODbL](https://opendatacommons.org/licenses/odbl/), declared by the [portal](https://opendata.paris.fr/explore/dataset/arbresremarquablesparis/) — attribution and share-alike on derived databases | "Arbres remarquables : Ville de Paris, opendata.paris.fr (ODbL)" |
-| `aerodromes-bdtopo-ign` | **BD TOPO® — aérodromes** (IGN), `BDTOPO_V3:aerodrome` on the Géoplateforme WFS (`data.geopf.fr/wfs/ows`), footprints for the current view | [Licence Ouverte 2.0](https://github.com/etalab/licence-ouverte/blob/master/LO.md) — the [BD TOPO terms](https://geoservices.ign.fr/bdtopo); attribution required | "Emprises d'aérodromes : IGN, BD TOPO® — Géoplateforme (Licence Ouverte 2.0)" |
 
 ## Commercial use — what would have to change
 
@@ -774,7 +773,7 @@ rather than discovered afterwards. Verified 2026-09-08.
 | **IGN Géoplateforme** (ortho, plan, BD TOPO, cadastre, geocoder…) | ✅ | Licence Ouverte 2.0 explicitly permits commercial reuse. Attribution + date of last update. |
 | **OpenStreetMap** (Overpass, Nominatim, tiles) | ✅ with share-alike | ODbL applies to the data, not to this MIT code. See the ODbL section above. |
 | **Google Map Tiles 2D** (`Plan Google`, `Relief Google`) | ✅ *with your own key and billing* | Google Maps Platform ToS. Note this is unrelated to the EEA withdrawal, which blocks `satellite` and 3D tiles by **billing address** — a restriction on access, not on commercial use. |
-| **Plugged datasets** — the three shipped in `datasets/` | ✅ | Licence Ouverte 2.0, ODbL, Licence Ouverte 2.0, each confirmed on its own dataset page and named in the table above. |
+| **Plugged datasets** — the two shipped in `datasets/` | ✅ | Licence Ouverte 2.0 and ODbL, each confirmed on its own dataset page and named in the table above. |
 | **Plugged datasets** — one a *visitor* plugs in their own browser | ⚠️ **Theirs to check** | The manifest carries whatever licence the platform declared; the app refuses a dataset without one and shows the reminder that the licence is confirmed on the dataset's page, not in an API. Nothing plugged is bundled or redistributed by this repository. |
 | Everything else in the tables above | ✅ | Licence Ouverte, ODbL, CC BY, PDDL or public domain, each named in its own row. |
 

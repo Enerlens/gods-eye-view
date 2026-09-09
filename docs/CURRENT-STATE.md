@@ -35,10 +35,12 @@ Updated: September 8, 2026
 > la vue affiche « rapprochez-vous » comme consigne (`status: 'zoom-in'`),
 > pas comme panne. La légende porte une entrée par groupe avec son effectif.
 >
-> **Trois manifestes livrés** : défibrillateurs GeoDAE (data.gouv.fr, vue),
-> arbres remarquables de Paris (Opendatasoft, entier), emprises d'aérodromes
-> BD TOPO (WFS IGN, vue). Licences confirmées sur les pages des jeux et
-> portées dans `DATA_SOURCES.md`.
+> **Deux manifestes livrés** : défibrillateurs GeoDAE (data.gouv.fr, vue),
+> arbres remarquables de Paris (Opendatasoft, entier). Licences confirmées sur
+> les pages des jeux et portées dans `DATA_SOURCES.md`. Un troisième — les
+> emprises d'aérodromes BD TOPO — a été retiré : la couche Aéroports embarque
+> 418 de ces emprises, et deux lignes pour le même sujet dans la même liste
+> faisaient arbitrer au lecteur un recouvrement invisible.
 >
 > **Vérifié** : 6 393 tests unitaires, 0 échec (60 nouveaux) ; `npm run
 > qa:datasets -- --url … --deep` en navigateur, 16 contrôles au vert :

@@ -74,16 +74,20 @@ fenêtre d'attribution, sa carte et sa légende. Le test
 la même discipline que les registres du cœur, où une couche sans catégorie
 est une panne au démarrage.
 
-Trois exemples sont livrés : les défibrillateurs GeoDAE (data.gouv.fr, API
-tabulaire, chargés pour la vue), les arbres remarquables de Paris
-(Opendatasoft, jeu entier) et les emprises d'aérodromes de la BD TOPO (WFS
-IGN, chargées pour la vue).
+Deux exemples sont livrés : les défibrillateurs GeoDAE (data.gouv.fr, API
+tabulaire, chargés pour la vue) et les arbres remarquables de Paris
+(Opendatasoft, jeu entier).
 
-Ce dernier **recouvre en partie** la couche Aéroports, qui embarque désormais
-418 de ces emprises jointes à OurAirports sur le code OACI. Il reste livré
-parce qu'il montre ce que la jointure laisse dehors : les **704 héliports** de
-la BD TOPO — hôpitaux, casernes, gendarmeries — et les 30 contours, surtout
-militaires, qu'aucun terrain du paquet ne réclame.
+**Un manifeste n'est pas livré pour ce qu'une couche dessine déjà.** Les
+emprises d'aérodromes de la BD TOPO ont eu le leur, et il a été retiré : la
+couche Aéroports embarque 418 de ces emprises, jointes à OurAirports sur le
+code OACI, et deux lignes dans la même liste pour le même sujet demandent au
+lecteur d'arbitrer un recouvrement qu'il n'a pas les moyens de voir. Ce que la
+jointure laisse dehors est écrit dans `src/data/airportsPack.js` — les 704
+héliports de la BD TOPO (hôpitaux, casernes, gendarmeries) et les 30 contours,
+surtout militaires, qu'aucun terrain du paquet ne réclame — et cela reste
+branchable en une adresse : `BDTOPO_V3:aerodrome` sur
+`https://data.geopf.fr/wfs/ows`, collé dans ＋ BRANCHER UN JEU DE DONNÉES.
 
 ### 3. En ligne de commande — depuis une recherche MCP
 

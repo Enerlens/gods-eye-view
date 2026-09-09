@@ -156,7 +156,7 @@ async function main() {
 
     // i. the shipped catalog
     const catalog = await page.evaluate(() => window.__godsEyeView.datasets.list().filter((entry) => entry.origin === 'catalog').map((entry) => entry.layerId));
-    check('catalog datasets are registered', catalog.length >= 3, catalog.join(', '));
+    check('catalog datasets are registered', catalog.length >= 2, catalog.join(', '));
     const catalogRows = await page.evaluate((ids) => ids.map((id) => {
       const row = document.querySelector(`#data-toggles [data-layer-id="${id}"]`);
       return { id, present: Boolean(row), group: row?.closest('.data-category')?.dataset?.categoryId || null, name: row?.querySelector('.data-name')?.textContent || null };
