@@ -1,0 +1,35 @@
+JetBrains Mono
+Copyright 2020 The JetBrains Mono Project Authors
+(https://github.com/JetBrains/JetBrainsMono)
+
+Licensed under the SIL Open Font License, Version 1.1. The full text is in the
+`LICENSE` file next to this notice, or at
+
+    https://openfontlicense.org/
+
+Source: https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300..700&display=swap
+        the two woff2 faces that answer names, latin and latin-ext,
+        retrieved 2026-09-09 by `npm run fonts:build`.
+
+WHAT WAS TAKEN. Two font files, whole:
+`public/fonts/jetbrains-mono-latin.woff2` and
+`public/fonts/jetbrains-mono-latin-ext.woff2`.
+
+This project sets every numeric readout in it — coordinates, altitudes, MGRS,
+counts — because the cockpit puts figures in columns that must not shuffle when
+a 1 becomes a 7 (`--font-mono` in `style.css`).
+
+Until 2026-09-09 the face was loaded over a `<link>` to Google Fonts and no
+file was ours to redistribute. The link was removed for two reasons, both
+recorded in `index.html`: it blocked the first paint on an origin the browser
+had never resolved, and it sent every visitor's IP to `fonts.gstatic.com`
+before they had consented to anything (CJUE, 2022).
+
+WHAT WAS CHANGED. Nothing. These are Google's own woff2 builds, byte for byte
+as served; only the `src:` URL in the stylesheet points here instead of there.
+The variable weight axis (300-700) and the unicode-range split are Google's
+subsetting, not ours.
+
+OFL 1.1 permits this redistribution as part of a larger work. The reserved-font
+-name clause (§5) is not engaged: the font is unmodified and served under its
+own name.

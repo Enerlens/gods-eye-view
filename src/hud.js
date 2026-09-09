@@ -87,6 +87,8 @@ export class IntelHUD {
     this._summaryDirty = true;
     this._summaryRequest = null;
     this._lastSummarySignature = '';
+    // What the readout currently shows, so an identical line is not retyped.
+    this._summaryText = null;
     this._summaryRevision = 0;
     // Latches once the endpoint reports a missing key; see SUMMARY_UNCONFIGURED_RE.
     this._summaryDisabled = false;
@@ -96,6 +98,10 @@ export class IntelHUD {
     // A) kick a real AI summary once the intro fly-to settles.
     this._firstMetricsShown = false;
     this._firstSummaryKicked = false;
+    // Nothing that costs a metered key is asked for until the visitor has
+    // actually done something. See {@link _installEngagementGate}.
+    this._userEngaged = false;
+    this._onFirstEngagement = null;
     // ALT readout datum: the camera height Cesium reports is ELLIPSOIDAL, the
     // number a viewer reads is MSL. N comes from `/api/geoid`, one coarse cell
     // at a time, requested on the first telemetry tick of a VISIBLE HUD and
@@ -123,7 +129,9 @@ export class IntelHUD {
       }
       // First settled view: request the AI summary now rather than waiting for
       // the periodic tick (saves up to ~15s of "Awaiting telemetry...").
-      if (!this._firstSummaryKicked && this._visible && this._latestMetrics) {
+      // Held behind engagement: the intro fly-to settles by itself, so without
+      // the gate this fires for a visitor who has not touched anything yet.
+      if (!this._firstSummaryKicked && this._userEngaged && this._visible && this._latestMetrics) {
         this._firstSummaryKicked = true;
         void this._updateSummary(true, true);
       }
@@ -144,7 +152,48 @@ export class IntelHUD {
 
     this._buildDOM();
     this.viewer.camera.moveEnd.addEventListener(this._onCameraMoveEnd);
+    this._installEngagementGate();
     this._startTimers();
+  }
+
+  /**
+   * Hold every metered call until the visitor has actually done something.
+   *
+   * WHY. The semantic summary is worth a key when someone is looking at a
+   * place they chose. At boot nobody has chosen anything yet — and yet the
+   * intro fly-to settles on its own, `moveEnd` fires, and the summary path
+   * used to run in full: one Google reverse geocode per viewport sample, one
+   * `/api/google/nearby-places`, one `/api/openai/hud-summary` POST. Measured
+   * on a cold boot at 2026-09-09: five metered calls at t≈6.3 s, before a
+   * single click. A page that anyone can open is then a page anyone can bill,
+   * by loading it in a loop.
+   *
+   * The gate is a real gesture, not a proxy for one: pointer, wheel or key.
+   * A camera move cannot be the signal, because the app moves the camera
+   * itself. Until it opens, the readout is the locally composed line
+   * (`_composeSummary`), which is the same text the AI path falls back to and
+   * costs nothing — so the visitor who only watches loses no information they
+   * would have been shown, and the visitor who touches the globe gets the
+   * upgrade on the spot rather than on the next 15 s tick.
+   */
+  _installEngagementGate() {
+    if (typeof window === 'undefined') return;
+    const events = ['pointerdown', 'wheel', 'keydown', 'touchstart'];
+    this._onFirstEngagement = () => {
+      if (this._userEngaged) return;
+      this._userEngaged = true;
+      for (const type of events) window.removeEventListener(type, this._onFirstEngagement, true);
+      this._onFirstEngagement = null;
+      if (this._visible && this._latestMetrics && !this._firstSummaryKicked) {
+        this._firstSummaryKicked = true;
+        void this._updateSummary(true, true);
+      }
+    };
+    // Capture phase and passive: the gate must see the gesture even when a
+    // panel stops it, and must never be the thing that delays a scroll.
+    for (const type of events) {
+      window.addEventListener(type, this._onFirstEngagement, { capture: true, passive: true });
+    }
   }
 
   /**
@@ -645,6 +694,14 @@ export class IntelHUD {
    */
   async _updateSummary(animate = false, force = false) {
     const fallbackText = this._composeSummary();
+    // Before the first gesture, the local line IS the summary — building the
+    // context alone walks the scene and spends three metered calls. See
+    // {@link _installEngagementGate}. Left dirty on purpose: the gesture, or
+    // the tick after it, picks the real one up.
+    if (!this._userEngaged) {
+      this._setSummaryText(fallbackText, animate);
+      return;
+    }
     // A server with no OPENAI_API_KEY cannot start answering mid-session — the
     // key is read at boot, so fixing it ends this page anyway. Keep composing
     // the local line instead of asking again. See the catch below.
@@ -725,6 +782,15 @@ export class IntelHUD {
   }
 
   _setSummaryText(text, animate) {
+    // Retyping a line that is already on screen is churn, not animation, and
+    // it is not free: the growing text reflows `.hud-corner.hud-top-left`, the
+    // world-overlay honours that reflow as paint work, and a parked scene
+    // never settles (the 17 renders / 5 s `qa-perf` counts). It was the steady
+    // state, not an edge case — with the summary endpoint unreachable the
+    // fallback line is identical on every 15 s tick, so the HUD retyped the
+    // same sentence forever. The text still animates whenever it CHANGES.
+    if (animate && this._summaryText === text) return;
+    this._summaryText = text;
     if (animate) {
       this._typeSummary(text);
       return;
@@ -886,6 +952,12 @@ export class IntelHUD {
     clearInterval(this._summaryInterval);
     clearInterval(this._summaryTypingInterval);
     this.viewer.camera.moveEnd.removeEventListener(this._onCameraMoveEnd);
+    if (this._onFirstEngagement) {
+      for (const type of ['pointerdown', 'wheel', 'keydown', 'touchstart']) {
+        window.removeEventListener(type, this._onFirstEngagement, true);
+      }
+      this._onFirstEngagement = null;
+    }
     this._dataManagerUnsubscribe?.();
     this._summaryRequest?.abort();
   }

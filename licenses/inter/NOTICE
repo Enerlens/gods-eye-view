@@ -54,3 +54,30 @@ NO FONT FILE IS REDISTRIBUTED. Only outline data for eight glyphs is vendored,
 as path strings inside a JavaScript module. OFL 1.1 §1 permits this; the
 reserved-font-name clause (§5) is not engaged, because nothing here is
 distributed as a font or under the name Inter.
+
+─────────────────────────────────────────────────────────────────────────────
+
+SECOND USE, ADDED 2026-09-09: THE WEBFONT ITSELF.
+
+`public/fonts/inter-latin.woff2` and `public/fonts/inter-latin-ext.woff2` are
+Inter as a font file, redistributed with this project.
+
+Until now the interface set itself in Inter over a `<link>` to Google Fonts, so
+no file was ours to redistribute. That link was removed: three render-blocking
+stylesheets on an origin the browser had never resolved sat in front of the
+first paint, and a public map that references `fonts.gstatic.com` sends every
+visitor's IP to Google before they have consented to anything (CJUE, 2022).
+
+Source: https://fonts.googleapis.com/css2?family=Inter:wght@300..600&display=swap
+        the two woff2 faces that answer names, latin and latin-ext,
+        retrieved 2026-09-09 by `npm run fonts:build`.
+
+WHAT WAS CHANGED. Nothing. The files are Google's own woff2 builds, byte for
+byte as served; only the `src:` URL in the stylesheet points here instead of
+there. The variable weight axis (300-600) is Google's subsetting, not ours.
+
+OFL 1.1 permits this redistribution as part of a larger work. The reserved-font
+-name clause (§5) is not engaged: the font is not modified, and it is served
+under its own name. The paragraph above headed NO FONT FILE IS REDISTRIBUTED
+describes the glyph-outline vendoring in `addressMarkerIcons.js` and remains
+true of it — this section is the other, separate use.

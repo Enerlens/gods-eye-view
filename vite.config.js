@@ -25005,6 +25005,16 @@ const CESIUM_BASE_DIR_RE = CESIUM_BASE_DIR.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'
  * @returns {import('vite').Plugin}
  */
 const IMMUTABLE_ASSET_RE = new RegExp(`^/(?:assets|${CESIUM_BASE_DIR_RE})/`);
+/**
+ * The vendored webfonts, which live in `public/` and so are not hashed by
+ * Vite — `npm run fonts:build` hashes them itself, for exactly this reason.
+ *
+ * `/fonts/fonts.css` is deliberately NOT here: it is the map from stable names
+ * to hashed ones, the same role `index.html` plays for the bundle, and a stale
+ * copy would point a returning visitor at a face that no longer exists. It is
+ * 1 kB and revalidates.
+ */
+const IMMUTABLE_FONT_RE = /^\/fonts\/[a-z0-9-]+\.[0-9a-f]{8}\.woff2$/;
 const JSON_BODY_PATH_RE = /\.geojsonl?$/;
 
 /**
@@ -25026,7 +25036,7 @@ export function staticAssetHeaders(url) {
     // afford that.
     Vary: 'Accept-Encoding',
   };
-  if (IMMUTABLE_ASSET_RE.test(pathname)) {
+  if (IMMUTABLE_ASSET_RE.test(pathname) || IMMUTABLE_FONT_RE.test(pathname)) {
     headers['Cache-Control'] = 'public, max-age=31536000, immutable';
   }
   if (JSON_BODY_PATH_RE.test(pathname)) {
