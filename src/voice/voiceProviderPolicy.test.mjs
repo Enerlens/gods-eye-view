@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import fs from 'node:fs';
 import {
   BRAIN_RELAY_LIMITS,
   OPENROUTER_VOICE_MODEL_DEFAULT,
@@ -149,4 +150,17 @@ test('trimming never leaves a tool result as the first message', () => {
 
 test('the default brain is the model the routing bench selected', () => {
   assert.equal(OPENROUTER_VOICE_MODEL_DEFAULT, 'mistralai/mistral-medium-3.1');
+});
+
+test('the brain relay states top_p explicitly alongside greedy sampling', () => {
+  // Measured 2026-09-09 against mistralai/voxtral-small-24b-2507 on OpenRouter:
+  // temperature:0 without top_p:1 is refused by Mistral's endpoint with
+  // "top_p must be 1 when using greedy sampling" (code 3054). The default model
+  // happens to accept it, so this only bites whoever changes
+  // OPENROUTER_VOICE_MODEL — the exact knob the README invites them to turn.
+  const config = fs.readFileSync(new URL('../../vite.config.js', import.meta.url), 'utf8');
+  const body = config.slice(config.indexOf('const upstreamBody = {'));
+  const literal = body.slice(0, body.indexOf('};') + 2);
+  assert.match(literal, /temperature: 0,/);
+  assert.match(literal, /top_p: 1,/, 'greedy sampling must state top_p or Mistral answers 400');
 });

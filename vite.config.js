@@ -16981,6 +16981,14 @@ function voiceBrainProxy() {
         tools: toChatCompletionTools(GEV_REALTIME_TOOLS),
         tool_choice: 'auto',
         temperature: 0,
+        // Mistral's own endpoint rejects greedy sampling unless top_p is
+        // explicitly 1: "top_p must be 1 when using greedy sampling" (code
+        // 3054). It happens to accept temperature:0 alone for the default
+        // model, so the trap only springs when OPENROUTER_VOICE_MODEL is
+        // pointed at another Mistral route — a config knob answering 400 for a
+        // reason nothing in this file explained. top_p:1 is the no-op default
+        // everywhere else, so stating it costs nothing and closes the hole.
+        top_p: 1,
         max_tokens: 900,
         usage: { include: true },
       };
