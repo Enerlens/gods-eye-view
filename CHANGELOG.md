@@ -56,6 +56,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   un aéroport régional à la piste plus courte. Un aéroclub, lui, n'y a jamais
   droit : son palier est français par sélection, et l'y faire monter
   dessinerait une densité qui appartient au paquet et non au monde.
+- **Cliquer un navire : un recul mesuré depuis la côte, au lieu d'un plan serré
+  sur la coque.** Le transfert de caméra se posait à **1 200 m** du contact :
+  un cadre de ~1,4 km rempli d'eau, dans lequel un ferry du Pas-de-Calais et un
+  chalutier au large de Sète sont la même image. Le recul se **calcule**
+  désormais sur la distance du navire à la terre la plus proche, lue sur les
+  contours IGN déjà embarqués (`local_data/france_departements/`, dont le bord
+  maritime *est* le trait de côte dans l'emprise AIS France, Corse comprise) :
+  `2,2 × distance`, plancher 8 km, plafond 45 km, pitch −38°. Le facteur sort
+  de l'optique, pas du goût : au champ de 60° de Cesium en 16:9 et à ce pitch,
+  le sol que le cadre tient à coup sûr autour de la cible vaut 0,37 × recul
+  vers l'arrière et 0,58 sur les flancs. Mesuré sur des positions réelles — Le
+  Havre à quai 8 km, milieu du Pas-de-Calais 19,7 km, large de Nice 34,4 km,
+  Ouessant et Gascogne 45 km. Effet de bord voulu : sous 8 à 15 km de recul la
+  caméra reste sous l'altitude des coques à l'échelle réelle, donc un navire au
+  port garde sa coque quand un cargo au large passe en chevron. Le clic sur la
+  **carte** du navire prend le même cadrage — c'était déjà le même chemin. Les
+  contours (260 kB, déjà en cache pour cinq autres couches) se chargent en
+  `requestIdleCallback` à l'activation, jamais dans le clic ; sans eux le clic
+  tombe sur 20 km. Et non, ce n'est **pas** le port de départ : l'AIS donne une
+  position, pas une trace, et une route antérieure à l'écoute n'est pas
+  connaissable. Encadrer la côte est la version honnête de la même envie.
+- **La clé AIS : sept lignes au lieu de seize.** Elle montait deux blocs — les
+  familles de type, puis toute la rampe de taille : un en-tête, trois repères
+  numérotés, la marque non mesurée et jusqu'à quatre déclarations d'écrêtage,
+  chacune avec son paragraphe. Environ **1 800 caractères** de prose montés en
+  permanence sur la carte, pour une couche dont le signal premier est une
+  teinte à sept valeurs. Une clé qu'il faut faire défiler n'est pas lue, et une
+  clé non lue ne protège rien. Reste la clé des teintes : pastille, nom,
+  effectif, triée par nombre de contacts à l'écran. L'argument de la rampe de
+  taille vit là où on le consulte — en tête de `aisLiveVessels.js` et dans
+  `vesselLabels.js` — et ses compteurs restent dans les statistiques de la
+  couche. Contrepartie assumée : le diamètre du chevron continue de porter la
+  longueur hors-tout sans clé visible, ce qui est un écart à la règle D1 de
+  `docs/CARTOGRAPHIE.md`.
 
 ### Fixed
 - **Un 429 devant l'app laissait le micro mort, et accusait la permission

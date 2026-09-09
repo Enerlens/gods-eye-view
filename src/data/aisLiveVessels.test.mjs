@@ -4,6 +4,7 @@
 // the vessel datum contract in docs/CURRENT-STATE.md).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import * as Cesium from 'cesium';
 import {
   AIS_FIRST_CONNECT_GRACE_MS,
@@ -30,7 +31,6 @@ import {
   vesselHullFromRow,
   selectHullContacts,
   hullSetSignature,
-  tallyVesselSizes,
   _maintainHullPrimitiveForTest,
   _getVesselHullStateForTest,
   _arrowScaleForTest,
@@ -1508,9 +1508,27 @@ test('vessel interaction wire: selecting a vessel by click requests a camera tra
     assert.equal(requests[0].kind, 'vessel');
     assert.equal(requests[0].id, harness.record.mmsi);
     assert.equal(requests[0].position, POS);
+    // The outlines are not warm in a unit harness, so the request carries no
+    // measured standoff and the camera policy uses its own default. Undefined
+    // here is the CONTRACT, not an oversight: a range of 0 or null would be
+    // read as a measurement (`worldFocus.resolveFocusRangeM`).
+    assert.equal(requests[0].rangeM, undefined);
   } finally {
     harness.cleanup();
   }
+});
+
+// The standoff itself is measured in `vesselStandoff.test.mjs` against the real
+// bundled outlines. What has to hold HERE is that the click asks for it at all,
+// and that the outlines are warmed off the critical path rather than fetched
+// inside the click.
+test('a vessel click measures its own standoff, and the outlines warm on enable', () => {
+  const source = readFileSync(new URL('./aisLiveVessels.js', import.meta.url), 'utf8');
+  assert.match(source, /rangeM: vesselFocusRangeM\(record\)/);
+  assert.match(source, /primeCoastOutlines\(\);/);
+  // Warmed through an idle callback or a timer — never awaited by the click.
+  assert.match(source, /requestIdleCallback/);
+  assert.doesNotMatch(source, /await\s+loadCoastOutlines\(/);
 });
 
 /**
@@ -1732,19 +1750,6 @@ test('reconciliation attaches the hull to the live record', () => {
   assert.equal(silent.beamM, null);
 });
 
-test('the size tally counts what the ramp had to clamp (A5)', () => {
-  const tally = tallyVesselSizes([
-    { hull: { loaM: 8 } }, { hull: { loaM: 12 } },
-    { hull: { loaM: 200 } },
-    { hull: { loaM: 900 } },
-    {}, { hull: {} },
-  ]);
-  assert.equal(tally.measured, 4);
-  assert.equal(tally.unmeasured, 2);
-  assert.equal(tally.clampedBelow, 2);
-  assert.equal(tally.clampedAbove, 1);
-});
-
 test('the billboard scale is a length, never a speed', () => {
   // The channel used to be three speed buckets: 0.60 / 0.68 / 0.78.
   const fast = { speed: 24, hull: { loaM: 30, beamM: 6 } };
@@ -1879,23 +1884,31 @@ test('hulls draw under the derived altitude and are dropped above it', () => {
   assert.equal(scene.removed.length, 1);
 });
 
-test('the legend publishes the size scale, not only the hues', () => {
+// The key is the HUE key and nothing else. It used to carry the size ramp too
+// — a header, three numbered marks, the unmeasured mark and up to four
+// declarations, each with its own paragraph: sixteen rows of key over a map
+// that had asked for a colour chart. The size channel keeps its argument in
+// the module header and in `vesselLabels.js`; the layer stats keep the counts.
+test('the legend is the hue key, counted, and nothing more', () => {
   _setVesselStateForTest({
     viewer: {},
     records: [
       { mmsi: '1', type: 'Crude Oil Tanker', hull: { loaM: 250, beamM: 40 } },
       { mmsi: '2', type: '', hull: { loaM: null, beamM: null } },
+      { mmsi: '3', type: '', hull: { loaM: null, beamM: null } },
     ],
   });
   const controls = aisLiveVesselsLayer.getRowControls();
   assert.ok(controls, 'getRowControls used to return null for every array of records');
   const labels = controls.legend.map((entry) => entry.label);
-  assert.ok(labels.includes('Pétrolier / chimiquier'));
-  assert.ok(labels.includes('Type non déclaré'));
-  assert.ok(labels.some((label) => label.startsWith('Taille')), 'the size key is mounted');
-  assert.ok(labels.some((label) => label === '100 m'), 'with numbered marks');
-  const unmeasured = controls.legend.find((e) => e.label === 'dimensions non reportées');
-  assert.equal(unmeasured.count, 1);
+  // One row per family PRESENT, ordered by how many of them are on screen.
+  assert.deepEqual(labels, ['Type non déclaré', 'Pétrolier / chimiquier']);
+  assert.deepEqual(controls.legend.map((entry) => entry.count), [2, 1]);
+  // Every row is a swatch, a name and a count. Nothing else: no prose beside
+  // the swatch, and no folded disclosure under the block either.
+  for (const entry of controls.legend) {
+    assert.deepEqual(Object.keys(entry).sort(), ['color', 'count', 'label']);
+  }
 });
 
 test('an empty layer still publishes no legend', () => {

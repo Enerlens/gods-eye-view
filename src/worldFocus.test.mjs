@@ -11,8 +11,10 @@ import {
   isValidWorldFocusTarget,
   registerWorldFocusRequestListener,
   requestWorldFocus,
+  resolveFocusRangeM,
   routeWorldFocusRequest,
 } from './worldFocus.js';
+import { VESSEL_STANDOFF } from './data/vesselStandoff.js';
 
 const POSITION = Cesium.Cartesian3.fromDegrees(-97.74, 30.26, 0);
 
@@ -123,19 +125,23 @@ test('the transfer flight supersedes any flight in progress and keeps the operat
   const { sphere, options } = camera.calls.flights[0];
   assert.equal(sphere.radius, WORLD_FOCUS_FRAMING.vessel.radiusM);
   assert.equal(options.duration, WORLD_CLICK_FOCUS_DURATION_SEC);
+  // No measured range on the request: the kind's own default standoff.
   assert.equal(options.offset.range, WORLD_FOCUS_FRAMING.vessel.rangeM);
   // Heading is preserved so the transfer never spins the operator around.
   assert.equal(options.offset.heading, camera.heading);
   assert.equal(options.easingFunction, Cesium.EasingFunction.CUBIC_IN_OUT);
 });
 
-test('fires frame wider than vessels — a fire is read by its surroundings', () => {
+test('a fire frames its own footprint — it is a place, not a moving contact', () => {
   const camera = stubCamera();
   flyToWorldTarget({ camera }, { kind: 'fire', id: 'fire-1', position: POSITION });
   const { sphere, options } = camera.calls.flights[0];
   assert.equal(sphere.radius, WORLD_FOCUS_FRAMING.fire.radiusM);
   assert.equal(options.offset.range, WORLD_FOCUS_FRAMING.fire.rangeM);
-  assert.ok(WORLD_FOCUS_FRAMING.fire.rangeM > WORLD_FOCUS_FRAMING.vessel.rangeM);
+  // A fire detection IS its surroundings — the hotspot pixel is 375 m across,
+  // so the sphere it frames is real geometry. A vessel is a point, and what it
+  // needs behind it is land, which is why the vessel standoff is now the wider
+  // of the two (`data/vesselStandoff.js`).
   assert.ok(WORLD_FOCUS_FRAMING.fire.radiusM > WORLD_FOCUS_FRAMING.vessel.radiusM);
 });
 
@@ -153,11 +159,53 @@ test('every framing is a real oblique standoff, not a nadir or an inside-out sph
       framing.rangeM > framing.radiusM,
       `${kind}: range ${framing.rangeM} must stand off outside radius ${framing.radiusM}`,
     );
-    assert.ok(framing.rangeM <= 10000, `${kind}: range must stay close-in, got ${framing.rangeM}`);
+    assert.ok(framing.rangeM <= 50000, `${kind}: range must stay readable, got ${framing.rangeM}`);
   }
   // Exact shipped values — a silent retune must show up as a failing test.
-  assert.deepEqual({ ...WORLD_FOCUS_FRAMING.vessel }, { radiusM: 150, rangeM: 1200, pitchDeg: -30 });
+  assert.deepEqual({ ...WORLD_FOCUS_FRAMING.vessel }, {
+    radiusM: 150,
+    rangeM: 20_000,
+    pitchDeg: -38,
+    minRangeM: 8_000,
+    maxRangeM: 45_000,
+  });
   assert.deepEqual({ ...WORLD_FOCUS_FRAMING.fire }, { radiusM: 400, rangeM: 3000, pitchDeg: -35 });
+});
+
+// A vessel is read by the coast it is working, not by the water touching its
+// hull: the 1 200 m standoff this replaced showed a ship and nothing else.
+test('a vessel is framed far enough out to hold land, not a hull portrait', () => {
+  assert.ok(
+    WORLD_FOCUS_FRAMING.vessel.rangeM >= 10_000,
+    'a vessel standoff under 10 km frames open water and nothing nameable',
+  );
+  assert.ok(WORLD_FOCUS_FRAMING.vessel.rangeM > WORLD_FOCUS_FRAMING.fire.rangeM);
+  // The bounds are the standoff policy's, not a second copy of them.
+  assert.equal(WORLD_FOCUS_FRAMING.vessel.minRangeM, VESSEL_STANDOFF.minRangeM);
+  assert.equal(WORLD_FOCUS_FRAMING.vessel.maxRangeM, VESSEL_STANDOFF.maxRangeM);
+  assert.equal(WORLD_FOCUS_FRAMING.vessel.rangeM, VESSEL_STANDOFF.defaultRangeM);
+});
+
+test('a layer-measured range is honoured, clamped, or ignored — never trusted blind', () => {
+  const vessel = WORLD_FOCUS_FRAMING.vessel;
+  assert.equal(resolveFocusRangeM({ rangeM: 12_000 }, vessel), 12_000);
+  // Outside the published bounds it is pulled back in, not obeyed.
+  assert.equal(resolveFocusRangeM({ rangeM: 400 }, vessel), vessel.minRangeM);
+  assert.equal(resolveFocusRangeM({ rangeM: 900_000 }, vessel), vessel.maxRangeM);
+  // Absent or unusable falls back to the kind's own framing.
+  for (const rangeM of [undefined, null, 0, -5, NaN, 'wide']) {
+    assert.equal(resolveFocusRangeM({ rangeM }, vessel), vessel.rangeM, String(rangeM));
+  }
+  // A kind that publishes no bounds cannot be moved off its own range.
+  assert.equal(resolveFocusRangeM({ rangeM: 30_000 }, WORLD_FOCUS_FRAMING.fire), 3000);
+});
+
+test('the flight uses the range the request measured', () => {
+  const camera = stubCamera();
+  flyToWorldTarget({ camera }, {
+    kind: 'vessel', id: '123', position: POSITION, rangeM: 16_400,
+  });
+  assert.equal(camera.calls.flights[0].options.offset.range, 16_400);
 });
 
 test('unknown kinds and missing viewers issue no flight', () => {

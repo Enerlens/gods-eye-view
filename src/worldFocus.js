@@ -2,14 +2,46 @@
  * One-click camera transfer for layer-owned world targets.
  */
 import * as Cesium from 'cesium';
+import { VESSEL_STANDOFF } from './data/vesselStandoff.js';
 
 export const WORLD_FOCUS_REQUEST_EVENT = 'gev:world-request-focus';
 export const WORLD_CLICK_FOCUS_DURATION_SEC = 1.9;
 
+/**
+ * Per-kind framing. `rangeM` is the standoff used when the request carries no
+ * range of its own; `minRangeM`/`maxRangeM` are the bounds a request MAY move
+ * within. A kind that publishes no bounds is not negotiable — its own range is
+ * the only one it can be flown at.
+ */
 export const WORLD_FOCUS_FRAMING = Object.freeze({
-  vessel: Object.freeze({ radiusM: 150, rangeM: 1200, pitchDeg: -30 }),
+  vessel: Object.freeze({
+    radiusM: 150,
+    rangeM: VESSEL_STANDOFF.defaultRangeM,
+    pitchDeg: VESSEL_STANDOFF.pitchDeg,
+    minRangeM: VESSEL_STANDOFF.minRangeM,
+    maxRangeM: VESSEL_STANDOFF.maxRangeM,
+  }),
   fire: Object.freeze({ radiusM: 400, rangeM: 3000, pitchDeg: -35 }),
 });
+
+/**
+ * The standoff one request is actually flown at.
+ *
+ * A layer that has measured its target's surroundings (`vesselStandoff.js`)
+ * says so in `rangeM`; anything absent, unusable or outside the kind's
+ * published bounds falls back to the kind's own framing rather than being
+ * honoured blind — a request is a hint from a layer, not a camera command.
+ * @param {object} target The focus request.
+ * @param {object} framing The resolved {@link WORLD_FOCUS_FRAMING} entry.
+ * @returns {number} Range in metres.
+ */
+export function resolveFocusRangeM(target, framing) {
+  const requested = Number(target?.rangeM);
+  if (!Number.isFinite(requested) || requested <= 0) return framing.rangeM;
+  const min = Number.isFinite(framing.minRangeM) ? framing.minRangeM : framing.rangeM;
+  const max = Number.isFinite(framing.maxRangeM) ? framing.maxRangeM : framing.rangeM;
+  return Math.min(max, Math.max(min, requested));
+}
 
 /** Validate a layer-owned focus target before camera policy can release tracking. */
 export function isValidWorldFocusTarget(detail) {
@@ -73,7 +105,7 @@ export function flyToWorldTarget(viewer, target = {}) {
       offset: new Cesium.HeadingPitchRange(
         heading,
         Cesium.Math.toRadians(framing.pitchDeg),
-        framing.rangeM,
+        resolveFocusRangeM(target, framing),
       ),
       duration,
       easingFunction: Cesium.EasingFunction.CUBIC_IN_OUT,
