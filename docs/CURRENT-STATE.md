@@ -2361,7 +2361,7 @@ it belong to", which is a per-layer question; "are these two rows one subject?"
 is a statement about a PAIR, and a per-layer field can only hold half of it.
 
 Fifteen entries fold **23 layers** into the row of the subject they belong to.
-The panel goes from **62 rows to 38** (36 core layers plus the two plugged
+The panel goes from **61 rows to 38** (36 core layers plus the two plugged
 datasets). What a fusion changes is presentation and nothing else:
 
 - the companion keeps its **id, module, lifecycle, cache and share token**, so a
@@ -2376,6 +2376,17 @@ enables the primary and the companions that FOLLOW it; a companion marked
 `optIn` (only `comparables-fr` today, the reader's own dossier) waits for its
 chip. Switching a row OFF takes the whole group down, `optIn` included — a lit
 chip under a dark row would be a layer drawing with no visible control.
+
+**The voice surface switches the SUBJECT.** `set_layer_visibility` drives the
+primary through the intent protocol — the operator's utterance is reported on
+that one transition — and then calls `setRowFollowers`, which moves the
+companions beside it and names them back in the result as `companions`. Without
+it, "montre les transports en commun" lit `transit-fr` alone and left
+Île-de-France with no vehicles, which is the exact gap the fusion closes. An
+unfused layer's answer is byte-identical to what it was: the key is named only
+when there are followers. The bare word "météo" was moved off
+`meteo-stations-fr`'s alias list for the same reason — it names the row now,
+and "stations météo" still reaches the instruments.
 
 A row whose primary is off but whose companion a share link left on reads `OFF`
 and still shows its chips, so the drawn layer is always controllable. The

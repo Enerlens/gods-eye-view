@@ -175,7 +175,11 @@ const SPOKEN_ALIASES = Object.freeze({
   'bdtopo-buildings': ['bâti', 'bati', 'bâti 3d', 'bati 3d', 'bâtiments', 'batiments', 'bâtiments 3d', 'batiments 3d'],
   'gas-fr': ['réseau gaz', 'reseau gaz', 'gaz', 'gazoducs'],
   'rte-generation': ['groupes de production', 'production', 'réacteurs', 'reacteurs', 'centrales'],
-  'meteo-stations-fr': ['stations météo', 'stations meteo', 'météo', 'meteo'],
+  // The BARE word belongs to the row, not to the companion. Since the fusion
+  // (`layerFusions.js`) `meteofrance-vigilance` is LABELLED « Météo » and
+  // carries the stations as a chip, so an operator saying "météo" means the
+  // subject and gets the row; "stations météo" still reaches the instruments.
+  'meteo-stations-fr': ['stations météo', 'stations meteo', 'réseau météo', 'reseau meteo'],
   'comptages-fr': ['comptages routiers', 'comptages', 'comptage'],
 });
 

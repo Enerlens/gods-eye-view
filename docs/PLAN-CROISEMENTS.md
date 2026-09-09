@@ -1,6 +1,6 @@
 # Plan des croisements de données
 
-*État de l'audit du 2026-09 sur les 62 lignes du panneau `DATA LAYERS` : ce qui
+*État de l'audit du 2026-09 sur les 61 lignes du panneau `DATA LAYERS` : ce qui
 a été livré, ce qui reste dû, et — pour chaque point resté dehors — la raison
 qui l'a fait rester dehors. Un plan qui ne dit pas pourquoi il s'arrête est une
 liste de vœux.*
@@ -24,7 +24,7 @@ n'avaient donc pas été écrits.
 
 ## Livré
 
-### Les fusions — 62 lignes → 38
+### Les fusions — 61 lignes → 38
 
 `src/data/layerFusions.js`. Quinze entrées replient **23 couches** dans la ligne
 du sujet auquel elles appartiennent, chacune devenant une pastille ronde sous

@@ -128,7 +128,13 @@ test('normalization folds accents, case and punctuation to one key', () => {
 });
 
 test('a near miss gets suggestions and nonsense gets none', () => {
-  assert.deepEqual(suggestVoiceLayers('bornes electriques').map((entry) => entry.id), ['irve-fr', 'power-grid']);
+  // `edf-power-plants` joined this list when the fusion relabelled it
+  // « Centrales électriques » — it really does share a word with what was
+  // asked, and it is ranked below the two that share more.
+  assert.deepEqual(
+    suggestVoiceLayers('bornes electriques').map((entry) => entry.id),
+    ['irve-fr', 'edf-power-plants', 'power-grid'],
+  );
   assert.equal(suggestVoiceLayers('la couche medecin')[0].id, 'medecins-fr');
   // French grammar words must not manufacture a match: "des" appears in half
   // the labels, and three confident suggestions for a layer nobody has is

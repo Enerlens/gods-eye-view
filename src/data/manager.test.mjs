@@ -3342,7 +3342,15 @@ function makePanelElement() {
       },
       contains(name) { return String(element.className).split(/\s+/).filter(Boolean).includes(name); },
     },
-    appendChild(child) { this.children.push(child); return child; },
+    appendChild(child) { child.parent = element; this.children.push(child); return child; },
+    // Chip reconciliation REMOVES the buttons a refresh no longer needs
+    // (`_syncRowControls`), so a stub without this throws the moment a row
+    // sheds a chip — which is what a fused row does every time a companion
+    // goes off.
+    remove() {
+      const siblings = this.parent?.children;
+      if (siblings) this.parent.children = siblings.filter((node) => node !== this);
+    },
     addEventListener(type, handler) {
       if (!this.listeners.has(type)) this.listeners.set(type, []);
       this.listeners.get(type).push(handler);
@@ -3853,6 +3861,35 @@ test('two modules publishing the same chip id do not steer each other', async ()
     // And a companion's option names its owner where there is room to: the
     // strip can hold a dozen chips from four layers.
     assert.equal(chips[3].title, 'Militaires · MILITARY');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('setRowFollowers moves the companions and leaves the primary alone', async () => {
+  // The voice surface drives the PRIMARY through the intent protocol, because
+  // the operator's utterance is reported on that one transition. The followers
+  // move through this instead — otherwise naming a fused subject would light
+  // one of the layers behind it and leave the rest dark.
+  const panel = makeFusedPanel();
+  try {
+    const moved = await panel.mgr.setRowFollowers('flights', true, { origin: 'voice' });
+    assert.deepEqual(moved, ['military'], 'the opt-in companion is not a follower');
+    assert.equal(panel.mgr.isEnabled('flights'), false, 'the primary is untouched');
+    assert.equal(panel.mgr.isEnabled('military'), true);
+    assert.equal(panel.mgr.isEnabled('rocket-launches'), false);
+
+    // OFF takes everything down, opt-in included.
+    await panel.mgr.setEnabled('rocket-launches', true);
+    const dropped = await panel.mgr.setRowFollowers('flights', false, { origin: 'voice' });
+    assert.deepEqual(dropped, ['military', 'rocket-launches']);
+    assert.equal(panel.mgr.isEnabled('military'), false);
+    assert.equal(panel.mgr.isEnabled('rocket-launches'), false);
+
+    // An unfused layer has no followers, and says so with an empty list rather
+    // than by refusing — the caller can use it unconditionally.
+    assert.deepEqual(await panel.mgr.setRowFollowers('ais-live-vessels', true), []);
+    assert.deepEqual(await panel.mgr.setRowFollowers('not-a-layer', true), []);
   } finally {
     await panel.restore();
   }

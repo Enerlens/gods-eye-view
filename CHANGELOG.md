@@ -319,7 +319,8 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   socket que le corps décodé est bien identique à l'original, que le
   `Content-Length` annonce ce qui est envoyé, et qu'un client qui ne sait pas
   décoder le brotli n'en reçoit jamais.
-- **Un sujet, une ligne : la liste des couches passe de 62 lignes à 38.** Le
+
+- **Un sujet, une ligne : la liste des couches passe de 61 lignes à 38.** Le
   panneau listait quatorze sujets deux à quatre fois chacun. « Combien vaut ce
   sol » occupait trois lignes (`Ventes immobilières`, `Avis de valeur`,
   `Comparables`) qui lisent le même registre DVF. La route en occupait quatre.
@@ -343,10 +344,17 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   garde la ligne, pour qu'aucun lecteur hors de France ne voie une pastille
   `FR` au-dessus de données qui le concernent.
 
+  **La voix suit.** Nommer un sujet allume le sujet : « montre les transports en
+  commun » n'allume plus `transit-fr` seul en laissant l'Île-de-France sans
+  véhicule. Et le mot nu « météo » désigne désormais la ligne, pas la couche
+  d'instruments qu'elle porte — « stations météo » atteint toujours les
+  instruments.
+
   Ce que la fusion ne fait pas, et qui reste dû : dédoublonner les 56 centrales
   que trois registres se partagent, et retirer la famille « médecin » de
   `Équipements du quotidien`. La fusion est la première moitié de ce travail,
-  pas son remplacement.
+  pas son remplacement. `docs/PLAN-CROISEMENTS.md` liste les huit points restés
+  dehors et l'obstacle de chacun.
 
 - **Les 60 couches de données ne se téléchargent plus qu'au premier clic —
   470 kB de moins pour ouvrir le globe.** L'application chargeait le code des

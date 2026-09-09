@@ -3103,7 +3103,7 @@ test('an unknown layer comes back with the nearest names instead of a thrown err
   const runner = createGevActionRunner({ viewer, styleManager, dataManager: stubManager([]) });
   const result = await runner('set_layer_visibility', { layerId: 'bornes electriques', enabled: true });
   assert.equal(result.ok, false);
-  assert.deepEqual(result.suggestions.map((entry) => entry.id), ['irve-fr', 'power-grid']);
+  assert.deepEqual(result.suggestions.map((entry) => entry.id), ['irve-fr', 'edf-power-plants', 'power-grid']);
   assert.match(result.hint, /list_layers/);
 });
 
@@ -3627,4 +3627,58 @@ test('with nothing under the camera the layer keeps its own explanation', async 
   assert.equal(result.viewAdjusted.ok, false);
   assert.equal(result.viewAdjusted.reason, 'no-ground-point-under-the-camera');
   assert.equal(flights.length, 0);
+});
+
+test('naming a fused subject by voice switches the SUBJECT, not one of its halves', async () => {
+  // "Montre les transports en commun" used to light `transit-fr` alone and
+  // leave Île-de-France with no vehicles — which is the exact gap the layer
+  // fusion exists to close. The primary still goes through the intent
+  // protocol; the followers move beside it and are named back in the result.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const moved = [];
+  const dataManager = {
+    ...stubManager([{ id: 'transit-fr', name: 'Transports en commun' }]),
+    setEnabled: async () => true,
+    setRowFollowers: async (id, value) => {
+      moved.push([id, value]);
+      return value ? ['idfm-network', 'idfm-frequency'] : [];
+    },
+  };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  const result = await runner('set_layer_visibility', { layerId: 'transit-fr', enabled: true });
+  assert.equal(result.ok, true);
+  assert.deepEqual(moved, [['transit-fr', true]]);
+  assert.deepEqual(result.companions, ['idfm-network', 'idfm-frequency']);
+});
+
+test('a layer with no companions answers exactly as it always has', async () => {
+  // The `companions` key is named only when there are any, so an unfused
+  // layer's result is byte-identical to what the model was reading before.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const dataManager = {
+    ...stubManager([{ id: 'medecins-fr', name: 'Médecins' }]),
+    setEnabled: async () => true,
+    setRowFollowers: async () => [],
+  };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  const result = await runner('set_layer_visibility', { layerId: 'medecins-fr', enabled: true });
+  assert.equal(result.ok, true);
+  assert.equal(Object.hasOwn(result, 'companions'), false);
+});
+
+test('a manager without setRowFollowers still answers — the call is optional', async () => {
+  // Every other caller reaches a manager through a guarded optional call, and
+  // the unit harnesses build bare managers. A voice turn must not fail because
+  // the manager it was handed predates the fusion.
+  globalThis.window = globalThis.window || { clearTimeout, setTimeout, requestIdleCallback: null };
+  const { viewer, styleManager } = createVoiceNavigationHarness();
+  const dataManager = {
+    ...stubManager([{ id: 'medecins-fr', name: 'Médecins' }]),
+    setEnabled: async () => true,
+  };
+  const runner = createGevActionRunner({ viewer, styleManager, dataManager });
+  const result = await runner('set_layer_visibility', { layerId: 'medecins-fr', enabled: true });
+  assert.equal(result.ok, true);
 });

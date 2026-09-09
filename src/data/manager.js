@@ -2517,13 +2517,43 @@ export class DataLayerManager {
    * @returns {Promise<void>} Settles when every member has settled.
    */
   _setRowEnabled(layerId, shouldEnable) {
+    return Promise.all([
+      this.setEnabled(layerId, shouldEnable, { origin: 'user' }),
+      this.setRowFollowers(layerId, shouldEnable, { origin: 'user' }),
+    ]).then(() => undefined);
+  }
+
+  /**
+   * Switch the companions a fused row carries, WITHOUT touching the primary.
+   *
+   * Split out of {@link _setRowEnabled} for the voice surface, which cannot use
+   * that method: `set_layer_visibility` drives the primary through the intent
+   * protocol (`_setEnabledWithIntent`, epochs, cancellation reporting) because
+   * the operator's utterance is reported on that one transition. The followers
+   * are not what is being reported on, so they move through the ordinary path
+   * and are named back in the result instead.
+   *
+   * Without this, naming a fused subject by voice switched on ONE of the layers
+   * behind it — "montre les transports en commun" would light `transit-fr` and
+   * leave Île-de-France with no vehicles, which is the exact gap the fusion
+   * exists to close.
+   *
+   * @param {string} layerId Primary layer id.
+   * @param {boolean} shouldEnable Target state.
+   * @param {{origin?: string}} [options]
+   * @returns {Promise<string[]>} The ids that were asked to move, possibly empty.
+   */
+  setRowFollowers(layerId, shouldEnable, { origin = 'programmatic' } = {}) {
     const companions = this._fusionCompanions(layerId);
+    // ON carries the followers only; OFF takes everything down, `optIn`
+    // included — a lit chip under a dark row would be a layer drawing with no
+    // visible control.
     const targets = shouldEnable
-      ? [layerId, ...companions.filter((entry) => entry.optIn !== true).map((entry) => entry.id)]
-      : [layerId, ...companions.map((entry) => entry.id)];
-    return Promise.all(
-      targets.map((id) => this.setEnabled(id, shouldEnable, { origin: 'user' })),
-    ).then(() => undefined);
+      ? companions.filter((entry) => entry.optIn !== true).map((entry) => entry.id)
+      : companions.map((entry) => entry.id);
+    if (!targets.length) return Promise.resolve([]);
+    return Promise.all(targets.map((id) => this.setEnabled(id, shouldEnable, { origin })))
+      .then(() => targets);
   }
 
   /**

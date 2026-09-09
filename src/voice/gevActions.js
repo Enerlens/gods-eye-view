@@ -1177,6 +1177,7 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
       let changed = false;
       let changeError = null;
       let intentOutcome = null;
+      let followers = [];
       try {
         if (typeof dataManager._setEnabledWithIntent === 'function') {
           const intent = dataManager._setEnabledWithIntent(layerId, enabled, changeOptions);
@@ -1187,6 +1188,14 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
         } else {
           changed = await dataManager.setEnabled(layerId, enabled, changeOptions);
         }
+        // THE SUBJECT, NOT ONE OF ITS HALVES. A fused row carries several
+        // layers (`layerFusions.js`) and an operator naming it means the
+        // subject: "montre les transports en commun" must not light
+        // `transit-fr` and leave Île-de-France with no vehicles. The followers
+        // move outside the intent protocol above, which reports on the ONE
+        // transition the utterance named, and are listed back in the result so
+        // the model can say what else came on.
+        followers = await dataManager.setRowFollowers?.(layerId, enabled, changeOptions) || [];
         if (layerId === 'rocket-launches' || layerId === 'satellites') {
           await styleManager?._waitForContextLayerSettlement?.();
         }
@@ -1258,6 +1267,9 @@ export function createGevActionRunner({ viewer, styleManager, dataManager, scene
         action: 'set_layer_visibility',
         layerId,
         label: layer?.name || layerId,
+        // Named only when there ARE any, so an unfused layer's answer is
+        // byte-identical to what it has always been.
+        ...(followers.length ? { companions: followers } : {}),
         ...lifecycleSummary,
         ...drawing,
         ...(viewAdjustment ? { viewAdjusted: viewAdjustment } : {}),
