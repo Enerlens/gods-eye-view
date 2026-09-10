@@ -58,7 +58,7 @@ import {
   setOverlayEntries,
   setOverlaySourceVisible,
 } from '../overlays/worldOverlay.js';
-import { GBFS_MAX_BOX_DEG, VEHICLE_KIND_LABELS } from './gbfsFeeds.js';
+import { GBFS_MAX_BOX_DEG, VEHICLE_KIND_LABELS, VEHICLE_KIND_PLURALS } from './gbfsFeeds.js';
 import { mobilityOperatorShortLabel, resolveMobilityOperator } from './mobilityOperators.js';
 import { sharedMobilityGlyph, sharedMobilityGlyphKind } from './sharedMobilityIcons.js';
 
@@ -326,7 +326,68 @@ function recordPrimitive(record) {
 
 /** Display label for a vehicle kind. */
 export function vehicleKindLabel(kind) {
-  return VEHICLE_KIND_LABELS[kind] || (kind ? String(kind) : 'Vehicle');
+  return VEHICLE_KIND_LABELS[kind] || (kind ? String(kind) : 'Véhicule');
+}
+
+/**
+ * Display label for a vehicle kind, agreeing with a count.
+ * @param {string} kind
+ * @param {number} count
+ * @returns {string}
+ */
+export function vehicleKindPlural(kind, count) {
+  if (Math.abs(Number(count)) < 2) return vehicleKindLabel(kind);
+  return VEHICLE_KIND_PLURALS[kind] || vehicleKindLabel(kind);
+}
+
+/**
+ * The pictogram that goes in front of a count.
+ *
+ * A bike badge over a car-share station would be a picture of the wrong
+ * vehicle, so this reads the station's own inventory rather than assuming.
+ * `other` is a form factor GBFS named and this layer has no word for — it gets
+ * no badge at all rather than a plausible wrong one.
+ */
+const KIND_EMOJI = Object.freeze({
+  bike: '🚲',
+  ebike: '🚲',
+  scooter: '🛴',
+  moped: '🛵',
+  car: '🚗',
+});
+
+/** Lowercase a label for mid-sentence use, leaving acronyms like VAE alone. */
+function lowerLabel(label) {
+  return label === label.toUpperCase() ? label : label.toLowerCase();
+}
+
+/** Join a short French enumeration: `a`, `a et b`, `a, b et c`. */
+function joinFr(parts) {
+  if (parts.length < 2) return parts[0] || '';
+  return `${parts.slice(0, -1).join(', ')} et ${parts[parts.length - 1]}`;
+}
+
+/**
+ * What a station holds: the badge to draw, and the kinds worth naming.
+ *
+ * A bike badge over a car-share station would be a picture of the wrong
+ * vehicle, so the badge is read off the published inventory. When there is no
+ * inventory the fallback is BIKES — the same GBFS default `stationHoldsBikes`
+ * already follows, where a system naming no vehicle type "is assumed to
+ * operate non-motorized bicycles".
+ *
+ * @param {?Object<string, number>} byKind
+ * @returns {{emoji: string, kinds: Array<[string, number]>, bikesOnly: boolean}}
+ */
+function stationInventory(byKind) {
+  const kinds = Object.entries(byKind || {})
+    .map(([kind, count]) => [kind, Number(count)])
+    .filter(([, count]) => Number.isFinite(count) && count > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const names = kinds.map(([kind]) => kind);
+  const bikesOnly = !names.length || names.every((kind) => kind === 'bike' || kind === 'ebike');
+  if (bikesOnly) return { emoji: KIND_EMOJI.bike, kinds, bikesOnly: true };
+  return { emoji: names.length === 1 ? (KIND_EMOJI[names[0]] || '') : '', kinds, bikesOnly: false };
 }
 
 /**
@@ -344,9 +405,9 @@ export function vehicleKindLabel(kind) {
 export function stationTitle(record) {
   const name = record?.object?.name;
   if (name) return String(name);
-  const kind = record?.object?.virtual ? 'Bay' : 'Station';
+  const kind = record?.object?.virtual ? 'Aire' : 'Station';
   const operator = sharedMobilityOperator(record);
-  return operator.id === 'unknown' ? kind : `${operator.label} ${kind}`;
+  return operator.id === 'unknown' ? kind : `${kind} ${operator.label}`;
 }
 
 /**
@@ -521,45 +582,81 @@ export function sharedMobilityReadout(record) {
 export function buildSharedMobilitySelectionLabel(record, nowMs = Date.now()) {
   const object = record?.object || {};
   const system = record?.system || {};
+  const operator = sharedMobilityOperator(record);
   const details = [];
 
   let title;
   if (record.type === 'station') {
     title = stationTitle(record);
-    const counts = [];
-    if (Number.isFinite(object.available)) counts.push(`${object.available} avail`);
-    if (Number.isFinite(object.docks)) counts.push(`${object.docks} docks`);
-    if (Number.isFinite(object.capacity)) counts.push(`${object.capacity} cap`);
-    if (counts.length) details.push(`🚲 ${counts.join(' · ')}`);
-    if (object.byKind) {
-      const split = Object.entries(object.byKind)
-        .filter(([, count]) => Number(count) > 0)
-        .map(([kind, count]) => `${count} ${vehicleKindLabel(kind).toLowerCase()}`);
-      if (split.length) details.push(`↳ ${split.join(' · ')}`);
+    const available = Number.isFinite(object.available) ? object.available : null;
+    const inventory = stationInventory(object.byKind);
+    if (available === null) {
+      // Stated, for the same reason `stationColor` paints this case neutral:
+      // « on ne sait pas » and « il n'y a rien » are different facts, and only
+      // the second one is worth walking to.
+      details.push('Inventaire non publié');
+    } else {
+      // A single kind that accounts for the whole count names itself here, and
+      // the breakdown line below disappears — « 1 VAE » printed twice was the
+      // card spending two lines on one fact.
+      const single = inventory.kinds.length === 1 && inventory.kinds[0][1] === available
+        ? inventory.kinds[0][0]
+        : null;
+      const noun = lowerLabel(vehicleKindPlural(single || (inventory.bikesOnly ? 'bike' : 'other'), available));
+      const counts = [`${fr(available)} ${noun} disponible${available > 1 ? 's' : ''}`];
+      if (Number.isFinite(object.capacity) && object.capacity > 0) {
+        counts[0] += ` sur ${fr(object.capacity)} place${object.capacity > 1 ? 's' : ''}`;
+      }
+      if (Number.isFinite(object.docks)) {
+        // A painted bay has no dock to lock into: what is free there is a
+        // place on the ground, not a borne.
+        const word = object.virtual === true ? 'place' : 'borne';
+        const many = object.docks > 1 ? 's' : '';
+        counts.push(`${fr(object.docks)} ${word}${many} libre${many}`);
+      }
+      details.push(`${inventory.emoji ? `${inventory.emoji} ` : ''}${counts.join(' · ')}`);
+      if (!single && inventory.kinds.length > 1) {
+        const split = inventory.kinds.map(([kind, count]) => {
+          // Inside a bikes-only station the split IS the power source, and
+          // « 5 vélos » under « 7 vélos disponibles » would not say which five.
+          const label = inventory.bikesOnly && kind === 'bike'
+            ? `mécanique${count > 1 ? 's' : ''}`
+            : lowerLabel(vehicleKindPlural(kind, count));
+          return `${fr(count)} ${label}`;
+        });
+        details.push(`dont ${joinFr(split)}`);
+      }
     }
-    if (object.renting === false) details.push('⚠️ Not renting');
+    if (object.renting === false) details.push('⚠️ Location suspendue');
   } else {
-    // "Lime E-bike", not "E-bike": the operator is half of what the glyph on
-    // screen is saying, and the card is where that colour gets a name.
-    const operator = sharedMobilityOperator(record);
+    // « Trottinette Dott », not « Trottinette »: the operator is half of what
+    // the glyph on screen is saying, and the card is where that colour gets a
+    // name.
     const kind = vehicleKindLabel(object.kind);
-    title = operator.id === 'unknown' ? kind : `${operator.label} ${kind}`;
+    title = operator.id === 'unknown' ? kind : `${kind} ${operator.label}`;
     if (Number.isFinite(object.rangeMeters)) {
-      details.push(`🔋 ${(object.rangeMeters / 1000).toFixed(1)} km range`);
+      const km = (object.rangeMeters / 1000)
+        .toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+      details.push(`🔋 ${km} km d’autonomie`);
     }
     // Age of the vehicle's OWN last report — several operators publish fixes
     // that are minutes to hours old, and the poll time would hide that.
     if (Number.isFinite(object.lastReported)) {
       const seconds = Math.max(0, Math.round(nowMs / 1000 - object.lastReported));
       details.push(seconds < 90
-        ? `⏱ reported ${seconds}s ago`
-        : `⏱ reported ${Math.round(seconds / 60)}m ago`);
+        ? `⏱ position il y a ${seconds} s`
+        : `⏱ position il y a ${fr(Math.round(seconds / 60))} min`);
     }
-    details.push('Parked and available — a rented vehicle is not published');
   }
 
-  if (system.name) details.push(`🅿️ ${system.name}`);
-  if (system.licence) details.push(system.licence);
+  // The network that publishes this dot. Dropped when it only echoes the title
+  // or the operator already inside it — « Pony » under « Aire Pony » is a line
+  // spent saying nothing.
+  const network = system.name ? String(system.name) : '';
+  const echo = network.toLowerCase();
+  if (network && echo !== title.toLowerCase() && echo !== String(operator?.label || '').toLowerCase()) {
+    details.push(`🅿️ ${network}`);
+  }
   return [title, ...details].join('\n');
 }
 
@@ -1103,32 +1200,34 @@ function kindFilterChipTitle(filter, kept, total, active) {
 }
 
 function buildLoadingLabel() {
-  if (_status === 'zoom-in') return 'zoom in to load shared vehicles';
-  if (_loading) return _records.size ? 'refreshing operators...' : 'resolving operators...';
+  if (_status === 'zoom-in') return 'zoomer pour charger les véhicules partagés';
+  if (_loading) return _records.size ? 'actualisation des opérateurs…' : 'recherche des opérateurs…';
   if (_status === 'empty') {
-    // A chip that hides everything has to own it: "no vehicles reporting here"
-    // would blame the feed for the reader's own filter.
+    // A chip that hides everything has to own it: « aucun véhicule ne se
+    // signale ici » would blame the feed for the reader's own filter.
     const tally = kindFilterTally();
     if (_kindFilter && tally.velo + tally.autres > 0) {
       return _kindFilter === 'velo'
-        ? 'no bikes in this view — the rest is filtered out'
-        : 'nothing but bikes in this view — they are filtered out';
+        ? 'aucun vélo dans cette vue — le reste est filtré'
+        : 'rien que des vélos dans cette vue — ils sont filtrés';
     }
-    return _systemsMatched > 0 ? 'no vehicles reporting here' : 'no PAN system covers this view';
+    return _systemsMatched > 0
+      ? 'aucun véhicule ne se signale ici'
+      : 'aucun système du PAN ne couvre cette vue';
   }
   const active = _systems.filter((s) => s.stationsInView > 0 || s.vehiclesInView > 0).length;
-  const parts = [`${active} operator${active === 1 ? '' : 's'}`];
-  if (_kindFilter) parts.push(_kindFilter === 'velo' ? 'bikes only' : 'bikes hidden');
-  if (_truncated) parts.push('capped');
+  const parts = [`${fr(active)} opérateur${active === 1 ? '' : 's'}`];
+  if (_kindFilter) parts.push(_kindFilter === 'velo' ? 'vélos seuls' : 'vélos masqués');
+  if (_truncated) parts.push('plafonné');
   const suppressed = _systems.reduce((sum, s) => sum + (s.stationsSuppressed || 0), 0);
-  if (suppressed) parts.push(`${suppressed.toLocaleString('en-US')} shared bays merged out`);
+  if (suppressed) parts.push(`${fr(suppressed)} station${suppressed > 1 ? 's' : ''} mutualisée${suppressed > 1 ? 's' : ''} fusionnée${suppressed > 1 ? 's' : ''}`);
   // The empty painted bays the proxy dropped. Said out loud for the same
   // reason as the line above: a count that changed silently is a count the
   // reader cannot trust.
   const emptyBays = _systems.reduce((sum, s) => sum + (s.baysHidden || 0), 0);
-  if (emptyBays) parts.push(`${emptyBays.toLocaleString('en-US')} empty bays hidden`);
+  if (emptyBays) parts.push(`${fr(emptyBays)} aire${emptyBays > 1 ? 's' : ''} vide${emptyBays > 1 ? 's' : ''} masquée${emptyBays > 1 ? 's' : ''}`);
   const stale = _systems.filter((s) => s.stale).length;
-  if (stale) parts.push(`${stale} stale`);
+  if (stale) parts.push(`${fr(stale)} flux périmé${stale > 1 ? 's' : ''}`);
   return parts.join(' · ');
 }
 
@@ -1138,7 +1237,7 @@ function buildLoadingLabel() {
  */
 const sharedMobilityFranceLayer = {
   id: SHARED_MOBILITY_FR_LAYER_ID,
-  name: 'Shared Mobility FR',
+  name: 'Véhicules partagés (FR)',
   icon: '🛴',
   source: 'transport.data.gouv.fr',
   updateInterval: POLL_INTERVAL_MS,

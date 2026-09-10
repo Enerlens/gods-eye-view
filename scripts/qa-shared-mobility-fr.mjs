@@ -363,8 +363,12 @@ async function main() {
     console.log('[qa] iii. row legend');
     const byLabel = Object.fromEntries(loaded.legend);
     check('the legend has a Stations entry matching the fixture', byLabel.Stations === 13, JSON.stringify(loaded.legend));
+    // The two false friends are spelled out on purpose: GBFS `scooter` is the
+    // kick one and reads « Trottinette », GBFS `moped` is the seated one and
+    // reads « Scooter ». A literal rename of the old keys would have moved
+    // this check onto the wrong silhouette.
     check('and one entry per vehicle kind in view',
-      byLabel['E-bike'] === 5 && byLabel.Scooter === 5 && byLabel.Bike === 5 && byLabel.Moped === 5,
+      byLabel.VAE === 5 && byLabel.Trottinette === 5 && byLabel['Vélo'] === 5 && byLabel.Scooter === 5,
       JSON.stringify(loaded.legend));
     check('with no zero-count entries', loaded.legend.every(([, count]) => count > 0), JSON.stringify(loaded.legend));
 

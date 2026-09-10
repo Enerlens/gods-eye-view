@@ -6,6 +6,40 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-10
 
 ### Changed
+- **Une aire du Pays Basque disait « 1 avail » puis « 1 e-bike » : cinq lignes
+  et deux langues pour un seul vélo.** La fiche des véhicules partagés était le
+  dernier écran de la couche resté en anglais abrégé — `avail`, `docks`, `cap`,
+  `Bay` — sous une ligne de licence française qui ne parlait pas du lieu mais du
+  jeu de données. Elle est en français, et elle dit ce qu'elle sait :
+
+  ```
+  Aire Pony                                       ← « Pony Bay »
+  🚲 1 VAE disponible                             ← « 🚲 1 avail » + « ↳ 1 e-bike »
+  🅿️ Pony Pays Basque
+  ```
+
+  **LA VENTILATION NE SE RÉPÈTE PLUS.** Une catégorie qui porte tout le compte
+  se nomme sur la première ligne ; la seconde disparaît. Sur une vraie station
+  elle reste et devient lisible : `🚲 7 vélos disponibles sur 11 places · 4
+  bornes libres` puis `dont 5 mécaniques et 2 VAE`. Une aire peinte a des
+  *places* libres, une station à bornes des *bornes*.
+
+  **LE PICTOGRAMME SUIT L'INVENTAIRE PUBLIÉ.** Un vélo au-dessus d'une station
+  d'autopartage était l'image du mauvais véhicule ; une station Citiz porte
+  maintenant `🚗`. Et le faux ami du GBFS est épinglé par un test : `scooter`
+  est la trottinette, `moped` est le scooter — une traduction littérale aurait
+  interverti les deux silhouettes.
+
+  **DEUX LIGNES PARTENT, UNE ARRIVE.** La licence du flux n'est pas un fait sur
+  la borne d'en face. « Garé et disponible — un véhicule loué n'est jamais
+  publié » est vrai de chaque glyphe à l'écran : c'est la légende qui le dit,
+  une fois, au lieu de la fiche à chaque clic. En échange, un flux qui ne
+  publie pas son stock l'annonce — `Inventaire non publié` — au lieu de
+  ressembler à une station vide, que la couleur distingue pourtant déjà.
+
+  La ligne d'état, les libellés de catégorie et le nom de la couche suivent :
+  **Véhicules partagés (FR)**, `2 opérateurs · vélos seuls · 447 aires vides
+  masquées`, Vélo · VAE · Trottinette · Scooter · Voiture.
 - **La légende cachait 29 % d'elle-même, et la moitié qu'elle montrait parlait
   d'une ville à 700 km.** Sur une vue de Biarritz, le panneau `LEGEND` mesurait
   434 px de contenu dans une fenêtre de 308 px : le bloc **Longue traîne FR** —

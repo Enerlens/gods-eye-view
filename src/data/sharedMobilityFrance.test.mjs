@@ -21,6 +21,7 @@ import sharedMobilityFranceLayer, {
   stationColor,
   stationPointSize,
   vehicleKindLabel,
+  vehicleKindPlural,
   matchesKindFilter,
   stationHoldsBikes,
   stationTitle,
@@ -123,8 +124,15 @@ test('every vehicle kind draws a distinct silhouette and keeps a readable label'
   const glyphs = kinds.map((kind) => sharedMobilityGlyph(kind));
   assert.equal(new Set(glyphs).size, kinds.length);
   assert.ok(glyphs.every((glyph) => glyph.startsWith('data:image/svg+xml;base64,')));
-  assert.equal(vehicleKindLabel('ebike'), 'E-bike');
-  assert.equal(vehicleKindLabel('moped'), 'Moped');
+  assert.equal(vehicleKindLabel('ebike'), 'VAE');
+  // The false friend, pinned: GBFS `scooter` is the kick one — a trottinette —
+  // and GBFS `moped` is the seated one a French reader calls a scooter.
+  assert.equal(vehicleKindLabel('scooter'), 'Trottinette');
+  assert.equal(vehicleKindLabel('moped'), 'Scooter');
+  // Agreement, and the acronym that does not take an -s.
+  assert.equal(vehicleKindPlural('bike', 4), 'Vélos');
+  assert.equal(vehicleKindPlural('bike', 1), 'Vélo');
+  assert.equal(vehicleKindPlural('ebike', 4), 'VAE');
   // An unmapped kind is shown verbatim, not silently relabelled.
   assert.equal(vehicleKindLabel('funicular'), 'funicular');
 });
@@ -164,21 +172,57 @@ test('a vehicle card dates the operator\'s own report and says what it is lookin
   const lines = buildSharedMobilitySelectionLabel(record, 1787812399000).split('\n');
   // Whose it is leads the card: the glyph on screen is Lime-coloured, and
   // this is where that hue gets a name.
-  assert.equal(lines[0], 'Lime E-bike');
-  assert.equal(lines[1], '🔋 13.1 km range');
+  assert.equal(lines[0], 'VAE Lime');
+  assert.equal(lines[1], '🔋 13,1 km d’autonomie');
   // 60 s after the vehicle reported — not 60 s after the layer polled.
-  assert.equal(lines[2], '⏱ reported 60s ago');
-  assert.equal(lines[3], 'Parked and available — a rented vehicle is not published');
-  assert.equal(lines[4], '🅿️ Lime Paris');
-  assert.equal(lines[5], 'Licence Ouverte 2.0');
+  assert.equal(lines[2], '⏱ position il y a 60 s');
+  assert.equal(lines[3], '🅿️ Lime Paris');
+  // The card stops there. « Garé et disponible » is true of every glyph on
+  // screen, so it belongs to the legend once and not to each card; the licence
+  // of the FEED is not a fact about this scooter at all.
+  assert.equal(lines.length, 4);
 });
 
 test('a station card prints the counts and the per-kind split it was given', () => {
   const lines = buildSharedMobilitySelectionLabel(stationRecord()).split('\n');
   assert.equal(lines[0], 'Commerce');
-  assert.equal(lines[1], '🚲 7 avail · 4 docks · 11 cap');
-  assert.equal(lines[2], '↳ 5 bike · 2 e-bike');
+  assert.equal(lines[1], '🚲 7 vélos disponibles sur 11 places · 4 bornes libres');
+  assert.equal(lines[2], 'dont 5 mécaniques et 2 VAE');
   assert.equal(lines[3], '🅿️ Naolib Nantes');
+  assert.equal(lines.length, 4);
+
+  // One kind that accounts for the whole count names itself on the first line,
+  // and the split disappears — printing « 1 VAE » twice was the card spending
+  // two lines on one fact.
+  const solo = buildSharedMobilitySelectionLabel(stationRecord({
+    object: {
+      name: null, virtual: true, available: 1, docks: null, capacity: null, byKind: { ebike: 1 },
+    },
+    system: { name: 'Pony Pays Basque' },
+  })).split('\n');
+  assert.deepEqual(solo, ['Aire Pony', '🚲 1 VAE disponible', '🅿️ Pony Pays Basque']);
+
+  // A car-share station gets the car badge: a bike over a Citiz dock would be
+  // a picture of the wrong vehicle.
+  const cars = buildSharedMobilitySelectionLabel(stationRecord({
+    object: { name: 'Gare', available: 2, docks: null, capacity: null, byKind: { car: 2 } },
+    system: { name: 'Citiz Nantes' },
+  })).split('\n');
+  assert.equal(cars[1], '🚗 2 voitures disponibles');
+
+  // A painted bay has no dock to lock into: what is free there is a place.
+  const bay = buildSharedMobilitySelectionLabel(stationRecord({
+    object: { name: 'Mairie', virtual: true, available: 2, docks: 3, capacity: 5, byKind: { bike: 2 } },
+  })).split('\n');
+  assert.equal(bay[1], '🚲 2 vélos disponibles sur 5 places · 3 places libres');
+
+  // A network name that only echoes the operator already in the title costs a
+  // line and says nothing, so it is dropped.
+  const echo = buildSharedMobilitySelectionLabel(stationRecord({
+    object: { name: null, virtual: true, available: 1, docks: null, capacity: null, byKind: { bike: 1 } },
+    system: { name: 'Pony' },
+  })).split('\n');
+  assert.deepEqual(echo, ['Aire Pony', '🚲 1 vélo disponible']);
 });
 
 test('a nameless bay is called by its operator, never by its primary key', () => {
@@ -190,15 +234,15 @@ test('a nameless bay is called by its operator, never by its primary key', () =>
     object: { name: null, virtual: true, available: 3 },
     system: { name: 'Pony Pays Basque' },
   });
-  assert.equal(stationTitle(bay), 'Pony Bay');
-  assert.equal(buildSharedMobilitySelectionLabel(bay).split('\n')[0], 'Pony Bay');
+  assert.equal(stationTitle(bay), 'Aire Pony');
+  assert.equal(buildSharedMobilitySelectionLabel(bay).split('\n')[0], 'Aire Pony');
 
   // A nameless PHYSICAL dock is a station, and says so.
   const dock = stationRecord({ object: { name: null, virtual: false }, system: { name: 'Pony Pays Basque' } });
-  assert.equal(stationTitle(dock), 'Pony Station');
+  assert.equal(stationTitle(dock), 'Station Pony');
 
   // A network name the PAN publishes is a fact too, curated brand or not.
-  assert.equal(stationTitle(stationRecord({ object: { name: null }, system: { name: 'Naolib Nantes' } })), 'Naolib Station');
+  assert.equal(stationTitle(stationRecord({ object: { name: null }, system: { name: 'Naolib Nantes' } })), 'Station Naolib');
   // With no operator to name either, the bare noun — never an invented brand.
   assert.equal(stationTitle(stationRecord({ object: { name: null }, system: { name: null } })), 'Station');
 
@@ -212,7 +256,7 @@ test('missing values are omitted rather than filled in', () => {
     system: { name: null, licence: null },
   });
   const lines = buildSharedMobilitySelectionLabel(bare).split('\n');
-  assert.deepEqual(lines, ['Bike', 'Parked and available — a rented vehicle is not published']);
+  assert.deepEqual(lines, ['Vélo']);
 
   const closed = stationRecord({
     object: { name: null, available: null, docks: null, capacity: null, byKind: null, renting: false },
@@ -220,7 +264,10 @@ test('missing values are omitted rather than filled in', () => {
   });
   const closedLines = buildSharedMobilitySelectionLabel(closed).split('\n');
   assert.equal(closedLines[0], 'Station');
-  assert.ok(closedLines.includes('⚠️ Not renting'));
+  assert.ok(closedLines.includes('⚠️ Location suspendue'));
+  // « on ne sait pas » and « il n'y a rien » are different facts, and the card
+  // states the first rather than printing a zero it was never given.
+  assert.ok(closedLines.includes('Inventaire non publié'));
 });
 
 test('the selected entry takes the protected lane, and the source is a static one', () => {
@@ -228,7 +275,7 @@ test('the selected entry takes the protected lane, and the source is a static on
   const entry = createSharedMobilitySelectedOverlayEntry(record, 1787812399000);
   assert.equal(entry.id, record.id);
   assert.equal(entry.position, record.position);
-  assert.equal(entry.title, 'Lime E-bike');
+  assert.equal(entry.title, 'VAE Lime');
   assert.equal(entry.protected, true);
   assert.equal(entry.paintLane, 'selected');
   assert.equal(entry.horizonCull, true);
@@ -279,7 +326,7 @@ test('the row legend carries both channels — shapes, then the operators in vie
   assert.deepEqual(chips.map((chip) => chip.id), ['velo', 'autres']);
   assert.deepEqual(legend.map((item) => [item.label, item.count]), [
     // What is on screen, by kind...
-    ['E-bike', 2], ['Scooter', 2], ['Stations', 1],
+    ['VAE', 2], ['Trottinette', 2], ['Stations', 1],
     // ...then who is running it.
     ['Lime', 3], ['Dott', 1], ['Naolib', 1],
   ]);
@@ -290,7 +337,7 @@ test('the row legend carries both channels — shapes, then the operators in vie
   const kindRows = legend.slice(0, 3);
   assert.equal(new Set(kindRows.map((item) => item.glyph)).size, 3);
   assert.equal(new Set(kindRows.map((item) => item.color)).size, 1);
-  assert.equal(kindRows.find((item) => item.label === 'Scooter').glyph, sharedMobilityGlyph('scooter', 32));
+  assert.equal(kindRows.find((item) => item.label === 'Trottinette').glyph, sharedMobilityGlyph('scooter', 32));
 
   // The operator rows carry the exact colour their objects are drawn in, and
   // no glyph — they answer "who".
@@ -301,7 +348,7 @@ test('the row legend carries both channels — shapes, then the operators in vie
 
   // The two caveats a colour cannot carry.
   assert.match(legend.find((item) => item.label === 'Stations').blurb, /places municipales que tous republient/);
-  assert.match(legend.find((item) => item.label === 'E-bike').blurb, /jamais un véhicule pendant une location/);
+  assert.match(legend.find((item) => item.label === 'VAE').blurb, /jamais un véhicule pendant une location/);
   // A derived hue says it is derived rather than passing itself off as livery.
   assert.match(operatorRows.find((item) => item.label === 'Naolib').blurb, /aucun flux français ne publie sa couleur de marque/);
   // A CURATED hue carries no per-row sentence at all: "one hue nationwide" is
