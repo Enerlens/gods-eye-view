@@ -3487,14 +3487,18 @@ test('a row shows its French label and, when it is not global, a scope chip', as
     const french = panel.container.querySelector('[data-layer-id="france-energy"]');
     const left = french.querySelector('.data-toggle-left');
     assert.match(left.innerHTML, /<span class="data-name">Mix électrique<\/span>/);
-    assert.match(left.innerHTML, /class="data-scope-chip"[^>]*>FR</);
+    // The badge is an appended NODE, not part of the markup above, because it
+    // has a live state: `_syncScopeChip` dims it when the camera leaves the
+    // layer's territory, and a string inside an innerHTML blob is not something
+    // a refresh can reach.
+    assert.equal(left.querySelector('.data-scope-chip')?.textContent, 'FR');
     // The chip must stay OUTSIDE .data-name — the voice layer reads that
     // element's text back as the layer's spoken name.
     assert.doesNotMatch(left.innerHTML, /<span class="data-name">[^<]*FR/);
 
     const global = panel.container.querySelector('[data-layer-id="flights"]');
     assert.match(global.querySelector('.data-toggle-left').innerHTML, /<span class="data-name">Vols en direct<\/span>/);
-    assert.doesNotMatch(global.querySelector('.data-toggle-left').innerHTML, /data-scope-chip/);
+    assert.equal(global.querySelector('.data-scope-chip'), null);
   } finally {
     await panel.restore();
   }
@@ -3891,6 +3895,378 @@ test('setRowFollowers moves the companions and leaves the primary alone', async 
     assert.deepEqual(await panel.mgr.setRowFollowers('ais-live-vessels', true), []);
     assert.deepEqual(await panel.mgr.setRowFollowers('not-a-layer', true), []);
   } finally {
+    await panel.restore();
+  }
+});
+
+// ── TERRITORIAL CONTROLS ────────────────────────────────────────────────────
+//
+// Some layers hold a city rather than a world. `comptages-fr` is 2 946 arcs of
+// Paris street and nothing else on Earth; it used to FOLLOW the traffic row, so
+// switching road traffic on over Tokyo switched it on too and dropped seven
+// hour chips onto a strip of fifteen — all steering a layer with no payload.
+//
+// The repair is not to hide the control. A chip that only exists over Paris is
+// a chip nobody discovers, because you have to already know it is there to go
+// and look. So it stays, dimmed, and says where it works. What follows asserts
+// both halves: the strip gets quiet where the data is not, and the CONTROL that
+// declares a territory never disappears.
+//
+// The ids here are REAL — `layerCoverage.js` is keyed by layer id — while the
+// taxonomy around them stays synthetic, like every other panel test in this
+// file.
+
+const TERRITORY_CATEGORIES = Object.freeze([{ id: 'ground', label: 'SOL', icon: '🚗' }]);
+
+const TERRITORY_TAXONOMY = Object.freeze([
+  {
+    id: 'traffic',
+    category: 'ground',
+    label: 'Trafic routier',
+    kind: 'dataset',
+    coverage: 'global',
+    scopeChip: null,
+    companions: [
+      { id: 'road-status-fr', chip: 'État du réseau', title: 'Traficolor' },
+      { id: 'comptages-fr', chip: 'Comptages · Paris', title: 'boucles', optIn: true },
+    ],
+    fusedInto: null,
+  },
+  {
+    id: 'road-status-fr', category: 'ground', label: 'État du réseau', kind: 'dataset',
+    coverage: 'fr', scopeChip: 'FR', companions: null, fusedInto: 'traffic',
+  },
+  {
+    id: 'comptages-fr', category: 'ground', label: 'Comptages', kind: 'dataset',
+    coverage: 'fr', scopeChip: 'FR', companions: null, fusedInto: 'traffic',
+  },
+  {
+    id: 'fraicheur-fr', category: 'ground', label: 'Îlots de fraîcheur', kind: 'dataset',
+    coverage: 'fr', scopeChip: 'FR', companions: null, fusedInto: null,
+  },
+]);
+
+/*
+ * The chip strip's click handler is fire-and-forget: it kicks `setEnabled` and
+ * returns, so awaiting the handler proves nothing. Draining the microtask queue
+ * plus one macrotask is what actually waits for the toggle — and for the card,
+ * which resolves a promise before the enable it triggers.
+ */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** A view over the middle of Paris, and one over Tokyo. */
+const VIEW_PARIS = Object.freeze({ south: 48.84, west: 2.30, north: 48.88, east: 2.38 });
+const VIEW_TOKYO = Object.freeze({ south: 35.6, west: 139.6, north: 35.8, east: 139.8 });
+
+/** The hour chips a reader can currently see on the traffic row. */
+const countTerritoryHourChips = (panel) => panel.chips('traffic')
+  .filter((chip) => /^(mean|clock|w04|w08|w18|e04|e18)$/.test(chip.textContent)).length;
+
+/** Build a panel around the real traffic row, painted. */
+function makeTerritoryPanel() {
+  const originalDocument = globalThis.document;
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  globalThis.document = { createElement: makePanelElement };
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: makeMemoryStorage(), configurable: true, writable: true,
+  });
+
+  const mgr = new DataLayerManager({});
+  const modules = new Map();
+  for (const { id } of TERRITORY_TAXONOMY) {
+    const layer = makeSlowLayer(id, { updateInterval: -1 });
+    layer.module.getStats = () => ({ count: 0, lastUpdate: null });
+    // Seven hour chips, exactly as `comptagesParis.getRowControls()` publishes
+    // them — and, like the real one, published whether or not there is a
+    // payload behind them.
+    if (id === 'comptages-fr') {
+      layer.module.getRowControls = () => ({
+        chips: ['mean', 'clock', 'w04', 'w08', 'w18', 'e04', 'e18'].map((slot) => ({
+          id: slot, label: slot, active: slot === 'mean', params: { slot },
+        })),
+        legend: [],
+      });
+    }
+    modules.set(id, layer.module);
+    mgr.register(layer.module);
+  }
+  mgr.finalizeRegistrations(
+    TERRITORY_TAXONOMY.map(({ id }) => ({ id, disposition: 'enabled-only' })),
+    TERRITORY_TAXONOMY,
+    TERRITORY_CATEGORIES,
+  );
+  const container = makePanelElement();
+  mgr.buildTogglePanel(container);
+
+  return {
+    mgr,
+    container,
+    modules,
+    row: (id) => container.querySelector(`[data-layer-id="${id}"]`),
+    chips: (id) => findAll(
+      container.querySelector(`[data-layer-id="${id}"]`),
+      '.data-toggle-chip',
+    ),
+    async restore() {
+      await mgr.destroyAll();
+      if (originalDocument === undefined) delete globalThis.document;
+      else globalThis.document = originalDocument;
+      if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage);
+      else delete globalThis.localStorage;
+    },
+  };
+}
+
+test('a Paris-only companion does not follow a world row', async () => {
+  // The defect in one line: pressing ON over Tokyo used to light a layer whose
+  // entire extent is 12,6 km by 10,0 km, and download its chunk to do it.
+  const panel = makeTerritoryPanel();
+  try {
+    panel.mgr.setCoverageView(VIEW_TOKYO);
+    const toggle = panel.row('traffic').querySelector('.data-toggle-btn');
+    await toggle.listeners.get('click')[0]();
+
+    assert.equal(panel.mgr.isEnabled('traffic'), true);
+    assert.equal(panel.mgr.isEnabled('road-status-fr'), true, 'a follower still follows');
+    assert.equal(panel.mgr.isEnabled('comptages-fr'), false, 'the Paris layer is asked for');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('an out-of-coverage companion keeps its chip and loses its options', async () => {
+  const panel = makeTerritoryPanel();
+  try {
+    await panel.mgr.setEnabled('traffic', true);
+    await panel.mgr.setEnabled('comptages-fr', true);
+
+    panel.mgr.setCoverageView(VIEW_PARIS);
+    const overParis = panel.chips('traffic').map((chip) => chip.textContent);
+    assert.equal(overParis.filter((label) => /^(mean|clock|w04|w08|w18|e04|e18)$/.test(label)).length, 7,
+      'over Paris the hour chips are exactly what the layer publishes');
+
+    panel.mgr.setCoverageView(VIEW_TOKYO);
+    const overTokyo = panel.chips('traffic');
+    const labels = overTokyo.map((chip) => chip.textContent);
+    assert.equal(labels.filter((label) => /^(mean|clock|w04|w08|w18|e04|e18)$/.test(label)).length, 0,
+      'an option steering an absent payload is not a control');
+    // But the declaration survives. This is the whole rule.
+    assert.ok(labels.includes('Comptages · Paris'), 'the chip that names the territory stays');
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a dimmed chip is dimmed, never disabled — clicking it is how you get there', async () => {
+  const panel = makeTerritoryPanel();
+  try {
+    await panel.mgr.setEnabled('traffic', true);
+    panel.mgr.setCoverageView(VIEW_TOKYO);
+
+    const chip = panel.chips('traffic').find((node) => node.textContent === 'Comptages · Paris');
+    assert.ok(chip.className.includes('chip-offcoverage'));
+    assert.equal(chip.disabled, false, 'a disabled button cannot ask to be taken anywhere');
+    assert.match(chip.title, /Paris intra-muros/);
+    assert.match(chip.title, /Cliquer pour y aller/);
+
+    panel.mgr.setCoverageView(VIEW_PARIS);
+    const overParis = panel.chips('traffic').find((node) => node.textContent === 'Comptages · Paris');
+    assert.equal(overParis.className.includes('chip-offcoverage'), false);
+    assert.doesNotMatch(overParis.title, /Aucune donnée/);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('the national road layer goes quiet over the one region nobody publishes', async () => {
+  // The reciprocal, and the reason the traffic row is now readable at a glance:
+  // over Paris exactly one of these two controls has data, and it is not the
+  // one whose name says "réseau".
+  const panel = makeTerritoryPanel();
+  try {
+    await panel.mgr.setEnabled('traffic', true);
+    panel.mgr.setCoverageView(VIEW_PARIS);
+
+    const status = panel.chips('traffic').find((node) => node.textContent === 'État du réseau');
+    assert.ok(status.className.includes('chip-offcoverage'));
+    assert.match(status.title, /DIRIF/);
+    // A hole is not somewhere to fly away from: the layer draws everywhere else
+    // in the country and the tooltip must not offer to leave.
+    assert.doesNotMatch(status.title, /Cliquer pour y aller/);
+
+    const marseille = { south: 43.25, west: 5.32, north: 43.34, east: 5.42 };
+    panel.mgr.setCoverageView(marseille);
+    const lit = panel.chips('traffic').find((node) => node.textContent === 'État du réseau');
+    assert.equal(lit.className.includes('chip-offcoverage'), false);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a row scope chip states the territory it actually holds', async () => {
+  // `fraicheur-fr` is 25 045 Paris trees and 159 fountains. Its badge read `FR`,
+  // which promises a reader in Bordeaux something nobody built.
+  const panel = makeTerritoryPanel();
+  try {
+    panel.mgr.setCoverageView(VIEW_TOKYO);
+    const badge = panel.row('fraicheur-fr').querySelector('.data-scope-chip');
+    assert.equal(badge.textContent, 'PARIS');
+    assert.ok(badge.className.includes('off-coverage'));
+    assert.match(badge.title, /Aucune donnée dans cette vue/);
+    // It is not clickable, so it must not pretend to be.
+    assert.doesNotMatch(badge.title, /Cliquer/);
+
+    panel.mgr.setCoverageView(VIEW_PARIS);
+    const here = panel.row('fraicheur-fr').querySelector('.data-scope-chip');
+    assert.equal(here.className.includes('off-coverage'), false);
+    assert.match(here.title, /Couverture/);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('the panel repaints when a territory changes, and not when it does not', async () => {
+  // This runs on every camera settle, and the panel is the most expensive DOM
+  // in the app to rebuild. A pan across Paris must not cost one.
+  const panel = makeTerritoryPanel();
+  try {
+    assert.equal(panel.mgr.setCoverageView(VIEW_PARIS), true, 'the first view is a change');
+    assert.equal(
+      panel.mgr.setCoverageView({ south: 48.85, west: 2.31, north: 48.87, east: 2.36 }),
+      false,
+      'a pan inside the same territories repaints nothing',
+    );
+    assert.equal(panel.mgr.setCoverageView(VIEW_TOKYO), true);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('the card opens only where it has something to say, and only to switch ON', async () => {
+  const panel = makeTerritoryPanel();
+  const asked = [];
+  const flights = [];
+  try {
+    panel.mgr.setCoverageBriefingHandler({
+      ask: (request) => { asked.push(request); return 'goto'; },
+      flyTo: (cityId) => { flights.push(cityId); },
+    });
+    await panel.mgr.setEnabled('traffic', true);
+
+    // Over Paris the reader knows what they asked for: no card, straight on.
+    panel.mgr.setCoverageView(VIEW_PARIS);
+    let chip = panel.chips('traffic').find((node) => node.textContent === 'Comptages · Paris');
+    let controls = panel.row('traffic').querySelector('.data-toggle-controls');
+    controls.listeners.get('click')[0]({ target: chip });
+    await settle();
+    assert.deepEqual(asked, []);
+    assert.equal(panel.mgr.isEnabled('comptages-fr'), true);
+
+    // Switching OFF is never briefed: they have already seen what it said.
+    panel.mgr.setCoverageView(VIEW_TOKYO);
+    chip = panel.chips('traffic').find((node) => node.textContent === 'Comptages · Paris');
+    controls = panel.row('traffic').querySelector('.data-toggle-controls');
+    controls.listeners.get('click')[0]({ target: chip });
+    await settle();
+    assert.deepEqual(asked, [], 'no card between a click and an OFF');
+    assert.equal(panel.mgr.isEnabled('comptages-fr'), false);
+
+    // Out of coverage, switching ON: the card, then the flight.
+    chip = panel.chips('traffic').find((node) => node.textContent === 'Comptages · Paris');
+    controls = panel.row('traffic').querySelector('.data-toggle-controls');
+    controls.listeners.get('click')[0]({ target: chip });
+    await settle();
+    assert.equal(asked.length, 1);
+    assert.equal(asked[0].layerId, 'comptages-fr');
+    assert.equal(asked[0].goto, 'paris');
+    assert.equal(asked[0].brief.lines.length, 3);
+    assert.equal(panel.mgr.isEnabled('comptages-fr'), true, 'the layer is armed before the camera moves');
+    assert.deepEqual(flights, ['paris']);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a declined card leaves the layer exactly as it found it', async () => {
+  const panel = makeTerritoryPanel();
+  const flights = [];
+  try {
+    panel.mgr.setCoverageBriefingHandler({ ask: () => null, flyTo: (id) => flights.push(id) });
+    await panel.mgr.setEnabled('traffic', true);
+    panel.mgr.setCoverageView(VIEW_TOKYO);
+
+    const chip = panel.chips('traffic').find((node) => node.textContent === 'Comptages · Paris');
+    const controls = panel.row('traffic').querySelector('.data-toggle-controls');
+    controls.listeners.get('click')[0]({ target: chip });
+    await settle();
+
+    assert.equal(panel.mgr.isEnabled('comptages-fr'), false);
+    assert.deepEqual(flights, []);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a card that throws does not swallow the click', async () => {
+  // The reader pressed a control. Whatever the surface does, the press has to
+  // produce the result it would have produced if the card had never been built.
+  const panel = makeTerritoryPanel();
+  try {
+    panel.mgr.setCoverageBriefingHandler({ ask: () => { throw new Error('no DOM'); } });
+    await panel.mgr.setEnabled('traffic', true);
+    panel.mgr.setCoverageView(VIEW_TOKYO);
+
+    const chip = panel.chips('traffic').find((node) => node.textContent === 'Comptages · Paris');
+    const controls = panel.row('traffic').querySelector('.data-toggle-controls');
+    controls.listeners.get('click')[0]({ target: chip });
+    await settle();
+
+    assert.equal(panel.mgr.isEnabled('comptages-fr'), true);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('with no briefing surface at all the chip just toggles, as it always did', async () => {
+  // Every unit test and every headless harness is in this case. A control that
+  // needed a card to work would be a control that stopped working.
+  const panel = makeTerritoryPanel();
+  try {
+    await panel.mgr.setEnabled('traffic', true);
+    panel.mgr.setCoverageView(VIEW_TOKYO);
+    const chip = panel.chips('traffic').find((node) => node.textContent === 'Comptages · Paris');
+    const controls = panel.row('traffic').querySelector('.data-toggle-controls');
+    controls.listeners.get('click')[0]({ target: chip });
+    await settle();
+    assert.equal(panel.mgr.isEnabled('comptages-fr'), true);
+  } finally {
+    await panel.restore();
+  }
+});
+
+test('a repaint the panel declined is not recorded as one', async () => {
+  // `_refreshTogglePanel` defers while the document is hidden. Committing the
+  // coverage signature anyway would tell the NEXT call "nothing changed", so a
+  // reader who flew from Tokyo to Paris in a background tab came back to a
+  // strip still composed for Tokyo — with the Paris chips missing and no event
+  // left that would bring them.
+  const panel = makeTerritoryPanel();
+  try {
+    await panel.mgr.setEnabled('traffic', true);
+    await panel.mgr.setEnabled('comptages-fr', true);
+    assert.equal(panel.mgr.setCoverageView(VIEW_TOKYO), true);
+
+    globalThis.document.hidden = true;
+    assert.equal(panel.mgr.setCoverageView(VIEW_PARIS), false, 'the panel declined');
+    assert.equal(countTerritoryHourChips(panel), 0, 'and the strip is still Tokyo s');
+
+    // The same view again, now that the panel will take it: the change must
+    // still be pending, not swallowed by the declined pass.
+    globalThis.document.hidden = false;
+    assert.equal(panel.mgr.setCoverageView(VIEW_PARIS), true, 'the change is still owed');
+    assert.equal(countTerritoryHourChips(panel), 7);
+  } finally {
+    globalThis.document.hidden = false;
     await panel.restore();
   }
 });

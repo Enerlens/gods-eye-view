@@ -208,6 +208,60 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   livrés. Le cintre, lui, ne mesure rien, et la légende le dit.
 
 ### Fixed
+- **Le comptage parisien cessait de s'inviter à Tokyo.** `comptages-fr` dessine
+  2 946 arcs de rue parisiens et rien d'autre sur Terre — sa boîte entière fait
+  **12,6 km sur 10,0**. C'était un compagnon de la rangée « Trafic routier »
+  sans `optIn`, donc allumer le trafic au-dessus de Tokyo l'allumait aussi,
+  téléchargeait son morceau de bundle, et versait ses **sept puces de créneau**
+  (`Moyenne ouvrée` … `W-E 18 h`) dans une bande qui en comptait **quinze**.
+  Sept contrôles sur quinze, sur chaque vue de la planète, pilotant une couche
+  sans charge utile.
+
+  **La réparation n'est pas de cacher le contrôle.** Une puce qui n'existe
+  qu'au-dessus de Paris est une puce dont personne n'apprend l'existence :
+  il faudrait déjà savoir qu'elle est là pour aller la chercher. La règle est
+  donc DÉCLARER, JAMAIS CACHER. La puce s'appelle `Comptages · Paris`, elle ne
+  suit plus le bouton ON de la rangée, et hors couverture elle est **grisée en
+  pointillés — jamais désactivée** : un bouton désactivé ne peut pas être
+  cliqué, et le clic est précisément la façon de demander à être emmené là où
+  sont les données. Le pointillé plutôt qu'une teinte, parce que les préréglages
+  NVG et FLIR jettent la teinte. Les sept options de créneau, elles,
+  disparaissent hors couverture — une option n'est pas une déclaration.
+
+  **`layerCoverage.js` est la table des territoires**, et ses trois états ne
+  disent pas la même chose : `in`, `out`, et `dark` — dedans, mais dans un trou
+  documenté. `road-status-fr` est national et **noir au-dessus de Paris** parce
+  que la DIRIF ne publie ni station ni état ; ce n'est pas « hors couverture »,
+  c'est « couvert et vide, et voici qui ne publie pas ». Sur la rangée trafic
+  les deux se lisent donc en opposition : au-dessus de Paris exactement un des
+  deux contrôles a des données, et ce n'est pas celui dont le nom dit
+  « réseau ». Cinq autres couches à territoire restreint y ont une ligne.
+
+  **Une carte de trois lignes avant le premier allumage**, et seulement si la
+  caméra est hors du territoire — le lecteur déjà au-dessus de Paris qui presse
+  la puce en connaissance de cause ne la rencontre jamais. Elle dit ce que le
+  comptage est, ce qu'il n'est pas (« ce n'est pas de la congestion »), et
+  qu'il s'arrête au périphérique ; puis elle propose le vol. « Ne plus demander
+  — aller directement » nomme sa conséquence au moment du consentement.
+
+  **Au passage, une pastille qui mentait.** `fraicheur-fr`, ce sont 25 045
+  arbres parisiens et 159 fontaines, et sa pastille de portée disait `FR` — ce
+  qui promet à un lecteur bordelais quelque chose que personne n'a construit.
+  Elle dit `PARIS`, et elle s'éteint quand la caméra est ailleurs.
+
+  Mesuré au-dessus de Tokyo : la bande passe de **15 à 8 puces**. Vérifié dans
+  un vrai navigateur par `npm run qa:layer-coverage` — 26 contrôles, dont le
+  vol, le retour des sept créneaux à l'arrivée, et la réciproque Paris/province
+  sur une seule bande.
+
+- **Un vol vers une couche, dans un onglet en arrière-plan, laissait le panneau
+  en arrière.** `_refreshTogglePanel` décline pendant que le document est caché
+  et défère à la passe de `visibilitychange` ; le suivi de couverture
+  enregistrait pourtant sa signature sur cette passe déclinée, et l'appel
+  suivant croyait n'avoir rien à faire. Un lecteur qui volait de Tokyo à Paris
+  en arrière-plan retrouvait une bande encore composée pour Tokyo, sans plus
+  aucun événement capable de la corriger. La méthode répond désormais si elle a
+  peint.
 - **Une région que le flux n'a pas publiée disparaissait sans que rien ne le
   dise.** éCO2mix publie région par région, et une région qui n'a pas émis dans
   la fenêtre n'est tout simplement pas dans la réponse. Le 2026-09-10 à 15:04Z,
