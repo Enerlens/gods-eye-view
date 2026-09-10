@@ -6,6 +6,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-10
 
 ### Changed
+- **La légende des aéroports perd ses deux dernières lignes de forme : cinq
+  lignes deviennent trois.** Ce matin la légende récitait encore « Piste
+  tracée » (4 790 terrains) et « Emprise au sol » (418) sous les trois tiers,
+  avec un blurb de 40 mots chacune. Ces deux lignes nommaient des **formes** —
+  un trait au cap et à la longueur vrais, un contour levé par l'IGN — et une
+  forme est justement ce qu'un lecteur décode sans clé : un trait posé le long
+  d'une piste EST une piste, un contour rempli et plaqué au sol EST du sol. Il
+  reste ce qu'aucune forme ne peut dire, la **couleur** : les trois tiers, et
+  rien d'autre. Le bloc de droite passe de ~223 px à trois lignes pour cette
+  couche, contre dix en début de semaine.
+
+  **Rien de dessiné ne change.** Les pistes et les emprises sont toujours
+  tracées, aux mêmes distances et dans les mêmes couleurs ; c'est la clé qui
+  les commentait qui part. La fiche au clic dit toujours `piste 4 215 m
+  revêtue` et nomme l'IGN sur la ligne du contour, et l'attribution BD TOPO®
+  reste sur la ligne de couche et dans la fenêtre d'attributions — elle n'a
+  jamais dépendu de la légende.
+
+  Côté code, la couche n'a plus de `renderLegend` du tout : `airportMarkLegend`
+  et les deux vignettes SVG qui n'existaient que pour elle (la barre, le
+  contour) sont supprimées, et la clé de rendu redevient la seule classe de
+  longueur — les suffixes `+rw` / `+fp`, qui n'existaient que pour permettre au
+  comptage de distinguer les deux marques dans une seule case, partent avec.
+
 - **La pastille `DENSE` de la couche Satellites s'appelle `STARLINK`, et la
   classe qu'elle allume aussi.** `DENSE` nommait la MANIÈRE dont le catalogue
   se charge — des milliers de points de plus, sur un budget de propagation

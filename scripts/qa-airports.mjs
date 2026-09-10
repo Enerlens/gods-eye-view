@@ -283,16 +283,18 @@ async function main() {
 
     record('the row offers the three display floors',
       tiers.chips.join(',') === 'all,airports,airlines', tiers.chips.join(','));
-    // Three tier rows, the runway mark and the IGN outline. It was ten: the
-    // four length classes and the unmeasured ring printed here too, carrying
-    // one 40-word blurb repeated four times to restate metre bounds nobody
-    // reads back off a 13 px disc. The metres are on the CARD now, one click
-    // away on the field the reader pointed at; the diameter keeps the ORDER,
-    // and an order is decoded off the marks. What still needs a key is what a
-    // reader could not otherwise guess: a colour, and the two DRAWN shapes.
+    // Three tier rows, and that is the whole key. It was ten, then five: the
+    // four length classes and the unmeasured ring went first — one 40-word
+    // blurb repeated four times to restate metre bounds nobody reads back off
+    // a 13 px disc — then the two mark rows, "Piste tracée" and "Emprise au
+    // sol". The metres are on the CARD, one click away on the field the reader
+    // pointed at; the diameter keeps the ORDER, and both the drawn runway and
+    // the IGN outline are SHAPES, which is the one thing decoded off the map
+    // without a key. What still needs one is what a reader cannot guess at all:
+    // a colour.
     const legendLabels = tiers.legend.map((item) => item.label);
-    record('the legend names every tier and both drawn marks — and no length class',
-      legendLabels.length === 5 && !legendLabels.some((label) => /\d/.test(label)),
+    record('the legend names every tier — no length class, no drawn mark',
+      legendLabels.length === 3 && !legendLabels.some((label) => /\d/.test(label)),
       tiers.legend.map((item) => `${item.label}=${item.count}`).join(' · '));
 
     // COLOUR is the tier ladder, and nothing else may move with it.
