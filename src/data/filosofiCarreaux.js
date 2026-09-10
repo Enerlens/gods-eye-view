@@ -596,16 +596,32 @@ function onKeyDown(event) {
   if (event.key === 'Escape' && _selectedId) clearSelection();
 }
 
+/**
+ * The LEFT_CLICK rule, named so it can be tested without a canvas.
+ *
+ * ANY pick that is neither a cell nor a territory of ours closes the card. The
+ * test used to be `!picked`, and over the photorealistic globe that is never
+ * true — every on-globe pixel picks a 3D Tiles feature — so the card could not
+ * be dismissed by clicking the map at all. See `pickRegistry.isWorldPick` for
+ * the measurement.
+ *
+ * @param {*} picked Raw `scene.pick` result.
+ * @returns {'territory'|'cell'|'close'|'ignore'}
+ */
+export function filosofiClick(picked) {
+  const territory = resolveTerritoryPickId(picked, (id) => _territoryRecords.has(id));
+  if (territory) return selectTerritory(territory) ? 'territory' : 'ignore';
+  const id = resolveFilosofiPickId(picked);
+  if (id) return selectCell(id) ? 'cell' : 'ignore';
+  if (_selectedId) { clearSelection(); return 'close'; }
+  return 'ignore';
+}
+
 function installClickHandler(viewer) {
   if (_clickHandler || !viewer?.scene?.canvas) return;
   _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
   _clickHandler.setInputAction((click) => {
-    const picked = viewer.scene.pick(click.position);
-    const territory = resolveTerritoryPickId(picked, (id) => _territoryRecords.has(id));
-    if (territory) { selectTerritory(territory); return; }
-    const id = resolveFilosofiPickId(picked);
-    if (id) { selectCell(id); return; }
-    if (!picked && _selectedId) clearSelection();
+    filosofiClick(viewer.scene.pick(click.position));
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
 }

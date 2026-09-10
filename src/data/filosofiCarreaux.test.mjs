@@ -23,6 +23,7 @@ import filosofiCarreauxLayer, {
   cellId,
   createFilosofiSelectedOverlayEntry,
   drawnOutline,
+  filosofiClick,
   filosofiCoverageIntersects,
   filosofiLegend,
   filosofiViewportBox,
@@ -390,6 +391,43 @@ test('clicking a square opens its card and Escape closes it', () => {
   assert.equal(_filosofiSelectedIdForTest(), null);
   // A square that is not drawn cannot be selected.
   assert.equal(_selectFilosofiCellForTest('filosofi:200:1:1'), false);
+});
+
+test('a click on the map closes the card, even on a photorealistic globe', () => {
+  const entries = [];
+  const id = cellId(LYON_CELL, 200);
+  _setFilosofiStateForTest({
+    viewer: createViewer({ south: 45.75, west: 4.83, north: 45.77, east: 4.86 }),
+    records: new Map([[id, record(LYON_CELL)]]),
+    payload: payload(),
+    overlayHost: {
+      setEntries: (sourceId, list) => entries.push(list),
+      setVisible: () => {},
+      clearSource: () => entries.push(null),
+    },
+  });
+
+  assert.equal(filosofiClick({ id }), 'cell');
+  assert.equal(_filosofiSelectedIdForTest(), id);
+
+  // THE REGRESSION. A click on the ground picks the 3D Tiles feature under the
+  // cursor, so the pick is not falsy — it just is not a square of ours. The old
+  // rule tested `!picked` and therefore never closed anything anywhere a
+  // photorealistic surface was drawn. Measured 2026-09-10 over Paris: six
+  // probes across the screen, six non-falsy picks.
+  const tile = { primitive: { isCesium3DTileset: true }, content: {}, id: undefined };
+  assert.equal(filosofiClick(tile), 'close');
+  assert.equal(_filosofiSelectedIdForTest(), null);
+  assert.equal(entries.at(-1), null);
+
+  // Another layer's marker closes it too: the card answers "this square".
+  assert.equal(filosofiClick({ id }), 'cell');
+  assert.equal(filosofiClick({ id: { id: 'schools-fr:0651234U' } }), 'close');
+  assert.equal(_filosofiSelectedIdForTest(), null);
+
+  // And with nothing open, a click on the map is not an action.
+  assert.equal(filosofiClick(tile), 'ignore');
+  _clearFilosofiSelectionForTest();
 });
 
 // ── What the row reports ────────────────────────────────────────────────────

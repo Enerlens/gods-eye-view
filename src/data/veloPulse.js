@@ -856,14 +856,31 @@ function onKeyDown(event) {
   if (event.key === 'Escape' && _selectedId) clearSelection();
 }
 
+/**
+ * The LEFT_CLICK rule, named so it can be tested without a canvas.
+ *
+ * ANY pick that is not one of our docks closes the card. The test used to be
+ * `!picked` — nothing at all under the cursor — and over the photorealistic
+ * globe that is never true: the click lands on the 3D Tiles feature of the
+ * roof or the road, so the card could not be dismissed by clicking the map at
+ * all. `pickRegistry.isWorldPick` records the measurement; this layer does not
+ * need the distinction, because "not one of ours" is already the whole rule.
+ *
+ * @param {*} picked Raw `scene.pick` result.
+ * @returns {'select'|'close'|'ignore'}
+ */
+export function pulseClick(picked) {
+  const id = resolvePulsePickId(picked);
+  if (id) return selectSite(id) ? 'select' : 'ignore';
+  if (_selectedId) { clearSelection(); return 'close'; }
+  return 'ignore';
+}
+
 function installClickHandler(viewer) {
   if (_clickHandler || !viewer?.scene?.canvas) return;
   _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
   _clickHandler.setInputAction((click) => {
-    const picked = viewer.scene.pick(click.position);
-    const id = resolvePulsePickId(picked);
-    if (id) { selectSite(id); return; }
-    if (!picked && _selectedId) clearSelection();
+    pulseClick(viewer.scene.pick(click.position));
   }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
   if (typeof document !== 'undefined') document.addEventListener('keydown', onKeyDown);
 }

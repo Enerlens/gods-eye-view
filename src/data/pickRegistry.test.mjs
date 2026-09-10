@@ -7,6 +7,8 @@
  *    ONE canonical String id.
  *  - isOwnedByOtherLayer consults sibling predicates only, never the asker's,
  *    and never throws on a broken predicate.
+ *  - isWorldPick answers "nobody could select this", which is what the
+ *    photorealistic globe took away from `!picked`.
  */
 
 import { test } from 'node:test';
@@ -15,6 +17,7 @@ import {
   registerPickOwner,
   unregisterPickOwner,
   isOwnedByOtherLayer,
+  isWorldPick,
   resolvePickId,
 } from './pickRegistry.js';
 
@@ -96,4 +99,37 @@ test('ownership: unregister removes the predicate', () => {
   assert.equal(isOwnedByOtherLayer('flights', 'station:1'), true);
   unregisterPickOwner('bikeshare');
   assert.equal(isOwnedByOtherLayer('flights', 'station:1'), false);
+});
+
+// ---------------------------------------------------------------------------
+// isWorldPick — the map is the map, whatever is rendering it
+// ---------------------------------------------------------------------------
+
+test('isWorldPick: the empty pick, as it always was', () => {
+  // `scene.pick` answers nothing for the bare globe: it is not a primitive.
+  assert.equal(isWorldPick(undefined), true);
+  assert.equal(isWorldPick(null), true);
+  assert.equal(isWorldPick(false), true);
+});
+
+test('isWorldPick: a 3D Tiles feature, which is what ended `!picked`', () => {
+  // MEASURED 2026-09-10 over Paris at 700 m with 470 tiles of content ready:
+  // six probes across the screen, six NON-FALSY picks. This is the shape they
+  // came back as — a plain object whose primitive is the tileset, carrying no
+  // `id` of its own and no `primitive.id` either. Four handlers had written
+  // `if (!picked) clearSelection()` and had therefore stopped being able to
+  // close their own cards anywhere a photorealistic surface was drawn.
+  const tile = { primitive: { isCesium3DTileset: true }, content: {}, id: undefined };
+  assert.equal(isWorldPick(tile), true);
+  assert.equal(resolvePickId(tile), null, 'and it is unclaimable, which is why');
+  // A tileset somebody DID label is not the world: that id can be owned.
+  assert.equal(isWorldPick({ primitive: { id: 'bdtopo:tileset' }, content: {} }), false);
+});
+
+test('isWorldPick: anything selectable is not the world', () => {
+  assert.equal(isWorldPick({ id: 'idfm:stop:23613' }), false);
+  assert.equal(isWorldPick({ id: { id: 'dvf:1' } }), false);
+  assert.equal(isWorldPick({ id: 25544 }), false, 'a NORAD number is an id');
+  assert.equal(isWorldPick({ id: { mmsi: '227123456' } }), false, 'an AIS record is an id');
+  assert.equal(isWorldPick({ id: undefined, primitive: { id: 'irve-fr:42' } }), false);
 });

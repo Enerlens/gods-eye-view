@@ -12,6 +12,7 @@ import {
   scanShiftNeeded,
   seatEntitiesOnGround,
 } from './addressScanLayer.js';
+import { isWorldPick } from './pickRegistry.js';
 
 /** Avenue de France, Paris 13e — the address the whole address stack is built on. */
 const ADDRESS = { lon: 2.3760, lat: 48.8300 };
@@ -423,51 +424,73 @@ test('a layer whose ANSWER improved can re-ask a question that did not change', 
 // ships green.
 
 test('a marker of ours is selected, whatever else the layer can answer', () => {
-  const entity = { id: 'dvf:1' };
-  assert.equal(addressScanClickIntent({ picked: entity, isCard: true, isOwn: true }), 'select');
+  assert.equal(addressScanClickIntent({ isCard: true, isOwn: true }), 'select');
   assert.equal(
-    addressScanClickIntent({
-      picked: entity, isCard: true, isOwn: true, answersGround: true,
-    }),
+    addressScanClickIntent({ isCard: true, isOwn: true, answersGround: true }),
     'select',
     'the marker carries a card of its own and it wins',
   );
 });
 
-test('bare globe is a question about the ground, and used to be a dismissal', () => {
-  assert.equal(addressScanClickIntent({ picked: null, answersGround: true }), 'ground');
+test('the MAP is a question about the ground, and used to be a dismissal', () => {
+  assert.equal(addressScanClickIntent({ world: true, answersGround: true }), 'ground');
   assert.equal(
-    addressScanClickIntent({ picked: null, answersGround: true, selected: true }),
+    addressScanClickIntent({ world: true, answersGround: true, selected: true }),
     'ground',
     'a click elsewhere moves the answer rather than closing it',
   );
   assert.equal(
-    addressScanClickIntent({ picked: null, selected: true }),
+    addressScanClickIntent({ world: true, selected: true }),
     'dismiss',
     'a layer with nothing to say about bare ground still closes on it',
   );
-  assert.equal(addressScanClickIntent({ picked: null }), 'ignore');
+  assert.equal(addressScanClickIntent({ world: true }), 'ignore');
+});
+
+test('the map is the map whether or not a tileset is drawing it', () => {
+  // THE REGRESSION THIS PINS, and it took both of this rule's map-facing
+  // outcomes with it. The input used to be the raw pick and the test its
+  // PRESENCE — right for the bare globe, which `scene.pick` does not answer
+  // for, and wrong from the day a photorealistic surface arrived. Measured
+  // 2026-09-10 over Paris at 700 m: six probes across the screen, six
+  // non-falsy picks, every one a tile feature with no id of any kind.
+  const globe = undefined;
+  const tile = { primitive: { isCesium3DTileset: true }, content: {}, id: undefined };
+  for (const picked of [globe, null, tile]) {
+    assert.equal(isWorldPick(picked), true, JSON.stringify(picked) ?? 'undefined');
+    assert.equal(
+      addressScanClickIntent({ world: isWorldPick(picked), answersGround: true }),
+      'ground',
+      'clicking the plot has to answer, whatever is rendering the plot',
+    );
+    assert.equal(
+      addressScanClickIntent({ world: isWorldPick(picked), selected: true }),
+      'dismiss',
+      'and a card has to be closeable by clicking the map',
+    );
+  }
+  // The distinction survives: an object somebody could select is not the map.
+  assert.equal(isWorldPick({ id: 'schools-fr:0651234U' }), false);
+  assert.equal(isWorldPick({ id: { id: 'dvf:1' } }), false);
+  assert.equal(isWorldPick({ primitive: { id: 'irve-fr:42' } }), false);
 });
 
 test('our own wash is ground, because it describes the plot rather than standing on it', () => {
   // The failure this exists to stop: the zone fill covers most of the screen
   // when the layer is on, so treating any pick as "something else is there"
   // would leave the ground unclickable exactly where the layer is working.
-  const fill = { id: { id: 'gpu:zone:1:fill:0' } };
-  assert.equal(
-    addressScanClickIntent({ picked: fill, isOwn: true, answersGround: true }),
-    'ground',
-  );
+  assert.equal(addressScanClickIntent({ isOwn: true, answersGround: true }), 'ground');
 });
 
 test('another layer`s object is another layer`s click', () => {
-  const foreign = { id: { id: 'schools-fr:0651234U' } };
+  // `world: false` and nothing of ours — unchanged by the photoreal fix, and
+  // deliberately: that decision is about not talking over a sibling's card.
   assert.equal(
-    addressScanClickIntent({ picked: foreign, answersGround: true, selected: true }),
+    addressScanClickIntent({ answersGround: true, selected: true }),
     'ignore',
     'that layer is about to open a card of its own; two cards for one click is the bug',
   );
-  assert.equal(addressScanClickIntent({ picked: foreign, selected: true }), 'ignore');
+  assert.equal(addressScanClickIntent({ selected: true }), 'ignore');
 });
 
 /**

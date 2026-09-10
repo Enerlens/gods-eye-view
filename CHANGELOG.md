@@ -5,6 +5,52 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 
 ## [Unreleased] — 2026-09-10
 
+### Fixed
+- **Une fiche se referme en cliquant la carte — sur trois couches de plus, et
+  la carte redevient cliquable sur sept autres.** Le correctif posé sur les
+  arrêts IDFM (#162) était le même bug à quatre endroits, et le balayage l'a
+  trouvé plus large que prévu.
+
+  **CE QUI EST MESURÉ.** « Le lecteur a cliqué la carte » s'écrivait `!picked` :
+  `scene.pick` ne répond rien pour le globe nu, qui n'est pas une primitive.
+  La surface photoréaliste a mis fin à ça en silence. Sondé le 2026-09-10
+  au-dessus de Paris à 700 m, 470 tuiles chargées : **six sondes réparties sur
+  l'écran, six retours non falsy**, chacun un objet dont la primitive est le
+  `Cesium3DTileset` et dont le `id` — comme le `primitive.id` — est `undefined`.
+
+  **LE PRÉDICAT DURABLE EST L'APPARTENANCE, PAS LA PRÉSENCE.** Une tuile ne
+  porte aucun identifiant, donc personne ne peut la revendiquer ni la
+  sélectionner : `pickRegistry.isWorldPick()` répond « c'est la carte » pour le
+  clic vide, pour le terrain et pour le photoréaliste de la même manière, là où
+  `!picked` était une affirmation sur la surface qui se trouvait allumée.
+  `localGeojson.js` avait déjà tiré cette conclusion dans un commentaire à côté
+  de son propre gestionnaire ; elle est maintenant dans le module partagé, pour
+  que le prochain gestionnaire en hérite au lieu de la redécouvrir.
+
+  **CE QUE ÇA DÉBLOQUE.** Le **Pouls vélo** et le **Carroyage INSEE** ferment
+  enfin leur fiche. Et surtout la fabrique partagée `addressScanLayer.js`, dont
+  les DEUX issues tournées vers la carte étaient mortes pour ses sept couches :
+  la fiche ne se refermait pas, et surtout `ground` ne partait plus — donc sur
+  **urbanisme-gpu**, **bruit-fr** et **isochrone-rings**, cliquer la parcelle ne
+  faisait plus rien du tout. C'est pourtant le geste que ces couches
+  existent pour servir : le sol n'y est pas un fond, c'est le sujet.
+
+  Le clic sur le marqueur d'une couche voisine reste `ignore` dans la fabrique,
+  inchangé : cette décision-là parle de ne pas parler par-dessus la fiche d'un
+  voisin, et le photoréalisme n'a rien à en dire.
+
+  **`delinquance-fr` n'était PAS touchée**, contrairement à ce qu'un premier
+  balayage annonçait : son gestionnaire finit sur un `clearSelection()`
+  inconditionnel, donc le clic sur une tuile y tombait déjà juste. Son
+  court-circuit `if (!picked)` était mort, et il est retiré — c'est exactement
+  la forme que les quatre autres ont copiée.
+
+  **Un harnais navigateur nouveau, `npm run qa:card-dismissal`**, prend le pick
+  sur le TILESET QUI TOURNE et le donne à la règle de chaque couche. Les tests
+  unitaires épinglent la même règle contre une forme écrite à la main, ce qui
+  est la croyance de l'auteur du test sur ce que Cesium renvoie ; celui-ci
+  échoue si Cesium se met un jour à étiqueter ses tuiles. 13 vérifications.
+
 ### Changed
 - **Un arrêt IDFM ne porte plus qu'une seule marque, et on la voit.** La couche
   fusionnée dessinait le pictogramme du mode ET la pastille de fréquence sur le

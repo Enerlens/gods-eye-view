@@ -1030,12 +1030,13 @@ function installClickHandler(viewer) {
   if (_clickHandler || !viewer?.scene) return;
   _clickHandler = new Cesium.ScreenSpaceEventHandler(viewer.scene.canvas);
   _clickHandler.setInputAction((movement) => {
+    // NO `if (!picked)` SHORT-CIRCUIT, deliberately. This handler already ends
+    // on an unconditional `clearSelection()`, so the empty pick was never a
+    // case of its own — and the short-circuit that used to sit here is the
+    // exact shape that broke four sibling handlers over the photorealistic
+    // globe, where `!picked` is never true. See `pickRegistry.isWorldPick`.
     const picked = viewer.scene.pick(movement.position);
-    if (!picked) {
-      clearSelection();
-      return;
-    }
-    if (typeof picked.id === 'string' && _communeRecords.has(picked.id)) {
+    if (typeof picked?.id === 'string' && _communeRecords.has(picked.id)) {
       selectCommune(picked.id);
       return;
     }
