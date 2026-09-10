@@ -283,10 +283,16 @@ async function main() {
 
     record('the row offers the three display floors',
       tiers.chips.join(',') === 'all,airports,airlines', tiers.chips.join(','));
-    // Three tier rows, four length classes, the unmeasured ring, the runway
-    // mark and the IGN outline: every channel this layer spends has a key (D1).
-    record('the legend names every tier AND every size class that shipped',
-      tiers.legend.length === 10,
+    // Three tier rows, the runway mark and the IGN outline. It was ten: the
+    // four length classes and the unmeasured ring printed here too, carrying
+    // one 40-word blurb repeated four times to restate metre bounds nobody
+    // reads back off a 13 px disc. The metres are on the CARD now, one click
+    // away on the field the reader pointed at; the diameter keeps the ORDER,
+    // and an order is decoded off the marks. What still needs a key is what a
+    // reader could not otherwise guess: a colour, and the two DRAWN shapes.
+    const legendLabels = tiers.legend.map((item) => item.label);
+    record('the legend names every tier and both drawn marks — and no length class',
+      legendLabels.length === 5 && !legendLabels.some((label) => /\d/.test(label)),
       tiers.legend.map((item) => `${item.label}=${item.count}`).join(' · '));
 
     // COLOUR is the tier ladder, and nothing else may move with it.

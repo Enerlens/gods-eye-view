@@ -5,7 +5,7 @@ import { askJoin } from './layerJoins.js';
 import {
   airportCardDetails,
   airportLabelPriority,
-  airportLengthLegend,
+  airportMarkLegend,
   airportRenderSpec,
 } from './airportsPack.js';
 import {
@@ -369,7 +369,7 @@ const DEFAULT_OVERLAY_HOST = Object.freeze({
 const PACK_RENDERERS = Object.freeze({
   'local-airports': Object.freeze({
     featureRender: (properties) => airportRenderSpec(properties),
-    renderLegend: airportLengthLegend,
+    renderLegend: airportMarkLegend,
   }),
   'local-datacenters': Object.freeze({
     featureRender: datacenterRenderSpec,

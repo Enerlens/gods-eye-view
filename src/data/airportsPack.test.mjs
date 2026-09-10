@@ -20,7 +20,7 @@ import {
   airportLabelPriority,
   airportLengthClass,
   airportLengthClassOf,
-  airportLengthLegend,
+  airportMarkLegend,
   airportRenderSpec,
   airportRunwaySegments,
   airportTier,
@@ -409,27 +409,28 @@ test('a 3 000 m runway buys its own orbital range, and an aeroclub never does', 
   assert.equal(shuttle.cardMaxDistance, 14_000_000);
 });
 
-test('the size legend prints its bounds, counts what is drawn, and names the runway mark', () => {
-  const rows = airportLengthLegend(new Map([
+test('the legend names the drawn marks and never the runway lengths', () => {
+  const rows = airportMarkLegend(new Map([
     ['len3000+rw', { total: 1200, visible: 900 }],
     ['len3000', { total: 80, visible: 80 }],
     ['nolength', { total: 300, visible: 300 }],
   ]));
-  assert.deepEqual(rows.map((r) => r.label), [
-    '3 000 m et plus', 'Longueur non publiée', 'Piste tracée',
-  ]);
-  // The two halves of one class sum back into one row…
-  assert.equal(rows[0].count, 980);
-  // …and the drawn half also answers on its own.
-  assert.equal(rows[2].count, 900);
-  assert.match(rows[0].blurb, /1 000, 1 800, 3 000 m/, 'the frozen bounds are printed');
-  assert.match(rows[1].blurb, /[Aa]nneau creux/);
-  // One colour across every size row: the datum is the swatch, not the hue.
+  // The length classes are NOT a legend row any more: the metres are on the
+  // card, one click away, and the diameter is left to carry the order alone.
+  assert.deepEqual(rows.map((r) => r.label), ['Piste tracée']);
+  assert.equal(rows[0].count, 900, 'the row counts the drawn half, not the class');
+  for (const entry of [...AIRPORT_LENGTH_CLASSES, AIRPORT_LENGTH_UNKNOWN]) {
+    assert.ok(!rows.some((row) => row.label === entry.label),
+      `${entry.label} must not come back as a legend row`);
+  }
+  // One colour across both mark rows: the datum is the swatch's shape.
   assert.equal(new Set(rows.map((r) => r.color)).size, 1);
   assert.ok(rows.every((r) => r.glyph.startsWith('data:image/svg+xml;base64,')));
 
-  // A class nobody drew is absent, not zero: the row would promise a mark.
-  assert.deepEqual(airportLengthLegend(new Map()), []);
+  // A mark nobody drew is absent, not zero: the row would promise a shape.
+  assert.deepEqual(airportMarkLegend(new Map()), []);
+  assert.deepEqual(airportMarkLegend(new Map([['len1800', { total: 40, visible: 40 }]])), [],
+    'a class with no drawn geometry publishes no row at all');
 });
 
 test('runway geometry refuses the two rows that would put a runway in the wrong place', () => {
@@ -925,8 +926,8 @@ test('the render key carries both marks, and the class survives being read back'
   assert.equal(both.surface, null);
 });
 
-test('the size legend names the outline, and counts it separately from the runway', () => {
-  const rows = airportLengthLegend(new Map([
+test('the mark legend names the outline, and counts it separately from the runway', () => {
+  const rows = airportMarkLegend(new Map([
     [`${AIRPORT_LENGTH_CLASSES[0].key}${AIRPORT_DRAWN_RUNWAY_SUFFIX}${AIRPORT_DRAWN_FOOTPRINT_SUFFIX}`,
       { total: 5, visible: 5 }],
     [`len300${AIRPORT_DRAWN_FOOTPRINT_SUFFIX}`, { total: 200, visible: 120 }],
