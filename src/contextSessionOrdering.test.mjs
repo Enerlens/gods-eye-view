@@ -161,7 +161,11 @@ test('every user-facing Context exit route settles through the failure surface',
     src.indexOf('_initGlobalContextPanel() {'),
     src.indexOf('_captureContextSessionSnapshot(', src.indexOf('_initGlobalContextPanel() {')),
   );
-  assert.equal((initPanel.match(/void this\._runUserFacingContextAction/g) || []).length, 3);
+  // Two, not three: the third was SEARCH NEARBY SITES, removed with the Google
+  // Places path (2026-09-10). What this pins is unchanged — every user-facing
+  // route out of this panel goes through the caught failure surface — and a new
+  // control added without one still fails here.
+  assert.equal((initPanel.match(/void this\._runUserFacingContextAction/g) || []).length, 2);
   assert.doesNotMatch(initPanel, /falseIsFailure:\s*false/);
   assert.doesNotMatch(initPanel, /void this\._selectContextMode/);
 

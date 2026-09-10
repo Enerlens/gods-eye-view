@@ -106,17 +106,48 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   dans la même cuvette.
 
 ### Added
-- **La couche Sites militaires a enfin une clé : cinq couleurs qui ne disaient
-  rien.** Le module peignait ses pastilles sur cinq teintes — base aérienne,
-  base navale, champ de tir, terrain militaire, candidat Google Places — et
-  n'implémentait `getRowControls()` nulle part, alors que 49 autres couches en
-  publient un. Rien à l'écran ne décodait donc la couleur.
+- **Les sites militaires ne sont plus cinq nuances de pastille : chaque classe
+  porte sa silhouette.** La couche venait de recevoir sa clé, mais la couleur
+  restait le seul canal — cinq teintes sur des points identiques de 9 px, dont
+  deux (`#5aa9ff` base aérienne, `#48c7d5` base navale) à un pas l'une de
+  l'autre sur le même bleu. Un lecteur devait porter une nuance des yeux
+  jusqu'au panneau pour nommer une marque : il faisait le travail de la clé.
 
-  **Le violet était l'omission chère.** C'est la seule chose qui sépare « OSM
-  cartographie ce site comme militaire » d'« une recherche Google a rendu un
-  lieu dont le nom y ressemblait » : Google ne publie aucun type militaire
-  exploitable, donc un nom suffit à poser la pastille. Sa ligne le dit
-  maintenant en toutes lettres, et rappelle qu'elle ne vient pas d'OSM.
+  **Quatre marques, et rien de dessiné qui existait déjà.** L'avion et le
+  navire sont les Material Symbols déjà vendorisés pour les modes `air` et
+  `ferry` du transport, empruntés par la porte publique de leur module plutôt
+  que recopiés. La cible du champ de tir et l'écusson du terrain militaire sont
+  de la géométrie — des cercles, quatre lignes et deux courbes —, pas une œuvre
+  à reconnaître.
+
+  **Ce qui n'a PAS été repris, c'est le traitement.** Les couches de marqueurs
+  d'adresse dessinent leurs corps au trait — 7 unités de contour dans une boîte
+  de 96, à 14 ou 19 px — et à cette taille un filet se lit comme un caractère
+  tapé sur la photo, pas comme une marque posée dessus. Tout ici est plein :
+  une silhouette remplie, ou un anneau qui a une vraie largeur, sur un halo
+  sombre large.
+
+  **Le fourre-tout porte le signe le plus générique qui soit, et pèse moins.**
+  `landuse=military` plus `barracks` et `base`, c'est neuf marques sur dix :
+  son écusson dit « défense » et refuse de dire autre chose — ni véhicule, ni
+  cible, ni activité. Il se dessine à 20 px quand les trois classes qui
+  nomment un sujet tiennent 24 : la taille est ce qui reste pour dire « celle-ci
+  en dit moins ». Une pastille nue le disait aussi, mais elle ne se distinguait
+  pas d'une marque qui n'a pas fini de charger.
+
+  **La clé montre la marque, pas une redite.** Le glyphe voyage DANS la ligne
+  de couleur à laquelle il appartient — la pastille du panneau est la marque à
+  la taille de la clé, construite par le même appel que le globe — donc aucune
+  ligne de forme ne s'ajoute et une silhouette ne peut pas dériver entre la
+  carte et sa légende. Vérifié en navigateur sur la rade de Toulon : 44 sites,
+  39 écussons à 20 px, 3 navires et 2 cibles à 24, trois images distinctes,
+  plus aucun point, et trois pastilles de clé masquées aux bonnes teintes.
+
+- **La couche Sites militaires a enfin une clé : des couleurs qui ne disaient
+  rien.** Le module peignait ses pastilles sur plusieurs teintes — base
+  aérienne, base navale, champ de tir, terrain militaire — et n'implémentait
+  `getRowControls()` nulle part, alors que 49 autres couches en publient un.
+  Rien à l'écran ne décodait donc la couleur.
 
   **Le gris est le fourre-tout, et la légende l'annonce.** `landuse=military`,
   plus `military=barracks` et `military=base`, absorbe aussi les champs de
@@ -138,6 +169,30 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   disparaît au lieu de revendiquer des sites absents de l'écran. Vérifié en
   navigateur sur la rade de Toulon : 44 sites dessinés, trois lignes — base
   navale 3, champ de tir 2, terrain militaire 39.
+
+### Removed
+- **Le candidat Google Places quitte les Sites militaires : une recherche par
+  NOM n'est pas un relevé.** Le bouton `SEARCH NEARBY SITES` envoyait une
+  recherche textuelle Google Places sur les mots « military installation »,
+  biaisée sur le centre du cadrage, 5 résultats au plus. Google ne publie aucun
+  type militaire exploitable : la branche qui aurait promu un résultat typé
+  `military_base` n'avait donc jamais de quoi mordre, et **tout retombait en
+  candidat violet — un lieu dont le nom ressemblait**. Un musée de la guerre,
+  un magasin de surplus, un bureau de recrutement entraient par la même porte.
+
+  Ce que cette classe coûtait, ligne par ligne : une cinquième teinte à décoder,
+  une ligne de clé dont le seul travail était d'avertir qu'elle ne revendiquait
+  rien, un appel Places facturé par clic, et des marques `validation:
+  'unreviewed'` sans emprise qui **disparaissaient au premier mouvement de
+  caméra** — puisque chaque rechargement reconstruit la liste depuis Overpass
+  seul. Une couche qui dit « site militaire cartographié » n'a pas à héberger
+  une supposition qui s'évapore.
+
+  Partent avec : le bouton et son gestionnaire, `searchNearby()`, le
+  classificateur, la teinte violette, sa ligne de clé, le glyphe « ? » et le
+  tracé Inter qu'il empruntait. **Le proxy `/api/google/text-search` reste** —
+  la résolution d'annotations s'en sert, et lui seul. La couche annonce
+  désormais `OpenStreetMap` tout court : chaque marque à l'écran vient d'un tag.
 
 ### Changed
 - **« Brancher un jeu de données » rendait la liste des couches inutilisable :

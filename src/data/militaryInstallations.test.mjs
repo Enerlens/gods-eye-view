@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   approximateSurfaceDistanceM,
-  classifyGoogleMilitaryPlace,
   installationClickOutcome,
   installationLegend,
   installationSourceLabel,
@@ -43,16 +42,13 @@ test('cheap installation distance prefilter is local and antimeridian-safe', () 
   assert.ok(acrossDateline > 21000 && acrossDateline < 23000);
 });
 
-test('keeps generic Places hits distinct from explicitly typed military facilities', () => {
-  assert.equal(classifyGoogleMilitaryPlace({ primaryType: 'military_base' }), 'military_land');
-  assert.equal(classifyGoogleMilitaryPlace({ types: ['point_of_interest', 'military_base'] }), 'military_land');
-  assert.equal(classifyGoogleMilitaryPlace({ name: 'Army Recruiting Office', types: ['government_office'] }), 'places_candidate');
-  assert.equal(classifyGoogleMilitaryPlace({ name: 'Military Museum', types: ['museum'] }), 'places_candidate');
-});
-
-test('reports the record source instead of attributing Places records to OpenStreetMap', () => {
-  assert.equal(installationSourceLabel({ sources: [{ name: 'Google Maps Places' }] }), 'Google Maps Places');
+test('attributes a record to the source that carried it, and never guesses one', () => {
   assert.equal(installationSourceLabel({ sources: [{ name: 'OpenStreetMap' }, { name: 'OpenStreetMap' }] }), 'OpenStreetMap');
+  // A record with no source named says so. Every record is an OSM element
+  // today, but the label is what would expose a second source arriving without
+  // one — which is exactly how the removed Places candidates got in.
+  assert.equal(installationSourceLabel({ sources: [] }), 'Unknown mapped source');
+  assert.equal(installationSourceLabel({}), 'Unknown mapped source');
 });
 
 test('places installation anchors on the shared cached rendered floor', () => {
@@ -717,6 +713,8 @@ test('zoom-out aborts an active installation request and returns non-loading gui
 // tests use where a full boot is impractical.
 import { installationRetryDelayMs } from './militaryInstallations.js';
 import fs from 'node:fs';
+import { militarySiteGlyph } from './militarySiteIcons.js';
+import { transitVehicleGlyph } from './transitVehicleIcons.js';
 
 const installationsSource = fs.readFileSync(
   new URL('./militaryInstallations.js', import.meta.url), 'utf8');
@@ -820,10 +818,17 @@ test('a late repaint yields to a newer selection from another layer', async () =
   }
 });
 
-/** How many of this layer's entities are painted in the selected state. */
+/**
+ * How many of this layer's entities are painted in the selected state.
+ *
+ * Two graphics to check, not one: a class with a silhouette is a billboard and
+ * a `point` selector alone would report zero selected sites on an airbase while
+ * the mark on screen is plainly white.
+ */
 function selectedEntityCount(run) {
-  return run.entities().filter((entity) => entity.point?.pixelSize?.getValue?.() === 13
-    || entity.point?.pixelSize === 13).length;
+  const value = (property) => (property?.getValue?.() ?? property);
+  return run.entities().filter((entity) => value(entity.point?.pixelSize) === 13
+    || value(entity.billboard?.width) === 32).length;
 }
 
 // ── The on-map key ─────────────────────────────────────────────────────────
@@ -849,9 +854,14 @@ test('installation legend counts the drawn cohort, one row per present class', (
     legendRecord('naval_base', { footprint: SQUARE }),
     legendRecord('airfield', { footprint: SQUARE }),
   ]);
-  // A footprint is a FORM, and #138 settled that a form needs no row: the key
-  // carries colour only.
-  assert.equal(legend.some((entry) => entry.glyph), false);
+  // A footprint is a FORM, and #138 settled that a form needs no row of its
+  // own: three classes are drawn here and three rows come back, whether or not
+  // a record carries an emprise. The glyph a row carries is its CLASS
+  // silhouette, which is a different claim entirely.
+  assert.equal(legend.length, 3);
+  for (const entry of legend) {
+    assert.match(entry.glyph, /^data:image\/svg\+xml;base64,/, entry.label);
+  }
   // Reading order is LEGEND_CLASSES order, not tally order: the catch-all sits
   // last among the mapped classes however far it dominates the count.
   assert.deepEqual(
@@ -875,11 +885,10 @@ test('installation legend swatches are the colours the map actually paints', () 
     legendRecord('naval_base'),
     legendRecord('range'),
     legendRecord('military_land'),
-    legendRecord('places_candidate'),
   ]);
   assert.deepEqual(
     legend.map((entry) => entry.color),
-    ['#5aa9ff', '#48c7d5', '#d9a85d', '#9ca6b0', '#c58cff'],
+    ['#5aa9ff', '#48c7d5', '#d9a85d', '#9ca6b0'],
   );
   // The rows must READ COLOR_BY_CLASS rather than restate it, or a hue can
   // drift between the map and its own key.
@@ -889,11 +898,17 @@ test('installation legend swatches are the colours the map actually paints', () 
   assert.equal(/\bcolor:/.test(rows[1]), false, 'a class row must not carry its own colour');
 });
 
-test('the candidate row says the purple is not an OpenStreetMap claim', () => {
-  const [candidate] = installationLegend([legendRecord('places_candidate')]);
-  assert.equal(candidate.label, 'Candidat Google Places');
-  assert.match(candidate.blurb, /non vérifié/);
-  assert.match(candidate.blurb, /pas une revendication de site militaire/);
+test('every row of the key now stands for an OpenStreetMap tag', () => {
+  // The fifth row was a Google Places NAME match, and it needed a blurb saying
+  // it was not a claim of anything. The path is gone; nothing in this key is
+  // allowed to reintroduce a class the map cannot source from a tag.
+  const legend = installationLegend(
+    ['airfield', 'naval_base', 'range', 'military_land'].map((klass) => legendRecord(klass)),
+  );
+  assert.equal(legend.length, 4);
+  for (const row of legend) {
+    assert.doesNotMatch(row.blurb, /Google|Places|non vérifié/i, row.label);
+  }
 });
 
 test('every class the normalizer can emit has a legend row', () => {
@@ -903,9 +918,7 @@ test('every class the normalizer can emit has a legend row', () => {
   const classes = new Set([...block[1].matchAll(/:\s*'([a-z_]+)'/g)].map((match) => match[1]));
   // The two branches that do not go through that map.
   classes.add('military_land');
-  classes.add(classifyGoogleMilitaryPlace({ primaryType: 'military_base' }));
-  classes.add(classifyGoogleMilitaryPlace({ types: ['museum'] }));
-  assert.ok(classes.size >= 5);
+  assert.ok(classes.size >= 4);
   for (const klass of classes) {
     const legend = installationLegend([legendRecord(klass)]);
     assert.equal(legend.length, 1, `class ${klass} draws marks with no legend row`);
@@ -953,3 +966,63 @@ test('the published key tracks the paint, not the loaded set', async () => {
   }
 });
 
+// ── The silhouettes ────────────────────────────────────────────────────────
+// Colour was the only channel: five hues on identical dots, two of them a step
+// apart on the same blue. These hold the shape channel to the same discipline
+// as the colour one — closed over the classes the normalizer can emit, and
+// never allowed to differ between the globe and its key.
+
+test('a site is drawn as its class, and the catch-all weighs less than the rest', async () => {
+  const run = await runInstallationLoad({ elements: [
+    { type: 'node', id: 41, lat: 30.5, lon: -97.5, tags: { military: 'naval_base', name: 'Arsenal' } },
+    { type: 'node', id: 42, lat: 30.6, lon: -97.4, tags: { landuse: 'military', name: 'Camp' } },
+  ] });
+  try {
+    const value = (property) => (property?.getValue?.() ?? property);
+    const byName = new Map(run.entities().map((entity) => [entity.gevLabelModel?.title, entity]));
+    const naval = byName.get('Arsenal');
+    const land = byName.get('Camp');
+
+    assert.match(value(naval.billboard?.image), /^data:image\/svg\+xml;base64,/);
+    assert.equal(naval.point, undefined, 'a silhouette and a dot on one anchor read as two marks');
+    assert.notEqual(value(land.billboard?.image), value(naval.billboard.image));
+
+    // The class that names a subject is drawn larger than the one that only
+    // names the family — nine marks in ten are that fourre-tout.
+    assert.equal(value(naval.billboard.width), 24);
+    assert.equal(value(land.billboard.width), 20);
+  } finally {
+    run.restore();
+  }
+});
+
+test('the key swatch is the same artwork the globe paints', () => {
+  for (const klass of ['airfield', 'naval_base', 'range', 'military_land']) {
+    const [row] = installationLegend([legendRecord(klass)]);
+    // Same builder, one raster size apart: a swatch that were built from its
+    // own drawing could show a class the map does not.
+    assert.equal(row.glyph, militarySiteGlyph(klass, { px: 32 }));
+    assert.notEqual(row.glyph, militarySiteGlyph(klass));
+  }
+});
+
+test('every class the normalizer can emit carries a silhouette', () => {
+  const dataSource = fs.readFileSync(new URL('./militaryInstallationData.js', import.meta.url), 'utf8');
+  const block = dataSource.match(/const CLASS_BY_MILITARY_TAG = \{([\s\S]*?)\};/);
+  const classes = new Set([...block[1].matchAll(/:\s*'([a-z_]+)'/g)].map((match) => match[1]));
+  classes.add('military_land');
+  // A fifth class arriving upstream lands here, not on the globe as an
+  // unexplained dot that no key row decodes.
+  assert.deepEqual([...classes].filter((klass) => militarySiteGlyph(klass) === null), []);
+  assert.ok(classes.size >= 4);
+});
+
+test('the silhouettes are distinct artwork, and the borrowed ones are not a second copy', () => {
+  const drawn = ['airfield', 'naval_base', 'range', 'military_land']
+    .map((klass) => militarySiteGlyph(klass));
+  assert.equal(new Set(drawn).size, 4, 'two classes must never share one silhouette');
+  // Borrowed through the transit pack's own door. A vendored path copied into
+  // this layer would pass every other test here and drift from the original.
+  assert.equal(militarySiteGlyph('airfield'), transitVehicleGlyph('air'));
+  assert.equal(militarySiteGlyph('naval_base'), transitVehicleGlyph('ferry'));
+});
