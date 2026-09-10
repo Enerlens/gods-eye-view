@@ -10,12 +10,15 @@
 //    sentence, and no place in the DETECT callouts. The moment any of those
 //    five acquires a fallback on the bottom of the ramp, this layer starts
 //    inventing a bus.
-// 2. **The merge must never invent the half it does not have.** A referential
-//    stop outside the offer file says so; a stop looked at from above the
-//    frequency gate says so; neither is ever a zero.
-// 3. **Two marks land on one coordinate**, so the ids must not collide, the
-//    discs must stay smaller than the pictograms, and the ramp must hold none
-//    of the five mode hues — and clicking either mark must open ONE card.
+// 2. **The merge must never invent the half it does not have, and must never
+//    refuse to go and get it.** A click is a question about one coordinate, so
+//    it is answered at any altitude — the frequency gate bounds the DRAWING.
+//    The only absence this layer may still report is a measured one: a stop
+//    with no row in the offer file. An outage says outage; neither is a zero.
+// 3. **One point carries ONE mark.** The two id spaces must not collide and
+//    must open the same card, the disc must yield wherever a badge stands, and
+//    the badge must say mode by shape and rate by fill — with a legend that
+//    describes whichever of the two the view has actually read.
 // 4. **The map is always TODAY in Paris.** Every surface that names an hour
 //    also names the day, so a Sunday screenshot cannot be read as a weekday one.
 import test from 'node:test';
@@ -29,12 +32,15 @@ import idfmNetworkLayer, {
   IDFM_FREQ_SILENT_SIZE,
   IDFM_FREQ_SIZES,
   IDFM_LAYER_ID,
+  IDFM_BADGE_SIZE,
   IDFM_MODE_COLORS,
+  IDFM_NOT_MEASURED_COLOR,
   IDFM_OVERLAY_SOURCE_ID,
   STOPS_ENTER_SPAN_DEG,
   STOPS_EXIT_SPAN_DEG,
   buildLoadingLabel,
   buildStopCard,
+  clickDecision,
   createSelectedOverlayEntry,
   dayGlyphs,
   formatRate,
@@ -49,10 +55,13 @@ import idfmNetworkLayer, {
   parisOperatingSlot,
   resolveSelection,
   resolveSlot,
+  stopBadge,
+  stopBadgeFill,
   waitPhrase,
   weekLine,
   _clearIdfmNetworkSelectionForTest,
   _idfmNetworkDetectablesForTest,
+  _idfmNetworkProbeForTest,
   _idfmNetworkRecordForTest,
   _idfmNetworkRowControlsForTest,
   _idfmNetworkSelectedIdForTest,
@@ -181,13 +190,22 @@ const THURSDAY_0130 = Date.parse('2026-09-09T23:30:00Z');
 
 function seedStops({
   now = TUESDAY_0930, pinnedBand = null, overlay = fakeOverlay(), points = fakePoints(),
-  refStops = REF_STOPS,
+  refStops = REF_STOPS, http = undefined,
 } = {}) {
   _setIdfmNetworkStateForTest({
     viewer: fakeViewer(BOX), overlayHost: overlay, now, points, pack: PACK, refStops, pinnedBand,
+    http,
   });
   return { overlay, points };
 }
+
+/** The open card's body, as one string. */
+function cardBody(overlay) {
+  return (overlay.entries.get(IDFM_OVERLAY_SOURCE_ID)?.[0]?.details || []).join('\n');
+}
+
+/** Let the on-demand profile lookup and its repaint land. */
+const settle = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 test('the layer object satisfies the manager contract', () => {
   assert.equal(idfmNetworkLayer.id, IDFM_LAYER_ID);
@@ -225,10 +243,11 @@ test('the palette cannot be confused with the mode hues drawn on the same points
   assert.equal(IDFM_FREQ_SIZES.length, 6);
 });
 
-test('a rate disc stays smaller than the pictogram it is stacked under', () => {
-  // MODE_SIZE runs 14 px (bus) to 24 px (métro and rail). Every step here is
-  // strictly under the smallest of them, so the rate disc reads as a core
-  // inside the mode glyph rather than covering it.
+test('a rate disc stays smaller than the badge it stands beside', () => {
+  // `IDFM_BADGE_SIZE` runs 21 px (bus) to 27 px (métro and rail). Every step
+  // here is strictly under the smallest of them, so the two kinds of mark can
+  // never be confused where both are on screen — which they are, because the
+  // referential's page stops at 100 stops and the offer's at 1 200.
   for (const size of IDFM_FREQ_SIZES) assert.ok(size < 14, `${size} px`);
   assert.ok(IDFM_FREQ_SILENT_SIZE < IDFM_FREQ_SIZES[0]);
   // Monotonic: size and colour carry the same number, redundantly, because an
@@ -367,49 +386,119 @@ test('one click prints the network half and the frequency half together', () => 
   assert.ok(body.includes('21 tranches publiées sur 24'));
   // The week for the SELECTED band — the comparison the chips cannot make.
   assert.ok(body.includes('Même tranche : Lun'));
-  // It never reads like a departure board.
+  // It never reads like a departure board, and that is the LAST line: the two
+  // licences used to follow it, and they are discharged by `dataCredits.js`
+  // and by the layer's `source` string, not by the eleventh line of a card
+  // somebody opened to find out what serves their street.
   assert.ok(body.includes('semaine type hors vacances 2025'));
-  // ONE row, TWO licences, and the card is where that is said.
-  assert.ok(body.includes('réseau ODbL 1.0 · fréquence Licence Ouverte v2.0'));
+  assert.equal(/ODbL|Licence Ouverte/.test(body), false);
+  assert.ok(entry.details[entry.details.length - 1].includes('semaine type'));
   _clearIdfmNetworkSelectionForTest();
 });
 
-test('a half that is missing says which one, and never says zero', () => {
-  const { overlay } = seedStops({ pinnedBand: 8 });
+test('a half that is missing says which one, and never says zero', async () => {
+  // The proxy answers this stop's own box with no rows at all — which is what
+  // 3 053 of the 37 956 referential stops (8.0 %) really get.
+  const asked = [];
+  const { overlay } = seedStops({
+    pinnedBand: 8,
+    http: (url) => {
+      asked.push(String(url));
+      return Promise.resolve({ ok: true, json: async () => ({ stops: [] }) });
+    },
+  });
 
-  // A referential stop with no row in the offer file: 3 053 of 37 956, 8.0 %.
   _selectIdfmNetworkForTest('idfm:stop:999001');
-  const missing = norm(overlay.entries.get(IDFM_OVERLAY_SOURCE_ID)[0].details.join('\n'));
+  // The click is registered as a QUESTION before it is an absence.
+  assert.equal(_idfmNetworkProbeForTest('999001')?.status, 'loading');
+  assert.ok(norm(cardBody(overlay)).includes('Lecture de l’offre horaire de cet arrêt'));
+  await settle();
+
+  const missing = norm(cardBody(overlay));
   assert.ok(missing.includes('RER / Transilien · Paris 14e · zone 1 · accessibilité non renseignée'));
+  // Only now, with the answer in hand, is the absence stated.
+  assert.equal(_idfmNetworkProbeForTest('999001')?.status, 'empty');
   assert.ok(missing.includes('Aucun profil horaire publié'));
   assert.equal(missing.includes('départs/h'), false);
   assert.equal(missing.includes(IDFM_FREQ_SILENT_LABEL), false);
+  assert.equal(asked.length, 1, 'one box, for one stop');
+  // The smallest legal question, centred on the stop the reader clicked.
+  const box = new URL(asked[0], 'http://x').searchParams;
+  assert.ok(Math.abs(Number(box.get('south')) - 48.8294) < 0.001, box.get('south'));
+  assert.ok(Math.abs(Number(box.get('north')) - 48.8306) < 0.001, box.get('north'));
 
   // A stop the offer publishes and the referential box did not return: its mode
-  // and commune are the OFFER file's own, said as its own.
+  // and commune are the OFFER file's own, said as its own — and no probe, since
+  // the pack already holds it.
   _selectIdfmNetworkForTest('idfm-freq:23997');
-  const orphan = norm(overlay.entries.get(IDFM_OVERLAY_SOURCE_ID)[0].details.join('\n'));
+  const orphan = norm(cardBody(overlay));
   assert.ok(orphan.includes('Bus · Paris (75)'));
   assert.equal(orphan.includes('zone 1'), false);
   assert.ok(orphan.includes('départs/h') || orphan.includes(IDFM_FREQ_SILENT_LABEL));
+
+  // And going back to the stop with no profile does NOT buy the box again.
+  _selectIdfmNetworkForTest('idfm:stop:999001');
+  await settle();
+  assert.equal(asked.length, 1, `${asked.length} boxes bought`);
+  assert.ok(norm(cardBody(overlay)).includes('Aucun profil horaire publié'));
   _clearIdfmNetworkSelectionForTest();
 });
 
-test('above the frequency gate the card says so instead of showing a zero', () => {
+test('a click above the frequency gate buys the profile it cannot draw', async () => {
+  // Everything the map needs is out of reach up here — the discs are gone and
+  // the row says to come closer. A CLICK is not the map, and it is answered.
+  const overlay = fakeOverlay();
+  const asked = [];
+  _setIdfmNetworkStateForTest({
+    viewer: fakeViewer({ south: 48.5, west: 2.0, north: 49.1, east: 2.8 }),
+    overlayHost: overlay,
+    now: TUESDAY_0930,
+    refStops: REF_STOPS,
+    http: (url) => {
+      asked.push(String(url));
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ stops: PACK.stops.filter((stop) => stop.id === '23613') }),
+      });
+    },
+  });
+
+  _selectIdfmNetworkForTest('idfm:stop:23613');
+  await settle();
+  const body = norm(cardBody(overlay));
+  // No ceiling quoted back at the reader — the numbers, which is what a click
+  // asked for. This line used to read "Offre horaire non lue à cette altitude".
+  assert.equal(/altitude|Rapprochez|rapprochez/.test(body), false, body);
+  assert.ok(body.includes('départs/h'), body);
+  assert.ok(body.includes('Mardi 09:00–09:59'), body);
+  assert.equal(asked.length, 1);
+
+  // The MAP is untouched: one stop wearing a rate while the hundred around it
+  // wear their mode would read as a difference in service.
+  assert.equal(_idfmNetworkStatsForTest().regime, 'wide');
+  assert.equal(_idfmNetworkStatsForTest().charted, 0);
+  // And the row still says where the frequency starts being drawn.
+  assert.ok(norm(buildLoadingLabel()).includes('fréquence à partir d’une vue de 5 km'));
+  _clearIdfmNetworkSelectionForTest();
+});
+
+test('a proxy that fails a click says so, and never says "no service"', async () => {
   const overlay = fakeOverlay();
   _setIdfmNetworkStateForTest({
     viewer: fakeViewer({ south: 48.5, west: 2.0, north: 49.1, east: 2.8 }),
     overlayHost: overlay,
     now: TUESDAY_0930,
     refStops: REF_STOPS,
+    http: () => Promise.resolve({ ok: false, status: 503 }),
   });
   _selectIdfmNetworkForTest('idfm:stop:23613');
-  const body = norm(overlay.entries.get(IDFM_OVERLAY_SOURCE_ID)[0].details.join('\n'));
-  assert.ok(body.includes('Offre horaire non lue à cette altitude'));
+  await settle();
+  const body = norm(cardBody(overlay));
+  assert.equal(_idfmNetworkProbeForTest('23613')?.status, 'error');
+  assert.ok(body.includes('momentanément indisponible'), body);
+  // An outage is not a measurement, so it must not borrow the sentence for one.
+  assert.equal(body.includes('Aucun profil horaire publié'), false);
   assert.equal(body.includes('départs/h'), false);
-  assert.equal(body.includes(IDFM_FREQ_SILENT_LABEL), false);
-  // And the row's own line says the same thing rather than an empty count.
-  assert.ok(norm(buildLoadingLabel()).includes('fréquence à partir d’une vue de 5 km'));
   _clearIdfmNetworkSelectionForTest();
 });
 
@@ -519,18 +608,116 @@ test('the row controls are seven moments, exactly one of them lit', () => {
 test('the legend counts what is drawn, and always carries the silence', () => {
   seedStops({ pinnedBand: 8 });
   const { legend } = _idfmNetworkRowControlsForTest();
-  const counted = legend.reduce((total, entry) => total + entry.count, 0);
-  assert.equal(counted, 6);
+  const rate = legend.filter((entry) => entry.color !== IDFM_NOT_MEASURED_COLOR);
+  assert.equal(rate.reduce((total, entry) => total + entry.count, 0), 6);
   const silent = legend.find((entry) => entry.label === IDFM_FREQ_SILENT_LABEL);
   assert.ok(silent, 'the silent row is present even at zero');
   assert.equal(silent.count, 0);
   assert.equal(silent.color, IDFM_FREQ_SILENT_COLOR);
   assert.ok(silent.blurb.includes('mesurée'));
 
+  // The badges the offer does not reach get their own row, in the repo-wide
+  // "not measured" grey — one of the three referential stops in the fixture.
+  const unmeasured = legend.find((entry) => entry.color === IDFM_NOT_MEASURED_COLOR);
+  assert.ok(unmeasured, 'the unmeasured row is present');
+  assert.equal(unmeasured.count, 1);
+  assert.notEqual(unmeasured.color, IDFM_FREQ_SILENT_COLOR);
+
   // At 03:00 the same six stops collapse onto the silence.
   _idfmNetworkSetParamsForTest({ band: 27 });
   const night = _idfmNetworkRowControlsForTest().legend;
   assert.equal(night.find((entry) => entry.label === IDFM_FREQ_SILENT_LABEL).count, 5);
+  _clearIdfmNetworkSelectionForTest();
+});
+
+test('a view that read no rate gets a legend of MODES, not a ramp of zeros', () => {
+  // The bug this closes was on screen: above the frequency gate the ramp was
+  // listed with six rungs at zero and one silent row at zero, which is a
+  // legend describing nothing that is drawn.
+  const overlay = fakeOverlay();
+  _setIdfmNetworkStateForTest({
+    viewer: fakeViewer({ south: 48.5, west: 2.0, north: 49.1, east: 2.8 }),
+    overlayHost: overlay,
+    now: TUESDAY_0930,
+    refStops: REF_STOPS,
+  });
+  const { legend } = _idfmNetworkRowControlsForTest();
+  assert.equal(legend.length, 3);
+  assert.equal(legend.reduce((total, entry) => total + entry.count, 0), 3);
+  // Read in the order the marks read on the map: biggest badge first.
+  assert.deepEqual(legend.map((entry) => entry.label),
+    ['Métro', 'RER / Transilien', 'Bus']);
+  for (const entry of legend) {
+    assert.ok(Object.values(IDFM_MODE_COLORS).includes(entry.color), entry.color);
+    assert.ok(entry.blurb.length > 20, entry.label);
+  }
+  // Not one rung of the rate ramp, because no rate was read.
+  assert.equal(legend.some((entry) => IDFM_FREQ_RAMP.includes(entry.color)), false);
+  assert.equal(legend.some((entry) => entry.color === IDFM_FREQ_SILENT_COLOR), false);
+  _clearIdfmNetworkSelectionForTest();
+});
+
+test('one stop is drawn ONCE: the disc yields to the badge on its own point', () => {
+  const { points } = seedStops({ pinnedBand: 8 });
+  // Six profiles in the pack, three of them also in the referential box — and
+  // two of those three join, so two discs stand down.
+  const shown = points.added.filter((point) => point.show !== false);
+  assert.equal(points.added.length, 6);
+  assert.equal(shown.length, 4);
+  for (const id of ['idfm-freq:23613', 'idfm-freq:22154']) {
+    assert.equal(_idfmNetworkRecordForTest(id).point.show, false, id);
+  }
+  // The stop the referential never returned keeps its disc: nothing else draws it.
+  assert.equal(_idfmNetworkRecordForTest('idfm-freq:23997').point.show, true);
+
+  // Both are still CHARTED — they count in the legend and in the stats, and
+  // the badge carries the rate. Yielding a primitive is not dropping a fact.
+  assert.equal(_idfmNetworkStatsForTest().charted, 6);
+  _clearIdfmNetworkSelectionForTest();
+});
+
+test('a badge says its mode by shape and its rate by fill', () => {
+  const ref = REF_STOPS[0];
+  const freq = PACK.stops.find((stop) => stop.id === '23613');
+
+  // In a charted view the fill is the ramp — the colour the legend explains.
+  assert.equal(
+    stopBadgeFill({ mode: 'bus', freq, day: 'mardi', band: 8 }),
+    frequencyStyle(10).css,
+  );
+  // A published zero keeps the silent colour, never the bottom rung.
+  assert.equal(
+    stopBadgeFill({ mode: 'bus', freq, day: 'mardi', band: 27 }),
+    IDFM_FREQ_SILENT_COLOR,
+  );
+  // No profile in a view that charted others: the repo-wide "not measured".
+  assert.equal(stopBadgeFill({ mode: 'rail', charted: true }), IDFM_NOT_MEASURED_COLOR);
+  // No profile anywhere in the view: the colour is free to name the mode.
+  assert.equal(stopBadgeFill({ mode: 'rail' }), IDFM_MODE_COLORS.rail);
+  assert.equal(stopBadgeFill({ mode: 'nope' }), stopBadgeFill({}));
+
+  // The mark itself: one data URI per (mode, fill), and the mode is the SHAPE.
+  const busy = stopBadge(ref.mode, IDFM_FREQ_RAMP[5]);
+  const quiet = stopBadge(ref.mode, IDFM_FREQ_RAMP[0]);
+  assert.ok(busy.startsWith('data:image/svg+xml;base64,'));
+  assert.notEqual(busy, quiet, 'the fill is in the artwork');
+  assert.notEqual(stopBadge('metro', IDFM_FREQ_RAMP[5]), busy, 'the mode is in the artwork');
+  assert.equal(stopBadge(ref.mode, IDFM_FREQ_RAMP[5]), busy, 'memoised');
+
+  const svg = (uri) => Buffer.from(uri.split(',')[1], 'base64').toString('utf8');
+  // Either end of a LIGHTNESS ramp has to hold a pictogram, so the ink is
+  // chosen from the fill and cannot be a tint. Dark rung, light ink.
+  assert.ok(svg(quiet).includes(`fill="${IDFM_FREQ_RAMP[0]}"`));
+  assert.notEqual(
+    /<g fill="(#[0-9a-f]{6})" stroke="none">/i.exec(svg(quiet))?.[1],
+    /<g fill="(#[0-9a-f]{6})" stroke="none">/i.exec(svg(busy))?.[1],
+  );
+
+  // Every badge is strictly bigger than the biggest rate disc, so the two
+  // marks can never be mistaken for one another where both are drawn.
+  for (const size of Object.values(IDFM_BADGE_SIZE)) {
+    assert.ok(size > IDFM_FREQ_SIZES[IDFM_FREQ_SIZES.length - 1], `${size} px`);
+  }
   _clearIdfmNetworkSelectionForTest();
 });
 
@@ -639,4 +826,30 @@ test('the small text helpers say what they mean', () => {
   assert.equal(dayGlyphs(stop.profile, 'monday'), '');
   assert.ok(weekLine(stop.profile, 8).startsWith('Lun 29'));
   assert.equal(weekLine(stop.profile, 8).split(' · ').length, 7);
+});
+
+test('a click on the map closes the card, even on a photorealistic globe', () => {
+  const { overlay } = seedStops({ pinnedBand: 8 });
+  _selectIdfmNetworkForTest('idfm:stop:23613');
+  assert.ok(overlay.entries.get(IDFM_OVERLAY_SOURCE_ID));
+
+  // Either of this layer's two marks selects.
+  assert.deepEqual(clickDecision({ id: 'idfm:stop:22154' }),
+    { action: 'select', id: 'idfm:stop:22154' });
+  assert.deepEqual(clickDecision({ id: 'idfm-freq:23997' }),
+    { action: 'select', id: 'idfm-freq:23997' });
+
+  // THE REGRESSION. A click on the ground over Paris picks the 3D Tiles
+  // feature under the cursor, so the pick is not falsy — it just is not ours.
+  // The old handler tested `!picked` and therefore never closed anything.
+  const tilesetPick = { primitive: { isCesium3DTileset: true }, content: {}, id: undefined };
+  assert.deepEqual(clickDecision(tilesetPick), { action: 'close', id: null });
+  // Another layer's entity closes it too: the card answers "this stop".
+  assert.deepEqual(clickDecision({ id: { id: 'flight:AF1234' } }), { action: 'close', id: null });
+  // Empty sky over the horizon, with nothing open, is not an action.
+  assert.deepEqual(clickDecision(null, { selectedId: null }), { action: 'ignore', id: null });
+
+  // And the production path really does clear the host.
+  _clearIdfmNetworkSelectionForTest();
+  assert.equal(overlay.entries.get(IDFM_OVERLAY_SOURCE_ID), undefined);
 });

@@ -2,11 +2,19 @@
 // reading a card, and the artwork is Google's, vendored under Apache-2.0. So
 // two things are pinned: every class the kind mapper can emit draws as its own
 // real vehicle, and the vendored geometry is intact and unmodified.
+//
+// A third mark shares that geometry: the STOP BADGE, which knocks a pictogram
+// into a filled disc and is the one thing here whose colours are baked. Its
+// contract is the opposite of the vehicles' and is pinned separately — the ink
+// must flip with the fill's luminance, because a tint cannot do that and this
+// fill is a lightness ramp.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
+  badgeInk,
   transitHeadingPointer,
+  transitStopBadge,
   transitSymbolName,
   transitSymbolSet,
   transitVehicleGlyph,
@@ -14,7 +22,7 @@ import {
   TRANSIT_GLYPH_RASTER_PX,
   _transitSymbolPathsForTest,
 } from './transitVehicleIcons.js';
-import { MAKI_PATHS } from './mapIcons.js';
+import { MAKI_PATHS, MAP_ICON_HALO_RATIO, mapIconArtwork } from './mapIcons.js';
 import { GTFS_ROUTE_TYPE_KINDS, kindFromRouteType } from './transitVehicleKind.js';
 
 /** Decode a data URI back to its SVG source. */
@@ -181,4 +189,81 @@ test('glyphs are cached per symbol and size', () => {
   const svg = svgOf(transitVehicleGlyph('bus'));
   assert.ok(svg.includes(`width="${TRANSIT_GLYPH_RASTER_PX}"`));
   assert.ok(svg.includes('viewBox="0 -960 960 960"'));
+});
+
+test('a stop badge keeps a legible pictogram at BOTH ends of a lightness ramp', () => {
+  // The failure this prevents is the one the naked glyph had, inverted: a
+  // white pictogram on `#fff0c4` and a dark one on `#43587a` are both
+  // invisible, and `billboard.color` cannot flip between them — a tint
+  // multiplies, so it can only ever darken. So the ink is chosen here.
+  const dark = badgeInk('#43587a');
+  const light = badgeInk('#fff0c4');
+  assert.notEqual(dark.ink, light.ink);
+  assert.notEqual(dark.contrast, light.contrast);
+  // Both ends of the caller's ramp, and its silent colour, resolve.
+  for (const css of ['#43587a', '#63809f', '#94a8b8', '#cbc6b4', '#e8d5a0', '#fff0c4', '#2b3444']) {
+    const { ink } = badgeInk(css);
+    assert.ok(ink.startsWith('#'), css);
+  }
+  // A colour this pack cannot read must not throw mid-render, and must fall to
+  // the ink that works on the darker half of any ramp.
+  assert.deepEqual(badgeInk('rebeccapurple'), badgeInk('#000000'));
+  assert.deepEqual(badgeInk('#fff'), badgeInk('#ffffff'));
+});
+
+test('a badge fill goes into an SVG attribute, so it is normalised first', () => {
+  const svgFor = (fill) => svgOf(transitStopBadge('bus', { fill }));
+  // Case and whitespace are the same entry, not three.
+  assert.equal(transitStopBadge('bus', { fill: ' #FFF0C4 ' }),
+    transitStopBadge('bus', { fill: '#fff0c4' }));
+  // Anything this pack cannot weigh becomes the repo's "not measured" grey:
+  // visibly wrong beats a broken document, and beats an injected attribute.
+  for (const hostile of ['rebeccapurple', '#12', 'red" onload="x', '#fff0c4;fill:red']) {
+    const svg = svgFor(hostile);
+    assert.ok(svg.includes('fill="#8a93a6"'), hostile);
+    assert.equal(svg.includes('onload'), false, hostile);
+    assert.equal((svg.match(/"/g) || []).length % 2, 0, hostile);
+  }
+  // A shorthand hex is honoured rather than greyed out.
+  assert.ok(svgFor('#abc').includes('fill="#abc"'));
+});
+
+test('a stop badge is one atlas entry per (kind, fill), and no more', () => {
+  assert.equal(transitStopBadge('bus', { fill: '#fff0c4' }),
+    transitStopBadge('bus', { fill: '#FFF0C4' }), 'case is not a second entry');
+  assert.notEqual(transitStopBadge('bus', { fill: '#fff0c4' }),
+    transitStopBadge('bus', { fill: '#43587a' }));
+  assert.notEqual(transitStopBadge('bus', { fill: '#fff0c4' }),
+    transitStopBadge('metro', { fill: '#fff0c4' }));
+  assert.notEqual(transitStopBadge('bus', { fill: '#fff0c4' }),
+    transitStopBadge('bus', { fill: '#fff0c4', px: 32 }));
+  // And it is never the naked glyph: the badge brings its own ground, which is
+  // the whole reason it exists.
+  for (const kind of TRANSIT_GLYPH_KINDS) {
+    assert.notEqual(transitStopBadge(kind, { fill: '#fff0c4' }), transitVehicleGlyph(kind));
+  }
+});
+
+test('a stop badge draws the vendored geometry verbatim, placed by a transform', () => {
+  // The licence notices claim the `d` strings are byte-for-byte upstream. A
+  // badge scales them into a smaller box, and it must do that with an SVG
+  // transform rather than by rewriting coordinates.
+  const bus = svgOf(transitStopBadge('bus', { fill: '#94a8b8' }));
+  assert.ok(bus.includes(_transitSymbolPathsForTest().directions_bus), 'Material path is verbatim');
+  assert.match(bus, /viewBox="0 0 96 96"/);
+  assert.match(bus, /<g transform="translate\(21 75\) scale\(0\.05625\)">/);
+  // A borrowed glyph is fitted from the box `mapIconArtwork` declares for it,
+  // not from a box this module assumed — Maki and Temaki are not uniform.
+  const aerial = svgOf(transitStopBadge('aerial', { fill: '#94a8b8' }));
+  assert.ok(aerial.includes(MAKI_PATHS.aerialway), 'Maki path is verbatim');
+  const box = mapIconArtwork('maki', 'aerialway').box;
+  const scale = 54 / box;
+  const offset = ((96 - box * scale) / 2).toFixed(3);
+  assert.ok(aerial.includes(`translate(${offset} ${offset}) scale(${scale.toFixed(5)})`), aerial);
+  // And its halo is a RATIO of that same box, so a 15-unit glyph and a 960-unit
+  // one land at the same optical weight inside the badge.
+  assert.ok(aerial.includes(`stroke-width="${box * MAP_ICON_HALO_RATIO}"`), aerial);
+  // Two edges, so one of them always contrasts with whatever is underneath.
+  assert.equal((bus.match(/<circle /g) || []).length, 2);
+  assert.ok(bus.includes('fill="#94a8b8"'));
 });

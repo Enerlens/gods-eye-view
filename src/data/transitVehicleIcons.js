@@ -43,7 +43,7 @@
  * notice is this project's discipline rather than an obligation. The halo/fill
  * treatment is this project's; both sets' geometry is unmodified.
  */
-import { mapIconGlyph } from './mapIcons.js';
+import { MAP_ICON_HALO_RATIO, mapIconArtwork, mapIconGlyph } from './mapIcons.js';
 
 /**
  * Vendored Material Symbols path data (Rounded, filled, weight 400).
@@ -141,6 +141,73 @@ const HALO_STROKE = 110;
 /** Disc for a class this pack cannot draw — never another class's vehicle. */
 const FALLBACK_DISC = '<circle cx="480" cy="-480" r="230"/>';
 
+// --- Stop badges ------------------------------------------------------------
+
+/** Badge box. Both vendored sets are transformed into this one square. */
+const BADGE_VIEW = 96;
+/** Disc radius, leaving room for the rim inside the box. */
+const BADGE_RADIUS = 41;
+/** Rim width. Wide enough to survive a 20 px draw on a Retina screen. */
+const BADGE_RIM = 5;
+/** Outer hairline, outside the rim. Thin: it is a silhouette, not a border. */
+const BADGE_EDGE = 3;
+/**
+ * Side of the square the pictogram is fitted into.
+ *
+ * A square inscribed in a disc of radius 41 has a side of 58, and Material's
+ * glyphs run to the edge of their own box — so 54 keeps the corners of a wide
+ * glyph (the bus, the tram) off the rim instead of touching it.
+ */
+const BADGE_INNER = 54;
+
+/** The fills this pack can weigh: `#rgb` and `#rrggbb`, and nothing else. */
+const BADGE_FILL_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+/** `fraicheurParis.js`'s repo-wide "not measured", for a fill it cannot read. */
+const BADGE_FILL_FALLBACK = '#8a93a6';
+
+/** The two inks a badge can carry. Neither is pure black or pure white. */
+const BADGE_INK_DARK = '#0d141d';
+const BADGE_INK_LIGHT = '#f7fbff';
+
+/**
+ * sRGB relative luminance of a CSS hex colour, or null if it is not one.
+ *
+ * `#rgb` and `#rrggbb` only: every palette in this repo is written that way,
+ * and a named colour or an `rgb()` string reaching here is a caller bug that
+ * should surface as the light ink rather than as a thrown error mid-render.
+ */
+function hexLuminance(css) {
+  const hex = String(css).trim().replace(/^#/, '');
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+  if (!/^[0-9a-fA-F]{6}$/.test(full)) return null;
+  const channel = (offset) => {
+    const value = parseInt(full.slice(offset, offset + 2), 16) / 255;
+    return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(0) + 0.7152 * channel(2) + 0.0722 * channel(4);
+}
+
+/**
+ * The ink and the contrast colour a badge fill can carry.
+ *
+ * 0.179 is the sRGB pivot where black and white ink reach equal WCAG contrast
+ * against a background, so the choice is the one that maximises contrast
+ * rather than one picked by eye. Measured against the caller's palette: the
+ * two darkest rungs of the frequency ramp and its silent colour take the light
+ * ink, the four pale rungs and all five mode hues take the dark one.
+ *
+ * @param {string} css Badge fill.
+ * @returns {{ink:string, contrast:string}} Pictogram colour, and the colour
+ *   used for both the rim and the pictogram's halo.
+ */
+export function badgeInk(css) {
+  const luminance = hexLuminance(css);
+  if (luminance !== null && luminance > 0.179) {
+    return { ink: BADGE_INK_DARK, contrast: 'rgba(255,255,255,0.78)' };
+  }
+  return { ink: BADGE_INK_LIGHT, contrast: 'rgba(0,0,0,0.72)' };
+}
+
 /** @type {Map<string, string>} cache key → data URI. */
 const _cache = new Map();
 
@@ -195,6 +262,112 @@ export function transitVehicleGlyph(kind, { px = TRANSIT_GLYPH_RASTER_PX } = {})
     + ` stroke-linejoin="round" stroke-linecap="round">${geometry}</g>`
     + `<g fill="#ffffff" stroke="none">${geometry}</g>`
     + '</svg>';
+
+  const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
+  _cache.set(cacheKey, uri);
+  return uri;
+}
+
+/**
+ * A STOP badge: the mode's pictogram knocked into a filled disc.
+ *
+ * ── Why a badge and not the bare pictogram ─────────────────────────────────
+ * `idfmNetwork.js` drew the bare glyph — white line-art with a 2 px halo,
+ * tinted by mode — and the most numerous mode on the map, bus, is tinted
+ * `#c9d4e0`. Over a photorealistic Paris that is pale grey line-art on pale
+ * grey roofs: reported unreadable, and it is. A filled disc fixes it by
+ * construction rather than by picking a luckier hue — whatever the imagery
+ * underneath, the mark carries its own ground.
+ *
+ * ── Why the fill is BAKED, against this module's own tint contract ─────────
+ * Every other glyph here is white-on-transparent so `billboard.color` can
+ * multiply a layer's value colour into it. That contract cannot express this
+ * mark. The fill has to BE the value colour, and a fill covering a pictogram
+ * has to leave that pictogram readable at both ends of a lightness ramp —
+ * `idfmNetwork.js`'s runs `#43587a` to `#fff0c4`. A tint cannot flip the ink,
+ * so the ink is chosen HERE, from the fill's own luminance, and the caller
+ * draws the badge with `billboard.color` left white.
+ *
+ * The cost is atlas entries: one per (kind, fill) instead of one per kind.
+ * Bounded by construction — the caller has seven kinds and a closed palette of
+ * a dozen fills, and only the pairs actually on screen are ever built.
+ *
+ * ── Vendored geometry is still verbatim ───────────────────────────────────
+ * Both sets are placed by an SVG `transform` on the vendored path string, not
+ * by rewriting its coordinates: Material's 960-unit box and whatever box
+ * `mapIconArtwork` declares for a borrowed glyph are each mapped onto the same
+ * inner square. The `d` attribute is byte for byte what the notices in
+ * `licenses/` say it is. This is the same discipline, and the same door,
+ * `militarySiteIcons.js` uses for its plate — that module is the sibling of
+ * this one for PLACES, and it stays tint-safe by punching its silhouette out
+ * as a mask. A hole cannot work here: what shows through it is one fixed dark
+ * colour, and half of this caller's ramp is darker than that.
+ *
+ * @param {string} kind Stop mode, as `transitVehicleKind.js` names it.
+ * @param {Object} [options]
+ * @param {string} [options.fill] Badge fill, any CSS hex.
+ * @param {number} [options.px] Raster size.
+ * @returns {string} `data:image/svg+xml;base64,…`
+ */
+export function transitStopBadge(kind, { fill = '#c9d4e0', px = TRANSIT_GLYPH_RASTER_PX } = {}) {
+  // Normalised, not merely stringified: this value goes into an SVG ATTRIBUTE,
+  // and the only fills this pack can reason about are the hex ones `badgeInk`
+  // can weigh. Anything else becomes the repo's "not measured" grey — visibly
+  // wrong, rather than a broken document or an injected attribute.
+  const css = BADGE_FILL_RE.test(String(fill).trim())
+    ? String(fill).trim().toLowerCase()
+    : BADGE_FILL_FALLBACK;
+  const cacheKey = `badge/${String(kind)}/${css}@${px}`;
+  const cached = _cache.get(cacheKey);
+  if (cached) return cached;
+
+  const symbol = transitSymbolName(kind);
+  // Through `mapIconArtwork`, not a hardcoded box: Maki and Temaki are NOT
+  // uniform — `MAP_ICON_BOX` declares `fighter_jet` at 48 units — and the halo
+  // is a RATIO of whichever box the artwork was authored in. Asking the owning
+  // module means a glyph added to `MAKI_SYMBOLS` later lands correctly instead
+  // of being silently scaled by a factor of three.
+  const maki = symbol && MAKI_SYMBOLS.has(symbol) ? mapIconArtwork('maki', symbol) : null;
+  const path = symbol ? MATERIAL_SYMBOL_PATHS[symbol] : null;
+  const inset = (BADGE_VIEW - BADGE_INNER) / 2;
+
+  let geometry;
+  let transform;
+  let halo;
+  if (maki) {
+    const scale = BADGE_INNER / maki.box;
+    const offset = (BADGE_VIEW - maki.box * scale) / 2;
+    geometry = maki.geometry;
+    transform = `translate(${offset.toFixed(3)} ${offset.toFixed(3)}) scale(${scale.toFixed(5)})`;
+    halo = maki.box * MAP_ICON_HALO_RATIO;
+  } else {
+    // Material authors y from -960 to 0, so the vertical offset is the far
+    // edge of the inner square rather than its near one.
+    const scale = BADGE_INNER / 960;
+    geometry = path ? `<path d="${path}"/>` : FALLBACK_DISC;
+    transform = `translate(${inset} ${inset + BADGE_INNER}) scale(${scale.toFixed(5)})`;
+    halo = HALO_STROKE;
+  }
+
+  const { ink, contrast } = badgeInk(css);
+  const centre = BADGE_VIEW / 2;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${BADGE_VIEW} ${BADGE_VIEW}">`
+    // TWO edges, because one is not enough. The outer hairline is always dark,
+    // which is what gives a pale badge a silhouette on a pale roof; the inner
+    // rim carries the ink's own contrast colour, which is what gives a dark
+    // badge an edge on dark asphalt. Whatever the imagery, one of them lands.
+    + `<circle cx="${centre}" cy="${centre}" r="${BADGE_RADIUS + BADGE_RIM / 2}"`
+    + ` fill="none" stroke="rgba(0,0,0,0.55)" stroke-width="${BADGE_EDGE}"/>`
+    + `<circle cx="${centre}" cy="${centre}" r="${BADGE_RADIUS}" fill="${css}"`
+    + ` stroke="${contrast}" stroke-width="${BADGE_RIM}"/>`
+    + `<g transform="${transform}">`
+    // The pictogram's own halo, in the SAME contrast colour as the rim, so the
+    // glyph keeps its internal gaps — the tram's pantograph, the bus's window
+    // band — against a fill that would otherwise close them.
+    + `<g fill="none" stroke="${contrast}" stroke-width="${halo}"`
+    + ` stroke-linejoin="round" stroke-linecap="round">${geometry}</g>`
+    + `<g fill="${ink}" stroke="none">${geometry}</g>`
+    + '</g></svg>';
 
   const uri = `data:image/svg+xml;base64,${_b64(svg)}`;
   _cache.set(cacheKey, uri);
