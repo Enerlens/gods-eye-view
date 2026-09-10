@@ -6,6 +6,48 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
 ## [Unreleased] — 2026-09-10
 
 ### Changed
+- **La légende des bouées marines cesse de plaider et se contente de nommer :
+  douze lignes et 692 px deviennent huit et 219.** Le bloc de droite portait
+  388 mots pour une seule couche. Quatre de ces lignes étaient une RÈGLE
+  GRADUÉE — `8 m`, `2 m`, `0,5 m`, et le plancher sous 0,2 m — 99 mots pour
+  apprendre à un lecteur à inverser un facteur ×10 000 à l'œil. Trois autres
+  récitaient la défense du dispositif : `ÉCHELLE DE LECTURE`, `REDONDANCE
+  DÉLIBÉRÉE`, `Domaine gelé`, `Coût : 1,4 % de l'échelle`.
+
+  **La règle part parce que la carte imprime déjà les mètres.** Jusqu'à 96
+  bouées portent leur fiche, et le peloton qui en reçoit une est trié par
+  hauteur de houle — donc les plus grandes tiges à l'écran sont exactement
+  celles dont le relevé exact est écrit à côté, `1.0 m · Slight`. Une échelle
+  que personne n'a besoin d'inverser n'a pas besoin de graduations. Ce que la
+  tige porte encore, c'est le RELIEF et l'ORDRE, et un ordre se lit sur les
+  marques elles-mêmes : la tempête de Gascogne écrase la Manche d'à côté
+  qu'une clé imprime « 8 m » ou non.
+
+  **Ce qui reste, c'est une ligne par marque dessinée.** `Une tige = des
+  vagues mesurées. Plus haute, plus grosses` · `Cercle creux = bouée sans
+  capteur de vagues` · `Tige en tirets = mer au-delà de 14 m, hors échelle` ·
+  `Couleur = état de la mer, le nom qu'en donnent les marins`, puis les
+  classes OMM présentes ce jour-là avec leur compte — qui sont la lecture du
+  jour (« 98 bouées en mer peu agitée, 41 agitée ») et la raison pour laquelle
+  l'échelle reste neuf lignes plutôt qu'un dégradé qui ne compterait rien.
+  La ligne des tirets n'apparaît que lorsqu'une bouée est vraiment hors
+  échelle, et son pastille est désormais en tirets elle aussi : la clé
+  dessinait un trait plein pour annoncer des pointillés.
+
+  **Une seule ligne garde une phrase, et ce n'est pas facultatif.** La règle
+  F7(a) de `CARTOGRAPHIE.md` est P0 : une hauteur déclare son registre *dans
+  la légende*, en toutes lettres. La ligne de la tige lit donc « Échelle de
+  lecture, pas une hauteur réelle : 1 m de houle dessine 10 km de tige » —
+  quatorze mots, contre cent un.
+
+  **Rien n'est perdu, tout a changé d'endroit.** Les seuils restent gelés (C1),
+  le plancher et le plafond restent comptés — `getStats().swell` publie
+  `floored`, `clipped` et l'histogramme cumulatif `atOrAbove` — et l'argument
+  du dispositif reste dans l'en-tête du module, là où le lit quelqu'un qui peut
+  le changer. Mesuré dans le DOM à 1440×900, sur le même relevé : la clé passe
+  de 692 px de contenu dans une fenêtre de 216 px — 3,2 écrans de défilement,
+  le titre « Bouées marines » sorti par le haut — à 219 px, soit un écran.
+
 - **La légende des aéroports perd ses deux dernières lignes de forme : cinq
   lignes deviennent trois.** Ce matin la légende récitait encore « Piste
   tracée » (4 790 terrains) et « Emprise au sol » (418) sous les trois tiers,
