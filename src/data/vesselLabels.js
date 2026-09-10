@@ -41,6 +41,11 @@
  * zero.
  */
 
+// One definition of "the transponder declared nothing", shared with the join
+// that fills it. Two copies of that predicate is exactly how a '0' ends up
+// treated as a silence on one side of the layer and as a type on the other.
+import { aisTypeIsDeclared } from './vesselRegistryFr.js';
+
 export const VESSEL_OVERLAY_SOURCE_ID = 'ais-live-vessels';
 /** Existing selector grid size; one ambient winner is retained per cell. */
 export const VESSEL_LABEL_GRID_PX = 118;
@@ -60,7 +65,14 @@ const TYPE_STYLES = [
   { pattern: /cargo|container|bulk|carrier/i, css: '#39d5ff', accent: '57, 213, 255' },
   { pattern: /passenger|ferry|cruise/i, css: '#ff7adf', accent: '255, 122, 223' },
   { pattern: /fishing/i, css: '#7cff9b', accent: '124, 255, 155' },
-  { pattern: /tug|tow|pilot|supply|service/i, css: '#f7f0a3', accent: '247, 240, 163' },
+  // Widened on the 2026-09-10 run: 108 of the 670 orphans below were working
+  // craft whose token this pattern missed by a word — DREDGER, DIVE OPS,
+  // PORT TENDER, ANTI-POLLUTION, MEDICAL.
+  {
+    pattern: /tug|tow|pilot|supply|service|dredg|dive ops|tender|pollution|medical/i,
+    css: '#f7f0a3',
+    accent: '247, 240, 163',
+  },
   // Codes 36 and 37 — sailing and pleasure craft. Measured on the France box
   // 2026-09-07 over 1 696 live contacts: 94 of them declared one of these two
   // and were drawn in the slate of "Type non déclaré", which is 30 % of every
@@ -69,19 +81,65 @@ const TYPE_STYLES = [
   // coastline this is the commonest declaration there is, and it was the only
   // large family the palette had no pattern for.
   { pattern: /pleasure|sailing/i, css: '#a78bfa', accent: '167, 139, 250' },
+  // ── THE THREE ROWS BELOW WERE MEASURED OUT OF THE SLATE ───────────────────
+  //
+  // Live feed, Channel / North Sea box, 2026-09-10, 5 749 contacts: 54.7 %
+  // drew the unfamilied slate — and 670 of them, 11.7 % of the whole layer,
+  // had declared a PERFECTLY GOOD TYPE that this table simply had no pattern
+  // for. That is not the protocol failing to speak; that is the palette
+  // failing to listen. What was landing in "Type non déclaré":
+  //
+  //   341  codes 90-99, the AIS enum's own "other type"
+  //    88  dredgers (33)          32  SAR (51)         22  law enforcement (55)
+  //    59  high-speed craft (4x)  15  port tenders (53) 14  military (35)
+  //    57  code 2x                 3  dive ops (34)      2  anti-pollution (54)
+  //
+  // Widening `service` takes the working craft (dredger, dive ops, port
+  // tender, anti-pollution, medical). The state vessels get their own row —
+  // SAR, police and navy are not servitude, and on this globe they are the
+  // most interesting hull on the water. High-speed craft get theirs. And
+  // everything else that DECLARED something lands in `other`, which is a
+  // different sentence from "declared nothing" and now says so.
+  { pattern: /\bsar\b|military|law enforce/i, css: '#ff5c5c', accent: '255, 92, 92' },
+  { pattern: /high-speed/i, css: '#5b8cff', accent: '91, 140, 255' },
+  // Deliberately LAST and deliberately unbounded: any type that was declared
+  // and matched nothing above is still a declaration. `.test('')` is false, so
+  // this never captures the two silent states below it.
+  { pattern: /./, css: '#c8d0d8', accent: '200, 208, 216' },
 ];
+
 /**
- * Vessels whose AIS type matches no family — including the very common case of
- * a vessel that has broadcast no type at all.
+ * A vessel that broadcast ship type **0** — "not available".
  *
  * This used to be `#39d5ff` / `57, 213, 255`: byte-for-byte the CARGO colour.
  * A ship that had declared nothing was drawn as a container ship, in a palette
  * where the reader's only cue is hue (CARTOGRAPHIE A1). The replacement is
- * deliberately OFF the family ramp — a desaturated slate among six saturated
- * hues — so "no family" reads as its own state rather than as membership in
+ * deliberately OFF the family ramp — a desaturated slate among saturated hues
+ * — so "no family" reads as its own state rather than as membership in
  * whichever family happened to be the default.
+ *
+ * It keeps the established slate because it is the larger of the two silent
+ * states: 1 934 contacts against 543 on the measured run.
  */
-const DEFAULT_STYLE = { css: '#9aa7b5', accent: '154, 167, 181' };
+const UNAVAILABLE_STYLE = { css: '#9aa7b5', accent: '154, 167, 181' };
+
+/**
+ * A vessel whose identity message has never been heard.
+ *
+ * Split out of the slate above because the two are not the same claim and only
+ * one of them is permanent. A `0` is the transponder answering the question
+ * with a blank; this is the question never having been answered — and it is
+ * the ONLY one of the two that uptime fixes, as the disk registry fills in
+ * (`aisStaticRegistry.js`). Dimmer rather than differently hued: both are
+ * absences, and neither may borrow a family's colour.
+ */
+const SILENT_STYLE = { css: '#6c7784', accent: '108, 119, 132' };
+
+/**
+ * The answer when nothing else applies. Reachable only for a blank type, since
+ * the catch-all row of TYPE_STYLES claims everything that was declared.
+ */
+const DEFAULT_STYLE = SILENT_STYLE;
 
 const NUMERIC_TYPE_SPECIALS = {
   30: 'FISHING', 31: 'TOWING', 32: 'TOWING', 33: 'DREDGER', 34: 'DIVE OPS',
@@ -119,6 +177,12 @@ export function accentForVesselType(type) {
 }
 
 function styleForType(type) {
+  // The two silent states are told apart BEFORE normalisation, which collapses
+  // both to '': `normalizeVesselType('0')` and `normalizeVesselType('')` are
+  // the same string, and they are not the same fact about a ship.
+  if (!aisTypeIsDeclared(type)) {
+    return String(type ?? '').trim() ? UNAVAILABLE_STYLE : SILENT_STYLE;
+  }
   const text = normalizeVesselType(type);
   return TYPE_STYLES.find((entry) => entry.pattern.test(text)) || DEFAULT_STYLE;
 }
@@ -126,11 +190,14 @@ function styleForType(type) {
 /**
  * The family a chevron's hue actually stands for, as a legend key.
  *
- * `null` is the unfamilied bucket — an AIS type this palette has no pattern
- * for, and, far more often, a vessel that broadcast no type at all. It is a
- * bucket the map has always drawn and never named.
+ * `null` is the silent bucket, and ONLY the silent bucket: a vessel that
+ * declared nothing at all. Anything that was declared now has a family, down
+ * to the catch-all `other` — which is what took 670 correctly-typed contacts
+ * out of "Type non déclaré" on the 2026-09-10 run.
+ *
+ * Callers that need to name the silence ask {@link vesselSilentFamily}.
  * @param {string} type Raw AIS type.
- * @returns {string|null} Family key, or null when nothing matched.
+ * @returns {string|null} Family key, or null when nothing was declared.
  */
 export function vesselTypeFamily(type) {
   const text = normalizeVesselType(type);
@@ -138,8 +205,30 @@ export function vesselTypeFamily(type) {
   return index < 0 ? null : VESSEL_FAMILY_KEYS[index];
 }
 
+/**
+ * Which silence this is — the legend key for a vessel with no family.
+ *
+ * The old key said "Type non déclaré" over both, and over the 670 declarations
+ * it had no swatch for. What is left after those move out is two states that
+ * look identical on the wire and are opposites in practice:
+ *
+ *   `unavailable`  1 934 contacts — declared type 0. Permanent. No amount of
+ *                  listening will improve it; only a register can
+ *                  (`vesselRegistryFr.js`).
+ *   `silent`         543 contacts — no identity message heard yet. Transient:
+ *                  this is the number that falls as the server stays up.
+ *
+ * @param {string} type Raw AIS type.
+ * @returns {'unavailable'|'silent'}
+ */
+export function vesselSilentFamily(type) {
+  return String(type ?? '').trim() ? 'unavailable' : 'silent';
+}
+
 /** Family keys, parallel to TYPE_STYLES, with the caption a reader gets. */
-const VESSEL_FAMILY_KEYS = Object.freeze(['tanker', 'cargo', 'passenger', 'fishing', 'service', 'pleasure']);
+const VESSEL_FAMILY_KEYS = Object.freeze([
+  'tanker', 'cargo', 'passenger', 'fishing', 'service', 'pleasure', 'state', 'hsc', 'other',
+]);
 
 /** Legend captions, keyed as {@link vesselTypeFamily} reports. */
 export const VESSEL_FAMILY_LABELS = Object.freeze({
@@ -149,13 +238,26 @@ export const VESSEL_FAMILY_LABELS = Object.freeze({
   fishing: 'Pêche',
   service: 'Remorquage, pilotage, servitude',
   pleasure: 'Plaisance et voile',
+  state: 'Secours, police, militaire',
+  hsc: 'Navire à grande vitesse',
+  other: 'Autre type déclaré',
+  unavailable: 'Type laissé vide à bord',
+  silent: 'Identité pas encore reçue',
+  // Retained as the caption of last resort for a key this table does not know.
   unknown: 'Type non déclaré',
 });
 
-/** Swatch colour for a family key, including the unfamilied bucket. */
+/** Swatch colours for the keys that are not families — see {@link vesselSilentFamily}. */
+const SILENT_FAMILY_STYLES = Object.freeze({
+  unavailable: UNAVAILABLE_STYLE,
+  silent: SILENT_STYLE,
+});
+
+/** Swatch colour for a family key, including the two silent buckets. */
 export function vesselFamilyCss(family) {
   const index = VESSEL_FAMILY_KEYS.indexOf(family);
-  return index < 0 ? DEFAULT_STYLE.css : TYPE_STYLES[index].css;
+  if (index >= 0) return TYPE_STYLES[index].css;
+  return (SILENT_FAMILY_STYLES[family] || DEFAULT_STYLE).css;
 }
 
 /**
