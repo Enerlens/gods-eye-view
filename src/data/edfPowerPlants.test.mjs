@@ -16,6 +16,11 @@ import {
   buildPlantRecords,
   createEdfPowerPlantsLayer,
   filiereLegend,
+  filterPlants,
+  normalizePlantFilter,
+  plantFilterChips,
+  plantKindBuckets,
+  plantKindChip,
   formatMegawatts,
   mapAnalystRecord,
   plantColor,
@@ -66,22 +71,34 @@ const record = (id) => RECORDS.find((entry) => entry.id === id);
 
 // ── Capacity is carried by AREA ─────────────────────────────────────────────
 
-test('a disc four times the capacity is twice as wide, above the floor', () => {
+test('a mark four times the capacity is twice as wide, above the floor', () => {
   const small = plantPixelSize(100) - PLANT_PIXEL_MIN;
   const large = plantPixelSize(400) - PLANT_PIXEL_MIN;
-  assert.ok(Math.abs(large - small * 2) < 1e-9, 'radius must follow the square root');
+  assert.ok(Math.abs(large - small * 2) < 1e-9, 'the side must follow the square root');
 });
 
 test('the smallest plant is still visible and the largest still fits', () => {
   // Grandval, 74.1 MW, is the smallest plant the hydro file publishes.
   assert.ok(plantPixelSize(74.1) > PLANT_PIXEL_MIN);
-  assert.ok(plantPixelSize(74.1) < 12);
-  // Gravelines, 5 460 MW, saturates rather than growing without bound.
+  assert.ok(plantPixelSize(74.1) < 17);
+  // Gravelines, 5 460 MW, saturates rather than growing without bound — and so
+  // does Paluel at 5 320, which is what "the two largest sites in France both
+  // draw at the cap" means: the ramp did not simply move under the new floor.
   assert.equal(plantPixelSize(5460), PLANT_PIXEL_MAX);
+  assert.equal(plantPixelSize(5320), PLANT_PIXEL_MAX);
+  assert.ok(plantPixelSize(4000) < PLANT_PIXEL_MAX, 'saturation must not swallow the fleet');
   // A site with no published capacity gets the floor, never a guess.
   assert.equal(plantPixelSize(null), PLANT_PIXEL_MIN);
   assert.equal(plantPixelSize(0), PLANT_PIXEL_MIN);
   assert.equal(plantPixelSize(-5), PLANT_PIXEL_MIN);
+});
+
+test('the floor is big enough for a silhouette, not just for a dot', () => {
+  // The mark stopped being a disc and became a shape, and a shape has a size
+  // below which it is a smudge. 13 px is that floor; the trefoil punched
+  // through the nuclear cooling tower is the detail that sets it.
+  assert.ok(PLANT_PIXEL_MIN >= 13, 'a silhouette needs a raster it can occupy');
+  assert.ok(PLANT_PIXEL_MAX / PLANT_PIXEL_MIN > 2, 'the ramp must still be a ramp');
 });
 
 test('an unknown filière is drawn neutral rather than assigned a fuel', () => {
@@ -203,6 +220,133 @@ test('the legend names each filière, its site count and its installed total', (
   assert.deepEqual(filiereLegend(summarizePlants([])), []);
 });
 
+// ── The filter: two levels, and the second one waits ────────────────────────
+
+test('the sub-categories of one filière are derived, never hard-coded', () => {
+  // Built from the RENDERED records, so a button can never offer a category
+  // with nothing behind it, and a value EDF starts publishing tomorrow gets a
+  // button without a code change.
+  const hydro = plantKindBuckets(RECORDS, 'hydraulique');
+  assert.deepEqual(hydro.map((bucket) => bucket.label),
+    ['LAC', 'POMPAGE MIXTE', 'MARÉMOTRICE', 'FIL DE L’EAU']);
+  // Biggest cohort first, then installed power: three lakes beat one 1 714 MW
+  // pumped-storage plant, and the Rance's 240 MW beats Kembs' 162.
+  assert.deepEqual(hydro.map((bucket) => bucket.sites), [3, 1, 1, 1]);
+  assert.equal(hydro[0].capacityMw, 808.37);
+  // One site each, so the tiebreak is installed power: Gravelines' 5 460 MW
+  // puts the 900 MW palier ahead of Civaux's 2 990. The order is total, so the
+  // strip cannot reshuffle itself between two repaints of the same fleet.
+  assert.deepEqual(plantKindBuckets(RECORDS, 'nucleaire').map((b) => b.label),
+    ['900 MW', '1 450 MW']);
+  assert.deepEqual(plantKindBuckets(RECORDS, null), []);
+  assert.deepEqual(plantKindBuckets(null, 'nucleaire'), []);
+});
+
+test('a published code with no plain word still gets a button', () => {
+  // The same refusal to invent `plantKindPlain` makes one register up: an
+  // unknown code is printed as EDF wrote it rather than dropped or guessed at.
+  assert.equal(plantKindChip('REP 900'), '900 MW');
+  assert.equal(plantKindChip('EPR2'), 'EPR2');
+  // A site whose file names no kind buckets under a button that says so,
+  // rather than falling out of its own filière.
+  assert.equal(plantKindChip(null), 'NON PRÉCISÉ');
+  assert.equal(plantKindChip('  '), 'NON PRÉCISÉ');
+});
+
+test('a kind means nothing without the filière whose column publishes it', () => {
+  // `Charbon` and `Lac` are values of two DIFFERENT published columns. A kind
+  // that arrived without a filière used to be applicable across the fleet,
+  // which is a filter that can only ever match by coincidence.
+  assert.deepEqual(normalizePlantFilter({ kind: 'Lac' }), { filiere: null, kind: null });
+  assert.deepEqual(normalizePlantFilter({ filiere: 'géothermie', kind: 'Lac' }),
+    { filiere: null, kind: null });
+  assert.deepEqual(normalizePlantFilter({ filiere: 'hydraulique', kind: 'Lac' }),
+    { filiere: 'hydraulique', kind: 'Lac' });
+  assert.deepEqual(normalizePlantFilter(null), { filiere: null, kind: null });
+});
+
+test('a filter keeps its own cohort and nothing else', () => {
+  assert.equal(filterPlants(RECORDS, null).length, RECORDS.length);
+  assert.equal(filterPlants(RECORDS, { filiere: 'hydraulique' }).length, 6);
+  const lakes = filterPlants(RECORDS, { filiere: 'hydraulique', kind: 'Lac' });
+  assert.deepEqual(lakes.map((entry) => entry.name).sort(),
+    ['BATHIE (LA)', 'GRANDVAL', 'SAINTE-CROIX']);
+  // The fleet array is never mutated: the filter hands back a new list and the
+  // whole register stays behind it, so clearing costs no refetch.
+  assert.notEqual(filterPlants(RECORDS, null), RECORDS);
+  assert.equal(RECORDS.length, 11);
+});
+
+test('the sub-categories are NOT offered until a filière has been chosen', () => {
+  // THE WHOLE POINT OF THE SECOND LEVEL. Thirteen published kinds under three
+  // filières is sixteen buttons on a row that is four lines tall before the
+  // reader has asked anything — so the strip carries the filières, and a
+  // filière's own categories appear once that filière is the one being read.
+  const closed = plantFilterChips(RECORDS, { filiere: null, kind: null });
+  assert.deepEqual(closed.map((chip) => chip.label),
+    ['TOUTES', 'NUCLÉAIRE', 'HYDRAULIQUE', 'THERMIQUE']);
+  assert.equal(closed.filter((chip) => chip.chipClass === 'chip-sub').length, 0);
+  assert.equal(closed.find((chip) => chip.label === 'TOUTES').active, true);
+
+  const open = plantFilterChips(RECORDS, { filiere: 'hydraulique', kind: null });
+  assert.deepEqual(open.map((chip) => chip.label), [
+    'TOUTES', 'NUCLÉAIRE', 'HYDRAULIQUE', 'THERMIQUE',
+    'TOUS', 'LAC', 'POMPAGE MIXTE', 'MARÉMOTRICE', 'FIL DE L’EAU',
+  ]);
+  // Only the sub-categories of the filière that is open — never a second
+  // filière's, which is what makes this a drill-down and not a longer strip.
+  for (const chip of open.filter((entry) => entry.chipClass === 'chip-sub')) {
+    assert.equal(chip.params.filiere, 'hydraulique');
+  }
+  assert.equal(open.find((chip) => chip.label === 'HYDRAULIQUE').active, true);
+  assert.equal(open.find((chip) => chip.label === 'TOUTES').active, false);
+  assert.equal(open.find((chip) => chip.label === 'TOUS').active, true);
+});
+
+test('a filière with one published kind is offered no choice at all', () => {
+  // A single bucket is not a choice: the button could only ever reselect what
+  // is already on screen, and it would still cost a line of the panel.
+  const single = RECORDS.filter((entry) => entry.filiere === 'nucleaire' && entry.kind === 'REP 900');
+  const chips = plantFilterChips(single, { filiere: 'nucleaire', kind: null });
+  assert.equal(chips.filter((chip) => chip.chipClass === 'chip-sub').length, 0);
+  // And a fleet that has not loaded yet offers nothing rather than an empty
+  // strip of buttons that answer no question.
+  assert.deepEqual(plantFilterChips([], { filiere: null, kind: null }), []);
+});
+
+test('a second click on the chip that is lit is the way back out', () => {
+  // There is always an escape that does not require finding the reset — and at
+  // the sub-category level there IS no reset except `TOUS`, which is one chip
+  // away from four others that all look like it.
+  const open = plantFilterChips(RECORDS, { filiere: 'hydraulique', kind: 'Lac' });
+  const filiere = open.find((chip) => chip.label === 'HYDRAULIQUE');
+  assert.deepEqual(filiere.params, { filiere: null, kind: null });
+  const kind = open.find((chip) => chip.label === 'LAC');
+  assert.equal(kind.active, true);
+  assert.deepEqual(kind.params, { filiere: 'hydraulique', kind: null });
+  // A chip that is NOT lit selects; only the lit one clears.
+  const other = open.find((chip) => chip.label === 'MARÉMOTRICE');
+  assert.deepEqual(other.params, { filiere: 'hydraulique', kind: 'Marémotrice' });
+  // Choosing another filière drops the kind with it: it was a value of the old
+  // filière's column and means nothing under the new one.
+  assert.deepEqual(open.find((chip) => chip.label === 'THERMIQUE').params,
+    { filiere: 'thermique', kind: null });
+});
+
+test('every chip says what it will do, and with how many sites', () => {
+  // The title is where the honest sentence lives — `900 MW` on a button is the
+  // reactor family's unit power and NOT the site's, and nothing on an 8 px chip
+  // can say so.
+  const chips = plantFilterChips(RECORDS, { filiere: 'nucleaire', kind: null });
+  assert.match(chips[0].title, /Les 11 sites des trois filières — 13 489 MW/);
+  assert.match(chips.find((chip) => chip.label === 'THERMIQUE').title,
+    /Ne garder que thermique à flamme — 3 sites, 2 115 MW/);
+  assert.match(chips.find((chip) => chip.label === 'NUCLÉAIRE').title,
+    /Cliquer à nouveau pour revenir à la France entière/);
+  assert.match(chips.find((chip) => chip.label === '900 MW').title,
+    /réacteur à eau pressurisée de 900 MW — 1 site, 5 460 MW/);
+});
+
 // ── Three vintages, never collapsed into one ────────────────────────────────
 
 test('the reference dates are reported as a range, not as one "as of"', () => {
@@ -275,6 +419,16 @@ function createHarness(polls) {
   };
 }
 
+/** Every rendered mark of a harness, by its render id. */
+function drawnMarks(collection) {
+  const drawn = new Map();
+  for (let i = 0; i < collection.length; i += 1) {
+    const mark = collection.get(i);
+    drawn.set(mark.id, mark);
+  }
+  return drawn;
+}
+
 test('every site is drawn once, sized by its own installed capacity', async () => {
   const h = createHarness([PAYLOAD]);
   try {
@@ -283,16 +437,16 @@ test('every site is drawn once, sized by its own installed capacity', async () =
     assert.equal(await h.layer.update(h.viewer), true);
 
     assert.equal(h.primitives.length, 1);
-    assert.equal(h.primitives[0].length, 11, 'one disc per site, not per published row');
-    const drawn = new Map();
-    for (let i = 0; i < h.primitives[0].length; i += 1) {
-      const point = h.primitives[0].get(i);
-      drawn.set(point.id, point);
-    }
-    assert.equal(drawn.get('edf-plants:nucleaire:GRAVELINES').pixelSize, PLANT_PIXEL_MAX);
+    assert.equal(h.primitives[0].length, 11, 'one mark per site, not per published row');
+    const drawn = drawnMarks(h.primitives[0]);
+    // The mark is a SQUARE raster, so the capacity ramp has to reach both
+    // sides: a width that grew while the height stayed at the floor would
+    // stretch the cooling tower instead of enlarging it.
+    assert.equal(drawn.get('edf-plants:nucleaire:GRAVELINES').width, PLANT_PIXEL_MAX);
+    assert.equal(drawn.get('edf-plants:nucleaire:GRAVELINES').height, PLANT_PIXEL_MAX);
     assert.ok(
-      drawn.get('edf-plants:hydraulique:GRAND-MAISON').pixelSize
-      > drawn.get('edf-plants:hydraulique:GRANDVAL').pixelSize,
+      drawn.get('edf-plants:hydraulique:GRAND-MAISON').width
+      > drawn.get('edf-plants:hydraulique:GRANDVAL').width,
     );
     assert.equal(
       drawn.get('edf-plants:thermique:CORDEMAIS').color.toCssColorString(),
@@ -479,6 +633,166 @@ test('disable hides the fleet and drops its labels; destroy releases the collect
     assert.equal(h.primitives.length, 0);
     assert.equal(h.layer.getStats().count, 0);
     assert.deepEqual(h.layer.getStats().referenceDates, []);
+  } finally {
+    h.restore();
+  }
+});
+
+// ── The filter, on a live layer ─────────────────────────────────────────────
+
+test('narrowing to a filière redraws the globe, the key and the row count', async () => {
+  const h = createHarness([PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    assert.equal(h.primitives[0].length, 11);
+
+    assert.equal(h.layer.setParams({ filiere: 'hydraulique' }), true);
+    assert.equal(h.primitives[0].length, 6, 'the globe keeps only the filière asked for');
+    const drawn = drawnMarks(h.primitives[0]);
+    assert.ok(drawn.has('edf-plants:hydraulique:GRANDVAL'));
+    assert.ok(!drawn.has('edf-plants:nucleaire:GRAVELINES'));
+
+    // The labels follow the marks: a name left painted over a site that is no
+    // longer drawn is a label for nothing.
+    const [, , entries] = h.hostCalls.findLast((call) => call[0] === 'entries');
+    assert.equal(entries.length, 6);
+
+    // The key describes what is DRAWN, not the fleet — a legend naming three
+    // filières over a globe showing one is a key to somebody else's map.
+    const controls = h.layer.getRowControls();
+    assert.deepEqual(controls.legend.map((entry) => entry.label), ['Hydraulique']);
+    assert.match(controls.legend[0].glyph, /^data:image\/svg\+xml;base64,/);
+
+    const stats = h.layer.getStats();
+    assert.equal(stats.count, 6, 'the row must report what is on the globe');
+    assert.equal(stats.hidden, 5);
+    assert.equal(stats.filiere, 'hydraulique');
+    assert.equal(stats.kind, null);
+    // THE FLEET's figures do not move because a reader narrowed their view.
+    assert.equal(stats.fleetSites, 11);
+    assert.equal(stats.capacityMw, 13489.47);
+    assert.equal(stats.nuclearMw, 8450);
+  } finally {
+    h.restore();
+  }
+});
+
+test('the sub-category narrows again, and clearing costs no refetch', async () => {
+  const h = createHarness([PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    const fetches = h.fetchUrls.length;
+
+    h.layer.setParams({ filiere: 'hydraulique', kind: 'Lac' });
+    assert.equal(h.primitives[0].length, 3);
+    assert.deepEqual(h.layer.getParams(), { filiere: 'hydraulique', kind: 'Lac' });
+    // An analyst question is asked about the map that is on screen.
+    assert.deepEqual(h.layer.getAnalystRecords().map((entry) => entry.name),
+      ['BATHIE (LA)', 'SAINTE-CROIX', 'GRANDVAL']);
+
+    // Nothing was thrown away: the whole register stayed behind the filter.
+    h.layer.setParams({ filiere: null });
+    assert.equal(h.primitives[0].length, 11);
+    assert.deepEqual(h.layer.getParams(), { filiere: null, kind: null });
+    assert.equal(h.fetchUrls.length, fetches, 'clearing a filter must not refetch');
+  } finally {
+    h.restore();
+  }
+});
+
+test('re-applying the filter a row already shows is a success, not a rejection', async () => {
+  const h = createHarness([PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+
+    // The manager turns a `false` into a params-failed and a console warning.
+    // A button that did exactly what it said must not produce either.
+    assert.equal(h.layer.setParams({ filiere: 'thermique' }), true);
+    assert.equal(h.layer.setParams({ filiere: 'thermique' }), true);
+    // A call that addresses neither level IS a rejection: nothing was asked.
+    assert.equal(h.layer.setParams({}), false);
+    assert.equal(h.layer.setParams({ floorKw: 12 }), false);
+    // A filière this file does not publish falls back to the whole fleet
+    // rather than emptying the globe.
+    assert.equal(h.layer.setParams({ filiere: 'géothermie' }), true);
+    assert.equal(h.primitives[0].length, 11);
+  } finally {
+    h.restore();
+  }
+});
+
+test('the row repaints itself when a chip changes what it offers', async () => {
+  const h = createHarness([PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+
+    // Without this the sub-categories would exist in the module and reach the
+    // DOM only on the panel's next scheduled refresh — the defect
+    // `gironde-megafire-2026` shipped with, on a strip that changes shape.
+    let repaints = 0;
+    h.layer.setRowControlsListener(() => { repaints += 1; });
+    h.layer.setParams({ filiere: 'nucleaire' });
+    assert.equal(repaints, 1);
+    assert.equal(h.layer.getRowControls().chips.filter((chip) => chip.chipClass === 'chip-sub').length, 3);
+    h.layer.setParams({ filiere: null });
+    assert.equal(repaints, 2);
+    assert.equal(h.layer.getRowControls().chips.filter((chip) => chip.chipClass === 'chip-sub').length, 0);
+  } finally {
+    h.restore();
+  }
+});
+
+test('a filter left pointing at a category a republication dropped heals', async () => {
+  // EDF republishes these files annually and the vocabulary is theirs to
+  // change. A filter that survived a category that did not would be an empty
+  // globe under a lit button, with no way back except a reload.
+  const withoutLakes = {
+    ...PAYLOAD,
+    sites: PAYLOAD.sites.filter((site) => site.kind !== 'Lac'),
+  };
+  const h = createHarness([PAYLOAD, withoutLakes]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    h.layer.setParams({ filiere: 'hydraulique', kind: 'Lac' });
+    assert.equal(h.primitives[0].length, 3);
+
+    await h.layer.update(h.viewer);
+    assert.deepEqual(h.layer.getParams(), { filiere: 'hydraulique', kind: null });
+    assert.equal(h.primitives[0].length, 3, 'the filière survives; only the dead category is dropped');
+  } finally {
+    h.restore();
+  }
+});
+
+test('a fresh scene starts on the whole country', async () => {
+  // `init` is a new globe. A reader who reloads must not land on a France that
+  // is missing three quarters of its power stations for a reason that is no
+  // longer on screen anywhere — which is also why the filter is not in a share
+  // link (`layerState.js` keeps this layer `enabled-only`).
+  const h = createHarness([PAYLOAD, PAYLOAD]);
+  try {
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    h.layer.setParams({ filiere: 'thermique' });
+    assert.equal(h.primitives[0].length, 3);
+
+    h.layer.destroy(h.viewer);
+    h.layer.init(h.viewer);
+    h.layer.enable(h.viewer);
+    await h.layer.update(h.viewer);
+    assert.deepEqual(h.layer.getParams(), { filiere: null, kind: null });
+    assert.equal(h.primitives[h.primitives.length - 1].length, 11);
   } finally {
     h.restore();
   }

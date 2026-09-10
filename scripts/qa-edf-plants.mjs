@@ -10,14 +10,19 @@
  * from what the proxy actually serves, and proves the four things only a real
  * Cesium scene can prove:
  *
- *   i.   19 published rows become 11 DISCS — six Gravelines reactor rows draw
+ *   i.   19 published rows become 11 MARKS — six Gravelines reactor rows draw
  *        one marker, not six stacked on one pixel
  *   ii.  capacity reaches the globe as AREA: Gravelines saturates, Grand-Maison
- *        sits between it and Grandval, read off the rendered primitives
+ *        sits between it and Grandval, read off the rendered primitives — and
+ *        each filière is drawn with its OWN silhouette, three rasters for
+ *        eleven sites rather than one texture per marker
  *   iii. the hydro file's x=latitude convention survives all the way to the
  *        rendered position — Grand-Maison unprojects to 45.15 N 6.05 E, and
  *        every site lands inside metropolitan France
  *   iv.  the labels are actually PAINTED, and each one says what its object is
+ *   v.   the FILTER reaches the globe: choosing one filière removes the other
+ *        two from the scene AND from the overlay, its sub-categories appear on
+ *        the row only once it is chosen, and clearing brings the fleet back
  *
  * Screenshots are written under the gitignored `qa-shots/edf-plants/`.
  *
@@ -62,7 +67,7 @@ const NUCLEAR = '#ffd166';
 const HYDRO = '#4fc3f7';
 const THERMAL = '#f4736b';
 /** The size ramp's ceiling, likewise restated rather than imported. */
-const PIXEL_MAX = 26;
+const PIXEL_MAX = 34;
 
 const readFixture = (name) => JSON.parse(fs.readFileSync(
   path.join(REPO_ROOT, 'src', 'data', 'fixtures', `edf-plants-${name}.json`), 'utf8',
@@ -141,10 +146,10 @@ async function shoot(page, name) {
 /**
  * Read the layer's rendered state out of the live scene.
  *
- * Deliberately reads the POINT PRIMITIVES, not the layer's own model: the
- * point of a browser proof is that the paint reached the globe, so the sizes
- * and colours here come off the collection and the positions are unprojected
- * back to degrees from the rendered Cartesians.
+ * Deliberately reads the BILLBOARDS, not the layer's own model: the point of a
+ * browser proof is that the paint reached the globe, so the sizes, colours and
+ * textures here come off the collection and the positions are unprojected back
+ * to degrees from the rendered Cartesians.
  */
 function sceneProbe(page) {
   return page.evaluate(() => {
@@ -154,7 +159,7 @@ function sceneProbe(page) {
     const ellipsoid = scene.globe?.ellipsoid || scene.ellipsoid;
     const r2d = 180 / Math.PI;
 
-    // Duck-typed: the layer's collection is the one whose points carry its ids.
+    // Duck-typed: the layer's collection is the one whose marks carry its ids.
     let collection = null;
     for (let i = 0; i < scene.primitives.length; i++) {
       const primitive = scene.primitives.get(i);
@@ -170,10 +175,16 @@ function sceneProbe(page) {
     for (let i = 0; collection && i < collection.length; i++) {
       const point = collection.get(i);
       const carto = point.position ? ellipsoid.cartesianToCartographic(point.position) : null;
+      const image = typeof point.image === 'string' ? point.image : null;
       points.push({
         id: String(point.id),
-        pixelSize: point.pixelSize,
+        pixelSize: point.width,
+        height: point.height,
         color: hex(point.color),
+        // The whole data URI would be ~2 kB per mark over the CDP hop for no
+        // gain: what the assertions need is whether two marks share a texture,
+        // and a hash of it answers that in eight characters.
+        texture: image ? `${image.length}:${image.slice(-24)}` : null,
         // `Infinity` does not survive the CDP JSON hop, so it is reported as a
         // flag rather than as a number.
         drawnOverTerrain: point.disableDepthTestDistance === Number.POSITIVE_INFINITY,
@@ -243,7 +254,7 @@ async function main() {
     await setView(page, FRANCE.lon, FRANCE.lat, FRANCE.height);
 
     // ── i. rows become sites ───────────────────────────────────────────────
-    console.log('[qa] i. 19 published rows draw 11 site discs');
+    console.log('[qa] i. 19 published rows draw 11 site marks');
     await page.evaluate(() => window.__godsEyeView.dataManager.setEnabled('edf-power-plants', true));
     let probe = null;
     for (let attempt = 0; attempt < 25; attempt++) {
@@ -253,22 +264,22 @@ async function main() {
       if (apiRequests >= 1 && probe.collectionFound && probe.stats.count === 11) break;
     }
     check('the layer fetched its snapshot', apiRequests >= 1, `${apiRequests} request(s)`);
-    check('the point collection reached the scene', probe.collectionFound);
-    check('19 published rows drew 11 discs', probe.points.length === 11,
-      `${probe.points.length} discs from ${payload.sites.length} sites`);
+    check('the billboard collection reached the scene', probe.collectionFound);
+    check('19 published rows drew 11 marks', probe.points.length === 11,
+      `${probe.points.length} marks from ${payload.sites.length} sites`);
     const gravelines = probe.points.find((point) => point.id.endsWith('nucleaire:GRAVELINES'));
     check('the six Gravelines reactors are ONE marker',
       probe.points.filter((point) => point.id.includes('GRAVELINES')).length === 1);
     check('and it carries all six reactors of capacity',
       probe.analyst.find((record) => record.name === 'GRAVELINES')?.units === 6);
-    check('every disc is a distinct site', new Set(probe.points.map((p) => p.id)).size === 11);
-    // THE PARASOL. A point primitive carries one depth for its whole quad, so
-    // a finite `disableDepthTestDistance` lets the ground in front of the
-    // anchor eat everything below it: reproduced at Gravelines at 6 km camera
-    // height, where the 5 460 MW disc painted as a flat-bottomed dome. There
-    // is no pixel test for it here because the failure is in the depth buffer,
-    // not in the geometry — the primitive is the right size either way.
-    check('the discs are drawn OVER the terrain, not depth-tested against it',
+    check('every mark is a distinct site', new Set(probe.points.map((p) => p.id)).size === 11);
+    // THE PARASOL. A billboard carries one depth for its whole quad, so a
+    // finite `disableDepthTestDistance` lets the ground in front of the anchor
+    // eat everything below it: reproduced at Gravelines at 6 km camera height,
+    // where the 5 460 MW mark painted as a flat-bottomed dome. There is no
+    // pixel test for it here because the failure is in the depth buffer, not in
+    // the geometry — the primitive is the right size either way.
+    check('the marks are drawn OVER the terrain, not depth-tested against it',
       probe.points.length > 0 && probe.points.every((p) => p.drawnOverTerrain),
       `depth-tested beyond ${probe.points.find((p) => !p.drawnOverTerrain)?.depthTestDisabledBeyond} m`);
     await shoot(page, '01-fleet.png');
@@ -294,6 +305,26 @@ async function main() {
       && probe.points.find((p) => p.id.endsWith('hydraulique:RANCE'))?.color === HYDRO
       && probe.points.find((p) => p.id.endsWith('thermique:CORDEMAIS'))?.color === THERMAL,
       `${gravelines?.color} / ${probe.points.find((p) => p.id.endsWith('hydraulique:RANCE'))?.color}`);
+    // The mark is a SQUARE raster: a width that grew while the height stayed at
+    // the floor would stretch the cooling tower rather than enlarge it.
+    check('the capacity ramp reaches both sides of the raster',
+      probe.points.every((point) => point.pixelSize === point.height),
+      probe.points.filter((p) => p.pixelSize !== p.height).map((p) => p.id).join(','));
+
+    // ── ii-bis. one silhouette per filière, one texture per silhouette ─────
+    console.log('[qa] ii-bis. each filière carries its own shape');
+    const textureOf = (fragment) => probe.points.find((point) => point.id.endsWith(fragment))?.texture;
+    check('the three filières are drawn with three DIFFERENT silhouettes',
+      new Set(probe.points.map((point) => point.texture)).size === 3,
+      `${new Set(probe.points.map((p) => p.texture)).size} distinct textures`);
+    check('two sites of the same filière SHARE one texture',
+      textureOf('hydraulique:RANCE') === textureOf('hydraulique:GRANDVAL')
+      && textureOf('hydraulique:RANCE') !== textureOf('nucleaire:GRAVELINES'),
+      'a texture per site would be a texture per atlas entry');
+    check('the key carries the same silhouettes it draws',
+      probe.controls.legend.length === 3
+      && probe.controls.legend.every((entry) => /^data:image\/svg\+xml;base64,/.test(entry.glyph || '')),
+      probe.controls.legend.map((entry) => (entry.glyph ? 'glyph' : 'none')).join(' '));
 
     // ── iii. x is the latitude, all the way to the rendered position ───────
     console.log('[qa] iii. the hydro x/y convention survives to the globe');
@@ -341,7 +372,7 @@ async function main() {
     await setView(page, -177.4, -46.6, 8_000_000);
     await pump(page, 6, 80);
     const antipode = await sceneProbe(page);
-    check('every disc on the far side of the globe is culled',
+    check('every mark on the far side of the globe is culled',
       antipode.points.length === 11 && antipode.points.every((point) => point.show === false),
       `${antipode.points.filter((point) => point.show).length} still shown`);
     await setView(page, FRANCE.lon, FRANCE.lat, FRANCE.height);
@@ -351,8 +382,102 @@ async function main() {
       back.points.length === 11 && back.points.every((point) => point.show === true),
       `${back.points.filter((point) => !point.show).length} still hidden`);
 
-    // ── v. turning it off leaves nothing behind ────────────────────────────
-    console.log('[qa] v. the fleet disappears when the layer is off');
+    // ── v. the filter reaches the globe ────────────────────────────────────
+    // The chip is clicked THROUGH THE DOM rather than with `page.click()`:
+    // `puppeteer-click-hangs-use-dom-clicks` — a real click on this app's
+    // canvas-backed panel times out, while `element.click()` answers in a
+    // millisecond and still runs the manager's whole params lane.
+    //
+    // THE IDS ON THE ROW ARE NAMESPACED, and that is not a detail: this row is
+    // FUSED (`layerFusions.js`) with Groupes de production and Petite hydro, so
+    // `_composedRowControls` prefixes every chip this layer publishes with
+    // `edf-power-plants::` and puts two `fusion:` toggles in front of them. The
+    // strip is read through that prefix rather than by position, so a fourth
+    // companion joining the row cannot silently turn these assertions into
+    // assertions about somebody else's buttons.
+    console.log('[qa] v. choosing one filière removes the other two');
+    const OWN = 'edf-power-plants::';
+    const chipLabels = () => page.evaluate((prefix) => [...document.querySelectorAll(
+      '[data-layer-id="edf-power-plants"] .data-toggle-chip',
+    )]
+      .filter((node) => String(node.dataset.chipId || '').startsWith(prefix))
+      .map((node) => `${node.dataset.chipId.slice(prefix.length)}${node.classList.contains('active') ? '*' : ''}`), OWN);
+    const clickChip = (chipId) => page.evaluate((id) => {
+      const node = document.querySelector(
+        `[data-layer-id="edf-power-plants"] .data-toggle-chip[data-chip-id="${id}"]`,
+      );
+      if (!node) return false;
+      node.click();
+      return true;
+    }, `${OWN}${chipId}`);
+
+    const closedStrip = await chipLabels();
+    check('the row offers the three filières and nothing below them yet',
+      closedStrip.join(' ') === 'f:all* f:nucleaire f:hydraulique f:thermique',
+      closedStrip.join(' '));
+
+    check('the NUCLÉAIRE chip is in the DOM and takes a click',
+      await clickChip('f:nucleaire'));
+    let filtered = null;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await pump(page, 3, 60);
+      await sleep(200);
+      filtered = await sceneProbe(page);
+      if (filtered.points.length === 2) break;
+    }
+    check('the globe keeps only the nuclear sites', filtered.points.length === 2,
+      `${filtered.points.length} marks`);
+    check('and every one of them is a nuclear site',
+      filtered.points.every((point) => point.id.includes('nucleaire:')),
+      filtered.points.map((point) => point.id).join(','));
+    check('the row reports what is on the globe, and what it put away',
+      filtered.stats.count === 2 && filtered.stats.hidden === 9
+      && filtered.stats.fleetSites === 11,
+      `count ${filtered.stats.count}, hidden ${filtered.stats.hidden}`);
+    check('the FLEET figures do not move because a reader narrowed the view',
+      filtered.stats.capacityMw === 13489.47);
+    check('the key follows the globe rather than describing the fleet',
+      filtered.controls.legend.length === 1 && filtered.controls.legend[0].label === 'Nucléaire',
+      filtered.controls.legend.map((entry) => entry.label).join(' '));
+    check('the labels of the other two filières are gone with their marks',
+      (filtered.overlay?.paintedBySource?.['edf-power-plants'] || 0) <= 2,
+      JSON.stringify(filtered.overlay?.paintedBySource || {}));
+
+    const openStrip = await chipLabels();
+    check('the sub-categories appear ONLY now that a filière is chosen',
+      openStrip.join(' ') === 'f:all f:nucleaire* f:hydraulique f:thermique k:all* k:REP 900 k:REP 1450',
+      openStrip.join(' '));
+    await shoot(page, '04-filtered.png');
+
+    await clickChip('k:REP 900');
+    let narrowed = null;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await pump(page, 3, 60);
+      await sleep(200);
+      narrowed = await sceneProbe(page);
+      if (narrowed.points.length === 1) break;
+    }
+    check('a sub-category narrows the globe again',
+      narrowed.points.length === 1 && narrowed.points[0].id.endsWith('nucleaire:GRAVELINES'),
+      narrowed.points.map((point) => point.id).join(','));
+
+    // A second click on the lit chip is the way back out, at both levels.
+    await clickChip('f:nucleaire');
+    let cleared = null;
+    for (let attempt = 0; attempt < 20; attempt++) {
+      await pump(page, 3, 60);
+      await sleep(200);
+      cleared = await sceneProbe(page);
+      if (cleared.points.length === 11) break;
+    }
+    check('clicking the lit filière again brings the whole fleet back',
+      cleared.points.length === 11, `${cleared.points.length} marks`);
+    check('and the sub-categories fold away with it',
+      (await chipLabels()).join(' ') === 'f:all* f:nucleaire f:hydraulique f:thermique');
+    check('no refetch was needed to clear a filter', apiRequests === 1, `${apiRequests} requests`);
+
+    // ── vi. turning it off leaves nothing behind ───────────────────────────
+    console.log('[qa] vi. the fleet disappears when the layer is off');
     await page.evaluate(() => window.__godsEyeView.dataManager.setEnabled('edf-power-plants', false));
     let after = null;
     for (let attempt = 0; attempt < 20; attempt++) {
@@ -361,7 +486,7 @@ async function main() {
       after = await sceneProbe(page);
       if (after.shown === false) break;
     }
-    check('the discs are hidden', after.shown === false);
+    check('the marks are hidden', after.shown === false);
     check('the labels are gone with them',
       !(after.overlay?.paintedBySource?.['edf-power-plants'] > 0),
       JSON.stringify(after.overlay?.paintedBySource || {}));

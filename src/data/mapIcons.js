@@ -164,6 +164,19 @@ export const TEMAKI_PATHS = Object.freeze({
   fighter_jet: Object.freeze([
     'M46 26a2 2 0 0 0 -2 2v3l-12 -9V17.48A2.49 2.49 0 0 0 28 15.51V10.63a3 3 0 0 0 -0.21 -1.11L25.1 0.74a1.18 1.18 0 0 0 -2.19 0L20.21 9.52A3 3 0 0 0 20 10.63v4.88a2.49 2.49 0 0 0 -4 1.97v4.52l-12 9v-3a2 2 0 0 0 -4 0v14a2 2 0 0 0 4 0v-2l16 -4v5l-4.45 3.81a1.87 1.87 0 0 0 1.32 3.19l7.12 -1l7.14 1a1.87 1.87 0 0 0 1.32 -3.19L28 41v-5l16 4v2a2 2 0 1 0 4 0v-14A2 2 0 0 0 46 26Z',
   ]),
+  // A hyperbolic cooling tower with the radiation trefoil punched through its
+  // face — Temaki's own icon for `plant:source=nuclear`, and the only glyph in
+  // any vendored set that says "nuclear power station" rather than "physics".
+  // Used by `plantFiliereIcons.js`.
+  //
+  // ONE PATH, and the trefoil is FOUR COUNTER-WOUND SUBPATHS inside it. That is
+  // what makes the symbol survive being punched into a plate: the tower becomes
+  // a hole, the trefoil is a hole in that hole, so it comes back in the plate's
+  // colour inside the dark tower. Splitting or merging the subpaths fills the
+  // trefoil in and leaves a bare tower, which is what a coal plant looks like.
+  cooling_tower_radiation: Object.freeze([
+    'M12 1C10 6 14 12 14 14C13 15 2 15 1 14C1 12 5 6 3 1C3 0 12 0 12 1zM8.2 10.18C7.73 10.54 7.27 10.54 6.8 10.18L5.4 12.63C6.8 13.12 8.2 13.12 9.6 12.63L8.2 10.18zM7.5 8.46C7.15 8.46 6.8 8.82 6.8 9.19C6.8 9.56 7.15 9.93 7.5 9.93C7.85 9.93 8.2 9.56 8.2 9.19C8.2 8.82 7.85 8.46 7.5 8.46zM5.87 6C4.47 6.74 4 7.72 4 9.19L6.33 9.19C6.33 8.82 6.57 8.33 7.03 8.09L5.87 6zM9.13 6L7.97 8.09C8.43 8.33 8.67 8.82 8.67 9.19L11 9.19C11 7.72 10.53 6.74 9.13 6z',
+  ]),
 });
 
 /** The two sets, by the name a caller passes. */

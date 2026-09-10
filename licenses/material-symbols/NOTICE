@@ -11,7 +11,7 @@ Source: https://github.com/google/material-design-icons
         symbols/web/<name>/materialsymbolsrounded/<name>_fill1_24px.svg
         (Material Symbols Rounded, filled, weight 400)
 
-WHAT WAS TAKEN. Seventeen glyphs, across two modules.
+WHAT WAS TAKEN. Nineteen glyphs, across three modules.
 
 `src/data/transitVehicleIcons.js` draws live French transit vehicles by class
 (retrieved 2026-08-31): airport_shuttle, directions_boat, directions_bus,
@@ -27,18 +27,41 @@ gone from this project, so nothing under this notice is claimed for it.
 (retrieved 2026-09-01): pedal_bike, electric_bike, electric_scooter,
 electric_moped, directions_car.
 
+`src/data/plantFiliereIcons.js` draws two of the three filières of the EDF
+generating fleet (retrieved 2026-09-10 at commit 0cbb08816df0): water_drop for
+`hydraulique`, local_fire_department for `thermique`. The third, `nucleaire`,
+is Temaki's `cooling_tower_radiation` and carries no claim under this notice —
+Material has no nuclear glyph, and its `bolt` says electricity, which is what
+all three of them make.
+
+Both are PUNCHED out of a tinted plate through an SVG `<mask>` rather than drawn
+as ink: a power station marks a PLACE on a photograph of places, and a bare
+silhouette is unfindable below 18 px, which is where more than half this fleet
+draws. The transform that fits Material's 960-unit box into a 96-unit plate is a
+transform and not a rewrite — the coordinates reach the SVG renderer untouched.
+
+A dam was the obvious drawing for the hydro mark and was REJECTED, not for
+legibility but for accuracy: `src/data/edfPowerPlants.js` spends a paragraph of
+its header refusing to conflate a barrage with the usine it feeds, and this
+project draws those structures as their own layer. A drop says water, which is
+the whole of what the filière's name claims.
+
 WHAT WAS CHANGED. Nothing, in the artwork.
 
 Only the single `d` path string of each glyph is vendored, verbatim and
 unmodified, into those modules — the surrounding SVG document is not, and the
-coordinates are NOT rescaled: both modules carry Material's own
+coordinates are NOT rescaled: all three modules carry Material's own
 `0 -960 960 960` viewBox precisely so that this paragraph stays true.
 
 At render time each path is drawn TWICE by this project: once as a wide dark
 stroke (a halo, so the glyph stays readable over pale terrain) and once as a
 white fill (so Cesium's per-billboard colour multiply can tint it — by vehicle
-class in the transit layer, by operator in the shared-mobility one). The path
-geometry itself is untouched.
+class in the transit layer, by operator in the shared-mobility one, by filière
+in the EDF fleet). The path geometry itself is untouched.
+
+THE PLATE ITSELF IN `plantFiliereIcons.js` IS NOT GOOGLE'S and carries no claim
+under this notice: the disc, its ring, and the bare version of both drawn for a
+filière EDF has not published before are this project's own geometry.
 
 TWO SHAPES IN `sharedMobilityIcons.js` ARE NOT GOOGLE'S and carry no claim
 under this notice: the `other` disc (drawn when a feed does not say what a

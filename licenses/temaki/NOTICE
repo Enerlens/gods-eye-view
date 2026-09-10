@@ -17,24 +17,36 @@ the same reason `DATA_SOURCES.md` records where every feed comes from — and
 because it lets a reader audit the claims below without cloning the upstream
 repository.
 
-WHAT WAS TAKEN. Two glyphs, held in one module.
+WHAT WAS TAKEN. Three glyphs, held in one module.
 
 `src/data/mapIcons.js` holds the artwork:
 
-    security_camera — the surveillance-camera billboard, drawn by
-                      `src/data/cctv.js`.
+    security_camera         — the surveillance-camera billboard, drawn by
+                              `src/data/cctv.js`.
 
-    fighter_jet     — `military=airfield`, drawn by
-                      `src/data/militarySiteIcons.js`.
+    fighter_jet             — `military=airfield`, drawn by
+                              `src/data/militarySiteIcons.js`.
+
+    cooling_tower_radiation — a NUCLEAR generating station, drawn by
+                              `src/data/plantFiliereIcons.js` for the EDF fleet
+                              layer (`src/data/edfPowerPlants.js`).
 
 Temaki is the icon set of the OpenStreetMap iD editor and covers subjects no
-interface icon set does; a wall-mounted surveillance camera is one of them, and
-so is a combat aircraft. Material Symbols has neither: what `security_camera`
-replaced was this project's own drawing, and what `fighter_jet` replaced was
-Material's `flight` — an airliner, which is the right glyph for the civil
-aerodrome pack next door and the wrong one for an air base.
+interface icon set does; a wall-mounted surveillance camera is one of them, a
+combat aircraft is another, and so is a power station drawn by what it splits.
+Material Symbols has none of the three: what `security_camera` replaced was this
+project's own drawing, what `fighter_jet` replaced was Material's `flight` — an
+airliner, which is the right glyph for the civil aerodrome pack next door and
+the wrong one for an air base — and Material has no nuclear glyph at all.
 
-WHY IT REPLACED THAT DRAWING. Not taste — a colour bug.
+WHY THE VARIANT WITH THE TREFOIL. Temaki publishes a plain `cooling_tower` as
+well, and it is the wrong glyph here: coal plants have cooling towers too, and
+this layer draws them a hundred kilometres apart on the same screen. The trefoil
+is what makes the tower nuclear. It is read here as a CARTOGRAPHIC symbol — the
+one OpenStreetMap renderers use for `plant:source=nuclear` — and not as a hazard
+notice, which is a claim this project has no data for and does not make.
+
+WHY THE CAMERA REPLACED THIS PROJECT'S OWN DRAWING. Not taste — a colour bug.
 
 The old camera baked cyan into the artwork (`#75e7ff` strokes over dark fills)
 while the layer tints the billboard to mark state: `#6be8ff` at rest, `#ffd97a`
@@ -46,20 +58,32 @@ layer always intended.
 WHAT WAS CHANGED. No coordinate.
 
 Only the `d` path strings are vendored, in Temaki's own space, NOT rescaled.
-Temaki is not uniform about that space: `security_camera` is published in
-`0 0 15 15` and `fighter_jet` in `0 0 48 48`. Each box is DECLARED
-(`MAP_ICON_BOX` in `src/data/mapIcons.js`) rather than normalised, because
-rescaling is a redraw and a redraw is no longer the artwork that was evaluated;
-everything downstream — the padded viewBox, the halo width, the transform that
-fits a silhouette into a 96-unit plate — is expressed as a ratio of that box.
+Temaki is not uniform about that space: `security_camera` and
+`cooling_tower_radiation` are published in `0 0 15 15` and `fighter_jet` in
+`0 0 48 48`. Each box is DECLARED (`MAP_ICON_BOX` in `src/data/mapIcons.js`)
+rather than normalised, because rescaling is a redraw and a redraw is no longer
+the artwork that was evaluated; everything downstream — the padded viewBox, the
+halo width, the transform that fits a silhouette into a 96-unit plate — is
+expressed as a ratio of that box.
 
 Temaki publishes the camera as three sibling paths — a body, a wall bracket, and
 a hood whose lens is a counter-wound subpath — and they are kept whole, in
-order, and are never merged: merging them would fill the lens.
+order, and are never merged: merging them would fill the lens. The cooling tower
+is one path carrying four counter-wound subpaths, the radiation trefoil, and is
+kept whole for the same reason: merged, the tower has no trefoil on it and is no
+longer a nuclear station — it is what a coal plant looks like.
 
-At render time each path is drawn TWICE by this project: once as a wide dark
+THE TREFOIL IS READ HERE AS A CARTOGRAPHIC SYMBOL, the one OpenStreetMap
+renderers use for `plant:source=nuclear`, and not as a hazard notice — a claim
+this project has no data for and does not make.
+
+At render time this project draws the artwork in one of two ways, neither of
+which touches a coordinate. The CAMERA is drawn twice — once as a wide dark
 stroke (a halo, so the glyph stays readable over pale terrain) and once as a
-white fill (so Cesium's per-billboard colour multiply can tint it). The viewBox
-is padded to `-1 -1 17 17` so that halo is not clipped — this glyph spans the
-full published box, from x=0 to x=15. The path geometry itself is untouched, and
-`src/data/mapIcons.test.mjs` pins it.
+white fill (so Cesium's per-billboard colour multiply can tint it) — and its
+viewBox is padded to `-1 -1 17 17` so that halo is not clipped, since the glyph
+spans the full published box from x=0 to x=15. The JET and the COOLING TOWER are
+instead PUNCHED out of a tinted plate through an SVG `<mask>`: they mark PLACES
+on a photograph of places, where a bare silhouette is unfindable below 18 px.
+The path geometry itself is untouched in both, and `src/data/mapIcons.test.mjs`
+pins it.

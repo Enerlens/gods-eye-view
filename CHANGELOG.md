@@ -84,6 +84,104 @@ of current runtime behavior, see [`docs/CURRENT-STATE.md`](docs/CURRENT-STATE.md
   dessert sa rue n'est pas une surface d'attribution.
 
 ### Added
+- **Chaque filière de centrale porte sa silhouette, et le lecteur choisit
+  celle qu'il regarde — puis, seulement alors, la catégorie qu'il veut
+  dedans.** La couche Centrales EDF dessinait 79 sites en disques que seule la
+  TEINTE distinguait, et sur une vue de France entière la majorité d'entre eux
+  n'avaient que ça : le libellé qui nomme un site en toutes lettres est plafonné
+  à 60 marques sur 79 et tombe à la collision, donc la clé était de l'autre côté
+  de l'écran et il fallait y porter une couleur à l'œil.
+
+  **Trois formes, empruntées et pas dessinées, DÉCOUPÉES DANS UNE PASTILLE.**
+  Une tour de refroidissement frappée du trèfle pour le nucléaire (Temaki,
+  CC0 — c'est l'icône que les rendus OpenStreetMap emploient pour
+  `plant:source=nuclear`), une goutte pour l'hydraulique et une flamme pour le
+  thermique à flamme (Material Symbols, Apache-2.0). Le trèfle est un symbole
+  CARTOGRAPHIQUE ici et pas un avis de danger : une tour nue, c'est aussi ce
+  qu'a une centrale à charbon, et les deux sont sur le même écran à cent
+  kilomètres l'une de l'autre.
+
+  La pastille n'est pas un habillage : c'est le constat que la #160 a mesuré
+  sur trois recadrages d'une vraie capture de Gironde — forêt, urbain, eau. Une
+  silhouette nue posée sur une orthophoto est introuvable sous 18 px, et une
+  pastille reste une pastille à 10. Le plancher de cette couche est à 13 px, sa
+  plus petite centrale (Grandval, 74 MW) dessine à 15,6, et plus de la moitié
+  de la flotte hydraulique tient sous 18 : une goutte d'encre sur la photo
+  d'une vallée est une goutte d'eau sur une photo d'eau. La marque est donc un
+  disque teinté cerclé de noir, la forme y est DÉCOUPÉE au `<mask>` SVG, et le
+  trèfle — qui s'enroule à l'envers de la tour — revient dans la couleur du
+  disque à l'intérieur de la tour sombre. Même géométrie de disque et même
+  cerne que les Sites militaires : deux jeux de marques de LIEU qui
+  différeraient d'un pixel de bord se liraient comme deux moteurs de rendu.
+
+  **Le barrage a été écarté, et pour une raison d'exactitude.** L'en-tête de
+  la couche consacre un paragraphe à refuser de confondre un barrage avec
+  l'usine qu'il alimente — 37 de ses 51 centrales hydrauliques ont un sommet de
+  barrage cartographié à moins de 3 km — et le dépôt dessine ces ouvrages dans
+  leur propre couche. Une marque qui montrerait un barrage affirmerait ce que
+  ce paragraphe nie. Une goutte dit l'eau, ce qui est tout ce que le nom de la
+  filière revendique.
+
+  **L'aire porte toujours les mégawatts.** Le côté de la marque suit la racine
+  carrée de la puissance installée, comme le rayon du disque avant lui. Le
+  plancher est passé de 7 à 13 px et le plafond de 26 à 34, parce qu'une
+  silhouette de 7 px est une bavure : la loi devient `13 + 0,3·√MW`, et la
+  saturation reste juste sous Gravelines — les deux plus gros sites de France
+  (Gravelines 5 460 MW, Paluel 5 320 MW) dessinent au plafond, exactement comme
+  en disques. Effet de bord mesuré et consigné dans `docs/REPRESENTATION.md` :
+  le facteur 2,1 en aire entre cette couche et « Petite hydro » à 900 MW
+  disparaît — 22,0 px contre 22 — mais c'est une coïncidence entre deux
+  planchers, pas une échelle partagée, et le constat ① de cette page tient.
+
+  **La clé porte les deux canaux sur une seule ligne.** La pastille du panneau
+  est MASQUÉE par le raster que dessine le globe, donc elle EST la marque à la
+  taille de la clé — au cerne près, retiré là parce qu'un masque CSS ne lit que
+  l'alpha et qu'un cerne opaque écraserait les trois filières en un même point.
+  La filière est nommée une fois, avec sa couleur et sa forme, plutôt que sur
+  deux listes. C'est l'arrangement des Sites militaires,
+  et la règle « la couleur oui, la forme non » (PR #138) interdit la seconde
+  liste, pas cette ligne-là.
+
+  **Le filtre a DEUX niveaux, et le second attend.** La bande de la ligne porte
+  `TOUTES` et les trois filières. Les sous-catégories d'une filière — les
+  paliers sous le nucléaire, les régimes d'eau sous l'hydraulique, les
+  combustibles sous le thermique — n'apparaissent qu'une fois cette filière
+  choisie. Les treize types publiés sous les trois filières, tous affichés à
+  la fois, c'est seize boutons sur une ligne haute de quatre lignes avant que
+  le lecteur ait posé la moindre question, avec « MARÉMOTRICE » (un site) à
+  côté de « NUCLÉAIRE » (dix-huit).
+
+  **Radio aux deux niveaux, et un second clic éteint.** La question à laquelle
+  ce contrôle répond est « montre-moi le nucléaire » : un clic sur une radio,
+  trois sur un jeu d'interrupteurs. Chaque bouton s'éteint au second clic, donc
+  il y a toujours une sortie sans avoir à trouver la remise à zéro — et
+  `TOUTES` reste sur la bande, allumée, pour que l'état non filtré se lise au
+  lieu de se déduire de quatre boutons éteints.
+
+  **Les sous-catégories sont DÉRIVÉES des sites dessinés**, jamais d'une liste
+  écrite à la main : un bouton ne peut pas proposer une catégorie vide, une
+  valeur qu'EDF publierait demain obtient son bouton sans changement de code,
+  et un code que ce build n'a jamais vu s'affiche tel qu'EDF l'a écrit plutôt
+  que d'être deviné. Une filière qui n'en publie qu'une seule n'en propose
+  aucune : un bouton qui ne peut que resélectionner ce qui est déjà à l'écran
+  coûterait quand même une ligne de panneau. Et un filtre qui pointerait sur
+  une catégorie qu'une republication a supprimée se relâche d'un cran au lieu
+  de laisser un globe vide sous un bouton allumé.
+
+  **Rien n'est jeté, rien n'est refetché, rien n'est partagé.** Le registre
+  entier reste derrière le filtre, donc revenir à la France entière ne coûte
+  aucune requête ; `getStats()` continue de publier les totaux nationaux à côté
+  de ce qui est dessiné, et nomme ce qu'il cache. Le filtre n'entre PAS dans un
+  lien de partage : `edf-power-plants` reste `enabled-only` pour la raison que
+  `layerState.js` consigne sous `meteo-stations-fr` — le filtre d'un auteur
+  cacherait 77 % de la flotte française à son destinataire sans que celui-ci
+  puisse le savoir. La vue d'un auteur n'est pas un fait sur la France.
+
+  Couvert par 49 tests unitaires sur la couche et 14 sur le pack d'icônes ;
+  `npm run qa:edf-plants` prouve dans un vrai Cesium que le filtre atteint le
+  globe (les marques ET les libellés partent, la clé suit, la bande change de
+  forme, et aucune requête n'est rejouée). Attribution mise à jour dans
+  `licenses/temaki/NOTICE` et `licenses/material-symbols/NOTICE`.
 - **Les sites militaires se voient enfin, et ils se voient de loin.** Sur une
   capture de la Gironde à 55 km, la couche dessinait quarante pastilles de
   **9 px** de la même valeur que les champs derrière elles : présentes dans le

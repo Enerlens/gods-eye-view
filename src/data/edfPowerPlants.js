@@ -4,6 +4,7 @@ import { registerPickOwner, unregisterPickOwner } from './pickRegistry.js';
 import { askJoin, publishJoin } from './layerJoins.js';
 import { PLANT_JOIN_KEYS, plantCrossRegisterLine } from './plantIdentity.js';
 import { horizonOccluder } from './iconOrientation.js';
+import { plantFiliereGlyph, plantUnknownGlyph } from './plantFiliereIcons.js';
 import {
   clearOverlaySource,
   setOverlayEntries,
@@ -32,18 +33,37 @@ import {
  * absorbed in `edfPlantsFeed.js`, under test against captured payloads.
  *
  * ── What is drawn, and why THAT ─────────────────────────────────────────────
- * One disc per SITE, its area proportional to installed capacity, coloured by
- * filière, labelled with the site's name, its megawatts and what it actually
- * is — `6 réacteurs` at Gravelines, `pompage-turbinage mixte` at Grand-Maison,
- * `2 unités au charbon` at Cordemais. Area rather than radius carries the
- * megawatts: a disc twice as wide would otherwise claim four times the
- * capacity.
+ * One mark per SITE, its area proportional to installed capacity, labelled
+ * with the site's name, its megawatts and what it actually is — `6 réacteurs`
+ * at Gravelines, `pompage-turbinage mixte` at Grand-Maison, `2 unités au
+ * charbon` at Cordemais. Area rather than side carries the megawatts: a mark
+ * twice as wide would otherwise claim four times the capacity.
  *
- * THE MARK IS DRAWN OVER THE TERRAIN, not depth-tested against it. A point
- * primitive carries one depth for its whole quad, so a depth-tested disc gets
- * its lower half eaten by the ground in front of it and reads as a parasol
- * rather than a disc — see the note on `disableDepthTestDistance` in
- * `repaint`. The price is a per-frame horizon cull, in `onPreRender`.
+ * THE MARK CARRIES ITS FILIÈRE TWICE, in colour and in SHAPE — a tinted plate
+ * with a cooling tower, a water drop or a flame punched out of it
+ * (`plantFiliereIcons.js`; a plate rather than a bare silhouette because half
+ * this fleet draws under 18 px, where ink over an orthophoto disappears).
+ * The colour alone was doing all the work for the majority of the fleet: the
+ * label that names a site in words is cohort-limited to 60 of 79 and drops on
+ * collision, so on a full view of France most of these stations were a coloured
+ * dot and a key on the far side of the screen. The key still decodes the
+ * colour, and its swatch is MASKED by the same raster the globe draws, so the
+ * pastille in the panel is the mark at key size.
+ *
+ * THE MARK IS DRAWN OVER THE TERRAIN, not depth-tested against it. A billboard
+ * carries one depth for its whole quad, so a depth-tested mark gets its lower
+ * half eaten by the ground in front of it and reads as a parasol rather than as
+ * a symbol — see the note on `disableDepthTestDistance` in `repaint`. The price
+ * is a per-frame horizon cull, in `onPreRender`.
+ *
+ * ── The reader can ask for one filière, then for one of its kinds ───────────
+ * The row carries a two-level filter: `TOUTES` and the three filières, and —
+ * only once a filière is chosen — that filière's own published sub-categories,
+ * the paliers under nuclear, the water regimes under hydro, the fuels under
+ * thermal. Nothing about it is stored, serialized or refetched: see the
+ * comment block above {@link plantFilterChips} for why the second level waits,
+ * why both levels are radio rather than multi-select, and why a filter has no
+ * business in a share link.
  *
  * AND IT SAYS WHAT IT IS IN FRENCH A READER CAN ACT ON. The three files
  * publish codes — `REP 900`, `Eclusée`, `tranche`, `réserve secondaire` — and
@@ -147,20 +167,29 @@ const UPDATE_INTERVAL_MS = 1_800_000;
  * `subject` is what the place IS, in a sentence. `label` is a legend key and
  * reads as one: "Nucléaire" beside a coloured swatch is a category, and
  * "Centrale nucléaire" at the top of a card is an answer.
+ *
+ * `chip` is a fourth register, and it exists because a filter button is not a
+ * legend key: it is read in a strip of four at 8 px, where "Thermique à flamme"
+ * wraps and pushes the sub-categories onto a third line. The word the button
+ * needs is the SUBJECT of the filter — the flame is said once, on the legend
+ * line and in the mark, and does not have to be said again on the control.
  */
 export const FILIERE_STYLES = Object.freeze({
   nucleaire: Object.freeze({
     key: 'nucleaire', label: 'Nucléaire', subject: 'Centrale nucléaire',
+    chip: 'NUCLÉAIRE',
     color: '#ffd166', unitNoun: 'réacteur', unitNounFeminine: false,
     blurb: 'Réacteurs à eau pressurisée exploités par EDF',
   }),
   hydraulique: Object.freeze({
     key: 'hydraulique', label: 'Hydraulique', subject: 'Centrale hydraulique',
+    chip: 'HYDRAULIQUE',
     color: '#4fc3f7', unitNoun: null,
     blurb: 'Centrales EDF de plus de 100 MW, plus celles qui tiennent au moins 20 MW en réserve pour stabiliser le réseau',
   }),
   thermique: Object.freeze({
     key: 'thermique', label: 'Thermique à flamme', subject: 'Centrale thermique',
+    chip: 'THERMIQUE',
     color: '#f4736b', unitNoun: 'unité', unitNounFeminine: true,
     blurb: 'Charbon, gaz et fioul brûlés par EDF pour produire de l’électricité',
   }),
@@ -169,24 +198,33 @@ export const FILIERE_STYLES = Object.freeze({
 /** Filière order for the legend — largest installed capacity first. */
 export const FILIERE_ORDER = Object.freeze(['nucleaire', 'hydraulique', 'thermique']);
 
-const COLOR_OUTLINE = Cesium.Color.fromCssColorString('#04121f');
 const COLOR_UNKNOWN = Cesium.Color.fromCssColorString('#8fa3b8');
 
 /**
- * Disc size, in pixels.
+ * Mark size, in pixels.
  *
- * Radius grows with the SQUARE ROOT of installed power, so the disc's area is
- * what tracks the megawatts — above a floor that keeps Grandval's 74 MW
- * visible at country scale. Saturation is absolute rather than relative to the
- * current maximum: the fleet is a fixed object, and a scale that renormalised
- * itself would redraw every plant in France the day one site closed.
+ * The side of the glyph grows with the SQUARE ROOT of installed power, so the
+ * mark's AREA is what tracks the megawatts — above a floor that keeps
+ * Grandval's 74 MW visible at country scale. Saturation is absolute rather than
+ * relative to the current maximum: the fleet is a fixed object, and a scale
+ * that renormalised itself would redraw every plant in France the day one site
+ * closed.
+ *
+ * THE FLOOR MOVED FROM 7 TO 13 WHEN THE MARK BECAME A SHAPE, and that is a
+ * measurement rather than a preference: a 7 px silhouette is a smudge, and the
+ * one glyph that has to survive minification — the trefoil punched through the
+ * nuclear cooling tower — needs a raster it can occupy. The ceiling moved with
+ * it so the ramp keeps roughly the same span, and the constant is retuned so
+ * that saturation still lands just under Gravelines: the largest two sites in
+ * France (Gravelines 5 460 MW, Paluel 5 320 MW) both draw at the cap, exactly
+ * as they did as discs.
  */
-export const PLANT_PIXEL_MIN = 7;
-export const PLANT_PIXEL_MAX = 26;
-const PIXEL_PER_ROOT_MW = 0.27;
+export const PLANT_PIXEL_MIN = 13;
+export const PLANT_PIXEL_MAX = 34;
+const PIXEL_PER_ROOT_MW = 0.3;
 
 /**
- * Pixel diameter for one site.
+ * Pixel side for one site's mark.
  * @param {number|null|undefined} mw Installed capacity.
  * @returns {number}
  */
@@ -257,37 +295,43 @@ export const PLANT_KIND_PLAIN = Object.freeze({
   // The number in a palier is the reactor family's unit power, NOT the site's:
   // Gravelines is six machines of 900 MW, and saying "de 900 MW" beside a
   // 5 460 MW site is only honest because the count is on the same line.
-  'REP 900': Object.freeze({ short: 'réacteur', long: 'réacteur à eau pressurisée de 900 MW' }),
-  'REP 1300': Object.freeze({ short: 'réacteur', long: 'réacteur à eau pressurisée de 1 300 MW' }),
-  'REP 1450': Object.freeze({ short: 'réacteur', long: 'réacteur à eau pressurisée de 1 450 MW' }),
-  Charbon: Object.freeze({ short: 'unité au charbon', long: 'unité au charbon' }),
-  'Gaz naturel': Object.freeze({ short: 'unité au gaz', long: 'unité au gaz naturel' }),
-  'Fioul Domestique': Object.freeze({ short: 'unité au fioul', long: 'unité au fioul domestique' }),
+  //
+  // `chip` is the fourth register, for the sub-category filter under a selected
+  // filière. It is NOT `short`: all three paliers reduce to "réacteur" there,
+  // which would put three identically-labelled buttons on one strip. What
+  // separates them is the unit power, so that is what the button says — and
+  // the chip's own title carries the sentence that keeps it honest.
+  'REP 900': Object.freeze({ short: 'réacteur', long: 'réacteur à eau pressurisée de 900 MW', chip: '900 MW' }),
+  'REP 1300': Object.freeze({ short: 'réacteur', long: 'réacteur à eau pressurisée de 1 300 MW', chip: '1 300 MW' }),
+  'REP 1450': Object.freeze({ short: 'réacteur', long: 'réacteur à eau pressurisée de 1 450 MW', chip: '1 450 MW' }),
+  Charbon: Object.freeze({ short: 'unité au charbon', long: 'unité au charbon', chip: 'CHARBON' }),
+  'Gaz naturel': Object.freeze({ short: 'unité au gaz', long: 'unité au gaz naturel', chip: 'GAZ' }),
+  'Fioul Domestique': Object.freeze({ short: 'unité au fioul', long: 'unité au fioul domestique', chip: 'FIOUL' }),
   'Gaz naturel/Fioul Domestique': Object.freeze({
-    short: 'unité gaz ou fioul', long: 'unité au gaz naturel ou au fioul',
+    short: 'unité gaz ou fioul', long: 'unité au gaz naturel ou au fioul', chip: 'GAZ OU FIOUL',
   }),
   Lac: Object.freeze({
-    short: 'retenue de lac', long: 'retenue de lac',
+    short: 'retenue de lac', long: 'retenue de lac', chip: 'LAC',
     blurb: 'l’eau est stockée des mois et turbinée quand la demande grimpe',
   }),
   Eclusée: Object.freeze({
-    short: 'éclusée', long: 'éclusée',
+    short: 'éclusée', long: 'éclusée', chip: 'ÉCLUSÉE',
     blurb: 'sa retenue tient quelques heures à quelques jours de production',
   }),
   "Fil de l'eau": Object.freeze({
-    short: 'fil de l’eau', long: 'au fil de l’eau',
+    short: 'fil de l’eau', long: 'au fil de l’eau', chip: 'FIL DE L’EAU',
     blurb: 'elle turbine le débit qui se présente, sans rien mettre en réserve',
   }),
   'Pompage pur': Object.freeze({
-    short: 'pompage-turbinage', long: 'pompage-turbinage',
+    short: 'pompage-turbinage', long: 'pompage-turbinage', chip: 'POMPAGE PUR',
     blurb: 'elle remonte l’eau dans un lac haut aux heures creuses, et la turbine à la pointe',
   }),
   'Pompage mixte': Object.freeze({
-    short: 'pompage-turbinage mixte', long: 'pompage-turbinage mixte',
+    short: 'pompage-turbinage mixte', long: 'pompage-turbinage mixte', chip: 'POMPAGE MIXTE',
     blurb: 'elle turbine l’eau qui lui arrive ET remonte de l’eau aux heures creuses',
   }),
   Marémotrice: Object.freeze({
-    short: 'marémotrice', long: 'usine marémotrice',
+    short: 'marémotrice', long: 'usine marémotrice', chip: 'MARÉMOTRICE',
     blurb: 'elle turbine le va-et-vient de la marée',
   }),
 });
@@ -474,6 +518,192 @@ export function summarizePlants(records) {
     operators,
     byFiliere,
   };
+}
+
+// ── THE FILTER ──────────────────────────────────────────────────────────────
+//
+// TWO LEVELS, AND THE SECOND ONE IS NOT DRAWN UNTIL THE FIRST IS ANSWERED.
+//
+// The fleet is one subject with three filières and thirteen published kinds
+// under them. Laying all sixteen buttons out at once is the version that was
+// rejected before it was written: it puts "MARÉMOTRICE" — one site — on the
+// same strip as "NUCLÉAIRE" — eighteen — under a row that is four lines tall
+// before the reader has asked anything. So the strip carries the FILIÈRES, and
+// a filière's own sub-categories appear only once that filière is the one being
+// looked at. Nothing is hidden that was ever visible; the second question is
+// simply not asked until the first has an answer.
+//
+// RADIO, NOT MULTI-SELECT, at both levels. The question this control answers is
+// "montre-moi le nucléaire", which is one click on a radio and three on a set of
+// toggles. Every button also CLEARS on a second click, so there is always a way
+// back out that does not require finding the reset — and `TOUTES` stays on the
+// strip anyway, lit, so the unfiltered state is legible rather than merely
+// implied by four dark buttons.
+//
+// THE FILTER IS NOT SERIALIZED INTO A SHARE LINK, and that is deliberate:
+// `layerState.js` keeps `edf-power-plants` at `enabled-only` for the reason it
+// records under `meteo-stations-fr` — an author's filter would hide 77 % of the
+// French fleet from a recipient with no way for them to know it had. The
+// author's view is not a fact about France. `fr-hydro-plants` makes the same
+// choice for its power floor.
+
+/**
+ * The chip label for one published kind.
+ *
+ * Falls through to the publisher's own string, uppercased, for a code this
+ * build has never seen — the same refusal to invent that `plantKindPlain` makes
+ * one register up. A site whose file names no kind at all buckets under a
+ * button that says so rather than being dropped from its filière.
+ * @param {string|null|undefined} kind
+ * @returns {string}
+ */
+export function plantKindChip(kind) {
+  const raw = String(kind ?? '').trim();
+  if (!raw) return 'NON PRÉCISÉ';
+  return PLANT_KIND_PLAIN[raw]?.chip || raw.toUpperCase();
+}
+
+/**
+ * Normalize a filter to the two values the layer can actually hold.
+ *
+ * A `kind` without a `filiere` is dropped rather than applied across the fleet:
+ * `Charbon` and `Lac` are values of two DIFFERENT published columns, so a kind
+ * only means something inside the filière whose file publishes it.
+ * @param {{filiere?: ?string, kind?: ?string}|null|undefined} filter
+ * @returns {{filiere: ?string, kind: ?string}}
+ */
+export function normalizePlantFilter(filter) {
+  const filiereRaw = String(filter?.filiere ?? '').trim();
+  const filiere = Object.hasOwn(FILIERE_STYLES, filiereRaw) ? filiereRaw : null;
+  if (!filiere) return { filiere: null, kind: null };
+  const kind = String(filter?.kind ?? '').trim() || null;
+  return { filiere, kind };
+}
+
+/**
+ * The sites a filter leaves on the globe, in the order they were drawn.
+ * @param {Array<object>|null|undefined} records
+ * @param {{filiere?: ?string, kind?: ?string}} [filter]
+ * @returns {Array<object>}
+ */
+export function filterPlants(records, filter) {
+  const { filiere, kind } = normalizePlantFilter(filter);
+  const all = Array.isArray(records) ? records : [];
+  if (!filiere) return all.slice();
+  return all.filter((record) => record?.filiere === filiere
+    && (!kind || (record?.kind || '') === kind));
+}
+
+/**
+ * The sub-categories one filière actually publishes, largest cohort first.
+ *
+ * Derived from the RENDERED records rather than from a hard-coded list, so a
+ * button can never offer a category with nothing behind it, and a value EDF
+ * starts publishing tomorrow gets a button without a code change.
+ * @param {Array<object>|null|undefined} records
+ * @param {string|null|undefined} filiere
+ * @returns {Array<{kind: ?string, label: string, sites: number, capacityMw: ?number}>}
+ */
+export function plantKindBuckets(records, filiere) {
+  if (!filiere) return [];
+  const buckets = new Map();
+  for (const record of Array.isArray(records) ? records : []) {
+    if (record?.filiere !== filiere) continue;
+    const key = record?.kind || '';
+    const bucket = buckets.get(key) || { kind: key || null, label: plantKindChip(key), sites: 0, capacityMw: null };
+    bucket.sites += 1;
+    if (Number.isFinite(record?.mw)) bucket.capacityMw = (bucket.capacityMw ?? 0) + record.mw;
+    buckets.set(key, bucket);
+  }
+  for (const bucket of buckets.values()) {
+    if (Number.isFinite(bucket.capacityMw)) {
+      bucket.capacityMw = Math.round(bucket.capacityMw * 1000) / 1000;
+    }
+  }
+  // Biggest cohort first, then by installed power, then alphabetically — a
+  // total order, so the strip does not reshuffle itself between repaints.
+  return [...buckets.values()].sort((a, b) => b.sites - a.sites
+    || (b.capacityMw ?? 0) - (a.capacityMw ?? 0)
+    || String(a.kind).localeCompare(String(b.kind)));
+}
+
+/**
+ * The whole chip strip for the toggle row, in the order it is read.
+ *
+ * Pure, so what the row offers can be pinned without a scene: the layer holds
+ * the records and the current filter, and this decides what a reader is
+ * allowed to ask next.
+ * @param {Array<object>|null|undefined} records Every site the fleet drew.
+ * @param {{filiere?: ?string, kind?: ?string}} [filter] Current filter.
+ * @returns {Array<object>} Row-control chip descriptors.
+ */
+export function plantFilterChips(records, filter) {
+  const { filiere, kind } = normalizePlantFilter(filter);
+  const all = Array.isArray(records) ? records : [];
+  if (!all.length) return [];
+  const summary = summarizePlants(all);
+
+  const chips = [{
+    id: 'f:all',
+    label: 'TOUTES',
+    active: !filiere,
+    state: filiere ? 'idle' : 'active',
+    title: `Les ${summary.sites} sites des trois filières — ${formatMegawatts(summary.capacityMw)} installés`,
+    params: { filiere: null, kind: null },
+  }];
+
+  for (const key of FILIERE_ORDER) {
+    const bucket = summary.byFiliere[key];
+    if (!bucket?.sites) continue;
+    const style = FILIERE_STYLES[key];
+    const active = filiere === key;
+    chips.push({
+      id: `f:${key}`,
+      label: style.chip,
+      active,
+      state: active ? 'active' : 'idle',
+      title: active
+        ? `${style.label} — ${bucket.sites} sites, ${formatMegawatts(bucket.capacityMw)}. Cliquer à nouveau pour revenir à la France entière`
+        : `Ne garder que ${style.label.toLowerCase()} — ${bucket.sites} sites, ${formatMegawatts(bucket.capacityMw)}`,
+      // A second click on the filière already showing is the way back out, and
+      // it takes the sub-category with it: a kind is a value of that filière's
+      // own column and means nothing once the filière is gone.
+      params: active ? { filiere: null, kind: null } : { filiere: key, kind: null },
+    });
+  }
+
+  // The second level, and ONLY once the first has an answer. A single published
+  // kind is not a choice, so a filière with one bucket gets no strip either —
+  // it would be a button that can only reselect what is already on screen.
+  const buckets = plantKindBuckets(all, filiere);
+  if (buckets.length < 2) return chips;
+
+  const style = FILIERE_STYLES[filiere];
+  chips.push({
+    id: 'k:all',
+    label: 'TOUS',
+    active: !kind,
+    state: kind ? 'idle' : 'active',
+    chipClass: 'chip-sub',
+    title: `Toutes les sous-catégories — ${style.label.toLowerCase()}`,
+    params: { filiere, kind: null },
+  });
+  for (const bucket of buckets) {
+    const active = kind === bucket.kind;
+    const plain = bucket.kind ? plantKindPlain(bucket.kind) : null;
+    const what = plain?.long || 'sous-catégorie non précisée par le fichier';
+    chips.push({
+      id: `k:${bucket.kind ?? ''}`,
+      label: bucket.label,
+      active,
+      state: active ? 'active' : 'idle',
+      chipClass: 'chip-sub',
+      title: `${what} — ${bucket.sites} site${bucket.sites > 1 ? 's' : ''},`
+        + ` ${formatMegawatts(bucket.capacityMw)}`,
+      params: { filiere, kind: active ? null : bucket.kind },
+    });
+  }
+  return chips;
 }
 
 /**
@@ -813,11 +1043,24 @@ export function selectPlantOverlayCohort(entries, limit = EDF_PLANTS_OVERLAY_COH
   )).slice(0, cap);
 }
 
+/** Key-size raster for the filière silhouettes, matching the sibling packs. */
+const LEGEND_GLYPH_PX = 32;
+
 /**
- * Legend for the toggle row: one entry per filière actually drawn, with its
+ * Legend for the on-map key: one entry per filière actually drawn, with its
  * site count and its installed total.
+ *
+ * ONE LINE PER FILIÈRE, CARRYING BOTH CHANNELS. The swatch is masked by the
+ * SAME raster the globe draws, so the pastille in the key IS the mark at key
+ * size — the arrangement `militarySiteIcons.js` established, and the reason
+ * this does not become the second list of shapes that PR #138 ruled out: the
+ * filière is named once, with its colour and its silhouette on the same line.
+ *
+ * Fed the summary of what is DRAWN and not of the fleet, so a filtered globe
+ * gets a filtered key rather than a key that describes sites the reader asked
+ * to put away.
  * @param {{byFiliere:object}} summary From `summarizePlants`.
- * @returns {Array<{label:string,color:string,blurb:string,count:number}>}
+ * @returns {Array<{label:string,color:string,glyph:?string,blurb:string,count:number}>}
  */
 export function filiereLegend(summary) {
   const legend = [];
@@ -831,6 +1074,11 @@ export function filiereLegend(summary) {
     legend.push({
       label: style.label,
       color: style.color,
+      // `key: true` drops the mark's black ring: the panel MASKS this swatch and
+      // a CSS mask reads ALPHA, so an opaque ring would flatten all three
+      // filières into the same plain dot — the one thing the shape channel
+      // exists to prevent.
+      glyph: plantFiliereGlyph(key, { px: LEGEND_GLYPH_PX, key: true }) || undefined,
       blurb: `${style.blurb} — ${formatMegawatts(bucket.capacityMw)} installés${units}`,
       count: bucket.sites,
     });
@@ -888,12 +1136,19 @@ export function createEdfPowerPlantsLayer({
   apiUrl = API_URL,
 } = {}) {
   let _viewer = null;
-  let _pointCollection = null;
+  let _billboards = null;
   let _records = [];
-  /** Rendered discs by render id, so a pick resolves to a record and a position. */
+  /** The two-level filter. Both null means the whole fleet. */
+  let _filter = { filiere: null, kind: null };
+  /** The sites the filter leaves on the globe. */
+  let _visible = [];
+  /** The on-map key, built at repaint and never derived on demand. */
+  let _legend = [];
+  /** Rendered marks by render id, so a pick resolves to a record and a position. */
   let _drawn = new Map();
   let _selectedId = null;
   let _clickHandler = null;
+  let _rowControlsListener = null;
   let _summary = summarizePlants([]);
   let _datasets = [];
   let _vintages = referenceDateRange([]);
@@ -933,53 +1188,87 @@ export function createEdfPowerPlantsLayer({
     });
   }
 
+  /**
+   * Resolve the current filter against the loaded fleet, and rebuild the key.
+   *
+   * The key is built HERE, at the same moment the cohort is decided, and stored
+   * — `getRowControls()` is read about once a second by the panel and must not
+   * be the place a legend is derived.
+   */
+  function applyFilter() {
+    _visible = filterPlants(_records, _filter);
+    // A filter that survives a republication in which its category did not is
+    // an empty globe under a lit button, with no way back except a reload. EDF
+    // republishes these files annually and the vocabulary is theirs to change,
+    // so the narrower level is dropped rather than left pointing at nothing.
+    if (!_visible.length && _records.length && _filter.kind) {
+      _filter = { filiere: _filter.filiere, kind: null };
+      _visible = filterPlants(_records, _filter);
+    }
+    if (!_visible.length && _records.length && _filter.filiere) {
+      _filter = { filiere: null, kind: null };
+      _visible = filterPlants(_records, _filter);
+    }
+    _legend = filiereLegend(summarizePlants(_visible));
+  }
+
   function repaint() {
-    if (!_pointCollection) return;
-    _pointCollection.removeAll();
+    if (!_billboards) return;
+    applyFilter();
+    _billboards.removeAll();
     _drawn.clear();
     const entries = [];
-    for (const record of _records) {
+    for (const record of _visible) {
       const position = Cesium.Cartesian3.fromDegrees(record.lon, record.lat);
       const renderId = `edf-plants:${record.id}`;
       const basePixelSize = plantPixelSize(record.mw);
-      const point = _pointCollection.add({
+      // Three rasters for seventy-nine sites: `plantFiliereGlyph` caches per
+      // filière and size, and Cesium's atlas keys on the image URI, so the
+      // whole fleet costs three atlas entries rather than one per billboard.
+      const image = plantFiliereGlyph(record.filiere) || plantUnknownGlyph();
+      const billboard = _billboards.add({
         position,
-        pixelSize: basePixelSize,
+        image,
+        width: basePixelSize,
+        height: basePixelSize,
+        // The artwork is white with a dark halo, so this multiply IS the
+        // filière colour — see `plantFiliereIcons.js` for why nothing in the
+        // pack carries a hue of its own.
         color: plantColor(record.filiere),
-        outlineColor: COLOR_OUTLINE,
-        outlineWidth: 1,
         scaleByDistance: new Cesium.NearFarScalar(20_000, 1.25, 3_000_000, 0.55),
         translucencyByDistance: new Cesium.NearFarScalar(20_000, 1, 5_000_000, 0.35),
         // NEVER A FINITE DISTANCE HERE, and the reason is what this line used
-        // to do. A point primitive carries ONE depth for its whole quad — the
-        // depth of the site's own coordinate — so a depth-tested disc is
-        // tested against the terrain under every pixel it covers. Looking
-        // down at any angle other than straight down, the ground below the
-        // anchor on screen is NEARER to the camera than the anchor is, so it
-        // wins the test and eats the bottom half of the disc; the ground
-        // above is farther, so the top half survives. The result is not a
-        // half-hidden marker, it is a PARASOL: a flat-bottomed dome that
-        // looks like a different symbol, on every site, at every camera
-        // height above the old 5 000 m threshold. Reproduced at Gravelines at
-        // 6 km, and it is what the fleet looks like at country scale, which
-        // is where this layer is actually read.
+        // to do. A billboard carries ONE depth for its whole quad — the depth
+        // of the site's own coordinate — so a depth-tested mark is tested
+        // against the terrain under every pixel it covers. Looking down at any
+        // angle other than straight down, the ground below the anchor on
+        // screen is NEARER to the camera than the anchor is, so it wins the
+        // test and eats the bottom half of the mark; the ground above is
+        // farther, so the top half survives. The result is not a half-hidden
+        // marker, it is a PARASOL: a flat-bottomed dome that looks like a
+        // different symbol, on every site, at every camera height above the
+        // old 5 000 m threshold. Reproduced at Gravelines at 6 km, and it is
+        // what the fleet looks like at country scale, which is where this
+        // layer is actually read. It costs a cooling tower its base, which is
+        // most of what makes it a cooling tower.
         //
         // Drawing over the terrain instead means a site on the far side of
         // the planet would paint through the globe, so `onPreRender` culls
         // against the horizon — the arrangement `rteGeneration.js` already
         // uses for its station rings, which is why those rings were whole in
-        // the same frame these discs were halves.
+        // the same frame these marks were halves.
         disableDepthTestDistance: Number.POSITIVE_INFINITY,
         id: renderId,
       });
-      _drawn.set(renderId, { record, position, point, basePixelSize });
+      _drawn.set(renderId, { record, position, billboard, basePixelSize });
       entries.push(createPlantOverlayEntry(record, position, {
         skipLabel: renderId === _selectedId,
       }));
     }
     // A repaint rebuilds every primitive, so a live selection has just lost the
-    // object it was styling. Re-apply it against the new disc rather than
-    // leaving a card anchored to a released primitive.
+    // object it was styling. Re-apply it against the new mark rather than
+    // leaving a card anchored to a released primitive — and drop it outright if
+    // the filter has just put its site away.
     if (_selectedId && _drawn.has(_selectedId)) selectObject(_selectedId);
     else if (_selectedId) clearSelection();
     publishOverlay(entries);
@@ -1000,15 +1289,16 @@ export function createEdfPowerPlantsLayer({
     if (!camera) return;
     const occluder = horizonOccluder(camera);
     for (const drawn of _drawn.values()) {
-      if (drawn.point) drawn.point.show = occluder.isPointVisible(drawn.position);
+      if (drawn.billboard) drawn.billboard.show = occluder.isPointVisible(drawn.position);
     }
   }
 
   function clearSelection() {
     const drawn = _selectedId ? _drawn.get(_selectedId) : null;
-    if (drawn?.point) {
-      drawn.point.outlineColor = COLOR_OUTLINE;
-      drawn.point.pixelSize = drawn.basePixelSize;
+    if (drawn?.billboard) {
+      drawn.billboard.color = plantColor(drawn.record.filiere);
+      drawn.billboard.width = drawn.basePixelSize;
+      drawn.billboard.height = drawn.basePixelSize;
     }
     _selectedId = null;
     overlayHost.clearSource(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID);
@@ -1019,9 +1309,14 @@ export function createEdfPowerPlantsLayer({
     clearSelection();
     if (!drawn) return;
     _selectedId = renderId;
-    if (drawn.point) {
-      drawn.point.outlineColor = Cesium.Color.fromCssColorString(EDF_SELECTED_COLOR);
-      drawn.point.pixelSize = drawn.basePixelSize + SELECTED_POINT_BONUS_PX;
+    if (drawn.billboard) {
+      // The selected mark takes the card's own accent rather than an outline:
+      // a billboard has no outline to thicken, and tinting the whole silhouette
+      // is the one emphasis that survives at the size the smallest site draws
+      // at. Its filière is still on the card, one line down.
+      drawn.billboard.color = Cesium.Color.fromCssColorString(EDF_SELECTED_COLOR);
+      drawn.billboard.width = drawn.basePixelSize + SELECTED_POINT_BONUS_PX;
+      drawn.billboard.height = drawn.basePixelSize + SELECTED_POINT_BONUS_PX;
     }
     const entry = createEdfSelectedOverlayEntry(
       drawn.record,
@@ -1117,12 +1412,26 @@ export function createEdfPowerPlantsLayer({
 
     init(viewer) {
       _viewer = viewer;
-      _pointCollection = new Cesium.PointPrimitiveCollection({
+      // NO `scene` OPTION, deliberately. It exists to let a billboard clamp to
+      // terrain through `heightReference`, which nothing here uses — these
+      // marks draw over the globe on purpose (see the depth note in `repaint`).
+      // Passing it makes Cesium reach into `scene.frameState.mode` inside the
+      // Billboard constructor, which is a live render loop this layer's own
+      // unit tests do not have; `flights.js` and `cctv.js` leave it out for the
+      // same reason.
+      _billboards = new Cesium.BillboardCollection({
         blendOption: Cesium.BlendOption.TRANSLUCENT,
       });
-      viewer.scene.primitives.add(_pointCollection);
-      _pointCollection.show = false;
+      viewer.scene.primitives.add(_billboards);
+      _billboards.show = false;
       _records = [];
+      // The filter deliberately survives nothing: `init` is a fresh scene, and
+      // a reader who reloads gets the whole fleet back rather than a country
+      // that is missing three quarters of its power stations for a reason that
+      // is no longer on screen anywhere.
+      _filter = { filiere: null, kind: null };
+      _visible = [];
+      _legend = [];
       _summary = summarizePlants([]);
       _datasets = [];
       _vintages = referenceDateRange([]);
@@ -1147,7 +1456,7 @@ export function createEdfPowerPlantsLayer({
     enable(viewer) {
       _enabled = true;
       if (viewer) _viewer = viewer;
-      if (_pointCollection) _pointCollection.show = true;
+      if (_billboards) _billboards.show = true;
       overlayHost.setVisible(EDF_PLANTS_OVERLAY_SOURCE_ID, true);
       overlayHost.setVisible(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID, true);
       if (_viewer) installClickHandler(_viewer);
@@ -1169,7 +1478,7 @@ export function createEdfPowerPlantsLayer({
         _preRenderRemover();
         _preRenderRemover = null;
       }
-      if (_pointCollection) _pointCollection.show = false;
+      if (_billboards) _billboards.show = false;
       overlayHost.clearSource(EDF_PLANTS_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(EDF_PLANTS_OVERLAY_SOURCE_ID, false);
       overlayHost.setVisible(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID, false);
@@ -1235,12 +1544,16 @@ export function createEdfPowerPlantsLayer({
       overlayHost.clearSource(EDF_PLANTS_OVERLAY_SOURCE_ID);
       overlayHost.setVisible(EDF_PLANTS_OVERLAY_SOURCE_ID, false);
       overlayHost.setVisible(EDF_PLANTS_SELECTED_OVERLAY_SOURCE_ID, false);
-      if (_pointCollection) {
-        viewer?.scene?.primitives?.remove?.(_pointCollection);
-        _pointCollection = null;
+      if (_billboards) {
+        viewer?.scene?.primitives?.remove?.(_billboards);
+        _billboards = null;
       }
       _viewer = null;
       _records = [];
+      _filter = { filiere: null, kind: null };
+      _visible = [];
+      _legend = [];
+      _rowControlsListener = null;
       _summary = summarizePlants([]);
       _datasets = [];
       _vintages = referenceDateRange([]);
@@ -1264,7 +1577,12 @@ export function createEdfPowerPlantsLayer({
       const result = [];
       // Largest first, which is the order an analyst question about capacity
       // wants; the render order is deliberately the reverse of it.
-      for (const record of [..._records].reverse()) {
+      //
+      // The FILTERED cohort, not the fleet: an analyst question is asked about
+      // the map that is on screen, and answering "les plus grosses centrales"
+      // off sites the reader has just put away would answer a different
+      // question than the one the globe is showing.
+      for (const record of [..._visible].reverse()) {
         if (result.length >= limit) break;
         result.push(mapAnalystRecord(record, result.length));
       }
@@ -1272,22 +1590,69 @@ export function createEdfPowerPlantsLayer({
     },
 
     /**
-     * Colour legend for the toggle row. No chips: the layer has no options.
+     * Runtime params — the two-level filter.
+     *
+     * Nothing is thrown away: the whole fleet stays in `_records`, `getStats()`
+     * keeps reporting the national totals beside what is drawn, and clearing
+     * the filter needs no refetch.
+     * @param {{filiere?: ?string, kind?: ?string}} [params]
+     * @returns {boolean} False only when the call addresses neither level.
+     */
+    setParams(params = {}) {
+      if (params.filiere === undefined && params.kind === undefined) return false;
+      const next = normalizePlantFilter({
+        filiere: params.filiere === undefined ? _filter.filiere : params.filiere,
+        kind: params.kind === undefined ? _filter.kind : params.kind,
+      });
+      // Idempotent, and deliberately reported as a SUCCESS: re-applying the
+      // filter a row is already showing is not a rejection, and returning false
+      // here would have the manager log a params-failed for a button that did
+      // exactly what it said.
+      if (next.filiere === _filter.filiere && next.kind === _filter.kind) return true;
+      _filter = next;
+      repaint();
+      _rowControlsListener?.();
+      return true;
+    },
+
+    /** @returns {{filiere: ?string, kind: ?string}} */
+    getParams() {
+      return { filiere: _filter.filiere, kind: _filter.kind };
+    },
+
+    setRowControlsListener(listener) {
+      _rowControlsListener = typeof listener === 'function' ? listener : null;
+    },
+
+    /**
+     * The row's controls: the filière filter, its sub-categories once a filière
+     * is chosen, and the colour key for what is actually drawn.
      * @returns {{chips: Array<object>, legend: Array<object>}}
      */
     getRowControls() {
-      return { chips: [], legend: filiereLegend(_summary) };
+      return { chips: plantFilterChips(_records, _filter), legend: _legend };
     },
 
     getStats() {
+      const shown = summarizePlants(_visible);
       return {
-        // Sites, not published rows: 79 markers stand for 126 rows, and
-        // reporting 126 would imply 126 places.
-        count: _summary.sites,
+        // Sites ON THE GLOBE, not published rows and not the fleet: 79 markers
+        // stand for 126 rows, and reporting 126 would imply 126 places — while
+        // a row reading 79 over a globe showing 18 would be a different lie.
+        count: shown.sites,
         lastUpdate: _lastUpdate,
         error: _lastError,
         loading: _loading,
         stale: _stale,
+        // What the filter is, and what it costs. `hidden` is the number named
+        // rather than quietly missing, the way `fr-hydro-plants` reports its
+        // power floor.
+        filiere: _filter.filiere,
+        kind: _filter.kind,
+        hidden: Math.max(0, _summary.sites - shown.sites),
+        // THE FLEET's figures, whatever the filter hides. These are facts about
+        // France and they do not move because a reader narrowed their view.
+        fleetSites: _summary.sites,
         // Installed, never produced. The Mix élec layer owns the flow figures.
         capacityMw: _summary.capacityMw,
         units: _summary.units,
